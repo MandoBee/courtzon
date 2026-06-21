@@ -1,0 +1,78 @@
+name: Security Scan
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '0 6 * * 1'  # Every Monday at 6 AM
+
+jobs:
+  dependency-scan:
+    name: Dependency Vulnerability Scan
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        dir: [backend, frontend]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: ${{ matrix.dir }}/package-lock.json
+      - run: npm ci --ignore-scripts
+        working-directory: ${{ matrix.dir }}
+      - run: npm audit --audit-level=high
+        working-directory: ${{ matrix.dir }}
+      - name: Run Snyk (if configured)
+        if: ${{ secrets.SNYK_TOKEN != '' }}
+        run: |
+          npm install -g snyk
+          snyk test --all-projects
+        working-directory: ${{ matrix.dir }}
+
+  docker-scan:
+    name: Docker Image Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build backend image
+        run: docker build -f backend/Dockerfile -t courtzon-backend:scan .
+      - name: Install Trivy
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y wget
+          wget https://github.com/aquasecurity/trivy/releases/download/v0.50.1/trivy_0.50.1_Linux-64bit.deb
+          sudo dpkg -i trivy_0.50.1_Linux-64bit.deb
+      - name: Scan backend image with Trivy
+        run: trivy image --severity HIGH,CRITICAL --exit-code 1 courtzon-backend:scan
+
+  secrets-scan:
+    name: Secrets Detection
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install truffleHog
+        run: pip install truffleHog
+      - name: Scan for secrets
+        run: trufflehog --regex --entropy=False file://${{ github.workspace }} || true
+
+  lint:
+    name: Lint & Type Check
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        dir: [backend, frontend]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: ${{ matrix.dir }}/package-lock.json
+      - run: npm ci --ignore-scripts
+        working-directory: ${{ matrix.dir }}
+      - run: npx tsc --noEmit
+        working-directory: ${{ matrix.dir }}

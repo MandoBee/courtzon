@@ -1,0 +1,97 @@
+# Hot-reload dev stack: tsx watch backend + Vite frontend + Redis (+ optional Docker MySQL)
+# Usage: docker compose -f docker-compose.dev.yml up -d
+# With Docker MySQL: docker compose -f docker-compose.dev.yml --profile db up -d
+name: courtzon-dev
+
+services:
+  mysql:
+    profiles: ["db"]
+    image: mysql:8.0
+    container_name: courtzon-mysql-dev
+    restart: unless-stopped
+    ports:
+      - "${MYSQL_PORT:-3306}:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-courtzon_root}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-courtzon_v2}
+      MYSQL_USER: ${MYSQL_USER:-app_user}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-change-me}
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD:-courtzon_root}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    volumes:
+      - mysql_data_dev:/var/lib/mysql
+    command: --default-authentication-plugin=mysql_native_password --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+
+  redis:
+    image: redis:7-alpine
+    container_name: courtzon-redis-dev
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    command: sh -c 'exec redis-server --maxmemory 512mb --maxmemory-policy allkeys-lru ${REDIS_PASSWORD:+--requirepass $REDIS_PASSWORD}'
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ${REDIS_PASSWORD:+-a \"$REDIS_PASSWORD\"} ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    volumes:
+      - redis_data_dev:/data
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile.dev
+    container_name: courtzon-backend-dev
+    restart: unless-stopped
+    ports:
+      - "${PORT:-3000}:3000"
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: development
+      PORT: 3000
+      DB_HOST: ${DB_HOST:-host.docker.internal}
+      DB_PORT: ${DB_PORT:-3306}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      ENABLE_API_DOCS: ${ENABLE_API_DOCS:-true}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./backend/src:/app/src
+      - ./database:/app/database
+      - ./backend/scripts:/app/scripts
+      - ./backend/uploads:/app/uploads
+      - ./backend/docker-entrypoint.sh:/usr/local/bin/docker-entrypoint.sh:ro
+
+  frontend:
+    image: node:22-alpine
+    container_name: courtzon-frontend-dev
+    working_dir: /app
+    command: sh -c "npm ci --ignore-scripts 2>/dev/null || npm install --ignore-scripts; npm run dev -- --host 0.0.0.0 --port 5173"
+    ports:
+      - "${FRONTEND_PORT:-5173}:5173"
+    environment:
+      VITE_API_URL: "http://localhost:3000"
+      BACKEND_URL: http://backend:3000
+    depends_on:
+      - backend
+    volumes:
+      - ./frontend:/app
+      - frontend_node_modules:/app/node_modules
+
+networks:
+  default:
+    name: courtzon-dev
+
+volumes:
+  mysql_data_dev:
+  redis_data_dev:
+  frontend_node_modules:

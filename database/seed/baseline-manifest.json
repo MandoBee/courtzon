@@ -1,0 +1,396 @@
+{
+  "exportedAt": "2026-06-14T14:49:09.421Z",
+  "database": "courtzon_v2",
+  "excludedTables": [
+    "academy_enrollments",
+    "academy_evaluations",
+    "academy_session_attendance",
+    "academy_sessions",
+    "activity_logs",
+    "ad_clicks",
+    "ad_impressions",
+    "audit_logs",
+    "booking_invitation_applications",
+    "booking_invitations",
+    "booking_participants",
+    "booking_slots",
+    "bookings",
+    "brute_force_lockouts",
+    "cart_items",
+    "coach_reviews",
+    "coach_sessions",
+    "community_event_participants",
+    "contact_submissions",
+    "conversation_participants",
+    "conversations",
+    "cron_job_runs",
+    "email_verification_tokens",
+    "financial_entries",
+    "friend_requests",
+    "login_attempts",
+    "media_uploads",
+    "messages",
+    "notification_queue",
+    "notifications",
+    "order_items",
+    "orders",
+    "organisation_upgrade_requests",
+    "password_reset_tokens",
+    "payment_transactions",
+    "settlement_items",
+    "settlements",
+    "tournament_match_scores",
+    "tournament_matches",
+    "tournament_registrations",
+    "transactions",
+    "user_devices",
+    "user_follows",
+    "user_sessions",
+    "wallet_transactions",
+    "wishlist_items",
+    "withdrawal_requests"
+  ],
+  "tables": [
+    {
+      "table": "amenities",
+      "rows": 20,
+      "maxId": 20
+    },
+    {
+      "table": "app_settings",
+      "rows": 12,
+      "maxId": 12
+    },
+    {
+      "table": "banks",
+      "rows": 11,
+      "maxId": 11
+    },
+    {
+      "table": "bank_branches",
+      "rows": 1,
+      "maxId": 1
+    },
+    {
+      "table": "branches",
+      "rows": 2,
+      "maxId": 2
+    },
+    {
+      "table": "branch_amenity_assignments",
+      "rows": 5,
+      "maxId": 25
+    },
+    {
+      "table": "branch_financial_details",
+      "rows": 1,
+      "maxId": 1
+    },
+    {
+      "table": "brands",
+      "rows": 74,
+      "maxId": 148
+    },
+    {
+      "table": "cancellation_policies",
+      "rows": 6,
+      "maxId": 6
+    },
+    {
+      "table": "cities",
+      "rows": 333,
+      "maxId": 9431
+    },
+    {
+      "table": "cms_blogs",
+      "rows": 3,
+      "maxId": 9
+    },
+    {
+      "table": "cms_pages",
+      "rows": 10,
+      "maxId": 24
+    },
+    {
+      "table": "cms_section_blocks",
+      "rows": 50,
+      "maxId": 98
+    },
+    {
+      "table": "commission_rules",
+      "rows": 5,
+      "maxId": 5
+    },
+    {
+      "table": "countries",
+      "rows": 8,
+      "maxId": 8
+    },
+    {
+      "table": "court_amenities",
+      "rows": 120,
+      "maxId": 120
+    },
+    {
+      "table": "cron_jobs",
+      "rows": 3,
+      "maxId": 3
+    },
+    {
+      "table": "currencies",
+      "rows": 7,
+      "maxId": 7
+    },
+    {
+      "table": "design_theme_reset_baseline",
+      "rows": 1,
+      "maxId": 1
+    },
+    {
+      "table": "design_tokens",
+      "rows": 159,
+      "maxId": 159
+    },
+    {
+      "table": "design_token_versions",
+      "rows": 2,
+      "maxId": 2
+    },
+    {
+      "table": "exchange_rates",
+      "rows": 6,
+      "maxId": 6
+    },
+    {
+      "table": "feature_flags",
+      "rows": 18,
+      "maxId": 18
+    },
+    {
+      "table": "holidays",
+      "rows": 1,
+      "maxId": 1
+    },
+    {
+      "table": "languages",
+      "rows": 2,
+      "maxId": 2
+    },
+    {
+      "table": "notification_actions",
+      "rows": 17,
+      "maxId": 17
+    },
+    {
+      "table": "notification_categories",
+      "rows": 8,
+      "maxId": 8
+    },
+    {
+      "table": "organisations",
+      "rows": 1,
+      "maxId": 6
+    },
+    {
+      "table": "organisation_subscriptions",
+      "rows": 1,
+      "maxId": 2
+    },
+    {
+      "table": "organisation_types",
+      "rows": 5,
+      "maxId": 10
+    },
+    {
+      "table": "organisation_type_attributes",
+      "rows": 3,
+      "maxId": 3
+    },
+    {
+      "table": "payment_gateway_config",
+      "rows": 3,
+      "maxId": 7
+    },
+    {
+      "table": "payment_methods",
+      "rows": 5,
+      "maxId": 5
+    },
+    {
+      "table": "permissions",
+      "rows": 555,
+      "maxId": 19748
+    },
+    {
+      "table": "permission_modules",
+      "rows": 30,
+      "maxId": 33
+    },
+    {
+      "table": "platform_accounts",
+      "rows": 4,
+      "maxId": 4
+    },
+    {
+      "table": "player_levels",
+      "rows": 5,
+      "maxId": 5
+    },
+    {
+      "table": "player_profiles",
+      "rows": 2,
+      "maxId": 8
+    },
+    {
+      "table": "player_sport_interests",
+      "rows": 2,
+      "maxId": 0
+    },
+    {
+      "table": "products",
+      "rows": 50,
+      "maxId": 102
+    },
+    {
+      "table": "product_categories",
+      "rows": 118,
+      "maxId": 118
+    },
+    {
+      "table": "product_images",
+      "rows": 98,
+      "maxId": 100
+    },
+    {
+      "table": "product_variants",
+      "rows": 208,
+      "maxId": 218
+    },
+    {
+      "table": "provinces",
+      "rows": 120,
+      "maxId": 3168
+    },
+    {
+      "table": "resource_attribute_values",
+      "rows": 13,
+      "maxId": 13
+    },
+    {
+      "table": "resource_types",
+      "rows": 10,
+      "maxId": 10
+    },
+    {
+      "table": "resource_type_attributes",
+      "rows": 10,
+      "maxId": 10
+    },
+    {
+      "table": "roles",
+      "rows": 17,
+      "maxId": 1086
+    },
+    {
+      "table": "role_permissions",
+      "rows": 1144,
+      "maxId": 21503
+    },
+    {
+      "table": "scheduled_jobs",
+      "rows": 10,
+      "maxId": 10
+    },
+    {
+      "table": "seller_shipping_rates",
+      "rows": 2,
+      "maxId": 2
+    },
+    {
+      "table": "sidebar_layout",
+      "rows": 11,
+      "maxId": 308
+    },
+    {
+      "table": "sports",
+      "rows": 16,
+      "maxId": 34
+    },
+    {
+      "table": "subscription_features",
+      "rows": 9,
+      "maxId": 9
+    },
+    {
+      "table": "subscription_plans",
+      "rows": 7,
+      "maxId": 10
+    },
+    {
+      "table": "subscription_plan_features",
+      "rows": 54,
+      "maxId": 360
+    },
+    {
+      "table": "subscription_plan_rates",
+      "rows": 23,
+      "maxId": 1276
+    },
+    {
+      "table": "system_settings",
+      "rows": 25,
+      "maxId": 25
+    },
+    {
+      "table": "tags",
+      "rows": 25,
+      "maxId": 50
+    },
+    {
+      "table": "tournament_bracket_types",
+      "rows": 4,
+      "maxId": 4
+    },
+    {
+      "table": "transaction_entries",
+      "rows": 2,
+      "maxId": 2
+    },
+    {
+      "table": "translations",
+      "rows": 286,
+      "maxId": 307
+    },
+    {
+      "table": "translation_keys",
+      "rows": 581,
+      "maxId": 1196
+    },
+    {
+      "table": "uploads",
+      "rows": 18,
+      "maxId": 18
+    },
+    {
+      "table": "users",
+      "rows": 3,
+      "maxId": 68
+    },
+    {
+      "table": "user_roles",
+      "rows": 5,
+      "maxId": 111
+    },
+    {
+      "table": "user_role_scopes",
+      "rows": 2,
+      "maxId": 3
+    },
+    {
+      "table": "user_wallets",
+      "rows": 2,
+      "maxId": 9
+    }
+  ],
+  "totalRows": 4374
+}

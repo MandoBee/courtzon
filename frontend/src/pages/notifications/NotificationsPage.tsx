@@ -1,0 +1,101 @@
+import { useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { notificationsApi } from '../../services/notifications';
+import NotificationDetailModal, { type AppNotification } from '../../components/notifications/NotificationDetailModal';
+import { useTranslation } from '../../i18n';
+
+export default function NotificationsPage() {
+  const { t } = useTranslation();
+  const queryClient = useQueryClient();
+  const [page, setPage] = useState(1);
+  const [selected, setSelected] = useState<AppNotification | null>(null);
+  const PAGE_SIZE = 20;
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['notifications', 'list', page],
+    queryFn: () => notificationsApi.getAll(page, PAGE_SIZE),
+  });
+
+  const markAllMutation = useMutation({
+    mutationFn: notificationsApi.markAllAsRead,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['notifications'] }),
+  });
+
+  const notifications: AppNotification[] = data?.data || [];
+  const total = data?.total || 0;
+  const totalPages = Math.ceil(total / PAGE_SIZE);
+
+  if (isLoading) return <div className="animate-pulse h-40 bg-[var(--color-border)] bg-[var(--color-surface)] rounded-xl" />;
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <h1 className="text-2xl font-bold text-[var(--color-text)]">{t('settings.notifications')}</h1>
+        <button
+          onClick={() => markAllMutation.mutate()}
+          className="text-sm text-[var(--color-primary)] hover:underline"
+        >
+          {t('notification.mark_all_read')}
+        </button>
+      </div>
+
+      {notifications.length === 0 ? (
+        <p className="text-[var(--color-text-muted)]">{t('notification.empty')}</p>
+      ) : (
+        <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] overflow-hidden">
+          {notifications.map((n) => (
+            <div
+              key={n.id}
+              className={`flex items-start gap-3 px-4 py-3 border-b border-[var(--color-border)] last:border-0 hover:bg-[var(--color-bg)] cursor-pointer transition-colors ${!n.is_read ? 'bg-[var(--color-info-bg)]/50 ' : ''}`}
+              onClick={() => setSelected(n)}
+            >
+              <span className="text-xl shrink-0 mt-0.5">{n.icon || '📬'}</span>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-start justify-between gap-2">
+                  <p className="text-sm font-medium text-[var(--color-text)]">{n.title}</p>
+                  <span className="text-[10px] text-[var(--color-text-muted)] shrink-0">
+                    {new Date(n.created_at).toLocaleDateString('en-GB')}
+                  </span>
+                </div>
+                {n.body && <p className="text-xs text-[var(--color-text-muted)] mt-0.5 line-clamp-2">{n.body}</p>}
+              </div>
+              {!n.is_read && (
+                <span className="w-2 h-2 rounded-full bg-[var(--color-primary)] shrink-0 mt-2" />
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between">
+          <span className="text-xs text-[var(--color-text-muted)]">
+            Page {page} of {totalPages}
+          </span>
+          <div className="flex gap-1">
+            <button
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page <= 1}
+              className="px-3 py-1 text-xs border border-[var(--color-border)] rounded disabled:opacity-40"
+            >
+              {t('common.previous')}
+            </button>
+            <button
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={page >= totalPages}
+              className="px-3 py-1 text-xs border border-[var(--color-border)] rounded disabled:opacity-40"
+            >
+              {t('common.next')}
+            </button>
+          </div>
+        </div>
+      )}
+
+      <NotificationDetailModal
+        notification={selected}
+        open={!!selected}
+        onClose={() => setSelected(null)}
+      />
+    </div>
+  );
+}

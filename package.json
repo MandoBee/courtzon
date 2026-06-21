@@ -1,0 +1,11 @@
+{
+  "name": "courtzon-v2",
+  "private": true,
+  "scripts": {
+    "test:e2e": "playwright test",
+    "test:e2e:ci": "playwright test --grep \"Smoke — public\""
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.52.0"
+  }
+}

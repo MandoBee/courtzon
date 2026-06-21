@@ -1,0 +1,111 @@
+import { NotFoundError, ConflictError, ForbiddenError } from '../../../shared/errors/app-error.js';
+import { communityRepository as repo } from '../infrastructure/repositories/community.repository.js';
+
+export const communityService = {
+  // ── Follows ──
+  async follow(followerId: number, followingId: number) {
+    if (followerId === followingId) throw new ConflictError('Cannot follow yourself');
+    await repo.follow(followerId, followingId);
+  },
+  async unfollow(followerId: number, followingId: number) { await repo.unfollow(followerId, followingId); },
+  async getFollowers(userId: number) { return repo.findFollowers(userId); },
+  async getFollowing(userId: number) { return repo.findFollowing(userId); },
+
+  // ── Friends ──
+  async sendFriendRequest(requesterId: number, addresseeId: number) {
+    if (requesterId === addresseeId) throw new ConflictError('Cannot friend yourself');
+    await repo.sendFriendRequest(requesterId, addresseeId);
+  },
+  async acceptFriendRequest(requesterId: number, addresseeId: number) {
+    await repo.respondToFriendRequest(requesterId, addresseeId, 'accepted');
+  },
+  async rejectFriendRequest(requesterId: number, addresseeId: number) {
+    await repo.respondToFriendRequest(requesterId, addresseeId, 'blocked');
+  },
+  async getFriends(userId: number) { return repo.findFriends(userId); },
+
+  // ── Events ──
+  async listEvents(page: number, limit: number) { return repo.findEvents({ page, limit }); },
+  async getEvent(id: number) {
+    const e = await repo.findEventById(id);
+    if (!e) throw new NotFoundError('Event');
+    const participants = await repo.findEventParticipants(id);
+    return { ...e, participants };
+  },
+  async createEvent(userId: number, data: any) {
+    const id = await repo.createEvent({ ...data, creatorId: userId });
+    return repo.findEventById(id);
+  },
+  async rsvpEvent(eventId: number, userId: number, status: string) {
+    const e = await repo.findEventById(eventId);
+    if (!e) throw new NotFoundError('Event');
+    await repo.rsvpEvent(eventId, userId, status);
+  },
+
+  // ── Admin: Events ──
+  async listEventsAdmin(page: number, limit: number, status?: string) {
+    return repo.findEventsAdmin({ page, limit, status });
+  },
+  async updateEventAdmin(id: number, data: any) {
+    const updated = await repo.updateEvent(id, data);
+    if (!updated) throw new NotFoundError('Event');
+    return repo.findEventById(id);
+  },
+  async deleteEvent(id: number) {
+    const e = await repo.findEventById(id);
+    if (!e) throw new NotFoundError('Event');
+    await repo.softDeleteEvent(id);
+    return { success: true };
+  },
+
+  // ── Chat ──
+  async getOrCreateConversation(userId: number, otherUserId: number) {
+    if (userId === otherUserId) throw new ConflictError('Cannot message yourself');
+    return repo.findOrCreateDirectConversation(userId, otherUserId);
+  },
+  async getConversations(userId: number) { return repo.findConversations(userId); },
+  async sendMessage(conversationId: number, senderId: number, content: string) {
+    if (!(await repo.isConversationParticipant(conversationId, senderId))) {
+      throw new ForbiddenError('Not a participant in this conversation');
+    }
+    await repo.sendMessage(conversationId, senderId, content);
+  },
+  async getMessages(conversationId: number, userId: number, page: number, limit: number) {
+    if (!(await repo.isConversationParticipant(conversationId, userId))) {
+      throw new ForbiddenError('Not a participant in this conversation');
+    }
+    return repo.findMessages(conversationId, page, limit);
+  },
+
+  // ── Ads ──
+  async getPlacements() { return repo.findPlacements(); },
+  async getActiveAds(placementId: number) { return repo.findActiveCampaigns(placementId); },
+  async createCampaign(userId: number, data: any) {
+    const campaignId = await repo.createCampaign({ ...data, createdBy: userId });
+    if (data.imageUrl) {
+      await repo.addCreative({ campaignId, imageUrl: data.imageUrl, clickUrl: data.clickUrl, altText: data.altText });
+    }
+    return campaignId;
+  },
+
+  // ── Ads Admin ──
+  async getAllPlacements() { return repo.findAllPlacements(); },
+  async createPlacement(data: any) { const id = await repo.createPlacement(data); return { id, ...data }; },
+  async updatePlacement(id: number, data: any) { await repo.updatePlacement(id, data); },
+  async togglePlacement(id: number) { return repo.togglePlacement(id); },
+  async deletePlacement(id: number) { await repo.deletePlacement(id); },
+  async getAllCampaigns() { return repo.findAllCampaigns(); },
+  async getCampaign(id: number) { return repo.findCampaign(id); },
+  async updateCampaign(id: number, data: any) { await repo.updateCampaign(id, data); return repo.findCampaign(id); },
+  async deleteCampaign(id: number) { await repo.deleteCampaign(id); },
+  async updateCampaignStatus(id: number, status: string) { await repo.updateCampaignStatus(id, status); return repo.findCampaign(id); },
+  async createCreative(data: any) { await repo.addCreative(data); },
+  async updateCreative(id: number, data: any) { await repo.updateCreative(id, data); },
+  async deleteCreative(id: number) { await repo.deleteCreative(id); },
+
+  // ── Admin / Audit ──
+  async getAuditLogs(filters: any) { return repo.findAuditLogs(filters); },
+  async revertAction(auditLogId: number, revertedBy: number, reason: string) {
+    return repo.revertAction(auditLogId, revertedBy, reason);
+  },
+};
