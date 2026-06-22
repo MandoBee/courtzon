@@ -8,3 +8,4 @@ export { Modal } from './Modal';
 export { Sparkline } from './Sparkline';
 export { Pagination } from './Pagination';
 export { ToastProvider, useToast } from './Toast';
+export { Skeleton, SkeletonList, SkeletonRow } from './Skeleton';

@@ -850,3 +850,101 @@ html[dir="rtl"] {
     background-clip: text;
   }
 }
+
+/* ──────────────────────────────────────────────────────────────────────
+   PWA & Mobile professionalization (Phase 2)
+   ────────────────────────────────────────────────────────────────────── */
+
+@layer base {
+  html {
+    -webkit-tap-highlight-color: transparent;
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+  body {
+    touch-action: manipulation;        /* eliminate 300ms tap delay */
+    overscroll-behavior-y: none;        /* prevent rubber-band scroll bleed */
+  }
+  /* Prevent iOS text-selection callouts on nav/button chrome */
+  nav button,
+  a[class*='nav'],
+  .cz-no-select {
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+  }
+  /* Prevent iOS auto-zoom on input focus: keep font-size >= 16px on mobile */
+  @media (max-width: 768px) {
+    input:not([type='checkbox']):not([type='radio']):not([type='file']):not([type='hidden']):not(.unstyled),
+    textarea:not(.unstyled),
+    select:not(.unstyled) {
+      font-size: 16px;
+    }
+  }
+}
+
+@layer utilities {
+  /* Safe-area inset helpers (notch / home-indicator) */
+  .cz-pt-safe { padding-top: env(safe-area-inset-top); }
+  .cz-pb-safe { padding-bottom: env(safe-area-inset-bottom); }
+  .cz-pl-safe { padding-left: env(safe-area-inset-left); }
+  .cz-pr-safe { padding-right: env(safe-area-inset-right); }
+  .cz-px-safe { padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right); }
+  .cz-mt-safe { margin-top: env(safe-area-inset-top); }
+  .cz-mb-safe { margin-bottom: env(safe-area-inset-bottom); }
+  .cz-h-safe-top { height: env(safe-area-inset-top); }
+  .cz-h-safe-bottom { height: env(safe-area-inset-bottom); }
+
+  /* Bottom-sheet / slide animations */
+  .cz-sheet-enter {
+    animation: cz-sheet-slide-up 280ms cubic-bezier(0.32, 0.72, 0, 1) both;
+  }
+  .cz-fade-enter {
+    animation: cz-fade-in 200ms ease-out both;
+  }
+  .cz-drawer-enter {
+    animation: cz-drawer-slide-down 240ms cubic-bezier(0.32, 0.72, 0, 1) both;
+  }
+
+  /* Pull-to-refresh indicator */
+  .cz-ptr-indicator {
+    will-change: transform, opacity;
+  }
+
+  /* Skeleton shimmer */
+  .cz-skeleton {
+    position: relative;
+    overflow: hidden;
+    background-color: var(--color-border);
+  }
+  .cz-skeleton::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.45), transparent);
+    animation: cz-shimmer 1.4s infinite;
+  }
+}
+
+@keyframes cz-sheet-slide-up {
+  from { transform: translateY(100%); }
+  to   { transform: translateY(0); }
+}
+@keyframes cz-drawer-slide-down {
+  from { transform: translateY(-12px); opacity: 0; }
+  to   { transform: translateY(0); opacity: 1; }
+}
+@keyframes cz-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes cz-shimmer {
+  100% { transform: translateX(100%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cz-sheet-enter, .cz-fade-enter, .cz-drawer-enter, .cz-skeleton::after {
+    animation: none;
+  }
+}

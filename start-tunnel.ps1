@@ -1,98 +1,96 @@
-# Start Cloudflare tunnels for backend (3000) and frontend (5173)
-$ErrorActionPreference = "Stop"
+# Robust Cloudflare tunnel launcher (Phase 3.2 — replaces Start-Job approach)
+# Starts two tunnels: backend (3000) and frontend (5173), waits for URLs, updates .env, restarts backend.
+$ErrorActionPreference = 'Stop'
 
+$root = $PSScriptRoot
 $cfPath = (Get-Command cloudflared.exe -ErrorAction Stop).Source
-$envFile = Join-Path $PSScriptRoot ".env"
-$backendDir = $PSScriptRoot
+$tmpDir = Join-Path $env:TEMP 'courtzon-tunnels'
+New-Item -ItemType Directory -Path $tmpDir -Force | Out-Null
+$backendLog = Join-Path $tmpDir 'cf-backend.err'
+$frontendLog = Join-Path $tmpDir 'cf-frontend.err'
+$backendOut = Join-Path $tmpDir 'cf-backend.out'
+$frontendOut = Join-Path $tmpDir 'cf-frontend.out'
 
-Write-Host "Starting Cloudflare tunnels..." -ForegroundColor Cyan
+Write-Host 'Starting Cloudflare tunnels...' -ForegroundColor Cyan
 
-function Start-TunnelJob($name, $port) {
-    Start-Job -Name $name -ScriptBlock {
-        param($cf, $p)
-        & $cf tunnel --url "http://localhost:$p"
-    } -ArgumentList $cfPath, $port
-}
+# Kill any existing cloudflared processes from prior runs
+Get-Process cloudflared -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+Start-Sleep -Seconds 1
 
-function Wait-TunnelUrl($name, $label) {
+$backendProc = Start-Process -FilePath $cfPath -ArgumentList 'tunnel','--url','http://localhost:3000' -RedirectStandardOutput $backendOut -RedirectStandardError $backendLog -WindowStyle Hidden -PassThru
+$frontendProc = Start-Process -FilePath $cfPath -ArgumentList 'tunnel','--url','http://localhost:5173' -RedirectStandardOutput $frontendOut -RedirectStandardError $frontendLog -WindowStyle Hidden -PassThru
+
+function Wait-TunnelUrl($logPath, $label) {
     $url = $null
-    for ($i = 0; $i -lt 30; $i++) {
-        $output = Receive-Job -Name $name 2>$null
-        if ($output) {
-            foreach ($line in $output) {
-                if ($line -match "(https://[a-zA-Z0-9\-]+\.trycloudflare\.com)") {
-                    $url = $matches[1]
-                    break
-                }
+    for ($i = 0; $i -lt 45; $i++) {
+        if (Test-Path $logPath) {
+            $content = Get-Content $logPath -Raw -ErrorAction SilentlyContinue
+            if ($content -match '(https://[a-zA-Z0-9\-]+\.trycloudflare\.com)') {
+                $url = $matches[1]
+                break
             }
         }
-        if ($url) { break }
         Start-Sleep -Seconds 2
     }
     if (-not $url) {
-        Write-Host "ERROR: Could not get $label tunnel URL after 60 seconds" -ForegroundColor Red
-        exit 1
+        Write-Host "ERROR: Could not get $label tunnel URL after 90 seconds." -ForegroundColor Red
+        if (Test-Path $logPath) { Get-Content $logPath -Raw | Write-Host }
+        return $null
     }
     Write-Host "$label tunnel URL: $url" -ForegroundColor Green
     return $url
 }
 
-$backendJob = Start-TunnelJob "cf-backend" 3000
-$frontendJob = Start-TunnelJob "cf-frontend" 5173
+$backendUrl = Wait-TunnelUrl $backendLog 'Backend'
+$frontendUrl = Wait-TunnelUrl $frontendLog 'Frontend'
 
-$backendUrl = Wait-TunnelUrl "cf-backend" "Backend"
-$frontendUrl = Wait-TunnelUrl "cf-frontend" "Frontend"
+if (-not $backendUrl -or -not $frontendUrl) {
+    Write-Host 'ERROR: One or both tunnels failed to start.' -ForegroundColor Red
+    Get-Process -Id $backendProc.Id, $frontendProc.Id -ErrorAction SilentlyContinue | Stop-Process -Force
+    exit 1
+}
 
 # Update .env with tunnel URLs
+$envFile = Join-Path $root '.env'
 $content = Get-Content $envFile -Raw -ErrorAction SilentlyContinue
 if (-not $content) {
     Write-Host "ERROR: .env file not found at $envFile" -ForegroundColor Red
     exit 1
 }
-
 foreach ($entry in @(
-    @{ key = "WEBHOOK_BASE_URL"; value = $backendUrl },
-    @{ key = "APP_URL"; value = $frontendUrl }
+    @{ key = 'WEBHOOK_BASE_URL'; value = $backendUrl }
+    @{ key = 'APP_URL'; value = $frontendUrl }
 )) {
     if ($content -match "$($entry.key)=") {
         $content = $content -replace "$($entry.key)=.*", "$($entry.key)=$($entry.value)"
     } else {
         $content = $content.TrimEnd() + "`n$($entry.key)=$($entry.value)`n"
     }
-    Write-Host "Updated .env with $($entry.key)=$($entry.value)" -ForegroundColor Green
+    Write-Host "Updated .env: $($entry.key)=$($entry.value)" -ForegroundColor Green
 }
 Set-Content $envFile -Value $content -NoNewline
 
-# Restart backend
-Write-Host "Restarting backend container..." -ForegroundColor Cyan
-Set-Location $backendDir
-docker compose up -d backend 2>&1 | Out-Null
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "ERROR: Docker compose failed" -ForegroundColor Red
-    exit 1
+# Restart backend to pick up new env (scope down ErrorActionPreference so Docker's
+# stderr progress lines like "Container ... Running" don't abort the script).
+Write-Host 'Restarting backend container...' -ForegroundColor Cyan
+$prevEAP = $ErrorActionPreference
+$ErrorActionPreference = 'Continue'
+try {
+    docker compose -f (Join-Path $root 'docker-compose.yml') up -d backend 2>&1 | Out-Null
+} finally {
+    $ErrorActionPreference = $prevEAP
 }
 
-Write-Host ""
-Write-Host "============================================" -ForegroundColor Green
+# Save PIDs for stop script
+$pidFile = Join-Path $tmpDir 'tunnel-pids.txt'
+"$($backendProc.Id)`n$($frontendProc.Id)" | Set-Content $pidFile
+
+Write-Host ''
+Write-Host '============================================' -ForegroundColor Green
 Write-Host "  Backend:  $backendUrl" -ForegroundColor Green
 Write-Host "  Frontend: $frontendUrl" -ForegroundColor Green
-Write-Host "============================================" -ForegroundColor Green
-Write-Host ""
-Write-Host "Keep this window open to keep tunnels alive." -ForegroundColor Yellow
-Write-Host "Press Ctrl+C to stop both tunnels." -ForegroundColor Yellow
-
-try {
-    while ($true) {
-        $bo = Receive-Job -Name "cf-backend" 2>$null
-        $fo = Receive-Job -Name "cf-frontend" 2>$null
-        if ($bo) { $bo | ForEach-Object { Write-Host "[Backend] $_" } }
-        if ($fo) { $fo | ForEach-Object { Write-Host "[Frontend] $_" } }
-        Start-Sleep -Seconds 5
-    }
-} finally {
-    @("cf-backend", "cf-frontend") | ForEach-Object {
-        Stop-Job -Name $_ -ErrorAction SilentlyContinue
-        Remove-Job -Name $_ -ErrorAction SilentlyContinue
-    }
-    Write-Host "Tunnels stopped." -ForegroundColor Yellow
-}
+Write-Host '============================================' -ForegroundColor Green
+Write-Host ''
+Write-Host 'Tunnels are running in the background.' -ForegroundColor Yellow
+Write-Host "To stop: .\stop-tunnel.ps1" -ForegroundColor Yellow
+Write-Host "Logs: $tmpDir" -ForegroundColor Gray

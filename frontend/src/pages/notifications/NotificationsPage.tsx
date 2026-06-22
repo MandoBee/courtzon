@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { notificationsApi } from '../../services/notifications';
 import NotificationDetailModal, { type AppNotification } from '../../components/notifications/NotificationDetailModal';
+import { Skeleton, SkeletonRow } from '../../components/ui/Skeleton';
 import { useTranslation } from '../../i18n';
 
 export default function NotificationsPage() {
@@ -25,7 +26,17 @@ export default function NotificationsPage() {
   const total = data?.total || 0;
   const totalPages = Math.ceil(total / PAGE_SIZE);
 
-  if (isLoading) return <div className="animate-pulse h-40 bg-[var(--color-border)] bg-[var(--color-surface)] rounded-xl" />;
+  if (isLoading) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <Skeleton width={220} height={28} />
+          <Skeleton width={120} height={16} />
+        </div>
+        <SkeletonRow count={6} />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

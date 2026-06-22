@@ -1,4 +1,4 @@
-import { useEffect, lazy, Suspense } from 'react';
+import { useEffect, lazy, Suspense, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, Outlet, Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useAuthStore } from './store/auth.store';
@@ -16,9 +16,14 @@ import InstallPrompt from './components/InstallPrompt';
 import WelcomeModal from './components/welcome/WelcomeModal';
 import SiteLogo from './components/branding/SiteLogo';
 import { Can } from './permissions/Can';
+import { useCan } from './hooks/useCan';
+import { useHaptics } from './hooks/useHaptics';
 import { FeatureFlagGuard } from './components/FeatureFlagGuard';
 import { useFeatureFlag } from './hooks/useFeatureFlag';
 import NotificationBell from './components/notifications/NotificationBell';
+import OfflineBanner from './components/pwa/OfflineBanner';
+import PWAUpdatePrompt from './components/pwa/PWAUpdatePrompt';
+import IOSInstallSheet from './components/pwa/IOSInstallSheet';
 import { isOrganisationPendingApproval, orgPortalPath } from './utils/organisation';
 
 // Route-level code splitting: every page/layout below is lazily imported so the
@@ -150,6 +155,15 @@ function PageLoader() {
   );
 }
 
+function BrandedSplash() {
+  return (
+    <div className="min-h-screen bg-[var(--color-bg)] flex flex-col items-center justify-center gap-6 cz-fade-enter cz-pt-safe">
+      <SiteLogo size="lg" variant="primary" />
+      <div className="animate-spin h-7 w-7 border-4 border-[var(--color-primary)] border-t-transparent rounded-full" />
+    </div>
+  );
+}
+
 function ProtectedRoute() {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const user = useAuthStore((s) => s.user);
@@ -214,11 +228,20 @@ function Navbar() {
   const navigate = useNavigate();
   const location = useLocation();
   const chatEnabled = useFeatureFlag('community.chat_enabled');
+  const { can } = useCan();
+  const { tap } = useHaptics();
   const { t } = useTranslation();
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [lastNavPath, setLastNavPath] = useState(location.pathname);
+  if (location.pathname !== lastNavPath) {
+    setLastNavPath(location.pathname);
+    setMobileMenuOpen(false);
+  }
 
   const isActive = (path: string) => location.pathname === path || (path === '/app' && location.pathname === '/');
 
   const handleLogout = async () => {
+    tap();
     await logout();
     navigate('/');
   };
@@ -233,8 +256,22 @@ function Navbar() {
       isActive(path) ? 'text-[var(--color-primary)] font-medium' : 'text-[var(--color-text-muted)] hover:text-[var(--color-primary)]'
     }`;
 
+  const mobileLinks: { to: string; label: string; perm?: string; flag?: boolean }[] = [
+    { to: '/app', label: t('nav.home') },
+    { to: '/bookings', label: t('nav.bookings') },
+    { to: '/matches', label: t('nav.matches') },
+    { to: '/coaches', label: t('nav.coaches'), perm: 'coaches.view' },
+    { to: '/tournaments', label: t('nav.tournaments'), perm: 'tournaments.view' },
+    { to: '/academies', label: t('nav.academies'), perm: 'academies.view' },
+    { to: '/messages', label: t('nav.messages'), perm: 'community.chat.view', flag: chatEnabled },
+    { to: '/marketplace', label: t('nav.marketplace'), perm: 'marketplace.view' },
+    { to: '/notifications', label: t('nav.notifications') },
+    { to: '/profile', label: t('nav.profile') },
+  ];
+  const visibleMobileLinks = mobileLinks.filter((l) => (!l.perm || can(l.perm)) && (l.flag === undefined || l.flag));
+
   return (
-    <nav className="bg-[var(--color-surface)] border-b border-[var(--color-border)] sticky top-0 z-50">
+    <nav className="bg-[var(--color-surface)] border-b border-[var(--color-border)] sticky top-0 z-50 cz-pt-safe cz-px-safe">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
           <div className="flex items-center gap-4 min-w-0">
@@ -272,12 +309,29 @@ function Navbar() {
             <Link to="/profile" className="text-sm text-[var(--color-text-muted)]">{user?.fullName || t('nav.profile')}</Link>
             <button onClick={handleLogout} className="text-sm text-[var(--color-text-muted)] hover:text-red-500">{t('nav.logout')}</button>
           </div>
-          <div className="flex md:hidden items-center gap-2">
+          <div className="flex md:hidden items-center gap-1">
+            <button
+              type="button"
+              onClick={() => { tap(); setMobileMenuOpen((v) => !v); }}
+              aria-label={t('nav.menu')}
+              aria-expanded={mobileMenuOpen}
+              className="p-2 rounded-lg text-[var(--color-text)] hover:bg-[var(--color-bg)] transition-colors cz-no-select"
+            >
+              {mobileMenuOpen ? (
+                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              ) : (
+                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+                </svg>
+              )}
+            </button>
             {orgScopes.length > 0 && orgNavPath && (
               <Link
                 to={orgNavPath}
                 title={orgNavLabel}
-                className="text-xs font-semibold px-2.5 py-1.5 bg-[var(--color-accent)] text-[var(--color-accent-text)] rounded-lg hover:opacity-90 shrink-0 max-w-[140px] truncate"
+                className="text-xs font-semibold px-2.5 py-1.5 bg-[var(--color-accent)] text-[var(--color-accent-text)] rounded-lg hover:opacity-90 shrink-0 max-w-[120px] truncate"
               >
                 {orgNavLabel}
               </Link>
@@ -288,7 +342,7 @@ function Navbar() {
               onClick={handleLogout}
               aria-label={t('nav.logout')}
               title={t('nav.logout')}
-              className="p-2 rounded-lg text-red-500 hover:bg-red-500/10 transition-colors"
+              className="p-2 rounded-lg text-red-500 hover:bg-red-500/10 transition-colors cz-no-select"
             >
               <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
@@ -296,6 +350,28 @@ function Navbar() {
             </button>
           </div>
         </div>
+        {mobileMenuOpen && (
+          <div className="md:hidden cz-drawer-enter border-t border-[var(--color-border)] py-2 cz-pb-safe">
+            {visibleMobileLinks.map((l) => (
+              <Link
+                key={l.to}
+                to={l.to}
+                onClick={() => tap()}
+                className={`block px-2 py-3 rounded-lg text-base transition-colors ${
+                  isActive(l.to) ? 'text-[var(--color-primary)] font-medium bg-[var(--color-primary-bg)]' : 'text-[var(--color-text)] hover:bg-[var(--color-bg)]'
+                }`}
+              >
+                {l.label}
+              </Link>
+            ))}
+            <button
+              onClick={handleLogout}
+              className="block w-full text-left px-2 py-3 rounded-lg text-base text-red-500 hover:bg-red-500/10 transition-colors"
+            >
+              {t('nav.logout')}
+            </button>
+          </div>
+        )}
       </div>
     </nav>
   );
@@ -306,6 +382,7 @@ function AppLayout() {
     <div className="min-h-screen bg-[var(--color-bg)]">
       <LoginSplash />
       <WelcomeModal />
+      <OfflineBanner />
       <Navbar />
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 pb-24 md:pb-6">
         <ErrorBoundary>
@@ -343,12 +420,14 @@ function AppContent() {
   }, [isLoading, fetchAppearance]);
 
   if (isLoading) {
-    return <PageLoader />;
+    return <BrandedSplash />;
   }
 
   return (
     <>
     <InstallPrompt />
+    <IOSInstallSheet />
+    <PWAUpdatePrompt />
     <Suspense fallback={<PageLoader />}>
     <Routes>
       {/* Public landing first so `/` is the marketing site, not a protected redirect */}

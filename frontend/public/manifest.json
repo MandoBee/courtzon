@@ -1,11 +1,12 @@
 {
+  "id": "/",
   "name": "CourtZon - Sports Facility Booking",
   "short_name": "CourtZon",
   "description": "Book sports facilities, join tournaments, shop marketplace, and connect with coaches",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#ffffff",
+  "background_color": "#fafafa",
   "theme_color": "#059669",
   "orientation": "portrait-primary",
   "icons": [
@@ -16,7 +17,9 @@
     { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ],
   "categories": ["sports", "lifestyle", "health"],
-  "screenshots": [],
+  "screenshots": [
+    { "src": "/screenshot-phone.png", "sizes": "390x844", "type": "image/png", "form_factor": "narrow", "label": "CourtZon home" }
+  ],
   "shortcuts": [
     { "name": "Book a Court", "url": "/app", "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }] },
     { "name": "My Bookings", "url": "/bookings", "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }] },

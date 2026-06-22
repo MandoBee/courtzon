@@ -90,10 +90,18 @@ export async function syncManifestIcons() {
     if (manifest.scope) manifest.scope = toAbsoluteUrl(manifest.scope);
 
     const icons: ManifestIcon[] = [];
+    const icon192Src = resolveAssetUrl(pwaIcon192Url);
+    const icon512Src = resolveAssetUrl(pwaIcon512Url);
     const icon192 = await manifestIconEntry(pwaIcon192Url, 192);
+    const icon192Maskable = isSvgUrl(icon192Src) ? null : await manifestIconEntry(pwaIcon192Url, 192, 'maskable');
     const icon512 = await manifestIconEntry(pwaIcon512Url, 512, 'any');
+    const icon512Maskable = isSvgUrl(icon512Src) ? null : await manifestIconEntry(pwaIcon512Url, 512, 'maskable');
     if (icon192) icons.push(icon192);
-    if (icon512 && icon512.src !== icon192?.src) icons.push(icon512);
+    if (icon192Maskable) icons.push(icon192Maskable);
+    if (icon512 && icon512.src !== icon192?.src) {
+      icons.push(icon512);
+      if (icon512Maskable) icons.push(icon512Maskable);
+    }
     if (icons.length === 0) {
       icons.push({
         src: toAbsoluteUrl('/favicon.svg'),

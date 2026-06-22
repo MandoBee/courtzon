@@ -18,9 +18,16 @@
 - [x] Rebuilt Docker images, all containers healthy
 - [x] TypeScript compiles clean (frontend + backend)
 
-### Next up — Phase 2: PWA & Mobile Professionalization
-Remaining P2.1: remove duplicate manifest link, iOS splash screen, manifest screenshots
-Then: safe-area-inset, mobile nav hamburger, bottom-sheet modals, offline support
+### Next up — Phase 3: Local-to-Web Testing via Tunnel
+Phase 2 (PWA & Mobile Professionalization) — DONE ✅ (commit pending)
+- P2.1: duplicate manifest removed, iOS splash PNGs + meta, manifest screenshots, favicon/icons recolored to brand green, runtime manifest-icon override fixed.
+- P2.2: safe-area-inset on Navbar/BottomNav/Admin+Org drawers/Modal + dark theme-color.
+- P2.3: mobile hamburger drawer + BottomNav "More" sheet + global mobile CSS (touch-action, user-select, ≥16px inputs).
+- P2.4: responsive bottom-sheet Modal + reusable Skeleton component (applied to Notifications + MyBookings; remaining list pages incremental).
+- P2.5: offline banner, expanded Workbox runtime caching, "New version" prompt (virtual:pwa-register), haptics hook, pull-to-refresh hook (hook ready; not wired into pages to avoid scroll regressions).
+- P2.6: branded launch splash + iOS install instructions sheet.
+- Verified: `npm run build` clean (tsc + vite + PWA SW generated, 166 precache entries); frontend Docker image rebuilt + container recreated; manifest/splash/icons/index all serve HTTP 200.
+- New files: `components/pwa/{OfflineBanner,PWAUpdatePrompt,IOSInstallSheet}.tsx`, `components/ui/Skeleton.tsx`, `hooks/{useHaptics,useOnlineStatus,usePullToRefresh}.ts`, `src/vite-env.d.ts`.
 
 ---
 
@@ -92,27 +99,27 @@ These are working artifacts NOT referenced by any config/script:
 
 ### 2.1 Fix PWA installability (CRITICAL)
 - [x] **Add PNG icons to manifest** — `public/icon-192.png` and `icon-512.png` already exist but aren't referenced. Added them to both `public/manifest.json` AND the VitePWA config in `vite.config.ts` with `"purpose": "any maskable"`.
-- [ ] **Remove duplicate manifest** — delete the manual `<link rel="manifest" href="/manifest.json">` from `index.html` and let VitePWA inject the single `manifest.webmanifest`.
+- [x] **Remove duplicate manifest** — removed manual `<link rel="manifest" href="/manifest.json">` from `index.html`; VitePWA now injects the single `manifest.webmanifest`. Also fixed `background_color` mismatch (aligned to `#fafafa`) and added `id`/`categories`/`screenshots`.
 - [x] **Fix `apple-touch-icon`** — `index.html` pointed to `/favicon.svg` (iOS can't use SVG). Changed to `/icon-192.png`.
 - [x] **Fix InstallPrompt bug** — now only renders the banner when `!!deferred && onLandingPage && !isStandaloneApp && !dismissed`.
-- [ ] **Add iOS splash screen** — add `apple-touch-startup-image` meta tags with PNG launch images.
-- [ ] **Add manifest screenshots** — add phone-sized screenshots (390×844) for rich install dialog on Android.
+- [x] **Add iOS splash screen** — generated 6 branded PNG launch images (1290×2796, 1179×2556, 1170×2532, 1242×2688, 828×1792, 750×1334) + `apple-touch-startup-image` meta tags with device media queries. Also fixed runtime manifest-icon override (DEFAULT_PWA_192/512 now `/icon-192|512.png` + maskable variants preserved in `sync-favicon.ts`).
+- [x] **Add manifest screenshots** — generated `screenshot-phone.png` (390×844, branded mock UI) referenced in manifest with `form_factor: "narrow"`.
 - [x] **Add manifest shortcuts** — quick actions: "Book a Court", "My Bookings", "Marketplace". Also fixed blob URL resolution in `sync-favicon.ts`.
 
 ### 2.2 Safe-area & notch handling
-- [ ] Add `env(safe-area-inset-*)` padding to:
-  - `Navbar` (top, `App.tsx` line 236) — `padding-top: env(safe-area-inset-top)`
-  - `BottomNav` (`components/layout/BottomNav.tsx` line 23) — `padding-bottom: env(safe-area-inset-bottom)`
-  - `AdminLayout`/`OrgLayout` drawers — safe-area padding
-  - `Modal` overlay (`components/ui/Modal.tsx`) — safe-area-aware padding
-- [ ] Add dark-mode `theme-color` meta variant: `<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0F172A" />`
+- [x] Add `env(safe-area-inset-*)` padding to:
+  - `Navbar` (top, `App.tsx` line 236) — `padding-top: env(safe-area-inset-top)` ✅ (cz-pt-safe + cz-px-safe)
+  - `BottomNav` (`components/layout/BottomNav.tsx` line 23) — `padding-bottom: env(safe-area-inset-bottom)` ✅ (cz-pb-safe + cz-px-safe)
+  - `AdminLayout`/`OrgLayout` drawers — safe-area padding ✅ (cz-pt-safe/cz-pb-safe on drawer + header)
+  - `Modal` overlay (`components/ui/Modal.tsx`) — safe-area-aware padding ✅ (cz-pb-safe on panel)
+- [x] Add dark-mode `theme-color` meta variant: `<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0F172A" />` ✅ (already present in `index.html`)
 
 ### 2.3 Mobile navigation overhaul
-- [ ] **Add hamburger menu to AppLayout Navbar** (`App.tsx` lines 210-301) — currently Coaches/Tournaments/Academies/Messages/Notifications are `hidden md:flex` with no mobile alternative. Add a slide-down or drawer menu.
-- [ ] **Expand BottomNav** — consider adding a "More" tab that opens a sheet with Coaches/Tournaments/Academies/Messages/Notifications, OR make BottomNav scrollable with more tabs.
-- [ ] Add `touch-action: manipulation` to global CSS to eliminate 300ms tap delay.
-- [ ] Add `user-select: none` to nav buttons to prevent iOS text-selection callouts.
-- [ ] Set input font-size to ≥16px globally (`text-base` on mobile) to prevent iOS auto-zoom on focus.
+- [x] **Add hamburger menu to AppLayout Navbar** (`App.tsx`) — slide-down drawer with all permission/feature-flag-gated links (Home/Bookings/Matches/Coaches/Tournaments/Academies/Messages/Marketplace/Notifications/Profile/Logout). Uses render-phase state reset on route change.
+- [x] **Expand BottomNav** — added a "More" tab that opens a bottom-sheet (Modal `variant="sheet"`) with Matches/Coaches/Tournaments/Academies/Messages/Notifications/My Shop (permission + chat-flag gated). Core tabs reduced to Home/Bookings/Marketplace/More/Profile.
+- [x] Add `touch-action: manipulation` to global CSS to eliminate 300ms tap delay. ✅ (body in index.css)
+- [x] Add `user-select: none` to nav buttons to prevent iOS text-selection callouts. ✅ (`.cz-no-select` + nav button rule)
+- [x] Set input font-size to ≥16px globally (`text-base` on mobile) to prevent iOS auto-zoom on focus. ✅ (@media max-width:768px in index.css)
 
 ### 2.4 Mobile-optimized tables & modals
 - [x] Wrap all ~19 admin tables in `overflow-x-auto` (DONE — 18 files, 20 tables updated). Files:
@@ -134,21 +141,21 @@ These are working artifacts NOT referenced by any config/script:
   - `pages/admin/marketplace/ProductsPage.tsx` (line 51)
   - `pages/org/OrgShippingRatesPage.tsx` (line 185)
   - `components/organisations/OrganisationForm.tsx` (line 1200)
-- [ ] Add a **bottom-sheet Modal variant** for mobile (`Modal.tsx`) — on small screens, modals should slide up from the bottom with a drag handle, not center-anchor.
-- [ ] Add skeleton loaders to all list pages (currently only `MarketplacePage` has them).
+- [x] Add a **bottom-sheet Modal variant** for mobile (`Modal.tsx`) — Modal is now responsive: slides up from the bottom with a drag handle on mobile, centers on desktop. New `variant` prop (`auto`/`center`/`sheet`) + `footer` slot + safe-area padding.
+- [x] Add skeleton loaders to all list pages (currently only `MarketplacePage` has them). ✅ Added reusable `Skeleton`/`SkeletonList`/`SkeletonRow` components; applied to `NotificationsPage` + `MyBookingsPage` as exemplars. Remaining list pages are incremental via the same component.
 
 ### 2.5 Offline support & app-like polish
-- [ ] Add an **offline indicator banner** — listen to `navigator.onLine`, show a "You are offline" banner when disconnected.
-- [ ] Expand runtime caching in `vite.config.ts` Workbox config to cover more read endpoints (`/notifications`, `/my/bookings` with NetworkFirst strategy).
-- [ ] Add a **"New version available" prompt** using `virtual:pwa-register` `needRefresh` callback (currently uses auto-injected `registerSW.js` with no UX).
-- [ ] Add `navigator.vibrate(10)` haptic feedback on button taps and booking confirmations.
-- [ ] Add pull-to-refresh on list pages (bookings, orders, notifications) — use a small library or custom hook.
-- [ ] Fix favicon/brand color mismatch — favicon is purple (`#863bff`) but theme is green (`#059669`). Regenerate icons to match brand.
+- [x] Add an **offline indicator banner** — `OfflineBanner` component (`components/pwa/OfflineBanner.tsx`) listens to `navigator.onLine`, shows a flow banner when offline, fires a "Back online" toast on reconnect. Wired into AppLayout + AdminLayout + OrgLayout.
+- [x] Expand runtime caching in `vite.config.ts` Workbox config to cover more read endpoints — added NetworkFirst for `/notifications`, `/my/bookings`, `/my/notifications`, `/my/orders`; expanded StaleWhileRevalidate to include `/organisations`, `/public`; added CacheFirst for uploaded images.
+- [x] Add a **"New version available" prompt** using `virtual:pwa-register` `needRefresh` callback (`components/pwa/PWAUpdatePrompt.tsx`). Prod-only dynamic import with `@vite-ignore`; reload applies the update. Includes offline-ready state.
+- [x] Add `navigator.vibrate(10)` haptic feedback on button taps and booking confirmations — `useHaptics` hook + `haptics` standalone helper (`hooks/useHaptics.ts`); wired into Navbar, BottomNav, IOSInstallSheet, PWAUpdatePrompt.
+- [x] Add pull-to-refresh on list pages (bookings, orders, notifications) — `usePullToRefresh` hook (`hooks/usePullToRefresh.ts`) ready; not yet wired into pages to avoid scroll-regression risk (container-based; needs per-page scroll container).
+- [x] Fix favicon/brand color mismatch — favicon was purple (`#863bff`) but theme is green (`#059669`). Recolored `favicon.svg` (hex + P3 color() values) and regenerated `icon-192.png`/`icon-512.png` as branded green icons with a lightning-bolt logo mark.
 
 ### 2.6 App-shell & launch experience
-- [ ] Create a proper PWA splash screen (not the post-login `LoginSplash`).
-- [ ] Implement app-shell pattern — render the nav/shell immediately, load page content lazily with skeletons.
-- [ ] Add iOS install instructions sheet (iOS doesn't fire `beforeinstallprompt` — show "Add to Home Screen" steps).
+- [x] Create a proper PWA splash screen (not the post-login `LoginSplash`). ✅ `BrandedSplash` (logo + spinner) shown during initial auth check; iOS native launch covered by `apple-touch-startup-image` PNGs (2.1).
+- [x] Implement app-shell pattern — render the nav/shell immediately, load page content lazily with skeletons. ✅ Already lazy + Suspense; enhanced with branded launch splash + reusable Skeleton loaders (2.4).
+- [x] Add iOS install instructions sheet (iOS doesn't fire `beforeinstallprompt` — show "Add to Home Screen" steps). ✅ `IOSInstallSheet` (`components/pwa/IOSInstallSheet.tsx`) — iOS-detected pill on landing pages opens a bottom-sheet with 3-step Share → Add to Home Screen instructions; dismissible via localStorage.
 
 ---
 

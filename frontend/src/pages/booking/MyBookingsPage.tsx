@@ -5,6 +5,7 @@ import api from '../../services/api';
 import { formatPrice } from '../../utils/currency';
 import BookingModal from '../../components/booking/BookingModal';
 import ManageApplicantsPopup from '../../components/booking/ManageApplicantsPopup';
+import { Skeleton, SkeletonList } from '../../components/ui/Skeleton';
 import { useTranslation } from '../../i18n';
 
 const PAGE_SIZES = [10, 20, 30, 50];
@@ -81,7 +82,14 @@ export default function MyBookingsPage() {
   const filterSelectClass =
     'px-3 py-1.5 text-xs rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text)]';
 
-  if (isLoading) return <p className="text-[var(--color-text-muted)]">{t('common.loading')}</p>;
+  if (isLoading) {
+    return (
+      <div className="space-y-4">
+        <Skeleton width={200} height={28} />
+        <SkeletonList count={5} itemHeight={72} />
+      </div>
+    );
+  }
 
   return (
     <div>

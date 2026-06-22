@@ -6,8 +6,8 @@ const DEFAULT_LOGO_LIGHT = '/images/site-logo-light.svg';
 const DEFAULT_LOGO_DARK = '/images/site-logo-dark.svg';
 const DEFAULT_FAVICON_LIGHT = '/images/favicon-light.svg';
 const DEFAULT_FAVICON_DARK = '/images/favicon-dark.svg';
-const DEFAULT_PWA_192 = '/favicon.svg';
-const DEFAULT_PWA_512 = '/favicon.svg';
+const DEFAULT_PWA_192 = '/icon-192.png';
+const DEFAULT_PWA_512 = '/icon-512.png';
 
 export interface PublicAppSettings {
   site_name?: string;

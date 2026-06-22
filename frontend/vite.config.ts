@@ -12,8 +12,9 @@ export default defineConfig(({ command }) => ({
       ? [
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.svg', 'images/favicon-light.svg', 'images/favicon-dark.svg', 'icons.svg'],
+      includeAssets: ['favicon.svg', 'images/favicon-light.svg', 'images/favicon-dark.svg', 'icons.svg', 'icon-192.png', 'icon-512.png', 'screenshot-phone.png', 'apple-splash-*.png'],
       manifest: {
+        id: '/',
         name: 'CourtZon - Sports Facility Booking',
         short_name: 'CourtZon',
         description: 'Book sports facilities, join tournaments, shop marketplace & connect with coaches',
@@ -22,6 +23,8 @@ export default defineConfig(({ command }) => ({
         display: 'standalone',
         scope: '/',
         start_url: '/',
+        orientation: 'portrait-primary',
+        categories: ['sports', 'lifestyle', 'health'],
         icons: [
           { src: '/favicon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' },
           { src: '/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
@@ -29,23 +32,50 @@ export default defineConfig(({ command }) => ({
           { src: '/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
           { src: '/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
         ],
+        screenshots: [
+          { src: '/screenshot-phone.png', sizes: '390x844', type: 'image/png', form_factor: 'narrow', label: 'CourtZon home' },
+        ],
         shortcuts: [
           { name: 'Book a Court', url: '/app', icons: [{ src: '/icon-192.png', sizes: '192x192' }] },
           { name: 'My Bookings', url: '/bookings', icons: [{ src: '/icon-192.png', sizes: '192x192' }] },
           { name: 'Marketplace', url: '/marketplace', icons: [{ src: '/icon-192.png', sizes: '192x192' }] },
         ],
+        prefer_related_applications: false,
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
         // Runtime caching for read-heavy GETs (stale-while-revalidate). (E6)
         runtimeCaching: [
           {
+            // Fresh-first for user-specific data; fall back to cache when offline.
             urlPattern: ({ url, request }: { url: URL; request: Request }) =>
-              request.method === 'GET' && /^\/(branches|marketplace\/products|coaches|academies|tournaments|sports)(\/|\?|$)/.test(url.pathname + url.search),
+              request.method === 'GET' && /^\/(notifications|my\/bookings|my\/notifications|my\/orders)(\/|\?|$)/.test(url.pathname + url.search),
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: 'cz-user-cache',
+              networkTimeoutSeconds: 5,
+              expiration: { maxEntries: 80, maxAgeSeconds: 60 * 30 },
+              cacheableResponse: { statuses: [0, 200] },
+            },
+          },
+          {
+            // Public read-heavy catalog data — serve stale while revalidating.
+            urlPattern: ({ url, request }: { url: URL; request: Request }) =>
+              request.method === 'GET' && /^\/(branches|marketplace\/products|coaches|academies|tournaments|sports|organisations|public)(\/|\?|$)/.test(url.pathname + url.search),
             handler: 'StaleWhileRevalidate',
             options: {
               cacheName: 'cz-read-cache',
               expiration: { maxEntries: 120, maxAgeSeconds: 60 * 30 },
+              cacheableResponse: { statuses: [0, 200] },
+            },
+          },
+          {
+            // Uploaded images — cache-first (rarely change).
+            urlPattern: ({ request }: { request: Request }) => request.method === 'GET' && request.destination === 'image',
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'cz-image-cache',
+              expiration: { maxEntries: 200, maxAgeSeconds: 60 * 60 * 24 * 30 },
               cacheableResponse: { statuses: [0, 200] },
             },
           },
