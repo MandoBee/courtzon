@@ -117,7 +117,6 @@ function PaymobPixel({ clientSecret, onComplete, onCancel }: { clientSecret: str
     document.head.appendChild(link2);
 
     const handlePayFromOutside = () => {
-      console.log('[PaymobPixel] payFromOutside dispatched');
     };
     window.addEventListener('payFromOutside', handlePayFromOutside);
 
@@ -134,19 +133,15 @@ function PaymobPixel({ clientSecret, onComplete, onCancel }: { clientSecret: str
           hideCardHolderName: true,
           disablePay: true,
           cardValidationChanged: (isValid: boolean) => {
-            console.log('[PaymobPixel] cardValidationChanged:', isValid);
             setIsFormValid(isValid);
           },
-          beforePaymentComplete: async (paymentMethod: any) => {
-            console.log('[PaymobPixel] beforePaymentComplete:', paymentMethod);
+          beforePaymentComplete: async (_paymentMethod: any) => {
             return true;
           },
-          afterPaymentComplete: async (res: any) => {
-            console.log('[PaymobPixel] afterPaymentComplete:', res);
+          afterPaymentComplete: async (_res: any) => {
             onCompleteRef.current();
           },
           onPaymentCancel: async () => {
-            console.log('[PaymobPixel] onPaymentCancel');
             onCancelRef.current();
           },
         });
@@ -174,7 +169,6 @@ function PaymobPixel({ clientSecret, onComplete, onCancel }: { clientSecret: str
   }, [clientSecret]);
 
   const handlePay = () => {
-    console.log('[PaymobPixel] custom pay clicked');
     window.dispatchEvent(new Event('payFromOutside'));
   };
 
@@ -296,13 +290,10 @@ export default function CartPage() {
       returnUrl: window.location.origin + '/marketplace/orders',
     }),
     onSuccess: (res) => {
-      console.log('[Checkout] clientSecret:', typeof res.data.clientSecret, !!res.data.clientSecret, res.data.clientSecret ? res.data.clientSecret.substring(0, 20) : 'NONE');
-      console.log('[Checkout] paymentUrl:', !!res.data.paymentUrl);
       queryClient.invalidateQueries({ queryKey: ['mp-cart'] });
       queryClient.invalidateQueries({ queryKey: ['mp-orders'] });
       setOrderId(res.data.id);
       if (res.data.clientSecret) {
-        console.log('[Checkout] setting pixelClientSecret');
         setPixelClientSecret(res.data.clientSecret);
       } else if (res.data.paymentUrl) {
         window.location.href = res.data.paymentUrl;

@@ -2,12 +2,15 @@ import { paymentRepository } from '../infrastructure/repositories/payment.reposi
 import { paymentGateway } from '../../../shared/services/gateway/gateway-factory.js';
 import { walletService } from '../../wallet/application/wallet.service.js';
 import { NotFoundError, ConflictError } from '../../../shared/errors/app-error.js';
+import { withTransaction } from '../../../database/database.transaction.js';
 import type { ChargeInput } from '../presentation/payment.dto.js';
 import type mysql from 'mysql2/promise';
 import { getPool } from '../../../database/mysql.js';
 import { createModuleLogger } from '../../../shared/utils/logger.js';
 
 const log = createModuleLogger('payment-webhook');
+
+type RowData = mysql.RowDataPacket[];
 
 export class PaymentService {
   /**
@@ -92,12 +95,12 @@ export class PaymentService {
   }
 
   /**
-   * Handle payment gateway webhook.
+   * Handle payment gateway webhook (idempotent + transactional).
    */
   async handleWebhook(payload: unknown, signature: string) {
     const valid = await paymentGateway.verifyWebhook(payload, signature);
     if (!valid) {
-      console.error('[webhook] HMAC verification failed — payload:', JSON.stringify(payload).slice(0, 500));
+      log.error({ msg: 'HMAC verification failed' });
       throw new Error('Invalid webhook signature');
     }
 
@@ -105,7 +108,7 @@ export class PaymentService {
     const obj = data.obj ?? data;
     const gatewayRef = String(obj.order?.id || data.order?.id || obj.id || '');
     if (!gatewayRef) {
-      console.error('[webhook] Missing gateway reference — payload:', JSON.stringify(payload).slice(0, 500));
+      log.error({ msg: 'Missing gateway reference' });
       throw new Error('Missing gateway reference');
     }
 
@@ -116,73 +119,80 @@ export class PaymentService {
       gatewayRef,
       success: isSuccess,
     });
-    console.log('[webhook] received:', { gatewayRef, isSuccess, source: data.obj ? 'intention' : 'accept' });
 
     const transaction = await paymentRepository.findByGatewayRef(gatewayRef);
     if (!transaction) {
-      console.error(`[webhook] Payment transaction not found for gatewayRef: ${gatewayRef}`);
+      log.error({ msg: 'Payment transaction not found', gatewayRef });
       throw new NotFoundError('Payment transaction');
+    }
+
+    // ── Idempotency: skip if already processed ──
+    if (transaction.payment_status === 'paid' || transaction.payment_status === 'refunded') {
+      log.info({ msg: 'Webhook already processed', txnId: transaction.id, status: transaction.payment_status });
+      return { success: true, transactionId: transaction.id, status: transaction.payment_status, idempotent: true };
     }
 
     const newStatus = isSuccess ? 'paid' : 'failed';
 
-    await paymentRepository.updateStatus(transaction.id, newStatus);
+    // ── Transactional fulfillment ──
+    await withTransaction(async (conn) => {
+      // Update payment status
+      await conn.execute(
+        'UPDATE payment_transactions SET payment_status = ?, paid_at = IF(? = "paid", NOW(), paid_at) WHERE id = ?',
+        [newStatus, newStatus, transaction.id],
+      );
 
-    if (isSuccess && transaction.reference_type === 'order' && transaction.order_id) {
-      const pool = getPool();
-      const [orderRows] = await pool.execute<any>(
-        'SELECT buyer_id FROM orders WHERE id = ?',
-        [transaction.order_id]
-      );
-      await pool.execute(
-        "UPDATE orders SET status = 'confirmed', paid_at = NOW(), payment_status = 'paid' WHERE id = ? AND status = 'pending'",
-        [transaction.order_id]
-      );
-      if (orderRows.length && orderRows[0]?.buyer_id) {
-        await pool.execute('DELETE FROM cart_items WHERE user_id = ?', [orderRows[0].buyer_id]);
-        console.log(`[webhook] Cleared cart for user ${orderRows[0].buyer_id}`);
+      if (isSuccess && transaction.reference_type === 'order' && transaction.order_id) {
+        const [orderRows] = await conn.execute<RowData>(
+          'SELECT buyer_id FROM orders WHERE id = ?',
+          [transaction.order_id],
+        );
+        await conn.execute(
+          "UPDATE orders SET status = 'confirmed', paid_at = NOW(), payment_status = 'paid' WHERE id = ? AND status = 'pending'",
+          [transaction.order_id],
+        );
+        if (orderRows.length && (orderRows[0] as any)?.buyer_id) {
+          await conn.execute('DELETE FROM cart_items WHERE user_id = ?', [(orderRows[0] as any).buyer_id]);
+          log.info({ msg: 'Cart cleared', userId: (orderRows[0] as any).buyer_id });
+        }
       }
-    }
 
-    if (isSuccess && transaction.reference_type === 'booking_intent') {
-      await this._fulfillBookingIntent(transaction);
-    }
+      if (isSuccess && transaction.reference_type === 'booking_intent') {
+        await this._fulfillBookingIntent(conn, transaction);
+      }
 
-    if (isSuccess) {
-      await paymentRepository.createJournalEntry({
-        entryType: 'payment',
-        referenceType: 'gateway_webhook',
-        referenceId: transaction.id,
-        debitAccount: 'Cash',
-        creditAccount: 'Revenue',
-        amount: Number(transaction.amount),
-        description: `Gateway webhook: ${gatewayRef}`,
-      });
-    }
+      if (isSuccess) {
+        await conn.execute(
+          `INSERT INTO financial_journal_entries (entry_type, reference_type, reference_id, debit_account, credit_account, amount, description)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          ['payment', 'gateway_webhook', transaction.id, 'Cash', 'Revenue',
+           Number(transaction.amount), `Gateway webhook: ${gatewayRef}`],
+        );
+      }
+    });
 
     return { success: isSuccess, transactionId: transaction.id, status: newStatus };
   }
 
-  private async _fulfillBookingIntent(transaction: any): Promise<void> {
-    const pool = getPool();
+  private async _fulfillBookingIntent(conn: mysql.PoolConnection, transaction: any): Promise<void> {
     const intentId = transaction.booking_id;
     if (!intentId) {
-      console.error(`[webhook] No intent ID on payment transaction ${transaction.id}`);
+      log.error({ msg: 'No intent ID on payment transaction', txnId: transaction.id });
       return;
     }
 
-    const [intents] = await pool.execute<any>(
+    const [intents] = await conn.execute<RowData>(
       'SELECT * FROM booking_intents WHERE id = ?',
-      [intentId]
+      [intentId],
     );
 
-    const intent = intents[0];
+    const intent = intents[0] as any;
     if (!intent) {
-      console.error(`[webhook] Booking intent #${intentId} not found for payment ${transaction.id}`);
+      log.error({ msg: 'Booking intent not found', intentId, txnId: transaction.id });
       return;
     }
 
-    const [result] = await pool.execute<mysql.ResultSetHeader>(
+    const [result] = await conn.execute<mysql.ResultSetHeader>(
       `INSERT INTO bookings (public_id, user_id, organisation_id, branch_id, resource_id, booking_type,
         booking_date, start_time, end_time, total_amount, commission_amount, club_amount,
         booking_status, payment_status, notes, payment_method)
@@ -192,22 +202,22 @@ export class PaymentService {
         intent.resource_id, intent.booking_type, intent.booking_date, intent.start_time,
         intent.end_time, intent.total_amount, intent.commission_amount, intent.club_amount,
         intent.notes, intent.payment_method,
-      ]
+      ],
     );
     const bookingId = result.insertId;
 
-    await pool.execute(
+    await conn.execute(
       'UPDATE payment_transactions SET booking_id = ?, reference_type = ? WHERE id = ?',
-      [bookingId, 'booking', transaction.id]
+      [bookingId, 'booking', transaction.id],
     );
 
-    await pool.execute('DELETE FROM booking_intents WHERE id = ?', [intent.id]);
+    await conn.execute('DELETE FROM booking_intents WHERE id = ?', [intent.id]);
 
     if (intent.matchmaking) {
       try {
         const mm = typeof intent.matchmaking === 'string' ? JSON.parse(intent.matchmaking) : intent.matchmaking;
-        const { bookingRepository } = await import('../../booking/infrastructure/repositories/booking.repository.js');
         if (intent.booking_type === 'public_match') {
+          const { bookingRepository } = await import('../../booking/infrastructure/repositories/booking.repository.js');
           await bookingRepository.createMatchmakingRequest({
             bookingId,
             minAge: mm.minAge,
@@ -220,7 +230,7 @@ export class PaymentService {
           });
         }
       } catch (e) {
-        console.error(`[webhook] Matchmaking setup failed for booking ${bookingId}:`, e);
+        log.error({ msg: 'Matchmaking setup failed', bookingId, error: String(e) });
       }
     }
 
@@ -235,7 +245,7 @@ export class PaymentService {
     if (!transaction) throw new NotFoundError('Payment transaction');
 
     const result = await paymentGateway.refund({
-      transactionId: String(transaction.id),
+      transactionId: String(transaction.gateway_reference || transaction.id),
       amount,
       reason,
     });

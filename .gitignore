@@ -99,6 +99,9 @@ coverage/
 *.lcov
 .nyc_output/
 
+# ── Uploads ──
+backend/uploads/
+
 # ── Playwright ──
 test-results/
 playwright-report/

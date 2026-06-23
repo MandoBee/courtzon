@@ -1,6 +1,7 @@
 import { NotFoundError, ConflictError, ForbiddenError } from '../../../shared/errors/app-error.js';
 import { marketplaceRepository as repo } from '../infrastructure/repositories/marketplace.repository.js';
 import { paymentService } from '../../payment/application/payment.service.js';
+import { paymentRepository } from '../../payment/infrastructure/repositories/payment.repository.js';
 import { commissionService } from '../../../shared/services/commission.service.js';
 import { organisationService } from '../../organisations/application/organisation.service.js';
 import { transactionService } from '../../financial/application/transaction.service.js';
@@ -104,12 +105,12 @@ export const marketplaceService = {
       const incomingIds = variants.filter((v: any) => v.id).map((v: any) => v.id);
       for (const existing of existingVariants) {
         if (!incomingIds.includes(existing.id)) {
-          await repo.deleteVariant(existing.id);
+          await repo.deleteVariant(existing.id, org.id);
         }
       }
       for (const v of variants) {
         if (v.id) {
-          await repo.updateVariant(v.id, v);
+          await repo.updateVariant(v.id, v, org.id);
         } else {
           await repo.createVariant({ ...v, productId });
         }
@@ -162,7 +163,10 @@ export const marketplaceService = {
     let org = await repo.findOrgByUserId(userId, 'seller') || await repo.findOrgByUserId(userId, 'player');
     if (!org) org = await repo.findOrgByUserScope(userId);
     if (!org) throw new ForbiddenError('Not a seller');
-    const ok = await repo.updateVariant(variantId, data);
+    const variant = await repo.findVariantById(variantId);
+    if (!variant) throw new NotFoundError('Variant');
+    if (variant.seller_id !== org.id) throw new ForbiddenError('Variant does not belong to your organisation');
+    const ok = await repo.updateVariant(variantId, data, org.id);
     if (!ok) throw new NotFoundError('Variant');
     return { success: true };
   },
@@ -171,7 +175,10 @@ export const marketplaceService = {
     let org = await repo.findOrgByUserId(userId, 'seller') || await repo.findOrgByUserId(userId, 'player');
     if (!org) org = await repo.findOrgByUserScope(userId);
     if (!org) throw new ForbiddenError('Not a seller');
-    await repo.deleteVariant(variantId);
+    const variant = await repo.findVariantById(variantId);
+    if (!variant) throw new NotFoundError('Variant');
+    if (variant.seller_id !== org.id) throw new ForbiddenError('Variant does not belong to your organisation');
+    await repo.deleteVariant(variantId, org.id);
   },
 
   // ── Wishlist ──
@@ -668,10 +675,13 @@ export const marketplaceService = {
       }
     }
 
-    // If cancelled and wallet was used, process refund
+    // If cancelled and payment was made, process refund
     if (data.status === 'cancelled' && order.payment_status === 'paid') {
       try {
-        await paymentService.refund(orderId, order.total, 'Order cancelled');
+        const paymentTxn = await paymentRepository.findByOrderId(orderId);
+        if (paymentTxn && paymentTxn.id) {
+          await paymentService.refund(paymentTxn.id, order.total, 'Order cancelled');
+        }
       } catch {
         // Refund failure is non-fatal
       }
@@ -1023,10 +1033,13 @@ export const marketplaceService = {
   async getSettlementBalanceByUser(userId: number) {
     const org = await repo.findOrgByUserId(userId, 'seller') || await repo.findOrgByUserId(userId, 'player');
     if (!org) throw new ForbiddenError('No seller account found');
-    // Return approximate balance from unsettled orders
-    const orders = await repo.getUnsettledOrders(org.id);
-    const available = orders.reduce((sum: number, o: any) => sum + (Number(o.courtzon_fee || o.courtzon_commission || 0)), 0);
-    return { available_balance: available, pending_settlements: 0 };
+    const balance = await repo.getSettlementBalanceBySeller(org.id);
+    return {
+      available_balance: balance.available_balance,
+      pending_fee: balance.pending_fee,
+      pending_settlements: 0,
+      unsettled_orders: balance.order_count,
+    };
   },
 
   async requestSettlement(userId: number) {

@@ -1,29 +1,109 @@
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import {
   uploadFileHandler, uploadOrgLogo, uploadOrgCover, uploadOrgDocument,
   uploadBranchImage, uploadResourceImage, uploadAvatarHandler,
   uploadSportIconHandler, getUploadsByEntity, deleteUpload,
 } from './upload.controller.js';
 import { authMiddleware } from '../../../shared/middleware/auth.middleware.js';
+import { requireOrganisationAccess } from '../../../shared/middleware/route-guard.js';
+import { getPool } from '../../../database/mysql.js';
+import type mysql from 'mysql2/promise';
+
+type RowData = mysql.RowDataPacket[];
+
+async function requireBranchAccess(request: FastifyRequest, reply: FastifyReply) {
+  const userId = (request as any).userId;
+  if (!userId) return reply.status(401).send({ error: 'AUTHENTICATION_ERROR', message: 'Not authenticated' });
+  const branchId = parseInt((request.params as any).branchId, 10);
+  if (!branchId) return reply.status(400).send({ error: 'VALIDATION_ERROR', message: 'Invalid branch ID' });
+  try {
+    const pool = getPool();
+    const [rows] = await pool.execute<RowData>(
+      `SELECT o.id, o.owner_id FROM branches b
+       JOIN organisations o ON o.id = b.organisation_id
+       WHERE b.id = ? LIMIT 1`,
+      [branchId],
+    );
+    if (!rows.length) return reply.status(404).send({ error: 'NOT_FOUND', message: 'Branch not found' });
+    const org = rows[0] as any;
+    const [adminRows] = await pool.execute<RowData>(
+      `SELECT 1 FROM user_roles ur JOIN roles r ON r.id = ur.role_id
+       WHERE ur.user_id = ? AND r.slug IN ('super_admin','super-admin','admin') AND ur.is_active = TRUE LIMIT 1`,
+      [userId],
+    );
+    if (adminRows.length) return;
+    if (org.owner_id === userId) return;
+    const [scopeRows] = await pool.execute<RowData>(
+      `SELECT 1 FROM user_role_scopes urs
+       JOIN user_roles ur ON ur.id = urs.user_role_id
+       WHERE ur.user_id = ? AND urs.scope_type = 'organisation' AND urs.scope_id = ?
+         AND ur.is_active = TRUE LIMIT 1`,
+      [userId, org.id],
+    );
+    if (!scopeRows.length) {
+      return reply.status(403).send({ error: 'FORBIDDEN', message: 'Access to this branch denied' });
+    }
+  } catch {
+    return reply.status(500).send({ error: 'INTERNAL_ERROR', message: 'Access check failed' });
+  }
+}
+
+async function requireResourceAccess(request: FastifyRequest, reply: FastifyReply) {
+  const userId = (request as any).userId;
+  if (!userId) return reply.status(401).send({ error: 'AUTHENTICATION_ERROR', message: 'Not authenticated' });
+  const resourceId = parseInt((request.params as any).resourceId, 10);
+  if (!resourceId) return reply.status(400).send({ error: 'VALIDATION_ERROR', message: 'Invalid resource ID' });
+  try {
+    const pool = getPool();
+    const [rows] = await pool.execute<RowData>(
+      `SELECT o.id, o.owner_id FROM resources r
+       JOIN branches b ON b.id = r.branch_id
+       JOIN organisations o ON o.id = b.organisation_id
+       WHERE r.id = ? LIMIT 1`,
+      [resourceId],
+    );
+    if (!rows.length) return reply.status(404).send({ error: 'NOT_FOUND', message: 'Resource not found' });
+    const org = rows[0] as any;
+    const [adminRows] = await pool.execute<RowData>(
+      `SELECT 1 FROM user_roles ur JOIN roles r ON r.id = ur.role_id
+       WHERE ur.user_id = ? AND r.slug IN ('super_admin','super-admin','admin') AND ur.is_active = TRUE LIMIT 1`,
+      [userId],
+    );
+    if (adminRows.length) return;
+    if (org.owner_id === userId) return;
+    const [scopeRows] = await pool.execute<RowData>(
+      `SELECT 1 FROM user_role_scopes urs
+       JOIN user_roles ur ON ur.id = urs.user_role_id
+       WHERE ur.user_id = ? AND urs.scope_type = 'organisation' AND urs.scope_id = ?
+         AND ur.is_active = TRUE LIMIT 1`,
+      [userId, org.id],
+    );
+    if (!scopeRows.length) {
+      return reply.status(403).send({ error: 'FORBIDDEN', message: 'Access to this resource denied' });
+    }
+  } catch {
+    return reply.status(500).send({ error: 'INTERNAL_ERROR', message: 'Access check failed' });
+  }
+}
 
 export async function uploadRoutes(app: FastifyInstance): Promise<void> {
   // Generic entity upload
   app.post('/upload/:entityType/:entityId/:fileCategory',
     { preHandler: [authMiddleware] }, uploadFileHandler);
 
-  // Organisation-specific
+  // Organisation-specific (guarded by requireOrganisationAccess)
   app.post('/organisations/:orgId/logo',
-    { preHandler: [authMiddleware] }, uploadOrgLogo);
+    { preHandler: [authMiddleware, requireOrganisationAccess('orgId')] }, uploadOrgLogo);
   app.post('/organisations/:orgId/cover',
-    { preHandler: [authMiddleware] }, uploadOrgCover);
+    { preHandler: [authMiddleware, requireOrganisationAccess('orgId')] }, uploadOrgCover);
   app.post('/organisations/:orgId/documents',
-    { preHandler: [authMiddleware] }, uploadOrgDocument);
+    { preHandler: [authMiddleware, requireOrganisationAccess('orgId')] }, uploadOrgDocument);
 
-  // Branch & Resource images
+  // Branch & Resource images (guarded by ownership lookup)
   app.post('/branches/:branchId/images',
-    { preHandler: [authMiddleware] }, uploadBranchImage);
+    { preHandler: [authMiddleware, requireBranchAccess] }, uploadBranchImage);
   app.post('/resources/:resourceId/images',
-    { preHandler: [authMiddleware] }, uploadResourceImage);
+    { preHandler: [authMiddleware, requireResourceAccess] }, uploadResourceImage);
 
   // Avatar & Sport icon (backward compatible + enhanced)
   app.post('/upload/avatar',

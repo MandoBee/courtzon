@@ -492,14 +492,14 @@ export class AuthService {
 
     const sessionToken = generateSessionToken();
     const refreshToken = generateRefreshToken();
+    const sessionTokenHash = hashToken(sessionToken);
     const refreshTokenHash = hashToken(refreshToken);
     const expiresAt = new Date(Date.now() + SESSION_LIFETIME_MS);
 
     await sessionRepository.create({
       userId,
       deviceId,
-      sessionToken,
-      refreshToken,
+      sessionTokenHash,
       refreshTokenHash,
       ipAddress: meta.ip,
       userAgent: meta.userAgent || null,

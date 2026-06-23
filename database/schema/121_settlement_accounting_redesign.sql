@@ -18,6 +18,7 @@ USE courtzon_v2;
 -- ── Helpers ──
 DROP PROCEDURE IF EXISTS cz121_rename_table;
 DROP PROCEDURE IF EXISTS cz121_add_column;
+DROP PROCEDURE IF EXISTS cz121_add_fk_if_exists;
 
 DELIMITER //
 
@@ -44,6 +45,23 @@ BEGIN
   IF v = 0 THEN
     SET @ddl = CONCAT('ALTER TABLE ', p_table, ' ADD COLUMN ', p_col, ' ', p_def);
     PREPARE s FROM @ddl; EXECUTE s; DEALLOCATE PREPARE s;
+  END IF;
+END//
+
+CREATE PROCEDURE cz121_add_fk_if_exists(IN p_table VARCHAR(64), IN p_fk_name VARCHAR(64),
+  IN p_column VARCHAR(64), IN p_ref_table VARCHAR(64), IN p_ref_column VARCHAR(64))
+BEGIN
+  DECLARE v INT DEFAULT 0;
+  SELECT COUNT(*) INTO v FROM information_schema.TABLES
+   WHERE table_schema = DATABASE() AND table_name = p_ref_table;
+  IF v = 1 THEN
+    SELECT COUNT(*) INTO v FROM information_schema.TABLE_CONSTRAINTS
+     WHERE table_schema = DATABASE() AND table_name = p_table AND constraint_name = p_fk_name;
+    IF v = 0 THEN
+      SET @ddl = CONCAT('ALTER TABLE ', p_table, ' ADD CONSTRAINT ', p_fk_name,
+        ' FOREIGN KEY (', p_column, ') REFERENCES ', p_ref_table, '(', p_ref_column, ') ON DELETE SET NULL');
+      PREPARE s FROM @ddl; EXECUTE s; DEALLOCATE PREPARE s;
+    END IF;
   END IF;
 END//
 
@@ -104,9 +122,11 @@ CREATE TABLE IF NOT EXISTS settlements (
   INDEX idx_stl_status (settlement_status),
   INDEX idx_stl_requested_by (requested_by),
   CONSTRAINT fk_stl_org FOREIGN KEY (organisation_id) REFERENCES organisations(id) ON DELETE CASCADE,
-  CONSTRAINT fk_stl_branch FOREIGN KEY (branch_id) REFERENCES branches(id) ON DELETE SET NULL,
-  CONSTRAINT fk_stl_bank_account FOREIGN KEY (bank_account_id) REFERENCES bank_accounts(id) ON DELETE SET NULL
+  CONSTRAINT fk_stl_branch FOREIGN KEY (branch_id) REFERENCES branches(id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
+
+-- Add FK to bank_accounts only if that table exists (migration 084 may have dropped it)
+CALL cz121_add_fk_if_exists('settlements', 'fk_stl_bank_account', 'bank_account_id', 'bank_accounts', 'id');
 
 -- ── Step 3: settlement_orders (replaces settlement_items for marketplace) ──
 CREATE TABLE IF NOT EXISTS settlement_orders (
@@ -209,3 +229,4 @@ WHERE si.order_id IS NOT NULL;
 -- ── Cleanup helpers ──
 DROP PROCEDURE IF EXISTS cz121_rename_table;
 DROP PROCEDURE IF EXISTS cz121_add_column;
+DROP PROCEDURE IF EXISTS cz121_add_fk_if_exists;

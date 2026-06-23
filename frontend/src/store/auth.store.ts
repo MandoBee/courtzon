@@ -89,7 +89,6 @@ async function loadScopes(): Promise<OrgScope[]> {
 }
 
 function applyUserPreferences(user: User) {
-  syncUserThemePreference(user.darkMode);
   if (user.languageCode) {
     void setLocale(user.languageCode);
   }
@@ -178,6 +177,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       };
       cacheUser(finalUser);
       set({ user: finalUser, isAuthenticated: true });
+      syncUserThemePreference(finalUser.darkMode);
       applyUserPreferences(finalUser);
       void import('./appearance.store').then(({ useAppearanceStore }) => useAppearanceStore.getState().fetch());
     } catch {

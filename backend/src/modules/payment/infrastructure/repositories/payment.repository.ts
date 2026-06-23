@@ -42,6 +42,17 @@ export const paymentRepository = {
     return rows[0] || null;
   },
 
+  async findByOrderId(orderId: number) {
+    const pool = getPool();
+    const [rows] = await pool.execute<RowData>(
+      `SELECT * FROM payment_transactions
+       WHERE order_id = ? AND payment_status = 'paid'
+       ORDER BY created_at DESC LIMIT 1`,
+      [orderId],
+    );
+    return rows[0] || null;
+  },
+
   async updateStatus(id: number, status: string, gatewayReference?: string) {
     const pool = getPool();
     const fields: string[] = ['payment_status = ?'];

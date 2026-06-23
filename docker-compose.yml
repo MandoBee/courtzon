@@ -29,7 +29,7 @@ services:
     restart: unless-stopped
     ports:
       - "${REDIS_PORT:-6379}:6379"
-    command: sh -c 'exec redis-server --maxmemory 512mb --maxmemory-policy allkeys-lru ${REDIS_PASSWORD:+--requirepass $REDIS_PASSWORD}'
+    command: sh -c 'exec redis-server --maxmemory 512mb --maxmemory-policy noeviction --appendonly yes --appendfsync everysec ${REDIS_PASSWORD:+--requirepass $REDIS_PASSWORD}'
     healthcheck:
       test: ["CMD-SHELL", "redis-cli ${REDIS_PASSWORD:+-a \"$REDIS_PASSWORD\"} ping | grep -q PONG"]
       interval: 10s

@@ -55,6 +55,7 @@ import { maintenanceMiddleware } from "./shared/middleware/maintenance.middlewar
 const isDev = process.env.NODE_ENV !== 'production';
 
 const appUrl = process.env.APP_URL || '';
+const corsOrigins = process.env.CORS_ORIGINS ? process.env.CORS_ORIGINS.split(',').map(s => s.trim()) : [];
 const ALLOWED_ORIGINS = [
   'https://courtzon.com',
   'https://admin.courtzon.com',
@@ -64,6 +65,7 @@ const ALLOWED_ORIGINS = [
   'http://127.0.0.1:5173',
   'http://127.0.0.1:5174',
   ...(appUrl ? [appUrl] : []),
+  ...corsOrigins,
 ];
 
 export const app = Fastify({
@@ -130,12 +132,14 @@ await app.register(rateLimit, {
 });
 
 await app.register(cookie, {
-  secret: process.env.SESSION_SECRET || 'dev-cookie-secret-change-in-production',
+  secret: process.env.SESSION_SECRET || (isDev ? 'dev-cookie-secret-change-in-production' : (() => { throw new Error('SESSION_SECRET is required in production'); })()),
 });
 
 await app.register(cors, {
   origin: (origin, cb) => {
     if (!origin || ALLOWED_ORIGINS.includes(origin)) {
+      cb(null, true);
+    } else if (isDev || isDockerLocal) {
       cb(null, true);
     } else {
       cb(new Error('Not allowed by CORS'), false);
@@ -285,6 +289,6 @@ app.setErrorHandler((error: any, _request, reply) => {
 
   reply.status(500).send({
     error: 'INTERNAL_ERROR',
-    message: error.message || 'Internal Server Error',
+    message: isDev ? (error.message || 'Internal Server Error') : 'Internal Server Error',
   });
 });

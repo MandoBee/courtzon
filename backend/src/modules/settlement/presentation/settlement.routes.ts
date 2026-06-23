@@ -45,6 +45,8 @@ export async function settlementRoutes(app: FastifyInstance): Promise<void> {
     preHandler: [requirePermission(['settlements.view'])]
   }, ctrl.getSettlementsHandler);
 
-  // List settlements for an org (org portal)
-  app.get('/settlements/organisation/:organisationId', ctrl.getOrgSettlementsHandler);
+  // List settlements for an org (org portal — controller verifies ownership)
+  app.get('/settlements/organisation/:organisationId', {
+    preHandler: [requirePermission(['settlements.view'])]
+  }, ctrl.getOrgSettlementsHandler);
 }

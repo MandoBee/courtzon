@@ -1,11 +1,14 @@
 import { settlementRepository as repo } from '../infrastructure/repositories/settlement.repository.js';
 import { marketplaceRepository as marketRepo } from '../../marketplace/infrastructure/repositories/marketplace.repository.js';
 import { transactionRepository } from '../../financial/infrastructure/transaction.repository.js';
+import { withTransaction } from '../../../database/database.transaction.js';
 import { NotFoundError, ConflictError, ForbiddenError } from '../../../shared/errors/app-error.js';
+import { getPool } from '../../../database/mysql.js';
+import type mysql from 'mysql2/promise';
+
+type RowData = mysql.RowDataPacket[];
 
 export const settlementService = {
-
-  // ── Request + Calculate (combined: calculation is immediate) ──
 
   async requestSettlement(data: {
     organisationId: number;
@@ -15,120 +18,175 @@ export const settlementService = {
   }) {
     const { organisationId, branchId, requestedBy, requestedByRole } = data;
 
-    // 1. Get all unsettled delivered orders for this org
-    const unsettledOrders = await marketRepo.getUnsettledOrders(organisationId);
-    if (!unsettledOrders.length) {
-      throw new ConflictError('No unsettled delivered orders for this organisation');
-    }
+    return withTransaction(async (conn) => {
+      // 1. Lock and get unsettled orders for this seller (per-seller totals)
+      const [unsettledRows] = await conn.execute<RowData>(
+        `SELECT o.id as order_id,
+                o.public_id as order_public_id,
+                o.payment_method, o.payment_status,
+                o.created_at as order_date,
+                SUM(oi.total_price) as seller_subtotal,
+                SUM(oi.commission_amount) as seller_fee,
+                SUM(oi.total_price) - SUM(oi.commission_amount) as seller_product_net,
+                CASE WHEN o.subtotal > 0
+                  THEN ROUND(o.shipping_cost * (SUM(oi.total_price) / o.subtotal), 2)
+                  ELSE 0
+                END as seller_shipping
+         FROM orders o
+         JOIN order_items oi ON oi.order_id = o.id
+         WHERE oi.seller_id = ?
+           AND oi.settlement_status = 'pending'
+           AND o.status = 'delivered'
+           AND o.settlement_status = 'pending'
+           AND (o.payment_method = 'cash' OR o.payment_status = 'paid')
+         GROUP BY o.id
+         ORDER BY o.id
+         FOR UPDATE`,
+        [organisationId],
+      );
 
-    // 2. Calculate per-order financials
-    const codOrders: any[] = [];
-    const onlineOrders: any[] = [];
-    const settlementOrders: {
-      orderId: number;
-      productsPrice: number;
-      shippingPrice: number;
-      grossAmount: number;
-      courtzonFee: number;
-      organizationNet: number;
-      paymentMethod: string | null;
-    }[] = [];
-
-    let totalGross = 0;
-    let totalShipping = 0;
-    let totalFee = 0;
-    let totalOrgNet = 0;
-    let codFeeTotal = 0;
-    let onlineNetTotal = 0;
-
-    for (const o of unsettledOrders as any) {
-      const subtotal = Number(o.subtotal || 0);
-      const shipping = Number(o.shipping_cost || 0);
-      const gross = subtotal + shipping;
-      const fee = Number(o.courtzon_fee || o.courtzon_commission || 0);
-      const orgNet = gross - fee;
-      const paymentMethod = o.payment_method || 'online';
-      const isCOD = paymentMethod === 'cash';
-
-      settlementOrders.push({
-        orderId: o.order_id,
-        productsPrice: subtotal,
-        shippingPrice: shipping,
-        grossAmount: gross,
-        courtzonFee: fee,
-        organizationNet: orgNet,
-        paymentMethod,
-      });
-
-      totalGross += gross;
-      totalShipping += shipping;
-      totalFee += fee;
-      totalOrgNet += orgNet;
-
-      if (isCOD) {
-        codOrders.push(o);
-        codFeeTotal += fee;
-      } else {
-        onlineOrders.push(o);
-        onlineNetTotal += orgNet;
+      if (!unsettledRows.length) {
+        throw new ConflictError('No unsettled delivered orders for this organisation');
       }
-    }
 
-    // 3. Netting
-    //   COD: org collected cash → org owes CourtZon the fee
-    //   Online: CourtZon collected cash → CourtZon owes org the net
-    const settlementDirection = onlineNetTotal >= codFeeTotal ? 'courtzon_to_org' : 'org_to_courtzon';
-    const finalAmount = Math.abs(onlineNetTotal - codFeeTotal);
+      const unsettledOrders = unsettledRows as any[];
 
-    // 4. Create settlement record with notes
-    const orderIds = unsettledOrders.map((o: any) => o.order_id).sort((a: number, b: number) => a - b);
-    const notes = `Marketplace Orders: ${orderIds.map((id: number) => `#${id}`).join(', ')}`;
-    const settlementId = await repo.requestSettlement({
-      organisationId,
-      branchId,
-      requestedBy,
-      requestedByRole,
-      notes,
+      // 2. Calculate per-order financials (per-seller slice)
+      const settlementOrders: {
+        orderId: number;
+        productsPrice: number;
+        shippingPrice: number;
+        grossAmount: number;
+        courtzonFee: number;
+        organizationNet: number;
+        paymentMethod: string | null;
+      }[] = [];
+
+      let totalGross = 0;
+      let totalShipping = 0;
+      let totalFee = 0;
+      let totalOrgNet = 0;
+      let codFeeTotal = 0;
+      let onlineNetTotal = 0;
+
+      for (const o of unsettledOrders) {
+        const subtotal = Number(o.seller_subtotal || 0);
+        const shipping = Number(o.seller_shipping || 0);
+        const gross = subtotal + shipping;
+        const fee = Number(o.seller_fee || 0);
+        const orgNet = gross - fee;
+        const paymentMethod = o.payment_method || 'online';
+        const isCOD = paymentMethod === 'cash';
+
+        settlementOrders.push({
+          orderId: o.order_id,
+          productsPrice: Math.round(subtotal * 100) / 100,
+          shippingPrice: Math.round(shipping * 100) / 100,
+          grossAmount: Math.round(gross * 100) / 100,
+          courtzonFee: Math.round(fee * 100) / 100,
+          organizationNet: Math.round(orgNet * 100) / 100,
+          paymentMethod,
+        });
+
+        totalGross += gross;
+        totalShipping += shipping;
+        totalFee += fee;
+        totalOrgNet += orgNet;
+
+        if (isCOD) {
+          codFeeTotal += fee;
+        } else {
+          onlineNetTotal += orgNet;
+        }
+      }
+
+      // 3. Netting
+      const settlementDirection = onlineNetTotal >= codFeeTotal ? 'courtzon_to_org' : 'org_to_courtzon';
+      const finalAmount = Math.abs(onlineNetTotal - codFeeTotal);
+
+      // 4. Create settlement record
+      const orderIds = unsettledOrders.map((o: any) => o.order_id).sort((a: number, b: number) => a - b);
+      const notes = `Marketplace Orders: ${orderIds.map((id: number) => `#${id}`).join(', ')}`;
+
+      const [settlementResult] = await conn.execute<mysql.ResultSetHeader>(
+        `INSERT INTO settlements (organisation_id, branch_id, settlement_status, requested_by, requested_by_role,
+          settlement_period_start, settlement_period_end, notes)
+         VALUES (?, ?, 'requested', ?, ?, ?, ?, ?)`,
+        [organisationId, branchId ?? null, requestedBy ?? null, requestedByRole ?? null,
+         null, null, notes],
+      );
+      const settlementId = settlementResult.insertId;
+
+      // 5. Update totals
+      await conn.execute(
+        `UPDATE settlements SET
+           gross_amount = ?, shipping_amount = ?, courtzon_fee = ?, organization_net = ?,
+           cod_fee_total = ?, online_net_total = ?,
+           settlement_direction = ?, final_amount = ?
+         WHERE id = ?`,
+        [Math.round(totalGross * 100) / 100, Math.round(totalShipping * 100) / 100,
+         Math.round(totalFee * 100) / 100, Math.round(totalOrgNet * 100) / 100,
+         Math.round(codFeeTotal * 100) / 100, Math.round(onlineNetTotal * 100) / 100,
+         settlementDirection, Math.round(finalAmount * 100) / 100,
+         settlementId],
+      );
+
+      // 6. Move to pending_approval
+      await conn.execute(
+        `UPDATE settlements SET settlement_status = 'pending_approval',
+          calculating_started_at = NOW(), calculating_completed_at = NOW()
+         WHERE id = ?`,
+        [settlementId],
+      );
+
+      // 7. Create settlement_orders entries
+      if (settlementOrders.length) {
+        const placeholders = settlementOrders.map(() => '(?, ?, ?, ?, ?, ?, ?, ?)').join(', ');
+        const params = settlementOrders.flatMap(so => [
+          settlementId, so.orderId, so.productsPrice, so.shippingPrice,
+          so.grossAmount, so.courtzonFee, so.organizationNet, so.paymentMethod ?? null,
+        ]);
+        await conn.execute(
+          `INSERT INTO settlement_orders (settlement_id, order_id, products_price, shipping_price,
+            gross_amount, courtzon_fee, organization_net, payment_method)
+           VALUES ${placeholders}`,
+          params,
+        );
+      }
+
+      // 8. Mark only THIS seller's items as settled (not the whole order)
+      const itemPlaceholders = orderIds.map(() => '?').join(',');
+      await conn.execute(
+        `UPDATE order_items SET settlement_status = 'settled'
+         WHERE order_id IN (${itemPlaceholders}) AND seller_id = ?`,
+        [...orderIds, organisationId],
+      );
+
+      // 9. Mark orders as settled ONLY if ALL their items are settled
+      await conn.execute(
+        `UPDATE orders o SET o.settlement_status = 'settled'
+         WHERE o.id IN (${itemPlaceholders})
+         AND NOT EXISTS (
+           SELECT 1 FROM order_items oi
+           WHERE oi.order_id = o.id AND oi.settlement_status = 'pending'
+         )`,
+        orderIds,
+      );
+
+      // 10. Create pending transfer record
+      if (finalAmount > 0) {
+        await conn.execute(
+          `INSERT INTO settlement_transfers (settlement_id, transfer_direction, amount,
+            transfer_status)
+           VALUES (?, ?, ?, 'pending')`,
+          [settlementId, settlementDirection, Math.round(finalAmount * 100) / 100],
+        );
+      }
+
+      return settlementId;
+    }).then(async (settlementId) => {
+      return repo.getSettlementDetail(settlementId);
     });
-
-    // 5. Update totals
-    await repo.updateSettlementTotals(settlementId, {
-      grossAmount: Math.round(totalGross * 100) / 100,
-      shippingAmount: Math.round(totalShipping * 100) / 100,
-      courtzonFee: Math.round(totalFee * 100) / 100,
-      organizationNet: Math.round(totalOrgNet * 100) / 100,
-      codFeeTotal: Math.round(codFeeTotal * 100) / 100,
-      onlineNetTotal: Math.round(onlineNetTotal * 100) / 100,
-      settlementDirection,
-      finalAmount: Math.round(finalAmount * 100) / 100,
-    });
-
-    // 6. Move to calculating then immediately to pending_approval
-    await repo.updateSettlementStatus(settlementId, 'calculating');
-    await repo.updateSettlementStatus(settlementId, 'pending_approval', {
-      calculating_started_at: new Date(),
-      calculating_completed_at: new Date(),
-    });
-
-    // 7. Create settlement_orders entries
-    await repo.createSettlementOrders(
-      settlementOrders.map(so => ({ ...so, settlementId }))
-    );
-
-    // 8. Mark orders as settled
-    await repo.markOrdersSettled(orderIds);
-
-    // 9. Create double-entry pending transfer
-    if (finalAmount > 0) {
-      await repo.createSettlementTransfer({
-        settlementId,
-        direction: settlementDirection,
-        amount: finalAmount,
-      });
-    }
-
-    // 10. Return full detail
-    return repo.getSettlementDetail(settlementId);
   },
 
   // ── Approve ──
@@ -157,7 +215,6 @@ export const settlementService = {
       throw new ConflictError(`Cannot mark paid in status "${settlement.settlement_status}"`);
     }
 
-    // Snapshot bank account if provided
     if (bankAccountId) {
       const bankAccount = await repo.getBankAccount(bankAccountId);
       if (bankAccount) {
@@ -167,7 +224,6 @@ export const settlementService = {
 
     await repo.updateSettlementStatus(settlementId, 'paid', { paid_at: new Date() });
 
-    // Create double-entry transactions for the actual payout
     const finalAmount = Number(settlement.final_amount || 0);
     const direction = settlement.settlement_direction;
 
@@ -181,7 +237,6 @@ export const settlementService = {
       });
 
       if (direction === 'courtzon_to_org') {
-        // CourtZon pays org: Debit platform, Credit branch
         await transactionRepository.createEntries([
           {
             transactionId: txnId,
@@ -195,20 +250,19 @@ export const settlementService = {
             transactionId: txnId,
             side: 'credit',
             entityType: 'branch',
-            entityId: 0,
+            entityId: settlement.branch_id || 0,
             amount: finalAmount,
             organisationId: settlement.organisation_id,
             description: `Settlement #${settlementId}: Org receives from CourtZon`,
           },
         ]);
       } else {
-        // Org pays CourtZon: Debit branch, Credit platform
         await transactionRepository.createEntries([
           {
             transactionId: txnId,
             side: 'debit',
             entityType: 'branch',
-            entityId: 0,
+            entityId: settlement.branch_id || 0,
             amount: finalAmount,
             organisationId: settlement.organisation_id,
             description: `Settlement #${settlementId}: Org pays CourtZon fee`,
@@ -222,14 +276,6 @@ export const settlementService = {
             description: `Settlement #${settlementId}: CourtZon receives from org`,
           },
         ]);
-      }
-
-      // Update transfer record if one exists
-      if (transferReference) {
-        const [transfers] = await repo.getSettlementDetail(settlementId).then(d => d?.transfers || []);
-        if (transfers?.length) {
-          await repo.updateTransferStatus((transfers[0] as any).id, 'completed');
-        }
       }
     }
 
@@ -249,7 +295,7 @@ export const settlementService = {
     return repo.getSettlementDetail(settlementId);
   },
 
-  // ── Reject ──
+  // ── Reject (with rollback of order settlement status) ──
 
   async rejectSettlement(settlementId: number, reason: string) {
     const settlement = await repo.findSettlementById(settlementId);
@@ -258,15 +304,40 @@ export const settlementService = {
       throw new ConflictError(`Cannot reject settlement in status "${settlement.settlement_status}"`);
     }
 
-    await repo.updateSettlementStatus(settlementId, 'rejected', {
-      rejected_at: new Date(),
-      rejected_reason: reason,
+    await withTransaction(async (conn) => {
+      // Rollback: unmark order items that were settled by this settlement
+      const [soRows] = await conn.execute<RowData>(
+        'SELECT order_id FROM settlement_orders WHERE settlement_id = ?',
+        [settlementId],
+      );
+      const orderIds = soRows.map((r: any) => r.order_id);
+      if (orderIds.length) {
+        const placeholders = orderIds.map(() => '?').join(',');
+        await conn.execute(
+          `UPDATE order_items SET settlement_status = 'pending'
+           WHERE order_id IN (${placeholders}) AND settlement_status = 'settled'
+             AND seller_id = ?`,
+          [...orderIds, settlement.organisation_id],
+        );
+        await conn.execute(
+          `UPDATE orders SET settlement_status = 'pending'
+           WHERE id IN (${placeholders})`,
+          orderIds,
+        );
+      }
+
+      await conn.execute(
+        `UPDATE settlements SET settlement_status = 'rejected',
+          rejected_at = NOW(), rejected_reason = ?
+         WHERE id = ?`,
+        [reason, settlementId],
+      );
     });
 
     return repo.getSettlementDetail(settlementId);
   },
 
-  // ── Cancel ──
+  // ── Cancel (with rollback of order settlement status) ──
 
   async cancelSettlement(settlementId: number, reason?: string) {
     const settlement = await repo.findSettlementById(settlementId);
@@ -275,9 +346,34 @@ export const settlementService = {
       throw new ConflictError(`Cannot cancel settlement in status "${settlement.settlement_status}"`);
     }
 
-    await repo.updateSettlementStatus(settlementId, 'cancelled', {
-      rejected_at: new Date(),
-      rejected_reason: reason || 'Cancelled by user',
+    await withTransaction(async (conn) => {
+      // Rollback: unmark order items that were settled by this settlement
+      const [soRows] = await conn.execute<RowData>(
+        'SELECT order_id FROM settlement_orders WHERE settlement_id = ?',
+        [settlementId],
+      );
+      const orderIds = soRows.map((r: any) => r.order_id);
+      if (orderIds.length) {
+        const placeholders = orderIds.map(() => '?').join(',');
+        await conn.execute(
+          `UPDATE order_items SET settlement_status = 'pending'
+           WHERE order_id IN (${placeholders}) AND settlement_status = 'settled'
+             AND seller_id = ?`,
+          [...orderIds, settlement.organisation_id],
+        );
+        await conn.execute(
+          `UPDATE orders SET settlement_status = 'pending'
+           WHERE id IN (${placeholders})`,
+          orderIds,
+        );
+      }
+
+      await conn.execute(
+        `UPDATE settlements SET settlement_status = 'cancelled',
+          rejected_at = NOW(), rejected_reason = ?
+         WHERE id = ?`,
+        [reason || 'Cancelled by user', settlementId],
+      );
     });
 
     return repo.getSettlementDetail(settlementId);

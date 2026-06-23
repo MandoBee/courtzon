@@ -136,14 +136,16 @@ export function requireApprovedOrg() {
 /** Resolve active session user id, or null if missing/invalid/expired. */
 export async function resolveSessionUserId(request: FastifyRequest): Promise<number | null> {
   const { getSessionToken } = await import('../utils/auth-cookies.js');
+  const { hashToken } = await import('../utils/token.js');
   const sessionToken = getSessionToken(request);
   if (!sessionToken) return null;
+  const sessionTokenHash = hashToken(sessionToken);
   const pool = getPool();
   const [rows] = await pool.execute<RowData>(
     `SELECT user_id FROM user_sessions
-     WHERE session_token = ? AND is_revoked = FALSE AND expires_at > NOW()
+     WHERE session_token_hash = ? AND is_revoked = FALSE AND expires_at > NOW()
      LIMIT 1`,
-    [sessionToken],
+    [sessionTokenHash],
   );
   return rows.length ? Number(rows[0].user_id) : null;
 }

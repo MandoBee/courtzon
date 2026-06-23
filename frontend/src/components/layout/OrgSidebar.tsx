@@ -121,7 +121,7 @@ export default function OrgSidebar() {
           </Link>
         ))}
       </nav>
-      <div className="p-3 border-t border-[var(--color-border)] space-y-1">
+      <div className="sticky bottom-0 p-3 border-t border-[var(--color-border)] space-y-1 bg-[var(--color-surface)]">
         <Link to="/app" className="flex items-center gap-2 px-3 py-2 rounded-[var(--radius-md)] text-sm text-[var(--color-text-muted)] hover:text-[var(--color-primary)] hover:bg-[var(--color-border)] hover:bg-[var(--color-bg)] transition-colors">
           ← Back to Player
         </Link>

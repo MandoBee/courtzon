@@ -24,6 +24,23 @@ async function readFileBody(request: FastifyRequest): Promise<{ buffer: Buffer; 
 
 export async function uploadFileHandler(request: FastifyRequest, reply: FastifyReply) {
   const params = request.params as { entityType: string; entityId: string; fileCategory: string };
+  const userId = (request as any).userId;
+
+  const SAFE_ENTITY_TYPES = ['user', 'sport', 'coach', 'product', 'blog'];
+  const RESTRICTED_ENTITY_TYPES = ['organisation', 'organization', 'branch', 'resource'];
+
+  if (RESTRICTED_ENTITY_TYPES.includes(params.entityType.toLowerCase())) {
+    return reply.status(403).send({ error: 'FORBIDDEN', message: 'Use the dedicated upload endpoint for this entity type' });
+  }
+
+  if (params.entityType.toLowerCase() === 'user' && parseInt(params.entityId) !== userId) {
+    return reply.status(403).send({ error: 'FORBIDDEN', message: 'Cannot upload for another user' });
+  }
+
+  if (!SAFE_ENTITY_TYPES.includes(params.entityType.toLowerCase())) {
+    return reply.status(400).send({ error: 'VALIDATION_ERROR', message: `Unsupported entity type: ${params.entityType}` });
+  }
+
   const { buffer, mimeType, originalName } = await readFileBody(request);
 
   const result = await uploadService.upload(

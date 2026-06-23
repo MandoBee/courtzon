@@ -16,7 +16,7 @@ import {
 } from '../presentation/contact.dto.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const UPLOAD_ROOT = join(__dirname, '..', '..', '..', 'uploads');
+const UPLOAD_ROOT = join(__dirname, '..', '..', '..', '..', 'uploads');
 
 export interface ContactUploadedFile {
   buffer: Buffer;

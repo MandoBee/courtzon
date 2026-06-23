@@ -3,7 +3,7 @@ import type { FastifyReply, FastifyRequest } from 'fastify';
 export const SESSION_COOKIE = 'session_token';
 export const REFRESH_COOKIE = 'refresh_token';
 
-const isProd = process.env.NODE_ENV === 'production';
+const isProd = process.env.NODE_ENV === 'production' && process.env.RELAX_RATE_LIMIT !== 'true';
 
 const cookieBase = {
   httpOnly: true,

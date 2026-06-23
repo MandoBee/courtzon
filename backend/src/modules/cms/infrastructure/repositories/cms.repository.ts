@@ -267,7 +267,7 @@ export const cmsRepository = {
     if (rows.length) {
       const { unlink } = await import('node:fs/promises');
       const { join } = await import('node:path');
-      const UPLOADS_ROOT = join(import.meta.dirname, '..', '..', '..', '..', 'uploads');
+      const UPLOADS_ROOT = join(import.meta.dirname, '..', '..', '..', '..', '..', 'uploads');
       const file = rows[0];
       const urlToPath = (u: string) => join(UPLOADS_ROOT, u.replace('/uploads/', ''));
       try { await unlink(urlToPath(file.url)); } catch {}

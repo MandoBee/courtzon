@@ -8,10 +8,13 @@ import { resourceRepository } from '../../organisations/infrastructure/repositor
 import { slotGenerator } from '../domain/slot-generator.js';
 import { getPool } from '../../../database/mysql.js';
 import { NotFoundError, ForbiddenError } from '../../../shared/errors/app-error.js';
+import { createModuleLogger } from '../../../shared/utils/logger.js';
 import type { CreateBookingInput } from '../presentation/booking.dto.js';
 import type mysql from 'mysql2/promise';
 
 type RowData = mysql.RowDataPacket[];
+
+const log = createModuleLogger('booking');
 
 function addDays(dateStr: string, days: number): string {
   const d = new Date(dateStr + 'T00:00:00');
@@ -182,38 +185,21 @@ export class BookingService {
 
       if (paymentMethod === 'cash' || paymentMethod === 'cod') {
         try {
-          const wallet = await walletRepository.findByUserId(userId);
-          if (wallet) {
-            const current = await walletRepository.lockAndGetBalance(wallet.id);
-            if (current) {
-              const newBalance = current.balance - pricing.totalPrice;
-              await walletRepository.updateBalance(wallet.id, newBalance, current.version);
-            }
-            await walletRepository.createTransaction({
-              walletId: wallet.id,
-              type: 'due',
-              amount: pricing.totalPrice,
-              direction: 'debit',
-              referenceType: 'booking',
-              referenceId: bookingId,
-              description: `COD booking #${bookingId} — payment due`,
-            });
-            const pool2 = getPool();
-            const [txnResult] = await pool2.execute<mysql.ResultSetHeader>(
-              `INSERT INTO transactions (type, source_type, source_id, currency_id, total_amount, status)
-               VALUES ('due', 'booking', ?, 2, ?, 'completed')`,
-              [bookingId, pricing.totalPrice]
-            );
-            await pool2.execute(
-              `INSERT INTO transaction_entries (transaction_id, side, entity_type, entity_id, amount, currency_id, branch_id, organisation_id, description)
-               VALUES (?, 'debit', 'user_wallet', ?, ?, 2, ?, ?, ?),
-                      (?, 'credit', 'platform_account', 1, ?, 2, ?, ?, ?)`,
-              [
-                txnResult.insertId, wallet.id, pricing.totalPrice, input.branchId, organisationId, `COD booking #${bookingId} — payment due`,
-                txnResult.insertId, pricing.totalPrice, input.branchId, organisationId, `COD booking #${bookingId} — payment due`,
-              ]
-            );
-          }
+          const pool2 = getPool();
+          const [txnResult] = await pool2.execute<mysql.ResultSetHeader>(
+            `INSERT INTO transactions (type, source_type, source_id, currency_id, total_amount, status)
+             VALUES ('due', 'booking', ?, 2, ?, 'completed')`,
+            [bookingId, pricing.totalPrice]
+          );
+          await pool2.execute(
+            `INSERT INTO transaction_entries (transaction_id, side, entity_type, entity_id, amount, currency_id, branch_id, organisation_id, description)
+             VALUES (?, 'debit', 'due_from_customer', ?, ?, 2, ?, ?, ?),
+                    (?, 'credit', 'branch', ?, ?, 2, ?, ?, ?)`,
+            [
+              txnResult.insertId, userId, pricing.totalPrice, input.branchId, organisationId, `COD booking #${bookingId} — cash due from customer`,
+              txnResult.insertId, input.branchId, pricing.totalPrice, input.branchId, organisationId, `COD booking #${bookingId} — branch revenue`,
+            ]
+          );
         } catch {
           // non-fatal
         }
@@ -267,7 +253,7 @@ export class BookingService {
           });
 
           if (players.length === 0) {
-            console.log(`Matchmaking: No matching players found for booking ${bookingId}`);
+            log.info(`Matchmaking: No matching players found for booking ${bookingId}`);
           }
 
           if (mm.autoApply) {
@@ -282,9 +268,9 @@ export class BookingService {
             }
           }
 
-          console.log(`Matchmaking: Created booking ${bookingId} with ${players.length} matched players`);
+          log.info(`Matchmaking: Created booking ${bookingId} with ${players.length} matched players`);
         } catch (mmErr) {
-          console.error(`Matchmaking start failed for booking ${bookingId}:`, mmErr);
+          log.error({ err: mmErr }, `Matchmaking start failed for booking ${bookingId}`);
         }
       }
 

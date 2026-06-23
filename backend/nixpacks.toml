@@ -1,0 +1,22 @@
+# Coolify deployment configuration for CourtZon
+# https://coolify.io/docs/configuration/nixpacks/
+
+[variables]
+NODE_ENV = "production"
+NPM_CONFIG_REGISTRY = "https://registry.npmjs.org"
+
+[phases.setup]
+nixPkgs = ["nodejs_22", "npm"]
+
+[phases.install]
+cmds = ["npm ci --omit=dev --ignore-scripts"]
+
+[phases.build]
+cmds = ["npm run build"]
+
+[start]
+cmd = "node dist/server.js"
+
+[variables.env]
+NODE_ENV = "production"
+PORT = "3000"

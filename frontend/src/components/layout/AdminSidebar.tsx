@@ -288,7 +288,7 @@ export default function AdminSidebar() {
       <nav className="flex-1 p-2 space-y-1">
         {navItems.map((item) => renderNavItem(item, openMenus, toggleMenu, isActive, location))}
       </nav>
-      <div className="p-3 border-t border-[var(--color-border)] space-y-1">
+      <div className="sticky bottom-0 p-3 border-t border-[var(--color-border)] space-y-1 bg-[var(--color-surface)]">
         <Link to="/admin/profile" className="flex items-center gap-2 px-3 py-2 rounded-[var(--radius-md)] text-sm text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-border)] hover:bg-[var(--color-bg)]">
           👤 Profile
         </Link>

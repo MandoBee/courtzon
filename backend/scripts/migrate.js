@@ -168,6 +168,9 @@ const migrations = [
   '122_add_booking_payment_method.sql',
   '123_booking_penalty_status.sql',
   '124_booking_intents.sql',
+  '125_multi_seller_settlement.sql',
+  '126_hash_session_tokens.sql',
+  '127_missing_production_indexes.sql',
 ];
 
 async function migrate() {

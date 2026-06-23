@@ -252,7 +252,7 @@ export const marketplaceRepository = {
     return (result as any).insertId;
   },
 
-  async updateVariant(id: number, data: any) {
+  async updateVariant(id: number, data: any, sellerId?: number) {
     const pool = getPool();
     const fields: string[] = []; const params: any[] = [];
     if (data.sku !== undefined) { fields.push('sku = ?'); params.push(data.sku); }
@@ -265,14 +265,46 @@ export const marketplaceRepository = {
     if (data.isActive !== undefined) { fields.push('is_active = ?'); params.push(data.isActive); }
     if (!fields.length) return false;
     params.push(id);
+    if (sellerId !== undefined) {
+      const [result] = await pool.execute(
+        `UPDATE product_variants pv
+         JOIN products p ON p.id = pv.product_id
+         SET ${fields.map(f => `pv.${f}`).join(', ')}
+         WHERE pv.id = ? AND p.seller_id = ?`,
+        [...params, sellerId],
+      );
+      return (result as any).affectedRows > 0;
+    }
     const [result] = await pool.execute(`UPDATE product_variants SET ${fields.join(', ')} WHERE id = ?`, params);
     return (result as any).affectedRows > 0;
   },
 
-  async deleteVariant(id: number) {
+  async deleteVariant(id: number, sellerId?: number) {
     const pool = getPool();
+    if (sellerId !== undefined) {
+      const [result] = await pool.execute(
+        `UPDATE product_variants pv
+         JOIN products p ON p.id = pv.product_id
+         SET pv.is_active = FALSE
+         WHERE pv.id = ? AND p.seller_id = ?`,
+        [id, sellerId],
+      );
+      return (result as any).affectedRows > 0;
+    }
     const [result] = await pool.execute('UPDATE product_variants SET is_active = FALSE WHERE id = ?', [id]);
     return (result as any).affectedRows > 0;
+  },
+
+  async findVariantById(id: number) {
+    const pool = getPool();
+    const [rows] = await pool.execute<RowData>(
+      `SELECT pv.*, p.seller_id, p.id as product_id, p.name as product_name
+       FROM product_variants pv
+       JOIN products p ON p.id = pv.product_id
+       WHERE pv.id = ?`,
+      [id],
+    );
+    return rows[0] || null;
   },
 
   async decrementStock(productId: number, variantId: number | undefined, quantity: number) {
@@ -1252,9 +1284,120 @@ export const marketplaceRepository = {
     return rows;
   },
 
+  async getUnsettledOrdersBySeller(orgId: number) {
+    const pool = getPool();
+    const [rows] = await pool.execute<RowData>(
+      `SELECT o.id as order_id,
+              o.public_id as order_public_id,
+              o.payment_method, o.payment_status,
+              o.status as order_status,
+              o.created_at as order_date,
+              SUM(oi.total_price) as seller_subtotal,
+              SUM(oi.commission_amount) as seller_fee,
+              SUM(oi.total_price) - SUM(oi.commission_amount) as seller_product_net,
+              CASE WHEN o.subtotal > 0
+                THEN ROUND(o.shipping_cost * (SUM(oi.total_price) / o.subtotal), 2)
+                ELSE 0
+              END as seller_shipping,
+              CASE WHEN o.subtotal > 0
+                THEN ROUND(o.courtzon_fee * (SUM(oi.total_price) / o.subtotal), 2)
+                ELSE 0
+              END as seller_courtzon_fee
+       FROM orders o
+       JOIN order_items oi ON oi.order_id = o.id
+       WHERE oi.seller_id = ?
+         AND oi.settlement_status = 'pending'
+         AND o.status = 'delivered'
+         AND o.settlement_status = 'pending'
+         AND (o.payment_method = 'cash' OR o.payment_status = 'paid')
+       GROUP BY o.id
+       ORDER BY o.id`,
+      [orgId],
+    );
+    return rows;
+  },
+
+  async getSettlementBalanceBySeller(orgId: number): Promise<{
+    available_balance: number;
+    pending_fee: number;
+    order_count: number;
+  }> {
+    const pool = getPool();
+    const [rows] = await pool.execute<RowData>(
+      `SELECT
+         SUM(oi.total_price - oi.commission_amount) as product_net,
+         SUM(oi.commission_amount) as total_fee,
+         COUNT(DISTINCT o.id) as order_count
+       FROM order_items oi
+       JOIN orders o ON o.id = oi.order_id
+       WHERE oi.seller_id = ?
+         AND oi.settlement_status = 'pending'
+         AND o.status = 'delivered'
+         AND (o.payment_method = 'cash' OR o.payment_status = 'paid')`,
+      [orgId],
+    );
+    const r = rows[0] as any;
+    const productNet = Number(r?.product_net || 0);
+    const totalFee = Number(r?.total_fee || 0);
+    const orderCount = Number(r?.order_count || 0);
+    return {
+      available_balance: Math.round(productNet * 100) / 100,
+      pending_fee: Math.round(totalFee * 100) / 100,
+      order_count: orderCount,
+    };
+  },
+
   async markOrderSettled(orderId: number) {
     const pool = getPool();
     await pool.execute('UPDATE orders SET settlement_status = ? WHERE id = ?', ['settled', orderId]);
+  },
+
+  async markOrderItemsSettled(orderIds: number[], sellerId: number) {
+    if (!orderIds.length) return;
+    const pool = getPool();
+    const placeholders = orderIds.map(() => '?').join(',');
+    await pool.execute(
+      `UPDATE order_items SET settlement_status = 'settled'
+       WHERE order_id IN (${placeholders}) AND seller_id = ?`,
+      [...orderIds, sellerId],
+    );
+  },
+
+  async markOrdersFullySettled(orderIds: number[]) {
+    if (!orderIds.length) return;
+    const pool = getPool();
+    const placeholders = orderIds.map(() => '?').join(',');
+    await pool.execute(
+      `UPDATE orders o SET settlement_status = 'settled'
+       WHERE o.id IN (${placeholders})
+       AND NOT EXISTS (
+         SELECT 1 FROM order_items oi
+         WHERE oi.order_id = o.id AND oi.settlement_status = 'pending'
+       )`,
+      orderIds,
+    );
+  },
+
+  async unmarkSettlementOrders(settlementId: number) {
+    const pool = getPool();
+    const [soRows] = await pool.execute<RowData>(
+      'SELECT order_id FROM settlement_orders WHERE settlement_id = ?',
+      [settlementId],
+    );
+    const orderIds = soRows.map((r: any) => r.order_id);
+    if (!orderIds.length) return;
+    const placeholders = orderIds.map(() => '?').join(',');
+    await pool.execute(
+      `UPDATE order_items oi SET oi.settlement_status = 'pending'
+       WHERE oi.order_id IN (${placeholders})
+       AND oi.settlement_status = 'settled'`,
+      orderIds,
+    );
+    await pool.execute(
+      `UPDATE orders o SET o.settlement_status = 'pending'
+       WHERE o.id IN (${placeholders})`,
+      orderIds,
+    );
   },
 
   // ── Marketplace Accounting Ledger ──
