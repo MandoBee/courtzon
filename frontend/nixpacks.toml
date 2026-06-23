@@ -1,11 +1,8 @@
-# Coolify deployment configuration for CourtZon Frontend
-# https://coolify.io/docs/configuration/nixpacks/
-
 [variables]
 NODE_ENV = "production"
 
 [phases.setup]
-nixPkgs = ["nodejs_22", "npm"]
+nixPkgs = ["nodejs_22"]
 
 [phases.install]
 cmds = ["npm ci --ignore-scripts"]
@@ -15,6 +12,3 @@ cmds = ["npm run build"]
 
 [start]
 cmd = "nginx -g 'daemon off;'"
-
-[variables.env]
-NODE_ENV = "production"
