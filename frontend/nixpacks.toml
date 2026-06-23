@@ -1,14 +1,12 @@
 [variables]
+NIXPACKS_NODE_VERSION = "23"
 NODE_ENV = "production"
 
 [phases.setup]
-nixPkgs = ["nodejs_22"]
+nixPkgs = ["nodejs_23"]
 
 [phases.install]
-cmds = ["npm ci --ignore-scripts"]
+cmds = ["npm install"]
 
 [phases.build]
 cmds = ["npm run build"]
-
-[start]
-cmd = "nginx -g 'daemon off;'"
