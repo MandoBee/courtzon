@@ -1,19 +1,14 @@
-# Coolify deployment configuration for CourtZon
-# https://coolify.io/docs/configuration/nixpacks/
-
 [variables]
 NODE_ENV = "production"
-NPM_CONFIG_REGISTRY = "https://registry.npmjs.org"
 
 [phases.setup]
-nixPkgs = ["nodejs_22", "npm"]
+nixPkgs = ["nodejs_22"]
 
 [phases.install]
-cmds = ["npm ci --omit=dev --ignore-scripts"]
+cmds = ["npm install"]
 
 [phases.build]
 cmds = ["npm run build"]
 
 [start]
 cmd = "node dist/server.js"
-
