@@ -5,7 +5,7 @@
 -- Apply:      node backend/scripts/migrate.js --fresh --seed
 -- ============================================================================
 
-USE courtzon_v2;
+USE courtzon_v3;
 
 SET NAMES utf8mb4;
 SET FOREIGN_KEY_CHECKS = 0;

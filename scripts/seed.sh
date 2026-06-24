@@ -11,7 +11,7 @@ DB_HOST="${DB_HOST:-localhost}"
 DB_PORT="${DB_PORT:-3306}"
 DB_USER="${DB_USER:-root}"
 DB_PASSWORD="${DB_PASSWORD:-}"
-DB_NAME="${DB_NAME:-courtzon_v2}"
+DB_NAME="${DB_NAME:-courtzon_v3}"
 
 MYSQL_OPTS="-h $DB_HOST -P $DB_PORT -u $DB_USER"
 [ -n "$DB_PASSWORD" ] && MYSQL_OPTS="$MYSQL_OPTS -p$DB_PASSWORD"

@@ -1,6 +1,6 @@
 {
   "exportedAt": "2026-06-14T14:49:09.421Z",
-  "database": "courtzon_v2",
+  "database": "courtzon_v3",
   "excludedTables": [
     "academy_enrollments",
     "academy_evaluations",

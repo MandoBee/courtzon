@@ -86,7 +86,7 @@ export async function healthDatabase(): Promise<{
       return { status: 'error', database: 'disconnected', tables: 0, latencyMs: Date.now() - start, error: 'Unexpected response' };
     }
     const [tables] = await pool.execute<any[]>('SHOW TABLES');
-    const dbName = process.env.DB_NAME || 'courtzon_v2';
+    const dbName = process.env.DB_NAME || 'courtzon_v3';
     return { status: 'ok', database: 'connected', tables: tables.length, latencyMs: Date.now() - start };
   } catch (err: any) {
     return { status: 'down', database: 'disconnected', tables: 0, latencyMs: Date.now() - start, error: err.message };
