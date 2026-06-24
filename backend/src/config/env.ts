@@ -34,6 +34,8 @@ const envSchema = z.object({
 
   CORS_ORIGINS: z.string().optional(),
 
+  JWT_SECRET: z.string().optional(),
+
   SESSION_SECRET: z
     .string()
     .min(32, "SESSION_SECRET must be at least 32 characters")
@@ -42,6 +44,9 @@ const envSchema = z.object({
       "SESSION_SECRET must not be the default dev value in production"
     )
     .optional(),
+
+  SUPER_ADMIN_EMAIL: z.string().email().optional(),
+  SUPER_ADMIN_PASSWORD: z.string().min(8).optional(),
 
   STORAGE_PROVIDER: z.enum(['local', 's3', 'r2']).optional().default('local'),
 
@@ -84,14 +89,18 @@ if (!parsed.success) {
   process.exit(1);
 }
 
-if (isProd && !parsed.data.SESSION_SECRET) {
-  log.error("SESSION_SECRET is required in production");
-  process.exit(1);
-}
-
-if (isProd && parsed.data.PAYMENT_GATEWAY_PROVIDER === 'mock') {
-  log.error("PAYMENT_GATEWAY_PROVIDER must not be 'mock' in production");
-  process.exit(1);
+if (isProd) {
+  const required = ['SESSION_SECRET', 'DB_HOST', 'DB_PORT', 'DB_NAME', 'DB_USER', 'DB_PASSWORD'] as const;
+  for (const key of required) {
+    if (!parsed.data[key as keyof typeof parsed.data]) {
+      log.error(`${key} is required in production`);
+      process.exit(1);
+    }
+  }
+  if (parsed.data.PAYMENT_GATEWAY_PROVIDER === 'mock') {
+    log.error("PAYMENT_GATEWAY_PROVIDER must not be 'mock' in production");
+    process.exit(1);
+  }
 }
 
 export const env = parsed.data;

@@ -10,6 +10,7 @@ import { runDatabaseBackup } from "./infrastructure/backup/backup.service.js";
 import { queueService } from "./infrastructure/queue/queue.service.js";
 import { closePool } from "./database/mysql.js";
 import { closeRedisClient } from "./infrastructure/redis/redis.client.js";
+import { validateDatabaseSchema } from "./infrastructure/startup/startup-validator.js";
 
 let worker: any;
 
@@ -30,6 +31,15 @@ async function bootstrap() {
     registerHandler('database_backup', runDatabaseBackup);
     registerHandler('run_settlements', handleRunSettlements);
     registerHandler('auto_complete_bookings', handleAutoCompleteBookings);
+
+    const validation = await validateDatabaseSchema();
+    if (!validation.ok) {
+      app.log.error(
+        `Startup validation failed. Missing critical tables: ${validation.missing.join(', ')}. ` +
+        'Run migrations and seed first: node backend/scripts/migrate.js --fresh --seed'
+      );
+      process.exit(1);
+    }
 
     worker = startWorker('default');
 

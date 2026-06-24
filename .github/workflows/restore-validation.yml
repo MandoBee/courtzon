@@ -1,0 +1,82 @@
+name: Restore Validation
+
+on:
+  schedule:
+    - cron: '0 6 * * 0'  # Weekly: Sunday 6am UTC
+  workflow_dispatch:
+
+jobs:
+  validate-restore:
+    name: Validate Backup Restore
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: test_root
+          MYSQL_DATABASE: courtzon_restore_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd "mysqladmin ping -h localhost -u root -ptest_root"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - name: Restore latest backup into clean DB
+        run: |
+          BACKUP_DIR="./backups"
+          if [ ! -d "$BACKUP_DIR" ] || [ -z "$(ls -A $BACKUP_DIR/*.sql.gz 2>/dev/null)" ]; then
+            echo "No backup files found — running fresh migration + seed as baseline"
+            cd backend
+            npm ci --ignore-scripts
+            node scripts/migrate.js --fresh --seed
+            echo "Creating a reference backup for future validation..."
+            mkdir -p ../backups
+            mysqldump --single-transaction --routines --triggers --events \
+              -h 127.0.0.1 -P 3306 -u root -ptest_root courtzon_restore_test \
+              2>/dev/null | gzip > ../backups/courtzon_$(date +%Y_%m_%d).sql.gz
+            echo "Baseline backup created."
+          else
+            cd backend
+            npm ci --ignore-scripts
+            LATEST=$(ls -t ../backups/*.sql.gz 2>/dev/null | head -1)
+            echo "Restoring from: $LATEST"
+            gunzip -c "$LATEST" | mysql -h 127.0.0.1 -P 3306 -u root -ptest_root courtzon_restore_test
+          fi
+        env:
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_NAME: courtzon_restore_test
+          DB_USER: root
+          DB_PASSWORD: test_root
+          NODE_ENV: test
+      - name: Run migrations on restored DB
+        run: node scripts/migrate.js
+        env:
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_NAME: courtzon_restore_test
+          DB_USER: root
+          DB_PASSWORD: test_root
+          NODE_ENV: test
+      - name: Verify restored DB has data
+        run: |
+          COUNT=$(mysql -h 127.0.0.1 -u root -ptest_root courtzon_restore_test -N -e "SELECT COUNT(*) FROM app_settings;" 2>/dev/null || echo "0")
+          if [ "$COUNT" -eq 0 ] 2>/dev/null; then
+            echo "FAIL: app_settings is empty after restore"
+            exit 1
+          fi
+          COUNT=$(mysql -h 127.0.0.1 -u root -ptest_root courtzon_restore_test -N -e "SELECT COUNT(*) FROM users;" 2>/dev/null || echo "0")
+          if [ "$COUNT" -eq 0 ] 2>/dev/null; then
+            echo "FAIL: users is empty after restore"
+            exit 1
+          fi
+          TABLES=$(mysql -h 127.0.0.1 -u root -ptest_root courtzon_restore_test -N -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='courtzon_restore_test';" 2>/dev/null || echo "0")
+          echo "PASS: Restored DB has $TABLES tables with data"

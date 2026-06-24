@@ -48,7 +48,7 @@ import { geoRoutes } from "./modules/geo/presentation/geo.routes.js";
 import { createPool } from "./database/mysql.js";
 import { AppError } from "./shared/errors/app-error.js";
 import { formatZodErrorDetails, isZodError } from "./shared/validation/zod-error.util.js";
-import { getHealth } from "./infrastructure/health/health.service.js";
+import { getHealth, healthDatabase, healthRedis, healthStorage } from "./infrastructure/health/health.service.js";
 import { registerMetrics } from "./infrastructure/metrics/metrics.js";
 import { maintenanceMiddleware } from "./shared/middleware/maintenance.middleware.js";
 
@@ -110,6 +110,20 @@ await app.register(helmet, {
 
 app.addHook('onRequest', async (_request, reply) => {
   reply.header('Permissions-Policy', 'payment=(self)');
+});
+
+// Structured production logging — enrich every request log with IDs
+app.addHook('onResponse', async (request, reply) => {
+  if (process.env.NODE_ENV === 'production') {
+    request.log.info({
+      requestId: request.id,
+      userId: (request as any).userId,
+      method: request.method,
+      url: request.url,
+      statusCode: reply.statusCode,
+      responseTime: reply.elapsedTime,
+    }, 'request completed');
+  }
 });
 
 const isDockerLocal = process.env.RELAX_RATE_LIMIT === 'true';
@@ -217,6 +231,34 @@ app.get("/health", async (_request, reply) => {
   const result = await getHealth();
   const statusCode = result.status === 'down' ? 503 : result.status === 'degraded' ? 200 : 200;
   return reply.status(statusCode).send(result);
+});
+
+app.get("/health/live", async (_request, reply) => {
+  return reply.send({ status: 'ok', uptime: process.uptime() });
+});
+
+app.get("/health/ready", async (_request, reply) => {
+  const result = await getHealth();
+  const ok = result.status !== 'down';
+  return reply.status(ok ? 200 : 503).send({
+    status: ok ? 'ok' : 'down',
+    checks: result.checks,
+  });
+});
+
+app.get("/health/database", async (_request, reply) => {
+  const result = await healthDatabase();
+  return reply.status(result.status === 'down' ? 503 : 200).send(result);
+});
+
+app.get("/health/redis", async (_request, reply) => {
+  const result = await healthRedis();
+  return reply.status(result.status === 'down' ? 503 : 200).send(result);
+});
+
+app.get("/health/storage", async (_request, reply) => {
+  const result = await healthStorage();
+  return reply.status(result.status === 'down' ? 503 : 200).send(result);
 });
 
 registerMetrics(app);

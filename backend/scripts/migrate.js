@@ -1,7 +1,9 @@
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import mysql from 'mysql2/promise';
+import { execSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { loadFileEnv, envFrom } from './load-file-env.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -171,13 +173,52 @@ const migrations = [
   '125_multi_seller_settlement.sql',
   '126_hash_session_tokens.sql',
   '127_missing_production_indexes.sql',
+  '128_add_migration_history.sql',
 ];
+
+function hashFile(filePath) {
+  const content = readFileSync(filePath, 'utf8');
+  return createHash('sha256').update(content).digest('hex').substring(0, 12);
+}
+
+async function backup() {
+  const shouldBackup = !process.argv.includes('--no-backup');
+  if (!shouldBackup) return;
+
+  const backupDir = resolve(projectRoot, 'backups');
+  mkdirSync(backupDir, { recursive: true });
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-').substring(0, 19);
+  const filename = `pre_migration_${dbName}_${timestamp}.sql.gz`;
+  const filepath = resolve(backupDir, filename);
+
+  try {
+    console.log(`\nPre-migration backup → ${filename}`);
+    let cmd;
+    if (process.platform === 'win32') {
+      // Windows: use powershell to pipe mysqldump to gzip
+      cmd = `powershell -Command "& {mysqldump --single-transaction --routines --triggers --events --host=${config.host} --port=${config.port} --user=${config.user} --password=${config.password} ${dbName} | gzip -c > '${filepath}'}"`;
+    } else {
+      cmd = `mysqldump --single-transaction --routines --triggers --events --host=${config.host} --port=${config.port} --user=${config.user} --password="${config.password}" ${dbName} 2>/dev/null | gzip > "${filepath}"`;
+    }
+    execSync(cmd, { stdio: 'pipe', timeout: 300000, shell: true });
+    const size = readFileSync(filepath).length;
+    console.log(`  Backup complete: ${(size / 1024 / 1024).toFixed(2)} MB`);
+  } catch (err) {
+    console.warn(`  Backup skipped (non-fatal): ${err.message}`);
+  }
+}
 
 async function migrate() {
   const fresh = process.argv.includes('--fresh');
   const seed = process.argv.includes('--seed');
+  const noBackup = process.argv.includes('--no-backup');
   const conn = await mysql.createConnection(config);
   console.log('Connected to MySQL');
+
+  // Pre-migration backup (skip for fresh DB since there's nothing to back up)
+  if (!fresh) {
+    await backup();
+  }
 
   if (fresh) {
     console.log(`\nDropping ALL tables in \`${dbName}\`...`);
@@ -191,10 +232,21 @@ async function migrate() {
   for (const file of migrations) {
     const filePath = resolve(schemaDir, file);
     if (!filePath.endsWith('.sql')) continue;
+    const startTime = Date.now();
     try {
       const raw = readFileSync(filePath, 'utf8');
       await conn.query(prepareSql(raw));
-      console.log(`  OK ${file}`);
+      const execMs = Date.now() - startTime;
+      console.log(`  OK ${file} (${execMs}ms)`);
+
+      // Track in migration_history
+      try {
+        const fileHash = hashFile(filePath);
+        await conn.query(
+          'INSERT IGNORE INTO migration_history (filename, hash, execution_ms) VALUES (?, ?, ?)',
+          [file, fileHash, execMs]
+        );
+      } catch { /* migration_history table may not exist yet */ }
     } catch (err) {
       if (err.errno === 1050) { console.log(`  SKIP ${file} (table exists)`); continue; }
       if (err.errno === 1060) { console.log(`  SKIP ${file} (column exists)`); continue; }

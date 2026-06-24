@@ -1,0 +1,88 @@
+name: Migration Validation
+
+on:
+  push:
+    branches: [master, main]
+    paths:
+      - 'database/schema/**'
+      - 'backend/scripts/migrate.js'
+  pull_request:
+    branches: [master, main]
+    paths:
+      - 'database/schema/**'
+      - 'backend/scripts/migrate.js'
+
+jobs:
+  validate-migrations:
+    name: Validate Migrations
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: test_root
+          MYSQL_DATABASE: courtzon_v2_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd "mysqladmin ping -h localhost -u root -ptest_root"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - run: npm ci --ignore-scripts
+        working-directory: backend
+      - name: Run fresh migration + seed
+        run: node scripts/migrate.js --fresh --seed
+        env:
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_NAME: courtzon_v2_test
+          DB_USER: root
+          DB_PASSWORD: test_root
+          REDIS_HOST: 127.0.0.1
+          REDIS_PORT: 6379
+          NODE_ENV: test
+      - name: Verify required tables exist
+        run: |
+          TABLES=$(mysql -h 127.0.0.1 -u root -ptest_root courtzon_v2_test -e "SHOW TABLES;" 2>/dev/null | tail -n+2)
+          REQUIRED="app_settings users roles permissions organizations branches sports courts bookings payments feature_flags languages countries"
+          MISSING=""
+          for t in $REQUIRED; do
+            echo "$TABLES" | grep -q "^$t$" || MISSING="$MISSING $t"
+          done
+          if [ -n "$MISSING" ]; then
+            echo "Missing required tables:$MISSING"
+            exit 1
+          fi
+          echo "All required tables present."
+      - name: Verify seed data exists
+        run: |
+          COUNT=$(mysql -h 127.0.0.1 -u root -ptest_root courtzon_v2_test -N -e "SELECT COUNT(*) FROM app_settings;" 2>/dev/null)
+          if [ "$COUNT" -eq 0 ] 2>/dev/null; then
+            echo "app_settings is empty — seed failed"
+            exit 1
+          fi
+          COUNT=$(mysql -h 127.0.0.1 -u root -ptest_root courtzon_v2_test -N -e "SELECT COUNT(*) FROM countries;" 2>/dev/null)
+          if [ "$COUNT" -eq 0 ] 2>/dev/null; then
+            echo "countries is empty — seed failed"
+            exit 1
+          fi
+          echo "Seed data verified."
+      - name: Validate idempotency (re-run migration)
+        run: node scripts/migrate.js
+        env:
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_NAME: courtzon_v2_test
+          DB_USER: root
+          DB_PASSWORD: test_root
+          REDIS_HOST: 127.0.0.1
+          REDIS_PORT: 6379
+          NODE_ENV: test
