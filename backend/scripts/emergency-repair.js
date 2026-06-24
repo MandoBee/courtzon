@@ -21,7 +21,7 @@ import { fileURLToPath } from 'node:url';
 import { loadFileEnv, envFrom } from './load-file-env.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const projectRoot = resolve(__dirname, '..');
+const projectRoot = resolve(__dirname, '../..');
 
 const fileEnv = loadFileEnv([
   resolve(process.cwd(), '.env'),
@@ -32,7 +32,7 @@ function env(key, fallback) {
   return envFrom(fileEnv, key, fallback);
 }
 
-const dbName = env('DB_NAME', 'courtzon_v2');
+const dbName = env('DB_NAME', 'courtzon_v3');
 const config = {
   host: env('DB_HOST', 'localhost'),
   port: Number(env('DB_PORT', '3306')),
@@ -47,7 +47,7 @@ const REQUIRED_TABLES = [
   'transactions', 'settlements', 'feature_flags', 'languages', 'countries',
 ];
 
-const schemaDir = resolve(projectRoot, 'database/schema');
+const schemaDir = resolve(projectRoot, 'archive/database/schema');
 
 function prepareSql(raw) {
   return raw
@@ -55,7 +55,7 @@ function prepareSql(raw) {
     .filter((l) => !/^DELIMITER\b/i.test(l.trim()))
     .join('\n')
     .replace(/END\s*\/\/\s*/g, 'END;')
-    .replace(/\bUSE\s+`?courtzon_v2`?\s*;/gi, `USE \`${dbName}\`;`);
+    .replace(/\bUSE\s+`?courtzon_v[23]`?\s*;/gi, `USE \`${dbName}\`;`);
 }
 
 async function run() {
@@ -101,7 +101,7 @@ async function run() {
   // Step 2: Run seed
   console.log('\n─── Step 2: Seed Data ───\n');
   try {
-    const baselineSnapshot = resolve(projectRoot, 'database/seed/003_baseline_snapshot.sql');
+    const baselineSnapshot = resolve(projectRoot, 'database/seeds/001_baseline.sql');
     if (existsSync(baselineSnapshot)) {
       const seedRaw = prepareSql(readFileSync(baselineSnapshot, 'utf8'));
       await conn.query(seedRaw);

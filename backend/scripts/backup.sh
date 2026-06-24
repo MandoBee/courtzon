@@ -26,7 +26,7 @@ fi
 : "${DB_PORT:=3306}"
 : "${DB_USER:=root}"
 : "${DB_PASSWORD:=}"
-: "${DB_NAME:=courtzon_v2}"
+: "${DB_NAME:=courtzon_v3}"
 
 mkdir -p "$BACKUP_DIR"
 
@@ -35,7 +35,7 @@ echo "Backing up ${DB_NAME}@${DB_HOST}:${DB_PORT} → ${FILEPATH}"
 MYSQLDUMP_ARGS="--single-transaction --routines --triggers --events --skip-lock-tables"
 MYSQL_ARGS="-h ${DB_HOST} -P ${DB_PORT} -u ${DB_USER} -p${DB_PASSWORD}"
 
-mysqldump $MYSQLDUMP_ARGS $MYSQL_ARGS "$DB_NAME" 2>/dev/null | gzip > "$FILEPATH"
+mysqldump $MYSQLDUMP_ARGS $MYSQL_ARGS "$DB_NAME" 2>/dev/null | sed "/INSERT INTO \`roles\` VALUES/s/,[0-9]\{1,\})/,DEFAULT)/g" | gzip > "$FILEPATH"
 
 # Verify backup integrity
 if [ ! -s "$FILEPATH" ]; then

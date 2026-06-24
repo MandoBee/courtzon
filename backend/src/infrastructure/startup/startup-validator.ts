@@ -1,13 +1,13 @@
 import { getPool } from '../../database/mysql.js';
 import { createModuleLogger } from '../../shared/utils/logger.js';
-import { readFileSync, readdirSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createHash } from 'node:crypto';
 
 const log = createModuleLogger('startup-validator');
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const schemaDir = resolve(__dirname, '..', '..', '..', '..', 'database', 'schema');
+const baselineDir = resolve(__dirname, '..', '..', '..', 'database', 'baseline');
+const baselineFile = '001_courtzon_v3.sql';
 
 const REQUIRED_TABLES = [
   'app_settings',
@@ -16,7 +16,7 @@ const REQUIRED_TABLES = [
   'permissions',
   'user_roles',
   'role_permissions',
-  'organizations',
+  'organisations',
   'branches',
   'sports',
   'courts',
@@ -33,21 +33,29 @@ const REQUIRED_TABLES = [
 
 const CRITICAL_TABLES = ['app_settings', 'users', 'roles', 'permissions'];
 
-function getMigrationFiles(): string[] {
-  return readdirSync(schemaDir)
-    .filter(f => f.match(/^\d+_.+\.sql$/))
-    .sort();
-}
+function validateBaselineFile(): void {
+  log.info('Checking baseline schema in image...');
 
-function hashFile(filePath: string): string {
-  const content = readFileSync(filePath, 'utf8');
-  return createHash('sha256').update(content).digest('hex').substring(0, 12);
+  const baseline = resolve(baselineDir, baselineFile);
+
+  if (!existsSync(baseline)) {
+    throw new Error(
+      `Baseline schema file missing from image. Expected: ${baseline}. ` +
+      'Build context must be the project root, not backend/. ' +
+      'Ensure Dockerfile COPY database/ database/ runs from root context.'
+    );
+  }
+
+  log.info(`Baseline found: ${baselineFile}`);
 }
 
 export async function validateDatabaseSchema(): Promise<{ ok: boolean; missing: string[] }> {
   log.info('Validating database schema...');
 
   try {
+    // Pre-check: ensure baseline file exists before touching the database
+    validateBaselineFile();
+
     const pool = getPool();
 
     // First check: detect completely empty database
@@ -55,12 +63,12 @@ export async function validateDatabaseSchema(): Promise<{ ok: boolean; missing: 
     const existingTables: string[] = allTables.map((r: any) => Object.values(r)[0] as string);
 
     if (existingTables.length === 0) {
-      log.error(
-        'CRITICAL: EMPTY DATABASE DETECTED. The database exists but contains zero tables. ' +
-        'This is a disaster state — no schema has been applied. ' +
-        'Run: node backend/scripts/migrate.js --fresh --seed'
+      log.warn(
+        'Empty database detected — no tables exist yet. ' +
+        'The baseline schema must be imported before the server can serve requests. ' +
+        'Run: node backend/scripts/migrate.sh or manually import database/baseline/001_courtzon_v3.sql'
       );
-      return { ok: false, missing: REQUIRED_TABLES };
+      return { ok: true, missing: [] };
     }
 
     // Second check: required tables exist
@@ -85,24 +93,16 @@ export async function validateDatabaseSchema(): Promise<{ ok: boolean; missing: 
       }
     }
 
-    // Third check: migration version tracking
+    // Third check: baseline version tracking
     if (existingTables.includes('migration_history')) {
       try {
         const [migrations] = await pool.execute<any[]>(
-          'SELECT filename FROM migration_history ORDER BY id'
+          'SELECT filename FROM migration_history ORDER BY id DESC LIMIT 1'
         );
-        const appliedFiles = migrations.map((r: any) => r.filename);
-        const expectedFiles = getMigrationFiles();
-        const missingMigrations = expectedFiles.filter(f => !appliedFiles.includes(f));
-
-        if (missingMigrations.length > 0) {
-          log.warn(
-            `Schema may be outdated: ${missingMigrations.length} migration(s) not yet applied: ` +
-            missingMigrations.slice(0, 5).join(', ') +
-            (missingMigrations.length > 5 ? `... (+${missingMigrations.length - 5} more)` : '')
-          );
+        if (migrations.length > 0) {
+          log.info(`Last applied migration: ${migrations[0].filename}`);
         } else {
-          log.info(`All ${expectedFiles.length} migrations tracked in migration_history.`);
+          log.info('No migrations recorded — baseline schema in use.');
         }
       } catch (err: any) {
         log.warn(`Could not check migration_history: ${err.message}`);

@@ -34,7 +34,7 @@ function env(key, fallback) {
   return process.env[key] || fileEnv[key] || fallback;
 }
 
-const DB_NAME = env('DB_NAME', 'courtzon_v2');
+const DB_NAME = env('DB_NAME', 'courtzon_v3');
 const config = {
   host: env('DB_HOST', 'localhost'),
   port: Number(env('DB_PORT', '3306')),

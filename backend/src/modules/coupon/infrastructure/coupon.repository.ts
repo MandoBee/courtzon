@@ -12,7 +12,7 @@ export const couponRepository = {
     const [countRows] = await pool.execute<RowData>(`SELECT COUNT(*) as cnt FROM coupons c ${where}`, params);
     const total = (countRows[0] as any).cnt;
     const offset = (filters.page - 1) * filters.limit;
-    const [rows] = await pool.execute<RowData>(
+    const [rows] = await pool.query<RowData>(
       `SELECT c.*, (SELECT COUNT(*) FROM coupon_usage cu WHERE cu.coupon_id = c.id) as usage_count
        FROM coupons c ${where} ORDER BY c.created_at DESC LIMIT ? OFFSET ?`,
       [...params, filters.limit, offset],

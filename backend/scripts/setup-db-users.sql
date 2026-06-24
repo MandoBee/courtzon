@@ -9,15 +9,15 @@
 
 -- App User (CRUD for application operations — matches .env.production DB_USER)
 CREATE USER IF NOT EXISTS 'courtzon_app'@'%' IDENTIFIED BY 'CHANGE_ME_APP_PASSWORD';
-GRANT SELECT, INSERT, UPDATE, DELETE ON courtzon_v2.* TO 'courtzon_app'@'%';
+GRANT SELECT, INSERT, UPDATE, DELETE ON courtzon_v3.* TO 'courtzon_app'@'%';
 
 -- Read-only User (for reporting, dashboards, analytics)
 CREATE USER IF NOT EXISTS 'courtzon_readonly'@'%' IDENTIFIED BY 'CHANGE_ME_READONLY_PASSWORD';
-GRANT SELECT ON courtzon_v2.* TO 'courtzon_readonly'@'%';
+GRANT SELECT ON courtzon_v3.* TO 'courtzon_readonly'@'%';
 
 -- Migration User (DDL operations for schema changes — used by migrate.js only)
 CREATE USER IF NOT EXISTS 'courtzon_migration'@'%' IDENTIFIED BY 'CHANGE_ME_MIGRATION_PASSWORD';
-GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, DROP, ALTER, INDEX, REFERENCES, LOCK TABLES ON courtzon_v2.* TO 'courtzon_migration'@'%';
+GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, DROP, ALTER, INDEX, REFERENCES, LOCK TABLES ON courtzon_v3.* TO 'courtzon_migration'@'%';
 
 -- Backup User (can run mysqldump with --single-transaction)
 CREATE USER IF NOT EXISTS 'courtzon_backup'@'%' IDENTIFIED BY 'CHANGE_ME_BACKUP_PASSWORD';

@@ -584,7 +584,7 @@ export class BookingRepository {
     const page = filters?.page || 1;
     const limit = filters?.limit || 20;
     const offset = (page - 1) * limit;
-    const [rows] = await this.pool.execute<RowData>(
+    const [rows] = await this.pool.query<RowData>(
       `SELECT b.*, u.full_name as user_name, u.phone_number as user_phone, r.name as resource_name,
                br.name as branch_name, org.name as organisation_name ${join}${where}
        ORDER BY b.created_at DESC LIMIT ? OFFSET ?`,

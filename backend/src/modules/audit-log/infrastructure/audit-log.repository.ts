@@ -121,7 +121,7 @@ class AuditLogRepository {
     );
     const total = countRows[0]?.total || 0;
 
-    const [rows] = await pool.execute(
+    const [rows] = await pool.query(
       `SELECT al.*, u.full_name, u.email
        FROM audit_logs al
        LEFT JOIN users u ON u.id = al.actor_id

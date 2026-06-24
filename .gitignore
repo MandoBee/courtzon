@@ -8,6 +8,7 @@ backend/.env.*
 frontend/.env
 frontend/.env.*
 !frontend/.env.example
+deployment/env/.env.production
 
 # ── Dependencies ──
 node_modules/
@@ -25,28 +26,16 @@ frontend/dist/
 logs/
 *.log
 npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-backend.log
-backend-server.log
-backend-errors.log
 
 # ── Backups & database dumps ──
 backups/
 *.sql.gz
-backup.sql
-courtzon.sql
-_schema_dump.sql
-check_user_status.sql
-tables_schema.json
+*.sql.zip
 
 # ── Archives ──
 *.zip
-backend/*.zip
-frontend/*.zip
 
-# ── Docker volumes (if local) ──
+# ── Docker volumes ──
 mysql_data/
 redis_data/
 
@@ -59,50 +48,21 @@ desktop.ini
 .vscode/*
 !.vscode/extensions.json
 .idea/
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
 *.sw?
-
-# ── Misc local files ──
-*.local
-payload.json
-
-# ── Test / scratch scripts (root-level ad-hoc) ──
-__tmp_check_roles.mjs
-tmp_check_db.mjs
-test-db.mjs
-check_users.js
-confirm_slugs.cjs
-confirm_slugs.js
-parse_tables.mjs
-parse_tables.ps1
-dump_city_polys.cjs
-map_egypt_cities.cjs
-
-# ── Seed schema inspection artifacts ──
-database/seed/schema_from_sql.txt
-database/seed/schema_dump_host_3306.txt
-database/seed/schema_dump_docker_3306.txt
-database/seed/columns_from_code.txt
-database/seed/parse_schema.ps1
-database/seed/seed.log
-database/seed/seed_dynamic.log
-
-# ── Cloudflare tunnel temp output ──
-cf-backend-out.txt
-cf-frontend-out.txt
 
 # ── Coverage ──
 coverage/
 *.lcov
 .nyc_output/
 
-# ── Uploads ──
-backend/uploads/
+# ── Uploads (runtime data, never commit) ──
+backend/uploads/*
+!backend/uploads/.gitkeep
 
-# ── Playwright ──
+# ── Runtime temp ──
+backend/tmp/*
+
+# ── Test artifacts ──
 test-results/
 playwright-report/
 blob-report/

@@ -47,7 +47,7 @@ const db = {
   port: process.env.DB_PORT || '3306',
   user: process.env.DB_USER || 'root',
   password: process.env.DB_PASSWORD || '',
-  name: process.env.DB_NAME || 'courtzon_v2',
+  name: process.env.DB_NAME || 'courtzon_v3',
 };
 
 const ENCRYPTION_KEY = process.env.BACKUP_ENCRYPTION_KEY || '';

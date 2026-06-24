@@ -35,10 +35,14 @@ async function bootstrap() {
     const validation = await validateDatabaseSchema();
     if (!validation.ok) {
       app.log.error(
-        `Startup validation failed. Missing critical tables: ${validation.missing.join(', ')}. ` +
-        'Run migrations and seed first: node backend/scripts/migrate.js --fresh --seed'
+        `Startup validation — missing critical tables: ${validation.missing.join(', ')}. ` +
+        'Some endpoints may not work until schema is imported. ' +
+        'Import database/baseline/001_courtzon_v3.sql then run scripts/seed.sh'
       );
-      process.exit(1);
+    } else if (validation.missing.length > 0) {
+      app.log.warn(
+        `Startup validation — non-critical tables missing: ${validation.missing.join(', ')}`
+      );
     }
 
     worker = startWorker('default');

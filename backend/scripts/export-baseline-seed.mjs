@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
- * Export current MySQL data to database/seed/003_baseline_snapshot.sql
- * for use with: node backend/scripts/migrate.js --fresh --seed
+ * Export current MySQL data to database/baseline_snapshot.sql
+ * for use with: node backend/scripts/seed.js --seed-file database/baseline_snapshot.sql
  *
  * Usage:
  *   node backend/scripts/export-baseline-seed.mjs
@@ -15,7 +15,7 @@ import { loadFileEnv, envFrom } from './load-file-env.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const projectRoot = resolve(__dirname, '../..');
-const seedDir = resolve(projectRoot, 'database/seed');
+const seedDir = resolve(projectRoot, 'database/baseline');
 
 const fileEnv = loadFileEnv([
   resolve(projectRoot, '.env'),
@@ -32,7 +32,7 @@ const config = {
   port: Number(envFrom(fileEnv, 'DB_PORT', '3306')),
   user: envFrom(fileEnv, 'DB_USER', 'root'),
   password: envFrom(fileEnv, 'DB_PASSWORD', ''),
-  database: envFrom(fileEnv, 'DB_NAME', 'courtzon_v2'),
+  database: envFrom(fileEnv, 'DB_NAME', 'courtzon_v3'),
 };
 
 /** Tables that must not be snapshotted (volatile / security / rebuild on use). */
@@ -165,19 +165,19 @@ async function main() {
   }
 
   mkdirSync(seedDir, { recursive: true });
-  const outPath = resolve(seedDir, '003_baseline_snapshot.sql');
-  const manifestPath = resolve(seedDir, 'baseline-manifest.json');
+  const outPath = resolve(seedDir, '002_data_snapshot.sql');
+  const manifestPath = resolve(seedDir, 'snapshot-manifest.json');
 
   const stream = createWriteStream(outPath, 'utf8');
   const write = (s) => stream.write(s);
 
   write('-- ============================================================================\n');
-  write('-- COURTZON-V2 : BASELINE SNAPSHOT SEED (auto-generated — do not hand-edit)\n');
+  write('-- COURTZON-V3 : DATA SNAPSHOT (auto-generated — do not hand-edit)\n');
   write(`-- Generated: ${manifest.exportedAt}\n`);
   write('-- Regenerate: node backend/scripts/export-baseline-seed.mjs\n');
-  write('-- Apply:      node backend/scripts/migrate.js --fresh --seed\n');
+  write('-- Apply:      node backend/scripts/seed.js --seed-file database/baseline/002_data_snapshot.sql\n');
   write('-- ============================================================================\n\n');
-  write('USE courtzon_v2;\n\n');
+  write('USE courtzon_v3;\n\n');
   write('SET NAMES utf8mb4;\n');
   write('SET FOREIGN_KEY_CHECKS = 0;\n');
 

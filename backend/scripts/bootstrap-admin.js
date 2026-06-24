@@ -30,7 +30,7 @@ const config = {
   password: env('DB_PASSWORD', ''),
 };
 
-const dbName = env('DB_NAME', 'courtzon_v2');
+const dbName = env('DB_NAME', 'courtzon_v3');
 
 async function hashPassword(password) {
   const salt = randomBytes(16).toString('hex');

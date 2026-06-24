@@ -24,7 +24,7 @@ function getDatabaseConfig() {
     port: process.env.DB_PORT || '3306',
     user: process.env.DB_USER || 'courtzon_app',
     password: process.env.DB_PASSWORD || '',
-    database: process.env.DB_NAME || 'courtzon_v2',
+    database: process.env.DB_NAME || 'courtzon_v3',
   };
 }
 
@@ -80,13 +80,20 @@ export async function runDatabaseBackup(): Promise<void> {
 
     const { stdout: dumpOutput } = await execAsync(dumpCmd, { maxBuffer: 500 * 1024 * 1024 });
 
+    // Strip VIRTUAL generated column org_id_normalized from roles INSERTs
+    // (MySQL 8.0 rejects explicit values for VIRTUAL generated columns on restore)
+    const cleanedDump = dumpOutput.replace(
+      /(?<=INSERT INTO `roles` VALUES\s*)(.*?)(?=;)/gs,
+      (valuesBlock: string) => valuesBlock.replace(/,\d+\)/g, ',DEFAULT)')
+    );
+
     const gzipped = await new Promise<Buffer>((resolve, reject) => {
       const chunks: Buffer[] = [];
       const gzip = createGzip();
       gzip.on('data', (chunk: Buffer) => chunks.push(chunk));
       gzip.on('end', () => resolve(Buffer.concat(chunks)));
       gzip.on('error', reject);
-      gzip.end(dumpOutput);
+      gzip.end(cleanedDump);
     });
 
     let finalFilepath = filepath;

@@ -25,7 +25,7 @@ DB_HOST=${DB_HOST:-127.0.0.1}
 DB_PORT=${DB_PORT:-3306}
 DB_USER=${DB_USER:-courtzon_app}
 DB_PASSWORD=${DB_PASSWORD:-}
-DB_NAME=${DB_NAME:-courtzon_v2}
+DB_NAME=${DB_NAME:-courtzon_v3}
 
 mkdir -p "$BACKUP_DIR"
 

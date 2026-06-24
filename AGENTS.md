@@ -2,11 +2,11 @@
 
 ## CRITICAL: NEVER run destructive DB operations without explicit user approval
 
-- **NEVER** run `migrate.js --fresh` or `migrate.js --fresh --seed` or any seed command unless the user explicitly requests it.
+- **NEVER** run `migrate.sh --fresh` or force-drop/recreate databases unless the user explicitly requests it.
 - **BEFORE** any seeding or data reset, you MUST list the specific tables that will be affected and get the user's explicit agreement.
-- The user's production database lives on the local MySQL (XAMPP, port 3306) — destroying it is NOT acceptable.
-- Use `node backend/scripts/migrate.js` (without `--fresh` or `--seed`) for routine migrations.
+- The production database lives on the local MySQL (XAMPP, port 3306) — destroying it is NOT acceptable (`courtzon_v2`).
 - `docker compose down mysql` also destroys data — do NOT run it without approval.
+- The V3 database name is `courtzon_v3` (Docker default). The production XAMPP database is still `courtzon_v2`.
 
 ## Toast System
 
@@ -34,16 +34,30 @@ The third parameter is an optional action (e.g. "Undo" for delete rollback). Dur
 - Use `'warning'` type + action for delete confirmations when undo is available
 - Wrap every new mutation's `onSuccess` callback with `showToast`
 
-## After creating a DB migration
-1. Add the migration file to `backend/scripts/migrate.js` migration list
-2. Run `node backend/scripts/migrate.js` from the project root
+## Database architecture
 
-## Baseline database seed (resets)
+V3 uses a **single authoritative baseline** — no migration chain.
 
-- **Apply baseline:** `node backend/scripts/migrate.js --fresh --seed` loads `database/seed/003_baseline_snapshot.sql`
-- **Refresh baseline** after meaningful admin/config changes: `node backend/scripts/export-baseline-seed.mjs` (updates `003_baseline_snapshot.sql` + `baseline-manifest.json`)
-- **Legacy seeds:** `--seed-legacy` uses `001`/`002` SQL; `--seed-demo` adds synthetic JS seed modules
-- See `database/seed/README.md` for excluded tables and workflow
+- **Baseline schema:** `database/baseline/001_courtzon_v3.sql` (207 KB, 162 tables)
+- **Seed data:** `database/seeds/001_baseline.sql` (reference data: countries, permissions, roles, amenities, etc.)
+- **Historical migrations:** Archived at `archive/database/schema/` (128 files) — preserved for audit, **never required for deployment**
+- **New migrations:** Place in `database/migrations/` as sequential SQL files. Update baseline after adding them.
+
+### Creating a new DB migration
+1. Add the migration SQL file to `database/migrations/`
+2. Update the baseline by running the full chain against a fresh DB and re-exporting
+3. Run `node backend/scripts/migrate.js` to apply pending migrations (or import the new baseline)
+
+### Applying baseline + seed
+```bash
+# Import schema
+mysql -u root -p courtzon_v3 < database/baseline/001_courtzon_v3.sql
+
+# Import seed data
+mysql -u root -p courtzon_v3 < database/seeds/001_baseline.sql
+```
+
+For Docker: import into `courtzon_v3` database on MySQL container (port 3307).
 
 ## Role permissions
 
@@ -53,7 +67,7 @@ The third parameter is an optional action (e.g. "Undo" for delete rollback). Dur
 
 ## ⚠️ Mandatory: Always rebuild & recreate Docker after changes
 
-**Whenever you change backend TS, database schema/seed, `docker-compose*.yml`, Dockerfiles, `nginx.conf`, or any code that the Docker stack serves — you MUST run this before finishing the task (do not skip on Windows):**
+**Whenever you change backend TS, database schema/seed, `docker-compose.yml`, Dockerfiles, `nginx.conf`, or any code that the Docker stack serves — you MUST run this before finishing the task (do not skip on Windows):**
 
 ```bash
 docker compose build backend frontend
@@ -63,12 +77,10 @@ docker compose up -d
 - Use `up -d`, **NOT** `docker compose restart` — restart keeps the old image.
 - If only backend changed: `docker compose build backend && docker compose up -d backend`
 - If only Docker frontend/nginx changed: `docker compose build frontend && docker compose up -d frontend`
-- After `docker-compose.monitoring.yml` changes: `docker compose -f docker-compose.monitoring.yml up -d`
 
 ## After modifying backend code (TypeScript) or database files
-- Backend runs inside Docker on port 3000
-- Dev compose (`docker-compose.dev.yml`) mounts `./backend/src` but file watch may not propagate on Windows → still run full rebuild per rule above
-- Migrations run on container start via `docker-entrypoint.sh`
+- Backend runs inside Docker on port 3000. HMR does not apply inside Docker — rebuild per rule above.
+- The startup-validator checks `database/baseline/001_courtzon_v3.sql` at startup (baseline must exist in the image).
 
 ## After modifying frontend code
 - **Docker UI** (http://localhost:5173): rebuild frontend image — Vite HMR does not apply inside the Nginx container
@@ -92,23 +104,27 @@ docker compose up -d
 ## Starting services
 - Docker services: `docker compose up -d` from project root
 - Local frontend: `npm run dev` in `frontend/`
-- Monitoring stack: `docker compose -f docker-compose.monitoring.yml up -d`
+- The Docker stack includes MySQL (3307), Redis (6379), Backend (3000), Frontend (5173)
+
+## Scripts
+- **Backup:** `scripts/backup.sh` (Linux/Coolify) or `node backend/scripts/backup.js`
+- **Restore:** `scripts/restore.sh` or `node backend/scripts/restore.js <file>`
+- **Migrate:** `node backend/scripts/migrate.js [--fresh] [--status]`
+- **Seed:** `node backend/scripts/seed.js [--seed-file <file>]`
+- **Emergency repair:** `node backend/scripts/emergency-repair.js`
 
 ## Security / Production Commands
 - Setup database users: `mysql -u root -p < backend/scripts/setup-db-users.sql`
-- Run migrations: `node backend/scripts/migrate.js`
-- Run security migrations: `node backend/scripts/migrate.js` (includes 029, 030)
 - Run npm audit: `npm audit --audit-level=high` in `backend/` or `frontend/`
 - Security scan: `trivy image courtzon-backend:latest`
 
 ## Key Security Files
 - CORS/CSP/Helmet config: `backend/src/app.ts`
+- Frontend CSP: `frontend/nginx.conf` (Content-Security-Policy header)
 - Brute-force protection: `backend/src/modules/brute-force/application/brute-force.service.ts`
 - Audit logging: `backend/src/modules/audit-log/`
 - Upload hardening: `backend/src/modules/upload/application/upload.service.ts`
 - DB users script: `backend/scripts/setup-db-users.sql`
-- Security migrations: `database/schema/029_security_indexes.sql`, `030_session_device_fingerprint.sql`
-- Monitoring: `docker-compose.monitoring.yml`, `monitoring/`
 - Production hardening doc: `docs/production-hardening.md`
 
 ## Full theme / Appearance Studio

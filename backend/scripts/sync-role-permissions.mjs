@@ -37,10 +37,10 @@ const conn = await mysql.createConnection({
   port: Number(env('DB_PORT', '3306')),
   user: env('DB_USER', 'root'),
   password: env('DB_PASSWORD', ''),
-  database: env('DB_NAME', 'courtzon_v2'),
+  database: env('DB_NAME', 'courtzon_v3'),
 });
 
-console.log(`Connected to ${env('DB_NAME', 'courtzon_v2')}${prune ? ' (prune on)' : ''}`);
+console.log(`Connected to ${env('DB_NAME', 'courtzon_v3')}${prune ? ' (prune on)' : ''}`);
 
 const [permissions] = await conn.execute(
   'SELECT id, permission_key FROM permissions ORDER BY permission_key',
