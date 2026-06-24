@@ -52,6 +52,7 @@ services:
       DB_PORT: 3306
       REDIS_HOST: redis
       REDIS_PORT: 6379
+      RELAX_RATE_LIMIT: "true"
     depends_on:
       mysql:
         condition: service_healthy
