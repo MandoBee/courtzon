@@ -24,6 +24,9 @@ COPY database/ database/
 RUN test -f database/baseline/001_courtzon_v3.sql || test -f database/migrations/.gitkeep || echo "No baseline or migrations found"
 
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+COPY backend/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
 RUN chown -R appuser:appgroup /app
 USER appuser
 

@@ -61,7 +61,7 @@ services:
     volumes:
       - ./backend/uploads:/app/uploads
       - backend_backups:/app/backups
-      - ./backend/docker-entrypoint.sh:/usr/local/bin/docker-entrypoint.sh:ro
+
 
   frontend:
     build:
