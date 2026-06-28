@@ -1,0 +1,5 @@
+# Normalize all text files (auto-detect)
+* text=auto
+
+# Ensure shell scripts always use LF line endings — CRLF shebangs break container execution
+*.sh text eol=lf
