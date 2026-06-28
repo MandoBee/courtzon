@@ -112,10 +112,22 @@ export async function syncManifestIcons() {
     }
     manifest.icons = icons;
 
+    if (manifest.screenshots) {
+      manifest.screenshots = manifest.screenshots.map(
+        (sc: { src: string; sizes?: string; type?: string; form_factor?: string; label?: string }) => ({
+          ...sc,
+          src: toAbsoluteUrl(sc.src),
+        }),
+      );
+    }
+
     if (manifest.shortcuts) {
       manifest.shortcuts = manifest.shortcuts.map((s: { name: string; url: string; icons?: unknown[] }) => ({
         ...s,
         url: toAbsoluteUrl(s.url),
+        ...(s.icons
+          ? { icons: (s.icons as { src: string; sizes?: string; type?: string }[]).map((ic) => ({ ...ic, src: toAbsoluteUrl(ic.src) })) }
+          : {}),
       }));
     }
 
