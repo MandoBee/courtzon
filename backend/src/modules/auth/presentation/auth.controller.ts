@@ -289,9 +289,11 @@ export async function errorHandler(error: Error, _request: FastifyRequest, reply
       details: formatZodErrorDetails(error),
     });
   }
-  _request.log.error(error, 'Unhandled error');
-  return reply.status(500).send({
+  _request.log.error(error, 'Unhandled error in auth module');
+  const statusCode = (error as any).statusCode ?? 500;
+  const msg = error.message || 'Internal server error';
+  return reply.status(statusCode).send({
     error: 'INTERNAL_ERROR',
-    message: 'An unexpected error occurred',
+    message: msg,
   });
 }
