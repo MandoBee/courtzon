@@ -9,7 +9,7 @@ import { recordAudit } from '../../audit-log/index.js';
 
 const ALLOWED_MIME_TYPES = [
   'image/jpeg', 'image/png', 'image/webp', 'image/gif',
-  'image/heic', 'image/heif', 'application/pdf',
+  'image/heic', 'image/heif', 'image/avif', 'application/pdf',
 ];
 
 const BLOCKED_EXTENSIONS = [
@@ -57,6 +57,7 @@ class UploadService {
 
   private validateMagicBytes(buffer: Buffer, mimeType: string): void {
     const header = buffer.slice(0, 8).toString('hex').toLowerCase();
+    const header4_12 = buffer.slice(4, 12).toString('hex').toLowerCase();
     const signatureMap: Record<string, string[]> = {
       'image/jpeg': ['ffd8ffe0', 'ffd8ffe1', 'ffd8ffe2', 'ffd8ffe3', 'ffd8ffe8'],
       'image/png': ['89504e47'],
@@ -64,13 +65,14 @@ class UploadService {
       'image/gif': ['47494638'],
       'image/heic': ['00000018', '0000001c'],
       'image/heif': ['00000018', '0000001c'],
+      'image/avif': ['6674797061766966', '6674797061766973'],
       'application/pdf': ['25504446'],
     };
 
     const validSignatures = signatureMap[mimeType];
     if (!validSignatures) return;
-
-    const matched = validSignatures.some(sig => header.startsWith(sig));
+    const checkBuf = mimeType === 'image/avif' ? header4_12 : header;
+    const matched = validSignatures.some(sig => checkBuf.startsWith(sig));
     if (!matched) {
       throw Object.assign(new Error('File content does not match declared MIME type'), { statusCode: 400 });
     }

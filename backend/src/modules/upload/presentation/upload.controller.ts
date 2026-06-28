@@ -5,7 +5,7 @@ import { organisationRepository } from '../../organisations/infrastructure/repos
 
 const ALLOWED_MIME = [
   'image/jpeg', 'image/png', 'image/webp', 'image/gif',
-  'image/heic', 'image/heif', 'application/pdf',
+  'image/heic', 'image/heif', 'image/avif', 'application/pdf',
 ];
 
 async function readFileBody(request: FastifyRequest): Promise<{ buffer: Buffer; mimeType: string; originalName: string }> {

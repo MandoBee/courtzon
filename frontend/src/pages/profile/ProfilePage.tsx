@@ -411,6 +411,9 @@ export default function ProfilePage() {
       formData.append('file', file);
       const r = await api.post('/upload/avatar', formData);
       setValue('avatarUrl', r.data.url);
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || err?.message || 'Upload failed';
+      showToast(msg, 'error');
     } finally {
       setUploading(false);
     }
