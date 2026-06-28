@@ -38,7 +38,7 @@ function probeImageSize(src: string): Promise<{ width: number; height: number } 
 
 async function manifestIconEntry(
   url: string,
-  fallbackSize: number,
+  _fallbackSize: number,
   purpose?: string,
 ): Promise<ManifestIcon | null> {
   if (!url.trim()) return null;
@@ -48,9 +48,8 @@ async function manifestIconEntry(
     return { src, sizes: 'any', type, ...(purpose ? { purpose } : {}) };
   }
   const dims = await probeImageSize(src);
-  const w = dims?.width ?? fallbackSize;
-  const h = dims?.height ?? fallbackSize;
-  return { src, sizes: `${w}x${h}`, type, ...(purpose ? { purpose } : {}) };
+  if (!dims) return null;
+  return { src, sizes: `${dims.width}x${dims.height}`, type, ...(purpose ? { purpose } : {}) };
 }
 
 function applyFaviconLink(href: string, mode: 'light' | 'dark') {
@@ -103,11 +102,13 @@ export async function syncManifestIcons() {
       if (icon512Maskable) icons.push(icon512Maskable);
     }
     if (icons.length === 0) {
-      icons.push({
-        src: toAbsoluteUrl('/favicon.svg'),
-        sizes: 'any',
-        type: 'image/svg+xml',
-      });
+      icons.push(
+        { src: toAbsoluteUrl('/icon-192.png'), sizes: '192x192', type: 'image/png', purpose: 'any' },
+        { src: toAbsoluteUrl('/icon-192.png'), sizes: '192x192', type: 'image/png', purpose: 'maskable' },
+        { src: toAbsoluteUrl('/icon-512.png'), sizes: '512x512', type: 'image/png', purpose: 'any' },
+        { src: toAbsoluteUrl('/icon-512.png'), sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+        { src: toAbsoluteUrl('/favicon.svg'), sizes: 'any', type: 'image/svg+xml' },
+      );
     }
     manifest.icons = icons;
 
