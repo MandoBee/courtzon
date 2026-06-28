@@ -27,6 +27,7 @@ RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 COPY backend/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
+RUN mkdir -p /app/uploads && chown -R appuser:appgroup /app/uploads && chmod -R 777 /app/uploads
 RUN chown -R appuser:appgroup /app
 USER appuser
 
