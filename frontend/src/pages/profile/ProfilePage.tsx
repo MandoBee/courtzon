@@ -407,13 +407,17 @@ export default function ProfilePage() {
   const handleUpload = async (file: File) => {
     setUploading(true);
     try {
+      console.warn('[avatar] uploading', { name: file.name, type: file.type, size: file.size });
       const formData = new FormData();
       formData.append('file', file);
       const r = await api.post('/upload/avatar', formData);
       setValue('avatarUrl', r.data.url);
+      showToast('Avatar uploaded!');
     } catch (err: any) {
-      const msg = err?.response?.data?.message || err?.message || 'Upload failed';
-      showToast(msg, 'error');
+      const serverMsg = err?.response?.data?.message;
+      const full = JSON.stringify(err?.response?.data || {});
+      console.error('[avatar] upload failed', { status: err?.response?.status, serverMsg, full });
+      showToast(serverMsg || err?.message || 'Upload failed', 'error');
     } finally {
       setUploading(false);
     }
