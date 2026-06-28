@@ -1,22 +1,30 @@
 import { mkdirSync, chmodSync, writeFileSync, unlinkSync, existsSync } from 'node:fs';
-import { join, dirname } from 'node:path';
+import { join, dirname, resolve } from 'node:path';
 import type { StorageProvider, StoredFile } from './storage-provider.interface.js';
 
-const DIR_MODE = 0o777;
+const DIR_MODE = 0o775;
 
 export class LocalStorageProvider implements StorageProvider {
   private baseDir: string;
   private urlPrefix: string;
+  private resolvedBaseDir: string;
 
   constructor(baseDir: string, urlPrefix = '/uploads') {
     this.baseDir = baseDir;
     this.urlPrefix = urlPrefix;
+    this.resolvedBaseDir = resolve(baseDir);
     mkdirSync(baseDir, { recursive: true, mode: DIR_MODE });
     try { chmodSync(baseDir, DIR_MODE); } catch { /* bind mount may restrict chmod */ }
   }
 
   async save(buffer: Buffer, relativePath: string, mimeType: string): Promise<StoredFile> {
     const fullPath = join(this.baseDir, relativePath);
+    const resolvedPath = resolve(fullPath);
+
+    if (!resolvedPath.startsWith(this.resolvedBaseDir + '/') && resolvedPath !== this.resolvedBaseDir) {
+      throw Object.assign(new Error('Path traversal denied'), { statusCode: 400 });
+    }
+
     const dir = dirname(fullPath);
     mkdirSync(dir, { recursive: true, mode: DIR_MODE });
     try { chmodSync(dir, DIR_MODE); } catch { /* bind mount may restrict chmod */ }
@@ -31,6 +39,10 @@ export class LocalStorageProvider implements StorageProvider {
 
   async delete(relativePath: string): Promise<void> {
     const fullPath = join(this.baseDir, relativePath);
+    const resolvedPath = resolve(fullPath);
+    if (!resolvedPath.startsWith(this.resolvedBaseDir + '/') && resolvedPath !== this.resolvedBaseDir) {
+      throw Object.assign(new Error('Path traversal denied'), { statusCode: 400 });
+    }
     if (existsSync(fullPath)) {
       unlinkSync(fullPath);
     }

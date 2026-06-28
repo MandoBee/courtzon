@@ -3,17 +3,20 @@ set -e
 
 # ── Fix bind-mounted uploads directory permissions ──────────────────
 # Docker creates bind mount source dirs as root:root with mode 0755.
-# The container runs as root during entrypoint, so we fix permissions
+# The container runs as root during entrypoint, so we fix ownership
 # BEFORE dropping privileges to appuser.
+# Dirs: 775 (rwxrwxr-x) — owner+group can traverse and create files.
+# Files: 664 (rw-rw-r--) — owner+group can read/write, others read-only.
 UP="/app/uploads"
 if [ -d "$UP" ]; then
   chown -R appuser:appgroup "$UP" 2>/dev/null || true
-  chmod -R 777 "$UP" 2>/dev/null || true
-  echo "Uploads permissions fixed for $UP"
+  find "$UP" -type d -exec chmod 775 {} \; 2>/dev/null || true
+  find "$UP" -type f -exec chmod 664 {} \; 2>/dev/null || true
+  echo "Uploads permissions fixed for $UP (dirs:775, files:664)"
 else
   mkdir -p "$UP"
   chown appuser:appgroup "$UP"
-  chmod 777 "$UP"
+  chmod 775 "$UP"
 fi
 
 echo "Waiting for MySQL..."
