@@ -60,11 +60,16 @@ export default defineConfig(({ command }) => ({
           },
           {
             // Public read-heavy catalog data — serve stale while revalidating.
-            urlPattern: ({ url, request }: { url: URL; request: Request }) =>
-              request.method === 'GET' && /^\/(branches|marketplace\/products|coaches|academies|tournaments|sports|organisations|public)(\/|\?|$)/.test(url.pathname + url.search),
+            // Geo detection is excluded (always fetch fresh) to avoid stale location data.
+            urlPattern: ({ url, request }: { url: URL; request: Request }) => {
+              if (request.method !== 'GET') return false;
+              const path = url.pathname + url.search;
+              if (path.startsWith('/public/geo')) return false;
+              return /^\/(branches|marketplace\/products|coaches|academies|tournaments|sports|organisations|public)(\/|\?|$)/.test(path);
+            },
             handler: 'StaleWhileRevalidate',
             options: {
-              cacheName: 'cz-read-cache',
+              cacheName: 'cz-read-cache-v2',
               expiration: { maxEntries: 120, maxAgeSeconds: 60 * 30 },
               cacheableResponse: { statuses: [0, 200] },
             },
