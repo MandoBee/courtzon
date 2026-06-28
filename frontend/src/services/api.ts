@@ -26,6 +26,9 @@ const api = axios.create({
 });
 
 api.interceptors.request.use((config) => {
+  if (config.data instanceof FormData) {
+    delete config.headers['Content-Type'];
+  }
   const fingerprint = localStorage.getItem('device_fingerprint');
   if (fingerprint) {
     config.headers['X-Device-Fingerprint'] = fingerprint;
