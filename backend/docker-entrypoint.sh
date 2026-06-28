@@ -1,6 +1,21 @@
 #!/bin/sh
 set -e
 
+# ── Fix bind-mounted uploads directory permissions ──────────────────
+# Docker creates bind mount source dirs as root:root with mode 0755.
+# The container runs as root during entrypoint, so we fix permissions
+# BEFORE dropping privileges to appuser.
+UP="/app/uploads"
+if [ -d "$UP" ]; then
+  chown -R appuser:appgroup "$UP" 2>/dev/null || true
+  chmod -R 777 "$UP" 2>/dev/null || true
+  echo "Uploads permissions fixed for $UP"
+else
+  mkdir -p "$UP"
+  chown appuser:appgroup "$UP"
+  chmod 777 "$UP"
+fi
+
 echo "Waiting for MySQL..."
 until nc -z "$DB_HOST" "$DB_PORT" 2>/dev/null; do
   sleep 1
@@ -44,5 +59,5 @@ else
   echo "Database has $_TABLE_COUNT tables — initialization skipped."
 fi
 
-echo "Starting backend..."
-exec "$@"
+echo "Starting backend as appuser..."
+exec su-exec appuser:appgroup "$@"

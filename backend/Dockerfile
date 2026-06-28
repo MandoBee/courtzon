@@ -13,7 +13,7 @@ FROM node:22-alpine AS runner
 
 WORKDIR /app
 
-RUN apk add --no-cache tini netcat-openbsd mysql-client
+RUN apk add --no-cache tini su-exec netcat-openbsd mysql-client
 
 COPY backend/package.json backend/package-lock.json ./
 RUN npm ci --omit=dev --ignore-scripts && npm cache clean --force
@@ -27,9 +27,11 @@ RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 COPY backend/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
-RUN mkdir -p /app/uploads && chown -R appuser:appgroup /app/uploads && chmod -R 777 /app/uploads
 RUN chown -R appuser:appgroup /app
-USER appuser
+
+# Entrypoint runs as root, fixes bind-mounted uploads permissions at startup,
+# then drops privileges to appuser via su-exec.
+# USER is deliberately NOT set here — the entrypoint handles the switch.
 
 ENV NODE_ENV=production
 EXPOSE 3000
