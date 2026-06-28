@@ -15,12 +15,25 @@ echo "Redis is ready."
 
 echo "Checking database state..."
 _PASS="${DB_PASSWORD:-${MYSQL_ROOT_PASSWORD:-}}"
-_MYSQL="mysql -h $DB_HOST -P $DB_PORT -u $DB_USER -p$_PASS --skip-ssl"
+_MYSQL="/usr/bin/mariadb -h $DB_HOST -P $DB_PORT -u $DB_USER -p$_PASS --skip-ssl"
 _TABLE_COUNT=$($_MYSQL -N -e \
   "SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA='$DB_NAME'" 2>/dev/null)
+_SUPER_ADMIN=$($_MYSQL "$DB_NAME" -N -e \
+  "SELECT COUNT(*) FROM roles WHERE slug='super_admin'" 2>/dev/null)
 
-if [ "$_TABLE_COUNT" = "0" ] || [ -z "$_TABLE_COUNT" ]; then
-  echo "Empty database detected. Importing baseline schema..."
+_NEEDS_INIT=false
+if [ -z "$_TABLE_COUNT" ] || [ "$_TABLE_COUNT" = "0" ]; then
+  _NEEDS_INIT=true
+elif [ "$_SUPER_ADMIN" != "1" ]; then
+  echo "Database has $_TABLE_COUNT tables but seed data is missing — re-importing."
+  _NEEDS_INIT=true
+fi
+
+if [ "$_NEEDS_INIT" = true ]; then
+  echo "Dropping and recreating database..."
+  $_MYSQL -e "DROP DATABASE IF EXISTS \`$DB_NAME\`; CREATE DATABASE \`$DB_NAME\`;"
+
+  echo "Importing baseline schema..."
   $_MYSQL "$DB_NAME" < /app/database/baseline/001_courtzon_v3.sql
   echo "Baseline schema imported."
 
