@@ -111,6 +111,7 @@ export async function healthStorage(): Promise<{
   status: string; uploadDir: string; writable: boolean; freeDiskMb: number; error?: string;
 }> {
   try {
+    const { statfsSync } = await import('node:fs');
     const uploadDir = join(import.meta.dirname, '..', '..', '..', 'uploads');
     accessSync(uploadDir, constants.F_OK);
     let writable = true;
@@ -119,12 +120,16 @@ export async function healthStorage(): Promise<{
     } catch {
       writable = false;
     }
-    const freeMemMb = Math.round(freemem() / 1024 / 1024);
+    let freeDiskMb = 0;
+    try {
+      const s = statfsSync(uploadDir);
+      freeDiskMb = Math.round((s.bsize * s.bavail) / (1024 * 1024));
+    } catch { /* statfs may not be available */ }
     return {
       status: writable ? 'ok' : 'degraded',
       uploadDir,
       writable,
-      freeDiskMb: freeMemMb,
+      freeDiskMb,
     };
   } catch (err: any) {
     return {

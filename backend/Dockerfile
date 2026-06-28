@@ -27,6 +27,7 @@ RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 COPY backend/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
+RUN date -u +"%Y-%m-%dT%H:%M:%SZ" > /app/build-time.txt
 RUN chown -R appuser:appgroup /app
 
 # Entrypoint runs as root, fixes bind-mounted uploads permissions at startup,

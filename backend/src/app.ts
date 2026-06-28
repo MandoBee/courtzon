@@ -261,6 +261,20 @@ app.get("/health/storage", async (_request, reply) => {
   return reply.status(result.status === 'down' ? 503 : 200).send(result);
 });
 
+app.get("/health/version", async (_request, reply) => {
+  const { readFileSync } = await import('node:fs');
+  let buildTime = 'unknown';
+  try { buildTime = readFileSync('/app/build-time.txt', 'utf-8').trim(); } catch { /* ignore */ }
+  return reply.send({
+    buildTime,
+    nodeVersion: process.version,
+    user: process.getuid?.() ?? 'unknown',
+    pid: process.pid,
+    ppid: process.ppid,
+    storageProvider: process.env.STORAGE_PROVIDER || 'local',
+  });
+});
+
 registerMetrics(app);
 
 app.register(authRoutes);

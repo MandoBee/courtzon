@@ -23,112 +23,176 @@ async function readFileBody(request: FastifyRequest): Promise<{ buffer: Buffer; 
 }
 
 export async function uploadFileHandler(request: FastifyRequest, reply: FastifyReply) {
-  const params = request.params as { entityType: string; entityId: string; fileCategory: string };
-  const userId = (request as any).userId;
+  try {
+    const params = request.params as { entityType: string; entityId: string; fileCategory: string };
+    const userId = (request as any).userId;
 
-  const SAFE_ENTITY_TYPES = ['user', 'sport', 'coach', 'product', 'blog'];
-  const RESTRICTED_ENTITY_TYPES = ['organisation', 'organization', 'branch', 'resource'];
+    const SAFE_ENTITY_TYPES = ['user', 'sport', 'coach', 'product', 'blog'];
+    const RESTRICTED_ENTITY_TYPES = ['organisation', 'organization', 'branch', 'resource'];
 
-  if (RESTRICTED_ENTITY_TYPES.includes(params.entityType.toLowerCase())) {
-    return reply.status(403).send({ error: 'FORBIDDEN', message: 'Use the dedicated upload endpoint for this entity type' });
+    if (RESTRICTED_ENTITY_TYPES.includes(params.entityType.toLowerCase())) {
+      return reply.status(403).send({ error: 'FORBIDDEN', message: 'Use the dedicated upload endpoint for this entity type' });
+    }
+
+    if (params.entityType.toLowerCase() === 'user' && parseInt(params.entityId) !== userId) {
+      return reply.status(403).send({ error: 'FORBIDDEN', message: 'Cannot upload for another user' });
+    }
+
+    if (!SAFE_ENTITY_TYPES.includes(params.entityType.toLowerCase())) {
+      return reply.status(400).send({ error: 'VALIDATION_ERROR', message: `Unsupported entity type: ${params.entityType}` });
+    }
+
+    const { buffer, mimeType, originalName } = await readFileBody(request);
+    const result = await uploadService.upload(
+      buffer, mimeType, originalName,
+      params.entityType, parseInt(params.entityId), params.fileCategory,
+    );
+    return reply.status(201).send(result);
+  } catch (err: any) {
+    const status = err.statusCode ?? 500;
+    return reply.status(status).send({
+      error: status === 400 ? 'VALIDATION_ERROR' : 'INTERNAL_ERROR',
+      message: err.message ?? 'Upload failed',
+      details: err.details,
+    });
   }
-
-  if (params.entityType.toLowerCase() === 'user' && parseInt(params.entityId) !== userId) {
-    return reply.status(403).send({ error: 'FORBIDDEN', message: 'Cannot upload for another user' });
-  }
-
-  if (!SAFE_ENTITY_TYPES.includes(params.entityType.toLowerCase())) {
-    return reply.status(400).send({ error: 'VALIDATION_ERROR', message: `Unsupported entity type: ${params.entityType}` });
-  }
-
-  const { buffer, mimeType, originalName } = await readFileBody(request);
-
-  const result = await uploadService.upload(
-    buffer, mimeType, originalName,
-    params.entityType, parseInt(params.entityId), params.fileCategory,
-  );
-
-  return reply.status(201).send(result);
 }
 
 export async function uploadOrgLogo(request: FastifyRequest, reply: FastifyReply) {
-  const orgId = parseInt((request.params as any).orgId);
-  const { buffer, mimeType, originalName } = await readFileBody(request);
-
-  const result = await uploadService.replaceEntityFile(
-    buffer, mimeType, originalName, 'organisation', orgId, 'logo',
-    { maxWidth: 512, maxHeight: 512, fit: 'cover' },
-  );
-  if (orgId > 0) {
-    await organisationRepository.update(orgId, { logo_url: result.url });
+  try {
+    const orgId = parseInt((request.params as any).orgId);
+    const { buffer, mimeType, originalName } = await readFileBody(request);
+    const result = await uploadService.replaceEntityFile(
+      buffer, mimeType, originalName, 'organisation', orgId, 'logo',
+      { maxWidth: 512, maxHeight: 512, fit: 'cover' },
+    );
+    if (orgId > 0) {
+      await organisationRepository.update(orgId, { logo_url: result.url });
+    }
+    return reply.status(201).send(result);
+  } catch (err: any) {
+    const status = err.statusCode ?? 500;
+    return reply.status(status).send({
+      error: status === 400 ? 'VALIDATION_ERROR' : 'INTERNAL_ERROR',
+      message: err.message ?? 'Upload failed',
+      details: err.details,
+    });
   }
-  return reply.status(201).send(result);
 }
 
 export async function uploadOrgCover(request: FastifyRequest, reply: FastifyReply) {
-  const orgId = parseInt((request.params as any).orgId);
-  const { buffer, mimeType, originalName } = await readFileBody(request);
-
-  const result = await uploadService.replaceEntityFile(
-    buffer, mimeType, originalName, 'organisation', orgId, 'cover',
-    { maxWidth: 1920, maxHeight: 600, fit: 'cover' },
-  );
-  if (orgId > 0) {
-    await organisationRepository.update(orgId, { cover_url: result.url });
+  try {
+    const orgId = parseInt((request.params as any).orgId);
+    const { buffer, mimeType, originalName } = await readFileBody(request);
+    const result = await uploadService.replaceEntityFile(
+      buffer, mimeType, originalName, 'organisation', orgId, 'cover',
+      { maxWidth: 1920, maxHeight: 600, fit: 'cover' },
+    );
+    if (orgId > 0) {
+      await organisationRepository.update(orgId, { cover_url: result.url });
+    }
+    return reply.status(201).send(result);
+  } catch (err: any) {
+    const status = err.statusCode ?? 500;
+    return reply.status(status).send({
+      error: status === 400 ? 'VALIDATION_ERROR' : 'INTERNAL_ERROR',
+      message: err.message ?? 'Upload failed',
+      details: err.details,
+    });
   }
-  return reply.status(201).send(result);
 }
 
 export async function uploadOrgDocument(request: FastifyRequest, reply: FastifyReply) {
-  const orgId = parseInt((request.params as any).orgId);
-  const { buffer, mimeType, originalName } = await readFileBody(request);
-
-  const result = await uploadService.upload(
-    buffer, mimeType, originalName, 'organisation', orgId, 'document',
-  );
-  return reply.status(201).send(result);
+  try {
+    const orgId = parseInt((request.params as any).orgId);
+    const { buffer, mimeType, originalName } = await readFileBody(request);
+    const result = await uploadService.upload(
+      buffer, mimeType, originalName, 'organisation', orgId, 'document',
+    );
+    return reply.status(201).send(result);
+  } catch (err: any) {
+    const status = err.statusCode ?? 500;
+    return reply.status(status).send({
+      error: status === 400 ? 'VALIDATION_ERROR' : 'INTERNAL_ERROR',
+      message: err.message ?? 'Upload failed',
+      details: err.details,
+    });
+  }
 }
 
 export async function uploadBranchImage(request: FastifyRequest, reply: FastifyReply) {
-  const branchId = parseInt((request.params as any).branchId);
-  const { buffer, mimeType, originalName } = await readFileBody(request);
-
-  const result = await uploadService.upload(
-    buffer, mimeType, originalName, 'branch', branchId, 'gallery',
-  );
-  return reply.status(201).send(result);
+  try {
+    const branchId = parseInt((request.params as any).branchId);
+    const { buffer, mimeType, originalName } = await readFileBody(request);
+    const result = await uploadService.upload(
+      buffer, mimeType, originalName, 'branch', branchId, 'gallery',
+    );
+    return reply.status(201).send(result);
+  } catch (err: any) {
+    const status = err.statusCode ?? 500;
+    return reply.status(status).send({
+      error: status === 400 ? 'VALIDATION_ERROR' : 'INTERNAL_ERROR',
+      message: err.message ?? 'Upload failed',
+      details: err.details,
+    });
+  }
 }
 
 export async function uploadResourceImage(request: FastifyRequest, reply: FastifyReply) {
-  const resourceId = parseInt((request.params as any).resourceId);
-  const { buffer, mimeType, originalName } = await readFileBody(request);
-
-  const result = await uploadService.upload(
-    buffer, mimeType, originalName, 'resource', resourceId, 'gallery',
-  );
-  return reply.status(201).send(result);
+  try {
+    const resourceId = parseInt((request.params as any).resourceId);
+    const { buffer, mimeType, originalName } = await readFileBody(request);
+    const result = await uploadService.upload(
+      buffer, mimeType, originalName, 'resource', resourceId, 'gallery',
+    );
+    return reply.status(201).send(result);
+  } catch (err: any) {
+    const status = err.statusCode ?? 500;
+    return reply.status(status).send({
+      error: status === 400 ? 'VALIDATION_ERROR' : 'INTERNAL_ERROR',
+      message: err.message ?? 'Upload failed',
+      details: err.details,
+    });
+  }
 }
 
 export async function uploadAvatarHandler(request: FastifyRequest, reply: FastifyReply) {
-  const userId = (request as any).userId;
-  const { buffer, mimeType, originalName } = await readFileBody(request);
+  try {
+    const userId = (request as any).userId;
+    const { buffer, mimeType, originalName } = await readFileBody(request);
 
-  const result = await uploadService.replaceEntityFile(
-    buffer, mimeType, originalName, 'user', userId, 'avatar',
-    { maxWidth: 400, maxHeight: 400, fit: 'cover' },
-  );
-  return reply.status(201).send(result);
+    const result = await uploadService.replaceEntityFile(
+      buffer, mimeType, originalName, 'user', userId, 'avatar',
+      { maxWidth: 400, maxHeight: 400, fit: 'cover' },
+    );
+    return reply.status(201).send(result);
+  } catch (err: any) {
+    const status = err.statusCode ?? 500;
+    return reply.status(status).send({
+      error: status === 400 ? 'VALIDATION_ERROR' : 'INTERNAL_ERROR',
+      message: err.message ?? 'Upload failed',
+      details: err.details,
+    });
+  }
 }
 
 export async function uploadSportIconHandler(request: FastifyRequest, reply: FastifyReply) {
-  const sportId = parseInt((request.params as any).sportId);
-  const { buffer, mimeType, originalName } = await readFileBody(request);
-
-  const result = await uploadService.replaceEntityFile(
-    buffer, mimeType, originalName, 'sport', sportId, 'icon',
-    { maxWidth: 128, maxHeight: 128, fit: 'cover' },
-  );
-  return reply.status(201).send(result);
+  try {
+    const sportId = parseInt((request.params as any).sportId);
+    const { buffer, mimeType, originalName } = await readFileBody(request);
+    const result = await uploadService.replaceEntityFile(
+      buffer, mimeType, originalName, 'sport', sportId, 'icon',
+      { maxWidth: 128, maxHeight: 128, fit: 'cover' },
+    );
+    return reply.status(201).send(result);
+  } catch (err: any) {
+    const status = err.statusCode ?? 500;
+    return reply.status(status).send({
+      error: status === 400 ? 'VALIDATION_ERROR' : 'INTERNAL_ERROR',
+      message: err.message ?? 'Upload failed',
+      details: err.details,
+    });
+  }
 }
 
 export async function getUploadsByEntity(request: FastifyRequest, reply: FastifyReply) {
