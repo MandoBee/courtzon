@@ -307,7 +307,7 @@ export default function ProfilePage() {
     setCoachCertUploading(true);
     const formData = new FormData();
     formData.append('file', file);
-    api.post('/upload/coach-cert', formData, { headers: { 'Content-Type': 'multipart/form-data' } })
+    api.post('/upload/coach-cert', formData)
       .then((r) => {
         const result = r.data;
         const name = file.name.replace(/\.[^/.]+$/, '');
@@ -409,9 +409,7 @@ export default function ProfilePage() {
     try {
       const formData = new FormData();
       formData.append('file', file);
-      const r = await api.post('/upload/avatar', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
+      const r = await api.post('/upload/avatar', formData);
       setValue('avatarUrl', r.data.url);
     } finally {
       setUploading(false);

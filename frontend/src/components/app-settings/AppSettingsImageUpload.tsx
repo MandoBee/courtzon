@@ -34,9 +34,7 @@ export default function AppSettingsImageUpload({
     mutationFn: (file: File) => {
       const fd = new FormData();
       fd.append('file', file);
-      return api.post(`/admin/app-settings/upload/${assetType}`, fd, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
+      return api.post(`/admin/app-settings/upload/${assetType}`, fd);
     },
     onSuccess: (res: any) => {
       const url = res.data?.data?.url ?? '';

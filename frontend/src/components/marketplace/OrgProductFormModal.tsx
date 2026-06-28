@@ -186,7 +186,7 @@ export default function OrgProductFormModal({ open, onClose, orgId: _orgId, edit
         c.toBlob(async (b) => {
           if (!b) return reject(new Error('Blob error'));
           const fd = new FormData(); fd.append('file', b, 'prod.webp');
-          const res = await api.post('/upload/marketplace/0/product-image', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+          const res = await api.post('/upload/marketplace/0/product-image', fd);
           resolve(res.data.url as string);
         }, 'image/webp', 0.8);
       };

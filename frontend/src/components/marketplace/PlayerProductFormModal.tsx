@@ -122,7 +122,7 @@ export default function PlayerProductFormModal({ product, onClose, onSaved }: Pr
     try {
       const fd = new FormData();
       fd.append('file', file);
-      const r = await api.post('/upload/marketplace/0/product-image', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+      const r = await api.post('/upload/marketplace/0/product-image', fd);
       setImages((prev) => [...prev, r.data.url]);
     } catch {
       showToast('Upload failed', 'error');

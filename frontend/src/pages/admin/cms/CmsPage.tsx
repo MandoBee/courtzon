@@ -375,7 +375,7 @@ function MediaManager() {
       formData.append('file', file);
       formData.append('mediaType', 'image');
       formData.append('category', 'cms');
-      await api.post('/cms/media/upload', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
+      await api.post('/cms/media/upload', formData);
       queryClient.invalidateQueries({ queryKey });
     } catch (err) {
       showToast(getErrorMessage(err, 'Upload failed'), 'error');

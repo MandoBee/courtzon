@@ -170,7 +170,7 @@ function CoachProfileTab({ profile, sportsList, user, queryClient, showToast }: 
     setUploading(true);
     const formData = new FormData();
     formData.append('file', file);
-    api.post('/upload/coach-cert', formData, { headers: { 'Content-Type': 'multipart/form-data' } })
+    api.post('/upload/coach-cert', formData)
       .then((r) => {
         const result = r.data;
         const name = file.name.replace(/\.[^/.]+$/, '');

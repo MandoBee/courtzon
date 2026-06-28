@@ -453,9 +453,7 @@ export default function OrganisationForm({ orgId, context, onClose, initialTab, 
     fd.append('file', file);
     const category = field === 'logoFile' ? 'logo' : 'cover';
     try {
-      const res = await api.post(`/organisations/${orgId}/${category}`, fd, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
+      const res = await api.post(`/organisations/${orgId}/${category}`, fd);
       const url = res.data?.url ?? '';
       set(field, file);
       set(previewField, url);
@@ -475,9 +473,7 @@ export default function OrganisationForm({ orgId, context, onClose, initialTab, 
     const fd = new FormData();
     fd.append('file', file);
     try {
-      const res = await api.post(`/organisations/${orgId}/documents`, fd, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
+      const res = await api.post(`/organisations/${orgId}/documents`, fd);
       const url = res.data?.url ?? '';
       set('documents', [...form.documents, { file, preview: url, name: file.name }]);
       showToast('Document uploaded');
@@ -811,7 +807,7 @@ export default function OrganisationForm({ orgId, context, onClose, initialTab, 
                         for (const f of Array.from(files)) {
                           const fd = new FormData(); fd.append('file', f);
                           try {
-                            const res = await api.post('/upload', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+                            const res = await api.post('/upload', fd);
                             urls.push(res.data.url);
                           } catch { /* skip */ }
                         }

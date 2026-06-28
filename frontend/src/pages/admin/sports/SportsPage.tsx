@@ -97,9 +97,7 @@ export default function SportsPage() {
     try {
       const formData = new FormData();
       formData.append('file', file);
-      const res = await api.post('/upload/sport-icon', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
+      const res = await api.post('/upload/sport-icon', formData);
       setIcon(res.data.iconUrl);
     } catch {
       // ignore upload errors

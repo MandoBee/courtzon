@@ -252,7 +252,7 @@ export default function ProductCategoriesPage() {
                     const blob = await compressImage(file);
                     const fd = new FormData();
                     fd.append('file', blob, 'category.webp');
-                    const res = await api.post('/upload/marketplace/0/product-image', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+                    const res = await api.post('/upload/marketplace/0/product-image', fd);
                     setImageUrl(res.data.url);
                   } catch { alert('Failed to upload image'); }
                   setUploading(false);

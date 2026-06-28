@@ -95,7 +95,7 @@ export default function AdminProductEditModal({ product, onClose }: Props) {
     try {
       const fd = new FormData();
       fd.append('file', file);
-      const r = await api.post('/upload/marketplace/0/product-image', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+      const r = await api.post('/upload/marketplace/0/product-image', fd);
       setImages((prev) => [...prev, r.data.url]);
     } catch { setUploading(false); }
     finally { setUploading(false); }

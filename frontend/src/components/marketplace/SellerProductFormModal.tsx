@@ -143,7 +143,7 @@ export default function SellerProductFormModal({ open, onClose, editId, sports, 
     mutationFn: async (file: Blob) => {
       const fd = new FormData();
       fd.append('file', file, 'product.webp');
-      const res = await api.post('/upload/marketplace/0/product-image', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+      const res = await api.post('/upload/marketplace/0/product-image', fd);
       return res.data.url as string;
     },
   });

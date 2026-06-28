@@ -111,9 +111,7 @@ export default function ContactFormBlock({ title, subtitle }: ContactFormBlockPr
       for (const file of files) {
         fd.append('attachments', file);
       }
-      return api.post('/public/contact', fd, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
+      return api.post('/public/contact', fd);
     },
     onSuccess: () => {
       showToast('Your message has been sent successfully.');

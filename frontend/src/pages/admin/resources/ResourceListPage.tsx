@@ -282,7 +282,7 @@ export default function ResourceListPage() {
                   const urls: string[] = [];
                   for (const f of Array.from(files) as File[]) {
                     const fd = new FormData(); fd.append('file', f);
-                    try { const res = await api.post('/upload', fd, { headers: { 'Content-Type': 'multipart/form-data' } }); urls.push(res.data.url); } catch { /* skip */ }
+                    try { const res = await api.post('/upload', fd); urls.push(res.data.url); } catch { /* skip */ }
                   }
                   setForm(f => ({ ...f, images: [...f.images, ...urls] }));
                 }} className="w-full" />
