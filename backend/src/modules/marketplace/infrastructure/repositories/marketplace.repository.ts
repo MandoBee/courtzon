@@ -156,6 +156,91 @@ export const marketplaceRepository = {
     return rows[0] || null;
   },
 
+  /** Batch product lookup by IDs — avoids N+1 in checkout */
+  async findProductsByIds(ids: number[]) {
+    if (!ids.length) return [];
+    const pool = getPool();
+    const placeholders = ids.map(() => '?').join(',');
+    const [rows] = await pool.execute<RowData>(
+      `SELECT p.*, pc.name as category_name,
+              COALESCE(o.name, u_player.full_name) as shop_name,
+              COALESCE(o.owner_id, p.seller_user_id) as seller_user_id,
+              COALESCE(o.phone, u_player.phone_number) as seller_phone,
+              COALESCE(ot.slug, 'player') as org_type_slug,
+              u_player.full_name as seller_full_name,
+              b.name as brand_name
+       FROM products p
+       LEFT JOIN product_categories pc ON p.category_id = pc.id
+       LEFT JOIN organisations o ON p.seller_id = o.id AND p.seller_type = 'org'
+       LEFT JOIN organisation_types ot ON o.org_type_id = ot.id
+       LEFT JOIN users u_org ON o.owner_id = u_org.id
+       LEFT JOIN users u_player ON p.seller_user_id = u_player.id AND p.seller_type = 'player'
+       LEFT JOIN brands b ON p.brand_id = b.id
+       WHERE p.id IN (${placeholders}) AND p.deleted_at IS NULL`,
+      ids,
+    );
+    return rows;
+  },
+
+  /** Batch variant lookup by product IDs */
+  async findVariantsForProducts(productIds: number[]) {
+    if (!productIds.length) return [];
+    const pool = getPool();
+    const placeholders = productIds.map(() => '?').join(',');
+    const [rows] = await pool.execute<RowData>(
+      `SELECT * FROM product_variants WHERE product_id IN (${placeholders}) AND is_active = TRUE ORDER BY sort_order ASC`,
+      productIds,
+    );
+    return rows;
+  },
+
+  /** Batch seller stats */
+  async adminGetSellerStatsBatch(orgIds: number[]) {
+    if (!orgIds.length) return {};
+    const pool = getPool();
+    const placeholders = orgIds.map(() => '?').join(',');
+    const rows = await Promise.all([
+      pool.execute<RowData>(`SELECT seller_id, COUNT(*) as cnt FROM products WHERE seller_id IN (${placeholders}) AND deleted_at IS NULL GROUP BY seller_id`, orgIds),
+      pool.execute<RowData>(`SELECT seller_id, COUNT(*) as cnt FROM products WHERE seller_id IN (${placeholders}) AND deleted_at IS NULL AND status = 'active' GROUP BY seller_id`, orgIds),
+      pool.execute<RowData>(`SELECT oi.seller_id, COUNT(*) as cnt, COALESCE(SUM(oi.total_price), 0) as revenue FROM order_items oi JOIN orders o ON o.id = oi.order_id WHERE oi.seller_id IN (${placeholders}) AND o.status = 'delivered' GROUP BY oi.seller_id`, orgIds),
+    ]);
+    const [products, active, delivered] = rows as any[];
+    const result: Record<number, any> = {};
+    for (const id of orgIds) {
+      const p = products[0].find((r: any) => r.seller_id === id);
+      const a = active[0].find((r: any) => r.seller_id === id);
+      const d = delivered[0].find((r: any) => r.seller_id === id);
+      result[id] = {
+        total_products: p?.cnt ?? 0,
+        active_products: a?.cnt ?? 0,
+        total_orders: d?.cnt ?? 0,
+        total_revenue: d?.revenue ?? 0,
+      };
+    }
+    return result;
+  },
+
+  /** Batch active subscriptions by org IDs */
+  async findActiveSubscriptionsBatch(orgIds: number[]) {
+    if (!orgIds.length) return {};
+    const pool = getPool();
+    const placeholders = orgIds.map(() => '?').join(',');
+    const [rows] = await pool.execute<RowData>(
+      `SELECT os.*, sp.plan_name, sp.applicable_org_types
+       FROM organisation_subscriptions os
+       JOIN subscription_plans sp ON os.plan_id = sp.id
+       WHERE os.organisation_id IN (${placeholders}) AND os.subscription_status = 'active'
+         AND (os.end_date IS NULL OR os.end_date >= CURDATE())
+       ORDER BY os.created_at DESC`,
+      orgIds,
+    );
+    const map: Record<number, any> = {};
+    for (const r of rows as any[]) {
+      if (!map[r.organisation_id]) map[r.organisation_id] = r;
+    }
+    return map;
+  },
+
   async createProduct(data: any) {
     const pool = getPool();
     const [result] = await pool.execute(

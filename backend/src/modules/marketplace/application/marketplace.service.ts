@@ -293,16 +293,27 @@ export const marketplaceService = {
     const cartItems = await repo.findCartByUser(userId);
     if (!cartItems.length) throw new ConflictError('Cart is empty');
 
+    // ── Batch pre-fetch: all products + variants in 2 queries ──
+    const productIds = [...new Set(cartItems.map((i: any) => i.product_id))];
+    const allProducts = await repo.findProductsByIds(productIds);
+    const allVariants = await repo.findVariantsForProducts(productIds);
+    const productMap = new Map<number, any>(allProducts.map((p: any) => [p.id, p]));
+    const variantMap = new Map<number, any[]>(); // productId → variants[]
+    for (const v of allVariants as any[]) {
+      if (!variantMap.has(v.product_id)) variantMap.set(v.product_id, []);
+      variantMap.get(v.product_id)!.push(v);
+    }
+
     const seenSellers = new Map<number, { sellerId: number; commission: number; rateType: 'percentage' | 'fixed' }>();
     const sellerShares = new Map<number, number>();
 
     for (const item of cartItems) {
-      const product = await repo.findProductById(item.product_id);
+      const product = productMap.get(item.product_id);
       if (!product || product.status !== 'active') {
         throw new ConflictError(`Product "${item.name}" is no longer available`);
       }
       if (item.variant_id) {
-        const variants = await repo.findVariants(item.product_id);
+        const variants = variantMap.get(item.product_id) || [];
         const variant = variants.find((v: any) => v.id === item.variant_id);
         if (!variant || variant.quantity < item.quantity) {
           throw new ConflictError(`Insufficient stock for "${item.name}" variant`);
@@ -402,8 +413,9 @@ export const marketplaceService = {
       estimatedDeliveryDate,
     });
 
+    // ── Second pass: create order items using pre-fetched product map ──
     for (const item of cartItems) {
-      const product = await repo.findProductById(item.product_id);
+      const product = productMap.get(item.product_id)!; // guaranteed to exist from first pass
       const sellerInfo = seenSellers.get(product.seller_id)!;
       const basePrice = Number(item.price) || 0;
       const discPrice = item.discounted_price ? Number(item.discounted_price) : null;
@@ -433,11 +445,10 @@ export const marketplaceService = {
       await repo.recordCouponUsage(couponId, userId, orderId);
     }
 
-    // Decrement stock
+    // ── Decrement stock using pre-fetched product map ──
     for (const item of cartItems) {
       await repo.decrementStock(item.product_id, item.variant_id || undefined, item.quantity);
-      // Record inventory deduction ledger entry
-      const product = await repo.findProductById(item.product_id);
+      const product = productMap.get(item.product_id);
       if (product) {
         await repo.insertLedgerEntry({
           orderId, organisationId: product.seller_id,
@@ -1226,10 +1237,16 @@ export const marketplaceService = {
 
   async adminListSellers(filters: { search?: string; orgType?: string; page: number; limit: number }) {
     const result = await repo.adminFindSellerOrgs(filters);
-    const enriched = await Promise.all((result.data || []).map(async (org: any) => {
-      const stats = await repo.adminGetSellerStats(org.id);
-      const sub = await repo.findActiveSubscription(org.id);
-      return { ...org, stats, subscription: sub || null };
+    const orgIds = (result.data || []).map((org: any) => org.id);
+    // Batch: 2 queries instead of N×2
+    const [statsMap, subsMap] = await Promise.all([
+      repo.adminGetSellerStatsBatch(orgIds),
+      repo.findActiveSubscriptionsBatch(orgIds),
+    ]);
+    const enriched = (result.data || []).map((org: any) => ({
+      ...org,
+      stats: statsMap[org.id] || { total_products: 0, active_products: 0, total_orders: 0, total_revenue: 0 },
+      subscription: subsMap[org.id] || null,
     }));
     return { ...result, data: enriched };
   },

@@ -63,36 +63,35 @@ class CouponService {
     // Get assigned entities to notify
     const assignments = await couponAssignmentRepository.findByCouponId(id);
 
-    // Send notifications to org users for each assignment
-    for (const a of assignments) {
-      if (a.entity_type === 'organisation') {
-        await this.notifyOrgUsers(a.entity_id, coupon, publishedBy);
+    // Batch fetch all org users and create notifications
+    const orgIds = assignments.filter((a: any) => a.entity_type === 'organisation').map((a: any) => a.entity_id);
+    if (orgIds.length) {
+      const pool = (await import('../../../database/mysql.js')).getPool();
+      const placeholders = orgIds.map(() => '?').join(',');
+      const [users] = await pool.execute(
+        `SELECT u.id, ou.organisation_id FROM users u
+         JOIN organisation_users ou ON ou.user_id = u.id
+         WHERE ou.organisation_id IN (${placeholders})
+           AND ou.role IN ('admin', 'manager')
+         GROUP BY u.id, ou.organisation_id`,
+        orgIds,
+      );
+      // Batch create notifications
+      const notifTitle = 'New Coupon Published';
+      const notifBody = `Coupon "${coupon.code}" (${coupon.discount_value}${coupon.discount_type === 'percentage' ? '%' : '$'} off) is now available.`;
+      for (const u of users as any[]) {
+        await notificationService.createNotification({
+          userId: u.id,
+          title: notifTitle,
+          body: notifBody,
+          categorySlug: 'promotions',
+          actionKey: 'view_coupon',
+          actionPayload: { couponId: coupon.id, orgId: u.organisation_id },
+        });
       }
     }
 
     return { success: true, message: 'Coupon published and notifications sent' };
-  }
-
-  private async notifyOrgUsers(orgId: number, coupon: any, publishedBy: number) {
-    const pool = (await import('../../../database/mysql.js')).getPool();
-    const [users] = await pool.execute(
-      `SELECT u.id FROM users u
-       JOIN organisation_users ou ON ou.user_id = u.id
-       WHERE ou.organisation_id = ?
-         AND ou.role IN ('admin', 'manager')
-       GROUP BY u.id`,
-      [orgId],
-    );
-    for (const u of users as any[]) {
-      await notificationService.createNotification({
-        userId: u.id,
-        title: 'New Coupon Published',
-        body: `Coupon "${coupon.code}" (${coupon.discount_value}${coupon.discount_type === 'percentage' ? '%' : '$'} off) is now available for your organisation.`,
-        categorySlug: 'promotions',
-        actionKey: 'view_coupon',
-        actionPayload: { couponId: coupon.id, orgId },
-      });
-    }
   }
 }
 
