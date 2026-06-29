@@ -41,8 +41,8 @@ export class SharpProcessor {
       withoutEnlargement: true,
     });
 
-    if (opts.stripMetadata) {
-      pipeline = pipeline.keepMetadata();
+    if (!opts.stripMetadata) {
+      pipeline = pipeline.withMetadata();
     }
 
     if (opts.keepTransparency && (hasAlpha || metadata.format === 'png')) {

@@ -10,16 +10,26 @@ const ALLOWED_MIME = [
 
 async function readFileBody(request: FastifyRequest): Promise<{ buffer: Buffer; mimeType: string; originalName: string }> {
   const file = await request.file();
-  if (!file) throw Object.assign(new Error('No file uploaded'), { statusCode: 400 });
+  if (!file) throw Object.assign(new Error('No file uploaded — expected multipart field with a file'), { statusCode: 400 });
   if (!ALLOWED_MIME.includes(file.mimetype)) {
-    throw Object.assign(new Error('Unsupported file type'), { statusCode: 400 });
+    throw Object.assign(new Error(`Unsupported file type: ${file.mimetype}`), { statusCode: 400 });
   }
 
   const chunks: Buffer[] = [];
   for await (const chunk of file.file) {
     chunks.push(chunk);
   }
-  return { buffer: Buffer.concat(chunks), mimeType: file.mimetype, originalName: file.filename };
+  const buffer = Buffer.concat(chunks);
+
+  console.warn('[upload:readFileBody]', {
+    originalname: file.filename,
+    mimetype: file.mimetype,
+    fieldname: file.fieldname,
+    size: buffer.length,
+    firstBytesHex: buffer.slice(0, 16).toString('hex'),
+  });
+
+  return { buffer, mimeType: file.mimetype, originalName: file.filename };
 }
 
 export async function uploadFileHandler(request: FastifyRequest, reply: FastifyReply) {

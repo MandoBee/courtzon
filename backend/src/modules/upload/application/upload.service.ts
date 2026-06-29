@@ -56,25 +56,50 @@ class UploadService {
   }
 
   private validateMagicBytes(buffer: Buffer, mimeType: string): void {
-    const header = buffer.slice(0, 8).toString('hex').toLowerCase();
+    if (buffer.length < 4) {
+      throw Object.assign(new Error(`File too small (${buffer.length} bytes) — expected at least 4 bytes for MIME detection`), { statusCode: 400 });
+    }
+
+    const header8 = buffer.slice(0, 8).toString('hex').toLowerCase();
     const header4_12 = buffer.slice(4, 12).toString('hex').toLowerCase();
-    const signatureMap: Record<string, string[]> = {
-      'image/jpeg': ['ffd8ffe0', 'ffd8ffe1', 'ffd8ffe2', 'ffd8ffe3', 'ffd8ffe8'],
-      'image/png': ['89504e47'],
-      'image/webp': ['52494646'],
-      'image/gif': ['47494638'],
-      'image/heic': ['00000018', '0000001c'],
-      'image/heif': ['00000018', '0000001c'],
-      'image/avif': ['6674797061766966', '6674797061766973'],
-      'application/pdf': ['25504446'],
+    const header8_12 = buffer.slice(8, 12).toString('hex').toLowerCase();
+
+    // JPEG: check SOI marker FF D8 FF followed by any valid marker byte.
+    // Many JPEGs have APP0 (JFIF, E0) or APP1 (EXIF, E1) after SOI, but encoders
+    // like Sharp put DQT (DB) right after SOI — all are valid JPEG structures.
+    const isValidJpegMarker4th = (byte: string): boolean => {
+      const b = parseInt(byte, 16);
+      return (b >= 0xC0 && b <= 0xCF) || (b >= 0xE0 && b <= 0xEF) || [0xDB, 0xDD, 0xFE].includes(b);
     };
 
-    const validSignatures = signatureMap[mimeType];
-    if (!validSignatures) return;
-    const checkBuf = mimeType === 'image/avif' ? header4_12 : header;
-    const matched = validSignatures.some(sig => checkBuf.startsWith(sig));
+    const signatureMap: Record<string, (h8: string, h4_12: string, h8_12: string) => boolean> = {
+      'image/jpeg': (h8) => h8.startsWith('ffd8ff') && isValidJpegMarker4th(h8.substring(6, 8)),
+      'image/png': (h8) => h8.startsWith('89504e47'),
+      'image/webp': (h8, _h4_12, h8_12) => h8.startsWith('52494646') && h8_12.startsWith('57454250'),
+      'image/gif': (h8) => h8.startsWith('47494638'),
+      'image/heic': (_h8, h4_12) => h4_12.startsWith('66747970') && (h4_12.startsWith('66747970686569') || h4_12.startsWith('6674797068656978') || h4_12.startsWith('667479706865696d') || h4_12.startsWith('6674797068656973') || h4_12.startsWith('667479706d696631')),
+      'image/heif': (_h8, h4_12) => h4_12.startsWith('66747970') && (h4_12.startsWith('667479706d696631') || h4_12.startsWith('6674797068656963') || h4_12.startsWith('6674797068656978')),
+      'image/avif': (_h8, h4_12) => h4_12.startsWith('66747970') && (h4_12.startsWith('6674797061766966') || h4_12.startsWith('6674797061766973')),
+      'application/pdf': (h8) => h8.startsWith('25504446'),
+    };
+
+    const validator = signatureMap[mimeType];
+    if (!validator) return;
+
+    const matched = validator(header8, header4_12, header8_12);
     if (!matched) {
-      throw Object.assign(new Error('File content does not match declared MIME type'), { statusCode: 400 });
+      console.warn('[upload:validateMagicBytes] MISMATCH', {
+        declaredMime: mimeType,
+        bufferLength: buffer.length,
+        headerFirst8: header8,
+        headerBytes4to12: header4_12,
+        headerBytes8to12: header8_12,
+        first16BytesHex: buffer.slice(0, 16).toString('hex'),
+        first16BytesAscii: buffer.slice(0, 16).toString('ascii').replace(/[^\x20-\x7E]/g, '.'),
+      });
+      throw Object.assign(new Error(
+        `File content does not match declared MIME type: detected magic bytes do not correspond to ${mimeType}`
+      ), { statusCode: 400, details: { declaredMime: mimeType, detectedHeader: header8 } });
     }
   }
 
