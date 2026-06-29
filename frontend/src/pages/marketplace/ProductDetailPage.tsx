@@ -66,20 +66,18 @@ export default function ProductDetailPage() {
   if (!product) return <div className="text-center py-8">Product not found</div>;
 
   const images = (() => {
-    try {
-      const parsed = JSON.parse(product.images || '[]');
-      return Array.isArray(parsed) ? parsed : [];
-    } catch { return []; }
+    try { return JSON.parse(product.images || '[]'); } catch { return []; }
   })();
 
-  const variantsArr = Array.isArray(product.variants) ? product.variants : [];
   const variantsByType: Record<string, any[]> = {};
-  for (const v of variantsArr) {
-    if (!variantsByType[v.variant_type]) variantsByType[v.variant_type] = [];
-    variantsByType[v.variant_type].push(v);
+  if (product.variants) {
+    for (const v of product.variants) {
+      if (!variantsByType[v.variant_type]) variantsByType[v.variant_type] = [];
+      variantsByType[v.variant_type].push(v);
+    }
   }
 
-  const selectedVariantObj = variantsArr.find((v: any) => v.id === selectedVariant);
+  const selectedVariantObj = product.variants?.find((v: any) => v.id === selectedVariant);
   const basePrice = Number(product.price);
   const discPrice = product.discounted_price ? Number(product.discounted_price) : null;
   const adjustment = Number(selectedVariantObj?.price_adjustment || 0);

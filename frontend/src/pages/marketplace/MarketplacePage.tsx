@@ -47,8 +47,14 @@ export default function MarketplacePage() {
       if (tagIds.length) params.tagIds = tagIds.join(',');
       if (inStockOnly) params.stockStatus = 'in_stock';
       if (gender.length && gender.length < 3) params.gender = gender.join(',');
-      return api.get('/marketplace/products', { params }).then((r) => r.data);
+      return api.get('/marketplace/products', { params }).then((r) => {
+        const d = r.data;
+        if (!d || !Array.isArray(d.data)) throw new Error('Invalid response: expected { data: [...] }');
+        return d;
+      });
     },
+    retry: false,
+    staleTime: 30000,
   });
 
   const { data: wishlist } = useQuery({
@@ -67,9 +73,8 @@ export default function MarketplacePage() {
     queryFn: () => api.get('/marketplace/player/status').then((r) => r.data),
   });
 
-  const wishlistArr = Array.isArray(wishlist) ? wishlist : [];
-  const wishlistIds = new Set(wishlistArr.map((w: { product_id: number }) => w.product_id));
-  const wishlistCount = wishlistArr.length;
+  const wishlistIds = new Set((wishlist || []).map((w: { product_id: number }) => w.product_id));
+  const wishlistCount = (wishlist || []).length;
   const cartCount = cart?.items?.length || 0;
 
   const toggleWishlist = useMutation({
@@ -242,7 +247,7 @@ export default function MarketplacePage() {
             </div>
           ) : (
             <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
-              {(Array.isArray(products.data) ? products.data : []).map((p: {
+              {products.data.map((p: {
                 id: number; name: string; images?: string; price: string | number;
                 discounted_price?: string | number; currency_code: string; quantity: number;
                 shop_name?: string; seller_phone?: string; seller_full_name?: string; org_type_slug?: string;
