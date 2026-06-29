@@ -1,13 +1,13 @@
 import type mysql from 'mysql2/promise';
 import { getPool } from '../../../../database/mysql.js';
+import { buildPagination, paginationClause } from '../../../../shared/utils/pagination.js';
 
 type RowData = mysql.RowDataPacket[];
 
 export const withdrawalRequestRepository = {
   async findAll(filters: { status?: string; from?: string; to?: string; page: number; limit: number }) {
     const pool = getPool();
-    if (!filters.page || filters.page < 1) filters.page = 1;
-    if (!filters.limit || filters.limit < 1) filters.limit = 20;
+    const pag = buildPagination(filters.page, filters.limit);
 
     let sql = `SELECT wr.*, u.full_name as user_name, u.email as user_email,
                bfd.bank_account_number as account_number, bfd.bank_name
@@ -19,23 +19,16 @@ export const withdrawalRequestRepository = {
     if (filters.status) { sql += ' AND wr.status = ?'; params.push(filters.status); }
     if (filters.from) { sql += ' AND wr.created_at >= ?'; params.push(filters.from); }
     if (filters.to) { sql += ' AND wr.created_at <= ?'; params.push(filters.to); }
-    sql += ' ORDER BY wr.created_at DESC';
 
     const countSql = `SELECT COUNT(*) as cnt FROM withdrawal_requests wr WHERE 1=1${
       filters.status ? ' AND wr.status = ?' : ''
     }${filters.from ? ' AND wr.created_at >= ?' : ''}${filters.to ? ' AND wr.created_at <= ?' : ''}`;
     const countParams = [...params];
-    console.warn('[repo:findAll] countSql:', countSql, 'params:', JSON.stringify(countParams));
     const [countRows] = await pool.execute<RowData>(countSql, countParams);
     const total = Number((countRows[0] as any).cnt);
 
-    const offset = (filters.page - 1) * filters.limit;
-    // MySQL prepared statements do not support parameterised LIMIT/OFFSET — interpolate safely.
-    const pagedSql = `${sql} LIMIT ${Number(filters.limit)} OFFSET ${Number(offset)}`;
-    console.warn('[repo:findAll] mainSql:', pagedSql, 'params:', JSON.stringify(params));
-    const [rows] = await pool.execute<RowData>(pagedSql, params);
-    console.warn('[repo:findAll] returned', rows.length, 'rows');
-    return { data: rows, total, page: filters.page, limit: filters.limit };
+    const [rows] = await pool.execute<RowData>(`${sql} ORDER BY wr.created_at DESC${paginationClause(pag)}`, params);
+    return { data: rows, total, page: pag.page, limit: pag.limit };
   },
 
   async findById(id: number) {

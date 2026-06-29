@@ -3,6 +3,7 @@ import { rbacRepository } from '../../rbac/infrastructure/repositories/rbac.repo
 import {
   NotFoundError,
 } from '../../../shared/errors/app-error.js';
+import { buildPagination, paginationClause } from '../../../shared/utils/pagination.js';
 
 type RowData = import('mysql2').RowDataPacket[];
 
@@ -24,7 +25,7 @@ export class ApprovalService {
 
     if (where.length === 0) where.push('1 = 1');
 
-    const offset = (filters.page - 1) * filters.limit;
+    const pag = buildPagination(filters.page, filters.limit);
 
     const [countRows] = await pool.execute<RowData>(
       `SELECT COUNT(*) as total FROM organisation_upgrade_requests r WHERE ${where.join(' AND ')}`,
@@ -44,9 +45,8 @@ export class ApprovalService {
        JOIN users u ON u.id = r.requested_by
        LEFT JOIN subscription_plans sp ON sp.id = r.requested_plan_id
        WHERE ${where.join(' AND ')}
-       ORDER BY r.created_at DESC
-       LIMIT ? OFFSET ?`,
-      [...params, String(filters.limit), String(offset)]
+       ORDER BY r.created_at DESC${paginationClause(pag)}`,
+      params,
     );
 
     return { data: rows, total, page: filters.page, limit: filters.limit };

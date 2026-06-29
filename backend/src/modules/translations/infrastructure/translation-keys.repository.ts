@@ -1,5 +1,6 @@
 import type mysql from 'mysql2/promise';
 import { getPool } from '../../../database/mysql.js';
+import { buildPagination, paginationClause } from '../../../shared/utils/pagination.js';
 
 type RowData = mysql.RowDataPacket[];
 
@@ -16,8 +17,8 @@ export interface TranslationKeyRow {
 export const translationKeysRepository = {
   async listPaginated(opts: { page: number; limit: number; search?: string; module?: string; elementType?: string }) {
     const pool = getPool();
-    const { page, limit, search, module, elementType } = opts;
-    const offset = (page - 1) * limit;
+    const { search, module, elementType } = opts;
+    const pag = buildPagination(opts.page, opts.limit);
     let where = 'WHERE 1=1';
     const params: any[] = [];
     if (search) {
@@ -38,10 +39,10 @@ export const translationKeysRepository = {
     );
     const total = Number((countRows[0] as { total: number }).total);
     const [rows] = await pool.execute<RowData>(
-      `SELECT * FROM translation_keys ${where} ORDER BY \`key\` LIMIT ? OFFSET ?`,
-      [...params, limit, offset]
+      `SELECT * FROM translation_keys ${where} ORDER BY \`key\`${paginationClause(pag)}`,
+      params,
     );
-    return { rows: rows as TranslationKeyRow[], total, page, limit };
+    return { rows: rows as TranslationKeyRow[], total, page: pag.page, limit: pag.limit };
   },
 
   async listAllKeys(): Promise<string[]> {

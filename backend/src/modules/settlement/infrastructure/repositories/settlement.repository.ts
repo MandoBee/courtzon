@@ -1,5 +1,6 @@
 import type mysql from 'mysql2/promise';
 import { getPool } from '../../../../database/mysql.js';
+import { buildPagination, paginationClause } from '../../../../shared/utils/pagination.js';
 
 type RowData = mysql.RowDataPacket[];
 
@@ -140,19 +141,18 @@ export const settlementRepository = {
     );
     const total = (countRows[0] as any).total;
 
-    const offset = (filters.page - 1) * filters.limit;
+    const pag = buildPagination(filters.page, filters.limit);
     const [rows] = await pool.execute<RowData>(
       `SELECT s.*, o.name as organisation_name,
               (SELECT COUNT(*) FROM settlement_orders so WHERE so.settlement_id = s.id) as order_count
        FROM settlements s
        JOIN organisations o ON o.id = s.organisation_id
        ${where}
-       ORDER BY s.requested_at DESC
-       LIMIT ? OFFSET ?`,
-      [...params, filters.limit, offset],
+       ORDER BY s.requested_at DESC${paginationClause(pag)}`,
+      params,
     );
 
-    return { data: rows, total, page: filters.page, limit: filters.limit };
+    return { data: rows, total, page: pag.page, limit: pag.limit };
   },
 
   async findOrgSettlements(orgId: number, page: number, limit: number) {

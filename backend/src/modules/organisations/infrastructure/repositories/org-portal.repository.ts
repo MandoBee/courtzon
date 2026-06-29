@@ -1,6 +1,7 @@
 import type mysql from 'mysql2/promise';
 import { getPool } from '../../../../database/mysql.js';
 import { ValidationError } from '../../../../shared/errors/app-error.js';
+import { buildPagination, paginationClause } from '../../../../shared/utils/pagination.js';
 
 type RowData = mysql.RowDataPacket[];
 
@@ -78,9 +79,7 @@ export async function getOrgBookings(orgId: number, filters?: {
   const [countRows] = await pool.execute<RowData>(`SELECT COUNT(*) as total FROM bookings b${where}`, params);
   const total = (countRows[0] as any).total;
 
-  const page = filters?.page || 1;
-  const limit = filters?.limit || 20;
-  const offset = (page - 1) * limit;
+  const pag = buildPagination(filters?.page, filters?.limit);
 
   const [rows] = await pool.execute<RowData>(
     `SELECT b.*,
@@ -91,8 +90,8 @@ export async function getOrgBookings(orgId: number, filters?: {
      JOIN resources res ON res.id = b.resource_id
      JOIN branches br ON br.id = b.branch_id
      ${where}
-     ORDER BY b.created_at DESC LIMIT ? OFFSET ?`,
-    [...params, limit, offset]
+     ORDER BY b.created_at DESC${paginationClause(pag)}`,
+    params,
   );
 
   return { rows, total };
@@ -552,9 +551,7 @@ export async function listSubscriptionUpgradeRequests(filters?: { status?: strin
     params.push(filters.status);
   }
   const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
-  const page = filters?.page || 1;
-  const limit = filters?.limit || 20;
-  const offset = (page - 1) * limit;
+  const pag = buildPagination(filters?.page, filters?.limit);
 
   const [countRows] = await pool.execute<RowData>(`SELECT COUNT(*) as total FROM organisation_upgrade_requests our ${where}`, params);
   const total = (countRows[0] as any).total;
@@ -567,11 +564,10 @@ export async function listSubscriptionUpgradeRequests(filters?: { status?: strin
      JOIN users u ON u.id = our.requested_by
      LEFT JOIN subscription_plans sp ON sp.id = our.requested_plan_id
      ${where}
-     ORDER BY our.created_at DESC
-     LIMIT ? OFFSET ?`,
-    [...params, limit, offset],
+     ORDER BY our.created_at DESC${paginationClause(pag)}`,
+    params,
   );
-  return { rows, total, page, limit };
+  return { rows, total, page: pag.page, limit: pag.limit };
 }
 
 export async function approveSubscriptionUpgrade(requestId: number, adminId: number) {
@@ -643,7 +639,7 @@ export async function rejectSubscriptionUpgrade(requestId: number, adminId: numb
 
 export async function getOrgProducts(orgId: number, page = 1, limit = 20, sportId?: number, status?: string, branchId?: number) {
   const pool = getPool();
-  const offset = (page - 1) * limit;
+  const pag = buildPagination(page, limit);
   const conditions = ['seller_id = ?', 'deleted_at IS NULL'];
   const params: any[] = [orgId];
   if (sportId) { conditions.push('sport_id = ?'); params.push(sportId); }
@@ -655,20 +651,19 @@ export async function getOrgProducts(orgId: number, page = 1, limit = 20, sportI
      FROM products p
      LEFT JOIN product_categories pc ON pc.id = p.category_id
      WHERE p.${conditions.join(' AND p.')}
-     ORDER BY p.created_at DESC
-     LIMIT ? OFFSET ?`,
-    [...params, limit, offset]
+     ORDER BY p.created_at DESC${paginationClause(pag)}`,
+    params,
   );
   const [countRows] = await pool.execute<RowData>(
     `SELECT COUNT(*) as total FROM products WHERE ${where}`,
     params
   );
-  return { data: rows, total: countRows[0]?.total || 0, page, limit };
+  return { data: rows, total: countRows[0]?.total || 0, page: pag.page, limit: pag.limit };
 }
 
 export async function getOrgTransactions(orgId: number, page = 1, limit = 20) {
   const pool = getPool();
-  const offset = (page - 1) * limit;
+  const pag = buildPagination(page, limit);
   const [countRows] = await pool.execute<RowData>(
     `SELECT COUNT(*) as total FROM transaction_entries te
      JOIN transactions t ON t.id = te.transaction_id
@@ -689,16 +684,15 @@ export async function getOrgTransactions(orgId: number, page = 1, limit = 20) {
      WHERE t.id IN (
        SELECT DISTINCT transaction_id FROM transaction_entries WHERE organisation_id = ?
      )
-     ORDER BY t.created_at DESC, te.id
-     LIMIT ? OFFSET ?`,
-    [orgId, limit, offset]
+     ORDER BY t.created_at DESC, te.id${paginationClause(pag)}`,
+    [orgId],
   );
-  return { data: rows, total, page, limit };
+  return { data: rows, total, page: pag.page, limit: pag.limit };
 }
 
 export async function getOrgSettlements(orgId: number, page = 1, limit = 20) {
   const pool = getPool();
-  const offset = (page - 1) * limit;
+  const pag = buildPagination(page, limit);
   const [countRows] = await pool.execute<RowData>(
     `SELECT COUNT(*) as total FROM settlements WHERE organisation_id = ?`,
     [orgId]
@@ -710,11 +704,10 @@ export async function getOrgSettlements(orgId: number, page = 1, limit = 20) {
      LEFT JOIN settlement_orders so ON so.settlement_id = s.id
      WHERE s.organisation_id = ?
      GROUP BY s.id
-     ORDER BY s.requested_at DESC
-     LIMIT ? OFFSET ?`,
-    [orgId, limit, offset]
+     ORDER BY s.requested_at DESC${paginationClause(pag)}`,
+    [orgId],
   );
-  return { data: rows, total, page, limit };
+  return { data: rows, total, page: pag.page, limit: pag.limit };
 }
 
 export async function getOrgSettlementDetail(orgId: number, settlementId: number) {

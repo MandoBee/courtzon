@@ -1,5 +1,6 @@
 import type mysql from 'mysql2/promise';
 import { getPool } from '../../../database/mysql.js';
+import { buildPagination, paginationClause, limitClause } from '../../../shared/utils/pagination.js';
 
 type RowData = mysql.RowDataPacket[];
 
@@ -24,12 +25,11 @@ export const designTokenRepository = {
     const pool = getPool();
     const [countRows] = await pool.execute<RowData>('SELECT COUNT(*) as cnt FROM design_tokens', []);
     const total = (countRows[0] as any).cnt;
-    const offset = (filters.page - 1) * filters.limit;
+    const pag = buildPagination(filters.page, filters.limit);
     const [rows] = await pool.execute<RowData>(
-      'SELECT * FROM design_tokens ORDER BY category, token_key ASC LIMIT ? OFFSET ?',
-      [filters.limit, offset],
+      `SELECT * FROM design_tokens ORDER BY category, token_key ASC${paginationClause(pag)}`,
     );
-    return { data: rows, total, page: filters.page, limit: filters.limit };
+    return { data: rows, total, page: pag.page, limit: pag.limit };
   },
 
   async findById(id: number) {
@@ -334,13 +334,12 @@ export const designTokenRepository = {
 
   async listVersions(limit = 25) {
     const pool = getPool();
+    const lc = limitClause(limit, 100);
     const [rows] = await pool.execute<RowData>(
       `SELECT v.id, v.label, v.published_at, v.published_by, u.full_name AS published_by_name
          FROM design_token_versions v
          LEFT JOIN users u ON u.id = v.published_by
-        ORDER BY v.published_at DESC
-        LIMIT ?`,
-      [limit],
+        ORDER BY v.published_at DESC${lc}`,
     );
     return rows;
   },

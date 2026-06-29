@@ -1,4 +1,5 @@
 import { getPool } from '../../../database/mysql.js';
+import { limitClause, buildPagination, paginationClause } from '../../../shared/utils/pagination.js';
 
 export interface AuditLogCreate {
   actorId: number | null;
@@ -34,41 +35,42 @@ class AuditLogRepository {
 
   async findRecent(limit = 100, offset = 0): Promise<any[]> {
     const pool = getPool();
+    const lc = limitClause(limit, 500);
     const [rows] = await pool.execute(
       `SELECT al.*, u.full_name, u.email
        FROM audit_logs al
        LEFT JOIN users u ON u.id = al.actor_id
-       ORDER BY al.created_at DESC
-       LIMIT ? OFFSET ?`,
-      [limit, offset]
+       ORDER BY al.created_at DESC${lc}`,
     );
     return rows as any[];
   }
 
   async findByUser(userId: number, limit = 50, offset = 0): Promise<any[]> {
     const pool = getPool();
+    const pag = buildPagination(1, limit);
+    pag.offset = Math.floor(offset);
     const [rows] = await pool.execute(
       `SELECT al.*, u.full_name
        FROM audit_logs al
        LEFT JOIN users u ON u.id = al.actor_id
        WHERE al.actor_id = ?
-       ORDER BY al.created_at DESC
-       LIMIT ? OFFSET ?`,
-      [userId, limit, offset]
+       ORDER BY al.created_at DESC${paginationClause(pag)}`,
+      [userId],
     );
     return rows as any[];
   }
 
   async findByAction(action: string, limit = 50, offset = 0): Promise<any[]> {
     const pool = getPool();
+    const pag = buildPagination(1, limit);
+    pag.offset = Math.floor(offset);
     const [rows] = await pool.execute(
       `SELECT al.*, u.full_name
        FROM audit_logs al
        LEFT JOIN users u ON u.id = al.actor_id
        WHERE al.action = ?
-       ORDER BY al.created_at DESC
-       LIMIT ? OFFSET ?`,
-      [action, limit, offset]
+       ORDER BY al.created_at DESC${paginationClause(pag)}`,
+      [action],
     );
     return rows as any[];
   }

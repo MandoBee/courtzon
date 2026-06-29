@@ -1,5 +1,6 @@
 import type mysql from 'mysql2/promise';
 import { getPool } from '../../../database/mysql.js';
+import { buildPagination, paginationClause } from '../../../shared/utils/pagination.js';
 
 type RowData = mysql.RowDataPacket[];
 
@@ -78,6 +79,7 @@ export const transactionRepository = {
 
   async getUserEntries(userId: number, page = 1, limit = 20): Promise<{ data: any[]; total: number }> {
     const pool = getPool();
+    const pag = buildPagination(page, limit);
     const [countRows] = await pool.execute<RowData>(
       `SELECT COUNT(*) as cnt FROM transaction_entries te
        JOIN user_wallets uw ON te.entity_type = 'user_wallet' AND te.entity_id = uw.id
@@ -86,37 +88,34 @@ export const transactionRepository = {
     );
     const total = (countRows[0] as any).cnt;
 
-    const offset = (page - 1) * limit;
     const [rows] = await pool.execute<RowData>(
       `SELECT te.*, t.type as txn_type, t.status as txn_status, t.created_at as txn_created_at
        FROM transaction_entries te
        JOIN transactions t ON t.id = te.transaction_id
        JOIN user_wallets uw ON te.entity_type = 'user_wallet' AND te.entity_id = uw.id
        WHERE uw.user_id = ?
-       ORDER BY te.created_at DESC
-       LIMIT ? OFFSET ?`,
-      [userId, limit, offset],
+       ORDER BY te.created_at DESC${paginationClause(pag)}`,
+      [userId],
     );
     return { data: rows, total };
   },
 
   async getBranchEntries(branchId: number, page = 1, limit = 20): Promise<{ data: any[]; total: number }> {
     const pool = getPool();
+    const pag = buildPagination(page, limit);
     const [countRows] = await pool.execute<RowData>(
       'SELECT COUNT(*) as cnt FROM transaction_entries WHERE branch_id = ?',
       [branchId],
     );
     const total = (countRows[0] as any).cnt;
 
-    const offset = (page - 1) * limit;
     const [rows] = await pool.execute<RowData>(
       `SELECT te.*, t.type as txn_type, t.status as txn_status
        FROM transaction_entries te
        JOIN transactions t ON t.id = te.transaction_id
        WHERE te.branch_id = ?
-       ORDER BY te.created_at DESC
-       LIMIT ? OFFSET ?`,
-      [branchId, limit, offset],
+       ORDER BY te.created_at DESC${paginationClause(pag)}`,
+      [branchId],
     );
     return { data: rows, total };
   },
@@ -164,7 +163,7 @@ export const transactionRepository = {
     const [countRows] = await pool.execute<RowData>(countSql, params);
     const total = (countRows[0] as any).total;
 
-    const offset = (filters.page - 1) * filters.limit;
+    const pag = buildPagination(filters.page, filters.limit);
     const [rows] = await pool.execute<RowData>(
       `SELECT te.*, t.type as txn_type, t.status as txn_status, t.source_type, t.source_id,
               t.created_at as txn_created_at, t.total_amount as txn_total,
@@ -176,9 +175,8 @@ export const transactionRepository = {
        LEFT JOIN orders ord ON t.source_type = 'marketplace' AND t.source_id = ord.id
        ${extraJoin}
        ${where}
-       ORDER BY t.created_at DESC
-       LIMIT ? OFFSET ?`,
-      [...params, filters.limit, offset],
+       ORDER BY t.created_at DESC${paginationClause(pag)}`,
+      params,
     );
     return { data: rows, total };
   },

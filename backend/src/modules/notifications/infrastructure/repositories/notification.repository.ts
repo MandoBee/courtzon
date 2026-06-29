@@ -1,6 +1,7 @@
 import type mysql from 'mysql2/promise';
 import { getPool } from '../../../../database/mysql.js';
 import type { RowDataPacket, ResultSetHeader } from 'mysql2';
+import { buildPagination, paginationClause } from '../../../../shared/utils/pagination.js';
 
 type RowData = RowDataPacket[];
 
@@ -63,7 +64,7 @@ export class NotificationRepository {
   }
 
   async findByUser(userId: number, page = 1, limit = 20, actionKey?: string): Promise<{ data: any[]; total: number }> {
-    const offset = (page - 1) * limit;
+    const pag = buildPagination(page, limit);
     const countParams: any[] = [userId];
     const dataParams: any[] = [userId];
 
@@ -86,9 +87,8 @@ export class NotificationRepository {
        LEFT JOIN notification_categories nc ON nc.id = n.category_id
        LEFT JOIN notification_actions na ON na.id = n.action_id
        WHERE n.user_id = ?${actionFilter}
-       ORDER BY n.created_at DESC
-       LIMIT ? OFFSET ?`,
-      [...dataParams, limit, offset]
+       ORDER BY n.created_at DESC${paginationClause(pag)}`,
+      dataParams,
     );
     const parsed = (rows as any[]).map((r) => ({
       ...r,

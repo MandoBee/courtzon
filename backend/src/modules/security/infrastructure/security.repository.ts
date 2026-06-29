@@ -1,9 +1,12 @@
 import { getPool } from '../../../database/mysql.js';
 import { getRedisClient } from '../../../infrastructure/redis/redis.client.js';
+import { limitClause } from '../../../shared/utils/pagination.js';
 
 export class SecurityRepository {
   async getActiveSessions(limit = 50, offset = 0): Promise<any[]> {
     const pool = getPool();
+    const lc = limitClause(limit, 200);
+    const os = Number.isFinite(offset) && offset > 0 ? ` OFFSET ${Math.floor(offset)}` : '';
     const [rows] = await pool.execute(
       `SELECT us.id, us.user_id, us.ip_address, us.ip_country, us.user_agent,
               us.last_activity_at, us.expires_at, us.created_at, us.suspicious,
@@ -13,9 +16,7 @@ export class SecurityRepository {
        JOIN users u ON u.id = us.user_id
        LEFT JOIN user_devices ud ON ud.id = us.device_id
        WHERE us.is_revoked = FALSE AND us.expires_at > NOW()
-       ORDER BY us.last_activity_at DESC
-       LIMIT ? OFFSET ?`,
-      [limit, offset]
+       ORDER BY us.last_activity_at DESC${lc}${os}`,
     );
     return rows as any[];
   }
@@ -30,13 +31,13 @@ export class SecurityRepository {
 
   async getSuspiciousSessions(limit = 20): Promise<any[]> {
     const pool = getPool();
+    const lc = limitClause(limit, 100);
     const [rows] = await pool.execute(
       `SELECT us.*, u.full_name, u.email
        FROM user_sessions us
        JOIN users u ON u.id = us.user_id
        WHERE us.suspicious = TRUE AND us.is_revoked = FALSE AND us.expires_at > NOW()
-       ORDER BY us.last_activity_at DESC LIMIT ?`,
-      [limit]
+       ORDER BY us.last_activity_at DESC${lc}`,
     );
     return rows as any[];
   }
@@ -77,13 +78,13 @@ export class SecurityRepository {
 
   async getFailedLoginFeed(limit = 20): Promise<any[]> {
     const pool = getPool();
+    const lc = limitClause(limit, 100);
     const [rows] = await pool.execute(
       `SELECT la.*, u.full_name
        FROM login_attempts la
        LEFT JOIN users u ON u.full_phone = la.identifier COLLATE utf8mb4_unicode_ci
        WHERE la.success = FALSE
-       ORDER BY la.created_at DESC LIMIT ?`,
-      [limit]
+       ORDER BY la.created_at DESC${lc}`,
     );
     return rows as any[];
   }
@@ -117,12 +118,12 @@ export class SecurityRepository {
 
   async getRecentUploads(limit = 20): Promise<any[]> {
     const pool = getPool();
+    const lc = limitClause(limit, 100);
     const [rows] = await pool.execute(
       `SELECT u.*, up.full_name as uploaded_by_name
        FROM uploads u
        LEFT JOIN users up ON up.id = u.entity_id
-       ORDER BY u.created_at DESC LIMIT ?`,
-      [limit]
+       ORDER BY u.created_at DESC${lc}`,
     );
     return rows as any[];
   }
@@ -167,6 +168,8 @@ export class SecurityRepository {
 
   async getRecentSecurityAlerts(limit = 10): Promise<any[]> {
     const pool = getPool();
+    const n = Math.floor(Number(limit));
+    const L = Number.isFinite(n) && n > 0 ? n : 10;
     const [rows] = await pool.execute(
       `(SELECT CAST('suspicious_session' AS CHAR CHARACTER SET utf8mb4) as alert_type, us.id as ref_id,
                CAST(CONCAT(u.full_name, ' suspicious session from ', us.ip_address) AS CHAR CHARACTER SET utf8mb4) as description,
@@ -174,16 +177,15 @@ export class SecurityRepository {
         FROM user_sessions us
         JOIN users u ON u.id = us.user_id
         WHERE us.suspicious = TRUE AND us.is_revoked = FALSE
-        ORDER BY us.created_at DESC LIMIT ?)
+        ORDER BY us.created_at DESC LIMIT ${L})
       UNION ALL
       (SELECT CAST('failed_login' AS CHAR CHARACTER SET utf8mb4) as alert_type, la.id,
               CAST(CONCAT('Failed login from ', la.identifier) AS CHAR CHARACTER SET utf8mb4) as description,
               la.created_at, CAST(la.ip_address AS CHAR CHARACTER SET utf8mb4) as ip_address, CAST('medium' AS CHAR CHARACTER SET utf8mb4) as severity
        FROM login_attempts la
        WHERE la.success = FALSE
-       ORDER BY la.created_at DESC LIMIT ?)
-      ORDER BY created_at DESC LIMIT ?`,
-      [limit, limit, limit]
+       ORDER BY la.created_at DESC LIMIT ${L})
+      ORDER BY created_at DESC LIMIT ${L}`,
     );
     return rows as any[];
   }
