@@ -153,7 +153,9 @@ export async function resolveSessionUserId(request: FastifyRequest): Promise<num
 const PUBLIC_PREFIXES = [
   '/public/', '/health', '/auth/', '/payments/webhook',
   '/openapi.json', '/docs', '/uploads/',
-  '/sports', // exact match handled below for query strings
+  '/sports', '/countries', '/languages', '/currencies',
+  '/provinces', '/cities', '/banks', '/amenities',
+  '/subscription-plans', '/player-levels',
 ];
 
 export async function authMiddleware(request: FastifyRequest, reply: FastifyReply) {
