@@ -11,6 +11,9 @@ import type mysql from 'mysql2/promise';
 import { cascadeProductSoftDelete } from '../../../shared/cascade/index.js';
 import { getPlanNumericLimit } from '../../../shared/utils/plan-limits.util.js';
 import { userRepository } from '../../auth/infrastructure/repositories/user.repository.js';
+import { createModuleLogger } from '../../../shared/utils/logger.js';
+
+const log = createModuleLogger('marketplace');
 
 type RowData = mysql.RowDataPacket[];
 
@@ -534,7 +537,7 @@ export const marketplaceService = {
           ...customerData,
         });
         if (!result.success) {
-          console.error('[Payment] Gateway charge failed:', (result as any).errorMessage || 'Unknown error');
+          log.error({ errorMessage: (result as any).errorMessage || 'Unknown error' }, 'Gateway charge failed');
         } else {
           const paymentUrl = 'paymentUrl' in result ? result.paymentUrl : undefined;
           const clientSecret = 'clientSecret' in result ? result.clientSecret : undefined;
@@ -544,7 +547,7 @@ export const marketplaceService = {
           }
         }
       } catch (err) {
-        console.error('[Payment] Gateway charge exception:', err instanceof Error ? err.message : err);
+        log.error({ err }, 'Gateway charge exception');
       }
     }
 

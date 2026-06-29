@@ -375,9 +375,9 @@ export class AuthService {
       html: `<p>Click the link below to reset your password:</p><p><a href="${resetLink}">${resetLink}</a></p><p>This link expires in 1 hour. If you didn't request this, please ignore this email.</p>`,
     });
 
-    const isDevMode = (process.env.MAIL_TRANSPORT || 'log') === 'log';
+    const showToken = process.env.DEBUG_RESET_TOKEN === 'true';
     const response: Record<string, any> = { message: 'If that email is registered, a reset link has been sent.' };
-    if (isDevMode) response.token = token;
+    if (showToken) response.token = token;
     return response;
   }
 

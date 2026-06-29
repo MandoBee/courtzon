@@ -199,7 +199,6 @@ export async function updateOrganisationHandler(request: FastifyRequest, reply: 
     });
     return reply.send(org);
   } catch (e: any) {
-    console.error('UPDATE_ORG_ERROR', e.name, e.message, e.stack?.slice(0,300));
     throw e;
   }
 }

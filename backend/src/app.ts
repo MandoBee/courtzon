@@ -51,6 +51,7 @@ import { formatZodErrorDetails, isZodError } from "./shared/validation/zod-error
 import { getHealth, healthDatabase, healthRedis, healthStorage } from "./infrastructure/health/health.service.js";
 import { registerMetrics } from "./infrastructure/metrics/metrics.js";
 import { maintenanceMiddleware } from "./shared/middleware/maintenance.middleware.js";
+import { authMiddleware } from "./shared/middleware/auth.middleware.js";
 
 const isDev = process.env.NODE_ENV !== 'production';
 
@@ -165,6 +166,9 @@ await app.register(cors, {
 });
 
 createPool();
+
+// Global authentication — all routes are protected unless explicitly listed in authMiddleware's PUBLIC_PREFIXES
+app.addHook('preHandler', authMiddleware);
 
 app.addHook('onRequest', maintenanceMiddleware);
 

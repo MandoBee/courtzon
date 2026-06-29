@@ -1,12 +1,15 @@
 import { auditLogRepository } from '../infrastructure/audit-log.repository.js';
 import type { AuditLogCreate } from '../infrastructure/audit-log.repository.js';
+import { createModuleLogger } from '../../../shared/utils/logger.js';
+
+const log = createModuleLogger('audit-log');
 
 class AuditLogService {
   async record(entry: AuditLogCreate): Promise<void> {
     try {
       await auditLogRepository.create(entry);
-    } catch {
-      console.error('Failed to write audit log:', entry);
+    } catch (err) {
+      log.error({ err, action: entry.action, entityType: entry.entityType }, 'Failed to write audit log');
     }
   }
 

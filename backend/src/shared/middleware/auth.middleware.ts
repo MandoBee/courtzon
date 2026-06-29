@@ -150,9 +150,23 @@ export async function resolveSessionUserId(request: FastifyRequest): Promise<num
   return rows.length ? Number(rows[0].user_id) : null;
 }
 
+const PUBLIC_PREFIXES = [
+  '/public/', '/health', '/auth/', '/payments/webhook',
+  '/openapi.json', '/docs', '/uploads/',
+  '/sports', // exact match handled below for query strings
+];
+
 export async function authMiddleware(request: FastifyRequest, reply: FastifyReply) {
-  if (request.url.startsWith('/public/')) return;
-  if (request.url === '/sports' || request.url.startsWith('/sports?')) return;
+  const url = request.url;
+  // Skip authentication for public routes
+  if (PUBLIC_PREFIXES.some(p => url.startsWith(p))) return;
+  // /sports with query string
+  if (url === '/sports' || url.startsWith('/sports?')) return;
+  // /auth/me returns null user when unauthenticated (no 401)
+  if (url === '/auth/me') {
+    (request as any).userId = await resolveSessionUserId(request);
+    return;
+  }
   try {
     const userId = await resolveSessionUserId(request);
     if (!userId) {
