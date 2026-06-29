@@ -16,17 +16,17 @@ export interface Pagination {
  * - offset is calculated as (page - 1) * limit
  */
 export function buildPagination(rawPage?: unknown, rawLimit?: unknown): Pagination {
-  let page = Number(rawPage);
-  let limit = Number(rawLimit);
+  let page = Math.floor(Number(rawPage));
+  let limit = Math.floor(Number(rawLimit));
 
   if (!Number.isFinite(page) || page < 1) page = DEFAULT_PAGE;
   if (!Number.isFinite(limit) || limit < 1) limit = DEFAULT_LIMIT;
   if (limit > MAX_LIMIT) limit = MAX_LIMIT;
 
   return {
-    page: Math.floor(page),
-    limit: Math.floor(limit),
-    offset: Math.floor((page - 1) * limit),
+    page,
+    limit,
+    offset: (page - 1) * limit,
   };
 }
 
