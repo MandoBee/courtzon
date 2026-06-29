@@ -72,28 +72,3 @@ export function EntityImage({
   );
 }
 
-/** Country flag from flagcdn with ISO / name fallback. */
-export function FlagImage({
-  iso,
-  countryName,
-  className = 'w-5 h-3.5 rounded-sm object-cover',
-  size = 40,
-}: {
-  iso?: string | null;
-  countryName?: string | null;
-  className?: string;
-  /** flagcdn width (w20, w40, etc.) */
-  size?: 20 | 40;
-}) {
-  const code = (iso || '').trim().toLowerCase();
-  const src = code ? `https://flagcdn.com/w${size}/${code}.png` : '';
-  return (
-    <EntityImage
-      src={src}
-      name={countryName || iso || '?'}
-      isoCode={iso}
-      alt={countryName || iso || 'Flag'}
-      className={className}
-    />
-  );
-}

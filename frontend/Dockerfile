@@ -10,6 +10,7 @@ COPY vite.config.ts tailwind.config.js postcss.config.js ./
 COPY index.html ./
 COPY public/ public/
 COPY src/ src/
+COPY scripts/ scripts/
 
 ARG VITE_PAYMOB_PUBLIC_KEY
 ENV VITE_PAYMOB_PUBLIC_KEY=$VITE_PAYMOB_PUBLIC_KEY

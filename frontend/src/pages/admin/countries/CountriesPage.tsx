@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../../services/api';
-import { Button, Modal, Spinner, Pagination, FlagImage } from '../../../components/ui';
+import { Button, Modal, Spinner, Pagination, CountryFlag } from '../../../components/ui';
 import { Can } from '../../../permissions/Can';
 import { useToast } from '../../../components/ui/Toast';
 
@@ -232,7 +232,7 @@ function CountriesTab() {
             <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
               {paginatedCountries.map((c: any) => (
                 <tr key={c.id} className={`hover:bg-[var(--color-bg)]/30 ${editing?.id === c.id ? 'bg-[var(--color-primary)]/10 border-l-2 border-[var(--color-primary)]' : 'border-l-2 border-transparent'}`}>
-                  <td className="px-4 py-3 text-[var(--color-text)]"><FlagImage iso={c.iso_code} countryName={c.name} className="inline-block w-5 h-auto align-middle mr-1.5" size={20} />{c.name}</td>
+                  <td className="px-4 py-3 text-[var(--color-text)]"><CountryFlag countryCode={c.iso_code} countryName={c.name} size={20} className="align-middle mr-1.5" />{c.name}</td>
                   <td className="px-4 py-3 font-mono text-xs text-[var(--color-text-muted)]">{c.phone_code}</td>
                   <td className="px-4 py-3 text-[var(--color-text)]">
                     {c.currency_symbol && <span className="mr-1">{c.currency_symbol}</span>}
@@ -482,7 +482,7 @@ function ProvincesTab() {
                       <div className="text-[var(--color-text)]">{p.name}</div>
                       {p.native_name && <div className="text-xs text-[var(--color-text-muted)]">{p.native_name}</div>}
                     </td>
-                    <td className="px-4 py-3 text-[var(--color-text)]"><FlagImage iso={country?.iso_code} countryName={country?.name} className="inline-block w-5 h-auto align-middle mr-1.5" size={20} />{country?.name}</td>
+                    <td className="px-4 py-3 text-[var(--color-text)]"><CountryFlag countryCode={country?.iso_code} countryName={country?.name} size={20} className="align-middle mr-1.5" />{country?.name}</td>
                     <td className="px-4 py-3 text-xs capitalize text-[var(--color-text)]">{p.type}</td>
                     <td className="px-4 py-3 text-center">
                       <button onClick={() => toggleActive.mutate({ id: p.id, current: p.is_active })}
@@ -750,7 +750,7 @@ function CitiesTab() {
                       {c.native_name && <div className="text-xs text-[var(--color-text-muted)]">{c.native_name}</div>}
                     </td>
                     <td className="px-4 py-3 text-[var(--color-text)]">{prov?.name || '—'}</td>
-                    <td className="px-4 py-3 text-[var(--color-text)]"><FlagImage iso={country?.iso_code} countryName={country?.name} className="inline-block w-5 h-auto align-middle mr-1.5" size={20} />{country?.name}</td>
+                    <td className="px-4 py-3 text-[var(--color-text)]"><CountryFlag countryCode={country?.iso_code} countryName={country?.name} size={20} className="align-middle mr-1.5" />{country?.name}</td>
                     <td className="px-4 py-3 text-center">
                       <button onClick={() => toggleActive.mutate({ id: c.id, current: c.is_active })}
                         className={`px-2 py-0.5 text-xs rounded-full cursor-pointer transition-colors ${c.is_active ? 'bg-[var(--color-success-bg)] text-[var(--color-success-text)] hover:opacity-80' : 'bg-[var(--color-border)] text-[var(--color-text-muted)] hover:bg-[var(--color-border)]'}`}>

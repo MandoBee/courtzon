@@ -1,5 +1,6 @@
 export { Button } from './Button';
-export { EntityImage, FlagImage } from './EntityImage';
+export { EntityImage } from './EntityImage';
+export { CountryFlag } from './CountryFlag';
 export { Input } from './Input';
 export { Card } from './Card';
 export { Badge } from './Badge';

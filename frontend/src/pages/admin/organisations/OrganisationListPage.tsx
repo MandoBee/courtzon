@@ -6,7 +6,7 @@ import OrganisationForm from '../../../components/organisations/OrganisationForm
 import { Can } from '../../../permissions/Can';
 import type { ApiData, PaginatedResult } from '../../../types/api';
 import type { Country, OrganisationSummary, OrganisationType } from '../../../types/admin/common';
-import { EntityImage, FlagImage } from '../../../components/ui';
+import { EntityImage, CountryFlag } from '../../../components/ui';
 
 const PAGE_SIZES = [10, 20, 30, 50];
 export default function OrganisationListPage() {
@@ -144,10 +144,10 @@ export default function OrganisationListPage() {
             </div>
             <div className="flex items-center gap-1">
               {countryFilter !== 'all' && (
-                <FlagImage
-                  iso={actCountries.find((c) => c.id === Number(countryFilter))?.iso_code}
+                <CountryFlag
+                  countryCode={actCountries.find((c) => c.id === Number(countryFilter))?.iso_code}
                   countryName={actCountries.find((c) => c.id === Number(countryFilter))?.name}
-                  className="w-5 h-3.5 rounded-sm"
+                  size={20}
                 />
               )}
               <select value={countryFilter} onChange={(e) => { setCountryFilter(e.target.value); setPage(1); }}
@@ -216,7 +216,7 @@ export default function OrganisationListPage() {
                         <td className="px-4 py-3 text-center">
                           {org.country_iso ? (
                             <div className="flex flex-col items-center gap-0.5">
-                              <FlagImage iso={org.country_iso} countryName={org.country_name} className="w-6 h-4 rounded-sm" />
+                              <CountryFlag countryCode={org.country_iso} countryName={org.country_name} size={24} />
                               <span className="text-[10px] text-[var(--color-text-muted)]">{org.country_name}</span>
                             </div>
                           ) : <span className="text-[var(--color-text-muted)]">—</span>}

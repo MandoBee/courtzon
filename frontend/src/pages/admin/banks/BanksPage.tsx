@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../../services/api';
 import { Can } from '../../../permissions/Can';
 import { useToast } from '../../../components/ui/Toast';
-import { FlagImage } from '../../../components/ui';
+import { CountryFlag } from '../../../components/ui';
 
 export default function BanksPage() {
   const queryClient = useQueryClient();
@@ -48,7 +48,7 @@ export default function BanksPage() {
   const countryName = (id: number) => {
     const c = (countries || []).find((c: any) => c.id === id);
     if (!c) return String(id);
-    return <span className="inline-flex items-center gap-1"><FlagImage iso={c.iso_code} countryName={c.name} className="w-4 h-3 rounded-sm" />{c.name}</span>;
+    return <span className="inline-flex items-center gap-1"><CountryFlag countryCode={c.iso_code} countryName={c.name} size={16} />{c.name}</span>;
   };
 
   return (

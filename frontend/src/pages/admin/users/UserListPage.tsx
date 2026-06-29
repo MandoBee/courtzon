@@ -5,7 +5,7 @@ import api from '../../../services/api';
 import UserEditModal from './UserEditModal';
 import { Can } from '../../../permissions/Can';
 import { useToast } from '../../../components/ui/Toast';
-import { EntityImage, FlagImage } from '../../../components/ui';
+import { EntityImage, CountryFlag } from '../../../components/ui';
 import { useTranslation } from '../../../i18n';
 
 const statusColors: Record<string, string> = {
@@ -177,7 +177,7 @@ export default function UserListPage() {
                 </td>
                 <td className="px-4 py-3 text-[var(--color-text-muted)]">
                   {u.country_iso
-                    ? <FlagImage iso={u.country_iso} countryName={u.country_name} className="inline-block w-5 h-auto mr-1 rounded-sm" />
+                    ? <CountryFlag countryCode={u.country_iso} countryName={u.country_name} size={20} className="mr-1" />
                     : u.country_flag && <span className="mr-1">{u.country_flag}</span>}
                   {u.country_name || '—'}
                 </td>

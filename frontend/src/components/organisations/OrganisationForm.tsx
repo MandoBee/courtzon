@@ -11,7 +11,7 @@ import {
   unwrapBranchesResponse,
   type OrganisationFormContext,
 } from './organisation-form-paths';
-import { EntityImage, FlagImage } from '../ui';
+import { EntityImage, CountryFlag } from '../ui';
 
 
 interface OrgFormData {
@@ -586,10 +586,10 @@ export default function OrganisationForm({ orgId, context, onClose, initialTab, 
                   ) : (
                     <div className="flex items-center gap-2">
                       {form.countryId && (
-                        <FlagImage
-                          iso={activeCountries.find((c: any) => c.id === form.countryId)?.iso_code}
+                        <CountryFlag
+                          countryCode={activeCountries.find((c: any) => c.id === form.countryId)?.iso_code}
                           countryName={activeCountries.find((c: any) => c.id === form.countryId)?.name}
-                          className="w-6 h-4 rounded-sm"
+                          size={24}
                         />
                       )}
                       <select value={form.countryId} onChange={e => set('countryId', Number(e.target.value))}
