@@ -88,15 +88,6 @@ class UploadService {
 
     const matched = validator(header8, header4_12, header8_12);
     if (!matched) {
-      console.warn('[upload:validateMagicBytes] MISMATCH', {
-        declaredMime: mimeType,
-        bufferLength: buffer.length,
-        headerFirst8: header8,
-        headerBytes4to12: header4_12,
-        headerBytes8to12: header8_12,
-        first16BytesHex: buffer.slice(0, 16).toString('hex'),
-        first16BytesAscii: buffer.slice(0, 16).toString('ascii').replace(/[^\x20-\x7E]/g, '.'),
-      });
       throw Object.assign(new Error(
         `File content does not match declared MIME type: detected magic bytes do not correspond to ${mimeType}`
       ), { statusCode: 400, details: { declaredMime: mimeType, detectedHeader: header8 } });

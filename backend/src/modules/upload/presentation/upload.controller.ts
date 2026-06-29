@@ -20,15 +20,6 @@ async function readFileBody(request: FastifyRequest): Promise<{ buffer: Buffer; 
     chunks.push(chunk);
   }
   const buffer = Buffer.concat(chunks);
-
-  console.warn('[upload:readFileBody]', {
-    originalname: file.filename,
-    mimetype: file.mimetype,
-    fieldname: file.fieldname,
-    size: buffer.length,
-    firstBytesHex: buffer.slice(0, 16).toString('hex'),
-  });
-
   return { buffer, mimeType: file.mimetype, originalName: file.filename };
 }
 

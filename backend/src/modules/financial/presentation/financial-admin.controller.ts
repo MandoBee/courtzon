@@ -4,14 +4,10 @@ import { WithdrawalRequestQuerySchema, WithdrawalActionSchema } from './financia
 
 export async function listWithdrawalRequestsHandler(request: FastifyRequest, reply: FastifyReply) {
   try {
-    console.warn('[financial:listWithdrawalRequests] query params:', JSON.stringify(request.query));
     const query = WithdrawalRequestQuerySchema.parse(request.query);
-    console.warn('[financial:listWithdrawalRequests] parsed query:', JSON.stringify(query));
     const result = await financialAdminService.listWithdrawalRequests(query);
-    console.warn('[financial:listWithdrawalRequests] result rows:', result?.data?.length ?? 'N/A');
     return reply.send(result);
   } catch (err: any) {
-    console.error('[financial:listWithdrawalRequests] ERROR:', err.message, err.stack);
     const status = err.statusCode ?? 500;
     return reply.status(status).send({
       error: status >= 500 ? 'INTERNAL_ERROR' : 'VALIDATION_ERROR',
