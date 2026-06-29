@@ -3,9 +3,22 @@ import { financialAdminService } from '../application/financial-admin.service.js
 import { WithdrawalRequestQuerySchema, WithdrawalActionSchema } from './financial-admin.dto.js';
 
 export async function listWithdrawalRequestsHandler(request: FastifyRequest, reply: FastifyReply) {
-  const query = WithdrawalRequestQuerySchema.parse(request.query);
-  const result = await financialAdminService.listWithdrawalRequests(query);
-  return reply.send(result);
+  try {
+    console.warn('[financial:listWithdrawalRequests] query params:', JSON.stringify(request.query));
+    const query = WithdrawalRequestQuerySchema.parse(request.query);
+    console.warn('[financial:listWithdrawalRequests] parsed query:', JSON.stringify(query));
+    const result = await financialAdminService.listWithdrawalRequests(query);
+    console.warn('[financial:listWithdrawalRequests] result rows:', result?.data?.length ?? 'N/A');
+    return reply.send(result);
+  } catch (err: any) {
+    console.error('[financial:listWithdrawalRequests] ERROR:', err.message, err.stack);
+    const status = err.statusCode ?? 500;
+    return reply.status(status).send({
+      error: status >= 500 ? 'INTERNAL_ERROR' : 'VALIDATION_ERROR',
+      message: err.message ?? 'Failed to list withdrawal requests',
+      details: err.details,
+    });
+  }
 }
 
 export async function getWithdrawalRequestHandler(request: FastifyRequest, reply: FastifyReply) {
