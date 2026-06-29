@@ -215,71 +215,49 @@ export const settlementService = {
       throw new ConflictError(`Cannot mark paid in status "${settlement.settlement_status}"`);
     }
 
-    if (bankAccountId) {
-      const bankAccount = await repo.getBankAccount(bankAccountId);
-      if (bankAccount) {
-        await repo.updateSettlementBankAccount(settlementId, bankAccountId, bankAccount);
+    return withTransaction(async (conn) => {
+      if (bankAccountId) {
+        const bankAccount = await repo.getBankAccount(bankAccountId);
+        if (bankAccount) {
+          await conn.execute(
+            'UPDATE settlements SET bank_account_id = ?, bank_account_snapshot = ? WHERE id = ?',
+            [bankAccountId, JSON.stringify(bankAccount), settlementId],
+          );
+        }
       }
-    }
 
-    await repo.updateSettlementStatus(settlementId, 'paid', { paid_at: new Date() });
+      await conn.execute(
+        'UPDATE settlements SET settlement_status = ?, paid_at = NOW() WHERE id = ?',
+        ['paid', settlementId],
+      );
 
-    const finalAmount = Number(settlement.final_amount || 0);
-    const direction = settlement.settlement_direction;
+      const finalAmount = Number(settlement.final_amount || 0);
+      const direction = settlement.settlement_direction;
 
-    if (finalAmount > 0 && direction) {
-      const txnId = await transactionRepository.createTransaction({
-        type: 'settlement_payout',
-        sourceType: 'settlement',
-        sourceId: settlementId,
-        totalAmount: finalAmount,
-        status: 'completed',
-      });
+      if (finalAmount > 0 && direction) {
+        const txnId = await transactionRepository.createTransaction({
+          type: 'settlement_payout',
+          sourceType: 'settlement',
+          sourceId: settlementId,
+          totalAmount: finalAmount,
+          status: 'completed',
+        }, conn);
 
-      if (direction === 'courtzon_to_org') {
-        await transactionRepository.createEntries([
-          {
-            transactionId: txnId,
-            side: 'debit',
-            entityType: 'platform_account',
-            entityId: 2,
-            amount: finalAmount,
-            description: `Settlement #${settlementId}: CourtZon pays org`,
-          },
-          {
-            transactionId: txnId,
-            side: 'credit',
-            entityType: 'branch',
-            entityId: settlement.branch_id || 0,
-            amount: finalAmount,
-            organisationId: settlement.organisation_id,
-            description: `Settlement #${settlementId}: Org receives from CourtZon`,
-          },
-        ]);
-      } else {
-        await transactionRepository.createEntries([
-          {
-            transactionId: txnId,
-            side: 'debit',
-            entityType: 'branch',
-            entityId: settlement.branch_id || 0,
-            amount: finalAmount,
-            organisationId: settlement.organisation_id,
-            description: `Settlement #${settlementId}: Org pays CourtZon fee`,
-          },
-          {
-            transactionId: txnId,
-            side: 'credit',
-            entityType: 'platform_account',
-            entityId: 2,
-            amount: finalAmount,
-            description: `Settlement #${settlementId}: CourtZon receives from org`,
-          },
-        ]);
+        if (direction === 'courtzon_to_org') {
+          await transactionRepository.createEntries([
+            { transactionId: txnId, side: 'debit', entityType: 'platform_account', entityId: 2, amount: finalAmount, description: `Settlement #${settlementId}: CourtZon pays org` },
+            { transactionId: txnId, side: 'credit', entityType: 'branch', entityId: settlement.branch_id || 0, amount: finalAmount, organisationId: settlement.organisation_id, description: `Settlement #${settlementId}: Org receives from CourtZon` },
+          ], conn);
+        } else {
+          await transactionRepository.createEntries([
+            { transactionId: txnId, side: 'debit', entityType: 'branch', entityId: settlement.branch_id || 0, amount: finalAmount, organisationId: settlement.organisation_id, description: `Settlement #${settlementId}: Org pays CourtZon fee` },
+            { transactionId: txnId, side: 'credit', entityType: 'platform_account', entityId: 2, amount: finalAmount, description: `Settlement #${settlementId}: CourtZon receives from org` },
+          ], conn);
+        }
       }
-    }
 
-    return repo.getSettlementDetail(settlementId);
+      return repo.getSettlementDetail(settlementId);
+    });
   },
 
   // ── Complete ──

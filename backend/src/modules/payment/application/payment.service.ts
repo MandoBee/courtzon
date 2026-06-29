@@ -120,22 +120,29 @@ export class PaymentService {
       success: isSuccess,
     });
 
-    const transaction = await paymentRepository.findByGatewayRef(gatewayRef);
-    if (!transaction) {
+    // Fast-path check before entering transaction
+    const preCheck = await paymentRepository.findByGatewayRef(gatewayRef);
+    if (!preCheck) {
       log.error({ msg: 'Payment transaction not found', gatewayRef });
       throw new NotFoundError('Payment transaction');
     }
 
-    // ── Idempotency: skip if already processed ──
-    if (transaction.payment_status === 'paid' || transaction.payment_status === 'refunded') {
-      log.info({ msg: 'Webhook already processed', txnId: transaction.id, status: transaction.payment_status });
-      return { success: true, transactionId: transaction.id, status: transaction.payment_status, idempotent: true };
-    }
-
     const newStatus = isSuccess ? 'paid' : 'failed';
 
-    // ── Transactional fulfillment ──
-    await withTransaction(async (conn) => {
+    // ── Transactional fulfillment with FOR UPDATE lock ──
+    return withTransaction(async (conn) => {
+      // Lock the payment row to prevent duplicate webhook processing
+      const transaction = await paymentRepository.lockByGatewayRef(gatewayRef, conn);
+      if (!transaction) {
+        throw new NotFoundError('Payment transaction');
+      }
+
+      // Idempotency: skip if already processed (checked under lock)
+      if (transaction.payment_status === 'paid' || transaction.payment_status === 'refunded') {
+        log.info({ msg: 'Webhook already processed', txnId: transaction.id, status: transaction.payment_status });
+        return { success: true, transactionId: transaction.id, status: transaction.payment_status, idempotent: true };
+      }
+
       // Update payment status
       await conn.execute(
         'UPDATE payment_transactions SET payment_status = ?, paid_at = IF(? = "paid", NOW(), paid_at) WHERE id = ?',
@@ -169,9 +176,9 @@ export class PaymentService {
            Number(transaction.amount), `Gateway webhook: ${gatewayRef}`],
         );
       }
-    });
 
-    return { success: isSuccess, transactionId: transaction.id, status: newStatus };
+      return { success: isSuccess, transactionId: transaction.id, status: newStatus };
+    });
   }
 
   private async _fulfillBookingIntent(conn: mysql.PoolConnection, transaction: any): Promise<void> {

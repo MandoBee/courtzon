@@ -4,6 +4,12 @@ import { buildPagination, paginationClause } from '../../../shared/utils/paginat
 
 type RowData = mysql.RowDataPacket[];
 
+type Executor = mysql.Pool | mysql.PoolConnection;
+
+function resolvePool(conn?: mysql.PoolConnection): Executor {
+  return conn ?? getPool();
+}
+
 export interface CreateTransactionInput {
   type: string;
   sourceType?: string;
@@ -27,8 +33,11 @@ export interface CreateEntryInput {
 }
 
 export const transactionRepository = {
-  async createTransaction(input: CreateTransactionInput): Promise<number> {
-    const pool = getPool();
+  /**
+   * Create a transaction. Accepts optional connection for transactional writes.
+   */
+  async createTransaction(input: CreateTransactionInput, conn?: mysql.PoolConnection): Promise<number> {
+    const pool = resolvePool(conn);
     const [result] = await pool.execute<mysql.ResultSetHeader>(
       `INSERT INTO transactions (type, source_type, source_id, currency_id, total_amount, status, metadata)
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
@@ -39,9 +48,12 @@ export const transactionRepository = {
     return result.insertId;
   },
 
-  async createEntries(entries: CreateEntryInput[]): Promise<void> {
+  /**
+   * Create transaction entries. Accepts optional connection for transactional writes.
+   */
+  async createEntries(entries: CreateEntryInput[], conn?: mysql.PoolConnection): Promise<void> {
     if (entries.length === 0) return;
-    const pool = getPool();
+    const pool = resolvePool(conn);
     const sql = `INSERT INTO transaction_entries
       (transaction_id, side, entity_type, entity_id, amount, currency_id, branch_id, organisation_id, description)
       VALUES ${entries.map(() => '(?, ?, ?, ?, ?, ?, ?, ?, ?)').join(', ')}`;

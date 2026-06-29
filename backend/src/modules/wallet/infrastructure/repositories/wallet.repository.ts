@@ -4,6 +4,12 @@ import { generateUUID } from '../../../../shared/utils/token.js';
 
 type RowData = mysql.RowDataPacket[];
 
+type Executor = mysql.Pool | mysql.PoolConnection;
+
+function resolvePool(conn?: mysql.PoolConnection): Executor {
+  return conn ?? getPool();
+}
+
 export const walletRepository = {
   async findByUserId(userId: number) {
     const pool = getPool();
@@ -14,8 +20,12 @@ export const walletRepository = {
     return rows[0] || null;
   },
 
-  async lockAndGetBalance(walletId: number): Promise<{ balance: number; version: number } | null> {
-    const pool = getPool();
+  /**
+   * Lock wallet balance row for update. Accepts an optional transaction connection;
+   * when provided the FOR UPDATE lock is held until the transaction commits/rolls back.
+   */
+  async lockAndGetBalance(walletId: number, conn?: mysql.PoolConnection): Promise<{ balance: number; version: number } | null> {
+    const pool = resolvePool(conn);
     const [rows] = await pool.execute<RowData>(
       "SELECT balance, version FROM user_wallets WHERE id = ? AND is_locked = FALSE FOR UPDATE",
       [walletId]
@@ -24,8 +34,12 @@ export const walletRepository = {
     return { balance: Number(rows[0].balance), version: rows[0].version };
   },
 
-  async updateBalance(walletId: number, newBalance: number, version: number): Promise<boolean> {
-    const pool = getPool();
+  /**
+   * Optimistic-lock balance update. Accepts an optional transaction connection
+   * so the version increment commits atomically with surrounding operations.
+   */
+  async updateBalance(walletId: number, newBalance: number, version: number, conn?: mysql.PoolConnection): Promise<boolean> {
+    const pool = resolvePool(conn);
     const [result] = await pool.execute<mysql.ResultSetHeader>(
       'UPDATE user_wallets SET balance = ?, version = version + 1 WHERE id = ? AND version = ?',
       [newBalance, walletId, version]
@@ -36,8 +50,8 @@ export const walletRepository = {
   async createTransaction(data: {
     walletId: number; type: string; amount: number; direction: 'credit' | 'debit';
     referenceType?: string; referenceId?: number; description?: string;
-  }) {
-    const pool = getPool();
+  }, conn?: mysql.PoolConnection) {
+    const pool = resolvePool(conn);
     const [result] = await pool.execute<mysql.ResultSetHeader>(
       `INSERT INTO wallet_transactions (public_id, wallet_id, transaction_type, amount, direction, reference_type, reference_id, description)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,

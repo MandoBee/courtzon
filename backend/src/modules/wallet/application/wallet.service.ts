@@ -4,6 +4,7 @@ import { walletRepository } from '../infrastructure/repositories/wallet.reposito
 import { transactionService } from '../../financial/application/transaction.service.js';
 import { paymentGateway } from '../../../shared/services/gateway/gateway-factory.js';
 import { ConflictError } from '../../../shared/errors/app-error.js';
+import { withTransaction } from '../../../database/database.transaction.js';
 
 export class WalletService {
   async getMyWallet(userId: number) {
@@ -44,33 +45,25 @@ export class WalletService {
     const paymentResult = await paymentGateway.charge(paymentRequest);
 
     if (paymentResult.success && paymentResult.status === 'paid') {
-      const pool = getPool();
-      const conn = await pool.getConnection();
-      try {
-        await conn.beginTransaction();
-        const state = await walletRepository.lockAndGetBalance(wallet.id);
+      const newBalance = await withTransaction(async (conn) => {
+        // FOR UPDATE lock held for duration of transaction
+        const state = await walletRepository.lockAndGetBalance(wallet.id, conn);
         if (!state) throw new ConflictError('Wallet is locked');
-        const newBalance = state.balance + amount;
-        const updated = await walletRepository.updateBalance(wallet.id, newBalance, state.version);
+        const balance = state.balance + amount;
+        const updated = await walletRepository.updateBalance(wallet.id, balance, state.version, conn);
         if (!updated) throw new ConflictError('Concurrent wallet update');
 
-        // Double-entry: platform float → user wallet
+        // Double-entry: platform float → user wallet (on the SAME connection)
         await transactionService.createWalletTopup({
-          userId,
-          walletId: wallet.id,
-          amount,
+          userId, walletId: wallet.id, amount,
           sourceType: 'payment_gateway',
           description: `Deposit via ${paymentMethod}`,
-        });
+        }, conn);
 
-        await conn.commit();
-        return { success: true, balance: newBalance, transactionId: paymentResult.transactionId };
-      } catch (err) {
-        await conn.rollback();
-        throw err;
-      } finally {
-        conn.release();
-      }
+        return balance;
+      });
+
+      return { success: true, balance: newBalance, transactionId: paymentResult.transactionId };
     }
 
     return {
@@ -88,39 +81,31 @@ export class WalletService {
     const wallet = await this.getMyWallet(userId);
     if (Number(wallet.balance) < amount) throw new Error('Insufficient balance');
 
-    const pool = getPool();
-    const conn = await pool.getConnection();
-    try {
-      await conn.beginTransaction();
-      const state = await walletRepository.lockAndGetBalance(wallet.id);
+    const newBalance = await withTransaction(async (conn) => {
+      // FOR UPDATE lock held for duration of transaction
+      const state = await walletRepository.lockAndGetBalance(wallet.id, conn);
       if (!state) throw new ConflictError('Wallet is locked');
-      const newBalance = state.balance - amount;
-      const updated = await walletRepository.updateBalance(wallet.id, newBalance, state.version);
+      const balance = state.balance - amount;
+      const updated = await walletRepository.updateBalance(wallet.id, balance, state.version, conn);
       if (!updated) throw new ConflictError('Concurrent wallet update');
 
-      // Create withdrawal request record linking to branch bank account
+      // Create withdrawal request on same connection
       await conn.execute(
         `INSERT INTO withdrawal_requests (user_id, wallet_id, amount, branch_financial_details_id, status, created_at)
          VALUES (?, ?, ?, ?, 'pending', NOW())`,
         [userId, wallet.id, amount, branchFinancialDetailsId || null]
       );
 
-      // Double-entry: user wallet → platform float
+      // Double-entry: user wallet → platform float (on the SAME connection)
       await transactionService.createWalletWithdraw({
-        userId,
-        walletId: wallet.id,
-        amount,
+        userId, walletId: wallet.id, amount,
         description: notes || 'Withdrawal request',
-      });
+      }, conn);
 
-      await conn.commit();
-      return { success: true, balance: newBalance };
-    } catch (err) {
-      await conn.rollback();
-      throw err;
-    } finally {
-      conn.release();
-    }
+      return balance;
+    });
+
+    return { success: true, balance: newBalance };
   }
 
   async getTransactions(userId: number, filters: {

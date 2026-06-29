@@ -42,6 +42,18 @@ export const paymentRepository = {
     return rows[0] || null;
   },
 
+  /**
+   * Lock payment row by gateway reference for update. Used inside webhook transactions
+   * to prevent concurrent processing of the same gateway callback.
+   */
+  async lockByGatewayRef(gatewayReference: string, conn: mysql.PoolConnection) {
+    const [rows] = await conn.execute<RowData>(
+      'SELECT * FROM payment_transactions WHERE gateway_reference = ? FOR UPDATE',
+      [gatewayReference]
+    );
+    return rows[0] || null;
+  },
+
   async findByOrderId(orderId: number) {
     const pool = getPool();
     const [rows] = await pool.execute<RowData>(

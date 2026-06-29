@@ -1,3 +1,4 @@
+import type mysql from 'mysql2/promise';
 import { getPool } from '../../../database/mysql.js';
 import { transactionRepository } from '../infrastructure/transaction.repository.js';
 import { walletRepository } from '../../wallet/infrastructure/repositories/wallet.repository.js';
@@ -9,7 +10,7 @@ export interface BookingPaymentParams {
   organisationId: number;
   amount: number;
   commissionAmount: number;
-  sourceId: number; // booking id
+  sourceId: number;
   description: string;
 }
 
@@ -35,172 +36,83 @@ export interface RefundParams {
   branchId: number;
   organisationId: number;
   amount: number;
-  sourceId: number; // booking id
+  sourceId: number;
   description: string;
 }
 
 class TransactionService {
 
-  async createBookingPayment(params: BookingPaymentParams): Promise<number> {
+  /**
+   * Create booking payment journal. Accepts optional conn for transactional writes.
+   */
+  async createBookingPayment(params: BookingPaymentParams, conn?: mysql.PoolConnection): Promise<number> {
     const txnId = await transactionRepository.createTransaction({
       type: 'booking_payment',
       sourceType: 'booking',
       sourceId: params.sourceId,
       totalAmount: params.amount,
       status: 'completed',
-    });
+    }, conn);
 
     const netAmount = params.amount - params.commissionAmount;
 
     await transactionRepository.createEntries([
-      // Debit: user wallet
-      {
-        transactionId: txnId,
-        side: 'debit',
-        entityType: 'user_wallet',
-        entityId: params.walletId,
-        amount: params.amount,
-        description: `Payment for booking #${params.sourceId}`,
-      },
-      // Credit: platform float (temporary hold)
-      {
-        transactionId: txnId,
-        side: 'credit',
-        entityType: 'platform_account',
-        entityId: 1, // float account
-        amount: params.amount,
-        description: `Received payment for booking #${params.sourceId}`,
-      },
-      // Debit: platform float (release funds)
-      {
-        transactionId: txnId,
-        side: 'debit',
-        entityType: 'platform_account',
-        entityId: 1,
-        amount: params.amount,
-        description: `Routing payment for booking #${params.sourceId}`,
-      },
-      // Credit: branch (net amount after commission)
-      {
-        transactionId: txnId,
-        side: 'credit',
-        entityType: 'branch',
-        entityId: params.branchId,
-        amount: netAmount,
-        branchId: params.branchId,
-        organisationId: params.organisationId,
-        description: `Net revenue for booking #${params.sourceId}`,
-      },
-      // Credit: platform commission
-      {
-        transactionId: txnId,
-        side: 'credit',
-        entityType: 'platform_account',
-        entityId: 2, // commission account
-        amount: params.commissionAmount,
-        description: `Commission for booking #${params.sourceId}`,
-      },
-    ]);
+      { transactionId: txnId, side: 'debit', entityType: 'user_wallet', entityId: params.walletId, amount: params.amount, description: `Payment for booking #${params.sourceId}` },
+      { transactionId: txnId, side: 'credit', entityType: 'platform_account', entityId: 1, amount: params.amount, description: `Received payment for booking #${params.sourceId}` },
+      { transactionId: txnId, side: 'debit', entityType: 'platform_account', entityId: 1, amount: params.amount, description: `Routing payment for booking #${params.sourceId}` },
+      { transactionId: txnId, side: 'credit', entityType: 'branch', entityId: params.branchId, amount: netAmount, branchId: params.branchId, organisationId: params.organisationId, description: `Net revenue for booking #${params.sourceId}` },
+      { transactionId: txnId, side: 'credit', entityType: 'platform_account', entityId: 2, amount: params.commissionAmount, description: `Commission for booking #${params.sourceId}` },
+    ], conn);
 
     return txnId;
   }
 
-  async createWalletTopup(params: WalletTopupParams): Promise<number> {
+  /**
+   * Create wallet topup journal entries. Accepts optional conn for transactional writes.
+   */
+  async createWalletTopup(params: WalletTopupParams, conn?: mysql.PoolConnection): Promise<number> {
     const txnId = await transactionRepository.createTransaction({
-      type: 'wallet_topup',
-      sourceType: params.sourceType,
-      sourceId: params.sourceId,
-      totalAmount: params.amount,
-      status: 'completed',
-    });
+      type: 'wallet_topup', sourceType: params.sourceType, sourceId: params.sourceId,
+      totalAmount: params.amount, status: 'completed',
+    }, conn);
 
     await transactionRepository.createEntries([
-      // Debit: platform float
-      {
-        transactionId: txnId,
-        side: 'debit',
-        entityType: 'platform_account',
-        entityId: 1, // float account
-        amount: params.amount,
-        description: 'Funds for wallet topup',
-      },
-      // Credit: user wallet
-      {
-        transactionId: txnId,
-        side: 'credit',
-        entityType: 'user_wallet',
-        entityId: params.walletId,
-        amount: params.amount,
-        description: params.description,
-      },
-    ]);
+      { transactionId: txnId, side: 'debit', entityType: 'platform_account', entityId: 1, amount: params.amount, description: 'Funds for wallet topup' },
+      { transactionId: txnId, side: 'credit', entityType: 'user_wallet', entityId: params.walletId, amount: params.amount, description: params.description },
+    ], conn);
 
     return txnId;
   }
 
-  async createWalletWithdraw(params: WalletWithdrawParams): Promise<number> {
+  /**
+   * Create wallet withdrawal journal entries. Accepts optional conn for transactional writes.
+   */
+  async createWalletWithdraw(params: WalletWithdrawParams, conn?: mysql.PoolConnection): Promise<number> {
     const txnId = await transactionRepository.createTransaction({
-      type: 'withdrawal',
-      sourceType: 'wallet',
-      totalAmount: params.amount,
-      status: 'completed',
-    });
+      type: 'withdrawal', sourceType: 'wallet', totalAmount: params.amount, status: 'completed',
+    }, conn);
 
     await transactionRepository.createEntries([
-      // Debit: user wallet
-      {
-        transactionId: txnId,
-        side: 'debit',
-        entityType: 'user_wallet',
-        entityId: params.walletId,
-        amount: params.amount,
-        description: params.description,
-      },
-      // Credit: platform float (held for payout processing)
-      {
-        transactionId: txnId,
-        side: 'credit',
-        entityType: 'platform_account',
-        entityId: 1,
-        amount: params.amount,
-        description: `Withdrawal request - held for payout: ${params.description}`,
-      },
-    ]);
+      { transactionId: txnId, side: 'debit', entityType: 'user_wallet', entityId: params.walletId, amount: params.amount, description: params.description },
+      { transactionId: txnId, side: 'credit', entityType: 'platform_account', entityId: 1, amount: params.amount, description: `Withdrawal request - held for payout: ${params.description}` },
+    ], conn);
 
     return txnId;
   }
 
-  async createRefund(params: RefundParams): Promise<number> {
+  /**
+   * Create refund journal entries. Accepts optional conn for transactional writes.
+   */
+  async createRefund(params: RefundParams, conn?: mysql.PoolConnection): Promise<number> {
     const txnId = await transactionRepository.createTransaction({
-      type: 'refund',
-      sourceType: 'booking',
-      sourceId: params.sourceId,
-      totalAmount: params.amount,
-      status: 'completed',
-    });
+      type: 'refund', sourceType: 'booking', sourceId: params.sourceId,
+      totalAmount: params.amount, status: 'completed',
+    }, conn);
 
     await transactionRepository.createEntries([
-      // Debit: branch (reverse revenue)
-      {
-        transactionId: txnId,
-        side: 'debit',
-        entityType: 'branch',
-        entityId: params.branchId,
-        amount: params.amount,
-        branchId: params.branchId,
-        organisationId: params.organisationId,
-        description: `Refund for booking #${params.sourceId}`,
-      },
-      // Credit: user wallet
-      {
-        transactionId: txnId,
-        side: 'credit',
-        entityType: 'user_wallet',
-        entityId: params.walletId,
-        amount: params.amount,
-        description: params.description,
-      },
-    ]);
+      { transactionId: txnId, side: 'debit', entityType: 'branch', entityId: params.branchId, amount: params.amount, branchId: params.branchId, organisationId: params.organisationId, description: `Refund for booking #${params.sourceId}` },
+      { transactionId: txnId, side: 'credit', entityType: 'user_wallet', entityId: params.walletId, amount: params.amount, description: params.description },
+    ], conn);
 
     return txnId;
   }
