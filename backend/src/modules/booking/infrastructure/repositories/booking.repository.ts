@@ -4,6 +4,7 @@ import { generateUUID, generateQRToken } from '../../../../shared/utils/token.js
 import type { RowDataPacket, ResultSetHeader } from 'mysql2';
 
 type RowData = RowDataPacket[];
+type Executor = mysql.Pool | mysql.PoolConnection;
 
 export class BookingRepository {
   private pool: mysql.Pool;
@@ -12,14 +13,22 @@ export class BookingRepository {
     this.pool = getPool();
   }
 
+  private resolve(conn?: mysql.PoolConnection): Executor {
+    return conn ?? this.pool;
+  }
+
+  /**
+   * Create booking. Pass a transaction connection to participate in the caller's transaction.
+   */
   async create(data: {
     userId: number; branchId: number; organisationId: number; resourceId: number;
     bookingType: string; bookingDate: string; startTime: string; endTime: string;
     totalAmount: number; commissionAmount?: number; clubAmount?: number;
     notes?: string; bookingStatus?: string; paymentStatus?: string;
     paymentMethod?: string;
-  }): Promise<number> {
-    const [result] = await this.pool.execute<ResultSetHeader>(
+  }, conn?: mysql.PoolConnection): Promise<number> {
+    const db = this.resolve(conn);
+    const [result] = await db.execute<ResultSetHeader>(
       `INSERT INTO bookings (public_id, user_id, organisation_id, branch_id, resource_id, booking_type,
         booking_date, start_time, end_time, total_amount, commission_amount, club_amount,
         booking_status, payment_status, payment_method, notes)
@@ -152,7 +161,11 @@ export class BookingRepository {
     return rows.length > 0;
   }
 
-  async checkSlotAvailability(resourceId: number, date: string, slots: { start: string; end: string; date?: string }[]): Promise<boolean> {
+  /**
+   * Check slot availability. Pass a transaction conn for FOR UPDATE semantics.
+   */
+  async checkSlotAvailability(resourceId: number, date: string, slots: { start: string; end: string; date?: string }[], conn?: mysql.PoolConnection): Promise<boolean> {
+    const db = this.resolve(conn);
     const sql = `SELECT COUNT(*) as cnt FROM bookings
                  WHERE resource_id = ? AND booking_date = ?
                  AND booking_status NOT IN ('cancelled', 'expired')
@@ -161,19 +174,20 @@ export class BookingRepository {
     let totalOverlap = 0;
     for (const slot of slots) {
       const slotDate = slot.date || date;
-      const [rows] = await this.pool.execute<RowData>(sql, [resourceId, slotDate, slot.end, slot.start, slot.end, slot.start]);
+      const [rows] = await db.execute<RowData>(sql, [resourceId, slotDate, slot.end, slot.start, slot.end, slot.start]);
       totalOverlap += (rows[0] as any).cnt;
     }
     return totalOverlap === 0;
   }
 
-  async cancel(id: number, userId: number, reason: string, feeAmount: number): Promise<void> {
-    await this.pool.execute(
+  async cancel(id: number, userId: number, reason: string, feeAmount: number, conn?: mysql.PoolConnection): Promise<void> {
+    const db = this.resolve(conn);
+    await db.execute(
       `INSERT INTO booking_cancellations (booking_id, cancelled_by, reason, refund_amount)
        VALUES (?, ?, ?, ?)`,
       [id, userId, reason, feeAmount]
     );
-    await this.pool.execute(
+    await db.execute(
       `UPDATE bookings SET booking_status = 'cancelled', payment_status = 'refunded'
        WHERE id = ?`,
       [id]
@@ -521,20 +535,22 @@ export class BookingRepository {
     );
   }
 
-  async cancelWithRefund(id: number, actorId: number, reason: string, feeAmount: number, newPaymentStatus: string): Promise<void> {
-    await this.pool.execute(
+  async cancelWithRefund(id: number, actorId: number, reason: string, feeAmount: number, newPaymentStatus: string, conn?: mysql.PoolConnection): Promise<void> {
+    const db = this.resolve(conn);
+    await db.execute(
       `INSERT INTO booking_cancellations (booking_id, cancelled_by, reason, refund_amount)
        VALUES (?, ?, ?, ?)`,
       [id, actorId, reason, feeAmount]
     );
-    await this.pool.execute(
+    await db.execute(
       `UPDATE bookings SET booking_status = 'cancelled', payment_status = ? WHERE id = ?`,
       [newPaymentStatus, id]
     );
   }
 
-  async createCancellationRecord(id: number, actorId: number, reason: string, feeAmount: number): Promise<void> {
-    await this.pool.execute(
+  async createCancellationRecord(id: number, actorId: number, reason: string, feeAmount: number, conn?: mysql.PoolConnection): Promise<void> {
+    const db = this.resolve(conn);
+    await db.execute(
       `INSERT INTO booking_cancellations (booking_id, cancelled_by, reason, refund_amount)
        VALUES (?, ?, ?, ?)`,
       [id, actorId, reason, feeAmount]

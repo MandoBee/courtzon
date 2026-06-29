@@ -6,6 +6,7 @@ import { transactionRepository } from '../../financial/infrastructure/transactio
 import { walletRepository } from '../../wallet/infrastructure/repositories/wallet.repository.js';
 import { resourceRepository } from '../../organisations/infrastructure/repositories/resource.repository.js';
 import { slotGenerator } from '../domain/slot-generator.js';
+import { redisLock } from '../infrastructure/redis/redis-lock.js';
 import { getPool } from '../../../database/mysql.js';
 import { NotFoundError, ForbiddenError } from '../../../shared/errors/app-error.js';
 import { createModuleLogger } from '../../../shared/utils/logger.js';
@@ -42,12 +43,7 @@ export class BookingService {
       bookingDate = addDays(input.bookingDate, 1);
     }
 
-    const startSlot = { start: input.startTime, end: input.endTime, date: bookingDate };
-    const available = await bookingRepository.checkSlotAvailability(
-      input.resourceId, bookingDate, [startSlot]
-    );
-    if (!available) throw new Error('Slot is already booked');
-
+    // Pre-compute pricing (idempotent, no lock needed)
     const pricing = await pricingEngine.calculatePrice(
       input.resourceId, input.startTime, input.endTime
     );
@@ -62,22 +58,26 @@ export class BookingService {
       // Commission lookup is non-fatal
     }
 
+    const paymentMethod = input.paymentMethod || 'wallet';
+    const useWallet = paymentMethod === 'wallet';
+    const isGateway = paymentMethod !== 'cash' && paymentMethod !== 'cod' && !useWallet;
+
+    // Acquire distributed Redis lock for the slot to prevent concurrent bookings
+    const lockOwner = `user:${userId}`;
+    const lockAcquired = await redisLock.acquire(input.resourceId, bookingDate, input.startTime, lockOwner);
+    if (!lockAcquired) {
+      throw new Error('This slot is currently being booked by another user. Please try again.');
+    }
+
+    try {
     const conn = await pool.getConnection();
     try {
       await conn.beginTransaction();
 
-      const paymentMethod = input.paymentMethod || 'wallet';
-      const useWallet = paymentMethod === 'wallet';
-      const isGateway = paymentMethod !== 'cash' && paymentMethod !== 'cod' && !useWallet;
-
       if (isGateway) {
         const intentId = await bookingRepository.createIntent({
-          userId,
-          branchId: input.branchId,
-          organisationId,
-          resourceId: input.resourceId,
-          bookingType: input.bookingType || 'public_match',
-          bookingDate,
+          userId, branchId: input.branchId, organisationId, resourceId: input.resourceId,
+          bookingType: input.bookingType || 'public_match', bookingDate,
           startTime: input.startTime,
           endTime: input.endTime,
           totalAmount: pricing.totalPrice,
@@ -121,7 +121,7 @@ export class BookingService {
         const wallet = await walletRepository.findByUserId(userId);
         if (wallet) {
           walletId = wallet.id;
-          walletState = await walletRepository.lockAndGetBalance(walletId!);
+          walletState = await walletRepository.lockAndGetBalance(walletId!, conn);
           if (walletState && walletState.balance >= pricing.totalPrice) {
             walletUpdated = true;
           }
@@ -136,39 +136,30 @@ export class BookingService {
         paymentStatus = 'pending';
       }
 
+      // Final availability check WITHIN the transaction (FOR UPDATE semantics via UNIQUE constraint)
+      const startSlot = { start: input.startTime, end: input.endTime, date: bookingDate };
+      const available = await bookingRepository.checkSlotAvailability(
+        input.resourceId, bookingDate, [startSlot], conn,
+      );
+      if (!available) throw new Error('Slot is already booked');
+
       const bookingId = await bookingRepository.create({
-        userId,
-        branchId: input.branchId,
-        organisationId,
-        resourceId: input.resourceId,
-        bookingType: input.bookingType || 'public_match',
-        bookingDate,
-        startTime: input.startTime,
-        endTime: input.endTime,
-        totalAmount: pricing.totalPrice,
-        commissionAmount,
-        clubAmount,
-        notes: input.notes,
-        bookingStatus,
-        paymentStatus,
-        paymentMethod,
-      });
+        userId, branchId: input.branchId, organisationId, resourceId: input.resourceId,
+        bookingType: input.bookingType || 'public_match', bookingDate,
+        startTime: input.startTime, endTime: input.endTime,
+        totalAmount: pricing.totalPrice, commissionAmount, clubAmount,
+        notes: input.notes, bookingStatus, paymentStatus, paymentMethod,
+      }, conn);
 
       if (walletUpdated && walletId && walletState) {
         const newBalance = walletState.balance - pricing.totalPrice;
-        await walletRepository.updateBalance(walletId, newBalance, walletState.version);
+        await walletRepository.updateBalance(walletId, newBalance, walletState.version, conn);
 
-        // Double-entry booking payment
         await transactionService.createBookingPayment({
-          userId,
-          walletId,
-          branchId: input.branchId,
-          organisationId,
-          amount: pricing.totalPrice,
-          commissionAmount,
-          sourceId: bookingId,
-          description: `Booking #${bookingId} wallet payment`,
-        });
+          userId, walletId, branchId: input.branchId, organisationId,
+          amount: pricing.totalPrice, commissionAmount,
+          sourceId: bookingId, description: `Booking #${bookingId} wallet payment`,
+        }, conn);
       }
 
       if (input.participants?.length) {
@@ -181,29 +172,23 @@ export class BookingService {
         }
       }
 
-      await conn.commit();
-
+      // COD journal entries on the same connection
       if (paymentMethod === 'cash' || paymentMethod === 'cod') {
-        try {
-          const pool2 = getPool();
-          const [txnResult] = await pool2.execute<mysql.ResultSetHeader>(
-            `INSERT INTO transactions (type, source_type, source_id, currency_id, total_amount, status)
-             VALUES ('due', 'booking', ?, 2, ?, 'completed')`,
-            [bookingId, pricing.totalPrice]
-          );
-          await pool2.execute(
-            `INSERT INTO transaction_entries (transaction_id, side, entity_type, entity_id, amount, currency_id, branch_id, organisation_id, description)
-             VALUES (?, 'debit', 'due_from_customer', ?, ?, 2, ?, ?, ?),
-                    (?, 'credit', 'branch', ?, ?, 2, ?, ?, ?)`,
-            [
-              txnResult.insertId, userId, pricing.totalPrice, input.branchId, organisationId, `COD booking #${bookingId} — cash due from customer`,
-              txnResult.insertId, input.branchId, pricing.totalPrice, input.branchId, organisationId, `COD booking #${bookingId} — branch revenue`,
-            ]
-          );
-        } catch {
-          // non-fatal
-        }
+        const [txnResult] = await conn.execute<mysql.ResultSetHeader>(
+          `INSERT INTO transactions (type, source_type, source_id, currency_id, total_amount, status)
+           VALUES ('due', 'booking', ?, 2, ?, 'completed')`,
+          [bookingId, pricing.totalPrice]
+        );
+        await conn.execute(
+          `INSERT INTO transaction_entries (transaction_id, side, entity_type, entity_id, amount, currency_id, branch_id, organisation_id, description)
+           VALUES (?, 'debit', 'due_from_customer', ?, ?, 2, ?, ?, ?),
+                  (?, 'credit', 'branch', ?, ?, 2, ?, ?, ?)`,
+          [txnResult.insertId, userId, pricing.totalPrice, input.branchId, organisationId, `COD booking #${bookingId}`,
+           txnResult.insertId, input.branchId, pricing.totalPrice, input.branchId, organisationId, `COD booking #${bookingId}`]
+        );
       }
+
+      await conn.commit();
 
       let paymentUrl: string | null = null;
       let clientSecret: string | null = null;
@@ -280,6 +265,10 @@ export class BookingService {
       throw err;
     } finally {
       conn.release();
+    }
+    } finally {
+      // Release the distributed Redis lock regardless of outcome
+      await redisLock.release(input.resourceId, bookingDate, input.startTime, lockOwner);
     }
   }
 
@@ -395,23 +384,40 @@ export class BookingService {
     const isCOD = booking.payment_method === 'cash' || booking.payment_method === 'cod';
     const { feeAmount, refundAmount } = await this._calculateCancellationFee(booking);
 
-    if (isCOD) {
-      const totalAmount = Number(booking.total_amount);
-      const paymentStatus = refundAmount >= totalAmount ? 'refunded' : refundAmount > 0 ? 'partially_refunded' : 'penalty';
-      await bookingRepository.cancelWithRefund(id, userId, reason, feeAmount, paymentStatus);
-      if (paymentStatus === 'refunded') {
-        await this._refundCODWallet(booking, totalAmount);
-      } else if (paymentStatus === 'partially_refunded') {
-        await this._refundCODWallet(booking, refundAmount);
+    // Wrap the DB writes (status + cancellation record) in a transaction
+    const pool = getPool();
+    const conn = await pool.getConnection();
+    try {
+      await conn.beginTransaction();
+
+      if (isCOD) {
+        const totalAmount = Number(booking.total_amount);
+        const paymentStatus = refundAmount >= totalAmount ? 'refunded' : refundAmount > 0 ? 'partially_refunded' : 'penalty';
+        await bookingRepository.cancelWithRefund(id, userId, reason, feeAmount, paymentStatus, conn);
+        await conn.commit();
+
+        // Wallet refund and journal entries happen outside the transaction (non-fatal)
+        if (paymentStatus === 'refunded') {
+          await this._refundCODWallet(booking, totalAmount);
+        } else if (paymentStatus === 'partially_refunded') {
+          await this._refundCODWallet(booking, refundAmount);
+        } else {
+          await this._recordCODWalletTransaction(booking, 'penalty', `Booking #${booking.id} cancellation penalty`);
+        }
       } else {
-        await this._recordCODWalletTransaction(booking, 'penalty', `Booking #${booking.id} cancellation penalty`);
+        await bookingRepository.createCancellationRecord(id, userId, reason, feeAmount, conn);
+        await conn.execute('UPDATE bookings SET booking_status = ? WHERE id = ?', ['cancelled', id]);
+        await conn.commit();
+
+        if (refundAmount > 0 && booking.payment_status === 'paid') {
+          await this._processGatewayRefund(booking, refundAmount);
+        }
       }
-    } else {
-      await bookingRepository.updateStatus(id, 'cancelled');
-      await bookingRepository.createCancellationRecord(id, userId, reason, feeAmount);
-      if (refundAmount > 0 && booking.payment_status === 'paid') {
-        await this._processGatewayRefund(booking, refundAmount);
-      }
+    } catch (err) {
+      await conn.rollback();
+      throw err;
+    } finally {
+      conn.release();
     }
 
     return this.getBooking(id);
