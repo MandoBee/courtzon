@@ -539,7 +539,8 @@ export const marketplaceService = {
 
       if (!result.success) {
         const errMsg = (result as any).errorMessage || 'Payment gateway rejected the transaction';
-        log.error({ orderId, errorMessage: errMsg }, 'Gateway charge failed');
+        const rawResp = (result as any).rawResponse ? JSON.stringify((result as any).rawResponse).substring(0, 300) : '';
+        log.error({ orderId, errorMessage: errMsg, rawResponse: rawResp }, 'Gateway charge failed');
         throw new ConflictError(errMsg);
       }
 

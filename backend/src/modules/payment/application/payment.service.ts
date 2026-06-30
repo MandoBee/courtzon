@@ -93,6 +93,8 @@ export class PaymentService {
       clientSecret: paymentResult.clientSecret,
       intentionId: paymentResult.intentionId,
       transactionId: paymentResult.transactionId,
+      rawResponse: paymentResult.rawResponse,
+      errorMessage: paymentResult.errorMessage,
     };
   }
 
