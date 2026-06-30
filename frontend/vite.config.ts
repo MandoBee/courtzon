@@ -1,18 +1,10 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
-import { execSync } from 'node:child_process'
 
 const backend = process.env.BACKEND_URL || 'http://127.0.0.1:3000'
 
 export default defineConfig(({ command }) => ({
-  build: { sourcemap: true },
-  define: {
-    __COMMIT_SHA__: JSON.stringify(
-      (() => { try { return execSync('git rev-parse --short HEAD').toString().trim(); } catch { return 'unknown'; } })()
-    ),
-    __BUILD_TIME__: JSON.stringify(new Date().toISOString()),
-  },
   plugins: [
     react(),
     // Service worker auto-update reloads the page during `npm run dev` and causes visible flicker.
@@ -136,7 +128,7 @@ export default defineConfig(({ command }) => ({
       '/banks': backend,
       '/bank-branches': backend,
       '/subscription-plans': backend,
-      '/subscription-features': backend,
+  '/subscription-features': backend,
       '/bookings': backend,
       '/marketplace': backend,
       '/wallets': backend,

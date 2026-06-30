@@ -15,20 +15,7 @@ function toggleId(list: number[], id: number) {
   return list.includes(id) ? list.filter((x) => x !== id) : [...list, id];
 }
 
-function debugMap<T>(arr: T, name: string): T {
-  console.group("MARKETPLACE DEBUG");
-  console.log("Variable:", name);
-  console.log("typeof:", typeof arr);
-  console.log("Array:", Array.isArray(arr));
-  console.dir(arr);
-  console.trace();
-  console.groupEnd();
-  return arr;
-}
-
 export default function MarketplacePage() {
-  console.log("MarketplacePage render");
-
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [tab, setTab] = useState<Tab>('all');
@@ -46,15 +33,9 @@ export default function MarketplacePage() {
 
   const sellerType = tab === 'all' ? undefined : tab === 'players' ? 'player' : 'seller';
 
-  console.log("Before useQuery: products");
-  const productsQuery = useQuery({
+  const { data: products, isLoading } = useQuery({
     queryKey: ['mp-products', tab, search, categoryId, sportIds, brandIds, tagIds, inStockOnly, gender, sort, page],
     queryFn: () => {
-      const _qstart = Date.now();
-      console.log("REQUEST START");
-      console.log("- name: products");
-      console.log("- url: /marketplace/products");
-      console.log("- queryKey:", ['mp-products', tab, search, categoryId, sportIds, brandIds, tagIds, inStockOnly, gender, sort, page]);
       const params: Record<string, string | number> = { sort, page, limit: 20 };
       if (sellerType) params.sellerType = sellerType;
       if (search) params.search = search;
@@ -67,12 +48,6 @@ export default function MarketplacePage() {
       if (inStockOnly) params.stockStatus = 'in_stock';
       if (gender.length && gender.length < 3) params.gender = gender.join(',');
       return api.get('/marketplace/products', { params }).then((r) => {
-        const _elapsed = Date.now() - _qstart;
-        console.log("RESPONSE");
-        console.log("- status:", r.status);
-        console.log("- headers:", r.headers);
-        console.log("- elapsed:", _elapsed + "ms");
-        console.log("- body:", r.data);
         const d = r.data;
         if (!d || !Array.isArray(d.data)) throw new Error('Invalid response: expected { data: [...] }');
         return d;
@@ -81,126 +56,23 @@ export default function MarketplacePage() {
     retry: false,
     staleTime: 30000,
   });
-  console.log("After useQuery: products", productsQuery);
-  const { data: products, isLoading } = productsQuery;
-  console.group("QUERY");
-  console.log(['mp-products', tab, search, categoryId, sportIds, brandIds, tagIds, inStockOnly, gender, sort, page]);
-  console.log(productsQuery.status);
-  console.log(productsQuery.fetchStatus);
-  console.log(productsQuery.isLoading);
-  console.log(productsQuery.isFetching);
-  console.log(productsQuery.isSuccess);
-  console.log(productsQuery.error);
-  console.log(productsQuery.data);
-  console.groupEnd();
 
-  console.log("Before useQuery: wishlist");
-  const wishlistQuery = useQuery({
+  const { data: wishlist } = useQuery({
     queryKey: ['mp-wishlist'],
-    queryFn: () => {
-      const _qstart = Date.now();
-      console.log("REQUEST START");
-      console.log("- name: wishlist");
-      console.log("- url: /marketplace/wishlist");
-      console.log("- queryKey:", ['mp-wishlist']);
-      return api.get('/marketplace/wishlist').then((r) => {
-        const _elapsed = Date.now() - _qstart;
-        console.log("RESPONSE");
-        console.log("- status:", r.status);
-        console.log("- headers:", r.headers);
-        console.log("- elapsed:", _elapsed + "ms");
-        console.log("- body:", r.data);
-        return r.data.data;
-      });
-    },
+    queryFn: () => api.get('/marketplace/wishlist').then((r) => r.data.data),
   });
-  console.log("After useQuery: wishlist", wishlistQuery);
-  const { data: wishlist } = wishlistQuery;
-  console.group("QUERY");
-  console.log(['mp-wishlist']);
-  console.log(wishlistQuery.status);
-  console.log(wishlistQuery.fetchStatus);
-  console.log(wishlistQuery.isLoading);
-  console.log(wishlistQuery.isFetching);
-  console.log(wishlistQuery.isSuccess);
-  console.log(wishlistQuery.error);
-  console.log(wishlistQuery.data);
-  console.groupEnd();
 
-  console.log("Before useQuery: cart");
-  const cartQuery = useQuery({
+  const { data: cart } = useQuery({
     queryKey: ['mp-cart'],
-    queryFn: () => {
-      const _qstart = Date.now();
-      console.log("REQUEST START");
-      console.log("- name: cart");
-      console.log("- url: /marketplace/cart");
-      console.log("- queryKey:", ['mp-cart']);
-      return api.get('/marketplace/cart').then((r) => {
-        const _elapsed = Date.now() - _qstart;
-        console.log("RESPONSE");
-        console.log("- status:", r.status);
-        console.log("- headers:", r.headers);
-        console.log("- elapsed:", _elapsed + "ms");
-        console.log("- body:", r.data);
-        return r.data;
-      });
-    },
+    queryFn: () => api.get('/marketplace/cart').then((r) => r.data),
     staleTime: 30000,
   });
-  console.log("After useQuery: cart", cartQuery);
-  const { data: cart } = cartQuery;
-  console.group("QUERY");
-  console.log(['mp-cart']);
-  console.log(cartQuery.status);
-  console.log(cartQuery.fetchStatus);
-  console.log(cartQuery.isLoading);
-  console.log(cartQuery.isFetching);
-  console.log(cartQuery.isSuccess);
-  console.log(cartQuery.error);
-  console.log(cartQuery.data);
-  console.groupEnd();
 
-  console.log("Before useQuery: playerStatus");
-  const playerStatusQuery = useQuery({
+  const { data: playerStatus } = useQuery({
     queryKey: ['mp-player-status'],
-    queryFn: () => {
-      const _qstart = Date.now();
-      console.log("REQUEST START");
-      console.log("- name: playerStatus");
-      console.log("- url: /marketplace/player/status");
-      console.log("- queryKey:", ['mp-player-status']);
-      return api.get('/marketplace/player/status').then((r) => {
-        const _elapsed = Date.now() - _qstart;
-        console.log("RESPONSE");
-        console.log("- status:", r.status);
-        console.log("- headers:", r.headers);
-        console.log("- elapsed:", _elapsed + "ms");
-        console.log("- body:", r.data);
-        return r.data;
-      });
-    },
+    queryFn: () => api.get('/marketplace/player/status').then((r) => r.data),
   });
-  console.log("After useQuery: playerStatus", playerStatusQuery);
-  const { data: playerStatus } = playerStatusQuery;
-  console.group("QUERY");
-  console.log(['mp-player-status']);
-  console.log(playerStatusQuery.status);
-  console.log(playerStatusQuery.fetchStatus);
-  console.log(playerStatusQuery.isLoading);
-  console.log(playerStatusQuery.isFetching);
-  console.log(playerStatusQuery.isSuccess);
-  console.log(playerStatusQuery.error);
-  console.log(playerStatusQuery.data);
-  console.groupEnd();
 
-  console.group("MARKETPLACE DEBUG");
-  console.log("Variable:", "wishlist");
-  console.log("typeof:", typeof wishlist);
-  console.log("Array:", Array.isArray(wishlist));
-  console.dir(wishlist);
-  console.trace();
-  console.groupEnd();
   const wishlistIds = new Set((wishlist || []).map((w: { product_id: number }) => w.product_id));
   const wishlistCount = (wishlist || []).length;
   const cartCount = cart?.items?.length || 0;
@@ -375,7 +247,7 @@ export default function MarketplacePage() {
             </div>
           ) : (
             <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
-              {debugMap(products.data, "products.data").map((p: {
+              {products.data.map((p: {
                 id: number; name: string; images?: string; price: string | number;
                 discounted_price?: string | number; currency_code: string; quantity: number;
                 shop_name?: string; seller_phone?: string; seller_full_name?: string; org_type_slug?: string;
