@@ -20,7 +20,8 @@
     "test:watch": "vitest",
     "test:unit": "vitest run",
     "test:int": "vitest run --config vitest.integration.config.ts",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "verify:production": "node scripts/verify-production.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1058.0",
