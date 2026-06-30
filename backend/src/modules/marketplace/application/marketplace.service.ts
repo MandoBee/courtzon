@@ -526,29 +526,31 @@ export const marketplaceService = {
       await repo.clearCart(userId);
       return this.getOrderForUser(orderId, userId);
     } else {
-      try {
-        const result = await paymentService.charge(userId, {
-          referenceType: 'order',
-          referenceId: orderId,
-          amount: total,
-          currency,
-          paymentMethod: paymentMethod as any,
-          returnUrl,
-          ...customerData,
-        });
-        if (!result.success) {
-          log.error({ errorMessage: (result as any).errorMessage || 'Unknown error' }, 'Gateway charge failed');
-        } else {
-          const paymentUrl = 'paymentUrl' in result ? result.paymentUrl : undefined;
-          const clientSecret = 'clientSecret' in result ? result.clientSecret : undefined;
-          if (paymentUrl || clientSecret) {
-            const order = await this.getOrder(orderId);
-            return { ...order, paymentUrl, clientSecret };
-          }
-        }
-      } catch (err) {
-        log.error({ err }, 'Gateway charge exception');
+      // ── Card / Online payment via gateway ──
+      const result = await paymentService.charge(userId, {
+        referenceType: 'order',
+        referenceId: orderId,
+        amount: total,
+        currency,
+        paymentMethod: paymentMethod as any,
+        returnUrl,
+        ...customerData,
+      });
+
+      if (!result.success) {
+        const errMsg = (result as any).errorMessage || 'Payment gateway rejected the transaction';
+        log.error({ orderId, errorMessage: errMsg }, 'Gateway charge failed');
+        throw new ConflictError(errMsg);
       }
+
+      const paymentUrl = 'paymentUrl' in result ? result.paymentUrl : undefined;
+      const clientSecret = 'clientSecret' in result ? result.clientSecret : undefined;
+      if (!paymentUrl && !clientSecret) {
+        throw new ConflictError('Payment gateway did not return a checkout URL or client secret');
+      }
+
+      const order = await this.getOrder(orderId);
+      return { ...order, paymentUrl, clientSecret };
     }
 
     const orderRows = await repo.findOrderById(orderId);

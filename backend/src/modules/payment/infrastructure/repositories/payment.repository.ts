@@ -7,19 +7,23 @@ export const paymentRepository = {
   async create(data: {
     userId: number; bookingId?: number; orderId?: number; referenceType?: string; paymentMethod: string;
     gatewayProvider: string; gatewayReference: string; amount: number;
-    status: string;
+    status: string; currency?: string; gatewayResponse?: unknown;
   }) {
     const pool = getPool();
     const isBooking = data.referenceType === 'booking' || data.referenceType === 'booking_intent';
     const isOrder = data.referenceType === 'order';
     const [result] = await pool.execute<mysql.ResultSetHeader>(
-      `INSERT INTO payment_transactions (user_id, booking_id, order_id, reference_type, payment_method, gateway_provider, gateway_reference, amount, payment_status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO payment_transactions (user_id, booking_id, order_id, reference_type, payment_method, gateway_provider, gateway_reference, amount, currency, payment_status, gateway_response)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [data.userId,
        isBooking ? (data.bookingId ?? null) : null,
        isOrder ? (data.orderId ?? null) : null,
        data.referenceType || null,
-       data.paymentMethod, data.gatewayProvider, data.gatewayReference, data.amount, data.status]
+       data.paymentMethod, data.gatewayProvider, data.gatewayReference, data.amount,
+       data.currency || 'EGP',
+       data.status,
+       data.gatewayResponse ? JSON.stringify(data.gatewayResponse) : null,
+      ]
     );
     return result.insertId;
   },

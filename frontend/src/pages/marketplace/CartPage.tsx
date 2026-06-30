@@ -292,15 +292,22 @@ export default function CartPage() {
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['mp-cart'] });
       queryClient.invalidateQueries({ queryKey: ['mp-orders'] });
-      setOrderId(res.data.id);
-      if (res.data.clientSecret) {
-        setPixelClientSecret(res.data.clientSecret);
-      } else if (res.data.paymentUrl) {
-        window.location.href = res.data.paymentUrl;
-      } else {
-        showToast('Order placed successfully!', 'success');
-        navigate('/marketplace/orders');
+      const data = res.data;
+      setOrderId(data.id);
+
+      if (paymentMethod === 'card' || paymentMethod === 'online') {
+        if (data.clientSecret) {
+          setPixelClientSecret(data.clientSecret);
+        } else if (data.paymentUrl) {
+          window.location.href = data.paymentUrl;
+        } else {
+          showToast('Payment gateway did not return a checkout session. Please try again.', 'error');
+        }
+        return;
       }
+
+      showToast('Order placed successfully!', 'success');
+      navigate('/marketplace/orders');
     },
     onError: (err: any) => {
       showToast(err?.response?.data?.message || 'Checkout failed', 'error');

@@ -80,7 +80,9 @@ export class PaymentService {
       gatewayProvider: paymentGateway.provider,
       gatewayReference: paymentResult.gatewayReference || '',
       amount: input.amount,
+      currency: input.currency,
       status: paymentResult.status,
+      gatewayResponse: paymentResult.rawResponse || null,
     });
 
     return {
