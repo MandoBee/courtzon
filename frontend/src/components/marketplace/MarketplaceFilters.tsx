@@ -60,7 +60,7 @@ function CheckboxRow({
 
 function debugMap<T>(arr: T, name: string): T {
   console.group("MARKETPLACE DEBUG");
-  console.log("variable name:", name);
+  console.log("Variable:", name);
   console.log("typeof:", typeof arr);
   console.log("Array:", Array.isArray(arr));
   console.dir(arr);
@@ -84,98 +84,140 @@ export default function MarketplaceFilters({
   onGenderChange,
   onClearAll,
 }: MarketplaceFiltersProps) {
-  const allCategoriesResult = useQuery<CategoryCrumb[]>({
+  console.log("MarketplaceFilters render");
+
+  console.log("Before useQuery: allCategories");
+  const allCategoriesQuery = useQuery<CategoryCrumb[]>({
     queryKey: ['mp-categories-all'],
     queryFn: () => {
-      console.log("REQUEST START", '/marketplace/categories');
+      const _qstart = Date.now();
+      console.log("REQUEST START");
+      console.log("- name: allCategories");
+      console.log("- url: /marketplace/categories");
+      console.log("- queryKey:", ['mp-categories-all']);
       return api
         .get('/marketplace/categories')
         .then((r) => {
-          console.log("RESPONSE /marketplace/categories", r.status);
-          console.dir(r.data);
+          const _elapsed = Date.now() - _qstart;
+          console.log("RESPONSE");
+          console.log("- status:", r.status);
+          console.log("- headers:", r.headers);
+          console.log("- elapsed:", _elapsed + "ms");
+          console.log("- body:", r.data);
           return r.data.data as CategoryCrumb[];
         });
     },
   });
-  const { data: allCategories = [] } = allCategoriesResult;
+  console.log("After useQuery: allCategories", allCategoriesQuery);
+  const { data: allCategories = [] } = allCategoriesQuery;
   console.group("QUERY");
   console.log(['mp-categories-all']);
-  console.log(allCategoriesResult.status);
-  console.log(allCategoriesResult.fetchStatus);
-  console.log(allCategoriesResult.isLoading);
-  console.log(allCategoriesResult.isFetching);
-  console.log(allCategoriesResult.isSuccess);
-  console.log(allCategoriesResult.error);
-  console.log(allCategoriesResult.data);
+  console.log(allCategoriesQuery.status);
+  console.log(allCategoriesQuery.fetchStatus);
+  console.log(allCategoriesQuery.isLoading);
+  console.log(allCategoriesQuery.isFetching);
+  console.log(allCategoriesQuery.isSuccess);
+  console.log(allCategoriesQuery.error);
+  console.log(allCategoriesQuery.data);
   console.groupEnd();
 
-  const sportsResult = useQuery<{ id: number; name: string }[]>({
+  console.log("Before useQuery: sports");
+  const sportsQuery = useQuery<{ id: number; name: string }[]>({
     queryKey: ['mp-sports-marketplace'],
     queryFn: () => {
-      console.log("REQUEST START", '/sports/marketplace');
+      const _qstart = Date.now();
+      console.log("REQUEST START");
+      console.log("- name: sports");
+      console.log("- url: /sports/marketplace");
+      console.log("- queryKey:", ['mp-sports-marketplace']);
       return api.get('/sports/marketplace').then((r) => {
-        console.log("RESPONSE /sports/marketplace", r.status);
-        console.dir(r.data);
+        const _elapsed = Date.now() - _qstart;
+        console.log("RESPONSE");
+        console.log("- status:", r.status);
+        console.log("- headers:", r.headers);
+        console.log("- elapsed:", _elapsed + "ms");
+        console.log("- body:", r.data);
         return r.data as { id: number; name: string }[];
       });
     },
   });
-  const { data: sports = [] } = sportsResult;
+  console.log("After useQuery: sports", sportsQuery);
+  const { data: sports = [] } = sportsQuery;
   console.group("QUERY");
   console.log(['mp-sports-marketplace']);
-  console.log(sportsResult.status);
-  console.log(sportsResult.fetchStatus);
-  console.log(sportsResult.isLoading);
-  console.log(sportsResult.isFetching);
-  console.log(sportsResult.isSuccess);
-  console.log(sportsResult.error);
-  console.log(sportsResult.data);
+  console.log(sportsQuery.status);
+  console.log(sportsQuery.fetchStatus);
+  console.log(sportsQuery.isLoading);
+  console.log(sportsQuery.isFetching);
+  console.log(sportsQuery.isSuccess);
+  console.log(sportsQuery.error);
+  console.log(sportsQuery.data);
   console.groupEnd();
 
-  const brandsResult = useQuery<{ id: number; name: string }[]>({
+  console.log("Before useQuery: brands");
+  const brandsQuery = useQuery<{ id: number; name: string }[]>({
     queryKey: ['mp-brands'],
     queryFn: () => {
-      console.log("REQUEST START", '/marketplace/brands');
+      const _qstart = Date.now();
+      console.log("REQUEST START");
+      console.log("- name: brands");
+      console.log("- url: /marketplace/brands");
+      console.log("- queryKey:", ['mp-brands']);
       return api.get('/marketplace/brands').then((r) => {
-        console.log("RESPONSE /marketplace/brands", r.status);
-        console.dir(r.data);
+        const _elapsed = Date.now() - _qstart;
+        console.log("RESPONSE");
+        console.log("- status:", r.status);
+        console.log("- headers:", r.headers);
+        console.log("- elapsed:", _elapsed + "ms");
+        console.log("- body:", r.data);
         return r.data as { id: number; name: string }[];
       });
     },
   });
-  const { data: brands = [] } = brandsResult;
+  console.log("After useQuery: brands", brandsQuery);
+  const { data: brands = [] } = brandsQuery;
   console.group("QUERY");
   console.log(['mp-brands']);
-  console.log(brandsResult.status);
-  console.log(brandsResult.fetchStatus);
-  console.log(brandsResult.isLoading);
-  console.log(brandsResult.isFetching);
-  console.log(brandsResult.isSuccess);
-  console.log(brandsResult.error);
-  console.log(brandsResult.data);
+  console.log(brandsQuery.status);
+  console.log(brandsQuery.fetchStatus);
+  console.log(brandsQuery.isLoading);
+  console.log(brandsQuery.isFetching);
+  console.log(brandsQuery.isSuccess);
+  console.log(brandsQuery.error);
+  console.log(brandsQuery.data);
   console.groupEnd();
 
-  const tagsResult = useQuery<{ id: number; name: string }[]>({
+  console.log("Before useQuery: tags");
+  const tagsQuery = useQuery<{ id: number; name: string }[]>({
     queryKey: ['mp-tags'],
     queryFn: () => {
-      console.log("REQUEST START", '/marketplace/tags');
+      const _qstart = Date.now();
+      console.log("REQUEST START");
+      console.log("- name: tags");
+      console.log("- url: /marketplace/tags");
+      console.log("- queryKey:", ['mp-tags']);
       return api.get('/marketplace/tags').then((r) => {
-        console.log("RESPONSE /marketplace/tags", r.status);
-        console.dir(r.data);
+        const _elapsed = Date.now() - _qstart;
+        console.log("RESPONSE");
+        console.log("- status:", r.status);
+        console.log("- headers:", r.headers);
+        console.log("- elapsed:", _elapsed + "ms");
+        console.log("- body:", r.data);
         return r.data as { id: number; name: string }[];
       });
     },
   });
-  const { data: tags = [] } = tagsResult;
+  console.log("After useQuery: tags", tagsQuery);
+  const { data: tags = [] } = tagsQuery;
   console.group("QUERY");
   console.log(['mp-tags']);
-  console.log(tagsResult.status);
-  console.log(tagsResult.fetchStatus);
-  console.log(tagsResult.isLoading);
-  console.log(tagsResult.isFetching);
-  console.log(tagsResult.isSuccess);
-  console.log(tagsResult.error);
-  console.log(tagsResult.data);
+  console.log(tagsQuery.status);
+  console.log(tagsQuery.fetchStatus);
+  console.log(tagsQuery.isLoading);
+  console.log(tagsQuery.isFetching);
+  console.log(tagsQuery.isSuccess);
+  console.log(tagsQuery.error);
+  console.log(tagsQuery.data);
   console.groupEnd();
 
   // Build category tree
