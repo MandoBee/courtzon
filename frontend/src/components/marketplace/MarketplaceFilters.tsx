@@ -58,6 +58,17 @@ function CheckboxRow({
   );
 }
 
+function debugMap<T>(arr: T, name: string): T {
+  console.group("MARKETPLACE DEBUG");
+  console.log("variable name:", name);
+  console.log("typeof:", typeof arr);
+  console.log("Array:", Array.isArray(arr));
+  console.dir(arr);
+  console.trace();
+  console.groupEnd();
+  return arr;
+}
+
 export default function MarketplaceFilters({
   categoryId,
   sportIds,
@@ -73,28 +84,99 @@ export default function MarketplaceFilters({
   onGenderChange,
   onClearAll,
 }: MarketplaceFiltersProps) {
-  const { data: allCategories = [] } = useQuery<CategoryCrumb[]>({
+  const allCategoriesResult = useQuery<CategoryCrumb[]>({
     queryKey: ['mp-categories-all'],
-    queryFn: () =>
-      api
+    queryFn: () => {
+      console.log("REQUEST START", '/marketplace/categories');
+      return api
         .get('/marketplace/categories')
-        .then((r) => r.data.data as CategoryCrumb[]),
+        .then((r) => {
+          console.log("RESPONSE /marketplace/categories", r.status);
+          console.dir(r.data);
+          return r.data.data as CategoryCrumb[];
+        });
+    },
   });
+  const { data: allCategories = [] } = allCategoriesResult;
+  console.group("QUERY");
+  console.log(['mp-categories-all']);
+  console.log(allCategoriesResult.status);
+  console.log(allCategoriesResult.fetchStatus);
+  console.log(allCategoriesResult.isLoading);
+  console.log(allCategoriesResult.isFetching);
+  console.log(allCategoriesResult.isSuccess);
+  console.log(allCategoriesResult.error);
+  console.log(allCategoriesResult.data);
+  console.groupEnd();
 
-  const { data: sports = [] } = useQuery<{ id: number; name: string }[]>({
+  const sportsResult = useQuery<{ id: number; name: string }[]>({
     queryKey: ['mp-sports-marketplace'],
-    queryFn: () => api.get('/sports/marketplace').then((r) => r.data as { id: number; name: string }[]),
+    queryFn: () => {
+      console.log("REQUEST START", '/sports/marketplace');
+      return api.get('/sports/marketplace').then((r) => {
+        console.log("RESPONSE /sports/marketplace", r.status);
+        console.dir(r.data);
+        return r.data as { id: number; name: string }[];
+      });
+    },
   });
+  const { data: sports = [] } = sportsResult;
+  console.group("QUERY");
+  console.log(['mp-sports-marketplace']);
+  console.log(sportsResult.status);
+  console.log(sportsResult.fetchStatus);
+  console.log(sportsResult.isLoading);
+  console.log(sportsResult.isFetching);
+  console.log(sportsResult.isSuccess);
+  console.log(sportsResult.error);
+  console.log(sportsResult.data);
+  console.groupEnd();
 
-  const { data: brands = [] } = useQuery<{ id: number; name: string }[]>({
+  const brandsResult = useQuery<{ id: number; name: string }[]>({
     queryKey: ['mp-brands'],
-    queryFn: () => api.get('/marketplace/brands').then((r) => r.data as { id: number; name: string }[]),
+    queryFn: () => {
+      console.log("REQUEST START", '/marketplace/brands');
+      return api.get('/marketplace/brands').then((r) => {
+        console.log("RESPONSE /marketplace/brands", r.status);
+        console.dir(r.data);
+        return r.data as { id: number; name: string }[];
+      });
+    },
   });
+  const { data: brands = [] } = brandsResult;
+  console.group("QUERY");
+  console.log(['mp-brands']);
+  console.log(brandsResult.status);
+  console.log(brandsResult.fetchStatus);
+  console.log(brandsResult.isLoading);
+  console.log(brandsResult.isFetching);
+  console.log(brandsResult.isSuccess);
+  console.log(brandsResult.error);
+  console.log(brandsResult.data);
+  console.groupEnd();
 
-  const { data: tags = [] } = useQuery<{ id: number; name: string }[]>({
+  const tagsResult = useQuery<{ id: number; name: string }[]>({
     queryKey: ['mp-tags'],
-    queryFn: () => api.get('/marketplace/tags').then((r) => r.data as { id: number; name: string }[]),
+    queryFn: () => {
+      console.log("REQUEST START", '/marketplace/tags');
+      return api.get('/marketplace/tags').then((r) => {
+        console.log("RESPONSE /marketplace/tags", r.status);
+        console.dir(r.data);
+        return r.data as { id: number; name: string }[];
+      });
+    },
   });
+  const { data: tags = [] } = tagsResult;
+  console.group("QUERY");
+  console.log(['mp-tags']);
+  console.log(tagsResult.status);
+  console.log(tagsResult.fetchStatus);
+  console.log(tagsResult.isLoading);
+  console.log(tagsResult.isFetching);
+  console.log(tagsResult.isSuccess);
+  console.log(tagsResult.error);
+  console.log(tagsResult.data);
+  console.groupEnd();
 
   // Build category tree
   const { rootCategories, childrenMap } = useMemo(() => {
@@ -204,7 +286,7 @@ export default function MarketplaceFilters({
             className="w-full px-2 py-1.5 text-sm rounded border bg-[var(--color-surface)] text-[var(--color-text)]"
           >
             <option value="">All Categories</option>
-            {rootCategories.map((c) => (
+            {debugMap(rootCategories, "rootCategories").map((c) => (
               <option key={c.id} value={c.id}>
                 {c.name}
               </option>
@@ -218,7 +300,7 @@ export default function MarketplaceFilters({
               className="w-full px-2 py-1.5 text-sm rounded border bg-[var(--color-surface)] text-[var(--color-text)]"
             >
               <option value="">All {mainCat?.name || 'Subcategories'}</option>
-              {subCategories.map((c) => (
+              {debugMap(subCategories, "subCategories").map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name}
                 </option>
@@ -233,7 +315,7 @@ export default function MarketplaceFilters({
               className="w-full px-2 py-1.5 text-sm rounded border bg-[var(--color-surface)] text-[var(--color-text)]"
             >
               <option value="">All {subCat?.name || ''}</option>
-              {subSubCategories.map((c) => (
+              {debugMap(subSubCategories, "subSubCategories").map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name}
                 </option>
@@ -266,7 +348,7 @@ export default function MarketplaceFilters({
 
       <FilterSection title="Sport">
         <div className="max-h-40 overflow-y-auto space-y-0.5">
-          {sports.map((s) => (
+          {debugMap(sports, "sports").map((s) => (
             <CheckboxRow
               key={s.id}
               id={`sport-${s.id}`}
@@ -280,7 +362,7 @@ export default function MarketplaceFilters({
 
       <FilterSection title="Brand">
         <div className="max-h-48 overflow-y-auto space-y-0.5">
-          {brands.map((b) => (
+          {debugMap(brands, "brands").map((b) => (
             <CheckboxRow
               key={b.id}
               id={`brand-${b.id}`}
@@ -297,7 +379,7 @@ export default function MarketplaceFilters({
 
       <FilterSection title="Tags">
         <div className="max-h-40 overflow-y-auto space-y-0.5">
-          {tags.map((t) => (
+          {debugMap(tags, "tags").map((t) => (
             <CheckboxRow
               key={t.id}
               id={`tag-${t.id}`}

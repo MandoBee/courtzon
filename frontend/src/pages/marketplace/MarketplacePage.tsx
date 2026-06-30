@@ -15,6 +15,17 @@ function toggleId(list: number[], id: number) {
   return list.includes(id) ? list.filter((x) => x !== id) : [...list, id];
 }
 
+function debugMap<T>(arr: T, name: string): T {
+  console.group("MARKETPLACE DEBUG");
+  console.log("variable name:", name);
+  console.log("typeof:", typeof arr);
+  console.log("Array:", Array.isArray(arr));
+  console.dir(arr);
+  console.trace();
+  console.groupEnd();
+  return arr;
+}
+
 export default function MarketplacePage() {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
@@ -33,9 +44,10 @@ export default function MarketplacePage() {
 
   const sellerType = tab === 'all' ? undefined : tab === 'players' ? 'player' : 'seller';
 
-  const { data: products, isLoading } = useQuery({
+  const productsResult = useQuery({
     queryKey: ['mp-products', tab, search, categoryId, sportIds, brandIds, tagIds, inStockOnly, gender, sort, page],
     queryFn: () => {
+      console.log("REQUEST START", '/marketplace/products');
       const params: Record<string, string | number> = { sort, page, limit: 20 };
       if (sellerType) params.sellerType = sellerType;
       if (search) params.search = search;
@@ -48,6 +60,8 @@ export default function MarketplacePage() {
       if (inStockOnly) params.stockStatus = 'in_stock';
       if (gender.length && gender.length < 3) params.gender = gender.join(',');
       return api.get('/marketplace/products', { params }).then((r) => {
+        console.log("RESPONSE /marketplace/products", r.status);
+        console.dir(r.data);
         const d = r.data;
         if (!d || !Array.isArray(d.data)) throw new Error('Invalid response: expected { data: [...] }');
         return d;
@@ -56,23 +70,95 @@ export default function MarketplacePage() {
     retry: false,
     staleTime: 30000,
   });
+  const { data: products, isLoading } = productsResult;
+  console.group("QUERY");
+  console.log(['mp-products', tab, search, categoryId, sportIds, brandIds, tagIds, inStockOnly, gender, sort, page]);
+  console.log(productsResult.status);
+  console.log(productsResult.fetchStatus);
+  console.log(productsResult.isLoading);
+  console.log(productsResult.isFetching);
+  console.log(productsResult.isSuccess);
+  console.log(productsResult.error);
+  console.log(productsResult.data);
+  console.groupEnd();
 
-  const { data: wishlist } = useQuery({
+  const wishlistResult = useQuery({
     queryKey: ['mp-wishlist'],
-    queryFn: () => api.get('/marketplace/wishlist').then((r) => r.data.data),
+    queryFn: () => {
+      console.log("REQUEST START", '/marketplace/wishlist');
+      return api.get('/marketplace/wishlist').then((r) => {
+        console.log("RESPONSE /marketplace/wishlist", r.status);
+        console.dir(r.data);
+        return r.data.data;
+      });
+    },
   });
+  const { data: wishlist } = wishlistResult;
+  console.group("QUERY");
+  console.log(['mp-wishlist']);
+  console.log(wishlistResult.status);
+  console.log(wishlistResult.fetchStatus);
+  console.log(wishlistResult.isLoading);
+  console.log(wishlistResult.isFetching);
+  console.log(wishlistResult.isSuccess);
+  console.log(wishlistResult.error);
+  console.log(wishlistResult.data);
+  console.groupEnd();
 
-  const { data: cart } = useQuery({
+  const cartResult = useQuery({
     queryKey: ['mp-cart'],
-    queryFn: () => api.get('/marketplace/cart').then((r) => r.data),
+    queryFn: () => {
+      console.log("REQUEST START", '/marketplace/cart');
+      return api.get('/marketplace/cart').then((r) => {
+        console.log("RESPONSE /marketplace/cart", r.status);
+        console.dir(r.data);
+        return r.data;
+      });
+    },
     staleTime: 30000,
   });
+  const { data: cart } = cartResult;
+  console.group("QUERY");
+  console.log(['mp-cart']);
+  console.log(cartResult.status);
+  console.log(cartResult.fetchStatus);
+  console.log(cartResult.isLoading);
+  console.log(cartResult.isFetching);
+  console.log(cartResult.isSuccess);
+  console.log(cartResult.error);
+  console.log(cartResult.data);
+  console.groupEnd();
 
-  const { data: playerStatus } = useQuery({
+  const playerStatusResult = useQuery({
     queryKey: ['mp-player-status'],
-    queryFn: () => api.get('/marketplace/player/status').then((r) => r.data),
+    queryFn: () => {
+      console.log("REQUEST START", '/marketplace/player/status');
+      return api.get('/marketplace/player/status').then((r) => {
+        console.log("RESPONSE /marketplace/player/status", r.status);
+        console.dir(r.data);
+        return r.data;
+      });
+    },
   });
+  const { data: playerStatus } = playerStatusResult;
+  console.group("QUERY");
+  console.log(['mp-player-status']);
+  console.log(playerStatusResult.status);
+  console.log(playerStatusResult.fetchStatus);
+  console.log(playerStatusResult.isLoading);
+  console.log(playerStatusResult.isFetching);
+  console.log(playerStatusResult.isSuccess);
+  console.log(playerStatusResult.error);
+  console.log(playerStatusResult.data);
+  console.groupEnd();
 
+  console.group("MARKETPLACE DEBUG");
+  console.log("variable name:", "wishlist");
+  console.log("typeof:", typeof wishlist);
+  console.log("Array:", Array.isArray(wishlist));
+  console.dir(wishlist);
+  console.trace();
+  console.groupEnd();
   const wishlistIds = new Set((wishlist || []).map((w: { product_id: number }) => w.product_id));
   const wishlistCount = (wishlist || []).length;
   const cartCount = cart?.items?.length || 0;
@@ -247,7 +333,7 @@ export default function MarketplacePage() {
             </div>
           ) : (
             <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
-              {products.data.map((p: {
+              {debugMap(products.data, "products.data").map((p: {
                 id: number; name: string; images?: string; price: string | number;
                 discounted_price?: string | number; currency_code: string; quantity: number;
                 shop_name?: string; seller_phone?: string; seller_full_name?: string; org_type_slug?: string;

@@ -5,6 +5,7 @@ import { VitePWA } from 'vite-plugin-pwa'
 const backend = process.env.BACKEND_URL || 'http://127.0.0.1:3000'
 
 export default defineConfig(({ command }) => ({
+  build: { sourcemap: true },
   plugins: [
     react(),
     // Service worker auto-update reloads the page during `npm run dev` and causes visible flicker.
