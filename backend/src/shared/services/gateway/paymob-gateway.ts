@@ -48,7 +48,7 @@ export class PaymobGateway implements PaymentGateway {
           email: request.customerEmail || 'customer@example.com',
           phone_number: request.customerPhone || '0000000000',
         },
-        special_reference: `${request.referenceType}_${request.referenceId}`,
+        special_reference: `${request.referenceType}_${request.referenceId}_${Date.now()}`,
         notification_url: `${process.env.WEBHOOK_BASE_URL || process.env.APP_URL || 'http://localhost:3000'}/payments/webhook`,
         redirection_url: request.returnUrl,
       };
