@@ -1183,7 +1183,7 @@ export const marketplaceService = {
   async updateSellerOrg(userId: number, data: { name?: string; description?: string; email?: string; phone?: string; website?: string; crNumber?: string; taxId?: string; isVatRegistered?: boolean; financialDetails?: any }) {
     let org = await repo.findOrgByUserId(userId, 'player');
     if (!org) org = await repo.findOrgByUserId(userId, 'seller');
-    if (!org) throw new Error('No seller account found');
+    if (!org) throw new NotFoundError('Seller account');
     const { financialDetails, ...orgData } = data;
     if (Object.keys(orgData).length > 0) {
       await repo.updateOrganisation(org.id, orgData);
@@ -1339,10 +1339,10 @@ export const marketplaceService = {
       provinceId = addr.province_id;
       cityId = addr.city_id;
     }
-    if (!provinceId) throw new Error('Province is required to check shipping');
+    if (!provinceId) throw new ConflictError('Province is required to check shipping');
 
     const cartItems = await repo.findCartByUser(userId);
-    if (!cartItems.length) throw new Error('Cart is empty');
+    if (!cartItems.length) throw new ConflictError('Cart is empty');
 
     const sellers = await repo.checkSellersShipping(cartItems, provinceId, cityId);
     const totalShipping = sellers.reduce((sum: number, s: any) => sum + (s.available ? s.price : 0), 0);

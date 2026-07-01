@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import api from '../../services/api';
 import { formatPrice } from '../../utils/currency';
 import ImageGallery from '../../components/marketplace/ImageGallery';
+import { parseProductImages } from '../../utils/media';
 
 export default function PlayerProductDetailPage() {
   const { id } = useParams();
@@ -15,9 +16,7 @@ export default function PlayerProductDetailPage() {
   if (isLoading) return <div className="text-center py-8">Loading...</div>;
   if (!product) return <div className="text-center py-8">Product not found</div>;
 
-  const images = (() => {
-    try { return JSON.parse(product.images || '[]'); } catch { return product.images || []; }
-  })();
+  const images = parseProductImages(product.images);
 
   const phone = product.seller_phone || '';
 

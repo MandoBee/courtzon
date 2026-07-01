@@ -48,6 +48,14 @@ export function isKnownMissingImageUrl(url: string): boolean {
   return loadMissingImageUrls().has(url);
 }
 
+export function parseProductImages(raw: unknown): string[] {
+  if (Array.isArray(raw)) return raw;
+  if (typeof raw === 'string') {
+    try { return JSON.parse(raw); } catch { return []; }
+  }
+  return [];
+}
+
 export function fallbackLetter(label: string, isoCode?: string | null): string {
   const iso = (isoCode || '').trim();
   if (iso.length >= 2) return iso.slice(0, 2).toUpperCase();

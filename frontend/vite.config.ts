@@ -44,7 +44,7 @@ export default defineConfig(({ command }) => ({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
-        // Runtime caching for read-heavy GETs (stale-while-revalidate). (E6)
+        cleanupOutdatedCaches: true,
         runtimeCaching: [
           {
             // Fresh-first for user-specific data; fall back to cache when offline.
@@ -52,7 +52,7 @@ export default defineConfig(({ command }) => ({
               request.method === 'GET' && /^\/(notifications|my\/bookings|my\/notifications|my\/orders)(\/|\?|$)/.test(url.pathname + url.search),
             handler: 'NetworkFirst',
             options: {
-              cacheName: 'cz-user-cache',
+              cacheName: 'cz-user-cache-v3',
               networkTimeoutSeconds: 5,
               expiration: { maxEntries: 80, maxAgeSeconds: 60 * 30 },
               cacheableResponse: { statuses: [0, 200] },
@@ -69,20 +69,32 @@ export default defineConfig(({ command }) => ({
             },
             handler: 'StaleWhileRevalidate',
             options: {
-              cacheName: 'cz-read-cache-v2',
+              cacheName: 'cz-read-cache-v3',
               expiration: { maxEntries: 120, maxAgeSeconds: 60 * 30 },
               cacheableResponse: { statuses: [0, 200] },
             },
           },
           {
-            // Uploaded images — cache-first (rarely change).
-            urlPattern: ({ request }: { request: Request }) => request.method === 'GET' && request.destination === 'image',
+            // Same-origin uploaded images only — cache-first.
+            // Excludes third-party CDNs (Shopify, etc.) which use NetworkOnly below.
+            urlPattern: ({ url, request }: { url: URL; request: Request }) =>
+              request.method === 'GET' &&
+              request.destination === 'image' &&
+              url.pathname.startsWith('/uploads/'),
             handler: 'CacheFirst',
             options: {
-              cacheName: 'cz-image-cache',
-              expiration: { maxEntries: 200, maxAgeSeconds: 60 * 60 * 24 * 30 },
+              cacheName: 'cz-image-cache-v3',
+              expiration: { maxEntries: 100, maxAgeSeconds: 60 * 60 * 24 * 3 },
               cacheableResponse: { statuses: [0, 200] },
             },
+          },
+          {
+            // Third-party images (Shopify CDN, etc.) — never cached, always from network.
+            urlPattern: ({ url, request }: { url: URL; request: Request }) =>
+              request.method === 'GET' &&
+              request.destination === 'image' &&
+              !url.pathname.startsWith('/uploads/'),
+            handler: 'NetworkOnly',
           },
         ],
       },

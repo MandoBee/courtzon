@@ -347,6 +347,13 @@ app.setErrorHandler((error: any, _request, reply) => {
     });
   }
 
+  if (statusCode >= 400 && statusCode < 500) {
+    return reply.status(statusCode).send({
+      error: error.code || 'VALIDATION_ERROR',
+      message: error.message || 'Bad request',
+    });
+  }
+
   reply.status(500).send({
     error: 'INTERNAL_ERROR',
     message: isDev ? (error.message || 'Internal Server Error') : 'Internal Server Error',

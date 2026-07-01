@@ -5,6 +5,7 @@ import api from '../../services/api';
 import { formatPrice } from '../../utils/currency';
 import { useToast } from '../../components/ui/Toast';
 import ImageGallery from '../../components/marketplace/ImageGallery';
+import { parseProductImages } from '../../utils/media';
 
 export default function ProductDetailPage() {
   const { id } = useParams();
@@ -65,9 +66,7 @@ export default function ProductDetailPage() {
   if (isLoading) return <div className="text-center py-8">Loading...</div>;
   if (!product) return <div className="text-center py-8">Product not found</div>;
 
-  const images = (() => {
-    try { return JSON.parse(product.images || '[]'); } catch { return []; }
-  })();
+  const images = parseProductImages(product.images);
 
   const variantsByType: Record<string, any[]> = {};
   if (product.variants) {
