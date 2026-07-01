@@ -71,6 +71,20 @@ export class PaymentService {
       customerAddress: input.customerAddress,
     });
 
+    if (!paymentResult.success) {
+      return {
+        success: false,
+        paymentId: undefined,
+        status: paymentResult.status,
+        paymentUrl: paymentResult.paymentUrl,
+        clientSecret: paymentResult.clientSecret,
+        intentionId: paymentResult.intentionId,
+        transactionId: paymentResult.transactionId,
+        errorMessage: paymentResult.errorMessage,
+        rawResponse: paymentResult.rawResponse,
+      };
+    }
+
     const paymentId = await paymentRepository.create({
       userId,
       bookingId: (input.referenceType === 'booking' || input.referenceType === 'booking_intent') ? input.referenceId : undefined,
