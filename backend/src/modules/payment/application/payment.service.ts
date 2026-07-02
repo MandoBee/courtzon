@@ -126,7 +126,9 @@ export class PaymentService {
    * Handle payment gateway webhook (idempotent + transactional).
    */
   async handleWebhook(payload: unknown, signature: string) {
+    console.log('[CZ-PAY] WEBHOOK RECEIVED', JSON.stringify({ signaturePrefix: signature.substring(0, 20), hasBody: !!payload }).substring(0, 200));
     const valid = await paymentGateway.verifyWebhook(payload, signature);
+    console.log('[CZ-PAY] HMAC VERIFY:', valid ? 'VALID' : 'INVALID');
     if (!valid) {
       log.error({ msg: 'HMAC verification failed' });
       throw new Error('Invalid webhook signature');
@@ -167,19 +169,24 @@ export class PaymentService {
    * Should be called by a scheduled job every ~5 minutes.
    */
   async syncPendingPayments() {
+    console.log('[CZ-PAY] SYNC START');
     const payments = await paymentRepository.findPendingPayments(1);
+    console.log('[CZ-PAY] SYNC found pending:', payments.length);
     if (payments.length === 0) return { synced: 0 };
 
     log.info({ count: payments.length }, 'Starting payment sync');
 
     let synced = 0;
     for (const ptx of payments as any[]) {
+      console.log('[CZ-PAY] SYNC processing:', JSON.stringify({ id: ptx.id, gatewayRef: ptx.gateway_reference, status: ptx.payment_status, refType: ptx.reference_type }));
       try {
         const remoteStatus = await paymentGateway.getTransactionStatus(ptx.gateway_reference);
+        console.log('[CZ-PAY] SYNC remoteStatus:', JSON.stringify(remoteStatus));
         const traceId = ptx.trace_id || '';
         const newStatus: 'paid' | 'failed' | null =
           remoteStatus.status === 'paid' ? 'paid' :
           remoteStatus.status === 'failed' ? 'failed' : null;
+        console.log('[CZ-PAY] SYNC newStatus:', newStatus);
         if (!newStatus) continue;
 
         await withTransaction(async (conn) => {
@@ -216,8 +223,13 @@ export class PaymentService {
     traceId: string,
     source: 'webhook' | 'sync',
   ): Promise<{ idempotent: boolean }> {
+    console.log('[CZ-PAY] _processPaymentOutcome ENTER', JSON.stringify({
+      txnId: transaction.id, orderId: transaction.order_id,
+      oldStatus: transaction.payment_status, newStatus, gatewayRef, source, traceId: traceId ? 'present' : 'missing'
+    }));
     // Idempotency: skip if already in a final state
     if (FINAL_STATES.has(transaction.payment_status)) {
+      console.log('[CZ-PAY] _processPaymentOutcome IDEMPOTENT SKIP — already', transaction.payment_status);
       log.info({ traceId, txnId: transaction.id, status: transaction.payment_status, source }, 'Already final — idempotent skip');
       return { idempotent: true };
     }
@@ -229,6 +241,7 @@ export class PaymentService {
        WHERE id = ? AND payment_status NOT IN ('paid', 'failed', 'cancelled', 'expired', 'refunded')`,
       [newStatus, newStatus, transaction.id],
     );
+    console.log('[CZ-PAY] _processPaymentOutcome UPDATE payment_transactions affectedRows:', updateResult.affectedRows);
 
     if (updateResult.affectedRows === 0) {
       // Another process beat us — idempotent exit
@@ -278,10 +291,11 @@ export class PaymentService {
     const [orderRows] = await conn.execute<RowData>(
       'SELECT buyer_id FROM orders WHERE id = ?', [transaction.order_id],
     );
-    await conn.execute(
+    const [orderUpdate] = await conn.execute<mysql.ResultSetHeader>(
       "UPDATE orders SET status = 'confirmed', paid_at = NOW(), payment_status = 'paid' WHERE id = ? AND status = 'pending'",
       [transaction.order_id],
     );
+    console.log('[CZ-PAY] _fulfillOrder UPDATE orders affectedRows:', orderUpdate.affectedRows, 'orderId:', transaction.order_id);
     if (orderRows.length && (orderRows[0] as any)?.buyer_id) {
       await conn.execute('DELETE FROM cart_items WHERE user_id = ?', [(orderRows[0] as any).buyer_id]);
     }
