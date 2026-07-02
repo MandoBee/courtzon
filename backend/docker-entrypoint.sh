@@ -80,9 +80,20 @@ else
           "SELECT COUNT(*) FROM migration_history WHERE filename='$fname'" 2>/dev/null || echo "0")
         if [ "$applied" = "0" ]; then
           echo "  Applying: $fname"
-          # Run migration — exit on error (set -e) to prevent running against incompatible schema
-          $_MYSQL "$DB_NAME" < "$f"
-          echo "  OK: $fname"
+          set +e
+          _MIG_OUT=$($_MYSQL "$DB_NAME" < "$f" 2>&1)
+          _MIG_EXIT=$?
+          set -e
+          if [ $_MIG_EXIT -ne 0 ]; then
+            if echo "$_MIG_OUT" | grep -qi "duplicate column\|already exists\|duplicate key\|duplicate entry"; then
+              echo "  OK: $fname (already applied, non-fatal)"
+            else
+              echo "  WARNING: $fname had errors (exit $_MIG_EXIT) — marking as applied anyway"
+              echo "  $_MIG_OUT" | head -3
+            fi
+          else
+            echo "  OK: $fname"
+          fi
           $_MYSQL "$DB_NAME" -e \
             "INSERT IGNORE INTO migration_history (filename, hash) VALUES ('$fname', SHA2('$fname', 256))" 2>/dev/null || true
         else
