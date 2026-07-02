@@ -183,22 +183,64 @@ export class PaymobGateway implements PaymentGateway {
         body: JSON.stringify({ api_key: this.config.apiKey }),
       });
       const tokenData = await tokenRes.json() as any;
+      const authToken = tokenData.token;
 
-      const res = await fetch(
-        `${this.baseUrl}/api/acceptance/transactions/${gatewayReference}`,
-        { headers: { Authorization: `Bearer ${tokenData.token}` } }
+      if (!authToken) {
+        console.error('[Paymob] getTransactionStatus: auth failed', JSON.stringify(tokenData));
+        return { success: false, transactionId: '', status: 'failed', errorMessage: 'Paymob auth failed' };
+      }
+
+      // Query the order endpoint — gatewayReference is Paymob's order ID
+      // from the Intention API (intention_order_id).
+      const orderRes = await fetch(
+        `${this.baseUrl}/api/ecommerce/orders/${gatewayReference}`,
+        { headers: { Authorization: `Bearer ${authToken}` } },
       );
-      const data = await res.json() as any;
-      const success = data.success === true;
-      return {
-        success,
-        transactionId: String(data.id || ''),
-        gatewayReference,
-        status: success ? 'paid' : 'failed',
-        rawResponse: data,
-      };
-    } catch {
-      return { success: false, transactionId: '', status: 'failed' };
+      const orderText = await orderRes.text();
+      let orderData: any;
+      try { orderData = JSON.parse(orderText); } catch { orderData = {}; }
+
+      console.log('[Paymob] getTransactionStatus order lookup:',
+        'status=' + orderRes.status,
+        'orderId=' + gatewayReference,
+        'orderStatus=' + (orderData.status || 'unknown'),
+        'paid=' + orderData.paid,
+      );
+
+      if (orderRes.ok && orderData) {
+        const isPaid = orderData.paid === true || orderData.status === 'paid';
+        return {
+          success: isPaid,
+          transactionId: String(orderData.id || ''),
+          gatewayReference,
+          status: isPaid ? 'paid' : 'failed',
+          rawResponse: orderData,
+        };
+      }
+
+      // Fallback: try transactions list filtered by order
+      const txnRes = await fetch(
+        `${this.baseUrl}/api/acceptance/transactions?order=${gatewayReference}&page=1`,
+        { headers: { Authorization: `Bearer ${authToken}` } },
+      );
+      const txnData = await txnRes.json() as any;
+
+      if (Array.isArray(txnData) && txnData.length > 0) {
+        const txn = txnData[0];
+        return {
+          success: txn.success === true,
+          transactionId: String(txn.id || ''),
+          gatewayReference,
+          status: txn.success === true ? 'paid' : 'failed',
+          rawResponse: txn,
+        };
+      }
+
+      return { success: false, transactionId: '', gatewayReference, status: 'pending', rawResponse: orderData };
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error('[Paymob] getTransactionStatus error:', message);
+      return { success: false, transactionId: '', gatewayReference, status: 'failed', errorMessage: message };
     }
   }
 }
