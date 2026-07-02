@@ -49,10 +49,34 @@ export function isKnownMissingImageUrl(url: string): boolean {
 }
 
 export function parseProductImages(raw: unknown): string[] {
-  if (Array.isArray(raw)) return raw;
-  if (typeof raw === 'string') {
-    try { return JSON.parse(raw); } catch { return []; }
+  if (!raw) return [];
+
+  if (Array.isArray(raw)) {
+    return raw.filter((item): item is string => typeof item === 'string' && item.trim().length > 0);
   }
+
+  if (typeof raw === 'string') {
+    const trimmed = raw.trim();
+    if (!trimmed) return [];
+
+    if (/^https?:\/\//i.test(trimmed)) {
+      return [trimmed];
+    }
+
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) {
+        return parsed.filter((item): item is string => typeof item === 'string' && item.trim().length > 0);
+      }
+      if (typeof parsed === 'string' && parsed.trim()) {
+        return [parsed.trim()];
+      }
+      return [];
+    } catch {
+      return [];
+    }
+  }
+
   return [];
 }
 

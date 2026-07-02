@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import api from '../../services/api';
@@ -31,9 +31,26 @@ export default function MarketplacePage() {
   const [page, setPage] = useState(1);
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
 
+  useEffect(() => {
+    if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) {
+      console.log('[CZ-MP] SW not supported');
+      return;
+    }
+    const ctrl = navigator.serviceWorker.controller;
+    console.log(`[CZ-MP] SW controller present: ${!!ctrl}`, ctrl ? `state=${ctrl.state} scriptURL=${ctrl.scriptURL}` : 'none');
+    void navigator.serviceWorker.getRegistrations().then((regs) => {
+      console.log(`[CZ-MP] SW registrations count: ${regs.length}`);
+      regs.forEach((r, i) => {
+        console.log(`[CZ-MP] SW reg[${i}] scope=${r.scope} installing=${!!r.installing} waiting=${!!r.waiting} active=${!!r.active}`);
+      });
+    });
+  }, []);
+
   const sellerType = tab === 'all' ? undefined : tab === 'players' ? 'player' : 'seller';
 
-  const { data: products, isLoading } = useQuery({
+  const swControlled = typeof navigator !== 'undefined' && 'serviceWorker' in navigator ? !!navigator.serviceWorker.controller : false;
+
+  const { data: products, isLoading, isFetching, isError, status, fetchStatus } = useQuery({
     queryKey: ['mp-products', tab, search, categoryId, sportIds, brandIds, tagIds, inStockOnly, gender, sort, page],
     queryFn: () => {
       const params: Record<string, string | number> = { sort, page, limit: 20 };
@@ -47,9 +64,14 @@ export default function MarketplacePage() {
       if (tagIds.length) params.tagIds = tagIds.join(',');
       if (inStockOnly) params.stockStatus = 'in_stock';
       if (gender.length && gender.length < 3) params.gender = gender.join(',');
+      console.log('[CZ-MP] fetch start', JSON.stringify(params));
       return api.get('/marketplace/products', { params }).then((r) => {
         const d = r.data;
         if (!d || !Array.isArray(d.data)) throw new Error('Invalid response: expected { data: [...] }');
+        console.log(`[CZ-MP] fetch done — total=${d.total} items=${d.data.length}`);
+        d.data.slice(0, 3).forEach((p: { id: number; name: string; images?: string }) => {
+          console.log(`[CZ-MP] product id=${p.id} name="${p.name}" images_raw=${JSON.stringify(p.images)}`);
+        });
         return d;
       });
     },
@@ -125,6 +147,8 @@ export default function MarketplacePage() {
 
   const productLink = (p: { id: number; org_type_slug?: string }) =>
     p.org_type_slug === 'player' ? `/marketplace/player-products/${p.id}` : `/marketplace/products/${p.id}`;
+
+  console.log(`[CZ-MP] render — status=${status} fetchStatus=${fetchStatus} isLoading=${isLoading} isFetching=${isFetching} isError=${isError} productCount=${products?.data?.length ?? 0} swControlled=${swControlled}`);
 
   return (
     <div className="space-y-4">

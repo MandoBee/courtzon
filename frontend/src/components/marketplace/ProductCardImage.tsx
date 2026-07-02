@@ -1,5 +1,11 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
-import { resolveUploadUrl } from '../../utils/media';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { resolveUploadUrl, parseProductImages } from '../../utils/media';
+
+const CZ_LOG_PREFIX = '[CZ-IMG]';
+
+function czLog(msg: string, data?: unknown) {
+  console.log(`${CZ_LOG_PREFIX} ${msg}`, data ?? '');
+}
 
 interface Props {
   images: string[];
@@ -7,18 +13,14 @@ interface Props {
   className?: string;
 }
 
-function parseImages(raw?: string | string[]): string[] {
-  if (!raw) return [];
-  if (Array.isArray(raw)) return raw;
-  try { return JSON.parse(raw); } catch { return []; }
-}
-
 export function getProductImages(images?: string | string[]): string[] {
-  return parseImages(images);
+  return parseProductImages(images);
 }
 
 export default function ProductCardImage({ images, name, className = '' }: Props) {
   const [index, setIndex] = useState(0);
+  const [retryCount, setRetryCount] = useState(0);
+  const [finalError, setFinalError] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const stop = useCallback(() => {
@@ -40,7 +42,21 @@ export default function ProductCardImage({ images, name, className = '' }: Props
 
   const resolved = images.length ? resolveUploadUrl(images[index]) : '';
 
-  if (!resolved) {
+  const activeSrc = useMemo(() => {
+    if (!resolved) return '';
+    if (retryCount > 0 && retryCount <= 1) {
+      const sep = resolved.includes('?') ? '&' : '?';
+      return `${resolved}${sep}cz_retry=${Date.now()}_${retryCount}`;
+    }
+    return resolved;
+  }, [resolved, retryCount]);
+
+  useEffect(() => {
+    setRetryCount(0);
+    setFinalError(false);
+  }, [resolved]);
+
+  if (!resolved || finalError) {
     return (
       <span className={`inline-flex items-center justify-center bg-[var(--color-primary)]/10 text-[var(--color-primary)] font-bold ${className}`}>
         {name.charAt(0).toUpperCase()}
@@ -50,11 +66,24 @@ export default function ProductCardImage({ images, name, className = '' }: Props
 
   return (
     <img
-      src={resolved}
+      key={activeSrc}
+      src={activeSrc}
       alt={name}
       className={`object-cover bg-[var(--color-primary)]/10 ${className}`}
       onMouseEnter={start}
       onMouseLeave={() => { stop(); setIndex(0); }}
+      onLoad={() => {
+        czLog(`onLoad ✅  name="${name}" src="${resolved}"`);
+      }}
+      onError={() => {
+        if (retryCount < 1) {
+          czLog(`onError → retry #${retryCount + 1}  name="${name}" src="${resolved}"`);
+          setRetryCount((c) => c + 1);
+        } else {
+          czLog(`onError → final failure ❌  name="${name}" src="${resolved}"`);
+          setFinalError(true);
+        }
+      }}
     />
   );
 }
