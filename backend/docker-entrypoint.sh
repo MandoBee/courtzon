@@ -80,7 +80,9 @@ else
           "SELECT COUNT(*) FROM migration_history WHERE filename='$fname'" 2>/dev/null || echo "0")
         if [ "$applied" = "0" ]; then
           echo "  Applying: $fname"
-          $_MYSQL "$DB_NAME" < "$f" 2>/dev/null || echo "  WARNING: $fname may have partially failed"
+          # Run migration — exit on error (set -e) to prevent running against incompatible schema
+          $_MYSQL "$DB_NAME" < "$f"
+          echo "  OK: $fname"
           $_MYSQL "$DB_NAME" -e \
             "INSERT IGNORE INTO migration_history (filename, hash) VALUES ('$fname', SHA2('$fname', 256))" 2>/dev/null || true
         else
