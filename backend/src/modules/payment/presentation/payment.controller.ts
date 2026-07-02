@@ -79,3 +79,45 @@ export async function getTransactionsHandler(request: FastifyRequest, reply: Fas
   const result = await paymentService.getTransactions(userId, Number(page), Number(limit));
   return reply.send(result);
 }
+
+export async function syncHandler(_request: FastifyRequest, reply: FastifyReply) {
+  const result = await paymentService.syncPendingPayments();
+  return reply.send({ message: 'Payment sync completed', ...result });
+}
+
+export async function expireHandler(_request: FastifyRequest, reply: FastifyReply) {
+  const timeout = Number((_request.query as any)?.timeoutMinutes || 15);
+  const result = await paymentService.expireStalePayments(timeout);
+  return reply.send({ message: 'Payment expiry completed', timeoutMinutes: timeout, ...result });
+}
+
+export async function healthHandler(_request: FastifyRequest, reply: FastifyReply) {
+  const pool = await import('../../../database/mysql.js').then(m => m.getPool());
+  const [pendingRows] = await pool.execute<any[]>(
+    `SELECT payment_status, COUNT(*) as cnt
+     FROM payment_transactions
+     WHERE payment_status IN ('created','pending','processing')
+     GROUP BY payment_status`
+  );
+  const [staleRows] = await pool.execute<any[]>(
+    `SELECT COUNT(*) as cnt FROM payment_transactions
+     WHERE payment_status IN ('created','pending','processing')
+       AND created_at < NOW() - INTERVAL 15 MINUTE`
+  );
+  const [recentFailed] = await pool.execute<any[]>(
+    `SELECT COUNT(*) as cnt FROM payment_transactions
+     WHERE payment_status = 'failed' AND created_at > NOW() - INTERVAL 1 HOUR`
+  );
+  const [recentSync] = await pool.execute<any[]>(
+    `SELECT COUNT(*) as cnt FROM financial_journal_entries
+     WHERE reference_type = 'gateway_sync' AND created_at > NOW() - INTERVAL 12 HOUR`
+  );
+
+  return reply.send({
+    pending: Object.fromEntries(pendingRows.map((r: any) => [r.payment_status, r.cnt])),
+    staleOver15min: staleRows[0]?.cnt || 0,
+    failedLastHour: recentFailed[0]?.cnt || 0,
+    syncRecoveredLast12h: recentSync[0]?.cnt || 0,
+    timestamp: new Date().toISOString(),
+  });
+}

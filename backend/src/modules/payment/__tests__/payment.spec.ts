@@ -80,4 +80,65 @@ describe('Payment Integration', () => {
       conn.release();
     }
   });
+
+  it('idempotency: duplicate status update is safely ignored (conditional WHERE)', async () => {
+    const ref = `test_idem_001_${Date.now()}`;
+    await pool.execute(`INSERT INTO payment_transactions (user_id, payment_method, gateway_provider, gateway_reference, amount, payment_status)
+      VALUES (${TEST_USER}, 'card', 'paymob', ?, 150, 'pending')`, [ref]);
+
+    const [r1] = await pool.execute<mysql.ResultSetHeader>(
+      `UPDATE payment_transactions SET payment_status = 'paid', paid_at = NOW()
+       WHERE gateway_reference = ? AND payment_status NOT IN ('paid','failed','cancelled','expired','refunded')`, [ref]
+    );
+    expect(r1.affectedRows).toBe(1);
+
+    const [r2] = await pool.execute<mysql.ResultSetHeader>(
+      `UPDATE payment_transactions SET payment_status = 'paid', paid_at = NOW()
+       WHERE gateway_reference = ? AND payment_status NOT IN ('paid','failed','cancelled','expired','refunded')`, [ref]
+    );
+    expect(r2.affectedRows).toBe(0);
+  });
+
+  it('idempotency: wallet top-up does NOT double-credit for same gateway_ref', async () => {
+    const gatewayRef = `test_topup_${Date.now()}`;
+
+    await pool.execute(`INSERT INTO payment_transactions
+      (user_id, payment_method, gateway_provider, gateway_reference, amount, reference_type, payment_status)
+      VALUES (${TEST_USER}, 'card', 'paymob', ?, 500, 'wallet_topup', 'paid')`, [gatewayRef]);
+
+    await pool.execute(`INSERT IGNORE INTO user_wallets (user_id, balance, currency_code) VALUES (${TEST_USER}, 0, 'EGP')`);
+
+    // First credit: should succeed
+    const [wallet1] = await pool.execute<any[]>('SELECT id, balance FROM user_wallets WHERE user_id = ?', [TEST_USER]);
+    const newBalance1 = Number(wallet1[0].balance) + 500;
+    await pool.execute('UPDATE user_wallets SET balance = ?, version = version + 1 WHERE id = ?', [newBalance1, wallet1[0].id]);
+    await pool.execute(
+      `INSERT INTO wallet_transactions (wallet_id, transaction_type, amount, direction, reference_type, description)
+       VALUES (?, 'deposit', ?, 'credit', 'payment_gateway', ?)`,
+      [wallet1[0].id, 500, `Paymob top-up — ref ${gatewayRef}`]
+    );
+
+    // Second credit (duplicate webhook): should be detected and skipped
+    const [existing] = await pool.execute<any[]>(
+      `SELECT id FROM wallet_transactions
+       WHERE wallet_id = ? AND transaction_type = 'deposit' AND description LIKE ?`,
+      [wallet1[0].id, `%${gatewayRef}%`]
+    );
+    expect(existing.length).toBeGreaterThanOrEqual(1);
+
+    const [wallet2] = await pool.execute<any[]>('SELECT balance FROM user_wallets WHERE user_id = ?', [TEST_USER]);
+    expect(Number(wallet2[0].balance)).toBe(newBalance1); // Balance unchanged
+  });
+
+  it('expiry: does NOT expire already-paid payments', async () => {
+    const ref = `test_nxpr_01_${Date.now()}`;
+    await pool.execute(`INSERT INTO payment_transactions (user_id, payment_method, gateway_provider, gateway_reference, amount, payment_status, paid_at)
+      VALUES (${TEST_USER}, 'card', 'paymob', ?, 99, 'paid', NOW())`, [ref]);
+
+    const [r] = await pool.execute<mysql.ResultSetHeader>(
+      `UPDATE payment_transactions SET payment_status = 'expired', cancelled_at = NOW()
+       WHERE gateway_reference = ? AND payment_status IN ('created','pending','processing')`, [ref]
+    );
+    expect(r.affectedRows).toBe(0);
+  });
 });

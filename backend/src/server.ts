@@ -6,6 +6,7 @@ import { sendEmail } from "./shared/services/mailer.service.js";
 import { handleCancelExpiredBookings } from "./modules/booking/infrastructure/booking-expiry.worker.js";
 import { handleRunSettlements } from "./modules/settlement/infrastructure/settlement-cron.worker.js";
 import { handleAutoCompleteBookings } from "./modules/booking/infrastructure/booking-auto-complete.worker.js";
+import { handleSyncPendingPayments, handleExpireStalePayments } from "./modules/payment/infrastructure/payment-cron.worker.js";
 import { runDatabaseBackup } from "./infrastructure/backup/backup.service.js";
 import { queueService } from "./infrastructure/queue/queue.service.js";
 import { closePool } from "./database/mysql.js";
@@ -31,6 +32,8 @@ async function bootstrap() {
     registerHandler('database_backup', runDatabaseBackup);
     registerHandler('run_settlements', handleRunSettlements);
     registerHandler('auto_complete_bookings', handleAutoCompleteBookings);
+    registerHandler('sync_pending_payments', handleSyncPendingPayments);
+    registerHandler('expire_stale_payments', handleExpireStalePayments);
 
     const validation = await validateDatabaseSchema();
     if (!validation.ok) {
@@ -74,6 +77,20 @@ async function bootstrap() {
 
     await queueService.add('auto_complete_bookings', {}, {
       repeat: { every: 300_000 },
+      removeOnComplete: true,
+      removeOnFail: { age: 86400 },
+    });
+
+    // Payment sync — every 5 minutes
+    await queueService.add('sync_pending_payments', {}, {
+      repeat: { every: 300_000 },
+      removeOnComplete: true,
+      removeOnFail: { age: 86400 },
+    });
+
+    // Payment expiry — every 2 minutes
+    await queueService.add('expire_stale_payments', { timeoutMinutes: 15 }, {
+      repeat: { every: 120_000 },
       removeOnComplete: true,
       removeOnFail: { age: 86400 },
     });

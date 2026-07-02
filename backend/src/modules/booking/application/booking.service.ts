@@ -75,6 +75,7 @@ export class BookingService {
       await conn.beginTransaction();
 
       if (isGateway) {
+        // Create intent for gateway payments — rolled back if gateway call fails
         const intentId = await bookingRepository.createIntent({
           userId, branchId: input.branchId, organisationId, resourceId: input.resourceId,
           bookingType: input.bookingType || 'public_match', bookingDate,
@@ -89,10 +90,9 @@ export class BookingService {
           participants: input.participants,
         });
 
-        await conn.commit();
-
         let paymentUrl: string | null = null;
         let clientSecret: string | null = null;
+        let gwSucceeded = false;
         try {
           const { paymentService } = await import('../../payment/application/payment.service.js');
           const gwResult = await paymentService.charge(userId, {
@@ -103,12 +103,19 @@ export class BookingService {
             paymentMethod: (paymentMethod === 'online' ? 'card' : paymentMethod as 'wallet' | 'card' | 'bank_transfer'),
             returnUrl: input.returnUrl,
           });
+          gwSucceeded = gwResult.success === true;
           paymentUrl = ('paymentUrl' in gwResult ? gwResult.paymentUrl : null) || null;
           clientSecret = ('clientSecret' in gwResult ? gwResult.clientSecret : null) || null;
         } catch {
-          // non-fatal
+          // gateway crash — rollback intent
         }
 
+        if (!gwSucceeded) {
+          await conn.rollback();
+          throw new Error('Payment gateway failed to initiate. Please try again.');
+        }
+
+        await conn.commit();
         return { paymentUrl, clientSecret, intentId };
       }
 

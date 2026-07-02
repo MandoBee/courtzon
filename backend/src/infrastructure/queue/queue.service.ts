@@ -4,7 +4,7 @@ import { createModuleLogger } from '../../shared/utils/logger.js';
 
 const log = createModuleLogger('queue');
 
-export type JobType = 'send_email' | 'process_settlement' | 'cancel_expired_bookings' | 'database_backup' | 'run_settlements' | 'auto_complete_bookings';
+export type JobType = 'send_email' | 'process_settlement' | 'cancel_expired_bookings' | 'database_backup' | 'run_settlements' | 'auto_complete_bookings' | 'sync_pending_payments' | 'expire_stale_payments';
 
 export interface EmailAttachment {
   filename: string;
@@ -42,6 +42,14 @@ export interface AutoCompleteBookingsJob {
   _?: undefined;
 }
 
+export interface SyncPendingPaymentsJob {
+  _?: undefined;
+}
+
+export interface ExpireStalePaymentsJob {
+  timeoutMinutes?: number;
+}
+
 export type JobPayloadMap = {
   send_email: SendEmailJob;
   process_settlement: ProcessSettlementJob;
@@ -49,6 +57,8 @@ export type JobPayloadMap = {
   database_backup: DatabaseBackupJob;
   run_settlements: RunSettlementsJob;
   auto_complete_bookings: AutoCompleteBookingsJob;
+  sync_pending_payments: SyncPendingPaymentsJob;
+  expire_stale_payments: ExpireStalePaymentsJob;
 };
 
 // All jobs share a single queue. The worker (worker.ts) binds to this same

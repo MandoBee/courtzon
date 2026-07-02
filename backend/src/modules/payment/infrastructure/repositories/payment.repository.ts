@@ -1,4 +1,5 @@
 import type mysql from 'mysql2/promise';
+import { randomUUID } from 'node:crypto';
 import { getPool } from '../../../../database/mysql.js';
 
 type RowData = mysql.RowDataPacket[];
@@ -7,25 +8,29 @@ export const paymentRepository = {
   async create(data: {
     userId: number; bookingId?: number; orderId?: number; referenceType?: string; paymentMethod: string;
     gatewayProvider: string; gatewayReference: string; amount: number;
-    status: string; currency?: string; gatewayResponse?: unknown;
+    status?: string; currency?: string; gatewayResponse?: unknown; traceId?: string;
   }) {
     const pool = getPool();
     const isBooking = data.referenceType === 'booking' || data.referenceType === 'booking_intent';
     const isOrder = data.referenceType === 'order';
+    const traceId = data.traceId || randomUUID();
     const [result] = await pool.execute<mysql.ResultSetHeader>(
-      `INSERT INTO payment_transactions (user_id, booking_id, order_id, reference_type, payment_method, gateway_provider, gateway_reference, amount, currency, payment_status, gateway_response)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO payment_transactions
+        (user_id, booking_id, order_id, reference_type, payment_method, gateway_provider,
+         gateway_reference, amount, currency, payment_status, gateway_response, trace_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [data.userId,
        isBooking ? (data.bookingId ?? null) : null,
        isOrder ? (data.orderId ?? null) : null,
        data.referenceType || null,
        data.paymentMethod, data.gatewayProvider, data.gatewayReference, data.amount,
        data.currency || 'EGP',
-       data.status,
+       data.status || 'created',
        data.gatewayResponse ? JSON.stringify(data.gatewayResponse) : null,
+       traceId,
       ]
     );
-    return result.insertId;
+    return { id: result.insertId, traceId };
   },
 
   async findById(id: number) {
@@ -46,10 +51,6 @@ export const paymentRepository = {
     return rows[0] || null;
   },
 
-  /**
-   * Lock payment row by gateway reference for update. Used inside webhook transactions
-   * to prevent concurrent processing of the same gateway callback.
-   */
   async lockByGatewayRef(gatewayReference: string, conn: mysql.PoolConnection) {
     const [rows] = await conn.execute<RowData>(
       'SELECT * FROM payment_transactions WHERE gateway_reference = ? FOR UPDATE',
@@ -75,6 +76,7 @@ export const paymentRepository = {
     const params: any[] = [status];
     if (gatewayReference) { fields.push('gateway_reference = ?'); params.push(gatewayReference); }
     if (status === 'paid') { fields.push('paid_at = NOW()'); }
+    if (status === 'cancelled' || status === 'expired') { fields.push('cancelled_at = NOW()'); }
     params.push(id);
     await pool.execute(
       `UPDATE payment_transactions SET ${fields.join(', ')} WHERE id = ?`,
@@ -94,6 +96,34 @@ export const paymentRepository = {
       [userId]
     );
     return { data: rows, total: countRows[0].cnt, page, limit };
+  },
+
+  /** Find payments stuck in pending/processing for sync/expiry. */
+  async findPendingPayments(olderThanMinutes: number) {
+    const pool = getPool();
+    const [rows] = await pool.execute<RowData>(
+      `SELECT * FROM payment_transactions
+       WHERE payment_status IN ('created', 'pending', 'processing')
+         AND gateway_provider = 'paymob'
+         AND gateway_reference IS NOT NULL AND gateway_reference != ''
+         AND created_at < NOW() - INTERVAL ? MINUTE
+       ORDER BY created_at ASC
+       LIMIT 100`,
+      [olderThanMinutes]
+    );
+    return rows;
+  },
+
+  /** Mark a payment as expired and release associated resources. */
+  async expirePayment(id: number, conn?: mysql.PoolConnection) {
+    const executor = conn || getPool();
+    const [result] = await executor.execute<mysql.ResultSetHeader>(
+      `UPDATE payment_transactions
+       SET payment_status = 'expired', cancelled_at = NOW(), updated_at = NOW()
+       WHERE id = ? AND payment_status IN ('created', 'pending', 'processing')`,
+      [id]
+    );
+    return result.affectedRows > 0;
   },
 
   async createJournalEntry(data: {
