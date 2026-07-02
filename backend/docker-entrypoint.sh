@@ -60,6 +60,26 @@ if [ "$_NEEDS_INIT" = true ]; then
   echo "Seed data imported."
 else
   echo "Database has $_TABLE_COUNT tables — initialization skipped."
+
+  echo "Applying pending migrations..."
+  if [ -d /app/database/migrations ]; then
+    for f in /app/database/migrations/*.sql; do
+      if [ -f "$f" ]; then
+        fname=$(basename "$f")
+        applied=$($_MYSQL "$DB_NAME" -N -e \
+          "SELECT COUNT(*) FROM migration_history WHERE filename='$fname'" 2>/dev/null || echo "0")
+        if [ "$applied" = "0" ]; then
+          echo "  Applying: $fname"
+          $_MYSQL "$DB_NAME" < "$f"
+          $_MYSQL "$DB_NAME" -e \
+            "INSERT INTO migration_history (filename, hash) VALUES ('$fname', SHA2('$fname', 256))"
+        else
+          echo "  Already applied: $fname"
+        fi
+      fi
+    done
+  fi
+  echo "Migrations complete."
 fi
 
 echo "Starting backend as appuser..."
