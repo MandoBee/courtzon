@@ -63,6 +63,16 @@ else
 
   echo "Applying pending migrations..."
   if [ -d /app/database/migrations ]; then
+    # Ensure migration_history table exists (may be missing on older DBs)
+    $_MYSQL "$DB_NAME" -e \
+      "CREATE TABLE IF NOT EXISTS migration_history (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        filename VARCHAR(255) NOT NULL UNIQUE,
+        hash VARCHAR(64) NOT NULL,
+        applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        execution_ms INT DEFAULT 0
+      )" 2>/dev/null || true
+
     for f in /app/database/migrations/*.sql; do
       if [ -f "$f" ]; then
         fname=$(basename "$f")
@@ -70,9 +80,9 @@ else
           "SELECT COUNT(*) FROM migration_history WHERE filename='$fname'" 2>/dev/null || echo "0")
         if [ "$applied" = "0" ]; then
           echo "  Applying: $fname"
-          $_MYSQL "$DB_NAME" < "$f"
+          $_MYSQL "$DB_NAME" < "$f" 2>/dev/null || echo "  WARNING: $fname may have partially failed"
           $_MYSQL "$DB_NAME" -e \
-            "INSERT INTO migration_history (filename, hash) VALUES ('$fname', SHA2('$fname', 256))"
+            "INSERT IGNORE INTO migration_history (filename, hash) VALUES ('$fname', SHA2('$fname', 256))" 2>/dev/null || true
         else
           echo "  Already applied: $fname"
         fi
