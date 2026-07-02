@@ -1,12 +1,6 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { resolveUploadUrl, parseProductImages } from '../../utils/media';
 
-const CZ_LOG_PREFIX = '[CZ-IMG]';
-
-function czLog(msg: string, data?: unknown) {
-  console.log(`${CZ_LOG_PREFIX} ${msg}`, data ?? '');
-}
-
 interface Props {
   images: string[];
   name: string;
@@ -72,15 +66,10 @@ export default function ProductCardImage({ images, name, className = '' }: Props
       className={`object-cover bg-[var(--color-primary)]/10 ${className}`}
       onMouseEnter={start}
       onMouseLeave={() => { stop(); setIndex(0); }}
-      onLoad={() => {
-        czLog(`onLoad ✅  name="${name}" src="${resolved}"`);
-      }}
       onError={() => {
         if (retryCount < 1) {
-          czLog(`onError → retry #${retryCount + 1}  name="${name}" src="${resolved}"`);
           setRetryCount((c) => c + 1);
         } else {
-          czLog(`onError → final failure ❌  name="${name}" src="${resolved}"`);
           setFinalError(true);
         }
       }}

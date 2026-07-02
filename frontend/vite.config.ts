@@ -4,19 +4,6 @@ import { VitePWA } from 'vite-plugin-pwa'
 
 const backend = process.env.BACKEND_URL || 'http://127.0.0.1:3000'
 
-const apiStaleWhileRevalidatePlugin = {
-  handlerWillStart: async ({ request }: { request: Request }) => {
-    console.log('[CZ-SW] handlerWillStart — API', request.url);
-  },
-  fetchDidSucceed: async ({ request, response }: { request: Request; response: Response }) => {
-    console.log('[CZ-SW] fetchDidSucceed — API', request.url, 'status=' + response.status);
-    return response;
-  },
-  fetchDidFail: async ({ request, error }: { request: Request; error: Error }) => {
-    console.error('[CZ-SW] fetchDidFail — API FAIL', request.url, error.message);
-  },
-};
-
 export default defineConfig(({ command }) => ({
   plugins: [
     react(),
@@ -58,7 +45,6 @@ export default defineConfig(({ command }) => ({
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
         cleanupOutdatedCaches: true,
-        importScripts: ['/sw-instrument.js'],
         runtimeCaching: [
           {
             // Fresh-first for user-specific data; fall back to cache when offline.
@@ -86,7 +72,6 @@ export default defineConfig(({ command }) => ({
               cacheName: 'cz-read-cache-v3',
               expiration: { maxEntries: 120, maxAgeSeconds: 60 * 30 },
               cacheableResponse: { statuses: [0, 200] },
-              plugins: [apiStaleWhileRevalidatePlugin],
             },
           },
           {
