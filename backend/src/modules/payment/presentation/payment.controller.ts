@@ -42,7 +42,7 @@ export async function refundHandler(request: FastifyRequest, reply: FastifyReply
 
 export async function webhookHandler(request: FastifyRequest, reply: FastifyReply) {
   try {
-    const signature = (request.headers['x-paymob-signature'] || request.headers['x-fawry-signature'] || '') as string;
+    const signature = (request.headers['x-paymob-signature'] || request.headers['x-fawry-signature'] || (request.query as any)?.hmac || '') as string;
     const result = await paymentService.handleWebhook(request.body, signature);
     recordAudit({
       actorId: (request as any).userId ?? null,

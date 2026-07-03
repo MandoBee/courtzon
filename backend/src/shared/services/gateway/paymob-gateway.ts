@@ -175,7 +175,7 @@ export class PaymobGateway implements PaymentGateway {
     return computed === signature;
   }
 
-  async getTransactionStatus(gatewayReference: string): Promise<PaymentResult> {
+  async getTransactionStatus(gatewayReference: string, orderId?: number): Promise<PaymentResult> {
     try {
       const tokenRes = await fetch(`${this.baseUrl}/api/auth/tokens`, {
         method: 'POST',
@@ -186,12 +186,21 @@ export class PaymobGateway implements PaymentGateway {
       const authToken = tokenData.token;
 
       if (!authToken) {
-        console.error('[Paymob] getTransactionStatus: auth failed', JSON.stringify(tokenData));
+        console.log('[CZ-PAY] GATEWAY AUTH FAILED', JSON.stringify({
+          function: 'getTransactionStatus',
+          gatewayReference,
+          resultStatus: 'failed',
+          reason: 'auth_token_empty',
+          stack: new Error().stack,
+        }));
         return { success: false, transactionId: '', status: 'failed', errorMessage: 'Paymob auth failed' };
       }
 
-      // Query the order endpoint — gatewayReference is Paymob's order ID
-      // from the Intention API (intention_order_id).
+      // ── PRIMARY: Query the Order API ──
+      // gatewayReference is Paymob's intention_order_id.
+      // NOTE: For Intention API payments the order always shows
+      // payment_status="UNPAID" — the actual outcome comes via webhook only.
+      // This path is useful primarily for legacy Accept-API orders.
       const orderRes = await fetch(
         `${this.baseUrl}/api/ecommerce/orders/${gatewayReference}`,
         { headers: { Authorization: `Bearer ${authToken}` } },
@@ -203,43 +212,98 @@ export class PaymobGateway implements PaymentGateway {
       console.log('[Paymob] getTransactionStatus order lookup:',
         'status=' + orderRes.status,
         'orderId=' + gatewayReference,
-        'orderStatus=' + (orderData.status || 'unknown'),
-        'paid=' + orderData.paid,
+        'payment_status=' + (orderData.payment_status || 'unknown'),
+        'paid_amount_cents=' + orderData.paid_amount_cents,
       );
 
       if (orderRes.ok && orderData) {
-        const isPaid = orderData.paid === true || orderData.status === 'paid';
+        const orderStatus = (orderData.status || '').toLowerCase();
+        const orderPaymentStatus = (orderData.payment_status || '').toLowerCase();
+        const isPaid = orderData.paid === true || orderStatus === 'paid' || orderPaymentStatus === 'paid';
+        const isFailed = orderStatus === 'failed' || orderStatus === 'cancelled' || orderStatus === 'expired' || orderPaymentStatus === 'failed';
+        const resultStatus = isPaid ? 'paid' : isFailed ? 'failed' : 'pending';
+
+        if (resultStatus === 'failed') {
+          console.log('[CZ-PAY] GATEWAY ORDER API FAILED', JSON.stringify({
+            function: 'getTransactionStatus',
+            gatewayReference,
+            orderStatus,
+            orderPaymentStatus: orderData.payment_status,
+            paidAmountCents: orderData.paid_amount_cents,
+            resultStatus,
+            stack: new Error().stack,
+          }));
+        }
+
         return {
           success: isPaid,
           transactionId: String(orderData.id || ''),
           gatewayReference,
-          status: isPaid ? 'paid' : 'failed',
+          status: resultStatus,
           rawResponse: orderData,
         };
       }
 
-      // Fallback: try transactions list filtered by order
+      // ── FALLBACK: Transaction API (pagination: { results: [...], next, previous }) ──
+      // Only reached when Order API fails or returns no useful data.
+      // The ?order= filter is a no-op (returns all merchant transactions), so we
+      // filter locally by merchant_order_id when orderId is known.
       const txnRes = await fetch(
-        `${this.baseUrl}/api/acceptance/transactions?order=${gatewayReference}&page=1`,
+        `${this.baseUrl}/api/acceptance/transactions`,
         { headers: { Authorization: `Bearer ${authToken}` } },
       );
-      const txnData = await txnRes.json() as any;
+      const txnBody = await txnRes.json() as any;
+      const txnList: any[] = txnBody?.results ?? (Array.isArray(txnBody) ? txnBody : []);
 
-      if (Array.isArray(txnData) && txnData.length > 0) {
-        const txn = txnData[0];
-        return {
-          success: txn.success === true,
-          transactionId: String(txn.id || ''),
-          gatewayReference,
-          status: txn.success === true ? 'paid' : 'failed',
-          rawResponse: txn,
-        };
+      if (txnList.length > 0) {
+        // Build a pattern to match our merchant_order_id
+        // e.g. "order_10_*" or "booking_intent_9"
+        const merchantRef = orderId != null
+          ? `${gatewayReference.includes('booking') ? 'booking_intent' : 'order'}_${orderId}`
+          : null;
+
+        const matchingTxn = merchantRef
+          ? txnList.find(txn =>
+              txn.order?.merchant_order_id?.startsWith(merchantRef) ||
+              txn.order?.merchant_order_id === merchantRef)
+          : txnList[0];
+
+        if (matchingTxn) {
+          const isPaid = matchingTxn.success === true;
+          const isPending = matchingTxn.pending === true;
+          const resultStatus = isPaid ? 'paid' : isPending ? 'pending' : 'failed';
+
+          if (resultStatus === 'failed') {
+            console.log('[CZ-PAY] GATEWAY TRANSACTION API FAILED', JSON.stringify({
+              function: 'getTransactionStatus',
+              gatewayReference,
+              txnSuccess: matchingTxn.success,
+              txnPending: matchingTxn.pending,
+              resultStatus,
+              stack: new Error().stack,
+            }));
+          }
+
+          return {
+            success: isPaid,
+            transactionId: String(matchingTxn.id || ''),
+            gatewayReference,
+            status: resultStatus,
+            rawResponse: matchingTxn,
+          };
+        }
       }
 
       return { success: false, transactionId: '', gatewayReference, status: 'pending', rawResponse: orderData };
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
-      console.error('[Paymob] getTransactionStatus error:', message);
+      console.log('[CZ-PAY] GATEWAY CATCH FAILED', JSON.stringify({
+        function: 'getTransactionStatus',
+        gatewayReference,
+        resultStatus: 'failed',
+        errorMessage: message,
+        stack: new Error().stack,
+      }));
       return { success: false, transactionId: '', gatewayReference, status: 'failed', errorMessage: message };
     }
   }

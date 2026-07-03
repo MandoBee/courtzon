@@ -39,7 +39,7 @@ export class MockGateway implements PaymentGateway {
     return true;
   }
 
-  async getTransactionStatus(gatewayReference: string): Promise<PaymentResult> {
+  async getTransactionStatus(gatewayReference: string, _orderId?: number): Promise<PaymentResult> {
     return {
       success: true,
       transactionId: gatewayReference,

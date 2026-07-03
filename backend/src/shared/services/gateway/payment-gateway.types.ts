@@ -52,5 +52,5 @@ export interface PaymentGateway {
   charge(request: PaymentRequest): Promise<PaymentResult>;
   refund(request: RefundRequest): Promise<RefundResult>;
   verifyWebhook(payload: unknown, signature: string): Promise<boolean>;
-  getTransactionStatus(gatewayReference: string): Promise<PaymentResult>;
+  getTransactionStatus(gatewayReference: string, orderId?: number): Promise<PaymentResult>;
 }
