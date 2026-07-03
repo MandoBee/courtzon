@@ -12,7 +12,7 @@ export default defineConfig(({ command }) => ({
       ? [
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.svg', 'images/favicon-light.svg', 'images/favicon-dark.svg', 'icons.svg', 'icon-192.png', 'icon-512.png', 'screenshot-phone.png', 'apple-splash-*.png'],
+      includeAssets: ['favicon.svg', 'favicon-16x16.png', 'favicon-32x32.png', 'images/favicon-light.svg', 'images/favicon-dark.svg', 'icons.svg', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png', 'screenshot-phone.png', 'apple-splash-*.png', 'browserconfig.xml'],
       manifest: {
         id: '/',
         name: 'CourtZon - Sports Facility Booking',
@@ -26,7 +26,9 @@ export default defineConfig(({ command }) => ({
         orientation: 'portrait-primary',
         categories: ['sports', 'lifestyle', 'health'],
         icons: [
-          { src: '/favicon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' },
+          { src: '/images/favicon-light.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' },
+          { src: '/favicon-32x32.png', sizes: '32x32', type: 'image/png', purpose: 'any' },
+          { src: '/favicon-16x16.png', sizes: '16x16', type: 'image/png', purpose: 'any' },
           { src: '/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
           { src: '/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'maskable' },
           { src: '/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
@@ -121,7 +123,7 @@ export default defineConfig(({ command }) => ({
     port: Number(process.env.VITE_DEV_PORT) || 5173,
     strictPort: false,
     headers: {
-      'Permissions-Policy': 'payment=(self "https://accept.paymob.com" "https://accept.paymobsandbox.com")',
+      'Permissions-Policy': 'payment=(self "https://accept.paymob.com")',
     },
     proxy: {
       '/auth': backend,
