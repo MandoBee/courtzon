@@ -42,7 +42,9 @@ export async function refundHandler(request: FastifyRequest, reply: FastifyReply
 
 export async function webhookHandler(request: FastifyRequest, reply: FastifyReply) {
   try {
-    const signature = (request.headers['x-paymob-signature'] || request.headers['x-fawry-signature'] || (request.query as any)?.hmac || '') as string;
+    // Intention API: HMAC is in query param; Accept API: HMAC is in header.
+    // Prioritize query param for Intention API webhooks, fall back to header.
+    const signature = ((request.query as any)?.hmac || request.headers['x-paymob-signature'] || request.headers['x-fawry-signature'] || '') as string;
     const result = await paymentService.handleWebhook(request.body, signature);
     recordAudit({
       actorId: (request as any).userId ?? null,
