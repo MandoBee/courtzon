@@ -462,9 +462,6 @@ export const marketplaceService = {
       }
     }
 
-    // Clear cart immediately — order is created regardless of payment outcome
-    await repo.clearCart(userId);
-
     // Load user billing data for Intention API
     const user = await userRepository.findById(userId);
 

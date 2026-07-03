@@ -1278,8 +1278,8 @@ export const marketplaceRepository = {
   async findShippingRateForSeller(sellerId: number, provinceId: number, cityId?: number) {
     const pool = getPool();
     let [rows] = await pool.execute<RowData>(
-      'SELECT price, estimated_days FROM seller_shipping_rates WHERE seller_id = ? AND province_id = ? AND city_id = ? LIMIT 1',
-      [sellerId, provinceId, cityId || null]
+      'SELECT price, estimated_days FROM seller_shipping_rates WHERE seller_id = ? AND province_id = ? AND (city_id = ? OR (city_id IS NULL AND ? IS NULL)) LIMIT 1',
+      [sellerId, provinceId, cityId ?? null, cityId ?? null]
     );
     if (rows.length === 0 && cityId) {
       [rows] = await pool.execute<RowData>(
