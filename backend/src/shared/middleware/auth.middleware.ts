@@ -155,7 +155,7 @@ const PUBLIC_PREFIXES = [
   '/openapi.json', '/docs', '/uploads/',
   '/sports', '/countries', '/languages', '/currencies',
   '/provinces', '/cities', '/banks', '/amenities',
-  '/subscription-plans', '/player-levels',
+  '/player-levels',
 ];
 
 export async function authMiddleware(request: FastifyRequest, reply: FastifyReply) {
