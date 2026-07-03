@@ -42,8 +42,7 @@ const DB_NAME = process.env.DB_NAME || 'courtzon_v3';
 const DB_USER = process.env.DB_USER || 'root';
 const DB_PASS = process.env.DB_PASSWORD || process.env.MYSQL_ROOT_PASSWORD || '';
 
-const PAYMOB_SANDBOX = process.env.PAYMOB_SANDBOX !== 'false';
-const PAYMOB_BASE = PAYMOB_SANDBOX ? 'https://accept.paymobsandbox.com' : 'https://accept.paymob.com';
+const PAYMOB_BASE = 'https://accept.paymob.com';
 const SECRET = process.env.PAYMOB_SECRET || '';
 const API_KEY = process.env.PAYMOB_API_KEY || '';
 const HMAC_SECRET = process.env.PAYMOB_HMAC_SECRET || '';

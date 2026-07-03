@@ -22,7 +22,7 @@ export class MockGateway implements PaymentGateway {
       gatewayReference: transactionId,
       clientSecret: `mock_csk_test_${Date.now()}`,
       intentionId: `mock_int_${Date.now()}`,
-      paymentUrl: `https://accept.paymobsandbox.com/unifiedcheckout/?publicKey=${this.config.publicKey || 'mock_pk'}&clientSecret=mock_csk_test_${Date.now()}`,
+      paymentUrl: `https://accept.paymob.com/unifiedcheckout/?publicKey=${this.config.publicKey || 'mock_pk'}&clientSecret=mock_csk_test_${Date.now()}`,
       status: 'paid',
     };
   }
