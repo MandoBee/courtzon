@@ -133,10 +133,7 @@ export class PaymentService {
    *   All other statuses (intended, created, pending, processing, waiting) → ignored.
    */
   async handleWebhook(payload: unknown, signature: string) {
-    const bodyPreview = payload ? JSON.stringify(payload).substring(0, 300) : '(empty)';
-    console.log('[CZ-PAY] WEBHOOK RECEIVED', JSON.stringify({ signaturePrefix: signature.substring(0, 20), hasBody: !!payload, bodyPreview }).substring(0, 500));
     const valid = await paymentGateway.verifyWebhook(payload, signature);
-    console.log('[CZ-PAY] HMAC VERIFY:', valid ? 'VALID' : 'INVALID');
     if (!valid) {
       log.error({ msg: 'HMAC verification failed' });
       throw new Error('Invalid webhook signature');
@@ -171,18 +168,10 @@ export class PaymentService {
       newStatus = STATUS_MAP[obj.status];
 
       if (obj.status === 'failed') {
-        console.log('[CZ-PAY] UPSTREAM INTENTION FAILED', JSON.stringify({
-          function: 'handleWebhook',
-          objStatus: obj.status,
-          objSuccess: obj.success,
-          newStatus,
-          gatewayRef,
-          stack: new Error().stack,
-        }));
+        log.warn({ gatewayRef, objStatus: obj.status, objSuccess: obj.success }, 'Intention webhook: payment failed');
       }
 
       if (!newStatus) {
-        console.log('[CZ-PAY] Intention webhook ignored', JSON.stringify({ gatewayRef, status: obj.status }));
         log.info({ gatewayRef, status: obj.status }, 'Non-final webhook ignored');
         return { received: true, note: 'ignored' };
       }
@@ -191,14 +180,6 @@ export class PaymentService {
       if (obj.success === true) {
         newStatus = 'paid';
       } else if (obj.pending === true) {
-        console.log('[CZ-PAY] UPSTREAM ACCEPT PENDING IGNORED', JSON.stringify({
-          function: 'handleWebhook',
-          objStatus: obj.status,
-          objSuccess: obj.success,
-          objPending: obj.pending,
-          gatewayRef,
-          stack: new Error().stack,
-        }));
         log.info({ gatewayRef, objStatus: obj.status }, 'Accept API webhook: transaction still pending, ignoring');
         return { received: true, note: 'ignored' };
       } else {
@@ -206,15 +187,7 @@ export class PaymentService {
       }
 
       if (newStatus === 'failed') {
-        console.log('[CZ-PAY] UPSTREAM ACCEPT FAILED', JSON.stringify({
-          function: 'handleWebhook',
-          objStatus: obj.status,
-          objSuccess: obj.success,
-          objPending: obj.pending,
-          newStatus,
-          gatewayRef,
-          stack: new Error().stack,
-        }));
+        log.warn({ gatewayRef, objStatus: obj.status, objSuccess: obj.success }, 'Accept webhook: payment failed');
       }
     }
 
@@ -227,26 +200,11 @@ export class PaymentService {
 
     const traceId = (preCheck as any).trace_id || '';
 
-    console.log('[CZ-PAY] WEBHOOK STATUS', JSON.stringify({
-      gatewayRef, newStatus, gatewayStatus: obj.status, payloadSuccess: obj.success,
-      traceId, txnId: preCheck.id, oldStatus: preCheck.payment_status,
-    }));
-
     // --- cancelled / expired → direct status update (no fulfillment) ---
     if (newStatus === 'cancelled' || newStatus === 'expired') {
       return withTransaction(async (conn) => {
         const transaction = await paymentRepository.lockByGatewayRef(gatewayRef, conn);
         if (!transaction) throw new NotFoundError('Payment transaction');
-        console.log(
-          '[CZ-PAY] STATUS CHANGE',
-          'Old:', transaction.payment_status,
-          'New:', newStatus,
-          'GatewayStatus:', obj.status,
-          'PayloadStatus:', obj.success,
-          'Reason: webhook',
-          'TraceId:', traceId,
-          new Error().stack
-        );
         const [updateResult] = await conn.execute<mysql.ResultSetHeader>(
           `UPDATE payment_transactions
            SET payment_status = ?, cancelled_at = NOW(), updated_at = NOW()
@@ -276,37 +234,22 @@ export class PaymentService {
    * Should be called by a scheduled job every ~5 minutes.
    */
   async syncPendingPayments() {
-    console.log('[CZ-PAY] SYNC START');
     const payments = await paymentRepository.findPendingPayments(1);
-    console.log('[CZ-PAY] SYNC found pending:', payments.length);
     if (payments.length === 0) return { synced: 0 };
 
     log.info({ count: payments.length }, 'Starting payment sync');
 
     let synced = 0;
     for (const ptx of payments as any[]) {
-      console.log('[CZ-PAY] SYNC processing:', JSON.stringify({ id: ptx.id, gatewayRef: ptx.gateway_reference, status: ptx.payment_status, refType: ptx.reference_type }));
       try {
         const remoteStatus = await paymentGateway.getTransactionStatus(ptx.gateway_reference, ptx.order_id);
-        console.log('[CZ-PAY] SYNC remoteStatus:', JSON.stringify(remoteStatus));
         const traceId = ptx.trace_id || '';
         const newStatus: 'paid' | 'failed' | null =
           remoteStatus.status === 'paid' ? 'paid' :
           remoteStatus.status === 'failed' ? 'failed' : null;
-        console.log('[CZ-PAY] SYNC newStatus:', newStatus);
 
         if (newStatus === 'failed') {
-          console.log('[CZ-PAY] UPSTREAM SYNC FAILED', JSON.stringify({
-            function: 'syncPendingPayments',
-            remoteStatus: remoteStatus.status,
-            remoteSuccess: remoteStatus.success,
-            newStatus,
-            gatewayRef: ptx.gateway_reference,
-            txnId: ptx.id,
-            orderId: ptx.order_id,
-            traceId,
-            stack: new Error().stack,
-          }));
+          log.warn({ txnId: ptx.id, gatewayRef: ptx.gateway_reference, remoteStatus: remoteStatus.status }, 'Sync detected failed payment');
         }
 
         if (!newStatus) continue;
@@ -350,46 +293,33 @@ export class PaymentService {
     gatewayStatus?: string,
     payloadSuccess?: boolean,
   ): Promise<{ idempotent: boolean }> {
-    console.log('[CZ-PAY] _processPaymentOutcome ENTER', JSON.stringify({
-      txnId: transaction.id, orderId: transaction.order_id,
-      oldStatus: transaction.payment_status, newStatus, gatewayRef, source,
-      gatewayStatus: gatewayStatus ?? null, payloadSuccess: payloadSuccess ?? null,
-      traceId: traceId ? 'present' : 'missing',
-    }));
     // Idempotency: skip if already in a final state
     if (FINAL_STATES.has(transaction.payment_status)) {
-      console.log('[CZ-PAY] _processPaymentOutcome IDEMPOTENT SKIP — already', transaction.payment_status);
       log.info({ traceId, txnId: transaction.id, status: transaction.payment_status, source }, 'Already final — idempotent skip');
       return { idempotent: true };
     }
 
-    // Log every status change with stack trace (BEFORE every UPDATE)
-    console.log(
-      '[CZ-PAY] STATUS CHANGE',
-      'Old:', transaction.payment_status,
-      'New:', newStatus,
-      'GatewayStatus:', gatewayStatus ?? 'N/A',
-      'PayloadStatus:', payloadSuccess !== undefined ? String(payloadSuccess) : 'N/A',
-      'Reason:', source,
-      'TraceId:', traceId,
-      new Error().stack
-    );
+    // Log every status change (BEFORE every UPDATE)
+    log.info({
+      traceId, source,
+      txnId: transaction.id,
+      orderId: transaction.order_id,
+      oldStatus: transaction.payment_status,
+      newStatus,
+      gatewayStatus: gatewayStatus ?? null,
+      gatewayRef,
+    }, 'Payment status change');
 
-    // [CZ-PAY] WRITE-FAILED TRAP: fires only when newStatus === 'failed'
     if (newStatus === 'failed') {
-      console.log('[CZ-PAY] WRITE-FAILED', JSON.stringify({
-        function: '_processPaymentOutcome',
+      log.warn({
+        traceId, source,
+        txnId: transaction.id,
+        orderId: transaction.order_id,
+        oldStatus: transaction.payment_status,
         newStatus,
         gatewayStatus: gatewayStatus ?? null,
-        payloadSuccess: payloadSuccess ?? null,
-        traceId,
-        orderId: transaction.order_id,
-        paymentTransactionId: transaction.id,
-        source,
         gatewayRef,
-        oldStatus: transaction.payment_status,
-        stack: new Error().stack,
-      }));
+      }, 'Payment failed');
     }
 
     // Update payment status (safe conditional — only if still mutable)
@@ -399,7 +329,6 @@ export class PaymentService {
        WHERE id = ? AND payment_status NOT IN ('paid', 'failed', 'cancelled', 'expired', 'refunded')`,
       [newStatus, newStatus, transaction.id],
     );
-    console.log('[CZ-PAY] _processPaymentOutcome UPDATE payment_transactions affectedRows:', updateResult.affectedRows);
 
     if (updateResult.affectedRows === 0) {
       // Another process beat us — idempotent exit
@@ -449,11 +378,10 @@ export class PaymentService {
     const [orderRows] = await conn.execute<RowData>(
       'SELECT buyer_id FROM orders WHERE id = ?', [transaction.order_id],
     );
-    const [orderUpdate] = await conn.execute<mysql.ResultSetHeader>(
+    await conn.execute<mysql.ResultSetHeader>(
       "UPDATE orders SET status = 'confirmed', paid_at = NOW(), payment_status = 'paid' WHERE id = ? AND status = 'pending'",
       [transaction.order_id],
     );
-    console.log('[CZ-PAY] _fulfillOrder UPDATE orders affectedRows:', orderUpdate.affectedRows, 'orderId:', transaction.order_id);
     if (orderRows.length && (orderRows[0] as any)?.buyer_id) {
       await conn.execute('DELETE FROM cart_items WHERE user_id = ?', [(orderRows[0] as any).buyer_id]);
     }
@@ -601,15 +529,6 @@ export class PaymentService {
 
     let expired = 0;
     for (const ptx of payments as any[]) {
-      console.log('[CZ-PAY] EXPIRE ATTEMPT', JSON.stringify({
-        function: 'expireStalePayments',
-        txnId: ptx.id,
-        orderId: ptx.order_id,
-        gatewayRef: ptx.gateway_reference,
-        oldStatus: ptx.payment_status,
-        newStatus: 'expired',
-        stack: new Error().stack,
-      }));
       const expired_ = await paymentRepository.expirePayment(ptx.id);
       if (expired_) {
         // Release booking intent if associated

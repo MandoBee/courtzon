@@ -186,13 +186,6 @@ export class PaymobGateway implements PaymentGateway {
       const authToken = tokenData.token;
 
       if (!authToken) {
-        console.log('[CZ-PAY] GATEWAY AUTH FAILED', JSON.stringify({
-          function: 'getTransactionStatus',
-          gatewayReference,
-          resultStatus: 'failed',
-          reason: 'auth_token_empty',
-          stack: new Error().stack,
-        }));
         return { success: false, transactionId: '', status: 'failed', errorMessage: 'Paymob auth failed' };
       }
 
@@ -209,31 +202,12 @@ export class PaymobGateway implements PaymentGateway {
       let orderData: any;
       try { orderData = JSON.parse(orderText); } catch { orderData = {}; }
 
-      console.log('[Paymob] getTransactionStatus order lookup:',
-        'status=' + orderRes.status,
-        'orderId=' + gatewayReference,
-        'payment_status=' + (orderData.payment_status || 'unknown'),
-        'paid_amount_cents=' + orderData.paid_amount_cents,
-      );
-
       if (orderRes.ok && orderData) {
         const orderStatus = (orderData.status || '').toLowerCase();
         const orderPaymentStatus = (orderData.payment_status || '').toLowerCase();
         const isPaid = orderData.paid === true || orderStatus === 'paid' || orderPaymentStatus === 'paid';
         const isFailed = orderStatus === 'failed' || orderStatus === 'cancelled' || orderStatus === 'expired' || orderPaymentStatus === 'failed';
         const resultStatus = isPaid ? 'paid' : isFailed ? 'failed' : 'pending';
-
-        if (resultStatus === 'failed') {
-          console.log('[CZ-PAY] GATEWAY ORDER API FAILED', JSON.stringify({
-            function: 'getTransactionStatus',
-            gatewayReference,
-            orderStatus,
-            orderPaymentStatus: orderData.payment_status,
-            paidAmountCents: orderData.paid_amount_cents,
-            resultStatus,
-            stack: new Error().stack,
-          }));
-        }
 
         return {
           success: isPaid,
@@ -273,17 +247,6 @@ export class PaymobGateway implements PaymentGateway {
           const isPending = matchingTxn.pending === true;
           const resultStatus = isPaid ? 'paid' : isPending ? 'pending' : 'failed';
 
-          if (resultStatus === 'failed') {
-            console.log('[CZ-PAY] GATEWAY TRANSACTION API FAILED', JSON.stringify({
-              function: 'getTransactionStatus',
-              gatewayReference,
-              txnSuccess: matchingTxn.success,
-              txnPending: matchingTxn.pending,
-              resultStatus,
-              stack: new Error().stack,
-            }));
-          }
-
           return {
             success: isPaid,
             transactionId: String(matchingTxn.id || ''),
@@ -297,13 +260,6 @@ export class PaymobGateway implements PaymentGateway {
       return { success: false, transactionId: '', gatewayReference, status: 'pending', rawResponse: orderData };
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
-      console.log('[CZ-PAY] GATEWAY CATCH FAILED', JSON.stringify({
-        function: 'getTransactionStatus',
-        gatewayReference,
-        resultStatus: 'failed',
-        errorMessage: message,
-        stack: new Error().stack,
-      }));
       return { success: false, transactionId: '', gatewayReference, status: 'failed', errorMessage: message };
     }
   }
