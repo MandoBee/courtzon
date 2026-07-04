@@ -20,7 +20,9 @@ export class PaymobGateway implements PaymentGateway {
 
   constructor(config: GatewayConfig) {
     this.config = config;
-    this.baseUrl = 'https://accept.paymob.com';
+    this.baseUrl = config.sandbox
+      ? 'https://accept.paymobsandbox.com'
+      : 'https://accept.paymob.com';
   }
 
   async charge(request: PaymentRequest): Promise<PaymentResult> {
@@ -84,7 +86,7 @@ export class PaymobGateway implements PaymentGateway {
         gatewayReference: paymobOrderId,
         clientSecret,
         intentionId,
-        paymentUrl: `https://accept.paymob.com/unifiedcheckout/?publicKey=${publicKey}&clientSecret=${clientSecret}`,
+        paymentUrl: `${this.baseUrl}/unifiedcheckout/?publicKey=${publicKey}&clientSecret=${clientSecret}`,
         status: 'pending',
         rawResponse: data,
       };
