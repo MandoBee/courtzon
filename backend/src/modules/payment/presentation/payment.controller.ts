@@ -133,15 +133,18 @@ export async function healthHandler(_request: FastifyRequest, reply: FastifyRepl
     : !!(process.env.PAYMOB_API_KEY && process.env.PAYMOB_SECRET && process.env.PAYMOB_HMAC_SECRET);
 
   const { readFileSync } = await import('node:fs');
-  const read = (path: string) => { try { return readFileSync(path, 'utf-8').trim(); } catch { return 'unknown'; } };
-  const expectedMigration = read('/app/expected-migration.txt');
+  const read = (path: string, envKey: string) => {
+    try { return readFileSync(path, 'utf-8').trim(); }
+    catch { return process.env[envKey] || 'unknown'; }
+  };
+  const expectedMigration = read('/app/expected-migration.txt', 'EXPECTED_MIGRATION');
   const dbMigration = migrationRows[0]?.filename || 'none';
   const migrationSynced = expectedMigration !== 'unknown' ? dbMigration.includes(expectedMigration) || dbMigration === expectedMigration : null;
 
   return reply.send({
     status: 'ok',
-    applicationVersion: read('/app/version.txt'),
-    gitCommit: read('/app/git-commit.txt'),
+    applicationVersion: read('/app/version.txt', 'APP_VERSION'),
+    gitCommit: read('/app/git-commit.txt', 'GIT_COMMIT'),
     provider,
     gatewayConfigured,
     pending: Object.fromEntries(pendingRows.map((r: any) => [r.payment_status, r.cnt])),
