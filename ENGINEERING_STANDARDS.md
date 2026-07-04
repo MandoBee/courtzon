@@ -4,6 +4,19 @@
 > **Scope:** All pull requests — frontend, backend, database, infrastructure  
 > **Rule:** No merge until all MANDATORY checks pass. Recommended items must have a documented exception if skipped.
 
+## Related Documents
+
+| Document | Purpose |
+|----------|---------|
+| [DEFINITION_OF_DONE.md](../DEFINITION_OF_DONE.md) | Condensed checklist — what must pass before a feature is complete |
+| [docs/adr/001-payment-architecture.md](docs/adr/001-payment-architecture.md) | Payment architecture — webhook, gateway, intents, idempotency |
+| [docs/adr/002-api-response-standard.md](docs/adr/002-api-response-standard.md) | API response envelope — consistent `{ data, error }` shapes |
+| [docs/adr/003-react-query-strategy.md](docs/adr/003-react-query-strategy.md) | React Query — staleTime, invalidation, polling, no optimistic updates |
+| [docs/adr/004-logging-strategy.md](docs/adr/004-logging-strategy.md) | Structured logging — Pino, traceId, redaction, no console.log |
+| [docs/adr/005-health-endpoint-strategy.md](docs/adr/005-health-endpoint-strategy.md) | Health endpoints — liveness, readiness, version, payment health |
+| [docs/adr/006-deployment-strategy.md](docs/adr/006-deployment-strategy.md) | Deployment — migration-first, build metadata, backup, rollback |
+| [docs/adr/007-security-model.md](docs/adr/007-security-model.md) | Security — auth, CORS, CSP, HMAC, upload hardening, secrets |
+
 ---
 
 ## Legend
@@ -229,7 +242,8 @@
 
 # PR Review Template
 
-**Copy this template into every PR description:**
+**Copy this template into every PR description.**  
+**For deployment readiness, also review [DEFINITION_OF_DONE.md](../DEFINITION_OF_DONE.md).**
 
 ```markdown
 ## Quality Gates
