@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../../store/auth.store';
@@ -7,6 +7,7 @@ import api from '../../services/api';
 import { useToast } from '../ui/Toast';
 import { formatPrice, formatPricePerHour } from '../../utils/currency';
 import { useTranslation } from '../../i18n';
+import PaymobPixelCard from '../payment/PaymobPixelCard';
 
 interface BookingModalProps {
   open: boolean;
@@ -73,117 +74,6 @@ function BranchStep2Card({ branch, onSelect }: { branch: any; onSelect: () => vo
         </div>
       </div>
     </button>
-  );
-}
-
-function PaymobPixelCard({ clientSecret, onComplete, onCancel }: { clientSecret: string; onComplete: () => void; onCancel: () => void }) {
-  const [isFormValid, setIsFormValid] = useState(false);
-  const [isProcessing, setIsProcessing] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const onCompleteRef = useRef(onComplete);
-  const onCancelRef = useRef(onCancel);
-  onCompleteRef.current = onComplete;
-  onCancelRef.current = onCancel;
-
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
-
-    const link1 = document.createElement('link');
-    link1.rel = 'stylesheet';
-    link1.href = 'https://cdn.jsdelivr.net/npm/paymob-pixel@latest/styles.css';
-    document.head.appendChild(link1);
-    const link2 = document.createElement('link');
-    link2.rel = 'stylesheet';
-    link2.href = 'https://cdn.jsdelivr.net/npm/paymob-pixel@latest/main.css';
-    document.head.appendChild(link2);
-
-    window.addEventListener('payFromOutside', () => {});
-
-    const startPixel = () => {
-      const Pixel = (window as any).Pixel;
-      if (!Pixel || !containerRef.current) return;
-      try {
-        new Pixel({
-          publicKey: import.meta.env.VITE_PAYMOB_PUBLIC_KEY,
-          clientSecret,
-          paymentMethods: ['card'],
-          elementId: containerRef.current.id || 'pixel-container-booking',
-          hideCardHolderName: true,
-          disablePay: true,
-          cardValidationChanged: (isValid: boolean) => setIsFormValid(isValid),
-          beforePaymentComplete: async () => true,
-          afterPaymentComplete: async () => onCompleteRef.current(),
-          onPaymentCancel: async () => onCancelRef.current(),
-        });
-      } catch (e) {
-        console.error('[PaymobPixel] init error:', e);
-      }
-    };
-
-    if ((window as any).Pixel) {
-      startPixel();
-    } else {
-      const script = document.createElement('script');
-      script.src = 'https://cdn.jsdelivr.net/npm/paymob-pixel@latest/main.js';
-      script.type = 'module';
-      script.onload = startPixel;
-      script.onerror = () => console.error('[PaymobPixel] script load failed');
-      document.body.appendChild(script);
-    }
-
-    return () => {
-      if (link1.parentNode) link1.parentNode.removeChild(link1);
-      if (link2.parentNode) link2.parentNode.removeChild(link2);
-    };
-  }, [clientSecret]);
-
-  return (
-    <div className="flex flex-col flex-1 min-h-0">
-      <div ref={containerRef} id="pixel-container-booking" className="flex-1 min-h-[300px] overflow-y-auto" />
-      <div className="flex gap-3 mt-4 pt-3 border-t border-[var(--color-border)] shrink-0">
-        <button
-          onClick={onCancel}
-          className="flex-1 py-2.5 border border-[var(--color-border)] text-[var(--color-text)] text-sm rounded-[var(--radius-md)] font-medium hover:bg-[var(--color-bg)] transition-colors"
-        >
-          Cancel
-        </button>
-        <button
-          onClick={() => { setIsProcessing(true); window.dispatchEvent(new Event('payFromOutside')); }}
-          disabled={!isFormValid || isProcessing}
-          className="flex-1 py-2.5 bg-[var(--color-primary)] text-white text-sm rounded-[var(--radius-md)] font-medium disabled:opacity-40 disabled:cursor-not-allowed transition-opacity"
-        >
-          {isProcessing ? 'Processing...' : 'Pay'}
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function PollPaymentStatus({ bookingId, onPaid, onTimeout }: { bookingId: number; onPaid: () => void; onTimeout: () => void }) {
-  useEffect(() => {
-    let stopped = false;
-    const interval = setInterval(async () => {
-      if (stopped) return;
-      try {
-        const res = await api.get(`/bookings/${bookingId}`);
-        if (res.data.payment_status && res.data.payment_status !== 'unpaid' && res.data.payment_status !== 'pending') {
-          stopped = true;
-          clearInterval(interval);
-          onPaid();
-        }
-      } catch { /* ignore */ }
-    }, 3000);
-    const timeout = setTimeout(() => { stopped = true; clearInterval(interval); onTimeout(); }, 60000);
-    return () => { stopped = true; clearInterval(interval); clearTimeout(timeout); };
-  }, [bookingId, onPaid, onTimeout]);
-  return (
-    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center">
-      <div className="bg-[var(--color-surface)] rounded-xl shadow-xl p-6 w-full max-w-sm mx-4 text-center space-y-3">
-        <div className="animate-spin w-8 h-8 border-4 border-[var(--color-primary)] border-t-transparent rounded-full mx-auto" />
-        <p className="text-sm text-[var(--color-text-muted)]">Confirming payment...</p>
-      </div>
-    </div>
   );
 }
 
@@ -1073,22 +963,14 @@ export default function BookingModal({ open, onClose }: BookingModalProps) {
       )}
     </Modal>
 
-      {/* Poll booking payment status after card payment */}
-      {pollingPaid && createdBookingId && (
-        <PollPaymentStatus
-          bookingId={createdBookingId}
-          onPaid={() => {
-            setPollingPaid(false);
-            onClose();
-            showToast('Booking confirmed!');
-            navigate(`/bookings/${createdBookingId}/confirmation`, { state: { qrToken: '' } });
-          }}
-          onTimeout={() => {
-            setPollingPaid(false);
-            onClose();
-            showToast('Payment confirmation is taking longer than expected. Your booking is pending.', 'warning');
-          }}
-        />
+      {/* Payment confirming overlay */}
+      {pollingPaid && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center">
+          <div className="bg-[var(--color-surface)] rounded-xl shadow-xl p-6 w-full max-w-sm mx-4 text-center space-y-3">
+            <div className="animate-spin w-8 h-8 border-4 border-[var(--color-primary)] border-t-transparent rounded-full mx-auto" />
+            <p className="text-sm text-[var(--color-text-muted)]">Confirming payment...</p>
+          </div>
+        </div>
       )}
 
       {/* Card payment modal */}
@@ -1120,7 +1002,7 @@ export default function BookingModal({ open, onClose }: BookingModalProps) {
                 } catch {
                   // retry
                 }
-                await new Promise((r) => setTimeout(r, 3000));
+                await new Promise((r) => setTimeout(r, i < 5 ? 1000 : 3000));
               }
               setPollingPaid(false);
               showToast('Payment confirmation timed out. Please check your bookings.', 'warning');

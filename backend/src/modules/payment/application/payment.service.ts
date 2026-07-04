@@ -275,6 +275,39 @@ export class PaymentService {
   }
 
   /**
+   * Fulfill paid but unfulfilled booking intents — safety net for when the
+   * user closes the browser before the frontend fulfill retry loop completes.
+   * Called from the sync_pending_payments cron job.
+   */
+  async fulfillOrphanedBookingIntents() {
+    const pool = getPool();
+    const [rows] = await pool.execute<RowData>(
+      `SELECT pt.id as txn_id, pt.booking_id as intent_id
+       FROM payment_transactions pt
+       WHERE pt.reference_type = 'booking_intent'
+         AND pt.payment_status = 'paid'
+         AND pt.updated_at < NOW() - INTERVAL 2 MINUTE
+         AND EXISTS (SELECT 1 FROM booking_intents bi WHERE bi.id = pt.booking_id)
+       ORDER BY pt.id`,
+    );
+    if (!rows.length) return { fulfilled: 0 };
+
+    log.info({ count: rows.length }, 'Fulfilling orphaned booking intents');
+    let fulfilled = 0;
+    for (const row of rows as any[]) {
+      try {
+        const bookingService = await import('../../booking/application/booking.service.js');
+        await bookingService.bookingService.fulfillBookingIntent(row.intent_id);
+        fulfilled++;
+      } catch (err) {
+        log.error({ intentId: row.intent_id, error: String(err) }, 'Failed to fulfill orphaned intent');
+      }
+    }
+    log.info({ fulfilled, total: rows.length }, 'Orphaned intent fulfillment complete');
+    return { fulfilled, total: rows.length };
+  }
+
+  /**
    * Single unified method for processing a payment outcome.
    * Called by both webhook and sync. Runs inside an existing transaction
    * with FOR UPDATE lock already held on the payment row.
@@ -368,7 +401,10 @@ export class PaymentService {
     if (refType === 'order' && transaction.order_id) {
       await this._fulfillOrder(conn, transaction, traceId);
     } else if (refType === 'booking_intent') {
-      await this._fulfillBookingIntent(conn, transaction, traceId);
+      // Booking intent fulfillment is handled by the frontend (POST /booking-intents/:intentId/fulfill)
+      // to avoid race conditions. The webhook only marks payment_status = 'paid' here.
+      // Paid but unfulfilled intents are cleaned up by the sync_pending_payments cron.
+      log.info({ traceId, txnId: transaction.id }, 'Booking intent payment confirmed — awaiting frontend fulfillment');
     } else if (refType === 'wallet_topup') {
       await this._fulfillWalletTopup(conn, transaction, traceId);
     }

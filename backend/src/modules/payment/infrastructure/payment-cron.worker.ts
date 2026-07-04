@@ -8,6 +8,8 @@ export async function handleSyncPendingPayments(_data: SyncPendingPaymentsJob): 
   try {
     const result = await paymentService.syncPendingPayments();
     log.info({ synced: result.synced, total: result.total }, 'Payment sync job completed');
+    const orphanResult = await paymentService.fulfillOrphanedBookingIntents();
+    log.info({ fulfilled: orphanResult.fulfilled, total: orphanResult.total }, 'Orphaned intent fulfillment completed');
   } catch (err) {
     log.error({ error: String(err) }, 'Payment sync job failed');
   }

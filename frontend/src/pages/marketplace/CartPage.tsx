@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from 'react-router-dom';
 import api from '../../services/api';
@@ -6,6 +6,8 @@ import { formatPrice } from '../../utils/currency';
 import { useTranslation } from '../../i18n';
 import { useToast } from '../../components/ui/Toast';
 import { Modal } from '../../components/ui/Modal';
+import PaymobPixelCard from '../../components/payment/PaymobPixelCard';
+import PaymentStatusPoller from '../../components/payment/PaymentStatusPoller';
 
 function AddressFormModal({ open, address, onClose, onDone }: { open: boolean; address?: any; onClose: () => void; onDone: (id: number) => void }) {
   const queryClient = useQueryClient();
@@ -88,133 +90,6 @@ function AddressFormModal({ open, address, onClose, onDone }: { open: boolean; a
           </button>
           <button onClick={onClose} className="px-4 py-2 border rounded-lg text-sm">Cancel</button>
         </div>
-      </div>
-    </div>
-  );
-}
-
-function PaymobPixel({ clientSecret, onComplete, onCancel }: { clientSecret: string; onComplete: () => void; onCancel: () => void }) {
-  const [isFormValid, setIsFormValid] = useState(false);
-  const [isProcessing, setIsProcessing] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const onCompleteRef = useRef(onComplete);
-  const onCancelRef = useRef(onCancel);
-  onCompleteRef.current = onComplete;
-  onCancelRef.current = onCancel;
-
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
-
-    const link1 = document.createElement('link');
-    link1.rel = 'stylesheet';
-    link1.href = 'https://cdn.jsdelivr.net/npm/paymob-pixel@latest/styles.css';
-    document.head.appendChild(link1);
-
-    const link2 = document.createElement('link');
-    link2.rel = 'stylesheet';
-    link2.href = 'https://cdn.jsdelivr.net/npm/paymob-pixel@latest/main.css';
-    document.head.appendChild(link2);
-
-    const handlePayFromOutside = () => {
-    };
-    window.addEventListener('payFromOutside', handlePayFromOutside);
-
-    const startPixel = () => {
-      const Pixel = (window as any).Pixel;
-      if (!Pixel) return;
-      if (!containerRef.current) return;
-      try {
-        new Pixel({
-          publicKey: import.meta.env.VITE_PAYMOB_PUBLIC_KEY,
-          clientSecret,
-          paymentMethods: ['card'],
-          elementId: containerRef.current.id || 'pixel-container',
-          hideCardHolderName: true,
-          disablePay: true,
-          cardValidationChanged: (isValid: boolean) => {
-            setIsFormValid(isValid);
-          },
-          beforePaymentComplete: async (_paymentMethod: any) => {
-            return true;
-          },
-          afterPaymentComplete: async (_res: any) => {
-            onCompleteRef.current();
-          },
-          onPaymentCancel: async () => {
-            onCancelRef.current();
-          },
-        });
-      } catch (e) {
-        console.error('[PaymobPixel] init error:', e);
-      }
-    };
-
-    if ((window as any).Pixel) {
-      startPixel();
-    } else {
-      const script = document.createElement('script');
-      script.src = 'https://cdn.jsdelivr.net/npm/paymob-pixel@latest/main.js';
-      script.type = 'module';
-      script.onload = startPixel;
-      script.onerror = () => console.error('[PaymobPixel] script load failed');
-      document.body.appendChild(script);
-    }
-
-    return () => {
-      if (link1.parentNode) link1.parentNode.removeChild(link1);
-      if (link2.parentNode) link2.parentNode.removeChild(link2);
-      window.removeEventListener('payFromOutside', handlePayFromOutside);
-    };
-  }, [clientSecret]);
-
-  const handlePay = () => {
-    window.dispatchEvent(new Event('payFromOutside'));
-  };
-
-  return (
-    <>
-      <div ref={containerRef} id="pixel-container" className="min-h-[400px]" />
-      <button
-        onClick={() => { setIsProcessing(true); handlePay(); }}
-        disabled={!isFormValid || isProcessing}
-        className="w-full mt-4 py-3 bg-[var(--color-primary)] text-white text-sm rounded-[var(--radius-md)] font-medium disabled:opacity-40 disabled:cursor-not-allowed transition-opacity"
-      >
-        {isProcessing ? 'Processing...' : 'Pay'}
-      </button>
-    </>
-  );
-}
-
-function PollPaymentStatus({ orderId, onPaid, onTimeout }: { orderId: number; onPaid: () => void; onTimeout: () => void }) {
-  useEffect(() => {
-    let stopped = false;
-    const interval = setInterval(async () => {
-      if (stopped) return;
-      try {
-        const res = await api.get(`/marketplace/orders/${orderId}`);
-        const order = res.data;
-        if (order.payment_status && order.payment_status !== 'unpaid') {
-          stopped = true;
-          clearInterval(interval);
-          onPaid();
-        }
-      } catch {
-        // ignore polling errors
-      }
-    }, 3000);
-    const timeout = setTimeout(() => {
-      stopped = true;
-      clearInterval(interval);
-      onTimeout();
-    }, 60000);
-    return () => { stopped = true; clearInterval(interval); clearTimeout(timeout); };
-  }, [orderId, onPaid, onTimeout]);
-  return (
-    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center">
-      <div className="bg-[var(--color-surface)] rounded-xl shadow-xl p-6 w-full max-w-sm mx-4 text-center space-y-3">
-        <div className="animate-spin w-8 h-8 border-4 border-[var(--color-primary)] border-t-transparent rounded-full mx-auto" />
-        <p className="text-sm text-[var(--color-text-muted)]">Confirming payment...</p>
       </div>
     </div>
   );
@@ -440,13 +315,21 @@ export default function CartPage() {
 
       {/* Poll order status after Pixel payment */}
       {pollingPaid && orderId && (
-        <PollPaymentStatus orderId={orderId} onPaid={() => { setPollingPaid(false); showToast('Order placed successfully!', 'success'); navigate('/marketplace/orders'); }} onTimeout={() => { setPollingPaid(false); showToast('Payment confirmation is taking longer than expected. Your order is pending — we will update you shortly.', 'warning'); }} />
+        <PaymentStatusPoller
+          endpoint={`/marketplace/orders/${orderId}`}
+          field="payment_status"
+          interval={1500}
+          timeout={90000}
+          onPaid={() => { setPollingPaid(false); showToast('Order placed successfully!', 'success'); navigate('/marketplace/orders'); }}
+          onTimeout={() => { setPollingPaid(false); showToast('Payment confirmation is taking longer than expected. Your order is pending — we will update you shortly.', 'warning'); }}
+        />
       )}
 
       <Modal open={!!pixelClientSecret} onClose={() => setPixelClientSecret(null)} title="Pay with Card" size="lg">
         {pixelClientSecret && (
-          <PaymobPixel
+          <PaymobPixelCard
             clientSecret={pixelClientSecret}
+            containerId="pixel-container-marketplace"
             onComplete={() => {
               setPixelClientSecret(null);
               setPollingPaid(true);
