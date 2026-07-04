@@ -76,7 +76,8 @@ export class BookingService {
 
       if (isGateway) {
         // Create intent for gateway payments — committed immediately for audit trail.
-        // If gateway charge fails, intent_status is updated to 'failed' with failure_reason.
+        // intent_status starts as 'pending'. If charge succeeds → 'payment_initiated'.
+        // If charge fails → 'failed' with failure_category and failure_reason.
         const intentId = await bookingRepository.createIntent({
           userId, branchId: input.branchId, organisationId, resourceId: input.resourceId,
           bookingType: input.bookingType || 'public_match', bookingDate,
@@ -89,6 +90,8 @@ export class BookingService {
           paymentMethod,
           matchmaking: input.matchmaking || undefined,
           participants: input.participants,
+          retryOfIntentId: input.retryOfIntentId,
+          attemptNumber: input.retryOfIntentId ? undefined : 1,
         });
 
         await conn.commit();
@@ -107,17 +110,20 @@ export class BookingService {
 
           if (!gwResult.success) {
             const reason = (gwResult as any).errorMessage || 'Payment gateway rejected the transaction';
-            await bookingRepository.updateIntentStatus(intentId, 'failed', reason);
+            await bookingRepository.updateIntentStatus(intentId, 'failed', reason, 'gateway_rejected');
             throw new Error(reason);
           }
 
+          await bookingRepository.updateIntentStatus(intentId, 'payment_initiated');
           const paymentUrl = ('paymentUrl' in gwResult ? gwResult.paymentUrl : null) || null;
           const clientSecret = ('clientSecret' in gwResult ? gwResult.clientSecret : null) || null;
           return { paymentUrl, clientSecret, intentId };
         } catch (err: any) {
           const reason = err?.message || 'Gateway initiation failed';
+          const category = err?.message?.includes('fetch failed') || err?.code === 'ECONNREFUSED'
+            ? 'gateway_unavailable' : 'gateway_rejected';
           try {
-            await bookingRepository.updateIntentStatus(intentId, 'failed', reason);
+            await bookingRepository.updateIntentStatus(intentId, 'failed', reason, category);
           } catch { /* non-fatal */ }
           throw err;
         }

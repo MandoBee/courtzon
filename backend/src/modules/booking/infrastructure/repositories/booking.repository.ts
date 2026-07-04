@@ -46,18 +46,21 @@ export class BookingRepository {
     bookingType: string; bookingDate: string; startTime: string; endTime: string;
     totalAmount: number; commissionAmount?: number; clubAmount?: number;
     notes?: string; paymentMethod?: string; matchmaking?: any; participants?: any[];
+    retryOfIntentId?: number; attemptNumber?: number;
   }): Promise<number> {
     const [result] = await this.pool.execute<ResultSetHeader>(
       `INSERT INTO booking_intents (user_id, branch_id, organisation_id, resource_id, booking_type,
         booking_date, start_time, end_time, total_amount, commission_amount, club_amount,
-        notes, payment_method, matchmaking, participants)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        notes, payment_method, matchmaking, participants, retry_of_intent_id, attempt_number)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [data.userId, data.branchId, data.organisationId, data.resourceId, data.bookingType,
        data.bookingDate, data.startTime, data.endTime, data.totalAmount,
        data.commissionAmount || 0, data.clubAmount || 0,
        data.notes || null, data.paymentMethod || null,
        data.matchmaking ? JSON.stringify(data.matchmaking) : null,
-       data.participants ? JSON.stringify(data.participants) : null]
+       data.participants ? JSON.stringify(data.participants) : null,
+       data.retryOfIntentId || null,
+       data.attemptNumber || 1]
     );
     return result.insertId;
   }
@@ -73,10 +76,10 @@ export class BookingRepository {
     await this.pool.execute('DELETE FROM booking_intents WHERE id = ?', [id]);
   }
 
-  async updateIntentStatus(id: number, status: string, failureReason?: string): Promise<void> {
+  async updateIntentStatus(id: number, status: string, failureReason?: string, failureCategory?: string): Promise<void> {
     await this.pool.execute(
-      'UPDATE booking_intents SET intent_status = ?, failure_reason = ?, updated_at = NOW() WHERE id = ?',
-      [status, failureReason || null, id]
+      'UPDATE booking_intents SET intent_status = ?, failure_reason = ?, failure_category = ?, updated_at = NOW() WHERE id = ?',
+      [status, failureReason || null, failureCategory || null, id]
     );
   }
 
