@@ -150,6 +150,23 @@ export async function healthHandler(_request: FastifyRequest, reply: FastifyRepl
   );
 
   const provider = process.env.PAYMENT_GATEWAY_PROVIDER || 'mock';
+  let gatewayConnectivity: 'ok' | 'dns_failed' | 'unreachable' | 'unknown' = 'unknown';
+  if (provider === 'paymob') {
+    const baseUrl = 'https://accept.paymob.com';
+    try {
+      const { default: https } = await import('node:https');
+      const reachable = await new Promise<boolean>((resolve) => {
+        const req = https.get(baseUrl, { timeout: 5000 }, (res) => {
+          res.resume();
+          resolve(res.statusCode != null);
+        });
+        req.on('error', () => resolve(false));
+      });
+      gatewayConnectivity = reachable ? 'ok' : 'unreachable';
+    } catch {
+      gatewayConnectivity = 'dns_failed';
+    }
+  }
   const gatewayConfigured = provider === 'mock'
     ? true
     : !!(process.env.PAYMOB_API_KEY && process.env.PAYMOB_SECRET && process.env.PAYMOB_HMAC_SECRET);
@@ -169,6 +186,7 @@ export async function healthHandler(_request: FastifyRequest, reply: FastifyRepl
     gitCommit: read('/app/git-commit.txt', 'GIT_COMMIT'),
     provider,
     gatewayConfigured,
+    gatewayConnectivity,
     pending: Object.fromEntries(pendingRows.map((r: any) => [r.payment_status, r.cnt])),
     staleOver15min: staleRows[0]?.cnt || 0,
     failedLastHour: recentFailed[0]?.cnt || 0,
