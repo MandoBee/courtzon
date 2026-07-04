@@ -123,20 +123,34 @@ export async function healthHandler(_request: FastifyRequest, reply: FastifyRepl
     `SELECT source, MAX(created_at) as last_at FROM financial_journal_entries
      WHERE reference_type = 'gateway_webhook' GROUP BY source LIMIT 1`
   );
+  const [migrationRows] = await pool.execute<any[]>(
+    `SELECT filename FROM migration_history ORDER BY id DESC LIMIT 1`
+  );
 
   const provider = process.env.PAYMENT_GATEWAY_PROVIDER || 'mock';
   const gatewayConfigured = provider === 'mock'
     ? true
     : !!(process.env.PAYMOB_API_KEY && process.env.PAYMOB_SECRET && process.env.PAYMOB_HMAC_SECRET);
 
+  const { readFileSync } = await import('node:fs');
+  const read = (path: string) => { try { return readFileSync(path, 'utf-8').trim(); } catch { return 'unknown'; } };
+  const expectedMigration = read('/app/expected-migration.txt');
+  const dbMigration = migrationRows[0]?.filename || 'none';
+  const migrationSynced = expectedMigration !== 'unknown' ? dbMigration.includes(expectedMigration) || dbMigration === expectedMigration : null;
+
   return reply.send({
     status: 'ok',
+    applicationVersion: read('/app/version.txt'),
+    gitCommit: read('/app/git-commit.txt'),
     provider,
     gatewayConfigured,
     pending: Object.fromEntries(pendingRows.map((r: any) => [r.payment_status, r.cnt])),
     staleOver15min: staleRows[0]?.cnt || 0,
     failedLastHour: recentFailed[0]?.cnt || 0,
     lastWebhookAt: lastWebhook[0]?.last_at || null,
+    databaseMigrationVersion: dbMigration,
+    expectedMigrationVersion: expectedMigration,
+    migrationSynced,
     timestamp: new Date().toISOString(),
   });
 }

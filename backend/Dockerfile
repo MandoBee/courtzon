@@ -28,6 +28,10 @@ COPY backend/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 RUN date -u +"%Y-%m-%dT%H:%M:%SZ" > /app/build-time.txt
+RUN node -e "console.log(require('./package.json').version)" > /app/version.txt
+ARG GIT_COMMIT=unknown
+RUN echo "$GIT_COMMIT" > /app/git-commit.txt
+RUN ls -1 database/migrations/*.sql 2>/dev/null | sort | tail -1 | xargs -I{} basename {} .sql | sed 's/^0*//' > /app/expected-migration.txt || echo "0" > /app/expected-migration.txt
 RUN chown -R appuser:appgroup /app
 
 # Entrypoint runs as root, fixes bind-mounted uploads permissions at startup,

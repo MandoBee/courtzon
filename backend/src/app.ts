@@ -267,10 +267,12 @@ app.get("/health/storage", async (_request, reply) => {
 
 app.get("/health/version", async (_request, reply) => {
   const { readFileSync } = await import('node:fs');
-  let buildTime = 'unknown';
-  try { buildTime = readFileSync('/app/build-time.txt', 'utf-8').trim(); } catch { /* ignore */ }
+  const read = (path: string) => { try { return readFileSync(path, 'utf-8').trim(); } catch { return 'unknown'; } };
   return reply.send({
-    buildTime,
+    buildTime: read('/app/build-time.txt'),
+    gitCommit: read('/app/git-commit.txt'),
+    applicationVersion: read('/app/version.txt'),
+    expectedMigration: read('/app/expected-migration.txt'),
     nodeVersion: process.version,
     user: process.getuid?.() ?? 'unknown',
     pid: process.pid,
