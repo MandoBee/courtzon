@@ -6,7 +6,7 @@ import { sendEmail } from "./shared/services/mailer.service.js";
 import { handleCancelExpiredBookings } from "./modules/booking/infrastructure/booking-expiry.worker.js";
 import { handleRunSettlements } from "./modules/settlement/infrastructure/settlement-cron.worker.js";
 import { handleAutoCompleteBookings } from "./modules/booking/infrastructure/booking-auto-complete.worker.js";
-import { handleSyncPendingPayments, handleExpireStalePayments } from "./modules/payment/infrastructure/payment-cron.worker.js";
+import { handleSyncPendingPayments, handleExpireStalePayments, handleCleanupBookingIntents } from "./modules/payment/infrastructure/payment-cron.worker.js";
 import { runDatabaseBackup } from "./infrastructure/backup/backup.service.js";
 import { queueService } from "./infrastructure/queue/queue.service.js";
 import { closePool } from "./database/mysql.js";
@@ -34,6 +34,7 @@ async function bootstrap() {
     registerHandler('auto_complete_bookings', handleAutoCompleteBookings);
     registerHandler('sync_pending_payments', handleSyncPendingPayments);
     registerHandler('expire_stale_payments', handleExpireStalePayments);
+    registerHandler('cleanup_booking_intents', handleCleanupBookingIntents);
 
     const validation = await validateDatabaseSchema();
     if (!validation.ok) {
@@ -93,6 +94,13 @@ async function bootstrap() {
       repeat: { every: 120_000 },
       removeOnComplete: true,
       removeOnFail: { age: 86400 },
+    });
+
+    // Intent cleanup — daily at 03:00 UTC
+    await queueService.add('cleanup_booking_intents', {}, {
+      repeat: { pattern: '0 3 * * *' },
+      removeOnComplete: true,
+      removeOnFail: { age: 604800 },
     });
 
     process.on('SIGTERM', () => shutdown('SIGTERM'));
