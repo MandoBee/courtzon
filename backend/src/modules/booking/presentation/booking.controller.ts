@@ -173,3 +173,10 @@ export async function fulfillBookingIntentHandler(request: FastifyRequest, reply
   const result = await bookingService.fulfillBookingIntent(Number(intentId));
   return reply.send(result);
 }
+
+export async function getBookingIntentHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { intentId } = request.params as any;
+  const intent = await bookingService.getBookingIntent(Number(intentId));
+  if (!intent) return reply.status(404).send({ error: 'NOT_FOUND', message: 'Booking intent not found' });
+  return reply.send(intent);
+}

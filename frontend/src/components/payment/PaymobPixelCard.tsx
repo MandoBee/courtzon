@@ -3,11 +3,18 @@ import { useState, useEffect, useRef } from 'react';
 interface PaymobPixelCardProps {
   clientSecret: string;
   containerId?: string;
+  showCancelButton?: boolean;
   onComplete: () => void;
-  onCancel: () => void;
+  onCancel?: () => void;
 }
 
-export default function PaymobPixelCard({ clientSecret, containerId = 'pixel-container', onComplete, onCancel }: PaymobPixelCardProps) {
+export default function PaymobPixelCard({
+  clientSecret,
+  containerId = 'pixel-container',
+  showCancelButton = true,
+  onComplete,
+  onCancel,
+}: PaymobPixelCardProps) {
   const [isFormValid, setIsFormValid] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -45,7 +52,7 @@ export default function PaymobPixelCard({ clientSecret, containerId = 'pixel-con
           cardValidationChanged: (isValid: boolean) => setIsFormValid(isValid),
           beforePaymentComplete: async () => true,
           afterPaymentComplete: async () => onCompleteRef.current(),
-          onPaymentCancel: async () => onCancelRef.current(),
+          onPaymentCancel: async () => onCancelRef.current?.(),
         });
       } catch (e) {
         console.error('[PaymobPixel] init error:', e);
@@ -73,16 +80,18 @@ export default function PaymobPixelCard({ clientSecret, containerId = 'pixel-con
     <div className="flex flex-col flex-1 min-h-0">
       <div ref={containerRef} id={containerId} className="flex-1 min-h-[300px] overflow-y-auto" />
       <div className="flex gap-3 mt-4 pt-3 border-t border-[var(--color-border)] shrink-0">
-        <button
-          onClick={onCancel}
-          className="flex-1 py-2.5 border border-[var(--color-border)] text-[var(--color-text)] text-sm rounded-[var(--radius-md)] font-medium hover:bg-[var(--color-bg)] transition-colors"
-        >
-          Cancel
-        </button>
+        {showCancelButton && (
+          <button
+            onClick={onCancel}
+            className="flex-1 py-2.5 border border-[var(--color-border)] text-[var(--color-text)] text-sm rounded-[var(--radius-md)] font-medium hover:bg-[var(--color-bg)] transition-colors"
+          >
+            Cancel
+          </button>
+        )}
         <button
           onClick={() => { setIsProcessing(true); window.dispatchEvent(new Event('payFromOutside')); }}
           disabled={!isFormValid || isProcessing}
-          className="flex-1 py-2.5 bg-[var(--color-primary)] text-white text-sm rounded-[var(--radius-md)] font-medium disabled:opacity-40 disabled:cursor-not-allowed transition-opacity"
+          className={`${showCancelButton ? 'flex-1' : 'w-full'} py-2.5 bg-[var(--color-primary)] text-white text-sm rounded-[var(--radius-md)] font-medium disabled:opacity-40 disabled:cursor-not-allowed transition-opacity`}
         >
           {isProcessing ? 'Processing...' : 'Pay'}
         </button>

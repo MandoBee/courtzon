@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import api from '../../services/api';
 
 interface PollPaymentStatusProps {
@@ -9,6 +9,7 @@ interface PollPaymentStatusProps {
   timeout?: number;
   onPaid: () => void;
   onTimeout: () => void;
+  isComplete?: (data: any) => boolean;
 }
 
 export default function PaymentStatusPoller({
@@ -19,40 +20,52 @@ export default function PaymentStatusPoller({
   timeout = 90000,
   onPaid,
   onTimeout,
+  isComplete,
 }: PollPaymentStatusProps) {
+  const stoppedRef = useRef(false);
+
   useEffect(() => {
-    let stopped = false;
+    stoppedRef.current = false;
     let attempts = 0;
     const maxAttempts = Math.ceil(timeout / interval);
 
     const tick = async () => {
-      if (stopped) return;
+      if (stoppedRef.current) return;
       attempts++;
       if (attempts > maxAttempts) {
-        stopped = true;
+        stoppedRef.current = true;
         onTimeout();
         return;
       }
       try {
         const res = await api.get(endpoint);
         const data = res.data;
-        const status = typeof data === 'object' ? data[field] : data;
-        if (status && status !== 'unpaid' && status !== 'pending') {
-          stopped = true;
-          onPaid();
-          return;
+
+        if (isComplete) {
+          if (isComplete(data)) {
+            stoppedRef.current = true;
+            onPaid();
+            return;
+          }
+        } else {
+          const status = typeof data === 'object' ? data[field] : data;
+          if (status && status !== 'unpaid' && status !== 'pending') {
+            stoppedRef.current = true;
+            onPaid();
+            return;
+          }
         }
       } catch {
         // ignore polling errors
       }
-      if (!stopped) {
+      if (!stoppedRef.current) {
         setTimeout(tick, interval);
       }
     };
 
     tick();
-    return () => { stopped = true; };
-  }, [endpoint, field, paidValue, interval, timeout, onPaid, onTimeout]);
+    return () => { stoppedRef.current = true; };
+  }, [endpoint, field, paidValue, interval, timeout, onPaid, onTimeout, isComplete]);
 
   return (
     <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center">

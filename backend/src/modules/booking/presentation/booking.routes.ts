@@ -25,4 +25,5 @@ export async function bookingRoutes(app: FastifyInstance): Promise<void> {
   app.get('/matches', ctrl.getPublicMatchesHandler);
   app.get('/bookings/:id/applicants', ctrl.getBookingApplicantsHandler);
   app.post('/booking-intents/:intentId/fulfill', ctrl.fulfillBookingIntentHandler);
+  app.get('/booking-intents/:intentId', ctrl.getBookingIntentHandler);
 }

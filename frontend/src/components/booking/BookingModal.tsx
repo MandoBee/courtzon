@@ -8,6 +8,7 @@ import { useToast } from '../ui/Toast';
 import { formatPrice, formatPricePerHour } from '../../utils/currency';
 import { useTranslation } from '../../i18n';
 import PaymobPixelCard from '../payment/PaymobPixelCard';
+import PaymentStatusPoller from '../payment/PaymentStatusPoller';
 
 interface BookingModalProps {
   open: boolean;
@@ -963,14 +964,25 @@ export default function BookingModal({ open, onClose }: BookingModalProps) {
       )}
     </Modal>
 
-      {/* Payment confirming overlay */}
-      {pollingPaid && (
-        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center">
-          <div className="bg-[var(--color-surface)] rounded-xl shadow-xl p-6 w-full max-w-sm mx-4 text-center space-y-3">
-            <div className="animate-spin w-8 h-8 border-4 border-[var(--color-primary)] border-t-transparent rounded-full mx-auto" />
-            <p className="text-sm text-[var(--color-text-muted)]">Confirming payment...</p>
-          </div>
-        </div>
+      {/* Payment confirming overlay — polls booking intent fulfillment status */}
+      {pollingPaid && createdBookingId && (
+        <PaymentStatusPoller
+          endpoint={`/booking-intents/${createdBookingId}`}
+          isComplete={(data: any) => !!data?.fulfilled_booking_id}
+          interval={1500}
+          timeout={90000}
+          onPaid={() => {
+            setPollingPaid(false);
+            onClose();
+            showToast('Booking confirmed!');
+            navigate(`/bookings/${createdBookingId}/confirmation`, { state: { qrToken: '' } });
+          }}
+          onTimeout={() => {
+            setPollingPaid(false);
+            onClose();
+            showToast('Payment confirmation is taking longer than expected. Your booking is pending.', 'warning');
+          }}
+        />
       )}
 
       {/* Card payment modal */}
@@ -978,34 +990,10 @@ export default function BookingModal({ open, onClose }: BookingModalProps) {
         {pixelClientSecret && (
           <PaymobPixelCard
             clientSecret={pixelClientSecret}
-            onComplete={async () => {
+            onComplete={() => {
               setPixelClientSecret(null);
               setPollingPaid(true);
               showToast('Payment submitted — confirming...', 'info');
-              const intentId = createdBookingId;
-              for (let i = 0; i < 20; i++) {
-                try {
-                  const res = await api.post(`/booking-intents/${intentId}/fulfill`);
-                  if (res.data.success && res.data.booking) {
-                    setPollingPaid(false);
-                    queryClient.invalidateQueries({ queryKey: ['my-bookings'] });
-                    onClose();
-                    if (res.data.isPaid) {
-                      showToast('Booking confirmed!');
-                      navigate(`/bookings/${res.data.booking.id}/confirmation`, { state: { qrToken: res.data.booking.qrToken || '' } });
-                    } else {
-                      showToast('Booking created — awaiting payment confirmation', 'warning');
-                      navigate('/bookings');
-                    }
-                    return;
-                  }
-                } catch {
-                  // retry
-                }
-                await new Promise((r) => setTimeout(r, i < 5 ? 1000 : 3000));
-              }
-              setPollingPaid(false);
-              showToast('Payment confirmation timed out. Please check your bookings.', 'warning');
             }}
             onCancel={() => {
               setPixelClientSecret(null);

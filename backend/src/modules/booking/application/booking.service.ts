@@ -283,9 +283,18 @@ export class BookingService {
     return bookingRepository.findByUser(userId, status, from, to, page, limit, sortBy, lat, lng);
   }
 
+  async getBookingIntent(intentId: number) {
+    return bookingRepository.findIntent(intentId);
+  }
+
   async fulfillBookingIntent(intentId: number) {
     const intent = await bookingRepository.findIntent(intentId);
     if (!intent) throw new NotFoundError('Booking intent');
+
+    if (intent.fulfilled_booking_id) {
+      const existing = await bookingRepository.findById(intent.fulfilled_booking_id);
+      if (existing) return { success: true, booking: existing, isPaid: true };
+    }
 
     const pool = getPool();
     const [ptRows] = await pool.execute<RowData>(
@@ -340,7 +349,10 @@ export class BookingService {
       );
     }
 
-    await bookingRepository.deleteIntent(intentId);
+    await pool.execute(
+      'UPDATE booking_intents SET fulfilled_booking_id = ?, expires_at = NULL WHERE id = ?',
+      [bookingId, intentId]
+    );
 
     const booking = await bookingRepository.findById(bookingId);
 
