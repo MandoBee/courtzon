@@ -11,9 +11,10 @@ export async function paymentRoutes(app: FastifyInstance): Promise<void> {
   app.post('/payments/:id/refund', { preHandler: [authMiddleware, requirePermission(['financial.reconcile'])] }, ctrl.refundHandler);
   app.get('/payments/transactions', { preHandler: [authMiddleware] }, ctrl.getTransactionsHandler);
 
-  // Admin: payment sync and expiry (scheduled jobs)
+  // Admin: payment sync, expiry, and manual recovery (scheduled jobs)
   app.post('/payments/sync', { preHandler: [authMiddleware, requirePermission(['financial.reconcile'])] }, ctrl.syncHandler);
   app.post('/payments/expire', { preHandler: [authMiddleware, requirePermission(['financial.reconcile'])] }, ctrl.expireHandler);
+  app.post('/payments/recover/:gatewayReference', { preHandler: [authMiddleware, requirePermission(['financial.reconcile'])] }, ctrl.recoverHandler);
 
   // Admin: payment health monitoring
   app.get('/payments/health', { preHandler: [authMiddleware, requirePermission(['financial.reconcile'])] }, ctrl.healthHandler);

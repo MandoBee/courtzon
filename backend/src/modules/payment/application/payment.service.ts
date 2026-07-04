@@ -275,6 +275,50 @@ export class PaymentService {
   }
 
   /**
+   * Manual recovery for a specific payment by gateway reference.
+   * Admin-initiated — calls getTransactionStatus() on Paymob and runs
+   * _processPaymentOutcome() with the same idempotency protections as webhook/sync.
+   */
+  async recoverPayment(gatewayReference: string, initiatedBy: number) {
+    const transaction = await paymentRepository.findByGatewayRef(gatewayReference);
+    if (!transaction) throw new NotFoundError('Payment transaction not found for gateway reference');
+
+    const traceId = (transaction as any).trace_id || '';
+    log.info({ traceId, gatewayRef: gatewayReference, initiatedBy }, 'Manual recovery initiated');
+
+    const remoteStatus = await paymentGateway.getTransactionStatus(gatewayReference, (transaction as any).order_id);
+    const newStatus: 'paid' | 'failed' | null =
+      remoteStatus.status === 'paid' ? 'paid' :
+      remoteStatus.status === 'failed' ? 'failed' : null;
+
+    if (!newStatus) {
+      return { recovered: false, note: `Remote status is '${remoteStatus.status}' — no update needed` };
+    }
+
+    let recovered = false;
+    let idempotent = true;
+    await withTransaction(async (conn) => {
+      const locked = await paymentRepository.lockByGatewayRef(gatewayReference, conn);
+      if (!locked) return;
+      const result = await this._processPaymentOutcome(
+        conn, locked, newStatus, gatewayReference, traceId, 'manual',
+        remoteStatus.status, remoteStatus.success,
+      );
+      idempotent = result.idempotent;
+      if (!idempotent) recovered = true;
+    });
+
+    log.info({ traceId, gatewayRef: gatewayReference, recovered, idempotent, initiatedBy }, 'Manual recovery completed');
+    return {
+      recovered,
+      idempotent,
+      gatewayReference,
+      paymentStatus: newStatus,
+      remoteStatus: remoteStatus.status,
+    };
+  }
+
+  /**
    * Single unified method for processing a payment outcome.
    * Called by both webhook and sync. Runs inside an existing transaction
    * with FOR UPDATE lock already held on the payment row.
@@ -289,7 +333,7 @@ export class PaymentService {
     newStatus: 'paid' | 'failed',
     gatewayRef: string,
     traceId: string,
-    source: 'webhook' | 'sync',
+    source: 'webhook' | 'sync' | 'manual',
     gatewayStatus?: string,
     payloadSuccess?: boolean,
   ): Promise<{ idempotent: boolean }> {

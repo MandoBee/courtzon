@@ -102,6 +102,22 @@ export async function expireHandler(_request: FastifyRequest, reply: FastifyRepl
   return reply.send({ message: 'Payment expiry completed', timeoutMinutes: timeout, ...result });
 }
 
+export async function recoverHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { gatewayReference } = request.params as { gatewayReference: string };
+  const userId = (request as any).userId;
+  const result = await paymentService.recoverPayment(gatewayReference, userId);
+  recordAudit({
+    actorId: userId,
+    action: 'PAYMENT.RECOVER',
+    entityType: 'payment',
+    entityId: gatewayReference,
+    afterState: { recovered: result.recovered, idempotent: result.idempotent, paymentStatus: result.paymentStatus },
+    ipAddress: request.ip,
+    userAgent: request.headers['user-agent'],
+  });
+  return reply.send(result);
+}
+
 export async function healthHandler(_request: FastifyRequest, reply: FastifyReply) {
   const pool = await import('../../../database/mysql.js').then(m => m.getPool());
   const [pendingRows] = await pool.execute<any[]>(
