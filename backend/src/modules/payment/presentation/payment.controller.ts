@@ -15,8 +15,14 @@ export async function chargeHandler(request: FastifyRequest, reply: FastifyReply
     actorId: (request as any).userId ?? null,
     action: 'PAYMENT.PROCESS',
     entityType: 'payment',
-    entityId: (result as any)?.id,
-    afterState: { referenceType: body.referenceType, referenceId: body.referenceId, amount: body.amount },
+    entityId: (result as any)?.paymentId,
+    afterState: {
+      referenceType: body.referenceType,
+      referenceId: body.referenceId,
+      amount: body.amount,
+      traceId: (result as any)?.traceId,
+      paymentMethod: body.paymentMethod,
+    },
     ipAddress: request.ip,
     userAgent: request.headers['user-agent'],
   });
@@ -46,10 +52,13 @@ export async function webhookHandler(request: FastifyRequest, reply: FastifyRepl
     // Prioritize query param for Intention API webhooks, fall back to header.
     const signature = ((request.query as any)?.hmac || request.headers['x-paymob-signature'] || request.headers['x-fawry-signature'] || '') as string;
     const result = await paymentService.handleWebhook(request.body, signature);
+    const data = (request.body as any) || {};
+    const gatewayRef = data.obj?.intention_order_id || data.obj?.order?.id || data.order?.id || data.id || '';
     recordAudit({
       actorId: (request as any).userId ?? null,
       action: 'PAYMENT.WEBHOOK',
       entityType: 'payment',
+      afterState: { gatewayRef, idempotent: (result as any)?.idempotent },
       ipAddress: request.ip,
       userAgent: request.headers['user-agent'],
     });
@@ -110,16 +119,24 @@ export async function healthHandler(_request: FastifyRequest, reply: FastifyRepl
     `SELECT COUNT(*) as cnt FROM payment_transactions
      WHERE payment_status = 'failed' AND created_at > NOW() - INTERVAL 1 HOUR`
   );
-  const [recentSync] = await pool.execute<any[]>(
-    `SELECT COUNT(*) as cnt FROM financial_journal_entries
-     WHERE reference_type = 'gateway_sync' AND created_at > NOW() - INTERVAL 12 HOUR`
+  const [lastWebhook] = await pool.execute<any[]>(
+    `SELECT source, MAX(created_at) as last_at FROM financial_journal_entries
+     WHERE reference_type = 'gateway_webhook' GROUP BY source LIMIT 1`
   );
 
+  const provider = process.env.PAYMENT_GATEWAY_PROVIDER || 'mock';
+  const gatewayConfigured = provider === 'mock'
+    ? true
+    : !!(process.env.PAYMOB_API_KEY && process.env.PAYMOB_SECRET && process.env.PAYMOB_HMAC_SECRET);
+
   return reply.send({
+    status: 'ok',
+    provider,
+    gatewayConfigured,
     pending: Object.fromEntries(pendingRows.map((r: any) => [r.payment_status, r.cnt])),
     staleOver15min: staleRows[0]?.cnt || 0,
     failedLastHour: recentFailed[0]?.cnt || 0,
-    syncRecoveredLast12h: recentSync[0]?.cnt || 0,
+    lastWebhookAt: lastWebhook[0]?.last_at || null,
     timestamp: new Date().toISOString(),
   });
 }
