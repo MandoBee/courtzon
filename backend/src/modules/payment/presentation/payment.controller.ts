@@ -123,6 +123,12 @@ export async function healthHandler(_request: FastifyRequest, reply: FastifyRepl
     `SELECT source, MAX(created_at) as last_at FROM financial_journal_entries
      WHERE reference_type = 'gateway_webhook' GROUP BY source LIMIT 1`
   );
+  const [intentFailedByCategory] = await pool.execute<any[]>(
+    `SELECT COALESCE(failure_category, 'unknown') as category, COUNT(*) as cnt
+     FROM booking_intents
+     WHERE intent_status = 'failed' AND created_at > NOW() - INTERVAL 24 HOUR
+     GROUP BY failure_category`
+  );
   const [migrationRows] = await pool.execute<any[]>(
     `SELECT filename FROM migration_history ORDER BY id DESC LIMIT 1`
   );
@@ -150,6 +156,7 @@ export async function healthHandler(_request: FastifyRequest, reply: FastifyRepl
     pending: Object.fromEntries(pendingRows.map((r: any) => [r.payment_status, r.cnt])),
     staleOver15min: staleRows[0]?.cnt || 0,
     failedLastHour: recentFailed[0]?.cnt || 0,
+    intentFailedByCategory: Object.fromEntries(intentFailedByCategory.map((r: any) => [r.category, r.cnt])),
     lastWebhookAt: lastWebhook[0]?.last_at || null,
     databaseMigrationVersion: dbMigration,
     expectedMigrationVersion: expectedMigration,
