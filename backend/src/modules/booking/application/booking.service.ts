@@ -350,8 +350,8 @@ export class BookingService {
     }
 
     await pool.execute(
-      'UPDATE booking_intents SET fulfilled_booking_id = ?, expires_at = NULL WHERE id = ?',
-      [bookingId, intentId]
+      'UPDATE booking_intents SET fulfilled_booking_id = ?, intent_status = ?, fulfilled_at = NOW(), expires_at = NULL WHERE id = ?',
+      [bookingId, 'fulfilled', intentId]
     );
 
     const booking = await bookingRepository.findById(bookingId);

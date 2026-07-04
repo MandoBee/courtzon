@@ -341,6 +341,14 @@ export class PaymentService {
       await this._fulfillPayment(conn, transaction, gatewayRef, traceId);
     }
 
+    // Record failure on the associated booking intent if payment failed
+    if (newStatus === 'failed' && transaction.reference_type === 'booking_intent' && transaction.booking_id) {
+      await conn.execute(
+        'UPDATE booking_intents SET intent_status = ?, failure_reason = ? WHERE id = ?',
+        ['failed', gatewayStatus || 'Payment failed', transaction.booking_id],
+      );
+    }
+
     // Journal entry for this outcome
     await conn.execute(
       `INSERT INTO financial_journal_entries
@@ -419,7 +427,10 @@ export class PaymentService {
       'UPDATE payment_transactions SET booking_id = ?, reference_type = ? WHERE id = ?',
       [bookingId, 'booking', transaction.id],
     );
-    await conn.execute('UPDATE booking_intents SET fulfilled_booking_id = ?, expires_at = NULL WHERE id = ?', [bookingId, intent.id]);
+    await conn.execute(
+      'UPDATE booking_intents SET fulfilled_booking_id = ?, intent_status = ?, fulfilled_at = NOW(), expires_at = NULL WHERE id = ?',
+      [bookingId, 'fulfilled', intent.id]
+    );
 
     if (intent.matchmaking) {
       try {
@@ -534,7 +545,7 @@ export class PaymentService {
         // Release booking intent if associated
         if (ptx.reference_type === 'booking_intent' && ptx.booking_id) {
           await getPool().execute(
-            "UPDATE booking_intents SET expires_at = NOW() WHERE id = ? AND expires_at > NOW()",
+            "UPDATE booking_intents SET intent_status = 'expired', expires_at = NOW() WHERE id = ? AND expires_at > NOW()",
             [ptx.booking_id],
           );
         }
