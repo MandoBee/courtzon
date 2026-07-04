@@ -91,7 +91,7 @@ export default function ResourceListPage() {
   }, [maintData]);
 
   const createMaintMutation = useMutation({
-    mutationFn: (data: any) => api.post(`/resources/${editingId}/maintenance`, data),
+    mutationFn: ({ resourceId, ...data }: { resourceId: number } & Record<string, any>) => api.post(`/resources/${resourceId}/maintenance`, data),
     onSuccess: (res: any) => {
       setMaintenanceRecords(res.data.data);
       setMaintenanceForm({ title: '', description: '', startDate: '', endDate: '', startTime: '', endTime: '', reason: '', status: 'scheduled' });
@@ -103,8 +103,8 @@ export default function ResourceListPage() {
 
   const updateMaintMutation = useMutation({
     mutationFn: ({ id, data }: any) => api.put(`/resources/maintenance/${id}`, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['resource-maintenance', editingId] });
+    onSuccess: (_data: any, variables: any) => {
+      queryClient.invalidateQueries({ queryKey: ['resource-maintenance', variables.resourceId] });
       setMaintenanceForm({ title: '', description: '', startDate: '', endDate: '', startTime: '', endTime: '', reason: '', status: 'scheduled' });
       setEditingMaintId(null);
       showToast('Maintenance record updated!');
@@ -113,9 +113,9 @@ export default function ResourceListPage() {
   });
 
   const deleteMaintMutation = useMutation({
-    mutationFn: (id: number) => api.delete(`/resources/maintenance/${id}`),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['resource-maintenance', editingId] });
+    mutationFn: ({ id }: any) => api.delete(`/resources/maintenance/${id}`),
+    onSuccess: (_data: any, variables: any) => {
+      queryClient.invalidateQueries({ queryKey: ['resource-maintenance', variables.resourceId] });
       showToast('Maintenance record deleted!');
     },
     onError: (err: any) => showToast('Failed to delete maintenance: ' + getErrorMessage(err), 'error'),
@@ -371,9 +371,9 @@ export default function ResourceListPage() {
                 <div className="flex items-end">
                   <button type="button" onClick={() => {
                     if (editingMaintId) {
-                      updateMaintMutation.mutate({ id: editingMaintId, data: maintenanceForm });
+                      updateMaintMutation.mutate({ id: editingMaintId, data: maintenanceForm, resourceId: editingId! });
                     } else {
-                      createMaintMutation.mutate(maintenanceForm);
+                      createMaintMutation.mutate({ ...maintenanceForm, resourceId: editingId! });
                     }
                   }}
                     className="px-4 py-2 bg-[var(--color-primary)] text-white rounded-[var(--radius-md)] text-sm font-medium hover:opacity-90 transition-opacity">
@@ -405,7 +405,7 @@ export default function ResourceListPage() {
                         });
                       }}
                         className="text-xs px-2 py-1 rounded bg-[var(--color-border)] text-[var(--color-text)] bg-[var(--color-surface)] text-[var(--color-text)] hover:bg-[var(--color-border)] transition-colors">Edit</button>
-                      <button type="button" onClick={() => { if (confirm('Delete this maintenance record?')) deleteMaintMutation.mutate(m.id); }}
+                      <button type="button" onClick={() => { if (confirm('Delete this maintenance record?')) deleteMaintMutation.mutate({ id: m.id, resourceId: editingId! }); }}
                         className="text-xs px-2 py-1 rounded bg-[var(--color-error-bg)] text-[var(--color-error-text)] dark:bg-red-900/30 dark:text-red-400 hover:opacity-80 transition-opacity">Delete</button>
                     </div>
                   </div>

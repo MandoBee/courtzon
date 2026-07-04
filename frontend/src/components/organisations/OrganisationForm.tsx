@@ -294,9 +294,6 @@ export default function OrganisationForm({ orgId, context, onClose, initialTab, 
 
   const invalidateBranchQueries = () => {
     if (paths) queryClient.invalidateQueries({ queryKey: paths.branchesQueryKey });
-    if (expandedBranchId) {
-      queryClient.invalidateQueries({ queryKey: ['resources', expandedBranchId] });
-    }
     if (context === 'org' && orgId) {
       queryClient.invalidateQueries({ queryKey: ['org-resources', orgId] });
     }
@@ -417,9 +414,21 @@ export default function OrganisationForm({ orgId, context, onClose, initialTab, 
     queryFn: () => api.get('/sports').then((r: any) => r.data).catch(() => []),
   });
 
+  const invalidateResourcesForBranch = (bid: number) => {
+    queryClient.invalidateQueries({ queryKey: ['resources', bid] });
+    if (context === 'org' && orgId) {
+      queryClient.invalidateQueries({ queryKey: ['org-resources', orgId] });
+    }
+  };
+
   const createResourceMutation = useMutation({
     mutationFn: (data: any) => api.post(paths!.createResource, data),
-    onSuccess: () => { invalidateBranchQueries(); setShowResourceForm(false); setEditingResourceId(null); showToast('Resource created successfully!'); },
+    onSuccess: (_data: any, variables: any) => {
+      invalidateResourcesForBranch(variables?.branchId);
+      setShowResourceForm(false);
+      setEditingResourceId(null);
+      showToast('Resource created successfully!');
+    },
     onError: (err: any) => {
       if (err?.response?.status === 409) {
         showToast(err?.response?.data?.message || 'Limit reached', 'warning');
@@ -432,13 +441,21 @@ export default function OrganisationForm({ orgId, context, onClose, initialTab, 
 
   const updateResourceMutation = useMutation({
     mutationFn: ({ id, data }: { id: number; data: any }) => api.put(paths!.resourceUpdate(id), data),
-    onSuccess: () => { invalidateBranchQueries(); setShowResourceForm(false); setEditingResourceId(null); showToast('Resource updated successfully!'); },
+    onSuccess: (_data: any, variables: { id: number; data: any }) => {
+      invalidateResourcesForBranch(variables?.data?.branchId);
+      setShowResourceForm(false);
+      setEditingResourceId(null);
+      showToast('Resource updated successfully!');
+    },
     onError: (err) => { showToast('Failed to update resource: ' + (err as any).message, 'error'); },
   });
 
   const deleteResourceMutation = useMutation({
-    mutationFn: (id: number) => api.delete(paths!.resourceDelete(id)),
-    onSuccess: () => { invalidateBranchQueries(); showToast('Resource deleted!'); },
+    mutationFn: ({ id, branchId: _branchId }: { id: number; branchId: number }) => api.delete(paths!.resourceDelete(id)),
+    onSuccess: (_data: any, variables: { id: number; branchId: number }) => {
+      invalidateResourcesForBranch(variables.branchId);
+      showToast('Resource deleted!');
+    },
     onError: (err) => { showToast('Failed to delete resource: ' + (err as any).message, 'error'); },
   });
 
@@ -943,7 +960,7 @@ export default function OrganisationForm({ orgId, context, onClose, initialTab, 
                             setPeakHours([0,1,2,3,4,5,6].map(d => ({ dayOfWeek: d, hasPeak: false, startTime: '', endTime: '' })));
                           }
                         }}
-                        onDelete={(id: number) => deleteResourceMutation.mutate(id)}
+                        onDelete={(id: number, branchId: number) => deleteResourceMutation.mutate({ id, branchId })}
                       />
                     </div>
                   </div>
@@ -1300,7 +1317,7 @@ export default function OrganisationForm({ orgId, context, onClose, initialTab, 
   );
 }
 
-function BranchResourcesList({ branchId, onEdit, onDelete }: { branchId: number; onEdit: (r: any) => void; onDelete: (id: number) => void }) {
+function BranchResourcesList({ branchId, onEdit, onDelete }: { branchId: number; onEdit: (r: any) => void; onDelete: (id: number, branchId: number) => void }) {
   const { showToast } = useToast();
   const { data: resources, isLoading } = useQuery({
     queryKey: ['resources', branchId],
@@ -1326,7 +1343,7 @@ function BranchResourcesList({ branchId, onEdit, onDelete }: { branchId: number;
                 className="text-[11px] px-1.5 py-0.5 rounded bg-[var(--color-border)] text-[var(--color-text)] bg-[var(--color-surface)] text-[var(--color-text)] hover:bg-[var(--color-border)] hover:bg-[var(--color-border)]">Edit</button>
             </Can>
             <Can permission="resources.delete">
-              <button type="button" onClick={() => { if (confirm('Delete this resource?')) { onDelete(r.id); showToast('Resource deleted!'); } }}
+              <button type="button" onClick={() => { if (confirm('Delete this resource?')) { onDelete(r.id, branchId); showToast('Resource deleted!'); } }}
                 className="text-[11px] px-1.5 py-0.5 rounded bg-[var(--color-error-bg)] text-[var(--color-error-text)] dark:bg-red-900/30 dark:text-red-400">Delete</button>
             </Can>
           </div>
