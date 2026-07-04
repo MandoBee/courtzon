@@ -73,6 +73,13 @@ export class BookingRepository {
     await this.pool.execute('DELETE FROM booking_intents WHERE id = ?', [id]);
   }
 
+  async updateIntentStatus(id: number, status: string, failureReason?: string): Promise<void> {
+    await this.pool.execute(
+      'UPDATE booking_intents SET intent_status = ?, failure_reason = ?, updated_at = NOW() WHERE id = ?',
+      [status, failureReason || null, id]
+    );
+  }
+
   async findById(id: number): Promise<any | null> {
     const [rows] = await this.pool.execute<RowData>(
       `SELECT b.*, r.name as resource_name, br.name as branch_name

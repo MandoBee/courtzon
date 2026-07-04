@@ -75,7 +75,8 @@ export class BookingService {
       await conn.beginTransaction();
 
       if (isGateway) {
-        // Create intent for gateway payments — rolled back if gateway call fails
+        // Create intent for gateway payments — committed immediately for audit trail.
+        // If gateway charge fails, intent_status is updated to 'failed' with failure_reason.
         const intentId = await bookingRepository.createIntent({
           userId, branchId: input.branchId, organisationId, resourceId: input.resourceId,
           bookingType: input.bookingType || 'public_match', bookingDate,
@@ -90,9 +91,9 @@ export class BookingService {
           participants: input.participants,
         });
 
-        let paymentUrl: string | null = null;
-        let clientSecret: string | null = null;
-        let gwSucceeded = false;
+        await conn.commit();
+        conn.release();
+
         try {
           const { paymentService } = await import('../../payment/application/payment.service.js');
           const gwResult = await paymentService.charge(userId, {
@@ -103,20 +104,23 @@ export class BookingService {
             paymentMethod: (paymentMethod === 'online' ? 'card' : paymentMethod as 'wallet' | 'card' | 'bank_transfer'),
             returnUrl: input.returnUrl,
           });
-          gwSucceeded = gwResult.success === true;
-          paymentUrl = ('paymentUrl' in gwResult ? gwResult.paymentUrl : null) || null;
-          clientSecret = ('clientSecret' in gwResult ? gwResult.clientSecret : null) || null;
-        } catch {
-          // gateway crash — rollback intent
-        }
 
-        if (!gwSucceeded) {
-          await conn.rollback();
-          throw new Error('Payment gateway failed to initiate. Please try again.');
-        }
+          if (!gwResult.success) {
+            const reason = (gwResult as any).errorMessage || 'Payment gateway rejected the transaction';
+            await bookingRepository.updateIntentStatus(intentId, 'failed', reason);
+            throw new Error(reason);
+          }
 
-        await conn.commit();
-        return { paymentUrl, clientSecret, intentId };
+          const paymentUrl = ('paymentUrl' in gwResult ? gwResult.paymentUrl : null) || null;
+          const clientSecret = ('clientSecret' in gwResult ? gwResult.clientSecret : null) || null;
+          return { paymentUrl, clientSecret, intentId };
+        } catch (err: any) {
+          const reason = err?.message || 'Gateway initiation failed';
+          try {
+            await bookingRepository.updateIntentStatus(intentId, 'failed', reason);
+          } catch { /* non-fatal */ }
+          throw err;
+        }
       }
 
       let bookingStatus = 'pending';
