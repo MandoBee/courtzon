@@ -20,9 +20,9 @@ export class PaymobGateway implements PaymentGateway {
 
   constructor(config: GatewayConfig) {
     this.config = config;
-    this.baseUrl = config.sandbox
-      ? 'https://accept.paymobsandbox.com'
-      : 'https://accept.paymob.com';
+    // Paymob uses the same API URL for both sandbox (test keys) and production (live keys).
+    // The API key prefix (egy_sk_test_ vs egy_sk_live_) determines the environment.
+    this.baseUrl = 'https://accept.paymob.com';
   }
 
   async charge(request: PaymentRequest): Promise<PaymentResult> {
