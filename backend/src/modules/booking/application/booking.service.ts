@@ -8,7 +8,7 @@ import { resourceRepository } from '../../organisations/infrastructure/repositor
 import { slotGenerator } from '../domain/slot-generator.js';
 import { redisLock } from '../infrastructure/redis/redis-lock.js';
 import { getPool } from '../../../database/mysql.js';
-import { NotFoundError, ForbiddenError } from '../../../shared/errors/app-error.js';
+import { NotFoundError, ForbiddenError, ConflictError } from '../../../shared/errors/app-error.js';
 import { createModuleLogger } from '../../../shared/utils/logger.js';
 import type { CreateBookingInput } from '../presentation/booking.dto.js';
 import type mysql from 'mysql2/promise';
@@ -111,7 +111,7 @@ export class BookingService {
           if (!gwResult.success) {
             const reason = (gwResult as any).errorMessage || 'Payment gateway rejected the transaction';
             await bookingRepository.updateIntentStatus(intentId, 'failed', reason, 'gateway_rejected');
-            throw new Error(reason);
+            throw new ConflictError(reason);
           }
 
           await bookingRepository.updateIntentStatus(intentId, 'payment_initiated');
@@ -125,7 +125,7 @@ export class BookingService {
           try {
             await bookingRepository.updateIntentStatus(intentId, 'failed', reason, category);
           } catch { /* non-fatal */ }
-          throw err;
+          throw new ConflictError(reason);
         }
       }
 
