@@ -76,6 +76,20 @@ export class BookingRepository {
     await this.pool.execute('DELETE FROM booking_intents WHERE id = ?', [id]);
   }
 
+  async linkIntentToBooking(intentId: number, bookingId: number): Promise<void> {
+    await this.pool.execute(
+      'UPDATE booking_intents SET fulfilled_booking_id = ?, intent_status = ?, fulfilled_at = NOW() WHERE id = ?',
+      [bookingId, 'fulfilled', intentId]
+    );
+  }
+
+  async updateBookingStatus(id: number, bookingStatus: string, paymentStatus: string): Promise<void> {
+    await this.pool.execute(
+      'UPDATE bookings SET booking_status = ?, payment_status = ?, updated_at = NOW() WHERE id = ?',
+      [bookingStatus, paymentStatus, id]
+    );
+  }
+
   async updateIntentStatus(id: number, status: string, failureReason?: string, failureCategory?: string): Promise<void> {
     await this.pool.execute(
       'UPDATE booking_intents SET intent_status = ?, failure_reason = ?, failure_category = ?, updated_at = NOW() WHERE id = ?',

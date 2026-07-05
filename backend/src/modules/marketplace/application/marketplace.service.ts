@@ -524,31 +524,43 @@ export const marketplaceService = {
       return this.getOrderForUser(orderId, userId);
     } else {
       // ── Card / Online payment via gateway ──
-      const result = await paymentService.charge(userId, {
-        referenceType: 'order',
-        referenceId: orderId,
-        amount: total,
-        currency,
-        paymentMethod: paymentMethod as any,
-        returnUrl,
-        ...customerData,
-      });
+      // Clear cart immediately after order creation — order is now the source of truth.
+      // If gateway fails, restore cart from order items.
+      const cartSnapshot = await repo.getCartItems(userId);
+      await repo.clearCart(userId);
 
-      if (!result.success) {
-        const errMsg = (result as any).errorMessage || 'Payment gateway rejected the transaction';
-        const rawResp = (result as any).rawResponse ? JSON.stringify((result as any).rawResponse).substring(0, 300) : '';
-        log.error({ orderId, errorMessage: errMsg, rawResponse: rawResp }, 'Gateway charge failed');
-        throw new ConflictError(errMsg);
+      try {
+        const result = await paymentService.charge(userId, {
+          referenceType: 'order',
+          referenceId: orderId,
+          amount: total,
+          currency,
+          paymentMethod: paymentMethod as any,
+          returnUrl,
+          ...customerData,
+        });
+
+        if (!result.success) {
+          await repo.restoreCart(userId, cartSnapshot);
+          const errMsg = (result as any).errorMessage || 'Payment gateway rejected the transaction';
+          const rawResp = (result as any).rawResponse ? JSON.stringify((result as any).rawResponse).substring(0, 300) : '';
+          log.error({ orderId, errorMessage: errMsg, rawResponse: rawResp }, 'Gateway charge failed');
+          throw new ConflictError(errMsg);
+        }
+
+        const paymentUrl = 'paymentUrl' in result ? result.paymentUrl : undefined;
+        const clientSecret = 'clientSecret' in result ? result.clientSecret : undefined;
+        if (!paymentUrl && !clientSecret) {
+          await repo.restoreCart(userId, cartSnapshot);
+          throw new ConflictError('Payment gateway did not return a checkout URL or client secret');
+        }
+
+        const order = await this.getOrder(orderId);
+        return { ...order, paymentUrl, clientSecret };
+      } catch (err) {
+        await repo.restoreCart(userId, cartSnapshot);
+        throw err;
       }
-
-      const paymentUrl = 'paymentUrl' in result ? result.paymentUrl : undefined;
-      const clientSecret = 'clientSecret' in result ? result.clientSecret : undefined;
-      if (!paymentUrl && !clientSecret) {
-        throw new ConflictError('Payment gateway did not return a checkout URL or client secret');
-      }
-
-      const order = await this.getOrder(orderId);
-      return { ...order, paymentUrl, clientSecret };
     }
 
     const orderRows = await repo.findOrderById(orderId);

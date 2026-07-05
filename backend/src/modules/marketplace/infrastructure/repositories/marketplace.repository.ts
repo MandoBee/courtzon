@@ -536,6 +536,23 @@ export const marketplaceRepository = {
     await pool.execute('DELETE FROM cart_items WHERE user_id = ?', [userId]);
   },
 
+  async getCartItems(userId: number) {
+    const pool = getPool();
+    const [rows] = await pool.execute<RowData>('SELECT * FROM cart_items WHERE user_id = ?', [userId]);
+    return rows;
+  },
+
+  async restoreCart(userId: number, items: any[]) {
+    if (!items.length) return;
+    const pool = getPool();
+    for (const item of items) {
+      await pool.execute(
+        'INSERT INTO cart_items (user_id, product_id, variant_id, quantity) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE quantity = quantity + VALUES(quantity)',
+        [userId, item.product_id, item.variant_id, item.quantity]
+      );
+    }
+  },
+
   // ── Addresses ──
   async findAddresses(userId: number) {
     const pool = getPool();

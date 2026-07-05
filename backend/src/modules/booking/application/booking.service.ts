@@ -115,9 +115,23 @@ export class BookingService {
           }
 
           await bookingRepository.updateIntentStatus(intentId, 'payment_initiated');
+
+          // Create pending booking immediately so user sees it in My Bookings
+          const bookingId = await bookingRepository.create({
+            userId, branchId: input.branchId, organisationId,
+            resourceId: input.resourceId, bookingType: input.bookingType || 'public_match',
+            bookingDate, startTime: input.startTime, endTime: input.endTime,
+            totalAmount: pricing.totalPrice, commissionAmount, clubAmount,
+            notes: input.notes, paymentMethod,
+            bookingStatus: 'pending', paymentStatus: 'pending',
+          });
+
+          // Link intent to this pending booking
+          await bookingRepository.linkIntentToBooking(intentId, bookingId);
+
           const paymentUrl = ('paymentUrl' in gwResult ? gwResult.paymentUrl : null) || null;
           const clientSecret = ('clientSecret' in gwResult ? gwResult.clientSecret : null) || null;
-          return { paymentUrl, clientSecret, intentId };
+          return { paymentUrl, clientSecret, intentId, bookingId };
         } catch (err: any) {
           const reason = err?.message || 'Gateway initiation failed';
           const category = err?.message?.includes('fetch failed') || err?.code === 'ECONNREFUSED'

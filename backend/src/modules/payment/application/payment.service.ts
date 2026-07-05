@@ -455,17 +455,29 @@ export class PaymentService {
       return;
     }
 
-    const [result] = await conn.execute<mysql.ResultSetHeader>(
-      `INSERT INTO bookings (public_id, user_id, organisation_id, branch_id, resource_id, booking_type,
-        booking_date, start_time, end_time, total_amount, commission_amount, club_amount,
-        booking_status, payment_status, notes, payment_method)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'confirmed', 'paid', ?, ?)`,
-      [randomUUID(), intent.user_id, intent.organisation_id, intent.branch_id,
-       intent.resource_id, intent.booking_type, intent.booking_date, intent.start_time,
-       intent.end_time, intent.total_amount, intent.commission_amount, intent.club_amount,
-       intent.notes, intent.payment_method],
-    );
-    const bookingId = result.insertId;
+    let bookingId: number;
+
+    // If a pending booking already exists (created immediately after gateway charge),
+    // update it. Otherwise create a new one (backward compatibility with old intents).
+    if (intent.fulfilled_booking_id) {
+      bookingId = intent.fulfilled_booking_id;
+      await conn.execute(
+        "UPDATE bookings SET booking_status = 'confirmed', payment_status = 'paid', updated_at = NOW() WHERE id = ?",
+        [bookingId],
+      );
+    } else {
+      const [result] = await conn.execute<mysql.ResultSetHeader>(
+        `INSERT INTO bookings (public_id, user_id, organisation_id, branch_id, resource_id, booking_type,
+          booking_date, start_time, end_time, total_amount, commission_amount, club_amount,
+          booking_status, payment_status, notes, payment_method)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'confirmed', 'paid', ?, ?)`,
+        [randomUUID(), intent.user_id, intent.organisation_id, intent.branch_id,
+         intent.resource_id, intent.booking_type, intent.booking_date, intent.start_time,
+         intent.end_time, intent.total_amount, intent.commission_amount, intent.club_amount,
+         intent.notes, intent.payment_method],
+      );
+      bookingId = result.insertId;
+    }
 
     await conn.execute(
       'UPDATE payment_transactions SET booking_id = ?, reference_type = ? WHERE id = ?',
