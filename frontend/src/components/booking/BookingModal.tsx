@@ -206,7 +206,7 @@ export default function BookingModal({ open, onClose }: BookingModalProps) {
   const [pendingAccessBranches, setPendingAccessBranches] = useState<Record<number, boolean>>({});
   const [pixelClientSecret, setPixelClientSecret] = useState<string | null>(null);
   const [pollingPaid, setPollingPaid] = useState(false);
-  const [createdBookingId, setCreatedBookingId] = useState<number | null>(null);
+  const [paymentIntentId, setPaymentIntentId] = useState<number | null>(null);
 
   const requestAccessMutation = useMutation({
     mutationFn: (branchId: number) => api.post(`/branches/${branchId}/request-access`),
@@ -269,7 +269,7 @@ export default function BookingModal({ open, onClose }: BookingModalProps) {
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['my-bookings'] });
       if (res.data.clientSecret && res.data.intentId) {
-        setCreatedBookingId(res.data.intentId);
+        setPaymentIntentId(res.data.intentId);
         setPixelClientSecret(res.data.clientSecret);
       } else {
         onClose();
@@ -964,23 +964,23 @@ export default function BookingModal({ open, onClose }: BookingModalProps) {
       )}
     </Modal>
 
-      {/* Payment confirming overlay — polls booking intent fulfillment status */}
-      {pollingPaid && createdBookingId && (
+      {/* Payment confirming overlay — polls booking intent for fulfilled_booking_id */}
+      {pollingPaid && paymentIntentId && (
         <PaymentStatusPoller
-          endpoint={`/booking-intents/${createdBookingId}`}
+          endpoint={`/booking-intents/${paymentIntentId}`}
           isComplete={(data: any) => !!data?.fulfilled_booking_id}
           interval={1500}
           timeout={90000}
-          onPaid={() => {
+          onPaid={(data) => {
             setPollingPaid(false);
             onClose();
             showToast('Booking confirmed!');
-            navigate(`/bookings/${createdBookingId}/confirmation`, { state: { qrToken: '' } });
+            navigate(`/bookings/${data?.fulfilled_booking_id}/confirmation`, { state: { qrToken: '' } });
           }}
           onTimeout={() => {
             setPollingPaid(false);
             onClose();
-            showToast('Payment confirmation is taking longer than expected. Your booking is pending.', 'warning');
+            showToast('Payment confirmation is taking longer than expected.', 'warning');
           }}
         />
       )}

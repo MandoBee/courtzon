@@ -190,16 +190,21 @@ export class BookingRepository {
    */
   async checkSlotAvailability(resourceId: number, date: string, slots: { start: string; end: string; date?: string }[], conn?: mysql.PoolConnection): Promise<boolean> {
     const db = this.resolve(conn);
-    const sql = `SELECT COUNT(*) as cnt FROM bookings
+    const bookingSql = `SELECT COUNT(*) as cnt FROM bookings
                  WHERE resource_id = ? AND booking_date = ?
-                 AND booking_status NOT IN ('cancelled', 'expired')
-                 AND NOT (booking_status = 'pending' AND payment_status = 'pending')
+                 AND booking_status NOT IN ('cancelled', 'expired', 'no_show')
+                 AND ((start_time < ? AND end_time > ?) OR (start_time < ? AND end_time > ?))`;
+    const intentSql = `SELECT COUNT(*) as cnt FROM booking_intents
+                 WHERE resource_id = ? AND booking_date = ?
+                 AND intent_status IN ('pending', 'payment_initiated')
+                 AND (expires_at IS NULL OR expires_at > NOW())
                  AND ((start_time < ? AND end_time > ?) OR (start_time < ? AND end_time > ?))`;
     let totalOverlap = 0;
     for (const slot of slots) {
       const slotDate = slot.date || date;
-      const [rows] = await db.execute<RowData>(sql, [resourceId, slotDate, slot.end, slot.start, slot.end, slot.start]);
-      totalOverlap += (rows[0] as any).cnt;
+      const [bRows] = await db.execute<RowData>(bookingSql, [resourceId, slotDate, slot.end, slot.start, slot.end, slot.start]);
+      const [iRows] = await db.execute<RowData>(intentSql, [resourceId, slotDate, slot.end, slot.start, slot.end, slot.start]);
+      totalOverlap += (bRows[0] as any).cnt + (iRows[0] as any).cnt;
     }
     return totalOverlap === 0;
   }
@@ -230,12 +235,19 @@ export class BookingRepository {
   async getAllSlotsWithStatus(resourceId: number, date: string): Promise<any[]> {
     const [rows] = await this.pool.execute<RowData>(
       `SELECT bs.slot_start, bs.slot_end,
-         CASE WHEN b.id IS NOT NULL THEN 'booked' ELSE 'available' END as status
+         CASE WHEN b.id IS NOT NULL THEN 'booked'
+              WHEN bi.id IS NOT NULL THEN 'booked'
+              ELSE 'available' END as status
        FROM booking_slots bs
        LEFT JOIN bookings b ON b.resource_id = bs.resource_id
          AND b.booking_date = bs.booking_date
          AND b.start_time = bs.slot_start
          AND b.booking_status NOT IN ('cancelled', 'expired', 'no_show')
+       LEFT JOIN booking_intents bi ON bi.resource_id = bs.resource_id
+         AND bi.booking_date = bs.booking_date
+         AND bi.start_time = bs.slot_start
+         AND bi.intent_status IN ('pending', 'payment_initiated')
+         AND (bi.expires_at IS NULL OR bi.expires_at > NOW())
        WHERE bs.resource_id = ? AND bs.booking_date = ?`,
       [resourceId, date]
     );
@@ -243,14 +255,20 @@ export class BookingRepository {
   }
 
   async findBookingsForResourceDate(resourceId: number, date: string): Promise<any[]> {
-    const [rows] = await this.pool.execute<RowData>(
+    const [bRows] = await this.pool.execute<RowData>(
       `SELECT start_time, end_time FROM bookings
        WHERE resource_id = ? AND booking_date = ?
-       AND booking_status NOT IN ('cancelled', 'expired', 'no_show')
-       AND NOT (booking_status = 'pending' AND payment_status = 'pending')`,
+       AND booking_status NOT IN ('cancelled', 'expired', 'no_show')`,
       [resourceId, date]
     );
-    return rows;
+    const [iRows] = await this.pool.execute<RowData>(
+      `SELECT start_time, end_time FROM booking_intents
+       WHERE resource_id = ? AND booking_date = ?
+       AND intent_status IN ('pending', 'payment_initiated')
+       AND (expires_at IS NULL OR expires_at > NOW())`,
+      [resourceId, date]
+    );
+    return [...bRows, ...iRows];
   }
 
   async createMatchmakingRequest(data: {

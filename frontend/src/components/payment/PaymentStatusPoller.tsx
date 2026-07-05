@@ -7,7 +7,7 @@ interface PollPaymentStatusProps {
   paidValue?: string;
   interval?: number;
   timeout?: number;
-  onPaid: () => void;
+  onPaid: (data?: any) => void;
   onTimeout: () => void;
   isComplete?: (data: any) => boolean;
 }
@@ -44,14 +44,14 @@ export default function PaymentStatusPoller({
         if (isComplete) {
           if (isComplete(data)) {
             stoppedRef.current = true;
-            onPaid();
+            onPaid(data);
             return;
           }
         } else {
           const status = typeof data === 'object' ? data[field] : data;
           if (status && status !== 'unpaid' && status !== 'pending') {
             stoppedRef.current = true;
-            onPaid();
+            onPaid(data);
             return;
           }
         }

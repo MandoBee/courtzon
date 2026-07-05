@@ -463,29 +463,17 @@ export class PaymentService {
       return;
     }
 
-    let bookingId: number;
-
-    // If a pending booking already exists (created immediately after gateway charge),
-    // update it. Otherwise create a new one (backward compatibility with old intents).
-    if (intent.fulfilled_booking_id) {
-      bookingId = intent.fulfilled_booking_id;
-      await conn.execute(
-        "UPDATE bookings SET booking_status = 'confirmed', payment_status = 'paid', updated_at = NOW() WHERE id = ?",
-        [bookingId],
-      );
-    } else {
-      const [result] = await conn.execute<mysql.ResultSetHeader>(
-        `INSERT INTO bookings (public_id, user_id, organisation_id, branch_id, resource_id, booking_type,
-          booking_date, start_time, end_time, total_amount, commission_amount, club_amount,
-          booking_status, payment_status, notes, payment_method)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'confirmed', 'paid', ?, ?)`,
-        [randomUUID(), intent.user_id, intent.organisation_id, intent.branch_id,
-         intent.resource_id, intent.booking_type, intent.booking_date, intent.start_time,
-         intent.end_time, intent.total_amount, intent.commission_amount, intent.club_amount,
-         intent.notes, intent.payment_method],
-      );
-      bookingId = result.insertId;
-    }
+    const [result] = await conn.execute<mysql.ResultSetHeader>(
+      `INSERT INTO bookings (public_id, user_id, organisation_id, branch_id, resource_id, booking_type,
+        booking_date, start_time, end_time, total_amount, commission_amount, club_amount,
+        booking_status, payment_status, notes, payment_method)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'confirmed', 'paid', ?, ?)`,
+      [randomUUID(), intent.user_id, intent.organisation_id, intent.branch_id,
+       intent.resource_id, intent.booking_type, intent.booking_date, intent.start_time,
+       intent.end_time, intent.total_amount, intent.commission_amount, intent.club_amount,
+       intent.notes, intent.payment_method],
+    );
+    const bookingId = result.insertId;
 
     await conn.execute(
       'UPDATE payment_transactions SET booking_id = ?, reference_type = ? WHERE id = ?',
@@ -512,18 +500,11 @@ export class PaymentService {
     log.info({ traceId, bookingId, intentId }, 'Booking confirmed');
   }
 
-  private async _cancelPendingBooking(conn: mysql.PoolConnection, intentId: number, traceId: string): Promise<void> {
-    const [intents] = await conn.execute<RowData>(
-      'SELECT fulfilled_booking_id FROM booking_intents WHERE id = ?', [intentId],
-    );
-    const bookingId = (intents[0] as any)?.fulfilled_booking_id;
-    if (!bookingId) return;
-
-    await conn.execute(
-      "UPDATE bookings SET booking_status = 'cancelled', updated_at = NOW() WHERE id = ? AND booking_status = 'pending'",
-      [bookingId],
-    );
-    log.info({ traceId, intentId, bookingId }, 'Pending booking cancelled due to payment final state');
+  private async _cancelPendingBooking(_conn: mysql.PoolConnection, intentId: number, traceId: string): Promise<void> {
+    // Under the payment-first architecture, no pending booking exists at this point
+    // (the booking is only created after payment confirmation via webhook).
+    // The booking_intent status is already updated by the caller.
+    log.info({ traceId, intentId }, 'No pending booking to cancel (payment-first architecture)');
   }
 
   private async _fulfillWalletTopup(conn: mysql.PoolConnection, transaction: any, traceId: string): Promise<void> {
