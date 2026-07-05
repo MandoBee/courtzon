@@ -200,7 +200,7 @@ export class PaymentService {
 
     const traceId = (preCheck as any).trace_id || '';
 
-    // --- cancelled / expired → direct status update (no fulfillment) ---
+    // --- cancelled / expired → direct status update + cancel pending booking ---
     if (newStatus === 'cancelled' || newStatus === 'expired') {
       return withTransaction(async (conn) => {
         const transaction = await paymentRepository.lockByGatewayRef(gatewayRef, conn);
@@ -213,6 +213,13 @@ export class PaymentService {
         );
         if (updateResult.affectedRows > 0) {
           log.info({ traceId, txnId: transaction.id, status: newStatus }, 'Payment cancelled/expired via webhook');
+          if (transaction.reference_type === 'booking_intent' && transaction.booking_id) {
+            await conn.execute(
+              'UPDATE booking_intents SET intent_status = ?, failure_reason = ? WHERE id = ?',
+              [newStatus, `Payment ${newStatus} via webhook`, transaction.booking_id],
+            );
+            await this._cancelPendingBooking(conn, transaction.booking_id, traceId);
+          }
         }
         return { idempotent: updateResult.affectedRows === 0 };
       });
@@ -385,12 +392,13 @@ export class PaymentService {
       await this._fulfillPayment(conn, transaction, gatewayRef, traceId);
     }
 
-    // Record failure on the associated booking intent if payment failed
+    // Cancel pending booking when payment fails
     if (newStatus === 'failed' && transaction.reference_type === 'booking_intent' && transaction.booking_id) {
       await conn.execute(
         'UPDATE booking_intents SET intent_status = ?, failure_reason = ? WHERE id = ?',
-        ['failed', gatewayStatus || 'Payment failed', transaction.booking_id],
+        [newStatus, gatewayStatus || `Payment ${newStatus}`, transaction.booking_id],
       );
+      await this._cancelPendingBooking(conn, transaction.booking_id, traceId);
     }
 
     // Journal entry for this outcome
@@ -504,6 +512,20 @@ export class PaymentService {
     log.info({ traceId, bookingId, intentId }, 'Booking confirmed');
   }
 
+  private async _cancelPendingBooking(conn: mysql.PoolConnection, intentId: number, traceId: string): Promise<void> {
+    const [intents] = await conn.execute<RowData>(
+      'SELECT fulfilled_booking_id FROM booking_intents WHERE id = ?', [intentId],
+    );
+    const bookingId = (intents[0] as any)?.fulfilled_booking_id;
+    if (!bookingId) return;
+
+    await conn.execute(
+      "UPDATE bookings SET booking_status = 'cancelled', updated_at = NOW() WHERE id = ? AND booking_status = 'pending'",
+      [bookingId],
+    );
+    log.info({ traceId, intentId, bookingId }, 'Pending booking cancelled due to payment final state');
+  }
+
   private async _fulfillWalletTopup(conn: mysql.PoolConnection, transaction: any, traceId: string): Promise<void> {
     const userId = transaction.user_id;
     const amount = Number(transaction.amount);
@@ -596,17 +618,29 @@ export class PaymentService {
 
     let expired = 0;
     for (const ptx of payments as any[]) {
-      const expired_ = await paymentRepository.expirePayment(ptx.id);
-      if (expired_) {
-        // Release booking intent if associated
-        if (ptx.reference_type === 'booking_intent' && ptx.booking_id) {
-          await getPool().execute(
-            "UPDATE booking_intents SET intent_status = 'expired', expires_at = NOW() WHERE id = ? AND expires_at > NOW()",
-            [ptx.booking_id],
-          );
+      const conn = await getPool().getConnection();
+      try {
+        await conn.execute('SET autocommit = 0');
+        const expired_ = await paymentRepository.expirePayment(ptx.id, conn);
+        if (expired_) {
+          if (ptx.reference_type === 'booking_intent' && ptx.booking_id) {
+            await conn.execute(
+              "UPDATE booking_intents SET intent_status = 'expired', expires_at = NOW() WHERE id = ? AND expires_at > NOW()",
+              [ptx.booking_id],
+            );
+            await this._cancelPendingBooking(conn, ptx.booking_id, 'expiry-job');
+          }
+          await conn.execute('COMMIT');
+          expired++;
+          log.info({ txnId: ptx.id, gatewayRef: ptx.gateway_reference, created: ptx.created_at }, 'Payment expired');
+        } else {
+          await conn.execute('ROLLBACK');
         }
-        expired++;
-        log.info({ txnId: ptx.id, gatewayRef: ptx.gateway_reference, created: ptx.created_at }, 'Payment expired');
+      } catch (err) {
+        await conn.execute('ROLLBACK');
+        log.error({ err, txnId: ptx.id }, 'Failed to expire payment');
+      } finally {
+        conn.release();
       }
     }
 
