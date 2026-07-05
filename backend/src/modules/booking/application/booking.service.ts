@@ -360,7 +360,7 @@ export class BookingService {
     }
 
     await pool.execute(
-      'UPDATE booking_intents SET fulfilled_booking_id = ?, intent_status = ?, fulfilled_at = NOW(), expires_at = NULL WHERE id = ?',
+      'UPDATE booking_intents SET fulfilled_booking_id = ?, intent_status = ?, fulfilled_at = NOW() WHERE id = ?',
       [bookingId, 'fulfilled', intentId]
     );
 
