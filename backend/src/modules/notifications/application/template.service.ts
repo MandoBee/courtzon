@@ -333,6 +333,12 @@ export async function seedTemplates(): Promise<void> {
     { eventName: 'community:mention', locale: 'ar', categorySlug: 'system', type: 'info', priority: 'normal',
       titleTemplate: 'تم ذكرك', bodyTemplate: 'ذكرك {{mentionedBy}} في منشور.',
       actionKey: 'view_post', routePattern: '/community/posts/{{postId}}' },
+    { eventName: 'match:invitation', locale: 'en', categorySlug: 'system', type: 'info', priority: 'high',
+      titleTemplate: 'Match Invitation', bodyTemplate: 'You have been invited to join a match!',
+      actionKey: 'view_booking', routePattern: '/bookings/{{bookingId}}' },
+    { eventName: 'match:invitation', locale: 'ar', categorySlug: 'system', type: 'info', priority: 'high',
+      titleTemplate: 'دعوة للمباراة', bodyTemplate: 'تمت دعوتك للانضمام إلى مباراة!',
+      actionKey: 'view_booking', routePattern: '/bookings/{{bookingId}}' },
   ];
 
   for (const tpl of templates) {
