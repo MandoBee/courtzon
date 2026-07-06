@@ -265,6 +265,13 @@ app.get("/health/storage", async (_request, reply) => {
   return reply.status(result.status === 'down' ? 503 : 200).send(result);
 });
 
+app.get("/health/socket", async (_request, reply) => {
+  try {
+    const { getSocketMetrics } = await import("./realtime/socket-gateway.js");
+    return reply.send({ status: 'ok', metrics: getSocketMetrics() });
+  } catch { return reply.send({ status: 'down', message: 'Socket Gateway not initialized' }); }
+});
+
 app.get("/health/version", async (_request, reply) => {
   const { readFileSync } = await import('node:fs');
   const read = (path: string, envKey: string) => {

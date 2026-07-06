@@ -2,7 +2,7 @@ import { Server as SocketIOServer } from 'socket.io';
 import type { FastifyInstance } from 'fastify';
 import { setOnlineWithReconnect, setOffline } from '../modules/notifications/application/presence.service.js';
 import { registerUserDevice } from '../modules/notifications/application/cross-device-sync.service.js';
-import { setupSocketGateway, userRoom, orgRoom, branchRoom, ADMIN_ROOM, PLAYER_ROOM, COACH_ROOM } from './socket-gateway.js';
+import { setupSocketGateway, userRoom, orgRoom, branchRoom, ADMIN_ROOM, PLAYER_ROOM, getSocketMetrics } from './socket-gateway.js';
 
 let io: SocketIOServer | null = null;
 
