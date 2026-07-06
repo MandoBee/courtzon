@@ -61,13 +61,13 @@ export function Modal({
     : 'flex items-end md:items-center justify-center';
 
   const panelClass = isSheet
-    ? `w-full ${sizeClasses[size]} max-h-[92vh] flex flex-col !p-0 bg-[var(--color-surface)] rounded-t-[var(--radius-xl)] shadow-xl cz-sheet-enter cz-pb-safe mb-16 md:mb-0`
-    : `w-full ${sizeClasses[size]} max-h-[92vh] md:max-h-[90vh] flex flex-col !p-0 bg-[var(--color-surface)] rounded-t-[var(--radius-xl)] md:rounded-[var(--radius-lg)] shadow-xl cz-sheet-enter md:!animate-none cz-pb-safe mb-16 md:mb-0`;
+    ? `w-full ${sizeClasses[size]} max-h-[85vh] flex flex-col !p-0 bg-[var(--color-surface)] rounded-t-[var(--radius-xl)] shadow-xl cz-sheet-enter cz-pb-safe mb-24 md:mb-0`
+    : `w-full ${sizeClasses[size]} max-h-[85vh] md:max-h-[90vh] flex flex-col !p-0 bg-[var(--color-surface)] rounded-t-[var(--radius-xl)] md:rounded-[var(--radius-lg)] shadow-xl cz-sheet-enter md:!animate-none cz-pb-safe mb-24 md:mb-0`;
 
   return (
     <div
       ref={overlayRef}
-      className={`cz-modal-overlay fixed inset-0 z-50 ${overlayClass} p-0 md:p-4 cz-fade-enter`}
+      className={`cz-modal-overlay fixed inset-0 ${isSheet ? 'z-50' : 'z-[70]'} ${overlayClass} p-0 md:p-4 cz-fade-enter`}
       onClick={(e) => {
         if (e.target === overlayRef.current) onClose();
       }}
