@@ -26,15 +26,57 @@ export const PLAYER_ROOM = 'player';
 export const COACH_ROOM = 'coach';
 
 // Room authorization — which rooms can a client join based on context
-export function canJoinRoom(roomName: string, userId: number, role: string | null, orgId: number | null): boolean {
+export async function canJoinRoom(roomName: string, userId: number, role: string | null, orgId: number | null): Promise<boolean> {
   const [prefix, idStr] = roomName.split(':');
   const id = Number(idStr);
+
   if (prefix === 'user') return id === userId;
   if (prefix === 'role') return role === idStr;
   if (prefix === 'organisation') return orgId === id;
-  if (prefix === 'branch' || prefix === 'booking' || prefix === 'match' || prefix === 'conversation') return true;
   if (roomName === ADMIN_ROOM) return role ? ['super_admin', 'admin'].includes(role) : false;
   if (roomName === PLAYER_ROOM || roomName === COACH_ROOM) return true;
+
+  // Resource-specific rooms — validate access against DB
+  if (prefix === 'booking' && id > 0) {
+    try {
+      const { getPool } = await import('../database/mysql.js');
+      const pool = getPool();
+      const [rows] = await pool.execute(
+        `SELECT COUNT(*) as cnt FROM bookings WHERE id = ? AND (user_id = ? OR EXISTS (SELECT 1 FROM booking_invitations WHERE booking_id = ? AND invited_user_id = ?))`,
+        [id, userId, id, userId],
+      );
+      return (rows as any[])[0]?.cnt > 0;
+    } catch { return false; }
+  }
+
+  if (prefix === 'match' && id > 0) return true;
+
+  if (prefix === 'conversation' && id > 0) {
+    try {
+      const { getPool } = await import('../database/mysql.js');
+      const pool = getPool();
+      const [rows] = await pool.execute(
+        `SELECT COUNT(*) as cnt FROM conversation_participants WHERE conversation_id = ? AND user_id = ?`,
+        [id, userId],
+      );
+      return (rows as any[])[0]?.cnt > 0;
+    } catch { return true; }
+  }
+
+  if (prefix === 'branch' && id > 0) {
+    try {
+      const { getPool } = await import('../database/mysql.js');
+      const pool = getPool();
+      const [rows] = await pool.execute(
+        `SELECT COUNT(*) as cnt FROM branches b
+         LEFT JOIN branch_player_access bpa ON bpa.branch_id = b.id AND bpa.player_id = ?
+         WHERE b.id = ? AND (b.access_type = 'open' OR bpa.status = 'approved')`,
+        [userId, id],
+      );
+      return (rows as any[])[0]?.cnt > 0;
+    } catch { return false; }
+  }
+
   return false;
 }
 

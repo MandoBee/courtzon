@@ -189,6 +189,77 @@ export const NotificationReadV1 = z.object({
   timestamp,
 });
 
+// ── Remaining events (chat, presence, tournament, academy) ──
+
+export const MessageUpdatedV1 = z.object({
+  messageId: positiveId,
+  conversationId: positiveId,
+  timestamp,
+});
+
+export const MessageDeletedV1 = z.object({
+  messageId: positiveId,
+  conversationId: positiveId,
+  timestamp,
+});
+
+export const ReadReceiptV1 = z.object({
+  conversationId: positiveId,
+  userId: positiveId,
+  messageId: positiveId,
+  timestamp,
+});
+
+export const PresenceLastSeenV1 = z.object({
+  userId: positiveId,
+  lastSeenAt: z.string(),
+  timestamp,
+});
+
+export const PresenceIdleV1 = z.object({
+  userId: positiveId,
+  timestamp,
+});
+
+export const PresenceAwayV1 = z.object({
+  userId: positiveId,
+  timestamp,
+});
+
+export const BracketUpdatedV1 = z.object({
+  tournamentId: positiveId,
+  matchId: positiveId.optional(),
+  timestamp,
+});
+
+export const MatchStartedV1 = z.object({
+  matchId: positiveId,
+  timestamp,
+});
+
+export const MatchFinishedV1 = z.object({
+  matchId: positiveId,
+  result: z.string().optional(),
+  timestamp,
+});
+
+export const SessionUpdatedV1 = z.object({
+  sessionId: positiveId,
+  coachId: positiveId.optional(),
+  timestamp,
+});
+
+export const CoachAssignedV1 = z.object({
+  sessionId: positiveId,
+  coachId: positiveId,
+  timestamp,
+});
+
+export const NotificationDeletedV1 = z.object({
+  notificationId: positiveId,
+  timestamp,
+});
+
 // Contract registry — maps event names to schemas
 export const EVENT_CONTRACTS: Record<string, z.ZodTypeAny> = {
   'booking:created': BookingCreatedV1,
@@ -216,12 +287,24 @@ export const EVENT_CONTRACTS: Record<string, z.ZodTypeAny> = {
   'wishlist:updated': WishlistUpdatedV1,
   'inventory:updated': InventoryUpdatedV1,
   'message:created': MessageCreatedV1,
-  'typing:start': TypingV1,
-  'typing:stop': TypingV1,
+  'message:updated': MessageUpdatedV1,
+  'message:deleted': MessageDeletedV1,
+  'typing:started': TypingV1,
+  'typing:stopped': TypingV1,
+  'read:receipt': ReadReceiptV1,
+  'presence:last-seen': PresenceLastSeenV1,
+  'presence:idle': PresenceIdleV1,
+  'presence:away': PresenceAwayV1,
+  'bracket:updated': BracketUpdatedV1,
+  'match:started': MatchStartedV1,
+  'match:finished': MatchFinishedV1,
   'score:updated': ScoreUpdatedV1,
+  'session:updated': SessionUpdatedV1,
+  'coach:assigned': CoachAssignedV1,
   'attendance:updated': AttendanceUpdatedV1,
   'badge:updated': BadgeUpdatedV1,
   'notification:read': NotificationReadV1,
+  'notification:deleted': NotificationDeletedV1,
 };
 
 export function validateEvent(event: string, data: unknown): { valid: boolean; data?: any; error?: string } {

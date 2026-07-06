@@ -268,7 +268,17 @@ app.get("/health/storage", async (_request, reply) => {
 app.get("/health/socket", async (_request, reply) => {
   try {
     const { getSocketMetrics } = await import("./realtime/socket-gateway.js");
-    return reply.send({ status: 'ok', metrics: getSocketMetrics() });
+    const { getIO } = await import("./realtime/index.js");
+    const io = getIO();
+    const sockets = await io.fetchSockets();
+    const rooms = new Set<string>();
+    for (const s of sockets) { for (const r of s.rooms) rooms.add(r); }
+    return reply.send({
+      status: 'ok',
+      connected: sockets.length,
+      rooms: rooms.size,
+      metrics: getSocketMetrics(),
+    });
   } catch { return reply.send({ status: 'down', message: 'Socket Gateway not initialized' }); }
 });
 
