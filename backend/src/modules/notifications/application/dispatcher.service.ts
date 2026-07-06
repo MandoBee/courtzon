@@ -60,9 +60,9 @@ export async function dispatchToUser(options: DispatchOptions): Promise<void> {
   const [result] = await pool.execute<ResultSetHeader>(
     `INSERT INTO notifications
      (user_id, type, title, body, action_key, actions, image_urls, priority,
-      organisation_id, branch_id, related_entity_type, related_entity_id,
-      sender_id, category_slug, event_name, template_id, is_read, is_archived, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, FALSE, FALSE, NOW())`,
+      organization_id, branch_id, related_entity_type, related_entity_id,
+      sender_id, category_slug, event_name, template_id, is_read, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, FALSE, NOW())`,
     [
       userId,
       options.type ?? template.type ?? 'info',
@@ -180,8 +180,8 @@ async function dispatchBulkChunk(
   await pool.execute(
     `INSERT INTO notifications
      (user_id, type, title, body, action_key, actions, image_urls, priority,
-      organisation_id, branch_id, related_entity_type, related_entity_id,
-      sender_id, category_slug, event_name, template_id, is_read, is_archived, created_at)
+      organization_id, branch_id, related_entity_type, related_entity_id,
+      sender_id, category_slug, event_name, template_id, is_read, created_at)
      VALUES ${placeholders}`,
     flatValues,
   );

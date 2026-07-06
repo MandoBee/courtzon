@@ -134,8 +134,8 @@ export async function handleProcessNotificationDigest(job: ProcessNotificationDi
 
   const [result] = await pool.execute<ResultSetHeader>(
     `INSERT INTO notifications
-     (user_id, type, title, rendered_title, body, rendered_body, category_slug, event_name, template_id, template_version, is_read, is_archived, created_at)
-     VALUES (?, 'info', ?, ?, ?, ?, ?, 'system:digest', ?, ?, FALSE, FALSE, NOW())`,
+     (user_id, type, title, rendered_title, body, rendered_body, category_slug, event_name, template_id, template_version, is_read, created_at)
+     VALUES (?, 'info', ?, ?, ?, ?, ?, 'system:digest', ?, ?, FALSE, NOW())`,
     [job.userId, resolved.title, resolved.title, resolved.body, resolved.body, job.categorySlug, effectiveTemplateId || template.id, template.version],
   );
 
@@ -186,8 +186,8 @@ export async function handleSendScheduledNotification(job: SendScheduledNotifica
 
   const [result] = await pool.execute<ResultSetHeader>(
     `INSERT INTO notifications
-     (user_id, type, title, rendered_title, body, rendered_body, category_slug, event_name, template_id, template_version, is_read, is_archived, created_at)
-     VALUES (?, 'reminder', ?, ?, ?, ?, 'system', ?, ?, ?, FALSE, FALSE, NOW())`,
+     (user_id, type, title, rendered_title, body, rendered_body, category_slug, event_name, template_id, template_version, is_read, created_at)
+     VALUES (?, 'reminder', ?, ?, ?, ?, 'system', ?, ?, ?, FALSE, NOW())`,
     [job.userId, resolved.title, resolved.title, resolved.body, resolved.body, eventName, ab.templateId || template.id, template.version],
   );
 
