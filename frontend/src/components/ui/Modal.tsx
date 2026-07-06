@@ -61,8 +61,8 @@ export function Modal({
     : 'flex items-end md:items-center justify-center';
 
   const panelClass = isSheet
-    ? `w-full ${sizeClasses[size]} max-h-[85vh] flex flex-col !p-0 bg-[var(--color-surface)] rounded-t-[var(--radius-xl)] shadow-xl cz-sheet-enter cz-pb-safe mb-24 md:mb-0`
-    : `w-full ${sizeClasses[size]} max-h-[85vh] md:max-h-[90vh] flex flex-col !p-0 bg-[var(--color-surface)] rounded-t-[var(--radius-xl)] md:rounded-[var(--radius-lg)] shadow-xl cz-sheet-enter md:!animate-none cz-pb-safe mb-24 md:mb-0`;
+    ? `w-full ${sizeClasses[size]} max-h-[85vh] flex flex-col !p-0 bg-[var(--color-surface)] rounded-t-[var(--radius-xl)] shadow-xl cz-sheet-enter cz-reserve-bnav md:mb-0`
+    : `w-full ${sizeClasses[size]} max-h-[85vh] md:max-h-[90vh] flex flex-col !p-0 bg-[var(--color-surface)] rounded-t-[var(--radius-xl)] md:rounded-[var(--radius-lg)] shadow-xl cz-sheet-enter md:!animate-none cz-reserve-bnav md:mb-0`;
 
   return (
     <div

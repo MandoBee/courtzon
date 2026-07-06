@@ -895,6 +895,11 @@ html[dir="rtl"] {
   .cz-h-safe-top { height: env(safe-area-inset-top); }
   .cz-h-safe-bottom { height: env(safe-area-inset-bottom); }
 
+  /* Bottom Navigation height reservation */
+  .cz-reserve-bnav {
+    padding-bottom: calc(4rem + env(safe-area-inset-bottom, 0px) + 1.5rem);
+  }
+
   /* Bottom-sheet / slide animations */
   .cz-sheet-enter {
     animation: cz-sheet-slide-up 280ms cubic-bezier(0.32, 0.72, 0, 1) both;

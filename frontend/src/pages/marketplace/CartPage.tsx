@@ -398,7 +398,7 @@ export default function CartPage() {
       )}
 
       {/* Payment Method & Checkout - Sticky Footer */}
-      <div className="sticky bottom-0 z-10 bg-[var(--color-bg)] border-t border-[var(--color-border)] pt-4 pb-24 md:pb-6 cz-pb-safe -mx-4 px-4 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
+      <div className="sticky bottom-0 z-10 bg-[var(--color-bg)] border-t border-[var(--color-border)] pt-4 pb-4 cz-pb-safe -mx-4 px-4 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
         <div className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] shadow-[var(--shadow-md)] p-6 space-y-4 max-w-4xl mx-auto">
         <div className="flex justify-between text-sm">
           <span>{t('common.subtotal')}</span><span>{formatPrice(Number(cart.subtotal), cartCurrency)}</span>
