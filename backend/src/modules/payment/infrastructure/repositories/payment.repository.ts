@@ -59,6 +59,34 @@ export const paymentRepository = {
     return rows[0] || null;
   },
 
+  async lockById(id: number, conn: mysql.PoolConnection) {
+    const [rows] = await conn.execute<RowData>(
+      'SELECT * FROM payment_transactions WHERE id = ? FOR UPDATE',
+      [id]
+    );
+    return rows[0] || null;
+  },
+
+  async findByBookingId(bookingId: number) {
+    const pool = getPool();
+    const [rows] = await pool.execute<RowData>(
+      'SELECT * FROM payment_transactions WHERE booking_id = ? ORDER BY id DESC LIMIT 1',
+      [bookingId]
+    );
+    return rows[0] || null;
+  },
+
+  async findByReference(referenceType: string, referenceId: number) {
+    const pool = getPool();
+    const [rows] = await pool.execute<RowData>(
+      `SELECT * FROM payment_transactions
+       WHERE reference_type = ? AND (booking_id = ? OR order_id = ?)
+       ORDER BY id DESC LIMIT 1`,
+      [referenceType, referenceId, referenceId]
+    );
+    return rows[0] || null;
+  },
+
   async findByOrderId(orderId: number) {
     const pool = getPool();
     const [rows] = await pool.execute<RowData>(

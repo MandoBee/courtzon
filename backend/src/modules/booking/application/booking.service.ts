@@ -123,6 +123,7 @@ export class BookingService {
 
         const paymentUrl = ('paymentUrl' in gwResult ? gwResult.paymentUrl : null) || null;
         const clientSecret = ('clientSecret' in gwResult ? gwResult.clientSecret : null) || null;
+        const paymentId = ('paymentId' in gwResult ? gwResult.paymentId : null) || null;
 
         const booking = await bookingRepository.findById(bookingId);
 
@@ -170,7 +171,7 @@ export class BookingService {
           }
         }
 
-        return { ...booking, paymentUrl, clientSecret };
+        return { ...booking, paymentUrl, clientSecret, paymentId };
       }
 
       let bookingStatus = 'pending';
@@ -253,6 +254,7 @@ export class BookingService {
 
       let paymentUrl: string | null = null;
       let clientSecret: string | null = null;
+      let paymentId: number | null = null;
       if (paymentMethod !== 'cash' && (!useWallet || !walletUpdated)) {
         try {
           const { paymentService } = await import('../../payment/application/payment.service.js');
@@ -266,6 +268,7 @@ export class BookingService {
           });
           paymentUrl = ('paymentUrl' in gwResult ? gwResult.paymentUrl : null) || null;
           clientSecret = ('clientSecret' in gwResult ? gwResult.clientSecret : null) || null;
+          paymentId = ('paymentId' in gwResult ? gwResult.paymentId : null) || null;
         } catch {
           // non-fatal
         }
@@ -320,7 +323,7 @@ export class BookingService {
         }
       }
 
-      return { ...booking, paymentUrl, clientSecret };
+      return { ...booking, paymentUrl, clientSecret, paymentId };
     } catch (err) {
       await conn.rollback();
       throw err;

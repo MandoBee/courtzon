@@ -347,7 +347,7 @@ export class PaymentService {
     newStatus: 'paid' | 'failed',
     gatewayRef: string,
     traceId: string,
-    source: 'webhook' | 'sync' | 'manual',
+    source: 'webhook' | 'sync' | 'manual' | 'confirm',
     gatewayStatus?: string,
     payloadSuccess?: boolean,
   ): Promise<{ idempotent: boolean }> {
@@ -430,6 +430,76 @@ export class PaymentService {
     log.info({ traceId, txnId: transaction.id, status: newStatus, source }, 'Payment outcome processed');
 
     return { idempotent: false };
+  }
+
+  /**
+   * Immediate payment confirmation endpoint.
+   * Verifies with Paymob, then runs _processPaymentOutcome (same as webhook).
+   * Returns immediately if already confirmed (idempotent).
+   */
+  async confirmPayment(paymentId: number) {
+    const transaction = await paymentRepository.findById(paymentId);
+    if (!transaction) throw new NotFoundError('Payment transaction');
+
+    const traceId = (transaction as any).trace_id || randomUUID();
+
+    // Already in a final paid state → idempotent success
+    if ((transaction as any).payment_status === 'paid') {
+      return { confirmed: true, idempotent: true, paymentStatus: 'paid' };
+    }
+
+    log.info({ traceId, paymentId, gatewayRef: transaction.gateway_reference }, 'Payment confirmation requested');
+
+    const remoteStatus = await paymentGateway.getTransactionStatus(
+      transaction.gateway_reference,
+      (transaction as any).order_id,
+    );
+
+    const newStatus: 'paid' | 'failed' | null =
+      remoteStatus.status === 'paid' ? 'paid' :
+      remoteStatus.status === 'failed' ? 'failed' : null;
+
+    if (!newStatus) {
+      return {
+        confirmed: false,
+        paymentStatus: remoteStatus.status,
+        note: `Remote status is '${remoteStatus.status}' — not yet confirmed`,
+      };
+    }
+
+    let confirmed = false;
+    let idempotent = true;
+    await withTransaction(async (conn) => {
+      const locked = await paymentRepository.lockById(paymentId, conn);
+      if (!locked) return;
+      const result = await this._processPaymentOutcome(
+        conn, locked, newStatus, transaction.gateway_reference, traceId, 'confirm',
+        remoteStatus.status, remoteStatus.success,
+      );
+      idempotent = result.idempotent;
+      if (!idempotent) confirmed = true;
+    });
+
+    log.info({ traceId, paymentId, confirmed, idempotent, paymentStatus: newStatus }, 'Payment confirmation processed');
+
+    return { confirmed, idempotent, paymentStatus: newStatus, remoteStatus: remoteStatus.status };
+  }
+
+  /**
+   * Get current payment status from DB.
+   */
+  async getPaymentStatus(paymentId: number) {
+    const transaction = await paymentRepository.findById(paymentId);
+    if (!transaction) throw new NotFoundError('Payment transaction');
+    return {
+      paymentId: (transaction as any).id,
+      paymentStatus: (transaction as any).payment_status,
+      referenceType: (transaction as any).reference_type,
+      bookingId: (transaction as any).booking_id,
+      orderId: (transaction as any).order_id,
+      gatewayReference: (transaction as any).gateway_reference,
+      updatedAt: (transaction as any).updated_at,
+    };
   }
 
   /**

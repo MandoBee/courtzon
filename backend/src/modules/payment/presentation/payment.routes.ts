@@ -8,6 +8,8 @@ export async function paymentRoutes(app: FastifyInstance): Promise<void> {
 
   // Authenticated payment endpoints
   app.post('/payments/charge', { preHandler: [authMiddleware] }, ctrl.chargeHandler);
+  app.post('/payments/confirm', { preHandler: [authMiddleware] }, ctrl.confirmPaymentHandler);
+  app.get('/payments/status/:id', { preHandler: [authMiddleware] }, ctrl.getPaymentStatusHandler);
   app.post('/payments/:id/refund', { preHandler: [authMiddleware, requirePermission(['financial.reconcile'])] }, ctrl.refundHandler);
   app.get('/payments/transactions', { preHandler: [authMiddleware] }, ctrl.getTransactionsHandler);
 

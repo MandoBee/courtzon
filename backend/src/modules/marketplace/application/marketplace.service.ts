@@ -555,8 +555,9 @@ export const marketplaceService = {
           throw new ConflictError('Payment gateway did not return a checkout URL or client secret');
         }
 
+        const paymentId = 'paymentId' in result ? result.paymentId : undefined;
         const order = await this.getOrder(orderId);
-        return { ...order, paymentUrl, clientSecret };
+        return { ...order, paymentUrl, clientSecret, paymentId };
       } catch (err) {
         await repo.restoreCart(userId, cartSnapshot);
         throw err;

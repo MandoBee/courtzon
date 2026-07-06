@@ -13,6 +13,10 @@ export const ChargeSchema = z.object({
   customerAddress: z.any().optional(),
 });
 
+export const ConfirmPaymentSchema = z.object({
+  paymentId: z.number().int().positive(),
+});
+
 export const RefundPaymentSchema = z.object({
   transactionId: z.number().int().positive(),
   amount: z.number().positive(),

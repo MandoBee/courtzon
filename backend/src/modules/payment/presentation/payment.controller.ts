@@ -1,7 +1,7 @@
 import type { FastifyRequest, FastifyReply } from 'fastify';
 import { paymentService } from '../application/payment.service.js';
 import { recordAudit } from '../../audit-log/index.js';
-import { ChargeSchema, RefundPaymentSchema } from './payment.dto.js';
+import { ChargeSchema, RefundPaymentSchema, ConfirmPaymentSchema } from './payment.dto.js';
 import { NotFoundError } from '../../../shared/errors/app-error.js';
 import { createModuleLogger } from '../../../shared/utils/logger.js';
 
@@ -27,6 +27,28 @@ export async function chargeHandler(request: FastifyRequest, reply: FastifyReply
     userAgent: request.headers['user-agent'],
   });
   return reply.status(201).send(result);
+}
+
+export async function confirmPaymentHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = (request as any).userId;
+  const body = ConfirmPaymentSchema.parse(request.body);
+  const result = await paymentService.confirmPayment(body.paymentId);
+  recordAudit({
+    actorId: userId ?? null,
+    action: 'PAYMENT.CONFIRM',
+    entityType: 'payment',
+    entityId: body.paymentId,
+    afterState: { confirmed: result.confirmed, paymentStatus: result.paymentStatus },
+    ipAddress: request.ip,
+    userAgent: request.headers['user-agent'],
+  });
+  return reply.send(result);
+}
+
+export async function getPaymentStatusHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { id } = request.params as { id: string };
+  const result = await paymentService.getPaymentStatus(Number(id));
+  return reply.send(result);
 }
 
 export async function refundHandler(request: FastifyRequest, reply: FastifyReply) {

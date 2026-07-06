@@ -207,6 +207,7 @@ export default function BookingModal({ open, onClose }: BookingModalProps) {
   const [pixelClientSecret, setPixelClientSecret] = useState<string | null>(null);
   const [pollingPaid, setPollingPaid] = useState(false);
   const [pendingBookingId, setPendingBookingId] = useState<number | null>(null);
+  const [paymentId, setPaymentId] = useState<number | null>(null);
 
   const requestAccessMutation = useMutation({
     mutationFn: (branchId: number) => api.post(`/branches/${branchId}/request-access`),
@@ -270,6 +271,7 @@ export default function BookingModal({ open, onClose }: BookingModalProps) {
       queryClient.invalidateQueries({ queryKey: ['my-bookings'] });
       if (res.data.clientSecret && res.data.id) {
         setPendingBookingId(res.data.id);
+        setPaymentId(res.data.paymentId || null);
         setPixelClientSecret(res.data.clientSecret);
       } else {
         onClose();
@@ -302,6 +304,7 @@ export default function BookingModal({ open, onClose }: BookingModalProps) {
     setMatchmakingAutoApply(false);
     setPendingAccessBranches({});
     setPendingBookingId(null);
+    setPaymentId(null);
   };
 
   const handleClose = () => {
@@ -993,7 +996,17 @@ export default function BookingModal({ open, onClose }: BookingModalProps) {
             clientSecret={pixelClientSecret}
             onComplete={async () => {
               setPixelClientSecret(null);
-              showToast('Payment submitted — confirming booking...', 'info');
+              showToast('Payment submitted — confirming...', 'info');
+              try {
+                const confirmPayload: any = { paymentId: paymentId };
+                const confirmRes = await api.post('/payments/confirm', confirmPayload);
+                if (confirmRes.data?.confirmed) {
+                  onClose();
+                  showToast('Booking confirmed!');
+                  navigate(`/bookings/${pendingBookingId}/confirmation`, { state: { qrToken: '' } });
+                  return;
+                }
+              } catch { /* confirm failed — fall back to polling */ }
               setPollingPaid(true);
             }}
             onCancel={async () => {
