@@ -76,66 +76,101 @@ export class BookingService {
       await conn.beginTransaction();
 
       if (isGateway) {
-        // Check slot availability before creating intent.
+        // Check slot availability.
         const startSlot = { start: input.startTime, end: input.endTime, date: bookingDate };
         const available = await bookingRepository.checkSlotAvailability(
           input.resourceId, bookingDate, [startSlot], conn,
         );
         if (!available) throw new ConflictError('This slot is no longer available');
 
-        // Create intent for gateway payments — committed immediately for audit trail.
-        // intent_status starts as 'pending'. If charge succeeds → 'payment_initiated'.
-        // If charge fails → 'failed' with failure_category and failure_reason.
-        const intentId = await bookingRepository.createIntent({
+        // Create booking as pending/pending (like marketplace creates a pending order).
+        const bookingId = await bookingRepository.create({
           userId, branchId: input.branchId, organisationId, resourceId: input.resourceId,
           bookingType: input.bookingType || 'public_match', bookingDate,
-          startTime: input.startTime,
-          endTime: input.endTime,
-          totalAmount: pricing.totalPrice,
-          commissionAmount,
-          clubAmount,
-          notes: input.notes,
+          startTime: input.startTime, endTime: input.endTime,
+          totalAmount: pricing.totalPrice, commissionAmount, clubAmount,
+          notes: input.notes, bookingStatus: 'pending', paymentStatus: 'pending',
           paymentMethod,
-          matchmaking: input.matchmaking || undefined,
-          participants: input.participants,
-          retryOfIntentId: input.retryOfIntentId,
-          attemptNumber: input.retryOfIntentId ? undefined : 1,
-        });
+        }, conn);
+
+        if (input.participants?.length) {
+          for (const p of input.participants) {
+            await conn.execute(
+              `INSERT INTO booking_participants (booking_id, full_name, email, phone)
+               VALUES (?, ?, ?, ?)`,
+              [bookingId, null, null, p.phone || null]
+            );
+          }
+        }
 
         await conn.commit();
         conn.release();
 
-        try {
-          const { paymentService } = await import('../../payment/application/payment.service.js');
-          const gwResult = await paymentService.charge(userId, {
-            referenceType: 'booking_intent',
-            referenceId: intentId,
-            amount: pricing.totalPrice,
-            currency: 'EGP',
-            paymentMethod: (paymentMethod === 'online' ? 'card' : paymentMethod as 'wallet' | 'card' | 'bank_transfer'),
-            returnUrl: input.returnUrl,
-          });
+        // Charge payment gateway (outside transaction — may take time).
+        const { paymentService } = await import('../../payment/application/payment.service.js');
+        const gwResult = await paymentService.charge(userId, {
+          referenceType: 'booking',
+          referenceId: bookingId,
+          amount: pricing.totalPrice,
+          currency: 'EGP',
+          paymentMethod: (paymentMethod === 'online' ? 'card' : paymentMethod as 'wallet' | 'card' | 'bank_transfer'),
+          returnUrl: input.returnUrl,
+        });
 
-          if (!gwResult.success) {
-            const reason = (gwResult as any).errorMessage || 'Payment gateway rejected the transaction';
-            await bookingRepository.updateIntentStatus(intentId, 'failed', reason, 'gateway_rejected');
-            throw new ConflictError(reason);
-          }
-
-          await bookingRepository.updateIntentStatus(intentId, 'payment_initiated');
-
-          const paymentUrl = ('paymentUrl' in gwResult ? gwResult.paymentUrl : null) || null;
-          const clientSecret = ('clientSecret' in gwResult ? gwResult.clientSecret : null) || null;
-          return { paymentUrl, clientSecret, intentId };
-        } catch (err: any) {
-          const reason = err?.message || 'Gateway initiation failed';
-          const category = err?.message?.includes('fetch failed') || err?.code === 'ECONNREFUSED'
-            ? 'gateway_unavailable' : 'gateway_rejected';
-          try {
-            await bookingRepository.updateIntentStatus(intentId, 'failed', reason, category);
-          } catch { /* non-fatal */ }
-          throw new ConflictError(reason);
+        if (!gwResult.success) {
+          throw new ConflictError((gwResult as any).errorMessage || 'Payment gateway rejected the transaction');
         }
+
+        const paymentUrl = ('paymentUrl' in gwResult ? gwResult.paymentUrl : null) || null;
+        const clientSecret = ('clientSecret' in gwResult ? gwResult.clientSecret : null) || null;
+
+        const booking = await bookingRepository.findById(bookingId);
+
+        // Matchmaking (non-fatal)
+        if (booking && input.bookingType === 'public_match') {
+          const mm = input.matchmaking || { targetGender: 'any', maxPlayers: 2, autoApply: false };
+          try {
+            await bookingRepository.createMatchmakingRequest({
+              bookingId,
+              minAge: mm.minAge,
+              maxAge: mm.maxAge,
+              targetGender: mm.targetGender || 'any',
+              targetLevelId: mm.targetLevelId,
+              maxPlayers: mm.maxPlayers || 2,
+              deadline: mm.deadline,
+              autoApply: mm.autoApply || false,
+            });
+
+            const resourceSport = await this.getResourceSport(booking.resource_id);
+
+            const players = await bookingRepository.findMatchingPlayers(bookingId, {
+              sportId: resourceSport,
+              minAge: mm.minAge,
+              maxAge: mm.maxAge,
+              targetGender: mm.targetGender || 'any',
+              targetLevelId: mm.targetLevelId,
+              excludeUserId: userId,
+            });
+
+            if (mm.autoApply) {
+              for (const player of players) {
+                try {
+                  const invId = await bookingRepository.createInvitation(bookingId, player.id);
+                  await bookingRepository.updateInvitationStatus(invId, 'accepted');
+                  await bookingRepository.addParticipantFromInvitation(bookingId, player.id, player.full_name);
+                } catch (e: any) {
+                  if (!e.message?.includes('already applied')) throw e;
+                }
+              }
+            }
+
+            log.info(`Matchmaking: Created booking ${bookingId} with ${players.length} matched players`);
+          } catch (mmErr) {
+            log.error({ err: mmErr }, `Matchmaking start failed for booking ${bookingId}`);
+          }
+        }
+
+        return { ...booking, paymentUrl, clientSecret };
       }
 
       let bookingStatus = 'pending';

@@ -213,12 +213,19 @@ export class PaymentService {
         );
         if (updateResult.affectedRows > 0) {
           log.info({ traceId, txnId: transaction.id, status: newStatus }, 'Payment cancelled/expired via webhook');
-          if (transaction.reference_type === 'booking_intent' && transaction.booking_id) {
-            await conn.execute(
-              'UPDATE booking_intents SET intent_status = ?, failure_reason = ? WHERE id = ?',
-              [newStatus, `Payment ${newStatus} via webhook`, transaction.booking_id],
-            );
-            await this._cancelPendingBooking(conn, transaction.booking_id, traceId);
+          if (transaction.booking_id) {
+            if (transaction.reference_type === 'booking_intent') {
+              await conn.execute(
+                'UPDATE booking_intents SET intent_status = ?, failure_reason = ? WHERE id = ?',
+                [newStatus, `Payment ${newStatus} via webhook`, transaction.booking_id],
+              );
+              await this._cancelPendingBooking(conn, transaction.booking_id, traceId);
+            } else if (transaction.reference_type === 'booking') {
+              await conn.execute(
+                `UPDATE bookings SET booking_status = ?, payment_status = ?, updated_at = NOW() WHERE id = ? AND booking_status = 'pending'`,
+                [newStatus, newStatus, transaction.booking_id],
+              );
+            }
           }
         }
         return { idempotent: updateResult.affectedRows === 0 };
@@ -392,13 +399,20 @@ export class PaymentService {
       await this._fulfillPayment(conn, transaction, gatewayRef, traceId);
     }
 
-    // Cancel pending booking when payment fails
-    if (newStatus === 'failed' && transaction.reference_type === 'booking_intent' && transaction.booking_id) {
-      await conn.execute(
-        'UPDATE booking_intents SET intent_status = ?, failure_reason = ? WHERE id = ?',
-        [newStatus, gatewayStatus || `Payment ${newStatus}`, transaction.booking_id],
-      );
-      await this._cancelPendingBooking(conn, transaction.booking_id, traceId);
+    // Cancel/update booking when payment fails
+    if (newStatus === 'failed' && transaction.booking_id) {
+      if (transaction.reference_type === 'booking_intent') {
+        await conn.execute(
+          'UPDATE booking_intents SET intent_status = ?, failure_reason = ? WHERE id = ?',
+          [newStatus, gatewayStatus || `Payment ${newStatus}`, transaction.booking_id],
+        );
+        await this._cancelPendingBooking(conn, transaction.booking_id, traceId);
+      } else if (transaction.reference_type === 'booking') {
+        await conn.execute(
+          "UPDATE bookings SET booking_status = 'cancelled', payment_status = 'failed', updated_at = NOW() WHERE id = ? AND booking_status = 'pending'",
+          [transaction.booking_id],
+        );
+      }
     }
 
     // Journal entry for this outcome
@@ -427,11 +441,26 @@ export class PaymentService {
 
     if (refType === 'order' && transaction.order_id) {
       await this._fulfillOrder(conn, transaction, traceId);
+    } else if (refType === 'booking') {
+      await this._fulfillBooking(conn, transaction, traceId);
     } else if (refType === 'booking_intent') {
       await this._fulfillBookingIntent(conn, transaction, traceId);
     } else if (refType === 'wallet_topup') {
       await this._fulfillWalletTopup(conn, transaction, traceId);
     }
+  }
+
+  private async _fulfillBooking(conn: mysql.PoolConnection, transaction: any, traceId: string): Promise<void> {
+    const bookingId = transaction.booking_id;
+    if (!bookingId) {
+      log.error({ traceId, txnId: transaction.id }, 'No booking on payment');
+      return;
+    }
+    await conn.execute<mysql.ResultSetHeader>(
+      "UPDATE bookings SET booking_status = 'confirmed', payment_status = 'paid', updated_at = NOW() WHERE id = ? AND booking_status = 'pending'",
+      [bookingId]
+    );
+    log.info({ traceId, bookingId }, 'Booking confirmed via webhook');
   }
 
   private async _fulfillOrder(conn: mysql.PoolConnection, transaction: any, traceId: string): Promise<void> {
@@ -618,12 +647,19 @@ export class PaymentService {
         await conn.execute('SET autocommit = 0');
         const expired_ = await paymentRepository.expirePayment(ptx.id, conn);
         if (expired_) {
-          if (ptx.reference_type === 'booking_intent' && ptx.booking_id) {
-            await conn.execute(
-              "UPDATE booking_intents SET intent_status = 'expired', expires_at = NOW() WHERE id = ? AND expires_at > NOW()",
-              [ptx.booking_id],
-            );
-            await this._cancelPendingBooking(conn, ptx.booking_id, 'expiry-job');
+          if (ptx.booking_id) {
+            if (ptx.reference_type === 'booking_intent') {
+              await conn.execute(
+                "UPDATE booking_intents SET intent_status = 'expired', expires_at = NOW() WHERE id = ? AND expires_at > NOW()",
+                [ptx.booking_id],
+              );
+              await this._cancelPendingBooking(conn, ptx.booking_id, 'expiry-job');
+            } else if (ptx.reference_type === 'booking') {
+              await conn.execute(
+                "UPDATE bookings SET booking_status = 'expired', payment_status = 'expired', updated_at = NOW() WHERE id = ? AND booking_status = 'pending'",
+                [ptx.booking_id],
+              );
+            }
           }
           await conn.execute('COMMIT');
           expired++;

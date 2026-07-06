@@ -206,7 +206,7 @@ export default function BookingModal({ open, onClose }: BookingModalProps) {
   const [pendingAccessBranches, setPendingAccessBranches] = useState<Record<number, boolean>>({});
   const [pixelClientSecret, setPixelClientSecret] = useState<string | null>(null);
   const [pollingPaid, setPollingPaid] = useState(false);
-  const [paymentIntentId, setPaymentIntentId] = useState<number | null>(null);
+  const [pendingBookingId, setPendingBookingId] = useState<number | null>(null);
 
   const requestAccessMutation = useMutation({
     mutationFn: (branchId: number) => api.post(`/branches/${branchId}/request-access`),
@@ -268,8 +268,8 @@ export default function BookingModal({ open, onClose }: BookingModalProps) {
     mutationFn: (data: any) => api.post('/bookings', data),
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['my-bookings'] });
-      if (res.data.clientSecret && res.data.intentId) {
-        setPaymentIntentId(res.data.intentId);
+      if (res.data.clientSecret && res.data.id) {
+        setPendingBookingId(res.data.id);
         setPixelClientSecret(res.data.clientSecret);
       } else {
         onClose();
@@ -301,6 +301,7 @@ export default function BookingModal({ open, onClose }: BookingModalProps) {
     setMatchmakingDeadline('');
     setMatchmakingAutoApply(false);
     setPendingAccessBranches({});
+    setPendingBookingId(null);
   };
 
   const handleClose = () => {
@@ -964,18 +965,18 @@ export default function BookingModal({ open, onClose }: BookingModalProps) {
       )}
     </Modal>
 
-      {/* Payment confirming overlay — polls booking intent for fulfilled_booking_id */}
-      {pollingPaid && paymentIntentId && (
+      {/* Payment confirming overlay — polls booking for payment_status === 'paid' */}
+      {pollingPaid && pendingBookingId && (
         <PaymentStatusPoller
-          endpoint={`/booking-intents/${paymentIntentId}`}
-          isComplete={(data: any) => !!data?.fulfilled_booking_id}
+          endpoint={`/bookings/${pendingBookingId}`}
+          isComplete={(data: any) => data?.payment_status === 'paid'}
           interval={1500}
           timeout={90000}
-          onPaid={(data) => {
+          onPaid={() => {
             setPollingPaid(false);
             onClose();
             showToast('Booking confirmed!');
-            navigate(`/bookings/${data?.fulfilled_booking_id}/confirmation`, { state: { qrToken: '' } });
+            navigate(`/bookings/${pendingBookingId}/confirmation`, { state: { qrToken: '' } });
           }}
           onTimeout={() => {
             setPollingPaid(false);
@@ -991,25 +992,15 @@ export default function BookingModal({ open, onClose }: BookingModalProps) {
           <PaymobPixelCard
             clientSecret={pixelClientSecret}
             onComplete={async () => {
-              const intentId = paymentIntentId;
               setPixelClientSecret(null);
-              showToast('Payment submitted — creating booking...', 'info');
-              try {
-                const res = await api.post(`/booking-intents/${intentId}/fulfill`);
-                onClose();
-                const booking = res.data?.booking;
-                if (booking?.id) {
-                  navigate(`/bookings/${booking.id}/confirmation`);
-                }
-              } catch {
-                setPollingPaid(true);
-              }
+              showToast('Payment submitted — confirming booking...', 'info');
+              setPollingPaid(true);
             }}
             onCancel={async () => {
-              const intentId = paymentIntentId;
+              const bookingId = pendingBookingId;
               setPixelClientSecret(null);
               try {
-                await api.post(`/booking-intents/${intentId}/cancel`);
+                await api.post(`/bookings/${bookingId}/cancel`, { reason: 'User cancelled payment' });
               } catch { /* non-fatal */ }
               showToast('Payment cancelled', 'warning');
             }}
