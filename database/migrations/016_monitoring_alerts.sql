@@ -46,3 +46,10 @@ CREATE TABLE IF NOT EXISTS web_vitals_metrics (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   INDEX idx_vitals_metric (metric_name, created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Fix: add category_slug and event_name columns to notifications table
+-- (Enterprise infrastructure uses these directly instead of JOIN-based lookups)
+ALTER TABLE notifications
+  ADD COLUMN IF NOT EXISTS category_slug VARCHAR(50) DEFAULT NULL AFTER category_id,
+  ADD COLUMN IF NOT EXISTS event_name VARCHAR(100) DEFAULT NULL AFTER category_slug,
+  ADD INDEX IF NOT EXISTS idx_notifications_event (event_name);
