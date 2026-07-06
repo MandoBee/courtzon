@@ -1,37 +1,31 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { notificationsApi } from '../../services/notifications';
 import { useAuthStore } from '../../store/auth.store';
+import { useNotificationStore } from '../../store/notification.store';
 import NotificationDetailModal, { type AppNotification } from './NotificationDetailModal';
 
 export default function NotificationBell() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const unreadCount = useNotificationStore((s) => s.unreadCount);
+  const refreshUnreadCount = useNotificationStore((s) => s.refreshUnreadCount);
+  const initStore = useNotificationStore((s) => s.init);
+  const destroyStore = useNotificationStore((s) => s.destroy);
+
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState<AppNotification | null>(null);
   const ref = useRef<HTMLDivElement>(null);
 
-  const { data: countData } = useQuery({
-    queryKey: ['notifications', 'unread-count'],
-    queryFn: notificationsApi.getUnreadCount,
-    refetchInterval: 30000,
-    enabled: isAuthenticated,
-  });
-
-  const { data: recentData } = useQuery({
-    queryKey: ['notifications', 'recent'],
-    queryFn: () => notificationsApi.getAll(1, 5),
-    enabled: open,
-  });
-
-  const markAllMutation = useMutation({
-    mutationFn: notificationsApi.markAllAsRead,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['notifications'] });
-    },
-  });
+  useEffect(() => {
+    if (isAuthenticated) {
+      initStore();
+    } else {
+      destroyStore();
+    }
+  }, [isAuthenticated, initStore, destroyStore]);
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -41,13 +35,27 @@ export default function NotificationBell() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const unread = countData?.count || 0;
+  const { data: recentData } = useQuery({
+    queryKey: ['notifications', 'recent'],
+    queryFn: () => notificationsApi.getAll(1, 5),
+    enabled: open,
+    staleTime: 10000,
+  });
+
+  const markAllMutation = useMutation({
+    mutationFn: notificationsApi.markAllAsRead,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['notifications'] });
+      refreshUnreadCount();
+    },
+  });
+
   const notifications = recentData?.data || [];
 
-  const openNotification = (n: AppNotification) => {
+  const openNotification = useCallback((n: AppNotification) => {
     setOpen(false);
     setSelected(n);
-  };
+  }, []);
 
   return (
     <>
@@ -57,10 +65,13 @@ export default function NotificationBell() {
           className="relative p-2 text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors"
           title="Notifications"
         >
-          🔔
-          {unread > 0 && (
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
+            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+            <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+          </svg>
+          {unreadCount > 0 && (
             <span className="absolute -top-0.5 -right-0.5 bg-[var(--color-error)] text-white text-[10px] font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">
-              {unread > 99 ? '99+' : unread}
+              {unreadCount > 99 ? '99+' : unreadCount}
             </span>
           )}
         </button>
@@ -70,7 +81,7 @@ export default function NotificationBell() {
             <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--color-border)]">
               <span className="text-sm font-semibold text-[var(--color-text)]">Notifications</span>
               <div className="flex gap-2">
-                {unread > 0 && (
+                {unreadCount > 0 && (
                   <button
                     onClick={() => markAllMutation.mutate()}
                     className="text-xs text-[var(--color-primary)] hover:underline"

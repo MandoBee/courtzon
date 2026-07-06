@@ -14,6 +14,8 @@ export interface AppNotification {
   icon?: string | null;
   created_at: string;
   is_read?: boolean;
+  type?: string | null;
+  priority?: string | null;
   category_slug?: string | null;
   action_key?: string | null;
   action_payload?: Record<string, unknown> | null;

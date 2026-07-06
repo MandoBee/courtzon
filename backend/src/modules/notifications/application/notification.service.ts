@@ -9,12 +9,24 @@ export class NotificationService {
     categorySlug?: string;
     actionKey?: string;
     actionPayload?: Record<string, any>;
+    type?: string;
+    priority?: string;
+    organisationId?: number;
+    branchId?: number;
+    senderId?: number;
+    relatedEntityType?: string;
+    relatedEntityId?: string;
   }) {
     return notificationRepository.create(data);
   }
 
-  async getUserNotifications(userId: number, page?: number, limit?: number, actionKey?: string) {
-    return notificationRepository.findByUser(userId, page, limit, actionKey);
+  async getUserNotifications(
+    userId: number,
+    page?: number,
+    limit?: number,
+    filters?: { actionKey?: string; type?: string; priority?: string; isRead?: boolean },
+  ) {
+    return notificationRepository.findByUser(userId, page, limit, filters);
   }
 
   async getUnreadCount(userId: number) {
@@ -27,6 +39,22 @@ export class NotificationService {
 
   async markAllAsRead(userId: number) {
     return notificationRepository.markAllAsRead(userId);
+  }
+
+  async archive(id: number, userId: number) {
+    return notificationRepository.archive(id, userId);
+  }
+
+  async archiveAll(userId: number) {
+    return notificationRepository.archiveAll(userId);
+  }
+
+  async softDelete(id: number, userId: number) {
+    return notificationRepository.softDelete(id, userId);
+  }
+
+  async getFilters(userId: number) {
+    return notificationRepository.getFilters(userId);
   }
 
   async getPreferences(userId: number) {

@@ -712,6 +712,8 @@ export const uiRegistry: UIElement[] = [
   { permissionKey: 'org.marketplace.manage', moduleSlug: 'org', elementType: 'page', elementLabel: 'Manage Organisation Marketplace', componentPath: 'pages/org/OrgMarketplacePage.tsx' },
   { permissionKey: 'org.settings.edit', moduleSlug: 'org', elementType: 'page', elementLabel: 'Edit Organisation Settings', componentPath: 'pages/org/OrgSettingsPage.tsx' },
   { permissionKey: 'notifications.view', moduleSlug: 'notifications', elementType: 'page', elementLabel: 'View Notifications', componentPath: 'pages/notifications/NotificationsPage.tsx' },
+  { permissionKey: 'notifications.send', moduleSlug: 'notifications', elementType: 'action', elementLabel: 'Send Notifications (Admin)', componentPath: 'modules/notifications/presentation/notification.routes.ts' },
+  { permissionKey: 'notifications.preferences', moduleSlug: 'notifications', elementType: 'page', elementLabel: 'Notification Preferences', componentPath: 'pages/profile/ProfilePage.tsx' },
   { permissionKey: 'bookings.apply', moduleSlug: 'bookings', elementType: 'button', elementLabel: 'Apply to Match', componentPath: 'pages/booking/MatchListPage.tsx' },
 
   // Profile Wallet tab

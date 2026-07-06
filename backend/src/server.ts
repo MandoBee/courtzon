@@ -2,6 +2,8 @@ import { app } from "./app.js";
 
 import { env } from "./config/env.js";
 import { registerHandler, startWorker, closeWorker } from "./infrastructure/queue/worker.js";
+import { setupRealtime } from "./realtime/index.js";
+import { notificationEngine } from "./modules/notifications/application/notification-engine.js";
 import { sendEmail } from "./shared/services/mailer.service.js";
 import { handleCancelExpiredBookings } from "./modules/booking/infrastructure/booking-expiry.worker.js";
 import { handleRunSettlements } from "./modules/settlement/infrastructure/settlement-cron.worker.js";
@@ -21,6 +23,7 @@ async function shutdown(signal: string) {
   await queueService.close();
   await closeRedisClient();
   await closePool();
+  try { const { getIO } = await import("./realtime/index.js"); getIO().close(); } catch {}
   await app.close();
   process.exit(0);
 }
@@ -57,6 +60,11 @@ async function bootstrap() {
     });
 
     app.log.info(`Server running on port ${env.PORT}`);
+
+    const io = setupRealtime(app);
+    app.log.info('Socket.IO initialized');
+    notificationEngine.start();
+    app.log.info('Notification engine started');
 
     await queueService.add('cancel_expired_bookings', { cutoffMinutes: 30 }, {
       repeat: { every: 900_000 },

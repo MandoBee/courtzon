@@ -8,6 +8,8 @@ export const CreateNotificationSchema = z.object({
   categorySlug: z.string().optional(),
   actionKey: z.string().optional(),
   actionPayload: z.record(z.string(), z.any()).optional(),
+  type: z.enum(['info', 'success', 'warning', 'error', 'reminder']).optional(),
+  priority: z.enum(['low', 'normal', 'high', 'critical']).optional(),
 });
 
 export const UpdateNotificationPreferencesSchema = z.object({
@@ -18,4 +20,13 @@ export const UpdateNotificationPreferencesSchema = z.object({
     emailEnabled: z.boolean(),
     smsEnabled: z.boolean(),
   })),
+});
+
+export const NotificationQuerySchema = z.object({
+  page: z.coerce.number().int().positive().optional().default(1),
+  limit: z.coerce.number().int().positive().max(100).optional().default(20),
+  action_key: z.string().optional(),
+  type: z.enum(['info', 'success', 'warning', 'error', 'reminder']).optional(),
+  priority: z.enum(['low', 'normal', 'high', 'critical']).optional(),
+  is_read: z.coerce.boolean().optional(),
 });

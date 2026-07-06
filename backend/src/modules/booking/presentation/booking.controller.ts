@@ -3,11 +3,21 @@ import { bookingService } from '../application/booking.service.js';
 import { CreateBookingSchema, CancelBookingSchema, BookingsQuerySchema, StartMatchmakingSchema } from './booking.dto.js';
 import { ForbiddenError } from '../../../shared/errors/app-error.js';
 import { recordAudit } from '../../audit-log/index.js';
+import { eventBus } from '../../../shared/event-bus/index.js';
 
 export async function createBookingHandler(request: FastifyRequest, reply: FastifyReply) {
   const body = CreateBookingSchema.parse(request.body);
   const userId = (request as any).userId;
   const result = await bookingService.createBooking(body, userId);
+
+  eventBus.emit('booking:created', {
+    bookingId: result.id,
+    userId,
+    courtId: body.resourceId || 0,
+    startTime: new Date(`${body.bookingDate}T${body.startTime}`),
+    endTime: new Date(`${body.bookingDate}T${body.endTime}`),
+  });
+
   return reply.status(201).send(result);
 }
 
@@ -43,6 +53,13 @@ export async function cancelBookingHandler(request: FastifyRequest, reply: Fasti
   const userId = (request as any).userId;
   const body = CancelBookingSchema.parse(request.body);
   const booking = await bookingService.cancelBooking(Number(id), userId, body.reason);
+
+  eventBus.emit('booking:cancelled', {
+    bookingId: Number(id),
+    userId,
+    reason: body.reason,
+  });
+
   return reply.send(booking);
 }
 
@@ -74,6 +91,20 @@ export async function updateBookingStatusHandler(request: FastifyRequest, reply:
     ipAddress: request.ip,
     userAgent: request.headers['user-agent'],
   });
+
+  if (status === 'confirmed') {
+    eventBus.emit('booking:confirmed', {
+      bookingId: Number(id),
+      userId,
+    });
+  } else if (status === 'cancelled') {
+    eventBus.emit('booking:cancelled', {
+      bookingId: Number(id),
+      userId,
+      reason: undefined,
+    });
+  }
+
   return reply.send({ success: true });
 }
 

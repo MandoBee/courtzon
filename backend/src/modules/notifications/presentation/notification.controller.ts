@@ -6,8 +6,12 @@ export async function getNotificationsHandler(request: FastifyRequest, reply: Fa
   const query = request.query as any;
   const page = Number(query.page) || 1;
   const limit = Number(query.limit) || 20;
-  const actionKey = query.action_key || undefined;
-  const result = await notificationService.getUserNotifications(userId, page, limit, actionKey);
+  const filters: any = {};
+  if (query.action_key) filters.actionKey = query.action_key;
+  if (query.type) filters.type = query.type;
+  if (query.priority) filters.priority = query.priority;
+  if (query.is_read !== undefined) filters.isRead = query.is_read === 'true' || query.is_read === '1';
+  const result = await notificationService.getUserNotifications(userId, page, limit, filters);
   return reply.send(result);
 }
 
@@ -28,6 +32,32 @@ export async function markAllAsReadHandler(request: FastifyRequest, reply: Fasti
   const userId = (request as any).userId;
   await notificationService.markAllAsRead(userId);
   return reply.send({ success: true });
+}
+
+export async function archiveHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = (request as any).userId;
+  const { id } = request.params as any;
+  await notificationService.archive(Number(id), userId);
+  return reply.send({ success: true });
+}
+
+export async function archiveAllHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = (request as any).userId;
+  await notificationService.archiveAll(userId);
+  return reply.send({ success: true });
+}
+
+export async function deleteHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = (request as any).userId;
+  const { id } = request.params as any;
+  await notificationService.softDelete(Number(id), userId);
+  return reply.send({ success: true });
+}
+
+export async function getFiltersHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = (request as any).userId;
+  const filters = await notificationService.getFilters(userId);
+  return reply.send(filters);
 }
 
 export async function getNotificationPreferencesHandler(request: FastifyRequest, reply: FastifyReply) {

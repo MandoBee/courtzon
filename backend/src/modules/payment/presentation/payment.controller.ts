@@ -4,6 +4,7 @@ import { recordAudit } from '../../audit-log/index.js';
 import { ChargeSchema, RefundPaymentSchema, ConfirmPaymentSchema } from './payment.dto.js';
 import { NotFoundError } from '../../../shared/errors/app-error.js';
 import { createModuleLogger } from '../../../shared/utils/logger.js';
+import { eventBus } from '../../../shared/event-bus/index.js';
 
 const log = createModuleLogger('payment-controller');
 
@@ -42,6 +43,24 @@ export async function confirmPaymentHandler(request: FastifyRequest, reply: Fast
     ipAddress: request.ip,
     userAgent: request.headers['user-agent'],
   });
+
+  if (result.confirmed && result.paymentStatus === 'paid') {
+    eventBus.emit('payment:completed', {
+      paymentId: body.paymentId,
+      userId,
+      amount: (result as any).amount || 0,
+      currency: (result as any).currency || 'EGP',
+      gateway: (result as any).gateway || 'unknown',
+    });
+  } else if (result.paymentStatus === 'failed') {
+    eventBus.emit('payment:failed', {
+      paymentId: body.paymentId,
+      userId,
+      amount: (result as any).amount || 0,
+      error: (result as any).error || 'Payment failed',
+    });
+  }
+
   return reply.send(result);
 }
 

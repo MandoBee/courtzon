@@ -24,6 +24,13 @@ export class NotificationRepository {
     categorySlug?: string;
     actionKey?: string;
     actionPayload?: Record<string, any>;
+    type?: string;
+    priority?: string;
+    organisationId?: number;
+    branchId?: number;
+    senderId?: number;
+    relatedEntityType?: string;
+    relatedEntityId?: string;
   }): Promise<number> {
     let categoryId: number | null = null;
     if (data.categorySlug) {
@@ -49,9 +56,18 @@ export class NotificationRepository {
     }
 
     const [result] = await this.pool.execute<ResultSetHeader>(
-      `INSERT INTO notifications (user_id, category_id, action_id, action_payload, title, body, icon, is_pushed)
-       VALUES (?, ?, ?, ?, ?, ?, ?, TRUE)`,
-      [data.userId, categoryId, actionId, data.actionPayload ? JSON.stringify(data.actionPayload) : null, data.title, data.body || null, data.icon || null]
+      `INSERT INTO notifications
+       (user_id, category_id, action_id, action_payload, title, body, icon, type, priority,
+        organization_id, branch_id, sender_id, related_entity_type, related_entity_id, is_pushed)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE)`,
+      [
+        data.userId, categoryId, actionId,
+        data.actionPayload ? JSON.stringify(data.actionPayload) : null,
+        data.title, data.body || null, data.icon || null,
+        data.type || 'info', data.priority || 'normal',
+        data.organisationId || null, data.branchId || null,
+        data.senderId || null, data.relatedEntityType || null, data.relatedEntityId || null,
+      ]
     );
 
     await this.pool.execute(
@@ -63,33 +79,54 @@ export class NotificationRepository {
     return result.insertId;
   }
 
-  async findByUser(userId: number, page = 1, limit = 20, actionKey?: string): Promise<{ data: any[]; total: number }> {
+  async findByUser(
+    userId: number,
+    page = 1,
+    limit = 20,
+    filters?: { actionKey?: string; type?: string; priority?: string; isRead?: boolean },
+  ): Promise<{ data: any[]; total: number }> {
     const pag = buildPagination(page, limit);
-    const countParams: any[] = [userId];
-    const dataParams: any[] = [userId];
+    const conditions: string[] = ['n.user_id = ?'];
+    const params: any[] = [userId];
 
-    let actionFilter = '';
-    if (actionKey) {
-      actionFilter = ' AND na.action_key = ?';
-      countParams.push(actionKey);
-      dataParams.push(actionKey);
+    if (filters?.actionKey) {
+      conditions.push('na.action_key = ?');
+      params.push(filters.actionKey);
     }
+    if (filters?.type) {
+      conditions.push('n.type = ?');
+      params.push(filters.type);
+    }
+    if (filters?.priority) {
+      conditions.push('n.priority = ?');
+      params.push(filters.priority);
+    }
+    if (filters?.isRead !== undefined) {
+      conditions.push('n.is_read = ?');
+      params.push(filters.isRead ? 1 : 0);
+    }
+
+    conditions.push('n.deleted_at IS NULL');
+
+    const where = conditions.join(' AND ');
 
     const [countRows] = await this.pool.execute<RowData>(
       `SELECT COUNT(*) as total FROM notifications n
        LEFT JOIN notification_actions na ON na.id = n.action_id
-       WHERE n.user_id = ?${actionFilter}`, countParams
+       WHERE ${where}`, params
     );
     const total = (countRows[0] as any).total;
+
     const [rows] = await this.pool.execute<RowData>(
       `SELECT n.*, nc.slug as category_slug, na.action_key
        FROM notifications n
        LEFT JOIN notification_categories nc ON nc.id = n.category_id
        LEFT JOIN notification_actions na ON na.id = n.action_id
-       WHERE n.user_id = ?${actionFilter}
+       WHERE ${where}
        ORDER BY n.created_at DESC${paginationClause(pag)}`,
-      dataParams,
+      params,
     );
+
     const parsed = (rows as any[]).map((r) => ({
       ...r,
       action_payload: typeof r.action_payload === 'string' ? safeParseJSON(r.action_payload) : r.action_payload,
@@ -99,7 +136,8 @@ export class NotificationRepository {
 
   async getUnreadCount(userId: number): Promise<number> {
     const [rows] = await this.pool.execute<RowData>(
-      'SELECT COUNT(*) as cnt FROM notifications WHERE user_id = ? AND is_read = FALSE', [userId]
+      'SELECT COUNT(*) as cnt FROM notifications WHERE user_id = ? AND is_read = FALSE AND deleted_at IS NULL',
+      [userId]
     );
     return (rows[0] as any).cnt;
   }
@@ -113,9 +151,47 @@ export class NotificationRepository {
 
   async markAllAsRead(userId: number): Promise<void> {
     await this.pool.execute(
-      'UPDATE notifications SET is_read = TRUE, read_at = NOW() WHERE user_id = ? AND is_read = FALSE',
+      'UPDATE notifications SET is_read = TRUE, read_at = NOW() WHERE user_id = ? AND is_read = FALSE AND deleted_at IS NULL',
       [userId]
     );
+  }
+
+  async archive(id: number, userId: number): Promise<void> {
+    await this.pool.execute(
+      'UPDATE notifications SET archived_at = NOW() WHERE id = ? AND user_id = ?',
+      [id, userId]
+    );
+  }
+
+  async archiveAll(userId: number): Promise<void> {
+    await this.pool.execute(
+      'UPDATE notifications SET archived_at = NOW() WHERE user_id = ? AND archived_at IS NULL AND deleted_at IS NULL',
+      [userId]
+    );
+  }
+
+  async softDelete(id: number, userId: number): Promise<void> {
+    await this.pool.execute(
+      'UPDATE notifications SET deleted_at = NOW() WHERE id = ? AND user_id = ?',
+      [id, userId]
+    );
+  }
+
+  async getFilters(userId: number): Promise<{ types: string[]; priorities: string[] }> {
+    const [typeRows] = await this.pool.execute<RowData>(
+      `SELECT DISTINCT n.type FROM notifications n
+       WHERE n.user_id = ? AND n.type IS NOT NULL AND n.type != '' AND n.deleted_at IS NULL
+       ORDER BY n.type`, [userId]
+    );
+    const [priorityRows] = await this.pool.execute<RowData>(
+      `SELECT DISTINCT n.priority FROM notifications n
+       WHERE n.user_id = ? AND n.priority IS NOT NULL AND n.deleted_at IS NULL
+       ORDER BY FIELD(n.priority, 'critical','high','normal','low')`, [userId]
+    );
+    return {
+      types: (typeRows as any[]).map((r: any) => r.type),
+      priorities: (priorityRows as any[]).map((r: any) => r.priority),
+    };
   }
 
   async getCategories(): Promise<any[]> {

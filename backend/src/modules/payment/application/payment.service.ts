@@ -8,6 +8,7 @@ import type { ChargeInput } from '../presentation/payment.dto.js';
 import type mysql from 'mysql2/promise';
 import { getPool } from '../../../database/mysql.js';
 import { createModuleLogger } from '../../../shared/utils/logger.js';
+import { eventBus } from '../../../shared/event-bus/index.js';
 
 const log = createModuleLogger('payment');
 
@@ -48,6 +49,15 @@ export class PaymentService {
       creditAccount: 'Revenue',
       amount: input.amount,
       description: `${input.referenceType} payment via wallet`,
+    });
+
+    eventBus.emit('payment:completed', {
+      paymentId,
+      userId,
+      amount: input.amount,
+      currency: 'EGP',
+      gateway: 'wallet',
+      organisationId: (input as any).organisationId,
     });
 
     log.info({ traceId, paymentId, userId, amount: input.amount, referenceType: input.referenceType }, 'Wallet payment completed');
@@ -218,7 +228,7 @@ export class PaymentService {
 
     // --- cancelled / expired → direct status update + cancel pending booking ---
     if (newStatus === 'cancelled' || newStatus === 'expired') {
-      return withTransaction(async (conn) => {
+      const result = await withTransaction(async (conn) => {
         const transaction = await paymentRepository.lockByGatewayRef(gatewayRef, conn);
         if (!transaction) throw new NotFoundError('Payment transaction');
         const [updateResult] = await conn.execute<mysql.ResultSetHeader>(
@@ -246,10 +256,11 @@ export class PaymentService {
         }
         return { idempotent: updateResult.affectedRows === 0 };
       });
+      return result;
     }
 
     // --- paid / failed → full outcome processing ---
-    return withTransaction(async (conn) => {
+    const paidResult = await withTransaction(async (conn) => {
       const transaction = await paymentRepository.lockByGatewayRef(gatewayRef, conn);
       if (!transaction) throw new NotFoundError('Payment transaction');
       return this._processPaymentOutcome(
@@ -257,6 +268,31 @@ export class PaymentService {
         gatewayRef, traceId, 'webhook', obj.status, obj.success,
       );
     });
+
+    if (!paidResult.idempotent) {
+      const txn = await paymentRepository.findByGatewayRef(gatewayRef);
+      if (txn) {
+        const userId = (txn as any).user_id;
+        if (newStatus === 'paid') {
+          eventBus.emit('payment:completed', {
+            paymentId: (txn as any).id,
+            userId,
+            amount: Number((txn as any).amount) || 0,
+            currency: (txn as any).currency || 'EGP',
+            gateway: 'paymob',
+          });
+        } else if (newStatus === 'failed') {
+          eventBus.emit('payment:failed', {
+            paymentId: (txn as any).id,
+            userId,
+            amount: Number((txn as any).amount) || 0,
+            error: 'Payment failed via webhook',
+          });
+        }
+      }
+    }
+
+    return paidResult;
   }
 
   /**
@@ -776,6 +812,12 @@ export class PaymentService {
       creditAccount: 'Cash',
       amount,
       description: reason || `Refund of ${amount}`,
+    });
+
+    eventBus.emit('payment:refunded', {
+      paymentId,
+      userId: (transaction as any).user_id,
+      amount,
     });
 
     log.info({ traceId, paymentId, amount, reason }, 'Payment refunded');
