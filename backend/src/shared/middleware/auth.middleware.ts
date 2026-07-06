@@ -151,11 +151,15 @@ export async function resolveSessionUserId(request: FastifyRequest): Promise<num
 }
 
 const PUBLIC_PREFIXES = [
-  '/public/', '/health', '/auth/', '/payments/webhook',
+  '/public/', '/health', '/payments/webhook',
   '/openapi.json', '/docs', '/uploads/',
   '/sports', '/countries', '/languages', '/currencies',
   '/provinces', '/cities', '/banks', '/amenities',
   '/player-levels',
+  '/auth/login', '/auth/register', '/auth/refresh',
+  '/auth/logout', '/auth/check-uniqueness',
+  '/auth/request-reactivation', '/auth/forgot-password',
+  '/auth/reset-password',
 ];
 
 export async function authMiddleware(request: FastifyRequest, reply: FastifyReply) {
