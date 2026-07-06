@@ -137,6 +137,7 @@ export default function PlayerRegisterPage() {
         mainSportId: form.mainSportId,
         mainLevelId: form.mainLevelId,
         interestedSportIds: form.interestedSportIds,
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       });
       setSuccess(true);
     } catch (err: unknown) {

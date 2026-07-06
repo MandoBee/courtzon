@@ -22,9 +22,11 @@ export function buildAuthRegisterPayload(form: {
   birthDate: string;
   orgWebsite?: string;
   orgEmail?: string;
+  timezone?: string;
 }) {
   const website = normalizeOptionalWebsiteUrl(form.orgWebsite || '');
   const orgEmail = (form.orgEmail || '').trim();
+  const timezone = form.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
   return {
     countryId: form.countryId,
     phoneNumber: normalizePhoneDigits(form.phoneNumber),
@@ -33,6 +35,7 @@ export function buildAuthRegisterPayload(form: {
     password: form.password,
     gender: form.gender as 'male' | 'female',
     birthDate: form.birthDate,
+    timezone,
     ...(website ? { orgWebsite: website } : { orgWebsite: '' as const }),
     ...(orgEmail ? { orgEmail } : {}),
   };

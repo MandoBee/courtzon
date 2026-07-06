@@ -138,7 +138,7 @@ export class AuthService {
       throw err;
     }
 
-    await userRepository.createPlayerProfile(userId, null, null);
+    await userRepository.createPlayerProfile(userId, (input as any).mainSportId || null, (input as any).mainLevelId || null);
     await userRepository.createWallet(userId);
     await userRepository.assignPlayerRole(userId);
 
@@ -230,7 +230,7 @@ export class AuthService {
       throw err;
     }
 
-    await userRepository.createPlayerProfile(userId, null, null);
+    await userRepository.createPlayerProfile(userId, (input as any).mainSportId || null, (input as any).mainLevelId || null);
     await userRepository.createWallet(userId);
     await userRepository.assignPlayerRole(userId);
 

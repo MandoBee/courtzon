@@ -67,7 +67,7 @@ function AddressFormModal({ open, address, onClose, onDone }: { open: boolean; a
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center" onClick={onClose}>
+    <div className="fixed inset-0 z-[70] bg-black/40 flex items-center justify-center" onClick={onClose}>
       <div className="bg-[var(--color-surface)] rounded-xl shadow-xl p-6 w-full max-w-md mx-4" onClick={(e) => e.stopPropagation()}>
         <h3 className="text-sm font-semibold mb-4 text-[var(--color-text)]">{isEdit ? 'Edit Shipping Address' : 'New Shipping Address'}</h3>
         <div className="space-y-3">
@@ -331,7 +331,7 @@ export default function CartPage() {
 
       {/* Payment confirming overlay (usePaymentConfirm hook state) */}
       {(confirmState === 'confirming' || confirmState === 'polling') && (
-        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center">
+        <div className="fixed inset-0 z-[70] bg-black/40 flex items-center justify-center">
           <div className="bg-[var(--color-surface)] rounded-xl shadow-xl p-6 text-center space-y-3">
             <div className="animate-spin w-8 h-8 border-4 border-[var(--color-primary)] border-t-transparent rounded-full mx-auto" />
             <p className="text-sm text-[var(--color-text-muted)]">

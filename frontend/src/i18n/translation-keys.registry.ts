@@ -687,6 +687,11 @@ export const translationKeysRegistry: TranslationKeyEntry[] = [
   { key: 'landing.contact.specify_referral', defaultValue: 'Please specify *', moduleSlug: 'landing', elementType: 'label', elementLabel: 'Contact specify referral' },
   { key: 'landing.contact.sending', defaultValue: 'Sending\u2026', moduleSlug: 'landing', elementType: 'text', elementLabel: 'Contact sending' },
   { key: 'landing.contact.send', defaultValue: 'Send message', moduleSlug: 'landing', elementType: 'button', elementLabel: 'Contact send button' },
+  { key: 'landing.contact_email', defaultValue: 'Info', moduleSlug: 'landing', elementType: 'nav', elementLabel: 'Landing contact email nav' },
+
+  // Landing mobile
+  { key: 'landing.mobile.close_menu', defaultValue: 'Close menu', moduleSlug: 'landing', elementType: 'button', elementLabel: 'Landing mobile close menu' },
+  { key: 'landing.mobile.open_menu', defaultValue: 'Open main menu', moduleSlug: 'landing', elementType: 'button', elementLabel: 'Landing mobile open menu' },
 
   // Auth — register (extended)
   { key: 'auth.register.password_mismatch', defaultValue: 'Passwords do not match', moduleSlug: 'auth', elementType: 'message', elementLabel: 'Register password mismatch' },
@@ -695,6 +700,9 @@ export const translationKeysRegistry: TranslationKeyEntry[] = [
   { key: 'common.select_country', defaultValue: 'Select country...', moduleSlug: 'common', elementType: 'placeholder', elementLabel: 'Common select country' },
   { key: 'common.yes', defaultValue: 'Yes', moduleSlug: 'common', elementType: 'label', elementLabel: 'Common yes' },
   { key: 'common.no', defaultValue: 'No', moduleSlug: 'common', elementType: 'label', elementLabel: 'Common no' },
+  { key: 'common.pageNotFound', defaultValue: 'Page Not Found', moduleSlug: 'common', elementType: 'heading', elementLabel: 'Common 404 title' },
+  { key: 'common.pageNotFoundDescription', defaultValue: "The page you're looking for doesn't exist or has been moved.", moduleSlug: 'common', elementType: 'text', elementLabel: 'Common 404 description' },
+  { key: 'common.backHome', defaultValue: 'Back to Home', moduleSlug: 'common', elementType: 'button', elementLabel: 'Common 404 back home' },
 
   // Profile — coach
   { key: 'profile.coach.not_found', defaultValue: 'Coach profile not found.', moduleSlug: 'profile', elementType: 'text', elementLabel: 'Profile coach not found' },
