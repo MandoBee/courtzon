@@ -38,4 +38,38 @@ export const notificationsApi = {
 
   updatePreferences: (preferences: any[]) =>
     api.put('/notification-preferences', { preferences }).then((r) => r.data),
+
+  getReconnectQueue: () =>
+    api.get('/notifications/reconnect-queue').then((r) => r.data),
+
+  trackEvent: (eventType: string, payload: any) =>
+    api.post('/notifications/track', { eventType, ...payload }).then((r) => r.data),
+
+  sendBroadcast: (data: {
+    title: string; body: string; type?: string; priority?: string;
+    actionKey?: string; routePattern?: string; imageUrls?: Record<string, string>;
+    actions?: any[]; target: any; scheduledAt?: string;
+  }) =>
+    api.post('/admin/notifications/broadcast', data).then((r) => r.data),
+
+  getBroadcasts: (activeOnly: boolean = false, page: number = 1, limit: number = 50) =>
+    api.get(`/admin/notifications/broadcasts?active_only=${activeOnly}&page=${page}&limit=${limit}`).then((r) => r.data),
+
+  cancelBroadcast: (id: number) =>
+    api.put(`/admin/notifications/broadcasts/${id}/cancel`).then((r) => r.data),
+
+  getAnalytics: (filters?: { eventType?: string; from?: string; to?: string }) => {
+    let url = '/admin/notifications/analytics';
+    if (filters?.eventType) url += `&event_type=${encodeURIComponent(filters.eventType)}`;
+    if (filters?.from) url += `&from=${encodeURIComponent(filters.from)}`;
+    if (filters?.to) url += `&to=${encodeURIComponent(filters.to)}`;
+    url = url.replace('?&', '?');
+    return api.get(url).then((r) => r.data);
+  },
+
+  getDeadLetters: (resolved = false) =>
+    api.get(`/admin/notifications/dead-letters?resolved=${resolved}`).then((r) => r.data),
+
+  resolveDeadLetter: (id: number) =>
+    api.put(`/admin/notifications/dead-letters/${id}/resolve`).then((r) => r.data),
 };

@@ -2,6 +2,7 @@ import { app } from "./app.js";
 
 import { env } from "./config/env.js";
 import { registerHandler, startWorker, closeWorker } from "./infrastructure/queue/worker.js";
+import { NOTIFICATION_QUEUE_NAME } from "./infrastructure/queue/queue.service.js";
 import { setupRealtime } from "./realtime/index.js";
 import { notificationEngine } from "./modules/notifications/application/notification-engine.js";
 import { sendEmail } from "./shared/services/mailer.service.js";
@@ -10,16 +11,33 @@ import { handleRunSettlements } from "./modules/settlement/infrastructure/settle
 import { handleAutoCompleteBookings } from "./modules/booking/infrastructure/booking-auto-complete.worker.js";
 import { handleSyncPendingPayments, handleExpireStalePayments, handleCleanupBookingIntents } from "./modules/payment/infrastructure/payment-cron.worker.js";
 import { runDatabaseBackup } from "./infrastructure/backup/backup.service.js";
+import {
+  handleProcessNotification, handleSendNotificationBatch,
+  handleProcessNotificationDigest, handleSendScheduledNotification,
+  handleProcessDeadLetter, handleRetryFailedDeliveries,
+} from "./modules/notifications/infrastructure/notification.worker.js";
+import { processDueDigests } from "./modules/notifications/application/digest.service.js";
+import { runCleanupPolicies } from "./modules/notifications/application/cleanup.service.js";
+import { loadFeatureFlags } from "./modules/notifications/application/feature-flags.service.js";
 import { queueService } from "./infrastructure/queue/queue.service.js";
+import { registerProvider } from "./modules/notifications/infrastructure/providers/provider.interface.js";
+import { InAppProvider } from "./modules/notifications/infrastructure/providers/in-app.provider.js";
+import { PushProvider } from "./modules/notifications/infrastructure/providers/push.provider.js";
+import { EmailProvider } from "./modules/notifications/infrastructure/providers/email.provider.js";
+import { SMSProvider } from "./modules/notifications/infrastructure/providers/sms.provider.js";
+import { WhatsAppProvider } from "./modules/notifications/infrastructure/providers/whatsapp.provider.js";
+import { WebhookProvider } from "./modules/notifications/infrastructure/providers/webhook.provider.js";
 import { closePool } from "./database/mysql.js";
 import { closeRedisClient } from "./infrastructure/redis/redis.client.js";
 import { validateDatabaseSchema } from "./infrastructure/startup/startup-validator.js";
 
 let worker: any;
+let notificationWorker: any;
 
 async function shutdown(signal: string) {
   app.log.info(`${signal} received, shutting down...`);
   if (worker) await closeWorker(worker);
+  if (notificationWorker) await closeWorker(notificationWorker);
   await queueService.close();
   await closeRedisClient();
   await closePool();
@@ -39,6 +57,26 @@ async function bootstrap() {
     registerHandler('expire_stale_payments', handleExpireStalePayments);
     registerHandler('cleanup_booking_intents', handleCleanupBookingIntents);
 
+    registerHandler('process_notification', handleProcessNotification);
+    registerHandler('send_notification_batch', handleSendNotificationBatch);
+    registerHandler('process_notification_digest', handleProcessNotificationDigest);
+    registerHandler('send_scheduled_notification', handleSendScheduledNotification);
+    registerHandler('process_dead_letter', handleProcessDeadLetter);
+    registerHandler('retry_failed_deliveries', handleRetryFailedDeliveries);
+    registerHandler('trigger_digest_processing', processDueDigests);
+    registerHandler('run_cleanup', async (_data: Record<string, never>) => {
+      await runCleanupPolicies();
+    });
+
+    registerProvider(new InAppProvider());
+    registerProvider(new PushProvider());
+    registerProvider(new EmailProvider());
+    registerProvider(new SMSProvider());
+    registerProvider(new WhatsAppProvider());
+    registerProvider(new WebhookProvider());
+
+    await loadFeatureFlags();
+
     const validation = await validateDatabaseSchema();
     if (!validation.ok) {
       app.log.error(
@@ -53,6 +91,7 @@ async function bootstrap() {
     }
 
     worker = startWorker('default');
+    notificationWorker = startWorker(NOTIFICATION_QUEUE_NAME);
 
     await app.listen({
       port: env.PORT,
@@ -63,6 +102,15 @@ async function bootstrap() {
 
     const io = setupRealtime(app);
     app.log.info('Socket.IO initialized');
+
+    try {
+      const { seedTemplates } = await import("./modules/notifications/application/template.service.js");
+      await seedTemplates();
+      app.log.info('Notification templates seeded');
+    } catch (err: any) {
+      app.log.warn(`Template seeding skipped: ${err.message}`);
+    }
+
     notificationEngine.start();
     app.log.info('Notification engine started');
 
@@ -107,6 +155,27 @@ async function bootstrap() {
     // Intent cleanup — daily at 03:00 UTC
     await queueService.add('cleanup_booking_intents', {}, {
       repeat: { pattern: '0 3 * * *' },
+      removeOnComplete: true,
+      removeOnFail: { age: 604800 },
+    });
+
+    // Digest processing — every 2 minutes
+    await queueService.add('trigger_digest_processing', {}, {
+      repeat: { every: 120_000 },
+      removeOnComplete: true,
+      removeOnFail: { age: 86400 },
+    });
+
+    // Dead letter retry — every 5 minutes
+    await queueService.add('retry_failed_deliveries', {}, {
+      repeat: { every: 300_000 },
+      removeOnComplete: true,
+      removeOnFail: { age: 86400 },
+    });
+
+    // Cleanup policies — daily at 04:00 UTC
+    await queueService.add('run_cleanup', {}, {
+      repeat: { pattern: '0 4 * * *' },
       removeOnComplete: true,
       removeOnFail: { age: 604800 },
     });

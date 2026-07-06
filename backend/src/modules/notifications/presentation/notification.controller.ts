@@ -73,3 +73,36 @@ export async function updateNotificationPreferencesHandler(request: FastifyReque
   await notificationService.updatePreferences(userId, body.preferences);
   return reply.send({ success: true });
 }
+
+export async function reconnectQueueHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = (request as any).userId;
+  const { getReconnectQueue: getQueue } = await import('../application/presence.service.js');
+  const ids = await getQueue(userId);
+
+  if (!ids.length) return reply.send({ notifications: [] });
+
+  const { getPool } = await import('../../../database/mysql.js');
+  const pool = getPool();
+  const [rows] = await pool.execute(
+    `SELECT * FROM notifications WHERE id IN (${ids.map(() => '?').join(',')}) AND deleted_at IS NULL`,
+    ids,
+  );
+  return reply.send({ notifications: rows });
+}
+
+export async function trackEventHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = (request as any).userId;
+  const body = request.body as any;
+  const { eventType, notificationId, actionKey, actionPayload } = body || {};
+
+  const { recordAnalytics } = await import('../infrastructure/repositories/delivery.repository.js');
+  await recordAnalytics(notificationId, userId, eventType, 'in_app', { actionKey, actionPayload });
+
+  if (eventType === 'read') {
+    try {
+      await notificationService.markAsRead(notificationId, userId);
+    } catch { }
+  }
+
+  return reply.send({ success: true });
+}

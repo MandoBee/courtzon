@@ -7,6 +7,7 @@ interface NotificationState {
   items: AppNotification[];
   unreadCount: number;
   initialized: boolean;
+  connected: boolean;
   init: () => void;
   destroy: () => void;
   addNotification: (n: AppNotification) => void;
@@ -14,12 +15,16 @@ interface NotificationState {
   setUnreadCount: (count: number) => void;
   prependNotification: (n: AppNotification) => void;
   clearAll: () => void;
+  handleReconnectSync: () => Promise<void>;
+  markAsRead: (id: number) => Promise<void>;
+  handleAction: (notificationId: number, actionKey: string, actionPayload?: any) => void;
 }
 
 export const useNotificationStore = create<NotificationState>((set, get) => ({
   items: [],
   unreadCount: 0,
   initialized: false,
+  connected: false,
 
   init: () => {
     if (get().initialized) return;
@@ -31,7 +36,8 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
       const state = get();
       const exists = state.items.some((n) => n.id === notification.id);
       if (!exists) {
-        set({ items: [notification, ...state.items], unreadCount: state.unreadCount + 1 });
+        const enriched = enrichNotification(notification);
+        set({ items: [enriched, ...state.items], unreadCount: state.unreadCount + 1 });
       }
     });
 
@@ -39,19 +45,28 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
       get().refreshUnreadCount();
     });
 
+    socketService.on('connect', () => {
+      set({ connected: true });
+      get().handleReconnectSync();
+    });
+
+    socketService.on('disconnect', () => {
+      set({ connected: false });
+    });
+
     get().refreshUnreadCount();
   },
 
   destroy: () => {
     socketService.disconnect();
-    set({ initialized: false, items: [], unreadCount: 0 });
+    set({ initialized: false, items: [], unreadCount: 0, connected: false });
   },
 
   addNotification: (n: AppNotification) => {
     const state = get();
     const exists = state.items.some((item) => item.id === n.id);
     if (!exists) {
-      set({ items: [n, ...state.items] });
+      set({ items: [enrichNotification(n), ...state.items] });
     }
   },
 
@@ -68,9 +83,56 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
     const state = get();
     const exists = state.items.some((item) => item.id === n.id);
     if (!exists) {
-      set({ items: [n, ...state.items], unreadCount: state.unreadCount + 1 });
+      set({ items: [enrichNotification(n), ...state.items], unreadCount: state.unreadCount + 1 });
     }
   },
 
   clearAll: () => set({ items: [], unreadCount: 0 }),
+
+  handleReconnectSync: async () => {
+    try {
+      const data = await notificationsApi.getReconnectQueue();
+      if (data?.notifications?.length) {
+        const state = get();
+        const newItems = data.notifications
+          .map(enrichNotification)
+          .filter((n: AppNotification) => !state.items.some((existing) => existing.id === n.id));
+        if (newItems.length) {
+          set({
+            items: [...newItems, ...state.items],
+            unreadCount: state.unreadCount + newItems.length,
+          });
+        }
+      }
+    } catch { }
+  },
+
+  markAsRead: async (id: number) => {
+    try {
+      await notificationsApi.markAsRead(id);
+      set((state) => ({
+        items: state.items.map((n) => (n.id === id ? { ...n, is_read: true } : n)),
+        unreadCount: Math.max(0, state.unreadCount - 1),
+      }));
+      notificationsApi.trackEvent('read', { notificationId: id });
+    } catch { }
+  },
+
+  handleAction: (notificationId: number, actionKey: string, actionPayload?: any) => {
+    notificationsApi.trackEvent('clicked', { notificationId, actionKey, actionPayload });
+    get().markAsRead(notificationId);
+  },
 }));
+
+function enrichNotification(n: any): AppNotification {
+  return {
+    ...n,
+    actions: typeof n.actions === 'string' ? safeParse(n.actions) : n.actions,
+    image_urls: typeof n.image_urls === 'string' ? safeParse(n.image_urls) : n.image_urls,
+    action_payload: typeof n.action_payload === 'string' ? safeParse(n.action_payload) : n.action_payload,
+  };
+}
+
+function safeParse(v: string): any {
+  try { return JSON.parse(v); } catch { return null; }
+}

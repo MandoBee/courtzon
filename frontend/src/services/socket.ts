@@ -27,10 +27,12 @@ class SocketService {
 
     this.socket.on('connect', () => {
       this._connected = true;
+      this.emitLocal('connect');
     });
 
     this.socket.on('disconnect', () => {
       this._connected = false;
+      this.emitLocal('disconnect');
     });
 
     this.socket.on('connect_error', () => { });
@@ -63,6 +65,15 @@ class SocketService {
 
   emit(event: string, ...args: any[]): void {
     this.socket?.emit(event, ...args);
+  }
+
+  private emitLocal(event: string, ...args: any[]): void {
+    const handlers = this.listeners.get(event);
+    if (handlers) {
+      for (const handler of handlers) {
+        handler(...args);
+      }
+    }
   }
 }
 

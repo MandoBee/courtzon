@@ -7,26 +7,130 @@ export interface BaseEvent {
 }
 
 export interface DomainEventMap {
+  // Bookings
   'booking:created': BaseEvent & { bookingId: number; userId: number; courtId: number; startTime: Date; endTime: Date; organisationId?: number; branchId?: number };
   'booking:confirmed': BaseEvent & { bookingId: number; userId: number; organisationId?: number; branchId?: number };
   'booking:cancelled': BaseEvent & { bookingId: number; userId: number; reason?: string; organisationId?: number; branchId?: number };
-  'booking:expired': BaseEvent & { bookingId: number; userId: number };
+  'booking:completed': BaseEvent & { bookingId: number; userId: number; organisationId?: number };
+  'booking:expired': BaseEvent & { bookingId: number; userId: number; organisationId?: number };
+  'booking:no-show': BaseEvent & { bookingId: number; userId: number; organisationId?: number };
+  'booking:check-in': BaseEvent & { bookingId: number; userId: number; organisationId?: number };
+  'booking:reminder': BaseEvent & { bookingId: number; userId: number; startTime: Date; organisationId?: number };
+  'booking:matchmaking-complete': BaseEvent & { bookingId: number; userId: number; matchedPlayers: number; maxPlayers: number };
+
+  // Payments
   'payment:completed': BaseEvent & { paymentId: number; userId: number; amount: number; currency: string; gateway: string; organisationId?: number };
   'payment:failed': BaseEvent & { paymentId: number; userId: number; amount: number; currency?: string; error: string; organisationId?: number };
   'payment:refunded': BaseEvent & { paymentId: number; userId: number; amount: number; organisationId?: number };
+  'payment:wallet-credited': BaseEvent & { walletId: number; userId: number; amount: number; balance: number };
+  'payment:wallet-debited': BaseEvent & { walletId: number; userId: number; amount: number; balance: number };
+  'payment:wallet-low-balance': BaseEvent & { userId: number; balance: number; currency: string };
+
+  // Marketplace
   'marketplace:order-placed': BaseEvent & { orderId: number; userId: number; sellerId: number; total: number; organisationId?: number };
-  'marketplace:order-status-changed': BaseEvent & { orderId: number; userId: number; status: string; organisationId?: number };
+  'marketplace:order-confirmed': BaseEvent & { orderId: number; userId: number; sellerId: number };
+  'marketplace:order-shipped': BaseEvent & { orderId: number; userId: number; trackingNumber?: string };
+  'marketplace:order-delivered': BaseEvent & { orderId: number; userId: number };
+  'marketplace:order-cancelled': BaseEvent & { orderId: number; userId: number; reason?: string };
   'marketplace:new-review': BaseEvent & { reviewId: number; productId: number; reviewedUserId: number; rating: number };
-  'user:registered': BaseEvent & { userId: number; email: string };
+  'marketplace:product-back-in-stock': BaseEvent & { productId: number; userId: number; productName: string };
+  'marketplace:price-drop': BaseEvent & { productId: number; userId: number; oldPrice: number; newPrice: number; productName: string };
+  'marketplace:flash-sale': BaseEvent & { productId: number; userId: number; discountPercent: number; productName: string; endsAt: Date };
+  'marketplace:new-seller-registered': BaseEvent & { sellerId: number; userId: number; shopName: string };
+
+  // User & Auth
+  'user:registered': BaseEvent & { userId: number; email: string; role?: string };
   'user:approved': BaseEvent & { userId: number; role: string };
-  'system:announcement': BaseEvent & { title: string; body: string; targetRole?: string; targetUserId?: number };
+  'user:suspended': BaseEvent & { userId: number; reason?: string };
+  'user:reactivated': BaseEvent & { userId: number };
+  'user:deleted': BaseEvent & { userId: number };
+  'auth:login': BaseEvent & { userId: number; ip: string };
+  'auth:login-failed': BaseEvent & { email: string; ip: string };
+  'auth:password-changed': BaseEvent & { userId: number };
+  'auth:mfa-enabled': BaseEvent & { userId: number; method: string };
+  'auth:mfa-disabled': BaseEvent & { userId: number };
+
+  // Organisations
+  'organisation:created': BaseEvent & { organisationId: number; ownerId: number; name: string };
+  'organisation:updated': BaseEvent & { organisationId: number; userId: number };
+  'organisation:approved': BaseEvent & { organisationId: number; name: string };
+  'organisation:suspended': BaseEvent & { organisationId: number; reason?: string };
+  'organisation:member-joined': BaseEvent & { organisationId: number; userId: number; role: string };
+  'organisation:member-left': BaseEvent & { organisationId: number; userId: number };
+  'organisation:subscription-expiring': BaseEvent & { organisationId: number; daysLeft: number; planName: string };
+
+  // Club / Academy / Coaching
+  'club:member-joined': BaseEvent & { clubId: number; userId: number; clubName: string };
+  'club:member-left': BaseEvent & { clubId: number; userId: number };
+  'club:new-event': BaseEvent & { eventId: number; clubId: number; title: string; date: Date };
+  'academy:enrolled': BaseEvent & { academyId: number; userId: number; studentName: string };
+  'academy:session-reminder': BaseEvent & { sessionId: number; userId: number; startTime: Date; academyName: string };
+  'coaching:session-scheduled': BaseEvent & { sessionId: number; coachId: number; userId: number; startTime: Date };
+  'coaching:session-cancelled': BaseEvent & { sessionId: number; userId: number; reason?: string };
+  'coaching:session-reminder': BaseEvent & { sessionId: number; userId: number; startTime: Date; coachName: string };
+
+  // Tournaments & Matches
+  'tournament:created': BaseEvent & { tournamentId: number; userId: number; name: string };
+  'tournament:starting-soon': BaseEvent & { tournamentId: number; userId: number; name: string; startDate: Date };
+  'tournament:registration-open': BaseEvent & { tournamentId: number; name: string };
+  'tournament:match-scheduled': BaseEvent & { matchId: number; userId: number; opponent: string; date: Date };
+  'tournament:result': BaseEvent & { matchId: number; userId: number; result: string; ranking?: number };
+  'match:invitation': BaseEvent & { matchId: number; userId: number; invitedBy: number; startTime: Date };
+
+  // Communities & Friends
+  'community:new-post': BaseEvent & { postId: number; userId: number; communityName: string };
+  'community:new-comment': BaseEvent & { commentId: number; postId: number; userId: number; authorName: string };
+  'community:mention': BaseEvent & { userId: number; mentionedBy: number; postId: number };
+  'friend:request': BaseEvent & { friendId: number; userId: number; fromUserId: number; fromUserName: string };
+  'friend:accepted': BaseEvent & { friendId: number; userId: number; byUserId: number };
+
+  // Chat & Messages
+  'chat:new-message': BaseEvent & { conversationId: number; userId: number; senderName: string; preview: string };
+  'chat:missed-call': BaseEvent & { conversationId: number; userId: number; callerName: string };
+
+  // Membership & Subscriptions
+  'membership:expiring': BaseEvent & { membershipId: number; userId: number; daysLeft: number; type: string };
+  'membership:expired': BaseEvent & { membershipId: number; userId: number; type: string };
+  'membership:renewed': BaseEvent & { membershipId: number; userId: number; type: string };
+  'subscription:renewal-reminder': BaseEvent & { subscriptionId: number; userId: number; daysLeft: number; planName: string };
+  'subscription:upgraded': BaseEvent & { subscriptionId: number; userId: number; planName: string };
+  'subscription:cancelled': BaseEvent & { subscriptionId: number; userId: number; planName: string };
+
+  // Wallet & Finance
+  'wallet:deposit': BaseEvent & { walletId: number; userId: number; amount: number; balance: number };
+  'wallet:withdrawal': BaseEvent & { walletId: number; userId: number; amount: number; balance: number };
+  'wallet:low-balance': BaseEvent & { userId: number; balance: number; currency: string };
+  'settlement:completed': BaseEvent & { settlementId: number; organisationId: number; amount: number };
+  'settlement:failed': BaseEvent & { settlementId: number; organisationId: number; reason: string };
+
+  // Reviews & Ratings
+  'review:received': BaseEvent & { reviewId: number; entityId: number; userId: number; rating: number; entityType: string };
+
+  // Attendance
+  'attendance:recorded': BaseEvent & { attendanceId: number; userId: number; sessionId: number; status: string };
+
+  // Support
+  'support:ticket-opened': BaseEvent & { ticketId: number; userId: number; subject: string };
+  'support:ticket-updated': BaseEvent & { ticketId: number; userId: number; status: string };
+  'support:ticket-resolved': BaseEvent & { ticketId: number; userId: number };
+
+  // Security
+  'security:suspicious-login': BaseEvent & { userId: number; ip: string; location?: string };
+  'security:account-locked': BaseEvent & { userId: number; reason: string };
+  'security:permission-changed': BaseEvent & { userId: number; changedBy: number; roleId: number };
+
+  // System
+  'system:announcement': BaseEvent & { title: string; body: string; targetRole?: string; targetUserId?: number; targetOrgId?: number; targetBranchId?: number };
+  'system:maintenance': BaseEvent & { title: string; body: string; startAt: Date; endAt: Date };
+  'system:birthday': BaseEvent & { userId: number; name: string };
+  'system:digest': BaseEvent & { userId: number; notifications: Array<{ id: number; title: string; categorySlug: string }> };
 }
 
 export type DomainEventName = keyof DomainEventMap;
 
 class EventBus {
   private emitter = new EventEmitter();
-  private maxListeners = 100;
+  private maxListeners = 200;
 
   constructor() {
     this.emitter.setMaxListeners(this.maxListeners);

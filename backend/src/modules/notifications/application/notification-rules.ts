@@ -12,7 +12,7 @@ export interface NotificationTemplate {
   resolveRelatedEntity?: (data: any) => { type: string; id: string } | null;
 }
 
-export function getTemplate(event: DomainEventName): NotificationTemplate | null {
+export function getTemplate(event: string): NotificationTemplate | null {
   const template = rules[event];
   return template || null;
 }
@@ -38,7 +38,7 @@ export function formatActionPayload(template: NotificationTemplate, data: any): 
   return params;
 }
 
-const rules: Partial<Record<DomainEventName, NotificationTemplate>> = {
+const rules: Partial<Record<string, NotificationTemplate>> = {
   'booking:created': {
     categorySlug: 'bookings',
     type: 'info',
@@ -165,14 +165,14 @@ const rules: Partial<Record<DomainEventName, NotificationTemplate>> = {
     type: 'info',
     priority: 'normal',
     title: 'Order Status Updated',
-    body: (d: DomainEventMap['marketplace:order-status-changed']) =>
+    body: (d: any) =>
       `Order #${d.orderId} status changed to ${d.status}.`,
     actionKey: 'view_order',
     routePattern: '/marketplace/orders/:orderId',
-    resolveRecipients: (d: DomainEventMap['marketplace:order-status-changed']) => [
+    resolveRecipients: (d: any) => [
       { userId: d.userId },
     ],
-    resolveRelatedEntity: (d: DomainEventMap['marketplace:order-status-changed']) => ({ type: 'order', id: String(d.orderId) }),
+    resolveRelatedEntity: (d: any) => ({ type: 'order', id: String(d.orderId) }),
   },
 
   'marketplace:new-review': {

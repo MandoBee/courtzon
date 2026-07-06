@@ -1,5 +1,7 @@
 import { Server as SocketIOServer } from 'socket.io';
 import type { FastifyInstance } from 'fastify';
+import { setOnlineWithReconnect, setOffline } from '../modules/notifications/application/presence.service.js';
+import { registerUserDevice } from '../modules/notifications/application/cross-device-sync.service.js';
 
 let io: SocketIOServer | null = null;
 
@@ -27,6 +29,10 @@ export function setupRealtime(app: FastifyInstance): SocketIOServer {
     transports: ['websocket', 'polling'],
     pingInterval: 25000,
     pingTimeout: 20000,
+    connectionStateRecovery: {
+      maxDisconnectionDuration: 120000,
+      skipMiddlewares: false,
+    },
   });
 
   io.use(async (socket, next) => {
@@ -59,12 +65,49 @@ export function setupRealtime(app: FastifyInstance): SocketIOServer {
     const userId = socket.data.userId;
     const role = socket.data.role;
     const orgId = socket.data.organisationId;
+    const deviceId = socket.handshake.query.deviceId as string || socket.id;
 
     socket.join(`user:${userId}`);
     if (role) socket.join(`role:${role}`);
     if (orgId) socket.join(`org:${orgId}`);
 
-    socket.on('disconnect', () => { });
+    socket.on('device:register', async (data) => {
+      const { platform, browser, os, userAgent, pushToken, pushProvider } = data || {};
+      try {
+        const { registerDevice } = await import('../modules/notifications/application/device.service.js');
+        await registerDevice(userId, deviceId, { platform, browser, os, userAgent, pushToken, pushProvider });
+      } catch {}
+    });
+
+    socket.on('notification:read', async (data) => {
+      const { notificationId } = data || {};
+      if (!notificationId) return;
+      try {
+        const { syncNotificationRead } = await import('../modules/notifications/application/cross-device-sync.service.js');
+        await syncNotificationRead(userId, notificationId, deviceId);
+      } catch {}
+    });
+
+    socket.on('notification:delete', async (data) => {
+      const { notificationId } = data || {};
+      if (!notificationId) return;
+      try {
+        const { syncNotificationDeleted } = await import('../modules/notifications/application/cross-device-sync.service.js');
+        await syncNotificationDeleted(userId, notificationId, deviceId);
+      } catch {}
+    });
+
+    socket.on('disconnect', () => {
+      setOffline(userId).catch(() => {});
+    });
+
+    setOnlineWithReconnect(userId).then((ids) => {
+      if (ids.length) {
+        socket.emit('notification:reconnect-queue', { ids });
+      }
+    }).catch(() => {});
+
+    registerUserDevice(userId, deviceId).catch(() => {});
   });
 
   return io;
