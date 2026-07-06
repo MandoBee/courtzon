@@ -3,6 +3,7 @@ import { authMiddleware } from '../../../shared/middleware/auth.middleware.js';
 import * as ctrl from './notification.controller.js';
 import * as broadcastCtrl from './admin-broadcast.controller.js';
 import * as enterpriseCtrl from './enterprise-admin.controller.js';
+import * as monitoringCtrl from './monitoring.controller.js';
 
 export async function notificationRoutes(app: FastifyInstance): Promise<void> {
   app.addHook('preHandler', authMiddleware);
@@ -79,4 +80,8 @@ export async function notificationRoutes(app: FastifyInstance): Promise<void> {
 
   // Audit trail
   app.get('/admin/notifications/audit-trail', enterpriseCtrl.getAuditTrailHandler);
+
+  // Client error reporting & web vitals
+  app.post('/client/errors', monitoringCtrl.reportClientError);
+  app.post('/client/web-vitals', monitoringCtrl.reportWebVitals);
 }

@@ -1,0 +1,54 @@
+groups:
+  - name: courtzon-backend
+    rules:
+      - alert: BackendDown
+        expr: up{job="courtzon-backend"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Backend is down"
+          description: "Backend has been unreachable for more than 1 minute"
+
+      - alert: HighErrorRate
+        expr: rate(courtzon_http_requests_total{status_code=~"5.."}[5m]) / rate(courtzon_http_requests_total[5m]) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "High HTTP 5xx error rate"
+          description: "5xx error rate is {{ $value | humanizePercentage }} over the last 5 minutes"
+
+      - alert: ElevatedErrors
+        expr: rate(courtzon_http_requests_total{status_code=~"5.."}[2m]) > 0.1
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Elevated error rate"
+          description: "5xx rate is {{ $value }} errors/second"
+
+      - alert: HighLatency
+        expr: histogram_quantile(0.95, rate(courtzon_http_request_duration_seconds_bucket[5m])) > 2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High API latency"
+          description: "p95 latency is {{ $value | humanizeDuration }}"
+
+      - alert: NotificationDeliveryFailure
+        expr: rate(courtzon_http_requests_total{method="POST",route_template="/admin/notifications/broadcast",status_code=~"5.."}[5m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Notification broadcast failures detected"
+
+      - alert: RedisUnavailable
+        expr: up{job="prometheus"} unless absent(up{job="courtzon-backend"})
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Redis not reachable"

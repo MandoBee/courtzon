@@ -381,6 +381,54 @@ if (failed > 0) {
   }
 }
 
+// ── Workflow 9: Notification Templates Validation ──
+results.nt = [];
+try {
+  const { default: mysql } = await import('mysql2/promise');
+  const pool = mysql.createPool({ host:'127.0.0.1', port:3307, user:'root', password:'courtzon2026', database:'courtzon_v3' });
+  const [tpls] = await pool.execute(
+    `SELECT event_name, locale FROM notification_templates WHERE is_active = TRUE ORDER BY event_name, locale`
+  );
+  const tplMap = new Map();
+  for (const r of tpls) tplMap.set(`${r.event_name}:${r.locale}`, true);
+
+  const required = ['booking:created:en', 'payment:completed:en', 'match:invitation:en', 'system:announcement:en', 'system:digest:en', 'security:suspicious-login:en'];
+  for (const key of required) {
+    if (tplMap.has(key)) add({ workflow:'notifications', step:'templates', status:'pass', detail:key });
+    else add({ workflow:'notifications', step:'templates', status:'fail', detail:`Missing template: ${key}` });
+  }
+
+  const [providers] = await pool.execute('SELECT slug FROM notification_providers WHERE is_enabled = TRUE');
+  add({ workflow:'notifications', step:'providers', status: providers.length >= 2 ? 'pass' : 'warn', detail:`${providers.length} enabled` });
+
+  const [flags] = await pool.execute('SELECT flag_key FROM notification_feature_flags WHERE is_enabled = TRUE');
+  add({ workflow:'notifications', step:'feature-flags', status: flags.length >= 4 ? 'pass' : 'warn', detail:`${flags.length} flags` });
+
+  await pool.end();
+} catch (e) {
+  add({ workflow:'notifications', step:'db', status:'fail', detail:e.message });
+}
+
+// ── Workflow 10: Client Error Reporting Endpoint ──
+try {
+  const r = await api('POST', '/client/errors', {
+    body: { errorType:'test', errorMessage:'E2E validation test', pageUrl:'/test', platform:'node' }
+  });
+  add({ workflow:'client-errors', step:'report', status: r.success && r.json?.received ? 'pass' : 'fail', detail:r.success ? 'accepted' : r.detail });
+} catch (e) {
+  add({ workflow:'client-errors', step:'report', status:'fail', detail:e.message });
+}
+
+// ── Workflow 11: Web Vitals Endpoint ──
+try {
+  const r = await api('POST', '/client/web-vitals', {
+    body: { metrics:[{ name:'LCP', value:1234, rating:'good' },{ name:'CLS', value:0.01, rating:'good' }], pageUrl:'/test' }
+  });
+  add({ workflow:'web-vitals', step:'report', status: r.success ? 'pass' : 'fail', detail:r.success ? 'accepted' : r.detail });
+} catch (e) {
+  add({ workflow:'web-vitals', step:'report', status:'fail', detail:e.message });
+}
+
 // Cleanup test data
 try {
   const mysql = await import('mysql2/promise');

@@ -241,3 +241,87 @@ The component renders the SAME form for everyone. Roles differ only in which `<C
    - Adding route guards / role checks for new API endpoints
    - Running `node backend/scripts/sync-ui-registry.js` after adding permissions
 3. You are also responsible for proactively handling related side effects the user doesn't mention — if they ask for X, handle Y, Z that are naturally implied (e.g., a new page needs routes, sidebar link, permission keys, API endpoints, audit logging).
+
+## Mobile Layout Architecture (Post-Audit)
+
+### Layout Hierarchy
+- **AppLayout** (`App.tsx`): Wraps all 29 consumer routes. Renders `<Navbar>` (sticky top) + `<main className="pb-24 md:pb-6 cz-pb-safe">` + `<BottomNav />`
+- **AdminLayout**: Admin routes, collapsible sidebar. No BottomNav.
+- **OrgLayout**: Organisation management, collapsible sidebar. No BottomNav.
+- **LandingLayout**: Public marketing pages. No BottomNav.
+
+### Bottom Navigation
+- Component: `frontend/src/components/layout/BottomNav.tsx`
+- Fixed `bottom-0` with `z-[60]` (above all modals and overlays)
+- Visible on mobile only (`md:hidden`)
+- Core tabs: Home, Bookings, Marketplace + "More" sheet (Matches, Coaches, etc.) + Profile
+- **No hamburger menu on mobile** — removed; BottomNav provides all navigation
+- Org switcher, NotificationBell, and logout remain in the mobile header
+
+### Safe Area
+- `<main>` has `cz-pb-safe` for iPhone home indicator
+- BottomNav has `cz-pb-safe` for its own bottom padding
+- Modal component has `mb-16 md:mb-0` to clear the BottomNav
+
+### Key Rules
+- **NEVER** render a `min-h-screen` or `h-screen` inside AppLayout pages
+- **NEVER** use `fixed bottom-0` in consumer pages
+- **NEVER** create inline modals with `z-50` — use the `z-[70]` standard or the `<Modal>` component
+- **ALWAYS** respect `cz-pb-safe` for bottom-positioned elements
+- New consumer routes MUST be inside `<AppLayout>` to get the BottomNav
+
+## CI / Pre-Build Validation
+
+Run before every build to catch regressions:
+```bash
+node scripts/ci-validate.js
+```
+
+Checks: mobile routes inside AppLayout, BottomNav z-index, notification templates, translation keys, eventBus import, DB migrations, safe-area CSS.
+
+## Testing
+
+### Backend
+- **Unit tests**: `npm test` (backend/) — excludes integration tests
+- **Integration tests**: `npm run test:int` (backend/) — uses Testcontainers (MySQL + Redis), full schema + seeds
+- **E2E validation**: `node backend/scripts/e2e-validation.mjs` — hits live Docker backend, covers auth/wallet/health/admin/security/notifications/client-errors
+
+### Frontend
+- **Unit tests**: `npm test` (frontend/) — vitest + jsdom
+- **E2E (Playwright)**: `npm run test:e2e` (root) — currently empty; add tests in `e2e/` directory
+
+### Test Conventions
+- Backend integration tests: use `setupIntegrationTest()` / `teardownIntegrationTest()` from `backend/src/tests/helpers/integration-setup.ts`
+- Name pattern: `*.spec.ts` (unit), `*.integration.spec.ts` (integration)
+- DB tests clean up after themselves using transactions or explicit deletes
+
+## Monitoring & Observability
+
+### Metrics
+- Prometheus at `GET /metrics` (requires `METRICS_TOKEN` in production)
+- Custom metrics: `courtzon_http_request_duration_seconds`, `courtzon_http_requests_total`
+- Default Node.js metrics: CPU, memory, event loop, GC, handles
+
+### Health Checks
+- `GET /health` — full composite (DB + Redis + memory)
+- `GET /health/live` — liveness (process alive)
+- `GET /health/ready` — readiness (DB + Redis up)
+- `GET /health/database`, `/health/redis`, `/health/storage` — component-level
+- `GET /health/version` — build metadata
+
+### Alerting
+- `monitoring/alerts.yml` — 6 Prometheus alert rules (BackendDown, HighErrorRate, HighLatency, NotificationDeliveryFailure, etc.)
+- Activate with: `docker compose --profile monitoring up -d prometheus grafana`
+
+### Client Error & Web Vitals Tracking
+- `POST /client/errors` — report client-side JS errors (stored in `client_error_reports`)
+- `POST /client/web-vitals` — report Web Vitals (LCP, CLS, FCP, etc.) (stored in `web_vitals_metrics`)
+- Use from `ErrorBoundary.onError` in frontend
+
+### Migration Table Summary
+| Migration | Purpose |
+|-----------|---------|
+| 013 | Notification templates, delivery, digests, rate limits, analytics, dead letter queue |
+| 014 | Notification broadcasts table |
+| 015 | Enterprise platform: providers, devices, quiet hours, channel prefs, template versioning, webhooks, audit trail, A/B testing, feature flags, cleanup policies, event replay |
+| 016 | Monitoring: alerting table, client error reports, web vitals metrics |
