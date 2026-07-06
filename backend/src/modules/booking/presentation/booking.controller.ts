@@ -10,10 +10,11 @@ export async function createBookingHandler(request: FastifyRequest, reply: Fasti
   const userId = (request as any).userId;
   const result = await bookingService.createBooking(body, userId);
 
-  eventBus.emit('booking:created', {
+  eventBus.emit('booking:created' as any, {
     bookingId: result.id,
     userId,
     courtId: body.resourceId || 0,
+    bookingType: body.bookingType,
     startTime: new Date(`${body.bookingDate}T${body.startTime}`),
     endTime: new Date(`${body.bookingDate}T${body.endTime}`),
   });

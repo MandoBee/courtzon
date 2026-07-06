@@ -160,7 +160,7 @@ export default function MarketplacePage() {
         </div>
       </div>
 
-      <div className="flex gap-2 border-b border-[var(--color-border)] pb-2">
+      <div className="flex gap-2 border-b border-[var(--color-border)] pb-2 flex-wrap">
         {(['all', 'sellers', 'players'] as const).map((t) => (
           <button
             key={t}
@@ -175,20 +175,20 @@ export default function MarketplacePage() {
         ))}
       </div>
 
-      <div className="flex gap-6 items-start">
+      <div className="flex gap-6 items-start flex-wrap">
         {/* Desktop sidebar */}
         <aside className="hidden lg:block w-56 shrink-0 sticky top-4 max-h-[calc(100vh-6rem)] overflow-y-auto pr-2">
           <MarketplaceFilters {...filterProps} />
         </aside>
 
         <div className="flex-1 min-w-0 space-y-4">
-          <div className="flex items-center gap-3 border-b border-[var(--color-border)] pb-3">
+          <div className="flex items-center gap-3 border-b border-[var(--color-border)] pb-3 flex-wrap">
             <input
               type="text"
               value={search}
               onChange={(e) => { setSearch(e.target.value); resetPage(); }}
               placeholder={t('marketplace.search_placeholder')}
-              className="w-56 px-3 py-2 text-sm rounded-[var(--radius-md)] border bg-[var(--color-surface)]"
+              className="w-full max-w-[160px] sm:w-48 md:w-56 px-3 py-2 text-sm rounded-[var(--radius-md)] border bg-[var(--color-surface)]"
             />
             <button
               type="button"

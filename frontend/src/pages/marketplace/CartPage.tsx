@@ -397,8 +397,9 @@ export default function CartPage() {
         </div>
       )}
 
-      {/* Payment Method & Checkout */}
-      <div className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] shadow-[var(--shadow-md)] p-6 space-y-4">
+      {/* Payment Method & Checkout - Sticky Footer */}
+      <div className="sticky bottom-0 z-10 bg-[var(--color-bg)] border-t border-[var(--color-border)] pt-4 pb-24 md:pb-6 cz-pb-safe -mx-4 px-4 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
+        <div className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] shadow-[var(--shadow-md)] p-6 space-y-4 max-w-4xl mx-auto">
         <div className="flex justify-between text-sm">
           <span>{t('common.subtotal')}</span><span>{formatPrice(Number(cart.subtotal), cartCurrency)}</span>
         </div>
@@ -436,7 +437,7 @@ export default function CartPage() {
 
         <div>
           <label className="block text-sm text-[var(--color-text-muted)] mb-2">{t('cart.payment_method')}</label>
-          <div className="grid grid-cols-4 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
             {PAYMENT_OPTIONS.map((opt) => (
               <button key={opt.value} onClick={() => setPaymentMethod(opt.value)}
                 className={`flex items-center gap-2 px-4 py-3 rounded-[var(--radius-md)] border text-sm font-medium transition-all ${
@@ -463,6 +464,7 @@ export default function CartPage() {
         {checkout.isError && (
           <p className="text-sm text-[var(--color-error)]">{t('cart.checkout_failed')}</p>
         )}
+      </div>
       </div>
     </div>
   );

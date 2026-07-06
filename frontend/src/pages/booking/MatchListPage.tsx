@@ -5,6 +5,7 @@ import api from '../../services/api';
 import { useToast } from '../../components/ui/Toast';
 import { formatDateTime } from '../../utils/formatDate';
 import { formatPrice } from '../../utils/currency';
+import { socketService } from '../../services/socket';
 
 type Tab = 'new' | 'accepted' | 'pending' | 'expired';
 type SortMode = 'date' | 'nearest';
@@ -32,6 +33,18 @@ export default function MatchListPage() {
       );
     }
   }, []);
+
+  useEffect(() => {
+    const invalidateMatches = () => {
+      queryClient.invalidateQueries({ queryKey: ['public-matches'] });
+    };
+    socketService.on('match:available', invalidateMatches);
+    socketService.on('match:removed', invalidateMatches);
+    return () => {
+      socketService.off('match:available', invalidateMatches);
+      socketService.off('match:removed', invalidateMatches);
+    };
+  }, [queryClient]);
 
   useEffect(() => {
     queryClient.invalidateQueries({ queryKey: ['public-matches'] });

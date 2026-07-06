@@ -323,7 +323,7 @@ function AppLayout() {
       <WelcomeModal />
       <OfflineBanner />
       <Navbar />
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 pb-24 md:pb-6 cz-pb-safe">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 pb-24 md:pb-6 cz-pb-safe overflow-x-hidden">
         <ErrorBoundary>
           <Outlet />
         </ErrorBoundary>

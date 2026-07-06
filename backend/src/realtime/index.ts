@@ -110,6 +110,18 @@ export function setupRealtime(app: FastifyInstance): SocketIOServer {
     registerUserDevice(userId, deviceId).catch(() => {});
   });
 
+  // Subscribe to domain events for real-time broadcasts
+  import('../shared/event-bus/index.js').then(({ eventBus }) => {
+    eventBus.on('booking:created' as any, (data: any) => {
+      if (data.bookingType === 'public_match' || data.isPublicMatch) {
+        io!.emit('match:available', { bookingId: data.bookingId, timestamp: new Date().toISOString() });
+      }
+    });
+    eventBus.on('booking:cancelled' as any, (data: any) => {
+      io!.emit('match:removed', { bookingId: data.bookingId });
+    });
+  }).catch(() => {});
+
   return io;
 }
 
