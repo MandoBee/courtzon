@@ -455,7 +455,7 @@ export class PaymentService {
       return;
     }
     const [intents] = await conn.execute<RowData>(
-      'SELECT * FROM booking_intents WHERE id = ?', [intentId],
+      'SELECT * FROM booking_intents WHERE id = ? FOR UPDATE', [intentId],
     );
     const intent = intents[0] as any;
     if (!intent) {
@@ -463,25 +463,39 @@ export class PaymentService {
       return;
     }
 
-    const [result] = await conn.execute<mysql.ResultSetHeader>(
-      `INSERT INTO bookings (public_id, user_id, organisation_id, branch_id, resource_id, booking_type,
-        booking_date, start_time, end_time, total_amount, commission_amount, club_amount,
-        booking_status, payment_status, notes, payment_method)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'confirmed', 'paid', ?, ?)`,
-      [randomUUID(), intent.user_id, intent.organisation_id, intent.branch_id,
-       intent.resource_id, intent.booking_type, intent.booking_date, intent.start_time,
-       intent.end_time, intent.total_amount, intent.commission_amount, intent.club_amount,
-       intent.notes, intent.payment_method],
-    );
-    const bookingId = result.insertId;
+    let bookingId: number;
+
+    if (intent.fulfilled_booking_id) {
+      // A pending booking was already created by the frontend fulfill call — confirm it
+      bookingId = intent.fulfilled_booking_id;
+      await conn.execute(
+        "UPDATE bookings SET booking_status = 'confirmed', payment_status = 'paid', updated_at = NOW() WHERE id = ? AND booking_status = 'pending'",
+        [bookingId]
+      );
+      log.info({ traceId, bookingId, intentId }, 'Booking confirmed (was pending)');
+    } else {
+      const [result] = await conn.execute<mysql.ResultSetHeader>(
+        `INSERT INTO bookings (public_id, user_id, organisation_id, branch_id, resource_id, booking_type,
+          booking_date, start_time, end_time, total_amount, commission_amount, club_amount,
+          booking_status, payment_status, notes, payment_method)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'confirmed', 'paid', ?, ?)`,
+        [randomUUID(), intent.user_id, intent.organisation_id, intent.branch_id,
+         intent.resource_id, intent.booking_type, intent.booking_date, intent.start_time,
+         intent.end_time, intent.total_amount, intent.commission_amount, intent.club_amount,
+         intent.notes, intent.payment_method],
+      );
+      bookingId = result.insertId;
+
+      await conn.execute(
+        'UPDATE booking_intents SET fulfilled_booking_id = ?, intent_status = ?, fulfilled_at = NOW() WHERE id = ?',
+        [bookingId, 'fulfilled', intent.id]
+      );
+      log.info({ traceId, bookingId, intentId }, 'Booking confirmed (new)');
+    }
 
     await conn.execute(
       'UPDATE payment_transactions SET booking_id = ?, reference_type = ? WHERE id = ?',
       [bookingId, 'booking', transaction.id],
-    );
-    await conn.execute(
-      'UPDATE booking_intents SET fulfilled_booking_id = ?, intent_status = ?, fulfilled_at = NOW() WHERE id = ?',
-      [bookingId, 'fulfilled', intent.id]
     );
 
     if (intent.matchmaking) {

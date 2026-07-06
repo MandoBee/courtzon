@@ -990,13 +990,27 @@ export default function BookingModal({ open, onClose }: BookingModalProps) {
         {pixelClientSecret && (
           <PaymobPixelCard
             clientSecret={pixelClientSecret}
-            onComplete={() => {
+            onComplete={async () => {
+              const intentId = paymentIntentId;
               setPixelClientSecret(null);
-              setPollingPaid(true);
-              showToast('Payment submitted — confirming...', 'info');
+              showToast('Payment submitted — creating booking...', 'info');
+              try {
+                const res = await api.post(`/booking-intents/${intentId}/fulfill`);
+                onClose();
+                const booking = res.data?.booking;
+                if (booking?.id) {
+                  navigate(`/bookings/${booking.id}/confirmation`);
+                }
+              } catch {
+                setPollingPaid(true);
+              }
             }}
-            onCancel={() => {
+            onCancel={async () => {
+              const intentId = paymentIntentId;
               setPixelClientSecret(null);
+              try {
+                await api.post(`/booking-intents/${intentId}/cancel`);
+              } catch { /* non-fatal */ }
               showToast('Payment cancelled', 'warning');
             }}
           />

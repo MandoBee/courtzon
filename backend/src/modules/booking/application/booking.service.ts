@@ -12,6 +12,7 @@ import { NotFoundError, ForbiddenError, ConflictError } from '../../../shared/er
 import { createModuleLogger } from '../../../shared/utils/logger.js';
 import type { CreateBookingInput } from '../presentation/booking.dto.js';
 import type mysql from 'mysql2/promise';
+import { randomUUID } from 'node:crypto';
 
 type RowData = mysql.RowDataPacket[];
 
@@ -306,93 +307,117 @@ export class BookingService {
   }
 
   async fulfillBookingIntent(intentId: number) {
+    const pool = getPool();
+    const conn = await pool.getConnection();
+    try {
+      await conn.beginTransaction();
+
+      const [intentRows] = await conn.execute<RowData>(
+        'SELECT * FROM booking_intents WHERE id = ? FOR UPDATE', [intentId]
+      );
+      const intent = intentRows[0] as any;
+      if (!intent) throw new NotFoundError('Booking intent');
+
+      if (intent.fulfilled_booking_id) {
+        const bRows = await conn.execute<RowData>(
+          'SELECT id, booking_status, payment_status FROM bookings WHERE id = ?', [intent.fulfilled_booking_id]
+        );
+        const existing = (bRows[0] as any[])[0];
+        if (existing) {
+          await conn.commit();
+          return { success: true, booking: existing, isPaid: existing.payment_status === 'paid' };
+        }
+      }
+
+      const [ptRows] = await conn.execute<RowData>(
+        `SELECT id, payment_status, gateway_reference FROM payment_transactions
+         WHERE booking_id = ? AND reference_type = 'booking_intent'
+         ORDER BY id DESC LIMIT 1`,
+        [intentId]
+      );
+      const pt = ptRows[0] as any;
+
+      let isPaid = pt?.payment_status === 'paid';
+
+      if (!isPaid && pt) {
+        try {
+          const { paymentGateway } = await import('../../../shared/services/gateway/gateway-factory.js');
+          const status = await paymentGateway.getTransactionStatus(pt.gateway_reference);
+          if (status.status === 'paid') {
+            isPaid = true;
+            await conn.execute(
+              'UPDATE payment_transactions SET payment_status = ? WHERE id = ?',
+              ['paid', pt.id]
+            );
+          }
+        } catch {
+          // non-fatal
+        }
+      }
+
+      const bookingStatus = isPaid ? 'confirmed' : 'pending';
+      const paymentStatus = isPaid ? 'paid' : 'pending';
+
+      const [createResult] = await conn.execute<mysql.ResultSetHeader>(
+        `INSERT INTO bookings (public_id, user_id, organisation_id, branch_id, resource_id, booking_type,
+          booking_date, start_time, end_time, total_amount, commission_amount, club_amount,
+          booking_status, payment_status, notes, payment_method)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [randomUUID(), intent.user_id, intent.organisation_id, intent.branch_id, intent.resource_id,
+         intent.booking_type, intent.booking_date, intent.start_time, intent.end_time,
+         intent.total_amount, intent.commission_amount, intent.club_amount,
+         bookingStatus, paymentStatus, intent.notes, intent.payment_method]
+      );
+      const bookingId = createResult.insertId;
+
+      if (pt) {
+        await conn.execute(
+          'UPDATE payment_transactions SET booking_id = ?, reference_type = ? WHERE id = ?',
+          [bookingId, 'booking', pt.id]
+        );
+      }
+
+      await conn.execute(
+        'UPDATE booking_intents SET fulfilled_booking_id = ?, intent_status = ?, fulfilled_at = NOW() WHERE id = ?',
+        [bookingId, 'fulfilled', intentId]
+      );
+
+      await conn.commit();
+
+      const booking = await bookingRepository.findById(bookingId);
+
+      if (intent.matchmaking && booking && intent.booking_type === 'public_match') {
+        try {
+          const mm = typeof intent.matchmaking === 'string' ? JSON.parse(intent.matchmaking) : intent.matchmaking;
+          await bookingRepository.createMatchmakingRequest({
+            bookingId,
+            minAge: mm.minAge,
+            maxAge: mm.maxAge,
+            targetGender: mm.targetGender || 'any',
+            targetLevelId: mm.targetLevelId,
+            maxPlayers: mm.maxPlayers || 2,
+            deadline: mm.deadline,
+            autoApply: mm.autoApply || false,
+          });
+        } catch {
+          // non-fatal
+        }
+      }
+
+      return { success: true, booking, isPaid };
+    } catch (err) {
+      await conn.rollback();
+      throw err;
+    } finally {
+      conn.release();
+    }
+  }
+
+  async cancelBookingIntent(intentId: number) {
     const intent = await bookingRepository.findIntent(intentId);
     if (!intent) throw new NotFoundError('Booking intent');
-
-    if (intent.fulfilled_booking_id) {
-      const existing = await bookingRepository.findById(intent.fulfilled_booking_id);
-      if (existing) return { success: true, booking: existing, isPaid: true };
-    }
-
-    const pool = getPool();
-    const [ptRows] = await pool.execute<RowData>(
-      `SELECT id, payment_status, gateway_reference FROM payment_transactions
-       WHERE booking_id = ? AND reference_type = 'booking_intent'
-       ORDER BY id DESC LIMIT 1`,
-      [intentId]
-    );
-    const pt = ptRows[0] as any;
-
-    let isPaid = pt?.payment_status === 'paid';
-
-    if (!isPaid && pt) {
-      try {
-        const { paymentGateway } = await import('../../../shared/services/gateway/gateway-factory.js');
-        const status = await paymentGateway.getTransactionStatus(pt.gateway_reference);
-        if (status.status === 'paid') {
-          isPaid = true;
-          const pmtRepo = (await import('../../payment/infrastructure/repositories/payment.repository.js')).paymentRepository;
-          await pmtRepo.updateStatus(pt.id, 'paid');
-        }
-      } catch {
-        // non-fatal
-      }
-    }
-
-    const bookingStatus = isPaid ? 'confirmed' : 'pending';
-    const paymentStatus = isPaid ? 'paid' : 'pending';
-
-    const bookingId = await bookingRepository.create({
-      userId: intent.user_id,
-      branchId: intent.branch_id,
-      organisationId: intent.organisation_id,
-      resourceId: intent.resource_id,
-      bookingType: intent.booking_type,
-      bookingDate: intent.booking_date,
-      startTime: intent.start_time,
-      endTime: intent.end_time,
-      totalAmount: intent.total_amount,
-      commissionAmount: intent.commission_amount,
-      clubAmount: intent.club_amount,
-      notes: intent.notes,
-      bookingStatus,
-      paymentStatus,
-      paymentMethod: intent.payment_method,
-    });
-
-    if (pt) {
-      await pool.execute(
-        'UPDATE payment_transactions SET booking_id = ?, reference_type = ? WHERE id = ?',
-        [bookingId, 'booking', pt.id]
-      );
-    }
-
-    await pool.execute(
-      'UPDATE booking_intents SET fulfilled_booking_id = ?, intent_status = ?, fulfilled_at = NOW() WHERE id = ?',
-      [bookingId, 'fulfilled', intentId]
-    );
-
-    const booking = await bookingRepository.findById(bookingId);
-
-    if (intent.matchmaking && booking && intent.booking_type === 'public_match') {
-      try {
-        const mm = typeof intent.matchmaking === 'string' ? JSON.parse(intent.matchmaking) : intent.matchmaking;
-        await bookingRepository.createMatchmakingRequest({
-          bookingId,
-          minAge: mm.minAge,
-          maxAge: mm.maxAge,
-          targetGender: mm.targetGender || 'any',
-          targetLevelId: mm.targetLevelId,
-          maxPlayers: mm.maxPlayers || 2,
-          deadline: mm.deadline,
-          autoApply: mm.autoApply || false,
-        });
-      } catch {
-        // non-fatal
-      }
-    }
-
-    return { success: true, booking, isPaid };
+    await bookingRepository.updateIntentStatus(intentId, 'cancelled', 'User cancelled payment');
+    return { success: true };
   }
 
   async getOrganisationBookings(orgId: number, date?: string, status?: string) {
