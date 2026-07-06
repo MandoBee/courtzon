@@ -178,91 +178,96 @@ export class PaymobGateway implements PaymentGateway {
   }
 
   async getTransactionStatus(gatewayReference: string, orderId?: number): Promise<PaymentResult> {
-    try {
-      const tokenRes = await fetch(`${this.baseUrl}/api/auth/tokens`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ api_key: this.config.apiKey }),
-      });
-      const tokenData = await tokenRes.json() as any;
-      const authToken = tokenData.token;
+    const maxAttempts = 3;
+    let lastError: unknown;
 
-      if (!authToken) {
-        return { success: false, transactionId: '', status: 'failed', errorMessage: 'Paymob auth failed' };
-      }
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        // ── Auth token ──
+        const tokenRes = await fetch(`${this.baseUrl}/api/auth/tokens`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ api_key: this.config.apiKey }),
+        });
+        const tokenData = await tokenRes.json() as any;
+        const authToken = tokenData.token;
 
-      // ── PRIMARY: Query the Order API ──
-      // gatewayReference is Paymob's intention_order_id.
-      // NOTE: For Intention API payments the order always shows
-      // payment_status="UNPAID" — the actual outcome comes via webhook only.
-      // This path is useful primarily for legacy Accept-API orders.
-      const orderRes = await fetch(
-        `${this.baseUrl}/api/ecommerce/orders/${gatewayReference}`,
-        { headers: { Authorization: `Bearer ${authToken}` } },
-      );
-      const orderText = await orderRes.text();
-      let orderData: any;
-      try { orderData = JSON.parse(orderText); } catch { orderData = {}; }
+        if (!authToken) {
+          return { success: false, transactionId: '', status: 'failed', errorMessage: 'Paymob auth failed' };
+        }
 
-      if (orderRes.ok && orderData) {
-        const orderStatus = (orderData.status || '').toLowerCase();
-        const orderPaymentStatus = (orderData.payment_status || '').toLowerCase();
-        const isPaid = orderData.paid === true || orderStatus === 'paid' || orderPaymentStatus === 'paid';
-        const isFailed = orderStatus === 'failed' || orderStatus === 'cancelled' || orderStatus === 'expired' || orderPaymentStatus === 'failed';
-        const resultStatus = isPaid ? 'paid' : isFailed ? 'failed' : 'pending';
+        // ── PRIMARY: Order API ──
+        const orderRes = await fetch(
+          `${this.baseUrl}/api/ecommerce/orders/${gatewayReference}`,
+          { headers: { Authorization: `Bearer ${authToken}` } },
+        );
+        const orderText = await orderRes.text();
+        let orderData: any;
+        try { orderData = JSON.parse(orderText); } catch { orderData = {}; }
 
-        return {
-          success: isPaid,
-          transactionId: String(orderData.id || ''),
-          gatewayReference,
-          status: resultStatus,
-          rawResponse: orderData,
-        };
-      }
-
-      // ── FALLBACK: Transaction API (pagination: { results: [...], next, previous }) ──
-      // Only reached when Order API fails or returns no useful data.
-      // The ?order= filter is a no-op (returns all merchant transactions), so we
-      // filter locally by merchant_order_id when orderId is known.
-      const txnRes = await fetch(
-        `${this.baseUrl}/api/acceptance/transactions`,
-        { headers: { Authorization: `Bearer ${authToken}` } },
-      );
-      const txnBody = await txnRes.json() as any;
-      const txnList: any[] = txnBody?.results ?? (Array.isArray(txnBody) ? txnBody : []);
-
-      if (txnList.length > 0) {
-        // Build a pattern to match our merchant_order_id
-        // e.g. "order_10_*" or "booking_intent_9"
-        const merchantRef = orderId != null
-          ? `${gatewayReference.includes('booking') ? 'booking_intent' : 'order'}_${orderId}`
-          : null;
-
-        const matchingTxn = merchantRef
-          ? txnList.find(txn =>
-              txn.order?.merchant_order_id?.startsWith(merchantRef) ||
-              txn.order?.merchant_order_id === merchantRef)
-          : txnList[0];
-
-        if (matchingTxn) {
-          const isPaid = matchingTxn.success === true;
-          const isPending = matchingTxn.pending === true;
-          const resultStatus = isPaid ? 'paid' : isPending ? 'pending' : 'failed';
+        if (orderRes.ok && orderData) {
+          const orderStatus = (orderData.status || '').toLowerCase();
+          const orderPaymentStatus = (orderData.payment_status || '').toLowerCase();
+          const isPaid = orderData.paid === true || orderStatus === 'paid' || orderPaymentStatus === 'paid';
+          const isFailed = orderStatus === 'failed' || orderStatus === 'cancelled' || orderStatus === 'expired' || orderPaymentStatus === 'failed';
+          const resultStatus = isPaid ? 'paid' : isFailed ? 'failed' : 'pending';
 
           return {
             success: isPaid,
-            transactionId: String(matchingTxn.id || ''),
+            transactionId: String(orderData.id || ''),
             gatewayReference,
             status: resultStatus,
-            rawResponse: matchingTxn,
+            rawResponse: orderData,
           };
         }
-      }
 
-      return { success: false, transactionId: '', gatewayReference, status: 'pending', rawResponse: orderData };
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
-      return { success: false, transactionId: '', gatewayReference, status: 'failed', errorMessage: message };
+        // ── FALLBACK: Transaction API ──
+        const txnRes = await fetch(
+          `${this.baseUrl}/api/acceptance/transactions`,
+          { headers: { Authorization: `Bearer ${authToken}` } },
+        );
+        const txnBody = await txnRes.json() as any;
+        const txnList: any[] = txnBody?.results ?? (Array.isArray(txnBody) ? txnBody : []);
+
+        if (txnList.length > 0) {
+          const merchantRef = orderId != null
+            ? `${gatewayReference.includes('booking') ? 'booking_intent' : 'order'}_${orderId}`
+            : null;
+
+          const matchingTxn = merchantRef
+            ? txnList.find(txn =>
+                txn.order?.merchant_order_id?.startsWith(merchantRef) ||
+                txn.order?.merchant_order_id === merchantRef)
+            : txnList[0];
+
+          if (matchingTxn) {
+            const isPaid = matchingTxn.success === true;
+            const isPending = matchingTxn.pending === true;
+            const resultStatus = isPaid ? 'paid' : isPending ? 'pending' : 'failed';
+
+            return {
+              success: isPaid,
+              transactionId: String(matchingTxn.id || ''),
+              gatewayReference,
+              status: resultStatus,
+              rawResponse: matchingTxn,
+            };
+          }
+        }
+
+        return { success: false, transactionId: '', gatewayReference, status: 'pending', rawResponse: orderData };
+      } catch (err: unknown) {
+        lastError = err;
+
+        // Exponential backoff: 200ms, 600ms, 1800ms
+        if (attempt < maxAttempts) {
+          const delayMs = 200 * Math.pow(3, attempt - 1);
+          await new Promise((r) => setTimeout(r, delayMs));
+        }
+      }
     }
+
+    const message = lastError instanceof Error ? lastError.message : String(lastError);
+    return { success: false, transactionId: '', gatewayReference, status: 'failed', errorMessage: message };
   }
 }

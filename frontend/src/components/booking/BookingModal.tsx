@@ -9,6 +9,7 @@ import { formatPrice, formatPricePerHour } from '../../utils/currency';
 import { useTranslation } from '../../i18n';
 import PaymobPixelCard from '../payment/PaymobPixelCard';
 import PaymentStatusPoller from '../payment/PaymentStatusPoller';
+import { usePaymentConfirm } from '../../hooks/usePaymentConfirm';
 
 interface BookingModalProps {
   open: boolean;
@@ -185,6 +186,7 @@ export default function BookingModal({ open, onClose }: BookingModalProps) {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
   const { t } = useTranslation();
+  const { state: confirmState, confirm: confirmPayment } = usePaymentConfirm();
 
   const [step, setStep] = useState<1 | 2 | 3 | 4 | 5 | 6>(1);
   const [selectedSportId, setSelectedSportId] = useState<number | null>(user?.mainSportId || null);
@@ -968,7 +970,19 @@ export default function BookingModal({ open, onClose }: BookingModalProps) {
       )}
     </Modal>
 
-      {/* Payment confirming overlay — polls booking for payment_status === 'paid' */}
+      {/* Payment confirming overlay (usePaymentConfirm hook state) */}
+      {(confirmState === 'confirming' || confirmState === 'polling') && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center">
+          <div className="bg-[var(--color-surface)] rounded-xl shadow-xl p-6 text-center space-y-3">
+            <div className="animate-spin w-8 h-8 border-4 border-[var(--color-primary)] border-t-transparent rounded-full mx-auto" />
+            <p className="text-sm text-[var(--color-text-muted)]">
+              {confirmState === 'confirming' ? 'Verifying payment...' : 'Waiting for confirmation...'}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Payment confirming overlay (fallback polling) */}
       {pollingPaid && pendingBookingId && (
         <PaymentStatusPoller
           endpoint={`/bookings/${pendingBookingId}`}
@@ -997,16 +1011,18 @@ export default function BookingModal({ open, onClose }: BookingModalProps) {
             onComplete={async () => {
               setPixelClientSecret(null);
               showToast('Payment submitted — confirming...', 'info');
-              try {
-                const confirmPayload: any = { paymentId: paymentId };
-                const confirmRes = await api.post('/payments/confirm', confirmPayload);
-                if (confirmRes.data?.confirmed) {
+              const bkId = pendingBookingId;
+              const pmId = paymentId;
+              if (pmId) {
+                const result = await confirmPayment(pmId);
+                if (result.confirmed) {
                   onClose();
                   showToast('Booking confirmed!');
-                  navigate(`/bookings/${pendingBookingId}/confirmation`, { state: { qrToken: '' } });
+                  navigate(`/bookings/${bkId}/confirmation`, { state: { qrToken: '' } });
                   return;
                 }
-              } catch { /* confirm failed — fall back to polling */ }
+              }
+              // Fall back to polling (webhook will complete)
               setPollingPaid(true);
             }}
             onCancel={async () => {

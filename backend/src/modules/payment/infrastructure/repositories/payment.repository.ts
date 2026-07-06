@@ -9,6 +9,7 @@ export const paymentRepository = {
     userId: number; bookingId?: number; orderId?: number; referenceType?: string; paymentMethod: string;
     gatewayProvider: string; gatewayReference: string; amount: number;
     status?: string; currency?: string; gatewayResponse?: unknown; traceId?: string;
+    idempotencyKey?: string;
   }) {
     const pool = getPool();
     const isBooking = data.referenceType === 'booking' || data.referenceType === 'booking_intent';
@@ -16,12 +17,13 @@ export const paymentRepository = {
     const traceId = data.traceId || randomUUID();
     const [result] = await pool.execute<mysql.ResultSetHeader>(
       `INSERT INTO payment_transactions
-        (user_id, booking_id, order_id, reference_type, payment_method, gateway_provider,
+        (user_id, booking_id, order_id, idempotency_key, reference_type, payment_method, gateway_provider,
          gateway_reference, amount, currency, payment_status, gateway_response, trace_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [data.userId,
        isBooking ? (data.bookingId ?? null) : null,
        isOrder ? (data.orderId ?? null) : null,
+       data.idempotencyKey || null,
        data.referenceType || null,
        data.paymentMethod, data.gatewayProvider, data.gatewayReference, data.amount,
        data.currency || 'EGP',
@@ -63,6 +65,15 @@ export const paymentRepository = {
     const [rows] = await conn.execute<RowData>(
       'SELECT * FROM payment_transactions WHERE id = ? FOR UPDATE',
       [id]
+    );
+    return rows[0] || null;
+  },
+
+  async findByIdempotencyKey(key: string) {
+    const pool = getPool();
+    const [rows] = await pool.execute<RowData>(
+      'SELECT * FROM payment_transactions WHERE idempotency_key = ?',
+      [key]
     );
     return rows[0] || null;
   },

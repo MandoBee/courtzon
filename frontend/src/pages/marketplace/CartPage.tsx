@@ -8,6 +8,7 @@ import { useToast } from '../../components/ui/Toast';
 import { Modal } from '../../components/ui/Modal';
 import PaymobPixelCard from '../../components/payment/PaymobPixelCard';
 import PaymentStatusPoller from '../../components/payment/PaymentStatusPoller';
+import { usePaymentConfirm } from '../../hooks/usePaymentConfirm';
 
 function AddressFormModal({ open, address, onClose, onDone }: { open: boolean; address?: any; onClose: () => void; onDone: (id: number) => void }) {
   const queryClient = useQueryClient();
@@ -100,6 +101,7 @@ export default function CartPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { showToast } = useToast();
+  const { state: confirmState, confirm: confirmPayment } = usePaymentConfirm();
   const [couponCode, setCouponCode] = useState('');
   const [addressId, setAddressId] = useState<number | null>(null);
   const [paymentMethod, setPaymentMethod] = useState('');
@@ -107,6 +109,7 @@ export default function CartPage() {
   const [editAddress, setEditAddress] = useState<any>(null);
   const [pixelClientSecret, setPixelClientSecret] = useState<string | null>(null);
   const [orderId, setOrderId] = useState<number | null>(null);
+  const [paymentId, setPaymentId] = useState<number | null>(null);
   const [pollingPaid, setPollingPaid] = useState(false);
 
   const PAYMENT_OPTIONS = [
@@ -173,6 +176,7 @@ export default function CartPage() {
       if (paymentMethod === 'card' || paymentMethod === 'online') {
         if (data.clientSecret) {
           setPixelClientSecret(data.clientSecret);
+          setPaymentId(data.paymentId || null);
         } else if (data.paymentUrl) {
           window.location.href = data.paymentUrl;
         } else {
@@ -190,7 +194,7 @@ export default function CartPage() {
   });
 
   if (isLoading) return <div className="text-center py-8">{t('cart.loading')}</div>;
-  if (!cart?.items?.length && !pixelClientSecret && !pollingPaid) return (
+  if (!cart?.items?.length && !pixelClientSecret && !pollingPaid && confirmState === 'idle') return (
     <div className="text-center py-12 space-y-4">
       <p className="text-[var(--color-text-muted)]">{t('cart.empty')}</p>
       <Link to="/marketplace" className="text-sm text-[var(--color-primary)]">{t('cart.browse_products')}</Link>
@@ -325,15 +329,37 @@ export default function CartPage() {
         />
       )}
 
+      {/* Payment confirming overlay (usePaymentConfirm hook state) */}
+      {(confirmState === 'confirming' || confirmState === 'polling') && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center">
+          <div className="bg-[var(--color-surface)] rounded-xl shadow-xl p-6 text-center space-y-3">
+            <div className="animate-spin w-8 h-8 border-4 border-[var(--color-primary)] border-t-transparent rounded-full mx-auto" />
+            <p className="text-sm text-[var(--color-text-muted)]">
+              {confirmState === 'confirming' ? 'Verifying payment...' : 'Waiting for confirmation...'}
+            </p>
+          </div>
+        </div>
+      )}
+
       <Modal open={!!pixelClientSecret} onClose={() => setPixelClientSecret(null)} title="Pay with Card" size="lg">
         {pixelClientSecret && (
           <PaymobPixelCard
             clientSecret={pixelClientSecret}
             containerId="pixel-container-marketplace"
-            onComplete={() => {
+            onComplete={async () => {
               setPixelClientSecret(null);
-              setPollingPaid(true);
               showToast('Payment submitted — confirming...', 'info');
+              const pmId = paymentId;
+              if (pmId) {
+                const result = await confirmPayment(pmId);
+                if (result.confirmed) {
+                  showToast('Order placed successfully!', 'success');
+                  navigate('/marketplace/orders');
+                  return;
+                }
+              }
+              // Fall back to polling (webhook will complete)
+              setPollingPaid(true);
             }}
             onCancel={() => {
               setPixelClientSecret(null);

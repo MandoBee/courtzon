@@ -11,6 +11,7 @@ export const ChargeSchema = z.object({
   customerPhone: z.string().optional(),
   customerName: z.string().optional(),
   customerAddress: z.any().optional(),
+  idempotencyKey: z.string().max(64).optional(),
 });
 
 export const ConfirmPaymentSchema = z.object({

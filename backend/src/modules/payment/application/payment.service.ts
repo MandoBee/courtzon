@@ -64,7 +64,22 @@ export class PaymentService {
   private async chargeByGateway(userId: number, input: ChargeInput) {
     const traceId = randomUUID();
 
-    log.info({ traceId, userId, amount: input.amount, referenceType: input.referenceType, referenceId: input.referenceId }, 'Gateway charge initiated');
+    // ── Idempotency: if client sends idempotencyKey, check for existing payment ──
+    if (input.idempotencyKey) {
+      const existing = await paymentRepository.findByIdempotencyKey(input.idempotencyKey);
+      if (existing) {
+        if (existing.payment_status === 'paid') {
+          log.info({ traceId, existingPaymentId: existing.id, idempotencyKey: input.idempotencyKey }, 'Idempotency hit — payment already completed');
+          return { success: true, paymentId: existing.id, traceId, status: 'paid' };
+        }
+        if (existing.payment_status === 'pending' || existing.payment_status === 'processing') {
+          log.info({ traceId, existingPaymentId: existing.id, idempotencyKey: input.idempotencyKey }, 'Idempotency hit — returning existing pending payment');
+          return { success: true, paymentId: existing.id, traceId, status: existing.payment_status };
+        }
+      }
+    }
+
+    log.info({ traceId, userId, amount: input.amount, referenceType: input.referenceType, referenceId: input.referenceId, idempotencyKey: input.idempotencyKey }, 'Gateway charge initiated');
 
     const paymentResult = await paymentGateway.charge({
       amount: input.amount,
@@ -106,6 +121,7 @@ export class PaymentService {
       status: 'pending',
       gatewayResponse: paymentResult.rawResponse || null,
       traceId,
+      idempotencyKey: input.idempotencyKey,
     });
 
     log.info({ traceId, paymentId, gatewayRef: paymentResult.gatewayReference, paymentUrl: paymentResult.paymentUrl }, 'Gateway payment created — awaiting customer');
@@ -438,51 +454,118 @@ export class PaymentService {
    * Returns immediately if already confirmed (idempotent).
    */
   async confirmPayment(paymentId: number) {
+    const totalStart = Date.now();
     const transaction = await paymentRepository.findById(paymentId);
     if (!transaction) throw new NotFoundError('Payment transaction');
 
     const traceId = (transaction as any).trace_id || randomUUID();
 
+    const meta = {
+      paymentId,
+      gatewayReference: transaction.gateway_reference,
+      orderId: (transaction as any).order_id,
+      referenceType: (transaction as any).reference_type,
+      paymentMethod: (transaction as any).payment_method,
+      confirmationSource: 'confirm',
+    } as Record<string, unknown>;
+
     // Already in a final paid state → idempotent success
     if ((transaction as any).payment_status === 'paid') {
+      log.info({ ...meta, localStatus: 'paid', idempotent: true, totalDurationMs: Date.now() - totalStart }, 'Payment already confirmed — idempotent');
       return { confirmed: true, idempotent: true, paymentStatus: 'paid' };
     }
 
-    log.info({ traceId, paymentId, gatewayRef: transaction.gateway_reference }, 'Payment confirmation requested');
+    log.info({ ...meta, localStatus: transaction.payment_status }, 'Payment confirmation requested');
 
-    const remoteStatus = await paymentGateway.getTransactionStatus(
-      transaction.gateway_reference,
-      (transaction as any).order_id,
-    );
+    // ── Verify with Paymob (with retry) ──
+    const verifyStart = Date.now();
+    let remoteStatus: any;
+    let paymobError: string | undefined;
+    try {
+      remoteStatus = await paymentGateway.getTransactionStatus(
+        transaction.gateway_reference,
+        (transaction as any).order_id,
+      );
+    } catch (err: unknown) {
+      paymobError = err instanceof Error ? err.message : String(err);
+    }
+    const verificationDurationMs = Date.now() - verifyStart;
 
-    const newStatus: 'paid' | 'failed' | null =
-      remoteStatus.status === 'paid' ? 'paid' :
-      remoteStatus.status === 'failed' ? 'failed' : null;
+    if (paymobError || !remoteStatus) {
+      log.error({ ...meta, error: paymobError, verificationDurationMs, totalDurationMs: Date.now() - totalStart }, 'Paymob verification failed');
+      return { confirmed: false, paymentStatus: 'pending', error: paymobError, note: 'Failed to verify with Paymob — will rely on webhook' };
+    }
 
-    if (!newStatus) {
+    const paymobStatus = remoteStatus.status || 'unknown';
+
+    if (paymobStatus === 'paid' || paymobStatus === 'failed') {
+      const newStatus = paymobStatus === 'paid' ? 'paid' as const : 'failed' as const;
+
+      let confirmed = false;
+      let idempotent = false;
+      let outcomeError: string | undefined;
+
+      const txnStart = Date.now();
+      try {
+        await withTransaction(async (conn) => {
+          const locked = await paymentRepository.lockById(paymentId, conn);
+          if (!locked) return;
+          const result = await this._processPaymentOutcome(
+            conn, locked, newStatus, transaction.gateway_reference, traceId, 'confirm',
+            paymobStatus, remoteStatus.success,
+          );
+          idempotent = result.idempotent;
+          if (!idempotent) confirmed = true;
+        });
+      } catch (err: unknown) {
+        outcomeError = err instanceof Error ? err.message : String(err);
+      }
+      const txnDurationMs = Date.now() - txnStart;
+      const totalDurationMs = Date.now() - totalStart;
+
+      log.info({
+        ...meta,
+        paymobStatus,
+        localStatus: newStatus,
+        idempotent,
+        confirmationSource: 'confirm',
+        verificationDurationMs,
+        txnDurationMs,
+        totalDurationMs,
+        finalStatus: newStatus,
+        error: outcomeError || undefined,
+      }, 'Payment confirmation processed');
+
       return {
-        confirmed: false,
-        paymentStatus: remoteStatus.status,
-        note: `Remote status is '${remoteStatus.status}' — not yet confirmed`,
+        confirmed,
+        idempotent,
+        paymentStatus: newStatus,
+        paymobStatus,
+        verificationDurationMs,
+        totalDurationMs,
+        error: outcomeError,
       };
     }
 
-    let confirmed = false;
-    let idempotent = true;
-    await withTransaction(async (conn) => {
-      const locked = await paymentRepository.lockById(paymentId, conn);
-      if (!locked) return;
-      const result = await this._processPaymentOutcome(
-        conn, locked, newStatus, transaction.gateway_reference, traceId, 'confirm',
-        remoteStatus.status, remoteStatus.success,
-      );
-      idempotent = result.idempotent;
-      if (!idempotent) confirmed = true;
-    });
+    // Paymob returned pending/unpaid
+    const totalDurationMs = Date.now() - totalStart;
+    log.info({
+      ...meta,
+      paymobStatus,
+      localStatus: transaction.payment_status,
+      idempotent: false,
+      verificationDurationMs,
+      totalDurationMs,
+      finalStatus: transaction.payment_status,
+    }, 'Payment not yet confirmed by Paymob — pending');
 
-    log.info({ traceId, paymentId, confirmed, idempotent, paymentStatus: newStatus }, 'Payment confirmation processed');
-
-    return { confirmed, idempotent, paymentStatus: newStatus, remoteStatus: remoteStatus.status };
+    return {
+      confirmed: false,
+      paymentStatus: paymobStatus,
+      note: `Remote status is '${paymobStatus}' — not yet confirmed`,
+      verificationDurationMs,
+      totalDurationMs,
+    };
   }
 
   /**
@@ -712,36 +795,30 @@ export class PaymentService {
 
     let expired = 0;
     for (const ptx of payments as any[]) {
-      const conn = await getPool().getConnection();
       try {
-        await conn.execute('SET autocommit = 0');
-        const expired_ = await paymentRepository.expirePayment(ptx.id, conn);
-        if (expired_) {
-          if (ptx.booking_id) {
-            if (ptx.reference_type === 'booking_intent') {
-              await conn.execute(
-                "UPDATE booking_intents SET intent_status = 'expired', expires_at = NOW() WHERE id = ? AND expires_at > NOW()",
-                [ptx.booking_id],
-              );
-              await this._cancelPendingBooking(conn, ptx.booking_id, 'expiry-job');
-            } else if (ptx.reference_type === 'booking') {
-              await conn.execute(
-                "UPDATE bookings SET booking_status = 'expired', payment_status = 'expired', updated_at = NOW() WHERE id = ? AND booking_status = 'pending'",
-                [ptx.booking_id],
-              );
+        await withTransaction(async (conn) => {
+          const expired_ = await paymentRepository.expirePayment(ptx.id, conn);
+          if (expired_) {
+            if (ptx.booking_id) {
+              if (ptx.reference_type === 'booking_intent') {
+                await conn.execute(
+                  "UPDATE booking_intents SET intent_status = 'expired', expires_at = NOW() WHERE id = ? AND expires_at > NOW()",
+                  [ptx.booking_id],
+                );
+                await this._cancelPendingBooking(conn, ptx.booking_id, 'expiry-job');
+              } else if (ptx.reference_type === 'booking') {
+                await conn.execute(
+                  "UPDATE bookings SET booking_status = 'expired', payment_status = 'expired', updated_at = NOW() WHERE id = ? AND booking_status = 'pending'",
+                  [ptx.booking_id],
+                );
+              }
             }
+            expired++;
+            log.info({ txnId: ptx.id, gatewayRef: ptx.gateway_reference, created: ptx.created_at }, 'Payment expired');
           }
-          await conn.execute('COMMIT');
-          expired++;
-          log.info({ txnId: ptx.id, gatewayRef: ptx.gateway_reference, created: ptx.created_at }, 'Payment expired');
-        } else {
-          await conn.execute('ROLLBACK');
-        }
+        });
       } catch (err) {
-        await conn.execute('ROLLBACK');
         log.error({ err, txnId: ptx.id }, 'Failed to expire payment');
-      } finally {
-        conn.release();
       }
     }
 
