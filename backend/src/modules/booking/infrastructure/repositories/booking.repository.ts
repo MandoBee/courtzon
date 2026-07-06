@@ -459,11 +459,12 @@ export class BookingRepository {
       : 'NULL';
 
     const params: any[] = [
-      userId, // u.id
-      userId, // bi.invited_user_id
-      userId, // exclude owner
-      userId, // branch access
-      userId, // sport interests
+      userId, // u.id (line 494)
+      userId, // bi.invited_user_id (line 497)
+      userId, // exclude owner (line 501)
+      userId, // branch access (line 507)
+      userId, // sport interests (line 513)
+      userId, // sport fallback - no profile & no interests (line 517-519)
     ];
 
     let dateFilter = '';
@@ -506,13 +507,19 @@ export class BookingRepository {
              WHERE bpa.branch_id = br.id AND bpa.player_id = ? AND bpa.status = 'approved'
            )
          )
-         AND (
-           r.sport_id = pp.main_sport_id
-           OR EXISTS (
-             SELECT 1 FROM player_sport_interests psi
-             WHERE psi.user_id = ? AND psi.sport_id = r.sport_id
-           )
-         )
+          AND (
+            r.sport_id = pp.main_sport_id
+            OR EXISTS (
+              SELECT 1 FROM player_sport_interests psi
+              WHERE psi.user_id = ? AND psi.sport_id = r.sport_id
+            )
+            OR (
+              pp.main_sport_id IS NULL
+              AND NOT EXISTS (
+                SELECT 1 FROM player_sport_interests psi2 WHERE psi2.user_id = ?
+              )
+            )
+          )
          AND (
            bmr.target_gender = 'any'
            OR u.gender = bmr.target_gender

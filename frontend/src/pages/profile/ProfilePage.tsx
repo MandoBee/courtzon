@@ -516,7 +516,7 @@ export default function ProfilePage() {
           </div>
           <div className="p-3 rounded-[var(--radius-md)] bg-[var(--color-bg)]">
             <p className="text-xs text-[var(--color-text-muted)]">{t('org.timezone')}</p>
-            <p className="text-sm font-medium text-[var(--color-text)]">{user.timezone}</p>
+            <p className="text-sm font-medium text-[var(--color-text)]">{user.timezone && user.timezone !== 'UTC' ? user.timezone : Intl.DateTimeFormat().resolvedOptions().timeZone}</p>
           </div>
           <div className="p-3 rounded-[var(--radius-md)] bg-[var(--color-bg)]">
             <p className="text-xs text-[var(--color-text-muted)]">{t('settings.language')}</p>

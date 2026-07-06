@@ -1,4 +1,4 @@
-import { useEffect, lazy, Suspense, useState } from 'react';
+import { useEffect, lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, Outlet, Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useAuthStore } from './store/auth.store';
@@ -16,7 +16,6 @@ import InstallPrompt from './components/InstallPrompt';
 import WelcomeModal from './components/welcome/WelcomeModal';
 import SiteLogo from './components/branding/SiteLogo';
 import { Can } from './permissions/Can';
-import { useCan } from './hooks/useCan';
 import { useHaptics } from './hooks/useHaptics';
 import { FeatureFlagGuard } from './components/FeatureFlagGuard';
 import { useFeatureFlag } from './hooks/useFeatureFlag';
@@ -228,15 +227,8 @@ function Navbar() {
   const navigate = useNavigate();
   const location = useLocation();
   const chatEnabled = useFeatureFlag('community.chat_enabled');
-  const { can } = useCan();
   const { tap } = useHaptics();
   const { t } = useTranslation();
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [lastNavPath, setLastNavPath] = useState(location.pathname);
-  if (location.pathname !== lastNavPath) {
-    setLastNavPath(location.pathname);
-    setMobileMenuOpen(false);
-  }
 
   const isActive = (path: string) => location.pathname === path || (path === '/app' && location.pathname === '/');
 
@@ -255,20 +247,6 @@ function Navbar() {
     `text-sm transition-colors ${
       isActive(path) ? 'text-[var(--color-primary)] font-medium' : 'text-[var(--color-text-muted)] hover:text-[var(--color-primary)]'
     }`;
-
-  const mobileLinks: { to: string; label: string; perm?: string; flag?: boolean }[] = [
-    { to: '/app', label: t('nav.home') },
-    { to: '/bookings', label: t('nav.bookings') },
-    { to: '/matches', label: t('nav.matches') },
-    { to: '/coaches', label: t('nav.coaches'), perm: 'coaches.view' },
-    { to: '/tournaments', label: t('nav.tournaments'), perm: 'tournaments.view' },
-    { to: '/academies', label: t('nav.academies'), perm: 'academies.view' },
-    { to: '/messages', label: t('nav.messages'), perm: 'community.chat.view', flag: chatEnabled },
-    { to: '/marketplace', label: t('nav.marketplace'), perm: 'marketplace.view' },
-    { to: '/notifications', label: t('nav.notifications') },
-    { to: '/profile', label: t('nav.profile') },
-  ];
-  const visibleMobileLinks = mobileLinks.filter((l) => (!l.perm || can(l.perm)) && (l.flag === undefined || l.flag));
 
   return (
     <nav className="bg-[var(--color-surface)] border-b border-[var(--color-border)] sticky top-0 z-50 cz-pt-safe cz-px-safe">
@@ -310,23 +288,6 @@ function Navbar() {
             <button onClick={handleLogout} className="text-sm text-[var(--color-text-muted)] hover:text-red-500">{t('nav.logout')}</button>
           </div>
           <div className="flex md:hidden items-center gap-1">
-            <button
-              type="button"
-              onClick={() => { tap(); setMobileMenuOpen((v) => !v); }}
-              aria-label={t('nav.menu')}
-              aria-expanded={mobileMenuOpen}
-              className="p-2 rounded-lg text-[var(--color-text)] hover:bg-[var(--color-bg)] transition-colors cz-no-select"
-            >
-              {mobileMenuOpen ? (
-                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              ) : (
-                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
-                </svg>
-              )}
-            </button>
             {orgScopes.length > 0 && orgNavPath && (
               <Link
                 to={orgNavPath}
@@ -350,28 +311,6 @@ function Navbar() {
             </button>
           </div>
         </div>
-        {mobileMenuOpen && (
-          <div className="md:hidden cz-drawer-enter border-t border-[var(--color-border)] py-2 cz-pb-safe">
-            {visibleMobileLinks.map((l) => (
-              <Link
-                key={l.to}
-                to={l.to}
-                onClick={() => tap()}
-                className={`block px-2 py-3 rounded-lg text-base transition-colors ${
-                  isActive(l.to) ? 'text-[var(--color-primary)] font-medium bg-[var(--color-primary-bg)]' : 'text-[var(--color-text)] hover:bg-[var(--color-bg)]'
-                }`}
-              >
-                {l.label}
-              </Link>
-            ))}
-            <button
-              onClick={handleLogout}
-              className="block w-full text-left px-2 py-3 rounded-lg text-base text-red-500 hover:bg-red-500/10 transition-colors"
-            >
-              {t('nav.logout')}
-            </button>
-          </div>
-        )}
       </div>
     </nav>
   );

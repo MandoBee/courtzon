@@ -396,6 +396,15 @@ export const translationKeysRegistry: TranslationKeyEntry[] = [
   { key: 'cart.checkout_failed', defaultValue: 'Checkout failed. Please try again.', moduleSlug: 'cart', elementType: 'message', elementLabel: 'Cart checkout failed' },
   { key: 'cart.loading', defaultValue: 'Loading cart...', moduleSlug: 'cart', elementType: 'text', elementLabel: 'Cart loading' },
   { key: 'cart.remove', defaultValue: 'Remove', moduleSlug: 'cart', elementType: 'button', elementLabel: 'Cart remove item' },
+  { key: 'cart.add_address', defaultValue: '+ Add Address', moduleSlug: 'cart', elementType: 'button', elementLabel: 'Cart add address' },
+  { key: 'cart.no_addresses', defaultValue: 'No addresses found.', moduleSlug: 'cart', elementType: 'text', elementLabel: 'Cart no addresses' },
+  { key: 'cart.item_unavailable', defaultValue: 'This item is no longer available', moduleSlug: 'cart', elementType: 'text', elementLabel: 'Cart item unavailable' },
+  { key: 'cart.shipping_info', defaultValue: 'Shipping', moduleSlug: 'cart', elementType: 'heading', elementLabel: 'Cart shipping info' },
+  { key: 'cart.checking_shipping', defaultValue: 'Checking shipping availability...', moduleSlug: 'cart', elementType: 'text', elementLabel: 'Cart checking shipping' },
+  { key: 'cart.free_shipping', defaultValue: 'Free Shipping', moduleSlug: 'cart', elementType: 'label', elementLabel: 'Cart free shipping' },
+  { key: 'cart.cannot_ship', defaultValue: 'Cannot ship to selected address', moduleSlug: 'cart', elementType: 'text', elementLabel: 'Cart cannot ship' },
+  { key: 'cart.shipping', defaultValue: 'Shipping', moduleSlug: 'cart', elementType: 'label', elementLabel: 'Cart shipping cost' },
+  { key: 'cart.unavailable_sellers_warning', defaultValue: 'Some items are from sellers who cannot ship to your address. Please update your address or remove these items.', moduleSlug: 'cart', elementType: 'message', elementLabel: 'Cart unavailable sellers warning' },
 
   // Orders
   { key: 'orders.title', defaultValue: 'My Orders', moduleSlug: 'orders', elementType: 'heading', elementLabel: 'Orders title' },

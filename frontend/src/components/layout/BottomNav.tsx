@@ -41,7 +41,7 @@ export default function BottomNav() {
 
   return (
     <>
-      <nav className="fixed bottom-0 left-0 right-0 z-50 bg-[var(--color-surface)] border-t border-[var(--color-border)] md:hidden cz-pb-safe cz-px-safe">
+      <nav className="fixed bottom-0 left-0 right-0 z-[60] bg-[var(--color-surface)] border-t border-[var(--color-border)] md:hidden cz-pb-safe cz-px-safe">
         <div className="flex items-center justify-around h-16">
           {coreTabs.map((tab) => (
             <Link

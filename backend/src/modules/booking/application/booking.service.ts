@@ -13,6 +13,7 @@ import { createModuleLogger } from '../../../shared/utils/logger.js';
 import type { CreateBookingInput } from '../presentation/booking.dto.js';
 import type mysql from 'mysql2/promise';
 import { randomUUID } from 'node:crypto';
+import { eventBus } from '../../../shared/event-bus/index.js';
 
 type RowData = mysql.RowDataPacket[];
 
@@ -151,7 +152,11 @@ export class BookingService {
               targetGender: mm.targetGender || 'any',
               targetLevelId: mm.targetLevelId,
               excludeUserId: userId,
-            });
+            }            );
+
+            if (players.length === 0) {
+              log.info(`Matchmaking: No matching players found for booking ${bookingId}`);
+            }
 
             if (mm.autoApply) {
               for (const player of players) {
@@ -159,6 +164,23 @@ export class BookingService {
                   const invId = await bookingRepository.createInvitation(bookingId, player.id);
                   await bookingRepository.updateInvitationStatus(invId, 'accepted');
                   await bookingRepository.addParticipantFromInvitation(bookingId, player.id, player.full_name);
+                } catch (e: any) {
+                  if (!e.message?.includes('already applied')) throw e;
+                }
+              }
+            } else {
+              for (const player of players) {
+                try {
+                  await bookingRepository.createInvitation(bookingId, player.id);
+                  eventBus.emit('match:invitation' as any, {
+                    userId: player.id,
+                    bookingId,
+                    senderId: userId,
+                    actions: [
+                      { label: 'Join Match', actionKey: 'join_match', routePattern: `/bookings/${bookingId}/join`, icon: 'users' },
+                      { label: 'Decline', actionKey: 'decline_match', routePattern: `/bookings/${bookingId}/decline`, icon: 'x' },
+                    ],
+                  });
                 } catch (e: any) {
                   if (!e.message?.includes('already applied')) throw e;
                 }
@@ -305,15 +327,25 @@ export class BookingService {
             log.info(`Matchmaking: No matching players found for booking ${bookingId}`);
           }
 
-          if (mm.autoApply) {
-            for (const player of players) {
-              try {
-                const invId = await bookingRepository.createInvitation(bookingId, player.id);
+          for (const player of players) {
+            try {
+              const invId = await bookingRepository.createInvitation(bookingId, player.id);
+              if (mm.autoApply) {
                 await bookingRepository.updateInvitationStatus(invId, 'accepted');
                 await bookingRepository.addParticipantFromInvitation(bookingId, player.id, player.full_name);
-              } catch (e: any) {
-                if (!e.message?.includes('already applied')) throw e;
+              } else {
+                eventBus.emit('match:invitation' as any, {
+                  userId: player.id,
+                  bookingId,
+                  senderId: userId,
+                  actions: [
+                    { label: 'Join Match', actionKey: 'join_match', routePattern: `/bookings/${bookingId}/join`, icon: 'users' },
+                    { label: 'Decline', actionKey: 'decline_match', routePattern: `/bookings/${bookingId}/decline`, icon: 'x' },
+                  ],
+                });
               }
+            } catch (e: any) {
+              if (!e.message?.includes('already applied')) throw e;
             }
           }
 
