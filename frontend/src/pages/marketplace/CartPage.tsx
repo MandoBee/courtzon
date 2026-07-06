@@ -397,9 +397,8 @@ export default function CartPage() {
         </div>
       )}
 
-      {/* Payment Method & Checkout - Sticky Footer */}
-      <div className="sticky bottom-0 z-10 bg-[var(--color-bg)] border-t border-[var(--color-border)] pt-4 pb-4 cz-pb-safe -mx-4 px-4 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
-        <div className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] shadow-[var(--shadow-md)] p-6 space-y-4 max-w-4xl mx-auto">
+      {/* Payment Method & Checkout */}
+      <div className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] shadow-[var(--shadow-md)] p-6 space-y-4">
         <div className="flex justify-between text-sm">
           <span>{t('common.subtotal')}</span><span>{formatPrice(Number(cart.subtotal), cartCurrency)}</span>
         </div>
@@ -456,15 +455,20 @@ export default function CartPage() {
           <p className="text-sm text-[var(--color-error)] text-center">{t('cart.unavailable_sellers_warning') || 'Some items cannot be shipped to this address. Remove them or choose a different address.'}</p>
         )}
 
-        <button onClick={() => checkout.mutate()} disabled={checkout.isPending || !addressId || !paymentMethod || hasUnavailableSellers}
-          className="w-full py-2.5 bg-[var(--color-primary)] text-white text-sm rounded-[var(--radius-md)] font-medium disabled:opacity-50">
-          {checkout.isPending ? t('common.processing') : 'Place Order'}
-        </button>
+        <div className="flex items-center justify-between pt-4 border-t border-[var(--color-border)]">
+          <button type="button" onClick={() => navigate('/marketplace')}
+            className="text-sm text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors">
+            {t('common.cancel')}
+          </button>
+          <button onClick={() => checkout.mutate()} disabled={checkout.isPending || !addressId || !paymentMethod || hasUnavailableSellers}
+            className="px-6 py-2.5 bg-[var(--color-primary)] text-white text-sm rounded-[var(--radius-md)] font-medium disabled:opacity-50 hover:opacity-90 transition-opacity">
+            {checkout.isPending ? t('common.processing') : t('cart.place_order', { amount: formatPrice(total, cartCurrency) })}
+          </button>
+        </div>
 
         {checkout.isError && (
           <p className="text-sm text-[var(--color-error)]">{t('cart.checkout_failed')}</p>
         )}
-      </div>
       </div>
     </div>
   );
