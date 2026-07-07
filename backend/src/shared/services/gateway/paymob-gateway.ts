@@ -17,12 +17,29 @@ export class PaymobGateway implements PaymentGateway {
   readonly provider = 'paymob';
   private config: GatewayConfig;
   private baseUrl: string;
+  private cachedToken: string | null = null;
+  private tokenExpiresAt: number = 0;
 
   constructor(config: GatewayConfig) {
     this.config = config;
-    // Paymob uses the same API URL for both sandbox (test keys) and production (live keys).
-    // The API key prefix (egy_sk_test_ vs egy_sk_live_) determines the environment.
     this.baseUrl = 'https://accept.paymob.com';
+  }
+
+  private async getAuthToken(): Promise<string> {
+    const now = Date.now();
+    if (this.cachedToken && now < this.tokenExpiresAt) return this.cachedToken;
+
+    const res = await fetch(`${this.baseUrl}/api/auth/tokens`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ api_key: this.config.apiKey }),
+      signal: AbortSignal.timeout(8000),
+    });
+    const data = await res.json() as any;
+    if (!data.token) throw new Error('Paymob auth token not returned');
+    this.cachedToken = data.token;
+    this.tokenExpiresAt = now + 55 * 60 * 1000;
+    return data.token;
   }
 
   async charge(request: PaymentRequest): Promise<PaymentResult> {
@@ -61,6 +78,7 @@ export class PaymobGateway implements PaymentGateway {
           Authorization: `Token ${this.config.secretKey}`,
         },
         body: JSON.stringify(body),
+        signal: AbortSignal.timeout(12000),
       });
 
       const data = await response.json() as any;
@@ -178,28 +196,22 @@ export class PaymobGateway implements PaymentGateway {
   }
 
   async getTransactionStatus(gatewayReference: string, orderId?: number): Promise<PaymentResult> {
-    const maxAttempts = 3;
+    const maxAttempts = 2;
+    const FETCH_TIMEOUT_MS = 8000;
     let lastError: unknown;
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
-        // ── Auth token ──
-        const tokenRes = await fetch(`${this.baseUrl}/api/auth/tokens`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ api_key: this.config.apiKey }),
-        });
-        const tokenData = await tokenRes.json() as any;
-        const authToken = tokenData.token;
-
+        // ── Auth token (cached, 8s timeout) ──
+        const authToken = await this.getAuthToken();
         if (!authToken) {
           return { success: false, transactionId: '', status: 'failed', errorMessage: 'Paymob auth failed' };
         }
 
-        // ── PRIMARY: Order API ──
+        // ── PRIMARY: Order API (8s timeout) ──
         const orderRes = await fetch(
           `${this.baseUrl}/api/ecommerce/orders/${gatewayReference}`,
-          { headers: { Authorization: `Bearer ${authToken}` } },
+          { headers: { Authorization: `Bearer ${authToken}` }, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) },
         );
         const orderText = await orderRes.text();
         let orderData: any;
@@ -221,10 +233,10 @@ export class PaymobGateway implements PaymentGateway {
           };
         }
 
-        // ── FALLBACK: Transaction API ──
+        // ── FALLBACK: Transaction API (8s timeout) ──
         const txnRes = await fetch(
           `${this.baseUrl}/api/acceptance/transactions`,
-          { headers: { Authorization: `Bearer ${authToken}` } },
+          { headers: { Authorization: `Bearer ${authToken}` }, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) },
         );
         const txnBody = await txnRes.json() as any;
         const txnList: any[] = txnBody?.results ?? (Array.isArray(txnBody) ? txnBody : []);
@@ -259,9 +271,9 @@ export class PaymobGateway implements PaymentGateway {
       } catch (err: unknown) {
         lastError = err;
 
-        // Exponential backoff: 200ms, 600ms, 1800ms
+        // Fast backoff: 100ms, 300ms
         if (attempt < maxAttempts) {
-          const delayMs = 200 * Math.pow(3, attempt - 1);
+          const delayMs = 100 * Math.pow(2, attempt - 1);
           await new Promise((r) => setTimeout(r, delayMs));
         }
       }
