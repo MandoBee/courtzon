@@ -1004,7 +1004,14 @@ export default function BookingModal({ open, onClose }: BookingModalProps) {
       )}
 
       {/* Card payment modal */}
-      <Modal open={!!pixelClientSecret} onClose={() => { setPixelClientSecret(null); showToast('Payment cancelled', 'warning'); }} title="Pay with Card" size="lg">
+      <Modal open={!!pixelClientSecret} onClose={async () => {
+        const bookingId = pendingBookingId;
+        setPixelClientSecret(null);
+        try {
+          await api.post(`/bookings/${bookingId}/cancel`, { reason: 'User closed payment' });
+        } catch {}
+        showToast('Payment cancelled', 'warning');
+      }} title="Pay with Card" size="lg">
         {pixelClientSecret && (
           <PaymobPixelCard
             clientSecret={pixelClientSecret}

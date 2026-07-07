@@ -62,6 +62,7 @@ export async function marketplaceRoutes(app: FastifyInstance): Promise<void> {
   app.get('/marketplace/orders', ctrl.getOrdersHandler);
   app.get('/marketplace/orders/:id', ctrl.getOrderHandler);
   app.put('/marketplace/orders/:id/status', ctrl.updateOrderStatusHandler);
+  app.post('/marketplace/orders/:id/cancel', ctrl.cancelOrderHandler);
 
   // Seller Orders
   app.get('/marketplace/seller/orders', { preHandler: [requireApprovedOrg()] }, ctrl.getSellerOrdersHandler);

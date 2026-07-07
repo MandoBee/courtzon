@@ -542,6 +542,14 @@ export const marketplaceRepository = {
     return rows;
   },
 
+  async restoreCartFromOrder(userId: number, orderRows: any[]) {
+    if (!orderRows.length) return;
+    const items = orderRows
+      .filter((r: any) => r.product_id)
+      .map((r: any) => ({ product_id: r.product_id, variant_id: r.variant_id, quantity: r.quantity }));
+    return this.restoreCart(userId, items);
+  },
+
   async restoreCart(userId: number, items: any[]) {
     if (!items.length) return;
     const pool = getPool();

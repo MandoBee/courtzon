@@ -330,6 +330,13 @@ export async function updateOrderStatusHandler(request: FastifyRequest, reply: F
   return reply.send(order);
 }
 
+export async function cancelOrderHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { id } = request.params as any;
+  const userId = (request as any).userId;
+  await svc.cancelOrder(Number(id), userId);
+  return reply.send({ success: true });
+}
+
 export async function getOrdersHandler(request: FastifyRequest, reply: FastifyReply) {
   const userId = (request as any).userId;
   const { page, limit, status } = request.query as any;

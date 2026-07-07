@@ -341,7 +341,11 @@ export default function CartPage() {
         </div>
       )}
 
-      <Modal open={!!pixelClientSecret} onClose={() => setPixelClientSecret(null)} title="Pay with Card" size="lg">
+      <Modal open={!!pixelClientSecret} onClose={async () => {
+        setPixelClientSecret(null);
+        if (orderId) { try { await api.post(`/marketplace/orders/${orderId}/cancel`); queryClient.invalidateQueries({ queryKey: ['mp-cart'] }); } catch {} }
+        showToast('Payment cancelled', 'warning');
+      }} title="Pay with Card" size="lg">
         {pixelClientSecret && (
           <PaymobPixelCard
             clientSecret={pixelClientSecret}
@@ -361,8 +365,9 @@ export default function CartPage() {
               // Fall back to polling (webhook will complete)
               setPollingPaid(true);
             }}
-            onCancel={() => {
+            onCancel={async () => {
               setPixelClientSecret(null);
+              if (orderId) { try { await api.post(`/marketplace/orders/${orderId}/cancel`); queryClient.invalidateQueries({ queryKey: ['mp-cart'] }); } catch {} }
               showToast('Payment cancelled', 'warning');
             }}
           />

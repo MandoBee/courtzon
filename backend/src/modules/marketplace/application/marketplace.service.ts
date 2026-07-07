@@ -663,6 +663,20 @@ export const marketplaceService = {
   },
 
   // ── Order Status Transitions ──
+  async cancelOrder(orderId: number, userId: number) {
+    const order = await this.getOrder(orderId);
+    if (order.buyer_id !== userId) throw new NotFoundError('Order not found');
+
+    // Cancel the order (restores stock in the status transition handler)
+    await this.updateOrderStatus(orderId, userId, { status: 'cancelled', note: 'User cancelled payment' });
+
+    // Restore cart from order items
+    const orderRows = await repo.findOrderById(orderId);
+    if (orderRows?.length) {
+      await repo.restoreCartFromOrder(userId, orderRows);
+    }
+  },
+
   async updateOrderStatus(orderId: number, userId: number, data: any) {
     const order = await this.getOrder(orderId);
     const userRole = await this._getUserRoleInOrder(userId, order);
