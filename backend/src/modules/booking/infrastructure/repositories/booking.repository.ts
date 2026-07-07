@@ -319,6 +319,10 @@ export class BookingRepository {
       profileConditions.push(`(
         pp.main_sport_id = ?
         OR EXISTS (SELECT 1 FROM player_sport_interests psi WHERE psi.user_id = u.id AND psi.sport_id = ?)
+        OR (
+          pp.main_sport_id IS NULL
+          AND NOT EXISTS (SELECT 1 FROM player_sport_interests psi2 WHERE psi2.user_id = u.id)
+        )
       )`);
       params.push(criteria.sportId, criteria.sportId);
     }
