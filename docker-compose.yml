@@ -72,6 +72,8 @@ services:
       DB_PORT: 3306
       REDIS_HOST: redis
       REDIS_PORT: 6379
+      APP_URL: ${APP_URL:-https://courtzon.cloud}
+      CORS_ORIGINS: ${CORS_ORIGINS:-https://www.courtzon.cloud,https://admin.courtzon.cloud}
       RELAX_RATE_LIMIT: "true"
     depends_on:
       mysql:

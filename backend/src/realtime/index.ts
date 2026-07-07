@@ -3,6 +3,7 @@ import type { FastifyInstance } from 'fastify';
 import { setOnlineWithReconnect, setOffline } from '../modules/notifications/application/presence.service.js';
 import { registerUserDevice } from '../modules/notifications/application/cross-device-sync.service.js';
 import { setupSocketGateway, userRoom, orgRoom, branchRoom, ADMIN_ROOM, PLAYER_ROOM, getSocketMetrics } from './socket-gateway.js';
+import { ALLOWED_ORIGINS } from '../app.js';
 
 let io: SocketIOServer | null = null;
 
@@ -12,14 +13,13 @@ export function getIO(): SocketIOServer {
 }
 
 export function setupRealtime(app: FastifyInstance): SocketIOServer {
-  const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(',') ?? [];
   const isDev = process.env.NODE_ENV === 'development';
   const isDockerLocal = process.env.DOCKER_ENV === 'true';
 
   io = new SocketIOServer(app.server, {
     cors: {
       origin: (origin, cb) => {
-        if (!origin || allowedOrigins.includes(origin)) cb(null, true);
+        if (!origin || ALLOWED_ORIGINS.includes(origin)) cb(null, true);
         else if (isDev || isDockerLocal) cb(null, true);
         else cb(new Error('Not allowed by CORS'), false);
       },

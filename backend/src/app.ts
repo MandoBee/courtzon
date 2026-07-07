@@ -57,10 +57,14 @@ const isDev = process.env.NODE_ENV !== 'production';
 
 const appUrl = process.env.APP_URL || '';
 const corsOrigins = process.env.CORS_ORIGINS ? process.env.CORS_ORIGINS.split(',').map(s => s.trim()) : [];
-const ALLOWED_ORIGINS = [
+export const ALLOWED_ORIGINS = [
   'https://courtzon.com',
+  'https://www.courtzon.com',
   'https://admin.courtzon.com',
   'https://media.courtzon.com',
+  'https://courtzon.cloud',
+  'https://www.courtzon.cloud',
+  'https://admin.courtzon.cloud',
   'http://localhost:5173',
   'http://localhost:5174',
   'http://127.0.0.1:5173',
