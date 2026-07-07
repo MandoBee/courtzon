@@ -39,7 +39,7 @@ export function setupRealtime(app: FastifyInstance): SocketIOServer {
   io.use(async (socket, next) => {
     try {
       const cookies = parseCookies(socket.handshake.headers.cookie || '');
-      const token = cookies['auth_token'] || socket.handshake.auth?.token;
+      const token = cookies['session_token'] || socket.handshake.auth?.token;
 
       if (!token) return next(new Error('Authentication required'));
 
