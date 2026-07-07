@@ -14,7 +14,7 @@ import { runDatabaseBackup } from "./infrastructure/backup/backup.service.js";
 import {
   handleProcessNotification, handleSendNotificationBatch,
   handleProcessNotificationDigest, handleSendScheduledNotification,
-  handleProcessDeadLetter, handleRetryFailedDeliveries,
+  handleProcessDeadLetter,
 } from "./modules/notifications/infrastructure/notification.worker.js";
 import { processDueDigests } from "./modules/notifications/application/digest.service.js";
 import { runCleanupPolicies } from "./modules/notifications/application/cleanup.service.js";
@@ -62,7 +62,6 @@ async function bootstrap() {
     registerHandler('process_notification_digest', handleProcessNotificationDigest);
     registerHandler('send_scheduled_notification', handleSendScheduledNotification);
     registerHandler('process_dead_letter', handleProcessDeadLetter);
-    registerHandler('retry_failed_deliveries', handleRetryFailedDeliveries);
     registerHandler('trigger_digest_processing', processDueDigests);
     registerHandler('run_cleanup', async (_data: Record<string, never>) => {
       await runCleanupPolicies();
@@ -162,13 +161,6 @@ async function bootstrap() {
     // Digest processing — every 2 minutes
     await queueService.add('trigger_digest_processing', {}, {
       repeat: { every: 120_000 },
-      removeOnComplete: true,
-      removeOnFail: { age: 86400 },
-    });
-
-    // Dead letter retry — every 5 minutes
-    await queueService.add('retry_failed_deliveries', {}, {
-      repeat: { every: 300_000 },
       removeOnComplete: true,
       removeOnFail: { age: 86400 },
     });
