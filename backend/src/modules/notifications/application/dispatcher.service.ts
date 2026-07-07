@@ -57,18 +57,36 @@ export async function dispatchToUser(options: DispatchOptions): Promise<void> {
   const resolved = resolveTemplate(template, data);
 
   const pool = getPool();
+
+  let actionId: number | null = null;
+  const actionKey = options.actionKey ?? template.actionKey ?? null;
+  if (actionKey) {
+    const [actRows] = await pool.execute<RowData>(
+      'SELECT id FROM notification_actions WHERE action_key = ?', [actionKey]
+    );
+    if (actRows.length) {
+      actionId = (actRows[0] as any).id;
+    } else {
+      const [ins] = await pool.execute<ResultSetHeader>(
+        'INSERT INTO notification_actions (action_key) VALUES (?)', [actionKey]
+      );
+      actionId = ins.insertId;
+    }
+  }
+
   const [result] = await pool.execute<ResultSetHeader>(
     `INSERT INTO notifications
-     (user_id, type, title, body, action_key, actions, image_urls, priority,
+     (user_id, type, title, body, action_id, action_payload, actions, image_urls, priority,
       organization_id, branch_id, related_entity_type, related_entity_id,
       sender_id, category_slug, event_name, template_id, is_read, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, FALSE, NOW())`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, FALSE, NOW())`,
     [
       userId,
       options.type ?? template.type ?? 'info',
     resolved.title,
     resolved.body ?? null,
-    options.actionKey ?? template.actionKey ?? null,
+    actionId,
+    options.actionPayload ?? null,
       options.actions ? JSON.stringify(options.actions) : template.actions ? JSON.stringify(template.actions) : null,
       options.imageUrls ? JSON.stringify(options.imageUrls) : null,
       options.priority ?? template.priority ?? 'normal',
@@ -149,6 +167,22 @@ async function dispatchBulkChunk(
 
   const resolved = resolveTemplate(template, options.data);
 
+  let actionId: number | null = null;
+  const actionKey = options.actionKey ?? template.actionKey ?? null;
+  if (actionKey) {
+    const [actRows] = await pool.execute<RowData>(
+      'SELECT id FROM notification_actions WHERE action_key = ?', [actionKey]
+    );
+    if (actRows.length) {
+      actionId = (actRows[0] as any).id;
+    } else {
+      const [ins] = await pool.execute<ResultSetHeader>(
+        'INSERT INTO notification_actions (action_key) VALUES (?)', [actionKey]
+      );
+      actionId = ins.insertId;
+    }
+  }
+
   const values: any[][] = [];
   const userIdsToQueue: number[] = [];
 
@@ -158,7 +192,8 @@ async function dispatchBulkChunk(
       options.type ?? template.type ?? 'info',
     resolved.title,
     resolved.body ?? null,
-    options.actionKey ?? template.actionKey ?? null,
+    actionId,
+    options.actionPayload ?? null,
       options.actions ? JSON.stringify(options.actions) : template.actions ? JSON.stringify(template.actions) : null,
       options.imageUrls ? JSON.stringify(options.imageUrls) : null,
       options.priority ?? template.priority ?? 'normal',
@@ -174,12 +209,12 @@ async function dispatchBulkChunk(
     userIdsToQueue.push(userId);
   }
 
-  const placeholders = values.map(() => '(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, FALSE, FALSE, NOW())').join(', ');
+  const placeholders = values.map(() => '(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, FALSE, NOW())').join(', ');
   const flatValues = values.flat();
 
   await pool.execute(
     `INSERT INTO notifications
-     (user_id, type, title, body, action_key, actions, image_urls, priority,
+     (user_id, type, title, body, action_id, action_payload, actions, image_urls, priority,
       organization_id, branch_id, related_entity_type, related_entity_id,
       sender_id, category_slug, event_name, template_id, is_read, created_at)
      VALUES ${placeholders}`,

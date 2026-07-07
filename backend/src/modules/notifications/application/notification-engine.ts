@@ -120,6 +120,7 @@ class NotificationEngine {
             branchId: data.branchId,
             relatedEntityType: 'booking',
             relatedEntityId: String(data.bookingId),
+            actionPayload: { bookingId: data.bookingId },
           });
         }
         break;
@@ -437,6 +438,7 @@ class NotificationEngine {
             senderId: data.senderId,
             actions: data.actions,
             digestable: false,
+            actionPayload: { bookingId: data.bookingId },
           });
         }
         break;

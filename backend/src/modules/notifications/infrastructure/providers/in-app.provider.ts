@@ -27,6 +27,7 @@ export class InAppProvider implements NotificationProvider {
         created_at: new Date().toISOString(),
         category_slug: job.categorySlug,
         action_key: job.actionKey,
+        action_payload: job.actionPayload,
         actions: job.actions ? (typeof job.actions === 'string' ? JSON.parse(job.actions) : job.actions) : null,
         image_urls: job.imageUrls,
         organisation_id: job.organisationId,

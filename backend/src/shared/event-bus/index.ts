@@ -2,7 +2,7 @@ import { EventEmitter } from 'events';
 
 export interface BaseEvent {
   eventId?: string;
-  timestamp?: Date;
+  timestamp?: string;
   correlationId?: string;
 }
 
@@ -140,7 +140,7 @@ class EventBus {
     const payload = {
       ...data,
       eventId: data.eventId || `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
-      timestamp: data.timestamp || new Date(),
+      timestamp: data.timestamp || new Date().toISOString(),
     };
     process.nextTick(() => {
       this.emitter.emit(event, payload);

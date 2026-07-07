@@ -11,7 +11,7 @@ const RECONNECT_TTL = 86400;
 export async function setOnline(userId: number): Promise<void> {
   try {
     const redis = getRedisClient();
-    await redis.set(`${PRESENCE_PREFIX}${userId}${PRESENCE_SUFFIX}`, '1', { EX: PRESENCE_TTL });
+    await redis.set(`${PRESENCE_PREFIX}${userId}${PRESENCE_SUFFIX}`, '1', 'EX', PRESENCE_TTL);
     log.debug({ userId }, 'User set online');
   } catch (err) {
     log.error({ err, userId }, 'Failed to set user online');
@@ -81,11 +81,11 @@ export async function queueForReconnect(userId: number, notificationIds: number[
   try {
     const redis = getRedisClient();
     const key = `${RECONNECT_QUEUE_PREFIX}${userId}`;
-    const existing = await redis.lRange(key, 0, -1);
+    const existing = await redis.lrange(key, 0, -1);
     const existingSet = new Set(existing.map(Number));
     const toAdd = notificationIds.filter((id) => !existingSet.has(id));
     if (toAdd.length) {
-      await redis.rPush(key, toAdd.map(String));
+      await redis.rpush(key, toAdd.map(String));
       await redis.expire(key, RECONNECT_TTL);
     }
   } catch (err) {
@@ -97,7 +97,7 @@ export async function getReconnectQueue(userId: number): Promise<number[]> {
   try {
     const redis = getRedisClient();
     const key = `${RECONNECT_QUEUE_PREFIX}${userId}`;
-    const ids = await redis.lRange(key, 0, -1);
+    const ids = await redis.lrange(key, 0, -1);
     await redis.del(key);
     return ids.map(Number);
   } catch (err) {
