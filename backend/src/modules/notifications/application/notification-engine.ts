@@ -125,6 +125,7 @@ class NotificationEngine {
             relatedEntityType: 'booking',
             relatedEntityId: String(data.bookingId),
             actionPayload: { bookingId: data.bookingId },
+            digestable: false,
           });
         }
         break;
@@ -171,6 +172,7 @@ class NotificationEngine {
             userId: data.userId, eventName: eventName, categorySlug, data,
             organisationId: data.organisationId,
             relatedEntityType: 'payment', relatedEntityId: String(data.paymentId),
+            digestable: false,
           });
         }
         break;

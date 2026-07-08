@@ -195,13 +195,32 @@ export class PaymentService {
     const isIntentionWebhook = !!data.obj;
     const obj = data.obj ?? data;
 
-    const gatewayRef = String(obj.intention_order_id || obj.order?.id || data.order?.id || obj.id || '');
-    if (!gatewayRef) {
-      log.error({ msg: 'Missing gateway reference' });
+    // Collect all possible gateway references from the payload
+    const intentionOrderId = obj.intention_order_id;
+    const intentionId = obj.intention_id;
+    const orderId = obj.order?.id;
+    const rootOrderId = data.order?.id;
+    const txnId = obj.id;
+    const merchantOrderId = obj.order?.merchant_order_id;
+
+    const possibleRefs = [...new Set(
+      [intentionOrderId, intentionId, orderId, rootOrderId, txnId]
+        .filter(v => v != null)
+        .map(v => String(v))
+    )];
+
+    if (possibleRefs.length === 0) {
+      log.error({ msg: 'Missing gateway reference from webhook payload' });
       throw new Error('Missing gateway reference');
     }
 
-    log.info({ webhookSource: isIntentionWebhook ? 'intention' : 'accept', gatewayRef, objStatus: obj.status });
+    log.info({
+      webhookSource: isIntentionWebhook ? 'intention' : 'accept',
+      possibleRefs,
+      objStatus: obj.status,
+      objKeys: Object.keys(obj),
+      merchantOrderId,
+    }, 'Webhook received');
 
     // --- Determine new payment status ---
     let newStatus: string | null = null;
@@ -220,11 +239,11 @@ export class PaymentService {
       newStatus = STATUS_MAP[obj.status];
 
       if (obj.status === 'failed') {
-        log.warn({ gatewayRef, objStatus: obj.status, objSuccess: obj.success }, 'Intention webhook: payment failed');
+        log.warn({ possibleRefs, objStatus: obj.status, objSuccess: obj.success }, 'Intention webhook: payment failed');
       }
 
       if (!newStatus) {
-        log.info({ gatewayRef, status: obj.status }, 'Non-final webhook ignored');
+        log.info({ possibleRefs, status: obj.status }, 'Non-final webhook ignored');
         return { received: true, note: 'ignored' };
       }
     } else {
@@ -232,21 +251,45 @@ export class PaymentService {
       if (obj.success === true) {
         newStatus = 'paid';
       } else if (obj.pending === true) {
-        log.info({ gatewayRef, objStatus: obj.status }, 'Accept API webhook: transaction still pending, ignoring');
+        log.info({ possibleRefs, objStatus: obj.status }, 'Accept API webhook: transaction still pending, ignoring');
         return { received: true, note: 'ignored' };
       } else {
         newStatus = 'failed';
       }
 
       if (newStatus === 'failed') {
-        log.warn({ gatewayRef, objStatus: obj.status, objSuccess: obj.success }, 'Accept webhook: payment failed');
+        log.warn({ possibleRefs, objStatus: obj.status, objSuccess: obj.success }, 'Accept webhook: payment failed');
       }
     }
 
-    // --- Pre-check: transaction must exist ---
-    const preCheck = await paymentRepository.findByGatewayRef(gatewayRef);
+    // --- Resolve gateway reference by trying each possible ref ---
+    let resolvedGatewayRef = '';
+    let preCheck = null as any;
+
+    for (const ref of possibleRefs) {
+      preCheck = await paymentRepository.findByGatewayRef(ref);
+      if (preCheck) {
+        resolvedGatewayRef = ref;
+        break;
+      }
+    }
+
+    // Fallback: try to find by merchant_order_id (contains our custom reference)
+    if (!preCheck && merchantOrderId && typeof merchantOrderId === 'string') {
+      const parts = merchantOrderId.split('_');
+      const refId = Number(parts[parts.length - 2]);
+      if (refId > 0) {
+        const refType = parts.slice(0, parts.length - 2).join('_');
+        preCheck = await paymentRepository.findByReference(refType, refId);
+        if (preCheck) {
+          resolvedGatewayRef = String(preCheck.gateway_reference || '');
+          log.warn({ merchantOrderId, matchedId: (preCheck as any).id }, 'Webhook: matched via merchant_order_id');
+        }
+      }
+    }
+
     if (!preCheck) {
-      log.error({ msg: 'Payment transaction not found', gatewayRef });
+      log.error({ possibleRefs, merchantOrderId }, 'Payment transaction not found via any reference');
       throw new NotFoundError('Payment transaction');
     }
 
@@ -255,7 +298,7 @@ export class PaymentService {
     // --- cancelled / expired → direct status update + cancel pending booking ---
     if (newStatus === 'cancelled' || newStatus === 'expired') {
       const result = await withTransaction(async (conn) => {
-        const transaction = await paymentRepository.lockByGatewayRef(gatewayRef, conn);
+        const transaction = await paymentRepository.lockByGatewayRef(resolvedGatewayRef, conn);
         if (!transaction) throw new NotFoundError('Payment transaction');
         const [updateResult] = await conn.execute<mysql.ResultSetHeader>(
           `UPDATE payment_transactions
@@ -286,17 +329,18 @@ export class PaymentService {
     }
 
     // --- paid / failed → full outcome processing ---
+    log.info({ gatewayRef: resolvedGatewayRef, newStatus, traceId }, 'PAYMENT PATH = WEBHOOK');
     const paidResult = await withTransaction(async (conn) => {
-      const transaction = await paymentRepository.lockByGatewayRef(gatewayRef, conn);
+      const transaction = await paymentRepository.lockByGatewayRef(resolvedGatewayRef, conn);
       if (!transaction) throw new NotFoundError('Payment transaction');
       return this._processPaymentOutcome(
         conn, transaction, newStatus as 'paid' | 'failed',
-        gatewayRef, traceId, 'webhook', obj.status, obj.success,
+        resolvedGatewayRef, traceId, 'webhook', obj.status, obj.success,
       );
     });
 
     if (!paidResult.idempotent) {
-      const txn = await paymentRepository.findByGatewayRef(gatewayRef);
+      const txn = await paymentRepository.findByGatewayRef(resolvedGatewayRef);
       if (txn) {
         const userId = (txn as any).user_id;
         if (newStatus === 'paid') {
@@ -346,6 +390,7 @@ export class PaymentService {
 
         if (!newStatus) continue;
 
+        log.info({ txnId: ptx.id, gatewayRef: ptx.gateway_reference, newStatus, traceId }, 'PAYMENT PATH = SYNC_JOB');
         await withTransaction(async (conn) => {
           const locked = await paymentRepository.lockByGatewayRef(ptx.gateway_reference, conn);
           if (!locked) return;
