@@ -9,6 +9,7 @@ import { amenityRepository } from '../infrastructure/repositories/amenity.reposi
 import { countriesRepository } from '../../countries/infrastructure/repositories/countries.repository.js';
 import { NotFoundError, ConflictError, ValidationError } from '../../../shared/errors/app-error.js';
 import { resolveOrganisationMedia } from './organisation-media.util.js';
+import { eventBus } from '../../../shared/event-bus/index.js';
 import {
   cascadeOrganisationSoftDelete,
   cascadeBranchSoftDelete,
@@ -814,6 +815,20 @@ export class OrganisationService {
       `UPDATE organisation_subscriptions SET start_date = ?, end_date = ?, subscription_status = 'active' WHERE id = ?`,
       [startDate, endDate, sub.id]
     );
+
+    const [prevSubs] = await pool.execute<RowData>(
+      'SELECT COUNT(*) as cnt FROM organisation_subscriptions WHERE organisation_id = ? AND id != ?',
+      [orgId, sub.id]
+    );
+    const isRenewal = (prevSubs[0] as any).cnt > 0;
+
+    if (isRenewal) {
+      eventBus.emit('organisation:subscription-renewed', {
+        organisationId: orgId,
+        planName: '',
+        billingCycle: sub.billing_cycle || 'monthly',
+      });
+    }
 
     return { startDate, endDate, status: 'active' };
   }

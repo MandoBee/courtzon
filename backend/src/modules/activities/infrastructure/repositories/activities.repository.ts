@@ -109,6 +109,20 @@ export const activitiesRepository = {
     );
   },
 
+  async findMatchById(matchId: number) {
+    const pool = getPool();
+    const [rows] = await pool.execute<RowData>(
+      `SELECT tm.*, p1.full_name as player1_name, p2.full_name as player2_name, r.name as resource_name
+       FROM tournament_matches tm
+       LEFT JOIN users p1 ON tm.player1_id = p1.id
+       LEFT JOIN users p2 ON tm.player2_id = p2.id
+       LEFT JOIN resources r ON tm.resource_id = r.id
+       WHERE tm.id = ?`,
+      [matchId]
+    );
+    return rows.length ? rows[0] : null;
+  },
+
   async findMatches(tournamentId: number) {
     const pool = getPool();
     const [rows] = await pool.execute<RowData>(

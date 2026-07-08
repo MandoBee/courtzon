@@ -1,5 +1,6 @@
 import { getPool } from '../../../database/mysql.js';
 import { createModuleLogger } from '../../../shared/utils/logger.js';
+import { eventBus } from '../../../shared/event-bus/index.js';
 import type { CancelExpiredBookingsJob } from '../../../infrastructure/queue/queue.service.js';
 
 const log = createModuleLogger('booking-expiry');
@@ -28,6 +29,12 @@ export async function handleCancelExpiredBookings(job: CancelExpiredBookingsJob)
        VALUES (?, 0, 'Auto-cancelled: unpaid')`,
       [booking.id]
     );
+    eventBus.emit('booking:auto-cancelled', {
+      bookingId: booking.id,
+      userId: booking.user_id,
+      reason: 'Auto-cancelled: unpaid',
+      organisationId: undefined,
+    });
     log.info({ bookingId: booking.id }, `Cancelled expired booking #${booking.id}`);
   }
 

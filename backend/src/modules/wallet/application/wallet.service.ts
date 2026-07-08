@@ -5,6 +5,7 @@ import { transactionService } from '../../financial/application/transaction.serv
 import { paymentGateway } from '../../../shared/services/gateway/gateway-factory.js';
 import { ConflictError } from '../../../shared/errors/app-error.js';
 import { withTransaction } from '../../../database/database.transaction.js';
+import { eventBus } from '../../../shared/event-bus/index.js';
 
 export class WalletService {
   async getMyWallet(userId: number) {
@@ -63,6 +64,20 @@ export class WalletService {
         return balance;
       });
 
+      eventBus.emit('wallet:deposit', {
+        walletId: wallet.id,
+        userId,
+        amount,
+        balance: newBalance,
+        currency: wallet.currencyCode,
+      });
+      if (newBalance < 50) {
+        eventBus.emit('wallet:low-balance', {
+          userId,
+          balance: newBalance,
+          currency: wallet.currencyCode,
+        });
+      }
       return { success: true, balance: newBalance, transactionId: paymentResult.transactionId };
     }
 
@@ -105,6 +120,20 @@ export class WalletService {
       return balance;
     });
 
+    eventBus.emit('wallet:withdrawal', {
+      walletId: wallet.id,
+      userId,
+      amount,
+      balance: newBalance,
+      currency: wallet.currencyCode,
+    });
+    if (newBalance < 50) {
+      eventBus.emit('wallet:low-balance', {
+        userId,
+        balance: newBalance,
+        currency: wallet.currencyCode,
+      });
+    }
     return { success: true, balance: newBalance };
   }
 

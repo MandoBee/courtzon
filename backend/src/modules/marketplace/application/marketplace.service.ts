@@ -12,6 +12,7 @@ import { cascadeProductSoftDelete } from '../../../shared/cascade/index.js';
 import { getPlanNumericLimit } from '../../../shared/utils/plan-limits.util.js';
 import { userRepository } from '../../auth/infrastructure/repositories/user.repository.js';
 import { createModuleLogger } from '../../../shared/utils/logger.js';
+import { eventBus } from '../../../shared/event-bus/index.js';
 
 const log = createModuleLogger('marketplace');
 
@@ -481,6 +482,14 @@ export const marketplaceService = {
     } : undefined;
 
     // Process payment (cart cleared inside on success)
+    const firstSellerId = cartItems[0]?.seller_id;
+    eventBus.emit('marketplace:order-placed', {
+      orderId,
+      userId,
+      sellerId: firstSellerId || 0,
+      total,
+      organisationId: firstSellerId || undefined,
+    });
     return this._processOrderPayment(userId, orderId, total, currencyCode, data.paymentMethod, data.returnUrl, customerData);
   },
 
@@ -502,8 +511,13 @@ export const marketplaceService = {
             note: 'Payment via wallet',
           });
           await repo.clearCart(userId);
-          // Return order directly from findOrderById without buyer filter
           const orderRows = await repo.findOrderById(orderId);
+          const firstSellerId = orderRows?.[0]?.seller_id;
+          eventBus.emit('marketplace:order-confirmed', {
+            orderId,
+            userId,
+            sellerId: firstSellerId || 0,
+          });
           if (orderRows?.length) {
             const order = this._formatOrder(orderRows);
             return order;
@@ -521,6 +535,12 @@ export const marketplaceService = {
         note: 'Payment on delivery (cash)',
       });
       await repo.clearCart(userId);
+      const cashOrderRows = await repo.findOrderById(orderId);
+      const cashSellerId = cashOrderRows?.[0]?.seller_id;
+      eventBus.emit('marketplace:order-confirmed', {
+        orderId, userId,
+        sellerId: cashSellerId || 0,
+      });
       return this.getOrderForUser(orderId, userId);
     } else {
       // ── Card / Online payment via gateway ──
@@ -726,6 +746,32 @@ export const marketplaceService = {
       } catch {
         // Refund failure is non-fatal
       }
+    }
+
+    const firstItem = order.items?.[0];
+    const sellerId = firstItem?.sellerId ?? 0;
+
+    eventBus.emit('marketplace:order-status-changed', {
+      orderId, userId,
+      fromStatus: order.status,
+      toStatus: data.status,
+    });
+
+    if (data.status === 'shipped') {
+      eventBus.emit('marketplace:order-shipped', {
+        orderId, userId,
+        trackingNumber: data.trackingNumber,
+      });
+    } else if (data.status === 'delivered') {
+      eventBus.emit('marketplace:order-delivered', { orderId, userId });
+    } else if (data.status === 'cancelled') {
+      eventBus.emit('marketplace:order-cancelled', {
+        orderId, userId, reason: data.note,
+      });
+    } else if (data.status === 'refunded') {
+      eventBus.emit('marketplace:order-refunded', {
+        orderId, userId, reason: data.note,
+      });
     }
 
     return this.getOrder(orderId);
@@ -1020,6 +1066,11 @@ export const marketplaceService = {
       [org.id, userId, data.planId || null, data.notes || null]
     );
 
+    eventBus.emit('marketplace:new-seller-registered', {
+      sellerId: org.id,
+      userId,
+      shopName: org.name || '',
+    });
     return { id: (result as any).insertId, status: 'pending' };
   },
 

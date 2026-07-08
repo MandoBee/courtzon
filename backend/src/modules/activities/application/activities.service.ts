@@ -6,6 +6,7 @@ import { generateUUID } from '../../../shared/utils/token.js';
 import { getPool } from '../../../database/mysql.js';
 import type mysql from 'mysql2/promise';
 import { getPlanNumericLimit } from '../../../shared/utils/plan-limits.util.js';
+import { eventBus } from '../../../shared/event-bus/index.js';
 
 type RowData = mysql.RowDataPacket[];
 
@@ -50,6 +51,11 @@ export const activitiesService = {
       }
     }
     const id = await repo.createTournament({ ...data, creatorId: userId, commissionRate });
+    eventBus.emit('tournament:created', {
+      tournamentId: id,
+      userId,
+      name: data.name || 'Tournament',
+    });
     return repo.findTournamentById(id);
   },
   async updateTournament(id: number, data: any) {
@@ -74,13 +80,46 @@ export const activitiesService = {
     if (confirmed.length < 2) throw new ConflictError('Need at least 2 confirmed players');
     await repo.generateMatches(tournamentId, t.bracket_type_id, confirmed.map((r: any) => r.player_id));
     await repo.updateTournament(tournamentId, { status: 'in_progress' });
-    return repo.findMatches(tournamentId);
+    const matches = await repo.findMatches(tournamentId);
+    for (const match of matches as any[]) {
+      eventBus.emit('tournament:match-scheduled', {
+        matchId: match.id,
+        userId: match.player1_id,
+        opponent: match.player2_name || 'TBD',
+        date: match.scheduled_date || new Date(),
+      });
+      if (match.player2_id) {
+        eventBus.emit('tournament:match-scheduled', {
+          matchId: match.id,
+          userId: match.player2_id,
+          opponent: match.player1_name || 'TBD',
+          date: match.scheduled_date || new Date(),
+        });
+      }
+    }
+    return matches;
   },
   async enterMatchScore(matchId: number, data: any, userId: number) {
+    const match = await repo.findMatchById(matchId);
     await repo.updateMatchScore(matchId, data.winnerId, data.scoreSummary || null, 'completed');
     if (data.sets) {
       for (const set of data.sets) {
         await repo.insertSetScore(matchId, set.setNumber, set.player1Score, set.player2Score, userId);
+      }
+    }
+    if (match) {
+      const result = data.winnerId === match.player1_id ? 'Win' : 'Loss';
+      eventBus.emit('tournament:result', {
+        matchId,
+        userId: match.player1_id,
+        result: data.winnerId === match.player1_id ? 'win' : 'loss',
+      });
+      if (match.player2_id) {
+        eventBus.emit('tournament:result', {
+          matchId,
+          userId: match.player2_id,
+          result: data.winnerId === match.player2_id ? 'win' : 'loss',
+        });
       }
     }
   },
@@ -123,6 +162,7 @@ export const activitiesService = {
     const enrollments = await repo.findEnrollments(academyId);
     if (enrollments.some((e: any) => e.player_id === playerId)) throw new ConflictError('Already enrolled');
     await repo.enrollPlayer(academyId, playerId, curriculumId);
+    eventBus.emit('academy:enrolled', { academyId, userId: playerId, studentName: a.name || 'Student' });
   },
   async createSession(academyId: number, data: any) {
     const id = await repo.createAcademySession({ ...data, academyId });
@@ -202,6 +242,12 @@ export const activitiesService = {
     const orgEarnings = data.price - coachEarnings - (data.price * platformCommissionPct) / 100;
     const id = await repo.createCoachSession({
       ...data, coachId: coach.id, platformCommissionPct, coachEarnings, orgEarnings,
+    });
+    eventBus.emit('coaching:session-scheduled', {
+      sessionId: id,
+      coachId: coach.id,
+      userId: data.playerId || userId,
+      startTime: new Date(data.startTime),
     });
     return id;
   },
@@ -480,6 +526,11 @@ export const activitiesService = {
       );
 
       await conn.commit();
+      eventBus.emit('coaching:session-cancelled', {
+        sessionId,
+        userId: session.player_id,
+        reason,
+      });
       return { sessionId, status: 'cancelled', reason };
     } catch (err) {
       await conn.rollback();

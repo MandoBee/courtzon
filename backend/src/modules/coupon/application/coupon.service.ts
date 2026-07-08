@@ -1,7 +1,7 @@
 import { couponRepository } from '../infrastructure/coupon.repository.js';
 import { couponAssignmentRepository } from '../infrastructure/coupon-assignment.repository.js';
-import { notificationService } from '../../notifications/application/notification.service.js';
 import { NotFoundError } from '../../../shared/errors/app-error.js';
+import { eventBus } from '../../../shared/event-bus/index.js';
 
 class CouponService {
   async listCoupons(page = 1, limit = 20, is_active?: boolean) {
@@ -62,34 +62,15 @@ class CouponService {
 
     // Get assigned entities to notify
     const assignments = await couponAssignmentRepository.findByCouponId(id);
-
-    // Batch fetch all org users and create notifications
     const orgIds = assignments.filter((a: any) => a.entity_type === 'organisation').map((a: any) => a.entity_id);
-    if (orgIds.length) {
-      const pool = (await import('../../../database/mysql.js')).getPool();
-      const placeholders = orgIds.map(() => '?').join(',');
-      const [users] = await pool.execute(
-        `SELECT u.id, ou.organisation_id FROM users u
-         JOIN organisation_users ou ON ou.user_id = u.id
-         WHERE ou.organisation_id IN (${placeholders})
-           AND ou.role IN ('admin', 'manager')
-         GROUP BY u.id, ou.organisation_id`,
-        orgIds,
-      );
-      // Batch create notifications
-      const notifTitle = 'New Coupon Published';
-      const notifBody = `Coupon "${coupon.code}" (${coupon.discount_value}${coupon.discount_type === 'percentage' ? '%' : '$'} off) is now available.`;
-      for (const u of users as any[]) {
-        await notificationService.createNotification({
-          userId: u.id,
-          title: notifTitle,
-          body: notifBody,
-          categorySlug: 'promotions',
-          actionKey: 'view_coupon',
-          actionPayload: { couponId: coupon.id, orgId: u.organisation_id },
-        });
-      }
-    }
+
+    eventBus.emit('coupon:published', {
+      couponId: coupon.id,
+      code: coupon.code,
+      discountValue: coupon.discount_value,
+      discountType: coupon.discount_type,
+      organisationIds: orgIds,
+    });
 
     return { success: true, message: 'Coupon published and notifications sent' };
   }

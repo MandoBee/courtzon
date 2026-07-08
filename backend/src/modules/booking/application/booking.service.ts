@@ -355,6 +355,26 @@ export class BookingService {
         }
       }
 
+      if (booking) {
+        eventBus.emit('booking:created', {
+          bookingId,
+          userId,
+          courtId: input.resourceId || 0,
+          startTime: new Date(`${input.bookingDate}T${input.startTime}`),
+          endTime: new Date(`${input.bookingDate}T${input.endTime}`),
+          organisationId: booking.organisation_id || undefined,
+          branchId: input.branchId || undefined,
+        });
+      }
+
+      if (bookingStatus === 'confirmed' && booking) {
+        const startDate = new Date(`${String(booking.booking_date).split('T')[0]}T${booking.start_time}`);
+        const { scheduleBookingReminder } = await import('../../notifications/application/scheduler.service.js');
+        scheduleBookingReminder(bookingId, userId, startDate).catch((e: any) =>
+          log.error({ err: e, bookingId }, 'Failed to schedule booking reminder')
+        );
+      }
+
       return { ...booking, paymentUrl, clientSecret, paymentId };
     } catch (err) {
       await conn.rollback();
@@ -552,6 +572,13 @@ export class BookingService {
       conn.release();
     }
 
+    eventBus.emit('booking:cancelled', {
+      bookingId: id,
+      userId,
+      reason: reason || undefined,
+      organisationId: booking.organisation_id || undefined,
+    });
+
     return this.getBooking(id);
   }
 
@@ -713,6 +740,11 @@ export class BookingService {
     if (!booking) throw new NotFoundError('Booking');
     if (booking.booking_status !== 'confirmed') throw new Error('Only confirmed bookings can be checked in');
     await bookingRepository.checkIn(id);
+    eventBus.emit('booking:check-in', {
+      bookingId: id,
+      userId,
+      organisationId: booking.organisation_id || undefined,
+    });
     return this.getBooking(id);
   }
 
@@ -727,6 +759,11 @@ export class BookingService {
       } else {
         await bookingRepository.updateStatus(id, 'completed');
       }
+      eventBus.emit('booking:completed', {
+        bookingId: id,
+        userId: booking.user_id,
+        organisationId: booking.organisation_id || undefined,
+      });
       return;
     }
 
@@ -738,6 +775,14 @@ export class BookingService {
         await bookingRepository.updateStatusAndPayment(id, status, 'pending');
       } else {
         await bookingRepository.updateStatus(id, status);
+      }
+      if (status === 'confirmed') {
+        eventBus.emit('booking:confirmed', {
+          bookingId: id,
+          userId: booking.user_id,
+          organisationId: booking.organisation_id || undefined,
+          branchId: booking.branch_id || undefined,
+        });
       }
       return;
     }
@@ -797,6 +842,20 @@ export class BookingService {
         }
       }
 
+      if (status === 'no_show') {
+        eventBus.emit('booking:no-show', {
+          bookingId: id,
+          userId: booking.user_id,
+          organisationId: booking.organisation_id || undefined,
+        });
+      } else {
+        eventBus.emit('booking:cancelled', {
+          bookingId: id,
+          userId: booking.user_id,
+          reason,
+          organisationId: booking.organisation_id || undefined,
+        });
+      }
       return;
     }
 
@@ -1112,32 +1171,20 @@ export class BookingService {
         const accepted = await bookingRepository.countAcceptedPlayers(invitation.booking_id);
         if (accepted >= request.max_players) {
           const pendingIds = await bookingRepository.rejectAllPending(invitation.booking_id);
-          if (pendingIds.length > 0) {
-            const { notificationService } = await import('../../notifications/application/notification.service.js');
-            for (const { userId: puid, id: pid } of pendingIds) {
-              await notificationService.createNotification({
-                userId: puid,
-                title: 'Match Full',
-                body: 'The match you applied to has reached its maximum number of players.',
-                icon: '⛔',
-                categorySlug: 'community',
-                actionKey: 'view_matchmaking_booking',
-                actionPayload: { bookingId: invitation.booking_id },
-              });
-            }
+          for (const { userId: puid } of pendingIds) {
+            eventBus.emit('booking:fully-booked', {
+              bookingId: invitation.booking_id,
+              userId: puid,
+              resourceId: 0,
+            });
           }
         }
       }
     } else {
-      const { notificationService } = await import('../../notifications/application/notification.service.js');
-      await notificationService.createNotification({
+      eventBus.emit('booking:application-declined', {
+        bookingId: invitation.booking_id,
         userId: invitation.invited_user_id,
-        title: 'Application Declined',
-        body: 'Your application to join the match was declined.',
-        icon: '❌',
-        categorySlug: 'community',
-        actionKey: 'view_matchmaking_booking',
-        actionPayload: { bookingId: invitation.booking_id },
+        ownerId: userId,
       });
     }
 

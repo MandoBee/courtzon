@@ -334,6 +334,14 @@ export async function cancelOrderHandler(request: FastifyRequest, reply: Fastify
   const { id } = request.params as any;
   const userId = (request as any).userId;
   await svc.cancelOrder(Number(id), userId);
+  recordAudit({
+    actorId: (request as any).userId ?? null,
+    action: 'ORDER.CANCEL',
+    entityType: 'order',
+    entityId: Number(id),
+    ipAddress: request.ip,
+    userAgent: request.headers['user-agent'],
+  });
   return reply.send({ success: true });
 }
 
@@ -406,6 +414,15 @@ export async function createPlayerProductHandler(request: FastifyRequest, reply:
   const userId = (request as any).userId;
   const body = CreatePlayerProductSchema.parse(request.body);
   const product = await svc.createPlayerProduct(userId, body);
+  recordAudit({
+    actorId: (request as any).userId ?? null,
+    action: 'PLAYER_PRODUCT.CREATE',
+    entityType: 'player_product',
+    entityId: (product as any)?.id,
+    afterState: { name: body.name },
+    ipAddress: request.ip,
+    userAgent: request.headers['user-agent'],
+  });
   return reply.status(201).send(product);
 }
 
@@ -414,6 +431,15 @@ export async function updatePlayerProductHandler(request: FastifyRequest, reply:
   const { productId } = request.params as any;
   const body = UpdatePlayerProductSchema.parse(request.body);
   const product = await svc.updatePlayerProduct(userId, Number(productId), body);
+  recordAudit({
+    actorId: (request as any).userId ?? null,
+    action: 'PLAYER_PRODUCT.UPDATE',
+    entityType: 'player_product',
+    entityId: Number(productId),
+    afterState: { name: body.name, price: body.price },
+    ipAddress: request.ip,
+    userAgent: request.headers['user-agent'],
+  });
   return reply.send(product);
 }
 
@@ -421,6 +447,14 @@ export async function markPlayerProductSoldHandler(request: FastifyRequest, repl
   const userId = (request as any).userId;
   const { productId } = request.params as any;
   await svc.markPlayerProductSold(userId, Number(productId));
+  recordAudit({
+    actorId: (request as any).userId ?? null,
+    action: 'PLAYER_PRODUCT.MARK_SOLD',
+    entityType: 'player_product',
+    entityId: Number(productId),
+    ipAddress: request.ip,
+    userAgent: request.headers['user-agent'],
+  });
   return reply.send({ success: true });
 }
 
@@ -749,6 +783,15 @@ export async function createSellerShippingRateHandler(request: FastifyRequest, r
   const body = CreateShippingRateSchema.parse(request.body);
   const sellerId = body.orgId ?? (await getSellerOrgId(userId));
   const id = await svc.createSellerShippingRate(sellerId, body);
+  recordAudit({
+    actorId: (request as any).userId ?? null,
+    action: 'SHIPPING_RATE.CREATE',
+    entityType: 'shipping_rate',
+    entityId: id,
+    afterState: { sellerId, price: body.price },
+    ipAddress: request.ip,
+    userAgent: request.headers['user-agent'],
+  });
   return reply.status(201).send({ id });
 }
 
@@ -758,6 +801,15 @@ export async function updateSellerShippingRateHandler(request: FastifyRequest, r
   const body = UpdateShippingRateSchema.parse(request.body);
   const sellerId = body.orgId ?? (await getSellerOrgId(userId));
   await svc.updateSellerShippingRate(Number(id), sellerId, body);
+  recordAudit({
+    actorId: (request as any).userId ?? null,
+    action: 'SHIPPING_RATE.UPDATE',
+    entityType: 'shipping_rate',
+    entityId: Number(id),
+    afterState: { sellerId, price: body.price },
+    ipAddress: request.ip,
+    userAgent: request.headers['user-agent'],
+  });
   return reply.send({ success: true });
 }
 
@@ -767,6 +819,15 @@ export async function deleteSellerShippingRateHandler(request: FastifyRequest, r
   const body = request.body as any;
   const sellerId = body?.orgId ?? (await getSellerOrgId(userId));
   await svc.deleteSellerShippingRate(Number(id), sellerId);
+  recordAudit({
+    actorId: (request as any).userId ?? null,
+    action: 'SHIPPING_RATE.DELETE',
+    entityType: 'shipping_rate',
+    entityId: Number(id),
+    afterState: { sellerId },
+    ipAddress: request.ip,
+    userAgent: request.headers['user-agent'],
+  });
   return reply.send({ success: true });
 }
 

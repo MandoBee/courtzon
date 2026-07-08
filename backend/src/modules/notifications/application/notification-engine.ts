@@ -1,5 +1,5 @@
 import { eventBus } from '../../../shared/event-bus/index.js';
-import { dispatchToUser, dispatchByRole } from './dispatcher.service.js';
+import { dispatchToUser, dispatchByRole, dispatchByOrg } from './dispatcher.service.js';
 import { createModuleLogger } from '../../../shared/utils/logger.js';
 
 const log = createModuleLogger('notification-engine');
@@ -23,7 +23,7 @@ class NotificationEngine {
 
       'marketplace:order-placed', 'marketplace:order-confirmed', 'marketplace:order-shipped',
       'marketplace:order-delivered', 'marketplace:order-cancelled',
-      'marketplace:order-status-changed',
+      'marketplace:order-status-changed', 'marketplace:order-refunded',
       'marketplace:new-review', 'marketplace:product-back-in-stock',
       'marketplace:price-drop', 'marketplace:flash-sale',
 
@@ -50,7 +50,7 @@ class NotificationEngine {
 
       'membership:expiring', 'membership:expired', 'membership:renewed', 'membership:upgraded',
 
-      'wallet:low-balance', 'wallet:transaction',
+      'wallet:deposit', 'wallet:withdrawal', 'wallet:low-balance', 'wallet:transaction',
 
       'review:received', 'attendance:marked',
 
@@ -61,6 +61,8 @@ class NotificationEngine {
       'system:announcement', 'system:maintenance', 'system:birthday', 'system:digest',
 
       'match:invitation',
+
+      'coupon:published',       'booking:auto-cancelled', 'booking:application-declined',
     ];
 
     for (const event of events) {
@@ -107,10 +109,12 @@ class NotificationEngine {
       case 'booking:created':
       case 'booking:confirmed':
       case 'booking:cancelled':
+      case 'booking:auto-cancelled':
       case 'booking:expired':
       case 'booking:rescheduled':
       case 'booking:completed':
       case 'booking:no-show':
+      case 'booking:application-declined':
       case 'booking:check-in': {
         if (data.userId) {
           await dispatchToUser({
@@ -137,6 +141,27 @@ class NotificationEngine {
         break;
       }
 
+      case 'booking:matchmaking-complete': {
+        if (data.userId) {
+          await dispatchToUser({
+            userId: data.userId, eventName: eventName, categorySlug, data,
+            relatedEntityType: 'booking', relatedEntityId: String(data.bookingId),
+            actionPayload: { bookingId: data.bookingId },
+          });
+        }
+        break;
+      }
+
+      case 'booking:fully-booked': {
+        if (data.userId) {
+          await dispatchToUser({
+            userId: data.userId, eventName: eventName, categorySlug, data,
+            relatedEntityType: 'booking', relatedEntityId: String(data.bookingId),
+          });
+        }
+        break;
+      }
+
       case 'payment:completed':
       case 'payment:failed':
       case 'payment:refunded':
@@ -153,6 +178,8 @@ class NotificationEngine {
 
       case 'payment:wallet-topup':
       case 'payment:wallet-low-balance':
+      case 'wallet:deposit':
+      case 'wallet:withdrawal':
       case 'wallet:low-balance':
       case 'wallet:transaction': {
         if (data.userId) {
@@ -167,6 +194,7 @@ class NotificationEngine {
       case 'marketplace:order-confirmed':
       case 'marketplace:order-shipped':
       case 'marketplace:order-delivered':
+      case 'marketplace:order-refunded':
       case 'marketplace:order-cancelled':
       case 'marketplace:order-status-changed': {
         if (data.userId) {
@@ -440,6 +468,18 @@ class NotificationEngine {
             digestable: false,
             actionPayload: { bookingId: data.bookingId },
           });
+        }
+        break;
+      }
+
+      case 'coupon:published': {
+        if (data.organisationIds?.length) {
+          for (const orgId of data.organisationIds) {
+            await dispatchByOrg(orgId, {
+              eventName, categorySlug, data,
+              relatedEntityType: 'coupon', relatedEntityId: String(data.couponId),
+            });
+          }
         }
         break;
       }

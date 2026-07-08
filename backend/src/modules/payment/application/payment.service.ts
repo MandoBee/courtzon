@@ -649,6 +649,21 @@ export class PaymentService {
       "UPDATE bookings SET booking_status = 'confirmed', payment_status = 'paid', updated_at = NOW() WHERE id = ? AND booking_status = 'pending'",
       [bookingId]
     );
+    const userId = transaction.user_id;
+    eventBus.emit('booking:confirmed', { bookingId, userId: userId || 0 });
+
+    try {
+      const { scheduleBookingReminder } = await import('../../notifications/application/scheduler.service.js');
+      const [bkRows] = await conn.execute<RowData>(
+        'SELECT booking_date, start_time FROM bookings WHERE id = ?', [bookingId]
+      );
+      if (bkRows.length) {
+        const bk = bkRows[0] as any;
+        const startDate = new Date(`${String(bk.booking_date).split('T')[0]}T${bk.start_time}`);
+        scheduleBookingReminder(bookingId, userId, startDate);
+      }
+    } catch { /* non-fatal */ }
+
     log.info({ traceId, bookingId }, 'Booking confirmed via webhook');
   }
 
@@ -660,9 +675,15 @@ export class PaymentService {
       "UPDATE orders SET status = 'confirmed', paid_at = NOW(), payment_status = 'paid' WHERE id = ? AND status = 'pending'",
       [transaction.order_id],
     );
-    if (orderRows.length && (orderRows[0] as any)?.buyer_id) {
-      await conn.execute('DELETE FROM cart_items WHERE user_id = ?', [(orderRows[0] as any).buyer_id]);
+    const buyerId = orderRows.length ? (orderRows[0] as any).buyer_id : null;
+    if (buyerId) {
+      await conn.execute('DELETE FROM cart_items WHERE user_id = ?', [buyerId]);
     }
+    eventBus.emit('marketplace:order-confirmed', {
+      orderId: transaction.order_id,
+      userId: buyerId || (transaction as any).user_id || 0,
+      sellerId: 0,
+    });
     log.info({ traceId, orderId: transaction.order_id }, 'Order confirmed');
   }
 
@@ -729,6 +750,21 @@ export class PaymentService {
         }
       } catch (e) { log.error({ traceId, bookingId, error: String(e) }, 'Matchmaking setup failed'); }
     }
+
+    const userId = transaction.user_id || intent.user_id;
+    eventBus.emit('booking:confirmed', {
+      bookingId,
+      userId: userId || 0,
+      organisationId: intent.organisation_id || undefined,
+      branchId: intent.branch_id || undefined,
+    });
+
+    try {
+      const { scheduleBookingReminder } = await import('../../notifications/application/scheduler.service.js');
+      const startDate = new Date(`${String(intent.booking_date).split('T')[0]}T${intent.start_time}`);
+      scheduleBookingReminder(bookingId, userId, startDate);
+    } catch { /* non-fatal */ }
+
     log.info({ traceId, bookingId, intentId }, 'Booking confirmed');
   }
 
