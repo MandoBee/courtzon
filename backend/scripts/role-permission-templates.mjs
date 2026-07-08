@@ -51,6 +51,7 @@ const ADMIN_ONLY_PREFIXES = [
   'amenities.',
   'coupons.admin',
   'settlements.admin',
+  'notifications.',
 ];
 
 function isAdminOnlyKey(key) {

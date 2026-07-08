@@ -125,6 +125,10 @@ const OrganisationSecurityPage = lazy(() => import('./pages/admin/security/Organ
 const RoleAuditPage = lazy(() => import('./pages/admin/security/RoleAuditPage'));
 const AdminBranchAccessPage = lazy(() => import('./pages/admin/branch-access/BranchAccessPage'));
 const AdminBookingsPage = lazy(() => import('./pages/admin/bookings/BookingsPage'));
+const AdminBroadcastPage = lazy(() => import('./pages/admin/notifications/AdminBroadcastPage'));
+const AdminAnalyticsPage = lazy(() => import('./pages/admin/notifications/AdminAnalyticsPage'));
+const AdminDeadLettersPage = lazy(() => import('./pages/admin/notifications/AdminDeadLettersPage'));
+const AdminTemplatesPage = lazy(() => import('./pages/admin/notifications/AdminTemplatesPage'));
 const OrgDashboardPage = lazy(() => import('./pages/org/OrgDashboardPage'));
 const OrgBookingsPage = lazy(() => import('./pages/org/OrgBookingsPage'));
 const OrgMarketplacePage = lazy(() => import('./pages/org/OrgMarketplacePage'));
@@ -474,6 +478,10 @@ function AppContent() {
             <Route path="academies" element={<AcademyAdminPage />} />
             <Route path="coaches" element={<CoachAdminPage />} />
             <Route path="community-events" element={<CommunityEventsAdminPage />} />
+          <Route path="notifications/broadcast" element={<AdminBroadcastPage />} />
+          <Route path="notifications/analytics" element={<AdminAnalyticsPage />} />
+          <Route path="notifications/dead-letters" element={<AdminDeadLettersPage />} />
+          <Route path="notifications/templates" element={<AdminTemplatesPage />} />
           <Route path="product-categories" element={<ProductCategoriesPage />} />
             <Route path="marketplace/products" element={<MarketplaceProductsPage />} />
             <Route path="marketplace/products/:id" element={<AdminProductDetailPage />} />

@@ -57,6 +57,15 @@ function buildNavItems(can: (perm: string) => boolean, flag: (key: string) => bo
     { label: 'Academies', icon: '🎓', path: '/admin/academies', permissionKey: 'sidebar.academies-admin' },
     { label: 'Coaches', icon: '👨‍🏫', path: '/admin/coaches', permissionKey: 'sidebar.coaches-admin' },
     { label: 'Community Events', icon: '🎉', path: '/admin/community-events', permissionKey: 'sidebar.community-admin' },
+    {
+      label: 'Notifications', icon: '🔔', path: '/admin/notifications/broadcast', permissionKey: 'sidebar.notifications',
+      children: [
+        { label: 'Broadcast', path: '/admin/notifications/broadcast', permissionKey: 'notifications.broadcast' },
+        { label: 'Analytics', path: '/admin/notifications/analytics', permissionKey: 'notifications.analytics' },
+        { label: 'Dead Letters', path: '/admin/notifications/dead-letters', permissionKey: 'notifications.dead-letters' },
+        { label: 'Templates', path: '/admin/notifications/templates', permissionKey: 'notifications.templates' },
+      ],
+    },
     { label: 'Ads', icon: '📢', path: '/admin/ads', permissionKey: 'sidebar.ads', requiredFlag: 'community.events_enabled' },
     {
       label: 'Admin Settings', icon: '⚙️', path: '/admin/sports', permissionKey: 'sidebar.admin-settings',
