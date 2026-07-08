@@ -16,6 +16,32 @@ type RowData = mysql.RowDataPacket[];
 
 const FINAL_STATES = new Set(['paid', 'failed', 'cancelled', 'expired', 'refunded']);
 
+function parseBookingDateTime(bookingDate: unknown, startTime: unknown): Date | null {
+  if (bookingDate == null || startTime == null) return null;
+
+  let dateStr: string;
+  if (bookingDate instanceof Date) {
+    dateStr = bookingDate.toISOString().split('T')[0];
+  } else {
+    dateStr = String(bookingDate).split('T')[0];
+  }
+
+  let timeStr: string;
+  if (startTime instanceof Date) {
+    timeStr = [
+      String(startTime.getUTCHours()).padStart(2, '0'),
+      String(startTime.getUTCMinutes()).padStart(2, '0'),
+      String(startTime.getUTCSeconds()).padStart(2, '0'),
+    ].join(':');
+  } else {
+    timeStr = String(startTime);
+  }
+
+  const result = new Date(`${dateStr}T${timeStr}`);
+  if (isNaN(result.getTime())) return null;
+  return result;
+}
+
 export class PaymentService {
   async charge(userId: number, input: ChargeInput) {
     if (input.paymentMethod === 'wallet') {
@@ -659,8 +685,10 @@ export class PaymentService {
       );
       if (bkRows.length) {
         const bk = bkRows[0] as any;
-        const startDate = new Date(`${String(bk.booking_date).split('T')[0]}T${bk.start_time}`);
-        scheduleBookingReminder(bookingId, userId, startDate);
+        const startDate = parseBookingDateTime(bk.booking_date, bk.start_time);
+        if (startDate) {
+          await scheduleBookingReminder(bookingId, userId, startDate);
+        }
       }
     } catch { /* non-fatal */ }
 
@@ -761,8 +789,10 @@ export class PaymentService {
 
     try {
       const { scheduleBookingReminder } = await import('../../notifications/application/scheduler.service.js');
-      const startDate = new Date(`${String(intent.booking_date).split('T')[0]}T${intent.start_time}`);
-      scheduleBookingReminder(bookingId, userId, startDate);
+      const startDate = parseBookingDateTime(intent.booking_date, intent.start_time);
+      if (startDate) {
+        await scheduleBookingReminder(bookingId, userId, startDate);
+      }
     } catch { /* non-fatal */ }
 
     log.info({ traceId, bookingId, intentId }, 'Booking confirmed');

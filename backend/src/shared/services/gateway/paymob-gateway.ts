@@ -161,12 +161,19 @@ export class PaymobGateway implements PaymentGateway {
 
     const data = payload as Record<string, unknown>;
 
-    // Intention API webhook: HMAC computed on JSON.stringify(obj),
-    // sent in body.hmac field or x-paymob-signature header
+    // Intention API webhook: HMAC computed on JSON.stringify(obj) with
+    // keys sorted alphabetically (Paymob requirement), sent in body.hmac
+    // field or x-paymob-signature header
     if (data.obj) {
+      const obj = data.obj as Record<string, unknown>;
+      const sortedKeys = Object.keys(obj).sort();
+      const sorted = sortedKeys.reduce((acc, k) => {
+        acc[k] = obj[k];
+        return acc;
+      }, {} as Record<string, unknown>);
       const computed = crypto
         .createHmac('sha512', this.config.hmacSecret)
-        .update(JSON.stringify(data.obj))
+        .update(JSON.stringify(sorted))
         .digest('hex');
       const expected = (data.hmac as string) || signature;
       return computed === expected;
