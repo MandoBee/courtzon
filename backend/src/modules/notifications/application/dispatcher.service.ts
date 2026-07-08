@@ -42,7 +42,7 @@ export async function dispatchToUser(options: DispatchOptions): Promise<void> {
     return;
   }
 
-  if (options.digestable !== false) {
+  if (options.digestable === true) {
     const accumulated = await accumulateDigest(userId, categorySlug, eventName);
     if (accumulated) return;
   }
@@ -86,7 +86,7 @@ export async function dispatchToUser(options: DispatchOptions): Promise<void> {
     resolved.title,
     resolved.body ?? null,
     actionId,
-    options.actionPayload ?? null,
+        options.actionPayload ? JSON.stringify(options.actionPayload) : null,
       options.actions ? JSON.stringify(options.actions) : template.actions ? JSON.stringify(template.actions) : null,
       options.imageUrls ? JSON.stringify(options.imageUrls) : null,
       options.priority ?? template.priority ?? 'normal',
@@ -102,6 +102,12 @@ export async function dispatchToUser(options: DispatchOptions): Promise<void> {
   );
 
   const notificationId = result.insertId;
+
+  await pool.execute(
+    `INSERT INTO notification_queue (user_id, notification_id, channel, status)
+     VALUES (?, ?, 'in_app', 'pending')`,
+    [userId, notificationId],
+  );
 
   await incrementRateLimit(userId, categorySlug, eventName);
 
