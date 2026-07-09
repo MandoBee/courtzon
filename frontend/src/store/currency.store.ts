@@ -168,22 +168,19 @@ export const useCurrencyStore = create<CurrencyState>((set, get) => ({
   },
 
   detect: async () => {
-    if (get().detected) { console.warn('[currency] detect skipped — already detected'); return; }
-    if (detectInFlight) { console.warn('[currency] detect skipped — in flight'); return detectInFlight; }
+    if (get().detected) return;
+    if (detectInFlight) return detectInFlight;
 
     detectInFlight = (async () => {
       if (get().detecting) return;
       set({ detecting: true });
-      console.warn('[currency] detect: fetching geo currency');
       try {
         await get().loadSymbolRegistry();
         const data = await fetchDetectedCurrency();
-        console.warn('[currency] detect: received', data);
         if (data.currencyCode) {
           get().applyDetected(data);
         }
-      } catch (err) {
-        console.warn('[currency] detect: failed, falling back to EG', err);
+      } catch {
         if (!get().countryCode) {
           get().applyDetected({
             countryCode: 'EG',
