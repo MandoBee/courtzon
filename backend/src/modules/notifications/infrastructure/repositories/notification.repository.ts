@@ -38,6 +38,7 @@ export class NotificationRepository {
     templateVersion?: number;
     renderedTitle?: string;
     renderedBody?: string;
+    isPushed?: boolean;
   }): Promise<number> {
     let categoryId: number | null = null;
     if (data.categorySlug) {
@@ -81,6 +82,7 @@ export class NotificationRepository {
         data.imageUrls ? JSON.stringify(data.imageUrls) : null,
         data.templateId || null, data.templateVersion || null,
         data.renderedTitle || null, data.renderedBody || null,
+        data.isPushed ?? false,
       ]
     );
 
