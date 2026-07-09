@@ -112,6 +112,8 @@ export class BookingService {
 
         // Charge payment gateway (outside transaction — may take time).
         const { paymentService } = await import('../../payment/application/payment.service.js');
+        const [userRows] = await pool.execute<RowData>('SELECT full_name, email, full_phone FROM users WHERE id = ?', [userId]);
+        const user = userRows[0] as any;
         const gwResult = await paymentService.charge(userId, {
           referenceType: 'booking',
           referenceId: bookingId,
@@ -119,6 +121,9 @@ export class BookingService {
           currency: 'EGP',
           paymentMethod: (paymentMethod === 'online' ? 'card' : paymentMethod as 'wallet' | 'card' | 'bank_transfer'),
           returnUrl: input.returnUrl,
+          customerName: user?.full_name,
+          customerPhone: user?.full_phone,
+          customerEmail: user?.email,
         });
 
         if (!gwResult.success) {
@@ -283,6 +288,8 @@ export class BookingService {
       if (paymentMethod !== 'cash' && (!useWallet || !walletUpdated)) {
         try {
           const { paymentService } = await import('../../payment/application/payment.service.js');
+          const [gwUserRows] = await pool.execute<RowData>('SELECT full_name, email, full_phone FROM users WHERE id = ?', [userId]);
+          const gwUser = gwUserRows[0] as any;
           const gwResult = await paymentService.charge(userId, {
             referenceType: 'booking',
             referenceId: bookingId,
@@ -290,6 +297,9 @@ export class BookingService {
             currency: 'EGP',
             paymentMethod: 'card',
             returnUrl: input.returnUrl,
+            customerName: gwUser?.full_name,
+            customerPhone: gwUser?.full_phone,
+            customerEmail: gwUser?.email,
           });
           paymentUrl = ('paymentUrl' in gwResult ? gwResult.paymentUrl : null) || null;
           clientSecret = ('clientSecret' in gwResult ? gwResult.clientSecret : null) || null;
