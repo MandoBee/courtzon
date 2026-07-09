@@ -9,6 +9,8 @@ import type mysql from 'mysql2/promise';
 import { getPool } from '../../../database/mysql.js';
 import { createModuleLogger } from '../../../shared/utils/logger.js';
 import { eventBus } from '../../../shared/event-bus/index.js';
+import { confirmBooking } from '../../../platform/booking/BookingSaga.js';
+import { confirmPayment, failPayment, refundPayment, expirePayment as sagaExpirePayment, emitPaymentCompleted } from '../../../platform/payment/PaymentSaga.js';
 
 const log = createModuleLogger('payment');
 
@@ -77,14 +79,7 @@ export class PaymentService {
       description: `${input.referenceType} payment via wallet`,
     });
 
-    eventBus.emit('payment:completed', {
-      paymentId,
-      userId,
-      amount: input.amount,
-      currency: 'EGP',
-      gateway: 'wallet',
-      organisationId: (input as any).organisationId,
-    });
+    emitPaymentCompleted(paymentId).catch((err) => log.error({ err, paymentId }, 'Failed to emit payment:completed via saga'));
 
     log.info({ traceId, paymentId, userId, amount: input.amount, referenceType: input.referenceType }, 'Wallet payment completed');
 
@@ -342,22 +337,14 @@ export class PaymentService {
     if (!paidResult.idempotent) {
       const txn = await paymentRepository.findByGatewayRef(resolvedGatewayRef);
       if (txn) {
-        const userId = (txn as any).user_id;
+        const paymentId = (txn as any).id;
         if (newStatus === 'paid') {
-          eventBus.emit('payment:completed', {
-            paymentId: (txn as any).id,
-            userId,
-            amount: Number((txn as any).amount) || 0,
-            currency: (txn as any).currency || 'EGP',
-            gateway: 'paymob',
-          });
+          await confirmPayment(paymentId, {
+            gatewayReference: resolvedGatewayRef,
+            paidAmount: Number((txn as any).amount) || 0,
+          }).catch((err) => log.error({ err, paymentId }, 'Failed to emit payment:completed via saga'));
         } else if (newStatus === 'failed') {
-          eventBus.emit('payment:failed', {
-            paymentId: (txn as any).id,
-            userId,
-            amount: Number((txn as any).amount) || 0,
-            error: 'Payment failed via webhook',
-          });
+          await failPayment(paymentId).catch((err) => log.error({ err, paymentId }, 'Failed to emit payment:failed via saga'));
         }
       }
     }
@@ -716,26 +703,7 @@ export class PaymentService {
       log.error({ traceId, txnId: transaction.id }, 'No booking on payment');
       return;
     }
-    await conn.execute<mysql.ResultSetHeader>(
-      "UPDATE bookings SET booking_status = 'confirmed', payment_status = 'paid', updated_at = NOW() WHERE id = ? AND booking_status = 'pending'",
-      [bookingId]
-    );
-    const userId = transaction.user_id;
-    eventBus.emit('booking:confirmed', { bookingId, userId: userId || 0 });
-
-    try {
-      const { scheduleBookingReminder } = await import('../../notifications/application/scheduler.service.js');
-      const [bkRows] = await conn.execute<RowData>(
-        'SELECT booking_date, start_time FROM bookings WHERE id = ?', [bookingId]
-      );
-      if (bkRows.length) {
-        const bk = bkRows[0] as any;
-        const startDate = parseBookingDateTime(bk.booking_date, bk.start_time);
-        if (startDate) {
-          await scheduleBookingReminder(bookingId, userId, startDate);
-        }
-      }
-    } catch { /* non-fatal */ }
+    await confirmBooking(bookingId, { paymentStatus: 'paid', paymentMethod: 'card' }, conn);
 
     log.info({ traceId, bookingId }, 'Booking confirmed via webhook');
   }
@@ -825,20 +793,7 @@ export class PaymentService {
     }
 
     const userId = transaction.user_id || intent.user_id;
-    eventBus.emit('booking:confirmed', {
-      bookingId,
-      userId: userId || 0,
-      organisationId: intent.organisation_id || undefined,
-      branchId: intent.branch_id || undefined,
-    });
-
-    try {
-      const { scheduleBookingReminder } = await import('../../notifications/application/scheduler.service.js');
-      const startDate = parseBookingDateTime(intent.booking_date, intent.start_time);
-      if (startDate) {
-        await scheduleBookingReminder(bookingId, userId, startDate);
-      }
-    } catch { /* non-fatal */ }
+    await confirmBooking(bookingId, { paymentStatus: 'paid', paymentMethod: intent.payment_method || 'card' }, conn);
 
     log.info({ traceId, bookingId, intentId }, 'Booking confirmed');
   }
@@ -913,7 +868,7 @@ export class PaymentService {
       reason,
     });
 
-    await paymentRepository.updateStatus(paymentId, 'refunded');
+    await refundPayment(paymentId, amount).catch((err: any) => log.error({ err, paymentId }, 'Failed to emit payment:refunded via saga'));
 
     await paymentRepository.createJournalEntry({
       entryType: 'refund',
@@ -923,12 +878,6 @@ export class PaymentService {
       creditAccount: 'Cash',
       amount,
       description: reason || `Refund of ${amount}`,
-    });
-
-    eventBus.emit('payment:refunded', {
-      paymentId,
-      userId: (transaction as any).user_id,
-      amount,
     });
 
     log.info({ traceId, paymentId, amount, reason }, 'Payment refunded');
@@ -950,25 +899,23 @@ export class PaymentService {
     for (const ptx of payments as any[]) {
       try {
         await withTransaction(async (conn) => {
-          const expired_ = await paymentRepository.expirePayment(ptx.id, conn);
-          if (expired_) {
-            if (ptx.booking_id) {
-              if (ptx.reference_type === 'booking_intent') {
-                await conn.execute(
-                  "UPDATE booking_intents SET intent_status = 'expired', expires_at = NOW() WHERE id = ? AND expires_at > NOW()",
-                  [ptx.booking_id],
-                );
-                await this._cancelPendingBooking(conn, ptx.booking_id, 'expiry-job');
-              } else if (ptx.reference_type === 'booking') {
-                await conn.execute(
-                  "UPDATE bookings SET booking_status = 'expired', payment_status = 'expired', updated_at = NOW() WHERE id = ? AND booking_status = 'pending'",
-                  [ptx.booking_id],
-                );
-              }
+          await sagaExpirePayment(ptx.id, conn);
+          if (ptx.booking_id) {
+            if (ptx.reference_type === 'booking_intent') {
+              await conn.execute(
+                "UPDATE booking_intents SET intent_status = 'expired', expires_at = NOW() WHERE id = ? AND expires_at > NOW()",
+                [ptx.booking_id],
+              );
+              await this._cancelPendingBooking(conn, ptx.booking_id, 'expiry-job');
+            } else if (ptx.reference_type === 'booking') {
+              await conn.execute(
+                "UPDATE bookings SET booking_status = 'expired', payment_status = 'expired', updated_at = NOW() WHERE id = ? AND booking_status = 'pending'",
+                [ptx.booking_id],
+              );
             }
-            expired++;
-            log.info({ txnId: ptx.id, gatewayRef: ptx.gateway_reference, created: ptx.created_at }, 'Payment expired');
           }
+          expired++;
+          log.info({ txnId: ptx.id, gatewayRef: ptx.gateway_reference, created: ptx.created_at }, 'Payment expired');
         });
       } catch (err) {
         log.error({ err, txnId: ptx.id }, 'Failed to expire payment');

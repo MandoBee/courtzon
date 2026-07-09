@@ -481,10 +481,8 @@ export const activitiesService = {
       await conn.beginTransaction();
 
       if (session.booking_id) {
-        await conn.execute(
-          "UPDATE bookings SET booking_status = 'confirmed', payment_status = 'pending' WHERE id = ?",
-          [session.booking_id]
-        );
+        const { confirmBooking } = await import('../../../platform/booking/BookingSaga.js');
+        await confirmBooking(session.booking_id, { paymentStatus: 'pending', paymentMethod: 'cash' }, conn);
       }
 
       await conn.execute(
@@ -514,10 +512,8 @@ export const activitiesService = {
       await conn.beginTransaction();
 
       if (session.booking_id) {
-        await conn.execute(
-          "UPDATE bookings SET booking_status = 'cancelled' WHERE id = ?",
-          [session.booking_id]
-        );
+        const { cancelBooking } = await import('../../../platform/booking/BookingSaga.js');
+        await cancelBooking(session.booking_id, userId, reason || 'Session declined', 0, conn);
       }
 
       await conn.execute(

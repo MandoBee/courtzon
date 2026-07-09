@@ -109,18 +109,49 @@ export const paymentRepository = {
     return rows[0] || null;
   },
 
-  async updateStatus(id: number, status: string, gatewayReference?: string) {
-    const pool = getPool();
+  /**
+   * Internal: single authority for persisting payment status transitions.
+   * All status-changing methods must delegate to this.
+   * @internal @deprecated External callers should use PaymentSaga instead.
+   */
+  async persistTransition(
+    id: number,
+    status: string,
+    gatewayReference?: string,
+    extraWhere?: string,
+    conn?: mysql.PoolConnection,
+  ): Promise<void> {
+    const db = conn || getPool();
     const fields: string[] = ['payment_status = ?'];
     const params: any[] = [status];
     if (gatewayReference) { fields.push('gateway_reference = ?'); params.push(gatewayReference); }
     if (status === 'paid') { fields.push('paid_at = NOW()'); }
     if (status === 'cancelled' || status === 'expired') { fields.push('cancelled_at = NOW()'); }
+    const whereClause = extraWhere ? ` AND ${extraWhere}` : '';
     params.push(id);
-    await pool.execute(
-      `UPDATE payment_transactions SET ${fields.join(', ')} WHERE id = ?`,
+    await db.execute(
+      `UPDATE payment_transactions SET ${fields.join(', ')} WHERE id = ?${whereClause}`,
       params
     );
+  },
+
+  /**
+   * @internal @deprecated Use PaymentSaga instead.
+   */
+  async updateStatus(id: number, status: string, gatewayReference?: string, conn?: mysql.PoolConnection) {
+    await this.persistTransition(id, status, gatewayReference, undefined, conn);
+  },
+
+  /** Mark a payment as expired and release associated resources. */
+  async expirePayment(id: number, conn?: mysql.PoolConnection) {
+    const executor = conn || getPool();
+    const [result] = await executor.execute<mysql.ResultSetHeader>(
+      `UPDATE payment_transactions
+       SET payment_status = 'expired', cancelled_at = NOW(), updated_at = NOW()
+       WHERE id = ? AND payment_status IN ('created', 'pending', 'processing')`,
+      [id]
+    );
+    return result.affectedRows > 0;
   },
 
   async findByUser(userId: number, page: number, limit: number) {
@@ -151,18 +182,6 @@ export const paymentRepository = {
       [olderThanMinutes]
     );
     return rows;
-  },
-
-  /** Mark a payment as expired and release associated resources. */
-  async expirePayment(id: number, conn?: mysql.PoolConnection) {
-    const executor = conn || getPool();
-    const [result] = await executor.execute<mysql.ResultSetHeader>(
-      `UPDATE payment_transactions
-       SET payment_status = 'expired', cancelled_at = NOW(), updated_at = NOW()
-       WHERE id = ? AND payment_status IN ('created', 'pending', 'processing')`,
-      [id]
-    );
-    return result.affectedRows > 0;
   },
 
   async createJournalEntry(data: {

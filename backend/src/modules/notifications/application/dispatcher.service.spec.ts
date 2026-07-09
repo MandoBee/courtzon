@@ -76,10 +76,6 @@ describe('dispatchToUser', () => {
       expect.stringContaining('INSERT INTO notifications'),
       expect.arrayContaining([1, 'success', 'Booking Confirmed']),
     );
-    expect(execute).toHaveBeenCalledWith(
-      expect.stringContaining('INSERT INTO notification_queue'),
-      [1, 123],
-    );
     expect(queueAdd).toHaveBeenCalledWith(
       'process_notification',
       expect.objectContaining({ notificationId: 123, userId: 1, eventName: 'booking:confirmed' }),

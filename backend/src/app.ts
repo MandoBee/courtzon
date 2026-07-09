@@ -271,7 +271,6 @@ app.get("/health/storage", async (_request, reply) => {
 
 app.get("/health/socket", async (_request, reply) => {
   try {
-    const { getSocketMetrics } = await import("./realtime/socket-gateway.js");
     const { getIO } = await import("./realtime/index.js");
     const io = getIO();
     const sockets = await io.fetchSockets();
@@ -281,9 +280,8 @@ app.get("/health/socket", async (_request, reply) => {
       status: 'ok',
       connected: sockets.length,
       rooms: rooms.size,
-      metrics: getSocketMetrics(),
     });
-  } catch { return reply.send({ status: 'down', message: 'Socket Gateway not initialized' }); }
+  } catch { return reply.send({ status: 'down', message: 'Socket.IO not initialized' }); }
 });
 
 app.get("/health/version", async (_request, reply) => {

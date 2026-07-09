@@ -1,6 +1,6 @@
 import { getPool } from '../../../database/mysql.js';
 import { createModuleLogger } from '../../../shared/utils/logger.js';
-import { eventBus } from '../../../shared/event-bus/index.js';
+import { cancelBooking } from '../../../platform/booking/BookingSaga.js';
 import type { CancelExpiredBookingsJob } from '../../../infrastructure/queue/queue.service.js';
 
 const log = createModuleLogger('booking-expiry');
@@ -9,8 +9,6 @@ export async function handleCancelExpiredBookings(job: CancelExpiredBookingsJob)
   const cutoff = job.cutoffMinutes ?? 30;
   const pool = getPool();
 
-  // Under the payment-first architecture, no pending bookings are created in the
-  // bookings table. This query serves as a safety net for any edge cases.
   const [bookings] = await pool.execute<any[]>(
     `SELECT id, user_id FROM bookings
      WHERE booking_status = 'pending' AND payment_status = 'pending'
@@ -19,23 +17,12 @@ export async function handleCancelExpiredBookings(job: CancelExpiredBookingsJob)
   );
 
   for (const booking of bookings) {
-    await pool.execute(
-      `UPDATE bookings SET booking_status = 'cancelled', notes = 'Auto-cancelled: unpaid after ${cutoff}min'
-       WHERE id = ?`,
-      [booking.id]
-    );
-    await pool.execute(
-      `INSERT INTO booking_cancellations (booking_id, cancelled_by, reason)
-       VALUES (?, 0, 'Auto-cancelled: unpaid')`,
-      [booking.id]
-    );
-    eventBus.emit('booking:auto-cancelled', {
-      bookingId: booking.id,
-      userId: booking.user_id,
-      reason: 'Auto-cancelled: unpaid',
-      organisationId: undefined,
-    });
-    log.info({ bookingId: booking.id }, `Cancelled expired booking #${booking.id}`);
+    try {
+      await cancelBooking(booking.id, 0, 'Auto-cancelled: unpaid');
+      log.info({ bookingId: booking.id }, `Cancelled expired booking #${booking.id}`);
+    } catch (err) {
+      log.error({ err, bookingId: booking.id }, 'Failed to cancel expired booking');
+    }
   }
 
   // Expire stale booking intents that were never fulfilled

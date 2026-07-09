@@ -8,6 +8,7 @@ import {
 import { getTemplate, resolveTemplate } from '../application/template.service.js';
 import { isOnline, queueForReconnect } from '../application/presence.service.js';
 import { deliverToChannel } from './providers/provider.interface.js';
+import { notificationRepository } from './repositories/notification.repository.js';
 import type { DeliveryChannel } from './providers/provider.interface.js';
 import { isInQuietHours, shouldBypassQuietHours } from '../application/quiet-hours.service.js';
 import { recordAuditEvent } from '../application/audit.service.js';
@@ -132,14 +133,19 @@ export async function handleProcessNotificationDigest(job: ProcessNotificationDi
 
   const resolved = resolveTemplate(template, { count: job.count });
 
-  const [result] = await pool.execute<ResultSetHeader>(
-    `INSERT INTO notifications
-     (user_id, type, title, rendered_title, body, rendered_body, category_slug, event_name, template_id, template_version, is_read, created_at)
-     VALUES (?, 'info', ?, ?, ?, ?, ?, 'system:digest', ?, ?, FALSE, NOW())`,
-    [job.userId, resolved.title, resolved.title, resolved.body, resolved.body, job.categorySlug, effectiveTemplateId || template.id, template.version],
-  );
+  const notificationId = await notificationRepository.create({
+    userId: job.userId,
+    title: resolved.title,
+    body: resolved.body ?? undefined,
+    categorySlug: job.categorySlug,
+    type: 'info',
+    eventName: 'system:digest',
+    templateId: effectiveTemplateId || template.id,
+    templateVersion: template.version,
+    renderedTitle: resolved.title,
+    renderedBody: resolved.body ?? undefined,
+  });
 
-  const notificationId = result.insertId;
   await logAudit(notificationId, job.userId, 'created', { channel: 'in_app' });
 
   if (ab.templateId && ab.variant && ab.testId) {
@@ -184,14 +190,19 @@ export async function handleSendScheduledNotification(job: SendScheduledNotifica
 
   const resolved = resolveTemplate(template, job.payload);
 
-  const [result] = await pool.execute<ResultSetHeader>(
-    `INSERT INTO notifications
-     (user_id, type, title, rendered_title, body, rendered_body, category_slug, event_name, template_id, template_version, is_read, created_at)
-     VALUES (?, 'reminder', ?, ?, ?, ?, 'system', ?, ?, ?, FALSE, NOW())`,
-    [job.userId, resolved.title, resolved.title, resolved.body, resolved.body, eventName, ab.templateId || template.id, template.version],
-  );
+  const notificationId = await notificationRepository.create({
+    userId: job.userId,
+    title: resolved.title,
+    body: resolved.body ?? undefined,
+    categorySlug: 'system',
+    type: 'reminder',
+    eventName,
+    templateId: ab.templateId || template.id,
+    templateVersion: template.version,
+    renderedTitle: resolved.title,
+    renderedBody: resolved.body ?? undefined,
+  });
 
-  const notificationId = result.insertId;
   await logAudit(notificationId, job.userId, 'created', { channel: 'in_app' });
 
   if (ab.templateId && ab.variant && ab.testId) {

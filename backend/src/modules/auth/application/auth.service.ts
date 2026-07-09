@@ -6,6 +6,7 @@ import { generateSessionToken, generateRefreshToken, generateUUID, hashToken } f
 import { randomBytes } from 'node:crypto';
 import { getPool } from '../../../database/mysql.js';
 import { queueService } from '../../../infrastructure/queue/queue.service.js';
+import { eventBus } from '../../../shared/event-bus/index.js';
 import { rbacRepository } from '../../rbac/infrastructure/repositories/rbac.repository.js';
 import {
   InvalidCredentialsError,
@@ -368,12 +369,20 @@ export class AuthService {
 
     const resetLink = `${process.env.APP_URL || 'http://localhost:5173'}/reset-password?token=${token}`;
 
-    await queueService.add('send_email', {
-      to: user.email,
-      subject: 'Reset your CourtZon password',
-      body: `Click this link to reset your password: ${resetLink}\n\nThis link expires in 1 hour. If you didn't request this, please ignore this email.`,
-      html: `<p>Click the link below to reset your password:</p><p><a href="${resetLink}">${resetLink}</a></p><p>This link expires in 1 hour. If you didn't request this, please ignore this email.</p>`,
+    eventBus.emit('auth:password-reset', {
+      userId: user.id,
+      email: user.email,
+      resetLink,
     });
+
+    if (process.env.LEGACY_EMAIL_ENABLED === 'true') {
+      await queueService.add('send_email', {
+        to: user.email,
+        subject: 'Reset your CourtZon password',
+        body: `Click this link to reset your password: ${resetLink}\n\nThis link expires in 1 hour. If you didn't request this, please ignore this email.`,
+        html: `<p>Click the link below to reset your password:</p><p><a href="${resetLink}">${resetLink}</a></p><p>This link expires in 1 hour. If you didn't request this, please ignore this email.</p>`,
+      });
+    }
 
     const showToken = process.env.DEBUG_RESET_TOKEN === 'true';
     const response: Record<string, any> = { message: 'If that email is registered, a reset link has been sent.' };

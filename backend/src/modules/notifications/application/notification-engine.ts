@@ -1,10 +1,454 @@
 import { eventBus } from '../../../shared/event-bus/index.js';
 import { dispatchToUser, dispatchByRole, dispatchByOrg } from './dispatcher.service.js';
+import { realtimeService } from '../../../platform/realtime/index.js';
 import { createModuleLogger } from '../../../shared/utils/logger.js';
 
 const log = createModuleLogger('notification-engine');
 
-type EventListener = (data: any) => Promise<void>;
+type EventHandler = (eventName: string, data: any, categorySlug: string) => Promise<void>;
+
+interface EventGroupConfig {
+  events: string[];
+  handler: EventHandler;
+}
+
+const eventGroups: EventGroupConfig[] = [
+  {
+    events: ['user:registered'],
+    handler: async (eventName, data, categorySlug) => {
+      await dispatchByRole('super_admin', { eventName, categorySlug, data });
+    },
+  },
+  {
+    events: ['system:announcement'],
+    handler: async (eventName, data, categorySlug) => {
+      if (data.targetUserId) {
+        await dispatchToUser({ userId: data.targetUserId, eventName, categorySlug, data });
+      } else if (data.targetRole) {
+        await dispatchByRole(data.targetRole, {
+          eventName, categorySlug,
+          data: { ...data, title: data.title, body: data.body },
+        });
+      } else if (data.title && data.body) {
+        const { dispatchToAll } = await import('./dispatcher.service.js');
+        await dispatchToAll({ eventName, categorySlug, data: { title: data.title, body: data.body } });
+      }
+    },
+  },
+  {
+    events: [
+      'booking:created', 'booking:cancelled', 'booking:auto-cancelled',
+      'booking:expired', 'booking:rescheduled', 'booking:completed',
+      'booking:no-show', 'booking:application-declined', 'booking:check-in',
+    ],
+    handler: async (eventName, data, categorySlug) => {
+      if (data.userId) {
+        await dispatchToUser({
+          userId: data.userId, eventName, categorySlug, data,
+          organisationId: data.organisationId, branchId: data.branchId,
+          relatedEntityType: 'booking', relatedEntityId: String(data.bookingId),
+          actionPayload: { bookingId: data.bookingId }, digestable: false,
+        });
+      }
+      if (eventName === 'booking:created' && data.bookingType === 'public_match') {
+        realtimeService.emitToPlayers('match:available', { bookingId: data.bookingId, timestamp: new Date().toISOString() });
+      }
+      if (eventName === 'booking:cancelled' || eventName === 'booking:auto-cancelled') {
+        realtimeService.emitToPlayers('match:removed', { bookingId: data.bookingId });
+      }
+    },
+  },
+  {
+    events: ['booking:confirmed'],
+    handler: async (eventName, data, categorySlug) => {
+      if (data.userId) {
+        await dispatchToUser({
+          userId: data.userId, eventName, categorySlug, data,
+          organisationId: data.organisationId, branchId: data.branchId,
+          relatedEntityType: 'booking', relatedEntityId: String(data.bookingId),
+          actionPayload: { bookingId: data.bookingId }, digestable: false,
+        });
+      }
+      const { scheduleBookingReminder } = await import('./scheduler.service.js');
+      const { getPool } = await import('../../../database/mysql.js');
+      const pool = getPool();
+      const [bkRows] = await pool.execute<any>(
+        'SELECT user_id, booking_date, start_time FROM bookings WHERE id = ?', [data.bookingId],
+      );
+      if (bkRows.length) {
+        const bk = bkRows[0];
+        const startDate = new Date(`${String(bk.booking_date).split('T')[0]}T${bk.start_time}`);
+        scheduleBookingReminder(data.bookingId, bk.user_id, startDate).catch((err: any) =>
+          log.error({ err, bookingId: data.bookingId }, 'Failed to schedule booking reminder')
+        );
+      }
+    },
+  },
+  {
+    events: ['booking:reminder'],
+    handler: async (eventName, data, categorySlug) => {
+      if (data.userId) {
+        await dispatchToUser({
+          userId: data.userId, eventName, categorySlug, data,
+          relatedEntityType: 'booking', relatedEntityId: String(data.bookingId),
+          digestable: false,
+        });
+      }
+    },
+  },
+  {
+    events: ['booking:matchmaking-complete'],
+    handler: async (eventName, data, categorySlug) => {
+      if (data.userId) {
+        await dispatchToUser({
+          userId: data.userId, eventName, categorySlug, data,
+          relatedEntityType: 'booking', relatedEntityId: String(data.bookingId),
+          actionPayload: { bookingId: data.bookingId },
+        });
+      }
+    },
+  },
+  {
+    events: ['booking:fully-booked'],
+    handler: async (eventName, data, categorySlug) => {
+      if (data.userId) {
+        await dispatchToUser({
+          userId: data.userId, eventName, categorySlug, data,
+          relatedEntityType: 'booking', relatedEntityId: String(data.bookingId),
+        });
+      }
+    },
+  },
+  {
+    events: ['payment:completed', 'payment:failed', 'payment:refunded', 'payment:initiated'],
+    handler: async (eventName, data, categorySlug) => {
+      if (data.userId) {
+        await dispatchToUser({
+          userId: data.userId, eventName, categorySlug, data,
+          organisationId: data.organisationId,
+          relatedEntityType: 'payment', relatedEntityId: String(data.paymentId),
+          digestable: false,
+        });
+      }
+    },
+  },
+  {
+    events: ['payment:wallet-topup', 'payment:wallet-low-balance', 'wallet:deposit', 'wallet:withdrawal', 'wallet:low-balance', 'wallet:transaction'],
+    handler: async (eventName, data, categorySlug) => {
+      if (data.userId) {
+        await dispatchToUser({ userId: data.userId, eventName, categorySlug, data });
+      }
+    },
+  },
+  {
+    events: ['marketplace:order-placed', 'marketplace:order-confirmed', 'marketplace:order-shipped', 'marketplace:order-delivered', 'marketplace:order-refunded', 'marketplace:order-cancelled', 'marketplace:order-status-changed'],
+    handler: async (eventName, data, categorySlug) => {
+      if (data.userId) {
+        await dispatchToUser({
+          userId: data.userId, eventName, categorySlug, data,
+          relatedEntityType: 'order', relatedEntityId: String(data.orderId),
+        });
+      }
+      if (data.sellerId && data.sellerId !== data.userId) {
+        await dispatchToUser({
+          userId: data.sellerId, eventName, categorySlug, data,
+          relatedEntityType: 'order', relatedEntityId: String(data.orderId),
+        });
+      }
+    },
+  },
+  {
+    events: ['marketplace:new-review'],
+    handler: async (eventName, data, categorySlug) => {
+      if (data.reviewedUserId) {
+        await dispatchToUser({
+          userId: data.reviewedUserId, eventName, categorySlug, data,
+          relatedEntityType: 'review', relatedEntityId: String(data.reviewId),
+        });
+      }
+    },
+  },
+  {
+    events: ['marketplace:product-back-in-stock', 'marketplace:price-drop', 'marketplace:flash-sale'],
+    handler: async (eventName, data, categorySlug) => {
+      if (data.userId) {
+        await dispatchToUser({
+          userId: data.userId, eventName, categorySlug, data,
+          relatedEntityType: 'product', relatedEntityId: String(data.productId),
+        });
+      }
+    },
+  },
+  {
+    events: ['marketplace:new-seller-registered'],
+    handler: async (eventName, data, categorySlug) => {
+      await dispatchByRole('super_admin', {
+        eventName, categorySlug,
+        data: { ...data, title: 'New Seller Registered', body: `${data.shopName} has registered as a seller.` },
+      });
+    },
+  },
+  {
+    events: ['user:approved', 'user:rejected', 'user:suspended', 'user:activated', 'user:profile-updated', 'user:deleted'],
+    handler: async (eventName, data, categorySlug) => {
+      if (data.userId) {
+        await dispatchToUser({
+          userId: data.userId, eventName, categorySlug, data,
+          relatedEntityType: 'user', relatedEntityId: String(data.userId),
+        });
+      }
+    },
+  },
+  {
+    events: ['auth:password-reset', 'auth:password-changed', 'auth:login', 'auth:logout', 'auth:2fa-setup'],
+    handler: async (eventName, data, categorySlug) => {
+      if (data.userId) {
+        await dispatchToUser({ userId: data.userId, eventName, categorySlug, data, digestable: false });
+      }
+    },
+  },
+  {
+    events: ['organisation:created', 'organisation:approved', 'organisation:rejected', 'organisation:subscription-expiring', 'organisation:subscription-expired', 'organisation:subscription-renewed'],
+    handler: async (eventName, data, categorySlug) => {
+      if (data.userId) {
+        await dispatchToUser({
+          userId: data.userId, eventName, categorySlug, data,
+          organisationId: data.organisationId,
+          relatedEntityType: 'organisation', relatedEntityId: String(data.organisationId),
+        });
+      }
+    },
+  },
+  {
+    events: ['club:created', 'club:member-joined', 'club:member-left'],
+    handler: async (eventName, data, categorySlug) => {
+      if (data.userId) {
+        await dispatchToUser({
+          userId: data.userId, eventName, categorySlug, data,
+          organisationId: data.organisationId,
+          relatedEntityType: 'club', relatedEntityId: String(data.clubId || data.organisationId),
+        });
+      }
+    },
+  },
+  {
+    events: ['academy:enrolled', 'academy:session-reminder', 'academy:graduated'],
+    handler: async (eventName, data, categorySlug) => {
+      if (data.userId) {
+        await dispatchToUser({
+          userId: data.userId, eventName, categorySlug, data,
+          organisationId: data.organisationId,
+          relatedEntityType: 'academy', relatedEntityId: String(data.academyId),
+          digestable: eventName === 'academy:session-reminder' ? false : undefined,
+        });
+      }
+    },
+  },
+  {
+    events: ['coaching:session-scheduled', 'coaching:session-reminder', 'coaching:session-cancelled'],
+    handler: async (eventName, data, categorySlug) => {
+      if (data.userId) {
+        await dispatchToUser({
+          userId: data.userId, eventName, categorySlug, data,
+          relatedEntityType: 'session', relatedEntityId: String(data.sessionId),
+          digestable: false,
+        });
+      }
+      if (data.coachId && data.coachId !== data.userId) {
+        await dispatchToUser({
+          userId: data.coachId, eventName, categorySlug, data,
+          relatedEntityType: 'session', relatedEntityId: String(data.sessionId),
+          digestable: false,
+        });
+      }
+    },
+  },
+  {
+    events: ['tournament:created', 'tournament:registration-open', 'tournament:registration-closed', 'tournament:starting-soon', 'tournament:match-scheduled', 'tournament:result'],
+    handler: async (eventName, data, categorySlug) => {
+      if (data.userId) {
+        await dispatchToUser({
+          userId: data.userId, eventName, categorySlug, data,
+          relatedEntityType: 'tournament', relatedEntityId: String(data.tournamentId || data.matchId),
+        });
+      }
+    },
+  },
+  {
+    events: ['community:mention', 'community:reply', 'community:like'],
+    handler: async (eventName, data, categorySlug) => {
+      if (data.userId) {
+        await dispatchToUser({
+          userId: data.userId, eventName, categorySlug, data,
+          relatedEntityType: 'post', relatedEntityId: String(data.postId),
+        });
+      }
+    },
+  },
+  {
+    events: ['friend:request', 'friend:accepted', 'friend:blocked'],
+    handler: async (eventName, data, categorySlug) => {
+      if (data.toUserId) {
+        await dispatchToUser({ userId: data.toUserId, eventName, categorySlug, data, senderId: data.fromUserId });
+      }
+      if (data.fromUserId && data.toUserId !== data.fromUserId) {
+        await dispatchToUser({ userId: data.fromUserId, eventName, categorySlug, data });
+      }
+    },
+  },
+  {
+    events: ['chat:new-message'],
+    handler: async (eventName, data, categorySlug) => {
+      if (data.userId) {
+        await dispatchToUser({
+          userId: data.userId, eventName, categorySlug, data,
+          relatedEntityType: 'chat',
+        });
+      }
+    },
+  },
+  {
+    events: ['chat:group-created', 'chat:group-joined'],
+    handler: async (eventName, data, categorySlug) => {
+      if (data.userId) {
+        await dispatchToUser({
+          userId: data.userId, eventName, categorySlug, data,
+          relatedEntityType: 'chat',
+        });
+      }
+    },
+  },
+  {
+    events: ['membership:expiring', 'membership:expired', 'membership:renewed', 'membership:upgraded'],
+    handler: async (eventName, data, categorySlug) => {
+      if (data.userId) {
+        await dispatchToUser({
+          userId: data.userId, eventName, categorySlug, data,
+          relatedEntityType: 'membership', digestable: false,
+        });
+      }
+    },
+  },
+  {
+    events: ['review:received'],
+    handler: async (eventName, data, categorySlug) => {
+      if (data.userId) {
+        await dispatchToUser({
+          userId: data.userId, eventName, categorySlug, data,
+          relatedEntityType: 'review', relatedEntityId: String(data.reviewId),
+        });
+      }
+    },
+  },
+  {
+    events: ['attendance:marked'],
+    handler: async (eventName, data, categorySlug) => {
+      if (data.userId) {
+        await dispatchToUser({
+          userId: data.userId, eventName, categorySlug, data,
+          relatedEntityType: 'booking', relatedEntityId: String(data.bookingId),
+        });
+      }
+    },
+  },
+  {
+    events: ['support:ticket-opened', 'support:ticket-resolved', 'support:ticket-closed'],
+    handler: async (eventName, data, categorySlug) => {
+      if (data.userId) {
+        await dispatchToUser({
+          userId: data.userId, eventName, categorySlug, data,
+          relatedEntityType: 'ticket', relatedEntityId: String(data.ticketId),
+        });
+      }
+    },
+  },
+  {
+    events: ['security:suspicious-login', 'security:account-locked'],
+    handler: async (eventName, data, categorySlug) => {
+      if (data.userId) {
+        await dispatchToUser({
+          userId: data.userId, eventName, categorySlug, data,
+          digestable: false, priority: 'critical',
+        });
+      }
+    },
+  },
+  {
+    events: ['system:maintenance', 'system:birthday'],
+    handler: async (eventName, data, categorySlug) => {
+      if (data.userId) {
+        await dispatchToUser({
+          userId: data.userId, eventName, categorySlug, data,
+          digestable: false,
+        });
+      }
+    },
+  },
+  {
+    events: ['match:invitation'],
+    handler: async (eventName, data, categorySlug) => {
+      if (data.userId) {
+        await dispatchToUser({
+          userId: data.userId, eventName, categorySlug, data,
+          relatedEntityType: 'booking', relatedEntityId: String(data.bookingId),
+          senderId: data.senderId, actions: data.actions,
+          digestable: false, actionPayload: { bookingId: data.bookingId },
+        });
+      }
+    },
+  },
+  {
+    events: ['coupon:published'],
+    handler: async (eventName, data, categorySlug) => {
+      if (data.organisationIds?.length) {
+        for (const orgId of data.organisationIds) {
+          await dispatchByOrg(orgId, {
+            eventName, categorySlug, data,
+            relatedEntityType: 'coupon', relatedEntityId: String(data.couponId),
+          });
+        }
+      }
+    },
+  },
+  {
+    events: ['notification:broadcast'],
+    handler: async (eventName, data, categorySlug) => {
+      const { dispatchToAll, dispatchByBranch, dispatchByUserIdsBulk } = await import('./dispatcher.service.js');
+      const options = {
+        eventName: 'system:announcement' as const,
+        categorySlug: 'system' as const,
+        data: { title: data.payload.title, body: data.payload.body, broadcastId: data.broadcastId },
+        type: data.payload.type, priority: data.payload.priority,
+        actionKey: data.payload.actionKey, imageUrls: data.payload.imageUrls,
+        actions: data.payload.actions, locale: 'en',
+      };
+      switch (data.target.scope) {
+        case 'all': await dispatchToAll(options); break;
+        case 'role': await dispatchByRole(data.target.roleSlug, options); break;
+        case 'organisation': await dispatchByOrg(data.target.organisationId, options); break;
+        case 'branch': await dispatchByBranch(data.target.branchId ?? 0, options); break;
+        case 'users': await dispatchByUserIdsBulk(data.target.userIds, options); break;
+      }
+    },
+  },
+];
+
+function buildEventMap(groups: EventGroupConfig[]): Map<string, EventHandler> {
+  const map = new Map<string, EventHandler>();
+  for (const group of groups) {
+    for (const event of group.events) {
+      map.set(event, group.handler);
+    }
+  }
+  return map;
+}
+
+function getCategorySlug(event: string): string {
+  if (event.startsWith('booking')) return 'bookings';
+  if (event.startsWith('payment') || event.startsWith('wallet')) return 'payments';
+  if (event.startsWith('marketplace')) return 'marketplace';
+  return 'system';
+}
 
 class NotificationEngine {
   private subscribed = false;
@@ -13,498 +457,62 @@ class NotificationEngine {
     if (this.subscribed) return;
     this.subscribed = true;
 
-    const events = [
+    const subscribedEvents: string[] = [
       'booking:created', 'booking:confirmed', 'booking:cancelled', 'booking:expired',
       'booking:rescheduled', 'booking:completed', 'booking:reminder', 'booking:no-show',
       'booking:check-in', 'booking:matchmaking-complete', 'booking:fully-booked',
-
       'payment:completed', 'payment:failed', 'payment:refunded', 'payment:initiated',
       'payment:wallet-topup', 'payment:wallet-low-balance',
-
       'marketplace:order-placed', 'marketplace:order-confirmed', 'marketplace:order-shipped',
       'marketplace:order-delivered', 'marketplace:order-cancelled',
       'marketplace:order-status-changed', 'marketplace:order-refunded',
       'marketplace:new-review', 'marketplace:product-back-in-stock',
-      'marketplace:price-drop', 'marketplace:flash-sale',
-
+      'marketplace:price-drop', 'marketplace:flash-sale', 'marketplace:new-seller-registered',
       'user:registered', 'user:approved', 'user:rejected', 'user:suspended',
       'user:activated', 'user:profile-updated', 'user:deleted',
-
-      'auth:password-changed', 'auth:login', 'auth:logout', 'auth:2fa-setup',
-
+      'auth:password-reset', 'auth:password-changed', 'auth:login', 'auth:logout', 'auth:2fa-setup',
       'organisation:created', 'organisation:approved', 'organisation:rejected',
       'organisation:subscription-expiring', 'organisation:subscription-expired',
       'organisation:subscription-renewed',
-
       'club:created', 'club:member-joined', 'club:member-left',
       'academy:enrolled', 'academy:session-reminder', 'academy:graduated',
       'coaching:session-scheduled', 'coaching:session-reminder', 'coaching:session-cancelled',
-
       'tournament:created', 'tournament:registration-open', 'tournament:registration-closed',
       'tournament:starting-soon', 'tournament:match-scheduled', 'tournament:result',
-
       'community:mention', 'community:reply', 'community:like',
       'friend:request', 'friend:accepted', 'friend:blocked',
-
       'chat:new-message', 'chat:group-created', 'chat:group-joined',
-
       'membership:expiring', 'membership:expired', 'membership:renewed', 'membership:upgraded',
-
       'wallet:deposit', 'wallet:withdrawal', 'wallet:low-balance', 'wallet:transaction',
-
       'review:received', 'attendance:marked',
-
       'support:ticket-opened', 'support:ticket-resolved', 'support:ticket-closed',
-
       'security:suspicious-login', 'security:account-locked',
-
       'system:announcement', 'system:maintenance', 'system:birthday', 'system:digest',
-
       'match:invitation',
-
-      'coupon:published',       'booking:auto-cancelled', 'booking:application-declined',
+      'coupon:published', 'booking:auto-cancelled', 'booking:application-declined',
+      'notification:broadcast',
     ];
 
-    for (const event of events) {
+    const eventMap = buildEventMap(eventGroups);
+
+    for (const event of subscribedEvents) {
+      const handler = eventMap.get(event);
+      if (!handler) {
+        log.warn({ event }, 'No event configuration found — event will be processed as no-op');
+        eventBus.on(event as any, () => {});
+        continue;
+      }
       eventBus.on(event as any, (data) => {
-        this.handleEvent(event, data).catch((err) => {
+        this.handleEvent(event, handler, data).catch((err) => {
           log.error({ err, event }, 'Error handling event');
         });
       });
     }
   }
 
-  // eslint-disable-next-line complexity
-  private async handleEvent(eventName: string, data: any): Promise<void> {
-    const categorySlug = this.getCategorySlug(eventName);
-
-    switch (eventName) {
-      case 'user:registered': {
-        await dispatchByRole('super_admin', {
-          eventName: eventName,
-          categorySlug,
-          data,
-        });
-        break;
-      }
-
-      case 'system:announcement': {
-        if (data.targetUserId) {
-          await dispatchToUser({ userId: data.targetUserId, eventName: eventName, categorySlug, data });
-        } else if (data.targetRole) {
-          await dispatchByRole(data.targetRole, {
-            eventName: eventName, categorySlug,
-            data: { ...data, title: data.title, body: data.body },
-          });
-        } else if (data.title && data.body) {
-          const { dispatchToAll } = await import('./dispatcher.service.js');
-          await dispatchToAll({
-            eventName: eventName, categorySlug,
-            data: { title: data.title, body: data.body },
-          });
-        }
-        break;
-      }
-
-      case 'booking:created':
-      case 'booking:confirmed':
-      case 'booking:cancelled':
-      case 'booking:auto-cancelled':
-      case 'booking:expired':
-      case 'booking:rescheduled':
-      case 'booking:completed':
-      case 'booking:no-show':
-      case 'booking:application-declined':
-      case 'booking:check-in': {
-        if (data.userId) {
-          await dispatchToUser({
-            userId: data.userId, eventName: eventName, categorySlug,
-            data,
-            organisationId: data.organisationId,
-            branchId: data.branchId,
-            relatedEntityType: 'booking',
-            relatedEntityId: String(data.bookingId),
-            actionPayload: { bookingId: data.bookingId },
-            digestable: false,
-          });
-        }
-        break;
-      }
-
-      case 'booking:reminder': {
-        if (data.userId) {
-          await dispatchToUser({
-            userId: data.userId, eventName: eventName, categorySlug, data,
-            relatedEntityType: 'booking', relatedEntityId: String(data.bookingId),
-            digestable: false,
-          });
-        }
-        break;
-      }
-
-      case 'booking:matchmaking-complete': {
-        if (data.userId) {
-          await dispatchToUser({
-            userId: data.userId, eventName: eventName, categorySlug, data,
-            relatedEntityType: 'booking', relatedEntityId: String(data.bookingId),
-            actionPayload: { bookingId: data.bookingId },
-          });
-        }
-        break;
-      }
-
-      case 'booking:fully-booked': {
-        if (data.userId) {
-          await dispatchToUser({
-            userId: data.userId, eventName: eventName, categorySlug, data,
-            relatedEntityType: 'booking', relatedEntityId: String(data.bookingId),
-          });
-        }
-        break;
-      }
-
-      case 'payment:completed':
-      case 'payment:failed':
-      case 'payment:refunded':
-      case 'payment:initiated': {
-        if (data.userId) {
-          await dispatchToUser({
-            userId: data.userId, eventName: eventName, categorySlug, data,
-            organisationId: data.organisationId,
-            relatedEntityType: 'payment', relatedEntityId: String(data.paymentId),
-            digestable: false,
-          });
-        }
-        break;
-      }
-
-      case 'payment:wallet-topup':
-      case 'payment:wallet-low-balance':
-      case 'wallet:deposit':
-      case 'wallet:withdrawal':
-      case 'wallet:low-balance':
-      case 'wallet:transaction': {
-        if (data.userId) {
-          await dispatchToUser({
-            userId: data.userId, eventName: eventName, categorySlug, data,
-          });
-        }
-        break;
-      }
-
-      case 'marketplace:order-placed':
-      case 'marketplace:order-confirmed':
-      case 'marketplace:order-shipped':
-      case 'marketplace:order-delivered':
-      case 'marketplace:order-refunded':
-      case 'marketplace:order-cancelled':
-      case 'marketplace:order-status-changed': {
-        if (data.userId) {
-          await dispatchToUser({
-            userId: data.userId, eventName: eventName, categorySlug, data,
-            relatedEntityType: 'order', relatedEntityId: String(data.orderId),
-          });
-        }
-        if (data.sellerId && data.sellerId !== data.userId) {
-          await dispatchToUser({
-            userId: data.sellerId, eventName: eventName, categorySlug, data,
-            relatedEntityType: 'order', relatedEntityId: String(data.orderId),
-          });
-        }
-        break;
-      }
-
-      case 'marketplace:new-review': {
-        if (data.reviewedUserId) {
-          await dispatchToUser({
-            userId: data.reviewedUserId, eventName: eventName, categorySlug, data,
-            relatedEntityType: 'review', relatedEntityId: String(data.reviewId),
-          });
-        }
-        break;
-      }
-
-      case 'marketplace:product-back-in-stock':
-      case 'marketplace:price-drop':
-      case 'marketplace:flash-sale': {
-        if (data.userId) {
-          await dispatchToUser({
-            userId: data.userId, eventName: eventName, categorySlug, data,
-            relatedEntityType: 'product', relatedEntityId: String(data.productId),
-          });
-        }
-        break;
-      }
-
-      case 'user:approved':
-      case 'user:rejected':
-      case 'user:suspended':
-      case 'user:activated':
-      case 'user:profile-updated':
-      case 'user:deleted': {
-        if (data.userId) {
-          await dispatchToUser({
-            userId: data.userId, eventName: eventName, categorySlug, data,
-            relatedEntityType: 'user', relatedEntityId: String(data.userId),
-          });
-        }
-        break;
-      }
-
-      case 'auth:password-changed':
-      case 'auth:login':
-      case 'auth:logout':
-      case 'auth:2fa-setup': {
-        if (data.userId) {
-          await dispatchToUser({
-            userId: data.userId, eventName: eventName, categorySlug, data,
-            digestable: false,
-          });
-        }
-        break;
-      }
-
-      case 'organisation:created':
-      case 'organisation:approved':
-      case 'organisation:rejected':
-      case 'organisation:subscription-expiring':
-      case 'organisation:subscription-expired':
-      case 'organisation:subscription-renewed': {
-        if (data.userId) {
-          await dispatchToUser({
-            userId: data.userId, eventName: eventName, categorySlug, data,
-            organisationId: data.organisationId,
-            relatedEntityType: 'organisation', relatedEntityId: String(data.organisationId),
-          });
-        }
-        break;
-      }
-
-      case 'club:created':
-      case 'club:member-joined':
-      case 'club:member-left': {
-        if (data.userId) {
-          await dispatchToUser({
-            userId: data.userId, eventName: eventName, categorySlug, data,
-            organisationId: data.organisationId,
-            relatedEntityType: 'club', relatedEntityId: String(data.clubId || data.organisationId),
-          });
-        }
-        break;
-      }
-
-      case 'academy:enrolled':
-      case 'academy:session-reminder':
-      case 'academy:graduated': {
-        if (data.userId) {
-          await dispatchToUser({
-            userId: data.userId, eventName: eventName, categorySlug, data,
-            organisationId: data.organisationId,
-            relatedEntityType: 'academy', relatedEntityId: String(data.academyId),
-            digestable: eventName === 'academy:session-reminder' ? false : undefined,
-          });
-        }
-        break;
-      }
-
-      case 'coaching:session-scheduled':
-      case 'coaching:session-reminder':
-      case 'coaching:session-cancelled': {
-        if (data.userId) {
-          await dispatchToUser({
-            userId: data.userId, eventName: eventName, categorySlug, data,
-            relatedEntityType: 'session', relatedEntityId: String(data.sessionId),
-            digestable: false,
-          });
-        }
-        if (data.coachId && data.coachId !== data.userId) {
-          await dispatchToUser({
-            userId: data.coachId, eventName: eventName, categorySlug, data,
-            relatedEntityType: 'session', relatedEntityId: String(data.sessionId),
-            digestable: false,
-          });
-        }
-        break;
-      }
-
-      case 'tournament:created':
-      case 'tournament:registration-open':
-      case 'tournament:registration-closed':
-      case 'tournament:starting-soon':
-      case 'tournament:match-scheduled':
-      case 'tournament:result': {
-        if (data.userId) {
-          await dispatchToUser({
-            userId: data.userId, eventName: eventName, categorySlug, data,
-            relatedEntityType: 'tournament', relatedEntityId: String(data.tournamentId || data.matchId),
-          });
-        }
-        break;
-      }
-
-      case 'community:mention':
-      case 'community:reply':
-      case 'community:like': {
-        if (data.userId) {
-          await dispatchToUser({
-            userId: data.userId, eventName: eventName, categorySlug, data,
-            relatedEntityType: 'post', relatedEntityId: String(data.postId),
-          });
-        }
-        break;
-      }
-
-      case 'friend:request':
-      case 'friend:accepted':
-      case 'friend:blocked': {
-        if (data.toUserId) {
-          await dispatchToUser({
-            userId: data.toUserId, eventName: eventName, categorySlug, data,
-            senderId: data.fromUserId,
-          });
-        }
-        if (data.fromUserId && data.toUserId !== data.fromUserId) {
-          await dispatchToUser({
-            userId: data.fromUserId, eventName: eventName, categorySlug, data,
-          });
-        }
-        break;
-      }
-
-      case 'chat:new-message': {
-        if (data.userId) {
-          await dispatchToUser({
-            userId: data.userId, eventName: eventName, categorySlug, data,
-            relatedEntityType: 'chat',
-          });
-        }
-        break;
-      }
-      case 'chat:group-created':
-      case 'chat:group-joined': {
-        if (data.userId) {
-          await dispatchToUser({
-            userId: data.userId, eventName: eventName, categorySlug, data,
-            relatedEntityType: 'chat',
-          });
-        }
-        break;
-      }
-
-      case 'membership:expiring':
-      case 'membership:expired':
-      case 'membership:renewed':
-      case 'membership:upgraded': {
-        if (data.userId) {
-          await dispatchToUser({
-            userId: data.userId, eventName: eventName, categorySlug, data,
-            relatedEntityType: 'membership',
-            digestable: false,
-          });
-        }
-        break;
-      }
-
-      case 'review:received': {
-        if (data.userId) {
-          await dispatchToUser({
-            userId: data.userId, eventName: eventName, categorySlug, data,
-            relatedEntityType: 'review', relatedEntityId: String(data.reviewId),
-          });
-        }
-        break;
-      }
-
-      case 'attendance:marked': {
-        if (data.userId) {
-          await dispatchToUser({
-            userId: data.userId, eventName: eventName, categorySlug, data,
-            relatedEntityType: 'booking', relatedEntityId: String(data.bookingId),
-          });
-        }
-        break;
-      }
-
-      case 'support:ticket-opened':
-      case 'support:ticket-resolved':
-      case 'support:ticket-closed': {
-        if (data.userId) {
-          await dispatchToUser({
-            userId: data.userId, eventName: eventName, categorySlug, data,
-            relatedEntityType: 'ticket', relatedEntityId: String(data.ticketId),
-          });
-        }
-        break;
-      }
-
-      case 'security:suspicious-login':
-      case 'security:account-locked': {
-        if (data.userId) {
-          await dispatchToUser({
-            userId: data.userId, eventName: eventName, categorySlug, data,
-            digestable: false,
-            priority: 'critical',
-          });
-        }
-        break;
-      }
-
-      case 'system:maintenance':
-      case 'system:birthday': {
-        if (data.userId) {
-          await dispatchToUser({
-            userId: data.userId, eventName: eventName, categorySlug, data,
-            digestable: false,
-          });
-        }
-        break;
-      }
-
-      case 'match:invitation': {
-        if (data.userId) {
-          await dispatchToUser({
-            userId: data.userId, eventName: eventName, categorySlug, data,
-            relatedEntityType: 'booking', relatedEntityId: String(data.bookingId),
-            senderId: data.senderId,
-            actions: data.actions,
-            digestable: false,
-            actionPayload: { bookingId: data.bookingId },
-          });
-        }
-        break;
-      }
-
-      case 'coupon:published': {
-        if (data.organisationIds?.length) {
-          for (const orgId of data.organisationIds) {
-            await dispatchByOrg(orgId, {
-              eventName, categorySlug, data,
-              relatedEntityType: 'coupon', relatedEntityId: String(data.couponId),
-            });
-          }
-        }
-        break;
-      }
-
-      default:
-        log.warn({ event: eventName }, 'Unhandled notification event');
-    }
-  }
-
-  private getCategorySlug(event: string): string {
-    if (event.startsWith('booking')) return 'bookings';
-    if (event.startsWith('payment') || event.startsWith('wallet')) return 'payments';
-    if (event.startsWith('marketplace')) return 'marketplace';
-    if (event.startsWith('user') || event.startsWith('auth')) return 'system';
-    if (event.startsWith('organisation') || event.startsWith('club') || event.startsWith('membership')) return 'system';
-    if (event.startsWith('academy') || event.startsWith('coaching')) return 'system';
-    if (event.startsWith('tournament') || event.startsWith('match')) return 'system';
-    if (event.startsWith('community') || event.startsWith('friend') || event.startsWith('chat')) return 'system';
-    if (event.startsWith('review') || event.startsWith('attendance')) return 'system';
-    if (event.startsWith('support')) return 'system';
-    if (event.startsWith('security')) return 'system';
-    if (event.startsWith('system')) return 'system';
-    return 'system';
+  private async handleEvent(eventName: string, handler: EventHandler, data: any): Promise<void> {
+    const categorySlug = getCategorySlug(eventName);
+    await handler(eventName, data, categorySlug);
   }
 }
 

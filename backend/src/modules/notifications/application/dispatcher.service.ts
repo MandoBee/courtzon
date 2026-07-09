@@ -7,6 +7,7 @@ import { getTemplate, resolveTemplate, type NotificationTemplate } from './templ
 import { checkRateLimit, incrementRateLimit } from './rate-limiter.service.js';
 import { accumulateDigest } from './digest.service.js';
 import { isOnline, queueForReconnect } from './presence.service.js';
+import { notificationRepository } from '../infrastructure/repositories/notification.repository.js';
 import type { ProcessNotificationJob, SendNotificationBatchJob } from '../../../infrastructure/queue/queue.service.js';
 
 const log = createModuleLogger('dispatcher');
@@ -56,58 +57,25 @@ export async function dispatchToUser(options: DispatchOptions): Promise<void> {
 
   const resolved = resolveTemplate(template, data);
 
-  const pool = getPool();
-
-  let actionId: number | null = null;
-  const actionKey = options.actionKey ?? template.actionKey ?? null;
-  if (actionKey) {
-    const [actRows] = await pool.execute<RowData>(
-      'SELECT id FROM notification_actions WHERE action_key = ?', [actionKey]
-    );
-    if (actRows.length) {
-      actionId = (actRows[0] as any).id;
-    } else {
-      const [ins] = await pool.execute<ResultSetHeader>(
-        'INSERT INTO notification_actions (action_key) VALUES (?)', [actionKey]
-      );
-      actionId = ins.insertId;
-    }
-  }
-
-  const [result] = await pool.execute<ResultSetHeader>(
-    `INSERT INTO notifications
-     (user_id, type, title, body, action_id, action_payload, actions, image_urls, priority,
-      organization_id, branch_id, related_entity_type, related_entity_id,
-      sender_id, category_slug, event_name, template_id, is_read, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, FALSE, NOW())`,
-    [
-      userId,
-      options.type ?? template.type ?? 'info',
-    resolved.title,
-    resolved.body ?? null,
-    actionId,
-        options.actionPayload ? JSON.stringify(options.actionPayload) : null,
-      options.actions ? JSON.stringify(options.actions) : template.actions ? JSON.stringify(template.actions) : null,
-      options.imageUrls ? JSON.stringify(options.imageUrls) : null,
-      options.priority ?? template.priority ?? 'normal',
-      options.organisationId ?? null,
-      options.branchId ?? null,
-      options.relatedEntityType ?? null,
-      options.relatedEntityId ?? null,
-      options.senderId ?? null,
-      categorySlug,
-      eventName,
-      template.id,
-    ],
-  );
-
-  const notificationId = result.insertId;
-
-  await pool.execute(
-    `INSERT INTO notification_queue (user_id, notification_id, channel, status)
-     VALUES (?, ?, 'in_app', 'pending')`,
-    [userId, notificationId],
-  );
+  const notificationId = await notificationRepository.create({
+    userId,
+    title: resolved.title,
+    body: resolved.body ?? undefined,
+    categorySlug,
+    actionKey: options.actionKey ?? template.actionKey ?? undefined,
+    actionPayload: options.actionPayload,
+    type: options.type ?? template.type ?? 'info',
+    priority: options.priority ?? template.priority ?? 'normal',
+    organisationId: options.organisationId,
+    branchId: options.branchId,
+    senderId: options.senderId,
+    relatedEntityType: options.relatedEntityType,
+    relatedEntityId: options.relatedEntityId,
+    eventName,
+    actions: (options.actions ?? template.actions) ?? undefined,
+    imageUrls: options.imageUrls,
+    templateId: template.id,
+  });
 
   await incrementRateLimit(userId, categorySlug, eventName);
 
@@ -164,7 +132,6 @@ async function dispatchBulkChunk(
   userIds: number[],
   options: Omit<DispatchOptions, 'userId'>,
 ): Promise<void> {
-  const pool = getPool();
   const template = await getTemplate(options.eventName, options.locale ?? 'en');
   if (!template) {
     log.warn({ eventName: options.eventName }, 'No template for bulk dispatch');
@@ -172,60 +139,30 @@ async function dispatchBulkChunk(
   }
 
   const resolved = resolveTemplate(template, options.data);
-
-  let actionId: number | null = null;
-  const actionKey = options.actionKey ?? template.actionKey ?? null;
-  if (actionKey) {
-    const [actRows] = await pool.execute<RowData>(
-      'SELECT id FROM notification_actions WHERE action_key = ?', [actionKey]
-    );
-    if (actRows.length) {
-      actionId = (actRows[0] as any).id;
-    } else {
-      const [ins] = await pool.execute<ResultSetHeader>(
-        'INSERT INTO notification_actions (action_key) VALUES (?)', [actionKey]
-      );
-      actionId = ins.insertId;
-    }
-  }
-
-  const values: any[][] = [];
   const userIdsToQueue: number[] = [];
 
   for (const userId of userIds) {
-    values.push([
+    await notificationRepository.create({
       userId,
-      options.type ?? template.type ?? 'info',
-    resolved.title,
-    resolved.body ?? null,
-    actionId,
-    options.actionPayload ?? null,
-      options.actions ? JSON.stringify(options.actions) : template.actions ? JSON.stringify(template.actions) : null,
-      options.imageUrls ? JSON.stringify(options.imageUrls) : null,
-      options.priority ?? template.priority ?? 'normal',
-      options.organisationId ?? null,
-      options.branchId ?? null,
-      options.relatedEntityType ?? null,
-      options.relatedEntityId ?? null,
-      options.senderId ?? null,
-      options.categorySlug,
-      options.eventName,
-      template.id,
-    ]);
+      title: resolved.title,
+      body: resolved.body ?? undefined,
+      categorySlug: options.categorySlug,
+      actionKey: options.actionKey ?? template.actionKey ?? undefined,
+      actionPayload: options.actionPayload,
+      type: options.type ?? template.type ?? 'info',
+      priority: options.priority ?? template.priority ?? 'normal',
+      organisationId: options.organisationId,
+      branchId: options.branchId,
+      senderId: options.senderId,
+      relatedEntityType: options.relatedEntityType,
+      relatedEntityId: options.relatedEntityId,
+      eventName: options.eventName,
+      actions: (options.actions ?? template.actions) ?? undefined,
+      imageUrls: options.imageUrls,
+      templateId: template.id,
+    });
     userIdsToQueue.push(userId);
   }
-
-  const placeholders = values.map(() => '(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, FALSE, NOW())').join(', ');
-  const flatValues = values.flat();
-
-  await pool.execute(
-    `INSERT INTO notifications
-     (user_id, type, title, body, action_id, action_payload, actions, image_urls, priority,
-      organization_id, branch_id, related_entity_type, related_entity_id,
-      sender_id, category_slug, event_name, template_id, is_read, created_at)
-     VALUES ${placeholders}`,
-    flatValues,
-  );
 
   const batchItem: ProcessNotificationJob = {
     notificationId: 0,

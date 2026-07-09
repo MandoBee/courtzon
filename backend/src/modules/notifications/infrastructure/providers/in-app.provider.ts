@@ -1,5 +1,5 @@
 import type { NotificationProvider, DeliveryResult } from './provider.interface.js';
-import { getIO } from '../../../../realtime/index.js';
+import { realtimeService } from '../../../../platform/realtime/index.js';
 import type { ProcessNotificationJob } from '../../../../infrastructure/queue/queue.service.js';
 
 export class InAppProvider implements NotificationProvider {
@@ -15,7 +15,6 @@ export class InAppProvider implements NotificationProvider {
     job: ProcessNotificationJob & { renderedTitle: string; renderedBody?: string },
   ): Promise<DeliveryResult> {
     try {
-      const io = getIO();
       const payload: Record<string, any> = {
         id: job.notificationId,
         user_id: job.userId,
@@ -37,8 +36,8 @@ export class InAppProvider implements NotificationProvider {
         sender_id: job.senderId,
       };
 
-      io.to(`user:${job.userId}`).emit('notification:new', payload);
-      io.to(`user:${job.userId}`).emit('notification:unread-count');
+      realtimeService.emitToUser(job.userId, 'notification:new', payload);
+      realtimeService.emitToUser(job.userId, 'notification:unread-count');
 
       return { success: true, provider: this.slug, channel: this.channel };
     } catch (err: any) {

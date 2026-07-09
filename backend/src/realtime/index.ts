@@ -2,7 +2,7 @@ import { Server as SocketIOServer } from 'socket.io';
 import type { FastifyInstance } from 'fastify';
 import { setOnlineWithReconnect, setOffline } from '../modules/notifications/application/presence.service.js';
 import { registerUserDevice } from '../modules/notifications/application/cross-device-sync.service.js';
-import { setupSocketGateway, userRoom, orgRoom, branchRoom, ADMIN_ROOM, PLAYER_ROOM, getSocketMetrics } from './socket-gateway.js';
+import { realtimeService, userRoom, orgRoom, branchRoom, ADMIN_ROOM, PLAYER_ROOM } from '../platform/realtime/index.js';
 import { ALLOWED_ORIGINS } from '../app.js';
 
 let io: SocketIOServer | null = null;
@@ -104,7 +104,7 @@ export function setupRealtime(app: FastifyInstance): SocketIOServer {
 
     socket.on('disconnect', () => {
       setOffline(userId).catch(() => {});
-      io?.to(PLAYER_ROOM).emit('presence:offline', { userId });
+      realtimeService.emitToPlayers('presence:offline', { userId });
     });
 
     setOnlineWithReconnect(userId).then((ids) => {
@@ -112,10 +112,10 @@ export function setupRealtime(app: FastifyInstance): SocketIOServer {
     }).catch(() => {});
 
     registerUserDevice(userId, deviceId).catch(() => {});
-    io?.to(PLAYER_ROOM).emit('presence:online', { userId });
+    realtimeService.emitToPlayers('presence:online', { userId });
   });
 
-  setupSocketGateway(io);
+  realtimeService.initialize(io);
   return io;
 }
 

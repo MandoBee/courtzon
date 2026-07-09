@@ -14,6 +14,9 @@ import type { CreateBookingInput } from '../presentation/booking.dto.js';
 import type mysql from 'mysql2/promise';
 import { randomUUID } from 'node:crypto';
 import { eventBus } from '../../../shared/event-bus/index.js';
+import {
+  confirmBooking, cancelBooking, checkInBooking, noShowBooking, completeBooking,
+} from '../../../platform/booking/BookingSaga.js';
 
 type RowData = mysql.RowDataPacket[];
 
@@ -368,11 +371,15 @@ export class BookingService {
       }
 
       if (bookingStatus === 'confirmed' && booking) {
-        const startDate = new Date(`${String(booking.booking_date).split('T')[0]}T${booking.start_time}`);
-        const { scheduleBookingReminder } = await import('../../notifications/application/scheduler.service.js');
-        scheduleBookingReminder(bookingId, userId, startDate).catch((e: any) =>
-          log.error({ err: e, bookingId }, 'Failed to schedule booking reminder')
-        );
+        if (process.env.LEGACY_REMINDER_ENABLED === 'true') {
+          const startDate = new Date(`${String(booking.booking_date).split('T')[0]}T${booking.start_time}`);
+          const { scheduleBookingReminder } = await import('../../notifications/application/scheduler.service.js');
+          scheduleBookingReminder(bookingId, userId, startDate).catch((e: any) =>
+            log.error({ err: e, bookingId }, 'Failed to schedule booking reminder')
+          );
+        } else {
+          eventBus.emit('booking:confirmed', { bookingId, userId });
+        }
       }
 
       return { ...booking, paymentUrl, clientSecret, paymentId };
@@ -435,10 +442,11 @@ export class BookingService {
           const status = await paymentGateway.getTransactionStatus(pt.gateway_reference);
           if (status.status === 'paid') {
             isPaid = true;
-            await conn.execute(
-              'UPDATE payment_transactions SET payment_status = ? WHERE id = ?',
-              ['paid', pt.id]
-            );
+            const { confirmPayment } = await import('../../../platform/payment/PaymentSaga.js');
+            await confirmPayment(pt.id, {
+              gatewayReference: pt.gateway_reference || '',
+              paidAmount: intent.total_amount || 0,
+            }, conn).catch(() => {});
           }
         } catch {
           // non-fatal
@@ -545,7 +553,7 @@ export class BookingService {
       if (isCOD) {
         const totalAmount = Number(booking.total_amount);
         const paymentStatus = refundAmount >= totalAmount ? 'refunded' : refundAmount > 0 ? 'partially_refunded' : 'penalty';
-        await bookingRepository.cancelWithRefund(id, userId, reason, feeAmount, paymentStatus, conn);
+        await cancelBooking(id, userId, reason, feeAmount, conn, paymentStatus);
         await conn.commit();
 
         // Wallet refund and journal entries happen outside the transaction (non-fatal)
@@ -557,8 +565,7 @@ export class BookingService {
           await this._recordCODWalletTransaction(booking, 'penalty', `Booking #${booking.id} cancellation penalty`);
         }
       } else {
-        await bookingRepository.createCancellationRecord(id, userId, reason, feeAmount, conn);
-        await conn.execute('UPDATE bookings SET booking_status = ? WHERE id = ?', ['cancelled', id]);
+        await cancelBooking(id, userId, reason, feeAmount, conn);
         await conn.commit();
 
         if (refundAmount > 0 && booking.payment_status === 'paid') {
@@ -571,13 +578,6 @@ export class BookingService {
     } finally {
       conn.release();
     }
-
-    eventBus.emit('booking:cancelled', {
-      bookingId: id,
-      userId,
-      reason: reason || undefined,
-      organisationId: booking.organisation_id || undefined,
-    });
 
     return this.getBooking(id);
   }
@@ -736,15 +736,7 @@ export class BookingService {
   }
 
   async checkIn(id: number, userId: number) {
-    const booking = await bookingRepository.findById(id);
-    if (!booking) throw new NotFoundError('Booking');
-    if (booking.booking_status !== 'confirmed') throw new Error('Only confirmed bookings can be checked in');
-    await bookingRepository.checkIn(id);
-    eventBus.emit('booking:check-in', {
-      bookingId: id,
-      userId,
-      organisationId: booking.organisation_id || undefined,
-    });
+    await checkInBooking(id);
     return this.getBooking(id);
   }
 
@@ -754,36 +746,33 @@ export class BookingService {
       if (!booking) throw new NotFoundError('Booking');
       const isCOD = booking.payment_method === 'cash' || booking.payment_method === 'cod';
       if (isCOD) {
-        await bookingRepository.updateStatusAndPayment(id, 'completed', 'paid');
+        await completeBooking(id, 'paid');
         await this._settleCODWallet(booking, 'payment', `COD booking #${booking.id} settled`);
       } else {
-        await bookingRepository.updateStatus(id, 'completed');
+        await completeBooking(id);
       }
-      eventBus.emit('booking:completed', {
-        bookingId: id,
-        userId: booking.user_id,
-        organisationId: booking.organisation_id || undefined,
-      });
       return;
     }
 
-    if (status === 'pending' || status === 'confirmed') {
+    if (status === 'pending') {
       const booking = await bookingRepository.findById(id);
       if (!booking) throw new NotFoundError('Booking');
       const isCOD = booking.payment_method === 'cash' || booking.payment_method === 'cod';
       if (isCOD) {
-        await bookingRepository.updateStatusAndPayment(id, status, 'pending');
+        await bookingRepository.updateStatusAndPayment(id, 'pending', 'pending');
       } else {
-        await bookingRepository.updateStatus(id, status);
+        await bookingRepository.updateStatus(id, 'pending');
       }
-      if (status === 'confirmed') {
-        eventBus.emit('booking:confirmed', {
-          bookingId: id,
-          userId: booking.user_id,
-          organisationId: booking.organisation_id || undefined,
-          branchId: booking.branch_id || undefined,
-        });
-      }
+      return;
+    }
+
+    if (status === 'confirmed') {
+      const booking = await bookingRepository.findById(id);
+      if (!booking) throw new NotFoundError('Booking');
+      await confirmBooking(id, {
+        paymentStatus: booking.payment_status === 'paid' ? 'paid' : 'pending',
+        paymentMethod: booking.payment_method || 'card',
+      });
       return;
     }
 
@@ -797,7 +786,7 @@ export class BookingService {
       const isCOD = booking.payment_method === 'cash' || booking.payment_method === 'cod';
 
       if (!isCOD && status === 'no_show') {
-        await bookingRepository.updateStatus(id, 'no_show');
+        await noShowBooking(id, actorId ?? booking.user_id, 'No-show by admin/staff');
         return;
       }
 
@@ -821,9 +810,9 @@ export class BookingService {
         }
 
         if (status === 'cancelled') {
-          await bookingRepository.cancelWithRefund(id, resolvedUserId, reason, feeAmount, paymentStatus);
+          await cancelBooking(id, resolvedUserId, reason, feeAmount, undefined, paymentStatus);
         } else {
-          await bookingRepository.markNoShowWithRefund(id, resolvedUserId, reason, feeAmount, paymentStatus);
+          await noShowBooking(id, resolvedUserId, reason, undefined, paymentStatus, feeAmount);
         }
 
         if (paymentStatus === 'refunded') {
@@ -835,26 +824,10 @@ export class BookingService {
             `Booking #${booking.id} ${status === 'no_show' ? 'no-show penalty' : 'cancellation penalty'}`);
         }
       } else {
-        await bookingRepository.updateStatus(id, 'cancelled');
-        await bookingRepository.createCancellationRecord(id, resolvedUserId, reason, feeAmount);
+        await cancelBooking(id, resolvedUserId, reason, feeAmount);
         if (refundAmount > 0 && booking.payment_status === 'paid') {
           await this._processGatewayRefund(booking, refundAmount);
         }
-      }
-
-      if (status === 'no_show') {
-        eventBus.emit('booking:no-show', {
-          bookingId: id,
-          userId: booking.user_id,
-          organisationId: booking.organisation_id || undefined,
-        });
-      } else {
-        eventBus.emit('booking:cancelled', {
-          bookingId: id,
-          userId: booking.user_id,
-          reason,
-          organisationId: booking.organisation_id || undefined,
-        });
       }
       return;
     }

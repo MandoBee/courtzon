@@ -209,6 +209,15 @@ export async function seedTemplates(): Promise<void> {
       titleTemplate: 'تم تغيير كلمة المرور', bodyTemplate: 'تم تغيير كلمة المرور بنجاح.',
       actionKey: 'view_settings', routePattern: '/profile/settings' },
 
+    { eventName: 'auth:password-reset', locale: 'en', categorySlug: 'system', type: 'info', priority: 'high',
+      titleTemplate: 'Reset your CourtZon password',
+      bodyTemplate: 'Click this link to reset your password: {{resetLink}}\n\nThis link expires in 1 hour. If you did not request this, please ignore this email.',
+      actionKey: 'reset_password', routePattern: '{{resetLink}}' },
+    { eventName: 'auth:password-reset', locale: 'ar', categorySlug: 'system', type: 'info', priority: 'high',
+      titleTemplate: 'إعادة تعيين كلمة المرور',
+      bodyTemplate: 'انقر على الرابط لإعادة تعيين كلمة المرور: {{resetLink}}\n\nتنتهي صلاحية هذا الرابط خلال ساعة.',
+      actionKey: 'reset_password', routePattern: '{{resetLink}}' },
+
     // Friend requests
     { eventName: 'friend:request', locale: 'en', categorySlug: 'system', type: 'info', priority: 'normal',
       titleTemplate: 'Friend Request', bodyTemplate: '{{fromUserName}} sent you a friend request.',

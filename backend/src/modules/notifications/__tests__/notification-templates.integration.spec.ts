@@ -128,19 +128,6 @@ describe('Notification Template Integration', () => {
     expect(notification.user_id).toBe(1);
     expect(JSON.parse(notification.action_payload).bookingId).toBe(bookingId);
 
-    const [queueRows] = await pool.execute(
-      `SELECT id, user_id, notification_id, channel, status
-       FROM notification_queue
-       WHERE notification_id = ?`,
-      [notification.id],
-    );
-    const queueRow = (queueRows as any[])[0];
-
-    expect(queueRow).toBeTruthy();
-    expect(queueRow.user_id).toBe(1);
-    expect(queueRow.channel).toBe('in_app');
-
-    await pool.execute('DELETE FROM notification_queue WHERE notification_id = ?', [notification.id]);
     await pool.execute('DELETE FROM notification_delivery WHERE notification_id = ?', [notification.id]);
     await pool.execute('DELETE FROM notifications WHERE id = ?', [notification.id]);
   });

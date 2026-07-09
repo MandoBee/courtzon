@@ -59,6 +59,7 @@ export interface DomainEventMap {
   'auth:login-failed': BaseEvent & { email: string; ip: string };
   'auth:logout': BaseEvent & { userId: number };
   'auth:password-changed': BaseEvent & { userId: number };
+  'auth:password-reset': BaseEvent & { userId: number; email: string; resetLink: string };
   'auth:mfa-enabled': BaseEvent & { userId: number; method: string };
   'auth:mfa-disabled': BaseEvent & { userId: number };
   'auth:2fa-setup': BaseEvent & { userId: number; method: string };
@@ -155,7 +156,27 @@ export interface DomainEventMap {
   'system:maintenance': BaseEvent & { title: string; body: string; startAt: Date; endAt: Date };
   'system:birthday': BaseEvent & { userId: number; name: string };
   'system:digest': BaseEvent & { userId: number; notifications: Array<{ id: number; title: string; categorySlug: string }> };
+
+  // Notification Platform
+  'notification:broadcast': BaseEvent & { broadcastId: number; payload: BroadcastPayload; target: BroadcastTarget };
 }
+
+export interface BroadcastPayload {
+  title: string;
+  body: string;
+  type?: string;
+  priority?: string;
+  actionKey?: string;
+  imageUrls?: Record<string, string>;
+  actions?: any[];
+}
+
+export type BroadcastTarget =
+  | { scope: 'all' }
+  | { scope: 'role'; roleSlug: string }
+  | { scope: 'organisation'; organisationId: number }
+  | { scope: 'branch'; branchId: number }
+  | { scope: 'users'; userIds: number[] };
 
 export type DomainEventName = keyof DomainEventMap;
 

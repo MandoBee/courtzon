@@ -1,6 +1,6 @@
 import { getPool } from '../../../database/mysql.js';
 import { createModuleLogger } from '../../../shared/utils/logger.js';
-import { eventBus } from '../../../shared/event-bus/index.js';
+import { completeBooking } from '../../../platform/booking/BookingSaga.js';
 
 const log = createModuleLogger('booking-auto-complete');
 
@@ -14,18 +14,14 @@ export async function handleAutoCompleteBookings(): Promise<void> {
   );
 
   for (const booking of completed) {
-    await pool.execute(
-      'UPDATE bookings SET booking_status = \'completed\' WHERE id = ?',
-      [booking.id]
-    );
-    eventBus.emit('booking:completed', {
-      bookingId: booking.id,
-      userId: booking.user_id,
-      organisationId: booking.organisation_id || undefined,
-    });
+    try {
+      await completeBooking(booking.id);
+    } catch (err) {
+      log.error({ err, bookingId: booking.id }, 'Failed to auto-complete booking');
+    }
   }
 
-  const affected = (completed as any).affectedRows || completed.length || 0;
+  const affected = completed.length || 0;
   if (affected > 0) {
     log.info({ completed: affected }, `Auto-completed ${affected} past bookings`);
   }

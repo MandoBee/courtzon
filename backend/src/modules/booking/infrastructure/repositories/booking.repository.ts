@@ -83,11 +83,34 @@ export class BookingRepository {
     );
   }
 
-  async updateBookingStatus(id: number, bookingStatus: string, paymentStatus: string): Promise<void> {
-    await this.pool.execute(
-      'UPDATE bookings SET booking_status = ?, payment_status = ?, updated_at = NOW() WHERE id = ?',
-      [bookingStatus, paymentStatus, id]
-    );
+  /**
+   * Internal: single authority for persisting booking status transitions.
+   * All status-changing public methods must delegate to this.
+   * @internal @deprecated External callers should use BookingSaga instead.
+   */
+  async persistTransition(
+    id: number,
+    bookingStatus: string,
+    paymentStatus?: string,
+    extraWhere?: string,
+    conn?: mysql.PoolConnection,
+  ): Promise<void> {
+    const db = this.resolve(conn);
+    const whereClause = extraWhere ? ` AND ${extraWhere}` : '';
+    const sql = paymentStatus !== undefined
+      ? `UPDATE bookings SET booking_status = ?, payment_status = ?, updated_at = NOW() WHERE id = ?${whereClause}`
+      : `UPDATE bookings SET booking_status = ?, updated_at = NOW() WHERE id = ?${whereClause}`;
+    const params = paymentStatus !== undefined
+      ? [bookingStatus, paymentStatus, id]
+      : [bookingStatus, id];
+    await db.execute(sql, params);
+  }
+
+  /**
+   * @internal @deprecated Use BookingSaga.confirmBooking() instead.
+   */
+  async updateBookingStatus(id: number, bookingStatus: string, paymentStatus: string, conn?: mysql.PoolConnection): Promise<void> {
+    await this.persistTransition(id, bookingStatus, paymentStatus, undefined, conn);
   }
 
   async updateIntentStatus(id: number, status: string, failureReason?: string, failureCategory?: string): Promise<void> {
@@ -560,34 +583,37 @@ export class BookingRepository {
     return rows;
   }
 
-  async checkIn(id: number): Promise<void> {
-    await this.pool.execute(
-      `UPDATE bookings SET booking_status = 'checked_in' WHERE id = ? AND booking_status = 'confirmed'`,
-      [id]
-    );
+  /**
+   * @internal @deprecated Use BookingSaga.checkInBooking() instead.
+   */
+  async checkIn(id: number, conn?: mysql.PoolConnection): Promise<void> {
+    await this.persistTransition(id, 'checked_in', undefined, "booking_status = 'confirmed'", conn);
   }
 
-  async markNoShow(id: number): Promise<void> {
-    await this.pool.execute(
-      `UPDATE bookings SET booking_status = 'no_show' WHERE id = ? AND booking_status = 'confirmed'`,
-      [id]
-    );
+  /**
+   * @internal @deprecated Use BookingSaga.noShowBooking() instead.
+   */
+  async markNoShow(id: number, conn?: mysql.PoolConnection): Promise<void> {
+    await this.persistTransition(id, 'no_show', undefined, "booking_status = 'confirmed'", conn);
   }
 
-  async updateStatus(id: number, status: string): Promise<void> {
-    await this.pool.execute(
-      `UPDATE bookings SET booking_status = ? WHERE id = ?`,
-      [status, id]
-    );
+  /**
+   * @internal @deprecated Use BookingSaga.completeBooking() instead.
+   */
+  async updateStatus(id: number, status: string, conn?: mysql.PoolConnection): Promise<void> {
+    await this.persistTransition(id, status, undefined, undefined, conn);
   }
 
-  async updateStatusAndPayment(id: number, status: string, paymentStatus: string): Promise<void> {
-    await this.pool.execute(
-      `UPDATE bookings SET booking_status = ?, payment_status = ? WHERE id = ?`,
-      [status, paymentStatus, id]
-    );
+  /**
+   * @internal @deprecated Use BookingSaga.confirmBooking() instead.
+   */
+  async updateStatusAndPayment(id: number, status: string, paymentStatus: string, conn?: mysql.PoolConnection): Promise<void> {
+    await this.persistTransition(id, status, paymentStatus, undefined, conn);
   }
 
+  /**
+   * @internal @deprecated Use BookingSaga.cancelBooking() instead.
+   */
   async cancelWithRefund(id: number, actorId: number, reason: string, feeAmount: number, newPaymentStatus: string, conn?: mysql.PoolConnection): Promise<void> {
     const db = this.resolve(conn);
     await db.execute(
@@ -595,10 +621,7 @@ export class BookingRepository {
        VALUES (?, ?, ?, ?)`,
       [id, actorId, reason, feeAmount]
     );
-    await db.execute(
-      `UPDATE bookings SET booking_status = 'cancelled', payment_status = ? WHERE id = ?`,
-      [newPaymentStatus, id]
-    );
+    await this.persistTransition(id, 'cancelled', newPaymentStatus);
   }
 
   async createCancellationRecord(id: number, actorId: number, reason: string, feeAmount: number, conn?: mysql.PoolConnection): Promise<void> {
@@ -610,20 +633,25 @@ export class BookingRepository {
     );
   }
 
-  async markNoShowWithRefund(id: number, actorId: number, reason: string, feeAmount: number, newPaymentStatus: string): Promise<void> {
-    await this.pool.execute(
+  /**
+   * @internal @deprecated Use BookingSaga.noShowBooking() instead.
+   */
+  async markNoShowWithRefund(id: number, actorId: number, reason: string, feeAmount: number, newPaymentStatus: string, conn?: mysql.PoolConnection): Promise<void> {
+    const db = this.resolve(conn);
+    await db.execute(
       `INSERT INTO booking_cancellations (booking_id, cancelled_by, reason, refund_amount)
        VALUES (?, ?, ?, ?)`,
       [id, actorId, reason, feeAmount]
     );
-    await this.pool.execute(
-      `UPDATE bookings SET booking_status = 'no_show', payment_status = ? WHERE id = ?`,
-      [newPaymentStatus, id]
-    );
+    await this.persistTransition(id, 'no_show', newPaymentStatus, undefined, conn);
   }
 
-  async updatePaymentStatus(id: number, paymentStatus: string): Promise<void> {
-    await this.pool.execute(
+  /**
+   * @internal @deprecated Use BookingSaga methods instead.
+   */
+  async updatePaymentStatus(id: number, paymentStatus: string, conn?: mysql.PoolConnection): Promise<void> {
+    const db = this.resolve(conn);
+    await db.execute(
       `UPDATE bookings SET payment_status = ? WHERE id = ?`,
       [paymentStatus, id]
     );

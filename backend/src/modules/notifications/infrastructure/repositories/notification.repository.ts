@@ -31,6 +31,13 @@ export class NotificationRepository {
     senderId?: number;
     relatedEntityType?: string;
     relatedEntityId?: string;
+    eventName?: string;
+    actions?: any[];
+    imageUrls?: Record<string, string>;
+    templateId?: number;
+    templateVersion?: number;
+    renderedTitle?: string;
+    renderedBody?: string;
   }): Promise<number> {
     let categoryId: number | null = null;
     if (data.categorySlug) {
@@ -58,8 +65,10 @@ export class NotificationRepository {
     const [result] = await this.pool.execute<ResultSetHeader>(
       `INSERT INTO notifications
        (user_id, category_id, action_id, action_payload, title, body, icon, type, priority,
-        organization_id, branch_id, sender_id, related_entity_type, related_entity_id, is_pushed)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE)`,
+        organization_id, branch_id, sender_id, related_entity_type, related_entity_id,
+        event_name, actions, image_urls, template_id, template_version,
+        rendered_title, rendered_body, is_pushed, is_read, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, FALSE, NOW())`,
       [
         data.userId, categoryId, actionId,
         data.actionPayload ? JSON.stringify(data.actionPayload) : null,
@@ -67,13 +76,12 @@ export class NotificationRepository {
         data.type || 'info', data.priority || 'normal',
         data.organisationId || null, data.branchId || null,
         data.senderId || null, data.relatedEntityType || null, data.relatedEntityId || null,
+        data.eventName || null,
+        data.actions ? JSON.stringify(data.actions) : null,
+        data.imageUrls ? JSON.stringify(data.imageUrls) : null,
+        data.templateId || null, data.templateVersion || null,
+        data.renderedTitle || null, data.renderedBody || null,
       ]
-    );
-
-    await this.pool.execute(
-      `INSERT INTO notification_queue (user_id, notification_id, channel, status)
-       VALUES (?, ?, 'in_app', 'sent')`,
-      [data.userId, result.insertId]
     );
 
     return result.insertId;

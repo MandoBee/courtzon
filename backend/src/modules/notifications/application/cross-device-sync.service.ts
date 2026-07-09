@@ -1,5 +1,5 @@
 import { getRedisClient } from '../../../infrastructure/redis/redis.client.js';
-import { getIO } from '../../../realtime/index.js';
+import { realtimeService } from '../../../platform/realtime/index.js';
 import { createModuleLogger } from '../../../shared/utils/logger.js';
 
 const log = createModuleLogger('cross-device-sync');
@@ -34,12 +34,11 @@ export async function broadcastToUserDevices(
   excludeDeviceId?: string,
 ): Promise<void> {
   try {
-    const io = getIO();
     const deviceIds = await getUserDeviceIds(userId);
 
     for (const deviceId of deviceIds) {
       if (excludeDeviceId && deviceId === excludeDeviceId) continue;
-      io.to(`user:${userId}`).emit(event, data);
+      realtimeService.emitToUser(userId, event, data);
     }
   } catch (err: any) {
     log.error({ err, userId, event }, 'Failed to broadcast to devices');
@@ -52,8 +51,7 @@ export async function syncNotificationRead(
   sourceDeviceId: string,
 ): Promise<void> {
   try {
-    const io = getIO();
-    io.to(`user:${userId}`).emit('notification:sync-read', {
+    realtimeService.emitToUser(userId, 'notification:sync-read', {
       notificationId,
       sourceDeviceId,
       timestamp: new Date().toISOString(),
@@ -69,8 +67,7 @@ export async function syncNotificationDeleted(
   sourceDeviceId: string,
 ): Promise<void> {
   try {
-    const io = getIO();
-    io.to(`user:${userId}`).emit('notification:sync-deleted', {
+    realtimeService.emitToUser(userId, 'notification:sync-deleted', {
       notificationId,
       sourceDeviceId,
       timestamp: new Date().toISOString(),
