@@ -87,7 +87,7 @@ export class BookingService {
         );
         if (!available) throw new ConflictError('This slot is no longer available');
 
-        // Create booking as pending/pending (like marketplace creates a pending order).
+        // Create booking as pending/pending.
         const bookingId = await bookingRepository.create({
           userId, branchId: input.branchId, organisationId, resourceId: input.resourceId,
           bookingType: input.bookingType || 'public_match', bookingDate,
@@ -134,74 +134,7 @@ export class BookingService {
         const clientSecret = ('clientSecret' in gwResult ? gwResult.clientSecret : null) || null;
         const paymentId = ('paymentId' in gwResult ? gwResult.paymentId : null) || null;
 
-        const booking = await bookingRepository.findById(bookingId);
-
-        // Matchmaking (non-fatal)
-        if (booking && input.bookingType === 'public_match') {
-          const mm = input.matchmaking || { targetGender: 'any', maxPlayers: 2, autoApply: false };
-          try {
-            await bookingRepository.createMatchmakingRequest({
-              bookingId,
-              minAge: mm.minAge,
-              maxAge: mm.maxAge,
-              targetGender: mm.targetGender || 'any',
-              targetLevelId: mm.targetLevelId,
-              maxPlayers: mm.maxPlayers || 2,
-              deadline: mm.deadline,
-              autoApply: mm.autoApply || false,
-            });
-
-            const resourceSport = await this.getResourceSport(booking.resource_id);
-
-            const players = await bookingRepository.findMatchingPlayers(bookingId, {
-              sportId: resourceSport,
-              minAge: mm.minAge,
-              maxAge: mm.maxAge,
-              targetGender: mm.targetGender || 'any',
-              targetLevelId: mm.targetLevelId,
-              excludeUserId: userId,
-            }            );
-
-            if (players.length === 0) {
-              log.info(`Matchmaking: No matching players found for booking ${bookingId}`);
-            }
-
-            if (mm.autoApply) {
-              for (const player of players) {
-                try {
-                  const invId = await bookingRepository.createInvitation(bookingId, player.id);
-                  await bookingRepository.updateInvitationStatus(invId, 'accepted');
-                  await bookingRepository.addParticipantFromInvitation(bookingId, player.id, player.full_name);
-                } catch (e: any) {
-                  if (!e.message?.includes('already applied')) throw e;
-                }
-              }
-            } else {
-              for (const player of players) {
-                try {
-                  await bookingRepository.createInvitation(bookingId, player.id);
-                  eventBus.emit('match:invitation' as any, {
-                    userId: player.id,
-                    bookingId,
-                    senderId: userId,
-                    actions: [
-                      { label: 'Join Match', actionKey: 'join_match', routePattern: `/bookings/${bookingId}/join`, icon: 'users' },
-                      { label: 'Decline', actionKey: 'decline_match', routePattern: `/bookings/${bookingId}/decline`, icon: 'x' },
-                    ],
-                  });
-                } catch (e: any) {
-                  if (!e.message?.includes('already applied')) throw e;
-                }
-              }
-            }
-
-            log.info(`Matchmaking: Created booking ${bookingId} with ${players.length} matched players`);
-          } catch (mmErr) {
-            log.error({ err: mmErr }, `Matchmaking start failed for booking ${bookingId}`);
-          }
-        }
-
-        return { ...booking, paymentUrl, clientSecret, paymentId };
+        return { id: bookingId, paymentUrl, clientSecret, paymentId };
       }
 
       let bookingStatus = 'pending';

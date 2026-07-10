@@ -270,15 +270,16 @@ export default function BookingModal({ open, onClose }: BookingModalProps) {
   const bookingMutation = useMutation({
     mutationFn: (data: any) => api.post('/bookings', data),
     onSuccess: (res) => {
+      const d = res.data;
       queryClient.invalidateQueries({ queryKey: ['my-bookings'] });
-      if (res.data.clientSecret && res.data.id) {
-        setPendingBookingId(res.data.id);
-        setPaymentId(res.data.paymentId || null);
-        setPixelClientSecret(res.data.clientSecret);
-      } else {
+      if (d.clientSecret && (d.id || d.intentId)) {
+        setPendingBookingId(d.id || d.intentId);
+        setPaymentId(d.paymentId || null);
+        setPixelClientSecret(d.clientSecret);
+      } else if (d.id) {
         onClose();
         showToast('Booking confirmed!');
-        navigate(`/bookings/${res.data.id}/confirmation`, { state: { qrToken: res.data.qrToken } });
+        navigate(`/bookings/${d.id}/confirmation`, { state: { qrToken: d.qrToken } });
       }
     },
     onError: (err) => {
