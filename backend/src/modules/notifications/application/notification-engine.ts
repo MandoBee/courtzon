@@ -69,6 +69,9 @@ const eventGroups: EventGroupConfig[] = [
           actionPayload: { bookingId: data.bookingId }, digestable: false,
         });
       }
+      if (data.bookingType === 'public_match') {
+        realtimeService.emitToPlayers('match:available', { bookingId: data.bookingId, timestamp: new Date().toISOString() });
+      }
       const { scheduleBookingReminder } = await import('./scheduler.service.js');
       const { getPool } = await import('../../../database/mysql.js');
       const pool = getPool();
@@ -398,6 +401,94 @@ const eventGroups: EventGroupConfig[] = [
     },
   },
   {
+    events: ['match:created'],
+    handler: async (eventName, data, categorySlug) => {
+      if (data.creatorId) {
+        await dispatchToUser({
+          userId: data.creatorId, eventName, categorySlug, data,
+          relatedEntityType: 'match', relatedEntityId: String(data.matchId),
+          digestable: false,
+        });
+      }
+      realtimeService.emitToPlayers('match:available', { matchId: data.matchId, timestamp: new Date().toISOString() });
+    },
+  },
+  {
+    events: ['match:cancelled', 'match:status_changed'],
+    handler: async (eventName, data, categorySlug) => {
+      realtimeService.emitToPlayers(eventName === 'match:cancelled' ? 'match:removed' : 'match:updated', {
+        matchId: data.matchId, timestamp: new Date().toISOString(),
+      });
+    },
+  },
+  {
+    events: ['match:completed'],
+    handler: async (eventName, data, categorySlug) => {
+      realtimeService.emitToPlayers('match:updated', { matchId: data.matchId, timestamp: new Date().toISOString() });
+    },
+  },
+  {
+    events: ['join_request:submitted'],
+    handler: async (eventName, data, categorySlug) => {
+      realtimeService.emitToPlayers('match:pending', { matchId: data.matchId, userId: data.userId, timestamp: new Date().toISOString() });
+    },
+  },
+  {
+    events: ['join_request:approved'],
+    handler: async (eventName, data, categorySlug) => {
+      if (data.userId) {
+        await dispatchToUser({
+          userId: data.userId, eventName, categorySlug, data,
+          relatedEntityType: 'match', relatedEntityId: String(data.matchId),
+          digestable: false,
+        });
+      }
+      realtimeService.emitToPlayers('match:updated', { matchId: data.matchId, timestamp: new Date().toISOString() });
+    },
+  },
+  {
+    events: ['join_request:rejected', 'join_request:auto_rejected'],
+    handler: async (eventName, data, categorySlug) => {
+      if (data.userId) {
+        await dispatchToUser({
+          userId: data.userId, eventName, categorySlug, data,
+          relatedEntityType: 'match', relatedEntityId: String(data.matchId),
+          digestable: false,
+        });
+      }
+    },
+  },
+  {
+    events: ['join_request:withdrawn'],
+    handler: async (eventName, data, categorySlug) => {
+      realtimeService.emitToPlayers('match:updated', { matchId: data.matchId, timestamp: new Date().toISOString() });
+    },
+  },
+  {
+    events: ['participant:added', 'participant:removed'],
+    handler: async (eventName, data, categorySlug) => {
+      realtimeService.emitToPlayers('match:updated', { matchId: data.matchId, timestamp: new Date().toISOString() });
+    },
+  },
+  {
+    events: ['waiting_list:promoted', 'waiting_list:entry_added', 'waiting_list:entry_removed'],
+    handler: async (eventName, data, categorySlug) => {
+      if (data.userId && eventName === 'waiting_list:promoted') {
+        await dispatchToUser({
+          userId: data.userId, eventName, categorySlug, data,
+          relatedEntityType: 'match', relatedEntityId: String(data.matchId),
+          digestable: false,
+        });
+      }
+    },
+  },
+  {
+    events: ['session:started', 'session:completed'],
+    handler: async (eventName, data, categorySlug) => {
+      realtimeService.emitToPlayers('match:updated', { matchId: data.matchId, timestamp: new Date().toISOString() });
+    },
+  },
+  {
     events: ['coupon:published'],
     handler: async (eventName, data, categorySlug) => {
       if (data.organisationIds?.length) {
@@ -489,6 +580,12 @@ class NotificationEngine {
       'security:suspicious-login', 'security:account-locked',
       'system:announcement', 'system:maintenance', 'system:birthday', 'system:digest',
       'match:invitation',
+      'match:created', 'match:cancelled', 'match:status_changed', 'match:completed',
+      'join_request:submitted', 'join_request:approved', 'join_request:rejected',
+      'join_request:withdrawn', 'join_request:auto_rejected',
+      'participant:added', 'participant:removed',
+      'waiting_list:promoted', 'waiting_list:entry_added', 'waiting_list:entry_removed',
+      'session:started', 'session:completed',
       'coupon:published', 'booking:auto-cancelled', 'booking:application-declined',
       'notification:broadcast',
     ];
