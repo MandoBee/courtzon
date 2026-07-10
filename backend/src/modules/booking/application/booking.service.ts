@@ -127,6 +127,11 @@ export class BookingService {
         });
 
         if (!gwResult.success) {
+          // Free the slot by expiring the pending booking
+          await pool.execute(
+            `UPDATE bookings SET booking_status = 'expired', payment_status = 'failed' WHERE id = ?`,
+            [bookingId]
+          );
           throw new ConflictError((gwResult as any).errorMessage || 'Payment gateway rejected the transaction');
         }
 
