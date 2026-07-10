@@ -22,7 +22,6 @@ export async function bookingRoutes(app: FastifyInstance): Promise<void> {
   app.delete('/booking-invitations/:invitationId', ctrl.cancelApplicationHandler);
   app.post('/booking-invitations/:invitationId/respond', ctrl.respondToApplicantHandler);
 
-  app.get('/matches', ctrl.getPublicMatchesHandler);
   app.get('/bookings/:id/applicants', ctrl.getBookingApplicantsHandler);
   app.post('/booking-intents/:intentId/fulfill', ctrl.fulfillBookingIntentHandler);
   app.post('/booking-intents/:intentId/cancel', ctrl.cancelBookingIntentHandler);
