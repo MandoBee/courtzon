@@ -87,26 +87,21 @@ export class BookingService {
         );
         if (!available) throw new ConflictError('This slot is no longer available');
 
-        // Create booking as pending/pending.
-        const bookingId = await bookingRepository.create({
+        // Create a booking_intent to temporarily reserve the slot.
+        // The actual booking row is created only after payment is confirmed.
+        const intentId = await bookingRepository.createIntent({
           userId, branchId: input.branchId, organisationId, resourceId: input.resourceId,
           bookingType: input.bookingType || 'public_match', bookingDate,
           startTime: input.startTime, endTime: input.endTime,
           totalAmount: pricing.totalPrice, commissionAmount, clubAmount,
-          notes: input.notes, bookingStatus: 'pending', paymentStatus: 'pending',
-          paymentMethod,
-        }, conn);
+          notes: input.notes, paymentMethod,
+          participants: input.participants,
+          matchmaking: input.matchmaking,
+        });
 
-        if (input.participants?.length) {
-          for (const p of input.participants) {
-            await conn.execute(
-              `INSERT INTO booking_participants (booking_id, full_name, email, phone)
-               VALUES (?, ?, ?, ?)`,
-              [bookingId, null, null, p.phone || null]
-            );
-          }
-        }
-
+        // Intent has expires_at = NOW() + 15 min by default.
+        // checkSlotAvailability already excludes expired intents, so the slot
+        // is automatically freed when the intent expires.
         await conn.commit();
         conn.release();
 
@@ -115,8 +110,8 @@ export class BookingService {
         const [userRows] = await pool.execute<RowData>('SELECT full_name, email, full_phone FROM users WHERE id = ?', [userId]);
         const user = userRows[0] as any;
         const gwResult = await paymentService.charge(userId, {
-          referenceType: 'booking',
-          referenceId: bookingId,
+          referenceType: 'booking_intent',
+          referenceId: intentId,
           amount: pricing.totalPrice,
           currency: 'EGP',
           paymentMethod: (paymentMethod === 'online' ? 'card' : paymentMethod as 'wallet' | 'card' | 'bank_transfer'),
@@ -127,10 +122,11 @@ export class BookingService {
         });
 
         if (!gwResult.success) {
-          // Free the slot by expiring the pending booking
+          // Mark the intent as cancelled so the slot is freed immediately
+          // (expires_at will also free it eventually, but cancel proactively).
           await pool.execute(
-            `UPDATE bookings SET booking_status = 'expired', payment_status = 'failed' WHERE id = ?`,
-            [bookingId]
+            `UPDATE booking_intents SET intent_status = 'cancelled', failure_reason = ? WHERE id = ?`,
+            [(gwResult as any).errorMessage || 'Payment gateway rejected', intentId]
           );
           throw new ConflictError((gwResult as any).errorMessage || 'Payment gateway rejected the transaction');
         }
@@ -139,7 +135,7 @@ export class BookingService {
         const clientSecret = ('clientSecret' in gwResult ? gwResult.clientSecret : null) || null;
         const paymentId = ('paymentId' in gwResult ? gwResult.paymentId : null) || null;
 
-        return { id: bookingId, paymentUrl, clientSecret, paymentId };
+        return { intentId, paymentUrl, clientSecret, paymentId };
       }
 
       let bookingStatus = 'pending';

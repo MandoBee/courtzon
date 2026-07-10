@@ -272,8 +272,8 @@ export default function BookingModal({ open, onClose }: BookingModalProps) {
     onSuccess: (res) => {
       const d = res.data;
       queryClient.invalidateQueries({ queryKey: ['my-bookings'] });
-      if (d.clientSecret && (d.id || d.intentId)) {
-        setPendingBookingId(d.id || d.intentId);
+      if (d.clientSecret && d.intentId) {
+        setPendingBookingId(d.intentId);
         setPaymentId(d.paymentId || null);
         setPixelClientSecret(d.clientSecret);
       } else if (d.id) {
@@ -984,17 +984,17 @@ export default function BookingModal({ open, onClose }: BookingModalProps) {
       )}
 
       {/* Payment confirming overlay (fallback polling) */}
-      {pollingPaid && pendingBookingId && (
+      {pollingPaid && paymentId && (
         <PaymentStatusPoller
-          endpoint={`/bookings/${pendingBookingId}`}
-          isComplete={(data: any) => data?.payment_status === 'paid'}
+          endpoint={`/payments/status/${paymentId}`}
+          isComplete={(data: any) => !!data?.bookingId && data?.paymentStatus === 'paid'}
           interval={1500}
           timeout={90000}
-          onPaid={() => {
+          onPaid={(data: any) => {
             setPollingPaid(false);
             onClose();
             showToast('Booking confirmed!');
-            navigate(`/bookings/${pendingBookingId}/confirmation`, { state: { qrToken: '' } });
+            navigate(`/bookings/${data.bookingId}/confirmation`, { state: { qrToken: '' } });
           }}
           onTimeout={() => {
             setPollingPaid(false);
@@ -1006,10 +1006,10 @@ export default function BookingModal({ open, onClose }: BookingModalProps) {
 
       {/* Card payment modal */}
       <Modal open={!!pixelClientSecret} onClose={async () => {
-        const bookingId = pendingBookingId;
+        const intentId = pendingBookingId;
         setPixelClientSecret(null);
         try {
-          await api.post(`/bookings/${bookingId}/cancel`, { reason: 'User closed payment' });
+          await api.post(`/booking-intents/${intentId}/cancel`);
         } catch {}
         showToast('Payment cancelled', 'warning');
       }} title="Pay with Card" size="lg">
@@ -1019,14 +1019,16 @@ export default function BookingModal({ open, onClose }: BookingModalProps) {
             onComplete={async () => {
               setPixelClientSecret(null);
               showToast('Payment submitted — confirming...', 'info');
-              const bkId = pendingBookingId;
               const pmId = paymentId;
               if (pmId) {
                 const result = await confirmPayment(pmId);
                 if (result.confirmed) {
+                  const bookingId = result.data?.bookingId;
                   onClose();
-                  showToast('Booking confirmed!');
-                  navigate(`/bookings/${bkId}/confirmation`, { state: { qrToken: '' } });
+                  if (bookingId) {
+                    showToast('Booking confirmed!');
+                    navigate(`/bookings/${bookingId}/confirmation`, { state: { qrToken: '' } });
+                  }
                   return;
                 }
               }
@@ -1034,10 +1036,10 @@ export default function BookingModal({ open, onClose }: BookingModalProps) {
               setPollingPaid(true);
             }}
             onCancel={async () => {
-              const bookingId = pendingBookingId;
+              const intentId = pendingBookingId;
               setPixelClientSecret(null);
               try {
-                await api.post(`/bookings/${bookingId}/cancel`, { reason: 'User cancelled payment' });
+                await api.post(`/booking-intents/${intentId}/cancel`);
               } catch { /* non-fatal */ }
               showToast('Payment cancelled', 'warning');
             }}

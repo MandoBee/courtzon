@@ -634,6 +634,13 @@ export class PaymentService {
       } catch (err: unknown) {
         outcomeError = err instanceof Error ? err.message : String(err);
       }
+      // After fulfilling a booking_intent, the payment_transaction now has a booking_id.
+      let bookingId: number | null = null;
+      if (confirmed && newStatus === 'paid') {
+        const updated = await paymentRepository.findById(paymentId);
+        bookingId = (updated as any)?.booking_id || null;
+      }
+
       const txnDurationMs = Date.now() - txnStart;
       const totalDurationMs = Date.now() - totalStart;
 
@@ -642,6 +649,7 @@ export class PaymentService {
         paymobStatus,
         localStatus: newStatus,
         idempotent,
+        bookingId,
         confirmationSource: 'confirm',
         verificationDurationMs,
         txnDurationMs,
@@ -654,6 +662,7 @@ export class PaymentService {
         confirmed,
         idempotent,
         paymentStatus: newStatus,
+        bookingId,
         paymobStatus,
         verificationDurationMs,
         totalDurationMs,
