@@ -141,6 +141,7 @@ const OrgPendingApprovalPage = lazy(() => import('./pages/org/OrgPendingApproval
 const OrgFinancePage = lazy(() => import('./pages/org/OrgFinancePage'));
 const NotificationsPage = lazy(() => import('./pages/notifications/NotificationsPage'));
 const MatchListPage = lazy(() => import('./pages/booking/MatchListPage'));
+const MatchLobbyPage = lazy(() => import('./pages/booking/MatchLobbyPage'));
 const NotFoundPage = lazy(() => import('./pages/NotFoundPage'));
 
 
@@ -405,6 +406,7 @@ function AppContent() {
           <Route path="/bookings" element={<MyBookingsPage />} />
           <Route path="/bookings/:id/confirmation" element={<BookingConfirmationPage />} />
           <Route path="/matches" element={<MatchListPage />} />
+          <Route path="/matches/:id" element={<MatchLobbyPage />} />
           <Route path="/marketplace" element={<MarketplacePage />} />
           <Route path="/marketplace/products/:id" element={<ProductDetailPage />} />
           <Route path="/marketplace/player-products/:id" element={<PlayerProductDetailPage />} />
