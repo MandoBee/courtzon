@@ -87,6 +87,32 @@ docker compose up -d
 - **Local HMR**: `npm run dev` in `frontend/` on port 5173
 - Run `npm run build` in `frontend/` to verify TypeScript compilation
 
+## ⚠️ Mandatory: Finalize, sync & deploy
+
+**After every task completes (code change, config change, seed, migration, etc.), you MUST do all of the following in order:**
+
+### 1. Commit & push to GitHub
+- Stage only the intended files (`git add -A` for all, or selective staging)
+- Commit with a clear, concise message describing what was changed and why
+- Push to the remote (`git push`)
+
+### 2. Sync all environments to match the final working local state
+- Verify:
+  - **Local files**: unstaged changes committed, working tree clean
+  - **Docker images**: rebuilt with the latest code (`docker compose build`, `docker compose up -d`)
+  - **Database**: schema/migrations applied (run `node backend/scripts/migrate.js --status` and apply if pending)
+  - **Seeds**: run if seed data changed (`node backend/scripts/seed.js`)
+  - **Permission registry**: synced if UI permissions changed (`node backend/scripts/sync-ui-registry.js`)
+- Confirm all services respond correctly:
+  - `curl -f http://localhost:3000/health` (backend)
+  - `curl -f http://localhost:5173` (frontend)
+
+### 3. Deploy / redeploy on Hostinger
+- Push the latest commit to the production branch (or deploy via the Hostinger workflow)
+- Ensure the Hostinger environment pulls the latest code and restarts services
+- Confirm the production instance is serving the updated version
+- **After deploy, verify that local, Docker, and Hostinger are all running the same code** (same commit hash, same DB schema version)
+
 ## Port 5173 cleanup
 - Always free up port 5173 after using it for local frontend dev (kill the `npm run dev` process) — the user needs it elsewhere.
 

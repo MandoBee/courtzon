@@ -68,9 +68,9 @@ export const useThemeStore = create<ThemeState>((set, get) => {
     },
 
     init: () => {
-      const stored = (localStorage.getItem('theme_mode') as ThemeMode) || 'system';
+      const stored = (localStorage.getItem('theme_mode') as ThemeMode) || 'dark';
       const valid: ThemeMode =
-        stored === 'light' || stored === 'dark' || stored === 'system' ? stored : 'system';
+        stored === 'light' || stored === 'dark' || stored === 'system' ? stored : 'dark';
       const resolved = resolveTheme(valid);
       applyTheme(resolved);
       set({ mode: valid, resolved });
@@ -84,6 +84,6 @@ export const useThemeStore = create<ThemeState>((set, get) => {
 /** Apply profile / API darkMode preference (light | dark | system). */
 export function syncUserThemePreference(darkMode?: string | null): void {
   const mode: ThemeMode =
-    darkMode === 'light' || darkMode === 'dark' || darkMode === 'system' ? darkMode : 'system';
+    darkMode === 'light' || darkMode === 'dark' || darkMode === 'system' ? darkMode : 'dark';
   useThemeStore.getState().setMode(mode);
 }
