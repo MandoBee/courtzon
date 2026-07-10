@@ -102,8 +102,8 @@ async function bootstrap() {
     notificationEngine.start();
     app.log.info('Notification engine started');
 
-    await queueService.add('cancel_expired_bookings', { cutoffMinutes: 30 }, {
-      repeat: { every: 900_000 },
+    await queueService.add('cancel_expired_bookings', { cutoffMinutes: 5 }, {
+      repeat: { every: 120_000 },
       removeOnComplete: true,
       removeOnFail: { age: 86400 },
     });
@@ -134,7 +134,7 @@ async function bootstrap() {
     });
 
     // Payment expiry — every 2 minutes
-    await queueService.add('expire_stale_payments', { timeoutMinutes: 15 }, {
+    await queueService.add('expire_stale_payments', { timeoutMinutes: 5 }, {
       repeat: { every: 120_000 },
       removeOnComplete: true,
       removeOnFail: { age: 86400 },
