@@ -219,12 +219,12 @@ export default function PlayerRegisterPage() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-[var(--color-text)] mb-1.5">{t('auth.register.password')} *</label>
-                  <input type="password" value={form.password} onChange={e => update('password', e.target.value)} placeholder={t('landing.player_reg.password_placeholder')} className={`w-full px-4 py-3 rounded-xl border bg-[var(--color-bg)] text-[var(--color-text)] focus:ring-2 focus:ring-[var(--color-primary)]/30 focus:border-[var(--color-primary)] outline-none ${fieldErrors.password ? 'border-[var(--color-error)]' : 'border-[var(--color-border)]'}`} />
+                  <input type="password" autoComplete="new-password" value={form.password} onChange={e => update('password', e.target.value)} placeholder={t('landing.player_reg.password_placeholder')} className={`w-full px-4 py-3 rounded-xl border bg-[var(--color-bg)] text-[var(--color-text)] focus:ring-2 focus:ring-[var(--color-primary)]/30 focus:border-[var(--color-primary)] outline-none ${fieldErrors.password ? 'border-[var(--color-error)]' : 'border-[var(--color-border)]'}`} />
                   {fieldErrors.password && <p className="text-xs text-[var(--color-error)] mt-1">{fieldErrors.password}</p>}
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-[var(--color-text)] mb-1.5">{t('auth.register.confirm_password')} *</label>
-                  <input type="password" value={form.confirmPassword} onChange={e => update('confirmPassword', e.target.value)} placeholder={t('landing.player_reg.confirm_password_placeholder')} className={`w-full px-4 py-3 rounded-xl border bg-[var(--color-bg)] text-[var(--color-text)] focus:ring-2 focus:ring-[var(--color-primary)]/30 focus:border-[var(--color-primary)] outline-none ${fieldErrors.confirmPassword ? 'border-[var(--color-error)]' : 'border-[var(--color-border)]'}`} />
+                  <input type="password" autoComplete="new-password" value={form.confirmPassword} onChange={e => update('confirmPassword', e.target.value)} placeholder={t('landing.player_reg.confirm_password_placeholder')} className={`w-full px-4 py-3 rounded-xl border bg-[var(--color-bg)] text-[var(--color-text)] focus:ring-2 focus:ring-[var(--color-primary)]/30 focus:border-[var(--color-primary)] outline-none ${fieldErrors.confirmPassword ? 'border-[var(--color-error)]' : 'border-[var(--color-border)]'}`} />
                   {fieldErrors.confirmPassword && <p className="text-xs text-[var(--color-error)] mt-1">{fieldErrors.confirmPassword}</p>}
                 </div>
                 <div>

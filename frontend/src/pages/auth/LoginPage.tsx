@@ -100,6 +100,7 @@ export default function LoginPage() {
             <Input
               label={t('auth.login.password')}
               type="password"
+              autoComplete="current-password"
               {...register('password')}
               error={errors.password?.message}
             />

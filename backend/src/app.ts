@@ -114,7 +114,7 @@ await app.register(helmet, {
 });
 
 app.addHook('onRequest', async (_request, reply) => {
-  reply.header('Permissions-Policy', 'payment=(self)');
+  reply.header('Permissions-Policy', 'payment=(self "https://accept.paymob.com" "https://accept.paymobsandbox.com" "https://pay.google.com" "https://checkout.google.com")');
 });
 
 // Structured production logging — enrich every request log with IDs

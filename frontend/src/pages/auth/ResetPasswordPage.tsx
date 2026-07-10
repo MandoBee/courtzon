@@ -74,6 +74,7 @@ export default function ResetPasswordPage() {
             <Input
               label={t('auth.register.password')}
               type="password"
+              autoComplete="new-password"
               placeholder="Min 6 characters"
               {...register('newPassword')}
               error={errors.newPassword?.message}
@@ -81,6 +82,7 @@ export default function ResetPasswordPage() {
             <Input
               label={t('auth.register.confirm_password')}
               type="password"
+              autoComplete="new-password"
               placeholder="Repeat password"
               {...register('confirmPassword')}
               error={errors.confirmPassword?.message}
