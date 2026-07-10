@@ -1,12 +1,14 @@
 import type { FastifyRequest, FastifyReply } from 'fastify';
-import { rbacRepository } from '../../modules/rbac/infrastructure/repositories/rbac.repository.js';
+import { appSettingsRepository } from '../../modules/app-settings/infrastructure/repositories/app-settings.repository.js';
 
+// Allow notifications and other essential paths during maintenance
 const WHITELIST = [
   '/health',
   '/metrics',
   '/auth/',
   '/public/',
   '/uploads/',
+  '/notifications/',
   '/feature-flags',
   '/feature-flags/',
 ];
@@ -21,7 +23,8 @@ async function isMaintenanceMode(): Promise<boolean> {
     return cachedEnabled;
   }
   try {
-    cachedEnabled = await rbacRepository.isFeatureEnabled('app.maintenance_mode');
+    const settings = await appSettingsRepository.listPublic();
+    cachedEnabled = settings.maintenance_mode === true;
   } catch {
     cachedEnabled = false;
   }
