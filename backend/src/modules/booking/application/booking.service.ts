@@ -245,63 +245,6 @@ export class BookingService {
 
       const booking = await bookingRepository.findById(bookingId);
 
-      if (booking && input.bookingType === 'public_match') {
-        const mm = input.matchmaking || { targetGender: 'any', maxPlayers: 2, autoApply: false };
-        try {
-          await bookingRepository.createMatchmakingRequest({
-            bookingId,
-            minAge: mm.minAge,
-            maxAge: mm.maxAge,
-            targetGender: mm.targetGender || 'any',
-            targetLevelId: mm.targetLevelId,
-            maxPlayers: mm.maxPlayers || 2,
-            deadline: mm.deadline,
-            autoApply: mm.autoApply || false,
-          });
-
-          const resourceSport = await this.getResourceSport(booking.resource_id);
-
-          const players = await bookingRepository.findMatchingPlayers(bookingId, {
-            sportId: resourceSport,
-            minAge: mm.minAge,
-            maxAge: mm.maxAge,
-            targetGender: mm.targetGender || 'any',
-            targetLevelId: mm.targetLevelId,
-            excludeUserId: userId,
-          });
-
-          if (players.length === 0) {
-            log.info(`Matchmaking: No matching players found for booking ${bookingId}`);
-          }
-
-          for (const player of players) {
-            try {
-              const invId = await bookingRepository.createInvitation(bookingId, player.id);
-              if (mm.autoApply) {
-                await bookingRepository.updateInvitationStatus(invId, 'accepted');
-                await bookingRepository.addParticipantFromInvitation(bookingId, player.id, player.full_name);
-              } else {
-                eventBus.emit('match:invitation' as any, {
-                  userId: player.id,
-                  bookingId,
-                  senderId: userId,
-                  actions: [
-                    { label: 'Join Match', actionKey: 'join_match', routePattern: `/bookings/${bookingId}/join`, icon: 'users' },
-                    { label: 'Decline', actionKey: 'decline_match', routePattern: `/bookings/${bookingId}/decline`, icon: 'x' },
-                  ],
-                });
-              }
-            } catch (e: any) {
-              if (!e.message?.includes('already applied')) throw e;
-            }
-          }
-
-          log.info(`Matchmaking: Created booking ${bookingId} with ${players.length} matched players`);
-        } catch (mmErr) {
-          log.error({ err: mmErr }, `Matchmaking start failed for booking ${bookingId}`);
-        }
-      }
-
       if (booking) {
         eventBus.emit('booking:created', {
           bookingId,
@@ -315,6 +258,7 @@ export class BookingService {
       }
 
       if (bookingStatus === 'confirmed' && booking) {
+        const bookingType = input.bookingType || 'private_match';
         if (process.env.LEGACY_REMINDER_ENABLED === 'true') {
           const startDate = new Date(`${String(booking.booking_date).split('T')[0]}T${booking.start_time}`);
           const { scheduleBookingReminder } = await import('../../notifications/application/scheduler.service.js');
@@ -322,7 +266,7 @@ export class BookingService {
             log.error({ err: e, bookingId }, 'Failed to schedule booking reminder')
           );
         } else {
-          eventBus.emit('booking:confirmed', { bookingId, userId });
+          eventBus.emit('booking:confirmed', { bookingId, userId, bookingType });
         }
       }
 
@@ -428,58 +372,6 @@ export class BookingService {
 
       const booking = await bookingRepository.findById(bookingId);
 
-      if (intent.matchmaking && booking && intent.booking_type === 'public_match') {
-        try {
-          const mm = typeof intent.matchmaking === 'string' ? JSON.parse(intent.matchmaking) : intent.matchmaking;
-          await bookingRepository.createMatchmakingRequest({
-            bookingId,
-            minAge: mm.minAge,
-            maxAge: mm.maxAge,
-            targetGender: mm.targetGender || 'any',
-            targetLevelId: mm.targetLevelId,
-            maxPlayers: mm.maxPlayers || 2,
-            deadline: mm.deadline,
-            autoApply: mm.autoApply || false,
-          });
-
-          const resourceSport = await this.getResourceSport(booking.resource_id);
-          const players = await bookingRepository.findMatchingPlayers(bookingId, {
-            sportId: resourceSport,
-            minAge: mm.minAge,
-            maxAge: mm.maxAge,
-            targetGender: mm.targetGender || 'any',
-            targetLevelId: mm.targetLevelId,
-            excludeUserId: intent.user_id,
-          });
-
-          for (const player of players) {
-            try {
-              const invId = await bookingRepository.createInvitation(bookingId, player.id);
-              if (mm.autoApply) {
-                await bookingRepository.updateInvitationStatus(invId, 'accepted');
-                await bookingRepository.addParticipantFromInvitation(bookingId, player.id, player.full_name);
-              } else {
-                eventBus.emit('match:invitation' as any, {
-                  userId: player.id,
-                  bookingId,
-                  senderId: intent.user_id,
-                  actions: [
-                    { label: 'Join Match', actionKey: 'join_match', routePattern: `/bookings/${bookingId}/join`, icon: 'users' },
-                    { label: 'Decline', actionKey: 'decline_match', routePattern: `/bookings/${bookingId}/decline`, icon: 'x' },
-                  ],
-                });
-              }
-            } catch (e: any) {
-              if (!e.message?.includes('already applied')) throw e;
-            }
-          }
-
-          log.info(`Fulfill matchmaking: Created booking ${bookingId} with ${players.length} matched players`);
-        } catch (mmErr) {
-          log.error({ err: mmErr }, `Matchmaking start failed for booking ${bookingId}`);
-        }
-      }
-
       if (booking) {
         eventBus.emit('booking:created', {
           bookingId,
@@ -500,7 +392,7 @@ export class BookingService {
             log.error({ err: e, bookingId }, 'Failed to schedule booking reminder')
           );
         } else {
-          eventBus.emit('booking:confirmed', { bookingId, userId: intent.user_id });
+          eventBus.emit('booking:confirmed', { bookingId, userId: intent.user_id, bookingType: intent.booking_type });
         }
       }
 
