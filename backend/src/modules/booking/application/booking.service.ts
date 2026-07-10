@@ -332,10 +332,10 @@ export class BookingService {
 
       return { ...booking, paymentUrl, clientSecret, paymentId };
     } catch (err) {
-      await conn.rollback();
+      try { await conn.rollback(); } catch {}
       throw err;
     } finally {
-      conn.release();
+      try { conn.release(); } catch {}
     }
     } finally {
       // Release the distributed Redis lock regardless of outcome
