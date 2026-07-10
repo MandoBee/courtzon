@@ -23,15 +23,6 @@ export default function MyBookingsPage() {
   const [sortMode, setSortMode] = useState<'date' | 'nearest'>('date');
   const [userCoords, setUserCoords] = useState<{ lat: number; lng: number } | null>(null);
 
-  useEffect(() => {
-    if ('geolocation' in navigator) {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => setUserCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-        () => {}
-      );
-    }
-  }, []);
-
   const queryParams = new URLSearchParams({ status: statusFilter, page: String(page), limit: String(limit) });
   if (sortMode === 'nearest' && userCoords) {
     queryParams.set('sortBy', 'nearest');
@@ -40,9 +31,21 @@ export default function MyBookingsPage() {
   }
 
   const { data, isLoading } = useQuery({
-    queryKey: ['my-bookings', statusFilter, page, limit, sortMode, userCoords],
+    queryKey: sortMode === 'nearest' && userCoords
+      ? ['my-bookings', statusFilter, page, limit, sortMode, userCoords.lat, userCoords.lng]
+      : ['my-bookings', statusFilter, page, limit, sortMode],
     queryFn: () => api.get(`/bookings?${queryParams.toString()}`).then((r) => r.data),
+    staleTime: 15_000,
   });
+
+  useEffect(() => {
+    if (sortMode === 'nearest' && !userCoords && 'geolocation' in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => setUserCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+        () => {}
+      );
+    }
+  }, [sortMode, userCoords]);
 
   const cancelMutation = useMutation({
     mutationFn: ({ id, reason }: { id: number; reason: string }) =>
