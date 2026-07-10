@@ -72,7 +72,7 @@ function SettlementDetailModal({ settlementId, onClose }: { settlementId: number
   const direction = data?.settlement_direction ? DIRECTION_LABELS[data.settlement_direction] || data.settlement_direction : '-';
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
       <div className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] border border-[var(--color-border)] w-full max-w-5xl max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between p-4 border-b border-[var(--color-border)]">
           <h2 className="text-lg font-bold text-[var(--color-text)]">Settlement #{settlementId} &mdash; {orgName}</h2>

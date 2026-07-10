@@ -1278,7 +1278,7 @@ export default function OrganisationForm({ orgId, context, onClose, initialTab, 
       </form>
 
       {previewDoc && (
-        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center" onClick={() => setPreviewDoc(null)}>
+        <div className="fixed inset-0 z-[70] bg-black/60 flex items-center justify-center" onClick={() => setPreviewDoc(null)}>
           <div className="max-w-3xl max-h-[90vh] rounded-xl p-4" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-2"><span className="text-sm font-medium">{previewDoc.name}</span>
               <button onClick={() => setPreviewDoc(null)} className="text-lg">&times;</button></div>
@@ -1292,7 +1292,7 @@ export default function OrganisationForm({ orgId, context, onClose, initialTab, 
       )}
 
       {showBrMapModal && (
-        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center" onClick={() => setShowBrMapModal(false)}>
+        <div className="fixed inset-0 z-[70] bg-black/50 flex items-center justify-center" onClick={() => setShowBrMapModal(false)}>
           <div className="rounded-xl p-5 w-full max-w-lg mx-4" onClick={e => e.stopPropagation()}>
             <h3 className="text-sm font-semibold mb-3">Pin Location</h3>
             <MapPicker lat={brMapLat} lng={brMapLng} location={`${branchForm.city || ''} ${branchForm.state || ''}`} onCoord={(lat: string, lng: string) => { setBrMapLat(lat); setBrMapLng(lng); }} />

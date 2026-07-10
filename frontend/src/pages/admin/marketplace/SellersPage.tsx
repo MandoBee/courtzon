@@ -110,7 +110,7 @@ export default function SellersPage() {
       </div>
 
       {detail && (
-        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center" onClick={() => setDetail(null)}>
+        <div className="fixed inset-0 z-[70] bg-black/40 flex items-center justify-center" onClick={() => setDetail(null)}>
           <div className="bg-[var(--color-surface)] rounded-xl shadow-xl p-6 max-w-md w-full mx-4" onClick={(e: any) => e.stopPropagation()}>
             <h2 className="text-lg font-semibold mb-4">{detail.name}</h2>
             <div className="space-y-2 text-sm">

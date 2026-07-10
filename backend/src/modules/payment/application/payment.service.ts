@@ -571,22 +571,42 @@ export class PaymentService {
 
     log.info({ ...meta, localStatus: transaction.payment_status }, 'Payment confirmation requested');
 
-    // ── Verify with Paymob (with retry) ──
+    // ── Verify with Paymob (retry up to 10s for pending → paid transition) ──
     const verifyStart = Date.now();
     let remoteStatus: any;
     let paymobError: string | undefined;
-    try {
-      remoteStatus = await paymentGateway.getTransactionStatus(
-        transaction.gateway_reference,
-        (transaction as any).order_id,
-      );
-    } catch (err: unknown) {
-      paymobError = err instanceof Error ? err.message : String(err);
+
+    const RETRY_MS = 10_000;
+    const POLL_INTERVAL = 1_000;
+
+    while (Date.now() - verifyStart < RETRY_MS) {
+      paymobError = undefined;
+      remoteStatus = undefined;
+      try {
+        remoteStatus = await paymentGateway.getTransactionStatus(
+          transaction.gateway_reference,
+          (transaction as any).order_id,
+        );
+      } catch (err: unknown) {
+        paymobError = err instanceof Error ? err.message : String(err);
+      }
+
+      if (paymobError || !remoteStatus) {
+        log.error({ ...meta, error: paymobError, verificationDurationMs: Date.now() - verifyStart }, 'Paymob verification failed — will retry');
+        await new Promise((r) => setTimeout(r, POLL_INTERVAL));
+        continue;
+      }
+
+      const s = remoteStatus.status || 'unknown';
+      if (s === 'paid' || s === 'failed') break;
+
+      await new Promise((r) => setTimeout(r, POLL_INTERVAL));
     }
+
     const verificationDurationMs = Date.now() - verifyStart;
 
     if (paymobError || !remoteStatus) {
-      log.error({ ...meta, error: paymobError, verificationDurationMs, totalDurationMs: Date.now() - totalStart }, 'Paymob verification failed');
+      log.error({ ...meta, error: paymobError, verificationDurationMs, totalDurationMs: Date.now() - totalStart }, 'Paymob verification failed after retries');
       return { confirmed: false, paymentStatus: 'pending', error: paymobError, note: 'Failed to verify with Paymob — will rely on webhook' };
     }
 

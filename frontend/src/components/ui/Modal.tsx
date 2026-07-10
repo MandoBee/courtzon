@@ -67,7 +67,7 @@ export function Modal({
   return (
     <div
       ref={overlayRef}
-      className={`cz-modal-overlay fixed inset-0 ${isSheet ? 'z-50' : 'z-[70]'} ${overlayClass} p-0 md:p-4 cz-fade-enter`}
+      className={`cz-modal-overlay fixed inset-0 z-[70] ${overlayClass} p-0 md:p-4 cz-fade-enter`}
       onClick={(e) => {
         if (e.target === overlayRef.current) onClose();
       }}

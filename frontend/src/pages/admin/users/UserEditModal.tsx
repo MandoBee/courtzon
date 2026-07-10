@@ -213,14 +213,14 @@ export default function UserEditModal({ userId, onClose }: UserEditModalProps) {
 
   if (userLoading) {
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+      <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50">
         <div className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] p-8"><Spinner /></div>
       </div>
     );
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center pt-8 bg-black/50 overflow-y-auto">
+    <div className="fixed inset-0 z-[70] flex items-start justify-center pt-8 bg-black/50 overflow-y-auto">
       <div className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] shadow-lg w-full max-w-5xl mx-4 mb-8">
         <div className="flex items-center justify-between p-5 border-b">
           <div className="flex items-center gap-3">

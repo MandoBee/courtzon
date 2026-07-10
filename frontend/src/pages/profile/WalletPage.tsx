@@ -229,7 +229,7 @@ export default function WalletPage() {
       </Card>
 
       {paymobUrl && (
-        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-[70] bg-black/60 flex items-center justify-center p-4">
           <div className="bg-white rounded-lg w-full max-w-md max-h-[90vh] flex flex-col overflow-hidden">
             <div className="flex items-center justify-between p-3 border-b">
               <h3 className="font-semibold text-sm">Card Payment</h3>

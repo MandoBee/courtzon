@@ -80,7 +80,7 @@ export default function AdminShippingRatesPage() {
       </div>
 
       {selectedSeller && (
-        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center" onClick={() => { setSelectedSeller(null); setRatesSellerId(null); }}>
+        <div className="fixed inset-0 z-[70] bg-black/40 flex items-center justify-center" onClick={() => { setSelectedSeller(null); setRatesSellerId(null); }}>
           <div className="bg-[var(--color-surface)] rounded-xl shadow-xl p-6 max-w-2xl w-full mx-4 max-h-[80vh] overflow-y-auto" onClick={(e: any) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-semibold">Shipping Rates — {selectedSeller.name}</h2>

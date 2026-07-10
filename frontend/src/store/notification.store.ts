@@ -8,6 +8,7 @@ interface NotificationState {
   unreadCount: number;
   initialized: boolean;
   connected: boolean;
+  _pollTimer: ReturnType<typeof setInterval> | null;
   init: () => void;
   destroy: () => void;
   addNotification: (n: AppNotification) => void;
@@ -25,6 +26,7 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
   unreadCount: 0,
   initialized: false,
   connected: false,
+  _pollTimer: null,
 
   init: () => {
     if (get().initialized) return;
@@ -55,11 +57,16 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
     });
 
     get().refreshUnreadCount();
+
+    const timer = setInterval(() => get().refreshUnreadCount(), 30_000);
+    set({ _pollTimer: timer });
   },
 
   destroy: () => {
+    const timer = get()._pollTimer;
+    if (timer) clearInterval(timer);
     socketService.disconnect();
-    set({ initialized: false, items: [], unreadCount: 0, connected: false });
+    set({ initialized: false, items: [], unreadCount: 0, connected: false, _pollTimer: null });
   },
 
   addNotification: (n: AppNotification) => {

@@ -768,7 +768,7 @@ const TIMEZONES = [
       </div>
 
       {showMapModal && (
-        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center" onClick={() => setShowMapModal(false)}>
+        <div className="fixed inset-0 z-[70] bg-black/50 flex items-center justify-center" onClick={() => setShowMapModal(false)}>
           <div className="rounded-xl p-5 w-full max-w-lg mx-4" onClick={e => e.stopPropagation()}>
             <h3 className="text-sm font-semibold mb-3 text-[var(--color-text)]">Pin Location</h3>
             <MapPicker lat={mapLat} lng={mapLng} location={`${form.city || ''} ${form.state || ''}`} onCoord={(lat: string, lng: string) => { setMapLat(lat); setMapLng(lng); }} />

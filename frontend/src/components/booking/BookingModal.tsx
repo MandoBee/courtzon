@@ -972,7 +972,7 @@ export default function BookingModal({ open, onClose }: BookingModalProps) {
 
       {/* Payment confirming overlay (usePaymentConfirm hook state) */}
       {(confirmState === 'confirming' || confirmState === 'polling') && (
-        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center">
+        <div className="fixed inset-0 z-[70] bg-black/40 flex items-center justify-center">
           <div className="bg-[var(--color-surface)] rounded-xl shadow-xl p-6 text-center space-y-3">
             <div className="animate-spin w-8 h-8 border-4 border-[var(--color-primary)] border-t-transparent rounded-full mx-auto" />
             <p className="text-sm text-[var(--color-text-muted)]">
