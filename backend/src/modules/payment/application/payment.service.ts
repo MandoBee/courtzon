@@ -773,21 +773,17 @@ export class PaymentService {
     }
 
     let bookingId: number;
+    const isNew = !intent.fulfilled_booking_id;
 
     if (intent.fulfilled_booking_id) {
-      // A pending booking was already created by the frontend fulfill call — confirm it
       bookingId = intent.fulfilled_booking_id;
-      await conn.execute(
-        "UPDATE bookings SET booking_status = 'confirmed', payment_status = 'paid', updated_at = NOW() WHERE id = ? AND booking_status = 'pending'",
-        [bookingId]
-      );
-      log.info({ traceId, bookingId, intentId }, 'Booking confirmed (was pending)');
+      log.info({ traceId, bookingId, intentId }, 'Booking already exists — confirming');
     } else {
       const [result] = await conn.execute<mysql.ResultSetHeader>(
         `INSERT INTO bookings (public_id, user_id, organisation_id, branch_id, resource_id, booking_type,
           booking_date, start_time, end_time, total_amount, commission_amount, club_amount,
           booking_status, payment_status, notes, payment_method)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'confirmed', 'paid', ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 'pending', ?, ?)`,
         [randomUUID(), intent.user_id, intent.organisation_id, intent.branch_id,
          intent.resource_id, intent.booking_type, intent.booking_date, intent.start_time,
          intent.end_time, intent.total_amount, intent.commission_amount, intent.club_amount,
@@ -799,7 +795,7 @@ export class PaymentService {
         'UPDATE booking_intents SET fulfilled_booking_id = ?, intent_status = ?, fulfilled_at = NOW() WHERE id = ?',
         [bookingId, 'fulfilled', intent.id]
       );
-      log.info({ traceId, bookingId, intentId }, 'Booking confirmed (new)');
+      log.info({ traceId, bookingId, intentId }, 'Booking created (pending)');
     }
 
     await conn.execute(
@@ -807,22 +803,142 @@ export class PaymentService {
       [bookingId, 'booking', transaction.id],
     );
 
-    if (intent.matchmaking) {
+    // Full matchmaking pipeline for new public_match bookings
+    if (isNew && intent.matchmaking && intent.booking_type === 'public_match') {
       try {
         const mm = typeof intent.matchmaking === 'string' ? JSON.parse(intent.matchmaking) : intent.matchmaking;
-        if (intent.booking_type === 'public_match') {
-          const { bookingRepository } = await import('../../booking/infrastructure/repositories/booking.repository.js');
-          await bookingRepository.createMatchmakingRequest({
-            bookingId, minAge: mm.minAge, maxAge: mm.maxAge,
-            targetGender: mm.targetGender || 'any', targetLevelId: mm.targetLevelId,
-            maxPlayers: mm.maxPlayers || 2, deadline: mm.deadline, autoApply: mm.autoApply || false,
-          });
+
+        await conn.execute(
+          `INSERT INTO booking_matchmaking_requests (booking_id, min_age, max_age, target_gender, target_level_id, max_players, deadline, auto_apply, is_active)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)`,
+          [bookingId, mm.minAge, mm.maxAge, mm.targetGender || 'any', mm.targetLevelId, mm.maxPlayers || 2, mm.deadline, mm.autoApply || false]
+        );
+
+        const [sportRows] = await conn.execute<RowData>('SELECT sport_id FROM resources WHERE id = ?', [intent.resource_id]);
+        const sportId: number | null = sportRows.length ? (sportRows[0] as any).sport_id : null;
+
+        const whereClauses: string[] = ['u.id != ?'];
+        const queryParams: any[] = [intent.user_id];
+        if (mm.minAge) {
+          whereClauses.push('u.birth_date IS NOT NULL', 'TIMESTAMPDIFF(YEAR, u.birth_date, CURDATE()) >= ?');
+          queryParams.push(mm.minAge);
         }
-      } catch (e) { log.error({ traceId, bookingId, error: String(e) }, 'Matchmaking setup failed'); }
+        if (mm.maxAge) {
+          whereClauses.push('u.birth_date IS NOT NULL', 'TIMESTAMPDIFF(YEAR, u.birth_date, CURDATE()) <= ?');
+          queryParams.push(mm.maxAge);
+        }
+        if (mm.targetGender && mm.targetGender !== 'any') {
+          whereClauses.push('u.gender = ?');
+          queryParams.push(mm.targetGender);
+        }
+
+        let profileFilter = '';
+        if (sportId) {
+          profileFilter = `AND (pp.main_sport_id = ? OR EXISTS (SELECT 1 FROM player_sport_interests psi WHERE psi.user_id = u.id AND psi.sport_id = ?) OR (pp.main_sport_id IS NULL AND NOT EXISTS (SELECT 1 FROM player_sport_interests psi2 WHERE psi2.user_id = u.id)))`;
+          queryParams.push(sportId, sportId);
+        }
+        if (mm.targetLevelId) {
+          profileFilter += ' AND pp.main_level_id = ?';
+          queryParams.push(mm.targetLevelId);
+        }
+
+        const [players] = await conn.execute<RowData>(
+          `SELECT u.id, u.full_name, u.gender, u.birth_date, u.avatar_url,
+                  pp.main_level_id, pl.name as level_name
+           FROM users u
+           LEFT JOIN player_profiles pp ON pp.user_id = u.id
+           LEFT JOIN player_levels pl ON pl.id = pp.main_level_id
+           WHERE ${whereClauses.join(' AND ')}
+           AND u.account_status = 'active'
+           ${profileFilter}
+           ORDER BY u.full_name ASC`,
+          queryParams
+        );
+
+        for (const player of players as any[]) {
+          const [existingInv] = await conn.execute<RowData>(
+            "SELECT id, status FROM booking_invitations WHERE booking_id = ? AND invited_user_id = ?",
+            [bookingId, player.id]
+          );
+          let invId: number;
+          if (existingInv.length) {
+            if ((existingInv[0] as any).status === 'declined') {
+              await conn.execute("UPDATE booking_invitations SET status = 'pending' WHERE id = ?", [(existingInv[0] as any).id]);
+              invId = (existingInv[0] as any).id;
+            } else {
+              continue;
+            }
+          } else {
+            const [invResult] = await conn.execute<mysql.ResultSetHeader>(
+              "INSERT INTO booking_invitations (booking_id, invited_user_id, status, token) VALUES (?, ?, 'pending', UUID())",
+              [bookingId, player.id]
+            );
+            invId = invResult.insertId;
+          }
+
+          if (mm.autoApply) {
+            await conn.execute("UPDATE booking_invitations SET status = 'accepted', responded_at = NOW() WHERE id = ?", [invId]);
+            await conn.execute(
+              'INSERT IGNORE INTO booking_participants (booking_id, user_id, full_name) VALUES (?, ?, ?)',
+              [bookingId, player.id, player.full_name]
+            );
+          } else {
+            eventBus.emit('match:invitation' as any, {
+              userId: player.id,
+              bookingId,
+              senderId: intent.user_id,
+              actions: [
+                { label: 'Join Match', actionKey: 'join_match', routePattern: `/bookings/${bookingId}/join`, icon: 'users' },
+                { label: 'Decline', actionKey: 'decline_match', routePattern: `/bookings/${bookingId}/decline`, icon: 'x' },
+              ],
+            });
+          }
+        }
+
+        log.info({ traceId, bookingId, playerCount: (players as any[]).length }, 'Matchmaking completed');
+      } catch (e) {
+        log.error({ traceId, bookingId, error: String(e) }, 'Matchmaking failed');
+      }
     }
 
-    const userId = transaction.user_id || intent.user_id;
-    await confirmBooking(bookingId, { paymentStatus: 'paid', paymentMethod: intent.payment_method || 'card' }, conn);
+    // Emit booking:created for new bookings
+    if (isNew) {
+      eventBus.emit('booking:created', {
+        bookingId,
+        userId: intent.user_id,
+        courtId: intent.resource_id || 0,
+        startTime: new Date(`${String(intent.booking_date).split('T')[0]}T${intent.start_time}`),
+        endTime: new Date(`${String(intent.booking_date).split('T')[0]}T${intent.end_time}`),
+        organisationId: intent.organisation_id || undefined,
+        branchId: intent.branch_id || undefined,
+      });
+    }
+
+    // Directly confirm the booking on the same connection (avoids the cross-connection
+    // visibility bug in BookingSaga.confirmBooking which uses a separate pool connection)
+    await conn.execute(
+      "UPDATE bookings SET booking_status = 'confirmed', payment_status = 'paid', updated_at = NOW() WHERE id = ? AND booking_status = 'pending'",
+      [bookingId]
+    );
+
+    // Emit booking:confirmed
+    const confirmedUserId = transaction.user_id || intent.user_id;
+    eventBus.emit('booking:confirmed' as any, {
+      bookingId,
+      userId: confirmedUserId,
+      courtId: intent.resource_id || 0,
+      status: 'confirmed',
+      timestamp: new Date().toISOString(),
+    });
+
+    // Schedule reminder
+    if (process.env.LEGACY_REMINDER_ENABLED === 'true') {
+      const startDate = new Date(`${String(intent.booking_date).split('T')[0]}T${intent.start_time}`);
+      const { scheduleBookingReminder } = await import('../../notifications/application/scheduler.service.js');
+      scheduleBookingReminder(bookingId, intent.user_id, startDate).catch((e: any) =>
+        log.error({ err: e, bookingId }, 'Failed to schedule booking reminder')
+      );
+    }
 
     log.info({ traceId, bookingId, intentId }, 'Booking confirmed');
   }

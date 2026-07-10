@@ -441,8 +441,66 @@ export class BookingService {
             deadline: mm.deadline,
             autoApply: mm.autoApply || false,
           });
-        } catch {
-          // non-fatal
+
+          const resourceSport = await this.getResourceSport(booking.resource_id);
+          const players = await bookingRepository.findMatchingPlayers(bookingId, {
+            sportId: resourceSport,
+            minAge: mm.minAge,
+            maxAge: mm.maxAge,
+            targetGender: mm.targetGender || 'any',
+            targetLevelId: mm.targetLevelId,
+            excludeUserId: intent.user_id,
+          });
+
+          for (const player of players) {
+            try {
+              const invId = await bookingRepository.createInvitation(bookingId, player.id);
+              if (mm.autoApply) {
+                await bookingRepository.updateInvitationStatus(invId, 'accepted');
+                await bookingRepository.addParticipantFromInvitation(bookingId, player.id, player.full_name);
+              } else {
+                eventBus.emit('match:invitation' as any, {
+                  userId: player.id,
+                  bookingId,
+                  senderId: intent.user_id,
+                  actions: [
+                    { label: 'Join Match', actionKey: 'join_match', routePattern: `/bookings/${bookingId}/join`, icon: 'users' },
+                    { label: 'Decline', actionKey: 'decline_match', routePattern: `/bookings/${bookingId}/decline`, icon: 'x' },
+                  ],
+                });
+              }
+            } catch (e: any) {
+              if (!e.message?.includes('already applied')) throw e;
+            }
+          }
+
+          log.info(`Fulfill matchmaking: Created booking ${bookingId} with ${players.length} matched players`);
+        } catch (mmErr) {
+          log.error({ err: mmErr }, `Matchmaking start failed for booking ${bookingId}`);
+        }
+      }
+
+      if (booking) {
+        eventBus.emit('booking:created', {
+          bookingId,
+          userId: intent.user_id,
+          courtId: intent.resource_id || 0,
+          startTime: new Date(`${String(intent.booking_date).split('T')[0]}T${intent.start_time}`),
+          endTime: new Date(`${String(intent.booking_date).split('T')[0]}T${intent.end_time}`),
+          organisationId: intent.organisation_id || undefined,
+          branchId: intent.branch_id || undefined,
+        });
+      }
+
+      if (bookingStatus === 'confirmed' && booking) {
+        if (process.env.LEGACY_REMINDER_ENABLED === 'true') {
+          const startDate = new Date(`${String(intent.booking_date).split('T')[0]}T${intent.start_time}`);
+          const { scheduleBookingReminder } = await import('../../notifications/application/scheduler.service.js');
+          scheduleBookingReminder(bookingId, intent.user_id, startDate).catch((e: any) =>
+            log.error({ err: e, bookingId }, 'Failed to schedule booking reminder')
+          );
+        } else {
+          eventBus.emit('booking:confirmed', { bookingId, userId: intent.user_id });
         }
       }
 
