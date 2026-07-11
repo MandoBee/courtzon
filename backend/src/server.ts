@@ -102,6 +102,10 @@ async function bootstrap() {
     notificationEngine.start();
     app.log.info('Notification engine started');
 
+    const { startMatchModule } = await import('./modules/match/infrastructure/match.module.js');
+    startMatchModule();
+    app.log.info('Match module event handlers registered');
+
     await queueService.add('cancel_expired_bookings', { cutoffMinutes: 5 }, {
       repeat: { every: 120_000 },
       removeOnComplete: true,
