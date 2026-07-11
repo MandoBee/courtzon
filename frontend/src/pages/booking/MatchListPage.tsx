@@ -204,7 +204,6 @@ export default function MatchListPage() {
 
       <div className="space-y-3">
         {filtered.map((match) => {
-          const joinerCount = Math.max(0, match.participant_count);
           return (
           <div key={match.id} className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] p-4">
             <div className="flex items-start justify-between">
@@ -227,7 +226,7 @@ export default function MatchListPage() {
                 <div className="flex flex-wrap gap-x-3 gap-y-1 mt-2 text-xs text-[var(--color-text-muted)]">
                   <span>📅 {new Date((match.booking_date || '').slice(0, 10)).toLocaleDateString('en-GB')}</span>
                   <span>⏰ {match.start_time?.slice(0, 5)} - {match.end_time?.slice(0, 5)}</span>
-                  <span>👥 {joinerCount}/{Math.max(0, match.max_players - 1)}</span>
+                  <span>👥 {match.participant_count}/{match.max_players}</span>
                 </div>
 
                 <div className="flex flex-wrap gap-2 mt-2 text-xs text-[var(--color-text-muted)]">
