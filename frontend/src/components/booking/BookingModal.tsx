@@ -1020,18 +1020,35 @@ export default function BookingModal({ open, onClose }: BookingModalProps) {
               setPixelClientSecret(null);
               showToast('Payment submitted — confirming...', 'info');
               const pmId = paymentId;
+              const intentId = pendingBookingId;
+
+              // Step 1: Try to confirm payment with Paymob
+              let confirmed = false;
+              let bookingId: number | null = null;
               if (pmId) {
                 const result = await confirmPayment(pmId);
-                if (result.confirmed) {
-                  const bookingId = result.data?.bookingId;
-                  onClose();
-                  if (bookingId) {
-                    showToast('Booking confirmed!');
-                    navigate(`/bookings/${bookingId}/confirmation`, { state: { qrToken: '' } });
-                  }
-                  return;
-                }
+                confirmed = result.confirmed;
+                bookingId = result.data?.bookingId || null;
               }
+
+              // Step 2: Always fulfill the intent to create the booking (even if pending)
+              if (intentId && !bookingId) {
+                try {
+                  const fulfillRes = await api.post(`/booking-intents/${intentId}/fulfill`);
+                  bookingId = fulfillRes.data?.booking?.id || null;
+                } catch {}
+              }
+
+              if (confirmed || bookingId) {
+                onClose();
+                if (bookingId) {
+                  showToast('Booking confirmed!');
+                  queryClient.invalidateQueries({ queryKey: ['my-bookings'] });
+                  navigate(`/bookings/${bookingId}/confirmation`, { state: { qrToken: '' } });
+                }
+                return;
+              }
+
               // Fall back to polling (webhook will complete)
               setPollingPaid(true);
             }}
