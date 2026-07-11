@@ -8,7 +8,7 @@ export interface BaseEvent {
 
 export interface DomainEventMap {
   // Bookings
-  'booking:created': BaseEvent & { bookingId: number; userId: number; courtId: number; startTime: Date; endTime: Date; organisationId?: number; branchId?: number };
+  'booking:created': BaseEvent & { bookingId: number; userId: number; courtId: number; startTime: Date; endTime: Date; bookingType?: string; organisationId?: number; branchId?: number };
   'booking:confirmed': BaseEvent & { bookingId: number; userId: number; organisationId?: number; branchId?: number; bookingType?: string };
   'booking:cancelled': BaseEvent & { bookingId: number; userId: number; reason?: string; organisationId?: number; branchId?: number };
   'booking:completed': BaseEvent & { bookingId: number; userId: number; organisationId?: number };

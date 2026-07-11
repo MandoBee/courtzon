@@ -811,19 +811,19 @@ export class PaymentService {
         courtId: intent.resource_id || 0,
         startTime: new Date(`${String(intent.booking_date).split('T')[0]}T${intent.start_time}`),
         endTime: new Date(`${String(intent.booking_date).split('T')[0]}T${intent.end_time}`),
+        bookingType: intent.booking_type,
         organisationId: intent.organisation_id || undefined,
         branchId: intent.branch_id || undefined,
       });
     }
 
-    // Directly confirm the booking on the same connection (avoids the cross-connection
-    // visibility bug in BookingSaga.confirmBooking which uses a separate pool connection)
+    // Confirm the booking as paid (payment was already verified by webhook)
     await conn.execute(
       "UPDATE bookings SET booking_status = 'confirmed', payment_status = 'paid', updated_at = NOW() WHERE id = ? AND booking_status = 'pending'",
       [bookingId]
     );
 
-    // Emit booking:confirmed
+    // Emit booking:confirmed (triggers match creation)
     const confirmedUserId = transaction.user_id || intent.user_id;
     eventBus.emit('booking:confirmed' as any, {
       bookingId,

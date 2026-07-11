@@ -388,6 +388,19 @@ const eventGroups: EventGroupConfig[] = [
     },
   },
   {
+    events: ['invitation:sent', 'invitation:declined', 'invitation:expired'],
+    handler: async (eventName, data, categorySlug) => {
+      if (data.userId) {
+        const isSent = eventName === 'invitation:sent';
+        await dispatchToUser({
+          userId: data.userId, eventName, categorySlug, data,
+          relatedEntityType: 'match', relatedEntityId: String(data.matchId),
+          digestable: false, priority: isSent ? 'high' : 'normal',
+        });
+      }
+    },
+  },
+  {
     events: ['match:invitation'],
     handler: async (eventName, data, categorySlug) => {
       if (data.userId) {
@@ -580,6 +593,7 @@ class NotificationEngine {
       'security:suspicious-login', 'security:account-locked',
       'system:announcement', 'system:maintenance', 'system:birthday', 'system:digest',
       'match:invitation',
+      'invitation:sent', 'invitation:declined', 'invitation:expired',
       'match:created', 'match:cancelled', 'match:status_changed', 'match:completed',
       'join_request:submitted', 'join_request:approved', 'join_request:rejected',
       'join_request:withdrawn', 'join_request:auto_rejected',

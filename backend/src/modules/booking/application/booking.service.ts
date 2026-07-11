@@ -246,12 +246,14 @@ export class BookingService {
       const booking = await bookingRepository.findById(bookingId);
 
       if (booking) {
+        const bookingType = input.bookingType || 'private_match';
         eventBus.emit('booking:created', {
           bookingId,
           userId,
           courtId: input.resourceId || 0,
           startTime: new Date(`${input.bookingDate}T${input.startTime}`),
           endTime: new Date(`${input.bookingDate}T${input.endTime}`),
+          bookingType,
           organisationId: booking.organisation_id || undefined,
           branchId: input.branchId || undefined,
         });
@@ -379,6 +381,7 @@ export class BookingService {
           courtId: intent.resource_id || 0,
           startTime: new Date(`${String(intent.booking_date).split('T')[0]}T${intent.start_time}`),
           endTime: new Date(`${String(intent.booking_date).split('T')[0]}T${intent.end_time}`),
+          bookingType: intent.booking_type,
           organisationId: intent.organisation_id || undefined,
           branchId: intent.branch_id || undefined,
         });
