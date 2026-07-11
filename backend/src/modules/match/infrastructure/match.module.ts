@@ -7,15 +7,28 @@ import { createModuleLogger } from '../../../shared/utils/logger.js';
 const log = createModuleLogger('match-module');
 
 export function startMatchModule(): void {
+  log.info('startMatchModule() called — registering event handlers');
+
   eventBus.on('booking:confirmed', (data: any) => {
+    log.info({ event: 'booking:confirmed', bookingId: data.bookingId, bookingType: data.bookingType, userId: data.userId }, 'booking:confirmed event received by match module');
     if (data.bookingType === 'public_match') {
-      bookingConfirmedHandler.handle(data.bookingId, data.bookingType).catch((err) =>
-        log.error({ err, bookingId: data.bookingId }, 'BookingConfirmedHandler failed')
-      );
+      log.info({ bookingId: data.bookingId }, 'booking:confirmed is public_match — calling BookingConfirmedHandler');
+      bookingConfirmedHandler.handle(data.bookingId, data.bookingType).then((match) => {
+        if (match) {
+          log.info({ bookingId: data.bookingId, matchId: match.id }, 'Match created successfully from booking');
+        } else {
+          log.warn({ bookingId: data.bookingId }, 'createFromBooking returned null (match not created)');
+        }
+      }).catch((err) => {
+        log.error({ err, bookingId: data.bookingId }, 'BookingConfirmedHandler threw');
+      });
+    } else {
+      log.info({ bookingId: data.bookingId, bookingType: data.bookingType }, 'booking:confirmed is NOT public_match — skipping match creation');
     }
   });
 
   eventBus.on('booking:cancelled', (data: any) => {
+    log.info({ event: 'booking:cancelled', bookingId: data.bookingId }, 'booking:cancelled event received');
     bookingCancelledHandler.handle(data.bookingId).catch((err) =>
       log.error({ err, bookingId: data.bookingId }, 'BookingCancelledHandler failed')
     );
@@ -23,11 +36,12 @@ export function startMatchModule(): void {
 
   eventBus.on('payment:failed', (data: any) => {
     if (data.bookingId) {
+      log.info({ event: 'payment:failed', bookingId: data.bookingId }, 'payment:failed event received');
       paymentFailedHandler.handle(data.bookingId).catch((err) =>
         log.error({ err, bookingId: data.bookingId }, 'PaymentFailedHandler failed')
       );
     }
   });
 
-  log.info('Match module event handlers registered');
+  log.info('Match module event handlers registered — ready to receive booking:confirmed');
 }

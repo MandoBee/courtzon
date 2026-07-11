@@ -22,7 +22,12 @@ export class MatchService {
     bookingId: number,
     bookingType: string
   ): Promise<Match | null> {
-    if (bookingType !== 'public_match') return null;
+    log.info({ bookingId, bookingType }, 'createFromBooking called');
+
+    if (bookingType !== 'public_match') {
+      log.info({ bookingId, bookingType }, 'Not a public_match — skipping');
+      return null;
+    }
 
     const pool = getPool();
 
@@ -30,7 +35,7 @@ export class MatchService {
       'SELECT id FROM matches WHERE booking_id = ?', [bookingId]
     );
     if (existing.length) {
-      log.info({ bookingId, matchId: (existing[0] as any).id }, 'Match already exists for booking');
+      log.info({ bookingId, matchId: (existing[0] as any).id }, 'Match already exists for booking — skipping');
       return null;
     }
 
@@ -42,9 +47,10 @@ export class MatchService {
        WHERE b.id = ?`, [bookingId]
     );
     if (!rows.length) {
-      log.warn({ bookingId }, 'Booking not found for match creation');
+      log.warn({ bookingId }, 'Booking not found in database for match creation');
       return null;
     }
+    log.info({ bookingId, userId: (rows[0] as any).user_id }, 'Booking found — proceeding to create match');
 
     const bk = rows[0] as any;
 
