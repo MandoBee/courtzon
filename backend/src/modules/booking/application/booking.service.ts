@@ -207,7 +207,7 @@ export class BookingService {
         );
         await conn.execute(
           `INSERT INTO transaction_entries (transaction_id, side, entity_type, entity_id, amount, currency_id, branch_id, organisation_id, description)
-           VALUES (?, 'debit', 'due_from_customer', ?, ?, 2, ?, ?, ?),
+           VALUES (?, 'debit', 'user_wallet', ?, ?, 2, ?, ?, ?),
                   (?, 'credit', 'branch', ?, ?, 2, ?, ?, ?)`,
           [txnResult.insertId, userId, pricing.totalPrice, input.branchId, organisationId, `COD booking #${bookingId}`,
            txnResult.insertId, input.branchId, pricing.totalPrice, input.branchId, organisationId, `COD booking #${bookingId}`]
