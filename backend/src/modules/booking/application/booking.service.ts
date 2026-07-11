@@ -639,8 +639,10 @@ export class BookingService {
     );
     const tz = (branchRows[0] as any)?.timezone || 'Africa/Cairo';
 
-    const nowStr = new Date().toLocaleString('en-US', { timeZone: tz });
-    const nowMs = new Date(nowStr).getTime();
+    // Get current date and time in the branch timezone as simple strings (no fragile Date parsing)
+    const nowInTz = new Date().toLocaleString('sv-SE', { timeZone: tz }); // "2026-07-11 10:41:00"
+    const nowDateStr = nowInTz.slice(0, 10); // "2026-07-11"
+    const nowTimeHHMM = nowInTz.slice(11, 16); // "10:41"
 
     const nextDate = addDays(date, 1);
     const bookings = await bookingRepository.findBookingsForResourceDate(resourceId, date);
@@ -651,8 +653,11 @@ export class BookingService {
     return allSlots
       .filter((slot) => {
         const slotDate = slot.dayOffset > 0 ? nextDate : date;
-        const slotMs = new Date(`${slotDate}T${slot.start}:00`).getTime();
-        return slotMs > nowMs;
+        // Simple string comparison: future dates are always available,
+        // past dates are always expired, same date compare HH:MM
+        if (slotDate > nowDateStr) return true;
+        if (slotDate < nowDateStr) return false;
+        return slot.start > nowTimeHHMM;
       })
       .map((slot) => {
         const relevantBookings = slot.dayOffset > 0 ? nextDayBookings : bookings;
