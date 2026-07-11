@@ -182,7 +182,13 @@ export class PaymentService {
   async handleWebhook(payload: unknown, signature: string) {
     const valid = await paymentGateway.verifyWebhook(payload, signature);
     if (!valid) {
-      log.error({ msg: 'HMAC verification failed' });
+      log.error({
+        msg: 'HMAC verification failed',
+        payloadKeys: Object.keys(payload as any),
+        hasObj: !!(payload as any)?.obj,
+        signatureLength: signature?.length,
+        signaturePreview: signature?.slice(0, 20),
+      });
       throw new Error('Invalid webhook signature');
     }
 

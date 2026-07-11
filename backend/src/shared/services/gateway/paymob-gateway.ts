@@ -156,7 +156,10 @@ export class PaymobGateway implements PaymentGateway {
   }
 
   async verifyWebhook(payload: unknown, signature: string): Promise<boolean> {
-    if (!this.config.hmacSecret) return false;
+    if (!this.config.hmacSecret) {
+      console.error('HMAC verification: no hmacSecret configured');
+      return false;
+    }
     const crypto = await import('node:crypto');
 
     const data = payload as Record<string, unknown>;
@@ -176,7 +179,11 @@ export class PaymobGateway implements PaymentGateway {
         .update(JSON.stringify(sorted))
         .digest('hex');
       const expected = (data.hmac as string) || signature;
-      return computed === expected;
+      const match = computed === expected;
+      if (!match) {
+        console.error('Intention API HMAC mismatch', { computed: computed.slice(0, 20), expected: expected.slice(0, 20), sortedKeys });
+      }
+      return match;
     }
 
     // Accept API webhook: HMAC computed on concatenated field values
@@ -199,7 +206,11 @@ export class PaymobGateway implements PaymentGateway {
       .createHmac('sha512', this.config.hmacSecret)
       .update(concatStr)
       .digest('hex');
-    return computed === signature;
+    const match = computed === signature;
+    if (!match) {
+      console.error('Accept API HMAC mismatch', { computed: computed.slice(0, 20), received: signature?.slice(0, 20) });
+    }
+    return match;
   }
 
   async getTransactionStatus(gatewayReference: string, orderId?: number): Promise<PaymentResult> {
