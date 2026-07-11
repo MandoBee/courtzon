@@ -1,12 +1,31 @@
 import type { FastifyRequest, FastifyReply } from 'fastify';
+import type mysql from 'mysql2/promise';
 import { MatchesQuerySchema, MatchParamsSchema, ApplicantParamsSchema, ApproveRejectBodySchema, CancelBodySchema } from './match.dto.js';
 import { matchService } from '../application/services/match.service.js';
 import { joinRequestService } from '../application/services/join-request.service.js';
-import { matchmakingService } from '../application/services/matchmaking.service.js';
 import { getPool } from '../../../database/mysql.js';
 import { ForbiddenError, NotFoundError } from '../../../shared/errors/app-error.js';
 
-type RowData = import('mysql2').RowDataPacket[];
+type RowData = mysql.RowDataPacket[];
+
+async function resolveMatchId(id: number): Promise<number> {
+  const pool = getPool();
+  const [rows] = await pool.execute<RowData>(
+    'SELECT id FROM matches WHERE id = ? UNION SELECT id FROM matches WHERE booking_id = ?',
+    [id, id]
+  );
+  if (!rows.length) throw new NotFoundError('Match');
+  return (rows[0] as any).id;
+}
+
+async function verifyCreator(matchId: number, userId: number): Promise<void> {
+  const pool = getPool();
+  const [rows] = await pool.execute<RowData>(
+    'SELECT creator_id FROM public_match_details WHERE match_id = ?', [matchId]
+  );
+  if (!rows.length) throw new NotFoundError('Match');
+  if ((rows[0] as any).creator_id !== userId) throw new ForbiddenError('Only the match creator can perform this action');
+}
 
 export async function getMatchesHandler(request: FastifyRequest, reply: FastifyReply): Promise<void> {
   const userId = (request as any).userId;
@@ -44,8 +63,8 @@ export async function getMatchesHandler(request: FastifyRequest, reply: FastifyR
 }
 
 export async function getMatchHandler(request: FastifyRequest, reply: FastifyReply): Promise<void> {
-  const userId = (request as any).userId;
   const { id } = MatchParamsSchema.parse(request.params);
+  const matchId = await resolveMatchId(id);
   const pool = getPool();
 
   const [rows] = await pool.execute<RowData>(
@@ -57,15 +76,15 @@ export async function getMatchHandler(request: FastifyRequest, reply: FastifyRep
             (SELECT JSON_ARRAYAGG(JSON_OBJECT('userId', mp.user_id, 'role', mp.role))
              FROM match_participants mp WHERE mp.match_id = m.id) as participants_json
      FROM matches m
-     JOIN bookings bk ON bk.id = m.booking_id
-     JOIN resources r ON r.id = bk.resource_id
+     JOIN bookings b ON b.id = m.booking_id
+     JOIN resources r ON r.id = b.resource_id
      JOIN branches br ON br.id = r.branch_id
      JOIN organisations org ON org.id = br.organisation_id
      JOIN sports s ON s.id = m.sport_id
      LEFT JOIN public_match_details pmd ON pmd.match_id = m.id
      LEFT JOIN player_levels pl ON pl.id = pmd.target_level_id
      WHERE m.id = ?`,
-    [id]
+    [matchId]
   );
 
   if (!rows.length) {
@@ -79,18 +98,20 @@ export async function getMatchHandler(request: FastifyRequest, reply: FastifyRep
 export async function joinMatchHandler(request: FastifyRequest, reply: FastifyReply): Promise<void> {
   const userId = (request as any).userId;
   const { id } = MatchParamsSchema.parse(request.params);
-  const result = await joinRequestService.submit(id, userId);
+  const matchId = await resolveMatchId(id);
+  const result = await joinRequestService.submit(matchId, userId);
   reply.status(201).send({ data: result });
 }
 
 export async function withdrawJoinHandler(request: FastifyRequest, reply: FastifyReply): Promise<void> {
   const userId = (request as any).userId;
   const { id } = MatchParamsSchema.parse(request.params);
+  const matchId = await resolveMatchId(id);
   const pool = getPool();
 
   const [rows] = await pool.execute<RowData>(
     "SELECT id FROM join_requests WHERE match_id = ? AND user_id = ? AND status = 'submitted'",
-    [id, userId]
+    [matchId, userId]
   );
   if (!rows.length) throw new NotFoundError('Pending join request');
 
@@ -101,17 +122,10 @@ export async function withdrawJoinHandler(request: FastifyRequest, reply: Fastif
 export async function getApplicantsHandler(request: FastifyRequest, reply: FastifyReply): Promise<void> {
   const userId = (request as any).userId;
   const { id } = MatchParamsSchema.parse(request.params);
+  const matchId = await resolveMatchId(id);
+  await verifyCreator(matchId, userId);
 
   const pool = getPool();
-
-  const [matchRows] = await pool.execute<RowData>(
-    'SELECT pmd.creator_id FROM matches m JOIN public_match_details pmd ON pmd.match_id = m.id WHERE m.id = ?',
-    [id]
-  );
-  if (!matchRows.length) throw new NotFoundError('Match');
-  if ((matchRows[0] as any).creator_id !== userId) {
-    throw new ForbiddenError('Only the match creator can view applicants');
-  }
 
   const [joinRequests] = await pool.execute<RowData>(
     `SELECT jr.id, jr.user_id, u.full_name, u.avatar_url, jr.status, jr.submitted_at, jr.rejection_reason
@@ -119,7 +133,7 @@ export async function getApplicantsHandler(request: FastifyRequest, reply: Fasti
      JOIN users u ON u.id = jr.user_id
      WHERE jr.match_id = ?
      ORDER BY jr.submitted_at DESC`,
-    [id]
+    [matchId]
   );
 
   const [participants] = await pool.execute<RowData>(
@@ -127,7 +141,7 @@ export async function getApplicantsHandler(request: FastifyRequest, reply: Fasti
      FROM match_participants mp
      JOIN users u ON u.id = mp.user_id
      WHERE mp.match_id = ?`,
-    [id]
+    [matchId]
   );
 
   reply.send({ data: { joinRequests, participants } });
@@ -136,15 +150,8 @@ export async function getApplicantsHandler(request: FastifyRequest, reply: Fasti
 export async function approveApplicantHandler(request: FastifyRequest, reply: FastifyReply): Promise<void> {
   const userId = (request as any).userId;
   const { id, requestId } = ApplicantParamsSchema.parse(request.params);
-  const body = ApproveRejectBodySchema.parse(request.body);
-
-  const pool = getPool();
-  const [matchRows] = await pool.execute<RowData>(
-    'SELECT pmd.creator_id FROM matches m JOIN public_match_details pmd ON pmd.match_id = m.id WHERE m.id = ?',
-    [id]
-  );
-  if (!matchRows.length) throw new NotFoundError('Match');
-  if ((matchRows[0] as any).creator_id !== userId) throw new ForbiddenError('Only the match creator can approve');
+  const matchId = await resolveMatchId(id);
+  await verifyCreator(matchId, userId);
 
   await joinRequestService.approve(requestId, userId);
   reply.send({ success: true });
@@ -154,14 +161,8 @@ export async function rejectApplicantHandler(request: FastifyRequest, reply: Fas
   const userId = (request as any).userId;
   const { id, requestId } = ApplicantParamsSchema.parse(request.params);
   const body = ApproveRejectBodySchema.parse(request.body);
-
-  const pool = getPool();
-  const [matchRows] = await pool.execute<RowData>(
-    'SELECT pmd.creator_id FROM matches m JOIN public_match_details pmd ON pmd.match_id = m.id WHERE m.id = ?',
-    [id]
-  );
-  if (!matchRows.length) throw new NotFoundError('Match');
-  if ((matchRows[0] as any).creator_id !== userId) throw new ForbiddenError('Only the match creator can reject');
+  const matchId = await resolveMatchId(id);
+  await verifyCreator(matchId, userId);
 
   await joinRequestService.reject(requestId, userId, body.reason);
   reply.send({ success: true });
@@ -170,16 +171,10 @@ export async function rejectApplicantHandler(request: FastifyRequest, reply: Fas
 export async function closeMatchHandler(request: FastifyRequest, reply: FastifyReply): Promise<void> {
   const userId = (request as any).userId;
   const { id } = MatchParamsSchema.parse(request.params);
+  const matchId = await resolveMatchId(id);
+  await verifyCreator(matchId, userId);
 
-  const pool = getPool();
-  const [rows] = await pool.execute<RowData>(
-    'SELECT pmd.creator_id FROM matches m JOIN public_match_details pmd ON pmd.match_id = m.id WHERE m.id = ?',
-    [id]
-  );
-  if (!rows.length) throw new NotFoundError('Match');
-  if ((rows[0] as any).creator_id !== userId) throw new ForbiddenError('Only the match creator can close');
-
-  await matchService.closeMatch(id);
+  await matchService.closeMatch(matchId);
   reply.send({ success: true });
 }
 
@@ -187,15 +182,9 @@ export async function cancelMatchHandler(request: FastifyRequest, reply: Fastify
   const userId = (request as any).userId;
   const { id } = MatchParamsSchema.parse(request.params);
   const body = CancelBodySchema.parse(request.body);
+  const matchId = await resolveMatchId(id);
+  await verifyCreator(matchId, userId);
 
-  const pool = getPool();
-  const [rows] = await pool.execute<RowData>(
-    'SELECT pmd.creator_id FROM matches m JOIN public_match_details pmd ON pmd.match_id = m.id WHERE m.id = ?',
-    [id]
-  );
-  if (!rows.length) throw new NotFoundError('Match');
-  if ((rows[0] as any).creator_id !== userId) throw new ForbiddenError('Only the match creator can cancel');
-
-  await matchService.cancelMatch(id, body.reason);
+  await matchService.cancelMatch(matchId, body.reason);
   reply.send({ success: true });
 }
