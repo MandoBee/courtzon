@@ -79,6 +79,13 @@ function BranchStep2Card({ branch, onSelect }: { branch: any; onSelect: () => vo
   );
 }
 
+function toLocalDateStr(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
 function ResourceCard({ resource, date, isRestricted, selectedSlots, selectedResourceId, onSelectResource, onToggleSlot }: {
   resource: any;
   date: string;
@@ -98,17 +105,6 @@ function ResourceCard({ resource, date, isRestricted, selectedSlots, selectedRes
   const isThisResourceSelected = selectedResourceId === resource.id;
 
   const getSlotStatus = (time: string): 'expired' | 'booked' | 'available' | 'selected' => {
-    const now = new Date();
-    const today = now.toISOString().slice(0, 10);
-    if (date === today) {
-      const dSlot = slots.find((s) => s.slot_start === time);
-      if (dSlot?.dayOffset === 0) {
-        const [h, m] = time.split(':').map(Number);
-        const slotDate = new Date();
-        slotDate.setHours(h, m, 0, 0);
-        if (slotDate <= now) return 'expired';
-      }
-    }
     const slot = slots.find((s) => s.slot_start === time);
     if (!slot) return 'expired';
     if (slot.status === 'booked') return 'booked';
@@ -190,7 +186,7 @@ export default function BookingModal({ open, onClose }: BookingModalProps) {
 
   const [step, setStep] = useState<1 | 2 | 3 | 4 | 5 | 6>(1);
   const [selectedSportId, setSelectedSportId] = useState<number | null>(user?.mainSportId || null);
-  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().slice(0, 10));
+  const [selectedDate, setSelectedDate] = useState(toLocalDateStr(new Date()));
   const [selectedBranch, setSelectedBranch] = useState<any | null>(null);
   const [selectedResourceId, setSelectedResourceId] = useState<number | null>(null);
   const [selectedSlots, setSelectedSlots] = useState<string[]>([]);
@@ -293,7 +289,7 @@ export default function BookingModal({ open, onClose }: BookingModalProps) {
   const reset = () => {
     setStep(1);
     setSelectedSportId(user?.mainSportId || null);
-    setSelectedDate(new Date().toISOString().slice(0, 10));
+    setSelectedDate(toLocalDateStr(new Date()));
     setSelectedBranch(null);
     setSelectedResourceId(null);
     setSelectedSlots([]);
@@ -350,18 +346,6 @@ export default function BookingModal({ open, onClose }: BookingModalProps) {
   };
 
   const getSlotStatus = (time: string): 'expired' | 'booked' | 'available' | 'selected' => {
-    const now = new Date();
-    const today = now.toISOString().slice(0, 10);
-    const isToday = selectedDate === today;
-    if (isToday) {
-      const dSlot = slots.find((s) => s.slot_start === time);
-      if (!dSlot || dSlot.dayOffset === 0) {
-        const [h, m] = time.split(':').map(Number);
-        const slotDate = new Date();
-        slotDate.setHours(h, m, 0, 0);
-        if (slotDate <= now) return 'expired';
-      }
-    }
     const slot = slots.find((s) => s.slot_start === time);
     if (!slot) return 'expired';
     if (slot.status === 'booked') return 'booked';
@@ -475,7 +459,7 @@ export default function BookingModal({ open, onClose }: BookingModalProps) {
   const dateOptions = Array.from({ length: 7 }, (_, i) => {
     const d = new Date();
     d.setDate(d.getDate() + i);
-    return d.toISOString().slice(0, 10);
+    return toLocalDateStr(d);
   });
 
   const dateLabels = ['Today', 'Tomorrow', ...Array.from({ length: 5 }, (_, i) => {
