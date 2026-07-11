@@ -272,6 +272,9 @@ export default function BookingModal({ open, onClose }: BookingModalProps) {
     onSuccess: (res) => {
       const d = res.data;
       queryClient.invalidateQueries({ queryKey: ['my-bookings'] });
+      if (selectedResourceId && selectedDate) {
+        queryClient.invalidateQueries({ queryKey: ['resource-slots', selectedResourceId, selectedDate] });
+      }
       if (d.clientSecret && d.intentId) {
         setPendingBookingId(d.intentId);
         setPaymentId(d.paymentId || null);
