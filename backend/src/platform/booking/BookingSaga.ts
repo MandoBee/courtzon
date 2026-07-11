@@ -10,6 +10,7 @@ export interface BookingEventPayload {
   organisationId: number | null;
   branchId: number | null;
   courtId: number;
+  bookingType?: string;
   status: string;
   timestamp: string;
 }
@@ -23,6 +24,7 @@ interface BookingRecord {
   booking_status: string;
   payment_status: string;
   payment_method: string | null;
+  booking_type?: string;
 }
 
 function buildPayload(booking: BookingRecord, status: BookingStatus): BookingEventPayload {
@@ -32,6 +34,7 @@ function buildPayload(booking: BookingRecord, status: BookingStatus): BookingEve
     organisationId: booking.organisation_id ?? null,
     branchId: booking.branch_id ?? null,
     courtId: booking.resource_id,
+    bookingType: booking.booking_type,
     status,
     timestamp: new Date().toISOString(),
   };
