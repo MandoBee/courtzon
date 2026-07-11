@@ -444,6 +444,13 @@ const eventGroups: EventGroupConfig[] = [
     events: ['join_request:submitted'],
     handler: async (eventName, data, categorySlug) => {
       realtimeService.emitToPlayers('match:pending', { matchId: data.matchId, userId: data.userId, timestamp: new Date().toISOString() });
+      if (data.creatorId) {
+        await dispatchToUser({
+          userId: data.creatorId, eventName, categorySlug, data,
+          relatedEntityType: 'match', relatedEntityId: String(data.matchId),
+          digestable: false,
+        });
+      }
     },
   },
   {

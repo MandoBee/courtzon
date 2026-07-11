@@ -50,6 +50,7 @@ export interface InvitationExpiredPayload extends MatchEventPayload {
 export interface JoinRequestSubmittedPayload extends MatchEventPayload {
   matchId: number;
   userId: number;
+  creatorId?: number;
   timestamp: string;
 }
 

@@ -1,9 +1,11 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../services/api';
 import { useToast } from '../../components/ui/Toast';
+import { useAuthStore } from '../../store/auth.store';
 import { formatDateTime } from '../../utils/formatDate';
+import { socketService } from '../../services/socket';
 import ManageApplicantsPopup from '../../components/booking/ManageApplicantsPopup';
 
 export default function MatchLobbyPage() {
@@ -12,12 +14,29 @@ export default function MatchLobbyPage() {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
   const [showApplicants, setShowApplicants] = useState(false);
+  const user = useAuthStore((s) => s.user);
 
   const { data: match, isLoading } = useQuery({
     queryKey: ['match', id],
     queryFn: () => api.get(`/matches/${id}`).then((r) => r.data.data),
     enabled: !!id,
   });
+
+  useEffect(() => {
+    if (!id) return;
+    const invalidate = () => {
+      queryClient.invalidateQueries({ queryKey: ['match', id] });
+      queryClient.invalidateQueries({ queryKey: ['match-applicants', Number(id)] });
+    };
+    socketService.on('match:pending', invalidate);
+    socketService.on('match:updated', invalidate);
+    socketService.on('match:removed', invalidate);
+    return () => {
+      socketService.off('match:pending', invalidate);
+      socketService.off('match:updated', invalidate);
+      socketService.off('match:removed', invalidate);
+    };
+  }, [id, queryClient]);
 
   const joinMutation = useMutation({
     mutationFn: () => api.post(`/matches/${id}/join`),
@@ -67,7 +86,7 @@ export default function MatchLobbyPage() {
   if (!match) return <p className="text-[var(--color-text-muted)]">Match not found</p>;
 
   const participants = match.participants_json ? JSON.parse(match.participants_json) : [];
-  const isCreator = false;
+  const isCreator = user?.id && match.creator_id && Number(user.id) === Number(match.creator_id);
 
   const getStatusBadge = (status: string) => {
     const colors: Record<string, string> = {

@@ -38,7 +38,7 @@ export class JoinRequestService {
     const conn = await pool.getConnection();
     try {
       const [details] = await conn.execute<RowData>(
-        'SELECT auto_accept, max_players FROM public_match_details WHERE match_id = ?', [matchId]
+        'SELECT auto_accept, max_players, creator_id FROM public_match_details WHERE match_id = ?', [matchId]
       );
       const detail = (details as any[])[0];
       if (!detail) throw new AppError('Match details not found', 404, 'MATCH_DETAILS_NOT_FOUND');
@@ -55,7 +55,7 @@ export class JoinRequestService {
 
       matchEventPublisher.publish({
         type: 'join_request:submitted',
-        payload: { matchId, userId, timestamp: new Date().toISOString() },
+        payload: { matchId, userId, creatorId: detail.creator_id, timestamp: new Date().toISOString() },
       });
 
       if (autoAccept && capacityOk) {

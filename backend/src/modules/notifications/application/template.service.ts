@@ -398,6 +398,12 @@ export async function seedTemplates(): Promise<void> {
     { eventName: 'waiting_list:promoted', locale: 'ar', categorySlug: 'bookings', type: 'success', priority: 'high',
       titleTemplate: 'ظهر مكان شاغر!', bodyTemplate: 'ظهر مكان شاغر في المباراة! قم بالتأكيد الآن.',
       actionKey: 'view_match', routePattern: '/matches/{{matchId}}' },
+    { eventName: 'invitation:sent', locale: 'en', categorySlug: 'bookings', type: 'info', priority: 'high',
+      titleTemplate: 'Match Invitation', bodyTemplate: 'You have been invited to join a match! Tap to view details.',
+      actionKey: 'view_match', routePattern: '/matches/{{matchId}}' },
+    { eventName: 'invitation:sent', locale: 'ar', categorySlug: 'bookings', type: 'info', priority: 'high',
+      titleTemplate: 'دعوة للمباراة', bodyTemplate: 'تمت دعوتك للانضمام إلى مباراة! اضغط للتفاصيل.',
+      actionKey: 'view_match', routePattern: '/matches/{{matchId}}' },
 
     // ── Additional Booking Events ──
     { eventName: 'booking:auto-cancelled', locale: 'en', categorySlug: 'bookings', type: 'warning', priority: 'high',
