@@ -829,6 +829,7 @@ export class PaymentService {
       bookingId,
       userId: confirmedUserId,
       courtId: intent.resource_id || 0,
+      bookingType: intent.booking_type,
       status: 'confirmed',
       timestamp: new Date().toISOString(),
     });

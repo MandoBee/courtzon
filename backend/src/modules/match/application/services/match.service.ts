@@ -25,6 +25,15 @@ export class MatchService {
     if (bookingType !== 'public_match') return null;
 
     const pool = getPool();
+
+    const [existing] = await pool.execute<RowData>(
+      'SELECT id FROM matches WHERE booking_id = ?', [bookingId]
+    );
+    if (existing.length) {
+      log.info({ bookingId, matchId: (existing[0] as any).id }, 'Match already exists for booking');
+      return null;
+    }
+
     const [rows] = await pool.execute<RowData>(
       `SELECT b.id, b.user_id, b.resource_id, r.sport_id,
               b.booking_date, b.start_time, b.end_time
