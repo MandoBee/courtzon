@@ -17,10 +17,11 @@ export async function getMatchesHandler(request: FastifyRequest, reply: FastifyR
     `SELECT m.id, m.type, m.status, m.sport_id, s.name as sport_name,
             bk.booking_date, bk.start_time, bk.end_time,
             r.name as resource_name, br.name as branch_name, org.name as organisation_name,
+            br.latitude, br.longitude,
             pmd.visibility, pmd.auto_accept, pmd.max_players,
             pmd.min_age, pmd.max_age, pmd.target_gender,
             pl.name as target_level_name, pmd.deadline,
-            (SELECT COUNT(*) FROM match_participants WHERE match_id = m.id) as participant_count,
+            (SELECT COUNT(*) FROM match_participants WHERE match_id = m.id AND role != 'host') as participant_count,
             bi.id as invitation_id, bi.status as invitation_status,
             jr.id as join_request_id, jr.status as join_request_status,
             (SELECT COUNT(*) FROM match_participants WHERE match_id = m.id AND user_id = ?) > 0 as is_participant
@@ -35,8 +36,7 @@ export async function getMatchesHandler(request: FastifyRequest, reply: FastifyR
      LEFT JOIN join_requests jr ON jr.match_id = m.id AND jr.user_id = ?
      LEFT JOIN player_levels pl ON pl.id = pmd.target_level_id
      WHERE m.status IN ('open', 'full')
-       AND pmd.visibility = 'public'
-     ORDER BY bk.booking_date ASC, bk.start_time ASC`,
+       AND pmd.visibility = 'public'`,
     [userId, userId, userId]
   );
 
