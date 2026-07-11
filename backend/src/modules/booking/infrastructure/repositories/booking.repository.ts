@@ -1,6 +1,7 @@
 import type mysql from 'mysql2/promise';
 import { getPool } from '../../../../database/mysql.js';
 import { generateUUID, generateQRToken } from '../../../../shared/utils/token.js';
+import { ConflictError } from '../../../../shared/errors/app-error.js';
 import type { RowDataPacket, ResultSetHeader } from 'mysql2';
 
 type RowData = RowDataPacket[];
@@ -386,7 +387,7 @@ export class BookingRepository {
         );
         return (existing[0] as any).id;
       }
-      throw new Error('You have already applied to this booking');
+      throw new ConflictError('You have already applied to this booking');
     }
 
     const [result] = await this.pool.execute<ResultSetHeader>(

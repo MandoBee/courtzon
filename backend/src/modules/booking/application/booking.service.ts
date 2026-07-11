@@ -71,7 +71,7 @@ export class BookingService {
     const lockOwner = `user:${userId}`;
     const lockAcquired = await redisLock.acquire(input.resourceId, bookingDate, input.startTime, lockOwner);
     if (!lockAcquired) {
-      throw new Error('This slot is currently being booked by another user. Please try again.');
+      throw new ConflictError('This slot is currently being booked by another user. Please try again.');
     }
 
     try {
@@ -429,13 +429,13 @@ export class BookingService {
     const booking = await bookingRepository.findById(id);
     if (!booking) throw new NotFoundError('Booking');
     if (booking.booking_status === 'cancelled' || booking.booking_status === 'cancelled_with_fee') {
-      throw new Error('Booking already cancelled');
+      throw new ConflictError('Booking already cancelled');
     }
     if (booking.user_id !== userId) throw new ForbiddenError('You can only cancel your own bookings');
 
     const canCancel = await this._canUserCancel(booking);
     if (!canCancel) {
-      throw new Error('Cancellation window has passed. Please contact support.');
+      throw new ConflictError('Cancellation window has passed. Please contact support.');
     }
 
     const isCOD = booking.payment_method === 'cash' || booking.payment_method === 'cod';
@@ -677,7 +677,7 @@ export class BookingService {
       const booking = await bookingRepository.findById(id);
       if (!booking) throw new NotFoundError('Booking');
       if (booking.booking_status === 'cancelled' || booking.booking_status === 'no_show') {
-        throw new Error('Booking already cancelled/no-show');
+        throw new ConflictError('Booking already cancelled/no-show');
       }
 
       const isCOD = booking.payment_method === 'cash' || booking.payment_method === 'cod';
@@ -895,14 +895,14 @@ export class BookingService {
     if (!booking) throw new NotFoundError('Booking');
     if (booking.user_id !== userId) throw new ForbiddenError('Only the booking owner can start matchmaking');
     if (booking.booking_status !== 'confirmed' && booking.booking_status !== 'pending') {
-      throw new Error('Matchmaking can only be started for active bookings');
+      throw new ConflictError('Matchmaking can only be started for active bookings');
     }
 
     if (criteria.deadline) {
       const bookingStart = new Date(`${String(booking.booking_date).split('T')[0]}T${booking.start_time}`);
       const deadline = new Date(criteria.deadline);
       if (deadline >= bookingStart) {
-        throw new Error('Deadline must be before the booking start time');
+        throw new ConflictError('Deadline must be before the booking start time');
       }
     }
 
@@ -954,7 +954,7 @@ export class BookingService {
     if (booking.user_id !== userId) throw new ForbiddenError('Only the booking owner can view candidates');
 
     const request = await bookingRepository.findMatchmakingRequest(bookingId);
-    if (!request) throw new Error('No matchmaking request found for this booking');
+    if (!request) throw new NotFoundError('Matchmaking request');
 
     const resourceSport = await this.getResourceSport(booking.resource_id);
 
@@ -979,13 +979,13 @@ export class BookingService {
     }
 
     const request = await bookingRepository.findMatchmakingRequest(bookingId);
-    if (!request || !request.is_active) throw new Error('This booking is not accepting applications');
+    if (!request || !request.is_active) throw new ConflictError('This booking is not accepting applications');
     if (request.deadline && new Date(request.deadline) < new Date()) {
-      throw new Error('The application deadline for this match has passed');
+      throw new ConflictError('The application deadline for this match has passed');
     }
 
     const accepted = await bookingRepository.countAcceptedPlayers(bookingId);
-    if (accepted >= request.max_players) throw new Error('This booking already has the maximum number of players');
+    if (accepted >= request.max_players) throw new ConflictError('This booking already has the maximum number of players');
 
     if (!request.auto_apply) {
       const invitationId = await bookingRepository.createInvitation(bookingId, userId);
@@ -1066,7 +1066,7 @@ export class BookingService {
     const [rows] = await pool.execute<any[]>(
       'SELECT sport_id FROM resources WHERE id = ?', [resourceId]
     );
-    if (!rows.length || !rows[0].sport_id) throw new Error('Resource has no sport assigned');
+    if (!rows.length || !rows[0].sport_id) throw new NotFoundError('Resource sport');
     return rows[0].sport_id;
   }
 

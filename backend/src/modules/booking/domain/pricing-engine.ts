@@ -1,5 +1,6 @@
 import type mysql from 'mysql2/promise';
 import { getPool } from '../../../database/mysql.js';
+import { NotFoundError } from '../../../shared/errors/app-error.js';
 
 type RowData = mysql.RowDataPacket[];
 
@@ -26,7 +27,7 @@ export class PricingEngine {
       'SELECT hourly_price, branch_id FROM resources WHERE id = ? AND is_active = TRUE',
       [resourceId]
     );
-    if (!rows.length) throw new Error('Resource not found');
+    if (!rows.length) throw new NotFoundError('Resource');
     const hourlyPrice = Number(rows[0].hourly_price || 0);
     const branchId = rows[0].branch_id;
 
