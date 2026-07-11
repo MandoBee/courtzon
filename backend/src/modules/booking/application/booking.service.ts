@@ -48,6 +48,20 @@ export class BookingService {
       bookingDate = addDays(input.bookingDate, 1);
     }
 
+    // ── Multi-slot: generate individual slots from the time range ──
+    const slotDuration = (resource as any)?.slot_duration || (resource as any)?.default_slot_duration || 60;
+    const individualSlots = slotGenerator.generate(input.startTime, input.endTime, slotDuration);
+
+    // Validate: slots must cover the requested range exactly (no gaps, aligned to grid)
+    if (individualSlots.length === 0) {
+      throw new ConflictError('Booking range does not cover any complete slot');
+    }
+    const firstSlot = individualSlots[0];
+    const lastSlot = individualSlots[individualSlots.length - 1];
+    if (firstSlot.start !== input.startTime || lastSlot.end !== input.endTime) {
+      throw new ConflictError('Selected time range must be aligned to slot boundaries and cover connected slots only');
+    }
+
     // Pre-compute pricing (idempotent, no lock needed)
     const pricing = await pricingEngine.calculatePrice(
       input.resourceId, input.startTime, input.endTime
@@ -67,11 +81,16 @@ export class BookingService {
     const useWallet = paymentMethod === 'wallet';
     const isGateway = paymentMethod !== 'cash' && paymentMethod !== 'cod' && !useWallet;
 
-    // Acquire distributed Redis lock for the slot to prevent concurrent bookings
+    // Acquire distributed Redis locks for ALL slots to prevent concurrent bookings
     const lockOwner = `user:${userId}`;
-    const lockAcquired = await redisLock.acquire(input.resourceId, bookingDate, input.startTime, lockOwner);
+    const lockSlots = individualSlots.map((s) => ({
+      resourceId: input.resourceId,
+      date: bookingDate,
+      slotStart: s.start,
+    }));
+    const lockAcquired = await redisLock.acquireAll(lockSlots, lockOwner);
     if (!lockAcquired) {
-      throw new ConflictError('This slot is currently being booked by another user. Please try again.');
+      throw new ConflictError('One or more slots are currently being booked by another user. Please try again.');
     }
 
     try {
@@ -80,12 +99,11 @@ export class BookingService {
       await conn.beginTransaction();
 
       if (isGateway) {
-        // Check slot availability.
-        const startSlot = { start: input.startTime, end: input.endTime, date: bookingDate };
+        // Check slot availability for ALL individual slots
         const available = await bookingRepository.checkSlotAvailability(
-          input.resourceId, bookingDate, [startSlot], conn,
+          input.resourceId, bookingDate, individualSlots.map((s) => ({ start: s.start, end: s.end, date: bookingDate })), conn,
         );
-        if (!available) throw new ConflictError('This slot is no longer available');
+        if (!available) throw new ConflictError('One or more slots are no longer available');
 
         // Create a booking_intent to temporarily reserve the slot.
         // The actual booking row is created only after payment is confirmed.
@@ -162,12 +180,11 @@ export class BookingService {
         paymentStatus = 'pending';
       }
 
-      // Final availability check WITHIN the transaction (FOR UPDATE semantics via UNIQUE constraint)
-      const startSlot = { start: input.startTime, end: input.endTime, date: bookingDate };
+      // Final availability check WITHIN the transaction for ALL slots
       const available = await bookingRepository.checkSlotAvailability(
-        input.resourceId, bookingDate, [startSlot], conn,
+        input.resourceId, bookingDate, individualSlots.map((s) => ({ start: s.start, end: s.end, date: bookingDate })), conn,
       );
-      if (!available) throw new ConflictError('Slot is already booked');
+      if (!available) throw new ConflictError('One or more slots are no longer available');
 
       const bookingId = await bookingRepository.create({
         userId, branchId: input.branchId, organisationId, resourceId: input.resourceId,
@@ -176,6 +193,15 @@ export class BookingService {
         totalAmount: pricing.totalPrice, commissionAmount, clubAmount,
         notes: input.notes, bookingStatus, paymentStatus, paymentMethod,
       }, conn);
+
+      // Populate booking_slots for each individual slot
+      for (const slot of individualSlots) {
+        await conn.execute(
+          `INSERT INTO booking_slots (booking_id, resource_id, booking_date, slot_start, slot_end, is_available)
+           VALUES (?, ?, ?, ?, ?, FALSE)`,
+          [bookingId, input.resourceId, bookingDate, slot.start, slot.end]
+        );
+      }
 
       if (walletUpdated && walletId && walletState) {
         const newBalance = walletState.balance - pricing.totalPrice;
@@ -280,8 +306,8 @@ export class BookingService {
       try { conn.release(); } catch {}
     }
     } finally {
-      // Release the distributed Redis lock regardless of outcome
-      await redisLock.release(input.resourceId, bookingDate, input.startTime, lockOwner);
+      // Release all distributed Redis locks regardless of outcome
+      await redisLock.releaseAll(lockSlots, lockOwner);
     }
   }
 
@@ -369,6 +395,18 @@ export class BookingService {
         'UPDATE booking_intents SET fulfilled_booking_id = ?, intent_status = ?, fulfilled_at = NOW() WHERE id = ?',
         [bookingId, 'fulfilled', intentId]
       );
+
+      // Populate booking_slots for each individual slot in the intent range
+      const intentResource = await resourceRepository.findById(intent.resource_id);
+      const intentSlotDuration = (intentResource as any)?.slot_duration || (intentResource as any)?.default_slot_duration || 60;
+      const intentSlots = slotGenerator.generate(intent.start_time, intent.end_time, intentSlotDuration);
+      for (const slot of intentSlots) {
+        await conn.execute(
+          `INSERT INTO booking_slots (booking_id, resource_id, booking_date, slot_start, slot_end, is_available)
+           VALUES (?, ?, ?, ?, ?, FALSE)`,
+          [bookingId, intent.resource_id, intent.booking_date, slot.start, slot.end]
+        );
+      }
 
       await conn.commit();
 
