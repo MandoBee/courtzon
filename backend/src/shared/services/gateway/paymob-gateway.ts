@@ -165,23 +165,35 @@ export class PaymobGateway implements PaymentGateway {
     const data = payload as Record<string, unknown>;
 
     // Intention API webhook: HMAC computed on JSON.stringify(obj) with
-    // keys sorted alphabetically (Paymob requirement), sent in body.hmac
-    // field or x-paymob-signature header
+    // keys sorted alphabetically (Paymob requirement) — recursively.
     if (data.obj) {
       const obj = data.obj as Record<string, unknown>;
-      const sortedKeys = Object.keys(obj).sort();
-      const sorted = sortedKeys.reduce((acc, k) => {
-        acc[k] = obj[k];
-        return acc;
-      }, {} as Record<string, unknown>);
+
+      function sortKeys(o: unknown): unknown {
+        if (o !== null && typeof o === 'object' && !Array.isArray(o)) {
+          const sorted: Record<string, unknown> = {};
+          Object.keys(o as Record<string, unknown>).sort().forEach((k) => {
+            sorted[k] = sortKeys((o as Record<string, unknown>)[k]);
+          });
+          return sorted;
+        }
+        return o;
+      }
+
+      const sorted = sortKeys(obj);
+      const targetStr = JSON.stringify(sorted);
       const computed = crypto
         .createHmac('sha512', this.config.hmacSecret)
-        .update(JSON.stringify(sorted))
+        .update(targetStr)
         .digest('hex');
       const expected = (data.hmac as string) || signature;
       const match = computed === expected;
       if (!match) {
-        console.error('Intention API HMAC mismatch', { computed: computed.slice(0, 20), expected: expected.slice(0, 20), sortedKeys });
+        console.error('Intention API HMAC mismatch', {
+          computed: computed.slice(0, 20),
+          expected: expected.slice(0, 20),
+          targetStrLength: targetStr.length,
+        });
       }
       return match;
     }
