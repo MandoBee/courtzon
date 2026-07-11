@@ -198,7 +198,10 @@ export default function MyBookingsPage() {
                 <>
                   <span className="text-xs font-semibold text-[var(--color-info)]">Public</span>
                   <span className="text-xs text-[var(--color-text-muted)]">
-                    👥 {booking.accepted_count || 0}/{booking.applied_count || 0}
+                    👥 {booking.accepted_count || 0} joined
+                    {(booking.applied_count || 0) > (booking.accepted_count || 0) && (
+                      <> · {booking.applied_count - (booking.accepted_count || 0)} pending</>
+                    )}
                   </span>
                 </>
               )}

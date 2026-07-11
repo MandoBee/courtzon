@@ -148,8 +148,14 @@ export class BookingRepository {
 
     let sql = `SELECT b.*, r.name as resource_name, br.name as branch_name, org.name as organisation_name,
                       br.latitude, br.longitude, ${distanceExpr} as distance_km,
-                      (SELECT COUNT(*) FROM booking_invitations WHERE booking_id = b.id AND status = 'accepted') as accepted_count,
-                      (SELECT COUNT(*) FROM booking_invitations WHERE booking_id = b.id) as applied_count
+                      CASE WHEN b.booking_type = 'public_match'
+                        THEN (SELECT COUNT(*) FROM match_participants mp JOIN matches m ON m.id = mp.match_id WHERE m.booking_id = b.id AND mp.role != 'host')
+                        ELSE (SELECT COUNT(*) FROM booking_invitations WHERE booking_id = b.id AND status = 'accepted')
+                      END as accepted_count,
+                      CASE WHEN b.booking_type = 'public_match'
+                        THEN (SELECT COUNT(*) FROM join_requests jr JOIN matches m ON m.id = jr.match_id WHERE m.booking_id = b.id)
+                        ELSE (SELECT COUNT(*) FROM booking_invitations WHERE booking_id = b.id)
+                      END as applied_count
                FROM bookings b
                JOIN resources r ON r.id = b.resource_id
                JOIN branches br ON br.id = b.branch_id
@@ -513,7 +519,10 @@ export class BookingRepository {
               bmr.max_players, bmr.deadline, bmr.auto_apply,
               pl.name as target_level_name,
               bi.id as invitation_id, bi.status as invitation_status,
-              (SELECT COUNT(*) FROM booking_invitations WHERE booking_id = b.id AND status = 'accepted') as accepted_count,
+              CASE WHEN b.booking_type = 'public_match'
+                THEN (SELECT COUNT(*) FROM match_participants mp JOIN matches m ON m.id = mp.match_id WHERE m.booking_id = b.id AND mp.role != 'host')
+                ELSE (SELECT COUNT(*) FROM booking_invitations WHERE booking_id = b.id AND status = 'accepted')
+              END as accepted_count,
               (bmr.deadline IS NOT NULL AND bmr.deadline < NOW()) as is_expired
        FROM bookings b
        JOIN resources r ON r.id = b.resource_id
