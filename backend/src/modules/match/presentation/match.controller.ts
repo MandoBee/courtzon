@@ -15,7 +15,7 @@ export async function getMatchesHandler(request: FastifyRequest, reply: FastifyR
 
   const [rows] = await pool.execute<RowData>(
     `SELECT m.id, m.type, m.status, m.sport_id, s.name as sport_name,
-            b.booking_date, b.start_time, b.end_time,
+            bk.booking_date, bk.start_time, bk.end_time,
             r.name as resource_name, br.name as branch_name, org.name as organisation_name,
             pmd.visibility, pmd.auto_accept, pmd.max_players,
             pmd.min_age, pmd.max_age, pmd.target_gender,
@@ -25,7 +25,8 @@ export async function getMatchesHandler(request: FastifyRequest, reply: FastifyR
             jr.id as join_request_id, jr.status as join_request_status,
             (SELECT COUNT(*) FROM match_participants WHERE match_id = m.id AND user_id = ?) > 0 as is_participant
      FROM matches m
-     JOIN resources r ON r.id = (SELECT resource_id FROM bookings WHERE id = m.booking_id)
+     JOIN bookings bk ON bk.id = m.booking_id
+     JOIN resources r ON r.id = bk.resource_id
      JOIN branches br ON br.id = r.branch_id
      JOIN organisations org ON org.id = br.organisation_id
      JOIN sports s ON s.id = m.sport_id
@@ -35,7 +36,7 @@ export async function getMatchesHandler(request: FastifyRequest, reply: FastifyR
      LEFT JOIN player_levels pl ON pl.id = pmd.target_level_id
      WHERE m.status IN ('open', 'full')
        AND pmd.visibility = 'public'
-     ORDER BY b.booking_date ASC, b.start_time ASC`,
+     ORDER BY bk.booking_date ASC, bk.start_time ASC`,
     [userId, userId, userId]
   );
 
@@ -56,13 +57,13 @@ export async function getMatchHandler(request: FastifyRequest, reply: FastifyRep
             (SELECT JSON_ARRAYAGG(JSON_OBJECT('userId', mp.user_id, 'role', mp.role))
              FROM match_participants mp WHERE mp.match_id = m.id) as participants_json
      FROM matches m
-     JOIN resources r ON r.id = (SELECT resource_id FROM bookings WHERE id = m.booking_id)
+     JOIN bookings bk ON bk.id = m.booking_id
+     JOIN resources r ON r.id = bk.resource_id
      JOIN branches br ON br.id = r.branch_id
      JOIN organisations org ON org.id = br.organisation_id
      JOIN sports s ON s.id = m.sport_id
      LEFT JOIN public_match_details pmd ON pmd.match_id = m.id
      LEFT JOIN player_levels pl ON pl.id = pmd.target_level_id
-     LEFT JOIN bookings b ON b.id = m.booking_id
      WHERE m.id = ?`,
     [id]
   );
