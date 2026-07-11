@@ -159,7 +159,7 @@ export default function MatchListPage() {
     if (sortMode === 'nearest') {
       list.sort((a, b) => (a.distance_km ?? 99999) - (b.distance_km ?? 99999));
     } else {
-      list.sort((a, b) => new Date(a.booking_date + 'T' + a.start_time).getTime() - new Date(b.booking_date + 'T' + b.start_time).getTime());
+      list.sort((a, b) => new Date((a.booking_date || '').slice(0, 10) + 'T' + (a.start_time || '00:00')).getTime() - new Date((b.booking_date || '').slice(0, 10) + 'T' + (b.start_time || '00:00')).getTime());
     }
     return list;
   }, [matchesWithDistance, tab, dismissedIds, sortMode]);
@@ -224,8 +224,8 @@ export default function MatchListPage() {
                   )}
                 </p>
 
-                <div className="flex gap-4 mt-2 text-xs text-[var(--color-text-muted)]">
-                  <span>📅 {new Date(match.booking_date + 'T' + (match.start_time || '00:00')).toLocaleDateString('en-GB')}</span>
+                <div className="flex flex-wrap gap-x-3 gap-y-1 mt-2 text-xs text-[var(--color-text-muted)]">
+                  <span>📅 {new Date((match.booking_date || '').slice(0, 10)).toLocaleDateString('en-GB')}</span>
                   <span>⏰ {match.start_time?.slice(0, 5)} - {match.end_time?.slice(0, 5)}</span>
                   <span>👥 {joinerCount}/{Math.max(0, match.max_players - 1)}</span>
                 </div>
