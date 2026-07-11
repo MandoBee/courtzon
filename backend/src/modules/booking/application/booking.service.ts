@@ -202,7 +202,7 @@ export class BookingService {
       if (paymentMethod === 'cash' || paymentMethod === 'cod') {
         const [txnResult] = await conn.execute<mysql.ResultSetHeader>(
           `INSERT INTO transactions (type, source_type, source_id, currency_id, total_amount, status)
-           VALUES ('due', 'booking', ?, 2, ?, 'completed')`,
+           VALUES ('booking_payment', 'booking', ?, 2, ?, 'completed')`,
           [bookingId, pricing.totalPrice]
         );
         await conn.execute(
