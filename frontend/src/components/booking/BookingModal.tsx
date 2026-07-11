@@ -86,6 +86,25 @@ function toLocalDateStr(d: Date): string {
   return `${y}-${m}-${day}`;
 }
 
+function getDateInTimezone(timezone: string): string {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: timezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date());
+  const y = parts.find((p) => p.type === 'year')!.value;
+  const m = parts.find((p) => p.type === 'month')!.value;
+  const d = parts.find((p) => p.type === 'day')!.value;
+  return `${y}-${m}-${d}`;
+}
+
+function addDaysToDate(dateStr: string, days: number): string {
+  const d = new Date(dateStr + 'T00:00:00Z');
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
 function ResourceCard({ resource, date, isRestricted, selectedSlots, selectedResourceId, onSelectResource, onToggleSlot }: {
   resource: any;
   date: string;
@@ -248,10 +267,22 @@ export default function BookingModal({ open, onClose }: BookingModalProps) {
     enabled: open && !!selectedBranch && step >= 3,
   });
 
+  // Convert user's selected date to the branch's timezone so the backend
+  // receives the date it expects (the date in the branch's own timezone).
+  const branchTimezone = selectedBranch?.timezone || 'Africa/Cairo';
+  const userToday = toLocalDateStr(new Date());
+  const branchToday = getDateInTimezone(branchTimezone);
+  const dayOffsetBetweenTimezones = Math.round(
+    (new Date(branchToday + 'T00:00:00Z').getTime() - new Date(userToday + 'T00:00:00Z').getTime()) / 86400000
+  );
+  const apiDate = dayOffsetBetweenTimezones === 0
+    ? selectedDate
+    : addDaysToDate(selectedDate, dayOffsetBetweenTimezones);
+
   const { data: slotsData } = useQuery({
-    queryKey: ['resource-slots', selectedResourceId, selectedDate],
-    queryFn: () => api.get(`/resources/${selectedResourceId}/slots?date=${selectedDate}`).then((r) => r.data.data),
-    enabled: open && !!selectedResourceId && !!selectedDate && step >= 4,
+    queryKey: ['resource-slots', selectedResourceId, apiDate],
+    queryFn: () => api.get(`/resources/${selectedResourceId}/slots?date=${apiDate}`).then((r) => r.data.data),
+    enabled: open && !!selectedResourceId && !!apiDate && step >= 4,
   });
 
   const sportsList = sports || [];
@@ -268,8 +299,8 @@ export default function BookingModal({ open, onClose }: BookingModalProps) {
     onSuccess: (res) => {
       const d = res.data;
       queryClient.invalidateQueries({ queryKey: ['my-bookings'] });
-      if (selectedResourceId && selectedDate) {
-        queryClient.invalidateQueries({ queryKey: ['resource-slots', selectedResourceId, selectedDate] });
+      if (selectedResourceId && apiDate) {
+        queryClient.invalidateQueries({ queryKey: ['resource-slots', selectedResourceId, apiDate] });
       }
       if (d.clientSecret && d.intentId) {
         setPendingBookingId(d.intentId);
@@ -315,9 +346,9 @@ export default function BookingModal({ open, onClose }: BookingModalProps) {
   };
 
   useEffect(() => {
-    if (selectedSlots.length > 0 && selectedDate) {
+    if (selectedSlots.length > 0 && apiDate) {
       const [h, m] = selectedSlots[0].split(':').map(Number);
-      const start = new Date(selectedDate);
+      const start = new Date(apiDate);
       start.setHours(h, m, 0, 0);
       const deadline = new Date(start.getTime() - 4 * 60 * 60 * 1000);
       const pad = (n: number) => String(n).padStart(2, '0');
@@ -325,7 +356,7 @@ export default function BookingModal({ open, onClose }: BookingModalProps) {
         `${deadline.getFullYear()}-${pad(deadline.getMonth() + 1)}-${pad(deadline.getDate())}T${pad(deadline.getHours())}:${pad(deadline.getMinutes())}`
       );
     }
-  }, [selectedSlots, selectedDate]);
+  }, [selectedSlots, apiDate]);
 
   const handleSportSelect = (id: number) => {
     setSelectedSportId(id);
@@ -412,7 +443,7 @@ export default function BookingModal({ open, onClose }: BookingModalProps) {
     if (!selectedBranch || !selectedResourceId || !selectedSlots.length) return;
 
     if (bookingType === 'public_match' && matchmakingDeadline) {
-      const bookingStart = new Date(`${selectedDate}T${selectedSlots[0]}`);
+      const bookingStart = new Date(`${apiDate}T${selectedSlots[0]}`);
       const deadline = new Date(matchmakingDeadline);
       if (deadline >= bookingStart) {
         showToast('Matchmaking deadline must be before the booking start time', 'error');
@@ -424,7 +455,7 @@ export default function BookingModal({ open, onClose }: BookingModalProps) {
       branchId: selectedBranch.id,
       resourceId: selectedResourceId,
       bookingType,
-      bookingDate: selectedDate,
+      bookingDate: apiDate,
       startTime: selectedSlots[0],
       endTime: (() => {
         const last = selectedSlots[selectedSlots.length - 1];
@@ -608,7 +639,7 @@ export default function BookingModal({ open, onClose }: BookingModalProps) {
               <ResourceCard
                 key={resource.id}
                 resource={resource}
-                date={selectedDate}
+                date={apiDate}
                 isRestricted={isRestricted}
                 selectedSlots={selectedSlots}
                 selectedResourceId={selectedResourceId}
