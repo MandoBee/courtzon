@@ -307,8 +307,10 @@ export class BookingService {
           bookingId,
           userId,
           courtId: input.resourceId || 0,
-          startTime: new Date(`${input.bookingDate}T${input.startTime}`),
-          endTime: new Date(`${input.bookingDate}T${input.endTime}`),
+          startTime: new Date(startAtUtc),
+          endTime: new Date(endAtUtc),
+          startAtUtc,
+          endAtUtc,
           bookingType,
           organisationId: booking.organisation_id || undefined,
           branchId: input.branchId || undefined,
@@ -318,7 +320,7 @@ export class BookingService {
       if (bookingStatus === 'confirmed' && booking) {
         const bookingType = input.bookingType || 'private_match';
         if (process.env.LEGACY_REMINDER_ENABLED === 'true') {
-          const startDate = new Date(`${String(booking.booking_date).split('T')[0]}T${booking.start_time}`);
+          const startDate = new Date(startAtUtc);
           const { scheduleBookingReminder } = await import('../../notifications/application/scheduler.service.js');
           scheduleBookingReminder(bookingId, userId, startDate).catch((e: any) =>
             log.error({ err: e, bookingId }, 'Failed to schedule booking reminder')
@@ -328,7 +330,7 @@ export class BookingService {
         }
       }
 
-      return { ...booking, paymentUrl, clientSecret, paymentId };
+      return { ...booking, timezone: branchTz, paymentUrl, clientSecret, paymentId };
     } catch (err) {
       try { await conn.rollback(); } catch {}
       throw err;
@@ -470,8 +472,10 @@ export class BookingService {
           bookingId,
           userId: intent.user_id,
           courtId: intent.resource_id || 0,
-          startTime: new Date(`${String(intent.booking_date).split('T')[0]}T${intent.start_time}`),
-          endTime: new Date(`${String(intent.booking_date).split('T')[0]}T${intent.end_time}`),
+          startTime: new Date(intentStartUtc),
+          endTime: new Date(intentEndUtc),
+          startAtUtc: intentStartUtc,
+          endAtUtc: intentEndUtc,
           bookingType: intent.booking_type,
           organisationId: intent.organisation_id || undefined,
           branchId: intent.branch_id || undefined,
@@ -480,7 +484,7 @@ export class BookingService {
 
       if (bookingStatus === 'confirmed' && booking) {
         if (process.env.LEGACY_REMINDER_ENABLED === 'true') {
-          const startDate = new Date(`${String(intent.booking_date).split('T')[0]}T${intent.start_time}`);
+          const startDate = new Date(intentStartUtc);
           const { scheduleBookingReminder } = await import('../../notifications/application/scheduler.service.js');
           scheduleBookingReminder(bookingId, intent.user_id, startDate).catch((e: any) =>
             log.error({ err: e, bookingId }, 'Failed to schedule booking reminder')
@@ -490,7 +494,7 @@ export class BookingService {
         }
       }
 
-      return { success: true, booking, isPaid };
+      return { success: true, booking, isPaid, timezone: intentTz };
     } catch (err) {
       await conn.rollback();
       throw err;
