@@ -8,6 +8,7 @@ import { resourceRepository } from '../../organisations/infrastructure/repositor
 import { slotGenerator } from '../domain/slot-generator.js';
 import { redisLock } from '../infrastructure/redis/redis-lock.js';
 import { getPool } from '../../../database/mysql.js';
+import { TimeEngine } from '../../time/index.js';
 import { NotFoundError, ForbiddenError, ConflictError } from '../../../shared/errors/app-error.js';
 import { createModuleLogger } from '../../../shared/utils/logger.js';
 import type { CreateBookingInput } from '../presentation/booking.dto.js';
@@ -34,15 +35,22 @@ export class BookingService {
 
     // Derive organisation_id from branch
     const [branchRows] = await pool.execute<RowData>(
-      'SELECT id, organisation_id FROM branches WHERE id = ?', [input.branchId],
+      'SELECT id, organisation_id, timezone, opening_time, closing_time FROM branches WHERE id = ?', [input.branchId],
     );
     if (branchRows.length === 0) throw new NotFoundError('Branch');
-    const organisationId = (branchRows[0] as any).organisation_id;
+    const branchData = branchRows[0] as any;
+    const organisationId = branchData.organisation_id;
+    const branchTz = branchData.timezone || 'Africa/Cairo';
 
-    // Compute actual booking date (after-midnight slots belong to next calendar day)
+    // Compute UTC timestamps and business date using TimeEngine
+    const startAtUtc = TimeEngine.localToUtc(input.bookingDate, input.startTime, branchTz);
+    const endAtUtc = TimeEngine.localToUtc(input.bookingDate, input.endTime, branchTz);
     const resource = await resourceRepository.findById(input.resourceId);
     const openingTime = resource?.opening_time || '08:00';
     const closingTime = resource?.closing_time || '22:00';
+    const businessDate = TimeEngine.getBusinessDate(startAtUtc, openingTime, closingTime, branchTz);
+
+    // Keep existing bump logic for backward compatibility (booking_date, booking_slots)
     let bookingDate = input.bookingDate;
     if (closingTime < openingTime && input.startTime < openingTime) {
       bookingDate = addDays(input.bookingDate, 1);
@@ -192,6 +200,7 @@ export class BookingService {
         startTime: input.startTime, endTime: input.endTime,
         totalAmount: pricing.totalPrice, commissionAmount, clubAmount,
         notes: input.notes, bookingStatus, paymentStatus, paymentMethod,
+        startAtUtc, endAtUtc, businessDate,
       }, conn);
 
       // Populate booking_slots for each individual slot
@@ -372,13 +381,36 @@ export class BookingService {
       const bookingStatus = isPaid ? 'confirmed' : 'pending';
       const paymentStatus = isPaid ? 'paid' : 'pending';
 
+      // Compute UTC timestamps and business date from intent data
+      const [brRow] = await conn.execute<RowData>(
+        'SELECT timezone, opening_time, closing_time FROM branches WHERE id = ?', [intent.branch_id]
+      );
+      const brData = brRow[0] as any || {};
+      const intentTz = brData.timezone || 'Africa/Cairo';
+      const intentOpening = brData.opening_time || '08:00';
+      const intentClosing = brData.closing_time || '22:00';
+      const intentBookingDate = intent.booking_date instanceof Date
+        ? intent.booking_date.toISOString().slice(0, 10)
+        : String(intent.booking_date).slice(0, 10);
+      const intentStart = intent.start_time instanceof Date
+        ? `${String(intent.start_time.getUTCHours()).padStart(2, '0')}:${String(intent.start_time.getUTCMinutes()).padStart(2, '0')}`
+        : String(intent.start_time).slice(0, 5);
+      const intentEnd = intent.end_time instanceof Date
+        ? `${String(intent.end_time.getUTCHours()).padStart(2, '0')}:${String(intent.end_time.getUTCMinutes()).padStart(2, '0')}`
+        : String(intent.end_time).slice(0, 5);
+      const intentStartUtc = TimeEngine.localToUtc(intentBookingDate, intentStart, intentTz);
+      const intentEndUtc = TimeEngine.localToUtc(intentBookingDate, intentEnd, intentTz);
+      const intentBusinessDate = TimeEngine.getBusinessDate(intentStartUtc, intentOpening, intentClosing, intentTz);
+
       const [createResult] = await conn.execute<mysql.ResultSetHeader>(
         `INSERT INTO bookings (public_id, user_id, organisation_id, branch_id, resource_id, booking_type,
-          booking_date, start_time, end_time, total_amount, commission_amount, club_amount,
+          booking_date, business_date, start_time, end_time, start_at_utc, end_at_utc,
+          total_amount, commission_amount, club_amount,
           booking_status, payment_status, notes, payment_method)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [randomUUID(), intent.user_id, intent.organisation_id, intent.branch_id, intent.resource_id,
-         intent.booking_type, intent.booking_date, intent.start_time, intent.end_time,
+         intent.booking_type, intent.booking_date, intentBusinessDate, intent.start_time, intent.end_time,
+         intentStartUtc, intentEndUtc,
          intent.total_amount, intent.commission_amount, intent.club_amount,
          bookingStatus, paymentStatus, intent.notes, intent.payment_method]
       );
@@ -631,7 +663,6 @@ export class BookingService {
     const opening = resource.opening_time || '08:00';
     const closing = resource.closing_time || '22:00';
     const duration = resource.slot_duration || resource.default_slot_duration || 60;
-    const allSlots = slotGenerator.generate(opening, closing, duration);
 
     const pool = getPool();
     const [branchRows] = await pool.execute<RowData>(
@@ -639,40 +670,27 @@ export class BookingService {
     );
     const tz = (branchRows[0] as any)?.timezone || 'Africa/Cairo';
 
-    // Get current date and time in the branch timezone as simple strings (no fragile Date parsing)
-    const nowInTz = new Date().toLocaleString('sv-SE', { timeZone: tz }); // "2026-07-11 10:41:00"
-    const nowDateStr = nowInTz.slice(0, 10); // "2026-07-11"
-    const nowTimeHHMM = nowInTz.slice(11, 16); // "10:41"
+    // Generate slots using TimeEngine (DST-aware, Business Day based)
+    const slots = TimeEngine.generateSlots(date, opening, closing, duration, tz);
 
-    const nextDate = addDays(date, 1);
-    const bookings = await bookingRepository.findBookingsForResourceDate(resourceId, date);
-    const nextDayBookings = allSlots.some(s => s.dayOffset > 0)
-      ? await bookingRepository.findBookingsForResourceDate(resourceId, nextDate)
-      : [];
+    // Query existing bookings for this business date
+    const existingBookings = await bookingRepository.findBookingsByBusinessDate(resourceId, date);
 
-    return allSlots
-      .filter((slot) => {
-        const slotDate = slot.dayOffset > 0 ? nextDate : date;
-        // Simple string comparison: future dates are always available,
-        // past dates are always expired, same date compare HH:MM
-        if (slotDate > nowDateStr) return true;
-        if (slotDate < nowDateStr) return false;
-        return slot.start > nowTimeHHMM;
-      })
-      .map((slot) => {
-        const relevantBookings = slot.dayOffset > 0 ? nextDayBookings : bookings;
-        const isBooked = relevantBookings.some((b: any) => {
-          const bStart = b.start_time.slice(0, 5);
-          const bEnd = b.end_time.slice(0, 5);
-          return slot.start >= bStart && slot.start < bEnd;
-        });
-        return {
-          slot_start: slot.start,
-          slot_end: slot.end,
-          dayOffset: slot.dayOffset,
-          status: isBooked ? 'booked' : 'available',
-        };
-      });
+    // Resolve availability: expired (via UTC) + booked (via UTC overlap)
+    const availableSlots = TimeEngine.resolveAvailability(slots, existingBookings);
+
+    // Return in the expected API format (backward compatible + new UTC fields)
+    return availableSlots.map(s => ({
+      slot_start: s.localStartTime,
+      slot_end: s.localEndTime,
+      dayOffset: 0,
+      status: s.status,
+      startAtUtc: s.startAtUtc,
+      endAtUtc: s.endAtUtc,
+      businessDate: s.businessDate,
+      utcOffsetMinutes: s.utcOffsetMinutes,
+      dstOverlap: s.dstOverlap,
+    }));
   }
 
   async checkIn(id: number, userId: number) {

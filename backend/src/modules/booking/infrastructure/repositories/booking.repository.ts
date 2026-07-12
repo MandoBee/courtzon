@@ -26,17 +26,20 @@ export class BookingRepository {
     bookingType: string; bookingDate: string; startTime: string; endTime: string;
     totalAmount: number; commissionAmount?: number; clubAmount?: number;
     notes?: string; bookingStatus?: string; paymentStatus?: string;
-    paymentMethod?: string;
+    paymentMethod?: string; startAtUtc?: string; endAtUtc?: string;
+    businessDate?: string;
   }, conn?: mysql.PoolConnection): Promise<number> {
     const db = this.resolve(conn);
     const [result] = await db.execute<ResultSetHeader>(
       `INSERT INTO bookings (public_id, user_id, organisation_id, branch_id, resource_id, booking_type,
-        booking_date, start_time, end_time, total_amount, commission_amount, club_amount,
+        booking_date, business_date, start_time, end_time, start_at_utc, end_at_utc,
+        total_amount, commission_amount, club_amount,
         booking_status, payment_status, payment_method, notes)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [generateUUID(), data.userId, data.organisationId, data.branchId, data.resourceId, data.bookingType,
-       data.bookingDate, data.startTime, data.endTime, data.totalAmount,
-       data.commissionAmount || 0, data.clubAmount || 0,
+       data.bookingDate, data.businessDate || data.bookingDate, data.startTime, data.endTime,
+       data.startAtUtc || null, data.endAtUtc || null,
+       data.totalAmount, data.commissionAmount || 0, data.clubAmount || 0,
        data.bookingStatus || 'pending', data.paymentStatus || 'pending', data.paymentMethod || null, data.notes || null]
     );
     return result.insertId;
@@ -48,15 +51,18 @@ export class BookingRepository {
     totalAmount: number; commissionAmount?: number; clubAmount?: number;
     notes?: string; paymentMethod?: string; matchmaking?: any; participants?: any[];
     retryOfIntentId?: number; attemptNumber?: number;
+    startAtUtc?: string; endAtUtc?: string; businessDate?: string;
   }): Promise<number> {
     const [result] = await this.pool.execute<ResultSetHeader>(
       `INSERT INTO booking_intents (user_id, branch_id, organisation_id, resource_id, booking_type,
-        booking_date, start_time, end_time, total_amount, commission_amount, club_amount,
+        booking_date, business_date, start_time, end_time, start_at_utc, end_at_utc,
+        total_amount, commission_amount, club_amount,
         notes, payment_method, matchmaking, participants, retry_of_intent_id, attempt_number)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [data.userId, data.branchId, data.organisationId, data.resourceId, data.bookingType,
-       data.bookingDate, data.startTime, data.endTime, data.totalAmount,
-       data.commissionAmount || 0, data.clubAmount || 0,
+       data.bookingDate, data.businessDate || data.bookingDate, data.startTime, data.endTime,
+       data.startAtUtc || null, data.endAtUtc || null,
+       data.totalAmount, data.commissionAmount || 0, data.clubAmount || 0,
        data.notes || null, data.paymentMethod || null,
        data.matchmaking ? JSON.stringify(data.matchmaking) : null,
        data.participants ? JSON.stringify(data.participants) : null,
@@ -297,6 +303,25 @@ export class BookingRepository {
        AND intent_status IN ('pending', 'payment_initiated')
        AND (expires_at IS NULL OR expires_at > NOW())`,
       [resourceId, date]
+    );
+    return [...bRows, ...iRows];
+  }
+
+  async findBookingsByBusinessDate(resourceId: number, businessDate: string): Promise<any[]> {
+    const [bRows] = await this.pool.execute<RowData>(
+      `SELECT start_at_utc, end_at_utc FROM bookings
+       WHERE resource_id = ? AND business_date = ?
+       AND booking_status NOT IN ('cancelled', 'expired', 'no_show')
+       AND start_at_utc IS NOT NULL`,
+      [resourceId, businessDate]
+    );
+    const [iRows] = await this.pool.execute<RowData>(
+      `SELECT start_at_utc, end_at_utc FROM booking_intents
+       WHERE resource_id = ? AND business_date = ?
+       AND intent_status IN ('pending', 'payment_initiated')
+       AND (expires_at IS NULL OR expires_at > NOW())
+       AND start_at_utc IS NOT NULL`,
+      [resourceId, businessDate]
     );
     return [...bRows, ...iRows];
   }
