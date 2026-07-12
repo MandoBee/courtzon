@@ -68,13 +68,18 @@ export default function OrderListPage() {
       {/* Desktop tabs */}
       <div className="hidden md:flex gap-2 flex-wrap">
         {ORDER_STATUSES.map((s) => {
-          const count = orderCounts ? (s === '' ? orderCounts.all : (orderCounts[s] ?? 0)) : null;
+          const count = orderCounts ? (s === '' ? orderCounts.all : (orderCounts[s] ?? 0)) : 0;
           return (
           <button key={s} onClick={() => { setStatusFilter(s); setPage(1); }}
-            className={`px-3 py-1.5 text-xs rounded-full border ${
+            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-full border ${
               statusFilter === s ? 'bg-[var(--color-primary)] text-white border-[var(--color-primary)]' : ''
             }`}>
-            {s || t('orders.all')}{count !== null ? ` (${count})` : ''}
+            {s || t('orders.all')}
+            {count > 0 && (
+              <span className="bg-[var(--color-error)] text-white text-[10px] font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1 leading-none">
+                {count > 99 ? '99+' : count}
+              </span>
+            )}
           </button>
         );})}
       </div>
@@ -87,9 +92,9 @@ export default function OrderListPage() {
           className="w-full px-3 py-2 text-sm rounded-[var(--radius-md)] border bg-[var(--color-surface)]"
         >
           {ORDER_STATUSES.map((s) => {
-            const count = orderCounts ? (s === '' ? orderCounts.all : (orderCounts[s] ?? 0)) : null;
+            const count = orderCounts ? (s === '' ? orderCounts.all : (orderCounts[s] ?? 0)) : 0;
             return (
-            <option key={s} value={s}>{statusLabelMap[s]}{count !== null ? ` (${count})` : ''}</option>
+            <option key={s} value={s}>{statusLabelMap[s]}{count > 0 ? ` (${count})` : ''}</option>
           );})}
         </select>
       </div>

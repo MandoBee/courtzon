@@ -58,13 +58,13 @@ export default function NotificationsPage() {
   const total = data?.total || 0;
   const totalPages = Math.ceil(total / PAGE_SIZE);
 
-  const tabs: { key: FilterTab; label: string }[] = [
-    { key: 'all', label: `All${counts ? ` (${counts.all})` : ''}` },
-    { key: 'unread', label: `Unread${counts ? ` (${counts.unread})` : ''}` },
-    { key: 'info', label: `Info${counts ? ` (${counts.info})` : ''}` },
-    { key: 'success', label: `Success${counts ? ` (${counts.success})` : ''}` },
-    { key: 'warning', label: `Warning${counts ? ` (${counts.warning})` : ''}` },
-    { key: 'error', label: `Error${counts ? ` (${counts.error})` : ''}` },
+  const tabs: { key: FilterTab; label: string; count: number }[] = [
+    { key: 'all', label: 'All', count: counts?.all ?? 0 },
+    { key: 'unread', label: 'Unread', count: counts?.unread ?? 0 },
+    { key: 'info', label: 'Info', count: counts?.info ?? 0 },
+    { key: 'success', label: 'Success', count: counts?.success ?? 0 },
+    { key: 'warning', label: 'Warning', count: counts?.warning ?? 0 },
+    { key: 'error', label: 'Error', count: counts?.error ?? 0 },
   ];
 
   if (isLoading) {
@@ -104,13 +104,18 @@ export default function NotificationsPage() {
           <button
             key={tab.key}
             onClick={() => { setFilterTab(tab.key); setPage(1); }}
-            className={`px-3 py-1.5 text-xs font-medium rounded-full transition-colors ${
+            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-full transition-colors ${
               filterTab === tab.key
                 ? 'bg-[var(--color-primary)] text-white'
                 : 'bg-[var(--color-bg)] text-[var(--color-text-muted)] hover:text-[var(--color-text)]'
             }`}
           >
             {tab.label}
+            {tab.count > 0 && (
+              <span className="bg-[var(--color-error)] text-white text-[10px] font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1 leading-none">
+                {tab.count > 99 ? '99+' : tab.count}
+              </span>
+            )}
           </button>
         ))}
       </div>
