@@ -471,8 +471,11 @@ CREATE TABLE `booking_intents` (
   `resource_id` bigint(20) unsigned NOT NULL,
   `booking_type` enum('public_match','private_match','academy','clinic','coach_session') NOT NULL DEFAULT 'private_match',
   `booking_date` date NOT NULL,
+  `business_date` date NOT NULL COMMENT 'The Business Day this intent belongs to. Resolved by OperatingHoursEngine.',
   `start_time` time NOT NULL,
   `end_time` time NOT NULL,
+  `start_at_utc` timestamp NOT NULL COMMENT 'Absolute start time in UTC.',
+  `end_at_utc` timestamp NOT NULL COMMENT 'Absolute end time in UTC.',
   `total_amount` decimal(12,2) NOT NULL,
   `commission_amount` decimal(12,2) DEFAULT 0.00,
   `club_amount` decimal(12,2) DEFAULT 0.00,
@@ -485,7 +488,9 @@ CREATE TABLE `booking_intents` (
   PRIMARY KEY (`id`),
   KEY `idx_expires` (`expires_at`),
   KEY `idx_booking_intents_user` (`user_id`),
-  KEY `idx_booking_intents_resource_date` (`resource_id`,`booking_date`)
+  KEY `idx_booking_intents_resource_date` (`resource_id`,`booking_date`),
+  KEY `idx_booking_intents_start_at_utc` (`start_at_utc`),
+  KEY `idx_booking_intents_business_date` (`business_date`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 DROP TABLE IF EXISTS `booking_invitations`;
@@ -574,7 +579,10 @@ CREATE TABLE `bookings` (
   `branch_id` int(10) unsigned DEFAULT NULL COMMENT 'Denormalized from resource for branch-level accounting',
   `booking_type` enum('public_match','private_match','academy','clinic','coach_session') NOT NULL,
   `visibility` enum('public','private') DEFAULT 'public',
+  `start_at_utc` timestamp NOT NULL COMMENT 'Absolute start time in UTC. Source of truth for all time operations.',
+  `end_at_utc` timestamp NOT NULL COMMENT 'Absolute end time in UTC. Source of truth for all time operations.',
   `booking_date` date NOT NULL,
+  `business_date` date NOT NULL COMMENT 'The Business Day this booking belongs to. Resolved by OperatingHoursEngine.',
   `start_time` time NOT NULL,
   `end_time` time NOT NULL,
   `total_amount` decimal(12,2) NOT NULL,
@@ -599,6 +607,8 @@ CREATE TABLE `bookings` (
   KEY `idx_resource` (`resource_id`),
   KEY `idx_branch` (`branch_id`),
   KEY `idx_bookings_org_resource` (`organisation_id`,`resource_id`,`booking_date`,`booking_status`),
+  KEY `idx_bookings_start_at_utc` (`start_at_utc`),
+  KEY `idx_bookings_business_date` (`business_date`),
   CONSTRAINT `fk_booking_branch` FOREIGN KEY (`branch_id`) REFERENCES `branches` (`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
