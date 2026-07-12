@@ -324,7 +324,7 @@ export default function CartPage() {
           field="payment_status"
           interval={1500}
           timeout={90000}
-          onPaid={() => { setPollingPaid(false); showToast('Order placed successfully!', 'success'); navigate('/marketplace/orders'); }}
+          onPaid={() => { queryClient.invalidateQueries({ queryKey: ['mp-orders'] }); queryClient.invalidateQueries({ queryKey: ['mp-order'] }); setPollingPaid(false); showToast('Order placed successfully!', 'success'); navigate('/marketplace/orders'); }}
           onTimeout={() => { setPollingPaid(false); showToast('Payment confirmation is taking longer than expected. Your order is pending — we will update you shortly.', 'warning'); }}
         />
       )}
@@ -357,6 +357,8 @@ export default function CartPage() {
               if (pmId) {
                 const result = await confirmPayment(pmId);
                 if (result.confirmed) {
+                  queryClient.invalidateQueries({ queryKey: ['mp-orders'] });
+                  queryClient.invalidateQueries({ queryKey: ['mp-order'] });
                   showToast('Order placed successfully!', 'success');
                   navigate('/marketplace/orders');
                   return;
