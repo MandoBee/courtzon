@@ -120,7 +120,7 @@ function ResourceCard({ resource, date, isRestricted, selectedSlots, selectedRes
     enabled: !!resource.id && !!date,
   });
 
-  const slots: { slot_start: string; slot_end: string; status: string; dayOffset?: number }[] = slotsData || [];
+  const slots: { slot_start: string; slot_end: string; status: string; dayOffset?: number; businessDate?: string; startAtUtc?: string; utcOffsetMinutes?: number }[] = slotsData || [];
   const isThisResourceSelected = selectedResourceId === resource.id;
 
   const getSlotStatus = (time: string): 'expired' | 'booked' | 'available' | 'selected' => {
@@ -175,18 +175,23 @@ function ResourceCard({ resource, date, isRestricted, selectedSlots, selectedRes
             <div className="flex flex-wrap gap-1">
               {slots.map((slot) => {
                 const status = getSlotStatus(slot.slot_start);
+                const isOvernight = slot.businessDate && slot.businessDate !== date;
                 return (
-                  <button
-                    key={slot.slot_start}
-                    type="button"
-                    onClick={(e) => { e.stopPropagation(); onToggleSlot(slot.slot_start, status); }}
-                    disabled={status === 'booked' || status === 'expired'}
-                    className={`px-2 py-0.5 text-[10px] rounded-[var(--radius-sm)] border transition-colors ${slotColor(status)}`}
-                  >
-                    {slot.slot_start}
-                  </button>
-                );
-              })}
+                  <div key={slot.slot_start} className="relative">
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); onToggleSlot(slot.slot_start, status); }}
+                      disabled={status === 'booked' || status === 'expired'}
+                      className={`px-2 py-0.5 text-[10px] rounded-[var(--radius-sm)] border transition-colors ${slotColor(status)}`}
+                    >
+                      {slot.slot_start}
+                    </button>
+                    {isOvernight && (
+                      <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-[var(--color-warning)]" title="Belongs to previous Business Day" />
+                    )}
+                    </div>
+                  );
+                })}
             </div>
           )}
         </div>
@@ -290,7 +295,7 @@ export default function BookingModal({ open, onClose }: BookingModalProps) {
   const branchResources = (resources || []).filter((r: any) =>
     r.sport_id === selectedSportId
   );
-  const slots: { slot_start: string; slot_end: string; status: string; dayOffset?: number }[] = slotsData || [];
+  const slots: { slot_start: string; slot_end: string; status: string; dayOffset?: number; businessDate?: string; startAtUtc?: string; utcOffsetMinutes?: number }[] = slotsData || [];
 
   const selectedResource = branchResources.find((r: any) => r.id === selectedResourceId);
 
@@ -675,9 +680,14 @@ export default function BookingModal({ open, onClose }: BookingModalProps) {
       {/* Step 4: Resource Preview → Slot Selection */}
       {step === 4 && (
         <div>
-          <h3 className="text-lg font-semibold text-[var(--color-text)] mb-4">
+          <h3 className="text-lg font-semibold text-[var(--color-text)] mb-1">
             Step 4: Select time slots at {selectedResource?.name}
           </h3>
+          {selectedBranch?.timezone && (
+            <p className="text-xs text-[var(--color-text-muted)] mb-3">
+              Times shown in {selectedBranch.timezone} · Current Business Day: {apiDate}
+            </p>
+          )}
 
           <div className="flex gap-2 mb-3 text-xs text-[var(--color-text-muted)]">
             <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-[var(--color-success-bg)] inline-block" /> Available</span>
@@ -687,21 +697,42 @@ export default function BookingModal({ open, onClose }: BookingModalProps) {
 
           <div className="flex flex-wrap gap-1.5 mb-4">
             {slots.length === 0 && <p className="text-xs text-[var(--color-text-muted)]">{t('booking.loading_slots')}</p>}
-            {slots.map((slot: any) => {
-              const st = slot.slot_start;
-              const status = getSlotStatus(st);
+            {(() => {
+              const sameDay = slots.filter((s: any) => !s.businessDate || s.businessDate === apiDate);
+              const overnight = slots.filter((s: any) => s.businessDate && s.businessDate !== apiDate);
               return (
-                <button
-                  key={st}
-                  type="button"
-                  onClick={() => handleSlotClick(st)}
-                  disabled={status === 'booked' || status === 'expired'}
-                  className={`px-2 py-1 text-xs rounded-[var(--radius-sm)] border transition-colors ${getSlotColor(status)}`}
-                >
-                  {st}
-                </button>
+                <>
+                  {sameDay.map((slot: any) => {
+                    const st = slot.slot_start;
+                    const status = getSlotStatus(st);
+                    return (
+                      <button key={st} type="button" onClick={() => handleSlotClick(st)}
+                        disabled={status === 'booked' || status === 'expired'}
+                        className={`px-2 py-1 text-xs rounded-[var(--radius-sm)] border transition-colors ${getSlotColor(status)}`}>
+                        {st}
+                      </button>
+                    );
+                  })}
+                  {overnight.length > 0 && (
+                    <div className="w-full text-[10px] text-[var(--color-text-muted)] mt-1 mb-0.5 border-t border-dashed border-[var(--color-border)] pt-1">
+                      Continues from {apiDate} ↓
+                    </div>
+                  )}
+                  {overnight.map((slot: any) => {
+                    const st = slot.slot_start;
+                    const status = getSlotStatus(st);
+                    return (
+                      <button key={st} type="button" onClick={() => handleSlotClick(st)}
+                        disabled={status === 'booked' || status === 'expired'}
+                        className={`px-2 py-1 text-xs rounded-[var(--radius-sm)] border transition-colors ${getSlotColor(status)}`}
+                        title={`Belongs to Business Day ${slot.businessDate || apiDate}`}>
+                        {st}
+                      </button>
+                    );
+                  })}
+                </>
               );
-            })}
+            })()}
           </div>
 
           {selectedSlots.length > 0 && (
