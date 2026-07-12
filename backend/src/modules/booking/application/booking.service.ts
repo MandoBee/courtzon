@@ -5,7 +5,6 @@ import { transactionService } from '../../financial/application/transaction.serv
 import { transactionRepository } from '../../financial/infrastructure/transaction.repository.js';
 import { walletRepository } from '../../wallet/infrastructure/repositories/wallet.repository.js';
 import { resourceRepository } from '../../organisations/infrastructure/repositories/resource.repository.js';
-import { slotGenerator } from '../domain/slot-generator.js';
 import { redisLock } from '../infrastructure/redis/redis-lock.js';
 import { getPool } from '../../../database/mysql.js';
 import { TimeEngine } from '../../time/index.js';
@@ -23,10 +22,30 @@ type RowData = mysql.RowDataPacket[];
 
 const log = createModuleLogger('booking');
 
-function addDays(dateStr: string, days: number): string {
-  const d = new Date(dateStr + 'T00:00:00Z');
-  d.setUTCDate(d.getUTCDate() + days);
-  return d.toISOString().slice(0, 10);
+// ── Split a time range into individual slots of the given duration ──
+// Used for booking_slots population and Redis locking.
+function splitTimeRange(startTime: string, endTime: string, durationMinutes: number): { start: string; end: string }[] {
+  const [startH, startM] = startTime.split(':').map(Number);
+  const [endH, endM] = endTime.split(':').map(Number);
+  let startMinutes = startH * 60 + startM;
+  let endMinutes = endH * 60 + endM;
+  if (endMinutes <= startMinutes) endMinutes += 1440;
+
+  const slots: { start: string; end: string }[] = [];
+  let current = startMinutes;
+  while (current + durationMinutes <= endMinutes) {
+    const slotStartH = Math.floor(current / 60) % 24;
+    const slotStartM = current % 60;
+    const slotEnd = current + durationMinutes;
+    const slotEndH = Math.floor(slotEnd / 60) % 24;
+    const slotEndM = slotEnd % 60;
+    slots.push({
+      start: `${String(slotStartH).padStart(2, '0')}:${String(slotStartM).padStart(2, '0')}`,
+      end: `${String(slotEndH).padStart(2, '0')}:${String(slotEndM).padStart(2, '0')}`,
+    });
+    current = slotEnd;
+  }
+  return slots;
 }
 
 export class BookingService {
@@ -53,12 +72,14 @@ export class BookingService {
     // Keep existing bump logic for backward compatibility (booking_date, booking_slots)
     let bookingDate = input.bookingDate;
     if (closingTime < openingTime && input.startTime < openingTime) {
-      bookingDate = addDays(input.bookingDate, 1);
+      const [y, m, d] = input.bookingDate.split('-').map(Number);
+      const next = new Date(Date.UTC(y, m - 1, d + 1));
+      bookingDate = `${next.getUTCFullYear()}-${String(next.getUTCMonth() + 1).padStart(2, '0')}-${String(next.getUTCDate()).padStart(2, '0')}`;
     }
 
     // ── Multi-slot: generate individual slots from the time range ──
     const slotDuration = (resource as any)?.slot_duration || (resource as any)?.default_slot_duration || 60;
-    const individualSlots = slotGenerator.generate(input.startTime, input.endTime, slotDuration);
+    const individualSlots = splitTimeRange(input.startTime, input.endTime, slotDuration);
 
     // Validate: slots must cover the requested range exactly (no gaps, aligned to grid)
     if (individualSlots.length === 0) {
@@ -431,7 +452,7 @@ export class BookingService {
       // Populate booking_slots for each individual slot in the intent range
       const intentResource = await resourceRepository.findById(intent.resource_id);
       const intentSlotDuration = (intentResource as any)?.slot_duration || (intentResource as any)?.default_slot_duration || 60;
-      const intentSlots = slotGenerator.generate(intent.start_time, intent.end_time, intentSlotDuration);
+      const intentSlots = splitTimeRange(intentStart, intentEnd, intentSlotDuration);
       for (const slot of intentSlots) {
         await conn.execute(
           `INSERT INTO booking_slots (booking_id, resource_id, booking_date, slot_start, slot_end, is_available)
