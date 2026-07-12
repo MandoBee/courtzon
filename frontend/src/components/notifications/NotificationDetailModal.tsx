@@ -20,6 +20,8 @@ export interface AppNotification {
   category_slug?: string | null;
   action_key?: string | null;
   action_payload?: Record<string, unknown> | null;
+  related_entity_type?: string | null;
+  related_entity_id?: string | null;
 }
 
 interface NotificationDetailModalProps {
