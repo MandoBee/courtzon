@@ -4,6 +4,7 @@ import { notificationsApi } from '../../services/notifications';
 import { useNotificationStore } from '../../store/notification.store';
 import NotificationDetailModal, { type AppNotification } from '../../components/notifications/NotificationDetailModal';
 import { Skeleton, SkeletonRow } from '../../components/ui/Skeleton';
+import { Pagination } from '../../components/ui/Pagination';
 import { useTranslation } from '../../i18n';
 
 type FilterTab = 'all' | 'unread' | 'info' | 'success' | 'warning' | 'error';
@@ -56,7 +57,6 @@ export default function NotificationsPage() {
 
   const notifications: AppNotification[] = data?.data || [];
   const total = data?.total || 0;
-  const totalPages = Math.ceil(total / PAGE_SIZE);
 
   const tabs: { key: FilterTab; label: string; count: number }[] = [
     { key: 'all', label: 'All', count: counts?.all ?? 0 },
@@ -167,29 +167,7 @@ export default function NotificationsPage() {
         </div>
       )}
 
-      {totalPages > 1 && (
-        <div className="flex items-center justify-between">
-          <span className="text-xs text-[var(--color-text-muted)]">
-            Page {page} of {totalPages}
-          </span>
-          <div className="flex gap-1">
-            <button
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              disabled={page <= 1}
-              className="px-3 py-1 text-xs border border-[var(--color-border)] rounded disabled:opacity-40"
-            >
-              {t('common.previous')}
-            </button>
-            <button
-              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              disabled={page >= totalPages}
-              className="px-3 py-1 text-xs border border-[var(--color-border)] rounded disabled:opacity-40"
-            >
-              {t('common.next')}
-            </button>
-          </div>
-        </div>
-      )}
+      <Pagination total={total} page={page} pageSize={PAGE_SIZE} onPageChange={setPage} />
 
       <NotificationDetailModal
         notification={selected}

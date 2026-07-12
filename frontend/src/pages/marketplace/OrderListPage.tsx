@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import api from '../../services/api';
 import { formatPrice } from '../../utils/currency';
+import { Pagination } from '../../components/ui/Pagination';
 import { useTranslation } from '../../i18n';
 
 const ORDER_STATUSES = ['', 'pending', 'confirmed', 'processing', 'shipped', 'delivered', 'cancelled'] as const;
@@ -172,15 +173,7 @@ export default function OrderListPage() {
         </div>
       )}
 
-      {orders && orders.total > orders.limit && (
-        <div className="flex items-center justify-between">
-          <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1}
-            className="text-sm text-[var(--color-primary)] disabled:opacity-50">{t('common.previous')}</button>
-          <span className="text-sm text-[var(--color-text-muted)]">Page {page} of {Math.ceil(orders.total / orders.limit)}</span>
-          <button onClick={() => setPage((p) => p + 1)} disabled={page >= Math.ceil(orders.total / orders.limit)}
-            className="text-sm text-[var(--color-primary)] disabled:opacity-50">{t('common.next')}</button>
-        </div>
-      )}
+      <Pagination total={orders?.total ?? 0} page={page} pageSize={20} onPageChange={setPage} />
     </div>
   );
 }
