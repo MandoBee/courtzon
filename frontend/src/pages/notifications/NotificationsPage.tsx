@@ -1,18 +1,15 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { notificationsApi } from '../../services/notifications';
 import { useNotificationStore } from '../../store/notification.store';
 import NotificationDetailModal, { type AppNotification } from '../../components/notifications/NotificationDetailModal';
 import { Skeleton, SkeletonRow } from '../../components/ui/Skeleton';
 import { useTranslation } from '../../i18n';
-import { getNotificationRoute } from '../../utils/notificationRoutes';
 
 type FilterTab = 'all' | 'unread' | 'info' | 'success' | 'warning' | 'error';
 
 export default function NotificationsPage() {
   const { t } = useTranslation();
-  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const refreshUnreadCount = useNotificationStore((s) => s.refreshUnreadCount);
   const [page, setPage] = useState(1);
@@ -120,14 +117,7 @@ export default function NotificationsPage() {
             <div
               key={n.id}
               className={`flex items-start gap-3 px-4 py-3 border-b border-[var(--color-border)] last:border-0 hover:bg-[var(--color-bg)] cursor-pointer transition-colors ${!n.is_read ? 'bg-[var(--color-info-bg)]/50 ' : ''}`}
-              onClick={() => {
-                const route = getNotificationRoute(n);
-                if (route) {
-                  navigate(route);
-                } else {
-                  setSelected(n);
-                }
-              }}
+              onClick={() => setSelected(n)}
             >
               <span className="text-xl shrink-0 mt-0.5">{n.icon || '📬'}</span>
               <div className="flex-1 min-w-0">
