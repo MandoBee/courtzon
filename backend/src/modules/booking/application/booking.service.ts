@@ -351,11 +351,17 @@ export class BookingService {
     return bookingRepository.findIntent(intentId);
   }
 
-  async fulfillBookingIntent(intentId: number) {
-    const pool = getPool();
-    const conn = await pool.getConnection();
+  async fulfillBookingIntent(intentId: number, connArg?: mysql.PoolConnection) {
+    const ownsTx = !connArg;
+    let conn: mysql.PoolConnection;
+    if (connArg) {
+      conn = connArg;
+    } else {
+      const pool = getPool();
+      conn = await pool.getConnection();
+    }
     try {
-      await conn.beginTransaction();
+      if (ownsTx) await conn.beginTransaction();
 
       const [intentRows] = await conn.execute<RowData>(
         'SELECT * FROM booking_intents WHERE id = ? FOR UPDATE', [intentId]
@@ -369,7 +375,7 @@ export class BookingService {
         );
         const existing = (bRows[0] as any[])[0];
         if (existing) {
-          await conn.commit();
+          if (ownsTx) await conn.commit();
           return { success: true, booking: existing, isPaid: existing.payment_status === 'paid' };
         }
       }
@@ -464,7 +470,7 @@ export class BookingService {
         );
       }
 
-      await conn.commit();
+      if (ownsTx) await conn.commit();
 
       const booking = await bookingRepository.findById(bookingId);
 
@@ -497,10 +503,10 @@ export class BookingService {
 
       return { success: true, booking, isPaid, timezone: intentTz };
     } catch (err) {
-      await conn.rollback();
+      if (ownsTx) await conn.rollback();
       throw err;
     } finally {
-      conn.release();
+      if (ownsTx) conn.release();
     }
   }
 

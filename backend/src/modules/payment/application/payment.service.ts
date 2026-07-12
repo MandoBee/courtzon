@@ -9,6 +9,7 @@ import type mysql from 'mysql2/promise';
 import { getPool } from '../../../database/mysql.js';
 import { createModuleLogger } from '../../../shared/utils/logger.js';
 import { eventBus } from '../../../shared/event-bus/index.js';
+import { bookingService } from '../../booking/application/booking.service.js';
 import { confirmBooking } from '../../../platform/booking/BookingSaga.js';
 import { confirmPayment, failPayment, refundPayment, expirePayment as sagaExpirePayment, emitPaymentCompleted } from '../../../platform/payment/PaymentSaga.js';
 
@@ -726,7 +727,10 @@ export class PaymentService {
     } else if (refType === 'booking') {
       await this._fulfillBooking(conn, transaction, traceId);
     } else if (refType === 'booking_intent') {
-      await this._fulfillBookingIntent(conn, transaction, traceId);
+      const intentId = transaction.booking_id;
+      if (intentId) {
+        await bookingService.fulfillBookingIntent(intentId, conn);
+      }
     } else if (refType === 'wallet_topup') {
       await this._fulfillWalletTopup(conn, transaction, traceId);
     }
@@ -761,95 +765,6 @@ export class PaymentService {
       sellerId: 0,
     });
     log.info({ traceId, orderId: transaction.order_id }, 'Order confirmed');
-  }
-
-  private async _fulfillBookingIntent(conn: mysql.PoolConnection, transaction: any, traceId: string): Promise<void> {
-    const intentId = transaction.booking_id;
-    if (!intentId) {
-      log.error({ traceId, txnId: transaction.id }, 'No booking intent on payment');
-      return;
-    }
-    const [intents] = await conn.execute<RowData>(
-      'SELECT * FROM booking_intents WHERE id = ? FOR UPDATE', [intentId],
-    );
-    const intent = intents[0] as any;
-    if (!intent) {
-      log.error({ traceId, intentId }, 'Booking intent not found');
-      return;
-    }
-
-    let bookingId: number;
-    const isNew = !intent.fulfilled_booking_id;
-
-    if (intent.fulfilled_booking_id) {
-      bookingId = intent.fulfilled_booking_id;
-      log.info({ traceId, bookingId, intentId }, 'Booking already exists — confirming');
-    } else {
-      const [result] = await conn.execute<mysql.ResultSetHeader>(
-        `INSERT INTO bookings (public_id, user_id, organisation_id, branch_id, resource_id, booking_type,
-          booking_date, start_time, end_time, total_amount, commission_amount, club_amount,
-          booking_status, payment_status, notes, payment_method)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 'pending', ?, ?)`,
-        [randomUUID(), intent.user_id, intent.organisation_id, intent.branch_id,
-         intent.resource_id, intent.booking_type, intent.booking_date, intent.start_time,
-         intent.end_time, intent.total_amount, intent.commission_amount, intent.club_amount,
-         intent.notes, intent.payment_method],
-      );
-      bookingId = result.insertId;
-
-      await conn.execute(
-        'UPDATE booking_intents SET fulfilled_booking_id = ?, intent_status = ?, fulfilled_at = NOW() WHERE id = ?',
-        [bookingId, 'fulfilled', intent.id]
-      );
-      log.info({ traceId, bookingId, intentId }, 'Booking created (pending)');
-    }
-
-    await conn.execute(
-      'UPDATE payment_transactions SET booking_id = ?, reference_type = ? WHERE id = ?',
-      [bookingId, 'booking', transaction.id],
-    );
-
-    // Emit booking:created for new bookings
-    if (isNew) {
-      eventBus.emit('booking:created', {
-        bookingId,
-        userId: intent.user_id,
-        courtId: intent.resource_id || 0,
-        startTime: new Date(`${String(intent.booking_date).split('T')[0]}T${intent.start_time}`),
-        endTime: new Date(`${String(intent.booking_date).split('T')[0]}T${intent.end_time}`),
-        bookingType: intent.booking_type,
-        organisationId: intent.organisation_id || undefined,
-        branchId: intent.branch_id || undefined,
-      });
-    }
-
-    // Confirm the booking as paid (payment was already verified by webhook)
-    await conn.execute(
-      "UPDATE bookings SET booking_status = 'confirmed', payment_status = 'paid', updated_at = NOW() WHERE id = ? AND booking_status = 'pending'",
-      [bookingId]
-    );
-
-    // Emit booking:confirmed (triggers match creation)
-    const confirmedUserId = transaction.user_id || intent.user_id;
-    eventBus.emit('booking:confirmed' as any, {
-      bookingId,
-      userId: confirmedUserId,
-      courtId: intent.resource_id || 0,
-      bookingType: intent.booking_type,
-      status: 'confirmed',
-      timestamp: new Date().toISOString(),
-    });
-
-    // Schedule reminder
-    if (process.env.LEGACY_REMINDER_ENABLED === 'true') {
-      const startDate = new Date(`${String(intent.booking_date).split('T')[0]}T${intent.start_time}`);
-      const { scheduleBookingReminder } = await import('../../notifications/application/scheduler.service.js');
-      scheduleBookingReminder(bookingId, intent.user_id, startDate).catch((e: any) =>
-        log.error({ err: e, bookingId }, 'Failed to schedule booking reminder')
-      );
-    }
-
-    log.info({ traceId, bookingId, intentId }, 'Booking confirmed');
   }
 
   private async _cancelPendingBooking(_conn: mysql.PoolConnection, intentId: number, traceId: string): Promise<void> {
