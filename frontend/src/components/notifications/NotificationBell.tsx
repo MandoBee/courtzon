@@ -5,6 +5,7 @@ import { notificationsApi } from '../../services/notifications';
 import { useAuthStore } from '../../store/auth.store';
 import { useNotificationStore } from '../../store/notification.store';
 import NotificationDetailModal, { type AppNotification } from './NotificationDetailModal';
+import { getNotificationRoute } from '../../utils/notificationRoutes';
 
 export default function NotificationBell() {
   const navigate = useNavigate();
@@ -54,8 +55,13 @@ export default function NotificationBell() {
 
   const openNotification = useCallback((n: AppNotification) => {
     setOpen(false);
-    setSelected(n);
-  }, []);
+    const route = getNotificationRoute(n);
+    if (route) {
+      navigate(route);
+    } else {
+      setSelected(n);
+    }
+  }, [navigate]);
 
   return (
     <>

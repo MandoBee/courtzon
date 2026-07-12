@@ -6,6 +6,7 @@ import { useToast } from '../ui/Toast';
 import { notificationsApi } from '../../services/notifications';
 import api from '../../services/api';
 import { formatDateTime } from '../../utils/formatDate';
+import { getNotificationRoute } from '../../utils/notificationRoutes';
 
 export interface AppNotification {
   id: number;
@@ -76,6 +77,7 @@ export default function NotificationDetailModal({
   const categoryLabel = notification.category_slug
     ? notification.category_slug.replace(/_/g, ' ')
     : null;
+  const route = getNotificationRoute(notification);
 
   return (
     <Modal open={open} onClose={onClose} title={notification.title} size="md">
@@ -102,6 +104,19 @@ export default function NotificationDetailModal({
         </div>
 
         <div className="flex flex-wrap items-center justify-end gap-2 pt-2 border-t border-[var(--color-border)]">
+          {route && (
+            <button
+              type="button"
+              onClick={() => {
+                onClose();
+                navigate(route);
+              }}
+              className="px-4 py-2 text-sm font-medium rounded-[var(--radius-md)] bg-[var(--color-primary)] text-white hover:opacity-90"
+            >
+              View
+            </button>
+          )}
+
           <button
             type="button"
             onClick={onClose}
