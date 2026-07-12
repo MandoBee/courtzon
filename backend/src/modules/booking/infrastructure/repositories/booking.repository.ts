@@ -36,9 +36,10 @@ export class BookingRepository {
         total_amount, commission_amount, club_amount,
         booking_status, payment_status, payment_method, notes)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [generateUUID(), data.userId, data.organisationId, data.branchId, data.resourceId, data.bookingType,
-       data.bookingDate, data.businessDate || data.bookingDate, data.startTime, data.endTime,
-       data.startAtUtc || null, data.endAtUtc || null,
+       [generateUUID(), data.userId, data.organisationId, data.branchId, data.resourceId, data.bookingType,
+        data.bookingDate, data.businessDate || data.bookingDate, data.startTime, data.endTime,
+        data.startAtUtc ? data.startAtUtc.replace('T', ' ').replace(/\.\d+Z$/, '') : null,
+        data.endAtUtc ? data.endAtUtc.replace('T', ' ').replace(/\.\d+Z$/, '') : null,
        data.totalAmount, data.commissionAmount || 0, data.clubAmount || 0,
        data.bookingStatus || 'pending', data.paymentStatus || 'pending', data.paymentMethod || null, data.notes || null]
     );
@@ -61,7 +62,8 @@ export class BookingRepository {
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [data.userId, data.branchId, data.organisationId, data.resourceId, data.bookingType,
        data.bookingDate, data.businessDate || data.bookingDate, data.startTime, data.endTime,
-       data.startAtUtc || null, data.endAtUtc || null,
+       data.startAtUtc ? data.startAtUtc.replace('T', ' ').replace(/\.\d+Z$/, '') : null,
+       data.endAtUtc ? data.endAtUtc.replace('T', ' ').replace(/\.\d+Z$/, '') : null,
        data.totalAmount, data.commissionAmount || 0, data.clubAmount || 0,
        data.notes || null, data.paymentMethod || null,
        data.matchmaking ? JSON.stringify(data.matchmaking) : null,

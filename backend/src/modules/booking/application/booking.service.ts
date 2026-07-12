@@ -433,7 +433,8 @@ export class BookingService {
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [randomUUID(), intent.user_id, intent.organisation_id, intent.branch_id, intent.resource_id,
          intent.booking_type, intent.booking_date, intentBusinessDate, intent.start_time, intent.end_time,
-         intentStartUtc, intentEndUtc,
+         intentStartUtc.replace('T', ' ').replace(/\.\d+Z$/, ''),
+         intentEndUtc.replace('T', ' ').replace(/\.\d+Z$/, ''),
          intent.total_amount, intent.commission_amount, intent.club_amount,
          bookingStatus, paymentStatus, intent.notes, intent.payment_method]
       );
