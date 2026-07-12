@@ -26,6 +26,12 @@ export default function NotificationsPage() {
     queryFn: () => notificationsApi.getAll(page, PAGE_SIZE, filters),
   });
 
+  const { data: counts } = useQuery({
+    queryKey: ['notifications', 'counts'],
+    queryFn: () => notificationsApi.getCounts(),
+    refetchInterval: 30_000,
+  });
+
   const markAllMutation = useMutation({
     mutationFn: notificationsApi.markAllAsRead,
     onSuccess: () => {
@@ -53,12 +59,12 @@ export default function NotificationsPage() {
   const totalPages = Math.ceil(total / PAGE_SIZE);
 
   const tabs: { key: FilterTab; label: string }[] = [
-    { key: 'all', label: 'All' },
-    { key: 'unread', label: 'Unread' },
-    { key: 'info', label: 'Info' },
-    { key: 'success', label: 'Success' },
-    { key: 'warning', label: 'Warning' },
-    { key: 'error', label: 'Error' },
+    { key: 'all', label: `All${counts ? ` (${counts.all})` : ''}` },
+    { key: 'unread', label: `Unread${counts ? ` (${counts.unread})` : ''}` },
+    { key: 'info', label: `Info${counts ? ` (${counts.info})` : ''}` },
+    { key: 'success', label: `Success${counts ? ` (${counts.success})` : ''}` },
+    { key: 'warning', label: `Warning${counts ? ` (${counts.warning})` : ''}` },
+    { key: 'error', label: `Error${counts ? ` (${counts.error})` : ''}` },
   ];
 
   if (isLoading) {

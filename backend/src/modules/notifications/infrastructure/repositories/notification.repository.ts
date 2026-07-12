@@ -187,7 +187,7 @@ export class NotificationRepository {
     );
   }
 
-  async getFilters(userId: number): Promise<{ types: string[]; priorities: string[] }> {
+  async getFilters(userId: number): Promise<{ types: string[]; priorities: string[]; counts: { all: number; unread: number; info: number; success: number; warning: number; error: number } }> {
     const [typeRows] = await this.pool.execute<RowData>(
       `SELECT DISTINCT n.type FROM notifications n
        WHERE n.user_id = ? AND n.type IS NOT NULL AND n.type != '' AND n.deleted_at IS NULL
@@ -198,9 +198,37 @@ export class NotificationRepository {
        WHERE n.user_id = ? AND n.priority IS NOT NULL AND n.deleted_at IS NULL
        ORDER BY FIELD(n.priority, 'critical','high','normal','low')`, [userId]
     );
+    const [totalRows] = await this.pool.execute<RowData>(
+      'SELECT COUNT(*) as cnt FROM notifications WHERE user_id = ? AND deleted_at IS NULL',
+      [userId]
+    );
+    const allTotal = (totalRows[0] as any).cnt;
+    const [unreadRows] = await this.pool.execute<RowData>(
+      'SELECT COUNT(*) as cnt FROM notifications WHERE user_id = ? AND is_read = FALSE AND deleted_at IS NULL',
+      [userId]
+    );
+    const unreadTotal = (unreadRows[0] as any).cnt;
+    const [typeCountRows] = await this.pool.execute<RowData>(
+      `SELECT n.type, COUNT(*) as cnt FROM notifications n
+       WHERE n.user_id = ? AND n.deleted_at IS NULL AND n.type IS NOT NULL AND n.type != ''
+       GROUP BY n.type`,
+      [userId]
+    );
+    const typeCounts: Record<string, number> = {};
+    for (const r of typeCountRows as any[]) {
+      typeCounts[r.type] = r.cnt;
+    }
     return {
       types: (typeRows as any[]).map((r: any) => r.type),
       priorities: (priorityRows as any[]).map((r: any) => r.priority),
+      counts: {
+        all: allTotal,
+        unread: unreadTotal,
+        info: typeCounts.info || 0,
+        success: typeCounts.success || 0,
+        warning: typeCounts.warning || 0,
+        error: typeCounts.error || 0,
+      },
     };
   }
 

@@ -596,6 +596,10 @@ export const marketplaceService = {
     return this._groupOrdersByItem(result);
   },
 
+  async getOrderCounts(userId: number) {
+    return repo.getOrderCountsByBuyer(userId);
+  },
+
   _groupOrdersByItem(result: { data: any[]; total: number; page: number; limit: number }) {
     const orders = new Map<number, any>();
     for (const row of result.data as any[]) {

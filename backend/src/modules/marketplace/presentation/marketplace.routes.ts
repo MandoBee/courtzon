@@ -60,6 +60,7 @@ export async function marketplaceRoutes(app: FastifyInstance): Promise<void> {
   // Orders — any authenticated user (own orders)
   app.post('/marketplace/orders', ctrl.checkoutHandler);
   app.get('/marketplace/orders', ctrl.getOrdersHandler);
+  app.get('/marketplace/orders/counts', ctrl.getOrderCountsHandler);
   app.get('/marketplace/orders/:id', ctrl.getOrderHandler);
   app.put('/marketplace/orders/:id/status', ctrl.updateOrderStatusHandler);
   app.post('/marketplace/orders/:id/cancel', ctrl.cancelOrderHandler);

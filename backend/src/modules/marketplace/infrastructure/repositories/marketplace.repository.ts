@@ -1577,4 +1577,22 @@ export const marketplaceRepository = {
     );
     return rows;
   },
+
+  async getOrderCountsByBuyer(buyerId: number) {
+    const pool = getPool();
+    const [rows] = await pool.execute<RowData>(
+      `SELECT status, COUNT(*) as cnt FROM orders
+       WHERE buyer_id = ? AND deleted_at IS NULL
+       GROUP BY status`,
+      [buyerId]
+    );
+    const counts: Record<string, number> = {};
+    let allTotal = 0;
+    for (const r of rows as any[]) {
+      counts[r.status] = r.cnt;
+      allTotal += r.cnt;
+    }
+    counts.all = allTotal;
+    return counts;
+  },
 };

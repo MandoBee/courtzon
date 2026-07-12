@@ -5,6 +5,8 @@ import api from '../../services/api';
 import { formatPrice } from '../../utils/currency';
 import { useTranslation } from '../../i18n';
 
+const ORDER_STATUSES = ['', 'pending', 'confirmed', 'processing', 'shipped', 'delivered', 'cancelled'] as const;
+
 const STATUS_COLORS: Record<string, string> = {
   pending: 'bg-[var(--color-warning-bg)] text-[var(--color-warning-text)]',
   confirmed: 'bg-[var(--color-info-bg)] text-[var(--color-info-text)]',
@@ -24,6 +26,12 @@ export default function OrderListPage() {
   const { data: orders, isLoading } = useQuery({
     queryKey: ['mp-orders', page, statusFilter],
     queryFn: () => api.get('/marketplace/orders', { params: { page, limit: 20, status: statusFilter || undefined } }).then((r) => r.data),
+  });
+
+  const { data: orderCounts } = useQuery({
+    queryKey: ['mp-orders', 'counts'],
+    queryFn: () => api.get('/marketplace/orders/counts').then((r) => r.data),
+    refetchInterval: 30_000,
   });
 
   const cancelOrder = useMutation({
@@ -58,15 +66,17 @@ export default function OrderListPage() {
       </div>
 
       {/* Desktop tabs */}
-      <div className="hidden md:flex gap-2">
-        {['', 'pending', 'confirmed', 'processing', 'shipped', 'delivered', 'cancelled'].map((s) => (
+      <div className="hidden md:flex gap-2 flex-wrap">
+        {ORDER_STATUSES.map((s) => {
+          const count = orderCounts ? (s === '' ? orderCounts.all : (orderCounts[s] ?? 0)) : null;
+          return (
           <button key={s} onClick={() => { setStatusFilter(s); setPage(1); }}
             className={`px-3 py-1.5 text-xs rounded-full border ${
               statusFilter === s ? 'bg-[var(--color-primary)] text-white border-[var(--color-primary)]' : ''
             }`}>
-            {s || t('orders.all')}
+            {s || t('orders.all')}{count !== null ? ` (${count})` : ''}
           </button>
-        ))}
+        );})}
       </div>
 
       {/* Mobile dropdown */}
@@ -76,9 +86,11 @@ export default function OrderListPage() {
           onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
           className="w-full px-3 py-2 text-sm rounded-[var(--radius-md)] border bg-[var(--color-surface)]"
         >
-          {['', 'pending', 'confirmed', 'processing', 'shipped', 'delivered', 'cancelled'].map((s) => (
-            <option key={s} value={s}>{statusLabelMap[s]}</option>
-          ))}
+          {ORDER_STATUSES.map((s) => {
+            const count = orderCounts ? (s === '' ? orderCounts.all : (orderCounts[s] ?? 0)) : null;
+            return (
+            <option key={s} value={s}>{statusLabelMap[s]}{count !== null ? ` (${count})` : ''}</option>
+          );})}
         </select>
       </div>
 

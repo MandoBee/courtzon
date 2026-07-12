@@ -35,6 +35,14 @@ export interface NotificationFilters {
 export interface FiltersResult {
   types: string[];
   priorities: string[];
+  counts: {
+    all: number;
+    unread: number;
+    info: number;
+    success: number;
+    warning: number;
+    error: number;
+  };
 }
 
 export interface NotificationPlatform extends PlatformContract {

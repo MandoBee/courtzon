@@ -352,6 +352,12 @@ export async function getOrdersHandler(request: FastifyRequest, reply: FastifyRe
   return reply.send(orders);
 }
 
+export async function getOrderCountsHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = (request as any).userId;
+  const counts = await svc.getOrderCounts(userId);
+  return reply.send(counts);
+}
+
 export async function getOrderHandler(request: FastifyRequest, reply: FastifyReply) {
   const { id } = request.params as any;
   const userId = (request as any).userId;

@@ -18,6 +18,9 @@ export const notificationsApi = {
   getFilters: () =>
     api.get('/notifications/filters').then((r) => r.data),
 
+  getCounts: () =>
+    api.get('/notifications/filters').then((r) => r.data.counts),
+
   markAsRead: (id: number) =>
     api.put(`/notifications/${id}/read`).then((r) => r.data),
 
