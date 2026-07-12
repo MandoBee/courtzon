@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Modal } from '../ui';
@@ -37,12 +37,18 @@ export default function NotificationDetailModal({
   const { showToast } = useToast();
   const [applied, setApplied] = useState(false);
 
+  const markReadRef = useRef<number | null>(null);
+
   useEffect(() => {
-    if (!open) setApplied(false);
+    if (!open) {
+      setApplied(false);
+      markReadRef.current = null;
+    }
   }, [open, notification?.id]);
 
   useEffect(() => {
-    if (!open || !notification || notification.is_read) return;
+    if (!open || !notification || notification.is_read || markReadRef.current === notification.id) return;
+    markReadRef.current = notification.id;
     notificationsApi.markAsRead(notification.id).then(() => {
       queryClient.invalidateQueries({ queryKey: ['notifications'] });
     });

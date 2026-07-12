@@ -174,7 +174,7 @@ function ProtectedRoute() {
   const location = useLocation();
   if (!isAuthenticated) return <Navigate to="/login" replace />;
   const isAdmin = user?.roles?.some(r => r === 'super-admin' || r === 'admin' || r === 'super_admin');
-  if (isAdmin && !location.pathname.startsWith('/admin') && !location.pathname.startsWith('/org')) {
+  if (isAdmin && !location.pathname.startsWith('/admin') && !location.pathname.startsWith('/org') && !location.pathname.startsWith('/notifications')) {
     return <Navigate to="/admin" replace />;
   }
   return <Outlet />;
