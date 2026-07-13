@@ -53,6 +53,7 @@ const CartPage = lazy(() => import('./pages/marketplace/CartPage'));
 const OrderListPage = lazy(() => import('./pages/marketplace/OrderListPage'));
 const OrderDetailPage = lazy(() => import('./pages/marketplace/OrderDetailPage'));
 const SellerDashboardPage = lazy(() => import('./pages/marketplace/SellerDashboardPage'));
+const WishlistPage = lazy(() => import('./pages/marketplace/WishlistPage'));
 const TournamentListPage = lazy(() => import('./pages/tournaments/TournamentListPage'));
 const TournamentDetailPage = lazy(() => import('./pages/tournaments/TournamentDetailPage'));
 const TournamentCreatePage = lazy(() => import('./pages/tournaments/TournamentCreatePage'));
@@ -422,6 +423,7 @@ function AppContent() {
           <Route path="/marketplace/orders/:id" element={<OrderDetailPage />} />
           <Route path="/marketplace/seller" element={<SellerDashboardPage />} />
           <Route path="/marketplace/player/products" element={<PlayerProductsPage />} />
+          <Route path="/marketplace/wishlist" element={<WishlistPage />} />
           <Route path="/tournaments" element={<TournamentListPage />} />
           <Route path="/tournaments/new" element={<TournamentCreatePage />} />
           <Route path="/tournaments/:id" element={<TournamentDetailPage />} />
