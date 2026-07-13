@@ -843,7 +843,7 @@ export default function MessagesPage() {
                 {groupMembersData.map((m: any) => (
                   <div key={m.id} className="flex items-center gap-2 p-2 rounded-lg bg-[var(--color-bg)]">
                     <EntityImage src={m.avatar_url} name={m.full_name} className="w-8 h-8 rounded-full text-xs shrink-0" />
-                    <span className="text-sm text-[var(--color-text)] flex-1 truncate">{m.full_name}</span>
+                    <span className="text-sm text-gray-900 dark:text-gray-100 flex-1 truncate">{m.full_name}</span>
                     {m.id === groupInfo?.created_by && (
                       <span className="text-[10px] px-2 py-0.5 rounded-full bg-[var(--color-primary)]/10 text-[var(--color-primary)] font-medium">
                         Creator
@@ -915,7 +915,7 @@ export default function MessagesPage() {
                   <div key={inv.id} className="flex items-center gap-2 p-2 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
                     <EntityImage src={inv.avatar_url} name={inv.full_name} className="w-8 h-8 rounded-full text-xs shrink-0" />
                     <div className="min-w-0 flex-1">
-                      <p className="text-sm text-[var(--color-text)] truncate">{inv.full_name}</p>
+                      <p className="text-sm text-gray-900 dark:text-gray-100 truncate">{inv.full_name}</p>
                       <p className="text-[10px] text-[var(--color-text-muted)]">Invited {new Date(inv.invited_at).toLocaleDateString()}</p>
                     </div>
                     <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 font-medium shrink-0">
