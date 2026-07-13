@@ -4,7 +4,6 @@ import { notificationsApi } from '../../services/notifications';
 import { useNotificationStore } from '../../store/notification.store';
 import NotificationDetailModal, { type AppNotification } from '../../components/notifications/NotificationDetailModal';
 import { Skeleton, SkeletonRow } from '../../components/ui/Skeleton';
-import { Pagination } from '../../components/ui/Pagination';
 import { useTranslation } from '../../i18n';
 
 type FilterTab = 'all' | 'unread' | 'info' | 'success' | 'warning' | 'error';
@@ -57,6 +56,18 @@ export default function NotificationsPage() {
 
   const notifications: AppNotification[] = data?.data || [];
   const total = data?.total || 0;
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const getPageNumbers = () => {
+    if (totalPages <= 7) return Array.from({ length: totalPages }, (_, i) => i + 1);
+    const pages: (number | 'ellipsis')[] = [1];
+    if (page > 3) pages.push('ellipsis');
+    const start = Math.max(2, page - 1);
+    const end = Math.min(totalPages - 1, page + 1);
+    for (let i = start; i <= end; i++) pages.push(i);
+    if (page < totalPages - 2) pages.push('ellipsis');
+    pages.push(totalPages);
+    return pages;
+  };
 
   const tabs: { key: FilterTab; label: string; count: number }[] = [
     { key: 'all', label: 'All', count: counts?.all ?? 0 },
@@ -167,7 +178,33 @@ export default function NotificationsPage() {
         </div>
       )}
 
-      <Pagination total={total} page={page} pageSize={PAGE_SIZE} onPageChange={setPage} />
+      {total > 0 && (
+        <div className="flex items-center justify-between px-4 py-3 border-t border-[var(--color-border)]">
+          <div className="flex items-center gap-2 text-sm text-[var(--color-text-muted)]">
+            <span>{(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, total)} of {total}</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <button disabled={page <= 1} onClick={() => setPage(page - 1)}
+              className="px-2 py-1 text-xs rounded-[var(--radius-md)] text-[var(--color-text-muted)] hover:bg-[var(--color-bg)] disabled:opacity-30">
+              {t('common.previous')}
+            </button>
+            {getPageNumbers().map((p, i) =>
+              p === 'ellipsis' ? (
+                <span key={`e${i}`} className="px-1 text-xs text-[var(--color-text-muted)]">…</span>
+              ) : (
+                <button key={p} onClick={() => setPage(p)}
+                  className={`px-2 py-1 text-xs rounded-[var(--radius-md)] transition-colors ${p === page ? 'bg-[var(--color-primary)] text-white' : 'text-[var(--color-text-muted)] hover:bg-[var(--color-bg)]'}`}>
+                  {p}
+                </button>
+              )
+            )}
+            <button disabled={page >= totalPages} onClick={() => setPage(page + 1)}
+              className="px-2 py-1 text-xs rounded-[var(--radius-md)] text-[var(--color-text-muted)] hover:bg-[var(--color-bg)] disabled:opacity-30">
+              {t('common.next')}
+            </button>
+          </div>
+        </div>
+      )}
 
       <NotificationDetailModal
         notification={selected}

@@ -3,7 +3,6 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import api from '../../services/api';
 import { formatPrice } from '../../utils/currency';
-import { Pagination } from '../../components/ui/Pagination';
 import { useTranslation } from '../../i18n';
 
 const ORDER_STATUSES = ['', 'pending', 'confirmed', 'processing', 'shipped', 'delivered', 'cancelled'] as const;
@@ -46,6 +45,21 @@ export default function OrderListPage() {
       api.put(`/marketplace/orders/${orderId}/status`, { status: 'delivered', note: 'Confirmed delivered by buyer' }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['mp-orders'] }),
   });
+
+  const ORDER_PAGE_SIZE = 20;
+  const orderTotal = orders?.total ?? 0;
+  const orderTotalPages = Math.max(1, Math.ceil(orderTotal / ORDER_PAGE_SIZE));
+  const getPageNumbers = () => {
+    if (orderTotalPages <= 7) return Array.from({ length: orderTotalPages }, (_, i) => i + 1);
+    const pages: (number | 'ellipsis')[] = [1];
+    if (page > 3) pages.push('ellipsis');
+    const start = Math.max(2, page - 1);
+    const end = Math.min(orderTotalPages - 1, page + 1);
+    for (let i = start; i <= end; i++) pages.push(i);
+    if (page < orderTotalPages - 2) pages.push('ellipsis');
+    pages.push(orderTotalPages);
+    return pages;
+  };
 
   const formatId = (id: string) => id.slice(0, 8).toUpperCase();
 
@@ -173,7 +187,33 @@ export default function OrderListPage() {
         </div>
       )}
 
-      <Pagination total={orders?.total ?? 0} page={page} pageSize={20} onPageChange={setPage} />
+      {orderTotal > 0 && (
+        <div className="flex items-center justify-between px-4 py-3 border-t border-[var(--color-border)]">
+          <div className="flex items-center gap-2 text-sm text-[var(--color-text-muted)]">
+            <span>{(page - 1) * ORDER_PAGE_SIZE + 1}–{Math.min(page * ORDER_PAGE_SIZE, orderTotal)} of {orderTotal}</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <button disabled={page <= 1} onClick={() => setPage(page - 1)}
+              className="px-2 py-1 text-xs rounded-[var(--radius-md)] text-[var(--color-text-muted)] hover:bg-[var(--color-bg)] disabled:opacity-30">
+              {t('common.previous')}
+            </button>
+            {getPageNumbers().map((p, i) =>
+              p === 'ellipsis' ? (
+                <span key={`e${i}`} className="px-1 text-xs text-[var(--color-text-muted)]">…</span>
+              ) : (
+                <button key={p} onClick={() => setPage(p)}
+                  className={`px-2 py-1 text-xs rounded-[var(--radius-md)] transition-colors ${p === page ? 'bg-[var(--color-primary)] text-white' : 'text-[var(--color-text-muted)] hover:bg-[var(--color-bg)]'}`}>
+                  {p}
+                </button>
+              )
+            )}
+            <button disabled={page >= orderTotalPages} onClick={() => setPage(page + 1)}
+              className="px-2 py-1 text-xs rounded-[var(--radius-md)] text-[var(--color-text-muted)] hover:bg-[var(--color-bg)] disabled:opacity-30">
+              {t('common.next')}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
