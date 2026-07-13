@@ -141,7 +141,7 @@ export default function OrgProductFormModal({ open, onClose, orgId: _orgId, edit
     );
     return {
       name: f.name, description: f.desc,
-      categoryId: Number(f.catId), sportId: f.sportId ? Number(f.sportId) : undefined,
+      categoryId: f.catId ? Number(f.catId) : undefined, sportId: f.sportId ? Number(f.sportId) : undefined,
       price: Number(f.price), discountedPrice: f.discPrice ? Number(f.discPrice) : undefined,
       quantity: Number(f.qty), currencyCode: f.curr,
       images: imgs.filter(Boolean),

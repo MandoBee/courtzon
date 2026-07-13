@@ -198,7 +198,7 @@ export default function SellerProductFormModal({ open, onClose, editId, sports, 
         })).filter((v) => v.variantName)
       );
       return api.put(`/marketplace/products/${editId}`, {
-        categoryId: Number(form.categoryId), sportId: form.sportId ? Number(form.sportId) : undefined,
+        categoryId: form.categoryId ? Number(form.categoryId) : undefined, sportId: form.sportId ? Number(form.sportId) : undefined,
         name: form.name, description: form.description,
         price: Number(form.price), discountedPrice: form.discountedPrice ? Number(form.discountedPrice) : undefined,
         quantity: Number(form.quantity), currencyCode: form.currencyCode,
