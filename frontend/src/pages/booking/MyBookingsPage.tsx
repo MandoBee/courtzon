@@ -36,8 +36,7 @@ export default function MyBookingsPage() {
       ? ['my-bookings', statusFilter, page, limit, sortMode, userCoords.lat, userCoords.lng]
       : ['my-bookings', statusFilter, page, limit, sortMode],
     queryFn: () => api.get(`/bookings?${queryParams.toString()}`).then((r) => r.data),
-    staleTime: 1_000,
-    refetchInterval: 10_000,
+    staleTime: 0,
   });
 
   useEffect(() => {
