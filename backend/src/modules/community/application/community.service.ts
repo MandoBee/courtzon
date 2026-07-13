@@ -103,6 +103,34 @@ export const communityService = {
     await repo.inviteToGroup(conversationId, userId, inviteeId);
   },
 
+  async removeMember(conversationId: number, userId: number, targetUserId: number) {
+    if (!(await repo.isConversationParticipant(conversationId, userId))) {
+      throw new ForbiddenError('Not a participant in this group');
+    }
+    if (userId === targetUserId) {
+      throw new ConflictError('Use leave group to remove yourself');
+    }
+    await repo.removeMember(conversationId, targetUserId);
+  },
+
+  async leaveGroup(conversationId: number, userId: number) {
+    if (!(await repo.isConversationParticipant(conversationId, userId))) {
+      throw new ForbiddenError('Not a participant in this group');
+    }
+    const info = await repo.getGroupInfo(conversationId);
+    if (info && info.created_by === userId) {
+      throw new ConflictError('Group creator cannot leave. Delete the group instead.');
+    }
+    await repo.leaveGroup(conversationId, userId);
+  },
+
+  async deleteGroup(conversationId: number, userId: number) {
+    if (!(await repo.isGroupCreator(conversationId, userId))) {
+      throw new ForbiddenError('Only the group creator can delete the group');
+    }
+    await repo.deleteGroup(conversationId);
+  },
+
   async getGroupInvitations(userId: number) {
     return repo.findGroupInvitations(userId);
   },
@@ -113,6 +141,34 @@ export const communityService = {
     if (invitation.invitee_id !== userId) throw new ForbiddenError('Invitation does not belong to you');
     if (invitation.status !== 'pending') throw new ConflictError('Invitation already responded to');
     await repo.respondToInvitation(invitationId, userId, status);
+  },
+
+  // ── Group Management ──
+  async getGroupMembers(conversationId: number, userId: number) {
+    if (!(await repo.isConversationParticipant(conversationId, userId))) {
+      throw new ForbiddenError('Not a participant in this group');
+    }
+    return repo.getGroupMembers(conversationId);
+  },
+
+  async getGroupInfo(conversationId: number, userId: number) {
+    if (!(await repo.isConversationParticipant(conversationId, userId))) {
+      throw new ForbiddenError('Not a participant in this group');
+    }
+    const info = await repo.getGroupInfo(conversationId);
+    if (!info) throw new NotFoundError('Group conversation');
+    return info;
+  },
+
+  async updateGroup(conversationId: number, userId: number, data: { name?: string; avatarUrl?: string }) {
+    if (!(await repo.isConversationParticipant(conversationId, userId))) {
+      throw new ForbiddenError('Not a participant in this group');
+    }
+    if (!(await repo.isGroupCreator(conversationId, userId))) {
+      throw new ForbiddenError('Only the group creator can edit group settings');
+    }
+    await repo.updateGroup(conversationId, data);
+    return repo.getGroupInfo(conversationId);
   },
 
   // ── Pin Conversations ──

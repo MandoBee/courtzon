@@ -1,7 +1,7 @@
 import type { FastifyRequest, FastifyReply } from 'fastify';
 import { communityService as svc } from '../application/community.service.js';
 import { recordAudit } from '../../audit-log/index.js';
-import { CreateEventSchema, RsvpSchema, SendMessageSchema, CreateCampaignSchema, AuditQuerySchema, RevertSchema, CreateGroupSchema, InviteToGroupSchema, RespondToInvitationSchema } from './community.dto.js';
+import { CreateEventSchema, RsvpSchema, SendMessageSchema, CreateCampaignSchema, AuditQuerySchema, RevertSchema, CreateGroupSchema, InviteToGroupSchema, RespondToInvitationSchema, UpdateGroupSchema, RemoveMemberSchema } from './community.dto.js';
 
 // ── Follows ──
 export async function followHandler(request: FastifyRequest, reply: FastifyReply) {
@@ -174,6 +174,85 @@ export async function respondToInvitationHandler(request: FastifyRequest, reply:
     userAgent: request.headers['user-agent'],
   });
   return reply.send({ message: `Invitation ${body.status}` });
+}
+
+// ── Group Management ──
+export async function getGroupMembersHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { conversationId } = request.params as any;
+  const userId = (request as any).userId;
+  const members = await svc.getGroupMembers(Number(conversationId), userId);
+  return reply.send({ data: members });
+}
+
+export async function getGroupInfoHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { conversationId } = request.params as any;
+  const userId = (request as any).userId;
+  const info = await svc.getGroupInfo(Number(conversationId), userId);
+  return reply.send(info);
+}
+
+export async function updateGroupHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { conversationId } = request.params as any;
+  const body = UpdateGroupSchema.parse(request.body);
+  const userId = (request as any).userId;
+  const updated = await svc.updateGroup(Number(conversationId), userId, body);
+  recordAudit({
+    actorId: userId ?? null,
+    action: 'CHAT.GROUP_UPDATE',
+    entityType: 'conversation',
+    entityId: Number(conversationId),
+    afterState: body,
+    ipAddress: request.ip,
+    userAgent: request.headers['user-agent'],
+  });
+  return reply.send(updated);
+}
+
+export async function removeMemberHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { conversationId } = request.params as any;
+  const body = RemoveMemberSchema.parse(request.body);
+  const userId = (request as any).userId;
+  await svc.removeMember(Number(conversationId), userId, body.targetUserId);
+  recordAudit({
+    actorId: userId ?? null,
+    action: 'CHAT.GROUP_MEMBER_REMOVE',
+    entityType: 'conversation',
+    entityId: Number(conversationId),
+    afterState: { removedUserId: body.targetUserId },
+    ipAddress: request.ip,
+    userAgent: request.headers['user-agent'],
+  });
+  return reply.send({ message: 'Member removed' });
+}
+
+export async function leaveGroupHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { conversationId } = request.params as any;
+  const userId = (request as any).userId;
+  await svc.leaveGroup(Number(conversationId), userId);
+  recordAudit({
+    actorId: userId ?? null,
+    action: 'CHAT.GROUP_LEAVE',
+    entityType: 'conversation',
+    entityId: Number(conversationId),
+    ipAddress: request.ip,
+    userAgent: request.headers['user-agent'],
+  });
+  return reply.send({ message: 'Left group' });
+}
+
+export async function deleteGroupHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { conversationId } = request.params as any;
+  const userId = (request as any).userId;
+  await svc.deleteGroup(Number(conversationId), userId);
+  recordAudit({
+    actorId: userId ?? null,
+    action: 'CHAT.GROUP_DELETE',
+    entityType: 'conversation',
+    entityId: Number(conversationId),
+    ipAddress: request.ip,
+    userAgent: request.headers['user-agent'],
+  });
+  return reply.status(204).send();
 }
 
 // ── Pin Conversations ──

@@ -144,6 +144,79 @@ export const communityRepository = {
     await pool.execute('INSERT INTO conversation_participants (conversation_id, user_id) VALUES (?, ?), (?, ?)', [convoId, user1Id, convoId, user2Id]);
     return convoId;
   },
+  // ── Group Management ──
+  async getGroupInfo(conversationId: number) {
+    const pool = getPool();
+    const [rows] = await pool.execute<RowData>(
+      'SELECT id, name, avatar_url, created_by FROM conversations WHERE id = ? AND conversation_type = ? LIMIT 1',
+      [conversationId, 'group']
+    );
+    return rows.length > 0 ? rows[0] : null;
+  },
+
+  async isGroupCreator(conversationId: number, userId: number): Promise<boolean> {
+    const pool = getPool();
+    const [rows] = await pool.execute<RowData>(
+      'SELECT 1 FROM conversations WHERE id = ? AND created_by = ? AND conversation_type = ? LIMIT 1',
+      [conversationId, userId, 'group']
+    );
+    return rows.length > 0;
+  },
+
+  async getGroupMembers(conversationId: number) {
+    const pool = getPool();
+    const [rows] = await pool.execute<RowData>(
+      `SELECT u.id, u.full_name, u.avatar_url, u.email,
+              cp.created_at AS joined_at, c.created_by
+         FROM conversation_participants cp
+         JOIN users u ON u.id = cp.user_id
+         JOIN conversations c ON c.id = cp.conversation_id
+        WHERE cp.conversation_id = ? AND c.conversation_type = 'group'
+        ORDER BY CASE WHEN u.id = c.created_by THEN 0 ELSE 1 END, cp.created_at ASC`,
+      [conversationId]
+    );
+    return rows;
+  },
+
+  async updateGroup(conversationId: number, data: { name?: string; avatarUrl?: string }) {
+    const pool = getPool();
+    const fields: string[] = [];
+    const params: any[] = [];
+    if (data.name !== undefined) { fields.push('name = ?'); params.push(data.name); }
+    if (data.avatarUrl !== undefined) { fields.push('avatar_url = ?'); params.push(data.avatarUrl); }
+    if (!fields.length) return;
+    params.push(conversationId);
+    await pool.execute(`UPDATE conversations SET ${fields.join(', ')} WHERE id = ? AND conversation_type = 'group'`, params);
+  },
+
+  async removeMember(conversationId: number, targetUserId: number) {
+    const pool = getPool();
+    await pool.execute(
+      'DELETE FROM conversation_participants WHERE conversation_id = ? AND user_id = ?',
+      [conversationId, targetUserId]
+    );
+    await pool.execute(
+      "DELETE FROM group_invitations WHERE conversation_id = ? AND invitee_id = ? AND status = 'pending'",
+      [conversationId, targetUserId]
+    );
+  },
+
+  async leaveGroup(conversationId: number, userId: number) {
+    const pool = getPool();
+    await pool.execute(
+      'DELETE FROM conversation_participants WHERE conversation_id = ? AND user_id = ?',
+      [conversationId, userId]
+    );
+  },
+
+  async deleteGroup(conversationId: number) {
+    const pool = getPool();
+    await pool.execute('DELETE FROM messages WHERE conversation_id = ?', [conversationId]);
+    await pool.execute('DELETE FROM group_invitations WHERE conversation_id = ?', [conversationId]);
+    await pool.execute('DELETE FROM conversation_participants WHERE conversation_id = ?', [conversationId]);
+    await pool.execute('DELETE FROM conversations WHERE id = ? AND conversation_type = ?', [conversationId, 'group']);
+  },
+
   async isConversationParticipant(conversationId: number, userId: number): Promise<boolean> {
     const pool = getPool();
     const [rows] = await pool.execute<RowData>(
@@ -157,8 +230,8 @@ export const communityRepository = {
   async createGroupConversation(creatorId: number, name: string, avatarUrl: string | undefined, inviteeIds: number[]): Promise<number> {
     const pool = getPool();
     const [result] = await pool.execute(
-      'INSERT INTO conversations (conversation_type, name, avatar_url) VALUES (?, ?, ?)',
-      ['group', name, avatarUrl || null]
+      'INSERT INTO conversations (conversation_type, name, avatar_url, created_by) VALUES (?, ?, ?, ?)',
+      ['group', name, avatarUrl || null, creatorId]
     );
     const convoId = (result as any).insertId;
     await pool.execute('INSERT INTO conversation_participants (conversation_id, user_id) VALUES (?, ?)', [convoId, creatorId]);

@@ -44,6 +44,12 @@ export async function communityRoutes(app: FastifyInstance): Promise<void> {
     scopedApp.put('/community/conversations/:conversationId/pin', { preHandler: [requirePermission(['community.chat.send'])] }, ctrl.pinConversationHandler);
     scopedApp.delete('/community/conversations/:conversationId/pin', { preHandler: [requirePermission(['community.chat.send'])] }, ctrl.unpinConversationHandler);
     scopedApp.put('/community/conversations/:conversationId/read', { preHandler: [requirePermission(['community.chat.view'])] }, ctrl.markAsReadHandler);
+    scopedApp.get('/community/conversations/:conversationId/members', { preHandler: [requirePermission(['community.chat.view'])] }, ctrl.getGroupMembersHandler);
+    scopedApp.get('/community/conversations/:conversationId/info', { preHandler: [requirePermission(['community.chat.view'])] }, ctrl.getGroupInfoHandler);
+    scopedApp.put('/community/conversations/:conversationId', { preHandler: [requirePermission(['community.chat.send'])] }, ctrl.updateGroupHandler);
+    scopedApp.post('/community/conversations/:conversationId/members/remove', { preHandler: [requirePermission(['community.chat.send'])] }, ctrl.removeMemberHandler);
+    scopedApp.post('/community/conversations/:conversationId/leave', { preHandler: [requirePermission(['community.chat.send'])] }, ctrl.leaveGroupHandler);
+    scopedApp.delete('/community/conversations/:conversationId', { preHandler: [requirePermission(['community.chat.send'])] }, ctrl.deleteGroupHandler);
   });
 
   // Ads — gated by community.events_enabled (general community flag)

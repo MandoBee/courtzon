@@ -61,3 +61,12 @@ export const InviteToGroupSchema = z.object({
 export const RespondToInvitationSchema = z.object({
   status: z.enum(['accepted', 'rejected']),
 });
+
+export const UpdateGroupSchema = z.object({
+  name: z.string().min(1).max(255).optional(),
+  avatarUrl: z.string().optional(),
+});
+
+export const RemoveMemberSchema = z.object({
+  targetUserId: z.number().int().positive(),
+});

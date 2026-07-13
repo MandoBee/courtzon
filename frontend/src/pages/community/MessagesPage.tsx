@@ -44,6 +44,13 @@ export default function MessagesPage() {
   const [groupPhone, setGroupPhone] = useState('');
   const [groupAvatarFile, setGroupAvatarFile] = useState<File | null>(null);
 
+  // --- Group settings state ---
+  const [groupSettingsOpen, setGroupSettingsOpen] = useState(false);
+  const [editGroupName, setEditGroupName] = useState('');
+  const [editGroupAvatarFile, setEditGroupAvatarFile] = useState<File | null>(null);
+  const [editGroupAvatarUrl, setEditGroupAvatarUrl] = useState<string | undefined>(undefined);
+  const [addMemberPhone, setAddMemberPhone] = useState('');
+
   const { data: conversations, isLoading: loadingConvos } = useQuery({
     queryKey: ['chat-conversations'],
     queryFn: () => api.get('/community/conversations').then((r) => r.data?.data || []),
@@ -61,6 +68,18 @@ export default function MessagesPage() {
   const pendingInvitations = invitations?.filter((inv: any) => inv.status === 'pending') || [];
 
   const selectedConvo = conversations?.find((c: any) => c.id === selectedId);
+
+  const { data: groupInfo, refetch: refetchGroupInfo } = useQuery({
+    queryKey: ['chat-group-info', selectedId],
+    queryFn: () => api.get(`/community/conversations/${selectedId}/info`).then((r) => r.data),
+    enabled: !!selectedId && selectedConvo?.conversation_type === 'group' && can('community.chat.view'),
+  });
+
+  const { data: groupMembersData, refetch: refetchGroupMembers } = useQuery({
+    queryKey: ['chat-group-members', selectedId],
+    queryFn: () => api.get(`/community/conversations/${selectedId}/members`).then((r) => r.data?.data || []),
+    enabled: !!selectedId && selectedConvo?.conversation_type === 'group' && groupSettingsOpen && can('community.chat.view'),
+  });
 
   const { data: messages, isLoading: loadingMessages } = useQuery({
     queryKey: ['chat-messages', selectedId],
@@ -181,6 +200,61 @@ export default function MessagesPage() {
     },
   });
 
+  // --- Group settings mutations ---
+  const updateGroupMutation = useMutation({
+    mutationFn: ({ name, avatarUrl }: { name?: string; avatarUrl?: string }) =>
+      api.put(`/community/conversations/${selectedId}`, { name, avatarUrl }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['chat-conversations'] });
+      refetchGroupInfo();
+      showToast('Group updated');
+    },
+    onError: (err: any) => showToast(err?.response?.data?.message || 'Could not update group', 'error'),
+  });
+
+  const removeMemberMutation = useMutation({
+    mutationFn: (targetUserId: number) =>
+      api.post(`/community/conversations/${selectedId}/members/remove`, { targetUserId }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['chat-conversations'] });
+      refetchGroupMembers();
+      showToast('Member removed');
+    },
+    onError: (err: any) => showToast(err?.response?.data?.message || 'Could not remove member', 'error'),
+  });
+
+  const leaveGroupMutation = useMutation({
+    mutationFn: () => api.post(`/community/conversations/${selectedId}/leave`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['chat-conversations'] });
+      setSelectedId(null);
+      setGroupSettingsOpen(false);
+      showToast('Left group');
+    },
+    onError: (err: any) => showToast(err?.response?.data?.message || 'Could not leave group', 'error'),
+  });
+
+  const deleteGroupMutation = useMutation({
+    mutationFn: () => api.delete(`/community/conversations/${selectedId}`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['chat-conversations'] });
+      setSelectedId(null);
+      setGroupSettingsOpen(false);
+      showToast('Group deleted');
+    },
+    onError: (err: any) => showToast(err?.response?.data?.message || 'Could not delete group', 'error'),
+  });
+
+  const inviteMemberMutation = useMutation({
+    mutationFn: ({ inviteeId }: { inviteeId: number }) =>
+      api.post(`/community/conversations/${selectedId}/invite`, { inviteeId }),
+    onSuccess: () => {
+      refetchGroupMembers();
+      showToast('Member invited');
+    },
+    onError: (err: any) => showToast(err?.response?.data?.message || 'Could not invite member', 'error'),
+  });
+
   useEffect(() => {
     if (!withParam || !can('community.chat.view')) return;
     const uid = Number(withParam);
@@ -295,6 +369,47 @@ export default function MessagesPage() {
     setGroupMembers([]);
     setGroupPhone('');
   }
+
+  // --- Group settings handlers ---
+  function openGroupSettings() {
+    setGroupSettingsOpen(true);
+    setEditGroupName(groupInfo?.name || selectedConvo?.group_name || '');
+    setEditGroupAvatarUrl(groupInfo?.avatar_url || selectedConvo?.group_avatar_url);
+    setEditGroupAvatarFile(null);
+    setAddMemberPhone('');
+  }
+
+  function closeGroupSettings() {
+    setGroupSettingsOpen(false);
+    setEditGroupName('');
+    setEditGroupAvatarFile(null);
+    setEditGroupAvatarUrl(undefined);
+    setAddMemberPhone('');
+  }
+
+  async function handleSaveGroupInfo() {
+    let avatarUrl = editGroupAvatarUrl;
+    if (editGroupAvatarFile) {
+      const url = await uploadAvatarMutation.mutateAsync(editGroupAvatarFile);
+      if (url) avatarUrl = url;
+    }
+    updateGroupMutation.mutate({ name: editGroupName.trim() || undefined, avatarUrl });
+  }
+
+  async function handleAddMemberToGroup() {
+    const phone = addMemberPhone.trim();
+    if (!phone) {
+      showToast('Enter a phone number', 'warning');
+      return;
+    }
+    const result = await groupLookupMutation.mutateAsync(phone);
+    if (result) {
+      inviteMemberMutation.mutate({ inviteeId: result.id });
+      setAddMemberPhone('');
+    }
+  }
+
+  const isGroupCreator = groupInfo?.created_by === user?.id || selectedConvo?.created_by === user?.id;
 
   const pinnedConvos = conversations?.filter((c: any) => c.pinned_at) || [];
   const unpinnedConvos = conversations?.filter((c: any) => !c.pinned_at) || [];
@@ -427,6 +542,14 @@ export default function MessagesPage() {
                       className="w-8 h-8 rounded-full text-xs shrink-0"
                     />
                     <span className="font-medium text-[var(--color-text)]">{selectedConvo?.group_name || 'Group'}</span>
+                    <button
+                      type="button"
+                      onClick={openGroupSettings}
+                      className="ml-auto p-1.5 rounded-lg hover:bg-[var(--color-border)] text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors"
+                      title="Group settings"
+                    >
+                      ⚙️
+                    </button>
                   </>
                 ) : (
                   <span className="font-medium text-[var(--color-text)]">
@@ -627,6 +750,149 @@ export default function MessagesPage() {
             >
               {createGroupMutation.isPending ? 'Creating…' : 'Create'}
             </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Group Settings modal */}
+      <Modal open={groupSettingsOpen} onClose={closeGroupSettings} title="Group Settings">
+        <div className="space-y-5">
+          {/* Group Info section */}
+          {isGroupCreator && (
+            <div className="space-y-3">
+              <h3 className="text-sm font-semibold text-[var(--color-text)]">Group Info</h3>
+              <label className="block">
+                <span className="text-xs font-medium text-[var(--color-text-muted)]">Group Name</span>
+                <input
+                  value={editGroupName}
+                  onChange={(e) => setEditGroupName(e.target.value)}
+                  placeholder="Group name"
+                  className="mt-1 w-full px-3 py-2 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-bg)] text-sm text-[var(--color-text)]"
+                />
+              </label>
+              <label className="block">
+                <span className="text-xs font-medium text-[var(--color-text-muted)]">Group Avatar</span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      setEditGroupAvatarFile(file);
+                      setEditGroupAvatarUrl(URL.createObjectURL(file));
+                    }
+                  }}
+                  className="mt-1 w-full text-sm text-[var(--color-text)]"
+                />
+                {editGroupAvatarUrl && (
+                  <div className="mt-2">
+                    <EntityImage src={editGroupAvatarUrl} name={editGroupName || 'Group'} className="w-16 h-16 rounded-full text-lg" />
+                  </div>
+                )}
+              </label>
+              <button
+                onClick={handleSaveGroupInfo}
+                disabled={updateGroupMutation.isPending || uploadAvatarMutation.isPending}
+                className="px-4 py-2 bg-[var(--color-primary)] text-white rounded-lg text-sm font-medium disabled:opacity-50 hover:opacity-90"
+              >
+                {updateGroupMutation.isPending ? 'Saving…' : 'Save'}
+              </button>
+            </div>
+          )}
+
+          {/* Members section */}
+          <div className="space-y-2">
+            <h3 className="text-sm font-semibold text-[var(--color-text)]">Members</h3>
+            {groupMembersData ? (
+              <div className="space-y-2">
+                {groupMembersData.map((m: any) => (
+                  <div key={m.id} className="flex items-center gap-2 p-2 rounded-lg bg-[var(--color-bg)]">
+                    <EntityImage src={m.avatar_url} name={m.full_name} className="w-8 h-8 rounded-full text-xs shrink-0" />
+                    <span className="text-sm text-[var(--color-text)] flex-1 truncate">{m.full_name}</span>
+                    {m.id === groupInfo?.created_by && (
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-[var(--color-primary)]/10 text-[var(--color-primary)] font-medium">
+                        Creator
+                      </span>
+                    )}
+                    {isGroupCreator && m.id !== user?.id && (
+                      <button
+                        onClick={() => {
+                          if (window.confirm(`Remove ${m.full_name} from the group?`)) {
+                            removeMemberMutation.mutate(m.id);
+                          }
+                        }}
+                        className="text-red-500 hover:text-red-700 text-sm font-bold px-1"
+                        title="Remove member"
+                      >
+                        ×
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="animate-pulse h-10 bg-[var(--color-border)] rounded-lg" />
+            )}
+          </div>
+
+          {/* Add Member section (creator only) */}
+          {isGroupCreator && (
+            <div className="space-y-2">
+              <h3 className="text-sm font-semibold text-[var(--color-text)]">Add Member</h3>
+              <div className="flex gap-2">
+                <input
+                  type="tel"
+                  value={addMemberPhone}
+                  onChange={(e) => setAddMemberPhone(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleAddMemberToGroup();
+                    }
+                  }}
+                  placeholder="Phone number"
+                  className="flex-1 px-3 py-2 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-bg)] text-sm text-[var(--color-text)]"
+                />
+                <button
+                  type="button"
+                  onClick={handleAddMemberToGroup}
+                  disabled={groupLookupMutation.isPending || inviteMemberMutation.isPending}
+                  className="px-3 py-2 bg-[var(--color-primary)] text-white rounded-lg text-sm font-medium disabled:opacity-50 hover:opacity-90"
+                >
+                  {groupLookupMutation.isPending || inviteMemberMutation.isPending ? '…' : 'Add'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Actions section */}
+          <div className="flex flex-wrap gap-2 pt-2 border-t border-[var(--color-border)]">
+            {!isGroupCreator && (
+              <button
+                onClick={() => {
+                  if (window.confirm('Are you sure you want to leave this group?')) {
+                    leaveGroupMutation.mutate();
+                  }
+                }}
+                disabled={leaveGroupMutation.isPending}
+                className="px-4 py-2 bg-red-500 text-white rounded-lg text-sm font-medium disabled:opacity-50 hover:opacity-90"
+              >
+                {leaveGroupMutation.isPending ? 'Leaving…' : 'Leave Group'}
+              </button>
+            )}
+            {isGroupCreator && (
+              <button
+                onClick={() => {
+                  if (window.confirm('Are you sure you want to delete this group? This cannot be undone.')) {
+                    deleteGroupMutation.mutate();
+                  }
+                }}
+                disabled={deleteGroupMutation.isPending}
+                className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-medium disabled:opacity-50 hover:opacity-90"
+              >
+                {deleteGroupMutation.isPending ? 'Deleting…' : 'Delete Group'}
+              </button>
+            )}
           </div>
         </div>
       </Modal>
