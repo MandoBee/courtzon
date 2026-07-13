@@ -5,6 +5,7 @@ import api from '../../../services/api';
 import { Button, Spinner, EntityImage } from '../../../components/ui';
 import { Can } from '../../../permissions/Can';
 import { useToast } from '../../../components/ui/Toast';
+import { formatISODate } from '../../../utils/formatDate';
 
 interface UserEditModalProps {
   userId: number;
@@ -522,8 +523,8 @@ export default function UserEditModal({ userId, onClose }: UserEditModalProps) {
                       <div><span className="text-[var(--color-text-muted)]">Type:</span> {bookingDetail.booking_type}</div>
                       <div><span className="text-[var(--color-text-muted)]">Resource:</span> {bookingDetail.resource_name || '—'}</div>
                       <div><span className="text-[var(--color-text-muted)]">Org:</span> {bookingDetail.org_name || '—'}</div>
-                      <div><span className="text-[var(--color-text-muted)]">Date:</span> {new Date(bookingDetail.booking_date).toLocaleDateString('en-GB')}</div>
-                      <div><span className="text-[var(--color-text-muted)]">Time:</span> {bookingDetail.start_time} - {bookingDetail.end_time}</div>
+                      <div><span className="text-[var(--color-text-muted)]">Date:</span> {formatISODate(bookingDetail.booking_date)}</div>
+                      <div><span className="text-[var(--color-text-muted)]">Time:</span> {bookingDetail.start_time?.slice(0, 5)} - {bookingDetail.end_time?.slice(0, 5)}</div>
                       <div><span className="text-[var(--color-text-muted)]">Amount:</span> {bookingDetail.total_amount}</div>
                       <div><span className="text-[var(--color-text-muted)]">Status:</span> {bookingDetail.booking_status}</div>
                       <div><span className="text-[var(--color-text-muted)]">Payment:</span> {bookingDetail.payment_status}</div>

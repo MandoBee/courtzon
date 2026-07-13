@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import api from '../../services/api';
 import { useToast } from '../../components/ui/Toast';
-import { formatDateTime } from '../../utils/formatDate';
+import { formatISODate, formatDateTime } from '../../utils/formatDate';
 import { socketService } from '../../services/socket';
 
 type Tab = 'discover' | 'applied' | 'joined' | 'dismissed' | 'history';
@@ -224,7 +224,7 @@ export default function MatchListPage() {
                 </p>
 
                 <div className="flex flex-wrap gap-x-3 gap-y-1 mt-2 text-xs text-[var(--color-text-muted)]">
-                  <span>📅 {new Date((match.booking_date || '').slice(0, 10)).toLocaleDateString('en-GB')}</span>
+                  <span>📅 {formatISODate(match.booking_date)}</span>
                   <span>⏰ {match.start_time?.slice(0, 5)} - {match.end_time?.slice(0, 5)}</span>
                   <span>👥 {match.participant_count}/{match.max_players}</span>
                 </div>

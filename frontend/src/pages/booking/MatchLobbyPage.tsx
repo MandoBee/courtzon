@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../services/api';
 import { useToast } from '../../components/ui/Toast';
 import { useAuthStore } from '../../store/auth.store';
-import { formatDateTime } from '../../utils/formatDate';
+import { formatISODate, formatDateTime } from '../../utils/formatDate';
 import { socketService } from '../../services/socket';
 import ManageApplicantsPopup from '../../components/booking/ManageApplicantsPopup';
 
@@ -113,7 +113,7 @@ export default function MatchLobbyPage() {
           <div><span className="text-[var(--color-text-muted)]">Sport:</span> {match.sport_name}</div>
           <div><span className="text-[var(--color-text-muted)]">Venue:</span> {match.organisation_name}</div>
           <div><span className="text-[var(--color-text-muted)]">Branch:</span> {match.branch_name}</div>
-          <div><span className="text-[var(--color-text-muted)]">Date:</span> {new Date(match.booking_date).toLocaleDateString('en-GB')}</div>
+          <div><span className="text-[var(--color-text-muted)]">Date:</span> {formatISODate(match.booking_date)}</div>
           <div><span className="text-[var(--color-text-muted)]">Time:</span> {match.start_time?.slice(0, 5)} - {match.end_time?.slice(0, 5)}</div>
           <div><span className="text-[var(--color-text-muted)]">Capacity:</span> {match.participant_count}/{match.max_players}</div>
           {match.auto_accept === 1 && <div><span className="text-[var(--color-success-text)]">Auto-accept enabled</span></div>}

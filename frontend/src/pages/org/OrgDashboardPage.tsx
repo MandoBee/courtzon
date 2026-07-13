@@ -127,7 +127,7 @@ export default function OrgDashboardPage() {
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium text-[var(--color-text)] truncate">{item.product_name || 'Product'}</p>
                     <p className="text-xs text-[var(--color-text-muted)]">
-                      Order #{item.public_id?.slice(0, 8) || item.id} · {new Date(item.created_at).toLocaleDateString()}
+                      Order #{item.public_id?.slice(0, 8) || item.id} · {new Date(item.created_at).toLocaleDateString('en-GB')}
                     </p>
                   </div>
                   <div className="flex items-center gap-3 ml-3">

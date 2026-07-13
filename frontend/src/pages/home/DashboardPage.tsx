@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
+import { formatISODate } from '../../utils/formatDate';
 import { useAuthStore } from '../../store/auth.store';
 import { useTranslation } from '../../i18n';
 import { Can } from '../../permissions/Can';
@@ -81,7 +82,7 @@ export default function DashboardPage() {
                     {b.resource_name} · {b.branch_name}
                   </p>
                   <p className="text-xs text-[var(--color-text-muted)]">
-                    {new Date(b.booking_date).toLocaleDateString('en-GB')} · {b.start_time?.slice(0, 5)}–{b.end_time?.slice(0, 5)}
+                    {formatISODate(b.booking_date)} · {b.start_time?.slice(0, 5)}–{b.end_time?.slice(0, 5)}
                   </p>
                 </div>
                 <span className={`shrink-0 px-2 py-0.5 text-xs rounded-full ${

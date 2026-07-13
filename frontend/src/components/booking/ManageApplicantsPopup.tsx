@@ -124,7 +124,7 @@ export default function ManageApplicantsPopup({ open, bookingId, onClose }: Mana
                   <div>
                     <p className="text-sm font-medium text-[var(--color-text)]">{applicant.full_name || 'Unknown'}</p>
                     <p className="text-xs text-[var(--color-text-muted)]">
-                      Applied {new Date(applicant.submitted_at).toLocaleDateString()}
+                      Applied {new Date(applicant.submitted_at).toLocaleDateString('en-GB')}
                     </p>
                   </div>
                 </div>

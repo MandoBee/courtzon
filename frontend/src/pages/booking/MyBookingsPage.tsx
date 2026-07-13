@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import api from '../../services/api';
 import { formatPrice } from '../../utils/currency';
+import { formatISODate } from '../../utils/formatDate';
 import BookingModal from '../../components/booking/BookingModal';
 import ManageApplicantsPopup from '../../components/booking/ManageApplicantsPopup';
 import { Skeleton, SkeletonList } from '../../components/ui/Skeleton';
@@ -211,7 +212,7 @@ export default function MyBookingsPage() {
             <div className="flex items-center gap-2.5 text-xs text-[var(--color-text)] overflow-x-auto pb-0.5">
               <span className="inline-flex items-center gap-1 shrink-0 whitespace-nowrap">
                 <span aria-hidden>📅</span>
-                {new Date(booking.booking_date).toLocaleDateString('en-GB')}
+                {formatISODate(booking.booking_date)}
               </span>
               <span className="inline-flex items-center gap-1 shrink-0 whitespace-nowrap">
                 <span aria-hidden>⏰</span>

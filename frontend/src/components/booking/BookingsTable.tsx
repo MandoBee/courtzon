@@ -6,6 +6,7 @@ import api from '../../services/api';
 import { Can } from '../../permissions/Can';
 import { useToast } from '../ui/Toast';
 import { formatPrice } from '../../utils/currency';
+import { formatISODate } from '../../utils/formatDate';
 import { Card, Badge } from '../ui';
 import { useTranslation } from '../../i18n';
 import type { ApiData, PaginatedResult } from '../../types/api';
@@ -318,7 +319,7 @@ export default function BookingsTable({ context }: BookingsTableProps) {
                     <td className="p-3 text-[var(--color-text)]">{b.user_name || b.full_name || '-'}</td>
                     <td className="p-3 text-[var(--color-text-muted)]">{b.user_phone || '-'}</td>
                     <td className="p-3 text-[var(--color-text-muted)] whitespace-nowrap">
-                      {b.booking_date ? new Date(b.booking_date).toLocaleDateString('en-GB') : '-'}
+                      {b.booking_date ? formatISODate(b.booking_date) : '-'}
                     </td>
                     <td className="p-3 text-[var(--color-text-muted)] whitespace-nowrap text-xs">
                       {b.start_time && b.end_time ? `${b.start_time.slice(0, 5)} - ${b.end_time.slice(0, 5)}` : '-'}

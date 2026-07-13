@@ -476,7 +476,7 @@ export default function BookingModal({ open, onClose }: BookingModalProps) {
   const dateLabels = ['Today', 'Tomorrow', ...Array.from({ length: 5 }, (_, i) => {
     const d = new Date();
     d.setDate(d.getDate() + i + 2);
-    return d.toLocaleDateString('en-US', { weekday: 'short' });
+    return d.toLocaleDateString('en-GB', { weekday: 'short' });
   })];
 
   const isRestricted = selectedBranch?.access_type === 'restricted' && myAccessData?.status !== 'approved';

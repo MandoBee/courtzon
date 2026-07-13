@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useLocation, useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import QRCode from 'qrcode';
+import { formatISODate } from '../../utils/formatDate';
 import api from '../../services/api';
 
 export default function BookingConfirmationPage() {
@@ -54,7 +55,7 @@ export default function BookingConfirmationPage() {
         <p className="text-sm text-[var(--color-text-muted)] mb-6">
           {booking?.resource_name} at {booking?.branch_name}
           <br />
-          {booking?.booking_date ? new Date(booking.booking_date).toLocaleDateString('en-GB') : ''} &bull; {booking?.start_time?.slice(0, 5)} - {booking?.end_time?.slice(0, 5)}
+          {formatISODate(booking?.booking_date)} &bull; {booking?.start_time?.slice(0, 5)} - {booking?.end_time?.slice(0, 5)}
         </p>
 
         {!isPending && qrToken && (
