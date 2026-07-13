@@ -583,7 +583,7 @@ export class PaymentService {
     let remoteStatus: any;
     let paymobError: string | undefined;
 
-    const RETRY_MS = 10_000;
+    const RETRY_MS = 60_000;
     const POLL_INTERVAL = 1_000;
 
     while (Date.now() - verifyStart < RETRY_MS) {

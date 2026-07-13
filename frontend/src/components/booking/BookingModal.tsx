@@ -86,25 +86,6 @@ function toLocalDateStr(d: Date): string {
   return `${y}-${m}-${day}`;
 }
 
-function getDateInTimezone(timezone: string): string {
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: timezone,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).formatToParts(new Date());
-  const y = parts.find((p) => p.type === 'year')!.value;
-  const m = parts.find((p) => p.type === 'month')!.value;
-  const d = parts.find((p) => p.type === 'day')!.value;
-  return `${y}-${m}-${d}`;
-}
-
-function addDaysToDate(dateStr: string, days: number): string {
-  const d = new Date(dateStr + 'T00:00:00Z');
-  d.setUTCDate(d.getUTCDate() + days);
-  return d.toISOString().slice(0, 10);
-}
-
 function ResourceCard({ resource, date, isRestricted, selectedSlots, selectedResourceId, onSelectResource, onToggleSlot }: {
   resource: any;
   date: string;
@@ -272,17 +253,11 @@ export default function BookingModal({ open, onClose }: BookingModalProps) {
     enabled: open && !!selectedBranch && step >= 3,
   });
 
-  // Convert user's selected date to the branch's timezone so the backend
-  // receives the date it expects (the date in the branch's own timezone).
-  const branchTimezone = selectedBranch?.timezone || 'Africa/Cairo';
-  const userToday = toLocalDateStr(new Date());
-  const branchToday = getDateInTimezone(branchTimezone);
-  const dayOffsetBetweenTimezones = Math.round(
-    (new Date(branchToday + 'T00:00:00Z').getTime() - new Date(userToday + 'T00:00:00Z').getTime()) / 86400000
-  );
-  const apiDate = dayOffsetBetweenTimezones === 0
-    ? selectedDate
-    : addDaysToDate(selectedDate, dayOffsetBetweenTimezones);
+  // Use the selected date as-is. The backend receives the branch timezone
+  // and converts to UTC via TimeEngine.localToUtc(). The date the user
+  // picks is the date in the branch's timezone (slots are served for that
+  // date in branch-local time), so no timezone-based date shifting is needed.
+  const apiDate = selectedDate;
 
   const { data: slotsData } = useQuery({
     queryKey: ['resource-slots', selectedResourceId, apiDate],
