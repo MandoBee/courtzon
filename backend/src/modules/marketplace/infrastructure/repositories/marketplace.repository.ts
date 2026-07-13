@@ -499,20 +499,44 @@ export const marketplaceRepository = {
 
   async upsertCartItem(userId: number, productId: number, quantity: number, variantId?: number) {
     const pool = getPool();
-    await pool.execute(
-      `INSERT INTO cart_items (user_id, product_id, variant_id, quantity) VALUES (?, ?, ?, ?)
-       ON DUPLICATE KEY UPDATE quantity = quantity + VALUES(quantity)`,
-      [userId, productId, variantId || null, quantity]
-    );
+    if (variantId) {
+      await pool.execute(
+        `INSERT INTO cart_items (user_id, product_id, variant_id, quantity) VALUES (?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE quantity = quantity + VALUES(quantity)`,
+        [userId, productId, variantId, quantity]
+      );
+    } else {
+      const [existing] = await pool.execute<RowData>(
+        'SELECT id FROM cart_items WHERE user_id = ? AND product_id = ? AND variant_id IS NULL LIMIT 1',
+        [userId, productId]
+      );
+      if (existing.length > 0) {
+        await pool.execute('UPDATE cart_items SET quantity = quantity + ? WHERE id = ?', [quantity, existing[0].id]);
+      } else {
+        await pool.execute('INSERT INTO cart_items (user_id, product_id, variant_id, quantity) VALUES (?, ?, NULL, ?)', [userId, productId, quantity]);
+      }
+    }
   },
 
   async upsertCartItemExact(userId: number, productId: number, quantity: number, variantId?: number) {
     const pool = getPool();
-    await pool.execute(
-      `INSERT INTO cart_items (user_id, product_id, variant_id, quantity) VALUES (?, ?, ?, ?)
-       ON DUPLICATE KEY UPDATE quantity = VALUES(quantity)`,
-      [userId, productId, variantId || null, quantity]
-    );
+    if (variantId) {
+      await pool.execute(
+        `INSERT INTO cart_items (user_id, product_id, variant_id, quantity) VALUES (?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE quantity = VALUES(quantity)`,
+        [userId, productId, variantId, quantity]
+      );
+    } else {
+      const [existing] = await pool.execute<RowData>(
+        'SELECT id FROM cart_items WHERE user_id = ? AND product_id = ? AND variant_id IS NULL LIMIT 1',
+        [userId, productId]
+      );
+      if (existing.length > 0) {
+        await pool.execute('UPDATE cart_items SET quantity = ? WHERE id = ?', [quantity, existing[0].id]);
+      } else {
+        await pool.execute('INSERT INTO cart_items (user_id, product_id, variant_id, quantity) VALUES (?, ?, NULL, ?)', [userId, productId, quantity]);
+      }
+    }
   },
 
   async updateCartItemQuantity(userId: number, itemId: number, quantity: number) {

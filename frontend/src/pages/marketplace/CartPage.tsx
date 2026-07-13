@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from 'react-router-dom';
 import api from '../../services/api';
@@ -122,6 +122,21 @@ export default function CartPage() {
     queryFn: () => api.get('/marketplace/cart').then((r) => r.data),
   });
 
+  const mergedCart = useMemo(() => {
+    if (!cart?.items) return cart;
+    const map = new Map<number, any>();
+    for (const item of cart.items) {
+      const existing = map.get(item.product_id);
+      if (existing) {
+        existing.quantity += item.quantity;
+        existing.id = existing.id; // keep first row's id for update/delete
+      } else {
+        map.set(item.product_id, { ...item });
+      }
+    }
+    return { ...cart, items: Array.from(map.values()) };
+  }, [cart]);
+
   const { data: cartSellers } = useQuery({
     queryKey: ['mp-cart-sellers'],
     queryFn: () => api.get('/marketplace/cart/seller-info').then((r) => r.data.data),
@@ -193,7 +208,7 @@ export default function CartPage() {
   });
 
   if (isLoading) return <div className="text-center py-8">{t('cart.loading')}</div>;
-  if (!cart?.items?.length && !pixelClientSecret && !pollingPaid && confirmState === 'idle') return (
+  if (!mergedCart?.items?.length && !pixelClientSecret && !pollingPaid && confirmState === 'idle') return (
     <div className="text-center py-12 space-y-4">
       <p className="text-[var(--color-text-muted)]">{t('cart.empty')}</p>
       <Link to="/marketplace" className="text-sm text-[var(--color-primary)]">{t('cart.browse_products')}</Link>
@@ -202,8 +217,8 @@ export default function CartPage() {
 
   const discount = couponResult?.discount || 0;
   const totalShipping = shippingResult?.total_shipping || 0;
-  const total = Math.max(0, cart.subtotal - discount) + totalShipping;
-  const cartCurrency = cart.items[0]?.currency_code;
+  const total = Math.max(0, (mergedCart?.subtotal || 0) - discount) + totalShipping;
+  const cartCurrency = mergedCart?.items?.[0]?.currency_code;
   const unavailableSellerIds = new Set(
     (shippingResult?.sellers || []).filter((s: any) => !s.available).map((s: any) => s.seller_id)
   );
@@ -217,7 +232,7 @@ export default function CartPage() {
       </div>
 
       <div className="space-y-3">
-        {cart.items.map((item: any) => {
+        {mergedCart.items.map((item: any) => {
           const basePrice = Number(item.price) || 0;
           const discPrice = item.discounted_price ? Number(item.discounted_price) : null;
           const adjustment = Number(item.price_adjustment || 0);
@@ -406,7 +421,7 @@ export default function CartPage() {
       {/* Payment Method & Checkout */}
       <div className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] shadow-[var(--shadow-md)] p-6 space-y-4">
         <div className="flex justify-between text-sm">
-          <span>{t('common.subtotal')}</span><span>{formatPrice(Number(cart.subtotal), cartCurrency)}</span>
+          <span>{t('common.subtotal')}</span><span>{formatPrice(Number(mergedCart?.subtotal || 0), cartCurrency)}</span>
         </div>
         {discount > 0 && (
           <div className="flex justify-between text-sm text-[var(--color-success)]">
