@@ -33,6 +33,11 @@ export default function CoachBookingPage() {
     enabled: !!id,
   });
 
+  const effectiveRate = selectedOrgId && agreements
+    ? (agreements.find((a: any) => a.organisation_id === selectedOrgId)?.hourly_rate || coach?.hourly_rate)
+    : coach?.hourly_rate;
+  const effectiveRateNum = effectiveRate ? Number(effectiveRate) : 0;
+
   const bookMutation = useMutation({
     mutationFn: (data: any) => api.post('/coaches/sessions', data),
     onSuccess: () => {
@@ -57,7 +62,7 @@ export default function CoachBookingPage() {
       organisationId: selectedOrgId || undefined,
       startTime: `${sessionDate}T${startTime}`,
       endTime: `${sessionDate}T${endTime}`,
-      price: coach?.hourly_rate ? Number(coach.hourly_rate) * (duration / 60) : 0,
+      price: effectiveRateNum ? effectiveRateNum * (duration / 60) : 0,
       currencyCode: coach?.currency_code || user?.defaultCurrency || 'USD',
     });
   };
@@ -118,10 +123,16 @@ export default function CoachBookingPage() {
           </Can>
           <div className="bg-[var(--color-bg)] rounded-[var(--radius-md)] p-3 text-sm">
             <div className="flex justify-between mb-1">
-              <span className="text-[var(--color-text-muted)]">Session Fee</span>
-              <span className="font-medium">
-                {coach?.hourly_rate ? formatPrice(Number(coach.hourly_rate) * (duration / 60)) : '—'}
+              <span className="text-[var(--color-text-muted)]">
+                Session Fee{selectedOrgId && effectiveRate !== coach?.hourly_rate ? ' (org rate)' : ''}
               </span>
+              <span className="font-medium">
+                {effectiveRateNum ? formatPrice(effectiveRateNum * (duration / 60)) : '—'}
+              </span>
+            </div>
+            <div className="flex justify-between text-xs text-[var(--color-text-muted)]">
+              <span>Rate</span>
+              <span>{effectiveRateNum ? formatPrice(effectiveRateNum) + '/hr' : '—'}</span>
             </div>
           </div>
           <div className="flex gap-3">

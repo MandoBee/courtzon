@@ -92,6 +92,7 @@ export const UpsertOrgAgreementSchema = z.object({
   organisationId: z.number().int().positive(),
   coachSplitPct: z.number().min(0).max(100),
   orgSplitPct: z.number().min(0).max(100),
+  hourlyRate: z.number().positive().optional(),
   isActive: z.boolean().optional(),
 });
 

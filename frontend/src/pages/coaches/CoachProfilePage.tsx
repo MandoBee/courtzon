@@ -426,6 +426,7 @@ function CoachOrgsTab({ orgList, agreements, queryClient, showToast }: any) {
   const [orgId, setOrgId] = useState<number | ''>('');
   const [coachSplit, setCoachSplit] = useState('70');
   const [orgSplit, setOrgSplit] = useState('30');
+  const [hourlyRate, setHourlyRate] = useState('');
   const [isActive, setIsActive] = useState(true);
 
   const mutation = useMutation({
@@ -456,6 +457,7 @@ function CoachOrgsTab({ orgList, agreements, queryClient, showToast }: any) {
       organisationId: Number(orgId),
       coachSplitPct: Number(coachSplit),
       orgSplitPct: Number(orgSplit),
+      hourlyRate: hourlyRate ? Number(hourlyRate) : undefined,
       isActive,
     });
   }
@@ -470,7 +472,7 @@ function CoachOrgsTab({ orgList, agreements, queryClient, showToast }: any) {
               <div key={ag.id} className="flex items-center justify-between text-sm p-3 border rounded-[var(--radius-md)] gap-3">
                 <div>
                   <span className="font-medium">{ag.organisation_name}</span>
-                  <span className="text-[var(--color-text-muted)] ml-2">offers Coach: {ag.coach_split_pct}% • Org: {ag.org_split_pct}%</span>
+                  <span className="text-[var(--color-text-muted)] ml-2">offers Coach: {ag.coach_split_pct}% • Org: {ag.org_split_pct}%{ag.hourly_rate ? ` • ${ag.hourly_rate}/hr` : ''}</span>
                 </div>
                 <Can permission="coaches.invites.respond">
                   <div className="flex items-center gap-2 shrink-0">
@@ -505,6 +507,12 @@ function CoachOrgsTab({ orgList, agreements, queryClient, showToast }: any) {
             <label className="block text-sm mb-1">Org Split (%)</label>
             <input type="number" min="0" max="100" value={orgSplit} onChange={(e) => setOrgSplit(e.target.value)} className="w-full px-4 py-2.5 rounded-[var(--radius-md)] border border-[var(--color-border)] text-sm" />
           </div>
+          <div className="col-span-2">
+            <label className="block text-sm mb-1">Hourly Rate (optional — overrides your default rate)</label>
+            <input type="number" min="0" step="0.01" value={hourlyRate} onChange={(e) => setHourlyRate(e.target.value)}
+              placeholder="Leave empty to use your default hourly rate"
+              className="w-full px-4 py-2.5 rounded-[var(--radius-md)] border border-[var(--color-border)] text-sm" />
+          </div>
           <div className="col-span-2 flex items-center gap-2">
             <label className="flex items-center gap-2 text-sm cursor-pointer">
               <input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} />
@@ -529,7 +537,7 @@ function CoachOrgsTab({ orgList, agreements, queryClient, showToast }: any) {
               <div key={ag.id} className="flex items-center justify-between text-sm p-3 border rounded-[var(--radius-md)]">
                 <div>
                   <span className="font-medium">{ag.organisation_name}</span>
-                  <span className="text-[var(--color-text-muted)] ml-2">Coach: {ag.coach_split_pct}% • Org: {ag.org_split_pct}%</span>
+                  <span className="text-[var(--color-text-muted)] ml-2">Coach: {ag.coach_split_pct}% • Org: {ag.org_split_pct}%{ag.hourly_rate ? ` • ${ag.hourly_rate}/hr` : ''}</span>
                 </div>
                 <span className={`text-xs px-2 py-0.5 rounded-full ${ag.status === 'accepted' && ag.is_active ? 'bg-[var(--color-success-bg)] text-[var(--color-success-text)]' : ag.status === 'pending' ? 'bg-[var(--color-warning-bg,#fef3c7)] text-[var(--color-warning-text,#92400e)]' : 'bg-[var(--color-border)] text-[var(--color-text-muted)]'}`}>
                   {ag.status === 'pending' ? 'Pending' : ag.status === 'rejected' ? 'Rejected' : ag.is_active ? 'Active' : 'Inactive'}

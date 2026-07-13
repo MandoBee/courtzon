@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../services/api';
+import { formatPrice } from '../../utils/currency';
 import { Can } from '../../permissions/Can';
 import { Modal } from '../../components/ui/Modal';
 import { useToast } from '../../components/ui/Toast';
@@ -20,6 +21,7 @@ export default function OrgCoachesPage() {
   const [coachId, setCoachId] = useState<number | ''>('');
   const [coachSplit, setCoachSplit] = useState('70');
   const [orgSplit, setOrgSplit] = useState('30');
+  const [hourlyRate, setHourlyRate] = useState('');
 
   const { data: coaches, isLoading } = useQuery({
     queryKey: ['org-coaches', orgId],
@@ -44,6 +46,7 @@ export default function OrgCoachesPage() {
       coachId: Number(coachId),
       coachSplitPct: Number(coachSplit),
       orgSplitPct: Number(orgSplit),
+      hourlyRate: hourlyRate ? Number(hourlyRate) : undefined,
     }),
     onSuccess: () => { invalidate(); setInviteOpen(false); setCoachId(''); showToast('Invite sent to coach'); },
     onError: (err) => showToast('Failed to send invite: ' + errMsg(err), 'error'),
@@ -63,7 +66,7 @@ export default function OrgCoachesPage() {
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-[var(--color-text)]">🎾 Coaches</h1>
         <Can permission="org.coaches.manage">
-          <button onClick={() => { setCoachId(''); setCoachSplit('70'); setOrgSplit('30'); setInviteOpen(true); }}
+          <button onClick={() => { setCoachId(''); setCoachSplit('70'); setOrgSplit('30'); setHourlyRate(''); setInviteOpen(true); }}
             className="px-4 py-2 bg-[var(--color-primary)] text-white rounded-lg text-sm font-medium hover:opacity-90">
             + Invite Coach
           </button>
@@ -83,7 +86,10 @@ export default function OrgCoachesPage() {
               <div className="min-w-0">
                 <p className="font-medium text-[var(--color-text)] truncate">{c.coach_name || '—'}</p>
                 <p className="text-xs text-[var(--color-text-muted)] truncate">
-                  {c.coach_email} • Coach {c.coach_split_pct}% / Org {c.org_split_pct}%
+                  {c.coach_email}
+                  {(c.hourly_rate || c.coach_global_rate) && <> • {formatPrice(Number(c.hourly_rate || c.coach_global_rate), c.currency_code)}/hr</>}
+                  {c.hourly_rate ? ' (org rate)' : ''}
+                  {' • '}Coach {c.coach_split_pct}% / Org {c.org_split_pct}%
                   {c.initiated_by === 'org' ? ' • org-initiated' : ' • coach-initiated'}
                 </p>
               </div>
@@ -109,7 +115,12 @@ export default function OrgCoachesPage() {
         <form onSubmit={(e) => { e.preventDefault(); if (coachId) inviteMutation.mutate(); }} className="space-y-3">
           <label className="block">
             <span className="text-xs font-medium text-[var(--color-text-muted)]">Coach *</span>
-            <select required value={coachId} onChange={(e) => setCoachId(e.target.value ? Number(e.target.value) : '')}
+            <select required value={coachId} onChange={(e) => {
+              const id = e.target.value ? Number(e.target.value) : '';
+              setCoachId(id);
+              const coach = (directory || []).find((d: any) => d.coach_id === id);
+              setHourlyRate(coach?.hourly_rate ? String(coach.hourly_rate) : '');
+            }}
               className="mt-1 w-full px-3 py-2 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-bg)] text-sm text-[var(--color-text)]">
               <option value="">Select a coach</option>
               {(directory || []).map((d: any) => (
@@ -121,6 +132,13 @@ export default function OrgCoachesPage() {
             {directory && directory.length === 0 && (
               <span className="text-xs text-[var(--color-text-muted)]">No invitable coaches available.</span>
             )}
+          </label>
+          <label className="block">
+            <span className="text-xs font-medium text-[var(--color-text-muted)]">Hourly rate (optional — overrides coach's default)</span>
+            <input type="number" min="0" step="0.01" value={hourlyRate}
+              onChange={(e) => setHourlyRate(e.target.value)}
+              placeholder={coachId ? `Coach's default rate` : 'Select a coach first'}
+              className="mt-1 w-full px-3 py-2 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-bg)] text-sm text-[var(--color-text)]" />
           </label>
           <div className="grid grid-cols-2 gap-3">
             <label className="block">

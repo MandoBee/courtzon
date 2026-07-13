@@ -416,14 +416,14 @@ export const activitiesRepository = {
     return rows;
   },
 
-  async upsertOrgAgreement(data: { coachId: number; organisationId: number; coachSplitPct: number; orgSplitPct: number; isActive?: boolean }) {
+  async upsertOrgAgreement(data: { coachId: number; organisationId: number; coachSplitPct: number; orgSplitPct: number; hourlyRate?: number; isActive?: boolean }) {
     // Coach-initiated agreements are auto-accepted.
     const pool = getPool();
     await pool.execute(
-      `INSERT INTO coach_org_agreements (coach_id, organisation_id, coach_split_pct, org_split_pct, is_active, status, initiated_by)
-       VALUES (?, ?, ?, ?, ?, 'accepted', 'coach')
-       ON DUPLICATE KEY UPDATE coach_split_pct = VALUES(coach_split_pct), org_split_pct = VALUES(org_split_pct), is_active = VALUES(is_active), status = 'accepted', initiated_by = 'coach'`,
-      [data.coachId, data.organisationId, data.coachSplitPct, data.orgSplitPct, data.isActive ?? true]
+      `INSERT INTO coach_org_agreements (coach_id, organisation_id, coach_split_pct, org_split_pct, hourly_rate, is_active, status, initiated_by)
+       VALUES (?, ?, ?, ?, ?, ?, 'accepted', 'coach')
+       ON DUPLICATE KEY UPDATE coach_split_pct = VALUES(coach_split_pct), org_split_pct = VALUES(org_split_pct), hourly_rate = VALUES(hourly_rate), is_active = VALUES(is_active), status = 'accepted', initiated_by = 'coach'`,
+      [data.coachId, data.organisationId, data.coachSplitPct, data.orgSplitPct, data.hourlyRate ?? null, data.isActive ?? true]
     );
   },
 

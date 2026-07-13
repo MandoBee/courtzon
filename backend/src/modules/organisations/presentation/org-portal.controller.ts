@@ -25,6 +25,7 @@ const InviteCoachSchema = z.object({
   coachId: z.coerce.number().int().positive(),
   coachSplitPct: z.coerce.number().min(0).max(100),
   orgSplitPct: z.coerce.number().min(0).max(100),
+  hourlyRate: z.coerce.number().positive().optional(),
 });
 const UpdateMemberAccessSchema = z.object({
   status: z.enum(['pending', 'approved', 'rejected', 'banned']),
@@ -289,7 +290,7 @@ export async function inviteCoachHandler(request: FastifyRequest, reply: Fastify
   const body = InviteCoachSchema.parse(request.body);
   const actorId = (request as any).userId;
   await service.inviteCoach(oid, { ...body, invitedBy: actorId });
-  auditOrganisationMutation(request, 'ORG_COACH.INVITE', 'organisation', oid, { coachId: body.coachId, coachSplitPct: body.coachSplitPct, orgSplitPct: body.orgSplitPct });
+  auditOrganisationMutation(request, 'ORG_COACH.INVITE', 'organisation', oid, { coachId: body.coachId, coachSplitPct: body.coachSplitPct, orgSplitPct: body.orgSplitPct, hourlyRate: body.hourlyRate });
   return reply.status(201).send({ message: 'Invite sent' });
 }
 

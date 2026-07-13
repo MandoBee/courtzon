@@ -209,14 +209,14 @@ export function listInvitableCoaches(orgId: number) {
   return repo.listInvitableCoaches(orgId);
 }
 
-export async function inviteCoach(orgId: number, data: { coachId: number; coachSplitPct: number; orgSplitPct: number; invitedBy: number }) {
+export async function inviteCoach(orgId: number, data: { coachId: number; coachSplitPct: number; orgSplitPct: number; invitedBy: number; hourlyRate?: number }) {
   if (!(await repo.coachExistsApproved(data.coachId))) {
     throw new NotFoundError('Approved coach');
   }
   if (Math.round(data.coachSplitPct + data.orgSplitPct) !== 100) {
     throw new ValidationError('Coach split and org split must add up to 100%');
   }
-  await repo.orgInviteCoach({ coachId: data.coachId, orgId, coachSplitPct: data.coachSplitPct, orgSplitPct: data.orgSplitPct, invitedBy: data.invitedBy });
+  await repo.orgInviteCoach({ coachId: data.coachId, orgId, coachSplitPct: data.coachSplitPct, orgSplitPct: data.orgSplitPct, invitedBy: data.invitedBy, hourlyRate: data.hourlyRate });
 }
 
 export async function removeCoachAgreement(orgId: number, coachId: number) {

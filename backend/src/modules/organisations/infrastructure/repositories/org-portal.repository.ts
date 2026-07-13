@@ -364,10 +364,10 @@ export async function removeStaffFromOrg(userId: number, orgId: number) {
 export async function listOrgCoaches(orgId: number) {
   const pool = getPool();
   const [rows] = await pool.execute<RowData>(
-    `SELECT coa.id, coa.coach_id, coa.coach_split_pct, coa.org_split_pct,
+    `SELECT coa.id, coa.coach_id, coa.coach_split_pct, coa.org_split_pct, coa.hourly_rate,
             coa.is_active, coa.status, coa.initiated_by, coa.created_at, coa.updated_at,
             cp.user_id, u.full_name AS coach_name, u.email AS coach_email,
-            cp.rating_avg, cp.hourly_rate, cp.currency_code
+            cp.rating_avg, cp.hourly_rate AS coach_global_rate, cp.currency_code
      FROM coach_org_agreements coa
      JOIN coach_profiles cp ON cp.id = coa.coach_id
      JOIN users u ON u.id = cp.user_id
@@ -409,21 +409,22 @@ export async function coachExistsApproved(coachId: number): Promise<boolean> {
 
 /** Org sends (or re-sends) an invite to a coach. Resets to pending. */
 export async function orgInviteCoach(data: {
-  coachId: number; orgId: number; coachSplitPct: number; orgSplitPct: number; invitedBy: number;
+  coachId: number; orgId: number; coachSplitPct: number; orgSplitPct: number; invitedBy: number; hourlyRate?: number;
 }) {
   const pool = getPool();
   await pool.execute(
     `INSERT INTO coach_org_agreements
-       (coach_id, organisation_id, coach_split_pct, org_split_pct, is_active, status, initiated_by, invited_by)
-     VALUES (?, ?, ?, ?, FALSE, 'pending', 'org', ?)
+       (coach_id, organisation_id, coach_split_pct, org_split_pct, hourly_rate, is_active, status, initiated_by, invited_by)
+     VALUES (?, ?, ?, ?, ?, FALSE, 'pending', 'org', ?)
      ON DUPLICATE KEY UPDATE
        coach_split_pct = VALUES(coach_split_pct),
        org_split_pct   = VALUES(org_split_pct),
+       hourly_rate     = VALUES(hourly_rate),
        is_active       = FALSE,
        status          = 'pending',
        initiated_by    = 'org',
        invited_by      = VALUES(invited_by)`,
-    [data.coachId, data.orgId, data.coachSplitPct, data.orgSplitPct, data.invitedBy]
+    [data.coachId, data.orgId, data.coachSplitPct, data.orgSplitPct, data.hourlyRate ?? null, data.invitedBy]
   );
 }
 
