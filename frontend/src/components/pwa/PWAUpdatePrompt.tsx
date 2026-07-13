@@ -7,10 +7,12 @@ import { useHaptics } from '../../hooks/useHaptics';
  * "New version available" prompt backed by vite-plugin-pwa's `virtual:pwa-register`
  * `onNeedRefresh` callback. Renders a small toast-like card; reload applies the update.
  * In dev (no service worker) it no-ops.
+ *
+ * NOTE: `onOfflineReady` is intentionally absorbed without UI. The branded
+ * InstallPrompt component is the ONLY install UI allowed.
  */
 export default function PWAUpdatePrompt() {
   const [needRefresh, setNeedRefresh] = useState(false);
-  const [offlineReady, setOfflineReady] = useState(false);
   const { t } = useTranslation();
   const siteName = useAppSettingsStore((s) => s.siteName);
   const { confirm } = useHaptics();
@@ -25,7 +27,9 @@ export default function PWAUpdatePrompt() {
         if (cancelled) return;
         const updateSW = registerSW({
           onNeedRefresh: () => setNeedRefresh(true),
-          onOfflineReady: () => setOfflineReady(true),
+          onOfflineReady: () => {
+            /* silently absorbed — the branded InstallPrompt is the only install UI */
+          },
         });
         updateSWRef.current = updateSW;
       } catch {
@@ -49,20 +53,7 @@ export default function PWAUpdatePrompt() {
 
   const close = () => {
     setNeedRefresh(false);
-    setOfflineReady(false);
   };
-
-  if (offlineReady && !needRefresh) {
-    return (
-      <div className="fixed bottom-20 md:bottom-4 left-1/2 -translate-x-1/2 z-[55] w-[92%] max-w-md bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-lg)] shadow-[var(--shadow-lg)] p-4 flex items-center gap-3 cz-fade-enter cz-pb-safe">
-        <span className="text-2xl">✅</span>
-        <p className="flex-1 text-sm text-[var(--color-text)]">
-          {t('pwa.install_app', { app: siteName })} — {t('common.close')}
-        </p>
-        <button onClick={close} className="text-xs text-[var(--color-text-muted)] px-2 py-1">{t('common.close')}</button>
-      </div>
-    );
-  }
 
   if (!needRefresh) return null;
 
