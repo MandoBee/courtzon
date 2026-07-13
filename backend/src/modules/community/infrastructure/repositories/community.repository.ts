@@ -153,30 +153,157 @@ export const communityRepository = {
     return rows.length > 0;
   },
 
+  // ── Group Chat ──
+  async createGroupConversation(creatorId: number, name: string, avatarUrl: string | undefined, inviteeIds: number[]): Promise<number> {
+    const pool = getPool();
+    const [result] = await pool.execute(
+      'INSERT INTO conversations (conversation_type, name, avatar_url) VALUES (?, ?, ?)',
+      ['group', name, avatarUrl || null]
+    );
+    const convoId = (result as any).insertId;
+    await pool.execute('INSERT INTO conversation_participants (conversation_id, user_id) VALUES (?, ?)', [convoId, creatorId]);
+    if (inviteeIds.length > 0) {
+      const placeholders = inviteeIds.map(() => '(?, ?, ?, ?)').join(', ');
+      const params: any[] = [];
+      for (const inviteeId of inviteeIds) {
+        params.push(convoId, creatorId, inviteeId, 'pending');
+      }
+      await pool.execute(
+        `INSERT INTO group_invitations (conversation_id, inviter_id, invitee_id, status) VALUES ${placeholders}`,
+        params
+      );
+    }
+    return convoId;
+  },
+
+  async inviteToGroup(conversationId: number, inviterId: number, inviteeId: number) {
+    const pool = getPool();
+    await pool.execute(
+      'INSERT INTO group_invitations (conversation_id, inviter_id, invitee_id, status) VALUES (?, ?, ?, ?)',
+      [conversationId, inviterId, inviteeId, 'pending']
+    );
+  },
+
+  async isAlreadyInvited(conversationId: number, inviteeId: number): Promise<boolean> {
+    const pool = getPool();
+    const [rows] = await pool.execute<RowData>(
+      `SELECT 1 FROM group_invitations WHERE conversation_id = ? AND invitee_id = ? AND status = 'pending' LIMIT 1`,
+      [conversationId, inviteeId]
+    );
+    return rows.length > 0;
+  },
+
+  async findGroupInvitations(userId: number) {
+    const pool = getPool();
+    const [rows] = await pool.execute<RowData>(
+      `SELECT gi.id, gi.conversation_id, gi.status, gi.created_at AS invitation_created_at,
+              c.name AS conversation_name, c.avatar_url AS conversation_avatar_url,
+              u.full_name AS inviter_name, u.avatar_url AS inviter_avatar_url
+         FROM group_invitations gi
+         JOIN conversations c ON c.id = gi.conversation_id
+         JOIN users u ON u.id = gi.inviter_id
+        WHERE gi.invitee_id = ? AND gi.status = 'pending'
+        ORDER BY gi.created_at DESC`,
+      [userId]
+    );
+    return rows;
+  },
+
+  async findInvitationById(invitationId: number) {
+    const pool = getPool();
+    const [rows] = await pool.execute<RowData>(
+      'SELECT * FROM group_invitations WHERE id = ? LIMIT 1',
+      [invitationId]
+    );
+    return rows.length > 0 ? rows[0] : null;
+  },
+
+  async respondToInvitation(invitationId: number, userId: number, status: string) {
+    const pool = getPool();
+    await pool.execute(
+      'UPDATE group_invitations SET status = ?, updated_at = NOW() WHERE id = ? AND invitee_id = ?',
+      [status, invitationId, userId]
+    );
+    if (status === 'accepted') {
+      const [invRows] = await pool.execute<RowData>(
+        'SELECT conversation_id FROM group_invitations WHERE id = ?', [invitationId]
+      );
+      if (invRows.length > 0) {
+        await pool.execute(
+          'INSERT INTO conversation_participants (conversation_id, user_id) VALUES (?, ?)',
+          [invRows[0].conversation_id, userId]
+        );
+      }
+    }
+  },
+
+  // ── Pin Conversations ──
+  async pinConversation(conversationId: number, userId: number) {
+    const pool = getPool();
+    await pool.execute(
+      'UPDATE conversation_participants SET pinned_at = NOW() WHERE conversation_id = ? AND user_id = ?',
+      [conversationId, userId]
+    );
+  },
+
+  async unpinConversation(conversationId: number, userId: number) {
+    const pool = getPool();
+    await pool.execute(
+      'UPDATE conversation_participants SET pinned_at = NULL WHERE conversation_id = ? AND user_id = ?',
+      [conversationId, userId]
+    );
+  },
+
+  async getPinCount(userId: number): Promise<number> {
+    const pool = getPool();
+    const [rows] = await pool.execute<RowData>(
+      `SELECT COUNT(*) AS cnt FROM conversation_participants WHERE user_id = ? AND pinned_at IS NOT NULL`,
+      [userId]
+    );
+    return rows[0]?.cnt ?? 0;
+  },
+
+  // ── Conversations (direct + group) ──
   async findConversations(userId: number) {
     const pool = getPool();
     const [rows] = await pool.execute<RowData>(
-      `SELECT c.id, c.conversation_type, c.updated_at,
+      `SELECT c.id, c.conversation_type, c.name AS group_name, c.avatar_url AS group_avatar_url, c.updated_at,
               lm.content AS last_message,
               lm.created_at AS last_message_at,
-              ou.id AS other_user_id,
-              ou.full_name AS other_user_name,
-              ou.email AS other_user_email,
-              ou.avatar_url AS other_user_avatar
+              CASE WHEN c.conversation_type = 'direct' THEN ou.id ELSE NULL END AS other_user_id,
+              CASE WHEN c.conversation_type = 'direct' THEN ou.full_name ELSE NULL END AS other_user_name,
+              CASE WHEN c.conversation_type = 'direct' THEN ou.email ELSE NULL END AS other_user_email,
+              CASE WHEN c.conversation_type = 'direct' THEN ou.avatar_url ELSE NULL END AS other_user_avatar,
+              cp.pinned_at,
+              CASE
+                WHEN cp.last_read_at IS NULL THEN (
+                  SELECT COUNT(*) FROM messages m WHERE m.conversation_id = c.id AND m.deleted_at IS NULL
+                )
+                ELSE (
+                  SELECT COUNT(*) FROM messages m WHERE m.conversation_id = c.id AND m.deleted_at IS NULL AND m.created_at > cp.last_read_at
+                )
+              END AS unread_count
          FROM conversations c
          JOIN conversation_participants cp ON cp.conversation_id = c.id AND cp.user_id = ?
-         JOIN conversation_participants ocp ON ocp.conversation_id = c.id AND ocp.user_id <> ?
-         JOIN users ou ON ou.id = ocp.user_id
+         LEFT JOIN conversation_participants ocp ON ocp.conversation_id = c.id AND ocp.user_id <> ? AND c.conversation_type = 'direct'
+         LEFT JOIN users ou ON ou.id = ocp.user_id
          LEFT JOIN messages lm ON lm.id = (
            SELECT m.id FROM messages m
             WHERE m.conversation_id = c.id AND m.deleted_at IS NULL
             ORDER BY m.created_at DESC LIMIT 1
          )
-        WHERE c.conversation_type = 'direct'
-        ORDER BY COALESCE(lm.created_at, c.updated_at) DESC`,
+        ORDER BY cp.pinned_at DESC, COALESCE(lm.created_at, c.updated_at) DESC`,
       [userId, userId]
     );
     return rows;
+  },
+
+  async markAsRead(conversationId: number, userId: number) {
+    const pool = getPool();
+    await pool.execute(
+      'UPDATE conversation_participants SET last_read_at = NOW() WHERE conversation_id = ? AND user_id = ?',
+      [conversationId, userId]
+    );
   },
 
   async sendMessage(conversationId: number, senderId: number, content: string) {

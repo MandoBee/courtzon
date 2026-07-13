@@ -47,3 +47,17 @@ export const AuditQuerySchema = z.object({
 export const RevertSchema = z.object({
   reason: z.string().min(1).max(500),
 });
+
+export const CreateGroupSchema = z.object({
+  name: z.string().min(1).max(255),
+  avatarUrl: z.string().optional(),
+  inviteeIds: z.array(z.number().int().positive()).min(1),
+});
+
+export const InviteToGroupSchema = z.object({
+  inviteeId: z.number().int().positive(),
+});
+
+export const RespondToInvitationSchema = z.object({
+  status: z.enum(['accepted', 'rejected']),
+});

@@ -32,11 +32,18 @@ export async function communityRoutes(app: FastifyInstance): Promise<void> {
     scopedApp.addHook('preHandler', requireFeatureFlag('community.chat_enabled'));
 
     scopedApp.get('/community/conversations', { preHandler: [requirePermission(['community.chat.view'])] }, ctrl.getConversationsHandler);
+    scopedApp.get('/community/conversations/invitations', { preHandler: [requirePermission(['community.chat.view'])] }, ctrl.getGroupInvitationsHandler);
+    scopedApp.put('/community/conversations/invitations/:invitationId', { preHandler: [requirePermission(['community.chat.send'])] }, ctrl.respondToInvitationHandler);
+    scopedApp.post('/community/conversations/group', { preHandler: [requirePermission(['community.chat.send'])] }, ctrl.createGroupHandler);
     scopedApp.get('/community/users/lookup/phone/:phone', { preHandler: [requirePermission(['community.chat.view'])] }, ctrl.lookupUserByPhoneHandler);
     scopedApp.get('/community/conversations/with/phone/:phone', { preHandler: [requirePermission(['community.chat.view'])] }, ctrl.getOrCreateConversationByPhoneHandler);
     scopedApp.get('/community/conversations/with/:otherUserId', { preHandler: [requirePermission(['community.chat.view'])] }, ctrl.getOrCreateConversationHandler);
     scopedApp.get('/community/conversations/:conversationId/messages', { preHandler: [requirePermission(['community.chat.view'])] }, ctrl.getMessagesHandler);
     scopedApp.post('/community/conversations/:conversationId/messages', { preHandler: [requirePermission(['community.chat.send'])] }, ctrl.sendMessageHandler);
+    scopedApp.post('/community/conversations/:conversationId/invite', { preHandler: [requirePermission(['community.chat.send'])] }, ctrl.inviteToGroupHandler);
+    scopedApp.put('/community/conversations/:conversationId/pin', { preHandler: [requirePermission(['community.chat.send'])] }, ctrl.pinConversationHandler);
+    scopedApp.delete('/community/conversations/:conversationId/pin', { preHandler: [requirePermission(['community.chat.send'])] }, ctrl.unpinConversationHandler);
+    scopedApp.put('/community/conversations/:conversationId/read', { preHandler: [requirePermission(['community.chat.view'])] }, ctrl.markAsReadHandler);
   });
 
   // Ads — gated by community.events_enabled (general community flag)

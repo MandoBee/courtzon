@@ -19,6 +19,8 @@ function formatTime(iso: string | null | undefined) {
   return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
 }
 
+const MAX_PINS = 5;
+
 export default function MessagesPage() {
   const { can } = useCan();
   const user = useAuthStore((s) => s.user);
@@ -34,12 +36,29 @@ export default function MessagesPage() {
   const [newStep, setNewStep] = useState<'phone' | 'confirm'>('phone');
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  // --- Group creation state ---
+  const [groupOpen, setGroupOpen] = useState(false);
+  const [groupName, setGroupName] = useState('');
+  const [groupAvatarUrl, setGroupAvatarUrl] = useState<string | undefined>(undefined);
+  const [groupMembers, setGroupMembers] = useState<{ id: number; full_name: string; avatar_url?: string; phone: string }[]>([]);
+  const [groupPhone, setGroupPhone] = useState('');
+  const [groupAvatarFile, setGroupAvatarFile] = useState<File | null>(null);
+
   const { data: conversations, isLoading: loadingConvos } = useQuery({
     queryKey: ['chat-conversations'],
     queryFn: () => api.get('/community/conversations').then((r) => r.data?.data || []),
     enabled: can('community.chat.view'),
     refetchInterval: 15000,
   });
+
+  const { data: invitations } = useQuery({
+    queryKey: ['chat-invitations'],
+    queryFn: () => api.get('/community/conversations/invitations').then((r) => r.data?.data || []),
+    enabled: can('community.chat.view'),
+    refetchInterval: 30000,
+  });
+
+  const pendingInvitations = invitations?.filter((inv: any) => inv.status === 'pending') || [];
 
   const selectedConvo = conversations?.find((c: any) => c.id === selectedId);
 
@@ -50,6 +69,7 @@ export default function MessagesPage() {
     refetchInterval: selectedId ? 4000 : false,
   });
 
+  // --- Direct message mutations ---
   const startConvoMutation = useMutation({
     mutationFn: (phone: string) => api.get(`/community/conversations/with/phone/${encodeURIComponent(phone)}`).then((r) => r.data),
     onSuccess: (data) => {
@@ -96,6 +116,71 @@ export default function MessagesPage() {
     onError: (err: any) => showToast(err?.response?.data?.message || 'Failed to send', 'error'),
   });
 
+  // --- Pin/unpin mutations ---
+  const pinMutation = useMutation({
+    mutationFn: (conversationId: number) => api.put(`/community/conversations/${conversationId}/pin`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['chat-conversations'] });
+      showToast('Conversation pinned');
+    },
+    onError: (err: any) => showToast(err?.response?.data?.message || 'Could not pin', 'error'),
+  });
+
+  const unpinMutation = useMutation({
+    mutationFn: (conversationId: number) => api.delete(`/community/conversations/${conversationId}/pin`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['chat-conversations'] });
+      showToast('Conversation unpinned');
+    },
+    onError: (err: any) => showToast(err?.response?.data?.message || 'Could not unpin', 'error'),
+  });
+
+  // --- Mark as read mutation ---
+  const markReadMutation = useMutation({
+    mutationFn: (conversationId: number) => api.put(`/community/conversations/${conversationId}/read`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['chat-conversations'] });
+    },
+  });
+
+  // --- Invitation mutations ---
+  const respondInvitationMutation = useMutation({
+    mutationFn: ({ invitationId, status }: { invitationId: number; status: 'accepted' | 'rejected' }) =>
+      api.put(`/community/conversations/invitations/${invitationId}`, { status }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['chat-invitations'] });
+      qc.invalidateQueries({ queryKey: ['chat-conversations'] });
+      showToast('Invitation updated');
+    },
+    onError: (err: any) => showToast(err?.response?.data?.message || 'Could not respond to invitation', 'error'),
+  });
+
+  // --- Group creation mutations ---
+  const createGroupMutation = useMutation({
+    mutationFn: (body: { name: string; avatarUrl?: string; inviteeIds: number[] }) =>
+      api.post('/community/conversations/group', body).then((r) => r.data),
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ['chat-conversations'] });
+      setSelectedId(data.conversationId);
+      closeGroupModal();
+      showToast('Group created');
+    },
+    onError: (err: any) => showToast(err?.response?.data?.message || 'Could not create group', 'error'),
+  });
+
+  const groupLookupMutation = useMutation({
+    mutationFn: (phone: string) => api.get(`/community/users/lookup/phone/${encodeURIComponent(phone)}`).then((r) => r.data.data),
+    onError: () => showToast('No user found with this phone number', 'error'),
+  });
+
+  const uploadAvatarMutation = useMutation({
+    mutationFn: (file: File) => {
+      const form = new FormData();
+      form.append('avatar', file);
+      return api.post('/upload/avatar', form, { headers: { 'Content-Type': 'multipart/form-data' } }).then((r) => r.data.url || r.data.data?.url);
+    },
+  });
+
   useEffect(() => {
     if (!withParam || !can('community.chat.view')) return;
     const uid = Number(withParam);
@@ -107,6 +192,13 @@ export default function MessagesPage() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  useEffect(() => {
+    if (selectedId) {
+      markReadMutation.mutate(selectedId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedId]);
 
   if (!can('community.chat.view')) {
     return <p className="text-[var(--color-text-muted)]">You do not have permission to view messages.</p>;
@@ -140,18 +232,93 @@ export default function MessagesPage() {
     setNewStep('phone');
   }
 
+  function handlePinToggle(c: any) {
+    const pinCount = conversations?.filter((x: any) => x.pinned_at).length || 0;
+    if (c.pinned_at) {
+      unpinMutation.mutate(c.id);
+    } else {
+      if (pinCount >= MAX_PINS) {
+        showToast(`Maximum ${MAX_PINS} pinned conversations`, 'error');
+        return;
+      }
+      pinMutation.mutate(c.id);
+    }
+  }
+
+  async function handleGroupLookup() {
+    const phone = groupPhone.trim();
+    if (!phone) {
+      showToast('Enter a phone number', 'warning');
+      return;
+    }
+    if (groupMembers.some((m) => m.phone === phone)) {
+      showToast('Already added', 'warning');
+      return;
+    }
+    const result = await groupLookupMutation.mutateAsync(phone);
+    if (result) {
+      setGroupMembers((prev) => [...prev, { id: result.id, full_name: result.full_name, avatar_url: result.avatar_url, phone }]);
+      setGroupPhone('');
+    }
+  }
+
+  function handleRemoveMember(phone: string) {
+    setGroupMembers((prev) => prev.filter((m) => m.phone !== phone));
+  }
+
+  async function handleCreateGroup() {
+    if (!groupName.trim()) {
+      showToast('Enter a group name', 'warning');
+      return;
+    }
+    if (groupMembers.length === 0) {
+      showToast('Add at least one member', 'warning');
+      return;
+    }
+    let avatarUrl = groupAvatarUrl;
+    if (groupAvatarFile) {
+      const url = await uploadAvatarMutation.mutateAsync(groupAvatarFile);
+      if (url) avatarUrl = url;
+    }
+    createGroupMutation.mutate({
+      name: groupName.trim(),
+      avatarUrl,
+      inviteeIds: groupMembers.map((m) => m.id),
+    });
+  }
+
+  function closeGroupModal() {
+    setGroupOpen(false);
+    setGroupName('');
+    setGroupAvatarUrl(undefined);
+    setGroupAvatarFile(null);
+    setGroupMembers([]);
+    setGroupPhone('');
+  }
+
+  const pinnedConvos = conversations?.filter((c: any) => c.pinned_at) || [];
+  const unpinnedConvos = conversations?.filter((c: any) => !c.pinned_at) || [];
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-[var(--color-text)]">💬 Messages</h1>
-        <Can permission="community.chat.view">
-          <button
-            onClick={() => setNewOpen(true)}
-            className="px-4 py-2 bg-[var(--color-primary)] text-white rounded-lg text-sm font-medium hover:opacity-90"
-          >
-            + New message
-          </button>
-        </Can>
+        <div className="flex gap-2">
+          <Can permission="community.chat.view">
+            <button
+              onClick={() => setGroupOpen(true)}
+              className="px-4 py-2 bg-[var(--color-primary)] text-white rounded-lg text-sm font-medium hover:opacity-90"
+            >
+              + Create Group
+            </button>
+            <button
+              onClick={() => setNewOpen(true)}
+              className="px-4 py-2 bg-[var(--color-primary)] text-white rounded-lg text-sm font-medium hover:opacity-90"
+            >
+              + New message
+            </button>
+          </Can>
+        </div>
       </div>
 
       <div className="flex flex-col md:flex-row gap-4 min-h-[60vh] border border-[var(--color-border)] rounded-xl overflow-hidden bg-[var(--color-surface)]">
@@ -161,36 +328,81 @@ export default function MessagesPage() {
             Conversations
           </div>
           <div className="flex-1 overflow-y-auto">
+            {/* Invitations section */}
+            {pendingInvitations.length > 0 && (
+              <div className="border-b border-[var(--color-border)]">
+                <div className="px-3 py-2 bg-amber-50 dark:bg-amber-900/20 text-xs font-medium text-amber-700 dark:text-amber-400">
+                  Pending Invitations ({pendingInvitations.length})
+                </div>
+                {pendingInvitations.map((inv: any) => (
+                  <div key={inv.id} className="px-3 py-3 border-b border-[var(--color-border)]">
+                    <div className="flex items-center gap-2 mb-2">
+                      <EntityImage
+                        src={inv.inviter_avatar_url}
+                        name={inv.inviter_name || 'User'}
+                        className="w-8 h-8 rounded-full text-xs shrink-0"
+                      />
+                      <div className="min-w-0">
+                        <p className="text-xs text-[var(--color-text-muted)]">
+                          <span className="font-medium text-[var(--color-text)]">{inv.inviter_name}</span> invited you to
+                        </p>
+                        <p className="text-sm font-medium text-[var(--color-text)] truncate">{inv.conversation_name || 'a group'}</p>
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => respondInvitationMutation.mutate({ invitationId: inv.id, status: 'accepted' })}
+                        disabled={respondInvitationMutation.isPending}
+                        className="px-3 py-1 bg-green-600 text-white text-xs rounded-lg hover:opacity-90 disabled:opacity-50"
+                      >
+                        Accept
+                      </button>
+                      <button
+                        onClick={() => respondInvitationMutation.mutate({ invitationId: inv.id, status: 'rejected' })}
+                        disabled={respondInvitationMutation.isPending}
+                        className="px-3 py-1 bg-red-500 text-white text-xs rounded-lg hover:opacity-90 disabled:opacity-50"
+                      >
+                        Reject
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
             {loadingConvos ? (
               <div className="p-4 animate-pulse h-16 bg-[var(--color-border)] bg-[var(--color-surface)] m-2 rounded-lg" />
             ) : !conversations?.length ? (
               <p className="p-4 text-sm text-[var(--color-text-muted)]">No conversations yet. Start one with + New message.</p>
             ) : (
-              conversations.map((c: any) => (
-                <button
-                  key={c.id}
-                  type="button"
-                  onClick={() => setSelectedId(c.id)}
-                  className={`w-full text-left px-3 py-3 border-b border-[var(--color-border)] hover:bg-[var(--color-bg)] transition-colors ${
-                    selectedId === c.id ? 'bg-[var(--color-primary)]/10' : ''
-                  }`}
-                >
-                  <div className="flex items-center gap-2">
-                    <EntityImage
-                      src={c.other_user_avatar}
-                      name={c.other_user_name || c.other_user_email || 'User'}
-                      className="w-9 h-9 rounded-full text-sm shrink-0"
-                    />
-                    <div className="min-w-0 flex-1">
-                      <div className="flex justify-between gap-1">
-                        <span className="font-medium text-sm text-[var(--color-text)] truncate">{c.other_user_name || 'User'}</span>
-                        <span className="text-[10px] text-[var(--color-text-muted)] shrink-0">{formatTime(c.last_message_at || c.updated_at)}</span>
-                      </div>
-                      <p className="text-xs text-[var(--color-text-muted)] truncate">{c.last_message || 'No messages yet'}</p>
-                    </div>
+              <>
+                {pinnedConvos.length > 0 && (
+                  <div>
+                    {pinnedConvos.map((c: any) => (
+                      <ConversationItem
+                        key={c.id}
+                        c={c}
+                        selectedId={selectedId}
+                        onSelect={() => setSelectedId(c.id)}
+                        onPinToggle={() => handlePinToggle(c)}
+                      />
+                    ))}
                   </div>
-                </button>
-              ))
+                )}
+                {unpinnedConvos.length > 0 && (
+                  <div>
+                    {unpinnedConvos.map((c: any) => (
+                      <ConversationItem
+                        key={c.id}
+                        c={c}
+                        selectedId={selectedId}
+                        onSelect={() => setSelectedId(c.id)}
+                        onPinToggle={() => handlePinToggle(c)}
+                      />
+                    ))}
+                  </div>
+                )}
+              </>
             )}
           </div>
         </aside>
@@ -207,9 +419,20 @@ export default function MessagesPage() {
                 <button type="button" className="md:hidden text-sm text-[var(--color-primary)]" onClick={() => setSelectedId(null)}>
                   ← Back
                 </button>
-                <span className="font-medium text-[var(--color-text)]">
-                  {selectedConvo?.other_user_name || 'Conversation'}
-                </span>
+                {selectedConvo?.conversation_type === 'group' ? (
+                  <>
+                    <EntityImage
+                      src={selectedConvo?.group_avatar_url}
+                      name={selectedConvo?.group_name || 'Group'}
+                      className="w-8 h-8 rounded-full text-xs shrink-0"
+                    />
+                    <span className="font-medium text-[var(--color-text)]">{selectedConvo?.group_name || 'Group'}</span>
+                  </>
+                ) : (
+                  <span className="font-medium text-[var(--color-text)]">
+                    {selectedConvo?.other_user_name || 'Conversation'}
+                  </span>
+                )}
               </div>
               <div className="flex-1 overflow-y-auto p-4 space-y-3">
                 {loadingMessages ? (
@@ -268,6 +491,7 @@ export default function MessagesPage() {
         </section>
       </div>
 
+      {/* New message modal */}
       <Modal open={newOpen} onClose={handleCloseModal} title="New message">
         {newStep === 'phone' ? (
           <form onSubmit={handleLookup} className="space-y-3">
@@ -317,6 +541,160 @@ export default function MessagesPage() {
           </div>
         )}
       </Modal>
+
+      {/* Create Group modal */}
+      <Modal open={groupOpen} onClose={closeGroupModal} title="Create Group">
+        <div className="space-y-4">
+          <label className="block">
+            <span className="text-xs font-medium text-[var(--color-text-muted)]">Group Name *</span>
+            <input
+              required
+              value={groupName}
+              onChange={(e) => setGroupName(e.target.value)}
+              placeholder="e.g. Court Session"
+              className="mt-1 w-full px-3 py-2 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-bg)] text-sm text-[var(--color-text)]"
+            />
+          </label>
+
+          <label className="block">
+            <span className="text-xs font-medium text-[var(--color-text-muted)]">Group Avatar (optional)</span>
+            <input
+              type="file"
+              accept="image/*"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) {
+                  setGroupAvatarFile(file);
+                  setGroupAvatarUrl(URL.createObjectURL(file));
+                }
+              }}
+              className="mt-1 w-full text-sm text-[var(--color-text)]"
+            />
+            {groupAvatarUrl && (
+              <div className="mt-2">
+                <EntityImage src={groupAvatarUrl} name={groupName || 'Group'} className="w-16 h-16 rounded-full text-lg" />
+              </div>
+            )}
+          </label>
+
+          <div>
+            <span className="text-xs font-medium text-[var(--color-text-muted)]">Add Members</span>
+            <div className="flex gap-2 mt-1">
+              <input
+                type="tel"
+                value={groupPhone}
+                onChange={(e) => setGroupPhone(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleGroupLookup();
+                  }
+                }}
+                placeholder="Phone number"
+                className="flex-1 px-3 py-2 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-bg)] text-sm text-[var(--color-text)]"
+              />
+              <button
+                type="button"
+                onClick={handleGroupLookup}
+                disabled={groupLookupMutation.isPending}
+                className="px-3 py-2 bg-[var(--color-primary)] text-white rounded-lg text-sm font-medium disabled:opacity-50 hover:opacity-90"
+              >
+                {groupLookupMutation.isPending ? '…' : 'Add'}
+              </button>
+            </div>
+            {groupMembers.length > 0 && (
+              <div className="flex flex-wrap gap-2 mt-2">
+                {groupMembers.map((m) => (
+                  <span
+                    key={m.id}
+                    className="flex items-center gap-1 px-2 py-1 bg-[var(--color-primary)]/10 text-[var(--color-primary)] rounded-full text-xs"
+                  >
+                    <EntityImage src={m.avatar_url} name={m.full_name} className="w-4 h-4 rounded-full text-[8px]" />
+                    {m.full_name}
+                    <button type="button" onClick={() => handleRemoveMember(m.phone)} className="ml-1 hover:opacity-70">×</button>
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="flex justify-end gap-2 pt-2">
+            <button type="button" onClick={closeGroupModal} className="px-4 py-2 text-sm text-[var(--color-text-muted)]">Cancel</button>
+            <button
+              onClick={handleCreateGroup}
+              disabled={createGroupMutation.isPending || uploadAvatarMutation.isPending}
+              className="px-4 py-2 bg-[var(--color-primary)] text-white rounded-lg text-sm font-medium disabled:opacity-50 hover:opacity-90"
+            >
+              {createGroupMutation.isPending ? 'Creating…' : 'Create'}
+            </button>
+          </div>
+        </div>
+      </Modal>
     </div>
+  );
+}
+
+function ConversationItem({
+  c,
+  selectedId,
+  onSelect,
+  onPinToggle,
+}: {
+  c: any;
+  selectedId: number | null;
+  onSelect: () => void;
+  onPinToggle: () => void;
+}) {
+  const isGroup = c.conversation_type === 'group';
+  const displayName = isGroup ? c.group_name : c.other_user_name;
+  const displayAvatar = isGroup ? c.group_avatar_url : c.other_user_avatar;
+  const unread = c.unread_count || 0;
+
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      className={`w-full text-left px-3 py-3 border-b border-[var(--color-border)] hover:bg-[var(--color-bg)] transition-colors ${
+        selectedId === c.id ? 'bg-[var(--color-primary)]/10' : ''
+      }`}
+    >
+      <div className="flex items-center gap-2">
+        <EntityImage
+          src={displayAvatar}
+          name={displayName || (isGroup ? 'Group' : 'User')}
+          className="w-9 h-9 rounded-full text-sm shrink-0"
+        />
+        <div className="min-w-0 flex-1">
+          <div className="flex justify-between gap-1">
+            <span className="flex items-center gap-1 font-medium text-sm text-[var(--color-text)] truncate">
+              {displayName || (isGroup ? 'Group' : 'User')}
+              {c.pinned_at && <span className="text-xs" title="Pinned">📌</span>}
+            </span>
+            <span className="text-[10px] text-[var(--color-text-muted)] shrink-0">{formatTime(c.last_message_at || c.updated_at)}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <p className="text-xs text-[var(--color-text-muted)] truncate flex-1">{c.last_message || 'No messages yet'}</p>
+            <div className="flex items-center gap-1 shrink-0">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onPinToggle();
+                }}
+                className="text-xs opacity-40 hover:opacity-100 transition-opacity"
+                title={c.pinned_at ? 'Unpin' : 'Pin'}
+              >
+                📌
+              </button>
+              {unread > 0 && (
+                <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 text-[10px] font-bold text-white bg-red-500 rounded-full">
+                  {unread > 99 ? '99+' : unread}
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    </button>
   );
 }

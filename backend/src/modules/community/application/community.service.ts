@@ -88,6 +88,57 @@ export const communityService = {
     return repo.findMessages(conversationId, page, limit);
   },
 
+  // ── Group Chat ──
+  async createGroup(userId: number, name: string, avatarUrl: string | undefined, inviteeIds: number[]) {
+    return repo.createGroupConversation(userId, name, avatarUrl, inviteeIds);
+  },
+
+  async inviteToGroup(conversationId: number, userId: number, inviteeId: number) {
+    if (!(await repo.isConversationParticipant(conversationId, userId))) {
+      throw new ForbiddenError('Not a participant in this conversation');
+    }
+    if (await repo.isAlreadyInvited(conversationId, inviteeId)) {
+      throw new ConflictError('User already invited');
+    }
+    await repo.inviteToGroup(conversationId, userId, inviteeId);
+  },
+
+  async getGroupInvitations(userId: number) {
+    return repo.findGroupInvitations(userId);
+  },
+
+  async respondToInvitation(invitationId: number, userId: number, status: string) {
+    const invitation = await repo.findInvitationById(invitationId);
+    if (!invitation) throw new NotFoundError('Invitation');
+    if (invitation.invitee_id !== userId) throw new ForbiddenError('Invitation does not belong to you');
+    if (invitation.status !== 'pending') throw new ConflictError('Invitation already responded to');
+    await repo.respondToInvitation(invitationId, userId, status);
+  },
+
+  // ── Pin Conversations ──
+  async pinConversation(conversationId: number, userId: number) {
+    if (!(await repo.isConversationParticipant(conversationId, userId))) {
+      throw new ForbiddenError('Not a participant in this conversation');
+    }
+    const count = await repo.getPinCount(userId);
+    if (count >= 5) throw new ConflictError('Maximum 5 pinned conversations');
+    await repo.pinConversation(conversationId, userId);
+  },
+
+  async unpinConversation(conversationId: number, userId: number) {
+    if (!(await repo.isConversationParticipant(conversationId, userId))) {
+      throw new ForbiddenError('Not a participant in this conversation');
+    }
+    await repo.unpinConversation(conversationId, userId);
+  },
+
+  async markAsRead(conversationId: number, userId: number) {
+    if (!(await repo.isConversationParticipant(conversationId, userId))) {
+      throw new ForbiddenError('Not a participant in this conversation');
+    }
+    await repo.markAsRead(conversationId, userId);
+  },
+
   // ── Ads ──
   async getPlacements() { return repo.findPlacements(); },
   async getActiveAds(placementId: number) { return repo.findActiveCampaigns(placementId); },

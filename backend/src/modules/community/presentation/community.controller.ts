@@ -1,7 +1,7 @@
 import type { FastifyRequest, FastifyReply } from 'fastify';
 import { communityService as svc } from '../application/community.service.js';
 import { recordAudit } from '../../audit-log/index.js';
-import { CreateEventSchema, RsvpSchema, SendMessageSchema, CreateCampaignSchema, AuditQuerySchema, RevertSchema } from './community.dto.js';
+import { CreateEventSchema, RsvpSchema, SendMessageSchema, CreateCampaignSchema, AuditQuerySchema, RevertSchema, CreateGroupSchema, InviteToGroupSchema, RespondToInvitationSchema } from './community.dto.js';
 
 // ── Follows ──
 export async function followHandler(request: FastifyRequest, reply: FastifyReply) {
@@ -117,6 +117,86 @@ export async function getMessagesHandler(request: FastifyRequest, reply: Fastify
   const userId = (request as any).userId;
   const messages = await svc.getMessages(Number(conversationId), userId, Number(page) || 1, Number(limit) || 50);
   return reply.send({ data: messages });
+}
+
+// ── Group Chat ──
+export async function createGroupHandler(request: FastifyRequest, reply: FastifyReply) {
+  const body = CreateGroupSchema.parse(request.body);
+  const userId = (request as any).userId;
+  const conversationId = await svc.createGroup(userId, body.name, body.avatarUrl, body.inviteeIds);
+  recordAudit({
+    actorId: userId ?? null,
+    action: 'CHAT.GROUP_CREATE',
+    entityType: 'conversation',
+    entityId: conversationId,
+    afterState: { name: body.name, inviteeCount: body.inviteeIds.length },
+    ipAddress: request.ip,
+    userAgent: request.headers['user-agent'],
+  });
+  return reply.status(201).send({ conversationId });
+}
+
+export async function inviteToGroupHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { conversationId } = request.params as any;
+  const body = InviteToGroupSchema.parse(request.body);
+  const userId = (request as any).userId;
+  await svc.inviteToGroup(Number(conversationId), userId, body.inviteeId);
+  recordAudit({
+    actorId: userId ?? null,
+    action: 'CHAT.GROUP_INVITE',
+    entityType: 'conversation',
+    entityId: Number(conversationId),
+    afterState: { inviteeId: body.inviteeId },
+    ipAddress: request.ip,
+    userAgent: request.headers['user-agent'],
+  });
+  return reply.status(201).send({ message: 'Invitation sent' });
+}
+
+export async function getGroupInvitationsHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = (request as any).userId;
+  const invitations = await svc.getGroupInvitations(userId);
+  return reply.send({ data: invitations });
+}
+
+export async function respondToInvitationHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { invitationId } = request.params as any;
+  const body = RespondToInvitationSchema.parse(request.body);
+  const userId = (request as any).userId;
+  await svc.respondToInvitation(Number(invitationId), userId, body.status);
+  recordAudit({
+    actorId: userId ?? null,
+    action: 'CHAT.GROUP_INVITATION_RESPOND',
+    entityType: 'group_invitation',
+    entityId: Number(invitationId),
+    afterState: { status: body.status },
+    ipAddress: request.ip,
+    userAgent: request.headers['user-agent'],
+  });
+  return reply.send({ message: `Invitation ${body.status}` });
+}
+
+// ── Pin Conversations ──
+export async function pinConversationHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { conversationId } = request.params as any;
+  const userId = (request as any).userId;
+  await svc.pinConversation(Number(conversationId), userId);
+  return reply.send({ message: 'Conversation pinned' });
+}
+
+export async function unpinConversationHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { conversationId } = request.params as any;
+  const userId = (request as any).userId;
+  await svc.unpinConversation(Number(conversationId), userId);
+  return reply.send({ message: 'Conversation unpinned' });
+}
+
+// ── Mark as Read ──
+export async function markAsReadHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { conversationId } = request.params as any;
+  const userId = (request as any).userId;
+  await svc.markAsRead(Number(conversationId), userId);
+  return reply.send({ message: 'Marked as read' });
 }
 
 // ── Ads ──
