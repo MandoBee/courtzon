@@ -84,6 +84,11 @@ export async function getOrCreateConversationByPhoneHandler(request: FastifyRequ
   const convoId = await svc.getOrCreateConversationByPhone(userId, phone);
   return reply.send({ conversationId: convoId });
 }
+export async function lookupUserByPhoneHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { phone } = request.params as any;
+  const user = await svc.lookupUserByPhone(phone);
+  return reply.send({ data: user });
+}
 export async function getConversationsHandler(request: FastifyRequest, reply: FastifyReply) {
   const userId = (request as any).userId;
   const conversations = await svc.getConversations(userId);

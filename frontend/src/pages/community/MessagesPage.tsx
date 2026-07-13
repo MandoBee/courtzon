@@ -31,6 +31,7 @@ export default function MessagesPage() {
   const [draft, setDraft] = useState('');
   const [newOpen, setNewOpen] = useState(false);
   const [newPhone, setNewPhone] = useState('');
+  const [newStep, setNewStep] = useState<'phone' | 'confirm'>('phone');
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const { data: conversations, isLoading: loadingConvos } = useQuery({
@@ -56,11 +57,19 @@ export default function MessagesPage() {
       setSelectedId(data.conversationId);
       setNewOpen(false);
       setNewPhone('');
+      setNewStep('phone');
       searchParams.delete('with');
       setSearchParams(searchParams, { replace: true });
       showToast('Conversation opened');
     },
     onError: (err: any) => showToast(err?.response?.data?.message || 'Could not start conversation', 'error'),
+  });
+
+  const { data: lookupResult } = useQuery({
+    queryKey: ['chat-user-lookup', newPhone],
+    queryFn: () => api.get(`/community/users/lookup/phone/${encodeURIComponent(newPhone)}`).then((r) => r.data.data),
+    enabled: false,
+    retry: false,
   });
 
   const startConvoByIdMutation = useMutation({
@@ -103,14 +112,32 @@ export default function MessagesPage() {
     return <p className="text-[var(--color-text-muted)]">You do not have permission to view messages.</p>;
   }
 
-  function openNewChat(e: React.FormEvent) {
+  function handleLookup(e: React.FormEvent) {
     e.preventDefault();
     const phone = newPhone.trim();
     if (!phone) {
-      showToast('Enter a valid phone number', 'warning');
+      showToast('Enter a phone number', 'warning');
       return;
     }
-    startConvoMutation.mutate(phone);
+    qc.fetchQuery({
+      queryKey: ['chat-user-lookup', phone],
+      queryFn: () => api.get(`/community/users/lookup/phone/${encodeURIComponent(phone)}`).then((r) => r.data.data),
+      retry: false,
+    }).then(() => {
+      setNewStep('confirm');
+    }).catch(() => {
+      showToast('No user found with this phone number', 'error');
+    });
+  }
+
+  function handleConfirmStart() {
+    startConvoMutation.mutate(newPhone.trim());
+  }
+
+  function handleCloseModal() {
+    setNewOpen(false);
+    setNewPhone('');
+    setNewStep('phone');
   }
 
   return (
@@ -241,29 +268,54 @@ export default function MessagesPage() {
         </section>
       </div>
 
-      <Modal open={newOpen} onClose={() => setNewOpen(false)} title="New message">
-        <form onSubmit={openNewChat} className="space-y-3">
-          <p className="text-xs text-[var(--color-text-muted)]">
-            Enter the other user&apos;s phone number to start a conversation.
-          </p>
-          <label className="block">
-            <span className="text-xs font-medium text-[var(--color-text-muted)]">Phone Number *</span>
-            <input
-              required
-              type="tel"
-              value={newPhone}
-              onChange={(e) => setNewPhone(e.target.value)}
-              placeholder="e.g. 0501234567"
-              className="mt-1 w-full px-3 py-2 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-bg)] text-sm text-[var(--color-text)]"
-            />
-          </label>
-          <div className="flex justify-end gap-2 pt-2">
-            <button type="button" onClick={() => setNewOpen(false)} className="px-4 py-2 text-sm text-[var(--color-text-muted)]">Cancel</button>
-            <button type="submit" disabled={startConvoMutation.isPending} className="px-4 py-2 bg-[var(--color-primary)] text-white rounded-lg text-sm font-medium disabled:opacity-50">
-              {startConvoMutation.isPending ? 'Opening…' : 'Start chat'}
-            </button>
+      <Modal open={newOpen} onClose={handleCloseModal} title="New message">
+        {newStep === 'phone' ? (
+          <form onSubmit={handleLookup} className="space-y-3">
+            <p className="text-xs text-[var(--color-text-muted)]">
+              Enter the other user&apos;s phone number to look them up.
+            </p>
+            <label className="block">
+              <span className="text-xs font-medium text-[var(--color-text-muted)]">Phone Number *</span>
+              <input
+                required
+                type="tel"
+                value={newPhone}
+                onChange={(e) => setNewPhone(e.target.value)}
+                placeholder="e.g. 0501234567"
+                className="mt-1 w-full px-3 py-2 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-bg)] text-sm text-[var(--color-text)]"
+              />
+            </label>
+            <div className="flex justify-end gap-2 pt-2">
+              <button type="button" onClick={handleCloseModal} className="px-4 py-2 text-sm text-[var(--color-text-muted)]">Cancel</button>
+              <button type="submit" className="px-4 py-2 bg-[var(--color-primary)] text-white rounded-lg text-sm font-medium hover:opacity-90">
+                Look up
+              </button>
+            </div>
+          </form>
+        ) : (
+          <div className="space-y-4">
+            <p className="text-xs text-[var(--color-text-muted)]">
+              Is this the right person?
+            </p>
+            <div className="flex items-center gap-3 p-3 rounded-[var(--radius-md)] bg-[var(--color-bg)]">
+              <EntityImage
+                src={lookupResult?.avatar_url}
+                name={lookupResult?.full_name || 'User'}
+                className="w-12 h-12 rounded-full text-base shrink-0"
+              />
+              <div>
+                <p className="font-medium text-sm text-[var(--color-text)]">{lookupResult?.full_name}</p>
+                <p className="text-xs text-[var(--color-text-muted)]">{newPhone}</p>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <button type="button" onClick={() => setNewStep('phone')} className="px-4 py-2 text-sm text-[var(--color-text-muted)]">Back</button>
+              <button onClick={handleConfirmStart} disabled={startConvoMutation.isPending} className="px-4 py-2 bg-[var(--color-primary)] text-white rounded-lg text-sm font-medium disabled:opacity-50 hover:opacity-90">
+                {startConvoMutation.isPending ? 'Opening…' : 'Start chat'}
+              </button>
+            </div>
           </div>
-        </form>
+        )}
       </Modal>
     </div>
   );

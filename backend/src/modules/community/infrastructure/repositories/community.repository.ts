@@ -122,6 +122,14 @@ export const communityRepository = {
     );
     return rows.length > 0 ? rows[0].id : null;
   },
+  async findUserByPhoneInfo(phone: string): Promise<{ id: number; full_name: string; avatar_url: string | null } | null> {
+    const pool = getPool();
+    const [rows] = await pool.execute<RowData>(
+      'SELECT id, full_name, avatar_url FROM users WHERE phone_number = ? AND deleted_at IS NULL AND account_status = \'active\' LIMIT 1',
+      [phone]
+    );
+    return rows.length > 0 ? (rows[0] as any) : null;
+  },
   async findOrCreateDirectConversation(user1Id: number, user2Id: number) {
     const pool = getPool();
     const [rows] = await pool.execute<RowData>(
