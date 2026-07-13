@@ -3,6 +3,7 @@ import { branchRepository } from '../infrastructure/repositories/branch.reposito
 import { rbacRepository } from '../../rbac/infrastructure/repositories/rbac.repository.js';
 import { ValidationError, NotFoundError, ConflictError } from '../../../shared/errors/app-error.js';
 import { getPlanNumericLimit } from '../../../shared/utils/plan-limits.util.js';
+import { eventBus } from '../../../shared/event-bus/index.js';
 
 export function getOrgInfo(orgId: number) {
   return repo.getOrgInfo(orgId);
@@ -217,6 +218,18 @@ export async function inviteCoach(orgId: number, data: { coachId: number; coachS
     throw new ValidationError('Coach split and org split must add up to 100%');
   }
   await repo.orgInviteCoach({ coachId: data.coachId, orgId, coachSplitPct: data.coachSplitPct, orgSplitPct: data.orgSplitPct, invitedBy: data.invitedBy, hourlyRate: data.hourlyRate });
+
+  const coachUserId = await repo.findCoachUserId(data.coachId);
+  const orgInfo = await repo.getOrgInfo(orgId);
+  if (coachUserId) {
+    eventBus.emit('coach:invited', {
+      coachId: data.coachId,
+      userId: coachUserId,
+      organisationId: orgId,
+      organisationName: orgInfo?.name || 'Unknown Organisation',
+      invitedBy: data.invitedBy,
+    });
+  }
 }
 
 export async function removeCoachAgreement(orgId: number, coachId: number) {

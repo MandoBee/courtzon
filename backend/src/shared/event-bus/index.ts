@@ -87,6 +87,8 @@ export interface DomainEventMap {
   'coaching:session-scheduled': BaseEvent & { sessionId: number; coachId: number; userId: number; startTime: Date };
   'coaching:session-cancelled': BaseEvent & { sessionId: number; userId: number; reason?: string };
   'coaching:session-reminder': BaseEvent & { sessionId: number; userId: number; startTime: Date; coachName: string };
+  'coach:invited': BaseEvent & { coachId: number; userId: number; organisationId: number; organisationName: string; invitedBy: number };
+  'coach:agreement-added': BaseEvent & { coachId: number; coachName: string; userId: number; organisationId: number; organisationName: string };
 
   // Tournaments & Matches
   'tournament:created': BaseEvent & { tournamentId: number; userId: number; name: string };

@@ -407,6 +407,15 @@ export async function coachExistsApproved(coachId: number): Promise<boolean> {
   return rows.length > 0;
 }
 
+export async function findCoachUserId(coachId: number): Promise<number | null> {
+  const pool = getPool();
+  const [rows] = await pool.execute<RowData>(
+    `SELECT user_id FROM coach_profiles WHERE id = ? AND deleted_at IS NULL LIMIT 1`,
+    [coachId]
+  );
+  return rows.length ? (rows[0] as any).user_id : null;
+}
+
 /** Org sends (or re-sends) an invite to a coach. Resets to pending. */
 export async function orgInviteCoach(data: {
   coachId: number; orgId: number; coachSplitPct: number; orgSplitPct: number; invitedBy: number; hourlyRate?: number;

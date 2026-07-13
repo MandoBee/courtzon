@@ -267,6 +267,31 @@ const eventGroups: EventGroupConfig[] = [
     },
   },
   {
+    events: ['coach:invited'],
+    handler: async (eventName, data, categorySlug) => {
+      if (data.userId) {
+        await dispatchToUser({
+          userId: data.userId, eventName, categorySlug, data,
+          relatedEntityType: 'coach', relatedEntityId: String(data.coachId),
+          organisationId: data.organisationId,
+        });
+      }
+    },
+  },
+  {
+    events: ['coach:agreement-added'],
+    handler: async (eventName, data, categorySlug) => {
+      if (data.organisationId) {
+        await dispatchByOrg(data.organisationId, {
+          eventName, categorySlug,
+          data: { ...data, title: `New agreement from ${data.coachName || 'a coach'}`, body: `${data.coachName || 'A coach'} has added an agreement with ${data.organisationName || 'your organisation'}.` },
+          organisationId: data.organisationId,
+          relatedEntityType: 'coach', relatedEntityId: String(data.coachId),
+        });
+      }
+    },
+  },
+  {
     events: ['tournament:created', 'tournament:registration-open', 'tournament:registration-closed', 'tournament:starting-soon', 'tournament:match-scheduled', 'tournament:result'],
     handler: async (eventName, data, categorySlug) => {
       if (data.userId) {
@@ -588,6 +613,7 @@ class NotificationEngine {
       'club:created', 'club:member-joined', 'club:member-left',
       'academy:enrolled', 'academy:session-reminder', 'academy:graduated',
       'coaching:session-scheduled', 'coaching:session-reminder', 'coaching:session-cancelled',
+      'coach:invited', 'coach:agreement-added',
       'tournament:created', 'tournament:registration-open', 'tournament:registration-closed',
       'tournament:starting-soon', 'tournament:match-scheduled', 'tournament:result',
       'community:mention', 'community:reply', 'community:like',

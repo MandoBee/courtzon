@@ -815,4 +815,22 @@ export const activitiesRepository = {
       [status, sessionId]
     );
   },
+
+  async findOrgNameById(orgId: number): Promise<string | null> {
+    const pool = getPool();
+    const [rows] = await pool.execute<RowData>(
+      'SELECT name FROM organisations WHERE id = ? AND deleted_at IS NULL LIMIT 1',
+      [orgId]
+    );
+    return rows.length ? (rows[0] as any).name : null;
+  },
+
+  async findUserFullName(userId: number): Promise<string | null> {
+    const pool = getPool();
+    const [rows] = await pool.execute<RowData>(
+      'SELECT full_name FROM users WHERE id = ? LIMIT 1',
+      [userId]
+    );
+    return rows.length ? (rows[0] as any).full_name : null;
+  },
 };

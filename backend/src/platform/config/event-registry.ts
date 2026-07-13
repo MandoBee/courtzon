@@ -93,6 +93,8 @@ export const Events = {
     SESSION_SCHEDULED: 'coaching:session-scheduled',
     SESSION_CANCELLED: 'coaching:session-cancelled',
     SESSION_REMINDER: 'coaching:session-reminder',
+    COACH_INVITED: 'coach:invited',
+    AGREEMENT_ADDED: 'coach:agreement-added',
   } as const,
 
   Tournament: {

@@ -298,6 +298,12 @@ export async function seedTemplates(): Promise<void> {
     { eventName: 'coaching:session-cancelled', locale: 'en', categorySlug: 'system', type: 'warning', priority: 'high',
       titleTemplate: 'Coaching Session Cancelled', bodyTemplate: 'Your coaching session has been cancelled{{#if reason}}: {{reason}}{{/if}}.',
       actionKey: 'view_sessions', routePattern: '/coaching' },
+    { eventName: 'coach:invited', locale: 'en', categorySlug: 'system', type: 'info', priority: 'normal',
+      titleTemplate: 'Coach Invitation', bodyTemplate: 'You have been invited by {{organisationName}} to join as a coach.',
+      actionKey: 'view_coach_orgs', routePattern: '/coaches/profile?tab=orgs' },
+    { eventName: 'coach:agreement-added', locale: 'en', categorySlug: 'system', type: 'info', priority: 'normal',
+      titleTemplate: 'New Coach Agreement', bodyTemplate: '{{coachName}} has added a coaching agreement with {{organisationName}}.',
+      actionKey: 'view_org_coaches', routePattern: '/org/{{organisationId}}/coaches' },
 
     // Tournaments
     { eventName: 'tournament:created', locale: 'en', categorySlug: 'system', type: 'info', priority: 'normal',

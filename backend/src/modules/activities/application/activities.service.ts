@@ -219,6 +219,20 @@ export const activitiesService = {
     const coach = await repo.findCoachByUserId(userId);
     if (!coach) throw new NotFoundError('Coach profile');
     await repo.upsertOrgAgreement({ ...data, coachId: coach.id });
+
+    const [orgName, coachUserName] = await Promise.all([
+      repo.findOrgNameById(data.organisationId),
+      repo.findUserFullName(userId),
+    ]);
+    if (orgName && data.organisationId) {
+      eventBus.emit('coach:agreement-added', {
+        coachId: coach.id,
+        coachName: coachUserName || 'A coach',
+        userId,
+        organisationId: data.organisationId,
+        organisationName: orgName,
+      });
+    }
   },
   async respondToOrgInvite(userId: number, agreementId: number, accept: boolean) {
     const coach = await repo.findCoachByUserId(userId);
