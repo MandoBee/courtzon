@@ -43,9 +43,9 @@ export default function CoachDirectoryPage() {
     queryFn: () => api.get('/coaches?limit=50').then((r) => r.data.data),
   });
 
-  const ownId = user?.isCoach ? coaches?.find((c: any) => c.user_id === user.id)?.id : null;
-  const ownCard = ownId ? coaches?.find((c: any) => c.id === ownId) : null;
-  const others = ownId ? coaches?.filter((c: any) => c.id !== ownId) : coaches;
+  const ownCoachId = coaches?.find((c: any) => c.user_id === user?.id)?.id ?? null;
+  const ownCard = ownCoachId ? coaches?.find((c: any) => c.id === ownCoachId) : null;
+  const others = ownCoachId ? coaches?.filter((c: any) => c.id !== ownCoachId) : coaches;
 
   return (
     <div>
