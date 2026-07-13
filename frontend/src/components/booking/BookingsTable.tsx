@@ -326,7 +326,7 @@ export default function BookingsTable({ context }: BookingsTableProps) {
                     </td>
                     <td className="p-3 text-[var(--color-text)] font-medium">{formatCurrency(b.total_amount)}</td>
                     <td className="p-3 text-[var(--color-text-muted)] text-xs">
-                      {b.payment_method === 'cash' || b.payment_method === 'cod' ? 'COD' : (b.payment_method || '-')}
+                      {b.payment_method === 'cash' || b.payment_method === 'cod' ? 'Cash' : (b.payment_method || '-')}
                     </td>
                     <td className="p-3">
                       <Can permission={statusPermKey} fallback={<Badge variant={statusBadgeVariant[b.booking_status] || 'default'}>{b.booking_status}</Badge>}>

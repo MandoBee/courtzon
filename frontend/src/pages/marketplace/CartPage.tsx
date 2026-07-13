@@ -113,9 +113,8 @@ export default function CartPage() {
   const [pollingPaid, setPollingPaid] = useState(false);
 
   const PAYMENT_OPTIONS = [
-    { value: 'card', label: t('cart.payment_card'), icon: '💳' },
-    { value: 'online', label: t('cart.payment_online'), icon: '🌐' },
-    { value: 'cash', label: t('cart.payment_cash'), icon: '💵' },
+    { value: 'card', label: 'Card', icon: '💳' },
+    { value: 'cash', label: 'Cash', icon: '💵' },
   ];
 
   const { data: cart, isLoading } = useQuery({
@@ -173,7 +172,7 @@ export default function CartPage() {
       const data = res.data;
       setOrderId(data.id);
 
-      if (paymentMethod === 'card' || paymentMethod === 'online') {
+      if (paymentMethod === 'card') {
         if (data.clientSecret) {
           setPixelClientSecret(data.clientSecret);
           setPaymentId(data.paymentId || null);

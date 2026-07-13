@@ -12,7 +12,7 @@ const BookingSchema = z.object({
   bookingDate: z.string().min(1, 'Date is required'),
   startTime: z.string().min(1, 'Start time is required'),
   endTime: z.string().min(1, 'End time is required'),
-  paymentMethod: z.enum(['cash', 'card', 'online']),
+  paymentMethod: z.enum(['cash', 'card']),
   notes: z.string().optional(),
 });
 
@@ -141,7 +141,7 @@ export default function BookingFormPage() {
           <div>
             <label className="block text-sm font-medium text-[var(--color-text)] mb-2">Payment Method</label>
             <div className="flex gap-3">
-              {['cash', 'card', 'online'].map((method) => (
+              {['cash', 'card'].map((method) => (
                 <button
                   key={method}
                   type="button"

@@ -49,7 +49,7 @@ function RequestSettlementModal({ orgId, onClose }: { orgId: string; onClose: ()
             This will create a settlement for all delivered, unsettled orders belonging to this organisation.
           </p>
           <p className="text-sm text-[var(--color-text-muted)]">
-            <strong>COD orders</strong> (cash on delivery) are included immediately. <strong>Online payment orders</strong> require payment confirmation from the gateway before inclusion.
+            <strong>Cash orders</strong> are included immediately. <strong>Card payments</strong> require payment confirmation from the gateway before inclusion.
           </p>
         </div>
         <div className="flex justify-end gap-2 p-4 border-t border-[var(--color-border)]">
@@ -125,7 +125,7 @@ function SettlementDetailModal({ settlement, onClose }: { settlement: any; onClo
                   const gross = Number(item.gross_amount || 0);
                   const courtzon = Number(item.courtzon_fee || 0);
                   const orgNet = Number(item.organization_net || 0);
-                  const payment = item.payment_method === 'cash' ? 'COD' : (item.payment_method || '-');
+                  const payment = item.payment_method === 'cash' || item.payment_method === 'cod' ? 'Cash' : (item.payment_method || '-');
                   return (
                     <tr key={item.id} className="border-b border-[var(--color-border)]">
                       <td className="px-4 py-3 text-[var(--color-text)]">#{item.order_id}</td>
@@ -357,7 +357,7 @@ export default function OrgFinancePage() {
                       </td>
                       <td className="px-4 py-3 text-[var(--color-text)]">{tx.description || '-'}</td>
                       <td className="px-4 py-3 text-[var(--color-text-muted)]">{tx.branch_name || '-'}</td>
-                      <td className="px-4 py-3 text-[var(--color-text-muted)] capitalize">{tx.payment_method === 'cash' ? 'COD' : (tx.payment_method || '-')}</td>
+                      <td className="px-4 py-3 text-[var(--color-text-muted)] capitalize">{tx.payment_method === 'cash' || tx.payment_method === 'cod' ? 'Cash' : (tx.payment_method || '-')}</td>
                       <td className="px-4 py-3 text-right text-[var(--color-error)]">
                         {tx.side === 'debit' ? Number(tx.amount).toFixed(2) : '-'}
                       </td>

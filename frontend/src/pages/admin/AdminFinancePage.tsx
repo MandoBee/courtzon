@@ -124,7 +124,7 @@ function SettlementDetailModal({ settlementId, onClose }: { settlementId: number
                       <td className="px-4 py-3 text-right">{sh}</td>
                       <td className="px-4 py-3 text-right font-medium">{g}</td>
                       <td className="px-4 py-3 text-right text-[var(--color-text-muted)]">{cz}</td>
-                      <td className="px-4 py-3 text-right text-[var(--color-text-muted)] capitalize">{item.payment_method === 'cash' ? 'COD' : (item.payment_method || '-')}</td>
+                      <td className="px-4 py-3 text-right text-[var(--color-text-muted)] capitalize">{item.payment_method === 'cash' || item.payment_method === 'cod' ? 'Cash' : (item.payment_method || '-')}</td>
                       <td className="px-4 py-3 text-right font-medium text-[var(--color-success)]">{on}</td>
                     </tr>
                   );
@@ -323,7 +323,7 @@ function TransactionsTab() {
                     <td className="px-4 py-3 text-[var(--color-text)]">{tx.org_name || '-'}</td>
                     <td className="px-4 py-3 text-[var(--color-text-muted)] capitalize">{tx.entity_type?.replace(/_/g, ' ')}</td>
                     <td className="px-4 py-3 text-[var(--color-text)] max-w-[240px] truncate">{tx.description || '-'}</td>
-                    <td className="px-4 py-3 text-[var(--color-text-muted)] capitalize">{tx.payment_method === 'cash' ? 'COD' : (tx.payment_method || '-')}</td>
+                    <td className="px-4 py-3 text-[var(--color-text-muted)] capitalize">{tx.payment_method === 'cash' || tx.payment_method === 'cod' ? 'Cash' : (tx.payment_method || '-')}</td>
                     <td className="px-4 py-3 text-right text-[var(--color-error)] font-medium">{tx.side === 'debit' ? formatPrice(tx.amount) : '-'}</td>
                     <td className="px-4 py-3 text-right text-[var(--color-success)] font-medium">{tx.side === 'credit' ? formatPrice(tx.amount) : '-'}</td>
                     <td className="px-4 py-3 text-center"><span className={`px-2 py-0.5 rounded-full text-xs font-medium ${tx.txn_status === 'completed' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>{tx.txn_status}</span></td>
