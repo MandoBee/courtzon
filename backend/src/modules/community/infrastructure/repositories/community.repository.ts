@@ -114,6 +114,14 @@ export const communityRepository = {
   },
 
   // ── Chat ──
+  async findUserIdByPhone(phone: string): Promise<number | null> {
+    const pool = getPool();
+    const [rows] = await pool.execute<RowData>(
+      'SELECT id FROM users WHERE phone_number = ? AND deleted_at IS NULL AND account_status = \'active\' LIMIT 1',
+      [phone]
+    );
+    return rows.length > 0 ? rows[0].id : null;
+  },
   async findOrCreateDirectConversation(user1Id: number, user2Id: number) {
     const pool = getPool();
     const [rows] = await pool.execute<RowData>(

@@ -78,6 +78,12 @@ export async function getOrCreateConversationHandler(request: FastifyRequest, re
   const convoId = await svc.getOrCreateConversation(userId, Number(otherUserId));
   return reply.send({ conversationId: convoId });
 }
+export async function getOrCreateConversationByPhoneHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { phone } = request.params as any;
+  const userId = (request as any).userId;
+  const convoId = await svc.getOrCreateConversationByPhone(userId, phone);
+  return reply.send({ conversationId: convoId });
+}
 export async function getConversationsHandler(request: FastifyRequest, reply: FastifyReply) {
   const userId = (request as any).userId;
   const conversations = await svc.getConversations(userId);

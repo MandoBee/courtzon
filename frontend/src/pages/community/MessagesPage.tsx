@@ -30,7 +30,7 @@ export default function MessagesPage() {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [draft, setDraft] = useState('');
   const [newOpen, setNewOpen] = useState(false);
-  const [newUserId, setNewUserId] = useState('');
+  const [newPhone, setNewPhone] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const { data: conversations, isLoading: loadingConvos } = useQuery({
@@ -50,12 +50,25 @@ export default function MessagesPage() {
   });
 
   const startConvoMutation = useMutation({
+    mutationFn: (phone: string) => api.get(`/community/conversations/with/phone/${encodeURIComponent(phone)}`).then((r) => r.data),
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ['chat-conversations'] });
+      setSelectedId(data.conversationId);
+      setNewOpen(false);
+      setNewPhone('');
+      searchParams.delete('with');
+      setSearchParams(searchParams, { replace: true });
+      showToast('Conversation opened');
+    },
+    onError: (err: any) => showToast(err?.response?.data?.message || 'Could not start conversation', 'error'),
+  });
+
+  const startConvoByIdMutation = useMutation({
     mutationFn: (otherUserId: number) => api.get(`/community/conversations/with/${otherUserId}`).then((r) => r.data),
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ['chat-conversations'] });
       setSelectedId(data.conversationId);
       setNewOpen(false);
-      setNewUserId('');
       searchParams.delete('with');
       setSearchParams(searchParams, { replace: true });
       showToast('Conversation opened');
@@ -78,7 +91,7 @@ export default function MessagesPage() {
     if (!withParam || !can('community.chat.view')) return;
     const uid = Number(withParam);
     if (!uid || uid === user?.id) return;
-    startConvoMutation.mutate(uid);
+    startConvoByIdMutation.mutate(uid);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [withParam, can, user?.id]);
 
@@ -92,12 +105,12 @@ export default function MessagesPage() {
 
   function openNewChat(e: React.FormEvent) {
     e.preventDefault();
-    const uid = Number(newUserId);
-    if (!uid || uid === user?.id) {
-      showToast('Enter a valid user ID (not yourself)', 'warning');
+    const phone = newPhone.trim();
+    if (!phone) {
+      showToast('Enter a valid phone number', 'warning');
       return;
     }
-    startConvoMutation.mutate(uid);
+    startConvoMutation.mutate(phone);
   }
 
   return (
@@ -231,16 +244,16 @@ export default function MessagesPage() {
       <Modal open={newOpen} onClose={() => setNewOpen(false)} title="New message">
         <form onSubmit={openNewChat} className="space-y-3">
           <p className="text-xs text-[var(--color-text-muted)]">
-            Enter the other user&apos;s numeric ID (shown on their profile or booking details).
+            Enter the other user&apos;s phone number to start a conversation.
           </p>
           <label className="block">
-            <span className="text-xs font-medium text-[var(--color-text-muted)]">User ID *</span>
+            <span className="text-xs font-medium text-[var(--color-text-muted)]">Phone Number *</span>
             <input
               required
-              type="number"
-              min={1}
-              value={newUserId}
-              onChange={(e) => setNewUserId(e.target.value)}
+              type="tel"
+              value={newPhone}
+              onChange={(e) => setNewPhone(e.target.value)}
+              placeholder="e.g. 0501234567"
               className="mt-1 w-full px-3 py-2 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-bg)] text-sm text-[var(--color-text)]"
             />
           </label>

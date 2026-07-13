@@ -63,6 +63,12 @@ export const communityService = {
     if (userId === otherUserId) throw new ConflictError('Cannot message yourself');
     return repo.findOrCreateDirectConversation(userId, otherUserId);
   },
+  async getOrCreateConversationByPhone(userId: number, phone: string) {
+    const otherUserId = await repo.findUserIdByPhone(phone);
+    if (!otherUserId) throw new NotFoundError('User with this phone number');
+    if (userId === otherUserId) throw new ConflictError('Cannot message yourself');
+    return repo.findOrCreateDirectConversation(userId, otherUserId);
+  },
   async getConversations(userId: number) { return repo.findConversations(userId); },
   async sendMessage(conversationId: number, senderId: number, content: string) {
     if (!(await repo.isConversationParticipant(conversationId, senderId))) {

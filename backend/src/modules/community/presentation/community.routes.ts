@@ -32,6 +32,7 @@ export async function communityRoutes(app: FastifyInstance): Promise<void> {
     scopedApp.addHook('preHandler', requireFeatureFlag('community.chat_enabled'));
 
     scopedApp.get('/community/conversations', { preHandler: [requirePermission(['community.chat.view'])] }, ctrl.getConversationsHandler);
+    scopedApp.get('/community/conversations/with/phone/:phone', { preHandler: [requirePermission(['community.chat.view'])] }, ctrl.getOrCreateConversationByPhoneHandler);
     scopedApp.get('/community/conversations/with/:otherUserId', { preHandler: [requirePermission(['community.chat.view'])] }, ctrl.getOrCreateConversationHandler);
     scopedApp.get('/community/conversations/:conversationId/messages', { preHandler: [requirePermission(['community.chat.view'])] }, ctrl.getMessagesHandler);
     scopedApp.post('/community/conversations/:conversationId/messages', { preHandler: [requirePermission(['community.chat.send'])] }, ctrl.sendMessageHandler);
