@@ -319,15 +319,13 @@ export class BookingService {
 
       if (bookingStatus === 'confirmed' && booking) {
         const bookingType = input.bookingType || 'private_match';
-        if (process.env.LEGACY_REMINDER_ENABLED === 'true') {
-          const startDate = new Date(startAtUtc);
-          const { scheduleBookingReminder } = await import('../../notifications/application/scheduler.service.js');
-          scheduleBookingReminder(bookingId, userId, startDate).catch((e: any) =>
-            log.error({ err: e, bookingId }, 'Failed to schedule booking reminder')
-          );
-        } else {
-          eventBus.emit('booking:confirmed', { bookingId, userId, bookingType });
-        }
+        eventBus.emit('booking:confirmed', { bookingId, userId, bookingType });
+
+        const startDate = new Date(startAtUtc);
+        const { scheduleBookingReminder } = await import('../../notifications/application/scheduler.service.js');
+        scheduleBookingReminder(bookingId, userId, startDate).catch((e: any) =>
+          log.error({ err: e, bookingId }, 'Failed to schedule booking reminder')
+        );
       }
 
       return { ...booking, timezone: branchTz, paymentUrl, clientSecret, paymentId };
@@ -472,33 +470,42 @@ export class BookingService {
 
       if (ownsTx) await conn.commit();
 
-      const booking = await bookingRepository.findById(bookingId);
+      // Read booking on the same connection — needed because the outer
+      // transaction (webhook) may not be committed yet, so the global pool
+      // visible by bookingRepository.findById() cannot see this row.
+      const [bookRows] = await conn.execute<RowData>(
+        `SELECT b.*, r.name as resource_name, br.name as branch_name
+         FROM bookings b
+         JOIN resources r ON r.id = b.resource_id
+         JOIN branches br ON br.id = b.branch_id
+         WHERE b.id = ?`,
+        [bookingId]
+      );
+      const booking = bookRows[0] || null;
 
-      if (booking) {
-        eventBus.emit('booking:created', {
-          bookingId,
-          userId: intent.user_id,
-          courtId: intent.resource_id || 0,
-          startTime: new Date(intentStartUtc),
-          endTime: new Date(intentEndUtc),
-          startAtUtc: intentStartUtc,
-          endAtUtc: intentEndUtc,
-          bookingType: intent.booking_type,
-          organisationId: intent.organisation_id || undefined,
-          branchId: intent.branch_id || undefined,
-        });
-      }
+      // Events are emitted via process.nextTick, so they fire after
+      // the outer webhook/confirm transaction has committed.
+      eventBus.emit('booking:created', {
+        bookingId,
+        userId: intent.user_id,
+        courtId: intent.resource_id || 0,
+        startTime: new Date(intentStartUtc),
+        endTime: new Date(intentEndUtc),
+        startAtUtc: intentStartUtc,
+        endAtUtc: intentEndUtc,
+        bookingType: intent.booking_type,
+        organisationId: intent.organisation_id || undefined,
+        branchId: intent.branch_id || undefined,
+      });
 
-      if (bookingStatus === 'confirmed' && booking) {
-        if (process.env.LEGACY_REMINDER_ENABLED === 'true') {
-          const startDate = new Date(intentStartUtc);
-          const { scheduleBookingReminder } = await import('../../notifications/application/scheduler.service.js');
-          scheduleBookingReminder(bookingId, intent.user_id, startDate).catch((e: any) =>
-            log.error({ err: e, bookingId }, 'Failed to schedule booking reminder')
-          );
-        } else {
-          eventBus.emit('booking:confirmed', { bookingId, userId: intent.user_id, bookingType: intent.booking_type });
-        }
+      if (bookingStatus === 'confirmed') {
+        eventBus.emit('booking:confirmed', { bookingId, userId: intent.user_id, bookingType: intent.booking_type });
+
+        const startDate = new Date(intentStartUtc);
+        const { scheduleBookingReminder } = await import('../../notifications/application/scheduler.service.js');
+        scheduleBookingReminder(bookingId, intent.user_id, startDate).catch((e: any) =>
+          log.error({ err: e, bookingId }, 'Failed to schedule booking reminder')
+        );
       }
 
       return { success: true, booking, isPaid, timezone: intentTz };
