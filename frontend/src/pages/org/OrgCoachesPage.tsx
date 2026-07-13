@@ -52,6 +52,16 @@ export default function OrgCoachesPage() {
     onError: (err) => showToast('Failed to send invite: ' + errMsg(err), 'error'),
   });
 
+  const respondMutation = useMutation({
+    mutationFn: ({ cId, accept }: { cId: number; accept: boolean }) =>
+      api.put(`/org/${orgId}/coaches/${cId}/respond`, { accept }),
+    onSuccess: (_data, vars) => {
+      invalidate();
+      showToast(vars.accept ? 'Coach agreement approved!' : 'Coach agreement declined', vars.accept ? 'success' : 'warning');
+    },
+    onError: (err) => showToast('Failed to respond: ' + errMsg(err), 'error'),
+  });
+
   const removeMutation = useMutation({
     mutationFn: (cId: number) => api.delete(`/org/${orgId}/coaches/${cId}`),
     onSuccess: () => { invalidate(); showToast('Coach agreement removed', 'warning'); },
@@ -74,7 +84,7 @@ export default function OrgCoachesPage() {
       </div>
 
       <p className="text-sm text-[var(--color-text-muted)]">
-        Invite approved coaches to your organisation with a revenue split. The coach must accept the invite before the agreement becomes active.
+        Invite approved coaches to your organisation with a revenue split. Coaches can also request agreements — those must be approved first before they become active.
       </p>
 
       {!coaches?.length ? (
@@ -95,15 +105,28 @@ export default function OrgCoachesPage() {
               </div>
               <div className="flex items-center gap-3 shrink-0">
                 <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${statusBadge[c.status] || statusBadge.rejected}`}>
-                  {c.status === 'accepted' ? 'Active' : c.status === 'pending' ? 'Pending' : 'Rejected'}
+                  {c.status === 'accepted' ? 'Active' : c.status === 'pending' ? (c.initiated_by === 'coach' ? 'Awaiting Approval' : 'Pending') : 'Rejected'}
                 </span>
                 <Can permission="org.coaches.manage">
-                  <button
-                    onClick={() => { if (confirm(`Remove agreement with ${c.coach_name || c.coach_email}?`)) removeMutation.mutate(c.coach_id); }}
-                    className="text-sm text-[var(--color-error)] hover:underline"
-                  >
-                    Remove
-                  </button>
+                  {c.status === 'pending' && c.initiated_by === 'coach' ? (
+                    <div className="flex items-center gap-2">
+                      <button onClick={() => respondMutation.mutate({ cId: c.coach_id, accept: true })}
+                        disabled={respondMutation.isPending}
+                        className="px-2.5 py-1 bg-[var(--color-primary)] text-white rounded-[var(--radius-md)] text-xs disabled:opacity-50">
+                        Approve
+                      </button>
+                      <button onClick={() => respondMutation.mutate({ cId: c.coach_id, accept: false })}
+                        disabled={respondMutation.isPending}
+                        className="px-2.5 py-1 border border-[var(--color-error)] text-[var(--color-error)] rounded-[var(--radius-md)] text-xs disabled:opacity-50">
+                        Decline
+                      </button>
+                    </div>
+                  ) : (
+                    <button onClick={() => { if (confirm(`Remove agreement with ${c.coach_name || c.coach_email}?`)) removeMutation.mutate(c.coach_id); }}
+                      className="text-sm text-[var(--color-error)] hover:underline">
+                      Remove
+                    </button>
+                  )}
                 </Can>
               </div>
             </div>

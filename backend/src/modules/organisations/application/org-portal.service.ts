@@ -232,6 +232,11 @@ export async function inviteCoach(orgId: number, data: { coachId: number; coachS
   }
 }
 
+export async function respondToCoachAgreement(orgId: number, coachId: number, accept: boolean) {
+  const affected = await repo.respondToCoachAgreement(orgId, coachId, accept);
+  if (!affected) throw new NotFoundError('Pending coach agreement');
+}
+
 export async function removeCoachAgreement(orgId: number, coachId: number) {
   const removed = await repo.removeOrgCoachAgreement(orgId, coachId);
   if (!removed) throw new NotFoundError('Coach agreement');

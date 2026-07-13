@@ -302,7 +302,7 @@ export async function seedTemplates(): Promise<void> {
       titleTemplate: 'Coach Invitation', bodyTemplate: 'You have been invited by {{organisationName}} to join as a coach.',
       actionKey: 'view_coach_orgs', routePattern: '/coaches/profile?tab=orgs' },
     { eventName: 'coach:agreement-added', locale: 'en', categorySlug: 'system', type: 'info', priority: 'normal',
-      titleTemplate: 'New Coach Agreement', bodyTemplate: '{{coachName}} has added a coaching agreement with {{organisationName}}.',
+      titleTemplate: 'Coach Agreement Request', bodyTemplate: '{{coachName}} has requested to add a coaching agreement with {{organisationName}}. Review and approve it.',
       actionKey: 'view_org_coaches', routePattern: '/org/{{organisationId}}/coaches' },
 
     // Tournaments

@@ -437,6 +437,18 @@ export async function orgInviteCoach(data: {
   );
 }
 
+/** Org responds to a coach-initiated pending agreement. Returns affected rows. */
+export async function respondToCoachAgreement(orgId: number, coachId: number, accept: boolean): Promise<number> {
+  const pool = getPool();
+  const [result] = await pool.execute(
+    `UPDATE coach_org_agreements
+        SET status = ?, is_active = ?
+      WHERE organisation_id = ? AND coach_id = ? AND initiated_by = 'coach' AND status = 'pending'`,
+    [accept ? 'accepted' : 'rejected', accept ? 1 : 0, orgId, coachId]
+  );
+  return (result as any).affectedRows as number;
+}
+
 export async function removeOrgCoachAgreement(orgId: number, coachId: number): Promise<boolean> {
   const pool = getPool();
   const [result] = await pool.execute(

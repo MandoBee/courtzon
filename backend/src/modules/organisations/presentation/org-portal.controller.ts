@@ -294,6 +294,16 @@ export async function inviteCoachHandler(request: FastifyRequest, reply: Fastify
   return reply.status(201).send({ message: 'Invite sent' });
 }
 
+export async function respondOrgCoachHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { orgId, coachId } = request.params as { orgId: string; coachId: string };
+  const body = z.object({ accept: z.boolean() }).parse(request.body);
+  const oid = parseInt(orgId, 10);
+  const cid = parseInt(coachId, 10);
+  await service.respondToCoachAgreement(oid, cid, body.accept);
+  auditOrganisationMutation(request, 'ORG_COACH.RESPOND', 'organisation', oid, { coachId: cid, accept: body.accept });
+  return reply.send({ success: true, status: body.accept ? 'accepted' : 'rejected' });
+}
+
 export async function removeOrgCoachHandler(request: FastifyRequest, reply: FastifyReply) {
   const { orgId, coachId } = request.params as { orgId: string; coachId: string };
   const oid = parseInt(orgId, 10);
