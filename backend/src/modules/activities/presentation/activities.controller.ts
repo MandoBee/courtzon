@@ -121,10 +121,12 @@ export async function createEvaluationHandler(request: FastifyRequest, reply: Fa
 // ── Coaches ──
 export async function listCoachesHandler(request: FastifyRequest, reply: FastifyReply) {
   const { sportId, available, page, limit } = request.query as any;
+  const userId = (request as any).userId;
   const coaches = await svc.listCoaches({
     sportId: sportId ? Number(sportId) : undefined,
     isAvailable: available !== undefined ? available === 'true' : undefined,
     page: Number(page) || 1, limit: Number(limit) || 20,
+    excludeUserId: userId ? Number(userId) : undefined,
   });
   return reply.send({ data: coaches });
 }

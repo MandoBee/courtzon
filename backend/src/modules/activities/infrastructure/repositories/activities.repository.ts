@@ -345,10 +345,11 @@ export const activitiesRepository = {
     return rows[0] || null;
   },
 
-  async findCoaches(filters: { sportId?: number; isAvailable?: boolean; page: number; limit: number }) {
+  async findCoaches(filters: { sportId?: number; isAvailable?: boolean; page: number; limit: number; excludeUserId?: number }) {
     const pool = getPool();
     let sql = `SELECT cp.*, u.full_name, u.email FROM coach_profiles cp JOIN users u ON cp.user_id = u.id WHERE cp.deleted_at IS NULL AND cp.status = 'approved'`;
     const params: any[] = [];
+    if (filters.excludeUserId) { sql += ' AND cp.user_id <> ?'; params.push(filters.excludeUserId); }
     if (filters.isAvailable !== undefined) { sql += ' AND cp.is_available = ?'; params.push(filters.isAvailable); }
     if (filters.sportId) { sql += ' AND JSON_CONTAINS(cp.sports, ?)'; params.push(JSON.stringify(filters.sportId)); }
     sql += ' ORDER BY cp.rating_avg DESC LIMIT ? OFFSET ?';

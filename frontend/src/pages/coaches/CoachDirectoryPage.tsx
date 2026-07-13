@@ -43,10 +43,6 @@ export default function CoachDirectoryPage() {
     queryFn: () => api.get('/coaches?limit=50').then((r) => r.data.data),
   });
 
-  const ownCoachId = coaches?.find((c: any) => c.user_id === user?.id)?.id ?? null;
-  const ownCard = ownCoachId ? coaches?.find((c: any) => c.id === ownCoachId) : null;
-  const others = ownCoachId ? coaches?.filter((c: any) => c.id !== ownCoachId) : coaches;
-
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
@@ -58,15 +54,8 @@ export default function CoachDirectoryPage() {
         )}
       </div>
 
-      {ownCard && (
-        <div className="mb-6 max-w-md">
-          <h2 className="text-sm font-medium text-[var(--color-text-muted)] mb-3">Your Profile</h2>
-          <CoachCard c={ownCard} isOwn />
-        </div>
-      )}
-
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {others?.map((c: any) => <CoachCard key={c.id} c={c} isOwn={false} />)}
+        {coaches?.map((c: any) => <CoachCard key={c.id} c={c} isOwn={false} />)}
         {(!coaches || !coaches.length) && <div className="col-span-full text-center py-12 text-sm text-[var(--color-text-muted)]">No coaches found</div>}
       </div>
     </div>
