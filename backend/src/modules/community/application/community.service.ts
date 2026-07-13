@@ -147,6 +147,22 @@ export const communityService = {
     await repo.deleteGroup(conversationId);
   },
 
+  async getPendingInvitations(conversationId: number, userId: number) {
+    if (!(await repo.isConversationParticipant(conversationId, userId))) {
+      throw new ForbiddenError('Not a participant in this group');
+    }
+    return repo.findPendingInvitationsByConversation(conversationId);
+  },
+
+  async cancelInvitation(conversationId: number, userId: number, invitationId: number) {
+    const isCreator = await repo.isGroupCreator(conversationId, userId);
+    const isAdmin = await repo.isGroupAdmin(conversationId, userId);
+    if (!isCreator && !isAdmin) {
+      throw new ForbiddenError('Only the group creator or admin can cancel invitations');
+    }
+    await repo.cancelInvitation(invitationId);
+  },
+
   async getGroupInvitations(userId: number) {
     return repo.findGroupInvitations(userId);
   },

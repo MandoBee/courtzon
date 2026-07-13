@@ -291,6 +291,25 @@ export const communityRepository = {
     return rows.length > 0;
   },
 
+  async findPendingInvitationsByConversation(conversationId: number) {
+    const pool = getPool();
+    const [rows] = await pool.execute<RowData>(
+      `SELECT gi.id, gi.invitee_id, gi.created_at AS invited_at,
+              u.full_name, u.avatar_url, u.email
+         FROM group_invitations gi
+         JOIN users u ON u.id = gi.invitee_id
+        WHERE gi.conversation_id = ? AND gi.status = 'pending'
+        ORDER BY gi.created_at ASC`,
+      [conversationId]
+    );
+    return rows;
+  },
+
+  async cancelInvitation(invitationId: number) {
+    const pool = getPool();
+    await pool.execute('DELETE FROM group_invitations WHERE id = ?', [invitationId]);
+  },
+
   async findGroupInvitations(userId: number) {
     const pool = getPool();
     const [rows] = await pool.execute<RowData>(

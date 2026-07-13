@@ -81,6 +81,21 @@ export default function MessagesPage() {
     enabled: !!selectedId && selectedConvo?.conversation_type === 'group' && groupSettingsOpen && can('community.chat.view'),
   });
 
+  const { data: pendingInvitationsData, refetch: refetchPending } = useQuery({
+    queryKey: ['chat-group-pending', selectedId],
+    queryFn: () => api.get(`/community/conversations/${selectedId}/pending`).then((r) => r.data?.data || []),
+    enabled: !!selectedId && selectedConvo?.conversation_type === 'group' && groupSettingsOpen && can('community.chat.view'),
+  });
+
+  const cancelInvitationMutation = useMutation({
+    mutationFn: (invitationId: number) => api.delete(`/community/conversations/${selectedId}/pending/${invitationId}`),
+    onSuccess: () => {
+      refetchPending();
+      showToast('Invitation cancelled');
+    },
+    onError: (err: any) => showToast(err?.response?.data?.message || 'Could not cancel invitation', 'error'),
+  });
+
   const { data: messages, isLoading: loadingMessages } = useQuery({
     queryKey: ['chat-messages', selectedId],
     queryFn: () => api.get(`/community/conversations/${selectedId}/messages`, { params: { limit: 100 } }).then((r) => r.data?.data || []),
@@ -888,6 +903,42 @@ export default function MessagesPage() {
               <div className="animate-pulse h-10 bg-[var(--color-border)] rounded-lg" />
             )}
           </div>
+
+          {/* Pending Invitations */}
+          {pendingInvitationsData && pendingInvitationsData.length > 0 && (
+            <div className="space-y-2">
+              <h3 className="text-sm font-semibold text-[var(--color-text)]">
+                Pending Approval ({pendingInvitationsData.length})
+              </h3>
+              <div className="space-y-2">
+                {pendingInvitationsData.map((inv: any) => (
+                  <div key={inv.id} className="flex items-center gap-2 p-2 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
+                    <EntityImage src={inv.avatar_url} name={inv.full_name} className="w-8 h-8 rounded-full text-xs shrink-0" />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm text-[var(--color-text)] truncate">{inv.full_name}</p>
+                      <p className="text-[10px] text-[var(--color-text-muted)]">Invited {new Date(inv.invited_at).toLocaleDateString()}</p>
+                    </div>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 font-medium shrink-0">
+                      Pending
+                    </span>
+                    {canManageGroup && (
+                      <button
+                        onClick={() => {
+                          if (window.confirm(`Cancel invitation for ${inv.full_name}?`)) {
+                            cancelInvitationMutation.mutate(inv.id);
+                          }
+                        }}
+                        className="text-red-500 hover:text-red-700 text-sm font-bold px-1 shrink-0"
+                        title="Cancel invitation"
+                      >
+                        ×
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Add Member section (creator or admin) */}
           {canManageGroup && (

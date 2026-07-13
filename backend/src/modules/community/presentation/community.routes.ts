@@ -46,6 +46,8 @@ export async function communityRoutes(app: FastifyInstance): Promise<void> {
     scopedApp.put('/community/conversations/:conversationId/read', { preHandler: [requirePermission(['community.chat.view'])] }, ctrl.markAsReadHandler);
     scopedApp.get('/community/conversations/:conversationId/members', { preHandler: [requirePermission(['community.chat.view'])] }, ctrl.getGroupMembersHandler);
     scopedApp.get('/community/conversations/:conversationId/info', { preHandler: [requirePermission(['community.chat.view'])] }, ctrl.getGroupInfoHandler);
+    scopedApp.get('/community/conversations/:conversationId/pending', { preHandler: [requirePermission(['community.chat.view'])] }, ctrl.getPendingInvitationsHandler);
+    scopedApp.delete('/community/conversations/:conversationId/pending/:invitationId', { preHandler: [requirePermission(['community.chat.send'])] }, ctrl.cancelInvitationHandler);
     scopedApp.put('/community/conversations/:conversationId', { preHandler: [requirePermission(['community.chat.send'])] }, ctrl.updateGroupHandler);
     scopedApp.post('/community/conversations/:conversationId/members/remove', { preHandler: [requirePermission(['community.chat.send'])] }, ctrl.removeMemberHandler);
     scopedApp.post('/community/conversations/:conversationId/leave', { preHandler: [requirePermission(['community.chat.send'])] }, ctrl.leaveGroupHandler);

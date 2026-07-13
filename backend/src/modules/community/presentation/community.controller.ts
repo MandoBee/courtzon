@@ -255,6 +255,20 @@ export async function deleteGroupHandler(request: FastifyRequest, reply: Fastify
   return reply.status(204).send();
 }
 
+export async function getPendingInvitationsHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { conversationId } = request.params as any;
+  const userId = (request as any).userId;
+  const invitations = await svc.getPendingInvitations(Number(conversationId), userId);
+  return reply.send({ data: invitations });
+}
+
+export async function cancelInvitationHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { conversationId, invitationId } = request.params as any;
+  const userId = (request as any).userId;
+  await svc.cancelInvitation(Number(conversationId), userId, Number(invitationId));
+  return reply.send({ message: 'Invitation cancelled' });
+}
+
 export async function promoteAdminHandler(request: FastifyRequest, reply: FastifyReply) {
   const { conversationId, targetUserId } = request.params as any;
   const userId = (request as any).userId;
