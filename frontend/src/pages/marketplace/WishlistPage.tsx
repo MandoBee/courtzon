@@ -94,7 +94,7 @@ export default function WishlistPage() {
                   disabled={isSoldOut || addToCart.isPending}
                   className="px-3 py-1.5 text-xs font-medium bg-[var(--color-primary)] text-white rounded-[var(--radius-md)] disabled:opacity-50 hover:opacity-90 transition-opacity"
                 >
-                  {isSoldOut ? 'Sold Out' : addToCart.isPending ? '...' : t('cart.add_to_cart') || 'Add to Cart'}
+                  {isSoldOut ? 'Sold Out' : addToCart.isPending ? '...' : 'Add to Cart'}
                 </button>
                 <button
                   onClick={() => removeFromWishlist.mutate(item.product_id)}
