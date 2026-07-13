@@ -49,6 +49,8 @@ export async function communityRoutes(app: FastifyInstance): Promise<void> {
     scopedApp.put('/community/conversations/:conversationId', { preHandler: [requirePermission(['community.chat.send'])] }, ctrl.updateGroupHandler);
     scopedApp.post('/community/conversations/:conversationId/members/remove', { preHandler: [requirePermission(['community.chat.send'])] }, ctrl.removeMemberHandler);
     scopedApp.post('/community/conversations/:conversationId/leave', { preHandler: [requirePermission(['community.chat.send'])] }, ctrl.leaveGroupHandler);
+    scopedApp.put('/community/conversations/:conversationId/promote/:targetUserId', { preHandler: [requirePermission(['community.chat.send'])] }, ctrl.promoteAdminHandler);
+    scopedApp.put('/community/conversations/:conversationId/demote/:targetUserId', { preHandler: [requirePermission(['community.chat.send'])] }, ctrl.demoteAdminHandler);
     scopedApp.delete('/community/conversations/:conversationId', { preHandler: [requirePermission(['community.chat.send'])] }, ctrl.deleteGroupHandler);
   });
 

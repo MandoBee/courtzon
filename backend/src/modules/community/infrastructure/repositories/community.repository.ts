@@ -163,19 +163,44 @@ export const communityRepository = {
     return rows.length > 0;
   },
 
+  async isGroupAdmin(conversationId: number, userId: number): Promise<boolean> {
+    const pool = getPool();
+    const [rows] = await pool.execute<RowData>(
+      `SELECT 1 FROM conversation_participants WHERE conversation_id = ? AND user_id = ? AND is_admin = 1 LIMIT 1`,
+      [conversationId, userId]
+    );
+    return rows.length > 0;
+  },
+
   async getGroupMembers(conversationId: number) {
     const pool = getPool();
     const [rows] = await pool.execute<RowData>(
       `SELECT u.id, u.full_name, u.avatar_url, u.email,
-              cp.created_at AS joined_at, c.created_by
+              cp.is_admin, cp.created_at AS joined_at, c.created_by
          FROM conversation_participants cp
          JOIN users u ON u.id = cp.user_id
          JOIN conversations c ON c.id = cp.conversation_id
         WHERE cp.conversation_id = ? AND c.conversation_type = 'group'
-        ORDER BY CASE WHEN u.id = c.created_by THEN 0 ELSE 1 END, cp.created_at ASC`,
+        ORDER BY CASE WHEN u.id = c.created_by THEN 0 WHEN cp.is_admin = 1 THEN 1 ELSE 2 END, cp.created_at ASC`,
       [conversationId]
     );
     return rows;
+  },
+
+  async promoteAdmin(conversationId: number, targetUserId: number) {
+    const pool = getPool();
+    await pool.execute(
+      'UPDATE conversation_participants SET is_admin = 1 WHERE conversation_id = ? AND user_id = ?',
+      [conversationId, targetUserId]
+    );
+  },
+
+  async demoteAdmin(conversationId: number, targetUserId: number) {
+    const pool = getPool();
+    await pool.execute(
+      'UPDATE conversation_participants SET is_admin = 0 WHERE conversation_id = ? AND user_id = ?',
+      [conversationId, targetUserId]
+    );
   },
 
   async updateGroup(conversationId: number, data: { name?: string; avatarUrl?: string }) {

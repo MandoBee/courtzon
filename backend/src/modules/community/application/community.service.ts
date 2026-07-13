@@ -97,6 +97,9 @@ export const communityService = {
     if (!(await repo.isConversationParticipant(conversationId, userId))) {
       throw new ForbiddenError('Not a participant in this conversation');
     }
+    if (!(await repo.isGroupCreator(conversationId, userId)) && !(await repo.isGroupAdmin(conversationId, userId))) {
+      throw new ForbiddenError('Only the group creator or admin can invite members');
+    }
     if (await repo.isAlreadyInvited(conversationId, inviteeId)) {
       throw new ConflictError('User already invited');
     }
@@ -109,6 +112,19 @@ export const communityService = {
     }
     if (userId === targetUserId) {
       throw new ConflictError('Use leave group to remove yourself');
+    }
+    const isCreator = await repo.isGroupCreator(conversationId, userId);
+    const isAdmin = await repo.isGroupAdmin(conversationId, userId);
+    if (!isCreator && !isAdmin) {
+      throw new ForbiddenError('Only the group creator or admin can remove members');
+    }
+    const targetIsCreator = await repo.isGroupCreator(conversationId, targetUserId);
+    if (targetIsCreator) {
+      throw new ForbiddenError('Cannot remove the group creator');
+    }
+    const targetIsAdmin = await repo.isGroupAdmin(conversationId, targetUserId);
+    if (targetIsAdmin && !isCreator) {
+      throw new ForbiddenError('Only the group creator can remove admins');
     }
     await repo.removeMember(conversationId, targetUserId);
   },
@@ -164,11 +180,28 @@ export const communityService = {
     if (!(await repo.isConversationParticipant(conversationId, userId))) {
       throw new ForbiddenError('Not a participant in this group');
     }
-    if (!(await repo.isGroupCreator(conversationId, userId))) {
-      throw new ForbiddenError('Only the group creator can edit group settings');
+    if (!(await repo.isGroupCreator(conversationId, userId)) && !(await repo.isGroupAdmin(conversationId, userId))) {
+      throw new ForbiddenError('Only the group creator or admin can edit group settings');
     }
     await repo.updateGroup(conversationId, data);
     return repo.getGroupInfo(conversationId);
+  },
+
+  async promoteAdmin(conversationId: number, userId: number, targetUserId: number) {
+    if (!(await repo.isGroupCreator(conversationId, userId))) {
+      throw new ForbiddenError('Only the group creator can promote admins');
+    }
+    if (!(await repo.isConversationParticipant(conversationId, targetUserId))) {
+      throw new ForbiddenError('User is not a member of this group');
+    }
+    await repo.promoteAdmin(conversationId, targetUserId);
+  },
+
+  async demoteAdmin(conversationId: number, userId: number, targetUserId: number) {
+    if (!(await repo.isGroupCreator(conversationId, userId))) {
+      throw new ForbiddenError('Only the group creator can demote admins');
+    }
+    await repo.demoteAdmin(conversationId, targetUserId);
   },
 
   // ── Pin Conversations ──

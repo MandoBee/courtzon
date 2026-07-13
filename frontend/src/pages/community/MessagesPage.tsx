@@ -410,6 +410,26 @@ export default function MessagesPage() {
   }
 
   const isGroupCreator = groupInfo?.created_by === user?.id || selectedConvo?.created_by === user?.id;
+  const isGroupAdmin = groupMembersData?.some((m: any) => m.id === user?.id && m.is_admin) || false;
+  const canManageGroup = isGroupCreator || isGroupAdmin;
+
+  const promoteAdminMutation = useMutation({
+    mutationFn: (targetUserId: number) => api.put(`/community/conversations/${selectedId}/promote/${targetUserId}`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['chat-group-members', selectedId] });
+      showToast('Member promoted to admin');
+    },
+    onError: (err: any) => showToast(err?.response?.data?.message || 'Could not promote', 'error'),
+  });
+
+  const demoteAdminMutation = useMutation({
+    mutationFn: (targetUserId: number) => api.put(`/community/conversations/${selectedId}/demote/${targetUserId}`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['chat-group-members', selectedId] });
+      showToast('Admin demoted');
+    },
+    onError: (err: any) => showToast(err?.response?.data?.message || 'Could not demote', 'error'),
+  });
 
   const pinnedConvos = conversations?.filter((c: any) => c.pinned_at) || [];
   const unpinnedConvos = conversations?.filter((c: any) => !c.pinned_at) || [];
@@ -758,7 +778,7 @@ export default function MessagesPage() {
       <Modal open={groupSettingsOpen} onClose={closeGroupSettings} title="Group Settings">
         <div className="space-y-5">
           {/* Group Info section */}
-          {isGroupCreator && (
+          {canManageGroup && (
             <div className="space-y-3">
               <h3 className="text-sm font-semibold text-[var(--color-text)]">Group Info</h3>
               <label className="block">
@@ -814,7 +834,41 @@ export default function MessagesPage() {
                         Creator
                       </span>
                     )}
-                    {isGroupCreator && m.id !== user?.id && (
+                    {m.is_admin && m.id !== groupInfo?.created_by && (
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 font-medium">
+                        Admin
+                      </span>
+                    )}
+                    {isGroupCreator && m.id !== user?.id && m.id !== groupInfo?.created_by && (
+                      <>
+                        {m.is_admin ? (
+                          <button
+                            onClick={() => {
+                              if (window.confirm(`Remove admin role from ${m.full_name}?`)) {
+                                demoteAdminMutation.mutate(m.id);
+                              }
+                            }}
+                            className="text-xs text-amber-600 hover:text-amber-800 px-1"
+                            title="Demote admin"
+                          >
+                            ↓
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => {
+                              if (window.confirm(`Make ${m.full_name} an admin?`)) {
+                                promoteAdminMutation.mutate(m.id);
+                              }
+                            }}
+                            className="text-xs text-green-600 hover:text-green-800 px-1"
+                            title="Promote to admin"
+                          >
+                            ↑
+                          </button>
+                        )}
+                      </>
+                    )}
+                    {canManageGroup && m.id !== user?.id && m.id !== groupInfo?.created_by && !(isGroupAdmin && m.is_admin) && (
                       <button
                         onClick={() => {
                           if (window.confirm(`Remove ${m.full_name} from the group?`)) {
@@ -835,8 +889,8 @@ export default function MessagesPage() {
             )}
           </div>
 
-          {/* Add Member section (creator only) */}
-          {isGroupCreator && (
+          {/* Add Member section (creator or admin) */}
+          {canManageGroup && (
             <div className="space-y-2">
               <h3 className="text-sm font-semibold text-[var(--color-text)]">Add Member</h3>
               <div className="flex gap-2">

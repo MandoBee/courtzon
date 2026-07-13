@@ -255,6 +255,38 @@ export async function deleteGroupHandler(request: FastifyRequest, reply: Fastify
   return reply.status(204).send();
 }
 
+export async function promoteAdminHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { conversationId, targetUserId } = request.params as any;
+  const userId = (request as any).userId;
+  await svc.promoteAdmin(Number(conversationId), userId, Number(targetUserId));
+  recordAudit({
+    actorId: userId ?? null,
+    action: 'CHAT.GROUP_PROMOTE_ADMIN',
+    entityType: 'conversation',
+    entityId: Number(conversationId),
+    afterState: { promotedUserId: Number(targetUserId) },
+    ipAddress: request.ip,
+    userAgent: request.headers['user-agent'],
+  });
+  return reply.send({ message: 'Member promoted to admin' });
+}
+
+export async function demoteAdminHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { conversationId, targetUserId } = request.params as any;
+  const userId = (request as any).userId;
+  await svc.demoteAdmin(Number(conversationId), userId, Number(targetUserId));
+  recordAudit({
+    actorId: userId ?? null,
+    action: 'CHAT.GROUP_DEMOTE_ADMIN',
+    entityType: 'conversation',
+    entityId: Number(conversationId),
+    afterState: { demotedUserId: Number(targetUserId) },
+    ipAddress: request.ip,
+    userAgent: request.headers['user-agent'],
+  });
+  return reply.send({ message: 'Admin demoted' });
+}
+
 // ── Pin Conversations ──
 export async function pinConversationHandler(request: FastifyRequest, reply: FastifyReply) {
   const { conversationId } = request.params as any;
