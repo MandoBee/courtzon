@@ -363,6 +363,13 @@ function AppContent() {
     if (!isLoading) void fetchAppearance();
   }, [isLoading, fetchAppearance]);
 
+  const navigate = useNavigate();
+  useEffect(() => {
+    const handler = () => navigate('/login', { replace: true });
+    window.addEventListener('auth:logout', handler);
+    return () => window.removeEventListener('auth:logout', handler);
+  }, [navigate]);
+
   if (isLoading) {
     return <BrandedSplash />;
   }

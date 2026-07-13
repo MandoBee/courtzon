@@ -68,7 +68,7 @@ api.interceptors.response.use(
         return api(originalRequest);
       } catch {
         sessionStorage.removeItem('user');
-        window.location.href = '/login';
+        window.dispatchEvent(new CustomEvent('auth:logout'));
       }
     }
 

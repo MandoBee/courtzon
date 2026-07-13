@@ -11,7 +11,7 @@ export default defineConfig(({ command }) => ({
     ...(command === 'build'
       ? [
     VitePWA({
-      registerType: 'autoUpdate',
+      registerType: 'prompt',
       includeAssets: ['favicon.svg', 'favicon-16x16.png', 'favicon-32x32.png', 'images/favicon-light.svg', 'images/favicon-dark.svg', 'icons.svg', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png', 'screenshot-phone.png', 'apple-splash-*.png', 'browserconfig.xml'],
       manifest: {
         id: '/',
