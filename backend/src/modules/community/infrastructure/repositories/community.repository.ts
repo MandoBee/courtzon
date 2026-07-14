@@ -285,8 +285,10 @@ export const communityRepository = {
   async inviteToGroup(conversationId: number, inviterId: number, inviteeId: number) {
     const pool = getPool();
     await pool.execute(
-      'INSERT INTO group_invitations (conversation_id, inviter_id, invitee_id, status) VALUES (?, ?, ?, ?)',
-      [conversationId, inviterId, inviteeId, 'pending']
+      `INSERT INTO group_invitations (conversation_id, inviter_id, invitee_id, status)
+       VALUES (?, ?, ?, 'pending')
+       ON DUPLICATE KEY UPDATE inviter_id = VALUES(inviter_id), status = 'pending', updated_at = CURRENT_TIMESTAMP`,
+      [conversationId, inviterId, inviteeId]
     );
   },
 
