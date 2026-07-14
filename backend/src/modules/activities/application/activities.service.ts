@@ -244,10 +244,16 @@ export const activitiesService = {
   async createCoachSession(userId: number, data: any) {
     const coach = await repo.findCoachByUserId(userId);
     if (!coach) throw new ForbiddenError('Not a coach');
+    if (data.organisationId) {
+      const hasAgreement = await repo.hasAcceptedAgreement(coach.id, data.organisationId);
+      if (!hasAgreement) {
+        throw new ForbiddenError('Coach does not have an active agreement with this organisation');
+      }
+    }
     let platformCommissionPct = 10;
-    if (data.orgId) {
+    if (data.organisationId) {
       try {
-        const comm = await commissionService.calculate(data.orgId, 'coach_session', data.price);
+        const comm = await commissionService.calculate(data.organisationId, 'coach_session', data.price);
         platformCommissionPct = comm.rate;
       } catch { /* use default */ }
     }

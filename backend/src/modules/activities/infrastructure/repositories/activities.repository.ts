@@ -417,6 +417,15 @@ export const activitiesRepository = {
     return rows;
   },
 
+  async hasAcceptedAgreement(coachId: number, organisationId: number): Promise<boolean> {
+    const pool = getPool();
+    const [rows] = await pool.execute<RowData>(
+      `SELECT 1 FROM coach_org_agreements WHERE coach_id = ? AND organisation_id = ? AND status = 'accepted' AND is_active = TRUE LIMIT 1`,
+      [coachId, organisationId]
+    );
+    return rows.length > 0;
+  },
+
   async upsertOrgAgreement(data: { coachId: number; organisationId: number; coachSplitPct: number; orgSplitPct: number; hourlyRate?: number; isActive?: boolean }) {
     // Coach-initiated agreements require org approval — set to pending.
     const pool = getPool();

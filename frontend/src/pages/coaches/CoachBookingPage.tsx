@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../../services/api';
@@ -32,6 +32,13 @@ export default function CoachBookingPage() {
     queryFn: () => api.get(`/coaches/${id}/agreements`).then((r) => r.data?.data || []),
     enabled: !!id,
   });
+
+  useEffect(() => {
+    if (preselectedOrg && agreements && !agreements.some((a: any) => a.organisation_id === Number(preselectedOrg))) {
+      setSelectedOrgId('');
+      showToast('This organisation has not accepted the coach yet', 'warning');
+    }
+  }, [preselectedOrg, agreements, showToast]);
 
   const effectiveRate = selectedOrgId && agreements
     ? (agreements.find((a: any) => a.organisation_id === selectedOrgId)?.hourly_rate || coach?.hourly_rate)
