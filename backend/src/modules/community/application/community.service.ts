@@ -106,17 +106,21 @@ export const communityService = {
     }
     await repo.inviteToGroup(conversationId, userId, inviteeId);
 
-    const [groupInfo, inviterName] = await Promise.all([
-      repo.getGroupInfo(conversationId),
-      repo.getUserName(userId),
-    ]);
-    eventBus.emit('chat:group-invitation', {
-      conversationId,
-      userId: inviteeId,
-      inviterId: userId,
-      inviterName,
-      groupName: groupInfo?.name || 'Group',
-    });
+    try {
+      const [groupInfo, inviterName] = await Promise.all([
+        repo.getGroupInfo(conversationId),
+        repo.getUserName(userId),
+      ]);
+      eventBus.emit('chat:group-invitation', {
+        conversationId,
+        userId: inviteeId,
+        inviterId: userId,
+        inviterName,
+        groupName: groupInfo?.name || 'Group',
+      });
+    } catch (e) {
+      // Notification is best-effort — don't fail the invite
+    }
   },
 
   async removeMember(conversationId: number, userId: number, targetUserId: number) {
