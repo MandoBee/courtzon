@@ -277,6 +277,7 @@ export default function MessagesPage() {
     if (!withParam || !can('community.chat.view')) return;
     const uid = Number(withParam);
     if (!uid || uid === user?.id) return;
+    if (startConvoByIdMutation.isPending || startConvoByIdMutation.isSuccess) return;
     startConvoByIdMutation.mutate(uid);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [withParam, can, user?.id]);
@@ -449,8 +450,25 @@ export default function MessagesPage() {
     onError: (err: any) => showToast(err?.response?.data?.message || 'Could not demote', 'error'),
   });
 
-  const pinnedConvos = conversations?.filter((c: any) => c.pinned_at) || [];
-  const unpinnedConvos = conversations?.filter((c: any) => !c.pinned_at) || [];
+  const dedupedConvos = (() => {
+    if (!conversations) return [];
+    const seen = new Map<number, any>();
+    for (const c of conversations) {
+      if (c.conversation_type === 'direct' && c.other_user_id) {
+        const existing = seen.get(c.other_user_id);
+        const cTime = c.last_message_at || c.updated_at || '';
+        const eTime = existing?.last_message_at || existing?.updated_at || '';
+        if (!existing || cTime > eTime) {
+          seen.set(c.other_user_id, c);
+        }
+      } else {
+        seen.set(-(c.id), c);
+      }
+    }
+    return [...seen.values()];
+  })();
+  const pinnedConvos = dedupedConvos.filter((c: any) => c.pinned_at);
+  const unpinnedConvos = dedupedConvos.filter((c: any) => !c.pinned_at);
 
   return (
     <div className="space-y-4">
