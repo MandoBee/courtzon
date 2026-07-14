@@ -62,35 +62,38 @@ export default function MessagesPage() {
     queryKey: ['chat-invitations'],
     queryFn: () => api.get('/community/conversations/invitations').then((r) => r.data?.data || []),
     enabled: can('community.chat.view'),
-    refetchInterval: 30000,
+    refetchInterval: 10000,
   });
 
   const pendingInvitations = invitations?.filter((inv: any) => inv.status === 'pending') || [];
 
   const selectedConvo = conversations?.find((c: any) => c.id === selectedId);
 
-  const { data: groupInfo, refetch: refetchGroupInfo } = useQuery({
+  const { data: groupInfo } = useQuery({
     queryKey: ['chat-group-info', selectedId],
     queryFn: () => api.get(`/community/conversations/${selectedId}/info`).then((r) => r.data),
     enabled: !!selectedId && selectedConvo?.conversation_type === 'group' && can('community.chat.view'),
+    refetchInterval: selectedId && selectedConvo?.conversation_type === 'group' ? 10000 : false,
   });
 
-  const { data: groupMembersData, refetch: refetchGroupMembers } = useQuery({
+  const { data: groupMembersData } = useQuery({
     queryKey: ['chat-group-members', selectedId],
     queryFn: () => api.get(`/community/conversations/${selectedId}/members`).then((r) => r.data?.data || []),
     enabled: !!selectedId && selectedConvo?.conversation_type === 'group' && groupSettingsOpen && can('community.chat.view'),
+    refetchInterval: groupSettingsOpen ? 5000 : false,
   });
 
-  const { data: pendingInvitationsData, refetch: refetchPending } = useQuery({
+  const { data: pendingInvitationsData } = useQuery({
     queryKey: ['chat-group-pending', selectedId],
     queryFn: () => api.get(`/community/conversations/${selectedId}/pending`).then((r) => r.data?.data || []),
     enabled: !!selectedId && selectedConvo?.conversation_type === 'group' && groupSettingsOpen && can('community.chat.view'),
+    refetchInterval: groupSettingsOpen ? 5000 : false,
   });
 
   const cancelInvitationMutation = useMutation({
     mutationFn: (invitationId: number) => api.delete(`/community/conversations/${selectedId}/pending/${invitationId}`),
     onSuccess: () => {
-      refetchPending();
+      qc.invalidateQueries({ queryKey: ['chat-group-pending', selectedId] });
       showToast('Invitation cancelled');
     },
     onError: (err: any) => showToast(err?.response?.data?.message || 'Could not cancel invitation', 'error'),
@@ -221,7 +224,7 @@ export default function MessagesPage() {
       api.put(`/community/conversations/${selectedId}`, { name, avatarUrl }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['chat-conversations'] });
-      refetchGroupInfo();
+      qc.invalidateQueries({ queryKey: ['chat-group-info', selectedId] });
       showToast('Group updated');
     },
     onError: (err: any) => showToast(err?.response?.data?.message || 'Could not update group', 'error'),
@@ -232,7 +235,7 @@ export default function MessagesPage() {
       api.post(`/community/conversations/${selectedId}/members/remove`, { targetUserId }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['chat-conversations'] });
-      refetchGroupMembers();
+      qc.invalidateQueries({ queryKey: ['chat-group-members', selectedId] });
       showToast('Member removed');
     },
     onError: (err: any) => showToast(err?.response?.data?.message || 'Could not remove member', 'error'),
@@ -264,7 +267,7 @@ export default function MessagesPage() {
     mutationFn: ({ inviteeId }: { inviteeId: number }) =>
       api.post(`/community/conversations/${selectedId}/invite`, { inviteeId }),
     onSuccess: () => {
-      refetchGroupMembers();
+      qc.invalidateQueries({ queryKey: ['chat-group-pending', selectedId] });
       showToast('Member invited');
     },
     onError: (err: any) => showToast(err?.response?.data?.message || 'Could not invite member', 'error'),
