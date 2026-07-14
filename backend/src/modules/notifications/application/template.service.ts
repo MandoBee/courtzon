@@ -355,6 +355,14 @@ export async function seedTemplates(): Promise<void> {
       titleTemplate: 'دعوة للمباراة', bodyTemplate: 'تمت دعوتك للانضمام إلى مباراة!',
       actionKey: 'view_booking', routePattern: '/bookings/{{bookingId}}' },
 
+    // Chat
+    { eventName: 'chat:group-invitation', locale: 'en', categorySlug: 'system', type: 'info', priority: 'high',
+      titleTemplate: 'Group Invitation', bodyTemplate: '{{inviterName}} invited you to join "{{groupName}}".',
+      actionKey: 'view_chat', routePattern: '/messages' },
+    { eventName: 'chat:group-invitation', locale: 'ar', categorySlug: 'system', type: 'info', priority: 'high',
+      titleTemplate: 'دعوة للمجموعة', bodyTemplate: '{{inviterName}} دعاك للانضمام إلى "{{groupName}}".',
+      actionKey: 'view_chat', routePattern: '/messages' },
+
     // ── Match Events ──
     { eventName: 'match:created', locale: 'en', categorySlug: 'bookings', type: 'info', priority: 'normal',
       titleTemplate: 'Match Created', bodyTemplate: 'A new match has been created!',

@@ -1,5 +1,6 @@
 import { NotFoundError, ConflictError, ForbiddenError } from '../../../shared/errors/app-error.js';
 import { communityRepository as repo } from '../infrastructure/repositories/community.repository.js';
+import { eventBus } from '../../../shared/event-bus/index.js';
 
 export const communityService = {
   // ── Follows ──
@@ -104,6 +105,18 @@ export const communityService = {
       throw new ConflictError('User already invited');
     }
     await repo.inviteToGroup(conversationId, userId, inviteeId);
+
+    const [groupInfo, inviterName] = await Promise.all([
+      repo.getGroupInfo(conversationId),
+      repo.getUserName(userId),
+    ]);
+    eventBus.emit('chat:group-invitation', {
+      conversationId,
+      userId: inviteeId,
+      inviterId: userId,
+      inviterName,
+      groupName: groupInfo?.name || 'Group',
+    });
   },
 
   async removeMember(conversationId: number, userId: number, targetUserId: number) {

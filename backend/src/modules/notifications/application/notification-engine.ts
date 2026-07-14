@@ -336,12 +336,14 @@ const eventGroups: EventGroupConfig[] = [
     },
   },
   {
-    events: ['chat:group-created', 'chat:group-joined'],
+    events: ['chat:group-created', 'chat:group-joined', 'chat:group-invitation'],
     handler: async (eventName, data, categorySlug) => {
       if (data.userId) {
         await dispatchToUser({
           userId: data.userId, eventName, categorySlug, data,
+          senderId: data.inviterId,
           relatedEntityType: 'chat',
+          relatedEntityId: String(data.conversationId || data.groupId),
         });
       }
     },
@@ -618,7 +620,7 @@ class NotificationEngine {
       'tournament:starting-soon', 'tournament:match-scheduled', 'tournament:result',
       'community:mention', 'community:reply', 'community:like',
       'friend:request', 'friend:accepted', 'friend:blocked',
-      'chat:new-message', 'chat:group-created', 'chat:group-joined',
+      'chat:new-message', 'chat:group-created', 'chat:group-joined', 'chat:group-invitation',
       'membership:expiring', 'membership:expired', 'membership:renewed', 'membership:upgraded',
       'wallet:deposit', 'wallet:withdrawal', 'wallet:low-balance', 'wallet:transaction',
       'review:received', 'attendance:marked',

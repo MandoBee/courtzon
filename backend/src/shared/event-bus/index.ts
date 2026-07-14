@@ -114,6 +114,7 @@ export interface DomainEventMap {
   'chat:missed-call': BaseEvent & { conversationId: number; userId: number; callerName: string };
   'chat:group-created': BaseEvent & { groupId: number; userId: number; groupName: string };
   'chat:group-joined': BaseEvent & { groupId: number; userId: number; groupName: string };
+  'chat:group-invitation': BaseEvent & { conversationId: number; userId: number; inviterId: number; inviterName: string; groupName: string };
 
   // Membership & Subscriptions
   'membership:expiring': BaseEvent & { membershipId: number; userId: number; daysLeft: number; type: string };

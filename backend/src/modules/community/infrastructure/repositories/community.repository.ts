@@ -130,6 +130,14 @@ export const communityRepository = {
     );
     return rows.length > 0 ? (rows[0] as any) : null;
   },
+  async getUserName(userId: number): Promise<string> {
+    const pool = getPool();
+    const [rows] = await pool.execute<RowData>(
+      'SELECT full_name FROM users WHERE id = ? LIMIT 1',
+      [userId]
+    );
+    return rows.length > 0 ? rows[0].full_name || 'User' : 'User';
+  },
   async findOrCreateDirectConversation(user1Id: number, user2Id: number) {
     const pool = getPool();
     const [rows] = await pool.execute<RowData>(
