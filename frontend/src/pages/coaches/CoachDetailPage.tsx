@@ -137,7 +137,14 @@ export default function CoachDetailPage() {
           <div className="space-y-2">
             {coach.agreements.map((a: any) => (
               <div key={a.id} className="flex items-center justify-between text-sm">
-                <span className="text-[var(--color-text)]">{a.organisation_name || `Organisation #${a.organisation_id}`}</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-[var(--color-text)]">{a.organisation_name || `Organisation #${a.organisation_id}`}</span>
+                  {a.hourly_rate != null && (
+                    <span className="text-xs text-[var(--color-text-muted)] bg-[var(--color-bg)] px-2 py-0.5 rounded-full">
+                      {formatPrice(Number(a.hourly_rate))}/hr
+                    </span>
+                  )}
+                </div>
                 {!isOwn && (
                   <Link to={`/coaches/${id}/book?orgId=${a.organisation_id}`} className="px-3 py-1.5 bg-[var(--color-primary)] text-white rounded-[var(--radius-md)] text-xs font-medium">
                     Book
