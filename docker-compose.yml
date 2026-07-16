@@ -99,6 +99,7 @@ services:
       dockerfile: Dockerfile
       args:
         VITE_PAYMOB_PUBLIC_KEY: ${VITE_PAYMOB_PUBLIC_KEY:-}
+        VITE_FEATURE_AUTH_TEMPORARY_PASSWORD_RESET_ENABLED: ${VITE_FEATURE_AUTH_TEMPORARY_PASSWORD_RESET_ENABLED:-false}
     container_name: courtzon-frontend
     restart: unless-stopped
     ports:
