@@ -1,6 +1,8 @@
 import type { FastifyRequest, FastifyReply } from 'fastify';
 import { activitiesService as svc } from '../application/activities.service.js';
 import { recordAudit } from '../../audit-log/index.js';
+import { coachSessionStateService } from '../../coaches/application/coach-session-state.service.js';
+import { eventBus } from '../../../shared/event-bus/index.js';
 import {
   CreateTournamentSchema, RegisterTournamentSchema, MatchScoreSchema,
   CreateAcademySchema, CreateCurriculumSchema, EnrollPlayerSchema,
@@ -437,4 +439,171 @@ export async function toggleCoachAvailabilityHandler(request: FastifyRequest, re
   const { id } = request.params as any;
   const result = await svc.toggleCoachAvailability(Number(id));
   return reply.send(result);
+}
+
+// ── Coach Collaboration Flow (Slice 4) ────────────────────────────────────
+
+const SESSION_EVENTS: Record<string, string> = {
+  accepted: 'CoachSessionAccepted',
+  declined: 'CoachSessionDeclined',
+  counter_proposal: 'CoachSessionCounterProposed',
+  confirmed: 'CoachSessionConfirmed',
+  started: 'CoachSessionStarted',
+  completed: 'CoachSessionCompleted',
+  cancelled: 'CoachSessionCancelled',
+  no_show: 'CoachSessionNoShow',
+};
+
+function emitSessionEvent(eventName: string, session: any, meta?: any) {
+  const domainEvent = SESSION_EVENTS[eventName] || eventName;
+  eventBus.emit(domainEvent as any, { sessionId: session.id, ...meta, coachId: session.coach_id, playerId: session.player_id });
+}
+
+export async function requestCoachSessionHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = (request as any).userId;
+  const { coachId, startTime, endTime, organisationId } = request.body as any;
+
+  const pool = (await import('../../../database/mysql.js')).getPool();
+  const coach = await (await import('../../activities/infrastructure/repositories/activities.repository.js')).activitiesRepository.findCoachById(coachId);
+  if (!coach || coach.status !== 'approved') {
+    return reply.status(404).send({ error: 'NOT_FOUND', message: 'Coach not found or not approved' });
+  }
+
+  const [result] = await pool.execute<any>(
+    `INSERT INTO coach_sessions (coach_id, player_id, organisation_id, start_time, end_time, status, price, currency_code, requested_at)
+     VALUES (?, ?, ?, ?, ?, 'requested', ?, ?, NOW())`,
+    [coachId, userId, organisationId || null, `${startTime}`, `${endTime}`, coach.hourly_rate || 0, coach.currency_code || 'EGP'],
+  );
+  const sessionId = result.insertId;
+
+  await coachSessionStateService.logEvent(sessionId, 'requested', { id: userId, role: 'player' });
+
+  recordAudit({ actorId: userId, action: 'COACH_SESSION.REQUESTED', entityType: 'coach_session', entityId: sessionId, afterState: { coachId, startTime, endTime } });
+
+  emitSessionEvent('requested', { id: sessionId, coach_id: coachId, player_id: userId });
+
+  return reply.status(201).send({ id: sessionId, status: 'requested' });
+}
+
+export async function respondCoachSessionHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = (request as any).userId;
+  const sessionId = Number((request.params as any).id);
+  const { action, proposedStartTime, proposedEndTime } = request.body as any;
+
+  const coach = await svc.findCoachByUserId(userId);
+  if (!coach) return reply.status(403).send({ error: 'FORBIDDEN', message: 'Not a coach' });
+
+  const { session } = await coachSessionStateService.transition(
+    sessionId, action as string,
+    { id: userId, role: 'coach' },
+    { proposedStartTime, proposedEndTime, cancelledBy: 'coach', reason: 'Coach declined' },
+  );
+
+  emitSessionEvent(action, session);
+
+  recordAudit({ actorId: userId, action: `COACH_SESSION.${action.toUpperCase()}`, entityType: 'coach_session', entityId: sessionId, afterState: { action } });
+
+  return reply.send({ session });
+}
+
+export async function confirmCoachSessionHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = (request as any).userId;
+  const sessionId = Number((request.params as any).id);
+
+  const { session } = await coachSessionStateService.transition(sessionId, 'confirmed', { id: userId, role: 'player' });
+
+  emitSessionEvent('confirmed', session);
+
+  recordAudit({ actorId: userId, action: 'COACH_SESSION.CONFIRMED', entityType: 'coach_session', entityId: sessionId });
+
+  return reply.send({ session });
+}
+
+export async function cancelCoachSessionHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = (request as any).userId;
+  const sessionId = Number((request.params as any).id);
+  const { reason } = request.body as any;
+
+  const { session } = await coachSessionStateService.transition(sessionId, 'cancelled', { id: userId, role: 'player' }, { cancelledBy: 'player', reason });
+
+  emitSessionEvent('cancelled', session, { reason });
+
+  recordAudit({ actorId: userId, action: 'COACH_SESSION.CANCELLED', entityType: 'coach_session', entityId: sessionId, afterState: { reason } });
+
+  return reply.send({ session });
+}
+
+export async function startCoachSessionHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = (request as any).userId;
+  const sessionId = Number((request.params as any).id);
+
+  const { session } = await coachSessionStateService.transition(sessionId, 'in_progress', { id: userId, role: 'coach' });
+
+  emitSessionEvent('started', session);
+
+  recordAudit({ actorId: userId, action: 'COACH_SESSION.STARTED', entityType: 'coach_session', entityId: sessionId });
+
+  return reply.send({ session });
+}
+
+export async function completeCoachSessionHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = (request as any).userId;
+  const sessionId = Number((request.params as any).id);
+
+  const { session } = await coachSessionStateService.transition(sessionId, 'completed', { id: userId, role: 'coach' });
+
+  emitSessionEvent('completed', session);
+
+  recordAudit({ actorId: userId, action: 'COACH_SESSION.COMPLETED', entityType: 'coach_session', entityId: sessionId });
+
+  return reply.send({ session });
+}
+
+export async function noShowCoachSessionHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = (request as any).userId;
+  const sessionId = Number((request.params as any).id);
+
+  const { session } = await coachSessionStateService.transition(sessionId, 'no_show', { id: userId, role: 'coach' });
+
+  emitSessionEvent('no_show', session);
+
+  recordAudit({ actorId: userId, action: 'COACH_SESSION.NO_SHOW', entityType: 'coach_session', entityId: sessionId });
+
+  return reply.send({ session });
+}
+
+export async function getCoachSessionDetailHandler(request: FastifyRequest, reply: FastifyReply) {
+  const sessionId = Number((request.params as any).id);
+  const pool = (await import('../../../database/mysql.js')).getPool();
+  const [rows] = await pool.execute<any>(
+    `SELECT cs.*, cp.full_name as coach_name, u.full_name as player_name
+     FROM coach_sessions cs
+     LEFT JOIN coach_profiles cp ON cp.id = cs.coach_id
+     LEFT JOIN users u ON u.id = cs.player_id
+     WHERE cs.id = ?`,
+    [sessionId],
+  );
+  if (!rows.length) return reply.status(404).send({ error: 'NOT_FOUND', message: 'Session not found' });
+
+  const timeline = await coachSessionStateService.getTimeline(sessionId);
+  const allowed = coachSessionStateService.getAllowedTransitions(rows[0].status);
+
+  return reply.send({ session: rows[0], timeline, allowedTransitions: allowed });
+}
+
+export async function listCoachRequestsHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = (request as any).userId;
+  const coach = await svc.findCoachByUserId(userId);
+  if (!coach) return reply.status(403).send({ error: 'FORBIDDEN', message: 'Not a coach' });
+
+  const pool = (await import('../../../database/mysql.js')).getPool();
+  const [rows] = await pool.execute<any>(
+    `SELECT cs.*, u.full_name as player_name, u.full_phone as player_phone
+     FROM coach_sessions cs
+     JOIN users u ON u.id = cs.player_id
+     WHERE cs.coach_id = ? AND cs.status IN ('requested', 'pending_acceptance')
+     ORDER BY cs.start_time ASC`,
+    [coach.id],
+  );
+  return reply.send({ data: rows });
 }

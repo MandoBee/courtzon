@@ -641,4 +641,8 @@ export const activitiesService = {
     if (!result) throw new NotFoundError('Coach');
     return result;
   },
+
+  async findCoachByUserId(userId: number) {
+    return repo.findCoachByUserId(userId);
+  },
 };

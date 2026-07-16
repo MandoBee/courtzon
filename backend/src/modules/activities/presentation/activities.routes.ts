@@ -64,6 +64,17 @@ export async function activitiesRoutes(app: FastifyInstance): Promise<void> {
   app.post('/coaches/sessions/:id/decline', ctrl.declineCoachSessionHandler);
   app.post('/coaches/:coachId/reviews', ctrl.createCoachReviewHandler);
 
+  // ── Coach Collaboration Flow (Slice 4) ────────────────────────────────
+  app.post('/coach-sessions/request', { preHandler: [requirePermission(['coaches.book'])] }, ctrl.requestCoachSessionHandler);
+  app.get('/coach-sessions/requests', ctrl.listCoachRequestsHandler);
+  app.get('/coach-sessions/:id', ctrl.getCoachSessionDetailHandler);
+  app.post('/coach-sessions/:id/respond', { preHandler: [requirePermission(['coaches.respond_request'])] }, ctrl.respondCoachSessionHandler);
+  app.post('/coach-sessions/:id/confirm', { preHandler: [requirePermission(['coaches.confirm_session'])] }, ctrl.confirmCoachSessionHandler);
+  app.post('/coach-sessions/:id/cancel', ctrl.cancelCoachSessionHandler);
+  app.post('/coach-sessions/:id/start', { preHandler: [requirePermission(['coaches.start_session'])] }, ctrl.startCoachSessionHandler);
+  app.post('/coach-sessions/:id/complete', { preHandler: [requirePermission(['coaches.complete_session'])] }, ctrl.completeCoachSessionHandler);
+  app.post('/coach-sessions/:id/no-show', { preHandler: [requirePermission(['coaches.no_show'])] }, ctrl.noShowCoachSessionHandler);
+
   // Coach weekly availability + blackout dates
   app.get('/coaches/availability/me', { preHandler: [requirePermission(['coaches.availability.manage'])] }, ctrl.getMyCoachAvailabilityHandler);
   app.put('/coaches/availability/me', { preHandler: [requirePermission(['coaches.availability.manage'])] }, ctrl.setMyCoachAvailabilityHandler);
