@@ -2,7 +2,7 @@
  * Role → permission matching rules for sync-role-permissions.mjs
  * Super Admin is handled separately (all permissions).
  *
- * Only 8 global template roles exist (no org clones).
+ * 10 global template roles (no org clones).
  */
 
 const ADMIN_ONLY_PREFIXES = [
@@ -182,6 +182,38 @@ const ORG_ADMIN_EXPLICIT_KEYS = new Set([
   'academies.enroll',
 ]);
 
+const INDEPENDENT_COACH_PATTERNS = [
+  /^coaches\.(profile|sessions|availability|invites|book|reviews|view|apply|manage_profile|manage_agreements|create_sessions)/,
+  /^coaches\.book\./,
+  /^coaches\.profile\.edit\./,
+  /^profile\./,
+  /^bookings\.(view|create|cancel)/,
+  /^community\.chat\./,
+  /^organisations\.storefront\.view$/,
+  /^marketplace\.(view|cart|order|wishlist)/,
+  /^marketplace\.sell$/,
+  /^home\./,
+  /^wallet\./,
+  /^financial\.wallet\./,
+  /^financial\.withdraw$/,
+  /^matches\./,
+  /^notifications\.view$/,
+  /^sports\.view$/,
+  /^tournaments\.view/,
+  /^academies\.(view|enroll)/,
+];
+
+const RESIDENT_COACH_PATTERNS = [
+  /^coaches\.(profile|sessions|availability|invites|book|reviews|view|apply|manage_profile|manage_agreements|create_sessions)/,
+  /^coaches\.book\./,
+  /^coaches\.profile\.edit\./,
+  /^profile\./,
+  /^bookings\.(view|create|cancel)/,
+  /^community\.chat\./,
+  /^organisations\.storefront\.view$/,
+  /^marketplace\.view$/,
+];
+
 export function permissionMatchesTemplate(templateSlug, permissionKey) {
   if (templateSlug === 'super_admin') return true;
 
@@ -226,6 +258,20 @@ export function permissionMatchesTemplate(templateSlug, permissionKey) {
     return false;
   }
 
+  if (templateSlug === 'independent_coach') {
+    if (isAdminOnlyKey(permissionKey)) return false;
+    if (COACH_DENY_KEYS.has(permissionKey)) return false;
+    if (matchesAny(permissionKey, INDEPENDENT_COACH_PATTERNS)) return true;
+    return false;
+  }
+
+  if (templateSlug === 'resident_coach') {
+    if (isAdminOnlyKey(permissionKey)) return false;
+    if (COACH_DENY_KEYS.has(permissionKey)) return false;
+    if (matchesAny(permissionKey, RESIDENT_COACH_PATTERNS)) return true;
+    return false;
+  }
+
   if (templateSlug === 'accountant') {
     if (permissionKey.startsWith('users.delete')) return false;
     if (permissionKey.startsWith('roles.')) return false;
@@ -244,5 +290,7 @@ export const TEMPLATE_SLUGS = [
   'resource-mgr',
   'shop-admin',
   'coach',
+  'independent_coach',
+  'resident_coach',
   'accountant',
 ];

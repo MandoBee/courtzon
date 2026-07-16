@@ -353,7 +353,8 @@ export class AuthService {
     if (!session) {
       throw new InvalidRefreshTokenError();
     }
-    if (new Date(session.expires_at) < new Date()) {
+    const refreshExpiry = session.refresh_token_expires_at || session.expires_at;
+    if (new Date(refreshExpiry) < new Date()) {
       await sessionRepository.revoke(session.id);
       throw new SessionExpiredError();
     }
