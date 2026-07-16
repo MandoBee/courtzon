@@ -28,8 +28,12 @@ export default function MarketplaceHighlights() {
             onClick={() => navigate(`/marketplace/products/${p.id}`)}
             className="shrink-0 w-36 md:w-44 text-left bg-[var(--color-surface)] rounded-[var(--radius-lg)] border border-[var(--color-border)] overflow-hidden hover:shadow-[var(--shadow-md)] transition-all duration-200 hover:-translate-y-0.5"
           >
-            <div className="h-20 md:h-24 bg-gradient-to-br from-[var(--color-primary)]/10 to-[var(--color-info)]/10 flex items-center justify-center text-3xl">
-              🏸
+            <div className="h-20 md:h-24 bg-[var(--color-bg)] flex items-center justify-center overflow-hidden">
+              {p.image_url ? (
+                <img src={p.image_url} alt={p.name} className="w-full h-full object-cover" />
+              ) : (
+                <span className="text-3xl">🏸</span>
+              )}
             </div>
             <div className="p-2.5 md:p-3">
               <p className="text-xs font-semibold text-[var(--color-text)] truncate">{p.name}</p>
