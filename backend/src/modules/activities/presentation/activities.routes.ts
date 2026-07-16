@@ -55,6 +55,8 @@ export async function activitiesRoutes(app: FastifyInstance): Promise<void> {
   app.post('/coaches/sessions', { preHandler: [requirePermission(['coaches.create_sessions'])] }, ctrl.createCoachSessionHandler);
   app.get('/coaches/sessions/me', ctrl.getMyCoachSessionsHandler);
   app.get('/coaches/sessions/pending', ctrl.getPendingCoachSessionsHandler);
+  app.get('/coaches/stats', ctrl.getCoachStatsHandler);
+  app.get('/coaches/players', ctrl.getCoachPlayersHandler);
   app.get('/coaches/sessions/:id', ctrl.getCoachSessionByIdHandler);
   app.get('/coaches/sessions/:id/available-courts', ctrl.getSessionAvailableCourtsHandler);
   app.post('/coaches/sessions/:id/book-court', ctrl.bookCourtForSessionHandler);

@@ -6,8 +6,8 @@ import { useHaptics } from '../../hooks/useHaptics';
 
 const workspaceMeta: Record<Workspace, { label: string; icon: string; homePath: string }> = {
   player: { label: 'Player', icon: '👤', homePath: '/app' },
-  coach: { label: 'Coach', icon: '🏋️', homePath: '/coaches/sessions/me' },
-  resident_coach: { label: 'Resident Coach', icon: '🏢', homePath: '/coaches/sessions/me' },
+  coach: { label: 'Coach', icon: '🏋️', homePath: '/coach/dashboard' },
+  resident_coach: { label: 'Resident Coach', icon: '🏢', homePath: '/coach/dashboard' },
   organization: { label: 'Organization', icon: '🏛️', homePath: '/org' },
   platform: { label: 'Admin', icon: '⚙️', homePath: '/admin' },
 };

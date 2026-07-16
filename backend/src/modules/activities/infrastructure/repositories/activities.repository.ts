@@ -843,4 +843,66 @@ export const activitiesRepository = {
     );
     return rows.length ? (rows[0] as any).full_name : null;
   },
+
+  async getCoachStats(coachId: number): Promise<{
+    todaySessions: number;
+    pendingRequests: number;
+    activePlayers: number;
+    totalSessionsCompleted: number;
+    upcomingSessions: number;
+  }> {
+    const pool = getPool();
+    const today = new Date().toISOString().slice(0, 10);
+
+    const [todayRows] = await pool.execute<RowData>(
+      `SELECT COUNT(*) as cnt FROM coach_sessions
+       WHERE coach_id = ? AND DATE(start_time) = ? AND status NOT IN ('cancelled', 'no_show')`,
+      [coachId, today]
+    );
+    const [pendingRows] = await pool.execute<RowData>(
+      `SELECT COUNT(*) as cnt FROM coach_sessions
+       WHERE coach_id = ? AND status IN ('pending_court', 'pending_acceptance')`,
+      [coachId]
+    );
+    const [playersRows] = await pool.execute<RowData>(
+      `SELECT COUNT(DISTINCT player_id) as cnt FROM coach_sessions
+       WHERE coach_id = ? AND status IN ('confirmed', 'completed', 'in_progress')`,
+      [coachId]
+    );
+    const [completedRows] = await pool.execute<RowData>(
+      `SELECT COUNT(*) as cnt FROM coach_sessions
+       WHERE coach_id = ? AND status = 'completed'`,
+      [coachId]
+    );
+    const [upcomingRows] = await pool.execute<RowData>(
+      `SELECT COUNT(*) as cnt FROM coach_sessions
+       WHERE coach_id = ? AND DATE(start_time) >= ? AND status NOT IN ('cancelled', 'no_show', 'completed')`,
+      [coachId, today]
+    );
+
+    return {
+      todaySessions: Number((todayRows[0] as any).cnt),
+      pendingRequests: Number((pendingRows[0] as any).cnt),
+      activePlayers: Number((playersRows[0] as any).cnt),
+      totalSessionsCompleted: Number((completedRows[0] as any).cnt),
+      upcomingSessions: Number((upcomingRows[0] as any).cnt),
+    };
+  },
+
+  async getCoachPlayers(coachId: number): Promise<any[]> {
+    const pool = getPool();
+    const [rows] = await pool.execute<RowData>(
+      `SELECT u.id as player_id, u.full_name as player_name, u.full_phone as player_phone,
+              COUNT(cs.id) as total_sessions,
+              MAX(cs.start_time) as last_session_date,
+              MAX(cs.status) as last_session_status
+       FROM coach_sessions cs
+       JOIN users u ON u.id = cs.player_id
+       WHERE cs.coach_id = ? AND cs.status NOT IN ('cancelled', 'no_show')
+       GROUP BY u.id, u.full_name, u.full_phone
+       ORDER BY last_session_date DESC`,
+      [coachId]
+    );
+    return rows;
+  },
 };

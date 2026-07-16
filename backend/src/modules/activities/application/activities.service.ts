@@ -346,6 +346,18 @@ export const activitiesService = {
     return repo.findPendingCourtSessions(coach.id);
   },
 
+  async getCoachStats(userId: number) {
+    const coach = await repo.findCoachByUserId(userId);
+    if (!coach) throw new ForbiddenError('Not a coach');
+    return repo.getCoachStats(coach.id);
+  },
+
+  async getCoachPlayers(userId: number) {
+    const coach = await repo.findCoachByUserId(userId);
+    if (!coach) throw new ForbiddenError('Not a coach');
+    return repo.getCoachPlayers(coach.id);
+  },
+
   async getCoachSessionById(sessionId: number, userId: number) {
     const session = await repo.findCoachSessionById(sessionId);
     if (!session) throw new NotFoundError('Coach session');

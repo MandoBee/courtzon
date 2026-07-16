@@ -25,6 +25,7 @@ import PWAUpdatePrompt from './components/pwa/PWAUpdatePrompt';
 import IOSInstallSheet from './components/pwa/IOSInstallSheet';
 import SplashScreen from './components/SplashScreen';
 import RoleSwitcher from './components/workspace/RoleSwitcher';
+import CoachLayout from './components/layout/CoachLayout';
 import { isOrganisationPendingApproval, orgPortalPath } from './utils/organisation';
 
 // Route-level code splitting: every page/layout below is lazily imported so the
@@ -68,6 +69,10 @@ const CoachDetailPage = lazy(() => import('./pages/coaches/CoachDetailPage'));
 const CoachBookingPage = lazy(() => import('./pages/coaches/CoachBookingPage'));
 const EngineCoachBookingPage = lazy(() => import('./pages/coaches/EngineCoachBookingPage'));
 const CoachSessionsPage = lazy(() => import('./pages/coaches/CoachSessionsPage'));
+const CoachDashboard = lazy(() => import('./pages/coaches/CoachDashboard'));
+const TodaySessions = lazy(() => import('./pages/coaches/TodaySessions'));
+const SessionRequests = lazy(() => import('./pages/coaches/SessionRequests'));
+const CoachPlayersPage = lazy(() => import('./pages/coaches/CoachPlayersPage'));
 const ProfilePage = lazy(() => import('./pages/profile/ProfilePage'));
 const RoleAppearancePage = lazy(() => import('./pages/settings/RoleAppearancePage'));
 const AuditLogPage = lazy(() => import('./pages/admin/AuditLogPage'));
@@ -436,6 +441,15 @@ function AppContent() {
           <Route path="/community/events" element={<CommunityEventsPage />} />
           <Route path="/messages" element={<FeatureFlagGuard flag="community.chat_enabled"><MessagesPage /></FeatureFlagGuard>} />
           <Route path="/notifications" element={<NotificationsPage />} />
+        </Route>
+        <Route path="/coach" element={<CoachLayout />}>
+          <Route index element={<CoachDashboard />} />
+          <Route path="dashboard" element={<CoachDashboard />} />
+          <Route path="sessions" element={<TodaySessions />} />
+          <Route path="requests" element={<SessionRequests />} />
+          <Route path="players" element={<CoachPlayersPage />} />
+          <Route path="availability" element={<CoachProfilePage />} />
+          <Route path="profile" element={<CoachProfilePage />} />
         </Route>
         <Route path="/admin" element={<AdminRoute />}>
           <Route element={<AdminLayout />}>

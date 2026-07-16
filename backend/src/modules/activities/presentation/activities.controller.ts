@@ -233,6 +233,18 @@ export async function getPendingCoachSessionsHandler(request: FastifyRequest, re
   return reply.send({ data: sessions });
 }
 
+export async function getCoachStatsHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = (request as any).userId;
+  const stats = await svc.getCoachStats(userId);
+  return reply.send(stats);
+}
+
+export async function getCoachPlayersHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = (request as any).userId;
+  const players = await svc.getCoachPlayers(userId);
+  return reply.send({ data: players });
+}
+
 export async function getCoachSessionByIdHandler(request: FastifyRequest, reply: FastifyReply) {
   const { id } = request.params as any;
   const userId = (request as any).userId;
