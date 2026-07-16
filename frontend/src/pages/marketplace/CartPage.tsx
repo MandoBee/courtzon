@@ -172,7 +172,7 @@ export default function CartPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['mp-cart'] }),
   });
 
-  const allFreePlayer = cartSellers?.length > 0 && cartSellers?.every((s: any) => !s.has_paid_plan);
+  const allFreePlayer = cartSellers?.length > 0 && cartSellers?.every((s: any) => s.org_type_slug === 'shop' && !s.has_paid_plan);
 
   const checkout = useMutation({
     mutationFn: () => api.post('/marketplace/orders', {
