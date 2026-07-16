@@ -19,11 +19,12 @@ if (!existsSync(BACKUP_DIR)) {
 }
 
 const cmd = [
-  'mysqldump',
+  'mariadb-dump',
   `--host=${DB_HOST}`,
   `--port=${DB_PORT}`,
   `--user=${DB_USER}`,
   DB_PASS ? `--password=${DB_PASS}` : '',
+  '--skip-ssl',
   '--single-transaction',
   '--routines',
   '--triggers',
