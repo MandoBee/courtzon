@@ -1,6 +1,7 @@
 import type mysql from 'mysql2/promise';
 import { bookingAggregate, type ConfirmContext } from './BookingAggregate.js';
 import { bookingRepository } from '../../modules/booking/infrastructure/repositories/booking.repository.js';
+import { getPool } from '../../database/mysql.js';
 import { eventBus } from '../../shared/event-bus/index.js';
 import type { BookingStatus } from '../shared/booking-types.js';
 
@@ -57,6 +58,15 @@ export async function confirmBooking(
   const paymentStatus = context.paymentMethod === 'cash' || context.paymentMethod === 'cod'
     ? 'pending' : 'paid';
   await bookingRepository.updateBookingStatus(bookingId, nextStatus, paymentStatus, conn);
+
+  // Mark all booking_slots for this booking as unavailable (safety net —
+  // slots are normally created when the booking is first created, but some
+  // booking types / edge cases may skip that step)
+  const pool = conn || getPool();
+  await pool.execute(
+    'UPDATE booking_slots SET is_available = FALSE WHERE booking_id = ? AND is_available = TRUE',
+    [bookingId],
+  );
 
   const payload = buildPayload(booking, nextStatus);
   emit('booking:confirmed', payload);

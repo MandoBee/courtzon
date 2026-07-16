@@ -17,6 +17,12 @@ vi.mock('../../../shared/event-bus/index.js', () => ({
   eventBus: { emit: vi.fn() },
 }));
 
+vi.mock('../../../database/mysql.js', () => ({
+  getPool: () => ({
+    execute: vi.fn().mockResolvedValue([[{ affectedRows: 0 }], undefined]),
+  }),
+}));
+
 import { bookingRepository } from '../../../modules/booking/infrastructure/repositories/booking.repository.js';
 import { eventBus } from '../../../shared/event-bus/index.js';
 
