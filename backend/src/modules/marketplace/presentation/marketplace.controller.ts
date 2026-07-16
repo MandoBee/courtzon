@@ -301,16 +301,21 @@ export async function deleteAddressHandler(request: FastifyRequest, reply: Fasti
 export async function checkoutHandler(request: FastifyRequest, reply: FastifyReply) {
   const body = CreateOrderSchema.parse(request.body);
   const userId = (request as any).userId;
-  const order = await svc.checkout(userId, body);
-  recordAudit({
-    actorId: (request as any).userId ?? null,
-    action: 'ORDER.CREATE',
-    entityType: 'order',
-    entityId: (order as any)?.id,
-    ipAddress: request.ip,
-    userAgent: request.headers['user-agent'],
-  });
-  return reply.status(201).send(order);
+  try {
+    const order = await svc.checkout(userId, body);
+    recordAudit({
+      actorId: (request as any).userId ?? null,
+      action: 'ORDER.CREATE',
+      entityType: 'order',
+      entityId: (order as any)?.id,
+      ipAddress: request.ip,
+      userAgent: request.headers['user-agent'],
+    });
+    return reply.status(201).send(order);
+  } catch (err: any) {
+    request.log.error({ err, userId, body }, 'Checkout failed');
+    throw err;
+  }
 }
 
 export async function updateOrderStatusHandler(request: FastifyRequest, reply: FastifyReply) {
