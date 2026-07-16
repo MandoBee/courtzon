@@ -23,6 +23,7 @@ import NotificationBell from './components/notifications/NotificationBell';
 import OfflineBanner from './components/pwa/OfflineBanner';
 import PWAUpdatePrompt from './components/pwa/PWAUpdatePrompt';
 import IOSInstallSheet from './components/pwa/IOSInstallSheet';
+import RoleSwitcher from './components/workspace/RoleSwitcher';
 import { isOrganisationPendingApproval, orgPortalPath } from './utils/organisation';
 
 // Route-level code splitting: every page/layout below is lazily imported so the
@@ -63,6 +64,7 @@ const CoachDirectoryPage = lazy(() => import('./pages/coaches/CoachDirectoryPage
 const CoachProfilePage = lazy(() => import('./pages/coaches/CoachProfilePage'));
 const CoachDetailPage = lazy(() => import('./pages/coaches/CoachDetailPage'));
 const CoachBookingPage = lazy(() => import('./pages/coaches/CoachBookingPage'));
+const EngineCoachBookingPage = lazy(() => import('./pages/coaches/EngineCoachBookingPage'));
 const CoachSessionsPage = lazy(() => import('./pages/coaches/CoachSessionsPage'));
 const ProfilePage = lazy(() => import('./pages/profile/ProfilePage'));
 const RoleAppearancePage = lazy(() => import('./pages/settings/RoleAppearancePage'));
@@ -289,6 +291,7 @@ function Navbar() {
             </div>
           </div>
           <div className="hidden md:flex items-center gap-4">
+            <RoleSwitcher />
             <NotificationBell />
             <Link to="/profile" className="text-sm text-[var(--color-text-muted)]">{user?.fullName || t('nav.profile')}</Link>
             <button onClick={handleLogout} className="text-sm text-[var(--color-text-muted)] hover:text-red-500">{t('nav.logout')}</button>
@@ -303,6 +306,7 @@ function Navbar() {
                 {orgNavLabel}
               </Link>
             )}
+            <RoleSwitcher />
             <NotificationBell />
             <button
               type="button"
@@ -434,6 +438,7 @@ function AppContent() {
           <Route path="/coaches/sessions/me" element={<CoachSessionsPage />} />
           <Route path="/coaches/:id" element={<CoachDetailPage />} />
           <Route path="/coaches/:id/book" element={<CoachBookingPage />} />
+          <Route path="/coaches/book/session" element={<FeatureFlagGuard flag="coaching.engine_booking_enabled"><EngineCoachBookingPage /></FeatureFlagGuard>} />
           <Route path="/profile" element={<ProfilePage />} />
           <Route path="/settings/appearance" element={<RoleAppearancePage />} />
           <Route path="/community/events" element={<CommunityEventsPage />} />

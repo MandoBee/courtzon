@@ -11,6 +11,7 @@ interface SessionRow {
   session_token_hash: string;
   refresh_token_hash: string;
   expires_at: string;
+  refresh_token_expires_at: string | null;
   is_revoked: boolean;
 }
 
@@ -29,13 +30,14 @@ export class SessionRepository {
     ipAddress: string;
     userAgent: string | null;
     expiresAt: Date;
+    refreshTokenExpiresAt?: Date;
   }): Promise<void> {
     await this.pool.execute(
       `INSERT INTO user_sessions (user_id, device_id, session_token_hash, refresh_token_hash,
-        ip_address, user_agent, expires_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        ip_address, user_agent, expires_at, refresh_token_expires_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       [data.userId, data.deviceId, data.sessionTokenHash, data.refreshTokenHash,
-       data.ipAddress, data.userAgent, data.expiresAt],
+       data.ipAddress, data.userAgent, data.expiresAt, data.refreshTokenExpiresAt || null],
     );
   }
 
@@ -75,6 +77,30 @@ export class SessionRepository {
     await this.pool.execute(
       `UPDATE user_sessions SET is_revoked = TRUE WHERE user_id = ? AND is_revoked = FALSE AND id != ?`,
       [userId, exceptSessionId],
+    );
+  }
+
+  async countActiveForUser(userId: number): Promise<number> {
+    const [rows] = await this.pool.execute<RowData>(
+      `SELECT COUNT(*) as cnt FROM user_sessions WHERE user_id = ? AND is_revoked = FALSE AND expires_at > NOW()`,
+      [userId],
+    );
+    return (rows[0] as any)?.cnt || 0;
+  }
+
+  async revokeOldestForUser(userId: number, keepCount: number): Promise<void> {
+    await this.pool.execute(
+      `UPDATE user_sessions SET is_revoked = TRUE
+       WHERE user_id = ? AND is_revoked = FALSE AND expires_at > NOW()
+       AND id NOT IN (
+         SELECT id FROM (
+           SELECT id FROM user_sessions
+           WHERE user_id = ? AND is_revoked = FALSE AND expires_at > NOW()
+           ORDER BY created_at DESC
+           LIMIT ?
+         ) AS keep
+       )`,
+      [userId, userId, keepCount],
     );
   }
 

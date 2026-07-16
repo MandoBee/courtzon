@@ -23,6 +23,7 @@ const LoginSchema = z.object({
   countryId: z.number().int().positive(),
   phoneNumber: localPhoneZod(t('validation.phone_11_digits')),
   password: z.string().min(1, t('validation.required')),
+  rememberMe: z.boolean(),
 });
 
 type LoginForm = z.infer<typeof LoginSchema>;
@@ -34,7 +35,7 @@ export default function LoginPage() {
 
   const { register, handleSubmit, setValue, watch, setError, formState: { errors, isSubmitting } } = useForm<LoginForm>({
     resolver: zodResolver(LoginSchema),
-    defaultValues: { countryId: 0, phoneNumber: '' },
+    defaultValues: { countryId: 0, phoneNumber: '', rememberMe: false },
   });
 
   const selectedCountryId = watch('countryId');
@@ -57,6 +58,7 @@ export default function LoginPage() {
         phoneNumber: data.phoneNumber,
         password: data.password,
         countryCode: country?.phone_code,
+        rememberMe: data.rememberMe,
       });
       navigate('/app');
     } catch (err: any) {
@@ -104,6 +106,14 @@ export default function LoginPage() {
               {...register('password')}
               error={errors.password?.message}
             />
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                {...register('rememberMe')}
+                className="w-4 h-4 rounded border-[var(--color-border)] text-[var(--color-primary)] focus:ring-[var(--color-primary)]"
+              />
+              <span className="text-sm text-[var(--color-text-muted)]">Remember me</span>
+            </label>
             {errors.root && (
               <p className="text-sm text-[var(--color-error)]">{errors.root.message}</p>
             )}

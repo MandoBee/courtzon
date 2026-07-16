@@ -3364,6 +3364,7 @@ CREATE TABLE `user_sessions` (
   `ip_country` varchar(100) DEFAULT NULL,
   `user_agent` text DEFAULT NULL,
   `expires_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  `refresh_token_expires_at` timestamp NULL DEFAULT NULL,
   `last_activity_at` timestamp NOT NULL DEFAULT current_timestamp(),
   `is_revoked` tinyint(1) NOT NULL DEFAULT 0,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
@@ -3375,6 +3376,7 @@ CREATE TABLE `user_sessions` (
   KEY `idx_sessions_active` (`user_id`,`is_revoked`,`expires_at`),
   KEY `idx_sessions_cleanup` (`expires_at`,`is_revoked`),
   KEY `idx_sessions_token_hash` (`session_token_hash`),
+  KEY `idx_user_sessions_refresh_expires` (`user_id`,`refresh_token_expires_at`),
   CONSTRAINT `fk_session_device` FOREIGN KEY (`device_id`) REFERENCES `user_devices` (`id`) ON DELETE SET NULL,
   CONSTRAINT `fk_session_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

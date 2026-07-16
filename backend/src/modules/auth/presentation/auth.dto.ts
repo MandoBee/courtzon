@@ -35,6 +35,7 @@ export const LoginSchema = z.object({
   browser: z.string().optional(),
   ipAddress: z.string().optional(),
   userAgent: z.string().optional(),
+  rememberMe: z.boolean().optional().default(false),
 });
 
 export const RefreshSchema = z.object({
@@ -158,6 +159,8 @@ export const AuthResponseSchema = z.object({
     sessionToken: z.string(),
     refreshToken: z.string(),
     expiresAt: z.string(),
+    refreshTokenExpiresAt: z.string().optional(),
+    rememberMe: z.boolean().optional(),
   }),
   isApproved: z.boolean().optional(),
 });

@@ -25,7 +25,25 @@ import {
   isOrganizationRegistrationPlan,
 } from '../../../shared/constants/org-registration.js';
 
-const SESSION_LIFETIME_MS = 30 * 24 * 60 * 60 * 1000;
+function parseDurationMs(value: string | undefined, fallbackMs: number): number {
+  if (!value) return fallbackMs;
+  const match = value.match(/^(\d+)(m|h|d)$/);
+  if (!match) return fallbackMs;
+  const num = parseInt(match[1], 10);
+  switch (match[2]) {
+    case 'm': return num * 60 * 1000;
+    case 'h': return num * 60 * 60 * 1000;
+    case 'd': return num * 24 * 60 * 60 * 1000;
+    default: return fallbackMs;
+  }
+}
+
+const SESSION_ACCESS_TOKEN_EXPIRY_MS = parseDurationMs(process.env.SESSION_ACCESS_TOKEN_EXPIRY, 15 * 60 * 1000);
+const SESSION_REFRESH_TOKEN_EXPIRY_MS = parseDurationMs(process.env.SESSION_REFRESH_TOKEN_EXPIRY, 30 * 24 * 60 * 60 * 1000);
+const SESSION_REFRESH_TOKEN_NO_REMEMBER_MS = parseDurationMs(process.env.SESSION_REFRESH_TOKEN_SESSION_EXPIRY, 24 * 60 * 60 * 1000);
+const SESSION_MAX_DEVICES = parseInt(process.env.SESSION_MAX_DEVICES || '5', 10);
+
+const SESSION_LIFETIME_MS = SESSION_ACCESS_TOKEN_EXPIRY_MS;
 const deviceRepository = new DeviceRepository();
 
 export class AuthService {
@@ -298,7 +316,7 @@ export class AuthService {
     return { user: this.mapUserResponse(user, roles, permissions), isApproved: false };
   }
 
-  async login(input: LoginInput, meta: { ip: string; userAgent?: string; deviceFingerprint?: string }): Promise<AuthResponse> {
+  async login(input: LoginInput, meta: { ip: string; userAgent?: string; deviceFingerprint?: string; rememberMe?: boolean }): Promise<AuthResponse> {
     let fullPhone = input.phoneNumber;
     if (input.countryCode && !input.phoneNumber.startsWith('+')) {
       const code = input.countryCode.startsWith('+') ? input.countryCode : `+${input.countryCode}`;
@@ -326,7 +344,7 @@ export class AuthService {
     }
 
     await userRepository.updateLastLogin(user.id, meta.ip || null);
-    return this.createSession(user.id, meta);
+    return this.createSession(user.id, meta, meta.rememberMe);
   }
 
   async refresh(refreshToken: string): Promise<AuthResponse> {
@@ -483,7 +501,7 @@ export class AuthService {
     return this.mapUserResponse(user, roles, permissions, interestedSportIds);
   }
 
-  private async createSession(userId: number, meta: { ip: string; userAgent?: string; deviceFingerprint?: string }): Promise<AuthResponse> {
+  private async createSession(userId: number, meta: { ip: string; userAgent?: string; deviceFingerprint?: string }, rememberMe?: boolean): Promise<AuthResponse> {
     const user = await userRepository.findById(userId);
     if (!user) {
       throw new Error('User not found');
@@ -503,7 +521,8 @@ export class AuthService {
     const refreshToken = generateRefreshToken();
     const sessionTokenHash = hashToken(sessionToken);
     const refreshTokenHash = hashToken(refreshToken);
-    const expiresAt = new Date(Date.now() + SESSION_LIFETIME_MS);
+    const sessionExpiresAt = new Date(Date.now() + SESSION_ACCESS_TOKEN_EXPIRY_MS);
+    const refreshExpiresAt = new Date(Date.now() + (rememberMe ? SESSION_REFRESH_TOKEN_EXPIRY_MS : SESSION_REFRESH_TOKEN_NO_REMEMBER_MS));
 
     await sessionRepository.create({
       userId,
@@ -512,8 +531,16 @@ export class AuthService {
       refreshTokenHash,
       ipAddress: meta.ip,
       userAgent: meta.userAgent || null,
-      expiresAt,
+      expiresAt: sessionExpiresAt,
+      refreshTokenExpiresAt: refreshExpiresAt,
     });
+
+    if (SESSION_MAX_DEVICES > 0) {
+      const activeCount = await sessionRepository.countActiveForUser(userId);
+      if (activeCount > SESSION_MAX_DEVICES) {
+        await sessionRepository.revokeOldestForUser(userId, SESSION_MAX_DEVICES);
+      }
+    }
 
     const roles = await this.getUserRoles(userId);
     const permissions = await rbacRepository.getUserPermissionKeys(userId);
@@ -523,7 +550,9 @@ export class AuthService {
       session: {
         sessionToken,
         refreshToken,
-        expiresAt: expiresAt.toISOString(),
+        expiresAt: sessionExpiresAt.toISOString(),
+        refreshTokenExpiresAt: refreshExpiresAt.toISOString(),
+        rememberMe: !!rememberMe,
       },
     };
   }

@@ -117,6 +117,7 @@ export async function loginHandler(request: FastifyRequest, reply: FastifyReply)
       ip: request.ip,
       userAgent: request.headers['user-agent'],
       deviceFingerprint: (request.headers['x-device-fingerprint'] as string) || undefined,
+      rememberMe: body.rememberMe,
     });
     await bruteForceService.clearAttempts(identifier);
     recordAudit({
@@ -127,7 +128,7 @@ export async function loginHandler(request: FastifyRequest, reply: FastifyReply)
       ipAddress: request.ip,
       userAgent: request.headers['user-agent'],
     });
-    setAuthCookies(reply, result.session.sessionToken, result.session.refreshToken);
+    setAuthCookies(reply, result.session.sessionToken, result.session.refreshToken, body.rememberMe);
     return reply.send(sanitizeAuthPayload(result));
   } catch (error: unknown) {
     if (error instanceof AccountNotActiveError) {
