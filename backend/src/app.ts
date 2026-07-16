@@ -96,7 +96,7 @@ await app.register(helmet, {
       styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com", "blob:"],
       imgSrc: ["'self'", "data:", "https:"],
       fontSrc: ["'self'", "data:", "https://fonts.gstatic.com", "https://fonts.googleapis.com", "https://cdn.jsdelivr.net"],
-      connectSrc: ["'self'", ...ALLOWED_ORIGINS],
+      connectSrc: ["'self'", ...ALLOWED_ORIGINS, "https://*.checkout.paymob.com"],
       formAction: ["'self'"],
       frameAncestors: ["'none'"],
       manifestSrc: ["'self'", "blob:"],
@@ -116,7 +116,7 @@ await app.register(helmet, {
 });
 
 app.addHook('onRequest', async (_request, reply) => {
-  reply.header('Permissions-Policy', 'payment=(self "https://accept.paymob.com" "https://accept.paymobsandbox.com" "https://pay.google.com" "https://checkout.google.com")');
+  reply.header('Permissions-Policy', 'payment=(self "https://accept.paymob.com" "https://accept.paymobsandbox.com" "https://*.checkout.paymob.com" "https://pay.google.com" "https://checkout.google.com")');
 });
 
 // Structured production logging — enrich every request log with IDs
