@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import api from '../../services/api';
 import { formatISODate } from '../../utils/formatDate';
 import { SkeletonRow } from '../../components/ui';
+import { EmptyStateCard } from '../../components/workspace';
 
 export default function CoachPlayersPage() {
 
@@ -21,10 +22,7 @@ export default function CoachPlayersPage() {
       {isLoading && <SkeletonRow count={5} />}
 
       {!isLoading && players.length === 0 && (
-        <div className="text-center py-16">
-          <p className="text-lg text-[var(--color-text-muted)]">No players yet</p>
-          <p className="text-sm text-[var(--color-text-muted)] mt-1">Complete coaching sessions to build your player roster.</p>
-        </div>
+        <EmptyStateCard icon="👥" title="No players yet" description="Complete coaching sessions to build your player roster." />
       )}
 
       {!isLoading && players.length > 0 && (

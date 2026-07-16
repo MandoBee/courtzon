@@ -4,7 +4,8 @@ import { useNavigate } from 'react-router-dom';
 import api from '../../services/api';
 import { useCan } from '../../hooks/useCan';
 import { formatPrice } from '../../utils/currency';
-import { Badge } from '../../components/ui';
+import { Badge, SkeletonRow } from '../../components/ui';
+import { EmptyStateCard } from '../../components/workspace';
 
 type ViewRole = 'player' | 'coach';
 
@@ -67,13 +68,11 @@ export default function CoachSessionsPage() {
         </div>
       )}
 
-      {isLoading && <p className="text-sm text-[var(--color-text-muted)]">Loading sessions…</p>}
-      {isError && <p className="text-sm text-[var(--color-error)]">Failed to load sessions.</p>}
+      {isLoading && <SkeletonRow count={4} />}
+      {isError && <EmptyStateCard icon="⚠️" title="Failed to load sessions" description="There was an error loading your sessions. Please try again." />}
 
       {!isLoading && !isError && sessions.length === 0 && (
-        <div className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] p-8 text-center text-[var(--color-text-muted)]">
-          No sessions yet.
-        </div>
+        <EmptyStateCard icon="📋" title="No sessions yet" description="Sessions will appear here when you book or receive coaching sessions." />
       )}
 
       <div className="space-y-3">

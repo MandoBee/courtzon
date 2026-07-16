@@ -46,10 +46,18 @@ const options = [
 ];
 
 export default function PreRegisterPage() {
-  const isEnabled = useFeatureFlag;
+  const playerEnabled = useFeatureFlag('player.registration_enabled');
+  const sellerEnabled = useFeatureFlag('seller.registration_enabled');
+  const orgEnabled = useFeatureFlag('organization.registration_enabled');
   const { t } = useTranslation();
 
-  const visibleOptions = options.filter((opt) => isEnabled(opt.flag));
+  const flagMap: Record<string, boolean> = {
+    'player.registration_enabled': playerEnabled,
+    'seller.registration_enabled': sellerEnabled,
+    'organization.registration_enabled': orgEnabled,
+  };
+
+  const visibleOptions = options.filter((opt) => flagMap[opt.flag] !== false);
 
   return (
     <div className="min-h-screen bg-[var(--color-bg)] flex items-center justify-center py-12 px-4">

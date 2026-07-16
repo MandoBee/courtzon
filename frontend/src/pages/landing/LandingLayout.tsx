@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, Outlet, useLocation } from 'react-router-dom';
+import { ErrorBoundary } from '../../components/ErrorBoundary';
 import { useThemeStore } from '../../store/theme.store';
 import SiteLogo from '../../components/branding/SiteLogo';
 import LanguageSwitcher from '../../components/i18n/LanguageSwitcher';
@@ -196,7 +197,9 @@ export default function LandingLayout() {
       </header>
 
       <main className="flex-1">
-        <Outlet />
+        <ErrorBoundary>
+          <Outlet />
+        </ErrorBoundary>
       </main>
 
       <footer className="bg-[var(--color-surface)] border-t border-[var(--color-border)]">

@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import api from '../../services/api';
 import { formatISODate } from '../../utils/formatDate';
 import { SkeletonRow } from '../../components/ui';
+import { EmptyStateCard } from '../../components/workspace';
 
 export default function SessionRequests() {
   const navigate = useNavigate();
@@ -23,10 +24,7 @@ export default function SessionRequests() {
       {isLoading && <SkeletonRow count={3} />}
 
       {!isLoading && requests.length === 0 && (
-        <div className="text-center py-16">
-          <p className="text-lg text-[var(--color-text-muted)]">No pending requests</p>
-          <p className="text-sm text-[var(--color-text-muted)] mt-1">When players book sessions, they will appear here.</p>
-        </div>
+        <EmptyStateCard icon="📥" title="No pending requests" description="When players book coaching sessions, they will appear here." />
       )}
 
       {!isLoading && requests.length > 0 && (
