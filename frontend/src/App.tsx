@@ -1,4 +1,4 @@
-import { useEffect, lazy, Suspense } from 'react';
+import { useEffect, useState, lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, Outlet, Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useAuthStore } from './store/auth.store';
@@ -23,6 +23,7 @@ import NotificationBell from './components/notifications/NotificationBell';
 import OfflineBanner from './components/pwa/OfflineBanner';
 import PWAUpdatePrompt from './components/pwa/PWAUpdatePrompt';
 import IOSInstallSheet from './components/pwa/IOSInstallSheet';
+import SplashScreen from './components/SplashScreen';
 import RoleSwitcher from './components/workspace/RoleSwitcher';
 import { isOrganisationPendingApproval, orgPortalPath } from './utils/organisation';
 
@@ -164,12 +165,12 @@ function PageLoader() {
 }
 
 function BrandedSplash() {
-  return (
-    <div className="min-h-screen bg-[var(--color-bg)] flex flex-col items-center justify-center gap-6 cz-fade-enter cz-pt-safe">
-      <SiteLogo size="lg" variant="primary" />
-      <div className="animate-spin h-7 w-7 border-4 border-[var(--color-primary)] border-t-transparent rounded-full" />
-    </div>
-  );
+  const [showApp, setShowApp] = useState(false);
+  const isLoading = useAuthStore((s) => s.isLoading);
+
+  if (showApp) return null;
+
+  return <SplashScreen onFinish={() => { if (!isLoading) setShowApp(true); }} />;
 }
 
 function ProtectedRoute() {
