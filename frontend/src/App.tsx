@@ -247,10 +247,13 @@ function Navbar() {
     navigate('/');
   };
 
+  // Legacy org link — preserved for backward compatibility
+  // TODO: Remove when legacy role-switching is fully deprecated
   const orgScopes = user?.organisations || [];
   const firstOrg = orgScopes[0];
   const orgNavPath = firstOrg ? orgPortalPath(firstOrg) : null;
   const orgNavLabel = firstOrg?.name?.trim() || t('nav.organization');
+  void orgNavPath; void orgNavLabel;
 
   const navLinkClass = (path: string) =>
     `text-sm transition-colors ${
@@ -284,11 +287,6 @@ function Navbar() {
               <Can permission="marketplace.view">
                 <Link to="/marketplace" className={navLinkClass('/marketplace')}>{t('nav.marketplace')}</Link>
               </Can>
-              {orgScopes.length > 0 && orgNavPath && (
-                <Link to={orgNavPath} title={orgNavLabel} className="text-sm font-semibold px-3 py-1.5 bg-[var(--color-accent)] text-[var(--color-accent-text)] rounded-lg hover:opacity-90 max-w-[200px] truncate">
-                  {orgNavLabel}
-                </Link>
-              )}
             </div>
           </div>
           <div className="hidden md:flex items-center gap-4">
@@ -298,15 +296,6 @@ function Navbar() {
             <button onClick={handleLogout} className="text-sm text-[var(--color-text-muted)] hover:text-red-500">{t('nav.logout')}</button>
           </div>
           <div className="flex md:hidden items-center gap-1">
-            {orgScopes.length > 0 && orgNavPath && (
-              <Link
-                to={orgNavPath}
-                title={orgNavLabel}
-                className="text-xs font-semibold px-2.5 py-1.5 bg-[var(--color-accent)] text-[var(--color-accent-text)] rounded-lg hover:opacity-90 shrink-0 max-w-[120px] truncate"
-              >
-                {orgNavLabel}
-              </Link>
-            )}
             <RoleSwitcher />
             <NotificationBell />
             <button
