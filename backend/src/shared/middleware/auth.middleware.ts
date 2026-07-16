@@ -160,6 +160,7 @@ const PUBLIC_PREFIXES = [
   '/auth/logout', '/auth/check-uniqueness',
   '/auth/request-reactivation', '/auth/forgot-password',
   '/auth/reset-password',
+  '/auth/temporary-reset/verify', '/auth/temporary-reset',
 ];
 
 export async function authMiddleware(request: FastifyRequest, reply: FastifyReply) {

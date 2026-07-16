@@ -19,6 +19,7 @@ import {
 import type { RegisterInput, LoginInput, AuthResponse, CheckUniquenessInput, PlayerRegisterInput, SellerRegisterInput, OrganizationRegisterInput } from '../presentation/auth.dto.js';
 import { ValidationError } from '../../../shared/errors/app-error.js';
 import { sanitizeUploadUrl } from '../../../shared/utils/upload-url.util.js';
+import { recordAudit } from '../../audit-log/index.js';
 import {
   isExcludedOrgRegistrationType,
   isInternalSubscriptionPlan,
@@ -572,6 +573,49 @@ export class AuthService {
     } catch {
       return [];
     }
+  }
+
+  /**
+   * Temporary password reset — verify email exists (without revealing).
+   * TODO: Replace with email verification flow when email service is enabled.
+   */
+  async temporaryVerifyEmail(email: string): Promise<{ message: string; email?: string }> {
+    const user = await userRepository.findByEmail(email);
+    return {
+      message: 'If the account exists, you can continue with password reset.',
+      ...(user ? { email: user.email } : {}),
+    };
+  }
+
+  /**
+   * Temporary password reset — reset password without email token.
+   * TODO: Replace with email verification flow when email service is enabled.
+   */
+  async temporaryResetPassword(
+    email: string,
+    newPassword: string,
+    meta: { ip: string; userAgent?: string },
+  ): Promise<{ message: string }> {
+    const user = await userRepository.findByEmail(email);
+    if (!user) {
+      return { message: 'If the account exists, the password has been reset.' };
+    }
+
+    const passwordHash = hashPassword(newPassword);
+    await userRepository.updatePassword(user.id, passwordHash);
+    await sessionRepository.revokeAllForUser(user.id);
+
+    recordAudit({
+      actorId: user.id,
+      action: 'USER.PASSWORD_RESET',
+      entityType: 'user',
+      entityId: user.id,
+      afterState: { method: 'temporary_reset', email: user.email },
+      ipAddress: meta.ip,
+      userAgent: meta.userAgent,
+    });
+
+    return { message: 'If the account exists, the password has been reset.' };
   }
 
   async markWelcomeSeen(userId: number): Promise<void> {

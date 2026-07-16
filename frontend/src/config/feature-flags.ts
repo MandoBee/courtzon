@@ -20,6 +20,9 @@ export const featureFlags = {
     onboarding: envFlag('VITE_FEATURE_COACHING_ONBOARDING_ENABLED'),
     videoIntro: envFlag('VITE_FEATURE_COACHING_VIDEO_INTRO_ENABLED'),
   },
+  auth: {
+    temporaryPasswordReset: envFlag('VITE_FEATURE_AUTH_TEMPORARY_PASSWORD_RESET_ENABLED'),
+  },
 } as const;
 
 export type CoachingFeatureFlag = keyof typeof featureFlags.coaching;

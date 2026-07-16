@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { t } from '../../i18n';
 import api from '../../services/api';
+import { featureFlags } from '../../config/feature-flags';
 import { Button, Input, Card } from '../../components/ui';
 import SiteBrand from '../../components/branding/SiteBrand';
 
@@ -24,6 +25,14 @@ export default function ForgotPasswordPage() {
 
   const onSubmit = async (data: ForgotForm) => {
     try {
+      // TODO: Replace with email verification flow when email service is enabled.
+      if (featureFlags.auth.temporaryPasswordReset) {
+        const res = await api.post('/auth/temporary-reset/verify', { email: data.email });
+        if (res.data?.email) {
+          navigate(`/temporary-reset-password?email=${encodeURIComponent(res.data.email)}`);
+          return;
+        }
+      }
       const res = await api.post('/auth/forgot-password', { email: data.email });
       const token = res.data?.token;
       setStep('done');

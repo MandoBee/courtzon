@@ -84,6 +84,26 @@ export const RequestReactivationSchema = z.object({
   countryId: z.number().int().positive().optional(),
 });
 
+/**
+ * Temporary password reset — to be replaced with email-token flow.
+ * TODO: Replace with email verification flow when email service is enabled.
+ */
+export const TemporaryResetVerifySchema = z.object({
+  email: z.string().email(),
+});
+
+export const TemporaryResetSchema = z.object({
+  email: z.string().email(),
+  newPassword: z.string().min(6).max(128),
+  confirmPassword: z.string().min(6).max(128),
+}).refine((data) => data.newPassword === data.confirmPassword, {
+  message: 'Passwords do not match',
+  path: ['confirmPassword'],
+});
+
+export type TemporaryResetVerifyInput = z.infer<typeof TemporaryResetVerifySchema>;
+export type TemporaryResetInput = z.infer<typeof TemporaryResetSchema>;
+
 export type CheckUniquenessInput = z.infer<typeof CheckUniquenessSchema>;
 
 export const PlayerRegisterSchema = RegisterSchema.extend({

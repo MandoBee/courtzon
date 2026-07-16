@@ -39,6 +39,7 @@ const SubscriptionPlanDetailPage = lazy(() => import('./pages/subscription/Subsc
 const LoginPage = lazy(() => import('./pages/auth/LoginPage'));
 const ForgotPasswordPage = lazy(() => import('./pages/auth/ForgotPasswordPage'));
 const ResetPasswordPage = lazy(() => import('./pages/auth/ResetPasswordPage'));
+const TemporaryResetPasswordPage = lazy(() => import('./pages/auth/TemporaryResetPasswordPage'));
 const DashboardPage = lazy(() => import('./pages/home/DashboardPage'));
 const BrowseBranchesPage = lazy(() => import('./pages/booking/BrowseBranchesPage'));
 const OrgStorefrontPage = lazy(() => import('./pages/organisations/OrgStorefrontPage'));
@@ -407,6 +408,7 @@ function AppContent() {
         <Route path="/register/seller" element={<FeatureFlagGuard flag="seller.registration_enabled"><SellerRegisterPage /></FeatureFlagGuard>} />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="/reset-password" element={<ResetPasswordPage />} />
+        <Route path="/temporary-reset-password" element={<TemporaryResetPasswordPage />} />
       </Route>
       <Route element={<ProtectedRoute />}>
         <Route element={<AppLayout />}>

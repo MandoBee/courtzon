@@ -1,6 +1,6 @@
 import type { FastifyRequest, FastifyReply } from 'fastify';
 import { authService } from '../application/auth.service.js';
-import { RegisterSchema, PlayerRegisterSchema, SellerRegisterSchema, OrganizationRegisterSchema, LoginSchema, RefreshSchema, LogoutSchema, UpdateProfileSchema, ForgotPasswordSchema, ResetPasswordSchema, CheckUniquenessSchema, RequestReactivationSchema } from './auth.dto.js';
+import { RegisterSchema, PlayerRegisterSchema, SellerRegisterSchema, OrganizationRegisterSchema, LoginSchema, RefreshSchema, LogoutSchema, UpdateProfileSchema, ForgotPasswordSchema, ResetPasswordSchema, CheckUniquenessSchema, RequestReactivationSchema, TemporaryResetVerifySchema, TemporaryResetSchema } from './auth.dto.js';
 import { AppError } from '../../../shared/errors/app-error.js';
 import { formatZodErrorDetails, isZodError } from '../../../shared/validation/zod-error.util.js';
 import { AccountNotActiveError } from '../domain/auth.errors.js';
@@ -273,6 +273,29 @@ export async function requestReactivationHandler(request: FastifyRequest, reply:
     userAgent: request.headers['user-agent'],
   });
   return reply.send({ success: true });
+}
+
+/**
+ * Temporary password reset — verify email exists.
+ * TODO: Replace with email verification flow when email service is enabled.
+ */
+export async function temporaryVerifyEmailHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { email } = TemporaryResetVerifySchema.parse(request.body);
+  const result = await authService.temporaryVerifyEmail(email);
+  return reply.send(result);
+}
+
+/**
+ * Temporary password reset — reset password without email token.
+ * TODO: Replace with email verification flow when email service is enabled.
+ */
+export async function temporaryResetPasswordHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { email, newPassword } = TemporaryResetSchema.parse(request.body);
+  const result = await authService.temporaryResetPassword(email, newPassword, {
+    ip: request.ip,
+    userAgent: request.headers['user-agent'],
+  });
+  return reply.send(result);
 }
 
 export async function errorHandler(error: Error, _request: FastifyRequest, reply: FastifyReply) {

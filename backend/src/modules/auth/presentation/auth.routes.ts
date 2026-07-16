@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { registerHandler, registerPlayerHandler, registerSellerHandler, registerOrganizationHandler, loginHandler, refreshHandler, logoutHandler, meHandler, updateProfileHandler, forgotPasswordHandler, resetPasswordHandler, checkUniquenessHandler, welcomeSeenHandler, getMyPlayerProfileHandler, requestReactivationHandler, errorHandler } from './auth.controller.js';
+import { registerHandler, registerPlayerHandler, registerSellerHandler, registerOrganizationHandler, loginHandler, refreshHandler, logoutHandler, meHandler, updateProfileHandler, forgotPasswordHandler, resetPasswordHandler, checkUniquenessHandler, welcomeSeenHandler, getMyPlayerProfileHandler, requestReactivationHandler, temporaryVerifyEmailHandler, temporaryResetPasswordHandler, errorHandler } from './auth.controller.js';
 import { authMiddleware } from '../../../shared/middleware/auth.middleware.js';
 import { requireFeatureFlag } from '../../../shared/middleware/feature-flag.middleware.js';
 
@@ -19,4 +19,20 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
   app.post('/auth/request-reactivation', { errorHandler }, requestReactivationHandler);
   app.post('/auth/forgot-password', { errorHandler }, forgotPasswordHandler);
   app.post('/auth/reset-password', { errorHandler }, resetPasswordHandler);
+
+  /**
+   * Temporary password reset routes.
+   * TODO: Replace with email verification flow when email service is enabled.
+   */
+  app.post('/auth/temporary-reset/verify', {
+    preHandler: [requireFeatureFlag('auth.temporary_password_reset_enabled')],
+    config: { rateLimit: { max: 5, timeWindow: '15 minutes' } },
+    errorHandler,
+  }, temporaryVerifyEmailHandler);
+
+  app.post('/auth/temporary-reset', {
+    preHandler: [requireFeatureFlag('auth.temporary_password_reset_enabled')],
+    config: { rateLimit: { max: 3, timeWindow: '15 minutes' } },
+    errorHandler,
+  }, temporaryResetPasswordHandler);
 }
