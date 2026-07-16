@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import api from '../../services/api';
 import { formatISODate } from '../../utils/formatDate';
 import { SkeletonRow } from '../../components/ui';
+import { EmptyStateCard } from '../../components/workspace';
 
 const STATUSES = ['all', 'scheduled', 'confirmed', 'in_progress', 'completed', 'cancelled', 'no_show', 'pending_court', 'pending_acceptance'];
 
@@ -61,9 +62,11 @@ export default function TodaySessions() {
       {isLoading && <SkeletonRow count={5} />}
 
       {!isLoading && filtered.length === 0 && (
-        <div className="text-center py-16">
-          <p className="text-[var(--color-text-muted)]">No sessions found</p>
-        </div>
+        <EmptyStateCard
+          icon="📋"
+          title={filter === 'all' ? 'No sessions yet' : `No ${filter.replace(/_/g, ' ')} sessions`}
+          description={filter === 'all' ? 'Sessions will appear here when players book coaching sessions.' : 'Try selecting a different status filter.'}
+        />
       )}
 
       {todaySessions.length > 0 && (

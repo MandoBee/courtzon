@@ -74,6 +74,7 @@ export default function OrgDashboardPage() {
         </div>
       )}
 
+      <Can permission="org.sidebar.bookings">
       <section>
         <SectionHeader icon="📅" title="Recent Bookings" action={{ label: 'View All', to: `/org/${orgId}/bookings` }} />
         {recentBookings.length === 0 ? (
@@ -94,6 +95,7 @@ export default function OrgDashboardPage() {
           </div>
         )}
       </section>
+      </Can>
 
       <QuickActions
         actions={[
