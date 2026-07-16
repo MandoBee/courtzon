@@ -1,5 +1,6 @@
 import type { FastifyRequest, FastifyReply } from 'fastify';
 import { paymentService } from '../application/payment.service.js';
+import { reconciliationService } from '../application/reconciliation.service.js';
 import { recordAudit } from '../../audit-log/index.js';
 import { ChargeSchema, RefundPaymentSchema, ConfirmPaymentSchema } from './payment.dto.js';
 import { NotFoundError } from '../../../shared/errors/app-error.js';
@@ -248,4 +249,16 @@ export async function healthHandler(_request: FastifyRequest, reply: FastifyRepl
     migrationSynced,
     timestamp: new Date().toISOString(),
   });
+}
+
+export async function reconciliationRunHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { dateFrom, dateTo, limit, autoFix } = request.query as any;
+  const result = await reconciliationService.run({ dateFrom, dateTo, limit: limit ? Number(limit) : undefined, autoFix: autoFix === 'true' });
+  return reply.send(result);
+}
+
+export async function reconciliationHistoryHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { limit } = request.query as any;
+  const history = await reconciliationService.getHistory(limit ? Number(limit) : 20);
+  return reply.send({ data: history });
 }
