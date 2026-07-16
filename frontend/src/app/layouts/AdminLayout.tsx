@@ -29,7 +29,7 @@ export default function AdminLayout() {
             <button onClick={() => setDrawerOpen(true)} aria-label="Open menu" className="text-2xl leading-none text-[var(--color-text)]">☰</button>
             <SiteLogo to="/admin" size="sm" />
           </header>
-          <main className="flex-1 p-4 sm:p-6 overflow-auto">
+          <main className="flex-1 min-h-0 p-4 sm:p-6 overflow-auto">
             <ErrorBoundary>
               <Outlet />
             </ErrorBoundary>
