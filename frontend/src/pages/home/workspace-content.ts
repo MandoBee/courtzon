@@ -20,7 +20,7 @@ export const workspaceContent: Record<Workspace, WorkspaceContent> = {
     gradientFrom: 'from-[var(--color-primary)]/20',
     gradientTo: 'to-[var(--color-info)]/10',
     greetingIcon: '🎾',
-    primaryCta: { label: 'Book a Court', icon: '🎾', to: '/browse' },
+    primaryCta: { label: 'Book a Court', icon: '🎾', to: '/bookings?newBooking=true' },
     actions: [
       { label: 'Find a Coach', description: 'Start improving your game', icon: '👨‍🏫', to: '/coaches', permission: 'coaches.view' },
       { label: 'Tournaments', description: 'Compete and win', icon: '🏆', to: '/tournaments', permission: 'tournaments.view' },

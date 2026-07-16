@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import api from '../../services/api';
 import { formatPrice } from '../../utils/currency';
 import { formatISODate } from '../../utils/formatDate';
@@ -14,10 +14,11 @@ const PAGE_SIZES = [10, 20, 30, 50];
 export default function MyBookingsPage() {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [statusFilter, setStatusFilter] = useState('');
   const [cancelReason, setCancelReason] = useState('');
   const [cancellingId, setCancellingId] = useState<number | null>(null);
-  const [showBooking, setShowBooking] = useState(false);
+  const [showBooking, setShowBooking] = useState(() => searchParams.get('newBooking') === 'true');
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(20);
   const [manageBookingId, setManageBookingId] = useState<number | null>(null);
@@ -97,7 +98,7 @@ export default function MyBookingsPage() {
 
   return (
     <div>
-      <BookingModal open={showBooking} onClose={() => setShowBooking(false)} />
+      <BookingModal open={showBooking} onClose={() => { setShowBooking(false); setSearchParams({}, { replace: true }); }} />
       <ManageApplicantsPopup
         open={!!manageBookingId}
         bookingId={manageBookingId || 0}
