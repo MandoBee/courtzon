@@ -24,4 +24,7 @@ export async function paymentRoutes(app: FastifyInstance): Promise<void> {
   // Admin: reconciliation
   app.post('/payments/reconciliation/run', { preHandler: [authMiddleware, requirePermission(['financial.reconcile'])] }, ctrl.reconciliationRunHandler);
   app.get('/payments/reconciliation/history', { preHandler: [authMiddleware, requirePermission(['financial.reconcile'])] }, ctrl.reconciliationHistoryHandler);
+
+  // Production readiness gate
+  app.get('/payments/production-readiness', { preHandler: [authMiddleware, requirePermission(['financial.reconcile'])] }, ctrl.productionReadinessHandler);
 }

@@ -98,6 +98,7 @@ const SubscriptionPage = lazy(() => import('./pages/admin/subscription/Subscript
 const SubscriptionUpgradeRequestsPage = lazy(() => import('./pages/admin/subscription/SubscriptionUpgradeRequestsPage'));
 const SettlementListPage = lazy(() => import('./pages/admin/settlements/SettlementListPage'));
 const AdminFinancePage = lazy(() => import('./pages/admin/AdminFinancePage'));
+const FinancialOpsDashboard = lazy(() => import('./pages/admin/finance/FinancialOpsDashboard'));
 const ProductCategoriesPage = lazy(() => import('./pages/admin/product-categories/ProductCategoriesPage'));
 const FeatureFlagsPage = lazy(() => import('./pages/admin/feature-flags/FeatureFlagsPage'));
 const PaymentMethodsPage = lazy(() => import('./pages/admin/payment-methods/PaymentMethodsPage'));
@@ -493,6 +494,7 @@ function AppContent() {
           <Route path="security/role-audit" element={<RoleAuditPage />} />
             <Route path="settlements" element={<SettlementListPage />} />
             <Route path="finance" element={<AdminFinancePage />} />
+            <Route path="financial-ops" element={<FinancialOpsDashboard />} />
             <Route path="withdrawal-requests" element={<WithdrawalRequestsPage />} />
             <Route path="coupons" element={<CouponListPage />} />
             <Route path="design-tokens" element={<DesignTokensPage />} />
