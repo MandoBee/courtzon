@@ -34,9 +34,13 @@ usage() {
   echo ""
   echo "  --seed-file <filename>  Run a specific seed file from database/seeds/"
   echo "  --list                  List available seed files"
+  echo "  --force                 Run even if users table has existing data"
   echo "  --help                  Show this help"
   echo ""
   echo "Without arguments, runs all seed files in database/seeds/ in order."
+  echo ""
+  echo "SAFETY: Refuses to run if 'users' table has more than 5 records (seed threshold)."
+  echo "        Use --force or --seed-file to bypass."
   exit 0
 }
 
@@ -77,6 +81,18 @@ main() {
 
   # Verify DB connection
   mysql $MYSQL_ADMIN -N -e "SELECT 1;" >/dev/null 2>&1 || error "Cannot connect to MySQL"
+
+  # ── Safety check: never overwrite existing user data ────────────────
+  if [ "$specific_file" = "" ] && [ "$list_only" = false ]; then
+    local _USER_COUNT
+    _USER_COUNT=$(mysql $MYSQL -N -e "SELECT COUNT(*) FROM users" 2>/dev/null || echo "0")
+    if [ "$_USER_COUNT" -gt 5 ] 2>/dev/null; then
+      log "WARNING: 'users' table has $_USER_COUNT records — refusing to seed."
+      log "Use --force to seed anyway (INSERT IGNORE will skip existing rows)."
+      log "Seed aborted."
+      exit 0
+    fi
+  fi
 
   if [ "$list_only" = true ]; then
     echo "Available seed files in $SEEDS_DIR:"
