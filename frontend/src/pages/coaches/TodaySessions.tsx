@@ -1,10 +1,10 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../services/api';
 import { formatISODate } from '../../utils/formatDate';
+import { useToast } from '../../components/ui/Toast';
 import { SkeletonRow } from '../../components/ui';
-import { EmptyStateCard } from '../../components/workspace';
+import { EmptyStateCard, SessionTimeline } from '../../components/workspace';
 
 const STATUSES = ['all', 'scheduled', 'confirmed', 'in_progress', 'completed', 'cancelled', 'no_show', 'pending_court', 'pending_acceptance'];
 
@@ -20,12 +20,27 @@ const statusColor: Record<string, string> = {
 };
 
 export default function TodaySessions() {
-  const navigate = useNavigate();
+  const qc = useQueryClient();
+  const { showToast } = useToast();
   const [filter, setFilter] = useState('all');
+  const [detailId, setDetailId] = useState<number | null>(null);
+
+  const sessionMut = useMutation({
+    mutationFn: ({ id, action }: { id: number; action: string }) =>
+      api.post(`/coach-sessions/${id}/${action}`),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['coach-all-sessions'] }); showToast('Updated!'); setDetailId(null); },
+    onError: (err: any) => showToast(err?.response?.data?.message || 'Failed', 'error'),
+  });
 
   const { data, isLoading } = useQuery({
     queryKey: ['coach-all-sessions'],
     queryFn: () => api.get('/coaches/sessions/me?role=coach&limit=50').then((r) => r.data),
+  });
+
+  const { data: detailData } = useQuery({
+    queryKey: ['coach-session-detail', detailId],
+    queryFn: () => api.get(`/coach-sessions/${detailId}`).then((r) => r.data),
+    enabled: !!detailId,
   });
 
   const sessions = Array.isArray(data?.data) ? data.data : [];
@@ -73,7 +88,7 @@ export default function TodaySessions() {
         <section>
           <h2 className="text-sm font-semibold text-[var(--color-text)] uppercase tracking-wide mb-3">Today</h2>
           <div className="space-y-2">
-            {todaySessions.map((s: any) => renderSessionCard(s, navigate))}
+            {todaySessions.map((s: any) => <SessionDetailCard key={s.id} session={s} detailId={detailId} setDetailId={setDetailId} sessionMut={sessionMut} detailTimeline={detailData?.timeline} />)}
           </div>
         </section>
       )}
@@ -82,7 +97,7 @@ export default function TodaySessions() {
         <section>
           <h2 className="text-sm font-semibold text-[var(--color-text)] uppercase tracking-wide mb-3">Upcoming</h2>
           <div className="space-y-2">
-            {upcoming.map((s: any) => renderSessionCard(s, navigate))}
+            {upcoming.map((s: any) => <SessionDetailCard key={s.id} session={s} detailId={detailId} setDetailId={setDetailId} sessionMut={sessionMut} detailTimeline={detailData?.timeline} />)}
           </div>
         </section>
       )}
@@ -91,7 +106,7 @@ export default function TodaySessions() {
         <section>
           <h2 className="text-sm font-semibold text-[var(--color-text)] uppercase tracking-wide mb-3">Past</h2>
           <div className="space-y-2">
-            {past.map((s: any) => renderSessionCard(s, navigate))}
+            {past.map((s: any) => <SessionDetailCard key={s.id} session={s} detailId={detailId} setDetailId={setDetailId} sessionMut={sessionMut} detailTimeline={detailData?.timeline} />)}
           </div>
         </section>
       )}
@@ -99,14 +114,21 @@ export default function TodaySessions() {
   );
 }
 
-function renderSessionCard(session: any, navigate: ReturnType<typeof useNavigate>) {
+function SessionDetailCard({ session, detailId, setDetailId, sessionMut, detailTimeline }: {
+  session: any; detailId: number | null; setDetailId: (id: number | null) => void;
+  sessionMut: any; detailTimeline: any[];
+}) {
   const sc = statusColor[session.status] || '';
+  const isExpanded = detailId === session.id;
+
+  const actions: { label: string; action: string; color: string }[] = [];
+  if (session.status === 'confirmed') actions.push({ label: '▶️ Start', action: 'start', color: 'bg-[var(--color-primary)]' });
+  if (session.status === 'in_progress') actions.push({ label: '🏁 Complete', action: 'complete', color: 'bg-[var(--color-success)]' });
+  if (session.status === 'in_progress') actions.push({ label: '👤 No Show', action: 'no-show', color: 'bg-[var(--color-error)]' });
+  if (['requested', 'confirmed', 'in_progress'].includes(session.status)) actions.push({ label: '🚫 Cancel', action: 'cancel', color: 'bg-[var(--color-error)]' });
+
   return (
-    <div
-      key={session.id}
-      className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] border border-[var(--color-border)] p-4 hover:shadow-[var(--shadow-md)] transition-shadow cursor-pointer"
-      onClick={() => navigate('/coach/sessions')}
-    >
+    <div className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] border border-[var(--color-border)] p-4">
       <div className="flex items-start justify-between gap-3 mb-2">
         <div className="min-w-0 flex-1">
           <p className="font-semibold text-[var(--color-text)] truncate">{session.player_name || 'Player'}</p>
@@ -118,11 +140,27 @@ function renderSessionCard(session: any, navigate: ReturnType<typeof useNavigate
           {session.status?.replace(/_/g, ' ')}
         </span>
       </div>
-      <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-[var(--color-text-muted)]">
+      <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-[var(--color-text-muted)] mb-2">
         {session.organisation_name && <span>🏛️ {session.organisation_name}</span>}
         {session.branch_name && <span>📍 {session.branch_name}</span>}
         {session.price != null && <span>💰 {Number(session.price).toFixed(0)}</span>}
       </div>
+      <div className="flex gap-2">
+        <button onClick={() => setDetailId(isExpanded ? null : session.id)} className="px-3 py-1 text-xs font-medium border border-[var(--color-border)] rounded-[var(--radius-md)]">
+          {isExpanded ? '▲ Less' : '▼ More'}
+        </button>
+        {actions.map((a) => (
+          <button key={a.action} onClick={() => sessionMut.mutate({ id: session.id, action: a.action })}
+            className={`px-3 py-1 text-xs font-medium text-white rounded-[var(--radius-md)] ${a.color}`}>
+            {a.label}
+          </button>
+        ))}
+      </div>
+      {isExpanded && detailTimeline && (
+        <div className="mt-3 pt-3 border-t border-[var(--color-border)]">
+          <SessionTimeline events={detailTimeline} title="Session Timeline" />
+        </div>
+      )}
     </div>
   );
 }

@@ -4,3 +4,4 @@ export { default as QuickActions } from './QuickActions';
 export { default as SectionHeader } from './SectionHeader';
 export { default as EmptyStateCard } from './EmptyStateCard';
 export { default as SummaryCard } from './SummaryCard';
+export { default as SessionTimeline } from './SessionTimeline';
