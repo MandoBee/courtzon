@@ -26,7 +26,6 @@ export interface DomainEventMap {
   'payment:completed': BaseEvent & { paymentId: number; userId: number; amount: number; currency: string; gateway: string; organisationId?: number };
   'payment:failed': BaseEvent & { paymentId: number; userId: number; amount: number; currency?: string; error: string; organisationId?: number };
   'payment:refunded': BaseEvent & { paymentId: number; userId: number; amount: number; organisationId?: number };
-  'payment:initiated': BaseEvent & { paymentId: number; userId: number; amount: number; currency: string; gateway: string; organisationId?: number };
   'payment:succeeded': BaseEvent & { paymentId: number; referenceType: string; referenceId: number; amount: number; metadata?: Record<string, any> };
   'payment:failed-event': BaseEvent & { paymentId: number; referenceType: string; referenceId: number; amount: number; reason?: string; metadata?: Record<string, any> };
   'payment:cancelled-event': BaseEvent & { paymentId: number; referenceType: string; referenceId: number; metadata?: Record<string, any> };

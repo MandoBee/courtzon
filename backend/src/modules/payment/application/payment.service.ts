@@ -3,7 +3,7 @@ import { paymentRepository } from '../infrastructure/repositories/payment.reposi
 import { paymentGateway } from '../../../shared/services/gateway/gateway-factory.js';
 import { walletService } from '../../wallet/application/wallet.service.js';
 import { NotFoundError, ConflictError } from '../../../shared/errors/app-error.js';
-import { withTransaction } from '../../../database/database.transaction.js';
+import { withTransaction, onAfterCommit } from '../../../database/database.transaction.js';
 import type { ChargeInput } from '../presentation/payment.dto.js';
 import type mysql from 'mysql2/promise';
 import { getPool } from '../../../database/mysql.js';
@@ -56,6 +56,7 @@ export class PaymentService {
     const traceId = randomUUID();
     const result = await walletService.withdraw(userId, input.amount, `${input.referenceType} #${input.referenceId}`);
 
+    // Create payment as 'pending' first, then process through the same pipeline
     const { id: paymentId } = await paymentRepository.create({
       userId,
       bookingId: input.referenceType === 'booking' ? input.referenceId : undefined,
@@ -65,10 +66,21 @@ export class PaymentService {
       gatewayProvider: 'wallet_system',
       gatewayReference: `wallet_${Date.now()}`,
       amount: input.amount,
-      status: 'paid',
+      status: 'pending',
       traceId,
     });
 
+    // Process through the unified payment outcome pipeline
+    await withTransaction(async (conn) => {
+      const locked = await paymentRepository.lockById(paymentId, conn);
+      if (!locked) throw new ConflictError('Payment locked by another process');
+
+      await this._processPaymentOutcome(
+        conn, locked, 'paid', `wallet_${paymentId}`, traceId, 'wallet',
+      );
+    });
+
+    // Business-specific journal entry (payment outcome creates a generic one too)
     await paymentRepository.createJournalEntry({
       entryType: 'payment',
       referenceType: input.referenceType,
@@ -77,27 +89,6 @@ export class PaymentService {
       creditAccount: 'Revenue',
       amount: input.amount,
       description: `${input.referenceType} payment via wallet`,
-    });
-
-    const walletCurrency = input.currency || 'EGP';
-    eventBus.emit('payment:succeeded', {
-      paymentId,
-      referenceType: input.referenceType,
-      referenceId: input.referenceId,
-      amount: input.amount,
-      metadata: {
-        userId,
-        paymentMethod: 'wallet',
-        currency: walletCurrency,
-        gateway: 'wallet_system',
-      },
-    });
-    eventBus.emit('payment:completed', {
-      paymentId,
-      userId,
-      amount: input.amount,
-      currency: walletCurrency,
-      gateway: 'wallet_system',
     });
 
     log.info({ traceId, paymentId, userId, amount: input.amount, referenceType: input.referenceType }, 'Wallet payment completed');
@@ -359,14 +350,16 @@ export class PaymentService {
           log.info({ traceId, txnId: transaction.id, status: newStatus }, 'Payment cancelled/expired via webhook');
           const refId = transaction.order_id || transaction.booking_id || null;
           const eventName = newStatus === 'cancelled' ? 'payment:cancelled-event' as const : 'payment:expired-event' as const;
-          eventBus.emit(eventName, {
-            paymentId: transaction.id,
-            referenceType: transaction.reference_type,
-            referenceId: refId,
-            metadata: {
-              userId: transaction.user_id,
-              paymentMethod: transaction.payment_method,
-            },
+          onAfterCommit(async () => {
+            eventBus.emit(eventName, {
+              paymentId: transaction.id,
+              referenceType: transaction.reference_type,
+              referenceId: refId,
+              metadata: {
+                userId: transaction.user_id,
+                paymentMethod: transaction.payment_method,
+              },
+            });
           });
         }
         return { idempotent: updateResult.affectedRows === 0 };
@@ -498,7 +491,7 @@ export class PaymentService {
     newStatus: 'paid' | 'failed',
     gatewayRef: string,
     traceId: string,
-    source: 'webhook' | 'sync' | 'manual' | 'confirm',
+    source: 'webhook' | 'sync' | 'manual' | 'confirm' | 'wallet',
     gatewayStatus?: string,
     payloadSuccess?: boolean,
   ): Promise<{ idempotent: boolean }> {
@@ -546,9 +539,9 @@ export class PaymentService {
     }
 
     // ── SINGLE CANONICAL EMISSION POINT ──
+    // Emitted via after-commit hook so business listeners only see committed data.
     // Both generic events (for business module fulfillment) and saga events
-    // (for notifications) are emitted from one place. No other code path
-    // emits these events for the same outcome.
+    // (for notifications) are emitted from one place.
     const refId = transaction.order_id || transaction.booking_id || null;
     const commonMeta = {
       gatewayRef,
@@ -558,35 +551,39 @@ export class PaymentService {
       gateway: paymentGateway.provider,
     };
     if (newStatus === 'paid') {
-      eventBus.emit('payment:succeeded', {
-        paymentId: transaction.id,
-        referenceType: transaction.reference_type,
-        referenceId: refId,
-        amount: Number(transaction.amount),
-        metadata: commonMeta,
-      });
-      eventBus.emit('payment:completed', {
-        paymentId: transaction.id,
-        userId: transaction.user_id,
-        amount: Number(transaction.amount),
-        currency: commonMeta.currency,
-        gateway: commonMeta.gateway,
+      onAfterCommit(async () => {
+        eventBus.emit('payment:succeeded', {
+          paymentId: transaction.id,
+          referenceType: transaction.reference_type,
+          referenceId: refId,
+          amount: Number(transaction.amount),
+          metadata: commonMeta,
+        });
+        eventBus.emit('payment:completed', {
+          paymentId: transaction.id,
+          userId: transaction.user_id,
+          amount: Number(transaction.amount),
+          currency: commonMeta.currency,
+          gateway: commonMeta.gateway,
+        });
       });
     } else if (newStatus === 'failed') {
-      eventBus.emit('payment:failed-event', {
-        paymentId: transaction.id,
-        referenceType: transaction.reference_type,
-        referenceId: refId,
-        amount: Number(transaction.amount),
-        reason: gatewayStatus || `Payment ${newStatus}`,
-        metadata: commonMeta,
-      });
-      eventBus.emit('payment:failed', {
-        paymentId: transaction.id,
-        userId: transaction.user_id,
-        amount: Number(transaction.amount),
-        currency: commonMeta.currency,
-        error: gatewayStatus || `Payment ${newStatus}`,
+      onAfterCommit(async () => {
+        eventBus.emit('payment:failed-event', {
+          paymentId: transaction.id,
+          referenceType: transaction.reference_type,
+          referenceId: refId,
+          amount: Number(transaction.amount),
+          reason: gatewayStatus || `Payment ${newStatus}`,
+          metadata: commonMeta,
+        });
+        eventBus.emit('payment:failed', {
+          paymentId: transaction.id,
+          userId: transaction.user_id,
+          amount: Number(transaction.amount),
+          currency: commonMeta.currency,
+          error: gatewayStatus || `Payment ${newStatus}`,
+        });
       });
     }
 
@@ -825,14 +822,16 @@ export class PaymentService {
         await withTransaction(async (conn) => {
           await sagaExpirePayment(ptx.id, conn);
           const refId = ptx.order_id || ptx.booking_id || null;
-          eventBus.emit('payment:expired-event', {
-            paymentId: ptx.id,
-            referenceType: ptx.reference_type,
-            referenceId: refId,
-            metadata: {
-              userId: ptx.user_id,
-              paymentMethod: ptx.payment_method,
-            },
+          onAfterCommit(async () => {
+            eventBus.emit('payment:expired-event', {
+              paymentId: ptx.id,
+              referenceType: ptx.reference_type,
+              referenceId: refId,
+              metadata: {
+                userId: ptx.user_id,
+                paymentMethod: ptx.payment_method,
+              },
+            });
           });
           expired++;
           log.info({ txnId: ptx.id, gatewayRef: ptx.gateway_reference, created: ptx.created_at }, 'Payment expired');
