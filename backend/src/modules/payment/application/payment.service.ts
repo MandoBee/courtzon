@@ -222,30 +222,32 @@ export class PaymentService {
     const isIntentionWebhook = !!data.obj;
     const obj = data.obj ?? data;
 
-    // ── Replay attack protection ──────────────────────────────────────
-    // Use webhook transaction ID or a composite key as unique identifier
+    // ── Replay protection (Redis-based dedup, 24h TTL) ────────────────
+    // Non-blocking: if Redis is unavailable, webhook still processes
     const webhookId = obj.id || data.id || obj.merchant_order_id || obj.intention_id || data.transaction_id;
     if (webhookId) {
-      const replayKey = `webhook:processed:${webhookId}`;
-      const redis = getRedisClient();
-      const alreadyProcessed = await redis.get(replayKey);
-      if (alreadyProcessed) {
-        log.info({ webhookId }, 'Duplicate webhook rejected (replay protection)');
-        return { received: true, note: 'duplicate (replay protected)' };
+      try {
+        const replayKey = `webhook:processed:${webhookId}`;
+        const redis = getRedisClient();
+        const alreadyProcessed = await redis.get(replayKey);
+        if (alreadyProcessed) {
+          log.info({ webhookId }, 'Duplicate webhook rejected (replay protection)');
+          return { received: true, note: 'duplicate (replay protected)' };
+        }
+        await redis.set(replayKey, '1', 'EX', 86400);
+      } catch (err) {
+        log.warn({ err, webhookId }, 'Replay protection unavailable — processing webhook anyway');
       }
-      // Mark as processed with 24-hour TTL (well beyond any replay window)
-      await redis.set(replayKey, '1', 'EX', 86400);
     }
 
-    // ── Timestamp validation (replay window: 5 minutes) ───────────────
+    // ── Timestamp check (informational only — Paymob timestamps can     ─
+    //    be older than 5 min due to delivery delays / retries)           ─
     const timestamp = obj.created_at || obj.timestamp || data.timestamp || data.created_at;
     if (timestamp) {
       const webhookTime = new Date(timestamp).getTime();
-      const now = Date.now();
-      const FIVE_MINUTES_MS = 5 * 60 * 1000;
-      if (Number.isNaN(webhookTime) || now - webhookTime > FIVE_MINUTES_MS || webhookTime > now + FIVE_MINUTES_MS) {
-        log.warn({ webhookId, timestamp, ageMs: now - webhookTime }, 'Webhook timestamp outside acceptable window — possible replay attack');
-        throw new Error('Webhook timestamp outside acceptable window');
+      const ageMs = Date.now() - webhookTime;
+      if (Number.isNaN(webhookTime) || Math.abs(ageMs) > 5 * 60 * 1000) {
+        log.warn({ webhookId, timestamp, ageMs }, 'Webhook timestamp outside 5min window — processing anyway');
       }
     }
 
