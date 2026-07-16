@@ -1,10 +1,12 @@
 import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { useAuthStore } from '../../store/auth.store';
 import { useTranslation } from '../../i18n';
 import { useCan } from '../../hooks/useCan';
 import { useFeatureFlag } from '../../hooks/useFeatureFlag';
 import { useHaptics } from '../../hooks/useHaptics';
+import api from '../../services/api';
 import { Modal } from '../ui/Modal';
 
 export default function BottomNav() {
@@ -18,12 +20,20 @@ export default function BottomNav() {
 
   const isSeller = user && user.isSeller;
 
+  const { data: cart } = useQuery({
+    queryKey: ['mp-cart'],
+    queryFn: () => api.get('/marketplace/cart').then((r) => r.data),
+    staleTime: 30000,
+  });
+
+  const cartCount = cart?.items?.length || 0;
+
   const isPath = (p: string) => (p === '/app' ? location.pathname === '/app' || location.pathname === '/' : location.pathname === p);
 
   const coreTabs = [
     { label: t('nav.home'), icon: '🏠', path: '/app' },
     { label: t('nav.bookings'), icon: '📅', path: '/bookings' },
-    { label: t('nav.marketplace'), icon: '🛒', path: '/marketplace' },
+    { label: t('nav.marketplace'), icon: '🛒', path: '/marketplace', badgeCount: cartCount },
   ];
 
   const moreItems: { label: string; icon: string; path: string; perm?: string; flag?: boolean; show?: boolean }[] = [
@@ -52,7 +62,14 @@ export default function BottomNav() {
                 isPath(tab.path) ? 'text-[var(--color-primary)]' : 'text-[var(--color-text-muted)]'
               }`}
             >
-              <span className="text-xl leading-none">{tab.icon}</span>
+              <span className="text-xl leading-none relative">
+              {tab.icon}
+              {'badgeCount' in tab && tab.badgeCount > 0 && (
+                <span className="absolute -top-1.5 -right-2 bg-[var(--color-error)] text-white text-[9px] font-bold rounded-full min-w-[15px] h-[15px] flex items-center justify-center px-0.5">
+                  {tab.badgeCount > 99 ? '99+' : tab.badgeCount}
+                </span>
+              )}
+            </span>
               <span className="text-[10px] font-medium leading-tight">{tab.label}</span>
             </Link>
           ))}
