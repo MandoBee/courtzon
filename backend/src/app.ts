@@ -46,6 +46,7 @@ import { appearanceRoutes, designTokenRoutes, publicThemeRoutes } from "./module
 import { appSettingsRoutes } from "./modules/app-settings/presentation/app-settings.routes.js";
 import { geoRoutes } from "./modules/geo/presentation/geo.routes.js";
 import { matchRoutes } from "./modules/match/presentation/match.routes.js";
+import { schedulingRoutes } from "./modules/scheduling/presentation/scheduling.routes.js";
 import { createPool } from "./database/mysql.js";
 import { AppError } from "./shared/errors/app-error.js";
 import { formatZodErrorDetails, isZodError } from "./shared/validation/zod-error.util.js";
@@ -337,6 +338,7 @@ app.register(adminTagRoutes);
   app.register(publicFeatureFlagsRoutes);
   app.register(geoRoutes);
   app.register(matchRoutes);
+  app.register(schedulingRoutes);
   app.register(sidebarLayoutRoutes);
   app.register(notificationRoutes);
   app.register(financialAdminRoutes);

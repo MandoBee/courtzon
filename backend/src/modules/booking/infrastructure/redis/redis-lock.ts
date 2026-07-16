@@ -2,6 +2,7 @@ import { getRedisClient } from '../../../../infrastructure/redis/redis.client.js
 
 const LOCK_TTL_MS = 15000;
 const LOCK_PREFIX = 'booking:lock:';
+const COACH_LOCK_PREFIX = 'booking:lock:coach:';
 
 export class RedisLock {
   private redis: any;
@@ -14,14 +15,36 @@ export class RedisLock {
     return `${LOCK_PREFIX}${resourceId}:${date}:${slotStart}`;
   }
 
+  coachLockKey(coachId: number, date: string, slotStart: string): string {
+    return `${COACH_LOCK_PREFIX}${coachId}:${date}:${slotStart}`;
+  }
+
   async acquire(resourceId: number, date: string, slotStart: string, owner: string): Promise<boolean> {
     const key = this.lockKey(resourceId, date, slotStart);
     const result = await this.redis.set(key, owner, 'PX', LOCK_TTL_MS, 'NX');
     return result === 'OK';
   }
 
+  async acquireCoach(coachId: number, date: string, slotStart: string, owner: string): Promise<boolean> {
+    const key = this.coachLockKey(coachId, date, slotStart);
+    const result = await this.redis.set(key, owner, 'PX', LOCK_TTL_MS, 'NX');
+    return result === 'OK';
+  }
+
   async release(resourceId: number, date: string, slotStart: string, owner: string): Promise<void> {
     const key = this.lockKey(resourceId, date, slotStart);
+    const script = `
+      if redis.call("get", KEYS[1]) == ARGV[1] then
+        return redis.call("del", KEYS[1])
+      else
+        return 0
+      end
+    `;
+    await this.redis.eval(script, 1, key, owner);
+  }
+
+  async releaseCoach(coachId: number, date: string, slotStart: string, owner: string): Promise<void> {
+    const key = this.coachLockKey(coachId, date, slotStart);
     const script = `
       if redis.call("get", KEYS[1]) == ARGV[1] then
         return redis.call("del", KEYS[1])
