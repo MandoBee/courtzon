@@ -10,7 +10,7 @@ import { getPool } from '../../../database/mysql.js';
 import { getRedisClient } from '../../../infrastructure/redis/redis.client.js';
 import { createModuleLogger } from '../../../shared/utils/logger.js';
 import { eventBus } from '../../../shared/event-bus/index.js';
-import { refundPayment, expirePayment as sagaExpirePayment, emitPaymentCompleted } from '../../../platform/payment/PaymentSaga.js';
+import { refundPayment, expirePayment as sagaExpirePayment } from '../../../platform/payment/PaymentSaga.js';
 
 const log = createModuleLogger('payment');
 
@@ -42,31 +42,7 @@ function sanitizeGatewayResponse(raw: unknown): Record<string, any> | null {
   return cleaned;
 }
 
-function parseBookingDateTime(bookingDate: unknown, startTime: unknown): Date | null {
-  if (bookingDate == null || startTime == null) return null;
 
-  let dateStr: string;
-  if (bookingDate instanceof Date) {
-    dateStr = bookingDate.toISOString().split('T')[0];
-  } else {
-    dateStr = String(bookingDate).split('T')[0];
-  }
-
-  let timeStr: string;
-  if (startTime instanceof Date) {
-    timeStr = [
-      String(startTime.getUTCHours()).padStart(2, '0'),
-      String(startTime.getUTCMinutes()).padStart(2, '0'),
-      String(startTime.getUTCSeconds()).padStart(2, '0'),
-    ].join(':');
-  } else {
-    timeStr = String(startTime);
-  }
-
-  const result = new Date(`${dateStr}T${timeStr}`);
-  if (isNaN(result.getTime())) return null;
-  return result;
-}
 
 export class PaymentService {
   async charge(userId: number, input: ChargeInput) {
@@ -103,8 +79,7 @@ export class PaymentService {
       description: `${input.referenceType} payment via wallet`,
     });
 
-    emitPaymentCompleted(paymentId).catch((err) => log.error({ err, paymentId }, 'Failed to emit payment:completed via saga'));
-
+    const walletCurrency = input.currency || 'EGP';
     eventBus.emit('payment:succeeded', {
       paymentId,
       referenceType: input.referenceType,
@@ -113,7 +88,16 @@ export class PaymentService {
       metadata: {
         userId,
         paymentMethod: 'wallet',
+        currency: walletCurrency,
+        gateway: 'wallet_system',
       },
+    });
+    eventBus.emit('payment:completed', {
+      paymentId,
+      userId,
+      amount: input.amount,
+      currency: walletCurrency,
+      gateway: 'wallet_system',
     });
 
     log.info({ traceId, paymentId, userId, amount: input.amount, referenceType: input.referenceType }, 'Wallet payment completed');
@@ -401,17 +385,7 @@ export class PaymentService {
       );
     });
 
-    if (!paidResult.idempotent) {
-      const txn = await paymentRepository.findByGatewayRef(resolvedGatewayRef);
-      if (txn) {
-        const paymentId = (txn as any).id;
-        if (newStatus === 'paid') {
-          emitPaymentCompleted(paymentId).catch((err) => log.error({ err, paymentId }, 'Failed to emit payment:completed via saga'));
-        } else if (newStatus === 'failed') {
-          // Saga event emitted via payment:failed-event from _processPaymentOutcome
-        }
-      }
-    }
+    // Events already emitted inside _processPaymentOutcome — no duplicate needed here.
 
     return paidResult;
   }
@@ -508,11 +482,14 @@ export class PaymentService {
 
   /**
    * Single unified method for processing a payment outcome.
-   * Called by both webhook and sync. Runs inside an existing transaction
-   * with FOR UPDATE lock already held on the payment row.
+   * Called by webhook, sync, manual recovery, and confirm paths.
+   * Runs inside an existing transaction with FOR UPDATE lock
+   * already held on the payment row.
    *
-   * ALL financial side effects (wallet credit, booking creation, order
-   * confirmation, journal entry) happen within this same transaction.
+   * Updates the payment status and emits outcome events
+   * (payment:succeeded/payment:failed-event + payment:completed/payment:failed).
+   * Business modules handle their own fulfillment via event listeners.
+   *
    * If any step fails, the entire transaction rolls back.
    */
   private async _processPaymentOutcome(
@@ -568,19 +545,32 @@ export class PaymentService {
       return { idempotent: true };
     }
 
-    // Emit generic payment outcome events — business modules handle their own fulfillment
-    const refId = transaction.order_id || transaction.booking_id || transaction.reference_id || null;
+    // ── SINGLE CANONICAL EMISSION POINT ──
+    // Both generic events (for business module fulfillment) and saga events
+    // (for notifications) are emitted from one place. No other code path
+    // emits these events for the same outcome.
+    const refId = transaction.order_id || transaction.booking_id || null;
+    const commonMeta = {
+      gatewayRef,
+      userId: transaction.user_id,
+      paymentMethod: transaction.payment_method,
+      currency: transaction.currency_code || 'EGP',
+      gateway: paymentGateway.provider,
+    };
     if (newStatus === 'paid') {
       eventBus.emit('payment:succeeded', {
         paymentId: transaction.id,
         referenceType: transaction.reference_type,
         referenceId: refId,
         amount: Number(transaction.amount),
-        metadata: {
-          gatewayRef: gatewayRef,
-          userId: transaction.user_id,
-          paymentMethod: transaction.payment_method,
-        },
+        metadata: commonMeta,
+      });
+      eventBus.emit('payment:completed', {
+        paymentId: transaction.id,
+        userId: transaction.user_id,
+        amount: Number(transaction.amount),
+        currency: commonMeta.currency,
+        gateway: commonMeta.gateway,
       });
     } else if (newStatus === 'failed') {
       eventBus.emit('payment:failed-event', {
@@ -589,11 +579,14 @@ export class PaymentService {
         referenceId: refId,
         amount: Number(transaction.amount),
         reason: gatewayStatus || `Payment ${newStatus}`,
-        metadata: {
-          gatewayRef: gatewayRef,
-          userId: transaction.user_id,
-          paymentMethod: transaction.payment_method,
-        },
+        metadata: commonMeta,
+      });
+      eventBus.emit('payment:failed', {
+        paymentId: transaction.id,
+        userId: transaction.user_id,
+        amount: Number(transaction.amount),
+        currency: commonMeta.currency,
+        error: gatewayStatus || `Payment ${newStatus}`,
       });
     }
 

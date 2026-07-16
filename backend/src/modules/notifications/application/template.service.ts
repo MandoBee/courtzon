@@ -461,9 +461,6 @@ export async function seedTemplates(): Promise<void> {
       actionKey: 'view_booking', routePattern: '/bookings/{{bookingId}}' },
 
     // ── Additional Payment Events ──
-    { eventName: 'payment:initiated', locale: 'en', categorySlug: 'payments', type: 'info', priority: 'normal',
-      titleTemplate: 'Payment Initiated', bodyTemplate: 'A payment of {{currency}} {{amount}} has been initiated.',
-      actionKey: 'view_payment', routePattern: '/payments/{{paymentId}}' },
     { eventName: 'payment:wallet-topup', locale: 'en', categorySlug: 'payments', type: 'success', priority: 'normal',
       titleTemplate: 'Wallet Top-Up', bodyTemplate: 'Your wallet has been topped up with {{currency}} {{amount}}. New balance: {{balance}}.',
       actionKey: 'view_wallet', routePattern: '/wallet' },

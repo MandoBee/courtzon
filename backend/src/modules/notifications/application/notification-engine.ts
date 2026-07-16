@@ -123,7 +123,7 @@ const eventGroups: EventGroupConfig[] = [
     },
   },
   {
-    events: ['payment:completed', 'payment:failed', 'payment:refunded', 'payment:initiated'],
+    events: ['payment:completed', 'payment:failed', 'payment:refunded'],
     handler: async (eventName, data, categorySlug) => {
       if (data.userId) {
         await dispatchToUser({
@@ -599,7 +599,7 @@ class NotificationEngine {
       'booking:created', 'booking:confirmed', 'booking:cancelled', 'booking:expired',
       'booking:rescheduled', 'booking:completed', 'booking:reminder', 'booking:no-show',
       'booking:check-in', 'booking:matchmaking-complete', 'booking:fully-booked',
-      'payment:completed', 'payment:failed', 'payment:refunded', 'payment:initiated',
+      'payment:completed', 'payment:failed', 'payment:refunded',
       'payment:wallet-topup', 'payment:wallet-low-balance',
       'marketplace:order-placed', 'marketplace:order-confirmed', 'marketplace:order-shipped',
       'marketplace:order-delivered', 'marketplace:order-cancelled',

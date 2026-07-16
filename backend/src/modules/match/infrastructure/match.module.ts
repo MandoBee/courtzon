@@ -34,11 +34,11 @@ export function startMatchModule(): void {
     );
   });
 
-  eventBus.on('payment:failed', (data: any) => {
-    if (data.bookingId) {
-      log.info({ event: 'payment:failed', bookingId: data.bookingId }, 'payment:failed event received');
-      paymentFailedHandler.handle(data.bookingId).catch((err) =>
-        log.error({ err, bookingId: data.bookingId }, 'PaymentFailedHandler failed')
+  eventBus.on('payment:failed-event', (data: any) => {
+    if (data.referenceType === 'booking_intent' && data.referenceId) {
+      log.info({ event: 'payment:failed-event', intentId: data.referenceId, reason: data.reason }, 'payment:failed-event received — cancelling match');
+      paymentFailedHandler.handle(data.referenceId).catch((err) =>
+        log.error({ err, intentId: data.referenceId }, 'PaymentFailedHandler failed')
       );
     }
   });

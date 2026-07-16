@@ -41,7 +41,6 @@ export const Events = {
     COMPLETED: 'payment:completed',
     FAILED: 'payment:failed',
     REFUNDED: 'payment:refunded',
-    INITIATED: 'payment:initiated',
     WALLET_CREDITED: 'payment:wallet-credited',
     WALLET_DEBITED: 'payment:wallet-debited',
     WALLET_LOW_BALANCE: 'payment:wallet-low-balance',

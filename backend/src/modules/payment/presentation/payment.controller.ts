@@ -5,7 +5,7 @@ import { recordAudit } from '../../audit-log/index.js';
 import { ChargeSchema, RefundPaymentSchema, ConfirmPaymentSchema } from './payment.dto.js';
 import { NotFoundError } from '../../../shared/errors/app-error.js';
 import { createModuleLogger } from '../../../shared/utils/logger.js';
-import { emitPaymentCompleted, failPayment } from '../../../platform/payment/PaymentSaga.js';
+
 
 const log = createModuleLogger('payment-controller');
 
@@ -45,11 +45,7 @@ export async function confirmPaymentHandler(request: FastifyRequest, reply: Fast
     userAgent: request.headers['user-agent'],
   });
 
-  if (result.confirmed && result.paymentStatus === 'paid') {
-    await emitPaymentCompleted(body.paymentId).catch(() => {});
-  } else if (result.paymentStatus === 'failed') {
-    await failPayment(body.paymentId).catch(() => {});
-  }
+  // Events already emitted by _processPaymentOutcome — no duplicate needed here.
 
   return reply.send(result);
 }
