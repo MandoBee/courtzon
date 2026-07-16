@@ -7,6 +7,7 @@ import { withTransaction } from '../../../database/database.transaction.js';
 import type { ChargeInput } from '../presentation/payment.dto.js';
 import type mysql from 'mysql2/promise';
 import { getPool } from '../../../database/mysql.js';
+import { getRedisClient } from '../../../infrastructure/redis/redis.client.js';
 import { createModuleLogger } from '../../../shared/utils/logger.js';
 import { eventBus } from '../../../shared/event-bus/index.js';
 import { bookingService } from '../../booking/application/booking.service.js';
@@ -18,6 +19,30 @@ const log = createModuleLogger('payment');
 type RowData = mysql.RowDataPacket[];
 
 const FINAL_STATES = new Set(['paid', 'failed', 'cancelled', 'expired', 'refunded']);
+
+const PCI_SENSITIVE_FIELDS = new Set([
+  'pan', 'card_number', 'cvv', 'cvv2', 'exp', 'expiry', 'expire',
+  'source_data', 'card_holder', 'card_holder_name', 'billing_data',
+  'first_6_digits', 'last_4_digits', 'bin', 'sub_brand',
+]);
+
+function sanitizeGatewayResponse(raw: unknown): Record<string, any> | null {
+  if (!raw) return null;
+  if (typeof raw === 'string') {
+    try { return sanitizeGatewayResponse(JSON.parse(raw)); } catch { return null; }
+  }
+  if (typeof raw !== 'object' || Array.isArray(raw)) return raw as Record<string, any>;
+  const cleaned: Record<string, any> = {};
+  for (const [key, value] of Object.entries(raw as Record<string, any>)) {
+    if (PCI_SENSITIVE_FIELDS.has(key.toLowerCase().replace(/_/g, '').replace(/-/g, ''))) continue;
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      cleaned[key] = sanitizeGatewayResponse(value);
+    } else {
+      cleaned[key] = value;
+    }
+  }
+  return cleaned;
+}
 
 function parseBookingDateTime(bookingDate: unknown, startTime: unknown): Date | null {
   if (bookingDate == null || startTime == null) return null;
@@ -151,7 +176,7 @@ export class PaymentService {
       amount: input.amount,
       currency: input.currency,
       status: 'pending',
-      gatewayResponse: paymentResult.rawResponse || null,
+      gatewayResponse: sanitizeGatewayResponse(paymentResult.rawResponse),
       traceId,
       idempotencyKey: input.idempotencyKey,
     });
@@ -196,6 +221,33 @@ export class PaymentService {
     const data = payload as any;
     const isIntentionWebhook = !!data.obj;
     const obj = data.obj ?? data;
+
+    // ── Replay attack protection ──────────────────────────────────────
+    // Use webhook transaction ID or a composite key as unique identifier
+    const webhookId = obj.id || data.id || obj.merchant_order_id || obj.intention_id || data.transaction_id;
+    if (webhookId) {
+      const replayKey = `webhook:processed:${webhookId}`;
+      const redis = getRedisClient();
+      const alreadyProcessed = await redis.get(replayKey);
+      if (alreadyProcessed) {
+        log.info({ webhookId }, 'Duplicate webhook rejected (replay protection)');
+        return { received: true, note: 'duplicate (replay protected)' };
+      }
+      // Mark as processed with 24-hour TTL (well beyond any replay window)
+      await redis.set(replayKey, '1', 'EX', 86400);
+    }
+
+    // ── Timestamp validation (replay window: 5 minutes) ───────────────
+    const timestamp = obj.created_at || obj.timestamp || data.timestamp || data.created_at;
+    if (timestamp) {
+      const webhookTime = new Date(timestamp).getTime();
+      const now = Date.now();
+      const FIVE_MINUTES_MS = 5 * 60 * 1000;
+      if (Number.isNaN(webhookTime) || now - webhookTime > FIVE_MINUTES_MS || webhookTime > now + FIVE_MINUTES_MS) {
+        log.warn({ webhookId, timestamp, ageMs: now - webhookTime }, 'Webhook timestamp outside acceptable window — possible replay attack');
+        throw new Error('Webhook timestamp outside acceptable window');
+      }
+    }
 
     // Collect all possible gateway references from the payload
     const intentionOrderId = obj.intention_order_id;

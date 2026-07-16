@@ -175,6 +175,15 @@ export async function healthHandler(_request: FastifyRequest, reply: FastifyRepl
      WHERE intent_status = 'failed' AND created_at > NOW() - INTERVAL 24 HOUR
      GROUP BY failure_category`
   );
+  const [successRate] = await pool.execute<any[]>(
+    `SELECT
+       COUNT(*) as total,
+       SUM(CASE WHEN payment_status = 'paid' THEN 1 ELSE 0 END) as paid,
+       SUM(CASE WHEN payment_status = 'failed' THEN 1 ELSE 0 END) as failed,
+       SUM(CASE WHEN payment_status = 'refunded' THEN 1 ELSE 0 END) as refunded
+     FROM payment_transactions
+     WHERE created_at > NOW() - INTERVAL 7 DAY`
+  );
   const [migrationRows] = await pool.execute<any[]>(
     `SELECT filename FROM migration_history ORDER BY id DESC LIMIT 1`
   );
@@ -210,6 +219,11 @@ export async function healthHandler(_request: FastifyRequest, reply: FastifyRepl
   const dbMigration = migrationRows[0]?.filename || 'none';
   const migrationSynced = expectedMigration !== 'unknown' ? dbMigration.includes(expectedMigration) || dbMigration === expectedMigration : null;
 
+  const sr = successRate[0] || {};
+  const totalPayments = Number(sr.total) || 0;
+  const successCount = Number(sr.paid) || 0;
+  const failedCount = Number(sr.failed) || 0;
+
   return reply.send({
     status: 'ok',
     applicationVersion: read('/app/version.txt', 'APP_VERSION'),
@@ -222,6 +236,13 @@ export async function healthHandler(_request: FastifyRequest, reply: FastifyRepl
     failedLastHour: recentFailed[0]?.cnt || 0,
     intentFailedByCategory: Object.fromEntries(intentFailedByCategory.map((r: any) => [r.category, r.cnt])),
     lastWebhookAt: lastWebhook[0]?.last_at || null,
+    metrics: {
+      totalPayments7d: totalPayments,
+      successCount7d: successCount,
+      failedCount7d: failedCount,
+      successRate7d: totalPayments > 0 ? Number((successCount / totalPayments * 100).toFixed(1)) : null,
+      refundedCount7d: Number(sr.refunded) || 0,
+    },
     databaseMigrationVersion: dbMigration,
     expectedMigrationVersion: expectedMigration,
     migrationSynced,
