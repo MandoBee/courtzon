@@ -10,9 +10,7 @@ import { getPool } from '../../../database/mysql.js';
 import { getRedisClient } from '../../../infrastructure/redis/redis.client.js';
 import { createModuleLogger } from '../../../shared/utils/logger.js';
 import { eventBus } from '../../../shared/event-bus/index.js';
-import { bookingService } from '../../booking/application/booking.service.js';
-import { confirmBooking } from '../../../platform/booking/BookingSaga.js';
-import { confirmPayment, failPayment, refundPayment, expirePayment as sagaExpirePayment, emitPaymentCompleted } from '../../../platform/payment/PaymentSaga.js';
+import { refundPayment, expirePayment as sagaExpirePayment, emitPaymentCompleted } from '../../../platform/payment/PaymentSaga.js';
 
 const log = createModuleLogger('payment');
 
@@ -106,6 +104,17 @@ export class PaymentService {
     });
 
     emitPaymentCompleted(paymentId).catch((err) => log.error({ err, paymentId }, 'Failed to emit payment:completed via saga'));
+
+    eventBus.emit('payment:succeeded', {
+      paymentId,
+      referenceType: input.referenceType,
+      referenceId: input.referenceId,
+      amount: input.amount,
+      metadata: {
+        userId,
+        paymentMethod: 'wallet',
+      },
+    });
 
     log.info({ traceId, paymentId, userId, amount: input.amount, referenceType: input.referenceType }, 'Wallet payment completed');
 
@@ -364,20 +373,17 @@ export class PaymentService {
         );
         if (updateResult.affectedRows > 0) {
           log.info({ traceId, txnId: transaction.id, status: newStatus }, 'Payment cancelled/expired via webhook');
-          if (transaction.booking_id) {
-            if (transaction.reference_type === 'booking_intent') {
-              await conn.execute(
-                'UPDATE booking_intents SET intent_status = ?, failure_reason = ? WHERE id = ?',
-                [newStatus, `Payment ${newStatus} via webhook`, transaction.booking_id],
-              );
-              await this._cancelPendingBooking(conn, transaction.booking_id, traceId);
-            } else if (transaction.reference_type === 'booking') {
-              await conn.execute(
-                `UPDATE bookings SET booking_status = ?, payment_status = ?, updated_at = NOW() WHERE id = ? AND booking_status = 'pending'`,
-                [newStatus, newStatus, transaction.booking_id],
-              );
-            }
-          }
+          const refId = transaction.order_id || transaction.booking_id || null;
+          const eventName = newStatus === 'cancelled' ? 'payment:cancelled-event' as const : 'payment:expired-event' as const;
+          eventBus.emit(eventName, {
+            paymentId: transaction.id,
+            referenceType: transaction.reference_type,
+            referenceId: refId,
+            metadata: {
+              userId: transaction.user_id,
+              paymentMethod: transaction.payment_method,
+            },
+          });
         }
         return { idempotent: updateResult.affectedRows === 0 };
       });
@@ -400,12 +406,9 @@ export class PaymentService {
       if (txn) {
         const paymentId = (txn as any).id;
         if (newStatus === 'paid') {
-          await confirmPayment(paymentId, {
-            gatewayReference: resolvedGatewayRef,
-            paidAmount: Number((txn as any).amount) || 0,
-          }).catch((err) => log.error({ err, paymentId }, 'Failed to emit payment:completed via saga'));
+          emitPaymentCompleted(paymentId).catch((err) => log.error({ err, paymentId }, 'Failed to emit payment:completed via saga'));
         } else if (newStatus === 'failed') {
-          await failPayment(paymentId).catch((err) => log.error({ err, paymentId }, 'Failed to emit payment:failed via saga'));
+          // Saga event emitted via payment:failed-event from _processPaymentOutcome
         }
       }
     }
@@ -565,25 +568,33 @@ export class PaymentService {
       return { idempotent: true };
     }
 
-    // Fulfill business side-effects for successful payments
+    // Emit generic payment outcome events — business modules handle their own fulfillment
+    const refId = transaction.order_id || transaction.booking_id || transaction.reference_id || null;
     if (newStatus === 'paid') {
-      await this._fulfillPayment(conn, transaction, gatewayRef, traceId);
-    }
-
-    // Cancel/update booking when payment fails
-    if (newStatus === 'failed' && transaction.booking_id) {
-      if (transaction.reference_type === 'booking_intent') {
-        await conn.execute(
-          'UPDATE booking_intents SET intent_status = ?, failure_reason = ? WHERE id = ?',
-          [newStatus, gatewayStatus || `Payment ${newStatus}`, transaction.booking_id],
-        );
-        await this._cancelPendingBooking(conn, transaction.booking_id, traceId);
-      } else if (transaction.reference_type === 'booking') {
-        await conn.execute(
-          "UPDATE bookings SET booking_status = 'cancelled', payment_status = 'failed', updated_at = NOW() WHERE id = ? AND booking_status = 'pending'",
-          [transaction.booking_id],
-        );
-      }
+      eventBus.emit('payment:succeeded', {
+        paymentId: transaction.id,
+        referenceType: transaction.reference_type,
+        referenceId: refId,
+        amount: Number(transaction.amount),
+        metadata: {
+          gatewayRef: gatewayRef,
+          userId: transaction.user_id,
+          paymentMethod: transaction.payment_method,
+        },
+      });
+    } else if (newStatus === 'failed') {
+      eventBus.emit('payment:failed-event', {
+        paymentId: transaction.id,
+        referenceType: transaction.reference_type,
+        referenceId: refId,
+        amount: Number(transaction.amount),
+        reason: gatewayStatus || `Payment ${newStatus}`,
+        metadata: {
+          gatewayRef: gatewayRef,
+          userId: transaction.user_id,
+          paymentMethod: transaction.payment_method,
+        },
+      });
     }
 
     // Journal entry for this outcome
@@ -769,112 +780,9 @@ export class PaymentService {
     };
   }
 
-  /**
-   * Route fulfillment logic by reference type.
-   * ALL side effects happen within the same transaction as the payment status update.
-   */
-  private async _fulfillPayment(conn: mysql.PoolConnection, transaction: any, _gatewayRef: string, traceId: string): Promise<void> {
-    const refType = transaction.reference_type;
-
-    if (refType === 'order' && transaction.order_id) {
-      await this._fulfillOrder(conn, transaction, traceId);
-    } else if (refType === 'booking') {
-      await this._fulfillBooking(conn, transaction, traceId);
-    } else if (refType === 'booking_intent') {
-      const intentId = transaction.booking_id;
-      if (intentId) {
-        await bookingService.fulfillBookingIntent(intentId, conn);
-      }
-    } else if (refType === 'wallet_topup') {
-      await this._fulfillWalletTopup(conn, transaction, traceId);
-    }
-  }
-
-  private async _fulfillBooking(conn: mysql.PoolConnection, transaction: any, traceId: string): Promise<void> {
-    const bookingId = transaction.booking_id;
-    if (!bookingId) {
-      log.error({ traceId, txnId: transaction.id }, 'No booking on payment');
-      return;
-    }
-    await confirmBooking(bookingId, { paymentStatus: 'paid', paymentMethod: 'card' }, conn);
-
-    log.info({ traceId, bookingId }, 'Booking confirmed via webhook');
-  }
-
-  private async _fulfillOrder(conn: mysql.PoolConnection, transaction: any, traceId: string): Promise<void> {
-    const [orderRows] = await conn.execute<RowData>(
-      'SELECT buyer_id FROM orders WHERE id = ?', [transaction.order_id],
-    );
-    await conn.execute<mysql.ResultSetHeader>(
-      "UPDATE orders SET status = 'confirmed', paid_at = NOW(), payment_status = 'paid' WHERE id = ? AND status = 'pending'",
-      [transaction.order_id],
-    );
-    const buyerId = orderRows.length ? (orderRows[0] as any).buyer_id : null;
-    if (buyerId) {
-      await conn.execute('DELETE FROM cart_items WHERE user_id = ?', [buyerId]);
-    }
-    eventBus.emit('marketplace:order-confirmed', {
-      orderId: transaction.order_id,
-      userId: buyerId || (transaction as any).user_id || 0,
-      sellerId: 0,
-    });
-    log.info({ traceId, orderId: transaction.order_id }, 'Order confirmed');
-  }
-
-  private async _cancelPendingBooking(_conn: mysql.PoolConnection, intentId: number, traceId: string): Promise<void> {
-    // Under the payment-first architecture, no pending booking exists at this point
-    // (the booking is only created after payment confirmation via webhook).
-    // The booking_intent status is already updated by the caller.
-    log.info({ traceId, intentId }, 'No pending booking to cancel (payment-first architecture)');
-  }
-
-  private async _fulfillWalletTopup(conn: mysql.PoolConnection, transaction: any, traceId: string): Promise<void> {
-    const userId = transaction.user_id;
-    const amount = Number(transaction.amount);
-    const gatewayRef = transaction.gateway_reference;
-
-    // Idempotency: prevent double-credit by checking wallet_transactions for this gateway_ref
-    const [existing] = await conn.execute<RowData>(
-      `SELECT id FROM wallet_transactions
-       WHERE wallet_id = (SELECT id FROM user_wallets WHERE user_id = ?) AND transaction_type = 'deposit' AND description LIKE ?`,
-      [userId, `%${gatewayRef}%`],
-    );
-    if (existing.length > 0) {
-      log.info({ traceId, userId, gatewayRef }, 'Wallet already credited — idempotent skip');
-      return;
-    }
-
-    const [wallets] = await conn.execute<RowData>(
-      'SELECT * FROM user_wallets WHERE user_id = ? FOR UPDATE', [userId],
-    );
-    let wallet = wallets[0] as any;
-    if (!wallet) {
-      const [userRows] = await conn.execute<RowData>(
-        `SELECT c.default_currency FROM users u JOIN countries c ON c.id = u.country_id WHERE u.id = ?`,
-        [userId],
-      );
-      const currency = (userRows[0] as any)?.default_currency || 'EGP';
-      const [ins] = await conn.execute<mysql.ResultSetHeader>(
-        'INSERT INTO user_wallets (user_id, balance, currency_code) VALUES (?, ?, ?)',
-        [userId, 0, currency],
-      );
-      wallet = { id: ins.insertId, balance: 0, user_id: userId };
-    }
-
-    const newBalance = Number(wallet.balance) + amount;
-    await conn.execute(
-      'UPDATE user_wallets SET balance = ?, version = version + 1, updated_at = NOW() WHERE id = ?',
-      [newBalance, wallet.id],
-    );
-
-    await conn.execute(
-      `INSERT INTO wallet_transactions (wallet_id, transaction_type, amount, direction, reference_type, description)
-       VALUES (?, 'deposit', ?, 'credit', 'payment_gateway', ?)`,
-      [wallet.id, amount, `Paymob top-up — ref ${gatewayRef}`],
-    );
-
-    log.info({ traceId, userId, amount, newBalance, gatewayRef }, 'Wallet credited');
-  }
+  // Fulfillment removed — PaymentService is now generic.
+  // Business modules subscribe to payment:succeeded / payment:failed-event
+  // to handle their own fulfillment.
 
   /**
    * Refund a payment.
@@ -923,20 +831,16 @@ export class PaymentService {
       try {
         await withTransaction(async (conn) => {
           await sagaExpirePayment(ptx.id, conn);
-          if (ptx.booking_id) {
-            if (ptx.reference_type === 'booking_intent') {
-              await conn.execute(
-                "UPDATE booking_intents SET intent_status = 'expired', expires_at = NOW() WHERE id = ? AND expires_at > NOW()",
-                [ptx.booking_id],
-              );
-              await this._cancelPendingBooking(conn, ptx.booking_id, 'expiry-job');
-            } else if (ptx.reference_type === 'booking') {
-              await conn.execute(
-                "UPDATE bookings SET booking_status = 'expired', payment_status = 'expired', updated_at = NOW() WHERE id = ? AND booking_status = 'pending'",
-                [ptx.booking_id],
-              );
-            }
-          }
+          const refId = ptx.order_id || ptx.booking_id || null;
+          eventBus.emit('payment:expired-event', {
+            paymentId: ptx.id,
+            referenceType: ptx.reference_type,
+            referenceId: refId,
+            metadata: {
+              userId: ptx.user_id,
+              paymentMethod: ptx.payment_method,
+            },
+          });
           expired++;
           log.info({ txnId: ptx.id, gatewayRef: ptx.gateway_reference, created: ptx.created_at }, 'Payment expired');
         });

@@ -504,43 +504,19 @@ export const marketplaceService = {
           paymentMethod: 'wallet',
         });
         if (result.success) {
-          await repo.updateOrderStatus(orderId, 'confirmed');
-          await this._recordOrderFinancials(orderId);
-          await repo.createOrderStatusHistory({
-            orderId, toStatus: 'confirmed', changedBy: userId, changedByRole: 'system',
-            note: 'Payment via wallet',
-          });
-          await repo.clearCart(userId);
+          await this._fulfillAndConfirmOrder(orderId, userId, 'Payment via wallet');
           const orderRows = await repo.findOrderById(orderId);
-          const firstSellerId = orderRows?.[0]?.seller_id;
-          eventBus.emit('marketplace:order-confirmed', {
-            orderId,
-            userId,
-            sellerId: firstSellerId || 0,
-          });
           if (orderRows?.length) {
             const order = this._formatOrder(orderRows);
             return order;
           }
-    return this.getOrderForUser(orderId, userId);
+          return this.getOrderForUser(orderId, userId);
         }
       } catch {
         // Wallet payment failed — order stays pending
       }
     } else if (paymentMethod === 'cash') {
-      await repo.updateOrderStatus(orderId, 'confirmed');
-      await this._recordOrderFinancials(orderId);
-      await repo.createOrderStatusHistory({
-        orderId, toStatus: 'confirmed', changedBy: userId, changedByRole: 'system',
-        note: 'Payment on delivery (cash)',
-      });
-      await repo.clearCart(userId);
-      const cashOrderRows = await repo.findOrderById(orderId);
-      const cashSellerId = cashOrderRows?.[0]?.seller_id;
-      eventBus.emit('marketplace:order-confirmed', {
-        orderId, userId,
-        sellerId: cashSellerId || 0,
-      });
+      await this._fulfillAndConfirmOrder(orderId, userId, 'Payment on delivery (cash)');
       return this.getOrderForUser(orderId, userId);
     } else {
       // ── Card / Online payment via gateway ──
@@ -779,6 +755,76 @@ export const marketplaceService = {
     }
 
     return this.getOrder(orderId);
+  },
+
+  // ── Payment Event Handlers ──
+  // Called by the marketplace payment listener when payment:succeeded or payment:failed-event fires.
+  // For wallet/cash, fulfillment also happens synchronously in _processOrderPayment.
+  // Idempotent: safe to call multiple times.
+  async handlePaymentSucceeded(data: { paymentId: number; referenceType: string; referenceId: number; amount: number; metadata?: Record<string, any> }) {
+    if (data.referenceType !== 'order' || !data.referenceId) return;
+
+    const orderRows = await repo.findOrderById(data.referenceId);
+    if (!orderRows?.length) {
+      log.error({ referenceId: data.referenceId }, 'handlePaymentSucceeded: order not found');
+      return;
+    }
+    const order = orderRows[0] as any;
+    if (order.status === 'confirmed') {
+      log.info({ orderId: data.referenceId }, 'handlePaymentSucceeded: order already confirmed — idempotent');
+      return;
+    }
+
+    await this._fulfillAndConfirmOrder(data.referenceId, order.buyer_id, 'Payment confirmed');
+  },
+
+  async handlePaymentFailed(data: { paymentId: number; referenceType: string; referenceId: number; amount: number; reason?: string; metadata?: Record<string, any> }) {
+    if (data.referenceType !== 'order' || !data.referenceId) return;
+
+    log.error({ orderId: data.referenceId, reason: data.reason }, 'handlePaymentFailed: order payment failed');
+    // Restore stock — order items still exist
+    const orderRows = await repo.findOrderById(data.referenceId);
+    const currencyCode = orderRows?.length ? (orderRows[0] as any).currency_code || 'EGP' : 'EGP';
+    if (orderRows?.length) {
+      for (const row of orderRows as any[]) {
+        if (!row.product_id) continue;
+        await repo.restoreStock(row.product_id, row.variant_id, row.quantity);
+        await repo.insertLedgerEntry({
+          orderId: data.referenceId, organisationId: row.item_seller_id || 0,
+          entryType: 'reversal', amount: row.quantity,
+          currencyCode,
+          description: `Payment failed — stock restored for ${row.product_name || 'item #' + row.product_id}`,
+          metadata: { reason: data.reason || 'payment_failed', productId: row.product_id },
+        });
+      }
+    }
+    // Update order status
+    await repo.updateOrderStatus(data.referenceId, 'cancelled', data.reason || 'Payment failed');
+    // Notify
+    const userId = data.metadata?.userId || (orderRows?.length ? orderRows[0].buyer_id : 0) || 0;
+    eventBus.emit('marketplace:order-cancelled', {
+      orderId: data.referenceId,
+      userId,
+      reason: data.reason || 'Payment failed',
+    });
+  },
+
+  // ── Shared order fulfillment (wallet, cash, and event-driven) ──
+  // Marks order as confirmed, records financials, clears cart, emits notification.
+  async _fulfillAndConfirmOrder(orderId: number, userId: number, note: string) {
+    await repo.updateOrderStatus(orderId, 'confirmed');
+    await this._recordOrderFinancials(orderId);
+    await repo.createOrderStatusHistory({
+      orderId, toStatus: 'confirmed', changedBy: userId, changedByRole: 'system',
+      note,
+    });
+    await repo.clearCart(userId);
+    const orderRows = await repo.findOrderById(orderId);
+    const sellerId = orderRows?.[0]?.seller_id || 0;
+    eventBus.emit('marketplace:order-confirmed', {
+      orderId, userId,
+      sellerId,
+    });
   },
 
   // ── Financial recording: Confirmed ──

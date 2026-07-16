@@ -106,6 +106,12 @@ async function bootstrap() {
     startMatchModule();
     app.log.info('Match module event handlers registered');
 
+    const { registerMarketplacePaymentListeners } = await import('./modules/marketplace/application/marketplace-payment.listener.js');
+    registerMarketplacePaymentListeners();
+
+    const { registerBookingPaymentListeners } = await import('./modules/booking/application/booking-payment.listener.js');
+    registerBookingPaymentListeners();
+
     await queueService.add('cancel_expired_bookings', { cutoffMinutes: 5 }, {
       repeat: { every: 120_000 },
       removeOnComplete: true,
