@@ -330,7 +330,7 @@ function AppLayout() {
       <WelcomeModal />
       <OfflineBanner />
       <Navbar />
-      <main className="flex-1 overflow-y-auto min-h-0 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 pt-6 pb-20 md:pb-6 overflow-x-hidden">
+      <main className="flex-1 overflow-y-auto min-h-0 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 pt-6 pb-20 md:pb-6 overflow-x-hidden cz-scrollbar-hide">
         <ErrorBoundary>
           <Outlet />
         </ErrorBoundary>

@@ -905,7 +905,16 @@ html[dir="rtl"] {
     padding-bottom: calc(4rem + env(safe-area-inset-bottom, 0px) + 1.5rem);
   }
 
-  /* Bottom-sheet / slide animations */
+    /* Scrollbar: hide in main content areas (keeps scroll behavior) */
+  .cz-scrollbar-hide {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .cz-scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+
+/* Bottom-sheet / slide animations */
   .cz-sheet-enter {
     animation: cz-sheet-slide-up 280ms cubic-bezier(0.32, 0.72, 0, 1) both;
   }
