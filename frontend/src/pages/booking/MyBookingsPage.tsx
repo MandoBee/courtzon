@@ -191,7 +191,9 @@ export default function MyBookingsPage() {
             </div>
 
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mb-3">
-              <h3 className="font-semibold text-base text-[var(--color-text)] leading-snug">{booking.resource_name}</h3>
+              <h3 className="font-semibold text-base text-[var(--color-text)] leading-snug">
+                {booking.booking_type === 'coach_session' && booking.coach_name ? `Session with ${booking.coach_name}` : booking.resource_name}
+              </h3>
               <span className={`px-2 py-0.5 text-xs rounded-full font-medium ${statusColors[booking.booking_status] || ''}`}>
                 {booking.booking_status}
               </span>
@@ -205,6 +207,9 @@ export default function MyBookingsPage() {
               )}
               {booking.booking_type === 'private_match' && (
                 <span className="text-xs font-semibold text-[var(--color-text-muted)]">Private</span>
+              )}
+              {booking.booking_type === 'coach_session' && (
+                <span className="text-xs font-semibold text-[var(--color-warning)]">Coach Session</span>
               )}
             </div>
 

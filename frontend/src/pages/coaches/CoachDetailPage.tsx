@@ -7,6 +7,7 @@ import { useAuthStore } from '../../store/auth.store';
 import { useToast } from '../../components/ui/Toast';
 import { useFeatureFlag } from '../../hooks/useFeatureFlag';
 import { Can } from '../../permissions/Can';
+import { SkeletonRow } from '../../components/ui';
 
 export default function CoachDetailPage() {
   const { id } = useParams();
@@ -15,6 +16,7 @@ export default function CoachDetailPage() {
   const { showToast } = useToast();
   const [rating, setRating] = useState(5);
   const [reviewText, setReviewText] = useState('');
+  const engineEnabled = useFeatureFlag('coaching.engine_booking_enabled');
 
   const { data: coach, isLoading } = useQuery({
     queryKey: ['coach', id],
@@ -37,11 +39,7 @@ export default function CoachDetailPage() {
   const chatEnabled = useFeatureFlag('community.chat_enabled');
 
   if (isLoading) {
-    return (
-      <div className="flex items-center justify-center py-20">
-        <div className="animate-spin h-8 w-8 border-4 border-[var(--color-primary)] border-t-transparent rounded-full" />
-      </div>
-    );
+    return <div className="py-8"><SkeletonRow count={4} /></div>;
   }
 
   if (!coach) {
@@ -50,6 +48,10 @@ export default function CoachDetailPage() {
 
   const certs = Array.isArray(coach.certifications) ? coach.certifications
     : typeof coach.certifications === 'string' ? JSON.parse(coach.certifications) : [];
+
+  const bookLink = engineEnabled
+    ? `/coaches/book/session?coachId=${id}`
+    : `/coaches/${id}/book`;
 
   return (
     <div className="max-w-3xl mx-auto">
@@ -92,7 +94,7 @@ export default function CoachDetailPage() {
         {!isOwn && (
           <div className="flex flex-wrap gap-2">
             <Link
-              to={`/coaches/${id}/book`}
+              to={bookLink}
               className="inline-block px-6 py-2.5 bg-[var(--color-primary)] text-white rounded-[var(--radius-md)] text-sm font-medium"
             >
               Book a Session
@@ -132,7 +134,7 @@ export default function CoachDetailPage() {
       )}
 
       {coach.agreements?.length > 0 && (
-        <div className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] p-6">
+        <div className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] p-6 mb-6">
           <h2 className="font-semibold text-[var(--color-text)] mb-3">Partner Organisations</h2>
           <div className="space-y-2">
             {coach.agreements.map((a: any) => (
@@ -145,11 +147,6 @@ export default function CoachDetailPage() {
                     </span>
                   )}
                 </div>
-                {!isOwn && (
-                  <Link to={`/coaches/${id}/book?orgId=${a.organisation_id}`} className="px-3 py-1.5 bg-[var(--color-primary)] text-white rounded-[var(--radius-md)] text-xs font-medium">
-                    Book
-                  </Link>
-                )}
               </div>
             ))}
           </div>

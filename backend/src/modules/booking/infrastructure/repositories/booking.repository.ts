@@ -131,10 +131,16 @@ export class BookingRepository {
 
   async findById(id: number): Promise<any | null> {
     const [rows] = await this.pool.execute<RowData>(
-      `SELECT b.*, r.name as resource_name, br.name as branch_name
+      `SELECT b.*, r.name as resource_name, br.name as branch_name,
+              cs.id as session_id, cs.status as session_status,
+              cp.full_name as coach_name, cp.hourly_rate as coach_hourly_rate,
+              u.full_name as player_name
        FROM bookings b
        JOIN resources r ON r.id = b.resource_id
        JOIN branches br ON br.id = b.branch_id
+       LEFT JOIN coach_sessions cs ON cs.booking_id = b.id
+       LEFT JOIN coach_profiles cp ON cp.id = cs.coach_id
+       LEFT JOIN users u ON u.id = cs.player_id
        WHERE b.id = ?`,
       [id]
     );
@@ -163,11 +169,14 @@ export class BookingRepository {
                       CASE WHEN b.booking_type = 'public_match'
                         THEN (SELECT COUNT(*) FROM join_requests jr JOIN matches m ON m.id = jr.match_id WHERE m.booking_id = b.id)
                         ELSE (SELECT COUNT(*) FROM booking_invitations WHERE booking_id = b.id)
-                      END as applied_count
+                      END as applied_count,
+                      cp.full_name as coach_name, cs.id as session_id, cs.status as session_status
                FROM bookings b
                JOIN resources r ON r.id = b.resource_id
                JOIN branches br ON br.id = b.branch_id
                JOIN organisations org ON org.id = br.organisation_id
+               LEFT JOIN coach_sessions cs ON cs.booking_id = b.id
+               LEFT JOIN coach_profiles cp ON cp.id = cs.coach_id
                ${baseWhere}${extraClause}`;
     const params: any[] = [...baseParams];
     if (_status) { sql += ' AND b.booking_status = ?'; params.push(_status); }

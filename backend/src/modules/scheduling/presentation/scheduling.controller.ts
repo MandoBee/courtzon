@@ -8,6 +8,8 @@ import { activitiesRepository } from '../../activities/infrastructure/repositori
 import { resourceRepository } from '../../organisations/infrastructure/repositories/resource.repository.js';
 import { schedulingBookingService } from '../application/scheduling-booking.service.js';
 import { createModuleLogger } from '../../../shared/utils/logger.js';
+import { eventBus } from '../../../shared/event-bus/index.js';
+import { recordAudit } from '../../audit-log/index.js';
 import type { ResourceProvider } from '../types.js';
 
 const log = createModuleLogger('scheduling');
@@ -145,6 +147,24 @@ export async function bookSessionHandler(request: FastifyRequest, reply: Fastify
 
   const elapsedMs = Date.now() - startMs;
   log.info({ bookingId: result.bookingId, sessionId: result.sessionId, status: result.status, elapsedMs }, 'Book session completed');
+
+  // Emit notification event so the coach receives a booking notification
+  eventBus.emit('coaching:session-scheduled', {
+    sessionId: result.sessionId,
+    coachId: input.coachId,
+    userId,
+    startTime: new Date(`${input.date}T${input.startTime}:00`),
+  });
+
+  recordAudit({
+    actorId: userId,
+    action: 'COACH.SESSION_BOOKED',
+    entityType: 'coach_session',
+    entityId: result.sessionId,
+    afterState: { coachId: input.coachId, resourceId: input.resourceId, date: input.date, startTime: input.startTime, endTime: input.endTime },
+    ipAddress: request.ip,
+    userAgent: request.headers['user-agent'],
+  });
 
   return reply.status(201).send(result);
 }

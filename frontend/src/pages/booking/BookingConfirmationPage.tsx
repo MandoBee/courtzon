@@ -52,9 +52,14 @@ export default function BookingConfirmationPage() {
             Your payment is being verified. This should only take a moment.
           </p>
         )}
+        <p className="text-sm text-[var(--color-text-muted)] mb-1">
+          {booking?.booking_type === 'coach_session' && booking?.coach_name ? (
+            <>Coach: <strong className="text-[var(--color-text)]">{booking.coach_name}</strong></>
+          ) : (
+            <>{booking?.resource_name} at {booking?.branch_name}</>
+          )}
+        </p>
         <p className="text-sm text-[var(--color-text-muted)] mb-6">
-          {booking?.resource_name} at {booking?.branch_name}
-          <br />
           {formatISODate(booking?.booking_date)} &bull; {booking?.start_time?.slice(0, 5)} - {booking?.end_time?.slice(0, 5)}
         </p>
 
