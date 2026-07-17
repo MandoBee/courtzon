@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { NotFoundError, ConflictError, ForbiddenError } from '../../../shared/errors/app-error.js';
 import { marketplaceRepository as repo } from '../infrastructure/repositories/marketplace.repository.js';
 import { paymentService } from '../../payment/application/payment.service.js';
@@ -294,8 +295,15 @@ export const marketplaceService = {
 
   // ── Orders ──
   async checkout(userId: number, data: any) {
+    const traceId = randomUUID();
+    log.info({ traceId, userId, paymentMethod: data.paymentMethod }, 'checkout: started');
+
     const cartItems = await repo.findCartByUser(userId);
-    if (!cartItems.length) throw new ConflictError('Cart is empty');
+    if (!cartItems.length) {
+      log.warn({ traceId, userId }, 'checkout: cart is empty');
+      throw new ConflictError('Cart is empty');
+    }
+    log.info({ traceId, cartItemCount: cartItems.length, sellers: [...new Set(cartItems.map((i: any) => i.seller_id))] }, 'checkout: cart loaded');
 
     // ── Batch pre-fetch: all products + variants in 2 queries ──
     const productIds = [...new Set(cartItems.map((i: any) => i.product_id))];
@@ -333,7 +341,20 @@ export const marketplaceService = {
       const lineTotal = effectivePrice * item.quantity;
       sellerShares.set(product.seller_id, (sellerShares.get(product.seller_id) || 0) + lineTotal);
       if (!seenSellers.has(product.seller_id)) {
+        // Verify seller has an active subscription (not just pending)
+        const sellerOrgId = product.seller_id;
+        const { getCurrentSubscription } = await import('../../../shared/utils/current-subscription.resolver.js');
+        const sellerSub = await getCurrentSubscription(sellerOrgId);
+        if (!sellerSub.exists) {
+          throw new ConflictError(`Seller "${item.name || product.name}" has no active subscription plan`);
+        }
+        if (sellerSub.effectiveStatus !== 'active') {
+          log.warn({ traceId, sellerOrgId, status: sellerSub.effectiveStatus }, 'checkout: seller subscription is not active');
+          throw new ConflictError(`Seller "${item.name || product.name}" does not have an active subscription`);
+        }
+
         const comm = await commissionService.calculate(product.seller_id, 'marketplace', 100);
+        log.info({ traceId, sellerId: product.seller_id, commission: comm.rate, rateType: comm.rateType, planName: comm.planName }, 'checkout: seller commission resolved');
         seenSellers.set(product.seller_id, {
           sellerId: product.seller_id,
           commission: comm.rate,
@@ -416,6 +437,7 @@ export const marketplaceService = {
       paymentMethod: data.paymentMethod || 'wallet',
       estimatedDeliveryDate,
     });
+    log.info({ traceId, orderId, total, currencyCode, paymentMethod: data.paymentMethod }, 'checkout: order created');
 
     // ── Second pass: create order items using pre-fetched product map ──
     for (const item of cartItems) {
@@ -504,7 +526,10 @@ export const marketplaceService = {
       total,
       organisationId: firstSellerId || undefined,
     });
-    return this._processOrderPayment(userId, orderId, total, currencyCode, data.paymentMethod, data.returnUrl, customerData);
+    log.info({ traceId, orderId, paymentMethod: data.paymentMethod, total }, 'checkout: processing payment');
+    const result = this._processOrderPayment(userId, orderId, total, currencyCode, data.paymentMethod, data.returnUrl, customerData);
+    log.info({ traceId, orderId, paymentMethod: data.paymentMethod }, 'checkout: completed successfully');
+    return result;
   },
 
   async _processOrderPayment(userId: number, orderId: number, total: number, currency: string, paymentMethod: string, returnUrl?: string, customerData?: { customerEmail?: string; customerPhone?: string; customerName?: string; customerAddress?: Record<string, any> }) {
