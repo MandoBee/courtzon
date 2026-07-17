@@ -724,6 +724,17 @@ export class OrganisationService {
     const { getEffectivePlanConfig } = await import('../../../shared/utils/plan-resolver.js');
     const config = await getEffectivePlanConfig(orgId);
 
+    // Resolve plan name: snapshot → live plan → fallback
+    let planName = config?.planName;
+    if (!planName && sub.plan_id) {
+      const [pRows] = await pool.execute<RowData>(
+        'SELECT plan_name FROM subscription_plans WHERE id = ?', [sub.plan_id]
+      );
+      planName = pRows.length ? pRows[0].plan_name : 'Unknown';
+    } else if (!planName) {
+      planName = 'Unknown';
+    }
+
     const billingCycle = (config?.billingCycle || sub.billing_cycle || 'monthly') as BillingPeriod;
     const priceMonthly = config?.priceMonthly ?? null;
     const priceYearly = config?.priceYearly ?? null;
@@ -735,7 +746,7 @@ export class OrganisationService {
     return {
       id: sub.id,
       planId: sub.plan_id,
-      planName: config?.planName || sub.plan_name || 'Unknown',
+      planName,
       price: resolvePlanPrice(pricing, billingCycle),
       priceMonthly,
       priceYearly,

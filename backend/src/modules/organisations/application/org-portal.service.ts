@@ -143,6 +143,19 @@ export async function getOrgSubscriptionWithUsage(orgId: number) {
   const usage = await repo.getFeatureUsageCounts(orgId);
   const pendingRequest = await repo.getOrgPendingSubscriptionRequest(orgId);
 
+  // Resolve plan name: snapshot → live plan → fallback
+  let planName = config?.planName;
+  if (!planName && sub.plan_id) {
+    const { getPool } = await import('../../../database/mysql.js');
+    const pool = getPool();
+    const [pRows] = await pool.execute<any[]>(
+      'SELECT plan_name FROM subscription_plans WHERE id = ?', [sub.plan_id]
+    );
+    planName = pRows.length ? pRows[0].plan_name : 'Unknown';
+  } else if (!planName) {
+    planName = 'Unknown';
+  }
+
   const featureList = (config?.features || []).map((f: any) => ({
     featureKey: f.featureKey,
     label: f.label,
@@ -158,7 +171,7 @@ export async function getOrgSubscriptionWithUsage(orgId: number) {
   return {
     id: sub.id,
     planId: sub.plan_id,
-    planName: config?.planName || sub.plan_name || 'Unknown',
+    planName,
     priceMonthly: config?.priceMonthly ?? null,
     priceYearly: config?.priceYearly ?? null,
     isUnlimited: !!config?.isUnlimited,
