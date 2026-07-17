@@ -1,29 +1,18 @@
 import { useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
-import api from '../../services/api';
 import { Can } from '../../permissions/Can';
 import OrganisationForm from '../../components/organisations/OrganisationForm';
-import SubscriptionRequestModal from '../../components/subscription/SubscriptionRequestModal';
+import SubscriptionCard from '../../components/subscription/SubscriptionCard';
 import OrgShippingRatesPage from './OrgShippingRatesPage';
 
 type SettingsTab = 'general' | 'shipping-rates';
 
 export default function OrgSettingsPage() {
   const { orgId } = useParams<{ orgId: string }>();
-  const [showRequestModal, setShowRequestModal] = useState(false);
-  const [requestType, setRequestType] = useState<'NEW_SUBSCRIPTION' | 'PLAN_CHANGE'>('PLAN_CHANGE');
   const [activeTab, setActiveTab] = useState<SettingsTab>('general');
-
-  const { data: subscription } = useQuery<any>({
-    queryKey: ['org-subscription', orgId],
-    queryFn: () => api.get(`/org/${orgId}/subscription`).then(r => r.data),
-    enabled: !!orgId,
-  });
 
   if (!orgId) return <div>Invalid organisation</div>;
 
-  const sub = subscription;
   const tabs: { key: SettingsTab; label: string; permission?: string }[] = [
     { key: 'general', label: 'General' },
     { key: 'shipping-rates', label: 'Shipping Rates', permission: 'org.settings.shipping-rates-tab' },
@@ -55,98 +44,8 @@ export default function OrgSettingsPage() {
 
       {activeTab === 'general' && (
         <>
-      {/* Subscription Plan Card */}
-      {sub && (
-        <div className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] border border-[var(--color-border)] p-5">
-          <div className="flex items-start justify-between mb-3">
-            <div>
-              <h2 className="font-semibold text-[var(--color-text)]">
-                {sub.planName || 'No Plan'}
-              </h2>
-              <p className="text-xs text-[var(--color-text-muted)]">
-                {sub.isUnlimited
-                  ? 'Unlimited / One-time'
-                  : sub.priceMonthly != null
-                    ? `${Number(sub.priceMonthly).toFixed(0)} EGP/${sub.billingCycle || 'mo'}`
-                    : sub.priceYearly != null
-                      ? `${Number(sub.priceYearly).toFixed(0)} EGP/yr`
-                      : 'N/A'}
-                {sub.status && (
-                  <span className={`ml-2 px-1.5 py-0.5 rounded-full text-[10px] font-medium ${
-                    sub.status === 'active' ? 'bg-[var(--color-success-bg)] text-[var(--color-success-text)]' :
-                    sub.status === 'pending' ? 'bg-[var(--color-warning-bg)] text-[var(--color-warning-text)]' :
-                    'bg-[var(--color-error-bg)] text-[var(--color-error-text)]'
-                  }`}>{sub.status}</span>
-                )}
-              </p>
-            </div>
-            <div className="flex flex-col items-end gap-2">
-              {sub.endDate && (
-                <span className={`text-xs px-2 py-1 rounded-[var(--radius-md)] ${
-                  new Date(sub.endDate) < new Date()
-                    ? 'bg-[var(--color-error-bg)] text-[var(--color-error-text)]'
-                    : 'bg-[var(--color-bg)] text-[var(--color-text-muted)]'
-                }`}>
-                  {new Date(sub.endDate) < new Date() ? 'Expired: ' : 'Expires: '}
-                  {new Date(sub.endDate).toLocaleDateString('en-GB')}
-                </span>
-              )}
-              {sub.status === 'none' && (
-                <span className="text-xs text-[var(--color-text-muted)]">No active subscription</span>
-              )}
-              <Can permission="subscription.request">
-                {sub.pendingRequest ? (
-                  <div className="bg-[var(--color-warning-bg)] border border-[var(--color-warning-border)] rounded-[var(--radius-md)] p-3 text-xs text-[var(--color-warning-text)] max-w-xs">
-                    <p className="font-medium mb-1">Pending {sub.pendingRequest.requestType === 'NEW_SUBSCRIPTION' ? 'Subscription' : 'Change'} Request</p>
-                    <p>
-                      {sub.pendingRequest.requestType === 'NEW_SUBSCRIPTION' ? 'Requesting' : 'Changing to'}: <strong>{sub.pendingRequest.requestedPlanName}</strong>
-                    </p>
-                    <p className="mt-1">Submitted: {new Date(sub.pendingRequest.createdAt).toLocaleDateString('en-GB')}</p>
-                  </div>
-                ) : (
-                  <button
-                    onClick={() => {
-                      setRequestType(sub.planId ? 'PLAN_CHANGE' : 'NEW_SUBSCRIPTION');
-                      setShowRequestModal(true);
-                    }}
-                    className="px-3 py-1.5 bg-[var(--color-primary)] text-white rounded-[var(--radius-md)] text-xs font-medium"
-                  >
-                    {sub.planId ? 'Change Subscription' : 'Request Subscription'}
-                  </button>
-                )}
-              </Can>
-            </div>
-          </div>
-
-          {sub.features && sub.features.length > 0 && (
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-              {sub.features.map((f: any) => {
-                const isNumeric = f.valueType === 'numeric';
-                const limit = parseInt(f.value, 10);
-                const atLimit = isNumeric && f.usage >= limit && limit > 0 && !isNaN(limit);
-                return (
-                  <div key={f.featureKey}
-                    className={`flex items-center justify-between text-xs p-1.5 rounded ${
-                      atLimit ? 'bg-[var(--color-error-bg)] border border-[var(--color-error-border)]' : 'bg-[var(--color-bg)]'
-                    }`}
-                  >
-                    <span className="text-[var(--color-text-muted)]">{f.label}</span>
-                    <span className={`font-medium ${atLimit ? 'text-[var(--color-error)]' : 'text-[var(--color-text)]'}`}>
-                      {isNumeric
-                        ? `${f.usage}/${f.value === '-1' || isNaN(limit) ? '∞' : f.value}${f.unit ? ' ' + f.unit : ''}`
-                        : f.valueType === 'boolean'
-                          ? (f.value === 'true' ? '✓' : '—')
-                          : String(f.value || '—')}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      )}
-
-      <OrganisationForm orgId={parseInt(orgId, 10)} context="org" onClose={() => {}} />
+          <SubscriptionCard orgId={parseInt(orgId, 10)} />
+          <OrganisationForm orgId={parseInt(orgId, 10)} context="org" onClose={() => {}} />
         </>
       )}
 
@@ -155,13 +54,6 @@ export default function OrgSettingsPage() {
           <OrgShippingRatesPage orgId={orgId} />
         </Can>
       )}
-
-      <SubscriptionRequestModal
-        orgId={parseInt(orgId, 10)}
-        open={showRequestModal}
-        requestType={requestType}
-        onClose={() => setShowRequestModal(false)}
-      />
     </div>
   );
 }
