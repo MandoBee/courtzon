@@ -51,3 +51,21 @@ export interface PaymentStatusResult {
   paymentMethod: string | null;
   totalAmount: string;
 }
+
+export const CancellationReason = {
+  PAYMENT_SESSION_CREATION_FAILED: 'Payment session creation failed',
+  PAYMENT_CANCELLED_BY_USER: 'Payment cancelled by user',
+  PAYMENT_DECLINED: 'Payment declined',
+  PAYMENT_TIMEOUT: 'Payment timeout',
+  PAYMENT_GATEWAY_ERROR: 'Payment gateway error',
+  SYSTEM_ERROR: 'System error',
+  ADMIN_CANCELLED: 'Cancelled by admin',
+  CUSTOMER_CANCELLED: 'Cancelled by customer',
+  AUTO_CANCELLED_PAYMENT_TIMEOUT: 'Auto-cancelled: payment timeout',
+  AUTO_CANCELLED_UNPAID: 'Auto-cancelled: unpaid',
+  PARENT_DELETED: 'Auto-cancelled: parent deleted',
+  COMPENSATION: 'Compensation: failed coach session',
+  SESSION_DECLINED: 'Session declined',
+} as const;
+
+export type CancellationReasonValue = (typeof CancellationReason)[keyof typeof CancellationReason];

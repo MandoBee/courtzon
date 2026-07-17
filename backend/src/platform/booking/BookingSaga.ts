@@ -45,6 +45,14 @@ function emit(eventName: string, payload: BookingEventPayload): void {
   eventBus.emit(eventName as any, payload);
 }
 
+async function releaseBookingSlots(bookingId: number, conn?: mysql.PoolConnection): Promise<void> {
+  const pool = conn || getPool();
+  await pool.execute(
+    'UPDATE booking_slots SET is_available = TRUE WHERE booking_id = ? AND is_available = FALSE',
+    [bookingId],
+  );
+}
+
 export async function confirmBooking(
   bookingId: number,
   context: ConfirmContext,
@@ -57,11 +65,8 @@ export async function confirmBooking(
 
   const paymentStatus = context.paymentMethod === 'cash' || context.paymentMethod === 'cod'
     ? 'pending' : 'paid';
-  await bookingRepository.updateBookingStatus(bookingId, nextStatus, paymentStatus, conn);
+  await bookingRepository.persistTransition(bookingId, nextStatus, paymentStatus, undefined, conn);
 
-  // Mark all booking_slots for this booking as unavailable (safety net —
-  // slots are normally created when the booking is first created, but some
-  // booking types / edge cases may skip that step)
   const pool = conn || getPool();
   await pool.execute(
     'UPDATE booking_slots SET is_available = FALSE WHERE booking_id = ? AND is_available = TRUE',
@@ -87,7 +92,16 @@ export async function cancelBooking(
   const nextStatus = bookingAggregate.cancel(booking.booking_status);
 
   const newPaymentStatus = paymentStatusOverride ?? (feeAmount > 0 ? 'refunded' : booking.payment_status);
-  await bookingRepository.cancelWithRefund(bookingId, actorId, reason, feeAmount, newPaymentStatus, conn);
+
+  const db = conn || getPool();
+  await db.execute(
+    `INSERT INTO booking_cancellations (booking_id, cancelled_by, reason, refund_amount)
+     VALUES (?, ?, ?, ?)`,
+    [bookingId, actorId, reason, feeAmount],
+  );
+  await bookingRepository.persistTransition(bookingId, 'cancelled', newPaymentStatus, undefined, conn);
+
+  await releaseBookingSlots(bookingId, conn);
 
   const payload = buildPayload(booking, nextStatus);
   emit('booking:cancelled', payload);
@@ -103,7 +117,9 @@ export async function expireBooking(
 
   const nextStatus = bookingAggregate.expire(booking.booking_status);
 
-  await bookingRepository.updateBookingStatus(bookingId, nextStatus, 'expired', conn);
+  await bookingRepository.persistTransition(bookingId, nextStatus, 'expired', undefined, conn);
+
+  await releaseBookingSlots(bookingId, conn);
 
   const payload = buildPayload(booking, nextStatus);
   emit('booking:expired', payload);
@@ -119,7 +135,7 @@ export async function checkInBooking(
 
   const nextStatus = bookingAggregate.checkIn(booking.booking_status);
 
-  await bookingRepository.checkIn(bookingId, conn);
+  await bookingRepository.persistTransition(bookingId, 'checked_in', undefined, undefined, conn);
 
   const payload = buildPayload(booking, nextStatus);
   emit('booking:check-in', payload);
@@ -139,13 +155,18 @@ export async function noShowBooking(
 
   const nextStatus = bookingAggregate.noShow(booking.booking_status);
 
-  if (paymentStatusOverride) {
-    await bookingRepository.markNoShowWithRefund(bookingId, actorId, reason, feeAmount, paymentStatusOverride, conn);
-  } else if (booking.payment_status === 'paid') {
-    await bookingRepository.markNoShowWithRefund(bookingId, actorId, reason, 0, 'penalty', conn);
-  } else {
-    await bookingRepository.markNoShow(bookingId, conn);
-  }
+  const effectivePaymentStatus = paymentStatusOverride
+    ?? (booking.payment_status === 'paid' ? 'penalty' : booking.payment_status);
+
+  const db = conn || getPool();
+  await db.execute(
+    `INSERT INTO booking_cancellations (booking_id, cancelled_by, reason, refund_amount)
+     VALUES (?, ?, ?, ?)`,
+    [bookingId, actorId, reason, feeAmount],
+  );
+  await bookingRepository.persistTransition(bookingId, 'no_show', effectivePaymentStatus, undefined, conn);
+
+  await releaseBookingSlots(bookingId, conn);
 
   const payload = buildPayload(booking, nextStatus);
   emit('booking:no-show', payload);
@@ -163,9 +184,9 @@ export async function completeBooking(
   const nextStatus = bookingAggregate.complete(booking.booking_status);
 
   if (paymentStatus) {
-    await bookingRepository.updateBookingStatus(bookingId, nextStatus, paymentStatus, conn);
+    await bookingRepository.persistTransition(bookingId, nextStatus, paymentStatus, undefined, conn);
   } else {
-    await bookingRepository.updateStatus(bookingId, nextStatus, conn);
+    await bookingRepository.persistTransition(bookingId, nextStatus, undefined, undefined, conn);
   }
 
   const payload = buildPayload(booking, nextStatus);
@@ -186,9 +207,26 @@ export async function cancelWithFeeBooking(
   const nextStatus = bookingAggregate.cancelWithFee(booking.booking_status);
 
   const newPaymentStatus = feeAmount > 0 ? 'partially_refunded' : 'penalty';
-  await bookingRepository.cancelWithRefund(bookingId, actorId, reason, feeAmount, newPaymentStatus, conn);
+
+  const db = conn || getPool();
+  await db.execute(
+    `INSERT INTO booking_cancellations (booking_id, cancelled_by, reason, refund_amount)
+     VALUES (?, ?, ?, ?)`,
+    [bookingId, actorId, reason, feeAmount],
+  );
+  await bookingRepository.persistTransition(bookingId, 'cancelled_with_fee', newPaymentStatus, undefined, conn);
+
+  await releaseBookingSlots(bookingId, conn);
 
   const payload = buildPayload(booking, nextStatus);
   emit('booking:cancelled', payload);
   return payload;
+}
+
+export async function updateBookingPaymentStatus(
+  bookingId: number,
+  paymentStatus: string,
+  conn?: mysql.PoolConnection,
+): Promise<void> {
+  await bookingRepository.persistPaymentStatus(bookingId, paymentStatus, conn);
 }

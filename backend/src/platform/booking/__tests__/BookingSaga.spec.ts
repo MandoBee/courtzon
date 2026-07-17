@@ -1,15 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { Mock } from 'vitest';
 
+const mockExecute = vi.fn().mockResolvedValue([[{ affectedRows: 0 }], undefined]);
+
 vi.mock('../../../modules/booking/infrastructure/repositories/booking.repository.js', () => ({
   bookingRepository: {
     findById: vi.fn(),
-    updateBookingStatus: vi.fn(),
-    updateStatus: vi.fn(),
-    cancelWithRefund: vi.fn(),
-    checkIn: vi.fn(),
-    markNoShow: vi.fn(),
-    markNoShowWithRefund: vi.fn(),
+    persistTransition: vi.fn(),
+    persistPaymentStatus: vi.fn(),
   },
 }));
 
@@ -19,7 +17,7 @@ vi.mock('../../../shared/event-bus/index.js', () => ({
 
 vi.mock('../../../database/mysql.js', () => ({
   getPool: () => ({
-    execute: vi.fn().mockResolvedValue([[{ affectedRows: 0 }], undefined]),
+    execute: mockExecute,
   }),
 }));
 
@@ -42,7 +40,13 @@ async function importSaga() {
 }
 
 beforeEach(() => {
-  vi.clearAllMocks();
+  vi.restoreAllMocks();
+  (bookingRepository.findById as Mock).mockReset();
+  (bookingRepository.persistTransition as Mock).mockReset();
+  (bookingRepository.persistPaymentStatus as Mock).mockReset();
+  (eventBus.emit as Mock).mockReset();
+  mockExecute.mockReset();
+  mockExecute.mockResolvedValue([[{ affectedRows: 0 }], undefined]);
 });
 
 describe('BookingSaga', () => {
@@ -56,7 +60,7 @@ describe('BookingSaga', () => {
       expect(result.status).toBe('confirmed');
       expect(result.bookingId).toBe(1);
       expect(result.userId).toBe(42);
-      expect(bookingRepository.updateBookingStatus).toHaveBeenCalledWith(1, 'confirmed', 'paid', undefined);
+      expect(bookingRepository.persistTransition).toHaveBeenCalledWith(1, 'confirmed', 'paid', undefined, undefined);
       expect(eventBus.emit).toHaveBeenCalledWith('booking:confirmed', expect.objectContaining({
         bookingId: 1, status: 'confirmed',
       }));
@@ -67,7 +71,7 @@ describe('BookingSaga', () => {
       const { confirmBooking } = await importSaga();
 
       await expect(confirmBooking(1, { paymentStatus: 'paid', paymentMethod: 'card' })).rejects.toThrow();
-      expect(bookingRepository.updateBookingStatus).not.toHaveBeenCalled();
+      expect(bookingRepository.persistTransition).not.toHaveBeenCalled();
       expect(eventBus.emit).not.toHaveBeenCalled();
     });
   });
@@ -80,7 +84,11 @@ describe('BookingSaga', () => {
       const result = await cancelBooking(1, 99, 'User cancelled');
 
       expect(result.status).toBe('cancelled');
-      expect(bookingRepository.cancelWithRefund).toHaveBeenCalledWith(1, 99, 'User cancelled', 0, 'pending', undefined);
+      expect(mockExecute).toHaveBeenCalledWith(
+        expect.stringContaining('INSERT INTO booking_cancellations'),
+        [1, 99, 'User cancelled', 0],
+      );
+      expect(bookingRepository.persistTransition).toHaveBeenCalledWith(1, 'cancelled', 'pending', undefined, undefined);
       expect(eventBus.emit).toHaveBeenCalledWith('booking:cancelled', expect.objectContaining({
         bookingId: 1, status: 'cancelled',
       }));
@@ -91,7 +99,7 @@ describe('BookingSaga', () => {
       const { cancelBooking } = await importSaga();
 
       await expect(cancelBooking(1, 99, 'Test')).rejects.toThrow();
-      expect(bookingRepository.cancelWithRefund).not.toHaveBeenCalled();
+      expect(bookingRepository.persistTransition).not.toHaveBeenCalled();
       expect(eventBus.emit).not.toHaveBeenCalled();
     });
   });
@@ -104,7 +112,7 @@ describe('BookingSaga', () => {
       const result = await expireBooking(1);
 
       expect(result.status).toBe('expired');
-      expect(bookingRepository.updateBookingStatus).toHaveBeenCalledWith(1, 'expired', 'expired', undefined);
+      expect(bookingRepository.persistTransition).toHaveBeenCalledWith(1, 'expired', 'expired', undefined, undefined);
       expect(eventBus.emit).toHaveBeenCalledWith('booking:expired', expect.objectContaining({
         bookingId: 1, status: 'expired',
       }));
@@ -119,7 +127,7 @@ describe('BookingSaga', () => {
       const result = await checkInBooking(1);
 
       expect(result.status).toBe('checked_in');
-      expect(bookingRepository.checkIn).toHaveBeenCalledWith(1, undefined);
+      expect(bookingRepository.persistTransition).toHaveBeenCalledWith(1, 'checked_in', undefined, undefined, undefined);
       expect(eventBus.emit).toHaveBeenCalledWith('booking:check-in', expect.objectContaining({
         bookingId: 1, status: 'checked_in',
       }));
@@ -134,8 +142,11 @@ describe('BookingSaga', () => {
       const result = await noShowBooking(1, 99, 'No show');
 
       expect(result.status).toBe('no_show');
-      expect(bookingRepository.markNoShow).toHaveBeenCalledWith(1, undefined);
-      expect(bookingRepository.markNoShowWithRefund).not.toHaveBeenCalled();
+      expect(mockExecute).toHaveBeenCalledWith(
+        expect.stringContaining('INSERT INTO booking_cancellations'),
+        [1, 99, 'No show', 0],
+      );
+      expect(bookingRepository.persistTransition).toHaveBeenCalledWith(1, 'no_show', 'pending', undefined, undefined);
       expect(eventBus.emit).toHaveBeenCalledWith('booking:no-show', expect.objectContaining({
         bookingId: 1, status: 'no_show',
       }));
@@ -150,7 +161,7 @@ describe('BookingSaga', () => {
       const result = await completeBooking(1);
 
       expect(result.status).toBe('completed');
-      expect(bookingRepository.updateStatus).toHaveBeenCalledWith(1, 'completed', undefined);
+      expect(bookingRepository.persistTransition).toHaveBeenCalledWith(1, 'completed', undefined, undefined, undefined);
       expect(eventBus.emit).toHaveBeenCalledWith('booking:completed', expect.objectContaining({
         bookingId: 1, status: 'completed',
       }));
@@ -165,7 +176,11 @@ describe('BookingSaga', () => {
       const result = await cancelWithFeeBooking(1, 99, 'Late cancellation', 50);
 
       expect(result.status).toBe('cancelled_with_fee');
-      expect(bookingRepository.cancelWithRefund).toHaveBeenCalledWith(1, 99, 'Late cancellation', 50, 'partially_refunded', undefined);
+      expect(mockExecute).toHaveBeenCalledWith(
+        expect.stringContaining('INSERT INTO booking_cancellations'),
+        [1, 99, 'Late cancellation', 50],
+      );
+      expect(bookingRepository.persistTransition).toHaveBeenCalledWith(1, 'cancelled_with_fee', 'partially_refunded', undefined, undefined);
       expect(eventBus.emit).toHaveBeenCalledWith('booking:cancelled', expect.objectContaining({
         bookingId: 1, status: 'cancelled_with_fee',
       }));
@@ -200,11 +215,39 @@ describe('BookingSaga', () => {
   describe('repository failure — no event emitted', () => {
     it('does not emit event when repository throws', async () => {
       (bookingRepository.findById as Mock).mockResolvedValue(mockBooking);
-      (bookingRepository.updateBookingStatus as Mock).mockRejectedValue(new Error('DB error'));
+      (bookingRepository.persistTransition as Mock).mockRejectedValue(new Error('DB error'));
       const { confirmBooking } = await importSaga();
 
       await expect(confirmBooking(1, { paymentStatus: 'paid', paymentMethod: 'card' })).rejects.toThrow('DB error');
       expect(eventBus.emit).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('cancelBooking releases slots', () => {
+    it('sets booking_slots is_available = TRUE on cancel', async () => {
+      (bookingRepository.findById as Mock).mockResolvedValue(mockBooking);
+      const { cancelBooking } = await importSaga();
+
+      await cancelBooking(1, 99, 'User cancelled');
+
+      expect(mockExecute).toHaveBeenCalledWith(
+        'UPDATE booking_slots SET is_available = TRUE WHERE booking_id = ? AND is_available = FALSE',
+        [1],
+      );
+    });
+  });
+
+  describe('expireBooking releases slots', () => {
+    it('sets booking_slots is_available = TRUE on expire', async () => {
+      (bookingRepository.findById as Mock).mockResolvedValue(mockBooking);
+      const { expireBooking } = await importSaga();
+
+      await expireBooking(1);
+
+      expect(mockExecute).toHaveBeenCalledWith(
+        'UPDATE booking_slots SET is_available = TRUE WHERE booking_id = ? AND is_available = FALSE',
+        [1],
+      );
     });
   });
 });

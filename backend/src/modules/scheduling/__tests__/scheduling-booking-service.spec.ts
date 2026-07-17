@@ -23,6 +23,18 @@ vi.mock('../../../database/mysql.js', () => ({
   getPool: vi.fn(() => ({ execute: mockPoolExecute, getConnection: mockGetConnection })),
 }));
 
+vi.mock('../../booking/infrastructure/repositories/booking.repository.js', () => ({
+  bookingRepository: {
+    findById: vi.fn().mockResolvedValue({
+      id: 100, booking_status: 'confirmed', payment_status: 'paid',
+      total_amount: 200, organisation_id: 1, branch_id: 5, user_id: 999,
+      resource_id: 20, payment_method: 'card',
+    }),
+    persistTransition: vi.fn(),
+    persistPaymentStatus: vi.fn(),
+  },
+}));
+
 vi.mock('../../booking/application/booking.service.js', () => ({
   bookingService: { createBooking: mockCreateBooking, getBooking: mockGetBooking },
 }));
@@ -121,9 +133,9 @@ describe('SchedulingBookingService — Compensation Workflow', () => {
     // Coach session creation was attempted
     expect(mockCreateCoachSession).toHaveBeenCalled();
 
-    // Compensation: booking cancelled in DB
+    // Compensation: booking cancelled via saga (cancellation record + status update)
     expect(mockConn.execute).toHaveBeenCalledWith(
-      expect.stringContaining("booking_status = 'cancelled'"),
+      expect.stringContaining('INSERT INTO booking_cancellations'),
       expect.any(Array),
     );
 
@@ -202,7 +214,7 @@ describe('SchedulingBookingService — Compensation Workflow', () => {
 
     // No compensation
     expect(mockConn.execute).not.toHaveBeenCalledWith(
-      expect.stringContaining("booking_status = 'cancelled'"),
+      expect.stringContaining('INSERT INTO booking_cancellations'),
       expect.any(Array),
     );
   });

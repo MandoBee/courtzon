@@ -561,7 +561,8 @@ export const activitiesService = {
 
       if (session.booking_id) {
         const { cancelBooking } = await import('../../../platform/booking/BookingSaga.js');
-        await cancelBooking(session.booking_id, userId, reason || 'Session declined', 0, conn);
+        const { CancellationReason } = await import('../../../platform/shared/booking-types.js');
+        await cancelBooking(session.booking_id, userId, reason || CancellationReason.SESSION_DECLINED, 0, conn);
       }
 
       await conn.execute(

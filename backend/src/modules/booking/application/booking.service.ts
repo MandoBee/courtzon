@@ -15,7 +15,9 @@ import type mysql from 'mysql2/promise';
 import { eventBus } from '../../../shared/event-bus/index.js';
 import {
   confirmBooking, cancelBooking, checkInBooking, noShowBooking, completeBooking,
+  updateBookingPaymentStatus,
 } from '../../../platform/booking/BookingSaga.js';
+import { CancellationReason } from '../../../platform/shared/booking-types.js';
 
 type RowData = mysql.RowDataPacket[];
 
@@ -175,9 +177,7 @@ export class BookingService {
         });
 
         if (!gwResult.success) {
-          // Cancel the pending_payment booking so the slot is freed immediately
-          // (expires_at will also free it eventually, but cancel proactively).
-          await bookingRepository.persistTransition(bookingId, 'cancelled', 'failed');
+          await cancelBooking(bookingId, 0, CancellationReason.PAYMENT_SESSION_CREATION_FAILED, 0, undefined, 'failed');
           throw new ConflictError((gwResult as any).errorMessage || 'Payment gateway rejected the transaction');
         }
 
@@ -620,18 +620,6 @@ export class BookingService {
       return;
     }
 
-    if (status === 'pending') {
-      const booking = await bookingRepository.findById(id);
-      if (!booking) throw new NotFoundError('Booking');
-      const isCOD = booking.payment_method === 'cash' || booking.payment_method === 'cod';
-      if (isCOD) {
-        await bookingRepository.updateStatusAndPayment(id, 'pending', 'pending');
-      } else {
-        await bookingRepository.updateStatus(id, 'pending');
-      }
-      return;
-    }
-
     if (status === 'confirmed') {
       const booking = await bookingRepository.findById(id);
       if (!booking) throw new NotFoundError('Booking');
@@ -652,13 +640,13 @@ export class BookingService {
       const isCOD = booking.payment_method === 'cash' || booking.payment_method === 'cod';
 
       if (!isCOD && status === 'no_show') {
-        await noShowBooking(id, actorId ?? booking.user_id, 'No-show by admin/staff');
+        await noShowBooking(id, actorId ?? booking.user_id, CancellationReason.ADMIN_CANCELLED);
         return;
       }
 
       const { feeAmount, refundAmount } = await this._calculateCancellationFee(booking);
       const totalAmount = Number(booking.total_amount);
-      const reason = `Status changed to ${status} by admin/staff`;
+      const reason = CancellationReason.ADMIN_CANCELLED;
       const resolvedUserId = actorId ?? booking.user_id;
 
       if (isCOD) {
@@ -698,7 +686,7 @@ export class BookingService {
       return;
     }
 
-    await bookingRepository.updateStatus(id, status);
+    throw new ConflictError(`Unsupported status transition to '${status}'. Use the appropriate action endpoint.`);
   }
 
   private async _recordCODWalletEntry(booking: any, type: string, description: string): Promise<void> {
@@ -849,7 +837,7 @@ export class BookingService {
       }
     }
 
-    await bookingRepository.updatePaymentStatus(id, paymentStatus);
+    await updateBookingPaymentStatus(id, paymentStatus);
   }
 
   async getAllBookings(filters?: { orgId?: number; branchId?: number; resourceId?: number; resource?: string; branch?: string; orgName?: string; date?: string; status?: string; paymentStatus?: string; bookingType?: string; page?: number; limit?: number }) {

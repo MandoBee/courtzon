@@ -1,6 +1,7 @@
 import { eventBus } from '../../../shared/event-bus/index.js';
 import { createModuleLogger } from '../../../shared/utils/logger.js';
 import { confirmBooking, cancelBooking } from '../../../platform/booking/BookingSaga.js';
+import { CancellationReason } from '../../../platform/shared/booking-types.js';
 import { bookingRepository } from '../infrastructure/repositories/booking.repository.js';
 
 const log = createModuleLogger('booking-payment-listener');
@@ -47,7 +48,7 @@ export function registerBookingPaymentListeners() {
       const booking = await bookingRepository.findById(bookingId);
       if (!booking) return;
       if (booking.booking_status === 'cancelled' || booking.booking_status === 'expired') return;
-      await cancelBooking(bookingId, 0, data.reason || 'Payment failed');
+      await cancelBooking(bookingId, 0, data.reason || CancellationReason.PAYMENT_DECLINED);
     } catch (err) {
       log.error({ err, bookingId }, 'Booking: cancelBooking failed on payment failed');
     }
@@ -62,7 +63,7 @@ export function registerBookingPaymentListeners() {
       const booking = await bookingRepository.findById(bookingId);
       if (!booking) return;
       if (booking.booking_status === 'cancelled' || booking.booking_status === 'expired') return;
-      await cancelBooking(bookingId, 0, 'Payment cancelled');
+      await cancelBooking(bookingId, 0, CancellationReason.PAYMENT_CANCELLED_BY_USER);
     } catch (err) {
       log.error({ err, bookingId }, 'Booking: cancelBooking failed on payment cancelled');
     }
@@ -77,7 +78,7 @@ export function registerBookingPaymentListeners() {
       const booking = await bookingRepository.findById(bookingId);
       if (!booking) return;
       if (booking.booking_status === 'cancelled' || booking.booking_status === 'expired') return;
-      await cancelBooking(bookingId, 0, 'Payment expired');
+      await cancelBooking(bookingId, 0, CancellationReason.PAYMENT_TIMEOUT);
     } catch (err) {
       log.error({ err, bookingId }, 'Booking: cancelBooking failed on payment expired');
     }

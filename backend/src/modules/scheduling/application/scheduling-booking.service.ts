@@ -7,6 +7,8 @@ import { redisLock } from '../../booking/infrastructure/redis/redis-lock.js';
 import { NotFoundError, ConflictError } from '../../../shared/errors/app-error.js';
 import { createModuleLogger } from '../../../shared/utils/logger.js';
 import { getPool } from '../../../database/mysql.js';
+import { cancelBooking } from '../../../platform/booking/BookingSaga.js';
+import { CancellationReason } from '../../../platform/shared/booking-types.js';
 import type mysql from 'mysql2/promise';
 
 type RowData = mysql.RowDataPacket[];
@@ -192,31 +194,12 @@ export class SchedulingBookingService {
       const isPaid = booking.payment_status === 'paid';
       const totalAmount = Number(booking.total_amount);
 
-      // Update booking status to cancelled directly (bypasses cancellation window)
       const conn = await pool.getConnection();
       try {
         await conn.beginTransaction();
-
-        await conn.execute(
-          `UPDATE bookings SET booking_status = 'cancelled', payment_status = ? WHERE id = ?`,
-          [isPaid ? 'refunded' : 'pending', bookingId]
-        );
-
-        // Release the court slot
-        await conn.execute(
-          `UPDATE booking_slots SET is_available = TRUE WHERE booking_id = ?`,
-          [bookingId]
-        );
-
-        // Record the cancellation
-        await conn.execute(
-          `INSERT INTO booking_cancellations (booking_id, user_id, reason, cancelled_at)
-           VALUES (?, ?, ?, NOW())`,
-          [bookingId, userId, reason]
-        );
-
+        await cancelBooking(bookingId, userId, reason || CancellationReason.COMPENSATION, 0, conn);
         await conn.commit();
-        log.info({ bookingId, isPaid, totalAmount }, 'Compensation: booking cancelled in DB');
+        log.info({ bookingId, isPaid, totalAmount }, 'Compensation: booking cancelled via saga');
       } catch (err) {
         await conn.rollback();
         throw err;
@@ -224,7 +207,6 @@ export class SchedulingBookingService {
         conn.release();
       }
 
-      // Wallet refund (outside transaction — best-effort, same as existing cancelBooking)
       if (isPaid) {
         try {
           const wallet = await (await import('../../wallet/infrastructure/repositories/wallet.repository.js')).walletRepository.findByUserId(userId);
@@ -251,16 +233,6 @@ export class SchedulingBookingService {
           log.error({ err: refundErr, bookingId, userId }, 'Compensation: wallet refund failed — manual intervention required');
         }
       }
-
-      // Emit cancellation event
-      const { eventBus } = await import('../../../shared/event-bus/index.js');
-      eventBus.emit('booking:cancelled', {
-        bookingId,
-        userId,
-        reason,
-        organisationId: booking.organisation_id || undefined,
-        branchId: booking.branch_id || undefined,
-      });
     } catch (err) {
       log.error({ err, bookingId, userId }, 'Compensation workflow failed — manual intervention required');
     }
