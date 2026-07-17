@@ -16,7 +16,8 @@ export async function expireSubscriptions(): Promise<{ expired: number }> {
   let expired = 0;
   await withTransaction(async (conn) => {
     const [rows] = await conn.execute<RowData>(
-      `SELECT s.id, s.organisation_id, s.plan_id, s.end_date, COALESCE(sp.plan_name, 'Unknown') as plan_name
+      `SELECT s.id, s.organisation_id, s.plan_id, s.end_date,
+              COALESCE(JSON_UNQUOTE(JSON_EXTRACT(s.plan_snapshot, '$.planName')), sp.plan_name, 'Unknown') as plan_name
        FROM organisation_subscriptions s
        LEFT JOIN subscription_plans sp ON sp.id = s.plan_id
        WHERE s.subscription_status = 'active' AND s.end_date IS NOT NULL AND s.end_date < CURDATE()
@@ -61,7 +62,8 @@ export async function sendExpirationReminders(): Promise<{ notified: number }> {
 
   await withTransaction(async (conn) => {
     const [rows] = await conn.execute<RowData>(
-      `SELECT s.id, s.organisation_id, s.end_date, COALESCE(sp.plan_name, 'Unknown') as plan_name
+      `SELECT s.id, s.organisation_id, s.end_date,
+              COALESCE(JSON_UNQUOTE(JSON_EXTRACT(s.plan_snapshot, '$.planName')), sp.plan_name, 'Unknown') as plan_name
        FROM organisation_subscriptions s
        LEFT JOIN subscription_plans sp ON sp.id = s.plan_id
        WHERE s.subscription_status = 'active' AND s.end_date IS NOT NULL AND s.end_date > CURDATE()

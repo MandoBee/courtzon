@@ -1,7 +1,7 @@
 import type mysql from 'mysql2/promise';
 import { getPool } from '../../database/mysql.js';
+import { getEffectivePlanConfig, clearPlanCache } from '../utils/plan-resolver.js';
 import { commissionEntityLookupKeys } from './commission-entities.js';
-import { activeSubscriptionCondition } from '../utils/subscription-validator.js';
 import { createModuleLogger } from '../utils/logger.js';
 
 const log = createModuleLogger('commission');
@@ -35,29 +35,12 @@ export class CommissionService {
     const orgId = await this.resolveOrgId(branchOrOrgId);
     log.info({ branchOrOrgId, resolvedOrgId: orgId }, 'CommissionService.getOrgPlanId — resolved orgId');
 
-    const query = `SELECT plan_id, subscription_status, start_date, end_date
-                   FROM organisation_subscriptions
-                   WHERE organisation_id = ? AND ${activeSubscriptionCondition('organisation_subscriptions')}
-                   ORDER BY created_at DESC
-                   LIMIT 1`;
-    log.info({ query, params: [orgId] }, 'CommissionService.getOrgPlanId — executing query');
-
-    const [rows] = await this.pool.execute<RowData>(query, [orgId]);
-    log.info({ rowCount: rows.length, rows: rows.length ? rows : 'empty' }, 'CommissionService.getOrgPlanId — query result');
-
-    if (!rows.length) {
-      // Diagnostic: what subscriptions does this org have?
-      const [allSubs] = await this.pool.execute<RowData>(
-        `SELECT id, plan_id, subscription_status, start_date, end_date, CURDATE() as today
-         FROM organisation_subscriptions
-         WHERE organisation_id = ?
-         ORDER BY created_at DESC`,
-        [orgId]
-      );
-      log.warn({ orgId, allSubs }, 'CommissionService.getOrgPlanId — no matching active subscription found; all subscriptions for org');
+    const config = await getEffectivePlanConfig(orgId);
+    if (!config) {
+      log.warn({ orgId }, 'CommissionService.getOrgPlanId — no active plan found');
+      return null;
     }
-
-    return rows.length ? rows[0].plan_id : null;
+    return config.planId;
   }
 
   async getRate(planId: number | null, entityType: string): Promise<{ rate: number; rateType: 'percentage' | 'fixed' }> {
@@ -85,29 +68,60 @@ export class CommissionService {
     entityType: string,
     grossAmount: number
   ): Promise<CommissionResult> {
-    const planId = await this.getOrgPlanId(branchOrOrgId);
-    const { rate, rateType } = await this.getRate(planId, entityType);
+    clearPlanCache();
+    const orgId = await this.resolveOrgId(branchOrOrgId);
+    const config = await getEffectivePlanConfig(orgId);
+
+    if (!config) {
+      throw new Error('Organisation has no active subscription plan');
+    }
+
+    // Resolve commission rate from the effective plan config (snapshot or live)
+    const lookupKeys = commissionEntityLookupKeys(entityType);
+    let rate = 0;
+    let rateType: 'percentage' | 'fixed' = 'percentage';
+
+    // First check snapshot rates
+    for (const key of lookupKeys) {
+      const cr = config.commissionRates.find(r => r.entity === key);
+      if (cr) {
+        rate = cr.amount;
+        rateType = cr.rateType;
+        break;
+      }
+    }
+
+    // Fallback: live subscription_plan_rates (for legacy plans without snapshot rates)
+    if (rate === 0 && !config.fromSnapshot) {
+      const placeholders = lookupKeys.map(() => '?').join(', ');
+      const [rows] = await this.pool.execute<RowData>(
+        `SELECT amount, rate_type FROM subscription_plan_rates
+         WHERE plan_id = ? AND applicable_entity IN (${placeholders})
+         LIMIT 1`,
+        [config.planId, ...lookupKeys]
+      );
+      if (rows.length) {
+        rate = Number(rows[0].amount);
+        rateType = rows[0].rate_type;
+      }
+    }
+
+    if (rate === 0 && !config.isUnlimited) {
+      throw new Error(`No commission rate configured for plan ${config.planId} / entity "${entityType}"`);
+    }
+
     const commissionAmount = rateType === 'percentage'
       ? (grossAmount * rate) / 100
       : rate;
     const netAmount = grossAmount - commissionAmount;
-
-    let planName = 'Default';
-    if (planId) {
-      const [rows] = await this.pool.execute<RowData>(
-        'SELECT plan_name FROM subscription_plans WHERE id = ?',
-        [planId]
-      );
-      if (rows.length) planName = rows[0].plan_name;
-    }
 
     return {
       rate,
       rateType,
       commissionAmount,
       netAmount,
-      planName,
-      planId: planId || 0,
+      planName: config.planName,
+      planId: config.planId,
     };
   }
 }

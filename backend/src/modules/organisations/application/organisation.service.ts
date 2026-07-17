@@ -711,9 +711,8 @@ export class OrganisationService {
   async getOrgSubscription(orgId: number) {
     const pool = getPool();
     const [rows] = await pool.execute<RowData>(
-      `SELECT os.*, sp.plan_name, sp.price_monthly, sp.price_yearly, sp.is_unlimited
+      `SELECT os.*
        FROM organisation_subscriptions os
-       JOIN subscription_plans sp ON sp.id = os.plan_id
        WHERE os.organisation_id = ? AND ${nonExpiredSubscriptionCondition('os')}
        ORDER BY os.created_at DESC
        LIMIT 1`,
@@ -721,23 +720,28 @@ export class OrganisationService {
     );
     if (!rows.length) return { plan: null, status: 'none' };
     const sub = rows[0];
-    const billingCycle = (sub.billing_cycle || 'monthly') as BillingPeriod;
-    const pricing = {
-      priceMonthly: sub.price_monthly != null ? Number(sub.price_monthly) : null,
-      priceYearly: sub.price_yearly != null ? Number(sub.price_yearly) : null,
-      isUnlimited: !!sub.is_unlimited,
-    };
-    const features = await loadPlanFeatures([sub.plan_id]);
+
+    const { getEffectivePlanConfig } = await import('../../../shared/utils/plan-resolver.js');
+    const config = await getEffectivePlanConfig(orgId);
+
+    const billingCycle = (config?.billingCycle || sub.billing_cycle || 'monthly') as BillingPeriod;
+    const priceMonthly = config?.priceMonthly ?? null;
+    const priceYearly = config?.priceYearly ?? null;
+    const pricing = { priceMonthly, priceYearly, isUnlimited: !!config?.isUnlimited };
+    const features = config?.features?.length
+      ? config.features
+      : null;
+
     return {
       id: sub.id,
       planId: sub.plan_id,
-      planName: sub.plan_name,
+      planName: config?.planName || sub.plan_name || 'Unknown',
       price: resolvePlanPrice(pricing, billingCycle),
-      priceMonthly: pricing.priceMonthly,
-      priceYearly: pricing.priceYearly,
-      isUnlimited: pricing.isUnlimited,
+      priceMonthly,
+      priceYearly,
+      isUnlimited: !!config?.isUnlimited,
       billingCycle,
-      features: features.get(sub.plan_id) || null,
+      features,
       startDate: sub.start_date,
       endDate: sub.end_date,
       status: sub.subscription_status,

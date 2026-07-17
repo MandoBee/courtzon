@@ -463,9 +463,8 @@ export async function removeOrgCoachAgreement(orgId: number, coachId: number): P
 export async function getOrgSubscriptionWithFeatures(orgId: number) {
   const pool = getPool();
   const [rows] = await pool.execute<RowData>(
-    `SELECT os.*, sp.plan_name, sp.price_monthly, sp.price_yearly, sp.is_unlimited
+    `SELECT os.*
      FROM organisation_subscriptions os
-     JOIN subscription_plans sp ON sp.id = os.plan_id
      WHERE os.organisation_id = ? AND ${nonExpiredSubscriptionCondition('os')}
      ORDER BY os.created_at DESC
      LIMIT 1`,
@@ -474,16 +473,11 @@ export async function getOrgSubscriptionWithFeatures(orgId: number) {
   if (!rows.length) return null;
   const sub = rows[0];
 
-  const [featRows] = await pool.execute<RowData>(
-    `SELECT sf.feature_key, sf.label, sf.value_type, sf.unit, sf.sort_order, spf.value
-     FROM subscription_plan_features spf
-     JOIN subscription_features sf ON sf.id = spf.feature_id
-     WHERE spf.plan_id = ?
-     ORDER BY sf.sort_order ASC`,
-    [sub.plan_id],
-  );
+  // Resolve plan config from snapshot or live tables
+  const { getEffectivePlanConfig } = await import('../../../../shared/utils/plan-resolver.js');
+  const config = await getEffectivePlanConfig(orgId);
 
-  return { sub, features: featRows };
+  return { sub, config };
 }
 
 export async function getFeatureUsageCounts(orgId: number): Promise<Record<string, number>> {

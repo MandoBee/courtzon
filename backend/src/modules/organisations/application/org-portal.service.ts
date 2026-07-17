@@ -139,29 +139,29 @@ export async function getOrgSubscriptionWithUsage(orgId: number) {
   const result = await repo.getOrgSubscriptionWithFeatures(orgId);
   if (!result) return { plan: null, status: 'none', features: [], usage: {} };
 
-  const { sub, features } = result;
+  const { sub, config } = result;
   const usage = await repo.getFeatureUsageCounts(orgId);
   const pendingRequest = await repo.getOrgPendingSubscriptionRequest(orgId);
 
-  const featureList = features.map((f: any) => ({
-    featureKey: f.feature_key,
+  const featureList = (config?.features || []).map((f: any) => ({
+    featureKey: f.featureKey,
     label: f.label,
-    valueType: f.value_type,
+    valueType: f.valueType,
     value: f.value,
-    unit: f.unit,
-    sortOrder: f.sort_order,
-    usage: usage[f.feature_key] ?? 0,
+    unit: '',
+    sortOrder: 0,
+    usage: usage[f.featureKey] ?? 0,
   }));
 
-  const billingCycle = (sub.billing_cycle || 'monthly') as string;
+  const billingCycle = config?.billingCycle || sub.billing_cycle || 'monthly';
 
   return {
     id: sub.id,
     planId: sub.plan_id,
-    planName: sub.plan_name,
-    priceMonthly: sub.price_monthly != null ? Number(sub.price_monthly) : null,
-    priceYearly: sub.price_yearly != null ? Number(sub.price_yearly) : null,
-    isUnlimited: !!sub.is_unlimited,
+    planName: config?.planName || sub.plan_name || 'Unknown',
+    priceMonthly: config?.priceMonthly ?? null,
+    priceYearly: config?.priceYearly ?? null,
+    isUnlimited: !!config?.isUnlimited,
     billingCycle,
     features: featureList,
     usage,

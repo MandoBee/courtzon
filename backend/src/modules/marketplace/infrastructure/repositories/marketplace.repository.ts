@@ -227,9 +227,11 @@ export const marketplaceRepository = {
     const pool = getPool();
     const placeholders = orgIds.map(() => '?').join(',');
     const [rows] = await pool.execute<RowData>(
-      `SELECT os.*, sp.plan_name, sp.applicable_org_types
+      `SELECT os.*,
+              COALESCE(JSON_UNQUOTE(JSON_EXTRACT(os.plan_snapshot, '$.planName')), sp.plan_name, 'Unknown') as plan_name,
+              sp.applicable_org_types
        FROM organisation_subscriptions os
-       JOIN subscription_plans sp ON os.plan_id = sp.id
+       LEFT JOIN subscription_plans sp ON sp.id = os.plan_id
        WHERE os.organisation_id IN (${placeholders}) AND ${activeSubscriptionCondition('os')}
        ORDER BY os.created_at DESC`,
       orgIds,
@@ -485,10 +487,14 @@ export const marketplaceRepository = {
       `SELECT DISTINCT o.id as seller_id, o.name as org_name, o.phone,
               ot.slug as org_type_slug,
         (SELECT os.id FROM organisation_subscriptions os
-         JOIN subscription_plans sp ON os.plan_id = sp.id
+         LEFT JOIN subscription_plans sp ON sp.id = os.plan_id
          WHERE os.organisation_id = o.id
            AND ${activeSubscriptionCondition('os')}
-           AND (sp.price_monthly > 0 OR sp.price_yearly > 0)
+           AND (
+             (os.plan_snapshot IS NOT NULL AND JSON_EXTRACT(os.plan_snapshot, '$.priceMonthly') > 0)
+             OR
+             (os.plan_snapshot IS NULL AND (sp.price_monthly > 0 OR sp.price_yearly > 0))
+           )
                LIMIT 1) as has_paid_plan
        FROM cart_items ci
        JOIN products p ON ci.product_id = p.id
@@ -905,13 +911,15 @@ export const marketplaceRepository = {
   async findActiveSubscription(orgId: number) {
     const pool = getPool();
     const [rows] = await pool.execute<RowData>(
-      `SELECT os.*, sp.plan_name, sp.applicable_org_types
+      `SELECT os.*,
+              COALESCE(JSON_UNQUOTE(JSON_EXTRACT(os.plan_snapshot, '$.planName')), sp.plan_name, 'Unknown') as plan_name,
+              sp.applicable_org_types
        FROM organisation_subscriptions os
-       JOIN subscription_plans sp ON os.plan_id = sp.id
+       LEFT JOIN subscription_plans sp ON sp.id = os.plan_id
        WHERE os.organisation_id = ? AND ${activeSubscriptionCondition('os')}
        ORDER BY os.created_at DESC
        LIMIT 1`,
-      [orgId]
+      [orgId],
     );
     return rows[0] || null;
   },
