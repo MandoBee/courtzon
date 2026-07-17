@@ -62,9 +62,8 @@ export class ReconciliationService {
 
     // ── 1. Check 1: Gateway paid → local pending ───────────────────────
     const [pendingPayments] = await pool.execute<any[]>(
-      `SELECT pt.*, bi.intent_status
+      `SELECT pt.*
        FROM payment_transactions pt
-       LEFT JOIN booking_intents bi ON bi.id = pt.reference_id AND pt.reference_type = 'booking_intent'
        WHERE pt.payment_status IN ('created', 'pending', 'processing')
        AND pt.gateway_provider != 'wallet'
        AND pt.gateway_reference != ''

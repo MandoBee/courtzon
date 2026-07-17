@@ -12,7 +12,6 @@ import { NotFoundError, ForbiddenError, ConflictError } from '../../../shared/er
 import { createModuleLogger } from '../../../shared/utils/logger.js';
 import type { CreateBookingInput } from '../presentation/booking.dto.js';
 import type mysql from 'mysql2/promise';
-import { randomUUID } from 'node:crypto';
 import { eventBus } from '../../../shared/event-bus/index.js';
 import {
   confirmBooking, cancelBooking, checkInBooking, noShowBooking, completeBooking,
@@ -134,22 +133,28 @@ export class BookingService {
         );
         if (!available) throw new ConflictError('One or more slots are no longer available');
 
-        // Create a booking_intent to temporarily reserve the slot.
-        // The actual booking row is created only after payment is confirmed.
-        const intentId = await bookingRepository.createIntent({
+        // Create booking with pending_payment status + expires_at (3 min TTL)
+        // The booking blocks availability immediately. Expiry worker auto-cancels if payment not confirmed.
+        const expiresAt = new Date(Date.now() + 3 * 60 * 1000).toISOString().replace('T', ' ').replace(/\.\d+Z$/, '');
+        const bookingId = await bookingRepository.create({
           userId, branchId: input.branchId, organisationId, resourceId: input.resourceId,
           bookingType: input.bookingType || 'public_match', bookingDate,
           startTime: input.startTime, endTime: input.endTime,
           totalAmount: pricing.totalPrice, commissionAmount, clubAmount,
           notes: input.notes, paymentMethod,
-          participants: input.participants,
-          matchmaking: input.matchmaking,
-          startAtUtc, endAtUtc, businessDate,
-        });
+          bookingStatus: 'pending_payment', paymentStatus: 'pending',
+          startAtUtc, endAtUtc, businessDate, expiresAt,
+        }, conn);
 
-        // Intent has expires_at = NOW() + 15 min by default.
-        // checkSlotAvailability already excludes expired intents, so the slot
-        // is automatically freed when the intent expires.
+        // Populate booking_slots for each individual slot
+        for (const slot of individualSlots) {
+          await conn.execute(
+            `INSERT INTO booking_slots (booking_id, resource_id, booking_date, slot_start, slot_end, is_available)
+             VALUES (?, ?, ?, ?, ?, FALSE)`,
+            [bookingId, input.resourceId, bookingDate, slot.start, slot.end]
+          );
+        }
+
         await conn.commit();
         conn.release();
 
@@ -158,8 +163,8 @@ export class BookingService {
         const [userRows] = await pool.execute<RowData>('SELECT full_name, email, full_phone FROM users WHERE id = ?', [userId]);
         const user = userRows[0] as any;
         const gwResult = await paymentService.charge(userId, {
-          referenceType: 'booking_intent',
-          referenceId: intentId,
+          referenceType: 'booking',
+          referenceId: bookingId,
           amount: pricing.totalPrice,
           currency: 'EGP',
           paymentMethod: (paymentMethod === 'online' ? 'card' : paymentMethod as 'wallet' | 'card' | 'bank_transfer'),
@@ -170,12 +175,9 @@ export class BookingService {
         });
 
         if (!gwResult.success) {
-          // Mark the intent as cancelled so the slot is freed immediately
+          // Cancel the pending_payment booking so the slot is freed immediately
           // (expires_at will also free it eventually, but cancel proactively).
-          await pool.execute(
-            `UPDATE booking_intents SET intent_status = 'cancelled', failure_reason = ? WHERE id = ?`,
-            [(gwResult as any).errorMessage || 'Payment gateway rejected', intentId]
-          );
+          await bookingRepository.persistTransition(bookingId, 'cancelled', 'failed');
           throw new ConflictError((gwResult as any).errorMessage || 'Payment gateway rejected the transaction');
         }
 
@@ -183,7 +185,21 @@ export class BookingService {
         const clientSecret = ('clientSecret' in gwResult ? gwResult.clientSecret : null) || null;
         const paymentId = ('paymentId' in gwResult ? gwResult.paymentId : null) || null;
 
-        return { intentId, paymentUrl, clientSecret, paymentId };
+        // Emit booking:created event
+        eventBus.emit('booking:created', {
+          bookingId,
+          userId,
+          courtId: input.resourceId || 0,
+          startTime: new Date(startAtUtc),
+          endTime: new Date(endAtUtc),
+          startAtUtc,
+          endAtUtc,
+          bookingType: input.bookingType || 'private_match',
+          organisationId,
+          branchId: input.branchId,
+        });
+
+        return { bookingId, paymentUrl, clientSecret, paymentId };
       }
 
       let bookingStatus = 'pending';
@@ -344,340 +360,6 @@ export class BookingService {
 
   async getUserBookings(userId: number, status?: string, from?: string, to?: string, page = 1, limit = 20, sortBy?: string, lat?: number, lng?: number) {
     return bookingRepository.findByUser(userId, status, from, to, page, limit, sortBy, lat, lng);
-  }
-
-  async getBookingIntent(intentId: number) {
-    return bookingRepository.findIntent(intentId);
-  }
-
-  async fulfillBookingIntent(intentId: number, connArg?: mysql.PoolConnection) {
-    const ownsTx = !connArg;
-    let conn: mysql.PoolConnection;
-    if (connArg) {
-      conn = connArg;
-    } else {
-      const pool = getPool();
-      conn = await pool.getConnection();
-    }
-    try {
-      if (ownsTx) await conn.beginTransaction();
-
-      const [intentRows] = await conn.execute<RowData>(
-        'SELECT * FROM booking_intents WHERE id = ? FOR UPDATE', [intentId]
-      );
-      const intent = intentRows[0] as any;
-      if (!intent) throw new NotFoundError('Booking intent');
-
-      if (intent.fulfilled_booking_id) {
-        const bRows = await conn.execute<RowData>(
-          'SELECT id, booking_status, payment_status FROM bookings WHERE id = ?', [intent.fulfilled_booking_id]
-        );
-        const existing = (bRows[0] as any[])[0];
-        if (existing) {
-          if (ownsTx) await conn.commit();
-          return { success: true, booking: existing, isPaid: existing.payment_status === 'paid' };
-        }
-      }
-
-      const [ptRows] = await conn.execute<RowData>(
-        `SELECT id, payment_status, gateway_reference FROM payment_transactions
-         WHERE booking_id = ? AND reference_type = 'booking_intent'
-         ORDER BY id DESC LIMIT 1`,
-        [intentId]
-      );
-      const pt = ptRows[0] as any;
-
-      let isPaid = pt?.payment_status === 'paid';
-
-      if (!isPaid && pt) {
-        try {
-          const { paymentGateway } = await import('../../../shared/services/gateway/gateway-factory.js');
-          const status = await paymentGateway.getTransactionStatus(pt.gateway_reference);
-          if (status.status === 'paid') {
-            isPaid = true;
-            const { confirmPayment } = await import('../../../platform/payment/PaymentSaga.js');
-            await confirmPayment(pt.id, {
-              gatewayReference: pt.gateway_reference || '',
-              paidAmount: intent.total_amount || 0,
-            }, conn).catch(() => {});
-          }
-        } catch {
-          // non-fatal
-        }
-      }
-
-      const bookingStatus = isPaid ? 'confirmed' : 'pending';
-      const paymentStatus = isPaid ? 'paid' : 'pending';
-
-      // Compute UTC timestamps and business date from intent data
-      const [brRow] = await conn.execute<RowData>(
-        'SELECT timezone, opening_time, closing_time FROM branches WHERE id = ?', [intent.branch_id]
-      );
-      const brData = brRow[0] as any || {};
-      const intentTz = brData.timezone || 'Africa/Cairo';
-      const intentOpening = brData.opening_time || '08:00';
-      const intentClosing = brData.closing_time || '22:00';
-      const intentBookingDate = intent.booking_date instanceof Date
-        ? intent.booking_date.toISOString().slice(0, 10)
-        : String(intent.booking_date).slice(0, 10);
-      const intentStart = intent.start_time instanceof Date
-        ? `${String(intent.start_time.getUTCHours()).padStart(2, '0')}:${String(intent.start_time.getUTCMinutes()).padStart(2, '0')}`
-        : String(intent.start_time).slice(0, 5);
-      const intentEnd = intent.end_time instanceof Date
-        ? `${String(intent.end_time.getUTCHours()).padStart(2, '0')}:${String(intent.end_time.getUTCMinutes()).padStart(2, '0')}`
-        : String(intent.end_time).slice(0, 5);
-      const intentStartUtc = TimeEngine.localToUtc(intentBookingDate, intentStart, intentTz);
-      const intentEndUtc = TimeEngine.localToUtc(intentBookingDate, intentEnd, intentTz);
-      const intentBusinessDate = TimeEngine.getBusinessDate(intentStartUtc, intentOpening, intentClosing, intentTz);
-
-      const [createResult] = await conn.execute<mysql.ResultSetHeader>(
-        `INSERT INTO bookings (public_id, user_id, organisation_id, branch_id, resource_id, booking_type,
-          booking_date, business_date, start_time, end_time, start_at_utc, end_at_utc,
-          total_amount, commission_amount, club_amount,
-          booking_status, payment_status, notes, payment_method)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [randomUUID(), intent.user_id, intent.organisation_id, intent.branch_id, intent.resource_id,
-         intent.booking_type, intent.booking_date, intentBusinessDate, intent.start_time, intent.end_time,
-         intentStartUtc.replace('T', ' ').replace(/\.\d+Z$/, ''),
-         intentEndUtc.replace('T', ' ').replace(/\.\d+Z$/, ''),
-         intent.total_amount, intent.commission_amount, intent.club_amount,
-         bookingStatus, paymentStatus, intent.notes, intent.payment_method]
-      );
-      const bookingId = createResult.insertId;
-
-      if (pt) {
-        await conn.execute(
-          'UPDATE payment_transactions SET booking_id = ?, reference_type = ? WHERE id = ?',
-          [bookingId, 'booking', pt.id]
-        );
-      }
-
-      await conn.execute(
-        'UPDATE booking_intents SET fulfilled_booking_id = ?, intent_status = ?, fulfilled_at = NOW() WHERE id = ?',
-        [bookingId, 'fulfilled', intentId]
-      );
-
-      // Populate booking_slots for each individual slot in the intent range
-      const intentResource = await resourceRepository.findById(intent.resource_id);
-      const intentSlotDuration = (intentResource as any)?.slot_duration || (intentResource as any)?.default_slot_duration || 60;
-      const intentSlots = splitTimeRange(intentStart, intentEnd, intentSlotDuration);
-      for (const slot of intentSlots) {
-        await conn.execute(
-          `INSERT INTO booking_slots (booking_id, resource_id, booking_date, slot_start, slot_end, is_available)
-           VALUES (?, ?, ?, ?, ?, FALSE)`,
-          [bookingId, intent.resource_id, intent.booking_date, slot.start, slot.end]
-        );
-      }
-
-      if (ownsTx) await conn.commit();
-
-      // Read booking on the same connection — needed because the outer
-      // transaction (webhook) may not be committed yet, so the global pool
-      // visible by bookingRepository.findById() cannot see this row.
-      const [bookRows] = await conn.execute<RowData>(
-        `SELECT b.*, r.name as resource_name, br.name as branch_name
-         FROM bookings b
-         JOIN resources r ON r.id = b.resource_id
-         JOIN branches br ON br.id = b.branch_id
-         WHERE b.id = ?`,
-        [bookingId]
-      );
-      const booking = bookRows[0] || null;
-
-      // Events are emitted via process.nextTick, so they fire after
-      // the outer webhook/confirm transaction has committed.
-      eventBus.emit('booking:created', {
-        bookingId,
-        userId: intent.user_id,
-        courtId: intent.resource_id || 0,
-        startTime: new Date(intentStartUtc),
-        endTime: new Date(intentEndUtc),
-        startAtUtc: intentStartUtc,
-        endAtUtc: intentEndUtc,
-        bookingType: intent.booking_type,
-        organisationId: intent.organisation_id || undefined,
-        branchId: intent.branch_id || undefined,
-      });
-
-      if (bookingStatus === 'confirmed') {
-        eventBus.emit('booking:confirmed', { bookingId, userId: intent.user_id, bookingType: intent.booking_type });
-
-        const startDate = new Date(intentStartUtc);
-        const { scheduleBookingReminder } = await import('../../notifications/application/scheduler.service.js');
-        scheduleBookingReminder(bookingId, intent.user_id, startDate).catch((e: any) =>
-          log.error({ err: e, bookingId }, 'Failed to schedule booking reminder')
-        );
-      }
-
-      return { success: true, booking, isPaid, timezone: intentTz };
-    } catch (err) {
-      if (ownsTx) await conn.rollback();
-      throw err;
-    } finally {
-      if (ownsTx) conn.release();
-    }
-  }
-
-  /**
-   * Reserve a pending booking from a booking_intent immediately.
-   * Called when the player returns from Paymob — reserves the slot before
-   * waiting for payment verification.
-   *
-   * Idempotent: safe to call multiple times. Returns existing booking if
-   * already reserved or fulfilled.
-   */
-  async reserveBookingIntent(intentId: number): Promise<{ bookingId: number; booking: any }> {
-    const pool = getPool();
-    const conn = await pool.getConnection();
-    try {
-      await conn.beginTransaction();
-
-      const [intentRows] = await conn.execute<RowData>(
-        'SELECT * FROM booking_intents WHERE id = ? FOR UPDATE', [intentId]
-      );
-      const intent = intentRows[0] as any;
-      if (!intent) throw new NotFoundError('Booking intent');
-
-      // Idempotency: check if already fulfilled
-      if (intent.fulfilled_booking_id) {
-        const [bRows] = await conn.execute<RowData>(
-          'SELECT * FROM bookings WHERE id = ?', [intent.fulfilled_booking_id]
-        );
-        if (bRows.length) {
-          await conn.commit();
-          return { bookingId: bRows[0].id, booking: bRows[0] };
-        }
-      }
-
-      // Idempotency: check if a pending booking already exists for this intent
-      const [existingRows] = await conn.execute<RowData>(
-        `SELECT b.* FROM bookings b
-         JOIN payment_transactions pt ON pt.booking_id = b.id
-         WHERE pt.booking_id = ? AND pt.reference_type = 'booking_intent'
-           AND b.booking_status = 'pending'
-         LIMIT 1`,
-        [intentId]
-      );
-      if (existingRows.length) {
-        await conn.commit();
-        return { bookingId: existingRows[0].id, booking: existingRows[0] };
-      }
-
-      // Find the payment transaction linked to this intent
-      const [ptRows] = await conn.execute<RowData>(
-        `SELECT id, payment_status, gateway_reference FROM payment_transactions
-         WHERE booking_id = ? AND reference_type = 'booking_intent'
-         ORDER BY id DESC LIMIT 1`,
-        [intentId]
-      );
-      const pt = ptRows[0] as any;
-
-      // Compute UTC timestamps and business date from intent data
-      const [brRow] = await conn.execute<RowData>(
-        'SELECT timezone, opening_time, closing_time FROM branches WHERE id = ?', [intent.branch_id]
-      );
-      const brData = brRow[0] as any || {};
-      const intentTz = brData.timezone || 'Africa/Cairo';
-      const intentOpening = brData.opening_time || '08:00';
-      const intentClosing = brData.closing_time || '22:00';
-      const intentBookingDate = intent.booking_date instanceof Date
-        ? intent.booking_date.toISOString().slice(0, 10)
-        : String(intent.booking_date).slice(0, 10);
-      const intentStart = intent.start_time instanceof Date
-        ? `${String(intent.start_time.getUTCHours()).padStart(2, '0')}:${String(intent.start_time.getUTCMinutes()).padStart(2, '0')}`
-        : String(intent.start_time).slice(0, 5);
-      const intentEnd = intent.end_time instanceof Date
-        ? `${String(intent.end_time.getUTCHours()).padStart(2, '0')}:${String(intent.end_time.getUTCMinutes()).padStart(2, '0')}`
-        : String(intent.end_time).slice(0, 5);
-      const intentStartUtc = TimeEngine.localToUtc(intentBookingDate, intentStart, intentTz);
-      const intentEndUtc = TimeEngine.localToUtc(intentBookingDate, intentEnd, intentTz);
-      const intentBusinessDate = TimeEngine.getBusinessDate(intentStartUtc, intentOpening, intentClosing, intentTz);
-
-      // Create the booking with PENDING status
-      const [createResult] = await conn.execute<mysql.ResultSetHeader>(
-        `INSERT INTO bookings (public_id, user_id, organisation_id, branch_id, resource_id, booking_type,
-          booking_date, business_date, start_time, end_time, start_at_utc, end_at_utc,
-          total_amount, commission_amount, club_amount,
-          booking_status, payment_status, notes, payment_method)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 'pending', ?, ?)`,
-        [randomUUID(), intent.user_id, intent.organisation_id, intent.branch_id, intent.resource_id,
-         intent.booking_type, intent.booking_date, intentBusinessDate, intent.start_time, intent.end_time,
-         intentStartUtc.replace('T', ' ').replace(/\.\d+Z$/, ''),
-         intentEndUtc.replace('T', ' ').replace(/\.\d+Z$/, ''),
-         intent.total_amount, intent.commission_amount, intent.club_amount,
-         intent.notes, intent.payment_method]
-      );
-      const bookingId = createResult.insertId;
-
-      // Link payment transaction to the new booking
-      if (pt) {
-        await conn.execute(
-          'UPDATE payment_transactions SET booking_id = ?, reference_type = ? WHERE id = ?',
-          [bookingId, 'booking', pt.id]
-        );
-      }
-
-      // Mark intent as fulfilled (even though payment is not yet confirmed)
-      await conn.execute(
-        'UPDATE booking_intents SET fulfilled_booking_id = ?, intent_status = ?, fulfilled_at = NOW() WHERE id = ?',
-        [bookingId, 'fulfilled', intentId]
-      );
-
-      // Populate booking_slots for each individual slot
-      const intentResource = await resourceRepository.findById(intent.resource_id);
-      const intentSlotDuration = (intentResource as any)?.slot_duration || (intentResource as any)?.default_slot_duration || 60;
-      const intentSlots = splitTimeRange(intentStart, intentEnd, intentSlotDuration);
-      for (const slot of intentSlots) {
-        await conn.execute(
-          `INSERT INTO booking_slots (booking_id, resource_id, booking_date, slot_start, slot_end, is_available)
-           VALUES (?, ?, ?, ?, ?, FALSE)`,
-          [bookingId, intent.resource_id, intent.booking_date, slot.start, slot.end]
-        );
-      }
-
-      await conn.commit();
-
-      // Read the booking back
-      const [bookRows] = await conn.execute<RowData>(
-        `SELECT b.*, r.name as resource_name, br.name as branch_name
-         FROM bookings b
-         JOIN resources r ON r.id = b.resource_id
-         JOIN branches br ON br.id = b.branch_id
-         WHERE b.id = ?`,
-        [bookingId]
-      );
-      const booking = bookRows[0] || null;
-
-      // Emit created event (not confirmed — payment not verified yet)
-      eventBus.emit('booking:created', {
-        bookingId,
-        userId: intent.user_id,
-        courtId: intent.resource_id || 0,
-        startTime: new Date(intentStartUtc),
-        endTime: new Date(intentEndUtc),
-        startAtUtc: intentStartUtc,
-        endAtUtc: intentEndUtc,
-        bookingType: intent.booking_type,
-        organisationId: intent.organisation_id || undefined,
-        branchId: intent.branch_id || undefined,
-      });
-
-      log.info({ bookingId, intentId, paymentStatus: 'pending' }, 'Booking reserved from intent — awaiting payment verification');
-
-      return { bookingId, booking };
-    } catch (err) {
-      await conn.rollback();
-      throw err;
-    } finally {
-      conn.release();
-    }
-  }
-
-  async cancelBookingIntent(intentId: number) {
-    const intent = await bookingRepository.findIntent(intentId);
-    if (!intent) throw new NotFoundError('Booking intent');
-    await bookingRepository.updateIntentStatus(intentId, 'cancelled', 'User cancelled payment');
-    return { success: true };
   }
 
   async getOrganisationBookings(orgId: number, date?: string, status?: string) {

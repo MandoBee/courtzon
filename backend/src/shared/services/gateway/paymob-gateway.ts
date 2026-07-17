@@ -273,7 +273,7 @@ export class PaymobGateway implements PaymentGateway {
 
         if (txnList.length > 0) {
           const merchantRef = orderId != null
-            ? `${gatewayReference.includes('booking') ? 'booking_intent' : 'order'}_${orderId}`
+            ? `${gatewayReference.includes('booking') ? 'booking' : 'order'}_${orderId}`
             : null;
 
           const matchingTxn = merchantRef

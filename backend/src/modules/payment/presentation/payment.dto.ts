@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 export const ChargeSchema = z.object({
-  referenceType: z.enum(['booking', 'order', 'subscription', 'wallet_topup', 'booking_intent']),
+  referenceType: z.enum(['booking', 'order', 'subscription', 'wallet_topup']),
   referenceId: z.number().int().positive(),
   amount: z.number().positive(),
   currency: z.string().optional().default('EGP'),

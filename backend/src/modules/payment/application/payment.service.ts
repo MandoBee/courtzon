@@ -151,7 +151,7 @@ export class PaymentService {
 
     const { id: paymentId } = await paymentRepository.create({
       userId,
-      bookingId: (input.referenceType === 'booking' || input.referenceType === 'booking_intent') ? input.referenceId : undefined,
+      bookingId: input.referenceType === 'booking' ? input.referenceId : undefined,
       orderId: input.referenceType === 'order' ? input.referenceId : undefined,
       referenceType: input.referenceType,
       paymentMethod: input.paymentMethod,
@@ -696,7 +696,7 @@ export class PaymentService {
       } catch (err: unknown) {
         outcomeError = err instanceof Error ? err.message : String(err);
       }
-      // After fulfilling a booking_intent, the payment_transaction now has a booking_id.
+      // After confirming the booking, the payment_transaction now has a booking_id.
       let bookingId: number | null = null;
       if (confirmed && newStatus === 'paid') {
         const updated = await paymentRepository.findById(paymentId);

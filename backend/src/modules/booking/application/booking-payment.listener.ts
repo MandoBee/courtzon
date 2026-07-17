@@ -1,72 +1,87 @@
 import { eventBus } from '../../../shared/event-bus/index.js';
-import { bookingService } from './booking.service.js';
 import { createModuleLogger } from '../../../shared/utils/logger.js';
-import { getPool } from '../../../database/mysql.js';
+import { confirmBooking, cancelBooking } from '../../../platform/booking/BookingSaga.js';
+import { bookingRepository } from '../infrastructure/repositories/booking.repository.js';
 
 const log = createModuleLogger('booking-payment-listener');
 
 export function registerBookingPaymentListeners() {
   eventBus.on('payment:succeeded', async (data) => {
-    if (data.referenceType !== 'booking_intent') return;
-    const intentId = data.referenceId;
-    if (!intentId) {
-      log.error({ paymentId: data.paymentId }, 'Booking payment succeeded but no intentId');
+    if (data.referenceType !== 'booking') return;
+    const bookingId = data.referenceId;
+    if (!bookingId) {
+      log.error({ paymentId: data.paymentId }, 'Booking payment succeeded but no bookingId');
       return;
     }
-    log.info({ paymentId: data.paymentId, intentId }, 'Booking: payment succeeded — fulfilling intent');
+    log.info({ paymentId: data.paymentId, bookingId }, 'Booking: payment succeeded — confirming booking');
     try {
-      const result = await bookingService.fulfillBookingIntent(intentId);
-      if (result.success) {
-        log.info({ intentId, bookingId: result.booking?.id }, 'Booking intent fulfilled via payment succeeded event');
+      const booking = await bookingRepository.findById(bookingId);
+      if (!booking) {
+        log.error({ bookingId }, 'Booking not found for payment succeeded');
+        return;
       }
+      if (booking.booking_status === 'confirmed') {
+        log.info({ bookingId }, 'Booking already confirmed — idempotent skip');
+        return;
+      }
+      if (booking.booking_status !== 'pending_payment' && booking.booking_status !== 'pending') {
+        log.warn({ bookingId, status: booking.booking_status }, 'Booking in unexpected status for payment confirmation');
+        return;
+      }
+      await confirmBooking(bookingId, {
+        paymentStatus: 'paid',
+        paymentMethod: booking.payment_method || 'card',
+      });
+      log.info({ bookingId }, 'Booking confirmed via payment succeeded event');
     } catch (err) {
-      log.error({ err, paymentId: data.paymentId, intentId }, 'Booking: fulfillBookingIntent failed on payment succeeded');
+      log.error({ err, paymentId: data.paymentId, bookingId }, 'Booking: confirmBooking failed on payment succeeded');
     }
   });
 
   eventBus.on('payment:failed-event', async (data) => {
-    if (data.referenceType !== 'booking_intent') return;
-    const intentId = data.referenceId;
-    if (!intentId) return;
-    log.info({ paymentId: data.paymentId, intentId, reason: data.reason }, 'Booking: payment failed — cancelling intent');
+    if (data.referenceType !== 'booking') return;
+    const bookingId = data.referenceId;
+    if (!bookingId) return;
+    log.info({ paymentId: data.paymentId, bookingId, reason: data.reason }, 'Booking: payment failed — cancelling booking');
     try {
-      await markIntentStatus(intentId, 'failed', data.reason || 'Payment failed');
+      const booking = await bookingRepository.findById(bookingId);
+      if (!booking) return;
+      if (booking.booking_status === 'cancelled' || booking.booking_status === 'expired') return;
+      await cancelBooking(bookingId, 0, data.reason || 'Payment failed');
     } catch (err) {
-      log.error({ err, intentId }, 'Booking: failed to cancel intent on payment failed');
+      log.error({ err, bookingId }, 'Booking: cancelBooking failed on payment failed');
     }
   });
 
   eventBus.on('payment:cancelled-event', async (data) => {
-    if (data.referenceType !== 'booking_intent') return;
-    const intentId = data.referenceId;
-    if (!intentId) return;
-    log.info({ paymentId: data.paymentId, intentId }, 'Booking: payment cancelled — marking intent cancelled');
+    if (data.referenceType !== 'booking') return;
+    const bookingId = data.referenceId;
+    if (!bookingId) return;
+    log.info({ paymentId: data.paymentId, bookingId }, 'Booking: payment cancelled — cancelling booking');
     try {
-      await markIntentStatus(intentId, 'cancelled', 'Payment cancelled');
+      const booking = await bookingRepository.findById(bookingId);
+      if (!booking) return;
+      if (booking.booking_status === 'cancelled' || booking.booking_status === 'expired') return;
+      await cancelBooking(bookingId, 0, 'Payment cancelled');
     } catch (err) {
-      log.error({ err, intentId }, 'Booking: failed to mark intent cancelled');
+      log.error({ err, bookingId }, 'Booking: cancelBooking failed on payment cancelled');
     }
   });
 
   eventBus.on('payment:expired-event', async (data) => {
-    if (data.referenceType !== 'booking_intent') return;
-    const intentId = data.referenceId;
-    if (!intentId) return;
-    log.info({ paymentId: data.paymentId, intentId }, 'Booking: payment expired — marking intent expired');
+    if (data.referenceType !== 'booking') return;
+    const bookingId = data.referenceId;
+    if (!bookingId) return;
+    log.info({ paymentId: data.paymentId, bookingId }, 'Booking: payment expired — cancelling booking');
     try {
-      await markIntentStatus(intentId, 'expired', 'Payment expired');
+      const booking = await bookingRepository.findById(bookingId);
+      if (!booking) return;
+      if (booking.booking_status === 'cancelled' || booking.booking_status === 'expired') return;
+      await cancelBooking(bookingId, 0, 'Payment expired');
     } catch (err) {
-      log.error({ err, intentId }, 'Booking: failed to mark intent expired');
+      log.error({ err, bookingId }, 'Booking: cancelBooking failed on payment expired');
     }
   });
 
   log.info('Booking payment listeners registered');
-}
-
-async function markIntentStatus(intentId: number, status: string, failureReason: string) {
-  const pool = getPool();
-  await pool.execute(
-    `UPDATE booking_intents SET intent_status = ?, failure_reason = ?, expires_at = NOW() WHERE id = ? AND intent_status NOT IN ('fulfilled', 'cancelled', 'expired', 'failed')`,
-    [status, failureReason, intentId],
-  );
 }

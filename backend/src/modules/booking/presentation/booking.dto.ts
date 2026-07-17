@@ -19,7 +19,6 @@ export const CreateBookingSchema = z.object({
   endTime: z.string().regex(/^\d{2}:\d{2}$/, 'Use HH:mm format'),
   paymentMethod: z.enum(['cash', 'card', 'online', 'wallet', 'cod']).optional().default('wallet'),
   returnUrl: z.string().optional(),
-  retryOfIntentId: z.number().int().positive().optional(),
   notes: z.string().optional(),
   participants: z.array(z.object({
     phone: z.string().optional(),

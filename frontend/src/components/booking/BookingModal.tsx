@@ -282,8 +282,8 @@ export default function BookingModal({ open, onClose }: BookingModalProps) {
       if (selectedResourceId && apiDate) {
         queryClient.invalidateQueries({ queryKey: ['resource-slots', selectedResourceId, apiDate] });
       }
-      if (d.clientSecret && d.intentId) {
-        setPendingBookingId(d.intentId);
+      if (d.clientSecret && d.bookingId) {
+        setPendingBookingId(d.bookingId);
         setPaymentId(d.paymentId || null);
         setPixelClientSecret(d.clientSecret);
       } else if (d.id) {
@@ -1028,12 +1028,8 @@ export default function BookingModal({ open, onClose }: BookingModalProps) {
       )}
 
       {/* Card payment modal */}
-      <Modal open={!!pixelClientSecret} onClose={async () => {
-        const intentId = pendingBookingId;
+      <Modal open={!!pixelClientSecret} onClose={() => {
         setPixelClientSecret(null);
-        try {
-          await api.post(`/booking-intents/${intentId}/cancel`);
-        } catch {}
         showToast('Payment cancelled', 'warning');
       }} title="Pay with Card" size="lg">
         {pixelClientSecret && (
@@ -1043,44 +1039,37 @@ export default function BookingModal({ open, onClose }: BookingModalProps) {
               setPixelClientSecret(null);
               showToast('Payment submitted — confirming...', 'info');
               const pmId = paymentId;
-              const intentId = pendingBookingId;
+              const bkId = pendingBookingId;
 
-              // Step 1: Try to confirm payment with Paymob
-              let confirmed = false;
-              let bookingId: number | null = null;
+              // Try to confirm payment with Paymob
               if (pmId) {
                 const result = await confirmPayment(pmId);
-                confirmed = result.confirmed;
-                bookingId = result.data?.bookingId || null;
-              }
-
-              // Step 2: Always fulfill the intent to create the booking (even if pending)
-              if (intentId && !bookingId) {
-                try {
-                  const fulfillRes = await api.post(`/booking-intents/${intentId}/fulfill`);
-                  bookingId = fulfillRes.data?.booking?.id || null;
-                } catch {}
-              }
-
-              if (confirmed || bookingId) {
-                onClose();
-                if (bookingId) {
+                if (result.confirmed) {
+                  onClose();
                   showToast('Booking confirmed!');
                   queryClient.invalidateQueries({ queryKey: ['my-bookings'] });
-                  navigate(`/bookings/${bookingId}/confirmation`, { state: { qrToken: '' } });
+                  const finalBookingId = result.data?.bookingId || bkId;
+                  if (finalBookingId) {
+                    navigate(`/bookings/${finalBookingId}/confirmation`, { state: { qrToken: '' } });
+                  }
+                  return;
                 }
+              }
+
+              // If we have a bookingId, the payment listener will confirm the booking via webhook
+              if (bkId) {
+                onClose();
+                showToast('Payment submitted — waiting for confirmation', 'info');
+                queryClient.invalidateQueries({ queryKey: ['my-bookings'] });
+                navigate(`/bookings/${bkId}/confirmation`, { state: { qrToken: '' } });
                 return;
               }
 
               // Fall back to polling (webhook will complete)
               setPollingPaid(true);
             }}
-            onCancel={async () => {
-              const intentId = pendingBookingId;
+            onCancel={() => {
               setPixelClientSecret(null);
-              try {
-                await api.post(`/booking-intents/${intentId}/cancel`);
-              } catch { /* non-fatal */ }
               showToast('Payment cancelled', 'warning');
             }}
           />

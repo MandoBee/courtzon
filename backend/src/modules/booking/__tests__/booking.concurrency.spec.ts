@@ -15,7 +15,6 @@ beforeAll(async () => {
   await pool.execute(`DELETE FROM booking_cancellations WHERE booking_id IN (SELECT id FROM bookings WHERE user_id = ${TEST_USER})`);
   await pool.execute(`DELETE FROM booking_participants WHERE booking_id IN (SELECT id FROM bookings WHERE user_id = ${TEST_USER})`);
   await pool.execute(`DELETE FROM bookings WHERE user_id = ${TEST_USER} AND booking_date = ?`, [TEST_DATE]);
-  await pool.execute(`DELETE FROM booking_intents WHERE user_id = ${TEST_USER}`);
   await pool.execute(`DELETE FROM payment_transactions WHERE gateway_reference LIKE 'test_book_%'`);
   await pool.execute(`DELETE FROM user_wallets WHERE user_id = ${TEST_USER}`);
   await pool.execute(`DELETE FROM users WHERE id = ${TEST_USER}`);
@@ -36,7 +35,6 @@ afterAll(async () => {
   await pool.execute(`DELETE FROM booking_cancellations WHERE booking_id IN (SELECT id FROM bookings WHERE user_id = ${TEST_USER})`);
   await pool.execute(`DELETE FROM booking_participants WHERE booking_id IN (SELECT id FROM bookings WHERE user_id = ${TEST_USER})`);
   await pool.execute(`DELETE FROM bookings WHERE user_id = ${TEST_USER} AND booking_date = ?`, [TEST_DATE]);
-  await pool.execute(`DELETE FROM booking_intents WHERE user_id = ${TEST_USER}`);
   await pool.execute(`DELETE FROM payment_transactions WHERE gateway_reference LIKE 'test_book_%'`);
   await pool.execute(`DELETE FROM user_wallets WHERE user_id = ${TEST_USER}`);
   await pool.execute(`DELETE FROM users WHERE id = ${TEST_USER}`);

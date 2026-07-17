@@ -170,28 +170,3 @@ export async function getBookingApplicantsHandler(request: FastifyRequest, reply
   const result = await bookingService.getBookingApplicants(Number(id), userId);
   return reply.send(result);
 }
-
-export async function fulfillBookingIntentHandler(request: FastifyRequest, reply: FastifyReply) {
-  const { intentId } = request.params as any;
-  const result = await bookingService.fulfillBookingIntent(Number(intentId));
-  return reply.send(result);
-}
-
-export async function reserveBookingIntentHandler(request: FastifyRequest, reply: FastifyReply) {
-  const { intentId } = request.params as any;
-  const result = await bookingService.reserveBookingIntent(Number(intentId));
-  return reply.status(201).send(result);
-}
-
-export async function getBookingIntentHandler(request: FastifyRequest, reply: FastifyReply) {
-  const { intentId } = request.params as any;
-  const intent = await bookingService.getBookingIntent(Number(intentId));
-  if (!intent) return reply.status(404).send({ error: 'NOT_FOUND', message: 'Booking intent not found' });
-  return reply.send(intent);
-}
-
-export async function cancelBookingIntentHandler(request: FastifyRequest, reply: FastifyReply) {
-  const { intentId } = request.params as any;
-  const result = await bookingService.cancelBookingIntent(Number(intentId));
-  return reply.send(result);
-}

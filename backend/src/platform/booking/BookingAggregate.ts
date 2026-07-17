@@ -3,6 +3,7 @@ import { PlatformValidationError } from '../shared/errors.js';
 
 const ALLOWED_TRANSITIONS: Record<BookingStatus, BookingStatus[]> = {
   pending: ['confirmed', 'cancelled', 'expired'],
+  pending_payment: ['confirmed', 'cancelled', 'expired'],
   confirmed: ['completed', 'cancelled', 'cancelled_with_fee', 'checked_in', 'no_show'],
   checked_in: ['completed'],
   cancelled: [],
@@ -32,9 +33,9 @@ export class BookingAggregate {
   }
 
   confirm(currentStatus: BookingStatus, context?: ConfirmContext): BookingStatus {
-    if (currentStatus !== 'pending') {
+    if (currentStatus !== 'pending' && currentStatus !== 'pending_payment') {
       throw new PlatformValidationError({
-        message: `Cannot confirm booking in '${currentStatus}' status. Only pending bookings can be confirmed.`,
+        message: `Cannot confirm booking in '${currentStatus}' status. Only pending or pending_payment bookings can be confirmed.`,
         details: { currentStatus, targetStatus: 'confirmed' },
         platform: 'booking',
       });

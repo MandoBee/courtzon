@@ -1,4 +1,4 @@
-export type BookingStatus = 'pending' | 'confirmed' | 'completed' | 'cancelled' | 'cancelled_with_fee' | 'no_show' | 'checked_in' | 'expired';
+export type BookingStatus = 'pending' | 'pending_payment' | 'confirmed' | 'completed' | 'cancelled' | 'cancelled_with_fee' | 'no_show' | 'checked_in' | 'expired';
 
 export type PaymentStatus = 'pending' | 'paid' | 'failed' | 'refunded' | 'partially_refunded' | 'penalty' | 'expired';
 
@@ -35,7 +35,7 @@ export interface SlotInfo {
   start: string;
   end: string;
   date: string;
-  status: 'available' | 'booked' | 'intent';
+  status: 'available' | 'booked';
 }
 
 export interface BookingStatusResult {

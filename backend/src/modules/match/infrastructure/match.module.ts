@@ -35,10 +35,10 @@ export function startMatchModule(): void {
   });
 
   eventBus.on('payment:failed-event', (data: any) => {
-    if (data.referenceType === 'booking_intent' && data.referenceId) {
-      log.info({ event: 'payment:failed-event', intentId: data.referenceId, reason: data.reason }, 'payment:failed-event received — cancelling match');
+    if (data.referenceType === 'booking' && data.referenceId) {
+      log.info({ event: 'payment:failed-event', bookingId: data.referenceId, reason: data.reason }, 'payment:failed-event received — cancelling match');
       paymentFailedHandler.handle(data.referenceId).catch((err) =>
-        log.error({ err, intentId: data.referenceId }, 'PaymentFailedHandler failed')
+        log.error({ err, bookingId: data.referenceId }, 'PaymentFailedHandler failed')
       );
     }
   });

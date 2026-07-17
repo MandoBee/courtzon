@@ -27,76 +27,26 @@ export class BookingRepository {
     totalAmount: number; commissionAmount?: number; clubAmount?: number;
     notes?: string; bookingStatus?: string; paymentStatus?: string;
     paymentMethod?: string; startAtUtc?: string; endAtUtc?: string;
-    businessDate?: string;
+    businessDate?: string; expiresAt?: string;
   }, conn?: mysql.PoolConnection): Promise<number> {
     const db = this.resolve(conn);
     const [result] = await db.execute<ResultSetHeader>(
       `INSERT INTO bookings (public_id, user_id, organisation_id, branch_id, resource_id, booking_type,
         booking_date, business_date, start_time, end_time, start_at_utc, end_at_utc,
         total_amount, commission_amount, club_amount,
-        booking_status, payment_status, payment_method, notes)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        booking_status, payment_status, payment_method, notes, expires_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
        [generateUUID(), data.userId, data.organisationId, data.branchId, data.resourceId, data.bookingType,
         data.bookingDate, data.businessDate || data.bookingDate, data.startTime, data.endTime,
         data.startAtUtc ? data.startAtUtc.replace('T', ' ').replace(/\.\d+Z$/, '') : null,
         data.endAtUtc ? data.endAtUtc.replace('T', ' ').replace(/\.\d+Z$/, '') : null,
        data.totalAmount, data.commissionAmount || 0, data.clubAmount || 0,
-       data.bookingStatus || 'pending', data.paymentStatus || 'pending', data.paymentMethod || null, data.notes || null]
+       data.bookingStatus || 'pending', data.paymentStatus || 'pending', data.paymentMethod || null, data.notes || null,
+       data.expiresAt || null]
     );
     return result.insertId;
   }
 
-  async createIntent(data: {
-    userId: number; branchId: number; organisationId: number; resourceId: number;
-    bookingType: string; bookingDate: string; startTime: string; endTime: string;
-    totalAmount: number; commissionAmount?: number; clubAmount?: number;
-    notes?: string; paymentMethod?: string; matchmaking?: any; participants?: any[];
-    retryOfIntentId?: number; attemptNumber?: number;
-    startAtUtc?: string; endAtUtc?: string; businessDate?: string;
-  }): Promise<number> {
-    const [result] = await this.pool.execute<ResultSetHeader>(
-      `INSERT INTO booking_intents (user_id, branch_id, organisation_id, resource_id, booking_type,
-        booking_date, business_date, start_time, end_time, start_at_utc, end_at_utc,
-        total_amount, commission_amount, club_amount,
-        notes, payment_method, matchmaking, participants, retry_of_intent_id, attempt_number)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [data.userId, data.branchId, data.organisationId, data.resourceId, data.bookingType,
-       data.bookingDate, data.businessDate || data.bookingDate, data.startTime, data.endTime,
-       data.startAtUtc ? data.startAtUtc.replace('T', ' ').replace(/\.\d+Z$/, '') : null,
-       data.endAtUtc ? data.endAtUtc.replace('T', ' ').replace(/\.\d+Z$/, '') : null,
-       data.totalAmount, data.commissionAmount || 0, data.clubAmount || 0,
-       data.notes || null, data.paymentMethod || null,
-       data.matchmaking ? JSON.stringify(data.matchmaking) : null,
-       data.participants ? JSON.stringify(data.participants) : null,
-       data.retryOfIntentId || null,
-       data.attemptNumber || 1]
-    );
-    return result.insertId;
-  }
-
-  async findIntent(id: number): Promise<any | null> {
-    const [rows] = await this.pool.execute<RowData>(
-      'SELECT * FROM booking_intents WHERE id = ?', [id]
-    );
-    return rows.length ? rows[0] : null;
-  }
-
-  async deleteIntent(id: number): Promise<void> {
-    await this.pool.execute('DELETE FROM booking_intents WHERE id = ?', [id]);
-  }
-
-  async linkIntentToBooking(intentId: number, bookingId: number): Promise<void> {
-    await this.pool.execute(
-      'UPDATE booking_intents SET fulfilled_booking_id = ?, intent_status = ?, fulfilled_at = NOW() WHERE id = ?',
-      [bookingId, 'fulfilled', intentId]
-    );
-  }
-
-  /**
-   * Internal: single authority for persisting booking status transitions.
-   * All status-changing public methods must delegate to this.
-   * @internal @deprecated External callers should use BookingSaga instead.
-   */
   async persistTransition(
     id: number,
     bookingStatus: string,
@@ -120,13 +70,6 @@ export class BookingRepository {
    */
   async updateBookingStatus(id: number, bookingStatus: string, paymentStatus: string, conn?: mysql.PoolConnection): Promise<void> {
     await this.persistTransition(id, bookingStatus, paymentStatus, undefined, conn);
-  }
-
-  async updateIntentStatus(id: number, status: string, failureReason?: string, failureCategory?: string): Promise<void> {
-    await this.pool.execute(
-      'UPDATE booking_intents SET intent_status = ?, failure_reason = ?, failure_category = ?, updated_at = NOW() WHERE id = ?',
-      [status, failureReason || null, failureCategory || null, id]
-    );
   }
 
   async findById(id: number): Promise<any | null> {
@@ -241,17 +184,11 @@ export class BookingRepository {
                  WHERE resource_id = ? AND booking_date = ?
                  AND booking_status NOT IN ('cancelled', 'expired', 'no_show')
                  AND ((start_time < ? AND end_time > ?) OR (start_time < ? AND end_time > ?))`;
-    const intentSql = `SELECT COUNT(*) as cnt FROM booking_intents
-                 WHERE resource_id = ? AND booking_date = ?
-                 AND intent_status IN ('pending', 'payment_initiated')
-                 AND (expires_at IS NULL OR expires_at > NOW())
-                 AND ((start_time < ? AND end_time > ?) OR (start_time < ? AND end_time > ?))`;
     let totalOverlap = 0;
     for (const slot of slots) {
       const slotDate = slot.date || date;
       const [bRows] = await db.execute<RowData>(bookingSql, [resourceId, slotDate, slot.end, slot.start, slot.end, slot.start]);
-      const [iRows] = await db.execute<RowData>(intentSql, [resourceId, slotDate, slot.end, slot.start, slot.end, slot.start]);
-      totalOverlap += (bRows[0] as any).cnt + (iRows[0] as any).cnt;
+      totalOverlap += (bRows[0] as any).cnt;
     }
     return totalOverlap === 0;
   }
@@ -283,18 +220,12 @@ export class BookingRepository {
     const [rows] = await this.pool.execute<RowData>(
       `SELECT bs.slot_start, bs.slot_end,
          CASE WHEN b.id IS NOT NULL THEN 'booked'
-              WHEN bi.id IS NOT NULL THEN 'booked'
               ELSE 'available' END as status
        FROM booking_slots bs
        LEFT JOIN bookings b ON b.resource_id = bs.resource_id
          AND b.booking_date = bs.booking_date
          AND b.start_time = bs.slot_start
          AND b.booking_status NOT IN ('cancelled', 'expired', 'no_show')
-       LEFT JOIN booking_intents bi ON bi.resource_id = bs.resource_id
-         AND bi.booking_date = bs.booking_date
-         AND bi.start_time = bs.slot_start
-         AND bi.intent_status IN ('pending', 'payment_initiated')
-         AND (bi.expires_at IS NULL OR bi.expires_at > NOW())
        WHERE bs.resource_id = ? AND bs.booking_date = ?`,
       [resourceId, date]
     );
@@ -308,14 +239,7 @@ export class BookingRepository {
        AND booking_status NOT IN ('cancelled', 'expired', 'no_show')`,
       [resourceId, date]
     );
-    const [iRows] = await this.pool.execute<RowData>(
-      `SELECT start_time, end_time FROM booking_intents
-       WHERE resource_id = ? AND booking_date = ?
-       AND intent_status IN ('pending', 'payment_initiated')
-       AND (expires_at IS NULL OR expires_at > NOW())`,
-      [resourceId, date]
-    );
-    return [...bRows, ...iRows];
+    return bRows;
   }
 
   async findBookingsByBusinessDate(resourceId: number, businessDate: string): Promise<Array<{ startAtUtc: string; endAtUtc: string; bookingDate?: string; startTime?: string; endTime?: string }>> {
@@ -328,17 +252,8 @@ export class BookingRepository {
        AND booking_status NOT IN ('cancelled', 'expired', 'no_show')`,
       [resourceId, businessDate, businessDate, businessDate]
     );
-    const [iRows] = await this.pool.execute<RowData>(
-      `SELECT start_at_utc, end_at_utc, NULL as booking_date, NULL as start_time, NULL as end_time FROM booking_intents
-       WHERE resource_id = ? AND (business_date = ? OR business_date = DATE_SUB(?, INTERVAL 1 DAY))
-       AND intent_status IN ('pending', 'payment_initiated')
-       AND (expires_at IS NULL OR expires_at > NOW())
-       AND start_at_utc IS NOT NULL`,
-      [resourceId, businessDate, businessDate]
-    );
-    const rows = [...bRows, ...iRows];
     // Normalize DB snake_case columns to camelCase TimeEngine contract
-    return rows.map((row: any) => ({
+    return bRows.map((row: any) => ({
       startAtUtc: row.start_at_utc,
       endAtUtc: row.end_at_utc,
       bookingDate: row.booking_date,

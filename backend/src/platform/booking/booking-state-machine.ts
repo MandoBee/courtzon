@@ -9,13 +9,17 @@
  *   cancelled_with_fee — Booking cancelled with penalty fee
  *   no_show       — User did not show up
  *   checked_in    — User checked in at venue
- *   expired       — Booking expired (payment-first intent timed out)
+ *   expired       — Booking expired (payment timeout)
  *
  * Allowed transitions:
- *   (none)        → pending       createBooking / fulfillBookingIntent
+ *   (none)        → pending       createBooking (wallet/cash/cod)
+ *   (none)        → pending_payment  createBooking (gateway)
+ *   pending_payment → confirmed    payment received
+ *   pending_payment → cancelled    user cancels / admin cancels / expiry worker
+ *   pending_payment → expired      payment timeout (3 min TTL)
  *   pending       → confirmed     payment received / admin confirms / COD accepted
  *   pending       → cancelled     user cancels / admin cancels / expiry worker
- *   pending       → expired       payment-first intent timeout
+ *   pending       → expired       payment timeout
  *   confirmed     → completed     auto-complete worker / admin completes
  *   confirmed     → cancelled     user cancels (within window) / admin cancels
  *   confirmed     → cancelled_with_fee  user cancels (fee applies)

@@ -12,7 +12,7 @@ export const paymentRepository = {
     idempotencyKey?: string;
   }) {
     const pool = getPool();
-    const isBooking = data.referenceType === 'booking' || data.referenceType === 'booking_intent';
+    const isBooking = data.referenceType === 'booking';
     const isOrder = data.referenceType === 'order';
     const traceId = data.traceId || randomUUID();
     const [result] = await pool.execute<mysql.ResultSetHeader>(

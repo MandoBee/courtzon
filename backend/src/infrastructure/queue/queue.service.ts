@@ -6,7 +6,7 @@ const log = createModuleLogger('queue');
 
 export type JobType = 'send_email' | 'process_settlement' | 'cancel_expired_bookings' | 'database_backup'
   | 'run_settlements' | 'auto_complete_bookings' | 'sync_pending_payments' | 'expire_stale_payments'
-  | 'cleanup_booking_intents' | 'process_notification' | 'send_notification_batch'
+  | 'process_notification' | 'send_notification_batch'
   | 'process_notification_digest' | 'send_scheduled_notification' | 'process_dead_letter'
   | 'retry_failed_deliveries' | 'trigger_digest_processing' | 'run_cleanup'
   | 'cancel_abandoned_orders'
@@ -55,10 +55,6 @@ export interface SyncPendingPaymentsJob {
 
 export interface ExpireStalePaymentsJob {
   timeoutMinutes?: number;
-}
-
-export interface CleanupIntentsJob {
-  _?: undefined;
 }
 
 export interface ProcessNotificationJob {
@@ -122,7 +118,6 @@ export type JobPayloadMap = {
   auto_complete_bookings: AutoCompleteBookingsJob;
   sync_pending_payments: SyncPendingPaymentsJob;
   expire_stale_payments: ExpireStalePaymentsJob;
-  cleanup_booking_intents: CleanupIntentsJob;
   process_notification: ProcessNotificationJob;
   send_notification_batch: SendNotificationBatchJob;
   process_notification_digest: ProcessNotificationDigestJob;
