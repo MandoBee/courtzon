@@ -136,27 +136,15 @@ export async function removeOrgStaff(orgId: number, userId: number) {
 // ── Subscription Requests ──
 
 export async function getOrgSubscriptionWithUsage(orgId: number) {
-  const result = await repo.getOrgSubscriptionWithFeatures(orgId);
-  if (!result) return { plan: null, status: 'none', features: [], usage: {} };
+  const { getCurrentSubscription } = await import('../../../shared/utils/current-subscription.resolver.js');
+  const sub = await getCurrentSubscription(orgId);
 
-  const { sub, config } = result;
+  if (!sub.exists) return { plan: null, status: 'none', features: [], usage: {} };
+
   const usage = await repo.getFeatureUsageCounts(orgId);
   const pendingRequest = await repo.getOrgPendingSubscriptionRequest(orgId);
 
-  // Resolve plan name: snapshot → live plan → fallback
-  let planName = config?.planName;
-  if (!planName && sub.plan_id) {
-    const { getPool } = await import('../../../database/mysql.js');
-    const pool = getPool();
-    const [pRows] = await pool.execute<any[]>(
-      'SELECT plan_name FROM subscription_plans WHERE id = ?', [sub.plan_id]
-    );
-    planName = pRows.length ? pRows[0].plan_name : 'Unknown';
-  } else if (!planName) {
-    planName = 'Unknown';
-  }
-
-  const featureList = (config?.features || []).map((f: any) => ({
+  const featureList = sub.features.map((f: any) => ({
     featureKey: f.featureKey,
     label: f.label,
     valueType: f.valueType,
@@ -166,22 +154,20 @@ export async function getOrgSubscriptionWithUsage(orgId: number) {
     usage: usage[f.featureKey] ?? 0,
   }));
 
-  const billingCycle = config?.billingCycle || sub.billing_cycle || 'monthly';
-
   return {
-    id: sub.id,
-    planId: sub.plan_id,
-    planName,
-    priceMonthly: config?.priceMonthly ?? null,
-    priceYearly: config?.priceYearly ?? null,
-    isUnlimited: !!config?.isUnlimited,
-    billingCycle,
+    id: sub.subscriptionId,
+    planId: sub.planId,
+    planName: sub.planName,
+    priceMonthly: sub.planSnapshot?.priceMonthly ?? null,
+    priceYearly: sub.planSnapshot?.priceYearly ?? null,
+    isUnlimited: sub.planSnapshot?.isUnlimited ?? false,
+    billingCycle: sub.billingCycle,
     features: featureList,
     usage,
-    startDate: sub.start_date,
-    endDate: sub.end_date,
-    status: sub.subscription_status,
-    autoRenew: !!sub.auto_renew,
+    startDate: sub.startDate,
+    endDate: sub.endDate,
+    status: sub.subscriptionStatus,
+    autoRenew: sub.autoRenew,
     pendingRequest: pendingRequest
       ? {
           id: pendingRequest.id,

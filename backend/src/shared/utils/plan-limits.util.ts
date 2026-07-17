@@ -1,4 +1,4 @@
-import { getEffectiveFeatureValue } from './plan-resolver.js';
+import { getFeatureLimit } from './current-subscription.resolver.js';
 
 /**
  * Read a numeric feature limit from the org's effective subscription plan.
@@ -16,5 +16,5 @@ export async function getPlanNumericLimit(
   key: string,
   defaultValue: number,
 ): Promise<number> {
-  return getEffectiveFeatureValue(orgId, key, defaultValue);
+  return getFeatureLimit(orgId, key, defaultValue);
 }

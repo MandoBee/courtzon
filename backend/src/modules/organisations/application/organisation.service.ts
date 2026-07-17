@@ -9,7 +9,6 @@ import { amenityRepository } from '../infrastructure/repositories/amenity.reposi
 import { countriesRepository } from '../../countries/infrastructure/repositories/countries.repository.js';
 import { NotFoundError, ConflictError, ValidationError } from '../../../shared/errors/app-error.js';
 import { resolveOrganisationMedia } from './organisation-media.util.js';
-import { nonExpiredSubscriptionCondition } from '../../../shared/utils/subscription-validator.js';
 import { eventBus } from '../../../shared/event-bus/index.js';
 import {
   cascadeOrganisationSoftDelete,
@@ -709,54 +708,31 @@ export class OrganisationService {
   }
 
   async getOrgSubscription(orgId: number) {
-    const pool = getPool();
-    const [rows] = await pool.execute<RowData>(
-      `SELECT os.*
-       FROM organisation_subscriptions os
-       WHERE os.organisation_id = ? AND ${nonExpiredSubscriptionCondition('os')}
-       ORDER BY os.created_at DESC
-       LIMIT 1`,
-      [orgId]
-    );
-    if (!rows.length) return { plan: null, status: 'none' };
-    const sub = rows[0];
+    const { getCurrentSubscription } = await import('../../../shared/utils/current-subscription.resolver.js');
+    const sub = await getCurrentSubscription(orgId);
 
-    const { getEffectivePlanConfig } = await import('../../../shared/utils/plan-resolver.js');
-    const config = await getEffectivePlanConfig(orgId);
+    if (!sub.exists) return { plan: null, status: 'none' };
 
-    // Resolve plan name: snapshot → live plan → fallback
-    let planName = config?.planName;
-    if (!planName && sub.plan_id) {
-      const [pRows] = await pool.execute<RowData>(
-        'SELECT plan_name FROM subscription_plans WHERE id = ?', [sub.plan_id]
-      );
-      planName = pRows.length ? pRows[0].plan_name : 'Unknown';
-    } else if (!planName) {
-      planName = 'Unknown';
-    }
-
-    const billingCycle = (config?.billingCycle || sub.billing_cycle || 'monthly') as BillingPeriod;
-    const priceMonthly = config?.priceMonthly ?? null;
-    const priceYearly = config?.priceYearly ?? null;
-    const pricing = { priceMonthly, priceYearly, isUnlimited: !!config?.isUnlimited };
-    const features = config?.features?.length
-      ? config.features
-      : null;
+    const billingCycle = sub.billingCycle as BillingPeriod;
+    const priceMonthly = null; // prices not in canonical DTO (plan-snapshot may not have them)
+    const priceYearly = null;
+    const pricing = { priceMonthly, priceYearly, isUnlimited: false };
+    const features = sub.features.length ? sub.features : null;
 
     return {
-      id: sub.id,
-      planId: sub.plan_id,
-      planName,
-      price: resolvePlanPrice(pricing, billingCycle),
-      priceMonthly,
-      priceYearly,
-      isUnlimited: !!config?.isUnlimited,
+      id: sub.subscriptionId,
+      planId: sub.planId,
+      planName: sub.planName,
+      price: 0,
+      priceMonthly: null,
+      priceYearly: null,
+      isUnlimited: false,
       billingCycle,
       features,
-      startDate: sub.start_date,
-      endDate: sub.end_date,
-      status: sub.subscription_status,
-      autoRenew: !!sub.auto_renew,
+      startDate: sub.startDate,
+      endDate: sub.endDate,
+      status: sub.subscriptionStatus,
+      autoRenew: sub.autoRenew,
     };
   }
 

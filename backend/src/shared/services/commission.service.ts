@@ -1,6 +1,6 @@
 import type mysql from 'mysql2/promise';
 import { getPool } from '../../database/mysql.js';
-import { getEffectivePlanConfig, clearPlanCache } from '../utils/plan-resolver.js';
+import { getCurrentSubscription, clearSubscriptionCache, getCommissionRate } from '../utils/current-subscription.resolver.js';
 import { commissionEntityLookupKeys } from './commission-entities.js';
 import { createModuleLogger } from '../utils/logger.js';
 
@@ -35,12 +35,12 @@ export class CommissionService {
     const orgId = await this.resolveOrgId(branchOrOrgId);
     log.info({ branchOrOrgId, resolvedOrgId: orgId }, 'CommissionService.getOrgPlanId — resolved orgId');
 
-    const config = await getEffectivePlanConfig(orgId);
-    if (!config) {
+    const sub = await getCurrentSubscription(orgId);
+    if (!sub.exists) {
       log.warn({ orgId }, 'CommissionService.getOrgPlanId — no active plan found');
       return null;
     }
-    return config.planId;
+    return sub.planId;
   }
 
   async getRate(planId: number | null, entityType: string): Promise<{ rate: number; rateType: 'percentage' | 'fixed' }> {
@@ -68,37 +68,27 @@ export class CommissionService {
     entityType: string,
     grossAmount: number
   ): Promise<CommissionResult> {
-    clearPlanCache();
+    clearSubscriptionCache();
     const orgId = await this.resolveOrgId(branchOrOrgId);
-    const config = await getEffectivePlanConfig(orgId);
+    const sub = await getCurrentSubscription(orgId);
 
-    if (!config) {
+    if (!sub.exists) {
       throw new Error('Organisation has no active subscription plan');
     }
 
-    // Resolve commission rate from the effective plan config (snapshot or live)
-    const lookupKeys = commissionEntityLookupKeys(entityType);
-    let rate = 0;
-    let rateType: 'percentage' | 'fixed' = 'percentage';
+    const commRate = await getCommissionRate(orgId, entityType);
+    let rate = commRate?.rate ?? 0;
+    let rateType = commRate?.rateType ?? 'percentage';
 
-    // First check snapshot rates
-    for (const key of lookupKeys) {
-      const cr = config.commissionRates.find(r => r.entity === key);
-      if (cr) {
-        rate = cr.amount;
-        rateType = cr.rateType;
-        break;
-      }
-    }
-
-    // Fallback: live subscription_plan_rates (for legacy plans without snapshot rates)
-    if (rate === 0 && !config.fromSnapshot) {
+    // If snapshot didn't have rates, fall back to live subscription_plan_rates
+    if (rate === 0 && !sub.fromSnapshot && sub.planId) {
+      const lookupKeys = commissionEntityLookupKeys(entityType);
       const placeholders = lookupKeys.map(() => '?').join(', ');
       const [rows] = await this.pool.execute<RowData>(
         `SELECT amount, rate_type FROM subscription_plan_rates
          WHERE plan_id = ? AND applicable_entity IN (${placeholders})
          LIMIT 1`,
-        [config.planId, ...lookupKeys]
+        [sub.planId, ...lookupKeys]
       );
       if (rows.length) {
         rate = Number(rows[0].amount);
@@ -106,8 +96,8 @@ export class CommissionService {
       }
     }
 
-    if (rate === 0 && !config.isUnlimited) {
-      throw new Error(`No commission rate configured for plan ${config.planId} / entity "${entityType}"`);
+    if (rate === 0) {
+      throw new Error(`No commission rate configured for plan ${sub.planId} / entity "${entityType}"`);
     }
 
     const commissionAmount = rateType === 'percentage'
@@ -120,8 +110,8 @@ export class CommissionService {
       rateType,
       commissionAmount,
       netAmount,
-      planName: config.planName,
-      planId: config.planId,
+      planName: sub.planName,
+      planId: sub.planId || 0,
     };
   }
 }
