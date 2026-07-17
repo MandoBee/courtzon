@@ -791,12 +791,24 @@ export const marketplaceService = {
       log.info({ orderId: data.referenceId }, 'handlePaymentSucceeded: order already confirmed — idempotent');
       return;
     }
+    if (order.status === 'cancelled') {
+      log.warn({ orderId: data.referenceId }, 'handlePaymentSucceeded: order was cancelled — skipping delayed webhook');
+      return;
+    }
 
     await this._fulfillAndConfirmOrder(data.referenceId, order.buyer_id, 'Payment confirmed');
   },
 
   // Restore stock for order items (used by immediate gateway failure and payment:failed-event listener)
   async _restoreOrderStock(orderId: number, reason: string) {
+    // Safety: never restore stock if payment was already made
+    // (prevents race with webhook arriving between query and per-order processing)
+    const hasPaid = await repo.orderHasPaidPayment(orderId);
+    if (hasPaid) {
+      log.warn({ orderId, reason }, '_restoreOrderStock: skipped — order has paid payment');
+      return;
+    }
+
     const orderRows = await repo.findOrderById(orderId);
     if (!orderRows?.length) return;
     const currencyCode = (orderRows[0] as any).currency_code || 'EGP';

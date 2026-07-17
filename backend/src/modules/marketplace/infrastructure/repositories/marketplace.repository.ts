@@ -788,9 +788,19 @@ export const marketplaceRepository = {
        FROM orders o
        WHERE o.status = 'pending'
          AND o.created_at < ?
-         AND o.id NOT IN (
-           SELECT pt.order_id FROM payment_transactions pt
-           WHERE pt.payment_status = 'paid'
+         AND (
+           -- No payment was ever initiated (user never reached Paymob)
+           NOT EXISTS (SELECT 1 FROM payment_transactions pt WHERE pt.order_id = o.id)
+           OR (
+             -- All existing payments are in terminal states (expired/cancelled/failed)
+             -- and none are paid or still in progress
+             NOT EXISTS (SELECT 1 FROM payment_transactions pt
+                         WHERE pt.order_id = o.id
+                           AND pt.payment_status IN ('pending', 'processing'))
+             AND NOT EXISTS (SELECT 1 FROM payment_transactions pt
+                             WHERE pt.order_id = o.id
+                               AND pt.payment_status = 'paid')
+           )
          )
        LIMIT 50`,
       [cutoff],
