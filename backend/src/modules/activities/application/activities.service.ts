@@ -2,6 +2,7 @@ import { NotFoundError, ConflictError, ForbiddenError, ValidationError } from '.
 import { commissionService } from '../../../shared/services/commission.service.js';
 import { activitiesRepository as repo } from '../infrastructure/repositories/activities.repository.js';
 import { pricingEngine } from '../../booking/domain/pricing-engine.js';
+import { TimeEngine } from '../../time/index.js';
 import { generateUUID } from '../../../shared/utils/token.js';
 import { getPool } from '../../../database/mysql.js';
 import type mysql from 'mysql2/promise';
@@ -440,18 +441,33 @@ export const activitiesService = {
     } catch { /* use default */ }
 
     const pool = getPool();
+
+    // Resolve branch timezone for canonical time fields
+    const [brRows] = await pool.execute<any[]>(
+      'SELECT timezone FROM branches WHERE id = ?', [session.branch_id],
+    );
+    const branchTz = brRows[0]?.timezone || 'Africa/Cairo';
+    const startAtUtc = TimeEngine.localToUtc(bookingDate, startTime, branchTz);
+    const endAtUtc = TimeEngine.localToUtc(bookingDate, endTime, branchTz);
+    const openingTime = '08:00';
+    const closingTime = '22:00';
+    const businessDate = TimeEngine.getBusinessDate(startAtUtc, openingTime, closingTime, branchTz);
+
     const conn = await pool.getConnection();
     try {
       await conn.beginTransaction();
 
       const [result] = await conn.execute(
         `INSERT INTO bookings (public_id, user_id, organisation_id, branch_id, resource_id, booking_type,
-          booking_date, start_time, end_time, total_amount, commission_amount, club_amount,
+          booking_date, business_date, start_time, end_time, start_at_utc, end_at_utc,
+          total_amount, commission_amount, club_amount,
           booking_status, payment_status, notes)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [generateUUID(), userId, session.organisation_id || null, session.branch_id || null, data.resourceId,
-         'coach_session', bookingDate, startTime, endTime, courtTotal,
-         commissionAmount, clubAmount, 'pending', 'pending', `Coach session #${sessionId}`]
+         'coach_session', bookingDate, businessDate, startTime, endTime,
+         String(startAtUtc).replace('T', ' ').replace(/\.\d+Z$/, ''),
+         String(endAtUtc).replace('T', ' ').replace(/\.\d+Z$/, ''),
+         courtTotal, commissionAmount, clubAmount, 'pending', 'pending', `Coach session #${sessionId}`]
       );
       const bookingId = (result as any).insertId;
 

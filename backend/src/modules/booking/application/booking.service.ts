@@ -144,6 +144,7 @@ export class BookingService {
           notes: input.notes, paymentMethod,
           participants: input.participants,
           matchmaking: input.matchmaking,
+          startAtUtc, endAtUtc, businessDate,
         });
 
         // Intent has expires_at = NOW() + 15 min by default.
@@ -875,6 +876,7 @@ export class BookingService {
 
     // Query existing bookings for this business date (and previous day for overnight)
     const rawBookings = await bookingRepository.findBookingsByBusinessDate(resourceId, date);
+    // TODO: Remove after backfill migration is confirmed complete on all environments.
     // Convert legacy bookings (start_at_utc IS NULL) by computing UTC from local times
     const existingBookings = rawBookings.map((b: any) => {
       if (b.start_at_utc && b.end_at_utc) return b;
