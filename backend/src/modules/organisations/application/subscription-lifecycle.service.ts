@@ -1,5 +1,4 @@
 import type mysql from 'mysql2/promise';
-import { getPool } from '../../../database/mysql.js';
 import { withTransaction } from '../../../database/database.transaction.js';
 import { eventBus } from '../../../shared/event-bus/index.js';
 import { recordAudit } from '../../audit-log/index.js';
@@ -53,34 +52,44 @@ export async function expireSubscriptions(): Promise<{ expired: number }> {
 
 /**
  * Daily job: send expiration reminders at specific intervals before end_date.
- * Uses last_reminder_sent column to prevent duplicate reminders.
+ * Uses withTransaction + FOR UPDATE to prevent race conditions.
+ * Uses atomic CONCAT NOT LIKE guard to prevent duplicate sends.
  */
 export async function sendExpirationReminders(): Promise<{ notified: number }> {
-  const pool = getPool();
   let notified = 0;
+  const today = new Date();
 
-  const [rows] = await pool.execute<RowData>(
-    `SELECT s.id, s.organisation_id, s.plan_id, s.end_date, s.last_reminder_sent,
-            COALESCE(sp.plan_name, 'Unknown') as plan_name
-     FROM organisation_subscriptions s
-     LEFT JOIN subscription_plans sp ON sp.id = s.plan_id
-     WHERE s.subscription_status = 'active' AND s.end_date IS NOT NULL AND s.end_date > CURDATE()`,
-  );
-
-  for (const sub of rows as any[]) {
-    const daysLeft = Math.ceil(
-      (new Date(sub.end_date).getTime() - Date.now()) / (1000 * 60 * 60 * 24),
+  await withTransaction(async (conn) => {
+    const [rows] = await conn.execute<RowData>(
+      `SELECT s.id, s.organisation_id, s.end_date, COALESCE(sp.plan_name, 'Unknown') as plan_name
+       FROM organisation_subscriptions s
+       LEFT JOIN subscription_plans sp ON sp.id = s.plan_id
+       WHERE s.subscription_status = 'active' AND s.end_date IS NOT NULL AND s.end_date > CURDATE()
+       FOR UPDATE`,
     );
-    const sent = (sub.last_reminder_sent || '').split(',').filter(Boolean);
 
-    for (const interval of REMINDER_INTERVALS) {
-      if (daysLeft === interval && !sent.includes(String(interval))) {
-        const newSent = sent.length ? `${sent.join(',')},${interval}` : String(interval);
+    for (const sub of rows as any[]) {
+      const daysLeft = Math.ceil(
+        (new Date(sub.end_date).getTime() - today.getTime()) / (1000 * 60 * 60 * 24),
+      );
 
-        await pool.execute(
-          'UPDATE organisation_subscriptions SET last_reminder_sent = ? WHERE id = ?',
-          [newSent, sub.id],
+      for (const interval of REMINDER_INTERVALS) {
+        if (daysLeft !== interval) continue;
+
+        // Atomic UPDATE: only marks interval as sent if not already marked
+        // Prevents duplicate notifications even if two workers run concurrently
+        const likePattern = `%${interval}%`;
+        const [result] = await conn.execute<mysql.ResultSetHeader>(
+          `UPDATE organisation_subscriptions
+           SET last_reminder_sent = CONCAT(
+             COALESCE(last_reminder_sent, ''), 
+             CASE WHEN last_reminder_sent IS NULL OR last_reminder_sent = '' THEN ? ELSE CONCAT(',', ?) END
+           ), updated_at = NOW()
+           WHERE id = ? AND (last_reminder_sent IS NULL OR last_reminder_sent NOT LIKE ?)`,
+          [String(interval), String(interval), sub.id, likePattern],
         );
+
+        if (result.affectedRows === 0) continue; // Already sent — skip
 
         eventBus.emit('organisation:subscription-expiring', {
           organisationId: sub.organisation_id,
@@ -92,7 +101,7 @@ export async function sendExpirationReminders(): Promise<{ notified: number }> {
         log.info({ subscriptionId: sub.id, organisationId: sub.organisation_id, daysLeft: interval }, 'Expiration reminder sent');
       }
     }
-  }
+  });
 
   log.info({ notified }, 'Expiration reminders sent');
   return { notified };
