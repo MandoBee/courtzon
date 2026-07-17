@@ -874,13 +874,24 @@ export class BookingService {
     log.info({ slotCount: slots.length, firstSlot: slots[0]?.localStartTime, lastSlot: slots[slots.length - 1]?.localStartTime }, 'getResourceSlots: slots generated');
 
     // Query existing bookings for this business date (and previous day for overnight)
-    const existingBookings = await bookingRepository.findBookingsByBusinessDate(resourceId, date);
-    log.info({ existingCount: existingBookings.length }, 'getResourceSlots: existing bookings fetched');
-    if (existingBookings.length > 0) {
-      existingBookings.slice(0, 5).forEach((b: any, i: number) => {
-        log.info({ idx: i, startAtUtc: b.start_at_utc, endAtUtc: b.end_at_utc }, 'getResourceSlots: existing booking');
-      });
-    }
+    const rawBookings = await bookingRepository.findBookingsByBusinessDate(resourceId, date);
+    // Convert legacy bookings (start_at_utc IS NULL) by computing UTC from local times
+    const existingBookings = rawBookings.map((b: any) => {
+      if (b.start_at_utc && b.end_at_utc) return b;
+      // Legacy booking without UTC timestamps — compute from local date/time
+      if (b.booking_date && b.start_time && b.end_time) {
+        try {
+          const startUtc = TimeEngine.localToUtc(b.booking_date, b.start_time, tz);
+          const endUtc = TimeEngine.localToUtc(b.booking_date, b.end_time, tz);
+          return { start_at_utc: startUtc, end_at_utc: endUtc };
+        } catch {
+          // DST gap or invalid time — skip this booking
+          return null;
+        }
+      }
+      return null;
+    }).filter(Boolean);
+    log.info({ rawCount: rawBookings.length, convertedCount: existingBookings.length }, 'getResourceSlots: existing bookings fetched');
 
     // Resolve availability: expired (via UTC) + booked (via UTC overlap)
     const availableSlots = TimeEngine.resolveAvailability(slots, existingBookings);
