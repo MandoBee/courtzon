@@ -1,6 +1,7 @@
 import type mysql from 'mysql2/promise';
 import { getPool } from '../../database/mysql.js';
 import { commissionEntityLookupKeys } from './commission-entities.js';
+import { activeSubscriptionCondition } from '../utils/subscription-validator.js';
 import { createModuleLogger } from '../utils/logger.js';
 
 const log = createModuleLogger('commission');
@@ -36,8 +37,7 @@ export class CommissionService {
 
     const query = `SELECT plan_id, subscription_status, start_date, end_date
                    FROM organisation_subscriptions
-                   WHERE organisation_id = ? AND subscription_status = 'active'
-                     AND (end_date IS NULL OR end_date >= CURDATE())
+                   WHERE organisation_id = ? AND ${activeSubscriptionCondition('organisation_subscriptions')}
                    ORDER BY created_at DESC
                    LIMIT 1`;
     log.info({ query, params: [orgId] }, 'CommissionService.getOrgPlanId — executing query');

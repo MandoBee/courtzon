@@ -1,5 +1,6 @@
 import type mysql from 'mysql2/promise';
 import { getPool } from '../../../../database/mysql.js';
+import { activeSubscriptionCondition } from '../../../../shared/utils/subscription-validator.js';
 
 type RowData = mysql.RowDataPacket[];
 
@@ -229,8 +230,7 @@ export const marketplaceRepository = {
       `SELECT os.*, sp.plan_name, sp.applicable_org_types
        FROM organisation_subscriptions os
        JOIN subscription_plans sp ON os.plan_id = sp.id
-       WHERE os.organisation_id IN (${placeholders}) AND os.subscription_status = 'active'
-         AND (os.end_date IS NULL OR os.end_date >= CURDATE())
+       WHERE os.organisation_id IN (${placeholders}) AND ${activeSubscriptionCondition('os')}
        ORDER BY os.created_at DESC`,
       orgIds,
     );
@@ -470,12 +470,11 @@ export const marketplaceRepository = {
     const [rows] = await pool.execute<RowData>(
       `SELECT DISTINCT o.id as seller_id, o.name as org_name, o.phone,
               ot.slug as org_type_slug,
-              (SELECT os.id FROM organisation_subscriptions os
-               JOIN subscription_plans sp ON os.plan_id = sp.id
-               WHERE os.organisation_id = o.id
-                 AND os.subscription_status = 'active'
-                 AND (os.end_date IS NULL OR os.end_date >= CURDATE())
-                 AND (sp.price_monthly > 0 OR sp.price_yearly > 0)
+        (SELECT os.id FROM organisation_subscriptions os
+         JOIN subscription_plans sp ON os.plan_id = sp.id
+         WHERE os.organisation_id = o.id
+           AND ${activeSubscriptionCondition('os')}
+           AND (sp.price_monthly > 0 OR sp.price_yearly > 0)
                LIMIT 1) as has_paid_plan
        FROM cart_items ci
        JOIN products p ON ci.product_id = p.id
@@ -859,8 +858,7 @@ export const marketplaceRepository = {
       `SELECT os.*, sp.plan_name, sp.applicable_org_types
        FROM organisation_subscriptions os
        JOIN subscription_plans sp ON os.plan_id = sp.id
-       WHERE os.organisation_id = ? AND os.subscription_status = 'active'
-         AND (os.end_date IS NULL OR os.end_date >= CURDATE())
+       WHERE os.organisation_id = ? AND ${activeSubscriptionCondition('os')}
        ORDER BY os.created_at DESC
        LIMIT 1`,
       [orgId]

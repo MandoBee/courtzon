@@ -9,6 +9,7 @@ import { amenityRepository } from '../infrastructure/repositories/amenity.reposi
 import { countriesRepository } from '../../countries/infrastructure/repositories/countries.repository.js';
 import { NotFoundError, ConflictError, ValidationError } from '../../../shared/errors/app-error.js';
 import { resolveOrganisationMedia } from './organisation-media.util.js';
+import { nonExpiredSubscriptionCondition } from '../../../shared/utils/subscription-validator.js';
 import { eventBus } from '../../../shared/event-bus/index.js';
 import {
   cascadeOrganisationSoftDelete,
@@ -713,8 +714,7 @@ export class OrganisationService {
       `SELECT os.*, sp.plan_name, sp.price_monthly, sp.price_yearly, sp.is_unlimited
        FROM organisation_subscriptions os
        JOIN subscription_plans sp ON sp.id = os.plan_id
-       WHERE os.organisation_id = ? AND os.subscription_status IN ('active', 'pending')
-         AND (os.end_date IS NULL OR os.end_date >= CURDATE())
+       WHERE os.organisation_id = ? AND ${nonExpiredSubscriptionCondition('os')}
        ORDER BY os.created_at DESC
        LIMIT 1`,
       [orgId]

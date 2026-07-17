@@ -1,6 +1,7 @@
 import type mysql from 'mysql2/promise';
 import { getPool } from '../../../../database/mysql.js';
 import { generateUUID } from '../../../../shared/utils/token.js';
+import { nonExpiredSubscriptionCondition } from '../../../../shared/utils/subscription-validator.js';
 
 type RowData = mysql.RowDataPacket[];
 
@@ -174,8 +175,7 @@ export class OrganisationRepository {
        FROM organisation_subscriptions os
        INNER JOIN organisations o ON o.id = os.organisation_id AND o.deleted_at IS NULL
        INNER JOIN subscription_plans sp ON sp.id = os.plan_id
-       WHERE os.subscription_status IN ('active', 'pending')
-         AND (os.end_date IS NULL OR os.end_date >= CURDATE())`;
+       WHERE ${nonExpiredSubscriptionCondition('os')}`;
     const params: any[] = [];
     if (countryId) {
       sql += ` AND o.country_id = ?`;

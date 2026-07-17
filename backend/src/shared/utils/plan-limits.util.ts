@@ -1,5 +1,6 @@
 import type mysql from 'mysql2/promise';
 import { getPool } from '../../database/mysql.js';
+import { activeSubscriptionCondition } from './subscription-validator.js';
 
 type RowData = mysql.RowDataPacket[];
 
@@ -24,8 +25,7 @@ export async function getPlanNumericLimit(
      JOIN subscription_plans sp ON sp.id = os.plan_id
      JOIN subscription_plan_features spf ON spf.plan_id = sp.id
      JOIN subscription_features sf ON sf.id = spf.feature_id
-     WHERE os.organisation_id = ? AND os.subscription_status = 'active'
-       AND (os.end_date IS NULL OR os.end_date >= CURDATE())
+     WHERE os.organisation_id = ? AND ${activeSubscriptionCondition('os')}
        AND sf.feature_key = ?
      ORDER BY os.created_at DESC
      LIMIT 1`,

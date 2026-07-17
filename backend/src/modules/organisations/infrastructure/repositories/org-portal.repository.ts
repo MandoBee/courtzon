@@ -2,6 +2,7 @@ import type mysql from 'mysql2/promise';
 import { getPool } from '../../../../database/mysql.js';
 import { ValidationError } from '../../../../shared/errors/app-error.js';
 import { buildPagination, paginationClause } from '../../../../shared/utils/pagination.js';
+import { nonExpiredSubscriptionCondition } from '../../../../shared/utils/subscription-validator.js';
 
 type RowData = mysql.RowDataPacket[];
 
@@ -464,8 +465,7 @@ export async function getOrgSubscriptionWithFeatures(orgId: number) {
     `SELECT os.*, sp.plan_name, sp.price_monthly, sp.price_yearly, sp.is_unlimited
      FROM organisation_subscriptions os
      JOIN subscription_plans sp ON sp.id = os.plan_id
-     WHERE os.organisation_id = ? AND os.subscription_status IN ('active', 'pending')
-       AND (os.end_date IS NULL OR os.end_date >= CURDATE())
+     WHERE os.organisation_id = ? AND ${nonExpiredSubscriptionCondition('os')}
      ORDER BY os.created_at DESC
      LIMIT 1`,
     [orgId],
