@@ -319,20 +319,21 @@ export class BookingRepository {
   }
 
   async findBookingsByBusinessDate(resourceId: number, businessDate: string): Promise<any[]> {
+    // Also check previous day to catch overnight bookings (e.g. 23:00→01:00)
     const [bRows] = await this.pool.execute<RowData>(
       `SELECT start_at_utc, end_at_utc FROM bookings
-       WHERE resource_id = ? AND business_date = ?
+       WHERE resource_id = ? AND (business_date = ? OR business_date = DATE_SUB(?, INTERVAL 1 DAY))
        AND booking_status NOT IN ('cancelled', 'expired', 'no_show')
        AND start_at_utc IS NOT NULL`,
-      [resourceId, businessDate]
+      [resourceId, businessDate, businessDate]
     );
     const [iRows] = await this.pool.execute<RowData>(
       `SELECT start_at_utc, end_at_utc FROM booking_intents
-       WHERE resource_id = ? AND business_date = ?
+       WHERE resource_id = ? AND (business_date = ? OR business_date = DATE_SUB(?, INTERVAL 1 DAY))
        AND intent_status IN ('pending', 'payment_initiated')
        AND (expires_at IS NULL OR expires_at > NOW())
        AND start_at_utc IS NOT NULL`,
-      [resourceId, businessDate]
+      [resourceId, businessDate, businessDate]
     );
     return [...bRows, ...iRows];
   }
