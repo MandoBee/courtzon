@@ -49,7 +49,8 @@ export type AuditAction =
   | 'SUBSCRIPTION.SUSPENDED'
   | 'SUBSCRIPTION.RESUMED'
   | 'SUBSCRIPTION.EXTENDED'
-  | 'SUBSCRIPTION.UPDATED';
+  | 'SUBSCRIPTION.UPDATED'
+  | 'SUBSCRIPTION.TOGGLE_STATUS';
 
 export interface AuditEntry {
   userId: number;

@@ -630,6 +630,15 @@ function AssignPlan() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['admin', 'subscription-requests'] }),
   });
 
+  const toggleStatusMutation = useMutation({
+    mutationFn: () => api.post(`/organisations/${selectedOrgId}/subscription/toggle-status`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['org-subscription'] });
+      showToast('Subscription status toggled');
+    },
+    onError: (err: any) => showToast(err?.response?.data?.message || 'Failed to toggle status', 'error'),
+  });
+
   const selectedOrg = orgs?.find((o: any) => o.id === selectedOrgId);
   const selectedPlan = plans?.find((p: any) => p.id === selectedPlanId);
   const pendingReq = pendingRequests?.[0];
@@ -780,11 +789,19 @@ function AssignPlan() {
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
                       <span className="text-sm font-bold text-[var(--color-text)]">{currentSub.planName}</span>
-                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                        isExpired ? 'bg-[var(--color-error-bg)] text-[var(--color-error-text)]' :
-                        currentSub.status === 'active' ? 'bg-[var(--color-success-bg)] text-[var(--color-success-text)]' :
-                        'bg-[var(--color-warning-bg)] text-[var(--color-warning-text)]'
-                      }`}>{isExpired ? 'Expired' : currentSub.status}</span>
+                      <button
+                        onClick={() => { if (!isExpired) toggleStatusMutation.mutate(); }}
+                        disabled={isExpired || toggleStatusMutation.isPending}
+                        className={`px-2 py-0.5 rounded-full text-xs font-medium border transition-colors ${
+                          isExpired ? 'bg-[var(--color-error-bg)] text-[var(--color-error-text)] cursor-not-allowed' :
+                          currentSub.status === 'active' ? 'bg-[var(--color-success-bg)] text-[var(--color-success-text)] border-green-200 hover:bg-green-200 cursor-pointer' :
+                          'bg-[var(--color-warning-bg)] text-[var(--color-warning-text)] border-yellow-200 hover:bg-yellow-200 cursor-pointer'
+                        }`}
+                        title={isExpired ? 'Expired subscriptions cannot be toggled' : `Click to change to ${currentSub.status === 'active' ? 'pending' : 'active'}`}
+                        aria-label={`Current status: ${isExpired ? 'Expired' : currentSub.status}. Click to toggle.`}
+                      >
+                        {toggleStatusMutation.isPending ? '...' : (isExpired ? 'Expired' : currentSub.status)}
+                      </button>
                     </div>
                     <div className="text-xs text-[var(--color-text-muted)] space-y-1">
                       <div className="flex items-center gap-2">

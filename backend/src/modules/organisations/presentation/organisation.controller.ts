@@ -578,6 +578,22 @@ export async function activateSubscriptionHandler(request: FastifyRequest, reply
   return reply.send(result);
 }
 
+export async function toggleSubscriptionStatusHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { orgId } = request.params as any;
+  const userId = (request as any).userId;
+  const result = await organisationService.toggleSubscriptionStatus(Number(orgId));
+  recordAudit({
+    actorId: userId ?? null,
+    action: 'SUBSCRIPTION.TOGGLE_STATUS',
+    entityType: 'organisation_subscription',
+    entityId: Number(orgId),
+    afterState: { newStatus: result.status },
+    ipAddress: request.ip,
+    userAgent: request.headers['user-agent'],
+  });
+  return reply.send(result);
+}
+
 export async function getPaymentMethodsHandler(_request: FastifyRequest, reply: FastifyReply) {
   const methods = await organisationService.getPaymentMethods();
   return reply.send({ data: methods });

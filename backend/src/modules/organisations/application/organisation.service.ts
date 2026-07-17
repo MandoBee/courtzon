@@ -813,6 +813,30 @@ export class OrganisationService {
     clearSubscriptionCache();
   }
 
+  async toggleSubscriptionStatus(orgId: number): Promise<{ status: string }> {
+    const pool = getPool();
+    const [rows] = await pool.execute<RowData>(
+      `SELECT id, subscription_status FROM organisation_subscriptions
+       WHERE organisation_id = ? AND subscription_status IN ('active', 'pending')
+       ORDER BY created_at DESC LIMIT 1`,
+      [orgId]
+    );
+    if (!rows.length) throw new NotFoundError('No active or pending subscription found');
+
+    const sub = rows[0];
+    const newStatus = sub.subscription_status === 'active' ? 'pending' : 'active';
+
+    await pool.execute(
+      `UPDATE organisation_subscriptions SET subscription_status = ?, updated_at = NOW() WHERE id = ?`,
+      [newStatus, sub.id]
+    );
+
+    const { clearSubscriptionCache } = await import('../../../shared/utils/current-subscription.resolver.js');
+    clearSubscriptionCache();
+
+    return { status: newStatus };
+  }
+
   async activateSubscription(orgId: number) {
     const pool = getPool();
     const [rows] = await pool.execute<RowData>(
