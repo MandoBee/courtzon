@@ -122,6 +122,8 @@ export async function organisationRoutes(app: FastifyInstance): Promise<void> {
 
   // Admin subscription requests
   app.get('/admin/subscription-requests', { preHandler: [adminGuard] }, ctrl.listSubscriptionRequestsHandler);
+  app.get('/admin/subscription-requests/stats', { preHandler: [adminGuard] }, ctrl.getSubscriptionRequestStatsHandler);
+  app.get('/admin/subscription-requests/:requestId', { preHandler: [adminGuard] }, ctrl.getSubscriptionRequestDetailHandler);
   app.post('/admin/subscription-requests/:requestId/approve', { preHandler: [adminGuard] }, ctrl.approveSubscriptionRequestHandler);
   app.post('/admin/subscription-requests/:requestId/reject', { preHandler: [adminGuard] }, ctrl.rejectSubscriptionRequestHandler);
 

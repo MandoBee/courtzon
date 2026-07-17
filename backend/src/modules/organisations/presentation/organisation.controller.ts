@@ -975,13 +975,26 @@ export async function upsertResourcePeakHoursHandler(request: FastifyRequest, re
 // ── Admin subscription requests ──
 
 export async function listSubscriptionRequestsHandler(request: FastifyRequest, reply: FastifyReply) {
-  const { status, page, limit } = request.query as any;
+  const { status, page, limit, type, search, dateFrom, dateTo, sortBy, sortDir } = request.query as any;
   const result = await organisationService.listSubscriptionRequests({
     status: status || 'pending',
     page: page ? Number(page) : 1,
     limit: limit ? Number(limit) : 20,
+    type,
+    search,
+    dateFrom,
+    dateTo,
+    sortBy,
+    sortDir,
   });
   return reply.send({ data: result.rows, total: result.total, page: result.page, limit: result.limit });
+}
+
+export async function getSubscriptionRequestDetailHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { requestId } = request.params as any;
+  const detail = await organisationService.getSubscriptionRequestDetail(Number(requestId));
+  if (!detail) return reply.status(404).send({ error: 'Not found' });
+  return reply.send(detail);
 }
 
 export async function approveSubscriptionRequestHandler(request: FastifyRequest, reply: FastifyReply) {
@@ -1010,6 +1023,11 @@ export async function approveSubscriptionRequestHandler(request: FastifyRequest,
   });
 
   return reply.send({ success: true });
+}
+
+export async function getSubscriptionRequestStatsHandler(request: FastifyRequest, reply: FastifyReply) {
+  const stats = await organisationService.getSubscriptionRequestStats();
+  return reply.send(stats);
 }
 
 export async function rejectSubscriptionRequestHandler(request: FastifyRequest, reply: FastifyReply) {

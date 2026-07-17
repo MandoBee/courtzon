@@ -969,7 +969,11 @@ export class OrganisationService {
 
   // ── Admin subscription request management ──
 
-  async listSubscriptionRequests(filters?: { status?: string; page?: number; limit?: number }) {
+  async listSubscriptionRequests(filters?: {
+    status?: string; page?: number; limit?: number;
+    type?: string; search?: string; dateFrom?: string; dateTo?: string;
+    sortBy?: string; sortDir?: string;
+  }) {
     const { listSubscriptionRequests } = await import('../infrastructure/repositories/org-portal.repository.js');
     return listSubscriptionRequests(filters);
   }
@@ -977,6 +981,53 @@ export class OrganisationService {
   async approveSubscriptionRequest(requestId: number, adminId: number, approvalNotes?: string) {
     const { approveSubscriptionRequest } = await import('../infrastructure/repositories/org-portal.repository.js');
     return approveSubscriptionRequest(requestId, adminId, approvalNotes);
+  }
+
+  async getSubscriptionRequestDetail(requestId: number) {
+    const { getSubscriptionRequestById, getSubscriptionRequestStatusHistory } = await import('../infrastructure/repositories/org-portal.repository.js');
+    const req = await getSubscriptionRequestById(requestId);
+    if (!req) return null;
+    const timeline = await getSubscriptionRequestStatusHistory(requestId);
+    return { ...req, timeline };
+  }
+
+  async getSubscriptionRequestStats() {
+    const pool = getPool();
+    const [rows] = await pool.execute<any[]>(
+      `SELECT
+         COUNT(*) as total,
+         SUM(status = 'pending') as pending_count,
+         SUM(status = 'approved') as approved_count,
+         SUM(status = 'rejected') as rejected_count,
+         SUM(status = 'cancelled') as cancelled_count,
+         SUM(status = 'approved' AND DATE(approved_at) = CURDATE()) as approved_today,
+         SUM(status = 'rejected' AND DATE(approved_at) = CURDATE()) as rejected_today,
+         ROUND(AVG(CASE WHEN status = 'approved' THEN TIMESTAMPDIFF(HOUR, created_at, approved_at) END), 1) as avg_approval_hours
+       FROM organisation_upgrade_requests WHERE request_type IS NOT NULL`,
+    );
+    const s = rows[0] || {};
+    // Active subscriptions
+    const [subRows] = await pool.execute<any[]>(
+      `SELECT COUNT(*) as active_subs FROM organisation_subscriptions
+       WHERE subscription_status = 'active' AND (end_date IS NULL OR end_date >= CURDATE())`,
+    );
+    // Expiring in 30 days
+    const [expRows] = await pool.execute<any[]>(
+      `SELECT COUNT(*) as expiring FROM organisation_subscriptions
+       WHERE subscription_status = 'active' AND end_date IS NOT NULL AND end_date BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 30 DAY)`,
+    );
+    return {
+      totalRequests: Number(s.total) || 0,
+      pending: Number(s.pending_count) || 0,
+      approved: Number(s.approved_count) || 0,
+      rejected: Number(s.rejected_count) || 0,
+      cancelled: Number(s.cancelled_count) || 0,
+      approvedToday: Number(s.approved_today) || 0,
+      rejectedToday: Number(s.rejected_today) || 0,
+      avgApprovalHours: Number(s.avg_approval_hours) || 0,
+      activeSubscriptions: Number(subRows[0]?.active_subs) || 0,
+      expiringIn30Days: Number(expRows[0]?.expiring) || 0,
+    };
   }
 
   async rejectSubscriptionRequest(requestId: number, adminId: number, reason: string) {

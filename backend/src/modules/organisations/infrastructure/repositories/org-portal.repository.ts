@@ -576,7 +576,11 @@ export async function getOrgPendingSubscriptionRequest(orgId: number) {
   return rows[0] || null;
 }
 
-export async function listSubscriptionRequests(filters?: { status?: string; page?: number; limit?: number }) {
+export async function listSubscriptionRequests(filters?: {
+  status?: string; page?: number; limit?: number;
+  type?: string; search?: string; dateFrom?: string; dateTo?: string;
+  sortBy?: string; sortDir?: string;
+}) {
   const pool = getPool();
   const conditions: string[] = ["our.request_type IS NOT NULL"];
   const params: any[] = [];
@@ -584,10 +588,36 @@ export async function listSubscriptionRequests(filters?: { status?: string; page
     conditions.push('our.status = ?');
     params.push(filters.status);
   }
+  if (filters?.type) {
+    conditions.push('our.request_type = ?');
+    params.push(filters.type);
+  }
+  if (filters?.search) {
+    conditions.push('(o.name LIKE ? OR our.id = ?)');
+    const like = `%${filters.search}%`;
+    const idMatch = parseInt(filters.search, 10) || 0;
+    params.push(like, idMatch);
+  }
+  if (filters?.dateFrom) {
+    conditions.push('our.created_at >= ?');
+    params.push(filters.dateFrom);
+  }
+  if (filters?.dateTo) {
+    conditions.push('our.created_at <= ?');
+    params.push(filters.dateTo);
+  }
   const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
   const pag = buildPagination(filters?.page, filters?.limit);
 
-  const [countRows] = await pool.execute<RowData>(`SELECT COUNT(*) as total FROM organisation_upgrade_requests our ${where}`, params);
+  const allowedSorts = ['created_at', 'status', 'request_type', 'organisation_id'];
+  const sortBy = filters?.sortBy && allowedSorts.includes(filters.sortBy) ? filters.sortBy : 'created_at';
+  const sortDir = filters?.sortDir === 'asc' ? 'ASC' : 'DESC';
+
+  const [countRows] = await pool.execute<RowData>(
+    `SELECT COUNT(*) as total FROM organisation_upgrade_requests our
+     JOIN organisations o ON o.id = our.organisation_id
+     ${where}`, params,
+  );
   const total = (countRows[0] as any).total;
 
   const [rows] = await pool.execute<RowData>(
@@ -596,7 +626,7 @@ export async function listSubscriptionRequests(filters?: { status?: string; page
      JOIN organisations o ON o.id = our.organisation_id
      JOIN users u ON u.id = our.requested_by
      ${where}
-     ORDER BY our.created_at DESC${paginationClause(pag)}`,
+     ORDER BY our.${sortBy} ${sortDir}${paginationClause(pag)}`,
     params,
   );
   return { rows, total, page: pag.page, limit: pag.limit };
@@ -703,6 +733,35 @@ export async function rejectSubscriptionRequest(requestId: number, adminId: numb
   } finally {
     conn.release();
   }
+}
+
+export async function getSubscriptionRequestById(requestId: number) {
+  const pool = getPool();
+  const [rows] = await pool.execute<RowData>(
+    `SELECT our.*, o.name as org_name, u.full_name as requester_name, u.email as requester_email,
+            adm.full_name as admin_name
+     FROM organisation_upgrade_requests our
+     JOIN organisations o ON o.id = our.organisation_id
+     JOIN users u ON u.id = our.requested_by
+     LEFT JOIN users adm ON adm.id = our.approved_by
+     WHERE our.id = ?`,
+    [requestId],
+  );
+  return rows[0] || null;
+}
+
+export async function getSubscriptionRequestStatusHistory(requestId: number) {
+  const pool = getPool();
+  const entries: Array<{ timestamp: string; field: string; from: string; to: string; by: string; note: string }> = [];
+  const [row] = await pool.execute<RowData>('SELECT * FROM organisation_upgrade_requests WHERE id = ?', [requestId]);
+  if (!row.length) return entries;
+  const r = row[0] as any;
+
+  if (r.created_at) entries.push({ timestamp: r.created_at, field: 'status', from: '', to: 'pending', by: r.requester_name || '', note: 'Request submitted' });
+  if (r.status === 'approved' && r.approved_at) entries.push({ timestamp: r.approved_at, field: 'status', from: 'pending', to: 'approved', by: r.admin_name || '', note: r.approval_notes || 'Approved' });
+  if (r.status === 'rejected' && r.approved_at) entries.push({ timestamp: r.approved_at, field: 'status', from: 'pending', to: 'rejected', by: r.admin_name || '', note: r.rejection_reason || 'Rejected' });
+  if (r.status === 'cancelled' && r.cancelled_at) entries.push({ timestamp: r.cancelled_at, field: 'status', from: 'pending', to: 'cancelled', by: '', note: r.cancellation_reason || 'Cancelled' });
+  return entries;
 }
 
 export async function cancelSubscriptionRequest(requestId: number, cancelledBy: number, reason?: string) {
