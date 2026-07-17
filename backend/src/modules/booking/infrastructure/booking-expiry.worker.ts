@@ -6,7 +6,7 @@ import type { CancelExpiredBookingsJob } from '../../../infrastructure/queue/que
 const log = createModuleLogger('booking-expiry');
 
 export async function handleCancelExpiredBookings(job: CancelExpiredBookingsJob): Promise<void> {
-  const cutoff = job.cutoffMinutes ?? 30;
+  const cutoff = job.cutoffMinutes ?? 5;
   const pool = getPool();
 
   const [bookings] = await pool.execute<any[]>(

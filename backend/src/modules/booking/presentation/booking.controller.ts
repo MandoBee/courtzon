@@ -177,6 +177,12 @@ export async function fulfillBookingIntentHandler(request: FastifyRequest, reply
   return reply.send(result);
 }
 
+export async function reserveBookingIntentHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { intentId } = request.params as any;
+  const result = await bookingService.reserveBookingIntent(Number(intentId));
+  return reply.status(201).send(result);
+}
+
 export async function getBookingIntentHandler(request: FastifyRequest, reply: FastifyReply) {
   const { intentId } = request.params as any;
   const intent = await bookingService.getBookingIntent(Number(intentId));
