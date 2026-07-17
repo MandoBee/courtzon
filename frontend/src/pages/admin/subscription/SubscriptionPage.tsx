@@ -518,6 +518,54 @@ function PlanCard({ plan, onEdit, onDelete, onToggle }: { plan: Plan; onEdit: ()
   );
 }
 
+const ASSIGN_REASONS = [
+  { value: 'marketing', label: 'Marketing' },
+  { value: 'promotion', label: 'Promotion' },
+  { value: 'support', label: 'Support' },
+  { value: 'manual_correction', label: 'Manual Correction' },
+  { value: 'compensation', label: 'Compensation' },
+  { value: 'testing', label: 'Testing' },
+  { value: 'other', label: 'Other' },
+] as const;
+
+const FEATURE_COMPARE_KEYS = ['branches', 'staff', 'products', 'resources', 'tournaments', 'academies'] as const;
+
+function getFeatureValue(plan: Plan | null | undefined, key: string): number | null {
+  if (!plan?.features) return null;
+  const f = plan.features.find((x: any) => x.featureKey === key);
+  if (!f || f.valueType !== 'numeric') return null;
+  const v = f.value === '-1' || f.value?.toLowerCase() === 'unlimited' ? Infinity : parseInt(f.value, 10);
+  return isNaN(v) ? null : v;
+}
+
+function getBoolFeature(plan: Plan | null | undefined, key: string): boolean | null {
+  if (!plan?.features) return null;
+  const f = plan.features.find((x: any) => x.featureKey === key);
+  if (!f || f.valueType !== 'boolean') return null;
+  return f.value === 'true';
+}
+
+function CompareRow({ label, currentVal, newVal, formatter }: { label: string; currentVal: any; newVal: any; formatter?: (v: any) => string }) {
+  const fmt = (v: any) => formatter ? formatter(v) : String(v ?? '—');
+  const cur = fmt(currentVal);
+  const nw = fmt(newVal);
+  let color = 'text-[var(--color-text-muted)]';
+  let arrow = '—';
+  if (currentVal !== newVal && currentVal != null && newVal != null) {
+    const isUpgrade = typeof currentVal === 'number' && typeof newVal === 'number' ? newVal > currentVal : newVal !== currentVal;
+    color = isUpgrade ? 'text-[var(--color-success-text)]' : 'text-[var(--color-error)]';
+    arrow = isUpgrade ? '▲' : '▼';
+  }
+  return (
+    <div className="grid grid-cols-[1fr_80px_80px_30px] gap-2 text-xs py-1 border-b border-[var(--color-border)] last:border-0">
+      <span className="text-[var(--color-text-muted)]">{label}</span>
+      <span className="font-medium text-[var(--color-text)] text-right">{cur}</span>
+      <span className="font-medium text-right" style={{ color: currentVal !== newVal && currentVal != null && newVal != null ? (color) : undefined }}>{nw}</span>
+      <span className={`text-center ${color}`}>{arrow}</span>
+    </div>
+  );
+}
+
 function AssignPlan() {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
@@ -526,9 +574,13 @@ function AssignPlan() {
   const [selectedPlanId, setSelectedPlanId] = useState<number | null>(null);
   const [planFilter, setPlanFilter] = useState<'public' | 'internal' | 'all'>('all');
   const [billingPeriod, setBillingPeriod] = useState<BillingPeriod>('monthly');
-  const [adminNotes, setAdminNotes] = useState('');
+  const [assignmentReason, setAssignmentReason] = useState<string>('support');
+  const [otherReasonText, setOtherReasonText] = useState('');
+  const [effectiveDateType, setEffectiveDateType] = useState<'immediate' | 'scheduled'>('immediate');
+  const [scheduledDate, setScheduledDate] = useState('');
   const [orgSearch, setOrgSearch] = useState('');
   const [showConfirm, setShowConfirm] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
 
   const { data: orgs, isLoading: orgsLoading } = useQuery({
     queryKey: ['admin', 'organisations'],
@@ -550,6 +602,11 @@ function AssignPlan() {
     queryKey: ['admin', 'subscription-requests', 'org', selectedOrgId],
     queryFn: () => api.get('/admin/subscription-requests', { params: { orgId: selectedOrgId, status: 'pending' } }).then((r: any) => r.data.data),
     enabled: !!selectedOrgId,
+  });
+
+  const { data: stats } = useQuery({
+    queryKey: ['admin', 'subscription-requests', 'stats'],
+    queryFn: () => api.get('/admin/subscription-requests/stats').then((r: any) => r.data),
   });
 
   const updateMutation = useMutation({
@@ -588,6 +645,37 @@ function AssignPlan() {
   const visibleRecurring = filterPlansForPeriod<Plan>(recurring, billingPeriod);
   const toggleSavings = maxAnnualSavingsAmongPlans(recurring);
 
+  // Downgrade detection
+  const isDowngrade = currentSub?.planName && selectedPlan && (() => {
+    const curBranch = getFeatureValue(currentSub, 'branches');
+    const newBranch = getFeatureValue(selectedPlan, 'branches');
+    const curStaff = getFeatureValue(currentSub, 'staff');
+    const newStaff = getFeatureValue(selectedPlan, 'staff');
+    const curProducts = getFeatureValue(currentSub, 'products');
+    const newProducts = getFeatureValue(selectedPlan, 'products');
+    if (newBranch != null && curBranch != null && newBranch < curBranch) return true;
+    if (newStaff != null && curStaff != null && newStaff < curStaff) return true;
+    if (newProducts != null && curProducts != null && newProducts < curProducts) return true;
+    return false;
+  })();
+
+  const limitConflicts: string[] = [];
+  if (currentSub?.planName && selectedPlan) {
+    const checks: { key: string; label: string }[] = [
+      { key: 'branches', label: 'branches' },
+      { key: 'staff', label: 'staff members' },
+      { key: 'products', label: 'products' },
+      { key: 'resources', label: 'resources' },
+    ];
+    for (const c of checks) {
+      const cur = getFeatureValue(currentSub, c.key);
+      const nw = getFeatureValue(selectedPlan, c.key);
+      if (cur != null && nw != null && nw < cur) {
+        limitConflicts.push(`${c.label}: ${cur === Infinity ? 'Unlimited' : cur} → ${nw === Infinity ? 'Unlimited' : nw}`);
+      }
+    }
+  }
+
   const handleConfirmAssign = () => {
     if (!selectedOrgId || !selectedPlanId) return;
     if (pendingReq) {
@@ -597,28 +685,44 @@ function AssignPlan() {
   };
 
   const handleClear = () => {
-    setSelectedOrgId(null);
-    setSelectedPlanId(null);
-    setStep('select');
-    setShowConfirm(false);
-    setAdminNotes('');
-    setOrgSearch('');
+    setSelectedOrgId(null); setSelectedPlanId(null); setStep('select');
+    setShowConfirm(false); setAssignmentReason('support'); setOtherReasonText('');
+    setEffectiveDateType('immediate'); setScheduledDate(''); setOrgSearch('');
   };
 
   const daysRemaining = currentSub?.endDate ? Math.ceil((new Date(currentSub.endDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24)) : null;
   const isExpired = currentSub?.endDate && new Date(currentSub.endDate) < new Date();
 
+  // Validation
+  const validationErrors: string[] = [];
+  if (!selectedOrg) validationErrors.push('No organisation selected');
+  if (!selectedPlan) validationErrors.push('No plan selected');
+  if (selectedPlan && !selectedPlan.isActive) validationErrors.push('Selected plan is inactive');
+  if (selectedOrg && !selectedOrg.is_active) validationErrors.push('Organisation is suspended');
+  if (isCurrentPlan) validationErrors.push('Organisation already has this plan');
+  if (effectiveDateType === 'scheduled' && !scheduledDate) validationErrors.push('Scheduled date required');
+  if (assignmentReason === 'other' && !otherReasonText.trim()) validationErrors.push('Please describe the reason');
+
+  const canProceed = validationErrors.length === 0 && !updateMutation.isPending;
+
   return (
     <div className="space-y-6">
-      {/* Explanation box */}
-      <div className="bg-blue-50 border border-blue-200 rounded-[var(--radius-lg)] p-4 flex items-start gap-3">
-        <span className="text-lg shrink-0 mt-0.5" aria-hidden="true">ℹ️</span>
-        <div className="text-sm text-blue-800">
-          <p className="font-medium mb-1">Manual Assignment — Administrative Override</p>
-          <p className="text-blue-600">
-            Subscription Requests are submitted by organisations and require approval.
-            Manual Assignment bypasses the request workflow and should only be used for administrative or exceptional cases.
-          </p>
+      {/* Explanation box + Quick Stats */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div className="lg:col-span-2 bg-blue-50 border border-blue-200 rounded-[var(--radius-lg)] p-4 flex items-start gap-3">
+          <span className="text-lg shrink-0 mt-0.5" aria-hidden="true">ℹ️</span>
+          <div className="text-sm text-blue-800">
+            <p className="font-medium mb-1">Manual Assignment — Administrative Override</p>
+            <p className="text-blue-600">
+              Subscription Requests are submitted by organisations and require approval.
+              Manual Assignment bypasses the request workflow and should only be used for administrative or exceptional cases.
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-4 text-xs">
+          <div className="text-center"><p className="text-lg font-bold text-[var(--color-text)]">{stats?.pending ?? '—'}</p><p className="text-[var(--color-text-muted)]">Pending</p></div>
+          <div className="text-center"><p className="text-lg font-bold text-[var(--color-text)]">{stats?.approvedToday ?? '—'}</p><p className="text-[var(--color-text-muted)]">Approved today</p></div>
+          <div className="text-center"><p className="text-lg font-bold text-[var(--color-text)]">{stats?.activeSubscriptions ?? '—'}</p><p className="text-[var(--color-text-muted)]">Active subs</p></div>
         </div>
       </div>
 
@@ -626,7 +730,7 @@ function AssignPlan() {
       <div className="flex items-center gap-2 text-xs font-medium">
         {['select', 'review', 'done'].map((s, i) => (
           <div key={s} className="flex items-center gap-2">
-            <span className={`w-7 h-7 rounded-full flex items-center justify-center ${
+            <span className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 ${
               step === s ? 'bg-[var(--color-primary)] text-white' :
               ['select', 'review', 'done'].indexOf(step) > i ? 'bg-[var(--color-success-bg)] text-[var(--color-success-text)]' :
               'bg-[var(--color-bg)] text-[var(--color-text-muted)]'
@@ -636,67 +740,42 @@ function AssignPlan() {
             <span className={step === s ? 'text-[var(--color-text)]' : 'text-[var(--color-text-muted)]'}>
               {s === 'select' ? 'Select' : s === 'review' ? 'Review' : 'Done'}
             </span>
-            {i < 2 && <span className="w-8 h-px bg-[var(--color-border)]" />}
+            {i < 2 && <span className="w-8 h-px bg-[var(--color-border)] hidden sm:inline" />}
           </div>
         ))}
       </div>
 
       {step === 'select' && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Step 1: Select Organisation */}
+          {/* Left: Organisation + Current Subscription */}
           <div className="lg:col-span-1 space-y-4">
             <div className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] border border-[var(--color-border)] p-5">
               <h2 className="font-semibold text-[var(--color-text)] mb-3">Select Organisation</h2>
-              <input
-                type="text"
-                value={orgSearch}
-                onChange={e => setOrgSearch(e.target.value)}
+              <input type="text" value={orgSearch} onChange={e => setOrgSearch(e.target.value)}
                 placeholder="Search by name, email or phone..."
                 className="w-full px-3 py-2 border rounded-[var(--radius-md)] bg-[var(--color-bg)] text-sm mb-3"
-                aria-label="Search organisations"
-              />
-              <div className="max-h-80 overflow-y-auto space-y-1">
+                aria-label="Search organisations" />
+              <div className="max-h-72 overflow-y-auto space-y-1">
                 {orgsLoading ? (
                   <p className="text-xs text-[var(--color-text-muted)] py-4 text-center">Loading...</p>
-                ) : (orgs || [])
-                  .filter((o: any) =>
-                    !orgSearch ||
-                    o.name?.toLowerCase().includes(orgSearch.toLowerCase()) ||
-                    o.email?.toLowerCase().includes(orgSearch.toLowerCase()) ||
-                    o.phone?.includes(orgSearch)
-                  )
-                  .map((o: any) => (
-                  <button
-                    key={o.id}
-                    onClick={() => { setSelectedOrgId(o.id); setSelectedPlanId(null); }}
+                ) : (orgs || []).filter((o: any) => !orgSearch || o.name?.toLowerCase().includes(orgSearch.toLowerCase()) || o.email?.toLowerCase().includes(orgSearch.toLowerCase()) || o.phone?.includes(orgSearch)).map((o: any) => (
+                  <button key={o.id} onClick={() => { setSelectedOrgId(o.id); setSelectedPlanId(null); setShowHistory(false); }}
                     className={`w-full text-left px-3 py-2.5 rounded-[var(--radius-md)] text-sm transition-colors border ${
-                      selectedOrgId === o.id
-                        ? 'border-[var(--color-primary)] bg-[var(--color-primary)]/5 text-[var(--color-primary)]'
-                        : 'border-transparent hover:bg-[var(--color-bg)] text-[var(--color-text)]'
-                    }`}
-                    aria-label={`Select organisation ${o.name}`}
-                  >
+                      selectedOrgId === o.id ? 'border-[var(--color-primary)] bg-[var(--color-primary)]/5 text-[var(--color-primary)]' : 'border-transparent hover:bg-[var(--color-bg)] text-[var(--color-text)]'
+                    }`} aria-label={`Select organisation ${o.name}`}>
                     <div className="font-medium">{o.name}</div>
-                    <div className="text-[10px] text-[var(--color-text-muted)] mt-0.5">
-                      {o.org_type_slug || '—'} {o.email ? `· ${o.email}` : ''}
-                    </div>
+                    <div className="text-[10px] text-[var(--color-text-muted)] mt-0.5">{o.org_type_slug || '—'} {o.email ? `· ${o.email}` : ''}</div>
                   </button>
                 ))}
-                {(!orgs || orgs.length === 0) && !orgsLoading && (
-                  <p className="text-xs text-[var(--color-text-muted)] py-4 text-center">No organisations found</p>
-                )}
+                {(!orgs || orgs.length === 0) && !orgsLoading && <p className="text-xs text-[var(--color-text-muted)] py-4 text-center">No organisations found</p>}
               </div>
             </div>
 
-            {/* Current Subscription Panel */}
             {selectedOrgId && (
               <div className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] border border-[var(--color-border)] p-5">
                 <h2 className="font-semibold text-[var(--color-text)] mb-3">Current Subscription</h2>
                 {subLoading ? (
-                  <div className="animate-pulse space-y-2">
-                    <div className="h-4 w-24 bg-[var(--color-bg)] rounded" />
-                    <div className="h-3 w-32 bg-[var(--color-bg)] rounded" />
-                  </div>
+                  <div className="animate-pulse space-y-2"><div className="h-4 w-24 bg-[var(--color-bg)] rounded" /><div className="h-3 w-32 bg-[var(--color-bg)] rounded" /></div>
                 ) : currentSub?.planName ? (
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
@@ -704,54 +783,42 @@ function AssignPlan() {
                       <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
                         isExpired ? 'bg-[var(--color-error-bg)] text-[var(--color-error-text)]' :
                         currentSub.status === 'active' ? 'bg-[var(--color-success-bg)] text-[var(--color-success-text)]' :
-                        currentSub.status === 'expired' ? 'bg-[var(--color-error-bg)] text-[var(--color-error-text)]' :
                         'bg-[var(--color-warning-bg)] text-[var(--color-warning-text)]'
-                      }`}>
-                        {isExpired ? 'Expired' : currentSub.status}
-                      </span>
+                      }`}>{isExpired ? 'Expired' : currentSub.status}</span>
                     </div>
                     <div className="text-xs text-[var(--color-text-muted)] space-y-1">
-                      <p>Billing: <span className="text-[var(--color-text)] capitalize">{currentSub.billingCycle || 'Monthly'}</span></p>
+                      <div className="flex items-center gap-2">
+                        <span>Billing: <strong className="text-[var(--color-text)] capitalize">{currentSub.billingCycle || 'Monthly'}</strong></span>
+                        <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-100 text-purple-700" title="This subscription was assigned directly by Super Admin.">MANUAL OVERRIDE</span>
+                      </div>
                       {currentSub.startDate && <p>Started: {new Date(currentSub.startDate).toLocaleDateString('en-GB')}</p>}
-                      {currentSub.endDate && (
-                        <p>
-                          Expires: {new Date(currentSub.endDate).toLocaleDateString('en-GB')}
-                          {daysRemaining !== null && !isExpired && (
-                            <span className="ml-2 text-amber-600">({daysRemaining} day{daysRemaining === 1 ? '' : 's'})</span>
-                          )}
-                        </p>
-                      )}
-                      {currentSub.price != null && Number(currentSub.price) > 0 && (
-                        <p>Price: {formatPrice(Number(currentSub.price))}</p>
-                      )}
+                      {currentSub.endDate && <p>Expires: {new Date(currentSub.endDate).toLocaleDateString('en-GB')}{daysRemaining !== null && !isExpired && <span className="ml-2 text-amber-600">({daysRemaining}d)</span>}</p>}
                     </div>
+                    <button onClick={() => setShowHistory(!showHistory)} className="text-xs text-[var(--color-primary)] hover:underline font-medium">
+                      {showHistory ? 'Hide' : 'View'} Subscription History
+                    </button>
+                    {showHistory && (
+                      <div className="text-xs text-[var(--color-text-muted)] space-y-1.5 border-t pt-2 mt-2">
+                        <p className="font-medium text-[var(--color-text)]">Assignment Timeline</p>
+                        <div className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-[var(--color-success)] shrink-0" /><span>Assigned · {currentSub.startDate ? new Date(currentSub.startDate).toLocaleDateString('en-GB') : '—'} · Super Admin</span></div>
+                        <div className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-gray-300 shrink-0" /><span>Source: Manual Assignment (Super Admin)</span></div>
+                      </div>
+                    )}
                   </div>
-                ) : (
-                  <p className="text-sm text-[var(--color-text-muted)]">No active subscription.</p>
-                )}
+                ) : (<p className="text-sm text-[var(--color-text-muted)]">No active subscription.</p>)}
               </div>
             )}
           </div>
 
-          {/* Step 2: Select Plan */}
+          {/* Right: Plan Selection */}
           <div className="lg:col-span-2 space-y-4">
             <div className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] border border-[var(--color-border)] p-5">
               <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
                 <h2 className="font-semibold text-[var(--color-text)]">Select Plan</h2>
                 <div className="flex items-center gap-2">
-                  {recurring.length > 0 && (
-                    <BillingPeriodToggle
-                      value={billingPeriod}
-                      onChange={(p) => { setBillingPeriod(p); setSelectedPlanId(null); }}
-                      savingsPercent={toggleSavings}
-                    />
-                  )}
-                  <select
-                    value={planFilter}
-                    onChange={e => { setPlanFilter(e.target.value as any); setSelectedPlanId(null); }}
-                    className="px-3 py-1.5 border rounded-[var(--radius-md)] bg-[var(--color-bg)] text-xs font-medium"
-                    aria-label="Filter plans by visibility"
-                  >
+                  {recurring.length > 0 && <BillingPeriodToggle value={billingPeriod} onChange={(p) => { setBillingPeriod(p); setSelectedPlanId(null); }} savingsPercent={toggleSavings} />}
+                  <select value={planFilter} onChange={e => { setPlanFilter(e.target.value as any); setSelectedPlanId(null); }}
+                    className="px-3 py-1.5 border rounded-[var(--radius-md)] bg-[var(--color-bg)] text-xs font-medium" aria-label="Filter plans">
                     <option value="all">All Plans</option>
                     <option value="public">Public Plans</option>
                     <option value="internal">Internal Plans</option>
@@ -759,66 +826,82 @@ function AssignPlan() {
                 </div>
               </div>
 
-              {filteredPlans.length === 0 && (
-                <p className="text-sm text-[var(--color-text-muted)] py-8 text-center">No plans match the current filter.</p>
-              )}
+              {filteredPlans.length === 0 && <p className="text-sm text-[var(--color-text-muted)] py-8 text-center">No plans match the current filter.</p>}
 
               {visibleRecurring.length > 0 && (
                 <div className="mb-6">
                   <h3 className="text-xs text-[var(--color-text-muted)] uppercase tracking-wider font-medium mb-3">
                     {planFilter === 'internal' ? 'Internal Plans' : 'Recurring Plans'}
                     {planFilter === 'all' && recurring.filter((p: Plan) => !p.isInternal).length > 0 && recurring.filter((p: Plan) => p.isInternal).length > 0 && (
-                      <span className="ml-2 text-[10px]">
-                        ({recurring.filter((p: Plan) => !p.isInternal).length} public · {recurring.filter((p: Plan) => p.isInternal).length} internal)
-                      </span>
+                      <span className="ml-2 text-[10px]">({recurring.filter((p: Plan) => !p.isInternal).length} public · {recurring.filter((p: Plan) => p.isInternal).length} internal)</span>
                     )}
                   </h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                     {visibleRecurring.map((plan: Plan) => (
-                      <AssignPlanCard
-                        key={plan.id} plan={plan} billingPeriod={billingPeriod}
-                        isSelected={selectedPlanId === plan.id}
-                        isCurrentPlan={currentSub?.planId === plan.id}
-                        onSelect={() => !isCurrentPlan && setSelectedPlanId(plan.id)}
-                      />
+                      <AssignPlanCard key={plan.id} plan={plan} billingPeriod={billingPeriod}
+                        isSelected={selectedPlanId === plan.id} isCurrentPlan={currentSub?.planId === plan.id}
+                        onSelect={() => !isCurrentPlan && setSelectedPlanId(plan.id)} />
                     ))}
                   </div>
                 </div>
               )}
 
               {unlimited.length > 0 && planFilter !== 'internal' && (
-                <div>
-                  <h3 className="text-xs text-[var(--color-text-muted)] uppercase tracking-wider font-medium mb-3">Unlimited / Free Plans</h3>
+                <div><h3 className="text-xs text-[var(--color-text-muted)] uppercase tracking-wider font-medium mb-3">Unlimited / Free Plans</h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                     {unlimited.map((plan: Plan) => (
-                      <AssignPlanCard
-                        key={plan.id} plan={plan} billingPeriod="monthly"
-                        isSelected={selectedPlanId === plan.id}
-                        isCurrentPlan={currentSub?.planId === plan.id}
-                        onSelect={() => !isCurrentPlan && setSelectedPlanId(plan.id)}
-                      />
+                      <AssignPlanCard key={plan.id} plan={plan} billingPeriod="monthly"
+                        isSelected={selectedPlanId === plan.id} isCurrentPlan={currentSub?.planId === plan.id}
+                        onSelect={() => !isCurrentPlan && setSelectedPlanId(plan.id)} />
                     ))}
                   </div>
                 </div>
               )}
             </div>
 
+            {/* Plan Comparison Panel */}
+            {selectedPlanId && currentSub?.planName && selectedPlan && !isCurrentPlan && (
+              <div className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] border border-[var(--color-border)] p-5">
+                <h2 className="font-semibold text-[var(--color-text)] mb-3">Plan Comparison: {currentSub.planName} vs {selectedPlan.planName}</h2>
+                <div className="grid grid-cols-[1fr_80px_80px_30px] gap-2 text-xs font-medium text-[var(--color-text-muted)] py-1 border-b border-[var(--color-border)] mb-1">
+                  <span>Feature</span><span className="text-right">Current</span><span className="text-right">New</span><span className="text-center"></span>
+                </div>
+                <CompareRow label="Monthly Price" currentVal={currentSub.priceMonthly} newVal={selectedPlan.priceMonthly} formatter={v => v != null ? `${Number(v).toFixed(0)} EGP` : '—'} />
+                <CompareRow label="Annual Price" currentVal={currentSub.priceYearly} newVal={selectedPlan.priceYearly} formatter={v => v != null ? `${Number(v).toFixed(0)} EGP` : '—'} />
+                <CompareRow label="Billing Cycle" currentVal={currentSub.billingCycle} newVal={billingPeriod} />
+                {FEATURE_COMPARE_KEYS.map(k => {
+                  const cur = getFeatureValue(currentSub, k);
+                  const nw = getFeatureValue(selectedPlan, k);
+                  if (cur == null && nw == null) return null;
+                  return <CompareRow key={k} label={k.charAt(0).toUpperCase() + k.slice(1)} currentVal={cur} newVal={nw} formatter={v => v === Infinity ? 'Unlimited' : String(v ?? '—')} />;
+                })}
+                {['analytics', 'marketplace', 'academy'].map(k => (
+                  <CompareRow key={k} label={`${k.charAt(0).toUpperCase() + k.slice(1)} Access`} currentVal={getBoolFeature(currentSub, k)} newVal={getBoolFeature(selectedPlan, k)} formatter={v => v === true ? '✓' : v === false ? '✗' : '—'} />
+                ))}
+              </div>
+            )}
+
+            {/* Downgrade Warning */}
+            {isDowngrade && (
+              <div className="bg-red-50 border border-red-200 rounded-[var(--radius-md)] p-4 flex items-start gap-3">
+                <span className="text-lg shrink-0 mt-0.5" aria-hidden="true">⚠️</span>
+                <div className="text-sm text-red-800">
+                  <p className="font-medium mb-1">Downgrade Detected — This assignment may reduce organisation limits.</p>
+                  {limitConflicts.length > 0 && (
+                    <ul className="list-disc list-inside text-red-600 mt-1 space-y-0.5">
+                      {limitConflicts.map((c, i) => <li key={i}>{c}</li>)}
+                    </ul>
+                  )}
+                  <p className="text-red-600 mt-1">Some features may become unavailable after this change.</p>
+                </div>
+              </div>
+            )}
+
             {/* Review button */}
             {selectedPlanId && selectedOrgId && (
               <div className="flex items-center justify-between bg-[var(--color-surface)] rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] border border-[var(--color-border)] p-4">
-                <div className="text-sm">
-                  <span className="text-[var(--color-text-muted)]">Selected: </span>
-                  <span className="font-semibold text-[var(--color-text)]">{selectedPlan?.planName}</span>
-                  <span className="text-[var(--color-text-muted)]"> for </span>
-                  <span className="font-semibold text-[var(--color-text)]">{selectedOrg?.name}</span>
-                </div>
-                <button
-                  onClick={() => setStep('review')}
-                  className="px-6 py-2 bg-[var(--color-primary)] text-white rounded-[var(--radius-md)] text-sm font-medium"
-                  aria-label="Review assignment"
-                >
-                  Continue to Review
-                </button>
+                <div className="text-sm"><span className="text-[var(--color-text-muted)]">Selected: </span><span className="font-semibold text-[var(--color-text)]">{selectedPlan?.planName}</span><span className="text-[var(--color-text-muted)]"> for </span><span className="font-semibold text-[var(--color-text)]">{selectedOrg?.name}</span></div>
+                <button onClick={() => setStep('review')} className="px-6 py-2 bg-[var(--color-primary)] text-white rounded-[var(--radius-md)] text-sm font-medium" aria-label="Review assignment">Continue to Review</button>
               </div>
             )}
           </div>
@@ -827,20 +910,13 @@ function AssignPlan() {
 
       {step === 'review' && (
         <div className="max-w-2xl mx-auto space-y-4">
-          {/* Pending request warning */}
           {pendingReq && (
             <div className="bg-amber-50 border border-amber-200 rounded-[var(--radius-md)] p-4 flex items-start gap-3">
               <span className="text-lg shrink-0 mt-0.5" aria-hidden="true">⚠️</span>
-              <div className="text-sm text-amber-800">
-                <p className="font-medium mb-1">Pending Request Detected</p>
-                <p className="text-amber-600">
-                  This organisation has a pending subscription request. Manual assignment will override and reject it.
-                </p>
-              </div>
+              <div className="text-sm text-amber-800"><p className="font-medium mb-1">Pending Request Detected</p><p className="text-amber-600">This organisation has a pending subscription request. Manual assignment will override and reject it.</p></div>
             </div>
           )}
 
-          {/* Review panel */}
           <div className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] border border-[var(--color-border)] p-6 space-y-4">
             <h2 className="font-semibold text-[var(--color-text)] text-lg">Review Assignment</h2>
 
@@ -861,42 +937,48 @@ function AssignPlan() {
                 <p className="text-[10px] text-[var(--color-text-muted)] uppercase tracking-wider font-medium mb-1">Billing Cycle</p>
                 <p className="text-sm font-bold text-[var(--color-text)] capitalize">{billingPeriod}</p>
               </div>
+
+              {/* Effective Date */}
               <div className="bg-[var(--color-bg)] rounded-[var(--radius-md)] p-4">
                 <p className="text-[10px] text-[var(--color-text-muted)] uppercase tracking-wider font-medium mb-1">Effective Date</p>
-                <p className="text-sm font-bold text-[var(--color-text)]">{new Date().toLocaleDateString('en-GB')}</p>
+                <div className="flex items-center gap-2 mt-1">
+                  <label className="flex items-center gap-1 text-xs cursor-pointer"><input type="radio" name="effDate" checked={effectiveDateType === 'immediate'} onChange={() => setEffectiveDateType('immediate')} /> Immediate</label>
+                  <label className="flex items-center gap-1 text-xs cursor-pointer"><input type="radio" name="effDate" checked={effectiveDateType === 'scheduled'} onChange={() => setEffectiveDateType('scheduled')} /> Scheduled</label>
+                </div>
+                {effectiveDateType === 'scheduled' && (
+                  <input type="datetime-local" value={scheduledDate} onChange={e => setScheduledDate(e.target.value)} className="mt-1 w-full px-2 py-1 border rounded-[var(--radius-md)] bg-white text-xs" />
+                )}
               </div>
+
               <div className="bg-[var(--color-bg)] rounded-[var(--radius-md)] p-4">
                 <p className="text-[10px] text-[var(--color-text-muted)] uppercase tracking-wider font-medium mb-1">Assignment Type</p>
                 <p className="text-sm font-bold text-[var(--color-text)]">{currentSub?.planName ? 'Replacement' : 'New Subscription'}</p>
+                <span className="inline-block mt-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-100 text-purple-700" title="This subscription was assigned directly by Super Admin.">MANUAL OVERRIDE</span>
               </div>
             </div>
 
+            {/* Assignment Reason */}
             <div>
-              <label className="block text-xs text-[var(--color-text-muted)] mb-1">Admin Notes (optional)</label>
-              <textarea
-                value={adminNotes}
-                onChange={e => setAdminNotes(e.target.value)}
-                placeholder="Reason for manual assignment..."
-                className="w-full px-3 py-2 border rounded-[var(--radius-md)] bg-[var(--color-bg)] text-sm resize-none"
-                rows={2}
-                aria-label="Admin notes for this assignment"
-              />
+              <label className="block text-xs text-[var(--color-text-muted)] mb-1 font-medium">Assignment Reason</label>
+              <select value={assignmentReason} onChange={e => setAssignmentReason(e.target.value)} className="w-full px-3 py-2 border rounded-[var(--radius-md)] bg-[var(--color-bg)] text-sm">
+                {ASSIGN_REASONS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+              </select>
+              {assignmentReason === 'other' && (
+                <textarea value={otherReasonText} onChange={e => setOtherReasonText(e.target.value)} placeholder="Describe the reason for this manual assignment..."
+                  className="w-full px-3 py-2 border rounded-[var(--radius-md)] bg-[var(--color-bg)] text-sm resize-none mt-2" rows={2} />
+              )}
             </div>
 
+            {validationErrors.length > 0 && (
+              <div className="bg-red-50 border border-red-200 rounded-[var(--radius-md)] p-3 space-y-1">
+                {validationErrors.map((e, i) => <p key={i} className="text-xs text-red-700">• {e}</p>)}
+              </div>
+            )}
+
             <div className="flex items-center gap-3 pt-2">
-              <button
-                onClick={() => setShowConfirm(true)}
-                className="px-6 py-2.5 bg-[var(--color-primary)] text-white rounded-[var(--radius-md)] text-sm font-medium"
-                aria-label="Proceed to assign plan"
-              >
-                Assign Plan
-              </button>
-              <button
-                onClick={() => setStep('select')}
-                className="px-6 py-2.5 border border-[var(--color-border)] rounded-[var(--radius-md)] text-sm font-medium"
-              >
-                Back
-              </button>
+              <button onClick={() => setShowConfirm(true)} disabled={!canProceed}
+                className="px-6 py-2.5 bg-[var(--color-primary)] text-white rounded-[var(--radius-md)] text-sm font-medium disabled:opacity-50" aria-label="Proceed to assign plan">Assign Plan</button>
+              <button onClick={() => setStep('select')} className="px-6 py-2.5 border border-[var(--color-border)] rounded-[var(--radius-md)] text-sm font-medium">Back</button>
             </div>
           </div>
         </div>
@@ -906,19 +988,15 @@ function AssignPlan() {
         <div className="max-w-md mx-auto text-center py-8 space-y-4">
           <div className="text-4xl">✅</div>
           <h2 className="text-xl font-bold text-[var(--color-text)]">Assignment Completed</h2>
-          <p className="text-sm text-[var(--color-text-muted)]">
-            The plan has been assigned to <strong>{selectedOrg?.name}</strong>.
-          </p>
-          <div className="bg-[var(--color-bg)] rounded-[var(--radius-md)] p-4 text-sm space-y-1">
+          <p className="text-sm text-[var(--color-text-muted)]">The plan has been assigned to <strong>{selectedOrg?.name}</strong>.</p>
+          <div className="bg-[var(--color-bg)] rounded-[var(--radius-md)] p-4 text-sm space-y-1 text-left">
             <p><span className="text-[var(--color-text-muted)]">Plan:</span> <strong>{selectedPlan?.planName}</strong></p>
             <p><span className="text-[var(--color-text-muted)]">Billing:</span> {billingPeriod}</p>
+            <p><span className="text-[var(--color-text-muted)]">Reason:</span> {assignmentReason === 'other' ? otherReasonText : ASSIGN_REASONS.find(r => r.value === assignmentReason)?.label}</p>
+            <p><span className="text-[var(--color-text-muted)]">Effective:</span> {effectiveDateType === 'immediate' ? 'Immediate' : scheduledDate}</p>
+            {pendingReq && <p><span className="text-[var(--color-text-muted)]">Pending request:</span> Overridden and rejected</p>}
           </div>
-          <button
-            onClick={handleClear}
-            className="px-6 py-2.5 bg-[var(--color-primary)] text-white rounded-[var(--radius-md)] text-sm font-medium"
-          >
-            Assign Another Plan
-          </button>
+          <button onClick={handleClear} className="px-6 py-2.5 bg-[var(--color-primary)] text-white rounded-[var(--radius-md)] text-sm font-medium">Assign Another Plan</button>
         </div>
       )}
 
@@ -929,33 +1007,17 @@ function AssignPlan() {
             <div className="text-center">
               <div className="text-3xl mb-2">⚠️</div>
               <h3 className="text-lg font-bold text-[var(--color-text)]">Confirm Manual Assignment</h3>
-              <p className="text-sm text-[var(--color-text-muted)] mt-2">
-                You are about to manually assign the <strong>{selectedPlan?.planName}</strong> plan to <strong>{selectedOrg?.name}</strong>.
-              </p>
-              <p className="text-sm text-amber-600 mt-2">
-                This action bypasses the normal subscription request workflow.
-              </p>
+              <p className="text-sm text-[var(--color-text-muted)] mt-2">You are about to manually assign the <strong>{selectedPlan?.planName}</strong> plan to <strong>{selectedOrg?.name}</strong>.</p>
+              <p className="text-sm text-amber-600 mt-2">This action bypasses the normal subscription request workflow.</p>
+              {isDowngrade && <p className="text-sm text-red-600 mt-2">⚠️ This is a downgrade — organisation limits will be reduced.</p>}
             </div>
-            {pendingReq && (
-              <div className="bg-amber-50 border border-amber-200 rounded-[var(--radius-md)] p-3 text-xs text-amber-700">
-                The organisation's pending request will be rejected automatically.
-              </div>
-            )}
+            {pendingReq && <div className="bg-amber-50 border border-amber-200 rounded-[var(--radius-md)] p-3 text-xs text-amber-700">The organisation's pending request will be rejected automatically.</div>}
             <div className="flex items-center gap-3">
-              <button
-                onClick={handleConfirmAssign}
-                disabled={updateMutation.isPending}
-                className="flex-1 px-4 py-2.5 bg-[var(--color-primary)] text-white rounded-[var(--radius-md)] text-sm font-medium disabled:opacity-50"
-                aria-label="Confirm manual assignment"
-              >
+              <button onClick={handleConfirmAssign} disabled={!canProceed || updateMutation.isPending}
+                className="flex-1 px-4 py-2.5 bg-[var(--color-primary)] text-white rounded-[var(--radius-md)] text-sm font-medium disabled:opacity-50" aria-label="Confirm manual assignment">
                 {updateMutation.isPending ? 'Assigning...' : 'Assign Plan'}
               </button>
-              <button
-                onClick={() => setShowConfirm(false)}
-                className="flex-1 px-4 py-2.5 border border-[var(--color-border)] rounded-[var(--radius-md)] text-sm font-medium"
-              >
-                Cancel
-              </button>
+              <button onClick={() => setShowConfirm(false)} className="flex-1 px-4 py-2.5 border border-[var(--color-border)] rounded-[var(--radius-md)] text-sm font-medium">Cancel</button>
             </div>
           </div>
         </div>
@@ -978,46 +1040,29 @@ function AssignPlanCard({
   }, {} as Record<string, string>);
 
   return (
-    <div
-      onClick={isCurrentPlan ? undefined : onSelect}
-      role="button"
-      tabIndex={isCurrentPlan ? -1 : 0}
+    <div onClick={isCurrentPlan ? undefined : onSelect} role="button" tabIndex={isCurrentPlan ? -1 : 0}
       onKeyDown={e => { if (!isCurrentPlan && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); onSelect(); } }}
-      aria-label={`${plan.planName}${isCurrentPlan ? ' — current plan' : ''}`}
-      aria-disabled={isCurrentPlan}
+      aria-label={`${plan.planName}${isCurrentPlan ? ' — current plan' : ''}`} aria-disabled={isCurrentPlan}
       className={`bg-[var(--color-surface)] border-2 rounded-[var(--radius-lg)] p-4 transition-all ${
-        isCurrentPlan
-          ? 'border-green-300 opacity-60 cursor-not-allowed'
-          : isSelected
-            ? 'border-[var(--color-primary)] shadow-md cursor-pointer'
-            : 'border-transparent shadow-[var(--shadow-sm)] hover:border-[var(--color-border)] cursor-pointer'
-      }`}
-    >
+        isCurrentPlan ? 'border-green-300 opacity-60 cursor-not-allowed' :
+        isSelected ? 'border-[var(--color-primary)] shadow-md cursor-pointer' :
+        'border-transparent shadow-[var(--shadow-sm)] hover:border-[var(--color-border)] cursor-pointer'
+      }`}>
       <div className="flex items-start justify-between gap-2 mb-2">
         <h3 className="font-bold text-[var(--color-text)] text-sm">{plan.planName}</h3>
         <div className="flex items-center gap-1 shrink-0">
-          {isCurrentPlan && (
-            <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-green-100 text-green-700 border border-green-200">
-              Current Plan
-            </span>
-          )}
+          {isCurrentPlan && <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-green-100 text-green-700 border border-green-200">Current Plan</span>}
           {plan.isInternal && (
-            <span className="group relative px-2 py-0.5 rounded-full text-[10px] font-medium bg-amber-100 text-amber-700 border border-amber-200 cursor-help"
-              title="For marketing, testing, demos, promotions and administrative purposes only.">
-              INTERNAL
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-purple-100 text-purple-700 border border-purple-200 cursor-help flex items-center gap-1" title="Visible only to Super Admin. For marketing, testing, demos, promotions and administrative purposes only.">
+              🔒 INTERNAL
             </span>
           )}
         </div>
       </div>
-
       <p className="text-xl font-bold text-[var(--color-primary)] mb-2">
         {isFree ? 'FREE' : `${Number(price).toFixed(0)}`}
-        {!isFree && !plan.isUnlimited && (
-          <span className="text-xs font-normal text-[var(--color-text-muted)]"> EGP/{billingPeriod === 'yearly' ? 'yr' : 'mo'}</span>
-        )}
+        {!isFree && !plan.isUnlimited && <span className="text-xs font-normal text-[var(--color-text-muted)]"> EGP/{billingPeriod === 'yearly' ? 'yr' : 'mo'}</span>}
       </p>
-
-      {/* Key features summary */}
       {Object.keys(featureSummary).length > 0 && (
         <div className="text-[11px] text-[var(--color-text-muted)] space-y-0.5 mb-2">
           {featureSummary.branches && <p>· {featureSummary.branches === '-1' ? 'Unlimited' : featureSummary.branches} branches</p>}
@@ -1025,17 +1070,12 @@ function AssignPlanCard({
           {featureSummary.products && <p>· {featureSummary.products === '-1' ? 'Unlimited' : featureSummary.products} products</p>}
         </div>
       )}
-
       {plan.commissionRates?.length > 0 && (
         <div className="text-[11px] text-[var(--color-text-muted)] space-y-0.5 mb-2">
-          {plan.commissionRates.slice(0, 2).map((cr: any) => (
-            <p key={cr.entity}>· {ENTITY_LABELS[cr.entity] || cr.entity}: {cr.rate}{cr.type === 'percentage' ? '%' : ' EGP'}</p>
-          ))}
+          {plan.commissionRates.slice(0, 2).map((cr: any) => <p key={cr.entity}>· {ENTITY_LABELS[cr.entity] || cr.entity}: {cr.rate}{cr.type === 'percentage' ? '%' : ' EGP'}</p>)}
           {plan.commissionRates.length > 2 && <p className="text-[10px]">· +{plan.commissionRates.length - 2} more</p>}
         </div>
       )}
-
-      {/* Feature checks */}
       {plan.features && plan.features.length > 0 && (
         <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px]">
           {['analytics', 'marketplace', 'academy'].map(k => {
