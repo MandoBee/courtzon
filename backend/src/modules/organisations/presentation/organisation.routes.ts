@@ -120,10 +120,10 @@ export async function organisationRoutes(app: FastifyInstance): Promise<void> {
   // Resource Peak Hours
   app.put('/resources/:resourceId/peak-hours', { preHandler: [adminGuard] }, ctrl.upsertResourcePeakHoursHandler);
 
-  // Admin subscription upgrade requests
-  app.get('/admin/subscription-upgrade-requests', { preHandler: [adminGuard] }, ctrl.listSubscriptionUpgradeRequestsHandler);
-  app.post('/admin/subscription-upgrade-requests/:requestId/approve', { preHandler: [adminGuard] }, ctrl.approveSubscriptionUpgradeHandler);
-  app.post('/admin/subscription-upgrade-requests/:requestId/reject', { preHandler: [adminGuard] }, ctrl.rejectSubscriptionUpgradeHandler);
+  // Admin subscription requests
+  app.get('/admin/subscription-requests', { preHandler: [adminGuard] }, ctrl.listSubscriptionRequestsHandler);
+  app.post('/admin/subscription-requests/:requestId/approve', { preHandler: [adminGuard] }, ctrl.approveSubscriptionRequestHandler);
+  app.post('/admin/subscription-requests/:requestId/reject', { preHandler: [adminGuard] }, ctrl.rejectSubscriptionRequestHandler);
 
   // Org portal (self-service under /org/:orgId — merged from legacy `modules/org`)
   await registerOrgPortalRoutes(app);

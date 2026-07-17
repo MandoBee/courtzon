@@ -28,7 +28,7 @@ function buildNavItems(can: (perm: string) => boolean, flag: (key: string) => bo
         { label: 'Branch Access', path: '/admin/branch-access', permissionKey: 'sidebar.branch-access' },
         { label: 'All Bookings', path: '/admin/bookings', permissionKey: 'sidebar.admin-bookings' },
         { label: 'Subscription Plans', path: '/admin/subscription', permissionKey: 'sidebar.subscription' },
-        { label: 'Upgrade Requests', path: '/admin/subscription/upgrade-requests', permissionKey: 'sidebar.subscription-upgrades' },
+        { label: 'Subscription Requests', path: '/admin/subscription/requests', permissionKey: 'sidebar.subscription-requests' },
         { label: 'Types', path: '/admin/organisation-types', permissionKey: 'sidebar.organisation-types' },
         { label: 'Settlements', path: '/admin/settlements', permissionKey: 'sidebar.settlements' },
       ],

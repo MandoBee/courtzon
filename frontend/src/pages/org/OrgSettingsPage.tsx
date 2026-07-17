@@ -4,14 +4,15 @@ import { useQuery } from '@tanstack/react-query';
 import api from '../../services/api';
 import { Can } from '../../permissions/Can';
 import OrganisationForm from '../../components/organisations/OrganisationForm';
-import UpgradeRequestModal from '../../components/subscription/UpgradeRequestModal';
+import SubscriptionRequestModal from '../../components/subscription/SubscriptionRequestModal';
 import OrgShippingRatesPage from './OrgShippingRatesPage';
 
 type SettingsTab = 'general' | 'shipping-rates';
 
 export default function OrgSettingsPage() {
   const { orgId } = useParams<{ orgId: string }>();
-  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const [showRequestModal, setShowRequestModal] = useState(false);
+  const [requestType, setRequestType] = useState<'NEW_SUBSCRIPTION' | 'PLAN_CHANGE'>('PLAN_CHANGE');
   const [activeTab, setActiveTab] = useState<SettingsTab>('general');
 
   const { data: subscription } = useQuery<any>({
@@ -79,17 +80,21 @@ export default function OrgSettingsPage() {
                 )}
               </p>
             </div>
-            <Can permission="subscription.upgrade.request">
-              {sub.pendingUpgrade ? (
+            <Can permission="subscription.request">
+              {sub.pendingRequest ? (
                 <span className="text-xs text-[var(--color-warning-text)] bg-[var(--color-warning-bg)] px-2 py-1 rounded-[var(--radius-md)]">
-                  Pending upgrade to {sub.pendingUpgrade.planName}
+                  Pending {sub.pendingRequest.requestType === 'NEW_SUBSCRIPTION' ? 'subscription' : 'change'} request
+                  {sub.pendingRequest.requestedPlanName ? <> to <strong>{sub.pendingRequest.requestedPlanName}</strong></> : ''}
                 </span>
               ) : (
                 <button
-                  onClick={() => setShowUpgradeModal(true)}
+                  onClick={() => {
+                    setRequestType(sub.planId ? 'PLAN_CHANGE' : 'NEW_SUBSCRIPTION');
+                    setShowRequestModal(true);
+                  }}
                   className="px-3 py-1.5 bg-[var(--color-primary)] text-white rounded-[var(--radius-md)] text-xs font-medium"
                 >
-                  Upgrade Plan
+                  {sub.planId ? 'Change Subscription' : 'Request Subscription'}
                 </button>
               )}
             </Can>
@@ -133,10 +138,11 @@ export default function OrgSettingsPage() {
         </Can>
       )}
 
-      <UpgradeRequestModal
+      <SubscriptionRequestModal
         orgId={parseInt(orgId, 10)}
-        open={showUpgradeModal}
-        onClose={() => setShowUpgradeModal(false)}
+        open={showRequestModal}
+        requestType={requestType}
+        onClose={() => setShowRequestModal(false)}
       />
     </div>
   );

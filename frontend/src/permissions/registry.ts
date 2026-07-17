@@ -641,11 +641,11 @@ export const uiRegistry: UIElement[] = [
   { permissionKey: 'subscription.activate', moduleSlug: 'subscription', elementType: 'button', elementLabel: 'Activate Subscription', componentPath: 'pages/admin/subscription/SubscriptionPage.tsx' },
   { permissionKey: 'subscription.features.view', moduleSlug: 'subscription', elementType: 'page', elementLabel: 'Plan Features Section', componentPath: 'pages/admin/subscription/SubscriptionPage.tsx' },
   { permissionKey: 'subscription.features.edit', moduleSlug: 'subscription', elementType: 'section', elementLabel: 'Edit Plan Features', componentPath: 'pages/admin/subscription/SubscriptionPage.tsx' },
-  { permissionKey: 'subscription.upgrade.request', moduleSlug: 'subscription', elementType: 'button', elementLabel: 'Request Plan Upgrade', componentPath: 'components/subscription/UpgradeRequestModal.tsx' },
-  { permissionKey: 'subscription.upgrade.view', moduleSlug: 'subscription', elementType: 'page', elementLabel: 'View Upgrade Requests', componentPath: 'pages/admin/subscription/SubscriptionUpgradeRequestsPage.tsx' },
-  { permissionKey: 'subscription.upgrade.approve', moduleSlug: 'subscription', elementType: 'button', elementLabel: 'Approve Upgrade', componentPath: 'pages/admin/subscription/SubscriptionUpgradeRequestsPage.tsx' },
-  { permissionKey: 'subscription.upgrade.reject', moduleSlug: 'subscription', elementType: 'button', elementLabel: 'Reject Upgrade', componentPath: 'pages/admin/subscription/SubscriptionUpgradeRequestsPage.tsx' },
-  { permissionKey: 'sidebar.subscription-upgrades', moduleSlug: 'subscription', elementType: 'tab', elementLabel: 'Sidebar: Upgrade Requests', componentPath: 'components/layout/AdminSidebar.tsx' },
+  { permissionKey: 'subscription.request', moduleSlug: 'subscription', elementType: 'button', elementLabel: 'Request Subscription', componentPath: 'components/subscription/SubscriptionRequestModal.tsx' },
+  { permissionKey: 'subscription.request.view', moduleSlug: 'subscription', elementType: 'page', elementLabel: 'View Subscription Requests', componentPath: 'pages/admin/subscription/SubscriptionRequestsPage.tsx' },
+  { permissionKey: 'subscription.request.approve', moduleSlug: 'subscription', elementType: 'button', elementLabel: 'Approve Request', componentPath: 'pages/admin/subscription/SubscriptionRequestsPage.tsx' },
+  { permissionKey: 'subscription.request.reject', moduleSlug: 'subscription', elementType: 'button', elementLabel: 'Reject Request', componentPath: 'pages/admin/subscription/SubscriptionRequestsPage.tsx' },
+  { permissionKey: 'sidebar.subscription-requests', moduleSlug: 'subscription', elementType: 'tab', elementLabel: 'Sidebar: Subscription Requests', componentPath: 'components/layout/AdminSidebar.tsx' },
   { permissionKey: 'subscription-plans.view', moduleSlug: 'subscription', elementType: 'page', elementLabel: 'Subscription Plan Detail Page', componentPath: 'pages/subscription/SubscriptionPlanDetailPage.tsx' },
 
   // ==========================================================================

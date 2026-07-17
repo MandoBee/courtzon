@@ -95,7 +95,7 @@ const LanguagesPage = lazy(() => import('./pages/admin/languages/LanguagesPage')
 const AppSettingsPage = lazy(() => import('./pages/admin/app-settings/AppSettingsPage'));
 const TranslationsPage = lazy(() => import('./pages/admin/translations/TranslationsPage'));
 const SubscriptionPage = lazy(() => import('./pages/admin/subscription/SubscriptionPage'));
-const SubscriptionUpgradeRequestsPage = lazy(() => import('./pages/admin/subscription/SubscriptionUpgradeRequestsPage'));
+const SubscriptionRequestsPage = lazy(() => import('./pages/admin/subscription/SubscriptionRequestsPage'));
 const SettlementListPage = lazy(() => import('./pages/admin/settlements/SettlementListPage'));
 const AdminFinancePage = lazy(() => import('./pages/admin/AdminFinancePage'));
 const FinancialOpsDashboard = lazy(() => import('./pages/admin/finance/FinancialOpsDashboard'));
@@ -484,7 +484,7 @@ function AppContent() {
           <Route path="profile" element={<ProfilePage />} />
           <Route path="audit-logs" element={<AuditLogPage />} />
           <Route path="subscription" element={<SubscriptionPage />} />
-          <Route path="subscription/upgrade-requests" element={<SubscriptionUpgradeRequestsPage />} />
+          <Route path="subscription/requests" element={<SubscriptionRequestsPage />} />
           <Route path="security" element={<SecurityDashboard />} />
           <Route path="security/sessions" element={<SessionsPage />} />
           <Route path="security/failed-logins" element={<FailedLoginsPage />} />

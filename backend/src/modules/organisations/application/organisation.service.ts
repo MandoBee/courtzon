@@ -967,21 +967,21 @@ export class OrganisationService {
     return this.getResource(resourceId);
   }
 
-  // ── Admin subscription upgrade request management ──
+  // ── Admin subscription request management ──
 
-  async listSubscriptionUpgradeRequests(filters?: { status?: string; page?: number; limit?: number }) {
-    const { listSubscriptionUpgradeRequests } = await import('../infrastructure/repositories/org-portal.repository.js');
-    return listSubscriptionUpgradeRequests(filters);
+  async listSubscriptionRequests(filters?: { status?: string; page?: number; limit?: number }) {
+    const { listSubscriptionRequests } = await import('../infrastructure/repositories/org-portal.repository.js');
+    return listSubscriptionRequests(filters);
   }
 
-  async approveSubscriptionUpgrade(requestId: number, adminId: number) {
-    const { approveSubscriptionUpgrade } = await import('../infrastructure/repositories/org-portal.repository.js');
-    return approveSubscriptionUpgrade(requestId, adminId);
+  async approveSubscriptionRequest(requestId: number, adminId: number) {
+    const { approveSubscriptionRequest } = await import('../infrastructure/repositories/org-portal.repository.js');
+    return approveSubscriptionRequest(requestId, adminId);
   }
 
-  async rejectSubscriptionUpgrade(requestId: number, adminId: number, reason: string) {
-    const { rejectSubscriptionUpgrade } = await import('../infrastructure/repositories/org-portal.repository.js');
-    return rejectSubscriptionUpgrade(requestId, adminId, reason);
+  async rejectSubscriptionRequest(requestId: number, adminId: number, reason: string) {
+    const { rejectSubscriptionRequest } = await import('../infrastructure/repositories/org-portal.repository.js');
+    return rejectSubscriptionRequest(requestId, adminId, reason);
   }
 }
 

@@ -972,11 +972,11 @@ export async function upsertResourcePeakHoursHandler(request: FastifyRequest, re
   return reply.send(resource);
 }
 
-// ── Admin subscription upgrade requests ──
+// ── Admin subscription requests ──
 
-export async function listSubscriptionUpgradeRequestsHandler(request: FastifyRequest, reply: FastifyReply) {
+export async function listSubscriptionRequestsHandler(request: FastifyRequest, reply: FastifyReply) {
   const { status, page, limit } = request.query as any;
-  const result = await organisationService.listSubscriptionUpgradeRequests({
+  const result = await organisationService.listSubscriptionRequests({
     status: status || 'pending',
     page: page ? Number(page) : 1,
     limit: limit ? Number(limit) : 20,
@@ -984,13 +984,13 @@ export async function listSubscriptionUpgradeRequestsHandler(request: FastifyReq
   return reply.send({ data: result.rows, total: result.total, page: result.page, limit: result.limit });
 }
 
-export async function approveSubscriptionUpgradeHandler(request: FastifyRequest, reply: FastifyReply) {
+export async function approveSubscriptionRequestHandler(request: FastifyRequest, reply: FastifyReply) {
   const { requestId } = request.params as any;
   const adminId = (request as any).userId;
-  const result = await organisationService.approveSubscriptionUpgrade(Number(requestId), adminId);
+  const result = await organisationService.approveSubscriptionRequest(Number(requestId), adminId);
   recordAudit({
     actorId: adminId,
-    action: 'SUBSCRIPTION_UPGRADE.APPROVE',
+    action: 'SUBSCRIPTION_REQUEST.APPROVE',
     entityType: 'organisation_upgrade_request',
     entityId: Number(requestId),
     afterState: { organisationId: (result as any).organisation_id },
@@ -1000,14 +1000,14 @@ export async function approveSubscriptionUpgradeHandler(request: FastifyRequest,
   return reply.send({ success: true });
 }
 
-export async function rejectSubscriptionUpgradeHandler(request: FastifyRequest, reply: FastifyReply) {
+export async function rejectSubscriptionRequestHandler(request: FastifyRequest, reply: FastifyReply) {
   const { requestId } = request.params as any;
   const { reason } = request.body as any;
   const adminId = (request as any).userId;
-  await organisationService.rejectSubscriptionUpgrade(Number(requestId), adminId, reason || 'No reason provided');
+  await organisationService.rejectSubscriptionRequest(Number(requestId), adminId, reason || 'No reason provided');
   recordAudit({
     actorId: adminId,
-    action: 'SUBSCRIPTION_UPGRADE.REJECT',
+    action: 'SUBSCRIPTION_REQUEST.REJECT',
     entityType: 'organisation_upgrade_request',
     entityId: Number(requestId),
     afterState: { reason },

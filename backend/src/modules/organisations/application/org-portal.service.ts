@@ -133,7 +133,7 @@ export async function removeOrgStaff(orgId: number, userId: number) {
   await repo.removeStaffFromOrg(userId, orgId);
 }
 
-// ── Subscription / upgrade request (S1-S3) ──
+// ── Subscription Requests ──
 
 export async function getOrgSubscriptionWithUsage(orgId: number) {
   const result = await repo.getOrgSubscriptionWithFeatures(orgId);
@@ -141,7 +141,7 @@ export async function getOrgSubscriptionWithUsage(orgId: number) {
 
   const { sub, features } = result;
   const usage = await repo.getFeatureUsageCounts(orgId);
-  const pendingUpgrade = await repo.getOrgPendingUpgradeRequest(orgId);
+  const pendingRequest = await repo.getOrgPendingSubscriptionRequest(orgId);
 
   const featureList = features.map((f: any) => ({
     featureKey: f.feature_key,
@@ -169,8 +169,15 @@ export async function getOrgSubscriptionWithUsage(orgId: number) {
     endDate: sub.end_date,
     status: sub.subscription_status,
     autoRenew: !!sub.auto_renew,
-    pendingUpgrade: pendingUpgrade
-      ? { id: pendingUpgrade.id, planName: pendingUpgrade.plan_name, status: pendingUpgrade.status, createdAt: pendingUpgrade.created_at }
+    pendingRequest: pendingRequest
+      ? {
+          id: pendingRequest.id,
+          requestType: pendingRequest.request_type,
+          requestedPlanName: pendingRequest.requested_plan_name,
+          currentPlanName: pendingRequest.current_plan_name,
+          status: pendingRequest.status,
+          createdAt: pendingRequest.created_at,
+        }
       : null,
   };
 }
@@ -188,17 +195,31 @@ export async function getAvailablePlansForOrg(orgId: number) {
   }));
 }
 
-export async function submitUpgradeRequest(orgId: number, userId: number, planId: number, notes?: string) {
-  const pending = await repo.getOrgPendingUpgradeRequest(orgId);
-  if (pending) throw new ConflictError('You already have a pending upgrade request. Please wait for it to be reviewed.');
+export async function submitSubscriptionRequest(orgId: number, userId: number, planId: number, requestType: 'NEW_SUBSCRIPTION' | 'PLAN_CHANGE', notes?: string) {
+  const pending = await repo.getOrgPendingSubscriptionRequest(orgId);
+  if (pending) throw new ConflictError('You already have a pending subscription request. Please wait for it to be reviewed.');
 
-  const id = await repo.createUpgradeRequest({
+  // Snapshot the current plan at request time
+  const { getPool } = await import('../../../database/mysql.js');
+  const pool = getPool();
+  const [subRows] = await pool.execute<any[]>(
+    `SELECT plan_id FROM organisation_subscriptions
+     WHERE organisation_id = ? AND subscription_status = 'active'
+       AND (end_date IS NULL OR end_date >= CURDATE())
+     ORDER BY created_at DESC LIMIT 1`,
+    [orgId],
+  );
+  const currentPlanId = subRows.length ? subRows[0].plan_id : null;
+
+  const id = await repo.createSubscriptionRequest({
     organisationId: orgId,
     requestedBy: userId,
     requestedPlanId: planId,
+    requestType,
+    currentPlanId,
     notes,
   });
-  return { id, status: 'pending' };
+  return { id, status: 'pending', requestType };
 }
 
 // ── Org coach agreements / invites (D6) ──

@@ -59,10 +59,10 @@ export async function registerOrgPortalRoutes(app: FastifyInstance): Promise<voi
   app.put('/org/:orgId/branches/:branchId/cancellation-policies/:id', { preHandler: [orgAccessGuard] }, adminCtrl.updatePolicyHandler);
   app.delete('/org/:orgId/branches/:branchId/cancellation-policies/:id', { preHandler: [orgAccessGuard] }, adminCtrl.deletePolicyHandler);
 
-  // Subscription / upgrade request (org self-service S1-S3)
+  // Subscription requests (org self-service)
   app.get('/org/:orgId/subscription', { preHandler: [orgAccessGuard] }, ctrl.getOrgSubscriptionHandler);
   app.get('/org/:orgId/subscription/available-plans', { preHandler: [orgAccessGuard] }, ctrl.getAvailablePlansHandler);
-  app.post('/org/:orgId/subscription/request-upgrade', { preHandler: [orgAccessGuard] }, ctrl.submitUpgradeRequestHandler);
+  app.post('/org/:orgId/subscription/request', { preHandler: [orgAccessGuard] }, ctrl.submitSubscriptionRequestHandler);
 
   // Finance
   app.get('/org/:orgId/transactions', { preHandler: [orgAccessGuard] }, ctrl.getOrgTransactionsHandler);

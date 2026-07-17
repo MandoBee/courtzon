@@ -535,29 +535,32 @@ export async function getAvailablePlansForOrg(orgId: number) {
   return plans;
 }
 
-export async function createUpgradeRequest(data: {
+export async function createSubscriptionRequest(data: {
   organisationId: number;
   requestedBy: number;
   requestedPlanId: number;
+  requestType: 'NEW_SUBSCRIPTION' | 'PLAN_CHANGE';
+  currentPlanId?: number | null;
   notes?: string;
 }) {
   const pool = getPool();
   const [result] = await pool.execute(
     `INSERT INTO organisation_upgrade_requests
-     (organisation_id, requested_by, requested_plan_id, registration_type, status, notes)
-     VALUES (?, ?, ?, 'upgrade', 'pending', ?)`,
-    [data.organisationId, data.requestedBy, data.requestedPlanId, data.notes || null],
+     (organisation_id, requested_by, requested_plan_id, registration_type, request_type, current_plan_id, status, notes)
+     VALUES (?, ?, ?, 'upgrade', ?, ?, 'pending', ?)`,
+    [data.organisationId, data.requestedBy, data.requestedPlanId, data.requestType, data.currentPlanId || null, data.notes || null],
   );
   return (result as any).insertId;
 }
 
-export async function getOrgPendingUpgradeRequest(orgId: number) {
+export async function getOrgPendingSubscriptionRequest(orgId: number) {
   const pool = getPool();
   const [rows] = await pool.execute<RowData>(
-    `SELECT our.*, sp.plan_name
+    `SELECT our.*, sp.plan_name as requested_plan_name, cp.plan_name as current_plan_name
      FROM organisation_upgrade_requests our
      LEFT JOIN subscription_plans sp ON sp.id = our.requested_plan_id
-     WHERE our.organisation_id = ? AND our.registration_type = 'upgrade' AND our.status = 'pending'
+     LEFT JOIN subscription_plans cp ON cp.id = our.current_plan_id
+     WHERE our.organisation_id = ? AND our.request_type IS NOT NULL AND our.status = 'pending'
      ORDER BY our.created_at DESC
      LIMIT 1`,
     [orgId],
@@ -565,9 +568,9 @@ export async function getOrgPendingUpgradeRequest(orgId: number) {
   return rows[0] || null;
 }
 
-export async function listSubscriptionUpgradeRequests(filters?: { status?: string; page?: number; limit?: number }) {
+export async function listSubscriptionRequests(filters?: { status?: string; page?: number; limit?: number }) {
   const pool = getPool();
-  const conditions: string[] = ["our.registration_type = 'upgrade'"];
+  const conditions: string[] = ["our.request_type IS NOT NULL"];
   const params: any[] = [];
   if (filters?.status && filters.status !== 'all') {
     conditions.push('our.status = ?');
@@ -581,11 +584,12 @@ export async function listSubscriptionUpgradeRequests(filters?: { status?: strin
 
   const [rows] = await pool.execute<RowData>(
     `SELECT our.*, o.name as org_name, u.full_name as requester_name, u.email as requester_email,
-            sp.plan_name
+            sp.plan_name as requested_plan_name, cp.plan_name as current_plan_name
      FROM organisation_upgrade_requests our
      JOIN organisations o ON o.id = our.organisation_id
      JOIN users u ON u.id = our.requested_by
      LEFT JOIN subscription_plans sp ON sp.id = our.requested_plan_id
+     LEFT JOIN subscription_plans cp ON cp.id = our.current_plan_id
      ${where}
      ORDER BY our.created_at DESC${paginationClause(pag)}`,
     params,
@@ -593,7 +597,7 @@ export async function listSubscriptionUpgradeRequests(filters?: { status?: strin
   return { rows, total, page: pag.page, limit: pag.limit };
 }
 
-export async function approveSubscriptionUpgrade(requestId: number, adminId: number) {
+export async function approveSubscriptionRequest(requestId: number, adminId: number) {
   const pool = getPool();
   const conn = await pool.getConnection();
   try {
@@ -603,7 +607,7 @@ export async function approveSubscriptionUpgrade(requestId: number, adminId: num
       'SELECT * FROM organisation_upgrade_requests WHERE id = ? AND status = \'pending\' FOR UPDATE',
       [requestId],
     );
-    if (!reqRows.length) throw new ValidationError('Upgrade request not found or already processed');
+    if (!reqRows.length) throw new ValidationError('Subscription request not found or already processed');
     const req = reqRows[0] as any;
 
     await conn.execute(
@@ -617,11 +621,13 @@ export async function approveSubscriptionUpgrade(requestId: number, adminId: num
         [req.organisation_id],
       );
       if (existing.length) {
+        // PLAN_CHANGE or re-activation: update existing subscription
         await conn.execute(
           'UPDATE organisation_subscriptions SET plan_id = ?, subscription_status = \'active\', start_date = NOW(), end_date = NULL, updated_at = NOW() WHERE id = ?',
           [req.requested_plan_id, (existing[0] as any).id],
         );
       } else {
+        // NEW_SUBSCRIPTION: create subscription
         await conn.execute(
           `INSERT INTO organisation_subscriptions (organisation_id, plan_id, subscription_status, start_date, billing_cycle, auto_renew)
            VALUES (?, ?, 'active', NOW(), 'monthly', TRUE)`,
@@ -640,13 +646,13 @@ export async function approveSubscriptionUpgrade(requestId: number, adminId: num
   }
 }
 
-export async function rejectSubscriptionUpgrade(requestId: number, adminId: number, reason: string) {
+export async function rejectSubscriptionRequest(requestId: number, adminId: number, reason: string) {
   const pool = getPool();
   const [reqRows] = await pool.execute<RowData>(
     'SELECT * FROM organisation_upgrade_requests WHERE id = ? AND status = \'pending\'',
     [requestId],
   );
-  if (!reqRows.length) throw new ValidationError('Upgrade request not found or already processed');
+  if (!reqRows.length) throw new ValidationError('Subscription request not found or already processed');
 
   const existingNotes = (reqRows[0] as any).notes || '';
   const newNotes = existingNotes

@@ -363,10 +363,11 @@ export async function updateOrgPolicySettingsHandler(request: FastifyRequest, re
   return reply.send({ success: true });
 }
 
-// ── Subscription / upgrade request (org self-service S1-S3) ──
+// ── Subscription requests (org self-service) ──
 
-const RequestUpgradeSchema = z.object({
+const RequestSubscriptionSchema = z.object({
   planId: z.coerce.number().int().positive(),
+  requestType: z.enum(['NEW_SUBSCRIPTION', 'PLAN_CHANGE']),
   notes: z.string().max(500).optional(),
 });
 
@@ -382,13 +383,13 @@ export async function getAvailablePlansHandler(request: FastifyRequest, reply: F
   return reply.send({ data: plans });
 }
 
-export async function submitUpgradeRequestHandler(request: FastifyRequest, reply: FastifyReply) {
+export async function submitSubscriptionRequestHandler(request: FastifyRequest, reply: FastifyReply) {
   const { orgId } = request.params as { orgId: string };
   const oid = parseInt(orgId, 10);
-  const { planId, notes } = RequestUpgradeSchema.parse(request.body);
+  const { planId, requestType, notes } = RequestSubscriptionSchema.parse(request.body);
   const userId = (request as any).userId;
-  const result = await service.submitUpgradeRequest(oid, userId, planId, notes);
-  auditOrganisationMutation(request, 'SUBSCRIPTION.UPGRADE_REQUEST', 'organisation', oid, { planId, notes });
+  const result = await service.submitSubscriptionRequest(oid, userId, planId, requestType, notes);
+  auditOrganisationMutation(request, 'SUBSCRIPTION.REQUEST', 'organisation', oid, { planId, requestType, notes });
   return reply.status(201).send(result);
 }
 
