@@ -852,26 +852,45 @@ export class BookingService {
   }
 
   async getResourceSlots(resourceId: number, date: string) {
+    log.info({ resourceId, date }, 'getResourceSlots: input');
+
     const resource = await resourceRepository.findById(resourceId);
     if (!resource) throw new NotFoundError('Resource');
     const opening = resource.opening_time || '08:00';
     const closing = resource.closing_time || '22:00';
     const duration = resource.slot_duration || resource.default_slot_duration || 60;
+    log.info({ resourceId, resourceName: resource.name, opening, closing, duration }, 'getResourceSlots: resource loaded');
 
     const pool = getPool();
     const [branchRows] = await pool.execute<RowData>(
-      `SELECT timezone FROM branches WHERE id = ?`, [resource.branch_id]
+      `SELECT id, timezone, name FROM branches WHERE id = ?`, [resource.branch_id]
     );
-    const tz = (branchRows[0] as any)?.timezone || 'Africa/Cairo';
+    const branch = branchRows[0] as any;
+    const tz = branch?.timezone || 'Africa/Cairo';
+    log.info({ branchId: resource.branch_id, branchName: branch?.name, tz }, 'getResourceSlots: branch loaded');
 
     // Generate slots using TimeEngine (DST-aware, Business Day based)
     const slots = TimeEngine.generateSlots(date, opening, closing, duration, tz);
+    log.info({ slotCount: slots.length, firstSlot: slots[0]?.localStartTime, lastSlot: slots[slots.length - 1]?.localStartTime }, 'getResourceSlots: slots generated');
 
-    // Query existing bookings for this business date
+    // Query existing bookings for this business date (and previous day for overnight)
     const existingBookings = await bookingRepository.findBookingsByBusinessDate(resourceId, date);
+    log.info({ existingCount: existingBookings.length }, 'getResourceSlots: existing bookings fetched');
+    if (existingBookings.length > 0) {
+      existingBookings.slice(0, 5).forEach((b: any, i: number) => {
+        log.info({ idx: i, startAtUtc: b.start_at_utc, endAtUtc: b.end_at_utc }, 'getResourceSlots: existing booking');
+      });
+    }
 
     // Resolve availability: expired (via UTC) + booked (via UTC overlap)
     const availableSlots = TimeEngine.resolveAvailability(slots, existingBookings);
+
+    // Log slot statuses for debugging
+    const statusCounts: Record<string, number> = {};
+    for (const s of availableSlots) {
+      statusCounts[s.status] = (statusCounts[s.status] || 0) + 1;
+    }
+    log.info({ statusCounts, slotsWithStatus: availableSlots.filter(s => s.status !== 'available').map(s => ({ time: s.localStartTime, status: s.status })) }, 'getResourceSlots: resolution complete');
 
     // Return in the expected API format (backward compatible + new UTC fields)
     return availableSlots.map(s => ({
