@@ -974,9 +974,9 @@ export class OrganisationService {
     return listSubscriptionRequests(filters);
   }
 
-  async approveSubscriptionRequest(requestId: number, adminId: number) {
+  async approveSubscriptionRequest(requestId: number, adminId: number, approvalNotes?: string) {
     const { approveSubscriptionRequest } = await import('../infrastructure/repositories/org-portal.repository.js');
-    return approveSubscriptionRequest(requestId, adminId);
+    return approveSubscriptionRequest(requestId, adminId, approvalNotes);
   }
 
   async rejectSubscriptionRequest(requestId: number, adminId: number, reason: string) {

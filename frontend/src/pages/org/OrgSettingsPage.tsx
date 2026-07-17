@@ -80,24 +80,42 @@ export default function OrgSettingsPage() {
                 )}
               </p>
             </div>
-            <Can permission="subscription.request">
-              {sub.pendingRequest ? (
-                <span className="text-xs text-[var(--color-warning-text)] bg-[var(--color-warning-bg)] px-2 py-1 rounded-[var(--radius-md)]">
-                  Pending {sub.pendingRequest.requestType === 'NEW_SUBSCRIPTION' ? 'subscription' : 'change'} request
-                  {sub.pendingRequest.requestedPlanName ? <> to <strong>{sub.pendingRequest.requestedPlanName}</strong></> : ''}
+            <div className="flex flex-col items-end gap-2">
+              {sub.endDate && (
+                <span className={`text-xs px-2 py-1 rounded-[var(--radius-md)] ${
+                  new Date(sub.endDate) < new Date()
+                    ? 'bg-[var(--color-error-bg)] text-[var(--color-error-text)]'
+                    : 'bg-[var(--color-bg)] text-[var(--color-text-muted)]'
+                }`}>
+                  {new Date(sub.endDate) < new Date() ? 'Expired: ' : 'Expires: '}
+                  {new Date(sub.endDate).toLocaleDateString('en-GB')}
                 </span>
-              ) : (
-                <button
-                  onClick={() => {
-                    setRequestType(sub.planId ? 'PLAN_CHANGE' : 'NEW_SUBSCRIPTION');
-                    setShowRequestModal(true);
-                  }}
-                  className="px-3 py-1.5 bg-[var(--color-primary)] text-white rounded-[var(--radius-md)] text-xs font-medium"
-                >
-                  {sub.planId ? 'Change Subscription' : 'Request Subscription'}
-                </button>
               )}
-            </Can>
+              {sub.status === 'none' && (
+                <span className="text-xs text-[var(--color-text-muted)]">No active subscription</span>
+              )}
+              <Can permission="subscription.request">
+                {sub.pendingRequest ? (
+                  <div className="bg-[var(--color-warning-bg)] border border-[var(--color-warning-border)] rounded-[var(--radius-md)] p-3 text-xs text-[var(--color-warning-text)] max-w-xs">
+                    <p className="font-medium mb-1">Pending {sub.pendingRequest.requestType === 'NEW_SUBSCRIPTION' ? 'Subscription' : 'Change'} Request</p>
+                    <p>
+                      {sub.pendingRequest.requestType === 'NEW_SUBSCRIPTION' ? 'Requesting' : 'Changing to'}: <strong>{sub.pendingRequest.requestedPlanName}</strong>
+                    </p>
+                    <p className="mt-1">Submitted: {new Date(sub.pendingRequest.createdAt).toLocaleDateString('en-GB')}</p>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => {
+                      setRequestType(sub.planId ? 'PLAN_CHANGE' : 'NEW_SUBSCRIPTION');
+                      setShowRequestModal(true);
+                    }}
+                    className="px-3 py-1.5 bg-[var(--color-primary)] text-white rounded-[var(--radius-md)] text-xs font-medium"
+                  >
+                    {sub.planId ? 'Change Subscription' : 'Request Subscription'}
+                  </button>
+                )}
+              </Can>
+            </div>
           </div>
 
           {sub.features && sub.features.length > 0 && (

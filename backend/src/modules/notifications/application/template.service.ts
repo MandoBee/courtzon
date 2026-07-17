@@ -533,6 +533,15 @@ export async function seedTemplates(): Promise<void> {
     { eventName: 'organisation:subscription-renewed', locale: 'en', categorySlug: 'system', type: 'success', priority: 'normal',
       titleTemplate: 'Subscription Renewed', bodyTemplate: 'Your {{planName}} subscription has been renewed ({{billingCycle}}).',
       actionKey: 'view_subscription', routePattern: '/org/{{organisationId}}/subscription' },
+    { eventName: 'subscription:request-submitted', locale: 'en', categorySlug: 'system', type: 'info', priority: 'normal',
+      titleTemplate: 'Subscription Request Submitted', bodyTemplate: 'Your request for {{requestedPlanName}} ({{requestType}}) has been submitted and is pending admin review.',
+      actionKey: 'view_subscription', routePattern: '/org/{{organisationId}}/subscription' },
+    { eventName: 'subscription:request-approved', locale: 'en', categorySlug: 'system', type: 'success', priority: 'high',
+      titleTemplate: 'Subscription Request Approved', bodyTemplate: 'Your request for {{requestedPlanName}} has been approved{{#if requestType}} ({{requestType}}){{/if}}.',
+      actionKey: 'view_subscription', routePattern: '/org/{{organisationId}}/subscription' },
+    { eventName: 'subscription:request-rejected', locale: 'en', categorySlug: 'system', type: 'error', priority: 'high',
+      titleTemplate: 'Subscription Request Rejected', bodyTemplate: 'Your request for {{requestedPlanName}} has been rejected{{#if reason}}: {{reason}}{{/if}}.',
+      actionKey: 'view_subscription', routePattern: '/org/{{organisationId}}/subscription' },
 
     // ── Club ──
     { eventName: 'club:created', locale: 'en', categorySlug: 'system', type: 'info', priority: 'normal',

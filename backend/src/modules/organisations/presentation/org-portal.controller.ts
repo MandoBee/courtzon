@@ -393,6 +393,14 @@ export async function submitSubscriptionRequestHandler(request: FastifyRequest, 
   return reply.status(201).send(result);
 }
 
+export async function cancelSubscriptionRequestHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { orgId, requestId } = request.params as { orgId: string; requestId: string };
+  const userId = (request as any).userId;
+  const result = await service.cancelMySubscriptionRequest(parseInt(orgId, 10), parseInt(requestId, 10), userId);
+  auditOrganisationMutation(request, 'SUBSCRIPTION.REQUEST.CANCEL', 'organisation_upgrade_request', parseInt(requestId, 10), {});
+  return reply.send(result);
+}
+
 export async function getOrgTransactionsHandler(request: FastifyRequest, reply: FastifyReply) {
   const { orgId } = request.params as { orgId: string };
   const { page = 1, limit = 20 } = request.query as any;

@@ -199,17 +199,44 @@ export async function submitSubscriptionRequest(orgId: number, userId: number, p
   const pending = await repo.getOrgPendingSubscriptionRequest(orgId);
   if (pending) throw new ConflictError('You already have a pending subscription request. Please wait for it to be reviewed.');
 
-  // Snapshot the current plan at request time
   const { getPool } = await import('../../../database/mysql.js');
   const pool = getPool();
+
+  // Snapshot current plan data
   const [subRows] = await pool.execute<any[]>(
-    `SELECT plan_id FROM organisation_subscriptions
-     WHERE organisation_id = ? AND subscription_status = 'active'
-       AND (end_date IS NULL OR end_date >= CURDATE())
-     ORDER BY created_at DESC LIMIT 1`,
+    `SELECT os.plan_id, sp.plan_name, sp.price_monthly, sp.price_yearly, os.billing_cycle
+     FROM organisation_subscriptions os
+     LEFT JOIN subscription_plans sp ON sp.id = os.plan_id
+     WHERE os.organisation_id = ? AND os.subscription_status = 'active'
+       AND (os.end_date IS NULL OR os.end_date >= CURDATE())
+     ORDER BY os.created_at DESC LIMIT 1`,
     [orgId],
   );
   const currentPlanId = subRows.length ? subRows[0].plan_id : null;
+  const currentPlanName = subRows.length ? subRows[0].plan_name : null;
+  const currentPrice = subRows.length
+    ? Number(subRows[0].billing_cycle === 'yearly' ? subRows[0].price_yearly : subRows[0].price_monthly)
+    : null;
+  const currentBillingCycle = subRows.length ? subRows[0].billing_cycle : null;
+
+  // Snapshot requested plan data
+  const [planRows] = await pool.execute<any[]>(
+    `SELECT plan_name, price_monthly, price_yearly, is_active FROM subscription_plans WHERE id = ?`,
+    [planId],
+  );
+  if (!planRows.length || !planRows[0].is_active) {
+    throw new ConflictError('The requested plan is not available');
+  }
+
+  // Prevent requesting the same plan
+  if (currentPlanId === planId) {
+    throw new ConflictError('You are already on this plan');
+  }
+
+  const rp = planRows[0];
+  const requestedPlanName = rp.plan_name;
+  const requestedPrice = Number(rp.price_monthly || rp.price_yearly || 0);
+  const requestedBillingCycle = 'monthly';
 
   const id = await repo.createSubscriptionRequest({
     organisationId: orgId,
@@ -217,9 +244,35 @@ export async function submitSubscriptionRequest(orgId: number, userId: number, p
     requestedPlanId: planId,
     requestType,
     currentPlanId,
+    currentPlanName,
+    currentPrice,
+    currentBillingCycle,
+    requestedPlanName,
+    requestedPrice,
+    requestedBillingCycle,
     notes,
   });
-  return { id, status: 'pending', requestType };
+
+  // Emit notification event
+  const { eventBus } = await import('../../../shared/event-bus/index.js');
+  eventBus.emit('subscription:request-submitted', {
+    organisationId: orgId,
+    userId,
+    requestId: id,
+    requestType,
+    requestedPlanName,
+    notes,
+  });
+
+  return { id, status: 'pending', requestType, requestedPlanName };
+}
+
+export async function cancelMySubscriptionRequest(orgId: number, requestId: number, userId: number) {
+  const pending = await repo.getOrgPendingSubscriptionRequest(orgId);
+  if (!pending || pending.id !== requestId) {
+    throw new ConflictError('No pending request found to cancel');
+  }
+  return repo.cancelSubscriptionRequest(requestId, userId, 'Cancelled by organisation');
 }
 
 // ── Org coach agreements / invites (D6) ──

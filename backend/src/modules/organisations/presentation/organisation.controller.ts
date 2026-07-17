@@ -987,16 +987,28 @@ export async function listSubscriptionRequestsHandler(request: FastifyRequest, r
 export async function approveSubscriptionRequestHandler(request: FastifyRequest, reply: FastifyReply) {
   const { requestId } = request.params as any;
   const adminId = (request as any).userId;
-  const result = await organisationService.approveSubscriptionRequest(Number(requestId), adminId);
+  const { approvalNotes } = request.body as any;
+  const result = await organisationService.approveSubscriptionRequest(Number(requestId), adminId, approvalNotes);
   recordAudit({
     actorId: adminId,
     action: 'SUBSCRIPTION_REQUEST.APPROVE',
     entityType: 'organisation_upgrade_request',
     entityId: Number(requestId),
-    afterState: { organisationId: (result as any).organisation_id },
+    afterState: { organisationId: (result as any).organisation_id, requestType: (result as any).request_type },
     ipAddress: request.ip,
     userAgent: request.headers['user-agent'],
   });
+
+  // Notify org
+  const { eventBus } = await import('../../../shared/event-bus/index.js');
+  eventBus.emit('subscription:request-approved', {
+    organisationId: (result as any).organisation_id,
+    requestId: Number(requestId),
+    requestType: (result as any).request_type,
+    requestedPlanName: (result as any).requested_plan_name,
+    approvedBy: adminId,
+  });
+
   return reply.send({ success: true });
 }
 
@@ -1004,15 +1016,26 @@ export async function rejectSubscriptionRequestHandler(request: FastifyRequest, 
   const { requestId } = request.params as any;
   const { reason } = request.body as any;
   const adminId = (request as any).userId;
-  await organisationService.rejectSubscriptionRequest(Number(requestId), adminId, reason || 'No reason provided');
+  const result = await organisationService.rejectSubscriptionRequest(Number(requestId), adminId, reason || 'No reason provided');
   recordAudit({
     actorId: adminId,
     action: 'SUBSCRIPTION_REQUEST.REJECT',
     entityType: 'organisation_upgrade_request',
     entityId: Number(requestId),
-    afterState: { reason },
+    afterState: { reason, requestType: (result as any).request_type },
     ipAddress: request.ip,
     userAgent: request.headers['user-agent'],
   });
+
+  const { eventBus } = await import('../../../shared/event-bus/index.js');
+  eventBus.emit('subscription:request-rejected', {
+    organisationId: (result as any).organisation_id,
+    requestId: Number(requestId),
+    requestType: (result as any).request_type,
+    requestedPlanName: (result as any).requested_plan_name,
+    reason: reason || 'No reason provided',
+    rejectedBy: adminId,
+  });
+
   return reply.send({ success: true });
 }

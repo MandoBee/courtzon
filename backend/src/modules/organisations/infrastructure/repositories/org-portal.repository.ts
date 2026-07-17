@@ -539,16 +539,27 @@ export async function createSubscriptionRequest(data: {
   organisationId: number;
   requestedBy: number;
   requestedPlanId: number;
-  requestType: 'NEW_SUBSCRIPTION' | 'PLAN_CHANGE';
+  requestType: string;
   currentPlanId?: number | null;
+  currentPlanName?: string | null;
+  currentPrice?: number | null;
+  currentBillingCycle?: string | null;
+  requestedPlanName?: string | null;
+  requestedPrice?: number | null;
+  requestedBillingCycle?: string | null;
   notes?: string;
 }) {
   const pool = getPool();
   const [result] = await pool.execute(
     `INSERT INTO organisation_upgrade_requests
-     (organisation_id, requested_by, requested_plan_id, registration_type, request_type, current_plan_id, status, notes)
-     VALUES (?, ?, ?, 'upgrade', ?, ?, 'pending', ?)`,
-    [data.organisationId, data.requestedBy, data.requestedPlanId, data.requestType, data.currentPlanId || null, data.notes || null],
+     (organisation_id, requested_by, requested_plan_id, registration_type, request_type,
+      current_plan_id, current_plan_name, current_price, current_billing_cycle,
+      requested_plan_name, requested_price, requested_billing_cycle, status, notes)
+     VALUES (?, ?, ?, 'upgrade', ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)`,
+    [data.organisationId, data.requestedBy, data.requestedPlanId, data.requestType,
+     data.currentPlanId || null, data.currentPlanName || null, data.currentPrice || null, data.currentBillingCycle || null,
+     data.requestedPlanName || null, data.requestedPrice || null, data.requestedBillingCycle || null,
+     data.notes || null],
   );
   return (result as any).insertId;
 }
@@ -556,12 +567,9 @@ export async function createSubscriptionRequest(data: {
 export async function getOrgPendingSubscriptionRequest(orgId: number) {
   const pool = getPool();
   const [rows] = await pool.execute<RowData>(
-    `SELECT our.*, sp.plan_name as requested_plan_name, cp.plan_name as current_plan_name
-     FROM organisation_upgrade_requests our
-     LEFT JOIN subscription_plans sp ON sp.id = our.requested_plan_id
-     LEFT JOIN subscription_plans cp ON cp.id = our.current_plan_id
-     WHERE our.organisation_id = ? AND our.request_type IS NOT NULL AND our.status = 'pending'
-     ORDER BY our.created_at DESC
+    `SELECT * FROM organisation_upgrade_requests
+     WHERE organisation_id = ? AND request_type IS NOT NULL AND status = 'pending'
+     ORDER BY created_at DESC
      LIMIT 1`,
     [orgId],
   );
@@ -583,13 +591,10 @@ export async function listSubscriptionRequests(filters?: { status?: string; page
   const total = (countRows[0] as any).total;
 
   const [rows] = await pool.execute<RowData>(
-    `SELECT our.*, o.name as org_name, u.full_name as requester_name, u.email as requester_email,
-            sp.plan_name as requested_plan_name, cp.plan_name as current_plan_name
+    `SELECT our.*, o.name as org_name, u.full_name as requester_name, u.email as requester_email
      FROM organisation_upgrade_requests our
      JOIN organisations o ON o.id = our.organisation_id
      JOIN users u ON u.id = our.requested_by
-     LEFT JOIN subscription_plans sp ON sp.id = our.requested_plan_id
-     LEFT JOIN subscription_plans cp ON cp.id = our.current_plan_id
      ${where}
      ORDER BY our.created_at DESC${paginationClause(pag)}`,
     params,
@@ -597,7 +602,7 @@ export async function listSubscriptionRequests(filters?: { status?: string; page
   return { rows, total, page: pag.page, limit: pag.limit };
 }
 
-export async function approveSubscriptionRequest(requestId: number, adminId: number) {
+export async function approveSubscriptionRequest(requestId: number, adminId: number, approvalNotes?: string) {
   const pool = getPool();
   const conn = await pool.getConnection();
   try {
@@ -610,9 +615,38 @@ export async function approveSubscriptionRequest(requestId: number, adminId: num
     if (!reqRows.length) throw new ValidationError('Subscription request not found or already processed');
     const req = reqRows[0] as any;
 
+    // Re-validate: organisation still exists
+    const [orgRows] = await conn.execute<RowData>(
+      'SELECT id, deleted_at FROM organisations WHERE id = ?',
+      [req.organisation_id],
+    );
+    if (!orgRows.length || orgRows[0].deleted_at) {
+      throw new ValidationError('Organisation no longer exists');
+    }
+
+    // Re-validate: requested plan still active
+    if (req.requested_plan_id) {
+      const [planRows] = await conn.execute<RowData>(
+        'SELECT id, is_active FROM subscription_plans WHERE id = ?',
+        [req.requested_plan_id],
+      );
+      if (!planRows.length || !planRows[0].is_active) {
+        throw new ValidationError('Requested plan is no longer available');
+      }
+    }
+
+    // Re-validate: no conflicting pending request
+    const [conflictRows] = await conn.execute<RowData>(
+      'SELECT id FROM organisation_upgrade_requests WHERE organisation_id = ? AND status = \'pending\' AND id != ? LIMIT 1',
+      [req.organisation_id, requestId],
+    );
+    if (conflictRows.length) {
+      throw new ValidationError('Another pending request exists for this organisation');
+    }
+
     await conn.execute(
-      'UPDATE organisation_upgrade_requests SET status = \'approved\', approved_by = ?, approved_at = NOW(), updated_at = NOW() WHERE id = ?',
-      [adminId, requestId],
+      'UPDATE organisation_upgrade_requests SET status = \'approved\', approved_by = ?, approved_at = NOW(), approval_notes = ?, updated_at = NOW() WHERE id = ?',
+      [adminId, approvalNotes || null, requestId],
     );
 
     if (req.requested_plan_id) {
@@ -621,13 +655,11 @@ export async function approveSubscriptionRequest(requestId: number, adminId: num
         [req.organisation_id],
       );
       if (existing.length) {
-        // PLAN_CHANGE or re-activation: update existing subscription
         await conn.execute(
           'UPDATE organisation_subscriptions SET plan_id = ?, subscription_status = \'active\', start_date = NOW(), end_date = NULL, updated_at = NOW() WHERE id = ?',
           [req.requested_plan_id, (existing[0] as any).id],
         );
       } else {
-        // NEW_SUBSCRIPTION: create subscription
         await conn.execute(
           `INSERT INTO organisation_subscriptions (organisation_id, plan_id, subscription_status, start_date, billing_cycle, auto_renew)
            VALUES (?, ?, 'active', NOW(), 'monthly', TRUE)`,
@@ -648,22 +680,41 @@ export async function approveSubscriptionRequest(requestId: number, adminId: num
 
 export async function rejectSubscriptionRequest(requestId: number, adminId: number, reason: string) {
   const pool = getPool();
-  const [reqRows] = await pool.execute<RowData>(
-    'SELECT * FROM organisation_upgrade_requests WHERE id = ? AND status = \'pending\'',
-    [requestId],
-  );
-  if (!reqRows.length) throw new ValidationError('Subscription request not found or already processed');
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
 
-  const existingNotes = (reqRows[0] as any).notes || '';
-  const newNotes = existingNotes
-    ? `${existingNotes}\nRejection: ${reason}`
-    : `Rejection: ${reason}`;
+    const [reqRows] = await conn.execute<RowData>(
+      'SELECT * FROM organisation_upgrade_requests WHERE id = ? AND status = \'pending\' FOR UPDATE',
+      [requestId],
+    );
+    if (!reqRows.length) throw new ValidationError('Subscription request not found or already processed');
 
-  await pool.execute(
-    'UPDATE organisation_upgrade_requests SET status = \'rejected\', approved_by = ?, notes = ?, updated_at = NOW() WHERE id = ?',
-    [adminId, newNotes, requestId],
+    await conn.execute(
+      'UPDATE organisation_upgrade_requests SET status = \'rejected\', approved_by = ?, rejection_reason = ?, updated_at = NOW() WHERE id = ?',
+      [adminId, reason, requestId],
+    );
+
+    await conn.commit();
+    return reqRows[0];
+  } catch (e) {
+    await conn.rollback();
+    throw e;
+  } finally {
+    conn.release();
+  }
+}
+
+export async function cancelSubscriptionRequest(requestId: number, cancelledBy: number, reason?: string) {
+  const pool = getPool();
+  const [result] = await pool.execute<mysql.ResultSetHeader>(
+    `UPDATE organisation_upgrade_requests
+     SET status = 'cancelled', cancelled_by = ?, cancelled_at = NOW(), cancellation_reason = ?, updated_at = NOW()
+     WHERE id = ? AND status = 'pending'`,
+    [cancelledBy, reason || null, requestId],
   );
-  return reqRows[0];
+  if (result.affectedRows === 0) throw new ValidationError('Subscription request not found or already processed');
+  return { success: true };
 }
 
 export async function getOrgProducts(orgId: number, page = 1, limit = 20, sportId?: number, status?: string, branchId?: number) {

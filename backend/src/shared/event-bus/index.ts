@@ -127,6 +127,9 @@ export interface DomainEventMap {
   'subscription:renewal-reminder': BaseEvent & { subscriptionId: number; userId: number; daysLeft: number; planName: string };
   'subscription:upgraded': BaseEvent & { subscriptionId: number; userId: number; planName: string };
   'subscription:cancelled': BaseEvent & { subscriptionId: number; userId: number; planName: string };
+  'subscription:request-submitted': BaseEvent & { organisationId: number; userId: number; requestId: number; requestType: string; requestedPlanName?: string; notes?: string };
+  'subscription:request-approved': BaseEvent & { organisationId: number; requestId: number; requestType: string; requestedPlanName?: string; approvedBy: number };
+  'subscription:request-rejected': BaseEvent & { organisationId: number; requestId: number; requestType: string; requestedPlanName?: string; reason: string; rejectedBy: number };
 
   // Wallet & Finance
   'wallet:deposit': BaseEvent & { walletId: number; userId: number; amount: number; balance: number; currency?: string };

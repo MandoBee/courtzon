@@ -637,6 +637,7 @@ class NotificationEngine {
       'session:started', 'session:completed',
       'coupon:published', 'booking:auto-cancelled', 'booking:application-declined',
       'notification:broadcast',
+      'subscription:request-submitted', 'subscription:request-approved', 'subscription:request-rejected',
     ];
 
     const eventMap = buildEventMap(eventGroups);
