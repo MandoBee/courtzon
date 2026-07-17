@@ -174,7 +174,8 @@ export class OrganisationRepository {
        FROM organisation_subscriptions os
        INNER JOIN organisations o ON o.id = os.organisation_id AND o.deleted_at IS NULL
        INNER JOIN subscription_plans sp ON sp.id = os.plan_id
-       WHERE os.subscription_status IN ('active', 'pending')`;
+       WHERE os.subscription_status IN ('active', 'pending')
+         AND (os.end_date IS NULL OR os.end_date >= CURDATE())`;
     const params: any[] = [];
     if (countryId) {
       sql += ` AND o.country_id = ?`;

@@ -1,7 +1,9 @@
 import type mysql from 'mysql2/promise';
 import { getPool } from '../../database/mysql.js';
 import { commissionEntityLookupKeys } from './commission-entities.js';
+import { createModuleLogger } from '../utils/logger.js';
 
+const log = createModuleLogger('commission');
 type RowData = mysql.RowDataPacket[];
 
 interface CommissionResult {
@@ -30,14 +32,31 @@ export class CommissionService {
 
   async getOrgPlanId(branchOrOrgId: number): Promise<number | null> {
     const orgId = await this.resolveOrgId(branchOrOrgId);
-    const [rows] = await this.pool.execute<RowData>(
-      `SELECT plan_id FROM organisation_subscriptions
-       WHERE organisation_id = ? AND subscription_status = 'active'
-         AND (end_date IS NULL OR end_date >= CURDATE())
-       ORDER BY created_at DESC
-       LIMIT 1`,
-      [orgId]
-    );
+    log.info({ branchOrOrgId, resolvedOrgId: orgId }, 'CommissionService.getOrgPlanId — resolved orgId');
+
+    const query = `SELECT plan_id, subscription_status, start_date, end_date
+                   FROM organisation_subscriptions
+                   WHERE organisation_id = ? AND subscription_status = 'active'
+                     AND (end_date IS NULL OR end_date >= CURDATE())
+                   ORDER BY created_at DESC
+                   LIMIT 1`;
+    log.info({ query, params: [orgId] }, 'CommissionService.getOrgPlanId — executing query');
+
+    const [rows] = await this.pool.execute<RowData>(query, [orgId]);
+    log.info({ rowCount: rows.length, rows: rows.length ? rows : 'empty' }, 'CommissionService.getOrgPlanId — query result');
+
+    if (!rows.length) {
+      // Diagnostic: what subscriptions does this org have?
+      const [allSubs] = await this.pool.execute<RowData>(
+        `SELECT id, plan_id, subscription_status, start_date, end_date, CURDATE() as today
+         FROM organisation_subscriptions
+         WHERE organisation_id = ?
+         ORDER BY created_at DESC`,
+        [orgId]
+      );
+      log.warn({ orgId, allSubs }, 'CommissionService.getOrgPlanId — no matching active subscription found; all subscriptions for org');
+    }
+
     return rows.length ? rows[0].plan_id : null;
   }
 
