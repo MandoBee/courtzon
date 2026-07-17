@@ -318,9 +318,9 @@ export class BookingRepository {
     return [...bRows, ...iRows];
   }
 
-  async findBookingsByBusinessDate(resourceId: number, businessDate: string): Promise<any[]> {
+  async findBookingsByBusinessDate(resourceId: number, businessDate: string): Promise<Array<{ startAtUtc: string; endAtUtc: string; bookingDate?: string; startTime?: string; endTime?: string }>> {
     // Also check previous day to catch overnight bookings (e.g. 23:00→01:00)
-    // Include bookings where start_at_utc IS NULL (legacy records) — caller converts
+    // Includes bookings where start_at_utc IS NULL (legacy records) — caller converts
     const [bRows] = await this.pool.execute<RowData>(
       `SELECT start_at_utc, end_at_utc, booking_date, start_time, end_time FROM bookings
        WHERE resource_id = ? AND (business_date = ? OR business_date = DATE_SUB(?, INTERVAL 1 DAY)
@@ -336,7 +336,15 @@ export class BookingRepository {
        AND start_at_utc IS NOT NULL`,
       [resourceId, businessDate, businessDate]
     );
-    return [...bRows, ...iRows];
+    const rows = [...bRows, ...iRows];
+    // Normalize DB snake_case columns to camelCase TimeEngine contract
+    return rows.map((row: any) => ({
+      startAtUtc: row.start_at_utc,
+      endAtUtc: row.end_at_utc,
+      bookingDate: row.booking_date,
+      startTime: row.start_time,
+      endTime: row.end_time,
+    }));
   }
 
   async createMatchmakingRequest(data: {

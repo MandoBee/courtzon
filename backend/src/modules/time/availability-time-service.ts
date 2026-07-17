@@ -1,4 +1,4 @@
-import type { TimeSlot, AvailableSlot, UtcInstant, SlotStatus } from './types.js'
+import type { TimeSlot, AvailableSlot, UtcInstant, SlotStatus, BookingConflict } from './types.js'
 
 // ── Availability Time Service ──
 // Determines slot availability and expiry using UTC comparison.
@@ -23,7 +23,7 @@ export function markExpiredSlots(slots: TimeSlot[], nowUtc: UtcInstant): Availab
 
 export function mergeBookingConflicts(
   slots: AvailableSlot[],
-  existingBookings: Array<{ startAtUtc?: string; endAtUtc?: string }>,
+  existingBookings: BookingConflict[],
 ): AvailableSlot[] {
   if (!existingBookings.length) return slots
 
@@ -55,7 +55,7 @@ export function mergeBookingConflicts(
 
 export function resolveAvailability(
   slots: TimeSlot[],
-  existingBookings: Array<{ startAtUtc?: string; endAtUtc?: string }>,
+  existingBookings: BookingConflict[],
   nowUtc: UtcInstant,
 ): AvailableSlot[] {
   const withExpiry = markExpiredSlots(slots, nowUtc)
@@ -68,7 +68,7 @@ export function resolveAvailability(
 export function isSlotAvailable(
   startAtUtc: UtcInstant,
   endAtUtc: UtcInstant,
-  existingBookings: Array<{ startAtUtc?: string; endAtUtc?: string }>,
+  existingBookings: BookingConflict[],
 ): boolean {
   const slotStart = new Date(startAtUtc).getTime()
   const slotEnd = new Date(endAtUtc).getTime()

@@ -9,7 +9,7 @@ import type {
   UtcInstant, LocalDate, LocalTime, BusinessDate, IANATimezone,
   DSTTransition, OperatingSession, TimeSlot, AvailableSlot,
   RecurrenceRule, BookingInstance, ScheduledReminder, ReminderConfig,
-  AmbiguousPair, UtcRange,
+  AmbiguousPair, UtcRange, BookingConflict,
 } from './types.js'
 import type { Clock } from './clock.js'
 import { SystemClock } from './clock.js'
@@ -164,14 +164,14 @@ export class TimeEngine {
 
   static mergeBookingConflicts(
     slots: AvailableSlot[],
-    existingBookings: Array<{ startAtUtc?: string; endAtUtc?: string }>,
+    existingBookings: BookingConflict[],
   ): AvailableSlot[] {
     return AvailService.mergeBookingConflicts(slots, existingBookings)
   }
 
   static resolveAvailability(
     slots: TimeSlot[],
-    existingBookings: Array<{ startAtUtc?: string; endAtUtc?: string }>,
+    existingBookings: BookingConflict[],
     nowUtc?: UtcInstant,
   ): AvailableSlot[] {
     return AvailService.resolveAvailability(slots, existingBookings, nowUtc ?? this.now())
@@ -180,7 +180,7 @@ export class TimeEngine {
   static isSlotAvailable(
     startAtUtc: UtcInstant,
     endAtUtc: UtcInstant,
-    existingBookings: Array<{ startAtUtc?: string; endAtUtc?: string }>,
+    existingBookings: BookingConflict[],
   ): boolean {
     return AvailService.isSlotAvailable(startAtUtc, endAtUtc, existingBookings)
   }

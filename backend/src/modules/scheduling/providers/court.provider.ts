@@ -43,9 +43,9 @@ export class CourtProvider implements ResourceProvider {
 
   async hasConflict(startTime: string, endTime: string, date: string): Promise<boolean> {
     const existingBookings = await bookingRepository.findBookingsByBusinessDate(this.entityId, date);
-    return existingBookings.some((b: any) => {
-      const bStart = String(b.start_at_utc);
-      const bEnd = String(b.end_at_utc);
+    return existingBookings.some((b) => {
+      const bStart = String(b.startAtUtc);
+      const bEnd = String(b.endAtUtc);
       if (!bStart || !bEnd) return false;
       const slotStartMs = new Date(`${date}T${startTime}`).getTime();
       const slotEndMs = new Date(`${date}T${endTime}`).getTime();

@@ -52,6 +52,12 @@ export interface TimeSlot {
   dstOverlap?: 'first' | 'second'  // only set when a fall-back overlap produces two slots
 }
 
+/** Canonical booking conflict shape consumed by TimeEngine availability checks. */
+export interface BookingConflict {
+  startAtUtc: UtcInstant
+  endAtUtc: UtcInstant
+}
+
 export interface AvailableSlot extends TimeSlot {
   status: SlotStatus
 }

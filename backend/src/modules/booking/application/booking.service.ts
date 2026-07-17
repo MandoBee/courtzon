@@ -878,21 +878,21 @@ export class BookingService {
     const rawBookings = await bookingRepository.findBookingsByBusinessDate(resourceId, date);
     // TODO: Remove after backfill migration is confirmed complete on all environments.
     // Convert legacy bookings (start_at_utc IS NULL) by computing UTC from local times
-    const existingBookings = rawBookings.map((b: any) => {
-      if (b.start_at_utc && b.end_at_utc) return b;
+    const existingBookings = rawBookings.map((b) => {
+      if (b.startAtUtc && b.endAtUtc) return { startAtUtc: b.startAtUtc, endAtUtc: b.endAtUtc };
       // Legacy booking without UTC timestamps — compute from local date/time
-      if (b.booking_date && b.start_time && b.end_time) {
+      if (b.bookingDate && b.startTime && b.endTime) {
         try {
-          const startUtc = TimeEngine.localToUtc(b.booking_date, b.start_time, tz);
-          const endUtc = TimeEngine.localToUtc(b.booking_date, b.end_time, tz);
-          return { start_at_utc: startUtc, end_at_utc: endUtc };
+          const startUtc = TimeEngine.localToUtc(b.bookingDate, b.startTime, tz);
+          const endUtc = TimeEngine.localToUtc(b.bookingDate, b.endTime, tz);
+          return { startAtUtc: startUtc, endAtUtc: endUtc };
         } catch {
           // DST gap or invalid time — skip this booking
           return null;
         }
       }
       return null;
-    }).filter(Boolean);
+    }).filter((b): b is { startAtUtc: string; endAtUtc: string } => b !== null);
     log.info({ rawCount: rawBookings.length, convertedCount: existingBookings.length }, 'getResourceSlots: existing bookings fetched');
 
     // Resolve availability: expired (via UTC) + booked (via UTC overlap)
