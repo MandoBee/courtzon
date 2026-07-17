@@ -1012,6 +1012,17 @@ export async function approveSubscriptionRequestHandler(request: FastifyRequest,
     userAgent: request.headers['user-agent'],
   });
 
+  // Record subscription activation
+  recordAudit({
+    actorId: adminId,
+    action: 'SUBSCRIPTION.ACTIVATED',
+    entityType: 'organisation_subscription',
+    entityId: (result as any).organisation_id,
+    afterState: { organisationId: (result as any).organisation_id, requestType: (result as any).request_type, requestedPlan: (result as any).requested_plan_name },
+    ipAddress: request.ip,
+    userAgent: request.headers['user-agent'],
+  });
+
   // Notify org
   const { eventBus } = await import('../../../shared/event-bus/index.js');
   eventBus.emit('subscription:request-approved', {
@@ -1040,6 +1051,15 @@ export async function rejectSubscriptionRequestHandler(request: FastifyRequest, 
     action: 'SUBSCRIPTION_REQUEST.REJECT',
     entityType: 'organisation_upgrade_request',
     entityId: Number(requestId),
+    afterState: { reason, requestType: (result as any).request_type },
+    ipAddress: request.ip,
+    userAgent: request.headers['user-agent'],
+  });
+  recordAudit({
+    actorId: adminId,
+    action: 'SUBSCRIPTION.REJECTED',
+    entityType: 'organisation_subscription',
+    entityId: (result as any).organisation_id,
     afterState: { reason, requestType: (result as any).request_type },
     ipAddress: request.ip,
     userAgent: request.headers['user-agent'],

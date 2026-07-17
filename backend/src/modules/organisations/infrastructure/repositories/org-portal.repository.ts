@@ -672,20 +672,62 @@ export async function approveSubscriptionRequest(requestId: number, adminId: num
     );
 
     if (req.requested_plan_id) {
+      // Build plan snapshot (immutable record at approval time)
+      const [planRows] = await conn.execute<RowData>(
+        `SELECT sp.*, GROUP_CONCAT(DISTINCT JSON_OBJECT('feature_key', sf.feature_key, 'label', sf.label, 'value', spf.value, 'value_type', sf.value_type) SEPARATOR '||') as _features
+         FROM subscription_plans sp
+         LEFT JOIN subscription_plan_features spf ON spf.plan_id = sp.id
+         LEFT JOIN subscription_features sf ON sf.id = spf.feature_id
+         WHERE sp.id = ?
+         GROUP BY sp.id`,
+        [req.requested_plan_id],
+      );
+      const planRow = planRows[0] as any;
+      const features: any[] = [];
+      if (planRow?._features) {
+        for (const raw of String(planRow._features).split('||')) {
+          try { features.push(JSON.parse(raw)); } catch { /* skip */ }
+        }
+      }
+
+      // Fetch commission rates for this plan
+      const [rateRows] = await conn.execute<RowData>(
+        `SELECT applicable_entity, amount, rate_type FROM subscription_plan_rates WHERE plan_id = ?`,
+        [req.requested_plan_id],
+      );
+
+      const planSnapshot = {
+        planName: planRow?.plan_name || req.requested_plan_name,
+        priceMonthly: planRow?.price_monthly ? Number(planRow.price_monthly) : null,
+        priceYearly: planRow?.price_yearly ? Number(planRow.price_yearly) : null,
+        isUnlimited: !!planRow?.is_unlimited,
+        billingCycle: req.requested_billing_cycle || 'monthly',
+        features,
+        commissionRates: rateRows.map((r: any) => ({
+          entity: r.applicable_entity,
+          amount: Number(r.amount),
+          rateType: r.rate_type,
+        })),
+      };
+      const snapshotJson = JSON.stringify(planSnapshot);
+
       const [existing] = await conn.execute<RowData>(
         'SELECT id FROM organisation_subscriptions WHERE organisation_id = ? AND subscription_status IN (\'pending\', \'active\') LIMIT 1',
         [req.organisation_id],
       );
       if (existing.length) {
         await conn.execute(
-          'UPDATE organisation_subscriptions SET plan_id = ?, subscription_status = \'active\', start_date = NOW(), end_date = NULL, updated_at = NOW() WHERE id = ?',
-          [req.requested_plan_id, (existing[0] as any).id],
+          `UPDATE organisation_subscriptions
+           SET plan_id = ?, subscription_status = 'active', start_date = NOW(), end_date = NULL,
+               plan_snapshot = ?, updated_at = NOW()
+           WHERE id = ?`,
+          [req.requested_plan_id, snapshotJson, (existing[0] as any).id],
         );
       } else {
         await conn.execute(
-          `INSERT INTO organisation_subscriptions (organisation_id, plan_id, subscription_status, start_date, billing_cycle, auto_renew)
-           VALUES (?, ?, 'active', NOW(), 'monthly', TRUE)`,
-          [req.organisation_id, req.requested_plan_id],
+          `INSERT INTO organisation_subscriptions (organisation_id, plan_id, subscription_status, start_date, billing_cycle, auto_renew, plan_snapshot)
+           VALUES (?, ?, 'active', NOW(), 'monthly', TRUE, ?)`,
+          [req.organisation_id, req.requested_plan_id, snapshotJson],
         );
       }
     }

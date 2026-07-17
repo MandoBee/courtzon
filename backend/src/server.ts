@@ -8,6 +8,7 @@ import { notificationEngine } from "./modules/notifications/application/notifica
 import { sendEmail } from "./shared/services/mailer.service.js";
 import { handleCancelExpiredBookings } from "./modules/booking/infrastructure/booking-expiry.worker.js";
 import { handleCancelAbandonedOrders } from "./modules/marketplace/infrastructure/marketplace-cleanup.worker.js";
+import { handleExpireSubscriptions, handleSendExpirationReminders } from "./modules/organisations/infrastructure/subscription-lifecycle.worker.js";
 import { handleRunSettlements } from "./modules/settlement/infrastructure/settlement-cron.worker.js";
 import { handleAutoCompleteBookings } from "./modules/booking/infrastructure/booking-auto-complete.worker.js";
 import { handleSyncPendingPayments, handleExpireStalePayments, handleCleanupBookingIntents } from "./modules/payment/infrastructure/payment-cron.worker.js";
@@ -52,6 +53,8 @@ async function bootstrap() {
     registerHandler('expire_stale_payments', handleExpireStalePayments);
     registerHandler('cleanup_booking_intents', handleCleanupBookingIntents);
     registerHandler('cancel_abandoned_orders', handleCancelAbandonedOrders);
+    registerHandler('expire_subscriptions', handleExpireSubscriptions);
+    registerHandler('send_subscription_reminders', handleSendExpirationReminders);
 
     registerHandler('process_notification', handleProcessNotification);
     registerHandler('send_notification_batch', handleSendNotificationBatch);
@@ -164,6 +167,20 @@ async function bootstrap() {
       repeat: { every: 300_000 },
       removeOnComplete: true,
       removeOnFail: { age: 86400 },
+    });
+
+    // Subscription expiry — daily at 00:15 UTC
+    await queueService.add('expire_subscriptions', {}, {
+      repeat: { pattern: '15 0 * * *' },
+      removeOnComplete: true,
+      removeOnFail: { age: 604800 },
+    });
+
+    // Subscription expiration reminders — daily at 08:00 UTC
+    await queueService.add('send_subscription_reminders', {}, {
+      repeat: { pattern: '0 8 * * *' },
+      removeOnComplete: true,
+      removeOnFail: { age: 604800 },
     });
 
     // Digest processing — every 2 minutes
