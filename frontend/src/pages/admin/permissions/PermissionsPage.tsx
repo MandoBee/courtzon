@@ -126,14 +126,14 @@ export default function PermissionsPage() {
         {(Object.entries(groupedPerms) as [string, any[]][])
           .sort(([a], [b]) => Number(a) - Number(b))
           .map(([modId, perms]) => (
-            <div key={modId} className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] overflow-hidden">
-              <div className="px-5 py-3 border-b bg-[var(--color-bg)]/50">
+            <div key={modId} className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)]">
+              <div className="px-5 py-3 border-b bg-[var(--color-bg)]/50 rounded-t-[var(--radius-lg)]">
                 <h2 className="font-semibold text-[var(--color-text)] capitalize">
                   {modMap[Number(modId)]?.slug || `Module #${modId}`}
                   <span className="ml-2 text-xs font-normal text-[var(--color-text-muted)]">{perms.length} permissions</span>
                 </h2>
               </div>
-              <div className="divide-y">
+              <div className="divide-y rounded-b-[var(--radius-lg)]">
                 {perms.map((perm: any) => (
                   <div key={perm.id} className="px-5 py-3 flex items-center justify-between hover:bg-[var(--color-bg)]/30">
                     <div className="flex-1 min-w-0">
