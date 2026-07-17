@@ -449,18 +449,32 @@ export const marketplaceService = {
       await repo.recordCouponUsage(couponId, userId, orderId);
     }
 
-    // ── Decrement stock using pre-fetched product map ──
-    for (const item of cartItems) {
-      await repo.decrementStock(item.product_id, item.variant_id || undefined, item.quantity);
-      const product = productMap.get(item.product_id);
-      if (product) {
-        await repo.insertLedgerEntry({
-          orderId, organisationId: product.seller_id,
-          entryType: 'inventory_deduction', amount: item.quantity,
-          currencyCode, description: `Stock: -${item.quantity} x ${product.name} (#${product.id})`,
-          metadata: { productId: item.product_id, variantId: item.variant_id, quantity: item.quantity },
-        });
+    // ── Decrement stock atomically (prevents overselling) ──
+    try {
+      for (const item of cartItems) {
+        await repo.decrementStock(item.product_id, item.variant_id || undefined, item.quantity);
+        const product = productMap.get(item.product_id);
+        if (product) {
+          await repo.insertLedgerEntry({
+            orderId, organisationId: product.seller_id,
+            entryType: 'inventory_deduction', amount: item.quantity,
+            currencyCode, description: `Stock: -${item.quantity} x ${product.name} (#${product.id})`,
+            metadata: { productId: item.product_id, variantId: item.variant_id, quantity: item.quantity },
+          });
+        }
       }
+    } catch (stockErr: any) {
+      // Atomic decrement failed — restore any stock that was decremented, cancel order
+      await this._restoreOrderStock(orderId, stockErr.message || 'Insufficient stock');
+      await repo.updateOrderStatus(orderId, 'cancelled', 'Insufficient stock');
+      await repo.createOrderStatusHistory({
+        orderId, toStatus: 'cancelled', changedBy: userId, changedByRole: 'system',
+        note: 'Insufficient stock — cancelled by overselling guard',
+      });
+      eventBus.emit('marketplace:order-cancelled', {
+        orderId, userId, reason: 'Insufficient stock',
+      });
+      throw new ConflictError(stockErr.message || 'Insufficient stock');
     }
 
     // Load user billing data for Intention API
@@ -1496,5 +1510,50 @@ export const marketplaceService = {
     const sellers = await repo.checkSellersShipping(cartItems, provinceId, cityId);
     const totalShipping = sellers.reduce((sum: number, s: any) => sum + (s.available ? s.price : 0), 0);
     return { sellers, total_shipping: totalShipping };
+  },
+
+  // ── Abandoned Order Cleanup ──
+  // Cancels pending marketplace orders where payment was never completed.
+  // Runs as a scheduled cron job. Idempotent: safe to run multiple times.
+  async cancelAbandonedOrders(timeoutMinutes: number = 30) {
+    const cutoff = new Date(Date.now() - timeoutMinutes * 60_000).toISOString().slice(0, 19).replace('T', ' ');
+    log.info({ timeoutMinutes, cutoff }, 'cancelAbandonedOrders — starting');
+
+    const rows = await repo.findAbandonedPendingOrders(cutoff);
+    if (!rows.length) {
+      log.info('cancelAbandonedOrders — no abandoned orders found');
+      return { cancelled: 0 };
+    }
+
+    let cancelled = 0;
+    for (const order of rows as any[]) {
+      try {
+        // Skip if order already has a paid payment (safety check)
+        const hasPaidPayment = await repo.orderHasPaidPayment(order.id);
+        if (hasPaidPayment) {
+          log.warn({ orderId: order.id }, 'cancelAbandonedOrders — order has paid payment, skipping');
+          continue;
+        }
+
+        await this._restoreOrderStock(order.id, 'Abandoned order — stock restored');
+        await repo.updateOrderStatus(order.id, 'cancelled', 'Payment not completed within timeout');
+        await repo.createOrderStatusHistory({
+          orderId: order.id, toStatus: 'cancelled', changedBy: 0, changedByRole: 'system',
+          note: `Payment not completed within ${timeoutMinutes} minutes`,
+        });
+        eventBus.emit('marketplace:order-cancelled', {
+          orderId: order.id,
+          userId: order.buyer_id || 0,
+          reason: 'Payment timeout',
+        });
+        cancelled++;
+        log.info({ orderId: order.id }, 'cancelAbandonedOrders — cancelled');
+      } catch (err) {
+        log.error({ err, orderId: order.id }, 'cancelAbandonedOrders — failed to cancel');
+      }
+    }
+
+    log.info({ cancelled, total: rows.length }, 'cancelAbandonedOrders — completed');
+    return { cancelled, total: rows.length };
   },
 };

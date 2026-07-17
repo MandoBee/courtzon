@@ -7,6 +7,7 @@ import { setupRealtime } from "./realtime/index.js";
 import { notificationEngine } from "./modules/notifications/application/notification-engine.js";
 import { sendEmail } from "./shared/services/mailer.service.js";
 import { handleCancelExpiredBookings } from "./modules/booking/infrastructure/booking-expiry.worker.js";
+import { handleCancelAbandonedOrders } from "./modules/marketplace/infrastructure/marketplace-cleanup.worker.js";
 import { handleRunSettlements } from "./modules/settlement/infrastructure/settlement-cron.worker.js";
 import { handleAutoCompleteBookings } from "./modules/booking/infrastructure/booking-auto-complete.worker.js";
 import { handleSyncPendingPayments, handleExpireStalePayments, handleCleanupBookingIntents } from "./modules/payment/infrastructure/payment-cron.worker.js";
@@ -50,6 +51,7 @@ async function bootstrap() {
     registerHandler('sync_pending_payments', handleSyncPendingPayments);
     registerHandler('expire_stale_payments', handleExpireStalePayments);
     registerHandler('cleanup_booking_intents', handleCleanupBookingIntents);
+    registerHandler('cancel_abandoned_orders', handleCancelAbandonedOrders);
 
     registerHandler('process_notification', handleProcessNotification);
     registerHandler('send_notification_batch', handleSendNotificationBatch);
@@ -155,6 +157,13 @@ async function bootstrap() {
       repeat: { pattern: '0 3 * * *' },
       removeOnComplete: true,
       removeOnFail: { age: 604800 },
+    });
+
+    // Abandoned marketplace orders — every 5 minutes
+    await queueService.add('cancel_abandoned_orders', { timeoutMinutes: 30 }, {
+      repeat: { every: 300_000 },
+      removeOnComplete: true,
+      removeOnFail: { age: 86400 },
     });
 
     // Digest processing — every 2 minutes

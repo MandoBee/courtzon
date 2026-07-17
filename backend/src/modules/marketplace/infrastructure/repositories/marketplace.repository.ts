@@ -394,9 +394,23 @@ export const marketplaceRepository = {
 
   async decrementStock(productId: number, variantId: number | undefined, quantity: number) {
     const pool = getPool();
-    await pool.execute('UPDATE products SET quantity = GREATEST(quantity - ?, 0) WHERE id = ?', [quantity, productId]);
+    const [prodResult] = await pool.execute<mysql.ResultSetHeader>(
+      'UPDATE products SET quantity = quantity - ? WHERE id = ? AND quantity >= ?',
+      [quantity, productId, quantity],
+    );
+    if (prodResult.affectedRows === 0) {
+      throw new Error('Insufficient stock');
+    }
     if (variantId) {
-      await pool.execute('UPDATE product_variants SET quantity = GREATEST(quantity - ?, 0) WHERE id = ?', [quantity, variantId]);
+      const [varResult] = await pool.execute<mysql.ResultSetHeader>(
+        'UPDATE product_variants SET quantity = quantity - ? WHERE id = ? AND quantity >= ?',
+        [quantity, variantId, quantity],
+      );
+      if (varResult.affectedRows === 0) {
+        // Restore the product stock that was just decremented
+        await pool.execute('UPDATE products SET quantity = quantity + ? WHERE id = ?', [quantity, productId]);
+        throw new Error('Insufficient stock for variant');
+      }
     }
   },
 
@@ -765,6 +779,32 @@ export const marketplaceRepository = {
     if (sellerOrgId) { sql += ' AND oi.seller_id = ?'; params.push(sellerOrgId); }
     const [rows] = await pool.execute<RowData>(sql, params);
     return rows;
+  },
+
+  async findAbandonedPendingOrders(cutoff: string) {
+    const pool = getPool();
+    const [rows] = await pool.execute<RowData>(
+      `SELECT o.id, o.buyer_id
+       FROM orders o
+       WHERE o.status = 'pending'
+         AND o.created_at < ?
+         AND o.id NOT IN (
+           SELECT pt.order_id FROM payment_transactions pt
+           WHERE pt.payment_status = 'paid'
+         )
+       LIMIT 50`,
+      [cutoff],
+    );
+    return rows;
+  },
+
+  async orderHasPaidPayment(orderId: number) {
+    const pool = getPool();
+    const [rows] = await pool.execute<RowData>(
+      `SELECT id FROM payment_transactions WHERE order_id = ? AND payment_status = 'paid' LIMIT 1`,
+      [orderId],
+    );
+    return rows.length > 0;
   },
 
   async updateOrderStatus(id: number, status: string, reason?: string) {

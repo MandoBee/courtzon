@@ -8,7 +8,8 @@ export type JobType = 'send_email' | 'process_settlement' | 'cancel_expired_book
   | 'run_settlements' | 'auto_complete_bookings' | 'sync_pending_payments' | 'expire_stale_payments'
   | 'cleanup_booking_intents' | 'process_notification' | 'send_notification_batch'
   | 'process_notification_digest' | 'send_scheduled_notification' | 'process_dead_letter'
-  | 'retry_failed_deliveries' | 'trigger_digest_processing' | 'run_cleanup';
+  | 'retry_failed_deliveries' | 'trigger_digest_processing' | 'run_cleanup'
+  | 'cancel_abandoned_orders';
 
 export interface EmailAttachment {
   filename: string;
@@ -128,6 +129,7 @@ export type JobPayloadMap = {
   retry_failed_deliveries: RetryFailedDeliveriesJob;
   trigger_digest_processing: Record<string, never>;
   run_cleanup: Record<string, never>;
+  cancel_abandoned_orders: { timeoutMinutes?: number };
 };
 
 export const DEFAULT_QUEUE_NAME = 'default';
