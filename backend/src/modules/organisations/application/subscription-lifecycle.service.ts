@@ -46,6 +46,10 @@ export async function expireSubscriptions(): Promise<{ expired: number }> {
       expired++;
       log.info({ subscriptionId: sub.id, organisationId: sub.organisation_id }, 'Subscription expired');
     }
+
+    // Clear resolver cache so stale data is not served
+    const { clearSubscriptionCache } = await import('../../../shared/utils/current-subscription.resolver.js');
+    clearSubscriptionCache();
   });
   log.info({ expired }, 'Subscription expiry job completed');
   return { expired };
