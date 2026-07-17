@@ -699,6 +699,7 @@ export const uiRegistry: UIElement[] = [
   { permissionKey: 'org.sidebar.marketplace', moduleSlug: 'org', elementType: 'tab', elementLabel: 'Org Sidebar: Products', componentPath: 'components/layout/OrgSidebar.tsx' },
   { permissionKey: 'org.sidebar.orders', moduleSlug: 'org', elementType: 'tab', elementLabel: 'Org Sidebar: Orders', componentPath: 'components/layout/OrgSidebar.tsx' },
   { permissionKey: 'org.sidebar.settings', moduleSlug: 'org', elementType: 'tab', elementLabel: 'Org Sidebar: Settings', componentPath: 'components/layout/OrgSidebar.tsx' },
+  { permissionKey: 'org.sidebar.subscription', moduleSlug: 'org', elementType: 'tab', elementLabel: 'Org Sidebar: Subscription', componentPath: 'components/layout/OrgSidebar.tsx' },
   { permissionKey: 'org.sidebar.staff', moduleSlug: 'org', elementType: 'tab', elementLabel: 'Org Sidebar: Staff', componentPath: 'components/layout/OrgSidebar.tsx' },
   { permissionKey: 'org.sidebar.members', moduleSlug: 'org', elementType: 'tab', elementLabel: 'Org Sidebar: Members', componentPath: 'components/layout/OrgSidebar.tsx' },
   { permissionKey: 'org.sidebar.coaches', moduleSlug: 'org', elementType: 'tab', elementLabel: 'Org Sidebar: Coaches', componentPath: 'components/layout/OrgSidebar.tsx' },
@@ -740,6 +741,9 @@ export const uiRegistry: UIElement[] = [
   // Finance
   { permissionKey: 'org.sidebar.finance', moduleSlug: 'org', elementType: 'tab', elementLabel: 'Org Sidebar: Finance', componentPath: 'components/layout/OrgSidebar.tsx' },
   { permissionKey: 'org.finance.view', moduleSlug: 'org', elementType: 'page', elementLabel: 'Organisation Finance', componentPath: 'pages/org/OrgFinancePage.tsx' },
+
+  // Subscription
+  { permissionKey: 'org.subscription.view', moduleSlug: 'org', elementType: 'page', elementLabel: 'Organisation Subscription', componentPath: 'pages/org/OrgSubscriptionPage.tsx' },
 
   // ==========================================================================
   // SETTLEMENTS MODULE

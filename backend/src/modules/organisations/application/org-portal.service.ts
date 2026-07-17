@@ -275,6 +275,10 @@ export async function cancelMySubscriptionRequest(orgId: number, requestId: numb
   return repo.cancelSubscriptionRequest(requestId, userId, 'Cancelled by organisation');
 }
 
+export async function listOrgSubscriptionRequests(orgId: number) {
+  return repo.listOrgSubscriptionRequests(orgId);
+}
+
 // ── Org coach agreements / invites (D6) ──
 export function listOrgCoaches(orgId: number) {
   return repo.listOrgCoaches(orgId);

@@ -150,6 +150,7 @@ const OrgCoachesPage = lazy(() => import('./pages/org/OrgCoachesPage'));
 const OrgMembersPage = lazy(() => import('./pages/org/OrgMembersPage'));
 const OrgPendingApprovalPage = lazy(() => import('./pages/org/OrgPendingApprovalPage'));
 const OrgFinancePage = lazy(() => import('./pages/org/OrgFinancePage'));
+const OrgSubscriptionPage = lazy(() => import('./pages/org/OrgSubscriptionPage'));
 const NotificationsPage = lazy(() => import('./pages/notifications/NotificationsPage'));
 const MatchListPage = lazy(() => import('./pages/booking/MatchListPage'));
 const MatchLobbyPage = lazy(() => import('./pages/booking/MatchLobbyPage'));
@@ -535,6 +536,7 @@ function AppContent() {
             <Route path="members" element={<OrgMembersPage />} />
             <Route path="coaches" element={<OrgCoachesPage />} />
             <Route path="finance" element={<OrgFinancePage />} />
+            <Route path="subscription" element={<OrgSubscriptionPage />} />
             <Route path="settings" element={<OrgSettingsPage />} />
             <Route path="shipping-rates" element={<Navigate to="settings" replace />} />
           </Route>

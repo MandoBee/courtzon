@@ -64,6 +64,7 @@ export async function registerOrgPortalRoutes(app: FastifyInstance): Promise<voi
   app.get('/org/:orgId/subscription/available-plans', { preHandler: [orgAccessGuard] }, ctrl.getAvailablePlansHandler);
   app.post('/org/:orgId/subscription/request', { preHandler: [orgAccessGuard] }, ctrl.submitSubscriptionRequestHandler);
   app.post('/org/:orgId/subscription/requests/:requestId/cancel', { preHandler: [orgAccessGuard] }, ctrl.cancelSubscriptionRequestHandler);
+  app.get('/org/:orgId/subscription/requests', { preHandler: [orgAccessGuard] }, ctrl.listOrgSubscriptionRequestsHandler);
 
   // Finance
   app.get('/org/:orgId/transactions', { preHandler: [orgAccessGuard] }, ctrl.getOrgTransactionsHandler);

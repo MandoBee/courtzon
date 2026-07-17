@@ -30,6 +30,7 @@ function buildOrgNavItems(can: (perm: string) => boolean, orgId: string): NavIte
     { label: 'Members', icon: '🎫', path: `/org/${orgId}/members`, permissionKey: 'org.sidebar.members' },
     { label: 'Coaches', icon: '🎾', path: `/org/${orgId}/coaches`, permissionKey: 'org.sidebar.coaches' },
     { label: 'Finance', icon: '💰', path: `/org/${orgId}/finance`, permissionKey: 'org.sidebar.finance' },
+    { label: 'Subscription', icon: '📋', path: `/org/${orgId}/subscription`, permissionKey: 'org.sidebar.subscription' },
     { label: 'Settings', icon: '⚙️', path: `/org/${orgId}/settings`, permissionKey: 'org.sidebar.settings' },
   ];
   return allItems.filter((item) => can(item.permissionKey));

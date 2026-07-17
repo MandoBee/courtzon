@@ -735,6 +735,23 @@ export async function rejectSubscriptionRequest(requestId: number, adminId: numb
   }
 }
 
+export async function listOrgSubscriptionRequests(orgId: number) {
+  const pool = getPool();
+  const [rows] = await pool.execute<RowData>(
+    `SELECT our.*, sp.plan_name as requested_plan_name, cp.plan_name as current_plan_name,
+            u.full_name as requester_name
+     FROM organisation_upgrade_requests our
+     LEFT JOIN subscription_plans sp ON sp.id = our.requested_plan_id
+     LEFT JOIN subscription_plans cp ON cp.id = our.current_plan_id
+     JOIN users u ON u.id = our.requested_by
+     WHERE our.organisation_id = ? AND our.request_type IS NOT NULL
+     ORDER BY our.created_at DESC
+     LIMIT 50`,
+    [orgId],
+  );
+  return rows;
+}
+
 export async function getSubscriptionRequestById(requestId: number) {
   const pool = getPool();
   const [rows] = await pool.execute<RowData>(

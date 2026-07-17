@@ -401,6 +401,12 @@ export async function cancelSubscriptionRequestHandler(request: FastifyRequest, 
   return reply.send(result);
 }
 
+export async function listOrgSubscriptionRequestsHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { orgId } = request.params as { orgId: string };
+  const requests = await service.listOrgSubscriptionRequests(parseInt(orgId, 10));
+  return reply.send({ data: requests });
+}
+
 export async function getOrgTransactionsHandler(request: FastifyRequest, reply: FastifyReply) {
   const { orgId } = request.params as { orgId: string };
   const { page = 1, limit = 20 } = request.query as any;
