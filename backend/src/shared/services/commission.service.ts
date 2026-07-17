@@ -2,6 +2,7 @@ import type mysql from 'mysql2/promise';
 import { getPool } from '../../database/mysql.js';
 import { getCurrentSubscription, clearSubscriptionCache, getCommissionRate } from '../utils/current-subscription.resolver.js';
 import { commissionEntityLookupKeys } from './commission-entities.js';
+import { ConflictError } from '../errors/app-error.js';
 import { createModuleLogger } from '../utils/logger.js';
 
 const log = createModuleLogger('commission');
@@ -57,10 +58,10 @@ export class CommissionService {
       if (rows.length) {
         return { rate: Number(rows[0].amount), rateType: rows[0].rate_type };
       }
-      throw new Error(`No commission rate configured for plan ${planId} / entity "${entityType}"`);
+      throw new ConflictError(`No commission rate configured for plan ${planId} / entity "${entityType}"`);
     }
 
-    throw new Error('Organisation has no active subscription plan');
+    throw new ConflictError('Organisation has no active subscription plan');
   }
 
   async calculate(
@@ -73,7 +74,7 @@ export class CommissionService {
     const sub = await getCurrentSubscription(orgId);
 
     if (!sub.exists) {
-      throw new Error('Organisation has no active subscription plan');
+      throw new ConflictError('Organisation has no active subscription plan');
     }
 
     const commRate = await getCommissionRate(orgId, entityType);
@@ -97,7 +98,7 @@ export class CommissionService {
     }
 
     if (rate === 0) {
-      throw new Error(`No commission rate configured for plan ${sub.planId} / entity "${entityType}"`);
+      throw new ConflictError(`No commission rate configured for plan ${sub.planId} / entity "${entityType}"`);
     }
 
     const commissionAmount = rateType === 'percentage'
