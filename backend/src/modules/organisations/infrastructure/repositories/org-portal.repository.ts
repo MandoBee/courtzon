@@ -3,6 +3,7 @@ import { getPool } from '../../../../database/mysql.js';
 import { ValidationError } from '../../../../shared/errors/app-error.js';
 import { buildPagination, paginationClause } from '../../../../shared/utils/pagination.js';
 import { nonExpiredSubscriptionCondition } from '../../../../shared/utils/subscription-validator.js';
+import { transactionRepository } from '../../../../modules/financial/infrastructure/transaction.repository.js';
 
 type RowData = mysql.RowDataPacket[];
 
@@ -515,17 +516,8 @@ export async function getFeatureUsageCounts(orgId: number): Promise<Record<strin
   };
 }
 
-export async function getAvailablePlansForOrg(orgId: number) {
+export async function getAvailablePlansForOrg(_orgId: number) {
   const pool = getPool();
-  const [typeRows] = await pool.execute<RowData>(
-    `SELECT ot.id, ot.slug FROM organisations o
-     JOIN organisation_types ot ON ot.id = o.org_type_id
-     WHERE o.id = ? AND o.deleted_at IS NULL`,
-    [orgId],
-  );
-  if (!typeRows.length) return [];
-  const orgTypeId = (typeRows[0] as any).id;
-
   const [plans] = await pool.execute<RowData>(
     `SELECT sp.* FROM subscription_plans sp
      WHERE sp.is_active = TRUE AND sp.is_internal = FALSE
@@ -696,6 +688,24 @@ export async function approveSubscriptionRequest(requestId: number, adminId: num
           [req.organisation_id, req.requested_plan_id],
         );
       }
+    }
+
+    // Create financial audit trail
+    if (Number(req.requested_price) > 0) {
+      await transactionRepository.createTransaction({
+        type: 'subscription',
+        sourceType: 'organisation_upgrade_request',
+        sourceId: requestId,
+        totalAmount: Number(req.requested_price),
+        status: 'completed',
+        metadata: {
+          organisationId: req.organisation_id,
+          requestType: req.request_type,
+          requestedPlanName: req.requested_plan_name,
+          previousPlanName: req.current_plan_name,
+          approvedBy: adminId,
+        },
+      }, conn);
     }
 
     await conn.commit();

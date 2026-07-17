@@ -10,7 +10,7 @@ export default function OrgSubscriptionPage() {
   const [showRequestModal, setShowRequestModal] = useState(false);
   const [requestType, setRequestType] = useState<'NEW_SUBSCRIPTION' | 'PLAN_CHANGE'>('PLAN_CHANGE');
 
-  const { data: subscription, isLoading } = useQuery<any>({
+  const { data: subscription, isLoading, isError, error } = useQuery<any>({
     queryKey: ['org-subscription', orgId],
     queryFn: () => api.get(`/org/${orgId}/subscription`).then(r => r.data),
     enabled: !!orgId,
@@ -30,6 +30,15 @@ export default function OrgSubscriptionPage() {
 
   if (!orgId) return <div>Invalid organisation</div>;
   if (isLoading) return <div className="text-sm text-[var(--color-text-muted)] py-8">Loading...</div>;
+  if (isError) return (
+    <div className="bg-[var(--color-error-bg)] border border-[var(--color-error-border)] rounded-[var(--radius-lg)] p-5 text-center">
+      <p className="text-[var(--color-error)] font-medium">Failed to load subscription data</p>
+      <p className="text-sm text-[var(--color-text-muted)] mt-1">{(error as any)?.message || 'An unexpected error occurred'}</p>
+      <button onClick={() => window.location.reload()} className="mt-3 px-4 py-2 bg-[var(--color-primary)] text-white rounded-[var(--radius-md)] text-sm font-medium">
+        Retry
+      </button>
+    </div>
+  );
 
   const sub = subscription;
   const requests = requestsData?.data || [];
