@@ -2,7 +2,6 @@ import type mysql from 'mysql2/promise';
 import { getPool } from '../../../../database/mysql.js';
 import { ValidationError } from '../../../../shared/errors/app-error.js';
 import { buildPagination, paginationClause } from '../../../../shared/utils/pagination.js';
-import { nonExpiredSubscriptionCondition } from '../../../../shared/utils/subscription-validator.js';
 import { transactionRepository } from '../../../../modules/financial/infrastructure/transaction.repository.js';
 
 type RowData = mysql.RowDataPacket[];
@@ -458,26 +457,6 @@ export async function removeOrgCoachAgreement(orgId: number, coachId: number): P
     [orgId, coachId]
   );
   return (result as any).affectedRows > 0;
-}
-
-export async function getOrgSubscriptionWithFeatures(orgId: number) {
-  const pool = getPool();
-  const [rows] = await pool.execute<RowData>(
-    `SELECT os.*
-     FROM organisation_subscriptions os
-     WHERE os.organisation_id = ? AND ${nonExpiredSubscriptionCondition('os')}
-     ORDER BY os.created_at DESC
-     LIMIT 1`,
-    [orgId],
-  );
-  if (!rows.length) return null;
-  const sub = rows[0];
-
-  // Resolve plan config from snapshot or live tables
-  const { getEffectivePlanConfig } = await import('../../../../shared/utils/plan-resolver.js');
-  const config = await getEffectivePlanConfig(orgId);
-
-  return { sub, config };
 }
 
 export async function getFeatureUsageCounts(orgId: number): Promise<Record<string, number>> {

@@ -9,8 +9,6 @@
  * so that the business rule is defined in exactly one place.
  */
 
-import type { PoolConnection } from 'mysql2/promise';
-
 /**
  * SQL fragment for the WHERE clause that defines an active subscription.
  * Use in queries like:
@@ -51,23 +49,4 @@ export function isSubscriptionActive(sub: { subscription_status?: string; end_da
   return true;
 }
 
-/**
- * Fetch and validate: queries the DB for the org's active subscription
- * and returns it, or null if none found. This is the canonical way to
- * check subscription validity from TypeScript code.
- */
-export async function findActiveSubscriptionForOrg(
-  orgId: number,
-  conn?: PoolConnection,
-): Promise<{ id: number; plan_id: number; subscription_status: string; end_date: Date | null; start_date: Date | null } | null> {
-  const db = conn ?? (await import('../../database/mysql.js')).getPool();
-  const [rows] = await db.execute<any[]>(
-    `SELECT id, plan_id, subscription_status, start_date, end_date
-     FROM organisation_subscriptions
-     WHERE organisation_id = ? AND ${activeSubscriptionCondition('organisation_subscriptions')}
-     ORDER BY created_at DESC
-     LIMIT 1`,
-    [orgId],
-  );
-  return rows.length ? rows[0] : null;
-}
+

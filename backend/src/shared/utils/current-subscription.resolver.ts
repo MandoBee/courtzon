@@ -46,6 +46,11 @@ export interface CurrentSubscription {
   fromSnapshot: boolean;
   /** Whether this subscription exists at all */
   exists: boolean;
+  /**
+   * Computed effective status — simplifies UI logic.
+   * One of: 'none' | 'pending' | 'active' | 'expired'
+   */
+  effectiveStatus: 'none' | 'pending' | 'active' | 'expired';
 }
 
 export interface CurrentSubscriptionFeature {
@@ -87,10 +92,10 @@ export async function getCurrentSubscription(orgId: number, conn?: mysql.PoolCon
   if (!rows.length) {
     const empty: CurrentSubscription = {
       subscriptionId: 0, planId: null, planName: 'No Subscription',
-      planSnapshot: null, subscriptionStatus: 'none', billingCycle: 'monthly',
-      startDate: null, endDate: null, isExpired: false, isInternal: false,
-      autoRenew: false, features: [], commissionRates: [],
-      fromSnapshot: false, exists: false,
+      planSnapshot: null, subscriptionStatus: 'none', effectiveStatus: 'none',
+      billingCycle: 'monthly', startDate: null, endDate: null,
+      isExpired: false, isInternal: false, autoRenew: false,
+      features: [], commissionRates: [], fromSnapshot: false, exists: false,
     };
     cache.set(orgId, empty);
     return empty;
@@ -168,12 +173,18 @@ export async function getCurrentSubscription(orgId: number, conn?: mysql.PoolCon
     }));
   }
 
+  // Compute effective status
+  let effectiveStatus: 'none' | 'pending' | 'active' | 'expired' = 'active';
+  if (isExpired) effectiveStatus = 'expired';
+  else if (sub.subscription_status === 'pending') effectiveStatus = 'pending';
+
   const result: CurrentSubscription = {
     subscriptionId: sub.id,
     planId: sub.plan_id,
     planName,
     planSnapshot: sub.plan_snapshot ? (typeof sub.plan_snapshot === 'string' ? JSON.parse(sub.plan_snapshot) : sub.plan_snapshot) : null,
     subscriptionStatus: sub.subscription_status,
+    effectiveStatus,
     billingCycle: sub.billing_cycle || 'monthly',
     startDate: sub.start_date ? new Date(sub.start_date).toISOString() : null,
     endDate: sub.end_date ? new Date(sub.end_date).toISOString() : null,
