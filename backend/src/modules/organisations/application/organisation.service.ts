@@ -743,7 +743,7 @@ export class OrganisationService {
   async updateOrgSubscription(orgId: number, planId: number, billingCycle: BillingPeriod = 'monthly') {
     const pool = getPool();
     const [plan] = await pool.execute<RowData>(
-      'SELECT id, is_unlimited, price_monthly, price_yearly FROM subscription_plans WHERE id = ? AND is_active = TRUE',
+      'SELECT id, is_unlimited, price_monthly, price_yearly, plan_name FROM subscription_plans WHERE id = ? AND is_active = TRUE',
       [planId]
     );
     if (!plan.length) throw new NotFoundError('Subscription plan');
@@ -755,6 +755,37 @@ export class OrganisationService {
       throw new ValidationError('This plan has no monthly price');
     }
 
+    // Build plan snapshot
+    const [featRows] = await pool.execute<RowData>(
+      `SELECT sf.feature_key, sf.label, spf.value, sf.value_type
+       FROM subscription_plan_features spf
+       JOIN subscription_features sf ON sf.id = spf.feature_id
+       WHERE spf.plan_id = ?`, [planId]
+    );
+    const [rateRows] = await pool.execute<RowData>(
+      'SELECT applicable_entity, amount, rate_type FROM subscription_plan_rates WHERE plan_id = ?', [planId]
+    );
+    const planSnapshot = JSON.stringify({
+      planName: p.plan_name,
+      priceMonthly: p.price_monthly ? Number(p.price_monthly) : null,
+      priceYearly: p.price_yearly ? Number(p.price_yearly) : null,
+      isUnlimited: !!p.is_unlimited,
+      billingCycle,
+      features: featRows.map((f: any) => ({ featureKey: f.feature_key, label: f.label, value: String(f.value ?? ''), valueType: f.value_type })),
+      commissionRates: rateRows.map((r: any) => ({ entity: r.applicable_entity, amount: Number(r.amount), rateType: r.rate_type })),
+    });
+
+    // Compute dates
+    const startDate = new Date().toISOString().slice(0, 10);
+    let endDate: string | null;
+    if (p.is_unlimited) {
+      endDate = null;
+    } else if (billingCycle === 'yearly') {
+      const d = new Date(); d.setFullYear(d.getFullYear() + 1); endDate = d.toISOString().slice(0, 10);
+    } else {
+      const d = new Date(); d.setMonth(d.getMonth() + 1); endDate = d.toISOString().slice(0, 10);
+    }
+
     const [existing] = await pool.execute<RowData>(
       `SELECT id FROM organisation_subscriptions
        WHERE organisation_id = ? AND subscription_status IN ('pending', 'active')
@@ -764,24 +795,28 @@ export class OrganisationService {
 
     if (existing.length) {
       await pool.execute(
-        `UPDATE organisation_subscriptions SET plan_id = ?, billing_cycle = ?, start_date = NULL, end_date = NULL,
-         subscription_status = 'pending', auto_renew = TRUE
+        `UPDATE organisation_subscriptions SET plan_id = ?, billing_cycle = ?, start_date = ?, end_date = ?,
+         subscription_status = 'active', plan_snapshot = ?, auto_renew = TRUE, updated_at = NOW()
          WHERE id = ?`,
-        [planId, billingCycle, existing[0].id]
+        [planId, billingCycle, startDate, endDate, planSnapshot, existing[0].id]
       );
     } else {
       await pool.execute(
-        `INSERT INTO organisation_subscriptions (organisation_id, plan_id, billing_cycle, start_date, end_date, subscription_status, auto_renew)
-         VALUES (?, ?, ?, NULL, NULL, 'pending', TRUE)`,
-        [orgId, planId, billingCycle]
+        `INSERT INTO organisation_subscriptions (organisation_id, plan_id, billing_cycle, start_date, end_date, subscription_status, plan_snapshot, auto_renew)
+         VALUES (?, ?, ?, ?, ?, 'active', ?, TRUE)`,
+        [orgId, planId, billingCycle, startDate, endDate, planSnapshot]
       );
     }
+
+    // Clear resolver cache
+    const { clearSubscriptionCache } = await import('../../../shared/utils/current-subscription.resolver.js');
+    clearSubscriptionCache();
   }
 
   async activateSubscription(orgId: number) {
     const pool = getPool();
     const [rows] = await pool.execute<RowData>(
-      `SELECT os.id, os.billing_cycle, sp.is_unlimited
+      `SELECT os.id, os.billing_cycle, os.plan_id, sp.is_unlimited, sp.plan_name
        FROM organisation_subscriptions os
        JOIN subscription_plans sp ON sp.id = os.plan_id
        WHERE os.organisation_id = ? AND os.subscription_status = 'pending'
@@ -803,10 +838,32 @@ export class OrganisationService {
       endDate = d.toISOString().slice(0, 10);
     }
 
-    await pool.execute(
-      `UPDATE organisation_subscriptions SET start_date = ?, end_date = ?, subscription_status = 'active' WHERE id = ?`,
-      [startDate, endDate, sub.id]
+    // Build and write plan snapshot
+    const [featRows] = await pool.execute<RowData>(
+      `SELECT sf.feature_key, sf.label, spf.value, sf.value_type
+       FROM subscription_plan_features spf
+       JOIN subscription_features sf ON sf.id = spf.feature_id
+       WHERE spf.plan_id = ?`, [sub.plan_id]
     );
+    const [rateRows] = await pool.execute<RowData>(
+      'SELECT applicable_entity, amount, rate_type FROM subscription_plan_rates WHERE plan_id = ?', [sub.plan_id]
+    );
+    const planSnapshot = JSON.stringify({
+      planName: sub.plan_name,
+      priceMonthly: null, priceYearly: null, isUnlimited: !!sub.is_unlimited,
+      billingCycle: sub.billing_cycle || 'monthly',
+      features: featRows.map((f: any) => ({ featureKey: f.feature_key, label: f.label, value: String(f.value ?? ''), valueType: f.value_type })),
+      commissionRates: rateRows.map((r: any) => ({ entity: r.applicable_entity, amount: Number(r.amount), rateType: r.rate_type })),
+    });
+
+    await pool.execute(
+      `UPDATE organisation_subscriptions SET start_date = ?, end_date = ?, subscription_status = 'active', plan_snapshot = ?, updated_at = NOW() WHERE id = ?`,
+      [startDate, endDate, planSnapshot, sub.id]
+    );
+
+    // Clear resolver cache
+    const { clearSubscriptionCache } = await import('../../../shared/utils/current-subscription.resolver.js');
+    clearSubscriptionCache();
 
     const [prevSubs] = await pool.execute<RowData>(
       'SELECT COUNT(*) as cnt FROM organisation_subscriptions WHERE organisation_id = ? AND id != ?',
@@ -817,7 +874,7 @@ export class OrganisationService {
     if (isRenewal) {
       eventBus.emit('organisation:subscription-renewed', {
         organisationId: orgId,
-        planName: '',
+        planName: sub.plan_name,
         billingCycle: sub.billing_cycle || 'monthly',
       });
     }
