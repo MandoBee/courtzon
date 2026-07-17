@@ -17,7 +17,7 @@ export default function AdminLayout() {
   return (
     <>
       <OfflineBanner />
-      <div className="flex min-h-screen bg-[var(--color-bg)]">
+      <div className="flex h-full bg-[var(--color-bg)]">
         {drawerOpen && (
           <div className="fixed inset-0 z-30 bg-black/50 md:hidden" onClick={() => setDrawerOpen(false)} />
         )}
