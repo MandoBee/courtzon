@@ -511,6 +511,19 @@ export class BookingService {
       );
       if (!available) throw new ConflictError('One or more slots are no longer available');
 
+      // Clean up any orphaned terminal bookings for this slot (from failed previous attempts)
+      // that would violate the uq_booking_slot unique key on (resource_id, booking_date, start_time)
+      const [orphans] = await conn.execute<RowData>(
+        `SELECT id FROM bookings WHERE resource_id = ? AND booking_date = ? AND start_time = ?
+         AND booking_status IN ('cancelled', 'expired', 'no_show')`,
+        [data.resourceId, data.bookingDate, data.startTime],
+      );
+      for (const row of orphans as any[]) {
+        await conn.execute('DELETE FROM booking_slots WHERE booking_id = ?', [row.id]);
+        await conn.execute('DELETE FROM booking_cancellations WHERE booking_id = ?', [row.id]);
+        await conn.execute('DELETE FROM bookings WHERE id = ?', [row.id]);
+      }
+
       // Create booking as pending_payment
       const bookingId = await bookingRepository.create({
         userId, branchId: data.branchId, organisationId: data.organisationId, resourceId: data.resourceId,
