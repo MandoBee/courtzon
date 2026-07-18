@@ -1,9 +1,20 @@
 import type mysql from 'mysql2/promise';
 import { bookingAggregate, type ConfirmContext } from './BookingAggregate.js';
-import { bookingRepository } from '../../modules/booking/infrastructure/repositories/booking.repository.js';
 import { getPool } from '../../database/mysql.js';
 import { eventBus } from '../../shared/event-bus/index.js';
 import type { BookingStatus } from '../shared/booking-types.js';
+import type { IBookingRepository } from '../contracts/IBookingRepository.js';
+
+let _bookingRepo: IBookingRepository | null = null;
+
+export function initBooking(repo: IBookingRepository): void {
+  _bookingRepo = repo;
+}
+
+function getRepo(): IBookingRepository {
+  if (!_bookingRepo) throw new Error('BookingSaga not initialized. Call initBooking() first.');
+  return _bookingRepo;
+}
 
 export interface BookingEventPayload {
   bookingId: number;
@@ -58,14 +69,15 @@ export async function confirmBooking(
   context: ConfirmContext,
   conn?: mysql.PoolConnection,
 ): Promise<BookingEventPayload> {
-  const booking = await bookingRepository.findById(bookingId);
+  const repo = getRepo();
+  const booking = await repo.findById(bookingId);
   if (!booking) throw new Error(`Booking ${bookingId} not found`);
 
-  const nextStatus = bookingAggregate.confirm(booking.booking_status, context);
+  const nextStatus = bookingAggregate.confirm(booking.booking_status as BookingStatus, context);
 
   const paymentStatus = context.paymentMethod === 'cash' || context.paymentMethod === 'cod'
     ? 'pending' : 'paid';
-  await bookingRepository.persistTransition(bookingId, nextStatus, paymentStatus, undefined, conn);
+  await repo.persistTransition(bookingId, nextStatus, paymentStatus, undefined, conn);
 
   const pool = conn || getPool();
   await pool.execute(
@@ -86,10 +98,11 @@ export async function cancelBooking(
   conn?: mysql.PoolConnection,
   paymentStatusOverride?: string,
 ): Promise<BookingEventPayload> {
-  const booking = await bookingRepository.findById(bookingId);
+  const repo = getRepo();
+  const booking = await repo.findById(bookingId);
   if (!booking) throw new Error(`Booking ${bookingId} not found`);
 
-  const nextStatus = bookingAggregate.cancel(booking.booking_status);
+  const nextStatus = bookingAggregate.cancel(booking.booking_status as BookingStatus);
 
   const newPaymentStatus = paymentStatusOverride ?? (feeAmount > 0 ? 'refunded' : booking.payment_status);
 
@@ -99,7 +112,7 @@ export async function cancelBooking(
      VALUES (?, ?, ?, ?)`,
     [bookingId, actorId, reason, feeAmount],
   );
-  await bookingRepository.persistTransition(bookingId, 'cancelled', newPaymentStatus, undefined, conn);
+  await repo.persistTransition(bookingId, 'cancelled', newPaymentStatus, undefined, conn);
 
   await releaseBookingSlots(bookingId, conn);
 
@@ -112,12 +125,13 @@ export async function expireBooking(
   bookingId: number,
   conn?: mysql.PoolConnection,
 ): Promise<BookingEventPayload> {
-  const booking = await bookingRepository.findById(bookingId);
+  const repo = getRepo();
+  const booking = await repo.findById(bookingId);
   if (!booking) throw new Error(`Booking ${bookingId} not found`);
 
-  const nextStatus = bookingAggregate.expire(booking.booking_status);
+  const nextStatus = bookingAggregate.expire(booking.booking_status as BookingStatus);
 
-  await bookingRepository.persistTransition(bookingId, nextStatus, 'expired', undefined, conn);
+  await repo.persistTransition(bookingId, nextStatus, 'expired', undefined, conn);
 
   await releaseBookingSlots(bookingId, conn);
 
@@ -130,12 +144,13 @@ export async function checkInBooking(
   bookingId: number,
   conn?: mysql.PoolConnection,
 ): Promise<BookingEventPayload> {
-  const booking = await bookingRepository.findById(bookingId);
+  const repo = getRepo();
+  const booking = await repo.findById(bookingId);
   if (!booking) throw new Error(`Booking ${bookingId} not found`);
 
-  const nextStatus = bookingAggregate.checkIn(booking.booking_status);
+  const nextStatus = bookingAggregate.checkIn(booking.booking_status as BookingStatus);
 
-  await bookingRepository.persistTransition(bookingId, 'checked_in', undefined, undefined, conn);
+  await repo.persistTransition(bookingId, 'checked_in', undefined, undefined, conn);
 
   const payload = buildPayload(booking, nextStatus);
   emit('booking:check-in', payload);
@@ -150,10 +165,11 @@ export async function noShowBooking(
   paymentStatusOverride?: string,
   feeAmount: number = 0,
 ): Promise<BookingEventPayload> {
-  const booking = await bookingRepository.findById(bookingId);
+  const repo = getRepo();
+  const booking = await repo.findById(bookingId);
   if (!booking) throw new Error(`Booking ${bookingId} not found`);
 
-  const nextStatus = bookingAggregate.noShow(booking.booking_status);
+  const nextStatus = bookingAggregate.noShow(booking.booking_status as BookingStatus);
 
   const effectivePaymentStatus = paymentStatusOverride
     ?? (booking.payment_status === 'paid' ? 'penalty' : booking.payment_status);
@@ -164,7 +180,7 @@ export async function noShowBooking(
      VALUES (?, ?, ?, ?)`,
     [bookingId, actorId, reason, feeAmount],
   );
-  await bookingRepository.persistTransition(bookingId, 'no_show', effectivePaymentStatus, undefined, conn);
+  await repo.persistTransition(bookingId, 'no_show', effectivePaymentStatus, undefined, conn);
 
   await releaseBookingSlots(bookingId, conn);
 
@@ -178,15 +194,16 @@ export async function completeBooking(
   paymentStatus?: string,
   conn?: mysql.PoolConnection,
 ): Promise<BookingEventPayload> {
-  const booking = await bookingRepository.findById(bookingId);
+  const repo = getRepo();
+  const booking = await repo.findById(bookingId);
   if (!booking) throw new Error(`Booking ${bookingId} not found`);
 
-  const nextStatus = bookingAggregate.complete(booking.booking_status);
+  const nextStatus = bookingAggregate.complete(booking.booking_status as BookingStatus);
 
   if (paymentStatus) {
-    await bookingRepository.persistTransition(bookingId, nextStatus, paymentStatus, undefined, conn);
+    await repo.persistTransition(bookingId, nextStatus, paymentStatus, undefined, conn);
   } else {
-    await bookingRepository.persistTransition(bookingId, nextStatus, undefined, undefined, conn);
+    await repo.persistTransition(bookingId, nextStatus, undefined, undefined, conn);
   }
 
   const payload = buildPayload(booking, nextStatus);
@@ -201,10 +218,11 @@ export async function cancelWithFeeBooking(
   feeAmount: number,
   conn?: mysql.PoolConnection,
 ): Promise<BookingEventPayload> {
-  const booking = await bookingRepository.findById(bookingId);
+  const repo = getRepo();
+  const booking = await repo.findById(bookingId);
   if (!booking) throw new Error(`Booking ${bookingId} not found`);
 
-  const nextStatus = bookingAggregate.cancelWithFee(booking.booking_status);
+  const nextStatus = bookingAggregate.cancelWithFee(booking.booking_status as BookingStatus);
 
   const newPaymentStatus = feeAmount > 0 ? 'partially_refunded' : 'penalty';
 
@@ -214,7 +232,7 @@ export async function cancelWithFeeBooking(
      VALUES (?, ?, ?, ?)`,
     [bookingId, actorId, reason, feeAmount],
   );
-  await bookingRepository.persistTransition(bookingId, 'cancelled_with_fee', newPaymentStatus, undefined, conn);
+  await repo.persistTransition(bookingId, 'cancelled_with_fee', newPaymentStatus, undefined, conn);
 
   await releaseBookingSlots(bookingId, conn);
 
@@ -228,5 +246,5 @@ export async function updateBookingPaymentStatus(
   paymentStatus: string,
   conn?: mysql.PoolConnection,
 ): Promise<void> {
-  await bookingRepository.persistPaymentStatus(bookingId, paymentStatus, conn);
+  await getRepo().persistPaymentStatus(bookingId, paymentStatus, conn);
 }
