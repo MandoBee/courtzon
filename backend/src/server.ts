@@ -22,7 +22,17 @@ import { processDueDigests } from "./modules/notifications/application/digest.se
 import { runCleanupPolicies } from "./modules/notifications/application/cleanup.service.js";
 import { loadFeatureFlags } from "./modules/notifications/application/feature-flags.service.js";
 import { queueService } from "./infrastructure/queue/queue.service.js";
-import { registerAllProviders } from "./platform/notifications/provider-registry.js";
+import { registerProvider } from "./modules/notifications/infrastructure/providers/provider.interface.js";
+import { InAppProvider } from "./modules/notifications/infrastructure/providers/in-app.provider.js";
+import { PushProvider } from "./modules/notifications/infrastructure/providers/push.provider.js";
+import { EmailProvider } from "./modules/notifications/infrastructure/providers/email.provider.js";
+import { SMSProvider } from "./modules/notifications/infrastructure/providers/sms.provider.js";
+import { WhatsAppProvider } from "./modules/notifications/infrastructure/providers/whatsapp.provider.js";
+import { WebhookProvider } from "./modules/notifications/infrastructure/providers/webhook.provider.js";
+import { bookingRepository } from "./modules/booking/infrastructure/repositories/booking.repository.js";
+import { paymentRepository } from "./modules/payment/infrastructure/repositories/payment.repository.js";
+import { initBooking } from "./platform/booking/BookingSaga.js";
+import { initPayment } from "./platform/payment/PaymentSaga.js";
 import { closePool } from "./database/mysql.js";
 import { closeRedisClient } from "./infrastructure/redis/redis.client.js";
 import { validateDatabaseSchema } from "./infrastructure/startup/startup-validator.js";
@@ -65,7 +75,15 @@ async function bootstrap() {
       await runCleanupPolicies();
     });
 
-    registerAllProviders();
+    initBooking(bookingRepository);
+    initPayment(paymentRepository);
+
+    registerProvider(new InAppProvider());
+    registerProvider(new PushProvider());
+    registerProvider(new EmailProvider());
+    registerProvider(new SMSProvider());
+    registerProvider(new WhatsAppProvider());
+    registerProvider(new WebhookProvider());
 
     await loadFeatureFlags();
 

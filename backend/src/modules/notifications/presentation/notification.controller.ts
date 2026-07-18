@@ -1,6 +1,6 @@
 import type { FastifyRequest, FastifyReply } from 'fastify';
 import { notificationService } from '../application/notification.service.js';
-import { notificationPlatform } from '../../../platform/notifications/index.js';
+import { notificationPlatform } from '../infrastructure/notification-platform.impl.js';
 
 export async function getNotificationsHandler(request: FastifyRequest, reply: FastifyReply) {
   const userId = (request as any).userId;

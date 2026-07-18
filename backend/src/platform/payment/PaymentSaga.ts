@@ -1,8 +1,19 @@
 import type mysql from 'mysql2/promise';
 import { paymentAggregate, type PaymentContext } from './PaymentAggregate.js';
-import { paymentRepository } from '../../modules/payment/infrastructure/repositories/payment.repository.js';
 import { eventBus } from '../../shared/event-bus/index.js';
 import type { PaymentStatus } from '../shared/payment-types.js';
+import type { IPaymentRepository } from '../contracts/IPaymentRepository.js';
+
+let _paymentRepo: IPaymentRepository | null = null;
+
+export function initPayment(repo: IPaymentRepository): void {
+  _paymentRepo = repo;
+}
+
+function getRepo(): IPaymentRepository {
+  if (!_paymentRepo) throw new Error('PaymentSaga not initialized. Call initPayment() first.');
+  return _paymentRepo;
+}
 
 export interface PaymentEventPayload {
   paymentId: number;
@@ -39,7 +50,7 @@ function emit(eventName: string, payload: PaymentEventPayload): void {
 }
 
 async function loadPayment(paymentId: number): Promise<any> {
-  const record = await paymentRepository.findById(paymentId);
+  const record = await getRepo().findById(paymentId);
   if (!record) throw new Error(`Payment ${paymentId} not found`);
   return record;
 }
@@ -52,7 +63,7 @@ async function persistAndEmit(
   conn?: mysql.PoolConnection,
 ): Promise<PaymentEventPayload> {
   await updateFn(conn);
-  const updated = await paymentRepository.findById(paymentId);
+  const updated = await getRepo().findById(paymentId);
   const payload = buildPayload(updated, status as PaymentStatus);
   emit(eventName, payload);
   return payload;
@@ -68,7 +79,7 @@ export async function confirmPayment(
   const record = await loadPayment(paymentId);
   paymentAggregate.markPaid(record.payment_status, context);
   return persistAndEmit(paymentId, 'paid', 'payment:completed',
-    (c) => paymentRepository.updateStatus(paymentId, 'paid', context.gatewayReference, c), conn);
+    (c) => getRepo().updateStatus(paymentId, 'paid', context.gatewayReference, c), conn);
 }
 
 
@@ -80,7 +91,7 @@ export async function expirePayment(
   const record = await loadPayment(paymentId);
   paymentAggregate.markExpired(record.payment_status);
   return persistAndEmit(paymentId, 'expired', 'payment:expired', () =>
-    paymentRepository.expirePayment(paymentId, conn));
+    getRepo().expirePayment(paymentId, conn));
 }
 
 export async function refundPayment(
@@ -91,7 +102,7 @@ export async function refundPayment(
   const record = await loadPayment(paymentId);
   paymentAggregate.refund(record.payment_status, { refundAmount });
   return persistAndEmit(paymentId, 'refunded', 'payment:refunded',
-    (c) => paymentRepository.updateStatus(paymentId, 'refunded', undefined, c), conn);
+    (c) => getRepo().updateStatus(paymentId, 'refunded', undefined, c), conn);
 }
 
 

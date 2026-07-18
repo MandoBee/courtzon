@@ -77,8 +77,19 @@ vi.mock('../../financial/application/transaction.service.js', () => ({
   transactionService: { createRefund: vi.fn() },
 }));
 
+import { initBooking } from '../../../platform/booking/BookingSaga.js';
+
 // ─── Helpers ───
 function setupDefaults() {
+  initBooking({
+    findById: vi.fn().mockResolvedValue({
+      id: 100, booking_status: 'confirmed', payment_status: 'paid',
+      total_amount: 200, organisation_id: 1, branch_id: 5, user_id: 999,
+      resource_id: 20, payment_method: 'card',
+    }),
+    persistTransition: vi.fn(),
+    persistPaymentStatus: vi.fn(),
+  } as any);
   mockFindCoachById.mockResolvedValue({ id: 10, status: 'approved', hourly_rate: 200, currency_code: 'EGP' });
   mockAcquireCoach.mockResolvedValue(true);
   mockReleaseCoach.mockResolvedValue(undefined);

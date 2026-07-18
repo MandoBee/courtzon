@@ -1,12 +1,12 @@
-import type { PaginationInput, PaginatedResult } from '../shared/types.js';
+import type { PaginationInput, PaginatedResult } from '../../../platform/shared/types.js';
 import type {
   NotificationPlatform,
   NotificationItem,
   NotificationFilters,
   NotificationPreferences,
   FiltersResult,
-} from '../contracts/NotificationPlatform.js';
-import { notificationService } from '../../modules/notifications/application/notification.service.js';
+} from '../../../platform/contracts/NotificationPlatform.js';
+import { notificationService } from '../application/notification.service.js';
 
 function toNotificationItem(row: any): NotificationItem {
   return {
