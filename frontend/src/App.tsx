@@ -1,6 +1,7 @@
 import { useEffect, useState, lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, Outlet, Link, useLocation, useNavigate, useParams } from 'react-router-dom';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClientProvider } from '@tanstack/react-query';
+import { queryClient } from './lib/queryClient';
 import { useAuthStore } from './store/auth.store';
 import { useThemeStore } from './store/theme.store';
 import { useFeatureFlagsStore } from './store/feature-flags.store';
@@ -157,11 +158,7 @@ const MatchLobbyPage = lazy(() => import('./pages/booking/MatchLobbyPage'));
 const NotFoundPage = lazy(() => import('./pages/NotFoundPage'));
 
 
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: { retry: 1, staleTime: 30000, refetchOnWindowFocus: false },
-  },
-});
+
 
 function PageLoader() {
   return (

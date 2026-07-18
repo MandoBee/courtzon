@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { socketService } from '../services/socket';
 import { notificationsApi } from '../services/notifications';
+import { queryClient } from '../lib/queryClient';
 import type { AppNotification } from '../components/notifications/NotificationDetailModal';
 
 interface NotificationState {
@@ -40,6 +41,7 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
       if (!exists) {
         const enriched = enrichNotification(notification);
         set({ items: [enriched, ...state.items], unreadCount: state.unreadCount + 1 });
+        invalidateQueriesForNotification(enriched);
       }
     });
 
@@ -109,6 +111,7 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
             items: [...newItems, ...state.items],
             unreadCount: state.unreadCount + newItems.length,
           });
+          newItems.forEach(invalidateQueriesForNotification);
         }
       }
     } catch { }
@@ -138,6 +141,27 @@ function enrichNotification(n: any): AppNotification {
     image_urls: typeof n.image_urls === 'string' ? safeParse(n.image_urls) : n.image_urls,
     action_payload: typeof n.action_payload === 'string' ? safeParse(n.action_payload) : n.action_payload,
   };
+}
+
+function invalidateQueriesForNotification(n: AppNotification) {
+  const bookingRelated =
+    n.related_entity_type === 'booking' ||
+    n.category_slug === 'bookings' ||
+    n.category_slug === 'payments' ||
+    (typeof n.action_key === 'string' && n.action_key.includes('booking'));
+
+  if (bookingRelated) {
+    queryClient.invalidateQueries({ queryKey: ['my-bookings'] });
+    queryClient.invalidateQueries({ queryKey: ['home-continue'] });
+    queryClient.invalidateQueries({ queryKey: ['home-upcoming-bookings'] });
+    queryClient.invalidateQueries({ queryKey: ['home-recent-activity'] });
+    queryClient.invalidateQueries({ queryKey: ['admin', 'bookings'] });
+  }
+
+  if (n.related_entity_type === 'match' || n.category_slug === 'matches') {
+    queryClient.invalidateQueries({ queryKey: ['public-matches'] });
+    queryClient.invalidateQueries({ queryKey: ['match-applicants'] });
+  }
 }
 
 function safeParse(v: string): any {
