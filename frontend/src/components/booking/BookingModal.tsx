@@ -195,7 +195,7 @@ export default function BookingModal({ open, onClose }: BookingModalProps) {
   const [selectedBranch, setSelectedBranch] = useState<any | null>(null);
   const [selectedResourceId, setSelectedResourceId] = useState<number | null>(null);
   const [selectedSlots, setSelectedSlots] = useState<string[]>([]);
-  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'card'>('card');
+  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'card' | 'online'>('card');
   const [notes, setNotes] = useState('');
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [bookingType, setBookingType] = useState<'public_match' | 'private_match'>('private_match');
