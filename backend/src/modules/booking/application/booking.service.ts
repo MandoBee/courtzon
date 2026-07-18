@@ -6,11 +6,13 @@ import { transactionRepository } from '../../financial/infrastructure/transactio
 import { walletRepository } from '../../wallet/infrastructure/repositories/wallet.repository.js';
 import { resourceRepository } from '../../organisations/infrastructure/repositories/resource.repository.js';
 import { redisLock } from '../infrastructure/redis/redis-lock.js';
+import { getRedisClient } from '../../../infrastructure/redis/redis.client.js';
 import { getPool } from '../../../database/mysql.js';
 import { TimeEngine } from '../../time/index.js';
 import { NotFoundError, ForbiddenError, ConflictError } from '../../../shared/errors/app-error.js';
 import { createModuleLogger } from '../../../shared/utils/logger.js';
-import type { CreateBookingInput } from '../presentation/booking.dto.js';
+import { generateUUID } from '../../../shared/utils/token.js';
+import type { CreateBookingInput, PrepareBookingInput } from '../presentation/booking.dto.js';
 import type mysql from 'mysql2/promise';
 import { eventBus } from '../../../shared/event-bus/index.js';
 import {
@@ -355,6 +357,204 @@ export class BookingService {
     } finally {
       // Release all distributed Redis locks regardless of outcome
       await redisLock.releaseAll(lockSlots, lockOwner);
+    }
+  }
+
+  async confirmBookingFromPrepare(input: { prepareId: string; paymentId?: number }, userId: number) {
+    return this._createFromPrepare(input.prepareId, input.paymentId, userId);
+  }
+
+  async prepareGatewayBooking(input: PrepareBookingInput, userId: number) {
+    const pool = getPool();
+
+    // Derive organisation_id from branch
+    const [branchRows] = await pool.execute<RowData>(
+      'SELECT id, organisation_id, timezone, opening_time, closing_time FROM branches WHERE id = ?', [input.branchId],
+    );
+    if (branchRows.length === 0) throw new NotFoundError('Branch');
+    const branchData = branchRows[0] as any;
+    const organisationId = branchData.organisation_id;
+    const branchTz = branchData.timezone || 'Africa/Cairo';
+
+    // Compute UTC timestamps and business date
+    const startAtUtc = TimeEngine.localToUtc(input.bookingDate, input.startTime, branchTz);
+    const endAtUtc = TimeEngine.localToUtc(input.bookingDate, input.endTime, branchTz);
+    const resource = await resourceRepository.findById(input.resourceId);
+    const openingTime = resource?.opening_time || '08:00';
+    const closingTime = resource?.closing_time || '22:00';
+    const businessDate = TimeEngine.getBusinessDate(startAtUtc, openingTime, closingTime, branchTz);
+
+    let bookingDate = input.bookingDate;
+    if (closingTime < openingTime && input.startTime < openingTime) {
+      const [y, m, d] = input.bookingDate.split('-').map(Number);
+      const next = new Date(Date.UTC(y, m - 1, d + 1));
+      bookingDate = `${next.getUTCFullYear()}-${String(next.getUTCMonth() + 1).padStart(2, '0')}-${String(next.getUTCDate()).padStart(2, '0')}`;
+    }
+
+    // Multi-slot generation
+    const slotDuration = (resource as any)?.slot_duration || (resource as any)?.default_slot_duration || 60;
+    const individualSlots = splitTimeRange(input.startTime, input.endTime, slotDuration);
+    if (individualSlots.length === 0) throw new ConflictError('Booking range does not cover any complete slot');
+    const firstSlot = individualSlots[0];
+    const lastSlot = individualSlots[individualSlots.length - 1];
+    if (firstSlot.start !== input.startTime || lastSlot.end !== input.endTime) {
+      throw new ConflictError('Selected time range must be aligned to slot boundaries and cover connected slots only');
+    }
+
+    // Pricing
+    const pricing = await pricingEngine.calculatePrice(input.resourceId, input.startTime, input.endTime);
+    let commissionAmount = 0;
+    let clubAmount = pricing.totalPrice;
+    try {
+      const comm = await commissionService.calculate(input.branchId, 'booking', pricing.totalPrice);
+      commissionAmount = comm.commissionAmount;
+      clubAmount = comm.netAmount;
+    } catch {
+      // non-fatal
+    }
+
+    // Redis lock with prepare TTL (10 min)
+    const lockOwner = `user:${userId}`;
+    const lockSlots = individualSlots.map((s) => ({
+      resourceId: input.resourceId,
+      date: bookingDate,
+      slotStart: s.start,
+    }));
+    const lockAcquired = await redisLock.acquireAllForPrepare(lockSlots, lockOwner);
+    if (!lockAcquired) {
+      throw new ConflictError('One or more slots are currently being booked by another user. Please try again.');
+    }
+
+    try {
+      // Check slot availability
+      const available = await bookingRepository.checkSlotAvailability(
+        input.resourceId, bookingDate, individualSlots.map((s) => ({ start: s.start, end: s.end, date: bookingDate })),
+      );
+      if (!available) throw new ConflictError('One or more slots are no longer available');
+
+      // Create payment gateway session
+      const { paymentService } = await import('../../payment/application/payment.service.js');
+      const [userRows] = await pool.execute<RowData>('SELECT full_name, email, full_phone FROM users WHERE id = ?', [userId]);
+      const user = userRows[0] as any;
+
+      const prepareId = generateUUID();
+      const gwResult = await (paymentService.charge as any)(userId, {
+        referenceType: 'booking_prepare',
+        referenceId: prepareId,
+        amount: pricing.totalPrice,
+        currency: 'EGP',
+        paymentMethod: input.paymentMethod === 'online' ? 'card' : input.paymentMethod as 'card',
+        returnUrl: input.returnUrl,
+        customerName: user?.full_name,
+        customerPhone: user?.full_phone,
+        customerEmail: user?.email,
+      });
+
+      if (!gwResult.success) {
+        throw new ConflictError((gwResult as any).errorMessage || 'Payment gateway rejected the transaction');
+      }
+
+      // Store prepare data in Redis
+      const redis = getRedisClient();
+      const prepareData = JSON.stringify({
+        userId, organisationId, branchId: input.branchId, resourceId: input.resourceId,
+        bookingType: input.bookingType || 'public_match', bookingDate,
+        startTime: input.startTime, endTime: input.endTime,
+        totalAmount: pricing.totalPrice, commissionAmount, clubAmount,
+        notes: input.notes || null, paymentMethod: input.paymentMethod,
+        startAtUtc, endAtUtc, businessDate,
+        individualSlots,
+        lockSlots,
+        lockOwner,
+      });
+      await redis.set(`booking:prepare:${prepareId}`, prepareData, 'PX', 600000);
+
+      return {
+        prepareId,
+        clientSecret: ('clientSecret' in gwResult ? gwResult.clientSecret : null) || null,
+        paymentId: ('paymentId' in gwResult ? gwResult.paymentId : null) || null,
+      };
+    } catch (err) {
+      await redisLock.releaseAll(lockSlots, lockOwner);
+      throw err;
+    }
+  }
+
+  async cancelPrepare(prepareId: string, userId: number) {
+    const redis = getRedisClient();
+    const raw = await redis.get(`booking:prepare:${prepareId}`);
+    if (!raw) return;
+
+    const data = JSON.parse(raw);
+    if (data.userId !== userId) throw new ForbiddenError('Not your preparation');
+
+    await redisLock.releaseAll(data.lockSlots, data.lockOwner);
+    await redis.del(`booking:prepare:${prepareId}`);
+  }
+
+  async _createFromPrepare(prepareId: string, paymentId: number | undefined, userId: number) {
+    const redis = getRedisClient();
+    const raw = await redis.get(`booking:prepare:${prepareId}`);
+    if (!raw) throw new NotFoundError('Booking preparation session expired or not found');
+
+    const data = JSON.parse(raw);
+    if (data.userId !== userId) throw new ForbiddenError('Not your preparation');
+
+    const pool = getPool();
+    const conn = await pool.getConnection();
+    try {
+      await conn.beginTransaction();
+
+      // Final availability check within transaction
+      const available = await bookingRepository.checkSlotAvailability(
+        data.resourceId, data.bookingDate, data.individualSlots.map((s: any) => ({ start: s.start, end: s.end, date: data.bookingDate })), conn,
+      );
+      if (!available) throw new ConflictError('One or more slots are no longer available');
+
+      // Create booking as pending_payment
+      const bookingId = await bookingRepository.create({
+        userId, branchId: data.branchId, organisationId: data.organisationId, resourceId: data.resourceId,
+        bookingType: data.bookingType, bookingDate: data.bookingDate,
+        startTime: data.startTime, endTime: data.endTime,
+        totalAmount: data.totalAmount, commissionAmount: data.commissionAmount, clubAmount: data.clubAmount,
+        notes: data.notes, paymentMethod: data.paymentMethod,
+        bookingStatus: 'pending_payment', paymentStatus: 'pending',
+        startAtUtc: data.startAtUtc, endAtUtc: data.endAtUtc, businessDate: data.businessDate,
+      }, conn);
+
+      // Populate booking_slots
+      for (const slot of data.individualSlots) {
+        await conn.execute(
+          `INSERT INTO booking_slots (booking_id, resource_id, booking_date, slot_start, slot_end, is_available)
+           VALUES (?, ?, ?, ?, ?, FALSE)`,
+          [bookingId, data.resourceId, data.bookingDate, slot.start, slot.end],
+        );
+      }
+
+      await conn.commit();
+
+      // Emit booking:created event
+      eventBus.emit('booking:created', {
+        bookingId, userId,
+        courtId: data.resourceId,
+        startTime: new Date(data.startAtUtc),
+        endTime: new Date(data.endAtUtc),
+        startAtUtc: data.startAtUtc,
+        endAtUtc: data.endAtUtc,
+        bookingType: data.bookingType,
+        organisationId: data.organisationId,
+        branchId: data.branchId,
+      });
+
+      const booking = await bookingRepository.findById(bookingId);
+      return { ...booking, timezone: data.timezone || 'Africa/Cairo' };
+    } catch (err) {
+      try { await conn.rollback(); } catch {}
+      throw err;
+    } finally {
+      try { conn.release(); } catch {}
+      await redisLock.releaseAll(data.lockSlots, data.lockOwner);
+      await redis.del(`booking:prepare:${prepareId}`);
     }
   }
 

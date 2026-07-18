@@ -43,6 +43,27 @@ export const StartMatchmakingSchema = z.object({
   autoApply: z.boolean().optional().default(false),
 });
 
+export const PrepareBookingSchema = z.object({
+  branchId: z.number().int().positive(),
+  resourceId: z.number().int().positive(),
+  bookingType: z.enum(['public_match', 'private_match', 'academy', 'clinic', 'coach_session']).optional().default('private_match'),
+  bookingDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD format'),
+  startTime: z.string().regex(/^\d{2}:\d{2}$/, 'Use HH:mm format'),
+  endTime: z.string().regex(/^\d{2}:\d{2}$/, 'Use HH:mm format'),
+  paymentMethod: z.enum(['card', 'online']).default('card'),
+  returnUrl: z.string().optional(),
+  notes: z.string().optional(),
+  participants: z.array(z.object({
+    phone: z.string().optional(),
+  })).optional(),
+  matchmaking: MatchmakingSchema,
+});
+
+export const ConfirmBookingSchema = z.object({
+  prepareId: z.string().min(1),
+  paymentId: z.number().optional(),
+});
+
 export const CancelBookingSchema = z.object({
   reason: z.string().min(1).max(500),
 });
@@ -70,3 +91,5 @@ export const MatchesQuerySchema = z.object({
 });
 
 export type CreateBookingInput = z.infer<typeof CreateBookingSchema>;
+export type PrepareBookingInput = z.infer<typeof PrepareBookingSchema>;
+export type ConfirmBookingInput = z.infer<typeof ConfirmBookingSchema>;

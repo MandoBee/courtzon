@@ -6,6 +6,7 @@ interface PaymobPixelCardProps {
   showCancelButton?: boolean;
   onComplete: () => void;
   onCancel?: () => void;
+  beforePaymentComplete?: () => Promise<boolean>;
 }
 
 export default function PaymobPixelCard({
@@ -14,14 +15,17 @@ export default function PaymobPixelCard({
   showCancelButton = true,
   onComplete,
   onCancel,
+  beforePaymentComplete,
 }: PaymobPixelCardProps) {
   const [isFormValid, setIsFormValid] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const onCompleteRef = useRef(onComplete);
   const onCancelRef = useRef(onCancel);
+  const beforePaymentCompleteRef = useRef(beforePaymentComplete);
   onCompleteRef.current = onComplete;
   onCancelRef.current = onCancel;
+  beforePaymentCompleteRef.current = beforePaymentComplete;
 
   useEffect(() => {
     const container = containerRef.current;
@@ -50,7 +54,11 @@ export default function PaymobPixelCard({
           hideCardHolderName: true,
           disablePay: true,
           cardValidationChanged: (isValid: boolean) => setIsFormValid(isValid),
-          beforePaymentComplete: async () => true,
+          beforePaymentComplete: async () => {
+            const fn = beforePaymentCompleteRef.current;
+            if (fn) return fn();
+            return true;
+          },
           afterPaymentComplete: async () => onCompleteRef.current(),
           onPaymentCancel: async () => onCancelRef.current?.(),
         });

@@ -6,6 +6,8 @@ export async function bookingRoutes(app: FastifyInstance): Promise<void> {
   app.addHook('preHandler', authMiddleware);
 
   app.post('/bookings', ctrl.createBookingHandler);
+  app.post('/bookings/prepare', ctrl.prepareBookingHandler);
+  app.delete('/bookings/prepare/:prepareId', ctrl.cancelPrepareHandler);
   app.get('/bookings', ctrl.getUserBookingsHandler);
   app.get('/bookings/:id', ctrl.getBookingHandler);
   app.post('/bookings/:id/cancel', ctrl.cancelBookingHandler);

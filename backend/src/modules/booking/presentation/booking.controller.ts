@@ -1,15 +1,39 @@
 import type { FastifyRequest, FastifyReply } from 'fastify';
 import { bookingService } from '../application/booking.service.js';
-import { CreateBookingSchema, CancelBookingSchema, BookingsQuerySchema, StartMatchmakingSchema } from './booking.dto.js';
+import { CreateBookingSchema, ConfirmBookingSchema, PrepareBookingSchema, CancelBookingSchema, BookingsQuerySchema, StartMatchmakingSchema } from './booking.dto.js';
 import { ForbiddenError } from '../../../shared/errors/app-error.js';
 import { recordAudit } from '../../audit-log/index.js';
 
 export async function createBookingHandler(request: FastifyRequest, reply: FastifyReply) {
-  const body = CreateBookingSchema.parse(request.body);
+  const body = request.body as any;
   const userId = (request as any).userId;
-  const result = await bookingService.createBooking(body, userId);
+
+  if (body?.prepareId) {
+    const validated = ConfirmBookingSchema.parse(body);
+    const result = await bookingService.confirmBookingFromPrepare(validated, userId);
+    return reply.status(201).send(result);
+  }
+
+  const validated = CreateBookingSchema.parse(body);
+  const result = await bookingService.createBooking(validated, userId);
 
   return reply.status(201).send(result);
+}
+
+export async function prepareBookingHandler(request: FastifyRequest, reply: FastifyReply) {
+  const body = PrepareBookingSchema.parse(request.body);
+  const userId = (request as any).userId;
+  const result = await bookingService.prepareGatewayBooking(body, userId);
+
+  return reply.send(result);
+}
+
+export async function cancelPrepareHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { prepareId } = request.params as any;
+  const userId = (request as any).userId;
+  await bookingService.cancelPrepare(prepareId, userId);
+
+  return reply.send({ success: true });
 }
 
 export async function getUserBookingsHandler(request: FastifyRequest, reply: FastifyReply) {

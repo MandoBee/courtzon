@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../../store/auth.store';
@@ -211,6 +211,7 @@ export default function BookingModal({ open, onClose }: BookingModalProps) {
   const [pollingPaid, setPollingPaid] = useState(false);
   const [pendingBookingId, setPendingBookingId] = useState<number | null>(null);
   const [paymentId, setPaymentId] = useState<number | null>(null);
+  const prepareIdRef = useRef<string | null>(null);
 
   const requestAccessMutation = useMutation({
     mutationFn: (branchId: number) => api.post(`/branches/${branchId}/request-access`),
@@ -274,6 +275,19 @@ export default function BookingModal({ open, onClose }: BookingModalProps) {
 
   const selectedResource = branchResources.find((r: any) => r.id === selectedResourceId);
 
+  const prepareMutation = useMutation({
+    mutationFn: (data: any) => api.post('/bookings/prepare', data),
+    onSuccess: (res) => {
+      const d = res.data;
+      prepareIdRef.current = d.prepareId;
+      setPaymentId(d.paymentId || null);
+      setPixelClientSecret(d.clientSecret);
+    },
+    onError: (err) => {
+      showToast('Payment preparation failed: ' + ((err as any)?.response?.data?.message || (err as any).message), 'error');
+    },
+  });
+
   const bookingMutation = useMutation({
     mutationFn: (data: any) => api.post('/bookings', data),
     onSuccess: (res) => {
@@ -282,10 +296,9 @@ export default function BookingModal({ open, onClose }: BookingModalProps) {
       if (selectedResourceId && apiDate) {
         queryClient.invalidateQueries({ queryKey: ['resource-slots', selectedResourceId, apiDate] });
       }
-      if (d.clientSecret && d.bookingId) {
-        setPendingBookingId(d.bookingId);
-        setPaymentId(d.paymentId || null);
-        setPixelClientSecret(d.clientSecret);
+      if (prepareIdRef.current) {
+        // Card flow — booking was just created in beforePaymentComplete, wait for payment
+        setPendingBookingId(d.id || d.bookingId);
       } else if (d.id) {
         onClose();
         showToast('Booking confirmed!');
@@ -318,6 +331,7 @@ export default function BookingModal({ open, onClose }: BookingModalProps) {
     setPendingAccessBranches({});
     setPendingBookingId(null);
     setPaymentId(null);
+    prepareIdRef.current = null;
   };
 
   const handleClose = () => {
@@ -464,7 +478,13 @@ export default function BookingModal({ open, onClose }: BookingModalProps) {
         autoApply: matchmakingAutoApply,
       };
     }
-    bookingMutation.mutate(payload);
+
+    if (paymentMethod === 'card' || paymentMethod === 'online') {
+      // Prepare flow — validate, lock slot, create payment session (no booking created yet)
+      prepareMutation.mutate(payload);
+    } else {
+      bookingMutation.mutate(payload);
+    }
   };
 
   const dateOptions = Array.from({ length: 7 }, (_, i) => {
@@ -983,7 +1003,7 @@ export default function BookingModal({ open, onClose }: BookingModalProps) {
               <Button variant="secondary" type="button" onClick={() => setStep(4)}>{t('common.back')}</Button>
               <Button
                 type="button"
-                loading={bookingMutation.isPending}
+                loading={prepareMutation.isPending || bookingMutation.isPending}
                 onClick={handleSubmit}
               >
                 {paymentMethod === 'cash' ? t('common.confirm') : t('booking.confirm_pay')}
@@ -1030,16 +1050,33 @@ export default function BookingModal({ open, onClose }: BookingModalProps) {
       {/* Card payment modal */}
       <Modal open={!!pixelClientSecret} onClose={() => {
         setPixelClientSecret(null);
+        if (prepareIdRef.current) {
+          api.delete(`/bookings/prepare/${prepareIdRef.current}`).catch(() => {});
+          prepareIdRef.current = null;
+        }
         showToast('Payment cancelled', 'warning');
       }} title="Pay with Card" size="lg">
         {pixelClientSecret && (
           <PaymobPixelCard
             clientSecret={pixelClientSecret}
+            beforePaymentComplete={async () => {
+              // Create booking RIGHT before payment is sent to gateway
+              const ppId = prepareIdRef.current;
+              if (!ppId) return false;
+              try {
+                await bookingMutation.mutateAsync({ prepareId: ppId });
+                return true;
+              } catch {
+                showToast('Failed to create booking', 'error');
+                return false;
+              }
+            }}
             onComplete={async () => {
               setPixelClientSecret(null);
               showToast('Payment submitted — confirming...', 'info');
               const pmId = paymentId;
               const bkId = pendingBookingId;
+              prepareIdRef.current = null;
 
               // Try to confirm payment with Paymob
               if (pmId) {
@@ -1070,6 +1107,10 @@ export default function BookingModal({ open, onClose }: BookingModalProps) {
             }}
             onCancel={() => {
               setPixelClientSecret(null);
+              if (prepareIdRef.current) {
+                api.delete(`/bookings/prepare/${prepareIdRef.current}`).catch(() => {});
+                prepareIdRef.current = null;
+              }
               showToast('Payment cancelled', 'warning');
             }}
           />
