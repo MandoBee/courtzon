@@ -104,6 +104,67 @@ else fail('cz-pb-safe missing');
 if (appTsx.includes('cz-pb-safe')) pass('AppLayout uses cz-pb-safe');
 else warn('AppLayout may need cz-pb-safe on main');
 
+// ─── 8. Verify Platform layer has zero SQL and zero infrastructure imports ───
+console.log('\n8. Platform Layer Purity');
+import { readdirSync, statSync } from 'node:fs';
+function walkDir(dir) {
+  let results = [];
+  const list = readdirSync(dir);
+  for (const file of list) {
+    const full = join(dir, file);
+    const st = statSync(full);
+    if (st.isDirectory()) {
+      if (!file.startsWith('__tests__') && !file.startsWith('.')) results = results.concat(walkDir(full));
+    } else if (file.endsWith('.ts') && !file.endsWith('.d.ts')) {
+      results.push(full);
+    }
+  }
+  return results;
+}
+const platformDir = join(root, 'backend', 'src', 'platform');
+const platformFiles = existsSync(platformDir) ? walkDir(platformDir) : [];
+let platformOk = true;
+for (const file of platformFiles) {
+  const content = readFileSync(file, 'utf-8');
+  const lines = content.split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (line.match(/\b(SELECT|INSERT |UPDATE |DELETE |CREATE |ALTER |DROP |TRUNCATE)\b/i)) {
+      fail(`Platform SQL detected: ${file.replace(root, '')}:${i + 1}`);
+      platformOk = false;
+    }
+    if (line.match(/from.*['"]\.\.\/database\//) || line.match(/from.*['"]\.\.\/\.\.\/database\//)) {
+      fail(`Platform database import: ${file.replace(root, '')}:${i + 1}`);
+      platformOk = false;
+    }
+    if (line.match(/from.*\/(mysql|prisma)['"]/)) {
+      fail(`Platform mysql/prisma import: ${file.replace(root, '')}:${i + 1}`);
+      platformOk = false;
+    }
+  }
+}
+if (platformOk) pass('Platform layer contains zero SQL, zero database imports, zero mysql/prisma');
+
+// ─── 9. Verify Platform depends only on contracts for persistence ───
+console.log('\n9. Platform Contract Dependency');
+let contractOk = true;
+for (const file of platformFiles) {
+  const content = readFileSync(file, 'utf-8');
+  const lines = content.split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (line.match(/from.*modules\//)) {
+      fail(`Platform imports module: ${file.replace(root, '')}:${i + 1}`);
+      contractOk = false;
+    }
+    if (line.match(/\.execute\(/) || line.match(/\.query\(/)) {
+      fail(`Platform direct DB call: ${file.replace(root, '')}:${i + 1}`);
+      contractOk = false;
+    }
+  }
+}
+if (contractOk) pass('Platform depends only on contracts (zero module imports, zero direct DB calls)');
+
 // ─── Summary ───
 console.log(`\n${'='.repeat(50)}`);
 console.log(`Validation complete: ${errors} errors, ${warnings} warnings`);
