@@ -123,7 +123,7 @@ export default defineConfig(({ command }) => ({
     port: Number(process.env.VITE_DEV_PORT) || 5173,
     strictPort: false,
     headers: {
-      'Permissions-Policy': 'payment=(self "https://accept.paymob.com")',
+      'Permissions-Policy': 'payment=(self "https://accept.paymob.com" "https://accept.paymobsolutions.com")',
     },
     proxy: {
       '/auth': backend,
