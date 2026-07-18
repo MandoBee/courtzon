@@ -1,6 +1,5 @@
 import type mysql from 'mysql2/promise';
 import { bookingAggregate, type ConfirmContext } from './BookingAggregate.js';
-import { getPool } from '../../database/mysql.js';
 import { eventBus } from '../../shared/event-bus/index.js';
 import type { BookingStatus } from '../shared/booking-types.js';
 import type { IBookingRepository } from '../contracts/IBookingRepository.js';
@@ -56,14 +55,6 @@ function emit(eventName: string, payload: BookingEventPayload): void {
   eventBus.emit(eventName as any, payload);
 }
 
-async function releaseBookingSlots(bookingId: number, conn?: mysql.PoolConnection): Promise<void> {
-  const pool = conn || getPool();
-  await pool.execute(
-    'UPDATE booking_slots SET is_available = TRUE WHERE booking_id = ? AND is_available = FALSE',
-    [bookingId],
-  );
-}
-
 export async function confirmBooking(
   bookingId: number,
   context: ConfirmContext,
@@ -78,12 +69,7 @@ export async function confirmBooking(
   const paymentStatus = context.paymentMethod === 'cash' || context.paymentMethod === 'cod'
     ? 'pending' : 'paid';
   await repo.persistTransition(bookingId, nextStatus, paymentStatus, undefined, conn);
-
-  const pool = conn || getPool();
-  await pool.execute(
-    'UPDATE booking_slots SET is_available = FALSE WHERE booking_id = ? AND is_available = TRUE',
-    [bookingId],
-  );
+  await repo.lockSlots(bookingId, conn);
 
   const payload = buildPayload(booking, nextStatus);
   emit('booking:confirmed', payload);
@@ -106,15 +92,9 @@ export async function cancelBooking(
 
   const newPaymentStatus = paymentStatusOverride ?? (feeAmount > 0 ? 'refunded' : booking.payment_status);
 
-  const db = conn || getPool();
-  await db.execute(
-    `INSERT INTO booking_cancellations (booking_id, cancelled_by, reason, refund_amount)
-     VALUES (?, ?, ?, ?)`,
-    [bookingId, actorId, reason, feeAmount],
-  );
+  await repo.createCancellation(bookingId, actorId, reason, feeAmount, conn);
   await repo.persistTransition(bookingId, 'cancelled', newPaymentStatus, undefined, conn);
-
-  await releaseBookingSlots(bookingId, conn);
+  await repo.releaseSlots(bookingId, conn);
 
   const payload = buildPayload(booking, nextStatus);
   emit('booking:cancelled', payload);
@@ -132,8 +112,7 @@ export async function expireBooking(
   const nextStatus = bookingAggregate.expire(booking.booking_status as BookingStatus);
 
   await repo.persistTransition(bookingId, nextStatus, 'expired', undefined, conn);
-
-  await releaseBookingSlots(bookingId, conn);
+  await repo.releaseSlots(bookingId, conn);
 
   const payload = buildPayload(booking, nextStatus);
   emit('booking:expired', payload);
@@ -174,15 +153,9 @@ export async function noShowBooking(
   const effectivePaymentStatus = paymentStatusOverride
     ?? (booking.payment_status === 'paid' ? 'penalty' : booking.payment_status);
 
-  const db = conn || getPool();
-  await db.execute(
-    `INSERT INTO booking_cancellations (booking_id, cancelled_by, reason, refund_amount)
-     VALUES (?, ?, ?, ?)`,
-    [bookingId, actorId, reason, feeAmount],
-  );
+  await repo.createCancellation(bookingId, actorId, reason, feeAmount, conn);
   await repo.persistTransition(bookingId, 'no_show', effectivePaymentStatus, undefined, conn);
-
-  await releaseBookingSlots(bookingId, conn);
+  await repo.releaseSlots(bookingId, conn);
 
   const payload = buildPayload(booking, nextStatus);
   emit('booking:no-show', payload);
@@ -226,15 +199,9 @@ export async function cancelWithFeeBooking(
 
   const newPaymentStatus = feeAmount > 0 ? 'partially_refunded' : 'penalty';
 
-  const db = conn || getPool();
-  await db.execute(
-    `INSERT INTO booking_cancellations (booking_id, cancelled_by, reason, refund_amount)
-     VALUES (?, ?, ?, ?)`,
-    [bookingId, actorId, reason, feeAmount],
-  );
+  await repo.createCancellation(bookingId, actorId, reason, feeAmount, conn);
   await repo.persistTransition(bookingId, 'cancelled_with_fee', newPaymentStatus, undefined, conn);
-
-  await releaseBookingSlots(bookingId, conn);
+  await repo.releaseSlots(bookingId, conn);
 
   const payload = buildPayload(booking, nextStatus);
   emit('booking:cancelled', payload);

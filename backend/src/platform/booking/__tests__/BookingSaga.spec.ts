@@ -1,22 +1,17 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { Mock } from 'vitest';
 
-const mockExecute = vi.fn().mockResolvedValue([[{ affectedRows: 0 }], undefined]);
-
 vi.mock('../../../shared/event-bus/index.js', () => ({
   eventBus: { emit: vi.fn() },
-}));
-
-vi.mock('../../../database/mysql.js', () => ({
-  getPool: () => ({
-    execute: mockExecute,
-  }),
 }));
 
 const mockRepo = {
   findById: vi.fn(),
   persistTransition: vi.fn(),
   persistPaymentStatus: vi.fn(),
+  releaseSlots: vi.fn(),
+  lockSlots: vi.fn(),
+  createCancellation: vi.fn(),
 };
 
 import { eventBus } from '../../../shared/event-bus/index.js';
@@ -42,9 +37,10 @@ beforeEach(async () => {
   mockRepo.findById.mockReset();
   mockRepo.persistTransition.mockReset();
   mockRepo.persistPaymentStatus.mockReset();
+  mockRepo.releaseSlots.mockReset();
+  mockRepo.lockSlots.mockReset();
+  mockRepo.createCancellation.mockReset();
   (eventBus.emit as Mock).mockReset();
-  mockExecute.mockReset();
-  mockExecute.mockResolvedValue([[{ affectedRows: 0 }], undefined]);
   initBooking(mockRepo as any);
 });
 
@@ -83,10 +79,7 @@ describe('BookingSaga', () => {
       const result = await cancelBooking(1, 99, 'User cancelled');
 
       expect(result.status).toBe('cancelled');
-      expect(mockExecute).toHaveBeenCalledWith(
-        expect.stringContaining('INSERT INTO booking_cancellations'),
-        [1, 99, 'User cancelled', 0],
-      );
+      expect(mockRepo.createCancellation).toHaveBeenCalledWith(1, 99, 'User cancelled', 0, undefined);
       expect(mockRepo.persistTransition).toHaveBeenCalledWith(1, 'cancelled', 'pending', undefined, undefined);
       expect(eventBus.emit).toHaveBeenCalledWith('booking:cancelled', expect.objectContaining({
         bookingId: 1, status: 'cancelled',
@@ -141,10 +134,7 @@ describe('BookingSaga', () => {
       const result = await noShowBooking(1, 99, 'No show');
 
       expect(result.status).toBe('no_show');
-      expect(mockExecute).toHaveBeenCalledWith(
-        expect.stringContaining('INSERT INTO booking_cancellations'),
-        [1, 99, 'No show', 0],
-      );
+      expect(mockRepo.createCancellation).toHaveBeenCalledWith(1, 99, 'No show', 0, undefined);
       expect(mockRepo.persistTransition).toHaveBeenCalledWith(1, 'no_show', 'pending', undefined, undefined);
       expect(eventBus.emit).toHaveBeenCalledWith('booking:no-show', expect.objectContaining({
         bookingId: 1, status: 'no_show',
@@ -175,10 +165,7 @@ describe('BookingSaga', () => {
       const result = await cancelWithFeeBooking(1, 99, 'Late cancellation', 50);
 
       expect(result.status).toBe('cancelled_with_fee');
-      expect(mockExecute).toHaveBeenCalledWith(
-        expect.stringContaining('INSERT INTO booking_cancellations'),
-        [1, 99, 'Late cancellation', 50],
-      );
+      expect(mockRepo.createCancellation).toHaveBeenCalledWith(1, 99, 'Late cancellation', 50, undefined);
       expect(mockRepo.persistTransition).toHaveBeenCalledWith(1, 'cancelled_with_fee', 'partially_refunded', undefined, undefined);
       expect(eventBus.emit).toHaveBeenCalledWith('booking:cancelled', expect.objectContaining({
         bookingId: 1, status: 'cancelled_with_fee',
@@ -223,30 +210,24 @@ describe('BookingSaga', () => {
   });
 
   describe('cancelBooking releases slots', () => {
-    it('sets booking_slots is_available = TRUE on cancel', async () => {
+    it('calls repo.releaseSlots on cancel', async () => {
       mockRepo.findById.mockResolvedValue(mockBooking);
       const { cancelBooking } = await importSaga();
 
       await cancelBooking(1, 99, 'User cancelled');
 
-      expect(mockExecute).toHaveBeenCalledWith(
-        'UPDATE booking_slots SET is_available = TRUE WHERE booking_id = ? AND is_available = FALSE',
-        [1],
-      );
+      expect(mockRepo.releaseSlots).toHaveBeenCalledWith(1, undefined);
     });
   });
 
   describe('expireBooking releases slots', () => {
-    it('sets booking_slots is_available = TRUE on expire', async () => {
+    it('calls repo.releaseSlots on expire', async () => {
       mockRepo.findById.mockResolvedValue(mockBooking);
       const { expireBooking } = await importSaga();
 
       await expireBooking(1);
 
-      expect(mockExecute).toHaveBeenCalledWith(
-        'UPDATE booking_slots SET is_available = TRUE WHERE booking_id = ? AND is_available = FALSE',
-        [1],
-      );
+      expect(mockRepo.releaseSlots).toHaveBeenCalledWith(1, undefined);
     });
   });
 });
