@@ -1,6 +1,6 @@
 import { bookingRepository } from '../infrastructure/repositories/booking.repository.js';
 import { pricingEngine } from '../domain/pricing-engine.js';
-import { commissionService } from '../../../shared/services/commission.service.js';
+import { commissionService } from '../../financial/application/commission.service.js';
 import { transactionService } from '../../financial/application/transaction.service.js';
 import { transactionRepository } from '../../financial/infrastructure/transaction.repository.js';
 import { walletRepository } from '../../wallet/infrastructure/repositories/wallet.repository.js';

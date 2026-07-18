@@ -3,7 +3,7 @@ import { NotFoundError, ConflictError, ForbiddenError } from '../../../shared/er
 import { marketplaceRepository as repo } from '../infrastructure/repositories/marketplace.repository.js';
 import { paymentService } from '../../payment/application/payment.service.js';
 import { paymentRepository } from '../../payment/infrastructure/repositories/payment.repository.js';
-import { commissionService } from '../../../shared/services/commission.service.js';
+import { commissionService } from '../../financial/application/commission.service.js';
 import { organisationService } from '../../organisations/application/organisation.service.js';
 import { transactionService } from '../../financial/application/transaction.service.js';
 import { transactionRepository } from '../../financial/infrastructure/transaction.repository.js';

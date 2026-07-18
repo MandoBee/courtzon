@@ -39,7 +39,8 @@ vi.mock('../../booking/application/booking.service.js', () => ({
   bookingService: { createBooking: mockCreateBooking, getBooking: mockGetBooking },
 }));
 
-vi.mock('../../../shared/services/commission.service.js', () => ({
+vi.mock('../../../modules/financial/application/commission.service.js', () => ({
+  CommissionService: class {},
   commissionService: { calculate: vi.fn().mockResolvedValue({ rate: 0.1, netAmount: 90 }) },
 }));
 

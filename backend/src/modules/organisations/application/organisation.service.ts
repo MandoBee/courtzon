@@ -1,6 +1,6 @@
 import type mysql from 'mysql2/promise';
 import { getPool } from '../../../database/mysql.js';
-import { normalizeCommissionEntity } from '../../../shared/services/commission-entities.js';
+import { normalizeCommissionEntity } from '../../../shared/services/commission-mappers.js';
 import { organisationRepository } from '../infrastructure/repositories/organisation.repository.js';
 import { branchFinancialRepository } from '../infrastructure/repositories/branch-financial.repository.js';
 import { branchRepository } from '../infrastructure/repositories/branch.repository.js';

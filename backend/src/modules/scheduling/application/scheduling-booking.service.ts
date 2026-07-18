@@ -1,5 +1,5 @@
 import { bookingService } from '../../booking/application/booking.service.js';
-import { commissionService } from '../../../shared/services/commission.service.js';
+import { commissionService } from '../../financial/application/commission.service.js';
 import { resourceRepository } from '../../organisations/infrastructure/repositories/resource.repository.js';
 import { activitiesRepository } from '../../activities/infrastructure/repositories/activities.repository.js';
 import { pricingEngine } from '../../booking/domain/pricing-engine.js';

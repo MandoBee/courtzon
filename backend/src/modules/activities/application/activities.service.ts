@@ -1,5 +1,5 @@
 import { NotFoundError, ConflictError, ForbiddenError, ValidationError } from '../../../shared/errors/app-error.js';
-import { commissionService } from '../../../shared/services/commission.service.js';
+import { commissionService } from '../../financial/application/commission.service.js';
 import { activitiesRepository as repo } from '../infrastructure/repositories/activities.repository.js';
 import { pricingEngine } from '../../booking/domain/pricing-engine.js';
 import { TimeEngine } from '../../time/index.js';
