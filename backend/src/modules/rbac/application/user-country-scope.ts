@@ -1,5 +1,5 @@
 import type mysql from 'mysql2/promise';
-import { getPool } from '../../database/mysql.js';
+import { getPool } from '../../../database/mysql.js';
 
 type RowData = mysql.RowDataPacket[];
 

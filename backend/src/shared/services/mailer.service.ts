@@ -1,5 +1,18 @@
 import { createModuleLogger } from '../utils/logger.js';
-import type { SendEmailJob } from '../../infrastructure/queue/queue.service.js';
+
+export interface EmailAttachment {
+  filename: string;
+  path: string;
+  contentType?: string;
+}
+
+export interface SendEmailJob {
+  to: string;
+  subject: string;
+  body: string;
+  html?: string;
+  attachments?: EmailAttachment[];
+}
 
 const log = createModuleLogger('mailer');
 

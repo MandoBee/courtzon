@@ -4,7 +4,7 @@
  */
 import type { FastifyRequest, FastifyReply } from 'fastify';
 import { organisationService } from '../application/organisation.service.js';
-import { getUserCountryScope } from '../../../shared/helpers/country-scope.js';
+import { getUserCountryScope } from '../../rbac/application/user-country-scope.js';
 import { recordAudit } from '../../audit-log/index.js';
 import {
   CreateOrganisationSchema, UpdateOrganisationSchema, CreateBranchSchema,

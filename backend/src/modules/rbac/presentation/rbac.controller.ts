@@ -1,7 +1,7 @@
 import type { FastifyRequest, FastifyReply } from 'fastify';
 import type mysql from 'mysql2/promise';
 import { rbacService } from '../application/rbac.service.js';
-import { getUserCountryScope } from '../../../shared/helpers/country-scope.js';
+import { getUserCountryScope } from '../application/user-country-scope.js';
 import { getPool } from '../../../database/mysql.js';
 import { CreateRoleSchema, UpdateRoleSchema, AssignRoleSchema, CreatePermissionSchema } from './rbac.dto.js';
 import { recordAudit } from '../../audit-log/index.js';
