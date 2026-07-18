@@ -1,10 +1,5 @@
 import type mysql from 'mysql2/promise';
 import { getPool } from '../../../../database/mysql.js';
-import {
-  cascadeTournamentSoftDelete,
-  cascadeAcademySoftDelete,
-  cascadeCoachProfileSoftDelete,
-} from '../../../../shared/cascade/index.js';
 
 type RowData = mysql.RowDataPacket[];
 
@@ -608,7 +603,20 @@ export const activitiesRepository = {
     const conn = await pool.getConnection();
     try {
       await conn.beginTransaction();
-      await cascadeTournamentSoftDelete(id, conn);
+      await conn.execute(
+        `UPDATE tournament_registrations SET status = 'withdrawn'
+         WHERE tournament_id = ? AND status IN ('registered', 'confirmed')`,
+        [id],
+      );
+      await conn.execute(
+        `UPDATE tournament_matches SET status = 'cancelled'
+         WHERE tournament_id = ? AND status IN ('scheduled', 'in_progress')`,
+        [id],
+      );
+      await conn.execute(
+        `UPDATE tournaments SET status = 'cancelled' WHERE id = ?`,
+        [id],
+      );
       await conn.execute(
         'UPDATE tournaments SET deleted_at = NOW(), status = ? WHERE id = ?',
         ['cancelled', id],
@@ -660,7 +668,15 @@ export const activitiesRepository = {
     const conn = await pool.getConnection();
     try {
       await conn.beginTransaction();
-      await cascadeAcademySoftDelete(id, conn);
+      await conn.execute(
+        `UPDATE academy_enrollments SET status = 'dropped'
+         WHERE academy_id = ? AND status IN ('active', 'waitlisted')`,
+        [id],
+      );
+      await conn.execute(
+        `UPDATE academies SET is_active = 0 WHERE id = ?`,
+        [id],
+      );
       await conn.execute('UPDATE academies SET deleted_at = NOW() WHERE id = ?', [id]);
       await conn.commit();
     } catch (err) {
@@ -702,7 +718,21 @@ export const activitiesRepository = {
     const conn = await pool.getConnection();
     try {
       await conn.beginTransaction();
-      await cascadeCoachProfileSoftDelete(id, conn);
+      await conn.execute(
+        `UPDATE coach_org_agreements SET status = 'rejected', is_active = 0
+         WHERE coach_id = ? AND status = 'pending'`,
+        [id],
+      );
+      await conn.execute(
+        `UPDATE coach_sessions SET status = 'cancelled'
+         WHERE coach_id = ? AND status IN ('scheduled', 'confirmed', 'in_progress')`,
+        [id],
+      );
+      await conn.execute(
+        `UPDATE coach_profiles SET is_available = 0, status = 'rejected'
+         WHERE id = ? AND deleted_at IS NULL`,
+        [id],
+      );
       await conn.execute('UPDATE coach_profiles SET deleted_at = NOW() WHERE id = ?', [id]);
       await conn.commit();
     } catch (err) {

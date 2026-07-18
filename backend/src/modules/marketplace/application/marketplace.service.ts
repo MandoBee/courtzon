@@ -9,7 +9,6 @@ import { transactionService } from '../../financial/application/transaction.serv
 import { transactionRepository } from '../../financial/infrastructure/transaction.repository.js';
 import { getPool } from '../../../database/mysql.js';
 import type mysql from 'mysql2/promise';
-import { cascadeProductSoftDelete } from '../../../shared/cascade/index.js';
 import { getPlanNumericLimit } from '../../../shared/utils/plan-limits.util.js';
 import { userRepository } from '../../auth/infrastructure/repositories/user.repository.js';
 import { createModuleLogger } from '../../../shared/utils/logger.js';
@@ -137,7 +136,9 @@ export const marketplaceService = {
     const conn = await pool.getConnection();
     try {
       await conn.beginTransaction();
-      await cascadeProductSoftDelete(productId, conn);
+      await conn.execute('DELETE FROM cart_items WHERE product_id = ?', [productId]);
+      await conn.execute('DELETE FROM wishlist_items WHERE product_id = ?', [productId]);
+      await conn.execute('UPDATE products SET is_active = 0 WHERE id = ? AND deleted_at IS NULL', [productId]);
       const [result] = await conn.execute(
         'UPDATE products SET deleted_at = NOW() WHERE id = ? AND seller_id = ? AND deleted_at IS NULL',
         [productId, org.id],
@@ -1416,7 +1417,9 @@ export const marketplaceService = {
     const conn = await pool.getConnection();
     try {
       await conn.beginTransaction();
-      await cascadeProductSoftDelete(productId, conn);
+      await conn.execute('DELETE FROM cart_items WHERE product_id = ?', [productId]);
+      await conn.execute('DELETE FROM wishlist_items WHERE product_id = ?', [productId]);
+      await conn.execute('UPDATE products SET is_active = 0 WHERE id = ? AND deleted_at IS NULL', [productId]);
       const [result] = await conn.execute(
         'UPDATE products SET deleted_at = NOW() WHERE id = ? AND deleted_at IS NULL',
         [productId],

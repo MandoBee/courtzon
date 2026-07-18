@@ -1,11 +1,13 @@
 import { getPool } from '../../../database/mysql.js';
+import type mysql from 'mysql2/promise';
 import { rbacRepository } from '../infrastructure/repositories/rbac.repository.js';
 import { NotFoundError, ConflictError } from '../../../shared/errors/app-error.js';
 import { hashPassword } from '../../../shared/utils/password.js';
 import { sanitizeUploadUrl } from '../../../shared/utils/upload-url.util.js';
-import { cascadeRoleSoftDelete, cascadeUserSoftDelete } from '../../../shared/cascade/index.js';
 import { cancelBooking } from '../../../platform/booking/BookingSaga.js';
-import { CANCELLABLE_BOOKING_STATUSES } from '../../../shared/cascade/types.js';
+import { CANCELLABLE_BOOKING_STATUSES } from '../../booking/domain/booking-constants.js';
+
+type RowData = mysql.RowDataPacket[];
 
 export class RBACService {
   async getModules() {
@@ -69,7 +71,7 @@ export class RBACService {
     const conn = await pool.getConnection();
     try {
       await conn.beginTransaction();
-      await cascadeRoleSoftDelete(id, conn);
+      await conn.execute(`DELETE FROM user_roles WHERE role_id = ?`, [id]);
       await conn.execute(
         'UPDATE roles SET deleted_at = NOW() WHERE id = ? AND is_system = FALSE',
         [id],
@@ -166,7 +168,7 @@ export class RBACService {
       for (const b of userBookings as any[]) {
         await cancelBooking(b.id, 0, 'Auto-cancelled: user deleted', 0, conn);
       }
-      await cascadeUserSoftDelete(userId, conn);
+      await this.#cascadeDeleteUser(userId, conn);
       const [result] = await conn.execute(
         'UPDATE users SET deleted_at = NOW() WHERE id = ? AND deleted_at IS NULL',
         [userId],
@@ -322,6 +324,54 @@ export class RBACService {
       });
     }
     return { inserted, updated };
+  }
+
+  async #cascadeDeleteUser(userId: number, conn: any): Promise<void> {
+    await conn.execute(
+      `UPDATE user_sessions SET is_revoked = TRUE WHERE user_id = ? AND is_revoked = FALSE`,
+      [userId],
+    );
+    await conn.execute(
+      `UPDATE coach_sessions cs LEFT JOIN coach_profiles cp ON cp.id = cs.coach_id
+       SET cs.status = 'cancelled'
+       WHERE (cp.user_id = ? OR cs.player_id = ?) AND cs.status IN ('scheduled', 'confirmed', 'in_progress')`,
+      [userId, userId],
+    );
+    await conn.execute(
+      `UPDATE coach_org_agreements coa INNER JOIN coach_profiles cp ON cp.id = coa.coach_id
+       SET coa.status = 'rejected', coa.is_active = 0
+       WHERE cp.user_id = ? AND coa.status = 'pending'`,
+      [userId],
+    );
+    await conn.execute(
+      `UPDATE coach_profiles SET deleted_at = NOW(), is_available = 0, status = 'rejected'
+       WHERE user_id = ? AND deleted_at IS NULL`,
+      [userId],
+    );
+    await conn.execute(
+      `UPDATE seller_profiles SET deleted_at = NOW() WHERE user_id = ? AND deleted_at IS NULL`,
+      [userId],
+    );
+    await conn.execute(
+      `UPDATE branch_player_access SET status = 'rejected', review_note = 'User deleted'
+       WHERE player_id = ? AND status = 'pending'`,
+      [userId],
+    );
+    await conn.execute(
+      `UPDATE organisation_upgrade_requests
+       SET status = 'rejected', notes = CONCAT(COALESCE(notes, ''), ' | Requester deleted')
+       WHERE requested_by = ? AND status = 'pending'`,
+      [userId],
+    );
+    await conn.execute(
+      `UPDATE withdrawal_requests SET status = 'cancelled' WHERE user_id = ? AND status = 'pending'`,
+      [userId],
+    );
+    await conn.execute(`DELETE FROM user_roles WHERE user_id = ?`, [userId]);
+    await conn.execute(
+      `UPDATE users SET account_status = 'deleted' WHERE id = ? AND deleted_at IS NULL`,
+      [userId],
+    );
   }
 }
 

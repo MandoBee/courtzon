@@ -11,14 +11,7 @@ import { NotFoundError, ConflictError, ValidationError } from '../../../shared/e
 import { resolveOrganisationMedia } from './organisation-media.util.js';
 import { eventBus } from '../../../shared/event-bus/index.js';
 import { cancelBooking } from '../../../platform/booking/BookingSaga.js';
-import { CANCELLABLE_BOOKING_STATUSES } from '../../../shared/cascade/types.js';
-import {
-  cascadeOrganisationSoftDelete,
-  cascadeBranchSoftDelete,
-  cascadeResourceSoftDelete,
-  cascadeSportSoftDelete,
-  cascadeSubscriptionPlanDelete,
-} from '../../../shared/cascade/index.js';
+import { CANCELLABLE_BOOKING_STATUSES } from '../../booking/domain/booking-constants.js';
 import {
   mapSubscriptionPlanBase,
   resolvePlanPrice,
@@ -122,7 +115,22 @@ export class OrganisationService {
     const conn = await pool.getConnection();
     try {
       await conn.beginTransaction();
-      await cascadeSportSoftDelete(id, conn);
+      await conn.execute(
+        `UPDATE sport_positions SET deleted_at = NOW(), is_active = 0 WHERE sport_id = ? AND deleted_at IS NULL`,
+        [id],
+      );
+      await conn.execute(
+        `UPDATE resources SET sport_id = NULL WHERE sport_id = ? AND deleted_at IS NULL`,
+        [id],
+      );
+      await conn.execute(
+        `UPDATE products SET sport_id = NULL WHERE sport_id = ? AND deleted_at IS NULL`,
+        [id],
+      );
+      await conn.execute(
+        `UPDATE sports SET is_active = 0 WHERE id = ? AND deleted_at IS NULL`,
+        [id],
+      );
       await conn.execute(
         'UPDATE sports SET deleted_at = NOW() WHERE id = ? AND deleted_at IS NULL',
         [id],
@@ -301,7 +309,7 @@ export class OrganisationService {
       for (const b of orgBookings as any[]) {
         await cancelBooking(b.id, 0, 'Auto-cancelled: organisation deleted', 0, conn);
       }
-      await cascadeOrganisationSoftDelete(id, conn);
+      await this.#cascadeDeleteOrganisation(id, conn);
       await conn.execute(
         `UPDATE organisations SET deleted_at = NOW() WHERE id = ? AND deleted_at IS NULL`,
         [id],
@@ -371,7 +379,15 @@ export class OrganisationService {
       for (const b of branchBookings as any[]) {
         await cancelBooking(b.id, 0, 'Auto-cancelled: branch deleted', 0, conn);
       }
-      await cascadeBranchSoftDelete(id, conn);
+      await conn.execute(
+        `UPDATE branch_player_access SET status = 'rejected', review_note = 'Branch deleted'
+         WHERE branch_id = ? AND status = 'pending'`,
+        [id],
+      );
+      await conn.execute(
+        `UPDATE resources SET deleted_at = NOW(), is_active = 0 WHERE branch_id = ? AND deleted_at IS NULL`,
+        [id],
+      );
       await conn.execute(
         'UPDATE branches SET deleted_at = NOW() WHERE id = ? AND deleted_at IS NULL',
         [id],
@@ -451,7 +467,10 @@ export class OrganisationService {
       for (const b of resBookings as any[]) {
         await cancelBooking(b.id, 0, 'Auto-cancelled: resource deleted', 0, conn);
       }
-      await cascadeResourceSoftDelete(id, conn);
+      await conn.execute(
+        `UPDATE resources SET is_active = 0 WHERE id = ? AND deleted_at IS NULL`,
+        [id],
+      );
       await conn.execute(
         'UPDATE resources SET deleted_at = NOW() WHERE id = ? AND deleted_at IS NULL',
         [id],
@@ -654,7 +673,11 @@ export class OrganisationService {
     const conn = await pool.getConnection();
     try {
       await conn.beginTransaction();
-      await cascadeSubscriptionPlanDelete(id, conn);
+      await conn.execute(
+        `UPDATE organisation_subscriptions SET subscription_status = 'cancelled', auto_renew = 0, updated_at = NOW()
+         WHERE plan_id = ? AND subscription_status IN ('active', 'pending')`,
+        [id],
+      );
       await conn.execute('DELETE FROM subscription_plan_features WHERE plan_id = ?', [id]);
       await conn.execute('DELETE FROM subscription_plan_rates WHERE plan_id = ?', [id]);
       await conn.execute('DELETE FROM subscription_plans WHERE id = ?', [id]);
@@ -1128,6 +1151,52 @@ export class OrganisationService {
   async rejectSubscriptionRequest(requestId: number, adminId: number, reason: string) {
     const { rejectSubscriptionRequest } = await import('../infrastructure/repositories/org-portal.repository.js');
     return rejectSubscriptionRequest(requestId, adminId, reason);
+  }
+
+  async #cascadeDeleteOrganisation(orgId: number, conn: any): Promise<void> {
+    await conn.execute(
+      `UPDATE organisation_subscriptions SET subscription_status = 'cancelled', auto_renew = 0, updated_at = NOW()
+       WHERE organisation_id = ? AND subscription_status IN ('active', 'pending')`,
+      [orgId],
+    );
+    await conn.execute(
+      `UPDATE organisation_upgrade_requests SET status = 'rejected',
+       notes = CONCAT(COALESCE(notes, ''), ' | Organisation deleted'),
+       approved_at = COALESCE(approved_at, NOW())
+       WHERE organisation_id = ? AND status = 'pending'`,
+      [orgId],
+    );
+    await conn.execute(
+      `UPDATE coach_org_agreements SET status = 'rejected', is_active = 0
+       WHERE organisation_id = ? AND status = 'pending'`,
+      [orgId],
+    );
+    await conn.execute(
+      `UPDATE resources r INNER JOIN branches b ON b.id = r.branch_id
+       SET r.deleted_at = NOW(), r.is_active = 0
+       WHERE b.organisation_id = ? AND r.deleted_at IS NULL`,
+      [orgId],
+    );
+    await conn.execute(
+      `UPDATE branches SET deleted_at = NOW(), is_active = 0 WHERE organisation_id = ? AND deleted_at IS NULL`,
+      [orgId],
+    );
+    await conn.execute(
+      `UPDATE products SET deleted_at = NOW(), is_active = 0 WHERE seller_id = ? AND deleted_at IS NULL`,
+      [orgId],
+    );
+    await conn.execute(
+      `UPDATE tournaments SET deleted_at = NOW(), status = 'cancelled' WHERE organisation_id = ? AND deleted_at IS NULL`,
+      [orgId],
+    );
+    await conn.execute(
+      `UPDATE academies SET deleted_at = NOW(), is_active = 0 WHERE organisation_id = ? AND deleted_at IS NULL`,
+      [orgId],
+    );
+    await conn.execute(
+      `UPDATE organisations SET is_active = 0, is_verified = 0 WHERE id = ? AND deleted_at IS NULL`,
+      [orgId],
+    );
   }
 }
 
