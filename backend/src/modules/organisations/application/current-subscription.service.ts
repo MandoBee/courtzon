@@ -1,7 +1,7 @@
 /**
- * CurrentSubscriptionResolver — Canonical subscription resolution.
+ * CurrentSubscriptionService — Canonical subscription resolution.
  *
- * Every consumer in the system must use this resolver to obtain the
+ * Every consumer in the system must use this service to obtain the
  * current subscription for an organisation. No screen should build
  * its own subscription model or perform custom mapping.
  *
@@ -19,8 +19,8 @@
  */
 
 import type mysql from 'mysql2/promise';
-import { getPool } from '../../database/mysql.js';
-import { nonExpiredSubscriptionCondition } from './subscription-validator.js';
+import { getPool } from '../../../database/mysql.js';
+import { nonExpiredSubscriptionCondition } from '../../../shared/utils/subscription-validator.js';
 
 type RowData = mysql.RowDataPacket[];
 

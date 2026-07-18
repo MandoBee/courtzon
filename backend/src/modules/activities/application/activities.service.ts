@@ -6,7 +6,7 @@ import { TimeEngine } from '../../time/index.js';
 import { generateUUID } from '../../../shared/utils/token.js';
 import { getPool } from '../../../database/mysql.js';
 import type mysql from 'mysql2/promise';
-import { getPlanNumericLimit } from '../../../shared/utils/plan-limits.util.js';
+import { getPlanNumericLimit } from '../../organisations/application/plan-limits.util.js';
 import { eventBus } from '../../../shared/event-bus/index.js';
 
 type RowData = mysql.RowDataPacket[];

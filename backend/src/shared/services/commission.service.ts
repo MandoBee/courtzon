@@ -1,6 +1,6 @@
 import type mysql from 'mysql2/promise';
 import { getPool } from '../../database/mysql.js';
-import { getCurrentSubscription, clearSubscriptionCache, getCommissionRate } from '../utils/current-subscription.resolver.js';
+import { getCurrentSubscription, clearSubscriptionCache, getCommissionRate } from '../../modules/organisations/application/current-subscription.service.js';
 import { commissionEntityLookupKeys } from './commission-entities.js';
 import { ConflictError } from '../errors/app-error.js';
 import { createModuleLogger } from '../utils/logger.js';

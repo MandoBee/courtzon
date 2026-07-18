@@ -9,7 +9,7 @@ import { transactionService } from '../../financial/application/transaction.serv
 import { transactionRepository } from '../../financial/infrastructure/transaction.repository.js';
 import { getPool } from '../../../database/mysql.js';
 import type mysql from 'mysql2/promise';
-import { getPlanNumericLimit } from '../../../shared/utils/plan-limits.util.js';
+import { getPlanNumericLimit } from '../../organisations/application/plan-limits.util.js';
 import { userRepository } from '../../auth/infrastructure/repositories/user.repository.js';
 import { createModuleLogger } from '../../../shared/utils/logger.js';
 import { eventBus } from '../../../shared/event-bus/index.js';
@@ -344,7 +344,7 @@ export const marketplaceService = {
       if (!seenSellers.has(product.seller_id)) {
         // Verify seller has an active subscription (not just pending)
         const sellerOrgId = product.seller_id;
-        const { getCurrentSubscription } = await import('../../../shared/utils/current-subscription.resolver.js');
+        const { getCurrentSubscription } = await import('../../organisations/application/current-subscription.service.js');
         const sellerSub = await getCurrentSubscription(sellerOrgId);
         if (!sellerSub.exists) {
           throw new ConflictError(`Seller "${item.name || product.name}" has no active subscription plan`);

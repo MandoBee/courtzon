@@ -2,7 +2,7 @@ import * as repo from '../infrastructure/repositories/org-portal.repository.js';
 import { branchRepository } from '../infrastructure/repositories/branch.repository.js';
 import { rbacRepository } from '../../rbac/infrastructure/repositories/rbac.repository.js';
 import { ValidationError, NotFoundError, ConflictError } from '../../../shared/errors/app-error.js';
-import { getPlanNumericLimit } from '../../../shared/utils/plan-limits.util.js';
+import { getPlanNumericLimit } from './plan-limits.util.js';
 import { eventBus } from '../../../shared/event-bus/index.js';
 
 export function getOrgInfo(orgId: number) {
@@ -136,7 +136,7 @@ export async function removeOrgStaff(orgId: number, userId: number) {
 // ── Subscription Requests ──
 
 export async function getOrgSubscriptionWithUsage(orgId: number) {
-  const { getCurrentSubscription } = await import('../../../shared/utils/current-subscription.resolver.js');
+  const { getCurrentSubscription } = await import('./current-subscription.service.js');
   const sub = await getCurrentSubscription(orgId);
 
   if (!sub.exists) return { plan: null, status: 'none', features: [], usage: {} };

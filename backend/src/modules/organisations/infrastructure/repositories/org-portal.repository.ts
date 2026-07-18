@@ -725,7 +725,7 @@ export async function approveSubscriptionRequest(requestId: number, adminId: num
 
     await conn.commit();
     // Invalidate resolver cache after successful approval
-    const { clearSubscriptionCache } = await import('../../../../shared/utils/current-subscription.resolver.js');
+    const { clearSubscriptionCache } = await import('../../application/current-subscription.service.js');
     clearSubscriptionCache();
     return req;
   } catch (e) {

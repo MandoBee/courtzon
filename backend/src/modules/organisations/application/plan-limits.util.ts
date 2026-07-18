@@ -1,4 +1,4 @@
-import { getFeatureLimit } from './current-subscription.resolver.js';
+import { getFeatureLimit } from './current-subscription.service.js';
 
 /**
  * Read a numeric feature limit from the org's effective subscription plan.

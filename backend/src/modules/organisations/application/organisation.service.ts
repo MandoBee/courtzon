@@ -17,7 +17,7 @@ import {
   resolvePlanPrice,
   type BillingPeriod,
 } from '../../../shared/utils/subscription-plan.util.js';
-import { getPlanNumericLimit } from '../../../shared/utils/plan-limits.util.js';
+import { getPlanNumericLimit } from './plan-limits.util.js';
 
 type RowData = mysql.RowDataPacket[];
 
@@ -754,7 +754,7 @@ export class OrganisationService {
   }
 
   async getOrgSubscription(orgId: number) {
-    const { getCurrentSubscription } = await import('../../../shared/utils/current-subscription.resolver.js');
+    const { getCurrentSubscription } = await import('./current-subscription.service.js');
     const sub = await getCurrentSubscription(orgId);
 
     if (!sub.exists) return { plan: null, status: 'none' };
@@ -855,7 +855,7 @@ export class OrganisationService {
     }
 
     // Clear resolver cache
-    const { clearSubscriptionCache } = await import('../../../shared/utils/current-subscription.resolver.js');
+    const { clearSubscriptionCache } = await import('./current-subscription.service.js');
     clearSubscriptionCache();
   }
 
@@ -877,7 +877,7 @@ export class OrganisationService {
       [newStatus, sub.id]
     );
 
-    const { clearSubscriptionCache } = await import('../../../shared/utils/current-subscription.resolver.js');
+    const { clearSubscriptionCache } = await import('./current-subscription.service.js');
     clearSubscriptionCache();
 
     return { status: newStatus };
@@ -932,7 +932,7 @@ export class OrganisationService {
     );
 
     // Clear resolver cache
-    const { clearSubscriptionCache } = await import('../../../shared/utils/current-subscription.resolver.js');
+    const { clearSubscriptionCache } = await import('./current-subscription.service.js');
     clearSubscriptionCache();
 
     const [prevSubs] = await pool.execute<RowData>(
