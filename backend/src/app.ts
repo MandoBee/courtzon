@@ -47,13 +47,15 @@ import { appSettingsRoutes } from "./modules/app-settings/presentation/app-setti
 import { geoRoutes } from "./modules/geo/presentation/geo.routes.js";
 import { matchRoutes } from "./modules/match/presentation/match.routes.js";
 import { schedulingRoutes } from "./modules/scheduling/presentation/scheduling.routes.js";
-import { createPool } from "./database/mysql.js";
+import { createPool, getPool } from "./database/mysql.js";
+import type mysql from "mysql2/promise";
 import { AppError } from "./shared/errors/app-error.js";
 import { formatZodErrorDetails, isZodError } from "./shared/validation/zod-error.util.js";
 import { getHealth, healthDatabase, healthRedis, healthStorage } from "./infrastructure/health/health.service.js";
 import { registerMetrics } from "./infrastructure/metrics/metrics.js";
 import { createMaintenanceMiddleware } from "./shared/middleware/maintenance.middleware.js";
-import { authMiddleware } from "./shared/middleware/auth.middleware.js";
+import { authMiddleware, initAuthMiddleware } from "./shared/middleware/auth.middleware.js";
+import { initRouteGuard } from "./shared/middleware/route-guard.js";
 import { appSettingsRepository } from "./modules/app-settings/infrastructure/repositories/app-settings.repository.js";
 import { rbacRepository } from "./modules/rbac/infrastructure/repositories/rbac.repository.js";
 import { createFeatureFlagMiddleware } from "./shared/middleware/feature-flag.middleware.js";
@@ -175,6 +177,147 @@ await app.register(cors, {
 });
 
 createPool();
+
+type RowData = mysql.RowDataPacket[];
+const pool = getPool();
+
+initAuthMiddleware({
+  resolveUser: async (request) => {
+    const { getSessionToken } = await import('./shared/utils/auth-cookies.js');
+    const { hashToken } = await import('./shared/utils/token.js');
+    const sessionToken = getSessionToken(request);
+    if (!sessionToken) return null;
+    const sessionTokenHash = hashToken(sessionToken);
+    const [rows] = await pool.execute<RowData>(
+      `SELECT user_id FROM user_sessions
+       WHERE session_token_hash = ? AND is_revoked = FALSE AND expires_at > NOW()
+       LIMIT 1`,
+      [sessionTokenHash],
+    );
+    return rows.length ? Number(rows[0].user_id) : null;
+  },
+  checkRole: async (userId, roles) => {
+    const [rows] = await pool.execute<RowData>(
+      `SELECT DISTINCT r.slug FROM user_roles ur
+       JOIN roles r ON r.id = ur.role_id
+       WHERE ur.user_id = ? AND ur.is_active = TRUE
+         AND (ur.expires_at IS NULL OR ur.expires_at > NOW())
+         AND r.deleted_at IS NULL`,
+      [userId],
+    );
+    const userRoles = rows.map((r: any) => r.slug);
+    return roles.some((role) => userRoles.includes(role));
+  },
+  checkPermission: async (userId, permissions) => {
+    const [rows] = await pool.execute<RowData>(
+      `SELECT DISTINCT p.permission_key FROM user_roles ur
+       JOIN role_permissions rp ON rp.role_id = ur.role_id
+       JOIN permissions p ON p.id = rp.permission_id
+       JOIN roles r ON r.id = ur.role_id
+        WHERE ur.user_id = ? AND ur.is_active = TRUE
+          AND (ur.expires_at IS NULL OR ur.expires_at > NOW())
+          AND r.deleted_at IS NULL`,
+      [userId],
+    );
+    const userPermissions = rows.map((r: any) => r.permission_key);
+    return permissions.some((perm) => userPermissions.includes(perm));
+  },
+  checkOrgApproved: async (userId) => {
+    const [orgRows] = await pool.execute<RowData>(
+      `SELECT o.is_verified, o.is_active
+       FROM organisations o
+       JOIN organisation_types ot ON ot.id = o.org_type_id
+       WHERE o.owner_id = ? AND ot.slug IN ('seller', 'player')
+       ORDER BY o.created_at DESC LIMIT 1`,
+      [userId],
+    );
+    if (orgRows.length && orgRows[0].is_active && orgRows[0].is_verified) return true;
+    const [scopedRows] = await pool.execute<RowData>(
+      `SELECT 1 FROM user_role_scopes urs
+       JOIN user_roles ur ON ur.id = urs.user_role_id
+       WHERE ur.user_id = ? AND urs.scope_type = 'organisation' AND ur.is_active = TRUE
+       LIMIT 1`,
+      [userId],
+    );
+    return scopedRows.length > 0;
+  },
+});
+
+initRouteGuard({
+  checkOrgAccess: async (userId, orgId) => {
+    const [rows] = await pool.execute<RowData>(
+      `SELECT 1 FROM organisations WHERE id = ? AND (owner_id = ? OR ? IN (
+        SELECT user_id FROM user_roles ur
+        JOIN roles r ON r.id = ur.role_id
+        WHERE ur.user_id = ? AND r.slug IN ('super_admin', 'super-admin', 'admin')
+      )) LIMIT 1`,
+      [orgId, userId, userId, userId],
+    );
+    if (rows.length) return true;
+    const [orgRows] = await pool.execute<RowData>(
+      `SELECT 1 FROM user_role_scopes urs
+       JOIN user_roles ur ON ur.id = urs.user_role_id
+       WHERE ur.user_id = ? AND urs.scope_type = 'organisation' AND urs.scope_id = ? AND ur.is_active = TRUE
+       LIMIT 1`,
+      [userId, orgId],
+    );
+    return orgRows.length > 0;
+  },
+  checkOrgManage: async (userId, orgId) => {
+    const [ownerRows] = await pool.execute<RowData>(
+      `SELECT 1 FROM organisations WHERE id = ? AND owner_id = ? LIMIT 1`,
+      [orgId, userId],
+    );
+    if (ownerRows.length) return true;
+    const [adminRows] = await pool.execute<RowData>(
+      `SELECT 1 FROM user_roles ur JOIN roles r ON r.id = ur.role_id
+        WHERE ur.user_id = ? AND ur.is_active = TRUE
+          AND r.slug IN ('super_admin', 'super-admin') LIMIT 1`,
+      [userId],
+    );
+    if (adminRows.length) return true;
+    const [mgrRows] = await pool.execute<RowData>(
+      `SELECT 1
+         FROM user_role_scopes urs
+         JOIN user_roles ur ON ur.id = urs.user_role_id
+         JOIN role_permissions rp ON rp.role_id = ur.role_id
+         JOIN permissions p ON p.id = rp.permission_id
+        WHERE ur.user_id = ? AND ur.is_active = TRUE
+          AND urs.scope_type = 'organisation' AND urs.scope_id = ?
+          AND p.permission_key = 'org.staff.manage'
+        LIMIT 1`,
+      [userId, orgId],
+    );
+    return mgrRows.length > 0;
+  },
+  checkOrgPermission: async (userId, orgId, permissionKey) => {
+    const [ownerRows] = await pool.execute<RowData>(
+      `SELECT 1 FROM organisations WHERE id = ? AND owner_id = ? LIMIT 1`,
+      [orgId, userId],
+    );
+    if (ownerRows.length) return true;
+    const [adminRows] = await pool.execute<RowData>(
+      `SELECT 1 FROM user_roles ur JOIN roles r ON r.id = ur.role_id
+        WHERE ur.user_id = ? AND ur.is_active = TRUE
+          AND r.slug IN ('super_admin', 'super-admin') LIMIT 1`,
+      [userId],
+    );
+    if (adminRows.length) return true;
+    const [permRows] = await pool.execute<RowData>(
+      `SELECT 1
+         FROM user_role_scopes urs
+         JOIN user_roles ur ON ur.id = urs.user_role_id
+         JOIN role_permissions rp ON rp.role_id = ur.role_id
+         JOIN permissions p ON p.id = rp.permission_id
+        WHERE ur.user_id = ? AND ur.is_active = TRUE
+          AND urs.scope_type = 'organisation' AND urs.scope_id = ?
+          AND p.permission_key = ?
+        LIMIT 1`,
+      [userId, orgId, permissionKey],
+    );
+    return permRows.length > 0;
+  },
+});
 
 const maintenanceMiddleware = createMaintenanceMiddleware(() => appSettingsRepository.listPublic());
 const requireFeatureFlag = createFeatureFlagMiddleware((key) => rbacRepository.isFeatureEnabled(key));
