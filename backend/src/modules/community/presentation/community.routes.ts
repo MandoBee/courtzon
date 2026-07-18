@@ -1,13 +1,13 @@
 import type { FastifyInstance } from 'fastify';
 import { authMiddleware, requirePermission, adminGuard } from '../../../shared/middleware/auth.middleware.js';
-import { requireFeatureFlag } from '../../../shared/middleware/feature-flag.middleware.js';
+import type { FastifyRequest, FastifyReply } from 'fastify';
 import * as ctrl from './community.controller.js';
-export async function communityRoutes(app: FastifyInstance): Promise<void> {
+export async function communityRoutes(app: FastifyInstance, opts: { requireFeatureFlag: (key: string) => (req: FastifyRequest, reply: FastifyReply) => Promise<void> }): Promise<void> {
   app.addHook('preHandler', authMiddleware);
 
   // Social features & Events — gated by community.events_enabled
   await app.register(async function socialScope(scopedApp: FastifyInstance) {
-    scopedApp.addHook('preHandler', requireFeatureFlag('community.events_enabled'));
+    scopedApp.addHook('preHandler', opts.requireFeatureFlag('community.events_enabled'));
 
     scopedApp.post('/community/follow/:followingId', ctrl.followHandler);
     scopedApp.delete('/community/follow/:followingId', ctrl.unfollowHandler);
@@ -29,7 +29,7 @@ export async function communityRoutes(app: FastifyInstance): Promise<void> {
 
   // Chat — gated by community.chat_enabled
   await app.register(async function chatScope(scopedApp: FastifyInstance) {
-    scopedApp.addHook('preHandler', requireFeatureFlag('community.chat_enabled'));
+    scopedApp.addHook('preHandler', opts.requireFeatureFlag('community.chat_enabled'));
 
     scopedApp.get('/community/conversations', { preHandler: [requirePermission(['community.chat.view'])] }, ctrl.getConversationsHandler);
     scopedApp.get('/community/conversations/invitations', { preHandler: [requirePermission(['community.chat.view'])] }, ctrl.getGroupInvitationsHandler);
@@ -58,7 +58,7 @@ export async function communityRoutes(app: FastifyInstance): Promise<void> {
 
   // Ads — gated by community.events_enabled (general community flag)
   await app.register(async function adsScope(scopedApp: FastifyInstance) {
-    scopedApp.addHook('preHandler', requireFeatureFlag('community.events_enabled'));
+    scopedApp.addHook('preHandler', opts.requireFeatureFlag('community.events_enabled'));
 
     scopedApp.get('/ads/placements', ctrl.getPlacementsHandler);
     scopedApp.get('/ads/placements/:placementId/active', ctrl.getActiveAdsHandler);

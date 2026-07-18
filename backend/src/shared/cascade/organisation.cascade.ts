@@ -1,6 +1,5 @@
 import { getPool } from '../../database/mysql.js';
 import type { CascadeExec } from './types.js';
-import { cancelActiveBookingsWhere } from './booking.cascade.js';
 
 /**
  * Application-level cascade when an organisation is soft-deleted.
@@ -34,8 +33,6 @@ export async function cascadeOrganisationSoftDelete(
      WHERE organisation_id = ? AND status = 'pending'`,
     [organisationId],
   );
-
-  await cancelActiveBookingsWhere('organisation_id', organisationId, db);
 
   await db.execute(
     `UPDATE resources r

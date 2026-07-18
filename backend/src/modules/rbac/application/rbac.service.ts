@@ -4,6 +4,8 @@ import { NotFoundError, ConflictError } from '../../../shared/errors/app-error.j
 import { hashPassword } from '../../../shared/utils/password.js';
 import { sanitizeUploadUrl } from '../../../shared/utils/upload-url.util.js';
 import { cascadeRoleSoftDelete, cascadeUserSoftDelete } from '../../../shared/cascade/index.js';
+import { cancelBooking } from '../../../platform/booking/BookingSaga.js';
+import { CANCELLABLE_BOOKING_STATUSES } from '../../../shared/cascade/types.js';
 
 export class RBACService {
   async getModules() {
@@ -157,6 +159,13 @@ export class RBACService {
     const conn = await pool.getConnection();
     try {
       await conn.beginTransaction();
+      const [userBookings] = await conn.execute(
+        `SELECT id FROM bookings WHERE user_id = ? AND booking_status IN (${CANCELLABLE_BOOKING_STATUSES.map(() => '?').join(',')})`,
+        [userId, ...CANCELLABLE_BOOKING_STATUSES],
+      );
+      for (const b of userBookings as any[]) {
+        await cancelBooking(b.id, 0, 'Auto-cancelled: user deleted', 0, conn);
+      }
       await cascadeUserSoftDelete(userId, conn);
       const [result] = await conn.execute(
         'UPDATE users SET deleted_at = NOW() WHERE id = ? AND deleted_at IS NULL',

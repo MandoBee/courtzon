@@ -1,6 +1,5 @@
 import { getPool } from '../../database/mysql.js';
 import type { CascadeExec } from './types.js';
-import { cancelActiveBookingsWhere } from './booking.cascade.js';
 
 export async function cascadeUserSoftDelete(userId: number, conn?: CascadeExec): Promise<void> {
   const db = conn ?? getPool();
@@ -10,8 +9,6 @@ export async function cascadeUserSoftDelete(userId: number, conn?: CascadeExec):
      WHERE user_id = ? AND is_revoked = FALSE`,
     [userId],
   );
-
-  await cancelActiveBookingsWhere('user_id', userId, db);
 
   await db.execute(
     `UPDATE coach_sessions cs

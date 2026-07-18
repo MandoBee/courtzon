@@ -10,6 +10,8 @@ import { countriesRepository } from '../../countries/infrastructure/repositories
 import { NotFoundError, ConflictError, ValidationError } from '../../../shared/errors/app-error.js';
 import { resolveOrganisationMedia } from './organisation-media.util.js';
 import { eventBus } from '../../../shared/event-bus/index.js';
+import { cancelBooking } from '../../../platform/booking/BookingSaga.js';
+import { CANCELLABLE_BOOKING_STATUSES } from '../../../shared/cascade/types.js';
 import {
   cascadeOrganisationSoftDelete,
   cascadeBranchSoftDelete,
@@ -292,6 +294,13 @@ export class OrganisationService {
     const conn = await pool.getConnection();
     try {
       await conn.beginTransaction();
+      const [orgBookings] = await conn.execute(
+        `SELECT id FROM bookings WHERE organisation_id = ? AND booking_status IN (${CANCELLABLE_BOOKING_STATUSES.map(() => '?').join(',')})`,
+        [id, ...CANCELLABLE_BOOKING_STATUSES],
+      );
+      for (const b of orgBookings as any[]) {
+        await cancelBooking(b.id, 0, 'Auto-cancelled: organisation deleted', 0, conn);
+      }
       await cascadeOrganisationSoftDelete(id, conn);
       await conn.execute(
         `UPDATE organisations SET deleted_at = NOW() WHERE id = ? AND deleted_at IS NULL`,
@@ -355,6 +364,13 @@ export class OrganisationService {
     const conn = await pool.getConnection();
     try {
       await conn.beginTransaction();
+      const [branchBookings] = await conn.execute(
+        `SELECT id FROM bookings WHERE branch_id = ? AND booking_status IN (${CANCELLABLE_BOOKING_STATUSES.map(() => '?').join(',')})`,
+        [id, ...CANCELLABLE_BOOKING_STATUSES],
+      );
+      for (const b of branchBookings as any[]) {
+        await cancelBooking(b.id, 0, 'Auto-cancelled: branch deleted', 0, conn);
+      }
       await cascadeBranchSoftDelete(id, conn);
       await conn.execute(
         'UPDATE branches SET deleted_at = NOW() WHERE id = ? AND deleted_at IS NULL',
@@ -428,6 +444,13 @@ export class OrganisationService {
     const conn = await pool.getConnection();
     try {
       await conn.beginTransaction();
+      const [resBookings] = await conn.execute(
+        `SELECT id FROM bookings WHERE resource_id = ? AND booking_status IN (${CANCELLABLE_BOOKING_STATUSES.map(() => '?').join(',')})`,
+        [id, ...CANCELLABLE_BOOKING_STATUSES],
+      );
+      for (const b of resBookings as any[]) {
+        await cancelBooking(b.id, 0, 'Auto-cancelled: resource deleted', 0, conn);
+      }
       await cascadeResourceSoftDelete(id, conn);
       await conn.execute(
         'UPDATE resources SET deleted_at = NOW() WHERE id = ? AND deleted_at IS NULL',

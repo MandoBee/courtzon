@@ -52,8 +52,11 @@ import { AppError } from "./shared/errors/app-error.js";
 import { formatZodErrorDetails, isZodError } from "./shared/validation/zod-error.util.js";
 import { getHealth, healthDatabase, healthRedis, healthStorage } from "./infrastructure/health/health.service.js";
 import { registerMetrics } from "./infrastructure/metrics/metrics.js";
-import { maintenanceMiddleware } from "./shared/middleware/maintenance.middleware.js";
+import { createMaintenanceMiddleware } from "./shared/middleware/maintenance.middleware.js";
 import { authMiddleware } from "./shared/middleware/auth.middleware.js";
+import { appSettingsRepository } from "./modules/app-settings/infrastructure/repositories/app-settings.repository.js";
+import { rbacRepository } from "./modules/rbac/infrastructure/repositories/rbac.repository.js";
+import { createFeatureFlagMiddleware } from "./shared/middleware/feature-flag.middleware.js";
 
 const isDev = process.env.NODE_ENV !== 'production';
 
@@ -172,6 +175,9 @@ await app.register(cors, {
 });
 
 createPool();
+
+const maintenanceMiddleware = createMaintenanceMiddleware(() => appSettingsRepository.listPublic());
+const requireFeatureFlag = createFeatureFlagMiddleware((key) => rbacRepository.isFeatureEnabled(key));
 
 // Global authentication — all routes are protected unless explicitly listed in authMiddleware's PUBLIC_PREFIXES
 app.addHook('preHandler', authMiddleware);
@@ -307,16 +313,16 @@ app.get("/health/version", async (_request, reply) => {
 
 registerMetrics(app);
 
-app.register(authRoutes);
+app.register(authRoutes, { requireFeatureFlag });
 app.register(organisationRoutes);
 app.register(rbacRoutes);
 app.register(bookingRoutes);
-app.register(marketplaceRoutes);
+app.register(marketplaceRoutes, { requireFeatureFlag });
 app.register(walletRoutes);
 app.register(paymentRoutes);
 app.register(settlementRoutes);
-app.register(activitiesRoutes);
-app.register(communityRoutes);
+app.register(activitiesRoutes, { requireFeatureFlag });
+app.register(communityRoutes, { requireFeatureFlag });
 app.register(cmsRoutes);
 app.register(translationsRoutes);
 app.register(countriesRoutes);

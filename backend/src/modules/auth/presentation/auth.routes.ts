@@ -1,13 +1,13 @@
 import type { FastifyInstance } from 'fastify';
 import { registerHandler, registerPlayerHandler, registerSellerHandler, registerOrganizationHandler, loginHandler, refreshHandler, logoutHandler, meHandler, updateProfileHandler, forgotPasswordHandler, resetPasswordHandler, checkUniquenessHandler, welcomeSeenHandler, getMyPlayerProfileHandler, requestReactivationHandler, temporaryVerifyEmailHandler, temporaryResetPasswordHandler, errorHandler } from './auth.controller.js';
 import { authMiddleware } from '../../../shared/middleware/auth.middleware.js';
-import { requireFeatureFlag } from '../../../shared/middleware/feature-flag.middleware.js';
+import type { FastifyRequest, FastifyReply } from 'fastify';
 
-export async function authRoutes(app: FastifyInstance): Promise<void> {
-  app.post('/auth/register', { preHandler: [requireFeatureFlag('app.registration_enabled')], errorHandler }, registerHandler);
-  app.post('/auth/register-player', { preHandler: [requireFeatureFlag('player.registration_enabled')], errorHandler }, registerPlayerHandler);
-  app.post('/auth/register-seller', { preHandler: [requireFeatureFlag('seller.registration_enabled')], errorHandler }, registerSellerHandler);
-  app.post('/auth/register-organization', { preHandler: [requireFeatureFlag('organization.registration_enabled')], errorHandler }, registerOrganizationHandler);
+export async function authRoutes(app: FastifyInstance, opts: { requireFeatureFlag: (key: string) => (req: FastifyRequest, reply: FastifyReply) => Promise<void> }): Promise<void> {
+  app.post('/auth/register', { preHandler: [opts.requireFeatureFlag('app.registration_enabled')], errorHandler }, registerHandler);
+  app.post('/auth/register-player', { preHandler: [opts.requireFeatureFlag('player.registration_enabled')], errorHandler }, registerPlayerHandler);
+  app.post('/auth/register-seller', { preHandler: [opts.requireFeatureFlag('seller.registration_enabled')], errorHandler }, registerSellerHandler);
+  app.post('/auth/register-organization', { preHandler: [opts.requireFeatureFlag('organization.registration_enabled')], errorHandler }, registerOrganizationHandler);
   app.post('/auth/check-uniqueness', { errorHandler }, checkUniquenessHandler);
   app.post('/auth/login', { errorHandler }, loginHandler);
   app.post('/auth/refresh', { errorHandler }, refreshHandler);
@@ -25,13 +25,13 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
    * TODO: Replace with email verification flow when email service is enabled.
    */
   app.post('/auth/temporary-reset/verify', {
-    preHandler: [requireFeatureFlag('auth.temporary_password_reset_enabled')],
+    preHandler: [opts.requireFeatureFlag('auth.temporary_password_reset_enabled')],
     config: { rateLimit: { max: 5, timeWindow: '15 minutes' } },
     errorHandler,
   }, temporaryVerifyEmailHandler);
 
   app.post('/auth/temporary-reset', {
-    preHandler: [requireFeatureFlag('auth.temporary_password_reset_enabled')],
+    preHandler: [opts.requireFeatureFlag('auth.temporary_password_reset_enabled')],
     config: { rateLimit: { max: 3, timeWindow: '15 minutes' } },
     errorHandler,
   }, temporaryResetPasswordHandler);

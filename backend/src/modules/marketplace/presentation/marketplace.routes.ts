@@ -1,11 +1,11 @@
 import type { FastifyInstance } from 'fastify';
 import { authMiddleware, requirePermission, requireApprovedOrg } from '../../../shared/middleware/auth.middleware.js';
-import { requireFeatureFlag } from '../../../shared/middleware/feature-flag.middleware.js';
+import type { FastifyRequest, FastifyReply } from 'fastify';
 import * as ctrl from './marketplace.controller.js';
 
-export async function marketplaceRoutes(app: FastifyInstance): Promise<void> {
+export async function marketplaceRoutes(app: FastifyInstance, opts: { requireFeatureFlag: (key: string) => (req: FastifyRequest, reply: FastifyReply) => Promise<void> }): Promise<void> {
   app.addHook('preHandler', authMiddleware);
-  app.addHook('preHandler', requireFeatureFlag('app.marketplace_enabled'));
+  app.addHook('preHandler', opts.requireFeatureFlag('app.marketplace_enabled'));
 
   // Categories — view any authenticated user, manage requires permission
   app.get('/marketplace/categories', ctrl.getCategoriesHandler);

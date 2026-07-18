@@ -1,14 +1,14 @@
 import type { FastifyInstance } from 'fastify';
 import { authMiddleware, requirePermission, adminGuard } from '../../../shared/middleware/auth.middleware.js';
-import { requireFeatureFlag } from '../../../shared/middleware/feature-flag.middleware.js';
+import type { FastifyRequest, FastifyReply } from 'fastify';
 import * as ctrl from './activities.controller.js';
 
-export async function activitiesRoutes(app: FastifyInstance): Promise<void> {
+export async function activitiesRoutes(app: FastifyInstance, opts: { requireFeatureFlag: (key: string) => (req: FastifyRequest, reply: FastifyReply) => Promise<void> }): Promise<void> {
   app.addHook('preHandler', authMiddleware);
 
   // Tournaments — gated by app.tournaments_enabled
   await app.register(async function tournamentScope(scopedApp: FastifyInstance) {
-    scopedApp.addHook('preHandler', requireFeatureFlag('app.tournaments_enabled'));
+    scopedApp.addHook('preHandler', opts.requireFeatureFlag('app.tournaments_enabled'));
 
     scopedApp.get('/tournaments', ctrl.listTournamentsHandler);
     scopedApp.get('/tournaments/:id', ctrl.getTournamentHandler);
@@ -25,7 +25,7 @@ export async function activitiesRoutes(app: FastifyInstance): Promise<void> {
 
   // Academies — gated by app.academies_enabled
   await app.register(async function academyScope(scopedApp: FastifyInstance) {
-    scopedApp.addHook('preHandler', requireFeatureFlag('app.academies_enabled'));
+    scopedApp.addHook('preHandler', opts.requireFeatureFlag('app.academies_enabled'));
 
     scopedApp.get('/academies', ctrl.listAcademiesHandler);
     scopedApp.get('/academies/:id', ctrl.getAcademyHandler);
