@@ -595,6 +595,37 @@ export class BookingRepository {
     );
     return rows.length > 0;
   }
+
+  async releaseSlots(bookingId: number, conn?: mysql.PoolConnection): Promise<void> {
+    const db = this.resolve(conn);
+    await db.execute(
+      'UPDATE booking_slots SET is_available = TRUE WHERE booking_id = ? AND is_available = FALSE',
+      [bookingId],
+    );
+  }
+
+  async lockSlots(bookingId: number, conn?: mysql.PoolConnection): Promise<void> {
+    const db = this.resolve(conn);
+    await db.execute(
+      'UPDATE booking_slots SET is_available = FALSE WHERE booking_id = ? AND is_available = TRUE',
+      [bookingId],
+    );
+  }
+
+  async createCancellation(
+    bookingId: number,
+    actorId: number,
+    reason: string,
+    feeAmount: number,
+    conn?: mysql.PoolConnection,
+  ): Promise<void> {
+    const db = this.resolve(conn);
+    await db.execute(
+      `INSERT INTO booking_cancellations (booking_id, cancelled_by, reason, refund_amount)
+       VALUES (?, ?, ?, ?)`,
+      [bookingId, actorId, reason, feeAmount],
+    );
+  }
 }
 
 export const bookingRepository = new BookingRepository();

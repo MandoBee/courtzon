@@ -26,4 +26,22 @@ export interface IBookingRepository {
     paymentStatus: string,
     conn?: mysql.PoolConnection,
   ): Promise<void>;
+
+  releaseSlots(
+    bookingId: number,
+    conn?: mysql.PoolConnection,
+  ): Promise<void>;
+
+  lockSlots(
+    bookingId: number,
+    conn?: mysql.PoolConnection,
+  ): Promise<void>;
+
+  createCancellation(
+    bookingId: number,
+    actorId: number,
+    reason: string,
+    feeAmount: number,
+    conn?: mysql.PoolConnection,
+  ): Promise<void>;
 }

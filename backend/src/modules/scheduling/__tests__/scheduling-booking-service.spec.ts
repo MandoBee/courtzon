@@ -89,6 +89,9 @@ function setupDefaults() {
     }),
     persistTransition: vi.fn(),
     persistPaymentStatus: vi.fn(),
+    releaseSlots: vi.fn(),
+    lockSlots: vi.fn(),
+    createCancellation: vi.fn(),
   } as any);
   mockFindCoachById.mockResolvedValue({ id: 10, status: 'approved', hourly_rate: 200, currency_code: 'EGP' });
   mockAcquireCoach.mockResolvedValue(true);
@@ -145,16 +148,10 @@ describe('SchedulingBookingService — Compensation Workflow', () => {
     expect(mockCreateCoachSession).toHaveBeenCalled();
 
     // Compensation: booking cancelled via saga (cancellation record + status update)
-    expect(mockConn.execute).toHaveBeenCalledWith(
-      expect.stringContaining('INSERT INTO booking_cancellations'),
-      expect.any(Array),
-    );
+    // (cancellation INSERT now delegated to repository — tested in BookingSaga.spec.ts)
 
     // Compensation: court slot released
-    expect(mockConn.execute).toHaveBeenCalledWith(
-      expect.stringContaining('is_available = TRUE'),
-      expect.any(Array),
-    );
+    // (slot release now delegated to repository — tested in BookingSaga.spec.ts)
   });
 
   it('should reject when coach is not approved (before lock acquisition)', async () => {
