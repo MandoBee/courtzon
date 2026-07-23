@@ -1,4 +1,4 @@
-import { EventEmitter } from 'events';
+import { eventBusV2 } from './event-bus.v2.js';
 
 export interface BaseEvent {
   eventId?: string;
@@ -27,10 +27,6 @@ export interface DomainEventMap {
   'payment:failed-event': BaseEvent & { paymentId: number; referenceType: string; referenceId: number; amount: number; reason?: string; metadata?: Record<string, any> };
   'payment:cancelled-event': BaseEvent & { paymentId: number; referenceType: string; referenceId: number; metadata?: Record<string, any> };
   'payment:expired-event': BaseEvent & { paymentId: number; referenceType: string; referenceId: number; metadata?: Record<string, any> };
-  'payment:wallet-credited': BaseEvent & { walletId: number; userId: number; amount: number; balance: number };
-  'payment:wallet-debited': BaseEvent & { walletId: number; userId: number; amount: number; balance: number };
-  'payment:wallet-low-balance': BaseEvent & { userId: number; balance: number; currency: string };
-  'payment:wallet-topup': BaseEvent & { walletId: number; userId: number; amount: number; balance: number; currency: string };
   'marketplace:order-placed': BaseEvent & { orderId: number; userId: number; sellerId: number; total: number; organisationId?: number };
   'marketplace:order-confirmed': BaseEvent & { orderId: number; userId: number; sellerId: number };
   'marketplace:order-shipped': BaseEvent & { orderId: number; userId: number; trackingNumber?: string };
@@ -154,11 +150,6 @@ export type BroadcastTarget =
 
 export type DomainEventName = keyof DomainEventMap;
 
-import { eventBusV2 } from './event-bus.v2.js';
-
-const legacyEmitter = new EventEmitter();
-legacyEmitter.setMaxListeners(200);
-
 class EventBus {
   emit<E extends DomainEventName>(event: E, data: DomainEventMap[E]): void {
     const payload = {
@@ -175,40 +166,25 @@ class EventBus {
     }).catch((err) => {
       console.error('EventBus v2 emit failed', err);
     });
-
-    process.nextTick(() => {
-      legacyEmitter.emit(event, payload);
-      legacyEmitter.emit('*', { event, data: payload });
-    });
   }
 
-  on<E extends DomainEventName>(event: E, handler: (data: DomainEventMap[E]) => void): void {
-    legacyEmitter.on(event, handler);
+  on(eventName: string, handler: (data: any) => void): void {
+    eventBusV2.on(eventName, handler);
   }
 
   subscribe(registration: Parameters<typeof eventBusV2.subscribe>[0]): void {
     eventBusV2.subscribe(registration);
   }
 
-  onAny(handler: (event: DomainEventName, data: any) => void): void {
-    legacyEmitter.on('*', ({ event, data }: { event: DomainEventName; data: any }) => handler(event, data));
+  off(eventName: string, handler: (data: any) => void): void {
   }
 
-  off<E extends DomainEventName>(event: E, handler: (data: DomainEventMap[E]) => void): void {
-    legacyEmitter.off(event, handler);
-  }
-
-  once<E extends DomainEventName>(event: E, handler: (data: DomainEventMap[E]) => void): void {
-    legacyEmitter.once(event, handler);
-  }
-
-  removeAllListeners(event?: DomainEventName): void {
-    if (event) legacyEmitter.removeAllListeners(event);
-    else legacyEmitter.removeAllListeners();
-  }
-
-  listenerCount(event: DomainEventName): number {
-    return legacyEmitter.listenerCount(event);
+  once(eventName: string, handler: (data: any) => void): void {
+    const wrapper = (data: any) => {
+      handler(data);
+      eventBusV2.on(eventName, wrapper);
+    };
+    eventBusV2.on(eventName, wrapper);
   }
 }
 

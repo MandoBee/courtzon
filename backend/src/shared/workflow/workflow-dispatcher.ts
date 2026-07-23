@@ -12,6 +12,7 @@ import { registry } from '../../infrastructure/metrics/metrics.js';
 import client from 'prom-client';
 import type { WorkflowDefinition, WorkflowStepDefinition, WorkflowContext, WorkflowEventToEmit } from './workflow-definition.js';
 import type { Command } from '../command/command-base.js';
+import { getCommandHandler } from './command-handler-registry.js';
 
 const log = createModuleLogger('workflow');
 
@@ -251,7 +252,9 @@ class WorkflowDispatcher {
       causationId: ctx.causationId,
     };
 
-    const handler = {
+    const registeredHandler = step.commandType ? getCommandHandler(step.commandType) : undefined;
+
+    const handler = registeredHandler || {
       validate: async () => {},
       execute: async (cmd: Command, txConn: mysql.PoolConnection) => {
         await workflowStepRepository.updateStatus(stepId, 'completed', txConn);

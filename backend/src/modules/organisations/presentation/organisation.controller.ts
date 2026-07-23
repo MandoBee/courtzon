@@ -1040,8 +1040,8 @@ export async function approveSubscriptionRequestHandler(request: FastifyRequest,
   });
 
   // Notify org
-  const { eventBus } = await import('../../../shared/event-bus/index.js');
-  eventBus.emit('subscription:request-approved', {
+  const { eventBus: eventBusV2 } = await import('../../../shared/event-bus/index.js');
+  eventBusV2.emit('subscription:request-approved', {
     organisationId: (result as any).organisation_id,
     requestId: Number(requestId),
     requestType: (result as any).request_type,
@@ -1081,8 +1081,8 @@ export async function rejectSubscriptionRequestHandler(request: FastifyRequest, 
     userAgent: request.headers['user-agent'],
   });
 
-  const { eventBus } = await import('../../../shared/event-bus/index.js');
-  eventBus.emit('subscription:request-rejected', {
+  const { eventBus: eventBusV2 } = await import('../../../shared/event-bus/index.js');
+  eventBusV2.emit('subscription:request-rejected', {
     organisationId: (result as any).organisation_id,
     requestId: Number(requestId),
     requestType: (result as any).request_type,

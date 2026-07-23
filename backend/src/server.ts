@@ -33,6 +33,17 @@ import { bookingRepository } from "./modules/booking/infrastructure/repositories
 import { paymentRepository } from "./modules/payment/infrastructure/repositories/payment.repository.js";
 import { initBooking } from "./platform/booking/BookingSaga.js";
 import { initPayment } from "./platform/payment/PaymentSaga.js";
+import { registerCommandHandler } from "./shared/workflow/command-handler-registry.js";
+import { workflowRegistry } from "./shared/workflow/workflow-registry.js";
+import { confirmBookingHandler } from "./modules/booking/commands/confirm-booking.command.js";
+import { cancelBookingHandler } from "./modules/booking/commands/cancel-booking.command.js";
+import { expireBookingHandler } from "./modules/booking/commands/expire-booking.command.js";
+import { completeBookingHandler } from "./modules/booking/commands/complete-booking.command.js";
+import { processPaymentHandler } from "./modules/payment/commands/process-payment.command.js";
+import { depositWalletHandler } from "./modules/wallet/commands/deposit-wallet.command.js";
+import { withdrawWalletHandler } from "./modules/wallet/commands/withdraw-wallet.command.js";
+import { bookingWorkflows } from "./modules/booking/infrastructure/booking-workflow.js";
+import { paymentWorkflows } from "./modules/payment/infrastructure/payment-workflow.js";
 import { closePool } from "./database/mysql.js";
 import { closeRedisClient } from "./infrastructure/redis/redis.client.js";
 import { validateDatabaseSchema } from "./infrastructure/startup/startup-validator.js";
@@ -77,6 +88,21 @@ async function bootstrap() {
 
     initBooking(bookingRepository);
     initPayment(paymentRepository);
+
+    registerCommandHandler('ConfirmBooking', confirmBookingHandler as any);
+    registerCommandHandler('CancelBooking', cancelBookingHandler as any);
+    registerCommandHandler('ExpireBooking', expireBookingHandler as any);
+    registerCommandHandler('CompleteBooking', completeBookingHandler as any);
+    registerCommandHandler('ProcessPayment', processPaymentHandler as any);
+    registerCommandHandler('DepositWallet', depositWalletHandler as any);
+    registerCommandHandler('WithdrawWallet', withdrawWalletHandler as any);
+
+    for (const wf of bookingWorkflows) {
+      await workflowRegistry.register(wf).catch((err: any) => app.log.warn({ err, type: wf.workflowType }, 'workflow.register_failed'));
+    }
+    for (const wf of paymentWorkflows) {
+      await workflowRegistry.register(wf).catch((err: any) => app.log.warn({ err, type: wf.workflowType }, 'workflow.register_failed'));
+    }
 
     registerProvider(new InAppProvider());
     registerProvider(new PushProvider());

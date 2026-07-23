@@ -2,7 +2,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { Mock } from 'vitest';
 
 vi.mock('../../../shared/event-bus/index.js', () => ({
-  eventBus: { emit: vi.fn() },
+  eventBus: { emit: vi.fn(), on: vi.fn(), subscribe: vi.fn() },
+  eventBusV2: { emit: vi.fn(), subscribe: vi.fn(), on: vi.fn() },
 }));
 
 const mockRepo = {
@@ -12,7 +13,7 @@ const mockRepo = {
   expirePayment: vi.fn(),
 };
 
-import { eventBus } from '../../../shared/event-bus/index.js';
+import { eventBusV2 } from '../../../shared/event-bus/index.js';
 import { initPayment } from '../PaymentSaga.js';
 
 const mockPayment = {
@@ -48,7 +49,7 @@ describe('PaymentSaga', () => {
 
       expect(result.status).toBe('paid');
       expect(mockRepo.updateStatus).toHaveBeenCalledWith(1, 'paid', 'ref_123', undefined);
-      expect(eventBus.emit).toHaveBeenCalledWith('payment:completed', expect.objectContaining({
+      expect(eventBusV2.emit).toHaveBeenCalledWith('payment:completed', expect.objectContaining({
         paymentId: 1, status: 'paid',
       }));
     });
@@ -59,7 +60,7 @@ describe('PaymentSaga', () => {
 
       await expect(confirmPayment(1, { gatewayReference: 'ref', paidAmount: 100 })).rejects.toThrow();
       expect(mockRepo.updateStatus).not.toHaveBeenCalled();
-      expect(eventBus.emit).not.toHaveBeenCalled();
+      expect(eventBusV2.emit).not.toHaveBeenCalled();
     });
   });
 
@@ -74,7 +75,7 @@ describe('PaymentSaga', () => {
 
       expect(result.status).toBe('expired');
       expect(mockRepo.expirePayment).toHaveBeenCalledWith(1, undefined);
-      expect(eventBus.emit).toHaveBeenCalledWith('payment:expired', expect.objectContaining({
+      expect(eventBusV2.emit).toHaveBeenCalledWith('payment:expired', expect.objectContaining({
         paymentId: 1, status: 'expired',
       }));
     });
@@ -89,7 +90,7 @@ describe('PaymentSaga', () => {
       const result = await refundPayment(1, 100);
 
       expect(result.status).toBe('refunded');
-      expect(eventBus.emit).toHaveBeenCalledWith('payment:refunded', expect.objectContaining({
+      expect(eventBusV2.emit).toHaveBeenCalledWith('payment:refunded', expect.objectContaining({
         paymentId: 1, status: 'refunded',
       }));
     });

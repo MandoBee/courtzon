@@ -14,7 +14,6 @@ import { createModuleLogger } from '../../../shared/utils/logger.js';
 import { generateUUID } from '../../../shared/utils/token.js';
 import type { CreateBookingInput, PrepareBookingInput } from '../presentation/booking.dto.js';
 import type mysql from 'mysql2/promise';
-import { eventBus } from '../../../shared/event-bus/index.js';
 import { eventBusV2 } from '../../../shared/event-bus/event-bus.v2.js';
 import { commandPipeline } from '../../../shared/command/command-pipeline.js';
 import { isFeatureEnabled, setFeatureFlag } from '../../../shared/utils/feature-flags.js';
@@ -200,7 +199,7 @@ export class BookingService {
         const paymentId = ('paymentId' in gwResult ? gwResult.paymentId : null) || null;
 
         // Emit booking:created event
-        eventBus.emit('booking:created', {
+        eventBusV2.emit('booking:created', {
           bookingId,
           userId,
           courtId: input.resourceId || 0,
@@ -334,7 +333,7 @@ export class BookingService {
 
       if (booking) {
         const bookingType = input.bookingType || 'private_match';
-        eventBus.emit('booking:created', {
+        eventBusV2.emit('booking:created', {
           bookingId,
           userId,
           courtId: input.resourceId || 0,
@@ -350,7 +349,7 @@ export class BookingService {
 
       if (bookingStatus === 'confirmed' && booking) {
         const bookingType = input.bookingType || 'private_match';
-        eventBus.emit('booking:confirmed', { bookingId, userId, bookingType });
+        eventBusV2.emit('booking:confirmed', { bookingId, userId, bookingType });
 
         const startDate = new Date(startAtUtc);
         const { scheduleBookingReminder } = await import('../../notifications/application/scheduler.service.js');
@@ -559,7 +558,7 @@ export class BookingService {
       await conn.commit();
 
       // Emit booking:created event
-      eventBus.emit('booking:created', {
+      eventBusV2.emit('booking:created', {
         bookingId, userId,
         courtId: data.resourceId,
         startTime: new Date(data.startAtUtc),
@@ -1237,7 +1236,7 @@ export class BookingService {
         if (accepted >= request.max_players) {
           const pendingIds = await bookingRepository.rejectAllPending(invitation.booking_id);
           for (const { userId: puid } of pendingIds) {
-            eventBus.emit('booking:fully-booked', {
+            eventBusV2.emit('booking:fully-booked', {
               bookingId: invitation.booking_id,
               userId: puid,
               resourceId: 0,
@@ -1246,7 +1245,7 @@ export class BookingService {
         }
       }
     } else {
-      eventBus.emit('booking:application-declined', {
+      eventBusV2.emit('booking:application-declined', {
         bookingId: invitation.booking_id,
         userId: invitation.invited_user_id,
         ownerId: userId,

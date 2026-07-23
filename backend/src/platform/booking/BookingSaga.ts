@@ -1,6 +1,6 @@
 import type mysql from 'mysql2/promise';
 import { bookingAggregate, type ConfirmContext } from './BookingAggregate.js';
-import { eventBus } from '../../shared/event-bus/index.js';
+import { eventBusV2 } from '../../shared/event-bus/index.js';
 import type { BookingStatus } from '../shared/booking-types.js';
 import type { IBookingRepository } from '../contracts/IBookingRepository.js';
 
@@ -52,7 +52,7 @@ function buildPayload(booking: BookingRecord, status: BookingStatus): BookingEve
 }
 
 function emit(eventName: string, payload: BookingEventPayload): void {
-  eventBus.emit(eventName as any, payload);
+  eventBusV2.emit(eventName as any, payload as any);
 }
 
 export async function confirmBooking(

@@ -2,7 +2,7 @@ import type { FastifyRequest, FastifyReply } from 'fastify';
 import { activitiesService as svc } from '../application/activities.service.js';
 import { recordAudit } from '../../audit-log/index.js';
 import { coachSessionStateService } from '../../coaches/application/coach-session-state.service.js';
-import { eventBus } from '../../../shared/event-bus/index.js';
+import { eventBusV2 } from '../../../shared/event-bus/index.js';
 import {
   CreateTournamentSchema, RegisterTournamentSchema, MatchScoreSchema,
   CreateAcademySchema, CreateCurriculumSchema, EnrollPlayerSchema,
@@ -456,7 +456,7 @@ const SESSION_EVENTS: Record<string, string> = {
 
 function emitSessionEvent(eventName: string, session: any, meta?: any) {
   const domainEvent = SESSION_EVENTS[eventName] || eventName;
-  eventBus.emit(domainEvent as any, { sessionId: session.id, ...meta, coachId: session.coach_id, playerId: session.player_id });
+  eventBusV2.emit(domainEvent as any, { sessionId: session.id, ...meta, coachId: session.coach_id, playerId: session.player_id });
 }
 
 export async function requestCoachSessionHandler(request: FastifyRequest, reply: FastifyReply) {

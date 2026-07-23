@@ -2,7 +2,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { Mock } from 'vitest';
 
 vi.mock('../../../shared/event-bus/index.js', () => ({
-  eventBus: { emit: vi.fn() },
+  eventBus: { emit: vi.fn(), on: vi.fn(), subscribe: vi.fn() },
+  eventBusV2: { emit: vi.fn(), subscribe: vi.fn(), on: vi.fn() },
 }));
 
 const mockRepo = {
@@ -14,7 +15,7 @@ const mockRepo = {
   createCancellation: vi.fn(),
 };
 
-import { eventBus } from '../../../shared/event-bus/index.js';
+import { eventBusV2 } from '../../../shared/event-bus/index.js';
 import { initBooking } from '../BookingSaga.js';
 
 const mockBooking = {
@@ -40,7 +41,7 @@ beforeEach(async () => {
   mockRepo.releaseSlots.mockReset();
   mockRepo.lockSlots.mockReset();
   mockRepo.createCancellation.mockReset();
-  (eventBus.emit as Mock).mockReset();
+  (eventBusV2.emit as Mock).mockReset();
   initBooking(mockRepo as any);
 });
 
@@ -56,7 +57,7 @@ describe('BookingSaga', () => {
       expect(result.bookingId).toBe(1);
       expect(result.userId).toBe(42);
       expect(mockRepo.persistTransition).toHaveBeenCalledWith(1, 'confirmed', 'paid', undefined, undefined);
-      expect(eventBus.emit).toHaveBeenCalledWith('booking:confirmed', expect.objectContaining({
+      expect(eventBusV2.emit).toHaveBeenCalledWith('booking:confirmed', expect.objectContaining({
         bookingId: 1, status: 'confirmed',
       }));
     });
@@ -67,7 +68,7 @@ describe('BookingSaga', () => {
 
       await expect(confirmBooking(1, { paymentStatus: 'paid', paymentMethod: 'card' })).rejects.toThrow();
       expect(mockRepo.persistTransition).not.toHaveBeenCalled();
-      expect(eventBus.emit).not.toHaveBeenCalled();
+      expect(eventBusV2.emit).not.toHaveBeenCalled();
     });
   });
 
@@ -81,7 +82,7 @@ describe('BookingSaga', () => {
       expect(result.status).toBe('cancelled');
       expect(mockRepo.createCancellation).toHaveBeenCalledWith(1, 99, 'User cancelled', 0, undefined);
       expect(mockRepo.persistTransition).toHaveBeenCalledWith(1, 'cancelled', 'pending', undefined, undefined);
-      expect(eventBus.emit).toHaveBeenCalledWith('booking:cancelled', expect.objectContaining({
+      expect(eventBusV2.emit).toHaveBeenCalledWith('booking:cancelled', expect.objectContaining({
         bookingId: 1, status: 'cancelled',
       }));
     });
@@ -92,7 +93,7 @@ describe('BookingSaga', () => {
 
       await expect(cancelBooking(1, 99, 'Test')).rejects.toThrow();
       expect(mockRepo.persistTransition).not.toHaveBeenCalled();
-      expect(eventBus.emit).not.toHaveBeenCalled();
+      expect(eventBusV2.emit).not.toHaveBeenCalled();
     });
   });
 
@@ -105,7 +106,7 @@ describe('BookingSaga', () => {
 
       expect(result.status).toBe('expired');
       expect(mockRepo.persistTransition).toHaveBeenCalledWith(1, 'expired', 'expired', undefined, undefined);
-      expect(eventBus.emit).toHaveBeenCalledWith('booking:expired', expect.objectContaining({
+      expect(eventBusV2.emit).toHaveBeenCalledWith('booking:expired', expect.objectContaining({
         bookingId: 1, status: 'expired',
       }));
     });
@@ -120,7 +121,7 @@ describe('BookingSaga', () => {
 
       expect(result.status).toBe('checked_in');
       expect(mockRepo.persistTransition).toHaveBeenCalledWith(1, 'checked_in', undefined, undefined, undefined);
-      expect(eventBus.emit).toHaveBeenCalledWith('booking:check-in', expect.objectContaining({
+      expect(eventBusV2.emit).toHaveBeenCalledWith('booking:check-in', expect.objectContaining({
         bookingId: 1, status: 'checked_in',
       }));
     });
@@ -136,7 +137,7 @@ describe('BookingSaga', () => {
       expect(result.status).toBe('no_show');
       expect(mockRepo.createCancellation).toHaveBeenCalledWith(1, 99, 'No show', 0, undefined);
       expect(mockRepo.persistTransition).toHaveBeenCalledWith(1, 'no_show', 'pending', undefined, undefined);
-      expect(eventBus.emit).toHaveBeenCalledWith('booking:no-show', expect.objectContaining({
+      expect(eventBusV2.emit).toHaveBeenCalledWith('booking:no-show', expect.objectContaining({
         bookingId: 1, status: 'no_show',
       }));
     });
@@ -151,7 +152,7 @@ describe('BookingSaga', () => {
 
       expect(result.status).toBe('completed');
       expect(mockRepo.persistTransition).toHaveBeenCalledWith(1, 'completed', undefined, undefined, undefined);
-      expect(eventBus.emit).toHaveBeenCalledWith('booking:completed', expect.objectContaining({
+      expect(eventBusV2.emit).toHaveBeenCalledWith('booking:completed', expect.objectContaining({
         bookingId: 1, status: 'completed',
       }));
     });
@@ -167,7 +168,7 @@ describe('BookingSaga', () => {
       expect(result.status).toBe('cancelled_with_fee');
       expect(mockRepo.createCancellation).toHaveBeenCalledWith(1, 99, 'Late cancellation', 50, undefined);
       expect(mockRepo.persistTransition).toHaveBeenCalledWith(1, 'cancelled_with_fee', 'partially_refunded', undefined, undefined);
-      expect(eventBus.emit).toHaveBeenCalledWith('booking:cancelled', expect.objectContaining({
+      expect(eventBusV2.emit).toHaveBeenCalledWith('booking:cancelled', expect.objectContaining({
         bookingId: 1, status: 'cancelled_with_fee',
       }));
     });
@@ -179,12 +180,12 @@ describe('BookingSaga', () => {
       const { confirmBooking, expireBooking } = await importSaga();
 
       await confirmBooking(1, { paymentStatus: 'paid', paymentMethod: 'card' });
-      const confirmPayload = (eventBus.emit as Mock).mock.calls[0][1];
+      const confirmPayload = (eventBusV2.emit as Mock).mock.calls[0][1];
 
       vi.clearAllMocks();
       mockRepo.findById.mockResolvedValue(mockBooking);
       await expireBooking(1);
-      const expirePayload = (eventBus.emit as Mock).mock.calls[0][1];
+      const expirePayload = (eventBusV2.emit as Mock).mock.calls[0][1];
 
       expect(confirmPayload).toHaveProperty('bookingId');
       expect(confirmPayload).toHaveProperty('userId');
@@ -205,7 +206,7 @@ describe('BookingSaga', () => {
       const { confirmBooking } = await importSaga();
 
       await expect(confirmBooking(1, { paymentStatus: 'paid', paymentMethod: 'card' })).rejects.toThrow('DB error');
-      expect(eventBus.emit).not.toHaveBeenCalled();
+      expect(eventBusV2.emit).not.toHaveBeenCalled();
     });
   });
 

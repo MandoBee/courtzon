@@ -1,7 +1,7 @@
 import { couponRepository } from '../infrastructure/coupon.repository.js';
 import { couponAssignmentRepository } from '../infrastructure/coupon-assignment.repository.js';
 import { NotFoundError } from '../../../shared/errors/app-error.js';
-import { eventBus } from '../../../shared/event-bus/index.js';
+import { eventBusV2 } from '../../../shared/event-bus/index.js';
 
 class CouponService {
   async listCoupons(page = 1, limit = 20, is_active?: boolean) {
@@ -64,7 +64,7 @@ class CouponService {
     const assignments = await couponAssignmentRepository.findByCouponId(id);
     const orgIds = assignments.filter((a: any) => a.entity_type === 'organisation').map((a: any) => a.entity_id);
 
-    eventBus.emit('coupon:published', {
+    eventBusV2.emit('coupon:published', {
       couponId: coupon.id,
       code: coupon.code,
       discountValue: coupon.discount_value,

@@ -7,7 +7,7 @@ import { generateUUID } from '../../../shared/utils/token.js';
 import { getPool } from '../../../database/mysql.js';
 import type mysql from 'mysql2/promise';
 import { getPlanNumericLimit } from '../../organisations/application/plan-limits.util.js';
-import { eventBus } from '../../../shared/event-bus/index.js';
+import { eventBusV2 } from '../../../shared/event-bus/index.js';
 
 type RowData = mysql.RowDataPacket[];
 
@@ -52,7 +52,7 @@ export const activitiesService = {
       }
     }
     const id = await repo.createTournament({ ...data, creatorId: userId, commissionRate });
-    eventBus.emit('tournament:created', {
+    eventBusV2.emit('tournament:created', {
       tournamentId: id,
       userId,
       name: data.name || 'Tournament',
@@ -83,14 +83,14 @@ export const activitiesService = {
     await repo.updateTournament(tournamentId, { status: 'in_progress' });
     const matches = await repo.findMatches(tournamentId);
     for (const match of matches as any[]) {
-      eventBus.emit('tournament:match-scheduled', {
+      eventBusV2.emit('tournament:match-scheduled', {
         matchId: match.id,
         userId: match.player1_id,
         opponent: match.player2_name || 'TBD',
         date: match.scheduled_date || new Date(),
       });
       if (match.player2_id) {
-        eventBus.emit('tournament:match-scheduled', {
+        eventBusV2.emit('tournament:match-scheduled', {
           matchId: match.id,
           userId: match.player2_id,
           opponent: match.player1_name || 'TBD',
@@ -110,13 +110,13 @@ export const activitiesService = {
     }
     if (match) {
       const result = data.winnerId === match.player1_id ? 'Win' : 'Loss';
-      eventBus.emit('tournament:result', {
+      eventBusV2.emit('tournament:result', {
         matchId,
         userId: match.player1_id,
         result: data.winnerId === match.player1_id ? 'win' : 'loss',
       });
       if (match.player2_id) {
-        eventBus.emit('tournament:result', {
+        eventBusV2.emit('tournament:result', {
           matchId,
           userId: match.player2_id,
           result: data.winnerId === match.player2_id ? 'win' : 'loss',
@@ -163,7 +163,7 @@ export const activitiesService = {
     const enrollments = await repo.findEnrollments(academyId);
     if (enrollments.some((e: any) => e.player_id === playerId)) throw new ConflictError('Already enrolled');
     await repo.enrollPlayer(academyId, playerId, curriculumId);
-    eventBus.emit('academy:enrolled', { academyId, userId: playerId, studentName: a.name || 'Student' });
+    eventBusV2.emit('academy:enrolled', { academyId, userId: playerId, studentName: a.name || 'Student' });
   },
   async createSession(academyId: number, data: any) {
     const id = await repo.createAcademySession({ ...data, academyId });
@@ -226,7 +226,7 @@ export const activitiesService = {
       repo.findUserFullName(userId),
     ]);
     if (orgName && data.organisationId) {
-      eventBus.emit('coach:agreement-added', {
+      eventBusV2.emit('coach:agreement-added', {
         coachId: coach.id,
         coachName: coachUserName || 'A coach',
         userId,
@@ -264,7 +264,7 @@ export const activitiesService = {
     const id = await repo.createCoachSession({
       ...data, coachId: coach.id, platformCommissionPct, coachEarnings, orgEarnings,
     });
-    eventBus.emit('coaching:session-scheduled', {
+    eventBusV2.emit('coaching:session-scheduled', {
       sessionId: id,
       coachId: coach.id,
       userId: data.playerId || userId,
@@ -571,7 +571,7 @@ export const activitiesService = {
       );
 
       await conn.commit();
-      eventBus.emit('coaching:session-cancelled', {
+      eventBusV2.emit('coaching:session-cancelled', {
         sessionId,
         userId: session.player_id,
         reason,

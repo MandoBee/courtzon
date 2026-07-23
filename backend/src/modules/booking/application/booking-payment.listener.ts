@@ -1,4 +1,4 @@
-import { eventBus } from '../../../shared/event-bus/index.js';
+import { eventBusV2 } from '../../../shared/event-bus/index.js';
 import { createModuleLogger } from '../../../shared/utils/logger.js';
 import { confirmBooking, cancelBooking } from '../../../platform/booking/BookingSaga.js';
 import { CancellationReason } from '../../../platform/shared/booking-types.js';
@@ -7,7 +7,7 @@ import { bookingRepository } from '../infrastructure/repositories/booking.reposi
 const log = createModuleLogger('booking-payment-listener');
 
 export function registerBookingPaymentListeners() {
-  eventBus.on('payment:succeeded', async (data) => {
+  eventBusV2.on('payment:succeeded', async (data) => {
     if (data.referenceType !== 'booking') return;
     const bookingId = data.referenceId;
     if (!bookingId) {
@@ -39,7 +39,7 @@ export function registerBookingPaymentListeners() {
     }
   });
 
-  eventBus.on('payment:failed-event', async (data) => {
+  eventBusV2.on('payment:failed-event', async (data) => {
     if (data.referenceType !== 'booking') return;
     const bookingId = data.referenceId;
     if (!bookingId) return;
@@ -54,7 +54,7 @@ export function registerBookingPaymentListeners() {
     }
   });
 
-  eventBus.on('payment:cancelled-event', async (data) => {
+  eventBusV2.on('payment:cancelled-event', async (data) => {
     if (data.referenceType !== 'booking') return;
     const bookingId = data.referenceId;
     if (!bookingId) return;
@@ -69,7 +69,7 @@ export function registerBookingPaymentListeners() {
     }
   });
 
-  eventBus.on('payment:expired-event', async (data) => {
+  eventBusV2.on('payment:expired-event', async (data) => {
     if (data.referenceType !== 'booking') return;
     const bookingId = data.referenceId;
     if (!bookingId) return;

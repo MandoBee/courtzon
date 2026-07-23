@@ -3,7 +3,7 @@ import { branchRepository } from '../infrastructure/repositories/branch.reposito
 import { rbacRepository } from '../../rbac/infrastructure/repositories/rbac.repository.js';
 import { ValidationError, NotFoundError, ConflictError } from '../../../shared/errors/app-error.js';
 import { getPlanNumericLimit } from './plan-limits.util.js';
-import { eventBus } from '../../../shared/event-bus/index.js';
+import { eventBusV2 } from '../../../shared/event-bus/index.js';
 
 export function getOrgInfo(orgId: number) {
   return repo.getOrgInfo(orgId);
@@ -254,7 +254,7 @@ export async function submitSubscriptionRequest(orgId: number, userId: number, p
 
   // Emit notification event
   const { eventBus } = await import('../../../shared/event-bus/index.js');
-  eventBus.emit('subscription:request-submitted', {
+  eventBusV2.emit('subscription:request-submitted', {
     organisationId: orgId,
     userId,
     requestId: id,
@@ -299,7 +299,7 @@ export async function inviteCoach(orgId: number, data: { coachId: number; coachS
   const coachUserId = await repo.findCoachUserId(data.coachId);
   const orgInfo = await repo.getOrgInfo(orgId);
   if (coachUserId) {
-    eventBus.emit('coach:invited', {
+    eventBusV2.emit('coach:invited', {
       coachId: data.coachId,
       userId: coachUserId,
       organisationId: orgId,

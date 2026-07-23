@@ -4,7 +4,7 @@ import { transactionRepository } from '../../financial/infrastructure/transactio
 import { withTransaction } from '../../../database/database.transaction.js';
 import { NotFoundError, ConflictError, ForbiddenError } from '../../../shared/errors/app-error.js';
 import { getPool } from '../../../database/mysql.js';
-import { eventBus } from '../../../shared/event-bus/index.js';
+import { eventBusV2 } from '../../../shared/event-bus/index.js';
 import { commandPipeline } from '../../../shared/command/command-pipeline.js';
 import { isFeatureEnabled } from '../../../shared/utils/feature-flags.js';
 import { changeSettlementStatusHandler, type ChangeSettlementStatusPayload } from '../commands/change-settlement-status.command.js';
@@ -401,7 +401,7 @@ export const settlementService = {
 
     const data = result.data!;
     if (data.status === 'completed' || data.status === 'rejected') {
-      eventBus.emit('settlement:completed', {
+      eventBusV2.emit('settlement:completed', {
         settlementId: data.settlementId,
         organisationId: 0,
         amount: 0,

@@ -9,7 +9,6 @@ import type mysql from 'mysql2/promise';
 import { getPool } from '../../../database/mysql.js';
 import { getRedisClient } from '../../../infrastructure/redis/redis.client.js';
 import { createModuleLogger } from '../../../shared/utils/logger.js';
-import { eventBus } from '../../../shared/event-bus/index.js';
 import { eventBusV2 } from '../../../shared/event-bus/event-bus.v2.js';
 import { commandPipeline } from '../../../shared/command/command-pipeline.js';
 import { isFeatureEnabled } from '../../../shared/utils/feature-flags.js';
@@ -360,7 +359,7 @@ export class PaymentService {
           const refId = transaction.order_id || transaction.booking_id || null;
           const eventName = newStatus === 'cancelled' ? 'payment:cancelled-event' as const : 'payment:expired-event' as const;
           onAfterCommit(async () => {
-            eventBus.emit(eventName, {
+            eventBusV2.emit(eventName, {
               paymentId: transaction.id,
               referenceType: transaction.reference_type,
               referenceId: refId,
@@ -561,14 +560,14 @@ export class PaymentService {
     };
     if (newStatus === 'paid') {
       onAfterCommit(async () => {
-        eventBus.emit('payment:succeeded', {
+        eventBusV2.emit('payment:succeeded', {
           paymentId: transaction.id,
           referenceType: transaction.reference_type,
           referenceId: refId,
           amount: Number(transaction.amount),
           metadata: commonMeta,
         });
-        eventBus.emit('payment:completed', {
+        eventBusV2.emit('payment:completed', {
           paymentId: transaction.id,
           userId: transaction.user_id,
           amount: Number(transaction.amount),
@@ -578,7 +577,7 @@ export class PaymentService {
       });
     } else if (newStatus === 'failed') {
       onAfterCommit(async () => {
-        eventBus.emit('payment:failed-event', {
+        eventBusV2.emit('payment:failed-event', {
           paymentId: transaction.id,
           referenceType: transaction.reference_type,
           referenceId: refId,
@@ -586,7 +585,7 @@ export class PaymentService {
           reason: gatewayStatus || `Payment ${newStatus}`,
           metadata: commonMeta,
         });
-        eventBus.emit('payment:failed', {
+        eventBusV2.emit('payment:failed', {
           paymentId: transaction.id,
           userId: transaction.user_id,
           amount: Number(transaction.amount),
@@ -832,7 +831,7 @@ export class PaymentService {
           await sagaExpirePayment(ptx.id, conn);
           const refId = ptx.order_id || ptx.booking_id || null;
           onAfterCommit(async () => {
-            eventBus.emit('payment:expired-event', {
+            eventBusV2.emit('payment:expired-event', {
               paymentId: ptx.id,
               referenceType: ptx.reference_type,
               referenceId: refId,

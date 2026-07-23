@@ -1,9 +1,9 @@
-import { eventBus } from '../../../../shared/event-bus/index.js';
+import { eventBusV2 } from '../../../../shared/event-bus/index.js';
 import type { MatchDomainEvent } from './match.events.js';
 
 export class MatchEventPublisher {
   publish(event: MatchDomainEvent): void {
-    eventBus.emit(event.type as any, event.payload as any);
+    eventBusV2.emit(event.type as any, event.payload as any);
   }
 }
 

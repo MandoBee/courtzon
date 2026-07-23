@@ -1,6 +1,6 @@
 import type mysql from 'mysql2/promise';
 import { withTransaction } from '../../../database/database.transaction.js';
-import { eventBus } from '../../../shared/event-bus/index.js';
+import { eventBusV2 } from '../../../shared/event-bus/index.js';
 import { recordAudit } from '../../audit-log/index.js';
 import { createModuleLogger } from '../../../shared/utils/logger.js';
 
@@ -30,7 +30,7 @@ export async function expireSubscriptions(): Promise<{ expired: number }> {
         [sub.id],
       );
 
-      eventBus.emit('organisation:subscription-expired', {
+      eventBusV2.emit('organisation:subscription-expired', {
         organisationId: sub.organisation_id,
         planName: sub.plan_name,
       });
@@ -97,7 +97,7 @@ export async function sendExpirationReminders(): Promise<{ notified: number }> {
 
         if (result.affectedRows === 0) continue; // Already sent — skip
 
-        eventBus.emit('organisation:subscription-expiring', {
+        eventBusV2.emit('organisation:subscription-expiring', {
           organisationId: sub.organisation_id,
           daysLeft: interval,
           planName: sub.plan_name,

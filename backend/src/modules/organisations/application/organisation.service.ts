@@ -9,7 +9,7 @@ import { amenityRepository } from '../infrastructure/repositories/amenity.reposi
 import { countriesRepository } from '../../countries/infrastructure/repositories/countries.repository.js';
 import { NotFoundError, ConflictError, ValidationError } from '../../../shared/errors/app-error.js';
 import { resolveOrganisationMedia } from './organisation-media.util.js';
-import { eventBus } from '../../../shared/event-bus/index.js';
+import { eventBusV2 } from '../../../shared/event-bus/index.js';
 import { cancelBooking } from '../../../platform/booking/BookingSaga.js';
 import { CANCELLABLE_BOOKING_STATUSES } from '../../booking/domain/booking-constants.js';
 import {
@@ -942,7 +942,7 @@ export class OrganisationService {
     const isRenewal = (prevSubs[0] as any).cnt > 0;
 
     if (isRenewal) {
-      eventBus.emit('organisation:subscription-renewed', {
+      eventBusV2.emit('organisation:subscription-renewed', {
         organisationId: orgId,
         planName: sub.plan_name,
         billingCycle: sub.billing_cycle || 'monthly',

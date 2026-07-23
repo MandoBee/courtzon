@@ -6,7 +6,7 @@ import { generateSessionToken, generateRefreshToken, generateUUID, hashToken } f
 import { randomBytes } from 'node:crypto';
 import { getPool } from '../../../database/mysql.js';
 import { queueService } from '../../../infrastructure/queue/queue.service.js';
-import { eventBus } from '../../../shared/event-bus/index.js';
+import { eventBusV2 } from '../../../shared/event-bus/index.js';
 import { rbacRepository } from '../../rbac/infrastructure/repositories/rbac.repository.js';
 import {
   InvalidCredentialsError,
@@ -389,7 +389,7 @@ export class AuthService {
 
     const resetLink = `${process.env.APP_URL || 'http://localhost:5173'}/reset-password?token=${token}`;
 
-    eventBus.emit('auth:password-reset', {
+    eventBusV2.emit('auth:password-reset', {
       userId: user.id,
       email: user.email,
       resetLink,

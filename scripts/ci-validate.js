@@ -165,6 +165,64 @@ for (const file of platformFiles) {
 }
 if (contractOk) pass('Platform depends only on contracts (zero module imports, zero direct DB calls)');
 
+// ─── 10. Architecture: No pool.execute outside repositories ───
+console.log('\n10. Architecture: SQL must be in repositories only');
+const backendSrc = join(root, 'backend', 'src');
+const appAndPresFiles = [];
+for (const modDir of ['modules']) {
+  const p = join(backendSrc, modDir);
+  if (!existsSync(p)) continue;
+  const allFiles = walkDir(p);
+  for (const f of allFiles) {
+    if (f.includes('__tests__') || f.includes('.integration.') || f.includes('/repositories/') || f.includes('\\repositories\\') || f.includes('/infrastructure/') || f.includes('\\infrastructure\\')) continue;
+    if (f.endsWith('.ts') && !f.endsWith('.d.ts') && (f.includes('/application/') || f.includes('\\application\\') || f.includes('/presentation/') || f.includes('\\presentation\\'))) {
+      appAndPresFiles.push(f);
+    }
+  }
+}
+let sqlOK = true;
+for (const file of appAndPresFiles) {
+  const rel = file.replace(root, '');
+  const content = readFileSync(file, 'utf-8');
+  const lines = content.split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].match(/pool\.execute\(/) || lines[i].match(/pool\.query\(/)) {
+      fail(`SQL outside repository: ${rel}:${i + 1}`);
+      sqlOK = false;
+    }
+  }
+}
+if (sqlOK) pass('All SQL is confined to repositories');
+
+// ─── 11. Architecture: No eventBus imports from modules (use eventBusV2) ───
+console.log('\n11. Architecture: Modules must use eventBusV2, not legacy eventBus');
+let eventBusOK = true;
+for (const file of moduleDirs) {
+  const content = readFileSync(file, 'utf-8');
+  const lines = content.split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (line.match(/import.*eventBus.*from.*event-bus\/index/) && !line.includes('eventBusV2')) {
+      fail(`Legacy eventBus import: ${file.replace(root, '')}:${i + 1}`);
+      eventBusOK = false;
+    }
+  }
+}
+if (eventBusOK) pass('All modules use eventBusV2');
+
+// ─── 12. Architecture: No pool.execute in controllers/presentation ───
+console.log('\n12. Architecture: Presentation layer must not access DB directly');
+const presentationDirs = moduleDirs.filter(f => f.includes('/presentation/') || f.includes('\\presentation\\'));
+let presOK = true;
+for (const file of presentationDirs) {
+  const content = readFileSync(file, 'utf-8');
+  if (content.includes('getPool()') || content.includes('pool.execute') || content.includes('pool.query')) {
+    fail(`Presentation layer DB access: ${file.replace(root, '')}`);
+    presOK = false;
+  }
+}
+if (presOK) pass('Presentation layer has zero DB access');
+
 // ─── Summary ───
 console.log(`\n${'='.repeat(50)}`);
 console.log(`Validation complete: ${errors} errors, ${warnings} warnings`);

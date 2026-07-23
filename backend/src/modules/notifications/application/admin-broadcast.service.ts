@@ -2,7 +2,7 @@ import { getPool } from '../../../database/mysql.js';
 import type mysql from 'mysql2/promise';
 import type { RowDataPacket, ResultSetHeader } from 'mysql2';
 import { queueService } from '../../../infrastructure/queue/queue.service.js';
-import { eventBus } from '../../../shared/event-bus/index.js';
+import { eventBusV2 } from '../../../shared/event-bus/index.js';
 import { createModuleLogger } from '../../../shared/utils/logger.js';
 
 const log = createModuleLogger('admin-broadcast');
@@ -100,7 +100,7 @@ export async function sendBroadcast(
       case 'users': await dispatchByUserIdsBulk(target.userIds, options); break;
     }
   } else {
-    eventBus.emit('notification:broadcast', { broadcastId, payload, target });
+    eventBusV2.emit('notification:broadcast', { broadcastId, payload, target });
   }
 
   return broadcastId;

@@ -12,7 +12,7 @@ import type mysql from 'mysql2/promise';
 import { getPlanNumericLimit } from '../../organisations/application/plan-limits.util.js';
 import { userRepository } from '../../auth/infrastructure/repositories/user.repository.js';
 import { createModuleLogger } from '../../../shared/utils/logger.js';
-import { eventBus } from '../../../shared/event-bus/index.js';
+import { eventBusV2 } from '../../../shared/event-bus/index.js';
 
 const log = createModuleLogger('marketplace');
 
@@ -494,7 +494,7 @@ export const marketplaceService = {
         orderId, toStatus: 'cancelled', changedBy: userId, changedByRole: 'system',
         note: 'Insufficient stock — cancelled by overselling guard',
       });
-      eventBus.emit('marketplace:order-cancelled', {
+      eventBusV2.emit('marketplace:order-cancelled', {
         orderId, userId, reason: 'Insufficient stock',
       });
       throw new ConflictError(stockErr.message || 'Insufficient stock');
@@ -520,7 +520,7 @@ export const marketplaceService = {
 
     // Process payment (cart cleared inside on success)
     const firstSellerId = cartItems[0]?.seller_id;
-    eventBus.emit('marketplace:order-placed', {
+    eventBusV2.emit('marketplace:order-placed', {
       orderId,
       userId,
       sellerId: firstSellerId || 0,
@@ -774,25 +774,25 @@ export const marketplaceService = {
     const firstItem = order.items?.[0];
     const sellerId = firstItem?.sellerId ?? 0;
 
-    eventBus.emit('marketplace:order-status-changed', {
+    eventBusV2.emit('marketplace:order-status-changed', {
       orderId, userId,
       fromStatus: order.status,
       toStatus: data.status,
     });
 
     if (data.status === 'shipped') {
-      eventBus.emit('marketplace:order-shipped', {
+      eventBusV2.emit('marketplace:order-shipped', {
         orderId, userId,
         trackingNumber: data.trackingNumber,
       });
     } else if (data.status === 'delivered') {
-      eventBus.emit('marketplace:order-delivered', { orderId, userId });
+      eventBusV2.emit('marketplace:order-delivered', { orderId, userId });
     } else if (data.status === 'cancelled') {
-      eventBus.emit('marketplace:order-cancelled', {
+      eventBusV2.emit('marketplace:order-cancelled', {
         orderId, userId, reason: data.note,
       });
     } else if (data.status === 'refunded') {
-      eventBus.emit('marketplace:order-refunded', {
+      eventBusV2.emit('marketplace:order-refunded', {
         orderId, userId, reason: data.note,
       });
     }
@@ -861,7 +861,7 @@ export const marketplaceService = {
     // Notify
     const orderRows = await repo.findOrderById(data.referenceId);
     const userId = data.metadata?.userId || (orderRows?.length ? orderRows[0].buyer_id : 0) || 0;
-    eventBus.emit('marketplace:order-cancelled', {
+    eventBusV2.emit('marketplace:order-cancelled', {
       orderId: data.referenceId,
       userId,
       reason: data.reason || 'Payment failed',
@@ -897,7 +897,7 @@ export const marketplaceService = {
     });
     await repo.clearCart(userId);
     const sellerId = orderRows?.[0]?.seller_id || 0;
-    eventBus.emit('marketplace:order-confirmed', {
+    eventBusV2.emit('marketplace:order-confirmed', {
       orderId, userId,
       sellerId,
     });
@@ -1192,7 +1192,7 @@ export const marketplaceService = {
       [org.id, userId, data.planId || null, data.notes || null]
     );
 
-    eventBus.emit('marketplace:new-seller-registered', {
+    eventBusV2.emit('marketplace:new-seller-registered', {
       sellerId: org.id,
       userId,
       shopName: org.name || '',
@@ -1581,7 +1581,7 @@ export const marketplaceService = {
           orderId: order.id, toStatus: 'cancelled', changedBy: 0, changedByRole: 'system',
           note: `Payment not completed within ${timeoutMinutes} minutes`,
         });
-        eventBus.emit('marketplace:order-cancelled', {
+        eventBusV2.emit('marketplace:order-cancelled', {
           orderId: order.id,
           userId: order.buyer_id || 0,
           reason: 'Payment timeout',

@@ -1,6 +1,6 @@
 import { getPool } from '../../../database/mysql.js';
 import type { RowDataPacket, ResultSetHeader } from 'mysql2';
-import { eventBus } from '../../../shared/event-bus/index.js';
+import { eventBusV2 } from '../../../shared/event-bus/index.js';
 import { createModuleLogger } from '../../../shared/utils/logger.js';
 import { dispatchToUser } from './dispatcher.service.js';
 

@@ -1,6 +1,6 @@
 import type mysql from 'mysql2/promise';
 import { paymentAggregate, type PaymentContext } from './PaymentAggregate.js';
-import { eventBus } from '../../shared/event-bus/index.js';
+import { eventBusV2 } from '../../shared/event-bus/index.js';
 import type { PaymentStatus } from '../shared/payment-types.js';
 import type { IPaymentRepository } from '../contracts/IPaymentRepository.js';
 
@@ -46,7 +46,7 @@ function buildPayload(r: any, status: PaymentStatus): PaymentEventPayload {
 }
 
 function emit(eventName: string, payload: PaymentEventPayload): void {
-  eventBus.emit(eventName as any, payload);
+  eventBusV2.emit(eventName as any, payload as any);
 }
 
 async function loadPayment(paymentId: number): Promise<any> {

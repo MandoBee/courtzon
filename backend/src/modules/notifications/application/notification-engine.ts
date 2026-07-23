@@ -1,4 +1,4 @@
-import { eventBus } from '../../../shared/event-bus/index.js';
+import { eventBusV2 } from '../../../shared/event-bus/index.js';
 import { dispatchToUser, dispatchByRole, dispatchByOrg } from './dispatcher.service.js';
 import { realtimeService } from '../../../platform/realtime/index.js';
 import { createModuleLogger } from '../../../shared/utils/logger.js';
@@ -646,10 +646,10 @@ class NotificationEngine {
       const handler = eventMap.get(event);
       if (!handler) {
         log.warn({ event }, 'No event configuration found — event will be processed as no-op');
-        eventBus.on(event as any, () => {});
+        eventBusV2.on(event as any, () => {});
         continue;
       }
-      eventBus.on(event as any, (data) => {
+      eventBusV2.on(event as any, (data) => {
         this.handleEvent(event, handler, data).catch((err) => {
           log.error({ err, event }, 'Error handling event');
         });
@@ -664,3 +664,4 @@ class NotificationEngine {
 }
 
 export const notificationEngine = new NotificationEngine();
+

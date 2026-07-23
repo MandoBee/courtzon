@@ -4,7 +4,7 @@ import {
   NotFoundError,
 } from '../../../shared/errors/app-error.js';
 import { buildPagination, paginationClause } from '../../../shared/utils/pagination.js';
-import { eventBus } from '../../../shared/event-bus/index.js';
+import { eventBusV2 } from '../../../shared/event-bus/index.js';
 
 type RowData = import('mysql2').RowDataPacket[];
 
@@ -128,7 +128,7 @@ export class ApprovalService {
 
     const [orgRows] = await pool.execute<RowData>('SELECT name FROM organisations WHERE id = ?', [orgId]);
     const orgName = (orgRows[0] as any)?.name || 'Organisation';
-    eventBus.emit('organisation:approved', { organisationId: orgId, name: orgName, userId: adminUserId });
+    eventBusV2.emit('organisation:approved', { organisationId: orgId, name: orgName, userId: adminUserId });
 
     return { success: true, orgId, registrationType: regType };
   }
@@ -148,7 +148,7 @@ export class ApprovalService {
       [adminUserId, reason || null, requestId]
     );
 
-    eventBus.emit('organisation:rejected', {
+    eventBusV2.emit('organisation:rejected', {
       organisationId: request.organisation_id,
       reason,
     });

@@ -5,7 +5,6 @@ import { transactionService } from '../../financial/application/transaction.serv
 import { paymentGateway } from '../../../shared/services/gateway/gateway-factory.js';
 import { ConflictError } from '../../../shared/errors/app-error.js';
 import { withTransaction } from '../../../database/database.transaction.js';
-import { eventBus } from '../../../shared/event-bus/index.js';
 import { eventBusV2 } from '../../../shared/event-bus/event-bus.v2.js';
 import { commandPipeline } from '../../../shared/command/command-pipeline.js';
 import { isFeatureEnabled } from '../../../shared/utils/feature-flags.js';
@@ -72,7 +71,7 @@ export class WalletService {
         return balance;
       });
 
-      eventBus.emit('wallet:deposit', {
+      eventBusV2.emit('wallet:deposit', {
         walletId: wallet.id,
         userId,
         amount,
@@ -80,7 +79,7 @@ export class WalletService {
         currency: wallet.currencyCode,
       });
       if (newBalance < 50) {
-        eventBus.emit('wallet:low-balance', {
+        eventBusV2.emit('wallet:low-balance', {
           userId,
           balance: newBalance,
           currency: wallet.currencyCode,
@@ -129,7 +128,7 @@ export class WalletService {
       return balance;
     });
 
-    eventBus.emit('wallet:withdrawal', {
+    eventBusV2.emit('wallet:withdrawal', {
       walletId: wallet.id,
       userId,
       amount,
@@ -137,7 +136,7 @@ export class WalletService {
       currency: wallet.currencyCode,
     });
     if (newBalance < 50) {
-      eventBus.emit('wallet:low-balance', {
+      eventBusV2.emit('wallet:low-balance', {
         userId,
         balance: newBalance,
         currency: wallet.currencyCode,
@@ -200,7 +199,7 @@ export class WalletService {
     }
 
     const data = result.data!;
-    eventBus.emit('wallet:deposit', {
+    eventBusV2.emit('wallet:deposit', {
       walletId: wallet.id,
       userId,
       amount,
@@ -208,7 +207,7 @@ export class WalletService {
       currency: wallet.currencyCode,
     });
     if (data.newBalance < 50) {
-      eventBus.emit('wallet:low-balance', {
+      eventBusV2.emit('wallet:low-balance', {
         userId,
         balance: data.newBalance,
         currency: wallet.currencyCode,
@@ -256,7 +255,7 @@ export class WalletService {
     }
 
     const data = result.data!;
-    eventBus.emit('wallet:withdrawal', {
+    eventBusV2.emit('wallet:withdrawal', {
       walletId: wallet.id,
       userId,
       amount,
@@ -264,7 +263,7 @@ export class WalletService {
       currency: wallet.currencyCode,
     });
     if (data.newBalance < 50) {
-      eventBus.emit('wallet:low-balance', {
+      eventBusV2.emit('wallet:low-balance', {
         userId,
         balance: data.newBalance,
         currency: wallet.currencyCode,

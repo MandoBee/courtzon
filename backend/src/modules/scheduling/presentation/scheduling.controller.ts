@@ -8,7 +8,7 @@ import { activitiesRepository } from '../../activities/infrastructure/repositori
 import { resourceRepository } from '../../organisations/infrastructure/repositories/resource.repository.js';
 import { schedulingBookingService } from '../application/scheduling-booking.service.js';
 import { createModuleLogger } from '../../../shared/utils/logger.js';
-import { eventBus } from '../../../shared/event-bus/index.js';
+import { eventBusV2 } from '../../../shared/event-bus/index.js';
 import { recordAudit } from '../../audit-log/index.js';
 import type { ResourceProvider } from '../types.js';
 
@@ -149,7 +149,7 @@ export async function bookSessionHandler(request: FastifyRequest, reply: Fastify
   log.info({ bookingId: result.bookingId, sessionId: result.sessionId, status: result.status, elapsedMs }, 'Book session completed');
 
   // Emit notification event so the coach receives a booking notification
-  eventBus.emit('coaching:session-scheduled', {
+  eventBusV2.emit('coaching:session-scheduled', {
     sessionId: result.sessionId,
     coachId: input.coachId,
     userId,

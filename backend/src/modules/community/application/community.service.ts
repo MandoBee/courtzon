@@ -1,6 +1,6 @@
 import { NotFoundError, ConflictError, ForbiddenError } from '../../../shared/errors/app-error.js';
 import { communityRepository as repo } from '../infrastructure/repositories/community.repository.js';
-import { eventBus } from '../../../shared/event-bus/index.js';
+import { eventBusV2 } from '../../../shared/event-bus/index.js';
 
 export const communityService = {
   // ── Follows ──
@@ -111,7 +111,7 @@ export const communityService = {
         repo.getGroupInfo(conversationId),
         repo.getUserName(userId),
       ]);
-      eventBus.emit('chat:group-invitation', {
+      eventBusV2.emit('chat:group-invitation', {
         conversationId,
         userId: inviteeId,
         inviterId: userId,
