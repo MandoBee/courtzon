@@ -4,6 +4,12 @@ import { transactionRepository } from '../../financial/infrastructure/transactio
 import { withTransaction } from '../../../database/database.transaction.js';
 import { NotFoundError, ConflictError, ForbiddenError } from '../../../shared/errors/app-error.js';
 import { getPool } from '../../../database/mysql.js';
+import { eventBus } from '../../../shared/event-bus/index.js';
+import { commandPipeline } from '../../../shared/command/command-pipeline.js';
+import { isFeatureEnabled } from '../../../shared/utils/feature-flags.js';
+import { changeSettlementStatusHandler, type ChangeSettlementStatusPayload } from '../commands/change-settlement-status.command.js';
+import type { SettlementStatus } from '../domain/settlement-aggregate.js';
+import type { Command } from '../../../shared/command/command-base.js';
 import type mysql from 'mysql2/promise';
 
 type RowData = mysql.RowDataPacket[];
@@ -192,6 +198,10 @@ export const settlementService = {
   // ── Approve ──
 
   async approveSettlement(settlementId: number, approvedBy?: number, notes?: string) {
+    if (isFeatureEnabled('SETTLEMENT_V2_APPROVE')) {
+      return this.changeStatusV2(settlementId, 'approved', { notes, approved_at: new Date() });
+    }
+
     const settlement = await repo.findSettlementById(settlementId);
     if (!settlement) throw new NotFoundError('Settlement');
     if (settlement.settlement_status !== 'pending_approval') {
@@ -263,6 +273,10 @@ export const settlementService = {
   // ── Complete ──
 
   async completeSettlement(settlementId: number) {
+    if (isFeatureEnabled('SETTLEMENT_V2_COMPLETE')) {
+      return this.changeStatusV2(settlementId, 'completed', { completed_at: new Date() });
+    }
+
     const settlement = await repo.findSettlementById(settlementId);
     if (!settlement) throw new NotFoundError('Settlement');
     if (settlement.settlement_status !== 'paid') {
@@ -276,6 +290,10 @@ export const settlementService = {
   // ── Reject (with rollback of order settlement status) ──
 
   async rejectSettlement(settlementId: number, reason: string) {
+    if (isFeatureEnabled('SETTLEMENT_V2_REJECT')) {
+      return this.changeStatusV2(settlementId, 'rejected', { rejected_at: new Date(), rejected_reason: reason });
+    }
+
     const settlement = await repo.findSettlementById(settlementId);
     if (!settlement) throw new NotFoundError('Settlement');
     if (!['pending_approval', 'approved'].includes(settlement.settlement_status)) {
@@ -283,7 +301,6 @@ export const settlementService = {
     }
 
     await withTransaction(async (conn) => {
-      // Rollback: unmark order items that were settled by this settlement
       const [soRows] = await conn.execute<RowData>(
         'SELECT order_id FROM settlement_orders WHERE settlement_id = ?',
         [settlementId],
@@ -318,6 +335,10 @@ export const settlementService = {
   // ── Cancel (with rollback of order settlement status) ──
 
   async cancelSettlement(settlementId: number, reason?: string) {
+    if (isFeatureEnabled('SETTLEMENT_V2_CANCEL')) {
+      return this.changeStatusV2(settlementId, 'cancelled', { rejected_at: new Date(), rejected_reason: reason || 'Cancelled by user' });
+    }
+
     const settlement = await repo.findSettlementById(settlementId);
     if (!settlement) throw new NotFoundError('Settlement');
     if (!['requested', 'calculating', 'pending_approval'].includes(settlement.settlement_status)) {
@@ -325,7 +346,6 @@ export const settlementService = {
     }
 
     await withTransaction(async (conn) => {
-      // Rollback: unmark order items that were settled by this settlement
       const [soRows] = await conn.execute<RowData>(
         'SELECT order_id FROM settlement_orders WHERE settlement_id = ?',
         [settlementId],
@@ -353,6 +373,40 @@ export const settlementService = {
         [reason || 'Cancelled by user', settlementId],
       );
     });
+
+    return repo.getSettlementDetail(settlementId);
+  },
+
+  // ── V2 Command Pipeline ──
+
+  async changeStatusV2(settlementId: number, toStatus: string, extra?: Record<string, unknown>) {
+    const command: Command = {
+      commandId: `change-settlement-status-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      commandType: `ChangeSettlementStatus`,
+      aggregateType: 'settlement',
+      aggregateId: String(settlementId),
+      payload: { settlementId, toStatus: toStatus as SettlementStatus, extra } satisfies ChangeSettlementStatusPayload,
+      correlationId: `stl_${Date.now()}`,
+    };
+
+    const result = await commandPipeline.execute(command, {
+      validate: async () => changeSettlementStatusHandler.validate(command),
+      execute: async (cmd, conn) => changeSettlementStatusHandler.execute(cmd, conn),
+      events: (cmd, res) => changeSettlementStatusHandler.events!(cmd, res),
+    });
+
+    if (result.status === 'error') {
+      throw new Error(`ChangeSettlementStatus failed: ${result.message}`);
+    }
+
+    const data = result.data!;
+    if (data.status === 'completed' || data.status === 'rejected') {
+      eventBus.emit('settlement:completed', {
+        settlementId: data.settlementId,
+        organisationId: 0,
+        amount: 0,
+      });
+    }
 
     return repo.getSettlementDetail(settlementId);
   },
