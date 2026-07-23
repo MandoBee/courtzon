@@ -26,6 +26,13 @@ export const httpRequestsTotal = new client.Counter({
   registers: [registry],
 });
 
+export const aggregateVersionConflictsTotal = new client.Counter({
+  name: 'courtzon_aggregate_version_conflicts_total',
+  help: 'Total number of aggregate version conflicts',
+  labelNames: ['aggregate_type'] as const,
+  registers: [registry],
+});
+
 const METRICS_PATH = '/metrics';
 
 /**

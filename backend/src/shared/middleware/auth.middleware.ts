@@ -91,7 +91,7 @@ export async function resolveSessionUserId(request: FastifyRequest): Promise<num
 }
 
 const PUBLIC_PREFIXES = [
-  '/public/', '/health', '/payments/webhook',
+  '/public/', '/health', '/metrics', '/payments/webhook',
   '/openapi.json', '/docs', '/uploads/',
   '/sports', '/countries', '/languages', '/currencies',
   '/provinces', '/cities', '/banks', '/amenities',

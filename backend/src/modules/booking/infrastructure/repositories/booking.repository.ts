@@ -3,15 +3,7 @@ import { getPool } from '../../../../database/mysql.js';
 import { generateUUID, generateQRToken } from '../../../../shared/utils/token.js';
 import { ConflictError } from '../../../../shared/errors/app-error.js';
 import type { RowDataPacket, ResultSetHeader } from 'mysql2';
-import client from 'prom-client';
-import { registry } from '../../../../infrastructure/metrics/metrics.js';
-
-const aggregateVersionConflictsTotal = new client.Counter({
-  name: 'courtzon_aggregate_version_conflicts_total',
-  help: 'Total number of aggregate version conflicts',
-  labelNames: ['aggregate_type'] as const,
-  registers: [registry],
-});
+import { aggregateVersionConflictsTotal } from '../../../../infrastructure/metrics/metrics.js';
 
 type RowData = RowDataPacket[];
 type Executor = mysql.Pool | mysql.PoolConnection;
