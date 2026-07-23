@@ -134,6 +134,10 @@ export type JobPayloadMap = {
 export const DEFAULT_QUEUE_NAME = 'default';
 export const NOTIFICATION_QUEUE_NAME = 'notifications';
 
+function customBackoff(attemptsMade: number): number {
+  return Math.min(2000 * Math.pow(4, attemptsMade - 1), 3_600_000);
+}
+
 class QueueService {
   private queues = new Map<string, Queue>();
 
@@ -154,6 +158,30 @@ class QueueService {
 
     this.queues.set(name, queue);
     return queue;
+  }
+
+  /** Add a job to a named queue with optional jobId and custom backoff for event subscribers. */
+  async addToQueue(
+    queueName: string,
+    data: Record<string, unknown>,
+    opts?: {
+      jobId?: string;
+      attempts?: number;
+      backoffDelay?: number;
+    },
+  ): Promise<string | undefined> {
+    const queue = this.getQueue(queueName);
+    const job = await queue.add('event', data, {
+      jobId: opts?.jobId,
+      attempts: opts?.attempts ?? 6,
+      backoff: opts?.backoffDelay
+        ? { type: 'custom' as any, delay: opts.backoffDelay }
+        : { type: 'exponential', delay: 2000 },
+      removeOnComplete: { age: 86400, count: 1000 },
+      removeOnFail: { age: 604800, count: 5000 },
+    });
+    log.info({ jobId: job?.id, queue: queueName }, `Event enqueued: ${queueName}`);
+    return job?.id;
   }
 
   async add<T extends JobType>(

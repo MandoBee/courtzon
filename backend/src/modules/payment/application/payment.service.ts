@@ -10,6 +10,11 @@ import { getPool } from '../../../database/mysql.js';
 import { getRedisClient } from '../../../infrastructure/redis/redis.client.js';
 import { createModuleLogger } from '../../../shared/utils/logger.js';
 import { eventBus } from '../../../shared/event-bus/index.js';
+import { eventBusV2 } from '../../../shared/event-bus/event-bus.v2.js';
+import { commandPipeline } from '../../../shared/command/command-pipeline.js';
+import { isFeatureEnabled } from '../../../shared/utils/feature-flags.js';
+import { processPaymentHandler, type ProcessPaymentPayload } from '../commands/process-payment.command.js';
+import type { Command } from '../../../shared/command/command-base.js';
 import { refundPayment, expirePayment as sagaExpirePayment } from '../../../platform/payment/PaymentSaga.js';
 
 const log = createModuleLogger('payment');
@@ -46,6 +51,10 @@ function sanitizeGatewayResponse(raw: unknown): Record<string, any> | null {
 
 export class PaymentService {
   async charge(userId: number, input: ChargeInput) {
+    if (isFeatureEnabled('PAYMENT_V2_PROCESS')) {
+      return this.chargeV2(userId, input);
+    }
+
     if (input.paymentMethod === 'wallet') {
       return this.chargeByWallet(userId, input);
     }
@@ -843,6 +852,43 @@ export class PaymentService {
 
     log.info({ expired, total: payments.length }, 'Payment expiry complete');
     return { expired, total: payments.length };
+  }
+
+  private async chargeV2(userId: number, input: ChargeInput) {
+    const traceId = randomUUID();
+    const { id: paymentId } = await paymentRepository.create({
+      userId,
+      bookingId: input.referenceType === 'booking' ? input.referenceId : undefined,
+      orderId: input.referenceType === 'order' ? input.referenceId : undefined,
+      referenceType: input.referenceType,
+      paymentMethod: input.paymentMethod,
+      gatewayProvider: 'v2_pipeline',
+      gatewayReference: `v2_${Date.now()}`,
+      amount: input.amount,
+      status: 'pending',
+      traceId,
+    });
+
+    const command: Command = {
+      commandId: `process-payment-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      commandType: 'ProcessPayment',
+      aggregateType: 'payment',
+      aggregateId: String(paymentId),
+      payload: { paymentId } satisfies ProcessPaymentPayload,
+      correlationId: traceId,
+    };
+
+    const result = await commandPipeline.execute(command, {
+      validate: async () => {},
+      execute: async (cmd, conn) => processPaymentHandler.execute(cmd, conn),
+      events: (cmd, res) => processPaymentHandler.events!(cmd, res),
+    });
+
+    if (result.status === 'error') {
+      throw new Error(`ProcessPayment failed: ${result.message}`);
+    }
+
+    return { paymentId, traceId, success: true, status: 'paid' };
   }
 
   async getTransactions(userId: number, page: number, limit: number) {

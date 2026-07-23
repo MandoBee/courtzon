@@ -1,16 +1,44 @@
 import type mysql from 'mysql2/promise';
 import { getPool } from '../../../../database/mysql.js';
 import { generateUUID } from '../../../../shared/utils/token.js';
+import { ConflictError } from '../../../../shared/errors/app-error.js';
 
 type RowData = mysql.RowDataPacket[];
-
+type ResultSetHeader = mysql.ResultSetHeader;
 type Executor = mysql.Pool | mysql.PoolConnection;
 
 function resolvePool(conn?: mysql.PoolConnection): Executor {
   return conn ?? getPool();
 }
 
+export class AggregateVersionConflict extends ConflictError {
+  constructor(walletId: number, expectedVersion: number, actualVersion: number) {
+    super(`Wallet ${walletId} version conflict: expected ${expectedVersion}, actual ${actualVersion}`);
+  }
+}
+
 export const walletRepository = {
+  async findById(id: number, conn?: mysql.PoolConnection) {
+    const pool = resolvePool(conn);
+    const [rows] = await pool.execute<RowData>(
+      'SELECT * FROM user_wallets WHERE id = ?',
+      [id]
+    );
+    return rows[0] || null;
+  },
+
+  async persistBalanceUpdate(walletId: number, newBalance: number, expectedVersion: number, conn?: mysql.PoolConnection): Promise<void> {
+    const pool = resolvePool(conn);
+    const [result] = await pool.execute<ResultSetHeader>(
+      'UPDATE user_wallets SET balance = ?, aggregate_version = aggregate_version + 1, updated_at = NOW() WHERE id = ? AND aggregate_version = ?',
+      [newBalance, walletId, expectedVersion]
+    );
+    if (result.affectedRows === 0) {
+      const [rows] = await pool.execute('SELECT aggregate_version FROM user_wallets WHERE id = ?', [walletId]);
+      const actual = (rows as any[])[0]?.aggregate_version;
+      throw new AggregateVersionConflict(walletId, expectedVersion, actual ?? 0);
+    }
+  },
   async findByUserId(userId: number) {
     const pool = getPool();
     const [rows] = await pool.execute<RowData>(

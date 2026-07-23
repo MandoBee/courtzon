@@ -17,7 +17,7 @@ export interface IBookingRepository {
     bookingId: number,
     status: string,
     paymentStatus?: string,
-    paymentMethod?: string,
+    expectedVersion?: number,
     conn?: mysql.PoolConnection,
   ): Promise<void>;
 

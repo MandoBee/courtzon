@@ -7,6 +7,12 @@ import type { RowDataPacket, ResultSetHeader } from 'mysql2';
 type RowData = RowDataPacket[];
 type Executor = mysql.Pool | mysql.PoolConnection;
 
+export class AggregateVersionConflict extends ConflictError {
+  constructor(bookingId: number, expectedVersion: number, actualVersion: number) {
+    super(`Booking ${bookingId} version conflict: expected ${expectedVersion}, actual ${actualVersion}`);
+  }
+}
+
 export class BookingRepository {
   private pool: mysql.Pool;
 
@@ -34,8 +40,8 @@ export class BookingRepository {
       `INSERT INTO bookings (public_id, user_id, organisation_id, branch_id, resource_id, booking_type,
         booking_date, business_date, start_time, end_time, start_at_utc, end_at_utc,
         total_amount, commission_amount, club_amount,
-        booking_status, payment_status, payment_method, notes, expires_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        booking_status, payment_status, payment_method, notes, expires_at, aggregate_version)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
        [generateUUID(), data.userId, data.organisationId, data.branchId, data.resourceId, data.bookingType,
         data.bookingDate, data.businessDate || data.bookingDate, data.startTime, data.endTime,
         data.startAtUtc ? data.startAtUtc.replace('T', ' ').replace(/\.\d+Z$/, '') : null,
@@ -51,22 +57,29 @@ export class BookingRepository {
     id: number,
     bookingStatus: string,
     paymentStatus?: string,
-    extraWhere?: string,
+    expectedVersion?: number,
     conn?: mysql.PoolConnection,
   ): Promise<void> {
     const db = this.resolve(conn);
-    const whereClause = extraWhere ? ` AND ${extraWhere}` : '';
-    const sql = paymentStatus !== undefined
-      ? `UPDATE bookings SET booking_status = ?, payment_status = ?, updated_at = NOW() WHERE id = ?${whereClause}`
-      : `UPDATE bookings SET booking_status = ?, updated_at = NOW() WHERE id = ?${whereClause}`;
-    const params = paymentStatus !== undefined
-      ? [bookingStatus, paymentStatus, id]
-      : [bookingStatus, id];
-    await db.execute(sql, params);
+    const versionClause = expectedVersion !== undefined ? ' AND aggregate_version = ?' : '';
+    const setClause = expectedVersion !== undefined
+      ? 'booking_status = ?, payment_status = COALESCE(?, payment_status), aggregate_version = aggregate_version + 1, updated_at = NOW()'
+      : 'booking_status = ?, payment_status = COALESCE(?, payment_status), updated_at = NOW()';
+    const sql = `UPDATE bookings SET ${setClause} WHERE id = ?${versionClause}`;
+    const params = expectedVersion !== undefined
+      ? [bookingStatus, paymentStatus || null, id, expectedVersion]
+      : [bookingStatus, paymentStatus || null, id];
+    const [result] = await db.execute<ResultSetHeader>(sql, params);
+    if (expectedVersion !== undefined && result.affectedRows === 0) {
+      const [rows] = await db.execute('SELECT aggregate_version FROM bookings WHERE id = ?', [id]);
+      const actual = (rows as any[])[0]?.aggregate_version;
+      throw new AggregateVersionConflict(id, expectedVersion, actual ?? 0);
+    }
   }
 
-  async findById(id: number): Promise<any | null> {
-    const [rows] = await this.pool.execute<RowData>(
+  async findById(id: number, conn?: mysql.PoolConnection): Promise<any | null> {
+    const db = this.resolve(conn);
+    const [rows] = await db.execute<RowData>(
       `SELECT b.*, r.name as resource_name, br.name as branch_name
        FROM bookings b
        JOIN resources r ON r.id = b.resource_id

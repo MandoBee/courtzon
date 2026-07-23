@@ -1,6 +1,7 @@
 import type mysql from 'mysql2/promise';
 import { randomUUID } from 'node:crypto';
 import { getPool } from '../../../../database/mysql.js';
+import { ConflictError } from '../../../../shared/errors/app-error.js';
 
 type RowData = mysql.RowDataPacket[];
 
@@ -18,8 +19,8 @@ export const paymentRepository = {
     const [result] = await pool.execute<mysql.ResultSetHeader>(
       `INSERT INTO payment_transactions
         (user_id, booking_id, order_id, idempotency_key, reference_type, payment_method, gateway_provider,
-         gateway_reference, amount, currency, payment_status, gateway_response, trace_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         gateway_reference, amount, currency, payment_status, gateway_response, trace_id, aggregate_version)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
       [data.userId,
        isBooking ? (data.bookingId ?? null) : null,
        isOrder ? (data.orderId ?? null) : null,
@@ -118,7 +119,7 @@ export const paymentRepository = {
     id: number,
     status: string,
     gatewayReference?: string,
-    extraWhere?: string,
+    expectedVersion?: number,
     conn?: mysql.PoolConnection,
   ): Promise<void> {
     const db = conn || getPool();
@@ -127,12 +128,23 @@ export const paymentRepository = {
     if (gatewayReference) { fields.push('gateway_reference = ?'); params.push(gatewayReference); }
     if (status === 'paid') { fields.push('paid_at = NOW()'); }
     if (status === 'cancelled' || status === 'expired') { fields.push('cancelled_at = NOW()'); }
-    const whereClause = extraWhere ? ` AND ${extraWhere}` : '';
-    params.push(id);
-    await db.execute(
-      `UPDATE payment_transactions SET ${fields.join(', ')} WHERE id = ?${whereClause}`,
-      params
-    );
+    if (expectedVersion !== undefined) {
+      fields.push('aggregate_version = aggregate_version + 1');
+      params.push(id, expectedVersion);
+      const [result] = await db.execute<mysql.ResultSetHeader>(
+        `UPDATE payment_transactions SET ${fields.join(', ')} WHERE id = ? AND aggregate_version = ?`,
+        params,
+      );
+      if (result.affectedRows === 0) {
+        throw new ConflictError(`Payment ${id} version conflict: expected ${expectedVersion}`);
+      }
+    } else {
+      params.push(id);
+      await db.execute(
+        `UPDATE payment_transactions SET ${fields.join(', ')} WHERE id = ?`,
+        params,
+      );
+    }
   },
 
   /**

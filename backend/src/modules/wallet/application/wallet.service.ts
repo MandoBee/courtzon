@@ -6,6 +6,12 @@ import { paymentGateway } from '../../../shared/services/gateway/gateway-factory
 import { ConflictError } from '../../../shared/errors/app-error.js';
 import { withTransaction } from '../../../database/database.transaction.js';
 import { eventBus } from '../../../shared/event-bus/index.js';
+import { eventBusV2 } from '../../../shared/event-bus/event-bus.v2.js';
+import { commandPipeline } from '../../../shared/command/command-pipeline.js';
+import { isFeatureEnabled } from '../../../shared/utils/feature-flags.js';
+import { depositWalletHandler, type DepositWalletPayload } from '../commands/deposit-wallet.command.js';
+import { withdrawWalletHandler, type WithdrawWalletPayload } from '../commands/withdraw-wallet.command.js';
+import type { Command } from '../../../shared/command/command-base.js';
 
 export class WalletService {
   async getMyWallet(userId: number) {
@@ -20,7 +26,7 @@ export class WalletService {
       );
       const currency = (userRows[0] as any)?.default_currency || 'EGP';
       await pool.execute(
-        'INSERT INTO user_wallets (user_id, balance, currency_code) VALUES (?, 0, ?)',
+        'INSERT INTO user_wallets (user_id, balance, currency_code, aggregate_version) VALUES (?, 0, ?, 1)',
         [userId, currency]
       );
       wallet = await walletRepository.findByUserId(userId);
@@ -34,6 +40,10 @@ export class WalletService {
   }
 
   async deposit(userId: number, amount: number, paymentMethod: string, returnUrl?: string) {
+    if (isFeatureEnabled('WALLET_V2_DEPOSIT')) {
+      return this.depositV2(userId, amount, paymentMethod, returnUrl);
+    }
+
     const wallet = await this.getMyWallet(userId);
     const paymentRequest = {
       amount,
@@ -47,14 +57,12 @@ export class WalletService {
 
     if (paymentResult.success && paymentResult.status === 'paid') {
       const newBalance = await withTransaction(async (conn) => {
-        // FOR UPDATE lock held for duration of transaction
         const state = await walletRepository.lockAndGetBalance(wallet.id, conn);
         if (!state) throw new ConflictError('Wallet is locked');
         const balance = state.balance + amount;
         const updated = await walletRepository.updateBalance(wallet.id, balance, state.version, conn);
         if (!updated) throw new ConflictError('Concurrent wallet update');
 
-        // Double-entry: platform float → user wallet (on the SAME connection)
         await transactionService.createWalletTopup({
           userId, walletId: wallet.id, amount,
           sourceType: 'payment_gateway',
@@ -93,25 +101,26 @@ export class WalletService {
   }
 
   async withdraw(userId: number, amount: number, notes?: string, branchFinancialDetailsId?: number) {
+    if (isFeatureEnabled('WALLET_V2_WITHDRAW')) {
+      return this.withdrawV2(userId, amount, notes, branchFinancialDetailsId);
+    }
+
     const wallet = await this.getMyWallet(userId);
     if (Number(wallet.balance) < amount) throw new Error('Insufficient balance');
 
     const newBalance = await withTransaction(async (conn) => {
-      // FOR UPDATE lock held for duration of transaction
       const state = await walletRepository.lockAndGetBalance(wallet.id, conn);
       if (!state) throw new ConflictError('Wallet is locked');
       const balance = state.balance - amount;
       const updated = await walletRepository.updateBalance(wallet.id, balance, state.version, conn);
       if (!updated) throw new ConflictError('Concurrent wallet update');
 
-      // Create withdrawal request on same connection
       await conn.execute(
         `INSERT INTO withdrawal_requests (user_id, wallet_id, amount, branch_financial_details_id, status, created_at)
          VALUES (?, ?, ?, ?, 'pending', NOW())`,
         [userId, wallet.id, amount, branchFinancialDetailsId || null]
       );
 
-      // Double-entry: user wallet → platform float (on the SAME connection)
       await transactionService.createWalletWithdraw({
         userId, walletId: wallet.id, amount,
         description: notes || 'Withdrawal request',
@@ -135,6 +144,134 @@ export class WalletService {
       });
     }
     return { success: true, balance: newBalance };
+  }
+
+  private async depositV2(userId: number, amount: number, paymentMethod: string, returnUrl?: string) {
+    const wallet = await this.getMyWallet(userId);
+
+    const paymentRequest = {
+      amount,
+      currency: wallet.currencyCode,
+      referenceId: wallet.id,
+      referenceType: 'wallet_topup' as const,
+      returnUrl: returnUrl || undefined,
+    };
+
+    const paymentResult = await paymentGateway.charge(paymentRequest);
+    if (!paymentResult.success || paymentResult.status !== 'paid') {
+      return {
+        success: false,
+        paymentUrl: paymentResult.paymentUrl,
+        clientSecret: paymentResult.clientSecret,
+        publicKey: process.env.PAYMOB_PUBLIC_KEY || '',
+        transactionId: paymentResult.transactionId,
+        status: paymentResult.status,
+        message: 'Payment requires action — redirect to gateway',
+      };
+    }
+
+    const command: Command = {
+      commandId: `deposit-wallet-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      commandType: 'DepositWallet',
+      aggregateType: 'wallet',
+      aggregateId: String(wallet.id),
+      payload: { walletId: wallet.id, userId, amount, currency: wallet.currencyCode } satisfies DepositWalletPayload,
+      correlationId: `dep_${Date.now()}`,
+    };
+
+    const result = await commandPipeline.execute(command, {
+      validate: async () => depositWalletHandler.validate(command),
+      execute: async (cmd, conn) => {
+        const depositResult = await depositWalletHandler.execute(cmd, conn);
+
+        await transactionService.createWalletTopup({
+          userId, walletId: wallet.id, amount,
+          sourceType: 'payment_gateway',
+          description: `Deposit via ${paymentMethod}`,
+        }, conn);
+
+        return depositResult;
+      },
+      events: (cmd, res) => depositWalletHandler.events!(cmd, res),
+    });
+
+    if (result.status === 'error') {
+      throw new Error(`DepositWallet failed: ${result.message}`);
+    }
+
+    const data = result.data!;
+    eventBus.emit('wallet:deposit', {
+      walletId: wallet.id,
+      userId,
+      amount,
+      balance: data.newBalance,
+      currency: wallet.currencyCode,
+    });
+    if (data.newBalance < 50) {
+      eventBus.emit('wallet:low-balance', {
+        userId,
+        balance: data.newBalance,
+        currency: wallet.currencyCode,
+      });
+    }
+
+    return { success: true, balance: data.newBalance, transactionId: paymentResult.transactionId };
+  }
+
+  private async withdrawV2(userId: number, amount: number, notes?: string, branchFinancialDetailsId?: number) {
+    const wallet = await this.getMyWallet(userId);
+
+    const command: Command = {
+      commandId: `withdraw-wallet-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      commandType: 'WithdrawWallet',
+      aggregateType: 'wallet',
+      aggregateId: String(wallet.id),
+      payload: { walletId: wallet.id, userId, amount, description: notes } satisfies WithdrawWalletPayload,
+      correlationId: `wd_${Date.now()}`,
+    };
+
+    const result = await commandPipeline.execute(command, {
+      validate: async () => withdrawWalletHandler.validate(command),
+      execute: async (cmd, conn) => {
+        const withdrawResult = await withdrawWalletHandler.execute(cmd, conn);
+
+        await conn.execute(
+          `INSERT INTO withdrawal_requests (user_id, wallet_id, amount, branch_financial_details_id, status, created_at)
+           VALUES (?, ?, ?, ?, 'pending', NOW())`,
+          [userId, wallet.id, amount, branchFinancialDetailsId || null]
+        );
+
+        await transactionService.createWalletWithdraw({
+          userId, walletId: wallet.id, amount,
+          description: notes || 'Withdrawal request',
+        }, conn);
+
+        return withdrawResult;
+      },
+      events: (cmd, res) => withdrawWalletHandler.events!(cmd, res),
+    });
+
+    if (result.status === 'error') {
+      throw new Error(`WithdrawWallet failed: ${result.message}`);
+    }
+
+    const data = result.data!;
+    eventBus.emit('wallet:withdrawal', {
+      walletId: wallet.id,
+      userId,
+      amount,
+      balance: data.newBalance,
+      currency: wallet.currencyCode,
+    });
+    if (data.newBalance < 50) {
+      eventBus.emit('wallet:low-balance', {
+        userId,
+        balance: data.newBalance,
+        currency: wallet.currencyCode,
+      });
+    }
+
+    return { success: true, balance: data.newBalance };
   }
 
   async getTransactions(userId: number, filters: {

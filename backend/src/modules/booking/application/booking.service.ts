@@ -15,6 +15,14 @@ import { generateUUID } from '../../../shared/utils/token.js';
 import type { CreateBookingInput, PrepareBookingInput } from '../presentation/booking.dto.js';
 import type mysql from 'mysql2/promise';
 import { eventBus } from '../../../shared/event-bus/index.js';
+import { eventBusV2 } from '../../../shared/event-bus/event-bus.v2.js';
+import { commandPipeline } from '../../../shared/command/command-pipeline.js';
+import { isFeatureEnabled, setFeatureFlag } from '../../../shared/utils/feature-flags.js';
+import { createBookingHandler, type CreateBookingPayload } from '../commands/create-booking.command.js';
+import { confirmBookingHandler, type ConfirmBookingPayload } from '../commands/confirm-booking.command.js';
+import { cancelBookingHandler, type CancelBookingPayload } from '../commands/cancel-booking.command.js';
+import { completeBookingHandler, type CompleteBookingPayload } from '../commands/complete-booking.command.js';
+import type { Command } from '../../../shared/command/command-base.js';
 import {
   confirmBooking, cancelBooking, checkInBooking, noShowBooking, completeBooking,
   updateBookingPaymentStatus,
@@ -53,6 +61,10 @@ function splitTimeRange(startTime: string, endTime: string, durationMinutes: num
 
 export class BookingService {
   async createBooking(input: CreateBookingInput, userId: number) {
+    if (isFeatureEnabled('BOOKING_V2_CREATE')) {
+      return this.createBookingV2(input, userId);
+    }
+
     const pool = getPool();
 
     // Derive organisation_id from branch
@@ -820,7 +832,15 @@ export class BookingService {
   }
 
   async updateBookingStatus(id: number, status: string, actorId?: number) {
+    if (status === 'confirmed' && isFeatureEnabled('BOOKING_V2_CONFIRM')) {
+      return this.confirmBookingV2(id);
+    }
+
     if (status === 'completed') {
+      if (isFeatureEnabled('BOOKING_V2_COMPLETE')) {
+        return this.completeBookingV2(id);
+      }
+
       const booking = await bookingRepository.findById(id);
       if (!booking) throw new NotFoundError('Booking');
       const isCOD = booking.payment_method === 'cash' || booking.payment_method === 'cod';
@@ -844,6 +864,11 @@ export class BookingService {
     }
 
     if (status === 'cancelled' || status === 'no_show') {
+      if (status === 'cancelled' && isFeatureEnabled('BOOKING_V2_CANCEL')) {
+        await this.cancelBookingV2(id);
+        return;
+      }
+
       const booking = await bookingRepository.findById(id);
       if (!booking) throw new NotFoundError('Booking');
       if (booking.booking_status === 'cancelled' || booking.booking_status === 'no_show') {
@@ -1229,6 +1254,134 @@ export class BookingService {
     }
 
     return { status: action };
+  }
+
+  private async createBookingV2(input: CreateBookingInput, userId: number) {
+    const pool = getPool();
+
+    const [branchRows] = await pool.execute<RowData>(
+      'SELECT id, organisation_id, timezone, opening_time, closing_time FROM branches WHERE id = ?', [input.branchId],
+    );
+    if (branchRows.length === 0) throw new NotFoundError('Branch');
+    const branchData = branchRows[0] as any;
+    const organisationId = branchData.organisation_id;
+    const branchTz = branchData.timezone || 'Africa/Cairo';
+
+    const startAtUtc = TimeEngine.localToUtc(input.bookingDate, input.startTime, branchTz);
+    const endAtUtc = TimeEngine.localToUtc(input.bookingDate, input.endTime, branchTz);
+    const resource = await resourceRepository.findById(input.resourceId);
+    const openingTime = resource?.opening_time || '08:00';
+    const closingTime = resource?.closing_time || '22:00';
+
+    const pricing = await pricingEngine.calculatePrice(
+      input.resourceId, input.startTime, input.endTime,
+    );
+
+    const command: Command = {
+      commandId: `create-booking-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      commandType: 'CreateBooking',
+      aggregateType: 'booking',
+      aggregateId: String(input.resourceId),
+      payload: {
+        userId,
+        branchId: input.branchId,
+        organisationId,
+        resourceId: input.resourceId,
+        bookingDate: input.bookingDate,
+        startTime: input.startTime,
+        endTime: input.endTime,
+        totalAmount: pricing.totalPrice,
+        startAtUtc,
+        endAtUtc,
+        bookingType: input.bookingType || 'standard',
+        paymentMethod: input.paymentMethod,
+        notes: input.notes,
+      } satisfies CreateBookingPayload,
+      actorId: userId,
+    };
+
+    const result = await commandPipeline.execute(command, {
+      validate: async () => {},
+      execute: async (cmd, conn) => createBookingHandler.execute(cmd, conn),
+      events: (cmd, res) => createBookingHandler.events!(cmd, res),
+    });
+
+    if (result.status === 'error') {
+      throw new Error(`CreateBooking failed: ${result.message}`);
+    }
+
+    log.info({ bookingId: result.status === 'processed' ? result.data?.bookingId : undefined }, 'booking.created_v2');
+
+    if (result.status === 'processed' && result.data) {
+      return { bookingId: result.data.bookingId };
+    }
+    return { bookingId: 0 };
+  }
+
+  private async confirmBookingV2(bookingId: number) {
+    const command: Command = {
+      commandId: `confirm-booking-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      commandType: 'ConfirmBooking',
+      aggregateType: 'booking',
+      aggregateId: String(bookingId),
+      payload: { bookingId } satisfies ConfirmBookingPayload,
+    };
+
+    const result = await commandPipeline.execute(command, {
+      validate: async () => {},
+      execute: async (cmd, conn) => confirmBookingHandler.execute(cmd, conn),
+      events: (cmd, res) => confirmBookingHandler.events!(cmd, res),
+    });
+
+    if (result.status === 'error') {
+      throw new Error(`ConfirmBooking failed: ${result.message}`);
+    }
+
+    log.info({ bookingId }, 'booking.confirmed_v2');
+  }
+
+  private async cancelBookingV2(bookingId: number) {
+    const command: Command = {
+      commandId: `cancel-booking-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      commandType: 'CancelBooking',
+      aggregateType: 'booking',
+      aggregateId: String(bookingId),
+      payload: { bookingId } satisfies CancelBookingPayload,
+    };
+
+    const result = await commandPipeline.execute(command, {
+      validate: async () => {},
+      execute: async (cmd, conn) => cancelBookingHandler.execute(cmd, conn),
+      events: (cmd, res) => cancelBookingHandler.events!(cmd, res),
+    });
+
+    if (result.status === 'error') {
+      throw new Error(`CancelBooking failed: ${result.message}`);
+    }
+
+    log.info({ bookingId }, 'booking.cancelled_v2');
+  }
+
+  private async completeBookingV2(bookingId: number) {
+    const command: Command = {
+      commandId: `complete-booking-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      commandType: 'CompleteBooking',
+      aggregateType: 'booking',
+      aggregateId: String(bookingId),
+      payload: { bookingId } satisfies CompleteBookingPayload,
+    };
+
+    const result = await commandPipeline.execute(command, {
+      validate: async () => {},
+      execute: async (cmd, conn) => completeBookingHandler.execute(cmd, conn),
+      events: (cmd, res) => completeBookingHandler.events!(cmd, res),
+    });
+
+    if (result.status === 'error') {
+      throw new Error(`CompleteBooking failed: ${result.message}`);
+    }
+
+    log.info({ bookingId }, 'booking.completed_v2');
   }
 
   private async getResourceSport(resourceId: number): Promise<number> {
