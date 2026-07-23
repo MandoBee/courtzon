@@ -42,6 +42,14 @@ export class SecurityRepository {
     return rows as any[];
   }
 
+  async getSessionById(sessionId: number): Promise<any | null> {
+    const pool = getPool();
+    const [rows] = await pool.execute(
+      'SELECT * FROM user_sessions WHERE id = ?', [sessionId]
+    );
+    return (rows as any[])[0] || null;
+  }
+
   async revokeSession(sessionId: number): Promise<void> {
     const pool = getPool();
     await pool.execute(`UPDATE user_sessions SET is_revoked = TRUE WHERE id = ?`, [sessionId]);
