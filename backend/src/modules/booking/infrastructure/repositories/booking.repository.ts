@@ -3,6 +3,15 @@ import { getPool } from '../../../../database/mysql.js';
 import { generateUUID, generateQRToken } from '../../../../shared/utils/token.js';
 import { ConflictError } from '../../../../shared/errors/app-error.js';
 import type { RowDataPacket, ResultSetHeader } from 'mysql2';
+import client from 'prom-client';
+import { registry } from '../../../../infrastructure/metrics/metrics.js';
+
+const aggregateVersionConflictsTotal = new client.Counter({
+  name: 'courtzon_aggregate_version_conflicts_total',
+  help: 'Total number of aggregate version conflicts',
+  labelNames: ['aggregate_type'] as const,
+  registers: [registry],
+});
 
 type RowData = RowDataPacket[];
 type Executor = mysql.Pool | mysql.PoolConnection;
@@ -73,6 +82,7 @@ export class BookingRepository {
     if (expectedVersion !== undefined && result.affectedRows === 0) {
       const [rows] = await db.execute('SELECT aggregate_version FROM bookings WHERE id = ?', [id]);
       const actual = (rows as any[])[0]?.aggregate_version;
+      aggregateVersionConflictsTotal.inc({ aggregate_type: 'booking' });
       throw new AggregateVersionConflict(id, expectedVersion, actual ?? 0);
     }
   }

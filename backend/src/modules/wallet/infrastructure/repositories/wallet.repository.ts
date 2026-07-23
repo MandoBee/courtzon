@@ -2,6 +2,15 @@ import type mysql from 'mysql2/promise';
 import { getPool } from '../../../../database/mysql.js';
 import { generateUUID } from '../../../../shared/utils/token.js';
 import { ConflictError } from '../../../../shared/errors/app-error.js';
+import client from 'prom-client';
+import { registry } from '../../../../infrastructure/metrics/metrics.js';
+
+const aggregateVersionConflictsTotal = new client.Counter({
+  name: 'courtzon_aggregate_version_conflicts_total',
+  help: 'Total number of aggregate version conflicts',
+  labelNames: ['aggregate_type'] as const,
+  registers: [registry],
+});
 
 type RowData = mysql.RowDataPacket[];
 type ResultSetHeader = mysql.ResultSetHeader;
@@ -36,6 +45,7 @@ export const walletRepository = {
     if (result.affectedRows === 0) {
       const [rows] = await pool.execute('SELECT aggregate_version FROM user_wallets WHERE id = ?', [walletId]);
       const actual = (rows as any[])[0]?.aggregate_version;
+      aggregateVersionConflictsTotal.inc({ aggregate_type: 'wallet' });
       throw new AggregateVersionConflict(walletId, expectedVersion, actual ?? 0);
     }
   },

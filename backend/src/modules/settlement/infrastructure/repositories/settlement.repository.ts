@@ -2,6 +2,15 @@ import type mysql from 'mysql2/promise';
 import { getPool } from '../../../../database/mysql.js';
 import { buildPagination, paginationClause } from '../../../../shared/utils/pagination.js';
 import { ConflictError } from '../../../../shared/errors/app-error.js';
+import client from 'prom-client';
+import { registry } from '../../../../infrastructure/metrics/metrics.js';
+
+const aggregateVersionConflictsTotal = new client.Counter({
+  name: 'courtzon_aggregate_version_conflicts_total',
+  help: 'Total number of aggregate version conflicts',
+  labelNames: ['aggregate_type'] as const,
+  registers: [registry],
+});
 
 type RowData = mysql.RowDataPacket[];
 type Executor = mysql.Pool | mysql.PoolConnection;
@@ -114,6 +123,7 @@ export const settlementRepository = {
     if (result.affectedRows === 0) {
       const [rows] = await pool.execute('SELECT aggregate_version FROM settlements WHERE id = ?', [id]);
       const actual = (rows as any[])[0]?.aggregate_version;
+      aggregateVersionConflictsTotal.inc({ aggregate_type: 'settlement' });
       throw new AggregateVersionConflict(id, expectedVersion, actual ?? 0);
     }
   },
