@@ -10,8 +10,10 @@ import { countriesRepository } from '../../countries/infrastructure/repositories
 import { NotFoundError, ConflictError, ValidationError } from '../../../shared/errors/app-error.js';
 import { resolveOrganisationMedia } from './organisation-media.util.js';
 import { eventBusV2 } from '../../../shared/event-bus/index.js';
-import { cancelBooking } from '../../../platform/booking/BookingSaga.js';
+import { commandPipeline } from '../../../shared/command/command-pipeline.js';
+import { cancelBookingHandler } from '../../booking/commands/cancel-booking.command.js';
 import { CANCELLABLE_BOOKING_STATUSES } from '../../booking/domain/booking-constants.js';
+import type { Command } from '../../../shared/command/command-base.js';
 import {
   mapSubscriptionPlanBase,
   resolvePlanPrice,
@@ -307,7 +309,20 @@ export class OrganisationService {
         [id, ...CANCELLABLE_BOOKING_STATUSES],
       );
       for (const b of orgBookings as any[]) {
-        await cancelBooking(b.id, 0, 'Auto-cancelled: organisation deleted', 0, conn);
+        const cancelCmd: Command = {
+          commandId: `CancelBooking-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          commandType: 'CancelBooking',
+          aggregateType: 'booking',
+          aggregateId: String(b.id),
+          payload: { bookingId: b.id, reason: 'Auto-cancelled: organisation deleted' },
+          correlationId: `corr_${Date.now()}`,
+        };
+        const cancelRes = await commandPipeline.execute(cancelCmd, {
+          validate: async () => cancelBookingHandler.validate(cancelCmd),
+          execute: async (cmd, c) => cancelBookingHandler.execute(cmd, c),
+          events: (cmd, res) => cancelBookingHandler.events!(cmd, res),
+        });
+        if (cancelRes.status === 'error') throw new Error(`CancelBooking failed: ${cancelRes.message}`);
       }
       await this.#cascadeDeleteOrganisation(id, conn);
       await conn.execute(
@@ -377,7 +392,20 @@ export class OrganisationService {
         [id, ...CANCELLABLE_BOOKING_STATUSES],
       );
       for (const b of branchBookings as any[]) {
-        await cancelBooking(b.id, 0, 'Auto-cancelled: branch deleted', 0, conn);
+        const cancelCmd: Command = {
+          commandId: `CancelBooking-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          commandType: 'CancelBooking',
+          aggregateType: 'booking',
+          aggregateId: String(b.id),
+          payload: { bookingId: b.id, reason: 'Auto-cancelled: branch deleted' },
+          correlationId: `corr_${Date.now()}`,
+        };
+        const cancelRes = await commandPipeline.execute(cancelCmd, {
+          validate: async () => cancelBookingHandler.validate(cancelCmd),
+          execute: async (cmd, c) => cancelBookingHandler.execute(cmd, c),
+          events: (cmd, res) => cancelBookingHandler.events!(cmd, res),
+        });
+        if (cancelRes.status === 'error') throw new Error(`CancelBooking failed: ${cancelRes.message}`);
       }
       await conn.execute(
         `UPDATE branch_player_access SET status = 'rejected', review_note = 'Branch deleted'
@@ -465,7 +493,20 @@ export class OrganisationService {
         [id, ...CANCELLABLE_BOOKING_STATUSES],
       );
       for (const b of resBookings as any[]) {
-        await cancelBooking(b.id, 0, 'Auto-cancelled: resource deleted', 0, conn);
+        const cancelCmd: Command = {
+          commandId: `CancelBooking-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          commandType: 'CancelBooking',
+          aggregateType: 'booking',
+          aggregateId: String(b.id),
+          payload: { bookingId: b.id, reason: 'Auto-cancelled: resource deleted' },
+          correlationId: `corr_${Date.now()}`,
+        };
+        const cancelRes = await commandPipeline.execute(cancelCmd, {
+          validate: async () => cancelBookingHandler.validate(cancelCmd),
+          execute: async (cmd, c) => cancelBookingHandler.execute(cmd, c),
+          events: (cmd, res) => cancelBookingHandler.events!(cmd, res),
+        });
+        if (cancelRes.status === 'error') throw new Error(`CancelBooking failed: ${cancelRes.message}`);
       }
       await conn.execute(
         `UPDATE resources SET is_active = 0 WHERE id = ? AND deleted_at IS NULL`,

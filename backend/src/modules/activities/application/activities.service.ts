@@ -8,6 +8,11 @@ import { getPool } from '../../../database/mysql.js';
 import type mysql from 'mysql2/promise';
 import { getPlanNumericLimit } from '../../organisations/application/plan-limits.util.js';
 import { eventBusV2 } from '../../../shared/event-bus/index.js';
+import { commandPipeline } from '../../../shared/command/command-pipeline.js';
+import { confirmBookingHandler } from '../../booking/commands/confirm-booking.command.js';
+import { cancelBookingHandler } from '../../booking/commands/cancel-booking.command.js';
+import { CancellationReason } from '../../../platform/shared/booking-types.js';
+import type { Command } from '../../../shared/command/command-base.js';
 
 type RowData = mysql.RowDataPacket[];
 
@@ -529,8 +534,20 @@ export const activitiesService = {
       await conn.beginTransaction();
 
       if (session.booking_id) {
-        const { confirmBooking } = await import('../../../platform/booking/BookingSaga.js');
-        await confirmBooking(session.booking_id, { paymentStatus: 'pending', paymentMethod: 'cash' }, conn);
+        const confirmCommand: Command = {
+          commandId: `ConfirmBooking-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          commandType: 'ConfirmBooking',
+          aggregateType: 'booking',
+          aggregateId: String(session.booking_id),
+          payload: { bookingId: session.booking_id },
+          correlationId: `corr_${Date.now()}`,
+        };
+        const confirmResult = await commandPipeline.execute(confirmCommand, {
+          validate: async () => confirmBookingHandler.validate(confirmCommand),
+          execute: async (cmd, c) => confirmBookingHandler.execute(cmd, c),
+          events: (cmd, res) => confirmBookingHandler.events!(cmd, res),
+        });
+        if (confirmResult.status === 'error') throw new Error(`ConfirmBooking failed: ${confirmResult.message}`);
       }
 
       await conn.execute(
@@ -560,9 +577,21 @@ export const activitiesService = {
       await conn.beginTransaction();
 
       if (session.booking_id) {
-        const { cancelBooking } = await import('../../../platform/booking/BookingSaga.js');
-        const { CancellationReason } = await import('../../../platform/shared/booking-types.js');
-        await cancelBooking(session.booking_id, userId, reason || CancellationReason.SESSION_DECLINED, 0, conn);
+        const cancelReason = reason || CancellationReason.SESSION_DECLINED;
+        const cancelCommand: Command = {
+          commandId: `CancelBooking-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          commandType: 'CancelBooking',
+          aggregateType: 'booking',
+          aggregateId: String(session.booking_id),
+          payload: { bookingId: session.booking_id, reason: cancelReason },
+          correlationId: `corr_${Date.now()}`,
+        };
+        const cancelResult = await commandPipeline.execute(cancelCommand, {
+          validate: async () => cancelBookingHandler.validate(cancelCommand),
+          execute: async (cmd, c) => cancelBookingHandler.execute(cmd, c),
+          events: (cmd, res) => cancelBookingHandler.events!(cmd, res),
+        });
+        if (cancelResult.status === 'error') throw new Error(`CancelBooking failed: ${cancelResult.message}`);
       }
 
       await conn.execute(

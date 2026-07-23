@@ -7,8 +7,10 @@ import { redisLock } from '../../booking/infrastructure/redis/redis-lock.js';
 import { NotFoundError, ConflictError } from '../../../shared/errors/app-error.js';
 import { createModuleLogger } from '../../../shared/utils/logger.js';
 import { getPool } from '../../../database/mysql.js';
-import { cancelBooking } from '../../../platform/booking/BookingSaga.js';
+import { commandPipeline } from '../../../shared/command/command-pipeline.js';
+import { cancelBookingHandler } from '../../booking/commands/cancel-booking.command.js';
 import { CancellationReason } from '../../../platform/shared/booking-types.js';
+import type { Command } from '../../../shared/command/command-base.js';
 import type mysql from 'mysql2/promise';
 
 type RowData = mysql.RowDataPacket[];
@@ -197,7 +199,20 @@ export class SchedulingBookingService {
       const conn = await pool.getConnection();
       try {
         await conn.beginTransaction();
-        await cancelBooking(bookingId, userId, reason || CancellationReason.COMPENSATION, 0, conn);
+        const cancelCommand: Command = {
+          commandId: `CancelBooking-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          commandType: 'CancelBooking',
+          aggregateType: 'booking',
+          aggregateId: String(bookingId),
+          payload: { bookingId, reason: reason || CancellationReason.COMPENSATION },
+          correlationId: `corr_${Date.now()}`,
+        };
+        const cancelResult = await commandPipeline.execute(cancelCommand, {
+          validate: async () => cancelBookingHandler.validate(cancelCommand),
+          execute: async (cmd, c) => cancelBookingHandler.execute(cmd, c),
+          events: (cmd, res) => cancelBookingHandler.events!(cmd, res),
+        });
+        if (cancelResult.status === 'error') throw new Error(`CancelBooking failed: ${cancelResult.message}`);
         await conn.commit();
         log.info({ bookingId, isPaid, totalAmount }, 'Compensation: booking cancelled via saga');
       } catch (err) {

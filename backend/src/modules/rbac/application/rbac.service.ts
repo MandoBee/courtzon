@@ -4,8 +4,10 @@ import { rbacRepository } from '../infrastructure/repositories/rbac.repository.j
 import { NotFoundError, ConflictError } from '../../../shared/errors/app-error.js';
 import { hashPassword } from '../../../shared/utils/password.js';
 import { sanitizeUploadUrl } from '../../../shared/utils/upload-url.util.js';
-import { cancelBooking } from '../../../platform/booking/BookingSaga.js';
+import { commandPipeline } from '../../../shared/command/command-pipeline.js';
+import { cancelBookingHandler } from '../../booking/commands/cancel-booking.command.js';
 import { CANCELLABLE_BOOKING_STATUSES } from '../../booking/domain/booking-constants.js';
+import type { Command } from '../../../shared/command/command-base.js';
 
 type RowData = mysql.RowDataPacket[];
 
@@ -166,7 +168,20 @@ export class RBACService {
         [userId, ...CANCELLABLE_BOOKING_STATUSES],
       );
       for (const b of userBookings as any[]) {
-        await cancelBooking(b.id, 0, 'Auto-cancelled: user deleted', 0, conn);
+        const cancelCommand: Command = {
+          commandId: `CancelBooking-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          commandType: 'CancelBooking',
+          aggregateType: 'booking',
+          aggregateId: String(b.id),
+          payload: { bookingId: b.id, reason: 'Auto-cancelled: user deleted' },
+          correlationId: `corr_${Date.now()}`,
+        };
+        const cancelResult = await commandPipeline.execute(cancelCommand, {
+          validate: async () => cancelBookingHandler.validate(cancelCommand),
+          execute: async (cmd, c) => cancelBookingHandler.execute(cmd, c),
+          events: (cmd, res) => cancelBookingHandler.events!(cmd, res),
+        });
+        if (cancelResult.status === 'error') throw new Error(`CancelBooking failed: ${cancelResult.message}`);
       }
       await this.#cascadeDeleteUser(userId, conn);
       const [result] = await conn.execute(

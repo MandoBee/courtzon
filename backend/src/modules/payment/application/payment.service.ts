@@ -14,7 +14,7 @@ import { commandPipeline } from '../../../shared/command/command-pipeline.js';
 import { isFeatureEnabled } from '../../../shared/utils/feature-flags.js';
 import { processPaymentHandler, type ProcessPaymentPayload } from '../commands/process-payment.command.js';
 import type { Command } from '../../../shared/command/command-base.js';
-import { refundPayment, expirePayment as sagaExpirePayment } from '../../../platform/payment/PaymentSaga.js';
+
 
 const log = createModuleLogger('payment');
 
@@ -797,7 +797,7 @@ export class PaymentService {
       reason,
     });
 
-    await refundPayment(paymentId, amount).catch((err: any) => log.error({ err, paymentId }, 'Failed to emit payment:refunded via saga'));
+    eventBusV2.emit('payment:refunded', { paymentId, amount, reason });
 
     await paymentRepository.createJournalEntry({
       entryType: 'refund',
@@ -828,7 +828,10 @@ export class PaymentService {
     for (const ptx of payments as any[]) {
       try {
         await withTransaction(async (conn) => {
-          await sagaExpirePayment(ptx.id, conn);
+          await conn.execute(
+            `UPDATE payment_transactions SET payment_status = 'expired', expired_at = NOW(), updated_at = NOW() WHERE id = ? AND payment_status NOT IN ('paid', 'failed', 'cancelled', 'expired', 'refunded')`,
+            [ptx.id],
+          );
           const refId = ptx.order_id || ptx.booking_id || null;
           onAfterCommit(async () => {
             eventBusV2.emit('payment:expired-event', {
