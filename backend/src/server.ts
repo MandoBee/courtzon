@@ -9,7 +9,7 @@ import { sendEmail } from "./shared/services/mailer.service.js";
 import { handleCancelExpiredBookings } from "./modules/booking/infrastructure/booking-expiry.worker.js";
 import { handleCancelAbandonedOrders } from "./modules/marketplace/infrastructure/marketplace-cleanup.worker.js";
 import { handleExpireSubscriptions, handleSendExpirationReminders } from "./modules/organisations/infrastructure/subscription-lifecycle.worker.js";
-import { handleRunSettlements } from "./modules/settlement/infrastructure/settlement-cron.worker.js";
+
 import { handleAutoCompleteBookings } from "./modules/booking/infrastructure/booking-auto-complete.worker.js";
 import { handleSyncPendingPayments, handleExpireStalePayments } from "./modules/payment/infrastructure/payment-cron.worker.js";
 import { runDatabaseBackup } from "./infrastructure/backup/backup.service.js";
@@ -31,8 +31,7 @@ import { WhatsAppProvider } from "./modules/notifications/infrastructure/provide
 import { WebhookProvider } from "./modules/notifications/infrastructure/providers/webhook.provider.js";
 import { bookingRepository } from "./modules/booking/infrastructure/repositories/booking.repository.js";
 import { paymentRepository } from "./modules/payment/infrastructure/repositories/payment.repository.js";
-import { initBooking } from "./platform/booking/BookingSaga.js";
-import { initPayment } from "./platform/payment/PaymentSaga.js";
+
 import { registerCommandHandler } from "./shared/workflow/command-handler-registry.js";
 import { workflowRegistry } from "./shared/workflow/workflow-registry.js";
 import { confirmBookingHandler } from "./modules/booking/commands/confirm-booking.command.js";
@@ -68,7 +67,7 @@ async function bootstrap() {
     registerHandler('send_email', sendEmail);
     registerHandler('cancel_expired_bookings', handleCancelExpiredBookings);
     registerHandler('database_backup', runDatabaseBackup);
-    registerHandler('run_settlements', handleRunSettlements);
+
     registerHandler('auto_complete_bookings', handleAutoCompleteBookings);
     registerHandler('sync_pending_payments', handleSyncPendingPayments);
     registerHandler('expire_stale_payments', handleExpireStalePayments);
@@ -85,9 +84,6 @@ async function bootstrap() {
     registerHandler('run_cleanup', async (_data: Record<string, never>) => {
       await runCleanupPolicies();
     });
-
-    initBooking(bookingRepository);
-    initPayment(paymentRepository);
 
     registerCommandHandler('ConfirmBooking', confirmBookingHandler as any);
     registerCommandHandler('CancelBooking', cancelBookingHandler as any);
@@ -168,12 +164,6 @@ async function bootstrap() {
 
     await queueService.add('database_backup', {}, {
       repeat: { pattern: '0 0 * * *' },
-      removeOnComplete: true,
-      removeOnFail: { age: 604800 },
-    });
-
-    await queueService.add('run_settlements', {}, {
-      repeat: { pattern: '0 2 * * *' },
       removeOnComplete: true,
       removeOnFail: { age: 604800 },
     });

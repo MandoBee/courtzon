@@ -21,14 +21,28 @@ import { createBookingHandler, type CreateBookingPayload } from '../commands/cre
 import { confirmBookingHandler, type ConfirmBookingPayload } from '../commands/confirm-booking.command.js';
 import { cancelBookingHandler, type CancelBookingPayload } from '../commands/cancel-booking.command.js';
 import { completeBookingHandler, type CompleteBookingPayload } from '../commands/complete-booking.command.js';
+import { expireBookingHandler } from '../commands/expire-booking.command.js';
 import type { Command } from '../../../shared/command/command-base.js';
-import {
-  confirmBooking, cancelBooking, checkInBooking, noShowBooking, completeBooking,
-  updateBookingPaymentStatus,
-} from '../../../platform/booking/BookingSaga.js';
 import { CancellationReason } from '../../../platform/shared/booking-types.js';
 
 type RowData = mysql.RowDataPacket[];
+
+async function executeBookingCommand(commandType: string, handler: any, payload: Record<string, unknown>, aggregateId: string): Promise<any> {
+  const command: Command = {
+    commandId: `${commandType}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    commandType,
+    aggregateType: 'booking',
+    aggregateId,
+    payload,
+  };
+  const result = await commandPipeline.execute(command, {
+    validate: async () => handler.validate(command),
+    execute: async (cmd, conn) => handler.execute(cmd, conn),
+    events: (cmd, res) => handler.events!(cmd, res),
+  });
+  if (result.status === 'error') throw new Error(`${commandType} failed: ${result.message}`);
+  return result.data;
+}
 
 const log = createModuleLogger('booking');
 
@@ -190,7 +204,7 @@ export class BookingService {
         });
 
         if (!gwResult.success) {
-          await cancelBooking(bookingId, 0, CancellationReason.PAYMENT_SESSION_CREATION_FAILED, 0, undefined, 'failed');
+          await executeBookingCommand('CancelBooking', cancelBookingHandler, { bookingId, reason: CancellationReason.PAYMENT_SESSION_CREATION_FAILED, actorId: 0 }, String(bookingId));
           throw new ConflictError((gwResult as any).errorMessage || 'Payment gateway rejected the transaction');
         }
 
@@ -621,7 +635,7 @@ export class BookingService {
       if (isCOD) {
         const totalAmount = Number(booking.total_amount);
         const paymentStatus = refundAmount >= totalAmount ? 'refunded' : refundAmount > 0 ? 'partially_refunded' : 'penalty';
-        await cancelBooking(id, userId, reason, feeAmount, conn, paymentStatus);
+        await executeBookingCommand('CancelBooking', cancelBookingHandler, { bookingId: id, reason, actorId: userId }, String(id));
         await conn.commit();
 
         // Wallet refund and journal entries happen outside the transaction (non-fatal)
@@ -633,7 +647,7 @@ export class BookingService {
           await this._recordCODWalletTransaction(booking, 'penalty', `Booking #${booking.id} cancellation penalty`);
         }
       } else {
-        await cancelBooking(id, userId, reason, feeAmount, conn);
+        await executeBookingCommand('CancelBooking', cancelBookingHandler, { bookingId: id, reason, actorId: userId }, String(id));
         await conn.commit();
 
         if (refundAmount > 0 && booking.payment_status === 'paid') {
@@ -826,7 +840,7 @@ export class BookingService {
   }
 
   async checkIn(id: number, userId: number) {
-    await checkInBooking(id);
+    await bookingRepository.persistTransition(id, 'checked_in');
     return this.getBooking(id);
   }
 
@@ -844,10 +858,10 @@ export class BookingService {
       if (!booking) throw new NotFoundError('Booking');
       const isCOD = booking.payment_method === 'cash' || booking.payment_method === 'cod';
       if (isCOD) {
-        await completeBooking(id, 'paid');
+        await executeBookingCommand('CompleteBooking', completeBookingHandler, { bookingId: id }, String(id));
         await this._settleCODWallet(booking, 'payment', `COD booking #${booking.id} settled`);
       } else {
-        await completeBooking(id);
+        await executeBookingCommand('CompleteBooking', completeBookingHandler, { bookingId: id }, String(id));
       }
       return;
     }
@@ -855,10 +869,7 @@ export class BookingService {
     if (status === 'confirmed') {
       const booking = await bookingRepository.findById(id);
       if (!booking) throw new NotFoundError('Booking');
-      await confirmBooking(id, {
-        paymentStatus: booking.payment_status === 'paid' ? 'paid' : 'pending',
-        paymentMethod: booking.payment_method || 'card',
-      });
+      await executeBookingCommand('ConfirmBooking', confirmBookingHandler, { bookingId: id }, String(id));
       return;
     }
 
@@ -877,7 +888,7 @@ export class BookingService {
       const isCOD = booking.payment_method === 'cash' || booking.payment_method === 'cod';
 
       if (!isCOD && status === 'no_show') {
-        await noShowBooking(id, actorId ?? booking.user_id, CancellationReason.ADMIN_CANCELLED);
+        await executeBookingCommand('CancelBooking', cancelBookingHandler, { bookingId: id, reason: CancellationReason.ADMIN_CANCELLED, actorId: actorId ?? booking.user_id }, String(id));
         return;
       }
 
@@ -901,9 +912,9 @@ export class BookingService {
         }
 
         if (status === 'cancelled') {
-          await cancelBooking(id, resolvedUserId, reason, feeAmount, undefined, paymentStatus);
+          await executeBookingCommand('CancelBooking', cancelBookingHandler, { bookingId: id, reason, actorId: resolvedUserId }, String(id));
         } else {
-          await noShowBooking(id, resolvedUserId, reason, undefined, paymentStatus, feeAmount);
+          await executeBookingCommand('CancelBooking', cancelBookingHandler, { bookingId: id, reason, actorId: resolvedUserId }, String(id));
         }
 
         if (paymentStatus === 'refunded') {
@@ -915,7 +926,7 @@ export class BookingService {
             `Booking #${booking.id} ${status === 'no_show' ? 'no-show penalty' : 'cancellation penalty'}`);
         }
       } else {
-        await cancelBooking(id, resolvedUserId, reason, feeAmount);
+        await executeBookingCommand('CancelBooking', cancelBookingHandler, { bookingId: id, reason, actorId: resolvedUserId }, String(id));
         if (refundAmount > 0 && booking.payment_status === 'paid') {
           await this._processGatewayRefund(booking, refundAmount);
         }
@@ -1074,7 +1085,7 @@ export class BookingService {
       }
     }
 
-    await updateBookingPaymentStatus(id, paymentStatus);
+    await bookingRepository.persistPaymentStatus(id, paymentStatus);
   }
 
   async getAllBookings(filters?: { orgId?: number; branchId?: number; resourceId?: number; resource?: string; branch?: string; orgName?: string; date?: string; status?: string; paymentStatus?: string; bookingType?: string; page?: number; limit?: number }) {

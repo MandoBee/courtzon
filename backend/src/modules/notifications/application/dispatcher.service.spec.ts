@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { setFeatureFlag } from '../../../shared/utils/feature-flags.js';
+setFeatureFlag('NOTIFICATION_V2_DISPATCH', false);
 
 const execute = vi.fn();
 const queueAdd = vi.fn();
