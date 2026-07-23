@@ -8,6 +8,10 @@ import { checkRateLimit, incrementRateLimit } from './rate-limiter.service.js';
 import { accumulateDigest } from './digest.service.js';
 import { isOnline, queueForReconnect } from './presence.service.js';
 import { notificationRepository } from '../infrastructure/repositories/notification.repository.js';
+import { isFeatureEnabled } from '../../../shared/utils/feature-flags.js';
+import { commandPipeline } from '../../../shared/command/command-pipeline.js';
+import { dispatchNotificationHandler, type DispatchNotificationPayload } from '../commands/dispatch-notification.command.js';
+import type { Command } from '../../../shared/command/command-base.js';
 import type { ProcessNotificationJob, SendNotificationBatchJob } from '../../../infrastructure/queue/queue.service.js';
 
 const log = createModuleLogger('dispatcher');
@@ -35,6 +39,9 @@ export interface DispatchOptions {
 }
 
 export async function dispatchToUser(options: DispatchOptions): Promise<void> {
+  if (isFeatureEnabled('NOTIFICATION_V2_DISPATCH')) {
+    return dispatchToUserV2(options);
+  }
   const { userId, eventName, categorySlug, data, locale } = options;
 
   const rateCheck = await checkRateLimit(userId, categorySlug);
@@ -269,4 +276,42 @@ export async function dispatchByUserIdsBulk(
   options: Omit<DispatchOptions, 'userId'>,
 ): Promise<void> {
   await dispatchBulk(userIds, options);
+}
+
+async function dispatchToUserV2(options: DispatchOptions): Promise<void> {
+  const command: Command = {
+    commandId: `dispatch-notification-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    commandType: 'DispatchNotification',
+    aggregateType: 'notification',
+    aggregateId: String(options.userId),
+    payload: {
+      userId: options.userId,
+      eventName: options.eventName,
+      categorySlug: options.categorySlug,
+      data: options.data,
+      organisationId: options.organisationId,
+      branchId: options.branchId,
+      relatedEntityType: options.relatedEntityType,
+      relatedEntityId: options.relatedEntityId,
+      senderId: options.senderId,
+      actionPayload: options.actionPayload,
+      actions: options.actions,
+      imageUrls: options.imageUrls,
+      digestable: options.digestable,
+      priority: options.priority,
+      type: options.type,
+      locale: options.locale,
+    } satisfies DispatchNotificationPayload,
+    correlationId: `ntf_${Date.now()}`,
+  };
+
+  const result = await commandPipeline.execute(command, {
+    validate: async () => dispatchNotificationHandler.validate(command),
+    execute: async (cmd, conn) => dispatchNotificationHandler.execute(cmd, conn),
+    events: (cmd, res) => dispatchNotificationHandler.events!(cmd, res),
+  });
+
+  if (result.status === 'error') {
+    log.error({ userId: options.userId, eventName: options.eventName, error: result.message }, 'DispatchNotification failed');
+  }
 }
