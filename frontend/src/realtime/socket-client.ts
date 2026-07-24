@@ -101,6 +101,13 @@ export function createSocket(): Socket {
 
   log('Creating socket url=%s', SOCKET_URL);
 
+  // ── Pre-connection diagnostics ──
+  log('document.cookie: "%s" (httpOnly cookies are invisible here)', document.cookie || '<empty>');
+  log('navigator.cookieEnabled=%s', navigator.cookieEnabled);
+  log('isSecureContext=%s', window.isSecureContext);
+  log('location.protocol=%s location.origin=%s', location.protocol, location.origin);
+  log('withCredentials will be=true (set in io opts)');
+
   socket = io(SOCKET_URL, {
     withCredentials: true,
     transports: ['websocket', 'polling'],
@@ -135,7 +142,7 @@ export function createSocket(): Socket {
 
   socket.on('connect_error', (err) => {
     const msg = err.message || '';
-    log('connect_error message=%s', msg);
+    log('connect_error message=%s name=%s', msg, err.name);
 
     const isAuthError =
       msg.includes('Authentication') ||

@@ -19,6 +19,10 @@ function hashToken(token: string): string {
   return createHash('sha256').update(token).digest('hex');
 }
 
+function slog(socketId: string, msg: string) {
+  console.log(`[SocketAuth ${new Date().toISOString().slice(11, 23)}] [${socketId}] ${msg}`);
+}
+
 export function setupRealtime(app: FastifyInstance): SocketIOServer {
   const isDev = process.env.NODE_ENV === 'development';
   const isDockerLocal = process.env.DOCKER_ENV === 'true';
@@ -44,25 +48,74 @@ export function setupRealtime(app: FastifyInstance): SocketIOServer {
   });
 
   io.use(async (socket, next) => {
+    const sid = socket.id;
     try {
-      const cookies = parseCookies(socket.handshake.headers.cookie || '');
-      const token = cookies['session_token'] || socket.handshake.auth?.token;
+      // ── Step 1: raw cookie header ──
+      const rawCookie = socket.handshake.headers.cookie;
+      slog(sid, `Cookie header: ${rawCookie ? `present (${rawCookie.length} chars)` : 'MISSING / undefined'}`);
 
-      if (!token) return next(new Error('Authentication required'));
+      if (rawCookie) {
+        const cookieKeys = rawCookie.split(';').map(c => c.trim().split('=')[0].trim());
+        slog(sid, `Cookie keys: [${cookieKeys.join(', ')}]`);
+      }
 
+      // ── Step 2: parse and extract session_token ──
+      const cookies = parseCookies(rawCookie || '');
+      const hasSessionCookie = 'session_token' in cookies;
+      const tokenFromCookie = cookies['session_token'];
+      const tokenFromAuth = socket.handshake.auth?.token;
+      const token = tokenFromCookie || tokenFromAuth;
+
+      slog(sid, `session_token in cookie jar: ${hasSessionCookie} | from auth handshake: ${!!tokenFromAuth} | resolved token: ${token ? `${token.length} chars (first8: ${token.slice(0, 8)})` : 'NONE'}`);
+
+      // ── Step 3: no token → reject ──
+      if (!token) {
+        slog(sid, `REJECT: No session token. handshake.auth keys: [${Object.keys(socket.handshake.auth || {}).join(', ')}] | headers: [${Object.keys(socket.handshake.headers).join(', ')}]`);
+        return next(new Error('Authentication required'));
+      }
+
+      // ── Step 4: hash and DB lookup ──
       const pool = getPool();
       const tokenHash = hashToken(token);
+      slog(sid, `Token hash: ${tokenHash.slice(0, 16)}...`);
 
       const [sessions] = await pool.execute<any[]>(
-        `SELECT user_id FROM user_sessions
-         WHERE session_token_hash = ? AND is_revoked = FALSE AND expires_at > NOW()
-         LIMIT 1`,
+        `SELECT id, user_id, session_token_hash, expires_at, is_revoked, created_at
+         FROM user_sessions
+         WHERE session_token_hash = ?
+         LIMIT 5`,
         [tokenHash],
       );
 
-      if (!sessions.length) return next(new Error('Authentication failed'));
+      slog(sid, `DB lookup: ${sessions.length} row(s) found`);
 
-      const userId: number = sessions[0].user_id;
+      if (sessions.length === 0) {
+        // Check if ANY session exists for debugging
+        const [anySession] = await pool.execute<any[]>(
+          `SELECT COUNT(*) as cnt FROM user_sessions WHERE session_token_hash = ?`,
+          [tokenHash],
+        );
+        slog(sid, `REJECT: Authentication failed. Hash exists in DB at all: ${(anySession[0]?.cnt || 0) > 0}`);
+        return next(new Error('Authentication failed'));
+      }
+
+      const session = sessions[0];
+      slog(sid, `Session: userId=${session.user_id} revoked=${session.is_revoked} expires=${session.expires_at} created=${session.created_at}`);
+
+      if (session.is_revoked) {
+        slog(sid, `REJECT: Session is revoked`);
+        return next(new Error('Authentication failed'));
+      }
+
+      const now = new Date();
+      const expiresAt = new Date(session.expires_at);
+      if (expiresAt <= now) {
+        slog(sid, `REJECT: Session expired (${expiresAt.toISOString()} <= ${now.toISOString()})`);
+        return next(new Error('Authentication failed'));
+      }
+
+      // ── Step 5: success ──
+      const userId: number = session.user_id;
       socket.data.userId = userId;
 
       const [roles] = await pool.execute<any[]>(
@@ -87,8 +140,10 @@ export function setupRealtime(app: FastifyInstance): SocketIOServer {
 
       socket.data.organisationId = orgs.length ? orgs[0].organisation_id : null;
 
+      slog(sid, `ACCEPT: userId=${userId} role=${socket.data.role} orgId=${socket.data.organisationId}`);
       next();
     } catch (err: any) {
+      slog(sid, `EXCEPTION: ${err.message}`);
       next(new Error('Authentication failed'));
     }
   });
