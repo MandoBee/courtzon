@@ -2,7 +2,8 @@ import { Server as SocketIOServer } from 'socket.io';
 import type { FastifyInstance } from 'fastify';
 import { setOnlineWithReconnect, setOffline } from '../modules/notifications/application/presence.service.js';
 import { registerUserDevice } from '../modules/notifications/application/cross-device-sync.service.js';
-import { realtimeService, userRoom, orgRoom, branchRoom, ADMIN_ROOM, PLAYER_ROOM } from '../platform/realtime/index.js';
+import { userRoom, orgRoom, branchRoom, ADMIN_ROOM, PLAYER_ROOM } from '../modules/realtime/domain/realtime-rooms.js';
+import { eventBusV2 } from '../shared/event-bus/event-bus.v2.js';
 import { ALLOWED_ORIGINS } from '../app.js';
 
 let io: SocketIOServer | null = null;
@@ -104,7 +105,9 @@ export function setupRealtime(app: FastifyInstance): SocketIOServer {
 
     socket.on('disconnect', () => {
       setOffline(userId).catch(() => {});
-      realtimeService.emitToPlayers('presence:offline', { userId });
+      eventBusV2.emit('presence:offline', { userId } as Record<string, unknown>, {
+        aggregateType: 'presence', aggregateId: String(userId), aggregateVersion: 1,
+      });
     });
 
     setOnlineWithReconnect(userId).then((ids) => {
@@ -112,10 +115,11 @@ export function setupRealtime(app: FastifyInstance): SocketIOServer {
     }).catch(() => {});
 
     registerUserDevice(userId, deviceId).catch(() => {});
-    realtimeService.emitToPlayers('presence:online', { userId });
+    eventBusV2.emit('presence:online', { userId } as Record<string, unknown>, {
+      aggregateType: 'presence', aggregateId: String(userId), aggregateVersion: 1,
+    });
   });
 
-  realtimeService.initialize(io);
   return io;
 }
 

@@ -29,11 +29,17 @@ export class SocketRoomManager {
         `SELECT r.slug FROM user_roles ur JOIN roles r ON r.id = ur.role_id WHERE ur.user_id = ? AND ur.is_active = TRUE`,
         [userId],
       );
+      let isSuperAdmin = false;
       for (const row of roleRows) {
         if (row.slug === 'super_admin' || row.slug === 'super-admin') {
           rooms.push('superadmin');
           rooms.push('finance');
+          isSuperAdmin = true;
         }
+      }
+
+      if (!isSuperAdmin) {
+        rooms.push('player');
       }
     } catch (err) {
       log.error({ err, userId }, 'room.resolve_failed');

@@ -1,5 +1,5 @@
 import { getRedisClient } from '../../../infrastructure/redis/redis.client.js';
-import { realtimeService } from '../../../platform/realtime/index.js';
+import { eventBusV2 } from '../../../shared/event-bus/event-bus.v2.js';
 import { createModuleLogger } from '../../../shared/utils/logger.js';
 
 const log = createModuleLogger('cross-device-sync');
@@ -38,7 +38,11 @@ export async function broadcastToUserDevices(
 
     for (const deviceId of deviceIds) {
       if (excludeDeviceId && deviceId === excludeDeviceId) continue;
-      realtimeService.emitToUser(userId, event, data);
+      eventBusV2.emit(event, { ...data, userId } as Record<string, unknown>, {
+        aggregateType: 'notification',
+        aggregateId: String(userId),
+        aggregateVersion: 1,
+      });
     }
   } catch (err: any) {
     log.error({ err, userId, event }, 'Failed to broadcast to devices');
@@ -51,10 +55,10 @@ export async function syncNotificationRead(
   sourceDeviceId: string,
 ): Promise<void> {
   try {
-    realtimeService.emitToUser(userId, 'notification:sync-read', {
-      notificationId,
-      sourceDeviceId,
-      timestamp: new Date().toISOString(),
+    eventBusV2.emit('notification:sync-read', { userId, notificationId, sourceDeviceId, timestamp: new Date().toISOString() }, {
+      aggregateType: 'notification',
+      aggregateId: String(notificationId),
+      aggregateVersion: 1,
     });
   } catch (err: any) {
     log.error({ err, userId, notificationId }, 'Failed to sync read state');
@@ -67,10 +71,10 @@ export async function syncNotificationDeleted(
   sourceDeviceId: string,
 ): Promise<void> {
   try {
-    realtimeService.emitToUser(userId, 'notification:sync-deleted', {
-      notificationId,
-      sourceDeviceId,
-      timestamp: new Date().toISOString(),
+    eventBusV2.emit('notification:sync-deleted', { userId, notificationId, sourceDeviceId, timestamp: new Date().toISOString() }, {
+      aggregateType: 'notification',
+      aggregateId: String(notificationId),
+      aggregateVersion: 1,
     });
   } catch (err: any) {
     log.error({ err, userId, notificationId }, 'Failed to sync deleted state');

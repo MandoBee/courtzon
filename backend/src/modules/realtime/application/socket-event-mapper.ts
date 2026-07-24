@@ -20,6 +20,7 @@ export function mapDomainEvent(eventName: string, payload: Record<string, unknow
     if (eventName.startsWith('academy:') || eventName.startsWith('coaching:')) return mapAcademyEvent(eventName, payload);
     if (eventName.startsWith('attendance:')) return mapAttendanceEvent(eventName, payload);
     if (eventName.startsWith('membership:')) return mapMembershipEvent(eventName, payload);
+    if (eventName.startsWith('match:')) return mapMatchEvent(eventName, payload);
     return null;
   } catch (err) {
     log.error({ err, eventName }, 'socket.map_failed');
@@ -72,6 +73,34 @@ function mapMarketplaceEvent(eventName: string, p: Record<string, any>): MappedS
 }
 
 function mapNotificationEvent(eventName: string, p: Record<string, any>): MappedSocketEvent {
+  if (eventName === 'notification:delivered') {
+    return {
+      type: 'notification.new',
+      payload: { notificationId: p.notificationId, userId: p.userId, title: p.title, body: p.body, type: p.type },
+      rooms: roomsForUser(p.userId),
+    };
+  }
+  if (eventName === 'notification:unread-count') {
+    return {
+      type: 'notification.unread-count',
+      payload: { userId: p.userId },
+      rooms: roomsForUser(p.userId),
+    };
+  }
+  if (eventName === 'notification:sync-read') {
+    return {
+      type: 'notification.sync-read',
+      payload: { notificationId: p.notificationId, userId: p.userId, sourceDeviceId: p.sourceDeviceId, timestamp: p.timestamp },
+      rooms: roomsForUser(p.userId),
+    };
+  }
+  if (eventName === 'notification:sync-deleted') {
+    return {
+      type: 'notification.sync-deleted',
+      payload: { notificationId: p.notificationId, userId: p.userId, sourceDeviceId: p.sourceDeviceId, timestamp: p.timestamp },
+      rooms: roomsForUser(p.userId),
+    };
+  }
   return {
     type: 'notification.new',
     payload: { notificationId: p.notificationId, userId: p.userId, title: p.title, body: p.body, type: p.type },
@@ -114,6 +143,24 @@ function mapMembershipEvent(eventName: string, p: Record<string, any>): MappedSo
   return {
     type: `membership.${eventName.split(':')[1] || 'updated'}`,
     payload: { membershipId: p.membershipId, userId: p.userId, type: p.type },
+    rooms: roomsForUser(p.userId),
+  };
+}
+
+function mapMatchEvent(eventName: string, p: Record<string, any>): MappedSocketEvent {
+  const sub = eventName.split(':')[1] || 'updated';
+  return {
+    type: `match.${sub}`,
+    payload: { matchId: p.matchId, bookingId: p.bookingId, userId: p.userId, timestamp: p.timestamp },
+    rooms: ['player'],
+  };
+}
+
+function mapNotificationSync(eventName: string, p: Record<string, any>): MappedSocketEvent {
+  const sub = eventName.split(':')[1] || 'updated';
+  return {
+    type: `notification.${sub}`,
+    payload: { notificationId: p.notificationId, userId: p.userId, sourceDeviceId: p.sourceDeviceId, timestamp: p.timestamp },
     rooms: roomsForUser(p.userId),
   };
 }

@@ -1,6 +1,6 @@
 import type { NotificationProvider, DeliveryResult } from './provider.interface.js';
-import { realtimeService } from '../../../../platform/realtime/index.js';
 import type { ProcessNotificationJob } from '../../../../infrastructure/queue/queue.service.js';
+import { eventBusV2 } from '../../../../shared/event-bus/event-bus.v2.js';
 
 export class InAppProvider implements NotificationProvider {
   readonly slug = 'in_app';
@@ -16,8 +16,8 @@ export class InAppProvider implements NotificationProvider {
   ): Promise<DeliveryResult> {
     try {
       const payload: Record<string, any> = {
-        id: job.notificationId,
-        user_id: job.userId,
+        notificationId: job.notificationId,
+        userId: job.userId,
         title: job.renderedTitle,
         body: job.renderedBody,
         type: job.templateId ? 'info' : job.categorySlug,
@@ -36,8 +36,17 @@ export class InAppProvider implements NotificationProvider {
         sender_id: job.senderId,
       };
 
-      realtimeService.emitToUser(job.userId, 'notification:new', payload);
-      realtimeService.emitToUser(job.userId, 'notification:unread-count');
+      eventBusV2.emit('notification:delivered', payload, {
+        aggregateType: 'notification',
+        aggregateId: String(job.notificationId),
+        aggregateVersion: 1,
+      });
+
+      eventBusV2.emit('notification:unread-count', { userId: job.userId, count: 0 }, {
+        aggregateType: 'notification',
+        aggregateId: String(job.userId),
+        aggregateVersion: 1,
+      });
 
       return { success: true, provider: this.slug, channel: this.channel };
     } catch (err: any) {

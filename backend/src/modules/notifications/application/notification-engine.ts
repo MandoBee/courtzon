@@ -1,6 +1,5 @@
 import { eventBusV2 } from '../../../shared/event-bus/index.js';
 import { dispatchToUser, dispatchByRole, dispatchByOrg } from './dispatcher.service.js';
-import { realtimeService } from '../../../platform/realtime/index.js';
 import { createModuleLogger } from '../../../shared/utils/logger.js';
 
 const log = createModuleLogger('notification-engine');
@@ -51,10 +50,10 @@ const eventGroups: EventGroupConfig[] = [
         });
       }
       if (eventName === 'booking:created' && data.bookingType === 'public_match') {
-        realtimeService.emitToPlayers('match:available', { bookingId: data.bookingId, timestamp: new Date().toISOString() });
+        eventBusV2.emit('match:available', { bookingId: data.bookingId, timestamp: new Date().toISOString() }, { aggregateType: 'match', aggregateId: String(0), aggregateVersion: 1 });
       }
       if (eventName === 'booking:cancelled' || eventName === 'booking:auto-cancelled') {
-        realtimeService.emitToPlayers('match:removed', { bookingId: data.bookingId });
+        eventBusV2.emit('match:removed', { bookingId: data.bookingId }, { aggregateType: 'match', aggregateId: String(0), aggregateVersion: 1 });
       }
     },
   },
@@ -70,7 +69,7 @@ const eventGroups: EventGroupConfig[] = [
         });
       }
       if (data.bookingType === 'public_match') {
-        realtimeService.emitToPlayers('match:available', { bookingId: data.bookingId, timestamp: new Date().toISOString() });
+        eventBusV2.emit('match:available', { bookingId: data.bookingId, timestamp: new Date().toISOString() }, { aggregateType: 'match', aggregateId: String(0), aggregateVersion: 1 });
       }
       const { scheduleBookingReminder } = await import('./scheduler.service.js');
       const { getPool } = await import('../../../database/mysql.js');
@@ -450,13 +449,13 @@ const eventGroups: EventGroupConfig[] = [
           digestable: false,
         });
       }
-      realtimeService.emitToPlayers('match:available', { matchId: data.matchId, timestamp: new Date().toISOString() });
+      eventBusV2.emit('match:available', { matchId: data.matchId, timestamp: new Date().toISOString() }, { aggregateType: 'match', aggregateId: String(0), aggregateVersion: 1 });
     },
   },
   {
     events: ['match:cancelled', 'match:status_changed'],
     handler: async (eventName, data, categorySlug) => {
-      realtimeService.emitToPlayers(eventName === 'match:cancelled' ? 'match:removed' : 'match:updated', {
+      eventBusV2.emit(eventName === 'match:cancelled' ? 'match:removed' : 'match:updated', {
         matchId: data.matchId, timestamp: new Date().toISOString(),
       });
     },
@@ -464,13 +463,13 @@ const eventGroups: EventGroupConfig[] = [
   {
     events: ['match:completed'],
     handler: async (eventName, data, categorySlug) => {
-      realtimeService.emitToPlayers('match:updated', { matchId: data.matchId, timestamp: new Date().toISOString() });
+      eventBusV2.emit('match:updated', { matchId: data.matchId, timestamp: new Date().toISOString() }, { aggregateType: 'match', aggregateId: String(0), aggregateVersion: 1 });
     },
   },
   {
     events: ['join_request:submitted'],
     handler: async (eventName, data, categorySlug) => {
-      realtimeService.emitToPlayers('match:pending', { matchId: data.matchId, userId: data.userId, timestamp: new Date().toISOString() });
+      eventBusV2.emit('match:pending', { matchId: data.matchId, userId: data.userId, timestamp: new Date().toISOString() }, { aggregateType: 'match', aggregateId: String(0), aggregateVersion: 1 });
       if (data.creatorId) {
         await dispatchToUser({
           userId: data.creatorId, eventName, categorySlug, data,
@@ -490,7 +489,7 @@ const eventGroups: EventGroupConfig[] = [
           digestable: false,
         });
       }
-      realtimeService.emitToPlayers('match:updated', { matchId: data.matchId, timestamp: new Date().toISOString() });
+      eventBusV2.emit('match:updated', { matchId: data.matchId, timestamp: new Date().toISOString() }, { aggregateType: 'match', aggregateId: String(0), aggregateVersion: 1 });
     },
   },
   {
@@ -508,13 +507,13 @@ const eventGroups: EventGroupConfig[] = [
   {
     events: ['join_request:withdrawn'],
     handler: async (eventName, data, categorySlug) => {
-      realtimeService.emitToPlayers('match:updated', { matchId: data.matchId, timestamp: new Date().toISOString() });
+      eventBusV2.emit('match:updated', { matchId: data.matchId, timestamp: new Date().toISOString() }, { aggregateType: 'match', aggregateId: String(0), aggregateVersion: 1 });
     },
   },
   {
     events: ['participant:added', 'participant:removed'],
     handler: async (eventName, data, categorySlug) => {
-      realtimeService.emitToPlayers('match:updated', { matchId: data.matchId, timestamp: new Date().toISOString() });
+      eventBusV2.emit('match:updated', { matchId: data.matchId, timestamp: new Date().toISOString() }, { aggregateType: 'match', aggregateId: String(0), aggregateVersion: 1 });
     },
   },
   {
@@ -532,7 +531,7 @@ const eventGroups: EventGroupConfig[] = [
   {
     events: ['session:started', 'session:completed'],
     handler: async (eventName, data, categorySlug) => {
-      realtimeService.emitToPlayers('match:updated', { matchId: data.matchId, timestamp: new Date().toISOString() });
+      eventBusV2.emit('match:updated', { matchId: data.matchId, timestamp: new Date().toISOString() }, { aggregateType: 'match', aggregateId: String(0), aggregateVersion: 1 });
     },
   },
   {
@@ -664,4 +663,6 @@ class NotificationEngine {
 }
 
 export const notificationEngine = new NotificationEngine();
+
+
 

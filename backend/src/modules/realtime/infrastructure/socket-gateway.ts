@@ -1,6 +1,5 @@
 import type { Server as SocketIOServer } from 'socket.io';
 import { createModuleLogger } from '../../../shared/utils/logger.js';
-import { authenticateSocket } from './socket-authentication.js';
 import { socketRoomManager } from '../application/socket-room-manager.js';
 import { socketPublisher } from '../application/socket-publisher.js';
 import { registry } from '../../../infrastructure/metrics/metrics.js';
@@ -28,33 +27,32 @@ const errorsTotal = new client.Counter({
 });
 
 export function attachSocketPublisher(io: SocketIOServer): void {
-  // Auth middleware
+  // Room assignment middleware (relies on socket.data.userId from JWT auth)
   io.use(async (socket, next) => {
-    try {
-      const user = await authenticateSocket(socket.request);
-      if (!user) {
-        errorsTotal.inc({ type: 'auth_failed' });
-        return next(new Error('Authentication failed'));
-      }
-      (socket as any).user = user;
+    const userId = socket.data?.userId;
+    if (!userId) {
+      errorsTotal.inc({ type: 'no_user_id' });
+      return next(new Error('Authentication required'));
+    }
 
-      const rooms = await socketRoomManager.resolveRoomsForUser(user.userId);
+    try {
+      const rooms = await socketRoomManager.resolveRoomsForUser(userId);
       for (const room of rooms) {
         socket.join(room);
       }
-
-      log.info({ userId: user.userId, rooms: rooms.length }, 'socket.connected');
+      log.info({ userId, rooms: rooms.length }, 'socket.rooms_assigned');
       next();
     } catch (err) {
-      errorsTotal.inc({ type: 'auth_error' });
-      next(new Error('Authentication error'));
+      errorsTotal.inc({ type: 'room_resolve_error' });
+      log.error({ err, userId }, 'socket.room_resolve_failed');
+      next(new Error('Failed to resolve rooms'));
     }
   });
 
   // Connection handlers
   io.on('connection', (socket) => {
     connectedClients.inc();
-    const userId = (socket as any).user?.userId;
+    const userId = socket.data?.userId;
 
     socket.on('disconnect', (reason) => {
       connectedClients.dec();
