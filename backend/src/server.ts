@@ -4,6 +4,7 @@ import { env } from "./config/env.js";
 import { registerHandler, startWorker, closeWorker } from "./infrastructure/queue/worker.js";
 import { NOTIFICATION_QUEUE_NAME } from "./infrastructure/queue/queue.service.js";
 import { setupRealtime } from "./realtime/index.js";
+import { attachSocketPublisher } from "./modules/realtime/index.js";
 import { notificationEngine } from "./modules/notifications/application/notification-engine.js";
 import { sendEmail } from "./shared/services/mailer.service.js";
 import { handleCancelExpiredBookings } from "./modules/booking/infrastructure/booking-expiry.worker.js";
@@ -134,6 +135,9 @@ async function bootstrap() {
 
     const io = setupRealtime(app);
     app.log.info('Socket.IO initialized');
+
+    attachSocketPublisher(io);
+    app.log.info('Socket.IO publisher attached');
 
     try {
       const { seedTemplates } = await import("./modules/notifications/application/template.service.js");

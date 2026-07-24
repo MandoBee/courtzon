@@ -1,0 +1,83 @@
+import type { Server as SocketIOServer } from 'socket.io';
+import { createModuleLogger } from '../../../shared/utils/logger.js';
+import { authenticateSocket } from './socket-authentication.js';
+import { socketRoomManager } from '../application/socket-room-manager.js';
+import { socketPublisher } from '../application/socket-publisher.js';
+import { registry } from '../../../infrastructure/metrics/metrics.js';
+import client from 'prom-client';
+
+const log = createModuleLogger('socket-gateway');
+
+const connectedClients = new client.Gauge({
+  name: 'courtzon_socket_connected_clients',
+  help: 'Number of currently connected socket.io clients',
+  registers: [registry],
+});
+
+const activeRooms = new client.Gauge({
+  name: 'courtzon_socket_active_rooms',
+  help: 'Number of currently active socket.io rooms',
+  registers: [registry],
+});
+
+const errorsTotal = new client.Counter({
+  name: 'courtzon_socket_errors_total',
+  help: 'Total number of socket errors',
+  labelNames: ['type'] as const,
+  registers: [registry],
+});
+
+export function attachSocketPublisher(io: SocketIOServer): void {
+  // Auth middleware
+  io.use(async (socket, next) => {
+    try {
+      const user = await authenticateSocket(socket.request);
+      if (!user) {
+        errorsTotal.inc({ type: 'auth_failed' });
+        return next(new Error('Authentication failed'));
+      }
+      (socket as any).user = user;
+
+      const rooms = await socketRoomManager.resolveRoomsForUser(user.userId);
+      for (const room of rooms) {
+        socket.join(room);
+      }
+
+      log.info({ userId: user.userId, rooms: rooms.length }, 'socket.connected');
+      next();
+    } catch (err) {
+      errorsTotal.inc({ type: 'auth_error' });
+      next(new Error('Authentication error'));
+    }
+  });
+
+  // Connection handlers
+  io.on('connection', (socket) => {
+    connectedClients.inc();
+    const userId = (socket as any).user?.userId;
+
+    socket.on('disconnect', (reason) => {
+      connectedClients.dec();
+      log.debug({ userId, reason }, 'socket.disconnected');
+    });
+
+    socket.on('error', (err) => {
+      errorsTotal.inc({ type: 'socket_error' });
+      log.error({ err, userId }, 'socket.error');
+    });
+  });
+
+  // Metrics poller for active rooms
+  setInterval(() => {
+    try {
+      const roomSize = io.sockets.adapter.rooms?.size || 0;
+      activeRooms.set(roomSize);
+    } catch { /* ignore */ }
+  }, 15000);
+
+  // Attach publisher (subscribes to EventBusV2 and publishes to rooms)
+  socketPublisher.setIO(io);
+  socketPublisher.start();
+
+  log.info('socket.publisher_attached');
+}
