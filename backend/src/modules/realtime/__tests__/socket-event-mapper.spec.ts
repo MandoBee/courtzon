@@ -33,7 +33,7 @@ describe('SocketEventMapper', () => {
   it('maps notification:broadcast', () => {
     const result = mapDomainEvent('notification:broadcast', { notificationId: 1, userId: 42, title: 'Test' });
     expect(result).not.toBeNull();
-    expect(result!.type).toBe('notification.new');
+    expect(result!.type).toBe('notification.broadcast');
   });
 
   it('maps settlement:completed', () => {
