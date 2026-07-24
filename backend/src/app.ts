@@ -22,6 +22,7 @@ import { paymentRoutes } from "./modules/payment/presentation/payment.routes.js"
 import { settlementRoutes } from "./modules/settlement/presentation/settlement.routes.js";
 import { uploadRoutes } from "./modules/upload/presentation/upload.routes.js";
 import { pricingRoutes } from "./modules/pricing/presentation/pricing.routes.js";
+import { ledgerRoutes } from "./modules/financial/presentation/ledger.routes.js";
 import { cmsRoutes } from "./modules/cms/presentation/cms.routes.js";
 import { translationsRoutes } from "./modules/translations/presentation/translations.routes.js";
 import { countriesRoutes } from "./modules/countries/presentation/countries.routes.js";
@@ -479,6 +480,7 @@ app.register(reportsRoutes);
 app.register(transactionRoutes);
 app.register(uploadRoutes);
 app.register(pricingRoutes);
+app.register(ledgerRoutes);
 app.register(auditLogRoutes);
 app.register(amenitiesRoutes);
   app.register(adminBrandRoutes);
