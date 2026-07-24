@@ -130,7 +130,7 @@ export function setupRealtime(app: FastifyInstance): SocketIOServer {
       socket.data.role = roles.length ? roles[0].slug : null;
 
       const [orgs] = await pool.execute<any[]>(
-        `SELECT organisation_id FROM user_role_scopes
+        `SELECT scope_id FROM user_role_scopes
          WHERE user_role_id IN (
            SELECT id FROM user_roles WHERE user_id = ? AND is_active = TRUE
          ) AND scope_type = 'organisation'
@@ -138,12 +138,12 @@ export function setupRealtime(app: FastifyInstance): SocketIOServer {
         [userId],
       );
 
-      socket.data.organisationId = orgs.length ? orgs[0].organisation_id : null;
+      socket.data.organisationId = orgs.length ? orgs[0].scope_id : null;
 
       slog(sid, `ACCEPT: userId=${userId} role=${socket.data.role} orgId=${socket.data.organisationId}`);
       next();
     } catch (err: any) {
-      slog(sid, `EXCEPTION: ${err.message}`);
+      slog(sid, `EXCEPTION: ${err.code || err.errno || 'unknown'} ${err.message}`);
       next(new Error('Authentication failed'));
     }
   });
