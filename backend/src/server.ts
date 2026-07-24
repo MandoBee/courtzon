@@ -20,6 +20,7 @@ import {
   handleProcessDeadLetter,
 } from "./modules/notifications/infrastructure/notification.worker.js";
 import { processDueDigests } from "./modules/notifications/application/digest.service.js";
+import { handleHourlyDigest, handleDailyDigest, handleWeeklyDigest } from "./modules/notifications/application/digest-scheduler.service.js";
 import { runCleanupPolicies } from "./modules/notifications/application/cleanup.service.js";
 import { loadFeatureFlags } from "./modules/notifications/application/feature-flags.service.js";
 import { queueService } from "./infrastructure/queue/queue.service.js";
@@ -82,6 +83,9 @@ async function bootstrap() {
     registerHandler('send_scheduled_notification', handleSendScheduledNotification);
     registerHandler('process_dead_letter', handleProcessDeadLetter);
     registerHandler('trigger_digest_processing', processDueDigests);
+    registerHandler('hourly_digest' as any, handleHourlyDigest as any);
+    registerHandler('daily_digest' as any, handleDailyDigest as any);
+    registerHandler('weekly_digest' as any, handleWeeklyDigest as any);
     registerHandler('run_cleanup', async (_data: Record<string, never>) => {
       await runCleanupPolicies();
     });
@@ -215,10 +219,28 @@ async function bootstrap() {
 
     // Digest processing — every 2 minutes
     await queueService.add('trigger_digest_processing', {}, {
-      repeat: { every: 120_000 },
+      repeat: { every: 60_000 },
+      removeOnComplete: true,
+      removeOnFail: { age: 3600 },
+    });
+
+    await queueService.add('hourly_digest' as any, {} as any, {
+      repeat: { every: 3_600_000 },
       removeOnComplete: true,
       removeOnFail: { age: 86400 },
-    });
+    } as any);
+
+    await queueService.add('daily_digest' as any, {} as any, {
+      repeat: { pattern: '0 8 * * *' },
+      removeOnComplete: true,
+      removeOnFail: { age: 604800 },
+    } as any);
+
+    await queueService.add('weekly_digest' as any, {} as any, {
+      repeat: { pattern: '0 9 * * 1' },
+      removeOnComplete: true,
+      removeOnFail: { age: 2592000 },
+    } as any);
 
     // Cleanup policies — daily at 04:00 UTC
     await queueService.add('run_cleanup', {}, {
