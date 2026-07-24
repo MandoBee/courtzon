@@ -1,60 +1,53 @@
-import { getSocket, disconnectSocket, updateSocketToken } from '../realtime/socket-client';
+import { getSocket, onSocketStateChange, updateSocketToken } from '../realtime/socket-client';
+import type { SocketState } from '../realtime/socket-client';
 
 type EventHandler = (...args: any[]) => void;
 
 /**
  * Facade over the single Socket.IO singleton in realtime/socket-client.ts.
- * Keeps the same public API (on / off / emit / connect / disconnect / connected)
- * so notification.store.ts, MatchListPage, and MatchLobbyPage keep working.
+ * Keeps the same public API (on / off / emit / connected) so
+ * notification.store.ts, MatchListPage, and MatchLobbyPage keep working.
  *
  * IMPORTANT: There is only ONE WebSocket connection — managed by socket-client.ts.
+ * The SocketService does NOT create or destroy the socket.
+ * Socket lifecycle is driven by SocketProvider (auth state).
+ *
+ * Handlers registered via on() are queued and automatically flushed to the
+ * live socket whenever it connects or is recreated.
  */
 class SocketService {
   private listeners = new Map<string, Set<EventHandler>>();
-  private _boundConnectHandler: (() => void) | null = null;
-  private _boundDisconnectHandler: (() => void) | null = null;
-  private _boundErrorHandler: (() => void) | null = null;
+
+  constructor() {
+    // When socket state changes to connecting/connected, flush all queued handlers
+    onSocketStateChange((state: SocketState) => {
+      if (state === 'connecting' || state === 'connected') {
+        this.flushHandlers();
+      }
+    });
+  }
 
   get connected(): boolean {
     const s = getSocket();
-    return s.connected;
+    return !!s?.connected;
   }
 
-  connect(token?: string): void {
-    const s = getSocket(token);
-    if (s.connected) return;
-
-    if (!this._boundConnectHandler) {
-      this._boundConnectHandler = () => {
-        this.emitLocal('connect');
-      };
-      this._boundDisconnectHandler = () => {
-        this.emitLocal('disconnect');
-      };
-      this._boundErrorHandler = () => {};
-
-      s.on('connect', this._boundConnectHandler);
-      s.on('disconnect', this._boundDisconnectHandler);
-      s.on('connect_error', this._boundErrorHandler);
-    }
-
-    if (!s.connected && !s.active) {
-      s.connect();
-    }
-
-    for (const [event, handlers] of this.listeners) {
-      for (const handler of handlers) {
-        s.off(event, handler);
-        s.on(event, handler);
-      }
-    }
+  connect(_token?: string): void {
+    // Socket lifecycle is managed by SocketProvider.
+    // This method is kept for API compatibility but does nothing.
   }
 
   disconnect(): void {
-    disconnectSocket();
-    this._boundConnectHandler = null;
-    this._boundDisconnectHandler = null;
-    this._boundErrorHandler = null;
+    // Do NOT call disconnectSocket() — the singleton is managed by SocketProvider.
+    // Just clean up our own handler registrations from the live socket.
+    const s = getSocket();
+    if (s) {
+      for (const [event, handlers] of this.listeners) {
+        for (const handler of handlers) {
+          s.off(event, handler);
+        }
+      }
+    }
   }
 
   updateToken(token: string): void {
@@ -66,32 +59,37 @@ class SocketService {
       this.listeners.set(event, new Set());
     }
     this.listeners.get(event)!.add(handler);
-    try {
-      const s = getSocket();
+
+    // Attach to live socket if it exists right now
+    const s = getSocket();
+    if (s) {
       s.on(event, handler);
-    } catch {}
+    }
   }
 
   off(event: string, handler: EventHandler): void {
     this.listeners.get(event)?.delete(handler);
-    try {
-      const s = getSocket();
+    const s = getSocket();
+    if (s) {
       s.off(event, handler);
-    } catch {}
+    }
   }
 
   emit(event: string, ...args: any[]): void {
-    try {
-      const s = getSocket();
+    const s = getSocket();
+    if (s) {
       s.emit(event, ...args);
-    } catch {}
+    }
   }
 
-  private emitLocal(event: string, ...args: any[]): void {
-    const handlers = this.listeners.get(event);
-    if (handlers) {
+  /** Re-attach all queued handlers to the live socket. */
+  private flushHandlers(): void {
+    const s = getSocket();
+    if (!s) return;
+    for (const [event, handlers] of this.listeners) {
       for (const handler of handlers) {
-        handler(...args);
+        s.off(event, handler);
+        s.on(event, handler);
       }
     }
   }
