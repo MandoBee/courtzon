@@ -1,53 +1,64 @@
-import { io, type Socket } from 'socket.io-client';
+import { getSocket, disconnectSocket, updateSocketToken } from '../realtime/socket-client';
 
 type EventHandler = (...args: any[]) => void;
 
+/**
+ * Facade over the single Socket.IO singleton in realtime/socket-client.ts.
+ * Keeps the same public API (on / off / emit / connect / disconnect / connected)
+ * so notification.store.ts, MatchListPage, and MatchLobbyPage keep working.
+ *
+ * IMPORTANT: There is only ONE WebSocket connection — managed by socket-client.ts.
+ */
 class SocketService {
-  private socket: Socket | null = null;
   private listeners = new Map<string, Set<EventHandler>>();
-  private _connected = false;
+  private _boundConnectHandler: (() => void) | null = null;
+  private _boundDisconnectHandler: (() => void) | null = null;
+  private _boundErrorHandler: (() => void) | null = null;
 
   get connected(): boolean {
-    return this._connected;
+    const s = getSocket();
+    return s.connected;
   }
 
-  connect(): void {
-    if (this.socket?.connected) return;
+  connect(token?: string): void {
+    const s = getSocket(token);
+    if (s.connected) return;
 
-    const url = import.meta.env.VITE_API_URL || '';
+    if (!this._boundConnectHandler) {
+      this._boundConnectHandler = () => {
+        this.emitLocal('connect');
+      };
+      this._boundDisconnectHandler = () => {
+        this.emitLocal('disconnect');
+      };
+      this._boundErrorHandler = () => {};
 
-    this.socket = io(url, {
-      withCredentials: true,
-      transports: ['websocket', 'polling'],
-      reconnection: true,
-      reconnectionAttempts: 10,
-      reconnectionDelay: 1000,
-      reconnectionDelayMax: 10000,
-    });
+      s.on('connect', this._boundConnectHandler);
+      s.on('disconnect', this._boundDisconnectHandler);
+      s.on('connect_error', this._boundErrorHandler);
+    }
 
-    this.socket.on('connect', () => {
-      this._connected = true;
-      this.emitLocal('connect');
-    });
-
-    this.socket.on('disconnect', () => {
-      this._connected = false;
-      this.emitLocal('disconnect');
-    });
-
-    this.socket.on('connect_error', () => { });
+    if (!s.connected && !s.active) {
+      s.connect();
+    }
 
     for (const [event, handlers] of this.listeners) {
       for (const handler of handlers) {
-        this.socket.on(event, handler);
+        s.off(event, handler);
+        s.on(event, handler);
       }
     }
   }
 
   disconnect(): void {
-    this.socket?.disconnect();
-    this.socket = null;
-    this._connected = false;
+    disconnectSocket();
+    this._boundConnectHandler = null;
+    this._boundDisconnectHandler = null;
+    this._boundErrorHandler = null;
+  }
+
+  updateToken(token: string): void {
+    updateSocketToken(token);
   }
 
   on(event: string, handler: EventHandler): void {
@@ -55,16 +66,25 @@ class SocketService {
       this.listeners.set(event, new Set());
     }
     this.listeners.get(event)!.add(handler);
-    this.socket?.on(event, handler);
+    try {
+      const s = getSocket();
+      s.on(event, handler);
+    } catch {}
   }
 
   off(event: string, handler: EventHandler): void {
     this.listeners.get(event)?.delete(handler);
-    this.socket?.off(event, handler);
+    try {
+      const s = getSocket();
+      s.off(event, handler);
+    } catch {}
   }
 
   emit(event: string, ...args: any[]): void {
-    this.socket?.emit(event, ...args);
+    try {
+      const s = getSocket();
+      s.emit(event, ...args);
+    } catch {}
   }
 
   private emitLocal(event: string, ...args: any[]): void {

@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState, useRef, useCallback } from 'react';
-import { Socket } from 'socket.io-client';
-import { getSocket } from './socket-client';
+import type { Socket } from 'socket.io-client';
+import { getSocket, updateSocketToken } from './socket-client';
 
 interface SocketContextValue {
   socket: Socket | null;
@@ -22,6 +22,14 @@ export function SocketProvider({ children, token }: { children: React.ReactNode;
   const [isConnected, setIsConnected] = useState(false);
   const socketRef = useRef<Socket | null>(null);
   const handlersRef = useRef<Map<string, Set<(payload: any) => void>>>(new Map());
+  const tokenRef = useRef<string | undefined>(token);
+
+  useEffect(() => {
+    if (token && token !== tokenRef.current) {
+      tokenRef.current = token;
+      updateSocketToken(token);
+    }
+  }, [token]);
 
   useEffect(() => {
     const s = getSocket(token);
@@ -35,7 +43,6 @@ export function SocketProvider({ children, token }: { children: React.ReactNode;
     s.on('disconnect', onDisconnect);
     s.on('connect_error', onConnectError);
 
-    // Global event dispatcher
     const globalHandler = (event: string) => (payload: any) => {
       const handlers = handlersRef.current.get(event);
       if (handlers) {
@@ -53,6 +60,7 @@ export function SocketProvider({ children, token }: { children: React.ReactNode;
       'marketplace.order-cancelled', 'marketplace.order-refunded',
       'notification.new', 'notification.unread-count',
       'notification.sync-read', 'notification.sync-deleted',
+      'notification.broadcast',
       'match.available', 'match.removed', 'match.updated', 'match.pending',
       'settlement.completed', 'settlement.failed',
       'organisation.approved', 'organisation.rejected',
@@ -62,6 +70,7 @@ export function SocketProvider({ children, token }: { children: React.ReactNode;
       'attendance.updated',
       'membership.renewed', 'membership.expired', 'membership.expiring',
       'presence.online', 'presence.offline',
+      'system.announcement',
     ];
 
     const cleanup: Array<() => void> = knownEvents.map((event) => {
@@ -72,13 +81,17 @@ export function SocketProvider({ children, token }: { children: React.ReactNode;
 
     if (s.connected) setIsConnected(true);
 
+    if (!s.connected && !s.active) {
+      s.connect();
+    }
+
     return () => {
       cleanup.forEach((c) => c());
       s.off('connect', onConnect);
       s.off('disconnect', onDisconnect);
       s.off('connect_error', onConnectError);
     };
-  }, [token]);
+  }, []);
 
   const subscribe = useCallback((event: string, handler: (payload: any) => void) => {
     if (!handlersRef.current.has(event)) {

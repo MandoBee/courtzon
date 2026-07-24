@@ -86,13 +86,13 @@ export default function MatchListPage() {
 
   useEffect(() => {
     const invalidate = () => queryClient.invalidateQueries({ queryKey: ['public-matches'] });
-    socketService.on('match:available', invalidate);
-    socketService.on('match:updated', invalidate);
-    socketService.on('match:removed', invalidate);
+    socketService.on('match.available', invalidate);
+    socketService.on('match.updated', invalidate);
+    socketService.on('match.removed', invalidate);
     return () => {
-      socketService.off('match:available', invalidate);
-      socketService.off('match:updated', invalidate);
-      socketService.off('match:removed', invalidate);
+      socketService.off('match.available', invalidate);
+      socketService.off('match.updated', invalidate);
+      socketService.off('match.removed', invalidate);
     };
   }, [queryClient]);
 

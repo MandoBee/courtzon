@@ -21,6 +21,13 @@ export function mapDomainEvent(eventName: string, payload: Record<string, unknow
     if (eventName.startsWith('attendance:')) return mapAttendanceEvent(eventName, payload);
     if (eventName.startsWith('membership:')) return mapMembershipEvent(eventName, payload);
     if (eventName.startsWith('match:')) return mapMatchEvent(eventName, payload);
+    if (eventName === 'system:announcement') {
+      return {
+        type: 'system.announcement',
+        payload: { title: payload.title, body: payload.body, level: payload.level },
+        rooms: payload.targetRole ? [`role:${payload.targetRole}`] : ['player'],
+      };
+    }
     return null;
   } catch (err) {
     log.error({ err, eventName }, 'socket.map_failed');
@@ -40,7 +47,12 @@ function roomsForBooking(bookingId: number, userId?: number): string[] {
 }
 
 function mapBookingEvent(eventName: string, p: Record<string, any>): MappedSocketEvent {
-  const type = `booking.${eventName.split(':')[1] || 'updated'}`;
+  const sub = eventName.split(':')[1] || 'updated';
+  const typeMap: Record<string, string> = {
+    'check-in': 'checked_in',
+    'no-show': 'no_show',
+  };
+  const type = `booking.${typeMap[sub] || sub}`;
   return {
     type,
     payload: { bookingId: p.bookingId, userId: p.userId, status: p.booking_status || p.status, startTime: p.startTime, endTime: p.endTime },
@@ -49,8 +61,12 @@ function mapBookingEvent(eventName: string, p: Record<string, any>): MappedSocke
 }
 
 function mapPaymentEvent(eventName: string, p: Record<string, any>): MappedSocketEvent {
+  const sub = eventName.split(':')[1] || 'updated';
+  const typeMap: Record<string, string> = {
+    'expired-event': 'expired',
+  };
   return {
-    type: `payment.${eventName.split(':')[1] || 'updated'}`,
+    type: `payment.${typeMap[sub] || sub}`,
     payload: { paymentId: p.paymentId, userId: p.userId, amount: p.amount, status: p.payment_status || p.status },
     rooms: roomsForUser(p.userId),
   };
@@ -73,6 +89,13 @@ function mapMarketplaceEvent(eventName: string, p: Record<string, any>): MappedS
 }
 
 function mapNotificationEvent(eventName: string, p: Record<string, any>): MappedSocketEvent {
+  if (eventName === 'notification:broadcast') {
+    return {
+      type: 'notification.broadcast',
+      payload: { notificationId: p.notificationId, title: p.title, body: p.body, type: p.type },
+      rooms: p.targetRole ? [`role:${p.targetRole}`] : ['player'],
+    };
+  }
   if (eventName === 'notification:delivered') {
     return {
       type: 'notification.new',
@@ -128,13 +151,14 @@ function mapAcademyEvent(eventName: string, p: Record<string, any>): MappedSocke
   if (p.userId) rooms.push(`user:${p.userId}`);
   if (p.academyId) rooms.push(`academy:${p.academyId}`);
   if (p.coachId) rooms.push(`coach:${p.coachId}`);
-  return { type: `academy.${eventName.split(':')[1] || 'updated'}`, payload: { academyId: p.academyId, userId: p.userId, sessionId: p.sessionId }, rooms };
+  const prefix = eventName.startsWith('coaching:') ? 'coaching' : 'academy';
+  return { type: `${prefix}.${eventName.split(':')[1] || 'updated'}`, payload: { academyId: p.academyId, userId: p.userId, sessionId: p.sessionId }, rooms };
 }
 
 function mapAttendanceEvent(eventName: string, p: Record<string, any>): MappedSocketEvent {
   return {
     type: 'attendance.updated',
-    payload: { attendanceId: p.attendanceId, userId: p.userId, sessionId: p.sessionId, status: p.status },
+    payload: { attendanceId: p.attendanceId, userId: p.userId, sessionId: p.sessionId, status: p.status || p.attendance_status },
     rooms: roomsForUser(p.userId),
   };
 }

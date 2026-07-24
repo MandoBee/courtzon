@@ -28,13 +28,13 @@ export default function MatchLobbyPage() {
       queryClient.invalidateQueries({ queryKey: ['match', id] });
       queryClient.invalidateQueries({ queryKey: ['match-applicants', Number(id)] });
     };
-    socketService.on('match:pending', invalidate);
-    socketService.on('match:updated', invalidate);
-    socketService.on('match:removed', invalidate);
+    socketService.on('match.pending', invalidate);
+    socketService.on('match.updated', invalidate);
+    socketService.on('match.removed', invalidate);
     return () => {
-      socketService.off('match:pending', invalidate);
-      socketService.off('match:updated', invalidate);
-      socketService.off('match:removed', invalidate);
+      socketService.off('match.pending', invalidate);
+      socketService.off('match.updated', invalidate);
+      socketService.off('match.removed', invalidate);
     };
   }, [id, queryClient]);
 

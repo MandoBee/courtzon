@@ -33,9 +33,7 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
     if (get().initialized) return;
     set({ initialized: true });
 
-    socketService.connect();
-
-    socketService.on('notification:new', (notification: AppNotification) => {
+    socketService.on('notification.new', (notification: AppNotification) => {
       const state = get();
       const exists = state.items.some((n) => n.id === notification.id);
       if (!exists) {
@@ -45,8 +43,18 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
       }
     });
 
-    socketService.on('notification:unread-count', () => {
+    socketService.on('notification.unread-count', () => {
       get().refreshUnreadCount();
+    });
+
+    socketService.on('notification:reconnect-queue', (data: { ids: number[] }) => {
+      if (data?.ids?.length) {
+        const state = get();
+        const newIds = data.ids.filter((id) => !state.items.some((n) => n.id === id));
+        if (newIds.length) {
+          get().refreshUnreadCount();
+        }
+      }
     });
 
     socketService.on('connect', () => {
@@ -67,7 +75,6 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
   destroy: () => {
     const timer = get()._pollTimer;
     if (timer) clearInterval(timer);
-    socketService.disconnect();
     set({ initialized: false, items: [], unreadCount: 0, connected: false, _pollTimer: null });
   },
 
