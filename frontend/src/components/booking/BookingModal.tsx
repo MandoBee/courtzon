@@ -311,6 +311,9 @@ export default function BookingModal({ open, onClose }: BookingModalProps) {
   });
 
   const reset = () => {
+    if (prepareIdRef.current) {
+      api.delete(`/bookings/prepare/${prepareIdRef.current}`).catch(() => {});
+    }
     setStep(1);
     setSelectedSportId(user?.mainSportId || null);
     setSelectedDate(toLocalDateStr(new Date()));
@@ -331,6 +334,8 @@ export default function BookingModal({ open, onClose }: BookingModalProps) {
     setPendingAccessBranches({});
     setPendingBookingId(null);
     setPaymentId(null);
+    setPixelClientSecret(null);
+    setPollingPaid(false);
     prepareIdRef.current = null;
   };
 
