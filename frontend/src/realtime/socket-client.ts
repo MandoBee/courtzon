@@ -78,35 +78,14 @@ export function updateSocketToken(_token: string): void {
  * If a previous socket failed auth, it is destroyed and recreated.
  */
 export function createSocket(): Socket {
-  // ── guard: already connected or actively connecting ──
   if (socket) {
-    if (currentState === 'connected') {
-      log('Already connected — skipping');
+    if (currentState === 'connected' || currentState === 'connecting' || currentState === 'reconnecting') {
       return socket;
     }
-    if (currentState === 'connecting') {
-      log('Already connecting — skipping');
-      return socket;
-    }
-    if (currentState === 'reconnecting') {
-      log('Already reconnecting — skipping');
-      return socket;
-    }
-    // Destroy stale socket from a previous failed attempt
-    log('Cleaning up stale socket (state=%s)', currentState);
     socket.removeAllListeners();
     socket.disconnect();
     socket = null;
   }
-
-  log('Creating socket url=%s', SOCKET_URL);
-
-  // ── Pre-connection diagnostics ──
-  log('document.cookie: "%s" (httpOnly cookies are invisible here)', document.cookie || '<empty>');
-  log('navigator.cookieEnabled=%s', navigator.cookieEnabled);
-  log('isSecureContext=%s', window.isSecureContext);
-  log('location.protocol=%s location.origin=%s', location.protocol, location.origin);
-  log('withCredentials will be=true (set in io opts)');
 
   socket = io(SOCKET_URL, {
     withCredentials: true,
@@ -121,8 +100,6 @@ export function createSocket(): Socket {
 
   setState('connecting');
 
-  // ── lifecycle listeners ──
-
   socket.on('connect', () => {
     const transport = (socket?.io.engine as any)?.transport?.name || 'unknown';
     log('Connected id=%s transport=%s', socket?.id, transport);
@@ -131,34 +108,27 @@ export function createSocket(): Socket {
 
   socket.on('disconnect', (reason) => {
     log('Disconnected reason=%s', reason);
-    // Server-initiated disconnect (e.g. logout broadcast) — don't auto-reconnect
     if (reason === 'io server disconnect') {
       setState('disconnected');
       return;
     }
-    // Transport-level issues — Socket.IO will auto-reconnect
     setState('reconnecting');
   });
 
   socket.on('connect_error', (err) => {
     const msg = err.message || '';
-    log('connect_error message=%s name=%s', msg, err.name);
+    log('connect_error message=%s', msg);
 
     const isAuthError =
       msg.includes('Authentication') ||
-      msg.includes('Invalid token') ||
-      msg.includes('Authentication failed');
+      msg.includes('Invalid token');
 
     if (isAuthError) {
-      // ── AUTH FAILURE: permanent — do not reconnect ──
-      log('Auth error — halting reconnection');
       setState('auth_failed');
-      // Disconnect without triggering reconnection
       socket?.disconnect();
       return;
     }
 
-    // ── NETWORK / SERVER ERROR: allow auto-reconnect ──
     if (currentState !== 'reconnecting') {
       setState('reconnecting');
     }
@@ -181,7 +151,6 @@ export function createSocket(): Socket {
     setState('disconnected');
   });
 
-  // ── start connection ──
   socket.connect();
 
   return socket;
@@ -193,7 +162,6 @@ export function createSocket(): Socket {
  */
 export function disconnectSocket(): void {
   if (socket) {
-    log('Disconnecting (destroying)');
     socket.removeAllListeners();
     socket.disconnect();
     socket = null;
