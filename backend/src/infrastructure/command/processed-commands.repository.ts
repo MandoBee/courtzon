@@ -84,6 +84,11 @@ class ProcessedCommandsRepository {
         duplicateCommandsTotal.inc({ command_type: data.commandType, subscriber_id: data.subscriberId });
         return;
       }
+      if (err?.code === 'ER_DATA_TOO_LONG') {
+        log.warn({ commandId: data.commandId, commandType: data.commandType },
+          'command_id exceeds column width — idempotency record skipped (run migration 057)');
+        return;
+      }
       log.error({ err, commandId: data.commandId, commandType: data.commandType }, 'Failed to record processed command');
       throw err;
     }
