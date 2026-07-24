@@ -7,7 +7,8 @@ let socket: Socket | null = null;
 export function getSocket(token?: string): Socket {
   if (!socket) {
     socket = io(SOCKET_URL, {
-      auth: { token },
+      auth: token ? { token } : undefined,
+      withCredentials: true,
       transports: ['websocket', 'polling'],
       reconnection: true,
       reconnectionAttempts: Infinity,

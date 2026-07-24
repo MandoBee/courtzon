@@ -1,17 +1,17 @@
-import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
+import React, { createContext, useContext, useEffect, useState, useRef, useCallback } from 'react';
 import { Socket } from 'socket.io-client';
-import { getSocket, disconnectSocket } from './socket-client';
+import { getSocket } from './socket-client';
 
 interface SocketContextValue {
   socket: Socket | null;
   isConnected: boolean;
-  lastEvent: { type: string; payload: Record<string, unknown> } | null;
+  subscribe: (event: string, handler: (payload: any) => void) => () => void;
 }
 
 const SocketContext = createContext<SocketContextValue>({
   socket: null,
   isConnected: false,
-  lastEvent: null,
+  subscribe: () => () => {},
 });
 
 export function useSocketContext(): SocketContextValue {
@@ -20,8 +20,8 @@ export function useSocketContext(): SocketContextValue {
 
 export function SocketProvider({ children, token }: { children: React.ReactNode; token?: string }) {
   const [isConnected, setIsConnected] = useState(false);
-  const [lastEvent, setLastEvent] = useState<{ type: string; payload: Record<string, unknown> } | null>(null);
   const socketRef = useRef<Socket | null>(null);
+  const handlersRef = useRef<Map<string, Set<(payload: any) => void>>>(new Map());
 
   useEffect(() => {
     const s = getSocket(token);
@@ -35,46 +35,63 @@ export function SocketProvider({ children, token }: { children: React.ReactNode;
     s.on('disconnect', onDisconnect);
     s.on('connect_error', onConnectError);
 
+    // Global event dispatcher
+    const globalHandler = (event: string) => (payload: any) => {
+      const handlers = handlersRef.current.get(event);
+      if (handlers) {
+        handlers.forEach((h) => h(payload));
+      }
+    };
+
+    const knownEvents = [
+      'booking.created', 'booking.confirmed', 'booking.cancelled',
+      'booking.expired', 'booking.completed', 'booking.checked_in',
+      'payment.completed', 'payment.failed', 'payment.expired',
+      'wallet.deposited', 'wallet.withdrawn', 'wallet.low_balance',
+      'marketplace.order-placed', 'marketplace.order-confirmed',
+      'marketplace.order-shipped', 'marketplace.order-delivered',
+      'marketplace.order-cancelled', 'marketplace.order-refunded',
+      'notification.new', 'notification.unread-count',
+      'notification.sync-read', 'notification.sync-deleted',
+      'match.available', 'match.removed', 'match.updated', 'match.pending',
+      'settlement.completed', 'settlement.failed',
+      'organisation.approved', 'organisation.rejected',
+      'organisation.subscription-renewed', 'organisation.subscription-expired',
+      'academy.enrolled', 'academy.graduated', 'academy.session-reminder',
+      'coaching.session-scheduled', 'coaching.session-cancelled',
+      'attendance.updated',
+      'membership.renewed', 'membership.expired', 'membership.expiring',
+      'presence.online', 'presence.offline',
+    ];
+
+    const cleanup: Array<() => void> = knownEvents.map((event) => {
+      const h = globalHandler(event);
+      s.on(event, h);
+      return () => s.off(event, h);
+    });
+
     if (s.connected) setIsConnected(true);
 
     return () => {
+      cleanup.forEach((c) => c());
       s.off('connect', onConnect);
       s.off('disconnect', onDisconnect);
       s.off('connect_error', onConnectError);
     };
   }, [token]);
 
-  useEffect(() => {
-    const s = socketRef.current;
-    if (!s) return;
-
-    const handler = (event: string) => (payload: Record<string, unknown>) => {
-      setLastEvent({ type: event, payload });
-    };
-
-    const events = [
-      'booking.created', 'booking.confirmed', 'booking.cancelled', 'booking.expired',
-      'booking.completed', 'payment.completed', 'payment.failed',
-      'wallet.deposited', 'wallet.withdrawn',
-      'marketplace.order-placed', 'marketplace.order-confirmed',
-      'notification.new', 'settlement.completed',
-      'organisation.updated', 'academy.enrolled', 'attendance.updated',
-      'membership.renewed',
-    ];
-
-    const handlers = events.map((e) => {
-      const h = handler(e);
-      s.on(e, h);
-      return [e, h] as const;
-    });
-
+  const subscribe = useCallback((event: string, handler: (payload: any) => void) => {
+    if (!handlersRef.current.has(event)) {
+      handlersRef.current.set(event, new Set());
+    }
+    handlersRef.current.get(event)!.add(handler);
     return () => {
-      for (const [e, h] of handlers) s.off(e, h);
+      handlersRef.current.get(event)?.delete(handler);
     };
   }, []);
 
   return (
-    <SocketContext.Provider value={{ socket: socketRef.current, isConnected, lastEvent }}>
+    <SocketContext.Provider value={{ socket: socketRef.current, isConnected, subscribe }}>
       {children}
     </SocketContext.Provider>
   );

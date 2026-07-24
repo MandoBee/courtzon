@@ -1,20 +1,17 @@
-import { useEffect, useCallback } from 'react';
+import { useEffect } from 'react';
 import { useSocketContext } from './SocketContext';
 
 export function useSocketEvent(
   eventType: string,
-  handler: (payload: Record<string, unknown>) => void,
+  handler: (payload: any) => void,
   deps: unknown[] = [],
 ): void {
-  const { lastEvent } = useSocketContext();
-
-  const stableHandler = useCallback(handler, deps);
+  const { subscribe } = useSocketContext();
 
   useEffect(() => {
-    if (lastEvent?.type === eventType && lastEvent.payload) {
-      stableHandler(lastEvent.payload);
-    }
-  }, [lastEvent, eventType, stableHandler]);
+    const unsub = subscribe(eventType, handler);
+    return unsub;
+  }, [eventType, subscribe, ...deps]);
 }
 
 export function useSocketConnection(): { isConnected: boolean } {

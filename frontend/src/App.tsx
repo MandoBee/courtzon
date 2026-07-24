@@ -23,6 +23,9 @@ import { useFeatureFlag } from './hooks/useFeatureFlag';
 import NotificationBell from './components/notifications/NotificationBell';
 import OfflineBanner from './components/pwa/OfflineBanner';
 import PWAUpdatePrompt from './components/pwa/PWAUpdatePrompt';
+import { SocketProvider } from './realtime/SocketContext';
+import { RealtimeCacheUpdater } from './realtime/RealtimeCacheUpdater';
+import { ConnectionStatus } from './components/ConnectionStatus';
 import IOSInstallSheet from './components/pwa/IOSInstallSheet';
 import SplashScreen from './components/SplashScreen';
 import RoleSwitcher from './components/workspace/RoleSwitcher';
@@ -552,13 +555,17 @@ export default function App() {
     <ErrorBoundary>
       <BrowserRouter>
         <QueryClientProvider client={queryClient}>
-          <ToastProvider>
-            <I18nProvider>
-              <ErrorBoundary>
-                <AppContent />
-              </ErrorBoundary>
-            </I18nProvider>
-          </ToastProvider>
+          <SocketProvider>
+            <ToastProvider>
+              <I18nProvider>
+                <ErrorBoundary>
+                  <AppContent />
+                  <RealtimeCacheUpdater />
+                  <ConnectionStatus />
+                </ErrorBoundary>
+              </I18nProvider>
+            </ToastProvider>
+          </SocketProvider>
         </QueryClientProvider>
       </BrowserRouter>
     </ErrorBoundary>
