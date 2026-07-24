@@ -4,7 +4,8 @@ import api from '../../services/api';
 import { useAuthStore } from '../../store/auth.store';
 import { Can } from '../../permissions/Can';
 import { SkeletonRow } from '../../components/ui';
-import { WorkspaceHero, StatCard, QuickActions, SectionHeader, EmptyStateCard } from '../../components/workspace';
+import { WorkspaceHero, StatCard, SectionHeader, EmptyStateCard } from '../../components/workspace';
+import { ActionCenter, QuickActions } from '../../components/dashboard/ActionCenter';
 
 export default function OrgDashboardPage() {
   const { orgId } = useParams<{ orgId: string }>();
@@ -74,6 +75,21 @@ export default function OrgDashboardPage() {
         </div>
       )}
 
+      {/* Action Center */}
+      <ActionCenter title="Pending" actions={[
+        { label: 'Pending Approvals', icon: '⏳', path: `/org/${orgId}/members` },
+        { label: 'Recent Bookings', icon: '📅', path: `/org/${orgId}/bookings`, count: recentBookings.length },
+        { label: 'Staff', icon: '👥', path: `/org/${orgId}/staff` },
+        { label: 'Coaches', icon: '👨‍🏫', path: `/org/${orgId}/coaches` },
+      ]} />
+
+      <QuickActions actions={[
+        { label: 'Bookings', icon: '📅', path: `/org/${orgId}/bookings` },
+        { label: 'Marketplace', icon: '🛒', path: `/org/${orgId}/marketplace` },
+        { label: 'Staff', icon: '👥', path: `/org/${orgId}/staff` },
+        { label: 'Settings', icon: '⚙️', path: `/org/${orgId}/settings` },
+      ]} />
+
       <Can permission="org.sidebar.bookings">
       <section>
         <SectionHeader icon="📅" title="Recent Bookings" action={{ label: 'View All', to: `/org/${orgId}/bookings` }} />
@@ -96,16 +112,6 @@ export default function OrgDashboardPage() {
         )}
       </section>
       </Can>
-
-      <QuickActions
-        actions={[
-          { icon: '📅', label: 'Bookings', onClick: () => window.location.href = `/org/${orgId}/bookings`, permission: 'org.sidebar.bookings' },
-          { icon: '🛒', label: 'Marketplace', onClick: () => window.location.href = `/org/${orgId}/marketplace`, permission: 'org.sidebar.marketplace' },
-          { icon: '👥', label: 'Staff', onClick: () => window.location.href = `/org/${orgId}/staff`, permission: 'org.sidebar.staff' },
-          { icon: '⚙️', label: 'Settings', onClick: () => window.location.href = `/org/${orgId}/settings`, permission: 'org.sidebar.settings' },
-        ]}
-        accentColor="var(--color-info)"
-      />
     </div>
   );
 }

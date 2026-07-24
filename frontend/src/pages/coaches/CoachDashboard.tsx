@@ -4,11 +4,11 @@ import api from '../../services/api';
 import { useAuthStore } from '../../store/auth.store';
 import { formatISODate } from '../../utils/formatDate';
 import { SkeletonRow } from '../../components/ui';
-import { WorkspaceHero, StatCard, QuickActions, SectionHeader, EmptyStateCard, SummaryCard } from '../../components/workspace';
+import { WorkspaceHero, StatCard, SectionHeader, EmptyStateCard, SummaryCard } from '../../components/workspace';
+import { ActionCenter, QuickActions } from '../../components/dashboard/ActionCenter';
 
 export default function CoachDashboard() {
   const user = useAuthStore((s) => s.user);
-  const navigate = useNavigate();
 
   const { data: stats, isLoading: statsLoading } = useQuery({
     queryKey: ['coach-stats'],
@@ -47,6 +47,20 @@ export default function CoachDashboard() {
         </div>
       )}
 
+      {/* Action Center */}
+      <ActionCenter title="Pending" actions={[
+        { label: 'Session Requests', path: '/coach/requests', icon: '📥', count: stats?.pendingRequests },
+        { label: 'Today\'s Sessions', path: '/coach/sessions', icon: '📋', count: stats?.todaySessions },
+        { label: 'Upcoming', path: '/coach/sessions', icon: '📅', count: upcoming.length },
+      ]} />
+
+      <QuickActions actions={[
+        { label: 'Set Availability', icon: '🕐', path: '/coach/availability' },
+        { label: 'My Profile', icon: '👤', path: '/coach/profile' },
+        { label: 'Players', icon: '👥', path: '/coach/players' },
+        { label: 'Session Requests', icon: '📥', path: '/coach/requests' },
+      ]} />
+
       <section>
         <SectionHeader icon="📋" title="Today's Sessions" action={{ label: 'View All', to: '/coach/sessions' }} />
         {sessionsLoading && <SkeletonRow count={3} />}
@@ -62,15 +76,12 @@ export default function CoachDashboard() {
         ))}
       </section>
 
-      <QuickActions
-        actions={[
-          { icon: '📋', label: 'My Sessions', onClick: () => navigate('/coach/sessions') },
-          { icon: '📥', label: 'Requests', onClick: () => navigate('/coach/requests') },
-          { icon: '⏰', label: 'Availability', onClick: () => navigate('/coach/availability') },
-          { icon: '👤', label: 'My Profile', onClick: () => navigate('/coach/profile') },
-        ]}
-        accentColor="var(--color-warning)"
-      />
+      <QuickActions actions={[
+        { label: 'My Sessions', icon: '📋', path: '/coach/sessions' },
+        { label: 'Requests', icon: '📥', path: '/coach/requests' },
+        { label: 'Set Availability', icon: '🕐', path: '/coach/availability' },
+        { label: 'My Profile', icon: '👤', path: '/coach/profile' },
+      ]} />
 
       <SummaryCard icon="💰" title="Earnings" description="Summary coming soon" accentColor="var(--color-warning)" />
     </div>

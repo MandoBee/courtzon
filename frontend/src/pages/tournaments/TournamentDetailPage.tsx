@@ -99,6 +99,17 @@ export default function TournamentDetailPage() {
         ))}
       </div>
 
+      {/* ELO / Awards section */}
+      <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-5">
+        <h2 className="text-sm font-semibold text-[var(--color-text)] mb-3">ELO Ranking & Awards</h2>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
+          <div><p className="text-xs text-[var(--color-text-muted)]">Top ELO</p><p className="text-lg font-bold text-[var(--color-text)]">—</p><p className="text-[10px] text-[var(--color-text-muted)]">After tournament</p></div>
+          <div><p className="text-xs text-[var(--color-text-muted)]">Prize Pool</p><p className="text-lg font-bold text-yellow-600">{tournament.prize_description || '—'}</p></div>
+          <div><p className="text-xs text-[var(--color-text-muted)]">Matches Played</p><p className="text-lg font-bold">{matchList.filter((m: any) => m.status === 'completed').length}</p></div>
+          <div><p className="text-xs text-[var(--color-text-muted)]">Avg Match Duration</p><p className="text-lg font-bold">{tournament.match_duration_minutes}min</p></div>
+        </div>
+      </div>
+
       {/* Overview Tab */}
       {tab === 'overview' && (
         <div className="grid gap-6 md:grid-cols-2">

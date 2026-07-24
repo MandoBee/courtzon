@@ -6,6 +6,7 @@ import { useAuthStore } from '../../store/auth.store';
 import { useTranslation } from '../../i18n';
 import { formatPrice } from '../../utils/currency';
 import { Sparkline } from '../../components/ui';
+import { ActionCenter } from '../../components/dashboard/ActionCenter';
 import type { ApiData } from '../../types/api';
 import type { DashboardStats, DashboardTrends } from '../../types/admin/dashboard';
 import { getChartColor, CHART_STROKE_PRIMARY } from '../../theme/chart-colors';
@@ -104,6 +105,16 @@ export default function AdminDashboard() {
           </div>
         ))}
       </div>
+
+      {/* Action Center */}
+      <ActionCenter title="Action Center" actions={[
+        { label: 'Pending Organisations', icon: '🏢', path: '/admin/organisations', count: stats?.pendingOrganisations ?? 0, color: 'bg-yellow-100 text-yellow-700' },
+        { label: 'Today\'s Bookings', icon: '📅', path: '/admin/bookings', count: stats?.todayBookings ?? 0 },
+        { label: 'Active Users Today', icon: '👥', path: '/admin/users', count: stats?.activeUsersToday ?? 0 },
+        { label: 'View Reports', icon: '📈', path: '/admin/reports' },
+        { label: 'Settlements', icon: '💰', path: '/admin/settlements' },
+        { label: 'Reception', icon: '🏪', path: '/admin/reception' },
+      ]} />
 
       {/* Two charts side by side */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
