@@ -314,6 +314,8 @@ export default function BookingModal({ open, onClose }: BookingModalProps) {
     if (prepareIdRef.current) {
       api.delete(`/bookings/prepare/${prepareIdRef.current}`).catch(() => {});
     }
+    prepareMutation.reset();
+    bookingMutation.reset();
     setStep(1);
     setSelectedSportId(user?.mainSportId || null);
     setSelectedDate(toLocalDateStr(new Date()));
@@ -996,6 +998,11 @@ export default function BookingModal({ open, onClose }: BookingModalProps) {
             </div>
           </div>
 
+          {prepareMutation.isError && (
+            <p className="text-sm text-[var(--color-error)] mb-3">
+              {(prepareMutation.error as any)?.response?.data?.message || 'Payment preparation failed'}
+            </p>
+          )}
           {bookingMutation.isError && (
             <p className="text-sm text-[var(--color-error)] mb-3">
               {(bookingMutation.error as any)?.response?.data?.message || 'Booking failed'}
