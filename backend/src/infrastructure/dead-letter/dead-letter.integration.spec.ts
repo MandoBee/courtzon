@@ -6,7 +6,7 @@ import { deadLetterRepository } from './dead-letter.repository.js';
 const DDL = `
 CREATE TABLE IF NOT EXISTS dead_letter_entries (
   id                BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
-  message_id        VARCHAR(26) NOT NULL,
+  message_id        VARCHAR(128) NOT NULL,
   message_type      VARCHAR(64) NOT NULL,
   message_category  ENUM('event','command') NOT NULL,
   source            VARCHAR(64) NOT NULL,

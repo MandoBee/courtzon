@@ -9,7 +9,7 @@ import type { Command, CommandHandler } from './command-base.js';
 const DDL = `
 CREATE TABLE IF NOT EXISTS processed_commands (
   id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-  command_id VARCHAR(26) NOT NULL,
+  command_id VARCHAR(128) NOT NULL,
   command_type VARCHAR(64) NOT NULL,
   subscriber_id VARCHAR(128) NOT NULL,
   correlation_id VARCHAR(64) DEFAULT NULL,
