@@ -26,6 +26,8 @@ import PWAUpdatePrompt from './components/pwa/PWAUpdatePrompt';
 import { SocketProvider } from './realtime/SocketContext';
 import { RealtimeCacheUpdater } from './realtime/RealtimeCacheUpdater';
 import { ConnectionStatus } from './components/ConnectionStatus';
+import GlobalSearchBar from './components/search/GlobalSearchBar';
+import CommandPalette from './components/search/CommandPalette';
 import IOSInstallSheet from './components/pwa/IOSInstallSheet';
 import SplashScreen from './components/SplashScreen';
 import RoleSwitcher from './components/workspace/RoleSwitcher';
@@ -310,6 +312,7 @@ function Navbar() {
             </div>
           </div>
           <div className="hidden md:flex items-center gap-4">
+            <div className="w-48"><GlobalSearchBar /></div>
             <RoleSwitcher />
             <NotificationBell />
             <Link to="/profile" className="text-sm text-[var(--color-text-muted)]">{user?.fullName || t('nav.profile')}</Link>
@@ -585,6 +588,7 @@ export default function App() {
                   <AppContent />
                   <RealtimeCacheUpdater />
                   <ConnectionStatus />
+                  <CommandPalette />
                 </ErrorBoundary>
               </I18nProvider>
             </ToastProvider>
