@@ -56,6 +56,21 @@ function buildNavItems(can: (perm: string) => boolean, flag: (key: string) => bo
     { label: 'Tournaments', icon: '🏆', path: '/admin/tournaments', permissionKey: 'sidebar.tournaments-admin' },
     { label: 'Academies', icon: '🎓', path: '/admin/academies', permissionKey: 'sidebar.academies-admin' },
     { label: 'Coaches', icon: '👨‍🏫', path: '/admin/coaches', permissionKey: 'sidebar.coaches-admin' },
+    {
+      label: 'Membership', icon: '⭐', path: '/admin/membership/plans', permissionKey: 'sidebar.membership',
+      children: [
+        { label: 'Plans', path: '/admin/membership/plans', permissionKey: 'membership.plans' },
+        { label: 'Campaigns', path: '/admin/membership/campaigns', permissionKey: 'membership.campaigns' },
+        { label: 'Rewards', path: '/admin/membership/rewards', permissionKey: 'membership.rewards' },
+      ],
+    },
+    {
+      label: 'Pricing', icon: '💰', path: '/admin/pricing/rules', permissionKey: 'sidebar.pricing',
+      children: [
+        { label: 'Rules', path: '/admin/pricing/rules', permissionKey: 'pricing.rules' },
+        { label: 'Price Preview', path: '/admin/pricing/preview', permissionKey: 'pricing.preview' },
+      ],
+    },
     { label: 'Community Events', icon: '🎉', path: '/admin/community-events', permissionKey: 'sidebar.community-admin' },
     {
       label: 'Notifications', icon: '🔔', path: '/admin/notifications/broadcast', permissionKey: 'sidebar.notifications',

@@ -723,6 +723,17 @@ export const uiRegistry: UIElement[] = [
   { permissionKey: 'sidebar.notifications', moduleSlug: 'notifications', elementType: 'tab', elementLabel: 'Sidebar: Notifications', componentPath: 'components/layout/AdminSidebar.tsx' },
   { permissionKey: 'bookings.apply', moduleSlug: 'bookings', elementType: 'button', elementLabel: 'Apply to Match', componentPath: 'pages/booking/MatchListPage.tsx' },
 
+  // Membership sidebar
+  { permissionKey: 'sidebar.membership', moduleSlug: 'membership', elementType: 'tab', elementLabel: 'Sidebar: Membership', componentPath: 'components/layout/AdminSidebar.tsx' },
+  { permissionKey: 'membership.plans', moduleSlug: 'membership', elementType: 'page', elementLabel: 'Membership Plans', componentPath: 'pages/admin/membership/MembershipPlansPage.tsx' },
+  { permissionKey: 'membership.campaigns', moduleSlug: 'membership', elementType: 'page', elementLabel: 'Membership Campaigns', componentPath: 'pages/admin/membership/CampaignsPage.tsx' },
+  { permissionKey: 'membership.rewards', moduleSlug: 'membership', elementType: 'page', elementLabel: 'Membership Rewards', componentPath: 'pages/admin/membership/RewardsAdminPage.tsx' },
+
+  // Pricing sidebar
+  { permissionKey: 'sidebar.pricing', moduleSlug: 'pricing', elementType: 'tab', elementLabel: 'Sidebar: Pricing', componentPath: 'components/layout/AdminSidebar.tsx' },
+  { permissionKey: 'pricing.rules', moduleSlug: 'pricing', elementType: 'page', elementLabel: 'Pricing Rules', componentPath: 'pages/admin/pricing/PricingRulesPage.tsx' },
+  { permissionKey: 'pricing.preview', moduleSlug: 'pricing', elementType: 'page', elementLabel: 'Price Preview', componentPath: 'pages/admin/pricing/PricePreviewPage.tsx' },
+
   // Profile Wallet tab
   { permissionKey: 'profile.wallet.view', moduleSlug: 'users', elementType: 'tab', elementLabel: 'Profile Wallet Tab', componentPath: 'pages/profile/ProfilePage.tsx' },
 
