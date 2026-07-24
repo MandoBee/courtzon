@@ -156,6 +156,14 @@ const OrgPendingApprovalPage = lazy(() => import('./pages/org/OrgPendingApproval
 const OrgFinancePage = lazy(() => import('./pages/org/OrgFinancePage'));
 const OrgSubscriptionPage = lazy(() => import('./pages/org/OrgSubscriptionPage'));
 const NotificationsPage = lazy(() => import('./pages/notifications/NotificationsPage'));
+const MembershipDashboard = lazy(() => import('./pages/membership/MembershipDashboard'));
+const PlansPage = lazy(() => import('./pages/membership/PlansPage'));
+const RewardsPage = lazy(() => import('./pages/membership/RewardsPage'));
+const MembershipPlansPage = lazy(() => import('./pages/admin/membership/MembershipPlansPage'));
+const CampaignsPage = lazy(() => import('./pages/admin/membership/CampaignsPage'));
+const RewardsAdminPage = lazy(() => import('./pages/admin/membership/RewardsAdminPage'));
+const PricingRulesPage = lazy(() => import('./pages/admin/pricing/PricingRulesPage'));
+const PricePreviewPage = lazy(() => import('./pages/admin/pricing/PricePreviewPage'));
 const MatchListPage = lazy(() => import('./pages/booking/MatchListPage'));
 const MatchLobbyPage = lazy(() => import('./pages/booking/MatchLobbyPage'));
 const NotFoundPage = lazy(() => import('./pages/NotFoundPage'));
@@ -443,6 +451,9 @@ function AppContent() {
           <Route path="/community/events" element={<CommunityEventsPage />} />
           <Route path="/messages" element={<FeatureFlagGuard flag="community.chat_enabled"><MessagesPage /></FeatureFlagGuard>} />
           <Route path="/notifications" element={<NotificationsPage />} />
+          <Route path="/membership" element={<MembershipDashboard />} />
+          <Route path="/membership/plans" element={<PlansPage />} />
+          <Route path="/membership/rewards" element={<RewardsPage />} />
         </Route>
         <Route path="/coach" element={<CoachLayout />}>
           <Route index element={<CoachDashboard />} />
@@ -501,6 +512,11 @@ function AppContent() {
             <Route path="design-tokens" element={<DesignTokensPage />} />
             <Route path="tournaments" element={<TournamentAdminPage />} />
             <Route path="academies" element={<AcademyAdminPage />} />
+            <Route path="membership/plans" element={<MembershipPlansPage />} />
+            <Route path="membership/campaigns" element={<CampaignsPage />} />
+            <Route path="membership/rewards" element={<RewardsAdminPage />} />
+            <Route path="pricing/rules" element={<PricingRulesPage />} />
+            <Route path="pricing/preview" element={<PricePreviewPage />} />
             <Route path="coaches" element={<CoachAdminPage />} />
             <Route path="community-events" element={<CommunityEventsAdminPage />} />
           <Route path="notifications/broadcast" element={<AdminBroadcastPage />} />
