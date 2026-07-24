@@ -18,6 +18,10 @@ export function useSocketContext(): SocketContextValue {
   return useContext(SocketContext);
 }
 
+const ctxLog = (msg: string, ...args: unknown[]) => {
+  console.log(`[SocketCtx ${new Date().toISOString().slice(11, 23)}] ${msg}`, ...args);
+};
+
 export function SocketProvider({ children, token }: { children: React.ReactNode; token?: string }) {
   const [isConnected, setIsConnected] = useState(false);
   const socketRef = useRef<Socket | null>(null);
@@ -26,18 +30,20 @@ export function SocketProvider({ children, token }: { children: React.ReactNode;
 
   useEffect(() => {
     if (token && token !== tokenRef.current) {
+      ctxLog('Token changed, updating socket auth');
       tokenRef.current = token;
       updateSocketToken(token);
     }
   }, [token]);
 
   useEffect(() => {
+    ctxLog('Mounting SocketProvider hasToken=%s', !!token);
     const s = getSocket(token);
     socketRef.current = s;
 
-    const onConnect = () => setIsConnected(true);
-    const onDisconnect = () => setIsConnected(false);
-    const onConnectError = () => setIsConnected(false);
+    const onConnect = () => { ctxLog('connect event'); setIsConnected(true); };
+    const onDisconnect = (reason: string) => { ctxLog('disconnect event reason=%s', reason); setIsConnected(false); };
+    const onConnectError = (err: Error) => { ctxLog('connect_error message=%s', err.message); setIsConnected(false); };
 
     s.on('connect', onConnect);
     s.on('disconnect', onDisconnect);

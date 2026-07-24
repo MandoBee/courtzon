@@ -1,16 +1,22 @@
 import { Server as SocketIOServer } from 'socket.io';
 import type { FastifyInstance } from 'fastify';
+import { createHash } from 'node:crypto';
 import { setOnlineWithReconnect, setOffline } from '../modules/notifications/application/presence.service.js';
 import { registerUserDevice } from '../modules/notifications/application/cross-device-sync.service.js';
 import { userRoom, orgRoom, branchRoom, ADMIN_ROOM, PLAYER_ROOM } from '../modules/realtime/domain/realtime-rooms.js';
 import { eventBusV2 } from '../shared/event-bus/event-bus.v2.js';
 import { ALLOWED_ORIGINS } from '../app.js';
+import { getPool } from '../database/mysql.js';
 
 let io: SocketIOServer | null = null;
 
 export function getIO(): SocketIOServer {
   if (!io) throw new Error('Socket.IO not initialized. Call setupRealtime() first.');
   return io;
+}
+
+function hashToken(token: string): string {
+  return createHash('sha256').update(token).digest('hex');
 }
 
 export function setupRealtime(app: FastifyInstance): SocketIOServer {
@@ -44,17 +50,45 @@ export function setupRealtime(app: FastifyInstance): SocketIOServer {
 
       if (!token) return next(new Error('Authentication required'));
 
-      const jwt = await import('jsonwebtoken');
-      const secret = process.env.JWT_SECRET || 'fallback-secret';
-      const decoded = jwt.default.verify(token, secret) as any;
+      const pool = getPool();
+      const tokenHash = hashToken(token);
 
-      if (!decoded?.id) return next(new Error('Invalid token'));
+      const [sessions] = await pool.execute<any[]>(
+        `SELECT user_id FROM user_sessions
+         WHERE session_token_hash = ? AND is_revoked = FALSE AND expires_at > NOW()
+         LIMIT 1`,
+        [tokenHash],
+      );
 
-      socket.data.userId = decoded.id;
-      socket.data.role = decoded.role || null;
-      socket.data.organisationId = decoded.organisationId || null;
+      if (!sessions.length) return next(new Error('Authentication failed'));
+
+      const userId: number = sessions[0].user_id;
+      socket.data.userId = userId;
+
+      const [roles] = await pool.execute<any[]>(
+        `SELECT DISTINCT r.slug FROM user_roles ur
+         JOIN roles r ON r.id = ur.role_id
+         WHERE ur.user_id = ? AND ur.is_active = TRUE
+           AND (ur.expires_at IS NULL OR ur.expires_at > NOW())
+           AND r.deleted_at IS NULL`,
+        [userId],
+      );
+
+      socket.data.role = roles.length ? roles[0].slug : null;
+
+      const [orgs] = await pool.execute<any[]>(
+        `SELECT organisation_id FROM user_role_scopes
+         WHERE user_role_id IN (
+           SELECT id FROM user_roles WHERE user_id = ? AND is_active = TRUE
+         ) AND scope_type = 'organisation'
+         LIMIT 1`,
+        [userId],
+      );
+
+      socket.data.organisationId = orgs.length ? orgs[0].organisation_id : null;
+
       next();
-    } catch {
+    } catch (err: any) {
       next(new Error('Authentication failed'));
     }
   });
