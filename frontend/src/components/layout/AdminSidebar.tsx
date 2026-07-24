@@ -53,6 +53,7 @@ function buildNavItems(can: (perm: string) => boolean, flag: (key: string) => bo
         { label: 'Tags', path: '/admin/tags', permissionKey: 'sidebar.tags' },
       ],
     },
+    { label: 'Reception', icon: '🏪', path: '/admin/reception', permissionKey: 'sidebar.reception' },
     { label: 'Tournaments', icon: '🏆', path: '/admin/tournaments', permissionKey: 'sidebar.tournaments-admin' },
     { label: 'Academies', icon: '🎓', path: '/admin/academies', permissionKey: 'sidebar.academies-admin' },
     { label: 'Coaches', icon: '👨‍🏫', path: '/admin/coaches', permissionKey: 'sidebar.coaches-admin' },

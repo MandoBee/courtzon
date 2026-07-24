@@ -729,6 +729,9 @@ export const uiRegistry: UIElement[] = [
   { permissionKey: 'membership.campaigns', moduleSlug: 'membership', elementType: 'page', elementLabel: 'Membership Campaigns', componentPath: 'pages/admin/membership/CampaignsPage.tsx' },
   { permissionKey: 'membership.rewards', moduleSlug: 'membership', elementType: 'page', elementLabel: 'Membership Rewards', componentPath: 'pages/admin/membership/RewardsAdminPage.tsx' },
 
+  // Reception sidebar
+  { permissionKey: 'sidebar.reception', moduleSlug: 'bookings', elementType: 'tab', elementLabel: 'Sidebar: Reception', componentPath: 'components/layout/AdminSidebar.tsx' },
+
   // Pricing sidebar
   { permissionKey: 'sidebar.pricing', moduleSlug: 'pricing', elementType: 'tab', elementLabel: 'Sidebar: Pricing', componentPath: 'components/layout/AdminSidebar.tsx' },
 

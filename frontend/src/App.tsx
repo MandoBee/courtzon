@@ -165,6 +165,7 @@ const RewardsAdminPage = lazy(() => import('./pages/admin/membership/RewardsAdmi
 const PricingRulesPage = lazy(() => import('./pages/admin/pricing/PricingRulesPage'));
 const PricePreviewPage = lazy(() => import('./pages/admin/pricing/PricePreviewPage'));
 const FinanceDashboardPage = lazy(() => import('./pages/admin/finance/FinanceDashboardPage'));
+const ReceptionDashboard = lazy(() => import('./pages/admin/ReceptionDashboard'));
 const LedgerViewerPage = lazy(() => import('./pages/admin/finance/LedgerViewerPage'));
 const ReportCenterPage = lazy(() => import('./pages/admin/finance/ReportCenterPage'));
 const MatchListPage = lazy(() => import('./pages/booking/MatchListPage'));
@@ -541,6 +542,7 @@ function AppContent() {
           <Route path="approvals" element={<AdminApprovalsPage />} />
           <Route path="branch-access" element={<AdminBranchAccessPage />} />
           <Route path="bookings" element={<AdminBookingsPage />} />
+          <Route path="reception" element={<ReceptionDashboard />} />
         </Route>
         </Route>
 
