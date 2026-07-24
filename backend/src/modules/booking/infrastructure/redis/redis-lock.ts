@@ -61,7 +61,15 @@ export class RedisLock {
     resourceId: number, date: string, slotStart: string, owner: string,
   ): Promise<boolean> {
     const key = this.lockKey(resourceId, date, slotStart);
-    const result = await this.redis.set(key, owner, 'PX', PREPARE_LOCK_TTL_MS, 'NX');
+    const script = `
+      local current = redis.call("get", KEYS[1])
+      if current == false or current == ARGV[1] then
+        redis.call("set", KEYS[1], ARGV[1], "PX", ARGV[2])
+        return "OK"
+      end
+      return nil
+    `;
+    const result = await this.redis.eval(script, 1, key, owner, PREPARE_LOCK_TTL_MS);
     return result === 'OK';
   }
 
