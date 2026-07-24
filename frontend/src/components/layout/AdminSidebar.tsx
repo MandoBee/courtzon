@@ -129,6 +129,7 @@ function buildNavItems(can: (perm: string) => boolean, flag: (key: string) => bo
       ],
     },
     { label: 'Users', icon: '👥', path: '/admin/users', permissionKey: 'sidebar.users' },
+    { label: 'Webhooks', icon: '🔗', path: '/admin/webhooks', permissionKey: 'sidebar.webhooks' },
     {
       label: 'Security', icon: '🛡️', path: '/admin/security', permissionKey: 'sidebar.security-dashboard',
       children: [

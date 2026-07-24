@@ -166,6 +166,7 @@ const CampaignsPage = lazy(() => import('./pages/admin/membership/CampaignsPage'
 const RewardsAdminPage = lazy(() => import('./pages/admin/membership/RewardsAdminPage'));
 const PricingRulesPage = lazy(() => import('./pages/admin/pricing/PricingRulesPage'));
 const PricePreviewPage = lazy(() => import('./pages/admin/pricing/PricePreviewPage'));
+const WebhooksPage = lazy(() => import('./pages/admin/WebhooksPage'));
 const FinanceDashboardPage = lazy(() => import('./pages/admin/finance/FinanceDashboardPage'));
 const ReceptionDashboard = lazy(() => import('./pages/admin/ReceptionDashboard'));
 const LedgerViewerPage = lazy(() => import('./pages/admin/finance/LedgerViewerPage'));
@@ -546,6 +547,7 @@ function AppContent() {
           <Route path="branch-access" element={<AdminBranchAccessPage />} />
           <Route path="bookings" element={<AdminBookingsPage />} />
           <Route path="reception" element={<ReceptionDashboard />} />
+          <Route path="webhooks" element={<WebhooksPage />} />
         </Route>
         </Route>
 

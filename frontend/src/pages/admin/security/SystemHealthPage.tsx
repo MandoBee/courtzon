@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import api from '../../../services/api';
-import { Card, Badge, Spinner } from '../../../components/ui';
+import { SkeletonRow } from '../../../components/ui/Skeleton';
 
 export default function SystemHealthPage() {
   const { data: health, isLoading } = useQuery({
@@ -13,112 +13,72 @@ export default function SystemHealthPage() {
     queryFn: () => api.get('/admin/security/redis').then(r => r.data?.data ?? {}),
   });
 
-  if (isLoading) return <Spinner size="lg" />;
+  const { data: metrics } = useQuery({
+    queryKey: ['admin', 'metrics'],
+    queryFn: () => api.get('/metrics').then(r => {
+      const lines = r.data.split('\n').filter((l: string) => l.startsWith('courtzon_') && !l.startsWith('#'));
+      const parsed: Record<string, number> = {};
+      for (const line of lines) {
+        const [name, val] = line.split(' ');
+        if (name && val) parsed[name.split('{')[0]] = Number(val);
+      }
+      return parsed;
+    }).catch(() => ({})),
+  });
 
-  const checks = health?.checks || {};
-  const redis = redisInfo || {};
+  if (isLoading) return <div className="space-y-4"><SkeletonRow count={6} /></div>;
+
+  const checks = [
+    { label: 'Database', status: health?.checks?.database?.status || 'unknown', latency: health?.checks?.database?.latencyMs, icon: '🗄️' },
+    { label: 'Redis', status: health?.checks?.redis?.status || 'unknown', latency: health?.checks?.redis?.latencyMs, icon: '📡' },
+    { label: 'Memory', status: health?.checks?.memory?.status || 'unknown', detail: `${health?.checks?.memory?.usagePercent || 0}% used`, icon: '💾' },
+    { label: 'Uptime', status: 'ok', detail: `${Math.floor((health?.uptime || 0) / 3600)}h ${Math.floor(((health?.uptime || 0) % 3600) / 60)}m`, icon: '⏱️' },
+  ];
+
+  const redis = redisInfo?.redisInfo || redisInfo;
 
   return (
-    <div>
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-[var(--color-text)]">System Health</h1>
-          <p className="text-sm text-[var(--color-text-muted)] mt-0.5">
-            Overall: <Badge variant={health?.status === 'ok' ? 'success' : health?.status === 'degraded' ? 'warning' : 'danger'}>{health?.status || 'unknown'}</Badge>
-          </p>
+    <div className="space-y-6">
+      <h1 className="text-xl font-bold text-[var(--color-text)]">Platform Health</h1>
+
+      {/* Health checks */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        {checks.map(c => (
+          <div key={c.label} className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-5">
+            <div className="flex items-center gap-2 mb-2"><span className="text-2xl">{c.icon}</span>
+              <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${c.status === 'ok' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{c.status}</span>
+            </div>
+            <p className="text-sm font-medium text-[var(--color-text)]">{c.label}</p>
+            {c.latency !== undefined && <p className="text-xs text-[var(--color-text-muted)]">{c.latency}ms latency</p>}
+            {c.detail && <p className="text-xs text-[var(--color-text-muted)]">{c.detail}</p>}
+          </div>
+        ))}
+      </div>
+
+      {/* Redis Info */}
+      {redis && (
+        <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-5">
+          <h2 className="text-sm font-semibold text-[var(--color-text)] mb-4">Redis</h2>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+            <div><span className="text-xs text-[var(--color-text-muted)]">Memory</span><p className="font-medium">{redis.usedMemory || redis.used_memory || '—'}</p></div>
+            <div><span className="text-xs text-[var(--color-text-muted)]">Peak</span><p className="font-medium">{redis.usedMemoryPeak || redis.used_memory_peak || '—'}</p></div>
+            <div><span className="text-xs text-[var(--color-text-muted)]">Clients</span><p className="font-medium">{redis.connectedClients || redis.connected_clients || '—'}</p></div>
+            <div><span className="text-xs text-[var(--color-text-muted)]">Hit Rate</span><p className="font-medium">{redis.hitRate || redis.hit_rate || '—'}</p></div>
+          </div>
         </div>
-        <span className="text-xs text-[var(--color-text-muted)]">
-          Updated: {health?.timestamp ? new Date(health.timestamp).toLocaleString('en-GB') : '—'}
-        </span>
-      </div>
+      )}
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <Card className="p-5">
-          <p className="text-xs text-[var(--color-text-muted)] mb-1">Database</p>
-          <div className="flex items-center gap-2">
-            <span className={`w-3 h-3 rounded-full ${checks.database?.status === 'ok' ? 'bg-[var(--color-success)]' : 'bg-[var(--color-error)]'}`} />
-            <span className="text-lg font-bold text-[var(--color-text)] capitalize">{checks.database?.status}</span>
+      {/* Prometheus metrics summary */}
+      {metrics && Object.keys(metrics).length > 0 && (
+        <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-5">
+          <h2 className="text-sm font-semibold text-[var(--color-text)] mb-4">Metrics Summary</h2>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+            {Object.entries(metrics).slice(0, 8).map(([key, val]) => (
+              <div key={key}><span className="text-xs text-[var(--color-text-muted)]">{key.replace(/^courtzon_/, '').replace(/_/g, ' ')}</span><p className="font-medium">{val ?? 0}</p></div>
+            ))}
           </div>
-          <p className="text-[10px] text-[var(--color-text-muted)] mt-1">Latency: {checks.database?.latencyMs}ms</p>
-        </Card>
-        <Card className="p-5">
-          <p className="text-xs text-[var(--color-text-muted)] mb-1">Redis</p>
-          <div className="flex items-center gap-2">
-            <span className={`w-3 h-3 rounded-full ${checks.redis?.status === 'ok' ? 'bg-[var(--color-success)]' : 'bg-[var(--color-error)]'}`} />
-            <span className="text-lg font-bold text-[var(--color-text)] capitalize">{checks.redis?.status}</span>
-          </div>
-          <p className="text-[10px] text-[var(--color-text-muted)] mt-1">Latency: {checks.redis?.latencyMs}ms</p>
-        </Card>
-        <Card className="p-5">
-          <p className="text-xs text-[var(--color-text-muted)] mb-1">Memory Usage</p>
-          <p className={`text-lg font-bold ${checks.memory?.usagePercent > 80 ? 'text-[var(--color-error-text)]' : 'text-[var(--color-success-text)]'}`}>
-            {checks.memory?.usagePercent?.toFixed(1) || '—'}%
-          </p>
-          <p className="text-[10px] text-[var(--color-text-muted)] mt-1">{checks.memory?.freeMb}MB free of {checks.memory?.totalMb}MB</p>
-        </Card>
-        <Card className="p-5">
-          <p className="text-xs text-[var(--color-text-muted)] mb-1">Uptime</p>
-          <p className="text-lg font-bold text-[var(--color-text)]">
-            {health?.uptime ? `${Math.floor(health.uptime / 86400)}d ${Math.floor((health.uptime % 86400) / 3600)}h` : '—'}
-          </p>
-          <p className="text-[10px] text-[var(--color-text-muted)] mt-1">Server uptime</p>
-        </Card>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
-        <Card className="p-5">
-          <h3 className="text-sm font-semibold text-[var(--color-text)] mb-4">Redis Details</h3>
-          {redis && !redis.error ? (
-            <div className="space-y-3 text-sm">
-              {[
-                { label: 'Used Memory', value: redis.usedMemory },
-                { label: 'Peak Memory', value: redis.usedMemoryPeak },
-                { label: 'Connected Clients', value: redis.connectedClients },
-                { label: 'Total Connections', value: redis.totalConnectionsReceived },
-                { label: 'Cache Hit Rate', value: redis.hitRate },
-                { label: 'Keyspace Hits', value: redis.keyspaceHits },
-                { label: 'Keyspace Misses', value: redis.keyspaceMisses },
-              ].map(item => (
-                <div key={item.label} className="flex justify-between border-b border-[var(--color-border)] pb-1.5">
-                  <span className="text-[var(--color-text-muted)]">{item.label}</span>
-                  <span className="font-mono text-[var(--color-text)]">{item.value || '—'}</span>
-                </div>
-              ))}
-            </div>
-          ) : <p className="text-sm text-red-500">{redis?.error || 'Redis unavailable'}</p>}
-        </Card>
-
-        <Card className="p-5">
-          <h3 className="text-sm font-semibold text-[var(--color-text)] mb-4">Service Status</h3>
-          <div className="space-y-4">
-            <div className="flex items-center justify-between p-3 bg-[var(--color-bg)] bg-[var(--color-surface)] rounded-[var(--radius-md)]">
-              <div>
-                <p className="text-sm font-medium text-[var(--color-text)]">API Server</p>
-                <p className="text-xs text-[var(--color-text-muted)]">CourtZon Backend</p>
-              </div>
-              <Badge variant={health?.status !== 'down' ? 'success' : 'danger'}>
-                {health?.status !== 'down' ? 'Online' : 'Offline'}
-              </Badge>
-            </div>
-            <div className="flex items-center justify-between p-3 bg-[var(--color-bg)] bg-[var(--color-surface)] rounded-[var(--radius-md)]">
-              <div>
-                <p className="text-sm font-medium text-[var(--color-text)]">Queue Worker</p>
-                <p className="text-xs text-[var(--color-text-muted)]">BullMQ jobs</p>
-              </div>
-              <Badge variant="success">Active</Badge>
-            </div>
-            <div className="flex items-center justify-between p-3 bg-[var(--color-bg)] bg-[var(--color-surface)] rounded-[var(--radius-md)]">
-              <div>
-                <p className="text-sm font-medium text-[var(--color-text)]">Redis</p>
-                <p className="text-xs text-[var(--color-text-muted)]">Cache & queue backend</p>
-              </div>
-              <Badge variant={checks.redis?.status === 'ok' ? 'success' : 'danger'}>
-                {checks.redis?.status === 'ok' ? 'Online' : 'Offline'}
-              </Badge>
-            </div>
-          </div>
-        </Card>
-      </div>
+        </div>
+      )}
     </div>
   );
 }
