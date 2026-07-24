@@ -101,7 +101,7 @@ const TranslationsPage = lazy(() => import('./pages/admin/translations/Translati
 const SubscriptionPage = lazy(() => import('./pages/admin/subscription/SubscriptionPage'));
 const SubscriptionRequestsPage = lazy(() => import('./pages/admin/subscription/SubscriptionRequestsPage'));
 const SettlementListPage = lazy(() => import('./pages/admin/settlements/SettlementListPage'));
-const AdminFinancePage = lazy(() => import('./pages/admin/AdminFinancePage'));
+
 const FinancialOpsDashboard = lazy(() => import('./pages/admin/finance/FinancialOpsDashboard'));
 const ProductCategoriesPage = lazy(() => import('./pages/admin/product-categories/ProductCategoriesPage'));
 const FeatureFlagsPage = lazy(() => import('./pages/admin/feature-flags/FeatureFlagsPage'));
@@ -164,6 +164,9 @@ const CampaignsPage = lazy(() => import('./pages/admin/membership/CampaignsPage'
 const RewardsAdminPage = lazy(() => import('./pages/admin/membership/RewardsAdminPage'));
 const PricingRulesPage = lazy(() => import('./pages/admin/pricing/PricingRulesPage'));
 const PricePreviewPage = lazy(() => import('./pages/admin/pricing/PricePreviewPage'));
+const FinanceDashboardPage = lazy(() => import('./pages/admin/finance/FinanceDashboardPage'));
+const LedgerViewerPage = lazy(() => import('./pages/admin/finance/LedgerViewerPage'));
+const ReportCenterPage = lazy(() => import('./pages/admin/finance/ReportCenterPage'));
 const MatchListPage = lazy(() => import('./pages/booking/MatchListPage'));
 const MatchLobbyPage = lazy(() => import('./pages/booking/MatchLobbyPage'));
 const NotFoundPage = lazy(() => import('./pages/NotFoundPage'));
@@ -505,7 +508,9 @@ function AppContent() {
           <Route path="security/organisations" element={<OrganisationSecurityPage />} />
           <Route path="security/role-audit" element={<RoleAuditPage />} />
             <Route path="settlements" element={<SettlementListPage />} />
-            <Route path="finance" element={<AdminFinancePage />} />
+            <Route path="finance" element={<FinanceDashboardPage />} />
+            <Route path="finance/ledger" element={<LedgerViewerPage />} />
+            <Route path="finance/reports" element={<ReportCenterPage />} />
             <Route path="financial-ops" element={<FinancialOpsDashboard />} />
             <Route path="withdrawal-requests" element={<WithdrawalRequestsPage />} />
             <Route path="coupons" element={<CouponListPage />} />

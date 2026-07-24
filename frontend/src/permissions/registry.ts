@@ -731,6 +731,11 @@ export const uiRegistry: UIElement[] = [
 
   // Pricing sidebar
   { permissionKey: 'sidebar.pricing', moduleSlug: 'pricing', elementType: 'tab', elementLabel: 'Sidebar: Pricing', componentPath: 'components/layout/AdminSidebar.tsx' },
+
+  // Finance sidebar
+  { permissionKey: 'sidebar.finance-dashboard', moduleSlug: 'financial', elementType: 'tab', elementLabel: 'Sidebar: Finance Dashboard', componentPath: 'components/layout/AdminSidebar.tsx' },
+  { permissionKey: 'sidebar.finance-ledger', moduleSlug: 'financial', elementType: 'tab', elementLabel: 'Sidebar: Ledger', componentPath: 'components/layout/AdminSidebar.tsx' },
+  { permissionKey: 'sidebar.finance-reports', moduleSlug: 'financial', elementType: 'tab', elementLabel: 'Sidebar: Reports', componentPath: 'components/layout/AdminSidebar.tsx' },
   { permissionKey: 'pricing.rules', moduleSlug: 'pricing', elementType: 'page', elementLabel: 'Pricing Rules', componentPath: 'pages/admin/pricing/PricingRulesPage.tsx' },
   { permissionKey: 'pricing.preview', moduleSlug: 'pricing', elementType: 'page', elementLabel: 'Price Preview', componentPath: 'pages/admin/pricing/PricePreviewPage.tsx' },
 

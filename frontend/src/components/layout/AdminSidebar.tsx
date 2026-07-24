@@ -87,11 +87,14 @@ function buildNavItems(can: (perm: string) => boolean, flag: (key: string) => bo
       children: [
         { label: 'Sports', path: '/admin/sports', permissionKey: 'sidebar.sports' },
         {
-          label: 'Finance', path: '/admin/withdrawal-requests', permissionKey: 'sidebar.finance',
+          label: 'Finance', path: '/admin/finance', permissionKey: 'sidebar.finance',
           children: [
+            { label: 'Finance Dashboard', path: '/admin/finance', permissionKey: 'sidebar.finance-dashboard' },
+            { label: 'Ledger', path: '/admin/finance/ledger', permissionKey: 'sidebar.finance-ledger' },
+            { label: 'Reports', path: '/admin/finance/reports', permissionKey: 'sidebar.finance-reports' },
             { label: 'Withdrawal Requests', path: '/admin/withdrawal-requests', permissionKey: 'sidebar.withdrawal-requests' },
             { label: 'Coupons', path: '/admin/coupons', permissionKey: 'sidebar.coupons' },
-            { label: 'Finance', path: '/admin/finance', permissionKey: 'sidebar.finance-transactions' },
+            { label: 'Finance (Legacy)', path: '/admin/financial-ops', permissionKey: 'sidebar.finance-transactions' },
             { label: 'Banks', path: '/admin/banks', permissionKey: 'sidebar.banks' },
             { label: 'Bank Branches', path: '/admin/bank-branches', permissionKey: 'sidebar.bank-branches' },
           ],
