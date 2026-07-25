@@ -3,7 +3,7 @@ import { paymentRepository } from '../infrastructure/repositories/payment.reposi
 import { paymentGateway } from '../../../shared/services/gateway/gateway-factory.js';
 import { walletService } from '../../wallet/application/wallet.service.js';
 import { NotFoundError, ConflictError } from '../../../shared/errors/app-error.js';
-import { withTransaction, onAfterCommit } from '../../../database/database.transaction.js';
+import { withTransaction } from '../../../database/database.transaction.js';
 import type { ChargeInput } from '../presentation/payment.dto.js';
 import type mysql from 'mysql2/promise';
 import { getPool } from '../../../database/mysql.js';
@@ -358,17 +358,15 @@ export class PaymentService {
           log.info({ traceId, txnId: transaction.id, status: newStatus }, 'Payment cancelled/expired via webhook');
           const refId = transaction.order_id || transaction.booking_id || null;
           const eventName = newStatus === 'cancelled' ? 'payment:cancelled-event' as const : 'payment:expired-event' as const;
-          onAfterCommit(async () => {
-            eventBusV2.emit(eventName, {
-              paymentId: transaction.id,
-              referenceType: transaction.reference_type,
-              referenceId: refId,
-              metadata: {
-                userId: transaction.user_id,
-                paymentMethod: transaction.payment_method,
-              },
-            });
-          });
+          await eventBusV2.emit(eventName, {
+            paymentId: transaction.id,
+            referenceType: transaction.reference_type,
+            referenceId: refId,
+            metadata: {
+              userId: transaction.user_id,
+              paymentMethod: transaction.payment_method,
+            },
+          }, undefined, conn);
         }
         return { idempotent: updateResult.affectedRows === 0 };
       });
@@ -547,9 +545,10 @@ export class PaymentService {
     }
 
     // ── SINGLE CANONICAL EMISSION POINT ──
-    // Emitted via after-commit hook so business listeners only see committed data.
-    // Both generic events (for business module fulfillment) and saga events
-    // (for notifications) are emitted from one place.
+    // Emit directly within the transaction (conn) so:
+    //   1. published_events is written atomically with the status update
+    //   2. emit()'s own onAfterCommit fires in-memory handlers (booking listener,
+    //      notification engine, socket publisher) after commit — no nested hook nesting.
     const refId = transaction.order_id || transaction.booking_id || null;
     const commonMeta = {
       gatewayRef,
@@ -559,40 +558,36 @@ export class PaymentService {
       gateway: paymentGateway.provider,
     };
     if (newStatus === 'paid') {
-      onAfterCommit(async () => {
-        eventBusV2.emit('payment:succeeded', {
-          paymentId: transaction.id,
-          referenceType: transaction.reference_type,
-          referenceId: refId,
-          amount: Number(transaction.amount),
-          metadata: commonMeta,
-        });
-        eventBusV2.emit('payment:completed', {
-          paymentId: transaction.id,
-          userId: transaction.user_id,
-          amount: Number(transaction.amount),
-          currency: commonMeta.currency,
-          gateway: commonMeta.gateway,
-        });
-      });
+      await eventBusV2.emit('payment:succeeded', {
+        paymentId: transaction.id,
+        referenceType: transaction.reference_type,
+        referenceId: refId,
+        amount: Number(transaction.amount),
+        metadata: commonMeta,
+      }, undefined, conn);
+      await eventBusV2.emit('payment:completed', {
+        paymentId: transaction.id,
+        userId: transaction.user_id,
+        amount: Number(transaction.amount),
+        currency: commonMeta.currency,
+        gateway: commonMeta.gateway,
+      }, undefined, conn);
     } else if (newStatus === 'failed') {
-      onAfterCommit(async () => {
-        eventBusV2.emit('payment:failed-event', {
-          paymentId: transaction.id,
-          referenceType: transaction.reference_type,
-          referenceId: refId,
-          amount: Number(transaction.amount),
-          reason: gatewayStatus || `Payment ${newStatus}`,
-          metadata: commonMeta,
-        });
-        eventBusV2.emit('payment:failed', {
-          paymentId: transaction.id,
-          userId: transaction.user_id,
-          amount: Number(transaction.amount),
-          currency: commonMeta.currency,
-          error: gatewayStatus || `Payment ${newStatus}`,
-        });
-      });
+      await eventBusV2.emit('payment:failed-event', {
+        paymentId: transaction.id,
+        referenceType: transaction.reference_type,
+        referenceId: refId,
+        amount: Number(transaction.amount),
+        reason: gatewayStatus || `Payment ${newStatus}`,
+        metadata: commonMeta,
+      }, undefined, conn);
+      await eventBusV2.emit('payment:failed', {
+        paymentId: transaction.id,
+        userId: transaction.user_id,
+        amount: Number(transaction.amount),
+        currency: commonMeta.currency,
+        error: gatewayStatus || `Payment ${newStatus}`,
+      }, undefined, conn);
     }
 
     // Journal entry for this outcome
@@ -833,17 +828,15 @@ export class PaymentService {
             [ptx.id],
           );
           const refId = ptx.order_id || ptx.booking_id || null;
-          onAfterCommit(async () => {
-            eventBusV2.emit('payment:expired-event', {
-              paymentId: ptx.id,
-              referenceType: ptx.reference_type,
-              referenceId: refId,
-              metadata: {
-                userId: ptx.user_id,
-                paymentMethod: ptx.payment_method,
-              },
-            });
-          });
+          await eventBusV2.emit('payment:expired-event', {
+            paymentId: ptx.id,
+            referenceType: ptx.reference_type,
+            referenceId: refId,
+            metadata: {
+              userId: ptx.user_id,
+              paymentMethod: ptx.payment_method,
+            },
+          }, undefined, conn);
           expired++;
           log.info({ txnId: ptx.id, gatewayRef: ptx.gateway_reference, created: ptx.created_at }, 'Payment expired');
         });
