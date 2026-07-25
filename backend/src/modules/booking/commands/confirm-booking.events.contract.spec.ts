@@ -9,7 +9,7 @@ vi.mock('../infrastructure/repositories/booking.repository.js', () => ({
 }));
 
 const EVENT_SCHEMA = {
-  eventName: 'booking.confirmed',
+  eventName: 'booking:confirmed',
   requiredPayloadFields: ['bookingId'],
   requiredContextFields: ['aggregateType', 'aggregateId', 'aggregateVersion'],
 };

@@ -66,7 +66,7 @@ export const createBookingHandler: CommandHandler<Command, CreateBookingResult> 
   },
 
   events: (command, result) => [{
-    eventName: 'booking.created',
+    eventName: 'booking:created',
     payload: {
       bookingId: result.bookingId,
       publicId: result.publicId,

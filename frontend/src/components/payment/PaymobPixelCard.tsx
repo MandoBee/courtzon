@@ -55,11 +55,20 @@ export default function PaymobPixelCard({
           disablePay: true,
           cardValidationChanged: (isValid: boolean) => setIsFormValid(isValid),
           beforePaymentComplete: async () => {
+            console.log('[FLOW] ▶ PaymobPixelCard: beforePaymentComplete called');
             const fn = beforePaymentCompleteRef.current;
-            if (fn) return fn();
+            if (fn) {
+              console.log('[FLOW] ▶ PaymobPixelCard: calling BookingModal beforePaymentComplete...');
+              const result = await fn();
+              console.log('[FLOW] ▶ PaymobPixelCard: beforePaymentComplete returned', result);
+              return result;
+            }
             return true;
           },
-          afterPaymentComplete: async () => onCompleteRef.current(),
+          afterPaymentComplete: async () => {
+            console.log('[FLOW] ▶ PaymobPixelCard: afterPaymentComplete called');
+            onCompleteRef.current();
+          },
           onPaymentCancel: async () => onCancelRef.current?.(),
         });
       } catch (e) {

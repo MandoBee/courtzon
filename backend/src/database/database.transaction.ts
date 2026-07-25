@@ -11,6 +11,19 @@ export function onAfterCommit(hook: () => Promise<void>): void {
   afterCommitHooks.push(hook);
 }
 
+/**
+ * Flush all pending after-commit hooks.
+ * Use after a manual conn.commit() when NOT using withTransaction().
+ */
+export async function flushAfterCommitHooks(): Promise<void> {
+  const hooks = afterCommitHooks.splice(0);
+  for (const hook of hooks) {
+    await hook().catch((err) => {
+      console.error('after-commit hook failed (flush)', err);
+    });
+  }
+}
+
 export async function withTransaction<T>(
   callback: (
     connection: PoolConnection,

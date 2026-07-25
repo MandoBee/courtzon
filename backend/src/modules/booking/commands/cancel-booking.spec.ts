@@ -65,7 +65,7 @@ describe('CancelBooking command', () => {
       { commandId: 't8', commandType: 'CancelBooking', aggregateType: 'booking', aggregateId: '42', payload: { bookingId: 42, reason: 'test' }, correlationId: 'corr-001' } as Command,
       { bookingId: 42, aggregateVersion: 2 },
     );
-    expect(events[0].eventName).toBe('booking.cancelled');
+    expect(events[0].eventName).toBe('booking:cancelled');
     expect(events[0].payload.aggregateVersion).toBe(2);
   });
 });

@@ -111,7 +111,7 @@ describe('CreateBooking command', () => {
     const events = createBookingHandler.events!(command, result);
 
     expect(events).toHaveLength(1);
-    expect(events[0].eventName).toBe('booking.created');
+    expect(events[0].eventName).toBe('booking:created');
     expect(events[0].payload.bookingId).toBe(123);
     expect(events[0].context.aggregateType).toBe('booking');
     expect(events[0].context.causationId).toBe('test-005');

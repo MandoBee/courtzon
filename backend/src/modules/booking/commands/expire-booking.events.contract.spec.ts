@@ -20,7 +20,7 @@ describe('Event contract: booking.expired', () => {
   it('emits event with correct name', () => {
     const events = expireBookingHandler.events!(command, result);
     expect(events).toHaveLength(1);
-    expect(events[0].eventName).toBe('booking.expired');
+    expect(events[0].eventName).toBe('booking:expired');
   });
 
   it('contains required payload fields', () => {

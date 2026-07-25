@@ -44,7 +44,7 @@ export const completeBookingHandler: CommandHandler<Command, CompleteBookingResu
   },
 
   events: (command, result) => [{
-    eventName: 'booking.completed',
+    eventName: 'booking:completed',
     payload: { bookingId: result.bookingId, aggregateVersion: result.aggregateVersion },
     context: {
       aggregateType: 'booking', aggregateId: String(result.bookingId),

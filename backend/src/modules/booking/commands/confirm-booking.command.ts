@@ -44,7 +44,7 @@ export const confirmBookingHandler: CommandHandler<Command, ConfirmBookingResult
   },
 
   events: (command, result) => [{
-    eventName: 'booking.confirmed',
+    eventName: 'booking:confirmed',
     payload: { bookingId: result.bookingId, aggregateVersion: result.aggregateVersion },
     context: {
       aggregateType: 'booking',

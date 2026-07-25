@@ -11,6 +11,7 @@ const log = createModuleLogger('booking-payment-listener');
 
 export function registerBookingPaymentListeners() {
   eventBusV2.on('payment:succeeded', async (data) => {
+    console.log(`[FLOW] ▶ booking-payment-listener: payment:succeeded received refType=${data.referenceType} refId=${data.referenceId} paymentId=${data.paymentId}`);
     if (data.referenceType !== 'booking') return;
     const bookingId = data.referenceId;
     if (!bookingId) {
@@ -46,6 +47,7 @@ export function registerBookingPaymentListeners() {
         events: (cmd, res) => confirmBookingHandler.events!(cmd, res),
       });
       if (confirmResult.status === 'error') throw new Error(`ConfirmBooking failed: ${confirmResult.message}`);
+      console.log(`[FLOW] ✓ booking-payment-listener: Booking #${bookingId} CONFIRMED via payment:succeeded`);
       log.info({ bookingId }, 'Booking confirmed via payment succeeded event');
     } catch (err) {
       log.error({ err, paymentId: data.paymentId, bookingId }, 'Booking: confirmBooking failed on payment succeeded');

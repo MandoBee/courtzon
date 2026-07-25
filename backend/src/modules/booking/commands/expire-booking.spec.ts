@@ -59,7 +59,7 @@ describe('ExpireBooking command', () => {
       { commandId: 't7', commandType: 'ExpireBooking', aggregateType: 'booking', aggregateId: '42', payload: { bookingId: 42 }, correlationId: 'corr-001' } as Command,
       { bookingId: 42, aggregateVersion: 2 },
     );
-    expect(events[0].eventName).toBe('booking.expired');
+    expect(events[0].eventName).toBe('booking:expired');
     expect(events[0].payload.aggregateVersion).toBe(2);
     expect(events[0].context.aggregateVersion).toBe(2);
   });

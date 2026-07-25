@@ -13,7 +13,7 @@ describe('Event contract: booking.completed', () => {
       { commandId: 'ec1', commandType: 'CompleteBooking', aggregateType: 'booking', aggregateId: '42', payload: { bookingId: 42 }, correlationId: 'corr-001' } as Command,
       { bookingId: 42, aggregateVersion: 3 },
     );
-    expect(events[0].eventName).toBe('booking.completed');
+    expect(events[0].eventName).toBe('booking:completed');
   });
 
   it('contains required fields', () => {

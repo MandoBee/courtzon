@@ -198,6 +198,7 @@ export class PaymentService {
    *   All other statuses (intended, created, pending, processing, waiting) → ignored.
    */
   async handleWebhook(payload: unknown, signature: string) {
+    console.log(`[FLOW] ▶ handleWebhook RECEIVED`);
     const valid = await paymentGateway.verifyWebhook(payload, signature);
     if (!valid) {
       log.error({
@@ -292,8 +293,10 @@ export class PaymentService {
 
       if (!newStatus) {
         log.info({ possibleRefs, status: obj.status }, 'Non-final webhook ignored');
+        console.log(`[FLOW] ✗ handleWebhook: Non-final status "${obj.status}" — ignored`);
         return { received: true, note: 'ignored' };
       }
+      console.log(`[FLOW] ▶ handleWebhook: Intention API status="${obj.status}" → newStatus="${newStatus}"`);
     } else {
       // Accept API webhook: use success flag, but respect pending
       if (obj.success === true) {
@@ -374,6 +377,7 @@ export class PaymentService {
     }
 
     // --- paid / failed → full outcome processing ---
+    console.log(`[FLOW] ▶ handleWebhook: Processing ${newStatus} via _processPaymentOutcome...`);
     log.info({ gatewayRef: resolvedGatewayRef, newStatus, traceId }, 'PAYMENT PATH = WEBHOOK');
     const paidResult = await withTransaction(async (conn) => {
       const transaction = await paymentRepository.lockByGatewayRef(resolvedGatewayRef, conn);
@@ -503,9 +507,11 @@ export class PaymentService {
   ): Promise<{ idempotent: boolean }> {
     // Idempotency: skip if already in a final state
     if (FINAL_STATES.has(transaction.payment_status)) {
+      console.log(`[FLOW] ✗ _processPaymentOutcome: Already final "${transaction.payment_status}" — idempotent skip`);
       log.info({ traceId, txnId: transaction.id, status: transaction.payment_status, source }, 'Already final — idempotent skip');
       return { idempotent: true };
     }
+    console.log(`[FLOW] ▶ _processPaymentOutcome: txn#${transaction.id} ${transaction.payment_status} → ${newStatus} (source=${source})`);
 
     // Log every status change (BEFORE every UPDATE)
     log.info({
@@ -558,6 +564,7 @@ export class PaymentService {
       gateway: paymentGateway.provider,
     };
     if (newStatus === 'paid') {
+      console.log(`[FLOW] ▶ _processPaymentOutcome: Emitting payment:succeeded + payment:completed (refType=${transaction.reference_type} refId=${refId})`);
       await eventBusV2.emit('payment:succeeded', {
         paymentId: transaction.id,
         referenceType: transaction.reference_type,
@@ -614,6 +621,7 @@ export class PaymentService {
    */
   async confirmPayment(paymentId: number) {
     const totalStart = Date.now();
+    console.log(`[FLOW] ▶ confirmPayment START paymentId=${paymentId}`);
     const transaction = await paymentRepository.findById(paymentId);
     if (!transaction) throw new NotFoundError('Payment transaction');
 
@@ -676,6 +684,7 @@ export class PaymentService {
     }
 
     const paymobStatus = remoteStatus.status || 'unknown';
+    console.log(`[FLOW] ▶ confirmPayment: Paymob status="${paymobStatus}"`);
 
     if (paymobStatus === 'paid' || paymobStatus === 'failed') {
       const newStatus = paymobStatus === 'paid' ? 'paid' as const : 'failed' as const;

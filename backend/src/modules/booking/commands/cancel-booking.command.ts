@@ -41,7 +41,7 @@ export const cancelBookingHandler: CommandHandler<Command, CancelBookingResult> 
   events: (command, result) => {
     const p = command.payload as unknown as CancelBookingPayload;
     return [{
-      eventName: 'booking.cancelled',
+      eventName: 'booking:cancelled',
       payload: { bookingId: result.bookingId, reason: p.reason || null, aggregateVersion: result.aggregateVersion },
       context: {
         aggregateType: 'booking', aggregateId: String(result.bookingId),

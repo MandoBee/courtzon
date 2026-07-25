@@ -18,24 +18,29 @@ export function usePaymentConfirm() {
   const confirm = useCallback(async (paymentId: number): Promise<ConfirmResult> => {
     stoppedRef.current = false;
     setState('confirming');
+    console.log(`[FLOW] ▶ usePaymentConfirm: POST /payments/confirm paymentId=${paymentId}`);
 
     // Step 1: Call POST /payments/confirm (verifies with Paymob)
     try {
       const res = await api.post('/payments/confirm', { paymentId });
       const data = res.data;
+      console.log(`[FLOW] ▶ usePaymentConfirm: response`, { confirmed: data.confirmed, paymentStatus: data.paymentStatus, idempotent: data.idempotent });
 
       if (data.confirmed) {
+        console.log(`[FLOW] ✓ usePaymentConfirm: CONFIRMED immediately`);
         setState('confirmed');
         setResult(data);
         return { confirmed: true, state: 'confirmed', data };
       }
 
       if (data.paymentStatus === 'paid') {
+        console.log(`[FLOW] ✓ usePaymentConfirm: CONFIRMED via paymentStatus=paid`);
         setState('confirmed');
         setResult(data);
         return { confirmed: true, state: 'confirmed', data };
       }
-    } catch {
+    } catch (err: any) {
+      console.log(`[FLOW] ✗ usePaymentConfirm: confirm endpoint failed`, err?.message);
       // confirm endpoint failed — fall back to polling
     }
 

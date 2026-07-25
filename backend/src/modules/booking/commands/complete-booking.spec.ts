@@ -60,7 +60,7 @@ describe('CompleteBooking command', () => {
       { bookingId: 42, aggregateVersion: 3 },
     );
     expect(events).toHaveLength(1);
-    expect(events[0].eventName).toBe('booking.completed');
+    expect(events[0].eventName).toBe('booking:completed');
     expect(events[0].payload.aggregateVersion).toBe(3);
     expect(events[0].context.aggregateVersion).toBe(3);
   });

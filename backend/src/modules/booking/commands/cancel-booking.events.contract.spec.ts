@@ -20,7 +20,7 @@ describe('Event contract: booking.cancelled', () => {
   it('emits event with correct name', () => {
     const events = cancelBookingHandler.events!(command, result);
     expect(events).toHaveLength(1);
-    expect(events[0].eventName).toBe('booking.cancelled');
+    expect(events[0].eventName).toBe('booking:cancelled');
   });
 
   it('contains required payload fields', () => {

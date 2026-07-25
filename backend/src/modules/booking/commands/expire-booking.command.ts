@@ -43,7 +43,7 @@ export const expireBookingHandler: CommandHandler<Command, ExpireBookingResult> 
   },
 
   events: (command, result) => [{
-    eventName: 'booking.expired',
+    eventName: 'booking:expired',
     payload: { bookingId: result.bookingId, aggregateVersion: result.aggregateVersion },
     context: {
       aggregateType: 'booking', aggregateId: String(result.bookingId),
