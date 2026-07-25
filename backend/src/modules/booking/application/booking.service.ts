@@ -491,6 +491,8 @@ export class BookingService {
         individualSlots,
         lockSlots,
         lockOwner,
+        paymentId: gwResult.paymentId || null,
+        timezone: branchTz,
       });
       await redis.set(`booking:prepare:${prepareId}`, prepareData, 'PX', 600000);
 
@@ -572,31 +574,57 @@ export class BookingService {
       await conn.commit();
 
       // Link the payment transaction to this booking
-      // (createGatewayIntention created it with referenceType='booking_prepare', referenceId=prepareId)
-      const [linkResult] = await pool.execute<RowData>(
-        `UPDATE payment_transactions SET booking_id = ?, reference_type = 'booking'
-         WHERE reference_id = ? AND reference_type = 'booking_prepare' AND booking_id IS NULL`,
-        [bookingId, prepareId],
-      );
+      // createGatewayIntention stores with referenceType='booking_prepare' and booking_id=NULL
+      // We use the paymentId stored in Redis during prepare to find the transaction
+      const cachedPaymentId = data.paymentId;
+      let paymentAlreadyPaid = false;
+      if (cachedPaymentId) {
+        const [linkResult] = await pool.execute<RowData>(
+          `UPDATE payment_transactions SET booking_id = ?, reference_type = 'booking'
+           WHERE id = ? AND reference_type = 'booking_prepare' AND booking_id IS NULL`,
+          [bookingId, cachedPaymentId],
+        );
+        if ((linkResult as any).affectedRows > 0) {
+          const [payRows] = await pool.execute<RowData>(
+            `SELECT id, payment_status FROM payment_transactions WHERE id = ? LIMIT 1`,
+            [cachedPaymentId],
+          );
+          if (payRows.length && (payRows[0] as any).payment_status === 'paid') {
+            paymentAlreadyPaid = true;
+          }
+        }
+      } else {
+        // Fallback: find by reference_type + user + recent (no paymentId cached)
+        const [linkResult] = await pool.execute<RowData>(
+          `UPDATE payment_transactions SET booking_id = ?, reference_type = 'booking'
+           WHERE user_id = ? AND reference_type = 'booking_prepare' AND booking_id IS NULL
+           ORDER BY id DESC LIMIT 1`,
+          [bookingId, userId],
+        );
+        if ((linkResult as any).affectedRows > 0) {
+          // Check status of the row we just linked
+          const [payRows] = await pool.execute<RowData>(
+            `SELECT id, payment_status FROM payment_transactions WHERE booking_id = ? AND reference_type = 'booking' LIMIT 1`,
+            [bookingId],
+          );
+          if (payRows.length && (payRows[0] as any).payment_status === 'paid') {
+            paymentAlreadyPaid = true;
+          }
+        }
+      }
 
       // If webhook already arrived and marked the payment as 'paid' before we linked it,
       // the listener never fired (wrong referenceType). Confirm now.
-      if ((linkResult as any).affectedRows > 0) {
-        const [payRows] = await pool.execute<RowData>(
-          `SELECT id, payment_status FROM payment_transactions WHERE booking_id = ? AND reference_type = 'booking' LIMIT 1`,
-          [bookingId],
-        );
-        if (payRows.length && (payRows[0] as any).payment_status === 'paid') {
-          try {
-            await executeBookingCommand('ConfirmBooking', confirmBookingHandler, {
-              bookingId,
-              actorId: userId,
-            }, String(bookingId));
-          } catch (confirmErr) {
-            const { createModuleLogger } = await import('../../../shared/utils/logger.js');
-            const log = createModuleLogger('BookingService');
-            log.warn({ err: confirmErr, bookingId }, 'Auto-confirm after prepare failed (webhook may complete later)');
-          }
+      if (paymentAlreadyPaid) {
+        try {
+          await executeBookingCommand('ConfirmBooking', confirmBookingHandler, {
+            bookingId,
+            actorId: userId,
+          }, String(bookingId));
+        } catch (confirmErr) {
+          const { createModuleLogger } = await import('../../../shared/utils/logger.js');
+          const log = createModuleLogger('BookingService');
+          log.warn({ err: confirmErr, bookingId }, 'Auto-confirm after prepare failed (webhook may complete later)');
         }
       }
 
