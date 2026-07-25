@@ -893,6 +893,59 @@ export class PaymentService {
     return { paymentId, traceId, success: true, status: 'paid' };
   }
 
+  /**
+   * Create a Paymob payment intention directly via the gateway.
+   * Used by the booking prepare flow which MUST return a clientSecret
+   * for the frontend card widget. Bypasses V2 pipeline routing.
+   */
+  async createGatewayIntention(userId: number, input: ChargeInput) {
+    const traceId = randomUUID();
+    const paymentResult = await paymentGateway.charge({
+      amount: input.amount,
+      currency: input.currency,
+      referenceId: input.referenceId,
+      referenceType: input.referenceType,
+      returnUrl: input.returnUrl,
+      customerEmail: input.customerEmail,
+      customerPhone: input.customerPhone,
+      customerName: input.customerName,
+    });
+
+    if (!paymentResult.success) {
+      return {
+        success: false,
+        traceId,
+        paymentId: undefined,
+        clientSecret: null,
+        errorMessage: paymentResult.errorMessage,
+      };
+    }
+
+    const { id: paymentId } = await paymentRepository.create({
+      userId,
+      bookingId: input.referenceType === 'booking' ? input.referenceId : undefined,
+      orderId: input.referenceType === 'order' ? input.referenceId : undefined,
+      referenceType: input.referenceType,
+      paymentMethod: input.paymentMethod,
+      gatewayProvider: paymentGateway.provider,
+      gatewayReference: paymentResult.gatewayReference || '',
+      amount: input.amount,
+      currency: input.currency || 'EGP',
+      status: 'pending',
+      gatewayResponse: sanitizeGatewayResponse(paymentResult.rawResponse),
+      traceId,
+      idempotencyKey: input.idempotencyKey,
+    });
+
+    return {
+      success: true,
+      paymentId,
+      traceId,
+      clientSecret: paymentResult.clientSecret || null,
+      intentionId: paymentResult.intentionId || null,
+    };
+  }
+
   async getTransactions(userId: number, page: number, limit: number) {
     return paymentRepository.findByUser(userId, page, limit);
   }

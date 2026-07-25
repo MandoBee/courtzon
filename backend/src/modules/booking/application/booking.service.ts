@@ -463,7 +463,7 @@ export class BookingService {
       const user = userRows[0] as any;
 
       const prepareId = generateUUID();
-      const gwResult = await (paymentService.charge as any)(userId, {
+      const gwResult = await (paymentService.createGatewayIntention as any)(userId, {
         referenceType: 'booking_prepare',
         referenceId: prepareId,
         amount: pricing.totalPrice,
