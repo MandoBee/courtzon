@@ -276,28 +276,36 @@ export default function BookingModal({ open, onClose }: BookingModalProps) {
   const selectedResource = branchResources.find((r: any) => r.id === selectedResourceId);
 
   const prepareMutation = useMutation({
-    mutationFn: (data: any) => api.post('/bookings/prepare', data),
+    mutationFn: (data: any) => {
+      console.log('[Confirm&Pay] prepareMutation.mutationFn → POST /bookings/prepare', data);
+      return api.post('/bookings/prepare', data);
+    },
     onSuccess: (res) => {
+      console.log('[Confirm&Pay] prepareMutation onSuccess', { status: res.status, data: res.data });
       const d = res.data;
       prepareIdRef.current = d.prepareId;
       setPaymentId(d.paymentId || null);
       setPixelClientSecret(d.clientSecret);
     },
-    onError: (err) => {
-      showToast('Payment preparation failed: ' + ((err as any)?.response?.data?.message || (err as any).message), 'error');
+    onError: (err: any) => {
+      console.error('[Confirm&Pay] prepareMutation onError', { status: err?.response?.status, data: err?.response?.data, message: err?.message });
+      showToast('Payment preparation failed: ' + (err?.response?.data?.message || err?.message), 'error');
     },
   });
 
   const bookingMutation = useMutation({
-    mutationFn: (data: any) => api.post('/bookings', data),
+    mutationFn: (data: any) => {
+      console.log('[Confirm&Pay] bookingMutation.mutationFn → POST /bookings', data);
+      return api.post('/bookings', data);
+    },
     onSuccess: (res) => {
+      console.log('[Confirm&Pay] bookingMutation onSuccess', { status: res.status, data: res.data });
       const d = res.data;
       queryClient.invalidateQueries({ queryKey: ['my-bookings'] });
       if (selectedResourceId && apiDate) {
         queryClient.invalidateQueries({ queryKey: ['resource-slots', selectedResourceId, apiDate] });
       }
       if (prepareIdRef.current) {
-        // Card flow — booking was just created in beforePaymentComplete, wait for payment
         setPendingBookingId(d.id || d.bookingId);
       } else if (d.id) {
         onClose();
@@ -305,8 +313,9 @@ export default function BookingModal({ open, onClose }: BookingModalProps) {
         navigate(`/bookings/${d.id}/confirmation`, { state: { qrToken: d.qrToken } });
       }
     },
-    onError: (err) => {
-      showToast('Booking failed: ' + ((err as any)?.response?.data?.message || (err as any).message), 'error');
+    onError: (err: any) => {
+      console.error('[Confirm&Pay] bookingMutation onError', { status: err?.response?.status, data: err?.response?.data, message: err?.message });
+      showToast('Booking failed: ' + (err?.response?.data?.message || err?.message), 'error');
     },
   });
 
@@ -441,7 +450,11 @@ export default function BookingModal({ open, onClose }: BookingModalProps) {
   const selectedHours = selectedSlots.length * ((selectedResource?.slot_duration || selectedResource?.default_slot_duration || 60) / 60);
 
   const handleSubmit = () => {
-    if (!selectedBranch || !selectedResourceId || !selectedSlots.length) return;
+    console.log('[Confirm&Pay] handleSubmit clicked', { selectedBranch: !!selectedBranch, selectedResourceId, slotsCount: selectedSlots.length, paymentMethod, bookingType });
+    if (!selectedBranch || !selectedResourceId || !selectedSlots.length) {
+      console.warn('[Confirm&Pay] early return — missing selection', { selectedBranch: !!selectedBranch, selectedResourceId, selectedSlots });
+      return;
+    }
 
     if (bookingType === 'public_match' && matchmakingDeadline) {
       const bookingStart = new Date(`${apiDate}T${selectedSlots[0]}`);
@@ -488,8 +501,10 @@ export default function BookingModal({ open, onClose }: BookingModalProps) {
 
     if (paymentMethod === 'card' || paymentMethod === 'online') {
       // Prepare flow — validate, lock slot, create payment session (no booking created yet)
+      console.log('[Confirm&Pay] calling prepareMutation.mutate', { payload });
       prepareMutation.mutate(payload);
     } else {
+      console.log('[Confirm&Pay] calling bookingMutation.mutate', { payload });
       bookingMutation.mutate(payload);
     }
   };
