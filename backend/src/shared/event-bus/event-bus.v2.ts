@@ -138,7 +138,7 @@ class EventBusV2 {
       try {
         const handlers = this.inMemoryHandlers.get(eventName) || [];
         for (const handler of handlers) {
-          handler(envelope);
+          handler(envelope.payload);
         }
       } catch (err) {
         log.error({ err, eventName }, 'event.in_memory_handler_failed');

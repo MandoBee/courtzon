@@ -55,7 +55,7 @@ export class SocketPublisher {
     for (const eventName of subscribedEvents) {
       eventBusV2.on(eventName, (data: any) => {
         console.log(`[FLOW] ▶ socket-publisher: "${eventName}" received, publishing to rooms`);
-        this.publish(eventName, data.payload || data);
+        this.publish(eventName, data);
       });
     }
 
