@@ -45,7 +45,7 @@ describe('ExpireBooking command', () => {
   it('rejects expire for confirmed booking', async () => {
     vi.mocked(bookingRepository.findById).mockResolvedValue({ id: 42, booking_status: 'confirmed', expires_at: new Date('2024-01-01'), aggregate_version: 2 });
     const c: Command = { commandId: 't5', commandType: 'ExpireBooking', aggregateType: 'booking', aggregateId: '42', payload: { bookingId: 42 } };
-    await expect(expireBookingHandler.execute(c, mockConn)).rejects.toThrow('Only pending bookings can expire');
+    await expect(expireBookingHandler.execute(c, mockConn)).rejects.toThrow('Only pending/pending_payment bookings can expire');
   });
 
   it('rejects expire when expires_at is null', async () => {

@@ -1,10 +1,11 @@
 import type { Clock } from '../../../shared/utils/clock.js';
 
-export type BookingStatus = 'pending' | 'confirmed' | 'cancelled' | 'expired' | 'completed' | 'no_show' | 'cancelled_with_fee';
+export type BookingStatus = 'pending' | 'pending_payment' | 'confirmed' | 'cancelled' | 'expired' | 'completed' | 'no_show' | 'cancelled_with_fee';
 export type PaymentStatus = 'pending' | 'paid' | 'refunded' | 'partially_refunded' | 'penalty' | 'failed';
 
 const ALLOWED_TRANSITIONS: Record<BookingStatus, BookingStatus[]> = {
   pending: ['confirmed', 'cancelled', 'expired'],
+  pending_payment: ['confirmed', 'cancelled', 'expired'],
   confirmed: ['completed', 'cancelled'],
   cancelled: [],
   expired: [],
@@ -47,8 +48,8 @@ export function planTransition(request: TransitionRequest): TransitionResult {
 }
 
 export function canExpire(booking: BookingRecord, clock: Clock): void {
-  if (booking.booking_status !== 'pending') {
-    throw new Error(`Only pending bookings can expire. Current status: ${booking.booking_status}`);
+  if (booking.booking_status !== 'pending' && booking.booking_status !== 'pending_payment') {
+    throw new Error(`Only pending/pending_payment bookings can expire. Current status: ${booking.booking_status}`);
   }
   if (!booking.expires_at) {
     throw new Error('Booking has no expiration time and cannot expire');

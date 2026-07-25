@@ -70,13 +70,13 @@ describe('BookingAggregate — time rules', () => {
     it('rejects expiry for confirmed booking regardless of time', () => {
       const clock = new FixedClock(new Date('2026-07-23T13:00:00Z'));
       const booking = { booking_status: 'confirmed' as const, expires_at: new Date('2026-07-23T12:00:00Z') };
-      expect(() => canExpire(booking, clock)).toThrow('Only pending bookings can expire');
+      expect(() => canExpire(booking, clock)).toThrow('Only pending/pending_payment bookings can expire');
     });
 
     it('rejects expiry for cancelled booking', () => {
       const clock = new FixedClock(baseDate);
       expect(() => canExpire({ booking_status: 'cancelled' as const, expires_at: baseDate }, clock))
-        .toThrow('Only pending bookings can expire');
+        .toThrow('Only pending/pending_payment bookings can expire');
     });
 
     it('rejects expiry when expires_at is null', () => {

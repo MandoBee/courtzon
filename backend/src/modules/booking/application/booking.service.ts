@@ -571,6 +571,35 @@ export class BookingService {
 
       await conn.commit();
 
+      // Link the payment transaction to this booking
+      // (createGatewayIntention created it with referenceType='booking_prepare', referenceId=prepareId)
+      const [linkResult] = await pool.execute<RowData>(
+        `UPDATE payment_transactions SET booking_id = ?, reference_type = 'booking'
+         WHERE reference_id = ? AND reference_type = 'booking_prepare' AND booking_id IS NULL`,
+        [bookingId, prepareId],
+      );
+
+      // If webhook already arrived and marked the payment as 'paid' before we linked it,
+      // the listener never fired (wrong referenceType). Confirm now.
+      if ((linkResult as any).affectedRows > 0) {
+        const [payRows] = await pool.execute<RowData>(
+          `SELECT id, payment_status FROM payment_transactions WHERE booking_id = ? AND reference_type = 'booking' LIMIT 1`,
+          [bookingId],
+        );
+        if (payRows.length && (payRows[0] as any).payment_status === 'paid') {
+          try {
+            await executeBookingCommand('ConfirmBooking', confirmBookingHandler, {
+              bookingId,
+              actorId: userId,
+            }, String(bookingId));
+          } catch (confirmErr) {
+            const { createModuleLogger } = await import('../../../shared/utils/logger.js');
+            const log = createModuleLogger('BookingService');
+            log.warn({ err: confirmErr, bookingId }, 'Auto-confirm after prepare failed (webhook may complete later)');
+          }
+        }
+      }
+
       // Emit booking:created event
       eventBusV2.emit('booking:created', {
         bookingId, userId,
