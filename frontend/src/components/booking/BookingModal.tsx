@@ -281,7 +281,7 @@ export default function BookingModal({ open, onClose }: BookingModalProps) {
       return api.post('/bookings/prepare', data);
     },
     onSuccess: (res) => {
-      console.log('[Confirm&Pay] prepareMutation onSuccess', { status: res.status, data: res.data });
+      console.log('[Confirm&Pay] prepareMutation onSuccess', { status: res.status, prepareId: res.data?.prepareId, clientSecret: res.data?.clientSecret, paymentId: res.data?.paymentId });
       const d = res.data;
       prepareIdRef.current = d.prepareId;
       setPaymentId(d.paymentId || null);
