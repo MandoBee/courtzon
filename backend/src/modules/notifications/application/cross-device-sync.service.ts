@@ -11,7 +11,7 @@ const DEVICE_TTL = 86400;
 export async function registerUserDevice(userId: number, deviceId: string): Promise<void> {
   try {
     const redis = getRedisClient();
-    await redis.sAdd(`${DEVICE_PREFIX}${userId}`, deviceId);
+    await redis.sadd(`${DEVICE_PREFIX}${userId}`, deviceId);
     await redis.expire(`${DEVICE_PREFIX}${userId}`, DEVICE_TTL);
   } catch (err: any) {
     log.error({ err, userId }, 'Failed to register device in redis');
