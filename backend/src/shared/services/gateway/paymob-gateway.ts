@@ -164,35 +164,50 @@ export class PaymobGateway implements PaymentGateway {
 
     const data = payload as Record<string, unknown>;
 
-    // Intention API webhook: HMAC computed on JSON.stringify(obj) with
-    // keys sorted alphabetically (Paymob requirement) — recursively.
+    // Intention API webhook (POST callback): HMAC computed on exactly 20
+    // field VALUES from obj, concatenated in official Paymob order, no
+    // separators, no keys.  HMAC-SHA512 with the HMAC secret.
+    //
+    // Spec: https://developers.paymob.com/paymob-docs/developers/webhook-callbacks-and-hmac/hmac/hmac-transaction-callback
     if (data.obj) {
-      const obj = data.obj as Record<string, unknown>;
+      const obj = data.obj as Record<string, any>;
+      const order = (obj.order ?? {}) as Record<string, any>;
+      const sourceData = (obj.source_data ?? {}) as Record<string, any>;
 
-      function sortKeys(o: unknown): unknown {
-        if (o !== null && typeof o === 'object' && !Array.isArray(o)) {
-          const sorted: Record<string, unknown> = {};
-          Object.keys(o as Record<string, unknown>).sort().forEach((k) => {
-            sorted[k] = sortKeys((o as Record<string, unknown>)[k]);
-          });
-          return sorted;
-        }
-        return o;
-      }
+      const concatStr = [
+        obj.amount_cents,
+        obj.created_at,
+        obj.currency,
+        obj.error_occured,
+        obj.has_parent_transaction,
+        obj.id,
+        obj.integration_id,
+        obj.is_3d_secure,
+        obj.is_auth,
+        obj.is_capture,
+        obj.is_refunded,
+        obj.is_standalone_payment,
+        obj.is_voided,
+        order.id,
+        obj.owner,
+        obj.pending,
+        sourceData.pan,
+        sourceData.sub_type,
+        sourceData.type,
+        obj.success,
+      ].map(v => v ?? '').join('');
 
-      const sorted = sortKeys(obj);
-      const targetStr = JSON.stringify(sorted);
       const computed = crypto
         .createHmac('sha512', this.config.hmacSecret)
-        .update(targetStr)
+        .update(concatStr)
         .digest('hex');
-      const expected = (data.hmac as string) || signature;
+      const expected = signature;
       const match = computed === expected;
       if (!match) {
         console.error('Intention API HMAC mismatch', {
           computed: computed.slice(0, 20),
           expected: expected.slice(0, 20),
-          targetStrLength: targetStr.length,
+          concatStrLength: concatStr.length,
         });
       }
       return match;
