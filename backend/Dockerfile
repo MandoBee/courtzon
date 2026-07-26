@@ -3,6 +3,7 @@ FROM node:22-alpine AS builder
 WORKDIR /app
 
 COPY backend/package.json backend/package-lock.json ./
+COPY packages/ packages/
 RUN npm ci --ignore-scripts
 
 COPY backend/tsconfig.json ./
@@ -16,6 +17,7 @@ WORKDIR /app
 RUN apk add --no-cache tini su-exec netcat-openbsd mysql-client
 
 COPY backend/package.json backend/package-lock.json ./
+COPY packages/ packages/
 RUN npm ci --omit=dev --ignore-scripts && npm cache clean --force
 
 COPY --from=builder /app/dist/ dist/
