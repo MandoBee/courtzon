@@ -80,7 +80,7 @@ function buildNavItems(t: (key: string) => string, can: (perm: string) => boolea
         { label: t('admin.sidebar.broadcast'), path: '/admin/notifications/broadcast', permissionKey: 'notifications.broadcast' },
         { label: t('admin.sidebar.analytics'), path: '/admin/notifications/analytics', permissionKey: 'notifications.analytics' },
         { label: 'Dead Letters', path: '/admin/notifications/dead-letters', permissionKey: 'notifications.dead-letters' },
-        { label: t('admin.sidebar.templates'), path: '/admin/notifications/templates', permissionKey: 'notifications.templates' },
+        { label: t('admin.sidebar.templates'), path: '/admin/templates', permissionKey: 'notification_templates.view' },
         { label: 'Types', path: '/admin/notification-types', permissionKey: 'notification_types.view' },
       ],
     },

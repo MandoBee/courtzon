@@ -780,6 +780,15 @@ export const uiRegistry: UIElement[] = [
   { permissionKey: 'settlements.complete', moduleSlug: 'settlements', elementType: 'button', elementLabel: 'Complete Settlement', componentPath: 'pages/admin/settlements/SettlementListPage.tsx' },
   { permissionKey: 'settlements.reject', moduleSlug: 'settlements', elementType: 'button', elementLabel: 'Reject Settlement', componentPath: 'pages/admin/settlements/SettlementListPage.tsx' },
   { permissionKey: 'settlements.cancel', moduleSlug: 'settlements', elementType: 'button', elementLabel: 'Cancel Settlement', componentPath: 'pages/admin/settlements/SettlementListPage.tsx' },
+
+  // ==========================================================================
+  // NOTIFICATION TEMPLATES MODULE
+  // ==========================================================================
+  { permissionKey: 'notification_templates.view', moduleSlug: 'notification_templates', elementType: 'page', elementLabel: 'View Notification Templates', componentPath: 'pages/admin/notifications/TemplateListPage.tsx' },
+  { permissionKey: 'notification_templates.create', moduleSlug: 'notification_templates', elementType: 'button', elementLabel: 'Create Notification Template', componentPath: 'pages/admin/notifications/TemplateListPage.tsx' },
+  { permissionKey: 'notification_templates.update', moduleSlug: 'notification_templates', elementType: 'button', elementLabel: 'Update Notification Template', componentPath: 'pages/admin/notifications/TemplateListPage.tsx' },
+  { permissionKey: 'notification_templates.delete', moduleSlug: 'notification_templates', elementType: 'button', elementLabel: 'Delete Notification Template', componentPath: 'pages/admin/notifications/TemplateListPage.tsx' },
+  { permissionKey: 'notification_templates.publish', moduleSlug: 'notification_templates', elementType: 'action', elementLabel: 'Publish Notification Template', componentPath: 'pages/admin/notifications/TemplateListPage.tsx' },
 ];
 
 export const uiPermissionMap = new Map(uiRegistry.map(e => [e.permissionKey, e]));

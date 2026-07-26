@@ -892,6 +892,33 @@ export const translationKeysRegistry: TranslationKeyEntry[] = [
   { key: 'notification_types.requires_action', defaultValue: 'Requires Action', moduleSlug: 'notification', elementType: 'label', elementLabel: 'Notification type requires action label' },
   { key: 'notification_types.sort_order', defaultValue: 'Sort Order', moduleSlug: 'notification', elementType: 'label', elementLabel: 'Notification type sort order field' },
   { key: 'notification_types.default_channels', defaultValue: 'Default Channels', moduleSlug: 'notification', elementType: 'label', elementLabel: 'Notification type default channels field' },
+
+  // ── Templates ──
+  { key: 'templates.title', defaultValue: 'Notification Templates', moduleSlug: 'notification', elementType: 'heading', elementLabel: 'Templates page title' },
+  { key: 'templates.create', defaultValue: 'New Template', moduleSlug: 'notification', elementType: 'button', elementLabel: 'Create template button' },
+  { key: 'templates.create_title', defaultValue: 'Create Template', moduleSlug: 'notification', elementType: 'heading', elementLabel: 'Create template modal title' },
+  { key: 'templates.edit_title', defaultValue: 'Edit Template', moduleSlug: 'notification', elementType: 'heading', elementLabel: 'Edit template modal title' },
+  { key: 'templates.created', defaultValue: 'Template created', moduleSlug: 'notification', elementType: 'message', elementLabel: 'Template created toast' },
+  { key: 'templates.updated', defaultValue: 'Template updated', moduleSlug: 'notification', elementType: 'message', elementLabel: 'Template updated toast' },
+  { key: 'templates.published', defaultValue: 'Template published', moduleSlug: 'notification', elementType: 'message', elementLabel: 'Template published toast' },
+  { key: 'templates.archived', defaultValue: 'Template archived', moduleSlug: 'notification', elementType: 'message', elementLabel: 'Template archived toast' },
+  { key: 'templates.search_placeholder', defaultValue: 'Search templates...', moduleSlug: 'notification', elementType: 'placeholder', elementLabel: 'Templates search placeholder' },
+  { key: 'templates.filter_all_statuses', defaultValue: 'All Statuses', moduleSlug: 'notification', elementType: 'placeholder', elementLabel: 'Templates status filter' },
+  { key: 'templates.empty', defaultValue: 'No templates found', moduleSlug: 'notification', elementType: 'text', elementLabel: 'Templates empty state' },
+  { key: 'templates.name', defaultValue: 'Name', moduleSlug: 'notification', elementType: 'label', elementLabel: 'Template name column' },
+  { key: 'templates.event', defaultValue: 'Event', moduleSlug: 'notification', elementType: 'label', elementLabel: 'Template event column' },
+  { key: 'templates.locale', defaultValue: 'Locale', moduleSlug: 'notification', elementType: 'label', elementLabel: 'Template locale column' },
+  { key: 'templates.status', defaultValue: 'Status', moduleSlug: 'notification', elementType: 'label', elementLabel: 'Template status column' },
+  { key: 'templates.version', defaultValue: 'Version', moduleSlug: 'notification', elementType: 'label', elementLabel: 'Template version column' },
+  { key: 'templates.publish', defaultValue: 'Publish', moduleSlug: 'notification', elementType: 'button', elementLabel: 'Publish template button' },
+  { key: 'templates.archive', defaultValue: 'Archive', moduleSlug: 'notification', elementType: 'button', elementLabel: 'Archive template button' },
+  { key: 'templates.code', defaultValue: 'Code', moduleSlug: 'notification', elementType: 'label', elementLabel: 'Template code field' },
+  { key: 'templates.notification_type', defaultValue: 'Notification Type', moduleSlug: 'notification', elementType: 'label', elementLabel: 'Template notification type field' },
+  { key: 'templates.select_type', defaultValue: 'Select type...', moduleSlug: 'notification', elementType: 'placeholder', elementLabel: 'Template select type placeholder' },
+  { key: 'templates.description', defaultValue: 'Description', moduleSlug: 'notification', elementType: 'label', elementLabel: 'Template description field' },
+  { key: 'templates.title_template', defaultValue: 'Title Template', moduleSlug: 'notification', elementType: 'label', elementLabel: 'Template title template field' },
+  { key: 'templates.body_template', defaultValue: 'Body Template', moduleSlug: 'notification', elementType: 'label', elementLabel: 'Template body template field' },
+  { key: 'templates.is_active', defaultValue: 'Active', moduleSlug: 'notification', elementType: 'label', elementLabel: 'Template is active checkbox' },
 ];
 
 /** Build a key \u2192 English default map for offline/runtime fallback. */
