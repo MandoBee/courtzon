@@ -505,13 +505,22 @@ app.register(adminTagRoutes);
   app.register(publicThemeRoutes);
   app.register(appearanceRoutes);
 
-app.setErrorHandler((error: any, _request, reply) => {
+function buildMeta(request: any) {
+  return {
+    requestId: request?.id || (request as any)?.reqId || undefined,
+    timestamp: new Date().toISOString(),
+  };
+}
+
+app.setErrorHandler((error: any, request, reply) => {
   app.log.error(error);
 
   if (error instanceof AppError) {
     return reply.status(error.statusCode).send({
       error: error.errorCode,
       message: error.message,
+      code: error.code || undefined,
+      meta: buildMeta(request),
       details: error.details,
     });
   }
@@ -520,6 +529,7 @@ app.setErrorHandler((error: any, _request, reply) => {
     return reply.status(400).send({
       error: 'VALIDATION_ERROR',
       message: 'Invalid request data',
+      meta: buildMeta(request),
       details: formatZodErrorDetails(error),
     });
   }
@@ -529,6 +539,7 @@ app.setErrorHandler((error: any, _request, reply) => {
     return reply.status(429).send({
       error: 'RATE_LIMIT_EXCEEDED',
       message: error.message || 'Too many requests',
+      meta: buildMeta(request),
     });
   }
 
@@ -536,11 +547,14 @@ app.setErrorHandler((error: any, _request, reply) => {
     return reply.status(statusCode).send({
       error: error.code || 'VALIDATION_ERROR',
       message: error.message || 'Bad request',
+      meta: buildMeta(request),
     });
   }
 
   reply.status(500).send({
     error: 'INTERNAL_ERROR',
+    code: 'SYSTEM_INTERNAL_ERROR',
     message: isDev ? (error.message || 'Internal Server Error') : 'Internal Server Error',
+    meta: buildMeta(request),
   });
 });

@@ -32,6 +32,6 @@ export class InvalidRefreshTokenError extends AppError {
 
 export class AccountNotActiveError extends AppError {
   constructor(status: string) {
-    super(`Your account is ${status}. Please wait for admin approval.`, 403, 'ACCOUNT_NOT_ACTIVE', { status });
+    super(`Your account is ${status}. Please wait for admin approval.`, 403, 'ACCOUNT_NOT_ACTIVE', { details: { status } });
   }
 }

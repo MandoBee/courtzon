@@ -3,7 +3,7 @@ import { AppError, ValidationError, AuthenticationError, ForbiddenError, NotFoun
 
 describe('AppError', () => {
   it('should set name, statusCode, errorCode, message', () => {
-    const err = new AppError('test', 418, 'TEAPOT', { detail: 'x' });
+    const err = new AppError('test', 418, 'TEAPOT', { details: { detail: 'x' } });
     expect(err.name).toBe('AppError');
     expect(err.statusCode).toBe(418);
     expect(err.errorCode).toBe('TEAPOT');
@@ -21,7 +21,7 @@ describe('ValidationError', () => {
   });
 
   it('should accept optional details', () => {
-    const err = new ValidationError('bad', ['field']);
+    const err = new ValidationError('bad', undefined, ['field']);
     expect(err.details).toEqual(['field']);
   });
 });

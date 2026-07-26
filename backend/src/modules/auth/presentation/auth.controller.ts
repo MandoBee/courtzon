@@ -298,11 +298,20 @@ export async function temporaryResetPasswordHandler(request: FastifyRequest, rep
   return reply.send(result);
 }
 
-export async function errorHandler(error: Error, _request: FastifyRequest, reply: FastifyReply) {
+function buildMeta(request: FastifyRequest) {
+  return {
+    requestId: request?.id || undefined,
+    timestamp: new Date().toISOString(),
+  };
+}
+
+export async function errorHandler(error: Error, request: FastifyRequest, reply: FastifyReply) {
   if (error instanceof AppError) {
     return reply.status(error.statusCode).send({
       error: error.errorCode,
       message: error.message,
+      code: error.code || undefined,
+      meta: buildMeta(request),
       details: error.details,
     });
   }
@@ -310,14 +319,17 @@ export async function errorHandler(error: Error, _request: FastifyRequest, reply
     return reply.status(400).send({
       error: 'VALIDATION_ERROR',
       message: 'Invalid request data',
+      meta: buildMeta(request),
       details: formatZodErrorDetails(error),
     });
   }
-  _request.log.error(error, 'Unhandled error in auth module');
+  request.log.error(error, 'Unhandled error in auth module');
   const statusCode = (error as any).statusCode ?? 500;
   const msg = error.message || 'Internal server error';
   return reply.status(statusCode).send({
     error: 'INTERNAL_ERROR',
+    code: 'SYSTEM_INTERNAL_ERROR',
     message: msg,
+    meta: buildMeta(request),
   });
 }
