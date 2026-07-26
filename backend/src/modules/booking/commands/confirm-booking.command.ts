@@ -25,31 +25,69 @@ export const confirmBookingHandler: CommandHandler<Command, ConfirmBookingResult
   execute: async (command, conn: PoolConnection) => {
     const _cmdStart = Date.now();
     const p = command.payload as unknown as ConfirmBookingPayload;
-    console.log(`[TRACE][ConfirmBookingCmd][+0ms][${new Date(_cmdStart).toISOString()}] [booking:${p.bookingId}] EXECUTE START commandId=${command.commandId}`);
-    const booking = await bookingRepository.findById(p.bookingId, conn);
-    console.log(`[TRACE][ConfirmBookingCmd][+${Date.now() - _cmdStart}ms][${new Date(Date.now()).toISOString()}] [booking:${p.bookingId}] findById done current_status=${booking?.booking_status}`);
-    if (!booking) throw new NotFoundError('Booking');
+    const _trace = (label: string, extra?: string) => {
+      const now = Date.now();
+      console.log(`[TRACE][ConfirmBookingCmd][+${now - _cmdStart}ms][${new Date(now).toISOString()}] [booking:${p.bookingId}] ${label}${extra ? ' ' + extra : ''}`);
+    };
+
+    _trace('EXECUTE START', `commandId=${command.commandId}`);
+
+    _trace('LOADING BOOKING', `bookingId=${p.bookingId}`);
+    let booking: any;
+    try {
+      booking = await bookingRepository.findById(p.bookingId, conn);
+    } catch (dbErr: any) {
+      _trace('DB ERROR on findById', `error=${dbErr?.message}`);
+      console.log(`[TRACE][ConfirmBookingCmd][+${Date.now() - _cmdStart}ms][${new Date().toISOString()}] [booking:${p.bookingId}] DB_STACK: ${dbErr?.stack}`);
+      throw dbErr;
+    }
+    _trace('BOOKING LOADED', `found=${!!booking} status=${booking?.booking_status} aggregate_version=${booking?.aggregate_version}`);
+
+    if (!booking) {
+      _trace('THROW NotFoundError', `bookingId=${p.bookingId} — booking does not exist in DB`);
+      throw new NotFoundError('Booking');
+    }
 
     if (booking.booking_status === 'confirmed') {
+      _trace('ALREADY CONFIRMED — returning early', `bookingId=${p.bookingId} status=confirmed`);
       log.warn({ bookingId: p.bookingId }, 'booking.already_confirmed');
       return { bookingId: p.bookingId };
     }
 
-    const transition = planTransition({
-      fromStatus: booking.booking_status as BookingStatus,
-      toStatus: 'confirmed',
-      currentVersion: booking.aggregate_version || 1,
-    });
+    _trace('BEFORE planTransition', `from=${booking.booking_status} to=confirmed version=${booking.aggregate_version || 1}`);
+    let transition: any;
+    try {
+      transition = planTransition({
+        fromStatus: booking.booking_status as BookingStatus,
+        toStatus: 'confirmed',
+        currentVersion: booking.aggregate_version || 1,
+      });
+    } catch (transErr: any) {
+      _trace('planTransition THREW', `error=${transErr?.message}`);
+      console.log(`[TRACE][ConfirmBookingCmd][+${Date.now() - _cmdStart}ms][${new Date().toISOString()}] [booking:${p.bookingId}] TRANSITION_STACK: ${transErr?.stack}`);
+      throw transErr;
+    }
+    _trace('AFTER planTransition', `newVersion=${transition.newVersion} valid=true`);
 
-    await bookingRepository.persistTransition(p.bookingId, 'confirmed', undefined, booking.aggregate_version || 1, conn);
-    console.log(`[TRACE][ConfirmBookingCmd][+${Date.now() - _cmdStart}ms][${new Date(Date.now()).toISOString()}] [booking:${p.bookingId}] persistTransition DONE → confirmed`);
+    _trace('BEFORE persistTransition', `bookingId=${p.bookingId} newStatus=confirmed currentVersion=${booking.aggregate_version || 1}`);
+    try {
+      await bookingRepository.persistTransition(p.bookingId, 'confirmed', undefined, booking.aggregate_version || 1, conn);
+    } catch (persistErr: any) {
+      _trace('persistTransition THREW', `error=${persistErr?.message}`);
+      console.log(`[TRACE][ConfirmBookingCmd][+${Date.now() - _cmdStart}ms][${new Date().toISOString()}] [booking:${p.bookingId}] PERSIST_STACK: ${persistErr?.stack}`);
+      throw persistErr;
+    }
+    _trace('AFTER persistTransition', `bookingId=${p.bookingId} status=confirmed`);
+
+    _trace('EXECUTE RETURNING', `bookingId=${p.bookingId} aggregateVersion=${transition.newVersion}`);
     log.info({ bookingId: p.bookingId, version: transition.newVersion }, 'booking.confirmed');
     return { bookingId: p.bookingId, aggregateVersion: transition.newVersion };
   },
 
   events: (command, result) => {
-    console.log(`[TRACE][ConfirmBookingCmd][+0ms][${new Date().toISOString()}] [booking:${result.bookingId}] EVENTS CALLED — will emit booking:confirmed`);
-    return [{
+    const _evStart = Date.now();
+    console.log(`[TRACE][ConfirmBookingCmd][+0ms][${new Date().toISOString()}] [booking:${result.bookingId}] EVENTS CALLED — will emit booking:confirmed aggregateVersion=${result.aggregateVersion}`);
+    const events = [{
       eventName: 'booking:confirmed',
       payload: { bookingId: result.bookingId, aggregateVersion: result.aggregateVersion },
       context: {
@@ -60,5 +98,7 @@ export const confirmBookingHandler: CommandHandler<Command, ConfirmBookingResult
         causationId: command.commandId,
       },
     }];
+    console.log(`[TRACE][ConfirmBookingCmd][+${Date.now() - _evStart}ms][${new Date().toISOString()}] [booking:${result.bookingId}] EVENTS RETURNING — eventName=booking:confirmed`);
+    return events;
   },
 };
