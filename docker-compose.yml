@@ -95,8 +95,8 @@ services:
 
   frontend:
     build:
-      context: ./frontend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: frontend/Dockerfile
       args:
         VITE_PAYMOB_PUBLIC_KEY: ${VITE_PAYMOB_PUBLIC_KEY:-}
         VITE_FEATURE_AUTH_TEMPORARY_PASSWORD_RESET_ENABLED: ${VITE_FEATURE_AUTH_TEMPORARY_PASSWORD_RESET_ENABLED:-false}
