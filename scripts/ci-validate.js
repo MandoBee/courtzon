@@ -2,8 +2,8 @@
 // Run before every build to catch regressions early.
 // Usage: node scripts/ci-validate.js
 
-import { readFileSync, existsSync } from 'node:fs';
-import { join, dirname } from 'node:path';
+import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs';
+import { join, dirname, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -106,7 +106,6 @@ else warn('AppLayout may need cz-pb-safe on main');
 
 // ─── 8. Verify Platform layer has zero SQL and zero infrastructure imports ───
 console.log('\n8. Platform Layer Purity');
-import { readdirSync, statSync } from 'node:fs';
 function walkDir(dir) {
   let results = [];
   const list = readdirSync(dir);
@@ -222,6 +221,62 @@ for (const file of presentationDirs) {
   }
 }
 if (presOK) pass('Presentation layer has zero DB access');
+
+// ─── 15. @courtzon/shared governance ───
+console.log('\n15. @courtzon/shared Governance');
+const sharedRoot = join(root, 'packages', 'shared', 'src');
+let sharedOK = true;
+
+// 15a. No framework imports
+const frameworkPatterns = [
+  "from 'react'", 'from "react"', "from 'fastify'", 'from "fastify"',
+  "from 'express'", 'from "express"', "from 'prisma'", 'from "prisma"',
+  "from 'socket.io'", 'from "socket.io"', "from 'ioredis'", 'from "ioredis"',
+  "from 'mysql'", 'from "mysql"', "from 'pino'", 'from "pino"',
+];
+function collectTsFiles(dir) {
+  const result = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) result.push(...collectTsFiles(full));
+    else if (entry.isFile() && extname(entry.name) === '.ts') result.push(full);
+  }
+  return result;
+}
+const sharedFiles = collectTsFiles(sharedRoot);
+for (const file of sharedFiles) {
+  const content = readFileSync(file, 'utf-8');
+  for (const pattern of frameworkPatterns) {
+    if (content.includes(pattern)) {
+      fail(`@courtzon/shared: forbidden import ${pattern} in ${file.replace(root, '')}`);
+      sharedOK = false;
+    }
+  }
+}
+if (sharedOK) pass('@courtzon/shared has zero framework imports');
+
+// 15b. No imports from backend/frontend
+let crossOK = true;
+for (const file of sharedFiles) {
+  const content = readFileSync(file, 'utf-8');
+  if (content.includes("from '../backend") || content.includes('from "../backend') ||
+      content.includes("from '../frontend") || content.includes('from "../frontend')) {
+    fail(`@courtzon/shared: cross-application import in ${file.replace(root, '')}`);
+    crossOK = false;
+  }
+}
+if (crossOK) pass('@courtzon/shared has zero cross-application imports');
+
+// 15c. package.json has zero dependencies
+const sharedPkg = JSON.parse(readFileSync(join(root, 'packages', 'shared', 'package.json'), 'utf-8'));
+const deps = Object.keys(sharedPkg.dependencies || {}).length;
+const devDeps = Object.keys(sharedPkg.devDependencies || {}).length;
+if (deps > 0 || devDeps > 0) {
+  fail(`@courtzon/shared: package.json has ${deps} deps + ${devDeps} devDeps (expected 0)`);
+  sharedOK = false;
+} else {
+  pass('@courtzon/shared package.json has zero dependencies');
+}
 
 // ─── Summary ───
 console.log(`\n${'='.repeat(50)}`);

@@ -3,6 +3,10 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
+  "description": "Contract layer — DTOs, interfaces, enums, and types shared across CourtZon applications. No runtime code. No framework dependencies.",
+  "engines": {
+    "node": ">=22.12.0"
+  },
   "exports": {
     ".": {
       "import": "./src/index.ts",
@@ -14,5 +18,10 @@
     }
   },
   "main": "./src/index.ts",
-  "types": "./src/index.ts"
+  "types": "./src/index.ts",
+  "dependencies": {},
+  "devDependencies": {},
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  }
 }
