@@ -1,5 +1,6 @@
 import type { PoolConnection } from 'mysql2/promise';
 import { createModuleLogger } from '../../../shared/utils/logger.js';
+import type { NotificationAction } from '../../../platform/shared/types.js';
 import { notificationRepository } from '../infrastructure/repositories/notification.repository.js';
 import { getTemplate, resolveTemplate } from '../application/template.service.js';
 import { checkRateLimit, incrementRateLimit } from '../application/rate-limiter.service.js';
@@ -22,7 +23,7 @@ export interface DispatchNotificationPayload {
   relatedEntityType?: string;
   relatedEntityId?: string;
   senderId?: number;
-  actionPayload?: Record<string, unknown>;
+  actionPayload?: NotificationAction | Record<string, unknown>;
   actions?: unknown[];
   imageUrls?: Record<string, string>;
   digestable?: boolean;

@@ -137,10 +137,14 @@ export class NotificationRepository {
       params,
     );
 
-    const parsed = (rows as any[]).map((r) => ({
-      ...r,
-      action_payload: typeof r.action_payload === 'string' ? safeParseJSON(r.action_payload) : r.action_payload,
-    }));
+    const parsed = (rows as any[]).map((r) => {
+      const ap = typeof r.action_payload === 'string' ? safeParseJSON(r.action_payload) : r.action_payload;
+      return {
+        ...r,
+        action_payload: ap,
+        action: ap?.route ? ap : null,
+      };
+    });
     return { data: parsed, total };
   }
 

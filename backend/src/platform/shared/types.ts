@@ -36,3 +36,11 @@ export interface FilterInput {
   operator: 'eq' | 'neq' | 'gt' | 'gte' | 'lt' | 'lte' | 'in' | 'nin' | 'contains' | 'startsWith' | 'endsWith';
   value: unknown;
 }
+
+export interface NotificationAction {
+  route: string;
+  tab?: string;
+  params?: Record<string, string | number | boolean | null>;
+  replace?: boolean;
+  openInNewTab?: boolean;
+}

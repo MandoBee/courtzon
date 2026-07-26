@@ -210,7 +210,7 @@ export default function NotificationsPage() {
                   <div
                     key={n.id}
                     className={`flex items-start gap-2 px-4 py-3 border-b border-[var(--color-border)] last:border-0 hover:bg-[var(--color-bg)] cursor-pointer transition-colors ${!n.is_read ? 'bg-[var(--color-info-bg)]/50' : ''} ${pinnedIds.has(n.id) ? 'border-l-2 border-l-yellow-500' : ''}`}
-                    onClick={() => { if (!n.is_read) markAsRead(n.id); const r = getNotificationRoute(n); if (r) navigate(r); }}
+                    onClick={() => { if (!n.is_read) markAsRead(n.id); const r = getNotificationRoute(n.action); if (r) navigate(r, { replace: n.action?.replace ?? false, state: { tab: n.action?.tab, params: n.action?.params } }); }}
                   >
                     <input type="checkbox" checked={selectedIds.has(n.id)} onChange={e => { e.stopPropagation(); const next = new Set(selectedIds); if (next.has(n.id)) next.delete(n.id); else next.add(n.id); setSelectedIds(next); }}
                       className="mt-1 shrink-0 rounded" />

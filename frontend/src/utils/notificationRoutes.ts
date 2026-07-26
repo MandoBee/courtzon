@@ -1,16 +1,8 @@
-import type { AppNotification } from '../components/notifications/NotificationDetailModal';
+import type { NotificationAction } from '../types/notificationAction';
 
-export function getNotificationRoute(notification: AppNotification): string | null {
-  const route = notification.action_payload?.route as string | undefined;
-  if (route && typeof route === 'string' && route.startsWith('/')) {
-    return route;
+export function getNotificationRoute(action: NotificationAction | null | undefined): string | null {
+  if (!action?.route || !action.route.startsWith('/')) {
+    return null;
   }
-  if (import.meta.env.DEV) {
-    console.warn('[Notification] Missing or invalid action.route for notification', {
-      id: notification.id,
-      title: notification.title,
-      action_payload: notification.action_payload,
-    });
-  }
-  return null;
+  return action.route;
 }

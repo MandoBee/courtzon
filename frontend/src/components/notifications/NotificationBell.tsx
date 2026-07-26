@@ -56,8 +56,8 @@ export default function NotificationBell() {
   const openNotification = (n: AppNotification) => {
     setOpen(false);
     if (!n.is_read) markAsRead(n.id);
-    const route = getNotificationRoute(n);
-    if (route) navigate(route);
+    const route = getNotificationRoute(n.action);
+    if (route) navigate(route, { replace: n.action?.replace ?? false, state: { tab: n.action?.tab, params: n.action?.params } });
   };
 
   return (

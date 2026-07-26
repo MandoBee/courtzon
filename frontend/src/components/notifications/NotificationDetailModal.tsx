@@ -7,6 +7,7 @@ import { notificationsApi } from '../../services/notifications';
 import api from '../../services/api';
 import { formatDateTime } from '../../utils/formatDate';
 import { getNotificationRoute } from '../../utils/notificationRoutes';
+import type { NotificationAction } from '../../types/notificationAction';
 
 export interface AppNotification {
   id: number;
@@ -20,6 +21,7 @@ export interface AppNotification {
   category_slug?: string | null;
   action_key?: string | null;
   action_payload?: Record<string, unknown> | null;
+  action?: NotificationAction | null;
   related_entity_type?: string | null;
   related_entity_id?: string | null;
 }

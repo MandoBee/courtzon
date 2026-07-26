@@ -12,6 +12,7 @@ import { isFeatureEnabled } from '../../../shared/utils/feature-flags.js';
 import { commandPipeline } from '../../../shared/command/command-pipeline.js';
 import { dispatchNotificationHandler, type DispatchNotificationPayload } from '../commands/dispatch-notification.command.js';
 import type { Command } from '../../../shared/command/command-base.js';
+import type { NotificationAction } from '../../../platform/shared/types.js';
 import type { ProcessNotificationJob, SendNotificationBatchJob } from '../../../infrastructure/queue/queue.service.js';
 
 const log = createModuleLogger('dispatcher');
@@ -33,11 +34,8 @@ export interface DispatchOptions {
   senderId?: number;
   imageUrls?: Record<string, string>;
   actions?: any[];
-  actionKey?: string;
-  actionPayload?: Record<string, any>;
+  action?: NotificationAction;
   digestable?: boolean;
-  route?: string;
-  tab?: string;
 }
 
 export async function dispatchToUser(options: DispatchOptions): Promise<void> {
@@ -66,19 +64,13 @@ export async function dispatchToUser(options: DispatchOptions): Promise<void> {
 
   const resolved = resolveTemplate(template, data);
 
-  const actionPayload = {
-    ...(options.actionPayload || {}),
-    ...(options.route ? { route: options.route } : {}),
-    ...(options.tab ? { tab: options.tab } : {}),
-  };
-
   const notificationId = await notificationRepository.create({
     userId,
     title: resolved.title,
     body: resolved.body ?? undefined,
     categorySlug,
-    actionKey: options.actionKey ?? template.actionKey ?? undefined,
-    actionPayload,
+    actionKey: options.action?.route ? undefined : template.actionKey ?? undefined,
+    actionPayload: options.action ?? undefined,
     type: options.type ?? template.type ?? 'info',
     priority: options.priority ?? template.priority ?? 'normal',
     organisationId: options.organisationId,
@@ -107,8 +99,8 @@ export async function dispatchToUser(options: DispatchOptions): Promise<void> {
     categorySlug,
     title: resolved.title,
     body: resolved.body ?? undefined,
-    actionKey: options.actionKey ?? template.actionKey ?? undefined,
-    actionPayload,
+    actionKey: options.action?.route ? undefined : template.actionKey ?? undefined,
+    actionPayload: options.action ?? undefined,
     actions: (options.actions ?? template.actions) ?? undefined,
     imageUrls: options.imageUrls,
     priority: options.priority ?? template.priority,
@@ -162,8 +154,8 @@ async function dispatchBulkChunk(
       title: resolved.title,
       body: resolved.body ?? undefined,
       categorySlug: options.categorySlug,
-      actionKey: options.actionKey ?? template.actionKey ?? undefined,
-      actionPayload: options.actionPayload,
+      actionKey: options.action?.route ? undefined : template.actionKey ?? undefined,
+      actionPayload: options.action ?? undefined,
       type: options.type ?? template.type ?? 'info',
       priority: options.priority ?? template.priority ?? 'normal',
       organisationId: options.organisationId,
@@ -190,8 +182,8 @@ async function dispatchBulkChunk(
     categorySlug: options.categorySlug,
     title: resolved.title,
     body: resolved.body ?? undefined,
-    actionKey: options.actionKey ?? template.actionKey ?? undefined,
-    actionPayload: options.actionPayload ?? undefined,
+    actionKey: options.action?.route ? undefined : template.actionKey ?? undefined,
+    actionPayload: options.action ?? undefined,
     actions: (options.actions ?? template.actions) ?? undefined,
     imageUrls: options.imageUrls,
     priority: options.priority ?? template.priority,
@@ -287,11 +279,6 @@ export async function dispatchByUserIdsBulk(
 }
 
 async function dispatchToUserV2(options: DispatchOptions): Promise<void> {
-  const actionPayload = {
-    ...(options.actionPayload || {}),
-    ...(options.route ? { route: options.route } : {}),
-    ...(options.tab ? { tab: options.tab } : {}),
-  };
   const command: Command = {
     commandId: `dispatch-notification-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     commandType: 'DispatchNotification',
@@ -307,7 +294,7 @@ async function dispatchToUserV2(options: DispatchOptions): Promise<void> {
       relatedEntityType: options.relatedEntityType,
       relatedEntityId: options.relatedEntityId,
       senderId: options.senderId,
-      actionPayload,
+      actionPayload: options.action ?? undefined,
       actions: options.actions,
       imageUrls: options.imageUrls,
       digestable: options.digestable,
