@@ -3,7 +3,7 @@ import { getPool } from '../../database/mysql.js';
 import { createModuleLogger } from '../utils/logger.js';
 import { createEnvelope, type EventEnvelope, type EnvelopeContext } from './event-envelope.js';
 import { publishedEventsRepository } from '../../infrastructure/event-store/published-events.repository.js';
-import { onAfterCommit } from '../../database/database.transaction.js';
+import { onAfterCommit, isInTransaction } from '../../database/database.transaction.js';
 import { queueService } from '../../infrastructure/queue/queue.service.js';
 import { registry } from '../../infrastructure/metrics/metrics.js';
 import client from 'prom-client';
@@ -119,31 +119,60 @@ class EventBusV2 {
 
     emitTotal.inc({ event_name: eventName });
 
-    onAfterCommit(async () => {
-      const subs = this.subscribers.get(eventName) || [];
-      for (const sub of subs) {
-        try {
-          await queueService.addToQueue(sub.queueName, envelope as unknown as Record<string, unknown>, {
-            jobId: `${envelope.eventId}:${sub.queueName}`,
-            attempts: sub.options?.attempts ?? 6,
-            backoffDelay: sub.options?.backoffDelay ?? 2000,
-          });
-          enqueueTotal.inc({ queue: sub.queueName });
-        } catch (err) {
-          enqueueFailedTotal.inc({ queue: sub.queueName });
-          log.error({ err, queue: sub.queueName, eventId: envelope.eventId }, 'event.enqueue_failed');
-        }
-      }
+    const subs = this.subscribers.get(eventName) || [];
+    const handlers = this.inMemoryHandlers.get(eventName) || [];
 
+    if (isInTransaction()) {
+      onAfterCommit(async () => {
+        for (const sub of subs) {
+          try {
+            await queueService.addToQueue(sub.queueName, envelope as unknown as Record<string, unknown>, {
+              jobId: `${envelope.eventId}:${sub.queueName}`,
+              attempts: sub.options?.attempts ?? 6,
+              backoffDelay: sub.options?.backoffDelay ?? 2000,
+            });
+            enqueueTotal.inc({ queue: sub.queueName });
+          } catch (err) {
+            enqueueFailedTotal.inc({ queue: sub.queueName });
+            log.error({ err, queue: sub.queueName, eventId: envelope.eventId }, 'event.enqueue_failed');
+          }
+        }
+
+        try {
+          for (const handler of handlers) {
+            handler(envelope.payload);
+          }
+        } catch (err) {
+          log.error({ err, eventName }, 'event.in_memory_handler_failed');
+        }
+      });
+    } else {
       try {
-        const handlers = this.inMemoryHandlers.get(eventName) || [];
         for (const handler of handlers) {
           handler(envelope.payload);
         }
       } catch (err) {
         log.error({ err, eventName }, 'event.in_memory_handler_failed');
       }
-    });
+
+      if (subs.length > 0) {
+        onAfterCommit(async () => {
+          for (const sub of subs) {
+            try {
+              await queueService.addToQueue(sub.queueName, envelope as unknown as Record<string, unknown>, {
+                jobId: `${envelope.eventId}:${sub.queueName}`,
+                attempts: sub.options?.attempts ?? 6,
+                backoffDelay: sub.options?.backoffDelay ?? 2000,
+              });
+              enqueueTotal.inc({ queue: sub.queueName });
+            } catch (err) {
+              enqueueFailedTotal.inc({ queue: sub.queueName });
+              log.error({ err, queue: sub.queueName, eventId: envelope.eventId }, 'event.enqueue_failed');
+            }
+          }
+        });
+      }
+    }
   }
 
   on(eventName: string, handler: (data: any) => void): void {

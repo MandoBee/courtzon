@@ -13,6 +13,8 @@ export interface ConfirmBookingPayload { bookingId: number }
 export interface ConfirmBookingResult {
   bookingId: number;
   aggregateVersion?: number;
+  bookingType: string;
+  userId: number;
 }
 
 export const confirmBookingHandler: CommandHandler<Command, ConfirmBookingResult> = {
@@ -38,7 +40,7 @@ export const confirmBookingHandler: CommandHandler<Command, ConfirmBookingResult
 
     if (booking.booking_status === 'confirmed') {
       log.warn({ bookingId: p.bookingId }, 'booking.already_confirmed');
-      return { bookingId: p.bookingId };
+      return { bookingId: p.bookingId, bookingType: booking.booking_type, userId: booking.user_id };
     }
 
     let transition: any;
@@ -59,13 +61,13 @@ export const confirmBookingHandler: CommandHandler<Command, ConfirmBookingResult
     }
 
     log.info({ bookingId: p.bookingId, version: transition.newVersion }, 'booking.confirmed');
-    return { bookingId: p.bookingId, aggregateVersion: transition.newVersion };
+    return { bookingId: p.bookingId, aggregateVersion: transition.newVersion, bookingType: booking.booking_type, userId: booking.user_id };
   },
 
   events: (command, result) => {
     return [{
       eventName: 'booking:confirmed',
-      payload: { bookingId: result.bookingId, aggregateVersion: result.aggregateVersion },
+      payload: { bookingId: result.bookingId, aggregateVersion: result.aggregateVersion, bookingType: result.bookingType, userId: result.userId },
       context: {
         aggregateType: 'booking',
         aggregateId: String(result.bookingId),

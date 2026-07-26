@@ -1,6 +1,13 @@
+import { AsyncLocalStorage } from 'async_hooks';
 import { PoolConnection } from 'mysql2/promise';
 
 import { getPool } from './mysql.js';
+
+const transactionAls = new AsyncLocalStorage<boolean>();
+
+export function isInTransaction(): boolean {
+  return transactionAls.getStore() === true;
+}
 
 // ── After-commit hooks ─────────────────────────────────────────────────
 // Collects callbacks during a transaction and runs them after commit.
@@ -37,8 +44,9 @@ export async function withTransaction<T>(
   try {
     await connection.beginTransaction();
 
-    const result =
-      await callback(connection);
+    const result = await transactionAls.run(true, () =>
+      callback(connection),
+    );
 
     await connection.commit();
 
