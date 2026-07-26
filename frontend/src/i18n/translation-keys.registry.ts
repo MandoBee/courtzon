@@ -768,6 +768,8 @@ export const translationKeysRegistry: TranslationKeyEntry[] = [
   { key: 'common.x_selected', defaultValue: '{count} selected', moduleSlug: 'common', elementType: 'text', elementLabel: 'Count selected template' },
   { key: 'common.light_mode', defaultValue: 'Light Mode', moduleSlug: 'common', elementType: 'label', elementLabel: 'Light mode label' },
   { key: 'common.dark_mode', defaultValue: 'Dark Mode', moduleSlug: 'common', elementType: 'label', elementLabel: 'Dark mode label' },
+  { key: 'common.actions', defaultValue: 'Actions', moduleSlug: 'common', elementType: 'label', elementLabel: 'Actions column label' },
+  { key: 'common.error', defaultValue: 'An error occurred', moduleSlug: 'common', elementType: 'message', elementLabel: 'Generic error message' },
 
   // ── Admin sidebar ──
   { key: 'admin.sidebar.dashboard', defaultValue: 'Dashboard', moduleSlug: 'admin', elementType: 'nav', elementLabel: 'Admin sidebar dashboard' },
@@ -865,6 +867,31 @@ export const translationKeysRegistry: TranslationKeyEntry[] = [
   // ── Booking ──
   { key: 'booking.error.creation_failed', defaultValue: 'Booking failed', moduleSlug: 'booking', elementType: 'message', elementLabel: 'Booking creation failed toast' },
   { key: 'booking.success.created', defaultValue: 'Booking created successfully!', moduleSlug: 'booking', elementType: 'message', elementLabel: 'Booking created success toast' },
+
+  // ── Notification Types Admin ──
+  { key: 'notification_types.title', defaultValue: 'Notification Types', moduleSlug: 'notification', elementType: 'heading', elementLabel: 'Notification types page title' },
+  { key: 'notification_types.create', defaultValue: 'New Type', moduleSlug: 'notification', elementType: 'button', elementLabel: 'Create notification type button' },
+  { key: 'notification_types.create_title', defaultValue: 'Create Notification Type', moduleSlug: 'notification', elementType: 'heading', elementLabel: 'Create notification type modal title' },
+  { key: 'notification_types.edit_title', defaultValue: 'Edit Notification Type', moduleSlug: 'notification', elementType: 'heading', elementLabel: 'Edit notification type modal title' },
+  { key: 'notification_types.created', defaultValue: 'Notification type created', moduleSlug: 'notification', elementType: 'message', elementLabel: 'Notification type created toast' },
+  { key: 'notification_types.updated', defaultValue: 'Notification type updated', moduleSlug: 'notification', elementType: 'message', elementLabel: 'Notification type updated toast' },
+  { key: 'notification_types.deleted', defaultValue: 'Notification type deleted', moduleSlug: 'notification', elementType: 'message', elementLabel: 'Notification type deleted toast' },
+  { key: 'notification_types.delete_confirm', defaultValue: 'Delete {name}? This action cannot be undone.', moduleSlug: 'notification', elementType: 'message', elementLabel: 'Delete notification type confirmation' },
+  { key: 'notification_types.search_placeholder', defaultValue: 'Search types...', moduleSlug: 'notification', elementType: 'placeholder', elementLabel: 'Notification types search' },
+  { key: 'notification_types.filter_all_categories', defaultValue: 'All Categories', moduleSlug: 'notification', elementType: 'placeholder', elementLabel: 'Notification types category filter' },
+  { key: 'notification_types.empty', defaultValue: 'No notification types found', moduleSlug: 'notification', elementType: 'text', elementLabel: 'Notification types empty state' },
+  { key: 'notification_types.code', defaultValue: 'Code', moduleSlug: 'notification', elementType: 'label', elementLabel: 'Notification type code column' },
+  { key: 'notification_types.event_key', defaultValue: 'Event Key', moduleSlug: 'notification', elementType: 'label', elementLabel: 'Notification type event key column' },
+  { key: 'notification_types.name', defaultValue: 'Name', moduleSlug: 'notification', elementType: 'label', elementLabel: 'Notification type name column' },
+  { key: 'notification_types.description', defaultValue: 'Description', moduleSlug: 'notification', elementType: 'label', elementLabel: 'Notification type description field' },
+  { key: 'notification_types.category', defaultValue: 'Category', moduleSlug: 'notification', elementType: 'label', elementLabel: 'Notification type category column' },
+  { key: 'notification_types.priority', defaultValue: 'Priority', moduleSlug: 'notification', elementType: 'label', elementLabel: 'Notification type priority column' },
+  { key: 'notification_types.channels', defaultValue: 'Channels', moduleSlug: 'notification', elementType: 'label', elementLabel: 'Notification type channels column' },
+  { key: 'notification_types.icon', defaultValue: 'Icon', moduleSlug: 'notification', elementType: 'label', elementLabel: 'Notification type icon column' },
+  { key: 'notification_types.enabled', defaultValue: 'Enabled', moduleSlug: 'notification', elementType: 'label', elementLabel: 'Notification type enabled column' },
+  { key: 'notification_types.requires_action', defaultValue: 'Requires Action', moduleSlug: 'notification', elementType: 'label', elementLabel: 'Notification type requires action label' },
+  { key: 'notification_types.sort_order', defaultValue: 'Sort Order', moduleSlug: 'notification', elementType: 'label', elementLabel: 'Notification type sort order field' },
+  { key: 'notification_types.default_channels', defaultValue: 'Default Channels', moduleSlug: 'notification', elementType: 'label', elementLabel: 'Notification type default channels field' },
 ];
 
 /** Build a key \u2192 English default map for offline/runtime fallback. */

@@ -146,6 +146,7 @@ const AdminBroadcastPage = lazy(() => import('./pages/admin/notifications/AdminB
 const AdminAnalyticsPage = lazy(() => import('./pages/admin/notifications/AdminAnalyticsPage'));
 const AdminDeadLettersPage = lazy(() => import('./pages/admin/notifications/AdminDeadLettersPage'));
 const AdminTemplatesPage = lazy(() => import('./pages/admin/notifications/AdminTemplatesPage'));
+const NotificationTypesPage = lazy(() => import('./pages/admin/notifications/NotificationTypesPage'));
 const OrgDashboardPage = lazy(() => import('./pages/org/OrgDashboardPage'));
 const OrgBookingsPage = lazy(() => import('./pages/org/OrgBookingsPage'));
 const OrgMarketplacePage = lazy(() => import('./pages/org/OrgMarketplacePage'));
@@ -533,6 +534,7 @@ function AppContent() {
           <Route path="notifications/analytics" element={<AdminAnalyticsPage />} />
           <Route path="notifications/dead-letters" element={<AdminDeadLettersPage />} />
           <Route path="notifications/templates" element={<AdminTemplatesPage />} />
+          <Route path="notification-types" element={<NotificationTypesPage />} />
           <Route path="product-categories" element={<ProductCategoriesPage />} />
             <Route path="marketplace/products" element={<MarketplaceProductsPage />} />
             <Route path="marketplace/products/:id" element={<AdminProductDetailPage />} />
