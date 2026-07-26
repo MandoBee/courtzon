@@ -28,9 +28,6 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
 
   // ── Queues ────────────────────────────────────────────────────────────
   app.get('/admin/queues', { preHandler: [requirePermission(['queue.view'])] }, ctrl.getQueueStatusHandler);
-
-  // ── Audit Logs ────────────────────────────────────────────────────────
-  app.get('/admin/audit-logs', { preHandler: [requirePermission(['audit.view'])] }, ctrl.getAuditLogsHandler);
 }
 
 // Public routes — no auth
