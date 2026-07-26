@@ -90,8 +90,16 @@ export class BookingService {
     const branchTz = branchData.timezone || 'Africa/Cairo';
 
     // Compute UTC timestamps and business date using TimeEngine
+    let endDate = input.bookingDate;
+    let endTime = input.endTime;
+    if (endTime === '24:00') {
+      const [y, m, d] = input.bookingDate.split('-').map(Number);
+      const next = new Date(Date.UTC(y, m - 1, d + 1));
+      endDate = `${next.getUTCFullYear()}-${String(next.getUTCMonth() + 1).padStart(2, '0')}-${String(next.getUTCDate()).padStart(2, '0')}`;
+      endTime = '00:00';
+    }
     const startAtUtc = TimeEngine.localToUtc(input.bookingDate, input.startTime, branchTz);
-    const endAtUtc = TimeEngine.localToUtc(input.bookingDate, input.endTime, branchTz);
+    const endAtUtc = TimeEngine.localToUtc(endDate, endTime, branchTz);
     const resource = await resourceRepository.findById(input.resourceId);
     const openingTime = resource?.opening_time || '08:00';
     const closingTime = resource?.closing_time || '22:00';
@@ -107,7 +115,7 @@ export class BookingService {
 
     // ── Multi-slot: generate individual slots from the time range ──
     const slotDuration = (resource as any)?.slot_duration || (resource as any)?.default_slot_duration || 60;
-    const individualSlots = splitTimeRange(input.startTime, input.endTime, slotDuration);
+    const individualSlots = splitTimeRange(input.startTime, endTime, slotDuration);
 
     // Validate: slots must cover the requested range exactly (no gaps, aligned to grid)
     if (individualSlots.length === 0) {
@@ -115,13 +123,13 @@ export class BookingService {
     }
     const firstSlot = individualSlots[0];
     const lastSlot = individualSlots[individualSlots.length - 1];
-    if (firstSlot.start !== input.startTime || lastSlot.end !== input.endTime) {
+    if (firstSlot.start !== input.startTime || lastSlot.end !== endTime) {
       throw new ConflictError('Selected time range must be aligned to slot boundaries and cover connected slots only');
     }
 
     // Pre-compute pricing (idempotent, no lock needed)
     const pricing = await pricingEngine.calculatePrice(
-      input.resourceId, input.startTime, input.endTime
+      input.resourceId, input.startTime, endTime
     );
 
     let commissionAmount = 0;
@@ -167,8 +175,8 @@ export class BookingService {
         const expiresAt = new Date(Date.now() + 3 * 60 * 1000).toISOString().replace('T', ' ').replace(/\.\d+Z$/, '');
         const bookingId = await bookingRepository.create({
           userId, branchId: input.branchId, organisationId, resourceId: input.resourceId,
-          bookingType: input.bookingType || 'public_match', bookingDate,
-          startTime: input.startTime, endTime: input.endTime,
+        bookingType: input.bookingType || 'public_match', bookingDate,
+        startTime: input.startTime, endTime,
           totalAmount: pricing.totalPrice, commissionAmount, clubAmount,
           notes: input.notes, paymentMethod,
           bookingStatus: 'pending_payment', paymentStatus: 'pending',
@@ -401,9 +409,20 @@ export class BookingService {
     const organisationId = branchData.organisation_id;
     const branchTz = branchData.timezone || 'Africa/Cairo';
 
+    // Normalise midnight crossing: "24:00" is not a valid local time.
+    // Convert to "00:00" on the following calendar day.
+    let endDate = input.bookingDate;
+    let endTime = input.endTime;
+    if (endTime === '24:00') {
+      const [y, m, d] = input.bookingDate.split('-').map(Number);
+      const next = new Date(Date.UTC(y, m - 1, d + 1));
+      endDate = `${next.getUTCFullYear()}-${String(next.getUTCMonth() + 1).padStart(2, '0')}-${String(next.getUTCDate()).padStart(2, '0')}`;
+      endTime = '00:00';
+    }
+
     // Compute UTC timestamps and business date
     const startAtUtc = TimeEngine.localToUtc(input.bookingDate, input.startTime, branchTz);
-    const endAtUtc = TimeEngine.localToUtc(input.bookingDate, input.endTime, branchTz);
+    const endAtUtc = TimeEngine.localToUtc(endDate, endTime, branchTz);
     const resource = await resourceRepository.findById(input.resourceId);
     const openingTime = resource?.opening_time || '08:00';
     const closingTime = resource?.closing_time || '22:00';
@@ -418,16 +437,16 @@ export class BookingService {
 
     // Multi-slot generation
     const slotDuration = (resource as any)?.slot_duration || (resource as any)?.default_slot_duration || 60;
-    const individualSlots = splitTimeRange(input.startTime, input.endTime, slotDuration);
+    const individualSlots = splitTimeRange(input.startTime, endTime, slotDuration);
     if (individualSlots.length === 0) throw new ConflictError('Booking range does not cover any complete slot');
     const firstSlot = individualSlots[0];
     const lastSlot = individualSlots[individualSlots.length - 1];
-    if (firstSlot.start !== input.startTime || lastSlot.end !== input.endTime) {
+    if (firstSlot.start !== input.startTime || lastSlot.end !== endTime) {
       throw new ConflictError('Selected time range must be aligned to slot boundaries and cover connected slots only');
     }
 
     // Pricing
-    const pricing = await pricingEngine.calculatePrice(input.resourceId, input.startTime, input.endTime);
+    const pricing = await pricingEngine.calculatePrice(input.resourceId, input.startTime, endTime);
     let commissionAmount = 0;
     let clubAmount = pricing.totalPrice;
     try {
@@ -484,7 +503,7 @@ export class BookingService {
       const prepareData = JSON.stringify({
         userId, organisationId, branchId: input.branchId, resourceId: input.resourceId,
         bookingType: input.bookingType || 'public_match', bookingDate,
-        startTime: input.startTime, endTime: input.endTime,
+        startTime: input.startTime, endTime,
         totalAmount: pricing.totalPrice, commissionAmount, clubAmount,
         notes: input.notes || null, paymentMethod: input.paymentMethod,
         startAtUtc, endAtUtc, businessDate,
@@ -1338,14 +1357,22 @@ export class BookingService {
     const organisationId = branchData.organisation_id;
     const branchTz = branchData.timezone || 'Africa/Cairo';
 
+    let endDate = input.bookingDate;
+    let endTime = input.endTime;
+    if (endTime === '24:00') {
+      const [y, m, d] = input.bookingDate.split('-').map(Number);
+      const next = new Date(Date.UTC(y, m - 1, d + 1));
+      endDate = `${next.getUTCFullYear()}-${String(next.getUTCMonth() + 1).padStart(2, '0')}-${String(next.getUTCDate()).padStart(2, '0')}`;
+      endTime = '00:00';
+    }
     const startAtUtc = TimeEngine.localToUtc(input.bookingDate, input.startTime, branchTz);
-    const endAtUtc = TimeEngine.localToUtc(input.bookingDate, input.endTime, branchTz);
+    const endAtUtc = TimeEngine.localToUtc(endDate, endTime, branchTz);
     const resource = await resourceRepository.findById(input.resourceId);
     const openingTime = resource?.opening_time || '08:00';
     const closingTime = resource?.closing_time || '22:00';
 
     const pricing = await pricingEngine.calculatePrice(
-      input.resourceId, input.startTime, input.endTime,
+      input.resourceId, input.startTime, endTime,
     );
 
     const command: Command = {
