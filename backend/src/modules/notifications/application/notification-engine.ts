@@ -75,11 +75,11 @@ const eventGroups: EventGroupConfig[] = [
       const { getPool } = await import('../../../database/mysql.js');
       const pool = getPool();
       const [bkRows] = await pool.execute<any>(
-        'SELECT user_id, booking_date, start_time FROM bookings WHERE id = ?', [data.bookingId],
+        'SELECT user_id, start_at_utc FROM bookings WHERE id = ?', [data.bookingId],
       );
       if (bkRows.length) {
         const bk = bkRows[0];
-        const startDate = new Date(`${String(bk.booking_date).split('T')[0]}T${bk.start_time}`);
+        const startDate = new Date(bk.start_at_utc);
         scheduleBookingReminder(data.bookingId, bk.user_id, startDate).catch((err: any) =>
           log.error({ err, bookingId: data.bookingId }, 'Failed to schedule booking reminder')
         );

@@ -17,7 +17,7 @@ export async function scheduleBookingReminder(
   const reminderTime = new Date(startTime.getTime() - 30 * 60 * 1000);
   const delay = reminderTime.getTime() - Date.now();
 
-  if (delay <= 0) return;
+  if (!Number.isFinite(delay) || delay <= 0) return;
 
   await queueService.add('send_scheduled_notification', {
     templateId: 0,
@@ -39,7 +39,7 @@ export async function scheduleMembershipReminder(
   const reminderTime = new Date(expiryDate.getTime() - daysBefore * 86400 * 1000);
   const delay = reminderTime.getTime() - Date.now();
 
-  if (delay <= 0) return;
+  if (!Number.isFinite(delay) || delay <= 0) return;
 
   await queueService.add('send_scheduled_notification', {
     templateId: 0,
@@ -70,6 +70,8 @@ export async function scheduleBirthdayGreeting(
 
   const delay = nextBirthday.getTime() - now.getTime();
 
+  if (!Number.isFinite(delay) || delay <= 0) return;
+
   await queueService.add('send_scheduled_notification', {
     templateId: 0,
     userId,
@@ -89,7 +91,7 @@ export async function scheduleReviewReminder(
   const reminderTime = new Date(completionTime.getTime() + 24 * 60 * 60 * 1000);
   const delay = reminderTime.getTime() - Date.now();
 
-  if (delay <= 0) return;
+  if (!Number.isFinite(delay) || delay <= 0) return;
 
   await queueService.add('send_scheduled_notification', {
     templateId: 0,
