@@ -1,3 +1,4 @@
+import path from 'node:path'
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
@@ -5,6 +6,11 @@ import { VitePWA } from 'vite-plugin-pwa'
 const backend = process.env.BACKEND_URL || 'http://127.0.0.1:3000'
 
 export default defineConfig(({ command }) => ({
+  resolve: {
+    alias: {
+      '@courtzon/shared': path.resolve(__dirname, '../packages/shared/src'),
+    },
+  },
   plugins: [
     react(),
     // Service worker auto-update reloads the page during `npm run dev` and causes visible flicker.

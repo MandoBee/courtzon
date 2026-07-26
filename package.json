@@ -1,6 +1,9 @@
 {
   "name": "courtzon-v2",
   "private": true,
+  "workspaces": [
+    "packages/shared"
+  ],
   "scripts": {
     "test:e2e": "playwright test",
     "test:e2e:ci": "playwright test --grep \"Smoke — public\""

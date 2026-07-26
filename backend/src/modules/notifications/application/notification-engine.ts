@@ -1,7 +1,7 @@
 import { eventBusV2 } from '../../../shared/event-bus/index.js';
 import { dispatchToUser, dispatchByRole, dispatchByOrg } from './dispatcher.service.js';
 import { createModuleLogger } from '../../../shared/utils/logger.js';
-import type { NotificationAction } from '../../../platform/shared/types.js';
+import type { NotificationAction } from '@courtzon/shared/types';
 
 const log = createModuleLogger('notification-engine');
 

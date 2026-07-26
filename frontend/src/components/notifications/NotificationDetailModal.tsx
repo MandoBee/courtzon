@@ -7,7 +7,7 @@ import { notificationsApi } from '../../services/notifications';
 import api from '../../services/api';
 import { formatDateTime } from '../../utils/formatDate';
 import { getNotificationRoute } from '../../utils/notificationRoutes';
-import type { NotificationAction } from '../../types/notificationAction';
+import type { NotificationAction } from '@courtzon/shared/types';
 
 export interface AppNotification {
   id: number;

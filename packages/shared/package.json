@@ -1,0 +1,14 @@
+{
+  "name": "@courtzon/shared",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./types": {
+      "import": "./src/types.ts",
+      "types": "./src/types.ts"
+    }
+  },
+  "main": "./src/types.ts",
+  "types": "./src/types.ts"
+}

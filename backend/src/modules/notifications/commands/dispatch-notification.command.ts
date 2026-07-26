@@ -1,6 +1,6 @@
 import type { PoolConnection } from 'mysql2/promise';
 import { createModuleLogger } from '../../../shared/utils/logger.js';
-import type { NotificationAction } from '../../../platform/shared/types.js';
+import type { NotificationAction } from '@courtzon/shared/types';
 import { notificationRepository } from '../infrastructure/repositories/notification.repository.js';
 import { getTemplate, resolveTemplate } from '../application/template.service.js';
 import { checkRateLimit, incrementRateLimit } from '../application/rate-limiter.service.js';
