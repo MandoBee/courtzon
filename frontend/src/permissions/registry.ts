@@ -720,6 +720,10 @@ export const uiRegistry: UIElement[] = [
   { permissionKey: 'notifications.dead-letters', moduleSlug: 'notifications', elementType: 'page', elementLabel: 'Dead Letter Queue', componentPath: 'pages/notifications/AdminDeadLettersPage.tsx' },
   { permissionKey: 'notifications.templates', moduleSlug: 'notifications', elementType: 'page', elementLabel: 'Manage Notification Templates', componentPath: 'pages/notifications/AdminTemplatesPage.tsx' },
   { permissionKey: 'notifications.schedule', moduleSlug: 'notifications', elementType: 'action', elementLabel: 'Schedule Notifications', componentPath: 'pages/notifications/AdminBroadcastPage.tsx' },
+  { permissionKey: 'notification_types.view', moduleSlug: 'notifications', elementType: 'page', elementLabel: 'View Notification Types', componentPath: 'modules/notifications/presentation/notification-type.routes.ts' },
+  { permissionKey: 'notification_types.create', moduleSlug: 'notifications', elementType: 'action', elementLabel: 'Create Notification Type', componentPath: 'modules/notifications/presentation/notification-type.routes.ts' },
+  { permissionKey: 'notification_types.update', moduleSlug: 'notifications', elementType: 'action', elementLabel: 'Update Notification Type', componentPath: 'modules/notifications/presentation/notification-type.routes.ts' },
+  { permissionKey: 'notification_types.delete', moduleSlug: 'notifications', elementType: 'action', elementLabel: 'Delete Notification Type', componentPath: 'modules/notifications/presentation/notification-type.routes.ts' },
   { permissionKey: 'sidebar.notifications', moduleSlug: 'notifications', elementType: 'tab', elementLabel: 'Sidebar: Notifications', componentPath: 'components/layout/AdminSidebar.tsx' },
   { permissionKey: 'bookings.apply', moduleSlug: 'bookings', elementType: 'button', elementLabel: 'Apply to Match', componentPath: 'pages/booking/MatchListPage.tsx' },
 

@@ -44,6 +44,7 @@ import { amenitiesRoutes } from "./modules/amenities/presentation/amenities.rout
 import { banksRoutes } from "./modules/banks/presentation/banks.routes.js";
 import { publicFeatureFlagsRoutes } from "./modules/rbac/presentation/feature-flags.routes.js";
 import { notificationRoutes } from "./modules/notifications/presentation/notification.routes.js";
+import { notificationTypeRoutes } from "./modules/notifications/presentation/notification-type.routes.js";
 import { financialAdminRoutes } from "./modules/financial/presentation/financial-admin.routes.js";
 import { couponRoutes } from "./modules/coupon/presentation/coupon.routes.js";
 import { appearanceRoutes, designTokenRoutes, publicThemeRoutes } from "./modules/design-tokens/presentation/design-token.routes.js";
@@ -498,6 +499,7 @@ app.register(adminTagRoutes);
   app.register(schedulingRoutes);
   app.register(sidebarLayoutRoutes);
   app.register(notificationRoutes);
+  app.register(notificationTypeRoutes);
   app.register(financialAdminRoutes);
   app.register(couponRoutes);
   app.register(designTokenRoutes);
