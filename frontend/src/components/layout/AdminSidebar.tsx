@@ -140,6 +140,7 @@ function buildNavItems(t: (key: string) => string, can: (perm: string) => boolea
         { label: 'Failed Logins', path: '/admin/security/failed-logins', permissionKey: 'sidebar.failed-logins' },
         { label: 'Upload Security', path: '/admin/security/uploads', permissionKey: 'sidebar.upload-security' },
         { label: 'System Health', path: '/admin/security/system-health', permissionKey: 'sidebar.system-health' },
+        { label: 'System Admin', path: '/admin/system', permissionKey: 'system_settings.view' },
         { label: 'Audit Log', path: '/admin/audit-logs', permissionKey: 'sidebar.audit' },
         { label: 'Feature Flags', path: '/admin/feature-flags', permissionKey: 'sidebar.feature-flags' },
       ],

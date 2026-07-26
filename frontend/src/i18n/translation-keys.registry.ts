@@ -919,6 +919,28 @@ export const translationKeysRegistry: TranslationKeyEntry[] = [
   { key: 'templates.title_template', defaultValue: 'Title Template', moduleSlug: 'notification', elementType: 'label', elementLabel: 'Template title template field' },
   { key: 'templates.body_template', defaultValue: 'Body Template', moduleSlug: 'notification', elementType: 'label', elementLabel: 'Template body template field' },
   { key: 'templates.is_active', defaultValue: 'Active', moduleSlug: 'notification', elementType: 'label', elementLabel: 'Template is active checkbox' },
+
+  // ── Admin System ──
+  { key: 'admin.system.title', defaultValue: 'System Administration', moduleSlug: 'admin', elementType: 'heading', elementLabel: 'System admin page title' },
+  { key: 'admin.system.tab.settings', defaultValue: 'Settings', moduleSlug: 'admin', elementType: 'tab', elementLabel: 'System settings tab' },
+  { key: 'admin.system.tab.feature-flags', defaultValue: 'Feature Flags', moduleSlug: 'admin', elementType: 'tab', elementLabel: 'Feature flags tab' },
+  { key: 'admin.system.tab.health', defaultValue: 'Health', moduleSlug: 'admin', elementType: 'tab', elementLabel: 'Health dashboard tab' },
+  { key: 'admin.system.tab.cache', defaultValue: 'Cache', moduleSlug: 'admin', elementType: 'tab', elementLabel: 'Cache management tab' },
+  { key: 'admin.system.tab.queues', defaultValue: 'Queues', moduleSlug: 'admin', elementType: 'tab', elementLabel: 'Queue monitoring tab' },
+  { key: 'admin.system.tab.audit', defaultValue: 'Audit', moduleSlug: 'admin', elementType: 'tab', elementLabel: 'Audit viewer tab' },
+  { key: 'admin.system.search_settings', defaultValue: 'Search settings...', moduleSlug: 'admin', elementType: 'placeholder', elementLabel: 'Settings search' },
+  { key: 'admin.system.all_categories', defaultValue: 'All Categories', moduleSlug: 'admin', elementType: 'placeholder', elementLabel: 'Settings category filter' },
+  { key: 'admin.system.setting_updated', defaultValue: 'Setting updated', moduleSlug: 'admin', elementType: 'message', elementLabel: 'Setting updated toast' },
+  { key: 'admin.system.flag_toggled', defaultValue: 'Feature flag toggled', moduleSlug: 'admin', elementType: 'message', elementLabel: 'Feature flag toggled toast' },
+  { key: 'admin.system.empty_flags', defaultValue: 'No feature flags configured', moduleSlug: 'admin', elementType: 'text', elementLabel: 'Empty feature flags' },
+  { key: 'admin.system.cache_cleared', defaultValue: 'Cache cleared', moduleSlug: 'admin', elementType: 'message', elementLabel: 'Cache cleared toast' },
+  { key: 'admin.system.cache_clear_confirm', defaultValue: 'Clear all cache? This may slow down the application temporarily.', moduleSlug: 'admin', elementType: 'message', elementLabel: 'Cache clear confirmation' },
+  { key: 'admin.system.health.database', defaultValue: 'Database', moduleSlug: 'admin', elementType: 'label', elementLabel: 'Health database label' },
+  { key: 'admin.system.health.redis', defaultValue: 'Redis', moduleSlug: 'admin', elementType: 'label', elementLabel: 'Health redis label' },
+  { key: 'admin.system.health.memory', defaultValue: 'Memory Usage', moduleSlug: 'admin', elementType: 'label', elementLabel: 'Health memory label' },
+  { key: 'admin.system.health.uptime', defaultValue: 'Uptime', moduleSlug: 'admin', elementType: 'label', elementLabel: 'Health uptime label' },
+  { key: 'admin.system.health.sockets', defaultValue: 'Socket Connections', moduleSlug: 'admin', elementType: 'label', elementLabel: 'Health sockets label' },
+  { key: 'admin.system.health.version', defaultValue: 'App Version', moduleSlug: 'admin', elementType: 'label', elementLabel: 'Health version label' },
 ];
 
 /** Build a key \u2192 English default map for offline/runtime fallback. */
