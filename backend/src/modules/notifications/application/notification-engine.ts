@@ -649,7 +649,6 @@ class NotificationEngine {
         continue;
       }
       eventBusV2.on(event as any, (data) => {
-        console.log(`[FLOW] ▶ notification-engine: "${event}" received, dispatching...`);
         this.handleEvent(event, handler, data).catch((err) => {
           log.error({ err, event }, 'Error handling event');
         });

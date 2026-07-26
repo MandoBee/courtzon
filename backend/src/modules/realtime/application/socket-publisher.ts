@@ -54,7 +54,6 @@ export class SocketPublisher {
 
     for (const eventName of subscribedEvents) {
       eventBusV2.on(eventName, (data: any) => {
-        console.log(`[FLOW] ▶ socket-publisher: "${eventName}" received, publishing to rooms`);
         this.publish(eventName, data);
       });
     }
@@ -64,22 +63,17 @@ export class SocketPublisher {
 
   private publish(eventName: string, payload: Record<string, unknown>): void {
     if (!this.io) {
-      console.log(`[TRACE][Socket][+0ms][${new Date().toISOString()}] [publish:${eventName}] SKIPPED — no io instance`);
       return;
     }
 
-    const _pubStart = Date.now();
     const mapped = mapDomainEvent(eventName, payload);
     if (!mapped) {
       eventsDroppedTotal.inc({ event_name: eventName });
-      console.log(`[TRACE][Socket][+0ms][${new Date().toISOString()}] [publish:${eventName}] DROPPED — no socket mapping`);
       return;
     }
 
-    console.log(`[TRACE][Socket][+${Date.now() - _pubStart}ms][${new Date().toISOString()}] [publish:${eventName}] → mapped to "${mapped.type}" rooms=${JSON.stringify(mapped.rooms)}`);
     for (const room of mapped.rooms) {
       this.io.to(room).emit(mapped.type, mapped.payload);
-      console.log(`[TRACE][Socket][+${Date.now() - _pubStart}ms][${new Date().toISOString()}] [publish:${eventName}] EMITTED to room=${room}`);
     }
 
     eventsPublishedTotal.inc({ event_type: mapped.type });

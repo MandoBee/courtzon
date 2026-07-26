@@ -161,7 +161,6 @@ export class BookingService {
           input.resourceId, bookingDate, individualSlots.map((s) => ({ start: s.start, end: s.end, date: bookingDate })), conn,
         );
       if (!available) throw new ConflictError('One or more slots are no longer available');
-      console.log(`[FLOW] ▶ prepareGatewayBooking: Slots available, creating Paymob intention...`);
 
         // Create booking with pending_payment status + expires_at (3 min TTL)
         // The booking blocks availability immediately. Expiry worker auto-cancels if payment not confirmed.
@@ -392,7 +391,6 @@ export class BookingService {
 
   async prepareGatewayBooking(input: PrepareBookingInput, userId: number) {
     const pool = getPool();
-    console.log(`[FLOW] ▶ prepareGatewayBooking START userId=${userId} resourceId=${input.resourceId} date=${input.bookingDate} ${input.startTime}-${input.endTime}`);
 
     // Derive organisation_id from branch
     const [branchRows] = await pool.execute<RowData>(
@@ -451,7 +449,6 @@ export class BookingService {
     if (!lockAcquired) {
       throw new ConflictError('One or more slots are currently being booked by another user. Please try again.');
     }
-    console.log(`[FLOW] ▶ prepareGatewayBooking: Redis locks acquired for ${lockSlots.length} slots`);
 
     try {
       // Check slot availability
@@ -481,7 +478,6 @@ export class BookingService {
       if (!gwResult.success) {
         throw new ConflictError((gwResult as any).errorMessage || 'Payment gateway rejected the transaction');
       }
-      console.log(`[FLOW] ▶ prepareGatewayBooking: Paymob intention created, paymentId=${gwResult.paymentId}`);
 
       // Store prepare data in Redis
       const redis = getRedisClient();
@@ -499,7 +495,6 @@ export class BookingService {
         timezone: branchTz,
       });
       await redis.set(`booking:prepare:${prepareId}`, prepareData, 'PX', 600000);
-      console.log(`[FLOW] ✓ prepareGatewayBooking DONE → prepareId=${prepareId} paymentId=${gwResult.paymentId} clientSecret=${gwResult.clientSecret ? 'SET' : 'NULL'}`);
 
       return {
         prepareId,
@@ -525,7 +520,6 @@ export class BookingService {
   }
 
   async _createFromPrepare(prepareId: string, paymentId: number | undefined, userId: number) {
-    console.log(`[FLOW] ▶ _createFromPrepare START prepareId=${prepareId} userId=${userId}`);
     const redis = getRedisClient();
     const raw = await redis.get(`booking:prepare:${prepareId}`);
     if (!raw) throw new NotFoundError('Booking preparation session expired or not found');
@@ -558,7 +552,6 @@ export class BookingService {
       }
 
       // Create booking as pending_payment
-      console.log(`[FLOW] ▶ _createFromPrepare: Creating booking (pending_payment)...`);
       const bookingId = await bookingRepository.create({
         userId, branchId: data.branchId, organisationId: data.organisationId, resourceId: data.resourceId,
         bookingType: data.bookingType, bookingDate: data.bookingDate,
@@ -590,22 +583,18 @@ export class BookingService {
         organisationId: data.organisationId,
         branchId: data.branchId,
       }, undefined, conn);
-      console.log(`[FLOW] ▶ _createFromPrepare: booking:created event emitted (in tx)`);
 
       await conn.commit();
-      console.log(`[FLOW] ✓ _createFromPrepare: Booking #${bookingId} committed with ${data.individualSlots.length} slots`);
 
       // Fire any after-commit hooks registered by eventBusV2.emit (manual commit path)
       const { flushAfterCommitHooks } = await import('../../../database/database.transaction.js');
       await flushAfterCommitHooks();
-      console.log(`[FLOW] ✓ _createFromPrepare: after-commit hooks flushed`);
 
       // Link the payment transaction to this booking
       // createGatewayIntention stores with referenceType='booking_prepare' and booking_id=NULL
       // We use the paymentId stored in Redis during prepare to find the transaction
       const cachedPaymentId = data.paymentId;
       let paymentAlreadyPaid = false;
-      console.log(`[FLOW] ▶ _createFromPrepare: Linking payment ${cachedPaymentId || 'FALLBACK'} to booking #${bookingId}...`);
       if (cachedPaymentId) {
         const [linkResult] = await pool.execute<RowData>(
           `UPDATE payment_transactions SET booking_id = ?, reference_type = 'booking'
@@ -644,7 +633,6 @@ export class BookingService {
       // If webhook already arrived and marked the payment as 'paid' before we linked it,
       // the listener never fired (wrong referenceType). Confirm now.
       if (paymentAlreadyPaid) {
-        console.log(`[FLOW] ⚡ _createFromPrepare: Payment ALREADY PAID — auto-confirming booking #${bookingId}`);
         try {
           await executeBookingCommand('ConfirmBooking', confirmBookingHandler, {
             bookingId,
@@ -658,7 +646,6 @@ export class BookingService {
       }
 
       const booking = await bookingRepository.findById(bookingId);
-      console.log(`[FLOW] ✓ _createFromPrepare DONE → bookingId=${bookingId} status=${booking?.booking_status}`);
       return { ...booking, timezone: data.timezone || 'Africa/Cairo' };
     } catch (err) {
       try { await conn.rollback(); } catch {}

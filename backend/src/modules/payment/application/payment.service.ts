@@ -198,15 +198,7 @@ export class PaymentService {
    *   All other statuses (intended, created, pending, processing, waiting) → ignored.
    */
   async handleWebhook(payload: unknown, signature: string) {
-    const _whStart = Date.now();
-    const _whTrace = (label: string, extra?: string) => {
-      const now = Date.now();
-      console.log(`[TRACE][Webhook][+${now - _whStart}ms][${new Date(now).toISOString()}] [handleWebhook] ${label}${extra ? ' ' + extra : ''}`);
-    };
-    _whTrace('ENTRY');
-    console.log(`[FLOW] ▶ handleWebhook RECEIVED`);
     const valid = await paymentGateway.verifyWebhook(payload, signature);
-    _whTrace('HMAC verified', `valid=${valid}`);
     if (!valid) {
       log.error({
         msg: 'HMAC verification failed',
@@ -286,7 +278,6 @@ export class PaymentService {
       // (success + pending), NOT a string "status" field.
       if (obj.pending === true) {
         log.info({ possibleRefs, objSuccess: obj.success, objPending: obj.pending }, 'Intention API webhook: transaction still pending, ignoring');
-        console.log(`[FLOW] ✗ handleWebhook: Intention API pending=true — ignored`);
         return { received: true, note: 'ignored' };
       }
       if (obj.success === true) {
@@ -298,7 +289,6 @@ export class PaymentService {
       if (newStatus === 'failed') {
         log.warn({ possibleRefs, objSuccess: obj.success, objPending: obj.pending }, 'Intention webhook: payment failed');
       }
-      console.log(`[FLOW] ▶ handleWebhook: Intention API success=${obj.success} pending=${obj.pending} → newStatus="${newStatus}"`);
     } else {
       // Accept API webhook: use success flag, but respect pending
       if (obj.success === true) {
@@ -346,8 +336,6 @@ export class PaymentService {
       throw new NotFoundError('Payment transaction');
     }
 
-    _whTrace('PAYMENT FOUND', `id=${(preCheck as any).id} payment_status=${(preCheck as any).payment_status} resolvedGatewayRef=${resolvedGatewayRef}`);
-
     const traceId = (preCheck as any).trace_id || '';
 
     // --- cancelled / expired → direct status update + cancel pending booking ---
@@ -381,8 +369,6 @@ export class PaymentService {
     }
 
     // --- paid / failed → full outcome processing ---
-    console.log(`[FLOW] ▶ handleWebhook: Processing ${newStatus} via _processPaymentOutcome...`);
-    _whTrace('ENTERING _processPaymentOutcome', `newStatus=${newStatus} gatewayRef=${resolvedGatewayRef}`);
     log.info({ gatewayRef: resolvedGatewayRef, newStatus, traceId }, 'PAYMENT PATH = WEBHOOK');
     const paidResult = await withTransaction(async (conn) => {
       const transaction = await paymentRepository.lockByGatewayRef(resolvedGatewayRef, conn);
@@ -395,7 +381,6 @@ export class PaymentService {
 
     // Events already emitted inside _processPaymentOutcome — no duplicate needed here.
 
-    _whTrace('EXITING handleWebhook', `result.idempotent=${paidResult.idempotent}`);
     return paidResult;
   }
 
@@ -511,17 +496,10 @@ export class PaymentService {
     gatewayStatus?: string,
     payloadSuccess?: boolean,
   ): Promise<{ idempotent: boolean }> {
-    const _opmStart = Date.now();
     // Idempotency: skip if already in a final state
     if (FINAL_STATES.has(transaction.payment_status)) {
-      console.log(`[FLOW] ✗ _processPaymentOutcome: Already final "${transaction.payment_status}" — idempotent skip`);
       log.info({ traceId, txnId: transaction.id, status: transaction.payment_status, source }, 'Already final — idempotent skip');
       return { idempotent: true };
-    }
-    console.log(`[FLOW] ▶ _processPaymentOutcome: txn#${transaction.id} ${transaction.payment_status} → ${newStatus} (source=${source})`);
-    {
-      const _now = Date.now();
-      console.log(`[TRACE][EventBus][+${_now - _opmStart}ms][${new Date(_now).toISOString()}] [_processPaymentOutcome:${transaction.id}] ENTRY source=${source} oldStatus=${transaction.payment_status} newStatus=${newStatus}`);
     }
 
     // Log every status change (BEFORE every UPDATE)
@@ -558,10 +536,6 @@ export class PaymentService {
     if (updateResult.affectedRows === 0) {
       // Another process beat us — idempotent exit
       log.info({ traceId, txnId: transaction.id, source }, 'Race condition — another process already updated status');
-      {
-        const _now = Date.now();
-        console.log(`[TRACE][EventBus][+${_now - _opmStart}ms][${new Date(_now).toISOString()}] [_processPaymentOutcome:${transaction.id}] IDEMPOTENT SKIP (another process updated)`);
-      }
       return { idempotent: true };
     }
 
@@ -579,11 +553,6 @@ export class PaymentService {
       gateway: paymentGateway.provider,
     };
     if (newStatus === 'paid') {
-      console.log(`[FLOW] ▶ _processPaymentOutcome: Emitting payment:succeeded + payment:completed (refType=${transaction.reference_type} refId=${refId})`);
-      {
-        const _now = Date.now();
-        console.log(`[TRACE][EventBus][+${_now - _opmStart}ms][${new Date(_now).toISOString()}] [_processPaymentOutcome:${transaction.id}] DB_UPDATE_DONE affectedRows=${updateResult.affectedRows} → emitting payment:succeeded`);
-      }
       await eventBusV2.emit('payment:succeeded', {
         paymentId: transaction.id,
         referenceType: transaction.reference_type,
@@ -598,10 +567,6 @@ export class PaymentService {
         currency: commonMeta.currency,
         gateway: commonMeta.gateway,
       }, undefined, conn);
-      {
-        const _now = Date.now();
-        console.log(`[TRACE][EventBus][+${_now - _opmStart}ms][${new Date(_now).toISOString()}] [_processPaymentOutcome:${transaction.id}] payment:succeeded + payment:completed EMITTED (registered onAfterCommit hooks)`);
-      }
     } else if (newStatus === 'failed') {
       await eventBusV2.emit('payment:failed-event', {
         paymentId: transaction.id,
@@ -633,10 +598,6 @@ export class PaymentService {
     );
 
     log.info({ traceId, txnId: transaction.id, status: newStatus, source }, 'Payment outcome processed');
-    {
-      const _now = Date.now();
-      console.log(`[TRACE][EventBus][+${_now - _opmStart}ms][${new Date(_now).toISOString()}] [_processPaymentOutcome:${transaction.id}] EXIT source=${source} status=${newStatus}`);
-    }
 
     return { idempotent: false };
   }
@@ -647,16 +608,9 @@ export class PaymentService {
    * Returns immediately if already confirmed (idempotent).
    */
   async confirmPayment(paymentId: number) {
-    const totalStart = Date.now();
-    const _trace = (label: string, extra?: string) => {
-      const now = Date.now();
-      console.log(`[TRACE][HTTP][+${now - totalStart}ms][${new Date(now).toISOString()}] [confirmPayment:${paymentId}] ${label}${extra ? ' ' + extra : ''}`);
-    };
-    _trace('ENTRY');
     const transaction = await paymentRepository.findById(paymentId);
     if (!transaction) throw new NotFoundError('Payment transaction');
 
-    _trace('DB.findById done', `payment_status=${(transaction as any).payment_status} gateway_ref=${(transaction as any).gateway_reference}`);
     const traceId = (transaction as any).trace_id || randomUUID();
 
     const meta = {
@@ -670,8 +624,7 @@ export class PaymentService {
 
     // Already in a final paid state → idempotent success
     if ((transaction as any).payment_status === 'paid') {
-      _trace('FAST PATH: already paid → returning immediately');
-      log.info({ ...meta, localStatus: 'paid', idempotent: true, totalDurationMs: Date.now() - totalStart }, 'Payment already confirmed — idempotent');
+      log.info({ ...meta, localStatus: 'paid', idempotent: true }, 'Payment already confirmed — idempotent');
       return { confirmed: true, idempotent: true, paymentStatus: 'paid' };
     }
 
@@ -680,7 +633,6 @@ export class PaymentService {
     // ── Verify with Paymob (retry up to 60s for pending → paid transition) ──
     const RETRY_MS = 60_000;
     const POLL_INTERVAL = 1_000;
-    _trace('ENTERING PAYMOB POLLING LOOP', `RETRY_MS=${RETRY_MS} POLL_INTERVAL=${POLL_INTERVAL}`);
     const verifyStart = Date.now();
     let remoteStatus: any;
     let paymobError: string | undefined;
@@ -689,7 +641,6 @@ export class PaymentService {
 
     while (Date.now() - verifyStart < RETRY_MS) {
       _pollIteration++;
-      _trace(`POLL_ITERATION_${_pollIteration}`, `elapsed=${Date.now() - verifyStart}ms calling getTransactionStatus...`);
       paymobError = undefined;
       remoteStatus = undefined;
       try {
@@ -708,32 +659,27 @@ export class PaymentService {
       }
 
       const s = remoteStatus.status || 'unknown';
-      _trace(`POLL_RESULT_${_pollIteration}`, `paymob_status="${s}" elapsed=${Date.now() - verifyStart}ms`);
-      if (s === 'paid' || s === 'failed') { _trace(`POLL_LOOP_BREAK`, `status="${s}" after ${_pollIteration} iterations, ${Date.now() - verifyStart}ms total`); break; }
+      if (s === 'paid' || s === 'failed') { break; }
 
       await new Promise((r) => setTimeout(r, POLL_INTERVAL));
     }
 
     const verificationDurationMs = Date.now() - verifyStart;
-    _trace('POLLING LOOP EXITED', `verificationDurationMs=${verificationDurationMs} paymobError=${paymobError || 'none'} remoteStatus=${remoteStatus?.status || 'null'}`);
 
     if (paymobError || !remoteStatus) {
-      log.error({ ...meta, error: paymobError, verificationDurationMs, totalDurationMs: Date.now() - totalStart }, 'Paymob verification failed after retries');
+      log.error({ ...meta, error: paymobError, verificationDurationMs }, 'Paymob verification failed after retries');
       return { confirmed: false, paymentStatus: 'pending', error: paymobError, note: 'Failed to verify with Paymob — will rely on webhook' };
     }
 
     const paymobStatus = remoteStatus.status || 'unknown';
-    console.log(`[FLOW] ▶ confirmPayment: Paymob status="${paymobStatus}"`);
 
     if (paymobStatus === 'paid' || paymobStatus === 'failed') {
       const newStatus = paymobStatus === 'paid' ? 'paid' as const : 'failed' as const;
-      _trace('ENTERING _processPaymentOutcome', `newStatus=${newStatus}`);
 
       let confirmed = false;
       let idempotent = false;
       let outcomeError: string | undefined;
 
-      const txnStart = Date.now();
       try {
         await withTransaction(async (conn) => {
           const locked = await paymentRepository.lockById(paymentId, conn);
@@ -755,10 +701,6 @@ export class PaymentService {
         bookingId = (updated as any)?.booking_id || null;
       }
 
-      const txnDurationMs = Date.now() - txnStart;
-      const totalDurationMs = Date.now() - totalStart;
-      _trace('EXITING confirmPayment', `confirmed=${confirmed} idempotent=${idempotent} totalDurationMs=${totalDurationMs} bookingId=${bookingId}`);
-
       log.info({
         ...meta,
         paymobStatus,
@@ -767,8 +709,6 @@ export class PaymentService {
         bookingId,
         confirmationSource: 'confirm',
         verificationDurationMs,
-        txnDurationMs,
-        totalDurationMs,
         finalStatus: newStatus,
         error: outcomeError || undefined,
       }, 'Payment confirmation processed');
@@ -780,20 +720,17 @@ export class PaymentService {
         bookingId,
         paymobStatus,
         verificationDurationMs,
-        totalDurationMs,
         error: outcomeError,
       };
     }
 
     // Paymob returned pending/unpaid
-    const totalDurationMs = Date.now() - totalStart;
     log.info({
       ...meta,
       paymobStatus,
       localStatus: transaction.payment_status,
       idempotent: false,
       verificationDurationMs,
-      totalDurationMs,
       finalStatus: transaction.payment_status,
     }, 'Payment not yet confirmed by Paymob — pending');
 
@@ -802,7 +739,6 @@ export class PaymentService {
       paymentStatus: paymobStatus,
       note: `Remote status is '${paymobStatus}' — not yet confirmed`,
       verificationDurationMs,
-      totalDurationMs,
     };
   }
 
