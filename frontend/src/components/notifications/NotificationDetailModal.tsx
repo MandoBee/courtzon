@@ -81,7 +81,7 @@ export default function NotificationDetailModal({
   const categoryLabel = notification.category_slug
     ? notification.category_slug.replace(/_/g, ' ')
     : null;
-  const route = getNotificationRoute(notification);
+  const route = getNotificationRoute(notification.action);
 
   return (
     <Modal open={open} onClose={onClose} title={notification.title} size="md">
