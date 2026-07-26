@@ -941,6 +941,28 @@ export const translationKeysRegistry: TranslationKeyEntry[] = [
   { key: 'admin.system.health.uptime', defaultValue: 'Uptime', moduleSlug: 'admin', elementType: 'label', elementLabel: 'Health uptime label' },
   { key: 'admin.system.health.sockets', defaultValue: 'Socket Connections', moduleSlug: 'admin', elementType: 'label', elementLabel: 'Health sockets label' },
   { key: 'admin.system.health.version', defaultValue: 'App Version', moduleSlug: 'admin', elementType: 'label', elementLabel: 'Health version label' },
+
+  // ── Membership ──
+  { key: 'membership.title', defaultValue: 'Membership Management', moduleSlug: 'membership', elementType: 'heading', elementLabel: 'Membership page title' },
+  { key: 'membership.tab.plans', defaultValue: 'Plans', moduleSlug: 'membership', elementType: 'tab', elementLabel: 'Membership plans tab' },
+  { key: 'membership.tab.assignments', defaultValue: 'Assignments', moduleSlug: 'membership', elementType: 'tab', elementLabel: 'Membership assignments tab' },
+  { key: 'membership.create_plan', defaultValue: 'Create Plan', moduleSlug: 'membership', elementType: 'button', elementLabel: 'Create plan button' },
+  { key: 'membership.edit_plan', defaultValue: 'Edit Plan', moduleSlug: 'membership', elementType: 'heading', elementLabel: 'Edit plan modal title' },
+  { key: 'membership.plan_created', defaultValue: 'Plan created', moduleSlug: 'membership', elementType: 'message', elementLabel: 'Plan created toast' },
+  { key: 'membership.plan_updated', defaultValue: 'Plan updated', moduleSlug: 'membership', elementType: 'message', elementLabel: 'Plan updated toast' },
+  { key: 'membership.search_plans', defaultValue: 'Search plans...', moduleSlug: 'membership', elementType: 'placeholder', elementLabel: 'Search plans placeholder' },
+  { key: 'membership.code', defaultValue: 'Code', moduleSlug: 'membership', elementType: 'label', elementLabel: 'Plan code field' },
+  { key: 'membership.name', defaultValue: 'Name', moduleSlug: 'membership', elementType: 'label', elementLabel: 'Plan name field' },
+  { key: 'membership.description', defaultValue: 'Description', moduleSlug: 'membership', elementType: 'label', elementLabel: 'Plan description field' },
+  { key: 'membership.plan_type', defaultValue: 'Plan Type', moduleSlug: 'membership', elementType: 'label', elementLabel: 'Plan type field' },
+  { key: 'membership.duration_days', defaultValue: 'Duration (days)', moduleSlug: 'membership', elementType: 'label', elementLabel: 'Duration days field' },
+  { key: 'membership.price', defaultValue: 'Price', moduleSlug: 'membership', elementType: 'label', elementLabel: 'Plan price field' },
+  { key: 'membership.currency', defaultValue: 'Currency', moduleSlug: 'membership', elementType: 'label', elementLabel: 'Plan currency field' },
+  { key: 'membership.is_public', defaultValue: 'Public', moduleSlug: 'membership', elementType: 'label', elementLabel: 'Is public checkbox' },
+  { key: 'membership.assign', defaultValue: 'Assign Membership', moduleSlug: 'membership', elementType: 'button', elementLabel: 'Assign membership button' },
+  { key: 'membership.assigned', defaultValue: 'Membership assigned', moduleSlug: 'membership', elementType: 'message', elementLabel: 'Assigned toast' },
+  { key: 'membership.plan', defaultValue: 'Plan', moduleSlug: 'membership', elementType: 'label', elementLabel: 'Plan select label' },
+  { key: 'membership.select_plan', defaultValue: 'Select plan...', moduleSlug: 'membership', elementType: 'placeholder', elementLabel: 'Select plan placeholder' },
 ];
 
 /** Build a key \u2192 English default map for offline/runtime fallback. */
