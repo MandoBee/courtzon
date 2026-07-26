@@ -22,7 +22,6 @@ export interface AppNotification {
   action_payload?: Record<string, unknown> | null;
   related_entity_type?: string | null;
   related_entity_id?: string | null;
-  action?: { screen: string; params?: Record<string, unknown> } | null;
 }
 
 interface NotificationDetailModalProps {

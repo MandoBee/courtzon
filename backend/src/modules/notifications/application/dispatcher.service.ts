@@ -36,6 +36,8 @@ export interface DispatchOptions {
   actionKey?: string;
   actionPayload?: Record<string, any>;
   digestable?: boolean;
+  route?: string;
+  tab?: string;
 }
 
 export async function dispatchToUser(options: DispatchOptions): Promise<void> {
@@ -64,13 +66,19 @@ export async function dispatchToUser(options: DispatchOptions): Promise<void> {
 
   const resolved = resolveTemplate(template, data);
 
+  const actionPayload = {
+    ...(options.actionPayload || {}),
+    ...(options.route ? { route: options.route } : {}),
+    ...(options.tab ? { tab: options.tab } : {}),
+  };
+
   const notificationId = await notificationRepository.create({
     userId,
     title: resolved.title,
     body: resolved.body ?? undefined,
     categorySlug,
     actionKey: options.actionKey ?? template.actionKey ?? undefined,
-    actionPayload: options.actionPayload,
+    actionPayload,
     type: options.type ?? template.type ?? 'info',
     priority: options.priority ?? template.priority ?? 'normal',
     organisationId: options.organisationId,
@@ -100,7 +108,7 @@ export async function dispatchToUser(options: DispatchOptions): Promise<void> {
     title: resolved.title,
     body: resolved.body ?? undefined,
     actionKey: options.actionKey ?? template.actionKey ?? undefined,
-    actionPayload: options.actionPayload,
+    actionPayload,
     actions: (options.actions ?? template.actions) ?? undefined,
     imageUrls: options.imageUrls,
     priority: options.priority ?? template.priority,
@@ -279,6 +287,11 @@ export async function dispatchByUserIdsBulk(
 }
 
 async function dispatchToUserV2(options: DispatchOptions): Promise<void> {
+  const actionPayload = {
+    ...(options.actionPayload || {}),
+    ...(options.route ? { route: options.route } : {}),
+    ...(options.tab ? { tab: options.tab } : {}),
+  };
   const command: Command = {
     commandId: `dispatch-notification-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     commandType: 'DispatchNotification',
@@ -294,7 +307,7 @@ async function dispatchToUserV2(options: DispatchOptions): Promise<void> {
       relatedEntityType: options.relatedEntityType,
       relatedEntityId: options.relatedEntityId,
       senderId: options.senderId,
-      actionPayload: options.actionPayload,
+      actionPayload,
       actions: options.actions,
       imageUrls: options.imageUrls,
       digestable: options.digestable,
