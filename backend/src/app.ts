@@ -54,6 +54,7 @@ import { appSettingsRoutes } from "./modules/app-settings/presentation/app-setti
 import { geoRoutes } from "./modules/geo/presentation/geo.routes.js";
 import { matchRoutes } from "./modules/match/presentation/match.routes.js";
 import { schedulingRoutes } from "./modules/scheduling/presentation/scheduling.routes.js";
+import { adminRoutes, publicAdminRoutes } from "./modules/admin/presentation/admin.routes.js";
 import { createPool, getPool } from "./database/mysql.js";
 import type mysql from "mysql2/promise";
 import { AppError } from "./shared/errors/app-error.js";
@@ -509,6 +510,8 @@ app.register(adminTagRoutes);
   app.register(designTokenRoutes);
   app.register(appSettingsRoutes);
   app.register(publicThemeRoutes);
+  app.register(adminRoutes);
+  app.register(publicAdminRoutes);
   app.register(appearanceRoutes);
 
 function buildMeta(request: any) {

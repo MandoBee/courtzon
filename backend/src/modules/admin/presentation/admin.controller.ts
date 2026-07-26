@@ -1,0 +1,170 @@
+import type { FastifyRequest, FastifyReply } from 'fastify';
+import { systemSettingsService } from '../application/system-settings.service.js';
+import { featureFlagService } from '../application/feature-flag.service.js';
+import { healthService } from '../application/health.service.js';
+import { cacheService } from '../application/cache.service.js';
+import { queueAdminService } from '../application/queue.service.js';
+import { auditLogService, recordAudit } from '../../audit-log/index.js';
+import {
+  UpdateSettingSchema,
+  CreateFeatureFlagSchema,
+  UpdateFeatureFlagSchema,
+  ToggleFeatureFlagSchema,
+  ListSettingsQuerySchema,
+  ListFeatureFlagsQuerySchema,
+  ListAuditLogsQuerySchema,
+} from './admin.dto.js';
+
+function buildMeta(request: FastifyRequest) {
+  return { requestId: request.id, timestamp: new Date().toISOString() };
+}
+
+function sendSuccess(reply: FastifyReply, data: unknown, meta?: Record<string, unknown>, pagination?: Record<string, unknown>) {
+  const response: Record<string, unknown> = { data };
+  response.meta = { requestId: meta?.requestId, timestamp: meta?.timestamp, ...(meta?.code ? { code: meta.code } : {}) };
+  if (pagination) response.pagination = pagination;
+  return reply.send(response);
+}
+
+// ── Settings ─────────────────────────────────────────────────────────────
+
+export async function getSettingsHandler(request: FastifyRequest, reply: FastifyReply) {
+  const query = ListSettingsQuerySchema.parse(request.query);
+  const result = await systemSettingsService.list(query);
+  return sendSuccess(reply, result.data, buildMeta(request), result.pagination);
+}
+
+export async function getSettingByKeyHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { key } = request.params as { key: string };
+  const setting = await systemSettingsService.getByKey(key);
+  if (!setting) {
+    return reply.status(404).send({ error: 'NOT_FOUND', message: `Setting "${key}" not found`, meta: buildMeta(request) });
+  }
+  return sendSuccess(reply, setting, buildMeta(request));
+}
+
+export async function updateSettingHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { key } = request.params as { key: string };
+  const userId = (request as any).userId;
+  const body = UpdateSettingSchema.parse(request.body);
+  const updated = await systemSettingsService.update(key, body.value, userId);
+
+  recordAudit({
+    actorId: userId,
+    action: 'SETTINGS.UPDATE',
+    entityType: 'system_settings',
+    entityId: key,
+    beforeState: undefined,
+    afterState: { key, value: body.value },
+    ipAddress: request.ip,
+    userAgent: request.headers['user-agent'],
+  });
+
+  return sendSuccess(reply, updated, buildMeta(request));
+}
+
+export async function getSettingCategoriesHandler(_request: FastifyRequest, reply: FastifyReply) {
+  const categories = await systemSettingsService.getCategories();
+  return sendSuccess(reply, categories, buildMeta(_request));
+}
+
+export async function getPublicSettingsHandler(_request: FastifyRequest, reply: FastifyReply) {
+  const settings = await systemSettingsService.getPublic();
+  return sendSuccess(reply, settings, buildMeta(_request));
+}
+
+// ── Feature Flags ────────────────────────────────────────────────────────
+
+export async function listFeatureFlagsHandler(request: FastifyRequest, reply: FastifyReply) {
+  const query = ListFeatureFlagsQuerySchema.parse(request.query);
+  const result = await featureFlagService.list(query);
+  return sendSuccess(reply, result.data, buildMeta(request), result.pagination);
+}
+
+export async function createFeatureFlagHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = (request as any).userId;
+  const body = CreateFeatureFlagSchema.parse(request.body);
+  const flag = await featureFlagService.create(body, userId);
+  return reply.status(201).send(sendSuccess(reply, flag, { ...buildMeta(request), code: 'CREATED' }));
+}
+
+export async function updateFeatureFlagHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { id } = request.params as { id: string };
+  const userId = (request as any).userId;
+  const body = UpdateFeatureFlagSchema.parse(request.body);
+  const flag = await featureFlagService.update(Number(id), body, userId);
+  return sendSuccess(reply, flag, buildMeta(request));
+}
+
+export async function toggleFeatureFlagHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { id } = request.params as { id: string };
+  const userId = (request as any).userId;
+  const body = ToggleFeatureFlagSchema.parse(request.body);
+  const flag = await featureFlagService.toggle(Number(id), body.enabled, userId);
+  return sendSuccess(reply, flag, buildMeta(request));
+}
+
+export async function deleteFeatureFlagHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { id } = request.params as { id: string };
+  const userId = (request as any).userId;
+  await featureFlagService.delete(Number(id), userId);
+  return reply.status(204).send();
+}
+
+// ── Health ───────────────────────────────────────────────────────────────
+
+export async function getSystemHealthHandler(_request: FastifyRequest, reply: FastifyReply) {
+  const health = await healthService.getSystemHealth();
+  return sendSuccess(reply, health, buildMeta(_request));
+}
+
+// ── Cache ────────────────────────────────────────────────────────────────
+
+export async function getCacheStatsHandler(_request: FastifyRequest, reply: FastifyReply) {
+  const stats = await cacheService.getStats();
+  return sendSuccess(reply, stats, buildMeta(_request));
+}
+
+export async function clearCacheHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = (request as any).userId;
+  const { key } = request.body as { key?: string };
+
+  if (key) {
+    const result = await cacheService.clear(key);
+    return sendSuccess(reply, result, buildMeta(request));
+  }
+
+  await cacheService.clearAll(userId);
+  return sendSuccess(reply, { cleared: true }, buildMeta(request));
+}
+
+// ── Queues ───────────────────────────────────────────────────────────────
+
+export async function getQueueStatusHandler(_request: FastifyRequest, reply: FastifyReply) {
+  const status = await queueAdminService.getStatus();
+  return sendSuccess(reply, status, buildMeta(_request));
+}
+
+// ── Audit Logs ───────────────────────────────────────────────────────────
+
+export async function getAuditLogsHandler(request: FastifyRequest, reply: FastifyReply) {
+  const query = ListAuditLogsQuerySchema.parse(request.query);
+  const page = query.page || 1;
+  const limit = query.limit || 30;
+
+  const result = await auditLogService.findByFilters({
+    entityType: query.entityType,
+    action: query.action,
+    actorId: query.userId,
+    dateFrom: query.dateFrom,
+    dateTo: query.dateTo,
+    limit,
+    offset: (page - 1) * limit,
+  });
+
+  return sendSuccess(reply, result.rows, buildMeta(request), {
+    page,
+    limit,
+    total: result.total,
+  });
+}
