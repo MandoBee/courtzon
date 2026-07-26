@@ -282,28 +282,23 @@ export class PaymentService {
     let newStatus: string | null = null;
 
     if (isIntentionWebhook) {
-      // Intention API: only final statuses may update payment state
-      const STATUS_MAP: Record<string, string> = {
-        paid: 'paid',
-        success: 'paid',
-        captured: 'paid',
-        authorized: 'paid',
-        failed: 'failed',
-        cancelled: 'cancelled',
-        expired: 'expired',
-      };
-      newStatus = STATUS_MAP[obj.status];
-
-      if (obj.status === 'failed') {
-        log.warn({ possibleRefs, objStatus: obj.status, objSuccess: obj.success }, 'Intention webhook: payment failed');
-      }
-
-      if (!newStatus) {
-        log.info({ possibleRefs, status: obj.status }, 'Non-final webhook ignored');
-        console.log(`[FLOW] ✗ handleWebhook: Non-final status "${obj.status}" — ignored`);
+      // Intention API: payment outcome is conveyed via boolean flags
+      // (success + pending), NOT a string "status" field.
+      if (obj.pending === true) {
+        log.info({ possibleRefs, objSuccess: obj.success, objPending: obj.pending }, 'Intention API webhook: transaction still pending, ignoring');
+        console.log(`[FLOW] ✗ handleWebhook: Intention API pending=true — ignored`);
         return { received: true, note: 'ignored' };
       }
-      console.log(`[FLOW] ▶ handleWebhook: Intention API status="${obj.status}" → newStatus="${newStatus}"`);
+      if (obj.success === true) {
+        newStatus = 'paid';
+      } else {
+        newStatus = 'failed';
+      }
+
+      if (newStatus === 'failed') {
+        log.warn({ possibleRefs, objSuccess: obj.success, objPending: obj.pending }, 'Intention webhook: payment failed');
+      }
+      console.log(`[FLOW] ▶ handleWebhook: Intention API success=${obj.success} pending=${obj.pending} → newStatus="${newStatus}"`);
     } else {
       // Accept API webhook: use success flag, but respect pending
       if (obj.success === true) {
