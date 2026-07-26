@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../services/api';
 import { useToast } from '../../components/ui/Toast';
 import { useAuthStore } from '../../store/auth.store';
+import { useTranslation } from '../../i18n';
 import { formatISODate, formatDateTime } from '../../utils/formatDate';
 import { socketService } from '../../services/socket';
 import ManageApplicantsPopup from '../../components/booking/ManageApplicantsPopup';
@@ -13,6 +14,7 @@ export default function MatchLobbyPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { showToast } = useToast();
+  const { t } = useTranslation();
   const [showApplicants, setShowApplicants] = useState(false);
   const user = useAuthStore((s) => s.user);
 
@@ -41,44 +43,44 @@ export default function MatchLobbyPage() {
   const joinMutation = useMutation({
     mutationFn: () => api.post(`/matches/${id}/join`),
     onSuccess: () => {
-      showToast('Joined! Awaiting approval.');
+      showToast(t('match.joined_awaiting_approval'));
       queryClient.invalidateQueries({ queryKey: ['match', id] });
     },
     onError: (err: any) => {
-      showToast(err?.response?.data?.message || 'Failed to join', 'error');
+      showToast(err?.response?.data?.message || t('match.failed_to_join'), 'error');
     },
   });
 
   const withdrawMutation = useMutation({
     mutationFn: () => api.post(`/matches/${id}/withdraw`),
     onSuccess: () => {
-      showToast('Application withdrawn', 'info');
+      showToast(t('match.application_withdrawn'), 'info');
       queryClient.invalidateQueries({ queryKey: ['match', id] });
     },
     onError: (err: any) => {
-      showToast(err?.response?.data?.message || 'Failed to withdraw', 'error');
+      showToast(err?.response?.data?.message || t('match.failed_to_withdraw'), 'error');
     },
   });
 
   const closeMutation = useMutation({
     mutationFn: () => api.post(`/matches/${id}/close`),
     onSuccess: () => {
-      showToast('Applications closed', 'success');
+      showToast(t('match.applications_closed'), 'success');
       queryClient.invalidateQueries({ queryKey: ['match', id] });
     },
     onError: (err: any) => {
-      showToast(err?.response?.data?.message || 'Failed to close', 'error');
+      showToast(err?.response?.data?.message || t('match.failed_to_close'), 'error');
     },
   });
 
   const cancelMutation = useMutation({
     mutationFn: () => api.post(`/matches/${id}/cancel`),
     onSuccess: () => {
-      showToast('Match cancelled', 'warning');
+      showToast(t('match.cancelled'), 'warning');
       navigate('/matches');
     },
     onError: (err: any) => {
-      showToast(err?.response?.data?.message || 'Failed to cancel', 'error');
+      showToast(err?.response?.data?.message || t('match.failed_to_cancel'), 'error');
     },
   });
 

@@ -15,7 +15,7 @@ const PAGE_SIZE = 20;
 function groupByDay(notifications: AppNotification[]): Map<string, AppNotification[]> {
   const groups = new Map<string, AppNotification[]>();
   for (const n of notifications) {
-    const day = new Date(n.created_at).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+    const day = new Date(n.created_at).toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
     if (!groups.has(day)) groups.set(day, []);
     groups.get(day)!.push(n);
   }
@@ -106,12 +106,12 @@ export default function NotificationsPage() {
   const grouped = groupByDay(allNotifications);
 
   const tabs: { key: FilterTab; label: string; count: number }[] = [
-    { key: 'all', label: 'All', count: counts?.all ?? 0 },
-    { key: 'unread', label: 'Unread', count: counts?.unread ?? 0 },
-    { key: 'info', label: 'Info', count: counts?.info ?? 0 },
-    { key: 'success', label: 'Success', count: counts?.success ?? 0 },
-    { key: 'warning', label: 'Warning', count: counts?.warning ?? 0 },
-    { key: 'error', label: 'Error', count: counts?.error ?? 0 },
+    { key: 'all', label: t('notification.filter.all'), count: counts?.all ?? 0 },
+    { key: 'unread', label: t('notification.filter.unread'), count: counts?.unread ?? 0 },
+    { key: 'info', label: t('notification.filter.info'), count: counts?.info ?? 0 },
+    { key: 'success', label: t('notification.filter.success'), count: counts?.success ?? 0 },
+    { key: 'warning', label: t('notification.filter.warning'), count: counts?.warning ?? 0 },
+    { key: 'error', label: t('notification.filter.error'), count: counts?.error ?? 0 },
   ];
 
   if (isLoading) {
@@ -132,8 +132,8 @@ export default function NotificationsPage() {
       <div className="flex items-center justify-between flex-wrap gap-2">
         <h1 className="text-2xl font-bold text-[var(--color-text)]">{t('settings.notifications')}</h1>
         <div className="flex gap-3 text-sm items-center">
-          <button onClick={() => setShowPrefs(!showPrefs)} className="text-[var(--color-text-muted)] hover:underline">{showPrefs ? 'Close' : 'Preferences'}</button>
-          <button onClick={() => archiveAllMutation.mutate()} className="text-[var(--color-text-muted)] hover:underline">Archive all</button>
+          <button onClick={() => setShowPrefs(!showPrefs)} className="text-[var(--color-text-muted)] hover:underline">{showPrefs ? t('common.close') : t('notification.preferences')}</button>
+          <button onClick={() => archiveAllMutation.mutate()} className="text-[var(--color-text-muted)] hover:underline">{t('notification.archive_all')}</button>
           <button onClick={() => markAllMutation.mutate()} className="text-[var(--color-primary)] hover:underline">{t('notification.mark_all_read')}</button>
         </div>
       </div>
@@ -141,22 +141,22 @@ export default function NotificationsPage() {
       {/* Bulk actions bar */}
       {selectedIds.size > 0 && (
         <div className="flex items-center gap-3 px-4 py-2 bg-[var(--color-primary)]/5 rounded-xl text-sm">
-          <span className="text-[var(--color-text-muted)]">{selectedIds.size} selected</span>
-          <button onClick={() => { selectedIds.forEach(id => deleteMutation.mutate(id)); setSelectedIds(new Set()); }} className="text-[var(--color-error)] hover:underline">Delete</button>
-          <button onClick={() => { queryClient.invalidateQueries({ queryKey: ['notifications'] }); setSelectedIds(new Set()); }} className="text-[var(--color-primary)] hover:underline">Deselect</button>
+          <span className="text-[var(--color-text-muted)]">{t('common.x_selected', { count: selectedIds.size })}</span>
+          <button onClick={() => { selectedIds.forEach(id => deleteMutation.mutate(id)); setSelectedIds(new Set()); }} className="text-[var(--color-error)] hover:underline">{t('common.delete')}</button>
+          <button onClick={() => { queryClient.invalidateQueries({ queryKey: ['notifications'] }); setSelectedIds(new Set()); }} className="text-[var(--color-primary)] hover:underline">{t('common.deselect')}</button>
         </div>
       )}
 
       {/* Preferences panel */}
       {showPrefs && (
         <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-5">
-          <h3 className="text-sm font-semibold mb-4 text-[var(--color-text)]">Notification Preferences</h3>
+          <h3 className="text-sm font-semibold mb-4 text-[var(--color-text)]">{t('notification.preferences_title')}</h3>
           {['bookings', 'payments', 'marketplace', 'system'].map(cat => (
             <div key={cat} className="flex items-center justify-between py-2 border-b border-[var(--color-border)] last:border-0">
               <span className="text-sm capitalize text-[var(--color-text)]">{cat}</span>
               <label className="flex items-center gap-2 text-xs text-[var(--color-text-muted)]">
-                <input type="checkbox" defaultChecked className="rounded" /> In-App
-                <input type="checkbox" defaultChecked className="rounded" /> Email
+                <input type="checkbox" defaultChecked className="rounded" /> {t('notification.channel.in_app')}
+                <input type="checkbox" defaultChecked className="rounded" /> {t('notification.channel.email')}
               </label>
             </div>
           ))}
@@ -167,7 +167,7 @@ export default function NotificationsPage() {
       <div className="relative">
         <input
           type="text"
-          placeholder="Search notifications..."
+          placeholder={t('notification.search_placeholder')}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="w-full px-4 py-2 pl-10 text-sm bg-[var(--color-bg)] border border-[var(--color-border)] rounded-xl placeholder:text-[var(--color-text-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
@@ -230,7 +230,7 @@ export default function NotificationsPage() {
                           <p className="text-sm font-medium text-[var(--color-text)] truncate">{n.title}</p>
                         </div>
                         <span className="text-[10px] text-[var(--color-text-muted)] shrink-0">
-                          {new Date(n.created_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
+                          {new Date(n.created_at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
                         </span>
                       </div>
                       {n.body && <p className="text-xs text-[var(--color-text-muted)] mt-0.5 line-clamp-2">{n.body}</p>}
@@ -250,7 +250,7 @@ export default function NotificationsPage() {
 
       {/* Infinite scroll sentinel */}
       <div ref={sentinelRef} className="h-4" />
-      {isFetchingNextPage && <p className="text-center text-sm text-[var(--color-text-muted)]">Loading more...</p>}
+      {isFetchingNextPage && <p className="text-center text-sm text-[var(--color-text-muted)]">{t('common.loading_more')}</p>}
 
     </div>
   );

@@ -5,6 +5,7 @@ import { useAuthStore } from '../../store/auth.store';
 import { useCan } from '../../hooks/useCan';
 import { useThemeStore } from '../../store/theme.store';
 import { useFeatureFlagsStore } from '../../store/feature-flags.store';
+import { useTranslation } from '../../i18n';
 import api from '../../services/api';
 import SiteLogo from '../branding/SiteLogo';
 
@@ -17,86 +18,86 @@ interface NavItem {
   children?: NavItem[];
 }
 
-function buildNavItems(can: (perm: string) => boolean, flag: (key: string) => boolean, savedLayout?: Map<string | null, string[]>): NavItem[] {
+function buildNavItems(t: (key: string) => string, can: (perm: string) => boolean, flag: (key: string) => boolean, savedLayout?: Map<string | null, string[]>): NavItem[] {
   const allItems: NavItem[] = [
-    { label: 'Dashboard', icon: '📊', path: '/admin', permissionKey: 'sidebar.dashboard' },
-    { label: 'Reports', icon: '📈', path: '/admin/reports', permissionKey: 'sidebar.reports' },
+    { label: t('admin.sidebar.dashboard'), icon: '📊', path: '/admin', permissionKey: 'sidebar.dashboard' },
+    { label: t('admin.sidebar.reports'), icon: '📈', path: '/admin/reports', permissionKey: 'sidebar.reports' },
     {
-      label: 'Organisations', icon: '🏢', path: '/admin/organisations', permissionKey: 'sidebar.organisations',
+      label: t('admin.sidebar.organisations'), icon: '🏢', path: '/admin/organisations', permissionKey: 'sidebar.organisations',
       children: [
         { label: 'All Organisations', path: '/admin/organisations', permissionKey: 'sidebar.organisations' },
         { label: 'Branch Access', path: '/admin/branch-access', permissionKey: 'sidebar.branch-access' },
         { label: 'All Bookings', path: '/admin/bookings', permissionKey: 'sidebar.admin-bookings' },
         { label: 'Subscription Plans', path: '/admin/subscription', permissionKey: 'sidebar.subscription' },
         { label: 'Subscription Requests', path: '/admin/subscription/requests', permissionKey: 'sidebar.subscription-requests' },
-        { label: 'Types', path: '/admin/organisation-types', permissionKey: 'sidebar.organisation-types' },
-        { label: 'Settlements', path: '/admin/settlements', permissionKey: 'sidebar.settlements' },
+        { label: t('admin.sidebar.organisation_types'), path: '/admin/organisation-types', permissionKey: 'sidebar.organisation-types' },
+        { label: t('admin.sidebar.settlements'), path: '/admin/settlements', permissionKey: 'sidebar.settlements' },
       ],
     },
     {
-      label: 'Roles & Permissions', icon: '🔐', path: '/admin/roles', permissionKey: 'sidebar.roles',
+      label: t('admin.sidebar.roles') + ' & ' + t('admin.sidebar.permissions'), icon: '🔐', path: '/admin/roles', permissionKey: 'sidebar.roles',
       children: [
-        { label: 'All Roles', path: '/admin/roles', permissionKey: 'sidebar.roles' },
-        { label: 'Permissions', path: '/admin/permissions', permissionKey: 'sidebar.permissions' },
+        { label: t('admin.sidebar.roles'), path: '/admin/roles', permissionKey: 'sidebar.roles' },
+        { label: t('admin.sidebar.permissions'), path: '/admin/permissions', permissionKey: 'sidebar.permissions' },
       ],
     },
     {
-      label: 'Marketplace', icon: '🛒', path: '/admin/product-categories', permissionKey: 'sidebar.marketplace', requiredFlag: 'app.marketplace_enabled',
+      label: t('admin.sidebar.marketplace'), icon: '🛒', path: '/admin/product-categories', permissionKey: 'sidebar.marketplace', requiredFlag: 'app.marketplace_enabled',
       children: [
-        { label: 'Products', path: '/admin/marketplace/products', permissionKey: 'sidebar.marketplace-products' },
-        { label: 'Orders', path: '/admin/marketplace/orders', permissionKey: 'sidebar.marketplace-orders' },
-        { label: 'Sellers', path: '/admin/marketplace/sellers', permissionKey: 'sidebar.marketplace-sellers' },
+        { label: t('admin.sidebar.products'), path: '/admin/marketplace/products', permissionKey: 'sidebar.marketplace-products' },
+        { label: t('admin.sidebar.orders'), path: '/admin/marketplace/orders', permissionKey: 'sidebar.marketplace-orders' },
+        { label: t('admin.sidebar.sellers'), path: '/admin/marketplace/sellers', permissionKey: 'sidebar.marketplace-sellers' },
         { label: 'Product Categories', path: '/admin/product-categories', permissionKey: 'sidebar.product-categories' },
-        { label: 'Registrations', path: '/admin/approvals', permissionKey: 'sidebar.marketplace-approvals' },
-        { label: 'Reviews', path: '/admin/marketplace/reviews', permissionKey: 'sidebar.marketplace-reviews' },
-        { label: 'Brands', path: '/admin/brands', permissionKey: 'sidebar.brands' },
-        { label: 'Tags', path: '/admin/tags', permissionKey: 'sidebar.tags' },
+        { label: t('admin.sidebar.registrations'), path: '/admin/approvals', permissionKey: 'sidebar.marketplace-approvals' },
+        { label: t('admin.sidebar.reviews'), path: '/admin/marketplace/reviews', permissionKey: 'sidebar.marketplace-reviews' },
+        { label: t('admin.sidebar.brands'), path: '/admin/brands', permissionKey: 'sidebar.brands' },
+        { label: t('admin.sidebar.tags'), path: '/admin/tags', permissionKey: 'sidebar.tags' },
       ],
     },
-    { label: 'Reception', icon: '🏪', path: '/admin/reception', permissionKey: 'sidebar.reception' },
-    { label: 'Tournaments', icon: '🏆', path: '/admin/tournaments', permissionKey: 'sidebar.tournaments-admin' },
-    { label: 'Academies', icon: '🎓', path: '/admin/academies', permissionKey: 'sidebar.academies-admin' },
-    { label: 'Coaches', icon: '👨‍🏫', path: '/admin/coaches', permissionKey: 'sidebar.coaches-admin' },
+    { label: t('admin.sidebar.reception'), icon: '🏪', path: '/admin/reception', permissionKey: 'sidebar.reception' },
+    { label: t('admin.sidebar.tournaments'), icon: '🏆', path: '/admin/tournaments', permissionKey: 'sidebar.tournaments-admin' },
+    { label: t('admin.sidebar.academies'), icon: '🎓', path: '/admin/academies', permissionKey: 'sidebar.academies-admin' },
+    { label: t('admin.sidebar.coaches'), icon: '👨‍🏫', path: '/admin/coaches', permissionKey: 'sidebar.coaches-admin' },
     {
-      label: 'Membership', icon: '⭐', path: '/admin/membership/plans', permissionKey: 'sidebar.membership',
+      label: t('admin.sidebar.membership'), icon: '⭐', path: '/admin/membership/plans', permissionKey: 'sidebar.membership',
       children: [
-        { label: 'Plans', path: '/admin/membership/plans', permissionKey: 'membership.plans' },
-        { label: 'Campaigns', path: '/admin/membership/campaigns', permissionKey: 'membership.campaigns' },
-        { label: 'Rewards', path: '/admin/membership/rewards', permissionKey: 'membership.rewards' },
+        { label: t('admin.sidebar.plans'), path: '/admin/membership/plans', permissionKey: 'membership.plans' },
+        { label: t('admin.sidebar.campaigns'), path: '/admin/membership/campaigns', permissionKey: 'membership.campaigns' },
+        { label: t('admin.sidebar.rewards'), path: '/admin/membership/rewards', permissionKey: 'membership.rewards' },
       ],
     },
     {
-      label: 'Pricing', icon: '💰', path: '/admin/pricing/rules', permissionKey: 'sidebar.pricing',
+      label: t('admin.sidebar.pricing'), icon: '💰', path: '/admin/pricing/rules', permissionKey: 'sidebar.pricing',
       children: [
-        { label: 'Rules', path: '/admin/pricing/rules', permissionKey: 'pricing.rules' },
+        { label: t('admin.sidebar.rules'), path: '/admin/pricing/rules', permissionKey: 'pricing.rules' },
         { label: 'Price Preview', path: '/admin/pricing/preview', permissionKey: 'pricing.preview' },
       ],
     },
     { label: 'Community Events', icon: '🎉', path: '/admin/community-events', permissionKey: 'sidebar.community-admin' },
     {
-      label: 'Notifications', icon: '🔔', path: '/admin/notifications/broadcast', permissionKey: 'sidebar.notifications',
+      label: t('admin.sidebar.notifications'), icon: '🔔', path: '/admin/notifications/broadcast', permissionKey: 'sidebar.notifications',
       children: [
-        { label: 'Broadcast', path: '/admin/notifications/broadcast', permissionKey: 'notifications.broadcast' },
-        { label: 'Analytics', path: '/admin/notifications/analytics', permissionKey: 'notifications.analytics' },
+        { label: t('admin.sidebar.broadcast'), path: '/admin/notifications/broadcast', permissionKey: 'notifications.broadcast' },
+        { label: t('admin.sidebar.analytics'), path: '/admin/notifications/analytics', permissionKey: 'notifications.analytics' },
         { label: 'Dead Letters', path: '/admin/notifications/dead-letters', permissionKey: 'notifications.dead-letters' },
-        { label: 'Templates', path: '/admin/notifications/templates', permissionKey: 'notifications.templates' },
+        { label: t('admin.sidebar.templates'), path: '/admin/notifications/templates', permissionKey: 'notifications.templates' },
       ],
     },
-    { label: 'Ads', icon: '📢', path: '/admin/ads', permissionKey: 'sidebar.ads', requiredFlag: 'community.events_enabled' },
+    { label: t('admin.sidebar.ads'), icon: '📢', path: '/admin/ads', permissionKey: 'sidebar.ads', requiredFlag: 'community.events_enabled' },
     {
       label: 'Admin Settings', icon: '⚙️', path: '/admin/sports', permissionKey: 'sidebar.admin-settings',
       children: [
-        { label: 'Sports', path: '/admin/sports', permissionKey: 'sidebar.sports' },
+        { label: t('admin.sidebar.sports'), path: '/admin/sports', permissionKey: 'sidebar.sports' },
         {
-          label: 'Finance', path: '/admin/finance', permissionKey: 'sidebar.finance',
+          label: t('admin.sidebar.finance'), path: '/admin/finance', permissionKey: 'sidebar.finance',
           children: [
             { label: 'Finance Dashboard', path: '/admin/finance', permissionKey: 'sidebar.finance-dashboard' },
-            { label: 'Ledger', path: '/admin/finance/ledger', permissionKey: 'sidebar.finance-ledger' },
+            { label: t('admin.sidebar.ledger'), path: '/admin/finance/ledger', permissionKey: 'sidebar.finance-ledger' },
             { label: 'Reports', path: '/admin/finance/reports', permissionKey: 'sidebar.finance-reports' },
             { label: 'Withdrawal Requests', path: '/admin/withdrawal-requests', permissionKey: 'sidebar.withdrawal-requests' },
-            { label: 'Coupons', path: '/admin/coupons', permissionKey: 'sidebar.coupons' },
+            { label: t('admin.sidebar.coupons'), path: '/admin/coupons', permissionKey: 'sidebar.coupons' },
             { label: 'Finance (Legacy)', path: '/admin/financial-ops', permissionKey: 'sidebar.finance-transactions' },
-            { label: 'Banks', path: '/admin/banks', permissionKey: 'sidebar.banks' },
+            { label: t('admin.sidebar.banks'), path: '/admin/banks', permissionKey: 'sidebar.banks' },
             { label: 'Bank Branches', path: '/admin/bank-branches', permissionKey: 'sidebar.bank-branches' },
           ],
         },
@@ -108,30 +109,30 @@ function buildNavItems(can: (perm: string) => boolean, flag: (key: string) => bo
           ],
         },
         {
-          label: 'Localization', icon: '🌍', path: '/admin/countries', permissionKey: 'sidebar.countries',
+          label: t('admin.sidebar.localization'), icon: '🌍', path: '/admin/countries', permissionKey: 'sidebar.countries',
           children: [
-            { label: 'Countries', path: '/admin/countries', permissionKey: 'sidebar.countries' },
-            { label: 'Currencies', path: '/admin/currencies', permissionKey: 'sidebar.currencies' },
-            { label: 'Languages', path: '/admin/languages', permissionKey: 'sidebar.languages' },
-            { label: 'Translations', path: '/admin/translations', permissionKey: 'sidebar.translations' },
+            { label: t('admin.sidebar.countries'), path: '/admin/countries', permissionKey: 'sidebar.countries' },
+            { label: t('admin.sidebar.currencies'), path: '/admin/currencies', permissionKey: 'sidebar.currencies' },
+            { label: t('admin.sidebar.languages'), path: '/admin/languages', permissionKey: 'sidebar.languages' },
+            { label: t('admin.sidebar.translations'), path: '/admin/translations', permissionKey: 'sidebar.translations' },
           ],
         },
-        { label: 'Amenities', path: '/admin/amenities', permissionKey: 'sidebar.amenities' },
+        { label: t('admin.sidebar.amenities'), path: '/admin/amenities', permissionKey: 'sidebar.amenities' },
         {
           label: 'App Settings', path: '/admin/sidebar-layout', permissionKey: 'sidebar.app-settings-menu',
           children: [
             { label: 'Set Sidebar Layout', path: '/admin/sidebar-layout', permissionKey: 'sidebar.layout.manage' },
-            { label: 'Branding', path: '/admin/app-settings', permissionKey: 'sidebar.app-settings' },
+            { label: t('admin.sidebar.branding'), path: '/admin/app-settings', permissionKey: 'sidebar.app-settings' },
             { label: 'Appearance Studio', path: '/admin/design-tokens', permissionKey: 'sidebar.design-tokens' },
             { label: 'CMS', path: '/admin/cms', permissionKey: 'sidebar.cms' },
           ],
         },
       ],
     },
-    { label: 'Users', icon: '👥', path: '/admin/users', permissionKey: 'sidebar.users' },
-    { label: 'Webhooks', icon: '🔗', path: '/admin/webhooks', permissionKey: 'sidebar.webhooks' },
+    { label: t('admin.sidebar.users'), icon: '👥', path: '/admin/users', permissionKey: 'sidebar.users' },
+    { label: t('admin.sidebar.webhooks'), icon: '🔗', path: '/admin/webhooks', permissionKey: 'sidebar.webhooks' },
     {
-      label: 'Security', icon: '🛡️', path: '/admin/security', permissionKey: 'sidebar.security-dashboard',
+      label: t('admin.sidebar.security'), icon: '🛡️', path: '/admin/security', permissionKey: 'sidebar.security-dashboard',
       children: [
         { label: 'Security Dashboard', path: '/admin/security', permissionKey: 'sidebar.security-dashboard' },
         { label: 'Active Sessions', path: '/admin/security/sessions', permissionKey: 'sidebar.active-sessions' },
@@ -236,6 +237,7 @@ export default function AdminSidebar() {
   const [openMenus, setOpenMenus] = useState<Record<string, boolean>>({});
   const flags = useFeatureFlagsStore((s) => s.flags);
   const flag = (key: string) => !!flags[key];
+  const { t } = useTranslation();
 
   const { data: layoutData } = useQuery({
     queryKey: ['sidebar-layout'],
@@ -252,7 +254,7 @@ export default function AdminSidebar() {
     return map;
   }, [layoutData]);
 
-  const navItems = useMemo(() => buildNavItems(can, flag, savedLayout), [can, flag, savedLayout]);
+  const navItems = useMemo(() => buildNavItems(t, can, flag, savedLayout), [t, can, flag, savedLayout]);
 
   const handleLogout = async () => {
     await logout();
@@ -276,7 +278,7 @@ export default function AdminSidebar() {
   if (collapsed) {
     return (
       <aside className="w-16 bg-[var(--color-surface)] border-r border-[var(--color-border)] flex flex-col items-center py-4 gap-4">
-        <button onClick={() => setCollapsed(false)} className="text-xl" aria-label="Expand sidebar">☰</button>
+        <button onClick={() => setCollapsed(false)} className="text-xl" aria-label={t('admin.sidebar.expand')}>☰</button>
         <SiteLogo to="/admin" size="sm" showText={false} />
         {navItems.map((item) => {
           const linkPath = item.children?.[0]?.path || item.path;
@@ -294,12 +296,12 @@ export default function AdminSidebar() {
           );
         })}
         <div className="mt-auto flex flex-col items-center gap-2 pt-4 border-t border-[var(--color-border)] w-full px-2">
-          <Link to="/admin/profile" className="text-lg p-2 rounded-[var(--radius-md)] text-[var(--color-text-muted)] hover:text-[var(--color-text)]" title="Profile">👤</Link>
+          <Link to="/admin/profile" className="text-lg p-2 rounded-[var(--radius-md)] text-[var(--color-text-muted)] hover:text-[var(--color-text)]" title={t('admin.sidebar.profile')}>👤</Link>
           <button onClick={() => setMode(theme === 'dark' ? 'light' : 'dark')} className="text-lg p-2 rounded-[var(--radius-md)] text-[var(--color-text-muted)] hover:text-[var(--color-text)]" title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}>{theme === 'dark' ? '☀️' : '🌙'}</button>
           <button
             onClick={handleLogout}
             className="text-lg p-2 rounded-[var(--radius-md)] text-[var(--color-text-muted)] hover:text-[var(--color-error)] transition-colors"
-            title="Logout"
+            title={t('admin.sidebar.logout')}
           >
             🚪
           </button>
@@ -312,29 +314,29 @@ export default function AdminSidebar() {
     <aside className="w-64 bg-[var(--color-surface)] border-r border-[var(--color-border)] flex flex-col h-screen sticky top-0 overflow-y-auto">
       <div className="p-4 border-b border-[var(--color-border)] flex items-center justify-between gap-2">
         <SiteLogo to="/admin" size="sm" />
-        <button onClick={() => setCollapsed(true)} className="text-sm text-[var(--color-text-muted)] shrink-0" aria-label="Collapse sidebar">◀</button>
+        <button onClick={() => setCollapsed(true)} className="text-sm text-[var(--color-text-muted)] shrink-0" aria-label={t('admin.sidebar.collapse')}>◀</button>
       </div>
       <nav className="flex-1 p-2 space-y-1">
         {navItems.map((item) => renderNavItem(item, openMenus, toggleMenu, isActive, location))}
       </nav>
       <div className="sticky bottom-0 p-3 border-t border-[var(--color-border)] space-y-1 bg-[var(--color-surface)]">
         <Link to="/admin/profile" className="flex items-center gap-2 px-3 py-2 rounded-[var(--radius-md)] text-sm text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-border)] hover:bg-[var(--color-bg)]">
-          👤 Profile
+          👤 {t('admin.sidebar.profile')}
         </Link>
         {can('sidebar.back-to-app') && (
         <Link to="/" className="flex items-center gap-2 px-3 py-2 rounded-[var(--radius-md)] text-sm text-[var(--color-text-muted)] hover:text-[var(--color-primary)] hover:bg-[var(--color-border)] hover:bg-[var(--color-bg)]">
-          ← Back to App
+          ← {t('common.back')}
         </Link>
         )}
         <button onClick={() => setMode(theme === 'dark' ? 'light' : 'dark')}
           className="w-full flex items-center gap-2 px-3 py-2 rounded-[var(--radius-md)] text-sm text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-border)] hover:bg-[var(--color-bg)] transition-colors">
-          {theme === 'dark' ? '☀️ Light Mode' : '🌙 Dark Mode'}
+          {theme === 'dark' ? '☀️' : '🌙'} {theme === 'dark' ? t('common.light_mode') : t('common.dark_mode')}
         </button>
         <button
           onClick={handleLogout}
           className="w-full flex items-center gap-2 px-3 py-2 rounded-[var(--radius-md)] text-sm text-[var(--color-text-muted)] hover:text-[var(--color-error)] hover:bg-[var(--color-border)] hover:bg-[var(--color-bg)] transition-colors"
         >
-          🚪 Logout
+          🚪 {t('admin.sidebar.logout')}
         </button>
       </div>
     </aside>

@@ -7,6 +7,7 @@ import api from '../../services/api';
 import { Button, Input, Card } from '../../components/ui';
 import { Can } from '../../permissions/Can';
 import { useToast } from '../../components/ui/Toast';
+import { useTranslation } from '../../i18n';
 
 const BookingSchema = z.object({
   bookingDate: z.string().min(1, 'Date is required'),
@@ -23,6 +24,7 @@ export default function BookingFormPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { showToast } = useToast();
+  const { t } = useTranslation();
   const today = new Date().toISOString().slice(0, 10);
 
   const { register, handleSubmit, watch, setValue, formState: { errors } } = useForm<BookingForm>({
@@ -53,11 +55,11 @@ export default function BookingFormPage() {
   const bookingMutation = useMutation({
     mutationFn: (data: any) => api.post('/bookings', data),
     onSuccess: (res) => {
-      showToast('Booking created successfully!');
+      showToast(t('booking.success.created'));
       navigate(`/bookings/${res.data.id}/confirmation`, { state: { qrToken: res.data.qrToken } });
     },
     onError: (err) => {
-      showToast('Booking failed: ' + ((err as any)?.response?.data?.message || (err as any).message), 'error');
+      showToast(t('booking.error.creation_failed') + ': ' + ((err as any)?.response?.data?.message || (err as any).message), 'error');
     },
   });
 

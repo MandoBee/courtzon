@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { notificationsApi } from '../../services/notifications';
 import { useAuthStore } from '../../store/auth.store';
 import { useNotificationStore } from '../../store/notification.store';
+import { useTranslation } from '../../i18n';
 import { getNotificationRoute } from '../../utils/notificationRoutes';
 import type { AppNotification } from '../../components/notifications/NotificationDetailModal';
 
@@ -16,6 +17,7 @@ export default function NotificationBell() {
   const markAsRead = useNotificationStore((s) => s.markAsRead);
   const initStore = useNotificationStore((s) => s.init);
   const destroyStore = useNotificationStore((s) => s.destroy);
+  const { t } = useTranslation();
 
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -66,7 +68,7 @@ export default function NotificationBell() {
         <button
           onClick={() => setOpen(!open)}
           className="relative p-2 text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors"
-          title="Notifications"
+          title={t('notification.bell_title')}
         >
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
             <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
@@ -82,27 +84,27 @@ export default function NotificationBell() {
         {open && (
           <div className="absolute right-0 mt-2 w-80 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl shadow-xl z-50">
             <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--color-border)]">
-              <span className="text-sm font-semibold text-[var(--color-text)]">Notifications</span>
+              <span className="text-sm font-semibold text-[var(--color-text)]">{t('notification.bell_title')}</span>
               <div className="flex gap-2">
                 {unreadCount > 0 && (
                   <button
                     onClick={() => markAllMutation.mutate()}
                     className="text-xs text-[var(--color-primary)] hover:underline"
                   >
-                    Mark all read
+                    {t('notification.mark_all_read')}
                   </button>
                 )}
                 <button
                   onClick={() => { setOpen(false); navigate('/notifications'); }}
                   className="text-xs text-[var(--color-text-muted)] hover:underline"
                 >
-                  View all
+                  {t('notification.view_all')}
                 </button>
               </div>
             </div>
             <div className="max-h-80 overflow-y-auto">
               {notifications.length === 0 && (
-                <p className="text-sm text-[var(--color-text-muted)] text-center py-8">No notifications</p>
+                <p className="text-sm text-[var(--color-text-muted)] text-center py-8">{t('notification.empty')}</p>
               )}
               {notifications.map((n: AppNotification) => (
                 <div
@@ -116,7 +118,7 @@ export default function NotificationBell() {
                       <p className="text-sm font-medium text-[var(--color-text)] truncate">{n.title}</p>
                       {n.body && <p className="text-xs text-[var(--color-text-muted)] line-clamp-2 mt-0.5">{n.body}</p>}
                       <p className="text-[10px] text-[var(--color-text-muted)] mt-1">
-                        {new Date(n.created_at).toLocaleDateString('en-GB')}
+                        {new Date(n.created_at).toLocaleDateString()}
                       </p>
                     </div>
                     {!n.is_read && (
@@ -133,4 +135,3 @@ export default function NotificationBell() {
     </>
   );
 }
-
