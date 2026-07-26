@@ -1,10 +1,11 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { notificationsApi } from '../../services/notifications';
 import { useAuthStore } from '../../store/auth.store';
 import { useNotificationStore } from '../../store/notification.store';
-import NotificationDetailModal, { type AppNotification } from './NotificationDetailModal';
+import { getNotificationRoute } from '../../utils/notificationRoutes';
+import type { AppNotification } from '../../components/notifications/NotificationDetailModal';
 
 export default function NotificationBell() {
   const navigate = useNavigate();
@@ -12,11 +13,11 @@ export default function NotificationBell() {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const unreadCount = useNotificationStore((s) => s.unreadCount);
   const refreshUnreadCount = useNotificationStore((s) => s.refreshUnreadCount);
+  const markAsRead = useNotificationStore((s) => s.markAsRead);
   const initStore = useNotificationStore((s) => s.init);
   const destroyStore = useNotificationStore((s) => s.destroy);
 
   const [open, setOpen] = useState(false);
-  const [selected, setSelected] = useState<AppNotification | null>(null);
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -52,10 +53,12 @@ export default function NotificationBell() {
 
   const notifications = recentData?.data || [];
 
-  const openNotification = useCallback((n: AppNotification) => {
+  const openNotification = (n: AppNotification) => {
     setOpen(false);
-    setSelected(n);
-  }, []);
+    if (!n.is_read) markAsRead(n.id);
+    const route = getNotificationRoute(n);
+    if (route) navigate(route);
+  };
 
   return (
     <>
@@ -127,11 +130,6 @@ export default function NotificationBell() {
         )}
       </div>
 
-      <NotificationDetailModal
-        notification={selected}
-        open={!!selected}
-        onClose={() => setSelected(null)}
-      />
     </>
   );
 }

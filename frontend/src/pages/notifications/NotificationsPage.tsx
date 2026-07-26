@@ -1,9 +1,11 @@
 import { useState, useRef, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient, useInfiniteQuery } from '@tanstack/react-query';
 import { notificationsApi } from '../../services/notifications';
 import { useNotificationStore } from '../../store/notification.store';
 import { useSocketEvent } from '../../realtime/useSocket';
-import NotificationDetailModal, { type AppNotification } from '../../components/notifications/NotificationDetailModal';
+import { getNotificationRoute } from '../../utils/notificationRoutes';
+import type { AppNotification } from '../../components/notifications/NotificationDetailModal';
 import { Skeleton, SkeletonRow } from '../../components/ui/Skeleton';
 import { useTranslation } from '../../i18n';
 
@@ -22,9 +24,10 @@ function groupByDay(notifications: AppNotification[]): Map<string, AppNotificati
 
 export default function NotificationsPage() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const refreshUnreadCount = useNotificationStore((s) => s.refreshUnreadCount);
-  const [selected, setSelected] = useState<AppNotification | null>(null);
+  const markAsRead = useNotificationStore((s) => s.markAsRead);
   const [filterTab, setFilterTab] = useState<FilterTab>('all');
   const [search, setSearch] = useState('');
   const [showPrefs, setShowPrefs] = useState(false);
@@ -207,7 +210,7 @@ export default function NotificationsPage() {
                   <div
                     key={n.id}
                     className={`flex items-start gap-2 px-4 py-3 border-b border-[var(--color-border)] last:border-0 hover:bg-[var(--color-bg)] cursor-pointer transition-colors ${!n.is_read ? 'bg-[var(--color-info-bg)]/50' : ''} ${pinnedIds.has(n.id) ? 'border-l-2 border-l-yellow-500' : ''}`}
-                    onClick={() => setSelected(n)}
+                    onClick={() => { if (!n.is_read) markAsRead(n.id); const r = getNotificationRoute(n); if (r) navigate(r); }}
                   >
                     <input type="checkbox" checked={selectedIds.has(n.id)} onChange={e => { e.stopPropagation(); const next = new Set(selectedIds); if (next.has(n.id)) next.delete(n.id); else next.add(n.id); setSelectedIds(next); }}
                       className="mt-1 shrink-0 rounded" />
@@ -249,7 +252,6 @@ export default function NotificationsPage() {
       <div ref={sentinelRef} className="h-4" />
       {isFetchingNextPage && <p className="text-center text-sm text-[var(--color-text-muted)]">Loading more...</p>}
 
-      <NotificationDetailModal notification={selected} open={!!selected} onClose={() => setSelected(null)} />
     </div>
   );
 }

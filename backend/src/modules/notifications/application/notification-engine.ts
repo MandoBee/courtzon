@@ -15,7 +15,7 @@ const eventGroups: EventGroupConfig[] = [
   {
     events: ['user:registered'],
     handler: async (eventName, data, categorySlug) => {
-      await dispatchByRole('super_admin', { eventName, categorySlug, data });
+      await dispatchByRole('super_admin', { eventName, categorySlug, data, actionKey: 'view_dashboard' });
     },
   },
   {
@@ -46,7 +46,7 @@ const eventGroups: EventGroupConfig[] = [
           userId: data.userId, eventName, categorySlug, data,
           organisationId: data.organisationId, branchId: data.branchId,
           relatedEntityType: 'booking', relatedEntityId: String(data.bookingId),
-          actionPayload: { bookingId: data.bookingId }, digestable: false,
+          actionKey: 'view_booking', actionPayload: { bookingId: data.bookingId }, digestable: false,
         });
       }
       if (eventName === 'booking:created' && data.bookingType === 'public_match') {
@@ -65,7 +65,7 @@ const eventGroups: EventGroupConfig[] = [
           userId: data.userId, eventName, categorySlug, data,
           organisationId: data.organisationId, branchId: data.branchId,
           relatedEntityType: 'booking', relatedEntityId: String(data.bookingId),
-          actionPayload: { bookingId: data.bookingId }, digestable: false,
+          actionKey: 'view_booking', actionPayload: { bookingId: data.bookingId }, digestable: false,
         });
       }
       if (data.bookingType === 'public_match') {
@@ -93,7 +93,7 @@ const eventGroups: EventGroupConfig[] = [
         await dispatchToUser({
           userId: data.userId, eventName, categorySlug, data,
           relatedEntityType: 'booking', relatedEntityId: String(data.bookingId),
-          digestable: false,
+          actionKey: 'view_booking', digestable: false,
         });
       }
     },
@@ -105,7 +105,7 @@ const eventGroups: EventGroupConfig[] = [
         await dispatchToUser({
           userId: data.userId, eventName, categorySlug, data,
           relatedEntityType: 'booking', relatedEntityId: String(data.bookingId),
-          actionPayload: { bookingId: data.bookingId },
+          actionKey: 'view_booking', actionPayload: { bookingId: data.bookingId },
         });
       }
     },
@@ -117,6 +117,7 @@ const eventGroups: EventGroupConfig[] = [
         await dispatchToUser({
           userId: data.userId, eventName, categorySlug, data,
           relatedEntityType: 'booking', relatedEntityId: String(data.bookingId),
+          actionKey: 'view_booking',
         });
       }
     },
@@ -129,7 +130,7 @@ const eventGroups: EventGroupConfig[] = [
           userId: data.userId, eventName, categorySlug, data,
           organisationId: data.organisationId,
           relatedEntityType: 'payment', relatedEntityId: String(data.paymentId),
-          digestable: false,
+          actionKey: 'view_payment', digestable: false,
         });
       }
     },
@@ -138,7 +139,7 @@ const eventGroups: EventGroupConfig[] = [
     events: ['payment:wallet-topup', 'payment:wallet-low-balance', 'wallet:deposit', 'wallet:withdrawal', 'wallet:low-balance', 'wallet:transaction'],
     handler: async (eventName, data, categorySlug) => {
       if (data.userId) {
-        await dispatchToUser({ userId: data.userId, eventName, categorySlug, data });
+        await dispatchToUser({ userId: data.userId, eventName, categorySlug, data, actionKey: 'view_wallet' });
       }
     },
   },
@@ -149,12 +150,14 @@ const eventGroups: EventGroupConfig[] = [
         await dispatchToUser({
           userId: data.userId, eventName, categorySlug, data,
           relatedEntityType: 'order', relatedEntityId: String(data.orderId),
+          actionKey: 'view_order',
         });
       }
       if (data.sellerId && data.sellerId !== data.userId) {
         await dispatchToUser({
           userId: data.sellerId, eventName, categorySlug, data,
           relatedEntityType: 'order', relatedEntityId: String(data.orderId),
+          actionKey: 'view_order',
         });
       }
     },
@@ -166,6 +169,7 @@ const eventGroups: EventGroupConfig[] = [
         await dispatchToUser({
           userId: data.reviewedUserId, eventName, categorySlug, data,
           relatedEntityType: 'review', relatedEntityId: String(data.reviewId),
+          actionKey: 'view_order',
         });
       }
     },
@@ -177,6 +181,7 @@ const eventGroups: EventGroupConfig[] = [
         await dispatchToUser({
           userId: data.userId, eventName, categorySlug, data,
           relatedEntityType: 'product', relatedEntityId: String(data.productId),
+          actionKey: 'view_order',
         });
       }
     },
@@ -185,7 +190,7 @@ const eventGroups: EventGroupConfig[] = [
     events: ['marketplace:new-seller-registered'],
     handler: async (eventName, data, categorySlug) => {
       await dispatchByRole('super_admin', {
-        eventName, categorySlug,
+        eventName, categorySlug, actionKey: 'view_dashboard',
         data: { ...data, title: 'New Seller Registered', body: `${data.shopName} has registered as a seller.` },
       });
     },
@@ -197,6 +202,7 @@ const eventGroups: EventGroupConfig[] = [
         await dispatchToUser({
           userId: data.userId, eventName, categorySlug, data,
           relatedEntityType: 'user', relatedEntityId: String(data.userId),
+          actionKey: 'view_dashboard',
         });
       }
     },
@@ -205,7 +211,7 @@ const eventGroups: EventGroupConfig[] = [
     events: ['auth:password-reset', 'auth:password-changed', 'auth:login', 'auth:logout', 'auth:2fa-setup'],
     handler: async (eventName, data, categorySlug) => {
       if (data.userId) {
-        await dispatchToUser({ userId: data.userId, eventName, categorySlug, data, digestable: false });
+        await dispatchToUser({ userId: data.userId, eventName, categorySlug, data, actionKey: 'view_dashboard', digestable: false });
       }
     },
   },
@@ -217,6 +223,7 @@ const eventGroups: EventGroupConfig[] = [
           userId: data.userId, eventName, categorySlug, data,
           organisationId: data.organisationId,
           relatedEntityType: 'organisation', relatedEntityId: String(data.organisationId),
+          actionKey: 'view_organisation',
         });
       }
     },
@@ -229,6 +236,7 @@ const eventGroups: EventGroupConfig[] = [
           userId: data.userId, eventName, categorySlug, data,
           organisationId: data.organisationId,
           relatedEntityType: 'club', relatedEntityId: String(data.clubId || data.organisationId),
+          actionKey: 'view_organisation',
         });
       }
     },
@@ -241,6 +249,7 @@ const eventGroups: EventGroupConfig[] = [
           userId: data.userId, eventName, categorySlug, data,
           organisationId: data.organisationId,
           relatedEntityType: 'academy', relatedEntityId: String(data.academyId),
+          actionKey: 'view_academy',
           digestable: eventName === 'academy:session-reminder' ? false : undefined,
         });
       }
@@ -253,14 +262,14 @@ const eventGroups: EventGroupConfig[] = [
         await dispatchToUser({
           userId: data.userId, eventName, categorySlug, data,
           relatedEntityType: 'session', relatedEntityId: String(data.sessionId),
-          digestable: false,
+          actionKey: 'view_session', digestable: false,
         });
       }
       if (data.coachId && data.coachId !== data.userId) {
         await dispatchToUser({
           userId: data.coachId, eventName, categorySlug, data,
           relatedEntityType: 'session', relatedEntityId: String(data.sessionId),
-          digestable: false,
+          actionKey: 'view_session', digestable: false,
         });
       }
     },
@@ -272,7 +281,7 @@ const eventGroups: EventGroupConfig[] = [
         await dispatchToUser({
           userId: data.userId, eventName, categorySlug, data,
           relatedEntityType: 'coach', relatedEntityId: String(data.coachId),
-          organisationId: data.organisationId,
+          organisationId: data.organisationId, actionKey: 'view_coach',
         });
       }
     },
@@ -282,7 +291,7 @@ const eventGroups: EventGroupConfig[] = [
     handler: async (eventName, data, categorySlug) => {
       if (data.organisationId) {
         await dispatchByOrg(data.organisationId, {
-          eventName, categorySlug,
+          eventName, categorySlug, actionKey: 'view_coach',
           data: { ...data, title: `New agreement from ${data.coachName || 'a coach'}`, body: `${data.coachName || 'A coach'} has added an agreement with ${data.organisationName || 'your organisation'}.` },
           organisationId: data.organisationId,
           relatedEntityType: 'coach', relatedEntityId: String(data.coachId),
@@ -297,6 +306,7 @@ const eventGroups: EventGroupConfig[] = [
         await dispatchToUser({
           userId: data.userId, eventName, categorySlug, data,
           relatedEntityType: 'tournament', relatedEntityId: String(data.tournamentId || data.matchId),
+          actionKey: 'view_tournament',
         });
       }
     },
@@ -308,6 +318,7 @@ const eventGroups: EventGroupConfig[] = [
         await dispatchToUser({
           userId: data.userId, eventName, categorySlug, data,
           relatedEntityType: 'post', relatedEntityId: String(data.postId),
+          actionKey: 'view_post',
         });
       }
     },
@@ -316,10 +327,10 @@ const eventGroups: EventGroupConfig[] = [
     events: ['friend:request', 'friend:accepted', 'friend:blocked'],
     handler: async (eventName, data, categorySlug) => {
       if (data.toUserId) {
-        await dispatchToUser({ userId: data.toUserId, eventName, categorySlug, data, senderId: data.fromUserId });
+        await dispatchToUser({ userId: data.toUserId, eventName, categorySlug, data, senderId: data.fromUserId, actionKey: 'view_friend_request' });
       }
       if (data.fromUserId && data.toUserId !== data.fromUserId) {
-        await dispatchToUser({ userId: data.fromUserId, eventName, categorySlug, data });
+        await dispatchToUser({ userId: data.fromUserId, eventName, categorySlug, data, actionKey: 'view_friend_request' });
       }
     },
   },
@@ -329,7 +340,7 @@ const eventGroups: EventGroupConfig[] = [
       if (data.userId) {
         await dispatchToUser({
           userId: data.userId, eventName, categorySlug, data,
-          relatedEntityType: 'chat',
+          relatedEntityType: 'chat', actionKey: 'view_chat',
         });
       }
     },
@@ -341,7 +352,7 @@ const eventGroups: EventGroupConfig[] = [
         await dispatchToUser({
           userId: data.userId, eventName, categorySlug, data,
           senderId: data.inviterId,
-          relatedEntityType: 'chat',
+          relatedEntityType: 'chat', actionKey: 'view_chat',
           relatedEntityId: String(data.conversationId || data.groupId),
         });
       }
@@ -353,7 +364,7 @@ const eventGroups: EventGroupConfig[] = [
       if (data.userId) {
         await dispatchToUser({
           userId: data.userId, eventName, categorySlug, data,
-          relatedEntityType: 'membership', digestable: false,
+          relatedEntityType: 'membership', actionKey: 'view_membership', digestable: false,
         });
       }
     },
@@ -365,6 +376,7 @@ const eventGroups: EventGroupConfig[] = [
         await dispatchToUser({
           userId: data.userId, eventName, categorySlug, data,
           relatedEntityType: 'review', relatedEntityId: String(data.reviewId),
+          actionKey: 'view_order',
         });
       }
     },
@@ -376,6 +388,7 @@ const eventGroups: EventGroupConfig[] = [
         await dispatchToUser({
           userId: data.userId, eventName, categorySlug, data,
           relatedEntityType: 'booking', relatedEntityId: String(data.bookingId),
+          actionKey: 'view_booking',
         });
       }
     },
@@ -387,6 +400,7 @@ const eventGroups: EventGroupConfig[] = [
         await dispatchToUser({
           userId: data.userId, eventName, categorySlug, data,
           relatedEntityType: 'ticket', relatedEntityId: String(data.ticketId),
+          actionKey: 'view_ticket',
         });
       }
     },
@@ -397,7 +411,7 @@ const eventGroups: EventGroupConfig[] = [
       if (data.userId) {
         await dispatchToUser({
           userId: data.userId, eventName, categorySlug, data,
-          digestable: false, priority: 'critical',
+          actionKey: 'view_dashboard', digestable: false, priority: 'critical',
         });
       }
     },
@@ -408,7 +422,7 @@ const eventGroups: EventGroupConfig[] = [
       if (data.userId) {
         await dispatchToUser({
           userId: data.userId, eventName, categorySlug, data,
-          digestable: false,
+          actionKey: 'view_dashboard', digestable: false,
         });
       }
     },
@@ -421,7 +435,7 @@ const eventGroups: EventGroupConfig[] = [
         await dispatchToUser({
           userId: data.userId, eventName, categorySlug, data,
           relatedEntityType: 'match', relatedEntityId: String(data.matchId),
-          digestable: false, priority: isSent ? 'high' : 'normal',
+          actionKey: 'view_match', digestable: false, priority: isSent ? 'high' : 'normal',
         });
       }
     },
@@ -434,7 +448,7 @@ const eventGroups: EventGroupConfig[] = [
           userId: data.userId, eventName, categorySlug, data,
           relatedEntityType: 'booking', relatedEntityId: String(data.bookingId),
           senderId: data.senderId, actions: data.actions,
-          digestable: false, actionPayload: { bookingId: data.bookingId },
+          actionKey: 'view_match_applicants', digestable: false, actionPayload: { bookingId: data.bookingId },
         });
       }
     },
@@ -446,7 +460,7 @@ const eventGroups: EventGroupConfig[] = [
         await dispatchToUser({
           userId: data.creatorId, eventName, categorySlug, data,
           relatedEntityType: 'match', relatedEntityId: String(data.matchId),
-          digestable: false,
+          actionKey: 'view_match', digestable: false,
         });
       }
       eventBusV2.emit('match:available', { matchId: data.matchId, timestamp: new Date().toISOString() }, { aggregateType: 'match', aggregateId: String(0), aggregateVersion: 1 });
@@ -474,7 +488,7 @@ const eventGroups: EventGroupConfig[] = [
         await dispatchToUser({
           userId: data.creatorId, eventName, categorySlug, data,
           relatedEntityType: 'match', relatedEntityId: String(data.matchId),
-          digestable: false,
+          actionKey: 'view_match_applicants', digestable: false,
         });
       }
     },
@@ -486,7 +500,7 @@ const eventGroups: EventGroupConfig[] = [
         await dispatchToUser({
           userId: data.userId, eventName, categorySlug, data,
           relatedEntityType: 'match', relatedEntityId: String(data.matchId),
-          digestable: false,
+          actionKey: 'view_match', digestable: false,
         });
       }
       eventBusV2.emit('match:updated', { matchId: data.matchId, timestamp: new Date().toISOString() }, { aggregateType: 'match', aggregateId: String(0), aggregateVersion: 1 });
@@ -499,7 +513,7 @@ const eventGroups: EventGroupConfig[] = [
         await dispatchToUser({
           userId: data.userId, eventName, categorySlug, data,
           relatedEntityType: 'match', relatedEntityId: String(data.matchId),
-          digestable: false,
+          actionKey: 'view_match', digestable: false,
         });
       }
     },
@@ -523,7 +537,7 @@ const eventGroups: EventGroupConfig[] = [
         await dispatchToUser({
           userId: data.userId, eventName, categorySlug, data,
           relatedEntityType: 'match', relatedEntityId: String(data.matchId),
-          digestable: false,
+          actionKey: 'view_match', digestable: false,
         });
       }
     },
@@ -540,7 +554,7 @@ const eventGroups: EventGroupConfig[] = [
       if (data.organisationIds?.length) {
         for (const orgId of data.organisationIds) {
           await dispatchByOrg(orgId, {
-            eventName, categorySlug, data,
+            eventName, categorySlug, data, actionKey: 'view_coupon',
             relatedEntityType: 'coupon', relatedEntityId: String(data.couponId),
           });
         }
@@ -663,6 +677,3 @@ class NotificationEngine {
 }
 
 export const notificationEngine = new NotificationEngine();
-
-
-

@@ -37,6 +37,32 @@ function routeFromEntityType(n: AppNotification): string | null {
   }
 }
 
+const SCREEN_MAP: Record<string, (n: AppNotification) => string | null> = {
+  'booking-details': (n) => { const bid = id(n.action?.params || n.action_payload, 'bookingId', 'booking_id') || n.related_entity_id; return bid ? `/bookings/${bid}` : '/bookings'; },
+  'payment-details': (n) => { const pid = id(n.action?.params || n.action_payload, 'paymentId', 'payment_id') || n.related_entity_id; return pid ? `/bookings/${pid}` : '/bookings'; },
+  'wallet': () => '/app',
+  'order-details': (n) => { const oid = id(n.action?.params || n.action_payload, 'orderId', 'order_id') || n.related_entity_id; return oid ? `/marketplace/orders/${oid}` : '/marketplace/orders'; },
+  'product-details': (n) => { const pid = id(n.action?.params || n.action_payload, 'productId', 'product_id') || n.related_entity_id; return pid ? `/marketplace/products/${pid}` : '/marketplace'; },
+  'profile': () => '/profile',
+  'dashboard': () => '/app',
+  'notifications': () => '/notifications',
+  'organisation-details': (n) => { const oid = id(n.action?.params || n.action_payload, 'organizationId', 'orgId', 'organisation_id') || n.related_entity_id; return oid ? `/organisations/${oid}` : '/browse'; },
+  'membership': () => '/app',
+  'academy-details': (n) => { const aid = id(n.action?.params || n.action_payload, 'academyId', 'academy_id') || n.related_entity_id; return aid ? `/academies/${aid}` : '/academies'; },
+  'session-details': () => '/coaches/sessions/me',
+  'coach-details': (n) => { const cid = n.action?.params?.coachId || n.related_entity_id; return cid ? `/coaches/${cid}` : '/coaches'; },
+  'tournament-details': (n) => { const tid = id(n.action?.params || n.action_payload, 'tournamentId', 'tournament_id') || n.related_entity_id; return tid ? `/tournaments/${tid}` : '/tournaments'; },
+  'match-details': (n) => { const mid = id(n.action?.params || n.action_payload, 'matchId', 'match_id') || n.related_entity_id; return mid ? `/matches/${mid}` : '/matches'; },
+  'match-applicants': (n) => { const bid = id(n.action?.params || n.action_payload, 'bookingId', 'booking_id') || n.related_entity_id; return bid ? `/matches/${bid}/applicants` : '/matches'; },
+  'matchmaking-bookings': () => '/matches',
+  'chat': (n) => { const cid = id(n.action?.params || n.action_payload, 'conversationId', 'conversation_id') || n.related_entity_id; return cid ? `/messages/${cid}` : '/messages'; },
+  'post-details': () => '/community/events',
+  'friend-requests': () => '/community/events',
+  'ticket-details': (n) => { const tid = id(n.action?.params || n.action_payload, 'ticketId', 'ticket_id') || n.related_entity_id; return tid ? `/support/tickets/${tid}` : '/support'; },
+  'invitations': (n) => { const mid = id(n.action?.params || n.action_payload, 'matchId', 'match_id') || n.related_entity_id; return mid ? `/matches/${mid}` : '/matches'; },
+  'coupon-details': () => '/marketplace',
+};
+
 const ROUTE_MAP: Record<string, (n: AppNotification) => string | null> = {
   view_booking: (n) => { const bid = id(n.action_payload, 'bookingId', 'booking_id') || n.related_entity_id; return bid ? `/bookings/${bid}` : '/bookings'; },
   view_bookings: () => '/bookings',
@@ -76,6 +102,13 @@ const ROUTE_MAP: Record<string, (n: AppNotification) => string | null> = {
 };
 
 export function getNotificationRoute(notification: AppNotification): string | null {
+  if (notification.action?.screen) {
+    const resolver = SCREEN_MAP[notification.action.screen];
+    if (resolver) {
+      const route = resolver(notification);
+      if (route) return route;
+    }
+  }
   const key = notification.action_key;
   if (key) {
     const resolver = ROUTE_MAP[key];
