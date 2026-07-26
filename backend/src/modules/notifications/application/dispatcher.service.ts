@@ -12,7 +12,7 @@ import { isFeatureEnabled } from '../../../shared/utils/feature-flags.js';
 import { commandPipeline } from '../../../shared/command/command-pipeline.js';
 import { dispatchNotificationHandler, type DispatchNotificationPayload } from '../commands/dispatch-notification.command.js';
 import type { Command } from '../../../shared/command/command-base.js';
-import type { NotificationAction } from '@courtzon/shared/types';
+import type { NotificationAction } from '@courtzon/shared';
 import type { ProcessNotificationJob, SendNotificationBatchJob } from '../../../infrastructure/queue/queue.service.js';
 
 const log = createModuleLogger('dispatcher');

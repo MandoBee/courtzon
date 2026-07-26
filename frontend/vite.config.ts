@@ -8,7 +8,7 @@ const backend = process.env.BACKEND_URL || 'http://127.0.0.1:3000'
 export default defineConfig(({ command }) => ({
   resolve: {
     alias: {
-      '@courtzon/shared': path.resolve(__dirname, '../packages/shared/src'),
+      '@courtzon/shared': path.resolve(__dirname, '../packages/shared/src/index.ts'),
     },
   },
   plugins: [

@@ -24,6 +24,7 @@
 
     "baseUrl": ".",
     "paths": {
+      "@courtzon/shared": ["../packages/shared/src/index.ts"],
       "@courtzon/shared/*": ["../packages/shared/src/*"]
     }
   },

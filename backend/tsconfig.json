@@ -15,11 +15,7 @@
 
     "skipLibCheck": true,
 
-    "types": ["node"],
-
-    "paths": {
-      "@courtzon/shared/*": ["../packages/shared/src/*"]
-    }
+    "types": ["node"]
   },
 
   "include": ["src"],
