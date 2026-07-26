@@ -47,6 +47,7 @@ function setState(next: SocketState) {
   if (currentState === next) return;
   const prev = currentState;
   currentState = next;
+  console.log(`[TRACE][SocketClient][${new Date().toISOString()}] STATE ${prev} → ${next}`);
   log('%s → %s', prev, next);
   stateListeners.forEach((fn) => fn(next));
 }
@@ -102,6 +103,7 @@ export function createSocket(): Socket {
 
   socket.on('connect', () => {
     const transport = (socket?.io.engine as any)?.transport?.name || 'unknown';
+    console.log(`[TRACE][SocketClient][${new Date().toISOString()}] CONNECTED id=${socket?.id} transport=${transport}`);
     log('Connected id=%s transport=%s', socket?.id, transport);
     setState('connected');
   });

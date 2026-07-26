@@ -32,9 +32,12 @@ export async function chargeHandler(request: FastifyRequest, reply: FastifyReply
 }
 
 export async function confirmPaymentHandler(request: FastifyRequest, reply: FastifyReply) {
+  const _ctrlStart = Date.now();
   const userId = (request as any).userId;
   const body = ConfirmPaymentSchema.parse(request.body);
+  console.log(`[TRACE][PaymentCtrl][+0ms][${new Date(_ctrlStart).toISOString()}] [confirmPayment:${body.paymentId}] HTTP HIT userId=${userId}`);
   const result = await paymentService.confirmPayment(body.paymentId);
+  console.log(`[TRACE][PaymentCtrl][+${Date.now() - _ctrlStart}ms][${new Date().toISOString()}] [confirmPayment:${body.paymentId}] confirmPayment() returned confirmed=${result.confirmed} paymentStatus=${result.paymentStatus}`);
   recordAudit({
     actorId: userId ?? null,
     action: 'PAYMENT.CONFIRM',
@@ -47,6 +50,7 @@ export async function confirmPaymentHandler(request: FastifyRequest, reply: Fast
 
   // Events already emitted by _processPaymentOutcome — no duplicate needed here.
 
+  console.log(`[TRACE][PaymentCtrl][+${Date.now() - _ctrlStart}ms][${new Date().toISOString()}] [confirmPayment:${body.paymentId}] REPLY SENT — HTTP response returning to browser`);
   return reply.send(result);
 }
 
@@ -74,6 +78,8 @@ export async function refundHandler(request: FastifyRequest, reply: FastifyReply
 }
 
 export async function webhookHandler(request: FastifyRequest, reply: FastifyReply) {
+  const _whCtrlStart = Date.now();
+  console.log(`[TRACE][PaymentCtrl][+0ms][${new Date(_whCtrlStart).toISOString()}] [webhook] HTTP HIT`);
   try {
     // Intention API: HMAC is in query param; Accept API: HMAC is in header.
     // Prioritize query param for Intention API webhooks, fall back to header.
@@ -89,9 +95,11 @@ export async function webhookHandler(request: FastifyRequest, reply: FastifyRepl
       ipAddress: request.ip,
       userAgent: request.headers['user-agent'],
     });
+    console.log(`[TRACE][PaymentCtrl][+${Date.now() - _whCtrlStart}ms][${new Date().toISOString()}] [webhook] REPLY SENT`);
     return reply.send(result);
   } catch (err: any) {
     const msg = err?.message || String(err);
+    console.log(`[TRACE][PaymentCtrl][+${Date.now() - _whCtrlStart}ms][${new Date().toISOString()}] [webhook] ERROR msg=${msg}`);
     // HMAC / signature rejection → 401
     if (msg.includes('Invalid webhook signature') || msg.includes('HMAC')) {
       log.warn({ msg }, 'Webhook signature rejected');

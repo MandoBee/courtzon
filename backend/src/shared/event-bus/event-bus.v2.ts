@@ -83,6 +83,7 @@ class EventBusV2 {
     context?: Partial<EnvelopeContext>,
     conn?: mysql.PoolConnection,
   ): Promise<void> {
+    const _emitStart = Date.now();
     const envContext: EnvelopeContext = {
       aggregateType: context?.aggregateType || 'unknown',
       aggregateId: context?.aggregateId || '0',
@@ -95,6 +96,8 @@ class EventBusV2 {
     };
 
     const envelope = createEnvelope(eventName, payload, envContext);
+
+    console.log(`[TRACE][EventBus][+${Date.now() - _emitStart}ms][${new Date().toISOString()}] [emit:${eventName}] ENTRY eventId=${envelope.eventId} aggregateId=${envContext.aggregateId}`);
 
     try {
       await publishedEventsRepository.insert({
@@ -110,6 +113,7 @@ class EventBusV2 {
         occurredAt: new Date(envelope.occurredAt),
         schemaVersion: envelope.schemaVersion,
       }, conn);
+      console.log(`[TRACE][EventBus][+${Date.now() - _emitStart}ms][${new Date().toISOString()}] [emit:${eventName}] DB_INSERT_DONE eventId=${envelope.eventId}`);
     } catch (err: any) {
       if (err?.code !== 'ER_DUP_ENTRY') {
         log.error({ err, eventName, eventId: envelope.eventId }, 'event.publish_failed');
@@ -120,6 +124,9 @@ class EventBusV2 {
     emitTotal.inc({ event_name: eventName });
 
     onAfterCommit(async () => {
+      const _aocStart = Date.now();
+      console.log(`[TRACE][EventBus][+${_aocStart - _emitStart}ms][${new Date().toISOString()}] [emit:${eventName}] onAfterCommit FIRED — queueing + in-memory dispatch (eventId=${envelope.eventId})`);
+
       const subs = this.subscribers.get(eventName) || [];
       for (const sub of subs) {
         try {
@@ -129,17 +136,21 @@ class EventBusV2 {
             backoffDelay: sub.options?.backoffDelay ?? 2000,
           });
           enqueueTotal.inc({ queue: sub.queueName });
+          console.log(`[TRACE][EventBus][+${Date.now() - _aocStart}ms][${new Date().toISOString()}] [emit:${eventName}] ENQUEUED to ${sub.queueName}`);
         } catch (err) {
           enqueueFailedTotal.inc({ queue: sub.queueName });
           log.error({ err, queue: sub.queueName, eventId: envelope.eventId }, 'event.enqueue_failed');
+          console.log(`[TRACE][EventBus][+${Date.now() - _aocStart}ms][${new Date().toISOString()}] [emit:${eventName}] ENQUEUE_FAILED ${sub.queueName}`);
         }
       }
 
       try {
         const handlers = this.inMemoryHandlers.get(eventName) || [];
+        console.log(`[TRACE][EventBus][+${Date.now() - _aocStart}ms][${new Date().toISOString()}] [emit:${eventName}] DISPATCHING ${handlers.length} in-memory handler(s)`);
         for (const handler of handlers) {
           handler(envelope.payload);
         }
+        console.log(`[TRACE][EventBus][+${Date.now() - _aocStart}ms][${new Date().toISOString()}] [emit:${eventName}] IN_MEMORY_HANDLERS_DONE`);
       } catch (err) {
         log.error({ err, eventName }, 'event.in_memory_handler_failed');
       }

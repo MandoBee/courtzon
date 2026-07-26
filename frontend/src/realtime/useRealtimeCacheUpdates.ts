@@ -11,12 +11,14 @@ export function useRealtimeCacheUpdates(): void {
 
   // ── Booking events ─────────────────────────────────────────────
   useSocketEvent('booking.created', () => {
+    console.log(`[TRACE][React][${new Date().toISOString()}] [useRealtimeCacheUpdates] booking.created RECEIVED — invalidating queries`);
     qc.invalidateQueries({ queryKey: ['user-bookings'] });
     qc.invalidateQueries({ queryKey: ['home-upcoming-bookings'] });
     qc.invalidateQueries({ queryKey: ['home-recent-activity'] });
   });
 
   useSocketEvent('booking.confirmed', (p: any) => {
+    console.log(`[TRACE][React][${new Date().toISOString()}] [useRealtimeCacheUpdates] booking.confirmed RECEIVED bookingId=${p.bookingId} — updating cache`);
     qc.setQueryData(['booking', p.bookingId], (old: any) => old ? { ...old, booking_status: 'confirmed' } : old);
     qc.invalidateQueries({ queryKey: ['user-bookings'] });
     qc.invalidateQueries({ queryKey: ['home-upcoming-bookings'] });
@@ -47,6 +49,7 @@ export function useRealtimeCacheUpdates(): void {
 
   // ── Payment events ─────────────────────────────────────────────
   useSocketEvent('payment.completed', () => {
+    console.log(`[TRACE][React][${new Date().toISOString()}] [useRealtimeCacheUpdates] payment.completed RECEIVED — invalidating queries`);
     qc.invalidateQueries({ queryKey: ['wallet'] });
     qc.invalidateQueries({ queryKey: ['transactions'] });
     qc.invalidateQueries({ queryKey: ['mp-orders'] });

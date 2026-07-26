@@ -11,6 +11,12 @@ const log = createModuleLogger('booking-payment-listener');
 
 export function registerBookingPaymentListeners() {
   eventBusV2.on('payment:succeeded', async (data) => {
+    const _lnStart = Date.now();
+    const _lnTrace = (label: string, extra?: string) => {
+      const now = Date.now();
+      console.log(`[TRACE][BookingListener][+${now - _lnStart}ms][${new Date(now).toISOString()}] [payment:succeeded:${data.paymentId}] ${label}${extra ? ' ' + extra : ''}`);
+    };
+    _lnTrace('EVENT RECEIVED', `referenceType=${data.referenceType} referenceId=${data.referenceId}`);
     console.log(`[FLOW] ▶ booking-payment-listener: payment:succeeded received refType=${data.referenceType} refId=${data.referenceId} paymentId=${data.paymentId}`);
     if (data.referenceType !== 'booking') return;
     const bookingId = data.referenceId;
@@ -25,6 +31,7 @@ export function registerBookingPaymentListeners() {
         log.error({ bookingId }, 'Booking not found for payment succeeded');
         return;
       }
+      _lnTrace('BOOKING FOUND', `booking_status=${booking.booking_status} aggregate_version=${booking.aggregate_version}`);
       if (booking.booking_status === 'confirmed') {
         log.info({ bookingId }, 'Booking already confirmed — idempotent skip');
         return;
@@ -41,12 +48,14 @@ export function registerBookingPaymentListeners() {
         payload: { bookingId },
         correlationId: `corr_${Date.now()}`,
       };
+      _lnTrace('DISPATCHING ConfirmBooking command');
       const confirmResult = await commandPipeline.execute(confirmCommand, {
         validate: async () => confirmBookingHandler.validate(confirmCommand),
         execute: async (cmd, conn) => confirmBookingHandler.execute(cmd, conn),
         events: (cmd, res) => confirmBookingHandler.events!(cmd, res),
       });
       if (confirmResult.status === 'error') throw new Error(`ConfirmBooking failed: ${confirmResult.message}`);
+      _lnTrace('ConfirmBooking COMPLETED', `status=${confirmResult.status}`);
       console.log(`[FLOW] ✓ booking-payment-listener: Booking #${bookingId} CONFIRMED via payment:succeeded`);
       log.info({ bookingId }, 'Booking confirmed via payment succeeded event');
     } catch (err) {

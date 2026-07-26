@@ -23,8 +23,11 @@ export const confirmBookingHandler: CommandHandler<Command, ConfirmBookingResult
   },
 
   execute: async (command, conn: PoolConnection) => {
+    const _cmdStart = Date.now();
     const p = command.payload as unknown as ConfirmBookingPayload;
+    console.log(`[TRACE][ConfirmBookingCmd][+0ms][${new Date(_cmdStart).toISOString()}] [booking:${p.bookingId}] EXECUTE START commandId=${command.commandId}`);
     const booking = await bookingRepository.findById(p.bookingId, conn);
+    console.log(`[TRACE][ConfirmBookingCmd][+${Date.now() - _cmdStart}ms][${new Date(Date.now()).toISOString()}] [booking:${p.bookingId}] findById done current_status=${booking?.booking_status}`);
     if (!booking) throw new NotFoundError('Booking');
 
     if (booking.booking_status === 'confirmed') {
@@ -39,19 +42,23 @@ export const confirmBookingHandler: CommandHandler<Command, ConfirmBookingResult
     });
 
     await bookingRepository.persistTransition(p.bookingId, 'confirmed', undefined, booking.aggregate_version || 1, conn);
+    console.log(`[TRACE][ConfirmBookingCmd][+${Date.now() - _cmdStart}ms][${new Date(Date.now()).toISOString()}] [booking:${p.bookingId}] persistTransition DONE → confirmed`);
     log.info({ bookingId: p.bookingId, version: transition.newVersion }, 'booking.confirmed');
     return { bookingId: p.bookingId, aggregateVersion: transition.newVersion };
   },
 
-  events: (command, result) => [{
-    eventName: 'booking:confirmed',
-    payload: { bookingId: result.bookingId, aggregateVersion: result.aggregateVersion },
-    context: {
-      aggregateType: 'booking',
-      aggregateId: String(result.bookingId),
-      aggregateVersion: result.aggregateVersion || 1,
-      correlationId: command.correlationId,
-      causationId: command.commandId,
-    },
-  }],
+  events: (command, result) => {
+    console.log(`[TRACE][ConfirmBookingCmd][+0ms][${new Date().toISOString()}] [booking:${result.bookingId}] EVENTS CALLED — will emit booking:confirmed`);
+    return [{
+      eventName: 'booking:confirmed',
+      payload: { bookingId: result.bookingId, aggregateVersion: result.aggregateVersion },
+      context: {
+        aggregateType: 'booking',
+        aggregateId: String(result.bookingId),
+        aggregateVersion: result.aggregateVersion || 1,
+        correlationId: command.correlationId,
+        causationId: command.commandId,
+      },
+    }];
+  },
 };

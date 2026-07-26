@@ -1099,6 +1099,8 @@ export default function BookingModal({ open, onClose }: BookingModalProps) {
               }
             }}
             onComplete={async () => {
+              const _ocStart = Date.now();
+              console.log(`[TRACE][React][+0ms][${new Date(_ocStart).toISOString()}] [BookingModal] onComplete ENTRY — payment done, now confirming`);
               setPixelClientSecret(null);
               showToast('Payment submitted — confirming...', 'info');
               const pmId = paymentId;
@@ -1107,8 +1109,11 @@ export default function BookingModal({ open, onClose }: BookingModalProps) {
 
               // Try to confirm payment with Paymob
               if (pmId) {
+                console.log(`[TRACE][React][+${Date.now() - _ocStart}ms][${new Date().toISOString()}] [BookingModal] calling confirmPayment(${pmId})`);
                 const result = await confirmPayment(pmId);
+                console.log(`[TRACE][React][+${Date.now() - _ocStart}ms][${new Date().toISOString()}] [BookingModal] confirmPayment returned confirmed=${result.confirmed} state=${result.state}`);
                 if (result.confirmed) {
+                  console.log(`[TRACE][React][+${Date.now() - _ocStart}ms][${new Date().toISOString()}] [BookingModal] → CONFIRMED — closing modal + navigating`);
                   onClose();
                   showToast('Booking confirmed!');
                   queryClient.invalidateQueries({ queryKey: ['my-bookings'] });
@@ -1122,6 +1127,7 @@ export default function BookingModal({ open, onClose }: BookingModalProps) {
 
               // If we have a bookingId, the payment listener will confirm the booking via webhook
               if (bkId) {
+                console.log(`[TRACE][React][+${Date.now() - _ocStart}ms][${new Date().toISOString()}] [BookingModal] → FALLBACK bookingId=${bkId} — navigating to confirmation page (webhook will confirm)`);
                 onClose();
                 showToast('Payment submitted — waiting for confirmation', 'info');
                 queryClient.invalidateQueries({ queryKey: ['my-bookings'] });
@@ -1130,6 +1136,7 @@ export default function BookingModal({ open, onClose }: BookingModalProps) {
               }
 
               // Fall back to polling (webhook will complete)
+              console.log(`[TRACE][React][+${Date.now() - _ocStart}ms][${new Date().toISOString()}] [BookingModal] → FALLBACK pollingPaid=true`);
               setPollingPaid(true);
             }}
             onCancel={() => {
