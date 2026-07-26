@@ -9,7 +9,8 @@
     "test:e2e": "playwright test",
     "test:e2e:ci": "playwright test --grep \"Smoke — public\"",
     "validate:arch": "node scripts/architecture/validate-all.js",
-    "ci": "node scripts/ci-validate.js && node scripts/architecture/validate-all.js"
+    "metrics": "node scripts/architecture/metrics.js",
+    "ci": "node scripts/ci-validate.js && node scripts/architecture/validate-all.js && node scripts/architecture/metrics.js"
   },
   "devDependencies": {
     "@playwright/test": "^1.52.0"

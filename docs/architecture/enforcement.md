@@ -126,7 +126,37 @@ Architecture validation is a required CI step. A merge will be blocked if any ar
 # Example CI step (GitHub Actions)
 - name: Architecture Validation
   run: node scripts/architecture/validate-all.js
+
+- name: Architecture Health
+  run: node scripts/architecture/metrics.js
+- name: Upload Health Report
+  uses: actions/upload-artifact@v4
+  with:
+    name: architecture-health
+    path: artifacts/architecture-health.json
 ```
+
+Recommended CI order:
+
+```
+TypeScript compilation
+    ↓
+Unit / Integration tests
+    ↓
+Architecture validation (fails on violations)
+    ↓
+Architecture metrics (informational only)
+    ↓
+Docker build
+```
+
+## Health Score
+
+After architecture validation, the metrics script produces a health score (0–100) that aggregates all metrics. See [health.md](health.md) for the full reference.
+
+**Current health score: 89/100**
+
+The health score is **informational only**—it never blocks the build. It should be reviewed every release to detect trends.
 
 ## Adding a new validator
 
