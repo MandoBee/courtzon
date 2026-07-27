@@ -64,6 +64,7 @@ const ADMIN_ONLY_PREFIXES = [
   'bi.',
   'sports-engine.',
   'integration.',
+  'mobile.',
 ];
 
 function isAdminOnlyKey(key) {

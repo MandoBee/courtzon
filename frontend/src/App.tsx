@@ -94,6 +94,7 @@ const CoachPlayersPage = lazy(() => import('./pages/coaches/CoachPlayersPage'));
 const ProfilePage = lazy(() => import('./pages/profile/ProfilePage'));
 const RoleAppearancePage = lazy(() => import('./pages/settings/RoleAppearancePage'));
 const AuditLogPage = lazy(() => import('./pages/admin/AuditLogPage'));
+const MobileDashboardPage = lazy(() => import('./pages/admin/mobile/MobileDashboardPage'));
 const ReportsPage = lazy(() => import('./pages/admin/reports/ReportsPage'));
 const CommunityEventsPage = lazy(() => import('./pages/community/CommunityEventsPage'));
 const MessagesPage = lazy(() => import('./pages/community/MessagesPage'));
@@ -703,6 +704,7 @@ function AppContent() {
             <Route path="bi/dashboard" element={<BIDashboardPage />} />
             <Route path="bi/observability" element={<ObservabilityPage />} />
             <Route path="sports-engine" element={<SportsEnginePage />} />
+            <Route path="mobile/dashboard" element={<MobileDashboardPage />} />
          </Route>
         </Route>
 

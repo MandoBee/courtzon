@@ -1039,6 +1039,17 @@ export const uiRegistry: UIElement[] = [
   { permissionKey: 'integration.api-keys.view', moduleSlug: 'integration', elementType: 'page', elementLabel: 'API Keys Dashboard', componentPath: 'pages/admin/integration/APIDashboardPage.tsx' },
   { permissionKey: 'integration.api-keys.manage', moduleSlug: 'integration', elementType: 'button', elementLabel: 'Create / Revoke API Keys', componentPath: 'pages/admin/integration/APIDashboardPage.tsx' },
   { permissionKey: 'sidebar.integration', moduleSlug: 'integration', elementType: 'tab', elementLabel: 'Sidebar: Integration', componentPath: 'components/layout/AdminSidebar.tsx' },
+
+  // ==========================================================================
+  // MOBILE MODULE (Sprint 20 - Mobile Platform & Push Ecosystem)
+  // ==========================================================================
+  { permissionKey: 'mobile.dashboard.view', moduleSlug: 'mobile', elementType: 'page', elementLabel: 'Mobile Dashboard', componentPath: 'pages/admin/mobile/MobileDashboardPage.tsx' },
+  { permissionKey: 'mobile.versions.view', moduleSlug: 'mobile', elementType: 'page', elementLabel: 'View App Versions', componentPath: 'pages/admin/mobile/MobileDashboardPage.tsx' },
+  { permissionKey: 'mobile.versions.manage', moduleSlug: 'mobile', elementType: 'button', elementLabel: 'Manage App Versions', componentPath: 'pages/admin/mobile/MobileDashboardPage.tsx' },
+  { permissionKey: 'mobile.config.view', moduleSlug: 'mobile', elementType: 'page', elementLabel: 'View Remote Config', componentPath: 'pages/admin/mobile/MobileDashboardPage.tsx' },
+  { permissionKey: 'mobile.config.manage', moduleSlug: 'mobile', elementType: 'button', elementLabel: 'Manage Remote Config', componentPath: 'pages/admin/mobile/MobileDashboardPage.tsx' },
+  { permissionKey: 'mobile.push.view', moduleSlug: 'mobile', elementType: 'page', elementLabel: 'View Push Log', componentPath: 'pages/admin/mobile/MobileDashboardPage.tsx' },
+  { permissionKey: 'sidebar.mobile', moduleSlug: 'mobile', elementType: 'tab', elementLabel: 'Sidebar: Mobile', componentPath: 'components/layout/AdminSidebar.tsx' },
 ];
 
 export const uiPermissionMap = new Map(uiRegistry.map(e => [e.permissionKey, e]));
