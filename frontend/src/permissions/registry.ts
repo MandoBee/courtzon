@@ -1029,6 +1029,9 @@ export const uiRegistry: UIElement[] = [
   { permissionKey: 'sidebar.bi', moduleSlug: 'bi', elementType: 'tab', elementLabel: 'Sidebar: BI Section', componentPath: 'components/layout/AdminSidebar.tsx' },
   { permissionKey: 'sidebar.bi-dashboard', moduleSlug: 'bi', elementType: 'tab', elementLabel: 'Sidebar: BI Dashboard', componentPath: 'components/layout/AdminSidebar.tsx' },
   { permissionKey: 'sidebar.bi-observability', moduleSlug: 'bi', elementType: 'tab', elementLabel: 'Sidebar: BI Observability', componentPath: 'components/layout/AdminSidebar.tsx' },
+  { permissionKey: 'sports-engine.view', moduleSlug: 'sports-engine', elementType: 'page', elementLabel: 'Sports Engine Page', componentPath: 'pages/admin/sports/SportsEnginePage.tsx' },
+  { permissionKey: 'sports-engine.manage', moduleSlug: 'sports-engine', elementType: 'button', elementLabel: 'Manage Sports Engine', componentPath: 'pages/admin/sports/SportsEnginePage.tsx' },
+  { permissionKey: 'sidebar.sports-engine', moduleSlug: 'sports-engine', elementType: 'tab', elementLabel: 'Sidebar: Sports Engine', componentPath: 'components/layout/AdminSidebar.tsx' },
 ];
 
 export const uiPermissionMap = new Map(uiRegistry.map(e => [e.permissionKey, e]));

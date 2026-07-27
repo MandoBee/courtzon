@@ -65,6 +65,7 @@ import { accountingRoutes } from "./modules/accounting/presentation/accounting.r
 import { crmRoutes } from "./modules/crm/index.js";
 import { hrRoutes } from "./modules/hr/index.js";
 import { biRoutes } from "./modules/bi/index.js";
+import { sportsEngineRoutes } from "./modules/sports-engine/index.js";
 import { createPool, getPool } from "./database/mysql.js";
 import type mysql from "mysql2/promise";
 import { AppError } from "./shared/errors/app-error.js";
@@ -533,6 +534,7 @@ app.register(accountingRoutes);
 app.register(crmRoutes);
 app.register(hrRoutes);
 app.register(biRoutes);
+app.register(sportsEngineRoutes);
 
 function buildMeta(request: any) {
   return {

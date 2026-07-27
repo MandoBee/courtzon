@@ -61,6 +61,7 @@ function buildNavItems(t: (key: string) => string, can: (perm: string) => boolea
         { label: 'Observability', path: '/admin/bi/observability', permissionKey: 'sidebar.bi-observability' },
       ],
     },
+    { label: 'Sports Engine', icon: '🧠', path: '/admin/sports-engine', permissionKey: 'sidebar.sports-engine' },
     { label: t('admin.sidebar.reception'), icon: '🏪', path: '/admin/reception', permissionKey: 'sidebar.reception' },
     {
       label: t('admin.sidebar.league'), icon: '🏅', path: '/admin/league/dashboard', permissionKey: 'sidebar.league',
