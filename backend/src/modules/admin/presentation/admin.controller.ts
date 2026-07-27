@@ -145,6 +145,81 @@ export async function getQueueStatusHandler(_request: FastifyRequest, reply: Fas
   return sendSuccess(reply, status, buildMeta(_request));
 }
 
+export async function getQueueJobsHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { queueName } = request.params as { queueName: string };
+  const { status: jobStatus = 'failed', page = '1', limit = '20' } = request.query as Record<string, string>;
+  const jobs = await queueAdminService.getJobs(queueName, jobStatus, Number(page), Number(limit));
+  return sendSuccess(reply, jobs.data, buildMeta(request), jobs.pagination);
+}
+
+export async function retryJobHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = (request as any).userId;
+  const { queueName, jobId } = request.params as { queueName: string; jobId: string };
+  await queueAdminService.retryJob(queueName, jobId);
+
+  recordAudit({
+    actorId: userId,
+    action: 'QUEUE.RETRY_JOB',
+    entityType: 'queue_job',
+    entityId: `${queueName}:${jobId}`,
+    ipAddress: request.ip,
+    userAgent: request.headers['user-agent'],
+  });
+
+  return sendSuccess(reply, { retried: true }, buildMeta(request));
+}
+
+export async function drainQueueHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = (request as any).userId;
+  const { queueName } = request.params as { queueName: string };
+  await queueAdminService.drainQueue(queueName);
+
+  recordAudit({
+    actorId: userId,
+    action: 'QUEUE.DRAIN',
+    entityType: 'queue',
+    entityId: queueName,
+    ipAddress: request.ip,
+    userAgent: request.headers['user-agent'],
+  });
+
+  return sendSuccess(reply, { drained: true }, buildMeta(request));
+}
+
+export async function pauseQueueHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = (request as any).userId;
+  const { queueName } = request.params as { queueName: string };
+  await queueAdminService.pauseQueue(queueName);
+
+  recordAudit({
+    actorId: userId,
+    action: 'QUEUE.PAUSE',
+    entityType: 'queue',
+    entityId: queueName,
+    ipAddress: request.ip,
+    userAgent: request.headers['user-agent'],
+  });
+
+  return sendSuccess(reply, { paused: true }, buildMeta(request));
+}
+
+export async function resumeQueueHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = (request as any).userId;
+  const { queueName } = request.params as { queueName: string };
+  await queueAdminService.resumeQueue(queueName);
+
+  recordAudit({
+    actorId: userId,
+    action: 'QUEUE.RESUME',
+    entityType: 'queue',
+    entityId: queueName,
+    ipAddress: request.ip,
+    userAgent: request.headers['user-agent'],
+  });
+
+  return sendSuccess(reply, { resumed: true }, buildMeta(request));
+}
+
 // ── Audit Logs ───────────────────────────────────────────────────────────
 
 export async function getAuditLogsHandler(request: FastifyRequest, reply: FastifyReply) {

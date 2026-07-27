@@ -49,6 +49,7 @@ const ADMIN_ONLY_PREFIXES = [
   'sports.create',
   'sports.delete',
   'amenities.',
+  'support.',
   'coupons.admin',
   'settlements.admin',
   'notifications.',

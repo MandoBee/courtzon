@@ -169,6 +169,8 @@ function buildNavItems(t: (key: string) => string, can: (perm: string) => boolea
         { label: 'Membership', path: '/admin/membership', permissionKey: 'membership.view' },
         { label: 'Audit Log', path: '/admin/audit-logs', permissionKey: 'sidebar.audit' },
         { label: 'Feature Flags', path: '/admin/feature-flags', permissionKey: 'sidebar.feature-flags' },
+        { label: 'Support Tickets', path: '/admin/support/tickets', permissionKey: 'support.tickets.view' },
+        { label: 'Queue Management', path: '/admin/queues', permissionKey: 'queue.view' },
       ],
     },
   ];

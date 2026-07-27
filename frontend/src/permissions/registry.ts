@@ -922,6 +922,18 @@ export const uiRegistry: UIElement[] = [
   { permissionKey: 'coach.revenue.view', moduleSlug: 'coaches', elementType: 'page', elementLabel: 'Coach Revenue', componentPath: 'pages/coaches/CoachRevenuePage.tsx' },
   { permissionKey: 'coach.attendance.view', moduleSlug: 'coaches', elementType: 'page', elementLabel: 'Coach Attendance', componentPath: 'pages/coaches/CoachAttendancePage.tsx' },
   { permissionKey: 'coach.statistics.view', moduleSlug: 'coaches', elementType: 'page', elementLabel: 'Coach Statistics', componentPath: 'pages/coaches/CoachAttendancePage.tsx' },
+
+  // ==========================================================================
+  // SUPPORT MODULE (Sprint 12)
+  // ==========================================================================
+  { permissionKey: 'support.tickets.view', moduleSlug: 'support', elementType: 'page', elementLabel: 'Support Tickets Page', componentPath: 'pages/admin/support/SupportTicketsPage.tsx' },
+  { permissionKey: 'support.tickets.create', moduleSlug: 'support', elementType: 'button', elementLabel: 'Create Support Ticket', componentPath: 'pages/admin/support/SupportTicketsPage.tsx' },
+  { permissionKey: 'support.tickets.manage', moduleSlug: 'support', elementType: 'action', elementLabel: 'Manage Support Tickets', componentPath: 'pages/admin/support/SupportTicketsPage.tsx' },
+  { permissionKey: 'queue.manage', moduleSlug: 'admin', elementType: 'action', elementLabel: 'Manage Message Queues', componentPath: 'pages/admin/queues/QueueManagementPage.tsx' },
+
+  // Sidebar
+  { permissionKey: 'sidebar.support-tickets', moduleSlug: 'support', elementType: 'tab', elementLabel: 'Sidebar: Support Tickets', componentPath: 'components/layout/AdminSidebar.tsx' },
+  { permissionKey: 'sidebar.queue-management', moduleSlug: 'admin', elementType: 'tab', elementLabel: 'Sidebar: Queue Management', componentPath: 'components/layout/AdminSidebar.tsx' },
 ];
 
 export const uiPermissionMap = new Map(uiRegistry.map(e => [e.permissionKey, e]));

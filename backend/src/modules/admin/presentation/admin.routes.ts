@@ -28,6 +28,11 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
 
   // ── Queues ────────────────────────────────────────────────────────────
   app.get('/admin/queues', { preHandler: [requirePermission(['queue.view'])] }, ctrl.getQueueStatusHandler);
+  app.get('/admin/queues/:queueName/jobs', { preHandler: [requirePermission(['queue.view'])] }, ctrl.getQueueJobsHandler);
+  app.post('/admin/queues/:queueName/jobs/:jobId/retry', { preHandler: [requirePermission(['queue.manage'])] }, ctrl.retryJobHandler);
+  app.post('/admin/queues/:queueName/drain', { preHandler: [requirePermission(['queue.manage'])] }, ctrl.drainQueueHandler);
+  app.post('/admin/queues/:queueName/pause', { preHandler: [requirePermission(['queue.manage'])] }, ctrl.pauseQueueHandler);
+  app.post('/admin/queues/:queueName/resume', { preHandler: [requirePermission(['queue.manage'])] }, ctrl.resumeQueueHandler);
 }
 
 // Public routes — no auth
