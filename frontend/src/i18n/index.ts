@@ -63,9 +63,10 @@ export async function setLocale(locale: Locale, isRtl?: boolean): Promise<void> 
 function resolveTranslation(
   bundle: Record<string, string>,
   key: string,
+  defaultValue?: string,
   params?: Record<string, string | number>
 ): string {
-  let value = bundle[key] || registryDefaults[key] || key;
+  let value = bundle[key] || registryDefaults[key] || defaultValue || key;
   if (params) {
     Object.entries(params).forEach(([k, v]) => {
       value = value.replace(`{${k}}`, String(v));
@@ -74,19 +75,41 @@ function resolveTranslation(
   return value;
 }
 
+type TParams = Record<string, string | number>;
+
+interface TranslateFn {
+  (key: string): string;
+  (key: string, defaultValue: string): string;
+  (key: string, params: TParams): string;
+  (key: string, defaultValue: string, params: TParams): string;
+}
+
+function makeTranslate(bundle: Record<string, string>): TranslateFn {
+  return (key: string, defaultValueOrParams?: string | TParams, params?: TParams): string => {
+    if (typeof defaultValueOrParams === 'string') {
+      return resolveTranslation(bundle, key, defaultValueOrParams, params);
+    }
+    return resolveTranslation(bundle, key, undefined, defaultValueOrParams);
+  };
+}
+
 /** Imperative translate — does not subscribe; prefer `useTranslation()` in components. */
-export function t(key: string, params?: Record<string, string | number>): string {
-  return resolveTranslation(useI18nStore.getState().bundle, key, params);
+export function t(key: string): string;
+export function t(key: string, defaultValue: string): string;
+export function t(key: string, params: TParams): string;
+export function t(key: string, defaultValue: string, params: TParams): string;
+export function t(key: string, defaultValueOrParams?: string | TParams, params?: TParams): string {
+  if (typeof defaultValueOrParams === 'string') {
+    return resolveTranslation(useI18nStore.getState().bundle, key, defaultValueOrParams, params);
+  }
+  return resolveTranslation(useI18nStore.getState().bundle, key, undefined, defaultValueOrParams);
 }
 
 export function useTranslation() {
   const locale = useI18nStore((s) => s.locale);
   const bundle = useI18nStore((s) => s.bundle);
   const loading = useI18nStore((s) => s.loading);
-  const translate = useCallback(
-    (key: string, params?: Record<string, string | number>) => resolveTranslation(bundle, key, params),
-    [bundle]
-  );
+  const translate = useCallback(makeTranslate(bundle), [bundle]);
   return { t: translate, locale, setLocale, getLocale, loading };
 }
 

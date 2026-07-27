@@ -32,6 +32,7 @@ import IOSInstallSheet from './components/pwa/IOSInstallSheet';
 import SplashScreen from './components/SplashScreen';
 import RoleSwitcher from './components/workspace/RoleSwitcher';
 import CoachLayout from './components/layout/CoachLayout';
+import RefereeLayout from './components/layout/RefereeLayout';
 import { isOrganisationPendingApproval, orgPortalPath } from './utils/organisation';
 
 // Route-level code splitting: every page/layout below is lazily imported so the
@@ -216,6 +217,14 @@ const LedgerViewerPage = lazy(() => import('./pages/admin/finance/LedgerViewerPa
 const ReportCenterPage = lazy(() => import('./pages/admin/finance/ReportCenterPage'));
 const MatchListPage = lazy(() => import('./pages/booking/MatchListPage'));
 const MatchLobbyPage = lazy(() => import('./pages/booking/MatchLobbyPage'));
+const RefereeDashboardPage = lazy(() => import('./pages/referee/RefereeDashboardPage'));
+const RefereeProfilePage = lazy(() => import('./pages/referee/RefereeProfilePage'));
+const RefereeAvailabilityPage = lazy(() => import('./pages/referee/RefereeAvailabilityPage'));
+const RefereeAssignmentsPage = lazy(() => import('./pages/referee/RefereeAssignmentsPage'));
+const RefereeMatchHistoryPage = lazy(() => import('./pages/referee/RefereeMatchHistoryPage'));
+const RefereeStatisticsPage = lazy(() => import('./pages/referee/RefereeStatisticsPage'));
+const CoachRevenuePage = lazy(() => import('./pages/coaches/CoachRevenuePage'));
+const CoachAttendancePage = lazy(() => import('./pages/coaches/CoachAttendancePage'));
 const NotFoundPage = lazy(() => import('./pages/NotFoundPage'));
 
 
@@ -525,6 +534,17 @@ function AppContent() {
           <Route path="players" element={<CoachPlayersPage />} />
           <Route path="availability" element={<CoachProfilePage />} />
           <Route path="profile" element={<CoachProfilePage />} />
+          <Route path="revenue" element={<CoachRevenuePage />} />
+          <Route path="attendance" element={<CoachAttendancePage />} />
+        </Route>
+        <Route path="/referee" element={<RefereeLayout />}>
+          <Route index element={<RefereeDashboardPage />} />
+          <Route path="dashboard" element={<RefereeDashboardPage />} />
+          <Route path="profile" element={<RefereeProfilePage />} />
+          <Route path="availability" element={<RefereeAvailabilityPage />} />
+          <Route path="assignments" element={<RefereeAssignmentsPage />} />
+          <Route path="matches" element={<RefereeMatchHistoryPage />} />
+          <Route path="statistics" element={<RefereeStatisticsPage />} />
         </Route>
         <Route path="/admin" element={<AdminRoute />}>
           <Route element={<AdminLayout />}>

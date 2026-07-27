@@ -907,6 +907,21 @@ export const uiRegistry: UIElement[] = [
   { permissionKey: 'player.tournaments.register', moduleSlug: 'player', elementType: 'action', elementLabel: 'Register in Tournaments', componentPath: 'pages/player/DashboardPage.tsx' },
   { permissionKey: 'academy.self_enroll', moduleSlug: 'academy', elementType: 'action', elementLabel: 'Self-enroll in Academy', componentPath: 'pages/academies/AcademyDetailPage.tsx' },
   { permissionKey: 'league.self_register', moduleSlug: 'league', elementType: 'action', elementLabel: 'Self-register in League', componentPath: 'pages/player/DashboardPage.tsx' },
+
+  // ==========================================================================
+  // REFEREE MODULE (Sprint 11)
+  // ==========================================================================
+  { permissionKey: 'referee.dashboard.view', moduleSlug: 'referee', elementType: 'page', elementLabel: 'Referee Dashboard', componentPath: 'pages/referee/RefereeDashboardPage.tsx' },
+  { permissionKey: 'referee.profile.view', moduleSlug: 'referee', elementType: 'page', elementLabel: 'Referee Profile', componentPath: 'pages/referee/RefereeProfilePage.tsx' },
+  { permissionKey: 'referee.profile.update', moduleSlug: 'referee', elementType: 'button', elementLabel: 'Update Referee Profile', componentPath: 'pages/referee/RefereeProfilePage.tsx' },
+  { permissionKey: 'referee.availability.view', moduleSlug: 'referee', elementType: 'page', elementLabel: 'Referee Availability', componentPath: 'pages/referee/RefereeAvailabilityPage.tsx' },
+  { permissionKey: 'referee.availability.manage', moduleSlug: 'referee', elementType: 'button', elementLabel: 'Manage Referee Availability', componentPath: 'pages/referee/RefereeAvailabilityPage.tsx' },
+  { permissionKey: 'referee.assignments.view', moduleSlug: 'referee', elementType: 'page', elementLabel: 'Referee Assignments', componentPath: 'pages/referee/RefereeAssignmentsPage.tsx' },
+  { permissionKey: 'referee.assignments.manage', moduleSlug: 'referee', elementType: 'button', elementLabel: 'Manage Referee Assignments', componentPath: 'pages/referee/RefereeAssignmentsPage.tsx' },
+  { permissionKey: 'referee.statistics.view', moduleSlug: 'referee', elementType: 'page', elementLabel: 'Referee Statistics', componentPath: 'pages/referee/RefereeStatisticsPage.tsx' },
+  { permissionKey: 'coach.revenue.view', moduleSlug: 'coaches', elementType: 'page', elementLabel: 'Coach Revenue', componentPath: 'pages/coaches/CoachRevenuePage.tsx' },
+  { permissionKey: 'coach.attendance.view', moduleSlug: 'coaches', elementType: 'page', elementLabel: 'Coach Attendance', componentPath: 'pages/coaches/CoachAttendancePage.tsx' },
+  { permissionKey: 'coach.statistics.view', moduleSlug: 'coaches', elementType: 'page', elementLabel: 'Coach Statistics', componentPath: 'pages/coaches/CoachAttendancePage.tsx' },
 ];
 
 export const uiPermissionMap = new Map(uiRegistry.map(e => [e.permissionKey, e]));

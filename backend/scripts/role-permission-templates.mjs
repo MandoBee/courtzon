@@ -137,11 +137,15 @@ const COACH_PATTERNS = [
   /^coaches\.(profile|sessions|availability|invites|book|reviews|view|apply|manage_profile|manage_agreements|create_sessions)/,
   /^coaches\.book\./,
   /^coaches\.profile\.edit\./,
+  /^coach\.revenue\./,
+  /^coach\.attendance\./,
+  /^coach\.statistics\./,
   /^profile\./,
   /^bookings\.(view|create|cancel)/,
   /^community\.chat\./,
   /^organisations\.storefront\.view$/,
   /^marketplace\.view$/,
+  /^referee\./,
 ];
 
 const ACCOUNTANT_PATTERNS = [
@@ -199,6 +203,9 @@ const INDEPENDENT_COACH_PATTERNS = [
   /^coaches\.(profile|sessions|availability|invites|book|reviews|view|apply|manage_profile|manage_agreements|create_sessions)/,
   /^coaches\.book\./,
   /^coaches\.profile\.edit\./,
+  /^coach\.revenue\./,
+  /^coach\.attendance\./,
+  /^coach\.statistics\./,
   /^profile\./,
   /^bookings\.(view|create|cancel)/,
   /^community\.chat\./,
@@ -214,17 +221,22 @@ const INDEPENDENT_COACH_PATTERNS = [
   /^sports\.view$/,
   /^tournaments\.view/,
   /^academies\.(view|enroll)/,
+  /^referee\./,
 ];
 
 const RESIDENT_COACH_PATTERNS = [
   /^coaches\.(profile|sessions|availability|invites|book|reviews|view|apply|manage_profile|manage_agreements|create_sessions)/,
   /^coaches\.book\./,
   /^coaches\.profile\.edit\./,
+  /^coach\.revenue\./,
+  /^coach\.attendance\./,
+  /^coach\.statistics\./,
   /^profile\./,
   /^bookings\.(view|create|cancel)/,
   /^community\.chat\./,
   /^organisations\.storefront\.view$/,
   /^marketplace\.view$/,
+  /^referee\./,
 ];
 
 export function permissionMatchesTemplate(templateSlug, permissionKey) {

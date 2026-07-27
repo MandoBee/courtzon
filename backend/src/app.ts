@@ -56,6 +56,7 @@ import { matchRoutes } from "./modules/match/presentation/match.routes.js";
 import { schedulingRoutes } from "./modules/scheduling/presentation/scheduling.routes.js";
 import { academyRoutes } from "./modules/academy/presentation/academy.routes.js";
 import { leagueRoutes } from "./modules/leagues/presentation/league.routes.js";
+import { refereeRoutes } from "./modules/coaches/index.js";
 import { playerRoutes } from "./modules/player-experience/presentation/player.routes.js";
 import { adminRoutes, publicAdminRoutes } from "./modules/admin/presentation/admin.routes.js";
 import { createPool, getPool } from "./database/mysql.js";
@@ -518,6 +519,7 @@ app.register(adminTagRoutes);
   app.register(appearanceRoutes);
   app.register(academyRoutes);
   app.register(leagueRoutes);
+  app.register(refereeRoutes);
   app.register(playerRoutes);
 
 function buildMeta(request: any) {

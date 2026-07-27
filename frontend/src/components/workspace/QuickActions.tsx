@@ -1,9 +1,11 @@
+import { useNavigate } from 'react-router-dom';
 import { Can } from '../../permissions/Can';
 
 interface ActionItem {
   icon: string;
   label: string;
-  onClick: () => void;
+  onClick?: () => void;
+  path?: string;
   permission?: string;
 }
 
@@ -18,6 +20,7 @@ interface Props {
 export default function QuickActions({
   actions, accentColor, title = 'Quick Actions', icon = '⚡', columns = 4,
 }: Props) {
+  const navigate = useNavigate();
   return (
     <section>
       <div className="flex items-center gap-2 mb-3">
@@ -28,7 +31,7 @@ export default function QuickActions({
         {actions.map((action) => (
           <Can key={action.label} permission={action.permission ?? '__always__'}>
             <button
-              onClick={action.onClick}
+              onClick={action.onClick ?? (action.path ? () => navigate(action.path!) : undefined)}
               className="flex flex-col items-center gap-1.5 p-3 md:p-4 rounded-[var(--radius-lg)] bg-[var(--color-surface)] border border-[var(--color-border)] hover:shadow-[var(--shadow-md)] hover:-translate-y-0.5 transition-all duration-200 group"
             >
               <div
