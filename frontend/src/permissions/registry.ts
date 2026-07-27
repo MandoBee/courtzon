@@ -633,6 +633,27 @@ export const uiRegistry: UIElement[] = [
   { permissionKey: 'sidebar.tournament-dashboard', moduleSlug: 'tournament', elementType: 'tab', elementLabel: 'Sidebar: Tournament Dashboard', componentPath: 'components/layout/AdminSidebar.tsx' },
   { permissionKey: 'sidebar.tournament-list', moduleSlug: 'tournament', elementType: 'tab', elementLabel: 'Sidebar: Tournament List', componentPath: 'components/layout/AdminSidebar.tsx' },
   { permissionKey: 'sidebar.tournament-matches', moduleSlug: 'tournament', elementType: 'tab', elementLabel: 'Sidebar: Tournament Matches', componentPath: 'components/layout/AdminSidebar.tsx' },
+
+  // ==========================================================================
+  // LEAGUE MODULE (Sprint 8)
+  // ==========================================================================
+  { permissionKey: 'season.view', moduleSlug: 'league', elementType: 'page', elementLabel: 'Seasons Page', componentPath: 'pages/admin/league/SeasonListPage.tsx' },
+  { permissionKey: 'season.create', moduleSlug: 'league', elementType: 'button', elementLabel: 'Create Season', componentPath: 'pages/admin/league/SeasonListPage.tsx' },
+  { permissionKey: 'season.update', moduleSlug: 'league', elementType: 'button', elementLabel: 'Update Season', componentPath: 'pages/admin/league/SeasonListPage.tsx' },
+  { permissionKey: 'season.delete', moduleSlug: 'league', elementType: 'button', elementLabel: 'Archive Season', componentPath: 'pages/admin/league/SeasonListPage.tsx' },
+  { permissionKey: 'season.publish', moduleSlug: 'league', elementType: 'button', elementLabel: 'Publish Season', componentPath: 'pages/admin/league/SeasonListPage.tsx' },
+  { permissionKey: 'league.view', moduleSlug: 'league', elementType: 'page', elementLabel: 'Leagues Page', componentPath: 'pages/admin/league/LeagueListPage.tsx' },
+  { permissionKey: 'league.create', moduleSlug: 'league', elementType: 'button', elementLabel: 'Create League', componentPath: 'pages/admin/league/LeagueListPage.tsx' },
+  { permissionKey: 'league.update', moduleSlug: 'league', elementType: 'button', elementLabel: 'Update League', componentPath: 'pages/admin/league/LeagueListPage.tsx' },
+  { permissionKey: 'league.delete', moduleSlug: 'league', elementType: 'button', elementLabel: 'Archive League', componentPath: 'pages/admin/league/LeagueListPage.tsx' },
+  { permissionKey: 'league.manage', moduleSlug: 'league', elementType: 'action', elementLabel: 'Manage League (fixtures/divisions/teams)', componentPath: 'pages/admin/league/LeagueDetailPage.tsx' },
+  { permissionKey: 'league.result.manage', moduleSlug: 'league', elementType: 'action', elementLabel: 'Manage League Results', componentPath: 'pages/admin/league/LeagueDetailPage.tsx' },
+  { permissionKey: 'league.dashboard.view', moduleSlug: 'league', elementType: 'page', elementLabel: 'League Dashboard', componentPath: 'pages/admin/league/LeagueDashboardPage.tsx' },
+  { permissionKey: 'sidebar.league', moduleSlug: 'league', elementType: 'tab', elementLabel: 'Sidebar: League Section', componentPath: 'components/layout/AdminSidebar.tsx' },
+  { permissionKey: 'sidebar.league-dashboard', moduleSlug: 'league', elementType: 'tab', elementLabel: 'Sidebar: League Dashboard', componentPath: 'components/layout/AdminSidebar.tsx' },
+  { permissionKey: 'sidebar.league-seasons', moduleSlug: 'league', elementType: 'tab', elementLabel: 'Sidebar: League Seasons', componentPath: 'components/layout/AdminSidebar.tsx' },
+  { permissionKey: 'sidebar.league-list', moduleSlug: 'league', elementType: 'tab', elementLabel: 'Sidebar: League List', componentPath: 'components/layout/AdminSidebar.tsx' },
+  { permissionKey: 'sidebar.league-divisions', moduleSlug: 'league', elementType: 'tab', elementLabel: 'Sidebar: League Divisions', componentPath: 'components/layout/AdminSidebar.tsx' },
   { permissionKey: 'academies.create', moduleSlug: 'academies', elementType: 'action', elementLabel: 'Create Academy' },
   { permissionKey: 'academies.edit', moduleSlug: 'academies', elementType: 'action', elementLabel: 'Edit Academy' },
   { permissionKey: 'academies.evaluate', moduleSlug: 'academies', elementType: 'action', elementLabel: 'Evaluate Academy Students' },

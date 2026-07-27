@@ -54,6 +54,8 @@ const ADMIN_ONLY_PREFIXES = [
   'notifications.',
   'academy.',
   'tournament.',
+  'season.',
+  'league.',
 ];
 
 function isAdminOnlyKey(key) {

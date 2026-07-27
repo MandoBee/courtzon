@@ -123,6 +123,11 @@ const AcademyProgramsPage = lazy(() => import('./pages/admin/academy/AcademyProg
 const AcademyGroupsPage = lazy(() => import('./pages/admin/academy/AcademyGroupsPage'));
 const AcademyEnrollmentsPage = lazy(() => import('./pages/admin/academy/AcademyEnrollmentsPage'));
 const AcademyAttendancePage = lazy(() => import('./pages/admin/academy/AcademyAttendancePage'));
+const LeagueDashboardPage = lazy(() => import('./pages/admin/league/LeagueDashboardPage'));
+const SeasonListPage = lazy(() => import('./pages/admin/league/SeasonListPage'));
+const LeagueListPage = lazy(() => import('./pages/admin/league/LeagueListPage'));
+const LeagueDetailPage = lazy(() => import('./pages/admin/league/LeagueDetailPage'));
+const DivisionManagePage = lazy(() => import('./pages/admin/league/DivisionManagePage'));
 const CoachAdminPage = lazy(() => import('./pages/admin/coaches/CoachAdminPage'));
 const CommunityEventsAdminPage = lazy(() => import('./pages/admin/community/CommunityEventsAdminPage'));
 const CmsPage = lazy(() => import('./pages/admin/cms/CmsPage'));
@@ -538,6 +543,12 @@ function AppContent() {
             <Route path="tournament/list" element={<TournamentListAdminPage />} />
             <Route path="tournament/list/:id" element={<TournamentDetailAdminPage />} />
             <Route path="tournament/matches" element={<TournamentMatchesAdminPage />} />
+            <Route path="league/dashboard" element={<LeagueDashboardPage />} />
+            <Route path="league/seasons" element={<SeasonListPage />} />
+            <Route path="league/list" element={<LeagueListPage />} />
+            <Route path="league/list/:id" element={<LeagueDetailPage />} />
+            <Route path="league/divisions" element={<DivisionManagePage />} />
+            <Route path="league/divisions/:leagueId" element={<DivisionManagePage />} />
             <Route path="academies" element={<AcademyAdminPage />} />
             <Route path="academy/dashboard" element={<AcademyDashboardPage />} />
             <Route path="academy/programs" element={<AcademyProgramsPage />} />

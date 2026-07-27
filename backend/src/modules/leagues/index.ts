@@ -1,0 +1,15 @@
+export { leagueRoutes } from './presentation/league.routes.js';
+export { seasonService } from './application/season.service.js';
+export { leagueService } from './application/league.service.js';
+export { divisionService } from './application/division.service.js';
+export { fixtureService } from './application/fixture.service.js';
+export { standingService } from './application/standing.service.js';
+export { statisticsService } from './application/statistics.service.js';
+export { seasonRepository } from './infrastructure/repositories/season.repository.js';
+export { leagueRepository } from './infrastructure/repositories/league.repository.js';
+export { divisionRepository } from './infrastructure/repositories/division.repository.js';
+export { fixtureRepository } from './infrastructure/repositories/fixture.repository.js';
+export { standingRepository } from './infrastructure/repositories/standing.repository.js';
+export { statisticsRepository } from './infrastructure/repositories/statistics.repository.js';
+export { validateSeasonTransition, validateLeagueTransition, validateTeamTransition } from './domain/lifecycle.js';
+export * from './domain/league.types.js';
