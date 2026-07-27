@@ -815,6 +815,7 @@ export const translationKeysRegistry: TranslationKeyEntry[] = [
   { key: 'admin.sidebar.translations', defaultValue: 'Translations', moduleSlug: 'admin', elementType: 'nav', elementLabel: 'Admin sidebar translations' },
   { key: 'admin.sidebar.amenities', defaultValue: 'Amenities', moduleSlug: 'admin', elementType: 'nav', elementLabel: 'Admin sidebar amenities' },
   { key: 'admin.sidebar.branding', defaultValue: 'Branding', moduleSlug: 'admin', elementType: 'nav', elementLabel: 'Admin sidebar branding' },
+  { key: 'admin.sidebar.integration', defaultValue: 'Integration', moduleSlug: 'admin', elementType: 'nav', elementLabel: 'Admin sidebar Integration' },
   { key: 'admin.sidebar.webhooks', defaultValue: 'Webhooks', moduleSlug: 'admin', elementType: 'nav', elementLabel: 'Admin sidebar webhooks' },
   { key: 'admin.sidebar.security', defaultValue: 'Security', moduleSlug: 'admin', elementType: 'nav', elementLabel: 'Admin sidebar security' },
   { key: 'admin.sidebar.profile', defaultValue: 'Profile', moduleSlug: 'admin', elementType: 'tooltip', elementLabel: 'Admin sidebar profile tooltip' },
@@ -1567,6 +1568,24 @@ export const translationKeysRegistry: TranslationKeyEntry[] = [
   { key: 'hr.payroll.component_created', defaultValue: 'Component created', moduleSlug: 'hr', elementType: 'message', elementLabel: 'Payroll component created toast' },
   { key: 'hr.payroll.component_updated', defaultValue: 'Component updated', moduleSlug: 'hr', elementType: 'message', elementLabel: 'Payroll component updated toast' },
   { key: 'hr.payroll.component_deleted', defaultValue: 'Component deleted', moduleSlug: 'hr', elementType: 'message', elementLabel: 'Payroll component deleted toast' },
+
+  // ── Integration / API Keys (Sprint 19) ──
+  { key: 'integration.api_keys.title', defaultValue: 'API Keys', moduleSlug: 'integration', elementType: 'heading', elementLabel: 'API keys page title' },
+  { key: 'integration.api_keys.create', defaultValue: '+ Create API Key', moduleSlug: 'integration', elementType: 'button', elementLabel: 'Create API key button' },
+  { key: 'integration.api_keys.total_keys', defaultValue: 'Total Keys', moduleSlug: 'integration', elementType: 'label', elementLabel: 'Total keys stat' },
+  { key: 'integration.api_keys.active_keys', defaultValue: 'Active Keys', moduleSlug: 'integration', elementType: 'label', elementLabel: 'Active keys stat' },
+  { key: 'integration.api_keys.last_used', defaultValue: 'Last Used', moduleSlug: 'integration', elementType: 'label', elementLabel: 'Last used stat' },
+  { key: 'integration.api_keys.name', defaultValue: 'Name', moduleSlug: 'integration', elementType: 'label', elementLabel: 'API key name column' },
+  { key: 'integration.api_keys.key_prefix', defaultValue: 'Key Prefix', moduleSlug: 'integration', elementType: 'label', elementLabel: 'API key prefix column' },
+  { key: 'integration.api_keys.status', defaultValue: 'Status', moduleSlug: 'integration', elementType: 'label', elementLabel: 'API key status column' },
+  { key: 'integration.api_keys.created', defaultValue: 'Created', moduleSlug: 'integration', elementType: 'label', elementLabel: 'API key created column' },
+  { key: 'integration.api_keys.revoke', defaultValue: 'Revoke', moduleSlug: 'integration', elementType: 'button', elementLabel: 'Revoke button' },
+  { key: 'integration.api_keys.key_name_placeholder', defaultValue: 'e.g. Production CLI', moduleSlug: 'integration', elementType: 'placeholder', elementLabel: 'API key name placeholder' },
+  { key: 'integration.api_keys.save_warning', defaultValue: 'Save this key — it will not be shown again.', moduleSlug: 'integration', elementType: 'message', elementLabel: 'Save key warning' },
+  { key: 'integration.api_keys.created_toast', defaultValue: 'API key created!', moduleSlug: 'integration', elementType: 'message', elementLabel: 'Created toast' },
+  { key: 'integration.api_keys.revoked_toast', defaultValue: 'API key revoked', moduleSlug: 'integration', elementType: 'message', elementLabel: 'Revoked toast' },
+  { key: 'integration.api_keys.empty', defaultValue: 'No API keys created yet.', moduleSlug: 'integration', elementType: 'text', elementLabel: 'Empty state text' },
+  { key: 'integration.api_keys.docs_link', defaultValue: 'API Docs', moduleSlug: 'integration', elementType: 'link', elementLabel: 'API docs link' },
 
   // ── BI / Business Intelligence (Sprint 17) ──
   { key: 'bi.dashboard.title', defaultValue: 'Business Intelligence', moduleSlug: 'bi', elementType: 'heading', elementLabel: 'BI Dashboard title' },

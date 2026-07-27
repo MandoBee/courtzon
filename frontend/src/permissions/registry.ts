@@ -1032,6 +1032,13 @@ export const uiRegistry: UIElement[] = [
   { permissionKey: 'sports-engine.view', moduleSlug: 'sports-engine', elementType: 'page', elementLabel: 'Sports Engine Page', componentPath: 'pages/admin/sports/SportsEnginePage.tsx' },
   { permissionKey: 'sports-engine.manage', moduleSlug: 'sports-engine', elementType: 'button', elementLabel: 'Manage Sports Engine', componentPath: 'pages/admin/sports/SportsEnginePage.tsx' },
   { permissionKey: 'sidebar.sports-engine', moduleSlug: 'sports-engine', elementType: 'tab', elementLabel: 'Sidebar: Sports Engine', componentPath: 'components/layout/AdminSidebar.tsx' },
+
+  // ==========================================================================
+  // INTEGRATION MODULE (Sprint 19)
+  // ==========================================================================
+  { permissionKey: 'integration.api-keys.view', moduleSlug: 'integration', elementType: 'page', elementLabel: 'API Keys Dashboard', componentPath: 'pages/admin/integration/APIDashboardPage.tsx' },
+  { permissionKey: 'integration.api-keys.manage', moduleSlug: 'integration', elementType: 'button', elementLabel: 'Create / Revoke API Keys', componentPath: 'pages/admin/integration/APIDashboardPage.tsx' },
+  { permissionKey: 'sidebar.integration', moduleSlug: 'integration', elementType: 'tab', elementLabel: 'Sidebar: Integration', componentPath: 'components/layout/AdminSidebar.tsx' },
 ];
 
 export const uiPermissionMap = new Map(uiRegistry.map(e => [e.permissionKey, e]));

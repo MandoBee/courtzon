@@ -195,6 +195,7 @@ function buildNavItems(t: (key: string) => string, can: (perm: string) => boolea
         { label: 'Purchase Orders', path: '/admin/inventory/purchase-orders', permissionKey: 'sidebar.inventory-purchase-orders' },
       ],
     },
+    { label: 'Integration', icon: '🔌', path: '/admin/integration/api-keys', permissionKey: 'sidebar.integration' },
     { label: t('admin.sidebar.webhooks'), icon: '🔗', path: '/admin/webhooks', permissionKey: 'sidebar.webhooks' },
     {
       label: t('admin.sidebar.security'), icon: '🛡️', path: '/admin/security', permissionKey: 'sidebar.security-dashboard',

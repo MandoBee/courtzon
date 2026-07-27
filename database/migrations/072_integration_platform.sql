@@ -1,0 +1,20 @@
+CREATE TABLE IF NOT EXISTS api_keys (
+  id                INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  organisation_id   INT UNSIGNED DEFAULT NULL,
+  user_id           INT UNSIGNED NOT NULL,
+  name              VARCHAR(200) NOT NULL,
+  key_hash          VARCHAR(255) NOT NULL COMMENT 'SHA-256 hash of the API key',
+  key_prefix        VARCHAR(20) NOT NULL COMMENT 'First 20 chars for identification',
+  scopes            JSON DEFAULT NULL COMMENT 'JSON array of permission scopes',
+  rate_limit        INT UNSIGNED NOT NULL DEFAULT 100 COMMENT 'Requests per minute',
+  expires_at        TIMESTAMP NULL DEFAULT NULL,
+  last_used_at      TIMESTAMP NULL DEFAULT NULL,
+  is_active         TINYINT(1) NOT NULL DEFAULT 1,
+  created_at        TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_org (organisation_id),
+  KEY idx_user (user_id),
+  KEY idx_prefix (key_prefix),
+  KEY idx_active (is_active),
+  CONSTRAINT fk_ak_org FOREIGN KEY (organisation_id) REFERENCES organisations(id) ON DELETE CASCADE,
+  CONSTRAINT fk_ak_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

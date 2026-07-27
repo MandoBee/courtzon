@@ -213,6 +213,7 @@ const RewardsAdminPage = lazy(() => import('./pages/admin/membership/RewardsAdmi
 const PricingRulesPage = lazy(() => import('./pages/admin/pricing/PricingRulesPage'));
 const PricePreviewPage = lazy(() => import('./pages/admin/pricing/PricePreviewPage'));
 const WebhooksPage = lazy(() => import('./pages/admin/WebhooksPage'));
+const APIDashboardPage = lazy(() => import('./pages/admin/integration/APIDashboardPage'));
 const WarehousesPage = lazy(() => import('./pages/admin/inventory/WarehousesPage'));
 const SuppliersPage = lazy(() => import('./pages/admin/inventory/SuppliersPage'));
 const PurchaseOrdersPage = lazy(() => import('./pages/admin/inventory/PurchaseOrdersPage'));
@@ -673,6 +674,7 @@ function AppContent() {
           <Route path="support/tickets" element={<SupportTicketsPage />} />
           <Route path="queues" element={<QueueManagementPage />} />
           <Route path="webhooks" element={<WebhooksPage />} />
+          <Route path="integration/api-keys" element={<APIDashboardPage />} />
           <Route path="inventory/warehouses" element={<WarehousesPage />} />
           <Route path="inventory/suppliers" element={<SuppliersPage />} />
           <Route path="inventory/purchase-orders" element={<PurchaseOrdersPage />} />
