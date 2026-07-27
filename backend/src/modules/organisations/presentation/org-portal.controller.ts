@@ -7,6 +7,8 @@ import { BranchFinancialDetailsSchema, CreateBranchSchema, CreateResourceSchema 
 import { auditOrganisationMutation } from './organisation-audit.js';
 import { cancellationPolicyRepository } from '../infrastructure/repositories/cancellation-policy.repository.js';
 import { rbacRepository } from '../../rbac/infrastructure/repositories/rbac.repository.js';
+import { getPool } from '../../../database/mysql.js';
+import { recordAudit } from '../../audit-log/index.js';
 
 const ASSIGNABLE_ROLES = ['org-admin', 'shop-admin', 'branch-mgr', 'resource-mgr', 'coach', 'accountant'] as const;
 const AddStaffSchema = z.object({
@@ -41,10 +43,17 @@ export async function getOrgInfoHandler(request: FastifyRequest, reply: FastifyR
   return reply.send(org);
 }
 
-export async function getOrgStatsHandler(request: FastifyRequest, reply: FastifyReply) {
-  const { orgId } = request.params as { orgId: string };
-  const stats = await service.getOrgStats(parseInt(orgId, 10));
-  return reply.send(stats);
+function getUserId(request: FastifyRequest): number { return (request as any).userId; }
+
+function getUserAgent(request: FastifyRequest): string | undefined {
+  const ua = request.headers['user-agent'];
+  return typeof ua === 'string' ? ua : undefined;
+}
+
+export async function getOrgDashboardHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { orgId } = request.params as any;
+  const dashboard = await service.getOrgDashboard(Number(orgId));
+  return reply.send(dashboard);
 }
 
 export async function getOrgBookingsHandler(request: FastifyRequest, reply: FastifyReply) {
@@ -426,4 +435,239 @@ export async function getOrgSettlementDetailHandler(request: FastifyRequest, rep
   const result = await service.getOrgSettlementDetail(parseInt(orgId, 10), parseInt(settlementId, 10));
   if (!result) return reply.status(404).send({ error: 'Settlement not found' });
   return reply.send(result);
+}
+
+// ── Announcements ──
+
+export async function listAnnouncementsHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { orgId } = request.params as any;
+  const pool = getPool();
+  type RowData = import('mysql2').RowDataPacket[];
+  const [rows] = await pool.query<RowData>(
+    'SELECT * FROM org_announcements WHERE organisation_id = ? ORDER BY created_at DESC', [Number(orgId)],
+  );
+  return reply.send(rows);
+}
+
+export async function createAnnouncementHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = getUserId(request);
+  const { orgId } = request.params as any;
+  const body = request.body as any;
+  const pool = getPool();
+  const [result] = await pool.execute<import('mysql2').ResultSetHeader>(
+    'INSERT INTO org_announcements (organisation_id, title, content, priority, status, created_by) VALUES (?, ?, ?, ?, ?, ?)',
+    [Number(orgId), body.title, body.content, body.priority || 'normal', body.status || 'draft', userId],
+  );
+  recordAudit({
+    actorId: userId, action: 'ORG_ANNOUNCEMENT.CREATE', entityType: 'org_announcement',
+    entityId: (result as any).insertId, afterState: { title: body.title },
+    ipAddress: request.ip, userAgent: getUserAgent(request),
+  });
+  return reply.status(201).send({ id: (result as any).insertId });
+}
+
+export async function updateAnnouncementHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = getUserId(request);
+  const { announcementId } = request.params as any;
+  const body = request.body as any;
+  const pool = getPool();
+  const fields: string[] = []; const params: any[] = [];
+  if (body.title !== undefined) { fields.push('title = ?'); params.push(body.title); }
+  if (body.content !== undefined) { fields.push('content = ?'); params.push(body.content); }
+  if (body.priority !== undefined) { fields.push('priority = ?'); params.push(body.priority); }
+  if (body.status !== undefined) { fields.push('status = ?'); params.push(body.status); }
+  if (fields.length) {
+    params.push(Number(announcementId));
+    await pool.execute(`UPDATE org_announcements SET ${fields.join(', ')}, updated_at = NOW() WHERE id = ?`, params);
+  }
+  recordAudit({
+    actorId: userId, action: 'ORG_ANNOUNCEMENT.UPDATE', entityType: 'org_announcement',
+    entityId: Number(announcementId), afterState: body,
+    ipAddress: request.ip, userAgent: getUserAgent(request),
+  });
+  return reply.send({ success: true });
+}
+
+export async function deleteAnnouncementHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = getUserId(request);
+  const { announcementId } = request.params as any;
+  const pool = getPool();
+  await pool.execute('DELETE FROM org_announcements WHERE id = ?', [Number(announcementId)]);
+  recordAudit({
+    actorId: userId, action: 'ORG_ANNOUNCEMENT.DELETE', entityType: 'org_announcement',
+    entityId: Number(announcementId), ipAddress: request.ip, userAgent: getUserAgent(request),
+  });
+  return reply.status(204).send();
+}
+
+export async function publishAnnouncementHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = getUserId(request);
+  const { announcementId } = request.params as any;
+  const pool = getPool();
+  await pool.execute(
+    "UPDATE org_announcements SET status = 'published', published_at = NOW() WHERE id = ?", [Number(announcementId)],
+  );
+  recordAudit({
+    actorId: userId, action: 'ORG_ANNOUNCEMENT.PUBLISH', entityType: 'org_announcement',
+    entityId: Number(announcementId), ipAddress: request.ip, userAgent: getUserAgent(request),
+  });
+  return reply.send({ success: true });
+}
+
+// ── Documents & Gallery ──
+
+export async function listOrgDocumentsHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { orgId } = request.params as any;
+  const pool = getPool();
+  type RowData = import('mysql2').RowDataPacket[];
+  const [rows] = await pool.query<RowData>(
+    `SELECT * FROM uploads WHERE entity_type = 'organisation' AND entity_id = ? AND file_category = 'document' ORDER BY created_at DESC`,
+    [Number(orgId)],
+  );
+  return reply.send(rows);
+}
+
+export async function deleteOrgDocumentHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = getUserId(request);
+  const { documentId } = request.params as any;
+  const pool = getPool();
+  await pool.execute('DELETE FROM uploads WHERE id = ? AND entity_type = \'organisation\' AND file_category = \'document\'', [Number(documentId)]);
+  recordAudit({
+    actorId: userId, action: 'ORG_DOCUMENT.DELETE', entityType: 'upload',
+    entityId: Number(documentId), ipAddress: request.ip, userAgent: getUserAgent(request),
+  });
+  return reply.status(204).send();
+}
+
+export async function listOrgGalleryHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { orgId } = request.params as any;
+  const pool = getPool();
+  type RowData = import('mysql2').RowDataPacket[];
+  const [rows] = await pool.query<RowData>(
+    `SELECT * FROM uploads WHERE entity_type = 'organisation' AND entity_id = ? AND file_category = 'image' ORDER BY created_at DESC`,
+    [Number(orgId)],
+  );
+  return reply.send(rows);
+}
+
+export async function uploadOrgGalleryHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = getUserId(request);
+  const { orgId } = request.params as any;
+  // Delegate to existing upload service
+  const { uploadService } = await import('../../upload/application/upload.service.js');
+  return reply.status(201).send({ message: 'Gallery upload endpoint ready. Use existing upload routes for file upload.' });
+}
+
+export async function deleteOrgGalleryHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = getUserId(request);
+  const { imageId } = request.params as any;
+  const pool = getPool();
+  await pool.execute('DELETE FROM uploads WHERE id = ? AND entity_type = \'organisation\' AND file_category = \'image\'', [Number(imageId)]);
+  recordAudit({
+    actorId: userId, action: 'ORG_GALLERY.DELETE', entityType: 'upload',
+    entityId: Number(imageId), ipAddress: request.ip, userAgent: getUserAgent(request),
+  });
+  return reply.status(204).send();
+}
+
+// ── Reports ──
+
+export async function getOrgBookingReportHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { orgId } = request.params as any;
+  const query = request.query as any;
+  const from = query.from || new Date(Date.now() - 30 * 86400000).toISOString().split('T')[0];
+  const to = query.to || new Date().toISOString().split('T')[0];
+  const pool = getPool();
+  type RowData = import('mysql2').RowDataPacket[];
+
+  const [rows] = await pool.query<RowData>(
+    `SELECT b.*, r.name AS resource_name, br.name AS branch_name, u.full_name AS player_name
+     FROM bookings b
+     JOIN resources r ON r.id = b.resource_id
+     JOIN branches br ON br.id = r.branch_id
+     LEFT JOIN users u ON u.id = b.user_id
+     WHERE br.organisation_id = ? AND b.booking_date BETWEEN ? AND ?
+     ORDER BY b.booking_date DESC, b.start_time ASC`,
+    [Number(orgId), from, to],
+  );
+
+  const [[summary]] = await pool.query<RowData>(
+    `SELECT COUNT(*) AS total, COALESCE(SUM(b.total_amount), 0) AS total_revenue,
+            COALESCE(SUM(CASE WHEN b.booking_status = 'completed' THEN 1 ELSE 0 END), 0) AS completed,
+            COALESCE(SUM(CASE WHEN b.booking_status = 'cancelled' THEN 1 ELSE 0 END), 0) AS cancelled
+     FROM bookings b
+     JOIN resources r ON r.id = b.resource_id
+     JOIN branches br ON br.id = r.branch_id
+     WHERE br.organisation_id = ? AND b.booking_date BETWEEN ? AND ?`,
+    [Number(orgId), from, to],
+  );
+
+  return reply.send({ data: rows, summary });
+}
+
+export async function getOrgRevenueReportHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { orgId } = request.params as any;
+  const query = request.query as any;
+  const from = query.from || new Date(Date.now() - 90 * 86400000).toISOString().split('T')[0];
+  const to = query.to || new Date().toISOString().split('T')[0];
+  const pool = getPool();
+  type RowData = import('mysql2').RowDataPacket[];
+
+  const [dailyRevenue] = await pool.query<RowData>(
+    `SELECT b.booking_date AS date, COALESCE(SUM(b.total_amount), 0) AS revenue
+     FROM bookings b
+     JOIN resources r ON r.id = b.resource_id
+     JOIN branches br ON br.id = r.branch_id
+     WHERE br.organisation_id = ? AND b.booking_date BETWEEN ? AND ? AND b.booking_status = 'completed'
+     GROUP BY b.booking_date ORDER BY b.booking_date`,
+    [Number(orgId), from, to],
+  );
+
+  const [[totals]] = await pool.query<RowData>(
+    `SELECT COALESCE(SUM(b.total_amount), 0) AS total_revenue,
+            COUNT(*) AS total_transactions,
+            COALESCE(AVG(b.total_amount), 0) AS avg_transaction
+     FROM bookings b
+     JOIN resources r ON r.id = b.resource_id
+     JOIN branches br ON br.id = r.branch_id
+     WHERE br.organisation_id = ? AND b.booking_date BETWEEN ? AND ? AND b.booking_status = 'completed'`,
+    [Number(orgId), from, to],
+  );
+
+  return reply.send({ daily: dailyRevenue, summary: totals });
+}
+
+export async function getOrgMemberReportHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { orgId } = request.params as any;
+  const pool = getPool();
+  type RowData = import('mysql2').RowDataPacket[];
+
+  const [byStatus] = await pool.query<RowData>(
+    `SELECT bpa.status, COUNT(*) AS count
+     FROM branch_player_access bpa
+     JOIN branches br ON br.id = bpa.branch_id
+     WHERE br.organisation_id = ?
+     GROUP BY bpa.status`,
+    [Number(orgId)],
+  );
+
+  const [byBranch] = await pool.query<RowData>(
+    `SELECT br.id, br.name, COUNT(DISTINCT bpa.player_id) AS member_count
+     FROM branches br
+     LEFT JOIN branch_player_access bpa ON bpa.branch_id = br.id AND bpa.status = 'approved'
+     WHERE br.organisation_id = ? AND br.deleted_at IS NULL
+     GROUP BY br.id, br.name
+     ORDER BY member_count DESC`,
+    [Number(orgId)],
+  );
+
+  const [[total]] = await pool.query<RowData>(
+    `SELECT COUNT(DISTINCT bpa.player_id) AS total
+     FROM branch_player_access bpa
+     JOIN branches br ON br.id = bpa.branch_id
+     WHERE br.organisation_id = ? AND bpa.status = 'approved'`,
+    [Number(orgId)],
+  );
+
+  return reply.send({ total_members: total.total, by_status: byStatus, by_branch: byBranch });
 }

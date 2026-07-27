@@ -1273,6 +1273,12 @@ export const translationKeysRegistry: TranslationKeyEntry[] = [
   { key: 'profile.privacy_show_profile', defaultValue: 'Show Profile', moduleSlug: 'profile', elementType: 'label', elementLabel: 'Show profile toggle' },
   { key: 'profile.privacy_show_stats', defaultValue: 'Show Stats', moduleSlug: 'profile', elementType: 'label', elementLabel: 'Show stats toggle' },
   { key: 'profile.privacy_show_activity', defaultValue: 'Show Activity', moduleSlug: 'profile', elementType: 'label', elementLabel: 'Show activity toggle' },
+
+  // ── Org sidebar ──
+  { key: 'org.sidebar.announcements', defaultValue: 'Announcements', moduleSlug: 'org', elementType: 'nav', elementLabel: 'Org sidebar announcements' },
+  { key: 'org.sidebar.documents', defaultValue: 'Documents', moduleSlug: 'org', elementType: 'nav', elementLabel: 'Org sidebar documents' },
+  { key: 'org.sidebar.gallery', defaultValue: 'Gallery', moduleSlug: 'org', elementType: 'nav', elementLabel: 'Org sidebar gallery' },
+  { key: 'org.sidebar.reports', defaultValue: 'Reports', moduleSlug: 'org', elementType: 'nav', elementLabel: 'Org sidebar reports' },
 ];
 
 /** Build a key \u2192 English default map for offline/runtime fallback. */

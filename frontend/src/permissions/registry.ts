@@ -820,6 +820,16 @@ export const uiRegistry: UIElement[] = [
   { permissionKey: 'marketplace.seller.shipping-rates', moduleSlug: 'marketplace', elementType: 'page', elementLabel: 'Seller Shipping Rates', componentPath: 'pages/org/OrgShippingRatesPage.tsx' },
   { permissionKey: 'marketplace.admin.shipping-rates', moduleSlug: 'marketplace', elementType: 'page', elementLabel: 'Admin Shipping Rates', componentPath: 'pages/admin/marketplace/AdminShippingRatesPage.tsx' },
 
+  // Club Experience (Sprint 10)
+  { permissionKey: 'org.sidebar.announcements', moduleSlug: 'org', elementType: 'tab', elementLabel: 'Org Sidebar: Announcements', componentPath: 'components/layout/OrgSidebar.tsx' },
+  { permissionKey: 'org.sidebar.documents', moduleSlug: 'org', elementType: 'tab', elementLabel: 'Org Sidebar: Documents', componentPath: 'components/layout/OrgSidebar.tsx' },
+  { permissionKey: 'org.sidebar.gallery', moduleSlug: 'org', elementType: 'tab', elementLabel: 'Org Sidebar: Gallery', componentPath: 'components/layout/OrgSidebar.tsx' },
+  { permissionKey: 'org.sidebar.reports', moduleSlug: 'org', elementType: 'tab', elementLabel: 'Org Sidebar: Reports', componentPath: 'components/layout/OrgSidebar.tsx' },
+  { permissionKey: 'org.announcements.manage', moduleSlug: 'org', elementType: 'page', elementLabel: 'Manage Announcements', componentPath: 'pages/org/OrgAnnouncementsPage.tsx' },
+  { permissionKey: 'org.documents.manage', moduleSlug: 'org', elementType: 'page', elementLabel: 'Manage Documents', componentPath: 'pages/org/OrgDocumentsPage.tsx' },
+  { permissionKey: 'org.gallery.manage', moduleSlug: 'org', elementType: 'page', elementLabel: 'Manage Gallery', componentPath: 'pages/org/OrgGalleryPage.tsx' },
+  { permissionKey: 'org.reports.view', moduleSlug: 'org', elementType: 'page', elementLabel: 'View Reports', componentPath: 'pages/org/OrgReportsPage.tsx' },
+
   // Finance
   { permissionKey: 'org.sidebar.finance', moduleSlug: 'org', elementType: 'tab', elementLabel: 'Org Sidebar: Finance', componentPath: 'components/layout/OrgSidebar.tsx' },
   { permissionKey: 'org.finance.view', moduleSlug: 'org', elementType: 'page', elementLabel: 'Organisation Finance', componentPath: 'pages/org/OrgFinancePage.tsx' },

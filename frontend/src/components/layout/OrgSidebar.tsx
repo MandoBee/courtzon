@@ -6,6 +6,7 @@ import { useThemeStore } from '../../store/theme.store';
 import { EntityImage } from '../ui';
 import SiteLogo from '../branding/SiteLogo';
 import api from '../../services/api';
+import { t } from '../../i18n';
 
 interface OrgInfo {
   id: number;
@@ -30,6 +31,10 @@ function buildOrgNavItems(can: (perm: string) => boolean, orgId: string): NavIte
     { label: 'Members', icon: '🎫', path: `/org/${orgId}/members`, permissionKey: 'org.sidebar.members' },
     { label: 'Coaches', icon: '🎾', path: `/org/${orgId}/coaches`, permissionKey: 'org.sidebar.coaches' },
     { label: 'Finance', icon: '💰', path: `/org/${orgId}/finance`, permissionKey: 'org.sidebar.finance' },
+    { label: t('org.sidebar.announcements'), icon: '📢', path: `/org/${orgId}/announcements`, permissionKey: 'org.sidebar.announcements' },
+    { label: t('org.sidebar.documents'), icon: '📄', path: `/org/${orgId}/documents`, permissionKey: 'org.sidebar.documents' },
+    { label: t('org.sidebar.gallery'), icon: '🖼️', path: `/org/${orgId}/gallery`, permissionKey: 'org.sidebar.gallery' },
+    { label: t('org.sidebar.reports'), icon: '📊', path: `/org/${orgId}/reports`, permissionKey: 'org.sidebar.reports' },
     { label: 'Subscription', icon: '📋', path: `/org/${orgId}/subscription`, permissionKey: 'org.sidebar.subscription' },
     { label: 'Settings', icon: '⚙️', path: `/org/${orgId}/settings`, permissionKey: 'org.sidebar.settings' },
   ];

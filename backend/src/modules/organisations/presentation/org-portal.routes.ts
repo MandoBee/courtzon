@@ -10,7 +10,7 @@ export async function registerOrgPortalRoutes(app: FastifyInstance): Promise<voi
 
   app.get('/org/:orgId/info', { preHandler: [orgAccessGuard] }, ctrl.getOrgInfoHandler);
   app.put('/org/:orgId/info', { preHandler: [orgAccessGuard] }, ctrl.updateOrgInfoHandler);
-  app.get('/org/:orgId/stats', { preHandler: [orgAccessGuard] }, ctrl.getOrgStatsHandler);
+  app.get('/org/:orgId/dashboard', { preHandler: [orgAccessGuard] }, ctrl.getOrgDashboardHandler);
   app.get('/org/:orgId/bookings', { preHandler: [orgAccessGuard] }, ctrl.getOrgBookingsHandler);
   app.get('/org/:orgId/resources', { preHandler: [orgAccessGuard] }, ctrl.getOrgResourcesHandler);
   app.get('/org/:orgId/products', { preHandler: [orgAccessGuard] }, ctrl.getOrgProductsHandler);
@@ -70,4 +70,25 @@ export async function registerOrgPortalRoutes(app: FastifyInstance): Promise<voi
   app.get('/org/:orgId/transactions', { preHandler: [orgAccessGuard] }, ctrl.getOrgTransactionsHandler);
   app.get('/org/:orgId/settlements', { preHandler: [orgAccessGuard] }, ctrl.getOrgSettlementsHandler);
   app.get('/org/:orgId/settlements/:settlementId', { preHandler: [orgAccessGuard] }, ctrl.getOrgSettlementDetailHandler);
+
+  // ── Announcements ──
+  app.get('/org/:orgId/announcements', { preHandler: [orgAccessGuard] }, ctrl.listAnnouncementsHandler);
+  app.post('/org/:orgId/announcements', { preHandler: [requireOrgScopedPermission('org.announcements.manage')] }, ctrl.createAnnouncementHandler);
+  app.put('/org/:orgId/announcements/:announcementId', { preHandler: [requireOrgScopedPermission('org.announcements.manage')] }, ctrl.updateAnnouncementHandler);
+  app.delete('/org/:orgId/announcements/:announcementId', { preHandler: [requireOrgScopedPermission('org.announcements.manage')] }, ctrl.deleteAnnouncementHandler);
+  app.post('/org/:orgId/announcements/:announcementId/publish', { preHandler: [requireOrgScopedPermission('org.announcements.manage')] }, ctrl.publishAnnouncementHandler);
+
+  // ── Documents ──
+  app.get('/org/:orgId/documents', { preHandler: [orgAccessGuard] }, ctrl.listOrgDocumentsHandler);
+  app.delete('/org/:orgId/documents/:documentId', { preHandler: [requireOrgScopedPermission('org.documents.manage')] }, ctrl.deleteOrgDocumentHandler);
+
+  // ── Gallery ──
+  app.get('/org/:orgId/gallery', { preHandler: [orgAccessGuard] }, ctrl.listOrgGalleryHandler);
+  app.post('/org/:orgId/gallery', { preHandler: [requireOrgScopedPermission('org.gallery.manage')] }, ctrl.uploadOrgGalleryHandler);
+  app.delete('/org/:orgId/gallery/:imageId', { preHandler: [requireOrgScopedPermission('org.gallery.manage')] }, ctrl.deleteOrgGalleryHandler);
+
+  // ── Reports ──
+  app.get('/org/:orgId/reports/bookings', { preHandler: [orgAccessGuard] }, ctrl.getOrgBookingReportHandler);
+  app.get('/org/:orgId/reports/revenue', { preHandler: [orgAccessGuard] }, ctrl.getOrgRevenueReportHandler);
+  app.get('/org/:orgId/reports/members', { preHandler: [orgAccessGuard] }, ctrl.getOrgMemberReportHandler);
 }

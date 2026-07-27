@@ -2,8 +2,10 @@ import * as repo from '../infrastructure/repositories/org-portal.repository.js';
 import { branchRepository } from '../infrastructure/repositories/branch.repository.js';
 import { rbacRepository } from '../../rbac/infrastructure/repositories/rbac.repository.js';
 import { ValidationError, NotFoundError, ConflictError } from '../../../shared/errors/app-error.js';
+import { ErrorCodes } from '../../../shared/errors/error-codes.js';
 import { getPlanNumericLimit } from './plan-limits.util.js';
 import { eventBusV2 } from '../../../shared/event-bus/index.js';
+import { getPool } from '../../../database/mysql.js';
 
 export function getOrgInfo(orgId: number) {
   return repo.getOrgInfo(orgId);
@@ -321,6 +323,126 @@ export async function removeCoachAgreement(orgId: number, coachId: number) {
 
 export function getOrgStats(orgId: number) {
   return repo.getOrgStats(orgId);
+}
+
+export async function getOrgDashboard(orgId: number): Promise<any> {
+  const pool = getPool();
+  type RowData = import('mysql2').RowDataPacket[];
+
+  // Get org info
+  const [orgRows] = await pool.query<RowData>('SELECT id, name, logo_url, is_verified, is_active, created_at FROM organisations WHERE id = ?', [orgId]);
+  const org = orgRows[0] || null;
+  if (!org) throw new NotFoundError('Organisation', ErrorCodes.ORGANISATION_NOT_FOUND);
+
+  // Today's date
+  const today = new Date().toISOString().split('T')[0];
+
+  // Today's bookings count + revenue
+  const [[todayStats]] = await pool.query<RowData>(
+    `SELECT COUNT(*) AS booking_count, COALESCE(SUM(total_amount), 0) AS revenue
+     FROM bookings b
+     JOIN branches br ON br.id = b.branch_id
+     WHERE br.organisation_id = ? AND b.booking_date = ? AND b.booking_status NOT IN ('cancelled','no_show')`,
+    [orgId, today],
+  );
+
+  // Weekly booking trend (last 7 days)
+  const [weeklyTrend] = await pool.query<RowData>(
+    `SELECT b.booking_date AS date, COUNT(*) AS count, COALESCE(SUM(b.total_amount), 0) AS revenue
+     FROM bookings b
+     JOIN branches br ON br.id = b.branch_id
+     WHERE br.organisation_id = ? AND b.booking_date >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)
+       AND b.booking_status NOT IN ('cancelled','no_show')
+     GROUP BY b.booking_date
+     ORDER BY b.booking_date ASC`,
+    [orgId],
+  );
+
+  // Monthly revenue trend (last 6 months)
+  const [monthlyTrend] = await pool.query<RowData>(
+    `SELECT DATE_FORMAT(b.booking_date, '%Y-%m') AS month, COALESCE(SUM(b.total_amount), 0) AS revenue
+     FROM bookings b
+     JOIN branches br ON br.id = b.branch_id
+     WHERE br.organisation_id = ? AND b.booking_date >= DATE_SUB(CURDATE(), INTERVAL 6 MONTH)
+       AND b.booking_status NOT IN ('cancelled','no_show')
+     GROUP BY DATE_FORMAT(b.booking_date, '%Y-%m')
+     ORDER BY month ASC`,
+    [orgId],
+  );
+
+  // Top resources by booking count
+  const [topResources] = await pool.query<RowData>(
+    `SELECT r.id, r.name, COUNT(*) AS booking_count
+     FROM bookings b
+     JOIN resources r ON r.id = b.resource_id
+     JOIN branches br ON br.id = r.branch_id
+     WHERE br.organisation_id = ? AND b.booking_date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
+       AND b.booking_status NOT IN ('cancelled','no_show')
+     GROUP BY r.id, r.name
+     ORDER BY booking_count DESC
+     LIMIT 5`,
+    [orgId],
+  );
+
+  // Occupancy rate (approximate: bookings today / total available slots across all resources)
+  const [[occupiedSlots]] = await pool.query<RowData>(
+    `SELECT COUNT(*) AS cnt FROM bookings b
+     JOIN branches br ON br.id = b.branch_id
+     WHERE br.organisation_id = ? AND b.booking_date = ? AND b.booking_status NOT IN ('cancelled','no_show')`,
+    [orgId, today],
+  );
+  const [[totalSlots]] = await pool.query<RowData>(
+    `SELECT COALESCE(SUM(r.slot_count), 0) AS cnt FROM resources r
+     JOIN branches br ON br.id = r.branch_id
+     WHERE br.organisation_id = ? AND r.is_active = 1`,
+    [orgId],
+  );
+  const occupancyRate = totalSlots.cnt > 0 ? Math.round((occupiedSlots.cnt / totalSlots.cnt) * 100) : 0;
+
+  // Pending actions
+  const [[pendingAccess]] = await pool.query<RowData>(
+    `SELECT COUNT(*) AS cnt FROM branch_player_access bpa
+     JOIN branches br ON br.id = bpa.branch_id
+     WHERE br.organisation_id = ? AND bpa.status = 'pending'`,
+    [orgId],
+  );
+  const [[pendingCoaches]] = await pool.query<RowData>(
+    `SELECT COUNT(*) AS cnt FROM organisation_coaches WHERE organisation_id = ? AND status = 'pending'`,
+    [orgId],
+  );
+
+  // Total branches, resources, members
+  const [[branchCount]] = await pool.query<RowData>('SELECT COUNT(*) AS cnt FROM branches WHERE organisation_id = ? AND deleted_at IS NULL', [orgId]);
+  const [[resourceCount]] = await pool.query<RowData>(
+    `SELECT COUNT(*) AS cnt FROM resources r JOIN branches br ON br.id = r.branch_id WHERE br.organisation_id = ? AND r.deleted_at IS NULL`, [orgId],
+  );
+  const [[memberCount]] = await pool.query<RowData>(
+    `SELECT COUNT(DISTINCT bpa.player_id) AS cnt FROM branch_player_access bpa
+     JOIN branches br ON br.id = bpa.branch_id WHERE br.organisation_id = ? AND bpa.status = 'approved'`, [orgId],
+  );
+
+  return {
+    org: { id: org.id, name: org.name, logo_url: org.logo_url, is_verified: !!org.is_verified, is_active: !!org.is_active },
+    stats: {
+      total_branches: branchCount.cnt,
+      total_resources: resourceCount.cnt,
+      total_members: memberCount.cnt,
+    },
+    today: {
+      booking_count: todayStats.booking_count,
+      revenue: todayStats.revenue,
+    },
+    trends: {
+      weekly: weeklyTrend,
+      monthly: monthlyTrend,
+    },
+    top_resources: topResources,
+    occupancy_rate: occupancyRate,
+    pending_actions: {
+      access_requests: pendingAccess.cnt,
+      coach_invites: pendingCoaches.cnt,
+    },
+  };
 }
 
 export function getOrgBookings(orgId: number, filters?: {

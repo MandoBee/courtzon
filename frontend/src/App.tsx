@@ -186,6 +186,10 @@ const OrgMembersPage = lazy(() => import('./pages/org/OrgMembersPage'));
 const OrgPendingApprovalPage = lazy(() => import('./pages/org/OrgPendingApprovalPage'));
 const OrgFinancePage = lazy(() => import('./pages/org/OrgFinancePage'));
 const OrgSubscriptionPage = lazy(() => import('./pages/org/OrgSubscriptionPage'));
+const OrgAnnouncementsPage = lazy(() => import('./pages/org/OrgAnnouncementsPage'));
+const OrgDocumentsPage = lazy(() => import('./pages/org/OrgDocumentsPage'));
+const OrgGalleryPage = lazy(() => import('./pages/org/OrgGalleryPage'));
+const OrgReportsPage = lazy(() => import('./pages/org/OrgReportsPage'));
 const NotificationsPage = lazy(() => import('./pages/notifications/NotificationsPage'));
 const MembershipDashboard = lazy(() => import('./pages/membership/MembershipDashboard'));
 const PlansPage = lazy(() => import('./pages/membership/PlansPage'));
@@ -624,6 +628,10 @@ function AppContent() {
             <Route path="coaches" element={<OrgCoachesPage />} />
             <Route path="finance" element={<OrgFinancePage />} />
             <Route path="subscription" element={<OrgSubscriptionPage />} />
+            <Route path="announcements" element={<OrgAnnouncementsPage />} />
+            <Route path="documents" element={<OrgDocumentsPage />} />
+            <Route path="gallery" element={<OrgGalleryPage />} />
+            <Route path="reports" element={<OrgReportsPage />} />
             <Route path="settings" element={<OrgSettingsPage />} />
             <Route path="shipping-rates" element={<Navigate to="settings" replace />} />
           </Route>
