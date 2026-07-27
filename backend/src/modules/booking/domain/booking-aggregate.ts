@@ -1,12 +1,13 @@
 import type { Clock } from '../../../shared/utils/clock.js';
 
-export type BookingStatus = 'pending' | 'pending_payment' | 'confirmed' | 'cancelled' | 'expired' | 'completed' | 'no_show' | 'cancelled_with_fee';
+export type BookingStatus = 'pending' | 'pending_payment' | 'confirmed' | 'cancelled' | 'expired' | 'completed' | 'checked_in' | 'no_show' | 'cancelled_with_fee';
 export type PaymentStatus = 'pending' | 'paid' | 'refunded' | 'partially_refunded' | 'penalty' | 'failed';
 
 const ALLOWED_TRANSITIONS: Record<BookingStatus, BookingStatus[]> = {
   pending: ['confirmed', 'cancelled', 'expired'],
   pending_payment: ['confirmed', 'cancelled', 'expired'],
-  confirmed: ['completed', 'cancelled'],
+  confirmed: ['completed', 'cancelled', 'no_show', 'checked_in'],
+  checked_in: ['completed', 'no_show'],
   cancelled: [],
   expired: [],
   completed: [],

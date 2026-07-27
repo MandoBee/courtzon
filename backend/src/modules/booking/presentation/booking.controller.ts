@@ -69,6 +69,16 @@ export async function cancelBookingHandler(request: FastifyRequest, reply: Fasti
   const body = CancelBookingSchema.parse(request.body);
   const booking = await bookingService.cancelBooking(Number(id), userId, body.reason);
 
+  recordAudit({
+    actorId: userId ?? null,
+    action: 'BOOKING.CANCEL',
+    entityType: 'booking',
+    entityId: Number(id),
+    afterState: { reason: body.reason },
+    ipAddress: request.ip,
+    userAgent: request.headers['user-agent'],
+  });
+
   return reply.send(booking);
 }
 
@@ -83,6 +93,16 @@ export async function checkInHandler(request: FastifyRequest, reply: FastifyRepl
   const { id } = request.params as any;
   const userId = (request as any).userId;
   const booking = await bookingService.checkIn(Number(id), userId);
+
+  recordAudit({
+    actorId: userId ?? null,
+    action: 'BOOKING.CHECK_IN',
+    entityType: 'booking',
+    entityId: Number(id),
+    ipAddress: request.ip,
+    userAgent: request.headers['user-agent'],
+  });
+
   return reply.send(booking);
 }
 
@@ -145,6 +165,17 @@ export async function startMatchmakingHandler(request: FastifyRequest, reply: Fa
   const userId = (request as any).userId;
   const body = StartMatchmakingSchema.parse(request.body);
   const result = await bookingService.startMatchmaking(Number(id), userId, body);
+
+  recordAudit({
+    actorId: userId ?? null,
+    action: 'BOOKING.START_MATCHMAKING',
+    entityType: 'booking',
+    entityId: Number(id),
+    afterState: { criteria: body },
+    ipAddress: request.ip,
+    userAgent: request.headers['user-agent'],
+  });
+
   return reply.send(result);
 }
 
@@ -159,6 +190,16 @@ export async function applyToBookingHandler(request: FastifyRequest, reply: Fast
   const { id } = request.params as any;
   const userId = (request as any).userId;
   const result = await bookingService.applyToBooking(Number(id), userId);
+
+  recordAudit({
+    actorId: userId ?? null,
+    action: 'BOOKING.APPLY',
+    entityType: 'booking',
+    entityId: Number(id),
+    ipAddress: request.ip,
+    userAgent: request.headers['user-agent'],
+  });
+
   return reply.send(result);
 }
 
@@ -166,6 +207,16 @@ export async function cancelApplicationHandler(request: FastifyRequest, reply: F
   const { invitationId } = request.params as any;
   const userId = (request as any).userId;
   await bookingService.cancelApplication(Number(invitationId), userId);
+
+  recordAudit({
+    actorId: userId ?? null,
+    action: 'BOOKING.CANCEL_APPLICATION',
+    entityType: 'booking_invitation',
+    entityId: Number(invitationId),
+    ipAddress: request.ip,
+    userAgent: request.headers['user-agent'],
+  });
+
   return reply.send({ success: true });
 }
 
@@ -174,6 +225,17 @@ export async function respondToApplicantHandler(request: FastifyRequest, reply: 
   const userId = (request as any).userId;
   const { action } = request.body as any;
   const result = await bookingService.respondToApplicant(Number(invitationId), userId, action);
+
+  recordAudit({
+    actorId: userId ?? null,
+    action: 'BOOKING.RESPOND_APPLICANT',
+    entityType: 'booking_invitation',
+    entityId: Number(invitationId),
+    afterState: { action },
+    ipAddress: request.ip,
+    userAgent: request.headers['user-agent'],
+  });
+
   return reply.send(result);
 }
 

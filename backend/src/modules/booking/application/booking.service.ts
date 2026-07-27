@@ -1159,10 +1159,7 @@ export class BookingService {
     if (!booking) throw new NotFoundError('Booking');
 
     if (booking.payment_method !== 'cash' && booking.payment_method !== 'cod') {
-      const isAdmin = userId ? await bookingRepository.userHasRole(userId, 'super_admin') : false;
-      if (!isAdmin) {
-        throw new ForbiddenError('Payment status can only be manually changed for cash-on-delivery bookings.');
-      }
+      throw new ForbiddenError('Payment status can only be manually changed for cash-on-delivery bookings.');
     }
 
     await bookingRepository.persistPaymentStatus(id, paymentStatus);

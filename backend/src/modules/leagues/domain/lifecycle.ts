@@ -34,7 +34,7 @@ export function validateSeasonTransition(from: SeasonStatus, to: SeasonStatus): 
   if (!allowed || !allowed.includes(to)) {
     throw new ConflictError(
       `Cannot transition season from '${from}' to '${to}'`,
-      ErrorCodes.ACADEMY_INVALID_TRANSITION,
+      ErrorCodes.LEAGUE_INVALID_TRANSITION,
     );
   }
 }
@@ -45,7 +45,7 @@ export function validateLeagueTransition(from: LeagueStatus, to: LeagueStatus): 
   if (!allowed || !allowed.includes(to)) {
     throw new ConflictError(
       `Cannot transition league from '${from}' to '${to}'`,
-      ErrorCodes.ACADEMY_INVALID_TRANSITION,
+      ErrorCodes.LEAGUE_INVALID_TRANSITION,
     );
   }
 }
@@ -56,7 +56,7 @@ export function validateTeamTransition(from: TeamRegistrationStatus, to: TeamReg
   if (!allowed || !allowed.includes(to)) {
     throw new ConflictError(
       `Cannot transition team registration from '${from}' to '${to}'`,
-      ErrorCodes.ACADEMY_INVALID_TRANSITION,
+      ErrorCodes.LEAGUE_INVALID_TRANSITION,
     );
   }
 }

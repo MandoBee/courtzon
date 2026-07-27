@@ -27,7 +27,7 @@ export function validateTournamentTransition(from: TournamentStatus, to: Tournam
   if (!allowed || !allowed.includes(to)) {
     throw new ConflictError(
       `Cannot transition tournament from '${from}' to '${to}'`,
-      ErrorCodes.ACADEMY_INVALID_TRANSITION,
+      ErrorCodes.TOURNAMENT_INVALID_TRANSITION,
     );
   }
 }
@@ -38,7 +38,7 @@ export function validateRegistrationTransition(from: RegistrationStatus, to: Reg
   if (!allowed || !allowed.includes(to)) {
     throw new ConflictError(
       `Cannot transition registration from '${from}' to '${to}'`,
-      ErrorCodes.ACADEMY_INVALID_TRANSITION,
+      ErrorCodes.TOURNAMENT_INVALID_TRANSITION,
     );
   }
 }
