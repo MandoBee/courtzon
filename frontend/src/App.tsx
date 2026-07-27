@@ -114,6 +114,11 @@ const CouponListPage = lazy(() => import('./pages/admin/coupons/CouponListPage')
 const DesignTokensPage = lazy(() => import('./pages/admin/design-tokens/DesignTokensPage'));
 const TournamentAdminPage = lazy(() => import('./pages/admin/tournaments/TournamentAdminPage'));
 const AcademyAdminPage = lazy(() => import('./pages/admin/academies/AcademyAdminPage'));
+const AcademyDashboardPage = lazy(() => import('./pages/admin/academy/AcademyDashboardPage'));
+const AcademyProgramsPage = lazy(() => import('./pages/admin/academy/AcademyProgramsPage'));
+const AcademyGroupsPage = lazy(() => import('./pages/admin/academy/AcademyGroupsPage'));
+const AcademyEnrollmentsPage = lazy(() => import('./pages/admin/academy/AcademyEnrollmentsPage'));
+const AcademyAttendancePage = lazy(() => import('./pages/admin/academy/AcademyAttendancePage'));
 const CoachAdminPage = lazy(() => import('./pages/admin/coaches/CoachAdminPage'));
 const CommunityEventsAdminPage = lazy(() => import('./pages/admin/community/CommunityEventsAdminPage'));
 const CmsPage = lazy(() => import('./pages/admin/cms/CmsPage'));
@@ -526,6 +531,11 @@ function AppContent() {
             <Route path="design-tokens" element={<DesignTokensPage />} />
             <Route path="tournaments" element={<TournamentAdminPage />} />
             <Route path="academies" element={<AcademyAdminPage />} />
+            <Route path="academy/dashboard" element={<AcademyDashboardPage />} />
+            <Route path="academy/programs" element={<AcademyProgramsPage />} />
+            <Route path="academy/groups" element={<AcademyGroupsPage />} />
+            <Route path="academy/enrollments" element={<AcademyEnrollmentsPage />} />
+            <Route path="academy/attendance" element={<AcademyAttendancePage />} />
             <Route path="membership/plans" element={<MembershipPlansPage />} />
             <Route path="membership/campaigns" element={<CampaignsPage />} />
             <Route path="membership/rewards" element={<RewardsAdminPage />} />

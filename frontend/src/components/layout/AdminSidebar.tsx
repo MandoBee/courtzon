@@ -56,7 +56,16 @@ function buildNavItems(t: (key: string) => string, can: (perm: string) => boolea
     },
     { label: t('admin.sidebar.reception'), icon: '🏪', path: '/admin/reception', permissionKey: 'sidebar.reception' },
     { label: t('admin.sidebar.tournaments'), icon: '🏆', path: '/admin/tournaments', permissionKey: 'sidebar.tournaments-admin' },
-    { label: t('admin.sidebar.academies'), icon: '🎓', path: '/admin/academies', permissionKey: 'sidebar.academies-admin' },
+    {
+      label: t('admin.sidebar.academy'), icon: '🎓', path: '/admin/academy/dashboard', permissionKey: 'sidebar.academy',
+      children: [
+        { label: t('admin.sidebar.academy_dashboard'), path: '/admin/academy/dashboard', permissionKey: 'sidebar.academy-dashboard' },
+        { label: t('admin.sidebar.academy_programs'), path: '/admin/academy/programs', permissionKey: 'sidebar.academy-programs' },
+        { label: t('admin.sidebar.academy_groups'), path: '/admin/academy/groups', permissionKey: 'sidebar.academy-groups' },
+        { label: t('admin.sidebar.academy_enrollments'), path: '/admin/academy/enrollments', permissionKey: 'sidebar.academy-enrollments' },
+        { label: t('admin.sidebar.academy_attendance'), path: '/admin/academy/attendance', permissionKey: 'sidebar.academy-attendance' },
+      ],
+    },
     { label: t('admin.sidebar.coaches'), icon: '👨‍🏫', path: '/admin/coaches', permissionKey: 'sidebar.coaches-admin' },
     {
       label: t('admin.sidebar.membership'), icon: '⭐', path: '/admin/membership/plans', permissionKey: 'sidebar.membership',

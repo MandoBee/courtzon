@@ -619,6 +619,25 @@ export const uiRegistry: UIElement[] = [
   { permissionKey: 'academies.create', moduleSlug: 'academies', elementType: 'action', elementLabel: 'Create Academy' },
   { permissionKey: 'academies.edit', moduleSlug: 'academies', elementType: 'action', elementLabel: 'Edit Academy' },
   { permissionKey: 'academies.evaluate', moduleSlug: 'academies', elementType: 'action', elementLabel: 'Evaluate Academy Students' },
+
+  // ==========================================================================
+  // ACADEMY PROGRAMS MODULE (Sprint 6)
+  // ==========================================================================
+  { permissionKey: 'academy.view', moduleSlug: 'academy', elementType: 'page', elementLabel: 'Academy Programs Page', componentPath: 'pages/admin/academy/AcademyProgramsPage.tsx' },
+  { permissionKey: 'academy.create', moduleSlug: 'academy', elementType: 'button', elementLabel: 'Create Academy Program', componentPath: 'pages/admin/academy/AcademyProgramsPage.tsx' },
+  { permissionKey: 'academy.update', moduleSlug: 'academy', elementType: 'button', elementLabel: 'Update Academy Program', componentPath: 'pages/admin/academy/AcademyProgramsPage.tsx' },
+  { permissionKey: 'academy.delete', moduleSlug: 'academy', elementType: 'button', elementLabel: 'Archive/Delete Program', componentPath: 'pages/admin/academy/AcademyProgramsPage.tsx' },
+  { permissionKey: 'academy.publish', moduleSlug: 'academy', elementType: 'button', elementLabel: 'Publish Academy Program', componentPath: 'pages/admin/academy/AcademyProgramsPage.tsx' },
+  { permissionKey: 'academy.enroll', moduleSlug: 'academy', elementType: 'button', elementLabel: 'Enroll Player in Program', componentPath: 'pages/admin/academy/AcademyEnrollmentsPage.tsx' },
+  { permissionKey: 'academy.manage', moduleSlug: 'academy', elementType: 'action', elementLabel: 'Manage Groups / Coach Assignment', componentPath: 'pages/admin/academy/AcademyGroupsPage.tsx' },
+  { permissionKey: 'attendance.manage', moduleSlug: 'academy', elementType: 'action', elementLabel: 'Manage Attendance Records', componentPath: 'pages/admin/academy/AcademyAttendancePage.tsx' },
+  { permissionKey: 'academy.dashboard.view', moduleSlug: 'academy', elementType: 'page', elementLabel: 'Academy Dashboard Page', componentPath: 'pages/admin/academy/AcademyDashboardPage.tsx' },
+  { permissionKey: 'sidebar.academy', moduleSlug: 'academy', elementType: 'tab', elementLabel: 'Sidebar: Academy Section', componentPath: 'components/layout/AdminSidebar.tsx' },
+  { permissionKey: 'sidebar.academy-dashboard', moduleSlug: 'academy', elementType: 'tab', elementLabel: 'Sidebar: Academy Dashboard', componentPath: 'components/layout/AdminSidebar.tsx' },
+  { permissionKey: 'sidebar.academy-programs', moduleSlug: 'academy', elementType: 'tab', elementLabel: 'Sidebar: Academy Programs', componentPath: 'components/layout/AdminSidebar.tsx' },
+  { permissionKey: 'sidebar.academy-groups', moduleSlug: 'academy', elementType: 'tab', elementLabel: 'Sidebar: Academy Groups', componentPath: 'components/layout/AdminSidebar.tsx' },
+  { permissionKey: 'sidebar.academy-enrollments', moduleSlug: 'academy', elementType: 'tab', elementLabel: 'Sidebar: Academy Enrollments', componentPath: 'components/layout/AdminSidebar.tsx' },
+  { permissionKey: 'sidebar.academy-attendance', moduleSlug: 'academy', elementType: 'tab', elementLabel: 'Sidebar: Academy Attendance', componentPath: 'components/layout/AdminSidebar.tsx' },
   { permissionKey: 'coaches.manage_profile', moduleSlug: 'coaches', elementType: 'action', elementLabel: 'Manage Coach Profile' },
   { permissionKey: 'coaches.manage_agreements', moduleSlug: 'coaches', elementType: 'action', elementLabel: 'Manage Coach Agreements' },
   { permissionKey: 'coaches.create_sessions', moduleSlug: 'coaches', elementType: 'action', elementLabel: 'Create Coach Sessions' },

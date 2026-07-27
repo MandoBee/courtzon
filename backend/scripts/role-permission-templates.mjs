@@ -52,6 +52,7 @@ const ADMIN_ONLY_PREFIXES = [
   'coupons.admin',
   'settlements.admin',
   'notifications.',
+  'academy.',
 ];
 
 function isAdminOnlyKey(key) {
@@ -71,6 +72,7 @@ const PLAYER_PATTERNS = [
   /^marketplace\.sell$/,
   /^coaches\./,
   /^academies\.(view|enroll)/,
+  /^academy\.(view|enroll)/,
   /^tournaments\.view/,
   /^community\./,
   /^branches\.(request-access|view)/,
