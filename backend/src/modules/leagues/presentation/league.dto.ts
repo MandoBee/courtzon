@@ -88,6 +88,7 @@ export const UpdateDivisionSchema = z.object({
 });
 
 export const RegisterTeamSchema = z.object({
+  division_id: z.number().int().positive().optional(),
   team_name: z.string().min(1).max(200),
   captain_id: z.number().int().positive().optional(),
   player_ids: z.array(z.number().int().positive()).optional(),

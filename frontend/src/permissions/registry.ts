@@ -846,6 +846,18 @@ export const uiRegistry: UIElement[] = [
   { permissionKey: 'notification_templates.update', moduleSlug: 'notification_templates', elementType: 'button', elementLabel: 'Update Notification Template', componentPath: 'pages/admin/notifications/TemplateListPage.tsx' },
   { permissionKey: 'notification_templates.delete', moduleSlug: 'notification_templates', elementType: 'button', elementLabel: 'Delete Notification Template', componentPath: 'pages/admin/notifications/TemplateListPage.tsx' },
   { permissionKey: 'notification_templates.publish', moduleSlug: 'notification_templates', elementType: 'action', elementLabel: 'Publish Notification Template', componentPath: 'pages/admin/notifications/TemplateListPage.tsx' },
+
+  // ==========================================================================
+  // PLAYER EXPERIENCE MODULE (Sprint 9)
+  // ==========================================================================
+  { permissionKey: 'player.dashboard.view', moduleSlug: 'player', elementType: 'page', elementLabel: 'Player Dashboard', componentPath: 'pages/player/DashboardPage.tsx' },
+  { permissionKey: 'player.search', moduleSlug: 'player', elementType: 'page', elementLabel: 'Player Search', componentPath: 'pages/players/PlayerSearchPage.tsx' },
+  { permissionKey: 'player.profile.view', moduleSlug: 'player', elementType: 'page', elementLabel: 'Player Public Profile', componentPath: 'pages/players/PlayerPublicProfilePage.tsx' },
+  { permissionKey: 'player.favorites.manage', moduleSlug: 'player', elementType: 'page', elementLabel: 'Favorites', componentPath: 'pages/player/FavoritesPage.tsx' },
+  { permissionKey: 'player.statistics.view', moduleSlug: 'player', elementType: 'page', elementLabel: 'Player Statistics', componentPath: 'pages/player/StatisticsPage.tsx' },
+  { permissionKey: 'player.achievements.view', moduleSlug: 'player', elementType: 'page', elementLabel: 'Achievements', componentPath: 'pages/player/AchievementsPage.tsx' },
+  { permissionKey: 'player.qr.view', moduleSlug: 'player', elementType: 'page', elementLabel: 'QR Profile', componentPath: 'pages/player/QRProfilePage.tsx' },
+  { permissionKey: 'player.devices.manage', moduleSlug: 'player', elementType: 'page', elementLabel: 'Device Management', componentPath: 'pages/player/DeviceManagementPage.tsx' },
 ];
 
 export const uiPermissionMap = new Map(uiRegistry.map(e => [e.permissionKey, e]));

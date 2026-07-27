@@ -76,6 +76,7 @@ const PLAYER_PATTERNS = [
   /^coaches\./,
   /^academies\.(view|enroll)/,
   /^academy\.(view|enroll)/,
+  /^player\.(dashboard|search|profile|favorites|statistics|achievements|qr|devices)\./,
   /^tournaments\.view/,
   /^community\./,
   /^branches\.(request-access|view)/,

@@ -376,3 +376,43 @@ export async function getSessionAttendanceHandler(request: FastifyRequest, reply
   const summary = await academyAttendanceService.getSummary(Number(sessionId));
   return reply.send({ data: rows, summary });
 }
+
+export async function listPublicProgramsHandler(request: FastifyRequest, reply: FastifyReply) {
+  const query = ListProgramsQuerySchema.parse(request.query);
+  const result = await academyProgramService.list({ ...query, is_public: true, status: 'published' });
+  return reply.send(result);
+}
+
+export async function getPublicProgramHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { id } = request.params as any;
+  const program = await academyProgramService.getById(Number(id));
+  if (!program || !program.is_public) throw new NotFoundError('Academy program', ErrorCodes.ACADEMY_PROGRAM_NOT_FOUND);
+  return reply.send(program);
+}
+
+export async function getMyEnrollmentsHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = getUserId(request);
+  const pool = getPool();
+  type RowData = import('mysql2').RowDataPacket[];
+  const [rows] = await pool.query<RowData>(
+    `SELECT e.*, p.name AS program_name, p.code AS program_code, g.name AS group_name
+     FROM academy_enrollments e
+     LEFT JOIN academy_programs p ON p.id = e.program_id
+     LEFT JOIN academy_groups g ON g.id = e.group_id
+     WHERE e.player_id = ?
+     ORDER BY e.created_at DESC`, [userId],
+  );
+  return reply.send(rows);
+}
+
+export async function publicEnrollHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = getUserId(request);
+  const { id } = request.params as any;
+  const enrollment = await academyEnrollmentService.enroll({ player_id: userId, program_id: Number(id) });
+  recordAudit({
+    actorId: userId, action: 'ACADEMY_ENROLLMENT.PUBLIC_ENROLL', entityType: 'academy_enrollment',
+    entityId: enrollment.id!, afterState: { player_id: userId, program_id: Number(id) },
+    ipAddress: request.ip, userAgent: getUserAgent(request),
+  });
+  return reply.status(201).send(enrollment);
+}

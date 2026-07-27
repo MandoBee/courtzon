@@ -42,6 +42,10 @@ export default function BottomNav() {
     { label: t('nav.tournaments'), icon: '🥇', path: '/tournaments', perm: 'tournaments.view' },
     { label: t('nav.academies'), icon: '🎓', path: '/academies', perm: 'academies.view' },
     { label: t('nav.messages'), icon: '💬', path: '/messages', perm: 'community.chat.view', flag: chatEnabled },
+    { label: t('nav.players'), icon: '👥', path: '/players', perm: 'player.search' },
+    { label: t('nav.favorites'), icon: '❤️', path: '/my/favorites', perm: 'player.favorites.manage' },
+    { label: t('nav.statistics'), icon: '📊', path: '/my/statistics', perm: 'player.statistics.view' },
+    { label: t('nav.achievements'), icon: '🏅', path: '/my/achievements', perm: 'player.achievements.view' },
     { label: t('nav.notifications'), icon: '🔔', path: '/notifications' },
     ...(isSeller ? [{ label: t('nav.my_shop'), icon: '🏪', path: '/marketplace/seller' }] : []),
   ];

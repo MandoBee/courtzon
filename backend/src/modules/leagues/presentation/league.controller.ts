@@ -495,3 +495,36 @@ export async function recalculateStatsHandler(request: FastifyRequest, reply: Fa
   });
   return reply.send({ message: 'Statistics recalculated' });
 }
+
+export async function getMyLeaguesHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = getUserId(request);
+  const pool = getPool();
+  const [rows] = await pool.query<RowData>(
+    `SELECT lt.*, ld.name AS division_name, l.name AS league_name, l.code AS league_code
+     FROM league_teams lt
+     JOIN league_divisions ld ON ld.id = lt.division_id
+     JOIN leagues l ON l.id = ld.league_id
+     WHERE lt.captain_id = ? OR JSON_CONTAINS(lt.player_ids, CAST(? AS JSON), '$')
+     ORDER BY l.created_at DESC`,
+    [userId, JSON.stringify(userId)],
+  );
+  return reply.send(rows);
+}
+
+export async function publicRegisterTeamHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = getUserId(request);
+  const { id } = request.params as any;
+  const body = RegisterTeamSchema.parse(request.body);
+  const result = await leagueService.registerTeam(
+    Number(id),
+    body.team_name || `${(request as any).user?.full_name || 'Player'}'s Team`,
+    userId,
+    body.player_ids || [userId],
+  );
+  recordAudit({
+    actorId: userId, action: 'LEAGUE.PUBLIC_REGISTER_TEAM', entityType: 'league_team',
+    entityId: result.id, afterState: { league_id: Number(id), team_name: result.team_name },
+    ipAddress: request.ip, userAgent: getUserAgent(request),
+  });
+  return reply.status(201).send(result);
+}

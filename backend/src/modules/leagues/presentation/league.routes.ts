@@ -58,4 +58,12 @@ export async function leagueRoutes(app: FastifyInstance): Promise<void> {
   // ── Statistics ──
   app.get('/admin/leagues/:id/statistics', { preHandler: [requirePermission(['league.view'])] }, ctrl.getPlayerStatsHandler);
   app.post('/admin/leagues/:id/recalculate-stats', { preHandler: [requirePermission(['league.manage'])] }, ctrl.recalculateStatsHandler);
+
+  // ── Player-facing League endpoints ──
+  app.get('/leagues', { preHandler: [requirePermission(['league.view'])] }, ctrl.listLeaguesHandler);
+  app.get('/leagues/:id', { preHandler: [requirePermission(['league.view'])] }, ctrl.getLeagueHandler);
+  app.get('/leagues/:id/standings', { preHandler: [requirePermission(['league.view'])] }, ctrl.getStandingsHandler);
+  app.get('/leagues/:id/teams', { preHandler: [requirePermission(['league.view'])] }, ctrl.listTeamsHandler);
+  app.get('/my/leagues', { preHandler: [requirePermission(['league.view'])] }, ctrl.getMyLeaguesHandler);
+  app.post('/leagues/:id/register', { preHandler: [requirePermission(['league.manage'])] }, ctrl.publicRegisterTeamHandler);
 }

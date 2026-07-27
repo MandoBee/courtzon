@@ -50,4 +50,10 @@ export async function academyRoutes(app: FastifyInstance): Promise<void> {
   app.post('/admin/academy/attendance', { preHandler: [requirePermission(['attendance.manage'])] }, ctrl.recordAttendanceHandler);
   app.post('/admin/academy/sessions/:sessionId/attendance/bulk', { preHandler: [requirePermission(['attendance.manage'])] }, ctrl.recordBulkAttendanceHandler);
   app.put('/admin/academy/attendance/:id', { preHandler: [requirePermission(['attendance.manage'])] }, ctrl.updateAttendanceHandler);
+
+  // ── Player-facing Academy endpoints ──
+  app.get('/academy/programs', { preHandler: [requirePermission(['academy.view'])] }, ctrl.listPublicProgramsHandler);
+  app.get('/academy/programs/:id', { preHandler: [requirePermission(['academy.view'])] }, ctrl.getPublicProgramHandler);
+  app.get('/my/academy/enrollments', { preHandler: [requirePermission(['academy.view'])] }, ctrl.getMyEnrollmentsHandler);
+  app.post('/academy/programs/:id/enroll', { preHandler: [requirePermission(['academy.enroll'])] }, ctrl.publicEnrollHandler);
 }

@@ -48,7 +48,6 @@ const LoginPage = lazy(() => import('./pages/auth/LoginPage'));
 const ForgotPasswordPage = lazy(() => import('./pages/auth/ForgotPasswordPage'));
 const ResetPasswordPage = lazy(() => import('./pages/auth/ResetPasswordPage'));
 const TemporaryResetPasswordPage = lazy(() => import('./pages/auth/TemporaryResetPasswordPage'));
-const DashboardPage = lazy(() => import('./pages/home/DashboardPage'));
 const BrowseBranchesPage = lazy(() => import('./pages/booking/BrowseBranchesPage'));
 const OrgStorefrontPage = lazy(() => import('./pages/organisations/OrgStorefrontPage'));
 const BookingResourceListPage = lazy(() => import('./pages/booking/ResourceListPage'));
@@ -69,6 +68,14 @@ const TournamentDetailPage = lazy(() => import('./pages/tournaments/TournamentDe
 const TournamentCreatePage = lazy(() => import('./pages/tournaments/TournamentCreatePage'));
 const AcademyListPage = lazy(() => import('./pages/academies/AcademyListPage'));
 const AcademyDetailPage = lazy(() => import('./pages/academies/AcademyDetailPage'));
+const PlayerDashboardPage = lazy(() => import('./pages/player/DashboardPage'));
+const PlayerSearchPage = lazy(() => import('./pages/players/PlayerSearchPage'));
+const PlayerPublicProfilePage = lazy(() => import('./pages/players/PlayerPublicProfilePage'));
+const PlayerFavoritesPage = lazy(() => import('./pages/player/FavoritesPage'));
+const PlayerStatisticsPage = lazy(() => import('./pages/player/StatisticsPage'));
+const PlayerAchievementsPage = lazy(() => import('./pages/player/AchievementsPage'));
+const PlayerQRProfilePage = lazy(() => import('./pages/player/QRProfilePage'));
+const PlayerDeviceManagementPage = lazy(() => import('./pages/player/DeviceManagementPage'));
 const CoachDirectoryPage = lazy(() => import('./pages/coaches/CoachDirectoryPage'));
 const CoachProfilePage = lazy(() => import('./pages/coaches/CoachProfilePage'));
 const CoachDetailPage = lazy(() => import('./pages/coaches/CoachDetailPage'));
@@ -443,7 +450,7 @@ function AppContent() {
       </Route>
       <Route element={<ProtectedRoute />}>
         <Route element={<AppLayout />}>
-          <Route path="/app" element={<DashboardPage />} />
+          <Route path="/app" element={<PlayerDashboardPage />} />
           <Route path="/browse" element={<BrowseBranchesPage />} />
           <Route path="/organisations/:orgId" element={<OrgStorefrontPage />} />
           <Route path="/branches/:branchId/resources" element={<BookingResourceListPage />} />
@@ -473,6 +480,13 @@ function AppContent() {
           <Route path="/coaches/:id/book" element={<CoachBookingPage />} />
           <Route path="/coaches/book/session" element={<FeatureFlagGuard flag="coaching.engine_booking_enabled"><EngineCoachBookingPage /></FeatureFlagGuard>} />
           <Route path="/profile" element={<ProfilePage />} />
+          <Route path="/players" element={<PlayerSearchPage />} />
+          <Route path="/players/:id" element={<PlayerPublicProfilePage />} />
+          <Route path="/my/favorites" element={<PlayerFavoritesPage />} />
+          <Route path="/my/statistics" element={<PlayerStatisticsPage />} />
+          <Route path="/my/achievements" element={<PlayerAchievementsPage />} />
+          <Route path="/my/qr" element={<PlayerQRProfilePage />} />
+          <Route path="/my/devices" element={<PlayerDeviceManagementPage />} />
           <Route path="/settings/appearance" element={<RoleAppearancePage />} />
           <Route path="/community/events" element={<CommunityEventsPage />} />
           <Route path="/messages" element={<FeatureFlagGuard flag="community.chat_enabled"><MessagesPage /></FeatureFlagGuard>} />
