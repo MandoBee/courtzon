@@ -63,6 +63,7 @@ import { adminRoutes, publicAdminRoutes } from "./modules/admin/presentation/adm
 import { inventoryRoutes } from "./modules/marketplace/presentation/inventory.routes.js";
 import { accountingRoutes } from "./modules/accounting/presentation/accounting.routes.js";
 import { crmRoutes } from "./modules/crm/index.js";
+import { hrRoutes } from "./modules/hr/index.js";
 import { createPool, getPool } from "./database/mysql.js";
 import type mysql from "mysql2/promise";
 import { AppError } from "./shared/errors/app-error.js";
@@ -529,6 +530,7 @@ app.register(adminTagRoutes);
   app.register(inventoryRoutes);
 app.register(accountingRoutes);
 app.register(crmRoutes);
+app.register(hrRoutes);
 
 function buildMeta(request: any) {
   return {

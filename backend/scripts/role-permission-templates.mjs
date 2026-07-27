@@ -60,6 +60,7 @@ const ADMIN_ONLY_PREFIXES = [
   'inventory.',
   'accounting.',
   'crm.',
+  'hr.',
 ];
 
 function isAdminOnlyKey(key) {

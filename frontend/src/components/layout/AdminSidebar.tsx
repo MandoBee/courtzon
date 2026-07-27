@@ -109,6 +109,17 @@ function buildNavItems(t: (key: string) => string, can: (perm: string) => boolea
         { label: 'Communications', path: '/admin/crm/communications', permissionKey: 'sidebar.crm-communications' },
       ],
     },
+    {
+      label: 'HR', icon: '👥', path: '/admin/hr/dashboard', permissionKey: 'sidebar.hr',
+      children: [
+        { label: 'Dashboard', path: '/admin/hr/dashboard', permissionKey: 'sidebar.hr-dashboard' },
+        { label: 'Employees', path: '/admin/hr/employees', permissionKey: 'sidebar.hr-employees' },
+        { label: 'Departments', path: '/admin/hr/departments', permissionKey: 'sidebar.hr-departments' },
+        { label: 'Leave', path: '/admin/hr/leave', permissionKey: 'sidebar.hr-leave' },
+        { label: 'Attendance', path: '/admin/hr/attendance', permissionKey: 'sidebar.hr-attendance' },
+        { label: 'Payroll', path: '/admin/hr/payroll', permissionKey: 'sidebar.hr-payroll' },
+      ],
+    },
     { label: 'Community Events', icon: '🎉', path: '/admin/community-events', permissionKey: 'sidebar.community-admin' },
     {
       label: t('admin.sidebar.notifications'), icon: '🔔', path: '/admin/notifications/broadcast', permissionKey: 'sidebar.notifications',

@@ -996,6 +996,27 @@ export const uiRegistry: UIElement[] = [
   { permissionKey: 'sidebar.crm-leads', moduleSlug: 'crm', elementType: 'tab', elementLabel: 'Sidebar: Leads', componentPath: 'components/layout/AdminSidebar.tsx' },
   { permissionKey: 'sidebar.crm-campaigns', moduleSlug: 'crm', elementType: 'tab', elementLabel: 'Sidebar: Campaigns', componentPath: 'components/layout/AdminSidebar.tsx' },
   { permissionKey: 'sidebar.crm-communications', moduleSlug: 'crm', elementType: 'tab', elementLabel: 'Sidebar: Communications', componentPath: 'components/layout/AdminSidebar.tsx' },
+
+  // ==========================================================================
+  // HR MODULE (Sprint 16)
+  // ==========================================================================
+  { permissionKey: 'hr.dashboard.view', moduleSlug: 'hr', elementType: 'page', elementLabel: 'HR Dashboard Page', componentPath: 'pages/admin/hr/HRDashboardPage.tsx' },
+  { permissionKey: 'hr.employees.view', moduleSlug: 'hr', elementType: 'page', elementLabel: 'Employee List Page', componentPath: 'pages/admin/hr/EmployeeListPage.tsx' },
+  { permissionKey: 'hr.employees.manage', moduleSlug: 'hr', elementType: 'button', elementLabel: 'Manage Employees', componentPath: 'pages/admin/hr/EmployeeListPage.tsx' },
+  { permissionKey: 'hr.departments.view', moduleSlug: 'hr', elementType: 'page', elementLabel: 'Department List Page', componentPath: 'pages/admin/hr/DepartmentListPage.tsx' },
+  { permissionKey: 'hr.departments.manage', moduleSlug: 'hr', elementType: 'button', elementLabel: 'Manage Departments', componentPath: 'pages/admin/hr/DepartmentListPage.tsx' },
+  { permissionKey: 'hr.leave.view', moduleSlug: 'hr', elementType: 'page', elementLabel: 'Leave Management Page', componentPath: 'pages/admin/hr/LeaveManagementPage.tsx' },
+  { permissionKey: 'hr.leave.manage', moduleSlug: 'hr', elementType: 'button', elementLabel: 'Manage Leave', componentPath: 'pages/admin/hr/LeaveManagementPage.tsx' },
+  { permissionKey: 'hr.attendance.view', moduleSlug: 'hr', elementType: 'page', elementLabel: 'Attendance Page', componentPath: 'pages/admin/hr/AttendancePage.tsx' },
+  { permissionKey: 'hr.payroll.view', moduleSlug: 'hr', elementType: 'page', elementLabel: 'Payroll Page', componentPath: 'pages/admin/hr/PayrollPage.tsx' },
+  { permissionKey: 'hr.payroll.manage', moduleSlug: 'hr', elementType: 'button', elementLabel: 'Manage Payroll', componentPath: 'pages/admin/hr/PayrollPage.tsx' },
+  { permissionKey: 'sidebar.hr', moduleSlug: 'hr', elementType: 'tab', elementLabel: 'Sidebar: HR Section', componentPath: 'components/layout/AdminSidebar.tsx' },
+  { permissionKey: 'sidebar.hr-dashboard', moduleSlug: 'hr', elementType: 'tab', elementLabel: 'Sidebar: HR Dashboard', componentPath: 'components/layout/AdminSidebar.tsx' },
+  { permissionKey: 'sidebar.hr-employees', moduleSlug: 'hr', elementType: 'tab', elementLabel: 'Sidebar: Employees', componentPath: 'components/layout/AdminSidebar.tsx' },
+  { permissionKey: 'sidebar.hr-departments', moduleSlug: 'hr', elementType: 'tab', elementLabel: 'Sidebar: Departments', componentPath: 'components/layout/AdminSidebar.tsx' },
+  { permissionKey: 'sidebar.hr-leave', moduleSlug: 'hr', elementType: 'tab', elementLabel: 'Sidebar: Leave', componentPath: 'components/layout/AdminSidebar.tsx' },
+  { permissionKey: 'sidebar.hr-attendance', moduleSlug: 'hr', elementType: 'tab', elementLabel: 'Sidebar: Attendance', componentPath: 'components/layout/AdminSidebar.tsx' },
+  { permissionKey: 'sidebar.hr-payroll', moduleSlug: 'hr', elementType: 'tab', elementLabel: 'Sidebar: Payroll', componentPath: 'components/layout/AdminSidebar.tsx' },
 ];
 
 export const uiPermissionMap = new Map(uiRegistry.map(e => [e.permissionKey, e]));
