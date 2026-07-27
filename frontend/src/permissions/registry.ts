@@ -934,6 +934,23 @@ export const uiRegistry: UIElement[] = [
   // Sidebar
   { permissionKey: 'sidebar.support-tickets', moduleSlug: 'support', elementType: 'tab', elementLabel: 'Sidebar: Support Tickets', componentPath: 'components/layout/AdminSidebar.tsx' },
   { permissionKey: 'sidebar.queue-management', moduleSlug: 'admin', elementType: 'tab', elementLabel: 'Sidebar: Queue Management', componentPath: 'components/layout/AdminSidebar.tsx' },
+
+  // ==========================================================================
+  // INVENTORY MODULE (Sprint 13)
+  // ==========================================================================
+  { permissionKey: 'inventory.warehouses.view', moduleSlug: 'inventory', elementType: 'page', elementLabel: 'View Warehouses', componentPath: 'pages/admin/inventory/WarehousesPage.tsx' },
+  { permissionKey: 'inventory.warehouses.manage', moduleSlug: 'inventory', elementType: 'button', elementLabel: 'Manage Warehouses', componentPath: 'pages/admin/inventory/WarehousesPage.tsx' },
+  { permissionKey: 'inventory.suppliers.view', moduleSlug: 'inventory', elementType: 'page', elementLabel: 'View Suppliers', componentPath: 'pages/admin/inventory/SuppliersPage.tsx' },
+  { permissionKey: 'inventory.suppliers.manage', moduleSlug: 'inventory', elementType: 'button', elementLabel: 'Manage Suppliers', componentPath: 'pages/admin/inventory/SuppliersPage.tsx' },
+  { permissionKey: 'inventory.purchase-orders.view', moduleSlug: 'inventory', elementType: 'page', elementLabel: 'View Purchase Orders', componentPath: 'pages/admin/inventory/PurchaseOrdersPage.tsx' },
+  { permissionKey: 'inventory.purchase-orders.manage', moduleSlug: 'inventory', elementType: 'button', elementLabel: 'Manage Purchase Orders', componentPath: 'pages/admin/inventory/PurchaseOrdersPage.tsx' },
+  { permissionKey: 'inventory.stock.view', moduleSlug: 'inventory', elementType: 'page', elementLabel: 'View Stock Levels', componentPath: 'pages/admin/inventory/InventoryPage.tsx' },
+  { permissionKey: 'inventory.stock.manage', moduleSlug: 'inventory', elementType: 'button', elementLabel: 'Manage Stock', componentPath: 'pages/admin/inventory/InventoryPage.tsx' },
+  { permissionKey: 'sidebar.inventory', moduleSlug: 'inventory', elementType: 'tab', elementLabel: 'Sidebar: Inventory Section', componentPath: 'components/layout/AdminSidebar.tsx' },
+  { permissionKey: 'sidebar.inventory-stock', moduleSlug: 'inventory', elementType: 'tab', elementLabel: 'Sidebar: Stock Levels', componentPath: 'components/layout/AdminSidebar.tsx' },
+  { permissionKey: 'sidebar.inventory-warehouses', moduleSlug: 'inventory', elementType: 'tab', elementLabel: 'Sidebar: Warehouses', componentPath: 'components/layout/AdminSidebar.tsx' },
+  { permissionKey: 'sidebar.inventory-suppliers', moduleSlug: 'inventory', elementType: 'tab', elementLabel: 'Sidebar: Suppliers', componentPath: 'components/layout/AdminSidebar.tsx' },
+  { permissionKey: 'sidebar.inventory-purchase-orders', moduleSlug: 'inventory', elementType: 'tab', elementLabel: 'Sidebar: Purchase Orders', componentPath: 'components/layout/AdminSidebar.tsx' },
 ];
 
 export const uiPermissionMap = new Map(uiRegistry.map(e => [e.permissionKey, e]));

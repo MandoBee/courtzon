@@ -156,6 +156,15 @@ function buildNavItems(t: (key: string) => string, can: (perm: string) => boolea
       ],
     },
     { label: t('admin.sidebar.users'), icon: '👥', path: '/admin/users', permissionKey: 'sidebar.users' },
+    {
+      label: 'Inventory', icon: '📦', path: '/admin/inventory/stock', permissionKey: 'sidebar.inventory',
+      children: [
+        { label: 'Stock Levels', path: '/admin/inventory/stock', permissionKey: 'sidebar.inventory-stock' },
+        { label: 'Warehouses', path: '/admin/inventory/warehouses', permissionKey: 'sidebar.inventory-warehouses' },
+        { label: 'Suppliers', path: '/admin/inventory/suppliers', permissionKey: 'sidebar.inventory-suppliers' },
+        { label: 'Purchase Orders', path: '/admin/inventory/purchase-orders', permissionKey: 'sidebar.inventory-purchase-orders' },
+      ],
+    },
     { label: t('admin.sidebar.webhooks'), icon: '🔗', path: '/admin/webhooks', permissionKey: 'sidebar.webhooks' },
     {
       label: t('admin.sidebar.security'), icon: '🛡️', path: '/admin/security', permissionKey: 'sidebar.security-dashboard',

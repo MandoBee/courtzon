@@ -213,6 +213,10 @@ const RewardsAdminPage = lazy(() => import('./pages/admin/membership/RewardsAdmi
 const PricingRulesPage = lazy(() => import('./pages/admin/pricing/PricingRulesPage'));
 const PricePreviewPage = lazy(() => import('./pages/admin/pricing/PricePreviewPage'));
 const WebhooksPage = lazy(() => import('./pages/admin/WebhooksPage'));
+const WarehousesPage = lazy(() => import('./pages/admin/inventory/WarehousesPage'));
+const SuppliersPage = lazy(() => import('./pages/admin/inventory/SuppliersPage'));
+const PurchaseOrdersPage = lazy(() => import('./pages/admin/inventory/PurchaseOrdersPage'));
+const InventoryPage = lazy(() => import('./pages/admin/inventory/InventoryPage'));
 const FinanceDashboardPage = lazy(() => import('./pages/admin/finance/FinanceDashboardPage'));
 const ReceptionDashboard = lazy(() => import('./pages/admin/ReceptionDashboard'));
 const LedgerViewerPage = lazy(() => import('./pages/admin/finance/LedgerViewerPage'));
@@ -645,6 +649,10 @@ function AppContent() {
           <Route path="support/tickets" element={<SupportTicketsPage />} />
           <Route path="queues" element={<QueueManagementPage />} />
           <Route path="webhooks" element={<WebhooksPage />} />
+          <Route path="inventory/warehouses" element={<WarehousesPage />} />
+          <Route path="inventory/suppliers" element={<SuppliersPage />} />
+          <Route path="inventory/purchase-orders" element={<PurchaseOrdersPage />} />
+          <Route path="inventory/stock" element={<InventoryPage />} />
         </Route>
         </Route>
 

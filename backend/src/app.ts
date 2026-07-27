@@ -60,6 +60,7 @@ import { refereeRoutes } from "./modules/coaches/index.js";
 import { playerRoutes } from "./modules/player-experience/presentation/player.routes.js";
 import { supportRoutes } from "./modules/support/index.js";
 import { adminRoutes, publicAdminRoutes } from "./modules/admin/presentation/admin.routes.js";
+import { inventoryRoutes } from "./modules/marketplace/presentation/inventory.routes.js";
 import { createPool, getPool } from "./database/mysql.js";
 import type mysql from "mysql2/promise";
 import { AppError } from "./shared/errors/app-error.js";
@@ -523,6 +524,7 @@ app.register(adminTagRoutes);
   app.register(refereeRoutes);
   app.register(playerRoutes);
   app.register(supportRoutes);
+  app.register(inventoryRoutes);
 
 function buildMeta(request: any) {
   return {
