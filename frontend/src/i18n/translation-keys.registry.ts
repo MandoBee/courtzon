@@ -1222,6 +1222,57 @@ export const translationKeysRegistry: TranslationKeyEntry[] = [
   { key: 'player.devices.browser', defaultValue: 'Browser: {browser}', moduleSlug: 'player', elementType: 'text', elementLabel: 'Browser label' },
   { key: 'player.followed', defaultValue: 'Followed successfully', moduleSlug: 'player', elementType: 'message', elementLabel: 'Followed toast' },
   { key: 'player.unfollowed', defaultValue: 'Unfollowed', moduleSlug: 'player', elementType: 'message', elementLabel: 'Unfollowed toast' },
+
+  // Sprint 9 — player wallet
+  { key: 'nav.payments', defaultValue: 'Payments', moduleSlug: 'nav', elementType: 'nav', elementLabel: 'Nav payments' },
+  { key: 'nav.rank_history', defaultValue: 'Rank History', moduleSlug: 'nav', elementType: 'nav', elementLabel: 'Nav rank history' },
+  { key: 'nav.my_tournaments', defaultValue: 'My Tournaments', moduleSlug: 'nav', elementType: 'nav', elementLabel: 'Nav my tournaments' },
+  { key: 'player.wallet.title', defaultValue: 'Wallet', moduleSlug: 'player', elementType: 'heading', elementLabel: 'Wallet page title' },
+  { key: 'player.wallet.balance', defaultValue: 'Available Balance', moduleSlug: 'player', elementType: 'label', elementLabel: 'Wallet balance label' },
+  { key: 'player.wallet.deposit_title', defaultValue: 'Deposit Funds', moduleSlug: 'player', elementType: 'heading', elementLabel: 'Deposit section title' },
+  { key: 'player.wallet.deposit_placeholder', defaultValue: 'Enter amount to deposit', moduleSlug: 'player', elementType: 'placeholder', elementLabel: 'Deposit amount placeholder' },
+  { key: 'player.wallet.payment_method', defaultValue: 'Payment method', moduleSlug: 'player', elementType: 'label', elementLabel: 'Payment method label' },
+  { key: 'player.wallet.no_payment_methods', defaultValue: 'No payment methods available.', moduleSlug: 'player', elementType: 'text', elementLabel: 'No payment methods' },
+  { key: 'player.wallet.deposit_button', defaultValue: 'Deposit', moduleSlug: 'player', elementType: 'button', elementLabel: 'Deposit button' },
+  { key: 'player.wallet.deposit_failed', defaultValue: 'Deposit failed. Please try again.', moduleSlug: 'player', elementType: 'message', elementLabel: 'Deposit failed message' },
+  { key: 'player.wallet.deposit_completed', defaultValue: 'Deposit completed!', moduleSlug: 'player', elementType: 'message', elementLabel: 'Deposit completed toast' },
+  { key: 'player.wallet.transaction_history', defaultValue: 'Transaction History', moduleSlug: 'player', elementType: 'heading', elementLabel: 'Transaction history title' },
+  { key: 'player.wallet.no_transactions', defaultValue: 'No transactions yet.', moduleSlug: 'player', elementType: 'text', elementLabel: 'No transactions' },
+  { key: 'player.wallet.card_payment', defaultValue: 'Card Payment', moduleSlug: 'player', elementType: 'heading', elementLabel: 'Card payment heading' },
+  { key: 'player.wallet.loading_payment', defaultValue: 'Loading secure payment form...', moduleSlug: 'player', elementType: 'text', elementLabel: 'Loading payment form' },
+  { key: 'common.page', defaultValue: 'Page', moduleSlug: 'common', elementType: 'label', elementLabel: 'Page label' },
+  { key: 'common.of', defaultValue: 'of', moduleSlug: 'common', elementType: 'label', elementLabel: 'of label' },
+
+  // Sprint 9 — payments
+  { key: 'player.payments.title', defaultValue: 'Payment History', moduleSlug: 'player', elementType: 'heading', elementLabel: 'Payments page title' },
+  { key: 'player.payments.no_payments', defaultValue: 'No payments found.', moduleSlug: 'player', elementType: 'text', elementLabel: 'No payments' },
+
+  // Sprint 9 — rank history
+  { key: 'player.rank.title', defaultValue: 'Rank History', moduleSlug: 'player', elementType: 'heading', elementLabel: 'Rank history title' },
+  { key: 'player.rank.tournaments', defaultValue: 'Tournament Rankings', moduleSlug: 'player', elementType: 'heading', elementLabel: 'Tournament rankings heading' },
+  { key: 'player.rank.leagues', defaultValue: 'League Rankings', moduleSlug: 'player', elementType: 'heading', elementLabel: 'League rankings heading' },
+  { key: 'player.rank.no_history', defaultValue: 'No rank history found.', moduleSlug: 'player', elementType: 'text', elementLabel: 'No rank history' },
+
+  // Sprint 9 — tournaments
+  { key: 'player.tournaments.title', defaultValue: 'My Tournaments', moduleSlug: 'player', elementType: 'heading', elementLabel: 'My tournaments title' },
+  { key: 'player.tournaments.no_tournaments', defaultValue: 'No tournament registrations found.', moduleSlug: 'player', elementType: 'text', elementLabel: 'No tournaments' },
+  { key: 'player.tournaments.browse', defaultValue: 'Browse Tournaments', moduleSlug: 'player', elementType: 'link', elementLabel: 'Browse tournaments link' },
+  { key: 'player.tournaments.starts', defaultValue: 'Starts', moduleSlug: 'player', elementType: 'label', elementLabel: 'Starts label' },
+  { key: 'player.tournaments.cancelled', defaultValue: 'Registration cancelled', moduleSlug: 'player', elementType: 'message', elementLabel: 'Cancelled toast' },
+  { key: 'common.view', defaultValue: 'View', moduleSlug: 'common', elementType: 'button', elementLabel: 'View button' },
+
+  // Sprint 9 — profile extras
+  { key: 'profile.playing_hand', defaultValue: 'Playing Hand', moduleSlug: 'profile', elementType: 'label', elementLabel: 'Playing hand label' },
+  { key: 'profile.playing_hand_right', defaultValue: 'Right', moduleSlug: 'profile', elementType: 'label', elementLabel: 'Playing hand right' },
+  { key: 'profile.playing_hand_left', defaultValue: 'Left', moduleSlug: 'profile', elementType: 'label', elementLabel: 'Playing hand left' },
+  { key: 'profile.playing_hand_ambidextrous', defaultValue: 'Ambidextrous', moduleSlug: 'profile', elementType: 'label', elementLabel: 'Playing hand ambidextrous' },
+  { key: 'profile.bio_placeholder', defaultValue: 'Tell us about yourself...', moduleSlug: 'profile', elementType: 'placeholder', elementLabel: 'Bio placeholder' },
+  { key: 'profile.emergency_contact', defaultValue: 'Emergency Contact', moduleSlug: 'profile', elementType: 'heading', elementLabel: 'Emergency contact heading' },
+  { key: 'profile.emergency_contact_relation', defaultValue: 'Relation', moduleSlug: 'profile', elementType: 'label', elementLabel: 'Emergency contact relation' },
+  { key: 'profile.privacy_settings', defaultValue: 'Privacy Settings', moduleSlug: 'profile', elementType: 'heading', elementLabel: 'Privacy settings heading' },
+  { key: 'profile.privacy_show_profile', defaultValue: 'Show Profile', moduleSlug: 'profile', elementType: 'label', elementLabel: 'Show profile toggle' },
+  { key: 'profile.privacy_show_stats', defaultValue: 'Show Stats', moduleSlug: 'profile', elementType: 'label', elementLabel: 'Show stats toggle' },
+  { key: 'profile.privacy_show_activity', defaultValue: 'Show Activity', moduleSlug: 'profile', elementType: 'label', elementLabel: 'Show activity toggle' },
 ];
 
 /** Build a key \u2192 English default map for offline/runtime fallback. */

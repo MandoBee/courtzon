@@ -191,12 +191,29 @@ export class UserRepository {
     );
   }
 
-  async updatePlayerProfile(userId: number, data: { mainSportId?: number | null; mainLevelId?: number | null }): Promise<void> {
+  async updatePlayerProfile(userId: number, data: Record<string, any>): Promise<void> {
     const cols: string[] = ['user_id'];
     const vals: any[] = [userId];
     const updates: string[] = [];
-    if (data.mainSportId !== undefined) { cols.push('main_sport_id'); vals.push(data.mainSportId); updates.push('main_sport_id = VALUES(main_sport_id)'); }
-    if (data.mainLevelId !== undefined) { cols.push('main_level_id'); vals.push(data.mainLevelId); updates.push('main_level_id = VALUES(main_level_id)'); }
+    const fieldMap: Record<string, string> = {
+      mainSportId: 'main_sport_id',
+      mainLevelId: 'main_level_id',
+      playingHand: 'playing_hand',
+      bio: 'bio',
+      emergencyContactName: 'emergency_contact_name',
+      emergencyContactPhone: 'emergency_contact_phone',
+      emergencyContactRelation: 'emergency_contact_relation',
+      privacyShowProfile: 'privacy_show_profile',
+      privacyShowStats: 'privacy_show_stats',
+      privacyShowActivity: 'privacy_show_activity',
+    };
+    for (const [key, col] of Object.entries(fieldMap)) {
+      if (data[key] !== undefined) {
+        cols.push(col);
+        vals.push(data[key]);
+        updates.push(`${col} = VALUES(${col})`);
+      }
+    }
     if (!updates.length) return;
     const placeholders = cols.map(() => '?').join(', ');
     await this.pool.execute(

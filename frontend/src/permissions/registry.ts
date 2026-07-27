@@ -858,6 +858,25 @@ export const uiRegistry: UIElement[] = [
   { permissionKey: 'player.achievements.view', moduleSlug: 'player', elementType: 'page', elementLabel: 'Achievements', componentPath: 'pages/player/AchievementsPage.tsx' },
   { permissionKey: 'player.qr.view', moduleSlug: 'player', elementType: 'page', elementLabel: 'QR Profile', componentPath: 'pages/player/QRProfilePage.tsx' },
   { permissionKey: 'player.devices.manage', moduleSlug: 'player', elementType: 'page', elementLabel: 'Device Management', componentPath: 'pages/player/DeviceManagementPage.tsx' },
+
+  // Player Profile permissions
+  { permissionKey: 'player.profile.update', moduleSlug: 'player', elementType: 'action', elementLabel: 'Update Own Profile', componentPath: 'pages/player/DashboardPage.tsx' },
+  { permissionKey: 'player.profile.view.emergency-contact', moduleSlug: 'player', elementType: 'field', elementLabel: 'View Emergency Contact', componentPath: 'pages/player/DashboardPage.tsx' },
+  { permissionKey: 'player.profile.edit.playing-hand', moduleSlug: 'player', elementType: 'field', elementLabel: 'Edit Playing Hand', componentPath: 'pages/player/DashboardPage.tsx' },
+  { permissionKey: 'player.profile.edit.bio', moduleSlug: 'player', elementType: 'field', elementLabel: 'Edit Bio', componentPath: 'pages/player/DashboardPage.tsx' },
+  { permissionKey: 'player.profile.edit.preferred-sports', moduleSlug: 'player', elementType: 'field', elementLabel: 'Edit Preferred Sports', componentPath: 'pages/player/DashboardPage.tsx' },
+  { permissionKey: 'player.profile.edit.skill-level', moduleSlug: 'player', elementType: 'field', elementLabel: 'Edit Skill Level', componentPath: 'pages/player/DashboardPage.tsx' },
+  { permissionKey: 'player.profile.privacy', moduleSlug: 'player', elementType: 'action', elementLabel: 'Manage Privacy Settings', componentPath: 'pages/player/DashboardPage.tsx' },
+  { permissionKey: 'player.wallet.view', moduleSlug: 'player', elementType: 'page', elementLabel: 'View Wallet', componentPath: 'pages/player/DashboardPage.tsx' },
+  { permissionKey: 'player.wallet.transactions', moduleSlug: 'player', elementType: 'action', elementLabel: 'View Wallet Transactions', componentPath: 'pages/player/DashboardPage.tsx' },
+  { permissionKey: 'player.payments.view', moduleSlug: 'player', elementType: 'page', elementLabel: 'View Payment History', componentPath: 'pages/player/DashboardPage.tsx' },
+  { permissionKey: 'player.payments.invoices', moduleSlug: 'player', elementType: 'action', elementLabel: 'View Invoices', componentPath: 'pages/player/DashboardPage.tsx' },
+  { permissionKey: 'player.bookings.view', moduleSlug: 'player', elementType: 'page', elementLabel: 'View Booking History', componentPath: 'pages/player/DashboardPage.tsx' },
+  { permissionKey: 'player.notifications.view', moduleSlug: 'player', elementType: 'page', elementLabel: 'View Notifications', componentPath: 'pages/player/DashboardPage.tsx' },
+  { permissionKey: 'player.rank.history', moduleSlug: 'player', elementType: 'page', elementLabel: 'View Rank History', componentPath: 'pages/player/DashboardPage.tsx' },
+  { permissionKey: 'player.tournaments.register', moduleSlug: 'player', elementType: 'action', elementLabel: 'Register in Tournaments', componentPath: 'pages/player/DashboardPage.tsx' },
+  { permissionKey: 'academy.self_enroll', moduleSlug: 'academy', elementType: 'action', elementLabel: 'Self-enroll in Academy', componentPath: 'pages/academies/AcademyDetailPage.tsx' },
+  { permissionKey: 'league.self_register', moduleSlug: 'league', elementType: 'action', elementLabel: 'Self-register in League', componentPath: 'pages/player/DashboardPage.tsx' },
 ];
 
 export const uiPermissionMap = new Map(uiRegistry.map(e => [e.permissionKey, e]));

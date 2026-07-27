@@ -23,4 +23,7 @@ export async function playerRoutes(app: FastifyInstance): Promise<void> {
   app.delete('/players/my/devices/:id', { preHandler: [requirePermission(['player.devices.manage'])] }, ctrl.removeDeviceHandler);
 
   app.get('/players/my/achievements', { preHandler: [requirePermission(['player.achievements.view'])] }, ctrl.getAchievementsHandler);
+
+  app.get('/my/rank-history', { preHandler: [requirePermission(['player.rank.history'])] }, ctrl.getRankHistoryHandler);
+  app.get('/my/tournaments', { preHandler: [requirePermission(['tournament.view'])] }, ctrl.getMyTournamentsHandler);
 }

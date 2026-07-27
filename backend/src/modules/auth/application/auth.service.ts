@@ -438,9 +438,17 @@ export class AuthService {
     if (input.isPublic !== undefined) userData.is_public = input.isPublic;
     await userRepository.update(userId, userData);
 
-    const profileData: { mainSportId?: number | null; mainLevelId?: number | null } = {};
+    const profileData: Record<string, any> = {};
     if (input.mainSportId !== undefined) profileData.mainSportId = input.mainSportId;
     if (input.mainLevelId !== undefined) profileData.mainLevelId = input.mainLevelId;
+    if (input.playing_hand !== undefined) profileData.playingHand = input.playing_hand;
+    if (input.bio !== undefined) profileData.bio = input.bio;
+    if (input.emergency_contact_name !== undefined) profileData.emergencyContactName = input.emergency_contact_name;
+    if (input.emergency_contact_phone !== undefined) profileData.emergencyContactPhone = input.emergency_contact_phone;
+    if (input.emergency_contact_relation !== undefined) profileData.emergencyContactRelation = input.emergency_contact_relation;
+    if (input.privacy_show_profile !== undefined) profileData.privacyShowProfile = input.privacy_show_profile;
+    if (input.privacy_show_stats !== undefined) profileData.privacyShowStats = input.privacy_show_stats;
+    if (input.privacy_show_activity !== undefined) profileData.privacyShowActivity = input.privacy_show_activity;
     if (Object.keys(profileData).length) {
       await userRepository.updatePlayerProfile(userId, profileData);
     }

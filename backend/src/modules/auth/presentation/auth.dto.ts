@@ -55,6 +55,14 @@ export const UpdateProfileSchema = z.object({
   mainLevelId: z.number().int().positive().nullable().optional(),
   interestedSportIds: z.array(z.number().int().positive()).optional(),
   isPublic: z.boolean().optional(),
+  playing_hand: z.enum(['right','left','ambidextrous']).optional(),
+  bio: z.string().max(1000).optional(),
+  emergency_contact_name: z.string().max(200).optional(),
+  emergency_contact_phone: z.string().max(50).optional(),
+  emergency_contact_relation: z.string().max(100).optional(),
+  privacy_show_profile: z.boolean().optional(),
+  privacy_show_stats: z.boolean().optional(),
+  privacy_show_activity: z.boolean().optional(),
 });
 
 export const ForgotPasswordSchema = z.object({

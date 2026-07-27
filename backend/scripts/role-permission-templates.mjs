@@ -77,6 +77,7 @@ const PLAYER_PATTERNS = [
   /^academies\.(view|enroll)/,
   /^academy\.(view|enroll)/,
   /^player\.(dashboard|search|profile|favorites|statistics|achievements|qr|devices)\./,
+  /^player\.tournaments\.register/,
   /^tournaments\.view/,
   /^community\./,
   /^branches\.(request-access|view)/,
@@ -87,7 +88,13 @@ const PLAYER_PATTERNS = [
   /^matches\./,
   /^notifications\.view$/,
   /^sports\.view$/,
+  /^player\./,
+  /^academy\.self_enroll/,
+  /^league\.self_register/,
+  /^player\.tournaments\.register/,
 ];
+
+const ORG_ADMIN_PATTERNS = [
 
 const ORG_ADMIN_PATTERNS = [
   /^org\./,

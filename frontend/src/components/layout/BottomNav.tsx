@@ -46,6 +46,10 @@ export default function BottomNav() {
     { label: t('nav.favorites'), icon: '❤️', path: '/my/favorites', perm: 'player.favorites.manage' },
     { label: t('nav.statistics'), icon: '📊', path: '/my/statistics', perm: 'player.statistics.view' },
     { label: t('nav.achievements'), icon: '🏅', path: '/my/achievements', perm: 'player.achievements.view' },
+    { label: t('nav.wallet'), icon: '👛', path: '/my/wallet', perm: 'player.wallet.view' },
+    { label: t('nav.payments'), icon: '💳', path: '/my/payments', perm: 'player.payments.view' },
+    { label: t('nav.rank_history'), icon: '📈', path: '/my/rank-history', perm: 'player.rank.history' },
+    { label: t('nav.my_tournaments'), icon: '🥇', path: '/my/tournaments', perm: 'player.tournaments.register' },
     { label: t('nav.notifications'), icon: '🔔', path: '/notifications' },
     ...(isSeller ? [{ label: t('nav.my_shop'), icon: '🏪', path: '/marketplace/seller' }] : []),
   ];

@@ -76,6 +76,10 @@ const PlayerStatisticsPage = lazy(() => import('./pages/player/StatisticsPage'))
 const PlayerAchievementsPage = lazy(() => import('./pages/player/AchievementsPage'));
 const PlayerQRProfilePage = lazy(() => import('./pages/player/QRProfilePage'));
 const PlayerDeviceManagementPage = lazy(() => import('./pages/player/DeviceManagementPage'));
+const PlayerWalletPage = lazy(() => import('./pages/player/WalletPage'));
+const PlayerPaymentsPage = lazy(() => import('./pages/player/PaymentsPage'));
+const PlayerRankHistoryPage = lazy(() => import('./pages/player/RankHistoryPage'));
+const PlayerTournamentsPage = lazy(() => import('./pages/player/TournamentsPage'));
 const CoachDirectoryPage = lazy(() => import('./pages/coaches/CoachDirectoryPage'));
 const CoachProfilePage = lazy(() => import('./pages/coaches/CoachProfilePage'));
 const CoachDetailPage = lazy(() => import('./pages/coaches/CoachDetailPage'));
@@ -487,6 +491,10 @@ function AppContent() {
           <Route path="/my/achievements" element={<PlayerAchievementsPage />} />
           <Route path="/my/qr" element={<PlayerQRProfilePage />} />
           <Route path="/my/devices" element={<PlayerDeviceManagementPage />} />
+          <Route path="/my/wallet" element={<PlayerWalletPage />} />
+          <Route path="/my/payments" element={<PlayerPaymentsPage />} />
+          <Route path="/my/rank-history" element={<PlayerRankHistoryPage />} />
+          <Route path="/my/tournaments" element={<PlayerTournamentsPage />} />
           <Route path="/settings/appearance" element={<RoleAppearancePage />} />
           <Route path="/community/events" element={<CommunityEventsPage />} />
           <Route path="/messages" element={<FeatureFlagGuard flag="community.chat_enabled"><MessagesPage /></FeatureFlagGuard>} />

@@ -105,3 +105,44 @@ export async function getAchievementsHandler(request: FastifyRequest, reply: Fas
   const data = await playerService.getAchievements(userId);
   return reply.send(data);
 }
+
+export async function getRankHistoryHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = getUserId(request);
+  const pool = (await import('../../../database/mysql.js')).getPool();
+  type RowData = import('mysql2').RowDataPacket[];
+  const [tournamentRows] = await pool.query<RowData>(
+    `SELECT ts.*, t.name AS tournament_name, t.start_date
+     FROM tournament_standings ts
+     JOIN tournament_registrations tr ON tr.id = ts.registration_id
+     JOIN tournaments t ON t.id = ts.tournament_id
+     WHERE tr.player_id = ? AND ts.rank_position IS NOT NULL
+     ORDER BY t.start_date DESC
+     LIMIT 50`, [userId],
+  );
+  const [leagueRows] = await pool.query<RowData>(
+    `SELECT ls.*, ld.name AS division_name, l.name AS league_name, l.code AS league_code
+     FROM league_standings ls
+     JOIN league_teams lt ON lt.id = ls.team_id
+     JOIN league_divisions ld ON ld.id = ls.division_id
+     JOIN leagues l ON l.id = ld.league_id
+     WHERE lt.captain_id = ? OR JSON_CONTAINS(lt.player_ids, CAST(? AS JSON), '$')
+     ORDER BY l.created_at DESC
+     LIMIT 50`, [userId, JSON.stringify(userId)],
+  );
+  return reply.send({ tournament_standings: tournamentRows, league_standings: leagueRows });
+}
+
+export async function getMyTournamentsHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = getUserId(request);
+  const pool = (await import('../../../database/mysql.js')).getPool();
+  type RowData = import('mysql2').RowDataPacket[];
+  const [rows] = await pool.query<RowData>(
+    `SELECT tr.*, t.name AS tournament_name, t.code AS tournament_code, t.status AS tournament_status,
+            t.format, t.start_date, t.end_date
+     FROM tournament_registrations tr
+     JOIN tournaments t ON t.id = tr.tournament_id
+     WHERE tr.player_id = ?
+     ORDER BY tr.registered_at DESC`, [userId],
+  );
+  return reply.send(rows);
+}

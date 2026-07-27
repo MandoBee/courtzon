@@ -721,6 +721,126 @@ export default function ProfilePage() {
             )}
           </form>
         )}
+
+        <div className="border-t border-[var(--color-border)] pt-4 mt-4 space-y-4">
+          <Can permission="player.profile.edit.playing-hand">
+            <div>
+              <label className="block text-sm text-[var(--color-text-muted)] mb-1">{t('profile.playing_hand') || 'Playing Hand'}</label>
+              <select
+                className="w-full px-3 py-2 text-sm rounded-[var(--radius-md)] border border-[var(--color-border)]"
+                value={(user as any).playing_hand || ''}
+                onChange={(e) => updateMutation.mutate({ playing_hand: e.target.value || undefined })}
+              >
+                <option value="">{t('common.select')}</option>
+                <option value="right">{t('profile.playing_hand_right') || 'Right'}</option>
+                <option value="left">{t('profile.playing_hand_left') || 'Left'}</option>
+                <option value="ambidextrous">{t('profile.playing_hand_ambidextrous') || 'Ambidextrous'}</option>
+              </select>
+            </div>
+          </Can>
+
+          <Can permission="player.profile.edit.bio">
+            <div>
+              <label className="block text-sm text-[var(--color-text-muted)] mb-1">{t('org.bio')}</label>
+              <textarea
+                className="w-full px-3 py-2 text-sm rounded-[var(--radius-md)] border border-[var(--color-border)] text-[var(--color-text)]"
+                rows={3}
+                value={(user as any).bio || ''}
+                onChange={(e) => updateMutation.mutate({ bio: e.target.value || null })}
+                placeholder={t('profile.bio_placeholder') || 'Tell us about yourself...'}
+              />
+            </div>
+          </Can>
+
+          <Can permission="player.profile.edit.preferred-sports">
+            {editing && mainSportIdValue && (
+              <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-bg)] p-4">
+                <h4 className="text-sm font-semibold text-[var(--color-text)] mb-3">{t('org.interested')}</h4>
+                <p className="text-xs text-[var(--color-text-muted)] mb-3">
+                  {t('profile.interested_desc')}
+                </p>
+                {otherSports.length === 0 ? (
+                  <p className="text-sm text-[var(--color-text-muted)]">{t('profile.choose_main_sport_first')}</p>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto">
+                    {otherSports.map((sport: any) => (
+                      <label
+                        key={sport.id}
+                        className="flex items-center gap-2 text-sm text-[var(--color-text)] cursor-pointer py-1"
+                      >
+                        <input
+                          type="checkbox"
+                          className="cz-checkbox"
+                          checked={interestedSportIds.includes(sport.id)}
+                          onChange={() => toggleInterested(sport.id)}
+                        />
+                        <span>{sport.name}</span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </Can>
+
+          <Can permission="player.profile.view.emergency-contact">
+            <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-bg)] p-4">
+              <h4 className="text-sm font-semibold text-[var(--color-text)] mb-3">{t('profile.emergency_contact') || 'Emergency Contact'}</h4>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <Input
+                  label={t('common.name')}
+                  value={(user as any).emergency_contact_name || ''}
+                  onChange={(e) => updateMutation.mutate({ emergency_contact_name: e.target.value || null })}
+                />
+                <Input
+                  label={t('common.phone')}
+                  value={(user as any).emergency_contact_phone || ''}
+                  onChange={(e) => updateMutation.mutate({ emergency_contact_phone: e.target.value || null })}
+                />
+                <Input
+                  label={t('profile.emergency_contact_relation') || 'Relation'}
+                  value={(user as any).emergency_contact_relation || ''}
+                  onChange={(e) => updateMutation.mutate({ emergency_contact_relation: e.target.value || null })}
+                />
+              </div>
+            </div>
+          </Can>
+
+          <Can permission="player.profile.privacy">
+            <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-bg)] p-4">
+              <h4 className="text-sm font-semibold text-[var(--color-text)] mb-3">{t('profile.privacy_settings') || 'Privacy Settings'}</h4>
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-[var(--color-text)]">{t('profile.privacy_show_profile') || 'Show Profile'}</span>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox" className="sr-only peer" checked={(user as any).privacy_show_profile !== false}
+                      onChange={() => updateMutation.mutate({ privacy_show_profile: !((user as any).privacy_show_profile !== false) })}
+                    />
+                    <div className="w-9 h-5 bg-[var(--color-border)] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[var(--color-primary)]" />
+                  </label>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-[var(--color-text)]">{t('profile.privacy_show_stats') || 'Show Stats'}</span>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox" className="sr-only peer" checked={(user as any).privacy_show_stats !== false}
+                      onChange={() => updateMutation.mutate({ privacy_show_stats: !((user as any).privacy_show_stats !== false) })}
+                    />
+                    <div className="w-9 h-5 bg-[var(--color-border)] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[var(--color-primary)]" />
+                  </label>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-[var(--color-text)]">{t('profile.privacy_show_activity') || 'Show Activity'}</span>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox" className="sr-only peer" checked={(user as any).privacy_show_activity !== false}
+                      onChange={() => updateMutation.mutate({ privacy_show_activity: !((user as any).privacy_show_activity !== false) })}
+                    />
+                    <div className="w-9 h-5 bg-[var(--color-border)] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[var(--color-primary)]" />
+                  </label>
+                </div>
+              </div>
+            </div>
+          </Can>
+        </div>
           </>
         )}
 
