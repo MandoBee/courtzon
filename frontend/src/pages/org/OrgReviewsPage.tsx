@@ -1,9 +1,7 @@
-import { useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import api from '../../services/api';
 import { EntityImage } from '../../components/ui';
-import { Can } from '../../permissions/Can';
 
 export default function OrgReviewsPage() {
   const { orgId } = useParams<{ orgId: string }>();

@@ -2,8 +2,6 @@ import { useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import api from '../../services/api';
-import { Can } from '../../permissions/Can';
-
 export default function OrgBranchesPage() {
   const { orgId } = useParams<{ orgId: string }>();
   const [expandedId, setExpandedId] = useState<number | null>(null);
