@@ -53,6 +53,7 @@ const ADMIN_ONLY_PREFIXES = [
   'settlements.admin',
   'notifications.',
   'academy.',
+  'tournament.',
 ];
 
 function isAdminOnlyKey(key) {

@@ -10,15 +10,11 @@ export async function activitiesRoutes(app: FastifyInstance, opts: { requireFeat
   await app.register(async function tournamentScope(scopedApp: FastifyInstance) {
     scopedApp.addHook('preHandler', opts.requireFeatureFlag('app.tournaments_enabled'));
 
-    scopedApp.get('/tournaments', ctrl.listTournamentsHandler);
-    scopedApp.get('/tournaments/:id', ctrl.getTournamentHandler);
     scopedApp.post('/tournaments', { preHandler: [requirePermission(['tournaments.create'])] }, ctrl.createTournamentHandler);
-    scopedApp.post('/tournaments/:id/register', ctrl.registerTournamentHandler);
     scopedApp.post('/tournaments/:id/generate-bracket', { preHandler: [requirePermission(['tournaments.manage_brackets'])] }, ctrl.generateBracketHandler);
     scopedApp.post('/matches/:matchId/score', { preHandler: [requirePermission(['tournaments.enter_scores'])] }, ctrl.enterMatchScoreHandler);
 
     // Admin tournament routes
-    scopedApp.get('/admin/tournaments', { preHandler: [adminGuard] }, ctrl.adminListTournamentsHandler);
     scopedApp.put('/tournaments/:id', { preHandler: [adminGuard] }, ctrl.updateTournamentHandler);
     scopedApp.delete('/tournaments/:id', { preHandler: [adminGuard] }, ctrl.deleteTournamentHandler);
   });

@@ -616,6 +616,23 @@ export const uiRegistry: UIElement[] = [
   { permissionKey: 'audit.revert', moduleSlug: 'audit', elementType: 'action', elementLabel: 'Revert Audit Actions' },
   { permissionKey: 'tournaments.manage_brackets', moduleSlug: 'tournaments', elementType: 'action', elementLabel: 'Manage Tournament Brackets' },
   { permissionKey: 'tournaments.enter_scores', moduleSlug: 'tournaments', elementType: 'action', elementLabel: 'Enter Match Scores' },
+
+  // ==========================================================================
+  // TOURNAMENT MODULE (Sprint 7)
+  // ==========================================================================
+  { permissionKey: 'tournament.view', moduleSlug: 'tournament', elementType: 'page', elementLabel: 'Tournament Page', componentPath: 'pages/admin/tournament/TournamentListPage.tsx' },
+  { permissionKey: 'tournament.create', moduleSlug: 'tournament', elementType: 'button', elementLabel: 'Create Tournament', componentPath: 'pages/admin/tournament/TournamentListPage.tsx' },
+  { permissionKey: 'tournament.update', moduleSlug: 'tournament', elementType: 'button', elementLabel: 'Update Tournament', componentPath: 'pages/admin/tournament/TournamentListPage.tsx' },
+  { permissionKey: 'tournament.delete', moduleSlug: 'tournament', elementType: 'button', elementLabel: 'Archive Tournament', componentPath: 'pages/admin/tournament/TournamentListPage.tsx' },
+  { permissionKey: 'tournament.publish', moduleSlug: 'tournament', elementType: 'button', elementLabel: 'Publish Tournament', componentPath: 'pages/admin/tournament/TournamentListPage.tsx' },
+  { permissionKey: 'tournament.register', moduleSlug: 'tournament', elementType: 'button', elementLabel: 'Register Player', componentPath: 'pages/admin/tournament/TournamentDetailPage.tsx' },
+  { permissionKey: 'tournament.manage', moduleSlug: 'tournament', elementType: 'action', elementLabel: 'Manage Groups/Fixtures/Bracket', componentPath: 'pages/admin/tournament/TournamentDetailPage.tsx' },
+  { permissionKey: 'tournament.result.manage', moduleSlug: 'tournament', elementType: 'action', elementLabel: 'Manage Match Results', componentPath: 'pages/admin/tournament/TournamentMatchesPage.tsx' },
+  { permissionKey: 'tournament.dashboard.view', moduleSlug: 'tournament', elementType: 'page', elementLabel: 'Tournament Dashboard', componentPath: 'pages/admin/tournament/TournamentDashboardPage.tsx' },
+  { permissionKey: 'sidebar.tournament', moduleSlug: 'tournament', elementType: 'tab', elementLabel: 'Sidebar: Tournament Section', componentPath: 'components/layout/AdminSidebar.tsx' },
+  { permissionKey: 'sidebar.tournament-dashboard', moduleSlug: 'tournament', elementType: 'tab', elementLabel: 'Sidebar: Tournament Dashboard', componentPath: 'components/layout/AdminSidebar.tsx' },
+  { permissionKey: 'sidebar.tournament-list', moduleSlug: 'tournament', elementType: 'tab', elementLabel: 'Sidebar: Tournament List', componentPath: 'components/layout/AdminSidebar.tsx' },
+  { permissionKey: 'sidebar.tournament-matches', moduleSlug: 'tournament', elementType: 'tab', elementLabel: 'Sidebar: Tournament Matches', componentPath: 'components/layout/AdminSidebar.tsx' },
   { permissionKey: 'academies.create', moduleSlug: 'academies', elementType: 'action', elementLabel: 'Create Academy' },
   { permissionKey: 'academies.edit', moduleSlug: 'academies', elementType: 'action', elementLabel: 'Edit Academy' },
   { permissionKey: 'academies.evaluate', moduleSlug: 'academies', elementType: 'action', elementLabel: 'Evaluate Academy Students' },

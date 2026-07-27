@@ -55,7 +55,14 @@ function buildNavItems(t: (key: string) => string, can: (perm: string) => boolea
       ],
     },
     { label: t('admin.sidebar.reception'), icon: '🏪', path: '/admin/reception', permissionKey: 'sidebar.reception' },
-    { label: t('admin.sidebar.tournaments'), icon: '🏆', path: '/admin/tournaments', permissionKey: 'sidebar.tournaments-admin' },
+    {
+      label: t('admin.sidebar.tournament'), icon: '🏆', path: '/admin/tournament/dashboard', permissionKey: 'sidebar.tournament',
+      children: [
+        { label: t('admin.sidebar.tournament_dashboard'), path: '/admin/tournament/dashboard', permissionKey: 'sidebar.tournament-dashboard' },
+        { label: t('admin.sidebar.tournament_list'), path: '/admin/tournament/list', permissionKey: 'sidebar.tournament-list' },
+        { label: t('admin.sidebar.tournament_matches'), path: '/admin/tournament/matches', permissionKey: 'sidebar.tournament-matches' },
+      ],
+    },
     {
       label: t('admin.sidebar.academy'), icon: '🎓', path: '/admin/academy/dashboard', permissionKey: 'sidebar.academy',
       children: [

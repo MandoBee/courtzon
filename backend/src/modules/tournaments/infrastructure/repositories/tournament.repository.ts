@@ -1,109 +1,420 @@
 import { getPool } from '../../../../database/mysql.js';
-import type mysql from 'mysql2/promise';
-import type { RowDataPacket, ResultSetHeader } from 'mysql2';
-import type { Tournament, TournamentParticipant, TournamentMatch } from '../../domain/tournament-aggregate.js';
+import { buildPagination, paginationClause } from '../../../../shared/utils/pagination.js';
+import type { Tournament, TournamentRegistration, TournamentMatch, TournamentMatchResult, TournamentGroup, TournamentGroupMember, TournamentStandingRow } from '../../domain/tournament-aggregate.js';
 
-type RowData = RowDataPacket[];
+type RowData = import('mysql2').RowDataPacket[];
+type ResultSet = import('mysql2').ResultSetHeader;
 
 export class TournamentRepository {
-  private pool: mysql.Pool;
+  async list(filters: {
+    page?: number; limit?: number; search?: string; status?: string; format?: string; category?: string; sport_id?: number;
+  }): Promise<{ data: Tournament[]; total: number; page: number; limit: number }> {
+    const pool = getPool();
+    const where: string[] = ['1 = 1'];
+    const params: any[] = [];
 
-  constructor() {
-    this.pool = getPool();
-  }
+    if (filters.search) {
+      where.push('(t.name LIKE ? OR t.code LIKE ?)');
+      params.push(`%${filters.search}%`, `%${filters.search}%`);
+    }
+    if (filters.status) { where.push('t.status = ?'); params.push(filters.status); }
+    if (filters.format) { where.push('t.format = ?'); params.push(filters.format); }
+    if (filters.category) { where.push('t.category = ?'); params.push(filters.category); }
+    if (filters.sport_id) { where.push('t.sport_id = ?'); params.push(filters.sport_id); }
 
-  async create(data: Tournament): Promise<number> {
-    const [result] = await this.pool.execute<ResultSetHeader>(
-      `INSERT INTO tournaments (name, format, sport_id, organisation_id, branch_id, start_date, end_date, registration_deadline, max_participants, current_participants, registration_type, status, match_duration_minutes, description, rules, prize_description, aggregate_version)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
-      [data.name, data.format, data.sportId, data.organisationId || null, data.branchId || null,
-       data.startDate, data.endDate, data.registrationDeadline, data.maxParticipants, data.currentParticipants || 0,
-       data.registrationType, data.status || 'draft', data.matchDurationMinutes || 60,
-       data.description || null, data.rules || null, data.prizeDescription || null],
+    const pag = buildPagination(filters.page, filters.limit);
+
+    const [countRows] = await pool.query<RowData>(
+      `SELECT COUNT(*) AS total FROM tournaments t WHERE ${where.join(' AND ')}`, params,
     );
-    return result.insertId;
-  }
+    const total = countRows[0]?.total ?? 0;
 
-  async findById(id: number): Promise<any | null> {
-    const [rows] = await this.pool.execute<RowData>('SELECT * FROM tournaments WHERE id = ?', [id]);
-    return rows[0] || null;
-  }
-
-  async findOpen(): Promise<any[]> {
-    const [rows] = await this.pool.execute<RowData>(
-      "SELECT * FROM tournaments WHERE status IN ('draft', 'open') AND registration_deadline > NOW() ORDER BY start_date",
+    const [rows] = await pool.query<RowData>(
+      `SELECT t.* FROM tournaments t WHERE ${where.join(' AND ')} ORDER BY t.created_at DESC${paginationClause(pag)}`,
+      params,
     );
-    return rows;
+
+    return { data: rows as Tournament[], total, page: pag.page, limit: pag.limit };
   }
 
-  async addParticipant(data: TournamentParticipant): Promise<number> {
-    const [result] = await this.pool.execute<ResultSetHeader>(
-      "INSERT INTO tournament_participants (tournament_id, user_id, team_name, seed, status, registered_at) VALUES (?, ?, ?, ?, 'registered', NOW())",
-      [data.tournamentId, data.userId || null, data.teamName || null, data.seed || 0],
+  async findById(id: number): Promise<Tournament | null> {
+    const [rows] = await getPool().query<RowData>('SELECT * FROM tournaments WHERE id = ?', [id]);
+    return rows.length ? (rows[0] as Tournament) : null;
+  }
+
+  async findByCode(code: string): Promise<Tournament | null> {
+    const [rows] = await getPool().query<RowData>('SELECT * FROM tournaments WHERE code = ? LIMIT 1', [code]);
+    return rows.length ? (rows[0] as Tournament) : null;
+  }
+
+  async create(data: Partial<Tournament>): Promise<number> {
+    const sql = `INSERT INTO tournaments (code, name, description, format, sport_id, organisation_id, branch_id, category, season, status, registration_type, max_players, max_teams, current_players, current_teams, registration_fee, price_type, currency, is_public, registration_open_at, registration_close_at, start_date, end_date, match_duration_minutes, rules, prize_description, metadata)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+    const [result] = await getPool().query<ResultSet>(sql, [
+      data.code, data.name, data.description ?? null, data.format, data.sport_id,
+      data.organisation_id ?? null, data.branch_id ?? null, data.category ?? null, data.season ?? null,
+      data.status ?? 'draft', data.registration_type ?? 'public',
+      data.max_players ?? null, data.max_teams ?? null, data.current_players ?? 0, data.current_teams ?? 0,
+      data.registration_fee ?? null, data.price_type ?? null, data.currency ?? null,
+      data.is_public ?? true, data.registration_open_at ?? null, data.registration_close_at ?? null,
+      data.start_date ?? null, data.end_date ?? null, data.match_duration_minutes ?? null,
+      data.rules ?? null, data.prize_description ?? null,
+      data.metadata ? JSON.stringify(data.metadata) : null,
+    ]);
+    return (result as any).insertId;
+  }
+
+  async update(id: number, data: Partial<Tournament>): Promise<void> {
+    const fields: string[] = [];
+    const params: any[] = [];
+    const updatable: (keyof Tournament)[] = [
+      'code', 'name', 'description', 'format', 'sport_id', 'organisation_id', 'branch_id',
+      'category', 'season', 'status', 'registration_type', 'max_players', 'max_teams',
+      'registration_fee', 'price_type', 'currency', 'is_public',
+      'registration_open_at', 'registration_close_at', 'start_date', 'end_date',
+      'match_duration_minutes', 'rules', 'prize_description',
+    ];
+    for (const f of updatable) {
+      if (data[f] !== undefined) { fields.push(`${f} = ?`); params.push(data[f]); }
+    }
+    if (data.metadata !== undefined) { fields.push('metadata = ?'); params.push(JSON.stringify(data.metadata)); }
+    if (!fields.length) return;
+    params.push(id);
+    await getPool().query(
+      `UPDATE tournaments SET ${fields.join(', ')}, updated_at = NOW() WHERE id = ?`, params,
     );
-    return result.insertId;
   }
 
-  async findParticipants(tournamentId: number): Promise<any[]> {
-    const [rows] = await this.pool.execute<RowData>(
-      'SELECT * FROM tournament_participants WHERE tournament_id = ? ORDER BY seed',
+  async updateStatus(id: number, status: string): Promise<void> {
+    const extras: string[] = ['status = ?'];
+    const params: any[] = [status];
+    if (status === 'archived') { extras.push('archived_at = NOW()'); }
+    params.push(id);
+    await getPool().query(
+      `UPDATE tournaments SET ${extras.join(', ')}, updated_at = NOW() WHERE id = ?`, params,
+    );
+  }
+
+  async deleteArchive(id: number): Promise<void> {
+    await this.updateStatus(id, 'archived');
+  }
+
+  async findOpen(limit: number = 50): Promise<Tournament[]> {
+    const [rows] = await getPool().query<RowData>(
+      `SELECT * FROM tournaments WHERE status IN ('published','registration_open') AND registration_close_at > NOW() ORDER BY start_date LIMIT ?`,
+      [limit],
+    );
+    return rows as Tournament[];
+  }
+
+  // ── Registrations (tournament_registrations) ──
+
+  async findRegistrationsByTournament(tournamentId: number): Promise<TournamentRegistration[]> {
+    const [rows] = await getPool().query<RowData>(
+      'SELECT * FROM tournament_registrations WHERE tournament_id = ? ORDER BY seed',
       [tournamentId],
     );
-    return rows;
+    return rows as TournamentRegistration[];
   }
 
-  async createMatch(data: TournamentMatch): Promise<number> {
-    const [result] = await this.pool.execute<ResultSetHeader>(
-      `INSERT INTO tournament_matches (tournament_id, round, group_id, bracket_position, player1_id, player2_id, winner_id, score, status, court_id, referee_id, scheduled_at, aggregate_version)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
-      [data.tournamentId, data.round, data.groupId || null, data.bracketPosition || 0,
-       data.player1Id || null, data.player2Id || null, data.winnerId || null,
-       data.score || null, data.status || 'scheduled', data.courtId || null,
-       data.refereeId || null, data.scheduledAt || null],
+  async findRegistrationsByPlayer(userId: number): Promise<TournamentRegistration[]> {
+    const [rows] = await getPool().query<RowData>(
+      'SELECT * FROM tournament_registrations WHERE user_id = ? ORDER BY registered_at DESC',
+      [userId],
     );
-    return result.insertId;
+    return rows as TournamentRegistration[];
   }
 
-  async findMatches(tournamentId: number): Promise<any[]> {
-    const [rows] = await this.pool.execute<RowData>(
+  async createRegistration(data: Partial<TournamentRegistration>): Promise<number> {
+    const sql = `INSERT INTO tournament_registrations (tournament_id, user_id, team_id, team_name, seed, status, waiting_order, registered_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`;
+    const [result] = await getPool().query<ResultSet>(sql, [
+      data.tournament_id, data.user_id ?? null, data.team_id ?? null, data.team_name ?? null,
+      data.seed ?? 0, data.status ?? 'pending', data.waiting_order ?? null,
+    ]);
+    return (result as any).insertId;
+  }
+
+  async updateRegistrationStatus(id: number, status: string, waitingOrder?: number): Promise<void> {
+    const extras: string[] = ['status = ?'];
+    const params: any[] = [status];
+    if (status === 'confirmed') { extras.push('confirmed_at = NOW()'); }
+    if (waitingOrder !== undefined) { extras.push('waiting_order = ?'); params.push(waitingOrder); }
+    params.push(id);
+    await getPool().query(
+      `UPDATE tournament_registrations SET ${extras.join(', ')} WHERE id = ?`, params,
+    );
+  }
+
+  async getNextWaitingOrder(tournamentId: number): Promise<number> {
+    const [rows] = await getPool().query<RowData>(
+      "SELECT COALESCE(MAX(waiting_order), 0) + 1 AS next_order FROM tournament_registrations WHERE tournament_id = ? AND status = 'waiting'",
+      [tournamentId],
+    );
+    return rows[0]?.next_order ?? 1;
+  }
+
+  async getConfirmedCount(tournamentId: number): Promise<number> {
+    const [rows] = await getPool().query<RowData>(
+      "SELECT COUNT(*) AS c FROM tournament_registrations WHERE tournament_id = ? AND status = 'confirmed'",
+      [tournamentId],
+    );
+    return rows[0]?.c ?? 0;
+  }
+
+  async getRegistrationById(id: number): Promise<TournamentRegistration | null> {
+    const [rows] = await getPool().query<RowData>('SELECT * FROM tournament_registrations WHERE id = ?', [id]);
+    return rows.length ? (rows[0] as TournamentRegistration) : null;
+  }
+
+  // ── Matches ──
+
+  async createMatch(data: Partial<TournamentMatch>): Promise<number> {
+    const sql = `INSERT INTO tournament_matches (tournament_id, round, group_id, bracket_position, player1_id, player2_id, winner_id, status, court_id, referee_id, scheduled_at, notes)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+    const [result] = await getPool().query<ResultSet>(sql, [
+      data.tournament_id, data.round, data.group_id ?? null, data.bracket_position ?? 0,
+      data.player1_id ?? null, data.player2_id ?? null, data.winner_id ?? null,
+      data.status ?? 'scheduled', data.court_id ?? null, data.referee_id ?? null,
+      data.scheduled_at ?? null, data.notes ?? null,
+    ]);
+    return (result as any).insertId;
+  }
+
+  async findMatches(tournamentId: number): Promise<TournamentMatch[]> {
+    const [rows] = await getPool().query<RowData>(
       'SELECT * FROM tournament_matches WHERE tournament_id = ? ORDER BY round, bracket_position',
       [tournamentId],
     );
+    return rows as TournamentMatch[];
+  }
+
+  async findMatchesByGroup(groupId: number): Promise<TournamentMatch[]> {
+    const [rows] = await getPool().query<RowData>(
+      'SELECT * FROM tournament_matches WHERE group_id = ? ORDER BY round, bracket_position',
+      [groupId],
+    );
+    return rows as TournamentMatch[];
+  }
+
+  async findMatchById(id: number): Promise<TournamentMatch | null> {
+    const [rows] = await getPool().query<RowData>('SELECT * FROM tournament_matches WHERE id = ?', [id]);
+    return rows.length ? (rows[0] as TournamentMatch) : null;
+  }
+
+  async updateMatch(id: number, data: Partial<TournamentMatch>): Promise<void> {
+    const fields: string[] = [];
+    const params: any[] = [];
+    const updatable: (keyof TournamentMatch)[] = [
+      'round', 'group_id', 'bracket_position', 'player1_id', 'player2_id',
+      'winner_id', 'status', 'court_id', 'referee_id', 'scheduled_at',
+      'started_at', 'completed_at', 'notes',
+    ];
+    for (const f of updatable) {
+      if (data[f] !== undefined) { fields.push(`${f} = ?`); params.push(data[f]); }
+    }
+    if (!fields.length) return;
+    fields.push('updated_at = NOW()');
+    params.push(id);
+    await getPool().query(
+      `UPDATE tournament_matches SET ${fields.join(', ')} WHERE id = ?`, params,
+    );
+  }
+
+  async updateMatchStatus(id: number, status: string, winnerId?: number): Promise<void> {
+    await getPool().query(
+      `UPDATE tournament_matches SET status = ?, winner_id = COALESCE(?, winner_id),
+       completed_at = IF(? IN ('completed','walkover','forfeit'), NOW(), completed_at)
+       WHERE id = ?`,
+      [status, winnerId ?? null, status, id],
+    );
+  }
+
+  async assignCourt(matchId: number, resourceId: number): Promise<void> {
+    await getPool().query('UPDATE tournament_matches SET court_id = ? WHERE id = ?', [resourceId, matchId]);
+  }
+
+  async assignReferee(matchId: number, refereeId: number): Promise<void> {
+    await getPool().query('UPDATE tournament_matches SET referee_id = ? WHERE id = ?', [refereeId, matchId]);
+  }
+
+  // ── Match Results ──
+
+  async createMatchResult(data: Partial<TournamentMatchResult>): Promise<number> {
+    const sql = `INSERT INTO tournament_match_results (match_id, winner_id, home_score, away_score, score_details, entered_by, entered_at)
+                 VALUES (?, ?, ?, ?, ?, ?, NOW())`;
+    const [result] = await getPool().query<ResultSet>(sql, [
+      data.match_id, data.winner_id ?? null, data.home_score ?? null, data.away_score ?? null,
+      data.score_details ?? null, data.entered_by,
+    ]);
+    return (result as any).insertId;
+  }
+
+  async getMatchResult(matchId: number): Promise<TournamentMatchResult | null> {
+    const [rows] = await getPool().query<RowData>(
+      'SELECT * FROM tournament_match_results WHERE match_id = ? ORDER BY entered_at DESC LIMIT 1',
+      [matchId],
+    );
+    return rows.length ? (rows[0] as TournamentMatchResult) : null;
+  }
+
+  // ── Groups ──
+
+  async createGroup(data: Partial<TournamentGroup>): Promise<number> {
+    const sql = 'INSERT INTO tournament_groups (tournament_id, name, advance_count) VALUES (?, ?, ?)';
+    const [result] = await getPool().query<ResultSet>(sql, [
+      data.tournament_id, data.name, data.advance_count ?? 1,
+    ]);
+    return (result as any).insertId;
+  }
+
+  async findGroups(tournamentId: number): Promise<TournamentGroup[]> {
+    const [rows] = await getPool().query<RowData>(
+      'SELECT * FROM tournament_groups WHERE tournament_id = ? ORDER BY name',
+      [tournamentId],
+    );
+    return rows as TournamentGroup[];
+  }
+
+  async findGroupById(id: number): Promise<TournamentGroup | null> {
+    const [rows] = await getPool().query<RowData>('SELECT * FROM tournament_groups WHERE id = ?', [id]);
+    return rows.length ? (rows[0] as TournamentGroup) : null;
+  }
+
+  async addGroupMember(data: Partial<TournamentGroupMember>): Promise<number> {
+    const sql = 'INSERT INTO tournament_group_members (group_id, registration_id, seed) VALUES (?, ?, ?)';
+    const [result] = await getPool().query<ResultSet>(sql, [
+      data.group_id, data.registration_id, data.seed ?? 0,
+    ]);
+    return (result as any).insertId;
+  }
+
+  async findGroupMembers(groupId: number): Promise<TournamentGroupMember[]> {
+    const [rows] = await getPool().query<RowData>(
+      'SELECT * FROM tournament_group_members WHERE group_id = ? ORDER BY seed',
+      [groupId],
+    );
+    return rows as TournamentGroupMember[];
+  }
+
+  async findGroupMembersByTournament(tournamentId: number): Promise<any[]> {
+    const [rows] = await getPool().query<RowData>(
+      `SELECT gm.*, g.name AS group_name, g.advance_count
+       FROM tournament_group_members gm
+       JOIN tournament_groups g ON g.id = gm.group_id
+       WHERE g.tournament_id = ?
+       ORDER BY g.name, gm.seed`,
+      [tournamentId],
+    );
     return rows;
   }
 
-  async updateMatchStatus(id: number, status: string, winnerId?: number, score?: string): Promise<void> {
-    await this.pool.execute(
-      `UPDATE tournament_matches SET status = ?, winner_id = COALESCE(?, winner_id), score = COALESCE(?, score),
-       completed_at = IF(? IN ('completed','walkover','forfeit'), NOW(), completed_at),
-       aggregate_version = aggregate_version + 1 WHERE id = ?`,
-      [status, winnerId || null, score || null, status, id],
+  // ── Standings ──
+
+  async getStandings(tournamentId: number, groupId?: number): Promise<TournamentStandingRow[]> {
+    const where: string[] = ['s.tournament_id = ?'];
+    const params: any[] = [tournamentId];
+    if (groupId !== undefined) { where.push('s.group_id = ?'); params.push(groupId); }
+    const [rows] = await getPool().query<RowData>(
+      `SELECT s.* FROM tournament_standings s WHERE ${where.join(' AND ')} ORDER BY s.position ASC`,
+      params,
+    );
+    return rows as TournamentStandingRow[];
+  }
+
+  async upsertStanding(data: Partial<TournamentStandingRow>): Promise<void> {
+    await getPool().query(
+      `INSERT INTO tournament_standings (tournament_id, group_id, registration_id, player_id, team_id, points, wins, losses, draws, games_for, games_against, position, played)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE
+       points = VALUES(points), wins = VALUES(wins), losses = VALUES(losses), draws = VALUES(draws),
+       games_for = VALUES(games_for), games_against = VALUES(games_against),
+       position = VALUES(position), played = VALUES(played)`,
+      [data.tournament_id, data.group_id ?? null, data.registration_id ?? null, data.player_id ?? null,
+       data.team_id ?? null, data.points, data.wins, data.losses, data.draws,
+       data.games_for, data.games_against, data.position, data.played],
     );
   }
 
-  async getEloRating(userId: number, sportId: number): Promise<any | null> {
-    const [rows] = await this.pool.execute<RowData>(
-      'SELECT * FROM elo_ratings WHERE user_id = ? AND sport_id = ?', [userId, sportId],
+  async recalculateStandings(tournamentId: number, groupId?: number): Promise<void> {
+    const pool = getPool();
+    await pool.query('DELETE FROM tournament_standings WHERE tournament_id = ? AND (group_id = ? OR (? IS NULL AND group_id IS NULL))',
+      [tournamentId, groupId ?? null, groupId ?? null]);
+
+    const matchWhere: string[] = ['m.tournament_id = ?', "m.status = 'completed'", 'm.winner_id IS NOT NULL'];
+    const matchParams: any[] = [tournamentId];
+    if (groupId !== undefined) { matchWhere.push('(m.group_id = ? OR m.player1_id IN (SELECT registration_id FROM tournament_group_members WHERE group_id = ?))'); matchParams.push(groupId, groupId); }
+
+    const [rows] = await pool.query<RowData>(
+      `SELECT m.player1_id, m.player2_id, m.winner_id FROM tournament_matches m WHERE ${matchWhere.join(' AND ')}`,
+      matchParams,
     );
-    return rows[0] || null;
+
+    const stats = new Map<number, { points: number; wins: number; losses: number; draws: number; gf: number; ga: number; played: number }>();
+
+    for (const m of rows) {
+      const p1 = m.player1_id;
+      const p2 = m.player2_id;
+      if (!p1 || !p2) continue;
+      if (!stats.has(p1)) stats.set(p1, { points: 0, wins: 0, losses: 0, draws: 0, gf: 0, ga: 0, played: 0 });
+      if (!stats.has(p2)) stats.set(p2, { points: 0, wins: 0, losses: 0, draws: 0, gf: 0, ga: 0, played: 0 });
+
+      const winner = stats.get(m.winner_id)!;
+      const loser = stats.get(m.winner_id === p1 ? p2 : p1)!;
+      winner.wins++;
+      winner.points += 3;
+      winner.played++;
+      loser.losses++;
+      loser.played++;
+    }
+
+    let position = 1;
+    const sorted = [...stats.entries()].sort((a, b) => b[1].points - a[1].points);
+    for (const [registrationId, s] of sorted) {
+      await pool.query(
+        `INSERT INTO tournament_standings (tournament_id, group_id, registration_id, points, wins, losses, draws, games_for, games_against, position, played)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [tournamentId, groupId ?? null, registrationId, s.points, s.wins, s.losses, s.draws, s.gf, s.ga, position, s.played],
+      );
+      position++;
+    }
   }
 
-  async upsertEloRating(rating: any): Promise<void> {
-    await this.pool.execute(
-      `INSERT INTO elo_ratings (user_id, sport_id, rating, matches_played, k_factor, last_match_at)
-       VALUES (?, ?, ?, ?, ?, NOW())
-       ON DUPLICATE KEY UPDATE rating = VALUES(rating), matches_played = VALUES(matches_played),
-       k_factor = VALUES(k_factor), last_match_at = NOW()`,
-      [rating.userId, rating.sportId, rating.rating, rating.matchesPlayed, rating.kFactor],
-    );
-  }
+  // ── Dashboard ──
 
-  async updateTournamentParticipants(id: number, count: number): Promise<void> {
-    await this.pool.execute('UPDATE tournaments SET current_participants = ? WHERE id = ?', [count, id]);
-  }
+  async getDashboard(): Promise<{
+    total_tournaments: number;
+    active_tournaments: number;
+    running_tournaments: number;
+    total_registrations: number;
+    total_matches: number;
+    completed_matches: number;
+    upcoming_tournaments: number;
+    status_breakdown: Record<string, number>;
+  }> {
+    const pool = getPool();
+    const [[totalT]] = await pool.execute<RowData>("SELECT COUNT(*) AS c FROM tournaments WHERE status != 'archived'");
+    const [[activeT]] = await pool.execute<RowData>("SELECT COUNT(*) AS c FROM tournaments WHERE status IN ('published','registration_open','registration_closed')");
+    const [[runT]] = await pool.execute<RowData>("SELECT COUNT(*) AS c FROM tournaments WHERE status = 'running'");
+    const [[totalReg]] = await pool.execute<RowData>("SELECT COUNT(*) AS c FROM tournament_registrations");
+    const [[totalM]] = await pool.execute<RowData>("SELECT COUNT(*) AS c FROM tournament_matches");
+    const [[compM]] = await pool.execute<RowData>("SELECT COUNT(*) AS c FROM tournament_matches WHERE status = 'completed'");
+    const [[upcomingT]] = await pool.execute<RowData>("SELECT COUNT(*) AS c FROM tournaments WHERE status IN ('published','registration_open') AND start_date > NOW()");
+    const [statusRows] = await pool.execute<RowData>("SELECT status, COUNT(*) AS c FROM tournaments GROUP BY status");
 
-  async updateTournamentStatus(id: number, status: string): Promise<void> {
-    await this.pool.execute('UPDATE tournaments SET status = ? WHERE id = ?', [status, id]);
+    const status_breakdown: Record<string, number> = {};
+    for (const r of statusRows) { status_breakdown[r.status] = r.c; }
+
+    return {
+      total_tournaments: totalT.c,
+      active_tournaments: activeT.c,
+      running_tournaments: runT.c,
+      total_registrations: totalReg.c,
+      total_matches: totalM.c,
+      completed_matches: compM.c,
+      upcoming_tournaments: upcomingT.c,
+      status_breakdown,
+    };
   }
 }
 

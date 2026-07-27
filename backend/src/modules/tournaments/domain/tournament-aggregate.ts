@@ -4,92 +4,147 @@ export type TournamentFormat =
 
 export type RegistrationType = 'individual' | 'team' | 'academy' | 'invitation' | 'public';
 
+export type TournamentStatus =
+  | 'draft' | 'published' | 'registration_open' | 'registration_closed'
+  | 'running' | 'completed' | 'cancelled' | 'archived';
+
+export type RegistrationStatus = 'pending' | 'confirmed' | 'waiting' | 'cancelled' | 'completed';
+
 export type MatchStatus = 'scheduled' | 'in_progress' | 'completed' | 'walkover' | 'forfeit' | 'no_show';
 
 export interface Tournament {
   id?: number;
+  code: string;
   name: string;
-  format: TournamentFormat;
-  sportId: number;
-  organisationId?: number;
-  branchId?: number;
-  startDate: string;
-  endDate: string;
-  registrationDeadline: string;
-  maxParticipants: number;
-  currentParticipants: number;
-  registrationType: RegistrationType;
-  status: 'draft' | 'open' | 'in_progress' | 'completed' | 'cancelled';
-  matchDurationMinutes: number;
   description?: string;
+  format: TournamentFormat;
+  sport_id: number;
+  organisation_id?: number;
+  branch_id?: number;
+  category?: string;
+  season?: string;
+  status: TournamentStatus;
+  registration_type: RegistrationType;
+  max_players?: number;
+  max_teams?: number;
+  current_players?: number;
+  current_teams?: number;
+  registration_fee?: number;
+  price_type?: string;
+  currency?: string;
+  is_public?: boolean;
+  registration_open_at?: string;
+  registration_close_at?: string;
+  start_date?: string;
+  end_date?: string;
+  match_duration_minutes?: number;
   rules?: string;
-  prizeDescription?: string;
-  aggregateVersion: number;
+  prize_description?: string;
+  metadata?: Record<string, unknown>;
+  created_at?: string;
+  updated_at?: string;
 }
 
-export interface TournamentParticipant {
+export interface TournamentRegistration {
   id?: number;
-  tournamentId: number;
-  userId?: number;
-  teamName?: string;
+  tournament_id: number;
+  user_id?: number;
+  team_id?: number;
+  team_name?: string;
   seed: number;
-  status: 'registered' | 'approved' | 'rejected' | 'checked_in';
-  registeredAt: string;
+  status: RegistrationStatus;
+  waiting_order?: number;
+  registered_at: string;
+  confirmed_at?: string;
+  checked_in_at?: string;
 }
 
 export interface TournamentMatch {
   id?: number;
-  tournamentId: number;
+  tournament_id: number;
   round: number;
-  groupId?: number;
-  bracketPosition?: number;
-  player1Id?: number;
-  player2Id?: number;
-  winnerId?: number;
-  score?: string;
+  group_id?: number;
+  bracket_position?: number;
+  player1_id?: number;
+  player2_id?: number;
+  winner_id?: number;
   status: MatchStatus;
-  courtId?: number;
-  refereeId?: number;
-  scheduledAt?: string;
-  startedAt?: string;
-  completedAt?: string;
-  aggregateVersion: number;
+  court_id?: number;
+  referee_id?: number;
+  scheduled_at?: string;
+  started_at?: string;
+  completed_at?: string;
+  notes?: string;
 }
 
-export interface TournamentStanding {
-  participantId: number;
+export interface TournamentMatchResult {
+  id?: number;
+  match_id: number;
+  winner_id?: number;
+  home_score?: number;
+  away_score?: number;
+  score_details?: string;
+  entered_by: number;
+  entered_at: string;
+}
+
+export interface TournamentGroup {
+  id?: number;
+  tournament_id: number;
+  name: string;
+  advance_count: number;
+  created_at?: string;
+}
+
+export interface TournamentGroupMember {
+  id?: number;
+  group_id: number;
+  registration_id: number;
+  seed: number;
+}
+
+export interface TournamentStandingRow {
+  id?: number;
+  tournament_id: number;
+  group_id?: number;
+  registration_id?: number;
+  player_id?: number;
+  team_id?: number;
   points: number;
   wins: number;
   losses: number;
   draws: number;
-  gamesFor: number;
-  gamesAgainst: number;
+  games_for: number;
+  games_against: number;
   position: number;
+  played: number;
 }
 
-export interface EloRating {
-  userId: number;
-  sportId: number;
-  rating: number;
-  matchesPlayed: number;
-  kFactor: number;
-  lastMatchAt?: string;
+export interface TournamentStanding {
+  registration_id?: number;
+  player_id?: number;
+  team_id?: number;
+  points: number;
+  wins: number;
+  losses: number;
+  draws: number;
+  games_for: number;
+  games_against: number;
+  position: number;
+  played: number;
 }
 
 export function generateKnockoutBracket(participantIds: number[]): { round: number; bracketPosition: number; player1Id?: number; player2Id?: number }[] {
   const count = participantIds.length;
   const nextPowerOf2 = Math.pow(2, Math.ceil(Math.log2(count)));
-  const byes = nextPowerOf2 - count;
   const matches: { round: number; bracketPosition: number; player1Id?: number; player2Id?: number }[] = [];
 
-  // First round
   for (let i = 0; i < nextPowerOf2 / 2; i++) {
     const p1 = participantIds[i * 2];
     const p2 = participantIds[i * 2 + 1];
     matches.push({ round: 1, bracketPosition: i, player1Id: p1, player2Id: p2 || undefined });
   }
 
-  // Subsequent rounds (placeholders)
   const totalRounds = Math.log2(nextPowerOf2);
   for (let r = 2; r <= totalRounds; r++) {
     const matchesInRound = nextPowerOf2 / Math.pow(2, r);
@@ -114,63 +169,41 @@ export function generateRoundRobinMatches(participantIds: number[]): { round: nu
   return matches;
 }
 
-export function calculateElo(ratingA: number, ratingB: number, result: 'win' | 'loss' | 'draw', kFactor: number = 32): { newRatingA: number; newRatingB: number } {
-  const expectedA = 1 / (1 + Math.pow(10, (ratingB - ratingA) / 400));
-  const expectedB = 1 - expectedA;
-
-  let scoreA: number, scoreB: number;
-  if (result === 'win') { scoreA = 1; scoreB = 0; }
-  else if (result === 'loss') { scoreA = 0; scoreB = 1; }
-  else { scoreA = 0.5; scoreB = 0.5; }
-
-  return {
-    newRatingA: Math.round(ratingA + kFactor * (scoreA - expectedA)),
-    newRatingB: Math.round(ratingB + kFactor * (scoreB - expectedB)),
-  };
-}
-
 export function computeStandings(matches: TournamentMatch[], participantIds: number[]): TournamentStanding[] {
-  const stats = new Map<number, { points: number; wins: number; losses: number; draws: number; gf: number; ga: number }>();
+  const stats = new Map<number, { points: number; wins: number; losses: number; draws: number; gf: number; ga: number; played: number }>();
 
   for (const pid of participantIds) {
-    stats.set(pid, { points: 0, wins: 0, losses: 0, draws: 0, gf: 0, ga: 0 });
+    stats.set(pid, { points: 0, wins: 0, losses: 0, draws: 0, gf: 0, ga: 0, played: 0 });
   }
 
   for (const match of matches) {
-    if (match.status !== 'completed' || !match.winnerId) continue;
-    const loserId = match.player1Id === match.winnerId ? match.player2Id : match.player1Id;
+    if (match.status !== 'completed' || !match.winner_id) continue;
+    const loserId = match.player1_id === match.winner_id ? match.player2_id : match.player1_id;
     if (!loserId) continue;
 
-    const winner = stats.get(match.winnerId);
+    const winner = stats.get(match.winner_id);
     const loser = stats.get(loserId);
     if (!winner || !loser) continue;
 
     winner.wins++;
     winner.points += 3;
+    winner.played++;
     loser.losses++;
-
-    if (match.score) {
-      const [wScore, lScore] = match.score.split('-').map(Number);
-      if (!isNaN(wScore) && !isNaN(lScore)) {
-        winner.gf += wScore;
-        winner.ga += lScore;
-        loser.gf += lScore;
-        loser.ga += wScore;
-      }
-    }
+    loser.played++;
   }
 
   return Array.from(stats.entries())
-    .map(([participantId, s]) => ({
-      participantId,
+    .map(([playerId, s]) => ({
+      player_id: playerId,
       points: s.points,
       wins: s.wins,
       losses: s.losses,
       draws: s.draws,
-      gamesFor: s.gf,
-      gamesAgainst: s.ga,
+      games_for: s.gf,
+      games_against: s.ga,
       position: 0,
+      played: s.played,
     }))
-    .sort((a, b) => b.points - a.points || (b.gamesFor - b.gamesAgainst) - (a.gamesFor - a.gamesAgainst))
+    .sort((a, b) => b.points - a.points || (b.games_for - b.games_against) - (a.games_for - a.games_against))
     .map((s, i) => ({ ...s, position: i + 1 }));
 }
