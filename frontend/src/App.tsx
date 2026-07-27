@@ -176,7 +176,6 @@ const NotificationTypesPage = lazy(() => import('./pages/admin/notifications/Not
 const TemplatesPage = lazy(() => import('./pages/admin/notifications/TemplatesPage'));
 const SystemAdminPage = lazy(() => import('./pages/admin/SystemAdminPage'));
 const SupportTicketsPage = lazy(() => import('./pages/admin/support/SupportTicketsPage'));
-const SupportTicketDetail = lazy(() => import('./pages/admin/support/SupportTicketDetail'));
 const QueueManagementPage = lazy(() => import('./pages/admin/queues/QueueManagementPage'));
 const MembershipPage = lazy(() => import('./pages/admin/MembershipPage'));
 const OrgDashboardPage = lazy(() => import('./pages/org/OrgDashboardPage'));
@@ -644,7 +643,6 @@ function AppContent() {
           <Route path="bookings" element={<AdminBookingsPage />} />
           <Route path="reception" element={<ReceptionDashboard />} />
           <Route path="support/tickets" element={<SupportTicketsPage />} />
-          <Route path="support/tickets/:id" element={<SupportTicketDetail />} />
           <Route path="queues" element={<QueueManagementPage />} />
           <Route path="webhooks" element={<WebhooksPage />} />
         </Route>
