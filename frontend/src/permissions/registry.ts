@@ -1017,6 +1017,18 @@ export const uiRegistry: UIElement[] = [
   { permissionKey: 'sidebar.hr-leave', moduleSlug: 'hr', elementType: 'tab', elementLabel: 'Sidebar: Leave', componentPath: 'components/layout/AdminSidebar.tsx' },
   { permissionKey: 'sidebar.hr-attendance', moduleSlug: 'hr', elementType: 'tab', elementLabel: 'Sidebar: Attendance', componentPath: 'components/layout/AdminSidebar.tsx' },
   { permissionKey: 'sidebar.hr-payroll', moduleSlug: 'hr', elementType: 'tab', elementLabel: 'Sidebar: Payroll', componentPath: 'components/layout/AdminSidebar.tsx' },
+
+  // ==========================================================================
+  // BI MODULE (Sprint 17)
+  // ==========================================================================
+  { permissionKey: 'bi.dashboard.view', moduleSlug: 'bi', elementType: 'page', elementLabel: 'BI Dashboard', componentPath: 'pages/admin/bi/BIDashboardPage.tsx' },
+  { permissionKey: 'bi.kpi.view', moduleSlug: 'bi', elementType: 'page', elementLabel: 'BI KPI Snapshots', componentPath: 'pages/admin/bi/BIDashboardPage.tsx' },
+  { permissionKey: 'bi.export', moduleSlug: 'bi', elementType: 'action', elementLabel: 'BI Export Reports', componentPath: 'pages/admin/bi/ExportPanel.tsx' },
+  { permissionKey: 'bi.observability.view', moduleSlug: 'bi', elementType: 'page', elementLabel: 'BI Observability', componentPath: 'pages/admin/bi/ObservabilityPage.tsx' },
+  // BI sidebar
+  { permissionKey: 'sidebar.bi', moduleSlug: 'bi', elementType: 'tab', elementLabel: 'Sidebar: BI Section', componentPath: 'components/layout/AdminSidebar.tsx' },
+  { permissionKey: 'sidebar.bi-dashboard', moduleSlug: 'bi', elementType: 'tab', elementLabel: 'Sidebar: BI Dashboard', componentPath: 'components/layout/AdminSidebar.tsx' },
+  { permissionKey: 'sidebar.bi-observability', moduleSlug: 'bi', elementType: 'tab', elementLabel: 'Sidebar: BI Observability', componentPath: 'components/layout/AdminSidebar.tsx' },
 ];
 
 export const uiPermissionMap = new Map(uiRegistry.map(e => [e.permissionKey, e]));

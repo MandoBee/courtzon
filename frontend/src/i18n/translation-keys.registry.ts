@@ -1567,6 +1567,28 @@ export const translationKeysRegistry: TranslationKeyEntry[] = [
   { key: 'hr.payroll.component_created', defaultValue: 'Component created', moduleSlug: 'hr', elementType: 'message', elementLabel: 'Payroll component created toast' },
   { key: 'hr.payroll.component_updated', defaultValue: 'Component updated', moduleSlug: 'hr', elementType: 'message', elementLabel: 'Payroll component updated toast' },
   { key: 'hr.payroll.component_deleted', defaultValue: 'Component deleted', moduleSlug: 'hr', elementType: 'message', elementLabel: 'Payroll component deleted toast' },
+
+  // ── BI / Business Intelligence (Sprint 17) ──
+  { key: 'bi.dashboard.title', defaultValue: 'Business Intelligence', moduleSlug: 'bi', elementType: 'heading', elementLabel: 'BI Dashboard title' },
+  { key: 'bi.dashboard.revenue_30d', defaultValue: 'Revenue (30d)', moduleSlug: 'bi', elementType: 'label', elementLabel: 'BI revenue 30d label' },
+  { key: 'bi.dashboard.bookings_30d', defaultValue: 'Bookings (30d)', moduleSlug: 'bi', elementType: 'label', elementLabel: 'BI bookings 30d label' },
+  { key: 'bi.dashboard.active_users', defaultValue: 'Active Users', moduleSlug: 'bi', elementType: 'label', elementLabel: 'BI active users label' },
+  { key: 'bi.dashboard.active_orgs', defaultValue: 'Active Organizations', moduleSlug: 'bi', elementType: 'label', elementLabel: 'BI active orgs label' },
+  { key: 'bi.dashboard.revenue_trend', defaultValue: 'Revenue Trend', moduleSlug: 'bi', elementType: 'heading', elementLabel: 'BI revenue trend section' },
+  { key: 'bi.dashboard.booking_trend', defaultValue: 'Booking Trend', moduleSlug: 'bi', elementType: 'heading', elementLabel: 'BI booking trend section' },
+  { key: 'bi.dashboard.top_orgs', defaultValue: 'Top Organizations by Revenue', moduleSlug: 'bi', elementType: 'heading', elementLabel: 'BI top orgs section' },
+  { key: 'bi.dashboard.user_growth', defaultValue: 'User Growth', moduleSlug: 'bi', elementType: 'heading', elementLabel: 'BI user growth section' },
+  { key: 'bi.dashboard.branch_breakdown', defaultValue: 'Branch Breakdown', moduleSlug: 'bi', elementType: 'heading', elementLabel: 'BI branch breakdown section' },
+  { key: 'bi.dashboard.coach_utilization', defaultValue: 'Coach Utilization', moduleSlug: 'bi', elementType: 'heading', elementLabel: 'BI coach utilization section' },
+  { key: 'bi.dashboard.court_utilization', defaultValue: 'Court Utilization', moduleSlug: 'bi', elementType: 'heading', elementLabel: 'BI court utilization section' },
+  { key: 'bi.observability.title', defaultValue: 'Observability', moduleSlug: 'bi', elementType: 'heading', elementLabel: 'Observability page title' },
+  { key: 'bi.observability.web_vitals', defaultValue: 'Web Vitals', moduleSlug: 'bi', elementType: 'heading', elementLabel: 'Web vitals section' },
+  { key: 'bi.observability.client_errors', defaultValue: 'Client Errors', moduleSlug: 'bi', elementType: 'heading', elementLabel: 'Client errors section' },
+  { key: 'bi.export.title', defaultValue: 'Export Report', moduleSlug: 'bi', elementType: 'heading', elementLabel: 'Export report section' },
+  { key: 'bi.export.report_type', defaultValue: 'Report Type', moduleSlug: 'bi', elementType: 'label', elementLabel: 'Export report type label' },
+  { key: 'bi.export.download', defaultValue: 'Download', moduleSlug: 'bi', elementType: 'button', elementLabel: 'Export download button' },
+  { key: 'bi.sidebar.dashboard', defaultValue: 'Dashboard', moduleSlug: 'bi', elementType: 'nav', elementLabel: 'BI sidebar Dashboard' },
+  { key: 'bi.sidebar.observability', defaultValue: 'Observability', moduleSlug: 'bi', elementType: 'nav', elementLabel: 'BI sidebar Observability' },
 ];
 
 /** Build a key \u2192 English default map for offline/runtime fallback. */

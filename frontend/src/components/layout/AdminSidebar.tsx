@@ -54,6 +54,13 @@ function buildNavItems(t: (key: string) => string, can: (perm: string) => boolea
         { label: t('admin.sidebar.tags'), path: '/admin/tags', permissionKey: 'sidebar.tags' },
       ],
     },
+    {
+      label: 'BI', icon: '📊', path: '/admin/bi/dashboard', permissionKey: 'sidebar.bi',
+      children: [
+        { label: 'Dashboard', path: '/admin/bi/dashboard', permissionKey: 'sidebar.bi-dashboard' },
+        { label: 'Observability', path: '/admin/bi/observability', permissionKey: 'sidebar.bi-observability' },
+      ],
+    },
     { label: t('admin.sidebar.reception'), icon: '🏪', path: '/admin/reception', permissionKey: 'sidebar.reception' },
     {
       label: t('admin.sidebar.league'), icon: '🏅', path: '/admin/league/dashboard', permissionKey: 'sidebar.league',

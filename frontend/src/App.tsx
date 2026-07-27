@@ -237,6 +237,8 @@ const InvoicesPage = lazy(() => import('./pages/admin/accounting/InvoicesPage'))
 const TaxRatesPage = lazy(() => import('./pages/admin/accounting/TaxRatesPage'));
 const HRDashboardPage = lazy(() => import('./pages/admin/hr/HRDashboardPage'));
 const DepartmentListPage = lazy(() => import('./pages/admin/hr/DepartmentListPage'));
+const BIDashboardPage = lazy(() => import('./pages/admin/bi/BIDashboardPage'));
+const ObservabilityPage = lazy(() => import('./pages/admin/bi/ObservabilityPage'));
 const EmployeeListPage = lazy(() => import('./pages/admin/hr/EmployeeListPage'));
 const EmployeeDetailPage = lazy(() => import('./pages/admin/hr/EmployeeDetailPage'));
 const LeaveManagementPage = lazy(() => import('./pages/admin/hr/LeaveManagementPage'));
@@ -695,6 +697,8 @@ function AppContent() {
             <Route path="hr/leave" element={<LeaveManagementPage />} />
             <Route path="hr/attendance" element={<AttendancePage />} />
             <Route path="hr/payroll" element={<PayrollPage />} />
+            <Route path="bi/dashboard" element={<BIDashboardPage />} />
+            <Route path="bi/observability" element={<ObservabilityPage />} />
          </Route>
         </Route>
 
