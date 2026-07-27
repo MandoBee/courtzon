@@ -1485,6 +1485,20 @@ export const translationKeysRegistry: TranslationKeyEntry[] = [
   { key: 'inventory.stock.before', defaultValue: 'Before', moduleSlug: 'inventory', elementType: 'label', elementLabel: 'Before column' },
   { key: 'inventory.stock.after', defaultValue: 'After', moduleSlug: 'inventory', elementType: 'label', elementLabel: 'After column' },
   { key: 'inventory.stock.date', defaultValue: 'Date', moduleSlug: 'inventory', elementType: 'label', elementLabel: 'Log date column' },
+
+  // Accounting (Sprint 14)
+  { key: 'accounting.dashboard.title', defaultValue: 'Accounting Dashboard', moduleSlug: 'accounting', elementType: 'heading', elementLabel: 'Accounting dashboard title' },
+  { key: 'accounting.coa.title', defaultValue: 'Chart of Accounts', moduleSlug: 'accounting', elementType: 'heading', elementLabel: 'Chart of Accounts title' },
+  { key: 'accounting.coa.new', defaultValue: 'New Account', moduleSlug: 'accounting', elementType: 'button', elementLabel: 'New account button' },
+  { key: 'accounting.periods.title', defaultValue: 'Accounting Periods', moduleSlug: 'accounting', elementType: 'heading', elementLabel: 'Accounting periods title' },
+  { key: 'accounting.periods.generate', defaultValue: 'Generate Periods', moduleSlug: 'accounting', elementType: 'button', elementLabel: 'Generate periods button' },
+  { key: 'accounting.gl.title', defaultValue: 'General Ledger', moduleSlug: 'accounting', elementType: 'heading', elementLabel: 'General ledger title' },
+  { key: 'accounting.journal.title', defaultValue: 'Journal Entries', moduleSlug: 'accounting', elementType: 'heading', elementLabel: 'Journal entries title' },
+  { key: 'accounting.journal.new', defaultValue: 'New Entry', moduleSlug: 'accounting', elementType: 'button', elementLabel: 'New journal entry button' },
+  { key: 'accounting.invoices.title', defaultValue: 'Invoices', moduleSlug: 'accounting', elementType: 'heading', elementLabel: 'Invoices title' },
+  { key: 'accounting.invoices.new', defaultValue: 'New Invoice', moduleSlug: 'accounting', elementType: 'button', elementLabel: 'New invoice button' },
+  { key: 'accounting.tax.title', defaultValue: 'Tax Rates', moduleSlug: 'accounting', elementType: 'heading', elementLabel: 'Tax rates title' },
+  { key: 'accounting.tax.new', defaultValue: 'New Tax Rate', moduleSlug: 'accounting', elementType: 'button', elementLabel: 'New tax rate button' },
 ];
 
 /** Build a key \u2192 English default map for offline/runtime fallback. */

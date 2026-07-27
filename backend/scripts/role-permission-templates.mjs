@@ -58,6 +58,7 @@ const ADMIN_ONLY_PREFIXES = [
   'season.',
   'league.',
   'inventory.',
+  'accounting.',
 ];
 
 function isAdminOnlyKey(key) {

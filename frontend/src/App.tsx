@@ -221,6 +221,13 @@ const FinanceDashboardPage = lazy(() => import('./pages/admin/finance/FinanceDas
 const ReceptionDashboard = lazy(() => import('./pages/admin/ReceptionDashboard'));
 const LedgerViewerPage = lazy(() => import('./pages/admin/finance/LedgerViewerPage'));
 const ReportCenterPage = lazy(() => import('./pages/admin/finance/ReportCenterPage'));
+const AccountingDashboardPage = lazy(() => import('./pages/admin/accounting/AccountingDashboardPage'));
+const ChartOfAccountsPage = lazy(() => import('./pages/admin/accounting/ChartOfAccountsPage'));
+const AccountingPeriodsPage = lazy(() => import('./pages/admin/accounting/AccountingPeriodsPage'));
+const GeneralLedgerPage = lazy(() => import('./pages/admin/accounting/GeneralLedgerPage'));
+const JournalEntryPage = lazy(() => import('./pages/admin/accounting/JournalEntryPage'));
+const InvoicesPage = lazy(() => import('./pages/admin/accounting/InvoicesPage'));
+const TaxRatesPage = lazy(() => import('./pages/admin/accounting/TaxRatesPage'));
 const MatchListPage = lazy(() => import('./pages/booking/MatchListPage'));
 const MatchLobbyPage = lazy(() => import('./pages/booking/MatchLobbyPage'));
 const RefereeDashboardPage = lazy(() => import('./pages/referee/RefereeDashboardPage'));
@@ -652,8 +659,15 @@ function AppContent() {
           <Route path="inventory/warehouses" element={<WarehousesPage />} />
           <Route path="inventory/suppliers" element={<SuppliersPage />} />
           <Route path="inventory/purchase-orders" element={<PurchaseOrdersPage />} />
-          <Route path="inventory/stock" element={<InventoryPage />} />
-        </Route>
+            <Route path="inventory/stock" element={<InventoryPage />} />
+            <Route path="accounting/dashboard" element={<AccountingDashboardPage />} />
+            <Route path="accounting/accounts" element={<ChartOfAccountsPage />} />
+            <Route path="accounting/periods" element={<AccountingPeriodsPage />} />
+            <Route path="accounting/ledger" element={<GeneralLedgerPage />} />
+            <Route path="accounting/journal" element={<JournalEntryPage />} />
+            <Route path="accounting/invoices" element={<InvoicesPage />} />
+            <Route path="accounting/tax-rates" element={<TaxRatesPage />} />
+         </Route>
         </Route>
 
         {/* ── ORGANISATION MANAGEMENT ── */}

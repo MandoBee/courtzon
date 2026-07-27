@@ -936,6 +936,31 @@ export const uiRegistry: UIElement[] = [
   { permissionKey: 'sidebar.queue-management', moduleSlug: 'admin', elementType: 'tab', elementLabel: 'Sidebar: Queue Management', componentPath: 'components/layout/AdminSidebar.tsx' },
 
   // ==========================================================================
+  // ACCOUNTING MODULE (Sprint 14)
+  // ==========================================================================
+  { permissionKey: 'accounting.dashboard', moduleSlug: 'accounting', elementType: 'page', elementLabel: 'Accounting Dashboard', componentPath: 'pages/admin/accounting/AccountingDashboardPage.tsx' },
+  { permissionKey: 'accounting.coa.view', moduleSlug: 'accounting', elementType: 'page', elementLabel: 'Chart of Accounts View', componentPath: 'pages/admin/accounting/ChartOfAccountsPage.tsx' },
+  { permissionKey: 'accounting.coa.manage', moduleSlug: 'accounting', elementType: 'button', elementLabel: 'Manage Chart of Accounts', componentPath: 'pages/admin/accounting/ChartOfAccountsPage.tsx' },
+  { permissionKey: 'accounting.periods.view', moduleSlug: 'accounting', elementType: 'page', elementLabel: 'Accounting Periods View', componentPath: 'pages/admin/accounting/AccountingPeriodsPage.tsx' },
+  { permissionKey: 'accounting.periods.manage', moduleSlug: 'accounting', elementType: 'button', elementLabel: 'Manage Accounting Periods', componentPath: 'pages/admin/accounting/AccountingPeriodsPage.tsx' },
+  { permissionKey: 'accounting.gl.view', moduleSlug: 'accounting', elementType: 'page', elementLabel: 'General Ledger View', componentPath: 'pages/admin/accounting/GeneralLedgerPage.tsx' },
+  { permissionKey: 'accounting.journal.view', moduleSlug: 'accounting', elementType: 'page', elementLabel: 'Journal Entries View', componentPath: 'pages/admin/accounting/JournalEntryPage.tsx' },
+  { permissionKey: 'accounting.journal.create', moduleSlug: 'accounting', elementType: 'button', elementLabel: 'Create Journal Entry', componentPath: 'pages/admin/accounting/JournalEntryPage.tsx' },
+  { permissionKey: 'accounting.invoices.view', moduleSlug: 'accounting', elementType: 'page', elementLabel: 'Invoices View', componentPath: 'pages/admin/accounting/InvoicesPage.tsx' },
+  { permissionKey: 'accounting.invoices.manage', moduleSlug: 'accounting', elementType: 'button', elementLabel: 'Manage Invoices', componentPath: 'pages/admin/accounting/InvoicesPage.tsx' },
+  { permissionKey: 'accounting.tax.view', moduleSlug: 'accounting', elementType: 'page', elementLabel: 'Tax Rates View', componentPath: 'pages/admin/accounting/TaxRatesPage.tsx' },
+  { permissionKey: 'accounting.tax.manage', moduleSlug: 'accounting', elementType: 'button', elementLabel: 'Manage Tax Rates', componentPath: 'pages/admin/accounting/TaxRatesPage.tsx' },
+  // Accounting sidebar
+  { permissionKey: 'sidebar.accounting', moduleSlug: 'accounting', elementType: 'tab', elementLabel: 'Sidebar: Accounting', componentPath: 'components/layout/AdminSidebar.tsx' },
+  { permissionKey: 'sidebar.accounting-dashboard', moduleSlug: 'accounting', elementType: 'tab', elementLabel: 'Sidebar: Accounting Dashboard', componentPath: 'components/layout/AdminSidebar.tsx' },
+  { permissionKey: 'sidebar.accounting-coa', moduleSlug: 'accounting', elementType: 'tab', elementLabel: 'Sidebar: Chart of Accounts', componentPath: 'components/layout/AdminSidebar.tsx' },
+  { permissionKey: 'sidebar.accounting-journal', moduleSlug: 'accounting', elementType: 'tab', elementLabel: 'Sidebar: Journal Entries', componentPath: 'components/layout/AdminSidebar.tsx' },
+  { permissionKey: 'sidebar.accounting-gl', moduleSlug: 'accounting', elementType: 'tab', elementLabel: 'Sidebar: General Ledger', componentPath: 'components/layout/AdminSidebar.tsx' },
+  { permissionKey: 'sidebar.accounting-invoices', moduleSlug: 'accounting', elementType: 'tab', elementLabel: 'Sidebar: Invoices', componentPath: 'components/layout/AdminSidebar.tsx' },
+  { permissionKey: 'sidebar.accounting-periods', moduleSlug: 'accounting', elementType: 'tab', elementLabel: 'Sidebar: Accounting Periods', componentPath: 'components/layout/AdminSidebar.tsx' },
+  { permissionKey: 'sidebar.accounting-tax', moduleSlug: 'accounting', elementType: 'tab', elementLabel: 'Sidebar: Tax Rates', componentPath: 'components/layout/AdminSidebar.tsx' },
+
+  // ==========================================================================
   // INVENTORY MODULE (Sprint 13)
   // ==========================================================================
   { permissionKey: 'inventory.warehouses.view', moduleSlug: 'inventory', elementType: 'page', elementLabel: 'View Warehouses', componentPath: 'pages/admin/inventory/WarehousesPage.tsx' },

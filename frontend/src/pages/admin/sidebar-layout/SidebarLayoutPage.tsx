@@ -101,6 +101,18 @@ function buildSections() {
         },
         { label: 'Amenities', icon: '🏟️', path: '/admin/amenities', permissionKey: 'sidebar.amenities' },
         {
+          label: 'Accounting', icon: '💰', path: '/admin/accounting/dashboard', permissionKey: 'sidebar.accounting',
+          children: [
+            { label: 'Dashboard', path: '/admin/accounting/dashboard', permissionKey: 'sidebar.accounting-dashboard' },
+            { label: 'Chart of Accounts', path: '/admin/accounting/accounts', permissionKey: 'sidebar.accounting-coa' },
+            { label: 'Journal Entries', path: '/admin/accounting/journal', permissionKey: 'sidebar.accounting-journal' },
+            { label: 'General Ledger', path: '/admin/accounting/ledger', permissionKey: 'sidebar.accounting-gl' },
+            { label: 'Invoices', path: '/admin/accounting/invoices', permissionKey: 'sidebar.accounting-invoices' },
+            { label: 'Periods', path: '/admin/accounting/periods', permissionKey: 'sidebar.accounting-periods' },
+            { label: 'Tax Rates', path: '/admin/accounting/tax-rates', permissionKey: 'sidebar.accounting-tax' },
+          ],
+        },
+        {
           label: 'App Settings', icon: '⚙️', path: '/admin/sidebar-layout', permissionKey: 'sidebar.app-settings-menu',
           children: [
             { label: 'Set Sidebar Layout', icon: '📐', path: '/admin/sidebar-layout', permissionKey: 'sidebar.layout.manage' },
