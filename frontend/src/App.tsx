@@ -190,6 +190,16 @@ const OrgAnnouncementsPage = lazy(() => import('./pages/org/OrgAnnouncementsPage
 const OrgDocumentsPage = lazy(() => import('./pages/org/OrgDocumentsPage'));
 const OrgGalleryPage = lazy(() => import('./pages/org/OrgGalleryPage'));
 const OrgReportsPage = lazy(() => import('./pages/org/OrgReportsPage'));
+const OrgProfilePage = lazy(() => import('./pages/org/OrgProfilePage'));
+const OrgBranchesPage = lazy(() => import('./pages/org/OrgBranchesPage'));
+const OrgWorkingHoursPage = lazy(() => import('./pages/org/OrgWorkingHoursPage'));
+const OrgPaymentSettingsPage = lazy(() => import('./pages/org/OrgPaymentSettingsPage'));
+const OrgReviewsPage = lazy(() => import('./pages/org/OrgReviewsPage'));
+const OrgRefereesPage = lazy(() => import('./pages/org/OrgRefereesPage'));
+const OrgAcademiesPage = lazy(() => import('./pages/org/OrgAcademiesPage'));
+const OrgLeaguesPage = lazy(() => import('./pages/org/OrgLeaguesPage'));
+const OrgTournamentsPage = lazy(() => import('./pages/org/OrgTournamentsPage'));
+const OrgVerificationPage = lazy(() => import('./pages/org/OrgVerificationPage'));
 const NotificationsPage = lazy(() => import('./pages/notifications/NotificationsPage'));
 const MembershipDashboard = lazy(() => import('./pages/membership/MembershipDashboard'));
 const PlansPage = lazy(() => import('./pages/membership/PlansPage'));
@@ -632,6 +642,16 @@ function AppContent() {
             <Route path="documents" element={<OrgDocumentsPage />} />
             <Route path="gallery" element={<OrgGalleryPage />} />
             <Route path="reports" element={<OrgReportsPage />} />
+            <Route path="profile" element={<OrgProfilePage />} />
+            <Route path="branches" element={<OrgBranchesPage />} />
+            <Route path="working-hours" element={<OrgWorkingHoursPage />} />
+            <Route path="payment-settings" element={<OrgPaymentSettingsPage />} />
+            <Route path="reviews" element={<OrgReviewsPage />} />
+            <Route path="referees" element={<OrgRefereesPage />} />
+            <Route path="academies" element={<OrgAcademiesPage />} />
+            <Route path="leagues" element={<OrgLeaguesPage />} />
+            <Route path="tournaments" element={<OrgTournamentsPage />} />
+            <Route path="verification" element={<OrgVerificationPage />} />
             <Route path="settings" element={<OrgSettingsPage />} />
             <Route path="shipping-rates" element={<Navigate to="settings" replace />} />
           </Route>

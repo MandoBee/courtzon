@@ -91,4 +91,38 @@ export async function registerOrgPortalRoutes(app: FastifyInstance): Promise<voi
   app.get('/org/:orgId/reports/bookings', { preHandler: [orgAccessGuard] }, ctrl.getOrgBookingReportHandler);
   app.get('/org/:orgId/reports/revenue', { preHandler: [orgAccessGuard] }, ctrl.getOrgRevenueReportHandler);
   app.get('/org/:orgId/reports/members', { preHandler: [orgAccessGuard] }, ctrl.getOrgMemberReportHandler);
+
+  // ── Club Profile ──
+  app.get('/org/:orgId/profile', { preHandler: [orgAccessGuard] }, ctrl.getClubProfileHandler);
+  app.put('/org/:orgId/profile', { preHandler: [orgAccessGuard] }, ctrl.updateClubProfileHandler);
+
+  // ── Branch Management ──
+  app.get('/org/:orgId/branches/manage', { preHandler: [orgAccessGuard] }, ctrl.listOrgBranchesManageHandler);
+  app.get('/org/:orgId/branches/:branchId', { preHandler: [orgAccessGuard] }, ctrl.getOrgBranchDetailHandler);
+
+  // ── Working Hours ──
+  app.get('/org/:orgId/working-hours', { preHandler: [orgAccessGuard] }, ctrl.getOrgWorkingHoursHandler);
+  app.put('/org/:orgId/branches/:branchId/hours', { preHandler: [requireOrgScopedPermission('org.branches.manage')] }, ctrl.updateBranchHoursHandler);
+
+  // ── Payment Settings ──
+  app.get('/org/:orgId/payment-settings', { preHandler: [orgAccessGuard] }, ctrl.getOrgPaymentSettingsHandler);
+  app.put('/org/:orgId/payment-settings', { preHandler: [requireOrgScopedPermission('org.settings.edit')] }, ctrl.updateOrgPaymentSettingsHandler);
+
+  // ── Reviews ──
+  app.get('/org/:orgId/reviews', { preHandler: [orgAccessGuard] }, ctrl.getOrgReviewsHandler);
+
+  // ── Referees ──
+  app.get('/org/:orgId/referees', { preHandler: [orgAccessGuard] }, ctrl.listOrgRefereesHandler);
+
+  // ── Academies ──
+  app.get('/org/:orgId/academies', { preHandler: [orgAccessGuard] }, ctrl.listOrgAcademiesHandler);
+
+  // ── Leagues ──
+  app.get('/org/:orgId/leagues', { preHandler: [orgAccessGuard] }, ctrl.listOrgLeaguesHandler);
+
+  // ── Tournaments ──
+  app.get('/org/:orgId/tournaments', { preHandler: [orgAccessGuard] }, ctrl.listOrgTournamentsHandler);
+
+  // ── Club Verification ──
+  app.get('/org/:orgId/verification', { preHandler: [orgAccessGuard] }, ctrl.getOrgVerificationHandler);
 }

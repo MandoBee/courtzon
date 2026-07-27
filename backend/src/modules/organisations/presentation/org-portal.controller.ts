@@ -671,3 +671,310 @@ export async function getOrgMemberReportHandler(request: FastifyRequest, reply: 
 
   return reply.send({ total_members: total.total, by_status: byStatus, by_branch: byBranch });
 }
+
+// ── Club Profile ──
+
+export async function getClubProfileHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { orgId } = request.params as any;
+  const pool = getPool();
+  type RowData = import('mysql2').RowDataPacket[];
+  const [rows] = await pool.query<RowData>(
+    `SELECT o.*, ot.name AS org_type_name, c.name AS country_name
+     FROM organisations o
+     LEFT JOIN organisation_types ot ON ot.id = o.organisation_type_id
+     LEFT JOIN countries c ON c.id = o.country_id
+     WHERE o.id = ?`,
+    [Number(orgId)],
+  );
+  if (!rows[0]) return reply.status(404).send({ error: 'NOT_FOUND', message: 'Organisation not found' });
+  return reply.send(rows[0]);
+}
+
+export async function updateClubProfileHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = getUserId(request);
+  const { orgId } = request.params as any;
+  const body = request.body as any;
+  const pool = getPool();
+  const fields: string[] = []; const params: any[] = [];
+  if (body.name !== undefined) { fields.push('name = ?'); params.push(body.name); }
+  if (body.description !== undefined) { fields.push('description = ?'); params.push(body.description); }
+  if (body.email !== undefined) { fields.push('email = ?'); params.push(body.email); }
+  if (body.phone !== undefined) { fields.push('phone = ?'); params.push(body.phone); }
+  if (body.website !== undefined) { fields.push('website = ?'); params.push(body.website); }
+  if (fields.length) {
+    params.push(Number(orgId));
+    await pool.execute(`UPDATE organisations SET ${fields.join(', ')} WHERE id = ?`, params);
+  }
+  recordAudit({
+    actorId: userId, action: 'ORG_PROFILE.UPDATE', entityType: 'organisation',
+    entityId: Number(orgId), afterState: body,
+    ipAddress: request.ip, userAgent: getUserAgent(request),
+  });
+  return reply.send({ success: true });
+}
+
+// ── Branch Management ──
+
+export async function listOrgBranchesManageHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { orgId } = request.params as any;
+  const pool = getPool();
+  type RowData = import('mysql2').RowDataPacket[];
+  const [branches] = await pool.query<RowData>(
+    `SELECT b.*,
+      (SELECT COUNT(*) FROM resources r WHERE r.branch_id = b.id AND r.deleted_at IS NULL) AS courts_count,
+      (SELECT GROUP_CONCAT(DISTINCT s.name SEPARATOR ', ') FROM resources r JOIN sports s ON s.id = r.sport_id WHERE r.branch_id = b.id AND r.deleted_at IS NULL) AS assigned_sports,
+      b.opening_time, b.closing_time
+     FROM branches b WHERE b.organisation_id = ? AND b.deleted_at IS NULL ORDER BY b.name`,
+    [Number(orgId)],
+  );
+  for (const branch of branches) {
+    const [managers] = await pool.query<RowData>(
+      `SELECT u.id, u.full_name, u.email FROM branch_staff bs JOIN users u ON u.id = bs.user_id WHERE bs.branch_id = ? AND bs.role = 'branch-mgr'`,
+      [branch.id],
+    );
+    branch.managers = managers;
+    const [amenities] = await pool.query<RowData>(
+      `SELECT a.name FROM branch_amenities ba JOIN amenities a ON a.id = ba.amenity_id WHERE ba.branch_id = ?`,
+      [branch.id],
+    );
+    branch.amenities = amenities.map((a: any) => a.name);
+  }
+  return reply.send(branches);
+}
+
+export async function getOrgBranchDetailHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { branchId } = request.params as any;
+  const pool = getPool();
+  type RowData = import('mysql2').RowDataPacket[];
+  const [rows] = await pool.query<RowData>(
+    `SELECT b.*, (SELECT COUNT(*) FROM resources r WHERE r.branch_id = b.id AND r.deleted_at IS NULL) AS courts_count
+     FROM branches b WHERE b.id = ? AND b.deleted_at IS NULL`,
+    [Number(branchId)],
+  );
+  if (!rows[0]) return reply.status(404).send({ error: 'NOT_FOUND', message: 'Branch not found' });
+  const branch = rows[0];
+  const [sports] = await pool.query<RowData>(
+    `SELECT DISTINCT s.id, s.name FROM resources r JOIN sports s ON s.id = r.sport_id WHERE r.branch_id = ? AND r.deleted_at IS NULL`,
+    [Number(branchId)],
+  );
+  branch.sports = sports;
+  const [amenities] = await pool.query<RowData>(
+    `SELECT a.name FROM branch_amenities ba JOIN amenities a ON a.id = ba.amenity_id WHERE ba.branch_id = ?`,
+    [branch.id],
+  );
+  branch.amenities = amenities.map((a: any) => a.name);
+  return reply.send(branch);
+}
+
+// ── Working Hours ──
+
+export async function getOrgWorkingHoursHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { orgId } = request.params as any;
+  const pool = getPool();
+  type RowData = import('mysql2').RowDataPacket[];
+  const [branches] = await pool.query<RowData>(
+    `SELECT id, name, opening_time, closing_time, timezone FROM branches WHERE organisation_id = ? AND deleted_at IS NULL ORDER BY name`,
+    [Number(orgId)],
+  );
+  for (const branch of branches) {
+    const [holidays] = await pool.query<RowData>(
+      `SELECT * FROM branch_holidays WHERE branch_id = ? ORDER BY holiday_date`,
+      [branch.id],
+    );
+    branch.holidays = holidays;
+    const [resources] = await pool.query<RowData>(
+      `SELECT r.id, r.name, r.opening_time, r.closing_time, r.sport_id, s.name AS sport_name
+       FROM resources r LEFT JOIN sports s ON s.id = r.sport_id WHERE r.branch_id = ? AND r.deleted_at IS NULL ORDER BY r.name`,
+      [branch.id],
+    );
+    branch.resources = resources;
+  }
+  return reply.send(branches);
+}
+
+export async function updateBranchHoursHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = getUserId(request);
+  const { branchId } = request.params as any;
+  const body = request.body as any;
+  const pool = getPool();
+  if (body.opening_time !== undefined || body.closing_time !== undefined) {
+    const fields: string[] = []; const params: any[] = [];
+    if (body.opening_time !== undefined) { fields.push('opening_time = ?'); params.push(body.opening_time); }
+    if (body.closing_time !== undefined) { fields.push('closing_time = ?'); params.push(body.closing_time); }
+    params.push(Number(branchId));
+    await pool.execute(`UPDATE branches SET ${fields.join(', ')} WHERE id = ?`, params);
+  }
+  if (body.resourceHours && Array.isArray(body.resourceHours)) {
+    for (const rh of body.resourceHours) {
+      await pool.execute(
+        'UPDATE resources SET opening_time = ?, closing_time = ? WHERE id = ?',
+        [rh.opening_time, rh.closing_time, Number(rh.resourceId)],
+      );
+    }
+  }
+  recordAudit({
+    actorId: userId, action: 'BRANCH_HOURS.UPDATE', entityType: 'branch',
+    entityId: Number(branchId), afterState: body,
+    ipAddress: request.ip, userAgent: getUserAgent(request),
+  });
+  return reply.send({ success: true });
+}
+
+// ── Payment Settings ──
+
+export async function getOrgPaymentSettingsHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { orgId } = request.params as any;
+  const pool = getPool();
+  type RowData = import('mysql2').RowDataPacket[];
+  const [branches] = await pool.query<RowData>(
+    `SELECT b.id, b.name, bfd.account_holder_name, bfd.account_number, bfd.bank_name, bfd.iban, bfd.swift_code, bfd.tax_id
+     FROM branches b
+     LEFT JOIN branch_financial_details bfd ON bfd.branch_id = b.id
+     WHERE b.organisation_id = ? AND b.deleted_at IS NULL ORDER BY b.name`,
+    [Number(orgId)],
+  );
+  const [paymentMethods] = await pool.query<RowData>(
+    `SELECT pm.* FROM payment_methods pm WHERE pm.status = 'active' ORDER BY pm.sort_order`,
+  );
+  return reply.send({ branches, paymentMethods });
+}
+
+export async function updateOrgPaymentSettingsHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = getUserId(request);
+  const { orgId } = request.params as any;
+  const body = request.body as any;
+  const pool = getPool();
+  if (body.branchId && body.financialDetails) {
+    const { account_holder_name, account_number, bank_name, iban, swift_code, tax_id } = body.financialDetails;
+    await pool.execute(
+      `INSERT INTO branch_financial_details (branch_id, account_holder_name, account_number, bank_name, iban, swift_code, tax_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE account_holder_name = VALUES(account_holder_name), account_number = VALUES(account_number),
+       bank_name = VALUES(bank_name), iban = VALUES(iban), swift_code = VALUES(swift_code), tax_id = VALUES(tax_id)`,
+      [Number(body.branchId), account_holder_name, account_number, bank_name, iban, swift_code, tax_id],
+    );
+  }
+  recordAudit({
+    actorId: userId, action: 'ORG_PAYMENT_SETTINGS.UPDATE', entityType: 'organisation',
+    entityId: Number(orgId), afterState: body,
+    ipAddress: request.ip, userAgent: getUserAgent(request),
+  });
+  return reply.send({ success: true });
+}
+
+// ── Reviews ──
+
+export async function getOrgReviewsHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { orgId } = request.params as any;
+  const pool = getPool();
+  type RowData = import('mysql2').RowDataPacket[];
+  const [reviews] = await pool.query<RowData>(
+    `SELECT r.*, u.full_name AS user_name, u.avatar_url AS user_avatar
+     FROM organisation_reviews r
+     JOIN users u ON u.id = r.user_id
+     WHERE r.organisation_id = ?
+     ORDER BY r.created_at DESC`,
+    [Number(orgId)],
+  );
+  const [[avg]] = await pool.query<RowData>(
+    `SELECT COUNT(*) AS review_count, COALESCE(ROUND(AVG(rating), 1), 0) AS average_rating
+     FROM organisation_reviews WHERE organisation_id = ?`,
+    [Number(orgId)],
+  );
+  return reply.send({ reviews, summary: avg });
+}
+
+// ── Referees ──
+
+export async function listOrgRefereesHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { orgId } = request.params as any;
+  const pool = getPool();
+  type RowData = import('mysql2').RowDataPacket[];
+  const [referees] = await pool.query<RowData>(
+    `SELECT u.id, u.full_name, u.email, u.phone, u.avatar_url,
+            COALESCE(cp.status, 'unknown') AS referee_status, cp.sport_id, s.name AS sport_name
+     FROM coach_profiles cp
+     JOIN users u ON u.id = cp.user_id
+     LEFT JOIN sports s ON s.id = cp.sport_id
+     WHERE cp.organisation_id = ? OR cp.id IN (SELECT coach_id FROM org_coach_agreements WHERE organisation_id = ? AND status = 'accepted')
+     ORDER BY u.full_name`,
+    [Number(orgId), Number(orgId)],
+  );
+  return reply.send(referees);
+}
+
+// ── Academies ──
+
+export async function listOrgAcademiesHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { orgId } = request.params as any;
+  const pool = getPool();
+  type RowData = import('mysql2').RowDataPacket[];
+  const [programs] = await pool.query<RowData>(
+    `SELECT ap.*, ac.name AS category_name,
+       (SELECT COUNT(*) FROM academy_enrollments ae WHERE ae.program_id = ap.id AND ae.status = 'enrolled') AS enrolled_count,
+       (SELECT COUNT(*) FROM academy_enrollments ae WHERE ae.program_id = ap.id AND ae.status = 'waiting') AS waiting_count
+     FROM academy_programs ap
+     LEFT JOIN academy_categories ac ON ac.id = ap.category_id
+     WHERE ap.organisation_id = ?
+     ORDER BY ap.created_at DESC`,
+    [Number(orgId)],
+  );
+  return reply.send(programs);
+}
+
+// ── Leagues ──
+
+export async function listOrgLeaguesHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { orgId } = request.params as any;
+  const pool = getPool();
+  type RowData = import('mysql2').RowDataPacket[];
+  const [leagues] = await pool.query<RowData>(
+    `SELECT l.*, s.name AS season_name, s.start_date AS season_start, s.end_date AS season_end,
+       (SELECT COUNT(*) FROM league_teams lt WHERE lt.league_id = l.id) AS team_count
+     FROM leagues l
+     JOIN seasons s ON s.id = l.season_id
+     WHERE l.organisation_id = ?
+     ORDER BY s.start_date DESC, l.name`,
+    [Number(orgId)],
+  );
+  return reply.send(leagues);
+}
+
+// ── Tournaments ──
+
+export async function listOrgTournamentsHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { orgId } = request.params as any;
+  const pool = getPool();
+  type RowData = import('mysql2').RowDataPacket[];
+  const [tournaments] = await pool.query<RowData>(
+    `SELECT t.*,
+       (SELECT COUNT(*) FROM tournament_registrations tr WHERE tr.tournament_id = t.id AND tr.status = 'confirmed') AS registered_count
+     FROM tournaments t
+     WHERE t.organisation_id = ?
+     ORDER BY t.start_date DESC, t.name`,
+    [Number(orgId)],
+  );
+  return reply.send(tournaments);
+}
+
+// ── Club Verification ──
+
+export async function getOrgVerificationHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { orgId } = request.params as any;
+  const pool = getPool();
+  type RowData = import('mysql2').RowDataPacket[];
+  const [[org]] = await pool.query<RowData>(
+    `SELECT id, name, is_verified, is_active, verification_status, verified_at FROM organisations WHERE id = ?`,
+    [Number(orgId)],
+  );
+  if (!org) return reply.status(404).send({ error: 'NOT_FOUND', message: 'Organisation not found' });
+  const [documents] = await pool.query<RowData>(
+    `SELECT * FROM uploads WHERE entity_type = 'organisation' AND entity_id = ? AND file_category = 'document' ORDER BY created_at DESC`,
+    [Number(orgId)],
+  );
+  const [history] = await pool.query<RowData>(
+    `SELECT * FROM organisation_verification_log WHERE organisation_id = ? ORDER BY created_at DESC`,
+    [Number(orgId)],
+  );
+  return reply.send({ org, documents, history });
+}

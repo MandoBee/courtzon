@@ -1279,6 +1279,16 @@ export const translationKeysRegistry: TranslationKeyEntry[] = [
   { key: 'org.sidebar.documents', defaultValue: 'Documents', moduleSlug: 'org', elementType: 'nav', elementLabel: 'Org sidebar documents' },
   { key: 'org.sidebar.gallery', defaultValue: 'Gallery', moduleSlug: 'org', elementType: 'nav', elementLabel: 'Org sidebar gallery' },
   { key: 'org.sidebar.reports', defaultValue: 'Reports', moduleSlug: 'org', elementType: 'nav', elementLabel: 'Org sidebar reports' },
+  { key: 'org.sidebar.profile', defaultValue: 'Club Profile', moduleSlug: 'org', elementType: 'nav', elementLabel: 'Org sidebar profile' },
+  { key: 'org.sidebar.branches', defaultValue: 'Branches', moduleSlug: 'org', elementType: 'nav', elementLabel: 'Org sidebar branches' },
+  { key: 'org.sidebar.working_hours', defaultValue: 'Working Hours', moduleSlug: 'org', elementType: 'nav', elementLabel: 'Org sidebar working hours' },
+  { key: 'org.sidebar.payment_settings', defaultValue: 'Payment Settings', moduleSlug: 'org', elementType: 'nav', elementLabel: 'Org sidebar payment settings' },
+  { key: 'org.sidebar.reviews', defaultValue: 'Reviews', moduleSlug: 'org', elementType: 'nav', elementLabel: 'Org sidebar reviews' },
+  { key: 'org.sidebar.referees', defaultValue: 'Referees', moduleSlug: 'org', elementType: 'nav', elementLabel: 'Org sidebar referees' },
+  { key: 'org.sidebar.academies', defaultValue: 'Academies', moduleSlug: 'org', elementType: 'nav', elementLabel: 'Org sidebar academies' },
+  { key: 'org.sidebar.leagues', defaultValue: 'Leagues', moduleSlug: 'org', elementType: 'nav', elementLabel: 'Org sidebar leagues' },
+  { key: 'org.sidebar.tournaments', defaultValue: 'Tournaments', moduleSlug: 'org', elementType: 'nav', elementLabel: 'Org sidebar tournaments' },
+  { key: 'org.sidebar.verification', defaultValue: 'Verification', moduleSlug: 'org', elementType: 'nav', elementLabel: 'Org sidebar verification' },
 ];
 
 /** Build a key \u2192 English default map for offline/runtime fallback. */
