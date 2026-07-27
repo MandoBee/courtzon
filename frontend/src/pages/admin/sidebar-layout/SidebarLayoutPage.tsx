@@ -103,13 +103,13 @@ function buildSections() {
         {
           label: 'Accounting', icon: '💰', path: '/admin/accounting/dashboard', permissionKey: 'sidebar.accounting',
           children: [
-            { label: 'Dashboard', path: '/admin/accounting/dashboard', permissionKey: 'sidebar.accounting-dashboard' },
-            { label: 'Chart of Accounts', path: '/admin/accounting/accounts', permissionKey: 'sidebar.accounting-coa' },
-            { label: 'Journal Entries', path: '/admin/accounting/journal', permissionKey: 'sidebar.accounting-journal' },
-            { label: 'General Ledger', path: '/admin/accounting/ledger', permissionKey: 'sidebar.accounting-gl' },
-            { label: 'Invoices', path: '/admin/accounting/invoices', permissionKey: 'sidebar.accounting-invoices' },
-            { label: 'Periods', path: '/admin/accounting/periods', permissionKey: 'sidebar.accounting-periods' },
-            { label: 'Tax Rates', path: '/admin/accounting/tax-rates', permissionKey: 'sidebar.accounting-tax' },
+            { label: 'Dashboard', icon: '📊', path: '/admin/accounting/dashboard', permissionKey: 'sidebar.accounting-dashboard' },
+            { label: 'Chart of Accounts', icon: '📋', path: '/admin/accounting/accounts', permissionKey: 'sidebar.accounting-coa' },
+            { label: 'Journal Entries', icon: '📝', path: '/admin/accounting/journal', permissionKey: 'sidebar.accounting-journal' },
+            { label: 'General Ledger', icon: '📒', path: '/admin/accounting/ledger', permissionKey: 'sidebar.accounting-gl' },
+            { label: 'Invoices', icon: '🧾', path: '/admin/accounting/invoices', permissionKey: 'sidebar.accounting-invoices' },
+            { label: 'Periods', icon: '📅', path: '/admin/accounting/periods', permissionKey: 'sidebar.accounting-periods' },
+            { label: 'Tax Rates', icon: '🏷️', path: '/admin/accounting/tax-rates', permissionKey: 'sidebar.accounting-tax' },
           ],
         },
         {
