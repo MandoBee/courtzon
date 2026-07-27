@@ -976,6 +976,26 @@ export const uiRegistry: UIElement[] = [
   { permissionKey: 'sidebar.inventory-warehouses', moduleSlug: 'inventory', elementType: 'tab', elementLabel: 'Sidebar: Warehouses', componentPath: 'components/layout/AdminSidebar.tsx' },
   { permissionKey: 'sidebar.inventory-suppliers', moduleSlug: 'inventory', elementType: 'tab', elementLabel: 'Sidebar: Suppliers', componentPath: 'components/layout/AdminSidebar.tsx' },
   { permissionKey: 'sidebar.inventory-purchase-orders', moduleSlug: 'inventory', elementType: 'tab', elementLabel: 'Sidebar: Purchase Orders', componentPath: 'components/layout/AdminSidebar.tsx' },
+
+  // ==========================================================================
+  // CRM MODULE (Sprint 15)
+  // ==========================================================================
+  { permissionKey: 'crm.dashboard.view', moduleSlug: 'crm', elementType: 'page', elementLabel: 'CRM Dashboard Page', componentPath: 'pages/admin/crm/CRMDashboardPage.tsx' },
+  { permissionKey: 'crm.customers.view', moduleSlug: 'crm', elementType: 'page', elementLabel: 'Customer List Page', componentPath: 'pages/admin/crm/CustomerListPage.tsx' },
+  { permissionKey: 'crm.segments.view', moduleSlug: 'crm', elementType: 'page', elementLabel: 'Segments Page', componentPath: 'pages/admin/crm/SegmentsPage.tsx' },
+  { permissionKey: 'crm.segments.manage', moduleSlug: 'crm', elementType: 'button', elementLabel: 'Manage Segments', componentPath: 'pages/admin/crm/SegmentsPage.tsx' },
+  { permissionKey: 'crm.leads.view', moduleSlug: 'crm', elementType: 'page', elementLabel: 'Leads Page', componentPath: 'pages/admin/crm/LeadsPage.tsx' },
+  { permissionKey: 'crm.leads.manage', moduleSlug: 'crm', elementType: 'button', elementLabel: 'Manage Leads', componentPath: 'pages/admin/crm/LeadsPage.tsx' },
+  { permissionKey: 'crm.campaigns.view', moduleSlug: 'crm', elementType: 'page', elementLabel: 'Campaigns Page', componentPath: 'pages/admin/crm/CampaignsPage.tsx' },
+  { permissionKey: 'crm.campaigns.manage', moduleSlug: 'crm', elementType: 'button', elementLabel: 'Manage Campaigns', componentPath: 'pages/admin/crm/CampaignsPage.tsx' },
+  { permissionKey: 'crm.communications.view', moduleSlug: 'crm', elementType: 'page', elementLabel: 'Communications Page', componentPath: 'pages/admin/crm/CommunicationsPage.tsx' },
+  { permissionKey: 'sidebar.crm', moduleSlug: 'crm', elementType: 'tab', elementLabel: 'Sidebar: CRM Section', componentPath: 'components/layout/AdminSidebar.tsx' },
+  { permissionKey: 'sidebar.crm-dashboard', moduleSlug: 'crm', elementType: 'tab', elementLabel: 'Sidebar: CRM Dashboard', componentPath: 'components/layout/AdminSidebar.tsx' },
+  { permissionKey: 'sidebar.crm-customers', moduleSlug: 'crm', elementType: 'tab', elementLabel: 'Sidebar: Customers', componentPath: 'components/layout/AdminSidebar.tsx' },
+  { permissionKey: 'sidebar.crm-segments', moduleSlug: 'crm', elementType: 'tab', elementLabel: 'Sidebar: Segments', componentPath: 'components/layout/AdminSidebar.tsx' },
+  { permissionKey: 'sidebar.crm-leads', moduleSlug: 'crm', elementType: 'tab', elementLabel: 'Sidebar: Leads', componentPath: 'components/layout/AdminSidebar.tsx' },
+  { permissionKey: 'sidebar.crm-campaigns', moduleSlug: 'crm', elementType: 'tab', elementLabel: 'Sidebar: Campaigns', componentPath: 'components/layout/AdminSidebar.tsx' },
+  { permissionKey: 'sidebar.crm-communications', moduleSlug: 'crm', elementType: 'tab', elementLabel: 'Sidebar: Communications', componentPath: 'components/layout/AdminSidebar.tsx' },
 ];
 
 export const uiPermissionMap = new Map(uiRegistry.map(e => [e.permissionKey, e]));

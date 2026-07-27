@@ -217,6 +217,13 @@ const WarehousesPage = lazy(() => import('./pages/admin/inventory/WarehousesPage
 const SuppliersPage = lazy(() => import('./pages/admin/inventory/SuppliersPage'));
 const PurchaseOrdersPage = lazy(() => import('./pages/admin/inventory/PurchaseOrdersPage'));
 const InventoryPage = lazy(() => import('./pages/admin/inventory/InventoryPage'));
+const CRMDashboardPage = lazy(() => import('./pages/admin/crm/CRMDashboardPage'));
+const CustomerListPage = lazy(() => import('./pages/admin/crm/CustomerListPage'));
+const CustomerDetailPage = lazy(() => import('./pages/admin/crm/CustomerDetailPage'));
+const SegmentsPage = lazy(() => import('./pages/admin/crm/SegmentsPage'));
+const LeadsPage = lazy(() => import('./pages/admin/crm/LeadsPage'));
+const CRMCampaignsPage = lazy(() => import('./pages/admin/crm/CampaignsPage'));
+const CommunicationsPage = lazy(() => import('./pages/admin/crm/CommunicationsPage'));
 const FinanceDashboardPage = lazy(() => import('./pages/admin/finance/FinanceDashboardPage'));
 const ReceptionDashboard = lazy(() => import('./pages/admin/ReceptionDashboard'));
 const LedgerViewerPage = lazy(() => import('./pages/admin/finance/LedgerViewerPage'));
@@ -667,6 +674,13 @@ function AppContent() {
             <Route path="accounting/journal" element={<JournalEntryPage />} />
             <Route path="accounting/invoices" element={<InvoicesPage />} />
             <Route path="accounting/tax-rates" element={<TaxRatesPage />} />
+            <Route path="crm/dashboard" element={<CRMDashboardPage />} />
+            <Route path="crm/customers" element={<CustomerListPage />} />
+            <Route path="crm/customers/:id" element={<CustomerDetailPage />} />
+            <Route path="crm/segments" element={<SegmentsPage />} />
+            <Route path="crm/leads" element={<LeadsPage />} />
+            <Route path="crm/campaigns" element={<CRMCampaignsPage />} />
+            <Route path="crm/communications" element={<CommunicationsPage />} />
          </Route>
         </Route>
 

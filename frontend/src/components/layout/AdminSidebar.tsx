@@ -98,6 +98,17 @@ function buildNavItems(t: (key: string) => string, can: (perm: string) => boolea
         { label: 'Price Preview', path: '/admin/pricing/preview', permissionKey: 'pricing.preview' },
       ],
     },
+    {
+      label: 'CRM', icon: '🤝', path: '/admin/crm/dashboard', permissionKey: 'sidebar.crm',
+      children: [
+        { label: 'Dashboard', path: '/admin/crm/dashboard', permissionKey: 'sidebar.crm-dashboard' },
+        { label: 'Customers', path: '/admin/crm/customers', permissionKey: 'sidebar.crm-customers' },
+        { label: 'Segments', path: '/admin/crm/segments', permissionKey: 'sidebar.crm-segments' },
+        { label: 'Leads', path: '/admin/crm/leads', permissionKey: 'sidebar.crm-leads' },
+        { label: 'Campaigns', path: '/admin/crm/campaigns', permissionKey: 'sidebar.crm-campaigns' },
+        { label: 'Communications', path: '/admin/crm/communications', permissionKey: 'sidebar.crm-communications' },
+      ],
+    },
     { label: 'Community Events', icon: '🎉', path: '/admin/community-events', permissionKey: 'sidebar.community-admin' },
     {
       label: t('admin.sidebar.notifications'), icon: '🔔', path: '/admin/notifications/broadcast', permissionKey: 'sidebar.notifications',

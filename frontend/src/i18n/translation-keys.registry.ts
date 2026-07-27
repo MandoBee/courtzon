@@ -1499,6 +1499,25 @@ export const translationKeysRegistry: TranslationKeyEntry[] = [
   { key: 'accounting.invoices.new', defaultValue: 'New Invoice', moduleSlug: 'accounting', elementType: 'button', elementLabel: 'New invoice button' },
   { key: 'accounting.tax.title', defaultValue: 'Tax Rates', moduleSlug: 'accounting', elementType: 'heading', elementLabel: 'Tax rates title' },
   { key: 'accounting.tax.new', defaultValue: 'New Tax Rate', moduleSlug: 'accounting', elementType: 'button', elementLabel: 'New tax rate button' },
+
+  // CRM (Sprint 15)
+  { key: 'crm.dashboard.title', defaultValue: 'CRM Dashboard', moduleSlug: 'crm', elementType: 'heading', elementLabel: 'CRM dashboard title' },
+  { key: 'crm.customers.title', defaultValue: 'Customers', moduleSlug: 'crm', elementType: 'heading', elementLabel: 'Customer list title' },
+  { key: 'crm.customers.total_customers', defaultValue: 'Total Customers', moduleSlug: 'crm', elementType: 'label', elementLabel: 'Total customers stat' },
+  { key: 'crm.segments.title', defaultValue: 'Segments', moduleSlug: 'crm', elementType: 'heading', elementLabel: 'Segments page title' },
+  { key: 'crm.segments.new', defaultValue: 'New Segment', moduleSlug: 'crm', elementType: 'button', elementLabel: 'New segment button' },
+  { key: 'crm.segments.created', defaultValue: 'Segment created', moduleSlug: 'crm', elementType: 'message', elementLabel: 'Segment created toast' },
+  { key: 'crm.segments.updated', defaultValue: 'Segment updated', moduleSlug: 'crm', elementType: 'message', elementLabel: 'Segment updated toast' },
+  { key: 'crm.segments.deleted', defaultValue: 'Segment deleted', moduleSlug: 'crm', elementType: 'message', elementLabel: 'Segment deleted toast' },
+  { key: 'crm.segments.refreshed', defaultValue: 'Segment refreshed', moduleSlug: 'crm', elementType: 'message', elementLabel: 'Segment refreshed toast' },
+  { key: 'crm.leads.title', defaultValue: 'Leads', moduleSlug: 'crm', elementType: 'heading', elementLabel: 'Leads page title' },
+  { key: 'crm.leads.new', defaultValue: 'New Lead', moduleSlug: 'crm', elementType: 'button', elementLabel: 'New lead button' },
+  { key: 'crm.leads.converted', defaultValue: 'Lead converted to customer', moduleSlug: 'crm', elementType: 'message', elementLabel: 'Lead converted toast' },
+  { key: 'crm.campaigns.title', defaultValue: 'Campaigns', moduleSlug: 'crm', elementType: 'heading', elementLabel: 'Campaigns page title' },
+  { key: 'crm.campaigns.new', defaultValue: 'New Campaign', moduleSlug: 'crm', elementType: 'button', elementLabel: 'New campaign button' },
+  { key: 'crm.campaigns.created', defaultValue: 'Campaign created', moduleSlug: 'crm', elementType: 'message', elementLabel: 'Campaign created toast' },
+  { key: 'crm.campaigns.status_updated', defaultValue: 'Campaign status updated', moduleSlug: 'crm', elementType: 'message', elementLabel: 'Campaign status updated toast' },
+  { key: 'crm.communications.title', defaultValue: 'Communication Log', moduleSlug: 'crm', elementType: 'heading', elementLabel: 'Communications page title' },
 ];
 
 /** Build a key \u2192 English default map for offline/runtime fallback. */
