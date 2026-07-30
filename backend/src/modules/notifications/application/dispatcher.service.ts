@@ -19,6 +19,25 @@ const log = createModuleLogger('dispatcher');
 
 type RowData = RowDataPacket[];
 
+const DEFAULT_CHANNELS = ['in_app'];
+
+async function getChannelsForUser(userId: number, categorySlug: string): Promise<string[]> {
+  try {
+    const { getPool } = await import('../../../database/mysql.js');
+    const pool = getPool();
+    const [rows] = await pool.execute<RowData>(
+      `SELECT channels FROM user_channel_preferences WHERE user_id = ? AND category_slug = ? AND is_active = 1`,
+      [userId, categorySlug],
+    );
+    if (rows.length > 0) {
+      const raw = (rows[0] as any).channels;
+      const parsed: string[] = typeof raw === 'string' ? JSON.parse(raw) : raw;
+      return parsed.length > 0 ? parsed : DEFAULT_CHANNELS;
+    }
+  } catch { /* fall through to defaults */ }
+  return DEFAULT_CHANNELS;
+}
+
 export interface DispatchOptions {
   userId: number;
   eventName: string;
@@ -87,35 +106,38 @@ export async function dispatchToUser(options: DispatchOptions): Promise<void> {
   await incrementRateLimit(userId, categorySlug, eventName);
 
   const online = await isOnline(userId);
+  const channels = await getChannelsForUser(userId, categorySlug);
 
-  const jobData: ProcessNotificationJob = {
-    notificationId,
-    userId,
-    channel: online ? 'in_app' : 'in_app',
-    deliveryId: 0,
-    templateId: template.id,
-    locale: effectiveLocale,
-    eventName,
-    categorySlug,
-    title: resolved.title,
-    body: resolved.body ?? undefined,
-    actionKey: options.action?.route ? undefined : template.actionKey ?? undefined,
-    actionPayload: options.action ?? undefined,
-    actions: (options.actions ?? template.actions) ?? undefined,
-    imageUrls: options.imageUrls,
-    priority: options.priority ?? template.priority,
-    organisationId: options.organisationId,
-    branchId: options.branchId,
-    relatedEntityType: options.relatedEntityType,
-    relatedEntityId: options.relatedEntityId,
-    senderId: options.senderId,
-  };
+  for (const channel of channels) {
+    const jobData: ProcessNotificationJob = {
+      notificationId,
+      userId,
+      channel: channel as 'in_app' | 'push' | 'email' | 'sms',
+      deliveryId: 0,
+      templateId: template.id,
+      locale: effectiveLocale,
+      eventName,
+      categorySlug,
+      title: resolved.title,
+      body: resolved.body ?? undefined,
+      actionKey: options.action?.route ? undefined : template.actionKey ?? undefined,
+      actionPayload: options.action ?? undefined,
+      actions: (options.actions ?? template.actions) ?? undefined,
+      imageUrls: options.imageUrls,
+      priority: options.priority ?? template.priority,
+      organisationId: options.organisationId,
+      branchId: options.branchId,
+      relatedEntityType: options.relatedEntityType,
+      relatedEntityId: options.relatedEntityId,
+      senderId: options.senderId,
+    };
 
-  if (online) {
-    await queueService.add('process_notification', jobData, { priority: 1, attempts: 3 });
-  } else {
-    await queueForReconnect(userId, [notificationId]);
-    await queueService.add('process_notification', jobData, { delay: 0, priority: 5, attempts: 3 });
+    if (online) {
+      await queueService.add('process_notification', jobData, { priority: 1, attempts: 3 });
+    } else {
+      await queueForReconnect(userId, [notificationId]);
+      await queueService.add('process_notification', jobData, { delay: 0, priority: 5, attempts: 3 });
+    }
   }
 }
 
@@ -171,35 +193,39 @@ async function dispatchBulkChunk(
     userIdsToQueue.push(userId);
   }
 
-  const batchItem: ProcessNotificationJob = {
-    notificationId: 0,
-    userId: 0,
-    channel: 'in_app' as const,
-    deliveryId: 0,
-    templateId: template.id,
-    locale: options.locale ?? 'en',
-    eventName: options.eventName,
-    categorySlug: options.categorySlug,
-    title: resolved.title,
-    body: resolved.body ?? undefined,
-    actionKey: options.action?.route ? undefined : template.actionKey ?? undefined,
-    actionPayload: options.action ?? undefined,
-    actions: (options.actions ?? template.actions) ?? undefined,
-    imageUrls: options.imageUrls,
-    priority: options.priority ?? template.priority,
-    organisationId: options.organisationId,
-    branchId: options.branchId,
-    relatedEntityType: options.relatedEntityType,
-    relatedEntityId: options.relatedEntityId,
-    senderId: options.senderId,
-  };
+  const channels = await getChannelsForUser(userIdsToQueue[0], options.categorySlug);
 
-  const batchJob: SendNotificationBatchJob = {
-    items: userIdsToQueue.map((uid) => ({ ...batchItem, userId: uid })),
-    channel: 'in_app',
-  };
+  for (const channel of channels) {
+    const batchItem: ProcessNotificationJob = {
+      notificationId: 0,
+      userId: 0,
+      channel: channel as 'in_app' | 'push' | 'email' | 'sms',
+      deliveryId: 0,
+      templateId: template.id,
+      locale: options.locale ?? 'en',
+      eventName: options.eventName,
+      categorySlug: options.categorySlug,
+      title: resolved.title,
+      body: resolved.body ?? undefined,
+      actionKey: options.action?.route ? undefined : template.actionKey ?? undefined,
+      actionPayload: options.action ?? undefined,
+      actions: (options.actions ?? template.actions) ?? undefined,
+      imageUrls: options.imageUrls,
+      priority: options.priority ?? template.priority,
+      organisationId: options.organisationId,
+      branchId: options.branchId,
+      relatedEntityType: options.relatedEntityType,
+      relatedEntityId: options.relatedEntityId,
+      senderId: options.senderId,
+    };
 
-  await queueService.add('send_notification_batch', batchJob, { priority: 5, attempts: 3 });
+    const batchJob: SendNotificationBatchJob = {
+      items: userIdsToQueue.map((uid) => ({ ...batchItem, userId: uid })),
+      channel: channel as 'in_app' | 'push' | 'email' | 'sms',
+    };
+
+    await queueService.add('send_notification_batch', batchJob, { priority: 5, attempts: 3 });
+  }
 }
 
 export async function dispatchByRole(

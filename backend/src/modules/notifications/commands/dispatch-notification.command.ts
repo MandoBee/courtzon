@@ -12,6 +12,24 @@ import type { Command, CommandHandler } from '../../../shared/command/command-ba
 import type { ProcessNotificationJob } from '../../../infrastructure/queue/queue.service.js';
 
 const log = createModuleLogger('notification-dispatch');
+const DEFAULT_CHANNELS = ['in_app'];
+
+async function getChannelsForUser(userId: number, categorySlug: string): Promise<string[]> {
+  try {
+    const { getPool } = await import('../../../database/mysql.js');
+    const pool = getPool();
+    const [rows] = await pool.execute<any[]>(
+      `SELECT channels FROM user_channel_preferences WHERE user_id = ? AND category_slug = ? AND is_active = 1`,
+      [userId, categorySlug],
+    );
+    if (rows.length > 0) {
+      const raw = (rows[0] as any).channels;
+      const parsed: string[] = typeof raw === 'string' ? JSON.parse(raw) : raw;
+      return parsed.length > 0 ? parsed : DEFAULT_CHANNELS;
+    }
+  } catch { /* fall through to defaults */ }
+  return DEFAULT_CHANNELS;
+}
 
 export interface DispatchNotificationPayload {
   userId: number;
@@ -97,35 +115,38 @@ export const dispatchNotificationHandler: CommandHandler<Command, DispatchNotifi
     await incrementRateLimit(p.userId, categorySlug, p.eventName);
 
     const online = await isOnline(p.userId);
+    const channels = await getChannelsForUser(p.userId, categorySlug);
 
-    const jobData: ProcessNotificationJob = {
-      notificationId,
-      userId: p.userId,
-      channel: 'in_app',
-      deliveryId: 0,
-      templateId: template.id,
-      locale: effectiveLocale,
-      eventName: p.eventName,
-      categorySlug,
-      title: resolved.title,
-      body: resolved.body ?? undefined,
-      actionKey: template.actionKey ?? undefined,
-      actionPayload: p.actionPayload,
-      actions: (p.actions ?? template.actions) ?? undefined,
-      imageUrls: p.imageUrls,
-      priority: p.priority ?? template.priority,
-      organisationId: p.organisationId,
-      branchId: p.branchId,
-      relatedEntityType: p.relatedEntityType,
-      relatedEntityId: p.relatedEntityId,
-      senderId: p.senderId,
-    };
+    for (const channel of channels) {
+      const jobData: ProcessNotificationJob = {
+        notificationId,
+        userId: p.userId,
+        channel: channel as 'in_app' | 'push' | 'email' | 'sms',
+        deliveryId: 0,
+        templateId: template.id,
+        locale: effectiveLocale,
+        eventName: p.eventName,
+        categorySlug,
+        title: resolved.title,
+        body: resolved.body ?? undefined,
+        actionKey: template.actionKey ?? undefined,
+        actionPayload: p.actionPayload,
+        actions: (p.actions ?? template.actions) ?? undefined,
+        imageUrls: p.imageUrls,
+        priority: p.priority ?? template.priority,
+        organisationId: p.organisationId,
+        branchId: p.branchId,
+        relatedEntityType: p.relatedEntityType,
+        relatedEntityId: p.relatedEntityId,
+        senderId: p.senderId,
+      };
 
-    if (online) {
-      await queueService.add('process_notification', jobData, { priority: 1, attempts: 3 });
-    } else {
-      await queueForReconnect(p.userId, [notificationId]);
-      await queueService.add('process_notification', jobData, { delay: 0, priority: 5, attempts: 3 });
+      if (online) {
+        await queueService.add('process_notification', jobData, { priority: 1, attempts: 3 });
+      } else {
+        await queueForReconnect(p.userId, [notificationId]);
+        await queueService.add('process_notification', jobData, { delay: 0, priority: 5, attempts: 3 });
+      }
     }
 
     log.info({ notificationId, userId: p.userId, eventName: p.eventName }, 'Notification dispatched');
