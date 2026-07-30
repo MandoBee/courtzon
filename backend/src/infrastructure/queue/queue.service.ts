@@ -11,7 +11,9 @@ export type JobType = 'send_email' | 'process_settlement' | 'cancel_expired_book
   | 'retry_failed_deliveries' | 'trigger_digest_processing' | 'run_cleanup'
   | 'cancel_abandoned_orders'
   | 'expire_subscriptions'
-  | 'send_subscription_reminders';
+  | 'send_subscription_reminders'
+  | 'expire_memberships'
+  | 'send_membership_reminders';
 
 export interface EmailAttachment {
   filename: string;
@@ -129,6 +131,8 @@ export type JobPayloadMap = {
   cancel_abandoned_orders: { timeoutMinutes?: number };
   expire_subscriptions: Record<string, never>;
   send_subscription_reminders: Record<string, never>;
+  expire_memberships: Record<string, never>;
+  send_membership_reminders: Record<string, never>;
 };
 
 export const DEFAULT_QUEUE_NAME = 'default';

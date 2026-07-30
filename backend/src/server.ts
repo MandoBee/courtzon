@@ -10,6 +10,7 @@ import { sendEmail } from "./shared/services/mailer.service.js";
 import { handleCancelExpiredBookings } from "./modules/booking/infrastructure/booking-expiry.worker.js";
 import { handleCancelAbandonedOrders } from "./modules/marketplace/infrastructure/marketplace-cleanup.worker.js";
 import { handleExpireSubscriptions, handleSendExpirationReminders } from "./modules/organisations/infrastructure/subscription-lifecycle.worker.js";
+import { handleExpireMemberships, handleSendExpiringReminders } from "./modules/membership/infrastructure/membership-expiry.worker.js";
 
 import { handleAutoCompleteBookings } from "./modules/booking/infrastructure/booking-auto-complete.worker.js";
 import { handleSyncPendingPayments, handleExpireStalePayments } from "./modules/payment/infrastructure/payment-cron.worker.js";
@@ -76,6 +77,8 @@ async function bootstrap() {
     registerHandler('cancel_abandoned_orders', handleCancelAbandonedOrders);
     registerHandler('expire_subscriptions', handleExpireSubscriptions);
     registerHandler('send_subscription_reminders', handleSendExpirationReminders);
+    registerHandler('expire_memberships', handleExpireMemberships);
+    registerHandler('send_membership_reminders', handleSendExpiringReminders);
 
     registerHandler('process_notification', handleProcessNotification);
     registerHandler('send_notification_batch', handleSendNotificationBatch);
@@ -241,6 +244,20 @@ async function bootstrap() {
       removeOnComplete: true,
       removeOnFail: { age: 2592000 },
     } as any);
+
+    // Membership expiry — daily at 00:30 UTC
+    await queueService.add('expire_memberships', {}, {
+      repeat: { pattern: '30 0 * * *' },
+      removeOnComplete: true,
+      removeOnFail: { age: 604800 },
+    });
+
+    // Membership expiration reminders — daily at 08:30 UTC
+    await queueService.add('send_membership_reminders', {}, {
+      repeat: { pattern: '30 8 * * *' },
+      removeOnComplete: true,
+      removeOnFail: { age: 604800 },
+    });
 
     // Cleanup policies — daily at 04:00 UTC
     await queueService.add('run_cleanup', {}, {

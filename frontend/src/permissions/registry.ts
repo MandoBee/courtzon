@@ -818,6 +818,12 @@ export const uiRegistry: UIElement[] = [
   { permissionKey: 'membership.plans', moduleSlug: 'membership', elementType: 'page', elementLabel: 'Membership Plans', componentPath: 'pages/admin/membership/MembershipPlansPage.tsx' },
   { permissionKey: 'membership.campaigns', moduleSlug: 'membership', elementType: 'page', elementLabel: 'Membership Campaigns', componentPath: 'pages/admin/membership/CampaignsPage.tsx' },
   { permissionKey: 'membership.rewards', moduleSlug: 'membership', elementType: 'page', elementLabel: 'Membership Rewards', componentPath: 'pages/admin/membership/RewardsAdminPage.tsx' },
+  { permissionKey: 'membership.view', moduleSlug: 'membership', elementType: 'page', elementLabel: 'View Memberships' },
+  { permissionKey: 'membership.create', moduleSlug: 'membership', elementType: 'action', elementLabel: 'Create Membership' },
+  { permissionKey: 'membership.update', moduleSlug: 'membership', elementType: 'action', elementLabel: 'Update Membership' },
+  { permissionKey: 'membership.delete', moduleSlug: 'membership', elementType: 'action', elementLabel: 'Delete Membership' },
+  { permissionKey: 'membership.assign', moduleSlug: 'membership', elementType: 'action', elementLabel: 'Assign Membership' },
+  { permissionKey: 'membership.manage', moduleSlug: 'membership', elementType: 'action', elementLabel: 'Manage Membership' },
 
   // Reception sidebar
   { permissionKey: 'sidebar.reception', moduleSlug: 'bookings', elementType: 'tab', elementLabel: 'Sidebar: Reception', componentPath: 'components/layout/AdminSidebar.tsx' },

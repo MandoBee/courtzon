@@ -116,6 +116,7 @@ const ORG_ADMIN_PATTERNS = [
   /^organisations\.storefront\./,
   /^coaches\.reviews\.create$/,
   /^academies\.enroll$/,
+  /^membership\./,
 ];
 
 const SHOP_ADMIN_PATTERNS = [
