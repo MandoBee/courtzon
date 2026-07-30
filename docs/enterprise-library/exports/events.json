@@ -1,0 +1,484 @@
+{
+  "events": [
+    {
+      "name": "booking:cancelled",
+      "description": "event",
+      "sourceDoc": "ADMIN-02"
+    },
+    {
+      "name": "payment:refunded",
+      "description": "event",
+      "sourceDoc": "ADMIN-02"
+    },
+    {
+      "name": "coach:invited",
+      "description": "event for notification",
+      "sourceDoc": "ADMIN-02"
+    },
+    {
+      "name": "user:registered",
+      "description": "| Auth | Notifications, CRM | `auth/application/auth.service.ts` |",
+      "sourceDoc": "BIZ-ARCH-06"
+    },
+    {
+      "name": "user:logged_in",
+      "description": "| Auth | Audit Log | — |",
+      "sourceDoc": "BIZ-ARCH-06"
+    },
+    {
+      "name": "user:password_changed",
+      "description": "| Auth | Notifications | — |",
+      "sourceDoc": "BIZ-ARCH-06"
+    },
+    {
+      "name": "booking:created",
+      "description": "| Booking | Match, Notifications | `booking/application/booking.service.ts` |",
+      "sourceDoc": "BIZ-ARCH-06"
+    },
+    {
+      "name": "booking:confirmed",
+      "description": "| Booking | Notifications, Match, CRM | VOLUME-03 |",
+      "sourceDoc": "BIZ-ARCH-06"
+    },
+    {
+      "name": "booking:checked_in",
+      "description": "| Booking | Notifications | — |",
+      "sourceDoc": "BIZ-ARCH-06"
+    },
+    {
+      "name": "booking:matchmaking_started",
+      "description": "| Booking | Match | — |",
+      "sourceDoc": "BIZ-ARCH-06"
+    },
+    {
+      "name": "booking:applicant_applied",
+      "description": "| Booking | Notifications | — |",
+      "sourceDoc": "BIZ-ARCH-06"
+    },
+    {
+      "name": "booking:applicant_responded",
+      "description": "| Booking | Notifications | — |",
+      "sourceDoc": "BIZ-ARCH-06"
+    },
+    {
+      "name": "marketplace:product_created",
+      "description": "| Marketplace | Notifications | `marketplace/` |",
+      "sourceDoc": "BIZ-ARCH-06"
+    },
+    {
+      "name": "marketplace:product_updated",
+      "description": "| Marketplace | — | Same |",
+      "sourceDoc": "BIZ-ARCH-06"
+    },
+    {
+      "name": "marketplace:product_deleted",
+      "description": "| Marketplace | — | Same |",
+      "sourceDoc": "BIZ-ARCH-06"
+    },
+    {
+      "name": "marketplace:order_created",
+      "description": "| Marketplace | Notifications, Inventory | Same |",
+      "sourceDoc": "BIZ-ARCH-06"
+    },
+    {
+      "name": "marketplace:order_status_changed",
+      "description": "| Marketplace | Notifications | Same |",
+      "sourceDoc": "BIZ-ARCH-06"
+    },
+    {
+      "name": "marketplace:settlement_requested",
+      "description": "| Settlement | Notifications | `settlement/` |",
+      "sourceDoc": "BIZ-ARCH-06"
+    },
+    {
+      "name": "marketplace:settlement_processed",
+      "description": "| Settlement | Notifications | Same |",
+      "sourceDoc": "BIZ-ARCH-06"
+    },
+    {
+      "name": "marketplace:review_created",
+      "description": "| Marketplace | Notifications | — |",
+      "sourceDoc": "BIZ-ARCH-06"
+    },
+    {
+      "name": "marketplace:seller_upgrade_requested",
+      "description": "| Marketplace | Admin | — |",
+      "sourceDoc": "BIZ-ARCH-06"
+    },
+    {
+      "name": "payment:succeeded",
+      "description": "| Payment | Booking, Marketplace, Wallet, Notifications | `payment/application/payment.service.ts:571-622` |",
+      "sourceDoc": "BIZ-ARCH-06"
+    },
+    {
+      "name": "payment:failed",
+      "description": "| Payment | Booking, Marketplace, Notifications | Same file |",
+      "sourceDoc": "BIZ-ARCH-06"
+    },
+    {
+      "name": "wallet:deposit",
+      "description": "| Wallet | Notifications, CRM | `wallet/` |",
+      "sourceDoc": "BIZ-ARCH-06"
+    },
+    {
+      "name": "wallet:withdrawal",
+      "description": "| Wallet | Notifications | Same |",
+      "sourceDoc": "BIZ-ARCH-06"
+    },
+    {
+      "name": "settlement:created",
+      "description": "| Financial Settlement | Notifications | `financial/application/settlement.service.ts:51-57` |",
+      "sourceDoc": "BIZ-ARCH-06"
+    },
+    {
+      "name": "settlement:completed",
+      "description": "| Settlement | Notifications | `settlement/application/settlement.service.ts:403-408` |",
+      "sourceDoc": "BIZ-ARCH-06"
+    },
+    {
+      "name": "membership:expiring",
+      "description": "| Membership | Notifications, CRM | VOLUME-03 |",
+      "sourceDoc": "BIZ-ARCH-06"
+    },
+    {
+      "name": "tournament:created",
+      "description": "| Tournament | Notifications, Sports Engine | VOLUME-03 |",
+      "sourceDoc": "BIZ-ARCH-06"
+    },
+    {
+      "name": "tournament:status_changed",
+      "description": "| Tournament | Notifications | — |",
+      "sourceDoc": "BIZ-ARCH-06"
+    },
+    {
+      "name": "coaching:session_scheduled",
+      "description": "| Scheduling | Notifications, Coach dashboard | `scheduling/` |",
+      "sourceDoc": "BIZ-ARCH-06"
+    },
+    {
+      "name": "scheduling:search_completed",
+      "description": "| Scheduling | — | Same |",
+      "sourceDoc": "BIZ-ARCH-06"
+    },
+    {
+      "name": "scheduling:booking_created",
+      "description": "| Scheduling | Notifications | Same |",
+      "sourceDoc": "BIZ-ARCH-06"
+    },
+    {
+      "name": "scheduling:booking_compensated",
+      "description": "| Scheduling | Audit | Same |",
+      "sourceDoc": "BIZ-ARCH-06"
+    },
+    {
+      "name": "coupon:published",
+      "description": "| Coupon Service | Notifications | `coupon/application/coupon.service.ts:67-73` |",
+      "sourceDoc": "BIZ-ARCH-06"
+    },
+    {
+      "name": "notification:sent",
+      "description": "| Notifications | Push Log | `notifications/` |",
+      "sourceDoc": "BIZ-ARCH-06"
+    },
+    {
+      "name": "notification:failed",
+      "description": "| Notifications | Dead Letter Queue | Same |",
+      "sourceDoc": "BIZ-ARCH-06"
+    },
+    {
+      "name": "payroll:calculated",
+      "description": "→ Finance listens and posts) would be more decoupled but adds complexity.",
+      "sourceDoc": "GOV-ADR-011"
+    },
+    {
+      "name": "payment:received",
+      "description": ", `payment:failed`, `payment:refunded`, `payment:settled` |",
+      "sourceDoc": "TECH-ARCH-04"
+    },
+    {
+      "name": "organisation:created",
+      "description": ", `organisation:verified`, `organisation:deactivated` |",
+      "sourceDoc": "TECH-ARCH-04"
+    },
+    {
+      "name": "tournament:published",
+      "description": ", `tournament:registration-opened`, `tournament:started`, `tournament:completed` |",
+      "sourceDoc": "TECH-ARCH-04"
+    },
+    {
+      "name": "order:placed",
+      "description": ", `order:confirmed`, `order:shipped`, `order:delivered`, `order:cancelled` |",
+      "sourceDoc": "TECH-ARCH-04"
+    },
+    {
+      "name": "wallet:credited",
+      "description": ", `wallet:debited`, `wallet:withdrawal-initiated`, `wallet:withdrawal-completed` |",
+      "sourceDoc": "TECH-ARCH-04"
+    },
+    {
+      "name": "settlement:processed",
+      "description": ", `settlement:paid`, `settlement:failed` |",
+      "sourceDoc": "TECH-ARCH-04"
+    },
+    {
+      "name": "marketplace:order_cancelled",
+      "description": "**Evidence:** `order-aggregate.ts:5-37`, `order-constants.ts:1-2`, `marketplace.service.ts:720-760` (updateStatus), `marketplace.service.ts:1026-1063` (reversal).",
+      "sourceDoc": "TECH-ARCH-17"
+    },
+    {
+      "name": "marketplace:order_confirmed",
+      "description": "| Payment confirmed |",
+      "sourceDoc": "TECH-ARCH-17"
+    },
+    {
+      "name": "user:logged_out",
+      "description": "`user:password_reset`",
+      "sourceDoc": "TECH-MOD-01"
+    },
+    {
+      "name": "user:reactivated",
+      "description": "## 7. State Machine",
+      "sourceDoc": "TECH-MOD-01"
+    },
+    {
+      "name": "academy:program_created",
+      "description": "`academy:program_published`",
+      "sourceDoc": "TECH-MOD-04"
+    },
+    {
+      "name": "academy:program_status_changed",
+      "description": "`academy:enrollment_created`",
+      "sourceDoc": "TECH-MOD-04"
+    },
+    {
+      "name": "academy:enrollment_confirmed",
+      "description": "`academy:enrollment_cancelled`",
+      "sourceDoc": "TECH-MOD-04"
+    },
+    {
+      "name": "academy:attendance_recorded",
+      "description": "## 8. Audit Events",
+      "sourceDoc": "TECH-MOD-04"
+    },
+    {
+      "name": "tournament:registration_opened",
+      "description": "/ `tournament:registration_closed`",
+      "sourceDoc": "TECH-MOD-05"
+    },
+    {
+      "name": "tournament:player_registered",
+      "description": "/ `tournament:registration_confirmed`",
+      "sourceDoc": "TECH-MOD-05"
+    },
+    {
+      "name": "tournament:match_result_recorded",
+      "description": "`tournament:bracket_generated`",
+      "sourceDoc": "TECH-MOD-05"
+    },
+    {
+      "name": "league:season_created",
+      "description": "/ `league:season_published`",
+      "sourceDoc": "TECH-MOD-06"
+    },
+    {
+      "name": "league:league_created",
+      "description": "/ `league:status_changed`",
+      "sourceDoc": "TECH-MOD-06"
+    },
+    {
+      "name": "league:team_registered",
+      "description": "/ `league:team_confirmed`",
+      "sourceDoc": "TECH-MOD-06"
+    },
+    {
+      "name": "league:fixtures_generated",
+      "description": "`league:match_result_recorded`",
+      "sourceDoc": "TECH-MOD-06"
+    },
+    {
+      "name": "league:standings_recalculated",
+      "description": "`league:team_promoted` / `league:team_relegated`",
+      "sourceDoc": "TECH-MOD-06"
+    },
+    {
+      "name": "payment:charged",
+      "description": "Payment initiated",
+      "sourceDoc": "TECH-MOD-09"
+    },
+    {
+      "name": "payment:confirmed",
+      "description": "Payment confirmed",
+      "sourceDoc": "TECH-MOD-09"
+    },
+    {
+      "name": "payment:webhook_received",
+      "description": "Webhook from gateway",
+      "sourceDoc": "TECH-MOD-09"
+    },
+    {
+      "name": "payment:recovered",
+      "description": "Payment recovered from gateway",
+      "sourceDoc": "TECH-MOD-09"
+    },
+    {
+      "name": "payment:reconciliation_completed",
+      "description": "Reconciliation run finished",
+      "sourceDoc": "TECH-MOD-09"
+    },
+    {
+      "name": "wallet:payment",
+      "description": "Payment deducted from wallet",
+      "sourceDoc": "TECH-MOD-10"
+    },
+    {
+      "name": "wallet:refund",
+      "description": "Refund credited to wallet",
+      "sourceDoc": "TECH-MOD-10"
+    },
+    {
+      "name": "wallet:balance_low",
+      "description": "Balance below threshold",
+      "sourceDoc": "TECH-MOD-10"
+    },
+    {
+      "name": "accounting:journal_entry_created",
+      "description": "Journal entry posted",
+      "sourceDoc": "TECH-MOD-12"
+    },
+    {
+      "name": "accounting:period_closed",
+      "description": "Period closed",
+      "sourceDoc": "TECH-MOD-12"
+    },
+    {
+      "name": "accounting:invoice_issued",
+      "description": "Invoice issued",
+      "sourceDoc": "TECH-MOD-12"
+    },
+    {
+      "name": "accounting:invoice_paid",
+      "description": "Payment recorded",
+      "sourceDoc": "TECH-MOD-12"
+    },
+    {
+      "name": "accounting:invoice_cancelled",
+      "description": "Invoice cancelled",
+      "sourceDoc": "TECH-MOD-12"
+    },
+    {
+      "name": "organisation:subscription_changed",
+      "description": "`organisation:staff_added` / `organisation:staff_removed`",
+      "sourceDoc": "TECH-MOD-13"
+    },
+    {
+      "name": "organisation:coach_invited",
+      "description": "/ `organisation:coach_responded`",
+      "sourceDoc": "TECH-MOD-13"
+    },
+    {
+      "name": "branch:created",
+      "description": "/ `branch:updated`",
+      "sourceDoc": "TECH-MOD-13"
+    },
+    {
+      "name": "resource:created",
+      "description": "/ `resource:updated`",
+      "sourceDoc": "TECH-MOD-13"
+    },
+    {
+      "name": "crm:lead_created",
+      "description": "/ `crm:lead_converted`",
+      "sourceDoc": "TECH-MOD-15"
+    },
+    {
+      "name": "crm:campaign_launched",
+      "description": "/ `crm:campaign_completed`",
+      "sourceDoc": "TECH-MOD-15"
+    },
+    {
+      "name": "crm:segment_refreshed",
+      "description": "`crm:communication_sent`",
+      "sourceDoc": "TECH-MOD-15"
+    },
+    {
+      "name": "hr:employee_created",
+      "description": "/ `hr:employee_status_changed`",
+      "sourceDoc": "TECH-MOD-16"
+    },
+    {
+      "name": "hr:leave_request_submitted",
+      "description": "/ `hr:leave_request_approved` / `hr:leave_request_rejected`",
+      "sourceDoc": "TECH-MOD-16"
+    },
+    {
+      "name": "hr:payroll_run_calculated",
+      "description": "/ `hr:payroll_run_approved` / `hr:payroll_run_paid`",
+      "sourceDoc": "TECH-MOD-16"
+    },
+    {
+      "name": "hr:attendance_recorded",
+      "description": "## 8. Audit Events",
+      "sourceDoc": "TECH-MOD-16"
+    },
+    {
+      "name": "audit:recorded",
+      "description": "When an audit entry is successfully written (not currently emitted, but available for future use)",
+      "sourceDoc": "TECH-MOD-21"
+    },
+    {
+      "name": "support:ticket_created",
+      "description": "User created a ticket",
+      "sourceDoc": "TECH-MOD-22"
+    },
+    {
+      "name": "support:ticket_assigned",
+      "description": "Admin assigned",
+      "sourceDoc": "TECH-MOD-22"
+    },
+    {
+      "name": "support:ticket_message_added",
+      "description": "New message",
+      "sourceDoc": "TECH-MOD-22"
+    },
+    {
+      "name": "support:ticket_status_changed",
+      "description": "Status updated",
+      "sourceDoc": "TECH-MOD-22"
+    },
+    {
+      "name": "bi:dashboard_viewed",
+      "description": "Dashboard accessed",
+      "sourceDoc": "TECH-MOD-25"
+    },
+    {
+      "name": "bi:report_exported",
+      "description": "CSV report downloaded",
+      "sourceDoc": "TECH-MOD-25"
+    },
+    {
+      "name": "tournament:result",
+      "description": "per player on match score entry",
+      "sourceDoc": "TECH-MOD-35"
+    },
+    {
+      "name": "academy:enrolled",
+      "description": "on player enrollment",
+      "sourceDoc": "TECH-MOD-35"
+    },
+    {
+      "name": "organisation:approved",
+      "description": "/ `organisation:rejected` — forwarded from approvals",
+      "sourceDoc": "TECH-MOD-35"
+    },
+    {
+      "name": "md:hidden",
+      "description": "). Standard top Navbar provides:",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "name": "payment:completed",
+      "description": ", `payment:failed`, `payment:refunded`, `wallet:low-balance`, `wallet:deposit`, `wallet:withdrawal`",
+      "sourceDoc": "VOLUME_15_NOTIFICATIONS"
+    }
+  ]
+}

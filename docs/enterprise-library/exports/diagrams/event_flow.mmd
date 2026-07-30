@@ -1,0 +1,407 @@
+graph LR
+  booking_cancelled["booking:cancelled"]
+  ADMIN_02 -->|emits| booking_cancelled
+  BIZ_ARCH_06 -->|emits| booking_cancelled
+  GOV_ADR_005 -->|emits| booking_cancelled
+  TECH_ARCH_04 -->|emits| booking_cancelled
+  TECH_MOD_03 -->|emits| booking_cancelled
+  VOLUME_03_BUSINESS_DOMAINS -->|emits| booking_cancelled
+  VOLUME_15_NOTIFICATIONS -->|emits| booking_cancelled
+  payment_refunded["payment:refunded"]
+  ADMIN_02 -->|emits| payment_refunded
+  QUAL_TEST_03 -->|emits| payment_refunded
+  TECH_ARCH_04 -->|emits| payment_refunded
+  TECH_MOD_09 -->|emits| payment_refunded
+  USER_01 -->|emits| payment_refunded
+  VOLUME_15_NOTIFICATIONS -->|emits| payment_refunded
+  coach_invited["coach:invited"]
+  ADMIN_02 -->|emits| coach_invited
+  TECH_ARCH_15 -->|emits| coach_invited
+  VOLUME_15_NOTIFICATIONS -->|emits| coach_invited
+  user_registered["user:registered"]
+  BIZ_ARCH_06 -->|emits| user_registered
+  TECH_ARCH_04 -->|emits| user_registered
+  TECH_MOD_01 -->|emits| user_registered
+  VOLUME_03_BUSINESS_DOMAINS -->|emits| user_registered
+  VOLUME_15_NOTIFICATIONS -->|emits| user_registered
+  user_logged_in["user:logged_in"]
+  BIZ_ARCH_06 -->|emits| user_logged_in
+  TECH_MOD_01 -->|emits| user_logged_in
+  user_password_changed["user:password_changed"]
+  BIZ_ARCH_06 -->|emits| user_password_changed
+  booking_created["booking:created"]
+  BIZ_ARCH_06 -->|emits| booking_created
+  GOV_ADR_002 -->|emits| booking_created
+  GOV_ADR_005 -->|emits| booking_created
+  TECH_ARCH_04 -->|emits| booking_created
+  TECH_MOD_03 -->|emits| booking_created
+  VOLUME_15_NOTIFICATIONS -->|emits| booking_created
+  booking_confirmed["booking:confirmed"]
+  BIZ_ARCH_06 -->|emits| booking_confirmed
+  TECH_ARCH_04 -->|emits| booking_confirmed
+  VOLUME_02_ARCHITECTURE -->|emits| booking_confirmed
+  VOLUME_03_BUSINESS_DOMAINS -->|emits| booking_confirmed
+  VOLUME_15_NOTIFICATIONS -->|emits| booking_confirmed
+  booking_checked_in["booking:checked_in"]
+  BIZ_ARCH_06 -->|emits| booking_checked_in
+  TECH_MOD_03 -->|emits| booking_checked_in
+  booking_matchmaking_started["booking:matchmaking_started"]
+  BIZ_ARCH_06 -->|emits| booking_matchmaking_started
+  TECH_ARCH_12 -->|emits| booking_matchmaking_started
+  TECH_MOD_03 -->|emits| booking_matchmaking_started
+  booking_applicant_applied["booking:applicant_applied"]
+  BIZ_ARCH_06 -->|emits| booking_applicant_applied
+  TECH_ARCH_12 -->|emits| booking_applicant_applied
+  TECH_MOD_03 -->|emits| booking_applicant_applied
+  booking_applicant_responded["booking:applicant_responded"]
+  BIZ_ARCH_06 -->|emits| booking_applicant_responded
+  TECH_ARCH_12 -->|emits| booking_applicant_responded
+  TECH_MOD_03 -->|emits| booking_applicant_responded
+  marketplace_product_created["marketplace:product_created"]
+  BIZ_ARCH_06 -->|emits| marketplace_product_created
+  TECH_ARCH_17 -->|emits| marketplace_product_created
+  TECH_MOD_07 -->|emits| marketplace_product_created
+  marketplace_product_updated["marketplace:product_updated"]
+  BIZ_ARCH_06 -->|emits| marketplace_product_updated
+  TECH_ARCH_17 -->|emits| marketplace_product_updated
+  TECH_MOD_07 -->|emits| marketplace_product_updated
+  marketplace_product_deleted["marketplace:product_deleted"]
+  BIZ_ARCH_06 -->|emits| marketplace_product_deleted
+  TECH_ARCH_17 -->|emits| marketplace_product_deleted
+  TECH_MOD_07 -->|emits| marketplace_product_deleted
+  marketplace_order_created["marketplace:order_created"]
+  BIZ_ARCH_06 -->|emits| marketplace_order_created
+  TECH_ARCH_17 -->|emits| marketplace_order_created
+  TECH_MOD_07 -->|emits| marketplace_order_created
+  marketplace_order_status_changed["marketplace:order_status_changed"]
+  BIZ_ARCH_06 -->|emits| marketplace_order_status_changed
+  TECH_ARCH_17 -->|emits| marketplace_order_status_changed
+  TECH_MOD_07 -->|emits| marketplace_order_status_changed
+  marketplace_settlement_requested["marketplace:settlement_requested"]
+  BIZ_ARCH_06 -->|emits| marketplace_settlement_requested
+  TECH_ARCH_17 -->|emits| marketplace_settlement_requested
+  TECH_MOD_07 -->|emits| marketplace_settlement_requested
+  marketplace_settlement_processed["marketplace:settlement_processed"]
+  BIZ_ARCH_06 -->|emits| marketplace_settlement_processed
+  TECH_ARCH_17 -->|emits| marketplace_settlement_processed
+  TECH_MOD_07 -->|emits| marketplace_settlement_processed
+  marketplace_review_created["marketplace:review_created"]
+  BIZ_ARCH_06 -->|emits| marketplace_review_created
+  TECH_ARCH_17 -->|emits| marketplace_review_created
+  TECH_MOD_07 -->|emits| marketplace_review_created
+  marketplace_seller_upgrade_requested["marketplace:seller_upgrade_requested"]
+  BIZ_ARCH_06 -->|emits| marketplace_seller_upgrade_requested
+  TECH_ARCH_17 -->|emits| marketplace_seller_upgrade_requested
+  TECH_MOD_07 -->|emits| marketplace_seller_upgrade_requested
+  payment_succeeded["payment:succeeded"]
+  BIZ_ARCH_06 -->|emits| payment_succeeded
+  GOV_ADR_003 -->|emits| payment_succeeded
+  GOV_ADR_005 -->|emits| payment_succeeded
+  QUAL_TEST_03 -->|emits| payment_succeeded
+  TECH_ARCH_13 -->|emits| payment_succeeded
+  USER_01 -->|emits| payment_succeeded
+  VOLUME_03_BUSINESS_DOMAINS -->|emits| payment_succeeded
+  payment_failed["payment:failed"]
+  BIZ_ARCH_06 -->|emits| payment_failed
+  GOV_ADR_003 -->|emits| payment_failed
+  GOV_ADR_005 -->|emits| payment_failed
+  TECH_ARCH_04 -->|emits| payment_failed
+  USER_01 -->|emits| payment_failed
+  VOLUME_03_BUSINESS_DOMAINS -->|emits| payment_failed
+  VOLUME_15_NOTIFICATIONS -->|emits| payment_failed
+  wallet_deposit["wallet:deposit"]
+  BIZ_ARCH_06 -->|emits| wallet_deposit
+  TECH_ARCH_14 -->|emits| wallet_deposit
+  TECH_MOD_10 -->|emits| wallet_deposit
+  USER_01 -->|emits| wallet_deposit
+  VOLUME_03_BUSINESS_DOMAINS -->|emits| wallet_deposit
+  VOLUME_15_NOTIFICATIONS -->|emits| wallet_deposit
+  wallet_withdrawal["wallet:withdrawal"]
+  BIZ_ARCH_06 -->|emits| wallet_withdrawal
+  TECH_ARCH_14 -->|emits| wallet_withdrawal
+  TECH_MOD_10 -->|emits| wallet_withdrawal
+  USER_01 -->|emits| wallet_withdrawal
+  VOLUME_15_NOTIFICATIONS -->|emits| wallet_withdrawal
+  settlement_created["settlement:created"]
+  BIZ_ARCH_06 -->|emits| settlement_created
+  settlement_completed["settlement:completed"]
+  BIZ_ARCH_06 -->|emits| settlement_completed
+  GOV_ADR_003 -->|emits| settlement_completed
+  TECH_MOD_30 -->|emits| settlement_completed
+  membership_expiring["membership:expiring"]
+  BIZ_ARCH_06 -->|emits| membership_expiring
+  TECH_MOD_18 -->|emits| membership_expiring
+  VOLUME_03_BUSINESS_DOMAINS -->|emits| membership_expiring
+  tournament_created["tournament:created"]
+  BIZ_ARCH_06 -->|emits| tournament_created
+  TECH_MOD_05 -->|emits| tournament_created
+  TECH_MOD_35 -->|emits| tournament_created
+  VOLUME_03_BUSINESS_DOMAINS -->|emits| tournament_created
+  VOLUME_15_NOTIFICATIONS -->|emits| tournament_created
+  tournament_status_changed["tournament:status_changed"]
+  BIZ_ARCH_06 -->|emits| tournament_status_changed
+  coaching_session_scheduled["coaching:session_scheduled"]
+  BIZ_ARCH_06 -->|emits| coaching_session_scheduled
+  scheduling_search_completed["scheduling:search_completed"]
+  BIZ_ARCH_06 -->|emits| scheduling_search_completed
+  TECH_MOD_19 -->|emits| scheduling_search_completed
+  scheduling_booking_created["scheduling:booking_created"]
+  BIZ_ARCH_06 -->|emits| scheduling_booking_created
+  TECH_MOD_19 -->|emits| scheduling_booking_created
+  scheduling_booking_compensated["scheduling:booking_compensated"]
+  BIZ_ARCH_06 -->|emits| scheduling_booking_compensated
+  TECH_MOD_19 -->|emits| scheduling_booking_compensated
+  coupon_published["coupon:published"]
+  BIZ_ARCH_06 -->|emits| coupon_published
+  GOV_ADR_003 -->|emits| coupon_published
+  TECH_MOD_31 -->|emits| coupon_published
+  notification_sent["notification:sent"]
+  BIZ_ARCH_06 -->|emits| notification_sent
+  TECH_ARCH_04 -->|emits| notification_sent
+  notification_failed["notification:failed"]
+  BIZ_ARCH_06 -->|emits| notification_failed
+  TECH_ARCH_04 -->|emits| notification_failed
+  payroll_calculated["payroll:calculated"]
+  GOV_ADR_011 -->|emits| payroll_calculated
+  GOV_ADR_019 -->|emits| payroll_calculated
+  payment_completed["payment:completed"]
+  QUAL_TEST_03 -->|emits| payment_completed
+  USER_01 -->|emits| payment_completed
+  VOLUME_15_NOTIFICATIONS -->|emits| payment_completed
+  booking_completed["booking:completed"]
+  TECH_ARCH_04 -->|emits| booking_completed
+  VOLUME_15_NOTIFICATIONS -->|emits| booking_completed
+  booking_expired["booking:expired"]
+  TECH_ARCH_04 -->|emits| booking_expired
+  VOLUME_15_NOTIFICATIONS -->|emits| booking_expired
+  payment_received["payment:received"]
+  TECH_ARCH_04 -->|emits| payment_received
+  payment_settled["payment:settled"]
+  TECH_ARCH_04 -->|emits| payment_settled
+  user_verified["user:verified"]
+  TECH_ARCH_04 -->|emits| user_verified
+  user_deactivated["user:deactivated"]
+  TECH_ARCH_04 -->|emits| user_deactivated
+  organisation_created["organisation:created"]
+  TECH_ARCH_04 -->|emits| organisation_created
+  TECH_MOD_13 -->|emits| organisation_created
+  organisation_verified["organisation:verified"]
+  TECH_ARCH_04 -->|emits| organisation_verified
+  organisation_deactivated["organisation:deactivated"]
+  TECH_ARCH_04 -->|emits| organisation_deactivated
+  tournament_published["tournament:published"]
+  TECH_ARCH_04 -->|emits| tournament_published
+  TECH_MOD_05 -->|emits| tournament_published
+  tournament_started["tournament:started"]
+  TECH_ARCH_04 -->|emits| tournament_started
+  TECH_MOD_05 -->|emits| tournament_started
+  tournament_completed["tournament:completed"]
+  TECH_ARCH_04 -->|emits| tournament_completed
+  TECH_MOD_05 -->|emits| tournament_completed
+  order_placed["order:placed"]
+  TECH_ARCH_04 -->|emits| order_placed
+  order_confirmed["order:confirmed"]
+  TECH_ARCH_04 -->|emits| order_confirmed
+  order_shipped["order:shipped"]
+  TECH_ARCH_04 -->|emits| order_shipped
+  order_delivered["order:delivered"]
+  TECH_ARCH_04 -->|emits| order_delivered
+  order_cancelled["order:cancelled"]
+  TECH_ARCH_04 -->|emits| order_cancelled
+  notification_delivered["notification:delivered"]
+  TECH_ARCH_04 -->|emits| notification_delivered
+  notification_opened["notification:opened"]
+  TECH_ARCH_04 -->|emits| notification_opened
+  wallet_credited["wallet:credited"]
+  TECH_ARCH_04 -->|emits| wallet_credited
+  wallet_debited["wallet:debited"]
+  TECH_ARCH_04 -->|emits| wallet_debited
+  settlement_processed["settlement:processed"]
+  TECH_ARCH_04 -->|emits| settlement_processed
+  settlement_paid["settlement:paid"]
+  TECH_ARCH_04 -->|emits| settlement_paid
+  settlement_failed["settlement:failed"]
+  TECH_ARCH_04 -->|emits| settlement_failed
+  marketplace_order_cancelled["marketplace:order_cancelled"]
+  TECH_ARCH_17 -->|emits| marketplace_order_cancelled
+  marketplace_order_confirmed["marketplace:order_confirmed"]
+  TECH_ARCH_17 -->|emits| marketplace_order_confirmed
+  user_logged_out["user:logged_out"]
+  TECH_MOD_01 -->|emits| user_logged_out
+  user_password_reset["user:password_reset"]
+  TECH_MOD_01 -->|emits| user_password_reset
+  user_reactivated["user:reactivated"]
+  TECH_MOD_01 -->|emits| user_reactivated
+  academy_program_created["academy:program_created"]
+  TECH_MOD_04 -->|emits| academy_program_created
+  academy_program_published["academy:program_published"]
+  TECH_MOD_04 -->|emits| academy_program_published
+  academy_program_status_changed["academy:program_status_changed"]
+  TECH_MOD_04 -->|emits| academy_program_status_changed
+  academy_enrollment_created["academy:enrollment_created"]
+  TECH_MOD_04 -->|emits| academy_enrollment_created
+  academy_enrollment_confirmed["academy:enrollment_confirmed"]
+  TECH_MOD_04 -->|emits| academy_enrollment_confirmed
+  academy_enrollment_cancelled["academy:enrollment_cancelled"]
+  TECH_MOD_04 -->|emits| academy_enrollment_cancelled
+  academy_attendance_recorded["academy:attendance_recorded"]
+  TECH_MOD_04 -->|emits| academy_attendance_recorded
+  tournament_registration_opened["tournament:registration_opened"]
+  TECH_MOD_05 -->|emits| tournament_registration_opened
+  tournament_registration_closed["tournament:registration_closed"]
+  TECH_MOD_05 -->|emits| tournament_registration_closed
+  tournament_player_registered["tournament:player_registered"]
+  TECH_MOD_05 -->|emits| tournament_player_registered
+  tournament_registration_confirmed["tournament:registration_confirmed"]
+  TECH_MOD_05 -->|emits| tournament_registration_confirmed
+  tournament_match_result_recorded["tournament:match_result_recorded"]
+  TECH_MOD_05 -->|emits| tournament_match_result_recorded
+  tournament_bracket_generated["tournament:bracket_generated"]
+  TECH_MOD_05 -->|emits| tournament_bracket_generated
+  league_season_created["league:season_created"]
+  TECH_MOD_06 -->|emits| league_season_created
+  league_season_published["league:season_published"]
+  TECH_MOD_06 -->|emits| league_season_published
+  league_league_created["league:league_created"]
+  TECH_MOD_06 -->|emits| league_league_created
+  league_status_changed["league:status_changed"]
+  TECH_MOD_06 -->|emits| league_status_changed
+  league_team_registered["league:team_registered"]
+  TECH_MOD_06 -->|emits| league_team_registered
+  league_team_confirmed["league:team_confirmed"]
+  TECH_MOD_06 -->|emits| league_team_confirmed
+  league_fixtures_generated["league:fixtures_generated"]
+  TECH_MOD_06 -->|emits| league_fixtures_generated
+  league_match_result_recorded["league:match_result_recorded"]
+  TECH_MOD_06 -->|emits| league_match_result_recorded
+  league_standings_recalculated["league:standings_recalculated"]
+  TECH_MOD_06 -->|emits| league_standings_recalculated
+  league_team_promoted["league:team_promoted"]
+  TECH_MOD_06 -->|emits| league_team_promoted
+  league_team_relegated["league:team_relegated"]
+  TECH_MOD_06 -->|emits| league_team_relegated
+  payment_charged["payment:charged"]
+  TECH_MOD_09 -->|emits| payment_charged
+  payment_confirmed["payment:confirmed"]
+  TECH_MOD_09 -->|emits| payment_confirmed
+  payment_webhook_received["payment:webhook_received"]
+  TECH_MOD_09 -->|emits| payment_webhook_received
+  payment_recovered["payment:recovered"]
+  TECH_MOD_09 -->|emits| payment_recovered
+  payment_reconciliation_completed["payment:reconciliation_completed"]
+  TECH_MOD_09 -->|emits| payment_reconciliation_completed
+  wallet_payment["wallet:payment"]
+  TECH_MOD_10 -->|emits| wallet_payment
+  wallet_refund["wallet:refund"]
+  TECH_MOD_10 -->|emits| wallet_refund
+  wallet_balance_low["wallet:balance_low"]
+  TECH_MOD_10 -->|emits| wallet_balance_low
+  accounting_journal_entry_created["accounting:journal_entry_created"]
+  TECH_MOD_12 -->|emits| accounting_journal_entry_created
+  accounting_period_closed["accounting:period_closed"]
+  TECH_MOD_12 -->|emits| accounting_period_closed
+  accounting_invoice_issued["accounting:invoice_issued"]
+  TECH_MOD_12 -->|emits| accounting_invoice_issued
+  accounting_invoice_paid["accounting:invoice_paid"]
+  TECH_MOD_12 -->|emits| accounting_invoice_paid
+  accounting_invoice_cancelled["accounting:invoice_cancelled"]
+  TECH_MOD_12 -->|emits| accounting_invoice_cancelled
+  organisation_updated["organisation:updated"]
+  TECH_MOD_13 -->|emits| organisation_updated
+  organisation_subscription_changed["organisation:subscription_changed"]
+  TECH_MOD_13 -->|emits| organisation_subscription_changed
+  organisation_staff_added["organisation:staff_added"]
+  TECH_MOD_13 -->|emits| organisation_staff_added
+  organisation_staff_removed["organisation:staff_removed"]
+  TECH_MOD_13 -->|emits| organisation_staff_removed
+  organisation_coach_invited["organisation:coach_invited"]
+  TECH_MOD_13 -->|emits| organisation_coach_invited
+  organisation_coach_responded["organisation:coach_responded"]
+  TECH_MOD_13 -->|emits| organisation_coach_responded
+  branch_created["branch:created"]
+  TECH_MOD_13 -->|emits| branch_created
+  branch_updated["branch:updated"]
+  TECH_MOD_13 -->|emits| branch_updated
+  resource_created["resource:created"]
+  TECH_MOD_13 -->|emits| resource_created
+  resource_updated["resource:updated"]
+  TECH_MOD_13 -->|emits| resource_updated
+  crm_lead_created["crm:lead_created"]
+  TECH_MOD_15 -->|emits| crm_lead_created
+  crm_lead_converted["crm:lead_converted"]
+  TECH_MOD_15 -->|emits| crm_lead_converted
+  crm_campaign_launched["crm:campaign_launched"]
+  TECH_MOD_15 -->|emits| crm_campaign_launched
+  crm_campaign_completed["crm:campaign_completed"]
+  TECH_MOD_15 -->|emits| crm_campaign_completed
+  crm_segment_refreshed["crm:segment_refreshed"]
+  TECH_MOD_15 -->|emits| crm_segment_refreshed
+  crm_communication_sent["crm:communication_sent"]
+  TECH_MOD_15 -->|emits| crm_communication_sent
+  hr_employee_created["hr:employee_created"]
+  TECH_MOD_16 -->|emits| hr_employee_created
+  hr_employee_status_changed["hr:employee_status_changed"]
+  TECH_MOD_16 -->|emits| hr_employee_status_changed
+  hr_leave_request_submitted["hr:leave_request_submitted"]
+  TECH_MOD_16 -->|emits| hr_leave_request_submitted
+  hr_leave_request_approved["hr:leave_request_approved"]
+  TECH_MOD_16 -->|emits| hr_leave_request_approved
+  hr_leave_request_rejected["hr:leave_request_rejected"]
+  TECH_MOD_16 -->|emits| hr_leave_request_rejected
+  hr_payroll_run_calculated["hr:payroll_run_calculated"]
+  TECH_MOD_16 -->|emits| hr_payroll_run_calculated
+  hr_payroll_run_approved["hr:payroll_run_approved"]
+  TECH_MOD_16 -->|emits| hr_payroll_run_approved
+  hr_payroll_run_paid["hr:payroll_run_paid"]
+  TECH_MOD_16 -->|emits| hr_payroll_run_paid
+  hr_attendance_recorded["hr:attendance_recorded"]
+  TECH_MOD_16 -->|emits| hr_attendance_recorded
+  audit_recorded["audit:recorded"]
+  TECH_MOD_21 -->|emits| audit_recorded
+  support_ticket_created["support:ticket_created"]
+  TECH_MOD_22 -->|emits| support_ticket_created
+  support_ticket_assigned["support:ticket_assigned"]
+  TECH_MOD_22 -->|emits| support_ticket_assigned
+  support_ticket_message_added["support:ticket_message_added"]
+  TECH_MOD_22 -->|emits| support_ticket_message_added
+  support_ticket_status_changed["support:ticket_status_changed"]
+  TECH_MOD_22 -->|emits| support_ticket_status_changed
+  bi_dashboard_viewed["bi:dashboard_viewed"]
+  TECH_MOD_25 -->|emits| bi_dashboard_viewed
+  bi_report_exported["bi:report_exported"]
+  TECH_MOD_25 -->|emits| bi_report_exported
+  tournament_result["tournament:result"]
+  TECH_MOD_35 -->|emits| tournament_result
+  VOLUME_15_NOTIFICATIONS -->|emits| tournament_result
+  academy_enrolled["academy:enrolled"]
+  TECH_MOD_35 -->|emits| academy_enrolled
+  VOLUME_15_NOTIFICATIONS -->|emits| academy_enrolled
+  organisation_approved["organisation:approved"]
+  TECH_MOD_35 -->|emits| organisation_approved
+  TECH_MOD_38 -->|emits| organisation_approved
+  organisation_rejected["organisation:rejected"]
+  TECH_MOD_35 -->|emits| organisation_rejected
+  TECH_MOD_38 -->|emits| organisation_rejected
+  md_hidden["md:hidden"]
+  TECH_UX_03 -->|emits| md_hidden
+  booking_reminder["booking:reminder"]
+  VOLUME_15_NOTIFICATIONS -->|emits| booking_reminder
+  booking_rescheduled["booking:rescheduled"]
+  VOLUME_15_NOTIFICATIONS -->|emits| booking_rescheduled
+  user_approved["user:approved"]
+  VOLUME_15_NOTIFICATIONS -->|emits| user_approved
+  user_rejected["user:rejected"]
+  VOLUME_15_NOTIFICATIONS -->|emits| user_rejected
+  user_suspended["user:suspended"]
+  VOLUME_15_NOTIFICATIONS -->|emits| user_suspended
+  user_activated["user:activated"]
+  VOLUME_15_NOTIFICATIONS -->|emits| user_activated
+  user_deleted["user:deleted"]
+  VOLUME_15_NOTIFICATIONS -->|emits| user_deleted
+  auth_login["auth:login"]
+  VOLUME_15_NOTIFICATIONS -->|emits| auth_login
+  auth_logout["auth:logout"]
+  VOLUME_15_NOTIFICATIONS -->|emits| auth_logout
+  academy_graduated["academy:graduated"]
+  VOLUME_15_NOTIFICATIONS -->|emits| academy_graduated
+  style Event fill:#f9f,stroke:#333,stroke-width:2px

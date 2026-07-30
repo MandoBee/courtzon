@@ -1,0 +1,505 @@
+{
+  "entities": [
+    {
+      "name": "User",
+      "table": "users",
+      "keyFields": [
+        "id",
+        "public_id",
+        "email",
+        "phone",
+        "password_hash",
+        "full_name",
+        "gender",
+        "birth_date",
+        "account_status"
+      ],
+      "moduleOwner": "TECH-MOD-01"
+    },
+    {
+      "name": "Session",
+      "table": "sessions",
+      "keyFields": [
+        "id",
+        "user_id",
+        "token_hash",
+        "refresh_token_hash",
+        "device_info",
+        "ip",
+        "expires_at"
+      ],
+      "moduleOwner": "TECH-MOD-01"
+    },
+    {
+      "name": "Role",
+      "table": "roles",
+      "keyFields": [
+        "id",
+        "name",
+        "slug",
+        "description",
+        "is_system",
+        "deleted_at"
+      ],
+      "moduleOwner": "TECH-MOD-02"
+    },
+    {
+      "name": "Permission",
+      "table": "permissions",
+      "keyFields": [
+        "id",
+        "module_id",
+        "key",
+        "name",
+        "description"
+      ],
+      "moduleOwner": "TECH-MOD-02"
+    },
+    {
+      "name": "Booking",
+      "table": "bookings",
+      "keyFields": [
+        "id",
+        "user_id",
+        "resource_id",
+        "branch_id",
+        "booking_date",
+        "start_time",
+        "end_time",
+        "booking_status",
+        "payment_status",
+        "total_amount",
+        "aggregate_version",
+        "expires_at"
+      ],
+      "moduleOwner": "TECH-MOD-03"
+    },
+    {
+      "name": "Tournament",
+      "table": "tournaments",
+      "keyFields": [
+        "id",
+        "code",
+        "name",
+        "format",
+        "status",
+        "sport_id",
+        "registration_type",
+        "max_players",
+        "max_teams",
+        "registration_fee"
+      ],
+      "moduleOwner": "TECH-MOD-05"
+    },
+    {
+      "name": "Registration",
+      "table": "tournament_registrations",
+      "keyFields": [
+        "id",
+        "tournament_id",
+        "user_id",
+        "team_id",
+        "seed",
+        "status",
+        "waiting_order"
+      ],
+      "moduleOwner": "TECH-MOD-05"
+    },
+    {
+      "name": "Product",
+      "table": "marketplace_products",
+      "keyFields": [
+        "id",
+        "seller_id",
+        "name",
+        "description",
+        "price",
+        "status",
+        "category_id"
+      ],
+      "moduleOwner": "TECH-MOD-07"
+    },
+    {
+      "name": "Variant",
+      "table": "product_variants",
+      "keyFields": [
+        "id",
+        "product_id",
+        "name",
+        "price",
+        "stock",
+        "sku"
+      ],
+      "moduleOwner": "TECH-MOD-07"
+    },
+    {
+      "name": "Warehouse",
+      "table": "warehouses",
+      "keyFields": [
+        "id",
+        "organisation_id",
+        "name",
+        "location",
+        "status"
+      ],
+      "moduleOwner": "TECH-MOD-08"
+    },
+    {
+      "name": "Supplier",
+      "table": "suppliers",
+      "keyFields": [
+        "id",
+        "organisation_id",
+        "name",
+        "contact_name",
+        "email",
+        "phone",
+        "payment_terms",
+        "lead_time_days",
+        "status"
+      ],
+      "moduleOwner": "TECH-MOD-08"
+    },
+    {
+      "name": "Payment Transaction",
+      "table": "payment_transactions",
+      "keyFields": [
+        "id",
+        "user_id",
+        "reference_type",
+        "reference_id",
+        "amount",
+        "currency",
+        "payment_status",
+        "gateway_reference",
+        "aggregate_version"
+      ],
+      "moduleOwner": "TECH-MOD-09"
+    },
+    {
+      "name": "Wallet",
+      "table": "user_wallets",
+      "keyFields": [
+        "id",
+        "user_id",
+        "balance",
+        "currency_code",
+        "is_locked",
+        "aggregate_version"
+      ],
+      "moduleOwner": "TECH-MOD-10"
+    },
+    {
+      "name": "Transaction",
+      "table": "wallet_transactions",
+      "keyFields": [
+        "id",
+        "wallet_id",
+        "type",
+        "direction",
+        "amount",
+        "balance_before",
+        "balance_after",
+        "reference_type",
+        "reference_id"
+      ],
+      "moduleOwner": "TECH-MOD-10"
+    },
+    {
+      "name": "Ledger Entry",
+      "table": "ledger_entries",
+      "keyFields": [
+        "id",
+        "transaction_id",
+        "source_type",
+        "source_id",
+        "account_type",
+        "side",
+        "amount",
+        "currency",
+        "description",
+        "reference_id",
+        "recorded_at"
+      ],
+      "moduleOwner": "TECH-MOD-11"
+    },
+    {
+      "name": "Account",
+      "table": "chart_of_accounts",
+      "keyFields": [
+        "id",
+        "code (hierarchical)",
+        "name",
+        "type (asset/liability/equity/income/expense)",
+        "parent_id",
+        "is_active"
+      ],
+      "moduleOwner": "TECH-MOD-12"
+    },
+    {
+      "name": "Period",
+      "table": "accounting_periods",
+      "keyFields": [
+        "id",
+        "name",
+        "start_date",
+        "end_date",
+        "status (open/closed/locked)"
+      ],
+      "moduleOwner": "TECH-MOD-12"
+    },
+    {
+      "name": "Organisation",
+      "table": "organisations",
+      "keyFields": [
+        "id",
+        "name",
+        "slug",
+        "type_id",
+        "status",
+        "owner_id"
+      ],
+      "moduleOwner": "TECH-MOD-13"
+    },
+    {
+      "name": "Branch",
+      "table": "branches",
+      "keyFields": [
+        "id",
+        "organisation_id",
+        "name",
+        "address",
+        "city_id",
+        "timezone",
+        "opening_time",
+        "closing_time"
+      ],
+      "moduleOwner": "TECH-MOD-13"
+    },
+    {
+      "name": "Notification",
+      "table": "notifications",
+      "keyFields": [
+        "id",
+        "user_id",
+        "type",
+        "title",
+        "body",
+        "channel",
+        "status",
+        "read_at",
+        "archived_at"
+      ],
+      "moduleOwner": "TECH-MOD-14"
+    },
+    {
+      "name": "Notification Type",
+      "table": "notification_types",
+      "keyFields": [
+        "id",
+        "slug",
+        "name",
+        "channels",
+        "category"
+      ],
+      "moduleOwner": "TECH-MOD-14"
+    },
+    {
+      "name": "Segment",
+      "table": "crm_segments",
+      "keyFields": [
+        "id",
+        "name",
+        "rules (JSON)",
+        "member_count",
+        "last_refreshed_at"
+      ],
+      "moduleOwner": "TECH-MOD-15"
+    },
+    {
+      "name": "Department",
+      "table": "departments",
+      "keyFields": [
+        "id",
+        "organisation_id",
+        "name",
+        "parent_id",
+        "head_employee_id",
+        "is_active"
+      ],
+      "moduleOwner": "TECH-MOD-16"
+    },
+    {
+      "name": "Position",
+      "table": "positions",
+      "keyFields": [
+        "id",
+        "department_id",
+        "title",
+        "description",
+        "requirements",
+        "is_active"
+      ],
+      "moduleOwner": "TECH-MOD-16"
+    },
+    {
+      "name": "Match",
+      "table": "matches",
+      "keyFields": [
+        "id",
+        "type",
+        "status",
+        "booking_id",
+        "sport_id",
+        "version"
+      ],
+      "moduleOwner": "TECH-MOD-17"
+    },
+    {
+      "name": "Join Request",
+      "table": "join_requests",
+      "keyFields": [
+        "id",
+        "match_id",
+        "user_id",
+        "status",
+        "submitted_at",
+        "responded_at"
+      ],
+      "moduleOwner": "TECH-MOD-17"
+    },
+    {
+      "name": "Plan",
+      "table": "membership_plans",
+      "keyFields": [
+        "id",
+        "code",
+        "name",
+        "category",
+        "duration_type",
+        "duration_value",
+        "price",
+        "currency",
+        "status",
+        "is_default",
+        "is_public",
+        "sort_order"
+      ],
+      "moduleOwner": "TECH-MOD-18"
+    },
+    {
+      "name": "Session",
+      "table": "sessions",
+      "keyFields": [
+        "id",
+        "user_id",
+        "token_hash",
+        "ip",
+        "user_agent",
+        "device_info",
+        "is_active",
+        "is_suspicious",
+        "last_active_at"
+      ],
+      "moduleOwner": "TECH-MOD-20"
+    },
+    {
+      "name": "Failed Login",
+      "table": "failed_login_attempts",
+      "keyFields": [
+        "id",
+        "identifier",
+        "ip",
+        "user_agent",
+        "attempted_at"
+      ],
+      "moduleOwner": "TECH-MOD-20"
+    },
+    {
+      "name": "Audit Log",
+      "table": "audit_logs",
+      "keyFields": [
+        "id",
+        "actor_id",
+        "action",
+        "entity_type",
+        "entity_id",
+        "before_state (JSON)",
+        "after_state (JSON)",
+        "reason",
+        "ip_address",
+        "user_agent",
+        "created_at"
+      ],
+      "moduleOwner": "TECH-MOD-21"
+    },
+    {
+      "name": "Ticket",
+      "table": "support_tickets",
+      "keyFields": [
+        "id",
+        "user_id",
+        "subject",
+        "description",
+        "category",
+        "priority",
+        "status",
+        "assigned_to",
+        "created_at"
+      ],
+      "moduleOwner": "TECH-MOD-22"
+    },
+    {
+      "name": "Ticket Message",
+      "table": "support_ticket_messages",
+      "keyFields": [
+        "id",
+        "ticket_id",
+        "author_id",
+        "message",
+        "is_internal_note",
+        "created_at"
+      ],
+      "moduleOwner": "TECH-MOD-22"
+    },
+    {
+      "name": "ELO Rating",
+      "table": "elo_ratings",
+      "keyFields": [
+        "id",
+        "user_id",
+        "sport_id",
+        "rating",
+        "matches_played",
+        "k_factor",
+        "last_match_at"
+      ],
+      "moduleOwner": "TECH-MOD-26"
+    },
+    {
+      "name": "Settlement",
+      "table": "settlements",
+      "keyFields": [
+        "id",
+        "organisation_id",
+        "branch_id",
+        "settlement_status",
+        "gross_amount",
+        "shipping_amount",
+        "courtzon_fee",
+        "organization_net",
+        "cod_fee_total",
+        "online_net_total",
+        "settlement_direction",
+        "final_amount",
+        "requested_by",
+        "approved_at",
+        "paid_at",
+        "completed_at",
+        "rejected_at",
+        "rejected_reason"
+      ],
+      "moduleOwner": "TECH-MOD-30"
+    }
+  ]
+}

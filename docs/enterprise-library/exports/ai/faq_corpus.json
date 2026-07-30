@@ -1,0 +1,368 @@
+{
+  "metadata": {
+    "generated": "2026-07-28T00:26:58.326Z",
+    "total_faqs": 40
+  },
+  "faqs": [
+    {
+      "question": "The question: should we have separate order aggregates for different payment methods, or a single unified aggregate?",
+      "answer": "See the Single Order Aggregate (GOV-ADR-007) document for detailed information.",
+      "source_document": "GOV-ADR-007",
+      "source_title": "Single Order Aggregate",
+      "tags": [
+        "GOV-ADR"
+      ]
+    },
+    {
+      "question": "├─ WHERE id = ? AND aggregate_version = ?",
+      "answer": "└─ Prevents conflicting state transitions on the same booking",
+      "source_document": "GOV-ADR-015",
+      "source_title": "Booking Concurrency — Redis Distributed Locks + DB Constraints",
+      "tags": [
+        "GOV-ADR"
+      ]
+    },
+    {
+      "question": "FROM elo_ratings WHERE sport_id = ?",
+      "answer": "→ Fast, no computation at read time",
+      "source_document": "GOV-ADR-021",
+      "source_title": "Standings Persistence — Pre-Computed Rankings in Database",
+      "tags": [
+        "GOV-ADR"
+      ]
+    },
+    {
+      "question": "SELECT created_at, 'booking' AS type, id AS ref_id, status AS ref_status, NULL AS ref_amount FROM bookings WHERE user_id = ?",
+      "answer": "UNION ALL",
+      "source_document": "GOV-ADR-022",
+      "source_title": "Customer 360 — UNION Query Across Business Domains",
+      "tags": [
+        "GOV-ADR"
+      ]
+    },
+    {
+      "question": "SELECT created_at, 'order', id, status, total_amount FROM orders WHERE user_id = ?",
+      "answer": "UNION ALL",
+      "source_document": "GOV-ADR-022",
+      "source_title": "Customer 360 — UNION Query Across Business Domains",
+      "tags": [
+        "GOV-ADR"
+      ]
+    },
+    {
+      "question": "SELECT created_at, 'enrollment', id, status, NULL FROM academy_enrollments WHERE user_id = ?",
+      "answer": "UNION ALL",
+      "source_document": "GOV-ADR-022",
+      "source_title": "Customer 360 — UNION Query Across Business Domains",
+      "tags": [
+        "GOV-ADR"
+      ]
+    },
+    {
+      "question": "SELECT created_at, 'tournament_registration', id, status, NULL FROM tournament_registrations WHERE user_id = ?",
+      "answer": "UNION ALL",
+      "source_document": "GOV-ADR-022",
+      "source_title": "Customer 360 — UNION Query Across Business Domains",
+      "tags": [
+        "GOV-ADR"
+      ]
+    },
+    {
+      "question": "SELECT created_at, 'wallet_transaction', id, type, amount FROM wallet_transactions WHERE user_id = ?",
+      "answer": "UNION ALL",
+      "source_document": "GOV-ADR-022",
+      "source_title": "Customer 360 — UNION Query Across Business Domains",
+      "tags": [
+        "GOV-ADR"
+      ]
+    },
+    {
+      "question": "SELECT created_at, 'activity_log', id, action, NULL FROM activity_logs WHERE user_id = ?",
+      "answer": "ORDER BY created_at DESC",
+      "source_document": "GOV-ADR-022",
+      "source_title": "Customer 360 — UNION Query Across Business Domains",
+      "tags": [
+        "GOV-ADR"
+      ]
+    },
+    {
+      "question": "→ SELECT quantity FROM product_variants WHERE id = ?",
+      "answer": "See the Inventory Ledger — Immutable Log as Source of Truth (GOV-ADR-023) document for detailed information.",
+      "source_document": "GOV-ADR-023",
+      "source_title": "Inventory Ledger — Immutable Log as Source of Truth",
+      "tags": [
+        "GOV-ADR"
+      ]
+    },
+    {
+      "question": "WHERE id = ? AND aggregate_version = ?",
+      "answer": "See the Scalability Design (TECH-ARCH-11) document for detailed information.",
+      "source_document": "TECH-ARCH-11",
+      "source_title": "Scalability Design",
+      "tags": [
+        "TECH-ARCH"
+      ]
+    },
+    {
+      "question": "└── UPDATE bookings SET booking_status = 'checked_in', version = version + 1 WHERE id = ?",
+      "answer": "└── Checks aggregate_version for optimistic concurrency",
+      "source_document": "TECH-ARCH-12",
+      "source_title": "Booking Flow Deep Dive",
+      "tags": [
+        "TECH-ARCH"
+      ]
+    },
+    {
+      "question": "├── UPDATE user_wallets SET balance=?, version=version+1 WHERE id=? AND version=?",
+      "answer": "├── Returns affectedRows > 0",
+      "source_document": "TECH-ARCH-14",
+      "source_title": "Wallet Architecture",
+      "tags": [
+        "TECH-ARCH"
+      ]
+    },
+    {
+      "question": "│       WHERE id=? AND aggregate_version=?",
+      "answer": "└── Emit event 'wallet.deposited'",
+      "source_document": "TECH-ARCH-14",
+      "source_title": "Wallet Architecture",
+      "tags": [
+        "TECH-ARCH"
+      ]
+    },
+    {
+      "question": "SELECT created_at, 'booking' AS type, id AS ref_id, status AS ref_status, NULL AS ref_amount FROM bookings WHERE user_id = ?",
+      "answer": "UNION ALL",
+      "source_document": "TECH-ARCH-22",
+      "source_title": "CRM Architecture",
+      "tags": [
+        "TECH-ARCH"
+      ]
+    },
+    {
+      "question": "SELECT created_at, 'order', id, status, total_amount FROM orders WHERE user_id = ?",
+      "answer": "UNION ALL",
+      "source_document": "TECH-ARCH-22",
+      "source_title": "CRM Architecture",
+      "tags": [
+        "TECH-ARCH"
+      ]
+    },
+    {
+      "question": "SELECT created_at, 'enrollment', id, status, NULL FROM academy_enrollments WHERE user_id = ?",
+      "answer": "UNION ALL",
+      "source_document": "TECH-ARCH-22",
+      "source_title": "CRM Architecture",
+      "tags": [
+        "TECH-ARCH"
+      ]
+    },
+    {
+      "question": "SELECT created_at, 'tournament_registration', id, status, NULL FROM tournament_registrations WHERE user_id = ?",
+      "answer": "UNION ALL",
+      "source_document": "TECH-ARCH-22",
+      "source_title": "CRM Architecture",
+      "tags": [
+        "TECH-ARCH"
+      ]
+    },
+    {
+      "question": "SELECT created_at, 'wallet_transaction', id, type, amount FROM wallet_transactions WHERE user_id = ?",
+      "answer": "UNION ALL",
+      "source_document": "TECH-ARCH-22",
+      "source_title": "CRM Architecture",
+      "tags": [
+        "TECH-ARCH"
+      ]
+    },
+    {
+      "question": "SELECT created_at, 'activity_log', id, action, NULL FROM activity_logs WHERE user_id = ?",
+      "answer": "ORDER BY created_at DESC",
+      "source_document": "TECH-ARCH-22",
+      "source_title": "CRM Architecture",
+      "tags": [
+        "TECH-ARCH"
+      ]
+    },
+    {
+      "question": "- Does the code do what it claims?",
+      "answer": "- Are edge cases handled (null, empty, duplicates, boundary values)?",
+      "source_document": "TECH-DEV-08",
+      "source_title": "Code Review Standards",
+      "tags": [
+        "TECH-DEV"
+      ]
+    },
+    {
+      "question": "- Are edge cases handled (null, empty, duplicates, boundary values)?",
+      "answer": "- Are error paths handled (DB failures, network errors)?",
+      "source_document": "TECH-DEV-08",
+      "source_title": "Code Review Standards",
+      "tags": [
+        "TECH-DEV"
+      ]
+    },
+    {
+      "question": "- Are error paths handled (DB failures, network errors)?",
+      "answer": "- Is the logic consistent with business requirements?",
+      "source_document": "TECH-DEV-08",
+      "source_title": "Code Review Standards",
+      "tags": [
+        "TECH-DEV"
+      ]
+    },
+    {
+      "question": "- Is the logic consistent with business requirements?",
+      "answer": "See the Code Review Standards (TECH-DEV-08) document for detailed information.",
+      "source_document": "TECH-DEV-08",
+      "source_title": "Code Review Standards",
+      "tags": [
+        "TECH-DEV"
+      ]
+    },
+    {
+      "question": "- Is input validated with Zod schemas?",
+      "answer": "- Are SQL queries parameterized (no string concatenation)?",
+      "source_document": "TECH-DEV-08",
+      "source_title": "Code Review Standards",
+      "tags": [
+        "TECH-DEV"
+      ]
+    },
+    {
+      "question": "- Are SQL queries parameterized (no string concatenation)?",
+      "answer": "- Are permission gates applied via `<Can>` or `requirePermission`?",
+      "source_document": "TECH-DEV-08",
+      "source_title": "Code Review Standards",
+      "tags": [
+        "TECH-DEV"
+      ]
+    },
+    {
+      "question": "- Are permission gates applied via `<Can>` or `requirePermission`?",
+      "answer": "- Is audit logging added for all mutations?",
+      "source_document": "TECH-DEV-08",
+      "source_title": "Code Review Standards",
+      "tags": [
+        "TECH-DEV"
+      ]
+    },
+    {
+      "question": "- Is audit logging added for all mutations?",
+      "answer": "- Are secrets, passwords, or PII never logged?",
+      "source_document": "TECH-DEV-08",
+      "source_title": "Code Review Standards",
+      "tags": [
+        "TECH-DEV"
+      ]
+    },
+    {
+      "question": "- Are secrets, passwords, or PII never logged?",
+      "answer": "- Is file upload validated (type, size, path traversal)?",
+      "source_document": "TECH-DEV-08",
+      "source_title": "Code Review Standards",
+      "tags": [
+        "TECH-DEV"
+      ]
+    },
+    {
+      "question": "- Is file upload validated (type, size, path traversal)?",
+      "answer": "See the Code Review Standards (TECH-DEV-08) document for detailed information.",
+      "source_document": "TECH-DEV-08",
+      "source_title": "Code Review Standards",
+      "tags": [
+        "TECH-DEV"
+      ]
+    },
+    {
+      "question": "- Are paginated queries using `LIMIT` and `OFFSET`?",
+      "answer": "- Is Redis caching applied for expensive or repeated queries?",
+      "source_document": "TECH-DEV-08",
+      "source_title": "Code Review Standards",
+      "tags": [
+        "TECH-DEV"
+      ]
+    },
+    {
+      "question": "- Is Redis caching applied for expensive or repeated queries?",
+      "answer": "- Are indexes present for new query patterns?",
+      "source_document": "TECH-DEV-08",
+      "source_title": "Code Review Standards",
+      "tags": [
+        "TECH-DEV"
+      ]
+    },
+    {
+      "question": "- Are indexes present for new query patterns?",
+      "answer": "See the Code Review Standards (TECH-DEV-08) document for detailed information.",
+      "source_document": "TECH-DEV-08",
+      "source_title": "Code Review Standards",
+      "tags": [
+        "TECH-DEV"
+      ]
+    },
+    {
+      "question": "- Does the code follow TECH-DEV-01 (TypeScript) standards?",
+      "answer": "- Are imports grouped correctly?",
+      "source_document": "TECH-DEV-08",
+      "source_title": "Code Review Standards",
+      "tags": [
+        "TECH-DEV"
+      ]
+    },
+    {
+      "question": "- Are imports grouped correctly?",
+      "answer": "- Are functions and variables named per TECH-DEV-04?",
+      "source_document": "TECH-DEV-08",
+      "source_title": "Code Review Standards",
+      "tags": [
+        "TECH-DEV"
+      ]
+    },
+    {
+      "question": "- Are functions and variables named per TECH-DEV-04?",
+      "answer": "- Are there no debug logs, `console.log`, or commented-out code?",
+      "source_document": "TECH-DEV-08",
+      "source_title": "Code Review Standards",
+      "tags": [
+        "TECH-DEV"
+      ]
+    },
+    {
+      "question": "- Are there no debug logs, `console.log`, or commented-out code?",
+      "answer": "See the Code Review Standards (TECH-DEV-08) document for detailed information.",
+      "source_document": "TECH-DEV-08",
+      "source_title": "Code Review Standards",
+      "tags": [
+        "TECH-DEV"
+      ]
+    },
+    {
+      "question": "- Are unit tests added for new services/functions?",
+      "answer": "- Are integration tests added for new endpoints?",
+      "source_document": "TECH-DEV-08",
+      "source_title": "Code Review Standards",
+      "tags": [
+        "TECH-DEV"
+      ]
+    },
+    {
+      "question": "- Are integration tests added for new endpoints?",
+      "answer": "- Do tests cover success paths AND error paths?",
+      "source_document": "TECH-DEV-08",
+      "source_title": "Code Review Standards",
+      "tags": [
+        "TECH-DEV"
+      ]
+    },
+    {
+      "question": "- Do tests cover success paths AND error paths?",
+      "answer": "- Are edge cases tested?",
+      "source_document": "TECH-DEV-08",
+      "source_title": "Code Review Standards",
+      "tags": [
+        "TECH-DEV"
+      ]
+    }
+  ]
+}

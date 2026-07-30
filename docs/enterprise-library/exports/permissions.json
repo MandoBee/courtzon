@@ -1,0 +1,3997 @@
+{
+  "permissions": [
+    {
+      "permission": "org.bookings.manage",
+      "type": "inline",
+      "sourceDoc": "ADMIN-02"
+    },
+    {
+      "permission": "org.bookings.update-status",
+      "type": "inline",
+      "sourceDoc": "ADMIN-02"
+    },
+    {
+      "permission": "bookings.view",
+      "type": "inline",
+      "sourceDoc": "ADMIN-02"
+    },
+    {
+      "permission": "BOOKING.CANCEL",
+      "type": "inline",
+      "sourceDoc": "ADMIN-02"
+    },
+    {
+      "permission": "BOOKING.CREATE",
+      "type": "inline",
+      "sourceDoc": "ADMIN-02"
+    },
+    {
+      "permission": "BOOKING.REFUND",
+      "type": "inline",
+      "sourceDoc": "ADMIN-02"
+    },
+    {
+      "permission": "BOOKING.STATUS_CHANGE",
+      "type": "inline",
+      "sourceDoc": "ADMIN-02"
+    },
+    {
+      "permission": "BOOKING.CHECK_IN",
+      "type": "inline",
+      "sourceDoc": "ADMIN-02"
+    },
+    {
+      "permission": "BOOKING.START_MATCHMAKING",
+      "type": "inline",
+      "sourceDoc": "ADMIN-02"
+    },
+    {
+      "permission": "BOOKING.APPLY",
+      "type": "inline",
+      "sourceDoc": "ADMIN-02"
+    },
+    {
+      "permission": "BOOKING.RESPOND_APPLICANT",
+      "type": "inline",
+      "sourceDoc": "ADMIN-02"
+    },
+    {
+      "permission": "BOOKING.CANCEL_APPLICATION",
+      "type": "inline",
+      "sourceDoc": "ADMIN-02"
+    },
+    {
+      "permission": "financial.reconcile",
+      "type": "inline",
+      "sourceDoc": "ADMIN-02"
+    },
+    {
+      "permission": "PAYMENT.REFUND",
+      "type": "inline",
+      "sourceDoc": "ADMIN-02"
+    },
+    {
+      "permission": "PAYMENT.PROCESS",
+      "type": "inline",
+      "sourceDoc": "ADMIN-02"
+    },
+    {
+      "permission": "PAYMENT.CONFIRM",
+      "type": "inline",
+      "sourceDoc": "ADMIN-02"
+    },
+    {
+      "permission": "PAYMENT.WEBHOOK",
+      "type": "inline",
+      "sourceDoc": "ADMIN-02"
+    },
+    {
+      "permission": "PAYMENT.RECOVER",
+      "type": "inline",
+      "sourceDoc": "ADMIN-02"
+    },
+    {
+      "permission": "RECONCILIATION.RUN",
+      "type": "inline",
+      "sourceDoc": "ADMIN-02"
+    },
+    {
+      "permission": "ORGANISATION.UPDATE",
+      "type": "inline",
+      "sourceDoc": "ADMIN-02"
+    },
+    {
+      "permission": "ORG_PROFILE.UPDATE",
+      "type": "inline",
+      "sourceDoc": "ADMIN-02"
+    },
+    {
+      "permission": "BRANCH_ACCESS.UPDATE_STATUS",
+      "type": "inline",
+      "sourceDoc": "ADMIN-02"
+    },
+    {
+      "permission": "org.members.manage",
+      "type": "inline",
+      "sourceDoc": "ADMIN-02"
+    },
+    {
+      "permission": "org.branches.manage",
+      "type": "inline",
+      "sourceDoc": "ADMIN-02"
+    },
+    {
+      "permission": "org.settings.shipping-rates-tab",
+      "type": "inline",
+      "sourceDoc": "ADMIN-02"
+    },
+    {
+      "permission": "org.settings.edit",
+      "type": "inline",
+      "sourceDoc": "ADMIN-02"
+    },
+    {
+      "permission": "marketplace.sell",
+      "type": "inline",
+      "sourceDoc": "ADMIN-02"
+    },
+    {
+      "permission": "marketplace.moderate",
+      "type": "inline",
+      "sourceDoc": "ADMIN-02"
+    },
+    {
+      "permission": "inventory.warehouses.view",
+      "type": "inline",
+      "sourceDoc": "ADMIN-02"
+    },
+    {
+      "permission": "inventory.warehouses.manage",
+      "type": "inline",
+      "sourceDoc": "ADMIN-02"
+    },
+    {
+      "permission": "inventory.suppliers.view",
+      "type": "inline",
+      "sourceDoc": "ADMIN-02"
+    },
+    {
+      "permission": "inventory.suppliers.manage",
+      "type": "inline",
+      "sourceDoc": "ADMIN-02"
+    },
+    {
+      "permission": "inventory.purchase-orders.view",
+      "type": "inline",
+      "sourceDoc": "ADMIN-02"
+    },
+    {
+      "permission": "inventory.purchase-orders.manage",
+      "type": "inline",
+      "sourceDoc": "ADMIN-02"
+    },
+    {
+      "permission": "inventory.stock.manage",
+      "type": "inline",
+      "sourceDoc": "ADMIN-02"
+    },
+    {
+      "permission": "inventory.stock.view",
+      "type": "inline",
+      "sourceDoc": "ADMIN-02"
+    },
+    {
+      "permission": "inventory.controller.ts",
+      "type": "inline",
+      "sourceDoc": "ADMIN-02"
+    },
+    {
+      "permission": "marketplace.seller.settlements",
+      "type": "inline",
+      "sourceDoc": "ADMIN-02"
+    },
+    {
+      "permission": "marketplace.seller.request-settlement",
+      "type": "inline",
+      "sourceDoc": "ADMIN-02"
+    },
+    {
+      "permission": "academy.programs.*",
+      "type": "inline",
+      "sourceDoc": "ADMIN-02"
+    },
+    {
+      "permission": "academy.groups.*",
+      "type": "inline",
+      "sourceDoc": "ADMIN-02"
+    },
+    {
+      "permission": "academy.enrollments.*",
+      "type": "inline",
+      "sourceDoc": "ADMIN-02"
+    },
+    {
+      "permission": "academy.sessions.*",
+      "type": "inline",
+      "sourceDoc": "ADMIN-02"
+    },
+    {
+      "permission": "academy.attendance.*",
+      "type": "inline",
+      "sourceDoc": "ADMIN-02"
+    },
+    {
+      "permission": "academy.dashboard.view",
+      "type": "inline",
+      "sourceDoc": "ADMIN-02"
+    },
+    {
+      "permission": "program.repository.ts",
+      "type": "inline",
+      "sourceDoc": "ADMIN-02"
+    },
+    {
+      "permission": "attendance.repository.ts",
+      "type": "inline",
+      "sourceDoc": "ADMIN-02"
+    },
+    {
+      "permission": "tournament.create",
+      "type": "inline",
+      "sourceDoc": "ADMIN-02"
+    },
+    {
+      "permission": "tournament.view",
+      "type": "inline",
+      "sourceDoc": "ADMIN-02"
+    },
+    {
+      "permission": "tournament.update",
+      "type": "inline",
+      "sourceDoc": "ADMIN-02"
+    },
+    {
+      "permission": "tournament.publish",
+      "type": "inline",
+      "sourceDoc": "ADMIN-02"
+    },
+    {
+      "permission": "tournament.manage",
+      "type": "inline",
+      "sourceDoc": "ADMIN-02"
+    },
+    {
+      "permission": "tournament.delete",
+      "type": "inline",
+      "sourceDoc": "ADMIN-02"
+    },
+    {
+      "permission": "tournament.dashboard.view",
+      "type": "inline",
+      "sourceDoc": "ADMIN-02"
+    },
+    {
+      "permission": "match.result.recorded",
+      "type": "inline",
+      "sourceDoc": "ADMIN-02"
+    },
+    {
+      "permission": "season.*",
+      "type": "inline",
+      "sourceDoc": "ADMIN-02"
+    },
+    {
+      "permission": "league.*",
+      "type": "inline",
+      "sourceDoc": "ADMIN-02"
+    },
+    {
+      "permission": "league.divisions.*",
+      "type": "inline",
+      "sourceDoc": "ADMIN-02"
+    },
+    {
+      "permission": "league.teams.*",
+      "type": "inline",
+      "sourceDoc": "ADMIN-02"
+    },
+    {
+      "permission": "league.fixtures.*",
+      "type": "inline",
+      "sourceDoc": "ADMIN-02"
+    },
+    {
+      "permission": "league.matches.*",
+      "type": "inline",
+      "sourceDoc": "ADMIN-02"
+    },
+    {
+      "permission": "league.standings.*",
+      "type": "inline",
+      "sourceDoc": "ADMIN-02"
+    },
+    {
+      "permission": "league.statistics.*",
+      "type": "inline",
+      "sourceDoc": "ADMIN-02"
+    },
+    {
+      "permission": "fixtures.generated",
+      "type": "inline",
+      "sourceDoc": "ADMIN-02"
+    },
+    {
+      "permission": "crm.customers.view",
+      "type": "inline",
+      "sourceDoc": "ADMIN-02"
+    },
+    {
+      "permission": "crm.segments.view",
+      "type": "inline",
+      "sourceDoc": "ADMIN-02"
+    },
+    {
+      "permission": "crm.segments.manage",
+      "type": "inline",
+      "sourceDoc": "ADMIN-02"
+    },
+    {
+      "permission": "crm.leads.view",
+      "type": "inline",
+      "sourceDoc": "ADMIN-02"
+    },
+    {
+      "permission": "crm.leads.manage",
+      "type": "inline",
+      "sourceDoc": "ADMIN-02"
+    },
+    {
+      "permission": "crm.campaigns.view",
+      "type": "inline",
+      "sourceDoc": "ADMIN-02"
+    },
+    {
+      "permission": "crm.campaigns.manage",
+      "type": "inline",
+      "sourceDoc": "ADMIN-02"
+    },
+    {
+      "permission": "crm.communications.view",
+      "type": "inline",
+      "sourceDoc": "ADMIN-02"
+    },
+    {
+      "permission": "crm.dashboard.view",
+      "type": "inline",
+      "sourceDoc": "ADMIN-02"
+    },
+    {
+      "permission": "hr.departments.*",
+      "type": "inline",
+      "sourceDoc": "ADMIN-02"
+    },
+    {
+      "permission": "hr.positions.*",
+      "type": "inline",
+      "sourceDoc": "ADMIN-02"
+    },
+    {
+      "permission": "hr.employees.*",
+      "type": "inline",
+      "sourceDoc": "ADMIN-02"
+    },
+    {
+      "permission": "hr.contracts.*",
+      "type": "inline",
+      "sourceDoc": "ADMIN-02"
+    },
+    {
+      "permission": "hr.leaves.*",
+      "type": "inline",
+      "sourceDoc": "ADMIN-02"
+    },
+    {
+      "permission": "hr.attendance.*",
+      "type": "inline",
+      "sourceDoc": "ADMIN-02"
+    },
+    {
+      "permission": "hr.payroll.*",
+      "type": "inline",
+      "sourceDoc": "ADMIN-02"
+    },
+    {
+      "permission": "hr.dashboard.view",
+      "type": "inline",
+      "sourceDoc": "ADMIN-02"
+    },
+    {
+      "permission": "hr.employees.view",
+      "type": "inline",
+      "sourceDoc": "ADMIN-02"
+    },
+    {
+      "permission": "hr.employees.manage",
+      "type": "inline",
+      "sourceDoc": "ADMIN-02"
+    },
+    {
+      "permission": "hr.departments.view",
+      "type": "inline",
+      "sourceDoc": "ADMIN-02"
+    },
+    {
+      "permission": "hr.departments.manage",
+      "type": "inline",
+      "sourceDoc": "ADMIN-02"
+    },
+    {
+      "permission": "hr.leaves.requests.view",
+      "type": "inline",
+      "sourceDoc": "ADMIN-02"
+    },
+    {
+      "permission": "hr.leaves.requests.manage",
+      "type": "inline",
+      "sourceDoc": "ADMIN-02"
+    },
+    {
+      "permission": "hr.leaves.requests.approve",
+      "type": "inline",
+      "sourceDoc": "ADMIN-02"
+    },
+    {
+      "permission": "hr.attendance.manage",
+      "type": "inline",
+      "sourceDoc": "ADMIN-02"
+    },
+    {
+      "permission": "hr.attendance.view",
+      "type": "inline",
+      "sourceDoc": "ADMIN-02"
+    },
+    {
+      "permission": "hr.payroll.runs.view",
+      "type": "inline",
+      "sourceDoc": "ADMIN-02"
+    },
+    {
+      "permission": "hr.payroll.runs.manage",
+      "type": "inline",
+      "sourceDoc": "ADMIN-02"
+    },
+    {
+      "permission": "hr.payroll.runs.calculate",
+      "type": "inline",
+      "sourceDoc": "ADMIN-02"
+    },
+    {
+      "permission": "hr.payroll.runs.approve",
+      "type": "inline",
+      "sourceDoc": "ADMIN-02"
+    },
+    {
+      "permission": "hr.payroll.runs.post",
+      "type": "inline",
+      "sourceDoc": "ADMIN-02"
+    },
+    {
+      "permission": "bi.dashboard.view",
+      "type": "inline",
+      "sourceDoc": "ADMIN-02"
+    },
+    {
+      "permission": "bi.export",
+      "type": "inline",
+      "sourceDoc": "ADMIN-02"
+    },
+    {
+      "permission": "bi.observability.view",
+      "type": "inline",
+      "sourceDoc": "ADMIN-02"
+    },
+    {
+      "permission": "bi.kpi.view",
+      "type": "inline",
+      "sourceDoc": "ADMIN-02"
+    },
+    {
+      "permission": "ledger.entry.created",
+      "type": "inline",
+      "sourceDoc": "BIZ-ARCH-06"
+    },
+    {
+      "permission": "eligibility.service.ts",
+      "type": "inline",
+      "sourceDoc": "BIZ-ARCH-10"
+    },
+    {
+      "permission": "matchmaking.service.ts",
+      "type": "inline",
+      "sourceDoc": "BIZ-ARCH-10"
+    },
+    {
+      "permission": "settlement.service.ts",
+      "type": "inline",
+      "sourceDoc": "BIZ-ARCH-10"
+    },
+    {
+      "permission": "commission.service.ts",
+      "type": "inline",
+      "sourceDoc": "BIZ-ARCH-10"
+    },
+    {
+      "permission": "coach.provider.ts",
+      "type": "inline",
+      "sourceDoc": "BIZ-ARCH-10"
+    },
+    {
+      "permission": "court.provider.ts",
+      "type": "inline",
+      "sourceDoc": "BIZ-ARCH-10"
+    },
+    {
+      "permission": "referee.provider.ts",
+      "type": "inline",
+      "sourceDoc": "BIZ-ARCH-10"
+    },
+    {
+      "permission": "roles.*",
+      "type": "inline",
+      "sourceDoc": "BIZ-PROD-02"
+    },
+    {
+      "permission": "permissions.*",
+      "type": "inline",
+      "sourceDoc": "BIZ-PROD-02"
+    },
+    {
+      "permission": "admin.users.*",
+      "type": "inline",
+      "sourceDoc": "BIZ-PROD-02"
+    },
+    {
+      "permission": "feature_flags.*",
+      "type": "inline",
+      "sourceDoc": "BIZ-PROD-02"
+    },
+    {
+      "permission": "branches.request-access",
+      "type": "inline",
+      "sourceDoc": "BIZ-PROD-02"
+    },
+    {
+      "permission": "bookings.create",
+      "type": "inline",
+      "sourceDoc": "BIZ-PROD-02"
+    },
+    {
+      "permission": "bookings.matchmaking",
+      "type": "inline",
+      "sourceDoc": "BIZ-PROD-02"
+    },
+    {
+      "permission": "bookings.cancel",
+      "type": "inline",
+      "sourceDoc": "BIZ-PROD-02"
+    },
+    {
+      "permission": "bookings.check-in",
+      "type": "inline",
+      "sourceDoc": "BIZ-PROD-02"
+    },
+    {
+      "permission": "matches.view",
+      "type": "inline",
+      "sourceDoc": "BIZ-PROD-02"
+    },
+    {
+      "permission": "tournaments.create",
+      "type": "inline",
+      "sourceDoc": "BIZ-PROD-02"
+    },
+    {
+      "permission": "tournaments.manage_brackets",
+      "type": "inline",
+      "sourceDoc": "BIZ-PROD-02"
+    },
+    {
+      "permission": "tournaments.enter_scores",
+      "type": "inline",
+      "sourceDoc": "BIZ-PROD-02"
+    },
+    {
+      "permission": "academies.create",
+      "type": "inline",
+      "sourceDoc": "BIZ-PROD-02"
+    },
+    {
+      "permission": "academies.edit",
+      "type": "inline",
+      "sourceDoc": "BIZ-PROD-02"
+    },
+    {
+      "permission": "academies.evaluate",
+      "type": "inline",
+      "sourceDoc": "BIZ-PROD-02"
+    },
+    {
+      "permission": "leagues.create",
+      "type": "inline",
+      "sourceDoc": "BIZ-PROD-02"
+    },
+    {
+      "permission": "leagues.manage_teams",
+      "type": "inline",
+      "sourceDoc": "BIZ-PROD-02"
+    },
+    {
+      "permission": "leagues.schedule",
+      "type": "inline",
+      "sourceDoc": "BIZ-PROD-02"
+    },
+    {
+      "permission": "coaches.manage_profile",
+      "type": "inline",
+      "sourceDoc": "BIZ-PROD-02"
+    },
+    {
+      "permission": "coaches.book",
+      "type": "inline",
+      "sourceDoc": "BIZ-PROD-02"
+    },
+    {
+      "permission": "coaches.*",
+      "type": "inline",
+      "sourceDoc": "BIZ-PROD-02"
+    },
+    {
+      "permission": "coaches.availability.manage",
+      "type": "inline",
+      "sourceDoc": "BIZ-PROD-02"
+    },
+    {
+      "permission": "crm.leads.*",
+      "type": "inline",
+      "sourceDoc": "BIZ-PROD-02"
+    },
+    {
+      "permission": "crm.campaigns.*",
+      "type": "inline",
+      "sourceDoc": "BIZ-PROD-02"
+    },
+    {
+      "permission": "player.dashboard.view",
+      "type": "inline",
+      "sourceDoc": "BIZ-PROD-02"
+    },
+    {
+      "permission": "player.search",
+      "type": "inline",
+      "sourceDoc": "BIZ-PROD-02"
+    },
+    {
+      "permission": "player.favorites.manage",
+      "type": "inline",
+      "sourceDoc": "BIZ-PROD-02"
+    },
+    {
+      "permission": "player.achievements.view",
+      "type": "inline",
+      "sourceDoc": "BIZ-PROD-02"
+    },
+    {
+      "permission": "player.qr.view",
+      "type": "inline",
+      "sourceDoc": "BIZ-PROD-02"
+    },
+    {
+      "permission": "player.devices.manage",
+      "type": "inline",
+      "sourceDoc": "BIZ-PROD-02"
+    },
+    {
+      "permission": "system_settings.*",
+      "type": "inline",
+      "sourceDoc": "BIZ-PROD-02"
+    },
+    {
+      "permission": "system_health.view",
+      "type": "inline",
+      "sourceDoc": "BIZ-PROD-02"
+    },
+    {
+      "permission": "cache.manage",
+      "type": "inline",
+      "sourceDoc": "BIZ-PROD-02"
+    },
+    {
+      "permission": "queue.*",
+      "type": "inline",
+      "sourceDoc": "BIZ-PROD-02"
+    },
+    {
+      "permission": "appearance.role-customize",
+      "type": "inline",
+      "sourceDoc": "BIZ-PROD-02"
+    },
+    {
+      "permission": "bookings.create.date",
+      "type": "inline",
+      "sourceDoc": "BIZ-PROD-03"
+    },
+    {
+      "permission": "bookings.create.start-time",
+      "type": "inline",
+      "sourceDoc": "BIZ-PROD-03"
+    },
+    {
+      "permission": "bookings.create.end-time",
+      "type": "inline",
+      "sourceDoc": "BIZ-PROD-03"
+    },
+    {
+      "permission": "bookings.create.notes",
+      "type": "inline",
+      "sourceDoc": "BIZ-PROD-03"
+    },
+    {
+      "permission": "matches.apply",
+      "type": "inline",
+      "sourceDoc": "BIZ-PROD-03"
+    },
+    {
+      "permission": "matches.cancel",
+      "type": "inline",
+      "sourceDoc": "BIZ-PROD-03"
+    },
+    {
+      "permission": "bookings.manage-applicants",
+      "type": "inline",
+      "sourceDoc": "BIZ-PROD-03"
+    },
+    {
+      "permission": "admin.bookings.view",
+      "type": "inline",
+      "sourceDoc": "BIZ-PROD-03"
+    },
+    {
+      "permission": "admin.bookings.update-status",
+      "type": "inline",
+      "sourceDoc": "BIZ-PROD-03"
+    },
+    {
+      "permission": "activities.service.ts",
+      "type": "inline",
+      "sourceDoc": "BIZ-PROD-06"
+    },
+    {
+      "permission": "user.account_type",
+      "type": "inline",
+      "sourceDoc": "GOV-ADR-001"
+    },
+    {
+      "permission": "settlement.created",
+      "type": "inline",
+      "sourceDoc": "GOV-ADR-003"
+    },
+    {
+      "permission": "transaction.repository.ts",
+      "type": "inline",
+      "sourceDoc": "GOV-ADR-004"
+    },
+    {
+      "permission": "program.service.ts",
+      "type": "inline",
+      "sourceDoc": "GOV-ADR-008"
+    },
+    {
+      "permission": "enrollment.service.ts",
+      "type": "inline",
+      "sourceDoc": "GOV-ADR-008"
+    },
+    {
+      "permission": "t.format",
+      "type": "inline",
+      "sourceDoc": "GOV-ADR-009"
+    },
+    {
+      "permission": "auth.controller.ts",
+      "type": "inline",
+      "sourceDoc": "GOV-ADR-012"
+    },
+    {
+      "permission": "dispatcher.service.ts",
+      "type": "inline",
+      "sourceDoc": "GOV-ADR-014"
+    },
+    {
+      "permission": "push.provider.ts",
+      "type": "inline",
+      "sourceDoc": "GOV-ADR-014"
+    },
+    {
+      "permission": "email.provider.ts",
+      "type": "inline",
+      "sourceDoc": "GOV-ADR-014"
+    },
+    {
+      "permission": "sms.provider.ts",
+      "type": "inline",
+      "sourceDoc": "GOV-ADR-014"
+    },
+    {
+      "permission": "whatsapp.provider.ts",
+      "type": "inline",
+      "sourceDoc": "GOV-ADR-014"
+    },
+    {
+      "permission": "webhook.provider.ts",
+      "type": "inline",
+      "sourceDoc": "GOV-ADR-014"
+    },
+    {
+      "permission": "booking.concurrency.spec.ts",
+      "type": "inline",
+      "sourceDoc": "GOV-ADR-015"
+    },
+    {
+      "permission": "rbac.repository.ts",
+      "type": "inline",
+      "sourceDoc": "GOV-ADR-016"
+    },
+    {
+      "permission": "rbac.service.ts",
+      "type": "inline",
+      "sourceDoc": "GOV-ADR-016"
+    },
+    {
+      "permission": "for...of",
+      "type": "inline",
+      "sourceDoc": "GOV-ADR-017"
+    },
+    {
+      "permission": "scheduling.controller.ts",
+      "type": "inline",
+      "sourceDoc": "GOV-ADR-017"
+    },
+    {
+      "permission": "academy.types.ts",
+      "type": "inline",
+      "sourceDoc": "GOV-ADR-020"
+    },
+    {
+      "permission": "attendance.types.ts",
+      "type": "inline",
+      "sourceDoc": "GOV-ADR-020"
+    },
+    {
+      "permission": "crm.controller.ts",
+      "type": "inline",
+      "sourceDoc": "GOV-ADR-022"
+    },
+    {
+      "permission": "variant.quantity",
+      "type": "inline",
+      "sourceDoc": "GOV-ADR-023"
+    },
+    {
+      "permission": "product_variants.quantity",
+      "type": "inline",
+      "sourceDoc": "GOV-ADR-023"
+    },
+    {
+      "permission": "auth.middleware.ts",
+      "type": "inline",
+      "sourceDoc": "GOV-ADR-024"
+    },
+    {
+      "permission": "NNN_descriptive_name.sql",
+      "type": "inline",
+      "sourceDoc": "GOV-ADR-025"
+    },
+    {
+      "permission": "migrate.sh",
+      "type": "inline",
+      "sourceDoc": "GOV-ADR-025"
+    },
+    {
+      "permission": "2.0",
+      "type": "inline",
+      "sourceDoc": "OPS-DEPLOY-01"
+    },
+    {
+      "permission": "0.5",
+      "type": "inline",
+      "sourceDoc": "OPS-DEPLOY-01"
+    },
+    {
+      "permission": "1.0",
+      "type": "inline",
+      "sourceDoc": "OPS-DEPLOY-01"
+    },
+    {
+      "permission": "nginx.conf",
+      "type": "inline",
+      "sourceDoc": "OPS-DEPLOY-01"
+    },
+    {
+      "permission": "001_courtzon_v3.sql",
+      "type": "inline",
+      "sourceDoc": "OPS-DEPLOY-01"
+    },
+    {
+      "permission": "001_baseline.sql",
+      "type": "inline",
+      "sourceDoc": "OPS-DEPLOY-01"
+    },
+    {
+      "permission": "app.ts",
+      "type": "inline",
+      "sourceDoc": "OPS-DEPLOY-01"
+    },
+    {
+      "permission": "courtzon_.*",
+      "type": "inline",
+      "sourceDoc": "OPS-MON-01"
+    },
+    {
+      "permission": "alertmanager.yml",
+      "type": "inline",
+      "sourceDoc": "OPS-MON-01"
+    },
+    {
+      "permission": "index.html",
+      "type": "inline",
+      "sourceDoc": "OPS-RUN-02"
+    },
+    {
+      "permission": "health.service.ts",
+      "type": "inline",
+      "sourceDoc": "OPS-RUN-02"
+    },
+    {
+      "permission": "metrics.ts",
+      "type": "inline",
+      "sourceDoc": "OPS-RUN-02"
+    },
+    {
+      "permission": "payment.service.ts",
+      "type": "inline",
+      "sourceDoc": "OPS-RUN-02"
+    },
+    {
+      "permission": "vitest.config.ts",
+      "type": "inline",
+      "sourceDoc": "QUAL-TEST-01"
+    },
+    {
+      "permission": "jest.config.ts",
+      "type": "inline",
+      "sourceDoc": "QUAL-TEST-01"
+    },
+    {
+      "permission": "playwright.config.ts",
+      "type": "inline",
+      "sourceDoc": "QUAL-TEST-01"
+    },
+    {
+      "permission": "stryker.config.json",
+      "type": "inline",
+      "sourceDoc": "QUAL-TEST-01"
+    },
+    {
+      "permission": "tsconfig.json",
+      "type": "inline",
+      "sourceDoc": "QUAL-TEST-01"
+    },
+    {
+      "permission": "vi.mock",
+      "type": "inline",
+      "sourceDoc": "QUAL-TEST-02"
+    },
+    {
+      "permission": "eventBusV2.emit",
+      "type": "inline",
+      "sourceDoc": "QUAL-TEST-02"
+    },
+    {
+      "permission": "vi.spyOn",
+      "type": "inline",
+      "sourceDoc": "QUAL-TEST-02"
+    },
+    {
+      "permission": "organisations.edit.branches",
+      "type": "inline",
+      "sourceDoc": "QUAL-TEST-03"
+    },
+    {
+      "permission": "branch.repository.ts",
+      "type": "inline",
+      "sourceDoc": "QUAL-TEST-03"
+    },
+    {
+      "permission": "SUBSCRIPTION_REQUEST.APPROVE",
+      "type": "inline",
+      "sourceDoc": "QUAL-TEST-03"
+    },
+    {
+      "permission": "SUBSCRIPTION.ACTIVATED",
+      "type": "inline",
+      "sourceDoc": "QUAL-TEST-03"
+    },
+    {
+      "permission": "purchase_order_items.received_qty",
+      "type": "inline",
+      "sourceDoc": "QUAL-TEST-03"
+    },
+    {
+      "permission": "inventory.routes.ts",
+      "type": "inline",
+      "sourceDoc": "QUAL-TEST-03"
+    },
+    {
+      "permission": "marketplace.service.ts",
+      "type": "inline",
+      "sourceDoc": "QUAL-TEST-03"
+    },
+    {
+      "permission": "lifecycle.ts",
+      "type": "inline",
+      "sourceDoc": "QUAL-TEST-03"
+    },
+    {
+      "permission": "tournament.*",
+      "type": "inline",
+      "sourceDoc": "QUAL-TEST-03"
+    },
+    {
+      "permission": "data.id",
+      "type": "inline",
+      "sourceDoc": "QUAL-TEST-03"
+    },
+    {
+      "permission": "data.lastActivity",
+      "type": "inline",
+      "sourceDoc": "QUAL-TEST-03"
+    },
+    {
+      "permission": "hr.payroll.runs.*",
+      "type": "inline",
+      "sourceDoc": "QUAL-TEST-03"
+    },
+    {
+      "permission": "data.revenue.last30d",
+      "type": "inline",
+      "sourceDoc": "QUAL-TEST-03"
+    },
+    {
+      "permission": "data.revenue.last7d",
+      "type": "inline",
+      "sourceDoc": "QUAL-TEST-03"
+    },
+    {
+      "permission": "data.bookings.last30d",
+      "type": "inline",
+      "sourceDoc": "QUAL-TEST-03"
+    },
+    {
+      "permission": "data.activeUsers",
+      "type": "inline",
+      "sourceDoc": "QUAL-TEST-03"
+    },
+    {
+      "permission": "data.activeOrganisations",
+      "type": "inline",
+      "sourceDoc": "QUAL-TEST-03"
+    },
+    {
+      "permission": "checks.memory.status",
+      "type": "inline",
+      "sourceDoc": "QUAL-TEST-03"
+    },
+    {
+      "permission": "booking.types.ts",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-03"
+    },
+    {
+      "permission": "ErrorCodes.TOURNAMENT_INVALID_TRANSITION",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-03"
+    },
+    {
+      "permission": "AGENTS.md",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-05"
+    },
+    {
+      "permission": "integration.api-keys.manage",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-06"
+    },
+    {
+      "permission": "users.view",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-07"
+    },
+    {
+      "permission": "users.create",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-07"
+    },
+    {
+      "permission": "users.edit",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-07"
+    },
+    {
+      "permission": "users.delete",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-07"
+    },
+    {
+      "permission": "users.edit.first-name",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-07"
+    },
+    {
+      "permission": "users.edit.email",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-07"
+    },
+    {
+      "permission": "users.view-bookings",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-07"
+    },
+    {
+      "permission": "users.view-orders",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-07"
+    },
+    {
+      "permission": "platform.admin",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-07"
+    },
+    {
+      "permission": "BullMQ.Queue",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-10"
+    },
+    {
+      "permission": "process.memory",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-11"
+    },
+    {
+      "permission": "financial.withdraw",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-14"
+    },
+    {
+      "permission": "wallet.deposited",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-14"
+    },
+    {
+      "permission": "wallet.withdrawn",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-14"
+    },
+    {
+      "permission": "org.announcements.manage",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-15"
+    },
+    {
+      "permission": "org.documents.manage",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-15"
+    },
+    {
+      "permission": "org.gallery.manage",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-15"
+    },
+    {
+      "permission": "organisation.routes.ts",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-15"
+    },
+    {
+      "permission": "ORGANISATION.CREATE",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-15"
+    },
+    {
+      "permission": "ORGANISATION.DELETE",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-15"
+    },
+    {
+      "permission": "BRANCH.CREATE",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-15"
+    },
+    {
+      "permission": "BRANCH.UPDATE",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-15"
+    },
+    {
+      "permission": "BRANCH.DELETE",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-15"
+    },
+    {
+      "permission": "BRANCH.FINANCIAL.UPDATE",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-15"
+    },
+    {
+      "permission": "BRANCH.SET_AMENITIES",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-15"
+    },
+    {
+      "permission": "BRANCH_ACCESS.REQUEST",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-15"
+    },
+    {
+      "permission": "BRANCH_ACCESS.APPROVE",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-15"
+    },
+    {
+      "permission": "BRANCH_ACCESS.REJECT",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-15"
+    },
+    {
+      "permission": "RESOURCE.CREATE",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-15"
+    },
+    {
+      "permission": "RESOURCE.UPDATE",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-15"
+    },
+    {
+      "permission": "RESOURCE.DELETE",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-15"
+    },
+    {
+      "permission": "RESOURCE_MAINTENANCE.CREATE",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-15"
+    },
+    {
+      "permission": "RESOURCE_MAINTENANCE.UPDATE",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-15"
+    },
+    {
+      "permission": "RESOURCE_MAINTENANCE.DELETE",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-15"
+    },
+    {
+      "permission": "RESOURCE_PEAK_HOURS.UPSERT",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-15"
+    },
+    {
+      "permission": "RESOURCE_TYPE.CREATE",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-15"
+    },
+    {
+      "permission": "SPORT.CREATE",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-15"
+    },
+    {
+      "permission": "SPORT.UPDATE",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-15"
+    },
+    {
+      "permission": "SPORT.DELETE",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-15"
+    },
+    {
+      "permission": "ORG_TYPE.CREATE",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-15"
+    },
+    {
+      "permission": "ORG_TYPE.UPDATE",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-15"
+    },
+    {
+      "permission": "ORG_TYPE.DELETE",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-15"
+    },
+    {
+      "permission": "PLAN.CREATE",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-15"
+    },
+    {
+      "permission": "PLAN.UPDATE",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-15"
+    },
+    {
+      "permission": "PLAN.DELETE",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-15"
+    },
+    {
+      "permission": "PLAN.TOGGLE",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-15"
+    },
+    {
+      "permission": "ORG_SUBSCRIPTION.UPDATE",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-15"
+    },
+    {
+      "permission": "ORG_SUBSCRIPTION.ACTIVATE",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-15"
+    },
+    {
+      "permission": "SUBSCRIPTION.TOGGLE_STATUS",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-15"
+    },
+    {
+      "permission": "SUBSCRIPTION.EXPIRED",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-15"
+    },
+    {
+      "permission": "SUBSCRIPTION_REQUEST.REJECT",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-15"
+    },
+    {
+      "permission": "SUBSCRIPTION.REJECTED",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-15"
+    },
+    {
+      "permission": "ORG_STAFF.ADD",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-15"
+    },
+    {
+      "permission": "ORG_STAFF.UPDATE_ROLE",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-15"
+    },
+    {
+      "permission": "ORG_STAFF.REMOVE",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-15"
+    },
+    {
+      "permission": "ORG_STAFF.UPDATE_PERMISSIONS",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-15"
+    },
+    {
+      "permission": "ORG_COACH.INVITE",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-15"
+    },
+    {
+      "permission": "ORG_COACH.RESPOND",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-15"
+    },
+    {
+      "permission": "ORG_COACH.REMOVE",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-15"
+    },
+    {
+      "permission": "CANCELLATION_POLICY.CREATE",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-15"
+    },
+    {
+      "permission": "CANCELLATION_POLICY.UPDATE",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-15"
+    },
+    {
+      "permission": "CANCELLATION_POLICY.DELETE",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-15"
+    },
+    {
+      "permission": "CANCELLATION_SETTINGS.UPDATE",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-15"
+    },
+    {
+      "permission": "BRANCH_HOLIDAY.CREATE",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-15"
+    },
+    {
+      "permission": "BRANCH_HOLIDAY.UPDATE",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-15"
+    },
+    {
+      "permission": "BRANCH_HOLIDAY.DELETE",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-15"
+    },
+    {
+      "permission": "BRANCH_HOURS.UPDATE",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-15"
+    },
+    {
+      "permission": "ORG_ANNOUNCEMENT.CREATE",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-15"
+    },
+    {
+      "permission": "ORG_ANNOUNCEMENT.UPDATE",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-15"
+    },
+    {
+      "permission": "ORG_ANNOUNCEMENT.DELETE",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-15"
+    },
+    {
+      "permission": "ORG_ANNOUNCEMENT.PUBLISH",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-15"
+    },
+    {
+      "permission": "ORG_DOCUMENT.DELETE",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-15"
+    },
+    {
+      "permission": "ORG_GALLERY.DELETE",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-15"
+    },
+    {
+      "permission": "ORG_PAYMENT_SETTINGS.UPDATE",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-15"
+    },
+    {
+      "permission": "PAYMENT_METHOD.CREATE",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-15"
+    },
+    {
+      "permission": "PAYMENT_METHOD.UPDATE",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-15"
+    },
+    {
+      "permission": "PAYMENT_METHOD.DELETE",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-15"
+    },
+    {
+      "permission": "PAYMENT_GATEWAY.CREATE",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-15"
+    },
+    {
+      "permission": "PAYMENT_GATEWAY.UPDATE",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-15"
+    },
+    {
+      "permission": "PAYMENT_GATEWAY.DELETE",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-15"
+    },
+    {
+      "permission": "organisation_types.id",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-16"
+    },
+    {
+      "permission": "marketplace.seller.manage-orders",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-17"
+    },
+    {
+      "permission": "marketplace.seller.create-product",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-17"
+    },
+    {
+      "permission": "marketplace.seller.delete-product",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-17"
+    },
+    {
+      "permission": "WishlistPage.tsx",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-17"
+    },
+    {
+      "permission": "WAREHOUSE.CREATE",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-18"
+    },
+    {
+      "permission": "WAREHOUSE.UPDATE",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-18"
+    },
+    {
+      "permission": "WAREHOUSE.DELETE",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-18"
+    },
+    {
+      "permission": "SUPPLIER.CREATE",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-18"
+    },
+    {
+      "permission": "SUPPLIER.UPDATE",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-18"
+    },
+    {
+      "permission": "SUPPLIER.DELETE",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-18"
+    },
+    {
+      "permission": "PURCHASE_ORDER.CREATE",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-18"
+    },
+    {
+      "permission": "PURCHASE_ORDER.UPDATE",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-18"
+    },
+    {
+      "permission": "PURCHASE_ORDER.SUBMIT",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-18"
+    },
+    {
+      "permission": "PURCHASE_ORDER.APPROVE",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-18"
+    },
+    {
+      "permission": "PURCHASE_ORDER.RECEIVE",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-18"
+    },
+    {
+      "permission": "PURCHASE_ORDER.CANCEL",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-18"
+    },
+    {
+      "permission": "STOCK_TRANSFER.CREATE",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-18"
+    },
+    {
+      "permission": "STOCK_TRANSFER.COMPLETE",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-18"
+    },
+    {
+      "permission": "STOCK.ADJUST",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-18"
+    },
+    {
+      "permission": "academy.controller.ts",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-19"
+    },
+    {
+      "permission": "academy.enroll",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-19"
+    },
+    {
+      "permission": "academy.sessions.view",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-19"
+    },
+    {
+      "permission": "academy.attendance.view",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-19"
+    },
+    {
+      "permission": "tournament.format",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-20"
+    },
+    {
+      "permission": "tournament.created",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-20"
+    },
+    {
+      "permission": "tournament.repository.ts",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-20"
+    },
+    {
+      "permission": "registration.received",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-20"
+    },
+    {
+      "permission": "standing.repository.ts",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-21"
+    },
+    {
+      "permission": "season.created",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-21"
+    },
+    {
+      "permission": "league.created",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-21"
+    },
+    {
+      "permission": "league.dashboard.view",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-21"
+    },
+    {
+      "permission": "rules.operator",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-22"
+    },
+    {
+      "permission": "CRM.LEAD.CONVERT",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-22"
+    },
+    {
+      "permission": "CRM.SEGMENT.CREATE",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-22"
+    },
+    {
+      "permission": "CRM.SEGMENT.UPDATE",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-22"
+    },
+    {
+      "permission": "CRM.SEGMENT.REFRESH",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-22"
+    },
+    {
+      "permission": "CRM.SEGMENT.DELETE",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-22"
+    },
+    {
+      "permission": "CRM.LEAD.CREATE",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-22"
+    },
+    {
+      "permission": "CRM.LEAD.UPDATE",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-22"
+    },
+    {
+      "permission": "CRM.CAMPAIGN.CREATE",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-22"
+    },
+    {
+      "permission": "CRM.CAMPAIGN.UPDATE",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-22"
+    },
+    {
+      "permission": "CRM.CAMPAIGN.LAUNCH",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-22"
+    },
+    {
+      "permission": "CRM.CAMPAIGN.PAUSE",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-22"
+    },
+    {
+      "permission": "CRM.CAMPAIGN.COMPLETE",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-22"
+    },
+    {
+      "permission": "hr.positions.view",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-23"
+    },
+    {
+      "permission": "hr.positions.manage",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-23"
+    },
+    {
+      "permission": "hr.contracts.view",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-23"
+    },
+    {
+      "permission": "hr.contracts.manage",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-23"
+    },
+    {
+      "permission": "hr.leaves.types.view",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-23"
+    },
+    {
+      "permission": "hr.leaves.types.manage",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-23"
+    },
+    {
+      "permission": "hr.leaves.requests.*",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-23"
+    },
+    {
+      "permission": "hr.leaves.balances.*",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-23"
+    },
+    {
+      "permission": "hr.payroll.components.*",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-23"
+    },
+    {
+      "permission": "Promise.all",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-25"
+    },
+    {
+      "permission": "registry.contentType",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-25"
+    },
+    {
+      "permission": "web_vitals_metrics.lcp",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-25"
+    },
+    {
+      "permission": "web_vitals_metrics.cls",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-25"
+    },
+    {
+      "permission": "web_vitals_metrics.fcp",
+      "type": "inline",
+      "sourceDoc": "TECH-ARCH-25"
+    },
+    {
+      "permission": "resource.repository.ts",
+      "type": "inline",
+      "sourceDoc": "TECH-DB-03"
+    },
+    {
+      "permission": "organisation.repository.ts",
+      "type": "inline",
+      "sourceDoc": "TECH-DB-03"
+    },
+    {
+      "permission": "group.repository.ts",
+      "type": "inline",
+      "sourceDoc": "TECH-DB-03"
+    },
+    {
+      "permission": "enrollment.repository.ts",
+      "type": "inline",
+      "sourceDoc": "TECH-DB-03"
+    },
+    {
+      "permission": "season.repository.ts",
+      "type": "inline",
+      "sourceDoc": "TECH-DB-03"
+    },
+    {
+      "permission": "league.repository.ts",
+      "type": "inline",
+      "sourceDoc": "TECH-DB-03"
+    },
+    {
+      "permission": "division.repository.ts",
+      "type": "inline",
+      "sourceDoc": "TECH-DB-03"
+    },
+    {
+      "permission": "fixture.repository.ts",
+      "type": "inline",
+      "sourceDoc": "TECH-DB-03"
+    },
+    {
+      "permission": "statistics.service.ts",
+      "type": "inline",
+      "sourceDoc": "TECH-DB-03"
+    },
+    {
+      "permission": "statistics.repository.ts",
+      "type": "inline",
+      "sourceDoc": "TECH-DB-03"
+    },
+    {
+      "permission": "vite.config.ts",
+      "type": "inline",
+      "sourceDoc": "TECH-DEV-01"
+    },
+    {
+      "permission": "tailwind.config.js",
+      "type": "inline",
+      "sourceDoc": "TECH-DEV-01"
+    },
+    {
+      "permission": "booking.service.ts",
+      "type": "inline",
+      "sourceDoc": "TECH-DEV-01"
+    },
+    {
+      "permission": "booking.service.spec.ts",
+      "type": "inline",
+      "sourceDoc": "TECH-DEV-01"
+    },
+    {
+      "permission": "BookingStatus.Confirmed",
+      "type": "inline",
+      "sourceDoc": "TECH-DEV-01"
+    },
+    {
+      "permission": "BookingListPage.tsx",
+      "type": "inline",
+      "sourceDoc": "TECH-DEV-02"
+    },
+    {
+      "permission": "Pagination.tsx",
+      "type": "inline",
+      "sourceDoc": "TECH-DEV-02"
+    },
+    {
+      "permission": "App.tsx",
+      "type": "inline",
+      "sourceDoc": "TECH-DEV-02"
+    },
+    {
+      "permission": "index.ts",
+      "type": "inline",
+      "sourceDoc": "TECH-DEV-03"
+    },
+    {
+      "permission": "auth.service.spec.ts",
+      "type": "inline",
+      "sourceDoc": "TECH-DEV-03"
+    },
+    {
+      "permission": "auth.integration.spec.ts",
+      "type": "inline",
+      "sourceDoc": "TECH-DEV-03"
+    },
+    {
+      "permission": "042_add_booking_notes.sql",
+      "type": "inline",
+      "sourceDoc": "TECH-DEV-04"
+    },
+    {
+      "permission": "booking.controller.ts",
+      "type": "inline",
+      "sourceDoc": "TECH-DEV-04"
+    },
+    {
+      "permission": "booking.routes.ts",
+      "type": "inline",
+      "sourceDoc": "TECH-DEV-04"
+    },
+    {
+      "permission": "booking.dto.ts",
+      "type": "inline",
+      "sourceDoc": "TECH-DEV-04"
+    },
+    {
+      "permission": "USER.LOGIN",
+      "type": "inline",
+      "sourceDoc": "TECH-DEV-04"
+    },
+    {
+      "permission": "console.log",
+      "type": "inline",
+      "sourceDoc": "TECH-DEV-08"
+    },
+    {
+      "permission": "package.json",
+      "type": "inline",
+      "sourceDoc": "TECH-DEV-08"
+    },
+    {
+      "permission": "013_notification_templates.sql",
+      "type": "inline",
+      "sourceDoc": "TECH-DEV-10"
+    },
+    {
+      "permission": "014_notification_broadcasts.sql",
+      "type": "inline",
+      "sourceDoc": "TECH-DEV-10"
+    },
+    {
+      "permission": "015_enterprise_platform.sql",
+      "type": "inline",
+      "sourceDoc": "TECH-DEV-10"
+    },
+    {
+      "permission": "016_monitoring_tables.sql",
+      "type": "inline",
+      "sourceDoc": "TECH-DEV-10"
+    },
+    {
+      "permission": "logger.error",
+      "type": "inline",
+      "sourceDoc": "TECH-DEV-13"
+    },
+    {
+      "permission": "request.body",
+      "type": "inline",
+      "sourceDoc": "TECH-DEV-14"
+    },
+    {
+      "permission": "request.query",
+      "type": "inline",
+      "sourceDoc": "TECH-DEV-14"
+    },
+    {
+      "permission": "request.params",
+      "type": "inline",
+      "sourceDoc": "TECH-DEV-14"
+    },
+    {
+      "permission": "app.registration_enabled",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-01"
+    },
+    {
+      "permission": "player.registration_enabled",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-01"
+    },
+    {
+      "permission": "seller.registration_enabled",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-01"
+    },
+    {
+      "permission": "organization.registration_enabled",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-01"
+    },
+    {
+      "permission": "auth.temporary_password_reset_enabled",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-01"
+    },
+    {
+      "permission": "auth.routes.ts",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-01"
+    },
+    {
+      "permission": "auth.service.ts",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-01"
+    },
+    {
+      "permission": "USER.REGISTER",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-01"
+    },
+    {
+      "permission": "USER.LOGIN_FAILED",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-01"
+    },
+    {
+      "permission": "USER.PASSWORD_RESET",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-01"
+    },
+    {
+      "permission": "USER.DELETE",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-01"
+    },
+    {
+      "permission": "module.entity.action",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-02"
+    },
+    {
+      "permission": "users.*",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-02"
+    },
+    {
+      "permission": "bookings.*",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-02"
+    },
+    {
+      "permission": "academy.*",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-02"
+    },
+    {
+      "permission": "hr.*",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-02"
+    },
+    {
+      "permission": "financial.*",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-02"
+    },
+    {
+      "permission": "audit.view",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-02"
+    },
+    {
+      "permission": "bi.*",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-02"
+    },
+    {
+      "permission": "rbac.routes.ts",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-02"
+    },
+    {
+      "permission": "ROLE.CREATE",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-02"
+    },
+    {
+      "permission": "ROLE.UPDATE",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-02"
+    },
+    {
+      "permission": "ROLE.DELETE",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-02"
+    },
+    {
+      "permission": "PERMISSION.ASSIGN",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-02"
+    },
+    {
+      "permission": "PERMISSION.REVOKE",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-02"
+    },
+    {
+      "permission": "PERMISSION.SYNC",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-02"
+    },
+    {
+      "permission": "academy.routes.ts",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-04"
+    },
+    {
+      "permission": "academy.view",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-04"
+    },
+    {
+      "permission": "academy.create",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-04"
+    },
+    {
+      "permission": "academy.update",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-04"
+    },
+    {
+      "permission": "academy.delete",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-04"
+    },
+    {
+      "permission": "academy.publish",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-04"
+    },
+    {
+      "permission": "academy.manage",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-04"
+    },
+    {
+      "permission": "attendance.manage",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-04"
+    },
+    {
+      "permission": "tournament.routes.ts",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-05"
+    },
+    {
+      "permission": "tournament.register",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-05"
+    },
+    {
+      "permission": "tournament.result.manage",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-05"
+    },
+    {
+      "permission": "league.routes.ts",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-06"
+    },
+    {
+      "permission": "league.update",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-06"
+    },
+    {
+      "permission": "league.manage",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-06"
+    },
+    {
+      "permission": "league.delete",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-06"
+    },
+    {
+      "permission": "league.view",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-06"
+    },
+    {
+      "permission": "league.result.manage",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-06"
+    },
+    {
+      "permission": "season.view",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-06"
+    },
+    {
+      "permission": "season.create",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-06"
+    },
+    {
+      "permission": "season.update",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-06"
+    },
+    {
+      "permission": "season.publish",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-06"
+    },
+    {
+      "permission": "season.delete",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-06"
+    },
+    {
+      "permission": "league.create",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-06"
+    },
+    {
+      "permission": "marketplace.routes.ts",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-07"
+    },
+    {
+      "permission": "MARKETPLACE.PRODUCT_CREATE",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-07"
+    },
+    {
+      "permission": "MARKETPLACE.PRODUCT_UPDATE",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-07"
+    },
+    {
+      "permission": "MARKETPLACE.PRODUCT_DELETE",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-07"
+    },
+    {
+      "permission": "MARKETPLACE.ORDER_STATUS",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-07"
+    },
+    {
+      "permission": "app.marketplace_enabled",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-07"
+    },
+    {
+      "permission": "payment.routes.ts",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-09"
+    },
+    {
+      "permission": "payment.controller.ts",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-09"
+    },
+    {
+      "permission": "wallet.routes.ts",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-10"
+    },
+    {
+      "permission": "wallet.controller.ts",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-10"
+    },
+    {
+      "permission": "wallet.service.ts",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-10"
+    },
+    {
+      "permission": "WALLET.CREATE",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-10"
+    },
+    {
+      "permission": "WALLET.CREDIT",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-10"
+    },
+    {
+      "permission": "WALLET.DEBIT",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-10"
+    },
+    {
+      "permission": "WALLET.ADJUST",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-10"
+    },
+    {
+      "permission": "financial.view",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-11"
+    },
+    {
+      "permission": "financial.process_payouts",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-11"
+    },
+    {
+      "permission": "accounting.routes.ts",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-12"
+    },
+    {
+      "permission": "accounting.coa.view",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-12"
+    },
+    {
+      "permission": "accounting.coa.manage",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-12"
+    },
+    {
+      "permission": "accounting.periods.view",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-12"
+    },
+    {
+      "permission": "accounting.periods.manage",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-12"
+    },
+    {
+      "permission": "accounting.gl.view",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-12"
+    },
+    {
+      "permission": "accounting.journal.create",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-12"
+    },
+    {
+      "permission": "accounting.journal.view",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-12"
+    },
+    {
+      "permission": "accounting.invoices.view",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-12"
+    },
+    {
+      "permission": "accounting.invoices.manage",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-12"
+    },
+    {
+      "permission": "accounting.tax.view",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-12"
+    },
+    {
+      "permission": "accounting.tax.manage",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-12"
+    },
+    {
+      "permission": "FINANCIAL.TRANSACTION",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-12"
+    },
+    {
+      "permission": "ORGANISATION.VERIFY",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-13"
+    },
+    {
+      "permission": "notification.routes.ts",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-14"
+    },
+    {
+      "permission": "notification_templates.view",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-14"
+    },
+    {
+      "permission": "notification_templates.create",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-14"
+    },
+    {
+      "permission": "notification_templates.update",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-14"
+    },
+    {
+      "permission": "notification_templates.delete",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-14"
+    },
+    {
+      "permission": "notification_templates.publish",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-14"
+    },
+    {
+      "permission": "notification_types.view",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-14"
+    },
+    {
+      "permission": "notification_types.create",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-14"
+    },
+    {
+      "permission": "notification_types.update",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-14"
+    },
+    {
+      "permission": "notification_types.delete",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-14"
+    },
+    {
+      "permission": "booking.*",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-14"
+    },
+    {
+      "permission": "user.*",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-14"
+    },
+    {
+      "permission": "payment.*",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-14"
+    },
+    {
+      "permission": "wallet.*",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-14"
+    },
+    {
+      "permission": "marketplace.*",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-14"
+    },
+    {
+      "permission": "organisation.*",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-14"
+    },
+    {
+      "permission": "support.*",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-14"
+    },
+    {
+      "permission": "admin.*",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-14"
+    },
+    {
+      "permission": "UPLOAD.CREATE",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-14"
+    },
+    {
+      "permission": "UPLOAD.DELETE",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-14"
+    },
+    {
+      "permission": "SETTINGS.UPDATE",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-14"
+    },
+    {
+      "permission": "FEATURE_FLAG.TOGGLE",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-14"
+    },
+    {
+      "permission": "CMS.UPDATE",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-14"
+    },
+    {
+      "permission": "crm.routes.ts",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-15"
+    },
+    {
+      "permission": "hr.routes.ts",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-16"
+    },
+    {
+      "permission": "hr.controller.ts",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-16"
+    },
+    {
+      "permission": "hr.leaves.balances.view",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-16"
+    },
+    {
+      "permission": "hr.leaves.balances.manage",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-16"
+    },
+    {
+      "permission": "hr.payroll.components.view",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-16"
+    },
+    {
+      "permission": "hr.payroll.components.manage",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-16"
+    },
+    {
+      "permission": "match.types.ts",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-17"
+    },
+    {
+      "permission": "membership.view",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-18"
+    },
+    {
+      "permission": "membership.create",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-18"
+    },
+    {
+      "permission": "membership.update",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-18"
+    },
+    {
+      "permission": "membership.delete",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-18"
+    },
+    {
+      "permission": "membership.assign",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-18"
+    },
+    {
+      "permission": "membership.manage",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-18"
+    },
+    {
+      "permission": "types.ts",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-19"
+    },
+    {
+      "permission": "security.routes.ts",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-20"
+    },
+    {
+      "permission": "ADMIN.ACTION",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-20"
+    },
+    {
+      "permission": "USER.LOGOUT",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-21"
+    },
+    {
+      "permission": "USER.PASSWORD_CHANGE",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-21"
+    },
+    {
+      "permission": "SETTLEMENT.CREATE",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-21"
+    },
+    {
+      "permission": "SETTLEMENT.PROCESS",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-21"
+    },
+    {
+      "permission": "SETTLEMENT.APPROVE",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-21"
+    },
+    {
+      "permission": "SETTLEMENT.REJECT",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-21"
+    },
+    {
+      "permission": "SUBSCRIPTION.CREATED",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-21"
+    },
+    {
+      "permission": "support.routes.ts",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-22"
+    },
+    {
+      "permission": "support.tickets.view",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-22"
+    },
+    {
+      "permission": "support.tickets.manage",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-22"
+    },
+    {
+      "permission": "support.tickets.create",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-22"
+    },
+    {
+      "permission": "cms.service.ts",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-23"
+    },
+    {
+      "permission": "community.events_enabled",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-24"
+    },
+    {
+      "permission": "community.chat_enabled",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-24"
+    },
+    {
+      "permission": "community.create_events",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-24"
+    },
+    {
+      "permission": "community.chat.view",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-24"
+    },
+    {
+      "permission": "community.chat.send",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-24"
+    },
+    {
+      "permission": "ads.create",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-24"
+    },
+    {
+      "permission": "audit.revert",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-24"
+    },
+    {
+      "permission": "community.service.ts",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-24"
+    },
+    {
+      "permission": "bi.routes.ts",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-25"
+    },
+    {
+      "permission": "integration.api-keys.view",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-27"
+    },
+    {
+      "permission": "mobile.versions.view",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-28"
+    },
+    {
+      "permission": "mobile.versions.manage",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-28"
+    },
+    {
+      "permission": "mobile.config.view",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-28"
+    },
+    {
+      "permission": "mobile.config.manage",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-28"
+    },
+    {
+      "permission": "mobile.push.view",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-28"
+    },
+    {
+      "permission": "mobile.dashboard.view",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-28"
+    },
+    {
+      "permission": "MOBILE.PUSH.REGISTER",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-28"
+    },
+    {
+      "permission": "MOBILE.PUSH.UNREGISTER",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-28"
+    },
+    {
+      "permission": "reports.service.ts",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-29"
+    },
+    {
+      "permission": "settlements.request",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-30"
+    },
+    {
+      "permission": "settlements.approve",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-30"
+    },
+    {
+      "permission": "settlements.pay",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-30"
+    },
+    {
+      "permission": "settlements.complete",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-30"
+    },
+    {
+      "permission": "settlements.reject",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-30"
+    },
+    {
+      "permission": "settlements.cancel",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-30"
+    },
+    {
+      "permission": "settlements.view",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-30"
+    },
+    {
+      "permission": "settlements.bank_account_snapshot",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-30"
+    },
+    {
+      "permission": "coupon.service.ts",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-31"
+    },
+    {
+      "permission": "translations.service.ts",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-34"
+    },
+    {
+      "permission": "booking.title",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-34"
+    },
+    {
+      "permission": "app.tournaments_enabled",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-35"
+    },
+    {
+      "permission": "app.academies_enabled",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-35"
+    },
+    {
+      "permission": "coaches.manage_agreements",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-35"
+    },
+    {
+      "permission": "coaches.invites.respond",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-35"
+    },
+    {
+      "permission": "coaches.create_sessions",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-35"
+    },
+    {
+      "permission": "coaches.respond_request",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-35"
+    },
+    {
+      "permission": "coaches.confirm_session",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-35"
+    },
+    {
+      "permission": "coaches.start_session",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-35"
+    },
+    {
+      "permission": "coaches.complete_session",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-35"
+    },
+    {
+      "permission": "coaches.no_show",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-35"
+    },
+    {
+      "permission": "system_settings.view",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-36"
+    },
+    {
+      "permission": "system_settings.update",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-36"
+    },
+    {
+      "permission": "feature_flags.view",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-36"
+    },
+    {
+      "permission": "feature_flags.update",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-36"
+    },
+    {
+      "permission": "queue.view",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-36"
+    },
+    {
+      "permission": "queue.manage",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-36"
+    },
+    {
+      "permission": "cache.service.ts",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-36"
+    },
+    {
+      "permission": "queue.service.ts",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-36"
+    },
+    {
+      "permission": "amenities.service.ts",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-37"
+    },
+    {
+      "permission": "approval.service.ts",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-38"
+    },
+    {
+      "permission": "uploadService.replaceEntityFile",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-39"
+    },
+    {
+      "permission": "banks.service.ts",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-40"
+    },
+    {
+      "permission": "cities.service.ts",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-41"
+    },
+    {
+      "permission": "countries.service.ts",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-42"
+    },
+    {
+      "permission": "geo.service.ts",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-42"
+    },
+    {
+      "permission": "currencies.service.ts",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-43"
+    },
+    {
+      "permission": "system_settings.platform.default_currency",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-43"
+    },
+    {
+      "permission": "ipapi.co",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-45"
+    },
+    {
+      "permission": "languages.service.ts",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-46"
+    },
+    {
+      "permission": "provinces.service.ts",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-47"
+    },
+    {
+      "permission": "sidebar.layout.manage",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-49"
+    },
+    {
+      "permission": "activities.routes.ts",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-51"
+    },
+    {
+      "permission": "player.statistics.view",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-52"
+    },
+    {
+      "permission": "player.profile.view",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-52"
+    },
+    {
+      "permission": "player.rank.history",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-52"
+    },
+    {
+      "permission": "player.service.ts",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-52"
+    },
+    {
+      "permission": "player.types.ts",
+      "type": "inline",
+      "sourceDoc": "TECH-MOD-52"
+    },
+    {
+      "permission": "appearance.store.ts",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-01"
+    },
+    {
+      "permission": "theme.store.ts",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-01"
+    },
+    {
+      "permission": "org.sidebar.*",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-01"
+    },
+    {
+      "permission": "CoachBottomNav.tsx",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-01"
+    },
+    {
+      "permission": "1.5",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-02"
+    },
+    {
+      "permission": "coaches.view",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "tournaments.view",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "academies.view",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "player.wallet.view",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "player.payments.view",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "player.tournaments.register",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "sidebar.dashboard",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "sidebar.reports",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "sidebar.organisations",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "sidebar.branch-access",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "sidebar.admin-bookings",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "sidebar.subscription",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "sidebar.subscription-requests",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "sidebar.organisation-types",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "sidebar.settlements",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "sidebar.roles",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "sidebar.permissions",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "sidebar.marketplace",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "sidebar.marketplace-products",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "sidebar.marketplace-orders",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "sidebar.marketplace-sellers",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "sidebar.product-categories",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "sidebar.marketplace-approvals",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "sidebar.marketplace-reviews",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "sidebar.brands",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "sidebar.tags",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "sidebar.bi",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "sidebar.bi-dashboard",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "sidebar.bi-observability",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "sidebar.sports-engine",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "sidebar.reception",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "sidebar.league",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "sidebar.league-dashboard",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "sidebar.league-seasons",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "sidebar.league-list",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "sidebar.league-divisions",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "sidebar.tournament",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "sidebar.tournament-dashboard",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "sidebar.tournament-list",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "sidebar.tournament-matches",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "sidebar.academy",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "sidebar.academy-dashboard",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "sidebar.academy-programs",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "sidebar.academy-groups",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "sidebar.academy-enrollments",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "sidebar.academy-attendance",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "sidebar.coaches-admin",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "sidebar.membership",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "membership.plans",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "membership.campaigns",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "membership.rewards",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "sidebar.pricing",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "pricing.rules",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "pricing.preview",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "sidebar.crm",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "sidebar.crm-dashboard",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "sidebar.crm-customers",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "sidebar.crm-segments",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "sidebar.crm-leads",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "sidebar.crm-campaigns",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "sidebar.crm-communications",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "sidebar.hr",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "sidebar.hr-dashboard",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "sidebar.hr-employees",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "sidebar.hr-departments",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "sidebar.hr-leave",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "sidebar.hr-attendance",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "sidebar.hr-payroll",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "sidebar.community-admin",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "sidebar.notifications",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "notifications.broadcast",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "notifications.analytics",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "notifications.dead-letters",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "sidebar.ads",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "sidebar.admin-settings",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "sidebar.sports",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "sidebar.finance",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "sidebar.finance-dashboard",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "sidebar.finance-ledger",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "sidebar.finance-reports",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "sidebar.withdrawal-requests",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "sidebar.coupons",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "sidebar.finance-transactions",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "sidebar.banks",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "sidebar.bank-branches",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "sidebar.payment-methods",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "sidebar.payment-gateways",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "sidebar.countries",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "sidebar.currencies",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "sidebar.languages",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "sidebar.translations",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "sidebar.amenities",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "sidebar.app-settings-menu",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "sidebar.app-settings",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "sidebar.design-tokens",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "sidebar.cms",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "sidebar.users",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "sidebar.inventory",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "sidebar.inventory-stock",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "sidebar.inventory-warehouses",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "sidebar.inventory-suppliers",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "sidebar.inventory-purchase-orders",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "sidebar.mobile",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "sidebar.integration",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "sidebar.webhooks",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "sidebar.security-dashboard",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "sidebar.active-sessions",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "sidebar.failed-logins",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "sidebar.upload-security",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "sidebar.system-health",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "sidebar.audit",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "sidebar.feature-flags",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "org.sidebar.dashboard",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "org.sidebar.marketplace",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "org.sidebar.orders",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "org.sidebar.bookings",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "org.sidebar.staff",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "org.sidebar.members",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "org.sidebar.coaches",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "org.sidebar.finance",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "org.sidebar.announcements",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "org.sidebar.documents",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "org.sidebar.gallery",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "org.sidebar.profile",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "org.sidebar.branches",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "org.sidebar.working-hours",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "org.sidebar.payment",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "org.sidebar.reviews",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "org.sidebar.referees",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "org.sidebar.academies",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "org.sidebar.leagues",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "org.sidebar.tournaments",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "org.sidebar.verification",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "org.sidebar.subscription",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "org.sidebar.settings",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-03"
+    },
+    {
+      "permission": "financial.wallet.deposit",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-04"
+    },
+    {
+      "permission": "financial.wallet.deposit.payment-method",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-04"
+    },
+    {
+      "permission": "player.wallet.transactions",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-04"
+    },
+    {
+      "permission": "OrgBookingsPage.tsx",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-04"
+    },
+    {
+      "permission": "OrgMarketplacePage.tsx",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-04"
+    },
+    {
+      "permission": "OrgOrdersPage.tsx",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-04"
+    },
+    {
+      "permission": "OrgProfilePage.tsx",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-04"
+    },
+    {
+      "permission": "OrgWorkingHoursPage.tsx",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-04"
+    },
+    {
+      "permission": "OrgPaymentSettingsPage.tsx",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-04"
+    },
+    {
+      "permission": "OrgReviewsPage.tsx",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-04"
+    },
+    {
+      "permission": "OrgRefereesPage.tsx",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-04"
+    },
+    {
+      "permission": "OrgAcademiesPage.tsx",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-04"
+    },
+    {
+      "permission": "OrgLeaguesPage.tsx",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-04"
+    },
+    {
+      "permission": "OrgTournamentsPage.tsx",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-04"
+    },
+    {
+      "permission": "OrgAnnouncementsPage.tsx",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-04"
+    },
+    {
+      "permission": "OrgDocumentsPage.tsx",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-04"
+    },
+    {
+      "permission": "OrgGalleryPage.tsx",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-04"
+    },
+    {
+      "permission": "OrgReportsPage.tsx",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-04"
+    },
+    {
+      "permission": "OrgVerificationPage.tsx",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-04"
+    },
+    {
+      "permission": "OrgShippingRatesPage.tsx",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-04"
+    },
+    {
+      "permission": "OrgPendingApprovalPage.tsx",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-04"
+    },
+    {
+      "permission": "marketplace.player-products.manage",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-04"
+    },
+    {
+      "permission": "marketplace.seller.*",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-04"
+    },
+    {
+      "permission": "crm.*",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-04"
+    },
+    {
+      "permission": "hr.leaves.types.*",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-04"
+    },
+    {
+      "permission": "reports.routes.ts",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-04"
+    },
+    {
+      "permission": "admin.dashboard.view",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-04"
+    },
+    {
+      "permission": "OrgDashboardPage.tsx",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-09"
+    },
+    {
+      "permission": "OrgMembersPage.tsx",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-09"
+    },
+    {
+      "permission": "OrgStaffPage.tsx",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-09"
+    },
+    {
+      "permission": "OrgCoachesPage.tsx",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-09"
+    },
+    {
+      "permission": "BookingModal.tsx",
+      "type": "inline",
+      "sourceDoc": "TECH-UX-10"
+    },
+    {
+      "permission": "branches.view",
+      "type": "inline",
+      "sourceDoc": "USER-01"
+    },
+    {
+      "permission": "league.register-team",
+      "type": "inline",
+      "sourceDoc": "USER-01"
+    },
+    {
+      "permission": "002_academy_programs.sql",
+      "type": "inline",
+      "sourceDoc": "VOLUME_02_ARCHITECTURE"
+    },
+    {
+      "permission": "003_player_demo.sql",
+      "type": "inline",
+      "sourceDoc": "VOLUME_02_ARCHITECTURE"
+    },
+    {
+      "permission": "004_chart_of_accounts.sql",
+      "type": "inline",
+      "sourceDoc": "VOLUME_02_ARCHITECTURE"
+    },
+    {
+      "permission": "tournament.service.ts",
+      "type": "inline",
+      "sourceDoc": "VOLUME_03_BUSINESS_DOMAINS"
+    },
+    {
+      "permission": "league.service.ts",
+      "type": "inline",
+      "sourceDoc": "VOLUME_03_BUSINESS_DOMAINS"
+    },
+    {
+      "permission": "ledger.service.ts",
+      "type": "inline",
+      "sourceDoc": "VOLUME_03_BUSINESS_DOMAINS"
+    },
+    {
+      "permission": "notification.service.ts",
+      "type": "inline",
+      "sourceDoc": "VOLUME_03_BUSINESS_DOMAINS"
+    },
+    {
+      "permission": "bookings.create.*",
+      "type": "inline",
+      "sourceDoc": "VOLUME_05_SCREENS"
+    },
+    {
+      "permission": "VOLUME_33_SUPER_ADMIN_MANUALS.md",
+      "type": "inline",
+      "sourceDoc": "VOLUME_05_SCREENS"
+    },
+    {
+      "permission": "VOLUME_27_ORGANIZATION_MANUALS.md",
+      "type": "inline",
+      "sourceDoc": "VOLUME_05_SCREENS"
+    },
+    {
+      "permission": "org.dashboard.view",
+      "type": "page",
+      "component": "Org dashboard",
+      "sourceDoc": "VOLUME_08_PERMISSIONS"
+    },
+    {
+      "permission": "sports-engine.view",
+      "type": "page",
+      "component": "Rankings, analytics",
+      "sourceDoc": "VOLUME_08_PERMISSIONS"
+    },
+    {
+      "permission": "sports-engine.manage",
+      "type": "button",
+      "component": "Calculate ELO",
+      "sourceDoc": "VOLUME_08_PERMISSIONS"
+    },
+    {
+      "permission": "users.assign-role",
+      "type": "inline",
+      "sourceDoc": "VOLUME_08_PERMISSIONS"
+    },
+    {
+      "permission": "users.change-password",
+      "type": "inline",
+      "sourceDoc": "VOLUME_08_PERMISSIONS"
+    },
+    {
+      "permission": "academy.self_enroll",
+      "type": "inline",
+      "sourceDoc": "VOLUME_08_PERMISSIONS"
+    },
+    {
+      "permission": "league.self_register",
+      "type": "inline",
+      "sourceDoc": "VOLUME_08_PERMISSIONS"
+    },
+    {
+      "permission": "hr.leave.view",
+      "type": "inline",
+      "sourceDoc": "VOLUME_08_PERMISSIONS"
+    },
+    {
+      "permission": "hr.leave.manage",
+      "type": "inline",
+      "sourceDoc": "VOLUME_08_PERMISSIONS"
+    },
+    {
+      "permission": "hr.payroll.view",
+      "type": "inline",
+      "sourceDoc": "VOLUME_08_PERMISSIONS"
+    },
+    {
+      "permission": "hr.payroll.manage",
+      "type": "inline",
+      "sourceDoc": "VOLUME_08_PERMISSIONS"
+    },
+    {
+      "permission": "org.staff.manage",
+      "type": "inline",
+      "sourceDoc": "VOLUME_08_PERMISSIONS"
+    },
+    {
+      "permission": "org.coaches.manage",
+      "type": "inline",
+      "sourceDoc": "VOLUME_08_PERMISSIONS"
+    },
+    {
+      "permission": "org.resources.manage",
+      "type": "inline",
+      "sourceDoc": "VOLUME_08_PERMISSIONS"
+    },
+    {
+      "permission": "org.marketplace.manage",
+      "type": "inline",
+      "sourceDoc": "VOLUME_08_PERMISSIONS"
+    },
+    {
+      "permission": "settlements.*",
+      "type": "inline",
+      "sourceDoc": "VOLUME_08_PERMISSIONS"
+    },
+    {
+      "permission": "VOLUME_02_ROUTE_AUDIT.md",
+      "type": "inline",
+      "sourceDoc": "VOLUME_08_PERMISSIONS"
+    },
+    {
+      "permission": "AdminBroadcastPage.tsx",
+      "type": "inline",
+      "sourceDoc": "VOLUME_15_NOTIFICATIONS"
+    }
+  ]
+}

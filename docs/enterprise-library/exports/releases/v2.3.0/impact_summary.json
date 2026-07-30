@@ -1,0 +1,485 @@
+{
+  "version": "v2.3.0",
+  "generated": "2026-07-28T00:27:05.313Z",
+  "total_modules": 52,
+  "highest_impact_module": {
+    "module_id": "TECH-MOD-03",
+    "module_name": "Booking Module",
+    "changes": {
+      "routes": 3,
+      "dependents": 18
+    },
+    "impact_score": 99
+  },
+  "module_impacts": [
+    {
+      "module_id": "TECH-MOD-03",
+      "module_name": "Booking Module",
+      "changes": {
+        "routes": 3,
+        "dependents": 18
+      },
+      "impact_score": 99
+    },
+    {
+      "module_id": "TECH-MOD-35",
+      "module_name": "Activities Module",
+      "changes": {
+        "routes": 23,
+        "dependents": 3
+      },
+      "impact_score": 84
+    },
+    {
+      "module_id": "TECH-MOD-10",
+      "module_name": "Wallet Module",
+      "changes": {
+        "routes": 4,
+        "dependents": 14
+      },
+      "impact_score": 82
+    },
+    {
+      "module_id": "TECH-MOD-09",
+      "module_name": "Payment Module",
+      "changes": {
+        "routes": 4,
+        "dependents": 13
+      },
+      "impact_score": 77
+    },
+    {
+      "module_id": "TECH-MOD-04",
+      "module_name": "Academy Module",
+      "changes": {
+        "routes": 0,
+        "dependents": 13
+      },
+      "impact_score": 65
+    },
+    {
+      "module_id": "TECH-MOD-05",
+      "module_name": "Tournaments Module",
+      "changes": {
+        "routes": 0,
+        "dependents": 13
+      },
+      "impact_score": 65
+    },
+    {
+      "module_id": "TECH-MOD-13",
+      "module_name": "Organisations Module",
+      "changes": {
+        "routes": 0,
+        "dependents": 12
+      },
+      "impact_score": 60
+    },
+    {
+      "module_id": "TECH-MOD-01",
+      "module_name": "Auth Module",
+      "changes": {
+        "routes": 3,
+        "dependents": 10
+      },
+      "impact_score": 59
+    },
+    {
+      "module_id": "TECH-MOD-30",
+      "module_name": "Settlement Module",
+      "changes": {
+        "routes": 3,
+        "dependents": 10
+      },
+      "impact_score": 59
+    },
+    {
+      "module_id": "TECH-MOD-23",
+      "module_name": "Content Management Module",
+      "changes": {
+        "routes": 17,
+        "dependents": 1
+      },
+      "impact_score": 56
+    },
+    {
+      "module_id": "TECH-MOD-12",
+      "module_name": "Accounting Module",
+      "changes": {
+        "routes": 0,
+        "dependents": 11
+      },
+      "impact_score": 55
+    },
+    {
+      "module_id": "TECH-MOD-02",
+      "module_name": "RBAC Module",
+      "changes": {
+        "routes": 0,
+        "dependents": 10
+      },
+      "impact_score": 50
+    },
+    {
+      "module_id": "TECH-MOD-14",
+      "module_name": "Notifications Module",
+      "changes": {
+        "routes": 0,
+        "dependents": 10
+      },
+      "impact_score": 50
+    },
+    {
+      "module_id": "TECH-MOD-36",
+      "module_name": "Admin Module",
+      "changes": {
+        "routes": 13,
+        "dependents": 2
+      },
+      "impact_score": 49
+    },
+    {
+      "module_id": "TECH-MOD-06",
+      "module_name": "Leagues Module",
+      "changes": {
+        "routes": 0,
+        "dependents": 9
+      },
+      "impact_score": 45
+    },
+    {
+      "module_id": "TECH-MOD-07",
+      "module_name": "Marketplace Module",
+      "changes": {
+        "routes": 0,
+        "dependents": 9
+      },
+      "impact_score": 45
+    },
+    {
+      "module_id": "TECH-MOD-44",
+      "module_name": "Design Tokens Module",
+      "changes": {
+        "routes": 12,
+        "dependents": 1
+      },
+      "impact_score": 41
+    },
+    {
+      "module_id": "TECH-MOD-26",
+      "module_name": "Sports Engine Module",
+      "changes": {
+        "routes": 3,
+        "dependents": 6
+      },
+      "impact_score": 39
+    },
+    {
+      "module_id": "TECH-MOD-19",
+      "module_name": "Scheduling Module",
+      "changes": {
+        "routes": 1,
+        "dependents": 7
+      },
+      "impact_score": 38
+    },
+    {
+      "module_id": "TECH-MOD-15",
+      "module_name": "CRM Module",
+      "changes": {
+        "routes": 0,
+        "dependents": 7
+      },
+      "impact_score": 35
+    },
+    {
+      "module_id": "TECH-MOD-11",
+      "module_name": "Financial Module",
+      "changes": {
+        "routes": 8,
+        "dependents": 2
+      },
+      "impact_score": 34
+    },
+    {
+      "module_id": "TECH-MOD-28",
+      "module_name": "Mobile Module",
+      "changes": {
+        "routes": 11,
+        "dependents": 0
+      },
+      "impact_score": 33
+    },
+    {
+      "module_id": "TECH-MOD-42",
+      "module_name": "Countries Module",
+      "changes": {
+        "routes": 4,
+        "dependents": 4
+      },
+      "impact_score": 32
+    },
+    {
+      "module_id": "TECH-MOD-20",
+      "module_name": "Security Module",
+      "changes": {
+        "routes": 2,
+        "dependents": 5
+      },
+      "impact_score": 31
+    },
+    {
+      "module_id": "TECH-MOD-24",
+      "module_name": "Community Module",
+      "changes": {
+        "routes": 10,
+        "dependents": 0
+      },
+      "impact_score": 30
+    },
+    {
+      "module_id": "TECH-MOD-08",
+      "module_name": "Inventory Module",
+      "changes": {
+        "routes": 3,
+        "dependents": 4
+      },
+      "impact_score": 29
+    },
+    {
+      "module_id": "TECH-MOD-25",
+      "module_name": "BI Module",
+      "changes": {
+        "routes": 3,
+        "dependents": 4
+      },
+      "impact_score": 29
+    },
+    {
+      "module_id": "TECH-MOD-22",
+      "module_name": "Support Module",
+      "changes": {
+        "routes": 6,
+        "dependents": 2
+      },
+      "impact_score": 28
+    },
+    {
+      "module_id": "TECH-MOD-40",
+      "module_name": "Banks Module",
+      "changes": {
+        "routes": 9,
+        "dependents": 0
+      },
+      "impact_score": 27
+    },
+    {
+      "module_id": "TECH-MOD-43",
+      "module_name": "Currencies Module",
+      "changes": {
+        "routes": 4,
+        "dependents": 3
+      },
+      "impact_score": 27
+    },
+    {
+      "module_id": "TECH-MOD-47",
+      "module_name": "Provinces Module",
+      "changes": {
+        "routes": 4,
+        "dependents": 3
+      },
+      "impact_score": 27
+    },
+    {
+      "module_id": "TECH-MOD-18",
+      "module_name": "Membership Module",
+      "changes": {
+        "routes": 6,
+        "dependents": 1
+      },
+      "impact_score": 23
+    },
+    {
+      "module_id": "TECH-MOD-31",
+      "module_name": "Coupon Module",
+      "changes": {
+        "routes": 4,
+        "dependents": 2
+      },
+      "impact_score": 22
+    },
+    {
+      "module_id": "TECH-MOD-41",
+      "module_name": "Cities Module",
+      "changes": {
+        "routes": 4,
+        "dependents": 2
+      },
+      "impact_score": 22
+    },
+    {
+      "module_id": "TECH-MOD-46",
+      "module_name": "Languages Module",
+      "changes": {
+        "routes": 4,
+        "dependents": 2
+      },
+      "impact_score": 22
+    },
+    {
+      "module_id": "TECH-MOD-51",
+      "module_name": "Coaches Module",
+      "changes": {
+        "routes": 4,
+        "dependents": 2
+      },
+      "impact_score": 22
+    },
+    {
+      "module_id": "TECH-MOD-16",
+      "module_name": "HR Module",
+      "changes": {
+        "routes": 0,
+        "dependents": 4
+      },
+      "impact_score": 20
+    },
+    {
+      "module_id": "TECH-MOD-27",
+      "module_name": "Integration Module",
+      "changes": {
+        "routes": 5,
+        "dependents": 1
+      },
+      "impact_score": 20
+    },
+    {
+      "module_id": "TECH-MOD-17",
+      "module_name": "Match Module",
+      "changes": {
+        "routes": 3,
+        "dependents": 2
+      },
+      "impact_score": 19
+    },
+    {
+      "module_id": "TECH-MOD-45",
+      "module_name": "Geo Module",
+      "changes": {
+        "routes": 1,
+        "dependents": 3
+      },
+      "impact_score": 18
+    },
+    {
+      "module_id": "TECH-MOD-32",
+      "module_name": "Pricing Module",
+      "changes": {
+        "routes": 4,
+        "dependents": 1
+      },
+      "impact_score": 17
+    },
+    {
+      "module_id": "TECH-MOD-29",
+      "module_name": "Reports Module",
+      "changes": {
+        "routes": 0,
+        "dependents": 3
+      },
+      "impact_score": 15
+    },
+    {
+      "module_id": "TECH-MOD-33",
+      "module_name": "Upload Module",
+      "changes": {
+        "routes": 3,
+        "dependents": 1
+      },
+      "impact_score": 14
+    },
+    {
+      "module_id": "TECH-MOD-34",
+      "module_name": "Translations Module",
+      "changes": {
+        "routes": 3,
+        "dependents": 1
+      },
+      "impact_score": 14
+    },
+    {
+      "module_id": "TECH-MOD-39",
+      "module_name": "App Settings Module",
+      "changes": {
+        "routes": 3,
+        "dependents": 1
+      },
+      "impact_score": 14
+    },
+    {
+      "module_id": "TECH-MOD-52",
+      "module_name": "Player Experience Module",
+      "changes": {
+        "routes": 3,
+        "dependents": 1
+      },
+      "impact_score": 14
+    },
+    {
+      "module_id": "TECH-MOD-37",
+      "module_name": "Amenities Module",
+      "changes": {
+        "routes": 4,
+        "dependents": 0
+      },
+      "impact_score": 12
+    },
+    {
+      "module_id": "TECH-MOD-38",
+      "module_name": "Approvals Module",
+      "changes": {
+        "routes": 3,
+        "dependents": 0
+      },
+      "impact_score": 9
+    },
+    {
+      "module_id": "TECH-MOD-21",
+      "module_name": "Audit Log Module",
+      "changes": {
+        "routes": 1,
+        "dependents": 1
+      },
+      "impact_score": 8
+    },
+    {
+      "module_id": "TECH-MOD-49",
+      "module_name": "Sidebar Layout Module",
+      "changes": {
+        "routes": 2,
+        "dependents": 0
+      },
+      "impact_score": 6
+    },
+    {
+      "module_id": "TECH-MOD-50",
+      "module_name": "Time Module",
+      "changes": {
+        "routes": 0,
+        "dependents": 1
+      },
+      "impact_score": 5
+    },
+    {
+      "module_id": "TECH-MOD-48",
+      "module_name": "Reference Data Module",
+      "changes": {
+        "routes": 0,
+        "dependents": 0
+      },
+      "impact_score": 0
+    }
+  ],
+  "overall_risk": "medium"
+}

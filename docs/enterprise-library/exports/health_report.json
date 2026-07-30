@@ -1,0 +1,4817 @@
+{
+  "generated": "2026-07-28T00:15:37.689Z",
+  "overall": {
+    "documentCount": 161,
+    "averageHealthScore": 68,
+    "healthLabel": "Needs Review"
+  },
+  "families": [
+    {
+      "family": "TECH-MOD",
+      "documentCount": 52,
+      "averageHealthScore": 83,
+      "healthLabel": "Good",
+      "documents": [
+        "TECH-MOD-01",
+        "TECH-MOD-02",
+        "TECH-MOD-03",
+        "TECH-MOD-04",
+        "TECH-MOD-05",
+        "TECH-MOD-06",
+        "TECH-MOD-07",
+        "TECH-MOD-08",
+        "TECH-MOD-09",
+        "TECH-MOD-10",
+        "TECH-MOD-11",
+        "TECH-MOD-12",
+        "TECH-MOD-13",
+        "TECH-MOD-14",
+        "TECH-MOD-15",
+        "TECH-MOD-16",
+        "TECH-MOD-17",
+        "TECH-MOD-18",
+        "TECH-MOD-19",
+        "TECH-MOD-20",
+        "TECH-MOD-21",
+        "TECH-MOD-22",
+        "TECH-MOD-23",
+        "TECH-MOD-24",
+        "TECH-MOD-25",
+        "TECH-MOD-26",
+        "TECH-MOD-27",
+        "TECH-MOD-28",
+        "TECH-MOD-29",
+        "TECH-MOD-30",
+        "TECH-MOD-31",
+        "TECH-MOD-32",
+        "TECH-MOD-33",
+        "TECH-MOD-34",
+        "TECH-MOD-35",
+        "TECH-MOD-36",
+        "TECH-MOD-37",
+        "TECH-MOD-38",
+        "TECH-MOD-39",
+        "TECH-MOD-40",
+        "TECH-MOD-41",
+        "TECH-MOD-42",
+        "TECH-MOD-43",
+        "TECH-MOD-44",
+        "TECH-MOD-45",
+        "TECH-MOD-46",
+        "TECH-MOD-47",
+        "TECH-MOD-48",
+        "TECH-MOD-49",
+        "TECH-MOD-50",
+        "TECH-MOD-51",
+        "TECH-MOD-52"
+      ]
+    },
+    {
+      "family": "OPS-DEPLOY",
+      "documentCount": 1,
+      "averageHealthScore": 72,
+      "healthLabel": "Needs Review",
+      "documents": [
+        "OPS-DEPLOY-01"
+      ]
+    },
+    {
+      "family": "OPS-MON",
+      "documentCount": 1,
+      "averageHealthScore": 72,
+      "healthLabel": "Needs Review",
+      "documents": [
+        "OPS-MON-01"
+      ]
+    },
+    {
+      "family": "OPS-RUN",
+      "documentCount": 2,
+      "averageHealthScore": 72,
+      "healthLabel": "Needs Review",
+      "documents": [
+        "OPS-RUN-01",
+        "OPS-RUN-02"
+      ]
+    },
+    {
+      "family": "QUAL-CERT",
+      "documentCount": 1,
+      "averageHealthScore": 72,
+      "healthLabel": "Needs Review",
+      "documents": [
+        "QUAL-CERT-01"
+      ]
+    },
+    {
+      "family": "QUAL-TEST",
+      "documentCount": 4,
+      "averageHealthScore": 72,
+      "healthLabel": "Needs Review",
+      "documents": [
+        "QUAL-TEST-01",
+        "QUAL-TEST-02",
+        "QUAL-TEST-03",
+        "QUAL-TEST-04"
+      ]
+    },
+    {
+      "family": "TECH-ARCH",
+      "documentCount": 24,
+      "averageHealthScore": 72,
+      "healthLabel": "Needs Review",
+      "documents": [
+        "TECH-ARCH-01",
+        "TECH-ARCH-02",
+        "TECH-ARCH-03",
+        "TECH-ARCH-04",
+        "TECH-ARCH-05",
+        "TECH-ARCH-06",
+        "TECH-ARCH-07",
+        "TECH-ARCH-08",
+        "TECH-ARCH-10",
+        "TECH-ARCH-11",
+        "TECH-ARCH-12",
+        "TECH-ARCH-13",
+        "TECH-ARCH-14",
+        "TECH-ARCH-15",
+        "TECH-ARCH-16",
+        "TECH-ARCH-17",
+        "TECH-ARCH-18",
+        "TECH-ARCH-19",
+        "TECH-ARCH-20",
+        "TECH-ARCH-21",
+        "TECH-ARCH-22",
+        "TECH-ARCH-23",
+        "TECH-ARCH-24",
+        "TECH-ARCH-25"
+      ]
+    },
+    {
+      "family": "GOV-ADR",
+      "documentCount": 25,
+      "averageHealthScore": 68,
+      "healthLabel": "Needs Review",
+      "documents": [
+        "GOV-ADR-001",
+        "GOV-ADR-002",
+        "GOV-ADR-003",
+        "GOV-ADR-004",
+        "GOV-ADR-005",
+        "GOV-ADR-006",
+        "GOV-ADR-007",
+        "GOV-ADR-008",
+        "GOV-ADR-009",
+        "GOV-ADR-010",
+        "GOV-ADR-011",
+        "GOV-ADR-012",
+        "GOV-ADR-013",
+        "GOV-ADR-014",
+        "GOV-ADR-015",
+        "GOV-ADR-016",
+        "GOV-ADR-017",
+        "GOV-ADR-018",
+        "GOV-ADR-019",
+        "GOV-ADR-020",
+        "GOV-ADR-021",
+        "GOV-ADR-022",
+        "GOV-ADR-023",
+        "GOV-ADR-024",
+        "GOV-ADR-025"
+      ]
+    },
+    {
+      "family": "ADMIN",
+      "documentCount": 1,
+      "averageHealthScore": 67,
+      "healthLabel": "Needs Review",
+      "documents": [
+        "ADMIN-02"
+      ]
+    },
+    {
+      "family": "BIZ-PROD",
+      "documentCount": 6,
+      "averageHealthScore": 67,
+      "healthLabel": "Needs Review",
+      "documents": [
+        "BIZ-PROD-01",
+        "BIZ-PROD-02",
+        "BIZ-PROD-03",
+        "BIZ-PROD-04",
+        "BIZ-PROD-06",
+        "BIZ-PROD-08"
+      ]
+    },
+    {
+      "family": "TECH-DB",
+      "documentCount": 1,
+      "averageHealthScore": 67,
+      "healthLabel": "Needs Review",
+      "documents": [
+        "TECH-DB-03"
+      ]
+    },
+    {
+      "family": "BIZ-ARCH",
+      "documentCount": 10,
+      "averageHealthScore": 58,
+      "healthLabel": "Needs Review",
+      "documents": [
+        "BIZ-ARCH-01",
+        "BIZ-ARCH-02",
+        "BIZ-ARCH-03",
+        "BIZ-ARCH-04",
+        "BIZ-ARCH-05",
+        "BIZ-ARCH-06",
+        "BIZ-ARCH-07",
+        "BIZ-ARCH-08",
+        "BIZ-ARCH-09",
+        "BIZ-ARCH-10"
+      ]
+    },
+    {
+      "family": "USER",
+      "documentCount": 1,
+      "averageHealthScore": 57,
+      "healthLabel": "Needs Review",
+      "documents": [
+        "USER-01"
+      ]
+    },
+    {
+      "family": "TECH-DEV",
+      "documentCount": 15,
+      "averageHealthScore": 56,
+      "healthLabel": "Needs Review",
+      "documents": [
+        "TECH-DEV-01",
+        "TECH-DEV-02",
+        "TECH-DEV-03",
+        "TECH-DEV-04",
+        "TECH-DEV-05",
+        "TECH-DEV-06",
+        "TECH-DEV-07",
+        "TECH-DEV-08",
+        "TECH-DEV-09",
+        "TECH-DEV-10",
+        "TECH-DEV-11",
+        "TECH-DEV-12",
+        "TECH-DEV-13",
+        "TECH-DEV-14",
+        "TECH-DEV-15"
+      ]
+    },
+    {
+      "family": "TECH-UX",
+      "documentCount": 7,
+      "averageHealthScore": 53,
+      "healthLabel": "Needs Review",
+      "documents": [
+        "TECH-UX-01",
+        "TECH-UX-02",
+        "TECH-UX-03",
+        "TECH-UX-04",
+        "TECH-UX-09",
+        "TECH-UX-10",
+        "TECH-UX-11"
+      ]
+    },
+    {
+      "family": "UNKNOWN",
+      "documentCount": 10,
+      "averageHealthScore": 24,
+      "healthLabel": "Outdated",
+      "documents": [
+        "QUAL-TRACE-01_Requirements_Traceability_Matrix",
+        "VOLUME_01_EXECUTIVE_OVERVIEW",
+        "VOLUME_02_ARCHITECTURE",
+        "VOLUME_03_BUSINESS_DOMAINS",
+        "VOLUME_04_MODULES",
+        "VOLUME_05_SCREENS",
+        "VOLUME_08_PERMISSIONS",
+        "VOLUME_11_LIFECYCLES",
+        "VOLUME_15_NOTIFICATIONS",
+        "VOLUME_38_CERTIFICATION_REPORT"
+      ]
+    }
+  ],
+  "documents": [
+    {
+      "documentId": "VOLUME_15_NOTIFICATIONS",
+      "documentName": "VOLUME_15_NOTIFICATIONS.md",
+      "family": "UNKNOWN",
+      "file": "VOLUME_15_NOTIFICATIONS.md",
+      "healthScore": 10,
+      "healthLabel": "Outdated",
+      "checks": {
+        "metadataCompleteness": 0,
+        "statusWeight": 0.5,
+        "hasCrossReferences": 0,
+        "hasEntities": 0,
+        "hasRoutes": 0,
+        "noForbiddenText": 0
+      },
+      "metadata": {
+        "hasDocumentId": false,
+        "hasDocumentName": false,
+        "hasFamily": false,
+        "hasStatus": false,
+        "hasVersion": false
+      },
+      "crossReferenceCount": 0,
+      "entityCount": 0,
+      "routeCount": 0,
+      "linkRefCount": 0,
+      "hasForbiddenText": true
+    },
+    {
+      "documentId": "QUAL-TRACE-01_Requirements_Traceability_Matrix",
+      "documentName": "QUAL-TRACE-01_Requirements_Traceability_Matrix.md",
+      "family": "UNKNOWN",
+      "file": "QUAL-TRACE-01_Requirements_Traceability_Matrix.md",
+      "healthScore": 25,
+      "healthLabel": "Outdated",
+      "checks": {
+        "metadataCompleteness": 0,
+        "statusWeight": 0.5,
+        "hasCrossReferences": 0,
+        "hasEntities": 0,
+        "hasRoutes": 0,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": false,
+        "hasDocumentName": false,
+        "hasFamily": false,
+        "hasStatus": false,
+        "hasVersion": false
+      },
+      "crossReferenceCount": 0,
+      "entityCount": 0,
+      "routeCount": 0,
+      "linkRefCount": 31,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "VOLUME_01_EXECUTIVE_OVERVIEW",
+      "documentName": "VOLUME_01_EXECUTIVE_OVERVIEW.md",
+      "family": "UNKNOWN",
+      "file": "VOLUME_01_EXECUTIVE_OVERVIEW.md",
+      "healthScore": 25,
+      "healthLabel": "Outdated",
+      "checks": {
+        "metadataCompleteness": 0,
+        "statusWeight": 0.5,
+        "hasCrossReferences": 0,
+        "hasEntities": 0,
+        "hasRoutes": 0,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": false,
+        "hasDocumentName": false,
+        "hasFamily": false,
+        "hasStatus": false,
+        "hasVersion": false
+      },
+      "crossReferenceCount": 0,
+      "entityCount": 0,
+      "routeCount": 0,
+      "linkRefCount": 0,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "VOLUME_02_ARCHITECTURE",
+      "documentName": "VOLUME_02_ARCHITECTURE.md",
+      "family": "UNKNOWN",
+      "file": "VOLUME_02_ARCHITECTURE.md",
+      "healthScore": 25,
+      "healthLabel": "Outdated",
+      "checks": {
+        "metadataCompleteness": 0,
+        "statusWeight": 0.5,
+        "hasCrossReferences": 0,
+        "hasEntities": 0,
+        "hasRoutes": 0,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": false,
+        "hasDocumentName": false,
+        "hasFamily": false,
+        "hasStatus": false,
+        "hasVersion": false
+      },
+      "crossReferenceCount": 0,
+      "entityCount": 0,
+      "routeCount": 0,
+      "linkRefCount": 0,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "VOLUME_03_BUSINESS_DOMAINS",
+      "documentName": "VOLUME_03_BUSINESS_DOMAINS.md",
+      "family": "UNKNOWN",
+      "file": "VOLUME_03_BUSINESS_DOMAINS.md",
+      "healthScore": 25,
+      "healthLabel": "Outdated",
+      "checks": {
+        "metadataCompleteness": 0,
+        "statusWeight": 0.5,
+        "hasCrossReferences": 0,
+        "hasEntities": 0,
+        "hasRoutes": 0,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": false,
+        "hasDocumentName": false,
+        "hasFamily": false,
+        "hasStatus": false,
+        "hasVersion": false
+      },
+      "crossReferenceCount": 0,
+      "entityCount": 0,
+      "routeCount": 0,
+      "linkRefCount": 0,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "VOLUME_04_MODULES",
+      "documentName": "VOLUME_04_MODULES.md",
+      "family": "UNKNOWN",
+      "file": "VOLUME_04_MODULES.md",
+      "healthScore": 25,
+      "healthLabel": "Outdated",
+      "checks": {
+        "metadataCompleteness": 0,
+        "statusWeight": 0.5,
+        "hasCrossReferences": 0,
+        "hasEntities": 0,
+        "hasRoutes": 0,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": false,
+        "hasDocumentName": false,
+        "hasFamily": false,
+        "hasStatus": false,
+        "hasVersion": false
+      },
+      "crossReferenceCount": 0,
+      "entityCount": 0,
+      "routeCount": 0,
+      "linkRefCount": 0,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "VOLUME_05_SCREENS",
+      "documentName": "VOLUME_05_SCREENS.md",
+      "family": "UNKNOWN",
+      "file": "VOLUME_05_SCREENS.md",
+      "healthScore": 25,
+      "healthLabel": "Outdated",
+      "checks": {
+        "metadataCompleteness": 0,
+        "statusWeight": 0.5,
+        "hasCrossReferences": 0,
+        "hasEntities": 0,
+        "hasRoutes": 0,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": false,
+        "hasDocumentName": false,
+        "hasFamily": false,
+        "hasStatus": false,
+        "hasVersion": false
+      },
+      "crossReferenceCount": 0,
+      "entityCount": 0,
+      "routeCount": 0,
+      "linkRefCount": 0,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "VOLUME_08_PERMISSIONS",
+      "documentName": "VOLUME_08_PERMISSIONS.md",
+      "family": "UNKNOWN",
+      "file": "VOLUME_08_PERMISSIONS.md",
+      "healthScore": 25,
+      "healthLabel": "Outdated",
+      "checks": {
+        "metadataCompleteness": 0,
+        "statusWeight": 0.5,
+        "hasCrossReferences": 0,
+        "hasEntities": 0,
+        "hasRoutes": 0,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": false,
+        "hasDocumentName": false,
+        "hasFamily": false,
+        "hasStatus": false,
+        "hasVersion": false
+      },
+      "crossReferenceCount": 0,
+      "entityCount": 0,
+      "routeCount": 0,
+      "linkRefCount": 0,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "VOLUME_11_LIFECYCLES",
+      "documentName": "VOLUME_11_LIFECYCLES.md",
+      "family": "UNKNOWN",
+      "file": "VOLUME_11_LIFECYCLES.md",
+      "healthScore": 25,
+      "healthLabel": "Outdated",
+      "checks": {
+        "metadataCompleteness": 0,
+        "statusWeight": 0.5,
+        "hasCrossReferences": 0,
+        "hasEntities": 0,
+        "hasRoutes": 0,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": false,
+        "hasDocumentName": false,
+        "hasFamily": false,
+        "hasStatus": false,
+        "hasVersion": false
+      },
+      "crossReferenceCount": 0,
+      "entityCount": 0,
+      "routeCount": 0,
+      "linkRefCount": 0,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "VOLUME_38_CERTIFICATION_REPORT",
+      "documentName": "VOLUME_38_CERTIFICATION_REPORT.md",
+      "family": "UNKNOWN",
+      "file": "VOLUME_38_CERTIFICATION_REPORT.md",
+      "healthScore": 25,
+      "healthLabel": "Outdated",
+      "checks": {
+        "metadataCompleteness": 0,
+        "statusWeight": 0.5,
+        "hasCrossReferences": 0,
+        "hasEntities": 0,
+        "hasRoutes": 0,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": false,
+        "hasDocumentName": false,
+        "hasFamily": false,
+        "hasStatus": false,
+        "hasVersion": false
+      },
+      "crossReferenceCount": 0,
+      "entityCount": 0,
+      "routeCount": 0,
+      "linkRefCount": 0,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "BIZ-ARCH-07",
+      "documentName": "Business Policy Register",
+      "family": "BIZ-ARCH",
+      "file": "BIZ-ARCH-07_Business_Policy_Register.md",
+      "healthScore": 42,
+      "healthLabel": "Outdated",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 0,
+        "hasEntities": 0,
+        "hasRoutes": 0,
+        "noForbiddenText": 0
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 0,
+      "entityCount": 0,
+      "routeCount": 0,
+      "linkRefCount": 0,
+      "hasForbiddenText": true
+    },
+    {
+      "documentId": "TECH-DEV-08",
+      "documentName": "Code Review Standards",
+      "family": "TECH-DEV",
+      "file": "TECH-DEV-08_Code_Review_Standards.md",
+      "healthScore": 42,
+      "healthLabel": "Outdated",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 0,
+        "hasEntities": 0,
+        "hasRoutes": 0,
+        "noForbiddenText": 0
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 0,
+      "entityCount": 0,
+      "routeCount": 0,
+      "linkRefCount": 6,
+      "hasForbiddenText": true
+    },
+    {
+      "documentId": "TECH-DEV-13",
+      "documentName": "Logging Standards",
+      "family": "TECH-DEV",
+      "file": "TECH-DEV-13_Logging_Standards.md",
+      "healthScore": 42,
+      "healthLabel": "Outdated",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 0,
+        "hasEntities": 0,
+        "hasRoutes": 0,
+        "noForbiddenText": 0
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 0,
+      "entityCount": 0,
+      "routeCount": 0,
+      "linkRefCount": 4,
+      "hasForbiddenText": true
+    },
+    {
+      "documentId": "TECH-DEV-14",
+      "documentName": "Security Coding Standards",
+      "family": "TECH-DEV",
+      "file": "TECH-DEV-14_Security_Coding_Standards.md",
+      "healthScore": 42,
+      "healthLabel": "Outdated",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 0,
+        "hasEntities": 0,
+        "hasRoutes": 0,
+        "noForbiddenText": 0
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 0,
+      "entityCount": 0,
+      "routeCount": 0,
+      "linkRefCount": 4,
+      "hasForbiddenText": true
+    },
+    {
+      "documentId": "TECH-UX-04",
+      "documentName": "Screen Flows",
+      "family": "TECH-UX",
+      "file": "TECH-UX-04_Screen_Flows.md",
+      "healthScore": 42,
+      "healthLabel": "Outdated",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 0,
+        "hasEntities": 0,
+        "hasRoutes": 0,
+        "noForbiddenText": 0
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 0,
+      "entityCount": 0,
+      "routeCount": 0,
+      "linkRefCount": 0,
+      "hasForbiddenText": true
+    },
+    {
+      "documentId": "TECH-UX-10",
+      "documentName": "Loading State Patterns",
+      "family": "TECH-UX",
+      "file": "TECH-UX-10_Loading_State_Patterns.md",
+      "healthScore": 42,
+      "healthLabel": "Outdated",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 0,
+        "hasEntities": 0,
+        "hasRoutes": 0,
+        "noForbiddenText": 0
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 0,
+      "entityCount": 0,
+      "routeCount": 0,
+      "linkRefCount": 0,
+      "hasForbiddenText": true
+    },
+    {
+      "documentId": "GOV-ADR-006",
+      "documentName": "Inventory Ledger-Based Transactions",
+      "family": "GOV-ADR",
+      "file": "GOV-ADR-006_Ledger_Based_Transactions.md",
+      "healthScore": 48,
+      "healthLabel": "Outdated",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.9,
+        "hasCrossReferences": 0,
+        "hasEntities": 0,
+        "hasRoutes": 0,
+        "noForbiddenText": 0
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 0,
+      "entityCount": 0,
+      "routeCount": 0,
+      "linkRefCount": 1,
+      "hasForbiddenText": true
+    },
+    {
+      "documentId": "GOV-ADR-008",
+      "documentName": "Academy State Machine",
+      "family": "GOV-ADR",
+      "file": "GOV-ADR-008_Academy_State_Machine.md",
+      "healthScore": 48,
+      "healthLabel": "Outdated",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.9,
+        "hasCrossReferences": 0,
+        "hasEntities": 0,
+        "hasRoutes": 0,
+        "noForbiddenText": 0
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 0,
+      "entityCount": 0,
+      "routeCount": 0,
+      "linkRefCount": 1,
+      "hasForbiddenText": true
+    },
+    {
+      "documentId": "GOV-ADR-009",
+      "documentName": "Tournament Format Strategy",
+      "family": "GOV-ADR",
+      "file": "GOV-ADR-009_Tournament_Format_Strategy.md",
+      "healthScore": 48,
+      "healthLabel": "Outdated",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.9,
+        "hasCrossReferences": 0,
+        "hasEntities": 0,
+        "hasRoutes": 0,
+        "noForbiddenText": 0
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 0,
+      "entityCount": 0,
+      "routeCount": 0,
+      "linkRefCount": 1,
+      "hasForbiddenText": true
+    },
+    {
+      "documentId": "BIZ-ARCH-01",
+      "documentName": "Business Vision & Strategy",
+      "family": "BIZ-ARCH",
+      "file": "BIZ-ARCH-01_Business_Vision_Strategy.md",
+      "healthScore": 57,
+      "healthLabel": "Needs Review",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 0,
+        "hasEntities": 0,
+        "hasRoutes": 0,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 0,
+      "entityCount": 0,
+      "routeCount": 0,
+      "linkRefCount": 1,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "BIZ-ARCH-02",
+      "documentName": "Business Goals & Objectives",
+      "family": "BIZ-ARCH",
+      "file": "BIZ-ARCH-02_Business_Goals_Objectives.md",
+      "healthScore": 57,
+      "healthLabel": "Needs Review",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 0,
+        "hasEntities": 0,
+        "hasRoutes": 0,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 0,
+      "entityCount": 0,
+      "routeCount": 0,
+      "linkRefCount": 0,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "BIZ-ARCH-03",
+      "documentName": "Business Capability Map",
+      "family": "BIZ-ARCH",
+      "file": "BIZ-ARCH-03_Business_Capability_Map.md",
+      "healthScore": 57,
+      "healthLabel": "Needs Review",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 0,
+        "hasEntities": 0,
+        "hasRoutes": 0,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 0,
+      "entityCount": 0,
+      "routeCount": 0,
+      "linkRefCount": 0,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "BIZ-ARCH-04",
+      "documentName": "Business Process Catalog",
+      "family": "BIZ-ARCH",
+      "file": "BIZ-ARCH-04_Business_Process_Catalog.md",
+      "healthScore": 57,
+      "healthLabel": "Needs Review",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 0,
+        "hasEntities": 0,
+        "hasRoutes": 0,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 0,
+      "entityCount": 0,
+      "routeCount": 0,
+      "linkRefCount": 0,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "BIZ-ARCH-06",
+      "documentName": "Business Event Catalog",
+      "family": "BIZ-ARCH",
+      "file": "BIZ-ARCH-06_Business_Event_Catalog.md",
+      "healthScore": 57,
+      "healthLabel": "Needs Review",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 0,
+        "hasEntities": 0,
+        "hasRoutes": 0,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 0,
+      "entityCount": 0,
+      "routeCount": 0,
+      "linkRefCount": 0,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "BIZ-ARCH-08",
+      "documentName": "Business Rule Catalog",
+      "family": "BIZ-ARCH",
+      "file": "BIZ-ARCH-08_Business_Rule_Catalog.md",
+      "healthScore": 57,
+      "healthLabel": "Needs Review",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 0,
+        "hasEntities": 0,
+        "hasRoutes": 0,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 0,
+      "entityCount": 0,
+      "routeCount": 0,
+      "linkRefCount": 0,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "BIZ-ARCH-10",
+      "documentName": "Business Glossary",
+      "family": "BIZ-ARCH",
+      "file": "BIZ-ARCH-10_Business_Glossary.md",
+      "healthScore": 57,
+      "healthLabel": "Needs Review",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 0,
+        "hasEntities": 0,
+        "hasRoutes": 0,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 0,
+      "entityCount": 0,
+      "routeCount": 0,
+      "linkRefCount": 0,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "BIZ-PROD-03",
+      "documentName": "Feature Matrix",
+      "family": "BIZ-PROD",
+      "file": "BIZ-PROD-03_Feature_Matrix.md",
+      "healthScore": 57,
+      "healthLabel": "Needs Review",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 0,
+        "hasEntities": 0,
+        "hasRoutes": 0,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 0,
+      "entityCount": 0,
+      "routeCount": 0,
+      "linkRefCount": 0,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "BIZ-PROD-04",
+      "documentName": "Product Roadmap",
+      "family": "BIZ-PROD",
+      "file": "BIZ-PROD-04_Product_Roadmap.md",
+      "healthScore": 57,
+      "healthLabel": "Needs Review",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 1,
+        "hasEntities": 0,
+        "hasRoutes": 0,
+        "noForbiddenText": 0
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 1,
+      "entityCount": 0,
+      "routeCount": 0,
+      "linkRefCount": 1,
+      "hasForbiddenText": true
+    },
+    {
+      "documentId": "TECH-ARCH-12",
+      "documentName": "Booking Flow Deep Dive",
+      "family": "TECH-ARCH",
+      "file": "TECH-ARCH-12_Booking_Flow_Deep_Dive.md",
+      "healthScore": 57,
+      "healthLabel": "Needs Review",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 1,
+        "hasEntities": 0,
+        "hasRoutes": 0,
+        "noForbiddenText": 0
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 7,
+      "entityCount": 0,
+      "routeCount": 0,
+      "linkRefCount": 7,
+      "hasForbiddenText": true
+    },
+    {
+      "documentId": "TECH-ARCH-18",
+      "documentName": "Inventory Architecture",
+      "family": "TECH-ARCH",
+      "file": "TECH-ARCH-18_Inventory_Architecture.md",
+      "healthScore": 57,
+      "healthLabel": "Needs Review",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 1,
+        "hasEntities": 0,
+        "hasRoutes": 0,
+        "noForbiddenText": 0
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 4,
+      "entityCount": 0,
+      "routeCount": 0,
+      "linkRefCount": 4,
+      "hasForbiddenText": true
+    },
+    {
+      "documentId": "TECH-ARCH-20",
+      "documentName": "Tournament Architecture",
+      "family": "TECH-ARCH",
+      "file": "TECH-ARCH-20_Tournament_Architecture.md",
+      "healthScore": 57,
+      "healthLabel": "Needs Review",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 1,
+        "hasEntities": 0,
+        "hasRoutes": 0,
+        "noForbiddenText": 0
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 5,
+      "entityCount": 0,
+      "routeCount": 0,
+      "linkRefCount": 5,
+      "hasForbiddenText": true
+    },
+    {
+      "documentId": "TECH-DEV-02",
+      "documentName": "Coding Standards — React",
+      "family": "TECH-DEV",
+      "file": "TECH-DEV-02_Coding_Standards_React.md",
+      "healthScore": 57,
+      "healthLabel": "Needs Review",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 0,
+        "hasEntities": 0,
+        "hasRoutes": 0,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 0,
+      "entityCount": 0,
+      "routeCount": 0,
+      "linkRefCount": 7,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "TECH-DEV-03",
+      "documentName": "Folder Structure Standard",
+      "family": "TECH-DEV",
+      "file": "TECH-DEV-03_Folder_Structure_Standard.md",
+      "healthScore": 57,
+      "healthLabel": "Needs Review",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 0,
+        "hasEntities": 0,
+        "hasRoutes": 0,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 0,
+      "entityCount": 0,
+      "routeCount": 0,
+      "linkRefCount": 4,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "TECH-DEV-05",
+      "documentName": "Git Workflow & Branch Strategy",
+      "family": "TECH-DEV",
+      "file": "TECH-DEV-05_Git_Workflow_Branch_Strategy.md",
+      "healthScore": 57,
+      "healthLabel": "Needs Review",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 0,
+        "hasEntities": 0,
+        "hasRoutes": 0,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 0,
+      "entityCount": 0,
+      "routeCount": 0,
+      "linkRefCount": 3,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "TECH-DEV-06",
+      "documentName": "Commit Message Standards",
+      "family": "TECH-DEV",
+      "file": "TECH-DEV-06_Commit_Message_Standards.md",
+      "healthScore": 57,
+      "healthLabel": "Needs Review",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 0,
+        "hasEntities": 0,
+        "hasRoutes": 0,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 0,
+      "entityCount": 0,
+      "routeCount": 0,
+      "linkRefCount": 2,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "TECH-DEV-07",
+      "documentName": "Pull Request Standards",
+      "family": "TECH-DEV",
+      "file": "TECH-DEV-07_Pull_Request_Standards.md",
+      "healthScore": 57,
+      "healthLabel": "Needs Review",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 0,
+        "hasEntities": 0,
+        "hasRoutes": 0,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 0,
+      "entityCount": 0,
+      "routeCount": 0,
+      "linkRefCount": 3,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "TECH-DEV-09",
+      "documentName": "Testing Standards",
+      "family": "TECH-DEV",
+      "file": "TECH-DEV-09_Testing_Standards.md",
+      "healthScore": 57,
+      "healthLabel": "Needs Review",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 0,
+        "hasEntities": 0,
+        "hasRoutes": 0,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 0,
+      "entityCount": 0,
+      "routeCount": 0,
+      "linkRefCount": 3,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "TECH-DEV-10",
+      "documentName": "Database Migration Standards",
+      "family": "TECH-DEV",
+      "file": "TECH-DEV-10_Migration_Standards.md",
+      "healthScore": 57,
+      "healthLabel": "Needs Review",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 0,
+        "hasEntities": 0,
+        "hasRoutes": 0,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 0,
+      "entityCount": 0,
+      "routeCount": 0,
+      "linkRefCount": 3,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "TECH-DEV-11",
+      "documentName": "API Design Standards",
+      "family": "TECH-DEV",
+      "file": "TECH-DEV-11_API_Design_Standards.md",
+      "healthScore": 57,
+      "healthLabel": "Needs Review",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 0,
+        "hasEntities": 0,
+        "hasRoutes": 0,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 0,
+      "entityCount": 0,
+      "routeCount": 0,
+      "linkRefCount": 4,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "TECH-DEV-12",
+      "documentName": "Error Handling Standards",
+      "family": "TECH-DEV",
+      "file": "TECH-DEV-12_Error_Handling_Standards.md",
+      "healthScore": 57,
+      "healthLabel": "Needs Review",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 0,
+        "hasEntities": 0,
+        "hasRoutes": 0,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 0,
+      "entityCount": 0,
+      "routeCount": 0,
+      "linkRefCount": 4,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "TECH-DEV-15",
+      "documentName": "Performance Coding Standards",
+      "family": "TECH-DEV",
+      "file": "TECH-DEV-15_Performance_Coding_Standards.md",
+      "healthScore": 57,
+      "healthLabel": "Needs Review",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 0,
+        "hasEntities": 0,
+        "hasRoutes": 0,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 0,
+      "entityCount": 0,
+      "routeCount": 0,
+      "linkRefCount": 4,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "TECH-UX-01",
+      "documentName": "Design System Overview",
+      "family": "TECH-UX",
+      "file": "TECH-UX-01_Design_System_Overview.md",
+      "healthScore": 57,
+      "healthLabel": "Needs Review",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 0,
+        "hasEntities": 0,
+        "hasRoutes": 0,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 0,
+      "entityCount": 0,
+      "routeCount": 0,
+      "linkRefCount": 0,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "TECH-UX-02",
+      "documentName": "Design Token Reference",
+      "family": "TECH-UX",
+      "file": "TECH-UX-02_Design_Token_Reference.md",
+      "healthScore": 57,
+      "healthLabel": "Needs Review",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 0,
+        "hasEntities": 0,
+        "hasRoutes": 0,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 0,
+      "entityCount": 0,
+      "routeCount": 0,
+      "linkRefCount": 0,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "TECH-UX-03",
+      "documentName": "Navigation Architecture",
+      "family": "TECH-UX",
+      "file": "TECH-UX-03_Navigation_Architecture.md",
+      "healthScore": 57,
+      "healthLabel": "Needs Review",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 0,
+        "hasEntities": 0,
+        "hasRoutes": 0,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 0,
+      "entityCount": 0,
+      "routeCount": 0,
+      "linkRefCount": 0,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "TECH-UX-09",
+      "documentName": "Empty State Patterns",
+      "family": "TECH-UX",
+      "file": "TECH-UX-09_Empty_State_Patterns.md",
+      "healthScore": 57,
+      "healthLabel": "Needs Review",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 0,
+        "hasEntities": 0,
+        "hasRoutes": 0,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 0,
+      "entityCount": 0,
+      "routeCount": 0,
+      "linkRefCount": 0,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "TECH-UX-11",
+      "documentName": "Error State Patterns",
+      "family": "TECH-UX",
+      "file": "TECH-UX-11_Error_State_Patterns.md",
+      "healthScore": 57,
+      "healthLabel": "Needs Review",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 0,
+        "hasEntities": 0,
+        "hasRoutes": 0,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 0,
+      "entityCount": 0,
+      "routeCount": 0,
+      "linkRefCount": 0,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "USER-01",
+      "documentName": "Player Guide",
+      "family": "USER",
+      "file": "USER-01_Player_Guide.md",
+      "healthScore": 57,
+      "healthLabel": "Needs Review",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 0,
+        "hasEntities": 0,
+        "hasRoutes": 0,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 0,
+      "entityCount": 0,
+      "routeCount": 0,
+      "linkRefCount": 0,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "GOV-ADR-001",
+      "documentName": "Global Identity Model",
+      "family": "GOV-ADR",
+      "file": "GOV-ADR-001_Global_Identity.md",
+      "healthScore": 63,
+      "healthLabel": "Needs Review",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.9,
+        "hasCrossReferences": 0,
+        "hasEntities": 0,
+        "hasRoutes": 0,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 0,
+      "entityCount": 0,
+      "routeCount": 0,
+      "linkRefCount": 1,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "GOV-ADR-002",
+      "documentName": "Domain Ownership — Modular Monolith",
+      "family": "GOV-ADR",
+      "file": "GOV-ADR-002_Domain_Ownership.md",
+      "healthScore": 63,
+      "healthLabel": "Needs Review",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.9,
+        "hasCrossReferences": 0,
+        "hasEntities": 0,
+        "hasRoutes": 0,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 0,
+      "entityCount": 0,
+      "routeCount": 0,
+      "linkRefCount": 2,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "GOV-ADR-003",
+      "documentName": "Event-Composable Architecture",
+      "family": "GOV-ADR",
+      "file": "GOV-ADR-003_Event_Composable_Architecture.md",
+      "healthScore": 63,
+      "healthLabel": "Needs Review",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.9,
+        "hasCrossReferences": 0,
+        "hasEntities": 0,
+        "hasRoutes": 0,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 0,
+      "entityCount": 0,
+      "routeCount": 0,
+      "linkRefCount": 1,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "GOV-ADR-004",
+      "documentName": "Ledger-Based Transaction Model",
+      "family": "GOV-ADR",
+      "file": "GOV-ADR-004_Ledger_Based_Transactions.md",
+      "healthScore": 63,
+      "healthLabel": "Needs Review",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.9,
+        "hasCrossReferences": 0,
+        "hasEntities": 0,
+        "hasRoutes": 0,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 0,
+      "entityCount": 0,
+      "routeCount": 0,
+      "linkRefCount": 1,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "GOV-ADR-005",
+      "documentName": "Finance Owns Financial Truth",
+      "family": "GOV-ADR",
+      "file": "GOV-ADR-005_Finance_Owns_Financial_Truth.md",
+      "healthScore": 63,
+      "healthLabel": "Needs Review",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.9,
+        "hasCrossReferences": 0,
+        "hasEntities": 0,
+        "hasRoutes": 0,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 0,
+      "entityCount": 0,
+      "routeCount": 0,
+      "linkRefCount": 1,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "GOV-ADR-007",
+      "documentName": "Single Order Aggregate",
+      "family": "GOV-ADR",
+      "file": "GOV-ADR-007_Single_Order_Aggregate.md",
+      "healthScore": 63,
+      "healthLabel": "Needs Review",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.9,
+        "hasCrossReferences": 0,
+        "hasEntities": 0,
+        "hasRoutes": 0,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 0,
+      "entityCount": 0,
+      "routeCount": 0,
+      "linkRefCount": 2,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "GOV-ADR-010",
+      "documentName": "CRM Read Model Pattern",
+      "family": "GOV-ADR",
+      "file": "GOV-ADR-010_CRM_Read_Model_Pattern.md",
+      "healthScore": 63,
+      "healthLabel": "Needs Review",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.9,
+        "hasCrossReferences": 1,
+        "hasEntities": 0,
+        "hasRoutes": 0,
+        "noForbiddenText": 0
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 4,
+      "entityCount": 0,
+      "routeCount": 0,
+      "linkRefCount": 4,
+      "hasForbiddenText": true
+    },
+    {
+      "documentId": "GOV-ADR-011",
+      "documentName": "HR Payroll — Finance Separation",
+      "family": "GOV-ADR",
+      "file": "GOV-ADR-011_HR_Payroll_Finance_Separation.md",
+      "healthScore": 63,
+      "healthLabel": "Needs Review",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.9,
+        "hasCrossReferences": 1,
+        "hasEntities": 0,
+        "hasRoutes": 0,
+        "noForbiddenText": 0
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 5,
+      "entityCount": 0,
+      "routeCount": 0,
+      "linkRefCount": 5,
+      "hasForbiddenText": true
+    },
+    {
+      "documentId": "GOV-ADR-017",
+      "documentName": "Scheduling Engine — Provider-Based Search",
+      "family": "GOV-ADR",
+      "file": "GOV-ADR-017_Scheduling_Engine.md",
+      "healthScore": 63,
+      "healthLabel": "Needs Review",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.9,
+        "hasCrossReferences": 1,
+        "hasEntities": 0,
+        "hasRoutes": 0,
+        "noForbiddenText": 0
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 3,
+      "entityCount": 0,
+      "routeCount": 0,
+      "linkRefCount": 3,
+      "hasForbiddenText": true
+    },
+    {
+      "documentId": "GOV-ADR-018",
+      "documentName": "Marketplace Settlement — Settlement Lifecycle with Financial Recording",
+      "family": "GOV-ADR",
+      "file": "GOV-ADR-018_Marketplace_Settlement.md",
+      "healthScore": 63,
+      "healthLabel": "Needs Review",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.9,
+        "hasCrossReferences": 1,
+        "hasEntities": 0,
+        "hasRoutes": 0,
+        "noForbiddenText": 0
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 5,
+      "entityCount": 0,
+      "routeCount": 0,
+      "linkRefCount": 5,
+      "hasForbiddenText": true
+    },
+    {
+      "documentId": "GOV-ADR-019",
+      "documentName": "HR-Payroll / Finance Boundary — HR Calculates, Finance Posts",
+      "family": "GOV-ADR",
+      "file": "GOV-ADR-019_Payroll_Finance_Boundary.md",
+      "healthScore": 63,
+      "healthLabel": "Needs Review",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.9,
+        "hasCrossReferences": 1,
+        "hasEntities": 0,
+        "hasRoutes": 0,
+        "noForbiddenText": 0
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 6,
+      "entityCount": 0,
+      "routeCount": 0,
+      "linkRefCount": 6,
+      "hasForbiddenText": true
+    },
+    {
+      "documentId": "ADMIN-02",
+      "documentName": "Organisation Admin Guide",
+      "family": "ADMIN",
+      "file": "ADMIN-02_Org_Admin_Guide.md",
+      "healthScore": 67,
+      "healthLabel": "Needs Review",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 0,
+        "hasEntities": 1,
+        "hasRoutes": 0,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 0,
+      "entityCount": 6,
+      "routeCount": 0,
+      "linkRefCount": 3,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "BIZ-ARCH-05",
+      "documentName": "Business Actor Model",
+      "family": "BIZ-ARCH",
+      "file": "BIZ-ARCH-05_Business_Actor_Model.md",
+      "healthScore": 67,
+      "healthLabel": "Needs Review",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 0,
+        "hasEntities": 1,
+        "hasRoutes": 0,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 0,
+      "entityCount": 5,
+      "routeCount": 0,
+      "linkRefCount": 0,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "BIZ-ARCH-09",
+      "documentName": "Business KPI Framework",
+      "family": "BIZ-ARCH",
+      "file": "BIZ-ARCH-09_Business_KPI_Framework.md",
+      "healthScore": 67,
+      "healthLabel": "Needs Review",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 0,
+        "hasEntities": 1,
+        "hasRoutes": 0,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 0,
+      "entityCount": 18,
+      "routeCount": 0,
+      "linkRefCount": 0,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "TECH-DB-03",
+      "documentName": "Entity Reference",
+      "family": "TECH-DB",
+      "file": "TECH-DB-03_Entity_Reference.md",
+      "healthScore": 67,
+      "healthLabel": "Needs Review",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 0,
+        "hasEntities": 1,
+        "hasRoutes": 0,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 0,
+      "entityCount": 15,
+      "routeCount": 0,
+      "linkRefCount": 3,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "TECH-DEV-04",
+      "documentName": "Naming Conventions",
+      "family": "TECH-DEV",
+      "file": "TECH-DEV-04_Naming_Conventions.md",
+      "healthScore": 67,
+      "healthLabel": "Needs Review",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 0,
+        "hasEntities": 1,
+        "hasRoutes": 0,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 0,
+      "entityCount": 1,
+      "routeCount": 0,
+      "linkRefCount": 4,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "BIZ-PROD-01",
+      "documentName": "Product Vision & Mission",
+      "family": "BIZ-PROD",
+      "file": "BIZ-PROD-01_Product_Vision_Mission.md",
+      "healthScore": 72,
+      "healthLabel": "Needs Review",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 1,
+        "hasEntities": 0,
+        "hasRoutes": 0,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 1,
+      "entityCount": 0,
+      "routeCount": 0,
+      "linkRefCount": 1,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "BIZ-PROD-02",
+      "documentName": "Feature Catalog",
+      "family": "BIZ-PROD",
+      "file": "BIZ-PROD-02_Feature_Catalog.md",
+      "healthScore": 72,
+      "healthLabel": "Needs Review",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 1,
+        "hasEntities": 0,
+        "hasRoutes": 0,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 2,
+      "entityCount": 0,
+      "routeCount": 0,
+      "linkRefCount": 2,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "BIZ-PROD-06",
+      "documentName": "Pricing Model",
+      "family": "BIZ-PROD",
+      "file": "BIZ-PROD-06_Pricing_Model.md",
+      "healthScore": 72,
+      "healthLabel": "Needs Review",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 1,
+        "hasEntities": 0,
+        "hasRoutes": 0,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 2,
+      "entityCount": 0,
+      "routeCount": 0,
+      "linkRefCount": 2,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "BIZ-PROD-08",
+      "documentName": "Edition Comparison",
+      "family": "BIZ-PROD",
+      "file": "BIZ-PROD-08_Edition_Comparison.md",
+      "healthScore": 72,
+      "healthLabel": "Needs Review",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 1,
+        "hasEntities": 0,
+        "hasRoutes": 0,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 2,
+      "entityCount": 0,
+      "routeCount": 0,
+      "linkRefCount": 2,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "OPS-DEPLOY-01",
+      "documentName": "Deployment Guide",
+      "family": "OPS-DEPLOY",
+      "file": "OPS-DEPLOY-01_Deployment_Guide.md",
+      "healthScore": 72,
+      "healthLabel": "Needs Review",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 1,
+        "hasEntities": 0,
+        "hasRoutes": 0,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 4,
+      "entityCount": 0,
+      "routeCount": 0,
+      "linkRefCount": 4,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "OPS-MON-01",
+      "documentName": "Monitoring Guide",
+      "family": "OPS-MON",
+      "file": "OPS-MON-01_Monitoring_Guide.md",
+      "healthScore": 72,
+      "healthLabel": "Needs Review",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 1,
+        "hasEntities": 0,
+        "hasRoutes": 0,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 4,
+      "entityCount": 0,
+      "routeCount": 0,
+      "linkRefCount": 4,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "OPS-RUN-01",
+      "documentName": "Backup and Restore",
+      "family": "OPS-RUN",
+      "file": "OPS-RUN-01_Backup_Restore.md",
+      "healthScore": 72,
+      "healthLabel": "Needs Review",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 1,
+        "hasEntities": 0,
+        "hasRoutes": 0,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 2,
+      "entityCount": 0,
+      "routeCount": 0,
+      "linkRefCount": 2,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "OPS-RUN-02",
+      "documentName": "Troubleshooting Guide",
+      "family": "OPS-RUN",
+      "file": "OPS-RUN-02_Troubleshooting_Guide.md",
+      "healthScore": 72,
+      "healthLabel": "Needs Review",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 1,
+        "hasEntities": 0,
+        "hasRoutes": 0,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 4,
+      "entityCount": 0,
+      "routeCount": 0,
+      "linkRefCount": 4,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "QUAL-CERT-01",
+      "documentName": "Certification Report",
+      "family": "QUAL-CERT",
+      "file": "QUAL-CERT-01_Certification_Report.md",
+      "healthScore": 72,
+      "healthLabel": "Needs Review",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 1,
+        "hasEntities": 0,
+        "hasRoutes": 0,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 4,
+      "entityCount": 0,
+      "routeCount": 0,
+      "linkRefCount": 4,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "QUAL-TEST-01",
+      "documentName": "Testing Strategy",
+      "family": "QUAL-TEST",
+      "file": "QUAL-TEST-01_Testing_Strategy.md",
+      "healthScore": 72,
+      "healthLabel": "Needs Review",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 1,
+        "hasEntities": 0,
+        "hasRoutes": 0,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 5,
+      "entityCount": 0,
+      "routeCount": 0,
+      "linkRefCount": 5,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "QUAL-TEST-02",
+      "documentName": "Unit Test Reference",
+      "family": "QUAL-TEST",
+      "file": "QUAL-TEST-02_Unit_Test_Reference.md",
+      "healthScore": 72,
+      "healthLabel": "Needs Review",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 1,
+        "hasEntities": 0,
+        "hasRoutes": 0,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 4,
+      "entityCount": 0,
+      "routeCount": 0,
+      "linkRefCount": 4,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "QUAL-TEST-03",
+      "documentName": "Integration Test Reference",
+      "family": "QUAL-TEST",
+      "file": "QUAL-TEST-03_Integration_Test_Reference.md",
+      "healthScore": 72,
+      "healthLabel": "Needs Review",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 1,
+        "hasEntities": 0,
+        "hasRoutes": 0,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 4,
+      "entityCount": 0,
+      "routeCount": 0,
+      "linkRefCount": 28,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "QUAL-TEST-04",
+      "documentName": "E2E Test Reference",
+      "family": "QUAL-TEST",
+      "file": "QUAL-TEST-04_E2E_Test_Reference.md",
+      "healthScore": 72,
+      "healthLabel": "Needs Review",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 1,
+        "hasEntities": 0,
+        "hasRoutes": 0,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 4,
+      "entityCount": 0,
+      "routeCount": 0,
+      "linkRefCount": 4,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "TECH-ARCH-01",
+      "documentName": "System Architecture",
+      "family": "TECH-ARCH",
+      "file": "TECH-ARCH-01_System_Architecture.md",
+      "healthScore": 72,
+      "healthLabel": "Needs Review",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 1,
+        "hasEntities": 0,
+        "hasRoutes": 0,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 6,
+      "entityCount": 0,
+      "routeCount": 0,
+      "linkRefCount": 4,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "TECH-ARCH-02",
+      "documentName": "Module Architecture",
+      "family": "TECH-ARCH",
+      "file": "TECH-ARCH-02_Module_Architecture.md",
+      "healthScore": 72,
+      "healthLabel": "Needs Review",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 1,
+        "hasEntities": 0,
+        "hasRoutes": 0,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 5,
+      "entityCount": 0,
+      "routeCount": 0,
+      "linkRefCount": 3,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "TECH-ARCH-03",
+      "documentName": "Domain Model",
+      "family": "TECH-ARCH",
+      "file": "TECH-ARCH-03_Domain_Model.md",
+      "healthScore": 72,
+      "healthLabel": "Needs Review",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 1,
+        "hasEntities": 0,
+        "hasRoutes": 0,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 5,
+      "entityCount": 0,
+      "routeCount": 0,
+      "linkRefCount": 2,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "TECH-ARCH-04",
+      "documentName": "Event Architecture",
+      "family": "TECH-ARCH",
+      "file": "TECH-ARCH-04_Event_Architecture.md",
+      "healthScore": 72,
+      "healthLabel": "Needs Review",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 1,
+        "hasEntities": 0,
+        "hasRoutes": 0,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 5,
+      "entityCount": 0,
+      "routeCount": 0,
+      "linkRefCount": 2,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "TECH-ARCH-05",
+      "documentName": "Data Architecture",
+      "family": "TECH-ARCH",
+      "file": "TECH-ARCH-05_Data_Architecture.md",
+      "healthScore": 72,
+      "healthLabel": "Needs Review",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 1,
+        "hasEntities": 0,
+        "hasRoutes": 0,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 4,
+      "entityCount": 0,
+      "routeCount": 0,
+      "linkRefCount": 2,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "TECH-ARCH-06",
+      "documentName": "Integration Architecture",
+      "family": "TECH-ARCH",
+      "file": "TECH-ARCH-06_Integration_Architecture.md",
+      "healthScore": 72,
+      "healthLabel": "Needs Review",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 1,
+        "hasEntities": 0,
+        "hasRoutes": 0,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 4,
+      "entityCount": 0,
+      "routeCount": 0,
+      "linkRefCount": 2,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "TECH-ARCH-07",
+      "documentName": "Security Architecture",
+      "family": "TECH-ARCH",
+      "file": "TECH-ARCH-07_Security_Architecture.md",
+      "healthScore": 72,
+      "healthLabel": "Needs Review",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 1,
+        "hasEntities": 0,
+        "hasRoutes": 0,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 5,
+      "entityCount": 0,
+      "routeCount": 0,
+      "linkRefCount": 2,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "TECH-ARCH-08",
+      "documentName": "Deployment Architecture",
+      "family": "TECH-ARCH",
+      "file": "TECH-ARCH-08_Deployment_Architecture.md",
+      "healthScore": 72,
+      "healthLabel": "Needs Review",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 1,
+        "hasEntities": 0,
+        "hasRoutes": 0,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 5,
+      "entityCount": 0,
+      "routeCount": 0,
+      "linkRefCount": 2,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "TECH-ARCH-10",
+      "documentName": "Technology Stack",
+      "family": "TECH-ARCH",
+      "file": "TECH-ARCH-10_Technology_Stack.md",
+      "healthScore": 72,
+      "healthLabel": "Needs Review",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 1,
+        "hasEntities": 0,
+        "hasRoutes": 0,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 5,
+      "entityCount": 0,
+      "routeCount": 0,
+      "linkRefCount": 4,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "TECH-ARCH-11",
+      "documentName": "Scalability Design",
+      "family": "TECH-ARCH",
+      "file": "TECH-ARCH-11_Scalability_Design.md",
+      "healthScore": 72,
+      "healthLabel": "Needs Review",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 1,
+        "hasEntities": 0,
+        "hasRoutes": 0,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 6,
+      "entityCount": 0,
+      "routeCount": 0,
+      "linkRefCount": 5,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "TECH-ARCH-13",
+      "documentName": "Payment Flow Deep Dive",
+      "family": "TECH-ARCH",
+      "file": "TECH-ARCH-13_Payment_Flow_Deep_Dive.md",
+      "healthScore": 72,
+      "healthLabel": "Needs Review",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 1,
+        "hasEntities": 0,
+        "hasRoutes": 0,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 6,
+      "entityCount": 0,
+      "routeCount": 0,
+      "linkRefCount": 6,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "TECH-ARCH-16",
+      "documentName": "Subscription Architecture",
+      "family": "TECH-ARCH",
+      "file": "TECH-ARCH-16_Subscription_Architecture.md",
+      "healthScore": 72,
+      "healthLabel": "Needs Review",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 1,
+        "hasEntities": 0,
+        "hasRoutes": 0,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 3,
+      "entityCount": 0,
+      "routeCount": 0,
+      "linkRefCount": 3,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "TECH-ARCH-17",
+      "documentName": "Marketplace Architecture",
+      "family": "TECH-ARCH",
+      "file": "TECH-ARCH-17_Marketplace_Architecture.md",
+      "healthScore": 72,
+      "healthLabel": "Needs Review",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 1,
+        "hasEntities": 0,
+        "hasRoutes": 0,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 7,
+      "entityCount": 0,
+      "routeCount": 0,
+      "linkRefCount": 7,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "TECH-ARCH-19",
+      "documentName": "Academy Architecture",
+      "family": "TECH-ARCH",
+      "file": "TECH-ARCH-19_Academy_Architecture.md",
+      "healthScore": 72,
+      "healthLabel": "Needs Review",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 1,
+        "hasEntities": 0,
+        "hasRoutes": 0,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 5,
+      "entityCount": 0,
+      "routeCount": 0,
+      "linkRefCount": 5,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "TECH-ARCH-21",
+      "documentName": "League Architecture",
+      "family": "TECH-ARCH",
+      "file": "TECH-ARCH-21_League_Architecture.md",
+      "healthScore": 72,
+      "healthLabel": "Needs Review",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 1,
+        "hasEntities": 0,
+        "hasRoutes": 0,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 5,
+      "entityCount": 0,
+      "routeCount": 0,
+      "linkRefCount": 5,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "TECH-ARCH-22",
+      "documentName": "CRM Architecture",
+      "family": "TECH-ARCH",
+      "file": "TECH-ARCH-22_CRM_Architecture.md",
+      "healthScore": 72,
+      "healthLabel": "Needs Review",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 1,
+        "hasEntities": 0,
+        "hasRoutes": 0,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 4,
+      "entityCount": 0,
+      "routeCount": 0,
+      "linkRefCount": 4,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "TECH-ARCH-23",
+      "documentName": "HR Architecture",
+      "family": "TECH-ARCH",
+      "file": "TECH-ARCH-23_HR_Architecture.md",
+      "healthScore": 72,
+      "healthLabel": "Needs Review",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 1,
+        "hasEntities": 0,
+        "hasRoutes": 0,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 4,
+      "entityCount": 0,
+      "routeCount": 0,
+      "linkRefCount": 4,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "TECH-DEV-01",
+      "documentName": "Coding Standards — TypeScript",
+      "family": "TECH-DEV",
+      "file": "TECH-DEV-01_Coding_Standards_TypeScript.md",
+      "healthScore": 72,
+      "healthLabel": "Needs Review",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 1,
+        "hasEntities": 0,
+        "hasRoutes": 0,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 6,
+      "entityCount": 0,
+      "routeCount": 0,
+      "linkRefCount": 5,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "TECH-MOD-04",
+      "documentName": "Academy Module",
+      "family": "TECH-MOD",
+      "file": "TECH-MOD-04_academy.md",
+      "healthScore": 72,
+      "healthLabel": "Needs Review",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 1,
+        "hasEntities": 0,
+        "hasRoutes": 0,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 4,
+      "entityCount": 0,
+      "routeCount": 0,
+      "linkRefCount": 4,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "TECH-MOD-06",
+      "documentName": "Leagues Module",
+      "family": "TECH-MOD",
+      "file": "TECH-MOD-06_leagues.md",
+      "healthScore": 72,
+      "healthLabel": "Needs Review",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 1,
+        "hasEntities": 0,
+        "hasRoutes": 0,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 4,
+      "entityCount": 0,
+      "routeCount": 0,
+      "linkRefCount": 4,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "TECH-MOD-29",
+      "documentName": "Reports Module",
+      "family": "TECH-MOD",
+      "file": "TECH-MOD-29_reports.md",
+      "healthScore": 72,
+      "healthLabel": "Needs Review",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 1,
+        "hasEntities": 0,
+        "hasRoutes": 0,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 2,
+      "entityCount": 0,
+      "routeCount": 0,
+      "linkRefCount": 2,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "TECH-MOD-48",
+      "documentName": "Reference Data Module",
+      "family": "TECH-MOD",
+      "file": "TECH-MOD-48_reference-data.md",
+      "healthScore": 72,
+      "healthLabel": "Needs Review",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 1,
+        "hasEntities": 0,
+        "hasRoutes": 0,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 4,
+      "entityCount": 0,
+      "routeCount": 0,
+      "linkRefCount": 4,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "TECH-MOD-50",
+      "documentName": "Time Module",
+      "family": "TECH-MOD",
+      "file": "TECH-MOD-50_time.md",
+      "healthScore": 72,
+      "healthLabel": "Needs Review",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 1,
+        "hasEntities": 0,
+        "hasRoutes": 0,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 4,
+      "entityCount": 0,
+      "routeCount": 0,
+      "linkRefCount": 4,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "TECH-MOD-03",
+      "documentName": "Booking Module",
+      "family": "TECH-MOD",
+      "file": "TECH-MOD-03_booking.md",
+      "healthScore": 77,
+      "healthLabel": "Good",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 1,
+        "hasEntities": 1,
+        "hasRoutes": 1,
+        "noForbiddenText": 0
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 5,
+      "entityCount": 4,
+      "routeCount": 18,
+      "linkRefCount": 5,
+      "hasForbiddenText": true
+    },
+    {
+      "documentId": "TECH-MOD-21",
+      "documentName": "Audit Log Module",
+      "family": "TECH-MOD",
+      "file": "TECH-MOD-21_audit-log.md",
+      "healthScore": 77,
+      "healthLabel": "Good",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 1,
+        "hasEntities": 1,
+        "hasRoutes": 1,
+        "noForbiddenText": 0
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 4,
+      "entityCount": 1,
+      "routeCount": 1,
+      "linkRefCount": 4,
+      "hasForbiddenText": true
+    },
+    {
+      "documentId": "GOV-ADR-012",
+      "documentName": "Session Management — HttpOnly Cookies with Bearer Token Fallback",
+      "family": "GOV-ADR",
+      "file": "GOV-ADR-012_Session_Management.md",
+      "healthScore": 78,
+      "healthLabel": "Good",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.9,
+        "hasCrossReferences": 1,
+        "hasEntities": 0,
+        "hasRoutes": 0,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 3,
+      "entityCount": 0,
+      "routeCount": 0,
+      "linkRefCount": 3,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "GOV-ADR-013",
+      "documentName": "Payment Gateway Abstraction — Factory Pattern",
+      "family": "GOV-ADR",
+      "file": "GOV-ADR-013_Payment_Gateway_Abstraction.md",
+      "healthScore": 78,
+      "healthLabel": "Good",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.9,
+        "hasCrossReferences": 1,
+        "hasEntities": 0,
+        "hasRoutes": 0,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 3,
+      "entityCount": 0,
+      "routeCount": 0,
+      "linkRefCount": 3,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "GOV-ADR-014",
+      "documentName": "Notification Multi-Channel — Pluggable Provider Architecture",
+      "family": "GOV-ADR",
+      "file": "GOV-ADR-014_Notification_Multi_Channel.md",
+      "healthScore": 78,
+      "healthLabel": "Good",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.9,
+        "hasCrossReferences": 1,
+        "hasEntities": 0,
+        "hasRoutes": 0,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 3,
+      "entityCount": 0,
+      "routeCount": 0,
+      "linkRefCount": 3,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "GOV-ADR-015",
+      "documentName": "Booking Concurrency — Redis Distributed Locks + DB Constraints",
+      "family": "GOV-ADR",
+      "file": "GOV-ADR-015_Booking_Concurrency.md",
+      "healthScore": 78,
+      "healthLabel": "Good",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.9,
+        "hasCrossReferences": 1,
+        "hasEntities": 0,
+        "hasRoutes": 0,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 3,
+      "entityCount": 0,
+      "routeCount": 0,
+      "linkRefCount": 3,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "GOV-ADR-016",
+      "documentName": "Organization-Scoped RBAC",
+      "family": "GOV-ADR",
+      "file": "GOV-ADR-016_Organization_Scope_RBAC.md",
+      "healthScore": 78,
+      "healthLabel": "Good",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.9,
+        "hasCrossReferences": 1,
+        "hasEntities": 0,
+        "hasRoutes": 0,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 5,
+      "entityCount": 0,
+      "routeCount": 0,
+      "linkRefCount": 5,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "GOV-ADR-020",
+      "documentName": "Academy Attendance Immutability",
+      "family": "GOV-ADR",
+      "file": "GOV-ADR-020_Attendance_Immutability.md",
+      "healthScore": 78,
+      "healthLabel": "Good",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.9,
+        "hasCrossReferences": 1,
+        "hasEntities": 0,
+        "hasRoutes": 0,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 3,
+      "entityCount": 0,
+      "routeCount": 0,
+      "linkRefCount": 3,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "GOV-ADR-021",
+      "documentName": "Standings Persistence — Pre-Computed Rankings in Database",
+      "family": "GOV-ADR",
+      "file": "GOV-ADR-021_Standings_Persistence.md",
+      "healthScore": 78,
+      "healthLabel": "Good",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.9,
+        "hasCrossReferences": 1,
+        "hasEntities": 0,
+        "hasRoutes": 0,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 3,
+      "entityCount": 0,
+      "routeCount": 0,
+      "linkRefCount": 3,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "GOV-ADR-023",
+      "documentName": "Inventory Ledger — Immutable Log as Source of Truth",
+      "family": "GOV-ADR",
+      "file": "GOV-ADR-023_Inventory_Ledger.md",
+      "healthScore": 78,
+      "healthLabel": "Good",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.9,
+        "hasCrossReferences": 1,
+        "hasEntities": 0,
+        "hasRoutes": 0,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 3,
+      "entityCount": 0,
+      "routeCount": 0,
+      "linkRefCount": 3,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "GOV-ADR-024",
+      "documentName": "API Versioning Strategy — URL Prefix + API Key Authentication",
+      "family": "GOV-ADR",
+      "file": "GOV-ADR-024_API_Versioning_Strategy.md",
+      "healthScore": 78,
+      "healthLabel": "Good",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.9,
+        "hasCrossReferences": 1,
+        "hasEntities": 0,
+        "hasRoutes": 0,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 2,
+      "entityCount": 0,
+      "routeCount": 0,
+      "linkRefCount": 2,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "GOV-ADR-025",
+      "documentName": "Database Migration Strategy — Additive SQL with Authoritative Baseline",
+      "family": "GOV-ADR",
+      "file": "GOV-ADR-025_Migration_Strategy.md",
+      "healthScore": 78,
+      "healthLabel": "Good",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.9,
+        "hasCrossReferences": 1,
+        "hasEntities": 0,
+        "hasRoutes": 0,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 2,
+      "entityCount": 0,
+      "routeCount": 0,
+      "linkRefCount": 2,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "TECH-ARCH-14",
+      "documentName": "Wallet Architecture",
+      "family": "TECH-ARCH",
+      "file": "TECH-ARCH-14_Wallet_Architecture.md",
+      "healthScore": 82,
+      "healthLabel": "Good",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 1,
+        "hasEntities": 1,
+        "hasRoutes": 0,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 6,
+      "entityCount": 1,
+      "routeCount": 0,
+      "linkRefCount": 6,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "TECH-ARCH-15",
+      "documentName": "Organization Architecture",
+      "family": "TECH-ARCH",
+      "file": "TECH-ARCH-15_Organization_Architecture.md",
+      "healthScore": 82,
+      "healthLabel": "Good",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 1,
+        "hasEntities": 1,
+        "hasRoutes": 0,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 5,
+      "entityCount": 58,
+      "routeCount": 0,
+      "linkRefCount": 5,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "TECH-ARCH-25",
+      "documentName": "Observability Architecture",
+      "family": "TECH-ARCH",
+      "file": "TECH-ARCH-25_Observability_Architecture.md",
+      "healthScore": 82,
+      "healthLabel": "Good",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 1,
+        "hasEntities": 1,
+        "hasRoutes": 0,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 4,
+      "entityCount": 1,
+      "routeCount": 0,
+      "linkRefCount": 4,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "TECH-MOD-02",
+      "documentName": "RBAC Module",
+      "family": "TECH-MOD",
+      "file": "TECH-MOD-02_rbac.md",
+      "healthScore": 82,
+      "healthLabel": "Good",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 1,
+        "hasEntities": 1,
+        "hasRoutes": 0,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 4,
+      "entityCount": 7,
+      "routeCount": 0,
+      "linkRefCount": 3,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "TECH-MOD-05",
+      "documentName": "Tournaments Module",
+      "family": "TECH-MOD",
+      "file": "TECH-MOD-05_tournaments.md",
+      "healthScore": 82,
+      "healthLabel": "Good",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 1,
+        "hasEntities": 1,
+        "hasRoutes": 0,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 4,
+      "entityCount": 6,
+      "routeCount": 0,
+      "linkRefCount": 4,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "TECH-MOD-07",
+      "documentName": "Marketplace Module",
+      "family": "TECH-MOD",
+      "file": "TECH-MOD-07_marketplace.md",
+      "healthScore": 82,
+      "healthLabel": "Good",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 1,
+        "hasEntities": 1,
+        "hasRoutes": 0,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 4,
+      "entityCount": 14,
+      "routeCount": 0,
+      "linkRefCount": 4,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "TECH-MOD-12",
+      "documentName": "Accounting Module",
+      "family": "TECH-MOD",
+      "file": "TECH-MOD-12_accounting.md",
+      "healthScore": 82,
+      "healthLabel": "Good",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 1,
+        "hasEntities": 1,
+        "hasRoutes": 0,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 4,
+      "entityCount": 6,
+      "routeCount": 0,
+      "linkRefCount": 4,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "TECH-MOD-13",
+      "documentName": "Organisations Module",
+      "family": "TECH-MOD",
+      "file": "TECH-MOD-13_organisations.md",
+      "healthScore": 82,
+      "healthLabel": "Good",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 1,
+        "hasEntities": 1,
+        "hasRoutes": 0,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 5,
+      "entityCount": 12,
+      "routeCount": 0,
+      "linkRefCount": 5,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "TECH-MOD-14",
+      "documentName": "Notifications Module",
+      "family": "TECH-MOD",
+      "file": "TECH-MOD-14_notifications.md",
+      "healthScore": 82,
+      "healthLabel": "Good",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 1,
+        "hasEntities": 1,
+        "hasRoutes": 0,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 4,
+      "entityCount": 12,
+      "routeCount": 0,
+      "linkRefCount": 4,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "TECH-MOD-15",
+      "documentName": "CRM Module",
+      "family": "TECH-MOD",
+      "file": "TECH-MOD-15_crm.md",
+      "healthScore": 82,
+      "healthLabel": "Good",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 1,
+        "hasEntities": 1,
+        "hasRoutes": 0,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 4,
+      "entityCount": 5,
+      "routeCount": 0,
+      "linkRefCount": 4,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "TECH-MOD-16",
+      "documentName": "HR Module",
+      "family": "TECH-MOD",
+      "file": "TECH-MOD-16_hr.md",
+      "healthScore": 82,
+      "healthLabel": "Good",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 1,
+        "hasEntities": 1,
+        "hasRoutes": 0,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 3,
+      "entityCount": 10,
+      "routeCount": 0,
+      "linkRefCount": 3,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "TECH-MOD-19",
+      "documentName": "Scheduling Module",
+      "family": "TECH-MOD",
+      "file": "TECH-MOD-19_scheduling.md",
+      "healthScore": 82,
+      "healthLabel": "Good",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 1,
+        "hasEntities": 0,
+        "hasRoutes": 1,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 5,
+      "entityCount": 0,
+      "routeCount": 3,
+      "linkRefCount": 5,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "TECH-MOD-23",
+      "documentName": "Content Management Module",
+      "family": "TECH-MOD",
+      "file": "TECH-MOD-23_cms.md",
+      "healthScore": 82,
+      "healthLabel": "Good",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 1,
+        "hasEntities": 0,
+        "hasRoutes": 1,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 1,
+      "entityCount": 0,
+      "routeCount": 37,
+      "linkRefCount": 1,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "TECH-MOD-24",
+      "documentName": "Community Module",
+      "family": "TECH-MOD",
+      "file": "TECH-MOD-24_community.md",
+      "healthScore": 82,
+      "healthLabel": "Good",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 1,
+        "hasEntities": 0,
+        "hasRoutes": 1,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 3,
+      "entityCount": 0,
+      "routeCount": 41,
+      "linkRefCount": 3,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "TECH-MOD-25",
+      "documentName": "BI Module",
+      "family": "TECH-MOD",
+      "file": "TECH-MOD-25_bi.md",
+      "healthScore": 82,
+      "healthLabel": "Good",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 1,
+        "hasEntities": 0,
+        "hasRoutes": 1,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 5,
+      "entityCount": 0,
+      "routeCount": 6,
+      "linkRefCount": 5,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "TECH-MOD-27",
+      "documentName": "Integration Module",
+      "family": "TECH-MOD",
+      "file": "TECH-MOD-27_integration.md",
+      "healthScore": 82,
+      "healthLabel": "Good",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 1,
+        "hasEntities": 0,
+        "hasRoutes": 1,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 3,
+      "entityCount": 0,
+      "routeCount": 11,
+      "linkRefCount": 3,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "TECH-MOD-28",
+      "documentName": "Mobile Module",
+      "family": "TECH-MOD",
+      "file": "TECH-MOD-28_mobile.md",
+      "healthScore": 82,
+      "healthLabel": "Good",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 1,
+        "hasEntities": 0,
+        "hasRoutes": 1,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 2,
+      "entityCount": 0,
+      "routeCount": 13,
+      "linkRefCount": 2,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "TECH-MOD-31",
+      "documentName": "Coupon Module",
+      "family": "TECH-MOD",
+      "file": "TECH-MOD-31_coupon.md",
+      "healthScore": 82,
+      "healthLabel": "Good",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 1,
+        "hasEntities": 0,
+        "hasRoutes": 1,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 3,
+      "entityCount": 0,
+      "routeCount": 6,
+      "linkRefCount": 3,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "TECH-MOD-32",
+      "documentName": "Pricing Module",
+      "family": "TECH-MOD",
+      "file": "TECH-MOD-32_pricing.md",
+      "healthScore": 82,
+      "healthLabel": "Good",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 1,
+        "hasEntities": 0,
+        "hasRoutes": 1,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 4,
+      "entityCount": 0,
+      "routeCount": 9,
+      "linkRefCount": 4,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "TECH-MOD-33",
+      "documentName": "Upload Module",
+      "family": "TECH-MOD",
+      "file": "TECH-MOD-33_upload.md",
+      "healthScore": 82,
+      "healthLabel": "Good",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 1,
+        "hasEntities": 0,
+        "hasRoutes": 1,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 2,
+      "entityCount": 0,
+      "routeCount": 12,
+      "linkRefCount": 2,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "TECH-MOD-34",
+      "documentName": "Translations Module",
+      "family": "TECH-MOD",
+      "file": "TECH-MOD-34_translations.md",
+      "healthScore": 82,
+      "healthLabel": "Good",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 1,
+        "hasEntities": 0,
+        "hasRoutes": 1,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 1,
+      "entityCount": 0,
+      "routeCount": 17,
+      "linkRefCount": 1,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "TECH-MOD-35",
+      "documentName": "Activities Module",
+      "family": "TECH-MOD",
+      "file": "TECH-MOD-35_activities.md",
+      "healthScore": 82,
+      "healthLabel": "Good",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 1,
+        "hasEntities": 0,
+        "hasRoutes": 1,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 6,
+      "entityCount": 0,
+      "routeCount": 55,
+      "linkRefCount": 5,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "TECH-MOD-36",
+      "documentName": "Admin Module",
+      "family": "TECH-MOD",
+      "file": "TECH-MOD-36_admin.md",
+      "healthScore": 82,
+      "healthLabel": "Good",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 1,
+        "hasEntities": 0,
+        "hasRoutes": 1,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 3,
+      "entityCount": 0,
+      "routeCount": 19,
+      "linkRefCount": 3,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "TECH-MOD-37",
+      "documentName": "Amenities Module",
+      "family": "TECH-MOD",
+      "file": "TECH-MOD-37_amenities.md",
+      "healthScore": 82,
+      "healthLabel": "Good",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 1,
+        "hasEntities": 0,
+        "hasRoutes": 1,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 1,
+      "entityCount": 0,
+      "routeCount": 4,
+      "linkRefCount": 1,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "TECH-MOD-38",
+      "documentName": "Approvals Module",
+      "family": "TECH-MOD",
+      "file": "TECH-MOD-38_approvals.md",
+      "healthScore": 82,
+      "healthLabel": "Good",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 1,
+        "hasEntities": 0,
+        "hasRoutes": 1,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 4,
+      "entityCount": 0,
+      "routeCount": 3,
+      "linkRefCount": 4,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "TECH-MOD-39",
+      "documentName": "App Settings Module",
+      "family": "TECH-MOD",
+      "file": "TECH-MOD-39_app-settings.md",
+      "healthScore": 82,
+      "healthLabel": "Good",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 1,
+        "hasEntities": 0,
+        "hasRoutes": 1,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 3,
+      "entityCount": 0,
+      "routeCount": 5,
+      "linkRefCount": 3,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "TECH-MOD-40",
+      "documentName": "Banks Module",
+      "family": "TECH-MOD",
+      "file": "TECH-MOD-40_banks.md",
+      "healthScore": 82,
+      "healthLabel": "Good",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 1,
+        "hasEntities": 0,
+        "hasRoutes": 1,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 1,
+      "entityCount": 0,
+      "routeCount": 10,
+      "linkRefCount": 1,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "TECH-MOD-41",
+      "documentName": "Cities Module",
+      "family": "TECH-MOD",
+      "file": "TECH-MOD-41_cities.md",
+      "healthScore": 82,
+      "healthLabel": "Good",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 1,
+        "hasEntities": 0,
+        "hasRoutes": 1,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 2,
+      "entityCount": 0,
+      "routeCount": 6,
+      "linkRefCount": 2,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "TECH-MOD-42",
+      "documentName": "Countries Module",
+      "family": "TECH-MOD",
+      "file": "TECH-MOD-42_countries.md",
+      "healthScore": 82,
+      "healthLabel": "Good",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 1,
+        "hasEntities": 0,
+        "hasRoutes": 1,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 3,
+      "entityCount": 0,
+      "routeCount": 5,
+      "linkRefCount": 3,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "TECH-MOD-43",
+      "documentName": "Currencies Module",
+      "family": "TECH-MOD",
+      "file": "TECH-MOD-43_currencies.md",
+      "healthScore": 82,
+      "healthLabel": "Good",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 1,
+        "hasEntities": 0,
+        "hasRoutes": 1,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 2,
+      "entityCount": 0,
+      "routeCount": 5,
+      "linkRefCount": 2,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "TECH-MOD-44",
+      "documentName": "Design Tokens Module",
+      "family": "TECH-MOD",
+      "file": "TECH-MOD-44_design-tokens.md",
+      "healthScore": 82,
+      "healthLabel": "Good",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 1,
+        "hasEntities": 0,
+        "hasRoutes": 1,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 4,
+      "entityCount": 0,
+      "routeCount": 17,
+      "linkRefCount": 4,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "TECH-MOD-45",
+      "documentName": "Geo Module",
+      "family": "TECH-MOD",
+      "file": "TECH-MOD-45_geo.md",
+      "healthScore": 82,
+      "healthLabel": "Good",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 1,
+        "hasEntities": 0,
+        "hasRoutes": 1,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 3,
+      "entityCount": 0,
+      "routeCount": 1,
+      "linkRefCount": 3,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "TECH-MOD-46",
+      "documentName": "Languages Module",
+      "family": "TECH-MOD",
+      "file": "TECH-MOD-46_languages.md",
+      "healthScore": 82,
+      "healthLabel": "Good",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 1,
+        "hasEntities": 0,
+        "hasRoutes": 1,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 2,
+      "entityCount": 0,
+      "routeCount": 6,
+      "linkRefCount": 2,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "TECH-MOD-47",
+      "documentName": "Provinces Module",
+      "family": "TECH-MOD",
+      "file": "TECH-MOD-47_provinces.md",
+      "healthScore": 82,
+      "healthLabel": "Good",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 1,
+        "hasEntities": 0,
+        "hasRoutes": 1,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 3,
+      "entityCount": 0,
+      "routeCount": 6,
+      "linkRefCount": 3,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "TECH-MOD-49",
+      "documentName": "Sidebar Layout Module",
+      "family": "TECH-MOD",
+      "file": "TECH-MOD-49_sidebar-layout.md",
+      "healthScore": 82,
+      "healthLabel": "Good",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 1,
+        "hasEntities": 0,
+        "hasRoutes": 1,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 2,
+      "entityCount": 0,
+      "routeCount": 2,
+      "linkRefCount": 2,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "TECH-MOD-51",
+      "documentName": "Coaches Module",
+      "family": "TECH-MOD",
+      "file": "TECH-MOD-51_coaches.md",
+      "healthScore": 82,
+      "healthLabel": "Good",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 1,
+        "hasEntities": 0,
+        "hasRoutes": 1,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 3,
+      "entityCount": 0,
+      "routeCount": 9,
+      "linkRefCount": 3,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "TECH-MOD-52",
+      "documentName": "Player Experience Module",
+      "family": "TECH-MOD",
+      "file": "TECH-MOD-52_player-experience.md",
+      "healthScore": 82,
+      "healthLabel": "Good",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 1,
+        "hasEntities": 0,
+        "hasRoutes": 1,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 6,
+      "entityCount": 0,
+      "routeCount": 14,
+      "linkRefCount": 6,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "GOV-ADR-022",
+      "documentName": "Customer 360 — UNION Query Across Business Domains",
+      "family": "GOV-ADR",
+      "file": "GOV-ADR-022_Customer_360_Aggregation.md",
+      "healthScore": 88,
+      "healthLabel": "Good",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.9,
+        "hasCrossReferences": 1,
+        "hasEntities": 1,
+        "hasRoutes": 0,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 3,
+      "entityCount": 9,
+      "routeCount": 0,
+      "linkRefCount": 3,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "TECH-ARCH-24",
+      "documentName": "Reports & BI Architecture",
+      "family": "TECH-ARCH",
+      "file": "TECH-ARCH-24_Reports_Architecture.md",
+      "healthScore": 92,
+      "healthLabel": "Excellent",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 1,
+        "hasEntities": 1,
+        "hasRoutes": 1,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 4,
+      "entityCount": 14,
+      "routeCount": 34,
+      "linkRefCount": 4,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "TECH-MOD-01",
+      "documentName": "Auth Module",
+      "family": "TECH-MOD",
+      "file": "TECH-MOD-01_auth.md",
+      "healthScore": 92,
+      "healthLabel": "Excellent",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 1,
+        "hasEntities": 1,
+        "hasRoutes": 1,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 4,
+      "entityCount": 4,
+      "routeCount": 17,
+      "linkRefCount": 4,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "TECH-MOD-08",
+      "documentName": "Inventory Module",
+      "family": "TECH-MOD",
+      "file": "TECH-MOD-08_inventory.md",
+      "healthScore": 92,
+      "healthLabel": "Excellent",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 1,
+        "hasEntities": 1,
+        "hasRoutes": 1,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 4,
+      "entityCount": 6,
+      "routeCount": 21,
+      "linkRefCount": 4,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "TECH-MOD-09",
+      "documentName": "Payment Module",
+      "family": "TECH-MOD",
+      "file": "TECH-MOD-09_payment.md",
+      "healthScore": 92,
+      "healthLabel": "Excellent",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 1,
+        "hasEntities": 1,
+        "hasRoutes": 1,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 4,
+      "entityCount": 3,
+      "routeCount": 13,
+      "linkRefCount": 4,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "TECH-MOD-10",
+      "documentName": "Wallet Module",
+      "family": "TECH-MOD",
+      "file": "TECH-MOD-10_wallet.md",
+      "healthScore": 92,
+      "healthLabel": "Excellent",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 1,
+        "hasEntities": 1,
+        "hasRoutes": 1,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 4,
+      "entityCount": 3,
+      "routeCount": 4,
+      "linkRefCount": 4,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "TECH-MOD-11",
+      "documentName": "Financial Module",
+      "family": "TECH-MOD",
+      "file": "TECH-MOD-11_financial.md",
+      "healthScore": 92,
+      "healthLabel": "Excellent",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 1,
+        "hasEntities": 1,
+        "hasRoutes": 1,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 5,
+      "entityCount": 5,
+      "routeCount": 13,
+      "linkRefCount": 5,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "TECH-MOD-17",
+      "documentName": "Match Module",
+      "family": "TECH-MOD",
+      "file": "TECH-MOD-17_match.md",
+      "healthScore": 92,
+      "healthLabel": "Excellent",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 1,
+        "hasEntities": 1,
+        "hasRoutes": 1,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 4,
+      "entityCount": 6,
+      "routeCount": 9,
+      "linkRefCount": 4,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "TECH-MOD-18",
+      "documentName": "Membership Module",
+      "family": "TECH-MOD",
+      "file": "TECH-MOD-18_membership.md",
+      "healthScore": 92,
+      "healthLabel": "Excellent",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 1,
+        "hasEntities": 1,
+        "hasRoutes": 1,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 4,
+      "entityCount": 4,
+      "routeCount": 14,
+      "linkRefCount": 4,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "TECH-MOD-20",
+      "documentName": "Security Module",
+      "family": "TECH-MOD",
+      "file": "TECH-MOD-20_security.md",
+      "healthScore": 92,
+      "healthLabel": "Excellent",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 1,
+        "hasEntities": 1,
+        "hasRoutes": 1,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 5,
+      "entityCount": 4,
+      "routeCount": 13,
+      "linkRefCount": 5,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "TECH-MOD-22",
+      "documentName": "Support Module",
+      "family": "TECH-MOD",
+      "file": "TECH-MOD-22_support.md",
+      "healthScore": 92,
+      "healthLabel": "Excellent",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 1,
+        "hasEntities": 1,
+        "hasRoutes": 1,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 3,
+      "entityCount": 2,
+      "routeCount": 10,
+      "linkRefCount": 3,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "TECH-MOD-26",
+      "documentName": "Sports Engine Module",
+      "family": "TECH-MOD",
+      "file": "TECH-MOD-26_sports-engine.md",
+      "healthScore": 92,
+      "healthLabel": "Excellent",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 1,
+        "hasEntities": 1,
+        "hasRoutes": 1,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 5,
+      "entityCount": 1,
+      "routeCount": 8,
+      "linkRefCount": 5,
+      "hasForbiddenText": false
+    },
+    {
+      "documentId": "TECH-MOD-30",
+      "documentName": "Settlement Module",
+      "family": "TECH-MOD",
+      "file": "TECH-MOD-30_settlement.md",
+      "healthScore": 92,
+      "healthLabel": "Excellent",
+      "checks": {
+        "metadataCompleteness": 1,
+        "statusWeight": 0.6,
+        "hasCrossReferences": 1,
+        "hasEntities": 1,
+        "hasRoutes": 1,
+        "noForbiddenText": 1
+      },
+      "metadata": {
+        "hasDocumentId": true,
+        "hasDocumentName": true,
+        "hasFamily": true,
+        "hasStatus": true,
+        "hasVersion": true
+      },
+      "crossReferenceCount": 5,
+      "entityCount": 4,
+      "routeCount": 9,
+      "linkRefCount": 5,
+      "hasForbiddenText": false
+    }
+  ],
+  "summary": {
+    "excellent": 12,
+    "good": 50,
+    "needsReview": 80,
+    "outdated": 19,
+    "missingFrontmatter": 10,
+    "hasForbiddenText": 21
+  }
+}

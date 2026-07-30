@@ -1,0 +1,1506 @@
+{
+  "version": "v2.3.0",
+  "generated": "2026-07-28T00:27:05.276Z",
+  "summary": {
+    "total_documents": 161,
+    "modules": 52,
+    "architecture_docs": 24,
+    "decisions": 25,
+    "standards": 15
+  },
+  "modules": [
+    {
+      "id": "TECH-MOD-01",
+      "name": "Auth Module",
+      "status": "Draft",
+      "version": "0.1",
+      "routes": 0
+    },
+    {
+      "id": "TECH-MOD-02",
+      "name": "RBAC Module",
+      "status": "Draft",
+      "version": "0.1",
+      "routes": 0
+    },
+    {
+      "id": "TECH-MOD-03",
+      "name": "Booking Module",
+      "status": "Draft",
+      "version": "0.1",
+      "routes": 0
+    },
+    {
+      "id": "TECH-MOD-04",
+      "name": "Academy Module",
+      "status": "Draft",
+      "version": "0.1",
+      "routes": 0
+    },
+    {
+      "id": "TECH-MOD-05",
+      "name": "Tournaments Module",
+      "status": "Draft",
+      "version": "0.1",
+      "routes": 0
+    },
+    {
+      "id": "TECH-MOD-06",
+      "name": "Leagues Module",
+      "status": "Draft",
+      "version": "0.1",
+      "routes": 0
+    },
+    {
+      "id": "TECH-MOD-07",
+      "name": "Marketplace Module",
+      "status": "Draft",
+      "version": "0.1",
+      "routes": 0
+    },
+    {
+      "id": "TECH-MOD-08",
+      "name": "Inventory Module",
+      "status": "Draft",
+      "version": "0.1",
+      "routes": 0
+    },
+    {
+      "id": "TECH-MOD-09",
+      "name": "Payment Module",
+      "status": "Draft",
+      "version": "0.1",
+      "routes": 0
+    },
+    {
+      "id": "TECH-MOD-10",
+      "name": "Wallet Module",
+      "status": "Draft",
+      "version": "0.1",
+      "routes": 0
+    },
+    {
+      "id": "TECH-MOD-11",
+      "name": "Financial Module",
+      "status": "Draft",
+      "version": "0.1",
+      "routes": 0
+    },
+    {
+      "id": "TECH-MOD-12",
+      "name": "Accounting Module",
+      "status": "Draft",
+      "version": "0.1",
+      "routes": 0
+    },
+    {
+      "id": "TECH-MOD-13",
+      "name": "Organisations Module",
+      "status": "Draft",
+      "version": "0.1",
+      "routes": 0
+    },
+    {
+      "id": "TECH-MOD-14",
+      "name": "Notifications Module",
+      "status": "Draft",
+      "version": "0.1",
+      "routes": 0
+    },
+    {
+      "id": "TECH-MOD-15",
+      "name": "CRM Module",
+      "status": "Draft",
+      "version": "0.1",
+      "routes": 0
+    },
+    {
+      "id": "TECH-MOD-16",
+      "name": "HR Module",
+      "status": "Draft",
+      "version": "0.1",
+      "routes": 0
+    },
+    {
+      "id": "TECH-MOD-17",
+      "name": "Match Module",
+      "status": "Draft",
+      "version": "0.1",
+      "routes": 0
+    },
+    {
+      "id": "TECH-MOD-18",
+      "name": "Membership Module",
+      "status": "Draft",
+      "version": "0.1",
+      "routes": 0
+    },
+    {
+      "id": "TECH-MOD-19",
+      "name": "Scheduling Module",
+      "status": "Draft",
+      "version": "0.1",
+      "routes": 0
+    },
+    {
+      "id": "TECH-MOD-20",
+      "name": "Security Module",
+      "status": "Draft",
+      "version": "0.1",
+      "routes": 0
+    },
+    {
+      "id": "TECH-MOD-21",
+      "name": "Audit Log Module",
+      "status": "Draft",
+      "version": "0.1",
+      "routes": 0
+    },
+    {
+      "id": "TECH-MOD-22",
+      "name": "Support Module",
+      "status": "Draft",
+      "version": "0.1",
+      "routes": 0
+    },
+    {
+      "id": "TECH-MOD-23",
+      "name": "Content Management Module",
+      "status": "Draft",
+      "version": "0.1",
+      "routes": 0
+    },
+    {
+      "id": "TECH-MOD-24",
+      "name": "Community Module",
+      "status": "Draft",
+      "version": "0.1",
+      "routes": 0
+    },
+    {
+      "id": "TECH-MOD-25",
+      "name": "BI Module",
+      "status": "Draft",
+      "version": "0.1",
+      "routes": 0
+    },
+    {
+      "id": "TECH-MOD-26",
+      "name": "Sports Engine Module",
+      "status": "Draft",
+      "version": "0.1",
+      "routes": 0
+    },
+    {
+      "id": "TECH-MOD-27",
+      "name": "Integration Module",
+      "status": "Draft",
+      "version": "0.1",
+      "routes": 0
+    },
+    {
+      "id": "TECH-MOD-28",
+      "name": "Mobile Module",
+      "status": "Draft",
+      "version": "0.1",
+      "routes": 0
+    },
+    {
+      "id": "TECH-MOD-29",
+      "name": "Reports Module",
+      "status": "Draft",
+      "version": "0.1",
+      "routes": 0
+    },
+    {
+      "id": "TECH-MOD-30",
+      "name": "Settlement Module",
+      "status": "Draft",
+      "version": "0.1",
+      "routes": 0
+    },
+    {
+      "id": "TECH-MOD-31",
+      "name": "Coupon Module",
+      "status": "Draft",
+      "version": "0.1",
+      "routes": 0
+    },
+    {
+      "id": "TECH-MOD-32",
+      "name": "Pricing Module",
+      "status": "Draft",
+      "version": "0.1",
+      "routes": 0
+    },
+    {
+      "id": "TECH-MOD-33",
+      "name": "Upload Module",
+      "status": "Draft",
+      "version": "0.1",
+      "routes": 0
+    },
+    {
+      "id": "TECH-MOD-34",
+      "name": "Translations Module",
+      "status": "Draft",
+      "version": "0.1",
+      "routes": 0
+    },
+    {
+      "id": "TECH-MOD-35",
+      "name": "Activities Module",
+      "status": "Draft",
+      "version": "0.1",
+      "routes": 0
+    },
+    {
+      "id": "TECH-MOD-36",
+      "name": "Admin Module",
+      "status": "Draft",
+      "version": "0.1",
+      "routes": 0
+    },
+    {
+      "id": "TECH-MOD-37",
+      "name": "Amenities Module",
+      "status": "Draft",
+      "version": "0.1",
+      "routes": 0
+    },
+    {
+      "id": "TECH-MOD-38",
+      "name": "Approvals Module",
+      "status": "Draft",
+      "version": "0.1",
+      "routes": 0
+    },
+    {
+      "id": "TECH-MOD-39",
+      "name": "App Settings Module",
+      "status": "Draft",
+      "version": "0.1",
+      "routes": 0
+    },
+    {
+      "id": "TECH-MOD-40",
+      "name": "Banks Module",
+      "status": "Draft",
+      "version": "0.1",
+      "routes": 0
+    },
+    {
+      "id": "TECH-MOD-41",
+      "name": "Cities Module",
+      "status": "Draft",
+      "version": "0.1",
+      "routes": 0
+    },
+    {
+      "id": "TECH-MOD-42",
+      "name": "Countries Module",
+      "status": "Draft",
+      "version": "0.1",
+      "routes": 0
+    },
+    {
+      "id": "TECH-MOD-43",
+      "name": "Currencies Module",
+      "status": "Draft",
+      "version": "0.1",
+      "routes": 0
+    },
+    {
+      "id": "TECH-MOD-44",
+      "name": "Design Tokens Module",
+      "status": "Draft",
+      "version": "0.1",
+      "routes": 0
+    },
+    {
+      "id": "TECH-MOD-45",
+      "name": "Geo Module",
+      "status": "Draft",
+      "version": "0.1",
+      "routes": 0
+    },
+    {
+      "id": "TECH-MOD-46",
+      "name": "Languages Module",
+      "status": "Draft",
+      "version": "0.1",
+      "routes": 0
+    },
+    {
+      "id": "TECH-MOD-47",
+      "name": "Provinces Module",
+      "status": "Draft",
+      "version": "0.1",
+      "routes": 0
+    },
+    {
+      "id": "TECH-MOD-48",
+      "name": "Reference Data Module",
+      "status": "Draft",
+      "version": "0.1",
+      "routes": 0
+    },
+    {
+      "id": "TECH-MOD-49",
+      "name": "Sidebar Layout Module",
+      "status": "Draft",
+      "version": "0.1",
+      "routes": 0
+    },
+    {
+      "id": "TECH-MOD-50",
+      "name": "Time Module",
+      "status": "Draft",
+      "version": "0.1",
+      "routes": 0
+    },
+    {
+      "id": "TECH-MOD-51",
+      "name": "Coaches Module",
+      "status": "Draft",
+      "version": "0.1",
+      "routes": 0
+    },
+    {
+      "id": "TECH-MOD-52",
+      "name": "Player Experience Module",
+      "status": "Draft",
+      "version": "0.1",
+      "routes": 0
+    }
+  ],
+  "all_documents": [
+    {
+      "id": "ADMIN-02",
+      "name": "Organisation Admin Guide",
+      "family": "ADMIN",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "BIZ-ARCH-01",
+      "name": "Business Vision & Strategy",
+      "family": "BIZ-ARCH",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "BIZ-ARCH-02",
+      "name": "Business Goals & Objectives",
+      "family": "BIZ-ARCH",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "BIZ-ARCH-03",
+      "name": "Business Capability Map",
+      "family": "BIZ-ARCH",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "BIZ-ARCH-04",
+      "name": "Business Process Catalog",
+      "family": "BIZ-ARCH",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "BIZ-ARCH-05",
+      "name": "Business Actor Model",
+      "family": "BIZ-ARCH",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "BIZ-ARCH-06",
+      "name": "Business Event Catalog",
+      "family": "BIZ-ARCH",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "BIZ-ARCH-07",
+      "name": "Business Policy Register",
+      "family": "BIZ-ARCH",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "BIZ-ARCH-08",
+      "name": "Business Rule Catalog",
+      "family": "BIZ-ARCH",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "BIZ-ARCH-09",
+      "name": "Business KPI Framework",
+      "family": "BIZ-ARCH",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "BIZ-ARCH-10",
+      "name": "Business Glossary",
+      "family": "BIZ-ARCH",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "BIZ-PROD-01",
+      "name": "Product Vision & Mission",
+      "family": "BIZ-PROD",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "BIZ-PROD-02",
+      "name": "Feature Catalog",
+      "family": "BIZ-PROD",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "BIZ-PROD-03",
+      "name": "Feature Matrix",
+      "family": "BIZ-PROD",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "BIZ-PROD-04",
+      "name": "Product Roadmap",
+      "family": "BIZ-PROD",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "BIZ-PROD-06",
+      "name": "Pricing Model",
+      "family": "BIZ-PROD",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "BIZ-PROD-08",
+      "name": "Edition Comparison",
+      "family": "BIZ-PROD",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "GOV-ADR-001",
+      "name": "Global Identity Model",
+      "family": "GOV-ADR",
+      "status": "Accepted",
+      "version": "1.0"
+    },
+    {
+      "id": "GOV-ADR-002",
+      "name": "Domain Ownership — Modular Monolith",
+      "family": "GOV-ADR",
+      "status": "Accepted",
+      "version": "1.0"
+    },
+    {
+      "id": "GOV-ADR-003",
+      "name": "Event-Composable Architecture",
+      "family": "GOV-ADR",
+      "status": "Accepted",
+      "version": "1.0"
+    },
+    {
+      "id": "GOV-ADR-004",
+      "name": "Ledger-Based Transaction Model",
+      "family": "GOV-ADR",
+      "status": "Accepted",
+      "version": "1.0"
+    },
+    {
+      "id": "GOV-ADR-005",
+      "name": "Finance Owns Financial Truth",
+      "family": "GOV-ADR",
+      "status": "Accepted",
+      "version": "1.0"
+    },
+    {
+      "id": "GOV-ADR-006",
+      "name": "Inventory Ledger-Based Transactions",
+      "family": "GOV-ADR",
+      "status": "Accepted",
+      "version": "1.0"
+    },
+    {
+      "id": "GOV-ADR-007",
+      "name": "Single Order Aggregate",
+      "family": "GOV-ADR",
+      "status": "Accepted",
+      "version": "1.0"
+    },
+    {
+      "id": "GOV-ADR-008",
+      "name": "Academy State Machine",
+      "family": "GOV-ADR",
+      "status": "Accepted",
+      "version": "1.0"
+    },
+    {
+      "id": "GOV-ADR-009",
+      "name": "Tournament Format Strategy",
+      "family": "GOV-ADR",
+      "status": "Accepted",
+      "version": "1.0"
+    },
+    {
+      "id": "GOV-ADR-010",
+      "name": "CRM Read Model Pattern",
+      "family": "GOV-ADR",
+      "status": "Accepted",
+      "version": "1.0"
+    },
+    {
+      "id": "GOV-ADR-011",
+      "name": "HR Payroll — Finance Separation",
+      "family": "GOV-ADR",
+      "status": "Accepted",
+      "version": "1.0"
+    },
+    {
+      "id": "GOV-ADR-012",
+      "name": "Session Management — HttpOnly Cookies with Bearer Token Fallback",
+      "family": "GOV-ADR",
+      "status": "Accepted",
+      "version": "1.0"
+    },
+    {
+      "id": "GOV-ADR-013",
+      "name": "Payment Gateway Abstraction — Factory Pattern",
+      "family": "GOV-ADR",
+      "status": "Accepted",
+      "version": "1.0"
+    },
+    {
+      "id": "GOV-ADR-014",
+      "name": "Notification Multi-Channel — Pluggable Provider Architecture",
+      "family": "GOV-ADR",
+      "status": "Accepted",
+      "version": "1.0"
+    },
+    {
+      "id": "GOV-ADR-015",
+      "name": "Booking Concurrency — Redis Distributed Locks + DB Constraints",
+      "family": "GOV-ADR",
+      "status": "Accepted",
+      "version": "1.0"
+    },
+    {
+      "id": "GOV-ADR-016",
+      "name": "Organization-Scoped RBAC",
+      "family": "GOV-ADR",
+      "status": "Accepted",
+      "version": "1.0"
+    },
+    {
+      "id": "GOV-ADR-017",
+      "name": "Scheduling Engine — Provider-Based Search",
+      "family": "GOV-ADR",
+      "status": "Accepted",
+      "version": "1.0"
+    },
+    {
+      "id": "GOV-ADR-018",
+      "name": "Marketplace Settlement — Settlement Lifecycle with Financial Recording",
+      "family": "GOV-ADR",
+      "status": "Accepted",
+      "version": "1.0"
+    },
+    {
+      "id": "GOV-ADR-019",
+      "name": "HR-Payroll / Finance Boundary — HR Calculates, Finance Posts",
+      "family": "GOV-ADR",
+      "status": "Accepted",
+      "version": "1.0"
+    },
+    {
+      "id": "GOV-ADR-020",
+      "name": "Academy Attendance Immutability",
+      "family": "GOV-ADR",
+      "status": "Accepted",
+      "version": "1.0"
+    },
+    {
+      "id": "GOV-ADR-021",
+      "name": "Standings Persistence — Pre-Computed Rankings in Database",
+      "family": "GOV-ADR",
+      "status": "Accepted",
+      "version": "1.0"
+    },
+    {
+      "id": "GOV-ADR-022",
+      "name": "Customer 360 — UNION Query Across Business Domains",
+      "family": "GOV-ADR",
+      "status": "Accepted",
+      "version": "1.0"
+    },
+    {
+      "id": "GOV-ADR-023",
+      "name": "Inventory Ledger — Immutable Log as Source of Truth",
+      "family": "GOV-ADR",
+      "status": "Accepted",
+      "version": "1.0"
+    },
+    {
+      "id": "GOV-ADR-024",
+      "name": "API Versioning Strategy — URL Prefix + API Key Authentication",
+      "family": "GOV-ADR",
+      "status": "Accepted",
+      "version": "1.0"
+    },
+    {
+      "id": "GOV-ADR-025",
+      "name": "Database Migration Strategy — Additive SQL with Authoritative Baseline",
+      "family": "GOV-ADR",
+      "status": "Accepted",
+      "version": "1.0"
+    },
+    {
+      "id": "OPS-DEPLOY-01",
+      "name": "Deployment Guide",
+      "family": "OPS-DEPLOY",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "OPS-MON-01",
+      "name": "Monitoring Guide",
+      "family": "OPS-MON",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "OPS-RUN-01",
+      "name": "Backup and Restore",
+      "family": "OPS-RUN",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "OPS-RUN-02",
+      "name": "Troubleshooting Guide",
+      "family": "OPS-RUN",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "QUAL-CERT-01",
+      "name": "Certification Report",
+      "family": "QUAL-CERT",
+      "status": "Draft",
+      "version": "0.2"
+    },
+    {
+      "id": "QUAL-TEST-01",
+      "name": "Testing Strategy",
+      "family": "QUAL-TEST",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "QUAL-TEST-02",
+      "name": "Unit Test Reference",
+      "family": "QUAL-TEST",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "QUAL-TEST-03",
+      "name": "Integration Test Reference",
+      "family": "QUAL-TEST",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "QUAL-TEST-04",
+      "name": "E2E Test Reference",
+      "family": "QUAL-TEST",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "QUAL-TRACE-01_Requirements_Traceability_Matrix",
+      "name": "QUAL-TRACE-01_Requirements_Traceability_Matrix",
+      "family": "UNKNOWN",
+      "status": "Unknown",
+      "version": "0.0"
+    },
+    {
+      "id": "TECH-ARCH-01",
+      "name": "System Architecture",
+      "family": "TECH-ARCH",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "TECH-ARCH-02",
+      "name": "Module Architecture",
+      "family": "TECH-ARCH",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "TECH-ARCH-03",
+      "name": "Domain Model",
+      "family": "TECH-ARCH",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "TECH-ARCH-04",
+      "name": "Event Architecture",
+      "family": "TECH-ARCH",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "TECH-ARCH-05",
+      "name": "Data Architecture",
+      "family": "TECH-ARCH",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "TECH-ARCH-06",
+      "name": "Integration Architecture",
+      "family": "TECH-ARCH",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "TECH-ARCH-07",
+      "name": "Security Architecture",
+      "family": "TECH-ARCH",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "TECH-ARCH-08",
+      "name": "Deployment Architecture",
+      "family": "TECH-ARCH",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "TECH-ARCH-10",
+      "name": "Technology Stack",
+      "family": "TECH-ARCH",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "TECH-ARCH-11",
+      "name": "Scalability Design",
+      "family": "TECH-ARCH",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "TECH-ARCH-12",
+      "name": "Booking Flow Deep Dive",
+      "family": "TECH-ARCH",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "TECH-ARCH-13",
+      "name": "Payment Flow Deep Dive",
+      "family": "TECH-ARCH",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "TECH-ARCH-14",
+      "name": "Wallet Architecture",
+      "family": "TECH-ARCH",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "TECH-ARCH-15",
+      "name": "Organization Architecture",
+      "family": "TECH-ARCH",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "TECH-ARCH-16",
+      "name": "Subscription Architecture",
+      "family": "TECH-ARCH",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "TECH-ARCH-17",
+      "name": "Marketplace Architecture",
+      "family": "TECH-ARCH",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "TECH-ARCH-18",
+      "name": "Inventory Architecture",
+      "family": "TECH-ARCH",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "TECH-ARCH-19",
+      "name": "Academy Architecture",
+      "family": "TECH-ARCH",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "TECH-ARCH-20",
+      "name": "Tournament Architecture",
+      "family": "TECH-ARCH",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "TECH-ARCH-21",
+      "name": "League Architecture",
+      "family": "TECH-ARCH",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "TECH-ARCH-22",
+      "name": "CRM Architecture",
+      "family": "TECH-ARCH",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "TECH-ARCH-23",
+      "name": "HR Architecture",
+      "family": "TECH-ARCH",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "TECH-ARCH-24",
+      "name": "Reports & BI Architecture",
+      "family": "TECH-ARCH",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "TECH-ARCH-25",
+      "name": "Observability Architecture",
+      "family": "TECH-ARCH",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "TECH-DB-03",
+      "name": "Entity Reference",
+      "family": "TECH-DB",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "TECH-DEV-01",
+      "name": "Coding Standards — TypeScript",
+      "family": "TECH-DEV",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "TECH-DEV-02",
+      "name": "Coding Standards — React",
+      "family": "TECH-DEV",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "TECH-DEV-03",
+      "name": "Folder Structure Standard",
+      "family": "TECH-DEV",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "TECH-DEV-04",
+      "name": "Naming Conventions",
+      "family": "TECH-DEV",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "TECH-DEV-05",
+      "name": "Git Workflow & Branch Strategy",
+      "family": "TECH-DEV",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "TECH-DEV-06",
+      "name": "Commit Message Standards",
+      "family": "TECH-DEV",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "TECH-DEV-07",
+      "name": "Pull Request Standards",
+      "family": "TECH-DEV",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "TECH-DEV-08",
+      "name": "Code Review Standards",
+      "family": "TECH-DEV",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "TECH-DEV-09",
+      "name": "Testing Standards",
+      "family": "TECH-DEV",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "TECH-DEV-10",
+      "name": "Database Migration Standards",
+      "family": "TECH-DEV",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "TECH-DEV-11",
+      "name": "API Design Standards",
+      "family": "TECH-DEV",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "TECH-DEV-12",
+      "name": "Error Handling Standards",
+      "family": "TECH-DEV",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "TECH-DEV-13",
+      "name": "Logging Standards",
+      "family": "TECH-DEV",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "TECH-DEV-14",
+      "name": "Security Coding Standards",
+      "family": "TECH-DEV",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "TECH-DEV-15",
+      "name": "Performance Coding Standards",
+      "family": "TECH-DEV",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "TECH-MOD-01",
+      "name": "Auth Module",
+      "family": "TECH-MOD",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "TECH-MOD-02",
+      "name": "RBAC Module",
+      "family": "TECH-MOD",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "TECH-MOD-03",
+      "name": "Booking Module",
+      "family": "TECH-MOD",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "TECH-MOD-04",
+      "name": "Academy Module",
+      "family": "TECH-MOD",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "TECH-MOD-05",
+      "name": "Tournaments Module",
+      "family": "TECH-MOD",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "TECH-MOD-06",
+      "name": "Leagues Module",
+      "family": "TECH-MOD",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "TECH-MOD-07",
+      "name": "Marketplace Module",
+      "family": "TECH-MOD",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "TECH-MOD-08",
+      "name": "Inventory Module",
+      "family": "TECH-MOD",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "TECH-MOD-09",
+      "name": "Payment Module",
+      "family": "TECH-MOD",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "TECH-MOD-10",
+      "name": "Wallet Module",
+      "family": "TECH-MOD",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "TECH-MOD-11",
+      "name": "Financial Module",
+      "family": "TECH-MOD",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "TECH-MOD-12",
+      "name": "Accounting Module",
+      "family": "TECH-MOD",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "TECH-MOD-13",
+      "name": "Organisations Module",
+      "family": "TECH-MOD",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "TECH-MOD-14",
+      "name": "Notifications Module",
+      "family": "TECH-MOD",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "TECH-MOD-15",
+      "name": "CRM Module",
+      "family": "TECH-MOD",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "TECH-MOD-16",
+      "name": "HR Module",
+      "family": "TECH-MOD",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "TECH-MOD-17",
+      "name": "Match Module",
+      "family": "TECH-MOD",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "TECH-MOD-18",
+      "name": "Membership Module",
+      "family": "TECH-MOD",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "TECH-MOD-19",
+      "name": "Scheduling Module",
+      "family": "TECH-MOD",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "TECH-MOD-20",
+      "name": "Security Module",
+      "family": "TECH-MOD",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "TECH-MOD-21",
+      "name": "Audit Log Module",
+      "family": "TECH-MOD",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "TECH-MOD-22",
+      "name": "Support Module",
+      "family": "TECH-MOD",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "TECH-MOD-23",
+      "name": "Content Management Module",
+      "family": "TECH-MOD",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "TECH-MOD-24",
+      "name": "Community Module",
+      "family": "TECH-MOD",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "TECH-MOD-25",
+      "name": "BI Module",
+      "family": "TECH-MOD",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "TECH-MOD-26",
+      "name": "Sports Engine Module",
+      "family": "TECH-MOD",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "TECH-MOD-27",
+      "name": "Integration Module",
+      "family": "TECH-MOD",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "TECH-MOD-28",
+      "name": "Mobile Module",
+      "family": "TECH-MOD",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "TECH-MOD-29",
+      "name": "Reports Module",
+      "family": "TECH-MOD",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "TECH-MOD-30",
+      "name": "Settlement Module",
+      "family": "TECH-MOD",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "TECH-MOD-31",
+      "name": "Coupon Module",
+      "family": "TECH-MOD",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "TECH-MOD-32",
+      "name": "Pricing Module",
+      "family": "TECH-MOD",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "TECH-MOD-33",
+      "name": "Upload Module",
+      "family": "TECH-MOD",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "TECH-MOD-34",
+      "name": "Translations Module",
+      "family": "TECH-MOD",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "TECH-MOD-35",
+      "name": "Activities Module",
+      "family": "TECH-MOD",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "TECH-MOD-36",
+      "name": "Admin Module",
+      "family": "TECH-MOD",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "TECH-MOD-37",
+      "name": "Amenities Module",
+      "family": "TECH-MOD",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "TECH-MOD-38",
+      "name": "Approvals Module",
+      "family": "TECH-MOD",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "TECH-MOD-39",
+      "name": "App Settings Module",
+      "family": "TECH-MOD",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "TECH-MOD-40",
+      "name": "Banks Module",
+      "family": "TECH-MOD",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "TECH-MOD-41",
+      "name": "Cities Module",
+      "family": "TECH-MOD",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "TECH-MOD-42",
+      "name": "Countries Module",
+      "family": "TECH-MOD",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "TECH-MOD-43",
+      "name": "Currencies Module",
+      "family": "TECH-MOD",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "TECH-MOD-44",
+      "name": "Design Tokens Module",
+      "family": "TECH-MOD",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "TECH-MOD-45",
+      "name": "Geo Module",
+      "family": "TECH-MOD",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "TECH-MOD-46",
+      "name": "Languages Module",
+      "family": "TECH-MOD",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "TECH-MOD-47",
+      "name": "Provinces Module",
+      "family": "TECH-MOD",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "TECH-MOD-48",
+      "name": "Reference Data Module",
+      "family": "TECH-MOD",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "TECH-MOD-49",
+      "name": "Sidebar Layout Module",
+      "family": "TECH-MOD",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "TECH-MOD-50",
+      "name": "Time Module",
+      "family": "TECH-MOD",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "TECH-MOD-51",
+      "name": "Coaches Module",
+      "family": "TECH-MOD",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "TECH-MOD-52",
+      "name": "Player Experience Module",
+      "family": "TECH-MOD",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "TECH-UX-01",
+      "name": "Design System Overview",
+      "family": "TECH-UX",
+      "status": "Draft",
+      "version": "1.0"
+    },
+    {
+      "id": "TECH-UX-02",
+      "name": "Design Token Reference",
+      "family": "TECH-UX",
+      "status": "Draft",
+      "version": "1.0"
+    },
+    {
+      "id": "TECH-UX-03",
+      "name": "Navigation Architecture",
+      "family": "TECH-UX",
+      "status": "Draft",
+      "version": "1.0"
+    },
+    {
+      "id": "TECH-UX-04",
+      "name": "Screen Flows",
+      "family": "TECH-UX",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "TECH-UX-09",
+      "name": "Empty State Patterns",
+      "family": "TECH-UX",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "TECH-UX-10",
+      "name": "Loading State Patterns",
+      "family": "TECH-UX",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "TECH-UX-11",
+      "name": "Error State Patterns",
+      "family": "TECH-UX",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "USER-01",
+      "name": "Player Guide",
+      "family": "USER",
+      "status": "Draft",
+      "version": "0.1"
+    },
+    {
+      "id": "VOLUME_01_EXECUTIVE_OVERVIEW",
+      "name": "VOLUME_01_EXECUTIVE_OVERVIEW",
+      "family": "UNKNOWN",
+      "status": "Unknown",
+      "version": "0.0"
+    },
+    {
+      "id": "VOLUME_02_ARCHITECTURE",
+      "name": "VOLUME_02_ARCHITECTURE",
+      "family": "UNKNOWN",
+      "status": "Unknown",
+      "version": "0.0"
+    },
+    {
+      "id": "VOLUME_03_BUSINESS_DOMAINS",
+      "name": "VOLUME_03_BUSINESS_DOMAINS",
+      "family": "UNKNOWN",
+      "status": "Unknown",
+      "version": "0.0"
+    },
+    {
+      "id": "VOLUME_04_MODULES",
+      "name": "VOLUME_04_MODULES",
+      "family": "UNKNOWN",
+      "status": "Unknown",
+      "version": "0.0"
+    },
+    {
+      "id": "VOLUME_05_SCREENS",
+      "name": "VOLUME_05_SCREENS",
+      "family": "UNKNOWN",
+      "status": "Unknown",
+      "version": "0.0"
+    },
+    {
+      "id": "VOLUME_08_PERMISSIONS",
+      "name": "VOLUME_08_PERMISSIONS",
+      "family": "UNKNOWN",
+      "status": "Unknown",
+      "version": "0.0"
+    },
+    {
+      "id": "VOLUME_11_LIFECYCLES",
+      "name": "VOLUME_11_LIFECYCLES",
+      "family": "UNKNOWN",
+      "status": "Unknown",
+      "version": "0.0"
+    },
+    {
+      "id": "VOLUME_15_NOTIFICATIONS",
+      "name": "VOLUME_15_NOTIFICATIONS",
+      "family": "UNKNOWN",
+      "status": "Unknown",
+      "version": "0.0"
+    },
+    {
+      "id": "VOLUME_38_CERTIFICATION_REPORT",
+      "name": "VOLUME_38_CERTIFICATION_REPORT",
+      "family": "UNKNOWN",
+      "status": "Unknown",
+      "version": "0.0"
+    }
+  ]
+}

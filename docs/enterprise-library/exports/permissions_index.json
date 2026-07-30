@@ -1,0 +1,6172 @@
+{
+  "permissions": [
+    {
+      "permission": "org.bookings.manage",
+      "canonicalModule": "org",
+      "sourceDocs": [
+        "ADMIN-02",
+        "BIZ-PROD-03",
+        "TECH-MOD-03",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "org.bookings.update-status",
+      "canonicalModule": "org",
+      "sourceDocs": [
+        "ADMIN-02",
+        "BIZ-PROD-03"
+      ]
+    },
+    {
+      "permission": "bookings.view",
+      "canonicalModule": "bookings",
+      "sourceDocs": [
+        "ADMIN-02",
+        "BIZ-PROD-02",
+        "BIZ-PROD-03",
+        "TECH-MOD-03",
+        "TECH-UX-04",
+        "USER-01",
+        "VOLUME_05_SCREENS",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "BOOKING.CANCEL",
+      "canonicalModule": "BOOKING",
+      "sourceDocs": [
+        "ADMIN-02",
+        "TECH-MOD-03",
+        "TECH-MOD-21"
+      ]
+    },
+    {
+      "permission": "BOOKING.CREATE",
+      "canonicalModule": "BOOKING",
+      "sourceDocs": [
+        "ADMIN-02",
+        "TECH-DEV-04",
+        "TECH-MOD-03",
+        "TECH-MOD-21"
+      ]
+    },
+    {
+      "permission": "BOOKING.REFUND",
+      "canonicalModule": "BOOKING",
+      "sourceDocs": [
+        "ADMIN-02",
+        "TECH-MOD-03",
+        "TECH-MOD-21"
+      ]
+    },
+    {
+      "permission": "BOOKING.STATUS_CHANGE",
+      "canonicalModule": "BOOKING",
+      "sourceDocs": [
+        "ADMIN-02",
+        "TECH-MOD-03",
+        "TECH-MOD-21"
+      ]
+    },
+    {
+      "permission": "BOOKING.CHECK_IN",
+      "canonicalModule": "BOOKING",
+      "sourceDocs": [
+        "ADMIN-02",
+        "QUAL-TEST-03"
+      ]
+    },
+    {
+      "permission": "BOOKING.START_MATCHMAKING",
+      "canonicalModule": "BOOKING",
+      "sourceDocs": [
+        "ADMIN-02"
+      ]
+    },
+    {
+      "permission": "BOOKING.APPLY",
+      "canonicalModule": "BOOKING",
+      "sourceDocs": [
+        "ADMIN-02"
+      ]
+    },
+    {
+      "permission": "BOOKING.RESPOND_APPLICANT",
+      "canonicalModule": "BOOKING",
+      "sourceDocs": [
+        "ADMIN-02"
+      ]
+    },
+    {
+      "permission": "BOOKING.CANCEL_APPLICATION",
+      "canonicalModule": "BOOKING",
+      "sourceDocs": [
+        "ADMIN-02"
+      ]
+    },
+    {
+      "permission": "financial.reconcile",
+      "canonicalModule": "financial",
+      "sourceDocs": [
+        "ADMIN-02",
+        "QUAL-TEST-03",
+        "TECH-ARCH-13",
+        "TECH-MOD-09",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "PAYMENT.REFUND",
+      "canonicalModule": "PAYMENT",
+      "sourceDocs": [
+        "ADMIN-02",
+        "QUAL-TEST-03",
+        "TECH-MOD-09"
+      ]
+    },
+    {
+      "permission": "PAYMENT.PROCESS",
+      "canonicalModule": "PAYMENT",
+      "sourceDocs": [
+        "ADMIN-02",
+        "TECH-MOD-09"
+      ]
+    },
+    {
+      "permission": "PAYMENT.CONFIRM",
+      "canonicalModule": "PAYMENT",
+      "sourceDocs": [
+        "ADMIN-02",
+        "TECH-MOD-09"
+      ]
+    },
+    {
+      "permission": "PAYMENT.WEBHOOK",
+      "canonicalModule": "PAYMENT",
+      "sourceDocs": [
+        "ADMIN-02",
+        "TECH-MOD-09"
+      ]
+    },
+    {
+      "permission": "PAYMENT.RECOVER",
+      "canonicalModule": "PAYMENT",
+      "sourceDocs": [
+        "ADMIN-02",
+        "QUAL-TEST-03",
+        "TECH-MOD-09"
+      ]
+    },
+    {
+      "permission": "RECONCILIATION.RUN",
+      "canonicalModule": "RECONCILIATION",
+      "sourceDocs": [
+        "ADMIN-02"
+      ]
+    },
+    {
+      "permission": "ORGANISATION.UPDATE",
+      "canonicalModule": "ORGANISATION",
+      "sourceDocs": [
+        "ADMIN-02",
+        "TECH-ARCH-15",
+        "TECH-MOD-13",
+        "TECH-MOD-21"
+      ]
+    },
+    {
+      "permission": "ORG_PROFILE.UPDATE",
+      "canonicalModule": "ORG_PROFILE",
+      "sourceDocs": [
+        "ADMIN-02",
+        "TECH-ARCH-15"
+      ]
+    },
+    {
+      "permission": "BRANCH_ACCESS.UPDATE_STATUS",
+      "canonicalModule": "BRANCH_ACCESS",
+      "sourceDocs": [
+        "ADMIN-02",
+        "TECH-ARCH-15"
+      ]
+    },
+    {
+      "permission": "org.members.manage",
+      "canonicalModule": "org",
+      "sourceDocs": [
+        "ADMIN-02",
+        "QUAL-TEST-03",
+        "TECH-ARCH-15",
+        "TECH-MOD-13",
+        "TECH-UX-04",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "org.branches.manage",
+      "canonicalModule": "org",
+      "sourceDocs": [
+        "ADMIN-02",
+        "TECH-ARCH-15",
+        "TECH-MOD-13",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "org.settings.shipping-rates-tab",
+      "canonicalModule": "org",
+      "sourceDocs": [
+        "ADMIN-02",
+        "TECH-UX-04"
+      ]
+    },
+    {
+      "permission": "org.settings.edit",
+      "canonicalModule": "org",
+      "sourceDocs": [
+        "ADMIN-02",
+        "TECH-ARCH-15",
+        "TECH-MOD-13",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "marketplace.sell",
+      "canonicalModule": "marketplace",
+      "sourceDocs": [
+        "ADMIN-02",
+        "QUAL-TEST-03",
+        "TECH-ARCH-17",
+        "TECH-MOD-07",
+        "TECH-UX-04",
+        "USER-01",
+        "VOLUME_05_SCREENS",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "marketplace.moderate",
+      "canonicalModule": "marketplace",
+      "sourceDocs": [
+        "ADMIN-02",
+        "TECH-ARCH-17",
+        "TECH-MOD-07",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "inventory.warehouses.view",
+      "canonicalModule": "inventory",
+      "sourceDocs": [
+        "ADMIN-02",
+        "TECH-ARCH-18",
+        "TECH-MOD-07",
+        "TECH-MOD-08"
+      ]
+    },
+    {
+      "permission": "inventory.warehouses.manage",
+      "canonicalModule": "inventory",
+      "sourceDocs": [
+        "ADMIN-02",
+        "TECH-ARCH-18",
+        "TECH-MOD-07",
+        "TECH-MOD-08"
+      ]
+    },
+    {
+      "permission": "inventory.suppliers.view",
+      "canonicalModule": "inventory",
+      "sourceDocs": [
+        "ADMIN-02",
+        "TECH-ARCH-18",
+        "TECH-MOD-07",
+        "TECH-MOD-08"
+      ]
+    },
+    {
+      "permission": "inventory.suppliers.manage",
+      "canonicalModule": "inventory",
+      "sourceDocs": [
+        "ADMIN-02",
+        "TECH-ARCH-18",
+        "TECH-MOD-07",
+        "TECH-MOD-08"
+      ]
+    },
+    {
+      "permission": "inventory.purchase-orders.view",
+      "canonicalModule": "inventory",
+      "sourceDocs": [
+        "ADMIN-02",
+        "TECH-ARCH-18",
+        "TECH-MOD-07",
+        "TECH-MOD-08"
+      ]
+    },
+    {
+      "permission": "inventory.purchase-orders.manage",
+      "canonicalModule": "inventory",
+      "sourceDocs": [
+        "ADMIN-02",
+        "QUAL-TEST-03",
+        "TECH-ARCH-18",
+        "TECH-MOD-07",
+        "TECH-MOD-08"
+      ]
+    },
+    {
+      "permission": "inventory.stock.manage",
+      "canonicalModule": "inventory",
+      "sourceDocs": [
+        "ADMIN-02",
+        "QUAL-TEST-03",
+        "TECH-ARCH-18",
+        "TECH-MOD-07",
+        "TECH-MOD-08"
+      ]
+    },
+    {
+      "permission": "inventory.stock.view",
+      "canonicalModule": "inventory",
+      "sourceDocs": [
+        "ADMIN-02",
+        "QUAL-TEST-03",
+        "TECH-ARCH-18",
+        "TECH-MOD-07",
+        "TECH-MOD-08"
+      ]
+    },
+    {
+      "permission": "inventory.controller.ts",
+      "canonicalModule": "inventory",
+      "sourceDocs": [
+        "ADMIN-02",
+        "QUAL-TEST-03",
+        "TECH-ARCH-18",
+        "TECH-MOD-08"
+      ]
+    },
+    {
+      "permission": "marketplace.seller.settlements",
+      "canonicalModule": "marketplace",
+      "sourceDocs": [
+        "ADMIN-02",
+        "QUAL-TEST-03",
+        "TECH-ARCH-17",
+        "TECH-MOD-07",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "marketplace.seller.request-settlement",
+      "canonicalModule": "marketplace",
+      "sourceDocs": [
+        "ADMIN-02",
+        "QUAL-TEST-03",
+        "TECH-ARCH-17",
+        "TECH-MOD-07",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "academy.programs.*",
+      "canonicalModule": "academy",
+      "sourceDocs": [
+        "ADMIN-02",
+        "QUAL-TEST-03",
+        "TECH-ARCH-19",
+        "TECH-UX-04"
+      ]
+    },
+    {
+      "permission": "academy.groups.*",
+      "canonicalModule": "academy",
+      "sourceDocs": [
+        "ADMIN-02",
+        "TECH-ARCH-19",
+        "TECH-UX-04"
+      ]
+    },
+    {
+      "permission": "academy.enrollments.*",
+      "canonicalModule": "academy",
+      "sourceDocs": [
+        "ADMIN-02",
+        "QUAL-TEST-03",
+        "TECH-ARCH-19",
+        "TECH-UX-04"
+      ]
+    },
+    {
+      "permission": "academy.sessions.*",
+      "canonicalModule": "academy",
+      "sourceDocs": [
+        "ADMIN-02",
+        "TECH-ARCH-19"
+      ]
+    },
+    {
+      "permission": "academy.attendance.*",
+      "canonicalModule": "academy",
+      "sourceDocs": [
+        "ADMIN-02",
+        "QUAL-TEST-03",
+        "TECH-ARCH-19",
+        "TECH-UX-04"
+      ]
+    },
+    {
+      "permission": "academy.dashboard.view",
+      "canonicalModule": "academy",
+      "sourceDocs": [
+        "ADMIN-02",
+        "TECH-ARCH-19",
+        "TECH-MOD-04",
+        "TECH-UX-04",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "program.repository.ts",
+      "canonicalModule": "program",
+      "sourceDocs": [
+        "ADMIN-02",
+        "TECH-ARCH-19",
+        "TECH-DB-03"
+      ]
+    },
+    {
+      "permission": "attendance.repository.ts",
+      "canonicalModule": "attendance",
+      "sourceDocs": [
+        "ADMIN-02",
+        "GOV-ADR-020",
+        "QUAL-TEST-03",
+        "TECH-DB-03"
+      ]
+    },
+    {
+      "permission": "tournament.create",
+      "canonicalModule": "tournament",
+      "sourceDocs": [
+        "ADMIN-02",
+        "QUAL-TEST-03",
+        "TECH-ARCH-20",
+        "TECH-MOD-05",
+        "TECH-UX-04",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "tournament.view",
+      "canonicalModule": "tournament",
+      "sourceDocs": [
+        "ADMIN-02",
+        "TECH-ARCH-20",
+        "TECH-MOD-05",
+        "TECH-UX-04",
+        "USER-01",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "tournament.update",
+      "canonicalModule": "tournament",
+      "sourceDocs": [
+        "ADMIN-02",
+        "TECH-ARCH-20",
+        "TECH-MOD-05",
+        "TECH-UX-04",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "tournament.publish",
+      "canonicalModule": "tournament",
+      "sourceDocs": [
+        "ADMIN-02",
+        "TECH-ARCH-20",
+        "TECH-MOD-05",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "tournament.manage",
+      "canonicalModule": "tournament",
+      "sourceDocs": [
+        "ADMIN-02",
+        "QUAL-TEST-03",
+        "TECH-ARCH-20",
+        "TECH-MOD-05",
+        "TECH-UX-04",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "tournament.delete",
+      "canonicalModule": "tournament",
+      "sourceDocs": [
+        "ADMIN-02",
+        "TECH-ARCH-20",
+        "TECH-MOD-05",
+        "TECH-UX-04",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "tournament.dashboard.view",
+      "canonicalModule": "tournament",
+      "sourceDocs": [
+        "ADMIN-02",
+        "TECH-ARCH-20",
+        "TECH-MOD-05",
+        "TECH-UX-04",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "match.result.recorded",
+      "canonicalModule": "match",
+      "sourceDocs": [
+        "ADMIN-02",
+        "TECH-ARCH-20",
+        "TECH-ARCH-21"
+      ]
+    },
+    {
+      "permission": "season.*",
+      "canonicalModule": "season",
+      "sourceDocs": [
+        "ADMIN-02",
+        "QUAL-TEST-03",
+        "TECH-ARCH-21",
+        "TECH-MOD-06",
+        "TECH-UX-04"
+      ]
+    },
+    {
+      "permission": "league.*",
+      "canonicalModule": "league",
+      "sourceDocs": [
+        "ADMIN-02",
+        "QUAL-TEST-03",
+        "TECH-ARCH-21",
+        "TECH-MOD-02",
+        "TECH-MOD-06",
+        "TECH-MOD-14",
+        "TECH-UX-04"
+      ]
+    },
+    {
+      "permission": "league.divisions.*",
+      "canonicalModule": "league",
+      "sourceDocs": [
+        "ADMIN-02",
+        "QUAL-TEST-03",
+        "TECH-ARCH-21",
+        "TECH-UX-04"
+      ]
+    },
+    {
+      "permission": "league.teams.*",
+      "canonicalModule": "league",
+      "sourceDocs": [
+        "ADMIN-02",
+        "TECH-ARCH-21",
+        "TECH-UX-04"
+      ]
+    },
+    {
+      "permission": "league.fixtures.*",
+      "canonicalModule": "league",
+      "sourceDocs": [
+        "ADMIN-02",
+        "QUAL-TEST-03",
+        "TECH-ARCH-21",
+        "TECH-UX-04"
+      ]
+    },
+    {
+      "permission": "league.matches.*",
+      "canonicalModule": "league",
+      "sourceDocs": [
+        "ADMIN-02",
+        "QUAL-TEST-03",
+        "TECH-ARCH-21",
+        "TECH-UX-04"
+      ]
+    },
+    {
+      "permission": "league.standings.*",
+      "canonicalModule": "league",
+      "sourceDocs": [
+        "ADMIN-02",
+        "QUAL-TEST-03",
+        "TECH-ARCH-21",
+        "TECH-UX-04"
+      ]
+    },
+    {
+      "permission": "league.statistics.*",
+      "canonicalModule": "league",
+      "sourceDocs": [
+        "ADMIN-02",
+        "TECH-ARCH-21",
+        "TECH-UX-04"
+      ]
+    },
+    {
+      "permission": "fixtures.generated",
+      "canonicalModule": "fixtures",
+      "sourceDocs": [
+        "ADMIN-02",
+        "TECH-ARCH-21"
+      ]
+    },
+    {
+      "permission": "crm.customers.view",
+      "canonicalModule": "crm",
+      "sourceDocs": [
+        "ADMIN-02",
+        "QUAL-TEST-03",
+        "TECH-ARCH-22",
+        "TECH-MOD-15",
+        "TECH-UX-04",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "crm.segments.view",
+      "canonicalModule": "crm",
+      "sourceDocs": [
+        "ADMIN-02",
+        "TECH-ARCH-22",
+        "TECH-MOD-15",
+        "TECH-UX-04",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "crm.segments.manage",
+      "canonicalModule": "crm",
+      "sourceDocs": [
+        "ADMIN-02",
+        "TECH-ARCH-22",
+        "TECH-MOD-15",
+        "TECH-UX-04",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "crm.leads.view",
+      "canonicalModule": "crm",
+      "sourceDocs": [
+        "ADMIN-02",
+        "TECH-ARCH-22",
+        "TECH-MOD-15",
+        "TECH-UX-04",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "crm.leads.manage",
+      "canonicalModule": "crm",
+      "sourceDocs": [
+        "ADMIN-02",
+        "QUAL-TEST-03",
+        "TECH-ARCH-22",
+        "TECH-MOD-15",
+        "TECH-UX-04",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "crm.campaigns.view",
+      "canonicalModule": "crm",
+      "sourceDocs": [
+        "ADMIN-02",
+        "TECH-ARCH-22",
+        "TECH-MOD-15",
+        "TECH-UX-04",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "crm.campaigns.manage",
+      "canonicalModule": "crm",
+      "sourceDocs": [
+        "ADMIN-02",
+        "QUAL-TEST-03",
+        "TECH-ARCH-22",
+        "TECH-MOD-15",
+        "TECH-UX-04",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "crm.communications.view",
+      "canonicalModule": "crm",
+      "sourceDocs": [
+        "ADMIN-02",
+        "TECH-ARCH-22",
+        "TECH-MOD-15",
+        "TECH-UX-04",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "crm.dashboard.view",
+      "canonicalModule": "crm",
+      "sourceDocs": [
+        "ADMIN-02",
+        "TECH-ARCH-22",
+        "TECH-MOD-15",
+        "TECH-UX-04",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "hr.departments.*",
+      "canonicalModule": "hr",
+      "sourceDocs": [
+        "ADMIN-02"
+      ]
+    },
+    {
+      "permission": "hr.positions.*",
+      "canonicalModule": "hr",
+      "sourceDocs": [
+        "ADMIN-02"
+      ]
+    },
+    {
+      "permission": "hr.employees.*",
+      "canonicalModule": "hr",
+      "sourceDocs": [
+        "ADMIN-02",
+        "BIZ-PROD-02"
+      ]
+    },
+    {
+      "permission": "hr.contracts.*",
+      "canonicalModule": "hr",
+      "sourceDocs": [
+        "ADMIN-02"
+      ]
+    },
+    {
+      "permission": "hr.leaves.*",
+      "canonicalModule": "hr",
+      "sourceDocs": [
+        "ADMIN-02",
+        "BIZ-PROD-02"
+      ]
+    },
+    {
+      "permission": "hr.attendance.*",
+      "canonicalModule": "hr",
+      "sourceDocs": [
+        "ADMIN-02",
+        "BIZ-PROD-02"
+      ]
+    },
+    {
+      "permission": "hr.payroll.*",
+      "canonicalModule": "hr",
+      "sourceDocs": [
+        "ADMIN-02",
+        "BIZ-PROD-02"
+      ]
+    },
+    {
+      "permission": "hr.dashboard.view",
+      "canonicalModule": "hr",
+      "sourceDocs": [
+        "ADMIN-02",
+        "TECH-ARCH-23",
+        "TECH-MOD-16",
+        "TECH-UX-04",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "hr.employees.view",
+      "canonicalModule": "hr",
+      "sourceDocs": [
+        "ADMIN-02",
+        "TECH-ARCH-23",
+        "TECH-MOD-16",
+        "TECH-UX-04",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "hr.employees.manage",
+      "canonicalModule": "hr",
+      "sourceDocs": [
+        "ADMIN-02",
+        "QUAL-TEST-03",
+        "TECH-ARCH-23",
+        "TECH-MOD-16",
+        "TECH-UX-04",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "hr.departments.view",
+      "canonicalModule": "hr",
+      "sourceDocs": [
+        "ADMIN-02",
+        "TECH-ARCH-23",
+        "TECH-MOD-16",
+        "TECH-UX-04",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "hr.departments.manage",
+      "canonicalModule": "hr",
+      "sourceDocs": [
+        "ADMIN-02",
+        "TECH-ARCH-23",
+        "TECH-MOD-16",
+        "TECH-UX-04",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "hr.leaves.requests.view",
+      "canonicalModule": "hr",
+      "sourceDocs": [
+        "ADMIN-02",
+        "TECH-MOD-16"
+      ]
+    },
+    {
+      "permission": "hr.leaves.requests.manage",
+      "canonicalModule": "hr",
+      "sourceDocs": [
+        "ADMIN-02",
+        "QUAL-TEST-03",
+        "TECH-MOD-16"
+      ]
+    },
+    {
+      "permission": "hr.leaves.requests.approve",
+      "canonicalModule": "hr",
+      "sourceDocs": [
+        "ADMIN-02",
+        "QUAL-TEST-03",
+        "TECH-MOD-16"
+      ]
+    },
+    {
+      "permission": "hr.attendance.manage",
+      "canonicalModule": "hr",
+      "sourceDocs": [
+        "ADMIN-02",
+        "TECH-ARCH-23",
+        "TECH-MOD-16",
+        "TECH-UX-04"
+      ]
+    },
+    {
+      "permission": "hr.attendance.view",
+      "canonicalModule": "hr",
+      "sourceDocs": [
+        "ADMIN-02",
+        "TECH-ARCH-23",
+        "TECH-MOD-16",
+        "TECH-UX-04",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "hr.payroll.runs.view",
+      "canonicalModule": "hr",
+      "sourceDocs": [
+        "ADMIN-02",
+        "TECH-MOD-16"
+      ]
+    },
+    {
+      "permission": "hr.payroll.runs.manage",
+      "canonicalModule": "hr",
+      "sourceDocs": [
+        "ADMIN-02",
+        "TECH-MOD-16"
+      ]
+    },
+    {
+      "permission": "hr.payroll.runs.calculate",
+      "canonicalModule": "hr",
+      "sourceDocs": [
+        "ADMIN-02",
+        "TECH-MOD-16"
+      ]
+    },
+    {
+      "permission": "hr.payroll.runs.approve",
+      "canonicalModule": "hr",
+      "sourceDocs": [
+        "ADMIN-02",
+        "TECH-MOD-16"
+      ]
+    },
+    {
+      "permission": "hr.payroll.runs.post",
+      "canonicalModule": "hr",
+      "sourceDocs": [
+        "ADMIN-02",
+        "TECH-MOD-16"
+      ]
+    },
+    {
+      "permission": "bi.dashboard.view",
+      "canonicalModule": "bi",
+      "sourceDocs": [
+        "ADMIN-02",
+        "QUAL-TEST-03",
+        "TECH-ARCH-24",
+        "TECH-MOD-25",
+        "TECH-UX-04",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "bi.export",
+      "canonicalModule": "bi",
+      "sourceDocs": [
+        "ADMIN-02",
+        "QUAL-TEST-03",
+        "TECH-ARCH-24",
+        "TECH-MOD-25",
+        "TECH-UX-04",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "bi.observability.view",
+      "canonicalModule": "bi",
+      "sourceDocs": [
+        "ADMIN-02",
+        "TECH-ARCH-24",
+        "TECH-DB-03",
+        "TECH-MOD-25",
+        "TECH-UX-04",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "bi.kpi.view",
+      "canonicalModule": "bi",
+      "sourceDocs": [
+        "ADMIN-02",
+        "TECH-ARCH-24",
+        "TECH-DB-03",
+        "TECH-MOD-25",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "ledger.entry.created",
+      "canonicalModule": "ledger",
+      "sourceDocs": [
+        "BIZ-ARCH-06",
+        "GOV-ADR-003",
+        "TECH-MOD-11"
+      ]
+    },
+    {
+      "permission": "eligibility.service.ts",
+      "canonicalModule": "eligibility",
+      "sourceDocs": [
+        "BIZ-ARCH-10"
+      ]
+    },
+    {
+      "permission": "matchmaking.service.ts",
+      "canonicalModule": "matchmaking",
+      "sourceDocs": [
+        "BIZ-ARCH-10"
+      ]
+    },
+    {
+      "permission": "settlement.service.ts",
+      "canonicalModule": "settlement",
+      "sourceDocs": [
+        "BIZ-ARCH-10",
+        "QUAL-TEST-03",
+        "TECH-MOD-11",
+        "TECH-MOD-30"
+      ]
+    },
+    {
+      "permission": "commission.service.ts",
+      "canonicalModule": "commission",
+      "sourceDocs": [
+        "BIZ-ARCH-10"
+      ]
+    },
+    {
+      "permission": "coach.provider.ts",
+      "canonicalModule": "coach",
+      "sourceDocs": [
+        "BIZ-ARCH-10",
+        "TECH-MOD-19"
+      ]
+    },
+    {
+      "permission": "court.provider.ts",
+      "canonicalModule": "court",
+      "sourceDocs": [
+        "BIZ-ARCH-10",
+        "GOV-ADR-017",
+        "TECH-MOD-19"
+      ]
+    },
+    {
+      "permission": "referee.provider.ts",
+      "canonicalModule": "referee",
+      "sourceDocs": [
+        "BIZ-ARCH-10",
+        "GOV-ADR-017",
+        "TECH-MOD-19"
+      ]
+    },
+    {
+      "permission": "roles.*",
+      "canonicalModule": "roles",
+      "sourceDocs": [
+        "BIZ-PROD-02"
+      ]
+    },
+    {
+      "permission": "permissions.*",
+      "canonicalModule": "permissions",
+      "sourceDocs": [
+        "BIZ-PROD-02"
+      ]
+    },
+    {
+      "permission": "admin.users.*",
+      "canonicalModule": "admin",
+      "sourceDocs": [
+        "BIZ-PROD-02"
+      ]
+    },
+    {
+      "permission": "feature_flags.*",
+      "canonicalModule": "feature_flags",
+      "sourceDocs": [
+        "BIZ-PROD-02"
+      ]
+    },
+    {
+      "permission": "branches.request-access",
+      "canonicalModule": "branches",
+      "sourceDocs": [
+        "BIZ-PROD-02",
+        "BIZ-PROD-03"
+      ]
+    },
+    {
+      "permission": "bookings.create",
+      "canonicalModule": "bookings",
+      "sourceDocs": [
+        "BIZ-PROD-02",
+        "BIZ-PROD-03",
+        "QUAL-TEST-03",
+        "TECH-MOD-03",
+        "TECH-UX-04",
+        "USER-01",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "bookings.matchmaking",
+      "canonicalModule": "bookings",
+      "sourceDocs": [
+        "BIZ-PROD-02",
+        "BIZ-PROD-03",
+        "QUAL-TEST-03",
+        "TECH-MOD-03",
+        "USER-01",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "bookings.cancel",
+      "canonicalModule": "bookings",
+      "sourceDocs": [
+        "BIZ-PROD-02",
+        "BIZ-PROD-03",
+        "QUAL-TEST-03",
+        "TECH-MOD-03",
+        "TECH-UX-04",
+        "USER-01",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "bookings.check-in",
+      "canonicalModule": "bookings",
+      "sourceDocs": [
+        "BIZ-PROD-02",
+        "BIZ-PROD-03",
+        "QUAL-TEST-03",
+        "TECH-MOD-03",
+        "USER-01",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "matches.view",
+      "canonicalModule": "matches",
+      "sourceDocs": [
+        "BIZ-PROD-02",
+        "BIZ-PROD-03",
+        "TECH-UX-04",
+        "USER-01"
+      ]
+    },
+    {
+      "permission": "tournaments.create",
+      "canonicalModule": "tournaments",
+      "sourceDocs": [
+        "BIZ-PROD-02",
+        "TECH-MOD-35"
+      ]
+    },
+    {
+      "permission": "tournaments.manage_brackets",
+      "canonicalModule": "tournaments",
+      "sourceDocs": [
+        "BIZ-PROD-02",
+        "TECH-MOD-35"
+      ]
+    },
+    {
+      "permission": "tournaments.enter_scores",
+      "canonicalModule": "tournaments",
+      "sourceDocs": [
+        "BIZ-PROD-02",
+        "TECH-MOD-35"
+      ]
+    },
+    {
+      "permission": "academies.create",
+      "canonicalModule": "academies",
+      "sourceDocs": [
+        "BIZ-PROD-02",
+        "TECH-MOD-35"
+      ]
+    },
+    {
+      "permission": "academies.edit",
+      "canonicalModule": "academies",
+      "sourceDocs": [
+        "BIZ-PROD-02",
+        "TECH-MOD-35"
+      ]
+    },
+    {
+      "permission": "academies.evaluate",
+      "canonicalModule": "academies",
+      "sourceDocs": [
+        "BIZ-PROD-02",
+        "TECH-MOD-35"
+      ]
+    },
+    {
+      "permission": "leagues.create",
+      "canonicalModule": "leagues",
+      "sourceDocs": [
+        "BIZ-PROD-02"
+      ]
+    },
+    {
+      "permission": "leagues.manage_teams",
+      "canonicalModule": "leagues",
+      "sourceDocs": [
+        "BIZ-PROD-02"
+      ]
+    },
+    {
+      "permission": "leagues.schedule",
+      "canonicalModule": "leagues",
+      "sourceDocs": [
+        "BIZ-PROD-02"
+      ]
+    },
+    {
+      "permission": "coaches.manage_profile",
+      "canonicalModule": "coaches",
+      "sourceDocs": [
+        "BIZ-PROD-02",
+        "TECH-MOD-35"
+      ]
+    },
+    {
+      "permission": "coaches.book",
+      "canonicalModule": "coaches",
+      "sourceDocs": [
+        "BIZ-PROD-02",
+        "TECH-MOD-35",
+        "TECH-MOD-51"
+      ]
+    },
+    {
+      "permission": "coaches.*",
+      "canonicalModule": "coaches",
+      "sourceDocs": [
+        "BIZ-PROD-02"
+      ]
+    },
+    {
+      "permission": "coaches.availability.manage",
+      "canonicalModule": "coaches",
+      "sourceDocs": [
+        "BIZ-PROD-02",
+        "TECH-MOD-35"
+      ]
+    },
+    {
+      "permission": "crm.leads.*",
+      "canonicalModule": "crm",
+      "sourceDocs": [
+        "BIZ-PROD-02"
+      ]
+    },
+    {
+      "permission": "crm.campaigns.*",
+      "canonicalModule": "crm",
+      "sourceDocs": [
+        "BIZ-PROD-02"
+      ]
+    },
+    {
+      "permission": "player.dashboard.view",
+      "canonicalModule": "player",
+      "sourceDocs": [
+        "BIZ-PROD-02",
+        "TECH-MOD-52",
+        "VOLUME_05_SCREENS",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "player.search",
+      "canonicalModule": "player",
+      "sourceDocs": [
+        "BIZ-PROD-02",
+        "TECH-MOD-52",
+        "TECH-UX-03",
+        "VOLUME_05_SCREENS",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "player.favorites.manage",
+      "canonicalModule": "player",
+      "sourceDocs": [
+        "BIZ-PROD-02",
+        "TECH-MOD-52",
+        "TECH-UX-03",
+        "VOLUME_05_SCREENS",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "player.achievements.view",
+      "canonicalModule": "player",
+      "sourceDocs": [
+        "BIZ-PROD-02",
+        "TECH-MOD-52",
+        "TECH-UX-03",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "player.qr.view",
+      "canonicalModule": "player",
+      "sourceDocs": [
+        "BIZ-PROD-02",
+        "TECH-MOD-52",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "player.devices.manage",
+      "canonicalModule": "player",
+      "sourceDocs": [
+        "BIZ-PROD-02",
+        "TECH-MOD-52",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "system_settings.*",
+      "canonicalModule": "system_settings",
+      "sourceDocs": [
+        "BIZ-PROD-02"
+      ]
+    },
+    {
+      "permission": "system_health.view",
+      "canonicalModule": "system_health",
+      "sourceDocs": [
+        "BIZ-PROD-02",
+        "TECH-MOD-36",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "cache.manage",
+      "canonicalModule": "cache",
+      "sourceDocs": [
+        "BIZ-PROD-02",
+        "TECH-MOD-36",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "queue.*",
+      "canonicalModule": "queue",
+      "sourceDocs": [
+        "BIZ-PROD-02"
+      ]
+    },
+    {
+      "permission": "appearance.role-customize",
+      "canonicalModule": "appearance",
+      "sourceDocs": [
+        "BIZ-PROD-02",
+        "TECH-MOD-44"
+      ]
+    },
+    {
+      "permission": "bookings.create.date",
+      "canonicalModule": "bookings",
+      "sourceDocs": [
+        "BIZ-PROD-03",
+        "TECH-UX-04",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "bookings.create.start-time",
+      "canonicalModule": "bookings",
+      "sourceDocs": [
+        "BIZ-PROD-03",
+        "TECH-UX-04",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "bookings.create.end-time",
+      "canonicalModule": "bookings",
+      "sourceDocs": [
+        "BIZ-PROD-03"
+      ]
+    },
+    {
+      "permission": "bookings.create.notes",
+      "canonicalModule": "bookings",
+      "sourceDocs": [
+        "BIZ-PROD-03",
+        "TECH-UX-04",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "matches.apply",
+      "canonicalModule": "matches",
+      "sourceDocs": [
+        "BIZ-PROD-03",
+        "QUAL-TEST-03",
+        "TECH-UX-04",
+        "USER-01"
+      ]
+    },
+    {
+      "permission": "matches.cancel",
+      "canonicalModule": "matches",
+      "sourceDocs": [
+        "BIZ-PROD-03"
+      ]
+    },
+    {
+      "permission": "bookings.manage-applicants",
+      "canonicalModule": "bookings",
+      "sourceDocs": [
+        "BIZ-PROD-03"
+      ]
+    },
+    {
+      "permission": "admin.bookings.view",
+      "canonicalModule": "admin",
+      "sourceDocs": [
+        "BIZ-PROD-03"
+      ]
+    },
+    {
+      "permission": "admin.bookings.update-status",
+      "canonicalModule": "admin",
+      "sourceDocs": [
+        "BIZ-PROD-03",
+        "TECH-MOD-03",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "activities.service.ts",
+      "canonicalModule": "activities",
+      "sourceDocs": [
+        "BIZ-PROD-06",
+        "TECH-MOD-35"
+      ]
+    },
+    {
+      "permission": "user.account_type",
+      "canonicalModule": "user",
+      "sourceDocs": [
+        "GOV-ADR-001"
+      ]
+    },
+    {
+      "permission": "settlement.created",
+      "canonicalModule": "settlement",
+      "sourceDocs": [
+        "GOV-ADR-003",
+        "TECH-MOD-11"
+      ]
+    },
+    {
+      "permission": "transaction.repository.ts",
+      "canonicalModule": "transaction",
+      "sourceDocs": [
+        "GOV-ADR-004",
+        "TECH-MOD-11"
+      ]
+    },
+    {
+      "permission": "program.service.ts",
+      "canonicalModule": "program",
+      "sourceDocs": [
+        "GOV-ADR-008",
+        "TECH-ARCH-19",
+        "VOLUME_03_BUSINESS_DOMAINS"
+      ]
+    },
+    {
+      "permission": "enrollment.service.ts",
+      "canonicalModule": "enrollment",
+      "sourceDocs": [
+        "GOV-ADR-008"
+      ]
+    },
+    {
+      "permission": "t.format",
+      "canonicalModule": "t",
+      "sourceDocs": [
+        "GOV-ADR-009"
+      ]
+    },
+    {
+      "permission": "auth.controller.ts",
+      "canonicalModule": "auth",
+      "sourceDocs": [
+        "GOV-ADR-012",
+        "TECH-MOD-01"
+      ]
+    },
+    {
+      "permission": "dispatcher.service.ts",
+      "canonicalModule": "dispatcher",
+      "sourceDocs": [
+        "GOV-ADR-014",
+        "VOLUME_15_NOTIFICATIONS"
+      ]
+    },
+    {
+      "permission": "push.provider.ts",
+      "canonicalModule": "push",
+      "sourceDocs": [
+        "GOV-ADR-014"
+      ]
+    },
+    {
+      "permission": "email.provider.ts",
+      "canonicalModule": "email",
+      "sourceDocs": [
+        "GOV-ADR-014"
+      ]
+    },
+    {
+      "permission": "sms.provider.ts",
+      "canonicalModule": "sms",
+      "sourceDocs": [
+        "GOV-ADR-014"
+      ]
+    },
+    {
+      "permission": "whatsapp.provider.ts",
+      "canonicalModule": "whatsapp",
+      "sourceDocs": [
+        "GOV-ADR-014"
+      ]
+    },
+    {
+      "permission": "webhook.provider.ts",
+      "canonicalModule": "webhook",
+      "sourceDocs": [
+        "GOV-ADR-014"
+      ]
+    },
+    {
+      "permission": "booking.concurrency.spec.ts",
+      "canonicalModule": "booking",
+      "sourceDocs": [
+        "GOV-ADR-015"
+      ]
+    },
+    {
+      "permission": "rbac.repository.ts",
+      "canonicalModule": "rbac",
+      "sourceDocs": [
+        "GOV-ADR-016"
+      ]
+    },
+    {
+      "permission": "rbac.service.ts",
+      "canonicalModule": "rbac",
+      "sourceDocs": [
+        "GOV-ADR-016"
+      ]
+    },
+    {
+      "permission": "for...of",
+      "canonicalModule": "for",
+      "sourceDocs": [
+        "GOV-ADR-017"
+      ]
+    },
+    {
+      "permission": "scheduling.controller.ts",
+      "canonicalModule": "scheduling",
+      "sourceDocs": [
+        "GOV-ADR-017"
+      ]
+    },
+    {
+      "permission": "academy.types.ts",
+      "canonicalModule": "academy",
+      "sourceDocs": [
+        "GOV-ADR-020"
+      ]
+    },
+    {
+      "permission": "attendance.types.ts",
+      "canonicalModule": "attendance",
+      "sourceDocs": [
+        "GOV-ADR-020"
+      ]
+    },
+    {
+      "permission": "crm.controller.ts",
+      "canonicalModule": "crm",
+      "sourceDocs": [
+        "GOV-ADR-022",
+        "TECH-ARCH-22"
+      ]
+    },
+    {
+      "permission": "variant.quantity",
+      "canonicalModule": "variant",
+      "sourceDocs": [
+        "GOV-ADR-023"
+      ]
+    },
+    {
+      "permission": "product_variants.quantity",
+      "canonicalModule": "product_variants",
+      "sourceDocs": [
+        "GOV-ADR-023",
+        "QUAL-TEST-03",
+        "TECH-ARCH-17",
+        "TECH-ARCH-18",
+        "TECH-MOD-08"
+      ]
+    },
+    {
+      "permission": "auth.middleware.ts",
+      "canonicalModule": "auth",
+      "sourceDocs": [
+        "GOV-ADR-024"
+      ]
+    },
+    {
+      "permission": "NNN_descriptive_name.sql",
+      "canonicalModule": "NNN_descriptive_name",
+      "sourceDocs": [
+        "GOV-ADR-025",
+        "TECH-DEV-04"
+      ]
+    },
+    {
+      "permission": "migrate.sh",
+      "canonicalModule": "migrate",
+      "sourceDocs": [
+        "GOV-ADR-025"
+      ]
+    },
+    {
+      "permission": "2.0",
+      "canonicalModule": "2",
+      "sourceDocs": [
+        "OPS-DEPLOY-01"
+      ]
+    },
+    {
+      "permission": "0.5",
+      "canonicalModule": "0",
+      "sourceDocs": [
+        "OPS-DEPLOY-01"
+      ]
+    },
+    {
+      "permission": "1.0",
+      "canonicalModule": "1",
+      "sourceDocs": [
+        "OPS-DEPLOY-01"
+      ]
+    },
+    {
+      "permission": "nginx.conf",
+      "canonicalModule": "nginx",
+      "sourceDocs": [
+        "OPS-DEPLOY-01"
+      ]
+    },
+    {
+      "permission": "001_courtzon_v3.sql",
+      "canonicalModule": "001_courtzon_v3",
+      "sourceDocs": [
+        "OPS-DEPLOY-01"
+      ]
+    },
+    {
+      "permission": "001_baseline.sql",
+      "canonicalModule": "001_baseline",
+      "sourceDocs": [
+        "OPS-DEPLOY-01"
+      ]
+    },
+    {
+      "permission": "app.ts",
+      "canonicalModule": "app",
+      "sourceDocs": [
+        "OPS-DEPLOY-01",
+        "TECH-ARCH-01",
+        "TECH-ARCH-15",
+        "TECH-DEV-12"
+      ]
+    },
+    {
+      "permission": "courtzon_.*",
+      "canonicalModule": "courtzon_",
+      "sourceDocs": [
+        "OPS-MON-01"
+      ]
+    },
+    {
+      "permission": "alertmanager.yml",
+      "canonicalModule": "alertmanager",
+      "sourceDocs": [
+        "OPS-MON-01"
+      ]
+    },
+    {
+      "permission": "index.html",
+      "canonicalModule": "index",
+      "sourceDocs": [
+        "OPS-RUN-02"
+      ]
+    },
+    {
+      "permission": "health.service.ts",
+      "canonicalModule": "health",
+      "sourceDocs": [
+        "OPS-RUN-02",
+        "TECH-DB-03",
+        "TECH-MOD-36"
+      ]
+    },
+    {
+      "permission": "metrics.ts",
+      "canonicalModule": "metrics",
+      "sourceDocs": [
+        "OPS-RUN-02",
+        "TECH-DB-03"
+      ]
+    },
+    {
+      "permission": "payment.service.ts",
+      "canonicalModule": "payment",
+      "sourceDocs": [
+        "OPS-RUN-02"
+      ]
+    },
+    {
+      "permission": "vitest.config.ts",
+      "canonicalModule": "vitest",
+      "sourceDocs": [
+        "QUAL-TEST-01",
+        "TECH-DEV-09"
+      ]
+    },
+    {
+      "permission": "jest.config.ts",
+      "canonicalModule": "jest",
+      "sourceDocs": [
+        "QUAL-TEST-01"
+      ]
+    },
+    {
+      "permission": "playwright.config.ts",
+      "canonicalModule": "playwright",
+      "sourceDocs": [
+        "QUAL-TEST-01",
+        "QUAL-TEST-04"
+      ]
+    },
+    {
+      "permission": "stryker.config.json",
+      "canonicalModule": "stryker",
+      "sourceDocs": [
+        "QUAL-TEST-01"
+      ]
+    },
+    {
+      "permission": "tsconfig.json",
+      "canonicalModule": "tsconfig",
+      "sourceDocs": [
+        "QUAL-TEST-01",
+        "TECH-DEV-01"
+      ]
+    },
+    {
+      "permission": "vi.mock",
+      "canonicalModule": "vi",
+      "sourceDocs": [
+        "QUAL-TEST-02"
+      ]
+    },
+    {
+      "permission": "eventBusV2.emit",
+      "canonicalModule": "eventBusV2",
+      "sourceDocs": [
+        "QUAL-TEST-02"
+      ]
+    },
+    {
+      "permission": "vi.spyOn",
+      "canonicalModule": "vi",
+      "sourceDocs": [
+        "QUAL-TEST-02"
+      ]
+    },
+    {
+      "permission": "organisations.edit.branches",
+      "canonicalModule": "organisations",
+      "sourceDocs": [
+        "QUAL-TEST-03"
+      ]
+    },
+    {
+      "permission": "branch.repository.ts",
+      "canonicalModule": "branch",
+      "sourceDocs": [
+        "QUAL-TEST-03",
+        "TECH-DB-03",
+        "USER-01"
+      ]
+    },
+    {
+      "permission": "SUBSCRIPTION_REQUEST.APPROVE",
+      "canonicalModule": "SUBSCRIPTION_REQUEST",
+      "sourceDocs": [
+        "QUAL-TEST-03",
+        "TECH-ARCH-15"
+      ]
+    },
+    {
+      "permission": "SUBSCRIPTION.ACTIVATED",
+      "canonicalModule": "SUBSCRIPTION",
+      "sourceDocs": [
+        "QUAL-TEST-03",
+        "TECH-ARCH-15"
+      ]
+    },
+    {
+      "permission": "purchase_order_items.received_qty",
+      "canonicalModule": "purchase_order_items",
+      "sourceDocs": [
+        "QUAL-TEST-03",
+        "TECH-MOD-08"
+      ]
+    },
+    {
+      "permission": "inventory.routes.ts",
+      "canonicalModule": "inventory",
+      "sourceDocs": [
+        "QUAL-TEST-03",
+        "TECH-MOD-07"
+      ]
+    },
+    {
+      "permission": "marketplace.service.ts",
+      "canonicalModule": "marketplace",
+      "sourceDocs": [
+        "QUAL-TEST-03",
+        "TECH-ARCH-17",
+        "TECH-ARCH-18",
+        "VOLUME_03_BUSINESS_DOMAINS"
+      ]
+    },
+    {
+      "permission": "lifecycle.ts",
+      "canonicalModule": "lifecycle",
+      "sourceDocs": [
+        "QUAL-TEST-03",
+        "TECH-DB-03",
+        "TECH-MOD-04",
+        "TECH-MOD-05"
+      ]
+    },
+    {
+      "permission": "tournament.*",
+      "canonicalModule": "tournament",
+      "sourceDocs": [
+        "QUAL-TEST-03",
+        "TECH-MOD-02",
+        "TECH-MOD-14"
+      ]
+    },
+    {
+      "permission": "data.id",
+      "canonicalModule": "data",
+      "sourceDocs": [
+        "QUAL-TEST-03"
+      ]
+    },
+    {
+      "permission": "data.lastActivity",
+      "canonicalModule": "data",
+      "sourceDocs": [
+        "QUAL-TEST-03"
+      ]
+    },
+    {
+      "permission": "hr.payroll.runs.*",
+      "canonicalModule": "hr",
+      "sourceDocs": [
+        "QUAL-TEST-03",
+        "TECH-ARCH-23",
+        "TECH-UX-04"
+      ]
+    },
+    {
+      "permission": "data.revenue.last30d",
+      "canonicalModule": "data",
+      "sourceDocs": [
+        "QUAL-TEST-03"
+      ]
+    },
+    {
+      "permission": "data.revenue.last7d",
+      "canonicalModule": "data",
+      "sourceDocs": [
+        "QUAL-TEST-03"
+      ]
+    },
+    {
+      "permission": "data.bookings.last30d",
+      "canonicalModule": "data",
+      "sourceDocs": [
+        "QUAL-TEST-03"
+      ]
+    },
+    {
+      "permission": "data.activeUsers",
+      "canonicalModule": "data",
+      "sourceDocs": [
+        "QUAL-TEST-03"
+      ]
+    },
+    {
+      "permission": "data.activeOrganisations",
+      "canonicalModule": "data",
+      "sourceDocs": [
+        "QUAL-TEST-03"
+      ]
+    },
+    {
+      "permission": "checks.memory.status",
+      "canonicalModule": "checks",
+      "sourceDocs": [
+        "QUAL-TEST-03"
+      ]
+    },
+    {
+      "permission": "booking.types.ts",
+      "canonicalModule": "booking",
+      "sourceDocs": [
+        "TECH-ARCH-03"
+      ]
+    },
+    {
+      "permission": "ErrorCodes.TOURNAMENT_INVALID_TRANSITION",
+      "canonicalModule": "ErrorCodes",
+      "sourceDocs": [
+        "TECH-ARCH-03"
+      ]
+    },
+    {
+      "permission": "AGENTS.md",
+      "canonicalModule": "AGENTS",
+      "sourceDocs": [
+        "TECH-ARCH-05",
+        "TECH-ARCH-08"
+      ]
+    },
+    {
+      "permission": "integration.api-keys.manage",
+      "canonicalModule": "integration",
+      "sourceDocs": [
+        "TECH-ARCH-06",
+        "TECH-ARCH-07",
+        "TECH-MOD-27",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "users.view",
+      "canonicalModule": "users",
+      "sourceDocs": [
+        "TECH-ARCH-07",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "users.create",
+      "canonicalModule": "users",
+      "sourceDocs": [
+        "TECH-ARCH-07",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "users.edit",
+      "canonicalModule": "users",
+      "sourceDocs": [
+        "TECH-ARCH-07",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "users.delete",
+      "canonicalModule": "users",
+      "sourceDocs": [
+        "TECH-ARCH-07",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "users.edit.first-name",
+      "canonicalModule": "users",
+      "sourceDocs": [
+        "TECH-ARCH-07",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "users.edit.email",
+      "canonicalModule": "users",
+      "sourceDocs": [
+        "TECH-ARCH-07",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "users.view-bookings",
+      "canonicalModule": "users",
+      "sourceDocs": [
+        "TECH-ARCH-07"
+      ]
+    },
+    {
+      "permission": "users.view-orders",
+      "canonicalModule": "users",
+      "sourceDocs": [
+        "TECH-ARCH-07"
+      ]
+    },
+    {
+      "permission": "platform.admin",
+      "canonicalModule": "platform",
+      "sourceDocs": [
+        "TECH-ARCH-07"
+      ]
+    },
+    {
+      "permission": "BullMQ.Queue",
+      "canonicalModule": "BullMQ",
+      "sourceDocs": [
+        "TECH-ARCH-10"
+      ]
+    },
+    {
+      "permission": "process.memory",
+      "canonicalModule": "process",
+      "sourceDocs": [
+        "TECH-ARCH-11"
+      ]
+    },
+    {
+      "permission": "financial.withdraw",
+      "canonicalModule": "financial",
+      "sourceDocs": [
+        "TECH-ARCH-14",
+        "TECH-MOD-10",
+        "USER-01",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "wallet.deposited",
+      "canonicalModule": "wallet",
+      "sourceDocs": [
+        "TECH-ARCH-14"
+      ]
+    },
+    {
+      "permission": "wallet.withdrawn",
+      "canonicalModule": "wallet",
+      "sourceDocs": [
+        "TECH-ARCH-14"
+      ]
+    },
+    {
+      "permission": "org.announcements.manage",
+      "canonicalModule": "org",
+      "sourceDocs": [
+        "TECH-ARCH-15",
+        "TECH-MOD-13",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "org.documents.manage",
+      "canonicalModule": "org",
+      "sourceDocs": [
+        "TECH-ARCH-15",
+        "TECH-MOD-13",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "org.gallery.manage",
+      "canonicalModule": "org",
+      "sourceDocs": [
+        "TECH-ARCH-15",
+        "TECH-MOD-13",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "organisation.routes.ts",
+      "canonicalModule": "organisation",
+      "sourceDocs": [
+        "TECH-ARCH-15",
+        "TECH-MOD-13"
+      ]
+    },
+    {
+      "permission": "ORGANISATION.CREATE",
+      "canonicalModule": "ORGANISATION",
+      "sourceDocs": [
+        "TECH-ARCH-15",
+        "TECH-MOD-13",
+        "TECH-MOD-21"
+      ]
+    },
+    {
+      "permission": "ORGANISATION.DELETE",
+      "canonicalModule": "ORGANISATION",
+      "sourceDocs": [
+        "TECH-ARCH-15",
+        "TECH-MOD-13",
+        "TECH-MOD-21"
+      ]
+    },
+    {
+      "permission": "BRANCH.CREATE",
+      "canonicalModule": "BRANCH",
+      "sourceDocs": [
+        "TECH-ARCH-15"
+      ]
+    },
+    {
+      "permission": "BRANCH.UPDATE",
+      "canonicalModule": "BRANCH",
+      "sourceDocs": [
+        "TECH-ARCH-15"
+      ]
+    },
+    {
+      "permission": "BRANCH.DELETE",
+      "canonicalModule": "BRANCH",
+      "sourceDocs": [
+        "TECH-ARCH-15"
+      ]
+    },
+    {
+      "permission": "BRANCH.FINANCIAL.UPDATE",
+      "canonicalModule": "BRANCH",
+      "sourceDocs": [
+        "TECH-ARCH-15"
+      ]
+    },
+    {
+      "permission": "BRANCH.SET_AMENITIES",
+      "canonicalModule": "BRANCH",
+      "sourceDocs": [
+        "TECH-ARCH-15"
+      ]
+    },
+    {
+      "permission": "BRANCH_ACCESS.REQUEST",
+      "canonicalModule": "BRANCH_ACCESS",
+      "sourceDocs": [
+        "TECH-ARCH-15"
+      ]
+    },
+    {
+      "permission": "BRANCH_ACCESS.APPROVE",
+      "canonicalModule": "BRANCH_ACCESS",
+      "sourceDocs": [
+        "TECH-ARCH-15"
+      ]
+    },
+    {
+      "permission": "BRANCH_ACCESS.REJECT",
+      "canonicalModule": "BRANCH_ACCESS",
+      "sourceDocs": [
+        "TECH-ARCH-15"
+      ]
+    },
+    {
+      "permission": "RESOURCE.CREATE",
+      "canonicalModule": "RESOURCE",
+      "sourceDocs": [
+        "TECH-ARCH-15"
+      ]
+    },
+    {
+      "permission": "RESOURCE.UPDATE",
+      "canonicalModule": "RESOURCE",
+      "sourceDocs": [
+        "TECH-ARCH-15"
+      ]
+    },
+    {
+      "permission": "RESOURCE.DELETE",
+      "canonicalModule": "RESOURCE",
+      "sourceDocs": [
+        "TECH-ARCH-15"
+      ]
+    },
+    {
+      "permission": "RESOURCE_MAINTENANCE.CREATE",
+      "canonicalModule": "RESOURCE_MAINTENANCE",
+      "sourceDocs": [
+        "TECH-ARCH-15"
+      ]
+    },
+    {
+      "permission": "RESOURCE_MAINTENANCE.UPDATE",
+      "canonicalModule": "RESOURCE_MAINTENANCE",
+      "sourceDocs": [
+        "TECH-ARCH-15"
+      ]
+    },
+    {
+      "permission": "RESOURCE_MAINTENANCE.DELETE",
+      "canonicalModule": "RESOURCE_MAINTENANCE",
+      "sourceDocs": [
+        "TECH-ARCH-15"
+      ]
+    },
+    {
+      "permission": "RESOURCE_PEAK_HOURS.UPSERT",
+      "canonicalModule": "RESOURCE_PEAK_HOURS",
+      "sourceDocs": [
+        "TECH-ARCH-15"
+      ]
+    },
+    {
+      "permission": "RESOURCE_TYPE.CREATE",
+      "canonicalModule": "RESOURCE_TYPE",
+      "sourceDocs": [
+        "TECH-ARCH-15"
+      ]
+    },
+    {
+      "permission": "SPORT.CREATE",
+      "canonicalModule": "SPORT",
+      "sourceDocs": [
+        "TECH-ARCH-15"
+      ]
+    },
+    {
+      "permission": "SPORT.UPDATE",
+      "canonicalModule": "SPORT",
+      "sourceDocs": [
+        "TECH-ARCH-15"
+      ]
+    },
+    {
+      "permission": "SPORT.DELETE",
+      "canonicalModule": "SPORT",
+      "sourceDocs": [
+        "TECH-ARCH-15"
+      ]
+    },
+    {
+      "permission": "ORG_TYPE.CREATE",
+      "canonicalModule": "ORG_TYPE",
+      "sourceDocs": [
+        "TECH-ARCH-15"
+      ]
+    },
+    {
+      "permission": "ORG_TYPE.UPDATE",
+      "canonicalModule": "ORG_TYPE",
+      "sourceDocs": [
+        "TECH-ARCH-15"
+      ]
+    },
+    {
+      "permission": "ORG_TYPE.DELETE",
+      "canonicalModule": "ORG_TYPE",
+      "sourceDocs": [
+        "TECH-ARCH-15"
+      ]
+    },
+    {
+      "permission": "PLAN.CREATE",
+      "canonicalModule": "PLAN",
+      "sourceDocs": [
+        "TECH-ARCH-15"
+      ]
+    },
+    {
+      "permission": "PLAN.UPDATE",
+      "canonicalModule": "PLAN",
+      "sourceDocs": [
+        "TECH-ARCH-15"
+      ]
+    },
+    {
+      "permission": "PLAN.DELETE",
+      "canonicalModule": "PLAN",
+      "sourceDocs": [
+        "TECH-ARCH-15"
+      ]
+    },
+    {
+      "permission": "PLAN.TOGGLE",
+      "canonicalModule": "PLAN",
+      "sourceDocs": [
+        "TECH-ARCH-15"
+      ]
+    },
+    {
+      "permission": "ORG_SUBSCRIPTION.UPDATE",
+      "canonicalModule": "ORG_SUBSCRIPTION",
+      "sourceDocs": [
+        "TECH-ARCH-15"
+      ]
+    },
+    {
+      "permission": "ORG_SUBSCRIPTION.ACTIVATE",
+      "canonicalModule": "ORG_SUBSCRIPTION",
+      "sourceDocs": [
+        "TECH-ARCH-15"
+      ]
+    },
+    {
+      "permission": "SUBSCRIPTION.TOGGLE_STATUS",
+      "canonicalModule": "SUBSCRIPTION",
+      "sourceDocs": [
+        "TECH-ARCH-15",
+        "TECH-MOD-21"
+      ]
+    },
+    {
+      "permission": "SUBSCRIPTION.EXPIRED",
+      "canonicalModule": "SUBSCRIPTION",
+      "sourceDocs": [
+        "TECH-ARCH-15",
+        "TECH-ARCH-16"
+      ]
+    },
+    {
+      "permission": "SUBSCRIPTION_REQUEST.REJECT",
+      "canonicalModule": "SUBSCRIPTION_REQUEST",
+      "sourceDocs": [
+        "TECH-ARCH-15"
+      ]
+    },
+    {
+      "permission": "SUBSCRIPTION.REJECTED",
+      "canonicalModule": "SUBSCRIPTION",
+      "sourceDocs": [
+        "TECH-ARCH-15"
+      ]
+    },
+    {
+      "permission": "ORG_STAFF.ADD",
+      "canonicalModule": "ORG_STAFF",
+      "sourceDocs": [
+        "TECH-ARCH-15"
+      ]
+    },
+    {
+      "permission": "ORG_STAFF.UPDATE_ROLE",
+      "canonicalModule": "ORG_STAFF",
+      "sourceDocs": [
+        "TECH-ARCH-15"
+      ]
+    },
+    {
+      "permission": "ORG_STAFF.REMOVE",
+      "canonicalModule": "ORG_STAFF",
+      "sourceDocs": [
+        "TECH-ARCH-15"
+      ]
+    },
+    {
+      "permission": "ORG_STAFF.UPDATE_PERMISSIONS",
+      "canonicalModule": "ORG_STAFF",
+      "sourceDocs": [
+        "TECH-ARCH-15"
+      ]
+    },
+    {
+      "permission": "ORG_COACH.INVITE",
+      "canonicalModule": "ORG_COACH",
+      "sourceDocs": [
+        "TECH-ARCH-15"
+      ]
+    },
+    {
+      "permission": "ORG_COACH.RESPOND",
+      "canonicalModule": "ORG_COACH",
+      "sourceDocs": [
+        "TECH-ARCH-15"
+      ]
+    },
+    {
+      "permission": "ORG_COACH.REMOVE",
+      "canonicalModule": "ORG_COACH",
+      "sourceDocs": [
+        "TECH-ARCH-15"
+      ]
+    },
+    {
+      "permission": "CANCELLATION_POLICY.CREATE",
+      "canonicalModule": "CANCELLATION_POLICY",
+      "sourceDocs": [
+        "TECH-ARCH-15"
+      ]
+    },
+    {
+      "permission": "CANCELLATION_POLICY.UPDATE",
+      "canonicalModule": "CANCELLATION_POLICY",
+      "sourceDocs": [
+        "TECH-ARCH-15"
+      ]
+    },
+    {
+      "permission": "CANCELLATION_POLICY.DELETE",
+      "canonicalModule": "CANCELLATION_POLICY",
+      "sourceDocs": [
+        "TECH-ARCH-15"
+      ]
+    },
+    {
+      "permission": "CANCELLATION_SETTINGS.UPDATE",
+      "canonicalModule": "CANCELLATION_SETTINGS",
+      "sourceDocs": [
+        "TECH-ARCH-15"
+      ]
+    },
+    {
+      "permission": "BRANCH_HOLIDAY.CREATE",
+      "canonicalModule": "BRANCH_HOLIDAY",
+      "sourceDocs": [
+        "TECH-ARCH-15"
+      ]
+    },
+    {
+      "permission": "BRANCH_HOLIDAY.UPDATE",
+      "canonicalModule": "BRANCH_HOLIDAY",
+      "sourceDocs": [
+        "TECH-ARCH-15"
+      ]
+    },
+    {
+      "permission": "BRANCH_HOLIDAY.DELETE",
+      "canonicalModule": "BRANCH_HOLIDAY",
+      "sourceDocs": [
+        "TECH-ARCH-15"
+      ]
+    },
+    {
+      "permission": "BRANCH_HOURS.UPDATE",
+      "canonicalModule": "BRANCH_HOURS",
+      "sourceDocs": [
+        "TECH-ARCH-15"
+      ]
+    },
+    {
+      "permission": "ORG_ANNOUNCEMENT.CREATE",
+      "canonicalModule": "ORG_ANNOUNCEMENT",
+      "sourceDocs": [
+        "TECH-ARCH-15"
+      ]
+    },
+    {
+      "permission": "ORG_ANNOUNCEMENT.UPDATE",
+      "canonicalModule": "ORG_ANNOUNCEMENT",
+      "sourceDocs": [
+        "TECH-ARCH-15"
+      ]
+    },
+    {
+      "permission": "ORG_ANNOUNCEMENT.DELETE",
+      "canonicalModule": "ORG_ANNOUNCEMENT",
+      "sourceDocs": [
+        "TECH-ARCH-15"
+      ]
+    },
+    {
+      "permission": "ORG_ANNOUNCEMENT.PUBLISH",
+      "canonicalModule": "ORG_ANNOUNCEMENT",
+      "sourceDocs": [
+        "TECH-ARCH-15"
+      ]
+    },
+    {
+      "permission": "ORG_DOCUMENT.DELETE",
+      "canonicalModule": "ORG_DOCUMENT",
+      "sourceDocs": [
+        "TECH-ARCH-15"
+      ]
+    },
+    {
+      "permission": "ORG_GALLERY.DELETE",
+      "canonicalModule": "ORG_GALLERY",
+      "sourceDocs": [
+        "TECH-ARCH-15"
+      ]
+    },
+    {
+      "permission": "ORG_PAYMENT_SETTINGS.UPDATE",
+      "canonicalModule": "ORG_PAYMENT_SETTINGS",
+      "sourceDocs": [
+        "TECH-ARCH-15"
+      ]
+    },
+    {
+      "permission": "PAYMENT_METHOD.CREATE",
+      "canonicalModule": "PAYMENT_METHOD",
+      "sourceDocs": [
+        "TECH-ARCH-15"
+      ]
+    },
+    {
+      "permission": "PAYMENT_METHOD.UPDATE",
+      "canonicalModule": "PAYMENT_METHOD",
+      "sourceDocs": [
+        "TECH-ARCH-15"
+      ]
+    },
+    {
+      "permission": "PAYMENT_METHOD.DELETE",
+      "canonicalModule": "PAYMENT_METHOD",
+      "sourceDocs": [
+        "TECH-ARCH-15"
+      ]
+    },
+    {
+      "permission": "PAYMENT_GATEWAY.CREATE",
+      "canonicalModule": "PAYMENT_GATEWAY",
+      "sourceDocs": [
+        "TECH-ARCH-15"
+      ]
+    },
+    {
+      "permission": "PAYMENT_GATEWAY.UPDATE",
+      "canonicalModule": "PAYMENT_GATEWAY",
+      "sourceDocs": [
+        "TECH-ARCH-15"
+      ]
+    },
+    {
+      "permission": "PAYMENT_GATEWAY.DELETE",
+      "canonicalModule": "PAYMENT_GATEWAY",
+      "sourceDocs": [
+        "TECH-ARCH-15"
+      ]
+    },
+    {
+      "permission": "organisation_types.id",
+      "canonicalModule": "organisation_types",
+      "sourceDocs": [
+        "TECH-ARCH-16"
+      ]
+    },
+    {
+      "permission": "marketplace.seller.manage-orders",
+      "canonicalModule": "marketplace",
+      "sourceDocs": [
+        "TECH-ARCH-17"
+      ]
+    },
+    {
+      "permission": "marketplace.seller.create-product",
+      "canonicalModule": "marketplace",
+      "sourceDocs": [
+        "TECH-ARCH-17"
+      ]
+    },
+    {
+      "permission": "marketplace.seller.delete-product",
+      "canonicalModule": "marketplace",
+      "sourceDocs": [
+        "TECH-ARCH-17"
+      ]
+    },
+    {
+      "permission": "WishlistPage.tsx",
+      "canonicalModule": "WishlistPage",
+      "sourceDocs": [
+        "TECH-ARCH-17"
+      ]
+    },
+    {
+      "permission": "WAREHOUSE.CREATE",
+      "canonicalModule": "WAREHOUSE",
+      "sourceDocs": [
+        "TECH-ARCH-18",
+        "TECH-MOD-08"
+      ]
+    },
+    {
+      "permission": "WAREHOUSE.UPDATE",
+      "canonicalModule": "WAREHOUSE",
+      "sourceDocs": [
+        "TECH-ARCH-18",
+        "TECH-MOD-08"
+      ]
+    },
+    {
+      "permission": "WAREHOUSE.DELETE",
+      "canonicalModule": "WAREHOUSE",
+      "sourceDocs": [
+        "TECH-ARCH-18",
+        "TECH-MOD-08"
+      ]
+    },
+    {
+      "permission": "SUPPLIER.CREATE",
+      "canonicalModule": "SUPPLIER",
+      "sourceDocs": [
+        "TECH-ARCH-18",
+        "TECH-MOD-08"
+      ]
+    },
+    {
+      "permission": "SUPPLIER.UPDATE",
+      "canonicalModule": "SUPPLIER",
+      "sourceDocs": [
+        "TECH-ARCH-18",
+        "TECH-MOD-08"
+      ]
+    },
+    {
+      "permission": "SUPPLIER.DELETE",
+      "canonicalModule": "SUPPLIER",
+      "sourceDocs": [
+        "TECH-ARCH-18",
+        "TECH-MOD-08"
+      ]
+    },
+    {
+      "permission": "PURCHASE_ORDER.CREATE",
+      "canonicalModule": "PURCHASE_ORDER",
+      "sourceDocs": [
+        "TECH-ARCH-18",
+        "TECH-MOD-08"
+      ]
+    },
+    {
+      "permission": "PURCHASE_ORDER.UPDATE",
+      "canonicalModule": "PURCHASE_ORDER",
+      "sourceDocs": [
+        "TECH-ARCH-18",
+        "TECH-MOD-08"
+      ]
+    },
+    {
+      "permission": "PURCHASE_ORDER.SUBMIT",
+      "canonicalModule": "PURCHASE_ORDER",
+      "sourceDocs": [
+        "TECH-ARCH-18",
+        "TECH-MOD-08"
+      ]
+    },
+    {
+      "permission": "PURCHASE_ORDER.APPROVE",
+      "canonicalModule": "PURCHASE_ORDER",
+      "sourceDocs": [
+        "TECH-ARCH-18",
+        "TECH-MOD-08"
+      ]
+    },
+    {
+      "permission": "PURCHASE_ORDER.RECEIVE",
+      "canonicalModule": "PURCHASE_ORDER",
+      "sourceDocs": [
+        "TECH-ARCH-18",
+        "TECH-MOD-08"
+      ]
+    },
+    {
+      "permission": "PURCHASE_ORDER.CANCEL",
+      "canonicalModule": "PURCHASE_ORDER",
+      "sourceDocs": [
+        "TECH-ARCH-18",
+        "TECH-MOD-08"
+      ]
+    },
+    {
+      "permission": "STOCK_TRANSFER.CREATE",
+      "canonicalModule": "STOCK_TRANSFER",
+      "sourceDocs": [
+        "TECH-ARCH-18",
+        "TECH-MOD-08"
+      ]
+    },
+    {
+      "permission": "STOCK_TRANSFER.COMPLETE",
+      "canonicalModule": "STOCK_TRANSFER",
+      "sourceDocs": [
+        "TECH-ARCH-18",
+        "TECH-MOD-08"
+      ]
+    },
+    {
+      "permission": "STOCK.ADJUST",
+      "canonicalModule": "STOCK",
+      "sourceDocs": [
+        "TECH-ARCH-18",
+        "TECH-MOD-08"
+      ]
+    },
+    {
+      "permission": "academy.controller.ts",
+      "canonicalModule": "academy",
+      "sourceDocs": [
+        "TECH-ARCH-19"
+      ]
+    },
+    {
+      "permission": "academy.enroll",
+      "canonicalModule": "academy",
+      "sourceDocs": [
+        "TECH-ARCH-19",
+        "TECH-MOD-04",
+        "TECH-UX-04",
+        "USER-01",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "academy.sessions.view",
+      "canonicalModule": "academy",
+      "sourceDocs": [
+        "TECH-ARCH-19"
+      ]
+    },
+    {
+      "permission": "academy.attendance.view",
+      "canonicalModule": "academy",
+      "sourceDocs": [
+        "TECH-ARCH-19"
+      ]
+    },
+    {
+      "permission": "tournament.format",
+      "canonicalModule": "tournament",
+      "sourceDocs": [
+        "TECH-ARCH-20"
+      ]
+    },
+    {
+      "permission": "tournament.created",
+      "canonicalModule": "tournament",
+      "sourceDocs": [
+        "TECH-ARCH-20"
+      ]
+    },
+    {
+      "permission": "tournament.repository.ts",
+      "canonicalModule": "tournament",
+      "sourceDocs": [
+        "TECH-ARCH-20",
+        "TECH-DB-03"
+      ]
+    },
+    {
+      "permission": "registration.received",
+      "canonicalModule": "registration",
+      "sourceDocs": [
+        "TECH-ARCH-20"
+      ]
+    },
+    {
+      "permission": "standing.repository.ts",
+      "canonicalModule": "standing",
+      "sourceDocs": [
+        "TECH-ARCH-21",
+        "TECH-DB-03"
+      ]
+    },
+    {
+      "permission": "season.created",
+      "canonicalModule": "season",
+      "sourceDocs": [
+        "TECH-ARCH-21"
+      ]
+    },
+    {
+      "permission": "league.created",
+      "canonicalModule": "league",
+      "sourceDocs": [
+        "TECH-ARCH-21"
+      ]
+    },
+    {
+      "permission": "league.dashboard.view",
+      "canonicalModule": "league",
+      "sourceDocs": [
+        "TECH-ARCH-21",
+        "TECH-MOD-06",
+        "TECH-UX-04",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "rules.operator",
+      "canonicalModule": "rules",
+      "sourceDocs": [
+        "TECH-ARCH-22"
+      ]
+    },
+    {
+      "permission": "CRM.LEAD.CONVERT",
+      "canonicalModule": "CRM",
+      "sourceDocs": [
+        "TECH-ARCH-22"
+      ]
+    },
+    {
+      "permission": "CRM.SEGMENT.CREATE",
+      "canonicalModule": "CRM",
+      "sourceDocs": [
+        "TECH-ARCH-22"
+      ]
+    },
+    {
+      "permission": "CRM.SEGMENT.UPDATE",
+      "canonicalModule": "CRM",
+      "sourceDocs": [
+        "TECH-ARCH-22"
+      ]
+    },
+    {
+      "permission": "CRM.SEGMENT.REFRESH",
+      "canonicalModule": "CRM",
+      "sourceDocs": [
+        "TECH-ARCH-22"
+      ]
+    },
+    {
+      "permission": "CRM.SEGMENT.DELETE",
+      "canonicalModule": "CRM",
+      "sourceDocs": [
+        "TECH-ARCH-22"
+      ]
+    },
+    {
+      "permission": "CRM.LEAD.CREATE",
+      "canonicalModule": "CRM",
+      "sourceDocs": [
+        "TECH-ARCH-22"
+      ]
+    },
+    {
+      "permission": "CRM.LEAD.UPDATE",
+      "canonicalModule": "CRM",
+      "sourceDocs": [
+        "TECH-ARCH-22"
+      ]
+    },
+    {
+      "permission": "CRM.CAMPAIGN.CREATE",
+      "canonicalModule": "CRM",
+      "sourceDocs": [
+        "TECH-ARCH-22"
+      ]
+    },
+    {
+      "permission": "CRM.CAMPAIGN.UPDATE",
+      "canonicalModule": "CRM",
+      "sourceDocs": [
+        "TECH-ARCH-22"
+      ]
+    },
+    {
+      "permission": "CRM.CAMPAIGN.LAUNCH",
+      "canonicalModule": "CRM",
+      "sourceDocs": [
+        "TECH-ARCH-22"
+      ]
+    },
+    {
+      "permission": "CRM.CAMPAIGN.PAUSE",
+      "canonicalModule": "CRM",
+      "sourceDocs": [
+        "TECH-ARCH-22"
+      ]
+    },
+    {
+      "permission": "CRM.CAMPAIGN.COMPLETE",
+      "canonicalModule": "CRM",
+      "sourceDocs": [
+        "TECH-ARCH-22"
+      ]
+    },
+    {
+      "permission": "hr.positions.view",
+      "canonicalModule": "hr",
+      "sourceDocs": [
+        "TECH-ARCH-23",
+        "TECH-MOD-16"
+      ]
+    },
+    {
+      "permission": "hr.positions.manage",
+      "canonicalModule": "hr",
+      "sourceDocs": [
+        "TECH-ARCH-23",
+        "TECH-MOD-16"
+      ]
+    },
+    {
+      "permission": "hr.contracts.view",
+      "canonicalModule": "hr",
+      "sourceDocs": [
+        "TECH-ARCH-23",
+        "TECH-MOD-16"
+      ]
+    },
+    {
+      "permission": "hr.contracts.manage",
+      "canonicalModule": "hr",
+      "sourceDocs": [
+        "TECH-ARCH-23",
+        "TECH-MOD-16"
+      ]
+    },
+    {
+      "permission": "hr.leaves.types.view",
+      "canonicalModule": "hr",
+      "sourceDocs": [
+        "TECH-ARCH-23",
+        "TECH-MOD-16"
+      ]
+    },
+    {
+      "permission": "hr.leaves.types.manage",
+      "canonicalModule": "hr",
+      "sourceDocs": [
+        "TECH-ARCH-23",
+        "TECH-MOD-16"
+      ]
+    },
+    {
+      "permission": "hr.leaves.requests.*",
+      "canonicalModule": "hr",
+      "sourceDocs": [
+        "TECH-ARCH-23",
+        "TECH-UX-04"
+      ]
+    },
+    {
+      "permission": "hr.leaves.balances.*",
+      "canonicalModule": "hr",
+      "sourceDocs": [
+        "TECH-ARCH-23",
+        "TECH-UX-04"
+      ]
+    },
+    {
+      "permission": "hr.payroll.components.*",
+      "canonicalModule": "hr",
+      "sourceDocs": [
+        "TECH-ARCH-23",
+        "TECH-UX-04"
+      ]
+    },
+    {
+      "permission": "Promise.all",
+      "canonicalModule": "Promise",
+      "sourceDocs": [
+        "TECH-ARCH-25"
+      ]
+    },
+    {
+      "permission": "registry.contentType",
+      "canonicalModule": "registry",
+      "sourceDocs": [
+        "TECH-ARCH-25"
+      ]
+    },
+    {
+      "permission": "web_vitals_metrics.lcp",
+      "canonicalModule": "web_vitals_metrics",
+      "sourceDocs": [
+        "TECH-ARCH-25"
+      ]
+    },
+    {
+      "permission": "web_vitals_metrics.cls",
+      "canonicalModule": "web_vitals_metrics",
+      "sourceDocs": [
+        "TECH-ARCH-25"
+      ]
+    },
+    {
+      "permission": "web_vitals_metrics.fcp",
+      "canonicalModule": "web_vitals_metrics",
+      "sourceDocs": [
+        "TECH-ARCH-25"
+      ]
+    },
+    {
+      "permission": "resource.repository.ts",
+      "canonicalModule": "resource",
+      "sourceDocs": [
+        "TECH-DB-03"
+      ]
+    },
+    {
+      "permission": "organisation.repository.ts",
+      "canonicalModule": "organisation",
+      "sourceDocs": [
+        "TECH-DB-03"
+      ]
+    },
+    {
+      "permission": "group.repository.ts",
+      "canonicalModule": "group",
+      "sourceDocs": [
+        "TECH-DB-03"
+      ]
+    },
+    {
+      "permission": "enrollment.repository.ts",
+      "canonicalModule": "enrollment",
+      "sourceDocs": [
+        "TECH-DB-03"
+      ]
+    },
+    {
+      "permission": "season.repository.ts",
+      "canonicalModule": "season",
+      "sourceDocs": [
+        "TECH-DB-03"
+      ]
+    },
+    {
+      "permission": "league.repository.ts",
+      "canonicalModule": "league",
+      "sourceDocs": [
+        "TECH-DB-03"
+      ]
+    },
+    {
+      "permission": "division.repository.ts",
+      "canonicalModule": "division",
+      "sourceDocs": [
+        "TECH-DB-03"
+      ]
+    },
+    {
+      "permission": "fixture.repository.ts",
+      "canonicalModule": "fixture",
+      "sourceDocs": [
+        "TECH-DB-03"
+      ]
+    },
+    {
+      "permission": "statistics.service.ts",
+      "canonicalModule": "statistics",
+      "sourceDocs": [
+        "TECH-DB-03"
+      ]
+    },
+    {
+      "permission": "statistics.repository.ts",
+      "canonicalModule": "statistics",
+      "sourceDocs": [
+        "TECH-DB-03"
+      ]
+    },
+    {
+      "permission": "vite.config.ts",
+      "canonicalModule": "vite",
+      "sourceDocs": [
+        "TECH-DEV-01",
+        "TECH-DEV-04"
+      ]
+    },
+    {
+      "permission": "tailwind.config.js",
+      "canonicalModule": "tailwind",
+      "sourceDocs": [
+        "TECH-DEV-01",
+        "TECH-DEV-04"
+      ]
+    },
+    {
+      "permission": "booking.service.ts",
+      "canonicalModule": "booking",
+      "sourceDocs": [
+        "TECH-DEV-01",
+        "TECH-DEV-04",
+        "VOLUME_02_ARCHITECTURE",
+        "VOLUME_03_BUSINESS_DOMAINS"
+      ]
+    },
+    {
+      "permission": "booking.service.spec.ts",
+      "canonicalModule": "booking",
+      "sourceDocs": [
+        "TECH-DEV-01",
+        "TECH-DEV-04"
+      ]
+    },
+    {
+      "permission": "BookingStatus.Confirmed",
+      "canonicalModule": "BookingStatus",
+      "sourceDocs": [
+        "TECH-DEV-01",
+        "TECH-DEV-04"
+      ]
+    },
+    {
+      "permission": "BookingListPage.tsx",
+      "canonicalModule": "BookingListPage",
+      "sourceDocs": [
+        "TECH-DEV-02",
+        "TECH-DEV-04"
+      ]
+    },
+    {
+      "permission": "Pagination.tsx",
+      "canonicalModule": "Pagination",
+      "sourceDocs": [
+        "TECH-DEV-02"
+      ]
+    },
+    {
+      "permission": "App.tsx",
+      "canonicalModule": "App",
+      "sourceDocs": [
+        "TECH-DEV-02"
+      ]
+    },
+    {
+      "permission": "index.ts",
+      "canonicalModule": "index",
+      "sourceDocs": [
+        "TECH-DEV-03"
+      ]
+    },
+    {
+      "permission": "auth.service.spec.ts",
+      "canonicalModule": "auth",
+      "sourceDocs": [
+        "TECH-DEV-03"
+      ]
+    },
+    {
+      "permission": "auth.integration.spec.ts",
+      "canonicalModule": "auth",
+      "sourceDocs": [
+        "TECH-DEV-03",
+        "TECH-DEV-04",
+        "TECH-DEV-09"
+      ]
+    },
+    {
+      "permission": "042_add_booking_notes.sql",
+      "canonicalModule": "042_add_booking_notes",
+      "sourceDocs": [
+        "TECH-DEV-04"
+      ]
+    },
+    {
+      "permission": "booking.controller.ts",
+      "canonicalModule": "booking",
+      "sourceDocs": [
+        "TECH-DEV-04"
+      ]
+    },
+    {
+      "permission": "booking.routes.ts",
+      "canonicalModule": "booking",
+      "sourceDocs": [
+        "TECH-DEV-04"
+      ]
+    },
+    {
+      "permission": "booking.dto.ts",
+      "canonicalModule": "booking",
+      "sourceDocs": [
+        "TECH-DEV-04"
+      ]
+    },
+    {
+      "permission": "USER.LOGIN",
+      "canonicalModule": "USER",
+      "sourceDocs": [
+        "TECH-DEV-04",
+        "TECH-MOD-01",
+        "TECH-MOD-21"
+      ]
+    },
+    {
+      "permission": "console.log",
+      "canonicalModule": "console",
+      "sourceDocs": [
+        "TECH-DEV-08"
+      ]
+    },
+    {
+      "permission": "package.json",
+      "canonicalModule": "package",
+      "sourceDocs": [
+        "TECH-DEV-08"
+      ]
+    },
+    {
+      "permission": "013_notification_templates.sql",
+      "canonicalModule": "013_notification_templates",
+      "sourceDocs": [
+        "TECH-DEV-10"
+      ]
+    },
+    {
+      "permission": "014_notification_broadcasts.sql",
+      "canonicalModule": "014_notification_broadcasts",
+      "sourceDocs": [
+        "TECH-DEV-10"
+      ]
+    },
+    {
+      "permission": "015_enterprise_platform.sql",
+      "canonicalModule": "015_enterprise_platform",
+      "sourceDocs": [
+        "TECH-DEV-10"
+      ]
+    },
+    {
+      "permission": "016_monitoring_tables.sql",
+      "canonicalModule": "016_monitoring_tables",
+      "sourceDocs": [
+        "TECH-DEV-10"
+      ]
+    },
+    {
+      "permission": "logger.error",
+      "canonicalModule": "logger",
+      "sourceDocs": [
+        "TECH-DEV-13"
+      ]
+    },
+    {
+      "permission": "request.body",
+      "canonicalModule": "request",
+      "sourceDocs": [
+        "TECH-DEV-14"
+      ]
+    },
+    {
+      "permission": "request.query",
+      "canonicalModule": "request",
+      "sourceDocs": [
+        "TECH-DEV-14"
+      ]
+    },
+    {
+      "permission": "request.params",
+      "canonicalModule": "request",
+      "sourceDocs": [
+        "TECH-DEV-14"
+      ]
+    },
+    {
+      "permission": "app.registration_enabled",
+      "canonicalModule": "app",
+      "sourceDocs": [
+        "TECH-MOD-01"
+      ]
+    },
+    {
+      "permission": "player.registration_enabled",
+      "canonicalModule": "player",
+      "sourceDocs": [
+        "TECH-MOD-01"
+      ]
+    },
+    {
+      "permission": "seller.registration_enabled",
+      "canonicalModule": "seller",
+      "sourceDocs": [
+        "TECH-MOD-01"
+      ]
+    },
+    {
+      "permission": "organization.registration_enabled",
+      "canonicalModule": "organization",
+      "sourceDocs": [
+        "TECH-MOD-01"
+      ]
+    },
+    {
+      "permission": "auth.temporary_password_reset_enabled",
+      "canonicalModule": "auth",
+      "sourceDocs": [
+        "TECH-MOD-01"
+      ]
+    },
+    {
+      "permission": "auth.routes.ts",
+      "canonicalModule": "auth",
+      "sourceDocs": [
+        "TECH-MOD-01"
+      ]
+    },
+    {
+      "permission": "auth.service.ts",
+      "canonicalModule": "auth",
+      "sourceDocs": [
+        "TECH-MOD-01"
+      ]
+    },
+    {
+      "permission": "USER.REGISTER",
+      "canonicalModule": "USER",
+      "sourceDocs": [
+        "TECH-MOD-01",
+        "TECH-MOD-21"
+      ]
+    },
+    {
+      "permission": "USER.LOGIN_FAILED",
+      "canonicalModule": "USER",
+      "sourceDocs": [
+        "TECH-MOD-01",
+        "TECH-MOD-21"
+      ]
+    },
+    {
+      "permission": "USER.PASSWORD_RESET",
+      "canonicalModule": "USER",
+      "sourceDocs": [
+        "TECH-MOD-01",
+        "TECH-MOD-21"
+      ]
+    },
+    {
+      "permission": "USER.DELETE",
+      "canonicalModule": "USER",
+      "sourceDocs": [
+        "TECH-MOD-01",
+        "TECH-MOD-21"
+      ]
+    },
+    {
+      "permission": "module.entity.action",
+      "canonicalModule": "module",
+      "sourceDocs": [
+        "TECH-MOD-02"
+      ]
+    },
+    {
+      "permission": "users.*",
+      "canonicalModule": "users",
+      "sourceDocs": [
+        "TECH-MOD-02"
+      ]
+    },
+    {
+      "permission": "bookings.*",
+      "canonicalModule": "bookings",
+      "sourceDocs": [
+        "TECH-MOD-02"
+      ]
+    },
+    {
+      "permission": "academy.*",
+      "canonicalModule": "academy",
+      "sourceDocs": [
+        "TECH-MOD-02",
+        "TECH-MOD-14"
+      ]
+    },
+    {
+      "permission": "hr.*",
+      "canonicalModule": "hr",
+      "sourceDocs": [
+        "TECH-MOD-02",
+        "TECH-UX-04"
+      ]
+    },
+    {
+      "permission": "financial.*",
+      "canonicalModule": "financial",
+      "sourceDocs": [
+        "TECH-MOD-02"
+      ]
+    },
+    {
+      "permission": "audit.view",
+      "canonicalModule": "audit",
+      "sourceDocs": [
+        "TECH-MOD-02",
+        "TECH-MOD-21",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "bi.*",
+      "canonicalModule": "bi",
+      "sourceDocs": [
+        "TECH-MOD-02"
+      ]
+    },
+    {
+      "permission": "rbac.routes.ts",
+      "canonicalModule": "rbac",
+      "sourceDocs": [
+        "TECH-MOD-02"
+      ]
+    },
+    {
+      "permission": "ROLE.CREATE",
+      "canonicalModule": "ROLE",
+      "sourceDocs": [
+        "TECH-MOD-02",
+        "TECH-MOD-21"
+      ]
+    },
+    {
+      "permission": "ROLE.UPDATE",
+      "canonicalModule": "ROLE",
+      "sourceDocs": [
+        "TECH-MOD-02",
+        "TECH-MOD-21"
+      ]
+    },
+    {
+      "permission": "ROLE.DELETE",
+      "canonicalModule": "ROLE",
+      "sourceDocs": [
+        "TECH-MOD-02",
+        "TECH-MOD-21"
+      ]
+    },
+    {
+      "permission": "PERMISSION.ASSIGN",
+      "canonicalModule": "PERMISSION",
+      "sourceDocs": [
+        "TECH-MOD-02",
+        "TECH-MOD-21"
+      ]
+    },
+    {
+      "permission": "PERMISSION.REVOKE",
+      "canonicalModule": "PERMISSION",
+      "sourceDocs": [
+        "TECH-MOD-02",
+        "TECH-MOD-21"
+      ]
+    },
+    {
+      "permission": "PERMISSION.SYNC",
+      "canonicalModule": "PERMISSION",
+      "sourceDocs": [
+        "TECH-MOD-02",
+        "TECH-MOD-21"
+      ]
+    },
+    {
+      "permission": "academy.routes.ts",
+      "canonicalModule": "academy",
+      "sourceDocs": [
+        "TECH-MOD-04",
+        "TECH-UX-04"
+      ]
+    },
+    {
+      "permission": "academy.view",
+      "canonicalModule": "academy",
+      "sourceDocs": [
+        "TECH-MOD-04",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "academy.create",
+      "canonicalModule": "academy",
+      "sourceDocs": [
+        "TECH-MOD-04",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "academy.update",
+      "canonicalModule": "academy",
+      "sourceDocs": [
+        "TECH-MOD-04",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "academy.delete",
+      "canonicalModule": "academy",
+      "sourceDocs": [
+        "TECH-MOD-04",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "academy.publish",
+      "canonicalModule": "academy",
+      "sourceDocs": [
+        "TECH-MOD-04",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "academy.manage",
+      "canonicalModule": "academy",
+      "sourceDocs": [
+        "TECH-MOD-04",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "attendance.manage",
+      "canonicalModule": "attendance",
+      "sourceDocs": [
+        "TECH-MOD-04",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "tournament.routes.ts",
+      "canonicalModule": "tournament",
+      "sourceDocs": [
+        "TECH-MOD-05"
+      ]
+    },
+    {
+      "permission": "tournament.register",
+      "canonicalModule": "tournament",
+      "sourceDocs": [
+        "TECH-MOD-05",
+        "USER-01",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "tournament.result.manage",
+      "canonicalModule": "tournament",
+      "sourceDocs": [
+        "TECH-MOD-05",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "league.routes.ts",
+      "canonicalModule": "league",
+      "sourceDocs": [
+        "TECH-MOD-06"
+      ]
+    },
+    {
+      "permission": "league.update",
+      "canonicalModule": "league",
+      "sourceDocs": [
+        "TECH-MOD-06",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "league.manage",
+      "canonicalModule": "league",
+      "sourceDocs": [
+        "TECH-MOD-06",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "league.delete",
+      "canonicalModule": "league",
+      "sourceDocs": [
+        "TECH-MOD-06",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "league.view",
+      "canonicalModule": "league",
+      "sourceDocs": [
+        "TECH-MOD-06",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "league.result.manage",
+      "canonicalModule": "league",
+      "sourceDocs": [
+        "TECH-MOD-06",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "season.view",
+      "canonicalModule": "season",
+      "sourceDocs": [
+        "TECH-MOD-06",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "season.create",
+      "canonicalModule": "season",
+      "sourceDocs": [
+        "TECH-MOD-06",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "season.update",
+      "canonicalModule": "season",
+      "sourceDocs": [
+        "TECH-MOD-06",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "season.publish",
+      "canonicalModule": "season",
+      "sourceDocs": [
+        "TECH-MOD-06",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "season.delete",
+      "canonicalModule": "season",
+      "sourceDocs": [
+        "TECH-MOD-06",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "league.create",
+      "canonicalModule": "league",
+      "sourceDocs": [
+        "TECH-MOD-06",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "marketplace.routes.ts",
+      "canonicalModule": "marketplace",
+      "sourceDocs": [
+        "TECH-MOD-07"
+      ]
+    },
+    {
+      "permission": "MARKETPLACE.PRODUCT_CREATE",
+      "canonicalModule": "MARKETPLACE",
+      "sourceDocs": [
+        "TECH-MOD-07",
+        "TECH-MOD-21"
+      ]
+    },
+    {
+      "permission": "MARKETPLACE.PRODUCT_UPDATE",
+      "canonicalModule": "MARKETPLACE",
+      "sourceDocs": [
+        "TECH-MOD-07",
+        "TECH-MOD-21"
+      ]
+    },
+    {
+      "permission": "MARKETPLACE.PRODUCT_DELETE",
+      "canonicalModule": "MARKETPLACE",
+      "sourceDocs": [
+        "TECH-MOD-07",
+        "TECH-MOD-21"
+      ]
+    },
+    {
+      "permission": "MARKETPLACE.ORDER_STATUS",
+      "canonicalModule": "MARKETPLACE",
+      "sourceDocs": [
+        "TECH-MOD-07",
+        "TECH-MOD-21"
+      ]
+    },
+    {
+      "permission": "app.marketplace_enabled",
+      "canonicalModule": "app",
+      "sourceDocs": [
+        "TECH-MOD-07"
+      ]
+    },
+    {
+      "permission": "payment.routes.ts",
+      "canonicalModule": "payment",
+      "sourceDocs": [
+        "TECH-MOD-09"
+      ]
+    },
+    {
+      "permission": "payment.controller.ts",
+      "canonicalModule": "payment",
+      "sourceDocs": [
+        "TECH-MOD-09"
+      ]
+    },
+    {
+      "permission": "wallet.routes.ts",
+      "canonicalModule": "wallet",
+      "sourceDocs": [
+        "TECH-MOD-10"
+      ]
+    },
+    {
+      "permission": "wallet.controller.ts",
+      "canonicalModule": "wallet",
+      "sourceDocs": [
+        "TECH-MOD-10"
+      ]
+    },
+    {
+      "permission": "wallet.service.ts",
+      "canonicalModule": "wallet",
+      "sourceDocs": [
+        "TECH-MOD-10"
+      ]
+    },
+    {
+      "permission": "WALLET.CREATE",
+      "canonicalModule": "WALLET",
+      "sourceDocs": [
+        "TECH-MOD-10",
+        "TECH-MOD-21"
+      ]
+    },
+    {
+      "permission": "WALLET.CREDIT",
+      "canonicalModule": "WALLET",
+      "sourceDocs": [
+        "TECH-MOD-10",
+        "TECH-MOD-21"
+      ]
+    },
+    {
+      "permission": "WALLET.DEBIT",
+      "canonicalModule": "WALLET",
+      "sourceDocs": [
+        "TECH-MOD-10",
+        "TECH-MOD-21"
+      ]
+    },
+    {
+      "permission": "WALLET.ADJUST",
+      "canonicalModule": "WALLET",
+      "sourceDocs": [
+        "TECH-MOD-10",
+        "TECH-MOD-21"
+      ]
+    },
+    {
+      "permission": "financial.view",
+      "canonicalModule": "financial",
+      "sourceDocs": [
+        "TECH-MOD-11",
+        "TECH-MOD-31",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "financial.process_payouts",
+      "canonicalModule": "financial",
+      "sourceDocs": [
+        "TECH-MOD-11",
+        "TECH-MOD-31",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "accounting.routes.ts",
+      "canonicalModule": "accounting",
+      "sourceDocs": [
+        "TECH-MOD-12"
+      ]
+    },
+    {
+      "permission": "accounting.coa.view",
+      "canonicalModule": "accounting",
+      "sourceDocs": [
+        "TECH-MOD-12",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "accounting.coa.manage",
+      "canonicalModule": "accounting",
+      "sourceDocs": [
+        "TECH-MOD-12",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "accounting.periods.view",
+      "canonicalModule": "accounting",
+      "sourceDocs": [
+        "TECH-MOD-12",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "accounting.periods.manage",
+      "canonicalModule": "accounting",
+      "sourceDocs": [
+        "TECH-MOD-12",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "accounting.gl.view",
+      "canonicalModule": "accounting",
+      "sourceDocs": [
+        "TECH-MOD-12",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "accounting.journal.create",
+      "canonicalModule": "accounting",
+      "sourceDocs": [
+        "TECH-MOD-12",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "accounting.journal.view",
+      "canonicalModule": "accounting",
+      "sourceDocs": [
+        "TECH-MOD-12",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "accounting.invoices.view",
+      "canonicalModule": "accounting",
+      "sourceDocs": [
+        "TECH-MOD-12",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "accounting.invoices.manage",
+      "canonicalModule": "accounting",
+      "sourceDocs": [
+        "TECH-MOD-12",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "accounting.tax.view",
+      "canonicalModule": "accounting",
+      "sourceDocs": [
+        "TECH-MOD-12",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "accounting.tax.manage",
+      "canonicalModule": "accounting",
+      "sourceDocs": [
+        "TECH-MOD-12",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "FINANCIAL.TRANSACTION",
+      "canonicalModule": "FINANCIAL",
+      "sourceDocs": [
+        "TECH-MOD-12",
+        "TECH-MOD-21"
+      ]
+    },
+    {
+      "permission": "ORGANISATION.VERIFY",
+      "canonicalModule": "ORGANISATION",
+      "sourceDocs": [
+        "TECH-MOD-13",
+        "TECH-MOD-21"
+      ]
+    },
+    {
+      "permission": "notification.routes.ts",
+      "canonicalModule": "notification",
+      "sourceDocs": [
+        "TECH-MOD-14"
+      ]
+    },
+    {
+      "permission": "notification_templates.view",
+      "canonicalModule": "notification_templates",
+      "sourceDocs": [
+        "TECH-MOD-14",
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "notification_templates.create",
+      "canonicalModule": "notification_templates",
+      "sourceDocs": [
+        "TECH-MOD-14"
+      ]
+    },
+    {
+      "permission": "notification_templates.update",
+      "canonicalModule": "notification_templates",
+      "sourceDocs": [
+        "TECH-MOD-14"
+      ]
+    },
+    {
+      "permission": "notification_templates.delete",
+      "canonicalModule": "notification_templates",
+      "sourceDocs": [
+        "TECH-MOD-14"
+      ]
+    },
+    {
+      "permission": "notification_templates.publish",
+      "canonicalModule": "notification_templates",
+      "sourceDocs": [
+        "TECH-MOD-14"
+      ]
+    },
+    {
+      "permission": "notification_types.view",
+      "canonicalModule": "notification_types",
+      "sourceDocs": [
+        "TECH-MOD-14",
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "notification_types.create",
+      "canonicalModule": "notification_types",
+      "sourceDocs": [
+        "TECH-MOD-14"
+      ]
+    },
+    {
+      "permission": "notification_types.update",
+      "canonicalModule": "notification_types",
+      "sourceDocs": [
+        "TECH-MOD-14"
+      ]
+    },
+    {
+      "permission": "notification_types.delete",
+      "canonicalModule": "notification_types",
+      "sourceDocs": [
+        "TECH-MOD-14"
+      ]
+    },
+    {
+      "permission": "booking.*",
+      "canonicalModule": "booking",
+      "sourceDocs": [
+        "TECH-MOD-14"
+      ]
+    },
+    {
+      "permission": "user.*",
+      "canonicalModule": "user",
+      "sourceDocs": [
+        "TECH-MOD-14"
+      ]
+    },
+    {
+      "permission": "payment.*",
+      "canonicalModule": "payment",
+      "sourceDocs": [
+        "TECH-MOD-14"
+      ]
+    },
+    {
+      "permission": "wallet.*",
+      "canonicalModule": "wallet",
+      "sourceDocs": [
+        "TECH-MOD-14"
+      ]
+    },
+    {
+      "permission": "marketplace.*",
+      "canonicalModule": "marketplace",
+      "sourceDocs": [
+        "TECH-MOD-14"
+      ]
+    },
+    {
+      "permission": "organisation.*",
+      "canonicalModule": "organisation",
+      "sourceDocs": [
+        "TECH-MOD-14"
+      ]
+    },
+    {
+      "permission": "support.*",
+      "canonicalModule": "support",
+      "sourceDocs": [
+        "TECH-MOD-14"
+      ]
+    },
+    {
+      "permission": "admin.*",
+      "canonicalModule": "admin",
+      "sourceDocs": [
+        "TECH-MOD-14"
+      ]
+    },
+    {
+      "permission": "UPLOAD.CREATE",
+      "canonicalModule": "UPLOAD",
+      "sourceDocs": [
+        "TECH-MOD-14",
+        "TECH-MOD-21",
+        "TECH-MOD-33"
+      ]
+    },
+    {
+      "permission": "UPLOAD.DELETE",
+      "canonicalModule": "UPLOAD",
+      "sourceDocs": [
+        "TECH-MOD-14",
+        "TECH-MOD-21",
+        "TECH-MOD-33"
+      ]
+    },
+    {
+      "permission": "SETTINGS.UPDATE",
+      "canonicalModule": "SETTINGS",
+      "sourceDocs": [
+        "TECH-MOD-14",
+        "TECH-MOD-21"
+      ]
+    },
+    {
+      "permission": "FEATURE_FLAG.TOGGLE",
+      "canonicalModule": "FEATURE_FLAG",
+      "sourceDocs": [
+        "TECH-MOD-14",
+        "TECH-MOD-21"
+      ]
+    },
+    {
+      "permission": "CMS.UPDATE",
+      "canonicalModule": "CMS",
+      "sourceDocs": [
+        "TECH-MOD-14",
+        "TECH-MOD-21"
+      ]
+    },
+    {
+      "permission": "crm.routes.ts",
+      "canonicalModule": "crm",
+      "sourceDocs": [
+        "TECH-MOD-15"
+      ]
+    },
+    {
+      "permission": "hr.routes.ts",
+      "canonicalModule": "hr",
+      "sourceDocs": [
+        "TECH-MOD-16"
+      ]
+    },
+    {
+      "permission": "hr.controller.ts",
+      "canonicalModule": "hr",
+      "sourceDocs": [
+        "TECH-MOD-16"
+      ]
+    },
+    {
+      "permission": "hr.leaves.balances.view",
+      "canonicalModule": "hr",
+      "sourceDocs": [
+        "TECH-MOD-16"
+      ]
+    },
+    {
+      "permission": "hr.leaves.balances.manage",
+      "canonicalModule": "hr",
+      "sourceDocs": [
+        "TECH-MOD-16"
+      ]
+    },
+    {
+      "permission": "hr.payroll.components.view",
+      "canonicalModule": "hr",
+      "sourceDocs": [
+        "TECH-MOD-16"
+      ]
+    },
+    {
+      "permission": "hr.payroll.components.manage",
+      "canonicalModule": "hr",
+      "sourceDocs": [
+        "TECH-MOD-16"
+      ]
+    },
+    {
+      "permission": "match.types.ts",
+      "canonicalModule": "match",
+      "sourceDocs": [
+        "TECH-MOD-17"
+      ]
+    },
+    {
+      "permission": "membership.view",
+      "canonicalModule": "membership",
+      "sourceDocs": [
+        "TECH-MOD-18",
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "membership.create",
+      "canonicalModule": "membership",
+      "sourceDocs": [
+        "TECH-MOD-18"
+      ]
+    },
+    {
+      "permission": "membership.update",
+      "canonicalModule": "membership",
+      "sourceDocs": [
+        "TECH-MOD-18"
+      ]
+    },
+    {
+      "permission": "membership.delete",
+      "canonicalModule": "membership",
+      "sourceDocs": [
+        "TECH-MOD-18"
+      ]
+    },
+    {
+      "permission": "membership.assign",
+      "canonicalModule": "membership",
+      "sourceDocs": [
+        "TECH-MOD-18"
+      ]
+    },
+    {
+      "permission": "membership.manage",
+      "canonicalModule": "membership",
+      "sourceDocs": [
+        "TECH-MOD-18"
+      ]
+    },
+    {
+      "permission": "types.ts",
+      "canonicalModule": "types",
+      "sourceDocs": [
+        "TECH-MOD-19"
+      ]
+    },
+    {
+      "permission": "security.routes.ts",
+      "canonicalModule": "security",
+      "sourceDocs": [
+        "TECH-MOD-20"
+      ]
+    },
+    {
+      "permission": "ADMIN.ACTION",
+      "canonicalModule": "ADMIN",
+      "sourceDocs": [
+        "TECH-MOD-20",
+        "TECH-MOD-21"
+      ]
+    },
+    {
+      "permission": "USER.LOGOUT",
+      "canonicalModule": "USER",
+      "sourceDocs": [
+        "TECH-MOD-21"
+      ]
+    },
+    {
+      "permission": "USER.PASSWORD_CHANGE",
+      "canonicalModule": "USER",
+      "sourceDocs": [
+        "TECH-MOD-21"
+      ]
+    },
+    {
+      "permission": "SETTLEMENT.CREATE",
+      "canonicalModule": "SETTLEMENT",
+      "sourceDocs": [
+        "TECH-MOD-21"
+      ]
+    },
+    {
+      "permission": "SETTLEMENT.PROCESS",
+      "canonicalModule": "SETTLEMENT",
+      "sourceDocs": [
+        "TECH-MOD-21"
+      ]
+    },
+    {
+      "permission": "SETTLEMENT.APPROVE",
+      "canonicalModule": "SETTLEMENT",
+      "sourceDocs": [
+        "TECH-MOD-21"
+      ]
+    },
+    {
+      "permission": "SETTLEMENT.REJECT",
+      "canonicalModule": "SETTLEMENT",
+      "sourceDocs": [
+        "TECH-MOD-21"
+      ]
+    },
+    {
+      "permission": "SUBSCRIPTION.CREATED",
+      "canonicalModule": "SUBSCRIPTION",
+      "sourceDocs": [
+        "TECH-MOD-21"
+      ]
+    },
+    {
+      "permission": "support.routes.ts",
+      "canonicalModule": "support",
+      "sourceDocs": [
+        "TECH-MOD-22"
+      ]
+    },
+    {
+      "permission": "support.tickets.view",
+      "canonicalModule": "support",
+      "sourceDocs": [
+        "TECH-MOD-22",
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "support.tickets.manage",
+      "canonicalModule": "support",
+      "sourceDocs": [
+        "TECH-MOD-22"
+      ]
+    },
+    {
+      "permission": "support.tickets.create",
+      "canonicalModule": "support",
+      "sourceDocs": [
+        "TECH-MOD-22"
+      ]
+    },
+    {
+      "permission": "cms.service.ts",
+      "canonicalModule": "cms",
+      "sourceDocs": [
+        "TECH-MOD-23"
+      ]
+    },
+    {
+      "permission": "community.events_enabled",
+      "canonicalModule": "community",
+      "sourceDocs": [
+        "TECH-MOD-24"
+      ]
+    },
+    {
+      "permission": "community.chat_enabled",
+      "canonicalModule": "community",
+      "sourceDocs": [
+        "TECH-MOD-24"
+      ]
+    },
+    {
+      "permission": "community.create_events",
+      "canonicalModule": "community",
+      "sourceDocs": [
+        "TECH-MOD-24"
+      ]
+    },
+    {
+      "permission": "community.chat.view",
+      "canonicalModule": "community",
+      "sourceDocs": [
+        "TECH-MOD-24",
+        "TECH-UX-03",
+        "VOLUME_05_SCREENS"
+      ]
+    },
+    {
+      "permission": "community.chat.send",
+      "canonicalModule": "community",
+      "sourceDocs": [
+        "TECH-MOD-24"
+      ]
+    },
+    {
+      "permission": "ads.create",
+      "canonicalModule": "ads",
+      "sourceDocs": [
+        "TECH-MOD-24"
+      ]
+    },
+    {
+      "permission": "audit.revert",
+      "canonicalModule": "audit",
+      "sourceDocs": [
+        "TECH-MOD-24"
+      ]
+    },
+    {
+      "permission": "community.service.ts",
+      "canonicalModule": "community",
+      "sourceDocs": [
+        "TECH-MOD-24"
+      ]
+    },
+    {
+      "permission": "bi.routes.ts",
+      "canonicalModule": "bi",
+      "sourceDocs": [
+        "TECH-MOD-25"
+      ]
+    },
+    {
+      "permission": "integration.api-keys.view",
+      "canonicalModule": "integration",
+      "sourceDocs": [
+        "TECH-MOD-27",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "mobile.versions.view",
+      "canonicalModule": "mobile",
+      "sourceDocs": [
+        "TECH-MOD-28",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "mobile.versions.manage",
+      "canonicalModule": "mobile",
+      "sourceDocs": [
+        "TECH-MOD-28",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "mobile.config.view",
+      "canonicalModule": "mobile",
+      "sourceDocs": [
+        "TECH-MOD-28",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "mobile.config.manage",
+      "canonicalModule": "mobile",
+      "sourceDocs": [
+        "TECH-MOD-28",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "mobile.push.view",
+      "canonicalModule": "mobile",
+      "sourceDocs": [
+        "TECH-MOD-28",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "mobile.dashboard.view",
+      "canonicalModule": "mobile",
+      "sourceDocs": [
+        "TECH-MOD-28",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "MOBILE.PUSH.REGISTER",
+      "canonicalModule": "MOBILE",
+      "sourceDocs": [
+        "TECH-MOD-28"
+      ]
+    },
+    {
+      "permission": "MOBILE.PUSH.UNREGISTER",
+      "canonicalModule": "MOBILE",
+      "sourceDocs": [
+        "TECH-MOD-28"
+      ]
+    },
+    {
+      "permission": "reports.service.ts",
+      "canonicalModule": "reports",
+      "sourceDocs": [
+        "TECH-MOD-29"
+      ]
+    },
+    {
+      "permission": "settlements.request",
+      "canonicalModule": "settlements",
+      "sourceDocs": [
+        "TECH-MOD-30"
+      ]
+    },
+    {
+      "permission": "settlements.approve",
+      "canonicalModule": "settlements",
+      "sourceDocs": [
+        "TECH-MOD-30"
+      ]
+    },
+    {
+      "permission": "settlements.pay",
+      "canonicalModule": "settlements",
+      "sourceDocs": [
+        "TECH-MOD-30"
+      ]
+    },
+    {
+      "permission": "settlements.complete",
+      "canonicalModule": "settlements",
+      "sourceDocs": [
+        "TECH-MOD-30"
+      ]
+    },
+    {
+      "permission": "settlements.reject",
+      "canonicalModule": "settlements",
+      "sourceDocs": [
+        "TECH-MOD-30"
+      ]
+    },
+    {
+      "permission": "settlements.cancel",
+      "canonicalModule": "settlements",
+      "sourceDocs": [
+        "TECH-MOD-30"
+      ]
+    },
+    {
+      "permission": "settlements.view",
+      "canonicalModule": "settlements",
+      "sourceDocs": [
+        "TECH-MOD-30"
+      ]
+    },
+    {
+      "permission": "settlements.bank_account_snapshot",
+      "canonicalModule": "settlements",
+      "sourceDocs": [
+        "TECH-MOD-30"
+      ]
+    },
+    {
+      "permission": "coupon.service.ts",
+      "canonicalModule": "coupon",
+      "sourceDocs": [
+        "TECH-MOD-31"
+      ]
+    },
+    {
+      "permission": "translations.service.ts",
+      "canonicalModule": "translations",
+      "sourceDocs": [
+        "TECH-MOD-34"
+      ]
+    },
+    {
+      "permission": "booking.title",
+      "canonicalModule": "booking",
+      "sourceDocs": [
+        "TECH-MOD-34"
+      ]
+    },
+    {
+      "permission": "app.tournaments_enabled",
+      "canonicalModule": "app",
+      "sourceDocs": [
+        "TECH-MOD-35"
+      ]
+    },
+    {
+      "permission": "app.academies_enabled",
+      "canonicalModule": "app",
+      "sourceDocs": [
+        "TECH-MOD-35"
+      ]
+    },
+    {
+      "permission": "coaches.manage_agreements",
+      "canonicalModule": "coaches",
+      "sourceDocs": [
+        "TECH-MOD-35"
+      ]
+    },
+    {
+      "permission": "coaches.invites.respond",
+      "canonicalModule": "coaches",
+      "sourceDocs": [
+        "TECH-MOD-35"
+      ]
+    },
+    {
+      "permission": "coaches.create_sessions",
+      "canonicalModule": "coaches",
+      "sourceDocs": [
+        "TECH-MOD-35"
+      ]
+    },
+    {
+      "permission": "coaches.respond_request",
+      "canonicalModule": "coaches",
+      "sourceDocs": [
+        "TECH-MOD-35",
+        "TECH-MOD-51"
+      ]
+    },
+    {
+      "permission": "coaches.confirm_session",
+      "canonicalModule": "coaches",
+      "sourceDocs": [
+        "TECH-MOD-35",
+        "TECH-MOD-51"
+      ]
+    },
+    {
+      "permission": "coaches.start_session",
+      "canonicalModule": "coaches",
+      "sourceDocs": [
+        "TECH-MOD-35",
+        "TECH-MOD-51"
+      ]
+    },
+    {
+      "permission": "coaches.complete_session",
+      "canonicalModule": "coaches",
+      "sourceDocs": [
+        "TECH-MOD-35",
+        "TECH-MOD-51"
+      ]
+    },
+    {
+      "permission": "coaches.no_show",
+      "canonicalModule": "coaches",
+      "sourceDocs": [
+        "TECH-MOD-35",
+        "TECH-MOD-51"
+      ]
+    },
+    {
+      "permission": "system_settings.view",
+      "canonicalModule": "system_settings",
+      "sourceDocs": [
+        "TECH-MOD-36",
+        "TECH-UX-03",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "system_settings.update",
+      "canonicalModule": "system_settings",
+      "sourceDocs": [
+        "TECH-MOD-36",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "feature_flags.view",
+      "canonicalModule": "feature_flags",
+      "sourceDocs": [
+        "TECH-MOD-36",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "feature_flags.update",
+      "canonicalModule": "feature_flags",
+      "sourceDocs": [
+        "TECH-MOD-36",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "queue.view",
+      "canonicalModule": "queue",
+      "sourceDocs": [
+        "TECH-MOD-36",
+        "TECH-UX-03",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "queue.manage",
+      "canonicalModule": "queue",
+      "sourceDocs": [
+        "TECH-MOD-36",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "cache.service.ts",
+      "canonicalModule": "cache",
+      "sourceDocs": [
+        "TECH-MOD-36"
+      ]
+    },
+    {
+      "permission": "queue.service.ts",
+      "canonicalModule": "queue",
+      "sourceDocs": [
+        "TECH-MOD-36"
+      ]
+    },
+    {
+      "permission": "amenities.service.ts",
+      "canonicalModule": "amenities",
+      "sourceDocs": [
+        "TECH-MOD-37"
+      ]
+    },
+    {
+      "permission": "approval.service.ts",
+      "canonicalModule": "approval",
+      "sourceDocs": [
+        "TECH-MOD-38"
+      ]
+    },
+    {
+      "permission": "uploadService.replaceEntityFile",
+      "canonicalModule": "uploadService",
+      "sourceDocs": [
+        "TECH-MOD-39"
+      ]
+    },
+    {
+      "permission": "banks.service.ts",
+      "canonicalModule": "banks",
+      "sourceDocs": [
+        "TECH-MOD-40"
+      ]
+    },
+    {
+      "permission": "cities.service.ts",
+      "canonicalModule": "cities",
+      "sourceDocs": [
+        "TECH-MOD-41"
+      ]
+    },
+    {
+      "permission": "countries.service.ts",
+      "canonicalModule": "countries",
+      "sourceDocs": [
+        "TECH-MOD-42"
+      ]
+    },
+    {
+      "permission": "geo.service.ts",
+      "canonicalModule": "geo",
+      "sourceDocs": [
+        "TECH-MOD-42",
+        "TECH-MOD-45"
+      ]
+    },
+    {
+      "permission": "currencies.service.ts",
+      "canonicalModule": "currencies",
+      "sourceDocs": [
+        "TECH-MOD-43"
+      ]
+    },
+    {
+      "permission": "system_settings.platform.default_currency",
+      "canonicalModule": "system_settings",
+      "sourceDocs": [
+        "TECH-MOD-43",
+        "TECH-MOD-45"
+      ]
+    },
+    {
+      "permission": "ipapi.co",
+      "canonicalModule": "ipapi",
+      "sourceDocs": [
+        "TECH-MOD-45"
+      ]
+    },
+    {
+      "permission": "languages.service.ts",
+      "canonicalModule": "languages",
+      "sourceDocs": [
+        "TECH-MOD-46"
+      ]
+    },
+    {
+      "permission": "provinces.service.ts",
+      "canonicalModule": "provinces",
+      "sourceDocs": [
+        "TECH-MOD-47"
+      ]
+    },
+    {
+      "permission": "sidebar.layout.manage",
+      "canonicalModule": "sidebar",
+      "sourceDocs": [
+        "TECH-MOD-49",
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "activities.routes.ts",
+      "canonicalModule": "activities",
+      "sourceDocs": [
+        "TECH-MOD-51"
+      ]
+    },
+    {
+      "permission": "player.statistics.view",
+      "canonicalModule": "player",
+      "sourceDocs": [
+        "TECH-MOD-52",
+        "TECH-UX-03",
+        "VOLUME_05_SCREENS",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "player.profile.view",
+      "canonicalModule": "player",
+      "sourceDocs": [
+        "TECH-MOD-52",
+        "VOLUME_05_SCREENS",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "player.rank.history",
+      "canonicalModule": "player",
+      "sourceDocs": [
+        "TECH-MOD-52",
+        "TECH-UX-03",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "player.service.ts",
+      "canonicalModule": "player",
+      "sourceDocs": [
+        "TECH-MOD-52",
+        "VOLUME_03_BUSINESS_DOMAINS"
+      ]
+    },
+    {
+      "permission": "player.types.ts",
+      "canonicalModule": "player",
+      "sourceDocs": [
+        "TECH-MOD-52"
+      ]
+    },
+    {
+      "permission": "appearance.store.ts",
+      "canonicalModule": "appearance",
+      "sourceDocs": [
+        "TECH-UX-01"
+      ]
+    },
+    {
+      "permission": "theme.store.ts",
+      "canonicalModule": "theme",
+      "sourceDocs": [
+        "TECH-UX-01"
+      ]
+    },
+    {
+      "permission": "org.sidebar.*",
+      "canonicalModule": "org",
+      "sourceDocs": [
+        "TECH-UX-01",
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "CoachBottomNav.tsx",
+      "canonicalModule": "CoachBottomNav",
+      "sourceDocs": [
+        "TECH-UX-01",
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "1.5",
+      "canonicalModule": "1",
+      "sourceDocs": [
+        "TECH-UX-02"
+      ]
+    },
+    {
+      "permission": "coaches.view",
+      "canonicalModule": "coaches",
+      "sourceDocs": [
+        "TECH-UX-03",
+        "VOLUME_05_SCREENS"
+      ]
+    },
+    {
+      "permission": "tournaments.view",
+      "canonicalModule": "tournaments",
+      "sourceDocs": [
+        "TECH-UX-03",
+        "VOLUME_05_SCREENS"
+      ]
+    },
+    {
+      "permission": "academies.view",
+      "canonicalModule": "academies",
+      "sourceDocs": [
+        "TECH-UX-03",
+        "VOLUME_05_SCREENS"
+      ]
+    },
+    {
+      "permission": "player.wallet.view",
+      "canonicalModule": "player",
+      "sourceDocs": [
+        "TECH-UX-03",
+        "TECH-UX-04",
+        "VOLUME_05_SCREENS",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "player.payments.view",
+      "canonicalModule": "player",
+      "sourceDocs": [
+        "TECH-UX-03",
+        "TECH-UX-04",
+        "VOLUME_05_SCREENS",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "player.tournaments.register",
+      "canonicalModule": "player",
+      "sourceDocs": [
+        "TECH-UX-03",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "sidebar.dashboard",
+      "canonicalModule": "sidebar",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "sidebar.reports",
+      "canonicalModule": "sidebar",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "sidebar.organisations",
+      "canonicalModule": "sidebar",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "sidebar.branch-access",
+      "canonicalModule": "sidebar",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "sidebar.admin-bookings",
+      "canonicalModule": "sidebar",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "sidebar.subscription",
+      "canonicalModule": "sidebar",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "sidebar.subscription-requests",
+      "canonicalModule": "sidebar",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "sidebar.organisation-types",
+      "canonicalModule": "sidebar",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "sidebar.settlements",
+      "canonicalModule": "sidebar",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "sidebar.roles",
+      "canonicalModule": "sidebar",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "sidebar.permissions",
+      "canonicalModule": "sidebar",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "sidebar.marketplace",
+      "canonicalModule": "sidebar",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "sidebar.marketplace-products",
+      "canonicalModule": "sidebar",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "sidebar.marketplace-orders",
+      "canonicalModule": "sidebar",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "sidebar.marketplace-sellers",
+      "canonicalModule": "sidebar",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "sidebar.product-categories",
+      "canonicalModule": "sidebar",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "sidebar.marketplace-approvals",
+      "canonicalModule": "sidebar",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "sidebar.marketplace-reviews",
+      "canonicalModule": "sidebar",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "sidebar.brands",
+      "canonicalModule": "sidebar",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "sidebar.tags",
+      "canonicalModule": "sidebar",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "sidebar.bi",
+      "canonicalModule": "sidebar",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "sidebar.bi-dashboard",
+      "canonicalModule": "sidebar",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "sidebar.bi-observability",
+      "canonicalModule": "sidebar",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "sidebar.sports-engine",
+      "canonicalModule": "sidebar",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "sidebar.reception",
+      "canonicalModule": "sidebar",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "sidebar.league",
+      "canonicalModule": "sidebar",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "sidebar.league-dashboard",
+      "canonicalModule": "sidebar",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "sidebar.league-seasons",
+      "canonicalModule": "sidebar",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "sidebar.league-list",
+      "canonicalModule": "sidebar",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "sidebar.league-divisions",
+      "canonicalModule": "sidebar",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "sidebar.tournament",
+      "canonicalModule": "sidebar",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "sidebar.tournament-dashboard",
+      "canonicalModule": "sidebar",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "sidebar.tournament-list",
+      "canonicalModule": "sidebar",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "sidebar.tournament-matches",
+      "canonicalModule": "sidebar",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "sidebar.academy",
+      "canonicalModule": "sidebar",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "sidebar.academy-dashboard",
+      "canonicalModule": "sidebar",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "sidebar.academy-programs",
+      "canonicalModule": "sidebar",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "sidebar.academy-groups",
+      "canonicalModule": "sidebar",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "sidebar.academy-enrollments",
+      "canonicalModule": "sidebar",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "sidebar.academy-attendance",
+      "canonicalModule": "sidebar",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "sidebar.coaches-admin",
+      "canonicalModule": "sidebar",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "sidebar.membership",
+      "canonicalModule": "sidebar",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "membership.plans",
+      "canonicalModule": "membership",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "membership.campaigns",
+      "canonicalModule": "membership",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "membership.rewards",
+      "canonicalModule": "membership",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "sidebar.pricing",
+      "canonicalModule": "sidebar",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "pricing.rules",
+      "canonicalModule": "pricing",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "pricing.preview",
+      "canonicalModule": "pricing",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "sidebar.crm",
+      "canonicalModule": "sidebar",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "sidebar.crm-dashboard",
+      "canonicalModule": "sidebar",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "sidebar.crm-customers",
+      "canonicalModule": "sidebar",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "sidebar.crm-segments",
+      "canonicalModule": "sidebar",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "sidebar.crm-leads",
+      "canonicalModule": "sidebar",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "sidebar.crm-campaigns",
+      "canonicalModule": "sidebar",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "sidebar.crm-communications",
+      "canonicalModule": "sidebar",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "sidebar.hr",
+      "canonicalModule": "sidebar",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "sidebar.hr-dashboard",
+      "canonicalModule": "sidebar",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "sidebar.hr-employees",
+      "canonicalModule": "sidebar",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "sidebar.hr-departments",
+      "canonicalModule": "sidebar",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "sidebar.hr-leave",
+      "canonicalModule": "sidebar",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "sidebar.hr-attendance",
+      "canonicalModule": "sidebar",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "sidebar.hr-payroll",
+      "canonicalModule": "sidebar",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "sidebar.community-admin",
+      "canonicalModule": "sidebar",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "sidebar.notifications",
+      "canonicalModule": "sidebar",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "notifications.broadcast",
+      "canonicalModule": "notifications",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "notifications.analytics",
+      "canonicalModule": "notifications",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "notifications.dead-letters",
+      "canonicalModule": "notifications",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "sidebar.ads",
+      "canonicalModule": "sidebar",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "sidebar.admin-settings",
+      "canonicalModule": "sidebar",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "sidebar.sports",
+      "canonicalModule": "sidebar",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "sidebar.finance",
+      "canonicalModule": "sidebar",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "sidebar.finance-dashboard",
+      "canonicalModule": "sidebar",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "sidebar.finance-ledger",
+      "canonicalModule": "sidebar",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "sidebar.finance-reports",
+      "canonicalModule": "sidebar",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "sidebar.withdrawal-requests",
+      "canonicalModule": "sidebar",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "sidebar.coupons",
+      "canonicalModule": "sidebar",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "sidebar.finance-transactions",
+      "canonicalModule": "sidebar",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "sidebar.banks",
+      "canonicalModule": "sidebar",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "sidebar.bank-branches",
+      "canonicalModule": "sidebar",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "sidebar.payment-methods",
+      "canonicalModule": "sidebar",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "sidebar.payment-gateways",
+      "canonicalModule": "sidebar",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "sidebar.countries",
+      "canonicalModule": "sidebar",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "sidebar.currencies",
+      "canonicalModule": "sidebar",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "sidebar.languages",
+      "canonicalModule": "sidebar",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "sidebar.translations",
+      "canonicalModule": "sidebar",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "sidebar.amenities",
+      "canonicalModule": "sidebar",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "sidebar.app-settings-menu",
+      "canonicalModule": "sidebar",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "sidebar.app-settings",
+      "canonicalModule": "sidebar",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "sidebar.design-tokens",
+      "canonicalModule": "sidebar",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "sidebar.cms",
+      "canonicalModule": "sidebar",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "sidebar.users",
+      "canonicalModule": "sidebar",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "sidebar.inventory",
+      "canonicalModule": "sidebar",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "sidebar.inventory-stock",
+      "canonicalModule": "sidebar",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "sidebar.inventory-warehouses",
+      "canonicalModule": "sidebar",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "sidebar.inventory-suppliers",
+      "canonicalModule": "sidebar",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "sidebar.inventory-purchase-orders",
+      "canonicalModule": "sidebar",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "sidebar.mobile",
+      "canonicalModule": "sidebar",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "sidebar.integration",
+      "canonicalModule": "sidebar",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "sidebar.webhooks",
+      "canonicalModule": "sidebar",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "sidebar.security-dashboard",
+      "canonicalModule": "sidebar",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "sidebar.active-sessions",
+      "canonicalModule": "sidebar",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "sidebar.failed-logins",
+      "canonicalModule": "sidebar",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "sidebar.upload-security",
+      "canonicalModule": "sidebar",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "sidebar.system-health",
+      "canonicalModule": "sidebar",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "sidebar.audit",
+      "canonicalModule": "sidebar",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "sidebar.feature-flags",
+      "canonicalModule": "sidebar",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "org.sidebar.dashboard",
+      "canonicalModule": "org",
+      "sourceDocs": [
+        "TECH-UX-03",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "org.sidebar.marketplace",
+      "canonicalModule": "org",
+      "sourceDocs": [
+        "TECH-UX-03",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "org.sidebar.orders",
+      "canonicalModule": "org",
+      "sourceDocs": [
+        "TECH-UX-03",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "org.sidebar.bookings",
+      "canonicalModule": "org",
+      "sourceDocs": [
+        "TECH-UX-03",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "org.sidebar.staff",
+      "canonicalModule": "org",
+      "sourceDocs": [
+        "TECH-UX-03",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "org.sidebar.members",
+      "canonicalModule": "org",
+      "sourceDocs": [
+        "TECH-UX-03",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "org.sidebar.coaches",
+      "canonicalModule": "org",
+      "sourceDocs": [
+        "TECH-UX-03",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "org.sidebar.finance",
+      "canonicalModule": "org",
+      "sourceDocs": [
+        "TECH-UX-03",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "org.sidebar.announcements",
+      "canonicalModule": "org",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "org.sidebar.documents",
+      "canonicalModule": "org",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "org.sidebar.gallery",
+      "canonicalModule": "org",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "org.sidebar.profile",
+      "canonicalModule": "org",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "org.sidebar.branches",
+      "canonicalModule": "org",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "org.sidebar.working-hours",
+      "canonicalModule": "org",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "org.sidebar.payment",
+      "canonicalModule": "org",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "org.sidebar.reviews",
+      "canonicalModule": "org",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "org.sidebar.referees",
+      "canonicalModule": "org",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "org.sidebar.academies",
+      "canonicalModule": "org",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "org.sidebar.leagues",
+      "canonicalModule": "org",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "org.sidebar.tournaments",
+      "canonicalModule": "org",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "org.sidebar.verification",
+      "canonicalModule": "org",
+      "sourceDocs": [
+        "TECH-UX-03"
+      ]
+    },
+    {
+      "permission": "org.sidebar.subscription",
+      "canonicalModule": "org",
+      "sourceDocs": [
+        "TECH-UX-03",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "org.sidebar.settings",
+      "canonicalModule": "org",
+      "sourceDocs": [
+        "TECH-UX-03",
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "financial.wallet.deposit",
+      "canonicalModule": "financial",
+      "sourceDocs": [
+        "TECH-UX-04"
+      ]
+    },
+    {
+      "permission": "financial.wallet.deposit.payment-method",
+      "canonicalModule": "financial",
+      "sourceDocs": [
+        "TECH-UX-04"
+      ]
+    },
+    {
+      "permission": "player.wallet.transactions",
+      "canonicalModule": "player",
+      "sourceDocs": [
+        "TECH-UX-04"
+      ]
+    },
+    {
+      "permission": "OrgBookingsPage.tsx",
+      "canonicalModule": "OrgBookingsPage",
+      "sourceDocs": [
+        "TECH-UX-04"
+      ]
+    },
+    {
+      "permission": "OrgMarketplacePage.tsx",
+      "canonicalModule": "OrgMarketplacePage",
+      "sourceDocs": [
+        "TECH-UX-04"
+      ]
+    },
+    {
+      "permission": "OrgOrdersPage.tsx",
+      "canonicalModule": "OrgOrdersPage",
+      "sourceDocs": [
+        "TECH-UX-04"
+      ]
+    },
+    {
+      "permission": "OrgProfilePage.tsx",
+      "canonicalModule": "OrgProfilePage",
+      "sourceDocs": [
+        "TECH-UX-04"
+      ]
+    },
+    {
+      "permission": "OrgWorkingHoursPage.tsx",
+      "canonicalModule": "OrgWorkingHoursPage",
+      "sourceDocs": [
+        "TECH-UX-04"
+      ]
+    },
+    {
+      "permission": "OrgPaymentSettingsPage.tsx",
+      "canonicalModule": "OrgPaymentSettingsPage",
+      "sourceDocs": [
+        "TECH-UX-04"
+      ]
+    },
+    {
+      "permission": "OrgReviewsPage.tsx",
+      "canonicalModule": "OrgReviewsPage",
+      "sourceDocs": [
+        "TECH-UX-04"
+      ]
+    },
+    {
+      "permission": "OrgRefereesPage.tsx",
+      "canonicalModule": "OrgRefereesPage",
+      "sourceDocs": [
+        "TECH-UX-04"
+      ]
+    },
+    {
+      "permission": "OrgAcademiesPage.tsx",
+      "canonicalModule": "OrgAcademiesPage",
+      "sourceDocs": [
+        "TECH-UX-04"
+      ]
+    },
+    {
+      "permission": "OrgLeaguesPage.tsx",
+      "canonicalModule": "OrgLeaguesPage",
+      "sourceDocs": [
+        "TECH-UX-04"
+      ]
+    },
+    {
+      "permission": "OrgTournamentsPage.tsx",
+      "canonicalModule": "OrgTournamentsPage",
+      "sourceDocs": [
+        "TECH-UX-04"
+      ]
+    },
+    {
+      "permission": "OrgAnnouncementsPage.tsx",
+      "canonicalModule": "OrgAnnouncementsPage",
+      "sourceDocs": [
+        "TECH-UX-04"
+      ]
+    },
+    {
+      "permission": "OrgDocumentsPage.tsx",
+      "canonicalModule": "OrgDocumentsPage",
+      "sourceDocs": [
+        "TECH-UX-04"
+      ]
+    },
+    {
+      "permission": "OrgGalleryPage.tsx",
+      "canonicalModule": "OrgGalleryPage",
+      "sourceDocs": [
+        "TECH-UX-04"
+      ]
+    },
+    {
+      "permission": "OrgReportsPage.tsx",
+      "canonicalModule": "OrgReportsPage",
+      "sourceDocs": [
+        "TECH-UX-04"
+      ]
+    },
+    {
+      "permission": "OrgVerificationPage.tsx",
+      "canonicalModule": "OrgVerificationPage",
+      "sourceDocs": [
+        "TECH-UX-04"
+      ]
+    },
+    {
+      "permission": "OrgShippingRatesPage.tsx",
+      "canonicalModule": "OrgShippingRatesPage",
+      "sourceDocs": [
+        "TECH-UX-04"
+      ]
+    },
+    {
+      "permission": "OrgPendingApprovalPage.tsx",
+      "canonicalModule": "OrgPendingApprovalPage",
+      "sourceDocs": [
+        "TECH-UX-04"
+      ]
+    },
+    {
+      "permission": "marketplace.player-products.manage",
+      "canonicalModule": "marketplace",
+      "sourceDocs": [
+        "TECH-UX-04",
+        "USER-01"
+      ]
+    },
+    {
+      "permission": "marketplace.seller.*",
+      "canonicalModule": "marketplace",
+      "sourceDocs": [
+        "TECH-UX-04"
+      ]
+    },
+    {
+      "permission": "crm.*",
+      "canonicalModule": "crm",
+      "sourceDocs": [
+        "TECH-UX-04"
+      ]
+    },
+    {
+      "permission": "hr.leaves.types.*",
+      "canonicalModule": "hr",
+      "sourceDocs": [
+        "TECH-UX-04"
+      ]
+    },
+    {
+      "permission": "reports.routes.ts",
+      "canonicalModule": "reports",
+      "sourceDocs": [
+        "TECH-UX-04"
+      ]
+    },
+    {
+      "permission": "admin.dashboard.view",
+      "canonicalModule": "admin",
+      "sourceDocs": [
+        "TECH-UX-04"
+      ]
+    },
+    {
+      "permission": "OrgDashboardPage.tsx",
+      "canonicalModule": "OrgDashboardPage",
+      "sourceDocs": [
+        "TECH-UX-09"
+      ]
+    },
+    {
+      "permission": "OrgMembersPage.tsx",
+      "canonicalModule": "OrgMembersPage",
+      "sourceDocs": [
+        "TECH-UX-09"
+      ]
+    },
+    {
+      "permission": "OrgStaffPage.tsx",
+      "canonicalModule": "OrgStaffPage",
+      "sourceDocs": [
+        "TECH-UX-09",
+        "TECH-UX-11"
+      ]
+    },
+    {
+      "permission": "OrgCoachesPage.tsx",
+      "canonicalModule": "OrgCoachesPage",
+      "sourceDocs": [
+        "TECH-UX-09"
+      ]
+    },
+    {
+      "permission": "BookingModal.tsx",
+      "canonicalModule": "BookingModal",
+      "sourceDocs": [
+        "TECH-UX-10"
+      ]
+    },
+    {
+      "permission": "branches.view",
+      "canonicalModule": "branches",
+      "sourceDocs": [
+        "USER-01"
+      ]
+    },
+    {
+      "permission": "league.register-team",
+      "canonicalModule": "league",
+      "sourceDocs": [
+        "USER-01"
+      ]
+    },
+    {
+      "permission": "002_academy_programs.sql",
+      "canonicalModule": "002_academy_programs",
+      "sourceDocs": [
+        "VOLUME_02_ARCHITECTURE"
+      ]
+    },
+    {
+      "permission": "003_player_demo.sql",
+      "canonicalModule": "003_player_demo",
+      "sourceDocs": [
+        "VOLUME_02_ARCHITECTURE"
+      ]
+    },
+    {
+      "permission": "004_chart_of_accounts.sql",
+      "canonicalModule": "004_chart_of_accounts",
+      "sourceDocs": [
+        "VOLUME_02_ARCHITECTURE"
+      ]
+    },
+    {
+      "permission": "tournament.service.ts",
+      "canonicalModule": "tournament",
+      "sourceDocs": [
+        "VOLUME_03_BUSINESS_DOMAINS"
+      ]
+    },
+    {
+      "permission": "league.service.ts",
+      "canonicalModule": "league",
+      "sourceDocs": [
+        "VOLUME_03_BUSINESS_DOMAINS"
+      ]
+    },
+    {
+      "permission": "ledger.service.ts",
+      "canonicalModule": "ledger",
+      "sourceDocs": [
+        "VOLUME_03_BUSINESS_DOMAINS"
+      ]
+    },
+    {
+      "permission": "notification.service.ts",
+      "canonicalModule": "notification",
+      "sourceDocs": [
+        "VOLUME_03_BUSINESS_DOMAINS"
+      ]
+    },
+    {
+      "permission": "bookings.create.*",
+      "canonicalModule": "bookings",
+      "sourceDocs": [
+        "VOLUME_05_SCREENS"
+      ]
+    },
+    {
+      "permission": "VOLUME_33_SUPER_ADMIN_MANUALS.md",
+      "canonicalModule": "VOLUME_33_SUPER_ADMIN_MANUALS",
+      "sourceDocs": [
+        "VOLUME_05_SCREENS"
+      ]
+    },
+    {
+      "permission": "VOLUME_27_ORGANIZATION_MANUALS.md",
+      "canonicalModule": "VOLUME_27_ORGANIZATION_MANUALS",
+      "sourceDocs": [
+        "VOLUME_05_SCREENS"
+      ]
+    },
+    {
+      "permission": "users.assign-role",
+      "canonicalModule": "users",
+      "sourceDocs": [
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "users.change-password",
+      "canonicalModule": "users",
+      "sourceDocs": [
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "academy.self_enroll",
+      "canonicalModule": "academy",
+      "sourceDocs": [
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "league.self_register",
+      "canonicalModule": "league",
+      "sourceDocs": [
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "hr.leave.view",
+      "canonicalModule": "hr",
+      "sourceDocs": [
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "hr.leave.manage",
+      "canonicalModule": "hr",
+      "sourceDocs": [
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "hr.payroll.view",
+      "canonicalModule": "hr",
+      "sourceDocs": [
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "hr.payroll.manage",
+      "canonicalModule": "hr",
+      "sourceDocs": [
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "org.dashboard.view",
+      "canonicalModule": "org",
+      "sourceDocs": [
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "org.staff.manage",
+      "canonicalModule": "org",
+      "sourceDocs": [
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "org.coaches.manage",
+      "canonicalModule": "org",
+      "sourceDocs": [
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "org.resources.manage",
+      "canonicalModule": "org",
+      "sourceDocs": [
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "org.marketplace.manage",
+      "canonicalModule": "org",
+      "sourceDocs": [
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "settlements.*",
+      "canonicalModule": "settlements",
+      "sourceDocs": [
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "VOLUME_02_ROUTE_AUDIT.md",
+      "canonicalModule": "VOLUME_02_ROUTE_AUDIT",
+      "sourceDocs": [
+        "VOLUME_08_PERMISSIONS"
+      ]
+    },
+    {
+      "permission": "AdminBroadcastPage.tsx",
+      "canonicalModule": "AdminBroadcastPage",
+      "sourceDocs": [
+        "VOLUME_15_NOTIFICATIONS"
+      ]
+    }
+  ]
+}

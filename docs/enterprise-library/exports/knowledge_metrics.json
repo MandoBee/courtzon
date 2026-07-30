@@ -1,0 +1,28 @@
+{
+  "timestamp": "2026-07-28T00:27:04.886Z",
+  "documentation": {
+    "total_documents": 161,
+    "total_families": 16,
+    "coverage_percentage": 105,
+    "health_score": 78
+  },
+  "knowledge_graph": {
+    "total_nodes": 1404,
+    "total_edges": 2610,
+    "graph_completeness": 100
+  },
+  "governance": {
+    "traceability_coverage": 85,
+    "review_freshness": 0,
+    "automation_coverage": 100
+  },
+  "ai_readiness": {
+    "exports_generated": 4,
+    "knowledge_objects_indexed": 161,
+    "embeddings_ready": true
+  },
+  "trends": {
+    "documents_growing": true,
+    "health_improving": true
+  }
+}

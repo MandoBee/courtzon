@@ -1,0 +1,1583 @@
+{
+  "metadata": {
+    "generated": "2026-07-28T00:26:58.327Z",
+    "total_apis": 225
+  },
+  "endpoints": [
+    {
+      "method": "GET",
+      "path": "/reports/financial/summary",
+      "description": "`wallet_transactions`",
+      "required_permission": "Revenue summary by type",
+      "module": "TECH-ARCH-24"
+    },
+    {
+      "method": "GET",
+      "path": "/reports/financial/by-source",
+      "description": "`wallet_transactions`",
+      "required_permission": "Revenue by transaction source",
+      "module": "TECH-ARCH-24"
+    },
+    {
+      "method": "GET",
+      "path": "/reports/financial/timeline",
+      "description": "`wallet_transactions`",
+      "required_permission": "Revenue timeline (day/week/month)",
+      "module": "TECH-ARCH-24"
+    },
+    {
+      "method": "GET",
+      "path": "/reports/bookings/volume",
+      "description": "`bookings`",
+      "required_permission": "Booking volume timeline",
+      "module": "TECH-ARCH-24"
+    },
+    {
+      "method": "GET",
+      "path": "/reports/bookings/by-type",
+      "description": "`bookings`",
+      "required_permission": "By booking type",
+      "module": "TECH-ARCH-24"
+    },
+    {
+      "method": "GET",
+      "path": "/reports/bookings/by-sport",
+      "description": "`bookings` + `resources` + `sports`",
+      "required_permission": "By sport (via resources join)",
+      "module": "TECH-ARCH-24"
+    },
+    {
+      "method": "GET",
+      "path": "/reports/users/registrations",
+      "description": "`users`",
+      "required_permission": "New registrations timeline",
+      "module": "TECH-ARCH-24"
+    },
+    {
+      "method": "GET",
+      "path": "/reports/users/demographics",
+      "description": "`users` + `countries`",
+      "required_permission": "By country",
+      "module": "TECH-ARCH-24"
+    },
+    {
+      "method": "GET",
+      "path": "/reports/users/gender",
+      "description": "`users`",
+      "required_permission": "Gender distribution",
+      "module": "TECH-ARCH-24"
+    },
+    {
+      "method": "GET",
+      "path": "/reports/organisations/top",
+      "description": "`organisations` + `bookings`",
+      "required_permission": "Top by revenue",
+      "module": "TECH-ARCH-24"
+    },
+    {
+      "method": "GET",
+      "path": "/reports/organisations/by-type",
+      "description": "`organisation_types` + `organisations`",
+      "required_permission": "By org type",
+      "module": "TECH-ARCH-24"
+    },
+    {
+      "method": "GET",
+      "path": "/reports/organisations/subscriptions",
+      "description": "`organisation_subscriptions` + `subscription_plans`",
+      "required_permission": "Subscription status breakdown",
+      "module": "TECH-ARCH-24"
+    },
+    {
+      "method": "GET",
+      "path": "/reports/marketplace/overview",
+      "description": "`orders` + `order_items`",
+      "required_permission": "Orders, revenue, commissions",
+      "module": "TECH-ARCH-24"
+    },
+    {
+      "method": "GET",
+      "path": "/reports/marketplace/top-products",
+      "description": "`order_items` + `products`",
+      "required_permission": "Top-selling products",
+      "module": "TECH-ARCH-24"
+    },
+    {
+      "method": "GET",
+      "path": "/reports/marketplace/orders",
+      "description": "`orders`",
+      "required_permission": "Order status distribution",
+      "module": "TECH-ARCH-24"
+    },
+    {
+      "method": "GET",
+      "path": "/reports/tournaments/overview",
+      "description": "`tournaments` + `tournament_registrations`",
+      "required_permission": "Total, completed, in-progress",
+      "module": "TECH-ARCH-24"
+    },
+    {
+      "method": "GET",
+      "path": "/reports/tournaments/participation",
+      "description": "`tournaments` + `tournament_registrations` + `sports`",
+      "required_permission": "Per-tournament fill rates",
+      "module": "TECH-ARCH-24"
+    },
+    {
+      "method": "GET",
+      "path": "/reports/coaches/performance",
+      "description": "`coach_sessions` + `coach_profiles` + `coach_reviews`",
+      "required_permission": "Sessions, revenue, ratings",
+      "module": "TECH-ARCH-24"
+    },
+    {
+      "method": "GET",
+      "path": "/reports/ads/performance",
+      "description": "`ad_campaigns` + `ad_impressions` + `ad_clicks`",
+      "required_permission": "Campaign impressions, clicks, spend",
+      "module": "TECH-ARCH-24"
+    },
+    {
+      "method": "GET",
+      "path": "/reports/ads/daily-spend",
+      "description": "`ad_impressions` + `ad_clicks`",
+      "required_permission": "Daily/monthly ad spend",
+      "module": "TECH-ARCH-24"
+    },
+    {
+      "method": "GET",
+      "path": "/reports/audit/activity",
+      "description": "`audit_logs`",
+      "required_permission": "Audit action frequency",
+      "module": "TECH-ARCH-24"
+    },
+    {
+      "method": "GET",
+      "path": "/reports/audit/top-entities",
+      "description": "`audit_logs`",
+      "required_permission": "Most-audited entities",
+      "module": "TECH-ARCH-24"
+    },
+    {
+      "method": "GET",
+      "path": "/bi/dashboard",
+      "description": "Executive dashboard",
+      "required_permission": "bi.dashboard.view",
+      "module": "TECH-ARCH-24"
+    },
+    {
+      "method": "GET",
+      "path": "/bi/dashboard/org/:orgId",
+      "description": "Org-scoped dashboard",
+      "required_permission": "bi.dashboard.view",
+      "module": "TECH-ARCH-24"
+    },
+    {
+      "method": "GET",
+      "path": "/bi/kpi-snapshots",
+      "description": "Historical KPI snapshots",
+      "required_permission": "bi.kpi.view",
+      "module": "TECH-ARCH-24"
+    },
+    {
+      "method": "POST",
+      "path": "/auth/register",
+      "description": "`app.registration_enabled`",
+      "required_permission": "No",
+      "module": "TECH-MOD-01"
+    },
+    {
+      "method": "POST",
+      "path": "/auth/register-player",
+      "description": "`player.registration_enabled`",
+      "required_permission": "No",
+      "module": "TECH-MOD-01"
+    },
+    {
+      "method": "POST",
+      "path": "/auth/register-seller",
+      "description": "`seller.registration_enabled`",
+      "required_permission": "No",
+      "module": "TECH-MOD-01"
+    },
+    {
+      "method": "POST",
+      "path": "/bookings",
+      "description": "Create booking",
+      "required_permission": "bookings.create",
+      "module": "TECH-MOD-03"
+    },
+    {
+      "method": "POST",
+      "path": "/bookings/prepare",
+      "description": "Prepare (hold slot)",
+      "required_permission": "bookings.create",
+      "module": "TECH-MOD-03"
+    },
+    {
+      "method": "DELETE",
+      "path": "/bookings/prepare/:prepareId",
+      "description": "Cancel prepare",
+      "required_permission": "bookings.create",
+      "module": "TECH-MOD-03"
+    },
+    {
+      "method": "GET",
+      "path": "/admin/warehouses",
+      "description": "List warehouses",
+      "required_permission": "inventory.warehouses.view",
+      "module": "TECH-MOD-08"
+    },
+    {
+      "method": "POST",
+      "path": "/admin/warehouses",
+      "description": "Create warehouse",
+      "required_permission": "inventory.warehouses.manage",
+      "module": "TECH-MOD-08"
+    },
+    {
+      "method": "PUT",
+      "path": "/admin/warehouses/:id",
+      "description": "Update warehouse",
+      "required_permission": "inventory.warehouses.manage",
+      "module": "TECH-MOD-08"
+    },
+    {
+      "method": "POST",
+      "path": "/payments/webhook",
+      "description": "Paymob webhook handler",
+      "required_permission": "No",
+      "module": "TECH-MOD-09"
+    },
+    {
+      "method": "POST",
+      "path": "/payments/charge",
+      "description": "Initiate payment charge",
+      "required_permission": "Yes",
+      "module": "TECH-MOD-09"
+    },
+    {
+      "method": "POST",
+      "path": "/payments/confirm",
+      "description": "Confirm payment",
+      "required_permission": "Yes",
+      "module": "TECH-MOD-09"
+    },
+    {
+      "method": "GET",
+      "path": "/payments/status/:id",
+      "description": "Get payment status",
+      "required_permission": "Yes",
+      "module": "TECH-MOD-09"
+    },
+    {
+      "method": "GET",
+      "path": "/wallets/me",
+      "description": "Get own wallet",
+      "required_permission": "Yes",
+      "module": "TECH-MOD-10"
+    },
+    {
+      "method": "POST",
+      "path": "/wallets/deposit",
+      "description": "Deposit funds",
+      "required_permission": "Yes",
+      "module": "TECH-MOD-10"
+    },
+    {
+      "method": "POST",
+      "path": "/wallets/withdraw",
+      "description": "Request withdrawal",
+      "required_permission": "Yes+financial.withdraw",
+      "module": "TECH-MOD-10"
+    },
+    {
+      "method": "GET",
+      "path": "/wallets/transactions",
+      "description": "List transactions",
+      "required_permission": "Yes",
+      "module": "TECH-MOD-10"
+    },
+    {
+      "method": "GET",
+      "path": "/admin/financial/revenue",
+      "description": "Revenue summary",
+      "required_permission": "super_admin",
+      "module": "TECH-MOD-11"
+    },
+    {
+      "method": "GET",
+      "path": "/admin/financial/ledger",
+      "description": "Ledger entries",
+      "required_permission": "super_admin",
+      "module": "TECH-MOD-11"
+    },
+    {
+      "method": "GET",
+      "path": "/admin/financial/settlements",
+      "description": "List settlement batches",
+      "required_permission": "super_admin",
+      "module": "TECH-MOD-11"
+    },
+    {
+      "method": "GET",
+      "path": "/transactions",
+      "description": "| 2",
+      "required_permission": "User transactions",
+      "module": "TECH-MOD-11"
+    },
+    {
+      "method": "GET",
+      "path": "/branches/:branchId/transactions",
+      "description": "**Withdrawal routes** (`financial-admin.routes.ts:9-18`):",
+      "required_permission": "Branch transactions",
+      "module": "TECH-MOD-11"
+    },
+    {
+      "method": "GET",
+      "path": "/admin/withdrawal-requests",
+      "description": "List requests",
+      "required_permission": "financial.view",
+      "module": "TECH-MOD-11"
+    },
+    {
+      "method": "GET",
+      "path": "/admin/withdrawal-requests/:id",
+      "description": "Get request detail",
+      "required_permission": "financial.view",
+      "module": "TECH-MOD-11"
+    },
+    {
+      "method": "POST",
+      "path": "/admin/withdrawal-requests/approve",
+      "description": "Approve",
+      "required_permission": "financial.process_payouts",
+      "module": "TECH-MOD-11"
+    },
+    {
+      "method": "GET",
+      "path": "/matches",
+      "description": "| 2",
+      "required_permission": "List matches",
+      "module": "TECH-MOD-17"
+    },
+    {
+      "method": "POST",
+      "path": "/matches/:id/join",
+      "description": "| 4",
+      "required_permission": "Submit join request",
+      "module": "TECH-MOD-17"
+    },
+    {
+      "method": "GET",
+      "path": "/matches/:id/applicants",
+      "description": "| 6",
+      "required_permission": "List applicants",
+      "module": "TECH-MOD-17"
+    },
+    {
+      "method": "GET",
+      "path": "/admin/membership/plans",
+      "description": "List plans",
+      "required_permission": "membership.view",
+      "module": "TECH-MOD-18"
+    },
+    {
+      "method": "GET",
+      "path": "/admin/membership/plans/options",
+      "description": "Plan options (categories, types)",
+      "required_permission": "membership.view",
+      "module": "TECH-MOD-18"
+    },
+    {
+      "method": "GET",
+      "path": "/admin/membership/plans/:id",
+      "description": "Get plan",
+      "required_permission": "membership.view",
+      "module": "TECH-MOD-18"
+    },
+    {
+      "method": "GET",
+      "path": "/admin/membership/assignments",
+      "description": "List assignments",
+      "required_permission": "membership.view",
+      "module": "TECH-MOD-18"
+    },
+    {
+      "method": "POST",
+      "path": "/admin/membership/assign",
+      "description": "Assign membership",
+      "required_permission": "membership.assign",
+      "module": "TECH-MOD-18"
+    },
+    {
+      "method": "GET",
+      "path": "/admin/membership/assignments/:id",
+      "description": "Get user membership",
+      "required_permission": "membership.view",
+      "module": "TECH-MOD-18"
+    },
+    {
+      "method": "POST",
+      "path": "/scheduling/search",
+      "description": "| 2",
+      "required_permission": "Search for available coach sessions",
+      "module": "TECH-MOD-19"
+    },
+    {
+      "method": "GET",
+      "path": "/admin/security/dashboard",
+      "description": "| 2",
+      "required_permission": "Security dashboard overview",
+      "module": "TECH-MOD-20"
+    },
+    {
+      "method": "GET",
+      "path": "/admin/security/sessions/suspicious",
+      "description": "| 4",
+      "required_permission": "List suspicious sessions",
+      "module": "TECH-MOD-20"
+    },
+    {
+      "method": "GET",
+      "path": "/admin/audit-logs",
+      "description": "Query audit logs",
+      "required_permission": "Yes+audit.view",
+      "module": "TECH-MOD-21"
+    },
+    {
+      "method": "GET",
+      "path": "/admin/support/tickets",
+      "description": "List all tickets",
+      "required_permission": "support.tickets.view",
+      "module": "TECH-MOD-22"
+    },
+    {
+      "method": "GET",
+      "path": "/admin/support/tickets/:id",
+      "description": "Get ticket details",
+      "required_permission": "support.tickets.view",
+      "module": "TECH-MOD-22"
+    },
+    {
+      "method": "PUT",
+      "path": "/admin/support/tickets/:id",
+      "description": "Update ticket",
+      "required_permission": "support.tickets.manage",
+      "module": "TECH-MOD-22"
+    },
+    {
+      "method": "POST",
+      "path": "/support/tickets",
+      "description": "Create ticket",
+      "required_permission": "support.tickets.create",
+      "module": "TECH-MOD-22"
+    },
+    {
+      "method": "GET",
+      "path": "/my/support/tickets",
+      "description": "My tickets",
+      "required_permission": "support.tickets.view",
+      "module": "TECH-MOD-22"
+    },
+    {
+      "method": "POST",
+      "path": "/my/support/tickets/:id/messages",
+      "description": "Add message to my ticket",
+      "required_permission": "support.tickets.create",
+      "module": "TECH-MOD-22"
+    },
+    {
+      "method": "GET",
+      "path": "/public/published-pages",
+      "description": "| 2",
+      "required_permission": "Get published slugs",
+      "module": "TECH-MOD-23"
+    },
+    {
+      "method": "GET",
+      "path": "/public/blogs",
+      "description": "| 4",
+      "required_permission": "List published blogs",
+      "module": "TECH-MOD-23"
+    },
+    {
+      "method": "GET",
+      "path": "/public/contact/options",
+      "description": "| 6",
+      "required_permission": "Contact form options",
+      "module": "TECH-MOD-23"
+    },
+    {
+      "method": "GET",
+      "path": "/cms/pages",
+      "description": "| 13",
+      "required_permission": "List pages",
+      "module": "TECH-MOD-23"
+    },
+    {
+      "method": "GET",
+      "path": "/cms/pages/:id",
+      "description": "| 15",
+      "required_permission": "Get page",
+      "module": "TECH-MOD-23"
+    },
+    {
+      "method": "PUT",
+      "path": "/cms/pages/:id",
+      "description": "| 17",
+      "required_permission": "Update page",
+      "module": "TECH-MOD-23"
+    },
+    {
+      "method": "GET",
+      "path": "/cms/pages/:pageId/blocks",
+      "description": "| 20",
+      "required_permission": "List blocks",
+      "module": "TECH-MOD-23"
+    },
+    {
+      "method": "POST",
+      "path": "/cms/blocks",
+      "description": "| 22",
+      "required_permission": "Create block",
+      "module": "TECH-MOD-23"
+    },
+    {
+      "method": "DELETE",
+      "path": "/cms/blocks/:id",
+      "description": "**Blogs (6):**",
+      "required_permission": "Delete block",
+      "module": "TECH-MOD-23"
+    },
+    {
+      "method": "GET",
+      "path": "/cms/blogs",
+      "description": "| 25",
+      "required_permission": "List blogs",
+      "module": "TECH-MOD-23"
+    },
+    {
+      "method": "POST",
+      "path": "/cms/blogs",
+      "description": "| 27",
+      "required_permission": "Create blog",
+      "module": "TECH-MOD-23"
+    },
+    {
+      "method": "DELETE",
+      "path": "/cms/blogs/:id",
+      "description": "| 29",
+      "required_permission": "Delete blog",
+      "module": "TECH-MOD-23"
+    },
+    {
+      "method": "POST",
+      "path": "/cms/sections",
+      "description": "| 31",
+      "required_permission": "Create section",
+      "module": "TECH-MOD-23"
+    },
+    {
+      "method": "DELETE",
+      "path": "/cms/sections/:id",
+      "description": "**Media (3):**",
+      "required_permission": "Delete section",
+      "module": "TECH-MOD-23"
+    },
+    {
+      "method": "GET",
+      "path": "/cms/media",
+      "description": "| 34",
+      "required_permission": "List media",
+      "module": "TECH-MOD-23"
+    },
+    {
+      "method": "DELETE",
+      "path": "/cms/media/:id",
+      "description": "**Contact/Admin (2):**",
+      "required_permission": "Delete media",
+      "module": "TECH-MOD-23"
+    },
+    {
+      "method": "GET",
+      "path": "/cms/contacts",
+      "description": "| 37",
+      "required_permission": "List submissions",
+      "module": "TECH-MOD-23"
+    },
+    {
+      "method": "POST",
+      "path": "/community/follow/:followingId",
+      "description": "Follow user",
+      "required_permission": "—",
+      "module": "TECH-MOD-24"
+    },
+    {
+      "method": "DELETE",
+      "path": "/community/follow/:followingId",
+      "description": "Unfollow",
+      "required_permission": "—",
+      "module": "TECH-MOD-24"
+    },
+    {
+      "method": "GET",
+      "path": "/community/followers",
+      "description": "Get followers",
+      "required_permission": "—",
+      "module": "TECH-MOD-24"
+    },
+    {
+      "method": "GET",
+      "path": "/community/following",
+      "description": "Get following",
+      "required_permission": "—",
+      "module": "TECH-MOD-24"
+    },
+    {
+      "method": "GET",
+      "path": "/community/conversations",
+      "description": "List conversations",
+      "required_permission": "community.chat.view",
+      "module": "TECH-MOD-24"
+    },
+    {
+      "method": "GET",
+      "path": "/community/conversations/invitations",
+      "description": "Group invitations",
+      "required_permission": "community.chat.view",
+      "module": "TECH-MOD-24"
+    },
+    {
+      "method": "PUT",
+      "path": "/community/conversations/invitations/:invitationId",
+      "description": "Respond to invitation",
+      "required_permission": "community.chat.send",
+      "module": "TECH-MOD-24"
+    },
+    {
+      "method": "GET",
+      "path": "/ads/placements",
+      "description": "Get placements",
+      "required_permission": "—",
+      "module": "TECH-MOD-24"
+    },
+    {
+      "method": "GET",
+      "path": "/ads/placements/:placementId/active",
+      "description": "Active ads",
+      "required_permission": "—",
+      "module": "TECH-MOD-24"
+    },
+    {
+      "method": "POST",
+      "path": "/ads/campaigns",
+      "description": "Create campaign",
+      "required_permission": "ads.create",
+      "module": "TECH-MOD-24"
+    },
+    {
+      "method": "GET",
+      "path": "/sports-engine/rankings",
+      "description": "Get player rankings",
+      "required_permission": "sports-engine.view",
+      "module": "TECH-MOD-26"
+    },
+    {
+      "method": "POST",
+      "path": "/sports-engine/rankings/calculate",
+      "description": "Calculate ELO for a match",
+      "required_permission": "sports-engine.manage",
+      "module": "TECH-MOD-26"
+    },
+    {
+      "method": "GET",
+      "path": "/sports-engine/optimize/schedule",
+      "description": "Get optimized schedule",
+      "required_permission": "sports-engine.view",
+      "module": "TECH-MOD-26"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/api-keys",
+      "description": "Create (one-time display)",
+      "required_permission": "integration.api-keys.manage",
+      "module": "TECH-MOD-27"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/api-keys",
+      "description": "List keys",
+      "required_permission": "integration.api-keys.view",
+      "module": "TECH-MOD-27"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/api-keys/:id",
+      "description": "Revoke key",
+      "required_permission": "integration.api-keys.manage",
+      "module": "TECH-MOD-27"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/bookings",
+      "description": "| 5",
+      "required_permission": "List bookings via API",
+      "module": "TECH-MOD-27"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/organisations",
+      "description": "| 7",
+      "required_permission": "List organisations via API",
+      "module": "TECH-MOD-27"
+    },
+    {
+      "method": "POST",
+      "path": "/mobile/push/register",
+      "description": "| 2",
+      "required_permission": "Register push token",
+      "module": "TECH-MOD-28"
+    },
+    {
+      "method": "GET",
+      "path": "/mobile/push/tokens",
+      "description": "**App Versions (5):**",
+      "required_permission": "List user's push tokens",
+      "module": "TECH-MOD-28"
+    },
+    {
+      "method": "GET",
+      "path": "/mobile/versions",
+      "description": "Get latest version",
+      "required_permission": "—",
+      "module": "TECH-MOD-28"
+    },
+    {
+      "method": "GET",
+      "path": "/admin/mobile/versions",
+      "description": "List all versions",
+      "required_permission": "mobile.versions.view",
+      "module": "TECH-MOD-28"
+    },
+    {
+      "method": "POST",
+      "path": "/admin/mobile/versions",
+      "description": "Create version",
+      "required_permission": "mobile.versions.manage",
+      "module": "TECH-MOD-28"
+    },
+    {
+      "method": "GET",
+      "path": "/mobile/config",
+      "description": "Get app config",
+      "required_permission": "—",
+      "module": "TECH-MOD-28"
+    },
+    {
+      "method": "GET",
+      "path": "/admin/mobile/config",
+      "description": "List all config",
+      "required_permission": "mobile.config.view",
+      "module": "TECH-MOD-28"
+    },
+    {
+      "method": "PUT",
+      "path": "/admin/mobile/config/:id",
+      "description": "Update config",
+      "required_permission": "mobile.config.manage",
+      "module": "TECH-MOD-28"
+    },
+    {
+      "method": "POST",
+      "path": "/admin/mobile/config",
+      "description": "Create config",
+      "required_permission": "mobile.config.manage",
+      "module": "TECH-MOD-28"
+    },
+    {
+      "method": "GET",
+      "path": "/admin/mobile/push-log",
+      "description": "Push delivery log",
+      "required_permission": "mobile.push.view",
+      "module": "TECH-MOD-28"
+    },
+    {
+      "method": "GET",
+      "path": "/admin/mobile/dashboard",
+      "description": "Mobile dashboard",
+      "required_permission": "mobile.dashboard.view",
+      "module": "TECH-MOD-28"
+    },
+    {
+      "method": "POST",
+      "path": "/settlements/request",
+      "description": "Request settlement",
+      "required_permission": "settlements.request",
+      "module": "TECH-MOD-30"
+    },
+    {
+      "method": "POST",
+      "path": "/settlements/:id/approve",
+      "description": "Approve",
+      "required_permission": "settlements.approve",
+      "module": "TECH-MOD-30"
+    },
+    {
+      "method": "POST",
+      "path": "/settlements/:id/pay",
+      "description": "Mark as paid",
+      "required_permission": "settlements.pay",
+      "module": "TECH-MOD-30"
+    },
+    {
+      "method": "GET",
+      "path": "/admin/coupons",
+      "description": "List coupons",
+      "required_permission": "financial.view",
+      "module": "TECH-MOD-31"
+    },
+    {
+      "method": "GET",
+      "path": "/admin/coupons/:id",
+      "description": "Get coupon",
+      "required_permission": "financial.view",
+      "module": "TECH-MOD-31"
+    },
+    {
+      "method": "POST",
+      "path": "/admin/coupons",
+      "description": "Create coupon",
+      "required_permission": "financial.process_payouts",
+      "module": "TECH-MOD-31"
+    },
+    {
+      "method": "PUT",
+      "path": "/admin/coupons/:id",
+      "description": "Update coupon",
+      "required_permission": "financial.process_payouts",
+      "module": "TECH-MOD-31"
+    },
+    {
+      "method": "POST",
+      "path": "/pricing/preview",
+      "description": "Preview price calculation",
+      "required_permission": "auth (any)",
+      "module": "TECH-MOD-32"
+    },
+    {
+      "method": "GET",
+      "path": "/admin/pricing/rules",
+      "description": "List rules",
+      "required_permission": "super_admin",
+      "module": "TECH-MOD-32"
+    },
+    {
+      "method": "GET",
+      "path": "/admin/pricing/rules/:id",
+      "description": "Get rule",
+      "required_permission": "super_admin",
+      "module": "TECH-MOD-32"
+    },
+    {
+      "method": "POST",
+      "path": "/admin/pricing/rules",
+      "description": "Create rule",
+      "required_permission": "super_admin",
+      "module": "TECH-MOD-32"
+    },
+    {
+      "method": "POST",
+      "path": "/upload/:entityType/:entityId/:fileCategory",
+      "description": "Generic upload",
+      "required_permission": "auth",
+      "module": "TECH-MOD-33"
+    },
+    {
+      "method": "POST",
+      "path": "/organisations/:orgId/logo",
+      "description": "Org logo",
+      "required_permission": "auth + orgAccess",
+      "module": "TECH-MOD-33"
+    },
+    {
+      "method": "POST",
+      "path": "/organisations/:orgId/cover",
+      "description": "Org cover",
+      "required_permission": "auth + orgAccess",
+      "module": "TECH-MOD-33"
+    },
+    {
+      "method": "GET",
+      "path": "/public/translations/:locale",
+      "description": "**Admin (15, all gated by `adminGuard`):**",
+      "required_permission": "Get translations for locale",
+      "module": "TECH-MOD-34"
+    },
+    {
+      "method": "GET",
+      "path": "/translations/grid",
+      "description": "| 3",
+      "required_permission": "Translation grid",
+      "module": "TECH-MOD-34"
+    },
+    {
+      "method": "GET",
+      "path": "/translations/element-types",
+      "description": "| 5",
+      "required_permission": "Element types",
+      "module": "TECH-MOD-34"
+    },
+    {
+      "method": "POST",
+      "path": "/tournaments",
+      "description": "Create tournament",
+      "required_permission": "tournaments.create",
+      "module": "TECH-MOD-35"
+    },
+    {
+      "method": "POST",
+      "path": "/tournaments/:id/generate-bracket",
+      "description": "Generate bracket",
+      "required_permission": "tournaments.manage_brackets",
+      "module": "TECH-MOD-35"
+    },
+    {
+      "method": "POST",
+      "path": "/matches/:matchId/score",
+      "description": "Enter match score",
+      "required_permission": "tournaments.enter_scores",
+      "module": "TECH-MOD-35"
+    },
+    {
+      "method": "GET",
+      "path": "/academies",
+      "description": "List academies",
+      "required_permission": "—",
+      "module": "TECH-MOD-35"
+    },
+    {
+      "method": "GET",
+      "path": "/academies/:id",
+      "description": "Get academy",
+      "required_permission": "—",
+      "module": "TECH-MOD-35"
+    },
+    {
+      "method": "POST",
+      "path": "/academies",
+      "description": "Create academy",
+      "required_permission": "academies.create",
+      "module": "TECH-MOD-35"
+    },
+    {
+      "method": "POST",
+      "path": "/academies/:id/curriculums",
+      "description": "Create curriculum",
+      "required_permission": "academies.edit",
+      "module": "TECH-MOD-35"
+    },
+    {
+      "method": "GET",
+      "path": "/coaches",
+      "description": "List coaches",
+      "required_permission": "—",
+      "module": "TECH-MOD-35"
+    },
+    {
+      "method": "GET",
+      "path": "/coaches/:id",
+      "description": "Get coach by ID",
+      "required_permission": "—",
+      "module": "TECH-MOD-35"
+    },
+    {
+      "method": "GET",
+      "path": "/coaches/:id/agreements",
+      "description": "List coach agreements",
+      "required_permission": "—",
+      "module": "TECH-MOD-35"
+    },
+    {
+      "method": "GET",
+      "path": "/coaches/profile/me",
+      "description": "My coach profile",
+      "required_permission": "—",
+      "module": "TECH-MOD-35"
+    },
+    {
+      "method": "POST",
+      "path": "/coaches/profile",
+      "description": "Create coach profile",
+      "required_permission": "coaches.manage_profile",
+      "module": "TECH-MOD-35"
+    },
+    {
+      "method": "POST",
+      "path": "/coach-sessions/request",
+      "description": "Request coach session",
+      "required_permission": "coaches.book",
+      "module": "TECH-MOD-35"
+    },
+    {
+      "method": "GET",
+      "path": "/coach-sessions/requests",
+      "description": "List coach requests",
+      "required_permission": "—",
+      "module": "TECH-MOD-35"
+    },
+    {
+      "method": "GET",
+      "path": "/coach-sessions/:id",
+      "description": "Get session detail",
+      "required_permission": "—",
+      "module": "TECH-MOD-35"
+    },
+    {
+      "method": "POST",
+      "path": "/coach-sessions/:id/respond",
+      "description": "Respond to request",
+      "required_permission": "coaches.respond_request",
+      "module": "TECH-MOD-35"
+    },
+    {
+      "method": "GET",
+      "path": "/coaches/availability/me",
+      "description": "My availability",
+      "required_permission": "coaches.availability.manage",
+      "module": "TECH-MOD-35"
+    },
+    {
+      "method": "PUT",
+      "path": "/coaches/availability/me",
+      "description": "Set availability",
+      "required_permission": "coaches.availability.manage",
+      "module": "TECH-MOD-35"
+    },
+    {
+      "method": "POST",
+      "path": "/coaches/availability/me/blackouts",
+      "description": "Add blackout",
+      "required_permission": "coaches.availability.manage",
+      "module": "TECH-MOD-35"
+    },
+    {
+      "method": "GET",
+      "path": "/admin/coaches",
+      "description": "Admin list coaches",
+      "required_permission": "adminGuard",
+      "module": "TECH-MOD-35"
+    },
+    {
+      "method": "PUT",
+      "path": "/coaches/:id",
+      "description": "Admin update coach",
+      "required_permission": "adminGuard",
+      "module": "TECH-MOD-35"
+    },
+    {
+      "method": "DELETE",
+      "path": "/coaches/:id",
+      "description": "Admin delete coach",
+      "required_permission": "adminGuard",
+      "module": "TECH-MOD-35"
+    },
+    {
+      "method": "PATCH",
+      "path": "/coaches/:id/verify",
+      "description": "Verify coach",
+      "required_permission": "adminGuard",
+      "module": "TECH-MOD-35"
+    },
+    {
+      "method": "GET",
+      "path": "/admin/settings",
+      "description": "List all settings",
+      "required_permission": "system_settings.view",
+      "module": "TECH-MOD-36"
+    },
+    {
+      "method": "GET",
+      "path": "/admin/settings/categories",
+      "description": "List setting categories",
+      "required_permission": "system_settings.view",
+      "module": "TECH-MOD-36"
+    },
+    {
+      "method": "GET",
+      "path": "/admin/settings/:key",
+      "description": "Get setting by key",
+      "required_permission": "system_settings.view",
+      "module": "TECH-MOD-36"
+    },
+    {
+      "method": "GET",
+      "path": "/admin/feature-flags",
+      "description": "List feature flags",
+      "required_permission": "feature_flags.view",
+      "module": "TECH-MOD-36"
+    },
+    {
+      "method": "POST",
+      "path": "/admin/feature-flags",
+      "description": "Create feature flag",
+      "required_permission": "feature_flags.update",
+      "module": "TECH-MOD-36"
+    },
+    {
+      "method": "PUT",
+      "path": "/admin/feature-flags/:id",
+      "description": "Update feature flag",
+      "required_permission": "feature_flags.update",
+      "module": "TECH-MOD-36"
+    },
+    {
+      "method": "GET",
+      "path": "/admin/health",
+      "description": "Get system health",
+      "required_permission": "system_health.view",
+      "module": "TECH-MOD-36"
+    },
+    {
+      "method": "GET",
+      "path": "/admin/cache",
+      "description": "Get cache stats",
+      "required_permission": "cache.manage",
+      "module": "TECH-MOD-36"
+    },
+    {
+      "method": "POST",
+      "path": "/admin/cache/clear",
+      "description": "Clear cache key",
+      "required_permission": "cache.manage",
+      "module": "TECH-MOD-36"
+    },
+    {
+      "method": "GET",
+      "path": "/admin/queues",
+      "description": "Queue status",
+      "required_permission": "queue.view",
+      "module": "TECH-MOD-36"
+    },
+    {
+      "method": "GET",
+      "path": "/admin/queues/:queueName/jobs",
+      "description": "List queue jobs",
+      "required_permission": "queue.view",
+      "module": "TECH-MOD-36"
+    },
+    {
+      "method": "POST",
+      "path": "/admin/queues/:queueName/jobs/:jobId/retry",
+      "description": "Retry job",
+      "required_permission": "queue.manage",
+      "module": "TECH-MOD-36"
+    },
+    {
+      "method": "GET",
+      "path": "/public/settings",
+      "description": "Get public settings",
+      "required_permission": "—",
+      "module": "TECH-MOD-36"
+    },
+    {
+      "method": "GET",
+      "path": "/amenities/:id",
+      "description": "Get amenity by ID",
+      "required_permission": "authMiddleware",
+      "module": "TECH-MOD-37"
+    },
+    {
+      "method": "POST",
+      "path": "/amenities",
+      "description": "Create amenity",
+      "required_permission": "adminGuard",
+      "module": "TECH-MOD-37"
+    },
+    {
+      "method": "PUT",
+      "path": "/amenities/:id",
+      "description": "Update amenity",
+      "required_permission": "adminGuard",
+      "module": "TECH-MOD-37"
+    },
+    {
+      "method": "DELETE",
+      "path": "/amenities/:id",
+      "description": "Delete amenity",
+      "required_permission": "adminGuard",
+      "module": "TECH-MOD-37"
+    },
+    {
+      "method": "GET",
+      "path": "/admin/approvals",
+      "description": "List pending approvals",
+      "required_permission": "adminGuard",
+      "module": "TECH-MOD-38"
+    },
+    {
+      "method": "POST",
+      "path": "/admin/approvals/:requestId/approve",
+      "description": "Approve registration",
+      "required_permission": "adminGuard",
+      "module": "TECH-MOD-38"
+    },
+    {
+      "method": "POST",
+      "path": "/admin/approvals/:requestId/reject",
+      "description": "Reject registration",
+      "required_permission": "adminGuard",
+      "module": "TECH-MOD-38"
+    },
+    {
+      "method": "GET",
+      "path": "/admin/app-settings",
+      "description": "List all settings",
+      "required_permission": "adminGuard + app-settings.view",
+      "module": "TECH-MOD-39"
+    },
+    {
+      "method": "GET",
+      "path": "/public/app-settings",
+      "description": "Get public settings",
+      "required_permission": "—",
+      "module": "TECH-MOD-39"
+    },
+    {
+      "method": "PUT",
+      "path": "/admin/app-settings",
+      "description": "Update settings",
+      "required_permission": "adminGuard + app-settings.edit",
+      "module": "TECH-MOD-39"
+    },
+    {
+      "method": "GET",
+      "path": "/banks",
+      "description": "List banks",
+      "required_permission": "auth",
+      "module": "TECH-MOD-40"
+    },
+    {
+      "method": "GET",
+      "path": "/banks/:id",
+      "description": "Get bank",
+      "required_permission": "auth",
+      "module": "TECH-MOD-40"
+    },
+    {
+      "method": "POST",
+      "path": "/banks",
+      "description": "Create bank",
+      "required_permission": "adminGuard",
+      "module": "TECH-MOD-40"
+    },
+    {
+      "method": "PUT",
+      "path": "/banks/:id",
+      "description": "Update bank",
+      "required_permission": "adminGuard",
+      "module": "TECH-MOD-40"
+    },
+    {
+      "method": "DELETE",
+      "path": "/banks/:id",
+      "description": "Delete bank",
+      "required_permission": "adminGuard",
+      "module": "TECH-MOD-40"
+    },
+    {
+      "method": "GET",
+      "path": "/bank-branches",
+      "description": "List branches",
+      "required_permission": "auth",
+      "module": "TECH-MOD-40"
+    },
+    {
+      "method": "GET",
+      "path": "/bank-branches/:id",
+      "description": "Get branch",
+      "required_permission": "auth",
+      "module": "TECH-MOD-40"
+    },
+    {
+      "method": "POST",
+      "path": "/bank-branches",
+      "description": "Create branch",
+      "required_permission": "adminGuard",
+      "module": "TECH-MOD-40"
+    },
+    {
+      "method": "PUT",
+      "path": "/bank-branches/:id",
+      "description": "Update branch",
+      "required_permission": "adminGuard",
+      "module": "TECH-MOD-40"
+    },
+    {
+      "method": "GET",
+      "path": "/cities",
+      "description": "List all cities",
+      "required_permission": "auth",
+      "module": "TECH-MOD-41"
+    },
+    {
+      "method": "GET",
+      "path": "/cities/:id",
+      "description": "Get city by ID",
+      "required_permission": "auth",
+      "module": "TECH-MOD-41"
+    },
+    {
+      "method": "GET",
+      "path": "/provinces/:provinceId/cities",
+      "description": "List cities by province",
+      "required_permission": "auth",
+      "module": "TECH-MOD-41"
+    },
+    {
+      "method": "POST",
+      "path": "/cities",
+      "description": "Create city",
+      "required_permission": "adminGuard",
+      "module": "TECH-MOD-41"
+    },
+    {
+      "method": "GET",
+      "path": "/countries",
+      "description": "List all countries",
+      "required_permission": "auth",
+      "module": "TECH-MOD-42"
+    },
+    {
+      "method": "GET",
+      "path": "/countries/:id",
+      "description": "Get country by ID",
+      "required_permission": "auth",
+      "module": "TECH-MOD-42"
+    },
+    {
+      "method": "POST",
+      "path": "/countries",
+      "description": "Create country",
+      "required_permission": "adminGuard",
+      "module": "TECH-MOD-42"
+    },
+    {
+      "method": "PUT",
+      "path": "/countries/:id",
+      "description": "Update country",
+      "required_permission": "adminGuard",
+      "module": "TECH-MOD-42"
+    },
+    {
+      "method": "GET",
+      "path": "/currencies",
+      "description": "List all currencies",
+      "required_permission": "auth",
+      "module": "TECH-MOD-43"
+    },
+    {
+      "method": "GET",
+      "path": "/currencies/:id",
+      "description": "Get currency by ID",
+      "required_permission": "auth",
+      "module": "TECH-MOD-43"
+    },
+    {
+      "method": "POST",
+      "path": "/currencies",
+      "description": "Create currency",
+      "required_permission": "adminGuard",
+      "module": "TECH-MOD-43"
+    },
+    {
+      "method": "PUT",
+      "path": "/currencies/:id",
+      "description": "Update currency",
+      "required_permission": "adminGuard",
+      "module": "TECH-MOD-43"
+    },
+    {
+      "method": "GET",
+      "path": "/public/theme",
+      "description": "Get published theme",
+      "required_permission": "—",
+      "module": "TECH-MOD-44"
+    },
+    {
+      "method": "GET",
+      "path": "/appearance/theme",
+      "description": "Get my role theme",
+      "required_permission": "appearance.role-customize",
+      "module": "TECH-MOD-44"
+    },
+    {
+      "method": "PUT",
+      "path": "/appearance/my-theme",
+      "description": "Save my role theme",
+      "required_permission": "appearance.role-customize",
+      "module": "TECH-MOD-44"
+    },
+    {
+      "method": "GET",
+      "path": "/design-tokens/studio",
+      "description": "Get theme studio editor data",
+      "required_permission": "view",
+      "module": "TECH-MOD-44"
+    },
+    {
+      "method": "PUT",
+      "path": "/design-tokens/theme",
+      "description": "Save theme draft",
+      "required_permission": "edit",
+      "module": "TECH-MOD-44"
+    },
+    {
+      "method": "POST",
+      "path": "/design-tokens/publish",
+      "description": "Publish theme",
+      "required_permission": "publish",
+      "module": "TECH-MOD-44"
+    },
+    {
+      "method": "POST",
+      "path": "/design-tokens/rollback/:versionId",
+      "description": "Rollback to version",
+      "required_permission": "rollback",
+      "module": "TECH-MOD-44"
+    },
+    {
+      "method": "GET",
+      "path": "/design-tokens",
+      "description": "List tokens",
+      "required_permission": "view",
+      "module": "TECH-MOD-44"
+    },
+    {
+      "method": "GET",
+      "path": "/design-tokens/:id",
+      "description": "Get token",
+      "required_permission": "view",
+      "module": "TECH-MOD-44"
+    },
+    {
+      "method": "POST",
+      "path": "/design-tokens",
+      "description": "Create token",
+      "required_permission": "create",
+      "module": "TECH-MOD-44"
+    },
+    {
+      "method": "PUT",
+      "path": "/design-tokens/:id",
+      "description": "Update token",
+      "required_permission": "edit",
+      "module": "TECH-MOD-44"
+    },
+    {
+      "method": "DELETE",
+      "path": "/design-tokens/:id",
+      "description": "Delete token",
+      "required_permission": "delete",
+      "module": "TECH-MOD-44"
+    },
+    {
+      "method": "GET",
+      "path": "/public/geo/currency",
+      "description": "Detect currency from request",
+      "required_permission": "—",
+      "module": "TECH-MOD-45"
+    },
+    {
+      "method": "GET",
+      "path": "/public/languages",
+      "description": "List active languages (public)",
+      "required_permission": "—",
+      "module": "TECH-MOD-46"
+    },
+    {
+      "method": "GET",
+      "path": "/languages",
+      "description": "List all languages",
+      "required_permission": "auth",
+      "module": "TECH-MOD-46"
+    },
+    {
+      "method": "GET",
+      "path": "/languages/:id",
+      "description": "Get language",
+      "required_permission": "auth",
+      "module": "TECH-MOD-46"
+    },
+    {
+      "method": "POST",
+      "path": "/languages",
+      "description": "Create language",
+      "required_permission": "adminGuard",
+      "module": "TECH-MOD-46"
+    },
+    {
+      "method": "GET",
+      "path": "/provinces",
+      "description": "List all provinces",
+      "required_permission": "auth",
+      "module": "TECH-MOD-47"
+    },
+    {
+      "method": "GET",
+      "path": "/provinces/:id",
+      "description": "Get province by ID",
+      "required_permission": "auth",
+      "module": "TECH-MOD-47"
+    },
+    {
+      "method": "GET",
+      "path": "/countries/:countryId/provinces",
+      "description": "List provinces by country",
+      "required_permission": "auth",
+      "module": "TECH-MOD-47"
+    },
+    {
+      "method": "POST",
+      "path": "/provinces",
+      "description": "Create province",
+      "required_permission": "adminGuard",
+      "module": "TECH-MOD-47"
+    },
+    {
+      "method": "GET",
+      "path": "/sidebar/layout",
+      "description": "Get saved sidebar layout",
+      "required_permission": "auth",
+      "module": "TECH-MOD-49"
+    },
+    {
+      "method": "PUT",
+      "path": "/sidebar/layout",
+      "description": "Save sidebar layout",
+      "required_permission": "sidebar.layout.manage",
+      "module": "TECH-MOD-49"
+    },
+    {
+      "method": "GET",
+      "path": "/players/my/dashboard",
+      "description": "Player dashboard",
+      "required_permission": "player.dashboard.view",
+      "module": "TECH-MOD-52"
+    },
+    {
+      "method": "GET",
+      "path": "/players/my/upcoming",
+      "description": "Upcoming items",
+      "required_permission": "player.dashboard.view",
+      "module": "TECH-MOD-52"
+    },
+    {
+      "method": "GET",
+      "path": "/players/my/statistics",
+      "description": "Player statistics",
+      "required_permission": "player.statistics.view",
+      "module": "TECH-MOD-52"
+    }
+  ]
+}

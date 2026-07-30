@@ -755,6 +755,7 @@ export class PaymentService {
     if (!transaction) throw new NotFoundError('Payment transaction');
     return {
       paymentId: (transaction as any).id,
+      userId: (transaction as any).user_id,
       paymentStatus: (transaction as any).payment_status,
       referenceType: (transaction as any).reference_type,
       bookingId: (transaction as any).booking_id,

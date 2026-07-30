@@ -1,0 +1,1020 @@
+{
+  "modules": [
+    {
+      "id": "TECH-MOD-01",
+      "name": "Auth Module",
+      "entities": [
+        "User",
+        "Session"
+      ],
+      "events": [
+        "user:registered",
+        "user:logged_out",
+        "user:reactivated"
+      ],
+      "permissions": [
+        "app.registration_enabled",
+        "player.registration_enabled",
+        "seller.registration_enabled",
+        "organization.registration_enabled",
+        "auth.temporary_password_reset_enabled",
+        "auth.routes.ts",
+        "auth.service.ts",
+        "auth.controller.ts",
+        "USER.REGISTER",
+        "USER.LOGIN",
+        "USER.LOGIN_FAILED",
+        "USER.PASSWORD_RESET",
+        "USER.DELETE"
+      ],
+      "routes": []
+    },
+    {
+      "id": "TECH-MOD-02",
+      "name": "RBAC Module",
+      "entities": [
+        "Role",
+        "Permission"
+      ],
+      "events": [],
+      "permissions": [
+        "module.entity.action",
+        "users.*",
+        "bookings.*",
+        "academy.*",
+        "tournament.*",
+        "league.*",
+        "hr.*",
+        "financial.*",
+        "audit.view",
+        "bi.*",
+        "rbac.routes.ts",
+        "ROLE.CREATE",
+        "ROLE.UPDATE",
+        "ROLE.DELETE",
+        "PERMISSION.ASSIGN",
+        "PERMISSION.REVOKE",
+        "PERMISSION.SYNC"
+      ],
+      "routes": []
+    },
+    {
+      "id": "TECH-MOD-03",
+      "name": "Booking Module",
+      "entities": [
+        "Booking"
+      ],
+      "events": [
+        "booking:created",
+        "booking:cancelled",
+        "booking:checked_in",
+        "booking:matchmaking_started",
+        "booking:applicant_applied",
+        "booking:applicant_responded"
+      ],
+      "permissions": [
+        "bookings.create",
+        "bookings.view",
+        "bookings.cancel",
+        "bookings.check-in",
+        "admin.bookings.update-status",
+        "org.bookings.manage",
+        "bookings.matchmaking",
+        "BOOKING.CREATE",
+        "BOOKING.CANCEL",
+        "BOOKING.REFUND",
+        "BOOKING.STATUS_CHANGE"
+      ],
+      "routes": []
+    },
+    {
+      "id": "TECH-MOD-04",
+      "name": "Academy Module",
+      "entities": [],
+      "events": [
+        ":37",
+        "academy:program_created",
+        "academy:program_status_changed",
+        "academy:enrollment_confirmed",
+        "academy:attendance_recorded"
+      ],
+      "permissions": [
+        "academy.routes.ts",
+        "academy.dashboard.view",
+        "academy.view",
+        "academy.create",
+        "academy.update",
+        "academy.delete",
+        "academy.publish",
+        "academy.enroll",
+        "academy.manage",
+        "attendance.manage",
+        "lifecycle.ts"
+      ],
+      "routes": []
+    },
+    {
+      "id": "TECH-MOD-05",
+      "name": "Tournaments Module",
+      "entities": [
+        "Tournament",
+        "Registration"
+      ],
+      "events": [
+        "tournament:created",
+        "tournament:registration_opened",
+        "tournament:player_registered",
+        "tournament:match_result_recorded"
+      ],
+      "permissions": [
+        "tournament.routes.ts",
+        "tournament.dashboard.view",
+        "tournament.view",
+        "tournament.create",
+        "tournament.update",
+        "tournament.publish",
+        "tournament.delete",
+        "tournament.register",
+        "tournament.manage",
+        "tournament.result.manage",
+        "lifecycle.ts"
+      ],
+      "routes": []
+    },
+    {
+      "id": "TECH-MOD-06",
+      "name": "Leagues Module",
+      "entities": [],
+      "events": [
+        "league:season_created",
+        "league:league_created",
+        "league:team_registered",
+        "league:fixtures_generated",
+        "league:standings_recalculated"
+      ],
+      "permissions": [
+        "league.routes.ts",
+        "league.dashboard.view",
+        "season.*",
+        "league.*",
+        "league.update",
+        "league.manage",
+        "league.delete",
+        "league.view",
+        "league.result.manage",
+        "season.view",
+        "season.create",
+        "season.update",
+        "season.publish",
+        "season.delete",
+        "league.create"
+      ],
+      "routes": []
+    },
+    {
+      "id": "TECH-MOD-07",
+      "name": "Marketplace Module",
+      "entities": [
+        "Product",
+        "Variant"
+      ],
+      "events": [
+        "marketplace:product_created",
+        "marketplace:order_created",
+        "marketplace:settlement_requested",
+        "marketplace:review_created"
+      ],
+      "permissions": [
+        "marketplace.routes.ts",
+        "inventory.routes.ts",
+        "marketplace.sell",
+        "marketplace.moderate",
+        "marketplace.seller.settlements",
+        "marketplace.seller.request-settlement",
+        "inventory.warehouses.view",
+        "inventory.warehouses.manage",
+        "inventory.suppliers.view",
+        "inventory.suppliers.manage",
+        "inventory.purchase-orders.view",
+        "inventory.purchase-orders.manage",
+        "inventory.stock.view",
+        "inventory.stock.manage",
+        "MARKETPLACE.PRODUCT_CREATE",
+        "MARKETPLACE.PRODUCT_UPDATE",
+        "MARKETPLACE.PRODUCT_DELETE",
+        "MARKETPLACE.ORDER_STATUS",
+        "app.marketplace_enabled"
+      ],
+      "routes": []
+    },
+    {
+      "id": "TECH-MOD-08",
+      "name": "Inventory Module",
+      "entities": [
+        "Warehouse",
+        "Supplier"
+      ],
+      "events": [],
+      "permissions": [
+        "inventory.controller.ts",
+        "inventory.warehouses.view",
+        "inventory.warehouses.manage",
+        "inventory.suppliers.view",
+        "inventory.suppliers.manage",
+        "inventory.purchase-orders.view",
+        "inventory.purchase-orders.manage",
+        "inventory.stock.manage",
+        "inventory.stock.view",
+        "product_variants.quantity",
+        "purchase_order_items.received_qty",
+        "WAREHOUSE.CREATE",
+        "WAREHOUSE.UPDATE",
+        "WAREHOUSE.DELETE",
+        "SUPPLIER.CREATE",
+        "SUPPLIER.UPDATE",
+        "SUPPLIER.DELETE",
+        "PURCHASE_ORDER.CREATE",
+        "PURCHASE_ORDER.UPDATE",
+        "PURCHASE_ORDER.SUBMIT",
+        "PURCHASE_ORDER.APPROVE",
+        "PURCHASE_ORDER.RECEIVE",
+        "PURCHASE_ORDER.CANCEL",
+        "STOCK_TRANSFER.CREATE",
+        "STOCK_TRANSFER.COMPLETE",
+        "STOCK.ADJUST"
+      ],
+      "routes": []
+    },
+    {
+      "id": "TECH-MOD-09",
+      "name": "Payment Module",
+      "entities": [
+        "Payment Transaction"
+      ],
+      "events": [
+        "payment:charged",
+        "payment:confirmed",
+        "payment:webhook_received",
+        "payment:refunded",
+        "payment:recovered",
+        "payment:reconciliation_completed"
+      ],
+      "permissions": [
+        "payment.routes.ts",
+        "payment.controller.ts",
+        "financial.reconcile",
+        "PAYMENT.PROCESS",
+        "PAYMENT.CONFIRM",
+        "PAYMENT.REFUND",
+        "PAYMENT.WEBHOOK",
+        "PAYMENT.RECOVER"
+      ],
+      "routes": []
+    },
+    {
+      "id": "TECH-MOD-10",
+      "name": "Wallet Module",
+      "entities": [
+        "Wallet",
+        "Transaction"
+      ],
+      "events": [
+        "wallet:deposit",
+        "wallet:withdrawal",
+        "wallet:payment",
+        "wallet:refund",
+        "wallet:balance_low",
+        "wallet:withdrawal"
+      ],
+      "permissions": [
+        "wallet.routes.ts",
+        "wallet.controller.ts",
+        "wallet.service.ts",
+        "financial.withdraw",
+        "WALLET.CREATE",
+        "WALLET.CREDIT",
+        "WALLET.DEBIT",
+        "WALLET.ADJUST"
+      ],
+      "routes": []
+    },
+    {
+      "id": "TECH-MOD-11",
+      "name": "Financial Module",
+      "entities": [
+        "Ledger Entry"
+      ],
+      "events": [],
+      "permissions": [
+        "ledger.entry.created",
+        "settlement.service.ts",
+        "settlement.created",
+        "transaction.repository.ts",
+        "financial.view",
+        "financial.process_payouts"
+      ],
+      "routes": []
+    },
+    {
+      "id": "TECH-MOD-12",
+      "name": "Accounting Module",
+      "entities": [
+        "Account",
+        "Period"
+      ],
+      "events": [
+        "accounting:journal_entry_created",
+        "accounting:period_closed",
+        "accounting:invoice_issued",
+        "accounting:invoice_paid",
+        "accounting:invoice_cancelled"
+      ],
+      "permissions": [
+        "accounting.routes.ts",
+        "accounting.coa.view",
+        "accounting.coa.manage",
+        "accounting.periods.view",
+        "accounting.periods.manage",
+        "accounting.gl.view",
+        "accounting.journal.create",
+        "accounting.journal.view",
+        "accounting.invoices.view",
+        "accounting.invoices.manage",
+        "accounting.tax.view",
+        "accounting.tax.manage",
+        "FINANCIAL.TRANSACTION"
+      ],
+      "routes": []
+    },
+    {
+      "id": "TECH-MOD-13",
+      "name": "Organisations Module",
+      "entities": [
+        "Organisation",
+        "Branch"
+      ],
+      "events": [
+        "organisation:created",
+        "organisation:subscription_changed",
+        "organisation:coach_invited",
+        "branch:created",
+        "resource:created"
+      ],
+      "permissions": [
+        "organisation.routes.ts",
+        "org.members.manage",
+        "org.announcements.manage",
+        "org.documents.manage",
+        "org.gallery.manage",
+        "org.branches.manage",
+        "org.settings.edit",
+        "ORGANISATION.CREATE",
+        "ORGANISATION.UPDATE",
+        "ORGANISATION.DELETE",
+        "ORGANISATION.VERIFY"
+      ],
+      "routes": []
+    },
+    {
+      "id": "TECH-MOD-14",
+      "name": "Notifications Module",
+      "entities": [
+        "Notification",
+        "Notification Type"
+      ],
+      "events": [],
+      "permissions": [
+        "notification.routes.ts",
+        "notification_templates.view",
+        "notification_templates.create",
+        "notification_templates.update",
+        "notification_templates.delete",
+        "notification_templates.publish",
+        "notification_types.view",
+        "notification_types.create",
+        "notification_types.update",
+        "notification_types.delete",
+        "booking.*",
+        "user.*",
+        "payment.*",
+        "wallet.*",
+        "marketplace.*",
+        "academy.*",
+        "tournament.*",
+        "league.*",
+        "organisation.*",
+        "support.*",
+        "admin.*",
+        "UPLOAD.CREATE",
+        "UPLOAD.DELETE",
+        "SETTINGS.UPDATE",
+        "FEATURE_FLAG.TOGGLE",
+        "CMS.UPDATE"
+      ],
+      "routes": []
+    },
+    {
+      "id": "TECH-MOD-15",
+      "name": "CRM Module",
+      "entities": [
+        "Segment"
+      ],
+      "events": [
+        "crm:lead_created",
+        "crm:campaign_launched",
+        "crm:segment_refreshed"
+      ],
+      "permissions": [
+        "crm.routes.ts",
+        "crm.customers.view",
+        "crm.segments.view",
+        "crm.segments.manage",
+        "crm.leads.view",
+        "crm.leads.manage",
+        "crm.campaigns.view",
+        "crm.campaigns.manage",
+        "crm.communications.view",
+        "crm.dashboard.view"
+      ],
+      "routes": []
+    },
+    {
+      "id": "TECH-MOD-16",
+      "name": "HR Module",
+      "entities": [
+        "Department",
+        "Position"
+      ],
+      "events": [
+        "hr:employee_created",
+        "hr:leave_request_submitted",
+        "hr:payroll_run_calculated",
+        "hr:attendance_recorded"
+      ],
+      "permissions": [
+        "hr.routes.ts",
+        "hr.controller.ts",
+        "hr.departments.view",
+        "hr.departments.manage",
+        "hr.positions.view",
+        "hr.positions.manage",
+        "hr.employees.view",
+        "hr.employees.manage",
+        "hr.contracts.view",
+        "hr.contracts.manage",
+        "hr.leaves.types.view",
+        "hr.leaves.types.manage",
+        "hr.leaves.requests.view",
+        "hr.leaves.requests.manage",
+        "hr.leaves.requests.approve",
+        "hr.leaves.balances.view",
+        "hr.leaves.balances.manage",
+        "hr.attendance.manage",
+        "hr.attendance.view",
+        "hr.payroll.components.view",
+        "hr.payroll.components.manage",
+        "hr.payroll.runs.view",
+        "hr.payroll.runs.manage",
+        "hr.payroll.runs.calculate",
+        "hr.payroll.runs.approve",
+        "hr.payroll.runs.post",
+        "hr.dashboard.view"
+      ],
+      "routes": []
+    },
+    {
+      "id": "TECH-MOD-17",
+      "name": "Match Module",
+      "entities": [
+        "Match",
+        "Join Request"
+      ],
+      "events": [],
+      "permissions": [
+        "match.types.ts"
+      ],
+      "routes": []
+    },
+    {
+      "id": "TECH-MOD-18",
+      "name": "Membership Module",
+      "entities": [
+        "Plan"
+      ],
+      "events": [
+        "membership:expiring"
+      ],
+      "permissions": [
+        "membership.view",
+        "membership.create",
+        "membership.update",
+        "membership.delete",
+        "membership.assign",
+        "membership.manage"
+      ],
+      "routes": []
+    },
+    {
+      "id": "TECH-MOD-19",
+      "name": "Scheduling Module",
+      "entities": [],
+      "events": [
+        "scheduling:search_completed",
+        "scheduling:booking_created",
+        "scheduling:booking_compensated"
+      ],
+      "permissions": [
+        "types.ts",
+        "court.provider.ts",
+        "coach.provider.ts",
+        "referee.provider.ts"
+      ],
+      "routes": []
+    },
+    {
+      "id": "TECH-MOD-20",
+      "name": "Security Module",
+      "entities": [
+        "Session",
+        "Failed Login"
+      ],
+      "events": [],
+      "permissions": [
+        "security.routes.ts",
+        "ADMIN.ACTION"
+      ],
+      "routes": []
+    },
+    {
+      "id": "TECH-MOD-21",
+      "name": "Audit Log Module",
+      "entities": [
+        "Audit Log"
+      ],
+      "events": [
+        "audit:recorded"
+      ],
+      "permissions": [
+        "audit.view",
+        "USER.LOGIN",
+        "USER.LOGOUT",
+        "USER.REGISTER",
+        "USER.LOGIN_FAILED",
+        "USER.PASSWORD_RESET",
+        "USER.PASSWORD_CHANGE",
+        "USER.DELETE",
+        "ROLE.CREATE",
+        "ROLE.UPDATE",
+        "ROLE.DELETE",
+        "PERMISSION.ASSIGN",
+        "PERMISSION.REVOKE",
+        "PERMISSION.SYNC",
+        "ORGANISATION.CREATE",
+        "ORGANISATION.UPDATE",
+        "ORGANISATION.DELETE",
+        "ORGANISATION.VERIFY",
+        "WALLET.CREATE",
+        "WALLET.CREDIT",
+        "WALLET.DEBIT",
+        "WALLET.ADJUST",
+        "SETTLEMENT.CREATE",
+        "SETTLEMENT.PROCESS",
+        "SETTLEMENT.APPROVE",
+        "SETTLEMENT.REJECT",
+        "BOOKING.CREATE",
+        "BOOKING.CANCEL",
+        "BOOKING.REFUND",
+        "BOOKING.STATUS_CHANGE",
+        "MARKETPLACE.PRODUCT_CREATE",
+        "MARKETPLACE.PRODUCT_UPDATE",
+        "MARKETPLACE.PRODUCT_DELETE",
+        "MARKETPLACE.ORDER_STATUS",
+        "FINANCIAL.TRANSACTION",
+        "UPLOAD.CREATE",
+        "UPLOAD.DELETE",
+        "SETTINGS.UPDATE",
+        "FEATURE_FLAG.TOGGLE",
+        "CMS.UPDATE",
+        "ADMIN.ACTION",
+        "SUBSCRIPTION.CREATED",
+        "SUBSCRIPTION.TOGGLE_STATUS"
+      ],
+      "routes": []
+    },
+    {
+      "id": "TECH-MOD-22",
+      "name": "Support Module",
+      "entities": [
+        "Ticket",
+        "Ticket Message"
+      ],
+      "events": [
+        "support:ticket_created",
+        "support:ticket_assigned",
+        "support:ticket_message_added",
+        "support:ticket_status_changed"
+      ],
+      "permissions": [
+        "support.routes.ts",
+        "support.tickets.view",
+        "support.tickets.manage",
+        "support.tickets.create"
+      ],
+      "routes": []
+    },
+    {
+      "id": "TECH-MOD-23",
+      "name": "Content Management Module",
+      "entities": [],
+      "events": [],
+      "permissions": [
+        "cms.service.ts"
+      ],
+      "routes": []
+    },
+    {
+      "id": "TECH-MOD-24",
+      "name": "Community Module",
+      "entities": [],
+      "events": [],
+      "permissions": [
+        "community.events_enabled",
+        "community.chat_enabled",
+        "community.create_events",
+        "community.chat.view",
+        "community.chat.send",
+        "ads.create",
+        "audit.revert",
+        "community.service.ts"
+      ],
+      "routes": []
+    },
+    {
+      "id": "TECH-MOD-25",
+      "name": "BI Module",
+      "entities": [],
+      "events": [
+        "bi:dashboard_viewed",
+        "bi:report_exported"
+      ],
+      "permissions": [
+        "bi.routes.ts",
+        "bi.dashboard.view",
+        "bi.kpi.view",
+        "bi.export",
+        "bi.observability.view"
+      ],
+      "routes": []
+    },
+    {
+      "id": "TECH-MOD-26",
+      "name": "Sports Engine Module",
+      "entities": [
+        "ELO Rating"
+      ],
+      "events": [],
+      "permissions": [],
+      "routes": []
+    },
+    {
+      "id": "TECH-MOD-27",
+      "name": "Integration Module",
+      "entities": [],
+      "events": [],
+      "permissions": [
+        "integration.api-keys.manage",
+        "integration.api-keys.view"
+      ],
+      "routes": []
+    },
+    {
+      "id": "TECH-MOD-28",
+      "name": "Mobile Module",
+      "entities": [],
+      "events": [],
+      "permissions": [
+        "mobile.versions.view",
+        "mobile.versions.manage",
+        "mobile.config.view",
+        "mobile.config.manage",
+        "mobile.push.view",
+        "mobile.dashboard.view",
+        "MOBILE.PUSH.REGISTER",
+        "MOBILE.PUSH.UNREGISTER"
+      ],
+      "routes": []
+    },
+    {
+      "id": "TECH-MOD-29",
+      "name": "Reports Module",
+      "entities": [],
+      "events": [],
+      "permissions": [
+        "reports.service.ts"
+      ],
+      "routes": []
+    },
+    {
+      "id": "TECH-MOD-30",
+      "name": "Settlement Module",
+      "entities": [
+        "Settlement"
+      ],
+      "events": [
+        "settlement:completed",
+        "settlement:completed"
+      ],
+      "permissions": [
+        "settlement.service.ts",
+        "settlements.request",
+        "settlements.approve",
+        "settlements.pay",
+        "settlements.complete",
+        "settlements.reject",
+        "settlements.cancel",
+        "settlements.view",
+        "settlements.bank_account_snapshot"
+      ],
+      "routes": []
+    },
+    {
+      "id": "TECH-MOD-31",
+      "name": "Coupon Module",
+      "entities": [],
+      "events": [
+        "coupon:published",
+        "coupon:published"
+      ],
+      "permissions": [
+        "financial.view",
+        "financial.process_payouts",
+        "coupon.service.ts"
+      ],
+      "routes": []
+    },
+    {
+      "id": "TECH-MOD-32",
+      "name": "Pricing Module",
+      "entities": [],
+      "events": [],
+      "permissions": [],
+      "routes": []
+    },
+    {
+      "id": "TECH-MOD-33",
+      "name": "Upload Module",
+      "entities": [],
+      "events": [
+        ":26"
+      ],
+      "permissions": [
+        "UPLOAD.CREATE",
+        "UPLOAD.DELETE"
+      ],
+      "routes": []
+    },
+    {
+      "id": "TECH-MOD-34",
+      "name": "Translations Module",
+      "entities": [],
+      "events": [],
+      "permissions": [
+        "translations.service.ts",
+        "booking.title"
+      ],
+      "routes": []
+    },
+    {
+      "id": "TECH-MOD-35",
+      "name": "Activities Module",
+      "entities": [],
+      "events": [
+        "tournament:created",
+        "tournament:result",
+        "academy:enrolled",
+        "organisation:approved"
+      ],
+      "permissions": [
+        "app.tournaments_enabled",
+        "tournaments.create",
+        "tournaments.manage_brackets",
+        "tournaments.enter_scores",
+        "app.academies_enabled",
+        "academies.create",
+        "academies.edit",
+        "academies.evaluate",
+        "coaches.manage_profile",
+        "coaches.manage_agreements",
+        "coaches.invites.respond",
+        "coaches.create_sessions",
+        "coaches.book",
+        "coaches.respond_request",
+        "coaches.confirm_session",
+        "coaches.start_session",
+        "coaches.complete_session",
+        "coaches.no_show",
+        "coaches.availability.manage",
+        "activities.service.ts"
+      ],
+      "routes": []
+    },
+    {
+      "id": "TECH-MOD-36",
+      "name": "Admin Module",
+      "entities": [],
+      "events": [],
+      "permissions": [
+        "system_settings.view",
+        "system_settings.update",
+        "feature_flags.view",
+        "feature_flags.update",
+        "system_health.view",
+        "cache.manage",
+        "queue.view",
+        "queue.manage",
+        "health.service.ts",
+        "cache.service.ts",
+        "queue.service.ts"
+      ],
+      "routes": []
+    },
+    {
+      "id": "TECH-MOD-37",
+      "name": "Amenities Module",
+      "entities": [],
+      "events": [],
+      "permissions": [
+        "amenities.service.ts"
+      ],
+      "routes": []
+    },
+    {
+      "id": "TECH-MOD-38",
+      "name": "Approvals Module",
+      "entities": [],
+      "events": [
+        "organisation:approved"
+      ],
+      "permissions": [
+        "approval.service.ts"
+      ],
+      "routes": []
+    },
+    {
+      "id": "TECH-MOD-39",
+      "name": "App Settings Module",
+      "entities": [],
+      "events": [],
+      "permissions": [
+        "uploadService.replaceEntityFile"
+      ],
+      "routes": []
+    },
+    {
+      "id": "TECH-MOD-40",
+      "name": "Banks Module",
+      "entities": [],
+      "events": [],
+      "permissions": [
+        "banks.service.ts"
+      ],
+      "routes": []
+    },
+    {
+      "id": "TECH-MOD-41",
+      "name": "Cities Module",
+      "entities": [],
+      "events": [],
+      "permissions": [
+        "cities.service.ts"
+      ],
+      "routes": []
+    },
+    {
+      "id": "TECH-MOD-42",
+      "name": "Countries Module",
+      "entities": [],
+      "events": [],
+      "permissions": [
+        "countries.service.ts",
+        "geo.service.ts"
+      ],
+      "routes": []
+    },
+    {
+      "id": "TECH-MOD-43",
+      "name": "Currencies Module",
+      "entities": [],
+      "events": [],
+      "permissions": [
+        "currencies.service.ts",
+        "system_settings.platform.default_currency"
+      ],
+      "routes": []
+    },
+    {
+      "id": "TECH-MOD-44",
+      "name": "Design Tokens Module",
+      "entities": [],
+      "events": [],
+      "permissions": [
+        "appearance.role-customize"
+      ],
+      "routes": []
+    },
+    {
+      "id": "TECH-MOD-45",
+      "name": "Geo Module",
+      "entities": [],
+      "events": [],
+      "permissions": [
+        "geo.service.ts",
+        "system_settings.platform.default_currency",
+        "ipapi.co"
+      ],
+      "routes": []
+    },
+    {
+      "id": "TECH-MOD-46",
+      "name": "Languages Module",
+      "entities": [],
+      "events": [],
+      "permissions": [
+        "languages.service.ts"
+      ],
+      "routes": []
+    },
+    {
+      "id": "TECH-MOD-47",
+      "name": "Provinces Module",
+      "entities": [],
+      "events": [],
+      "permissions": [
+        "provinces.service.ts"
+      ],
+      "routes": []
+    },
+    {
+      "id": "TECH-MOD-48",
+      "name": "Reference Data Module",
+      "entities": [],
+      "events": [],
+      "permissions": [],
+      "routes": []
+    },
+    {
+      "id": "TECH-MOD-49",
+      "name": "Sidebar Layout Module",
+      "entities": [],
+      "events": [],
+      "permissions": [
+        "sidebar.layout.manage"
+      ],
+      "routes": []
+    },
+    {
+      "id": "TECH-MOD-50",
+      "name": "Time Module",
+      "entities": [],
+      "events": [],
+      "permissions": [],
+      "routes": []
+    },
+    {
+      "id": "TECH-MOD-51",
+      "name": "Coaches Module",
+      "entities": [],
+      "events": [],
+      "permissions": [
+        "activities.routes.ts",
+        "coaches.book",
+        "coaches.respond_request",
+        "coaches.confirm_session",
+        "coaches.start_session",
+        "coaches.complete_session",
+        "coaches.no_show"
+      ],
+      "routes": []
+    },
+    {
+      "id": "TECH-MOD-52",
+      "name": "Player Experience Module",
+      "entities": [],
+      "events": [],
+      "permissions": [
+        "player.dashboard.view",
+        "player.statistics.view",
+        "player.qr.view",
+        "player.search",
+        "player.profile.view",
+        "player.favorites.manage",
+        "player.devices.manage",
+        "player.achievements.view",
+        "player.rank.history",
+        "player.service.ts",
+        "player.types.ts"
+      ],
+      "routes": []
+    }
+  ]
+}

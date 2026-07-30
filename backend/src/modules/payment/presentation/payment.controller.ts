@@ -3,7 +3,7 @@ import { paymentService } from '../application/payment.service.js';
 import { reconciliationService } from '../application/reconciliation.service.js';
 import { recordAudit } from '../../audit-log/index.js';
 import { ChargeSchema, RefundPaymentSchema, ConfirmPaymentSchema } from './payment.dto.js';
-import { NotFoundError } from '../../../shared/errors/app-error.js';
+import { NotFoundError, ForbiddenError } from '../../../shared/errors/app-error.js';
 import { createModuleLogger } from '../../../shared/utils/logger.js';
 
 
@@ -34,6 +34,10 @@ export async function chargeHandler(request: FastifyRequest, reply: FastifyReply
 export async function confirmPaymentHandler(request: FastifyRequest, reply: FastifyReply) {
   const userId = (request as any).userId;
   const body = ConfirmPaymentSchema.parse(request.body);
+  const payment = await paymentService.getPaymentStatus(body.paymentId);
+  if (payment.userId !== userId) {
+    throw new ForbiddenError('You can only confirm your own payments');
+  }
   const result = await paymentService.confirmPayment(body.paymentId);
   recordAudit({
     actorId: userId ?? null,
@@ -51,8 +55,12 @@ export async function confirmPaymentHandler(request: FastifyRequest, reply: Fast
 }
 
 export async function getPaymentStatusHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = (request as any).userId;
   const { id } = request.params as { id: string };
   const result = await paymentService.getPaymentStatus(Number(id));
+  if (result.userId !== userId) {
+    throw new ForbiddenError('You can only view your own payment status');
+  }
   return reply.send(result);
 }
 

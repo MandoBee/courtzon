@@ -1,0 +1,563 @@
+graph LR
+  ADMIN_02["ADMIN-02: Organisation Admin Guide"]:::Other
+  BIZ_ARCH_01["BIZ-ARCH-01: Business Vision & Strategy"]:::Business
+  BIZ_ARCH_02["BIZ-ARCH-02: Business Goals & Objectives"]:::Business
+  BIZ_ARCH_03["BIZ-ARCH-03: Business Capability Map"]:::Business
+  BIZ_ARCH_04["BIZ-ARCH-04: Business Process Catalog"]:::Business
+  BIZ_ARCH_05["BIZ-ARCH-05: Business Actor Model"]:::Business
+  BIZ_ARCH_06["BIZ-ARCH-06: Business Event Catalog"]:::Business
+  BIZ_ARCH_07["BIZ-ARCH-07: Business Policy Register"]:::Business
+  BIZ_ARCH_08["BIZ-ARCH-08: Business Rule Catalog"]:::Business
+  BIZ_ARCH_09["BIZ-ARCH-09: Business KPI Framework"]:::Business
+  BIZ_ARCH_10["BIZ-ARCH-10: Business Glossary"]:::Business
+  BIZ_PROD_01["BIZ-PROD-01: Product Vision & Mission"]:::Business
+  BIZ_PROD_02["BIZ-PROD-02: Feature Catalog"]:::Business
+  BIZ_PROD_03["BIZ-PROD-03: Feature Matrix"]:::Business
+  BIZ_PROD_04["BIZ-PROD-04: Product Roadmap"]:::Business
+  BIZ_PROD_06["BIZ-PROD-06: Pricing Model"]:::Business
+  BIZ_PROD_08["BIZ-PROD-08: Edition Comparison"]:::Business
+  GOV_ADR_001["GOV-ADR-001: Global Identity Model"]:::Governance
+  GOV_ADR_002["GOV-ADR-002: Domain Ownership — Modular Monolith"]:::Governance
+  GOV_ADR_003["GOV-ADR-003: Event-Composable Architecture"]:::Governance
+  GOV_ADR_004["GOV-ADR-004: Ledger-Based Transaction Model"]:::Governance
+  GOV_ADR_005["GOV-ADR-005: Finance Owns Financial Truth"]:::Governance
+  GOV_ADR_006["GOV-ADR-006: Inventory Ledger-Based Transactions"]:::Governance
+  GOV_ADR_007["GOV-ADR-007: Single Order Aggregate"]:::Governance
+  GOV_ADR_008["GOV-ADR-008: Academy State Machine"]:::Governance
+  GOV_ADR_009["GOV-ADR-009: Tournament Format Strategy"]:::Governance
+  GOV_ADR_010["GOV-ADR-010: CRM Read Model Pattern"]:::Governance
+  GOV_ADR_011["GOV-ADR-011: HR Payroll — Finance Separation"]:::Governance
+  GOV_ADR_012["GOV-ADR-012: Session Management — HttpOnly Cookies with Bearer Token Fallback"]:::Governance
+  GOV_ADR_013["GOV-ADR-013: Payment Gateway Abstraction — Factory Pattern"]:::Governance
+  GOV_ADR_014["GOV-ADR-014: Notification Multi-Channel — Pluggable Provider Architecture"]:::Governance
+  GOV_ADR_015["GOV-ADR-015: Booking Concurrency — Redis Distributed Locks + DB Constraints"]:::Governance
+  GOV_ADR_016["GOV-ADR-016: Organization-Scoped RBAC"]:::Governance
+  GOV_ADR_017["GOV-ADR-017: Scheduling Engine — Provider-Based Search"]:::Governance
+  GOV_ADR_018["GOV-ADR-018: Marketplace Settlement — Settlement Lifecycle with Financial Recording"]:::Governance
+  GOV_ADR_019["GOV-ADR-019: HR-Payroll / Finance Boundary — HR Calculates, Finance Posts"]:::Governance
+  GOV_ADR_020["GOV-ADR-020: Academy Attendance Immutability"]:::Governance
+  GOV_ADR_021["GOV-ADR-021: Standings Persistence — Pre-Computed Rankings in Database"]:::Governance
+  GOV_ADR_022["GOV-ADR-022: Customer 360 — UNION Query Across Business Domains"]:::Governance
+  GOV_ADR_023["GOV-ADR-023: Inventory Ledger — Immutable Log as Source of Truth"]:::Governance
+  GOV_ADR_024["GOV-ADR-024: API Versioning Strategy — URL Prefix + API Key Authentication"]:::Governance
+  GOV_ADR_025["GOV-ADR-025: Database Migration Strategy — Additive SQL with Authoritative Baseline"]:::Governance
+  OPS_DEPLOY_01["OPS-DEPLOY-01: Deployment Guide"]:::Operations
+  OPS_MON_01["OPS-MON-01: Monitoring Guide"]:::Operations
+  OPS_RUN_01["OPS-RUN-01: Backup and Restore"]:::Operations
+  OPS_RUN_02["OPS-RUN-02: Troubleshooting Guide"]:::Operations
+  QUAL_CERT_01["QUAL-CERT-01: Certification Report"]:::Quality
+  QUAL_TEST_01["QUAL-TEST-01: Testing Strategy"]:::Quality
+  QUAL_TEST_02["QUAL-TEST-02: Unit Test Reference"]:::Quality
+  QUAL_TEST_03["QUAL-TEST-03: Integration Test Reference"]:::Quality
+  QUAL_TEST_04["QUAL-TEST-04: E2E Test Reference"]:::Quality
+  QUAL_TRACE_01_Requirements_Traceability_Matrix["QUAL-TRACE-01_Requirements_Traceability_Matrix: QUAL-TRACE-01 Requirements Traceability Matrix"]:::Other
+  TECH_ARCH_01["TECH-ARCH-01: System Architecture"]:::Architecture
+  TECH_ARCH_02["TECH-ARCH-02: Module Architecture"]:::Architecture
+  TECH_ARCH_03["TECH-ARCH-03: Domain Model"]:::Architecture
+  TECH_ARCH_04["TECH-ARCH-04: Event Architecture"]:::Architecture
+  TECH_ARCH_05["TECH-ARCH-05: Data Architecture"]:::Architecture
+  TECH_ARCH_06["TECH-ARCH-06: Integration Architecture"]:::Architecture
+  TECH_ARCH_07["TECH-ARCH-07: Security Architecture"]:::Architecture
+  TECH_ARCH_08["TECH-ARCH-08: Deployment Architecture"]:::Architecture
+  TECH_ARCH_10["TECH-ARCH-10: Technology Stack"]:::Architecture
+  TECH_ARCH_11["TECH-ARCH-11: Scalability Design"]:::Architecture
+  TECH_ARCH_12["TECH-ARCH-12: Booking Flow Deep Dive"]:::Architecture
+  TECH_ARCH_13["TECH-ARCH-13: Payment Flow Deep Dive"]:::Architecture
+  TECH_ARCH_14["TECH-ARCH-14: Wallet Architecture"]:::Architecture
+  TECH_ARCH_15["TECH-ARCH-15: Organization Architecture"]:::Architecture
+  TECH_ARCH_16["TECH-ARCH-16: Subscription Architecture"]:::Architecture
+  TECH_ARCH_17["TECH-ARCH-17: Marketplace Architecture"]:::Architecture
+  TECH_ARCH_18["TECH-ARCH-18: Inventory Architecture"]:::Architecture
+  TECH_ARCH_19["TECH-ARCH-19: Academy Architecture"]:::Architecture
+  TECH_ARCH_20["TECH-ARCH-20: Tournament Architecture"]:::Architecture
+  TECH_ARCH_21["TECH-ARCH-21: League Architecture"]:::Architecture
+  TECH_ARCH_22["TECH-ARCH-22: CRM Architecture"]:::Architecture
+  TECH_ARCH_23["TECH-ARCH-23: HR Architecture"]:::Architecture
+  TECH_ARCH_24["TECH-ARCH-24: Reports & BI Architecture"]:::Architecture
+  TECH_ARCH_25["TECH-ARCH-25: Observability Architecture"]:::Architecture
+  TECH_DB_03["TECH-DB-03: Entity Reference"]:::Development
+  TECH_DEV_01["TECH-DEV-01: Coding Standards — TypeScript"]:::Development
+  TECH_DEV_02["TECH-DEV-02: Coding Standards — React"]:::Development
+  TECH_DEV_03["TECH-DEV-03: Folder Structure Standard"]:::Development
+  TECH_DEV_04["TECH-DEV-04: Naming Conventions"]:::Development
+  TECH_DEV_05["TECH-DEV-05: Git Workflow & Branch Strategy"]:::Development
+  TECH_DEV_06["TECH-DEV-06: Commit Message Standards"]:::Development
+  TECH_DEV_07["TECH-DEV-07: Pull Request Standards"]:::Development
+  TECH_DEV_08["TECH-DEV-08: Code Review Standards"]:::Development
+  TECH_DEV_09["TECH-DEV-09: Testing Standards"]:::Development
+  TECH_DEV_10["TECH-DEV-10: Database Migration Standards"]:::Development
+  TECH_DEV_11["TECH-DEV-11: API Design Standards"]:::Development
+  TECH_DEV_12["TECH-DEV-12: Error Handling Standards"]:::Development
+  TECH_DEV_13["TECH-DEV-13: Logging Standards"]:::Development
+  TECH_DEV_14["TECH-DEV-14: Security Coding Standards"]:::Development
+  TECH_DEV_15["TECH-DEV-15: Performance Coding Standards"]:::Development
+  TECH_MOD_01["TECH-MOD-01: Auth Module"]:::Modules
+  TECH_MOD_02["TECH-MOD-02: RBAC Module"]:::Modules
+  TECH_MOD_03["TECH-MOD-03: Booking Module"]:::Modules
+  TECH_MOD_04["TECH-MOD-04: Academy Module"]:::Modules
+  TECH_MOD_05["TECH-MOD-05: Tournaments Module"]:::Modules
+  TECH_MOD_06["TECH-MOD-06: Leagues Module"]:::Modules
+  TECH_MOD_07["TECH-MOD-07: Marketplace Module"]:::Modules
+  TECH_MOD_08["TECH-MOD-08: Inventory Module"]:::Modules
+  TECH_MOD_09["TECH-MOD-09: Payment Module"]:::Modules
+  TECH_MOD_10["TECH-MOD-10: Wallet Module"]:::Modules
+  TECH_MOD_11["TECH-MOD-11: Financial Module"]:::Modules
+  TECH_MOD_12["TECH-MOD-12: Accounting Module"]:::Modules
+  TECH_MOD_13["TECH-MOD-13: Organisations Module"]:::Modules
+  TECH_MOD_14["TECH-MOD-14: Notifications Module"]:::Modules
+  TECH_MOD_15["TECH-MOD-15: CRM Module"]:::Modules
+  TECH_MOD_16["TECH-MOD-16: HR Module"]:::Modules
+  TECH_MOD_17["TECH-MOD-17: Match Module"]:::Modules
+  TECH_MOD_18["TECH-MOD-18: Membership Module"]:::Modules
+  TECH_MOD_19["TECH-MOD-19: Scheduling Module"]:::Modules
+  TECH_MOD_20["TECH-MOD-20: Security Module"]:::Modules
+  TECH_MOD_21["TECH-MOD-21: Audit Log Module"]:::Modules
+  TECH_MOD_22["TECH-MOD-22: Support Module"]:::Modules
+  TECH_MOD_23["TECH-MOD-23: Content Management Module"]:::Modules
+  TECH_MOD_24["TECH-MOD-24: Community Module"]:::Modules
+  TECH_MOD_25["TECH-MOD-25: BI Module"]:::Modules
+  TECH_MOD_26["TECH-MOD-26: Sports Engine Module"]:::Modules
+  TECH_MOD_27["TECH-MOD-27: Integration Module"]:::Modules
+  TECH_MOD_28["TECH-MOD-28: Mobile Module"]:::Modules
+  TECH_MOD_29["TECH-MOD-29: Reports Module"]:::Modules
+  TECH_MOD_30["TECH-MOD-30: Settlement Module"]:::Modules
+  TECH_MOD_31["TECH-MOD-31: Coupon Module"]:::Modules
+  TECH_MOD_32["TECH-MOD-32: Pricing Module"]:::Modules
+  TECH_MOD_33["TECH-MOD-33: Upload Module"]:::Modules
+  TECH_MOD_34["TECH-MOD-34: Translations Module"]:::Modules
+  TECH_MOD_35["TECH-MOD-35: Activities Module"]:::Modules
+  TECH_MOD_36["TECH-MOD-36: Admin Module"]:::Modules
+  TECH_MOD_37["TECH-MOD-37: Amenities Module"]:::Modules
+  TECH_MOD_38["TECH-MOD-38: Approvals Module"]:::Modules
+  TECH_MOD_39["TECH-MOD-39: App Settings Module"]:::Modules
+  TECH_MOD_40["TECH-MOD-40: Banks Module"]:::Modules
+  TECH_MOD_41["TECH-MOD-41: Cities Module"]:::Modules
+  TECH_MOD_42["TECH-MOD-42: Countries Module"]:::Modules
+  TECH_MOD_43["TECH-MOD-43: Currencies Module"]:::Modules
+  TECH_MOD_44["TECH-MOD-44: Design Tokens Module"]:::Modules
+  TECH_MOD_45["TECH-MOD-45: Geo Module"]:::Modules
+  TECH_MOD_46["TECH-MOD-46: Languages Module"]:::Modules
+  TECH_MOD_47["TECH-MOD-47: Provinces Module"]:::Modules
+  TECH_MOD_48["TECH-MOD-48: Reference Data Module"]:::Modules
+  TECH_MOD_49["TECH-MOD-49: Sidebar Layout Module"]:::Modules
+  TECH_MOD_50["TECH-MOD-50: Time Module"]:::Modules
+  TECH_MOD_51["TECH-MOD-51: Coaches Module"]:::Modules
+  TECH_MOD_52["TECH-MOD-52: Player Experience Module"]:::Modules
+  TECH_UX_01["TECH-UX-01: Design System Overview"]:::Development
+  TECH_UX_02["TECH-UX-02: Design Token Reference"]:::Development
+  TECH_UX_03["TECH-UX-03: Navigation Architecture"]:::Development
+  TECH_UX_04["TECH-UX-04: Screen Flows"]:::Development
+  TECH_UX_09["TECH-UX-09: Empty State Patterns"]:::Development
+  TECH_UX_10["TECH-UX-10: Loading State Patterns"]:::Development
+  TECH_UX_11["TECH-UX-11: Error State Patterns"]:::Development
+  USER_01["USER-01: Player Guide"]:::Other
+  VOLUME_01_EXECUTIVE_OVERVIEW["VOLUME_01_EXECUTIVE_OVERVIEW: VOLUME 01 EXECUTIVE OVERVIEW"]:::Other
+  VOLUME_02_ARCHITECTURE["VOLUME_02_ARCHITECTURE: VOLUME 02 ARCHITECTURE"]:::Other
+  VOLUME_03_BUSINESS_DOMAINS["VOLUME_03_BUSINESS_DOMAINS: VOLUME 03 BUSINESS DOMAINS"]:::Other
+  VOLUME_04_MODULES["VOLUME_04_MODULES: VOLUME 04 MODULES"]:::Other
+  VOLUME_05_SCREENS["VOLUME_05_SCREENS: VOLUME 05 SCREENS"]:::Other
+  VOLUME_08_PERMISSIONS["VOLUME_08_PERMISSIONS: VOLUME 08 PERMISSIONS"]:::Other
+  VOLUME_11_LIFECYCLES["VOLUME_11_LIFECYCLES: VOLUME 11 LIFECYCLES"]:::Other
+  VOLUME_15_NOTIFICATIONS["VOLUME_15_NOTIFICATIONS: VOLUME 15 NOTIFICATIONS"]:::Other
+  VOLUME_38_CERTIFICATION_REPORT["VOLUME_38_CERTIFICATION_REPORT: VOLUME 38 CERTIFICATION REPORT"]:::Other
+  BIZ_PROD_01 -->|references| BIZ_ARCH_01
+  BIZ_PROD_02 -->|references| BIZ_PROD_03
+  BIZ_PROD_02 -->|references| TECH_MOD_01
+  BIZ_PROD_04 -->|references| BIZ_ARCH_01
+  BIZ_PROD_06 -->|references| TECH_MOD_32
+  BIZ_PROD_06 -->|references| TECH_MOD_30
+  BIZ_PROD_08 -->|references| BIZ_PROD_06
+  BIZ_PROD_08 -->|references| BIZ_PROD_03
+  GOV_ADR_010 -->|references| TECH_ARCH_22
+  GOV_ADR_010 -->|references| TECH_MOD_15
+  GOV_ADR_010 -->|related| GOV_ADR_002
+  GOV_ADR_010 -->|related| GOV_ADR_003
+  GOV_ADR_011 -->|references| TECH_ARCH_23
+  GOV_ADR_011 -->|references| TECH_MOD_16
+  GOV_ADR_011 -->|references| TECH_MOD_12
+  GOV_ADR_011 -->|related| GOV_ADR_005
+  GOV_ADR_011 -->|related| GOV_ADR_004
+  GOV_ADR_012 -->|references| TECH_ARCH_07
+  GOV_ADR_012 -->|references| TECH_MOD_01
+  GOV_ADR_012 -->|related| GOV_ADR_001
+  GOV_ADR_013 -->|references| TECH_ARCH_13
+  GOV_ADR_013 -->|references| TECH_MOD_09
+  GOV_ADR_013 -->|related| GOV_ADR_004
+  GOV_ADR_014 -->|references| TECH_ARCH_25
+  GOV_ADR_014 -->|references| TECH_MOD_14
+  GOV_ADR_014 -->|related| GOV_ADR_003
+  GOV_ADR_015 -->|references| TECH_ARCH_12
+  GOV_ADR_015 -->|references| TECH_MOD_03
+  GOV_ADR_015 -->|related| GOV_ADR_003
+  GOV_ADR_016 -->|references| TECH_ARCH_15
+  GOV_ADR_016 -->|references| TECH_MOD_13
+  GOV_ADR_016 -->|references| TECH_MOD_02
+  GOV_ADR_016 -->|related| GOV_ADR_001
+  GOV_ADR_016 -->|related| GOV_ADR_002
+  GOV_ADR_017 -->|references| TECH_MOD_19
+  GOV_ADR_017 -->|references| TECH_MOD_03
+  GOV_ADR_017 -->|related| GOV_ADR_003
+  GOV_ADR_018 -->|references| TECH_ARCH_17
+  GOV_ADR_018 -->|references| TECH_MOD_30
+  GOV_ADR_018 -->|references| TECH_MOD_12
+  GOV_ADR_018 -->|related| GOV_ADR_004
+  GOV_ADR_018 -->|related| GOV_ADR_005
+  GOV_ADR_019 -->|references| TECH_ARCH_23
+  GOV_ADR_019 -->|references| TECH_MOD_16
+  GOV_ADR_019 -->|references| TECH_MOD_12
+  GOV_ADR_019 -->|related| GOV_ADR_005
+  GOV_ADR_019 -->|related| GOV_ADR_004
+  GOV_ADR_019 -->|related| GOV_ADR_011
+  GOV_ADR_020 -->|references| TECH_ARCH_19
+  GOV_ADR_020 -->|references| TECH_MOD_04
+  GOV_ADR_020 -->|related| GOV_ADR_008
+  GOV_ADR_021 -->|references| TECH_ARCH_20
+  GOV_ADR_021 -->|references| TECH_ARCH_21
+  GOV_ADR_021 -->|references| TECH_MOD_26
+  GOV_ADR_022 -->|references| TECH_ARCH_22
+  GOV_ADR_022 -->|references| TECH_MOD_15
+  GOV_ADR_022 -->|related| GOV_ADR_010
+  GOV_ADR_023 -->|references| TECH_ARCH_18
+  GOV_ADR_023 -->|references| TECH_MOD_08
+  GOV_ADR_023 -->|related| GOV_ADR_004
+  GOV_ADR_024 -->|references| TECH_DEV_11
+  GOV_ADR_024 -->|references| TECH_MOD_27
+  GOV_ADR_025 -->|references| TECH_DEV_10
+  GOV_ADR_025 -->|references| TECH_ARCH_05
+  OPS_DEPLOY_01 -->|references| TECH_ARCH_08
+  OPS_DEPLOY_01 -->|references| OPS_MON_01
+  OPS_DEPLOY_01 -->|references| OPS_RUN_01
+  OPS_DEPLOY_01 -->|related| TECH_DEV_05
+  OPS_MON_01 -->|references| TECH_ARCH_25
+  OPS_MON_01 -->|references| OPS_DEPLOY_01
+  OPS_MON_01 -->|related| OPS_RUN_01
+  OPS_MON_01 -->|related| OPS_RUN_02
+  OPS_RUN_01 -->|references| OPS_DEPLOY_01
+  OPS_RUN_01 -->|related| OPS_RUN_02
+  OPS_RUN_02 -->|references| OPS_DEPLOY_01
+  OPS_RUN_02 -->|references| OPS_MON_01
+  OPS_RUN_02 -->|references| OPS_RUN_01
+  OPS_RUN_02 -->|related| TECH_ARCH_25
+  QUAL_CERT_01 -->|references| QUAL_TEST_01
+  QUAL_CERT_01 -->|related| TECH_ARCH_01
+  QUAL_CERT_01 -->|related| TECH_ARCH_07
+  QUAL_TEST_01 -->|references| TECH_DEV_09
+  QUAL_TEST_01 -->|references| QUAL_TEST_02
+  QUAL_TEST_01 -->|references| QUAL_TEST_03
+  QUAL_TEST_01 -->|references| QUAL_TEST_04
+  QUAL_TEST_01 -->|related| TECH_ARCH_11
+  QUAL_TEST_02 -->|references| TECH_DEV_09
+  QUAL_TEST_02 -->|references| QUAL_TEST_03
+  QUAL_TEST_02 -->|related| TECH_MOD_01
+  QUAL_TEST_02 -->|related| TECH_MOD_50
+  QUAL_TEST_03 -->|references| TECH_MOD_03
+  QUAL_TEST_03 -->|references| TECH_DB_03
+  QUAL_TEST_03 -->|related| TECH_DEV_09
+  QUAL_TEST_03 -->|related| TECH_UX_04
+  QUAL_TEST_04 -->|references| TECH_DEV_09
+  QUAL_TEST_04 -->|references| TECH_UX_04
+  QUAL_TEST_04 -->|related| TECH_MOD_03
+  QUAL_TEST_04 -->|related| TECH_MOD_01
+  TECH_ARCH_01 -->|governs| TECH_ARCH_01
+  TECH_ARCH_01 -->|references| TECH_ARCH_02
+  TECH_ARCH_01 -->|references| TECH_ARCH_05
+  TECH_ARCH_01 -->|references| TECH_ARCH_08
+  TECH_ARCH_01 -->|related| TECH_DEV_03
+  TECH_ARCH_02 -->|governs| TECH_ARCH_02
+  TECH_ARCH_02 -->|references| TECH_ARCH_01
+  TECH_ARCH_02 -->|references| TECH_DEV_03
+  TECH_ARCH_02 -->|related| TECH_DEV_01
+  TECH_ARCH_03 -->|governs| TECH_ARCH_03
+  TECH_ARCH_03 -->|references| TECH_ARCH_02
+  TECH_ARCH_03 -->|references| TECH_ARCH_04
+  TECH_ARCH_04 -->|governs| TECH_ARCH_04
+  TECH_ARCH_04 -->|references| TECH_ARCH_01
+  TECH_ARCH_04 -->|references| TECH_ARCH_03
+  TECH_ARCH_05 -->|governs| TECH_ARCH_05
+  TECH_ARCH_05 -->|references| TECH_ARCH_01
+  TECH_ARCH_05 -->|references| TECH_DEV_10
+  TECH_ARCH_06 -->|governs| TECH_ARCH_06
+  TECH_ARCH_06 -->|references| TECH_ARCH_01
+  TECH_ARCH_06 -->|references| TECH_ARCH_07
+  TECH_ARCH_07 -->|governs| TECH_ARCH_07
+  TECH_ARCH_07 -->|references| TECH_ARCH_01
+  TECH_ARCH_07 -->|references| TECH_DEV_14
+  TECH_ARCH_08 -->|governs| TECH_ARCH_08
+  TECH_ARCH_08 -->|references| TECH_ARCH_01
+  TECH_ARCH_08 -->|references| TECH_DEV_10
+  TECH_ARCH_10 -->|governs| TECH_ARCH_10
+  TECH_ARCH_10 -->|references| TECH_ARCH_01
+  TECH_ARCH_10 -->|references| TECH_ARCH_02
+  TECH_ARCH_10 -->|related| TECH_DEV_01
+  TECH_ARCH_10 -->|related| TECH_DEV_02
+  TECH_ARCH_11 -->|governs| TECH_ARCH_11
+  TECH_ARCH_11 -->|references| TECH_ARCH_01
+  TECH_ARCH_11 -->|references| TECH_ARCH_04
+  TECH_ARCH_11 -->|references| TECH_ARCH_05
+  TECH_ARCH_11 -->|related| TECH_ARCH_08
+  TECH_ARCH_11 -->|related| TECH_DEV_15
+  TECH_ARCH_12 -->|references| TECH_MOD_03
+  TECH_ARCH_12 -->|references| TECH_ARCH_02
+  TECH_ARCH_12 -->|references| TECH_ARCH_04
+  TECH_ARCH_12 -->|related| TECH_MOD_09
+  TECH_ARCH_12 -->|related| TECH_MOD_10
+  TECH_ARCH_12 -->|related| TECH_MOD_17
+  TECH_ARCH_12 -->|related| TECH_MOD_19
+  TECH_ARCH_13 -->|references| TECH_MOD_09
+  TECH_ARCH_13 -->|references| TECH_MOD_10
+  TECH_ARCH_13 -->|references| TECH_ARCH_02
+  TECH_ARCH_13 -->|related| TECH_MOD_03
+  TECH_ARCH_13 -->|related| TECH_MOD_12
+  TECH_ARCH_13 -->|related| TECH_MOD_30
+  TECH_ARCH_14 -->|references| TECH_MOD_10
+  TECH_ARCH_14 -->|references| TECH_MOD_09
+  TECH_ARCH_14 -->|references| TECH_ARCH_02
+  TECH_ARCH_14 -->|related| TECH_MOD_12
+  TECH_ARCH_14 -->|related| TECH_MOD_30
+  TECH_ARCH_14 -->|related| TECH_MOD_07
+  TECH_ARCH_15 -->|references| TECH_ARCH_02
+  TECH_ARCH_15 -->|references| TECH_ARCH_07
+  TECH_ARCH_15 -->|references| TECH_MOD_13
+  TECH_ARCH_15 -->|related| TECH_MOD_14
+  TECH_ARCH_15 -->|related| TECH_MOD_15
+  TECH_ARCH_16 -->|references| TECH_ARCH_15
+  TECH_ARCH_16 -->|references| TECH_DB_03
+  TECH_ARCH_16 -->|related| TECH_MOD_13
+  TECH_ARCH_17 -->|references| TECH_ARCH_02
+  TECH_ARCH_17 -->|references| TECH_MOD_07
+  TECH_ARCH_17 -->|references| TECH_MOD_08
+  TECH_ARCH_17 -->|references| TECH_MOD_30
+  TECH_ARCH_17 -->|references| TECH_MOD_31
+  TECH_ARCH_17 -->|related| TECH_ARCH_18
+  TECH_ARCH_17 -->|related| GOV_ADR_007
+  TECH_ARCH_18 -->|references| TECH_ARCH_02
+  TECH_ARCH_18 -->|references| TECH_MOD_08
+  TECH_ARCH_18 -->|related| TECH_ARCH_17
+  TECH_ARCH_18 -->|related| GOV_ADR_006
+  TECH_ARCH_19 -->|references| TECH_MOD_04
+  TECH_ARCH_19 -->|references| TECH_DB_03
+  TECH_ARCH_19 -->|references| TECH_MOD_19
+  TECH_ARCH_19 -->|related| TECH_MOD_05
+  TECH_ARCH_19 -->|related| TECH_MOD_06
+  TECH_ARCH_20 -->|references| TECH_MOD_05
+  TECH_ARCH_20 -->|references| TECH_DB_03
+  TECH_ARCH_20 -->|references| TECH_MOD_26
+  TECH_ARCH_20 -->|related| TECH_MOD_04
+  TECH_ARCH_20 -->|related| TECH_MOD_06
+  TECH_ARCH_21 -->|references| TECH_MOD_06
+  TECH_ARCH_21 -->|references| TECH_DB_03
+  TECH_ARCH_21 -->|references| TECH_MOD_26
+  TECH_ARCH_21 -->|related| TECH_MOD_04
+  TECH_ARCH_21 -->|related| TECH_MOD_05
+  TECH_ARCH_22 -->|references| TECH_MOD_15
+  TECH_ARCH_22 -->|references| TECH_DB_03
+  TECH_ARCH_22 -->|related| TECH_MOD_14
+  TECH_ARCH_22 -->|related| GOV_ADR_010
+  TECH_ARCH_23 -->|references| TECH_MOD_16
+  TECH_ARCH_23 -->|references| TECH_DB_03
+  TECH_ARCH_23 -->|related| TECH_MOD_12
+  TECH_ARCH_23 -->|related| GOV_ADR_011
+  TECH_ARCH_24 -->|references| TECH_MOD_29
+  TECH_ARCH_24 -->|references| TECH_MOD_25
+  TECH_ARCH_24 -->|related| TECH_DB_03
+  TECH_ARCH_24 -->|related| TECH_ARCH_05
+  TECH_ARCH_25 -->|references| TECH_MOD_14
+  TECH_ARCH_25 -->|references| TECH_MOD_25
+  TECH_ARCH_25 -->|related| OPS_MON_01
+  TECH_ARCH_25 -->|related| QUAL_TEST_03
+  TECH_DEV_01 -->|governs| TECH_DEV_01
+  TECH_DEV_01 -->|references| TECH_ARCH_01
+  TECH_DEV_01 -->|references| TECH_ARCH_02
+  TECH_DEV_01 -->|related| TECH_DEV_02
+  TECH_DEV_01 -->|related| TECH_DEV_03
+  TECH_DEV_01 -->|related| TECH_DEV_04
+  TECH_MOD_01 -->|references| TECH_ARCH_02
+  TECH_MOD_01 -->|references| TECH_MOD_20
+  TECH_MOD_01 -->|related| TECH_MOD_02
+  TECH_MOD_01 -->|related| TECH_MOD_10
+  TECH_MOD_02 -->|references| TECH_ARCH_02
+  TECH_MOD_02 -->|references| TECH_MOD_01
+  TECH_MOD_02 -->|related| TECH_MOD_20
+  TECH_MOD_03 -->|references| TECH_ARCH_02
+  TECH_MOD_03 -->|references| TECH_MOD_19
+  TECH_MOD_03 -->|references| TECH_MOD_09
+  TECH_MOD_03 -->|related| TECH_MOD_07
+  TECH_MOD_03 -->|related| TECH_MOD_10
+  TECH_MOD_04 -->|references| TECH_ARCH_02
+  TECH_MOD_04 -->|references| TECH_MOD_19
+  TECH_MOD_04 -->|related| TECH_MOD_05
+  TECH_MOD_04 -->|related| TECH_MOD_06
+  TECH_MOD_05 -->|references| TECH_ARCH_02
+  TECH_MOD_05 -->|references| TECH_MOD_04
+  TECH_MOD_05 -->|related| TECH_MOD_06
+  TECH_MOD_05 -->|related| TECH_MOD_26
+  TECH_MOD_06 -->|references| TECH_ARCH_02
+  TECH_MOD_06 -->|references| TECH_MOD_05
+  TECH_MOD_06 -->|related| TECH_MOD_04
+  TECH_MOD_06 -->|related| TECH_MOD_26
+  TECH_MOD_07 -->|references| TECH_ARCH_02
+  TECH_MOD_07 -->|references| TECH_MOD_09
+  TECH_MOD_07 -->|related| TECH_MOD_10
+  TECH_MOD_07 -->|related| TECH_MOD_13
+  TECH_MOD_08 -->|references| TECH_ARCH_02
+  TECH_MOD_08 -->|references| TECH_MOD_07
+  TECH_MOD_08 -->|related| TECH_MOD_09
+  TECH_MOD_08 -->|related| TECH_MOD_30
+  TECH_MOD_09 -->|references| TECH_ARCH_02
+  TECH_MOD_09 -->|references| TECH_MOD_10
+  TECH_MOD_09 -->|related| TECH_MOD_12
+  TECH_MOD_09 -->|related| TECH_MOD_03
+  TECH_MOD_10 -->|references| TECH_ARCH_02
+  TECH_MOD_10 -->|references| TECH_MOD_09
+  TECH_MOD_10 -->|related| TECH_MOD_07
+  TECH_MOD_10 -->|related| TECH_MOD_12
+  TECH_MOD_11 -->|references| TECH_ARCH_02
+  TECH_MOD_11 -->|references| TECH_MOD_09
+  TECH_MOD_11 -->|references| TECH_MOD_10
+  TECH_MOD_11 -->|related| TECH_MOD_12
+  TECH_MOD_11 -->|related| TECH_MOD_30
+  TECH_MOD_12 -->|references| TECH_ARCH_02
+  TECH_MOD_12 -->|references| TECH_MOD_09
+  TECH_MOD_12 -->|related| TECH_MOD_10
+  TECH_MOD_12 -->|related| TECH_MOD_13
+  TECH_MOD_13 -->|references| TECH_ARCH_02
+  TECH_MOD_13 -->|references| TECH_MOD_03
+  TECH_MOD_13 -->|related| TECH_MOD_04
+  TECH_MOD_13 -->|related| TECH_MOD_05
+  TECH_MOD_13 -->|related| TECH_MOD_06
+  TECH_MOD_14 -->|references| TECH_ARCH_02
+  TECH_MOD_14 -->|references| TECH_ARCH_04
+  TECH_MOD_14 -->|related| TECH_MOD_15
+  TECH_MOD_14 -->|related| TECH_MOD_20
+  TECH_MOD_15 -->|references| TECH_ARCH_02
+  TECH_MOD_15 -->|references| TECH_MOD_14
+  TECH_MOD_15 -->|related| TECH_MOD_13
+  TECH_MOD_15 -->|related| TECH_MOD_22
+  TECH_MOD_16 -->|references| TECH_ARCH_02
+  TECH_MOD_16 -->|related| TECH_MOD_12
+  TECH_MOD_16 -->|related| TECH_MOD_13
+  TECH_MOD_17 -->|references| TECH_ARCH_02
+  TECH_MOD_17 -->|references| TECH_MOD_03
+  TECH_MOD_17 -->|related| TECH_MOD_05
+  TECH_MOD_17 -->|related| TECH_MOD_06
+  TECH_MOD_18 -->|references| TECH_ARCH_02
+  TECH_MOD_18 -->|references| TECH_MOD_10
+  TECH_MOD_18 -->|related| TECH_MOD_03
+  TECH_MOD_18 -->|related| TECH_MOD_04
+  TECH_MOD_19 -->|references| TECH_ARCH_02
+  TECH_MOD_19 -->|references| TECH_MOD_03
+  TECH_MOD_19 -->|related| TECH_MOD_04
+  TECH_MOD_19 -->|related| TECH_MOD_05
+  TECH_MOD_19 -->|related| TECH_MOD_26
+  TECH_MOD_20 -->|references| TECH_ARCH_02
+  TECH_MOD_20 -->|references| TECH_ARCH_07
+  TECH_MOD_20 -->|related| TECH_MOD_01
+  TECH_MOD_20 -->|related| TECH_MOD_02
+  TECH_MOD_20 -->|related| TECH_MOD_21
+  TECH_MOD_21 -->|references| TECH_ARCH_02
+  TECH_MOD_21 -->|references| TECH_ARCH_04
+  TECH_MOD_21 -->|related| TECH_MOD_20
+  TECH_MOD_21 -->|related| TECH_MOD_02
+  TECH_MOD_22 -->|references| TECH_ARCH_02
+  TECH_MOD_22 -->|related| TECH_MOD_15
+  TECH_MOD_22 -->|related| TECH_MOD_14
+  TECH_MOD_23 -->|references| TECH_ARCH_02
+  TECH_MOD_24 -->|references| TECH_ARCH_02
+  TECH_MOD_24 -->|related| TECH_MOD_14
+  TECH_MOD_24 -->|related| TECH_MOD_22
+  TECH_MOD_25 -->|references| TECH_ARCH_02
+  TECH_MOD_25 -->|related| TECH_MOD_03
+  TECH_MOD_25 -->|related| TECH_MOD_01
+  TECH_MOD_25 -->|related| TECH_MOD_13
+  TECH_MOD_25 -->|related| TECH_MOD_14
+  TECH_MOD_26 -->|references| TECH_ARCH_02
+  TECH_MOD_26 -->|references| TECH_MOD_19
+  TECH_MOD_26 -->|related| TECH_MOD_05
+  TECH_MOD_26 -->|related| TECH_MOD_06
+  TECH_MOD_26 -->|related| TECH_MOD_03
+  TECH_MOD_27 -->|references| TECH_ARCH_02
+  TECH_MOD_27 -->|references| TECH_ARCH_06
+  TECH_MOD_27 -->|related| TECH_MOD_01
+  TECH_MOD_28 -->|references| TECH_ARCH_02
+  TECH_MOD_28 -->|related| TECH_MOD_14
+  TECH_MOD_29 -->|references| TECH_ARCH_02
+  TECH_MOD_29 -->|related| TECH_MOD_25
+  TECH_MOD_30 -->|references| TECH_ARCH_02
+  TECH_MOD_30 -->|references| TECH_MOD_07
+  TECH_MOD_30 -->|references| TECH_MOD_11
+  TECH_MOD_30 -->|related| TECH_MOD_09
+  TECH_MOD_30 -->|related| TECH_MOD_10
+  TECH_MOD_31 -->|references| TECH_ARCH_02
+  TECH_MOD_31 -->|related| TECH_MOD_07
+  TECH_MOD_31 -->|related| TECH_MOD_11
+  TECH_MOD_32 -->|references| TECH_ARCH_02
+  TECH_MOD_32 -->|references| TECH_MOD_03
+  TECH_MOD_32 -->|related| TECH_MOD_31
+  TECH_MOD_32 -->|related| TECH_MOD_18
+  TECH_MOD_33 -->|references| TECH_ARCH_02
+  TECH_MOD_33 -->|related| TECH_MOD_23
+  TECH_MOD_34 -->|references| TECH_ARCH_02
+  TECH_MOD_35 -->|references| TECH_ARCH_02
+  TECH_MOD_35 -->|references| TECH_MOD_03
+  TECH_MOD_35 -->|references| TECH_MOD_04
+  TECH_MOD_35 -->|references| TECH_MOD_05
+  TECH_MOD_35 -->|related| TECH_MOD_51
+  TECH_MOD_36 -->|references| TECH_ARCH_02
+  TECH_MOD_36 -->|references| TECH_MOD_02
+  TECH_MOD_36 -->|related| TECH_MOD_20
+  TECH_MOD_37 -->|references| TECH_ARCH_02
+  TECH_MOD_38 -->|references| TECH_ARCH_02
+  TECH_MOD_38 -->|references| TECH_MOD_02
+  TECH_MOD_38 -->|references| TECH_MOD_13
+  TECH_MOD_38 -->|related| TECH_MOD_35
+  TECH_MOD_39 -->|references| TECH_ARCH_02
+  TECH_MOD_39 -->|references| TECH_MOD_33
+  TECH_MOD_39 -->|related| TECH_MOD_36
+  TECH_MOD_40 -->|references| TECH_ARCH_02
+  TECH_MOD_41 -->|references| TECH_ARCH_02
+  TECH_MOD_41 -->|references| TECH_MOD_47
+  TECH_MOD_42 -->|references| TECH_ARCH_02
+  TECH_MOD_42 -->|references| TECH_MOD_47
+  TECH_MOD_42 -->|related| TECH_MOD_45
+  TECH_MOD_43 -->|references| TECH_ARCH_02
+  TECH_MOD_43 -->|related| TECH_MOD_45
+  TECH_MOD_44 -->|references| TECH_ARCH_02
+  TECH_MOD_44 -->|references| TECH_UX_01
+  TECH_MOD_44 -->|references| TECH_UX_02
+  TECH_MOD_44 -->|related| TECH_MOD_02
+  TECH_MOD_45 -->|references| TECH_ARCH_02
+  TECH_MOD_45 -->|references| TECH_MOD_42
+  TECH_MOD_45 -->|references| TECH_MOD_43
+  TECH_MOD_46 -->|references| TECH_ARCH_02
+  TECH_MOD_46 -->|references| TECH_MOD_34
+  TECH_MOD_47 -->|references| TECH_ARCH_02
+  TECH_MOD_47 -->|references| TECH_MOD_42
+  TECH_MOD_47 -->|related| TECH_MOD_41
+  TECH_MOD_48 -->|references| TECH_ARCH_02
+  TECH_MOD_48 -->|references| TECH_MOD_42
+  TECH_MOD_48 -->|references| TECH_MOD_43
+  TECH_MOD_48 -->|references| TECH_MOD_46
+  TECH_MOD_49 -->|references| TECH_ARCH_02
+  TECH_MOD_49 -->|references| TECH_MOD_02
+  TECH_MOD_50 -->|references| TECH_ARCH_02
+  TECH_MOD_50 -->|references| TECH_ARCH_04
+  TECH_MOD_50 -->|related| TECH_MOD_03
+  TECH_MOD_50 -->|related| TECH_MOD_19
+  TECH_MOD_51 -->|references| TECH_ARCH_02
+  TECH_MOD_51 -->|references| TECH_MOD_35
+  TECH_MOD_51 -->|related| TECH_MOD_13
+  TECH_MOD_52 -->|references| TECH_ARCH_02
+  TECH_MOD_52 -->|references| TECH_MOD_03
+  TECH_MOD_52 -->|references| TECH_MOD_05
+  TECH_MOD_52 -->|references| TECH_MOD_04
+  TECH_MOD_52 -->|related| TECH_MOD_10
+  TECH_MOD_52 -->|related| TECH_MOD_01
+
+  classDef Business fill:#E74C3C22,stroke:#E74C3C,stroke-width:2px
+  classDef Architecture fill:#4A90D922,stroke:#4A90D9,stroke-width:2px
+  classDef Modules fill:#50B86C22,stroke:#50B86C,stroke-width:2px
+  classDef Development fill:#9B59B622,stroke:#9B59B6,stroke-width:2px
+  classDef Governance fill:#8E44AD22,stroke:#8E44AD,stroke-width:2px
+  classDef Operations fill:#2C3E5022,stroke:#2C3E50,stroke-width:2px
+  classDef Quality fill:#27AE6022,stroke:#27AE60,stroke-width:2px
+  classDef User_Guides fill:#3498DB22,stroke:#3498DB,stroke-width:2px

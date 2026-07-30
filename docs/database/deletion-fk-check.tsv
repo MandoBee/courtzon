@@ -1,0 +1,11 @@
+﻿table_name	incoming_fks	outgoing_fks
+announcement_comments	NONE	fk_comment_announce -> announcements (ON DELETE CASCADE); fk_comment_parent -> announcement_comments (self, ON DELETE SET NULL); fk_comment_user -> users (ON DELETE CASCADE)
+announcement_likes	NONE	fk_like_announce -> announcements (ON DELETE CASCADE); fk_like_user -> users (ON DELETE CASCADE)
+community_tournaments	NONE	fk_ct_bracket -> tournament_bracket_types (ON DELETE RESTRICT); fk_ct_branch -> branches (ON DELETE SET NULL); fk_ct_creator -> users (ON DELETE RESTRICT); fk_ct_org -> organisations (ON DELETE SET NULL); fk_ct_sport -> sports (ON DELETE SET NULL)
+cron_jobs	NONE	NONE
+email_verification_tokens	NONE	fk_email_ver_user -> users (ON DELETE CASCADE)
+exchange_rates	NONE	NONE
+player_ratings	NONE	fk_pr_booking -> bookings (ON DELETE SET NULL); fk_pr_rated -> users (ON DELETE CASCADE); fk_pr_rater -> users (ON DELETE CASCADE)
+resource_unavailability	NONE	fk_unavail_resource -> resources (ON DELETE CASCADE)
+revert_logs	NONE	fk_revert_admin -> users (ON DELETE CASCADE); fk_revert_audit -> audit_logs (ON DELETE CASCADE)
+scheduled_jobs	NONE	NONE

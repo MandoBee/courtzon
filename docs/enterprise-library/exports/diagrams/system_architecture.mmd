@@ -1,0 +1,193 @@
+graph TD
+  subgraph "Frontend"
+    FE[React 19 + Vite]
+  end
+  subgraph "Backend (Fastify)"
+    TECH_MOD_01["Auth Module"]
+    TECH_MOD_02["RBAC Module"]
+    TECH_MOD_03["Booking Module"]
+    TECH_MOD_04["Academy Module"]
+    TECH_MOD_05["Tournaments Module"]
+    TECH_MOD_06["Leagues Module"]
+    TECH_MOD_07["Marketplace Module"]
+    TECH_MOD_08["Inventory Module"]
+    TECH_MOD_09["Payment Module"]
+    TECH_MOD_10["Wallet Module"]
+    TECH_MOD_11["Financial Module"]
+    TECH_MOD_12["Accounting Module"]
+    TECH_MOD_13["Organisations Module"]
+    TECH_MOD_14["Notifications Module"]
+    TECH_MOD_15["CRM Module"]
+    TECH_MOD_16["HR Module"]
+    TECH_MOD_17["Match Module"]
+    TECH_MOD_18["Membership Module"]
+    TECH_MOD_19["Scheduling Module"]
+    TECH_MOD_20["Security Module"]
+    TECH_MOD_21["Audit Log Module"]
+    TECH_MOD_22["Support Module"]
+    TECH_MOD_23["Content Management Module"]
+    TECH_MOD_24["Community Module"]
+    TECH_MOD_25["BI Module"]
+    TECH_MOD_26["Sports Engine Module"]
+    TECH_MOD_27["Integration Module"]
+    TECH_MOD_28["Mobile Module"]
+    TECH_MOD_29["Reports Module"]
+    TECH_MOD_30["Settlement Module"]
+    TECH_MOD_31["Coupon Module"]
+    TECH_MOD_32["Pricing Module"]
+    TECH_MOD_33["Upload Module"]
+    TECH_MOD_34["Translations Module"]
+    TECH_MOD_35["Activities Module"]
+    TECH_MOD_36["Admin Module"]
+    TECH_MOD_37["Amenities Module"]
+    TECH_MOD_38["Approvals Module"]
+    TECH_MOD_39["App Settings Module"]
+    TECH_MOD_40["Banks Module"]
+    TECH_MOD_41["Cities Module"]
+    TECH_MOD_42["Countries Module"]
+    TECH_MOD_43["Currencies Module"]
+    TECH_MOD_44["Design Tokens Module"]
+    TECH_MOD_45["Geo Module"]
+    TECH_MOD_46["Languages Module"]
+    TECH_MOD_47["Provinces Module"]
+    TECH_MOD_48["Reference Data Module"]
+    TECH_MOD_49["Sidebar Layout Module"]
+    TECH_MOD_50["Time Module"]
+    TECH_MOD_51["Coaches Module"]
+    TECH_MOD_52["Player Experience Module"]
+  end
+  subgraph "Data Layer"
+    DB[(MySQL)]
+    REDIS[(Redis)]
+  end
+  subgraph "External"
+    PAY[Payment Gateway]
+    EMAIL[Email/SMS/Push]
+  end
+  FE -->|HTTP| Backend
+  TECH_MOD_01 -->|references| TECH_MOD_20
+  TECH_MOD_01 -->|related| TECH_MOD_02
+  TECH_MOD_01 -->|related| TECH_MOD_10
+  TECH_MOD_02 -->|references| TECH_MOD_01
+  TECH_MOD_02 -->|related| TECH_MOD_20
+  TECH_MOD_03 -->|references| TECH_MOD_19
+  TECH_MOD_03 -->|references| TECH_MOD_09
+  TECH_MOD_03 -->|related| TECH_MOD_07
+  TECH_MOD_03 -->|related| TECH_MOD_10
+  TECH_MOD_04 -->|references| TECH_MOD_19
+  TECH_MOD_04 -->|related| TECH_MOD_05
+  TECH_MOD_04 -->|related| TECH_MOD_06
+  TECH_MOD_05 -->|references| TECH_MOD_04
+  TECH_MOD_05 -->|related| TECH_MOD_06
+  TECH_MOD_05 -->|related| TECH_MOD_26
+  TECH_MOD_06 -->|references| TECH_MOD_05
+  TECH_MOD_06 -->|related| TECH_MOD_04
+  TECH_MOD_06 -->|related| TECH_MOD_26
+  TECH_MOD_07 -->|references| TECH_MOD_09
+  TECH_MOD_07 -->|related| TECH_MOD_10
+  TECH_MOD_07 -->|related| TECH_MOD_13
+  TECH_MOD_08 -->|references| TECH_MOD_07
+  TECH_MOD_08 -->|related| TECH_MOD_09
+  TECH_MOD_08 -->|related| TECH_MOD_30
+  TECH_MOD_09 -->|references| TECH_MOD_10
+  TECH_MOD_09 -->|related| TECH_MOD_12
+  TECH_MOD_09 -->|related| TECH_MOD_03
+  TECH_MOD_10 -->|references| TECH_MOD_09
+  TECH_MOD_10 -->|related| TECH_MOD_07
+  TECH_MOD_10 -->|related| TECH_MOD_12
+  TECH_MOD_11 -->|references| TECH_MOD_09
+  TECH_MOD_11 -->|references| TECH_MOD_10
+  TECH_MOD_11 -->|related| TECH_MOD_12
+  TECH_MOD_11 -->|related| TECH_MOD_30
+  TECH_MOD_12 -->|references| TECH_MOD_09
+  TECH_MOD_12 -->|related| TECH_MOD_10
+  TECH_MOD_12 -->|related| TECH_MOD_13
+  TECH_MOD_13 -->|references| TECH_MOD_03
+  TECH_MOD_13 -->|related| TECH_MOD_04
+  TECH_MOD_13 -->|related| TECH_MOD_05
+  TECH_MOD_13 -->|related| TECH_MOD_06
+  TECH_MOD_14 -->|related| TECH_MOD_15
+  TECH_MOD_14 -->|related| TECH_MOD_20
+  TECH_MOD_15 -->|references| TECH_MOD_14
+  TECH_MOD_15 -->|related| TECH_MOD_13
+  TECH_MOD_15 -->|related| TECH_MOD_22
+  TECH_MOD_16 -->|related| TECH_MOD_12
+  TECH_MOD_16 -->|related| TECH_MOD_13
+  TECH_MOD_17 -->|references| TECH_MOD_03
+  TECH_MOD_17 -->|related| TECH_MOD_05
+  TECH_MOD_17 -->|related| TECH_MOD_06
+  TECH_MOD_18 -->|references| TECH_MOD_10
+  TECH_MOD_18 -->|related| TECH_MOD_03
+  TECH_MOD_18 -->|related| TECH_MOD_04
+  TECH_MOD_19 -->|references| TECH_MOD_03
+  TECH_MOD_19 -->|related| TECH_MOD_04
+  TECH_MOD_19 -->|related| TECH_MOD_05
+  TECH_MOD_19 -->|related| TECH_MOD_26
+  TECH_MOD_20 -->|related| TECH_MOD_01
+  TECH_MOD_20 -->|related| TECH_MOD_02
+  TECH_MOD_20 -->|related| TECH_MOD_21
+  TECH_MOD_21 -->|related| TECH_MOD_20
+  TECH_MOD_21 -->|related| TECH_MOD_02
+  TECH_MOD_22 -->|related| TECH_MOD_15
+  TECH_MOD_22 -->|related| TECH_MOD_14
+  TECH_MOD_24 -->|related| TECH_MOD_14
+  TECH_MOD_24 -->|related| TECH_MOD_22
+  TECH_MOD_25 -->|related| TECH_MOD_03
+  TECH_MOD_25 -->|related| TECH_MOD_01
+  TECH_MOD_25 -->|related| TECH_MOD_13
+  TECH_MOD_25 -->|related| TECH_MOD_14
+  TECH_MOD_26 -->|references| TECH_MOD_19
+  TECH_MOD_26 -->|related| TECH_MOD_05
+  TECH_MOD_26 -->|related| TECH_MOD_06
+  TECH_MOD_26 -->|related| TECH_MOD_03
+  TECH_MOD_27 -->|related| TECH_MOD_01
+  TECH_MOD_28 -->|related| TECH_MOD_14
+  TECH_MOD_29 -->|related| TECH_MOD_25
+  TECH_MOD_30 -->|references| TECH_MOD_07
+  TECH_MOD_30 -->|references| TECH_MOD_11
+  TECH_MOD_30 -->|related| TECH_MOD_09
+  TECH_MOD_30 -->|related| TECH_MOD_10
+  TECH_MOD_31 -->|related| TECH_MOD_07
+  TECH_MOD_31 -->|related| TECH_MOD_11
+  TECH_MOD_32 -->|references| TECH_MOD_03
+  TECH_MOD_32 -->|related| TECH_MOD_31
+  TECH_MOD_32 -->|related| TECH_MOD_18
+  TECH_MOD_33 -->|related| TECH_MOD_23
+  TECH_MOD_35 -->|references| TECH_MOD_03
+  TECH_MOD_35 -->|references| TECH_MOD_04
+  TECH_MOD_35 -->|references| TECH_MOD_05
+  TECH_MOD_35 -->|related| TECH_MOD_51
+  TECH_MOD_36 -->|references| TECH_MOD_02
+  TECH_MOD_36 -->|related| TECH_MOD_20
+  TECH_MOD_38 -->|references| TECH_MOD_02
+  TECH_MOD_38 -->|references| TECH_MOD_13
+  TECH_MOD_38 -->|related| TECH_MOD_35
+  TECH_MOD_39 -->|references| TECH_MOD_33
+  TECH_MOD_39 -->|related| TECH_MOD_36
+  TECH_MOD_41 -->|references| TECH_MOD_47
+  TECH_MOD_42 -->|references| TECH_MOD_47
+  TECH_MOD_42 -->|related| TECH_MOD_45
+  TECH_MOD_43 -->|related| TECH_MOD_45
+  TECH_MOD_44 -->|related| TECH_MOD_02
+  TECH_MOD_45 -->|references| TECH_MOD_42
+  TECH_MOD_45 -->|references| TECH_MOD_43
+  TECH_MOD_46 -->|references| TECH_MOD_34
+  TECH_MOD_47 -->|references| TECH_MOD_42
+  TECH_MOD_47 -->|related| TECH_MOD_41
+  TECH_MOD_48 -->|references| TECH_MOD_42
+  TECH_MOD_48 -->|references| TECH_MOD_43
+  TECH_MOD_48 -->|references| TECH_MOD_46
+  TECH_MOD_49 -->|references| TECH_MOD_02
+  TECH_MOD_50 -->|related| TECH_MOD_03
+  TECH_MOD_50 -->|related| TECH_MOD_19
+  TECH_MOD_51 -->|references| TECH_MOD_35
+  TECH_MOD_51 -->|related| TECH_MOD_13
+  TECH_MOD_52 -->|references| TECH_MOD_03
+  TECH_MOD_52 -->|references| TECH_MOD_05
+  TECH_MOD_52 -->|references| TECH_MOD_04
+  TECH_MOD_52 -->|related| TECH_MOD_10
+  TECH_MOD_52 -->|related| TECH_MOD_01
+  Backend --> DB
+  Backend --> REDIS
+  Backend --> PAY
+  Backend --> EMAIL

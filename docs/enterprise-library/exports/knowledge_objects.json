@@ -1,0 +1,4543 @@
+{
+  "knowledgeObjects": [
+    {
+      "id": "ADMIN-02",
+      "name": "Organisation Admin Guide",
+      "family": "ADMIN",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "GUIDE",
+      "crossReferences": [],
+      "entities": [],
+      "events": [
+        {
+          "name": "booking:cancelled",
+          "description": "event"
+        },
+        {
+          "name": "payment:refunded",
+          "description": "event"
+        },
+        {
+          "name": "coach:invited",
+          "description": "event for notification"
+        }
+      ],
+      "routes": []
+    },
+    {
+      "id": "BIZ-ARCH-01",
+      "name": "Business Vision & Strategy",
+      "family": "BIZ-ARCH",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "ARCH",
+      "crossReferences": [],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "BIZ-ARCH-02",
+      "name": "Business Goals & Objectives",
+      "family": "BIZ-ARCH",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "ARCH",
+      "crossReferences": [],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "BIZ-ARCH-03",
+      "name": "Business Capability Map",
+      "family": "BIZ-ARCH",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "ARCH",
+      "crossReferences": [],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "BIZ-ARCH-04",
+      "name": "Business Process Catalog",
+      "family": "BIZ-ARCH",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "ARCH",
+      "crossReferences": [],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "BIZ-ARCH-05",
+      "name": "Business Actor Model",
+      "family": "BIZ-ARCH",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "ARCH",
+      "crossReferences": [],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "BIZ-ARCH-06",
+      "name": "Business Event Catalog",
+      "family": "BIZ-ARCH",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "ARCH",
+      "crossReferences": [],
+      "entities": [],
+      "events": [
+        {
+          "name": "user:registered",
+          "description": "| Auth | Notifications, CRM | `auth/application/auth.service.ts` |"
+        },
+        {
+          "name": "user:logged_in",
+          "description": "| Auth | Audit Log | — |"
+        },
+        {
+          "name": "user:password_changed",
+          "description": "| Auth | Notifications | — |"
+        },
+        {
+          "name": "booking:created",
+          "description": "| Booking | Match, Notifications | `booking/application/booking.service.ts` |"
+        },
+        {
+          "name": "booking:cancelled",
+          "description": "| Booking | Notifications, Match | Same file |"
+        },
+        {
+          "name": "booking:confirmed",
+          "description": "| Booking | Notifications, Match, CRM | VOLUME-03 |"
+        },
+        {
+          "name": "booking:checked_in",
+          "description": "| Booking | Notifications | — |"
+        },
+        {
+          "name": "booking:matchmaking_started",
+          "description": "| Booking | Match | — |"
+        },
+        {
+          "name": "booking:applicant_applied",
+          "description": "| Booking | Notifications | — |"
+        },
+        {
+          "name": "booking:applicant_responded",
+          "description": "| Booking | Notifications | — |"
+        },
+        {
+          "name": "marketplace:product_created",
+          "description": "| Marketplace | Notifications | `marketplace/` |"
+        },
+        {
+          "name": "marketplace:product_updated",
+          "description": "| Marketplace | — | Same |"
+        },
+        {
+          "name": "marketplace:product_deleted",
+          "description": "| Marketplace | — | Same |"
+        },
+        {
+          "name": "marketplace:order_created",
+          "description": "| Marketplace | Notifications, Inventory | Same |"
+        },
+        {
+          "name": "marketplace:order_status_changed",
+          "description": "| Marketplace | Notifications | Same |"
+        },
+        {
+          "name": "marketplace:settlement_requested",
+          "description": "| Settlement | Notifications | `settlement/` |"
+        },
+        {
+          "name": "marketplace:settlement_processed",
+          "description": "| Settlement | Notifications | Same |"
+        },
+        {
+          "name": "marketplace:review_created",
+          "description": "| Marketplace | Notifications | — |"
+        },
+        {
+          "name": "marketplace:seller_upgrade_requested",
+          "description": "| Marketplace | Admin | — |"
+        },
+        {
+          "name": "payment:succeeded",
+          "description": "| Payment | Booking, Marketplace, Wallet, Notifications | `payment/application/payment.service.ts:571-622` |"
+        },
+        {
+          "name": "payment:failed",
+          "description": "| Payment | Booking, Marketplace, Notifications | Same file |"
+        },
+        {
+          "name": "wallet:deposit",
+          "description": "| Wallet | Notifications, CRM | `wallet/` |"
+        },
+        {
+          "name": "wallet:withdrawal",
+          "description": "| Wallet | Notifications | Same |"
+        },
+        {
+          "name": "settlement:created",
+          "description": "| Financial Settlement | Notifications | `financial/application/settlement.service.ts:51-57` |"
+        },
+        {
+          "name": "settlement:completed",
+          "description": "| Settlement | Notifications | `settlement/application/settlement.service.ts:403-408` |"
+        },
+        {
+          "name": "membership:expiring",
+          "description": "| Membership | Notifications, CRM | VOLUME-03 |"
+        },
+        {
+          "name": "tournament:created",
+          "description": "| Tournament | Notifications, Sports Engine | VOLUME-03 |"
+        },
+        {
+          "name": "tournament:status_changed",
+          "description": "| Tournament | Notifications | — |"
+        },
+        {
+          "name": "coaching:session_scheduled",
+          "description": "| Scheduling | Notifications, Coach dashboard | `scheduling/` |"
+        },
+        {
+          "name": "scheduling:search_completed",
+          "description": "| Scheduling | — | Same |"
+        },
+        {
+          "name": "scheduling:booking_created",
+          "description": "| Scheduling | Notifications | Same |"
+        },
+        {
+          "name": "scheduling:booking_compensated",
+          "description": "| Scheduling | Audit | Same |"
+        },
+        {
+          "name": "coupon:published",
+          "description": "| Coupon Service | Notifications | `coupon/application/coupon.service.ts:67-73` |"
+        },
+        {
+          "name": "notification:sent",
+          "description": "| Notifications | Push Log | `notifications/` |"
+        },
+        {
+          "name": "notification:failed",
+          "description": "| Notifications | Dead Letter Queue | Same |"
+        }
+      ],
+      "routes": []
+    },
+    {
+      "id": "BIZ-ARCH-07",
+      "name": "Business Policy Register",
+      "family": "BIZ-ARCH",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "ARCH",
+      "crossReferences": [],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "BIZ-ARCH-08",
+      "name": "Business Rule Catalog",
+      "family": "BIZ-ARCH",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "ARCH",
+      "crossReferences": [],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "BIZ-ARCH-09",
+      "name": "Business KPI Framework",
+      "family": "BIZ-ARCH",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "ARCH",
+      "crossReferences": [],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "BIZ-ARCH-10",
+      "name": "Business Glossary",
+      "family": "BIZ-ARCH",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "ARCH",
+      "crossReferences": [],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "BIZ-PROD-01",
+      "name": "Product Vision & Mission",
+      "family": "BIZ-PROD",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "PROD",
+      "crossReferences": [
+        {
+          "type": "references",
+          "target": "BIZ-ARCH-01"
+        }
+      ],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "BIZ-PROD-02",
+      "name": "Feature Catalog",
+      "family": "BIZ-PROD",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "PROD",
+      "crossReferences": [
+        {
+          "type": "references",
+          "target": "BIZ-PROD-03"
+        },
+        {
+          "type": "references",
+          "target": "TECH-MOD-01"
+        }
+      ],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "BIZ-PROD-03",
+      "name": "Feature Matrix",
+      "family": "BIZ-PROD",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "PROD",
+      "crossReferences": [],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "BIZ-PROD-04",
+      "name": "Product Roadmap",
+      "family": "BIZ-PROD",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "PROD",
+      "crossReferences": [
+        {
+          "type": "references",
+          "target": "BIZ-ARCH-01"
+        }
+      ],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "BIZ-PROD-06",
+      "name": "Pricing Model",
+      "family": "BIZ-PROD",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "PROD",
+      "crossReferences": [
+        {
+          "type": "references",
+          "target": "TECH-MOD-32"
+        },
+        {
+          "type": "references",
+          "target": "TECH-MOD-30"
+        }
+      ],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "BIZ-PROD-08",
+      "name": "Edition Comparison",
+      "family": "BIZ-PROD",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "PROD",
+      "crossReferences": [
+        {
+          "type": "references",
+          "target": "BIZ-PROD-06"
+        },
+        {
+          "type": "references",
+          "target": "BIZ-PROD-03"
+        }
+      ],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "GOV-ADR-001",
+      "name": "Global Identity Model",
+      "family": "GOV-ADR",
+      "status": "Accepted",
+      "version": "1.0",
+      "type": "ADR",
+      "crossReferences": [],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "GOV-ADR-002",
+      "name": "Domain Ownership — Modular Monolith",
+      "family": "GOV-ADR",
+      "status": "Accepted",
+      "version": "1.0",
+      "type": "ADR",
+      "crossReferences": [],
+      "entities": [],
+      "events": [
+        {
+          "name": "booking:created",
+          "description": ", Notifications listens |"
+        }
+      ],
+      "routes": []
+    },
+    {
+      "id": "GOV-ADR-003",
+      "name": "Event-Composable Architecture",
+      "family": "GOV-ADR",
+      "status": "Accepted",
+      "version": "1.0",
+      "type": "ADR",
+      "crossReferences": [],
+      "entities": [],
+      "events": [
+        {
+          "name": "payment:succeeded",
+          "description": ", `payment:failed` | Booking, Marketplace, Wallet | `payment.service.ts:571-622` |"
+        },
+        {
+          "name": "coupon:published",
+          "description": "| Notifications | `coupon.service.ts:67-73` |"
+        },
+        {
+          "name": "settlement:completed",
+          "description": "| Notifications | `settlement.service.ts:403-408` |"
+        }
+      ],
+      "routes": []
+    },
+    {
+      "id": "GOV-ADR-004",
+      "name": "Ledger-Based Transaction Model",
+      "family": "GOV-ADR",
+      "status": "Accepted",
+      "version": "1.0",
+      "type": "ADR",
+      "crossReferences": [],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "GOV-ADR-005",
+      "name": "Finance Owns Financial Truth",
+      "family": "GOV-ADR",
+      "status": "Accepted",
+      "version": "1.0",
+      "type": "ADR",
+      "crossReferences": [],
+      "entities": [],
+      "events": [
+        {
+          "name": "booking:created",
+          "description": ", `booking:cancelled`, etc."
+        },
+        {
+          "name": "payment:succeeded",
+          "description": "and `payment:failed` — lets Financial module create the ledger entries."
+        }
+      ],
+      "routes": []
+    },
+    {
+      "id": "GOV-ADR-006",
+      "name": "Inventory Ledger-Based Transactions",
+      "family": "GOV-ADR",
+      "status": "Accepted",
+      "version": "1.0",
+      "type": "ADR",
+      "crossReferences": [],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "GOV-ADR-007",
+      "name": "Single Order Aggregate",
+      "family": "GOV-ADR",
+      "status": "Accepted",
+      "version": "1.0",
+      "type": "ADR",
+      "crossReferences": [],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "GOV-ADR-008",
+      "name": "Academy State Machine",
+      "family": "GOV-ADR",
+      "status": "Accepted",
+      "version": "1.0",
+      "type": "ADR",
+      "crossReferences": [],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "GOV-ADR-009",
+      "name": "Tournament Format Strategy",
+      "family": "GOV-ADR",
+      "status": "Accepted",
+      "version": "1.0",
+      "type": "ADR",
+      "crossReferences": [],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "GOV-ADR-010",
+      "name": "CRM Read Model Pattern",
+      "family": "GOV-ADR",
+      "status": "Accepted",
+      "version": "1.0",
+      "type": "ADR",
+      "crossReferences": [
+        {
+          "type": "references",
+          "target": "TECH-ARCH-22"
+        },
+        {
+          "type": "references",
+          "target": "TECH-MOD-15"
+        },
+        {
+          "type": "related",
+          "target": "GOV-ADR-002"
+        },
+        {
+          "type": "related",
+          "target": "GOV-ADR-003"
+        }
+      ],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "GOV-ADR-011",
+      "name": "HR Payroll — Finance Separation",
+      "family": "GOV-ADR",
+      "status": "Accepted",
+      "version": "1.0",
+      "type": "ADR",
+      "crossReferences": [
+        {
+          "type": "references",
+          "target": "TECH-ARCH-23"
+        },
+        {
+          "type": "references",
+          "target": "TECH-MOD-16"
+        },
+        {
+          "type": "references",
+          "target": "TECH-MOD-12"
+        },
+        {
+          "type": "related",
+          "target": "GOV-ADR-005"
+        },
+        {
+          "type": "related",
+          "target": "GOV-ADR-004"
+        }
+      ],
+      "entities": [],
+      "events": [
+        {
+          "name": "payroll:calculated",
+          "description": "→ Finance listens and posts) would be more decoupled but adds complexity."
+        },
+        {
+          "name": "payroll:calculated",
+          "description": "event (when implemented) should allow Finance to independently subscribe and post. The current synchronous approach is an MVP simplification."
+        }
+      ],
+      "routes": []
+    },
+    {
+      "id": "GOV-ADR-012",
+      "name": "Session Management — HttpOnly Cookies with Bearer Token Fallback",
+      "family": "GOV-ADR",
+      "status": "Accepted",
+      "version": "1.0",
+      "type": "ADR",
+      "crossReferences": [
+        {
+          "type": "references",
+          "target": "TECH-ARCH-07"
+        },
+        {
+          "type": "references",
+          "target": "TECH-MOD-01"
+        },
+        {
+          "type": "related",
+          "target": "GOV-ADR-001"
+        }
+      ],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "GOV-ADR-013",
+      "name": "Payment Gateway Abstraction — Factory Pattern",
+      "family": "GOV-ADR",
+      "status": "Accepted",
+      "version": "1.0",
+      "type": "ADR",
+      "crossReferences": [
+        {
+          "type": "references",
+          "target": "TECH-ARCH-13"
+        },
+        {
+          "type": "references",
+          "target": "TECH-MOD-09"
+        },
+        {
+          "type": "related",
+          "target": "GOV-ADR-004"
+        }
+      ],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "GOV-ADR-014",
+      "name": "Notification Multi-Channel — Pluggable Provider Architecture",
+      "family": "GOV-ADR",
+      "status": "Accepted",
+      "version": "1.0",
+      "type": "ADR",
+      "crossReferences": [
+        {
+          "type": "references",
+          "target": "TECH-ARCH-25"
+        },
+        {
+          "type": "references",
+          "target": "TECH-MOD-14"
+        },
+        {
+          "type": "related",
+          "target": "GOV-ADR-003"
+        }
+      ],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "GOV-ADR-015",
+      "name": "Booking Concurrency — Redis Distributed Locks + DB Constraints",
+      "family": "GOV-ADR",
+      "status": "Accepted",
+      "version": "1.0",
+      "type": "ADR",
+      "crossReferences": [
+        {
+          "type": "references",
+          "target": "TECH-ARCH-12"
+        },
+        {
+          "type": "references",
+          "target": "TECH-MOD-03"
+        },
+        {
+          "type": "related",
+          "target": "GOV-ADR-003"
+        }
+      ],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "GOV-ADR-016",
+      "name": "Organization-Scoped RBAC",
+      "family": "GOV-ADR",
+      "status": "Accepted",
+      "version": "1.0",
+      "type": "ADR",
+      "crossReferences": [
+        {
+          "type": "references",
+          "target": "TECH-ARCH-15"
+        },
+        {
+          "type": "references",
+          "target": "TECH-MOD-13"
+        },
+        {
+          "type": "references",
+          "target": "TECH-MOD-02"
+        },
+        {
+          "type": "related",
+          "target": "GOV-ADR-001"
+        },
+        {
+          "type": "related",
+          "target": "GOV-ADR-002"
+        }
+      ],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "GOV-ADR-017",
+      "name": "Scheduling Engine — Provider-Based Search",
+      "family": "GOV-ADR",
+      "status": "Accepted",
+      "version": "1.0",
+      "type": "ADR",
+      "crossReferences": [
+        {
+          "type": "references",
+          "target": "TECH-MOD-19"
+        },
+        {
+          "type": "references",
+          "target": "TECH-MOD-03"
+        },
+        {
+          "type": "related",
+          "target": "GOV-ADR-003"
+        }
+      ],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "GOV-ADR-018",
+      "name": "Marketplace Settlement — Settlement Lifecycle with Financial Recording",
+      "family": "GOV-ADR",
+      "status": "Accepted",
+      "version": "1.0",
+      "type": "ADR",
+      "crossReferences": [
+        {
+          "type": "references",
+          "target": "TECH-ARCH-17"
+        },
+        {
+          "type": "references",
+          "target": "TECH-MOD-30"
+        },
+        {
+          "type": "references",
+          "target": "TECH-MOD-12"
+        },
+        {
+          "type": "related",
+          "target": "GOV-ADR-004"
+        },
+        {
+          "type": "related",
+          "target": "GOV-ADR-005"
+        }
+      ],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "GOV-ADR-019",
+      "name": "HR-Payroll / Finance Boundary — HR Calculates, Finance Posts",
+      "family": "GOV-ADR",
+      "status": "Accepted",
+      "version": "1.0",
+      "type": "ADR",
+      "crossReferences": [
+        {
+          "type": "references",
+          "target": "TECH-ARCH-23"
+        },
+        {
+          "type": "references",
+          "target": "TECH-MOD-16"
+        },
+        {
+          "type": "references",
+          "target": "TECH-MOD-12"
+        },
+        {
+          "type": "related",
+          "target": "GOV-ADR-005"
+        },
+        {
+          "type": "related",
+          "target": "GOV-ADR-004"
+        },
+        {
+          "type": "related",
+          "target": "GOV-ADR-011"
+        }
+      ],
+      "entities": [],
+      "events": [
+        {
+          "name": "payroll:calculated",
+          "description": "event"
+        },
+        {
+          "name": "payroll:calculated",
+          "description": "event |"
+        }
+      ],
+      "routes": []
+    },
+    {
+      "id": "GOV-ADR-020",
+      "name": "Academy Attendance Immutability",
+      "family": "GOV-ADR",
+      "status": "Accepted",
+      "version": "1.0",
+      "type": "ADR",
+      "crossReferences": [
+        {
+          "type": "references",
+          "target": "TECH-ARCH-19"
+        },
+        {
+          "type": "references",
+          "target": "TECH-MOD-04"
+        },
+        {
+          "type": "related",
+          "target": "GOV-ADR-008"
+        }
+      ],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "GOV-ADR-021",
+      "name": "Standings Persistence — Pre-Computed Rankings in Database",
+      "family": "GOV-ADR",
+      "status": "Accepted",
+      "version": "1.0",
+      "type": "ADR",
+      "crossReferences": [
+        {
+          "type": "references",
+          "target": "TECH-ARCH-20"
+        },
+        {
+          "type": "references",
+          "target": "TECH-ARCH-21"
+        },
+        {
+          "type": "references",
+          "target": "TECH-MOD-26"
+        }
+      ],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "GOV-ADR-022",
+      "name": "Customer 360 — UNION Query Across Business Domains",
+      "family": "GOV-ADR",
+      "status": "Accepted",
+      "version": "1.0",
+      "type": "ADR",
+      "crossReferences": [
+        {
+          "type": "references",
+          "target": "TECH-ARCH-22"
+        },
+        {
+          "type": "references",
+          "target": "TECH-MOD-15"
+        },
+        {
+          "type": "related",
+          "target": "GOV-ADR-010"
+        }
+      ],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "GOV-ADR-023",
+      "name": "Inventory Ledger — Immutable Log as Source of Truth",
+      "family": "GOV-ADR",
+      "status": "Accepted",
+      "version": "1.0",
+      "type": "ADR",
+      "crossReferences": [
+        {
+          "type": "references",
+          "target": "TECH-ARCH-18"
+        },
+        {
+          "type": "references",
+          "target": "TECH-MOD-08"
+        },
+        {
+          "type": "related",
+          "target": "GOV-ADR-004"
+        }
+      ],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "GOV-ADR-024",
+      "name": "API Versioning Strategy — URL Prefix + API Key Authentication",
+      "family": "GOV-ADR",
+      "status": "Accepted",
+      "version": "1.0",
+      "type": "ADR",
+      "crossReferences": [
+        {
+          "type": "references",
+          "target": "TECH-DEV-11"
+        },
+        {
+          "type": "references",
+          "target": "TECH-MOD-27"
+        }
+      ],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "GOV-ADR-025",
+      "name": "Database Migration Strategy — Additive SQL with Authoritative Baseline",
+      "family": "GOV-ADR",
+      "status": "Accepted",
+      "version": "1.0",
+      "type": "ADR",
+      "crossReferences": [
+        {
+          "type": "references",
+          "target": "TECH-DEV-10"
+        },
+        {
+          "type": "references",
+          "target": "TECH-ARCH-05"
+        }
+      ],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "OPS-DEPLOY-01",
+      "name": "Deployment Guide",
+      "family": "OPS-DEPLOY",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "OPS",
+      "crossReferences": [
+        {
+          "type": "references",
+          "target": "TECH-ARCH-08"
+        },
+        {
+          "type": "references",
+          "target": "OPS-MON-01"
+        },
+        {
+          "type": "references",
+          "target": "OPS-RUN-01"
+        },
+        {
+          "type": "related",
+          "target": "TECH-DEV-05"
+        }
+      ],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "OPS-MON-01",
+      "name": "Monitoring Guide",
+      "family": "OPS-MON",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "OPS",
+      "crossReferences": [
+        {
+          "type": "references",
+          "target": "TECH-ARCH-25"
+        },
+        {
+          "type": "references",
+          "target": "OPS-DEPLOY-01"
+        },
+        {
+          "type": "related",
+          "target": "OPS-RUN-01"
+        },
+        {
+          "type": "related",
+          "target": "OPS-RUN-02"
+        }
+      ],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "OPS-RUN-01",
+      "name": "Backup and Restore",
+      "family": "OPS-RUN",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "OPS",
+      "crossReferences": [
+        {
+          "type": "references",
+          "target": "OPS-DEPLOY-01"
+        },
+        {
+          "type": "related",
+          "target": "OPS-RUN-02"
+        }
+      ],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "OPS-RUN-02",
+      "name": "Troubleshooting Guide",
+      "family": "OPS-RUN",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "OPS",
+      "crossReferences": [
+        {
+          "type": "references",
+          "target": "OPS-DEPLOY-01"
+        },
+        {
+          "type": "references",
+          "target": "OPS-MON-01"
+        },
+        {
+          "type": "references",
+          "target": "OPS-RUN-01"
+        },
+        {
+          "type": "related",
+          "target": "TECH-ARCH-25"
+        }
+      ],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "QUAL-CERT-01",
+      "name": "Certification Report",
+      "family": "QUAL-CERT",
+      "status": "Draft",
+      "version": "0.2",
+      "type": "CERT",
+      "crossReferences": [
+        {
+          "type": "references",
+          "target": "VOLUME-38"
+        },
+        {
+          "type": "references",
+          "target": "QUAL-TEST-01"
+        },
+        {
+          "type": "related",
+          "target": "TECH-ARCH-01"
+        },
+        {
+          "type": "related",
+          "target": "TECH-ARCH-07"
+        }
+      ],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "QUAL-TEST-01",
+      "name": "Testing Strategy",
+      "family": "QUAL-TEST",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "TEST",
+      "crossReferences": [
+        {
+          "type": "references",
+          "target": "TECH-DEV-09"
+        },
+        {
+          "type": "references",
+          "target": "QUAL-TEST-02"
+        },
+        {
+          "type": "references",
+          "target": "QUAL-TEST-03"
+        },
+        {
+          "type": "references",
+          "target": "QUAL-TEST-04"
+        },
+        {
+          "type": "related",
+          "target": "TECH-ARCH-11"
+        }
+      ],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "QUAL-TEST-02",
+      "name": "Unit Test Reference",
+      "family": "QUAL-TEST",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "TEST",
+      "crossReferences": [
+        {
+          "type": "references",
+          "target": "TECH-DEV-09"
+        },
+        {
+          "type": "references",
+          "target": "QUAL-TEST-03"
+        },
+        {
+          "type": "related",
+          "target": "TECH-MOD-01"
+        },
+        {
+          "type": "related",
+          "target": "TECH-MOD-50"
+        }
+      ],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "QUAL-TEST-03",
+      "name": "Integration Test Reference",
+      "family": "QUAL-TEST",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "TEST",
+      "crossReferences": [
+        {
+          "type": "references",
+          "target": "TECH-MOD-03"
+        },
+        {
+          "type": "references",
+          "target": "TECH-DB-03"
+        },
+        {
+          "type": "related",
+          "target": "TECH-DEV-09"
+        },
+        {
+          "type": "related",
+          "target": "TECH-UX-04"
+        }
+      ],
+      "entities": [],
+      "events": [
+        {
+          "name": ":52",
+          "description": "(coupon), `:49` (shipping), `:61-66` (orders)."
+        }
+      ],
+      "routes": []
+    },
+    {
+      "id": "QUAL-TEST-04",
+      "name": "E2E Test Reference",
+      "family": "QUAL-TEST",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "TEST",
+      "crossReferences": [
+        {
+          "type": "references",
+          "target": "TECH-DEV-09"
+        },
+        {
+          "type": "references",
+          "target": "TECH-UX-04"
+        },
+        {
+          "type": "related",
+          "target": "TECH-MOD-03"
+        },
+        {
+          "type": "related",
+          "target": "TECH-MOD-01"
+        }
+      ],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "QUAL-TRACE-01_Requirements_Traceability_Matrix",
+      "name": "QUAL-TRACE-01 Requirements Traceability Matrix",
+      "family": "UNKNOWN",
+      "status": "Unknown",
+      "version": "0.0",
+      "type": "DOC",
+      "crossReferences": [],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "TECH-ARCH-01",
+      "name": "System Architecture",
+      "family": "TECH-ARCH",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "ARCH",
+      "crossReferences": [
+        {
+          "type": "governs",
+          "target": "TECH-ARCH-01"
+        },
+        {
+          "type": "references",
+          "target": "TECH-ARCH-02"
+        },
+        {
+          "type": "references",
+          "target": "TECH-ARCH-05"
+        },
+        {
+          "type": "references",
+          "target": "TECH-ARCH-08"
+        },
+        {
+          "type": "related",
+          "target": "VOLUME-02"
+        },
+        {
+          "type": "related",
+          "target": "TECH-DEV-03"
+        }
+      ],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "TECH-ARCH-02",
+      "name": "Module Architecture",
+      "family": "TECH-ARCH",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "ARCH",
+      "crossReferences": [
+        {
+          "type": "governs",
+          "target": "TECH-ARCH-02"
+        },
+        {
+          "type": "references",
+          "target": "TECH-ARCH-01"
+        },
+        {
+          "type": "references",
+          "target": "TECH-DEV-03"
+        },
+        {
+          "type": "related",
+          "target": "TECH-DEV-01"
+        },
+        {
+          "type": "related",
+          "target": "VOLUME-04"
+        }
+      ],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "TECH-ARCH-03",
+      "name": "Domain Model",
+      "family": "TECH-ARCH",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "ARCH",
+      "crossReferences": [
+        {
+          "type": "governs",
+          "target": "TECH-ARCH-03"
+        },
+        {
+          "type": "references",
+          "target": "TECH-ARCH-02"
+        },
+        {
+          "type": "references",
+          "target": "TECH-ARCH-04"
+        },
+        {
+          "type": "related",
+          "target": "VOLUME-03"
+        },
+        {
+          "type": "related",
+          "target": "VOLUME-11"
+        }
+      ],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "TECH-ARCH-04",
+      "name": "Event Architecture",
+      "family": "TECH-ARCH",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "ARCH",
+      "crossReferences": [
+        {
+          "type": "governs",
+          "target": "TECH-ARCH-04"
+        },
+        {
+          "type": "references",
+          "target": "TECH-ARCH-01"
+        },
+        {
+          "type": "references",
+          "target": "TECH-ARCH-03"
+        },
+        {
+          "type": "related",
+          "target": "VOLUME-15"
+        },
+        {
+          "type": "related",
+          "target": "VOLUME-04"
+        }
+      ],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "TECH-ARCH-05",
+      "name": "Data Architecture",
+      "family": "TECH-ARCH",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "ARCH",
+      "crossReferences": [
+        {
+          "type": "governs",
+          "target": "TECH-ARCH-05"
+        },
+        {
+          "type": "references",
+          "target": "TECH-ARCH-01"
+        },
+        {
+          "type": "references",
+          "target": "TECH-DEV-10"
+        },
+        {
+          "type": "related",
+          "target": "VOLUME-10"
+        }
+      ],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "TECH-ARCH-06",
+      "name": "Integration Architecture",
+      "family": "TECH-ARCH",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "ARCH",
+      "crossReferences": [
+        {
+          "type": "governs",
+          "target": "TECH-ARCH-06"
+        },
+        {
+          "type": "references",
+          "target": "TECH-ARCH-01"
+        },
+        {
+          "type": "references",
+          "target": "TECH-ARCH-07"
+        },
+        {
+          "type": "related",
+          "target": "VOLUME-18"
+        }
+      ],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "TECH-ARCH-07",
+      "name": "Security Architecture",
+      "family": "TECH-ARCH",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "ARCH",
+      "crossReferences": [
+        {
+          "type": "governs",
+          "target": "TECH-ARCH-07"
+        },
+        {
+          "type": "references",
+          "target": "TECH-ARCH-01"
+        },
+        {
+          "type": "references",
+          "target": "TECH-DEV-14"
+        },
+        {
+          "type": "related",
+          "target": "VOLUME-08"
+        },
+        {
+          "type": "related",
+          "target": "VOLUME-19"
+        }
+      ],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "TECH-ARCH-08",
+      "name": "Deployment Architecture",
+      "family": "TECH-ARCH",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "ARCH",
+      "crossReferences": [
+        {
+          "type": "governs",
+          "target": "TECH-ARCH-08"
+        },
+        {
+          "type": "references",
+          "target": "TECH-ARCH-01"
+        },
+        {
+          "type": "references",
+          "target": "TECH-DEV-10"
+        },
+        {
+          "type": "related",
+          "target": "VOLUME-20"
+        },
+        {
+          "type": "related",
+          "target": "VOLUME-21"
+        }
+      ],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "TECH-ARCH-10",
+      "name": "Technology Stack",
+      "family": "TECH-ARCH",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "ARCH",
+      "crossReferences": [
+        {
+          "type": "governs",
+          "target": "TECH-ARCH-10"
+        },
+        {
+          "type": "references",
+          "target": "TECH-ARCH-01"
+        },
+        {
+          "type": "references",
+          "target": "TECH-ARCH-02"
+        },
+        {
+          "type": "related",
+          "target": "TECH-DEV-01"
+        },
+        {
+          "type": "related",
+          "target": "TECH-DEV-02"
+        }
+      ],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "TECH-ARCH-11",
+      "name": "Scalability Design",
+      "family": "TECH-ARCH",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "ARCH",
+      "crossReferences": [
+        {
+          "type": "governs",
+          "target": "TECH-ARCH-11"
+        },
+        {
+          "type": "references",
+          "target": "TECH-ARCH-01"
+        },
+        {
+          "type": "references",
+          "target": "TECH-ARCH-04"
+        },
+        {
+          "type": "references",
+          "target": "TECH-ARCH-05"
+        },
+        {
+          "type": "related",
+          "target": "TECH-ARCH-08"
+        },
+        {
+          "type": "related",
+          "target": "TECH-DEV-15"
+        }
+      ],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "TECH-ARCH-12",
+      "name": "Booking Flow Deep Dive",
+      "family": "TECH-ARCH",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "ARCH",
+      "crossReferences": [
+        {
+          "type": "references",
+          "target": "TECH-MOD-03"
+        },
+        {
+          "type": "references",
+          "target": "TECH-ARCH-02"
+        },
+        {
+          "type": "references",
+          "target": "TECH-ARCH-04"
+        },
+        {
+          "type": "related",
+          "target": "TECH-MOD-09"
+        },
+        {
+          "type": "related",
+          "target": "TECH-MOD-10"
+        },
+        {
+          "type": "related",
+          "target": "TECH-MOD-17"
+        },
+        {
+          "type": "related",
+          "target": "TECH-MOD-19"
+        }
+      ],
+      "entities": [],
+      "events": [
+        {
+          "name": "booking:matchmaking_started",
+          "description": ", `booking:applicant_applied`, `booking:applicant_responded`"
+        }
+      ],
+      "routes": []
+    },
+    {
+      "id": "TECH-ARCH-13",
+      "name": "Payment Flow Deep Dive",
+      "family": "TECH-ARCH",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "ARCH",
+      "crossReferences": [
+        {
+          "type": "references",
+          "target": "TECH-MOD-09"
+        },
+        {
+          "type": "references",
+          "target": "TECH-MOD-10"
+        },
+        {
+          "type": "references",
+          "target": "TECH-ARCH-02"
+        },
+        {
+          "type": "related",
+          "target": "TECH-MOD-03"
+        },
+        {
+          "type": "related",
+          "target": "TECH-MOD-12"
+        },
+        {
+          "type": "related",
+          "target": "TECH-MOD-30"
+        }
+      ],
+      "entities": [],
+      "events": [
+        {
+          "name": "payment:succeeded",
+          "description": "for their own fulfillment."
+        }
+      ],
+      "routes": []
+    },
+    {
+      "id": "TECH-ARCH-14",
+      "name": "Wallet Architecture",
+      "family": "TECH-ARCH",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "ARCH",
+      "crossReferences": [
+        {
+          "type": "references",
+          "target": "TECH-MOD-10"
+        },
+        {
+          "type": "references",
+          "target": "TECH-MOD-09"
+        },
+        {
+          "type": "references",
+          "target": "TECH-ARCH-02"
+        },
+        {
+          "type": "related",
+          "target": "TECH-MOD-12"
+        },
+        {
+          "type": "related",
+          "target": "TECH-MOD-30"
+        },
+        {
+          "type": "related",
+          "target": "TECH-MOD-07"
+        }
+      ],
+      "entities": [],
+      "events": [
+        {
+          "name": "wallet:deposit",
+          "description": "| After deposit | `{ walletId, userId, amount, balance, currency }` | `wallet.service.ts:74-80` |"
+        },
+        {
+          "name": "wallet:withdrawal",
+          "description": "| After withdraw | `{ walletId, userId, amount, balance, currency }` | `wallet.service.ts:131-137` |"
+        }
+      ],
+      "routes": []
+    },
+    {
+      "id": "TECH-ARCH-15",
+      "name": "Organization Architecture",
+      "family": "TECH-ARCH",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "ARCH",
+      "crossReferences": [
+        {
+          "type": "references",
+          "target": "TECH-ARCH-02"
+        },
+        {
+          "type": "references",
+          "target": "TECH-ARCH-07"
+        },
+        {
+          "type": "references",
+          "target": "TECH-MOD-13"
+        },
+        {
+          "type": "related",
+          "target": "TECH-MOD-14"
+        },
+        {
+          "type": "related",
+          "target": "TECH-MOD-15"
+        }
+      ],
+      "entities": [],
+      "events": [
+        {
+          "name": "coach:invited",
+          "description": "| `{coachId, userId, organisationId, organisationName, invitedBy}` | `inviteCoach()` |"
+        }
+      ],
+      "routes": []
+    },
+    {
+      "id": "TECH-ARCH-16",
+      "name": "Subscription Architecture",
+      "family": "TECH-ARCH",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "ARCH",
+      "crossReferences": [
+        {
+          "type": "references",
+          "target": "TECH-ARCH-15"
+        },
+        {
+          "type": "references",
+          "target": "TECH-DB-03"
+        },
+        {
+          "type": "related",
+          "target": "TECH-MOD-13"
+        }
+      ],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "TECH-ARCH-17",
+      "name": "Marketplace Architecture",
+      "family": "TECH-ARCH",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "ARCH",
+      "crossReferences": [
+        {
+          "type": "references",
+          "target": "TECH-ARCH-02"
+        },
+        {
+          "type": "references",
+          "target": "TECH-MOD-07"
+        },
+        {
+          "type": "references",
+          "target": "TECH-MOD-08"
+        },
+        {
+          "type": "references",
+          "target": "TECH-MOD-30"
+        },
+        {
+          "type": "references",
+          "target": "TECH-MOD-31"
+        },
+        {
+          "type": "related",
+          "target": "TECH-ARCH-18"
+        },
+        {
+          "type": "related",
+          "target": "GOV-ADR-007"
+        }
+      ],
+      "entities": [],
+      "events": [
+        {
+          "name": "marketplace:order_created",
+          "description": "event"
+        },
+        {
+          "name": "marketplace:order_cancelled",
+          "description": "**Evidence:** `order-aggregate.ts:5-37`, `order-constants.ts:1-2`, `marketplace.service.ts:720-760` (updateStatus), `marketplace.service.ts:1026-1063` (reversal)."
+        },
+        {
+          "name": "marketplace:product_created",
+          "description": "| Product created |"
+        },
+        {
+          "name": "marketplace:product_updated",
+          "description": "| Product updated |"
+        },
+        {
+          "name": "marketplace:product_deleted",
+          "description": "| Product deleted |"
+        },
+        {
+          "name": "marketplace:order_created",
+          "description": "| Checkout completed |"
+        },
+        {
+          "name": "marketplace:order_confirmed",
+          "description": "| Payment confirmed |"
+        },
+        {
+          "name": "marketplace:order_status_changed",
+          "description": "| Any status transition |"
+        },
+        {
+          "name": "marketplace:settlement_requested",
+          "description": "| Settlement requested |"
+        },
+        {
+          "name": "marketplace:settlement_processed",
+          "description": "| Settlement completed |"
+        },
+        {
+          "name": "marketplace:review_created",
+          "description": "| Review submitted |"
+        },
+        {
+          "name": "marketplace:seller_upgrade_requested",
+          "description": "| Seller upgrade submitted |"
+        }
+      ],
+      "routes": []
+    },
+    {
+      "id": "TECH-ARCH-18",
+      "name": "Inventory Architecture",
+      "family": "TECH-ARCH",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "ARCH",
+      "crossReferences": [
+        {
+          "type": "references",
+          "target": "TECH-ARCH-02"
+        },
+        {
+          "type": "references",
+          "target": "TECH-MOD-08"
+        },
+        {
+          "type": "related",
+          "target": "TECH-ARCH-17"
+        },
+        {
+          "type": "related",
+          "target": "GOV-ADR-006"
+        }
+      ],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "TECH-ARCH-19",
+      "name": "Academy Architecture",
+      "family": "TECH-ARCH",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "ARCH",
+      "crossReferences": [
+        {
+          "type": "references",
+          "target": "TECH-MOD-04"
+        },
+        {
+          "type": "references",
+          "target": "TECH-DB-03"
+        },
+        {
+          "type": "references",
+          "target": "TECH-MOD-19"
+        },
+        {
+          "type": "related",
+          "target": "TECH-MOD-05"
+        },
+        {
+          "type": "related",
+          "target": "TECH-MOD-06"
+        }
+      ],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "TECH-ARCH-20",
+      "name": "Tournament Architecture",
+      "family": "TECH-ARCH",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "ARCH",
+      "crossReferences": [
+        {
+          "type": "references",
+          "target": "TECH-MOD-05"
+        },
+        {
+          "type": "references",
+          "target": "TECH-DB-03"
+        },
+        {
+          "type": "references",
+          "target": "TECH-MOD-26"
+        },
+        {
+          "type": "related",
+          "target": "TECH-MOD-04"
+        },
+        {
+          "type": "related",
+          "target": "TECH-MOD-06"
+        }
+      ],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "TECH-ARCH-21",
+      "name": "League Architecture",
+      "family": "TECH-ARCH",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "ARCH",
+      "crossReferences": [
+        {
+          "type": "references",
+          "target": "TECH-MOD-06"
+        },
+        {
+          "type": "references",
+          "target": "TECH-DB-03"
+        },
+        {
+          "type": "references",
+          "target": "TECH-MOD-26"
+        },
+        {
+          "type": "related",
+          "target": "TECH-MOD-04"
+        },
+        {
+          "type": "related",
+          "target": "TECH-MOD-05"
+        }
+      ],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "TECH-ARCH-22",
+      "name": "CRM Architecture",
+      "family": "TECH-ARCH",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "ARCH",
+      "crossReferences": [
+        {
+          "type": "references",
+          "target": "TECH-MOD-15"
+        },
+        {
+          "type": "references",
+          "target": "TECH-DB-03"
+        },
+        {
+          "type": "related",
+          "target": "TECH-MOD-14"
+        },
+        {
+          "type": "related",
+          "target": "GOV-ADR-010"
+        }
+      ],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "TECH-ARCH-23",
+      "name": "HR Architecture",
+      "family": "TECH-ARCH",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "ARCH",
+      "crossReferences": [
+        {
+          "type": "references",
+          "target": "TECH-MOD-16"
+        },
+        {
+          "type": "references",
+          "target": "TECH-DB-03"
+        },
+        {
+          "type": "related",
+          "target": "TECH-MOD-12"
+        },
+        {
+          "type": "related",
+          "target": "GOV-ADR-011"
+        }
+      ],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "TECH-ARCH-24",
+      "name": "Reports & BI Architecture",
+      "family": "TECH-ARCH",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "ARCH",
+      "crossReferences": [
+        {
+          "type": "references",
+          "target": "TECH-MOD-29"
+        },
+        {
+          "type": "references",
+          "target": "TECH-MOD-25"
+        },
+        {
+          "type": "related",
+          "target": "TECH-DB-03"
+        },
+        {
+          "type": "related",
+          "target": "TECH-ARCH-05"
+        }
+      ],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "TECH-ARCH-25",
+      "name": "Observability Architecture",
+      "family": "TECH-ARCH",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "ARCH",
+      "crossReferences": [
+        {
+          "type": "references",
+          "target": "TECH-MOD-14"
+        },
+        {
+          "type": "references",
+          "target": "TECH-MOD-25"
+        },
+        {
+          "type": "related",
+          "target": "OPS-MON-01"
+        },
+        {
+          "type": "related",
+          "target": "QUAL-TEST-03"
+        }
+      ],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "TECH-DB-03",
+      "name": "Entity Reference",
+      "family": "TECH-DB",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "DB",
+      "crossReferences": [],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "TECH-DEV-01",
+      "name": "Coding Standards — TypeScript",
+      "family": "TECH-DEV",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "STD",
+      "crossReferences": [
+        {
+          "type": "governs",
+          "target": "TECH-DEV-01"
+        },
+        {
+          "type": "references",
+          "target": "TECH-ARCH-01"
+        },
+        {
+          "type": "references",
+          "target": "TECH-ARCH-02"
+        },
+        {
+          "type": "related",
+          "target": "TECH-DEV-02"
+        },
+        {
+          "type": "related",
+          "target": "TECH-DEV-03"
+        },
+        {
+          "type": "related",
+          "target": "TECH-DEV-04"
+        }
+      ],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "TECH-DEV-02",
+      "name": "Coding Standards — React",
+      "family": "TECH-DEV",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "STD",
+      "crossReferences": [],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "TECH-DEV-03",
+      "name": "Folder Structure Standard",
+      "family": "TECH-DEV",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "STD",
+      "crossReferences": [],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "TECH-DEV-04",
+      "name": "Naming Conventions",
+      "family": "TECH-DEV",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "STD",
+      "crossReferences": [],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "TECH-DEV-05",
+      "name": "Git Workflow & Branch Strategy",
+      "family": "TECH-DEV",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "STD",
+      "crossReferences": [],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "TECH-DEV-06",
+      "name": "Commit Message Standards",
+      "family": "TECH-DEV",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "STD",
+      "crossReferences": [],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "TECH-DEV-07",
+      "name": "Pull Request Standards",
+      "family": "TECH-DEV",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "STD",
+      "crossReferences": [],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "TECH-DEV-08",
+      "name": "Code Review Standards",
+      "family": "TECH-DEV",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "STD",
+      "crossReferences": [],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "TECH-DEV-09",
+      "name": "Testing Standards",
+      "family": "TECH-DEV",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "STD",
+      "crossReferences": [],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "TECH-DEV-10",
+      "name": "Database Migration Standards",
+      "family": "TECH-DEV",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "STD",
+      "crossReferences": [],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "TECH-DEV-11",
+      "name": "API Design Standards",
+      "family": "TECH-DEV",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "STD",
+      "crossReferences": [],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "TECH-DEV-12",
+      "name": "Error Handling Standards",
+      "family": "TECH-DEV",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "STD",
+      "crossReferences": [],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "TECH-DEV-13",
+      "name": "Logging Standards",
+      "family": "TECH-DEV",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "STD",
+      "crossReferences": [],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "TECH-DEV-14",
+      "name": "Security Coding Standards",
+      "family": "TECH-DEV",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "STD",
+      "crossReferences": [],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "TECH-DEV-15",
+      "name": "Performance Coding Standards",
+      "family": "TECH-DEV",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "STD",
+      "crossReferences": [],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "TECH-MOD-01",
+      "name": "Auth Module",
+      "family": "TECH-MOD",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "MOD",
+      "crossReferences": [
+        {
+          "type": "references",
+          "target": "TECH-ARCH-02"
+        },
+        {
+          "type": "references",
+          "target": "TECH-MOD-20"
+        },
+        {
+          "type": "related",
+          "target": "TECH-MOD-02"
+        },
+        {
+          "type": "related",
+          "target": "TECH-MOD-10"
+        }
+      ],
+      "entities": [
+        {
+          "name": "User",
+          "table": "users"
+        },
+        {
+          "name": "Session",
+          "table": "sessions"
+        }
+      ],
+      "events": [
+        {
+          "name": "user:registered",
+          "description": "`user:logged_in`"
+        },
+        {
+          "name": "user:logged_out",
+          "description": "`user:password_reset`"
+        },
+        {
+          "name": "user:reactivated",
+          "description": "## 7. State Machine"
+        }
+      ],
+      "routes": []
+    },
+    {
+      "id": "TECH-MOD-02",
+      "name": "RBAC Module",
+      "family": "TECH-MOD",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "MOD",
+      "crossReferences": [
+        {
+          "type": "references",
+          "target": "TECH-ARCH-02"
+        },
+        {
+          "type": "references",
+          "target": "TECH-MOD-01"
+        },
+        {
+          "type": "related",
+          "target": "TECH-MOD-20"
+        },
+        {
+          "type": "related",
+          "target": "VOLUME-08"
+        }
+      ],
+      "entities": [
+        {
+          "name": "Role",
+          "table": "roles"
+        },
+        {
+          "name": "Permission",
+          "table": "permissions"
+        }
+      ],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "TECH-MOD-03",
+      "name": "Booking Module",
+      "family": "TECH-MOD",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "MOD",
+      "crossReferences": [
+        {
+          "type": "references",
+          "target": "TECH-ARCH-02"
+        },
+        {
+          "type": "references",
+          "target": "TECH-MOD-19"
+        },
+        {
+          "type": "references",
+          "target": "TECH-MOD-09"
+        },
+        {
+          "type": "related",
+          "target": "TECH-MOD-07"
+        },
+        {
+          "type": "related",
+          "target": "TECH-MOD-10"
+        }
+      ],
+      "entities": [
+        {
+          "name": "Booking",
+          "table": "bookings"
+        }
+      ],
+      "events": [
+        {
+          "name": "booking:created",
+          "description": "On booking creation"
+        },
+        {
+          "name": "booking:cancelled",
+          "description": "On cancellation (includes reason)"
+        },
+        {
+          "name": "booking:checked_in",
+          "description": "On check-in"
+        },
+        {
+          "name": "booking:matchmaking_started",
+          "description": "Matchmaking initiated"
+        },
+        {
+          "name": "booking:applicant_applied",
+          "description": "Player applied to join"
+        },
+        {
+          "name": "booking:applicant_responded",
+          "description": "Host responded"
+        }
+      ],
+      "routes": []
+    },
+    {
+      "id": "TECH-MOD-04",
+      "name": "Academy Module",
+      "family": "TECH-MOD",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "MOD",
+      "crossReferences": [
+        {
+          "type": "references",
+          "target": "TECH-ARCH-02"
+        },
+        {
+          "type": "references",
+          "target": "TECH-MOD-19"
+        },
+        {
+          "type": "related",
+          "target": "TECH-MOD-05"
+        },
+        {
+          "type": "related",
+          "target": "TECH-MOD-06"
+        }
+      ],
+      "entities": [],
+      "events": [
+        {
+          "name": ":37",
+          "description": "defines enrollment status."
+        },
+        {
+          "name": "academy:program_created",
+          "description": "`academy:program_published`"
+        },
+        {
+          "name": "academy:program_status_changed",
+          "description": "`academy:enrollment_created`"
+        },
+        {
+          "name": "academy:enrollment_confirmed",
+          "description": "`academy:enrollment_cancelled`"
+        },
+        {
+          "name": "academy:attendance_recorded",
+          "description": "## 8. Audit Events"
+        }
+      ],
+      "routes": []
+    },
+    {
+      "id": "TECH-MOD-05",
+      "name": "Tournaments Module",
+      "family": "TECH-MOD",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "MOD",
+      "crossReferences": [
+        {
+          "type": "references",
+          "target": "TECH-ARCH-02"
+        },
+        {
+          "type": "references",
+          "target": "TECH-MOD-04"
+        },
+        {
+          "type": "related",
+          "target": "TECH-MOD-06"
+        },
+        {
+          "type": "related",
+          "target": "TECH-MOD-26"
+        }
+      ],
+      "entities": [
+        {
+          "name": "Tournament",
+          "table": "tournaments"
+        },
+        {
+          "name": "Registration",
+          "table": "tournament_registrations"
+        }
+      ],
+      "events": [
+        {
+          "name": "tournament:created",
+          "description": "/ `tournament:published` / `tournament:started` / `tournament:completed`"
+        },
+        {
+          "name": "tournament:registration_opened",
+          "description": "/ `tournament:registration_closed`"
+        },
+        {
+          "name": "tournament:player_registered",
+          "description": "/ `tournament:registration_confirmed`"
+        },
+        {
+          "name": "tournament:match_result_recorded",
+          "description": "`tournament:bracket_generated`"
+        }
+      ],
+      "routes": []
+    },
+    {
+      "id": "TECH-MOD-06",
+      "name": "Leagues Module",
+      "family": "TECH-MOD",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "MOD",
+      "crossReferences": [
+        {
+          "type": "references",
+          "target": "TECH-ARCH-02"
+        },
+        {
+          "type": "references",
+          "target": "TECH-MOD-05"
+        },
+        {
+          "type": "related",
+          "target": "TECH-MOD-04"
+        },
+        {
+          "type": "related",
+          "target": "TECH-MOD-26"
+        }
+      ],
+      "entities": [],
+      "events": [
+        {
+          "name": "league:season_created",
+          "description": "/ `league:season_published`"
+        },
+        {
+          "name": "league:league_created",
+          "description": "/ `league:status_changed`"
+        },
+        {
+          "name": "league:team_registered",
+          "description": "/ `league:team_confirmed`"
+        },
+        {
+          "name": "league:fixtures_generated",
+          "description": "`league:match_result_recorded`"
+        },
+        {
+          "name": "league:standings_recalculated",
+          "description": "`league:team_promoted` / `league:team_relegated`"
+        }
+      ],
+      "routes": []
+    },
+    {
+      "id": "TECH-MOD-07",
+      "name": "Marketplace Module",
+      "family": "TECH-MOD",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "MOD",
+      "crossReferences": [
+        {
+          "type": "references",
+          "target": "TECH-ARCH-02"
+        },
+        {
+          "type": "references",
+          "target": "TECH-MOD-09"
+        },
+        {
+          "type": "related",
+          "target": "TECH-MOD-10"
+        },
+        {
+          "type": "related",
+          "target": "TECH-MOD-13"
+        }
+      ],
+      "entities": [
+        {
+          "name": "Product",
+          "table": "marketplace_products"
+        },
+        {
+          "name": "Variant",
+          "table": "product_variants"
+        }
+      ],
+      "events": [
+        {
+          "name": "marketplace:product_created",
+          "description": "/ `marketplace:product_updated` / `marketplace:product_deleted`"
+        },
+        {
+          "name": "marketplace:order_created",
+          "description": "/ `marketplace:order_status_changed`"
+        },
+        {
+          "name": "marketplace:settlement_requested",
+          "description": "/ `marketplace:settlement_processed`"
+        },
+        {
+          "name": "marketplace:review_created",
+          "description": "`marketplace:seller_upgrade_requested`"
+        }
+      ],
+      "routes": []
+    },
+    {
+      "id": "TECH-MOD-08",
+      "name": "Inventory Module",
+      "family": "TECH-MOD",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "MOD",
+      "crossReferences": [
+        {
+          "type": "references",
+          "target": "TECH-ARCH-02"
+        },
+        {
+          "type": "references",
+          "target": "TECH-MOD-07"
+        },
+        {
+          "type": "related",
+          "target": "TECH-MOD-09"
+        },
+        {
+          "type": "related",
+          "target": "TECH-MOD-30"
+        }
+      ],
+      "entities": [
+        {
+          "name": "Warehouse",
+          "table": "warehouses"
+        },
+        {
+          "name": "Supplier",
+          "table": "suppliers"
+        }
+      ],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "TECH-MOD-09",
+      "name": "Payment Module",
+      "family": "TECH-MOD",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "MOD",
+      "crossReferences": [
+        {
+          "type": "references",
+          "target": "TECH-ARCH-02"
+        },
+        {
+          "type": "references",
+          "target": "TECH-MOD-10"
+        },
+        {
+          "type": "related",
+          "target": "TECH-MOD-12"
+        },
+        {
+          "type": "related",
+          "target": "TECH-MOD-03"
+        }
+      ],
+      "entities": [
+        {
+          "name": "Payment Transaction",
+          "table": "payment_transactions"
+        }
+      ],
+      "events": [
+        {
+          "name": "payment:charged",
+          "description": "Payment initiated"
+        },
+        {
+          "name": "payment:confirmed",
+          "description": "Payment confirmed"
+        },
+        {
+          "name": "payment:webhook_received",
+          "description": "Webhook from gateway"
+        },
+        {
+          "name": "payment:refunded",
+          "description": "Refund processed"
+        },
+        {
+          "name": "payment:recovered",
+          "description": "Payment recovered from gateway"
+        },
+        {
+          "name": "payment:reconciliation_completed",
+          "description": "Reconciliation run finished"
+        }
+      ],
+      "routes": []
+    },
+    {
+      "id": "TECH-MOD-10",
+      "name": "Wallet Module",
+      "family": "TECH-MOD",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "MOD",
+      "crossReferences": [
+        {
+          "type": "references",
+          "target": "TECH-ARCH-02"
+        },
+        {
+          "type": "references",
+          "target": "TECH-MOD-09"
+        },
+        {
+          "type": "related",
+          "target": "TECH-MOD-07"
+        },
+        {
+          "type": "related",
+          "target": "TECH-MOD-12"
+        }
+      ],
+      "entities": [
+        {
+          "name": "Wallet",
+          "table": "user_wallets"
+        },
+        {
+          "name": "Transaction",
+          "table": "wallet_transactions"
+        }
+      ],
+      "events": [
+        {
+          "name": "wallet:deposit",
+          "description": "Deposit processed"
+        },
+        {
+          "name": "wallet:withdrawal",
+          "description": "Withdrawal requested"
+        },
+        {
+          "name": "wallet:payment",
+          "description": "Payment deducted from wallet"
+        },
+        {
+          "name": "wallet:refund",
+          "description": "Refund credited to wallet"
+        },
+        {
+          "name": "wallet:balance_low",
+          "description": "Balance below threshold"
+        },
+        {
+          "name": "wallet:withdrawal",
+          "description": "events."
+        }
+      ],
+      "routes": []
+    },
+    {
+      "id": "TECH-MOD-11",
+      "name": "Financial Module",
+      "family": "TECH-MOD",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "MOD",
+      "crossReferences": [
+        {
+          "type": "references",
+          "target": "TECH-ARCH-02"
+        },
+        {
+          "type": "references",
+          "target": "TECH-MOD-09"
+        },
+        {
+          "type": "references",
+          "target": "TECH-MOD-10"
+        },
+        {
+          "type": "related",
+          "target": "TECH-MOD-12"
+        },
+        {
+          "type": "related",
+          "target": "TECH-MOD-30"
+        }
+      ],
+      "entities": [
+        {
+          "name": "Ledger Entry",
+          "table": "ledger_entries"
+        }
+      ],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "TECH-MOD-12",
+      "name": "Accounting Module",
+      "family": "TECH-MOD",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "MOD",
+      "crossReferences": [
+        {
+          "type": "references",
+          "target": "TECH-ARCH-02"
+        },
+        {
+          "type": "references",
+          "target": "TECH-MOD-09"
+        },
+        {
+          "type": "related",
+          "target": "TECH-MOD-10"
+        },
+        {
+          "type": "related",
+          "target": "TECH-MOD-13"
+        }
+      ],
+      "entities": [
+        {
+          "name": "Account",
+          "table": "chart_of_accounts"
+        },
+        {
+          "name": "Period",
+          "table": "accounting_periods"
+        }
+      ],
+      "events": [
+        {
+          "name": "accounting:journal_entry_created",
+          "description": "Journal entry posted"
+        },
+        {
+          "name": "accounting:period_closed",
+          "description": "Period closed"
+        },
+        {
+          "name": "accounting:invoice_issued",
+          "description": "Invoice issued"
+        },
+        {
+          "name": "accounting:invoice_paid",
+          "description": "Payment recorded"
+        },
+        {
+          "name": "accounting:invoice_cancelled",
+          "description": "Invoice cancelled"
+        }
+      ],
+      "routes": []
+    },
+    {
+      "id": "TECH-MOD-13",
+      "name": "Organisations Module",
+      "family": "TECH-MOD",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "MOD",
+      "crossReferences": [
+        {
+          "type": "references",
+          "target": "TECH-ARCH-02"
+        },
+        {
+          "type": "references",
+          "target": "TECH-MOD-03"
+        },
+        {
+          "type": "related",
+          "target": "TECH-MOD-04"
+        },
+        {
+          "type": "related",
+          "target": "TECH-MOD-05"
+        },
+        {
+          "type": "related",
+          "target": "TECH-MOD-06"
+        }
+      ],
+      "entities": [
+        {
+          "name": "Organisation",
+          "table": "organisations"
+        },
+        {
+          "name": "Branch",
+          "table": "branches"
+        }
+      ],
+      "events": [
+        {
+          "name": "organisation:created",
+          "description": "/ `organisation:updated`"
+        },
+        {
+          "name": "organisation:subscription_changed",
+          "description": "`organisation:staff_added` / `organisation:staff_removed`"
+        },
+        {
+          "name": "organisation:coach_invited",
+          "description": "/ `organisation:coach_responded`"
+        },
+        {
+          "name": "branch:created",
+          "description": "/ `branch:updated`"
+        },
+        {
+          "name": "resource:created",
+          "description": "/ `resource:updated`"
+        }
+      ],
+      "routes": []
+    },
+    {
+      "id": "TECH-MOD-14",
+      "name": "Notifications Module",
+      "family": "TECH-MOD",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "MOD",
+      "crossReferences": [
+        {
+          "type": "references",
+          "target": "TECH-ARCH-02"
+        },
+        {
+          "type": "references",
+          "target": "TECH-ARCH-04"
+        },
+        {
+          "type": "related",
+          "target": "TECH-MOD-15"
+        },
+        {
+          "type": "related",
+          "target": "TECH-MOD-20"
+        }
+      ],
+      "entities": [
+        {
+          "name": "Notification",
+          "table": "notifications"
+        },
+        {
+          "name": "Notification Type",
+          "table": "notification_types"
+        }
+      ],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "TECH-MOD-15",
+      "name": "CRM Module",
+      "family": "TECH-MOD",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "MOD",
+      "crossReferences": [
+        {
+          "type": "references",
+          "target": "TECH-ARCH-02"
+        },
+        {
+          "type": "references",
+          "target": "TECH-MOD-14"
+        },
+        {
+          "type": "related",
+          "target": "TECH-MOD-13"
+        },
+        {
+          "type": "related",
+          "target": "TECH-MOD-22"
+        }
+      ],
+      "entities": [
+        {
+          "name": "Segment",
+          "table": "crm_segments"
+        }
+      ],
+      "events": [
+        {
+          "name": "crm:lead_created",
+          "description": "/ `crm:lead_converted`"
+        },
+        {
+          "name": "crm:campaign_launched",
+          "description": "/ `crm:campaign_completed`"
+        },
+        {
+          "name": "crm:segment_refreshed",
+          "description": "`crm:communication_sent`"
+        }
+      ],
+      "routes": []
+    },
+    {
+      "id": "TECH-MOD-16",
+      "name": "HR Module",
+      "family": "TECH-MOD",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "MOD",
+      "crossReferences": [
+        {
+          "type": "references",
+          "target": "TECH-ARCH-02"
+        },
+        {
+          "type": "related",
+          "target": "TECH-MOD-12"
+        },
+        {
+          "type": "related",
+          "target": "TECH-MOD-13"
+        }
+      ],
+      "entities": [
+        {
+          "name": "Department",
+          "table": "departments"
+        },
+        {
+          "name": "Position",
+          "table": "positions"
+        }
+      ],
+      "events": [
+        {
+          "name": "hr:employee_created",
+          "description": "/ `hr:employee_status_changed`"
+        },
+        {
+          "name": "hr:leave_request_submitted",
+          "description": "/ `hr:leave_request_approved` / `hr:leave_request_rejected`"
+        },
+        {
+          "name": "hr:payroll_run_calculated",
+          "description": "/ `hr:payroll_run_approved` / `hr:payroll_run_paid`"
+        },
+        {
+          "name": "hr:attendance_recorded",
+          "description": "## 8. Audit Events"
+        }
+      ],
+      "routes": []
+    },
+    {
+      "id": "TECH-MOD-17",
+      "name": "Match Module",
+      "family": "TECH-MOD",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "MOD",
+      "crossReferences": [
+        {
+          "type": "references",
+          "target": "TECH-ARCH-02"
+        },
+        {
+          "type": "references",
+          "target": "TECH-MOD-03"
+        },
+        {
+          "type": "related",
+          "target": "TECH-MOD-05"
+        },
+        {
+          "type": "related",
+          "target": "TECH-MOD-06"
+        }
+      ],
+      "entities": [
+        {
+          "name": "Match",
+          "table": "matches"
+        },
+        {
+          "name": "Join Request",
+          "table": "join_requests"
+        }
+      ],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "TECH-MOD-18",
+      "name": "Membership Module",
+      "family": "TECH-MOD",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "MOD",
+      "crossReferences": [
+        {
+          "type": "references",
+          "target": "TECH-ARCH-02"
+        },
+        {
+          "type": "references",
+          "target": "TECH-MOD-10"
+        },
+        {
+          "type": "related",
+          "target": "TECH-MOD-03"
+        },
+        {
+          "type": "related",
+          "target": "TECH-MOD-04"
+        }
+      ],
+      "entities": [
+        {
+          "name": "Plan",
+          "table": "membership_plans"
+        }
+      ],
+      "events": [
+        {
+          "name": "membership:expiring",
+          "description": "Emitted when membership is about to expire (see VOLUME_03)"
+        }
+      ],
+      "routes": []
+    },
+    {
+      "id": "TECH-MOD-19",
+      "name": "Scheduling Module",
+      "family": "TECH-MOD",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "MOD",
+      "crossReferences": [
+        {
+          "type": "references",
+          "target": "TECH-ARCH-02"
+        },
+        {
+          "type": "references",
+          "target": "TECH-MOD-03"
+        },
+        {
+          "type": "related",
+          "target": "TECH-MOD-04"
+        },
+        {
+          "type": "related",
+          "target": "TECH-MOD-05"
+        },
+        {
+          "type": "related",
+          "target": "TECH-MOD-26"
+        }
+      ],
+      "entities": [],
+      "events": [
+        {
+          "name": "scheduling:search_completed",
+          "description": "Search results returned"
+        },
+        {
+          "name": "scheduling:booking_created",
+          "description": "Coach session booked"
+        },
+        {
+          "name": "scheduling:booking_compensated",
+          "description": "Compensation triggered"
+        }
+      ],
+      "routes": []
+    },
+    {
+      "id": "TECH-MOD-20",
+      "name": "Security Module",
+      "family": "TECH-MOD",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "MOD",
+      "crossReferences": [
+        {
+          "type": "references",
+          "target": "TECH-ARCH-02"
+        },
+        {
+          "type": "references",
+          "target": "TECH-ARCH-07"
+        },
+        {
+          "type": "related",
+          "target": "TECH-MOD-01"
+        },
+        {
+          "type": "related",
+          "target": "TECH-MOD-02"
+        },
+        {
+          "type": "related",
+          "target": "TECH-MOD-21"
+        }
+      ],
+      "entities": [
+        {
+          "name": "Session",
+          "table": "sessions"
+        },
+        {
+          "name": "Failed Login",
+          "table": "failed_login_attempts"
+        }
+      ],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "TECH-MOD-21",
+      "name": "Audit Log Module",
+      "family": "TECH-MOD",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "MOD",
+      "crossReferences": [
+        {
+          "type": "references",
+          "target": "TECH-ARCH-02"
+        },
+        {
+          "type": "references",
+          "target": "TECH-ARCH-04"
+        },
+        {
+          "type": "related",
+          "target": "TECH-MOD-20"
+        },
+        {
+          "type": "related",
+          "target": "TECH-MOD-02"
+        }
+      ],
+      "entities": [
+        {
+          "name": "Audit Log",
+          "table": "audit_logs"
+        }
+      ],
+      "events": [
+        {
+          "name": "audit:recorded",
+          "description": "When an audit entry is successfully written (not currently emitted, but available for future use)"
+        }
+      ],
+      "routes": []
+    },
+    {
+      "id": "TECH-MOD-22",
+      "name": "Support Module",
+      "family": "TECH-MOD",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "MOD",
+      "crossReferences": [
+        {
+          "type": "references",
+          "target": "TECH-ARCH-02"
+        },
+        {
+          "type": "related",
+          "target": "TECH-MOD-15"
+        },
+        {
+          "type": "related",
+          "target": "TECH-MOD-14"
+        }
+      ],
+      "entities": [
+        {
+          "name": "Ticket",
+          "table": "support_tickets"
+        },
+        {
+          "name": "Ticket Message",
+          "table": "support_ticket_messages"
+        }
+      ],
+      "events": [
+        {
+          "name": "support:ticket_created",
+          "description": "User created a ticket"
+        },
+        {
+          "name": "support:ticket_assigned",
+          "description": "Admin assigned"
+        },
+        {
+          "name": "support:ticket_message_added",
+          "description": "New message"
+        },
+        {
+          "name": "support:ticket_status_changed",
+          "description": "Status updated"
+        }
+      ],
+      "routes": []
+    },
+    {
+      "id": "TECH-MOD-23",
+      "name": "Content Management Module",
+      "family": "TECH-MOD",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "MOD",
+      "crossReferences": [
+        {
+          "type": "references",
+          "target": "TECH-ARCH-02"
+        }
+      ],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "TECH-MOD-24",
+      "name": "Community Module",
+      "family": "TECH-MOD",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "MOD",
+      "crossReferences": [
+        {
+          "type": "references",
+          "target": "TECH-ARCH-02"
+        },
+        {
+          "type": "related",
+          "target": "TECH-MOD-14"
+        },
+        {
+          "type": "related",
+          "target": "TECH-MOD-22"
+        }
+      ],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "TECH-MOD-25",
+      "name": "BI Module",
+      "family": "TECH-MOD",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "MOD",
+      "crossReferences": [
+        {
+          "type": "references",
+          "target": "TECH-ARCH-02"
+        },
+        {
+          "type": "related",
+          "target": "TECH-MOD-03"
+        },
+        {
+          "type": "related",
+          "target": "TECH-MOD-01"
+        },
+        {
+          "type": "related",
+          "target": "TECH-MOD-13"
+        },
+        {
+          "type": "related",
+          "target": "TECH-MOD-14"
+        }
+      ],
+      "entities": [],
+      "events": [
+        {
+          "name": "bi:dashboard_viewed",
+          "description": "Dashboard accessed"
+        },
+        {
+          "name": "bi:report_exported",
+          "description": "CSV report downloaded"
+        }
+      ],
+      "routes": []
+    },
+    {
+      "id": "TECH-MOD-26",
+      "name": "Sports Engine Module",
+      "family": "TECH-MOD",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "MOD",
+      "crossReferences": [
+        {
+          "type": "references",
+          "target": "TECH-ARCH-02"
+        },
+        {
+          "type": "references",
+          "target": "TECH-MOD-19"
+        },
+        {
+          "type": "related",
+          "target": "TECH-MOD-05"
+        },
+        {
+          "type": "related",
+          "target": "TECH-MOD-06"
+        },
+        {
+          "type": "related",
+          "target": "TECH-MOD-03"
+        }
+      ],
+      "entities": [
+        {
+          "name": "ELO Rating",
+          "table": "elo_ratings"
+        }
+      ],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "TECH-MOD-27",
+      "name": "Integration Module",
+      "family": "TECH-MOD",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "MOD",
+      "crossReferences": [
+        {
+          "type": "references",
+          "target": "TECH-ARCH-02"
+        },
+        {
+          "type": "references",
+          "target": "TECH-ARCH-06"
+        },
+        {
+          "type": "related",
+          "target": "TECH-MOD-01"
+        }
+      ],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "TECH-MOD-28",
+      "name": "Mobile Module",
+      "family": "TECH-MOD",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "MOD",
+      "crossReferences": [
+        {
+          "type": "references",
+          "target": "TECH-ARCH-02"
+        },
+        {
+          "type": "related",
+          "target": "TECH-MOD-14"
+        }
+      ],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "TECH-MOD-29",
+      "name": "Reports Module",
+      "family": "TECH-MOD",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "MOD",
+      "crossReferences": [
+        {
+          "type": "references",
+          "target": "TECH-ARCH-02"
+        },
+        {
+          "type": "related",
+          "target": "TECH-MOD-25"
+        }
+      ],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "TECH-MOD-30",
+      "name": "Settlement Module",
+      "family": "TECH-MOD",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "MOD",
+      "crossReferences": [
+        {
+          "type": "references",
+          "target": "TECH-ARCH-02"
+        },
+        {
+          "type": "references",
+          "target": "TECH-MOD-07"
+        },
+        {
+          "type": "references",
+          "target": "TECH-MOD-11"
+        },
+        {
+          "type": "related",
+          "target": "TECH-MOD-09"
+        },
+        {
+          "type": "related",
+          "target": "TECH-MOD-10"
+        }
+      ],
+      "entities": [
+        {
+          "name": "Settlement",
+          "table": "settlements"
+        }
+      ],
+      "events": [
+        {
+          "name": "settlement:completed",
+          "description": "event"
+        },
+        {
+          "name": "settlement:completed",
+          "description": "Emitted on settlement completion/rejection (`:403-408`)"
+        }
+      ],
+      "routes": []
+    },
+    {
+      "id": "TECH-MOD-31",
+      "name": "Coupon Module",
+      "family": "TECH-MOD",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "MOD",
+      "crossReferences": [
+        {
+          "type": "references",
+          "target": "TECH-ARCH-02"
+        },
+        {
+          "type": "related",
+          "target": "TECH-MOD-07"
+        },
+        {
+          "type": "related",
+          "target": "TECH-MOD-11"
+        }
+      ],
+      "entities": [],
+      "events": [
+        {
+          "name": "coupon:published",
+          "description": "event with coupon details and org IDs"
+        },
+        {
+          "name": "coupon:published",
+          "description": "Emitted by `coupon.service.ts:67-73` with `couponId`, `code`, `discountValue`, `discountType`, `organisationIds`"
+        }
+      ],
+      "routes": []
+    },
+    {
+      "id": "TECH-MOD-32",
+      "name": "Pricing Module",
+      "family": "TECH-MOD",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "MOD",
+      "crossReferences": [
+        {
+          "type": "references",
+          "target": "TECH-ARCH-02"
+        },
+        {
+          "type": "references",
+          "target": "TECH-MOD-03"
+        },
+        {
+          "type": "related",
+          "target": "TECH-MOD-31"
+        },
+        {
+          "type": "related",
+          "target": "TECH-MOD-18"
+        }
+      ],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "TECH-MOD-33",
+      "name": "Upload Module",
+      "family": "TECH-MOD",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "MOD",
+      "crossReferences": [
+        {
+          "type": "references",
+          "target": "TECH-ARCH-02"
+        },
+        {
+          "type": "related",
+          "target": "TECH-MOD-23"
+        }
+      ],
+      "entities": [],
+      "events": [
+        {
+          "name": ":26",
+          "description": ")."
+        }
+      ],
+      "routes": []
+    },
+    {
+      "id": "TECH-MOD-34",
+      "name": "Translations Module",
+      "family": "TECH-MOD",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "MOD",
+      "crossReferences": [
+        {
+          "type": "references",
+          "target": "TECH-ARCH-02"
+        }
+      ],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "TECH-MOD-35",
+      "name": "Activities Module",
+      "family": "TECH-MOD",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "MOD",
+      "crossReferences": [
+        {
+          "type": "references",
+          "target": "TECH-ARCH-02"
+        },
+        {
+          "type": "references",
+          "target": "TECH-MOD-03"
+        },
+        {
+          "type": "references",
+          "target": "TECH-MOD-04"
+        },
+        {
+          "type": "references",
+          "target": "TECH-MOD-05"
+        },
+        {
+          "type": "related",
+          "target": "TECH-MOD-51"
+        },
+        {
+          "type": "related",
+          "target": "VOLUME-11"
+        }
+      ],
+      "entities": [],
+      "events": [
+        {
+          "name": "tournament:created",
+          "description": "on tournament creation"
+        },
+        {
+          "name": "tournament:result",
+          "description": "per player on match score entry"
+        },
+        {
+          "name": "academy:enrolled",
+          "description": "on player enrollment"
+        },
+        {
+          "name": "organisation:approved",
+          "description": "/ `organisation:rejected` — forwarded from approvals"
+        }
+      ],
+      "routes": []
+    },
+    {
+      "id": "TECH-MOD-36",
+      "name": "Admin Module",
+      "family": "TECH-MOD",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "MOD",
+      "crossReferences": [
+        {
+          "type": "references",
+          "target": "TECH-ARCH-02"
+        },
+        {
+          "type": "references",
+          "target": "TECH-MOD-02"
+        },
+        {
+          "type": "related",
+          "target": "TECH-MOD-20"
+        }
+      ],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "TECH-MOD-37",
+      "name": "Amenities Module",
+      "family": "TECH-MOD",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "MOD",
+      "crossReferences": [
+        {
+          "type": "references",
+          "target": "TECH-ARCH-02"
+        }
+      ],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "TECH-MOD-38",
+      "name": "Approvals Module",
+      "family": "TECH-MOD",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "MOD",
+      "crossReferences": [
+        {
+          "type": "references",
+          "target": "TECH-ARCH-02"
+        },
+        {
+          "type": "references",
+          "target": "TECH-MOD-02"
+        },
+        {
+          "type": "references",
+          "target": "TECH-MOD-13"
+        },
+        {
+          "type": "related",
+          "target": "TECH-MOD-35"
+        }
+      ],
+      "entities": [],
+      "events": [
+        {
+          "name": "organisation:approved",
+          "description": "and `organisation:rejected` via `eventBusV2`"
+        }
+      ],
+      "routes": []
+    },
+    {
+      "id": "TECH-MOD-39",
+      "name": "App Settings Module",
+      "family": "TECH-MOD",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "MOD",
+      "crossReferences": [
+        {
+          "type": "references",
+          "target": "TECH-ARCH-02"
+        },
+        {
+          "type": "references",
+          "target": "TECH-MOD-33"
+        },
+        {
+          "type": "related",
+          "target": "TECH-MOD-36"
+        }
+      ],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "TECH-MOD-40",
+      "name": "Banks Module",
+      "family": "TECH-MOD",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "MOD",
+      "crossReferences": [
+        {
+          "type": "references",
+          "target": "TECH-ARCH-02"
+        }
+      ],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "TECH-MOD-41",
+      "name": "Cities Module",
+      "family": "TECH-MOD",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "MOD",
+      "crossReferences": [
+        {
+          "type": "references",
+          "target": "TECH-ARCH-02"
+        },
+        {
+          "type": "references",
+          "target": "TECH-MOD-47"
+        }
+      ],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "TECH-MOD-42",
+      "name": "Countries Module",
+      "family": "TECH-MOD",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "MOD",
+      "crossReferences": [
+        {
+          "type": "references",
+          "target": "TECH-ARCH-02"
+        },
+        {
+          "type": "references",
+          "target": "TECH-MOD-47"
+        },
+        {
+          "type": "related",
+          "target": "TECH-MOD-45"
+        }
+      ],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "TECH-MOD-43",
+      "name": "Currencies Module",
+      "family": "TECH-MOD",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "MOD",
+      "crossReferences": [
+        {
+          "type": "references",
+          "target": "TECH-ARCH-02"
+        },
+        {
+          "type": "related",
+          "target": "TECH-MOD-45"
+        }
+      ],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "TECH-MOD-44",
+      "name": "Design Tokens Module",
+      "family": "TECH-MOD",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "MOD",
+      "crossReferences": [
+        {
+          "type": "references",
+          "target": "TECH-ARCH-02"
+        },
+        {
+          "type": "references",
+          "target": "TECH-UX-01"
+        },
+        {
+          "type": "references",
+          "target": "TECH-UX-02"
+        },
+        {
+          "type": "related",
+          "target": "TECH-MOD-02"
+        }
+      ],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "TECH-MOD-45",
+      "name": "Geo Module",
+      "family": "TECH-MOD",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "MOD",
+      "crossReferences": [
+        {
+          "type": "references",
+          "target": "TECH-ARCH-02"
+        },
+        {
+          "type": "references",
+          "target": "TECH-MOD-42"
+        },
+        {
+          "type": "references",
+          "target": "TECH-MOD-43"
+        }
+      ],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "TECH-MOD-46",
+      "name": "Languages Module",
+      "family": "TECH-MOD",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "MOD",
+      "crossReferences": [
+        {
+          "type": "references",
+          "target": "TECH-ARCH-02"
+        },
+        {
+          "type": "references",
+          "target": "TECH-MOD-34"
+        }
+      ],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "TECH-MOD-47",
+      "name": "Provinces Module",
+      "family": "TECH-MOD",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "MOD",
+      "crossReferences": [
+        {
+          "type": "references",
+          "target": "TECH-ARCH-02"
+        },
+        {
+          "type": "references",
+          "target": "TECH-MOD-42"
+        },
+        {
+          "type": "related",
+          "target": "TECH-MOD-41"
+        }
+      ],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "TECH-MOD-48",
+      "name": "Reference Data Module",
+      "family": "TECH-MOD",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "MOD",
+      "crossReferences": [
+        {
+          "type": "references",
+          "target": "TECH-ARCH-02"
+        },
+        {
+          "type": "references",
+          "target": "TECH-MOD-42"
+        },
+        {
+          "type": "references",
+          "target": "TECH-MOD-43"
+        },
+        {
+          "type": "references",
+          "target": "TECH-MOD-46"
+        }
+      ],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "TECH-MOD-49",
+      "name": "Sidebar Layout Module",
+      "family": "TECH-MOD",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "MOD",
+      "crossReferences": [
+        {
+          "type": "references",
+          "target": "TECH-ARCH-02"
+        },
+        {
+          "type": "references",
+          "target": "TECH-MOD-02"
+        }
+      ],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "TECH-MOD-50",
+      "name": "Time Module",
+      "family": "TECH-MOD",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "MOD",
+      "crossReferences": [
+        {
+          "type": "references",
+          "target": "TECH-ARCH-02"
+        },
+        {
+          "type": "references",
+          "target": "TECH-ARCH-04"
+        },
+        {
+          "type": "related",
+          "target": "TECH-MOD-03"
+        },
+        {
+          "type": "related",
+          "target": "TECH-MOD-19"
+        }
+      ],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "TECH-MOD-51",
+      "name": "Coaches Module",
+      "family": "TECH-MOD",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "MOD",
+      "crossReferences": [
+        {
+          "type": "references",
+          "target": "TECH-ARCH-02"
+        },
+        {
+          "type": "references",
+          "target": "TECH-MOD-35"
+        },
+        {
+          "type": "related",
+          "target": "TECH-MOD-13"
+        }
+      ],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "TECH-MOD-52",
+      "name": "Player Experience Module",
+      "family": "TECH-MOD",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "MOD",
+      "crossReferences": [
+        {
+          "type": "references",
+          "target": "TECH-ARCH-02"
+        },
+        {
+          "type": "references",
+          "target": "TECH-MOD-03"
+        },
+        {
+          "type": "references",
+          "target": "TECH-MOD-05"
+        },
+        {
+          "type": "references",
+          "target": "TECH-MOD-04"
+        },
+        {
+          "type": "related",
+          "target": "TECH-MOD-10"
+        },
+        {
+          "type": "related",
+          "target": "TECH-MOD-01"
+        }
+      ],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "TECH-UX-01",
+      "name": "Design System Overview",
+      "family": "TECH-UX",
+      "status": "Draft",
+      "version": "1.0",
+      "type": "UX",
+      "crossReferences": [],
+      "entities": [],
+      "events": [
+        {
+          "name": "md:",
+          "description": "prefix for tablet/desktop overrides"
+        },
+        {
+          "name": ":root",
+          "description": "(light) and `.dark` (dark overrides). The `dark` class on `<html>` swaps the property values."
+        },
+        {
+          "name": ":root",
+          "description": "."
+        }
+      ],
+      "routes": []
+    },
+    {
+      "id": "TECH-UX-02",
+      "name": "Design Token Reference",
+      "family": "TECH-UX",
+      "status": "Draft",
+      "version": "1.0",
+      "type": "UX",
+      "crossReferences": [],
+      "entities": [],
+      "events": [
+        {
+          "name": ":root",
+          "description": "(light) and overridden in `.dark`."
+        }
+      ],
+      "routes": []
+    },
+    {
+      "id": "TECH-UX-03",
+      "name": "Navigation Architecture",
+      "family": "TECH-UX",
+      "status": "Draft",
+      "version": "1.0",
+      "type": "UX",
+      "crossReferences": [],
+      "entities": [],
+      "events": [
+        {
+          "name": "md:hidden",
+          "description": "). Standard top Navbar provides:"
+        }
+      ],
+      "routes": []
+    },
+    {
+      "id": "TECH-UX-04",
+      "name": "Screen Flows",
+      "family": "TECH-UX",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "UX",
+      "crossReferences": [],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "TECH-UX-09",
+      "name": "Empty State Patterns",
+      "family": "TECH-UX",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "UX",
+      "crossReferences": [],
+      "entities": [],
+      "events": [
+        {
+          "name": ":97",
+          "description": "button shows \"Sold Out\" |"
+        }
+      ],
+      "routes": []
+    },
+    {
+      "id": "TECH-UX-10",
+      "name": "Loading State Patterns",
+      "family": "TECH-UX",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "UX",
+      "crossReferences": [],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "TECH-UX-11",
+      "name": "Error State Patterns",
+      "family": "TECH-UX",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "UX",
+      "crossReferences": [],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "USER-01",
+      "name": "Player Guide",
+      "family": "USER",
+      "status": "Draft",
+      "version": "0.1",
+      "type": "GUIDE",
+      "crossReferences": [],
+      "entities": [],
+      "events": [
+        {
+          "name": "payment:succeeded",
+          "description": "**Evidence:** `payment.service.ts:113-188` (gateway charge), `payment.service.ts:200-385` (webhook), `payment-aggregate.ts:3-11` (state machine)."
+        },
+        {
+          "name": "payment:refunded",
+          "description": "event is emitted"
+        },
+        {
+          "name": "wallet:deposit",
+          "description": "event emitted"
+        },
+        {
+          "name": "wallet:withdrawal",
+          "description": "event"
+        }
+      ],
+      "routes": []
+    },
+    {
+      "id": "VOLUME_01_EXECUTIVE_OVERVIEW",
+      "name": "VOLUME 01 EXECUTIVE OVERVIEW",
+      "family": "UNKNOWN",
+      "status": "Unknown",
+      "version": "0.0",
+      "type": "DOC",
+      "crossReferences": [],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "VOLUME_02_ARCHITECTURE",
+      "name": "VOLUME 02 ARCHITECTURE",
+      "family": "UNKNOWN",
+      "status": "Unknown",
+      "version": "0.0",
+      "type": "DOC",
+      "crossReferences": [],
+      "entities": [],
+      "events": [
+        {
+          "name": "booking:confirmed",
+          "description": ", consumed by notification engine."
+        }
+      ],
+      "routes": []
+    },
+    {
+      "id": "VOLUME_03_BUSINESS_DOMAINS",
+      "name": "VOLUME 03 BUSINESS DOMAINS",
+      "family": "UNKNOWN",
+      "status": "Unknown",
+      "version": "0.0",
+      "type": "DOC",
+      "crossReferences": [],
+      "entities": [],
+      "events": [
+        {
+          "name": "booking:confirmed",
+          "description": "| Booking | Notifications, Match (auto-create), CRM |"
+        },
+        {
+          "name": "booking:cancelled",
+          "description": "| Booking | Notifications, Match (cleanup) |"
+        },
+        {
+          "name": "payment:succeeded",
+          "description": "| Payment | Booking (confirm), Marketplace (fulfill), Wallet, Notifications |"
+        },
+        {
+          "name": "payment:failed",
+          "description": "| Payment | Booking (cancel), Marketplace (revert), Notifications |"
+        },
+        {
+          "name": "membership:expiring",
+          "description": "| Membership | Notifications, CRM |"
+        },
+        {
+          "name": "tournament:created",
+          "description": "| Tournament | Notifications, Sports Engine (ranking) |"
+        },
+        {
+          "name": "wallet:deposit",
+          "description": "| Wallet | Notifications, CRM (update value) |"
+        },
+        {
+          "name": "user:registered",
+          "description": "| Auth | Notifications, CRM (create profile) |"
+        }
+      ],
+      "routes": []
+    },
+    {
+      "id": "VOLUME_04_MODULES",
+      "name": "VOLUME 04 MODULES",
+      "family": "UNKNOWN",
+      "status": "Unknown",
+      "version": "0.0",
+      "type": "DOC",
+      "crossReferences": [],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "VOLUME_05_SCREENS",
+      "name": "VOLUME 05 SCREENS",
+      "family": "UNKNOWN",
+      "status": "Unknown",
+      "version": "0.0",
+      "type": "DOC",
+      "crossReferences": [],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "VOLUME_08_PERMISSIONS",
+      "name": "VOLUME 08 PERMISSIONS",
+      "family": "UNKNOWN",
+      "status": "Unknown",
+      "version": "0.0",
+      "type": "DOC",
+      "crossReferences": [],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "VOLUME_11_LIFECYCLES",
+      "name": "VOLUME 11 LIFECYCLES",
+      "family": "UNKNOWN",
+      "status": "Unknown",
+      "version": "0.0",
+      "type": "DOC",
+      "crossReferences": [],
+      "entities": [],
+      "events": [],
+      "routes": []
+    },
+    {
+      "id": "VOLUME_15_NOTIFICATIONS",
+      "name": "VOLUME 15 NOTIFICATIONS",
+      "family": "UNKNOWN",
+      "status": "Unknown",
+      "version": "0.0",
+      "type": "DOC",
+      "crossReferences": [],
+      "entities": [],
+      "events": [
+        {
+          "name": "booking:created",
+          "description": ", `booking:confirmed`, `booking:cancelled`, `booking:reminder`, `booking:completed`, `booking:auto-cancelled`, `booking:application-declined`, `booking:expired`, `booking:no-show`, `booking:check-in`, `booking:fully-booked`, `booking:rescheduled`"
+        },
+        {
+          "name": "payment:completed",
+          "description": ", `payment:failed`, `payment:refunded`, `wallet:low-balance`, `wallet:deposit`, `wallet:withdrawal`"
+        },
+        {
+          "name": "user:registered",
+          "description": ", `user:approved`, `user:rejected`, `user:suspended`, `user:activated`, `user:profile-updated`, `user:deleted`, `auth:password-changed`, `auth:password-reset`, `auth:login`, `auth:logout`"
+        },
+        {
+          "name": "coach:invited",
+          "description": "### Tournaments (5 events)"
+        },
+        {
+          "name": "tournament:created",
+          "description": ", `tournament:starting-soon`, `tournament:match-scheduled`, `tournament:result`, `tournament:registration-open`"
+        },
+        {
+          "name": "academy:enrolled",
+          "description": ", `academy:graduated`, `academy:session-reminder`"
+        }
+      ],
+      "routes": []
+    },
+    {
+      "id": "VOLUME_38_CERTIFICATION_REPORT",
+      "name": "VOLUME 38 CERTIFICATION REPORT",
+      "family": "UNKNOWN",
+      "status": "Unknown",
+      "version": "0.0",
+      "type": "DOC",
+      "crossReferences": [],
+      "entities": [],
+      "events": [],
+      "routes": []
+    }
+  ]
+}

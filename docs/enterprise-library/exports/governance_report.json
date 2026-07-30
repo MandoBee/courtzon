@@ -1,0 +1,192 @@
+{
+  "overall_score": 64,
+  "traceability_coverage": 85,
+  "review_freshness": 0,
+  "orphan_count": 0,
+  "broken_references": 0,
+  "duplicate_objects": 0,
+  "last_full_review": "2026-07-28",
+  "family_scores": {
+    "ADMIN": {
+      "documentCount": 1,
+      "traceabilityCoverage": 100,
+      "reviewFreshness": 0
+    },
+    "BIZ-ARCH": {
+      "documentCount": 10,
+      "traceabilityCoverage": 100,
+      "reviewFreshness": 0
+    },
+    "BIZ-PROD": {
+      "documentCount": 6,
+      "traceabilityCoverage": 100,
+      "reviewFreshness": 0
+    },
+    "GOV-ADR": {
+      "documentCount": 25,
+      "traceabilityCoverage": 100,
+      "reviewFreshness": 0
+    },
+    "OPS-DEPLOY": {
+      "documentCount": 1,
+      "traceabilityCoverage": 100,
+      "reviewFreshness": 0
+    },
+    "OPS-MON": {
+      "documentCount": 1,
+      "traceabilityCoverage": 100,
+      "reviewFreshness": 0
+    },
+    "OPS-RUN": {
+      "documentCount": 2,
+      "traceabilityCoverage": 100,
+      "reviewFreshness": 0
+    },
+    "QUAL-CERT": {
+      "documentCount": 1,
+      "traceabilityCoverage": 100,
+      "reviewFreshness": 0
+    },
+    "QUAL-TEST": {
+      "documentCount": 4,
+      "traceabilityCoverage": 100,
+      "reviewFreshness": 0
+    },
+    "TECH-ARCH": {
+      "documentCount": 24,
+      "traceabilityCoverage": 100,
+      "reviewFreshness": 0
+    },
+    "TECH-DB": {
+      "documentCount": 1,
+      "traceabilityCoverage": 100,
+      "reviewFreshness": 0
+    },
+    "TECH-DEV": {
+      "documentCount": 15,
+      "traceabilityCoverage": 7,
+      "reviewFreshness": 0
+    },
+    "TECH-MOD": {
+      "documentCount": 52,
+      "traceabilityCoverage": 100,
+      "reviewFreshness": 0
+    },
+    "TECH-UX": {
+      "documentCount": 7,
+      "traceabilityCoverage": 100,
+      "reviewFreshness": 0
+    },
+    "USER": {
+      "documentCount": 1,
+      "traceabilityCoverage": 100,
+      "reviewFreshness": 0
+    }
+  },
+  "alerts": [
+    {
+      "severity": "warning",
+      "message": "ADMIN-02 has status \"Draft\" — not yet published",
+      "document": "ADMIN-02"
+    },
+    {
+      "severity": "warning",
+      "message": "BIZ-ARCH-01 has status \"Draft\" — not yet published",
+      "document": "BIZ-ARCH-01"
+    },
+    {
+      "severity": "warning",
+      "message": "BIZ-ARCH-02 has status \"Draft\" — not yet published",
+      "document": "BIZ-ARCH-02"
+    },
+    {
+      "severity": "warning",
+      "message": "BIZ-ARCH-03 has status \"Draft\" — not yet published",
+      "document": "BIZ-ARCH-03"
+    },
+    {
+      "severity": "warning",
+      "message": "BIZ-ARCH-04 has status \"Draft\" — not yet published",
+      "document": "BIZ-ARCH-04"
+    },
+    {
+      "severity": "warning",
+      "message": "BIZ-ARCH-05 has status \"Draft\" — not yet published",
+      "document": "BIZ-ARCH-05"
+    },
+    {
+      "severity": "warning",
+      "message": "BIZ-ARCH-06 has status \"Draft\" — not yet published",
+      "document": "BIZ-ARCH-06"
+    },
+    {
+      "severity": "warning",
+      "message": "BIZ-ARCH-07 has status \"Draft\" — not yet published",
+      "document": "BIZ-ARCH-07"
+    },
+    {
+      "severity": "warning",
+      "message": "BIZ-ARCH-08 has status \"Draft\" — not yet published",
+      "document": "BIZ-ARCH-08"
+    },
+    {
+      "severity": "warning",
+      "message": "BIZ-ARCH-09 has status \"Draft\" — not yet published",
+      "document": "BIZ-ARCH-09"
+    },
+    {
+      "severity": "warning",
+      "message": "BIZ-ARCH-10 has status \"Draft\" — not yet published",
+      "document": "BIZ-ARCH-10"
+    },
+    {
+      "severity": "warning",
+      "message": "BIZ-PROD-01 has status \"Draft\" — not yet published",
+      "document": "BIZ-PROD-01"
+    },
+    {
+      "severity": "warning",
+      "message": "BIZ-PROD-02 has status \"Draft\" — not yet published",
+      "document": "BIZ-PROD-02"
+    },
+    {
+      "severity": "warning",
+      "message": "BIZ-PROD-03 has status \"Draft\" — not yet published",
+      "document": "BIZ-PROD-03"
+    },
+    {
+      "severity": "warning",
+      "message": "BIZ-PROD-04 has status \"Draft\" — not yet published",
+      "document": "BIZ-PROD-04"
+    },
+    {
+      "severity": "warning",
+      "message": "BIZ-PROD-06 has status \"Draft\" — not yet published",
+      "document": "BIZ-PROD-06"
+    },
+    {
+      "severity": "warning",
+      "message": "BIZ-PROD-08 has status \"Draft\" — not yet published",
+      "document": "BIZ-PROD-08"
+    },
+    {
+      "severity": "warning",
+      "message": "OPS-DEPLOY-01 has status \"Draft\" — not yet published",
+      "document": "OPS-DEPLOY-01"
+    },
+    {
+      "severity": "warning",
+      "message": "OPS-MON-01 has status \"Draft\" — not yet published",
+      "document": "OPS-MON-01"
+    },
+    {
+      "severity": "warning",
+      "message": "OPS-RUN-01 has status \"Draft\" — not yet published",
+      "document": "OPS-RUN-01"
+    }
+  ],
+  "recommendations": [
+    "Schedule reviews for 161 documents not reviewed in the last 6 months",
+    "Implement automated review reminders for documents approaching 6-month review window"
+  ]
+}

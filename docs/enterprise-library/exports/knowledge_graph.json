@@ -1,0 +1,3172 @@
+{
+  "metadata": {
+    "documentCount": 161,
+    "edgeCount": 407
+  },
+  "nodes": [
+    {
+      "id": "ADMIN-02",
+      "name": "Organisation Admin Guide",
+      "family": "ADMIN",
+      "type": "GUIDE",
+      "group": "ADMIN"
+    },
+    {
+      "id": "BIZ-ARCH-01",
+      "name": "Business Vision & Strategy",
+      "family": "BIZ-ARCH",
+      "type": "ARCH",
+      "group": "BIZ-ARCH"
+    },
+    {
+      "id": "BIZ-ARCH-02",
+      "name": "Business Goals & Objectives",
+      "family": "BIZ-ARCH",
+      "type": "ARCH",
+      "group": "BIZ-ARCH"
+    },
+    {
+      "id": "BIZ-ARCH-03",
+      "name": "Business Capability Map",
+      "family": "BIZ-ARCH",
+      "type": "ARCH",
+      "group": "BIZ-ARCH"
+    },
+    {
+      "id": "BIZ-ARCH-04",
+      "name": "Business Process Catalog",
+      "family": "BIZ-ARCH",
+      "type": "ARCH",
+      "group": "BIZ-ARCH"
+    },
+    {
+      "id": "BIZ-ARCH-05",
+      "name": "Business Actor Model",
+      "family": "BIZ-ARCH",
+      "type": "ARCH",
+      "group": "BIZ-ARCH"
+    },
+    {
+      "id": "BIZ-ARCH-06",
+      "name": "Business Event Catalog",
+      "family": "BIZ-ARCH",
+      "type": "ARCH",
+      "group": "BIZ-ARCH"
+    },
+    {
+      "id": "BIZ-ARCH-07",
+      "name": "Business Policy Register",
+      "family": "BIZ-ARCH",
+      "type": "ARCH",
+      "group": "BIZ-ARCH"
+    },
+    {
+      "id": "BIZ-ARCH-08",
+      "name": "Business Rule Catalog",
+      "family": "BIZ-ARCH",
+      "type": "ARCH",
+      "group": "BIZ-ARCH"
+    },
+    {
+      "id": "BIZ-ARCH-09",
+      "name": "Business KPI Framework",
+      "family": "BIZ-ARCH",
+      "type": "ARCH",
+      "group": "BIZ-ARCH"
+    },
+    {
+      "id": "BIZ-ARCH-10",
+      "name": "Business Glossary",
+      "family": "BIZ-ARCH",
+      "type": "ARCH",
+      "group": "BIZ-ARCH"
+    },
+    {
+      "id": "BIZ-PROD-01",
+      "name": "Product Vision & Mission",
+      "family": "BIZ-PROD",
+      "type": "PROD",
+      "group": "BIZ-PROD"
+    },
+    {
+      "id": "BIZ-PROD-02",
+      "name": "Feature Catalog",
+      "family": "BIZ-PROD",
+      "type": "PROD",
+      "group": "BIZ-PROD"
+    },
+    {
+      "id": "BIZ-PROD-03",
+      "name": "Feature Matrix",
+      "family": "BIZ-PROD",
+      "type": "PROD",
+      "group": "BIZ-PROD"
+    },
+    {
+      "id": "BIZ-PROD-04",
+      "name": "Product Roadmap",
+      "family": "BIZ-PROD",
+      "type": "PROD",
+      "group": "BIZ-PROD"
+    },
+    {
+      "id": "BIZ-PROD-06",
+      "name": "Pricing Model",
+      "family": "BIZ-PROD",
+      "type": "PROD",
+      "group": "BIZ-PROD"
+    },
+    {
+      "id": "BIZ-PROD-08",
+      "name": "Edition Comparison",
+      "family": "BIZ-PROD",
+      "type": "PROD",
+      "group": "BIZ-PROD"
+    },
+    {
+      "id": "GOV-ADR-001",
+      "name": "Global Identity Model",
+      "family": "GOV-ADR",
+      "type": "ADR",
+      "group": "GOV-ADR"
+    },
+    {
+      "id": "GOV-ADR-002",
+      "name": "Domain Ownership — Modular Monolith",
+      "family": "GOV-ADR",
+      "type": "ADR",
+      "group": "GOV-ADR"
+    },
+    {
+      "id": "GOV-ADR-003",
+      "name": "Event-Composable Architecture",
+      "family": "GOV-ADR",
+      "type": "ADR",
+      "group": "GOV-ADR"
+    },
+    {
+      "id": "GOV-ADR-004",
+      "name": "Ledger-Based Transaction Model",
+      "family": "GOV-ADR",
+      "type": "ADR",
+      "group": "GOV-ADR"
+    },
+    {
+      "id": "GOV-ADR-005",
+      "name": "Finance Owns Financial Truth",
+      "family": "GOV-ADR",
+      "type": "ADR",
+      "group": "GOV-ADR"
+    },
+    {
+      "id": "GOV-ADR-006",
+      "name": "Inventory Ledger-Based Transactions",
+      "family": "GOV-ADR",
+      "type": "ADR",
+      "group": "GOV-ADR"
+    },
+    {
+      "id": "GOV-ADR-007",
+      "name": "Single Order Aggregate",
+      "family": "GOV-ADR",
+      "type": "ADR",
+      "group": "GOV-ADR"
+    },
+    {
+      "id": "GOV-ADR-008",
+      "name": "Academy State Machine",
+      "family": "GOV-ADR",
+      "type": "ADR",
+      "group": "GOV-ADR"
+    },
+    {
+      "id": "GOV-ADR-009",
+      "name": "Tournament Format Strategy",
+      "family": "GOV-ADR",
+      "type": "ADR",
+      "group": "GOV-ADR"
+    },
+    {
+      "id": "GOV-ADR-010",
+      "name": "CRM Read Model Pattern",
+      "family": "GOV-ADR",
+      "type": "ADR",
+      "group": "GOV-ADR"
+    },
+    {
+      "id": "GOV-ADR-011",
+      "name": "HR Payroll — Finance Separation",
+      "family": "GOV-ADR",
+      "type": "ADR",
+      "group": "GOV-ADR"
+    },
+    {
+      "id": "GOV-ADR-012",
+      "name": "Session Management — HttpOnly Cookies with Bearer Token Fallback",
+      "family": "GOV-ADR",
+      "type": "ADR",
+      "group": "GOV-ADR"
+    },
+    {
+      "id": "GOV-ADR-013",
+      "name": "Payment Gateway Abstraction — Factory Pattern",
+      "family": "GOV-ADR",
+      "type": "ADR",
+      "group": "GOV-ADR"
+    },
+    {
+      "id": "GOV-ADR-014",
+      "name": "Notification Multi-Channel — Pluggable Provider Architecture",
+      "family": "GOV-ADR",
+      "type": "ADR",
+      "group": "GOV-ADR"
+    },
+    {
+      "id": "GOV-ADR-015",
+      "name": "Booking Concurrency — Redis Distributed Locks + DB Constraints",
+      "family": "GOV-ADR",
+      "type": "ADR",
+      "group": "GOV-ADR"
+    },
+    {
+      "id": "GOV-ADR-016",
+      "name": "Organization-Scoped RBAC",
+      "family": "GOV-ADR",
+      "type": "ADR",
+      "group": "GOV-ADR"
+    },
+    {
+      "id": "GOV-ADR-017",
+      "name": "Scheduling Engine — Provider-Based Search",
+      "family": "GOV-ADR",
+      "type": "ADR",
+      "group": "GOV-ADR"
+    },
+    {
+      "id": "GOV-ADR-018",
+      "name": "Marketplace Settlement — Settlement Lifecycle with Financial Recording",
+      "family": "GOV-ADR",
+      "type": "ADR",
+      "group": "GOV-ADR"
+    },
+    {
+      "id": "GOV-ADR-019",
+      "name": "HR-Payroll / Finance Boundary — HR Calculates, Finance Posts",
+      "family": "GOV-ADR",
+      "type": "ADR",
+      "group": "GOV-ADR"
+    },
+    {
+      "id": "GOV-ADR-020",
+      "name": "Academy Attendance Immutability",
+      "family": "GOV-ADR",
+      "type": "ADR",
+      "group": "GOV-ADR"
+    },
+    {
+      "id": "GOV-ADR-021",
+      "name": "Standings Persistence — Pre-Computed Rankings in Database",
+      "family": "GOV-ADR",
+      "type": "ADR",
+      "group": "GOV-ADR"
+    },
+    {
+      "id": "GOV-ADR-022",
+      "name": "Customer 360 — UNION Query Across Business Domains",
+      "family": "GOV-ADR",
+      "type": "ADR",
+      "group": "GOV-ADR"
+    },
+    {
+      "id": "GOV-ADR-023",
+      "name": "Inventory Ledger — Immutable Log as Source of Truth",
+      "family": "GOV-ADR",
+      "type": "ADR",
+      "group": "GOV-ADR"
+    },
+    {
+      "id": "GOV-ADR-024",
+      "name": "API Versioning Strategy — URL Prefix + API Key Authentication",
+      "family": "GOV-ADR",
+      "type": "ADR",
+      "group": "GOV-ADR"
+    },
+    {
+      "id": "GOV-ADR-025",
+      "name": "Database Migration Strategy — Additive SQL with Authoritative Baseline",
+      "family": "GOV-ADR",
+      "type": "ADR",
+      "group": "GOV-ADR"
+    },
+    {
+      "id": "OPS-DEPLOY-01",
+      "name": "Deployment Guide",
+      "family": "OPS-DEPLOY",
+      "type": "OPS",
+      "group": "OPS-DEPLOY"
+    },
+    {
+      "id": "OPS-MON-01",
+      "name": "Monitoring Guide",
+      "family": "OPS-MON",
+      "type": "OPS",
+      "group": "OPS-MON"
+    },
+    {
+      "id": "OPS-RUN-01",
+      "name": "Backup and Restore",
+      "family": "OPS-RUN",
+      "type": "OPS",
+      "group": "OPS-RUN"
+    },
+    {
+      "id": "OPS-RUN-02",
+      "name": "Troubleshooting Guide",
+      "family": "OPS-RUN",
+      "type": "OPS",
+      "group": "OPS-RUN"
+    },
+    {
+      "id": "QUAL-CERT-01",
+      "name": "Certification Report",
+      "family": "QUAL-CERT",
+      "type": "CERT",
+      "group": "QUAL-CERT"
+    },
+    {
+      "id": "QUAL-TEST-01",
+      "name": "Testing Strategy",
+      "family": "QUAL-TEST",
+      "type": "TEST",
+      "group": "QUAL-TEST"
+    },
+    {
+      "id": "QUAL-TEST-02",
+      "name": "Unit Test Reference",
+      "family": "QUAL-TEST",
+      "type": "TEST",
+      "group": "QUAL-TEST"
+    },
+    {
+      "id": "QUAL-TEST-03",
+      "name": "Integration Test Reference",
+      "family": "QUAL-TEST",
+      "type": "TEST",
+      "group": "QUAL-TEST"
+    },
+    {
+      "id": "QUAL-TEST-04",
+      "name": "E2E Test Reference",
+      "family": "QUAL-TEST",
+      "type": "TEST",
+      "group": "QUAL-TEST"
+    },
+    {
+      "id": "QUAL-TRACE-01_Requirements_Traceability_Matrix",
+      "name": "QUAL-TRACE-01 Requirements Traceability Matrix",
+      "family": "UNKNOWN",
+      "type": "DOC",
+      "group": "UNKNOWN"
+    },
+    {
+      "id": "TECH-ARCH-01",
+      "name": "System Architecture",
+      "family": "TECH-ARCH",
+      "type": "ARCH",
+      "group": "TECH-ARCH"
+    },
+    {
+      "id": "TECH-ARCH-02",
+      "name": "Module Architecture",
+      "family": "TECH-ARCH",
+      "type": "ARCH",
+      "group": "TECH-ARCH"
+    },
+    {
+      "id": "TECH-ARCH-03",
+      "name": "Domain Model",
+      "family": "TECH-ARCH",
+      "type": "ARCH",
+      "group": "TECH-ARCH"
+    },
+    {
+      "id": "TECH-ARCH-04",
+      "name": "Event Architecture",
+      "family": "TECH-ARCH",
+      "type": "ARCH",
+      "group": "TECH-ARCH"
+    },
+    {
+      "id": "TECH-ARCH-05",
+      "name": "Data Architecture",
+      "family": "TECH-ARCH",
+      "type": "ARCH",
+      "group": "TECH-ARCH"
+    },
+    {
+      "id": "TECH-ARCH-06",
+      "name": "Integration Architecture",
+      "family": "TECH-ARCH",
+      "type": "ARCH",
+      "group": "TECH-ARCH"
+    },
+    {
+      "id": "TECH-ARCH-07",
+      "name": "Security Architecture",
+      "family": "TECH-ARCH",
+      "type": "ARCH",
+      "group": "TECH-ARCH"
+    },
+    {
+      "id": "TECH-ARCH-08",
+      "name": "Deployment Architecture",
+      "family": "TECH-ARCH",
+      "type": "ARCH",
+      "group": "TECH-ARCH"
+    },
+    {
+      "id": "TECH-ARCH-10",
+      "name": "Technology Stack",
+      "family": "TECH-ARCH",
+      "type": "ARCH",
+      "group": "TECH-ARCH"
+    },
+    {
+      "id": "TECH-ARCH-11",
+      "name": "Scalability Design",
+      "family": "TECH-ARCH",
+      "type": "ARCH",
+      "group": "TECH-ARCH"
+    },
+    {
+      "id": "TECH-ARCH-12",
+      "name": "Booking Flow Deep Dive",
+      "family": "TECH-ARCH",
+      "type": "ARCH",
+      "group": "TECH-ARCH"
+    },
+    {
+      "id": "TECH-ARCH-13",
+      "name": "Payment Flow Deep Dive",
+      "family": "TECH-ARCH",
+      "type": "ARCH",
+      "group": "TECH-ARCH"
+    },
+    {
+      "id": "TECH-ARCH-14",
+      "name": "Wallet Architecture",
+      "family": "TECH-ARCH",
+      "type": "ARCH",
+      "group": "TECH-ARCH"
+    },
+    {
+      "id": "TECH-ARCH-15",
+      "name": "Organization Architecture",
+      "family": "TECH-ARCH",
+      "type": "ARCH",
+      "group": "TECH-ARCH"
+    },
+    {
+      "id": "TECH-ARCH-16",
+      "name": "Subscription Architecture",
+      "family": "TECH-ARCH",
+      "type": "ARCH",
+      "group": "TECH-ARCH"
+    },
+    {
+      "id": "TECH-ARCH-17",
+      "name": "Marketplace Architecture",
+      "family": "TECH-ARCH",
+      "type": "ARCH",
+      "group": "TECH-ARCH"
+    },
+    {
+      "id": "TECH-ARCH-18",
+      "name": "Inventory Architecture",
+      "family": "TECH-ARCH",
+      "type": "ARCH",
+      "group": "TECH-ARCH"
+    },
+    {
+      "id": "TECH-ARCH-19",
+      "name": "Academy Architecture",
+      "family": "TECH-ARCH",
+      "type": "ARCH",
+      "group": "TECH-ARCH"
+    },
+    {
+      "id": "TECH-ARCH-20",
+      "name": "Tournament Architecture",
+      "family": "TECH-ARCH",
+      "type": "ARCH",
+      "group": "TECH-ARCH"
+    },
+    {
+      "id": "TECH-ARCH-21",
+      "name": "League Architecture",
+      "family": "TECH-ARCH",
+      "type": "ARCH",
+      "group": "TECH-ARCH"
+    },
+    {
+      "id": "TECH-ARCH-22",
+      "name": "CRM Architecture",
+      "family": "TECH-ARCH",
+      "type": "ARCH",
+      "group": "TECH-ARCH"
+    },
+    {
+      "id": "TECH-ARCH-23",
+      "name": "HR Architecture",
+      "family": "TECH-ARCH",
+      "type": "ARCH",
+      "group": "TECH-ARCH"
+    },
+    {
+      "id": "TECH-ARCH-24",
+      "name": "Reports & BI Architecture",
+      "family": "TECH-ARCH",
+      "type": "ARCH",
+      "group": "TECH-ARCH"
+    },
+    {
+      "id": "TECH-ARCH-25",
+      "name": "Observability Architecture",
+      "family": "TECH-ARCH",
+      "type": "ARCH",
+      "group": "TECH-ARCH"
+    },
+    {
+      "id": "TECH-DB-03",
+      "name": "Entity Reference",
+      "family": "TECH-DB",
+      "type": "DB",
+      "group": "TECH-DB"
+    },
+    {
+      "id": "TECH-DEV-01",
+      "name": "Coding Standards — TypeScript",
+      "family": "TECH-DEV",
+      "type": "STD",
+      "group": "TECH-DEV"
+    },
+    {
+      "id": "TECH-DEV-02",
+      "name": "Coding Standards — React",
+      "family": "TECH-DEV",
+      "type": "STD",
+      "group": "TECH-DEV"
+    },
+    {
+      "id": "TECH-DEV-03",
+      "name": "Folder Structure Standard",
+      "family": "TECH-DEV",
+      "type": "STD",
+      "group": "TECH-DEV"
+    },
+    {
+      "id": "TECH-DEV-04",
+      "name": "Naming Conventions",
+      "family": "TECH-DEV",
+      "type": "STD",
+      "group": "TECH-DEV"
+    },
+    {
+      "id": "TECH-DEV-05",
+      "name": "Git Workflow & Branch Strategy",
+      "family": "TECH-DEV",
+      "type": "STD",
+      "group": "TECH-DEV"
+    },
+    {
+      "id": "TECH-DEV-06",
+      "name": "Commit Message Standards",
+      "family": "TECH-DEV",
+      "type": "STD",
+      "group": "TECH-DEV"
+    },
+    {
+      "id": "TECH-DEV-07",
+      "name": "Pull Request Standards",
+      "family": "TECH-DEV",
+      "type": "STD",
+      "group": "TECH-DEV"
+    },
+    {
+      "id": "TECH-DEV-08",
+      "name": "Code Review Standards",
+      "family": "TECH-DEV",
+      "type": "STD",
+      "group": "TECH-DEV"
+    },
+    {
+      "id": "TECH-DEV-09",
+      "name": "Testing Standards",
+      "family": "TECH-DEV",
+      "type": "STD",
+      "group": "TECH-DEV"
+    },
+    {
+      "id": "TECH-DEV-10",
+      "name": "Database Migration Standards",
+      "family": "TECH-DEV",
+      "type": "STD",
+      "group": "TECH-DEV"
+    },
+    {
+      "id": "TECH-DEV-11",
+      "name": "API Design Standards",
+      "family": "TECH-DEV",
+      "type": "STD",
+      "group": "TECH-DEV"
+    },
+    {
+      "id": "TECH-DEV-12",
+      "name": "Error Handling Standards",
+      "family": "TECH-DEV",
+      "type": "STD",
+      "group": "TECH-DEV"
+    },
+    {
+      "id": "TECH-DEV-13",
+      "name": "Logging Standards",
+      "family": "TECH-DEV",
+      "type": "STD",
+      "group": "TECH-DEV"
+    },
+    {
+      "id": "TECH-DEV-14",
+      "name": "Security Coding Standards",
+      "family": "TECH-DEV",
+      "type": "STD",
+      "group": "TECH-DEV"
+    },
+    {
+      "id": "TECH-DEV-15",
+      "name": "Performance Coding Standards",
+      "family": "TECH-DEV",
+      "type": "STD",
+      "group": "TECH-DEV"
+    },
+    {
+      "id": "TECH-MOD-01",
+      "name": "Auth Module",
+      "family": "TECH-MOD",
+      "type": "MOD",
+      "group": "TECH-MOD"
+    },
+    {
+      "id": "TECH-MOD-02",
+      "name": "RBAC Module",
+      "family": "TECH-MOD",
+      "type": "MOD",
+      "group": "TECH-MOD"
+    },
+    {
+      "id": "TECH-MOD-03",
+      "name": "Booking Module",
+      "family": "TECH-MOD",
+      "type": "MOD",
+      "group": "TECH-MOD"
+    },
+    {
+      "id": "TECH-MOD-04",
+      "name": "Academy Module",
+      "family": "TECH-MOD",
+      "type": "MOD",
+      "group": "TECH-MOD"
+    },
+    {
+      "id": "TECH-MOD-05",
+      "name": "Tournaments Module",
+      "family": "TECH-MOD",
+      "type": "MOD",
+      "group": "TECH-MOD"
+    },
+    {
+      "id": "TECH-MOD-06",
+      "name": "Leagues Module",
+      "family": "TECH-MOD",
+      "type": "MOD",
+      "group": "TECH-MOD"
+    },
+    {
+      "id": "TECH-MOD-07",
+      "name": "Marketplace Module",
+      "family": "TECH-MOD",
+      "type": "MOD",
+      "group": "TECH-MOD"
+    },
+    {
+      "id": "TECH-MOD-08",
+      "name": "Inventory Module",
+      "family": "TECH-MOD",
+      "type": "MOD",
+      "group": "TECH-MOD"
+    },
+    {
+      "id": "TECH-MOD-09",
+      "name": "Payment Module",
+      "family": "TECH-MOD",
+      "type": "MOD",
+      "group": "TECH-MOD"
+    },
+    {
+      "id": "TECH-MOD-10",
+      "name": "Wallet Module",
+      "family": "TECH-MOD",
+      "type": "MOD",
+      "group": "TECH-MOD"
+    },
+    {
+      "id": "TECH-MOD-11",
+      "name": "Financial Module",
+      "family": "TECH-MOD",
+      "type": "MOD",
+      "group": "TECH-MOD"
+    },
+    {
+      "id": "TECH-MOD-12",
+      "name": "Accounting Module",
+      "family": "TECH-MOD",
+      "type": "MOD",
+      "group": "TECH-MOD"
+    },
+    {
+      "id": "TECH-MOD-13",
+      "name": "Organisations Module",
+      "family": "TECH-MOD",
+      "type": "MOD",
+      "group": "TECH-MOD"
+    },
+    {
+      "id": "TECH-MOD-14",
+      "name": "Notifications Module",
+      "family": "TECH-MOD",
+      "type": "MOD",
+      "group": "TECH-MOD"
+    },
+    {
+      "id": "TECH-MOD-15",
+      "name": "CRM Module",
+      "family": "TECH-MOD",
+      "type": "MOD",
+      "group": "TECH-MOD"
+    },
+    {
+      "id": "TECH-MOD-16",
+      "name": "HR Module",
+      "family": "TECH-MOD",
+      "type": "MOD",
+      "group": "TECH-MOD"
+    },
+    {
+      "id": "TECH-MOD-17",
+      "name": "Match Module",
+      "family": "TECH-MOD",
+      "type": "MOD",
+      "group": "TECH-MOD"
+    },
+    {
+      "id": "TECH-MOD-18",
+      "name": "Membership Module",
+      "family": "TECH-MOD",
+      "type": "MOD",
+      "group": "TECH-MOD"
+    },
+    {
+      "id": "TECH-MOD-19",
+      "name": "Scheduling Module",
+      "family": "TECH-MOD",
+      "type": "MOD",
+      "group": "TECH-MOD"
+    },
+    {
+      "id": "TECH-MOD-20",
+      "name": "Security Module",
+      "family": "TECH-MOD",
+      "type": "MOD",
+      "group": "TECH-MOD"
+    },
+    {
+      "id": "TECH-MOD-21",
+      "name": "Audit Log Module",
+      "family": "TECH-MOD",
+      "type": "MOD",
+      "group": "TECH-MOD"
+    },
+    {
+      "id": "TECH-MOD-22",
+      "name": "Support Module",
+      "family": "TECH-MOD",
+      "type": "MOD",
+      "group": "TECH-MOD"
+    },
+    {
+      "id": "TECH-MOD-23",
+      "name": "Content Management Module",
+      "family": "TECH-MOD",
+      "type": "MOD",
+      "group": "TECH-MOD"
+    },
+    {
+      "id": "TECH-MOD-24",
+      "name": "Community Module",
+      "family": "TECH-MOD",
+      "type": "MOD",
+      "group": "TECH-MOD"
+    },
+    {
+      "id": "TECH-MOD-25",
+      "name": "BI Module",
+      "family": "TECH-MOD",
+      "type": "MOD",
+      "group": "TECH-MOD"
+    },
+    {
+      "id": "TECH-MOD-26",
+      "name": "Sports Engine Module",
+      "family": "TECH-MOD",
+      "type": "MOD",
+      "group": "TECH-MOD"
+    },
+    {
+      "id": "TECH-MOD-27",
+      "name": "Integration Module",
+      "family": "TECH-MOD",
+      "type": "MOD",
+      "group": "TECH-MOD"
+    },
+    {
+      "id": "TECH-MOD-28",
+      "name": "Mobile Module",
+      "family": "TECH-MOD",
+      "type": "MOD",
+      "group": "TECH-MOD"
+    },
+    {
+      "id": "TECH-MOD-29",
+      "name": "Reports Module",
+      "family": "TECH-MOD",
+      "type": "MOD",
+      "group": "TECH-MOD"
+    },
+    {
+      "id": "TECH-MOD-30",
+      "name": "Settlement Module",
+      "family": "TECH-MOD",
+      "type": "MOD",
+      "group": "TECH-MOD"
+    },
+    {
+      "id": "TECH-MOD-31",
+      "name": "Coupon Module",
+      "family": "TECH-MOD",
+      "type": "MOD",
+      "group": "TECH-MOD"
+    },
+    {
+      "id": "TECH-MOD-32",
+      "name": "Pricing Module",
+      "family": "TECH-MOD",
+      "type": "MOD",
+      "group": "TECH-MOD"
+    },
+    {
+      "id": "TECH-MOD-33",
+      "name": "Upload Module",
+      "family": "TECH-MOD",
+      "type": "MOD",
+      "group": "TECH-MOD"
+    },
+    {
+      "id": "TECH-MOD-34",
+      "name": "Translations Module",
+      "family": "TECH-MOD",
+      "type": "MOD",
+      "group": "TECH-MOD"
+    },
+    {
+      "id": "TECH-MOD-35",
+      "name": "Activities Module",
+      "family": "TECH-MOD",
+      "type": "MOD",
+      "group": "TECH-MOD"
+    },
+    {
+      "id": "TECH-MOD-36",
+      "name": "Admin Module",
+      "family": "TECH-MOD",
+      "type": "MOD",
+      "group": "TECH-MOD"
+    },
+    {
+      "id": "TECH-MOD-37",
+      "name": "Amenities Module",
+      "family": "TECH-MOD",
+      "type": "MOD",
+      "group": "TECH-MOD"
+    },
+    {
+      "id": "TECH-MOD-38",
+      "name": "Approvals Module",
+      "family": "TECH-MOD",
+      "type": "MOD",
+      "group": "TECH-MOD"
+    },
+    {
+      "id": "TECH-MOD-39",
+      "name": "App Settings Module",
+      "family": "TECH-MOD",
+      "type": "MOD",
+      "group": "TECH-MOD"
+    },
+    {
+      "id": "TECH-MOD-40",
+      "name": "Banks Module",
+      "family": "TECH-MOD",
+      "type": "MOD",
+      "group": "TECH-MOD"
+    },
+    {
+      "id": "TECH-MOD-41",
+      "name": "Cities Module",
+      "family": "TECH-MOD",
+      "type": "MOD",
+      "group": "TECH-MOD"
+    },
+    {
+      "id": "TECH-MOD-42",
+      "name": "Countries Module",
+      "family": "TECH-MOD",
+      "type": "MOD",
+      "group": "TECH-MOD"
+    },
+    {
+      "id": "TECH-MOD-43",
+      "name": "Currencies Module",
+      "family": "TECH-MOD",
+      "type": "MOD",
+      "group": "TECH-MOD"
+    },
+    {
+      "id": "TECH-MOD-44",
+      "name": "Design Tokens Module",
+      "family": "TECH-MOD",
+      "type": "MOD",
+      "group": "TECH-MOD"
+    },
+    {
+      "id": "TECH-MOD-45",
+      "name": "Geo Module",
+      "family": "TECH-MOD",
+      "type": "MOD",
+      "group": "TECH-MOD"
+    },
+    {
+      "id": "TECH-MOD-46",
+      "name": "Languages Module",
+      "family": "TECH-MOD",
+      "type": "MOD",
+      "group": "TECH-MOD"
+    },
+    {
+      "id": "TECH-MOD-47",
+      "name": "Provinces Module",
+      "family": "TECH-MOD",
+      "type": "MOD",
+      "group": "TECH-MOD"
+    },
+    {
+      "id": "TECH-MOD-48",
+      "name": "Reference Data Module",
+      "family": "TECH-MOD",
+      "type": "MOD",
+      "group": "TECH-MOD"
+    },
+    {
+      "id": "TECH-MOD-49",
+      "name": "Sidebar Layout Module",
+      "family": "TECH-MOD",
+      "type": "MOD",
+      "group": "TECH-MOD"
+    },
+    {
+      "id": "TECH-MOD-50",
+      "name": "Time Module",
+      "family": "TECH-MOD",
+      "type": "MOD",
+      "group": "TECH-MOD"
+    },
+    {
+      "id": "TECH-MOD-51",
+      "name": "Coaches Module",
+      "family": "TECH-MOD",
+      "type": "MOD",
+      "group": "TECH-MOD"
+    },
+    {
+      "id": "TECH-MOD-52",
+      "name": "Player Experience Module",
+      "family": "TECH-MOD",
+      "type": "MOD",
+      "group": "TECH-MOD"
+    },
+    {
+      "id": "TECH-UX-01",
+      "name": "Design System Overview",
+      "family": "TECH-UX",
+      "type": "UX",
+      "group": "TECH-UX"
+    },
+    {
+      "id": "TECH-UX-02",
+      "name": "Design Token Reference",
+      "family": "TECH-UX",
+      "type": "UX",
+      "group": "TECH-UX"
+    },
+    {
+      "id": "TECH-UX-03",
+      "name": "Navigation Architecture",
+      "family": "TECH-UX",
+      "type": "UX",
+      "group": "TECH-UX"
+    },
+    {
+      "id": "TECH-UX-04",
+      "name": "Screen Flows",
+      "family": "TECH-UX",
+      "type": "UX",
+      "group": "TECH-UX"
+    },
+    {
+      "id": "TECH-UX-09",
+      "name": "Empty State Patterns",
+      "family": "TECH-UX",
+      "type": "UX",
+      "group": "TECH-UX"
+    },
+    {
+      "id": "TECH-UX-10",
+      "name": "Loading State Patterns",
+      "family": "TECH-UX",
+      "type": "UX",
+      "group": "TECH-UX"
+    },
+    {
+      "id": "TECH-UX-11",
+      "name": "Error State Patterns",
+      "family": "TECH-UX",
+      "type": "UX",
+      "group": "TECH-UX"
+    },
+    {
+      "id": "USER-01",
+      "name": "Player Guide",
+      "family": "USER",
+      "type": "GUIDE",
+      "group": "USER"
+    },
+    {
+      "id": "VOLUME_01_EXECUTIVE_OVERVIEW",
+      "name": "VOLUME 01 EXECUTIVE OVERVIEW",
+      "family": "UNKNOWN",
+      "type": "DOC",
+      "group": "UNKNOWN"
+    },
+    {
+      "id": "VOLUME_02_ARCHITECTURE",
+      "name": "VOLUME 02 ARCHITECTURE",
+      "family": "UNKNOWN",
+      "type": "DOC",
+      "group": "UNKNOWN"
+    },
+    {
+      "id": "VOLUME_03_BUSINESS_DOMAINS",
+      "name": "VOLUME 03 BUSINESS DOMAINS",
+      "family": "UNKNOWN",
+      "type": "DOC",
+      "group": "UNKNOWN"
+    },
+    {
+      "id": "VOLUME_04_MODULES",
+      "name": "VOLUME 04 MODULES",
+      "family": "UNKNOWN",
+      "type": "DOC",
+      "group": "UNKNOWN"
+    },
+    {
+      "id": "VOLUME_05_SCREENS",
+      "name": "VOLUME 05 SCREENS",
+      "family": "UNKNOWN",
+      "type": "DOC",
+      "group": "UNKNOWN"
+    },
+    {
+      "id": "VOLUME_08_PERMISSIONS",
+      "name": "VOLUME 08 PERMISSIONS",
+      "family": "UNKNOWN",
+      "type": "DOC",
+      "group": "UNKNOWN"
+    },
+    {
+      "id": "VOLUME_11_LIFECYCLES",
+      "name": "VOLUME 11 LIFECYCLES",
+      "family": "UNKNOWN",
+      "type": "DOC",
+      "group": "UNKNOWN"
+    },
+    {
+      "id": "VOLUME_15_NOTIFICATIONS",
+      "name": "VOLUME 15 NOTIFICATIONS",
+      "family": "UNKNOWN",
+      "type": "DOC",
+      "group": "UNKNOWN"
+    },
+    {
+      "id": "VOLUME_38_CERTIFICATION_REPORT",
+      "name": "VOLUME 38 CERTIFICATION REPORT",
+      "family": "UNKNOWN",
+      "type": "DOC",
+      "group": "UNKNOWN"
+    }
+  ],
+  "edges": [
+    {
+      "source": "BIZ-PROD-01",
+      "target": "BIZ-ARCH-01",
+      "type": "references"
+    },
+    {
+      "source": "BIZ-PROD-02",
+      "target": "BIZ-PROD-03",
+      "type": "references"
+    },
+    {
+      "source": "BIZ-PROD-02",
+      "target": "TECH-MOD-01",
+      "type": "references"
+    },
+    {
+      "source": "BIZ-PROD-04",
+      "target": "BIZ-ARCH-01",
+      "type": "references"
+    },
+    {
+      "source": "BIZ-PROD-06",
+      "target": "TECH-MOD-32",
+      "type": "references"
+    },
+    {
+      "source": "BIZ-PROD-06",
+      "target": "TECH-MOD-30",
+      "type": "references"
+    },
+    {
+      "source": "BIZ-PROD-08",
+      "target": "BIZ-PROD-06",
+      "type": "references"
+    },
+    {
+      "source": "BIZ-PROD-08",
+      "target": "BIZ-PROD-03",
+      "type": "references"
+    },
+    {
+      "source": "GOV-ADR-010",
+      "target": "TECH-ARCH-22",
+      "type": "references"
+    },
+    {
+      "source": "GOV-ADR-010",
+      "target": "TECH-MOD-15",
+      "type": "references"
+    },
+    {
+      "source": "GOV-ADR-010",
+      "target": "GOV-ADR-002",
+      "type": "related"
+    },
+    {
+      "source": "GOV-ADR-010",
+      "target": "GOV-ADR-003",
+      "type": "related"
+    },
+    {
+      "source": "GOV-ADR-011",
+      "target": "TECH-ARCH-23",
+      "type": "references"
+    },
+    {
+      "source": "GOV-ADR-011",
+      "target": "TECH-MOD-16",
+      "type": "references"
+    },
+    {
+      "source": "GOV-ADR-011",
+      "target": "TECH-MOD-12",
+      "type": "references"
+    },
+    {
+      "source": "GOV-ADR-011",
+      "target": "GOV-ADR-005",
+      "type": "related"
+    },
+    {
+      "source": "GOV-ADR-011",
+      "target": "GOV-ADR-004",
+      "type": "related"
+    },
+    {
+      "source": "GOV-ADR-012",
+      "target": "TECH-ARCH-07",
+      "type": "references"
+    },
+    {
+      "source": "GOV-ADR-012",
+      "target": "TECH-MOD-01",
+      "type": "references"
+    },
+    {
+      "source": "GOV-ADR-012",
+      "target": "GOV-ADR-001",
+      "type": "related"
+    },
+    {
+      "source": "GOV-ADR-013",
+      "target": "TECH-ARCH-13",
+      "type": "references"
+    },
+    {
+      "source": "GOV-ADR-013",
+      "target": "TECH-MOD-09",
+      "type": "references"
+    },
+    {
+      "source": "GOV-ADR-013",
+      "target": "GOV-ADR-004",
+      "type": "related"
+    },
+    {
+      "source": "GOV-ADR-014",
+      "target": "TECH-ARCH-25",
+      "type": "references"
+    },
+    {
+      "source": "GOV-ADR-014",
+      "target": "TECH-MOD-14",
+      "type": "references"
+    },
+    {
+      "source": "GOV-ADR-014",
+      "target": "GOV-ADR-003",
+      "type": "related"
+    },
+    {
+      "source": "GOV-ADR-015",
+      "target": "TECH-ARCH-12",
+      "type": "references"
+    },
+    {
+      "source": "GOV-ADR-015",
+      "target": "TECH-MOD-03",
+      "type": "references"
+    },
+    {
+      "source": "GOV-ADR-015",
+      "target": "GOV-ADR-003",
+      "type": "related"
+    },
+    {
+      "source": "GOV-ADR-016",
+      "target": "TECH-ARCH-15",
+      "type": "references"
+    },
+    {
+      "source": "GOV-ADR-016",
+      "target": "TECH-MOD-13",
+      "type": "references"
+    },
+    {
+      "source": "GOV-ADR-016",
+      "target": "TECH-MOD-02",
+      "type": "references"
+    },
+    {
+      "source": "GOV-ADR-016",
+      "target": "GOV-ADR-001",
+      "type": "related"
+    },
+    {
+      "source": "GOV-ADR-016",
+      "target": "GOV-ADR-002",
+      "type": "related"
+    },
+    {
+      "source": "GOV-ADR-017",
+      "target": "TECH-MOD-19",
+      "type": "references"
+    },
+    {
+      "source": "GOV-ADR-017",
+      "target": "TECH-MOD-03",
+      "type": "references"
+    },
+    {
+      "source": "GOV-ADR-017",
+      "target": "GOV-ADR-003",
+      "type": "related"
+    },
+    {
+      "source": "GOV-ADR-018",
+      "target": "TECH-ARCH-17",
+      "type": "references"
+    },
+    {
+      "source": "GOV-ADR-018",
+      "target": "TECH-MOD-30",
+      "type": "references"
+    },
+    {
+      "source": "GOV-ADR-018",
+      "target": "TECH-MOD-12",
+      "type": "references"
+    },
+    {
+      "source": "GOV-ADR-018",
+      "target": "GOV-ADR-004",
+      "type": "related"
+    },
+    {
+      "source": "GOV-ADR-018",
+      "target": "GOV-ADR-005",
+      "type": "related"
+    },
+    {
+      "source": "GOV-ADR-019",
+      "target": "TECH-ARCH-23",
+      "type": "references"
+    },
+    {
+      "source": "GOV-ADR-019",
+      "target": "TECH-MOD-16",
+      "type": "references"
+    },
+    {
+      "source": "GOV-ADR-019",
+      "target": "TECH-MOD-12",
+      "type": "references"
+    },
+    {
+      "source": "GOV-ADR-019",
+      "target": "GOV-ADR-005",
+      "type": "related"
+    },
+    {
+      "source": "GOV-ADR-019",
+      "target": "GOV-ADR-004",
+      "type": "related"
+    },
+    {
+      "source": "GOV-ADR-019",
+      "target": "GOV-ADR-011",
+      "type": "related"
+    },
+    {
+      "source": "GOV-ADR-020",
+      "target": "TECH-ARCH-19",
+      "type": "references"
+    },
+    {
+      "source": "GOV-ADR-020",
+      "target": "TECH-MOD-04",
+      "type": "references"
+    },
+    {
+      "source": "GOV-ADR-020",
+      "target": "GOV-ADR-008",
+      "type": "related"
+    },
+    {
+      "source": "GOV-ADR-021",
+      "target": "TECH-ARCH-20",
+      "type": "references"
+    },
+    {
+      "source": "GOV-ADR-021",
+      "target": "TECH-ARCH-21",
+      "type": "references"
+    },
+    {
+      "source": "GOV-ADR-021",
+      "target": "TECH-MOD-26",
+      "type": "references"
+    },
+    {
+      "source": "GOV-ADR-022",
+      "target": "TECH-ARCH-22",
+      "type": "references"
+    },
+    {
+      "source": "GOV-ADR-022",
+      "target": "TECH-MOD-15",
+      "type": "references"
+    },
+    {
+      "source": "GOV-ADR-022",
+      "target": "GOV-ADR-010",
+      "type": "related"
+    },
+    {
+      "source": "GOV-ADR-023",
+      "target": "TECH-ARCH-18",
+      "type": "references"
+    },
+    {
+      "source": "GOV-ADR-023",
+      "target": "TECH-MOD-08",
+      "type": "references"
+    },
+    {
+      "source": "GOV-ADR-023",
+      "target": "GOV-ADR-004",
+      "type": "related"
+    },
+    {
+      "source": "GOV-ADR-024",
+      "target": "TECH-DEV-11",
+      "type": "references"
+    },
+    {
+      "source": "GOV-ADR-024",
+      "target": "TECH-MOD-27",
+      "type": "references"
+    },
+    {
+      "source": "GOV-ADR-025",
+      "target": "TECH-DEV-10",
+      "type": "references"
+    },
+    {
+      "source": "GOV-ADR-025",
+      "target": "TECH-ARCH-05",
+      "type": "references"
+    },
+    {
+      "source": "OPS-DEPLOY-01",
+      "target": "TECH-ARCH-08",
+      "type": "references"
+    },
+    {
+      "source": "OPS-DEPLOY-01",
+      "target": "OPS-MON-01",
+      "type": "references"
+    },
+    {
+      "source": "OPS-DEPLOY-01",
+      "target": "OPS-RUN-01",
+      "type": "references"
+    },
+    {
+      "source": "OPS-DEPLOY-01",
+      "target": "TECH-DEV-05",
+      "type": "related"
+    },
+    {
+      "source": "OPS-MON-01",
+      "target": "TECH-ARCH-25",
+      "type": "references"
+    },
+    {
+      "source": "OPS-MON-01",
+      "target": "OPS-DEPLOY-01",
+      "type": "references"
+    },
+    {
+      "source": "OPS-MON-01",
+      "target": "OPS-RUN-01",
+      "type": "related"
+    },
+    {
+      "source": "OPS-MON-01",
+      "target": "OPS-RUN-02",
+      "type": "related"
+    },
+    {
+      "source": "OPS-RUN-01",
+      "target": "OPS-DEPLOY-01",
+      "type": "references"
+    },
+    {
+      "source": "OPS-RUN-01",
+      "target": "OPS-RUN-02",
+      "type": "related"
+    },
+    {
+      "source": "OPS-RUN-02",
+      "target": "OPS-DEPLOY-01",
+      "type": "references"
+    },
+    {
+      "source": "OPS-RUN-02",
+      "target": "OPS-MON-01",
+      "type": "references"
+    },
+    {
+      "source": "OPS-RUN-02",
+      "target": "OPS-RUN-01",
+      "type": "references"
+    },
+    {
+      "source": "OPS-RUN-02",
+      "target": "TECH-ARCH-25",
+      "type": "related"
+    },
+    {
+      "source": "QUAL-CERT-01",
+      "target": "VOLUME-38",
+      "type": "references"
+    },
+    {
+      "source": "QUAL-CERT-01",
+      "target": "QUAL-TEST-01",
+      "type": "references"
+    },
+    {
+      "source": "QUAL-CERT-01",
+      "target": "TECH-ARCH-01",
+      "type": "related"
+    },
+    {
+      "source": "QUAL-CERT-01",
+      "target": "TECH-ARCH-07",
+      "type": "related"
+    },
+    {
+      "source": "QUAL-TEST-01",
+      "target": "TECH-DEV-09",
+      "type": "references"
+    },
+    {
+      "source": "QUAL-TEST-01",
+      "target": "QUAL-TEST-02",
+      "type": "references"
+    },
+    {
+      "source": "QUAL-TEST-01",
+      "target": "QUAL-TEST-03",
+      "type": "references"
+    },
+    {
+      "source": "QUAL-TEST-01",
+      "target": "QUAL-TEST-04",
+      "type": "references"
+    },
+    {
+      "source": "QUAL-TEST-01",
+      "target": "TECH-ARCH-11",
+      "type": "related"
+    },
+    {
+      "source": "QUAL-TEST-02",
+      "target": "TECH-DEV-09",
+      "type": "references"
+    },
+    {
+      "source": "QUAL-TEST-02",
+      "target": "QUAL-TEST-03",
+      "type": "references"
+    },
+    {
+      "source": "QUAL-TEST-02",
+      "target": "TECH-MOD-01",
+      "type": "related"
+    },
+    {
+      "source": "QUAL-TEST-02",
+      "target": "TECH-MOD-50",
+      "type": "related"
+    },
+    {
+      "source": "QUAL-TEST-03",
+      "target": "TECH-MOD-03",
+      "type": "references"
+    },
+    {
+      "source": "QUAL-TEST-03",
+      "target": "TECH-DB-03",
+      "type": "references"
+    },
+    {
+      "source": "QUAL-TEST-03",
+      "target": "TECH-DEV-09",
+      "type": "related"
+    },
+    {
+      "source": "QUAL-TEST-03",
+      "target": "TECH-UX-04",
+      "type": "related"
+    },
+    {
+      "source": "QUAL-TEST-04",
+      "target": "TECH-DEV-09",
+      "type": "references"
+    },
+    {
+      "source": "QUAL-TEST-04",
+      "target": "TECH-UX-04",
+      "type": "references"
+    },
+    {
+      "source": "QUAL-TEST-04",
+      "target": "TECH-MOD-03",
+      "type": "related"
+    },
+    {
+      "source": "QUAL-TEST-04",
+      "target": "TECH-MOD-01",
+      "type": "related"
+    },
+    {
+      "source": "TECH-ARCH-01",
+      "target": "TECH-ARCH-01",
+      "type": "governs"
+    },
+    {
+      "source": "TECH-ARCH-01",
+      "target": "TECH-ARCH-02",
+      "type": "references"
+    },
+    {
+      "source": "TECH-ARCH-01",
+      "target": "TECH-ARCH-05",
+      "type": "references"
+    },
+    {
+      "source": "TECH-ARCH-01",
+      "target": "TECH-ARCH-08",
+      "type": "references"
+    },
+    {
+      "source": "TECH-ARCH-01",
+      "target": "VOLUME-02",
+      "type": "related"
+    },
+    {
+      "source": "TECH-ARCH-01",
+      "target": "TECH-DEV-03",
+      "type": "related"
+    },
+    {
+      "source": "TECH-ARCH-02",
+      "target": "TECH-ARCH-02",
+      "type": "governs"
+    },
+    {
+      "source": "TECH-ARCH-02",
+      "target": "TECH-ARCH-01",
+      "type": "references"
+    },
+    {
+      "source": "TECH-ARCH-02",
+      "target": "TECH-DEV-03",
+      "type": "references"
+    },
+    {
+      "source": "TECH-ARCH-02",
+      "target": "TECH-DEV-01",
+      "type": "related"
+    },
+    {
+      "source": "TECH-ARCH-02",
+      "target": "VOLUME-04",
+      "type": "related"
+    },
+    {
+      "source": "TECH-ARCH-03",
+      "target": "TECH-ARCH-03",
+      "type": "governs"
+    },
+    {
+      "source": "TECH-ARCH-03",
+      "target": "TECH-ARCH-02",
+      "type": "references"
+    },
+    {
+      "source": "TECH-ARCH-03",
+      "target": "TECH-ARCH-04",
+      "type": "references"
+    },
+    {
+      "source": "TECH-ARCH-03",
+      "target": "VOLUME-03",
+      "type": "related"
+    },
+    {
+      "source": "TECH-ARCH-03",
+      "target": "VOLUME-11",
+      "type": "related"
+    },
+    {
+      "source": "TECH-ARCH-04",
+      "target": "TECH-ARCH-04",
+      "type": "governs"
+    },
+    {
+      "source": "TECH-ARCH-04",
+      "target": "TECH-ARCH-01",
+      "type": "references"
+    },
+    {
+      "source": "TECH-ARCH-04",
+      "target": "TECH-ARCH-03",
+      "type": "references"
+    },
+    {
+      "source": "TECH-ARCH-04",
+      "target": "VOLUME-15",
+      "type": "related"
+    },
+    {
+      "source": "TECH-ARCH-04",
+      "target": "VOLUME-04",
+      "type": "related"
+    },
+    {
+      "source": "TECH-ARCH-05",
+      "target": "TECH-ARCH-05",
+      "type": "governs"
+    },
+    {
+      "source": "TECH-ARCH-05",
+      "target": "TECH-ARCH-01",
+      "type": "references"
+    },
+    {
+      "source": "TECH-ARCH-05",
+      "target": "TECH-DEV-10",
+      "type": "references"
+    },
+    {
+      "source": "TECH-ARCH-05",
+      "target": "VOLUME-10",
+      "type": "related"
+    },
+    {
+      "source": "TECH-ARCH-06",
+      "target": "TECH-ARCH-06",
+      "type": "governs"
+    },
+    {
+      "source": "TECH-ARCH-06",
+      "target": "TECH-ARCH-01",
+      "type": "references"
+    },
+    {
+      "source": "TECH-ARCH-06",
+      "target": "TECH-ARCH-07",
+      "type": "references"
+    },
+    {
+      "source": "TECH-ARCH-06",
+      "target": "VOLUME-18",
+      "type": "related"
+    },
+    {
+      "source": "TECH-ARCH-07",
+      "target": "TECH-ARCH-07",
+      "type": "governs"
+    },
+    {
+      "source": "TECH-ARCH-07",
+      "target": "TECH-ARCH-01",
+      "type": "references"
+    },
+    {
+      "source": "TECH-ARCH-07",
+      "target": "TECH-DEV-14",
+      "type": "references"
+    },
+    {
+      "source": "TECH-ARCH-07",
+      "target": "VOLUME-08",
+      "type": "related"
+    },
+    {
+      "source": "TECH-ARCH-07",
+      "target": "VOLUME-19",
+      "type": "related"
+    },
+    {
+      "source": "TECH-ARCH-08",
+      "target": "TECH-ARCH-08",
+      "type": "governs"
+    },
+    {
+      "source": "TECH-ARCH-08",
+      "target": "TECH-ARCH-01",
+      "type": "references"
+    },
+    {
+      "source": "TECH-ARCH-08",
+      "target": "TECH-DEV-10",
+      "type": "references"
+    },
+    {
+      "source": "TECH-ARCH-08",
+      "target": "VOLUME-20",
+      "type": "related"
+    },
+    {
+      "source": "TECH-ARCH-08",
+      "target": "VOLUME-21",
+      "type": "related"
+    },
+    {
+      "source": "TECH-ARCH-10",
+      "target": "TECH-ARCH-10",
+      "type": "governs"
+    },
+    {
+      "source": "TECH-ARCH-10",
+      "target": "TECH-ARCH-01",
+      "type": "references"
+    },
+    {
+      "source": "TECH-ARCH-10",
+      "target": "TECH-ARCH-02",
+      "type": "references"
+    },
+    {
+      "source": "TECH-ARCH-10",
+      "target": "TECH-DEV-01",
+      "type": "related"
+    },
+    {
+      "source": "TECH-ARCH-10",
+      "target": "TECH-DEV-02",
+      "type": "related"
+    },
+    {
+      "source": "TECH-ARCH-11",
+      "target": "TECH-ARCH-11",
+      "type": "governs"
+    },
+    {
+      "source": "TECH-ARCH-11",
+      "target": "TECH-ARCH-01",
+      "type": "references"
+    },
+    {
+      "source": "TECH-ARCH-11",
+      "target": "TECH-ARCH-04",
+      "type": "references"
+    },
+    {
+      "source": "TECH-ARCH-11",
+      "target": "TECH-ARCH-05",
+      "type": "references"
+    },
+    {
+      "source": "TECH-ARCH-11",
+      "target": "TECH-ARCH-08",
+      "type": "related"
+    },
+    {
+      "source": "TECH-ARCH-11",
+      "target": "TECH-DEV-15",
+      "type": "related"
+    },
+    {
+      "source": "TECH-ARCH-12",
+      "target": "TECH-MOD-03",
+      "type": "references"
+    },
+    {
+      "source": "TECH-ARCH-12",
+      "target": "TECH-ARCH-02",
+      "type": "references"
+    },
+    {
+      "source": "TECH-ARCH-12",
+      "target": "TECH-ARCH-04",
+      "type": "references"
+    },
+    {
+      "source": "TECH-ARCH-12",
+      "target": "TECH-MOD-09",
+      "type": "related"
+    },
+    {
+      "source": "TECH-ARCH-12",
+      "target": "TECH-MOD-10",
+      "type": "related"
+    },
+    {
+      "source": "TECH-ARCH-12",
+      "target": "TECH-MOD-17",
+      "type": "related"
+    },
+    {
+      "source": "TECH-ARCH-12",
+      "target": "TECH-MOD-19",
+      "type": "related"
+    },
+    {
+      "source": "TECH-ARCH-13",
+      "target": "TECH-MOD-09",
+      "type": "references"
+    },
+    {
+      "source": "TECH-ARCH-13",
+      "target": "TECH-MOD-10",
+      "type": "references"
+    },
+    {
+      "source": "TECH-ARCH-13",
+      "target": "TECH-ARCH-02",
+      "type": "references"
+    },
+    {
+      "source": "TECH-ARCH-13",
+      "target": "TECH-MOD-03",
+      "type": "related"
+    },
+    {
+      "source": "TECH-ARCH-13",
+      "target": "TECH-MOD-12",
+      "type": "related"
+    },
+    {
+      "source": "TECH-ARCH-13",
+      "target": "TECH-MOD-30",
+      "type": "related"
+    },
+    {
+      "source": "TECH-ARCH-14",
+      "target": "TECH-MOD-10",
+      "type": "references"
+    },
+    {
+      "source": "TECH-ARCH-14",
+      "target": "TECH-MOD-09",
+      "type": "references"
+    },
+    {
+      "source": "TECH-ARCH-14",
+      "target": "TECH-ARCH-02",
+      "type": "references"
+    },
+    {
+      "source": "TECH-ARCH-14",
+      "target": "TECH-MOD-12",
+      "type": "related"
+    },
+    {
+      "source": "TECH-ARCH-14",
+      "target": "TECH-MOD-30",
+      "type": "related"
+    },
+    {
+      "source": "TECH-ARCH-14",
+      "target": "TECH-MOD-07",
+      "type": "related"
+    },
+    {
+      "source": "TECH-ARCH-15",
+      "target": "TECH-ARCH-02",
+      "type": "references"
+    },
+    {
+      "source": "TECH-ARCH-15",
+      "target": "TECH-ARCH-07",
+      "type": "references"
+    },
+    {
+      "source": "TECH-ARCH-15",
+      "target": "TECH-MOD-13",
+      "type": "references"
+    },
+    {
+      "source": "TECH-ARCH-15",
+      "target": "TECH-MOD-14",
+      "type": "related"
+    },
+    {
+      "source": "TECH-ARCH-15",
+      "target": "TECH-MOD-15",
+      "type": "related"
+    },
+    {
+      "source": "TECH-ARCH-16",
+      "target": "TECH-ARCH-15",
+      "type": "references"
+    },
+    {
+      "source": "TECH-ARCH-16",
+      "target": "TECH-DB-03",
+      "type": "references"
+    },
+    {
+      "source": "TECH-ARCH-16",
+      "target": "TECH-MOD-13",
+      "type": "related"
+    },
+    {
+      "source": "TECH-ARCH-17",
+      "target": "TECH-ARCH-02",
+      "type": "references"
+    },
+    {
+      "source": "TECH-ARCH-17",
+      "target": "TECH-MOD-07",
+      "type": "references"
+    },
+    {
+      "source": "TECH-ARCH-17",
+      "target": "TECH-MOD-08",
+      "type": "references"
+    },
+    {
+      "source": "TECH-ARCH-17",
+      "target": "TECH-MOD-30",
+      "type": "references"
+    },
+    {
+      "source": "TECH-ARCH-17",
+      "target": "TECH-MOD-31",
+      "type": "references"
+    },
+    {
+      "source": "TECH-ARCH-17",
+      "target": "TECH-ARCH-18",
+      "type": "related"
+    },
+    {
+      "source": "TECH-ARCH-17",
+      "target": "GOV-ADR-007",
+      "type": "related"
+    },
+    {
+      "source": "TECH-ARCH-18",
+      "target": "TECH-ARCH-02",
+      "type": "references"
+    },
+    {
+      "source": "TECH-ARCH-18",
+      "target": "TECH-MOD-08",
+      "type": "references"
+    },
+    {
+      "source": "TECH-ARCH-18",
+      "target": "TECH-ARCH-17",
+      "type": "related"
+    },
+    {
+      "source": "TECH-ARCH-18",
+      "target": "GOV-ADR-006",
+      "type": "related"
+    },
+    {
+      "source": "TECH-ARCH-19",
+      "target": "TECH-MOD-04",
+      "type": "references"
+    },
+    {
+      "source": "TECH-ARCH-19",
+      "target": "TECH-DB-03",
+      "type": "references"
+    },
+    {
+      "source": "TECH-ARCH-19",
+      "target": "TECH-MOD-19",
+      "type": "references"
+    },
+    {
+      "source": "TECH-ARCH-19",
+      "target": "TECH-MOD-05",
+      "type": "related"
+    },
+    {
+      "source": "TECH-ARCH-19",
+      "target": "TECH-MOD-06",
+      "type": "related"
+    },
+    {
+      "source": "TECH-ARCH-20",
+      "target": "TECH-MOD-05",
+      "type": "references"
+    },
+    {
+      "source": "TECH-ARCH-20",
+      "target": "TECH-DB-03",
+      "type": "references"
+    },
+    {
+      "source": "TECH-ARCH-20",
+      "target": "TECH-MOD-26",
+      "type": "references"
+    },
+    {
+      "source": "TECH-ARCH-20",
+      "target": "TECH-MOD-04",
+      "type": "related"
+    },
+    {
+      "source": "TECH-ARCH-20",
+      "target": "TECH-MOD-06",
+      "type": "related"
+    },
+    {
+      "source": "TECH-ARCH-21",
+      "target": "TECH-MOD-06",
+      "type": "references"
+    },
+    {
+      "source": "TECH-ARCH-21",
+      "target": "TECH-DB-03",
+      "type": "references"
+    },
+    {
+      "source": "TECH-ARCH-21",
+      "target": "TECH-MOD-26",
+      "type": "references"
+    },
+    {
+      "source": "TECH-ARCH-21",
+      "target": "TECH-MOD-04",
+      "type": "related"
+    },
+    {
+      "source": "TECH-ARCH-21",
+      "target": "TECH-MOD-05",
+      "type": "related"
+    },
+    {
+      "source": "TECH-ARCH-22",
+      "target": "TECH-MOD-15",
+      "type": "references"
+    },
+    {
+      "source": "TECH-ARCH-22",
+      "target": "TECH-DB-03",
+      "type": "references"
+    },
+    {
+      "source": "TECH-ARCH-22",
+      "target": "TECH-MOD-14",
+      "type": "related"
+    },
+    {
+      "source": "TECH-ARCH-22",
+      "target": "GOV-ADR-010",
+      "type": "related"
+    },
+    {
+      "source": "TECH-ARCH-23",
+      "target": "TECH-MOD-16",
+      "type": "references"
+    },
+    {
+      "source": "TECH-ARCH-23",
+      "target": "TECH-DB-03",
+      "type": "references"
+    },
+    {
+      "source": "TECH-ARCH-23",
+      "target": "TECH-MOD-12",
+      "type": "related"
+    },
+    {
+      "source": "TECH-ARCH-23",
+      "target": "GOV-ADR-011",
+      "type": "related"
+    },
+    {
+      "source": "TECH-ARCH-24",
+      "target": "TECH-MOD-29",
+      "type": "references"
+    },
+    {
+      "source": "TECH-ARCH-24",
+      "target": "TECH-MOD-25",
+      "type": "references"
+    },
+    {
+      "source": "TECH-ARCH-24",
+      "target": "TECH-DB-03",
+      "type": "related"
+    },
+    {
+      "source": "TECH-ARCH-24",
+      "target": "TECH-ARCH-05",
+      "type": "related"
+    },
+    {
+      "source": "TECH-ARCH-25",
+      "target": "TECH-MOD-14",
+      "type": "references"
+    },
+    {
+      "source": "TECH-ARCH-25",
+      "target": "TECH-MOD-25",
+      "type": "references"
+    },
+    {
+      "source": "TECH-ARCH-25",
+      "target": "OPS-MON-01",
+      "type": "related"
+    },
+    {
+      "source": "TECH-ARCH-25",
+      "target": "QUAL-TEST-03",
+      "type": "related"
+    },
+    {
+      "source": "TECH-DEV-01",
+      "target": "TECH-DEV-01",
+      "type": "governs"
+    },
+    {
+      "source": "TECH-DEV-01",
+      "target": "TECH-ARCH-01",
+      "type": "references"
+    },
+    {
+      "source": "TECH-DEV-01",
+      "target": "TECH-ARCH-02",
+      "type": "references"
+    },
+    {
+      "source": "TECH-DEV-01",
+      "target": "TECH-DEV-02",
+      "type": "related"
+    },
+    {
+      "source": "TECH-DEV-01",
+      "target": "TECH-DEV-03",
+      "type": "related"
+    },
+    {
+      "source": "TECH-DEV-01",
+      "target": "TECH-DEV-04",
+      "type": "related"
+    },
+    {
+      "source": "TECH-MOD-01",
+      "target": "TECH-ARCH-02",
+      "type": "references"
+    },
+    {
+      "source": "TECH-MOD-01",
+      "target": "TECH-MOD-20",
+      "type": "references"
+    },
+    {
+      "source": "TECH-MOD-01",
+      "target": "TECH-MOD-02",
+      "type": "related"
+    },
+    {
+      "source": "TECH-MOD-01",
+      "target": "TECH-MOD-10",
+      "type": "related"
+    },
+    {
+      "source": "TECH-MOD-02",
+      "target": "TECH-ARCH-02",
+      "type": "references"
+    },
+    {
+      "source": "TECH-MOD-02",
+      "target": "TECH-MOD-01",
+      "type": "references"
+    },
+    {
+      "source": "TECH-MOD-02",
+      "target": "TECH-MOD-20",
+      "type": "related"
+    },
+    {
+      "source": "TECH-MOD-02",
+      "target": "VOLUME-08",
+      "type": "related"
+    },
+    {
+      "source": "TECH-MOD-03",
+      "target": "TECH-ARCH-02",
+      "type": "references"
+    },
+    {
+      "source": "TECH-MOD-03",
+      "target": "TECH-MOD-19",
+      "type": "references"
+    },
+    {
+      "source": "TECH-MOD-03",
+      "target": "TECH-MOD-09",
+      "type": "references"
+    },
+    {
+      "source": "TECH-MOD-03",
+      "target": "TECH-MOD-07",
+      "type": "related"
+    },
+    {
+      "source": "TECH-MOD-03",
+      "target": "TECH-MOD-10",
+      "type": "related"
+    },
+    {
+      "source": "TECH-MOD-04",
+      "target": "TECH-ARCH-02",
+      "type": "references"
+    },
+    {
+      "source": "TECH-MOD-04",
+      "target": "TECH-MOD-19",
+      "type": "references"
+    },
+    {
+      "source": "TECH-MOD-04",
+      "target": "TECH-MOD-05",
+      "type": "related"
+    },
+    {
+      "source": "TECH-MOD-04",
+      "target": "TECH-MOD-06",
+      "type": "related"
+    },
+    {
+      "source": "TECH-MOD-05",
+      "target": "TECH-ARCH-02",
+      "type": "references"
+    },
+    {
+      "source": "TECH-MOD-05",
+      "target": "TECH-MOD-04",
+      "type": "references"
+    },
+    {
+      "source": "TECH-MOD-05",
+      "target": "TECH-MOD-06",
+      "type": "related"
+    },
+    {
+      "source": "TECH-MOD-05",
+      "target": "TECH-MOD-26",
+      "type": "related"
+    },
+    {
+      "source": "TECH-MOD-06",
+      "target": "TECH-ARCH-02",
+      "type": "references"
+    },
+    {
+      "source": "TECH-MOD-06",
+      "target": "TECH-MOD-05",
+      "type": "references"
+    },
+    {
+      "source": "TECH-MOD-06",
+      "target": "TECH-MOD-04",
+      "type": "related"
+    },
+    {
+      "source": "TECH-MOD-06",
+      "target": "TECH-MOD-26",
+      "type": "related"
+    },
+    {
+      "source": "TECH-MOD-07",
+      "target": "TECH-ARCH-02",
+      "type": "references"
+    },
+    {
+      "source": "TECH-MOD-07",
+      "target": "TECH-MOD-09",
+      "type": "references"
+    },
+    {
+      "source": "TECH-MOD-07",
+      "target": "TECH-MOD-10",
+      "type": "related"
+    },
+    {
+      "source": "TECH-MOD-07",
+      "target": "TECH-MOD-13",
+      "type": "related"
+    },
+    {
+      "source": "TECH-MOD-08",
+      "target": "TECH-ARCH-02",
+      "type": "references"
+    },
+    {
+      "source": "TECH-MOD-08",
+      "target": "TECH-MOD-07",
+      "type": "references"
+    },
+    {
+      "source": "TECH-MOD-08",
+      "target": "TECH-MOD-09",
+      "type": "related"
+    },
+    {
+      "source": "TECH-MOD-08",
+      "target": "TECH-MOD-30",
+      "type": "related"
+    },
+    {
+      "source": "TECH-MOD-09",
+      "target": "TECH-ARCH-02",
+      "type": "references"
+    },
+    {
+      "source": "TECH-MOD-09",
+      "target": "TECH-MOD-10",
+      "type": "references"
+    },
+    {
+      "source": "TECH-MOD-09",
+      "target": "TECH-MOD-12",
+      "type": "related"
+    },
+    {
+      "source": "TECH-MOD-09",
+      "target": "TECH-MOD-03",
+      "type": "related"
+    },
+    {
+      "source": "TECH-MOD-10",
+      "target": "TECH-ARCH-02",
+      "type": "references"
+    },
+    {
+      "source": "TECH-MOD-10",
+      "target": "TECH-MOD-09",
+      "type": "references"
+    },
+    {
+      "source": "TECH-MOD-10",
+      "target": "TECH-MOD-07",
+      "type": "related"
+    },
+    {
+      "source": "TECH-MOD-10",
+      "target": "TECH-MOD-12",
+      "type": "related"
+    },
+    {
+      "source": "TECH-MOD-11",
+      "target": "TECH-ARCH-02",
+      "type": "references"
+    },
+    {
+      "source": "TECH-MOD-11",
+      "target": "TECH-MOD-09",
+      "type": "references"
+    },
+    {
+      "source": "TECH-MOD-11",
+      "target": "TECH-MOD-10",
+      "type": "references"
+    },
+    {
+      "source": "TECH-MOD-11",
+      "target": "TECH-MOD-12",
+      "type": "related"
+    },
+    {
+      "source": "TECH-MOD-11",
+      "target": "TECH-MOD-30",
+      "type": "related"
+    },
+    {
+      "source": "TECH-MOD-12",
+      "target": "TECH-ARCH-02",
+      "type": "references"
+    },
+    {
+      "source": "TECH-MOD-12",
+      "target": "TECH-MOD-09",
+      "type": "references"
+    },
+    {
+      "source": "TECH-MOD-12",
+      "target": "TECH-MOD-10",
+      "type": "related"
+    },
+    {
+      "source": "TECH-MOD-12",
+      "target": "TECH-MOD-13",
+      "type": "related"
+    },
+    {
+      "source": "TECH-MOD-13",
+      "target": "TECH-ARCH-02",
+      "type": "references"
+    },
+    {
+      "source": "TECH-MOD-13",
+      "target": "TECH-MOD-03",
+      "type": "references"
+    },
+    {
+      "source": "TECH-MOD-13",
+      "target": "TECH-MOD-04",
+      "type": "related"
+    },
+    {
+      "source": "TECH-MOD-13",
+      "target": "TECH-MOD-05",
+      "type": "related"
+    },
+    {
+      "source": "TECH-MOD-13",
+      "target": "TECH-MOD-06",
+      "type": "related"
+    },
+    {
+      "source": "TECH-MOD-14",
+      "target": "TECH-ARCH-02",
+      "type": "references"
+    },
+    {
+      "source": "TECH-MOD-14",
+      "target": "TECH-ARCH-04",
+      "type": "references"
+    },
+    {
+      "source": "TECH-MOD-14",
+      "target": "TECH-MOD-15",
+      "type": "related"
+    },
+    {
+      "source": "TECH-MOD-14",
+      "target": "TECH-MOD-20",
+      "type": "related"
+    },
+    {
+      "source": "TECH-MOD-15",
+      "target": "TECH-ARCH-02",
+      "type": "references"
+    },
+    {
+      "source": "TECH-MOD-15",
+      "target": "TECH-MOD-14",
+      "type": "references"
+    },
+    {
+      "source": "TECH-MOD-15",
+      "target": "TECH-MOD-13",
+      "type": "related"
+    },
+    {
+      "source": "TECH-MOD-15",
+      "target": "TECH-MOD-22",
+      "type": "related"
+    },
+    {
+      "source": "TECH-MOD-16",
+      "target": "TECH-ARCH-02",
+      "type": "references"
+    },
+    {
+      "source": "TECH-MOD-16",
+      "target": "TECH-MOD-12",
+      "type": "related"
+    },
+    {
+      "source": "TECH-MOD-16",
+      "target": "TECH-MOD-13",
+      "type": "related"
+    },
+    {
+      "source": "TECH-MOD-17",
+      "target": "TECH-ARCH-02",
+      "type": "references"
+    },
+    {
+      "source": "TECH-MOD-17",
+      "target": "TECH-MOD-03",
+      "type": "references"
+    },
+    {
+      "source": "TECH-MOD-17",
+      "target": "TECH-MOD-05",
+      "type": "related"
+    },
+    {
+      "source": "TECH-MOD-17",
+      "target": "TECH-MOD-06",
+      "type": "related"
+    },
+    {
+      "source": "TECH-MOD-18",
+      "target": "TECH-ARCH-02",
+      "type": "references"
+    },
+    {
+      "source": "TECH-MOD-18",
+      "target": "TECH-MOD-10",
+      "type": "references"
+    },
+    {
+      "source": "TECH-MOD-18",
+      "target": "TECH-MOD-03",
+      "type": "related"
+    },
+    {
+      "source": "TECH-MOD-18",
+      "target": "TECH-MOD-04",
+      "type": "related"
+    },
+    {
+      "source": "TECH-MOD-19",
+      "target": "TECH-ARCH-02",
+      "type": "references"
+    },
+    {
+      "source": "TECH-MOD-19",
+      "target": "TECH-MOD-03",
+      "type": "references"
+    },
+    {
+      "source": "TECH-MOD-19",
+      "target": "TECH-MOD-04",
+      "type": "related"
+    },
+    {
+      "source": "TECH-MOD-19",
+      "target": "TECH-MOD-05",
+      "type": "related"
+    },
+    {
+      "source": "TECH-MOD-19",
+      "target": "TECH-MOD-26",
+      "type": "related"
+    },
+    {
+      "source": "TECH-MOD-20",
+      "target": "TECH-ARCH-02",
+      "type": "references"
+    },
+    {
+      "source": "TECH-MOD-20",
+      "target": "TECH-ARCH-07",
+      "type": "references"
+    },
+    {
+      "source": "TECH-MOD-20",
+      "target": "TECH-MOD-01",
+      "type": "related"
+    },
+    {
+      "source": "TECH-MOD-20",
+      "target": "TECH-MOD-02",
+      "type": "related"
+    },
+    {
+      "source": "TECH-MOD-20",
+      "target": "TECH-MOD-21",
+      "type": "related"
+    },
+    {
+      "source": "TECH-MOD-21",
+      "target": "TECH-ARCH-02",
+      "type": "references"
+    },
+    {
+      "source": "TECH-MOD-21",
+      "target": "TECH-ARCH-04",
+      "type": "references"
+    },
+    {
+      "source": "TECH-MOD-21",
+      "target": "TECH-MOD-20",
+      "type": "related"
+    },
+    {
+      "source": "TECH-MOD-21",
+      "target": "TECH-MOD-02",
+      "type": "related"
+    },
+    {
+      "source": "TECH-MOD-22",
+      "target": "TECH-ARCH-02",
+      "type": "references"
+    },
+    {
+      "source": "TECH-MOD-22",
+      "target": "TECH-MOD-15",
+      "type": "related"
+    },
+    {
+      "source": "TECH-MOD-22",
+      "target": "TECH-MOD-14",
+      "type": "related"
+    },
+    {
+      "source": "TECH-MOD-23",
+      "target": "TECH-ARCH-02",
+      "type": "references"
+    },
+    {
+      "source": "TECH-MOD-24",
+      "target": "TECH-ARCH-02",
+      "type": "references"
+    },
+    {
+      "source": "TECH-MOD-24",
+      "target": "TECH-MOD-14",
+      "type": "related"
+    },
+    {
+      "source": "TECH-MOD-24",
+      "target": "TECH-MOD-22",
+      "type": "related"
+    },
+    {
+      "source": "TECH-MOD-25",
+      "target": "TECH-ARCH-02",
+      "type": "references"
+    },
+    {
+      "source": "TECH-MOD-25",
+      "target": "TECH-MOD-03",
+      "type": "related"
+    },
+    {
+      "source": "TECH-MOD-25",
+      "target": "TECH-MOD-01",
+      "type": "related"
+    },
+    {
+      "source": "TECH-MOD-25",
+      "target": "TECH-MOD-13",
+      "type": "related"
+    },
+    {
+      "source": "TECH-MOD-25",
+      "target": "TECH-MOD-14",
+      "type": "related"
+    },
+    {
+      "source": "TECH-MOD-26",
+      "target": "TECH-ARCH-02",
+      "type": "references"
+    },
+    {
+      "source": "TECH-MOD-26",
+      "target": "TECH-MOD-19",
+      "type": "references"
+    },
+    {
+      "source": "TECH-MOD-26",
+      "target": "TECH-MOD-05",
+      "type": "related"
+    },
+    {
+      "source": "TECH-MOD-26",
+      "target": "TECH-MOD-06",
+      "type": "related"
+    },
+    {
+      "source": "TECH-MOD-26",
+      "target": "TECH-MOD-03",
+      "type": "related"
+    },
+    {
+      "source": "TECH-MOD-27",
+      "target": "TECH-ARCH-02",
+      "type": "references"
+    },
+    {
+      "source": "TECH-MOD-27",
+      "target": "TECH-ARCH-06",
+      "type": "references"
+    },
+    {
+      "source": "TECH-MOD-27",
+      "target": "TECH-MOD-01",
+      "type": "related"
+    },
+    {
+      "source": "TECH-MOD-28",
+      "target": "TECH-ARCH-02",
+      "type": "references"
+    },
+    {
+      "source": "TECH-MOD-28",
+      "target": "TECH-MOD-14",
+      "type": "related"
+    },
+    {
+      "source": "TECH-MOD-29",
+      "target": "TECH-ARCH-02",
+      "type": "references"
+    },
+    {
+      "source": "TECH-MOD-29",
+      "target": "TECH-MOD-25",
+      "type": "related"
+    },
+    {
+      "source": "TECH-MOD-30",
+      "target": "TECH-ARCH-02",
+      "type": "references"
+    },
+    {
+      "source": "TECH-MOD-30",
+      "target": "TECH-MOD-07",
+      "type": "references"
+    },
+    {
+      "source": "TECH-MOD-30",
+      "target": "TECH-MOD-11",
+      "type": "references"
+    },
+    {
+      "source": "TECH-MOD-30",
+      "target": "TECH-MOD-09",
+      "type": "related"
+    },
+    {
+      "source": "TECH-MOD-30",
+      "target": "TECH-MOD-10",
+      "type": "related"
+    },
+    {
+      "source": "TECH-MOD-31",
+      "target": "TECH-ARCH-02",
+      "type": "references"
+    },
+    {
+      "source": "TECH-MOD-31",
+      "target": "TECH-MOD-07",
+      "type": "related"
+    },
+    {
+      "source": "TECH-MOD-31",
+      "target": "TECH-MOD-11",
+      "type": "related"
+    },
+    {
+      "source": "TECH-MOD-32",
+      "target": "TECH-ARCH-02",
+      "type": "references"
+    },
+    {
+      "source": "TECH-MOD-32",
+      "target": "TECH-MOD-03",
+      "type": "references"
+    },
+    {
+      "source": "TECH-MOD-32",
+      "target": "TECH-MOD-31",
+      "type": "related"
+    },
+    {
+      "source": "TECH-MOD-32",
+      "target": "TECH-MOD-18",
+      "type": "related"
+    },
+    {
+      "source": "TECH-MOD-33",
+      "target": "TECH-ARCH-02",
+      "type": "references"
+    },
+    {
+      "source": "TECH-MOD-33",
+      "target": "TECH-MOD-23",
+      "type": "related"
+    },
+    {
+      "source": "TECH-MOD-34",
+      "target": "TECH-ARCH-02",
+      "type": "references"
+    },
+    {
+      "source": "TECH-MOD-35",
+      "target": "TECH-ARCH-02",
+      "type": "references"
+    },
+    {
+      "source": "TECH-MOD-35",
+      "target": "TECH-MOD-03",
+      "type": "references"
+    },
+    {
+      "source": "TECH-MOD-35",
+      "target": "TECH-MOD-04",
+      "type": "references"
+    },
+    {
+      "source": "TECH-MOD-35",
+      "target": "TECH-MOD-05",
+      "type": "references"
+    },
+    {
+      "source": "TECH-MOD-35",
+      "target": "TECH-MOD-51",
+      "type": "related"
+    },
+    {
+      "source": "TECH-MOD-35",
+      "target": "VOLUME-11",
+      "type": "related"
+    },
+    {
+      "source": "TECH-MOD-36",
+      "target": "TECH-ARCH-02",
+      "type": "references"
+    },
+    {
+      "source": "TECH-MOD-36",
+      "target": "TECH-MOD-02",
+      "type": "references"
+    },
+    {
+      "source": "TECH-MOD-36",
+      "target": "TECH-MOD-20",
+      "type": "related"
+    },
+    {
+      "source": "TECH-MOD-37",
+      "target": "TECH-ARCH-02",
+      "type": "references"
+    },
+    {
+      "source": "TECH-MOD-38",
+      "target": "TECH-ARCH-02",
+      "type": "references"
+    },
+    {
+      "source": "TECH-MOD-38",
+      "target": "TECH-MOD-02",
+      "type": "references"
+    },
+    {
+      "source": "TECH-MOD-38",
+      "target": "TECH-MOD-13",
+      "type": "references"
+    },
+    {
+      "source": "TECH-MOD-38",
+      "target": "TECH-MOD-35",
+      "type": "related"
+    },
+    {
+      "source": "TECH-MOD-39",
+      "target": "TECH-ARCH-02",
+      "type": "references"
+    },
+    {
+      "source": "TECH-MOD-39",
+      "target": "TECH-MOD-33",
+      "type": "references"
+    },
+    {
+      "source": "TECH-MOD-39",
+      "target": "TECH-MOD-36",
+      "type": "related"
+    },
+    {
+      "source": "TECH-MOD-40",
+      "target": "TECH-ARCH-02",
+      "type": "references"
+    },
+    {
+      "source": "TECH-MOD-41",
+      "target": "TECH-ARCH-02",
+      "type": "references"
+    },
+    {
+      "source": "TECH-MOD-41",
+      "target": "TECH-MOD-47",
+      "type": "references"
+    },
+    {
+      "source": "TECH-MOD-42",
+      "target": "TECH-ARCH-02",
+      "type": "references"
+    },
+    {
+      "source": "TECH-MOD-42",
+      "target": "TECH-MOD-47",
+      "type": "references"
+    },
+    {
+      "source": "TECH-MOD-42",
+      "target": "TECH-MOD-45",
+      "type": "related"
+    },
+    {
+      "source": "TECH-MOD-43",
+      "target": "TECH-ARCH-02",
+      "type": "references"
+    },
+    {
+      "source": "TECH-MOD-43",
+      "target": "TECH-MOD-45",
+      "type": "related"
+    },
+    {
+      "source": "TECH-MOD-44",
+      "target": "TECH-ARCH-02",
+      "type": "references"
+    },
+    {
+      "source": "TECH-MOD-44",
+      "target": "TECH-UX-01",
+      "type": "references"
+    },
+    {
+      "source": "TECH-MOD-44",
+      "target": "TECH-UX-02",
+      "type": "references"
+    },
+    {
+      "source": "TECH-MOD-44",
+      "target": "TECH-MOD-02",
+      "type": "related"
+    },
+    {
+      "source": "TECH-MOD-45",
+      "target": "TECH-ARCH-02",
+      "type": "references"
+    },
+    {
+      "source": "TECH-MOD-45",
+      "target": "TECH-MOD-42",
+      "type": "references"
+    },
+    {
+      "source": "TECH-MOD-45",
+      "target": "TECH-MOD-43",
+      "type": "references"
+    },
+    {
+      "source": "TECH-MOD-46",
+      "target": "TECH-ARCH-02",
+      "type": "references"
+    },
+    {
+      "source": "TECH-MOD-46",
+      "target": "TECH-MOD-34",
+      "type": "references"
+    },
+    {
+      "source": "TECH-MOD-47",
+      "target": "TECH-ARCH-02",
+      "type": "references"
+    },
+    {
+      "source": "TECH-MOD-47",
+      "target": "TECH-MOD-42",
+      "type": "references"
+    },
+    {
+      "source": "TECH-MOD-47",
+      "target": "TECH-MOD-41",
+      "type": "related"
+    },
+    {
+      "source": "TECH-MOD-48",
+      "target": "TECH-ARCH-02",
+      "type": "references"
+    },
+    {
+      "source": "TECH-MOD-48",
+      "target": "TECH-MOD-42",
+      "type": "references"
+    },
+    {
+      "source": "TECH-MOD-48",
+      "target": "TECH-MOD-43",
+      "type": "references"
+    },
+    {
+      "source": "TECH-MOD-48",
+      "target": "TECH-MOD-46",
+      "type": "references"
+    },
+    {
+      "source": "TECH-MOD-49",
+      "target": "TECH-ARCH-02",
+      "type": "references"
+    },
+    {
+      "source": "TECH-MOD-49",
+      "target": "TECH-MOD-02",
+      "type": "references"
+    },
+    {
+      "source": "TECH-MOD-50",
+      "target": "TECH-ARCH-02",
+      "type": "references"
+    },
+    {
+      "source": "TECH-MOD-50",
+      "target": "TECH-ARCH-04",
+      "type": "references"
+    },
+    {
+      "source": "TECH-MOD-50",
+      "target": "TECH-MOD-03",
+      "type": "related"
+    },
+    {
+      "source": "TECH-MOD-50",
+      "target": "TECH-MOD-19",
+      "type": "related"
+    },
+    {
+      "source": "TECH-MOD-51",
+      "target": "TECH-ARCH-02",
+      "type": "references"
+    },
+    {
+      "source": "TECH-MOD-51",
+      "target": "TECH-MOD-35",
+      "type": "references"
+    },
+    {
+      "source": "TECH-MOD-51",
+      "target": "TECH-MOD-13",
+      "type": "related"
+    },
+    {
+      "source": "TECH-MOD-52",
+      "target": "TECH-ARCH-02",
+      "type": "references"
+    },
+    {
+      "source": "TECH-MOD-52",
+      "target": "TECH-MOD-03",
+      "type": "references"
+    },
+    {
+      "source": "TECH-MOD-52",
+      "target": "TECH-MOD-05",
+      "type": "references"
+    },
+    {
+      "source": "TECH-MOD-52",
+      "target": "TECH-MOD-04",
+      "type": "references"
+    },
+    {
+      "source": "TECH-MOD-52",
+      "target": "TECH-MOD-10",
+      "type": "related"
+    },
+    {
+      "source": "TECH-MOD-52",
+      "target": "TECH-MOD-01",
+      "type": "related"
+    }
+  ]
+}

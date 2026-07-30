@@ -1,0 +1,720 @@
+{
+  "entities": [
+    {
+      "name": "User",
+      "table": "users",
+      "fields": [
+        "id",
+        "public_id",
+        "email",
+        "phone",
+        "password_hash",
+        "full_name",
+        "gender",
+        "birth_date",
+        "account_status"
+      ],
+      "sourceDoc": "TECH-MOD-01"
+    },
+    {
+      "name": "Session",
+      "table": "sessions",
+      "fields": [
+        "id",
+        "user_id",
+        "token_hash",
+        "refresh_token_hash",
+        "device_info",
+        "ip",
+        "expires_at"
+      ],
+      "sourceDoc": "TECH-MOD-01"
+    },
+    {
+      "name": "Device",
+      "table": "user_devices",
+      "fields": [
+        "id",
+        "user_id",
+        "fingerprint",
+        "device_name",
+        "last_ip"
+      ],
+      "sourceDoc": "TECH-MOD-01"
+    },
+    {
+      "name": "Role",
+      "table": "roles",
+      "fields": [
+        "id",
+        "name",
+        "slug",
+        "description",
+        "is_system",
+        "deleted_at"
+      ],
+      "sourceDoc": "TECH-MOD-02"
+    },
+    {
+      "name": "Permission",
+      "table": "permissions",
+      "fields": [
+        "id",
+        "module_id",
+        "key",
+        "name",
+        "description"
+      ],
+      "sourceDoc": "TECH-MOD-02"
+    },
+    {
+      "name": "Permission Module",
+      "table": "permission_modules",
+      "fields": [
+        "id",
+        "slug",
+        "name"
+      ],
+      "sourceDoc": "TECH-MOD-02"
+    },
+    {
+      "name": "User Role",
+      "table": "user_roles",
+      "fields": [
+        "user_id",
+        "role_id"
+      ],
+      "sourceDoc": "TECH-MOD-02"
+    },
+    {
+      "name": "Booking",
+      "table": "bookings",
+      "fields": [
+        "id",
+        "user_id",
+        "resource_id",
+        "branch_id",
+        "booking_date",
+        "start_time",
+        "end_time",
+        "booking_status",
+        "payment_status",
+        "total_amount",
+        "aggregate_version",
+        "expires_at"
+      ],
+      "sourceDoc": "TECH-MOD-03"
+    },
+    {
+      "name": "Booking Slot",
+      "table": "booking_slots",
+      "fields": [
+        "id",
+        "booking_id",
+        "resource_id",
+        "date",
+        "start_time",
+        "end_time"
+      ],
+      "sourceDoc": "TECH-MOD-03"
+    },
+    {
+      "name": "Tournament",
+      "table": "tournaments",
+      "fields": [
+        "id",
+        "code",
+        "name",
+        "format",
+        "status",
+        "sport_id",
+        "registration_type",
+        "max_players",
+        "max_teams",
+        "registration_fee"
+      ],
+      "sourceDoc": "TECH-MOD-05"
+    },
+    {
+      "name": "Registration",
+      "table": "tournament_registrations",
+      "fields": [
+        "id",
+        "tournament_id",
+        "user_id",
+        "team_id",
+        "seed",
+        "status",
+        "waiting_order"
+      ],
+      "sourceDoc": "TECH-MOD-05"
+    },
+    {
+      "name": "Product",
+      "table": "marketplace_products",
+      "fields": [
+        "id",
+        "seller_id",
+        "name",
+        "description",
+        "price",
+        "status",
+        "category_id"
+      ],
+      "sourceDoc": "TECH-MOD-07"
+    },
+    {
+      "name": "Variant",
+      "table": "product_variants",
+      "fields": [
+        "id",
+        "product_id",
+        "name",
+        "price",
+        "stock",
+        "sku"
+      ],
+      "sourceDoc": "TECH-MOD-07"
+    },
+    {
+      "name": "Cart",
+      "table": "carts",
+      "fields": [
+        "id",
+        "user_id",
+        "session_id"
+      ],
+      "sourceDoc": "TECH-MOD-07"
+    },
+    {
+      "name": "Cart Item",
+      "table": "cart_items",
+      "fields": [
+        "id",
+        "cart_id",
+        "variant_id",
+        "quantity"
+      ],
+      "sourceDoc": "TECH-MOD-07"
+    },
+    {
+      "name": "Warehouse",
+      "table": "warehouses",
+      "fields": [
+        "id",
+        "organisation_id",
+        "name",
+        "location",
+        "status"
+      ],
+      "sourceDoc": "TECH-MOD-08"
+    },
+    {
+      "name": "Supplier",
+      "table": "suppliers",
+      "fields": [
+        "id",
+        "organisation_id",
+        "name",
+        "contact_name",
+        "email",
+        "phone",
+        "payment_terms",
+        "lead_time_days",
+        "status"
+      ],
+      "sourceDoc": "TECH-MOD-08"
+    },
+    {
+      "name": "Purchase Order",
+      "table": "purchase_orders",
+      "fields": [
+        "id",
+        "organisation_id",
+        "supplier_id",
+        "warehouse_id",
+        "status (draft/submitted/approved/received/cancelled)",
+        "total_cost",
+        "created_by",
+        "received_at"
+      ],
+      "sourceDoc": "TECH-MOD-08"
+    },
+    {
+      "name": "Payment Transaction",
+      "table": "payment_transactions",
+      "fields": [
+        "id",
+        "user_id",
+        "reference_type",
+        "reference_id",
+        "amount",
+        "currency",
+        "payment_status",
+        "gateway_reference",
+        "aggregate_version"
+      ],
+      "sourceDoc": "TECH-MOD-09"
+    },
+    {
+      "name": "Journal Entry",
+      "table": "financial_journal_entries",
+      "fields": [
+        "id",
+        "reference_type",
+        "reference_id",
+        "source",
+        "created_at"
+      ],
+      "sourceDoc": "TECH-MOD-09"
+    },
+    {
+      "name": "Wallet",
+      "table": "user_wallets",
+      "fields": [
+        "id",
+        "user_id",
+        "balance",
+        "currency_code",
+        "is_locked",
+        "aggregate_version"
+      ],
+      "sourceDoc": "TECH-MOD-10"
+    },
+    {
+      "name": "Transaction",
+      "table": "wallet_transactions",
+      "fields": [
+        "id",
+        "wallet_id",
+        "type",
+        "direction",
+        "amount",
+        "balance_before",
+        "balance_after",
+        "reference_type",
+        "reference_id"
+      ],
+      "sourceDoc": "TECH-MOD-10"
+    },
+    {
+      "name": "Ledger Entry",
+      "table": "ledger_entries",
+      "fields": [
+        "id",
+        "transaction_id",
+        "source_type",
+        "source_id",
+        "account_type",
+        "side",
+        "amount",
+        "currency",
+        "description",
+        "reference_id",
+        "recorded_at"
+      ],
+      "sourceDoc": "TECH-MOD-11"
+    },
+    {
+      "name": "Settlement Batch",
+      "table": "settlement_batches",
+      "fields": [
+        "id",
+        "batch_type",
+        "period_start",
+        "period_end",
+        "gross_amount",
+        "discount_amount",
+        "tax_amount",
+        "commission_amount",
+        "refund_amount",
+        "net_amount",
+        "status",
+        "organisation_id"
+      ],
+      "sourceDoc": "TECH-MOD-11"
+    },
+    {
+      "name": "Account",
+      "table": "chart_of_accounts",
+      "fields": [
+        "id",
+        "code (hierarchical)",
+        "name",
+        "type (asset/liability/equity/income/expense)",
+        "parent_id",
+        "is_active"
+      ],
+      "sourceDoc": "TECH-MOD-12"
+    },
+    {
+      "name": "Period",
+      "table": "accounting_periods",
+      "fields": [
+        "id",
+        "name",
+        "start_date",
+        "end_date",
+        "status (open/closed/locked)"
+      ],
+      "sourceDoc": "TECH-MOD-12"
+    },
+    {
+      "name": "Journal Entry",
+      "table": "journal_entries",
+      "fields": [
+        "id",
+        "period_id",
+        "entry_date",
+        "description",
+        "reference_type",
+        "reference_id",
+        "is_posted"
+      ],
+      "sourceDoc": "TECH-MOD-12"
+    },
+    {
+      "name": "Organisation",
+      "table": "organisations",
+      "fields": [
+        "id",
+        "name",
+        "slug",
+        "type_id",
+        "status",
+        "owner_id"
+      ],
+      "sourceDoc": "TECH-MOD-13"
+    },
+    {
+      "name": "Branch",
+      "table": "branches",
+      "fields": [
+        "id",
+        "organisation_id",
+        "name",
+        "address",
+        "city_id",
+        "timezone",
+        "opening_time",
+        "closing_time"
+      ],
+      "sourceDoc": "TECH-MOD-13"
+    },
+    {
+      "name": "Resource",
+      "table": "resources",
+      "fields": [
+        "id",
+        "branch_id",
+        "name",
+        "resource_type_id",
+        "sport_id",
+        "is_active",
+        "slot_duration",
+        "opening_time",
+        "closing_time"
+      ],
+      "sourceDoc": "TECH-MOD-13"
+    },
+    {
+      "name": "Notification",
+      "table": "notifications",
+      "fields": [
+        "id",
+        "user_id",
+        "type",
+        "title",
+        "body",
+        "channel",
+        "status",
+        "read_at",
+        "archived_at"
+      ],
+      "sourceDoc": "TECH-MOD-14"
+    },
+    {
+      "name": "Notification Type",
+      "table": "notification_types",
+      "fields": [
+        "id",
+        "slug",
+        "name",
+        "channels",
+        "category"
+      ],
+      "sourceDoc": "TECH-MOD-14"
+    },
+    {
+      "name": "Template",
+      "table": "notification_templates",
+      "fields": [
+        "id",
+        "type_id",
+        "channel",
+        "subject",
+        "body",
+        "variables",
+        "version",
+        "status"
+      ],
+      "sourceDoc": "TECH-MOD-14"
+    },
+    {
+      "name": "Segment",
+      "table": "crm_segments",
+      "fields": [
+        "id",
+        "name",
+        "rules (JSON)",
+        "member_count",
+        "last_refreshed_at"
+      ],
+      "sourceDoc": "TECH-MOD-15"
+    },
+    {
+      "name": "Lead",
+      "table": "crm_leads",
+      "fields": [
+        "id",
+        "name",
+        "email",
+        "phone",
+        "source",
+        "status",
+        "assigned_to"
+      ],
+      "sourceDoc": "TECH-MOD-15"
+    },
+    {
+      "name": "Department",
+      "table": "departments",
+      "fields": [
+        "id",
+        "organisation_id",
+        "name",
+        "parent_id",
+        "head_employee_id",
+        "is_active"
+      ],
+      "sourceDoc": "TECH-MOD-16"
+    },
+    {
+      "name": "Position",
+      "table": "positions",
+      "fields": [
+        "id",
+        "department_id",
+        "title",
+        "description",
+        "requirements",
+        "is_active"
+      ],
+      "sourceDoc": "TECH-MOD-16"
+    },
+    {
+      "name": "Employee",
+      "table": "employees",
+      "fields": [
+        "id",
+        "user_id",
+        "employee_code",
+        "department_id",
+        "position_id",
+        "status",
+        "hire_date"
+      ],
+      "sourceDoc": "TECH-MOD-16"
+    },
+    {
+      "name": "Match",
+      "table": "matches",
+      "fields": [
+        "id",
+        "type",
+        "status",
+        "booking_id",
+        "sport_id",
+        "version"
+      ],
+      "sourceDoc": "TECH-MOD-17"
+    },
+    {
+      "name": "Join Request",
+      "table": "join_requests",
+      "fields": [
+        "id",
+        "match_id",
+        "user_id",
+        "status",
+        "submitted_at",
+        "responded_at"
+      ],
+      "sourceDoc": "TECH-MOD-17"
+    },
+    {
+      "name": "Invitation",
+      "table": "invitations",
+      "fields": [
+        "id",
+        "match_id",
+        "user_id",
+        "status"
+      ],
+      "sourceDoc": "TECH-MOD-17"
+    },
+    {
+      "name": "Participant",
+      "table": "participants",
+      "fields": [
+        "id",
+        "match_id",
+        "user_id",
+        "role"
+      ],
+      "sourceDoc": "TECH-MOD-17"
+    },
+    {
+      "name": "Plan",
+      "table": "membership_plans",
+      "fields": [
+        "id",
+        "code",
+        "name",
+        "category",
+        "duration_type",
+        "duration_value",
+        "price",
+        "currency",
+        "status",
+        "is_default",
+        "is_public",
+        "sort_order"
+      ],
+      "sourceDoc": "TECH-MOD-18"
+    },
+    {
+      "name": "Benefit",
+      "table": "membership_benefits",
+      "fields": [
+        "id",
+        "membership_plan_id",
+        "benefit_key",
+        "benefit_value",
+        "display_order"
+      ],
+      "sourceDoc": "TECH-MOD-18"
+    },
+    {
+      "name": "Failed Login",
+      "table": "failed_login_attempts",
+      "fields": [
+        "id",
+        "identifier",
+        "ip",
+        "user_agent",
+        "attempted_at"
+      ],
+      "sourceDoc": "TECH-MOD-20"
+    },
+    {
+      "name": "Upload Security",
+      "table": "upload_security_logs",
+      "fields": [
+        "id",
+        "file_name",
+        "file_size",
+        "mime_type",
+        "scan_result",
+        "uploaded_by"
+      ],
+      "sourceDoc": "TECH-MOD-20"
+    },
+    {
+      "name": "Audit Log",
+      "table": "audit_logs",
+      "fields": [
+        "id",
+        "actor_id",
+        "action",
+        "entity_type",
+        "entity_id",
+        "before_state (JSON)",
+        "after_state (JSON)",
+        "reason",
+        "ip_address",
+        "user_agent",
+        "created_at"
+      ],
+      "sourceDoc": "TECH-MOD-21"
+    },
+    {
+      "name": "Ticket",
+      "table": "support_tickets",
+      "fields": [
+        "id",
+        "user_id",
+        "subject",
+        "description",
+        "category",
+        "priority",
+        "status",
+        "assigned_to",
+        "created_at"
+      ],
+      "sourceDoc": "TECH-MOD-22"
+    },
+    {
+      "name": "Ticket Message",
+      "table": "support_ticket_messages",
+      "fields": [
+        "id",
+        "ticket_id",
+        "author_id",
+        "message",
+        "is_internal_note",
+        "created_at"
+      ],
+      "sourceDoc": "TECH-MOD-22"
+    },
+    {
+      "name": "ELO Rating",
+      "table": "elo_ratings",
+      "fields": [
+        "id",
+        "user_id",
+        "sport_id",
+        "rating",
+        "matches_played",
+        "k_factor",
+        "last_match_at"
+      ],
+      "sourceDoc": "TECH-MOD-26"
+    },
+    {
+      "name": "Settlement",
+      "table": "settlements",
+      "fields": [
+        "id",
+        "organisation_id",
+        "branch_id",
+        "settlement_status",
+        "gross_amount",
+        "shipping_amount",
+        "courtzon_fee",
+        "organization_net",
+        "cod_fee_total",
+        "online_net_total",
+        "settlement_direction",
+        "final_amount",
+        "requested_by",
+        "approved_at",
+        "paid_at",
+        "completed_at",
+        "rejected_at",
+        "rejected_reason"
+      ],
+      "sourceDoc": "TECH-MOD-30"
+    }
+  ]
+}

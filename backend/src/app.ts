@@ -267,10 +267,10 @@ initAuthMiddleware({
 initRouteGuard({
   checkOrgAccess: async (userId, orgId) => {
     const [rows] = await pool.execute<RowData>(
-      `SELECT 1 FROM organisations WHERE id = ? AND (owner_id = ? OR ? IN (
+      `      SELECT 1 FROM organisations WHERE id = ? AND (owner_id = ? OR ? IN (
         SELECT user_id FROM user_roles ur
         JOIN roles r ON r.id = ur.role_id
-        WHERE ur.user_id = ? AND r.slug IN ('super_admin', 'super-admin', 'admin')
+        WHERE ur.user_id = ? AND r.slug IN ('super_admin', 'super-admin')
       )) LIMIT 1`,
       [orgId, userId, userId, userId],
     );

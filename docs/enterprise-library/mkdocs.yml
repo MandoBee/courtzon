@@ -1,0 +1,173 @@
+# CourtZon Enterprise Knowledge Platform — MkDocs Configuration
+site_name: "CourtZon Enterprise Knowledge Platform"
+site_description: "Official documentation for CourtZon Enterprise Sports ERP"
+site_author: "CourtZon Engineering"
+repo_url: "https://github.com/MandoBee/courtzon"
+edit_uri: "edit/master/docs/enterprise-library/"
+copyright: "Copyright &copy; 2026 CourtZon"
+
+theme:
+  name: material
+  palette:
+    - scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.path
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.tabs.link
+    - content.code.annotation
+    - content.code.copy
+  logo: assets/courtzon-icon.png
+  favicon: assets/favicon.ico
+
+plugins:
+  - search
+  - tags
+  - glightbox
+  - awesome-pages
+  - git-revision-date-localized:
+      enable_creation_date: true
+  - minify:
+      minify_html: true
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.critic
+  - pymdownx.caret
+  - pymdownx.keys
+  - pymdownx.mark
+  - pymdownx.tilde
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+
+extra:
+  version:
+    provider: mike
+    default: latest
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/MandoBee/courtzon
+  tags:
+    - booking
+    - payment
+    - wallet
+    - marketplace
+    - academy
+    - tournament
+    - league
+    - crm
+    - hr
+    - operations
+    - security
+    - architecture
+    - development
+    - adr
+    - reference
+    - guide
+    - tutorial
+    - troubleshooting
+
+nav:
+  - Home: index.md
+  - Business:
+      - Business Architecture:
+          - Overview: BIZ-ARCH-01_Business_Vision_Strategy.md
+          - Capability Map: BIZ-ARCH-03_Business_Capability_Map.md
+          - Process Catalog: BIZ-ARCH-04_Business_Process_Catalog.md
+          - Actor Model: BIZ-ARCH-05_Business_Actor_Model.md
+          - Event Catalog: BIZ-ARCH-06_Business_Event_Catalog.md
+          - Policy Register: BIZ-ARCH-07_Business_Policy_Register.md
+          - Business Rules: BIZ-ARCH-08_Business_Rule_Catalog.md
+          - KPI Framework: BIZ-ARCH-09_Business_KPI_Framework.md
+          - Glossary: BIZ-ARCH-10_Business_Glossary.md
+      - Product:
+          - Feature Catalog: BIZ-PROD-02_Feature_Catalog.md
+          - Feature Matrix: BIZ-PROD-03_Feature_Matrix.md
+          - Product Roadmap: BIZ-PROD-04_Product_Roadmap.md
+          - Edition Comparison: BIZ-PROD-08_Edition_Comparison.md
+  - Architecture:
+      - System Architecture: TECH-ARCH-01_System_Architecture.md
+      - Module Architecture: TECH-ARCH-02_Module_Architecture.md
+      - Domain Model: TECH-ARCH-03_Domain_Model.md
+      - Event Architecture: TECH-ARCH-04_Event_Architecture.md
+      - Data Architecture: TECH-ARCH-05_Data_Architecture.md
+      - Integration: TECH-ARCH-06_Integration_Architecture.md
+      - Security: TECH-ARCH-07_Security_Architecture.md
+      - Deployment: TECH-ARCH-08_Deployment_Architecture.md
+      - Scalability: TECH-ARCH-11_Scalability_Design.md
+      - Booking Flow: TECH-ARCH-12_Booking_Flow_Deep_Dive.md
+      - Payment Flow: TECH-ARCH-13_Payment_Flow_Deep_Dive.md
+      - Wallet: TECH-ARCH-14_Wallet_Architecture.md
+      - Organization: TECH-ARCH-15_Organization_Architecture.md
+      - Subscription: TECH-ARCH-16_Subscription_Architecture.md
+      - Marketplace: TECH-ARCH-17_Marketplace_Architecture.md
+      - Inventory: TECH-ARCH-18_Inventory_Architecture.md
+      - Academy: TECH-ARCH-19_Academy_Architecture.md
+      - Tournament: TECH-ARCH-20_Tournament_Architecture.md
+      - League: TECH-ARCH-21_League_Architecture.md
+      - CRM: TECH-ARCH-22_CRM_Architecture.md
+      - HR & Payroll: TECH-ARCH-23_HR_Architecture.md
+      - Reports & BI: TECH-ARCH-24_Reports_Architecture.md
+      - Observability: TECH-ARCH-25_Observability_Architecture.md
+  - Development:
+      - Coding Standards (TypeScript): TECH-DEV-01_Coding_Standards_TypeScript.md
+      - Coding Standards (React): TECH-DEV-02_Coding_Standards_React.md
+      - Folder Structure: TECH-DEV-03_Folder_Structure_Standard.md
+      - Naming Conventions: TECH-DEV-04_Naming_Conventions.md
+      - Git Workflow: TECH-DEV-05_Git_Workflow_Branch_Strategy.md
+      - API Design: TECH-DEV-11_API_Design_Standards.md
+      - Error Handling: TECH-DEV-12_Error_Handling_Standards.md
+      - Testing Standards: TECH-DEV-09_Testing_Standards.md
+      - Migration Standards: TECH-DEV-10_Migration_Standards.md
+  - Decision Records:
+      - ADR-001: Global Identity: GOV-ADR-001_Global_Identity.md
+      - ADR-002: Domain Ownership: GOV-ADR-002_Domain_Ownership.md
+      - ADR-003: Event Architecture: GOV-ADR-003_Event_Composable_Architecture.md
+      - ADR-004: Ledger Transactions: GOV-ADR-004_Ledger_Based_Transactions.md
+      - ADR-005: Finance Ownership: GOV-ADR-005_Finance_Owns_Financial_Truth.md
+      - ADR-012: Session Management: GOV-ADR-012_Session_Management.md
+      - ADR-013: Payment Gateway: GOV-ADR-013_Payment_Gateway_Abstraction.md
+      - ADR-014: Notifications: GOV-ADR-014_Notification_Multi_Channel.md
+      - ADR-015: Booking Concurrency: GOV-ADR-015_Booking_Concurrency.md
+      - ADR-024: API Versioning: GOV-ADR-024_API_Versioning_Strategy.md
+      - ADR-025: Migration Strategy: GOV-ADR-025_Migration_Strategy.md
+  - Operations:
+      - Deployment Guide: OPS-DEPLOY-01_Deployment_Guide.md
+      - Monitoring Guide: OPS-MON-01_Monitoring_Guide.md
+      - Backup & Restore: OPS-RUN-01_Backup_Restore.md
+      - Troubleshooting: OPS-RUN-02_Troubleshooting_Guide.md
+  - Quality:
+      - Testing Strategy: QUAL-TEST-01_Testing_Strategy.md
+      - Test Reference: QUAL-TEST-03_Integration_Test_Reference.md
+      - E2E Tests: QUAL-TEST-04_E2E_Test_Reference.md
+      - Traceability Matrix: QUAL-TRACE-01_Requirements_Traceability_Matrix.md
+      - Certification: QUAL-CERT-01_Certification_Report.md

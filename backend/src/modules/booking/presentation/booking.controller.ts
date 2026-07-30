@@ -163,9 +163,9 @@ export async function updateBookingStatusHandler(request: FastifyRequest, reply:
 }
 
 export async function getAllBookingsHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = (request as any).userId;
   const { orgId, branchId, resourceId, resource, branch, orgName, date, status, paymentStatus, bookingType, page, limit } = request.query as any;
   const filters: any = {};
-  if (orgId) filters.orgId = Number(orgId);
   if (branchId) filters.branchId = Number(branchId);
   if (resourceId) filters.resourceId = Number(resourceId);
   if (resource) filters.resource = resource;
@@ -177,6 +177,22 @@ export async function getAllBookingsHandler(request: FastifyRequest, reply: Fast
   if (bookingType) filters.bookingType = bookingType;
   if (page) filters.page = Number(page);
   if (limit) filters.limit = Number(limit);
+  // Require orgId unless super_admin/super-admin
+  if (orgId) {
+    filters.orgId = Number(orgId);
+  } else {
+    const { getPool } = await import('../../../database/mysql.js');
+    const pool = getPool();
+    const [adminRows] = await pool.execute<any[]>(
+      `SELECT 1 FROM user_roles ur JOIN roles r ON r.id = ur.role_id
+       WHERE ur.user_id = ? AND ur.is_active = TRUE
+         AND r.slug IN ('super_admin', 'super-admin') LIMIT 1`,
+      [userId],
+    );
+    if (adminRows.length === 0) {
+      throw new ForbiddenError('Specify an orgId or use GET /organisations/:orgId/bookings');
+    }
+  }
   const { rows, total } = await bookingService.getAllBookings(filters);
   return reply.send({ data: rows, total, page: filters.page || 1, limit: filters.limit || 20 });
 }

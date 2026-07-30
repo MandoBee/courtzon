@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { authMiddleware, requirePermission } from '../../../shared/middleware/auth.middleware.js';
+import { requireOrganisationAccess } from '../../../shared/middleware/route-guard.js';
 import * as ctrl from './booking.controller.js';
 
 export async function bookingRoutes(app: FastifyInstance): Promise<void> {
@@ -15,7 +16,7 @@ export async function bookingRoutes(app: FastifyInstance): Promise<void> {
   app.patch('/bookings/:id/status', { preHandler: [requirePermission(['admin.bookings.update-status', 'org.bookings.manage'])] }, ctrl.updateBookingStatusHandler);
   app.patch('/bookings/:id/payment', { preHandler: [requirePermission(['admin.bookings.update-status', 'org.bookings.manage'])] }, ctrl.updatePaymentStatusHandler);
   app.get('/resources/:resourceId/slots', { preHandler: [requirePermission(['bookings.view'])] }, ctrl.getResourceSlotsHandler);
-  app.get('/organisations/:orgId/bookings', { preHandler: [requirePermission(['bookings.view'])] }, ctrl.getOrganisationBookingsHandler);
+  app.get('/organisations/:orgId/bookings', { preHandler: [requirePermission(['bookings.view']), requireOrganisationAccess('orgId')] }, ctrl.getOrganisationBookingsHandler);
   app.get('/admin/bookings', { preHandler: [requirePermission(['bookings.view'])] }, ctrl.getAllBookingsHandler);
 
   app.post('/bookings/:id/matchmaking', { preHandler: [requirePermission(['bookings.matchmaking'])] }, ctrl.startMatchmakingHandler);

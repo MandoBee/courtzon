@@ -7,11 +7,11 @@ export async function paymentRoutes(app: FastifyInstance): Promise<void> {
   app.post('/payments/webhook', ctrl.webhookHandler);
 
   // Authenticated payment endpoints
-  app.post('/payments/charge', { preHandler: [authMiddleware] }, ctrl.chargeHandler);
-  app.post('/payments/confirm', { preHandler: [authMiddleware] }, ctrl.confirmPaymentHandler);
-  app.get('/payments/status/:id', { preHandler: [authMiddleware] }, ctrl.getPaymentStatusHandler);
+  app.post('/payments/charge', { preHandler: [authMiddleware, requirePermission(['financial.payment.charge'])] }, ctrl.chargeHandler);
+  app.post('/payments/confirm', { preHandler: [authMiddleware, requirePermission(['financial.payment.confirm'])] }, ctrl.confirmPaymentHandler);
+  app.get('/payments/status/:id', { preHandler: [authMiddleware, requirePermission(['financial.payment.view'])] }, ctrl.getPaymentStatusHandler);
   app.post('/payments/:id/refund', { preHandler: [authMiddleware, requirePermission(['financial.reconcile'])] }, ctrl.refundHandler);
-  app.get('/payments/transactions', { preHandler: [authMiddleware] }, ctrl.getTransactionsHandler);
+  app.get('/payments/transactions', { preHandler: [authMiddleware, requirePermission(['financial.wallet.view'])] }, ctrl.getTransactionsHandler);
 
   // Admin: payment sync, expiry, and manual recovery (scheduled jobs)
   app.post('/payments/sync', { preHandler: [authMiddleware, requirePermission(['financial.reconcile'])] }, ctrl.syncHandler);

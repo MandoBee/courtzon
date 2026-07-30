@@ -1,0 +1,1019 @@
+{
+  "orphan_documents": [
+    {
+      "id": "BIZ-ARCH-02",
+      "name": "Business Goals & Objectives",
+      "family": "BIZ-ARCH",
+      "file": "BIZ-ARCH-02_Business_Goals_Objectives.md"
+    },
+    {
+      "id": "BIZ-ARCH-03",
+      "name": "Business Capability Map",
+      "family": "BIZ-ARCH",
+      "file": "BIZ-ARCH-03_Business_Capability_Map.md"
+    },
+    {
+      "id": "BIZ-ARCH-04",
+      "name": "Business Process Catalog",
+      "family": "BIZ-ARCH",
+      "file": "BIZ-ARCH-04_Business_Process_Catalog.md"
+    },
+    {
+      "id": "BIZ-ARCH-05",
+      "name": "Business Actor Model",
+      "family": "BIZ-ARCH",
+      "file": "BIZ-ARCH-05_Business_Actor_Model.md"
+    },
+    {
+      "id": "BIZ-ARCH-06",
+      "name": "Business Event Catalog",
+      "family": "BIZ-ARCH",
+      "file": "BIZ-ARCH-06_Business_Event_Catalog.md"
+    },
+    {
+      "id": "BIZ-ARCH-07",
+      "name": "Business Policy Register",
+      "family": "BIZ-ARCH",
+      "file": "BIZ-ARCH-07_Business_Policy_Register.md"
+    },
+    {
+      "id": "BIZ-ARCH-08",
+      "name": "Business Rule Catalog",
+      "family": "BIZ-ARCH",
+      "file": "BIZ-ARCH-08_Business_Rule_Catalog.md"
+    },
+    {
+      "id": "BIZ-ARCH-09",
+      "name": "Business KPI Framework",
+      "family": "BIZ-ARCH",
+      "file": "BIZ-ARCH-09_Business_KPI_Framework.md"
+    },
+    {
+      "id": "BIZ-ARCH-10",
+      "name": "Business Glossary",
+      "family": "BIZ-ARCH",
+      "file": "BIZ-ARCH-10_Business_Glossary.md"
+    },
+    {
+      "id": "BIZ-PROD-01",
+      "name": "Product Vision & Mission",
+      "family": "BIZ-PROD",
+      "file": "BIZ-PROD-01_Product_Vision_Mission.md"
+    },
+    {
+      "id": "BIZ-PROD-04",
+      "name": "Product Roadmap",
+      "family": "BIZ-PROD",
+      "file": "BIZ-PROD-04_Product_Roadmap.md"
+    },
+    {
+      "id": "BIZ-PROD-08",
+      "name": "Edition Comparison",
+      "family": "BIZ-PROD",
+      "file": "BIZ-PROD-08_Edition_Comparison.md"
+    },
+    {
+      "id": "GOV-ADR-012",
+      "name": "Session Management — HttpOnly Cookies with Bearer Token Fallback",
+      "family": "GOV-ADR",
+      "file": "GOV-ADR-012_Session_Management.md"
+    },
+    {
+      "id": "GOV-ADR-013",
+      "name": "Payment Gateway Abstraction — Factory Pattern",
+      "family": "GOV-ADR",
+      "file": "GOV-ADR-013_Payment_Gateway_Abstraction.md"
+    },
+    {
+      "id": "GOV-ADR-014",
+      "name": "Notification Multi-Channel — Pluggable Provider Architecture",
+      "family": "GOV-ADR",
+      "file": "GOV-ADR-014_Notification_Multi_Channel.md"
+    },
+    {
+      "id": "GOV-ADR-015",
+      "name": "Booking Concurrency — Redis Distributed Locks + DB Constraints",
+      "family": "GOV-ADR",
+      "file": "GOV-ADR-015_Booking_Concurrency.md"
+    },
+    {
+      "id": "GOV-ADR-016",
+      "name": "Organization-Scoped RBAC",
+      "family": "GOV-ADR",
+      "file": "GOV-ADR-016_Organization_Scope_RBAC.md"
+    },
+    {
+      "id": "GOV-ADR-017",
+      "name": "Scheduling Engine — Provider-Based Search",
+      "family": "GOV-ADR",
+      "file": "GOV-ADR-017_Scheduling_Engine.md"
+    },
+    {
+      "id": "GOV-ADR-018",
+      "name": "Marketplace Settlement — Settlement Lifecycle with Financial Recording",
+      "family": "GOV-ADR",
+      "file": "GOV-ADR-018_Marketplace_Settlement.md"
+    },
+    {
+      "id": "GOV-ADR-019",
+      "name": "HR-Payroll / Finance Boundary — HR Calculates, Finance Posts",
+      "family": "GOV-ADR",
+      "file": "GOV-ADR-019_Payroll_Finance_Boundary.md"
+    },
+    {
+      "id": "GOV-ADR-020",
+      "name": "Academy Attendance Immutability",
+      "family": "GOV-ADR",
+      "file": "GOV-ADR-020_Attendance_Immutability.md"
+    },
+    {
+      "id": "GOV-ADR-021",
+      "name": "Standings Persistence — Pre-Computed Rankings in Database",
+      "family": "GOV-ADR",
+      "file": "GOV-ADR-021_Standings_Persistence.md"
+    },
+    {
+      "id": "GOV-ADR-022",
+      "name": "Customer 360 — UNION Query Across Business Domains",
+      "family": "GOV-ADR",
+      "file": "GOV-ADR-022_Customer_360_Aggregation.md"
+    },
+    {
+      "id": "GOV-ADR-023",
+      "name": "Inventory Ledger — Immutable Log as Source of Truth",
+      "family": "GOV-ADR",
+      "file": "GOV-ADR-023_Inventory_Ledger.md"
+    },
+    {
+      "id": "GOV-ADR-024",
+      "name": "API Versioning Strategy — URL Prefix + API Key Authentication",
+      "family": "GOV-ADR",
+      "file": "GOV-ADR-024_API_Versioning_Strategy.md"
+    },
+    {
+      "id": "GOV-ADR-025",
+      "name": "Database Migration Strategy — Additive SQL with Authoritative Baseline",
+      "family": "GOV-ADR",
+      "file": "GOV-ADR-025_Migration_Strategy.md"
+    },
+    {
+      "id": "QUAL-CERT-01",
+      "name": "Certification Report",
+      "family": "QUAL-CERT",
+      "file": "QUAL-CERT-01_Certification_Report.md"
+    },
+    {
+      "id": "QUAL-TRACE-01_Requirements_Traceability_Matrix",
+      "name": "QUAL-TRACE-01_Requirements_Traceability_Matrix",
+      "family": "UNKNOWN",
+      "file": "QUAL-TRACE-01_Requirements_Traceability_Matrix.md"
+    },
+    {
+      "id": "TECH-ARCH-10",
+      "name": "Technology Stack",
+      "family": "TECH-ARCH",
+      "file": "TECH-ARCH-10_Technology_Stack.md"
+    },
+    {
+      "id": "TECH-ARCH-14",
+      "name": "Wallet Architecture",
+      "family": "TECH-ARCH",
+      "file": "TECH-ARCH-14_Wallet_Architecture.md"
+    },
+    {
+      "id": "TECH-MOD-24",
+      "name": "Community Module",
+      "family": "TECH-MOD",
+      "file": "TECH-MOD-24_community.md"
+    },
+    {
+      "id": "TECH-MOD-28",
+      "name": "Mobile Module",
+      "family": "TECH-MOD",
+      "file": "TECH-MOD-28_mobile.md"
+    },
+    {
+      "id": "TECH-MOD-37",
+      "name": "Amenities Module",
+      "family": "TECH-MOD",
+      "file": "TECH-MOD-37_amenities.md"
+    },
+    {
+      "id": "TECH-MOD-38",
+      "name": "Approvals Module",
+      "family": "TECH-MOD",
+      "file": "TECH-MOD-38_approvals.md"
+    },
+    {
+      "id": "TECH-MOD-40",
+      "name": "Banks Module",
+      "family": "TECH-MOD",
+      "file": "TECH-MOD-40_banks.md"
+    },
+    {
+      "id": "TECH-MOD-48",
+      "name": "Reference Data Module",
+      "family": "TECH-MOD",
+      "file": "TECH-MOD-48_reference-data.md"
+    },
+    {
+      "id": "TECH-MOD-49",
+      "name": "Sidebar Layout Module",
+      "family": "TECH-MOD",
+      "file": "TECH-MOD-49_sidebar-layout.md"
+    },
+    {
+      "id": "TECH-UX-03",
+      "name": "Navigation Architecture",
+      "family": "TECH-UX",
+      "file": "TECH-UX-03_Navigation_Architecture.md"
+    },
+    {
+      "id": "VOLUME_01_EXECUTIVE_OVERVIEW",
+      "name": "VOLUME_01_EXECUTIVE_OVERVIEW",
+      "family": "UNKNOWN",
+      "file": "VOLUME_01_EXECUTIVE_OVERVIEW.md"
+    },
+    {
+      "id": "VOLUME_02_ARCHITECTURE",
+      "name": "VOLUME_02_ARCHITECTURE",
+      "family": "UNKNOWN",
+      "file": "VOLUME_02_ARCHITECTURE.md"
+    },
+    {
+      "id": "VOLUME_03_BUSINESS_DOMAINS",
+      "name": "VOLUME_03_BUSINESS_DOMAINS",
+      "family": "UNKNOWN",
+      "file": "VOLUME_03_BUSINESS_DOMAINS.md"
+    },
+    {
+      "id": "VOLUME_04_MODULES",
+      "name": "VOLUME_04_MODULES",
+      "family": "UNKNOWN",
+      "file": "VOLUME_04_MODULES.md"
+    },
+    {
+      "id": "VOLUME_05_SCREENS",
+      "name": "VOLUME_05_SCREENS",
+      "family": "UNKNOWN",
+      "file": "VOLUME_05_SCREENS.md"
+    },
+    {
+      "id": "VOLUME_08_PERMISSIONS",
+      "name": "VOLUME_08_PERMISSIONS",
+      "family": "UNKNOWN",
+      "file": "VOLUME_08_PERMISSIONS.md"
+    },
+    {
+      "id": "VOLUME_11_LIFECYCLES",
+      "name": "VOLUME_11_LIFECYCLES",
+      "family": "UNKNOWN",
+      "file": "VOLUME_11_LIFECYCLES.md"
+    },
+    {
+      "id": "VOLUME_15_NOTIFICATIONS",
+      "name": "VOLUME_15_NOTIFICATIONS",
+      "family": "UNKNOWN",
+      "file": "VOLUME_15_NOTIFICATIONS.md"
+    }
+  ],
+  "most_connected_documents": [
+    {
+      "id": "TECH-ARCH-02",
+      "name": "Module Architecture",
+      "incomingRefs": 64,
+      "family": "TECH-ARCH"
+    },
+    {
+      "id": "TECH-MOD-03",
+      "name": "Booking Module",
+      "incomingRefs": 18,
+      "family": "TECH-MOD"
+    },
+    {
+      "id": "TECH-MOD-10",
+      "name": "Wallet Module",
+      "incomingRefs": 14,
+      "family": "TECH-MOD"
+    },
+    {
+      "id": "TECH-MOD-04",
+      "name": "Academy Module",
+      "incomingRefs": 13,
+      "family": "TECH-MOD"
+    },
+    {
+      "id": "TECH-MOD-05",
+      "name": "Tournaments Module",
+      "incomingRefs": 13,
+      "family": "TECH-MOD"
+    },
+    {
+      "id": "TECH-MOD-09",
+      "name": "Payment Module",
+      "incomingRefs": 13,
+      "family": "TECH-MOD"
+    },
+    {
+      "id": "TECH-DEV-01",
+      "name": "Coding Standards — TypeScript",
+      "incomingRefs": 12,
+      "family": "TECH-DEV"
+    },
+    {
+      "id": "TECH-MOD-13",
+      "name": "Organisations Module",
+      "incomingRefs": 12,
+      "family": "TECH-MOD"
+    },
+    {
+      "id": "TECH-MOD-12",
+      "name": "Accounting Module",
+      "incomingRefs": 11,
+      "family": "TECH-MOD"
+    },
+    {
+      "id": "TECH-ARCH-01",
+      "name": "System Architecture",
+      "incomingRefs": 10,
+      "family": "TECH-ARCH"
+    }
+  ],
+  "most_referenced_modules": [
+    {
+      "id": "TECH-MOD-03",
+      "name": "Booking Module",
+      "dependentCount": 18
+    },
+    {
+      "id": "TECH-MOD-10",
+      "name": "Wallet Module",
+      "dependentCount": 14
+    },
+    {
+      "id": "TECH-MOD-04",
+      "name": "Academy Module",
+      "dependentCount": 13
+    },
+    {
+      "id": "TECH-MOD-05",
+      "name": "Tournaments Module",
+      "dependentCount": 13
+    },
+    {
+      "id": "TECH-MOD-09",
+      "name": "Payment Module",
+      "dependentCount": 13
+    },
+    {
+      "id": "TECH-MOD-13",
+      "name": "Organisations Module",
+      "dependentCount": 12
+    },
+    {
+      "id": "TECH-MOD-12",
+      "name": "Accounting Module",
+      "dependentCount": 11
+    },
+    {
+      "id": "TECH-MOD-01",
+      "name": "Auth Module",
+      "dependentCount": 10
+    },
+    {
+      "id": "TECH-MOD-02",
+      "name": "RBAC Module",
+      "dependentCount": 10
+    },
+    {
+      "id": "TECH-MOD-14",
+      "name": "Notifications Module",
+      "dependentCount": 10
+    }
+  ],
+  "high_risk_dependencies": [
+    {
+      "id": "TECH-MOD-03",
+      "name": "Booking Module",
+      "dependentCount": 18,
+      "dependents": [
+        "GOV-ADR-015",
+        "GOV-ADR-017",
+        "QUAL-TEST-03",
+        "QUAL-TEST-04",
+        "QUAL-TRACE-01_Requirements_Traceability_Matrix",
+        "TECH-ARCH-12",
+        "TECH-ARCH-13",
+        "TECH-MOD-09",
+        "TECH-MOD-13",
+        "TECH-MOD-17",
+        "TECH-MOD-18",
+        "TECH-MOD-19",
+        "TECH-MOD-25",
+        "TECH-MOD-26",
+        "TECH-MOD-32",
+        "TECH-MOD-35",
+        "TECH-MOD-50",
+        "TECH-MOD-52"
+      ]
+    },
+    {
+      "id": "TECH-MOD-10",
+      "name": "Wallet Module",
+      "dependentCount": 14,
+      "dependents": [
+        "QUAL-TEST-03",
+        "QUAL-TRACE-01_Requirements_Traceability_Matrix",
+        "TECH-ARCH-12",
+        "TECH-ARCH-13",
+        "TECH-ARCH-14",
+        "TECH-MOD-01",
+        "TECH-MOD-03",
+        "TECH-MOD-07",
+        "TECH-MOD-09",
+        "TECH-MOD-11",
+        "TECH-MOD-12",
+        "TECH-MOD-18",
+        "TECH-MOD-30",
+        "TECH-MOD-52"
+      ]
+    },
+    {
+      "id": "TECH-MOD-04",
+      "name": "Academy Module",
+      "dependentCount": 13,
+      "dependents": [
+        "GOV-ADR-020",
+        "QUAL-TEST-03",
+        "QUAL-TRACE-01_Requirements_Traceability_Matrix",
+        "TECH-ARCH-19",
+        "TECH-ARCH-20",
+        "TECH-ARCH-21",
+        "TECH-MOD-05",
+        "TECH-MOD-06",
+        "TECH-MOD-13",
+        "TECH-MOD-18",
+        "TECH-MOD-19",
+        "TECH-MOD-35",
+        "TECH-MOD-52"
+      ]
+    },
+    {
+      "id": "TECH-MOD-05",
+      "name": "Tournaments Module",
+      "dependentCount": 13,
+      "dependents": [
+        "QUAL-TEST-03",
+        "QUAL-TRACE-01_Requirements_Traceability_Matrix",
+        "TECH-ARCH-19",
+        "TECH-ARCH-20",
+        "TECH-ARCH-21",
+        "TECH-MOD-04",
+        "TECH-MOD-06",
+        "TECH-MOD-13",
+        "TECH-MOD-17",
+        "TECH-MOD-19",
+        "TECH-MOD-26",
+        "TECH-MOD-35",
+        "TECH-MOD-52"
+      ]
+    },
+    {
+      "id": "TECH-MOD-09",
+      "name": "Payment Module",
+      "dependentCount": 13,
+      "dependents": [
+        "GOV-ADR-013",
+        "QUAL-TEST-03",
+        "QUAL-TRACE-01_Requirements_Traceability_Matrix",
+        "TECH-ARCH-12",
+        "TECH-ARCH-13",
+        "TECH-ARCH-14",
+        "TECH-MOD-03",
+        "TECH-MOD-07",
+        "TECH-MOD-08",
+        "TECH-MOD-10",
+        "TECH-MOD-11",
+        "TECH-MOD-12",
+        "TECH-MOD-30"
+      ]
+    },
+    {
+      "id": "TECH-MOD-13",
+      "name": "Organisations Module",
+      "dependentCount": 12,
+      "dependents": [
+        "GOV-ADR-016",
+        "QUAL-TEST-03",
+        "QUAL-TRACE-01_Requirements_Traceability_Matrix",
+        "TECH-ARCH-15",
+        "TECH-ARCH-16",
+        "TECH-MOD-07",
+        "TECH-MOD-12",
+        "TECH-MOD-15",
+        "TECH-MOD-16",
+        "TECH-MOD-25",
+        "TECH-MOD-38",
+        "TECH-MOD-51"
+      ]
+    },
+    {
+      "id": "TECH-MOD-12",
+      "name": "Accounting Module",
+      "dependentCount": 11,
+      "dependents": [
+        "GOV-ADR-011",
+        "GOV-ADR-018",
+        "GOV-ADR-019",
+        "QUAL-TEST-03",
+        "TECH-ARCH-13",
+        "TECH-ARCH-14",
+        "TECH-ARCH-23",
+        "TECH-MOD-09",
+        "TECH-MOD-10",
+        "TECH-MOD-11",
+        "TECH-MOD-16"
+      ]
+    },
+    {
+      "id": "TECH-MOD-01",
+      "name": "Auth Module",
+      "dependentCount": 10,
+      "dependents": [
+        "BIZ-PROD-02",
+        "GOV-ADR-012",
+        "QUAL-TEST-02",
+        "QUAL-TEST-04",
+        "QUAL-TRACE-01_Requirements_Traceability_Matrix",
+        "TECH-MOD-02",
+        "TECH-MOD-20",
+        "TECH-MOD-25",
+        "TECH-MOD-27",
+        "TECH-MOD-52"
+      ]
+    },
+    {
+      "id": "TECH-MOD-02",
+      "name": "RBAC Module",
+      "dependentCount": 10,
+      "dependents": [
+        "GOV-ADR-016",
+        "QUAL-TEST-03",
+        "QUAL-TRACE-01_Requirements_Traceability_Matrix",
+        "TECH-MOD-01",
+        "TECH-MOD-20",
+        "TECH-MOD-21",
+        "TECH-MOD-36",
+        "TECH-MOD-38",
+        "TECH-MOD-44",
+        "TECH-MOD-49"
+      ]
+    },
+    {
+      "id": "TECH-MOD-14",
+      "name": "Notifications Module",
+      "dependentCount": 10,
+      "dependents": [
+        "GOV-ADR-014",
+        "TECH-ARCH-15",
+        "TECH-ARCH-22",
+        "TECH-ARCH-25",
+        "TECH-DB-03",
+        "TECH-MOD-15",
+        "TECH-MOD-22",
+        "TECH-MOD-24",
+        "TECH-MOD-25",
+        "TECH-MOD-28"
+      ]
+    },
+    {
+      "id": "TECH-MOD-30",
+      "name": "Settlement Module",
+      "dependentCount": 10,
+      "dependents": [
+        "BIZ-PROD-06",
+        "GOV-ADR-018",
+        "QUAL-TEST-03",
+        "QUAL-TRACE-01_Requirements_Traceability_Matrix",
+        "TECH-ARCH-13",
+        "TECH-ARCH-14",
+        "TECH-ARCH-17",
+        "TECH-DB-03",
+        "TECH-MOD-08",
+        "TECH-MOD-11"
+      ]
+    },
+    {
+      "id": "TECH-MOD-06",
+      "name": "Leagues Module",
+      "dependentCount": 9,
+      "dependents": [
+        "QUAL-TEST-03",
+        "TECH-ARCH-19",
+        "TECH-ARCH-20",
+        "TECH-ARCH-21",
+        "TECH-MOD-04",
+        "TECH-MOD-05",
+        "TECH-MOD-13",
+        "TECH-MOD-17",
+        "TECH-MOD-26"
+      ]
+    },
+    {
+      "id": "TECH-MOD-07",
+      "name": "Marketplace Module",
+      "dependentCount": 9,
+      "dependents": [
+        "QUAL-TEST-03",
+        "QUAL-TRACE-01_Requirements_Traceability_Matrix",
+        "TECH-ARCH-14",
+        "TECH-ARCH-17",
+        "TECH-MOD-03",
+        "TECH-MOD-08",
+        "TECH-MOD-10",
+        "TECH-MOD-30",
+        "TECH-MOD-31"
+      ]
+    },
+    {
+      "id": "TECH-MOD-15",
+      "name": "CRM Module",
+      "dependentCount": 7,
+      "dependents": [
+        "GOV-ADR-010",
+        "GOV-ADR-022",
+        "QUAL-TEST-03",
+        "TECH-ARCH-15",
+        "TECH-ARCH-22",
+        "TECH-MOD-14",
+        "TECH-MOD-22"
+      ]
+    },
+    {
+      "id": "TECH-MOD-19",
+      "name": "Scheduling Module",
+      "dependentCount": 7,
+      "dependents": [
+        "GOV-ADR-017",
+        "TECH-ARCH-12",
+        "TECH-ARCH-19",
+        "TECH-MOD-03",
+        "TECH-MOD-04",
+        "TECH-MOD-26",
+        "TECH-MOD-50"
+      ]
+    },
+    {
+      "id": "TECH-MOD-26",
+      "name": "Sports Engine Module",
+      "dependentCount": 6,
+      "dependents": [
+        "GOV-ADR-021",
+        "TECH-ARCH-20",
+        "TECH-ARCH-21",
+        "TECH-MOD-05",
+        "TECH-MOD-06",
+        "TECH-MOD-19"
+      ]
+    },
+    {
+      "id": "TECH-MOD-20",
+      "name": "Security Module",
+      "dependentCount": 5,
+      "dependents": [
+        "TECH-MOD-01",
+        "TECH-MOD-02",
+        "TECH-MOD-14",
+        "TECH-MOD-21",
+        "TECH-MOD-36"
+      ]
+    },
+    {
+      "id": "TECH-MOD-08",
+      "name": "Inventory Module",
+      "dependentCount": 4,
+      "dependents": [
+        "GOV-ADR-023",
+        "QUAL-TEST-03",
+        "TECH-ARCH-17",
+        "TECH-ARCH-18"
+      ]
+    },
+    {
+      "id": "TECH-MOD-16",
+      "name": "HR Module",
+      "dependentCount": 4,
+      "dependents": [
+        "GOV-ADR-011",
+        "GOV-ADR-019",
+        "QUAL-TEST-03",
+        "TECH-ARCH-23"
+      ]
+    },
+    {
+      "id": "TECH-MOD-25",
+      "name": "BI Module",
+      "dependentCount": 4,
+      "dependents": [
+        "QUAL-TEST-03",
+        "TECH-ARCH-24",
+        "TECH-ARCH-25",
+        "TECH-MOD-29"
+      ]
+    },
+    {
+      "id": "TECH-MOD-42",
+      "name": "Countries Module",
+      "dependentCount": 4,
+      "dependents": [
+        "QUAL-TRACE-01_Requirements_Traceability_Matrix",
+        "TECH-MOD-45",
+        "TECH-MOD-47",
+        "TECH-MOD-48"
+      ]
+    }
+  ],
+  "documentation_hotspots": [
+    {
+      "id": "TECH-ARCH-12",
+      "name": "Booking Flow Deep Dive",
+      "crossRefCount": 7
+    },
+    {
+      "id": "TECH-ARCH-17",
+      "name": "Marketplace Architecture",
+      "crossRefCount": 7
+    },
+    {
+      "id": "GOV-ADR-019",
+      "name": "HR-Payroll / Finance Boundary — HR Calculates, Finance Posts",
+      "crossRefCount": 6
+    },
+    {
+      "id": "TECH-ARCH-13",
+      "name": "Payment Flow Deep Dive",
+      "crossRefCount": 6
+    },
+    {
+      "id": "TECH-ARCH-14",
+      "name": "Wallet Architecture",
+      "crossRefCount": 6
+    },
+    {
+      "id": "TECH-MOD-35",
+      "name": "Activities Module",
+      "crossRefCount": 6
+    },
+    {
+      "id": "TECH-MOD-52",
+      "name": "Player Experience Module",
+      "crossRefCount": 6
+    }
+  ],
+  "coverage_by_family": {
+    "TECH-MOD": {
+      "existing": 52,
+      "planned": 52,
+      "percentage": 100
+    },
+    "TECH-ARCH": {
+      "existing": 24,
+      "planned": 25,
+      "percentage": 96
+    },
+    "TECH-DEV": {
+      "existing": 15,
+      "planned": 15,
+      "percentage": 100
+    },
+    "TECH-DB": {
+      "existing": 1,
+      "planned": 5,
+      "percentage": 20
+    },
+    "TECH-UX": {
+      "existing": 7,
+      "planned": 12,
+      "percentage": 58
+    },
+    "BIZ-ARCH": {
+      "existing": 10,
+      "planned": 5,
+      "percentage": 200
+    },
+    "GOV-ADR": {
+      "existing": 25,
+      "planned": 12,
+      "percentage": 208
+    },
+    "GOV-POL": {
+      "existing": 0,
+      "planned": 5,
+      "percentage": 0
+    },
+    "USER": {
+      "existing": 1,
+      "planned": 3,
+      "percentage": 33
+    },
+    "ADMIN": {
+      "existing": 1,
+      "planned": 3,
+      "percentage": 33
+    },
+    "OPS-DEPLOY": {
+      "existing": 1,
+      "planned": 3,
+      "percentage": 33
+    },
+    "OPS-MON": {
+      "existing": 1,
+      "planned": 3,
+      "percentage": 33
+    },
+    "OPS-RUN": {
+      "existing": 2,
+      "planned": 3,
+      "percentage": 67
+    },
+    "OPS-RECOV": {
+      "existing": 0,
+      "planned": 2,
+      "percentage": 0
+    },
+    "QUAL-TEST": {
+      "existing": 4,
+      "planned": 3,
+      "percentage": 133
+    },
+    "QUAL-TRACE": {
+      "existing": 0,
+      "planned": 2,
+      "percentage": 0
+    },
+    "QUAL-CERT": {
+      "existing": 1,
+      "planned": 1,
+      "percentage": 100
+    }
+  },
+  "coverage_by_knowledge_domain": {
+    "Admin Documentation": {
+      "existing": 1,
+      "families": [
+        "ADMIN"
+      ]
+    },
+    "Business Strategy": {
+      "existing": 10,
+      "families": [
+        "BIZ-ARCH"
+      ]
+    },
+    "Other": {
+      "existing": 16,
+      "families": [
+        "BIZ-PROD",
+        "UNKNOWN"
+      ]
+    },
+    "Governance": {
+      "existing": 25,
+      "families": [
+        "GOV-ADR"
+      ]
+    },
+    "Operations": {
+      "existing": 4,
+      "families": [
+        "OPS-DEPLOY",
+        "OPS-MON",
+        "OPS-RUN"
+      ]
+    },
+    "Quality Assurance": {
+      "existing": 5,
+      "families": [
+        "QUAL-CERT",
+        "QUAL-TEST"
+      ]
+    },
+    "Technical Architecture": {
+      "existing": 76,
+      "families": [
+        "TECH-ARCH",
+        "TECH-MOD"
+      ]
+    },
+    "Data Architecture": {
+      "existing": 1,
+      "families": [
+        "TECH-DB"
+      ]
+    },
+    "Development Standards": {
+      "existing": 15,
+      "families": [
+        "TECH-DEV"
+      ]
+    },
+    "User Experience": {
+      "existing": 7,
+      "families": [
+        "TECH-UX"
+      ]
+    },
+    "End User Documentation": {
+      "existing": 1,
+      "families": [
+        "USER"
+      ]
+    }
+  },
+  "gap_analysis": [
+    {
+      "family": "TECH-UX",
+      "existing": 7,
+      "planned": 12,
+      "gap": 5,
+      "severity": "medium"
+    },
+    {
+      "family": "GOV-POL",
+      "existing": 0,
+      "planned": 5,
+      "gap": 5,
+      "severity": "medium"
+    },
+    {
+      "family": "TECH-DB",
+      "existing": 1,
+      "planned": 5,
+      "gap": 4,
+      "severity": "medium"
+    },
+    {
+      "family": "USER",
+      "existing": 1,
+      "planned": 3,
+      "gap": 2,
+      "severity": "low"
+    },
+    {
+      "family": "ADMIN",
+      "existing": 1,
+      "planned": 3,
+      "gap": 2,
+      "severity": "low"
+    },
+    {
+      "family": "OPS-DEPLOY",
+      "existing": 1,
+      "planned": 3,
+      "gap": 2,
+      "severity": "low"
+    },
+    {
+      "family": "OPS-MON",
+      "existing": 1,
+      "planned": 3,
+      "gap": 2,
+      "severity": "low"
+    },
+    {
+      "family": "OPS-RECOV",
+      "existing": 0,
+      "planned": 2,
+      "gap": 2,
+      "severity": "low"
+    },
+    {
+      "family": "QUAL-TRACE",
+      "existing": 0,
+      "planned": 2,
+      "gap": 2,
+      "severity": "low"
+    },
+    {
+      "family": "TECH-ARCH",
+      "existing": 24,
+      "planned": 25,
+      "gap": 1,
+      "severity": "low"
+    },
+    {
+      "family": "OPS-RUN",
+      "existing": 2,
+      "planned": 3,
+      "gap": 1,
+      "severity": "low"
+    }
+  ],
+  "recommendations": [
+    "Add cross-references to 46 orphan documents (BIZ-ARCH-02, BIZ-ARCH-03, BIZ-ARCH-04, BIZ-ARCH-05, BIZ-ARCH-06, BIZ-ARCH-07, BIZ-ARCH-08, BIZ-ARCH-09, BIZ-ARCH-10, BIZ-PROD-01, BIZ-PROD-04, BIZ-PROD-08, GOV-ADR-012, GOV-ADR-013, GOV-ADR-014, GOV-ADR-015, GOV-ADR-016, GOV-ADR-017, GOV-ADR-018, GOV-ADR-019, GOV-ADR-020, GOV-ADR-021, GOV-ADR-022, GOV-ADR-023, GOV-ADR-024, GOV-ADR-025, QUAL-CERT-01, QUAL-TRACE-01_Requirements_Traceability_Matrix, TECH-ARCH-10, TECH-ARCH-14, TECH-MOD-24, TECH-MOD-28, TECH-MOD-37, TECH-MOD-38, TECH-MOD-40, TECH-MOD-48, TECH-MOD-49, TECH-UX-03, VOLUME_01_EXECUTIVE_OVERVIEW, VOLUME_02_ARCHITECTURE, VOLUME_03_BUSINESS_DOMAINS, VOLUME_04_MODULES, VOLUME_05_SCREENS, VOLUME_08_PERMISSIONS, VOLUME_11_LIFECYCLES, VOLUME_15_NOTIFICATIONS) to improve discoverability",
+    "Review and publish 126 documents still in Draft status (78% of total)",
+    "Conduct dependency audits for 21 high-risk modules: TECH-MOD-03, TECH-MOD-10, TECH-MOD-04, TECH-MOD-05, TECH-MOD-09, TECH-MOD-13, TECH-MOD-12, TECH-MOD-01, TECH-MOD-02, TECH-MOD-14, TECH-MOD-30, TECH-MOD-06, TECH-MOD-07, TECH-MOD-15, TECH-MOD-19, TECH-MOD-26, TECH-MOD-20, TECH-MOD-08, TECH-MOD-16, TECH-MOD-25, TECH-MOD-42",
+    "Schedule quarterly knowledge graph health reviews to maintain documentation quality",
+    "Add traceability metadata (knowledge_objects references/related) to all documents missing it"
+  ]
+}
