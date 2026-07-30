@@ -203,6 +203,7 @@ export const uiRegistry: UIElement[] = [
   { permissionKey: 'matches.view', moduleSlug: 'bookings', elementType: 'page', elementLabel: 'Matches Page', componentPath: 'pages/booking/MatchListPage.tsx' },
   { permissionKey: 'matches.apply', moduleSlug: 'bookings', elementType: 'button', elementLabel: 'Apply to Match', componentPath: 'pages/booking/MatchListPage.tsx' },
   { permissionKey: 'matches.cancel', moduleSlug: 'bookings', elementType: 'button', elementLabel: 'Cancel Match Application', componentPath: 'pages/booking/MatchListPage.tsx' },
+  { permissionKey: 'matches.manage', moduleSlug: 'bookings', elementType: 'action', elementLabel: 'Manage Match (approve/reject/close/cancel)' },
   { permissionKey: 'bookings.manage-applicants', moduleSlug: 'bookings', elementType: 'button', elementLabel: 'Manage Booking Applicants', componentPath: 'components/booking/ManageApplicantsPopup.tsx' },
 
   // ==========================================================================
@@ -629,6 +630,8 @@ export const uiRegistry: UIElement[] = [
   // ==========================================================================
   { permissionKey: 'marketplace.sell', moduleSlug: 'marketplace', elementType: 'action', elementLabel: 'Sell Products' },
   { permissionKey: 'marketplace.player-products.manage', moduleSlug: 'marketplace', elementType: 'action', elementLabel: 'Manage Player Products' },
+  { permissionKey: 'marketplace.player.activate', moduleSlug: 'marketplace', elementType: 'action', elementLabel: 'Activate Player Selling' },
+  { permissionKey: 'marketplace.player.status', moduleSlug: 'marketplace', elementType: 'page', elementLabel: 'View Player Selling Status' },
   { permissionKey: 'marketplace.moderate', moduleSlug: 'marketplace', elementType: 'action', elementLabel: 'Moderate Marketplace' },
   { permissionKey: 'financial.withdraw', moduleSlug: 'financial', elementType: 'action', elementLabel: 'Withdraw from Wallet' },
   { permissionKey: 'financial.payment.charge', moduleSlug: 'financial', elementType: 'action', elementLabel: 'Charge Payment' },

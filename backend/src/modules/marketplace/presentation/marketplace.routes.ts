@@ -71,27 +71,27 @@ export async function marketplaceRoutes(app: FastifyInstance, opts: { requireFea
   app.post('/marketplace/orders/:id/cancel', orderMod, ctrl.cancelOrderHandler);
 
   // Seller Orders
-  app.get('/marketplace/seller/orders', { preHandler: [requireApprovedOrg()] }, ctrl.getSellerOrdersHandler);
-  app.get('/marketplace/seller/stats', { preHandler: [requireApprovedOrg()] }, ctrl.getSellerStatsHandler);
+  app.get('/marketplace/seller/orders', { preHandler: [requirePermission(['marketplace.seller.manage-orders']), requireApprovedOrg()] }, ctrl.getSellerOrdersHandler);
+  app.get('/marketplace/seller/stats', { preHandler: [requirePermission(['marketplace.seller.stats']), requireApprovedOrg()] }, ctrl.getSellerStatsHandler);
 
   // Player sell activation
-  app.post('/marketplace/player/activate', ctrl.activatePlayerSellHandler);
-  app.get('/marketplace/player/status', ctrl.getPlayerStatusHandler);
+  app.post('/marketplace/player/activate', { preHandler: [requirePermission(['marketplace.player.activate'])] }, ctrl.activatePlayerSellHandler);
+  app.get('/marketplace/player/status', { preHandler: [requirePermission(['marketplace.player.status'])] }, ctrl.getPlayerStatusHandler);
 
   // Player products CRUD (max 5 items, no payment, direct contact)
-  app.get('/marketplace/player/products', ctrl.listPlayerProductsHandler);
-  app.post('/marketplace/player/products', ctrl.createPlayerProductHandler);
-  app.put('/marketplace/player/products/:productId', ctrl.updatePlayerProductHandler);
-  app.patch('/marketplace/player/products/:productId/sold', ctrl.markPlayerProductSoldHandler);
+  app.get('/marketplace/player/products', { preHandler: [requirePermission(['marketplace.player-products.manage'])] }, ctrl.listPlayerProductsHandler);
+  app.post('/marketplace/player/products', { preHandler: [requirePermission(['marketplace.player-products.manage'])] }, ctrl.createPlayerProductHandler);
+  app.put('/marketplace/player/products/:productId', { preHandler: [requirePermission(['marketplace.player-products.manage'])] }, ctrl.updatePlayerProductHandler);
+  app.patch('/marketplace/player/products/:productId/sold', { preHandler: [requirePermission(['marketplace.player-products.manage'])] }, ctrl.markPlayerProductSoldHandler);
 
   // Seller upgrade
-  app.get('/marketplace/seller/plans', ctrl.getSellerPlansHandler);
-  app.post('/marketplace/seller/upgrade', ctrl.upgradeToSellerHandler);
+  app.get('/marketplace/seller/plans', { preHandler: [requirePermission(['marketplace.sell'])] }, ctrl.getSellerPlansHandler);
+  app.post('/marketplace/seller/upgrade', { preHandler: [requirePermission(['marketplace.sell'])] }, ctrl.upgradeToSellerHandler);
   app.post('/marketplace/admin/approve-upgrade/:orgId', { preHandler: [requirePermission(['marketplace.moderate'])] }, ctrl.approveSellerUpgradeHandler);
 
   // Seller products & shop settings
-  app.get('/marketplace/seller/products', { preHandler: [requireApprovedOrg()] }, ctrl.getSellerProductsHandler);
-  app.put('/marketplace/seller/shop', { preHandler: [requireApprovedOrg()] }, ctrl.updateSellerShopHandler);
+  app.get('/marketplace/seller/products', { preHandler: [requirePermission(['marketplace.sell']), requireApprovedOrg()] }, ctrl.getSellerProductsHandler);
+  app.put('/marketplace/seller/shop', { preHandler: [requirePermission(['marketplace.sell']), requireApprovedOrg()] }, ctrl.updateSellerShopHandler);
 
   // Settlements
   app.get('/marketplace/seller/settlements', { preHandler: [requirePermission(['marketplace.seller.settlements']), requireApprovedOrg()] }, ctrl.getSettlementsHandler);
