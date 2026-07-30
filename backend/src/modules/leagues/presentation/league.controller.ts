@@ -460,23 +460,6 @@ export async function getPlayerStatsHandler(request: FastifyRequest, reply: Fast
   return reply.send({ data });
 }
 
-export async function getTeamStatsHandler(request: FastifyRequest, reply: FastifyReply) {
-  const { id } = request.params as any;
-  const { division_id, team_id } = request.query as any;
-  const pool = getPool();
-  const [seasonRows] = await pool.query<RowData>(
-    'SELECT l.season_id FROM leagues l WHERE l.id = ?',
-    [Number(id)],
-  );
-  if (!seasonRows.length) return reply.send({ data: [] });
-  const data = await statisticsService.getTeamStats({
-    season_id: seasonRows[0].season_id,
-    division_id: division_id ? Number(division_id) : undefined,
-    team_id: team_id ? Number(team_id) : undefined,
-  });
-  return reply.send({ data });
-}
-
 export async function recalculateStatsHandler(request: FastifyRequest, reply: FastifyReply) {
   const userId = getUserId(request);
   const { id } = request.params as any;

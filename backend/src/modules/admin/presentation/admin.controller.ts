@@ -4,7 +4,7 @@ import { featureFlagService } from '../application/feature-flag.service.js';
 import { healthService } from '../application/health.service.js';
 import { cacheService } from '../application/cache.service.js';
 import { queueAdminService } from '../application/queue.service.js';
-import { auditLogService, recordAudit } from '../../audit-log/index.js';
+import { recordAudit } from '../../audit-log/index.js';
 import {
   UpdateSettingSchema,
   CreateFeatureFlagSchema,
@@ -12,7 +12,7 @@ import {
   ToggleFeatureFlagSchema,
   ListSettingsQuerySchema,
   ListFeatureFlagsQuerySchema,
-  ListAuditLogsQuerySchema,
+
 } from './admin.dto.js';
 
 function buildMeta(request: FastifyRequest) {
@@ -218,28 +218,4 @@ export async function resumeQueueHandler(request: FastifyRequest, reply: Fastify
   });
 
   return sendSuccess(reply, { resumed: true }, buildMeta(request));
-}
-
-// ── Audit Logs ───────────────────────────────────────────────────────────
-
-export async function getAuditLogsHandler(request: FastifyRequest, reply: FastifyReply) {
-  const query = ListAuditLogsQuerySchema.parse(request.query);
-  const page = query.page || 1;
-  const limit = query.limit || 30;
-
-  const result = await auditLogService.findByFilters({
-    entityType: query.entityType,
-    action: query.action,
-    actorId: query.userId,
-    dateFrom: query.dateFrom,
-    dateTo: query.dateTo,
-    limit,
-    offset: (page - 1) * limit,
-  });
-
-  return sendSuccess(reply, result.rows, buildMeta(request), {
-    page,
-    limit,
-    total: result.total,
-  });
 }

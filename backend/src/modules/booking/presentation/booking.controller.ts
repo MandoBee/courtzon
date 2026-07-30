@@ -293,17 +293,6 @@ export async function respondToApplicantHandler(request: FastifyRequest, reply: 
   return reply.send(result);
 }
 
-export async function getPublicMatchesHandler(request: FastifyRequest, reply: FastifyReply) {
-  const userId = (request as any).userId;
-  const query = request.query as any;
-  const matches = await bookingService.getPublicMatches(userId, {
-    lat: query.lat ? Number(query.lat) : undefined,
-    lng: query.lng ? Number(query.lng) : undefined,
-    date: query.date || undefined,
-  });
-  return reply.send({ data: matches });
-}
-
 export async function getBookingApplicantsHandler(request: FastifyRequest, reply: FastifyReply) {
   const { id } = request.params as any;
   const userId = (request as any).userId;

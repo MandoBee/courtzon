@@ -4,7 +4,7 @@ import { recordAudit } from '../../audit-log/index.js';
 import { coachSessionStateService } from '../../coaches/application/coach-session-state.service.js';
 import { eventBusV2 } from '../../../shared/event-bus/index.js';
 import {
-  CreateTournamentSchema, RegisterTournamentSchema, MatchScoreSchema,
+  CreateTournamentSchema, MatchScoreSchema,
   CreateAcademySchema, CreateCurriculumSchema, EnrollPlayerSchema,
   CreateAcademySessionSchema, MarkAttendanceSchema, CreateEvaluationSchema,
   CreateCoachProfileSchema, UpsertOrgAgreementSchema, CreateCoachSessionSchema, CreateCoachReviewSchema,
@@ -33,13 +33,6 @@ export async function createTournamentHandler(request: FastifyRequest, reply: Fa
   const userId = (request as any).userId;
   const t = await svc.createTournament(userId, body);
   return reply.status(201).send(t);
-}
-
-export async function registerTournamentHandler(request: FastifyRequest, reply: FastifyReply) {
-  const { id } = request.params as any;
-  const body = RegisterTournamentSchema.parse(request.body);
-  await svc.registerPlayer(Number(id), body.playerId);
-  return reply.status(201).send({ message: 'Registered' });
 }
 
 export async function generateBracketHandler(request: FastifyRequest, reply: FastifyReply) {
@@ -369,13 +362,6 @@ export async function removeCoachBlackoutHandler(request: FastifyRequest, reply:
 export async function getCoachAvailabilityHandler(request: FastifyRequest, reply: FastifyReply) {
   const { id } = request.params as any;
   const result = await svc.getCoachAvailabilityPublic(Number(id));
-  return reply.send(result);
-}
-
-// ── Admin: Tournaments ──
-export async function adminListTournamentsHandler(request: FastifyRequest, reply: FastifyReply) {
-  const { page, limit, status } = request.query as any;
-  const result = await svc.listTournamentsAdmin(Number(page) || 1, Number(limit) || 20, status);
   return reply.send(result);
 }
 

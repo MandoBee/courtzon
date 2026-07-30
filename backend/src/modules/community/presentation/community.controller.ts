@@ -1,7 +1,7 @@
 import type { FastifyRequest, FastifyReply } from 'fastify';
 import { communityService as svc } from '../application/community.service.js';
 import { recordAudit } from '../../audit-log/index.js';
-import { CreateEventSchema, RsvpSchema, SendMessageSchema, CreateCampaignSchema, AuditQuerySchema, RevertSchema, CreateGroupSchema, InviteToGroupSchema, RespondToInvitationSchema, UpdateGroupSchema, RemoveMemberSchema } from './community.dto.js';
+import { CreateEventSchema, RsvpSchema, SendMessageSchema, CreateCampaignSchema, RevertSchema, CreateGroupSchema, InviteToGroupSchema, RespondToInvitationSchema, UpdateGroupSchema, RemoveMemberSchema } from './community.dto.js';
 
 // ── Follows ──
 export async function followHandler(request: FastifyRequest, reply: FastifyReply) {
@@ -406,11 +406,6 @@ export async function deleteCreativeHandler(request: FastifyRequest, reply: Fast
 }
 
 // ── Admin / Audit ──
-export async function getAuditLogsHandler(request: FastifyRequest, reply: FastifyReply) {
-  const query = AuditQuerySchema.parse(request.query);
-  const logs = await svc.getAuditLogs(query);
-  return reply.send(logs);
-}
 export async function revertActionHandler(request: FastifyRequest, reply: FastifyReply) {
   const { auditLogId } = request.params as any;
   const body = RevertSchema.parse(request.body);
