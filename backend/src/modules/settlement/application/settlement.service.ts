@@ -246,7 +246,7 @@ export const settlementService = {
 
       if (finalAmount > 0 && direction) {
         const txnId = await transactionRepository.createTransaction({
-          type: 'settlement_payout',
+          type: 'payout',
           sourceType: 'settlement',
           sourceId: settlementId,
           totalAmount: finalAmount,

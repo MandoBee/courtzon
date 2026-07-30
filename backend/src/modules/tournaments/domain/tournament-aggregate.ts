@@ -86,11 +86,13 @@ export interface TournamentMatchResult {
   id?: number;
   match_id: number;
   winner_id?: number;
-  home_score?: number;
-  away_score?: number;
+  home_score?: string;
+  away_score?: string;
   score_details?: string;
+  result_status?: 'submitted' | 'confirmed' | 'disputed';
   entered_by: number;
-  entered_at: string;
+  confirmed_at?: string;
+  created_at?: string;
 }
 
 export interface TournamentGroup {

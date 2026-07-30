@@ -4,7 +4,7 @@ import type { Command } from '../../../shared/command/command-base.js';
 
 const mockWallet = {
   id: 1, user_id: 1, balance: '100.00', currency_code: 'EGP',
-  is_locked: false, aggregate_version: 1,
+  is_locked: false, version: 1,
 };
 
 vi.mock('../infrastructure/repositories/wallet.repository.js', () => ({

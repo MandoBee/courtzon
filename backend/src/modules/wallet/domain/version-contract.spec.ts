@@ -52,7 +52,7 @@ describe('Aggregate Version Contract — Wallet', () => {
     it('deposit on already-processed command is skipped by pipeline', async () => {
       vi.mocked(walletRepository.findById).mockResolvedValue({
         id: 1, user_id: 1, balance: '200', currency_code: 'EGP',
-        is_locked: false, aggregate_version: 3,
+        is_locked: false, version: 3,
       });
 
       const c: Command = {

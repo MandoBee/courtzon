@@ -31,12 +31,12 @@ export const walletRepository = {
   async persistBalanceUpdate(walletId: number, newBalance: number, expectedVersion: number, conn?: mysql.PoolConnection): Promise<void> {
     const pool = resolvePool(conn);
     const [result] = await pool.execute<ResultSetHeader>(
-      'UPDATE user_wallets SET balance = ?, aggregate_version = aggregate_version + 1, updated_at = NOW() WHERE id = ? AND aggregate_version = ?',
+      'UPDATE user_wallets SET balance = ?, version = version + 1, updated_at = NOW() WHERE id = ? AND version = ?',
       [newBalance, walletId, expectedVersion]
     );
     if (result.affectedRows === 0) {
-      const [rows] = await pool.execute('SELECT aggregate_version FROM user_wallets WHERE id = ?', [walletId]);
-      const actual = (rows as any[])[0]?.aggregate_version;
+      const [rows] = await pool.execute('SELECT version FROM user_wallets WHERE id = ?', [walletId]);
+      const actual = (rows as any[])[0]?.version;
       aggregateVersionConflictsTotal.inc({ aggregate_type: 'wallet' });
       throw new AggregateVersionConflict(walletId, expectedVersion, actual ?? 0);
     }

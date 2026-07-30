@@ -25,7 +25,7 @@ export class WalletService {
       );
       const currency = (userRows[0] as any)?.default_currency || 'EGP';
       await pool.execute(
-        'INSERT INTO user_wallets (user_id, balance, currency_code, aggregate_version) VALUES (?, 0, ?, 1)',
+        'INSERT INTO user_wallets (user_id, balance, currency_code, version) VALUES (?, 0, ?, 1)',
         [userId, currency]
       );
       wallet = await walletRepository.findByUserId(userId);

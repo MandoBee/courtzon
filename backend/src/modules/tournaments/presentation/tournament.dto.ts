@@ -84,8 +84,8 @@ export const GenerateGroupsSchema = z.object({
 
 export const RecordResultSchema = z.object({
   winner_id: z.number().int().positive(),
-  home_score: z.number().optional(),
-  away_score: z.number().optional(),
+  home_score: z.string().optional(),
+  away_score: z.string().optional(),
   score_details: z.string().optional(),
 });
 

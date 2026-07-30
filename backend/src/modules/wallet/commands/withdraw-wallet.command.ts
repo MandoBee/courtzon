@@ -42,11 +42,11 @@ export const withdrawWalletHandler: CommandHandler<Command, WithdrawWalletResult
       direction: 'debit',
       amount: p.amount,
       currentBalance: Number(wallet.balance),
-      currentVersion: wallet.aggregate_version || 1,
+      currentVersion: wallet.version || 1,
       isLocked: !!wallet.is_locked,
     });
 
-    await walletRepository.persistBalanceUpdate(p.walletId, transition.newBalance, wallet.aggregate_version || 1, conn);
+    await walletRepository.persistBalanceUpdate(p.walletId, transition.newBalance, wallet.version || 1, conn);
 
     if (isLowBalance(transition.newBalance)) {
       log.warn({ walletId: p.walletId, balance: transition.newBalance }, 'wallet.low_balance');

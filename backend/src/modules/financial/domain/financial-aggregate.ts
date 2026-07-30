@@ -1,6 +1,6 @@
 export type WithdrawalStatus = 'pending' | 'approved' | 'rejected' | 'completed' | 'cancelled';
 
-export type TransactionType = 'booking_payment' | 'wallet_topup' | 'refund' | 'payout' | 'marketplace_order' | 'withdrawal' | 'settlement_payout';
+export type TransactionType = 'booking_payment' | 'wallet_topup' | 'refund' | 'payout' | 'marketplace_order' | 'withdrawal';
 
 export type TransactionSide = 'debit' | 'credit';
 

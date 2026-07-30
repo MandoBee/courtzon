@@ -69,9 +69,9 @@ export async function getCustomerHandler(request: FastifyRequest, reply: Fastify
   );
 
   const [wallet] = await pool.execute<RowData>(
-    `SELECT COALESCE(SUM(CASE WHEN type = 'credit' THEN amount ELSE 0 END), 0) AS total_deposits,
-            COALESCE(SUM(CASE WHEN type = 'debit' THEN amount ELSE 0 END), 0) AS total_withdrawn
-     FROM wallet_transactions WHERE user_id = ?`, [userId]
+    `SELECT COALESCE(SUM(CASE WHEN wt.direction = 'credit' THEN wt.amount ELSE 0 END), 0) AS total_deposits,
+            COALESCE(SUM(CASE WHEN wt.direction = 'debit' THEN wt.amount ELSE 0 END), 0) AS total_withdrawn
+     FROM wallet_transactions wt JOIN user_wallets uw ON uw.id = wt.wallet_id WHERE uw.user_id = ?`, [userId]
   );
 
   const [enrollments] = await pool.execute<RowData>(
@@ -125,7 +125,7 @@ export async function getCustomerTimelineHandler(request: FastifyRequest, reply:
      UNION ALL
      SELECT created_at, 'tournament_registration', id, status, NULL FROM tournament_registrations WHERE user_id = ?
      UNION ALL
-     SELECT created_at, 'wallet_transaction', id, type, amount FROM wallet_transactions WHERE user_id = ?
+     SELECT wt.created_at, 'wallet_transaction', wt.id, wt.transaction_type, wt.amount FROM wallet_transactions wt JOIN user_wallets uw ON uw.id = wt.wallet_id WHERE uw.user_id = ?
      UNION ALL
      SELECT created_at, 'activity_log', id, action, NULL FROM activity_logs WHERE user_id = ?
      ORDER BY created_at DESC

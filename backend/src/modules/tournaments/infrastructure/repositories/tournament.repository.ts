@@ -250,18 +250,18 @@ export class TournamentRepository {
   // ── Match Results ──
 
   async createMatchResult(data: Partial<TournamentMatchResult>): Promise<number> {
-    const sql = `INSERT INTO tournament_match_results (match_id, winner_id, home_score, away_score, score_details, entered_by, entered_at)
-                 VALUES (?, ?, ?, ?, ?, ?, NOW())`;
+    const sql = `INSERT INTO tournament_match_results (match_id, winner_id, home_score, away_score, score_details, result_status, entered_by)
+                 VALUES (?, ?, ?, ?, ?, ?, ?)`;
     const [result] = await getPool().query<ResultSet>(sql, [
       data.match_id, data.winner_id ?? null, data.home_score ?? null, data.away_score ?? null,
-      data.score_details ?? null, data.entered_by,
+      data.score_details ?? null, data.result_status ?? 'submitted', data.entered_by,
     ]);
     return (result as any).insertId;
   }
 
   async getMatchResult(matchId: number): Promise<TournamentMatchResult | null> {
     const [rows] = await getPool().query<RowData>(
-      'SELECT * FROM tournament_match_results WHERE match_id = ? ORDER BY entered_at DESC LIMIT 1',
+      'SELECT * FROM tournament_match_results WHERE match_id = ? ORDER BY created_at DESC LIMIT 1',
       [matchId],
     );
     return rows.length ? (rows[0] as TournamentMatchResult) : null;

@@ -12,7 +12,7 @@ export interface WalletRecord {
   balance: number;
   currency_code: string;
   is_locked: boolean;
-  aggregate_version: number;
+  version: number;
 }
 
 export interface BalanceUpdateRequest {

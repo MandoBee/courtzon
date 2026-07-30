@@ -3368,6 +3368,7 @@ CREATE TABLE `user_sessions` (
   `refresh_token_expires_at` timestamp NULL DEFAULT NULL,
   `last_activity_at` timestamp NOT NULL DEFAULT current_timestamp(),
   `is_revoked` tinyint(1) NOT NULL DEFAULT 0,
+  `suspicious` tinyint(1) NOT NULL DEFAULT 0,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
   `session_token_hash` char(64) NOT NULL DEFAULT '',
   PRIMARY KEY (`id`),
@@ -3377,6 +3378,7 @@ CREATE TABLE `user_sessions` (
   KEY `idx_sessions_active` (`user_id`,`is_revoked`,`expires_at`),
   KEY `idx_sessions_cleanup` (`expires_at`,`is_revoked`),
   KEY `idx_sessions_token_hash` (`session_token_hash`),
+  KEY `idx_suspicious_sessions` (`suspicious`,`is_revoked`,`expires_at`),
   KEY `idx_user_sessions_refresh_expires` (`user_id`,`refresh_token_expires_at`),
   CONSTRAINT `fk_session_device` FOREIGN KEY (`device_id`) REFERENCES `user_devices` (`id`) ON DELETE SET NULL,
   CONSTRAINT `fk_session_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE

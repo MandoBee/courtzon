@@ -224,7 +224,7 @@ export class TournamentService {
     }
   }
 
-  async recordMatchResult(matchId: number, winnerId: number, homeScore?: number, awayScore?: number, scoreDetails?: string, enteredBy?: number): Promise<void> {
+  async recordMatchResult(matchId: number, winnerId: number, homeScore?: string, awayScore?: string, scoreDetails?: string, enteredBy?: number): Promise<void> {
     const match = await tournamentRepository.findMatchById(matchId);
     if (!match) throw new NotFoundError('Match', ErrorCodes.MATCH_NOT_FOUND);
 
