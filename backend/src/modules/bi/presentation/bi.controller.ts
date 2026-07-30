@@ -330,18 +330,20 @@ export async function getWebVitalsHandler(req: FastifyRequest, reply: FastifyRep
   const conditions: string[] = [];
   const params: any[] = [];
 
-  if (f.dateFrom) { conditions.push('recorded_at >= ?'); params.push(f.dateFrom); }
-  if (f.dateTo) { conditions.push('recorded_at <= ?'); params.push(f.dateTo); }
+  if (f.dateFrom) { conditions.push('created_at >= ?'); params.push(f.dateFrom); }
+  if (f.dateTo) { conditions.push('created_at <= ?'); params.push(f.dateTo); }
 
   const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
   const limitClause = f.limit ? `LIMIT ${f.limit}` : '';
 
   const [vitals] = await pool.query<RowData>(
-    `SELECT DATE(recorded_at) AS date,
-       AVG(lcp) AS avg_lcp, AVG(cls) AS avg_cls, AVG(fcp) AS avg_fcp,
+    `SELECT DATE(created_at) AS date,
+       AVG(CASE WHEN metric_name = 'lcp' THEN metric_value END) AS avg_lcp,
+       AVG(CASE WHEN metric_name = 'cls' THEN metric_value END) AS avg_cls,
+       AVG(CASE WHEN metric_name = 'fcp' THEN metric_value END) AS avg_fcp,
        COUNT(*) AS sample_count
      FROM web_vitals_metrics ${where}
-     GROUP BY DATE(recorded_at)
+     GROUP BY DATE(created_at)
      ORDER BY date DESC
      ${limitClause}`,
     params,

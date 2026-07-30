@@ -364,7 +364,7 @@ Checks: mobile routes inside AppLayout, BottomNav z-index, notification template
 | TRN-002 | `tournaments` | Lifecycle state machine uses 8 statuses; prod ENUM has 5 | ✅ Closed |
 | TRN-004 | `tournaments` | `registration_open_at`/`registration_close_at` mismatch with DB `registration_opens`/`registration_closes` | ✅ Closed |
 | UDV-001 | `user_devices` | Notification module references M015 columns (`device_id`, `push_token`) not in prod | ✅ Closed |
-| WVM-001 | `web_vitals_metrics` | BI controller SELECT uses pivoted columns (`lcp`, `cls`, `fcp`) — prod uses generic `metric_name`/`metric_value` | ❌ Open |
+| WVM-001 | `web_vitals_metrics` | BI controller SELECT uses pivoted columns (`lcp`, `cls`, `fcp`) — prod uses generic `metric_name`/`metric_value` | ✅ Closed |
 
 ### Tournament Findings Fully Resolved
 | ID | Table | Resolution |
@@ -393,6 +393,14 @@ Checks: mobile routes inside AppLayout, BottomNav z-index, notification template
 
 ### Dominant Pattern
 The `tournaments/` module domain types and repository are written against M056 schema, while production was built from baseline + M062. The `activities/` module consistently uses correct column names (dual-ownership drift — SF-003). Same pattern in `user_devices` (auth module correct, notification module broken).
+
+### WVM-001 Resolution
+| Change | File | Detail |
+|--------|------|--------|
+| `recorded_at` → `created_at` | `bi.controller.ts` | WHERE clause and GROUP BY now use the actual column name |
+| `AVG(lcp)` → `AVG(CASE ...)` | `bi.controller.ts` | SELECT uses conditional aggregation pivoting `metric_name` rows into `avg_lcp`/`avg_cls`/`avg_fcp` columns |
+| Response shape preserved | `bi.controller.ts` | `avgLcp`/`avgCls`/`avgFcp` camelCase mapping unchanged |
+| **DB changes** | none | All columns used already exist in production |
 
 ### Framework
 Frozen framework with all addendums applied consistently. Every finding has: ID, Severity, Classification, Confidence (A-E), Evidence, Root Cause, Impact (Fact/Expected split), Recommendation.
