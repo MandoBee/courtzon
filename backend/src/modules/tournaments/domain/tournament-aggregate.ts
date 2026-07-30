@@ -2,8 +2,6 @@ export type TournamentFormat =
   | 'knockout' | 'double_elimination' | 'round_robin'
   | 'swiss' | 'group_stage_knockout' | 'league' | 'custom';
 
-export type RegistrationType = 'individual' | 'team' | 'academy' | 'invitation' | 'public';
-
 export type TournamentStatus =
   | 'draft' | 'published' | 'registration_open' | 'registration_closed'
   | 'running' | 'completed' | 'cancelled' | 'archived';
@@ -14,33 +12,39 @@ export type MatchStatus = 'scheduled' | 'in_progress' | 'completed' | 'walkover'
 
 export interface Tournament {
   id?: number;
-  code: string;
-  name: string;
-  description?: string;
-  format: TournamentFormat;
-  sport_id: number;
+  public_id?: string;
+  creator_id: number;
   organisation_id?: number;
   branch_id?: number;
+  bracket_type_id: number;
+  format?: TournamentFormat;
   category?: string;
   season?: string;
-  status: TournamentStatus;
-  registration_type: RegistrationType;
-  max_players?: number;
+  sport_id?: number;
+  name: string;
+  code?: string;
+  description?: string;
+  tournament_type?: string;
+  max_participants: number;
   max_teams?: number;
-  current_players?: number;
-  current_teams?: number;
+  min_participants?: number;
+  entry_fee?: number;
   registration_fee?: number;
+  currency_code: string;
   price_type?: string;
-  currency?: string;
+  commission_rate?: number;
+  prize_description?: string;
+  status: TournamentStatus;
   is_public?: boolean;
-  registration_open_at?: string;
-  registration_close_at?: string;
+  registration_opens?: string;
+  registration_closes?: string;
   start_date?: string;
   end_date?: string;
-  match_duration_minutes?: number;
   rules?: string;
-  prize_description?: string;
-  metadata?: Record<string, unknown>;
+  is_featured?: boolean;
+  image_url?: string;
+  deleted_at?: string;
+  archived_at?: string;
   created_at?: string;
   updated_at?: string;
 }
@@ -63,18 +67,19 @@ export interface TournamentMatch {
   id?: number;
   tournament_id: number;
   round: number;
+  match_number: number;
+  round_name?: string;
   group_id?: number;
   bracket_position?: number;
   player1_id?: number;
   player2_id?: number;
   winner_id?: number;
   status: MatchStatus;
-  court_id?: number;
+  resource_id?: number;
   referee_id?: number;
-  scheduled_at?: string;
-  started_at?: string;
-  completed_at?: string;
-  notes?: string;
+  start_time?: string;
+  end_time?: string;
+  score_summary?: string;
 }
 
 export interface TournamentMatchResult {
@@ -107,31 +112,29 @@ export interface TournamentStandingRow {
   id?: number;
   tournament_id: number;
   group_id?: number;
-  registration_id?: number;
-  player_id?: number;
-  team_id?: number;
+  registration_id: number;
   points: number;
   wins: number;
   losses: number;
   draws: number;
-  games_for: number;
-  games_against: number;
-  position: number;
-  played: number;
+  games_won: number;
+  games_lost: number;
+  sets_won: number;
+  sets_lost: number;
+  rank_position?: number;
 }
 
 export interface TournamentStanding {
-  registration_id?: number;
-  player_id?: number;
-  team_id?: number;
+  registration_id: number;
   points: number;
   wins: number;
   losses: number;
   draws: number;
-  games_for: number;
-  games_against: number;
-  position: number;
-  played: number;
+  games_won: number;
+  games_lost: number;
+  sets_won: number;
+  sets_lost: number;
+  rank_position?: number;
 }
 
 export function generateKnockoutBracket(participantIds: number[]): { round: number; bracketPosition: number; player1Id?: number; player2Id?: number }[] {
@@ -170,10 +173,10 @@ export function generateRoundRobinMatches(participantIds: number[]): { round: nu
 }
 
 export function computeStandings(matches: TournamentMatch[], participantIds: number[]): TournamentStanding[] {
-  const stats = new Map<number, { points: number; wins: number; losses: number; draws: number; gf: number; ga: number; played: number }>();
+  const stats = new Map<number, { points: number; wins: number; losses: number; draws: number; games_won: number; games_lost: number }>();
 
   for (const pid of participantIds) {
-    stats.set(pid, { points: 0, wins: 0, losses: 0, draws: 0, gf: 0, ga: 0, played: 0 });
+    stats.set(pid, { points: 0, wins: 0, losses: 0, draws: 0, games_won: 0, games_lost: 0 });
   }
 
   for (const match of matches) {
@@ -186,24 +189,25 @@ export function computeStandings(matches: TournamentMatch[], participantIds: num
     if (!winner || !loser) continue;
 
     winner.wins++;
+    winner.games_won++;
     winner.points += 3;
-    winner.played++;
     loser.losses++;
-    loser.played++;
+    loser.games_lost++;
   }
 
   return Array.from(stats.entries())
-    .map(([playerId, s]) => ({
-      player_id: playerId,
+    .map(([registrationId, s]) => ({
+      registration_id: registrationId,
       points: s.points,
       wins: s.wins,
       losses: s.losses,
       draws: s.draws,
-      games_for: s.gf,
-      games_against: s.ga,
-      position: 0,
-      played: s.played,
+      games_won: s.games_won,
+      games_lost: s.games_lost,
+      sets_won: 0,
+      sets_lost: 0,
+      rank_position: 0,
     }))
-    .sort((a, b) => b.points - a.points || (b.games_for - b.games_against) - (a.games_for - a.games_against))
-    .map((s, i) => ({ ...s, position: i + 1 }));
+    .sort((a, b) => b.points - a.points || (b.games_won - b.games_lost) - (a.games_won - a.games_lost))
+    .map((s, i) => ({ ...s, rank_position: i + 1 }));
 }

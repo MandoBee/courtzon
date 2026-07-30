@@ -43,7 +43,7 @@ describe('Tournament Aggregate', () => {
         { tournament_id: 1, round: 1, player1_id: 3, player2_id: 4, winner_id: 3, status: 'completed' as const },
       ];
       const standings = computeStandings(matches as any, [1, 2, 3, 4]);
-      expect(standings[0].player_id).toBe(1);
+      expect(standings[0].registration_id).toBe(1);
       expect(standings[0].wins).toBe(1);
       expect(standings[0].points).toBe(3);
     });

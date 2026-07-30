@@ -350,3 +350,23 @@ Checks: mobile routes inside AppLayout, BottomNav z-index, notification template
 | 014 | Notification broadcasts table |
 | 015 | Enterprise platform: providers, devices, quiet hours, channel prefs, template versioning, webhooks, audit trail, A/B testing, feature flags, cleanup policies, event replay |
 | 016 | Monitoring: alerting table, client error reports, web vitals metrics |
+
+## Enterprise Table Audit Summary (July 2026)
+
+~80+ tables audited (`tournament_groups` → `workflow_steps`). 15 findings. Audit files at `audit_*.md`.
+
+### Critical Findings (6)
+| ID | Table | Issue |
+|----|-------|-------|
+| TSM-001 | `tournament_matches` | Repo INSERT/UPDATE references `court_id`, `scheduled_at`, `notes` — not in prod |
+| TSS-001 | `tournament_standings` | Repo references `player_id`, `team_id`, `games_for`, `position`, `played` — not in prod |
+| TRN-001 | `tournaments` | Repo INSERT references 7 non-existent columns (`registration_type`, `max_players`, etc.) |
+| TRN-002 | `tournaments` | Lifecycle state machine uses 8 statuses; prod ENUM has 5 |
+| UDV-001 | `user_devices` | Notification module references M015 columns (`device_id`, `push_token`) not in prod |
+| WVM-001 | `web_vitals_metrics` | BI controller SELECT uses pivoted columns (`lcp`, `cls`, `fcp`) — prod uses generic `metric_name`/`metric_value` |
+
+### Dominant Pattern
+The `tournaments/` module domain types and repository are written against M056 schema, while production was built from baseline + M062. The `activities/` module consistently uses correct column names (dual-ownership drift — SF-003). Same pattern in `user_devices` (auth module correct, notification module broken).
+
+### Framework
+Frozen framework with all addendums applied consistently. Every finding has: ID, Severity, Classification, Confidence (A-E), Evidence, Root Cause, Impact (Fact/Expected split), Recommendation.

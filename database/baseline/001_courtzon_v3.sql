@@ -3079,7 +3079,7 @@ CREATE TABLE `tournaments` (
   `currency_code` char(3) NOT NULL,
   `commission_rate` decimal(5,2) NOT NULL DEFAULT 0.00 COMMENT 'Platform commission % on entry fees',
   `prize_description` text DEFAULT NULL,
-  `status` enum('draft','open','in_progress','completed','cancelled') NOT NULL DEFAULT 'draft',
+  `status` enum('draft','open','in_progress','published','registration_open','registration_closed','running','completed','cancelled','archived') NOT NULL DEFAULT 'draft',
   `registration_opens` timestamp NULL DEFAULT NULL,
   `registration_closes` timestamp NULL DEFAULT NULL,
   `start_date` date NOT NULL,

@@ -40,7 +40,7 @@ export async function getTournamentHandler(request: FastifyRequest, reply: Fasti
 export async function createTournamentHandler(request: FastifyRequest, reply: FastifyReply) {
   const userId = getUserId(request);
   const body = CreateTournamentSchema.parse(request.body);
-  const tournament = await tournamentService.create(body);
+  const tournament = await tournamentService.create(body, userId);
   recordAudit({
     actorId: userId, action: 'TOURNAMENT.CREATE', entityType: 'tournament',
     entityId: tournament.id!, afterState: { code: body.code, name: body.name, format: body.format },

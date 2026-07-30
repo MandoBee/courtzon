@@ -1,5 +1,5 @@
 import { tournamentRepository } from '../infrastructure/repositories/tournament.repository.js';
-import { generateKnockoutBracket, generateRoundRobinMatches, computeStandings } from '../domain/tournament-aggregate.js';
+import { generateKnockoutBracket, generateRoundRobinMatches } from '../domain/tournament-aggregate.js';
 import type { Tournament, TournamentRegistration } from '../domain/tournament-aggregate.js';
 import { validateTournamentTransition, validateRegistrationTransition } from '../domain/lifecycle.js';
 import { NotFoundError, ConflictError } from '../../../shared/errors/app-error.js';
@@ -8,10 +8,12 @@ import { eventBusV2 } from '../../../shared/event-bus/event-bus.v2.js';
 import { recordAudit } from '../../audit-log/index.js';
 
 export class TournamentService {
-  async create(data: Partial<Tournament>): Promise<Tournament> {
-    const existing = await tournamentRepository.findByCode(data.code!);
-    if (existing) throw new ConflictError('Tournament code already exists', ErrorCodes.ACADEMY_PROGRAM_CODE_EXISTS);
-    const id = await tournamentRepository.create(data);
+  async create(data: Partial<Tournament>, creatorId: number): Promise<Tournament> {
+    if (data.code) {
+      const existing = await tournamentRepository.findByCode(data.code);
+      if (existing) throw new ConflictError('Tournament code already exists', ErrorCodes.ACADEMY_PROGRAM_CODE_EXISTS);
+    }
+    const id = await tournamentRepository.create({ ...data, creator_id: creatorId });
     const tournament = await tournamentRepository.findById(id);
     eventBusV2.emit('tournament.created', { tournamentId: id, name: data.name, format: data.format } as Record<string, unknown>, {
       aggregateType: 'tournament', aggregateId: String(id), aggregateVersion: 1,
@@ -75,7 +77,7 @@ export class TournamentService {
       throw new ConflictError('Already registered in this tournament', ErrorCodes.ACADEMY_ENROLLMENT_EXISTS);
     }
 
-    const cap = t.max_players || 0;
+    const cap = t.max_participants || 0;
     const confirmedCount = existing.filter((r) => r.status === 'confirmed').length;
     const isFull = cap > 0 && confirmedCount >= cap;
 
@@ -120,7 +122,7 @@ export class TournamentService {
       .filter((r) => r.status === 'waiting')
       .sort((a, b) => (a.waiting_order || 0) - (b.waiting_order || 0));
     const t = await this.getById(reg.tournament_id);
-    const cap = t.max_players || 0;
+    const cap = t.max_participants || 0;
     const confirmed = await tournamentRepository.getConfirmedCount(reg.tournament_id);
     if (waiting.length > 0 && confirmed < cap) {
       await tournamentRepository.updateRegistrationStatus(waiting[0].id!, 'confirmed');

@@ -48,18 +48,20 @@ export class TournamentRepository {
   }
 
   async create(data: Partial<Tournament>): Promise<number> {
-    const sql = `INSERT INTO tournaments (code, name, description, format, sport_id, organisation_id, branch_id, category, season, status, registration_type, max_players, max_teams, current_players, current_teams, registration_fee, price_type, currency, is_public, registration_open_at, registration_close_at, start_date, end_date, match_duration_minutes, rules, prize_description, metadata)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+    const sql = `INSERT INTO tournaments (public_id, creator_id, organisation_id, branch_id, bracket_type_id, format, category, season, sport_id, name, code, description, tournament_type, max_participants, max_teams, min_participants, entry_fee, registration_fee, currency_code, price_type, commission_rate, prize_description, status, is_public, registration_opens, registration_closes, start_date, end_date, rules, is_featured, image_url)
+                 VALUES (UUID(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
     const [result] = await getPool().query<ResultSet>(sql, [
-      data.code, data.name, data.description ?? null, data.format, data.sport_id,
-      data.organisation_id ?? null, data.branch_id ?? null, data.category ?? null, data.season ?? null,
-      data.status ?? 'draft', data.registration_type ?? 'public',
-      data.max_players ?? null, data.max_teams ?? null, data.current_players ?? 0, data.current_teams ?? 0,
-      data.registration_fee ?? null, data.price_type ?? null, data.currency ?? null,
-      data.is_public ?? true, data.registration_open_at ?? null, data.registration_close_at ?? null,
-      data.start_date ?? null, data.end_date ?? null, data.match_duration_minutes ?? null,
-      data.rules ?? null, data.prize_description ?? null,
-      data.metadata ? JSON.stringify(data.metadata) : null,
+      data.creator_id, data.organisation_id ?? null, data.branch_id ?? null,
+      data.bracket_type_id, data.format ?? null, data.category ?? null, data.season ?? null,
+      data.sport_id ?? null, data.name, data.code ?? null, data.description ?? null,
+      data.tournament_type ?? 'platform',
+      data.max_participants, data.max_teams ?? null, data.min_participants ?? 2,
+      data.entry_fee ?? 0, data.registration_fee ?? null,
+      data.currency_code, data.price_type ?? null, data.commission_rate ?? 0,
+      data.prize_description ?? null, data.status ?? 'draft',
+      data.is_public ?? true, data.registration_opens ?? null, data.registration_closes ?? null,
+      data.start_date ?? null, data.end_date ?? null, data.rules ?? null,
+      data.is_featured ?? false, data.image_url ?? null,
     ]);
     return (result as any).insertId;
   }
@@ -68,16 +70,16 @@ export class TournamentRepository {
     const fields: string[] = [];
     const params: any[] = [];
     const updatable: (keyof Tournament)[] = [
-      'code', 'name', 'description', 'format', 'sport_id', 'organisation_id', 'branch_id',
-      'category', 'season', 'status', 'registration_type', 'max_players', 'max_teams',
-      'registration_fee', 'price_type', 'currency', 'is_public',
-      'registration_open_at', 'registration_close_at', 'start_date', 'end_date',
-      'match_duration_minutes', 'rules', 'prize_description',
+      'organisation_id', 'branch_id', 'bracket_type_id', 'format', 'category', 'season',
+      'sport_id', 'name', 'code', 'description', 'tournament_type',
+      'max_participants', 'max_teams', 'min_participants', 'entry_fee', 'registration_fee',
+      'currency_code', 'price_type', 'commission_rate', 'prize_description',
+      'status', 'is_public', 'registration_opens', 'registration_closes',
+      'start_date', 'end_date', 'rules', 'is_featured', 'image_url',
     ];
     for (const f of updatable) {
       if (data[f] !== undefined) { fields.push(`${f} = ?`); params.push(data[f]); }
     }
-    if (data.metadata !== undefined) { fields.push('metadata = ?'); params.push(JSON.stringify(data.metadata)); }
     if (!fields.length) return;
     params.push(id);
     await getPool().query(
@@ -101,7 +103,7 @@ export class TournamentRepository {
 
   async findOpen(limit: number = 50): Promise<Tournament[]> {
     const [rows] = await getPool().query<RowData>(
-      `SELECT * FROM tournaments WHERE status IN ('published','registration_open') AND registration_close_at > NOW() ORDER BY start_date LIMIT ?`,
+      `SELECT * FROM tournaments WHERE status IN ('published','registration_open') AND registration_closes > NOW() ORDER BY start_date LIMIT ?`,
       [limit],
     );
     return rows as Tournament[];
@@ -170,13 +172,20 @@ export class TournamentRepository {
   // ── Matches ──
 
   async createMatch(data: Partial<TournamentMatch>): Promise<number> {
-    const sql = `INSERT INTO tournament_matches (tournament_id, round, group_id, bracket_position, player1_id, player2_id, winner_id, status, court_id, referee_id, scheduled_at, notes)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
-    const [result] = await getPool().query<ResultSet>(sql, [
-      data.tournament_id, data.round, data.group_id ?? null, data.bracket_position ?? 0,
+    const pool = getPool();
+    const [existing] = await pool.query<RowData>(
+      'SELECT COALESCE(MAX(match_number), 0) + 1 AS next_num FROM tournament_matches WHERE tournament_id = ?',
+      [data.tournament_id],
+    );
+    const matchNumber = existing[0]?.next_num ?? 1;
+    const sql = `INSERT INTO tournament_matches (tournament_id, round, match_number, round_name, group_id, bracket_position, player1_id, player2_id, winner_id, status, resource_id, referee_id, start_time, score_summary)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+    const [result] = await pool.query<ResultSet>(sql, [
+      data.tournament_id, data.round, matchNumber, data.round_name ?? null,
+      data.group_id ?? null, data.bracket_position ?? 0,
       data.player1_id ?? null, data.player2_id ?? null, data.winner_id ?? null,
-      data.status ?? 'scheduled', data.court_id ?? null, data.referee_id ?? null,
-      data.scheduled_at ?? null, data.notes ?? null,
+      data.status ?? 'scheduled', data.resource_id ?? null, data.referee_id ?? null,
+      data.start_time ?? null, data.score_summary ?? null,
     ]);
     return (result as any).insertId;
   }
@@ -206,9 +215,9 @@ export class TournamentRepository {
     const fields: string[] = [];
     const params: any[] = [];
     const updatable: (keyof TournamentMatch)[] = [
-      'round', 'group_id', 'bracket_position', 'player1_id', 'player2_id',
-      'winner_id', 'status', 'court_id', 'referee_id', 'scheduled_at',
-      'started_at', 'completed_at', 'notes',
+      'round', 'match_number', 'round_name', 'group_id', 'bracket_position',
+      'player1_id', 'player2_id', 'winner_id', 'status', 'resource_id',
+      'referee_id', 'start_time', 'end_time', 'score_summary',
     ];
     for (const f of updatable) {
       if (data[f] !== undefined) { fields.push(`${f} = ?`); params.push(data[f]); }
@@ -224,14 +233,14 @@ export class TournamentRepository {
   async updateMatchStatus(id: number, status: string, winnerId?: number): Promise<void> {
     await getPool().query(
       `UPDATE tournament_matches SET status = ?, winner_id = COALESCE(?, winner_id),
-       completed_at = IF(? IN ('completed','walkover','forfeit'), NOW(), completed_at)
+       end_time = IF(? IN ('completed','walkover','forfeit'), NOW(), end_time)
        WHERE id = ?`,
       [status, winnerId ?? null, status, id],
     );
   }
 
   async assignCourt(matchId: number, resourceId: number): Promise<void> {
-    await getPool().query('UPDATE tournament_matches SET court_id = ? WHERE id = ?', [resourceId, matchId]);
+    await getPool().query('UPDATE tournament_matches SET resource_id = ? WHERE id = ?', [resourceId, matchId]);
   }
 
   async assignReferee(matchId: number, refereeId: number): Promise<void> {
@@ -316,7 +325,7 @@ export class TournamentRepository {
     const params: any[] = [tournamentId];
     if (groupId !== undefined) { where.push('s.group_id = ?'); params.push(groupId); }
     const [rows] = await getPool().query<RowData>(
-      `SELECT s.* FROM tournament_standings s WHERE ${where.join(' AND ')} ORDER BY s.position ASC`,
+      `SELECT s.* FROM tournament_standings s WHERE ${where.join(' AND ')} ORDER BY s.rank_position ASC`,
       params,
     );
     return rows as TournamentStandingRow[];
@@ -324,15 +333,16 @@ export class TournamentRepository {
 
   async upsertStanding(data: Partial<TournamentStandingRow>): Promise<void> {
     await getPool().query(
-      `INSERT INTO tournament_standings (tournament_id, group_id, registration_id, player_id, team_id, points, wins, losses, draws, games_for, games_against, position, played)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO tournament_standings (tournament_id, group_id, registration_id, points, wins, losses, draws, games_won, games_lost, sets_won, sets_lost, rank_position)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON DUPLICATE KEY UPDATE
        points = VALUES(points), wins = VALUES(wins), losses = VALUES(losses), draws = VALUES(draws),
-       games_for = VALUES(games_for), games_against = VALUES(games_against),
-       position = VALUES(position), played = VALUES(played)`,
-      [data.tournament_id, data.group_id ?? null, data.registration_id ?? null, data.player_id ?? null,
-       data.team_id ?? null, data.points, data.wins, data.losses, data.draws,
-       data.games_for, data.games_against, data.position, data.played],
+       games_won = VALUES(games_won), games_lost = VALUES(games_lost),
+       sets_won = VALUES(sets_won), sets_lost = VALUES(sets_lost),
+       rank_position = VALUES(rank_position)`,
+      [data.tournament_id, data.group_id ?? null, data.registration_id,
+       data.points, data.wins, data.losses, data.draws,
+       data.games_won, data.games_lost, data.sets_won ?? 0, data.sets_lost ?? 0, data.rank_position ?? null],
     );
   }
 
@@ -350,33 +360,33 @@ export class TournamentRepository {
       matchParams,
     );
 
-    const stats = new Map<number, { points: number; wins: number; losses: number; draws: number; gf: number; ga: number; played: number }>();
+    const stats = new Map<number, { points: number; wins: number; losses: number; draws: number; games_won: number; games_lost: number }>();
 
     for (const m of rows) {
       const p1 = m.player1_id;
       const p2 = m.player2_id;
       if (!p1 || !p2) continue;
-      if (!stats.has(p1)) stats.set(p1, { points: 0, wins: 0, losses: 0, draws: 0, gf: 0, ga: 0, played: 0 });
-      if (!stats.has(p2)) stats.set(p2, { points: 0, wins: 0, losses: 0, draws: 0, gf: 0, ga: 0, played: 0 });
+      if (!stats.has(p1)) stats.set(p1, { points: 0, wins: 0, losses: 0, draws: 0, games_won: 0, games_lost: 0 });
+      if (!stats.has(p2)) stats.set(p2, { points: 0, wins: 0, losses: 0, draws: 0, games_won: 0, games_lost: 0 });
 
       const winner = stats.get(m.winner_id)!;
       const loser = stats.get(m.winner_id === p1 ? p2 : p1)!;
       winner.wins++;
+      winner.games_won++;
       winner.points += 3;
-      winner.played++;
       loser.losses++;
-      loser.played++;
+      loser.games_lost++;
     }
 
-    let position = 1;
+    let rank = 1;
     const sorted = [...stats.entries()].sort((a, b) => b[1].points - a[1].points);
     for (const [registrationId, s] of sorted) {
       await pool.query(
-        `INSERT INTO tournament_standings (tournament_id, group_id, registration_id, points, wins, losses, draws, games_for, games_against, position, played)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [tournamentId, groupId ?? null, registrationId, s.points, s.wins, s.losses, s.draws, s.gf, s.ga, position, s.played],
+        `INSERT INTO tournament_standings (tournament_id, group_id, registration_id, points, wins, losses, draws, games_won, games_lost, sets_won, sets_lost, rank_position)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [tournamentId, groupId ?? null, registrationId, s.points, s.wins, s.losses, s.draws, s.games_won, s.games_lost, 0, 0, rank],
       );
-      position++;
+      rank++;
     }
   }
 
