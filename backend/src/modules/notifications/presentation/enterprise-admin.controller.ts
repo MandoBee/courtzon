@@ -272,16 +272,18 @@ export async function getDevicesHandler(request: FastifyRequest, reply: FastifyR
 export async function registerDeviceHandler(request: FastifyRequest, reply: FastifyReply) {
   const userId = (request as any).userId;
   const body = request.body as any;
-  const { registerDevice } = await import('../application/device.service.js');
-  const id = await registerDevice(userId, body.deviceId, {
-    platform: body.platform,
+  const { registerDevice, savePushToken } = await import('../application/device.service.js');
+  const id = await registerDevice(userId, body.deviceFingerprint || body.deviceId, {
+    deviceName: body.deviceName,
+    deviceType: body.deviceType || body.platform,
     browser: body.browser,
     os: body.os,
     userAgent: body.userAgent,
-    pushToken: body.pushToken,
-    pushProvider: body.pushProvider,
     ipAddress: request.ip,
   });
+  if (body.pushToken) {
+    await savePushToken(userId, body.pushToken, body.platform || 'web');
+  }
   return reply.send({ success: true, id });
 }
 

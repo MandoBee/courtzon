@@ -17,9 +17,9 @@ export class PushProvider implements NotificationProvider {
       const { getPool } = await import('../../../../database/mysql.js');
       const pool = getPool();
       const [rows] = await pool.execute(
-        `SELECT push_token, push_provider FROM user_devices
-         WHERE user_id = ? AND is_active = TRUE AND push_token IS NOT NULL
-         ORDER BY last_seen_at DESC LIMIT 10`,
+        `SELECT token, platform FROM push_tokens
+         WHERE user_id = ? AND is_active = TRUE
+         ORDER BY last_used_at DESC LIMIT 10`,
         [job.userId],
       );
       const rowData = rows as any[];
@@ -59,13 +59,11 @@ export class PushProvider implements NotificationProvider {
   }
 
   private async sendToDevice(
-    device: any,
+    device: { token: string; platform: string },
     job: ProcessNotificationJob & { renderedTitle: string; renderedBody?: string },
   ): Promise<DeliveryResult> {
-    const provider = device.push_provider;
-
     const message = {
-      token: device.push_token,
+      token: device.token,
       notification: {
         title: job.renderedTitle,
         body: job.renderedBody || '',
@@ -78,18 +76,10 @@ export class PushProvider implements NotificationProvider {
       },
     };
 
-    switch (provider) {
-      case 'fcm':
-        return this.sendFCM(message);
-      case 'apns':
-        return this.sendAPNs(message);
-      case 'onesignal':
-        return this.sendOneSignal(message);
-      case 'huawei':
-        return this.sendHuawei(message);
-      default:
-        return { success: false, provider: this.slug, channel: this.channel, error: `Unknown push provider: ${provider}` };
+    if (device.platform === 'ios') {
+      return this.sendAPNs(message);
     }
+    return this.sendFCM(message);
   }
 
   private async sendFCM(message: any): Promise<DeliveryResult> {
@@ -98,13 +88,5 @@ export class PushProvider implements NotificationProvider {
 
   private async sendAPNs(message: any): Promise<DeliveryResult> {
     return { success: true, provider: this.slug, channel: this.channel, metadata: { mock: 'apns_ready' } };
-  }
-
-  private async sendOneSignal(message: any): Promise<DeliveryResult> {
-    return { success: true, provider: this.slug, channel: this.channel, metadata: { mock: 'onesignal_ready' } };
-  }
-
-  private async sendHuawei(message: any): Promise<DeliveryResult> {
-    return { success: true, provider: this.slug, channel: this.channel, metadata: { mock: 'huawei_ready' } };
   }
 }

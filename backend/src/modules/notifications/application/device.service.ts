@@ -7,61 +7,79 @@ const log = createModuleLogger('devices');
 export interface DeviceRecord {
   id: number;
   userId: number;
-  deviceId: string;
-  platform: string;
-  browser: string | null;
+  deviceFingerprint: string;
+  deviceName: string | null;
+  deviceType: string | null;
   os: string | null;
+  browser: string | null;
+  ipAddress: string;
   userAgent: string | null;
-  pushToken: string | null;
-  pushProvider: string;
-  pushTokenExpiresAt: Date | null;
-  ipAddress: string | null;
   isActive: boolean;
   lastSeenAt: Date;
+  firstSeenAt: Date;
+  createdAt: Date;
+}
+
+function mapRow(row: any): DeviceRecord {
+  return {
+    id: row.id,
+    userId: row.user_id,
+    deviceFingerprint: row.device_fingerprint,
+    deviceName: row.device_name,
+    deviceType: row.device_type,
+    os: row.os,
+    browser: row.browser,
+    ipAddress: row.ip_address,
+    userAgent: row.user_agent,
+    isActive: !!row.is_active,
+    lastSeenAt: row.last_seen_at,
+    firstSeenAt: row.first_seen_at,
+    createdAt: row.created_at,
+  };
 }
 
 export async function registerDevice(
   userId: number,
-  deviceId: string,
+  deviceFingerprint: string,
   options: {
-    platform?: string;
-    browser?: string;
+    deviceName?: string;
+    deviceType?: string;
     os?: string;
+    browser?: string;
     userAgent?: string;
-    pushToken?: string;
-    pushProvider?: string;
-    pushTokenExpiresAt?: Date;
     ipAddress?: string;
   } = {},
 ): Promise<number> {
   const pool = getPool();
   try {
+    const [existing] = await pool.execute<RowDataPacket[]>(
+      'SELECT id FROM user_devices WHERE user_id = ? AND device_fingerprint = ?',
+      [userId, deviceFingerprint],
+    );
+    if (existing.length) {
+      await pool.execute(
+        'UPDATE user_devices SET last_seen_at = NOW(), ip_address = ?, user_agent = ?, device_name = COALESCE(?, device_name), device_type = COALESCE(?, device_type), os = COALESCE(?, os), browser = COALESCE(?, browser) WHERE id = ?',
+        [
+          options.ipAddress || null, options.userAgent || null,
+          options.deviceName || null, options.deviceType || null,
+          options.os || null, options.browser || null,
+          existing[0].id,
+        ],
+      );
+      return existing[0].id;
+    }
     const [result] = await pool.execute<ResultSetHeader>(
-      `INSERT INTO user_devices
-       (user_id, device_id, platform, browser, os, user_agent, push_token, push_provider, push_token_expires_at, ip_address)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-       ON DUPLICATE KEY UPDATE
-       platform = VALUES(platform), browser = VALUES(browser), os = VALUES(os),
-       user_agent = VALUES(user_agent), push_token = COALESCE(VALUES(push_token), push_token),
-       push_provider = COALESCE(VALUES(push_provider), push_provider),
-       ip_address = COALESCE(VALUES(ip_address), ip_address),
-       last_seen_at = NOW(), is_active = TRUE`,
+      `INSERT INTO user_devices (user_id, device_fingerprint, device_name, device_type, os, browser, ip_address, user_agent)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       [
-        userId,
-        deviceId,
-        options.platform || 'unknown',
-        options.browser || null,
-        options.os || null,
-        options.userAgent || null,
-        options.pushToken || null,
-        options.pushProvider || 'none',
-        options.pushTokenExpiresAt || null,
-        options.ipAddress || null,
+        userId, deviceFingerprint, options.deviceName || null,
+        options.deviceType || null, options.os || null, options.browser || null,
+        options.ipAddress || null, options.userAgent || null,
       ],
     );
     return result.insertId;
   } catch (err: any) {
-    log.error({ err, userId, deviceId }, 'Failed to register device');
+    log.error({ err, userId, deviceFingerprint }, 'Failed to register device');
     throw err;
   }
 }
@@ -76,42 +94,70 @@ export async function getUserDevices(
   sql += ' ORDER BY last_seen_at DESC';
 
   const [rows] = await pool.execute<RowDataPacket[]>(sql, [userId]);
-  return rows as any[];
+  return (rows as any[]).map(mapRow);
 }
 
 export async function deactivateDevice(
   userId: number,
-  deviceId: string,
+  deviceFingerprint: string,
 ): Promise<void> {
   const pool = getPool();
   await pool.execute(
-    'UPDATE user_devices SET is_active = FALSE WHERE user_id = ? AND device_id = ?',
-    [userId, deviceId],
+    'UPDATE user_devices SET is_active = FALSE WHERE user_id = ? AND device_fingerprint = ?',
+    [userId, deviceFingerprint],
   );
 }
 
 export async function touchDevice(
   userId: number,
-  deviceId: string,
+  deviceFingerprint: string,
 ): Promise<void> {
   const pool = getPool();
   await pool.execute(
-    'UPDATE user_devices SET last_seen_at = NOW() WHERE user_id = ? AND device_id = ?',
-    [userId, deviceId],
+    'UPDATE user_devices SET last_seen_at = NOW() WHERE user_id = ? AND device_fingerprint = ?',
+    [userId, deviceFingerprint],
   );
 }
 
-export async function updatePushToken(
+export async function getPushTokens(userId: number): Promise<{ token: string; platform: string }[]> {
+  const pool = getPool();
+  const [rows] = await pool.execute<RowDataPacket[]>(
+    "SELECT token, platform FROM push_tokens WHERE user_id = ? AND is_active = TRUE",
+    [userId],
+  );
+  return rows as any[];
+}
+
+export async function savePushToken(
   userId: number,
-  deviceId: string,
-  pushToken: string,
-  pushProvider: string = 'fcm',
-  expiresAt?: Date,
-): Promise<void> {
+  token: string,
+  platform: 'ios' | 'android' | 'web',
+  options?: { deviceName?: string; appVersion?: string; osVersion?: string; deviceModel?: string },
+): Promise<number> {
+  const pool = getPool();
+  const [existing] = await pool.execute<RowDataPacket[]>(
+    'SELECT id FROM push_tokens WHERE user_id = ? AND token = ?',
+    [userId, token],
+  );
+  if (existing.length) {
+    await pool.execute(
+      'UPDATE push_tokens SET last_used_at = NOW(), is_active = TRUE, platform = ?, device_name = COALESCE(?, device_name), app_version = COALESCE(?, app_version), os_version = COALESCE(?, os_version), device_model = COALESCE(?, device_model) WHERE id = ?',
+      [platform, options?.deviceName || null, options?.appVersion || null, options?.osVersion || null, options?.deviceModel || null, existing[0].id],
+    );
+    return existing[0].id;
+  }
+  const [result] = await pool.execute<ResultSetHeader>(
+    `INSERT INTO push_tokens (user_id, token, platform, device_name, app_version, os_version, device_model, last_used_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`,
+    [userId, token, platform, options?.deviceName || null, options?.appVersion || null, options?.osVersion || null, options?.deviceModel || null],
+  );
+  return result.insertId;
+}
+
+export async function removePushToken(userId: number, token: string): Promise<void> {
   const pool = getPool();
   await pool.execute(
-    `UPDATE user_devices SET push_token = ?, push_provider = ?, push_token_expires_at = ?, last_seen_at = NOW()
-     WHERE user_id = ? AND device_id = ?`,
-    [pushToken, pushProvider, expiresAt || null, userId, deviceId],
+    'UPDATE push_tokens SET is_active = FALSE WHERE user_id = ? AND token = ?',
+    [userId, token],
   );
 }

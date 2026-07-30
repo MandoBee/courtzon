@@ -138,8 +138,17 @@ export function setupRealtime(app: FastifyInstance): SocketIOServer {
 
     socket.on('device:register', async (data) => {
       try {
-        const { registerDevice } = await import('../modules/notifications/application/device.service.js');
-        await registerDevice(userId, deviceId, data || {});
+        const { registerDevice, savePushToken } = await import('../modules/notifications/application/device.service.js');
+        await registerDevice(userId, deviceId, {
+          deviceType: data?.platform || data?.deviceType,
+          browser: data?.browser,
+          os: data?.os,
+          userAgent: data?.userAgent,
+          ipAddress: socket.handshake.address,
+        });
+        if (data?.pushToken) {
+          await savePushToken(userId, data.pushToken, data.platform || 'web');
+        }
       } catch {}
     });
 
