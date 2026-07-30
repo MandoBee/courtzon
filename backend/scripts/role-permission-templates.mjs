@@ -80,7 +80,7 @@ const PLAYER_PATTERNS = [
   /^profile\./,
   /^bookings\.(view|create|cancel|apply|manage-applicants)/,
   /^bookings\.create\./,
-  /^marketplace\.(view|cart|order|wishlist)/,
+  /^marketplace\.(view|cart|order|wishlist|addresses)/,
   /^marketplace\.sell$/,
   /^coaches\./,
   /^academies\.(view|enroll)/,
@@ -102,8 +102,6 @@ const PLAYER_PATTERNS = [
   /^league\.self_register/,
   /^player\.tournaments\.register/,
 ];
-
-const ORG_ADMIN_PATTERNS = [
 
 const ORG_ADMIN_PATTERNS = [
   /^org\./,
@@ -153,7 +151,7 @@ const COACH_PATTERNS = [
   /^bookings\.(view|create|cancel)/,
   /^community\.chat\./,
   /^organisations\.storefront\.view$/,
-  /^marketplace\.view$/,
+  /^marketplace\.(view|cart|order|wishlist|addresses)/,
   /^referee\./,
 ];
 

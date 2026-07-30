@@ -1,87 +1,81 @@
 import type { FastifyInstance } from 'fastify';
-import { authMiddleware } from '../../../shared/middleware/auth.middleware.js';
+import { authMiddleware, requirePermission } from '../../../shared/middleware/auth.middleware.js';
 import * as ctrl from './notification.controller.js';
 import * as broadcastCtrl from './admin-broadcast.controller.js';
 import * as enterpriseCtrl from './enterprise-admin.controller.js';
 import * as monitoringCtrl from './monitoring.controller.js';
 
 export async function notificationRoutes(app: FastifyInstance): Promise<void> {
-  app.addHook('preHandler', authMiddleware);
-
-  app.get('/notifications', ctrl.getNotificationsHandler);
-  app.get('/notifications/unread-count', ctrl.getUnreadCountHandler);
-  app.get('/notifications/filters', ctrl.getFiltersHandler);
-  app.put('/notifications/:id/read', ctrl.markAsReadHandler);
-  app.put('/notifications/read-all', ctrl.markAllAsReadHandler);
-  app.put('/notifications/:id/archive', ctrl.archiveHandler);
-  app.put('/notifications/archive-all', ctrl.archiveAllHandler);
-  app.delete('/notifications/:id', ctrl.deleteHandler);
-
-  app.get('/notification-preferences', ctrl.getNotificationPreferencesHandler);
-  app.put('/notification-preferences', ctrl.updateNotificationPreferencesHandler);
-
-  app.get('/notifications/reconnect-queue', ctrl.reconnectQueueHandler);
-  app.post('/notifications/track', ctrl.trackEventHandler);
-
-  // Admin broadcast
-  app.post('/admin/notifications/broadcast', broadcastCtrl.broadcastHandler);
-  app.get('/admin/notifications/broadcasts', broadcastCtrl.getBroadcastsHandler);
-  app.put('/admin/notifications/broadcasts/:id/cancel', broadcastCtrl.cancelBroadcastHandler);
-
-  // Analytics
-  app.get('/admin/notifications/analytics', broadcastCtrl.analyticsHandler);
-  app.get('/admin/notifications/dead-letters', broadcastCtrl.deadLettersHandler);
-  app.put('/admin/notifications/dead-letters/:id/resolve', broadcastCtrl.resolveDeadLetterHandler);
-  app.get('/admin/notifications/presence', broadcastCtrl.presenceHandler);
-
-  // Feature flags
-  app.get('/admin/notifications/feature-flags', enterpriseCtrl.getFeatureFlagsHandler);
-  app.put('/admin/notifications/feature-flags', enterpriseCtrl.setFeatureFlagHandler);
-
-  // A/B tests
-  app.get('/admin/notifications/ab-tests', enterpriseCtrl.getAbTestsHandler);
-  app.post('/admin/notifications/ab-tests', enterpriseCtrl.createAbTestHandler);
-  app.put('/admin/notifications/ab-tests/:id', enterpriseCtrl.toggleAbTestHandler);
-  app.get('/admin/notifications/ab-tests/:id/results', enterpriseCtrl.getAbTestResultsHandler);
-
-  // Cleanup policies
-  app.get('/admin/notifications/cleanup', enterpriseCtrl.getCleanupPoliciesHandler);
-  app.put('/admin/notifications/cleanup', enterpriseCtrl.updateCleanupPolicyHandler);
-  app.post('/admin/notifications/cleanup/run', enterpriseCtrl.runCleanupHandler);
-
-  // Event replay
-  app.get('/admin/notifications/replay-logs', enterpriseCtrl.getReplayLogsHandler);
-  app.post('/admin/notifications/replay', enterpriseCtrl.replayEventHandler);
-
-  // Template management
-  app.get('/admin/notifications/templates', enterpriseCtrl.getTemplatesHandler);
-  app.put('/admin/notifications/templates/:id', enterpriseCtrl.updateTemplateHandler);
-  app.get('/admin/notifications/templates/:id/versions', enterpriseCtrl.getTemplateVersionsHandler);
-  app.post('/admin/notifications/templates/:id/rollback', enterpriseCtrl.rollbackTemplateHandler);
-
-  // Webhook management
-  app.get('/admin/notifications/webhooks', enterpriseCtrl.getWebhooksHandler);
-  app.post('/admin/notifications/webhooks', enterpriseCtrl.createWebhookHandler);
-  app.put('/admin/notifications/webhooks/:id', enterpriseCtrl.updateWebhookHandler);
-  app.delete('/admin/notifications/webhooks/:id', enterpriseCtrl.deleteWebhookHandler);
-
-  // Channel preferences
-  app.get('/notifications/channel-preferences', enterpriseCtrl.getChannelPreferencesHandler);
-  app.put('/notifications/channel-preferences', enterpriseCtrl.updateChannelPreferencesHandler);
-
-  // Quiet hours
-  app.get('/notifications/quiet-hours', enterpriseCtrl.getQuietHoursHandler);
-  app.post('/notifications/quiet-hours', enterpriseCtrl.upsertQuietHoursHandler);
-  app.delete('/notifications/quiet-hours/:id', enterpriseCtrl.deleteQuietHoursHandler);
-
-  // Devices
-  app.get('/notifications/devices', enterpriseCtrl.getDevicesHandler);
-  app.post('/notifications/devices', enterpriseCtrl.registerDeviceHandler);
-
-  // Audit trail
-  app.get('/admin/notifications/audit-trail', enterpriseCtrl.getAuditTrailHandler);
-
-  // Client error reporting & web vitals
+  // Public routes (no auth required)
   app.post('/client/errors', monitoringCtrl.reportClientError);
   app.post('/client/web-vitals', monitoringCtrl.reportWebVitals);
+
+  // Authenticated routes
+  await app.register(async function authenticatedScope(scopedApp: FastifyInstance) {
+    scopedApp.addHook('preHandler', authMiddleware);
+
+    // User-facing notification routes (auth-only, self-service)
+    scopedApp.get('/notifications', ctrl.getNotificationsHandler);
+    scopedApp.get('/notifications/unread-count', ctrl.getUnreadCountHandler);
+    scopedApp.get('/notifications/filters', ctrl.getFiltersHandler);
+    scopedApp.put('/notifications/:id/read', ctrl.markAsReadHandler);
+    scopedApp.put('/notifications/read-all', ctrl.markAllAsReadHandler);
+    scopedApp.put('/notifications/:id/archive', ctrl.archiveHandler);
+    scopedApp.put('/notifications/archive-all', ctrl.archiveAllHandler);
+    scopedApp.delete('/notifications/:id', ctrl.deleteHandler);
+
+    scopedApp.get('/notification-preferences', ctrl.getNotificationPreferencesHandler);
+    scopedApp.put('/notification-preferences', ctrl.updateNotificationPreferencesHandler);
+
+    scopedApp.get('/notifications/reconnect-queue', ctrl.reconnectQueueHandler);
+    scopedApp.post('/notifications/track', ctrl.trackEventHandler);
+
+    // Admin notification routes with permission guards
+    scopedApp.post('/admin/notifications/broadcast', { preHandler: [requirePermission(['notifications.broadcast'])] }, broadcastCtrl.broadcastHandler);
+    scopedApp.get('/admin/notifications/broadcasts', { preHandler: [requirePermission(['notifications.broadcast'])] }, broadcastCtrl.getBroadcastsHandler);
+    scopedApp.put('/admin/notifications/broadcasts/:id/cancel', { preHandler: [requirePermission(['notifications.broadcast'])] }, broadcastCtrl.cancelBroadcastHandler);
+
+    scopedApp.get('/admin/notifications/analytics', { preHandler: [requirePermission(['notifications.analytics'])] }, broadcastCtrl.analyticsHandler);
+    scopedApp.get('/admin/notifications/dead-letters', { preHandler: [requirePermission(['notifications.dead-letters'])] }, broadcastCtrl.deadLettersHandler);
+    scopedApp.put('/admin/notifications/dead-letters/:id/resolve', { preHandler: [requirePermission(['notifications.dead-letters'])] }, broadcastCtrl.resolveDeadLetterHandler);
+    scopedApp.get('/admin/notifications/presence', { preHandler: [requirePermission(['notifications.presence'])] }, broadcastCtrl.presenceHandler);
+
+    scopedApp.get('/admin/notifications/feature-flags', { preHandler: [requirePermission(['notifications.feature-flags.manage'])] }, enterpriseCtrl.getFeatureFlagsHandler);
+    scopedApp.put('/admin/notifications/feature-flags', { preHandler: [requirePermission(['notifications.feature-flags.manage'])] }, enterpriseCtrl.setFeatureFlagHandler);
+
+    scopedApp.get('/admin/notifications/ab-tests', { preHandler: [requirePermission(['notifications.ab-tests.manage'])] }, enterpriseCtrl.getAbTestsHandler);
+    scopedApp.post('/admin/notifications/ab-tests', { preHandler: [requirePermission(['notifications.ab-tests.manage'])] }, enterpriseCtrl.createAbTestHandler);
+    scopedApp.put('/admin/notifications/ab-tests/:id', { preHandler: [requirePermission(['notifications.ab-tests.manage'])] }, enterpriseCtrl.toggleAbTestHandler);
+    scopedApp.get('/admin/notifications/ab-tests/:id/results', { preHandler: [requirePermission(['notifications.ab-tests.manage'])] }, enterpriseCtrl.getAbTestResultsHandler);
+
+    scopedApp.get('/admin/notifications/cleanup', { preHandler: [requirePermission(['notifications.cleanup.manage'])] }, enterpriseCtrl.getCleanupPoliciesHandler);
+    scopedApp.put('/admin/notifications/cleanup', { preHandler: [requirePermission(['notifications.cleanup.manage'])] }, enterpriseCtrl.updateCleanupPolicyHandler);
+    scopedApp.post('/admin/notifications/cleanup/run', { preHandler: [requirePermission(['notifications.cleanup.manage'])] }, enterpriseCtrl.runCleanupHandler);
+
+    scopedApp.get('/admin/notifications/replay-logs', { preHandler: [requirePermission(['notifications.replay.manage'])] }, enterpriseCtrl.getReplayLogsHandler);
+    scopedApp.post('/admin/notifications/replay', { preHandler: [requirePermission(['notifications.replay.manage'])] }, enterpriseCtrl.replayEventHandler);
+
+    scopedApp.get('/admin/notifications/templates', { preHandler: [requirePermission(['notifications.templates'])] }, enterpriseCtrl.getTemplatesHandler);
+    scopedApp.put('/admin/notifications/templates/:id', { preHandler: [requirePermission(['notifications.templates'])] }, enterpriseCtrl.updateTemplateHandler);
+    scopedApp.get('/admin/notifications/templates/:id/versions', { preHandler: [requirePermission(['notifications.templates'])] }, enterpriseCtrl.getTemplateVersionsHandler);
+    scopedApp.post('/admin/notifications/templates/:id/rollback', { preHandler: [requirePermission(['notifications.templates'])] }, enterpriseCtrl.rollbackTemplateHandler);
+
+    scopedApp.get('/admin/notifications/webhooks', { preHandler: [requirePermission(['notifications.webhooks.manage'])] }, enterpriseCtrl.getWebhooksHandler);
+    scopedApp.post('/admin/notifications/webhooks', { preHandler: [requirePermission(['notifications.webhooks.manage'])] }, enterpriseCtrl.createWebhookHandler);
+    scopedApp.put('/admin/notifications/webhooks/:id', { preHandler: [requirePermission(['notifications.webhooks.manage'])] }, enterpriseCtrl.updateWebhookHandler);
+    scopedApp.delete('/admin/notifications/webhooks/:id', { preHandler: [requirePermission(['notifications.webhooks.manage'])] }, enterpriseCtrl.deleteWebhookHandler);
+
+    scopedApp.get('/admin/notifications/audit-trail', { preHandler: [requirePermission(['notifications.audit.view'])] }, enterpriseCtrl.getAuditTrailHandler);
+
+    // User-facing self-service routes (auth-only, no additional permission needed)
+    scopedApp.get('/notifications/channel-preferences', enterpriseCtrl.getChannelPreferencesHandler);
+    scopedApp.put('/notifications/channel-preferences', enterpriseCtrl.updateChannelPreferencesHandler);
+
+    scopedApp.get('/notifications/quiet-hours', enterpriseCtrl.getQuietHoursHandler);
+    scopedApp.post('/notifications/quiet-hours', enterpriseCtrl.upsertQuietHoursHandler);
+    scopedApp.delete('/notifications/quiet-hours/:id', enterpriseCtrl.deleteQuietHoursHandler);
+
+    scopedApp.get('/notifications/devices', enterpriseCtrl.getDevicesHandler);
+    scopedApp.post('/notifications/devices', enterpriseCtrl.registerDeviceHandler);
+  });
 }

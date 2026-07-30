@@ -211,6 +211,8 @@ export const uiRegistry: UIElement[] = [
   { permissionKey: 'marketplace.view', moduleSlug: 'marketplace', elementType: 'page', elementLabel: 'Marketplace Page', componentPath: 'pages/marketplace/MarketplacePage.tsx' },
   { permissionKey: 'marketplace.order.view', moduleSlug: 'marketplace', elementType: 'page', elementLabel: 'Orders Page', componentPath: 'pages/marketplace/OrderListPage.tsx' },
   { permissionKey: 'marketplace.cart.view', moduleSlug: 'marketplace', elementType: 'page', elementLabel: 'Cart Page', componentPath: 'pages/marketplace/CartPage.tsx' },
+  { permissionKey: 'marketplace.wishlist.view', moduleSlug: 'marketplace', elementType: 'page', elementLabel: 'Wishlist Page', componentPath: 'pages/marketplace/WishlistPage.tsx' },
+  { permissionKey: 'marketplace.addresses.manage', moduleSlug: 'marketplace', elementType: 'action', elementLabel: 'Manage Addresses', componentPath: 'modules/marketplace/presentation/marketplace.routes.ts' },
   { permissionKey: 'marketplace.seller.view', moduleSlug: 'marketplace', elementType: 'page', elementLabel: 'Seller Dashboard', componentPath: 'pages/marketplace/SellerDashboardPage.tsx' },
 
   // ==========================================================================
@@ -802,6 +804,13 @@ export const uiRegistry: UIElement[] = [
   { permissionKey: 'notification_types.update', moduleSlug: 'notifications', elementType: 'action', elementLabel: 'Update Notification Type', componentPath: 'modules/notifications/presentation/notification-type.routes.ts' },
   { permissionKey: 'notification_types.delete', moduleSlug: 'notifications', elementType: 'action', elementLabel: 'Delete Notification Type', componentPath: 'modules/notifications/presentation/notification-type.routes.ts' },
   { permissionKey: 'sidebar.notifications', moduleSlug: 'notifications', elementType: 'tab', elementLabel: 'Sidebar: Notifications', componentPath: 'components/layout/AdminSidebar.tsx' },
+  { permissionKey: 'notifications.feature-flags.manage', moduleSlug: 'notifications', elementType: 'action', elementLabel: 'Manage Notification Feature Flags', componentPath: 'modules/notifications/presentation/notification.routes.ts' },
+  { permissionKey: 'notifications.ab-tests.manage', moduleSlug: 'notifications', elementType: 'action', elementLabel: 'Manage Notification A/B Tests', componentPath: 'modules/notifications/presentation/notification.routes.ts' },
+  { permissionKey: 'notifications.cleanup.manage', moduleSlug: 'notifications', elementType: 'action', elementLabel: 'Manage Notification Cleanup Policies', componentPath: 'modules/notifications/presentation/notification.routes.ts' },
+  { permissionKey: 'notifications.replay.manage', moduleSlug: 'notifications', elementType: 'action', elementLabel: 'Manage Notification Event Replay', componentPath: 'modules/notifications/presentation/notification.routes.ts' },
+  { permissionKey: 'notifications.webhooks.manage', moduleSlug: 'notifications', elementType: 'action', elementLabel: 'Manage Notification Webhooks', componentPath: 'modules/notifications/presentation/notification.routes.ts' },
+  { permissionKey: 'notifications.audit.view', moduleSlug: 'notifications', elementType: 'action', elementLabel: 'View Notification Audit Trail', componentPath: 'modules/notifications/presentation/notification.routes.ts' },
+  { permissionKey: 'notifications.presence', moduleSlug: 'notifications', elementType: 'action', elementLabel: 'View Notification Presence', componentPath: 'modules/notifications/presentation/notification.routes.ts' },
   { permissionKey: 'bookings.apply', moduleSlug: 'bookings', elementType: 'button', elementLabel: 'Apply to Match', componentPath: 'pages/booking/MatchListPage.tsx' },
 
   // Membership sidebar
@@ -834,6 +843,8 @@ export const uiRegistry: UIElement[] = [
   { permissionKey: 'profile.settings.theme', moduleSlug: 'users', elementType: 'field', elementLabel: 'Settings Theme Field', componentPath: 'pages/profile/ProfilePage.tsx' },
   { permissionKey: 'profile.settings.visibility', moduleSlug: 'users', elementType: 'field', elementLabel: 'Settings Profile Visibility Toggle', componentPath: 'pages/profile/ProfilePage.tsx' },
   { permissionKey: 'profile.settings.notifications', moduleSlug: 'users', elementType: 'section', elementLabel: 'Settings Notifications Section', componentPath: 'pages/profile/ProfilePage.tsx' },
+  { permissionKey: 'profile.edit', moduleSlug: 'users', elementType: 'action', elementLabel: 'Edit Profile', componentPath: 'modules/auth/presentation/auth.routes.ts' },
+  { permissionKey: 'profile.welcome-seen', moduleSlug: 'users', elementType: 'action', elementLabel: 'Mark Welcome Tour Seen', componentPath: 'modules/auth/presentation/auth.routes.ts' },
 
   // Shipping rates
 

@@ -11,11 +11,30 @@ export async function createBookingHandler(request: FastifyRequest, reply: Fasti
   if (body?.prepareId) {
     const validated = ConfirmBookingSchema.parse(body);
     const result = await bookingService.confirmBookingFromPrepare(validated, userId);
+    recordAudit({
+      actorId: userId ?? null,
+      action: 'BOOKING.CREATE',
+      entityType: 'booking',
+      entityId: result.id,
+      afterState: { prepareId: body.prepareId },
+      ipAddress: request.ip,
+      userAgent: request.headers['user-agent'],
+    });
     return reply.status(201).send(result);
   }
 
   const validated = CreateBookingSchema.parse(body);
   const result = await bookingService.createBooking(validated, userId);
+
+  recordAudit({
+    actorId: userId ?? null,
+    action: 'BOOKING.CREATE',
+    entityType: 'booking',
+    entityId: result.id,
+    afterState: { resourceId: body.resourceId, date: body.date },
+    ipAddress: request.ip,
+    userAgent: request.headers['user-agent'],
+  });
 
   return reply.status(201).send(result);
 }
@@ -25,6 +44,16 @@ export async function prepareBookingHandler(request: FastifyRequest, reply: Fast
   const userId = (request as any).userId;
   const result = await bookingService.prepareGatewayBooking(body, userId);
 
+  recordAudit({
+    actorId: userId ?? null,
+    action: 'BOOKING.PREPARE',
+    entityType: 'booking_prepare',
+    entityId: result.prepareId,
+    afterState: { resourceId: body.resourceId },
+    ipAddress: request.ip,
+    userAgent: request.headers['user-agent'],
+  });
+
   return reply.send(result);
 }
 
@@ -32,6 +61,15 @@ export async function cancelPrepareHandler(request: FastifyRequest, reply: Fasti
   const { prepareId } = request.params as any;
   const userId = (request as any).userId;
   await bookingService.cancelPrepare(prepareId, userId);
+
+  recordAudit({
+    actorId: userId ?? null,
+    action: 'BOOKING.CANCEL_PREPARE',
+    entityType: 'booking_prepare',
+    entityId: Number(prepareId),
+    ipAddress: request.ip,
+    userAgent: request.headers['user-agent'],
+  });
 
   return reply.send({ success: true });
 }

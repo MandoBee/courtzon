@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { registerHandler, registerPlayerHandler, registerSellerHandler, registerOrganizationHandler, loginHandler, refreshHandler, logoutHandler, meHandler, updateProfileHandler, forgotPasswordHandler, resetPasswordHandler, checkUniquenessHandler, welcomeSeenHandler, getMyPlayerProfileHandler, requestReactivationHandler, temporaryVerifyEmailHandler, temporaryResetPasswordHandler, errorHandler } from './auth.controller.js';
-import { authMiddleware } from '../../../shared/middleware/auth.middleware.js';
+import { authMiddleware, requirePermission } from '../../../shared/middleware/auth.middleware.js';
 import type { FastifyRequest, FastifyReply } from 'fastify';
 
 export async function authRoutes(app: FastifyInstance, opts: { requireFeatureFlag: (key: string) => (req: FastifyRequest, reply: FastifyReply) => Promise<void> }): Promise<void> {
@@ -13,9 +13,9 @@ export async function authRoutes(app: FastifyInstance, opts: { requireFeatureFla
   app.post('/auth/refresh', { errorHandler }, refreshHandler);
   app.post('/auth/logout', { errorHandler }, logoutHandler);
   app.get('/auth/me', { errorHandler }, meHandler);
-  app.patch('/auth/profile', { preHandler: [authMiddleware], errorHandler }, updateProfileHandler);
-  app.patch('/my/welcome-seen', { preHandler: [authMiddleware], errorHandler }, welcomeSeenHandler);
-  app.get('/my/player-profile', { preHandler: [authMiddleware], errorHandler }, getMyPlayerProfileHandler);
+  app.patch('/auth/profile', { preHandler: [authMiddleware, requirePermission(['profile.edit'])], errorHandler }, updateProfileHandler);
+  app.patch('/my/welcome-seen', { preHandler: [authMiddleware, requirePermission(['profile.welcome-seen'])], errorHandler }, welcomeSeenHandler);
+  app.get('/my/player-profile', { preHandler: [authMiddleware, requirePermission(['player.profile.view'])], errorHandler }, getMyPlayerProfileHandler);
   app.post('/auth/request-reactivation', { errorHandler }, requestReactivationHandler);
   app.post('/auth/forgot-password', { errorHandler }, forgotPasswordHandler);
   app.post('/auth/reset-password', { errorHandler }, resetPasswordHandler);
