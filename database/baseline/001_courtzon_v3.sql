@@ -2994,6 +2994,37 @@ CREATE TABLE `tournament_bracket_types` (
   UNIQUE KEY `slug` (`slug`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
+DROP TABLE IF EXISTS `tournament_participants`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `tournament_participants` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `tournament_id` int unsigned NOT NULL,
+  `user_id` int unsigned DEFAULT NULL,
+  `team_name` varchar(255) DEFAULT NULL,
+  `seed` int NOT NULL DEFAULT '0',
+  `status` enum('registered','approved','rejected','checked_in') NOT NULL DEFAULT 'registered',
+  `registered_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_tp_tournament` (`tournament_id`),
+  KEY `idx_tp_user` (`user_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+DROP TABLE IF EXISTS `elo_ratings`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `elo_ratings` (
+  `user_id` int unsigned NOT NULL,
+  `sport_id` int unsigned NOT NULL,
+  `rating` int NOT NULL DEFAULT '1200',
+  `matches_played` int NOT NULL DEFAULT '0',
+  `k_factor` int NOT NULL DEFAULT '32',
+  `last_match_at` timestamp NULL DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`user_id`,`sport_id`),
+  KEY `idx_elo_rating` (`sport_id`,`rating` DESC)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
 DROP TABLE IF EXISTS `tournament_match_scores`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8 */;
@@ -3016,11 +3047,15 @@ DROP TABLE IF EXISTS `tournament_matches`;
 CREATE TABLE `tournament_matches` (
   `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
   `tournament_id` int(10) unsigned NOT NULL,
+  `group_id` int(10) unsigned DEFAULT NULL,
   `round` int(10) unsigned NOT NULL,
+  `round_name` varchar(100) DEFAULT NULL,
   `match_number` int(10) unsigned NOT NULL,
+  `bracket_position` int(10) unsigned DEFAULT NULL,
   `player1_id` int(10) unsigned DEFAULT NULL,
   `player2_id` int(10) unsigned DEFAULT NULL,
   `resource_id` int(10) unsigned DEFAULT NULL COMMENT 'Linked resource allocation',
+  `referee_id` int(10) unsigned DEFAULT NULL,
   `start_time` datetime DEFAULT NULL,
   `end_time` datetime DEFAULT NULL,
   `status` enum('scheduled','in_progress','completed','walkover','cancelled') NOT NULL DEFAULT 'scheduled',
@@ -3030,10 +3065,13 @@ CREATE TABLE `tournament_matches` (
   `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
   PRIMARY KEY (`id`),
   KEY `idx_tournament` (`tournament_id`),
+  KEY `idx_group` (`group_id`),
   KEY `idx_player1` (`player1_id`),
   KEY `idx_player2` (`player2_id`),
   KEY `idx_status` (`status`),
   KEY `fk_match_resource` (`resource_id`),
+  KEY `idx_referee` (`referee_id`),
+  KEY `idx_bracket` (`bracket_position`),
   CONSTRAINT `fk_match_player1` FOREIGN KEY (`player1_id`) REFERENCES `users` (`id`) ON DELETE SET NULL,
   CONSTRAINT `fk_match_player2` FOREIGN KEY (`player2_id`) REFERENCES `users` (`id`) ON DELETE SET NULL,
   CONSTRAINT `fk_match_resource` FOREIGN KEY (`resource_id`) REFERENCES `resources` (`id`) ON DELETE SET NULL,
@@ -3047,14 +3085,19 @@ CREATE TABLE `tournament_registrations` (
   `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
   `tournament_id` int(10) unsigned NOT NULL,
   `player_id` int(10) unsigned NOT NULL,
+  `team_id` int(10) unsigned DEFAULT NULL,
   `seed_rank` int(10) unsigned DEFAULT NULL,
+  `waiting_order` int(10) unsigned DEFAULT NULL,
   `payment_status` enum('unpaid','paid','refunded') NOT NULL DEFAULT 'unpaid',
   `status` enum('registered','confirmed','withdrawn','disqualified') NOT NULL DEFAULT 'registered',
   `registered_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `cancelled_at` timestamp NULL DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_player_tourn` (`tournament_id`,`player_id`),
   KEY `idx_tournament` (`tournament_id`),
   KEY `idx_player` (`player_id`),
+  KEY `idx_team` (`team_id`),
+  KEY `idx_waiting_order` (`waiting_order`),
   CONSTRAINT `fk_reg_player` FOREIGN KEY (`player_id`) REFERENCES `users` (`id`) ON DELETE CASCADE,
   CONSTRAINT `fk_reg_tourn` FOREIGN KEY (`tournament_id`) REFERENCES `tournaments` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -3071,15 +3114,23 @@ CREATE TABLE `tournaments` (
   `bracket_type_id` int(10) unsigned NOT NULL,
   `sport_id` int(10) unsigned DEFAULT NULL,
   `name` varchar(255) NOT NULL,
+  `code` varchar(50) DEFAULT NULL,
   `description` text DEFAULT NULL,
   `tournament_type` enum('platform','community') NOT NULL DEFAULT 'platform',
+  `format` varchar(50) DEFAULT NULL,
+  `category` varchar(100) DEFAULT NULL,
+  `season` varchar(100) DEFAULT NULL,
   `max_participants` int(10) unsigned NOT NULL,
+  `max_teams` int(10) unsigned DEFAULT NULL,
   `min_participants` int(10) unsigned NOT NULL DEFAULT 2,
   `entry_fee` decimal(12,2) NOT NULL DEFAULT 0.00,
+  `registration_fee` decimal(12,2) NOT NULL DEFAULT 0.00,
   `currency_code` char(3) NOT NULL,
+  `price_type` enum('FREE','FIXED','MEMBERS_ONLY') NOT NULL DEFAULT 'FIXED',
   `commission_rate` decimal(5,2) NOT NULL DEFAULT 0.00 COMMENT 'Platform commission % on entry fees',
   `prize_description` text DEFAULT NULL,
   `status` enum('draft','open','in_progress','published','registration_open','registration_closed','running','completed','cancelled','archived') NOT NULL DEFAULT 'draft',
+  `is_public` tinyint(1) NOT NULL DEFAULT 1,
   `registration_opens` timestamp NULL DEFAULT NULL,
   `registration_closes` timestamp NULL DEFAULT NULL,
   `start_date` date NOT NULL,
@@ -3090,13 +3141,18 @@ CREATE TABLE `tournaments` (
   `deleted_at` timestamp NULL DEFAULT NULL,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
   `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  `archived_at` timestamp NULL DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `public_id` (`public_id`),
+  UNIQUE KEY `uk_code` (`code`),
   KEY `idx_creator` (`creator_id`),
   KEY `idx_org` (`organisation_id`),
   KEY `idx_sport` (`sport_id`),
   KEY `idx_status` (`status`),
   KEY `idx_dates` (`start_date`,`end_date`),
+  KEY `idx_format` (`format`),
+  KEY `idx_category` (`category`),
+  KEY `idx_is_public` (`is_public`),
   KEY `fk_tourn_branch` (`branch_id`),
   KEY `fk_tourn_bracket` (`bracket_type_id`),
   CONSTRAINT `fk_tourn_bracket` FOREIGN KEY (`bracket_type_id`) REFERENCES `tournament_bracket_types` (`id`),
@@ -3104,6 +3160,103 @@ CREATE TABLE `tournaments` (
   CONSTRAINT `fk_tourn_creator` FOREIGN KEY (`creator_id`) REFERENCES `users` (`id`),
   CONSTRAINT `fk_tourn_org` FOREIGN KEY (`organisation_id`) REFERENCES `organisations` (`id`) ON DELETE SET NULL,
   CONSTRAINT `fk_tourn_sport` FOREIGN KEY (`sport_id`) REFERENCES `sports` (`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+DROP TABLE IF EXISTS `tournament_groups`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `tournament_groups` (
+  `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
+  `tournament_id` int(10) unsigned NOT NULL,
+  `name` varchar(200) NOT NULL,
+  `size` int(10) unsigned NOT NULL DEFAULT 0 COMMENT 'Number of players/teams in group',
+  `advance_count` int(10) unsigned NOT NULL DEFAULT 0 COMMENT 'How many advance from this group',
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  KEY `idx_tournament` (`tournament_id`),
+  CONSTRAINT `fk_tgroup_tourn` FOREIGN KEY (`tournament_id`) REFERENCES `tournaments` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+DROP TABLE IF EXISTS `tournament_group_members`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `tournament_group_members` (
+  `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
+  `group_id` int(10) unsigned NOT NULL,
+  `registration_id` int(10) unsigned NOT NULL,
+  `seed` int(10) unsigned DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_group_reg` (`group_id`,`registration_id`),
+  KEY `idx_registration` (`registration_id`),
+  CONSTRAINT `fk_tgm_group` FOREIGN KEY (`group_id`) REFERENCES `tournament_groups` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_tgm_reg` FOREIGN KEY (`registration_id`) REFERENCES `tournament_registrations` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+DROP TABLE IF EXISTS `tournament_match_players`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `tournament_match_players` (
+  `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
+  `match_id` int(10) unsigned NOT NULL,
+  `player_id` int(10) unsigned NOT NULL,
+  `side` enum('home','away') NOT NULL DEFAULT 'home',
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  KEY `idx_match` (`match_id`),
+  KEY `idx_player` (`player_id`),
+  CONSTRAINT `fk_tmp_match` FOREIGN KEY (`match_id`) REFERENCES `tournament_matches` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_tmp_player` FOREIGN KEY (`player_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+DROP TABLE IF EXISTS `tournament_match_results`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `tournament_match_results` (
+  `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
+  `match_id` int(10) unsigned NOT NULL,
+  `winner_id` int(10) unsigned DEFAULT NULL COMMENT 'NULL = draw',
+  `home_score` text DEFAULT NULL COMMENT 'Flexible JSON score for home side',
+  `away_score` text DEFAULT NULL COMMENT 'Flexible JSON score for away side',
+  `score_details` json DEFAULT NULL COMMENT 'Full score breakdown (sets, games, etc)',
+  `result_status` enum('submitted','confirmed','disputed') NOT NULL DEFAULT 'submitted',
+  `entered_by` int(10) unsigned NOT NULL,
+  `confirmed_at` timestamp NULL DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_match` (`match_id`),
+  KEY `idx_winner` (`winner_id`),
+  CONSTRAINT `fk_tmr_match` FOREIGN KEY (`match_id`) REFERENCES `tournament_matches` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_tmr_winner` FOREIGN KEY (`winner_id`) REFERENCES `users` (`id`) ON DELETE SET NULL,
+  CONSTRAINT `fk_tmr_entered` FOREIGN KEY (`entered_by`) REFERENCES `users` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+DROP TABLE IF EXISTS `tournament_standings`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `tournament_standings` (
+  `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
+  `tournament_id` int(10) unsigned NOT NULL,
+  `group_id` int(10) unsigned DEFAULT NULL,
+  `registration_id` int(10) unsigned NOT NULL,
+  `wins` int(10) unsigned NOT NULL DEFAULT 0,
+  `losses` int(10) unsigned NOT NULL DEFAULT 0,
+  `draws` int(10) unsigned NOT NULL DEFAULT 0,
+  `points` decimal(10,2) NOT NULL DEFAULT 0.00,
+  `games_won` int(10) unsigned NOT NULL DEFAULT 0,
+  `games_lost` int(10) unsigned NOT NULL DEFAULT 0,
+  `sets_won` int(10) unsigned NOT NULL DEFAULT 0,
+  `sets_lost` int(10) unsigned NOT NULL DEFAULT 0,
+  `rank_position` int(10) unsigned DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_tourn_reg_group` (`tournament_id`,`registration_id`,`group_id`),
+  KEY `idx_group` (`group_id`),
+  KEY `idx_rank` (`tournament_id`,`rank_position`),
+  CONSTRAINT `fk_ts_tourn` FOREIGN KEY (`tournament_id`) REFERENCES `tournaments` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_ts_group` FOREIGN KEY (`group_id`) REFERENCES `tournament_groups` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_ts_reg` FOREIGN KEY (`registration_id`) REFERENCES `tournament_registrations` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 DROP TABLE IF EXISTS `transaction_entries`;

@@ -5,41 +5,51 @@
 -- adds new tables for group stages, standings, and team match support.
 -- ============================================================================
 
--- ── Extend tournaments ───────────────────────────────────────────────────
-ALTER TABLE tournaments
-  ADD COLUMN code                VARCHAR(50)  DEFAULT NULL AFTER name,
-  ADD COLUMN format              VARCHAR(50)  DEFAULT NULL AFTER bracket_type_id,
-  ADD COLUMN category            VARCHAR(100) DEFAULT NULL AFTER format,
-  ADD COLUMN season              VARCHAR(100) DEFAULT NULL AFTER category,
-  ADD COLUMN max_teams           INT UNSIGNED DEFAULT NULL AFTER max_participants,
-  ADD COLUMN registration_fee    DECIMAL(12,2) NOT NULL DEFAULT 0.00 AFTER entry_fee,
-  ADD COLUMN price_type          ENUM('FREE','FIXED','MEMBERS_ONLY') NOT NULL DEFAULT 'FIXED' AFTER currency_code,
-  ADD COLUMN is_public           TINYINT(1) NOT NULL DEFAULT 1 AFTER status,
-  ADD COLUMN archived_at         TIMESTAMP NULL DEFAULT NULL AFTER updated_at,
-  ADD COLUMN registration_open_at  TIMESTAMP NULL DEFAULT NULL AFTER is_public,
-  ADD COLUMN registration_close_at TIMESTAMP NULL DEFAULT NULL AFTER registration_open_at,
-  ADD UNIQUE KEY uk_code (code),
-  ADD KEY idx_format (format),
-  ADD KEY idx_category (category),
-  ADD KEY idx_is_public (is_public);
-
--- ── Extend tournament_registrations ─────────────────────────────────────
-ALTER TABLE tournament_registrations
-  ADD COLUMN waiting_order   INT UNSIGNED DEFAULT NULL AFTER seed_rank,
-  ADD COLUMN team_id         INT UNSIGNED DEFAULT NULL AFTER player_id,
-  ADD COLUMN cancelled_at    TIMESTAMP NULL DEFAULT NULL AFTER registered_at,
-  ADD KEY idx_team (team_id),
-  ADD KEY idx_waiting_order (waiting_order);
-
--- ── Extend tournament_matches ───────────────────────────────────────────
-ALTER TABLE tournament_matches
-  ADD COLUMN group_id        INT UNSIGNED DEFAULT NULL AFTER tournament_id,
-  ADD COLUMN bracket_position INT UNSIGNED DEFAULT NULL AFTER match_number,
-  ADD COLUMN referee_id      INT UNSIGNED DEFAULT NULL AFTER resource_id,
-  ADD COLUMN round_name      VARCHAR(100) DEFAULT NULL AFTER round,
-  ADD KEY idx_group (group_id),
-  ADD KEY idx_referee (referee_id),
-  ADD KEY idx_bracket (bracket_position);
+-- ── Extend tournaments (idempotent) ──────────────────────────────────────
+DROP PROCEDURE IF EXISTS AddColIfMissing;
+DELIMITER //
+CREATE PROCEDURE AddColIfMissing()
+BEGIN
+  IF NOT EXISTS (SELECT * FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'tournaments' AND COLUMN_NAME = 'code') THEN
+    ALTER TABLE tournaments
+      ADD COLUMN code                VARCHAR(50)  DEFAULT NULL AFTER name,
+      ADD COLUMN format              VARCHAR(50)  DEFAULT NULL AFTER bracket_type_id,
+      ADD COLUMN category            VARCHAR(100) DEFAULT NULL AFTER format,
+      ADD COLUMN season              VARCHAR(100) DEFAULT NULL AFTER category,
+      ADD COLUMN max_teams           INT UNSIGNED DEFAULT NULL AFTER max_participants,
+      ADD COLUMN registration_fee    DECIMAL(12,2) NOT NULL DEFAULT 0.00 AFTER entry_fee,
+      ADD COLUMN price_type          ENUM('FREE','FIXED','MEMBERS_ONLY') NOT NULL DEFAULT 'FIXED' AFTER currency_code,
+      ADD COLUMN is_public           TINYINT(1) NOT NULL DEFAULT 1 AFTER status,
+      ADD COLUMN archived_at         TIMESTAMP NULL DEFAULT NULL AFTER updated_at,
+      ADD COLUMN registration_open_at  TIMESTAMP NULL DEFAULT NULL AFTER is_public,
+      ADD COLUMN registration_close_at TIMESTAMP NULL DEFAULT NULL AFTER registration_open_at,
+      ADD UNIQUE KEY uk_code (code),
+      ADD KEY idx_format (format),
+      ADD KEY idx_category (category),
+      ADD KEY idx_is_public (is_public);
+  END IF;
+  IF NOT EXISTS (SELECT * FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'tournament_registrations' AND COLUMN_NAME = 'waiting_order') THEN
+    ALTER TABLE tournament_registrations
+      ADD COLUMN waiting_order   INT UNSIGNED DEFAULT NULL AFTER seed_rank,
+      ADD COLUMN team_id         INT UNSIGNED DEFAULT NULL AFTER player_id,
+      ADD COLUMN cancelled_at    TIMESTAMP NULL DEFAULT NULL AFTER registered_at,
+      ADD KEY idx_team (team_id),
+      ADD KEY idx_waiting_order (waiting_order);
+  END IF;
+  IF NOT EXISTS (SELECT * FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'tournament_matches' AND COLUMN_NAME = 'group_id') THEN
+    ALTER TABLE tournament_matches
+      ADD COLUMN group_id        INT UNSIGNED DEFAULT NULL AFTER tournament_id,
+      ADD COLUMN bracket_position INT UNSIGNED DEFAULT NULL AFTER match_number,
+      ADD COLUMN referee_id      INT UNSIGNED DEFAULT NULL AFTER resource_id,
+      ADD COLUMN round_name      VARCHAR(100) DEFAULT NULL AFTER round,
+      ADD KEY idx_group (group_id),
+      ADD KEY idx_referee (referee_id),
+      ADD KEY idx_bracket (bracket_position);
+  END IF;
+END//
+DELIMITER ;
+CALL AddColIfMissing();
+DROP PROCEDURE IF EXISTS AddColIfMissing;
 
 -- ── tournament_groups ─────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS tournament_groups (
