@@ -62,9 +62,8 @@ export class PaymentService {
 
   private async chargeByWallet(userId: number, input: ChargeInput) {
     const traceId = randomUUID();
-    const result = await walletService.withdraw(userId, input.amount, `${input.referenceType} #${input.referenceId}`);
 
-    // Create payment as 'pending' first, then process through the same pipeline
+    // Create payment record first to get paymentId
     const { id: paymentId } = await paymentRepository.create({
       userId,
       bookingId: input.referenceType === 'booking' ? input.referenceId : undefined,
@@ -78,14 +77,20 @@ export class PaymentService {
       traceId,
     });
 
-    // Process through the unified payment outcome pipeline
-    await withTransaction(async (conn) => {
+    // Wallet withdrawal + payment outcome inside single atomic transaction
+    const result = await withTransaction(async (conn) => {
+      const walletTx = await walletService.withdraw(
+        userId, input.amount, `${input.referenceType} #${input.referenceId}`, undefined, conn,
+      );
+
       const locked = await paymentRepository.lockById(paymentId, conn);
       if (!locked) throw new ConflictError('Payment locked by another process');
 
       await this._processPaymentOutcome(
         conn, locked, 'paid', `wallet_${paymentId}`, traceId, 'wallet',
       );
+
+      return walletTx;
     });
 
     // Business-specific journal entry (payment outcome creates a generic one too)
@@ -778,21 +783,37 @@ export class PaymentService {
       reason,
     });
 
-    eventBusV2.emit('payment:refunded', { paymentId, amount, reason });
+    if (!result.success) {
+      log.error({ traceId, paymentId, amount, reason, gatewayError: result.errorMessage }, 'Gateway refund failed');
+      return result;
+    }
 
-    await paymentRepository.createJournalEntry({
-      entryType: 'refund',
-      referenceType: 'payment',
-      referenceId: paymentId,
-      debitAccount: 'Refund Expense',
-      creditAccount: 'Cash',
-      amount,
-      description: reason || `Refund of ${amount}`,
+    await withTransaction(async (conn) => {
+      await conn.execute<mysql.ResultSetHeader>(
+        `UPDATE payment_transactions
+         SET payment_status = 'refunded', refunded_at = NOW(), updated_at = NOW()
+         WHERE id = ? AND payment_status = 'paid'`,
+        [paymentId],
+      );
+
+      await eventBusV2.emit('payment:refunded', {
+        paymentId, amount, reason, traceId,
+      }, undefined, conn);
+
+      await paymentRepository.createJournalEntry({
+        entryType: 'refund',
+        referenceType: 'payment',
+        referenceId: paymentId,
+        debitAccount: 'Refund Expense',
+        creditAccount: 'Cash',
+        amount,
+        description: reason || `Refund of ${amount}`,
+      });
     });
 
     log.info({ traceId, paymentId, amount, reason }, 'Payment refunded');
 
-    return result;
+    return { success: true, refundId: result.refundId, paymentId };
   }
 
   /**

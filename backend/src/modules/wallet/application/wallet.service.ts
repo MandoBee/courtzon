@@ -99,22 +99,25 @@ export class WalletService {
     };
   }
 
-  async withdraw(userId: number, amount: number, notes?: string, branchFinancialDetailsId?: number) {
-    if (isFeatureEnabled('WALLET_V2_WITHDRAW')) {
+  async withdraw(
+    userId: number, amount: number, notes?: string,
+    branchFinancialDetailsId?: number, conn?: mysql.PoolConnection,
+  ) {
+    if (!conn && isFeatureEnabled('WALLET_V2_WITHDRAW')) {
       return this.withdrawV2(userId, amount, notes, branchFinancialDetailsId);
     }
 
     const wallet = await this.getMyWallet(userId);
     if (Number(wallet.balance) < amount) throw new Error('Insufficient balance');
 
-    const newBalance = await withTransaction(async (conn) => {
-      const state = await walletRepository.lockAndGetBalance(wallet.id, conn);
+    const doDeduction = async (c: mysql.PoolConnection) => {
+      const state = await walletRepository.lockAndGetBalance(wallet.id, c);
       if (!state) throw new ConflictError('Wallet is locked');
       const balance = state.balance - amount;
-      const updated = await walletRepository.updateBalance(wallet.id, balance, state.version, conn);
+      const updated = await walletRepository.updateBalance(wallet.id, balance, state.version, c);
       if (!updated) throw new ConflictError('Concurrent wallet update');
 
-      await conn.execute(
+      await c.execute(
         `INSERT INTO withdrawal_requests (user_id, wallet_id, amount, branch_financial_details_id, status, created_at)
          VALUES (?, ?, ?, ?, 'pending', NOW())`,
         [userId, wallet.id, amount, branchFinancialDetailsId || null]
@@ -123,10 +126,12 @@ export class WalletService {
       await transactionService.createWalletWithdraw({
         userId, walletId: wallet.id, amount,
         description: notes || 'Withdrawal request',
-      }, conn);
+      }, c);
 
       return balance;
-    });
+    };
+
+    const newBalance = conn ? await doDeduction(conn) : await withTransaction(doDeduction);
 
     eventBusV2.emit('wallet:withdrawal', {
       walletId: wallet.id,
