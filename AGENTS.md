@@ -363,7 +363,7 @@ Checks: mobile routes inside AppLayout, BottomNav z-index, notification template
 | TRN-001 | `tournaments` | Repo INSERT references 7 non-existent columns (`registration_type`, `max_players`, etc.) | ✅ Closed (TRN-003 resolved by same fix) |
 | TRN-002 | `tournaments` | Lifecycle state machine uses 8 statuses; prod ENUM has 5 | ✅ Closed |
 | TRN-004 | `tournaments` | `registration_open_at`/`registration_close_at` mismatch with DB `registration_opens`/`registration_closes` | ✅ Closed |
-| UDV-001 | `user_devices` | Notification module references M015 columns (`device_id`, `push_token`) not in prod | ❌ Open |
+| UDV-001 | `user_devices` | Notification module references M015 columns (`device_id`, `push_token`) not in prod | ✅ Closed |
 | WVM-001 | `web_vitals_metrics` | BI controller SELECT uses pivoted columns (`lcp`, `cls`, `fcp`) — prod uses generic `metric_name`/`metric_value` | ❌ Open |
 
 ### Tournament Findings Fully Resolved
@@ -377,6 +377,19 @@ Checks: mobile routes inside AppLayout, BottomNav z-index, notification template
 | TRN-002 | `tournaments` | Migration `074_tournament_status_enum.sql` extends `status` ENUM to 10 values (added `published`, `registration_open`, `registration_closed`, `running`, `archived`). Baseline updated. |
 | TRN-003 | `tournaments` | Resolved by TRN-001 — same code fix covered both. |
 | TRN-004 | `tournaments` | Renamed `registration_open_at`/`registration_close_at` → `registration_opens`/`registration_closes` across domain, DTO, repository to match DB columns. |
+
+### UDV-001 Resolution
+| Change | File | Detail |
+|--------|------|--------|
+| DeviceRecord interface | `device.service.ts` | Rewrote to match production columns: `deviceId→deviceFingerprint`, `platform→deviceType`, removed `pushToken`/`pushProvider`/`pushTokenExpiresAt` |
+| registerDevice | `device.service.ts` | Uses `device_fingerprint` as unique key (findOrCreate pattern), writes production columns only |
+| getUserDevices | `device.service.ts` | Returns typed `DeviceRecord[]` via `mapRow()` |
+| deactivateDevice/touchDevice | `device.service.ts` | Uses `device_fingerprint` instead of `device_id` |
+| Push token storage | `device.service.ts` | New `savePushToken`/`getPushTokens`/`removePushToken` functions using `push_tokens` table |
+| push.provider.ts | `push.provider.ts` | Reads `token`/`platform` from `push_tokens` instead of `user_devices.push_token` |
+| registerDeviceHandler | `enterprise-admin.controller.ts` | Updated params to use `deviceFingerprint`/`deviceType`; saves push token to `push_tokens` |
+| device:register socket | `realtime/index.ts` | Updated to pass new interface; saves push token separately |
+| **DB changes** | none | All columns used already exist in production |
 
 ### Dominant Pattern
 The `tournaments/` module domain types and repository are written against M056 schema, while production was built from baseline + M062. The `activities/` module consistently uses correct column names (dual-ownership drift — SF-003). Same pattern in `user_devices` (auth module correct, notification module broken).
