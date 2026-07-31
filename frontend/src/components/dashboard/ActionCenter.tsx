@@ -6,6 +6,7 @@ interface ActionItem {
   path: string;
   color?: string;
   icon?: string;
+  onClick?: () => void;
 }
 
 interface QuickActionItem {
@@ -21,7 +22,7 @@ export function ActionCenter({ actions, title = 'Action Center' }: { actions: Ac
       <h2 className="text-sm font-semibold text-[var(--color-text)] mb-4">{title}</h2>
       <div className="space-y-2">
         {actions.map((a, i) => (
-          <div key={i} onClick={() => navigate(a.path)}
+          <div key={i} onClick={() => { a.onClick?.(); navigate(a.path); }}
             className="flex items-center justify-between py-2 px-3 rounded-lg cursor-pointer hover:bg-[var(--color-bg)] transition-colors">
             <div className="flex items-center gap-2">
               {a.icon && <span>{a.icon}</span>}

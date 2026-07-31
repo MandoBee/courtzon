@@ -388,6 +388,7 @@ export default function ProfilePage() {
   const updateMutation = useMutation({
     mutationFn: (data: any) => api.patch('/auth/profile', data).then((r) => r.data),
     onSuccess: (result) => {
+      console.log('[profile] update success:', { user: result.user });
       setUser(result.user);
       localStorage.setItem('user', JSON.stringify(result.user));
       syncUserThemePreference(result.user?.darkMode);
@@ -400,6 +401,7 @@ export default function ProfilePage() {
       showToast('Profile updated successfully!');
     },
     onError: (err) => {
+      console.error('[profile] update failed:', err, (err as any)?.response?.data);
       showToast('Failed to update profile: ' + (err as any).message, 'error');
     },
   });
@@ -424,6 +426,7 @@ export default function ProfilePage() {
   };
 
   const onSubmit = (data: ProfileForm) => {
+    console.log('[profile] submitting form:', JSON.stringify(data, null, 2));
     updateMutation.mutate(data);
   };
 
