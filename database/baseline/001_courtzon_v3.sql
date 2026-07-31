@@ -52,10 +52,56 @@ CREATE TABLE `academy_curriculums` (
   CONSTRAINT `fk_cur_acad` FOREIGN KEY (`academy_id`) REFERENCES `academies` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
-DROP TABLE IF EXISTS `academy_enrollments`;
+DROP TABLE IF EXISTS `academy_programs`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8 */;
-CREATE TABLE `academy_enrollments` (
+CREATE TABLE `academy_programs` (
+  `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
+  `code` varchar(50) NOT NULL,
+  `name` varchar(200) NOT NULL,
+  `description` text DEFAULT NULL,
+  `category` varchar(100) NOT NULL,
+  `level` varchar(100) DEFAULT NULL,
+  `season` varchar(100) DEFAULT NULL,
+  `capacity` int(10) unsigned NOT NULL DEFAULT 0,
+  `price` decimal(12,2) NOT NULL DEFAULT 0.00,
+  `currency` char(3) NOT NULL DEFAULT 'USD',
+  `price_type` enum('FREE','FIXED','MEMBERS_ONLY') NOT NULL DEFAULT 'FIXED',
+  `status` enum('draft','published','open','full','running','completed','cancelled','archived') NOT NULL DEFAULT 'draft',
+  `is_public` tinyint(1) NOT NULL DEFAULT 1,
+  `archived_at` timestamp NULL DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_code` (`code`),
+  KEY `idx_status` (`status`),
+  KEY `idx_category` (`category`),
+  KEY `idx_is_public` (`is_public`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+DROP TABLE IF EXISTS `academy_groups`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `academy_groups` (
+  `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
+  `program_id` int(10) unsigned NOT NULL,
+  `name` varchar(200) NOT NULL,
+  `coach_id` int(10) unsigned DEFAULT NULL,
+  `capacity` int(10) unsigned NOT NULL DEFAULT 0,
+  `status` enum('active','inactive','archived') NOT NULL DEFAULT 'active',
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  PRIMARY KEY (`id`),
+  KEY `idx_program` (`program_id`),
+  KEY `idx_coach` (`coach_id`),
+  CONSTRAINT `fk_group_program` FOREIGN KEY (`program_id`) REFERENCES `academy_programs` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_group_coach` FOREIGN KEY (`coach_id`) REFERENCES `users` (`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+DROP TABLE IF EXISTS `academy_enrollments_legacy`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `academy_enrollments_legacy` (
   `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
   `academy_id` int(10) unsigned NOT NULL,
   `curriculum_id` int(10) unsigned DEFAULT NULL,
@@ -71,6 +117,73 @@ CREATE TABLE `academy_enrollments` (
   CONSTRAINT `fk_enroll_acad` FOREIGN KEY (`academy_id`) REFERENCES `academies` (`id`) ON DELETE CASCADE,
   CONSTRAINT `fk_enroll_cur` FOREIGN KEY (`curriculum_id`) REFERENCES `academy_curriculums` (`id`) ON DELETE SET NULL,
   CONSTRAINT `fk_enroll_player` FOREIGN KEY (`player_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+DROP TABLE IF EXISTS `academy_enrollments`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `academy_enrollments` (
+  `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
+  `player_id` int(10) unsigned NOT NULL,
+  `program_id` int(10) unsigned NOT NULL,
+  `group_id` int(10) unsigned DEFAULT NULL,
+  `membership_id` int(10) unsigned DEFAULT NULL,
+  `status` enum('pending','confirmed','waiting','cancelled','completed') NOT NULL DEFAULT 'pending',
+  `waiting_order` int(10) unsigned DEFAULT NULL COMMENT 'Position in waiting list (deterministic promotion)',
+  `enrolled_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `cancelled_at` timestamp NULL DEFAULT NULL,
+  `completed_at` timestamp NULL DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  PRIMARY KEY (`id`),
+  KEY `idx_player` (`player_id`),
+  KEY `idx_program` (`program_id`),
+  KEY `idx_group` (`group_id`),
+  KEY `idx_status` (`status`),
+  KEY `idx_waiting_order` (`waiting_order`),
+  CONSTRAINT `fk_enrollments_player` FOREIGN KEY (`player_id`) REFERENCES `users` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_enrollments_program` FOREIGN KEY (`program_id`) REFERENCES `academy_programs` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_enrollments_group` FOREIGN KEY (`group_id`) REFERENCES `academy_groups` (`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+DROP TABLE IF EXISTS `academy_group_sessions`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `academy_group_sessions` (
+  `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
+  `group_id` int(10) unsigned NOT NULL,
+  `session_date` date NOT NULL,
+  `start_time` time DEFAULT NULL,
+  `end_time` time DEFAULT NULL,
+  `court_id` int(10) unsigned DEFAULT NULL,
+  `coach_id` int(10) unsigned DEFAULT NULL,
+  `status` enum('scheduled','in_progress','completed','cancelled') NOT NULL DEFAULT 'scheduled',
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  PRIMARY KEY (`id`),
+  KEY `idx_group` (`group_id`),
+  KEY `idx_date` (`session_date`),
+  KEY `idx_coach` (`coach_id`),
+  CONSTRAINT `fk_session_group` FOREIGN KEY (`group_id`) REFERENCES `academy_groups` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_session_court` FOREIGN KEY (`court_id`) REFERENCES `resources` (`id`) ON DELETE SET NULL,
+  CONSTRAINT `fk_session_coach` FOREIGN KEY (`coach_id`) REFERENCES `users` (`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+DROP TABLE IF EXISTS `academy_attendance`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `academy_attendance` (
+  `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
+  `group_session_id` int(10) unsigned NOT NULL,
+  `enrollment_id` int(10) unsigned NOT NULL,
+  `attendance_status` enum('present','absent','excused','late') NOT NULL DEFAULT 'present',
+  `notes` text DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_session_enrollment` (`group_session_id`,`enrollment_id`),
+  KEY `idx_enrollment` (`enrollment_id`),
+  CONSTRAINT `fk_att_session` FOREIGN KEY (`group_session_id`) REFERENCES `academy_group_sessions` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_att_enrollment` FOREIGN KEY (`enrollment_id`) REFERENCES `academy_enrollments` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 DROP TABLE IF EXISTS `academy_evaluations`;
