@@ -364,6 +364,25 @@ export async function syncUIRegistryHandler(request: FastifyRequest, reply: Fast
   return reply.send(result);
 }
 
+export async function applyRoleTemplatesHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { prune } = request.body as { prune?: boolean };
+  const actorId = (request as any).userId;
+  const result = await rbacService.applyRoleTemplates(prune === true);
+  recordAudit({
+    actorId,
+    action: 'RBAC.APPLY_ROLE_TEMPLATES',
+    entityType: 'role',
+    afterState: {
+      granted: result.granted,
+      pruned: result.pruned,
+      roles: result.roles.map((r) => `${r.slug}:+${r.granted}`),
+    },
+    ipAddress: request.ip,
+    userAgent: request.headers['user-agent'],
+  });
+  return reply.send(result);
+}
+
 export async function getDashboardTrendsHandler(_request: FastifyRequest, reply: FastifyReply) {
   const trends = await rbacService.getDashboardTrends();
   return reply.send({ data: trends });

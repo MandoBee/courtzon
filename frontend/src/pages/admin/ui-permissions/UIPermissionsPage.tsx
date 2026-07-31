@@ -56,6 +56,20 @@ export default function UIPermissionsPage() {
     },
   });
 
+  const applyTemplatesMutation = useMutation({
+    mutationFn: async () => {
+      const res = await api.post('/ui-permissions/sync-role-templates', {});
+      return res.data;
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'ui-permissions'] });
+      showToast(`Role templates applied: ${data.granted ?? 0} grants added.`);
+    },
+    onError: () => {
+      showToast('Failed to apply role templates.', 'error');
+    },
+  });
+
   const toggleRoleMutation = useMutation({
     mutationFn: async ({ permissionId, roleId, hasPermission }: { permissionId: number; roleId: number; hasPermission: boolean }) => {
       setSavingPermId(permissionId);
@@ -137,6 +151,13 @@ export default function UIPermissionsPage() {
         <h1 className="text-2xl font-bold text-[var(--color-text)]">UI Permissions</h1>
         <div className="flex items-center gap-2">
           <button
+            onClick={() => applyTemplatesMutation.mutate()}
+            disabled={applyTemplatesMutation.isPending}
+            className="px-4 py-2 bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text)] rounded-[var(--radius-md)] text-sm font-medium disabled:opacity-50"
+          >
+            {applyTemplatesMutation.isPending ? 'Applying...' : 'Apply Role Templates'}
+          </button>
+          <button
             onClick={() => syncMutation.mutate()}
             disabled={syncMutation.isPending}
             className="px-4 py-2 bg-[var(--color-primary)] text-white rounded-[var(--radius-md)] text-sm font-medium disabled:opacity-50"
@@ -149,6 +170,8 @@ export default function UIPermissionsPage() {
       <p className="text-sm text-[var(--color-text-muted)] mb-6">
         Control which UI elements each role can see. Toggle checkboxes to grant or revoke access.
         New elements are registered in <code className="text-xs bg-[var(--color-bg)] px-1 py-0.5 rounded">frontend/src/permissions/registry.ts</code>.
+        "Sync Registry" pulls new keys from the codebase; "Apply Role Templates" re-applies the
+        default role templates (grants missing permissions, never revokes).
       </p>
 
       {/* Filters */}

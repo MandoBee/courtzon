@@ -1,6 +1,7 @@
 import { getPool } from '../../../database/mysql.js';
 import type mysql from 'mysql2/promise';
 import { rbacRepository } from '../infrastructure/repositories/rbac.repository.js';
+import { permissionMatchesTemplate, TEMPLATE_SLUGS } from './role-permission-templates.js';
 import { NotFoundError, ConflictError } from '../../../shared/errors/app-error.js';
 import { hashPassword } from '../../../shared/utils/password.js';
 import { sanitizeUploadUrl } from '../../../shared/utils/upload-url.util.js';
@@ -339,6 +340,105 @@ export class RBACService {
       });
     }
     return { inserted, updated };
+  }
+
+  /**
+   * Apply role templates to role_permissions (INSERT-only by default).
+   * Super Admin receives every permission in the database.
+   * Mirrors backend/scripts/sync-role-permissions.mjs.
+   */
+  async applyRoleTemplates(prune = false): Promise<{
+    granted: number;
+    pruned: number;
+    roles: { slug: string; organisationId: number | null; target: number; granted: number; pruned: number }[];
+  }> {
+    const pool = getPool();
+    const [permissions] = await pool.execute<RowData>(
+      'SELECT id, permission_key FROM permissions ORDER BY permission_key',
+    );
+    const permByKey = new Map<string, number>();
+    for (const p of permissions as any[]) {
+      permByKey.set(p.permission_key as string, p.id as number);
+    }
+
+    const [roles] = await pool.execute<RowData>(
+      `SELECT id, slug, name, organisation_id, is_system
+       FROM roles WHERE deleted_at IS NULL ORDER BY id`,
+    );
+
+    let totalGranted = 0;
+    let totalPruned = 0;
+    const summary: { slug: string; organisationId: number | null; target: number; granted: number; pruned: number }[] = [];
+
+    for (const role of roles as any[]) {
+      const templateSlug: string = role.slug as string;
+      const isSuperAdmin = templateSlug === 'super_admin';
+
+      if (!isSuperAdmin && !TEMPLATE_SLUGS.includes(templateSlug)) continue;
+
+      const targetPermIds = new Set<number>();
+      for (const p of permissions as any[]) {
+        if (isSuperAdmin || permissionMatchesTemplate(templateSlug, p.permission_key as string)) {
+          targetPermIds.add(p.id as number);
+        }
+      }
+
+      const [existing] = await pool.execute<RowData>(
+        'SELECT permission_id FROM role_permissions WHERE role_id = ?',
+        [role.id],
+      );
+      const existingIds = new Set<number>((existing as any[]).map((r) => r.permission_id as number));
+
+      let granted = 0;
+      for (const permId of targetPermIds) {
+        if (!existingIds.has(permId)) {
+          await pool.execute(
+            'INSERT IGNORE INTO role_permissions (role_id, permission_id) VALUES (?, ?)',
+            [role.id, permId],
+          );
+          granted++;
+        }
+      }
+
+      let pruned = 0;
+      if (prune && !isSuperAdmin) {
+        for (const permId of existingIds) {
+          if (!targetPermIds.has(permId)) {
+            await pool.execute(
+              'DELETE FROM role_permissions WHERE role_id = ? AND permission_id = ?',
+              [role.id, permId],
+            );
+            pruned++;
+          }
+        }
+      }
+
+      totalGranted += granted;
+      totalPruned += pruned;
+      summary.push({
+        slug: templateSlug,
+        organisationId: role.organisation_id as number | null,
+        target: targetPermIds.size,
+        granted,
+        pruned,
+      });
+    }
+
+    // Ensure platform.admin on super_admin (API adminGuard fallback)
+    const platformAdminId = permByKey.get('platform.admin');
+    if (platformAdminId) {
+      const [superRoles] = await pool.execute<RowData>(
+        `SELECT id FROM roles WHERE slug IN ('super_admin', 'super-admin') AND deleted_at IS NULL`,
+      );
+      for (const r of superRoles as any[]) {
+        await pool.execute(
+          'INSERT IGNORE INTO role_permissions (role_id, permission_id) VALUES (?, ?)',
+          [r.id, platformAdminId],
+        );
+      }
+    }
+
+    return { granted: totalGranted, pruned: totalPruned, roles: summary };
   }
 
   async #cascadeDeleteUser(userId: number, conn: any): Promise<void> {

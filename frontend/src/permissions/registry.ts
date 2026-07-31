@@ -71,6 +71,7 @@ export const uiRegistry: UIElement[] = [
   { permissionKey: 'ui-permissions.view', moduleSlug: 'settings', elementType: 'page', elementLabel: 'UI Permissions Screen', componentPath: 'pages/admin/ui-permissions/UIPermissionsPage.tsx' },
   { permissionKey: 'ui-permissions.toggle-role', moduleSlug: 'settings', elementType: 'action', elementLabel: 'Toggle Role Access on UI Element', componentPath: 'pages/admin/ui-permissions/UIPermissionsPage.tsx' },
   { permissionKey: 'ui-permissions.sync', moduleSlug: 'settings', elementType: 'button', elementLabel: 'Sync UI Registry Button', componentPath: 'pages/admin/ui-permissions/UIPermissionsPage.tsx' },
+  { permissionKey: 'ui-permissions.apply-templates', moduleSlug: 'settings', elementType: 'button', elementLabel: 'Apply Role Templates Button', componentPath: 'pages/admin/ui-permissions/UIPermissionsPage.tsx' },
 
   // ==========================================================================
   // ORGANISATIONS MODULE

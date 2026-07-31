@@ -66,6 +66,7 @@ export async function rbacRoutes(app: FastifyInstance): Promise<void> {
   // UI Permissions — super admin only
   app.get('/ui-permissions', { preHandler: [superAdminGuard] }, ctrl.getUIPermissionsHandler);
   app.post('/ui-permissions/sync', { preHandler: [superAdminGuard] }, ctrl.syncUIRegistryHandler);
+  app.post('/ui-permissions/sync-role-templates', { preHandler: [superAdminGuard] }, ctrl.applyRoleTemplatesHandler);
 
   // My permissions — any authenticated user
   app.get('/my/permissions', ctrl.getMyPermissionsHandler);
