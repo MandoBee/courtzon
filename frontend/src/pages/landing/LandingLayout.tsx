@@ -7,6 +7,7 @@ import LanguageSwitcher from '../../components/i18n/LanguageSwitcher';
 import { useAppSettingsStore } from '../../store/app-settings.store';
 import { useTranslation } from '../../i18n';
 import api from '../../services/api';
+import { scrollToTop } from '../../utils/scroll';
 
 const allNavLinks = [
   { to: '/',            labelKey: 'landing.nav.home',          cmsSlug: 'home' },
@@ -77,7 +78,7 @@ export default function LandingLayout() {
 
   useEffect(() => {
     closeMobileMenu();
-    window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+    scrollToTop('auto');
   }, [location.pathname]);
 
   const navLinkClass = (active: boolean) =>
