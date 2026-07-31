@@ -85,7 +85,7 @@ export default function PlayerDashboardPage() {
 
       {/* Stat Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <StatCard label={t('player.dashboard.wallet_balance')} value={wallet?.balance != null ? `${Number(wallet.balance).toFixed(2)} ${wallet.currency || ''}` : '—'} icon="💰" href="/profile" />
+        <StatCard label={t('player.dashboard.wallet_balance')} value={wallet?.balance != null ? `${Number(wallet.balance).toFixed(2)} ${wallet.currency || ''}` : '—'} icon="💰" href="/my/wallet" />
         <StatCard label={t('player.dashboard.unread_notifications')} value={unreadCount ?? '—'} icon="🔔" href="/notifications" />
         <StatCard label={t('player.dashboard.upcoming_bookings')} value={Array.isArray(upcomingBookings) ? upcomingBookings.length : '—'} icon="📅" href="/bookings" />
         <Can permission="membership.view">
