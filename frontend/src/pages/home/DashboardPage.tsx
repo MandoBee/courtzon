@@ -26,7 +26,7 @@ export default function DashboardPage() {
       <ActionCenter title="Pending" actions={[
         { label: 'Unread Notifications', path: '/notifications', icon: '🔔' },
         { label: 'Membership', path: '/membership', icon: '⭐' },
-        { label: 'Wallet Balance', path: '/profile', icon: '💰', count: wallet?.balance ? Number(wallet.balance) : undefined },
+        { label: 'Wallet Balance', path: '/my/wallet', icon: '💰', count: wallet?.balance ? Number(wallet.balance) : undefined },
       ]} />
 
       {/* Quick Actions */}
