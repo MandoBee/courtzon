@@ -14,6 +14,7 @@ import { buildAuthRegisterPayload, filterRegistrationPaymentMethods } from '../.
 import { getErrorMessage } from '../../utils/errors';
 import { useTranslation } from '../../i18n';
 import { PasswordInput } from '../../components/ui/PasswordInput';
+import LegalConsent from '../../components/legal/LegalConsent';
 
 interface Country { id: number; name: string; phone_code: string; iso_code: string; flag_emoji?: string; default_currency?: string; currency_symbol?: string | null; }
 interface PaymentMethod { id: number; slug: string; name: string; icon: string; description: string; requiresApproval: boolean; }
@@ -34,6 +35,7 @@ export default function SellerRegisterPage() {
   const displayCurrency = useCurrencyStore((s) => s.currencyCode) || getDefaultCurrency();
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [agreed, setAgreed] = useState(false);
   const { t } = useTranslation();
 
   const [form, setForm] = useState({
@@ -283,6 +285,9 @@ export default function SellerRegisterPage() {
                     <div className="flex justify-between py-2 border-b border-[var(--color-border)]"><span className="text-[var(--color-text-muted)]">{t('landing.seller_reg.shop_name')}</span><span className="font-medium text-[var(--color-text)]">{form.shopName}</span></div>
                     <div className="flex justify-between py-2 border-b border-[var(--color-border)]"><span className="text-[var(--color-text-muted)]">{t('landing.seller_reg.payment_method')}</span><span className="font-medium text-[var(--color-text)] capitalize">{form.paymentMethod}</span></div>
                   </div>
+                  <div className="mt-6">
+                    <LegalConsent onChange={setAgreed} />
+                  </div>
                 </div>
               )}
 
@@ -297,7 +302,7 @@ export default function SellerRegisterPage() {
                     {t('common.next')}
                   </button>
                 ) : (
-                  <button onClick={handleSubmit} disabled={submitting}
+                  <button onClick={handleSubmit} disabled={submitting || !agreed}
                     className="px-6 py-2.5 text-sm font-semibold text-white bg-[var(--gradient-primary)] rounded-xl disabled:opacity-40 hover:opacity-90 transition-all">
                     {submitting ? t('landing.player_reg.submitting') : t('landing.seller_reg.submit')}
                   </button>

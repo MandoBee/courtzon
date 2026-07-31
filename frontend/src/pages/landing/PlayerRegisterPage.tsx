@@ -10,6 +10,7 @@ import { useTranslation } from '../../i18n';
 import { useToast } from '../../components/ui/Toast';
 import { ReactivationModal } from '../../components/ui/ReactivationModal';
 import { PasswordInput } from '../../components/ui/PasswordInput';
+import LegalConsent from '../../components/legal/LegalConsent';
 
 interface Country { id: number; name: string; phone_code: string; iso_code: string; flag_emoji?: string; default_currency?: string; }
 interface Sport { id: number; name: string; }
@@ -32,6 +33,7 @@ export default function PlayerRegisterPage() {
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [agreed, setAgreed] = useState(false);
   const [showReactivationModal, setShowReactivationModal] = useState(false);
   const { t } = useTranslation();
   const { showToast } = useToast();
@@ -299,12 +301,15 @@ export default function PlayerRegisterPage() {
                 <div className="flex justify-between py-2 border-b border-[var(--color-border)]"><span className="text-[var(--color-text-muted)]">{t('auth.register.birth_date')}</span><span className="font-medium text-[var(--color-text)]">{form.birthDate}</span></div>
                 <div className="flex justify-between py-2 border-b border-[var(--color-border)]"><span className="text-[var(--color-text-muted)]">{t('player.main_sport')}</span><span className="font-medium text-[var(--color-text)]">{sports.find(s => s.id === form.mainSportId)?.name || '\u2014'}</span></div>
                 <div className="flex justify-between py-2 border-b border-[var(--color-border)]"><span className="text-[var(--color-text-muted)]">{t('player.level')}</span><span className="font-medium text-[var(--color-text)]">{LEVELS.find(l => l.id === form.mainLevelId)?.label || '\u2014'}</span></div>
-                {form.interestedSportIds.length > 0 && (
+                  {form.interestedSportIds.length > 0 && (
                   <div className="flex justify-between py-2 border-b border-[var(--color-border)]">
                     <span className="text-[var(--color-text-muted)]">{t('landing.player_reg.interested_sports')}</span>
                     <span className="font-medium text-[var(--color-text)] text-right">{form.interestedSportIds.map(id => sports.find(s => s.id === id)?.name).filter(Boolean).join(', ')}</span>
                   </div>
                 )}
+              </div>
+              <div className="mt-6">
+                <LegalConsent onChange={setAgreed} />
               </div>
             </div>
           )}
@@ -320,7 +325,7 @@ export default function PlayerRegisterPage() {
                 {t('common.next')}
               </button>
             ) : (
-              <button onClick={handleSubmit} disabled={submitting}
+              <button onClick={handleSubmit} disabled={submitting || !agreed}
                 className="px-6 py-2.5 text-sm font-semibold text-white bg-[var(--gradient-primary)] rounded-xl disabled:opacity-40 hover:opacity-90 transition-all">
                 {submitting ? t('landing.player_reg.submitting') : t('landing.player_reg.submit')}
               </button>

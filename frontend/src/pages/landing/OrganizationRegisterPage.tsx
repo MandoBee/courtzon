@@ -17,6 +17,7 @@ import { scrollToTop } from '../../utils/scroll';
 import { buildAuthRegisterPayload, filterRegistrationPaymentMethods } from '../../utils/registration';
 import { getErrorMessage } from '../../utils/errors';
 import { PasswordInput } from '../../components/ui/PasswordInput';
+import LegalConsent from '../../components/legal/LegalConsent';
 
 interface Country { id: number; name: string; phone_code: string; iso_code: string; flag_emoji?: string; default_currency?: string; currency_symbol?: string | null; }
 interface OrgType { id: number; slug: string; name: string; description?: string; }
@@ -37,6 +38,7 @@ export default function OrganizationRegisterPage() {
   const displayCurrency = useCurrencyStore((s) => s.currencyCode) || getDefaultCurrency();
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [agreed, setAgreed] = useState(false);
 
   const [form, setForm] = useState({
     planId: 0,
@@ -303,6 +305,9 @@ export default function OrganizationRegisterPage() {
                     <div className="flex justify-between py-2 border-b border-[var(--color-border)]"><span className="text-[var(--color-text-muted)]">Org Type</span><span className="font-medium text-[var(--color-text)]">{orgTypes.find(t => t.id === form.orgTypeId)?.name || '\u2014'}</span></div>
                     <div className="flex justify-between py-2 border-b border-[var(--color-border)]"><span className="text-[var(--color-text-muted)]">Payment</span><span className="font-medium text-[var(--color-text)] capitalize">{form.paymentMethod}</span></div>
                   </div>
+                  <div className="mt-6">
+                    <LegalConsent onChange={setAgreed} />
+                  </div>
                 </div>
               )}
 
@@ -317,7 +322,7 @@ export default function OrganizationRegisterPage() {
                     Next
                   </button>
                 ) : (
-                  <button onClick={handleSubmit} disabled={submitting}
+                  <button onClick={handleSubmit} disabled={submitting || !agreed}
                     className="px-6 py-2.5 text-sm font-semibold text-white bg-[var(--gradient-primary)] rounded-xl disabled:opacity-40 hover:opacity-90 transition-all">
                     {submitting ? 'Submitting...' : 'Submit Registration'}
                   </button>

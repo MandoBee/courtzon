@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../services/api';
 import { useToast } from '../ui/Toast';
 import { Modal } from '../ui/Modal';
+import LegalConsent from '../legal/LegalConsent';
 
 interface Props {
   orgId: number;
@@ -17,6 +18,7 @@ export default function SubscriptionRequestModal({ orgId, open, onClose, request
   const { showToast } = useToast();
   const [selectedPlanId, setSelectedPlanId] = useState<number | null>(null);
   const [notes, setNotes] = useState('');
+  const [agreed, setAgreed] = useState(false);
 
   const { data: subscription, isLoading: subLoading } = useQuery<any>({
     queryKey: ['org-subscription', orgId],
@@ -44,7 +46,7 @@ export default function SubscriptionRequestModal({ orgId, open, onClose, request
   });
 
   const handleSubmit = () => {
-    if (!selectedPlanId) return;
+    if (!selectedPlanId || !agreed) return;
     requestMutation.mutate({ planId: selectedPlanId, requestType, notes: notes || undefined });
   };
 
@@ -150,9 +152,13 @@ export default function SubscriptionRequestModal({ orgId, open, onClose, request
                 />
               </div>
 
+              <div className="pt-1">
+                <LegalConsent onChange={setAgreed} />
+              </div>
+
               <button
                 onClick={handleSubmit}
-                disabled={!selectedPlanId || requestMutation.isPending || !!pendingRequest}
+                disabled={!selectedPlanId || requestMutation.isPending || !!pendingRequest || !agreed}
                 className="w-full px-4 py-2.5 bg-[var(--color-primary)] text-white rounded-[var(--radius-md)] text-sm font-medium disabled:opacity-50"
               >
                 {requestMutation.isPending ? 'Submitting...' : isNew ? 'Request Subscription' : 'Request Change'}
