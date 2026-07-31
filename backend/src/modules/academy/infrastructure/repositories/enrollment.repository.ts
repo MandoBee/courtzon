@@ -117,7 +117,7 @@ class EnrollmentRepository {
   async getHistory(enrollmentId: number): Promise<any[]> {
     const pool = getPool();
     const [rows] = await pool.query<RowData>(
-      `SELECT al.* FROM audit_log al
+      `SELECT al.* FROM audit_logs al
        WHERE al.entity_type = 'academy_enrollment' AND al.entity_id = ?
        ORDER BY al.created_at DESC`, [enrollmentId],
     );
