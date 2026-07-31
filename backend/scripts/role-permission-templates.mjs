@@ -82,9 +82,11 @@ const PLAYER_PATTERNS = [
   /^bookings\.create\./,
   /^marketplace\.(view|cart|order|wishlist|addresses)/,
   /^marketplace\.sell$/,
+  /^marketplace\.player\.status$/,
   /^coaches\./,
   /^academies\.(view|enroll)/,
   /^academy\.(view|enroll)/,
+  /^tournament\.view$/,
   /^player\.(dashboard|search|profile|favorites|statistics|achievements|qr|devices)\./,
   /^player\.tournaments\.register/,
   /^tournaments\.view/,
@@ -103,6 +105,17 @@ const PLAYER_PATTERNS = [
   /^league\.self_register/,
   /^player\.tournaments\.register/,
 ];
+
+// Player-facing keys whose `academy.`/`tournament.`/`league.` prefixes are
+// admin-only by default but are required for public/self-service endpoints.
+const PLAYER_EXPLICIT_KEYS = new Set([
+  'academy.view',
+  'academy.enroll',
+  'academy.self_enroll',
+  'tournament.view',
+  'tournament.register',
+  'league.self_register',
+]);
 
 const ORG_ADMIN_PATTERNS = [
   /^org\./,
@@ -254,6 +267,7 @@ export function permissionMatchesTemplate(templateSlug, permissionKey) {
 
   if (templateSlug === 'player') {
     if (permissionKey === 'home.recent-activity') return false;
+    if (PLAYER_EXPLICIT_KEYS.has(permissionKey)) return true;
     if (isAdminOnlyKey(permissionKey)) return false;
     if (permissionKey.startsWith('org.')) return false;
     if (matchesAny(permissionKey, PLAYER_PATTERNS)) return true;

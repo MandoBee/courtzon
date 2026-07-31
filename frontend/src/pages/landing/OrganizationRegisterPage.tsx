@@ -148,6 +148,7 @@ export default function OrganizationRegisterPage() {
             <div className="bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)] p-8 shadow-[var(--shadow-md)] animate-fade-in">
               {error && <div className="mb-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl text-sm text-[var(--color-error-text)] dark:text-red-400">{error}</div>}
 
+              <form onSubmit={(e) => e.preventDefault()} noValidate>
               {/* Step 0: Pick a Plan */}
               {step === 0 && (
                 <div>
@@ -310,6 +311,8 @@ export default function OrganizationRegisterPage() {
                   </div>
                 </div>
               )}
+
+              </form>
 
               <div className="flex items-center justify-between mt-8 pt-6 border-t border-[var(--color-border)]">
                 <button onClick={() => setStep(s => Math.max(0, s - 1))} disabled={step === 0}

@@ -1224,6 +1224,77 @@ export const translationKeysRegistry: TranslationKeyEntry[] = [
   { key: 'player.followed', defaultValue: 'Followed successfully', moduleSlug: 'player', elementType: 'message', elementLabel: 'Followed toast' },
   { key: 'player.unfollowed', defaultValue: 'Unfollowed', moduleSlug: 'player', elementType: 'message', elementLabel: 'Unfollowed toast' },
 
+  // Player dashboard — short labels
+  { key: 'player.dashboard.subtitle', defaultValue: 'Your activity at a glance', moduleSlug: 'player', elementType: 'text', elementLabel: 'Dashboard subtitle' },
+  { key: 'player.dashboard.player', defaultValue: 'Player', moduleSlug: 'player', elementType: 'text', elementLabel: 'Player word' },
+  { key: 'player.dashboard.membership', defaultValue: 'Membership', moduleSlug: 'player', elementType: 'label', elementLabel: 'Membership stat label' },
+  { key: 'player.dashboard.view_plans', defaultValue: 'View Plans', moduleSlug: 'player', elementType: 'button', elementLabel: 'View plans button' },
+  { key: 'player.dashboard.no_upcoming_bookings', defaultValue: 'No upcoming bookings', moduleSlug: 'player', elementType: 'text', elementLabel: 'No upcoming bookings empty state' },
+  { key: 'player.dashboard.match', defaultValue: 'Match', moduleSlug: 'player', elementType: 'text', elementLabel: 'Match word' },
+  { key: 'player.dashboard.no_upcoming_matches', defaultValue: 'No upcoming matches', moduleSlug: 'player', elementType: 'text', elementLabel: 'No upcoming matches empty state' },
+  { key: 'player.dashboard.active_enrollments', defaultValue: 'Active Enrollments', moduleSlug: 'player', elementType: 'heading', elementLabel: 'Active enrollments heading' },
+  { key: 'player.dashboard.academy', defaultValue: 'Academy', moduleSlug: 'player', elementType: 'text', elementLabel: 'Academy word' },
+  { key: 'player.dashboard.no_enrollments', defaultValue: 'No active enrollments', moduleSlug: 'player', elementType: 'text', elementLabel: 'No enrollments empty state' },
+  { key: 'player.dashboard.active_tournaments', defaultValue: 'Active Tournaments', moduleSlug: 'player', elementType: 'heading', elementLabel: 'Active tournaments heading' },
+  { key: 'player.dashboard.no_tournaments', defaultValue: 'No tournament registrations', moduleSlug: 'player', elementType: 'text', elementLabel: 'No tournaments empty state' },
+
+  // Player statistics
+  { key: 'player.statistics', defaultValue: 'My Statistics', moduleSlug: 'player', elementType: 'heading', elementLabel: 'Statistics page title' },
+  { key: 'player.total_bookings', defaultValue: 'Total Bookings', moduleSlug: 'player', elementType: 'label', elementLabel: 'Total bookings stat' },
+  { key: 'player.matches_played', defaultValue: 'Matches Played', moduleSlug: 'player', elementType: 'label', elementLabel: 'Matches played stat' },
+  { key: 'player.academy_sessions', defaultValue: 'Academy Sessions', moduleSlug: 'player', elementType: 'label', elementLabel: 'Academy sessions stat' },
+  { key: 'player.tournaments_joined', defaultValue: 'Tournaments Joined', moduleSlug: 'player', elementType: 'label', elementLabel: 'Tournaments joined stat' },
+  { key: 'player.followers', defaultValue: 'Followers', moduleSlug: 'player', elementType: 'label', elementLabel: 'Followers stat' },
+  { key: 'player.membership_tier', defaultValue: 'Membership Tier', moduleSlug: 'player', elementType: 'label', elementLabel: 'Membership tier label' },
+  { key: 'player.wallet_balance', defaultValue: 'Wallet Balance', moduleSlug: 'player', elementType: 'label', elementLabel: 'Wallet balance label' },
+
+  // Player search
+  { key: 'player.search_players', defaultValue: 'Find Players', moduleSlug: 'player', elementType: 'heading', elementLabel: 'Player search title' },
+  { key: 'player.search_placeholder', defaultValue: 'Search by player name...', moduleSlug: 'player', elementType: 'placeholder', elementLabel: 'Search placeholder' },
+  { key: 'player.no_results_found', defaultValue: 'No players found', moduleSlug: 'player', elementType: 'text', elementLabel: 'No results empty state' },
+  { key: 'player.type_to_search', defaultValue: 'Type to search', moduleSlug: 'player', elementType: 'text', elementLabel: 'Type to search hint' },
+  { key: 'player.follow', defaultValue: 'Follow', moduleSlug: 'player', elementType: 'button', elementLabel: 'Follow button' },
+  { key: 'player.follow_success', defaultValue: 'Followed successfully', moduleSlug: 'player', elementType: 'message', elementLabel: 'Followed toast' },
+  { key: 'player.follow_error', defaultValue: 'Failed to follow player', moduleSlug: 'player', elementType: 'message', elementLabel: 'Follow error toast' },
+
+  // Player public profile
+  { key: 'player.unfollow', defaultValue: 'Unfollow', moduleSlug: 'player', elementType: 'button', elementLabel: 'Unfollow button' },
+  { key: 'player.unfollow_success', defaultValue: 'Unfollowed', moduleSlug: 'player', elementType: 'message', elementLabel: 'Unfollowed toast' },
+  { key: 'player.unfollow_error', defaultValue: 'Failed to unfollow player', moduleSlug: 'player', elementType: 'message', elementLabel: 'Unfollow error toast' },
+  { key: 'player.member_since', defaultValue: 'Member since', moduleSlug: 'player', elementType: 'text', elementLabel: 'Member since label' },
+  { key: 'player.bookings', defaultValue: 'Bookings', moduleSlug: 'player', elementType: 'label', elementLabel: 'Bookings stat' },
+  { key: 'player.tournaments', defaultValue: 'Tournaments', moduleSlug: 'player', elementType: 'label', elementLabel: 'Tournaments stat' },
+  { key: 'player.following', defaultValue: 'Following', moduleSlug: 'player', elementType: 'label', elementLabel: 'Following stat' },
+
+  // Player QR profile
+  { key: 'player.player', defaultValue: 'Player', moduleSlug: 'player', elementType: 'text', elementLabel: 'Player word' },
+  { key: 'player.link_copied', defaultValue: 'Link copied', moduleSlug: 'player', elementType: 'message', elementLabel: 'Link copied toast' },
+  { key: 'player.qr_profile', defaultValue: 'My QR Profile', moduleSlug: 'player', elementType: 'heading', elementLabel: 'QR profile title' },
+  { key: 'player.share_profile', defaultValue: 'Share Profile', moduleSlug: 'player', elementType: 'button', elementLabel: 'Share profile button' },
+
+  // Player favorites
+  { key: 'player.my_favorites', defaultValue: 'My Favorites', moduleSlug: 'player', elementType: 'heading', elementLabel: 'Favorites page title' },
+  { key: 'player.clubs', defaultValue: 'Clubs', moduleSlug: 'player', elementType: 'tab', elementLabel: 'Clubs tab' },
+  { key: 'player.coaches', defaultValue: 'Coaches', moduleSlug: 'player', elementType: 'tab', elementLabel: 'Coaches tab' },
+  { key: 'player.no_favorite_clubs', defaultValue: 'No favorite clubs yet', moduleSlug: 'player', elementType: 'text', elementLabel: 'Empty clubs state' },
+  { key: 'player.no_favorite_coaches', defaultValue: 'No favorite coaches yet', moduleSlug: 'player', elementType: 'text', elementLabel: 'Empty coaches state' },
+  { key: 'player.unfavorite', defaultValue: 'Remove', moduleSlug: 'player', elementType: 'button', elementLabel: 'Remove favorite button' },
+  { key: 'player.unfavorite_success', defaultValue: 'Removed from favorites', moduleSlug: 'player', elementType: 'message', elementLabel: 'Removed toast' },
+  { key: 'player.unfavorite_error', defaultValue: 'Failed to remove favorite', moduleSlug: 'player', elementType: 'message', elementLabel: 'Remove error toast' },
+
+  // Player devices
+  { key: 'player.device_management', defaultValue: 'My Devices', moduleSlug: 'player', elementType: 'heading', elementLabel: 'Devices page title' },
+  { key: 'player.device_removed', defaultValue: 'Device removed', moduleSlug: 'player', elementType: 'message', elementLabel: 'Device removed toast' },
+  { key: 'player.device_remove_error', defaultValue: 'Failed to remove device', moduleSlug: 'player', elementType: 'message', elementLabel: 'Remove device error toast' },
+  { key: 'player.no_devices', defaultValue: 'No devices registered', moduleSlug: 'player', elementType: 'text', elementLabel: 'No devices empty state' },
+  { key: 'player.unknown_device', defaultValue: 'Unknown device', moduleSlug: 'player', elementType: 'text', elementLabel: 'Unknown device label' },
+  { key: 'player.last_active', defaultValue: 'Last active', moduleSlug: 'player', elementType: 'text', elementLabel: 'Last active label' },
+
+  // Player achievements
+  { key: 'player.achievements', defaultValue: 'Achievements', moduleSlug: 'player', elementType: 'heading', elementLabel: 'Achievements page title' },
+  { key: 'player.no_achievements', defaultValue: 'No achievements yet', moduleSlug: 'player', elementType: 'text', elementLabel: 'No achievements empty state' },
+  { key: 'player.unlocked', defaultValue: 'Unlocked', moduleSlug: 'player', elementType: 'label', elementLabel: 'Unlocked achievement label' },
+
   // Sprint 9 — player wallet
   { key: 'nav.payments', defaultValue: 'Payments', moduleSlug: 'nav', elementType: 'nav', elementLabel: 'Nav payments' },
   { key: 'nav.rank_history', defaultValue: 'Rank History', moduleSlug: 'nav', elementType: 'nav', elementLabel: 'Nav rank history' },
