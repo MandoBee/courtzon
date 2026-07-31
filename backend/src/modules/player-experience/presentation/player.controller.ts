@@ -83,6 +83,18 @@ export async function getFavoriteCoachesHandler(request: FastifyRequest, reply: 
   return reply.send(data);
 }
 
+export async function removeFavoriteCoachHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = getUserId(request);
+  const { id } = request.params as any;
+  await playerService.removeFavoriteCoach(userId, Number(id));
+  recordAudit({
+    actorId: userId, action: 'PLAYER.REMOVE_FAVORITE_COACH', entityType: 'user_follows',
+    entityId: Number(id), beforeState: { user_id: Number(id) },
+    ipAddress: request.ip, userAgent: getUserAgent(request),
+  });
+  return reply.send({ message: 'Coach removed from favorites' });
+}
+
 export async function getDevicesHandler(request: FastifyRequest, reply: FastifyReply) {
   const userId = getUserId(request);
   const data = await playerService.getDevices(userId);

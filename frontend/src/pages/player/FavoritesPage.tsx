@@ -16,17 +16,17 @@ export default function FavoritesPage() {
 
   const { data: clubs, isLoading: loadingClubs } = useQuery({
     queryKey: ['my', 'favorites', 'clubs'],
-    queryFn: () => api.get('/my/favorites/clubs').then((r) => r.data?.data || r.data || []),
+    queryFn: () => api.get('/players/my/favorites/clubs').then((r) => r.data?.data || r.data || []),
   });
 
   const { data: coaches, isLoading: loadingCoaches } = useQuery({
     queryKey: ['my', 'favorites', 'coaches'],
-    queryFn: () => api.get('/my/favorites/coaches').then((r) => r.data?.data || r.data || []),
+    queryFn: () => api.get('/players/my/favorites/coaches').then((r) => r.data?.data || r.data || []),
   });
 
   const unfavoriteMutation = useMutation({
     mutationFn: ({ type, id }: { type: 'clubs' | 'coaches'; id: number }) =>
-      api.delete(`/my/favorites/${type}/${id}`).then((r) => r.data),
+      api.delete(`/players/my/favorites/${type}/${id}`).then((r) => r.data),
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['my', 'favorites', variables.type] });
       showToast(t('player.unfavorite_success'));
@@ -76,7 +76,7 @@ export default function FavoritesPage() {
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-[var(--color-text)] truncate">{club.name || club.organisation_name}</p>
                   </div>
-                  <Can permission="favorites.manage">
+                  <Can permission="player.favorites.manage">
                     <button
                       onClick={() => unfavoriteMutation.mutate({ type: 'clubs', id: club.id })}
                       disabled={unfavoriteMutation.isPending}
@@ -106,7 +106,7 @@ export default function FavoritesPage() {
                     <p className="text-sm font-medium text-[var(--color-text)] truncate">{coach.full_name || coach.name || coach.fullName}</p>
                     <p className="text-xs text-[var(--color-text-muted)]">{coach.main_sport || coach.sport || ''}</p>
                   </div>
-                  <Can permission="favorites.manage">
+                  <Can permission="player.favorites.manage">
                     <button
                       onClick={() => unfavoriteMutation.mutate({ type: 'coaches', id: coach.id })}
                       disabled={unfavoriteMutation.isPending}

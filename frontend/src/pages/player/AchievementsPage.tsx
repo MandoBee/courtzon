@@ -7,7 +7,7 @@ export default function AchievementsPage() {
 
   const { data: achievements, isLoading } = useQuery({
     queryKey: ['my', 'achievements'],
-    queryFn: () => api.get('/my/achievements').then((r) => r.data?.data || r.data || []),
+    queryFn: () => api.get('/players/my/achievements').then((r) => r.data?.data || r.data || []),
   });
 
   const list: any[] = Array.isArray(achievements) ? achievements : [];

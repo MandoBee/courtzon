@@ -15,13 +15,13 @@ export default function DeviceManagementPage() {
 
   const { data: devices, isLoading } = useQuery({
     queryKey: ['my', 'devices'],
-    queryFn: () => api.get('/my/devices').then((r) => r.data?.data || r.data || []),
+    queryFn: () => api.get('/players/my/devices').then((r) => r.data?.data || r.data || []),
   });
 
   const deviceList: any[] = Array.isArray(devices) ? devices : [];
 
   const removeMutation = useMutation({
-    mutationFn: (deviceId: number) => api.delete(`/my/devices/${deviceId}`).then((r) => r.data),
+    mutationFn: (deviceId: number) => api.delete(`/players/my/devices/${deviceId}`).then((r) => r.data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['my', 'devices'] });
       showToast(t('player.device_removed'));
@@ -71,13 +71,13 @@ export default function DeviceManagementPage() {
                   <p className="text-xs text-[var(--color-text-muted)]">
                     {[d.os, d.browser, d.device_type || d.type].filter(Boolean).join(' · ')}
                   </p>
-                  {d.last_active || d.lastActive ? (
+                  {d.last_active || d.lastActive || d.last_active_at ? (
                     <p className="text-xs text-[var(--color-text-muted)] mt-0.5">
-                      {t('player.last_active')}: {new Date(d.last_active || d.lastActive).toLocaleDateString()}
+                      {t('player.last_active')}: {new Date(d.last_active || d.lastActive || d.last_active_at).toLocaleDateString()}
                     </p>
                   ) : null}
                 </div>
-                <Can permission="profile.devices.remove">
+                <Can permission="player.devices.manage">
                   {confirmId === d.id ? (
                     <div className="flex items-center gap-1">
                       <button

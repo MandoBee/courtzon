@@ -211,6 +211,11 @@ class PlayerService {
     }));
   }
 
+  async removeFavoriteCoach(userId: number, coachId: number): Promise<void> {
+    const pool = getPool();
+    await pool.execute('DELETE FROM user_follows WHERE follower_id = ? AND following_id = ?', [userId, coachId]);
+  }
+
   async getDevices(userId: number): Promise<PlayerDevice[]> {
     const pool = getPool();
     const [rows] = await pool.execute<any[]>(

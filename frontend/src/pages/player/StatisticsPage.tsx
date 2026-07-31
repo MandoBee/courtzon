@@ -21,7 +21,7 @@ export default function StatisticsPage() {
 
   const { data: stats, isLoading } = useQuery({
     queryKey: ['my', 'statistics'],
-    queryFn: () => api.get('/my/statistics').then((r) => r.data?.data || r.data || {}),
+    queryFn: () => api.get('/players/my/statistics').then((r) => r.data?.data || r.data || {}),
   });
 
   const s: any = stats || {};

@@ -171,7 +171,7 @@ export default function PlayerDashboardPage() {
       </Can>
 
       {/* Active Tournament Registrations */}
-      <Can permission="tournaments.register">
+      <Can permission="player.tournaments.register">
         <div>
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-sm font-semibold text-[var(--color-text)]">{t('player.dashboard.active_tournaments')}</h2>

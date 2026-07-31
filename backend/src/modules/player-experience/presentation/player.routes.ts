@@ -18,6 +18,7 @@ export async function playerRoutes(app: FastifyInstance): Promise<void> {
   app.delete('/players/my/favorites/clubs/:orgId', { preHandler: [requirePermission(['player.favorites.manage'])] }, ctrl.removeFavoriteClubHandler);
 
   app.get('/players/my/favorites/coaches', { preHandler: [requirePermission(['player.favorites.manage'])] }, ctrl.getFavoriteCoachesHandler);
+  app.delete('/players/my/favorites/coaches/:id', { preHandler: [requirePermission(['player.favorites.manage'])] }, ctrl.removeFavoriteCoachHandler);
 
   app.get('/players/my/devices', { preHandler: [requirePermission(['player.devices.manage'])] }, ctrl.getDevicesHandler);
   app.delete('/players/my/devices/:id', { preHandler: [requirePermission(['player.devices.manage'])] }, ctrl.removeDeviceHandler);

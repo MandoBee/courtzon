@@ -13,7 +13,7 @@ export default function QRProfilePage() {
 
   const { data: qrProfile, isLoading } = useQuery({
     queryKey: ['my', 'qr-profile'],
-    queryFn: () => api.get('/my/qr-profile').then((r) => r.data?.data || r.data || {}),
+    queryFn: () => api.get('/players/my/qr-profile').then((r) => r.data?.data || r.data || {}),
   });
 
   const p: any = qrProfile || {};
