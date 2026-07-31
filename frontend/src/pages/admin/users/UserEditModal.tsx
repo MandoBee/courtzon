@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { getErrorMessage } from '../../../utils/errors';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../../services/api';
-import { Button, Spinner, EntityImage } from '../../../components/ui';
+import { Button, Spinner, EntityImage, PasswordInput } from '../../../components/ui';
 import { Can } from '../../../permissions/Can';
 import { useToast } from '../../../components/ui/Toast';
 import { formatISODate } from '../../../utils/formatDate';
@@ -388,15 +388,13 @@ export default function UserEditModal({ userId, onClose }: UserEditModalProps) {
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
                   <div>
                     <label className="block text-xs text-[var(--color-text-muted)] mb-1">New Password</label>
-                    <input type="password" autoComplete="new-password" value={newPassword} onChange={(e: any) => setNewPassword(e.target.value)}
-                      placeholder="Min 6 characters"
-                      className="w-full px-3 py-2 border rounded-[var(--radius-md)] bg-[var(--color-bg)] text-sm" />
+                    <PasswordInput autoComplete="new-password" value={newPassword} onChange={(e: any) => setNewPassword(e.target.value)}
+                      placeholder="Min 6 characters" className="!px-3 !py-2 text-sm" />
                   </div>
                   <div>
                     <label className="block text-xs text-[var(--color-text-muted)] mb-1">Confirm Password</label>
-                    <input type="password" autoComplete="new-password" value={newPasswordConfirm} onChange={(e: any) => setNewPasswordConfirm(e.target.value)}
-                      placeholder="Confirm password"
-                      className="w-full px-3 py-2 border rounded-[var(--radius-md)] bg-[var(--color-bg)] text-sm" />
+                    <PasswordInput autoComplete="new-password" value={newPasswordConfirm} onChange={(e: any) => setNewPasswordConfirm(e.target.value)}
+                      placeholder="Confirm password" className="!px-3 !py-2 text-sm" />
                   </div>
                   <div className="flex items-center gap-2">
                     <Can permission="users.change-password">

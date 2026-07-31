@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { t } from '../../i18n';
 import api from '../../services/api';
-import { Button, Input, Card } from '../../components/ui';
+import { Button, PasswordInput, Card } from '../../components/ui';
 import SiteBrand from '../../components/branding/SiteBrand';
 
 const ResetSchema = z.object({
@@ -71,17 +71,15 @@ export default function ResetPasswordPage() {
         <Card>
           <h2 className="text-xl font-semibold text-[var(--color-text)] mb-6">{t('auth.reset.title')}</h2>
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-            <Input
+            <PasswordInput
               label={t('auth.register.password')}
-              type="password"
               autoComplete="new-password"
               placeholder="Min 6 characters"
               {...register('newPassword')}
               error={errors.newPassword?.message}
             />
-            <Input
+            <PasswordInput
               label={t('auth.register.confirm_password')}
-              type="password"
               autoComplete="new-password"
               placeholder="Repeat password"
               {...register('confirmPassword')}

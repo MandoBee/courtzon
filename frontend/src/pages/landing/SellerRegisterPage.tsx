@@ -13,6 +13,7 @@ import { scrollToTop } from '../../utils/scroll';
 import { buildAuthRegisterPayload, filterRegistrationPaymentMethods } from '../../utils/registration';
 import { getErrorMessage } from '../../utils/errors';
 import { useTranslation } from '../../i18n';
+import { PasswordInput } from '../../components/ui/PasswordInput';
 
 interface Country { id: number; name: string; phone_code: string; iso_code: string; flag_emoji?: string; default_currency?: string; currency_symbol?: string | null; }
 interface PaymentMethod { id: number; slug: string; name: string; icon: string; description: string; requiresApproval: boolean; }
@@ -209,11 +210,11 @@ export default function SellerRegisterPage() {
                   <div className="space-y-4">
                     <div>
                       <label className="block text-sm font-medium text-[var(--color-text)] mb-1.5">{t('auth.register.password')} *</label>
-                      <input type="password" autoComplete="new-password" value={form.password} onChange={e => update('password', e.target.value)} placeholder={t('landing.player_reg.password_placeholder')} className="w-full px-4 py-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] text-[var(--color-text)] focus:ring-2 focus:ring-[var(--color-primary)]/30 focus:border-[var(--color-primary)] outline-none" />
+                      <PasswordInput autoComplete="new-password" value={form.password} onChange={e => update('password', e.target.value)} placeholder={t('landing.player_reg.password_placeholder')} className="w-full px-4 py-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] text-[var(--color-text)] focus:ring-2 focus:ring-[var(--color-primary)]/30 focus:border-[var(--color-primary)] outline-none" />
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-[var(--color-text)] mb-1.5">{t('auth.register.confirm_password')} *</label>
-                      <input type="password" autoComplete="new-password" value={form.confirmPassword} onChange={e => update('confirmPassword', e.target.value)} placeholder={t('landing.player_reg.confirm_password_placeholder')} className="w-full px-4 py-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] text-[var(--color-text)] focus:ring-2 focus:ring-[var(--color-primary)]/30 focus:border-[var(--color-primary)] outline-none" />
+                      <PasswordInput autoComplete="new-password" value={form.confirmPassword} onChange={e => update('confirmPassword', e.target.value)} placeholder={t('landing.player_reg.confirm_password_placeholder')} className="w-full px-4 py-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] text-[var(--color-text)] focus:ring-2 focus:ring-[var(--color-primary)]/30 focus:border-[var(--color-primary)] outline-none" />
                       {form.confirmPassword && form.password !== form.confirmPassword && <p className="text-xs text-red-500 mt-1">{t('auth.register.password_mismatch')}</p>}
                     </div>
                     <div>

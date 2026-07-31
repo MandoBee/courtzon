@@ -2,6 +2,7 @@ export { Button } from './Button';
 export { EntityImage } from './EntityImage';
 export { CountryFlag } from './CountryFlag';
 export { Input } from './Input';
+export { PasswordInput } from './PasswordInput';
 export { Card } from './Card';
 export { Badge } from './Badge';
 export { Spinner } from './Spinner';

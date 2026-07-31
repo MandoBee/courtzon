@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useToast } from '../../components/ui/Toast';
 import api from '../../services/api';
-import { Button, Input, Card } from '../../components/ui';
+import { Button, PasswordInput, Card } from '../../components/ui';
 import SiteBrand from '../../components/branding/SiteBrand';
 
 const ResetSchema = z.object({
@@ -92,17 +92,15 @@ export default function TemporaryResetPasswordPage() {
             </p>
           )}
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-            <Input
+            <PasswordInput
               label="New Password"
-              type="password"
               autoComplete="new-password"
               placeholder="Min 6 characters"
               {...register('newPassword')}
               error={errors.newPassword?.message}
             />
-            <Input
+            <PasswordInput
               label="Confirm New Password"
-              type="password"
               autoComplete="new-password"
               placeholder="Repeat password"
               {...register('confirmPassword')}

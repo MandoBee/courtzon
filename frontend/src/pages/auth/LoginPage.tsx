@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useAuthStore } from '../../store/auth.store';
 import { t } from '../../i18n';
-import { Button, Input, Card } from '../../components/ui';
+import { Button, PasswordInput, Card } from '../../components/ui';
 import PhoneNumberInput from '../../components/form/PhoneNumberInput';
 import { localPhoneZod } from '../../utils/phone';
 import { useDetectedCountry } from '../../hooks/useDetectedCountry';
@@ -99,9 +99,8 @@ export default function LoginPage() {
               error={errors.phoneNumber?.message}
               required
             />
-            <Input
+            <PasswordInput
               label={t('auth.login.password')}
-              type="password"
               autoComplete="current-password"
               {...register('password')}
               error={errors.password?.message}

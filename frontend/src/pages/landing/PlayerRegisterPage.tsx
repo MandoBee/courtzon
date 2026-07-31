@@ -9,6 +9,7 @@ import { getErrorMessage } from '../../utils/errors';
 import { useTranslation } from '../../i18n';
 import { useToast } from '../../components/ui/Toast';
 import { ReactivationModal } from '../../components/ui/ReactivationModal';
+import { PasswordInput } from '../../components/ui/PasswordInput';
 
 interface Country { id: number; name: string; phone_code: string; iso_code: string; flag_emoji?: string; default_currency?: string; }
 interface Sport { id: number; name: string; }
@@ -219,13 +220,11 @@ export default function PlayerRegisterPage() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-[var(--color-text)] mb-1.5">{t('auth.register.password')} *</label>
-                  <input type="password" autoComplete="new-password" value={form.password} onChange={e => update('password', e.target.value)} placeholder={t('landing.player_reg.password_placeholder')} className={`w-full px-4 py-3 rounded-xl border bg-[var(--color-bg)] text-[var(--color-text)] focus:ring-2 focus:ring-[var(--color-primary)]/30 focus:border-[var(--color-primary)] outline-none ${fieldErrors.password ? 'border-[var(--color-error)]' : 'border-[var(--color-border)]'}`} />
-                  {fieldErrors.password && <p className="text-xs text-[var(--color-error)] mt-1">{fieldErrors.password}</p>}
+                  <PasswordInput autoComplete="new-password" value={form.password} onChange={e => update('password', e.target.value)} placeholder={t('landing.player_reg.password_placeholder')} error={fieldErrors.password} className={`w-full px-4 py-3 rounded-xl border bg-[var(--color-bg)] text-[var(--color-text)] focus:ring-2 focus:ring-[var(--color-primary)]/30 focus:border-[var(--color-primary)] outline-none ${fieldErrors.password ? 'border-[var(--color-error)]' : 'border-[var(--color-border)]'}`} />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-[var(--color-text)] mb-1.5">{t('auth.register.confirm_password')} *</label>
-                  <input type="password" autoComplete="new-password" value={form.confirmPassword} onChange={e => update('confirmPassword', e.target.value)} placeholder={t('landing.player_reg.confirm_password_placeholder')} className={`w-full px-4 py-3 rounded-xl border bg-[var(--color-bg)] text-[var(--color-text)] focus:ring-2 focus:ring-[var(--color-primary)]/30 focus:border-[var(--color-primary)] outline-none ${fieldErrors.confirmPassword ? 'border-[var(--color-error)]' : 'border-[var(--color-border)]'}`} />
-                  {fieldErrors.confirmPassword && <p className="text-xs text-[var(--color-error)] mt-1">{fieldErrors.confirmPassword}</p>}
+                  <PasswordInput autoComplete="new-password" value={form.confirmPassword} onChange={e => update('confirmPassword', e.target.value)} placeholder={t('landing.player_reg.confirm_password_placeholder')} error={fieldErrors.confirmPassword} className={`w-full px-4 py-3 rounded-xl border bg-[var(--color-bg)] text-[var(--color-text)] focus:ring-2 focus:ring-[var(--color-primary)]/30 focus:border-[var(--color-primary)] outline-none ${fieldErrors.confirmPassword ? 'border-[var(--color-error)]' : 'border-[var(--color-border)]'}`} />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-[var(--color-text)] mb-1.5">{t('auth.register.gender')} *</label>
