@@ -31,7 +31,7 @@ export const walletRepository = {
   async persistBalanceUpdate(walletId: number, newBalance: number, expectedVersion: number, conn?: mysql.PoolConnection): Promise<void> {
     const pool = resolvePool(conn);
     const [result] = await pool.execute<ResultSetHeader>(
-      'UPDATE user_wallets SET balance = ?, version = version + 1, updated_at = NOW() WHERE id = ? AND version = ?',
+      'UPDATE user_wallets SET balance = ?, version = version + 1 WHERE id = ? AND version = ?',
       [newBalance, walletId, expectedVersion]
     );
     if (result.affectedRows === 0) {

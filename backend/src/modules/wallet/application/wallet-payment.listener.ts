@@ -17,7 +17,7 @@ const log = createModuleLogger('wallet-payment-listener');
  * API always returns "pending", so the credit is performed asynchronously here
  * on the canonical `payment:succeeded` event (fired by webhook / confirm / sync).
  *
- * Idempotency: the ledger transaction is keyed by (source_type='wallet_topup',
+ * Idempotency: the ledger transaction is keyed by (source_type='wallet',
  * source_id=paymentId) — a duplicate event skips the credit.
  */
 export function registerWalletPaymentListeners() {
@@ -33,7 +33,7 @@ export function registerWalletPaymentListeners() {
     }
 
     try {
-      const existing = await transactionRepository.findBySource('wallet_topup', paymentId);
+      const existing = await transactionRepository.findBySource('wallet', paymentId);
       if (existing.length > 0) {
         log.info({ paymentId }, 'Wallet topup already credited — idempotent skip');
         return;
@@ -62,7 +62,7 @@ export function registerWalletPaymentListeners() {
             userId,
             walletId: wallet.id,
             amount,
-            sourceType: 'wallet_topup',
+            sourceType: 'wallet',
             sourceId: paymentId,
             description: `Card deposit (payment #${paymentId})`,
           }, conn);
