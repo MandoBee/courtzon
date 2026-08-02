@@ -528,7 +528,7 @@ export const marketplaceService = {
       organisationId: firstSellerId || undefined,
     });
     log.info({ traceId, orderId, paymentMethod: data.paymentMethod, total }, 'checkout: processing payment');
-    const result = this._processOrderPayment(userId, orderId, total, currencyCode, data.paymentMethod, data.returnUrl, customerData);
+    const result = await this._processOrderPayment(userId, orderId, total, currencyCode, data.paymentMethod, data.returnUrl, customerData);
     log.info({ traceId, orderId, paymentMethod: data.paymentMethod }, 'checkout: completed successfully');
     return result;
   },
@@ -552,8 +552,13 @@ export const marketplaceService = {
           }
           return this.getOrderForUser(orderId, userId);
         }
-      } catch {
+        await this._restoreOrderStock(orderId, 'Wallet payment returned not successful');
+        await repo.updateOrderStatus(orderId, 'cancelled', 'Wallet payment failed');
+      } catch (err: any) {
+        log.error({ err, orderId, userId }, 'Wallet payment failed — restoring stock and cancelling order');
         await this._restoreOrderStock(orderId, 'Wallet payment failed — stock restored');
+        await repo.updateOrderStatus(orderId, 'cancelled', `Wallet payment error: ${err?.message || 'Unknown error'}`);
+        throw new ConflictError(err?.message || 'Wallet payment failed');
       }
     } else if (paymentMethod === 'cash') {
       await this._fulfillAndConfirmOrder(orderId, userId, 'Payment on delivery (cash)');
@@ -874,9 +879,17 @@ export const marketplaceService = {
   //   - cash → 'unpaid' (COD — payment collected on delivery)
   //   - wallet/card → 'paid' (payment already completed)
   async _fulfillAndConfirmOrder(orderId: number, userId: number, note: string) {
-    // Read the order first to determine payment method
+    // Read the order first to determine status + payment method
     const orderRows = await repo.findOrderById(orderId);
-    const paymentMethod = orderRows?.length ? (orderRows[0] as any).payment_method : 'unknown';
+    if (!orderRows?.length) return;
+
+    const orderStatus = (orderRows[0] as any).status;
+    if (orderStatus === 'confirmed' || orderStatus === 'cancelled') {
+      log.info({ orderId, status: orderStatus }, '_fulfillAndConfirmOrder: idempotent skip');
+      return;
+    }
+
+    const paymentMethod = (orderRows[0] as any).payment_method;
     const isCash = paymentMethod === 'cash';
 
     // Set status to confirmed; the repo method sets payment_status = 'paid' for confirmed,

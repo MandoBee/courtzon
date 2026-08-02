@@ -198,17 +198,25 @@ export class BookingService {
         const { paymentService } = await import('../../payment/application/payment.service.js');
         const [userRows] = await pool.execute<RowData>('SELECT full_name, email, full_phone FROM users WHERE id = ?', [userId]);
         const user = userRows[0] as any;
-        const gwResult = await paymentService.charge(userId, {
-          referenceType: 'booking',
-          referenceId: bookingId,
-          amount: pricing.totalPrice,
-          currency: 'EGP',
-          paymentMethod: (paymentMethod === 'online' ? 'card' : paymentMethod as 'wallet' | 'card' | 'bank_transfer'),
-          returnUrl: input.returnUrl,
-          customerName: user?.full_name,
-          customerPhone: user?.full_phone,
-          customerEmail: user?.email,
-        });
+
+        let gwResult: Awaited<ReturnType<typeof paymentService.charge>>;
+        try {
+          gwResult = await paymentService.charge(userId, {
+            referenceType: 'booking',
+            referenceId: bookingId,
+            amount: pricing.totalPrice,
+            currency: 'EGP',
+            paymentMethod: (paymentMethod === 'online' ? 'card' : paymentMethod as 'wallet' | 'card' | 'bank_transfer'),
+            returnUrl: input.returnUrl,
+            customerName: user?.full_name,
+            customerPhone: user?.full_phone,
+            customerEmail: user?.email,
+          });
+        } catch (chargeErr: any) {
+          log.error({ err: chargeErr, bookingId, userId, paymentMethod }, 'Payment charge threw exception — cancelling booking');
+          await executeBookingCommand('CancelBooking', cancelBookingHandler, { bookingId, reason: CancellationReason.PAYMENT_SESSION_CREATION_FAILED, actorId: 0 }, String(bookingId));
+          throw new ConflictError(chargeErr.message || 'Payment failed — booking rolled back');
+        }
 
         if (!gwResult.success) {
           await executeBookingCommand('CancelBooking', cancelBookingHandler, { bookingId, reason: CancellationReason.PAYMENT_SESSION_CREATION_FAILED, actorId: 0 }, String(bookingId));
