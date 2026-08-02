@@ -41,6 +41,34 @@ function isAuthSessionRequest(url: string | undefined): boolean {
   return url.includes('/auth/me') || url.includes('/auth/refresh');
 }
 
+/**
+ * Single shared refresh promise — prevents concurrent refresh calls
+ * from racing each other and revoking tokens mid-flight.
+ * Only one POST /auth/refresh runs at a time; all concurrent 401
+ * handlers await the same promise.
+ */
+let refreshPromise: Promise<void> | null = null;
+
+function refreshAuthSession(): Promise<void> {
+  if (refreshPromise) return refreshPromise;
+
+  refreshPromise = axios
+    .post(
+      `${api.defaults.baseURL || ''}/auth/refresh`,
+      {},
+      { withCredentials: true },
+    )
+    .then(() => {
+      refreshPromise = null;
+    })
+    .catch((err) => {
+      refreshPromise = null;
+      throw err;
+    });
+
+  return refreshPromise;
+}
+
 api.interceptors.response.use(
   (response) => response,
   async (error: AxiosError) => {
@@ -60,11 +88,7 @@ api.interceptors.response.use(
     if (!originalRequest._retry) {
       originalRequest._retry = true;
       try {
-        await axios.post(
-          `${api.defaults.baseURL}/auth/refresh`,
-          {},
-          { withCredentials: true },
-        );
+        await refreshAuthSession();
         return api(originalRequest);
       } catch {
         sessionStorage.removeItem('user');
