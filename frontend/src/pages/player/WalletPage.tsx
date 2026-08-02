@@ -9,6 +9,11 @@ import { Button, Input, Card, Modal } from '../../components/ui';
 import { Can } from '../../permissions/Can';
 import { useToast } from '../../components/ui/Toast';
 import { formatPrice, getCurrencySymbol } from '../../utils/currency';
+import {
+  getWalletTransactionDirection,
+  getWalletTransactionLabel,
+  type WalletTransaction,
+} from '../../utils/walletTransactions';
 import PaymobPixelCard from '../../components/payment/PaymobPixelCard';
 import PaymentStatusPoller from '../../components/payment/PaymentStatusPoller';
 import { usePaymentConfirm } from '../../hooks/usePaymentConfirm';
@@ -218,21 +223,24 @@ export default function WalletPage() {
               <p className="text-sm text-[var(--color-text-muted)]">{t('player.wallet.no_transactions') || 'No transactions yet.'}</p>
             ) : (
               <div className="space-y-2">
-                {txns.data.map((t: { id: number; transaction_type?: string; description?: string; created_at: string; direction: string; amount: number }) => (
-                  <div key={t.id} className="flex items-center justify-between py-2 border-b border-[var(--color-border)] last:border-0">
-                    <div>
-                      <p className="text-sm font-medium text-[var(--color-text)] capitalize">
-                        {t.transaction_type?.replace(/_/g, ' ')}
-                      </p>
-                      <p className="text-xs text-[var(--color-text-muted)]">
-                        {t.description || ''} &middot; {new Date(t.created_at).toLocaleDateString('en-GB')}
-                      </p>
+                {txns.data.map((t: WalletTransaction) => {
+                  const isCredit = getWalletTransactionDirection(t) === 'credit';
+                  return (
+                    <div key={t.id} className="flex items-center justify-between py-2 border-b border-[var(--color-border)] last:border-0">
+                      <div>
+                        <p className="text-sm font-medium text-[var(--color-text)] capitalize">
+                          {getWalletTransactionLabel(t)}
+                        </p>
+                        <p className="text-xs text-[var(--color-text-muted)]">
+                          {t.description || ''} &middot; {t.created_at ? new Date(t.created_at).toLocaleDateString('en-GB') : ''}
+                        </p>
+                      </div>
+                      <span className={`text-sm font-semibold ${isCredit ? 'text-[var(--color-success)]' : 'text-[var(--color-error)]'}`}>
+                        {isCredit ? '+' : '-'}{formatPrice(Number(t.amount), walletCurrency)}
+                      </span>
                     </div>
-                    <span className={`text-sm font-semibold ${t.direction === 'credit' ? 'text-[var(--color-success)]' : 'text-[var(--color-error)]'}`}>
-                      {t.direction === 'credit' ? '+' : '-'}{formatPrice(Number(t.amount), walletCurrency)}
-                    </span>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
             {txns && txns.total > PAGE_SIZE && (

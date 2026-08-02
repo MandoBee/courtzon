@@ -101,7 +101,7 @@ export const transactionRepository = {
     const total = (countRows[0] as any).cnt;
 
     const [rows] = await pool.execute<RowData>(
-      `SELECT te.*, t.type as txn_type, t.status as txn_status, t.created_at as txn_created_at
+      `SELECT te.*, t.type as txn_type, t.type as type, t.status as txn_status, t.created_at as txn_created_at, te.side as direction
        FROM transaction_entries te
        JOIN transactions t ON t.id = te.transaction_id
        JOIN user_wallets uw ON te.entity_type = 'user_wallet' AND te.entity_id = uw.id

@@ -4,6 +4,7 @@ import { useParams } from 'react-router-dom';
 import api from '../../services/api';
 import { Can } from '../../permissions/Can';
 import { useToast } from '../../components/ui/Toast';
+import { getWalletTransactionLabel } from '../../utils/walletTransactions';
 
 const SETTLEMENT_STATUS_COLORS: Record<string, string> = {
   requested: 'bg-gray-100 text-gray-600',
@@ -251,16 +252,6 @@ function SettlementActions({ orgId, settlement, onUpdated }: { orgId: string; se
   return buttons.length ? <div className="flex gap-1 flex-wrap">{buttons}</div> : null;
 }
 
-const TXN_TYPE_LABELS: Record<string, string> = {
-  booking_payment: 'Booking Payment',
-  wallet_topup: 'Wallet Top-up',
-  refund: 'Refund',
-  payout: 'Payout',
-  marketplace_order: 'Marketplace Order',
-  settlement_payout: 'Settlement Payout',
-  withdrawal: 'Withdrawal',
-};
-
 export default function OrgFinancePage() {
   const { orgId } = useParams<{ orgId: string }>();
   const [tab, setTab] = useState<'transactions' | 'settlements'>('transactions');
@@ -353,7 +344,7 @@ export default function OrgFinancePage() {
                         {new Date(tx.created_at || tx.txn_created_at).toLocaleDateString('en-GB')}
                       </td>
                       <td className="px-4 py-3">
-                        <span className="capitalize">{TXN_TYPE_LABELS[tx.txn_type] || tx.txn_type}</span>
+                        <span className="capitalize">{getWalletTransactionLabel(tx)}</span>
                       </td>
                       <td className="px-4 py-3 text-[var(--color-text)]">{tx.description || '-'}</td>
                       <td className="px-4 py-3 text-[var(--color-text-muted)]">{tx.branch_name || '-'}</td>
