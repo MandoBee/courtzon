@@ -1312,6 +1312,9 @@ export const translationKeysRegistry: TranslationKeyEntry[] = [
   { key: 'player.wallet.no_transactions', defaultValue: 'No transactions yet.', moduleSlug: 'player', elementType: 'text', elementLabel: 'No transactions' },
   { key: 'player.wallet.card_payment', defaultValue: 'Card Payment', moduleSlug: 'player', elementType: 'heading', elementLabel: 'Card payment heading' },
   { key: 'player.wallet.loading_payment', defaultValue: 'Loading secure payment form...', moduleSlug: 'player', elementType: 'text', elementLabel: 'Loading payment form' },
+  { key: 'player.wallet.payment_submitted', defaultValue: 'Payment submitted — confirming...', moduleSlug: 'player', elementType: 'message', elementLabel: 'Payment submitted toast' },
+  { key: 'player.wallet.payment_cancelled', defaultValue: 'Payment cancelled', moduleSlug: 'player', elementType: 'message', elementLabel: 'Payment cancelled toast' },
+  { key: 'player.wallet.deposit_pending', defaultValue: 'Payment confirmation is taking longer than expected. Your wallet will be credited once the payment settles.', moduleSlug: 'player', elementType: 'message', elementLabel: 'Deposit pending toast' },
   { key: 'common.page', defaultValue: 'Page', moduleSlug: 'common', elementType: 'label', elementLabel: 'Page label' },
   { key: 'common.of', defaultValue: 'of', moduleSlug: 'common', elementType: 'label', elementLabel: 'of label' },
 
