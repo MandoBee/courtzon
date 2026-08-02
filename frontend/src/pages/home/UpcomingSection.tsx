@@ -80,7 +80,7 @@ export default function UpcomingSection() {
         {bookings.map((b: any) => (
           <button
             key={`b-${b.id}`}
-            onClick={() => navigate(`/bookings/${b.id}/confirmation`)}
+            onClick={() => navigate(`/bookings/${b.id}`)}
             className="w-full flex items-center gap-3 p-3 md:p-4 rounded-[var(--radius-lg)] bg-[var(--color-surface)] border border-[var(--color-border)] hover:shadow-[var(--shadow-md)] transition-all duration-200 text-left"
           >
             <div className="w-10 h-10 rounded-full bg-[var(--color-primary)]/10 flex items-center justify-center shrink-0 text-lg">

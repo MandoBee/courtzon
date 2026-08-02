@@ -55,6 +55,7 @@ const OrgStorefrontPage = lazy(() => import('./pages/organisations/OrgStorefront
 const BookingResourceListPage = lazy(() => import('./pages/booking/ResourceListPage'));
 const BookingFormPage = lazy(() => import('./pages/booking/BookingFormPage'));
 const BookingConfirmationPage = lazy(() => import('./pages/booking/BookingConfirmationPage'));
+const BookingDetailPage = lazy(() => import('./pages/booking/BookingDetailPage'));
 const MyBookingsPage = lazy(() => import('./pages/booking/MyBookingsPage'));
 const MarketplacePage = lazy(() => import('./pages/marketplace/MarketplacePage'));
 const ProductDetailPage = lazy(() => import('./pages/marketplace/ProductDetailPage'));
@@ -520,6 +521,7 @@ function AppContent() {
           <Route path="/book/:resourceId" element={<BookingFormPage />} />
           <Route path="/bookings" element={<MyBookingsPage />} />
           <Route path="/bookings/:id/confirmation" element={<BookingConfirmationPage />} />
+          <Route path="/bookings/:id" element={<BookingDetailPage />} />
           <Route path="/matches" element={<MatchListPage />} />
           <Route path="/matches/:id" element={<MatchLobbyPage />} />
           <Route path="/marketplace" element={<MarketplacePage />} />
