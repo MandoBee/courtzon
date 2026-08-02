@@ -52,7 +52,7 @@ function ImageField({
 }: {
   label: string;
   hint?: string;
-  assetType: 'site-logo' | 'site-logo-dark' | 'favicon' | 'favicon-dark' | 'pwa-192' | 'pwa-512';
+  assetType: 'site-logo' | 'site-logo-dark' | 'favicon' | 'favicon-dark' | 'pwa-192' | 'pwa-512' | 'splash-image' | 'splash-image-dark';
   value: string;
   permission: string;
   previewClassName: string;
@@ -114,6 +114,9 @@ export default function AppSettingsPage() {
       site_logo_dark_url: form.site_logo_dark_url,
       pwa_icon_192: form.pwa_icon_192,
       pwa_icon_512: form.pwa_icon_512,
+      splash_image_url: form.splash_image_url,
+      splash_image_dark_url: form.splash_image_dark_url,
+      splash_image_default: form.splash_image_default,
       maintenance_mode: maintenanceMode,
     };
     saveMutation.mutate(settings);
@@ -252,6 +255,64 @@ export default function AppSettingsPage() {
               />
             </div>
           </Can>
+        </section>
+
+        <section className="space-y-4 border-t border-[var(--color-border)] pt-5">
+          <h2 className="text-sm font-semibold text-[var(--color-text)] uppercase tracking-wide">Splash screen</h2>
+          <p className="text-xs text-[var(--color-text-muted)] -mt-2">
+            Images shown during app startup. Upload a light and dark variant, then select which one to use by default.
+          </p>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Can permission="app-settings.edit.splash-image">
+              <ImageField
+                label="Splash (Light Mode)"
+                hint="Hero image for light theme startup."
+                assetType="splash-image"
+                value={form.splash_image_url ?? ''}
+                permission="app-settings.edit.splash-image"
+                previewClassName="w-full max-w-[200px] h-32 object-cover bg-[var(--color-bg)]"
+                onChange={(url) => setField('splash_image_url', url)}
+              />
+            </Can>
+            <Can permission="app-settings.edit.splash-image-dark">
+              <ImageField
+                label="Splash (Dark Mode)"
+                hint="Hero image for dark theme startup."
+                assetType="splash-image-dark"
+                value={form.splash_image_dark_url ?? ''}
+                permission="app-settings.edit.splash-image-dark"
+                previewClassName="w-full max-w-[200px] h-32 object-cover bg-[#121212]"
+                onChange={(url) => setField('splash_image_dark_url', url)}
+              />
+            </Can>
+          </div>
+
+          <div className="flex items-center gap-6">
+            <span className="text-sm font-medium text-[var(--color-text)]">Default splash:</span>
+            <label className="flex items-center gap-2 text-sm text-[var(--color-text)]">
+              <input
+                type="radio"
+                name="splashDefault"
+                value="light"
+                checked={(form.splash_image_default ?? 'light') === 'light'}
+                onChange={() => setField('splash_image_default', 'light')}
+                className="accent-[var(--color-primary)]"
+              />
+              Light
+            </label>
+            <label className="flex items-center gap-2 text-sm text-[var(--color-text)]">
+              <input
+                type="radio"
+                name="splashDefault"
+                value="dark"
+                checked={form.splash_image_default === 'dark'}
+                onChange={() => setField('splash_image_default', 'dark')}
+                className="accent-[var(--color-primary)]"
+              />
+              Dark
+            </label>
+          </div>
         </section>
 
         <Can permission="app-settings.edit.maintenance-mode">

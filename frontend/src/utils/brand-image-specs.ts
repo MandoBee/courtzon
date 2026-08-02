@@ -3,7 +3,7 @@
  * backend/src/modules/app-settings/domain/brand-image.ts
  */
 
-export type AppBrandAssetType = 'favicon' | 'favicon-dark' | 'site-logo' | 'site-logo-dark' | 'pwa-192' | 'pwa-512';
+export type AppBrandAssetType = 'favicon' | 'favicon-dark' | 'site-logo' | 'site-logo-dark' | 'pwa-192' | 'pwa-512' | 'splash-image' | 'splash-image-dark';
 
 export interface ImageDimensions {
   width: number;
@@ -111,6 +111,34 @@ export const BRAND_IMAGE_SPECS: Record<AppBrandAssetType, BrandImageSpec> = {
     squareTolerance: 0.02,
     accept: 'image/png,image/webp,image/jpeg',
     hints: ['Square image', 'Minimum 512×512 px', 'PNG recommended', 'Max 2 MB'],
+  },
+  'splash-image': {
+    settingKey: 'splash_image_url',
+    label: 'Splash Screen (Light Mode)',
+    allowedMimeTypes: ['image/png', 'image/webp', 'image/jpeg'],
+    maxFileSizeBytes: 4 * 1024 * 1024,
+    minWidth: 640,
+    minHeight: 640,
+    maxWidth: 4096,
+    maxHeight: 4096,
+    minAspectRatio: 0.4,
+    maxAspectRatio: 2.5,
+    accept: 'image/png,image/webp,image/jpeg',
+    hints: ['Shown on app startup for light mode', 'Minimum 640×640 px', 'Aspect ratio 2:5 to 5:2', 'Max 4 MB'],
+  },
+  'splash-image-dark': {
+    settingKey: 'splash_image_dark_url',
+    label: 'Splash Screen (Dark Mode)',
+    allowedMimeTypes: ['image/png', 'image/webp', 'image/jpeg'],
+    maxFileSizeBytes: 4 * 1024 * 1024,
+    minWidth: 640,
+    minHeight: 640,
+    maxWidth: 4096,
+    maxHeight: 4096,
+    minAspectRatio: 0.4,
+    maxAspectRatio: 2.5,
+    accept: 'image/png,image/webp,image/jpeg',
+    hints: ['Shown on app startup for dark mode', 'Minimum 640×640 px', 'Aspect ratio 2:5 to 5:2', 'Max 4 MB'],
   },
 };
 

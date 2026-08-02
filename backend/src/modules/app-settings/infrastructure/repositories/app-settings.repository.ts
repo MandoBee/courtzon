@@ -15,6 +15,9 @@ const PUBLIC_KEYS = [
   'domain_name',
   'meta_description',
   'maintenance_mode',
+  'splash_image_url',
+  'splash_image_dark_url',
+  'splash_image_default',
 ] as const;
 
 export class AppSettingsRepository {

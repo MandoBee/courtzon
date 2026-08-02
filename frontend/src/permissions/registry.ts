@@ -273,6 +273,8 @@ export const uiRegistry: UIElement[] = [
   { permissionKey: 'app-settings.edit.site-logo', moduleSlug: 'settings', elementType: 'field', elementLabel: 'Site Logo (Light Mode)', componentPath: 'pages/admin/app-settings/AppSettingsPage.tsx' },
   { permissionKey: 'app-settings.edit.site-logo-dark', moduleSlug: 'settings', elementType: 'field', elementLabel: 'Site Logo (Dark Mode)', componentPath: 'pages/admin/app-settings/AppSettingsPage.tsx' },
   { permissionKey: 'app-settings.edit.pwa-images', moduleSlug: 'settings', elementType: 'field', elementLabel: 'PWA Images', componentPath: 'pages/admin/app-settings/AppSettingsPage.tsx' },
+  { permissionKey: 'app-settings.edit.splash-image', moduleSlug: 'settings', elementType: 'field', elementLabel: 'Splash Screen (Light)', componentPath: 'pages/admin/app-settings/AppSettingsPage.tsx' },
+  { permissionKey: 'app-settings.edit.splash-image-dark', moduleSlug: 'settings', elementType: 'field', elementLabel: 'Splash Screen (Dark)', componentPath: 'pages/admin/app-settings/AppSettingsPage.tsx' },
   { permissionKey: 'app-settings.edit.domain-name', moduleSlug: 'settings', elementType: 'field', elementLabel: 'Domain Name', componentPath: 'pages/admin/app-settings/AppSettingsPage.tsx' },
   { permissionKey: 'app-settings.edit.site-tagline', moduleSlug: 'settings', elementType: 'field', elementLabel: 'Site Tagline', componentPath: 'pages/admin/app-settings/AppSettingsPage.tsx' },
   { permissionKey: 'app-settings.edit.meta-description', moduleSlug: 'settings', elementType: 'field', elementLabel: 'Meta Description', componentPath: 'pages/admin/app-settings/AppSettingsPage.tsx' },

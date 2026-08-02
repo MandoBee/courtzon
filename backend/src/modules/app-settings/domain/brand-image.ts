@@ -1,6 +1,6 @@
 import type { ProcessOptions } from '../../upload/infrastructure/sharp-processor.js';
 
-export type AppBrandAssetType = 'favicon' | 'favicon-dark' | 'site-logo' | 'site-logo-dark' | 'pwa-192' | 'pwa-512';
+export type AppBrandAssetType = 'favicon' | 'favicon-dark' | 'site-logo' | 'site-logo-dark' | 'pwa-192' | 'pwa-512' | 'splash-image' | 'splash-image-dark';
 
 export interface ImageDimensions {
   width: number;
@@ -160,6 +160,48 @@ export const BRAND_IMAGE_SPECS: Record<AppBrandAssetType, BrandImageSpec> = {
       keepTransparency: true,
     },
     hints: ['Square image', 'Minimum 512×512 px', 'PNG recommended', 'Max 2 MB'],
+  },
+  'splash-image': {
+    settingKey: 'splash_image_url',
+    label: 'Splash Screen (Light Mode)',
+    allowedMimeTypes: ['image/png', 'image/webp', 'image/jpeg'],
+    maxFileSizeBytes: 4 * 1024 * 1024,
+    minWidth: 640,
+    minHeight: 640,
+    maxWidth: 4096,
+    maxHeight: 4096,
+    minAspectRatio: 0.4,
+    maxAspectRatio: 2.5,
+    process: {
+      maxWidth: 1290,
+      maxHeight: 2796,
+      fit: 'inside',
+      outputFormat: 'png',
+      quality: 85,
+      keepTransparency: false,
+    },
+    hints: ['Shown on app startup for light mode', 'Minimum 640×640 px', 'Aspect ratio between 2:5 and 5:2', 'Max 4 MB'],
+  },
+  'splash-image-dark': {
+    settingKey: 'splash_image_dark_url',
+    label: 'Splash Screen (Dark Mode)',
+    allowedMimeTypes: ['image/png', 'image/webp', 'image/jpeg'],
+    maxFileSizeBytes: 4 * 1024 * 1024,
+    minWidth: 640,
+    minHeight: 640,
+    maxWidth: 4096,
+    maxHeight: 4096,
+    minAspectRatio: 0.4,
+    maxAspectRatio: 2.5,
+    process: {
+      maxWidth: 1290,
+      maxHeight: 2796,
+      fit: 'inside',
+      outputFormat: 'png',
+      quality: 85,
+      keepTransparency: false,
+    },
+    hints: ['Shown on app startup for dark mode', 'Minimum 640×640 px', 'Aspect ratio between 2:5 and 5:2', 'Max 4 MB'],
   },
 };
 

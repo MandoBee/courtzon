@@ -22,6 +22,9 @@ const ALLOWED_KEYS = new Set([
   'site_tagline',
   'meta_description',
   'maintenance_mode',
+  'splash_image_url',
+  'splash_image_dark_url',
+  'splash_image_default',
 ]);
 
 export const UpdateAppSettingsSchema = z.object({

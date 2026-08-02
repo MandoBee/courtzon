@@ -19,6 +19,9 @@ export interface PublicAppSettings {
   pwa_icon_192?: string;
   pwa_icon_512?: string;
   meta_description?: string;
+  splash_image_url?: string;
+  splash_image_dark_url?: string;
+  splash_image_default?: string;
 }
 
 interface AppSettingsState {
@@ -30,6 +33,9 @@ interface AppSettingsState {
   faviconDarkUrl: string;
   pwaIcon192Url: string;
   pwaIcon512Url: string;
+  splashImageUrl: string;
+  splashImageDarkUrl: string;
+  splashImageDefault: 'light' | 'dark';
   loaded: boolean;
   fetch: () => Promise<void>;
 }
@@ -113,6 +119,9 @@ export const useAppSettingsStore = create<AppSettingsState>((set) => ({
   faviconDarkUrl: DEFAULT_FAVICON_DARK,
   pwaIcon192Url: DEFAULT_PWA_192,
   pwaIcon512Url: DEFAULT_PWA_512,
+  splashImageUrl: '',
+  splashImageDarkUrl: '',
+  splashImageDefault: 'light',
   loaded: false,
   fetch: async () => {
     try {
@@ -126,6 +135,9 @@ export const useAppSettingsStore = create<AppSettingsState>((set) => ({
       const faviconDarkUrl = pickString(data.favicon_dark_url, DEFAULT_FAVICON_DARK);
       const pwaIcon192Url = pickString(data.pwa_icon_192, DEFAULT_PWA_192);
       const pwaIcon512Url = pickString(data.pwa_icon_512, DEFAULT_PWA_512);
+      const splashImageUrl = pickString(data.splash_image_url, '');
+      const splashImageDarkUrl = pickString(data.splash_image_dark_url, '');
+      const splashImageDefault = (data.splash_image_default === 'dark' ? 'dark' : 'light') as 'light' | 'dark';
       applyDocumentMeta(data);
       set({
         siteName,
@@ -136,6 +148,9 @@ export const useAppSettingsStore = create<AppSettingsState>((set) => ({
         faviconDarkUrl,
         pwaIcon192Url,
         pwaIcon512Url,
+        splashImageUrl,
+        splashImageDarkUrl,
+        splashImageDefault,
         loaded: true,
       });
       syncFaviconForTheme();
@@ -156,4 +171,17 @@ export function resolveAssetUrl(url: string): string {
 /** Theme-adaptive inline wordmark (legacy single SVG or empty). */
 export function isInlineWordmarkLogo(url: string): boolean {
   return !url || url.endsWith('/images/site-logo.svg') || url.endsWith('/images/logo.svg');
+}
+
+/** Resolve the correct splash image URL based on system/appearance theme preference. */
+export function pickSplashImageForTheme(
+  lightUrl: string,
+  darkUrl: string,
+  splashDefault: 'light' | 'dark',
+  mode: 'light' | 'dark',
+): string {
+  if (mode === 'dark' || splashDefault === 'dark') {
+    return darkUrl || lightUrl || '';
+  }
+  return lightUrl || darkUrl || '';
 }
