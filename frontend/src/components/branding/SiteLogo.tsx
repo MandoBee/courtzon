@@ -7,18 +7,20 @@ import {
 } from '../../store/app-settings.store';
 import { useThemeStore } from '../../store/theme.store';
 
-type Size = 'sm' | 'md' | 'lg';
+type Size = 'sm' | 'md' | 'lg' | 'xl';
 
 const sizeClass: Record<Size, string> = {
   sm: 'h-6',
   md: 'h-8',
   lg: 'h-10',
+  xl: 'h-12',
 };
 
 const textClass: Record<Size, string> = {
   sm: 'text-lg',
   md: 'text-xl',
   lg: 'text-2xl',
+  xl: 'text-3xl',
 };
 
 interface Props {

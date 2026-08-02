@@ -38,8 +38,57 @@
     <link rel="apple-touch-startup-image" href="/apple-splash-828x1792.png" media="(device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 2)" />
     <link rel="apple-touch-startup-image" href="/apple-splash-750x1334.png" media="(device-width: 375px) and (device-height: 667px) and (-webkit-device-pixel-ratio: 2)" />
     <title>CourtZon - Sports Facility Booking</title>
+    <style>
+      #cz-initial-splash {
+        position: fixed;
+        inset: 0;
+        z-index: 99999;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        background: #0A0A0F;
+        transition: opacity 0.3s ease;
+      }
+      #cz-initial-splash.hidden {
+        opacity: 0;
+        pointer-events: none;
+      }
+      #cz-initial-splash .cz-splash-logo {
+        width: 96px;
+        height: 96px;
+        color: #059669;
+      }
+      #cz-initial-splash .cz-splash-dots {
+        position: absolute;
+        bottom: 3rem;
+        display: flex;
+        gap: 0.5rem;
+      }
+      #cz-initial-splash .cz-splash-dots span {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: rgba(5,150,105,.5);
+        animation: cz-splash-dot 1.2s ease-in-out infinite;
+      }
+      #cz-initial-splash .cz-splash-dots span:nth-child(2) { animation-delay: 0.2s; }
+      #cz-initial-splash .cz-splash-dots span:nth-child(3) { animation-delay: 0.4s; }
+      @keyframes cz-splash-dot {
+        0%, 80%, 100% { opacity: 0.3; transform: scale(0.8); }
+        40% { opacity: 1; transform: scale(1); }
+      }
+    </style>
   </head>
   <body>
+    <div id="cz-initial-splash">
+      <svg class="cz-splash-logo" viewBox="0 0 132 28" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <path stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M12 9V3L4 13h6v6l8-10h-6z"/>
+      </svg>
+      <div class="cz-splash-dots">
+        <span></span><span></span><span></span>
+      </div>
+    </div>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

@@ -15,6 +15,10 @@ export default function SplashScreen({ onFinish }: Props) {
   const [phase, setPhase] = useState<'logo' | 'tagline' | 'fade' | 'done'>('logo');
 
   useEffect(() => {
+    // Hide the inline HTML splash once React takes over
+    const el = document.getElementById('cz-initial-splash');
+    if (el) el.classList.add('hidden');
+
     const t1 = setTimeout(() => setPhase('tagline'), LOGO_DURATION);
     const t2 = setTimeout(() => setPhase('fade'), TOTAL_DURATION);
     const t3 = setTimeout(() => {
