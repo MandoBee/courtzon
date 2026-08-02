@@ -10,6 +10,15 @@ if (import.meta.env.DEV && 'serviceWorker' in navigator) {
   });
 }
 
+// Prevent pinch-to-zoom gestures on iOS Safari (viewport meta alone is ignored
+// since iOS 10). touch-action in CSS covers Android/other browsers.
+function preventPinchZoom(e: Event): void {
+  e.preventDefault();
+}
+document.addEventListener('gesturestart', preventPinchZoom, { passive: false });
+document.addEventListener('gesturechange', preventPinchZoom, { passive: false });
+document.addEventListener('gestureend', preventPinchZoom, { passive: false });
+
 const rootElement = document.getElementById('root');
 if (!rootElement) throw new Error('Root element not found');
 

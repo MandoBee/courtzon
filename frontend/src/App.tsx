@@ -18,6 +18,7 @@ import WelcomeModal from './components/welcome/WelcomeModal';
 import SiteLogo from './components/branding/SiteLogo';
 import { Can } from './permissions/Can';
 import { useHaptics } from './hooks/useHaptics';
+import { useInactivityTimer } from './hooks/useInactivityTimer';
 import { FeatureFlagGuard } from './components/FeatureFlagGuard';
 import { useFeatureFlag } from './hooks/useFeatureFlag';
 import NotificationBell from './components/notifications/NotificationBell';
@@ -425,6 +426,8 @@ function Navbar() {
 }
 
 function AppLayout() {
+  useInactivityTimer({ timeoutMs: 30_000 });
+
   return (
     <div className="flex flex-col h-dvh bg-[var(--color-bg)]">
       <LoginSplash />

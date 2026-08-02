@@ -871,8 +871,8 @@ html[dir="rtl"] {
     text-size-adjust: 100%;
   }
   body {
-    touch-action: manipulation;        /* eliminate 300ms tap delay */
-    overscroll-behavior-y: none;        /* prevent rubber-band scroll bleed */
+    touch-action: pan-x pan-y;           /* allow scroll, prevent pinch-zoom */
+    overscroll-behavior-y: none;         /* prevent rubber-band scroll bleed */
   }
   /* Prevent iOS text-selection callouts on nav/button chrome */
   nav button,
@@ -893,19 +893,51 @@ html[dir="rtl"] {
 }
 
 @layer utilities {
-  /* Safe-area inset helpers (notch / home-indicator) */
-  .cz-pt-safe { padding-top: env(safe-area-inset-top); }
-  .cz-pb-safe { padding-bottom: env(safe-area-inset-bottom); }
-  .cz-pl-safe { padding-left: env(safe-area-inset-left); }
-  .cz-pr-safe { padding-right: env(safe-area-inset-right); }
-  .cz-px-safe { padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right); }
-  .cz-mt-safe { margin-top: env(safe-area-inset-top); }
-  .cz-mb-safe { margin-bottom: env(safe-area-inset-bottom); }
-  .cz-h-safe-top { height: env(safe-area-inset-top); }
-  .cz-h-safe-bottom { height: env(safe-area-inset-bottom); }
+  /* Safe-area inset helpers (notch / home-indicator)
+     iOS 11.0-11.2 uses constant(); iOS 11.2+ uses env().
+     The double declaration ensures both are covered. */
+  .cz-pt-safe {
+    padding-top: constant(safe-area-inset-top);
+    padding-top: env(safe-area-inset-top);
+  }
+  .cz-pb-safe {
+    padding-bottom: constant(safe-area-inset-bottom);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .cz-pl-safe {
+    padding-left: constant(safe-area-inset-left);
+    padding-left: env(safe-area-inset-left);
+  }
+  .cz-pr-safe {
+    padding-right: constant(safe-area-inset-right);
+    padding-right: env(safe-area-inset-right);
+  }
+  .cz-px-safe {
+    padding-left: constant(safe-area-inset-left);
+    padding-left: env(safe-area-inset-left);
+    padding-right: constant(safe-area-inset-right);
+    padding-right: env(safe-area-inset-right);
+  }
+  .cz-mt-safe {
+    margin-top: constant(safe-area-inset-top);
+    margin-top: env(safe-area-inset-top);
+  }
+  .cz-mb-safe {
+    margin-bottom: constant(safe-area-inset-bottom);
+    margin-bottom: env(safe-area-inset-bottom);
+  }
+  .cz-h-safe-top {
+    height: constant(safe-area-inset-top);
+    height: env(safe-area-inset-top);
+  }
+  .cz-h-safe-bottom {
+    height: constant(safe-area-inset-bottom);
+    height: env(safe-area-inset-bottom);
+  }
 
   /* Bottom Navigation height reservation */
   .cz-reserve-bnav {
+    padding-bottom: calc(4rem + constant(safe-area-inset-bottom, 0px) + 1.5rem);
     padding-bottom: calc(4rem + env(safe-area-inset-bottom, 0px) + 1.5rem);
   }
 
@@ -947,6 +979,20 @@ html[dir="rtl"] {
     transform: translateX(-100%);
     background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.45), transparent);
     animation: cz-shimmer 1.4s infinite;
+  }
+}
+/* ------------------------------------------------------------------
+   Standalone safe-area fallback — ensures env() takes effect even if
+   the utilities @layer doesn't apply on certain Safari versions.
+   ------------------------------------------------------------------ */
+@supports (padding-top: env(safe-area-inset-top)) {
+  .cz-pt-safe,
+  .cz-px-safe {
+    padding-top: env(safe-area-inset-top) !important;
+  }
+  .cz-pb-safe,
+  .cz-px-safe {
+    padding-bottom: env(safe-area-inset-bottom) !important;
   }
 }
 
