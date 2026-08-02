@@ -15,7 +15,7 @@ export default function MyBookingsPage() {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [statusFilter, setStatusFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState('confirmed');
   const [cancelReason, setCancelReason] = useState('');
   const [cancellingId, setCancellingId] = useState<number | null>(null);
   const [showBooking, setShowBooking] = useState(() => searchParams.get('newBooking') === 'true');
@@ -73,9 +73,12 @@ export default function MyBookingsPage() {
     no_show: 'bg-[var(--color-error-bg)] text-[var(--color-error-text)]',
   };
 
-  const filterStatuses = ['', 'confirmed', 'pending', 'checked_in', 'completed', 'cancelled'];
+  const filterStatuses = ['confirmed', 'pending', 'checked_in', 'completed', 'cancelled', ''];
 
   const statusLabel = (s: string) => {
+    if (s === 'confirmed') {
+      return `Upcoming (${statusCounts['confirmed'] || 0})`;
+    }
     if (!s) {
       const total = Object.values(statusCounts).reduce((a, b) => a + b, 0);
       return `All (${total})`;

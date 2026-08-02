@@ -87,7 +87,14 @@ export default function MatchLobbyPage() {
   if (isLoading) return <p className="text-[var(--color-text-muted)]">Loading...</p>;
   if (!match) return <p className="text-[var(--color-text-muted)]">Match not found</p>;
 
-  const participants = match.participants_json ? JSON.parse(match.participants_json) : [];
+  const participants = (() => {
+    if (!match.participants_json) return [];
+    if (Array.isArray(match.participants_json)) return match.participants_json;
+    if (typeof match.participants_json === 'string') {
+      try { return JSON.parse(match.participants_json); } catch { return []; }
+    }
+    return [];
+  })();
   const isCreator = user?.id && match.creator_id && Number(user.id) === Number(match.creator_id);
 
   const getStatusBadge = (status: string) => {
