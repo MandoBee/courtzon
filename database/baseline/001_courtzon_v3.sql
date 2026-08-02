@@ -3415,7 +3415,7 @@ CREATE TABLE `transactions` (
   `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
   `public_id` char(36) DEFAULT NULL,
   `type` enum('booking_payment','wallet_topup','refund','payout','marketplace_order','withdrawal','wallet_payment') NOT NULL,
-  `source_type` enum('booking','academy','marketplace','admin','wallet') DEFAULT NULL,
+  `source_type` enum('booking','academy','marketplace','admin','wallet','order') DEFAULT NULL,
   `source_id` bigint(20) unsigned DEFAULT NULL,
   `currency_id` tinyint(3) unsigned DEFAULT NULL,
   `total_amount` decimal(14,2) NOT NULL,

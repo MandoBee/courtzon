@@ -132,11 +132,12 @@ export class PaymentService {
       }, conn);
 
       // 5. Create double-entry ledger (transactions + transaction_entries)
+      const mappedSourceType = input.referenceType === 'order' ? 'marketplace' : input.referenceType;
       await transactionService.createWalletPayment({
         userId,
         walletId: wallet.id,
         amount: input.amount,
-        sourceType: input.referenceType,
+        sourceType: mappedSourceType,
         sourceId: input.referenceId,
         description: `Wallet payment for ${input.referenceType} #${input.referenceId}`,
       }, conn);
