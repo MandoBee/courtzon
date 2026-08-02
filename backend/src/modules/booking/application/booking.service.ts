@@ -143,8 +143,7 @@ export class BookingService {
     }
 
     const paymentMethod = input.paymentMethod || 'wallet';
-    const useWallet = paymentMethod === 'wallet';
-    const isGateway = paymentMethod !== 'cash' && paymentMethod !== 'cod' && !useWallet;
+    const isGatewayOrWallet = paymentMethod !== 'cash' && paymentMethod !== 'cod';
 
     // Acquire distributed Redis locks for ALL slots to prevent concurrent bookings
     const lockOwner = `user:${userId}`;
@@ -163,7 +162,7 @@ export class BookingService {
     try {
       await conn.beginTransaction();
 
-      if (isGateway) {
+      if (isGatewayOrWallet) {
         // Check slot availability for ALL individual slots
         const available = await bookingRepository.checkSlotAvailability(
           input.resourceId, bookingDate, individualSlots.map((s) => ({ start: s.start, end: s.end, date: bookingDate })), conn,
@@ -234,32 +233,12 @@ export class BookingService {
           branchId: input.branchId,
         });
 
-        return { bookingId, paymentUrl, clientSecret, paymentId };
+        return { id: bookingId, bookingId, paymentUrl, clientSecret, paymentId };
       }
 
-      let bookingStatus = 'pending';
-      let paymentStatus = 'pending';
-      let walletUpdated = false;
-      let walletId: number | null = null;
-      let walletState: { balance: number; version: number } | null = null;
-      if (useWallet) {
-        const wallet = await walletRepository.findByUserId(userId);
-        if (wallet) {
-          walletId = wallet.id;
-          walletState = await walletRepository.lockAndGetBalance(walletId!, conn);
-          if (walletState && walletState.balance >= pricing.totalPrice) {
-            walletUpdated = true;
-          }
-        }
-      }
-
-      if (useWallet && walletUpdated) {
-        bookingStatus = 'confirmed';
-        paymentStatus = 'paid';
-      } else if (paymentMethod === 'cash' || paymentMethod === 'cod') {
-        bookingStatus = 'confirmed';
-        paymentStatus = 'pending';
-      }
+      // ── Cash / COD only (wallet and card routes through isGatewayOrWallet above) ──
+      const bookingStatus = 'confirmed';
+      const paymentStatus = 'pending';
 
       // Final availability check WITHIN the transaction for ALL slots
       const available = await bookingRepository.checkSlotAvailability(
@@ -272,28 +251,16 @@ export class BookingService {
         bookingType: input.bookingType || 'public_match', bookingDate,
         startTime: input.startTime, endTime: input.endTime,
         totalAmount: pricing.totalPrice, commissionAmount, clubAmount,
-        notes: input.notes, bookingStatus, paymentStatus, paymentMethod,
+        notes: input.notes, bookingStatus, paymentStatus, paymentMethod: 'cash',
         startAtUtc, endAtUtc, businessDate,
       }, conn);
 
-      // Populate booking_slots for each individual slot
       for (const slot of individualSlots) {
         await conn.execute(
           `INSERT INTO booking_slots (booking_id, resource_id, booking_date, slot_start, slot_end, is_available)
            VALUES (?, ?, ?, ?, ?, FALSE)`,
           [bookingId, input.resourceId, bookingDate, slot.start, slot.end]
         );
-      }
-
-      if (walletUpdated && walletId && walletState) {
-        const newBalance = walletState.balance - pricing.totalPrice;
-        await walletRepository.updateBalance(walletId, newBalance, walletState.version, conn);
-
-        await transactionService.createBookingPayment({
-          userId, walletId, branchId: input.branchId, organisationId,
-          amount: pricing.totalPrice, commissionAmount,
-          sourceId: bookingId, description: `Booking #${bookingId} wallet payment`,
-        }, conn);
       }
 
       if (input.participants?.length) {
@@ -324,33 +291,6 @@ export class BookingService {
 
       await conn.commit();
 
-      let paymentUrl: string | null = null;
-      let clientSecret: string | null = null;
-      let paymentId: number | null = null;
-      if (paymentMethod !== 'cash' && (!useWallet || !walletUpdated)) {
-        try {
-          const { paymentService } = await import('../../payment/application/payment.service.js');
-          const [gwUserRows] = await pool.execute<RowData>('SELECT full_name, email, full_phone FROM users WHERE id = ?', [userId]);
-          const gwUser = gwUserRows[0] as any;
-          const gwResult = await paymentService.charge(userId, {
-            referenceType: 'booking',
-            referenceId: bookingId,
-            amount: pricing.totalPrice,
-            currency: 'EGP',
-            paymentMethod: 'card',
-            returnUrl: input.returnUrl,
-            customerName: gwUser?.full_name,
-            customerPhone: gwUser?.full_phone,
-            customerEmail: gwUser?.email,
-          });
-          paymentUrl = ('paymentUrl' in gwResult ? gwResult.paymentUrl : null) || null;
-          clientSecret = ('clientSecret' in gwResult ? gwResult.clientSecret : null) || null;
-          paymentId = ('paymentId' in gwResult ? gwResult.paymentId : null) || null;
-        } catch {
-          // non-fatal
-        }
-      }
-
       const booking = await bookingRepository.findById(bookingId);
 
       if (booking) {
@@ -367,10 +307,7 @@ export class BookingService {
           organisationId: booking.organisation_id || undefined,
           branchId: input.branchId || undefined,
         });
-      }
 
-      if (bookingStatus === 'confirmed' && booking) {
-        const bookingType = input.bookingType || 'private_match';
         eventBusV2.emit('booking:confirmed', { bookingId, userId, bookingType });
 
         const startDate = new Date(startAtUtc);
@@ -380,7 +317,7 @@ export class BookingService {
         );
       }
 
-      return { ...booking, timezone: branchTz, paymentUrl, clientSecret, paymentId };
+      return { ...booking, timezone: branchTz };
     } catch (err) {
       try { await conn.rollback(); } catch {}
       throw err;

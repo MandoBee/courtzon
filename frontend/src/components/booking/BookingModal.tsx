@@ -10,6 +10,7 @@ import { useTranslation } from '../../i18n';
 import PaymobPixelCard from '../payment/PaymobPixelCard';
 import PaymentStatusPoller from '../payment/PaymentStatusPoller';
 import { usePaymentConfirm } from '../../hooks/usePaymentConfirm';
+import WalletPaymentOption from '../payment/WalletPaymentOption';
 
 interface BookingModalProps {
   open: boolean;
@@ -195,7 +196,7 @@ export default function BookingModal({ open, onClose }: BookingModalProps) {
   const [selectedBranch, setSelectedBranch] = useState<any | null>(null);
   const [selectedResourceId, setSelectedResourceId] = useState<number | null>(null);
   const [selectedSlots, setSelectedSlots] = useState<string[]>([]);
-  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'card' | 'online'>('card');
+  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'card' | 'online' | 'wallet'>('card');
   const [notes, setNotes] = useState('');
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [bookingType, setBookingType] = useState<'public_match' | 'private_match'>('private_match');
@@ -992,6 +993,11 @@ export default function BookingModal({ open, onClose }: BookingModalProps) {
           <div className="mb-6">
             <label className="block text-sm font-medium text-[var(--color-text)] mb-2">Payment Method</label>
             <div className="flex gap-2">
+              <WalletPaymentOption
+                amount={totalPrice}
+                selected={paymentMethod === 'wallet'}
+                onClick={() => setPaymentMethod('wallet')}
+              />
               {[
                 { value: 'cash', label: 'Cash', icon: '💵' },
                 { value: 'card', label: 'Card', icon: '💳' },

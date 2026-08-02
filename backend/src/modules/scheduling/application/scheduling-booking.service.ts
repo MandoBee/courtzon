@@ -25,6 +25,7 @@ export interface BookSessionRequest {
   date: string;
   startTime: string;
   endTime: string;
+  paymentMethod?: string;
 }
 
 export class SchedulingBookingService {
@@ -95,7 +96,7 @@ export class SchedulingBookingService {
         startTime,
         endTime,
         bookingType: 'coach_session',
-        paymentMethod: 'wallet',
+        paymentMethod: (request.paymentMethod || 'wallet') as 'wallet' | 'cash' | 'card' | 'online' | 'cod',
         notes: `Coach session with coach #${coachId}`,
       }, userId);
 

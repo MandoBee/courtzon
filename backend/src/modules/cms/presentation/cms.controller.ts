@@ -303,14 +303,13 @@ export async function markContactReadHandler(request: FastifyRequest, reply: Fas
 }
 
 export async function getPaymentMethodsHandler(request: FastifyRequest, reply: FastifyReply) {
-  const { isPaymentMethodAllowedAtRegistration, isPaymentMethodAllowedForWalletTopup } =
+  const { isPaymentMethodAllowedInContext } =
     await import('../../../shared/constants/payment-methods.js');
   const context = String((request.query as { context?: string }).context || '').toLowerCase();
   const methods = await organisationService.getPaymentMethods();
   const data = methods.filter((m: { slug: string; isActive: boolean }) => {
     if (!m.isActive) return false;
-    if (context === 'wallet') return isPaymentMethodAllowedForWalletTopup(m.slug);
-    return isPaymentMethodAllowedAtRegistration(m.slug);
+    return isPaymentMethodAllowedInContext(m.slug, context);
   });
   return reply.send({ data });
 }

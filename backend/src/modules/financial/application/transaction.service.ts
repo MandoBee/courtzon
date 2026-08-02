@@ -14,6 +14,15 @@ export interface BookingPaymentParams {
   description: string;
 }
 
+export interface WalletPaymentParams {
+  userId: number;
+  walletId: number;
+  amount: number;
+  sourceType: string;
+  sourceId: number;
+  description: string;
+}
+
 export interface WalletTopupParams {
   userId: number;
   walletId: number;
@@ -62,6 +71,24 @@ class TransactionService {
       { transactionId: txnId, side: 'debit', entityType: 'platform_account', entityId: 1, amount: params.amount, description: `Routing payment for booking #${params.sourceId}` },
       { transactionId: txnId, side: 'credit', entityType: 'branch', entityId: params.branchId, amount: netAmount, branchId: params.branchId, organisationId: params.organisationId, description: `Net revenue for booking #${params.sourceId}` },
       { transactionId: txnId, side: 'credit', entityType: 'platform_account', entityId: 2, amount: params.commissionAmount, description: `Commission for booking #${params.sourceId}` },
+    ], conn);
+
+    return txnId;
+  }
+
+  /**
+   * Create wallet payment journal entries. Accepts optional conn for transactional writes.
+   * Used by chargeByWallet for wallet payments across all reference types (booking, order, academy, etc.).
+   */
+  async createWalletPayment(params: WalletPaymentParams, conn?: mysql.PoolConnection): Promise<number> {
+    const txnId = await transactionRepository.createTransaction({
+      type: 'wallet_payment', sourceType: params.sourceType, sourceId: params.sourceId,
+      totalAmount: params.amount, status: 'completed',
+    }, conn);
+
+    await transactionRepository.createEntries([
+      { transactionId: txnId, side: 'debit', entityType: 'user_wallet', entityId: params.walletId, amount: params.amount, description: params.description },
+      { transactionId: txnId, side: 'credit', entityType: 'platform_account', entityId: 1, amount: params.amount, description: params.description },
     ], conn);
 
     return txnId;

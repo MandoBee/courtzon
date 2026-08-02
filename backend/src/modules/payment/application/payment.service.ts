@@ -2,6 +2,8 @@ import { randomUUID } from 'node:crypto';
 import { paymentRepository } from '../infrastructure/repositories/payment.repository.js';
 import { paymentGateway } from '../../../shared/services/gateway/gateway-factory.js';
 import { walletService } from '../../wallet/application/wallet.service.js';
+import { walletRepository } from '../../wallet/infrastructure/repositories/wallet.repository.js';
+import { transactionService } from '../../financial/application/transaction.service.js';
 import { NotFoundError, ConflictError } from '../../../shared/errors/app-error.js';
 import { withTransaction } from '../../../database/database.transaction.js';
 import type { ChargeInput } from '../presentation/payment.dto.js';
@@ -50,39 +52,96 @@ function sanitizeGatewayResponse(raw: unknown): Record<string, any> | null {
 
 export class PaymentService {
   async charge(userId: number, input: ChargeInput) {
+    if (input.paymentMethod === 'wallet') {
+      return this.chargeByWallet(userId, input);
+    }
+
     if (isFeatureEnabled('PAYMENT_V2_PROCESS')) {
       return this.chargeV2(userId, input);
     }
 
-    if (input.paymentMethod === 'wallet') {
-      return this.chargeByWallet(userId, input);
-    }
     return this.chargeByGateway(userId, input);
   }
 
   private async chargeByWallet(userId: number, input: ChargeInput) {
     const traceId = randomUUID();
 
-    // Create payment record first to get paymentId
-    const { id: paymentId } = await paymentRepository.create({
-      userId,
-      bookingId: input.referenceType === 'booking' ? input.referenceId : undefined,
-      orderId: input.referenceType === 'order' ? input.referenceId : undefined,
-      referenceType: input.referenceType,
-      paymentMethod: 'wallet',
-      gatewayProvider: 'wallet_system',
-      gatewayReference: `wallet_${Date.now()}`,
-      amount: input.amount,
-      status: 'pending',
-      traceId,
-    });
+    // ── Idempotency: if client sends idempotencyKey, check for existing payment ──
+    if (input.idempotencyKey) {
+      const existing = await paymentRepository.findByIdempotencyKey(input.idempotencyKey);
+      if (existing) {
+        if ((existing as any).payment_status === 'paid') {
+          log.info({ traceId, existingPaymentId: (existing as any).id, idempotencyKey: input.idempotencyKey }, 'Wallet charge idempotency hit — already paid');
+          return { success: true, paymentId: (existing as any).id, traceId, status: 'paid' };
+        }
+        if ((existing as any).payment_status === 'pending') {
+          log.info({ traceId, existingPaymentId: (existing as any).id, idempotencyKey: input.idempotencyKey }, 'Wallet charge idempotency hit — returning existing pending');
+          return { success: true, paymentId: (existing as any).id, traceId, status: 'pending' };
+        }
+      }
+    }
 
-    // Wallet withdrawal + payment outcome inside single atomic transaction
-    const result = await withTransaction(async (conn) => {
-      const walletTx = await walletService.withdraw(
-        userId, input.amount, `${input.referenceType} #${input.referenceId}`, undefined, conn,
-      );
+    const pool = getPool();
+    const wallet = await walletRepository.findByUserId(userId);
+    if (!wallet) {
+      throw new NotFoundError('Wallet not found');
+    }
 
+    let paymentId = 0;
+    let newBalance = 0;
+
+    // ── Atomic: payment creation + wallet debit + ledger + events ──
+    await withTransaction(async (conn) => {
+      // 1. Create payment_transactions row inside the transaction
+      const created = await paymentRepository.create({
+        userId,
+        bookingId: input.referenceType === 'booking' ? input.referenceId : undefined,
+        orderId: input.referenceType === 'order' ? input.referenceId : undefined,
+        referenceType: input.referenceType,
+        paymentMethod: 'wallet',
+        gatewayProvider: 'wallet_system',
+        gatewayReference: `wallet_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        amount: input.amount,
+        status: 'pending',
+        traceId,
+        idempotencyKey: input.idempotencyKey,
+      }, conn);
+      paymentId = created.id;
+
+      // 2. Lock wallet + validate balance
+      const state = await walletRepository.lockAndGetBalance(wallet.id, conn);
+      if (!state) throw new ConflictError('Wallet is locked');
+      if (state.balance < input.amount) {
+        throw new ConflictError(`Insufficient wallet balance: ${state.balance} < ${input.amount}`);
+      }
+
+      // 3. Debit wallet balance
+      newBalance = state.balance - input.amount;
+      const updated = await walletRepository.updateBalance(wallet.id, newBalance, state.version, conn);
+      if (!updated) throw new ConflictError('Concurrent wallet update — please retry');
+
+      // 4. Create wallet_transactions row for user-facing history
+      await walletRepository.createTransaction({
+        walletId: wallet.id,
+        type: 'payment',
+        amount: input.amount,
+        direction: 'debit',
+        referenceType: input.referenceType,
+        referenceId: input.referenceId,
+        description: `${input.referenceType} payment #${input.referenceId}`,
+      }, conn);
+
+      // 5. Create double-entry ledger (transactions + transaction_entries)
+      await transactionService.createWalletPayment({
+        userId,
+        walletId: wallet.id,
+        amount: input.amount,
+        sourceType: input.referenceType,
+        sourceId: input.referenceId,
+        description: `Wallet payment for ${input.referenceType} #${input.referenceId}`,
+      }, conn);
+
+      // 6. Lock the payment record + mark it paid + emit events
       const locked = await paymentRepository.lockById(paymentId, conn);
       if (!locked) throw new ConflictError('Payment locked by another process');
 
@@ -90,27 +149,25 @@ export class PaymentService {
         conn, locked, 'paid', `wallet_${paymentId}`, traceId, 'wallet',
       );
 
-      return walletTx;
+      // 7. Journal entry (inside tx)
+      await paymentRepository.createJournalEntry({
+        entryType: 'payment',
+        referenceType: input.referenceType,
+        referenceId: input.referenceId,
+        debitAccount: 'Cash',
+        creditAccount: 'Revenue',
+        amount: input.amount,
+        description: `${input.referenceType} payment via wallet`,
+      }, conn);
     });
 
-    // Business-specific journal entry (payment outcome creates a generic one too)
-    await paymentRepository.createJournalEntry({
-      entryType: 'payment',
-      referenceType: input.referenceType,
-      referenceId: input.referenceId,
-      debitAccount: 'Cash',
-      creditAccount: 'Revenue',
-      amount: input.amount,
-      description: `${input.referenceType} payment via wallet`,
-    });
-
-    log.info({ traceId, paymentId, userId, amount: input.amount, referenceType: input.referenceType }, 'Wallet payment completed');
+    log.info({ traceId, paymentId, userId, amount: input.amount, referenceType: input.referenceType, newBalance }, 'Wallet payment completed');
 
     return {
       success: true,
       paymentId,
       status: 'paid',
-      balance: result.balance,
+      balance: newBalance,
       traceId,
     };
   }

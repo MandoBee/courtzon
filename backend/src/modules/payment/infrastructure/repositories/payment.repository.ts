@@ -5,18 +5,22 @@ import { ConflictError } from '../../../../shared/errors/app-error.js';
 
 type RowData = mysql.RowDataPacket[];
 
+function resolvePool(conn?: mysql.PoolConnection): mysql.Pool | mysql.PoolConnection {
+  return conn ?? getPool();
+}
+
 export const paymentRepository = {
   async create(data: {
     userId: number; bookingId?: number; orderId?: number; referenceType?: string; paymentMethod: string;
     gatewayProvider: string; gatewayReference: string; amount: number;
     status?: string; currency?: string; gatewayResponse?: unknown; traceId?: string;
     idempotencyKey?: string;
-  }) {
-    const pool = getPool();
+  }, conn?: mysql.PoolConnection) {
+    const db = resolvePool(conn);
     const isBooking = data.referenceType === 'booking';
     const isOrder = data.referenceType === 'order';
     const traceId = data.traceId || randomUUID();
-    const [result] = await pool.execute<mysql.ResultSetHeader>(
+    const [result] = await db.execute<mysql.ResultSetHeader>(
       `INSERT INTO payment_transactions
         (user_id, booking_id, order_id, idempotency_key, reference_type, payment_method, gateway_provider,
          gateway_reference, amount, currency, payment_status, gateway_response, trace_id, aggregate_version)
@@ -199,9 +203,9 @@ export const paymentRepository = {
   async createJournalEntry(data: {
     entryType: string; referenceType: string; referenceId: number;
     debitAccount: string; creditAccount: string; amount: number; description?: string;
-  }) {
-    const pool = getPool();
-    await pool.execute(
+  }, conn?: mysql.PoolConnection) {
+    const db = resolvePool(conn);
+    await db.execute(
       `INSERT INTO financial_journal_entries (entry_type, reference_type, reference_id, debit_account, credit_account, amount, description)
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
       [data.entryType, data.referenceType, data.referenceId,

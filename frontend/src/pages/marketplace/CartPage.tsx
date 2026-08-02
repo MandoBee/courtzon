@@ -8,6 +8,7 @@ import { useToast } from '../../components/ui/Toast';
 import { Modal } from '../../components/ui/Modal';
 import PaymobPixelCard from '../../components/payment/PaymobPixelCard';
 import PaymentStatusPoller from '../../components/payment/PaymentStatusPoller';
+import WalletPaymentOption from '../../components/payment/WalletPaymentOption';
 import { usePaymentConfirm } from '../../hooks/usePaymentConfirm';
 
 function AddressFormModal({ open, address, onClose, onDone }: { open: boolean; address?: any; onClose: () => void; onDone: (id: number) => void }) {
@@ -115,7 +116,7 @@ export default function CartPage() {
   const PAYMENT_OPTIONS = [
     { value: 'card', label: 'Card', icon: '💳' },
     { value: 'cash', label: 'Cash', icon: '💵' },
-  ];
+  ] as const;
 
   const { data: cart, isLoading } = useQuery({
     queryKey: ['mp-cart'],
@@ -458,6 +459,11 @@ export default function CartPage() {
         <div>
           <label className="block text-sm text-[var(--color-text-muted)] mb-2">{t('cart.payment_method')}</label>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            <WalletPaymentOption
+              amount={total}
+              selected={paymentMethod === 'wallet'}
+              onClick={() => setPaymentMethod('wallet')}
+            />
             {PAYMENT_OPTIONS.map((opt) => (
               <button key={opt.value} onClick={() => setPaymentMethod(opt.value)}
                 className={`flex items-center gap-2 px-4 py-3 rounded-[var(--radius-md)] border text-sm font-medium transition-all ${
