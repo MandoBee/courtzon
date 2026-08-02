@@ -68,14 +68,16 @@ export class UserRepository {
   async findByPhone(fullPhone: string): Promise<UserRecord | null> {
     const [rows] = await this.pool.execute<(UserRecord & { main_sport_id: number | null; main_level_id: number | null; is_coach: number; is_seller: number })[]>(
       `SELECT u.*, pp.main_sport_id, pp.main_level_id, pp.is_seller,
-              (cp.status = 'approved') AS is_coach, COALESCE(cp.status, 'none') AS coach_status,
-              c.default_currency, c.currency_symbol, l.code AS language_code
-       FROM users u
-       LEFT JOIN player_profiles pp ON pp.user_id = u.id
-       LEFT JOIN coach_profiles cp ON cp.user_id = u.id AND cp.deleted_at IS NULL
-       LEFT JOIN countries c ON c.id = u.country_id
-       LEFT JOIN languages l ON l.id = u.language_id
-       WHERE u.full_phone = ? AND u.deleted_at IS NULL`,
+               pp.playing_hand, pp.bio, pp.emergency_contact_name, pp.emergency_contact_phone, pp.emergency_contact_relation,
+               pp.privacy_show_profile, pp.privacy_show_stats, pp.privacy_show_activity,
+               (cp.status = 'approved') AS is_coach, COALESCE(cp.status, 'none') AS coach_status,
+               c.default_currency, c.currency_symbol, l.code AS language_code
+        FROM users u
+        LEFT JOIN player_profiles pp ON pp.user_id = u.id
+        LEFT JOIN coach_profiles cp ON cp.user_id = u.id AND cp.deleted_at IS NULL
+        LEFT JOIN countries c ON c.id = u.country_id
+        LEFT JOIN languages l ON l.id = u.language_id
+        WHERE u.full_phone = ? AND u.deleted_at IS NULL`,
       [fullPhone]
     );
     return rows.length ? this.mapUser(rows[0]) : null;
@@ -84,14 +86,16 @@ export class UserRepository {
   async findByEmail(email: string): Promise<UserRecord | null> {
     const [rows] = await this.pool.execute<RowData>(
       `SELECT u.*, pp.main_sport_id, pp.main_level_id, pp.is_seller,
-              (cp.status = 'approved') AS is_coach, COALESCE(cp.status, 'none') AS coach_status,
-              c.default_currency, c.currency_symbol, l.code AS language_code
-       FROM users u
-       LEFT JOIN player_profiles pp ON pp.user_id = u.id
-       LEFT JOIN coach_profiles cp ON cp.user_id = u.id AND cp.deleted_at IS NULL
-       LEFT JOIN countries c ON c.id = u.country_id
-       LEFT JOIN languages l ON l.id = u.language_id
-       WHERE u.email = ? AND u.deleted_at IS NULL`,
+               pp.playing_hand, pp.bio, pp.emergency_contact_name, pp.emergency_contact_phone, pp.emergency_contact_relation,
+               pp.privacy_show_profile, pp.privacy_show_stats, pp.privacy_show_activity,
+               (cp.status = 'approved') AS is_coach, COALESCE(cp.status, 'none') AS coach_status,
+               c.default_currency, c.currency_symbol, l.code AS language_code
+        FROM users u
+        LEFT JOIN player_profiles pp ON pp.user_id = u.id
+        LEFT JOIN coach_profiles cp ON cp.user_id = u.id AND cp.deleted_at IS NULL
+        LEFT JOIN countries c ON c.id = u.country_id
+        LEFT JOIN languages l ON l.id = u.language_id
+        WHERE u.email = ? AND u.deleted_at IS NULL`,
       [email]
     );
     return rows.length ? this.mapUser(rows[0]) : null;
@@ -100,14 +104,16 @@ export class UserRepository {
   async findById(id: number): Promise<UserRecord | null> {
     const [rows] = await this.pool.execute<RowData>(
       `SELECT u.*, pp.main_sport_id, pp.main_level_id, pp.is_seller,
-              (cp.status = 'approved') AS is_coach, COALESCE(cp.status, 'none') AS coach_status,
-              c.default_currency, c.currency_symbol, l.code AS language_code
-       FROM users u
-       LEFT JOIN player_profiles pp ON pp.user_id = u.id
-       LEFT JOIN coach_profiles cp ON cp.user_id = u.id AND cp.deleted_at IS NULL
-       LEFT JOIN countries c ON c.id = u.country_id
-       LEFT JOIN languages l ON l.id = u.language_id
-       WHERE u.id = ? AND u.deleted_at IS NULL`,
+               pp.playing_hand, pp.bio, pp.emergency_contact_name, pp.emergency_contact_phone, pp.emergency_contact_relation,
+               pp.privacy_show_profile, pp.privacy_show_stats, pp.privacy_show_activity,
+               (cp.status = 'approved') AS is_coach, COALESCE(cp.status, 'none') AS coach_status,
+               c.default_currency, c.currency_symbol, l.code AS language_code
+        FROM users u
+        LEFT JOIN player_profiles pp ON pp.user_id = u.id
+        LEFT JOIN coach_profiles cp ON cp.user_id = u.id AND cp.deleted_at IS NULL
+        LEFT JOIN countries c ON c.id = u.country_id
+        LEFT JOIN languages l ON l.id = u.language_id
+        WHERE u.id = ? AND u.deleted_at IS NULL`,
       [id]
     );
     return rows.length ? this.mapUser(rows[0]) : null;
