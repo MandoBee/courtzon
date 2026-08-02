@@ -3,6 +3,34 @@ import { useQuery } from '@tanstack/react-query';
 import api from '../../services/api';
 import { formatISODate } from '../../utils/formatDate';
 
+function calcDuration(startTime: string, endTime: string): string {
+  if (!startTime || !endTime) return '';
+  const [sh, sm] = startTime.slice(0, 5).split(':').map(Number);
+  const [eh, em] = endTime.slice(0, 5).split(':').map(Number);
+  let mins = (eh * 60 + em) - (sh * 60 + sm);
+  if (mins <= 0) mins += 24 * 60;
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  if (h && m) return `${h}h ${m}m`;
+  if (h) return `${h}h`;
+  return `${m}m`;
+}
+
+function bookingTypeLabel(type: string): string {
+  const map: Record<string, string> = { public_match: 'Public', private_match: 'Private', academy: 'Academy', clinic: 'Clinic', coach_session: 'Coaching' };
+  return map[type] || type;
+}
+
+const statusColors: Record<string, string> = {
+  confirmed: 'bg-[var(--color-success-bg)] text-[var(--color-success-text)]',
+  pending: 'bg-[var(--color-warning-bg)] text-[var(--color-warning-text)]',
+  pending_payment: 'bg-[var(--color-warning-bg)] text-[var(--color-warning-text)]',
+  checked_in: 'bg-[var(--color-info-bg)] text-[var(--color-info-text)]',
+  completed: 'bg-[var(--color-border)] text-[var(--color-text-muted)]',
+  cancelled: 'bg-[var(--color-error-bg)] text-[var(--color-error-text)]',
+  no_show: 'bg-[var(--color-error-bg)] text-[var(--color-error-text)]',
+};
+
 export default function UpcomingSection() {
   const navigate = useNavigate();
 
@@ -59,9 +87,22 @@ export default function UpcomingSection() {
               🎾
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold text-[var(--color-text)] truncate">{b.resource_name}</p>
+              <div className="flex items-center gap-2">
+                <p className="text-sm font-semibold text-[var(--color-text)] truncate">{b.resource_name}</p>
+                {b.booking_type && (
+                  <span className="shrink-0 px-1.5 py-0.5 text-[10px] rounded-full bg-[var(--color-primary)]/10 text-[var(--color-primary)] font-medium">
+                    {bookingTypeLabel(b.booking_type)}
+                  </span>
+                )}
+                {b.booking_status && (
+                  <span className={`shrink-0 px-1.5 py-0.5 text-[10px] rounded-full font-medium ${statusColors[b.booking_status] || 'bg-[var(--color-border)] text-[var(--color-text-muted)]'}`}>
+                    {b.booking_status.replace(/_/g, ' ')}
+                  </span>
+                )}
+              </div>
               <p className="text-xs text-[var(--color-text-muted)] mt-0.5">
-                {formatISODate(b.booking_date)} · {b.start_time?.slice(0, 5)}–{b.end_time?.slice(0, 5)} · {b.branch_name}
+                {b.branch_name} · {formatISODate(b.booking_date)} · {b.start_time?.slice(0, 5)}–{b.end_time?.slice(0, 5)}
+                {b.start_time && b.end_time ? ` (${calcDuration(b.start_time, b.end_time)})` : ''}
               </p>
             </div>
             <span className="shrink-0 text-xs font-medium text-[var(--color-primary)]">View →</span>
@@ -79,7 +120,7 @@ export default function UpcomingSection() {
             <div className="flex-1 min-w-0">
               <p className="text-sm font-semibold text-[var(--color-text)] truncate">{m.title || 'Match'}</p>
               <p className="text-xs text-[var(--color-text-muted)] mt-0.5">
-                {m.scheduled_date ? formatISODate(m.scheduled_date) : ''} · {m.status}
+                {m.booking_date ? formatISODate(m.booking_date) : ''} · {m.start_time?.slice(0, 5)} · {m.status}
               </p>
             </div>
             <span className="shrink-0 text-xs font-medium text-[var(--color-warning)]">View →</span>

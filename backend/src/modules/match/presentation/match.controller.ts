@@ -54,8 +54,9 @@ export async function getMatchesHandler(request: FastifyRequest, reply: FastifyR
      LEFT JOIN invitations bi ON bi.match_id = m.id AND bi.user_id = ?
      LEFT JOIN join_requests jr ON jr.match_id = m.id AND jr.user_id = ?
      LEFT JOIN player_levels pl ON pl.id = pmd.target_level_id
-     WHERE m.status IN ('open', 'full')
-       AND pmd.visibility = 'public'`,
+      WHERE m.status IN ('open', 'full')
+        AND pmd.visibility = 'public'
+        AND CONCAT(bk.booking_date, ' ', bk.start_time) >= NOW()`,
     [userId, userId, userId]
   );
 
