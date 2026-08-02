@@ -40,6 +40,9 @@ export const createBookingHandler: CommandHandler<Command, CreateBookingResult> 
   execute: async (command, conn: PoolConnection) => {
     const payload = command.payload as unknown as CreateBookingPayload;
 
+    const paymentMethod = payload.paymentMethod || 'wallet';
+    const bookingStatus = paymentMethod === 'wallet' ? 'pending_payment' : 'pending';
+
     const bookingId = await bookingRepository.create({
       userId: payload.userId,
       branchId: payload.branchId,
@@ -53,9 +56,9 @@ export const createBookingHandler: CommandHandler<Command, CreateBookingResult> 
       startAtUtc: payload.startAtUtc,
       endAtUtc: payload.endAtUtc,
       notes: payload.notes,
-      bookingStatus: 'pending',
+      bookingStatus,
       paymentStatus: 'pending',
-      paymentMethod: payload.paymentMethod || 'wallet',
+      paymentMethod,
     }, conn);
 
     const publicId = generateUlid();

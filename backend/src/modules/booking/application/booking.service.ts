@@ -1350,12 +1350,32 @@ export class BookingService {
       throw new Error(`CreateBooking failed: ${result.message}`);
     }
 
-    log.info({ bookingId: result.status === 'processed' ? result.data?.bookingId : undefined }, 'booking.created_v2');
+    const bookingId = result.status === 'processed' ? result.data?.bookingId : 0;
+    log.info({ bookingId }, 'booking.created_v2');
 
-    if (result.status === 'processed' && result.data) {
-      return { bookingId: result.data.bookingId };
+    if (!bookingId) return { bookingId: 0 };
+
+    // ── Process payment for wallet (synchronous) ──
+    if (input.paymentMethod === 'wallet') {
+      log.info({ bookingId, userId, amount: pricing.totalPrice }, 'createBookingV2: processing wallet payment');
+      try {
+        const { paymentService } = await import('../../payment/application/payment.service.js');
+        await paymentService.charge(userId, {
+          referenceType: 'booking',
+          referenceId: bookingId,
+          amount: pricing.totalPrice,
+          currency: 'EGP',
+          paymentMethod: 'wallet',
+        });
+        log.info({ bookingId }, 'createBookingV2: wallet payment completed — booking will be confirmed by listener');
+      } catch (chargeErr: any) {
+        log.error({ err: chargeErr, bookingId }, 'createBookingV2: wallet payment failed — cancelling booking');
+        await executeBookingCommand('CancelBooking', cancelBookingHandler, { bookingId, reason: CancellationReason.PAYMENT_SESSION_CREATION_FAILED, actorId: 0 }, String(bookingId));
+        throw new ConflictError(chargeErr.message || 'Wallet payment failed');
+      }
     }
-    return { bookingId: 0 };
+
+    return { id: bookingId, bookingId };
   }
 
   private async confirmBookingV2(bookingId: number) {
