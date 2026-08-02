@@ -427,7 +427,7 @@ function Navbar() {
 }
 
 function AppLayout() {
-  useInactivityTimer({ timeoutMs: 30_000 });
+  useInactivityTimer({ timeoutMs: 300_000 });
 
   return (
     <div className="flex flex-col h-dvh bg-[var(--color-bg)]">
