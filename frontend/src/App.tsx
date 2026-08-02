@@ -274,10 +274,11 @@ function PageLoader() {
 function BrandedSplash() {
   const [showApp, setShowApp] = useState(false);
   const isLoading = useAuthStore((s) => s.isLoading);
+  const appSettingsLoaded = useAppSettingsStore((s) => s.loaded);
 
-  if (showApp) return null;
+  if (showApp && appSettingsLoaded) return null;
 
-  return <SplashScreen onFinish={() => { if (!isLoading) setShowApp(true); }} />;
+  return <SplashScreen onFinish={() => { if (!isLoading && appSettingsLoaded) setShowApp(true); }} />;
 }
 
 function ProtectedRoute() {
