@@ -1,9 +1,23 @@
 # Wallet Top-Up Payment Integration Gap
 
-**Status:** Open (technical debt — not yet fixed)
+**Status:** ✅ ACCEPTED — fixed (2026-08-02). See resolution below and `docs/payment/wallet-card-payment.md`.
 **Severity:** High — wallet top-up via Paymob will fail at the webhook stage
 **Date identified:** 2026-07-26
 **Affected flows:** `POST /wallets/deposit` (both V1 and V2 feature-flag paths)
+
+---
+
+## Resolution (2026-08-02)
+
+Fixed per the plan in this document:
+
+1. `wallet.service.deposit()` now calls `paymentService.createGatewayIntention()` **before** any gateway interaction, which inserts a `payment_transactions` row with `reference_type = 'wallet_topup'` and returns `{ paymentId, clientSecret }`. The deprecated `depositV2()` path was removed (both paths were identical).
+2. New listener `backend/src/modules/wallet/application/wallet-payment.listener.ts` subscribes to `payment:succeeded` (filtered on `referenceType === 'wallet_topup'`), credits the wallet via the `DepositWallet` command + `createWalletTopup` ledger entry (keyed on `source_type='wallet_topup'` / `source_id=paymentId` for idempotency), and emits `wallet:deposit` for realtime cache refresh. Registered in `server.ts` after the booking listener.
+3. The frontend player WalletPage now uses the shared `PaymobPixelCard` + `usePaymentConfirm` + `PaymentStatusPoller` flow (same as booking/marketplace) instead of the iframe redirect, and aligns its React Query keys (`['wallet','me']`, `['transactions']`) with the realtime cache invalidator.
+4. Realtime wallet event names corrected to match the socket mapper (`wallet.deposit` / `wallet.withdrawal`).
+5. `GET /wallets/my` and `GET /wallets/my/transactions` aliases added so the e2e wallet suite targets real endpoints.
+
+The webhook / `sync_pending_payments` / `confirm` paths all resolve the payment row and run `_processPaymentOutcome()`, which now emits `payment:succeeded` for the wallet listener to credit.
 
 ---
 

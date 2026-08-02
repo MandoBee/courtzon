@@ -2,13 +2,11 @@ import type mysql from 'mysql2/promise';
 import { getPool } from '../../../database/mysql.js';
 import { walletRepository } from '../infrastructure/repositories/wallet.repository.js';
 import { transactionService } from '../../financial/application/transaction.service.js';
-import { paymentGateway } from '../../../shared/services/gateway/gateway-factory.js';
 import { ConflictError } from '../../../shared/errors/app-error.js';
 import { withTransaction } from '../../../database/database.transaction.js';
 import { eventBusV2 } from '../../../shared/event-bus/event-bus.v2.js';
 import { commandPipeline } from '../../../shared/command/command-pipeline.js';
 import { isFeatureEnabled } from '../../../shared/utils/feature-flags.js';
-import { depositWalletHandler, type DepositWalletPayload } from '../commands/deposit-wallet.command.js';
 import { withdrawWalletHandler, type WithdrawWalletPayload } from '../commands/withdraw-wallet.command.js';
 import type { Command } from '../../../shared/command/command-base.js';
 
@@ -39,63 +37,50 @@ export class WalletService {
   }
 
   async deposit(userId: number, amount: number, paymentMethod: string, returnUrl?: string) {
-    if (isFeatureEnabled('WALLET_V2_DEPOSIT')) {
-      return this.depositV2(userId, amount, paymentMethod, returnUrl);
-    }
-
     const wallet = await this.getMyWallet(userId);
-    const paymentRequest = {
+
+    // Create a payment_transactions row up-front via the gateway intention flow
+    // (same as booking prepare / marketplace checkout). Paymob's Intention API
+    // always returns "pending", so the wallet is credited by the
+    // wallet-payment.listener on the `payment:succeeded` event (webhook/confirm/sync).
+    const { paymentService } = await import('../../payment/application/payment.service.js');
+    const pool = getPool();
+    const [userRows] = await pool.execute<mysql.RowDataPacket[]>(
+      'SELECT full_name, email, full_phone FROM users WHERE id = ?',
+      [userId],
+    );
+    const user = userRows[0] as any;
+
+    const gwResult = await (paymentService.createGatewayIntention as any)(userId, {
+      referenceType: 'wallet_topup',
+      referenceId: wallet.id,
       amount,
       currency: wallet.currencyCode,
-      referenceId: wallet.id,
-      referenceType: 'wallet_topup' as const,
+      paymentMethod: paymentMethod as 'card',
       returnUrl: returnUrl || undefined,
-    };
+      customerName: user?.full_name,
+      customerPhone: user?.full_phone,
+      customerEmail: user?.email,
+    });
 
-    const paymentResult = await paymentGateway.charge(paymentRequest);
-
-    if (paymentResult.success && paymentResult.status === 'paid') {
-      const newBalance = await withTransaction(async (conn) => {
-        const state = await walletRepository.lockAndGetBalance(wallet.id, conn);
-        if (!state) throw new ConflictError('Wallet is locked');
-        const balance = state.balance + amount;
-        const updated = await walletRepository.updateBalance(wallet.id, balance, state.version, conn);
-        if (!updated) throw new ConflictError('Concurrent wallet update');
-
-        await transactionService.createWalletTopup({
-          userId, walletId: wallet.id, amount,
-          sourceType: 'payment_gateway',
-          description: `Deposit via ${paymentMethod}`,
-        }, conn);
-
-        return balance;
-      });
-
-      eventBusV2.emit('wallet:deposit', {
-        walletId: wallet.id,
-        userId,
-        amount,
-        balance: newBalance,
-        currency: wallet.currencyCode,
-      });
-      if (newBalance < 50) {
-        eventBusV2.emit('wallet:low-balance', {
-          userId,
-          balance: newBalance,
-          currency: wallet.currencyCode,
-        });
-      }
-      return { success: true, balance: newBalance, transactionId: paymentResult.transactionId };
+    if (!gwResult.success) {
+      return {
+        success: false,
+        paymentId: undefined,
+        clientSecret: null,
+        publicKey: process.env.PAYMOB_PUBLIC_KEY || '',
+        status: 'failed',
+        message: (gwResult as any).errorMessage || 'Payment gateway rejected the transaction',
+      };
     }
 
     return {
       success: false,
-      paymentUrl: paymentResult.paymentUrl,
-      clientSecret: paymentResult.clientSecret,
+      paymentId: gwResult.paymentId,
+      clientSecret: gwResult.clientSecret || null,
       publicKey: process.env.PAYMOB_PUBLIC_KEY || '',
-      transactionId: paymentResult.transactionId,
-      status: paymentResult.status,
-      message: 'Payment requires action — redirect to gateway',
+      status: 'pending',
+      message: 'Payment requires action — complete the card form',
     };
   }
 
@@ -148,78 +133,6 @@ export class WalletService {
       });
     }
     return { success: true, balance: newBalance };
-  }
-
-  private async depositV2(userId: number, amount: number, paymentMethod: string, returnUrl?: string) {
-    const wallet = await this.getMyWallet(userId);
-
-    const paymentRequest = {
-      amount,
-      currency: wallet.currencyCode,
-      referenceId: wallet.id,
-      referenceType: 'wallet_topup' as const,
-      returnUrl: returnUrl || undefined,
-    };
-
-    const paymentResult = await paymentGateway.charge(paymentRequest);
-    if (!paymentResult.success || paymentResult.status !== 'paid') {
-      return {
-        success: false,
-        paymentUrl: paymentResult.paymentUrl,
-        clientSecret: paymentResult.clientSecret,
-        publicKey: process.env.PAYMOB_PUBLIC_KEY || '',
-        transactionId: paymentResult.transactionId,
-        status: paymentResult.status,
-        message: 'Payment requires action — redirect to gateway',
-      };
-    }
-
-    const command: Command = {
-      commandId: `deposit-wallet-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      commandType: 'DepositWallet',
-      aggregateType: 'wallet',
-      aggregateId: String(wallet.id),
-      payload: { walletId: wallet.id, userId, amount, currency: wallet.currencyCode } satisfies DepositWalletPayload,
-      correlationId: `dep_${Date.now()}`,
-    };
-
-    const result = await commandPipeline.execute(command, {
-      validate: async () => depositWalletHandler.validate(command),
-      execute: async (cmd, conn) => {
-        const depositResult = await depositWalletHandler.execute(cmd, conn);
-
-        await transactionService.createWalletTopup({
-          userId, walletId: wallet.id, amount,
-          sourceType: 'payment_gateway',
-          description: `Deposit via ${paymentMethod}`,
-        }, conn);
-
-        return depositResult;
-      },
-      events: (cmd, res) => depositWalletHandler.events!(cmd, res),
-    });
-
-    if (result.status === 'error') {
-      throw new Error(`DepositWallet failed: ${result.message}`);
-    }
-
-    const data = result.data!;
-    eventBusV2.emit('wallet:deposit', {
-      walletId: wallet.id,
-      userId,
-      amount,
-      balance: data.newBalance,
-      currency: wallet.currencyCode,
-    });
-    if (data.newBalance < 50) {
-      eventBusV2.emit('wallet:low-balance', {
-        userId,
-        balance: data.newBalance,
-        currency: wallet.currencyCode,
-      });
-    }
-
-    return { success: true, balance: data.newBalance, transactionId: paymentResult.transactionId };
   }
 
   private async withdrawV2(userId: number, amount: number, notes?: string, branchFinancialDetailsId?: number) {

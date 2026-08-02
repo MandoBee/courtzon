@@ -5,10 +5,13 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from '../../i18n';
 import api from '../../services/api';
-import { Button, Input, Card } from '../../components/ui';
+import { Button, Input, Card, Modal } from '../../components/ui';
 import { Can } from '../../permissions/Can';
 import { useToast } from '../../components/ui/Toast';
 import { formatPrice, getCurrencySymbol } from '../../utils/currency';
+import PaymobPixelCard from '../../components/payment/PaymobPixelCard';
+import PaymentStatusPoller from '../../components/payment/PaymentStatusPoller';
+import { usePaymentConfirm } from '../../hooks/usePaymentConfirm';
 
 interface PaymentMethodOption {
   id: number;
@@ -46,6 +49,11 @@ export default function WalletPage() {
   const [page, setPage] = useState(1);
   const [paymobUrl, setPaymobUrl] = useState<string | null>(null);
   const [iframeLoading, setIframeLoading] = useState(true);
+  const [pixelClientSecret, setPixelClientSecret] = useState<string | null>(null);
+  const [paymentId, setPaymentId] = useState<number | null>(null);
+  const [pollingPaid, setPollingPaid] = useState(false);
+  const { state: confirmState, confirm: confirmPayment } = usePaymentConfirm();
+  const PAGE_SIZE = 20;
 
   const { register, handleSubmit, setValue, watch, reset, formState: { errors } } = useForm<DepositForm>({
     resolver: zodResolver(DepositSchema),
@@ -53,7 +61,7 @@ export default function WalletPage() {
   });
 
   const { data: wallet, isLoading: walletLoading } = useQuery({
-    queryKey: ['my-wallet'],
+    queryKey: ['wallet', 'me'],
     queryFn: () => api.get('/wallets/me').then((r) => r.data),
   });
 
@@ -66,8 +74,8 @@ export default function WalletPage() {
   });
 
   const { data: txns, isLoading: txnsLoading } = useQuery({
-    queryKey: ['wallet-transactions', page],
-    queryFn: () => api.get('/wallets/transactions', { params: { page, limit: 20 } }).then((r) => r.data),
+    queryKey: ['transactions', page],
+    queryFn: () => api.get('/wallets/transactions', { params: { page, limit: PAGE_SIZE } }).then((r) => r.data),
   });
 
   const depositMutation = useMutation({
@@ -75,10 +83,13 @@ export default function WalletPage() {
       api.post('/wallets/deposit', { ...data, returnUrl: window.location.origin + '/wallet' }).then((r) => r.data),
     onSuccess: (result) => {
       if (result.success) {
-        queryClient.invalidateQueries({ queryKey: ['my-wallet'] });
-        queryClient.invalidateQueries({ queryKey: ['wallet-transactions'] });
+        queryClient.invalidateQueries({ queryKey: ['wallet', 'me'] });
+        queryClient.invalidateQueries({ queryKey: ['transactions'] });
         reset({ amount: '', paymentMethod: '' });
         showToast(t('player.wallet.deposit_completed') || 'Deposit completed!');
+      } else if (result.clientSecret) {
+        setPaymentId(result.paymentId || null);
+        setPixelClientSecret(result.clientSecret);
       } else if (result.paymentUrl) {
         setPaymobUrl(result.paymentUrl);
         setIframeLoading(true);
@@ -99,6 +110,11 @@ export default function WalletPage() {
       amount: parseFloat(data.amount),
       paymentMethod: data.paymentMethod,
     });
+  };
+
+  const cancelCardPayment = () => {
+    setPixelClientSecret(null);
+    showToast(t('player.wallet.payment_cancelled') || 'Payment cancelled', 'warning');
   };
 
   const selectedMethod = watch('paymentMethod');
@@ -219,13 +235,13 @@ export default function WalletPage() {
                 ))}
               </div>
             )}
-            {txns && txns.total > txns.limit && (
+            {txns && txns.total > PAGE_SIZE && (
               <div className="flex items-center justify-between mt-4 pt-3 border-t border-[var(--color-border)]">
                 <Button type="button" variant="ghost" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>
                   {t('common.previous')}
                 </Button>
-                <span className="text-sm text-[var(--color-text-muted)]">{t('common.page') || 'Page'} {page} {t('common.of') || 'of'} {Math.ceil(txns.total / txns.limit)}</span>
-                <Button type="button" variant="ghost" disabled={page >= Math.ceil(txns.total / txns.limit)} onClick={() => setPage((p) => p + 1)}>
+                <span className="text-sm text-[var(--color-text-muted)]">{t('common.page') || 'Page'} {page} {t('common.of') || 'of'} {Math.ceil(txns.total / PAGE_SIZE)}</span>
+                <Button type="button" variant="ghost" disabled={page >= Math.ceil(txns.total / PAGE_SIZE)} onClick={() => setPage((p) => p + 1)}>
                   {t('common.next')}
                 </Button>
               </div>
@@ -264,6 +280,69 @@ export default function WalletPage() {
             </div>
           </div>
         )}
+
+        {/* Poll payment status after Pixel card payment */}
+        {pollingPaid && paymentId && (
+          <PaymentStatusPoller
+            endpoint={`/payments/status/${paymentId}`}
+            isComplete={(d: any) => d?.paymentStatus === 'paid'}
+            interval={1500}
+            timeout={90000}
+            onPaid={() => {
+              queryClient.invalidateQueries({ queryKey: ['wallet', 'me'] });
+              queryClient.invalidateQueries({ queryKey: ['transactions'] });
+              reset({ amount: '', paymentMethod: '' });
+              setPollingPaid(false);
+              showToast(t('player.wallet.deposit_completed') || 'Deposit completed!', 'success');
+            }}
+            onTimeout={() => {
+              setPollingPaid(false);
+              showToast(
+                t('player.wallet.deposit_pending')
+                || 'Payment confirmation is taking longer than expected. Your wallet will be credited once the payment settles.',
+                'warning',
+              );
+            }}
+          />
+        )}
+
+        {/* Payment confirming overlay (usePaymentConfirm hook state) */}
+        {(confirmState === 'confirming' || confirmState === 'polling') && (
+          <div className="fixed inset-0 z-[70] bg-black/40 flex items-center justify-center">
+            <div className="bg-[var(--color-surface)] rounded-xl shadow-xl p-6 text-center space-y-3">
+              <div className="animate-spin w-8 h-8 border-4 border-[var(--color-primary)] border-t-transparent rounded-full mx-auto" />
+              <p className="text-sm text-[var(--color-text-muted)]">
+                {confirmState === 'confirming' ? 'Verifying payment...' : 'Waiting for confirmation...'}
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Paymob Pixel card modal */}
+        <Modal open={!!pixelClientSecret} onClose={cancelCardPayment} title={t('player.wallet.card_payment') || 'Card Payment'} size="lg">
+          {pixelClientSecret && (
+            <PaymobPixelCard
+              clientSecret={pixelClientSecret}
+              containerId="pixel-container-wallet"
+              onComplete={async () => {
+                setPixelClientSecret(null);
+                showToast(t('player.wallet.payment_submitted') || 'Payment submitted — confirming...', 'info');
+                if (paymentId) {
+                  const confirmResult = await confirmPayment(paymentId);
+                  if (confirmResult.confirmed) {
+                    queryClient.invalidateQueries({ queryKey: ['wallet', 'me'] });
+                    queryClient.invalidateQueries({ queryKey: ['transactions'] });
+                    reset({ amount: '', paymentMethod: '' });
+                    showToast(t('player.wallet.deposit_completed') || 'Deposit completed!', 'success');
+                    return;
+                  }
+                }
+                setPollingPaid(true);
+              }}
+              onCancel={cancelCardPayment}
+            />
+          )}
+        </Modal>
       </div>
     </Can>
   );

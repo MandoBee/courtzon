@@ -63,12 +63,12 @@ export function useRealtimeCacheUpdates(): void {
   });
 
   // ── Wallet events ──────────────────────────────────────────────
-  useSocketEvent('wallet.deposited', () => {
+  useSocketEvent('wallet.deposit', () => {
     qc.invalidateQueries({ queryKey: ['wallet'] });
     qc.invalidateQueries({ queryKey: ['transactions'] });
   });
 
-  useSocketEvent('wallet.withdrawn', () => {
+  useSocketEvent('wallet.withdrawal', () => {
     qc.invalidateQueries({ queryKey: ['wallet'] });
     qc.invalidateQueries({ queryKey: ['transactions'] });
   });
