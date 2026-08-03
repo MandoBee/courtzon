@@ -313,9 +313,12 @@ export default function RoleListPage() {
                           {isDeleted && <span className="text-[9px] px-1 py-0.5 rounded font-medium bg-[var(--color-error-bg)] text-[var(--color-error-text)] leading-none">Deleted</span>}
                         </div>
                       </div>
-                      <div className={`flex-1 text-xs text-[var(--color-text-muted)] ${isDeleted ? 'line-through' : ''}`}>
-                        {role.organisation_name || (role.is_system ? 'System' : 'CourtZon')}
-                      </div>
+                  <div className={`flex-1 text-xs text-[var(--color-text-muted)] ${isDeleted ? 'line-through' : ''}`}>
+                    {role.organisation_name || (role.is_system ? 'System' : 'CourtZon')}
+                  </div>
+                  <div className="w-[70px] text-center text-xs font-mono text-[var(--color-text-muted)]">
+                    {role.permission_count ?? 0}
+                  </div>
                       <div className="w-[90px] text-center" onClick={e => !isDeleted && e.stopPropagation()}>
                         {!isDeleted && !role.is_system ? (
                           <Can permission="roles.toggle-active">

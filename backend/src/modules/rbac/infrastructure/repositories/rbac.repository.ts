@@ -55,7 +55,9 @@ export class RBACRepository {
   }
 
   async getRoles(organisationId?: number | null, includeDeleted = false): Promise<any[]> {
-    let sql = `SELECT r.id, r.name, r.slug, r.is_system, r.is_active, r.organisation_id, r.deleted_at, o.name as organisation_name
+    let sql = `SELECT r.id, r.name, r.slug, r.is_system, r.is_active, r.organisation_id, r.deleted_at,
+                      o.name as organisation_name,
+                      (SELECT COUNT(*) FROM role_permissions rp WHERE rp.role_id = r.id) AS permission_count
                FROM roles r
                LEFT JOIN organisations o ON o.id = r.organisation_id
                WHERE 1=1`;
