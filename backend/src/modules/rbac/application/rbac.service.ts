@@ -112,7 +112,8 @@ export class RBACService {
     if (role.slug === 'referee') {
       const pool = getPool();
       await pool.execute(
-        `INSERT IGNORE INTO referees (user_id, status) VALUES (?, 'approved')`,
+        `INSERT INTO referees (user_id, status) VALUES (?, 'approved')
+         ON DUPLICATE KEY UPDATE status = 'approved', deleted_at = NULL`,
         [userId],
       );
     }
@@ -478,6 +479,11 @@ export class RBACService {
     );
     await conn.execute(
       `UPDATE seller_profiles SET deleted_at = NOW() WHERE user_id = ? AND deleted_at IS NULL`,
+      [userId],
+    );
+    await conn.execute(
+      `UPDATE referees SET deleted_at = NOW(), status = 'inactive'
+       WHERE user_id = ? AND deleted_at IS NULL`,
       [userId],
     );
     await conn.execute(

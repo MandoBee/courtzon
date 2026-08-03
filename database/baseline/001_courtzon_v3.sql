@@ -4179,6 +4179,7 @@ CREATE TABLE `referees` (
   `status` enum('pending','approved','rejected','inactive') NOT NULL DEFAULT 'pending',
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
   `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  `deleted_at` timestamp NULL DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_referee_user` (`user_id`),
   KEY `idx_ref_status` (`status`),

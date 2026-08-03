@@ -19,7 +19,7 @@ export const refereeRepository = {
   async getRefereeIdByUserId(userId: number): Promise<number | null> {
     const pool = getPool();
     const [rows] = await pool.execute<RowData>(
-      'SELECT id FROM referees WHERE user_id = ? LIMIT 1',
+      'SELECT id FROM referees WHERE user_id = ? AND deleted_at IS NULL LIMIT 1',
       [userId],
     );
     return rows.length ? (rows[0] as any).id : null;
@@ -34,10 +34,18 @@ export const refereeRepository = {
        FROM referees r
        JOIN users u ON u.id = r.user_id
        LEFT JOIN professional_profiles pp ON pp.user_id = r.user_id
-       WHERE r.user_id = ?`,
+       WHERE r.user_id = ? AND r.deleted_at IS NULL`,
       [userId],
     );
     return rows[0] || null;
+  },
+
+  async softDeleteByUserId(userId: number): Promise<void> {
+    const pool = getPool();
+    await pool.execute(
+      'UPDATE referees SET deleted_at = NOW(), status = \'inactive\' WHERE user_id = ? AND deleted_at IS NULL',
+      [userId],
+    );
   },
 
   async upsertProfile(userId: number, data: ProfessionalProfileInput): Promise<boolean> {
