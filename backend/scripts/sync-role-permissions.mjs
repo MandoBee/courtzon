@@ -26,7 +26,7 @@ const fileEnv = loadFileEnv([
 const env = (k, d) => envFrom(fileEnv, k, d);
 
 function resolveDbHost(host) {
-  if (!host || host === 'host.docker.internal' || host === 'mysql') return '127.0.0.1';
+  if (!host || host === 'host.docker.internal') return '127.0.0.1';
   return host;
 }
 
