@@ -597,4 +597,60 @@ Every new business feature MUST answer these questions:
 - A feature is NOT complete until its Notification Strategy is documented
 - Hardcoded channel delivery in business modules is an architectural violation
 - Business modules reference events, not channels — the engine routes to channels
-| Auth refresh token rotation | Manual UAT | Code review
+| Auth refresh token rotation | Manual UAT | Code review |
+
+## ⚠️ PERMANENT: Notification Platform Governance
+
+The Notification Platform is a **Core Platform Service** — no longer a feature.
+
+### 1. Single Source of Truth
+
+Every notification originates from a Domain Event via `EventBusV2.emit()`. No business module creates notifications directly. All generation passes through `notification-engine.ts` → `dispatcher.service.ts`.
+
+### 2. No Hardcoded Behavior
+
+All operational parameters are database-driven, editable by Super Admin:
+
+| Parameter | Table |
+|-----------|-------|
+| Rate limits | `notification_rate_limits` |
+| Quiet hours | `user_quiet_hours` |
+| Channel preferences | `user_channel_preferences` |
+| Reminder schedules | `notification_scheduled_jobs` |
+| Retention policies | `notification_cleanup_policies` |
+| Provider priority | `notification_providers` |
+| Feature flags | `notification_feature_flags` |
+| Template status | `notification_templates.status` |
+| Category activation | `notification_categories.is_active` |
+
+### 3. Backward Compatibility
+
+Adding a new channel provider requires only: implementing the `NotificationProvider` interface and registering it via `registerProvider()`. No business module, Event Bus, Domain Event, or existing provider modification.
+
+### 4. Versioned Templates
+
+Templates support: versioning (`notification_template_versions`), rollback (`rollbackTemplate()`), draft/publish/archive lifecycle, scheduled publishing, localization (en/ar), and A/B testing (`notification_ab_tests`).
+
+### 5. Observability
+
+Every notification tracked through 20 lifecycle events in `notification_audit_trail`: created → queued → processing → delivered → opened → clicked → failed → retried → archived → deleted. Full traceability per notification.
+
+### 6. Health Monitoring
+
+Monitor via Prometheus metrics at `GET /metrics` + BullMQ dashboard. Queue depth, failure rate, retry rate, dead letter queue, and delivery latency are trackable. Alert rules in `monitoring/alerts.yml`.
+
+### 7. Disaster Recovery
+
+Dead letter queue (`notification_dead_letter_queue`) captures failed deliveries. `handleProcessDeadLetter()` retries from DLQ. Provider failover chain via `failover.service.ts`. Configuration, templates, and rules are in versioned database rows.
+
+### 8. Scalability
+
+BullMQ workers backed by Redis. Multiple workers, multiple queue processors, multiple application servers. No single-node assumptions. Queue names: `notifications` (dedicated) + `default` (general).
+
+### 9. Audit Compliance
+
+Administrative configuration changes tracked via `recordAudit()`. Template changes logged to `notification_template_versions` with `changed_by` + `change_summary`. Full audit trail per notification in `notification_audit_trail`.
+
+### 10. Feature Readiness
+
+No future feature merges without an approved Notification Strategy. The 12-question checklist above is part of the Definition of Done. The Notification Platform is a permanent platform service — every future module integrates through Domain Events only. No exceptions.
