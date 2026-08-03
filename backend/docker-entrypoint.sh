@@ -89,6 +89,12 @@ else
     done
   fi
   echo "Migrations complete."
+
+  # Auto-sync role permissions from canonical templates on every startup.
+  # Idempotent — grants missing and removes stale assignments so every
+  # production role always matches its official permission template.
+  echo "Syncing role permissions from templates..."
+  node /app/scripts/sync-role-permissions.mjs 2>/dev/null && echo "  Permissions synced." || echo "  WARN: Permission sync skipped (non-fatal)"
 fi
 
 echo "Starting backend as appuser..."
