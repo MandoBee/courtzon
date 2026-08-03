@@ -287,7 +287,7 @@ function ProtectedRoute() {
   const user = useAuthStore((s) => s.user);
   const location = useLocation();
   if (!isAuthenticated) return <Navigate to="/login" replace />;
-  const isAdmin = user?.roles?.some(r => r === 'super-admin' || r === 'admin' || r === 'super_admin');
+  const isAdmin = user?.roles?.some(r => r === 'super-admin' || r === 'admin' || r === 'super_admin' || r === 'accountant');
   if (isAdmin && !location.pathname.startsWith('/admin') && !location.pathname.startsWith('/org') && !location.pathname.startsWith('/notifications')) {
     return <Navigate to="/admin" replace />;
   }
@@ -298,7 +298,7 @@ function LandingRoute() {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const user = useAuthStore((s) => s.user);
   if (isAuthenticated) {
-    const isAdmin = user?.roles?.some(r => r === 'super-admin' || r === 'super_admin');
+    const isAdmin = user?.roles?.some(r => r === 'super-admin' || r === 'super_admin' || r === 'accountant');
     if (isAdmin) return <Navigate to="/admin" replace />;
     const hasSellingRole = user?.roles?.some((r: string) => ['shop-admin', 'org-admin'].includes(r));
     return <Navigate to={hasSellingRole ? '/marketplace/seller' : '/app'} replace />;
@@ -310,7 +310,7 @@ function AdminRoute() {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const user = useAuthStore((s) => s.user);
   if (!isAuthenticated) return <Navigate to="/login" replace />;
-  const isAdmin = user?.roles?.some(r => r === 'super-admin' || r === 'super_admin' || r === 'admin');
+  const isAdmin = user?.roles?.some(r => r === 'super-admin' || r === 'super_admin' || r === 'admin' || r === 'accountant');
   if (!isAdmin) return <Navigate to="/" replace />;
   return <Outlet />;
 }

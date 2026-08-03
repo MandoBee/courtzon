@@ -148,6 +148,9 @@ const ORG_ADMIN_EXPLICIT_KEYS = new Set([
   'community.chat.view',
   'community.chat.send',
   'coaches.reviews.create',
+  'coaches.approve',
+  'coaches.assign',
+  'settlements.request',
   'academies.enroll',
 ]);
 
@@ -240,6 +243,8 @@ const ACCOUNTANT_PATTERNS = [
   /^coupons\./,
   /^commission-rules\./,
   /^wallet\./,
+  // AdminLayout finance sidebar (leaf items only; parents render when a child passes)
+  /^sidebar\.(dashboard|reports|settlements|admin-bookings|finance-dashboard|finance-ledger|finance-reports|finance-transactions|withdrawal-requests|coupons|marketplace-orders)$/,
 ];
 
 const BRANCH_MGR_PATTERNS = [

@@ -4,15 +4,25 @@ import AdminSidebar from '../../components/layout/AdminSidebar';
 import SiteLogo from '../../components/branding/SiteLogo';
 import { ErrorBoundary } from '../../components/ErrorBoundary';
 import OfflineBanner from '../../components/pwa/OfflineBanner';
+import { useCan } from '../../hooks/useCan';
+import { useAuthStore } from '../../store/auth.store';
+import { getAdminRoutePermission, isAdminDeniedRoute } from '../../permissions/adminRoutePermissions';
 
 export default function AdminLayout() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const location = useLocation();
+  const { can } = useCan();
+  const roles = useAuthStore((s) => s.user?.roles ?? []);
   const [lastPath, setLastPath] = useState(location.pathname);
   if (location.pathname !== lastPath) {
     setLastPath(location.pathname);
     setDrawerOpen(false);
   }
+
+  const isRestrictedFinanceRole = roles.includes('accountant');
+  const denied = isRestrictedFinanceRole && isAdminDeniedRoute(location.pathname);
+  const required = getAdminRoutePermission(location.pathname);
+  const forbidden = denied || (required !== null && !can(required));
 
   return (
     <>
@@ -30,9 +40,22 @@ export default function AdminLayout() {
             <SiteLogo to="/admin" size="sm" />
           </header>
           <main className="flex-1 min-h-0 p-4 sm:p-6 overflow-auto">
-            <ErrorBoundary>
-              <Outlet />
-            </ErrorBoundary>
+            {forbidden ? (
+              <div className="flex h-full min-h-[50vh] flex-col items-center justify-center gap-2 text-center">
+                <span className="text-3xl">🔒</span>
+                <p className="text-lg font-semibold text-[var(--color-text)]">Access denied</p>
+                <p className="text-sm text-[var(--color-muted)]">
+                  You don&apos;t have permission to view this page.
+                </p>
+                <a href="/admin" className="mt-2 text-sm font-medium text-[var(--color-primary)]">
+                  Go to dashboard
+                </a>
+              </div>
+            ) : (
+              <ErrorBoundary>
+                <Outlet />
+              </ErrorBoundary>
+            )}
           </main>
         </div>
       </div>
