@@ -137,6 +137,7 @@ function buildNavItems(t: (key: string) => string, can: (perm: string) => boolea
         { label: 'Dead Letters', path: '/admin/notifications/dead-letters', permissionKey: 'notifications.dead-letters' },
         { label: t('admin.sidebar.templates'), path: '/admin/templates', permissionKey: 'notification_templates.view' },
         { label: 'Types', path: '/admin/notification-types', permissionKey: 'notification_types.view' },
+        { label: '⚙️ Config', path: '/admin/notifications/config', permissionKey: 'notifications.config.manage' },
       ],
     },
     { label: t('admin.sidebar.ads'), icon: '📢', path: '/admin/ads', permissionKey: 'sidebar.ads', requiredFlag: 'community.events_enabled' },

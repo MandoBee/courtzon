@@ -806,6 +806,7 @@ export const uiRegistry: UIElement[] = [
   { permissionKey: 'notifications.broadcast', moduleSlug: 'notifications', elementType: 'page', elementLabel: 'Admin Broadcast Notifications', componentPath: 'pages/notifications/AdminBroadcastPage.tsx' },
   { permissionKey: 'notifications.analytics', moduleSlug: 'notifications', elementType: 'page', elementLabel: 'Notification Analytics', componentPath: 'pages/notifications/AdminAnalyticsPage.tsx' },
   { permissionKey: 'notifications.dead-letters', moduleSlug: 'notifications', elementType: 'page', elementLabel: 'Dead Letter Queue', componentPath: 'pages/notifications/AdminDeadLettersPage.tsx' },
+  { permissionKey: 'notifications.config.manage', moduleSlug: 'notifications', elementType: 'page', elementLabel: 'Notification Platform Configuration', componentPath: 'pages/admin/notifications/NotificationConfigPage.tsx' },
   { permissionKey: 'notifications.templates', moduleSlug: 'notifications', elementType: 'page', elementLabel: 'Manage Notification Templates', componentPath: 'pages/notifications/AdminTemplatesPage.tsx' },
   { permissionKey: 'notifications.schedule', moduleSlug: 'notifications', elementType: 'action', elementLabel: 'Schedule Notifications', componentPath: 'pages/notifications/AdminBroadcastPage.tsx' },
   { permissionKey: 'notification_types.view', moduleSlug: 'notifications', elementType: 'page', elementLabel: 'View Notification Types', componentPath: 'modules/notifications/presentation/notification-type.routes.ts' },
