@@ -404,3 +404,83 @@ The `tournaments/` module domain types and repository are written against M056 s
 
 ### Framework
 Frozen framework with all addendums applied consistently. Every finding has: ID, Severity, Classification, Confidence (A-E), Evidence, Root Cause, Impact (Fact/Expected split), Recommendation.
+
+## ⚠️ PERMANENT: RBAC-by-Default Engineering Standard
+
+**Effective immediately.** This standard applies to every feature, screen, component, button, field, filter, export, report, dashboard card, menu item, and action implemented from this point forward.
+
+### Mandatory Developer Checklist
+
+Every new feature MUST satisfy ALL items before being considered complete:
+
+| # | Item | Requirement |
+|---|------|-------------|
+| 1 | Permission key registered | Entry in `frontend/src/permissions/registry.ts` with `permissionKey`, `moduleSlug`, `elementType`, `elementLabel` |
+| 2 | Sync registry | Run `node backend/scripts/sync-ui-registry.js` after adding keys |
+| 3 | Backend route protected | Route has `preHandler: [authMiddleware]` + applicable `requirePermission(['key'])` |
+| 4 | API ownership validated | Controllers resolve actor ID from `(request as any).userId` — never trust client-supplied IDs |
+| 5 | UI element gated | Wrap in `<Can permission="key">` or guard with `can('key')` from `useCan()` |
+| 6 | Sidebar/menu gated | Navigation items filtered by `can('key')` — not just CSS hidden |
+| 7 | Buttons gated | Every action button (Create, Edit, Delete, Approve, Reject, Export, etc.) checked |
+| 8 | Fields gated | Editable fields use `<Can>` with elementType `'field'` |
+| 9 | Financial values gated | Revenue, balance, earnings, commissions all permission-checked |
+| 10 | Export gated | Export buttons/actions behind `<Can permission="module.export">` |
+| 11 | Audit logged | Every state-changing mutation calls `recordAudit()` |
+| 12 | Tests updated | Permission tests cover both allowed and denied paths |
+
+### Element Types
+
+| Type | Use for |
+|------|---------|
+| `'page'` | Route-level access control |
+| `'tab'` | Tab visibility within a screen |
+| `'section'` | Card/panel/section visibility |
+| `'button'` | Action buttons (Create, Edit, Delete, Approve, Export, etc.) |
+| `'field'` | Individual form fields and table columns |
+| `'action'` | Dropdown actions, context menu items, quick actions |
+
+### Naming Convention
+
+```
+{module}.{entity}.{action}
+
+Examples:
+  users.edit              — Edit user button
+  users.edit.email        — Email field
+  organisations.delete    — Delete organisation
+  bookings.export         — Export bookings
+  marketplace.orders.refund — Refund order
+  financial.reports.view   — View financial reports
+  coach.statistics.revenue — Revenue stat card
+```
+
+### Enforcement
+
+- Features submitted without RBAC integration are **NOT complete**
+- Code review MUST verify the checklist above
+- No `display: none`, `hidden`, or CSS-only hiding for permission gating
+- No hardcoded role checks (`user.roles?.includes('seller')`) — use the permission system
+- The permission system is the **single source of truth** for UI visibility
+
+### Architecture
+
+```
+frontend/                           backend/
+  <Can permission="key">              Route: preHandler [authMiddleware, requirePermission(['key'])]
+  can('key')                          Controller: (request as any).userId → ownership validation
+  registry.ts (805 registered)        Repository: recordAudit() on mutations
+        ↑                                     ↑
+        └── sync-ui-registry.js ───→ permissions table ←── sync-role-permissions.mjs
+                                              ↑
+                                   role-permission-templates.mjs
+```
+
+### Current Coverage
+
+- **805** registered UI elements in `registry.ts`
+- **201** field-level permissions
+- **176** page-level permissions
+- **171** button-level permissions
+- **26** production roles (2 SYSTEM + 24 GLOBAL)
+- **125** `<Can>` wrappers in AdminSidebar alone
+- **All 26 roles** synchronized with zero permission drift
