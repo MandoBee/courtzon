@@ -62,7 +62,7 @@ describe('Scheduling E2E — Seed Data Validation', () => {
     const [coaches] = await pool.execute<any[]>(
       `SELECT cp.id, ps.price AS hourly_rate FROM coach_profiles cp
        JOIN professional_profiles pp ON pp.user_id = cp.user_id
-       JOIN professional_services ps ON ps.actor_type = 'coach' AND ps.actor_id = cp.id AND ps.service_key = 'default' AND ps.is_active = 1
+       JOIN professional_services ps ON ps.professional_profile_id = pp.id AND ps.service_key = 'coach_default' AND ps.is_active = 1
        JOIN users u ON u.id = cp.user_id
        WHERE cp.status = 'approved' AND ps.price IS NOT NULL AND ps.price > 0
        LIMIT 1`
@@ -307,7 +307,7 @@ describe('Scheduling E2E — Booking Service Integration', () => {
     const [coaches] = await pool.execute<any[]>(
       `SELECT cp.id FROM coach_profiles cp
        JOIN professional_profiles pp ON pp.user_id = cp.user_id
-       JOIN professional_services ps ON ps.actor_type = 'coach' AND ps.actor_id = cp.id AND ps.service_key = 'default' AND ps.is_active = 1
+       JOIN professional_services ps ON ps.professional_profile_id = pp.id AND ps.service_key = 'coach_default' AND ps.is_active = 1
        WHERE cp.status = 'approved' AND ps.price IS NOT NULL AND ps.price > 0 LIMIT 1`
     );
     const [resources] = await pool.execute<any[]>(
@@ -361,7 +361,7 @@ describe('Scheduling E2E — Event Emission', () => {
     const [coaches] = await pool.execute<any[]>(
       `SELECT cp.id FROM coach_profiles cp
        JOIN professional_profiles pp ON pp.user_id = cp.user_id
-       JOIN professional_services ps ON ps.actor_type = 'coach' AND ps.actor_id = cp.id AND ps.service_key = 'default' AND ps.is_active = 1
+       JOIN professional_services ps ON ps.professional_profile_id = pp.id AND ps.service_key = 'coach_default' AND ps.is_active = 1
        WHERE cp.status = 'approved' AND ps.price IS NOT NULL AND ps.price > 0 LIMIT 1`
     );
     const [resources] = await pool.execute<any[]>(

@@ -71,7 +71,7 @@ export class CoachProvider implements ResourceProvider {
     let sessionDurations: number[] | undefined;
     const ppId = await professionalProfileRepository.getProfileIdByCoachProfileId(this.entityId);
     if (ppId) {
-      const durations = await professionalServiceRepository.getSessionDurationsByProfile(ppId, 'coach');
+      const durations = await professionalServiceRepository.getSessionDurationsByProfile(ppId);
       if (durations.length) sessionDurations = durations;
     }
 

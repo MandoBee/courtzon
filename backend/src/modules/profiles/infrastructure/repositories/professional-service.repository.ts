@@ -106,14 +106,13 @@ export const professionalServiceRepository = {
     return rows[0] || null;
   },
 
-  async getSessionDurationsByProfile(professionalProfileId: number, actorPrefix: string): Promise<number[]> {
+  async getSessionDurationsByProfile(professionalProfileId: number): Promise<number[]> {
     const pool = getPool();
-    const pattern = `${actorPrefix}_session_%`;
     const [rows] = await pool.execute<RowData>(
       `SELECT duration_minutes FROM professional_services
-       WHERE professional_profile_id = ? AND service_key LIKE ? AND is_active = 1
+       WHERE professional_profile_id = ? AND pricing_model = 'session' AND is_active = 1
        ORDER BY duration_minutes`,
-      [professionalProfileId, pattern],
+      [professionalProfileId],
     );
     return rows.map((r: any) => r.duration_minutes).filter(Boolean);
   },
