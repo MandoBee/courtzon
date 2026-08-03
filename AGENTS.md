@@ -505,3 +505,44 @@ Coverage is measured by **Business Actions** and **Data Exposure**:
 > "Every business action and every business data element must have explicit RBAC protection, regardless of whether the page itself is already protected."
 
 Page-level guards provide coarse access. Individual action and field guards provide fine-grained access. Both are required. Neither replaces the other.
+
+## ⚠️ MANDATORY: UAT Gate — No Feature Ships Without Manual Testing
+
+**Effective immediately.** CourtZon is in the User Acceptance Testing (UAT) phase. Code review alone is insufficient evidence of completion. Production issues discovered during this project (wallet flows, payment flows, iPhone layout, QR navigation, upcoming booking visibility, profile editing, auth refresh) all passed code review — they were caught only by manual UAT.
+
+### Completion Gate
+
+A feature is **NOT COMPLETE** until it has passed all of the following:
+
+| # | Gate | Requirement |
+|---|------|-------------|
+| 1 | Development | Feature implemented per spec |
+| 2 | Unit Tests | All unit tests pass (`npm test`) |
+| 3 | Integration Tests | Integration tests pass where applicable (`npm run test:int`) |
+| 4 | RBAC Verification | All permission gates verified (checklist from RBAC-by-Default standard) |
+| 5 | Manual UAT | Walk through the full user workflow manually — every screen, every action |
+| 6 | Android Verification | Test on a physical or emulated Android device (Chrome) |
+| 7 | iPhone Verification | Test on a physical iPhone or iOS Safari simulator |
+| 8 | Financial Flow Verification | For payment/wallet/booking features: verify full transaction lifecycle, ledger entries, and refund flows |
+| 9 | Production Readiness | Rebuild Docker, verify health, run `node scripts/ci-validate.js` |
+
+### Enforcement
+
+- Features that have not passed UAT may **NOT** be marked as complete
+- UAT failures are bugs, not feature requests — they block the release
+- Every feature PR must confirm which UAT gates were verified
+- Mobile verification (Android + iPhone) is mandatory for any UI change
+- Financial flow verification is mandatory for any payment/wallet/booking change
+
+### Documented UAT Discoveries
+
+| Issue | Found By | Missed By |
+|-------|----------|-----------|
+| Wallet flow edge cases | Manual UAT | Code review, unit tests |
+| Payment flow state mismatches | Manual UAT | Code review |
+| iPhone safe-area layout | Mobile testing | Desktop testing |
+| QR navigation | Manual UAT | Route-level testing |
+| Upcoming booking visibility | Manual UAT | Unit tests |
+| Upcoming match filtering | Manual UAT | Integration tests |
+| Profile editing gaps | Manual UAT | Code review |
+| Auth refresh token rotation | Manual UAT | Code review
