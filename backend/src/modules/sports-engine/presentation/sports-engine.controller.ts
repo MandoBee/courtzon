@@ -164,8 +164,8 @@ export async function getCoachRecommendationsHandler(request: FastifyRequest, re
             pp.experience_years, pp.sports
      FROM coach_profiles cp
      JOIN professional_profiles pp ON pp.user_id = cp.user_id
-     LEFT JOIN professional_services ps ON ps.actor_type = 'coach'
-       AND ps.actor_id = cp.id AND ps.service_key = 'default' AND ps.is_active = 1
+     LEFT JOIN professional_services ps ON ps.professional_profile_id = pp.id
+       AND ps.service_key = 'coach_default' AND ps.is_active = 1
      JOIN users u ON u.id = cp.user_id
      WHERE cp.status = 'approved' AND pp.is_available = 1
      ORDER BY pp.rating_avg DESC, pp.experience_years DESC

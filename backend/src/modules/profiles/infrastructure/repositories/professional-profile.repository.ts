@@ -101,6 +101,17 @@ export const professionalProfileRepository = {
     return rows[0] || null;
   },
 
+  async getProfileIdByCoachProfileId(coachId: number): Promise<number | null> {
+    const pool = getPool();
+    const [rows] = await pool.execute<RowData>(
+      `SELECT pp.id FROM professional_profiles pp
+       JOIN coach_profiles cp ON cp.user_id = pp.user_id
+       WHERE cp.id = ? LIMIT 1`,
+      [coachId],
+    );
+    return rows.length ? (rows[0] as any).id : null;
+  },
+
   async updateByCoachProfileId(coachId: number, data: Partial<ProfessionalProfileInput>): Promise<boolean> {
     const entries = Object.entries(data).filter(([, v]) => v !== undefined);
     if (!entries.length) return false;

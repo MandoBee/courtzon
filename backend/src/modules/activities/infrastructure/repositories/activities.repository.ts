@@ -12,7 +12,7 @@ import {
 } from '../../../profiles/infrastructure/repositories/professional-service.repository.js';
 
 /** LEFT JOIN fragment that pulls the coach's default hourly service. */
-const COACH_SERVICE_JOIN = `LEFT JOIN professional_services ps ON ps.actor_type = 'coach' AND ps.actor_id = cp.id AND ps.service_key = 'default' AND ps.is_active = 1`;
+const COACH_SERVICE_JOIN = `LEFT JOIN professional_services ps ON ps.professional_profile_id = pp.id AND ps.service_key = 'coach_default' AND ps.is_active = 1`;
 
 type RowData = mysql.RowDataPacket[];
 
@@ -418,25 +418,25 @@ export const activitiesRepository = {
         if (ppRow) {
           await conn.execute(
             `INSERT INTO professional_services
-               (professional_profile_id, actor_type, actor_id, service_key, pricing_model,
+               (professional_profile_id, service_key, pricing_model,
                 price, currency_code, duration_minutes, is_active)
-             VALUES (?, 'coach', ?, 'default', 'hourly', ?, ?, NULL, ?)
+             VALUES (?, 'coach_default', 'hourly', ?, ?, NULL, ?)
              ON DUPLICATE KEY UPDATE
                price = VALUES(price), currency_code = VALUES(currency_code), is_active = VALUES(is_active)`,
-            [ppRow.id, insertId, data.hourlyRate || 0, data.currencyCode || 'EGP', data.hourlyRate > 0 ? 1 : 0]
+            [ppRow.id, data.hourlyRate || 0, data.currencyCode || 'EGP', data.hourlyRate > 0 ? 1 : 0]
           );
           // Session-duration services
           if (data.sessionDurations?.length) {
             for (const duration of data.sessionDurations) {
               await conn.execute(
                 `INSERT INTO professional_services
-                   (professional_profile_id, actor_type, actor_id, service_key, pricing_model,
+                   (professional_profile_id, service_key, pricing_model,
                     price, currency_code, duration_minutes, is_active, label)
-                 VALUES (?, 'coach', ?, ?, 'session', ?, ?, ?, 1, ?)
+                 VALUES (?, ?, 'session', ?, ?, ?, 1, ?)
                  ON DUPLICATE KEY UPDATE
                    price = VALUES(price), currency_code = VALUES(currency_code),
                    duration_minutes = VALUES(duration_minutes), is_active = 1`,
-                [ppRow.id, insertId, `session_${duration}min`, Math.round(data.hourlyRate * duration / 60 * 100) / 100, data.currencyCode || 'EGP', duration, `${duration}-min Session`]
+                [ppRow.id, `coach_session_${duration}min`, Math.round(data.hourlyRate * duration / 60 * 100) / 100, data.currencyCode || 'EGP', duration, `${duration}-min Session`]
               );
             }
           }
@@ -503,7 +503,7 @@ export const activitiesRepository = {
           'SELECT id FROM professional_profiles WHERE user_id = ?', [userId],
         ) as any;
         if (ppRow) {
-          await professionalServiceRepository.upsertDefaultCoachService(ppRow.id, coach.id, {
+          await professionalServiceRepository.upsertDefaultCoachService(ppRow.id, {
             price: data.hourlyRate,
             currencyCode: data.currencyCode,
             sessionDurations: data.sessionDurations,
@@ -839,7 +839,7 @@ export const activitiesRepository = {
         `SELECT pp.id FROM professional_profiles pp JOIN coach_profiles cp ON cp.user_id = pp.user_id WHERE cp.id = ?`, [id],
       ) as any;
       if (ppRow && data.hourly_rate !== undefined) {
-        await professionalServiceRepository.upsertDefaultCoachService(ppRow.id, id, {
+        await professionalServiceRepository.upsertDefaultCoachService(ppRow.id, {
           price: data.hourly_rate,
         });
       }

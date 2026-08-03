@@ -1,4 +1,5 @@
 import { activitiesRepository } from '../../activities/infrastructure/repositories/activities.repository.js';
+import { professionalProfileRepository } from '../../profiles/infrastructure/repositories/professional-profile.repository.js';
 import { professionalServiceRepository } from '../../profiles/infrastructure/repositories/professional-service.repository.js';
 import { createModuleLogger } from '../../../shared/utils/logger.js';
 import type { ResourceProvider, TimeSlot, ResourceCapabilities, LocationInfo } from '../types.js';
@@ -68,9 +69,10 @@ export class CoachProvider implements ResourceProvider {
     }
 
     let sessionDurations: number[] | undefined;
-    const durations = await professionalServiceRepository.getSessionDurations('coach', this.entityId);
-    if (durations.length) {
-      sessionDurations = durations;
+    const ppId = await professionalProfileRepository.getProfileIdByCoachProfileId(this.entityId);
+    if (ppId) {
+      const durations = await professionalServiceRepository.getSessionDurationsByProfile(ppId, 'coach');
+      if (durations.length) sessionDurations = durations;
     }
 
     let certifications: string[] | undefined;

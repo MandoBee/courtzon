@@ -1174,9 +1174,7 @@ DROP TABLE IF EXISTS `professional_services`;
 CREATE TABLE `professional_services` (
   `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
   `professional_profile_id` int(10) unsigned NOT NULL,
-  `actor_type` varchar(30) NOT NULL COMMENT "'coach' | 'referee' | 'trainer' | 'physiotherapist' | …",
-  `actor_id` int(10) unsigned NOT NULL COMMENT "FK into the actor-type's identity table (coach_profiles.id, referees.id, …)",
-  `service_key` varchar(50) NOT NULL COMMENT "Stable key e.g. 'default', 'match_fee', '60min_session'",
+  `service_key` varchar(50) NOT NULL COMMENT "Stable scoped key e.g. 'coach_default', 'referee_match_fee', 'trainer_session_60min'",
   `label` varchar(100) DEFAULT NULL COMMENT "Human-readable label",
   `pricing_model` enum('hourly','session','match','fixed','package','consultation') NOT NULL,
   `price` decimal(12,2) NOT NULL DEFAULT 0.00,
@@ -1187,9 +1185,8 @@ CREATE TABLE `professional_services` (
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
   `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
   PRIMARY KEY (`id`),
-  UNIQUE KEY `uk_service` (`actor_type`,`actor_id`,`service_key`),
-  KEY `idx_ps_pp` (`professional_profile_id`),
-  KEY `idx_ps_active` (`actor_type`,`actor_id`,`is_active`),
+  UNIQUE KEY `uk_service` (`professional_profile_id`,`service_key`),
+  KEY `idx_ps_profile_active` (`professional_profile_id`,`is_active`),
   CONSTRAINT `fk_ps_pp` FOREIGN KEY (`professional_profile_id`) REFERENCES `professional_profiles` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;

@@ -4,8 +4,6 @@ type RowData = RowDataPacket[];
 
 export interface ServiceInput {
   professionalProfileId: number;
-  actorType: string;
-  actorId: number;
   serviceKey: string;
   label?: string | null;
   pricingModel: 'hourly' | 'session' | 'match' | 'fixed' | 'package' | 'consultation';
@@ -16,8 +14,9 @@ export interface ServiceInput {
   sortOrder?: number;
 }
 
-/** SQL fragment exposing pricing data under backwards-compatible column aliases
- *  (hourly_rate, currency_code) so existing Coach queries keep working. */
+/** SQL fragment exposing pricing under backwards-compatible column aliases.
+ *  Use in reads that join professional_profiles pp + professional_services ps
+ *  on `ps.professional_profile_id = pp.id`. */
 export const PROFESSIONAL_SERVICE_PRICE_SELECT = `
   ps.price AS hourly_rate,
   ps.currency_code`;
@@ -27,9 +26,9 @@ export const professionalServiceRepository = {
     const pool = getPool();
     const [result] = await pool.execute(
       `INSERT INTO professional_services
-         (professional_profile_id, actor_type, actor_id, service_key, label,
+         (professional_profile_id, service_key, label,
           pricing_model, price, currency_code, duration_minutes, is_active, sort_order)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON DUPLICATE KEY UPDATE
          label = VALUES(label),
          pricing_model = VALUES(pricing_model),
@@ -39,54 +38,54 @@ export const professionalServiceRepository = {
          is_active = VALUES(is_active),
          sort_order = VALUES(sort_order)`,
       [
-        input.professionalProfileId, input.actorType, input.actorId,
-        input.serviceKey, input.label ?? null, input.pricingModel,
-        input.price, input.currencyCode, input.durationMinutes ?? null,
-        input.isActive !== false ? 1 : 0, input.sortOrder ?? 0,
+        input.professionalProfileId, input.serviceKey, input.label ?? null,
+        input.pricingModel, input.price, input.currencyCode,
+        input.durationMinutes ?? null, input.isActive !== false ? 1 : 0,
+        input.sortOrder ?? 0,
       ],
     );
     return (result as any).insertId;
   },
 
-  /** Upsert the 'default' hourly service — used by the legacy coach profile
-   *  update/create paths for backward compatibility. */
-  async upsertDefaultCoachService(professionalProfileId: number, coachId: number, data: {
+  /** Upsert the coach's default hourly service (backwards-compat for the
+   *  legacy coach create/update paths). */
+  async upsertDefaultCoachService(professionalProfileId: number, data: {
     price?: number; currencyCode?: string; sessionDurations?: number[];
   }): Promise<void> {
     const pool = getPool();
     await pool.execute(
       `INSERT INTO professional_services
-         (professional_profile_id, actor_type, actor_id, service_key, pricing_model,
+         (professional_profile_id, service_key, pricing_model,
           price, currency_code, duration_minutes, is_active)
-       VALUES (?, 'coach', ?, 'default', 'hourly', ?, ?, NULL, ?)
+       VALUES (?, 'coach_default', 'hourly', ?, ?, NULL, ?)
        ON DUPLICATE KEY UPDATE
          price = VALUES(price),
          currency_code = VALUES(currency_code),
          is_active = VALUES(is_active)`,
       [
-        professionalProfileId, coachId,
+        professionalProfileId,
         data.price ?? 0,
         data.currencyCode ?? 'EGP',
         data.price !== undefined && data.price > 0 ? 1 : 0,
       ],
     );
-    // Store individual session-duration services alongside the default
     if (data.sessionDurations?.length) {
       for (const duration of data.sessionDurations) {
+        const proportionalPrice = data.price
+          ? Math.round(data.price * duration / 60 * 100) / 100
+          : 0;
         await pool.execute(
           `INSERT INTO professional_services
-             (professional_profile_id, actor_type, actor_id, service_key, pricing_model,
+             (professional_profile_id, service_key, pricing_model,
               price, currency_code, duration_minutes, is_active, label)
-           VALUES (?, 'coach', ?, ?, 'session', ?, ?, ?, 1, ?)
+           VALUES (?, ?, 'session', ?, ?, ?, 1, ?)
            ON DUPLICATE KEY UPDATE
-             price = VALUES(price),
-             currency_code = VALUES(currency_code),
-             duration_minutes = VALUES(duration_minutes),
-             is_active = 1`,
+             price = VALUES(price), currency_code = VALUES(currency_code),
+             duration_minutes = VALUES(duration_minutes), is_active = 1`,
           [
-            professionalProfileId, coachId,
-            `session_${duration}min`,
-            data.price ? Math.round(data.price * duration / 60 * 100) / 100 : 0,
+            professionalProfileId,
+            `coach_session_${duration}min`,
+            proportionalPrice,
             data.currencyCode ?? 'EGP',
             duration,
             `${duration}-min Session`,
@@ -96,24 +95,25 @@ export const professionalServiceRepository = {
     }
   },
 
-  async getDefaultService(actorType: string, actorId: number) {
+  async getByKey(professionalProfileId: number, serviceKey: string) {
     const pool = getPool();
     const [rows] = await pool.execute<RowData>(
       `SELECT * FROM professional_services
-       WHERE actor_type = ? AND actor_id = ? AND service_key = 'default' AND is_active = 1
+       WHERE professional_profile_id = ? AND service_key = ? AND is_active = 1
        LIMIT 1`,
-      [actorType, actorId],
+      [professionalProfileId, serviceKey],
     );
     return rows[0] || null;
   },
 
-  async getSessionDurations(actorType: string, actorId: number): Promise<number[]> {
+  async getSessionDurationsByProfile(professionalProfileId: number, actorPrefix: string): Promise<number[]> {
     const pool = getPool();
+    const pattern = `${actorPrefix}_session_%`;
     const [rows] = await pool.execute<RowData>(
       `SELECT duration_minutes FROM professional_services
-       WHERE actor_type = ? AND actor_id = ? AND pricing_model = 'session' AND is_active = 1
+       WHERE professional_profile_id = ? AND service_key LIKE ? AND is_active = 1
        ORDER BY duration_minutes`,
-      [actorType, actorId],
+      [professionalProfileId, pattern],
     );
     return rows.map((r: any) => r.duration_minutes).filter(Boolean);
   },

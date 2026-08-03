@@ -72,8 +72,8 @@ export class RefereeProvider implements ResourceProvider {
               ps.price AS hourly_rate, ps.currency_code
        FROM referees r
        LEFT JOIN professional_profiles pp ON pp.user_id = r.user_id
-       LEFT JOIN professional_services ps ON ps.actor_type = 'referee'
-         AND ps.actor_id = r.id AND ps.service_key = 'default' AND ps.is_active = 1
+       LEFT JOIN professional_services ps ON ps.professional_profile_id = pp.id
+         AND ps.service_key = 'referee_default' AND ps.is_active = 1
        WHERE r.id = ?`,
       [this.entityId],
     );
