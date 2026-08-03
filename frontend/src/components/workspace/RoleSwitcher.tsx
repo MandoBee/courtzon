@@ -1,15 +1,16 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useWorkspaceStore, type Workspace } from '../../store/workspace.store';
+import { useWorkspaceStore, getWorkspaceHomePath, type Workspace } from '../../store/workspace.store';
 import { useAuthStore } from '../../store/auth.store';
 import { useHaptics } from '../../hooks/useHaptics';
 
-const workspaceMeta: Record<Workspace, { label: string; icon: string; homePath: string }> = {
-  player: { label: 'Player', icon: '👤', homePath: '/app' },
-  coach: { label: 'Coach', icon: '🏋️', homePath: '/coach/dashboard' },
-  resident_coach: { label: 'Resident Coach', icon: '🏢', homePath: '/coach/dashboard' },
-  organization: { label: 'Organization', icon: '🏛️', homePath: '/org' },
-  platform: { label: 'Admin', icon: '⚙️', homePath: '/admin' },
+const workspaceMeta: Record<Workspace, { label: string; icon: string }> = {
+  player: { label: 'Player', icon: '👤' },
+  coach: { label: 'Coach', icon: '🏋️' },
+  resident_coach: { label: 'Resident Coach', icon: '🏢' },
+  referee: { label: 'Referee', icon: '🧾' },
+  organization: { label: 'Organization', icon: '🏛️' },
+  platform: { label: 'Admin', icon: '⚙️' },
 };
 
 export default function RoleSwitcher() {
@@ -29,13 +30,7 @@ export default function RoleSwitcher() {
   const handleSwitch = (ws: Workspace) => {
     tap();
     setActiveWorkspace(ws);
-    const meta = workspaceMeta[ws];
-    if (ws === 'organization' && userOrganisations.length > 0) {
-      const org = userOrganisations[0];
-      navigate(`/org/${org.id}/dashboard`);
-    } else {
-      navigate(meta.homePath);
-    }
+    navigate(getWorkspaceHomePath(ws, userOrganisations));
     setOpen(false);
   };
 

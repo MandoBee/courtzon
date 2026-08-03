@@ -4,6 +4,7 @@ import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useAuthStore } from '../../store/auth.store';
+import { resolveUserHome } from '../../store/workspace.store';
 import { t } from '../../i18n';
 import { Button, PasswordInput, Card } from '../../components/ui';
 import PhoneNumberInput from '../../components/form/PhoneNumberInput';
@@ -60,7 +61,7 @@ export default function LoginPage() {
         countryCode: country?.phone_code,
         rememberMe: data.rememberMe,
       });
-      navigate('/app');
+      navigate(resolveUserHome().path);
     } catch (err: any) {
       setError('root', { message: err.response?.data?.message || t('common.error') });
     }

@@ -35,6 +35,7 @@ import RoleSwitcher from './components/workspace/RoleSwitcher';
 import CoachLayout from './components/layout/CoachLayout';
 import RefereeLayout from './components/layout/RefereeLayout';
 import { isOrganisationPendingApproval, orgPortalPath } from './utils/organisation';
+import { resolveUserHome } from './store/workspace.store';
 
 // Route-level code splitting: every page/layout below is lazily imported so the
 // initial bundle only ships the shell (guards, navbar, stores). See G8.
@@ -291,17 +292,19 @@ function ProtectedRoute() {
   if (isAdmin && !location.pathname.startsWith('/admin') && !location.pathname.startsWith('/org') && !location.pathname.startsWith('/notifications')) {
     return <Navigate to="/admin" replace />;
   }
+  if (!isAdmin && location.pathname === '/app') {
+    const home = resolveUserHome();
+    if (home.workspace !== 'player' && home.path !== '/app') {
+      return <Navigate to={home.path} replace />;
+    }
+  }
   return <Outlet />;
 }
 
 function LandingRoute() {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
-  const user = useAuthStore((s) => s.user);
   if (isAuthenticated) {
-    const isAdmin = user?.roles?.some(r => r === 'super-admin' || r === 'super_admin' || r === 'accountant');
-    if (isAdmin) return <Navigate to="/admin" replace />;
-    const hasSellingRole = user?.roles?.some((r: string) => ['shop-admin', 'org-admin'].includes(r));
-    return <Navigate to={hasSellingRole ? '/marketplace/seller' : '/app'} replace />;
+    return <Navigate to={resolveUserHome().path} replace />;
   }
   return <Outlet />;
 }
@@ -336,7 +339,7 @@ function OrgApprovedGuard() {
 
 function PublicRoute() {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
-  if (isAuthenticated) return <Navigate to="/app" replace />;
+  if (isAuthenticated) return <Navigate to={resolveUserHome().path} replace />;
   return <Outlet />;
 }
 

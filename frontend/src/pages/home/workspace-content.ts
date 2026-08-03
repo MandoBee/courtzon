@@ -68,6 +68,25 @@ export const workspaceContent: Record<Workspace, WorkspaceContent> = {
       'Review your upcoming coaching sessions.',
     ],
   },
+  referee: {
+    accentColor: 'var(--color-error)',
+    accentBg: 'bg-[var(--color-error)]/10',
+    accentBorder: 'border-[var(--color-error)]/20',
+    gradientFrom: 'from-[var(--color-error)]/20',
+    gradientTo: 'to-[var(--color-primary)]/10',
+    greetingIcon: '🧾',
+    primaryCta: { label: 'My Assignments', icon: '🗓️', to: '/referee/assignments' },
+    actions: [
+      { label: 'Upcoming Matches', description: 'View matches to officiate', icon: '🎯', to: '/referee/matches', permission: 'referee.matches.view' },
+      { label: 'Report Scores', description: 'Submit match results', icon: '📝', to: '/referee/assignments', permission: 'referee.matches.report_score' },
+      { label: 'My Profile', description: 'Update your referee profile', icon: '👤', to: '/referee/profile', permission: 'referee.profile.view' },
+    ],
+    emptySuggestions: [
+      'Check your assignments for upcoming matches.',
+      'Report scores for completed matches.',
+      'Update your referee profile.',
+    ],
+  },
   organization: {
     accentColor: 'var(--color-info)',
     accentBg: 'bg-[var(--color-info)]/10',
