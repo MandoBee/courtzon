@@ -1,5 +1,11 @@
 import type mysql from 'mysql2/promise';
 import { getPool } from '../../../../database/mysql.js';
+import {
+  professionalProfileRepository,
+  PROFESSIONAL_PROFILE_SELECT,
+  isProfessionalProfileKey,
+} from '../../../profiles/infrastructure/repositories/professional-profile.repository.js';
+import type { ProfessionalProfileInput } from '../../../profiles/infrastructure/repositories/professional-profile.repository.js';
 
 type RowData = mysql.RowDataPacket[];
 
@@ -321,7 +327,14 @@ export const activitiesRepository = {
   // ── Coaches ──
   async findCoachByUserId(userId: number) {
     const pool = getPool();
-    const [rows] = await pool.execute<RowData>('SELECT * FROM coach_profiles WHERE user_id = ? AND deleted_at IS NULL', [userId]);
+    const [rows] = await pool.execute<RowData>(
+      `SELECT cp.id, cp.user_id, cp.status, cp.is_verified, cp.rejected_reason, cp.created_at, cp.updated_at,
+              ${PROFESSIONAL_PROFILE_SELECT}
+       FROM coach_profiles cp
+       LEFT JOIN professional_profiles pp ON pp.user_id = cp.user_id
+       WHERE cp.user_id = ? AND cp.deleted_at IS NULL`,
+      [userId]
+    );
     return rows[0] || null;
   },
 
@@ -334,7 +347,12 @@ export const activitiesRepository = {
   async findCoachById(id: number) {
     const pool = getPool();
     const [rows] = await pool.execute<RowData>(
-      `SELECT cp.*, u.full_name, u.email FROM coach_profiles cp JOIN users u ON cp.user_id = u.id WHERE cp.id = ? AND cp.deleted_at IS NULL`,
+      `SELECT cp.id, cp.user_id, cp.status, cp.is_verified, cp.rejected_reason, u.full_name, u.email,
+              ${PROFESSIONAL_PROFILE_SELECT}
+       FROM coach_profiles cp
+       LEFT JOIN professional_profiles pp ON pp.user_id = cp.user_id
+       JOIN users u ON cp.user_id = u.id
+       WHERE cp.id = ? AND cp.deleted_at IS NULL`,
       [id]
     );
     return rows[0] || null;
@@ -342,12 +360,17 @@ export const activitiesRepository = {
 
   async findCoaches(filters: { sportId?: number; isAvailable?: boolean; page: number; limit: number; excludeUserId?: number }) {
     const pool = getPool();
-    let sql = `SELECT cp.*, u.full_name, u.email FROM coach_profiles cp JOIN users u ON cp.user_id = u.id WHERE cp.deleted_at IS NULL AND cp.status = 'approved'`;
+    let sql = `SELECT cp.id, cp.user_id, cp.status, cp.is_verified, u.full_name, u.email,
+                      ${PROFESSIONAL_PROFILE_SELECT}
+               FROM coach_profiles cp
+               LEFT JOIN professional_profiles pp ON pp.user_id = cp.user_id
+               JOIN users u ON cp.user_id = u.id
+               WHERE cp.deleted_at IS NULL AND cp.status = 'approved'`;
     const params: any[] = [];
     if (filters.excludeUserId) { sql += ' AND cp.user_id <> ?'; params.push(filters.excludeUserId); }
-    if (filters.isAvailable !== undefined) { sql += ' AND cp.is_available = ?'; params.push(filters.isAvailable); }
-    if (filters.sportId) { sql += ' AND JSON_CONTAINS(cp.sports, ?)'; params.push(JSON.stringify(filters.sportId)); }
-    sql += ' ORDER BY cp.rating_avg DESC LIMIT ? OFFSET ?';
+    if (filters.isAvailable !== undefined) { sql += ' AND pp.is_available = ?'; params.push(filters.isAvailable); }
+    if (filters.sportId) { sql += ' AND JSON_CONTAINS(pp.sports, ?)'; params.push(JSON.stringify(filters.sportId)); }
+    sql += ' ORDER BY pp.rating_avg DESC LIMIT ? OFFSET ?';
     const offset = (filters.page - 1) * filters.limit;
     params.push(filters.limit, offset);
     const [rows] = await pool.query<RowData>(sql, params);
@@ -356,17 +379,40 @@ export const activitiesRepository = {
 
   async createCoachProfile(userId: number, data: any) {
     const pool = getPool();
-    const [result] = await pool.execute(
-      "INSERT INTO coach_profiles (user_id, bio, experience_years, certifications, sports, hourly_rate, currency_code, session_durations, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending') ON DUPLICATE KEY UPDATE bio = VALUES(bio), experience_years = VALUES(experience_years), certifications = VALUES(certifications), sports = VALUES(sports), hourly_rate = VALUES(hourly_rate), currency_code = VALUES(currency_code), session_durations = VALUES(session_durations), status = 'pending', deleted_at = NULL",
-      [userId, data.bio || null, data.experienceYears || null, data.certifications ? JSON.stringify(data.certifications) : null, data.sports ? JSON.stringify(data.sports) : null, data.hourlyRate || null, data.currencyCode || null, data.sessionDurations ? JSON.stringify(data.sessionDurations) : null]
-    );
+    const conn = await pool.getConnection();
+    let insertId = userId;
+    try {
+      await conn.beginTransaction();
+      await conn.execute(
+        `INSERT INTO professional_profiles
+           (user_id, bio, experience_years, certifications, sports, hourly_rate, currency_code, session_durations)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE
+           bio = VALUES(bio), experience_years = VALUES(experience_years),
+           certifications = VALUES(certifications), sports = VALUES(sports),
+           hourly_rate = VALUES(hourly_rate), currency_code = VALUES(currency_code),
+           session_durations = VALUES(session_durations)`,
+        [userId, data.bio || null, data.experienceYears || null, data.certifications ? JSON.stringify(data.certifications) : null, data.sports ? JSON.stringify(data.sports) : null, data.hourlyRate || null, data.currencyCode || null, data.sessionDurations ? JSON.stringify(data.sessionDurations) : null]
+      );
+      const [cpResult] = await conn.execute(
+        "INSERT INTO coach_profiles (user_id, status) VALUES (?, 'pending') ON DUPLICATE KEY UPDATE status = 'pending', deleted_at = NULL",
+        [userId]
+      );
+      insertId = (cpResult as any).insertId;
+      await conn.commit();
+    } catch (err) {
+      await conn.rollback();
+      throw err;
+    } finally {
+      conn.release();
+    }
     // Transitional dual-write to the legacy player_profiles columns (dropped later).
     await pool.execute(
       `INSERT INTO player_profiles (user_id, coach_status) VALUES (?, 'pending')
        ON DUPLICATE KEY UPDATE coach_status = 'pending', is_coach = 0`,
       [userId]
     );
-    return (result as any).insertId;
+    return insertId;
   },
 
   async getCoachStatus(userId: number): Promise<string | null> {
@@ -388,17 +434,24 @@ export const activitiesRepository = {
 
   async updateCoachProfile(userId: number, data: any) {
     const pool = getPool();
-    const fields: string[] = []; const params: any[] = [];
+    const shared: Partial<ProfessionalProfileInput> = {};
+    const coachFields: string[] = []; const coachParams: any[] = [];
     for (const [key, val] of Object.entries(data)) {
-      if (val !== undefined) {
+      if (val === undefined) continue;
+      if (isProfessionalProfileKey(key)) {
+        (shared as any)[key] = val;
+      } else {
         const col = key.replace(/([A-Z])/g, '_$1').toLowerCase();
-        fields.push(`${col} = ?`);
-        params.push(Array.isArray(val) || typeof val === 'object' ? JSON.stringify(val) : val);
+        coachFields.push(`${col} = ?`);
+        coachParams.push(Array.isArray(val) || typeof val === 'object' ? JSON.stringify(val) : val);
       }
     }
-    if (!fields.length) return false;
-    params.push(userId);
-    const [result] = await pool.execute(`UPDATE coach_profiles SET ${fields.join(', ')} WHERE user_id = ?`, params);
+    if (Object.keys(shared).length) {
+      await professionalProfileRepository.upsertByUserId(userId, shared);
+    }
+    if (!coachFields.length) return true;
+    coachParams.push(userId);
+    const [result] = await pool.execute(`UPDATE coach_profiles SET ${coachFields.join(', ')} WHERE user_id = ?`, coachParams);
     return (result as any).affectedRows > 0;
   },
 
@@ -690,10 +743,12 @@ export const activitiesRepository = {
   // ── Admin: Coaches ──
   async findCoachesAdmin(filters: { page: number; limit: number }) {
     const pool = getPool();
-    const sql = `SELECT cp.*, u.full_name, u.email, cp.status AS coach_status
+    const sql = `SELECT cp.id, cp.user_id, cp.status, cp.status AS coach_status, cp.is_verified,
+                        cp.rejected_reason, u.full_name, u.email, ${PROFESSIONAL_PROFILE_SELECT}
                  FROM coach_profiles cp
+                 LEFT JOIN professional_profiles pp ON pp.user_id = cp.user_id
                  JOIN users u ON cp.user_id = u.id
-                 ORDER BY FIELD(cp.status, 'pending', 'approved', 'rejected', 'none') ASC, cp.rating_avg DESC LIMIT ? OFFSET ?`;
+                 ORDER BY FIELD(cp.status, 'pending', 'approved', 'rejected', 'none') ASC, pp.rating_avg DESC LIMIT ? OFFSET ?`;
     const offset = (filters.page - 1) * filters.limit;
     const [rows] = await pool.query<RowData>(sql, [filters.limit, offset]);
     const [countRows] = await pool.query<RowData>('SELECT COUNT(*) as total FROM coach_profiles cp');
@@ -702,14 +757,21 @@ export const activitiesRepository = {
 
   async updateCoachById(id: number, data: any) {
     const pool = getPool();
-    const fields: string[] = []; const params: any[] = [];
-    const map: Record<string, string> = { bio: 'bio', experience_years: 'experience_years', hourly_rate: 'hourly_rate', is_available: 'is_available', is_verified: 'is_verified' };
-    for (const [k, c] of Object.entries(map)) {
-      if (data[k] !== undefined) { fields.push(`${c} = ?`); params.push(data[k]); }
+    const shared: Partial<ProfessionalProfileInput> = {};
+    const coachFields: string[] = []; const coachParams: any[] = [];
+    const sharedMap: Record<string, keyof ProfessionalProfileInput> = {
+      bio: 'bio', experience_years: 'experienceYears', hourly_rate: 'hourlyRate', is_available: 'isAvailable',
+    };
+    for (const [k, c] of Object.entries(sharedMap)) {
+      if (data[k] !== undefined) { (shared as any)[c] = data[k]; }
     }
-    if (!fields.length) return false;
-    params.push(id);
-    const [result] = await pool.execute(`UPDATE coach_profiles SET ${fields.join(', ')} WHERE id = ?`, params);
+    if (data.is_verified !== undefined) { coachFields.push('is_verified = ?'); coachParams.push(data.is_verified); }
+    if (Object.keys(shared).length) {
+      await professionalProfileRepository.updateByCoachProfileId(id, shared);
+    }
+    if (!coachFields.length) return true;
+    coachParams.push(id);
+    const [result] = await pool.execute(`UPDATE coach_profiles SET ${coachFields.join(', ')} WHERE id = ?`, coachParams);
     return (result as any).affectedRows > 0;
   },
 
@@ -729,7 +791,13 @@ export const activitiesRepository = {
         [id],
       );
       await conn.execute(
-        `UPDATE coach_profiles SET is_available = 0, status = 'rejected'
+        `UPDATE professional_profiles pp JOIN coach_profiles cp ON cp.user_id = pp.user_id
+         SET pp.is_available = 0
+         WHERE cp.id = ?`,
+        [id],
+      );
+      await conn.execute(
+        `UPDATE coach_profiles SET status = 'rejected'
          WHERE id = ? AND deleted_at IS NULL`,
         [id],
       );
@@ -750,10 +818,15 @@ export const activitiesRepository = {
 
   async toggleCoachAvailability(id: number) {
     const pool = getPool();
-    const [rows] = await pool.execute<RowData>('SELECT is_available FROM coach_profiles WHERE id = ?', [id]);
+    const [rows] = await pool.execute<RowData>(
+      `SELECT pp.is_available FROM professional_profiles pp
+       JOIN coach_profiles cp ON cp.user_id = pp.user_id
+       WHERE cp.id = ?`,
+      [id],
+    );
     if (!rows.length) return null;
     const newVal = (rows[0] as any).is_available ? 0 : 1;
-    await pool.execute('UPDATE coach_profiles SET is_available = ? WHERE id = ?', [newVal, id]);
+    await professionalProfileRepository.setAvailabilityByCoachProfileId(id, !!newVal);
     return { is_available: !!newVal };
   },
 

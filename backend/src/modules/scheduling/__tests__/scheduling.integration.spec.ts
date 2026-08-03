@@ -60,9 +60,10 @@ describe('Scheduling E2E — Seed Data Validation', () => {
 
   it('has approved coaches with hourly rates', async () => {
     const [coaches] = await pool.execute<any[]>(
-      `SELECT cp.id, cp.hourly_rate FROM coach_profiles cp
+      `SELECT cp.id, pp.hourly_rate FROM coach_profiles cp
+       JOIN professional_profiles pp ON pp.user_id = cp.user_id
        JOIN users u ON u.id = cp.user_id
-       WHERE cp.status = 'approved' AND cp.hourly_rate IS NOT NULL AND cp.hourly_rate > 0
+       WHERE cp.status = 'approved' AND pp.hourly_rate IS NOT NULL AND pp.hourly_rate > 0
        LIMIT 1`
     );
     expect(coaches.length).toBeGreaterThan(0);
@@ -303,7 +304,9 @@ describe('Scheduling E2E — Booking Service Integration', () => {
     const { SchedulingBookingService } = await import('../application/scheduling-booking.service.js');
 
     const [coaches] = await pool.execute<any[]>(
-      `SELECT cp.id FROM coach_profiles cp WHERE cp.status = 'approved' AND cp.hourly_rate IS NOT NULL AND cp.hourly_rate > 0 LIMIT 1`
+      `SELECT cp.id FROM coach_profiles cp
+       JOIN professional_profiles pp ON pp.user_id = cp.user_id
+       WHERE cp.status = 'approved' AND pp.hourly_rate IS NOT NULL AND pp.hourly_rate > 0 LIMIT 1`
     );
     const [resources] = await pool.execute<any[]>(
       `SELECT id FROM resources WHERE is_active = TRUE AND hourly_price IS NOT NULL LIMIT 1`
@@ -354,7 +357,9 @@ describe('Scheduling E2E — Event Emission', () => {
     const { SchedulingBookingService } = await import('../application/scheduling-booking.service.js');
 
     const [coaches] = await pool.execute<any[]>(
-      `SELECT cp.id FROM coach_profiles cp WHERE cp.status = 'approved' AND cp.hourly_rate IS NOT NULL AND cp.hourly_rate > 0 LIMIT 1`
+      `SELECT cp.id FROM coach_profiles cp
+       JOIN professional_profiles pp ON pp.user_id = cp.user_id
+       WHERE cp.status = 'approved' AND pp.hourly_rate IS NOT NULL AND pp.hourly_rate > 0 LIMIT 1`
     );
     const [resources] = await pool.execute<any[]>(
       `SELECT id FROM resources WHERE is_active = TRUE AND hourly_price IS NOT NULL LIMIT 1`

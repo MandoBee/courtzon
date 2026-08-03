@@ -1,99 +1,74 @@
 import type { FastifyRequest, FastifyReply } from 'fastify';
+import type mysql from 'mysql2/promise';
 import { getPool } from '../../../database/mysql.js';
 import { recordAudit } from '../../audit-log/index.js';
 import { NotFoundError } from '../../../shared/errors/app-error.js';
 import { ErrorCodes } from '../../../shared/errors/error-codes.js';
+import { refereeRepository } from '../infrastructure/repositories/referee.repository.js';
+import { isProfessionalProfileKey } from '../../profiles/infrastructure/repositories/professional-profile.repository.js';
+import type { ProfessionalProfileInput } from '../../profiles/infrastructure/repositories/professional-profile.repository.js';
+
+type RowData = mysql.RowDataPacket[];
 
 function getUserId(request: FastifyRequest): number { return (request as any).userId; }
 function getUserAgent(request: FastifyRequest): string | undefined {
   const ua = request.headers['user-agent'];
   return typeof ua === 'string' ? ua : undefined;
 }
-type RowData = import('mysql2').RowDataPacket[];
 
-async function getRefereeProfileId(userId: number): Promise<number> {
-  const pool = getPool();
-  const [rows] = await pool.execute<RowData>(
-    'SELECT id FROM coach_profiles WHERE user_id = ? AND deleted_at IS NULL',
-    [userId],
-  );
-  if (!rows.length) throw new NotFoundError(ErrorCodes.REFEREE_NOT_FOUND);
-  return rows[0].id;
+/**
+ * Resolve the referee identity for the authenticated user.
+ * The Referee is an independent actor — identity lives in the `referees`
+ * table and never depends on `coach_profiles` (or any other actor table).
+ */
+async function getRefereeId(request: FastifyRequest): Promise<number> {
+  const userId = getUserId(request);
+  const refereeId = await refereeRepository.getRefereeIdByUserId(userId);
+  if (!refereeId) throw new NotFoundError(ErrorCodes.REFEREE_NOT_FOUND);
+  return refereeId;
 }
 
 // ── Referee Dashboard ──
 
 export async function getRefereeDashboardHandler(request: FastifyRequest, reply: FastifyReply) {
   const userId = getUserId(request);
-  const profileId = await getRefereeProfileId(userId);
-  const pool = getPool();
-
-  const [[upcomingTournament]] = await pool.query<RowData>(
-    `SELECT COUNT(*) AS count FROM tournament_matches WHERE referee_id = ? AND status IN ('scheduled','in_progress')`,
-    [profileId],
-  );
-  const [[upcomingLeague]] = await pool.query<RowData>(
-    `SELECT COUNT(*) AS count FROM league_matches WHERE referee_id = ? AND status IN ('scheduled','in_progress')`,
-    [profileId],
-  );
-  const upcomingMatches = Number(upcomingTournament.count) + Number(upcomingLeague.count);
-
-  const [[completedTournament]] = await pool.query<RowData>(
-    `SELECT COUNT(*) AS count FROM tournament_matches WHERE referee_id = ? AND status = 'completed'`,
-    [profileId],
-  );
-  const [[completedLeague]] = await pool.query<RowData>(
-    `SELECT COUNT(*) AS count FROM league_matches WHERE referee_id = ? AND status = 'completed'`,
-    [profileId],
-  );
-  const completedMatches = Number(completedTournament.count) + Number(completedLeague.count);
-
-  const totalAssignments = upcomingMatches + completedMatches;
-
-  const [[tournamentRating]] = await pool.query<RowData>(
-    `SELECT COALESCE(AVG(rating_avg), 0) AS avg FROM coach_profiles WHERE id = ?`,
-    [profileId],
-  );
-  const averageRating = Number(tournamentRating.avg);
-
-  return reply.send({ upcomingMatches, completedMatches, totalAssignments, averageRating });
+  const refereeId = await getRefereeId(request);
+  const profile = await refereeRepository.getRefereeProfile(userId);
+  const matches = await refereeRepository.countMatches(refereeId);
+  const averageRating = profile ? Number(profile.rating_avg || 0) : 0;
+  return reply.send({
+    upcomingMatches: matches.upcomingMatches,
+    completedMatches: matches.completedMatches,
+    totalAssignments: matches.upcomingMatches + matches.completedMatches,
+    averageRating,
+  });
 }
 
 // ── Referee Profile ──
 
 export async function getRefereeProfileHandler(request: FastifyRequest, reply: FastifyReply) {
   const userId = getUserId(request);
-  const pool = getPool();
-  const [rows] = await pool.execute<RowData>(
-    `SELECT cp.*, u.full_name, u.email, u.phone, u.avatar_url
-     FROM coach_profiles cp
-     JOIN users u ON u.id = cp.user_id
-     WHERE cp.user_id = ? AND cp.deleted_at IS NULL`,
-    [userId],
-  );
-  if (!rows.length) throw new NotFoundError(ErrorCodes.REFEREE_NOT_FOUND);
-  return reply.send(rows[0]);
+  await getRefereeId(request);
+  const profile = await refereeRepository.getRefereeProfile(userId);
+  if (!profile) throw new NotFoundError(ErrorCodes.REFEREE_NOT_FOUND);
+  return reply.send(profile);
 }
 
 export async function updateRefereeProfileHandler(request: FastifyRequest, reply: FastifyReply) {
   const userId = getUserId(request);
+  const refereeId = await getRefereeId(request);
   const body = request.body as any;
-  const pool = getPool();
-  const fields: string[] = [];
-  const params: any[] = [];
-  if (body.bio !== undefined) { fields.push('bio = ?'); params.push(body.bio); }
-  if (body.certifications !== undefined) { fields.push('certifications = ?'); params.push(JSON.stringify(body.certifications)); }
-  if (body.sports !== undefined) { fields.push('sports = ?'); params.push(JSON.stringify(body.sports)); }
-  if (body.experienceYears !== undefined) { fields.push('experience_years = ?'); params.push(body.experienceYears); }
-  if (body.hourlyRate !== undefined) { fields.push('hourly_rate = ?'); params.push(body.hourlyRate); }
-  if (body.currencyCode !== undefined) { fields.push('currency_code = ?'); params.push(body.currencyCode); }
-  if (body.sessionDurations !== undefined) { fields.push('session_durations = ?'); params.push(JSON.stringify(body.sessionDurations)); }
-  if (!fields.length) return reply.send({ success: true });
-  params.push(userId);
-  await pool.execute(`UPDATE coach_profiles SET ${fields.join(', ')} WHERE user_id = ?`, params);
+  const shared: ProfessionalProfileInput = {};
+  for (const [key, val] of Object.entries(body)) {
+    if (val === undefined) continue;
+    if (isProfessionalProfileKey(key)) (shared as any)[key] = val;
+  }
+  if (Object.keys(shared).length) {
+    await refereeRepository.upsertProfile(userId, shared);
+  }
   recordAudit({
-    actorId: userId, action: 'REFEREE_PROFILE.UPDATE', entityType: 'coach_profile',
-    entityId: (await getRefereeProfileId(userId)), afterState: body,
+    actorId: userId, action: 'REFEREE_PROFILE.UPDATE', entityType: 'referee',
+    entityId: refereeId, afterState: body,
     ipAddress: request.ip, userAgent: getUserAgent(request),
   });
   return reply.send({ success: true });
@@ -102,46 +77,21 @@ export async function updateRefereeProfileHandler(request: FastifyRequest, reply
 // ── Referee Availability ──
 
 export async function getRefereeAvailabilityHandler(request: FastifyRequest, reply: FastifyReply) {
-  const userId = getUserId(request);
-  const profileId = await getRefereeProfileId(userId);
-  const pool = getPool();
-  const [availability] = await pool.query<RowData>(
-    'SELECT * FROM coach_availability WHERE coach_id = ? ORDER BY day_of_week, start_time',
-    [profileId],
-  );
-  const [blackouts] = await pool.query<RowData>(
-    'SELECT * FROM coach_availability_blackouts WHERE coach_id = ? ORDER BY blackout_date',
-    [profileId],
-  );
+  const refereeId = await getRefereeId(request);
+  const availability = await refereeRepository.listAvailability(refereeId);
+  const blackouts = await refereeRepository.listBlackouts(refereeId);
   return reply.send({ availability, blackouts });
 }
 
 export async function updateRefereeAvailabilityHandler(request: FastifyRequest, reply: FastifyReply) {
   const userId = getUserId(request);
-  const profileId = await getRefereeProfileId(userId);
+  const refereeId = await getRefereeId(request);
   const body = request.body as any;
   const slots: { dayOfWeek: number; startTime: string; endTime: string }[] = body.slots || [];
-  const pool = getPool();
-  const conn = await pool.getConnection();
-  try {
-    await conn.beginTransaction();
-    await conn.execute('DELETE FROM coach_availability WHERE coach_id = ?', [profileId]);
-    for (const slot of slots) {
-      await conn.execute(
-        'INSERT INTO coach_availability (coach_id, day_of_week, start_time, end_time) VALUES (?, ?, ?, ?)',
-        [profileId, slot.dayOfWeek, slot.startTime, slot.endTime],
-      );
-    }
-    await conn.commit();
-  } catch (err) {
-    await conn.rollback();
-    throw err;
-  } finally {
-    conn.release();
-  }
+  await refereeRepository.replaceAvailability(refereeId, slots);
   recordAudit({
-    actorId: userId, action: 'REFEREE_AVAILABILITY.UPDATE', entityType: 'coach_profile',
-    entityId: profileId,
+    actorId: userId, action: 'REFEREE_AVAILABILITY.UPDATE', entityType: 'referee',
+    entityId: refereeId,
     ipAddress: request.ip, userAgent: getUserAgent(request),
   });
   return reply.send({ success: true });
@@ -149,28 +99,24 @@ export async function updateRefereeAvailabilityHandler(request: FastifyRequest, 
 
 export async function addBlackoutHandler(request: FastifyRequest, reply: FastifyReply) {
   const userId = getUserId(request);
-  const profileId = await getRefereeProfileId(userId);
+  const refereeId = await getRefereeId(request);
   const body = request.body as any;
-  const pool = getPool();
-  const [result] = await pool.execute(
-    'INSERT INTO coach_availability_blackouts (coach_id, blackout_date, reason) VALUES (?, ?, ?)',
-    [profileId, body.blackoutDate, body.reason || null],
-  );
+  const blackoutId = await refereeRepository.addBlackout(refereeId, body.blackoutDate, body.reason);
   recordAudit({
-    actorId: userId, action: 'REFEREE_BLACKOUT.CREATE', entityType: 'coach_availability_blackout',
-    entityId: (result as any).insertId,
+    actorId: userId, action: 'REFEREE_BLACKOUT.CREATE', entityType: 'referee_availability_blackout',
+    entityId: blackoutId,
     ipAddress: request.ip, userAgent: getUserAgent(request),
   });
-  return reply.status(201).send({ id: (result as any).insertId });
+  return reply.status(201).send({ id: blackoutId });
 }
 
 export async function removeBlackoutHandler(request: FastifyRequest, reply: FastifyReply) {
   const userId = getUserId(request);
+  const refereeId = await getRefereeId(request);
   const { id } = request.params as any;
-  const pool = getPool();
-  await pool.execute('DELETE FROM coach_availability_blackouts WHERE id = ?', [Number(id)]);
+  await refereeRepository.removeBlackout(Number(id), refereeId);
   recordAudit({
-    actorId: userId, action: 'REFEREE_BLACKOUT.DELETE', entityType: 'coach_availability_blackout',
+    actorId: userId, action: 'REFEREE_BLACKOUT.DELETE', entityType: 'referee_availability_blackout',
     entityId: Number(id),
     ipAddress: request.ip, userAgent: getUserAgent(request),
   });
@@ -180,35 +126,18 @@ export async function removeBlackoutHandler(request: FastifyRequest, reply: Fast
 // ── Referee Assignments ──
 
 export async function getRefereeAssignmentsHandler(request: FastifyRequest, reply: FastifyReply) {
-  const userId = getUserId(request);
-  const profileId = await getRefereeProfileId(userId);
-  const pool = getPool();
-  const [tournamentMatches] = await pool.query<RowData>(
-    `SELECT tm.*, t.name AS tournament_name
-     FROM tournament_matches tm
-     JOIN tournaments t ON t.id = tm.tournament_id
-     WHERE tm.referee_id = ? AND tm.status IN ('scheduled','in_progress')
-     ORDER BY tm.start_time ASC`,
-    [profileId],
-  );
-  const [leagueMatches] = await pool.query<RowData>(
-    `SELECT lm.*, l.name AS league_name
-     FROM league_matches lm
-     JOIN leagues l ON l.id = lm.division_id
-     WHERE lm.referee_id = ? AND lm.status IN ('scheduled','in_progress')
-     ORDER BY lm.match_date ASC, lm.start_time ASC`,
-    [profileId],
-  );
-  return reply.send({ tournamentMatches, leagueMatches });
+  const refereeId = await getRefereeId(request);
+  const assignments = await refereeRepository.listAssignments(refereeId);
+  return reply.send(assignments);
 }
 
 export async function acceptAssignmentHandler(request: FastifyRequest, reply: FastifyReply) {
   const userId = getUserId(request);
-  const profileId = await getRefereeProfileId(userId);
+  const refereeId = await getRefereeId(request);
   const { id } = request.params as any;
   recordAudit({
-    actorId: userId, action: 'REFEREE_ASSIGNMENT.ACCEPT', entityType: 'coach_profile',
-    entityId: profileId, afterState: { matchId: Number(id) },
+    actorId: userId, action: 'REFEREE_ASSIGNMENT.ACCEPT', entityType: 'referee',
+    entityId: refereeId, afterState: { matchId: Number(id) },
     ipAddress: request.ip, userAgent: getUserAgent(request),
   });
   return reply.send({ success: true });
@@ -216,11 +145,11 @@ export async function acceptAssignmentHandler(request: FastifyRequest, reply: Fa
 
 export async function declineAssignmentHandler(request: FastifyRequest, reply: FastifyReply) {
   const userId = getUserId(request);
-  const profileId = await getRefereeProfileId(userId);
+  const refereeId = await getRefereeId(request);
   const { id } = request.params as any;
   recordAudit({
-    actorId: userId, action: 'REFEREE_ASSIGNMENT.DECLINE', entityType: 'coach_profile',
-    entityId: profileId, afterState: { matchId: Number(id) },
+    actorId: userId, action: 'REFEREE_ASSIGNMENT.DECLINE', entityType: 'referee',
+    entityId: refereeId, afterState: { matchId: Number(id) },
     ipAddress: request.ip, userAgent: getUserAgent(request),
   });
   return reply.send({ success: true });
@@ -229,52 +158,23 @@ export async function declineAssignmentHandler(request: FastifyRequest, reply: F
 // ── Referee Match History ──
 
 export async function getRefereeMatchHistoryHandler(request: FastifyRequest, reply: FastifyReply) {
-  const userId = getUserId(request);
-  const profileId = await getRefereeProfileId(userId);
-  const pool = getPool();
-  const [tournamentMatches] = await pool.query<RowData>(
-    `SELECT tm.*, t.name AS tournament_name
-     FROM tournament_matches tm
-     JOIN tournaments t ON t.id = tm.tournament_id
-     WHERE tm.referee_id = ? AND tm.status = 'completed'
-     ORDER BY tm.start_time DESC`,
-    [profileId],
-  );
-  const [leagueMatches] = await pool.query<RowData>(
-    `SELECT lm.*, l.name AS league_name
-     FROM league_matches lm
-     JOIN leagues l ON l.id = lm.division_id
-     WHERE lm.referee_id = ? AND lm.status = 'completed'
-     ORDER BY lm.match_date DESC, lm.start_time DESC`,
-    [profileId],
-  );
-  return reply.send({ tournamentMatches, leagueMatches });
+  const refereeId = await getRefereeId(request);
+  const history = await refereeRepository.listMatchHistory(refereeId);
+  return reply.send(history);
 }
 
 // ── Referee Statistics ──
 
 export async function getRefereeStatisticsHandler(request: FastifyRequest, reply: FastifyReply) {
   const userId = getUserId(request);
-  const profileId = await getRefereeProfileId(userId);
-  const pool = getPool();
-  const [[tournamentCount]] = await pool.query<RowData>(
-    `SELECT COUNT(*) AS count FROM tournament_matches WHERE referee_id = ?`,
-    [profileId],
-  );
-  const [[leagueCount]] = await pool.query<RowData>(
-    `SELECT COUNT(*) AS count FROM league_matches WHERE referee_id = ?`,
-    [profileId],
-  );
-  const totalMatches = Number(tournamentCount.count) + Number(leagueCount.count);
-  const [[avgRating]] = await pool.query<RowData>(
-    `SELECT COALESCE(rating_avg, 0) AS avg FROM coach_profiles WHERE id = ?`,
-    [profileId],
-  );
+  const refereeId = await getRefereeId(request);
+  const matches = await refereeRepository.countMatches(refereeId);
+  const profile = await refereeRepository.getRefereeProfile(userId);
   return reply.send({
-    totalMatches,
-    tournamentMatches: Number(tournamentCount.count),
-    leagueMatches: Number(leagueCount.count),
-    averageRating: Number(avgRating.avg),
+    totalMatches: matches.totalMatches,
+    tournamentMatches: matches.tournamentMatches,
+    leagueMatches: matches.leagueMatches,
+    averageRating: profile ? Number(profile.rating_avg || 0) : 0,
   });
 }
 
@@ -364,12 +264,15 @@ export async function getCoachStatisticsHandler(request: FastifyRequest, reply: 
   const userId = getUserId(request);
   const pool = getPool();
   const [rows] = await pool.execute<RowData>(
-    'SELECT id, rating_avg FROM coach_profiles WHERE user_id = ? AND deleted_at IS NULL',
+    `SELECT cp.id, pp.rating_avg
+     FROM coach_profiles cp
+     LEFT JOIN professional_profiles pp ON pp.user_id = cp.user_id
+     WHERE cp.user_id = ? AND cp.deleted_at IS NULL`,
     [userId],
   );
   if (!rows.length) throw new NotFoundError(ErrorCodes.COACH_NOT_FOUND);
   const coachId = rows[0].id;
-  const ratingAvg = Number(rows[0].rating_avg);
+  const ratingAvg = Number(rows[0].rating_avg || 0);
   const [[stats]] = await pool.query<RowData>(
     `SELECT
        COUNT(*) AS total_sessions,

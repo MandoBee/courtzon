@@ -562,9 +562,10 @@ export async function getCoachSessionDetailHandler(request: FastifyRequest, repl
   const sessionId = Number((request.params as any).id);
   const pool = (await import('../../../database/mysql.js')).getPool();
   const [rows] = await pool.execute<any>(
-    `SELECT cs.*, cp.full_name as coach_name, u.full_name as player_name
+    `SELECT cs.*, cu.full_name as coach_name, u.full_name as player_name
      FROM coach_sessions cs
      LEFT JOIN coach_profiles cp ON cp.id = cs.coach_id
+     LEFT JOIN users cu ON cu.id = cp.user_id
      LEFT JOIN users u ON u.id = cs.player_id
      WHERE cs.id = ?`,
     [sessionId],

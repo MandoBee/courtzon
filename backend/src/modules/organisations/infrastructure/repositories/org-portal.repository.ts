@@ -368,9 +368,10 @@ export async function listOrgCoaches(orgId: number) {
     `SELECT coa.id, coa.coach_id, coa.coach_split_pct, coa.org_split_pct, coa.hourly_rate,
             coa.is_active, coa.status, coa.initiated_by, coa.created_at, coa.updated_at,
             cp.user_id, u.full_name AS coach_name, u.email AS coach_email,
-            cp.rating_avg, cp.hourly_rate AS coach_global_rate, cp.currency_code
+            pp.rating_avg, pp.hourly_rate AS coach_global_rate, pp.currency_code
      FROM coach_org_agreements coa
      JOIN coach_profiles cp ON cp.id = coa.coach_id
+     LEFT JOIN professional_profiles pp ON pp.user_id = cp.user_id
      JOIN users u ON u.id = cp.user_id
      WHERE coa.organisation_id = ?
      ORDER BY coa.created_at DESC`,
@@ -384,15 +385,16 @@ export async function listInvitableCoaches(orgId: number) {
   const pool = getPool();
   const [rows] = await pool.execute<RowData>(
     `SELECT cp.id AS coach_id, cp.user_id, u.full_name, u.email,
-            cp.rating_avg, cp.hourly_rate, cp.currency_code
+            pp.rating_avg, pp.hourly_rate, pp.currency_code
      FROM coach_profiles cp
+     LEFT JOIN professional_profiles pp ON pp.user_id = cp.user_id
      JOIN users u ON u.id = cp.user_id
      WHERE cp.deleted_at IS NULL AND cp.status = 'approved'
        AND cp.id NOT IN (
          SELECT coach_id FROM coach_org_agreements
           WHERE organisation_id = ? AND status IN ('pending','accepted')
        )
-     ORDER BY cp.rating_avg DESC, u.full_name
+     ORDER BY pp.rating_avg DESC, u.full_name
      LIMIT 100`,
     [orgId]
   );

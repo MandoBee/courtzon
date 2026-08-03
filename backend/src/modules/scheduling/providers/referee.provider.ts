@@ -9,6 +9,7 @@ export class RefereeProvider implements ResourceProvider {
   readonly resourceType = 'referee';
   readonly entityId: number;
 
+  /** @param refereeId identity of the `referees` row (independent of Coach). */
   constructor(refereeId: number) {
     this.entityId = refereeId;
   }
@@ -16,13 +17,13 @@ export class RefereeProvider implements ResourceProvider {
   async getAvailableSlots(date: string, dayOfWeek: number): Promise<TimeSlot[]> {
     const pool = getPool();
     const [availRows] = await pool.execute<RowData>(
-      'SELECT * FROM coach_availability WHERE coach_id = ? AND day_of_week = ? ORDER BY start_time',
+      'SELECT * FROM referee_availability WHERE referee_id = ? AND day_of_week = ? ORDER BY start_time',
       [this.entityId, dayOfWeek],
     );
     if (!availRows.length) return [];
 
     const [blackoutRows] = await pool.execute<RowData>(
-      'SELECT 1 FROM coach_availability_blackouts WHERE coach_id = ? AND blackout_date = ? LIMIT 1',
+      'SELECT 1 FROM referee_availability_blackouts WHERE referee_id = ? AND blackout_date = ? LIMIT 1',
       [this.entityId, date],
     );
     if (blackoutRows.length) return [];
@@ -67,7 +68,10 @@ export class RefereeProvider implements ResourceProvider {
   async getCapabilities(): Promise<ResourceCapabilities> {
     const pool = getPool();
     const [rows] = await pool.execute<RowData>(
-      'SELECT sports, experience_years, certifications, hourly_rate, currency_code FROM coach_profiles WHERE id = ? AND deleted_at IS NULL',
+      `SELECT pp.sports, pp.experience_years, pp.certifications, pp.hourly_rate, pp.currency_code
+       FROM referees r
+       LEFT JOIN professional_profiles pp ON pp.user_id = r.user_id
+       WHERE r.id = ?`,
       [this.entityId],
     );
     if (!rows.length) return { sportIds: [] };
@@ -92,7 +96,10 @@ export class RefereeProvider implements ResourceProvider {
   async isAvailable(): Promise<boolean> {
     const pool = getPool();
     const [rows] = await pool.execute<RowData>(
-      'SELECT is_available FROM coach_profiles WHERE id = ? AND deleted_at IS NULL AND status = ?',
+      `SELECT pp.is_available
+       FROM referees r
+       LEFT JOIN professional_profiles pp ON pp.user_id = r.user_id
+       WHERE r.id = ? AND r.status = ?`,
       [this.entityId, 'approved'],
     );
     return rows.length > 0 && rows[0].is_available === 1;

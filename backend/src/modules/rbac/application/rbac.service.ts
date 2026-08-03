@@ -107,6 +107,15 @@ export class RBACService {
     if (scopes?.length) {
       await rbacRepository.setUserRoleScope(userRoleId, scopes);
     }
+    // Referee is an independent actor — provision its identity row so the
+    // Referee module never depends on another actor's profile table.
+    if (role.slug === 'referee') {
+      const pool = getPool();
+      await pool.execute(
+        `INSERT IGNORE INTO referees (user_id, status) VALUES (?, 'approved')`,
+        [userId],
+      );
+    }
   }
 
   async removeUserRole(userId: number, roleId: number) {
@@ -459,8 +468,12 @@ export class RBACService {
       [userId],
     );
     await conn.execute(
-      `UPDATE coach_profiles SET deleted_at = NOW(), is_available = 0, status = 'rejected'
+      `UPDATE coach_profiles SET deleted_at = NOW(), status = 'rejected'
        WHERE user_id = ? AND deleted_at IS NULL`,
+      [userId],
+    );
+    await conn.execute(
+      `UPDATE professional_profiles SET is_available = 0 WHERE user_id = ?`,
       [userId],
     );
     await conn.execute(

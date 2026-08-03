@@ -1135,26 +1135,40 @@ DROP TABLE IF EXISTS `coach_profiles`;
 CREATE TABLE `coach_profiles` (
   `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
   `user_id` int(10) unsigned NOT NULL,
-  `bio` text DEFAULT NULL,
-  `experience_years` tinyint(3) unsigned DEFAULT NULL,
-  `certifications` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL CHECK (json_valid(`certifications`)),
-  `sports` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL COMMENT 'Array of sport_ids they coach' CHECK (json_valid(`sports`)),
-  `hourly_rate` decimal(12,2) DEFAULT NULL,
-  `currency_code` char(3) DEFAULT NULL,
-  `rating_avg` decimal(3,2) NOT NULL DEFAULT 0.00,
-  `rating_count` int(10) unsigned NOT NULL DEFAULT 0,
-  `is_available` tinyint(1) NOT NULL DEFAULT 1,
   `is_verified` tinyint(1) NOT NULL DEFAULT 0,
   `status` enum('none','pending','approved','rejected') NOT NULL DEFAULT 'none',
   `rejected_reason` varchar(500) DEFAULT NULL,
   `deleted_at` timestamp NULL DEFAULT NULL,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
   `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
-  `session_durations` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL COMMENT 'Array of available session durations in minutes, e.g. [30,60,90]' CHECK (json_valid(`session_durations`)),
   PRIMARY KEY (`id`),
   UNIQUE KEY `user_id` (`user_id`),
   KEY `idx_coach_profiles_status` (`status`),
   CONSTRAINT `fk_coach_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+DROP TABLE IF EXISTS `professional_profiles`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `professional_profiles` (
+  `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
+  `user_id` int(10) unsigned NOT NULL,
+  `bio` text DEFAULT NULL,
+  `experience_years` tinyint(3) unsigned DEFAULT NULL,
+  `certifications` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL CHECK (json_valid(`certifications`)),
+  `sports` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL COMMENT 'Array of sport_ids they officiate/coach' CHECK (json_valid(`sports`)),
+  `hourly_rate` decimal(12,2) DEFAULT NULL,
+  `currency_code` char(3) DEFAULT NULL,
+  `rating_avg` decimal(3,2) NOT NULL DEFAULT 0.00,
+  `rating_count` int(10) unsigned NOT NULL DEFAULT 0,
+  `is_available` tinyint(1) NOT NULL DEFAULT 1,
+  `session_durations` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL COMMENT 'Array of available session durations in minutes, e.g. [30,60,90]' CHECK (json_valid(`session_durations`)),
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_professional_profile_user` (`user_id`),
+  KEY `idx_pp_availability` (`is_available`),
+  CONSTRAINT `fk_pp_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 DROP TABLE IF EXISTS `coach_reviews`;
@@ -4182,6 +4196,20 @@ CREATE TABLE `referee_availability` (
   PRIMARY KEY (`id`),
   KEY `idx_ra_referee` (`referee_id`),
   CONSTRAINT `fk_ra_referee` FOREIGN KEY (`referee_id`) REFERENCES `referees` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+DROP TABLE IF EXISTS `referee_availability_blackouts`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `referee_availability_blackouts` (
+  `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
+  `referee_id` int(10) unsigned NOT NULL,
+  `blackout_date` date NOT NULL,
+  `reason` varchar(255) DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_referee_blackout` (`referee_id`,`blackout_date`),
+  CONSTRAINT `fk_ref_blackout_referee` FOREIGN KEY (`referee_id`) REFERENCES `referees` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 DROP TABLE IF EXISTS `resource_time_slots`;

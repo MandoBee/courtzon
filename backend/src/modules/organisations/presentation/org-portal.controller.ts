@@ -891,14 +891,12 @@ export async function listOrgRefereesHandler(request: FastifyRequest, reply: Fas
   const pool = getPool();
   type RowData = import('mysql2').RowDataPacket[];
   const [referees] = await pool.query<RowData>(
-    `SELECT u.id, u.full_name, u.email, u.phone, u.avatar_url,
-            COALESCE(cp.status, 'unknown') AS referee_status, cp.sport_id, s.name AS sport_name
-     FROM coach_profiles cp
-     JOIN users u ON u.id = cp.user_id
-     LEFT JOIN sports s ON s.id = cp.sport_id
-     WHERE cp.organisation_id = ? OR cp.id IN (SELECT coach_id FROM org_coach_agreements WHERE organisation_id = ? AND status = 'accepted')
+    `SELECT r.id AS referee_id, u.id, u.full_name, u.email, u.phone, u.avatar_url,
+            r.status AS referee_status
+     FROM referees r
+     JOIN users u ON u.id = r.user_id
      ORDER BY u.full_name`,
-    [Number(orgId), Number(orgId)],
+    [],
   );
   return reply.send(referees);
 }
