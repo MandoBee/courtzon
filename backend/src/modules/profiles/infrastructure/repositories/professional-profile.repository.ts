@@ -7,50 +7,40 @@ export interface ProfessionalProfileInput {
   experienceYears?: number | null;
   certifications?: string[] | null;
   sports?: number[] | null;
-  hourlyRate?: number | null;
-  currencyCode?: string | null;
-  sessionDurations?: number[] | null;
   isAvailable?: boolean;
 }
 
-// Shared professional attributes — the single source of truth for every
-// professional actor (coach, referee, …). Actor identity lives in the
-// actor-specific table (coach_profiles / referees); these columns are shared.
+// Canonical shared professional attributes — truly universal across all
+// professional actors (Coach, Referee, Trainer, Physiotherapist, …).
+// Pricing and service configuration lives in `professional_services`;
+// actor-specific lifecycle lives in each actor's identity table.
 export const PROFESSIONAL_PROFILE_COLUMNS = [
-  'bio',
+  'professional_bio',
   'experience_years',
   'certifications',
   'sports',
-  'hourly_rate',
-  'currency_code',
-  'session_durations',
   'rating_avg',
   'rating_count',
   'is_available',
 ] as const;
 
-export type ProfessionalProfileColumn = (typeof PROFESSIONAL_PROFILE_COLUMNS)[number];
-
-// SELECT fragment exposing shared profile columns under their canonical names
-// (used when joining professional_profiles onto an actor table).
+// SELECT fragment aliasing `professional_bio` → `bio` for backwards
+// compatibility with all existing Coach/Referee response shapes.
 export const PROFESSIONAL_PROFILE_SELECT = `
-  pp.bio, pp.experience_years, pp.certifications, pp.sports,
-  pp.hourly_rate, pp.currency_code, pp.session_durations,
+  pp.professional_bio AS bio,
+  pp.experience_years, pp.certifications, pp.sports,
   pp.rating_avg, pp.rating_count, pp.is_available`;
 
 const INPUT_TO_COLUMN: Record<keyof ProfessionalProfileInput, string> = {
-  bio: 'bio',
+  bio: 'professional_bio',
   experienceYears: 'experience_years',
   certifications: 'certifications',
   sports: 'sports',
-  hourlyRate: 'hourly_rate',
-  currencyCode: 'currency_code',
-  sessionDurations: 'session_durations',
   isAvailable: 'is_available',
 };
 
 function serialize(value: any, column: string): any {
-  if (['certifications', 'sports', 'session_durations'].includes(column)) {
+  if (['certifications', 'sports'].includes(column)) {
     if (value === undefined || value === null) return null;
     return JSON.stringify(value);
   }
@@ -68,7 +58,6 @@ export function isProfessionalProfileKey(key: string): key is keyof Professional
 }
 
 export const professionalProfileRepository = {
-  /** Upsert the shared professional attributes for a user (identity stays in the actor table). */
   async upsertByUserId(userId: number, data: Partial<ProfessionalProfileInput>): Promise<boolean> {
     const entries = Object.entries(data).filter(([, v]) => v !== undefined);
     if (!entries.length) return false;
@@ -78,11 +67,12 @@ export const professionalProfileRepository = {
     }));
     const { setSql, params } = buildSet(fields);
     const pool = getPool();
+    const values = [userId, ...params, ...params];
     const [result] = await pool.execute(
       `INSERT INTO professional_profiles (user_id, ${fields.map((f) => f.column).join(', ')})
        VALUES (?, ${fields.map(() => '?').join(', ')})
        ON DUPLICATE KEY UPDATE ${setSql}`,
-      [userId, ...params, ...params],
+      values,
     );
     return (result as any).affectedRows > 0;
   },
@@ -90,7 +80,9 @@ export const professionalProfileRepository = {
   async findByUserId(userId: number) {
     const pool = getPool();
     const [rows] = await pool.execute<RowData>(
-      `SELECT * FROM professional_profiles WHERE user_id = ? LIMIT 1`,
+      `SELECT id, user_id, professional_bio AS bio, experience_years, certifications, sports,
+              rating_avg, rating_count, is_available, created_at, updated_at
+       FROM professional_profiles WHERE user_id = ? LIMIT 1`,
       [userId],
     );
     return rows[0] || null;
@@ -99,7 +91,9 @@ export const professionalProfileRepository = {
   async findByCoachProfileId(coachId: number) {
     const pool = getPool();
     const [rows] = await pool.execute<RowData>(
-      `SELECT pp.* FROM professional_profiles pp
+      `SELECT professional_bio AS bio, pp.experience_years, pp.certifications, pp.sports,
+              pp.rating_avg, pp.rating_count, pp.is_available
+       FROM professional_profiles pp
        JOIN coach_profiles cp ON cp.user_id = pp.user_id
        WHERE cp.id = ? LIMIT 1`,
       [coachId],
@@ -116,12 +110,13 @@ export const professionalProfileRepository = {
     }));
     const { setSql, params } = buildSet(fields);
     const pool = getPool();
+    const values = [...params, coachId];
     const [result] = await pool.execute(
       `UPDATE professional_profiles pp
        JOIN coach_profiles cp ON cp.user_id = pp.user_id
        SET ${setSql}
        WHERE cp.id = ?`,
-      [...params, coachId],
+      values,
     );
     return (result as any).affectedRows > 0;
   },

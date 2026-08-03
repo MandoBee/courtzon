@@ -60,10 +60,11 @@ describe('Scheduling E2E — Seed Data Validation', () => {
 
   it('has approved coaches with hourly rates', async () => {
     const [coaches] = await pool.execute<any[]>(
-      `SELECT cp.id, pp.hourly_rate FROM coach_profiles cp
+      `SELECT cp.id, ps.price AS hourly_rate FROM coach_profiles cp
        JOIN professional_profiles pp ON pp.user_id = cp.user_id
+       JOIN professional_services ps ON ps.actor_type = 'coach' AND ps.actor_id = cp.id AND ps.service_key = 'default' AND ps.is_active = 1
        JOIN users u ON u.id = cp.user_id
-       WHERE cp.status = 'approved' AND pp.hourly_rate IS NOT NULL AND pp.hourly_rate > 0
+       WHERE cp.status = 'approved' AND ps.price IS NOT NULL AND ps.price > 0
        LIMIT 1`
     );
     expect(coaches.length).toBeGreaterThan(0);
@@ -306,7 +307,8 @@ describe('Scheduling E2E — Booking Service Integration', () => {
     const [coaches] = await pool.execute<any[]>(
       `SELECT cp.id FROM coach_profiles cp
        JOIN professional_profiles pp ON pp.user_id = cp.user_id
-       WHERE cp.status = 'approved' AND pp.hourly_rate IS NOT NULL AND pp.hourly_rate > 0 LIMIT 1`
+       JOIN professional_services ps ON ps.actor_type = 'coach' AND ps.actor_id = cp.id AND ps.service_key = 'default' AND ps.is_active = 1
+       WHERE cp.status = 'approved' AND ps.price IS NOT NULL AND ps.price > 0 LIMIT 1`
     );
     const [resources] = await pool.execute<any[]>(
       `SELECT id FROM resources WHERE is_active = TRUE AND hourly_price IS NOT NULL LIMIT 1`
@@ -359,7 +361,8 @@ describe('Scheduling E2E — Event Emission', () => {
     const [coaches] = await pool.execute<any[]>(
       `SELECT cp.id FROM coach_profiles cp
        JOIN professional_profiles pp ON pp.user_id = cp.user_id
-       WHERE cp.status = 'approved' AND pp.hourly_rate IS NOT NULL AND pp.hourly_rate > 0 LIMIT 1`
+       JOIN professional_services ps ON ps.actor_type = 'coach' AND ps.actor_id = cp.id AND ps.service_key = 'default' AND ps.is_active = 1
+       WHERE cp.status = 'approved' AND ps.price IS NOT NULL AND ps.price > 0 LIMIT 1`
     );
     const [resources] = await pool.execute<any[]>(
       `SELECT id FROM resources WHERE is_active = TRUE AND hourly_price IS NOT NULL LIMIT 1`

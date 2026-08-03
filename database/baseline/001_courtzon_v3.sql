@@ -1153,22 +1153,44 @@ DROP TABLE IF EXISTS `professional_profiles`;
 CREATE TABLE `professional_profiles` (
   `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
   `user_id` int(10) unsigned NOT NULL,
-  `bio` text DEFAULT NULL,
+  `professional_bio` text DEFAULT NULL,
   `experience_years` tinyint(3) unsigned DEFAULT NULL,
   `certifications` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL CHECK (json_valid(`certifications`)),
   `sports` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL COMMENT 'Array of sport_ids they officiate/coach' CHECK (json_valid(`sports`)),
-  `hourly_rate` decimal(12,2) DEFAULT NULL,
-  `currency_code` char(3) DEFAULT NULL,
   `rating_avg` decimal(3,2) NOT NULL DEFAULT 0.00,
   `rating_count` int(10) unsigned NOT NULL DEFAULT 0,
   `is_available` tinyint(1) NOT NULL DEFAULT 1,
-  `session_durations` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL COMMENT 'Array of available session durations in minutes, e.g. [30,60,90]' CHECK (json_valid(`session_durations`)),
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
   `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_professional_profile_user` (`user_id`),
   KEY `idx_pp_availability` (`is_available`),
   CONSTRAINT `fk_pp_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+DROP TABLE IF EXISTS `professional_services`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `professional_services` (
+  `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
+  `professional_profile_id` int(10) unsigned NOT NULL,
+  `actor_type` varchar(30) NOT NULL COMMENT "'coach' | 'referee' | 'trainer' | 'physiotherapist' | …",
+  `actor_id` int(10) unsigned NOT NULL COMMENT "FK into the actor-type's identity table (coach_profiles.id, referees.id, …)",
+  `service_key` varchar(50) NOT NULL COMMENT "Stable key e.g. 'default', 'match_fee', '60min_session'",
+  `label` varchar(100) DEFAULT NULL COMMENT "Human-readable label",
+  `pricing_model` enum('hourly','session','match','fixed','package','consultation') NOT NULL,
+  `price` decimal(12,2) NOT NULL DEFAULT 0.00,
+  `currency_code` char(3) NOT NULL DEFAULT 'EGP',
+  `duration_minutes` int(10) unsigned DEFAULT NULL COMMENT "Session duration in minutes (NULL for non-session models)",
+  `is_active` tinyint(1) NOT NULL DEFAULT 1,
+  `sort_order` int(10) unsigned NOT NULL DEFAULT 0,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_service` (`actor_type`,`actor_id`,`service_key`),
+  KEY `idx_ps_pp` (`professional_profile_id`),
+  KEY `idx_ps_active` (`actor_type`,`actor_id`,`is_active`),
+  CONSTRAINT `fk_ps_pp` FOREIGN KEY (`professional_profile_id`) REFERENCES `professional_profiles` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 DROP TABLE IF EXISTS `coach_reviews`;

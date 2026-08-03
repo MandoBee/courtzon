@@ -68,9 +68,12 @@ export class RefereeProvider implements ResourceProvider {
   async getCapabilities(): Promise<ResourceCapabilities> {
     const pool = getPool();
     const [rows] = await pool.execute<RowData>(
-      `SELECT pp.sports, pp.experience_years, pp.certifications, pp.hourly_rate, pp.currency_code
+      `SELECT pp.sports, pp.experience_years, pp.certifications,
+              ps.price AS hourly_rate, ps.currency_code
        FROM referees r
        LEFT JOIN professional_profiles pp ON pp.user_id = r.user_id
+       LEFT JOIN professional_services ps ON ps.actor_type = 'referee'
+         AND ps.actor_id = r.id AND ps.service_key = 'default' AND ps.is_active = 1
        WHERE r.id = ?`,
       [this.entityId],
     );

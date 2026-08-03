@@ -6,6 +6,13 @@ import {
   isProfessionalProfileKey,
 } from '../../../profiles/infrastructure/repositories/professional-profile.repository.js';
 import type { ProfessionalProfileInput } from '../../../profiles/infrastructure/repositories/professional-profile.repository.js';
+import {
+  professionalServiceRepository,
+  PROFESSIONAL_SERVICE_PRICE_SELECT,
+} from '../../../profiles/infrastructure/repositories/professional-service.repository.js';
+
+/** LEFT JOIN fragment that pulls the coach's default hourly service. */
+const COACH_SERVICE_JOIN = `LEFT JOIN professional_services ps ON ps.actor_type = 'coach' AND ps.actor_id = cp.id AND ps.service_key = 'default' AND ps.is_active = 1`;
 
 type RowData = mysql.RowDataPacket[];
 
@@ -329,11 +336,13 @@ export const activitiesRepository = {
     const pool = getPool();
     const [rows] = await pool.execute<RowData>(
       `SELECT cp.id, cp.user_id, cp.status, cp.is_verified, cp.rejected_reason, cp.created_at, cp.updated_at,
-              ${PROFESSIONAL_PROFILE_SELECT}
+              ${PROFESSIONAL_PROFILE_SELECT},
+              ${PROFESSIONAL_SERVICE_PRICE_SELECT}
        FROM coach_profiles cp
        LEFT JOIN professional_profiles pp ON pp.user_id = cp.user_id
+       ${COACH_SERVICE_JOIN}
        WHERE cp.user_id = ? AND cp.deleted_at IS NULL`,
-      [userId]
+      [userId],
     );
     return rows[0] || null;
   },
@@ -348,9 +357,11 @@ export const activitiesRepository = {
     const pool = getPool();
     const [rows] = await pool.execute<RowData>(
       `SELECT cp.id, cp.user_id, cp.status, cp.is_verified, cp.rejected_reason, u.full_name, u.email,
-              ${PROFESSIONAL_PROFILE_SELECT}
+              ${PROFESSIONAL_PROFILE_SELECT},
+              ${PROFESSIONAL_SERVICE_PRICE_SELECT}
        FROM coach_profiles cp
        LEFT JOIN professional_profiles pp ON pp.user_id = cp.user_id
+       ${COACH_SERVICE_JOIN}
        JOIN users u ON cp.user_id = u.id
        WHERE cp.id = ? AND cp.deleted_at IS NULL`,
       [id]
@@ -361,9 +372,11 @@ export const activitiesRepository = {
   async findCoaches(filters: { sportId?: number; isAvailable?: boolean; page: number; limit: number; excludeUserId?: number }) {
     const pool = getPool();
     let sql = `SELECT cp.id, cp.user_id, cp.status, cp.is_verified, u.full_name, u.email,
-                      ${PROFESSIONAL_PROFILE_SELECT}
+                      ${PROFESSIONAL_PROFILE_SELECT},
+                      ${PROFESSIONAL_SERVICE_PRICE_SELECT}
                FROM coach_profiles cp
                LEFT JOIN professional_profiles pp ON pp.user_id = cp.user_id
+               ${COACH_SERVICE_JOIN}
                JOIN users u ON cp.user_id = u.id
                WHERE cp.deleted_at IS NULL AND cp.status = 'approved'`;
     const params: any[] = [];
@@ -385,20 +398,50 @@ export const activitiesRepository = {
       await conn.beginTransaction();
       await conn.execute(
         `INSERT INTO professional_profiles
-           (user_id, bio, experience_years, certifications, sports, hourly_rate, currency_code, session_durations)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+           (user_id, professional_bio, experience_years, certifications, sports)
+         VALUES (?, ?, ?, ?, ?)
          ON DUPLICATE KEY UPDATE
-           bio = VALUES(bio), experience_years = VALUES(experience_years),
-           certifications = VALUES(certifications), sports = VALUES(sports),
-           hourly_rate = VALUES(hourly_rate), currency_code = VALUES(currency_code),
-           session_durations = VALUES(session_durations)`,
-        [userId, data.bio || null, data.experienceYears || null, data.certifications ? JSON.stringify(data.certifications) : null, data.sports ? JSON.stringify(data.sports) : null, data.hourlyRate || null, data.currencyCode || null, data.sessionDurations ? JSON.stringify(data.sessionDurations) : null]
+           professional_bio = VALUES(professional_bio), experience_years = VALUES(experience_years),
+           certifications = VALUES(certifications), sports = VALUES(sports)`,
+        [userId, data.bio || null, data.experienceYears || null, data.certifications ? JSON.stringify(data.certifications) : null, data.sports ? JSON.stringify(data.sports) : null]
       );
       const [cpResult] = await conn.execute(
         "INSERT INTO coach_profiles (user_id, status) VALUES (?, 'pending') ON DUPLICATE KEY UPDATE status = 'pending', deleted_at = NULL",
         [userId]
       );
       insertId = (cpResult as any).insertId;
+      // Upsert the default hourly service for pricing compatibility
+      if (data.hourlyRate !== undefined) {
+        const [[ppRow]] = await conn.query<RowData>(
+          'SELECT id FROM professional_profiles WHERE user_id = ?', [userId],
+        ) as any;
+        if (ppRow) {
+          await conn.execute(
+            `INSERT INTO professional_services
+               (professional_profile_id, actor_type, actor_id, service_key, pricing_model,
+                price, currency_code, duration_minutes, is_active)
+             VALUES (?, 'coach', ?, 'default', 'hourly', ?, ?, NULL, ?)
+             ON DUPLICATE KEY UPDATE
+               price = VALUES(price), currency_code = VALUES(currency_code), is_active = VALUES(is_active)`,
+            [ppRow.id, insertId, data.hourlyRate || 0, data.currencyCode || 'EGP', data.hourlyRate > 0 ? 1 : 0]
+          );
+          // Session-duration services
+          if (data.sessionDurations?.length) {
+            for (const duration of data.sessionDurations) {
+              await conn.execute(
+                `INSERT INTO professional_services
+                   (professional_profile_id, actor_type, actor_id, service_key, pricing_model,
+                    price, currency_code, duration_minutes, is_active, label)
+                 VALUES (?, 'coach', ?, ?, 'session', ?, ?, ?, 1, ?)
+                 ON DUPLICATE KEY UPDATE
+                   price = VALUES(price), currency_code = VALUES(currency_code),
+                   duration_minutes = VALUES(duration_minutes), is_active = 1`,
+                [ppRow.id, insertId, `session_${duration}min`, Math.round(data.hourlyRate * duration / 60 * 100) / 100, data.currencyCode || 'EGP', duration, `${duration}-min Session`]
+              );
+            }
+          }
+        }
+      }
       await conn.commit();
     } catch (err) {
       await conn.rollback();
@@ -440,6 +483,9 @@ export const activitiesRepository = {
       if (val === undefined) continue;
       if (isProfessionalProfileKey(key)) {
         (shared as any)[key] = val;
+      } else if (key === 'hourlyRate' || key === 'currencyCode' || key === 'sessionDurations') {
+        // Pricing fields → professional_services (handled below)
+        continue;
       } else {
         const col = key.replace(/([A-Z])/g, '_$1').toLowerCase();
         coachFields.push(`${col} = ?`);
@@ -448,6 +494,22 @@ export const activitiesRepository = {
     }
     if (Object.keys(shared).length) {
       await professionalProfileRepository.upsertByUserId(userId, shared);
+    }
+    // Route pricing fields to professional_services
+    if (data.hourlyRate !== undefined || data.currencyCode !== undefined || data.sessionDurations !== undefined) {
+      const coach = await this.findCoachByUserId(userId);
+      if (coach) {
+        const [[ppRow]] = await pool.query<RowData>(
+          'SELECT id FROM professional_profiles WHERE user_id = ?', [userId],
+        ) as any;
+        if (ppRow) {
+          await professionalServiceRepository.upsertDefaultCoachService(ppRow.id, coach.id, {
+            price: data.hourlyRate,
+            currencyCode: data.currencyCode,
+            sessionDurations: data.sessionDurations,
+          });
+        }
+      }
     }
     if (!coachFields.length) return true;
     coachParams.push(userId);
@@ -744,9 +806,11 @@ export const activitiesRepository = {
   async findCoachesAdmin(filters: { page: number; limit: number }) {
     const pool = getPool();
     const sql = `SELECT cp.id, cp.user_id, cp.status, cp.status AS coach_status, cp.is_verified,
-                        cp.rejected_reason, u.full_name, u.email, ${PROFESSIONAL_PROFILE_SELECT}
+                        cp.rejected_reason, u.full_name, u.email, ${PROFESSIONAL_PROFILE_SELECT},
+                        ${PROFESSIONAL_SERVICE_PRICE_SELECT}
                  FROM coach_profiles cp
                  LEFT JOIN professional_profiles pp ON pp.user_id = cp.user_id
+                 ${COACH_SERVICE_JOIN}
                  JOIN users u ON cp.user_id = u.id
                  ORDER BY FIELD(cp.status, 'pending', 'approved', 'rejected', 'none') ASC, pp.rating_avg DESC LIMIT ? OFFSET ?`;
     const offset = (filters.page - 1) * filters.limit;
@@ -760,7 +824,7 @@ export const activitiesRepository = {
     const shared: Partial<ProfessionalProfileInput> = {};
     const coachFields: string[] = []; const coachParams: any[] = [];
     const sharedMap: Record<string, keyof ProfessionalProfileInput> = {
-      bio: 'bio', experience_years: 'experienceYears', hourly_rate: 'hourlyRate', is_available: 'isAvailable',
+      bio: 'bio', experience_years: 'experienceYears', is_available: 'isAvailable',
     };
     for (const [k, c] of Object.entries(sharedMap)) {
       if (data[k] !== undefined) { (shared as any)[c] = data[k]; }
@@ -768,6 +832,17 @@ export const activitiesRepository = {
     if (data.is_verified !== undefined) { coachFields.push('is_verified = ?'); coachParams.push(data.is_verified); }
     if (Object.keys(shared).length) {
       await professionalProfileRepository.updateByCoachProfileId(id, shared);
+    }
+    // Pricing → professional_services
+    if (data.hourly_rate !== undefined || data.is_available !== undefined) {
+      const [[ppRow]] = await pool.query<RowData>(
+        `SELECT pp.id FROM professional_profiles pp JOIN coach_profiles cp ON cp.user_id = pp.user_id WHERE cp.id = ?`, [id],
+      ) as any;
+      if (ppRow && data.hourly_rate !== undefined) {
+        await professionalServiceRepository.upsertDefaultCoachService(ppRow.id, id, {
+          price: data.hourly_rate,
+        });
+      }
     }
     if (!coachFields.length) return true;
     coachParams.push(id);

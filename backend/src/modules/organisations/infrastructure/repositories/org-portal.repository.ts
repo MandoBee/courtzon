@@ -368,10 +368,12 @@ export async function listOrgCoaches(orgId: number) {
     `SELECT coa.id, coa.coach_id, coa.coach_split_pct, coa.org_split_pct, coa.hourly_rate,
             coa.is_active, coa.status, coa.initiated_by, coa.created_at, coa.updated_at,
             cp.user_id, u.full_name AS coach_name, u.email AS coach_email,
-            pp.rating_avg, pp.hourly_rate AS coach_global_rate, pp.currency_code
+            pp.rating_avg, ps.price AS coach_global_rate, ps.currency_code
      FROM coach_org_agreements coa
      JOIN coach_profiles cp ON cp.id = coa.coach_id
      LEFT JOIN professional_profiles pp ON pp.user_id = cp.user_id
+     LEFT JOIN professional_services ps ON ps.actor_type = 'coach'
+       AND ps.actor_id = cp.id AND ps.service_key = 'default' AND ps.is_active = 1
      JOIN users u ON u.id = cp.user_id
      WHERE coa.organisation_id = ?
      ORDER BY coa.created_at DESC`,
@@ -385,9 +387,11 @@ export async function listInvitableCoaches(orgId: number) {
   const pool = getPool();
   const [rows] = await pool.execute<RowData>(
     `SELECT cp.id AS coach_id, cp.user_id, u.full_name, u.email,
-            pp.rating_avg, pp.hourly_rate, pp.currency_code
+            pp.rating_avg, ps.price AS hourly_rate, ps.currency_code
      FROM coach_profiles cp
      LEFT JOIN professional_profiles pp ON pp.user_id = cp.user_id
+     LEFT JOIN professional_services ps ON ps.actor_type = 'coach'
+       AND ps.actor_id = cp.id AND ps.service_key = 'default' AND ps.is_active = 1
      JOIN users u ON u.id = cp.user_id
      WHERE cp.deleted_at IS NULL AND cp.status = 'approved'
        AND cp.id NOT IN (
