@@ -461,6 +461,7 @@ Examples:
 - No `display: none`, `hidden`, or CSS-only hiding for permission gating
 - No hardcoded role checks (`user.roles?.includes('seller')`) — use the permission system
 - The permission system is the **single source of truth** for UI visibility
+- **Defense in depth:** A route-protected page is not sufficient. Every business action inside the page (Create, Edit, Delete, Export, Import, Approve, Reject, Refund, Cancel, Reset Password, Adjust Wallet, Assign Coach, Assign Referee, Download Report) must be individually permission-aware. A page guard alone does not protect the actions within it.
 
 ### Architecture
 
@@ -484,3 +485,23 @@ frontend/                           backend/
 - **26** production roles (2 SYSTEM + 24 GLOBAL)
 - **125** `<Can>` wrappers in AdminSidebar alone
 - **All 26 roles** synchronized with zero permission drift
+
+### Coverage Metrics
+
+Coverage is **NOT** measured by counting pages or React components.
+
+Coverage is measured by **Business Actions** and **Data Exposure**:
+
+| Category | Examples | Each must be individually permission-gated |
+|----------|----------|-------------------------------------------|
+| **Business Actions** | Create, Edit, Delete, Cancel, Approve, Reject, Refund, Export, Import, Assign, Publish, Archive, Restore, Reset, Adjust, Confirm, Decline, Charge, Withdraw | Yes — even on route-protected pages |
+| **Sensitive Data** | Email, Phone, Birth Date, Address, Emergency Contact, Playing Hand, National ID | Yes — `<Can>` with `elementType: 'field'` |
+| **Financial Values** | Revenue, Balance, Earnings, Commission, Profit, Wallet Amount, Price, Settlement Amount | Yes — never exposed without permission check |
+| **Personal Information** | Avatar, Full Name, Bio, Statistics, Activity, Preferences, Privacy Settings | Yes |
+| **Administrative Operations** | Assign Role, Delete User, Reset Password, Sync Registry, Change Org Settings, Toggle Feature Flag | Yes — gated with the highest scrutiny |
+
+**The permanent CourtZon rule:**
+
+> "Every business action and every business data element must have explicit RBAC protection, regardless of whether the page itself is already protected."
+
+Page-level guards provide coarse access. Individual action and field guards provide fine-grained access. Both are required. Neither replaces the other.
