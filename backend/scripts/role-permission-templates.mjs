@@ -304,9 +304,12 @@ const MARKETPLACE_MANAGER_PATTERNS = [
   /^marketplace\./,
   /^org\.sidebar\.marketplace/,
   /^org\.marketplace\.manage/,
-  /^profile\./,
   /^settlements\./,
-  /^shop-admin/,
+  /^financial\.settlements/,
+  /^organisations\.view/,
+  /^profile\./,
+  /^sidebar\.(marketplace|orders|settlements)/,
+  /^bookings\.view/,
 ];
 
 const RECEPTIONIST_PATTERNS = [
@@ -319,16 +322,20 @@ const RECEPTIONIST_PATTERNS = [
   /^player\.search\./,
   /^organisations\.storefront\.view/,
   /^profile\./,
+  /^sidebar\.bookings/,
+  /^notifications\.view/,
 ];
 
 const CUSTOMER_SERVICE_PATTERNS = [
   /^support\./,
   /^player\.(dashboard\.view|profile\.view|search)/,
-  /^bookings\.view/,
+  /^bookings\./,
   /^marketplace\.admin\.orders\.view/,
+  /^marketplace\.admin\.orders\.moderate/,
   /^organisations\.view/,
   /^profile\./,
   /^notifications\.view/,
+  /^sidebar\.(support|players|bookings|orders)/,
 ];
 
 const FINANCE_MANAGER_PATTERNS = [
@@ -365,6 +372,8 @@ const TOURNAMENT_MANAGER_PATTERNS = [
   /^sidebar\.(tournaments|leagues|seasons)/,
   /^profile\./,
   /^bookings\.view/,
+  /^resources\.view/,
+  /^referee\./,
 ];
 
 const ACADEMY_MANAGER_PATTERNS = [
@@ -373,6 +382,8 @@ const ACADEMY_MANAGER_PATTERNS = [
   /^sidebar\.(academy|academies)/,
   /^profile\./,
   /^coaches\.(view|assign)/,
+  /^bookings\.view/,
+  /^resources\.view/,
 ];
 
 const EVENT_MANAGER_PATTERNS = [
@@ -381,6 +392,8 @@ const EVENT_MANAGER_PATTERNS = [
   /^profile\./,
   /^bookings\.view/,
   /^notifications\.view/,
+  /^notifications\.send/,
+  /^dashboard\.view/,
 ];
 
 const MARKETING_MANAGER_PATTERNS = [
@@ -390,22 +403,26 @@ const MARKETING_MANAGER_PATTERNS = [
   /^notifications\./,
   /^sidebar\.(ads|community|notifications|cms)/,
   /^profile\./,
+  /^reports\.view/,
 ];
 
 const CONTENT_MANAGER_PATTERNS = [
   /^cms\./,
   /^translations\./,
   /^design-tokens\./,
-  /^appearance\./,
   /^sidebar\.(cms|translations|design-tokens)/,
   /^profile\./,
+  /^dashboard\.view/,
 ];
 
 const SUPPORT_AGENT_PATTERNS = [
   /^support\./,
   /^player\.(dashboard\.view|profile\.view)/,
   /^bookings\.view/,
+  /^notifications\.view/,
   /^profile\./,
+  /^sidebar\.support/,
+  /^marketplace\.admin\.orders\.view/,
 ];
 
 const AUDITOR_PATTERNS = [
