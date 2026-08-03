@@ -3,15 +3,12 @@ import { useCan } from '../../hooks/useCan';
 import { useHaptics } from '../../hooks/useHaptics';
 import { COACH_NAV } from '../../pages/coaches/coach-nav';
 
-const MAIN_TABS = COACH_NAV.slice(0, 4);
-
 export default function CoachBottomNav() {
   const location = useLocation();
   const { can } = useCan();
   const { tap } = useHaptics();
 
-  const visible = MAIN_TABS.filter((tab) => !tab.permission || can(tab.permission));
-
+  const visible = COACH_NAV.filter((tab) => !tab.permission || can(tab.permission));
   const isActive = (path: string) => location.pathname === path || location.pathname.startsWith(path + '/');
 
   return (

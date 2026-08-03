@@ -1,18 +1,87 @@
-import { Outlet } from 'react-router-dom';
+import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { useAuthStore } from '../../store/auth.store';
+import { useCan } from '../../hooks/useCan';
+import { COACH_NAV } from '../../pages/coaches/coach-nav';
 import CoachBottomNav from './CoachBottomNav';
 import OfflineBanner from '../pwa/OfflineBanner';
 import { ErrorBoundary } from '../ErrorBoundary';
 
 export default function CoachLayout() {
+  const navigate = useNavigate();
+  const logout = useAuthStore((s) => s.logout);
+  const user = useAuthStore((s) => s.user);
+  const { can } = useCan();
+
+  const handleLogout = async () => {
+    await logout();
+    navigate('/');
+  };
+
+  const visibleNav = COACH_NAV.filter((item) => !item.permission || can(item.permission));
+
   return (
-    <div className="flex flex-col h-dvh bg-[var(--color-bg)]">
-      <OfflineBanner />
-      <main className="flex-1 overflow-y-auto min-h-0 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 pt-6 pb-20 md:pb-6 overflow-x-hidden cz-scrollbar-hide">
-        <ErrorBoundary>
-          <Outlet />
-        </ErrorBoundary>
-      </main>
-      <CoachBottomNav />
+    <div className="min-h-dvh bg-[var(--color-bg)]">
+      {/* Desktop sidebar — same pattern as RefereeLayout */}
+      <div className="hidden md:flex flex-col fixed inset-y-0 left-0 w-60 bg-[var(--color-surface)] border-r border-[var(--color-border)] z-40">
+        <div className="flex items-center gap-2 px-4 h-16 border-b border-[var(--color-border)]">
+          <span className="text-xl">🎾</span>
+          <div className="min-w-0">
+            <p className="text-sm font-bold text-[var(--color-text)] leading-tight truncate">Coach</p>
+            <p className="text-[10px] text-[var(--color-text-muted)] leading-tight truncate">CourtZon Coaching</p>
+          </div>
+        </div>
+        <nav className="flex-1 overflow-y-auto py-3 px-3 space-y-1">
+          {visibleNav.map((item) => (
+            <NavLink
+              key={item.path}
+              to={item.path}
+              className={({ isActive }) =>
+                `flex items-center gap-2.5 px-3 py-2 rounded-[var(--radius-md)] text-sm font-medium transition-colors ${
+                  isActive
+                    ? 'bg-[var(--color-primary)]/10 text-[var(--color-primary)]'
+                    : 'text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-bg)]/60'
+                }`
+              }
+            >
+              <span className="text-base leading-none">{item.icon}</span>
+              <span className="truncate">{item.label}</span>
+            </NavLink>
+          ))}
+        </nav>
+        <div className="p-3 border-t border-[var(--color-border)]">
+          <p className="px-3 pb-2 text-xs text-[var(--color-text-muted)] truncate">{user?.fullName || user?.email}</p>
+          <button
+            onClick={handleLogout}
+            className="flex items-center gap-2.5 w-full px-3 py-2 rounded-[var(--radius-md)] text-sm font-medium text-[var(--color-text-muted)] hover:text-[var(--color-error)] hover:bg-[var(--color-error)]/5 transition-colors"
+          >
+            <span className="text-base leading-none">🚪</span>
+            <span>Logout</span>
+          </button>
+        </div>
+      </div>
+
+      <div className="md:ml-60 flex flex-col h-dvh">
+        <OfflineBanner />
+        {/* Mobile header with profile link */}
+        <header className="md:hidden sticky top-0 z-40 flex items-center justify-between px-4 h-14 bg-[var(--color-surface)] border-b border-[var(--color-border)]">
+          <p className="text-sm font-bold text-[var(--color-text)]">🎾 Coach</p>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleLogout}
+              className="p-1.5 text-[var(--color-text-muted)] hover:text-[var(--color-error)]"
+              aria-label="Logout"
+            >
+              <span className="text-lg leading-none">🚪</span>
+            </button>
+          </div>
+        </header>
+        <main className="flex-1 overflow-y-auto min-h-0 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 pt-6 pb-20 md:pb-6 overflow-x-hidden cz-scrollbar-hide">
+          <ErrorBoundary>
+            <Outlet />
+          </ErrorBoundary>
+        </main>
+        <CoachBottomNav />
+      </div>
     </div>
   );
 }
