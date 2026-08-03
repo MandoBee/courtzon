@@ -545,4 +545,56 @@ A feature is **NOT COMPLETE** until it has passed all of the following:
 | Upcoming booking visibility | Manual UAT | Unit tests |
 | Upcoming match filtering | Manual UAT | Integration tests |
 | Profile editing gaps | Manual UAT | Code review |
+
+## ⚠️ PERMANENT: Notification Strategy — Mandatory per Feature
+
+CourtZon notifications are a platform service, not a messaging add-on. Business modules NEVER send push, email, SMS, or any channel directly. They ONLY publish domain events through the Event Bus. The Notification Platform handles everything else.
+
+### Architecture
+
+```
+Business Module → EventBusV2.emit('domain:event')
+                        ↓
+               Notification Engine (80+ events mapped)
+                        ↓
+               Rate Limit → Template → Channel → Preferences
+                        ↓
+               BullMQ Queue → Provider Delivery → Analytics
+```
+
+### Supported Channels
+
+| Channel | Provider | Status |
+|---------|----------|--------|
+| In-App | WebSocket (Socket.IO) | Production |
+| Push | FCM/APNs (via push_tokens) | Infrastructure ready |
+| Email | SMTP | Production |
+| SMS | Twilio/Vonage | Infrastructure ready |
+| WhatsApp | Meta | Infrastructure ready |
+| Webhook | HMAC-signed POST | Production |
+
+### Notification Strategy Checklist (per feature)
+
+Every new business feature MUST answer these questions:
+
+| # | Question |
+|---|----------|
+| 1 | Should a notification be generated? |
+| 2 | Which category? (bookings/payments/marketplace/system/…) |
+| 3 | Which priority? (critical/high/normal/low/silent) |
+| 4 | Which channels? (in_app, push, email, sms, whatsapp) |
+| 5 | Should it deep-link? (which screen?) |
+| 6 | Should it support interactive actions? (Accept/Decline/etc.) |
+| 7 | Should it respect quiet hours? |
+| 8 | Should it be scheduled? (reminders: 24h, 2h, 30min, 10min) |
+| 9 | Should it expire? (retention: 30d marketing, 180d bookings, 7y finance) |
+| 10 | Should it sync across devices? |
+| 11 | Should it generate analytics? |
+| 12 | Should it support offline/local notifications? |
+
+### Enforcement
+
+- A feature is NOT complete until its Notification Strategy is documented
+- Hardcoded channel delivery in business modules is an architectural violation
+- Business modules reference events, not channels — the engine routes to channels
 | Auth refresh token rotation | Manual UAT | Code review
