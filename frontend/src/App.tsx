@@ -18,6 +18,7 @@ import WelcomeModal from './components/welcome/WelcomeModal';
 import SiteLogo from './components/branding/SiteLogo';
 import { Can } from './permissions/Can';
 import { useHaptics } from './hooks/useHaptics';
+import { useCan } from './hooks/useCan';
 import { useInactivityTimer } from './hooks/useInactivityTimer';
 import { FeatureFlagGuard } from './components/FeatureFlagGuard';
 import { useFeatureFlag } from './hooks/useFeatureFlag';
@@ -318,6 +319,14 @@ function AdminRoute() {
   return <Outlet />;
 }
 
+function RefereeRoute() {
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const { can } = useCan();
+  if (!isAuthenticated) return <Navigate to="/login" replace />;
+  if (!can('referee.dashboard.view')) return <Navigate to={resolveUserHome().path} replace />;
+  return <RefereeLayout />;
+}
+
 function OrgRoute() {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const user = useAuthStore((s) => s.user);
@@ -578,7 +587,7 @@ function AppContent() {
           <Route path="revenue" element={<CoachRevenuePage />} />
           <Route path="attendance" element={<CoachAttendancePage />} />
         </Route>
-        <Route path="/referee" element={<RefereeLayout />}>
+        <Route path="/referee" element={<RefereeRoute />}>
           <Route index element={<RefereeDashboardPage />} />
           <Route path="dashboard" element={<RefereeDashboardPage />} />
           <Route path="profile" element={<RefereeProfilePage />} />

@@ -167,7 +167,6 @@ const COACH_PATTERNS = [
   /^community\.chat\./,
   /^organisations\.storefront\.view$/,
   /^marketplace\.(view|cart|order|wishlist|addresses)/,
-  /^referee\./,
 ];
 
 const ACCOUNTANT_PATTERNS = [
@@ -249,7 +248,6 @@ const INDEPENDENT_COACH_PATTERNS = [
   /^sports\.view$/,
   /^tournaments\.view/,
   /^academies\.(view|enroll)/,
-  /^referee\./,
 ];
 
 const RESIDENT_COACH_PATTERNS = [
@@ -264,6 +262,10 @@ const RESIDENT_COACH_PATTERNS = [
   /^community\.chat\./,
   /^organisations\.storefront\.view$/,
   /^marketplace\.view$/,
+];
+
+/** Official Referee role: officiating scope only (own profile, assignments, availability, results). */
+const REFEREE_PATTERNS = [
   /^referee\./,
 ];
 
@@ -326,6 +328,12 @@ export function permissionMatchesTemplate(templateSlug, permissionKey) {
     return false;
   }
 
+  if (templateSlug === 'referee') {
+    if (isAdminOnlyKey(permissionKey)) return false;
+    if (matchesAny(permissionKey, REFEREE_PATTERNS)) return true;
+    return false;
+  }
+
   if (templateSlug === 'accountant') {
     if (permissionKey.startsWith('users.delete')) return false;
     if (permissionKey.startsWith('roles.')) return false;
@@ -346,5 +354,6 @@ export const TEMPLATE_SLUGS = [
   'coach',
   'independent_coach',
   'resident_coach',
+  'referee',
   'accountant',
 ];

@@ -20,7 +20,7 @@ export default function RefereeAssignmentsPage() {
 
   const respondMutation = useMutation({
     mutationFn: ({ id, action }: { id: number; action: 'accept' | 'decline' }) =>
-      api.put(`/referee/assignments/${id}/${action}`),
+      api.post(`/referee/assignments/${id}/${action}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['referee-assignments'] });
       showToast(t('referee.assignments.responded', 'Assignment updated'));

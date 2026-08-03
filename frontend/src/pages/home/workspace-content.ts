@@ -77,8 +77,8 @@ export const workspaceContent: Record<Workspace, WorkspaceContent> = {
     greetingIcon: '🧾',
     primaryCta: { label: 'My Assignments', icon: '🗓️', to: '/referee/assignments' },
     actions: [
-      { label: 'Upcoming Matches', description: 'View matches to officiate', icon: '🎯', to: '/referee/matches', permission: 'referee.matches.view' },
-      { label: 'Report Scores', description: 'Submit match results', icon: '📝', to: '/referee/assignments', permission: 'referee.matches.report_score' },
+      { label: 'Upcoming Matches', description: 'View matches to officiate', icon: '🎯', to: '/referee/matches', permission: 'referee.assignments.view' },
+      { label: 'Report Scores', description: 'Submit match results', icon: '📝', to: '/referee/assignments', permission: 'referee.assignments.manage' },
       { label: 'My Profile', description: 'Update your referee profile', icon: '👤', to: '/referee/profile', permission: 'referee.profile.view' },
     ],
     emptySuggestions: [
