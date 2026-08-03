@@ -269,6 +269,169 @@ const REFEREE_PATTERNS = [
   /^referee\./,
 ];
 
+const MASTER_ADMIN_PATTERNS = [
+  /^org\./,
+  /^organisations\./,
+  /^branches\./,
+  /^resources\./,
+  /^bookings\./,
+  /^marketplace\./,
+  /^financial\./,
+  /^reports\./,
+  /^tournament\./,
+  /^academy\./,
+  /^league\./,
+  /^community\./,
+  /^coaches\./,
+  /^profile\./,
+  /^home\./,
+  /^dashboard\./,
+  /^membership\./,
+  /^support\./,
+  /^notifications\.view/,
+];
+
+const COURT_MANAGER_PATTERNS = [
+  /^resources\./,
+  /^branches\./,
+  /^bookings\./,
+  /^org\.(sidebar\.(resources|branches|bookings)|resources\.manage|branches\.manage)/,
+  /^profile\./,
+  /^organisations\.storefront\./,
+];
+
+const MARKETPLACE_MANAGER_PATTERNS = [
+  /^marketplace\./,
+  /^org\.sidebar\.marketplace/,
+  /^org\.marketplace\.manage/,
+  /^profile\./,
+  /^settlements\./,
+  /^shop-admin/,
+];
+
+const RECEPTIONIST_PATTERNS = [
+  /^bookings\.(view|create|cancel)/,
+  /^bookings\.create\./,
+  /^resources\.view/,
+  /^branches\.view/,
+  /^player\.dashboard\.view/,
+  /^player\.profile\.view/,
+  /^player\.search\./,
+  /^organisations\.storefront\.view/,
+  /^profile\./,
+];
+
+const CUSTOMER_SERVICE_PATTERNS = [
+  /^support\./,
+  /^player\.(dashboard\.view|profile\.view|search)/,
+  /^bookings\.view/,
+  /^marketplace\.admin\.orders\.view/,
+  /^organisations\.view/,
+  /^profile\./,
+  /^notifications\.view/,
+];
+
+const FINANCE_MANAGER_PATTERNS = [
+  /^financial\./,
+  /^reports\./,
+  /^settlements\./,
+  /^coupons\./,
+  /^accounting\./,
+  /^wallet\./,
+  /^dashboard\.(view|stats|trends)/,
+  /^bookings\.view/,
+  /^admin\.bookings\.view/,
+  /^marketplace\.admin\.orders/,
+  /^sidebar\.(dashboard|reports|settlements|admin-bookings|finance-dashboard|finance-ledger|finance-reports|finance-transactions|withdrawal-requests|coupons|marketplace-orders)/,
+];
+
+const OPERATIONS_MANAGER_PATTERNS = [
+  /^org\./,
+  /^organisations\.edit\./,
+  /^organisations\.edit$/,
+  /^branches\./,
+  /^resources\./,
+  /^bookings\./,
+  /^org\.(sidebar\.(staff|members|coaches)|staff\.manage|members\.manage|coaches\.manage|branches\.manage|resources\.manage)/,
+  /^profile\./,
+  /^organisations\.storefront\./,
+];
+
+const TOURNAMENT_MANAGER_PATTERNS = [
+  /^tournament\./,
+  /^tournaments\./,
+  /^league\./,
+  /^season\./,
+  /^sidebar\.(tournaments|leagues|seasons)/,
+  /^profile\./,
+  /^bookings\.view/,
+];
+
+const ACADEMY_MANAGER_PATTERNS = [
+  /^academy\./,
+  /^academies\./,
+  /^sidebar\.(academy|academies)/,
+  /^profile\./,
+  /^coaches\.(view|assign)/,
+];
+
+const EVENT_MANAGER_PATTERNS = [
+  /^community\./,
+  /^sidebar\.(community|events)/,
+  /^profile\./,
+  /^bookings\.view/,
+  /^notifications\.view/,
+];
+
+const MARKETING_MANAGER_PATTERNS = [
+  /^ads\./,
+  /^community\./,
+  /^cms\./,
+  /^notifications\./,
+  /^sidebar\.(ads|community|notifications|cms)/,
+  /^profile\./,
+];
+
+const CONTENT_MANAGER_PATTERNS = [
+  /^cms\./,
+  /^translations\./,
+  /^design-tokens\./,
+  /^appearance\./,
+  /^sidebar\.(cms|translations|design-tokens)/,
+  /^profile\./,
+];
+
+const SUPPORT_AGENT_PATTERNS = [
+  /^support\./,
+  /^player\.(dashboard\.view|profile\.view)/,
+  /^bookings\.view/,
+  /^profile\./,
+];
+
+const AUDITOR_PATTERNS = [
+  /^.+\.view/,
+  /^bookings\.view/,
+  /^bookings\.view\./,
+  /^organisations\.view/,
+  /^organisations\.view\./,
+  /^dashboard\./,
+  /^reports\./,
+  /^profile\./,
+  /^home\./,
+  /^sidebar\./,
+  /^notifications\.view/,
+];
+
+const READ_ONLY_ADMIN_PATTERNS = [
+  /^.+\.view/,
+  /^dashboard\./,
+  /^reports\./,
+  /^profile\./,
+  /^home\./,
+  /^sidebar\./,
+  /^notifications\.view/,
+];
+
 export function permissionMatchesTemplate(templateSlug, permissionKey) {
   if (templateSlug === 'super_admin') return true;
 
@@ -341,6 +504,115 @@ export function permissionMatchesTemplate(templateSlug, permissionKey) {
     return false;
   }
 
+  if (templateSlug === 'master-admin') {
+    if (permissionKey.startsWith('users.')) return false;
+    if (permissionKey.startsWith('roles.')) return false;
+    if (permissionKey.startsWith('permissions.')) return false;
+    if (permissionKey.startsWith('ui-permissions.')) return false;
+    if (permissionKey.startsWith('platform.')) return false;
+    if (permissionKey.startsWith('feature-flags.')) return false;
+    if (permissionKey.startsWith('app-settings.')) return false;
+    if (permissionKey === 'sidebar.admin' || permissionKey === 'admin.') return false;
+    if (isAdminOnlyKey(permissionKey)) return false;
+    if (matchesAny(permissionKey, MASTER_ADMIN_PATTERNS)) return true;
+    return false;
+  }
+
+  if (templateSlug === 'court-manager') {
+    if (isAdminOnlyKey(permissionKey)) return false;
+    if (matchesAny(permissionKey, COURT_MANAGER_PATTERNS)) return true;
+    return false;
+  }
+
+  if (templateSlug === 'marketplace-manager') {
+    if (isAdminOnlyKey(permissionKey)) return false;
+    if (matchesAny(permissionKey, MARKETPLACE_MANAGER_PATTERNS)) return true;
+    return false;
+  }
+
+  if (templateSlug === 'receptionist') {
+    if (isAdminOnlyKey(permissionKey)) return false;
+    if (matchesAny(permissionKey, RECEPTIONIST_PATTERNS)) return true;
+    return false;
+  }
+
+  if (templateSlug === 'customer-service') {
+    if (isAdminOnlyKey(permissionKey)) return false;
+    if (matchesAny(permissionKey, CUSTOMER_SERVICE_PATTERNS)) return true;
+    return false;
+  }
+
+  if (templateSlug === 'finance-manager') {
+    if (permissionKey.startsWith('users.delete')) return false;
+    if (permissionKey.startsWith('roles.')) return false;
+    if (matchesAny(permissionKey, FINANCE_MANAGER_PATTERNS)) return true;
+    return false;
+  }
+
+  if (templateSlug === 'operations-manager') {
+    if (isAdminOnlyKey(permissionKey)) return false;
+    if (matchesAny(permissionKey, OPERATIONS_MANAGER_PATTERNS)) return true;
+    return false;
+  }
+
+  if (templateSlug === 'tournament-manager') {
+    if (isAdminOnlyKey(permissionKey)) return false;
+    if (matchesAny(permissionKey, TOURNAMENT_MANAGER_PATTERNS)) return true;
+    return false;
+  }
+
+  if (templateSlug === 'academy-manager') {
+    if (isAdminOnlyKey(permissionKey)) return false;
+    if (matchesAny(permissionKey, ACADEMY_MANAGER_PATTERNS)) return true;
+    return false;
+  }
+
+  if (templateSlug === 'event-manager') {
+    if (isAdminOnlyKey(permissionKey)) return false;
+    if (matchesAny(permissionKey, EVENT_MANAGER_PATTERNS)) return true;
+    return false;
+  }
+
+  if (templateSlug === 'marketing-manager') {
+    if (isAdminOnlyKey(permissionKey)) return false;
+    if (matchesAny(permissionKey, MARKETING_MANAGER_PATTERNS)) return true;
+    return false;
+  }
+
+  if (templateSlug === 'content-manager') {
+    if (isAdminOnlyKey(permissionKey)) return false;
+    if (matchesAny(permissionKey, CONTENT_MANAGER_PATTERNS)) return true;
+    return false;
+  }
+
+  if (templateSlug === 'support-agent') {
+    if (isAdminOnlyKey(permissionKey)) return false;
+    if (matchesAny(permissionKey, SUPPORT_AGENT_PATTERNS)) return true;
+    return false;
+  }
+
+  if (templateSlug === 'auditor') {
+    if (permissionKey.startsWith('roles.')) return false;
+    if (permissionKey.startsWith('permissions.')) return false;
+    if (matchesAny(permissionKey, AUDITOR_PATTERNS)) return true;
+    return false;
+  }
+
+  if (templateSlug === 'read-only-admin') {
+    if (permissionKey.startsWith('roles.')) return false;
+    if (permissionKey.startsWith('permissions.')) return false;
+    if (permissionKey.includes('.delete')) return false;
+    if (permissionKey.includes('.create')) return false;
+    if (permissionKey.includes('.edit')) return false;
+    if (permissionKey.includes('.manage')) return false;
+    if (permissionKey.includes('.approve')) return false;
+    if (permissionKey.includes('.reject')) return false;
+    if (permissionKey.includes('.cancel')) return false;
+    if (permissionKey.includes('.publish')) return false;
+    if (matchesAny(permissionKey, READ_ONLY_ADMIN_PATTERNS)) return true;
+    return false;
+  }
+
   return false;
 }
 
@@ -356,4 +628,19 @@ export const TEMPLATE_SLUGS = [
   'resident_coach',
   'referee',
   'accountant',
+  'master-admin',
+  'court-manager',
+  'marketplace-manager',
+  'receptionist',
+  'customer-service',
+  'finance-manager',
+  'operations-manager',
+  'tournament-manager',
+  'academy-manager',
+  'event-manager',
+  'marketing-manager',
+  'content-manager',
+  'support-agent',
+  'auditor',
+  'read-only-admin',
 ];
