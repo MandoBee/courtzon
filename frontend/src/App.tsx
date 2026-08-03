@@ -179,6 +179,7 @@ const AdminDeadLettersPage = lazy(() => import('./pages/admin/notifications/Admi
 const AdminTemplatesPage = lazy(() => import('./pages/admin/notifications/AdminTemplatesPage'));
 const NotificationTypesPage = lazy(() => import('./pages/admin/notifications/NotificationTypesPage'));
 const TemplatesPage = lazy(() => import('./pages/admin/notifications/TemplatesPage'));
+const NotificationConfigPage = lazy(() => import('./pages/admin/notifications/NotificationConfigPage'));
 const SystemAdminPage = lazy(() => import('./pages/admin/SystemAdminPage'));
 const SupportTicketsPage = lazy(() => import('./pages/admin/support/SupportTicketsPage'));
 const QueueManagementPage = lazy(() => import('./pages/admin/queues/QueueManagementPage'));
@@ -673,6 +674,7 @@ function AppContent() {
           <Route path="notifications/dead-letters" element={<AdminDeadLettersPage />} />
           <Route path="notifications/templates" element={<AdminTemplatesPage />} />
           <Route path="notification-types" element={<NotificationTypesPage />} />
+          <Route path="notifications/config" element={<NotificationConfigPage />} />
           <Route path="templates" element={<TemplatesPage />} />
           <Route path="system" element={<SystemAdminPage />} />
           <Route path="membership" element={<MembershipPage />} />

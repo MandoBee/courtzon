@@ -4,6 +4,7 @@ import * as ctrl from './notification.controller.js';
 import * as broadcastCtrl from './admin-broadcast.controller.js';
 import * as enterpriseCtrl from './enterprise-admin.controller.js';
 import * as monitoringCtrl from './monitoring.controller.js';
+import * as configCtrl from './notification-config.controller.js';
 
 export async function notificationRoutes(app: FastifyInstance): Promise<void> {
   // Public routes (no auth required)
@@ -77,5 +78,19 @@ export async function notificationRoutes(app: FastifyInstance): Promise<void> {
 
     scopedApp.get('/notifications/devices', enterpriseCtrl.getDevicesHandler);
     scopedApp.post('/notifications/devices', enterpriseCtrl.registerDeviceHandler);
+
+    // Admin: Notification Platform configuration
+    scopedApp.get('/admin/notifications/config/settings', { preHandler: [requirePermission(['notifications.config.manage'])] }, configCtrl.getGlobalSettingsHandler);
+    scopedApp.put('/admin/notifications/config/settings/:key', { preHandler: [requirePermission(['notifications.config.manage'])] }, configCtrl.updateGlobalSettingHandler);
+    scopedApp.get('/admin/notifications/config/retry-policies', { preHandler: [requirePermission(['notifications.config.manage'])] }, configCtrl.getRetryPoliciesHandler);
+    scopedApp.post('/admin/notifications/config/retry-policies', { preHandler: [requirePermission(['notifications.config.manage'])] }, configCtrl.createRetryPolicyHandler);
+    scopedApp.put('/admin/notifications/config/retry-policies/:id', { preHandler: [requirePermission(['notifications.config.manage'])] }, configCtrl.updateRetryPolicyHandler);
+    scopedApp.delete('/admin/notifications/config/retry-policies/:id', { preHandler: [requirePermission(['notifications.config.manage'])] }, configCtrl.deleteRetryPolicyHandler);
+    scopedApp.get('/admin/notifications/config/rules', { preHandler: [requirePermission(['notifications.config.manage'])] }, configCtrl.getRulesHandler);
+    scopedApp.post('/admin/notifications/config/rules', { preHandler: [requirePermission(['notifications.config.manage'])] }, configCtrl.createRuleHandler);
+    scopedApp.put('/admin/notifications/config/rules/:id', { preHandler: [requirePermission(['notifications.config.manage'])] }, configCtrl.updateRuleHandler);
+    scopedApp.delete('/admin/notifications/config/rules/:id', { preHandler: [requirePermission(['notifications.config.manage'])] }, configCtrl.deleteRuleHandler);
+    scopedApp.get('/admin/notifications/config/providers', { preHandler: [requirePermission(['notifications.config.manage'])] }, configCtrl.getProvidersHandler);
+    scopedApp.put('/admin/notifications/config/providers/:id', { preHandler: [requirePermission(['notifications.config.manage'])] }, configCtrl.updateProviderHandler);
   });
 }
