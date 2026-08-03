@@ -52,8 +52,25 @@ interface AuthState {
   login: (data: unknown) => Promise<void>;
   register: (data: unknown) => Promise<void>;
   logout: () => Promise<void>;
+  forceLogout: (reason?: string) => void;
   checkAuth: () => Promise<void>;
   refreshOrganisations: () => Promise<void>;
+}
+
+let refreshTimer: ReturnType<typeof setInterval> | null = null;
+
+function startProactiveRefresh() {
+  stopProactiveRefresh();
+  refreshTimer = setInterval(() => {
+    authApi.refresh().catch(() => {});
+  }, 12 * 60 * 1000);
+}
+
+function stopProactiveRefresh() {
+  if (refreshTimer) {
+    clearInterval(refreshTimer);
+    refreshTimer = null;
+  }
 }
 
 async function loadScopes(): Promise<OrgScope[]> {
@@ -129,6 +146,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     };
     cacheUser(finalUser);
     set({ user: finalUser, isAuthenticated: true });
+    startProactiveRefresh();
     sessionStorage.setItem(LOGIN_SPLASH_KEY, '1');
     applyUserPreferences(finalUser);
     void import('./appearance.store').then(({ useAppearanceStore }) => useAppearanceStore.getState().fetch());
@@ -139,6 +157,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   logout: async () => {
+    stopProactiveRefresh();
     try {
       await authApi.logout({ allDevices: false });
     } catch {
@@ -147,6 +166,15 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     cacheUser(null);
     sessionStorage.removeItem(LOGIN_SPLASH_KEY);
     set({ user: null, isAuthenticated: false });
+  },
+
+  forceLogout: (reason?: string) => {
+    stopProactiveRefresh();
+    cacheUser(null);
+    sessionStorage.removeItem(LOGIN_SPLASH_KEY);
+    set({ user: null, isAuthenticated: false });
+    sessionStorage.setItem('force_logout_reason', reason || 'Session terminated by administrator');
+    window.location.href = '/login';
   },
 
   refreshOrganisations: async () => {
@@ -177,6 +205,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       };
       cacheUser(finalUser);
       set({ user: finalUser, isAuthenticated: true });
+      startProactiveRefresh();
       syncUserThemePreference(finalUser.darkMode);
       applyUserPreferences(finalUser);
       void import('./appearance.store').then(({ useAppearanceStore }) => useAppearanceStore.getState().fetch());

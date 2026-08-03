@@ -3,6 +3,7 @@ import type mysql from 'mysql2/promise';
 import { rbacRepository } from '../infrastructure/repositories/rbac.repository.js';
 import { permissionMatchesTemplate, TEMPLATE_SLUGS } from './role-permission-templates.js';
 import { NotFoundError, ConflictError } from '../../../shared/errors/app-error.js';
+import { eventBus } from '../../../shared/event-bus/index.js';
 import { hashPassword } from '../../../shared/utils/password.js';
 import { sanitizeUploadUrl } from '../../../shared/utils/upload-url.util.js';
 import { commandPipeline } from '../../../shared/command/command-pipeline.js';
@@ -117,10 +118,12 @@ export class RBACService {
         [userId],
       );
     }
+    try { eventBus.emit('user.role.changed' as any, { userId, roleId, roleSlug: role.slug, assignedBy }); } catch {}
   }
 
   async removeUserRole(userId: number, roleId: number) {
     await rbacRepository.removeUserRole(userId, roleId);
+    try { eventBus.emit('user.role.changed' as any, { userId, roleId, action: 'removed' }); } catch {}
   }
 
   async getUserRoles(userId: number) {
@@ -152,7 +155,15 @@ export class RBACService {
   async updateUser(userId: number, data: any) {
     const user = await rbacRepository.getUserById(userId);
     if (!user) throw new NotFoundError('User');
+    const prevStatus = user.account_status;
     await rbacRepository.updateUser(userId, data);
+    if (data.accountStatus && data.accountStatus !== prevStatus) {
+      if (data.accountStatus === 'suspended') {
+        try { eventBus.emit('user:suspended' as any, { userId, reason: 'Admin action' }); } catch {}
+      } else if (data.accountStatus === 'active' && prevStatus === 'suspended') {
+        try { eventBus.emit('user:activated' as any, { userId }); } catch {}
+      }
+    }
     return this.getUserById(userId);
   }
 
@@ -203,6 +214,7 @@ export class RBACService {
         throw new NotFoundError('User');
       }
       await conn.commit();
+      try { eventBus.emit('user:deleted' as any, { userId, actorId }); } catch {}
     } catch (err) {
       await conn.rollback();
       throw err;

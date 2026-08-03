@@ -28,6 +28,9 @@ export function mapDomainEvent(eventName: string, payload: Record<string, unknow
         rooms: payload.targetRole ? [`role:${payload.targetRole}`] : ['player'],
       };
     }
+    if (eventName.startsWith('user:') || eventName.startsWith('auth:') || eventName.startsWith('security:')) {
+      return mapUserSecurityEvent(eventName, payload);
+    }
     return null;
   } catch (err) {
     log.error({ err, eventName }, 'socket.map_failed');
@@ -186,5 +189,23 @@ function mapNotificationSync(eventName: string, p: Record<string, any>): MappedS
     type: `notification.${sub}`,
     payload: { notificationId: p.notificationId, userId: p.userId, sourceDeviceId: p.sourceDeviceId, timestamp: p.timestamp },
     rooms: roomsForUser(p.userId),
+  };
+}
+
+function mapUserSecurityEvent(eventName: string, p: Record<string, any>): MappedSocketEvent {
+  const userId = p.userId || p.actorId;
+  const userRoom = userId ? [`user:${userId}`] : [];
+  const types: Record<string, string> = {
+    'user:suspended': 'user.account.suspended',
+    'user:activated': 'user.account.activated',
+    'user:deleted': 'user.account.deleted',
+    'auth:logout': 'user.force.logout',
+    'security:permission-changed': 'user.permissions.changed',
+  };
+  const type = types[eventName] || eventName.replace(/:/g, '.');
+  return {
+    type,
+    payload: { userId, event: eventName, reason: p.reason || p.description, timestamp: p.timestamp || Date.now() },
+    rooms: userRoom,
   };
 }

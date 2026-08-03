@@ -210,12 +210,20 @@ initAuthMiddleware({
     if (!sessionToken) return null;
     const sessionTokenHash = hashToken(sessionToken);
     const [rows] = await pool.execute<RowData>(
-      `SELECT user_id FROM user_sessions
-       WHERE session_token_hash = ? AND is_revoked = FALSE AND expires_at > NOW()
+      `SELECT us.user_id FROM user_sessions us
+       JOIN users u ON u.id = us.user_id AND u.deleted_at IS NULL AND u.account_status = 'active'
+       WHERE us.session_token_hash = ? AND us.is_revoked = FALSE AND us.expires_at > NOW()
        LIMIT 1`,
       [sessionTokenHash],
     );
-    return rows.length ? Number(rows[0].user_id) : null;
+    const userId = rows.length ? Number(rows[0].user_id) : null;
+    if (userId) {
+      pool.execute(
+        'UPDATE user_sessions SET last_activity_at = NOW() WHERE session_token_hash = ? AND is_revoked = FALSE',
+        [sessionTokenHash],
+      ).catch(() => {});
+    }
+    return userId;
   },
   checkRole: async (userId, roles) => {
     const [rows] = await pool.execute<RowData>(
