@@ -3,17 +3,15 @@ import { useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import api from '../../services/api';
 import { Can } from '../../permissions/Can';
+import { localToday, localDaysAgo } from '../../utils/dateRange';
 
 type ReportTab = 'bookings' | 'revenue' | 'members';
 
 export default function OrgReportsPage() {
   const { orgId } = useParams<{ orgId: string }>();
   const [tab, setTab] = useState<ReportTab>('bookings');
-  const [fromDate, setFromDate] = useState(() => {
-    const d = new Date(); d.setDate(d.getDate() - 30);
-    return d.toISOString().slice(0, 10);
-  });
-  const [toDate, setToDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [fromDate, setFromDate] = useState(() => localDaysAgo(30));
+  const [toDate, setToDate] = useState(() => localToday());
 
   const params = { from: fromDate, to: toDate };
 

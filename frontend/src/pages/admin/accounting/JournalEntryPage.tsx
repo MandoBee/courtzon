@@ -5,6 +5,7 @@ import api from '../../../services/api';
 import { Button, Spinner, Pagination } from '../../../components/ui';
 import { Can } from '../../../permissions/Can';
 import { useToast } from '../../../components/ui/Toast';
+import { localToday } from '../../../utils/dateRange';
 
 interface LineItem {
   account_id: number | '';
@@ -28,7 +29,7 @@ export default function JournalEntryPage() {
   const [showForm, setShowForm] = useState(false);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
-  const [form, setForm] = useState({ entry_date: new Date().toISOString().split('T')[0], description: '' });
+  const [form, setForm] = useState({ entry_date: localToday(), description: '' });
   const [lines, setLines] = useState<LineItem[]>([{ account_id: '', account_code: '', account_name: '', debit: 0, credit: 0 }]);
 
   const { data: entriesData, isLoading } = useQuery({
@@ -51,7 +52,7 @@ export default function JournalEntryPage() {
     onError: (err: any) => showToast(getErrorMessage(err), 'error'),
   });
 
-  const resetForm = () => { setShowForm(false); setForm({ entry_date: new Date().toISOString().split('T')[0], description: '' }); setLines([{ account_id: '', account_code: '', account_name: '', debit: 0, credit: 0 }]); };
+  const resetForm = () => { setShowForm(false); setForm({ entry_date: localToday(), description: '' }); setLines([{ account_id: '', account_code: '', account_name: '', debit: 0, credit: 0 }]); };
 
   const addLine = () => setLines([...lines, { account_id: '', account_code: '', account_name: '', debit: 0, credit: 0 }]);
 

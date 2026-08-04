@@ -2,9 +2,10 @@ import { useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { pricingApi } from '../../../services/pricing';
 import { Skeleton } from '../../../components/ui/Skeleton';
+import { localToday } from '../../../utils/dateRange';
 
 export default function PricePreviewPage() {
-  const [form, setForm] = useState({ resourceId: 1, date: new Date().toISOString().split('T')[0], startTime: '10:00', endTime: '11:00', expectedOccupancy: '' });
+  const [form, setForm] = useState({ resourceId: 1, date: localToday(), startTime: '10:00', endTime: '11:00', expectedOccupancy: '' });
 
   const preview = useMutation({
     mutationFn: (data: any) => pricingApi.preview(data),

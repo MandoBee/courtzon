@@ -3,11 +3,12 @@ import { useQuery } from '@tanstack/react-query';
 import api from '../../../services/api';
 import { ExportButton } from '../../../components/ui/ExportButton';
 import { SkeletonRow } from '../../../components/ui/Skeleton';
+import { localDaysAgo, apiDateRange } from '../../../utils/dateRange';
 
 export default function LedgerViewerPage() {
-  const today = new Date().toISOString().split('T')[0];
-  const [from, setFrom] = useState(new Date(Date.now() - 30 * 86400000).toISOString().split('T')[0]);
-  const [to, setTo] = useState(today);
+  const dr = apiDateRange(30);
+  const [from, setFrom] = useState(dr.from);
+  const [to, setTo] = useState(localDaysAgo(-1));
   const [accountType, setAccountType] = useState('');
   const [search, setSearch] = useState('');
 

@@ -1,30 +1,27 @@
 import { useState } from 'react';
+import { apiDateRange, localToday } from '../../utils/dateRange';
 
 interface DateRangePickerProps {
   onChange: (from: string, to: string) => void;
 }
 
 const presets: { label: string; getValue: () => { from: string; to: string } }[] = [
-  { label: 'Today', getValue: () => { const d = new Date().toISOString().split('T')[0]; return { from: d, to: d }; } },
+  { label: 'Today', getValue: () => ({ from: localToday(), to: localToday() }) },
   { label: 'Last 7 Days', getValue: () => {
-    const to = new Date();
-    const from = new Date(to); from.setDate(from.getDate() - 6);
-    return { from: from.toISOString().split('T')[0], to: to.toISOString().split('T')[0] };
+    const r = apiDateRange(7); return r;
   }},
   { label: 'Last 30 Days', getValue: () => {
-    const to = new Date();
-    const from = new Date(to); from.setDate(from.getDate() - 29);
-    return { from: from.toISOString().split('T')[0], to: to.toISOString().split('T')[0] };
+    const r = apiDateRange(30); return r;
   }},
   { label: 'Last 90 Days', getValue: () => {
-    const to = new Date();
-    const from = new Date(to); from.setDate(from.getDate() - 89);
-    return { from: from.toISOString().split('T')[0], to: to.toISOString().split('T')[0] };
+    const r = apiDateRange(90); return r;
   }},
   { label: 'YTD', getValue: () => {
-    const to = new Date();
-    const from = new Date(to.getFullYear(), 0, 1);
-    return { from: from.toISOString().split('T')[0], to: to.toISOString().split('T')[0] };
+    const now = new Date();
+    const from = new Date(Date.UTC(now.getUTCFullYear(), 0, 1));
+    const to = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1));
+    const fmt = (d: Date) => d.toISOString().split('T')[0];
+    return { from: fmt(from), to: fmt(to) };
   }},
   { label: 'All Time', getValue: () => ({ from: '', to: '' }) },
 ];

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import api from '../../../services/api';
 import { Card, Spinner, Button } from '../../../components/ui';
+import { apiDateRange } from '../../../utils/dateRange';
 
 interface AnalyticsRecord {
   id: number;
@@ -45,10 +46,9 @@ const COLORS: Record<string, string> = {
 };
 
 export default function AdminAnalyticsPage() {
-  const today = new Date().toISOString().split('T')[0];
-  const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000).toISOString().split('T')[0];
-  const [from, setFrom] = useState(thirtyDaysAgo);
-  const [to, setTo] = useState(today);
+  const dr = apiDateRange(30);
+  const [from, setFrom] = useState(dr.from);
+  const [to, setTo] = useState(dr.to);
 
   const { data, isLoading } = useQuery({
     queryKey: ['admin', 'notifications', 'analytics', from, to],

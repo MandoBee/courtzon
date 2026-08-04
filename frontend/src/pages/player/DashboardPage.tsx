@@ -5,6 +5,7 @@ import { useTranslation } from '../../i18n';
 import { Can } from '../../permissions/Can';
 import { SkeletonRow } from '../../components/ui/Skeleton';
 import api from '../../services/api';
+import { localToday } from '../../utils/dateRange';
 
 function StatCard({ label, value, icon, href }: { label: string; value: string | number | undefined | null; icon: string; href?: string }) {
   const inner = (
@@ -48,7 +49,7 @@ export default function PlayerDashboardPage() {
   const { data: upcomingBookings, isLoading: loadingBookings } = useQuery({
     queryKey: ['bookings', 'upcoming'],
     queryFn: () => {
-      const today = new Date().toISOString().split('T')[0];
+      const today = localToday();
       return api.get(`/bookings?status=confirmed&from=${today}&limit=5`).then((r) => r.data?.data || []);
     },
   });

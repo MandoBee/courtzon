@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import api from '../../services/api';
 import { SkeletonRow } from '../../components/ui/Skeleton';
 import { useToast } from '../../components/ui/Toast';
+import { localToday } from '../../utils/dateRange';
 
 export default function ReceptionDashboard() {
   const navigate = useNavigate();
@@ -11,7 +12,7 @@ export default function ReceptionDashboard() {
   const [search, setSearch] = useState('');
   const [searchResults, setSearchResults] = useState<any[] | null>(null);
 
-  const today = new Date().toISOString().split('T')[0];
+  const today = localToday();
 
   const { data: todayBookings, isLoading } = useQuery({
     queryKey: ['reception', 'today', today],

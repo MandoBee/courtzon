@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../services/api';
 import { formatISODate } from '../../utils/formatDate';
+import { localToday } from '../../utils/dateRange';
 import { useToast } from '../../components/ui/Toast';
 import { SkeletonRow } from '../../components/ui';
 import { EmptyStateCard, SessionTimeline } from '../../components/workspace';
@@ -46,7 +47,7 @@ export default function TodaySessions() {
   const sessions = Array.isArray(data?.data) ? data.data : [];
   const filtered = filter === 'all' ? sessions : sessions.filter((s: any) => s.status === filter);
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localToday();
   const todaySessions = filtered.filter((s: any) => s.start_time?.startsWith(today));
   const upcoming = filtered.filter((s: any) => !s.start_time?.startsWith(today) && !['cancelled', 'no_show', 'completed'].includes(s.status));
   const past = filtered.filter((s: any) => ['completed', 'cancelled', 'no_show'].includes(s.status));

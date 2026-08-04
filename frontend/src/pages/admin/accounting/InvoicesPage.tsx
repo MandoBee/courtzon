@@ -5,6 +5,7 @@ import api from '../../../services/api';
 import { Button, Modal, Spinner, Pagination } from '../../../components/ui';
 import { Can } from '../../../permissions/Can';
 import { useToast } from '../../../components/ui/Toast';
+import { localToday } from '../../../utils/dateRange';
 
 interface InvoiceLineItem {
   description: string;
@@ -50,7 +51,7 @@ export default function InvoicesPage() {
   const [detail, setDetail] = useState<Invoice | null>(null);
   const [payModal, setPayModal] = useState<number | null>(null);
   const [cancelModal, setCancelModal] = useState<number | null>(null);
-  const [form, setForm] = useState({ organisation_id: '', user_id: '', issue_date: new Date().toISOString().split('T')[0], due_date: '', type: 'sales' as string });
+  const [form, setForm] = useState({ organisation_id: '', user_id: '', issue_date: localToday(), due_date: '', type: 'sales' as string });
   const [lineItems, setLineItems] = useState<InvoiceLineItem[]>([{ description: '', quantity: 1, unit_price: 0, tax_rate: 0, total: 0 }]);
 
   const { data, isLoading } = useQuery({
@@ -99,7 +100,7 @@ export default function InvoicesPage() {
 
   const resetForm = () => {
     setShowForm(false);
-    setForm({ organisation_id: '', user_id: '', issue_date: new Date().toISOString().split('T')[0], due_date: '', type: 'sales' });
+    setForm({ organisation_id: '', user_id: '', issue_date: localToday(), due_date: '', type: 'sales' });
     setLineItems([{ description: '', quantity: 1, unit_price: 0, tax_rate: 0, total: 0 }]);
   };
 

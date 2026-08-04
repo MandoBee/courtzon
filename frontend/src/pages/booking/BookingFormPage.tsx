@@ -8,6 +8,7 @@ import { Button, Input, Card } from '../../components/ui';
 import { Can } from '../../permissions/Can';
 import { useToast } from '../../components/ui/Toast';
 import { useTranslation } from '../../i18n';
+import { localToday } from '../../utils/dateRange';
 
 const BookingSchema = z.object({
   bookingDate: z.string().min(1, 'Date is required'),
@@ -25,7 +26,7 @@ export default function BookingFormPage() {
   const [searchParams] = useSearchParams();
   const { showToast } = useToast();
   const { t } = useTranslation();
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localToday();
 
   const { register, handleSubmit, watch, setValue, formState: { errors } } = useForm<BookingForm>({
     resolver: zodResolver(BookingSchema),

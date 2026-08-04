@@ -3,25 +3,25 @@ import { useNavigate } from 'react-router-dom';
 import api from '../../../services/api';
 import { ExportButton } from '../../../components/ui/ExportButton';
 import { Skeleton, SkeletonRow } from '../../../components/ui/Skeleton';
+import { apiDateRange } from '../../../utils/dateRange';
 
 export default function FinanceDashboardPage() {
   const navigate = useNavigate();
-  const today = new Date().toISOString().split('T')[0];
-  const monthStart = new Date(Date.now() - 30 * 86400000).toISOString().split('T')[0];
+  const { from, to } = apiDateRange(30);
 
   const { data: revenue, isLoading } = useQuery({
-    queryKey: ['finance', 'revenue', monthStart, today],
-    queryFn: () => api.get('/admin/financial/revenue', { params: { from: monthStart, to: today } }).then(r => r.data.data),
+    queryKey: ['finance', 'revenue', from, to],
+    queryFn: () => api.get('/admin/financial/revenue', { params: { from, to } }).then(r => r.data.data),
   });
 
   const { data: ledger } = useQuery({
-    queryKey: ['finance', 'ledger', monthStart, today],
-    queryFn: () => api.get('/admin/financial/ledger', { params: { from: monthStart, to: today } }).then(r => r.data.data),
+    queryKey: ['finance', 'ledger', from, to],
+    queryFn: () => api.get('/admin/financial/ledger', { params: { from, to } }).then(r => r.data.data),
   });
 
-  const { data: wallet } = useQuery({
-    queryKey: ['wallet', 'me'],
-    queryFn: () => api.get('/wallets/me').then(r => r.data),
+  const { data: walletSummary } = useQuery({
+    queryKey: ['finance', 'wallet-summary'],
+    queryFn: () => api.get('/admin/financial/wallet-summary').then(r => r.data.data),
   });
 
   const { data: settlements } = useQuery({
@@ -61,7 +61,13 @@ export default function FinanceDashboardPage() {
       {/* Row 1: Revenue KPIs */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <KPI label="Total Revenue (30d)" value={`EGP ${totalRevenue.toLocaleString()}`} sub="Click for details" onClick={() => navigate('/admin/finance/reports')} color="text-green-600" />
-        <KPI label="Wallet Balance" value={wallet ? `EGP ${Number(wallet.balance).toLocaleString()}` : '—'} sub={wallet ? `${wallet.currencyCode || 'EGP'}` : ''} onClick={() => navigate('/profile')} />
+        <KPI
+          label="Wallet Balance"
+          value={walletSummary ? `EGP ${Number(walletSummary.totalBalance).toLocaleString()}` : '—'}
+          sub={walletSummary ? `${walletSummary.totalWallets} wallets` : ''}
+          onClick={() => navigate('/admin/finance/ledger?accountType=wallet_liability')}
+          color="text-blue-600"
+        />
         <KPI label="Pending Settlements" value={String(pendingSettlements.length)} sub={`${pendingSettlements.reduce((s: number, x: any) => s + Number(x.final_amount || 0), 0).toLocaleString()} EGP`} onClick={() => navigate('/admin/settlements')} color="text-yellow-600" />
         <KPI label="Completed Settlements" value={String(completedSettlements.length)} sub={`${completedSettlements.reduce((s: number, x: any) => s + Number(x.final_amount || 0), 0).toLocaleString()} EGP`} onClick={() => navigate('/admin/settlements')} color="text-green-600" />
       </div>
