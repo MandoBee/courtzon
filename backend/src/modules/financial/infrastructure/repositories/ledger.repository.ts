@@ -12,9 +12,10 @@ export class LedgerRepository {
     this.pool = getPool();
   }
 
-  async createEntries(entries: LedgerEntry[]): Promise<void> {
+  async createEntries(entries: LedgerEntry[], conn?: mysql.PoolConnection): Promise<void> {
+    const db = conn ?? this.pool;
     for (const entry of entries) {
-      await this.pool.execute<ResultSetHeader>(
+      await db.execute<ResultSetHeader>(
         `INSERT INTO ledger_entries (transaction_id, source_type, source_id, account_type, side, amount, currency, description, reference_id, recorded_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [entry.transactionId, entry.sourceType, entry.sourceId, entry.accountType,

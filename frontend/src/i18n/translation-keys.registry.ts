@@ -104,6 +104,7 @@ export const translationKeysRegistry: TranslationKeyEntry[] = [
   { key: 'pwa.new_version_title', defaultValue: 'New version available', moduleSlug: 'pwa', elementType: 'heading', elementLabel: 'PWA new version title' },
   { key: 'pwa.new_version_desc', defaultValue: 'A fresh version of {app} is ready. Reload to get the latest updates.', moduleSlug: 'pwa', elementType: 'text', elementLabel: 'PWA new version description' },
   { key: 'pwa.reload', defaultValue: 'Reload', moduleSlug: 'pwa', elementType: 'button', elementLabel: 'PWA reload' },
+  { key: 'pwa.loading_latest', defaultValue: 'Loading latest version...', moduleSlug: 'pwa', elementType: 'text', elementLabel: 'PWA loading latest version' },
   { key: 'pwa.offline_title', defaultValue: "You're offline", moduleSlug: 'pwa', elementType: 'heading', elementLabel: 'PWA offline title' },
   { key: 'pwa.offline_desc', defaultValue: 'Some features may be unavailable. Cached content is still browsable.', moduleSlug: 'pwa', elementType: 'text', elementLabel: 'PWA offline description' },
   { key: 'pwa.back_online', defaultValue: "Back online", moduleSlug: 'pwa', elementType: 'text', elementLabel: 'PWA back online' },

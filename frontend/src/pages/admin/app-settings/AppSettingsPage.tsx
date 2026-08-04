@@ -4,6 +4,7 @@ import api from '../../../services/api';
 import { Can } from '../../../permissions/Can';
 import { useToast } from '../../../components/ui/Toast';
 import AppSettingsImageUpload from '../../../components/app-settings/AppSettingsImageUpload';
+import BankSettingsTab from './BankSettingsTab';
 
 type SettingRow = { setting_key: string; value: unknown };
 
@@ -78,6 +79,7 @@ export default function AppSettingsPage() {
   const { showToast } = useToast();
   const [form, setForm] = useState<Record<string, string>>({});
   const [maintenanceMode, setMaintenanceMode] = useState(false);
+  const [tab, setTab] = useState<'branding' | 'bank'>('branding');
 
   const { data, isLoading } = useQuery({
     queryKey: ['app-settings'],
@@ -124,16 +126,46 @@ export default function AppSettingsPage() {
 
   const setField = (key: string, value: string) => setForm((f) => ({ ...f, [key]: value }));
 
+  const bankAccountsValue = data?.find((r) => r.setting_key === 'platform_bank_accounts')?.value;
+
   if (isLoading) return <p className="text-[var(--color-text-muted)]">Loading...</p>;
 
   return (
     <div className="max-w-4xl">
       <h1 className="text-2xl font-bold text-[var(--color-text)] mb-2">Branding</h1>
       <p className="text-sm text-[var(--color-text-muted)] mb-6">
-        Platform-wide branding and configuration. Images are validated for size, dimensions, and format before upload.
+        Platform-wide branding, configuration, and bank information.
       </p>
 
-      <div className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] p-5 space-y-6">
+      <div className="flex gap-1 mb-6 border-b border-[var(--color-border)]">
+        <button
+          type="button"
+          onClick={() => setTab('branding')}
+          className={`px-4 py-2 text-sm font-medium -mb-px border-b-2 ${
+            tab === 'branding'
+              ? 'border-[var(--color-primary)] text-[var(--color-primary)]'
+              : 'border-transparent text-[var(--color-text-muted)] hover:text-[var(--color-text)]'
+          }`}
+        >
+          Branding
+        </button>
+        <Can permission="app-settings.view.bank">
+          <button
+            type="button"
+            onClick={() => setTab('bank')}
+            className={`px-4 py-2 text-sm font-medium -mb-px border-b-2 ${
+              tab === 'bank'
+                ? 'border-[var(--color-primary)] text-[var(--color-primary)]'
+                : 'border-transparent text-[var(--color-text-muted)] hover:text-[var(--color-text)]'
+            }`}
+          >
+            Bank
+          </button>
+        </Can>
+      </div>
+
+      {tab === 'branding' ? (
+        <div className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] p-5 space-y-6">
         <section className="space-y-4">
           <h2 className="text-sm font-semibold text-[var(--color-text)] uppercase tracking-wide">General</h2>
 
@@ -337,7 +369,12 @@ export default function AppSettingsPage() {
             {saveMutation.isPending ? 'Saving...' : 'Save settings'}
           </button>
         </Can>
-      </div>
+        </div>
+      ) : (
+        <Can permission="app-settings.view.bank">
+          <BankSettingsTab initialValue={bankAccountsValue} />
+        </Can>
+      )}
     </div>
   );
 }

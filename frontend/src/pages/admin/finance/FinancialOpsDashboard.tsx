@@ -7,12 +7,14 @@ export default function FinancialOpsDashboard() {
     queryKey: ['payments-health'],
     queryFn: () => api.get('/payments/health').then((r) => r.data),
     refetchInterval: 30000,
+    refetchIntervalInBackground: false,
   });
 
   const { data: readiness } = useQuery({
     queryKey: ['payments-readiness'],
     queryFn: () => api.get('/payments/production-readiness').then((r) => r.data),
     refetchInterval: 60000,
+    refetchIntervalInBackground: false,
   });
 
   const { data: reconHistory } = useQuery({

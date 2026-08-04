@@ -279,6 +279,8 @@ export const uiRegistry: UIElement[] = [
   { permissionKey: 'app-settings.edit.site-tagline', moduleSlug: 'settings', elementType: 'field', elementLabel: 'Site Tagline', componentPath: 'pages/admin/app-settings/AppSettingsPage.tsx' },
   { permissionKey: 'app-settings.edit.meta-description', moduleSlug: 'settings', elementType: 'field', elementLabel: 'Meta Description', componentPath: 'pages/admin/app-settings/AppSettingsPage.tsx' },
   { permissionKey: 'app-settings.edit.maintenance-mode', moduleSlug: 'settings', elementType: 'field', elementLabel: 'Maintenance Mode', componentPath: 'pages/admin/app-settings/AppSettingsPage.tsx' },
+  { permissionKey: 'app-settings.view.bank', moduleSlug: 'settings', elementType: 'tab', elementLabel: 'Branding: Bank Tab', componentPath: 'pages/admin/app-settings/AppSettingsPage.tsx' },
+  { permissionKey: 'app-settings.edit.bank', moduleSlug: 'settings', elementType: 'field', elementLabel: 'Bank Information', componentPath: 'pages/admin/app-settings/BankSettingsTab.tsx' },
   { permissionKey: 'subscription.view', moduleSlug: 'settings', elementType: 'page', elementLabel: 'Subscription Page', componentPath: 'pages/admin/subscription/SubscriptionPage.tsx' },
   { permissionKey: 'feature-flags.view', moduleSlug: 'settings', elementType: 'page', elementLabel: 'Feature Flags Page', componentPath: 'pages/admin/feature-flags/FeatureFlagsPage.tsx' },
   { permissionKey: 'feature-flags.toggle', moduleSlug: 'settings', elementType: 'action', elementLabel: 'Toggle Feature Flag', componentPath: 'pages/admin/feature-flags/FeatureFlagsPage.tsx' },

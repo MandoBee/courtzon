@@ -5,6 +5,8 @@ import { depositWalletHandler, type DepositWalletPayload } from '../commands/dep
 import { walletRepository } from '../infrastructure/repositories/wallet.repository.js';
 import { transactionRepository } from '../../financial/infrastructure/transaction.repository.js';
 import { transactionService } from '../../financial/application/transaction.service.js';
+import { ledgerService } from '../../financial/application/ledger.service.js';
+import { paymentRepository } from '../../payment/infrastructure/repositories/payment.repository.js';
 import type { Command } from '../../../shared/command/command-base.js';
 
 const log = createModuleLogger('wallet-payment-listener');
@@ -16,6 +18,14 @@ const log = createModuleLogger('wallet-payment-listener');
  * 'wallet_topup') up-front via the gateway intention flow. Paymob's Intention
  * API always returns "pending", so the credit is performed asynchronously here
  * on the canonical `payment:succeeded` event (fired by webhook / confirm / sync).
+ *
+ * Accounting: in addition to crediting `user_wallets.balance`, the listener
+ * writes (all inside the same transaction so balance and ledger stay in sync):
+ *   - `transactions` + `transaction_entries` (wallet flow double-entry)
+ *   - `wallet_transactions` (user-facing history — feeds reports/dashboard/CRM)
+ *   - `ledger_entries` (financial engine — feeds Finance Dashboard, Ledger
+ *     Viewer, Report Center and settlement batches)
+ *   - `financial_journal_entries` (canonical Cash → Wallet Liability journal)
  *
  * Idempotency: the ledger transaction is keyed by (source_type='wallet',
  * source_id=paymentId) — a duplicate event skips the credit.
@@ -58,7 +68,9 @@ export function registerWalletPaymentListeners() {
         validate: async () => depositWalletHandler.validate(command),
         execute: async (cmd, conn) => {
           const depositResult = await depositWalletHandler.execute(cmd, conn);
-          await transactionService.createWalletTopup({
+
+          // Wallet-flow double-entry ledger (transactions + transaction_entries)
+          const txnId = await transactionService.createWalletTopup({
             userId,
             walletId: wallet.id,
             amount,
@@ -66,6 +78,46 @@ export function registerWalletPaymentListeners() {
             sourceId: paymentId,
             description: `Card deposit (payment #${paymentId})`,
           }, conn);
+
+          // User-facing wallet history row — feeds financial reports, admin
+          // dashboard KPIs, CRM profile and payment reconciliation.
+          await walletRepository.createTransaction({
+            walletId: wallet.id,
+            type: 'deposit',
+            amount,
+            direction: 'credit',
+            referenceType: 'payment',
+            referenceId: paymentId,
+            description: `Card deposit (payment #${paymentId})`,
+          }, conn);
+
+          // Financial engine double-entry — feeds the Finance Dashboard KPIs,
+          // Ledger Viewer, Report Center and settlement batches. A top-up moves
+          // customer balance (debit) against wallet liability (credit), so it is
+          // never misreported as revenue.
+          await ledgerService.recordTransaction(
+            String(txnId),
+            'wallet',
+            paymentId,
+            'customer_balance',
+            'wallet_liability',
+            amount,
+            wallet.currency_code,
+            `Card deposit (payment #${paymentId})`,
+            conn,
+          );
+
+          // Canonical accounting journal row (Cash → Wallet Liability).
+          await paymentRepository.createJournalEntry({
+            entryType: 'wallet_topup',
+            referenceType: 'wallet_topup',
+            referenceId: paymentId,
+            debitAccount: 'Cash',
+            creditAccount: 'Wallet Liability',
+            amount,
+            description: `Card deposit (payment #${paymentId})`,
+          }, conn);
+
           return depositResult;
         },
         events: (cmd, res) => depositWalletHandler.events!(cmd, res),

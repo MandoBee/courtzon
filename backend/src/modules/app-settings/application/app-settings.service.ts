@@ -25,12 +25,40 @@ const ALLOWED_KEYS = new Set([
   'splash_image_url',
   'splash_image_dark_url',
   'splash_image_default',
+  'platform_bank_accounts',
 ]);
+
+const BankAccountSchema = z.object({
+  id: z.string().optional(),
+  bank_name: z.string().max(255).optional(),
+  branch_name: z.string().max(255).optional(),
+  account_holder_name: z.string().max(255).optional(),
+  account_number: z.string().max(100).optional(),
+  iban: z.string().max(34).optional(),
+  swift_bic: z.string().max(11).optional(),
+  routing_number: z.string().max(50).optional(),
+  currency: z.string().max(10).optional(),
+  country: z.string().max(100).optional(),
+  bank_address: z.string().max(500).optional(),
+  beneficiary_name: z.string().max(255).optional(),
+  beneficiary_address: z.string().max(500).optional(),
+  merchant_id: z.string().max(255).optional(),
+  merchant_code: z.string().max(255).optional(),
+  payment_gateway_reference: z.string().max(255).optional(),
+  notes: z.string().max(1000).optional(),
+  is_active: z.boolean().optional(),
+});
 
 export const UpdateAppSettingsSchema = z.object({
   settings: z.record(z.string(), z.unknown()).refine(
     (settings) => Object.keys(settings).every((key) => ALLOWED_KEYS.has(key)),
     { message: 'One or more setting keys are not allowed' },
+  ).refine(
+    (settings) => {
+      if (!('platform_bank_accounts' in settings)) return true;
+      return z.array(BankAccountSchema).safeParse(settings.platform_bank_accounts).success;
+    },
+    { message: 'platform_bank_accounts must be an array of bank account objects' },
   ),
 });
 

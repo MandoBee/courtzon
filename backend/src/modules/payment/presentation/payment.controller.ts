@@ -171,8 +171,8 @@ export async function healthHandler(_request: FastifyRequest, reply: FastifyRepl
      WHERE payment_status = 'failed' AND created_at > NOW() - INTERVAL 1 HOUR`
   );
   const [lastWebhook] = await pool.execute<any[]>(
-    `SELECT source, MAX(created_at) as last_at FROM financial_journal_entries
-     WHERE reference_type = 'gateway_webhook' GROUP BY source LIMIT 1`
+    `SELECT MAX(created_at) as last_at FROM financial_journal_entries
+     WHERE reference_type = 'gateway_webhook'`
   );
   const [successRate] = await pool.execute<any[]>(
     `SELECT

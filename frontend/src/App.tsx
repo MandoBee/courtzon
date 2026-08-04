@@ -1,4 +1,4 @@
-import { useEffect, useState, lazy, Suspense } from 'react';
+import { useEffect, useState, useRef, lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, Outlet, Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { queryClient } from './lib/queryClient';
@@ -25,6 +25,7 @@ import { useFeatureFlag } from './hooks/useFeatureFlag';
 import NotificationBell from './components/notifications/NotificationBell';
 import OfflineBanner from './components/pwa/OfflineBanner';
 import PWAUpdatePrompt from './components/pwa/PWAUpdatePrompt';
+import { PENDING_RELOAD_KEY } from './constants/pwa-reload';
 import { SocketProvider } from './realtime/SocketContext';
 import { RealtimeCacheUpdater } from './realtime/RealtimeCacheUpdater';
 import { ConnectionStatus } from './components/ConnectionStatus';
@@ -461,6 +462,7 @@ function AppLayout() {
 
 function AppContent() {
   const isLoading = useAuthStore((s) => s.isLoading);
+  const appSettingsLoaded = useAppSettingsStore((s) => s.loaded);
   const checkAuth = useAuthStore((s) => s.checkAuth);
   const initTheme = useThemeStore((s) => s.init);
   const fetchFlags = useFeatureFlagsStore((s) => s.fetch);
@@ -469,6 +471,15 @@ function AppContent() {
   const hydrateCurrency = useCurrencyStore((s) => s.hydrate);
   const loadSymbolRegistry = useCurrencyStore((s) => s.loadSymbolRegistry);
   const detectCurrency = useCurrencyStore((s) => s.detect);
+
+  // True when the page was (re)loaded to apply a PWA update. The reload splash is
+  // kept visible until the app is fully initialized, then hidden without flicker.
+  const pendingReloadRef = useRef<boolean>(
+    typeof sessionStorage !== 'undefined' && sessionStorage.getItem(PENDING_RELOAD_KEY) === '1',
+  );
+  const pendingReload = pendingReloadRef.current;
+  const [reloadSplashDismissed, setReloadSplashDismissed] = useState(false);
+  const appReady = !isLoading && appSettingsLoaded;
 
   useEffect(() => {
     initTheme();
@@ -484,6 +495,22 @@ function AppContent() {
     if (!isLoading) void fetchAppearance();
   }, [isLoading, fetchAppearance]);
 
+  // After a PWA reload: keep the persistent splash visible until boot completes,
+  // then fade it out (`.hidden` triggers the inline CSS opacity transition) and
+  // clear the pending flag so future reloads behave normally.
+  useEffect(() => {
+    if (!pendingReload || !appReady) return;
+    const el = document.getElementById('cz-initial-splash');
+    if (el) el.classList.add('hidden');
+    try {
+      sessionStorage.removeItem(PENDING_RELOAD_KEY);
+    } catch {
+      /* ignore */
+    }
+    const t = setTimeout(() => setReloadSplashDismissed(true), 400);
+    return () => clearTimeout(t);
+  }, [pendingReload, appReady]);
+
   const navigate = useNavigate();
   useEffect(() => {
     const handler = () => navigate('/login', { replace: true });
@@ -492,6 +519,10 @@ function AppContent() {
   }, [navigate]);
 
   if (isLoading) {
+    // During a pending PWA reload keep the inline splash (now showing the
+    // spinner + "Loading latest version..." message) instead of the animated
+    // startup splash, so there is no blank flash mid-reload.
+    if (pendingReload && !reloadSplashDismissed) return null;
     return <BrandedSplash />;
   }
 

@@ -1,6 +1,7 @@
 import { ledgerRepository } from '../infrastructure/repositories/ledger.repository.js';
 import { createLedgerPair, validateLedgerBalance } from '../domain/ledger-aggregate.js';
 import type { LedgerEntry, SourceType, AccountType } from '../domain/ledger-aggregate.js';
+import type mysql from 'mysql2/promise';
 import { eventBusV2 } from '../../../shared/event-bus/event-bus.v2.js';
 
 export class LedgerService {
@@ -13,6 +14,7 @@ export class LedgerService {
     amount: number,
     currency: string,
     description: string,
+    conn?: mysql.PoolConnection,
   ): Promise<LedgerEntry[]> {
     const entries = createLedgerPair(transactionId, sourceType, sourceId, debitAccount, creditAccount, amount, currency, description);
 
@@ -20,7 +22,7 @@ export class LedgerService {
       throw new Error('Ledger entries are not balanced');
     }
 
-    await ledgerRepository.createEntries(entries);
+    await ledgerRepository.createEntries(entries, conn);
 
     eventBusV2.emit('ledger.entry.created', {
       transactionId, sourceType, sourceId, amount, currency,
