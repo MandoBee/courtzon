@@ -2,6 +2,7 @@ import { membershipRepository } from '../infrastructure/repositories/membership.
 import { calculateTier, calculatePoints, isMembershipActive, getTierConfig } from '../domain/membership-aggregate.js';
 import type { Membership, LoyaltyPoints, MembershipPlan, Campaign, RewardCatalog } from '../domain/membership-aggregate.js';
 import { eventBusV2 } from '../../../shared/event-bus/event-bus.v2.js';
+import { toMySqlDateTime } from '../../../shared/utils/mysql-date.js';
 
 export class MembershipService {
   // ── Plans ──
@@ -24,8 +25,8 @@ export class MembershipService {
 
     const membership: Membership = {
       userId, planId, status: 'active',
-      startDate: startDate.toISOString(),
-      endDate: endDate.toISOString(),
+      startDate: toMySqlDateTime(startDate),
+      endDate: toMySqlDateTime(endDate),
       creditsUsed: 0, sessionsUsed: 0, autoRenew: false,
       aggregateVersion: 1,
     };

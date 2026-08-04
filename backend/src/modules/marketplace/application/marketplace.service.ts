@@ -13,6 +13,7 @@ import { getPlanNumericLimit } from '../../organisations/application/plan-limits
 import { userRepository } from '../../auth/infrastructure/repositories/user.repository.js';
 import { createModuleLogger } from '../../../shared/utils/logger.js';
 import { eventBusV2 } from '../../../shared/event-bus/index.js';
+import { toMySqlDateTime } from '../../../shared/utils/mysql-date.js';
 
 const log = createModuleLogger('marketplace');
 
@@ -1569,7 +1570,7 @@ export const marketplaceService = {
   // Cancels pending marketplace orders where payment was never completed.
   // Runs as a scheduled cron job. Idempotent: safe to run multiple times.
   async cancelAbandonedOrders(timeoutMinutes: number = 30) {
-    const cutoff = new Date(Date.now() - timeoutMinutes * 60_000).toISOString().slice(0, 19).replace('T', ' ');
+    const cutoff = toMySqlDateTime(new Date(Date.now() - timeoutMinutes * 60_000));
     log.info({ timeoutMinutes, cutoff }, 'cancelAbandonedOrders — starting');
 
     const rows = await repo.findAbandonedPendingOrders(cutoff);

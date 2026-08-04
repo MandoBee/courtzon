@@ -1,6 +1,7 @@
 import { createModuleLogger } from '../../../shared/utils/logger.js';
 import { queueService } from '../../../infrastructure/queue/queue.service.js';
 import { getPool } from '../../../database/mysql.js';
+import { toMySqlDateTime } from '../../../shared/utils/mysql-date.js';
 
 const log = createModuleLogger('digest-scheduler');
 
@@ -28,7 +29,7 @@ export async function processDigest(frequency: DigestFrequency): Promise<void> {
      GROUP BY n.user_id
      HAVING notification_count > 0
      LIMIT 500`,
-    [since.toISOString()],
+    [toMySqlDateTime(since)],
   );
 
   for (const row of rows) {

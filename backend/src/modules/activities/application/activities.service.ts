@@ -13,6 +13,7 @@ import { confirmBookingHandler } from '../../booking/commands/confirm-booking.co
 import { cancelBookingHandler } from '../../booking/commands/cancel-booking.command.js';
 import { CancellationReason } from '../../../platform/shared/booking-types.js';
 import type { Command } from '../../../shared/command/command-base.js';
+import { toMySqlDateTime } from '../../../shared/utils/mysql-date.js';
 
 type RowData = mysql.RowDataPacket[];
 
@@ -468,10 +469,10 @@ export const activitiesService = {
           total_amount, commission_amount, club_amount,
           booking_status, payment_status, notes)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [generateUUID(), userId, session.organisation_id || null, session.branch_id || null, data.resourceId,
-         'coach_session', bookingDate, businessDate, startTime, endTime,
-         String(startAtUtc).replace('T', ' ').replace(/\.\d+Z$/, ''),
-         String(endAtUtc).replace('T', ' ').replace(/\.\d+Z$/, ''),
+         [generateUUID(), userId, session.organisation_id || null, session.branch_id || null, data.resourceId,
+          'coach_session', bookingDate, businessDate, startTime, endTime,
+          toMySqlDateTime(new Date(startAtUtc)),
+          toMySqlDateTime(new Date(endAtUtc)),
          courtTotal, commissionAmount, clubAmount, 'pending', 'pending', `Coach session #${sessionId}`]
       );
       const bookingId = (result as any).insertId;

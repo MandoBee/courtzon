@@ -17,6 +17,7 @@ import type mysql from 'mysql2/promise';
 import { eventBusV2 } from '../../../shared/event-bus/event-bus.v2.js';
 import { commandPipeline } from '../../../shared/command/command-pipeline.js';
 import { isFeatureEnabled, setFeatureFlag } from '../../../shared/utils/feature-flags.js';
+import { toMySqlDateTime } from '../../../shared/utils/mysql-date.js';
 import { createBookingHandler, type CreateBookingPayload } from '../commands/create-booking.command.js';
 import { confirmBookingHandler, type ConfirmBookingPayload } from '../commands/confirm-booking.command.js';
 import { cancelBookingHandler, type CancelBookingPayload } from '../commands/cancel-booking.command.js';
@@ -171,7 +172,7 @@ export class BookingService {
 
         // Create booking with pending_payment status + expires_at (3 min TTL)
         // The booking blocks availability immediately. Expiry worker auto-cancels if payment not confirmed.
-        const expiresAt = new Date(Date.now() + 3 * 60 * 1000).toISOString().replace('T', ' ').replace(/\.\d+Z$/, '');
+        const expiresAt = toMySqlDateTime(new Date(Date.now() + 3 * 60 * 1000));
         const bookingId = await bookingRepository.create({
           userId, branchId: input.branchId, organisationId, resourceId: input.resourceId,
         bookingType: input.bookingType || 'public_match', bookingDate,

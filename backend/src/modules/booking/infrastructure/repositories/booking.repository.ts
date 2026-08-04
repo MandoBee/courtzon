@@ -4,6 +4,7 @@ import { generateUUID, generateQRToken } from '../../../../shared/utils/token.js
 import { ConflictError } from '../../../../shared/errors/app-error.js';
 import type { RowDataPacket, ResultSetHeader } from 'mysql2';
 import { aggregateVersionConflictsTotal } from '../../../../infrastructure/metrics/metrics.js';
+import { toMySqlDateTime } from '../../../../shared/utils/mysql-date.js';
 
 type RowData = RowDataPacket[];
 type Executor = mysql.Pool | mysql.PoolConnection;
@@ -45,8 +46,8 @@ export class BookingRepository {
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
        [generateUUID(), data.userId, data.organisationId, data.branchId, data.resourceId, data.bookingType,
         data.bookingDate, data.businessDate || data.bookingDate, data.startTime, data.endTime,
-        data.startAtUtc ? data.startAtUtc.replace('T', ' ').replace(/\.\d+Z$/, '') : null,
-        data.endAtUtc ? data.endAtUtc.replace('T', ' ').replace(/\.\d+Z$/, '') : null,
+        data.startAtUtc ? toMySqlDateTime(new Date(data.startAtUtc)) : null,
+        data.endAtUtc ? toMySqlDateTime(new Date(data.endAtUtc)) : null,
        data.totalAmount, data.commissionAmount || 0, data.clubAmount || 0,
        data.bookingStatus || 'pending', data.paymentStatus || 'pending', data.paymentMethod || null, data.notes || null,
        data.expiresAt || null]

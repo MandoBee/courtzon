@@ -1,3 +1,5 @@
+import { nowMySql } from '../../../shared/utils/mysql-date.js';
+
 export type AccountType =
   | 'platform_revenue' | 'club_revenue' | 'wallet_liability'
   | 'customer_balance' | 'tax' | 'discount' | 'commission'
@@ -66,7 +68,7 @@ export function createLedgerPair(
   description: string,
 ): [LedgerEntry, LedgerEntry] {
   if (amount <= 0) throw new Error('Amount must be positive');
-  const now = new Date().toISOString();
+  const now = nowMySql();
   return [
     { transactionId, sourceType, sourceId, accountType: debitAccount, side: 'debit', amount, currency, description, recordedAt: now },
     { transactionId, sourceType, sourceId, accountType: creditAccount, side: 'credit', amount, currency, description, recordedAt: now },
