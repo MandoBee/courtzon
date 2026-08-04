@@ -654,3 +654,74 @@ Administrative configuration changes tracked via `recordAudit()`. Template chang
 ### 10. Feature Readiness
 
 No future feature merges without an approved Notification Strategy. The 12-question checklist above is part of the Definition of Done. The Notification Platform is a permanent platform service — every future module integrates through Domain Events only. No exceptions.
+
+## ⚠️ PERMANENT: Database Relationship & Historical Data Policy
+
+### Architecture Decision Record
+
+**Principle:** Deleting a business entity must never destroy its immutable transaction history. Financial and audit records have higher priority than referential cleanup.
+
+### 1. Strong Referential Integrity (CASCADE)
+
+Entities that form a logical unit. Deleting the parent must clean up children.
+
+| Pattern | Examples |
+|---------|----------|
+| `{entity}_profiles → users` | coach_profiles, referees, professional_profiles, player_profiles, seller_profiles — all CASCADE on user delete |
+| `{child} → {parent}` in same aggregate | booking_slots → bookings, league_matches → league_divisions, tournament_matches → tournaments, academy_sessions → academies |
+| `{actor}_availability → {actor}` | coach_availability → coach_profiles, referee_availability → referees |
+| `role_permissions → roles` | Permission assignments must be cleaned up when a role is deleted |
+| `user_roles → users` | Role assignments cleaned up when user deleted |
+
+**187 CASCADE FKs across 180+ tables** — the standard pattern for entity composition.
+
+### 2. Immutable Historical References (No destructive FK)
+
+Financial records, audit trails, and delivery logs intentionally preserve history. The parent ID is a loose audit reference — **never cascade-deleted**.
+
+| Table | Loose Reference | Rationale |
+|-------|----------------|-----------|
+| `wallet_transactions` | `wallet_id` → `user_wallets` | Deleting a wallet must not destroy its transaction history — accounting records are permanent |
+| `payment_transactions` | `booking_id` → `bookings` | A cancelled booking's payment history must remain traceable for settlements and disputes |
+| `notification_delivery` | `notification_id` → `notifications` | Delivery analytics must survive notification deletion — metrics and SLA tracking depend on it |
+| `notification_audit_trail` | `notification_id` | 20 life-cycle events per notification — audit trail is permanent |
+| `notification_analytics` | `notification_id` | Per-channel analytics retained independently for reporting |
+| `notification_dead_letter_queue` | `notification_id` | Dead letter history for troubleshooting |
+| `audit_logs` | `entity_type` + `entity_id` | Pattern-based — no FK. Audits every entity change; must survive entity deletion |
+| `financial_journal_entries` | `reference_type` + `reference_id` | Double-entry ledger — permanent by legal requirement |
+
+**Rule:** Never add ON DELETE CASCADE to any of these tables. The loose references are intentional and correct.
+
+### 3. Soft References (SET NULL)
+
+Optional associations that may legitimately disappear. Preferred over CASCADE when the child record has independent meaning.
+
+| Pattern | Examples |
+|---------|----------|
+| `{entity}.branch_id → branches` | bookings, coach_sessions, academies, tournaments — branch may be removed but the booking/session/academy record stays |
+| `{entity}.organisation_id → organisations` | coach_sessions, community_events, seller_profiles — org may close but historical records remain |
+| `{entity}.resource_id → resources` | coach_sessions, tournament_matches, academy_sessions — court may be decommissioned but match history stays |
+| `user_sessions.device_id → user_devices` | Device may be deregistered — session record remains for audit |
+
+**90 SET NULL FKs** — the preferred pattern for optional associations.
+
+### 4. Snapshot Data (no FK, copied at transaction time)
+
+Data intentionally copied at the time of the transaction to preserve historical accuracy.
+
+| Examples |
+|----------|
+| Order prices — snapshot at purchase time, not live product price |
+| Booking totals — captured at confirmation, not recomputed |
+| Payment gateway responses — full response body preserved |
+| Customer names on orders — remains even if user changes name |
+| Session duration/pricing on coach_sessions — preserved at booking time |
+
+### Rules for Future Development
+
+1. **New entity children → CASCADE.** If creating a table that logically belongs to a parent (e.g. `trainer_availability → trainer_profiles`), use CASCADE.
+2. **New financial/audit records → NO destructive FK.** Wallet transaction logs, payment records, audit logs, delivery records, and analytics must never cascade-delete.
+3. **New optional associations → SET NULL.** If the child can exist independently of the parent, use SET NULL.
+4. **New snapshots → copy at transaction time.** Prices, names, totals that must reflect historical state should be copied into the transaction row.
+5. **Never add CASCADE to existing historical tables.** The current design is intentional. Test cleanup issues are a test framework concern, not a schema concern.
+6. **Test frameworks must clean their own data.** Do not add production schema changes to accommodate test cleanup. Use transaction rollback, per-test databases, or deterministic fixtures.
