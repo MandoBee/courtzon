@@ -13,12 +13,41 @@ export interface RegistryTranslationKey {
   componentPath?: string;
 }
 
-/** Parse export const translationKeysRegistry from the frontend registry file. */
+/** Resolve the registry file path — prefers build-time JSON artifact, falls back to TS source. */
+function resolveRegistryPath(registryPath?: string): string {
+  if (registryPath) return registryPath;
+
+  // Build-time artifact (in dist/generated/ at runtime)
+  const artifactPath = resolve(__dirname, '../../generated/translation-keys.json');
+  try {
+    readFileSync(artifactPath, 'utf8');
+    return artifactPath;
+  } catch { /* fall through */ }
+
+  // Docker path (frontend registry copied into backend image)
+  const dockerPath = resolve('/app', 'frontend-registry.ts');
+  try {
+    readFileSync(dockerPath, 'utf8');
+    return dockerPath;
+  } catch { /* fall through */ }
+
+  // Development path (backend runs next to frontend source)
+  return resolve(__dirname, '../../../../../frontend/src/i18n/translation-keys.registry.ts');
+}
+
+/** Parse export const translationKeysRegistry from the registry file (TS or JSON). */
 export function parseTranslationKeysRegistry(registryPath?: string): RegistryTranslationKey[] {
-  const path =
-    registryPath ||
-    resolve(__dirname, '../../../../../frontend/src/i18n/translation-keys.registry.ts');
+  const path = resolveRegistryPath(registryPath);
   const content = readFileSync(path, 'utf8');
+
+  // JSON artifact format
+  if (path.endsWith('.json')) {
+    const entries = JSON.parse(content) as RegistryTranslationKey[];
+    if (!entries.length) throw new Error(`Empty JSON artifact at ${path}`);
+    return entries;
+  }
+
+  // TS source format
   const entryRe =
     /\{\s*key:\s*['"]([^'"]+)['"],\s*defaultValue:\s*(['"])((?:\\.|(?!\2).)*)\2,\s*moduleSlug:\s*['"]([^'"]+)['"],\s*elementType:\s*['"]([^'"]+)['"],\s*elementLabel:\s*(['"])((?:\\.|(?!\6).)*)\6(?:,\s*componentPath:\s*['"]([^'"]*)['"])?\s*\}/g;
 
