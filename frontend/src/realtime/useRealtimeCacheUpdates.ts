@@ -165,6 +165,28 @@ export function useRealtimeCacheUpdates(): void {
     qc.invalidateQueries({ queryKey: ['coach-availability'] });
   });
 
+  // ── Coach lifecycle events ─────────────────────────────────────
+  const coachLifecycleEvents = [
+    'coach.application-approved', 'coach.application-rejected',
+    'coach.verified', 'coach.platform-activated', 'coach.platform-suspended',
+    'coach.platform-deactivated', 'coach.availability-changed',
+    'coach.invited', 'coach.agreement-added',
+    'coach.org-accepted', 'coach.org-rejected', 'coach.org-suspended',
+    'coach.org-resumed', 'coach.org-ended',
+    'coach.invite-accepted', 'coach.invite-rejected',
+  ];
+
+  for (const eventName of coachLifecycleEvents) {
+    useSocketEvent(eventName, () => {
+      qc.invalidateQueries({ queryKey: ['me'] });
+      qc.invalidateQueries({ queryKey: ['admin-coaches'] });
+      qc.invalidateQueries({ queryKey: ['admin', 'user'] });
+      qc.invalidateQueries({ queryKey: ['my-coach-agreements'] });
+      qc.invalidateQueries({ queryKey: ['org-coaches'] });
+      qc.invalidateQueries({ queryKey: ['coach-profile'] });
+    });
+  }
+
   // ── Attendance events ──────────────────────────────────────────
   useSocketEvent('attendance.updated', () => {
     qc.invalidateQueries({ queryKey: ['attendance'] });

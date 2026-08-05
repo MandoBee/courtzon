@@ -840,7 +840,7 @@ export const activitiesRepository = {
   // ── Admin: Coaches ──
   async findCoachesAdmin(filters: { page: number; limit: number }) {
     const pool = getPool();
-    const sql = `SELECT cp.id, cp.user_id, cp.status, cp.status AS coach_status, cp.is_verified,
+    const sql = `SELECT cp.id, cp.user_id, cp.status, cp.status AS coach_status, cp.platform_status, cp.is_verified,
                         cp.rejected_reason, u.full_name, u.email, ${PROFESSIONAL_PROFILE_SELECT},
                         ${PROFESSIONAL_SERVICE_PRICE_SELECT}
                  FROM coach_profiles cp

@@ -33,9 +33,21 @@ export default function CoachAdminPage() {
     onError: (err: any) => showToast('Failed: ' + getErrorMessage(err), 'error'),
   });
 
-  const deleteMutation = useMutation({
-    mutationFn: (id: number) => api.delete(`/coaches/${id}`),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['admin-coaches'] }); showToast('Deleted!'); },
+  const suspendMutation = useMutation({
+    mutationFn: (userId: number) => api.patch(`/admin/users/${userId}/coach/suspend`),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['admin-coaches'] }); showToast('Coach suspended.'); },
+    onError: (err: any) => showToast('Failed: ' + getErrorMessage(err), 'error'),
+  });
+
+  const reactivateMutation = useMutation({
+    mutationFn: (userId: number) => api.patch(`/admin/users/${userId}/coach/reactivate`),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['admin-coaches'] }); showToast('Coach reactivated.'); },
+    onError: (err: any) => showToast('Failed: ' + getErrorMessage(err), 'error'),
+  });
+
+  const deactivateMutation = useMutation({
+    mutationFn: (userId: number) => api.patch(`/admin/users/${userId}/coach/deactivate`),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['admin-coaches'] }); showToast('Coach deactivated.'); },
     onError: (err: any) => showToast('Failed: ' + getErrorMessage(err), 'error'),
   });
 
@@ -61,6 +73,7 @@ export default function CoachAdminPage() {
               <th className="text-left px-3 py-2">Name</th>
               <th className="text-left px-3 py-2">Email</th>
               <th className="text-center px-3 py-2">Status</th>
+              <th className="text-center px-3 py-2">Platform</th>
               <th className="text-center px-3 py-2">Rating</th>
               <th className="text-center px-3 py-2">Verified</th>
               <th className="text-center px-3 py-2">Available</th>
@@ -69,7 +82,7 @@ export default function CoachAdminPage() {
             </tr>
           </thead>
           <tbody>
-            {isLoading && <tr><td colSpan={8} className="text-center py-4 text-xs text-[var(--color-text-muted)]">Loading...</td></tr>}
+            {isLoading && <tr><td colSpan={9} className="text-center py-4 text-xs text-[var(--color-text-muted)]">Loading...</td></tr>}
             {data?.data?.map((c: any) => (
               <tr key={c.id} className="border-b last:border-0 hover:bg-[var(--color-bg)] text-[var(--color-text)]">
                 <td className="px-3 py-2 font-medium">{c.full_name || '-'}</td>
@@ -78,12 +91,23 @@ export default function CoachAdminPage() {
                   {c.coach_status === 'pending' ? (
                     <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--color-warning-bg)] text-[var(--color-warning-text)] font-medium">Pending</span>
                   ) : c.coach_status === 'approved' ? (
-                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--color-success-bg)] text-[var(--color-success-text)] font-medium">Active</span>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--color-success-bg)] text-[var(--color-success-text)] font-medium">Approved</span>
                   ) : c.coach_status === 'rejected' ? (
                     <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--color-error-bg)] text-[var(--color-error-text)] font-medium">Rejected</span>
                   ) : (
                     <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--color-border)] text-[var(--color-text-muted)] font-medium">None</span>
                   )}
+                </td>
+                <td className="px-3 py-2 text-center">
+                  {c.coach_status === 'approved' ? (
+                    c.platform_status === 'suspended' ? (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--color-warning-bg)] text-[var(--color-warning-text)] font-medium">Suspended</span>
+                    ) : c.platform_status === 'deactivated' ? (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--color-error-bg)] text-[var(--color-error-text)] font-medium">Deactivated</span>
+                    ) : (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--color-success-bg)] text-[var(--color-success-text)] font-medium">Active</span>
+                    )
+                  ) : <span className="text-[10px] text-[var(--color-text-muted)]">—</span>}
                 </td>
                 <td className="px-3 py-2 text-center text-xs">{c.rating_avg ? `${Number(c.rating_avg).toFixed(1)} (${c.rating_count})` : '-'}</td>
                 <td className="px-3 py-2 text-center"><span className={`inline-block w-2 h-2 rounded-full ${c.is_verified ? 'bg-[var(--color-success)]' : 'bg-yellow-300'}`} /></td>
@@ -104,18 +128,28 @@ export default function CoachAdminPage() {
                         className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--color-success-bg)] text-[var(--color-success-text)] hover:opacity-80 mr-1">Verify</button>
                     </Can>
                   )}
-                  <Can permission="coaches.toggle">
+                   <Can permission="coaches.toggle">
                     <button onClick={() => toggleMutation.mutate(c.id)}
                       className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--color-border)] text-[var(--color-text)] hover:bg-[var(--color-border)] mr-1">{c.is_available ? 'Disable' : 'Enable'}</button>
                   </Can>
-                  <Can permission="coaches.delete">
-                    <button onClick={() => { if (confirm('Delete?')) deleteMutation.mutate(c.id); }}
-                      className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--color-error-bg)] text-[var(--color-error-text)] hover:opacity-80">Delete</button>
-                  </Can>
+                  {c.coach_status === 'approved' && c.platform_status === 'active' && (
+                    <Can permission="coaches.approve">
+                      <button onClick={() => { if (confirm('Suspend?')) suspendMutation.mutate(c.user_id); }}
+                        className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--color-warning-bg)] text-[var(--color-warning-text)] hover:opacity-80 mr-1">Suspend</button>
+                      <button onClick={() => { if (confirm('Deactivate?')) deactivateMutation.mutate(c.user_id); }}
+                        className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--color-error-bg)] text-[var(--color-error-text)] hover:opacity-80">Deactivate</button>
+                    </Can>
+                  )}
+                  {c.coach_status === 'approved' && c.platform_status === 'suspended' && (
+                    <Can permission="coaches.approve">
+                      <button onClick={() => reactivateMutation.mutate(c.user_id)}
+                        className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--color-success-bg)] text-[var(--color-success-text)] hover:opacity-80">Reactivate</button>
+                    </Can>
+                  )}
                 </td>
               </tr>
             ))}
-            {data?.data?.length === 0 && <tr><td colSpan={8} className="text-center py-4 text-xs text-[var(--color-text-muted)]">No coaches.</td></tr>}
+            {data?.data?.length === 0 && <tr><td colSpan={9} className="text-center py-4 text-xs text-[var(--color-text-muted)]">No coaches.</td></tr>}
           </tbody>
         </table>
       </div>
