@@ -3686,7 +3686,7 @@ CREATE TABLE `user_sessions` (
   `ip_address` varchar(45) NOT NULL,
   `ip_country` varchar(100) DEFAULT NULL,
   `user_agent` text DEFAULT NULL,
-  `expires_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  `expires_at` timestamp NOT NULL DEFAULT current_timestamp(),
   `refresh_token_expires_at` timestamp NULL DEFAULT NULL,
   `last_activity_at` timestamp NOT NULL DEFAULT current_timestamp(),
   `is_revoked` tinyint(1) NOT NULL DEFAULT 0,
