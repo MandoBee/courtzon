@@ -60,6 +60,13 @@ export const UpdateProfileSchema = z.object({
   emergency_contact_name: z.string().max(200).optional(),
   emergency_contact_phone: z.string().max(50).optional(),
   emergency_contact_relation: z.string().max(100).optional(),
+  emergencyContacts: z.array(
+    z.object({
+      name: z.string().max(200),
+      phone: z.string().max(50),
+      relation: z.string().max(100).nullable().optional(),
+    }),
+  ).optional(),
   privacy_show_profile: z.boolean().optional(),
   privacy_show_stats: z.boolean().optional(),
   privacy_show_activity: z.boolean().optional(),

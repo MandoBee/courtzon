@@ -443,9 +443,35 @@ export class AuthService {
     if (input.mainLevelId !== undefined) profileData.mainLevelId = input.mainLevelId;
     if (input.playing_hand !== undefined) profileData.playingHand = input.playing_hand;
     if (input.bio !== undefined) profileData.bio = input.bio;
-    if (input.emergency_contact_name !== undefined) profileData.emergencyContactName = input.emergency_contact_name;
-    if (input.emergency_contact_phone !== undefined) profileData.emergencyContactPhone = input.emergency_contact_phone;
-    if (input.emergency_contact_relation !== undefined) profileData.emergencyContactRelation = input.emergency_contact_relation;
+
+    if (input.emergencyContacts !== undefined) {
+      await userRepository.replaceEmergencyContacts(userId, input.emergencyContacts);
+      const first = input.emergencyContacts[0];
+      profileData.emergencyContactName = first ? first.name ?? null : null;
+      profileData.emergencyContactPhone = first ? first.phone ?? null : null;
+      profileData.emergencyContactRelation = first ? first.relation ?? null : null;
+    } else {
+      if (input.emergency_contact_name !== undefined) profileData.emergencyContactName = input.emergency_contact_name;
+      if (input.emergency_contact_phone !== undefined) profileData.emergencyContactPhone = input.emergency_contact_phone;
+      if (input.emergency_contact_relation !== undefined) profileData.emergencyContactRelation = input.emergency_contact_relation;
+      const hasLegacyContact = Object.keys(profileData).some((k) =>
+        k.startsWith('emergencyContact') && profileData[k] !== undefined && profileData[k] !== ''
+      );
+      if (hasLegacyContact) {
+        await userRepository.replaceEmergencyContacts(userId, [{
+          name: profileData.emergencyContactName ?? '',
+          phone: profileData.emergencyContactPhone ?? '',
+          relation: profileData.emergencyContactRelation ?? null,
+        }]);
+      } else if (
+        input.emergency_contact_name !== undefined ||
+        input.emergency_contact_phone !== undefined ||
+        input.emergency_contact_relation !== undefined
+      ) {
+        await userRepository.replaceEmergencyContacts(userId, []);
+      }
+    }
+
     if (input.privacy_show_profile !== undefined) profileData.privacyShowProfile = input.privacy_show_profile;
     if (input.privacy_show_stats !== undefined) profileData.privacyShowStats = input.privacy_show_stats;
     if (input.privacy_show_activity !== undefined) profileData.privacyShowActivity = input.privacy_show_activity;
@@ -456,6 +482,14 @@ export class AuthService {
     if (input.interestedSportIds !== undefined) {
       await userRepository.setSportInterestIds(userId, input.interestedSportIds);
     }
+
+    recordAudit({
+      actorId: userId,
+      action: 'PROFILE.UPDATE',
+      entityType: 'user',
+      entityId: userId,
+      afterState: { fields: Object.keys(input) },
+    });
 
     return this.getProfile(userId);
   }
@@ -508,7 +542,8 @@ export class AuthService {
     const roles = await this.getUserRoles(userId);
     const permissions = await rbacRepository.getUserPermissionKeys(userId);
     const interestedSportIds = await userRepository.getSportInterestIds(userId);
-    return this.mapUserResponse(user, roles, permissions, interestedSportIds);
+    const emergencyContacts = await userRepository.getEmergencyContacts(userId);
+    return this.mapUserResponse(user, roles, permissions, interestedSportIds, emergencyContacts);
   }
 
   private async createSession(userId: number, meta: { ip: string; userAgent?: string; deviceFingerprint?: string }, rememberMe?: boolean): Promise<AuthResponse> {
@@ -555,8 +590,9 @@ export class AuthService {
     const roles = await this.getUserRoles(userId);
     const permissions = await rbacRepository.getUserPermissionKeys(userId);
     const interestedSportIds = await userRepository.getSportInterestIds(userId);
+    const emergencyContacts = await userRepository.getEmergencyContacts(userId);
     return {
-      user: this.mapUserResponse(user, roles, permissions, interestedSportIds),
+      user: this.mapUserResponse(user, roles, permissions, interestedSportIds, emergencyContacts),
       session: {
         sessionToken,
         refreshToken,
@@ -634,7 +670,22 @@ export class AuthService {
     return userRepository.getPlayerProfileFull(userId);
   }
 
-  private mapUserResponse(user: any, roles: string[] = [], permissions: string[] = [], interestedSportIds: number[] = []) {
+  private mapUserResponse(
+    user: any,
+    roles: string[] = [],
+    permissions: string[] = [],
+    interestedSportIds: number[] = [],
+    emergencyContacts: { name: string; phone: string; relation: string | null }[] = [],
+  ) {
+    const contacts = emergencyContacts.length
+      ? emergencyContacts
+      : user.emergency_contact_name || user.emergency_contact_phone
+        ? [{
+            name: user.emergency_contact_name || '',
+            phone: user.emergency_contact_phone || '',
+            relation: user.emergency_contact_relation || null,
+          }]
+        : [];
     return {
       id: user.id,
       publicId: user.public_id,
@@ -661,6 +712,7 @@ export class AuthService {
       emergency_contact_name: user.emergency_contact_name || null,
       emergency_contact_phone: user.emergency_contact_phone || null,
       emergency_contact_relation: user.emergency_contact_relation || null,
+      emergencyContacts: contacts,
       privacy_show_profile: user.privacy_show_profile !== undefined ? !!user.privacy_show_profile : true,
       privacy_show_stats: user.privacy_show_stats !== undefined ? !!user.privacy_show_stats : true,
       privacy_show_activity: user.privacy_show_activity !== undefined ? !!user.privacy_show_activity : true,

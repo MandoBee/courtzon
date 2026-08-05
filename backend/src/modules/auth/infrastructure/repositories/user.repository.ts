@@ -303,6 +303,28 @@ export class UserRepository {
     );
   }
 
+  async getEmergencyContacts(userId: number): Promise<{ name: string; phone: string; relation: string | null }[]> {
+    const [rows] = await this.pool.execute<RowData>(
+      `SELECT name, phone, relation FROM player_emergency_contacts WHERE user_id = ? ORDER BY id ASC`,
+      [userId]
+    );
+    return (rows as any[]).map((r) => ({ name: r.name, phone: r.phone, relation: r.relation }));
+  }
+
+  async replaceEmergencyContacts(
+    userId: number,
+    contacts: { name: string; phone: string; relation?: string | null }[],
+  ): Promise<void> {
+    await this.pool.execute(`DELETE FROM player_emergency_contacts WHERE user_id = ?`, [userId]);
+    if (!contacts.length) return;
+    const values = contacts.map(() => '(?, ?, ?, ?)').join(', ');
+    const params = contacts.flatMap((c) => [userId, c.name || '', c.phone || '', c.relation || null]);
+    await this.pool.execute(
+      `INSERT INTO player_emergency_contacts (user_id, name, phone, relation) VALUES ${values}`,
+      params
+    );
+  }
+
   async markWelcomeSeen(userId: number): Promise<void> {
     await this.pool.execute(
       `UPDATE users SET has_seen_welcome = 1 WHERE id = ?`,

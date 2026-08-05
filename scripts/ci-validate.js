@@ -195,6 +195,9 @@ if (sqlOK) pass('All SQL is confined to repositories');
 
 // ─── 11. Architecture: No eventBus imports from modules (use eventBusV2) ───
 console.log('\n11. Architecture: Modules must use eventBusV2, not legacy eventBus');
+const moduleDirs = walkDir(join(backendSrc, 'modules')).filter(
+  f => f.endsWith('.ts') && !f.endsWith('.d.ts') && !f.includes('__tests__') && !f.includes('.integration.')
+);
 let eventBusOK = true;
 for (const file of moduleDirs) {
   const content = readFileSync(file, 'utf-8');

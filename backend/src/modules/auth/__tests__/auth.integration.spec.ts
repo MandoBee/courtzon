@@ -183,6 +183,47 @@ describe('Auth Integration', () => {
     expect(updated.darkMode).toBe('dark');
   });
 
+  it('should save and load multiple emergency contacts', async () => {
+    const result: AuthResponse = await authService.login(
+      { phoneNumber: '05000000001',
+        countryCode: '+971', password: 'test123456' },
+      { ip: '127.0.0.1' }
+    );
+
+    const updated = await authService.updateProfile(result.user.id, {
+      emergencyContacts: [
+        { name: 'Mother', phone: '0501111111', relation: 'Mother' },
+        { name: 'Father', phone: '0502222222', relation: 'Father' },
+      ],
+    });
+
+    expect(updated.emergencyContacts).toHaveLength(2);
+    expect(updated.emergencyContacts[0].name).toBe('Mother');
+    expect(updated.emergencyContacts[1].relation).toBe('Father');
+
+    const reloaded = await authService.getProfile(result.user.id);
+    expect(reloaded.emergencyContacts).toHaveLength(2);
+    expect(reloaded.emergency_contact_name).toBe('Mother');
+  });
+
+  it('should keep legacy emergency contact columns in sync', async () => {
+    const result: AuthResponse = await authService.login(
+      { phoneNumber: '05000000001',
+        countryCode: '+971', password: 'test123456' },
+      { ip: '127.0.0.1' }
+    );
+
+    const updated = await authService.updateProfile(result.user.id, {
+      emergency_contact_name: 'Sibling',
+      emergency_contact_phone: '0503333333',
+      emergency_contact_relation: 'Sibling',
+    });
+
+    expect(updated.emergency_contact_name).toBe('Sibling');
+    expect(updated.emergencyContacts).toHaveLength(1);
+    expect(updated.emergencyContacts[0].name).toBe('Sibling');
+  });
+
   it('should logout and invalidate session', async () => {
     const result: AuthResponse = await authService.register(
       {
