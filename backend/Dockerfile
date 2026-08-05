@@ -16,6 +16,9 @@ WORKDIR /app
 
 RUN apk add --no-cache tini su-exec netcat-openbsd mysql-client
 
+# Copy frontend registry for translation key sync at startup
+COPY frontend/src/i18n/translation-keys.registry.ts ./frontend-registry.ts
+
 COPY backend/package.json backend/package-lock.json ./
 COPY packages/ /packages/
 RUN npm ci --omit=dev --ignore-scripts && npm cache clean --force
