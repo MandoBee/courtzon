@@ -299,7 +299,6 @@ export default function ProfilePage() {
   const [coachExp, setCoachExp] = useState('');
   const [coachRate, setCoachRate] = useState('');
   const [coachSports, setCoachSports] = useState<number[]>([]);
-  const [coachDurations, setCoachDurations] = useState<number[]>([]);
   const [coachCerts, setCoachCerts] = useState<{ name: string; url: string }[]>([]);
   const [coachCertUploading, setCoachCertUploading] = useState(false);
 
@@ -308,8 +307,8 @@ export default function ProfilePage() {
       bio: coachBio || undefined,
       experienceYears: coachExp ? Number(coachExp) : undefined,
       hourlyRate: coachRate ? Number(coachRate) : undefined,
+      currencyCode: user?.defaultCurrency || 'EGP',
       sports: coachSports.length ? coachSports : undefined,
-      sessionDurations: coachDurations.length ? coachDurations : undefined,
       certifications: coachCerts.length ? coachCerts : undefined,
     });
   }
@@ -337,7 +336,6 @@ export default function ProfilePage() {
     setCoachExp('');
     setCoachRate('');
     setCoachSports([]);
-    setCoachDurations([]);
     setCoachCerts([]);
     setShowCoachModal(true);
   }
@@ -1077,26 +1075,6 @@ export default function ProfilePage() {
                 <option key={s.id} value={s.id}>{s.name}</option>
               ))}
             </select>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-[var(--color-text)] mb-2">{t('profile.coach.session_durations')}</label>
-            <div className="flex flex-wrap gap-2">
-              {[30, 45, 60, 90].map((d) => (
-                <label
-                  key={d}
-                  className={`flex items-center gap-2 text-sm cursor-pointer border rounded-[var(--radius-md)] px-3 py-2 transition-colors ${coachDurations.includes(d) ? 'border-[var(--color-primary)] bg-[var(--color-primary)]/5' : 'border-[var(--color-border)] hover:border-[var(--color-primary)]'}`}
-                >
-                  <input
-                    type="checkbox"
-                    checked={coachDurations.includes(d)}
-                    onChange={() => setCoachDurations((prev) => prev.includes(d) ? prev.filter((v) => v !== d) : [...prev, d])}
-                    className="w-4 h-4"
-                  />
-                  <span>{d} min</span>
-                </label>
-              ))}
-            </div>
           </div>
 
           <div>
