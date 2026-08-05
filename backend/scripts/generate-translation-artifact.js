@@ -7,7 +7,19 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const registryPath = resolve(__dirname, '../../frontend/src/i18n/translation-keys.registry.ts');
+
+// In local dev: backend/scripts/ → ../../frontend/src/i18n/ (two levels up)
+// In Docker builder: /app/scripts/ → ../frontend/src/i18n/ (one level up)
+const paths = [
+  resolve(__dirname, '../../frontend/src/i18n/translation-keys.registry.ts'),
+  resolve(__dirname, '../frontend/src/i18n/translation-keys.registry.ts'),
+];
+
+let registryPath = '';
+for (const p of paths) {
+  try { readFileSync(p, 'utf8'); registryPath = p; break; } catch {}
+}
+if (!registryPath) throw new Error(`Registry not found at: ${paths.join(', ')}`);
 const outDir = resolve(__dirname, '../generated');
 const outPath = resolve(outDir, 'translation-keys.json');
 
