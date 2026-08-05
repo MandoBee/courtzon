@@ -325,7 +325,7 @@ export default function OrganizationRegisterPage() {
                     Next
                   </button>
                 ) : (
-                  <button onClick={handleSubmit} disabled={submitting || !agreed}
+                  <button type="button" onClick={handleSubmit} disabled={submitting || !agreed}
                     className="px-6 py-2.5 text-sm font-semibold text-white bg-[var(--gradient-primary)] rounded-xl disabled:opacity-40 hover:opacity-90 transition-all">
                     {submitting ? 'Submitting...' : 'Submit Registration'}
                   </button>
