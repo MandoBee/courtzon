@@ -230,6 +230,14 @@ export async function getUserBookingsHandler(request: FastifyRequest, reply: Fas
   return reply.send({ data: bookings });
 }
 
+export async function getUserCoachHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { id } = request.params as any;
+  const ok = await assertUserCountryAccess((request as any).userId, Number(id), reply);
+  if (!ok) return;
+  const coach = await rbacService.getUserCoach(Number(id));
+  return reply.send({ data: coach });
+}
+
 export async function getUserAcademyEnrollmentsHandler(request: FastifyRequest, reply: FastifyReply) {
   const { id } = request.params as any;
   const ok = await assertUserCountryAccess((request as any).userId, Number(id), reply);

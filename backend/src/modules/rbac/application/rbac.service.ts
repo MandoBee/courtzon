@@ -244,6 +244,22 @@ export class RBACService {
     return rbacRepository.getUserBookings(userId);
   }
 
+  async getUserCoach(userId: number) {
+    const { activitiesRepository } = await import('../../activities/infrastructure/repositories/activities.repository.js');
+    const coach = await activitiesRepository.findCoachByUserId(userId);
+    if (!coach) return null;
+    const coachId = coach.id;
+    const [agreements, availability, blackouts, reviews, sessions, summary] = await Promise.all([
+      activitiesRepository.listOrgAgreements(coachId),
+      activitiesRepository.getCoachAvailability(coachId),
+      activitiesRepository.getCoachBlackouts(coachId),
+      activitiesRepository.listCoachReviews(coachId),
+      activitiesRepository.findCoachSessions({ coachId, page: 1, limit: 500 }),
+      activitiesRepository.getCoachSummary(coachId),
+    ]);
+    return { coach, agreements, availability, blackouts, reviews, sessions, summary };
+  }
+
   async getUserAcademyEnrollments(userId: number) {
     return rbacRepository.getUserAcademyEnrollments(userId);
   }

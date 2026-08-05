@@ -6,6 +6,7 @@ import { Button, Spinner, EntityImage, PasswordInput } from '../../../components
 import { Can } from '../../../permissions/Can';
 import { useToast } from '../../../components/ui/Toast';
 import { formatISODate } from '../../../utils/formatDate';
+import CoachTab from './CoachTab';
 
 interface UserEditModalProps {
   userId: number;
@@ -83,6 +84,12 @@ export default function UserEditModal({ userId, onClose }: UserEditModalProps) {
     queryKey: ['admin', 'user', userId, 'notification-preferences'],
     queryFn: () => api.get(`/admin/users/${userId}/notification-preferences`).then((r: any) => r.data.data),
     enabled: activeTab === 'settings',
+  });
+
+  const { data: coachData } = useQuery({
+    queryKey: ['admin', 'user', userId, 'coach'],
+    queryFn: () => api.get(`/admin/users/${userId}/coach`).then((r: any) => r.data.data),
+    enabled: activeTab === 'coach',
   });
 
   const { data: activity } = useQuery({
@@ -203,6 +210,7 @@ export default function UserEditModal({ userId, onClose }: UserEditModalProps) {
   const tabs = [
     { key: 'profile', label: 'Profile' },
     { key: 'settings', label: 'Settings' },
+    { key: 'coach', label: 'Coach' },
     { key: 'roles', label: 'Roles & Orgs' },
     { key: 'branch-access', label: 'Branch Access' },
     { key: 'bookings', label: 'Bookings' },
@@ -265,6 +273,7 @@ export default function UserEditModal({ userId, onClose }: UserEditModalProps) {
           {tabs.map((tab: any) => {
             const tabPerms: Record<string, string> = {
               settings: 'users.view-activity',
+              coach: 'users.view-coach',
               bookings: 'users.view-bookings',
               academies: 'users.view-bookings',
               orders: 'users.view-orders',
@@ -311,7 +320,7 @@ export default function UserEditModal({ userId, onClose }: UserEditModalProps) {
                 </Can>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
                 <div>
                   <label className="block text-xs text-[var(--color-text-muted)] mb-1">Country</label>
                   <select value={form.countryId || ''} onChange={(e: any) => set('countryId', e.target.value ? Number(e.target.value) : '')}
@@ -322,7 +331,7 @@ export default function UserEditModal({ userId, onClose }: UserEditModalProps) {
                     ))}
                   </select>
                 </div>
-                <div className="md:col-span-2">
+                <div>
                   <label className="block text-xs text-[var(--color-text-muted)] mb-1">Timezone</label>
                   <p className="text-sm font-medium text-[var(--color-text)] pt-2">{user?.timezone || '—'}</p>
                 </div>
@@ -338,7 +347,7 @@ export default function UserEditModal({ userId, onClose }: UserEditModalProps) {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
                 <div>
                   <label className="block text-xs text-[var(--color-text-muted)] mb-1">Gender</label>
                   <select value={form.gender || 'male'} onChange={(e: any) => set('gender', e.target.value)}
@@ -347,7 +356,7 @@ export default function UserEditModal({ userId, onClose }: UserEditModalProps) {
                     <option value="female">Female</option>
                   </select>
                 </div>
-                <div className="md:col-span-2">
+                <div>
                   <label className="block text-xs text-[var(--color-text-muted)] mb-1">Birth Date</label>
                   <p className="text-sm font-medium text-[var(--color-text)] pt-2">{user?.birth_date ? new Date(user.birth_date).toLocaleDateString('en-GB') : '—'}</p>
                 </div>
@@ -376,7 +385,7 @@ export default function UserEditModal({ userId, onClose }: UserEditModalProps) {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
                 <div>
                   <label className="block text-xs text-[var(--color-text-muted)] mb-1">Main Sport</label>
                   <select value={form.mainSportId || ''} onChange={(e: any) => set('mainSportId', e.target.value ? Number(e.target.value) : '')}
@@ -387,7 +396,7 @@ export default function UserEditModal({ userId, onClose }: UserEditModalProps) {
                     ))}
                   </select>
                 </div>
-                <div className="md:col-span-2">
+                <div>
                   <label className="block text-xs text-[var(--color-text-muted)] mb-1">Playing Hand</label>
                   <p className="text-sm font-medium text-[var(--color-text)] pt-2 capitalize">{user?.playing_hand || '—'}</p>
                 </div>
@@ -421,22 +430,6 @@ export default function UserEditModal({ userId, onClose }: UserEditModalProps) {
               )}
 
               <div className="border-t pt-4 mt-2">
-                <Can permission="coaches.assign">
-                  <div className="flex items-center gap-3">
-                    <label className="relative inline-flex items-center cursor-pointer">
-                      <input type="checkbox" className="sr-only peer" checked={isCoach} onChange={(e: any) => setIsCoach(e.target.checked)} />
-                      <div className="w-9 h-5 bg-[var(--color-border)] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-[var(--color-border)] after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[var(--color-primary)]" />
-                    </label>
-                    <span className="text-sm font-medium text-[var(--color-text)]">Assign as Coach</span>
-                    {user?.coach_status && user.coach_status !== 'none' && (
-                      <span className={`text-xs px-2 py-0.5 rounded-full ${
-                        user.coach_status === 'approved' ? 'bg-[var(--color-success-bg)] text-[var(--color-success-text)]' :
-                        user.coach_status === 'pending' ? 'bg-[var(--color-warning-bg)] text-[var(--color-warning-text)]' :
-                        user.coach_status === 'rejected' ? 'bg-[var(--color-error-bg)] text-[var(--color-error-text)]' : 'bg-[var(--color-border)] text-[var(--color-text-muted)]'
-                      }`}>{user.coach_status}</span>
-                    )}
-                  </div>
-                </Can>
               </div>
 
               <div className="flex items-center gap-3 pt-2">
@@ -518,6 +511,10 @@ export default function UserEditModal({ userId, onClose }: UserEditModalProps) {
                 )}
               </div>
             </div>
+          )}
+
+          {activeTab === 'coach' && (
+            coachData === undefined ? <Spinner /> : <CoachTab userId={userId} coachData={coachData} sports={sports} isCoach={!!user?.is_coach} />
           )}
 
           {activeTab === 'roles' && (

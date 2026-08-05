@@ -33,6 +33,7 @@ export async function rbacRoutes(app: FastifyInstance): Promise<void> {
   app.get('/admin/users/:id/activity', { preHandler: [adminGuard] }, ctrl.getUserActivityHandler);
   app.get('/admin/users/:id/organisations', { preHandler: [adminGuard] }, ctrl.getUserOrganisationsHandler);
   app.get('/admin/users/:id/branch-access', { preHandler: [adminGuard] }, ctrl.getUserBranchAccessHandler);
+  app.get('/admin/users/:id/coach', { preHandler: [adminGuard] }, ctrl.getUserCoachHandler);
   app.put('/admin/users/:id/password', { preHandler: [superAdminGuard] }, ctrl.changeUserPasswordHandler);
   app.get('/admin/bookings/:bookingId', { preHandler: [adminGuard] }, ctrl.getUserBookingDetailHandler);
   app.get('/admin/orders/:orderId', { preHandler: [adminGuard] }, ctrl.getUserOrderDetailHandler);

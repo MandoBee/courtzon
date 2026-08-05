@@ -670,6 +670,41 @@ export const activitiesRepository = {
     return (result as any).affectedRows > 0;
   },
 
+  async listCoachReviews(coachId: number) {
+    const pool = getPool();
+    const [rows] = await pool.execute<RowData>(
+      `SELECT cr.id, cr.rating, cr.review_text, cr.created_at, u.full_name AS player_name
+       FROM coach_reviews cr
+       JOIN users u ON u.id = cr.player_id
+       WHERE cr.coach_id = ?
+       ORDER BY cr.created_at DESC LIMIT 100`,
+      [coachId]
+    );
+    return rows;
+  },
+
+  async getCoachSummary(coachId: number) {
+    const pool = getPool();
+    const [[row]] = await pool.query<RowData>(
+      `SELECT
+         COUNT(*) AS total_sessions,
+         COALESCE(SUM(CASE WHEN cs.status = 'completed' THEN 1 ELSE 0 END), 0) AS completed_sessions,
+         COALESCE(SUM(CASE WHEN cs.status = 'cancelled' THEN 1 ELSE 0 END), 0) AS cancelled_sessions,
+         COALESCE(SUM(CASE WHEN cs.status = 'no_show' THEN 1 ELSE 0 END), 0) AS no_show_sessions,
+         COALESCE(SUM(CASE WHEN cs.status IN ('scheduled','confirmed','in_progress') THEN 1 ELSE 0 END), 0) AS upcoming_sessions,
+         COALESCE(SUM(CASE WHEN cs.status = 'completed' THEN cs.coach_earnings ELSE 0 END), 0) AS total_earnings,
+         COALESCE(SUM(CASE WHEN cs.status = 'completed' THEN cs.price ELSE 0 END), 0) AS total_revenue,
+         COALESCE(SUM(CASE WHEN cs.status IN ('scheduled','confirmed','in_progress') THEN cs.price ELSE 0 END), 0) AS pending_revenue,
+         COALESCE(COUNT(DISTINCT cs.player_id), 0) AS total_players,
+         COALESCE(SUM(TIMESTAMPDIFF(HOUR, cs.start_time, cs.end_time)), 0) AS total_hours,
+         COALESCE(SUM(CASE WHEN cs.status = 'completed' THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0) * 100, 0) AS completion_rate
+       FROM coach_sessions cs
+       WHERE cs.coach_id = ?`,
+      [coachId]
+    );
+    return row;
+  },
+
   async findScheduledSessionsOnDate(coachId: number, date: string) {
     const pool = getPool();
     const [rows] = await pool.execute<RowData>(

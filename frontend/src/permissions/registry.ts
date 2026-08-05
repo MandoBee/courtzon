@@ -34,6 +34,7 @@ export const uiRegistry: UIElement[] = [
   { permissionKey: 'users.view-bookings', moduleSlug: 'users', elementType: 'tab', elementLabel: 'View User Bookings Tab', componentPath: 'components/admin/UserEditModal.tsx' },
   { permissionKey: 'users.view-orders', moduleSlug: 'users', elementType: 'tab', elementLabel: 'View User Orders Tab', componentPath: 'components/admin/UserEditModal.tsx' },
   { permissionKey: 'users.view-activity', moduleSlug: 'users', elementType: 'tab', elementLabel: 'View User Activity Tab', componentPath: 'components/admin/UserEditModal.tsx' },
+  { permissionKey: 'users.view-coach', moduleSlug: 'users', elementType: 'tab', elementLabel: 'View User Coach Management Tab', componentPath: 'components/admin/UserEditModal.tsx' },
   // User form fields
   { permissionKey: 'users.edit.first-name', moduleSlug: 'users', elementType: 'field', elementLabel: 'First Name Field', componentPath: 'components/admin/UserEditModal.tsx' },
   { permissionKey: 'users.edit.last-name', moduleSlug: 'users', elementType: 'field', elementLabel: 'Last Name Field', componentPath: 'components/admin/UserEditModal.tsx' },
