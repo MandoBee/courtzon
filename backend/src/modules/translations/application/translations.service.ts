@@ -19,6 +19,7 @@ const bundleCache = new Map<string, { data: Record<string, string>; ts: number }
 const BUNDLE_CACHE_TTL = 300_000; // 5 minutes
 
 function invalidateBundleCache(): void {
+  // i18n-v2: cache bust 2026-08-05
   bundleCache.clear();
 }
 
