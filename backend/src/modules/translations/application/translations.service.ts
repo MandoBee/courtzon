@@ -92,7 +92,7 @@ export const translationsService = {
     if (storedHash === newHash) {
       return { inserted: 0, updated: 0, deprecated: 0, total: 0, skipped: true, reason: 'No changes detected' };
     }
-    const entries = parseTranslationKeysRegistry();
+    const entries = parseTranslationKeysRegistry(registryPath);
     let inserted = 0;
     let updated = 0;
     const activeKeys = new Set<string>();
