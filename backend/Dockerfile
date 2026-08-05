@@ -9,6 +9,8 @@ RUN npm ci --ignore-scripts
 COPY backend/tsconfig.json ./
 COPY backend/src/ src/
 COPY backend/scripts/ scripts/
+# Frontend registry must be available at build time for prebuild artifact generation
+COPY frontend/src/i18n/translation-keys.registry.ts ./registry.ts
 RUN npm run build
 
 FROM node:22-alpine AS runner

@@ -8,11 +8,11 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-// In local dev: backend/scripts/ → ../../frontend/src/i18n/ (two levels up)
-// In Docker builder: /app/scripts/ → ../frontend/src/i18n/ (one level up)
+// Try paths in order: Docker builder → Docker runner → local dev
 const paths = [
-  resolve(__dirname, '../../frontend/src/i18n/translation-keys.registry.ts'),
-  resolve(__dirname, '../frontend/src/i18n/translation-keys.registry.ts'),
+  resolve(__dirname, '../registry.ts'),                                       // Docker builder: /app/registry.ts
+  resolve(__dirname, '../frontend/src/i18n/translation-keys.registry.ts'),    // Docker runner: /app/frontend/src/...
+  resolve(__dirname, '../../frontend/src/i18n/translation-keys.registry.ts'), // Local dev: project/frontend/src/...
 ];
 
 let registryPath = '';
