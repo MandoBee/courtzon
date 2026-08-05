@@ -212,10 +212,14 @@ export const activitiesService = {
     const existing = await repo.findCoachByUserId(userId);
     if (existing) {
       await repo.resetCoachStatus(userId);
-      return repo.findCoachByUserId(userId);
+      const coach = await repo.findCoachByUserId(userId);
+      try { eventBusV2.emit('coach:application-submitted' as any, { userId, coachId: coach?.id }); } catch {}
+      return coach;
     }
     await repo.createCoachProfile(userId, data);
-    return repo.findCoachByUserId(userId);
+    const coach = await repo.findCoachByUserId(userId);
+    try { eventBusV2.emit('coach:application-submitted' as any, { userId, coachId: coach?.id }); } catch {}
+    return coach;
   },
   async updateCoachProfile(userId: number, data: any) {
     const updated = await repo.updateCoachProfile(userId, data);
@@ -253,10 +257,12 @@ export const activitiesService = {
       const orgId = agrRows[0].organisation_id;
       const orgName = await repo.findOrgNameById(orgId);
       const coachProf = await repo.findCoachByUserId(userId);
+      const coachName = (await pool.execute('SELECT full_name FROM users WHERE id = ?', [userId]) as any)[0]?.[0]?.full_name || 'A coach';
       const eventName = accept ? 'coach:invite-accepted' : 'coach:invite-rejected';
       eventBusV2.emit(eventName as any, {
         coachId: coachProf?.id,
         coachUserId: userId,
+        coachName,
         organisationId: orgId,
         organisationName: orgName || 'Unknown Organisation',
       });
