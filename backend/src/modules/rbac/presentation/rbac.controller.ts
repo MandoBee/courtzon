@@ -222,6 +222,54 @@ export async function rejectCoachHandler(request: FastifyRequest, reply: Fastify
   return reply.send({ data: user });
 }
 
+export async function suspendCoachHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { id } = request.params as any;
+  const actorId = (request as any).userId;
+  await rbacService.suspendCoach(Number(id));
+  recordAudit({
+    actorId,
+    action: 'COACH.SUSPEND',
+    entityType: 'user',
+    entityId: Number(id),
+    afterState: { platformStatus: 'suspended' },
+    ipAddress: request.ip,
+    userAgent: request.headers['user-agent'],
+  });
+  return reply.send({ data: { platformStatus: 'suspended' } });
+}
+
+export async function reactivateCoachHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { id } = request.params as any;
+  const actorId = (request as any).userId;
+  await rbacService.reactivateCoach(Number(id));
+  recordAudit({
+    actorId,
+    action: 'COACH.REACTIVATE',
+    entityType: 'user',
+    entityId: Number(id),
+    afterState: { platformStatus: 'active' },
+    ipAddress: request.ip,
+    userAgent: request.headers['user-agent'],
+  });
+  return reply.send({ data: { platformStatus: 'active' } });
+}
+
+export async function deactivateCoachHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { id } = request.params as any;
+  const actorId = (request as any).userId;
+  await rbacService.deactivateCoach(Number(id));
+  recordAudit({
+    actorId,
+    action: 'COACH.DEACTIVATE',
+    entityType: 'user',
+    entityId: Number(id),
+    afterState: { platformStatus: 'deactivated' },
+    ipAddress: request.ip,
+    userAgent: request.headers['user-agent'],
+  });
+  return reply.send({ data: { platformStatus: 'deactivated' } });
+}
+
 export async function getUserBookingsHandler(request: FastifyRequest, reply: FastifyReply) {
   const { id } = request.params as any;
   const ok = await assertUserCountryAccess((request as any).userId, Number(id), reply);

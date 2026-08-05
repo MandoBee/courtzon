@@ -43,6 +43,9 @@ export async function registerOrgPortalRoutes(app: FastifyInstance): Promise<voi
   app.post('/org/:orgId/coaches/invite', { preHandler: [orgManageGuard] }, ctrl.inviteCoachHandler);
   app.put('/org/:orgId/coaches/:coachId/respond', { preHandler: [orgManageGuard] }, ctrl.respondOrgCoachHandler);
   app.delete('/org/:orgId/coaches/:coachId', { preHandler: [orgManageGuard] }, ctrl.removeOrgCoachHandler);
+  app.put('/org/:orgId/coaches/:coachId/suspend', { preHandler: [orgManageGuard] }, ctrl.suspendOrgCoachHandler);
+  app.put('/org/:orgId/coaches/:coachId/resume', { preHandler: [orgManageGuard] }, ctrl.resumeOrgCoachHandler);
+  app.put('/org/:orgId/coaches/:coachId/end', { preHandler: [orgManageGuard] }, ctrl.endOrgCoachHandler);
 
   // Org self-service: cancellation settings
   app.get('/org/:orgId/cancellation-settings', { preHandler: [orgAccessGuard] }, ctrl.getOrgPolicySettingsHandler);

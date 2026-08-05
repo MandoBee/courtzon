@@ -568,7 +568,7 @@ export class RBACRepository {
       await this.pool.execute(`UPDATE users SET ${fields.join(', ')} WHERE id = ?`, values);
     }
     if (data.isCoach !== undefined) {
-      const status = data.isCoach ? 'approved' : 'none';
+      const status = data.isCoach ? 'pending' : 'none';
       // coach_profiles is the source of truth: upsert the row.
       await this.pool.execute(
         `INSERT INTO coach_profiles (user_id, status) VALUES (?, ?)
@@ -584,7 +584,7 @@ export class RBACRepository {
         );
       } else if (data.isCoach) {
         await this.pool.execute(
-          `INSERT INTO player_profiles (user_id, is_coach, coach_status) VALUES (?, 1, 'approved')`,
+          `INSERT INTO player_profiles (user_id, is_coach, coach_status) VALUES (?, 1, 'pending')`,
           [userId]
         );
       }
@@ -602,6 +602,21 @@ export class RBACRepository {
       `UPDATE player_profiles SET coach_status = ?, is_coach = ?, coach_rejected_reason = ? WHERE user_id = ?`,
       [status, status === 'approved' ? 1 : 0, reason || null, userId]
     );
+  }
+
+  async updateCoachPlatformStatus(userId: number, platformStatus: string): Promise<void> {
+    await this.pool.execute(
+      `UPDATE coach_profiles SET platform_status = ? WHERE user_id = ?`,
+      [platformStatus, userId]
+    );
+  }
+
+  async getCoachByUserId(userId: number): Promise<{ id: number } | null> {
+    const [rows] = await this.pool.execute<RowData>(
+      `SELECT id FROM coach_profiles WHERE user_id = ? AND deleted_at IS NULL LIMIT 1`,
+      [userId]
+    );
+    return rows.length ? { id: (rows[0] as any).id } : null;
   }
 
   async getUserBookings(userId: number): Promise<any[]> {

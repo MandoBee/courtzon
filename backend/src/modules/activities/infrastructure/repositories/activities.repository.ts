@@ -554,7 +554,7 @@ export const activitiesRepository = {
       `UPDATE coach_org_agreements
           SET status = ?, is_active = ?
         WHERE id = ? AND coach_id = ? AND initiated_by = 'org' AND status = 'pending'`,
-      [accept ? 'accepted' : 'rejected', accept ? 1 : 0, agreementId, coachId]
+      [accept ? 'active' : 'rejected', accept ? 1 : 0, agreementId, coachId]
     );
     return (result as any).affectedRows as number;
   },
@@ -907,7 +907,7 @@ export const activitiesRepository = {
         [id],
       );
       await conn.execute(
-        `UPDATE coach_profiles SET status = 'rejected'
+        `UPDATE coach_profiles SET status = 'rejected', platform_status = 'deactivated'
          WHERE id = ? AND deleted_at IS NULL`,
         [id],
       );

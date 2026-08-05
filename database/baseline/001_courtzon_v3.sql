@@ -1117,7 +1117,7 @@ CREATE TABLE `coach_org_agreements` (
   `coach_split_pct` decimal(5,2) NOT NULL COMMENT 'Coach % after platform commission',
   `org_split_pct` decimal(5,2) NOT NULL COMMENT 'Org % after platform commission',
   `is_active` tinyint(1) NOT NULL DEFAULT 1,
-  `status` enum('pending','accepted','rejected') NOT NULL DEFAULT 'accepted',
+  `status` enum('pending','active','rejected','suspended','ended') NOT NULL DEFAULT 'pending',
   `initiated_by` enum('coach','org') NOT NULL DEFAULT 'coach',
   `invited_by` int(10) unsigned DEFAULT NULL,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
@@ -1137,6 +1137,7 @@ CREATE TABLE `coach_profiles` (
   `user_id` int(10) unsigned NOT NULL,
   `is_verified` tinyint(1) NOT NULL DEFAULT 0,
   `status` enum('none','pending','approved','rejected') NOT NULL DEFAULT 'none',
+  `platform_status` enum('active','suspended','deactivated') NOT NULL DEFAULT 'active',
   `rejected_reason` varchar(500) DEFAULT NULL,
   `deleted_at` timestamp NULL DEFAULT NULL,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
@@ -4092,24 +4093,6 @@ CREATE TABLE `notification_types` (
   KEY `idx_nt_sort` (`sort_order`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
-DROP TABLE IF EXISTS `organisation_coaches`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!40101 SET character_set_client = utf8 */;
-CREATE TABLE `organisation_coaches` (
-  `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
-  `organisation_id` int(10) unsigned NOT NULL,
-  `coach_id` int(10) unsigned NOT NULL,
-  `status` enum('pending','accepted','rejected') NOT NULL DEFAULT 'pending',
-  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
-  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `uk_oc_org_coach` (`organisation_id`,`coach_id`),
-  KEY `idx_oc_org` (`organisation_id`),
-  KEY `idx_oc_coach` (`coach_id`),
-  CONSTRAINT `fk_oc_org` FOREIGN KEY (`organisation_id`) REFERENCES `organisations` (`id`) ON DELETE CASCADE,
-  CONSTRAINT `fk_oc_coach` FOREIGN KEY (`coach_id`) REFERENCES `coach_profiles` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-/*!40101 SET character_set_client = @saved_cs_client */;
 DROP TABLE IF EXISTS `organisation_reviews`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8 */;
@@ -4144,24 +4127,6 @@ CREATE TABLE `organisation_verification_log` (
   KEY `idx_ovl_created` (`created_at`),
   CONSTRAINT `fk_ovl_org` FOREIGN KEY (`organisation_id`) REFERENCES `organisations` (`id`) ON DELETE CASCADE,
   CONSTRAINT `fk_ovl_creator` FOREIGN KEY (`created_by`) REFERENCES `users` (`id`) ON DELETE SET NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-/*!40101 SET character_set_client = @saved_cs_client */;
-DROP TABLE IF EXISTS `org_coach_agreements`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!40101 SET character_set_client = utf8 */;
-CREATE TABLE `org_coach_agreements` (
-  `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
-  `organisation_id` int(10) unsigned NOT NULL,
-  `coach_id` int(10) unsigned NOT NULL,
-  `status` enum('pending','accepted','rejected') NOT NULL DEFAULT 'pending',
-  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
-  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
-  PRIMARY KEY (`id`),
-  KEY `idx_oca_org` (`organisation_id`),
-  KEY `idx_oca_coach` (`coach_id`),
-  KEY `idx_oca_status` (`status`),
-  CONSTRAINT `fk_oca_org` FOREIGN KEY (`organisation_id`) REFERENCES `organisations` (`id`) ON DELETE CASCADE,
-  CONSTRAINT `fk_oca_coach` FOREIGN KEY (`coach_id`) REFERENCES `coach_profiles` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 DROP TABLE IF EXISTS `player_match_requests`;
