@@ -130,6 +130,23 @@ async function bootstrap() {
       );
     }
 
+    // Smart translation registry sync (hash-based — skips if unchanged)
+    try {
+      const { translationsService } = await import('./modules/translations/application/translations.service.js');
+      const syncResult = await translationsService.syncKeysFromRegistry();
+      if (syncResult.skipped) {
+        app.log.info(`Translations registry up-to-date (hash match).`);
+      } else {
+        app.log.info(
+          `Translations registry synced: ${syncResult.inserted} inserted, ` +
+          `${syncResult.skipped} skipped ` +
+          `(total: ${syncResult.total} keys)`
+        );
+      }
+    } catch (err: any) {
+      app.log.warn(`Translation registry sync skipped: ${err.message}`);
+    }
+
     worker = startWorker('default');
     notificationWorker = startWorker(NOTIFICATION_QUEUE_NAME);
 
