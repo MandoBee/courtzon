@@ -301,8 +301,14 @@ export async function seedTemplates(): Promise<void> {
     { eventName: 'coach:invited', locale: 'en', categorySlug: 'system', type: 'info', priority: 'normal',
       titleTemplate: 'Coach Invitation', bodyTemplate: 'You have been invited by {{organisationName}} to join as a coach.',
       actionKey: 'view_coach_orgs', routePattern: '/coaches/profile?tab=orgs' },
+    { eventName: 'coach:invited', locale: 'ar', categorySlug: 'system', type: 'info', priority: 'normal',
+      titleTemplate: 'دعوة لمدرب', bodyTemplate: 'لقد تلقيت دعوة من {{organisationName}} للانضمام كمدرب.',
+      actionKey: 'view_coach_orgs', routePattern: '/coaches/profile?tab=orgs' },
     { eventName: 'coach:agreement-added', locale: 'en', categorySlug: 'system', type: 'info', priority: 'normal',
       titleTemplate: 'Coach Agreement Request', bodyTemplate: '{{coachName}} has requested to add a coaching agreement with {{organisationName}}. Review and approve it.',
+      actionKey: 'view_org_coaches', routePattern: '/org/{{organisationId}}/coaches' },
+    { eventName: 'coach:agreement-added', locale: 'ar', categorySlug: 'system', type: 'info', priority: 'normal',
+      titleTemplate: 'طلب اتفاقية مدرب', bodyTemplate: 'طلب {{coachName}} إضافة اتفاقية تدريب مع {{organisationName}}. قم بمراجعتها والموافقة عليها.',
       actionKey: 'view_org_coaches', routePattern: '/org/{{organisationId}}/coaches' },
 
     // ── Coach Lifecycle Templates ──

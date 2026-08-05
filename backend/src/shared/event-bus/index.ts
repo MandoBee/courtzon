@@ -77,7 +77,7 @@ export interface DomainEventMap {
   'coaching:session-reminder': BaseEvent & { sessionId: number; userId: number; startTime: Date; coachName: string };
   'coach:invited': BaseEvent & { coachId: number; userId: number; organisationId: number; organisationName: string; invitedBy: number };
   'coach:agreement-added': BaseEvent & { coachId: number; coachName: string; userId: number; organisationId: number; organisationName: string };
-  'coach:application-submitted': BaseEvent & { userId: number; coachId: number };
+  'coach:application-submitted': BaseEvent & { userId: number; coachId: number; playerName?: string };
   'coach:application-approved': BaseEvent & { userId: number; coachId: number };
   'coach:application-rejected': BaseEvent & { userId: number; coachId: number; reason?: string };
   'coach:verified': BaseEvent & { userId: number; coachId: number };

@@ -247,19 +247,22 @@ export class RBACService {
   async suspendCoach(userId: number) {
     await rbacRepository.updateCoachPlatformStatus(userId, 'suspended');
     const coach = await rbacRepository.getCoachByUserId(userId);
-    try { eventBus.emit('coach:platform-suspended' as any, { userId, coachId: coach?.id }); } catch {}
+    const user = await rbacRepository.getUserById(userId);
+    try { eventBus.emit('coach:platform-suspended' as any, { userId, coachId: coach?.id, coachName: user?.full_name }); } catch {}
   }
 
   async reactivateCoach(userId: number) {
     await rbacRepository.updateCoachPlatformStatus(userId, 'active');
     const coach = await rbacRepository.getCoachByUserId(userId);
-    try { eventBus.emit('coach:platform-activated' as any, { userId, coachId: coach?.id }); } catch {}
+    const user = await rbacRepository.getUserById(userId);
+    try { eventBus.emit('coach:platform-activated' as any, { userId, coachId: coach?.id, coachName: user?.full_name }); } catch {}
   }
 
   async deactivateCoach(userId: number) {
     await rbacRepository.updateCoachPlatformStatus(userId, 'deactivated');
     const coach = await rbacRepository.getCoachByUserId(userId);
-    try { eventBus.emit('coach:platform-deactivated' as any, { userId, coachId: coach?.id }); } catch {}
+    const user = await rbacRepository.getUserById(userId);
+    try { eventBus.emit('coach:platform-deactivated' as any, { userId, coachId: coach?.id, coachName: user?.full_name }); } catch {}
   }
 
   async getUserBookings(userId: number) {
