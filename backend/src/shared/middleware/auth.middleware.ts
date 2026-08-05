@@ -93,7 +93,7 @@ export async function resolveSessionUserId(request: FastifyRequest): Promise<num
 const PUBLIC_PREFIXES = [
   '/public/', '/health', '/metrics', '/payments/webhook',
   '/openapi.json', '/docs', '/uploads/',
-  '/sports', '/countries', '/languages', '/currencies',
+  '/countries', '/languages', '/currencies',
   '/provinces', '/cities', '/banks', '/amenities',
   '/player-levels',
   '/auth/login', '/auth/register', '/auth/refresh',
@@ -107,8 +107,9 @@ export async function authMiddleware(request: FastifyRequest, reply: FastifyRepl
   const url = request.url;
   // Skip authentication for public routes
   if (PUBLIC_PREFIXES.some(p => url.startsWith(p))) return;
-  // /sports with query string
-  if (url === '/sports' || url.startsWith('/sports?')) return;
+  // Public sport routes only: list, marketplace list, single-sport detail (numeric id).
+  // Admin sport endpoints (/sports/all, create/update/delete) must be authenticated.
+  if (url === '/sports' || url.startsWith('/sports?') || url.startsWith('/sports/marketplace') || /^\/sports\/\d+$/.test(url)) return;
   // /auth/me returns null user when unauthenticated (no 401)
   if (url === '/auth/me') {
     (request as any).userId = await resolveSessionUserId(request);

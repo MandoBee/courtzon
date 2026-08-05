@@ -231,19 +231,33 @@ export default function UserEditModal({ userId, onClose }: UserEditModalProps) {
     <div className="fixed inset-0 z-[70] flex items-start justify-center pt-8 bg-black/50 overflow-y-auto">
       <div className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] shadow-lg w-full max-w-5xl mx-4 mb-8">
         <div className="flex items-center justify-between p-5 border-b">
-          <div className="flex items-center gap-3">
-            {renderAvatar(user)}
-            <h2 className="text-lg font-bold text-[var(--color-text)]">{user?.full_name || 'User'}</h2>
-            {user?.account_status && (
-              <span className={`px-2 py-0.5 text-xs rounded-full ${
-                user.account_status === 'active' ? 'bg-[var(--color-success-bg)] text-[var(--color-success-text)]' :
-                user.account_status === 'suspended' ? 'bg-[var(--color-warning-bg)] text-[var(--color-warning-text)]' : 'bg-[var(--color-error-bg)] text-[var(--color-error-text)]'
-              }`}>{user.account_status}</span>
-            )}
-            {(user as any)?.has_activated_selling === 1 && (
-              <span className="px-2 py-0.5 text-xs rounded-full bg-[var(--color-primary)]/10 text-[var(--color-primary)]">Free Selling</span>
-            )}
-          </div>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+          {renderAvatar(user)}
+          <h2 className="text-lg font-bold text-[var(--color-text)]">{user?.full_name || 'User'}</h2>
+          {user?.account_status && (
+            <span className={`px-2 py-0.5 text-xs rounded-full ${
+              user.account_status === 'active' ? 'bg-[var(--color-success-bg)] text-[var(--color-success-text)]' :
+              user.account_status === 'suspended' ? 'bg-[var(--color-warning-bg)] text-[var(--color-warning-text)]' : 'bg-[var(--color-error-bg)] text-[var(--color-error-text)]'
+            }`}>{user.account_status}</span>
+          )}
+          {user?.phone_number && (
+            <span className="text-sm text-[var(--color-text-muted)]">{user.phone_number}</span>
+          )}
+          <span className={`px-2 py-0.5 text-xs rounded-full font-medium ${
+            !user?.dark_mode || user.dark_mode === 'system' ? 'bg-[var(--color-border)] text-[var(--color-text-muted)]' :
+            user.dark_mode === 'dark' ? 'bg-slate-700 text-white' : 'bg-[var(--color-primary-bg)] text-[var(--color-primary)]'
+          }`}>
+            Theme: {user?.dark_mode && user.dark_mode !== 'system' ? user.dark_mode.charAt(0).toUpperCase() + user.dark_mode.slice(1) : 'System'}
+          </span>
+          <span className={`px-2 py-0.5 text-xs rounded-full font-medium ${
+            user?.is_public ? 'bg-[var(--color-success-bg)] text-[var(--color-success-text)]' : 'bg-[var(--color-border)] text-[var(--color-text-muted)]'
+          }`}>
+            Visibility: {user?.is_public ? 'Public' : 'Private'}
+          </span>
+          {(user as any)?.has_activated_selling === 1 && (
+            <span className="px-2 py-0.5 text-xs rounded-full bg-[var(--color-primary)]/10 text-[var(--color-primary)]">Free Selling</span>
+          )}
+        </div>
           <Button variant="ghost" onClick={onClose}>✕</Button>
         </div>
 
@@ -295,6 +309,36 @@ export default function UserEditModal({ userId, onClose }: UserEditModalProps) {
                     className="w-full px-3 py-2 border rounded-[var(--radius-md)] bg-[var(--color-bg)] text-sm" />
                 </div>
                 </Can>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                <div>
+                  <label className="block text-xs text-[var(--color-text-muted)] mb-1">Country</label>
+                  <select value={form.countryId || ''} onChange={(e: any) => set('countryId', e.target.value ? Number(e.target.value) : '')}
+                    className="w-full px-3 py-2 border rounded-[var(--radius-md)] bg-[var(--color-bg)] text-sm">
+                    <option value="">Select country...</option>
+                    {countries.filter((c: any) => c.is_active).sort((a: any, b: any) => (a.sort_order ?? 0) - (b.sort_order ?? 0)).map((c: any) => (
+                      <option key={c.id} value={c.id}>{c.name} ({c.isoCode || c.iso_code})</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="md:col-span-2">
+                  <label className="block text-xs text-[var(--color-text-muted)] mb-1">Timezone</label>
+                  <p className="text-sm font-medium text-[var(--color-text)] pt-2">{user?.timezone || '—'}</p>
+                </div>
+                <div>
+                  <label className="block text-xs text-[var(--color-text-muted)] mb-1">Language</label>
+                  <select value={form.languageId || ''} onChange={(e: any) => set('languageId', e.target.value ? Number(e.target.value) : '')}
+                    className="w-full px-3 py-2 border rounded-[var(--radius-md)] bg-[var(--color-bg)] text-sm">
+                    <option value="">Select language...</option>
+                    {languages.map((l: any) => (
+                      <option key={l.id} value={l.id}>{l.code} — {l.name} ({l.native_name})</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
                 <div>
                   <label className="block text-xs text-[var(--color-text-muted)] mb-1">Gender</label>
                   <select value={form.gender || 'male'} onChange={(e: any) => set('gender', e.target.value)}
@@ -302,6 +346,10 @@ export default function UserEditModal({ userId, onClose }: UserEditModalProps) {
                     <option value="male">Male</option>
                     <option value="female">Female</option>
                   </select>
+                </div>
+                <div className="md:col-span-2">
+                  <label className="block text-xs text-[var(--color-text-muted)] mb-1">Birth Date</label>
+                  <p className="text-sm font-medium text-[var(--color-text)] pt-2">{user?.birth_date ? new Date(user.birth_date).toLocaleDateString('en-GB') : '—'}</p>
                 </div>
                 <div>
                   <label className="block text-xs text-[var(--color-text-muted)] mb-1">Account Status</label>
@@ -326,26 +374,9 @@ export default function UserEditModal({ userId, onClose }: UserEditModalProps) {
                   </div>
                   </Can>
                 </div>
-                <div>
-                  <label className="block text-xs text-[var(--color-text-muted)] mb-1">Country</label>
-                  <select value={form.countryId || ''} onChange={(e: any) => set('countryId', e.target.value ? Number(e.target.value) : '')}
-                    className="w-full px-3 py-2 border rounded-[var(--radius-md)] bg-[var(--color-bg)] text-sm">
-                    <option value="">Select country...</option>
-                    {countries.filter((c: any) => c.is_active).sort((a: any, b: any) => (a.sort_order ?? 0) - (b.sort_order ?? 0)).map((c: any) => (
-                      <option key={c.id} value={c.id}>{c.name} ({c.isoCode || c.iso_code})</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs text-[var(--color-text-muted)] mb-1">Language</label>
-                  <select value={form.languageId || ''} onChange={(e: any) => set('languageId', e.target.value ? Number(e.target.value) : '')}
-                    className="w-full px-3 py-2 border rounded-[var(--radius-md)] bg-[var(--color-bg)] text-sm">
-                    <option value="">Select language...</option>
-                    {languages.map((l: any) => (
-                      <option key={l.id} value={l.id}>{l.code} — {l.name} ({l.native_name})</option>
-                    ))}
-                  </select>
-                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
                 <div>
                   <label className="block text-xs text-[var(--color-text-muted)] mb-1">Main Sport</label>
                   <select value={form.mainSportId || ''} onChange={(e: any) => set('mainSportId', e.target.value ? Number(e.target.value) : '')}
@@ -355,6 +386,10 @@ export default function UserEditModal({ userId, onClose }: UserEditModalProps) {
                       <option key={s.id} value={s.id}>{s.icon && !s.icon.startsWith('/uploads/') ? s.icon + ' ' : ''}{s.name}</option>
                     ))}
                   </select>
+                </div>
+                <div className="md:col-span-2">
+                  <label className="block text-xs text-[var(--color-text-muted)] mb-1">Playing Hand</label>
+                  <p className="text-sm font-medium text-[var(--color-text)] pt-2 capitalize">{user?.playing_hand || '—'}</p>
                 </div>
                 <div>
                   <label className="block text-xs text-[var(--color-text-muted)] mb-1">Level</label>
@@ -366,78 +401,48 @@ export default function UserEditModal({ userId, onClose }: UserEditModalProps) {
                     ))}
                   </select>
                 </div>
-                <div className="md:col-span-2 border-t pt-4 mt-2">
-                  <h4 className="font-medium text-[var(--color-text)] mb-3">Player Details</h4>
-                  <p className="text-xs text-[var(--color-text-muted)] mb-3">Read-only — managed by the player from their own profile.</p>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div>
-                      <label className="block text-xs text-[var(--color-text-muted)] mb-1">Birth Date</label>
-                      <p className="text-sm font-medium text-[var(--color-text)]">{user?.birth_date ? new Date(user.birth_date).toLocaleDateString('en-GB') : '—'}</p>
-                    </div>
-                    <div>
-                      <label className="block text-xs text-[var(--color-text-muted)] mb-1">Timezone</label>
-                      <p className="text-sm font-medium text-[var(--color-text)]">{user?.timezone || '—'}</p>
-                    </div>
-                    <div>
-                      <label className="block text-xs text-[var(--color-text-muted)] mb-1">Playing Hand</label>
-                      <p className="text-sm font-medium text-[var(--color-text)] capitalize">{user?.playing_hand || '—'}</p>
-                    </div>
-                    <div>
-                      <label className="block text-xs text-[var(--color-text-muted)] mb-1">Theme</label>
-                      <span className={`inline-block px-2 py-0.5 text-xs rounded-full font-medium ${user?.dark_mode === 'dark' ? 'bg-slate-700 text-white' : user?.dark_mode === 'light' ? 'bg-[var(--color-primary-bg)] text-[var(--color-primary)]' : 'bg-[var(--color-border)] text-[var(--color-text-muted)]'}`}>
-                        {user?.dark_mode ? user.dark_mode.charAt(0).toUpperCase() + user.dark_mode.slice(1) : 'System'}
-                      </span>
-                    </div>
-                    <div>
-                      <label className="block text-xs text-[var(--color-text-muted)] mb-1">Profile Visibility</label>
-                      <span className={`inline-block px-2 py-0.5 text-xs rounded-full font-medium ${user?.is_public ? 'bg-[var(--color-success-bg)] text-[var(--color-success-text)]' : 'bg-[var(--color-border)] text-[var(--color-text-muted)]'}`}>
-                        {user?.is_public ? 'Public' : 'Private'}
-                      </span>
-                    </div>
-                    <div>
-                      <label className="block text-xs text-[var(--color-text-muted)] mb-1">Phone</label>
-                      <p className="text-sm font-medium text-[var(--color-text)]">{user?.phone_number || '—'}</p>
-                    </div>
+              </div>
+
+              {user?.bio && (
+                <div className="mb-6">
+                  <label className="block text-xs text-[var(--color-text-muted)] mb-1">Bio</label>
+                  <p className="text-sm text-[var(--color-text)] whitespace-pre-wrap">{user.bio}</p>
+                </div>
+              )}
+
+              {(user?.emergency_contact_name || user?.emergency_contact_phone || user?.emergency_contact_relation) && (
+                <div className="mb-6 p-3 rounded-[var(--radius-md)] bg-[var(--color-bg)]">
+                  <label className="block text-xs text-[var(--color-text-muted)] mb-1">Emergency Contact</label>
+                  <p className="text-sm font-medium text-[var(--color-text)]">
+                    {[user?.emergency_contact_name, user?.emergency_contact_phone, user?.emergency_contact_relation]
+                      .filter(Boolean).join(' · ') || '—'}
+                  </p>
+                </div>
+              )}
+
+              <div className="border-t pt-4 mt-2">
+                <Can permission="coaches.assign">
+                  <div className="flex items-center gap-3">
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input type="checkbox" className="sr-only peer" checked={isCoach} onChange={(e: any) => setIsCoach(e.target.checked)} />
+                      <div className="w-9 h-5 bg-[var(--color-border)] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-[var(--color-border)] after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[var(--color-primary)]" />
+                    </label>
+                    <span className="text-sm font-medium text-[var(--color-text)]">Assign as Coach</span>
+                    {user?.coach_status && user.coach_status !== 'none' && (
+                      <span className={`text-xs px-2 py-0.5 rounded-full ${
+                        user.coach_status === 'approved' ? 'bg-[var(--color-success-bg)] text-[var(--color-success-text)]' :
+                        user.coach_status === 'pending' ? 'bg-[var(--color-warning-bg)] text-[var(--color-warning-text)]' :
+                        user.coach_status === 'rejected' ? 'bg-[var(--color-error-bg)] text-[var(--color-error-text)]' : 'bg-[var(--color-border)] text-[var(--color-text-muted)]'
+                      }`}>{user.coach_status}</span>
+                    )}
                   </div>
-                  {user?.bio && (
-                    <div className="mt-3">
-                      <label className="block text-xs text-[var(--color-text-muted)] mb-1">Bio</label>
-                      <p className="text-sm text-[var(--color-text)] whitespace-pre-wrap">{user.bio}</p>
-                    </div>
-                  )}
-                  {(user?.emergency_contact_name || user?.emergency_contact_phone || user?.emergency_contact_relation) && (
-                    <div className="mt-3 p-3 rounded-[var(--radius-md)] bg-[var(--color-bg)]">
-                      <label className="block text-xs text-[var(--color-text-muted)] mb-1">Emergency Contact</label>
-                      <p className="text-sm font-medium text-[var(--color-text)]">
-                        {[user?.emergency_contact_name, user?.emergency_contact_phone, user?.emergency_contact_relation]
-                          .filter(Boolean).join(' · ') || '—'}
-                      </p>
-                    </div>
-                  )}
-                </div>
-                <div className="md:col-span-2 border-t pt-4 mt-2">
-                  <Can permission="coaches.assign">
-                    <div className="flex items-center gap-3">
-                      <label className="relative inline-flex items-center cursor-pointer">
-                        <input type="checkbox" className="sr-only peer" checked={isCoach} onChange={(e: any) => setIsCoach(e.target.checked)} />
-                        <div className="w-9 h-5 bg-[var(--color-border)] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-[var(--color-border)] after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[var(--color-primary)]" />
-                      </label>
-                      <span className="text-sm font-medium text-[var(--color-text)]">Assign as Coach</span>
-                      {user?.coach_status && user.coach_status !== 'none' && (
-                        <span className={`text-xs px-2 py-0.5 rounded-full ${
-                          user.coach_status === 'approved' ? 'bg-[var(--color-success-bg)] text-[var(--color-success-text)]' :
-                          user.coach_status === 'pending' ? 'bg-[var(--color-warning-bg)] text-[var(--color-warning-text)]' :
-                          user.coach_status === 'rejected' ? 'bg-[var(--color-error-bg)] text-[var(--color-error-text)]' : 'bg-[var(--color-border)] text-[var(--color-text-muted)]'
-                        }`}>{user.coach_status}</span>
-                      )}
-                    </div>
-                  </Can>
-                </div>
-                <div className="md:col-span-2 flex items-center gap-3 pt-2">
-                  <Can permission="users.edit">
-                    <Button onClick={() => { setSaving(true); updateMutation.mutate(form); }} loading={saving}>Save Changes</Button>
-                  </Can>
-                </div>
+                </Can>
+              </div>
+
+              <div className="flex items-center gap-3 pt-2">
+                <Can permission="users.edit">
+                  <Button onClick={() => { setSaving(true); updateMutation.mutate(form); }} loading={saving}>Save Changes</Button>
+                </Can>
               </div>
 
               <div className="border-t pt-6">
