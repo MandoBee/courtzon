@@ -67,6 +67,12 @@ export async function getNotificationPreferencesHandler(request: FastifyRequest,
   return reply.send({ data: prefs });
 }
 
+export async function adminGetNotificationPreferencesHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { id } = request.params as any;
+  const prefs = await notificationPlatform.getPreferences(Number(id));
+  return reply.send({ data: prefs });
+}
+
 export async function updateNotificationPreferencesHandler(request: FastifyRequest, reply: FastifyReply) {
   const userId = (request as any).userId;
   const { UpdateNotificationPreferencesSchema } = await import('./notification.dto.js');

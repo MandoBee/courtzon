@@ -28,6 +28,9 @@ export async function notificationRoutes(app: FastifyInstance): Promise<void> {
     scopedApp.get('/notification-preferences', ctrl.getNotificationPreferencesHandler);
     scopedApp.put('/notification-preferences', ctrl.updateNotificationPreferencesHandler);
 
+    // Admin read of a specific user's notification preferences (reuses the same service).
+    scopedApp.get('/admin/users/:id/notification-preferences', { preHandler: [requirePermission(['users.view-activity'])] }, ctrl.adminGetNotificationPreferencesHandler);
+
     scopedApp.get('/notifications/reconnect-queue', ctrl.reconnectQueueHandler);
     scopedApp.post('/notifications/track', ctrl.trackEventHandler);
 

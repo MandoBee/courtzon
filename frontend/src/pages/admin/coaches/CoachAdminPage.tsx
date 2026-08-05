@@ -13,6 +13,12 @@ export default function CoachAdminPage() {
   const { data, isLoading } = useQuery({
     queryKey: ['admin-coaches', page],
     queryFn: () => api.get(`/admin/coaches?page=${page}&limit=20`).then((r: any) => r.data),
+    // Players activate/apply as coaches from a different session — no TanStack invalidation
+    // can reach this mounted query. Force a fresh fetch on open, on window focus, and poll
+    // while the page is visible so the list auto-reflects new coach data without F5.
+    staleTime: 0,
+    refetchOnWindowFocus: true,
+    refetchInterval: 10000,
   });
 
   const verifyMutation = useMutation({

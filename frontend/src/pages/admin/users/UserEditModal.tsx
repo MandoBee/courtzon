@@ -79,6 +79,12 @@ export default function UserEditModal({ userId, onClose }: UserEditModalProps) {
     enabled: activeTab === 'branch-access',
   });
 
+  const { data: userNotifPrefs } = useQuery({
+    queryKey: ['admin', 'user', userId, 'notification-preferences'],
+    queryFn: () => api.get(`/admin/users/${userId}/notification-preferences`).then((r: any) => r.data.data),
+    enabled: activeTab === 'settings',
+  });
+
   const { data: activity } = useQuery({
     queryKey: ['admin', 'user', userId, 'activity'],
     queryFn: () => api.get(`/admin/users/${userId}/activity`).then((r: any) => r.data.data),
@@ -196,6 +202,7 @@ export default function UserEditModal({ userId, onClose }: UserEditModalProps) {
 
   const tabs = [
     { key: 'profile', label: 'Profile' },
+    { key: 'settings', label: 'Settings' },
     { key: 'roles', label: 'Roles & Orgs' },
     { key: 'branch-access', label: 'Branch Access' },
     { key: 'bookings', label: 'Bookings' },
@@ -243,6 +250,7 @@ export default function UserEditModal({ userId, onClose }: UserEditModalProps) {
         <div className="flex border-b overflow-x-auto">
           {tabs.map((tab: any) => {
             const tabPerms: Record<string, string> = {
+              settings: 'users.view-activity',
               bookings: 'users.view-bookings',
               academies: 'users.view-bookings',
               orders: 'users.view-orders',
@@ -359,6 +367,55 @@ export default function UserEditModal({ userId, onClose }: UserEditModalProps) {
                   </select>
                 </div>
                 <div className="md:col-span-2 border-t pt-4 mt-2">
+                  <h4 className="font-medium text-[var(--color-text)] mb-3">Player Details</h4>
+                  <p className="text-xs text-[var(--color-text-muted)] mb-3">Read-only — managed by the player from their own profile.</p>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                      <label className="block text-xs text-[var(--color-text-muted)] mb-1">Birth Date</label>
+                      <p className="text-sm font-medium text-[var(--color-text)]">{user?.birth_date ? new Date(user.birth_date).toLocaleDateString('en-GB') : '—'}</p>
+                    </div>
+                    <div>
+                      <label className="block text-xs text-[var(--color-text-muted)] mb-1">Timezone</label>
+                      <p className="text-sm font-medium text-[var(--color-text)]">{user?.timezone || '—'}</p>
+                    </div>
+                    <div>
+                      <label className="block text-xs text-[var(--color-text-muted)] mb-1">Playing Hand</label>
+                      <p className="text-sm font-medium text-[var(--color-text)] capitalize">{user?.playing_hand || '—'}</p>
+                    </div>
+                    <div>
+                      <label className="block text-xs text-[var(--color-text-muted)] mb-1">Theme</label>
+                      <span className={`inline-block px-2 py-0.5 text-xs rounded-full font-medium ${user?.dark_mode === 'dark' ? 'bg-slate-700 text-white' : user?.dark_mode === 'light' ? 'bg-[var(--color-primary-bg)] text-[var(--color-primary)]' : 'bg-[var(--color-border)] text-[var(--color-text-muted)]'}`}>
+                        {user?.dark_mode ? user.dark_mode.charAt(0).toUpperCase() + user.dark_mode.slice(1) : 'System'}
+                      </span>
+                    </div>
+                    <div>
+                      <label className="block text-xs text-[var(--color-text-muted)] mb-1">Profile Visibility</label>
+                      <span className={`inline-block px-2 py-0.5 text-xs rounded-full font-medium ${user?.is_public ? 'bg-[var(--color-success-bg)] text-[var(--color-success-text)]' : 'bg-[var(--color-border)] text-[var(--color-text-muted)]'}`}>
+                        {user?.is_public ? 'Public' : 'Private'}
+                      </span>
+                    </div>
+                    <div>
+                      <label className="block text-xs text-[var(--color-text-muted)] mb-1">Phone</label>
+                      <p className="text-sm font-medium text-[var(--color-text)]">{user?.phone_number || '—'}</p>
+                    </div>
+                  </div>
+                  {user?.bio && (
+                    <div className="mt-3">
+                      <label className="block text-xs text-[var(--color-text-muted)] mb-1">Bio</label>
+                      <p className="text-sm text-[var(--color-text)] whitespace-pre-wrap">{user.bio}</p>
+                    </div>
+                  )}
+                  {(user?.emergency_contact_name || user?.emergency_contact_phone || user?.emergency_contact_relation) && (
+                    <div className="mt-3 p-3 rounded-[var(--radius-md)] bg-[var(--color-bg)]">
+                      <label className="block text-xs text-[var(--color-text-muted)] mb-1">Emergency Contact</label>
+                      <p className="text-sm font-medium text-[var(--color-text)]">
+                        {[user?.emergency_contact_name, user?.emergency_contact_phone, user?.emergency_contact_relation]
+                          .filter(Boolean).join(' · ') || '—'}
+                      </p>
+                    </div>
+                  )}
+                </div>
+                <div className="md:col-span-2 border-t pt-4 mt-2">
                   <Can permission="coaches.assign">
                     <div className="flex items-center gap-3">
                       <label className="relative inline-flex items-center cursor-pointer">
@@ -403,6 +460,57 @@ export default function UserEditModal({ userId, onClose }: UserEditModalProps) {
                     {passwordMsg && <span className={`text-xs ${passwordMsg.includes('success') ? 'text-[var(--color-success-text)]' : 'text-[var(--color-error-text)]'}`}>{passwordMsg}</span>}
                   </div>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'settings' && (
+            <div className="space-y-6">
+              <div>
+                <h4 className="font-medium text-[var(--color-text)] mb-3">Privacy Settings</h4>
+                <p className="text-xs text-[var(--color-text-muted)] mb-3">Read-only — managed by the player from their profile settings.</p>
+                <div className="space-y-2">
+                  {[
+                    { key: 'privacy_show_profile', label: 'Show Profile' },
+                    { key: 'privacy_show_stats', label: 'Show Stats' },
+                    { key: 'privacy_show_activity', label: 'Show Activity' },
+                  ].map(({ key, label }) => {
+                    const enabled = user?.[key] !== false;
+                    return (
+                      <div key={key} className="flex items-center justify-between bg-[var(--color-bg)] px-3 py-2.5 rounded-[var(--radius-md)]">
+                        <span className="text-sm font-medium text-[var(--color-text)]">{label}</span>
+                        <span className={`px-2 py-0.5 text-xs rounded-full font-medium ${
+                          enabled ? 'bg-[var(--color-success-bg)] text-[var(--color-success-text)]' : 'bg-[var(--color-border)] text-[var(--color-text-muted)]'
+                        }`}>
+                          {enabled ? 'Enabled' : 'Disabled'}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div>
+                <h4 className="font-medium text-[var(--color-text)] mb-3">Notification Settings</h4>
+                <p className="text-xs text-[var(--color-text-muted)] mb-3">Read-only — per-category notification preferences managed by the player.</p>
+                {!userNotifPrefs ? (
+                  <p className="text-sm text-[var(--color-text-muted)]">Loading notification preferences...</p>
+                ) : userNotifPrefs.length === 0 ? (
+                  <p className="text-sm text-[var(--color-text-muted)]">No notification preferences</p>
+                ) : (
+                  <div className="space-y-1">
+                    {userNotifPrefs.map((pref: any) => (
+                      <div key={pref.categoryId} className="flex items-center justify-between py-2 px-3 rounded-[var(--radius-md)] hover:bg-[var(--color-surface)]">
+                        <span className="text-sm text-[var(--color-text)] capitalize">{pref.slug.replace(/_/g, ' ')}</span>
+                        <span className={`px-2 py-0.5 text-xs rounded-full font-medium ${
+                          pref.isAllowed ? 'bg-[var(--color-success-bg)] text-[var(--color-success-text)]' : 'bg-[var(--color-border)] text-[var(--color-text-muted)]'
+                        }`}>
+                          {pref.isAllowed ? 'On' : 'Off'}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           )}
