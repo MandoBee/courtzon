@@ -18,7 +18,7 @@ function resolveRegistryPath(registryPath?: string): string {
   if (registryPath) return registryPath;
 
   // Build-time artifact (in dist/generated/ at runtime)
-  const artifactPath = resolve(__dirname, '../../generated/translation-keys.json');
+  const artifactPath = resolve(__dirname, '../../../generated/translation-keys.json');
   try {
     readFileSync(artifactPath, 'utf8');
     return artifactPath;
