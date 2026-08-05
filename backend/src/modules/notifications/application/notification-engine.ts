@@ -299,6 +299,16 @@ const eventGroups: EventGroupConfig[] = [
           action: a('/profile'),
         });
       }
+      await dispatchByRole('super_admin', {
+        eventName, categorySlug,
+        data: {
+          ...data,
+          title: 'New Coach Application',
+          body: `${data.playerName || 'A player'} has submitted a new Coach Application and is awaiting review.`,
+        },
+        relatedEntityType: 'coach', relatedEntityId: String(data.coachId),
+        action: a('/admin/coaches'),
+      });
     },
   },
   {
@@ -348,6 +358,37 @@ const eventGroups: EventGroupConfig[] = [
           relatedEntityType: 'coach', relatedEntityId: String(data.coachId),
           action: a('/coach/dashboard'),
         });
+      }
+      // Notify all organizations with active relationships to this coach
+      if (data.coachId) {
+        try {
+          const { getPool } = await import('../../../database/mysql.js');
+          const pool = getPool();
+          const [orgRows] = await pool.execute(
+            `SELECT DISTINCT o.id, o.name FROM coach_org_agreements coa
+             JOIN organisations o ON o.id = coa.organisation_id
+             WHERE coa.coach_id = ? AND coa.status = 'active'`,
+            [data.coachId]
+          ) as any;
+          const statusLabels: Record<string, string> = {
+            'coach:platform-suspended': 'suspended by CourtZon and is temporarily unavailable',
+            'coach:platform-activated': 'reactivated and is available again',
+            'coach:platform-deactivated': 'deactivated by CourtZon',
+          };
+          const label = statusLabels[eventName] || eventName.replace('coach:platform-', '');
+          for (const org of orgRows) {
+            await dispatchByOrg(org.id, {
+              eventName, categorySlug, action: a(`/org/${org.id}/coaches`),
+              data: {
+                ...data, organisationName: org.name, organisationId: org.id,
+                title: `Coach ${eventName.includes('suspended') ? 'Suspended' : eventName.includes('activated') ? 'Reactivated' : 'Deactivated'}`,
+                body: `${data.coachName || 'A coach'} has been ${label}.`,
+              },
+              organisationId: org.id,
+              relatedEntityType: 'coach', relatedEntityId: String(data.coachId),
+            });
+          }
+        } catch {}
       }
     },
   },

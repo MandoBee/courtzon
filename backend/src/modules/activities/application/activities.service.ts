@@ -210,15 +210,18 @@ export const activitiesService = {
 
   async createCoachProfile(userId: number, data: any) {
     const existing = await repo.findCoachByUserId(userId);
+    const pool = getPool();
+    const [userRows] = await pool.execute(`SELECT full_name FROM users WHERE id = ?`, [userId]) as any;
+    const playerName = userRows[0]?.full_name || 'A player';
     if (existing) {
       await repo.resetCoachStatus(userId);
       const coach = await repo.findCoachByUserId(userId);
-      try { eventBusV2.emit('coach:application-submitted' as any, { userId, coachId: coach?.id }); } catch {}
+      try { eventBusV2.emit('coach:application-submitted' as any, { userId, coachId: coach?.id, playerName }); } catch {}
       return coach;
     }
     await repo.createCoachProfile(userId, data);
     const coach = await repo.findCoachByUserId(userId);
-    try { eventBusV2.emit('coach:application-submitted' as any, { userId, coachId: coach?.id }); } catch {}
+    try { eventBusV2.emit('coach:application-submitted' as any, { userId, coachId: coach?.id, playerName }); } catch {}
     return coach;
   },
   async updateCoachProfile(userId: number, data: any) {
