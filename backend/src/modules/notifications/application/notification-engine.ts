@@ -290,6 +290,18 @@ const eventGroups: EventGroupConfig[] = [
     },
   },
   {
+    events: ['coach:application-submitted'],
+    handler: async (eventName, data, categorySlug) => {
+      if (data.userId) {
+        await dispatchToUser({
+          userId: data.userId, eventName, categorySlug, data,
+          relatedEntityType: 'coach', relatedEntityId: String(data.coachId),
+          action: a('/profile'),
+        });
+      }
+    },
+  },
+  {
     events: ['coach:agreement-added'],
     handler: async (eventName, data, categorySlug) => {
       if (data.organisationId) {
