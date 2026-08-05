@@ -3493,11 +3493,13 @@ CREATE TABLE `translation_keys` (
   `element_type` varchar(50) NOT NULL DEFAULT 'label',
   `element_label` varchar(255) NOT NULL,
   `component_path` varchar(500) DEFAULT NULL,
+  `is_deprecated` tinyint(1) NOT NULL DEFAULT 0,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
   `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_translation_key` (`key`(191)),
-  KEY `idx_module` (`module_slug`)
+  KEY `idx_module` (`module_slug`),
+  KEY `idx_tk_deprecated` (`is_deprecated`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 DROP TABLE IF EXISTS `translations`;
