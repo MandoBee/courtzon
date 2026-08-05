@@ -131,7 +131,8 @@ export const translationKeysRepository = {
       'SELECT value FROM system_settings WHERE category = ? AND `key` = ? LIMIT 1',
       ['i18n', 'translations.registry_hash']
     );
-    return rows.length ? (rows[0] as any).value : null;
+    if (!rows.length) return null;
+    try { return JSON.parse((rows[0] as any).value); } catch { return null; }
   },
 
   async setRegistryHash(hash: string): Promise<void> {
@@ -140,7 +141,7 @@ export const translationKeysRepository = {
       `INSERT INTO system_settings (category, \`key\`, value, value_type, description, is_public, is_editable)
        VALUES ('i18n', 'translations.registry_hash', ?, 'string', 'SHA-256 hash of the last synced translation registry', 0, 0)
        ON DUPLICATE KEY UPDATE value = VALUES(value)`,
-      [hash]
+      [JSON.stringify(hash)]
     );
   },
 
