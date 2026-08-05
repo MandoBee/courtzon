@@ -52,7 +52,7 @@ export default function CoachProfilePage() {
       {isLoading ? (
         <div className="text-center py-12 text-[var(--color-text-muted)]">{t('common.loading')}</div>
       ) : !profile ? (
-        <CreateCoachForm sportsList={sportsList} queryClient={queryClient} showToast={showToast} />
+        <CreateCoachForm sportsList={sportsList} queryClient={queryClient} showToast={showToast} user={user} />
       ) : (
         <>
           <div className="flex gap-1 mb-6 border-b border-[var(--color-border)]">
@@ -76,11 +76,10 @@ export default function CoachProfilePage() {
   );
 }
 
-function CreateCoachForm({ sportsList, queryClient, showToast }: any) {
+function CreateCoachForm({ sportsList, queryClient, showToast, user }: any) {
   const [bio, setBio] = useState('');
   const [exp, setExp] = useState('');
   const [rate, setRate] = useState('');
-  const [currency, setCurrency] = useState('USD');
   const [sportIds, setSportIds] = useState<number[]>([]);
 
   const mutation = useMutation({
@@ -98,7 +97,7 @@ function CreateCoachForm({ sportsList, queryClient, showToast }: any) {
       bio: bio || undefined,
       experienceYears: exp ? Number(exp) : undefined,
       hourlyRate: rate ? Number(rate) : undefined,
-      currencyCode: currency,
+      currencyCode: user?.defaultCurrency || 'EGP',
       sports: sportIds.length ? sportIds : undefined,
     });
   }
@@ -110,7 +109,7 @@ function CreateCoachForm({ sportsList, queryClient, showToast }: any) {
         <label className="block text-sm mb-1">Bio</label>
         <textarea value={bio} onChange={(e) => setBio(e.target.value)} className="w-full px-4 py-2.5 rounded-[var(--radius-md)] border border-[var(--color-border)] text-sm" rows={3} />
       </div>
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 gap-4">
         <div>
           <label className="block text-sm mb-1">Experience (yrs)</label>
           <input type="number" value={exp} onChange={(e) => setExp(e.target.value)} className="w-full px-4 py-2.5 rounded-[var(--radius-md)] border border-[var(--color-border)] text-sm" />
@@ -118,12 +117,6 @@ function CreateCoachForm({ sportsList, queryClient, showToast }: any) {
         <div>
           <label className="block text-sm mb-1">Hourly Rate</label>
           <input type="number" step="0.01" value={rate} onChange={(e) => setRate(e.target.value)} className="w-full px-4 py-2.5 rounded-[var(--radius-md)] border border-[var(--color-border)] text-sm" />
-        </div>
-        <div>
-          <label className="block text-sm mb-1">Currency</label>
-          <select value={currency} onChange={(e) => setCurrency(e.target.value)} className="w-full px-4 py-2.5 rounded-[var(--radius-md)] border border-[var(--color-border)] text-sm">
-            <option value="AED">AED</option><option value="SAR">SAR</option><option value="USD">USD</option><option value="EUR">EUR</option><option value="EGP">EGP</option>
-          </select>
         </div>
       </div>
       <div>
