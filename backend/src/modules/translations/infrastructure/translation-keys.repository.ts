@@ -76,18 +76,24 @@ export const translationKeysRepository = {
     return (rows[0] as TranslationKeyRow) || null;
   },
 
-  async insertIfMissing(entry: {
+  async upsertKey(entry: {
     key: string;
     defaultValue: string;
     moduleSlug: string;
     elementType: string;
     elementLabel: string;
     componentPath?: string;
-  }): Promise<'inserted' | 'skipped'> {
+  }): Promise<'inserted' | 'updated' | 'unchanged'> {
     const pool = getPool();
     const [result] = await pool.execute<mysql.ResultSetHeader & RowData>(
-      `INSERT IGNORE INTO translation_keys (\`key\`, default_value, module_slug, element_type, element_label, component_path)
-       VALUES (?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO translation_keys (\`key\`, default_value, module_slug, element_type, element_label, component_path)
+       VALUES (?, ?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE
+         default_value = VALUES(default_value),
+         module_slug = VALUES(module_slug),
+         element_type = VALUES(element_type),
+         element_label = VALUES(element_label),
+         component_path = VALUES(component_path)`,
       [
         entry.key,
         entry.defaultValue,
@@ -97,7 +103,45 @@ export const translationKeysRepository = {
         entry.componentPath || null,
       ]
     );
-    return result.affectedRows > 0 ? 'inserted' : 'skipped';
+    if (result.affectedRows === 0) return 'unchanged';
+    return result.insertId ? 'inserted' : 'updated';
+  },
+
+  async deprecateMissingKeys(activeKeys: Set<string>): Promise<number> {
+    const pool = getPool();
+    const [allRows] = await pool.execute<{ key: string; id: number }[] & RowData>(
+      'SELECT `key`, id FROM translation_keys WHERE is_deprecated = FALSE'
+    );
+    let deprecated = 0;
+    for (const row of allRows as any[]) {
+      if (!activeKeys.has(row.key)) {
+        await pool.execute(
+          'UPDATE translation_keys SET is_deprecated = TRUE WHERE id = ?',
+          [row.id]
+        );
+        deprecated++;
+      }
+    }
+    return deprecated;
+  },
+
+  async getRegistryHash(): Promise<string | null> {
+    const pool = getPool();
+    const [rows] = await pool.execute<RowData>(
+      'SELECT value FROM system_settings WHERE category = ? AND `key` = ? LIMIT 1',
+      ['i18n', 'translations.registry_hash']
+    );
+    return rows.length ? (rows[0] as any).value : null;
+  },
+
+  async setRegistryHash(hash: string): Promise<void> {
+    const pool = getPool();
+    await pool.execute(
+      `INSERT INTO system_settings (category, \`key\`, value, value_type, description, is_public, is_editable)
+       VALUES ('i18n', 'translations.registry_hash', ?, 'string', 'SHA-256 hash of the last synced translation registry', 0, 0)
+       ON DUPLICATE KEY UPDATE value = VALUES(value)`,
+      [hash]
+    );
   },
 
   async getDefaultsMap(): Promise<Record<string, string>> {

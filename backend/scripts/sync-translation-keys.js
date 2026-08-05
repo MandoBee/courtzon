@@ -71,8 +71,14 @@ async function main() {
   let skipped = 0;
   for (const entry of entries) {
     const [result] = await conn.query(
-      `INSERT IGNORE INTO translation_keys (\`key\`, default_value, module_slug, element_type, element_label, component_path)
-       VALUES (?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO translation_keys (\`key\`, default_value, module_slug, element_type, element_label, component_path)
+       VALUES (?, ?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE
+         default_value = VALUES(default_value),
+         module_slug = VALUES(module_slug),
+         element_type = VALUES(element_type),
+         element_label = VALUES(element_label),
+         component_path = VALUES(component_path)`,
       [
         entry.key,
         entry.defaultValue,
@@ -82,11 +88,11 @@ async function main() {
         entry.componentPath || null,
       ]
     );
-    if (result.affectedRows > 0) inserted++;
-    else skipped++;
+    if (result.insertId) inserted++;
+    else if (result.affectedRows > 0) skipped++;
   }
 
-  console.log(`Sync complete: ${inserted} keys inserted, ${skipped} skipped`);
+  console.log(`Sync complete: ${inserted} keys inserted, ${skipped} keys updated`);
   await conn.end();
 }
 
