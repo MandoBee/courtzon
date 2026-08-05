@@ -719,7 +719,7 @@ export const translationKeysRegistry: TranslationKeyEntry[] = [
   { key: 'profile.coach.bio_placeholder', defaultValue: 'Tell us about yourself...', moduleSlug: 'profile', elementType: 'placeholder', elementLabel: 'Profile coach bio placeholder' },
   { key: 'profile.coach.experience_years', defaultValue: 'Experience (years)', moduleSlug: 'profile', elementType: 'label', elementLabel: 'Profile coach experience years' },
   { key: 'profile.coach.exp_placeholder', defaultValue: 'e.g. 5', moduleSlug: 'profile', elementType: 'placeholder', elementLabel: 'Profile coach exp placeholder' },
-  { key: 'profile.coach.hourly_rate_label', defaultValue: 'Hourly rate (AED)', moduleSlug: 'profile', elementType: 'label', elementLabel: 'Profile coach hourly rate label' },
+  { key: 'profile.coach.hourly_rate_label', defaultValue: 'Hourly rate', moduleSlug: 'profile', elementType: 'label', elementLabel: 'Profile coach hourly rate label' },
   { key: 'profile.coach.rate_placeholder', defaultValue: 'e.g. 150', moduleSlug: 'profile', elementType: 'placeholder', elementLabel: 'Profile coach rate placeholder' },
   { key: 'profile.coach.select_sport', defaultValue: 'Select a sport', moduleSlug: 'profile', elementType: 'placeholder', elementLabel: 'Profile coach select sport' },
   { key: 'profile.coach.add_cert', defaultValue: '+ Add Certification', moduleSlug: 'profile', elementType: 'button', elementLabel: 'Profile coach add certification' },

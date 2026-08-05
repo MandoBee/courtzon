@@ -1051,7 +1051,7 @@ export default function ProfilePage() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-[var(--color-text)] mb-1">{t('profile.coach.hourly_rate_label')}</label>
+              <label className="block text-sm font-medium text-[var(--color-text)] mb-1">{t('profile.coach.hourly_rate_label')} ({user?.defaultCurrency || 'EGP'})</label>
               <input
                 type="number"
                 value={coachRate}
