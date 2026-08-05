@@ -73,16 +73,18 @@ export const translationsRepository = {
   },
 
   async createLocalePack(locale: string, keys: string[]) {
+    if (!keys.length) return 0;
     const pool = getPool();
-    let inserted = 0;
+    const placeholders = keys.map(() => '(?, ?, ?, 0)').join(',');
+    const values: any[] = [];
     for (const key of keys) {
-      const [result] = await pool.execute<mysql.ResultSetHeader & RowData>(
-        'INSERT IGNORE INTO translations (`key`, locale, value, is_auto) VALUES (?, ?, ?, 0)',
-        [key, locale, '']
-      );
-      if (result.affectedRows > 0) inserted++;
+      values.push(key, locale, '');
     }
-    return inserted;
+    const [result] = await pool.execute<mysql.ResultSetHeader & RowData>(
+      `INSERT IGNORE INTO translations (\`key\`, locale, value, is_auto) VALUES ${placeholders}`,
+      values
+    );
+    return result.affectedRows;
   },
 
   async localeHasAnyTranslation(locale: string) {
