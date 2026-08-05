@@ -8,6 +8,7 @@ RUN npm ci --ignore-scripts
 
 COPY backend/tsconfig.json ./
 COPY backend/src/ src/
+COPY backend/scripts/ scripts/
 RUN npm run build
 
 FROM node:22-alpine AS runner
