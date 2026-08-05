@@ -190,6 +190,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     const hadUser = !!get().user;
     if (!hadUser) set({ isLoading: true });
     try {
+      try { await authApi.refresh(); } catch {}
       const result = await authApi.me();
       if (!result?.user) {
         cacheUser(null);
@@ -210,8 +211,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       applyUserPreferences(finalUser);
       void import('./appearance.store').then(({ useAppearanceStore }) => useAppearanceStore.getState().fetch());
     } catch {
-      cacheUser(null);
-      set({ user: null, isAuthenticated: false });
+      const cached = get().user;
+      if (!cached) {
+        cacheUser(null);
+        set({ user: null, isAuthenticated: false });
+      }
     } finally {
       set({ isLoading: false });
     }

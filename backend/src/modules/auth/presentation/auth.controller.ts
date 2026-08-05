@@ -13,6 +13,8 @@ import {
   getRefreshToken,
   getSessionToken,
 } from '../../../shared/utils/auth-cookies.js';
+import { hashToken } from '../../../shared/utils/token.js';
+import { getPool } from '../../../database/mysql.js';
 import { resolveSessionUserId } from '../../../shared/middleware/auth.middleware.js';
 
 export async function registerHandler(request: FastifyRequest, reply: FastifyReply) {
@@ -198,13 +200,28 @@ export async function logoutHandler(request: FastifyRequest, reply: FastifyReply
   return reply.send({ success: true });
 }
 
-/** Session probe: always 200 — { user: null } when logged out or session invalid (clears stale cookies). */
+/** Session probe: always 200. Returns { user: null } when logged out.
+ *  Cookies are only cleared when BOTH the session token and the refresh token
+ *  are definitively invalid or revoked — the backend is the single source of truth. */
 export async function meHandler(request: FastifyRequest, reply: FastifyReply) {
   const userId = await resolveSessionUserId(request);
   if (!userId) {
-    if (getSessionToken(request)) {
-      clearAuthCookies(reply);
+    const refreshToken = getRefreshToken(request);
+    if (refreshToken) {
+      const refreshHash = hashToken(refreshToken);
+      const pool = getPool();
+      const [sessions] = await pool.execute(
+        `SELECT us.user_id FROM user_sessions us
+         JOIN users u ON u.id = us.user_id AND u.deleted_at IS NULL AND u.account_status = 'active'
+         WHERE us.refresh_token_hash = ? AND us.is_revoked = FALSE AND us.refresh_token_expires_at > NOW()
+         LIMIT 1`,
+        [refreshHash],
+      ) as any;
+      if (sessions.length > 0) {
+        return reply.send({ user: null });
+      }
     }
+    clearAuthCookies(reply);
     return reply.send({ user: null });
   }
   const user = await authService.getProfile(userId);

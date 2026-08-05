@@ -90,9 +90,12 @@ api.interceptors.response.use(
       try {
         await refreshAuthSession();
         return api(originalRequest);
-      } catch {
-        sessionStorage.removeItem('user');
-        window.dispatchEvent(new CustomEvent('auth:logout'));
+      } catch (err: any) {
+        const errorCode = err?.response?.data?.error;
+        if (errorCode === 'INVALID_REFRESH_TOKEN' || errorCode === 'SESSION_EXPIRED') {
+          sessionStorage.removeItem('user');
+          window.dispatchEvent(new CustomEvent('auth:logout'));
+        }
       }
     }
 
