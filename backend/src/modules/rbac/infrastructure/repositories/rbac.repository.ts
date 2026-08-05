@@ -531,7 +531,7 @@ export class RBACRepository {
               pp.emergency_contact_name, pp.emergency_contact_phone, pp.emergency_contact_relation,
               pp.privacy_show_profile, pp.privacy_show_stats, pp.privacy_show_activity,
               (cp.status = 'approved') AS is_coach, COALESCE(cp.status, 'none') AS coach_status,
-              cp.rejected_reason AS coach_rejected_reason
+              cp.platform_status, cp.rejected_reason AS coach_rejected_reason
        FROM users u
        LEFT JOIN countries c ON c.id = u.country_id
        LEFT JOIN languages l ON l.id = u.language_id

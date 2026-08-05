@@ -17,6 +17,7 @@ const DAY_LABELS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Fri
 
 const STATUS_BADGE: Record<string, string> = {
   approved: 'bg-[var(--color-success-bg)] text-[var(--color-success-text)]',
+  active: 'bg-[var(--color-success-bg)] text-[var(--color-success-text)]',
   accepted: 'bg-[var(--color-success-bg)] text-[var(--color-success-text)]',
   completed: 'bg-[var(--color-success-bg)] text-[var(--color-success-text)]',
   pending: 'bg-[var(--color-warning-bg)] text-[var(--color-warning-text)]',
@@ -26,6 +27,9 @@ const STATUS_BADGE: Record<string, string> = {
   rejected: 'bg-[var(--color-error-bg)] text-[var(--color-error-text)]',
   cancelled: 'bg-[var(--color-error-bg)] text-[var(--color-error-text)]',
   no_show: 'bg-[var(--color-error-bg)] text-[var(--color-error-text)]',
+  suspended: 'bg-[var(--color-warning-bg)] text-[var(--color-warning-text)]',
+  deactivated: 'bg-[var(--color-error-bg)] text-[var(--color-error-text)]',
+  ended: 'bg-[var(--color-border)] text-[var(--color-text-muted)]',
   none: 'bg-[var(--color-border)] text-[var(--color-text-muted)]',
 };
 
@@ -93,8 +97,8 @@ export default function CoachTab({ userId, coachData, sports, isCoach }: CoachTa
 
   const assignMutation = useMutation({
     mutationFn: (value: boolean) => api.put(`/admin/users/${userId}`, { isCoach: value }),
-    onSuccess: () => { invalidate(); showToast('Coach assignment updated!'); },
-    onError: (err: any) => showToast('Failed to update coach assignment: ' + getErrorMessage(err), 'error'),
+    onSuccess: () => { invalidate(); showToast('Coach status updated.'); },
+    onError: (err: any) => showToast('Failed to update: ' + getErrorMessage(err), 'error'),
   });
 
   const approveMutation = useMutation({
@@ -121,6 +125,24 @@ export default function CoachTab({ userId, coachData, sports, isCoach }: CoachTa
     onError: (err: any) => showToast('Failed to toggle: ' + getErrorMessage(err), 'error'),
   });
 
+  const suspendMutation = useMutation({
+    mutationFn: () => api.patch(`/admin/users/${userId}/coach/suspend`),
+    onSuccess: () => { invalidate(); showToast('Coach suspended.'); },
+    onError: (err: any) => showToast('Failed to suspend: ' + getErrorMessage(err), 'error'),
+  });
+
+  const reactivateMutation = useMutation({
+    mutationFn: () => api.patch(`/admin/users/${userId}/coach/reactivate`),
+    onSuccess: () => { invalidate(); showToast('Coach reactivated.'); },
+    onError: (err: any) => showToast('Failed to reactivate: ' + getErrorMessage(err), 'error'),
+  });
+
+  const deactivateMutation = useMutation({
+    mutationFn: () => api.patch(`/admin/users/${userId}/coach/deactivate`),
+    onSuccess: () => { invalidate(); showToast('Coach deactivated.'); },
+    onError: (err: any) => showToast('Failed to deactivate: ' + getErrorMessage(err), 'error'),
+  });
+
   const sportIds = parseJsonSafe(coach?.sports);
   const coachSportNames = sportIds
     .map((id: any) => sports.find((s: any) => s.id === Number(id))?.name)
@@ -145,7 +167,7 @@ export default function CoachTab({ userId, coachData, sports, isCoach }: CoachTa
         <p className="text-sm text-[var(--color-text-muted)]">This user is not a coach.</p>
         <div className="flex items-center gap-3">
           {toggle}
-          <span className="text-sm font-medium text-[var(--color-text)]">Assign as Coach</span>
+          <span className="text-sm font-medium text-[var(--color-text)]">Apply as Coach</span>
         </div>
       </div>
     );
@@ -155,9 +177,10 @@ export default function CoachTab({ userId, coachData, sports, isCoach }: CoachTa
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-3">
-          {toggle}
-          <span className="text-sm font-medium text-[var(--color-text)]">Assign as Coach</span>
           <Badge value={coach.status} />
+          {coach.platform_status && coach.status === 'approved' && (
+            <Badge value={coach.platform_status} />
+          )}
         </div>
         <div className="flex items-center gap-2">
           {coach.status === 'pending' && (
@@ -188,6 +211,17 @@ export default function CoachTab({ userId, coachData, sports, isCoach }: CoachTa
               </Button>
             </Can>
           )}
+          {coach.status === 'approved' && coach.platform_status === 'active' && (
+            <Can permission="coaches.approve">
+              <Button variant="ghost" className="!px-3 !py-1.5 text-xs !text-[var(--color-warning)]" onClick={() => { if (confirm('Suspend this coach?')) suspendMutation.mutate(); }} loading={suspendMutation.isPending}>Suspend</Button>
+              <Button variant="ghost" className="!px-3 !py-1.5 text-xs !text-[var(--color-error)]" onClick={() => { if (confirm('Deactivate this coach permanently?')) deactivateMutation.mutate(); }} loading={deactivateMutation.isPending}>Deactivate</Button>
+            </Can>
+          )}
+          {coach.status === 'approved' && coach.platform_status === 'suspended' && (
+            <Can permission="coaches.approve">
+              <Button onClick={() => reactivateMutation.mutate()} loading={reactivateMutation.isPending} className="!px-3 !py-1.5 text-xs">Reactivate</Button>
+            </Can>
+          )}
         </div>
       </div>
 
@@ -198,8 +232,9 @@ export default function CoachTab({ userId, coachData, sports, isCoach }: CoachTa
         </div>
       )}
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <StatCard label="Approval Status" value={coach.status} />
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+        <StatCard label="Approval" value={coach.status} />
+        <StatCard label="Platform" value={coach.platform_status || 'active'} />
         <StatCard label="Verification" value={coach.is_verified ? 'Verified' : 'Not Verified'} />
         <StatCard label="Availability" value={coach.is_available ? 'Available' : 'Unavailable'} />
         <StatCard label="Rating" value={coach.rating_avg ? `${Number(coach.rating_avg).toFixed(1)} ★` : '—'} sub={`${coach.rating_count || 0} reviews`} />

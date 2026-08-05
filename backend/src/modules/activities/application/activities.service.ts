@@ -697,11 +697,13 @@ export const activitiesService = {
     const c = await repo.findCoachById(id);
     if (!c) throw new NotFoundError('Coach');
     await repo.verifyCoach(id);
+    try { eventBusV2.emit('coach:verified' as any, { userId: c.user_id, coachId: id }); } catch {}
     return { success: true };
   },
   async toggleCoachAvailability(id: number) {
     const result = await repo.toggleCoachAvailability(id);
     if (!result) throw new NotFoundError('Coach');
+    try { eventBusV2.emit('coach:availability-changed' as any, { userId: (result as any).user_id, coachId: id, isAvailable: (result as any).is_available }); } catch {}
     return result;
   },
 
