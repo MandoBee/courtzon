@@ -9,9 +9,12 @@ import { getPool } from '../../../database/mysql.js';
 import type mysql from 'mysql2/promise';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const registryPath = existsSync(resolve('/app', 'frontend-registry.ts'))
-  ? resolve('/app', 'frontend-registry.ts')
-  : resolve(__dirname, '../../../../../frontend/src/i18n/translation-keys.registry.ts');
+const dockerPath = resolve('/app', 'frontend-registry.ts');
+const artifactPath = resolve(__dirname, '../../generated/translation-keys.json');
+const developmentPath = resolve(__dirname, '../../../../../frontend/src/i18n/translation-keys.registry.ts');
+const registryPath = existsSync(artifactPath) ? artifactPath
+  : existsSync(dockerPath) ? dockerPath
+  : developmentPath;
 
 type RowData = mysql.RowDataPacket[];
 

@@ -24,6 +24,7 @@ COPY packages/ /packages/
 RUN npm ci --omit=dev --ignore-scripts && npm cache clean --force
 
 COPY --from=builder /app/dist/ dist/
+COPY --from=builder /app/generated/ dist/generated/
 COPY backend/scripts/ scripts/
 COPY database/ database/
 RUN test -f database/baseline/001_courtzon_v3.sql || test -f database/migrations/.gitkeep || echo "No baseline or migrations found"
