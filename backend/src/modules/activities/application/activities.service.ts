@@ -246,7 +246,23 @@ export const activitiesService = {
     if (!coach) throw new NotFoundError('Coach profile');
     const affected = await repo.respondToOrgInvite(coach.id, agreementId, accept);
     if (!affected) throw new NotFoundError('Pending invite');
-    return { agreementId, status: accept ? 'accepted' : 'rejected' };
+
+    const pool = getPool();
+    const [agrRows] = await pool.execute(`SELECT organisation_id FROM coach_org_agreements WHERE id = ?`, [agreementId]) as any;
+    if (agrRows.length) {
+      const orgId = agrRows[0].organisation_id;
+      const orgName = await repo.findOrgNameById(orgId);
+      const coachProf = await repo.findCoachByUserId(userId);
+      const eventName = accept ? 'coach:invite-accepted' : 'coach:invite-rejected';
+      eventBusV2.emit(eventName as any, {
+        coachId: coachProf?.id,
+        coachUserId: userId,
+        organisationId: orgId,
+        organisationName: orgName || 'Unknown Organisation',
+      });
+    }
+
+    return { agreementId, status: accept ? 'active' : 'rejected' };
   },
   async createCoachSession(userId: number, data: any) {
     const coach = await repo.findCoachByUserId(userId);

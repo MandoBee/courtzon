@@ -18,6 +18,7 @@ export function mapDomainEvent(eventName: string, payload: Record<string, unknow
     if (eventName.startsWith('settlement:')) return mapSettlementEvent(eventName, payload);
     if (eventName.startsWith('organisation:') || eventName.startsWith('subscription:')) return mapOrganisationEvent(eventName, payload);
     if (eventName.startsWith('academy:') || eventName.startsWith('coaching:')) return mapAcademyEvent(eventName, payload);
+    if (eventName.startsWith('coach:')) return mapCoachEvent(eventName, payload);
     if (eventName.startsWith('attendance:')) return mapAttendanceEvent(eventName, payload);
     if (eventName.startsWith('membership:')) return mapMembershipEvent(eventName, payload);
     if (eventName.startsWith('match:')) return mapMatchEvent(eventName, payload);
@@ -180,6 +181,18 @@ function mapMatchEvent(eventName: string, p: Record<string, any>): MappedSocketE
     type: `match.${sub}`,
     payload: { matchId: p.matchId, bookingId: p.bookingId, userId: p.userId, timestamp: p.timestamp },
     rooms: ['player'],
+  };
+}
+
+function mapCoachEvent(eventName: string, p: Record<string, any>): MappedSocketEvent {
+  const rooms: string[] = [];
+  const userId = p.userId || p.coachUserId;
+  if (userId) rooms.push(`user:${userId}`);
+  if (p.organisationId) rooms.push(`org:${p.organisationId}`);
+  return {
+    type: `coach.${eventName.split(':').slice(1).join('.')}`,
+    payload: { ...p, timestamp: Date.now() },
+    rooms,
   };
 }
 

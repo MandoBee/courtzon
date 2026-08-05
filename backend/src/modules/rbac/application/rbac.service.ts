@@ -229,6 +229,8 @@ export class RBACService {
     if (!user) throw new NotFoundError('User');
     if (user.coach_status !== 'pending') throw new Error('Coach application is not pending');
     await rbacRepository.updateCoachStatus(userId, 'approved');
+    const coach = await rbacRepository.getCoachByUserId(userId);
+    eventBus.emit('coach:application-approved' as any, { userId, coachId: coach?.id });
     return this.getUserById(userId);
   }
 
@@ -237,7 +239,27 @@ export class RBACService {
     if (!user) throw new NotFoundError('User');
     if (user.coach_status !== 'pending') throw new Error('Coach application is not pending');
     await rbacRepository.updateCoachStatus(userId, 'rejected', reason);
+    const coach = await rbacRepository.getCoachByUserId(userId);
+    eventBus.emit('coach:application-rejected' as any, { userId, coachId: coach?.id, reason });
     return this.getUserById(userId);
+  }
+
+  async suspendCoach(userId: number) {
+    await rbacRepository.updateCoachPlatformStatus(userId, 'suspended');
+    const coach = await rbacRepository.getCoachByUserId(userId);
+    try { eventBus.emit('coach:platform-suspended' as any, { userId, coachId: coach?.id }); } catch {}
+  }
+
+  async reactivateCoach(userId: number) {
+    await rbacRepository.updateCoachPlatformStatus(userId, 'active');
+    const coach = await rbacRepository.getCoachByUserId(userId);
+    try { eventBus.emit('coach:platform-activated' as any, { userId, coachId: coach?.id }); } catch {}
+  }
+
+  async deactivateCoach(userId: number) {
+    await rbacRepository.updateCoachPlatformStatus(userId, 'deactivated');
+    const coach = await rbacRepository.getCoachByUserId(userId);
+    try { eventBus.emit('coach:platform-deactivated' as any, { userId, coachId: coach?.id }); } catch {}
   }
 
   async getUserBookings(userId: number) {

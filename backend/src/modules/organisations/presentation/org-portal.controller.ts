@@ -310,7 +310,7 @@ export async function respondOrgCoachHandler(request: FastifyRequest, reply: Fas
   const cid = parseInt(coachId, 10);
   await service.respondToCoachAgreement(oid, cid, body.accept);
   auditOrganisationMutation(request, 'ORG_COACH.RESPOND', 'organisation', oid, { coachId: cid, accept: body.accept });
-  return reply.send({ success: true, status: body.accept ? 'accepted' : 'rejected' });
+  return reply.send({ success: true, status: body.accept ? 'active' : 'rejected' });
 }
 
 export async function removeOrgCoachHandler(request: FastifyRequest, reply: FastifyReply) {
@@ -320,6 +320,54 @@ export async function removeOrgCoachHandler(request: FastifyRequest, reply: Fast
   await service.removeCoachAgreement(oid, cid);
   auditOrganisationMutation(request, 'ORG_COACH.REMOVE', 'organisation', oid, { coachId: cid });
   return reply.send({ success: true });
+}
+
+export async function suspendOrgCoachHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { orgId, coachId } = request.params as any;
+  const actorId = (request as any).userId;
+  await service.suspendCoachAgreement(Number(orgId), Number(coachId));
+  recordAudit({
+    actorId,
+    action: 'ORG_COACH.SUSPEND',
+    entityType: 'coach_org_agreement',
+    entityId: Number(coachId),
+    afterState: { organisationId: Number(orgId), status: 'suspended' },
+    ipAddress: request.ip,
+    userAgent: request.headers['user-agent'],
+  });
+  return reply.send({ data: { status: 'suspended' } });
+}
+
+export async function resumeOrgCoachHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { orgId, coachId } = request.params as any;
+  const actorId = (request as any).userId;
+  await service.resumeCoachAgreement(Number(orgId), Number(coachId));
+  recordAudit({
+    actorId,
+    action: 'ORG_COACH.RESUME',
+    entityType: 'coach_org_agreement',
+    entityId: Number(coachId),
+    afterState: { organisationId: Number(orgId), status: 'active' },
+    ipAddress: request.ip,
+    userAgent: request.headers['user-agent'],
+  });
+  return reply.send({ data: { status: 'active' } });
+}
+
+export async function endOrgCoachHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { orgId, coachId } = request.params as any;
+  const actorId = (request as any).userId;
+  await service.endCoachAgreement(Number(orgId), Number(coachId));
+  recordAudit({
+    actorId,
+    action: 'ORG_COACH.END',
+    entityType: 'coach_org_agreement',
+    entityId: Number(coachId),
+    afterState: { organisationId: Number(orgId), status: 'ended' },
+    ipAddress: request.ip,
+    userAgent: request.headers['user-agent'],
+  });
+  return reply.send({ data: { status: 'ended' } });
 }
 
 // ── Facility members (branch access / membership — D8) ──

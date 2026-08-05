@@ -451,7 +451,7 @@ export async function respondToCoachAgreement(orgId: number, coachId: number, ac
     `UPDATE coach_org_agreements
         SET status = ?, is_active = ?
       WHERE organisation_id = ? AND coach_id = ? AND initiated_by = 'coach' AND status = 'pending'`,
-    [accept ? 'accepted' : 'rejected', accept ? 1 : 0, orgId, coachId]
+    [accept ? 'active' : 'rejected', accept ? 1 : 0, orgId, coachId]
   );
   return (result as any).affectedRows as number;
 }
@@ -460,6 +460,33 @@ export async function removeOrgCoachAgreement(orgId: number, coachId: number): P
   const pool = getPool();
   const [result] = await pool.execute(
     `DELETE FROM coach_org_agreements WHERE organisation_id = ? AND coach_id = ?`,
+    [orgId, coachId]
+  );
+  return (result as any).affectedRows > 0;
+}
+
+export async function suspendCoachAgreement(orgId: number, coachId: number): Promise<boolean> {
+  const pool = getPool();
+  const [result] = await pool.execute(
+    `UPDATE coach_org_agreements SET status = 'suspended' WHERE organisation_id = ? AND coach_id = ? AND status = 'active'`,
+    [orgId, coachId]
+  );
+  return (result as any).affectedRows > 0;
+}
+
+export async function resumeCoachAgreement(orgId: number, coachId: number): Promise<boolean> {
+  const pool = getPool();
+  const [result] = await pool.execute(
+    `UPDATE coach_org_agreements SET status = 'active' WHERE organisation_id = ? AND coach_id = ? AND status = 'suspended'`,
+    [orgId, coachId]
+  );
+  return (result as any).affectedRows > 0;
+}
+
+export async function endCoachAgreement(orgId: number, coachId: number): Promise<boolean> {
+  const pool = getPool();
+  const [result] = await pool.execute(
+    `UPDATE coach_org_agreements SET status = 'ended' WHERE organisation_id = ? AND coach_id = ? AND status IN ('active','suspended')`,
     [orgId, coachId]
   );
   return (result as any).affectedRows > 0;

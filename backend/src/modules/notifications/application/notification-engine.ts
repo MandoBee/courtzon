@@ -303,6 +303,76 @@ const eventGroups: EventGroupConfig[] = [
     },
   },
   {
+    events: ['coach:application-approved', 'coach:application-rejected'],
+    handler: async (eventName, data, categorySlug) => {
+      const isApproved = eventName.includes('approved');
+      if (data.userId) {
+        await dispatchToUser({
+          userId: data.userId, eventName, categorySlug, data,
+          relatedEntityType: 'coach', relatedEntityId: String(data.coachId),
+          action: a(isApproved ? '/coach/dashboard' : '/profile'),
+        });
+      }
+    },
+  },
+  {
+    events: ['coach:verified'],
+    handler: async (eventName, data, categorySlug) => {
+      if (data.userId) {
+        await dispatchToUser({
+          userId: data.userId, eventName, categorySlug, data,
+          relatedEntityType: 'coach', relatedEntityId: String(data.coachId),
+          action: a('/coach/profile'),
+        });
+      }
+    },
+  },
+  {
+    events: ['coach:platform-suspended', 'coach:platform-deactivated', 'coach:platform-activated'],
+    handler: async (eventName, data, categorySlug) => {
+      if (data.userId) {
+        await dispatchToUser({
+          userId: data.userId, eventName, categorySlug, data,
+          relatedEntityType: 'coach', relatedEntityId: String(data.coachId),
+          action: a('/coach/dashboard'),
+        });
+      }
+    },
+  },
+  {
+    events: ['coach:org-accepted', 'coach:org-rejected', 'coach:org-suspended', 'coach:org-resumed', 'coach:org-ended'],
+    handler: async (eventName, data, categorySlug) => {
+      if (data.coachUserId) {
+        await dispatchToUser({
+          userId: data.coachUserId, eventName, categorySlug, data,
+          relatedEntityType: 'coach', relatedEntityId: String(data.coachId),
+          organisationId: data.organisationId, action: a('/coach/profile?tab=orgs'),
+        });
+      }
+      if (data.organisationId) {
+        await dispatchByOrg(data.organisationId, {
+          eventName, categorySlug, action: a(`/org/${data.organisationId}/coaches`),
+          data: { ...data, title: data.organisationName || 'An organisation', body: `Coach agreement has been ${eventName.split(':').pop()}.` },
+          organisationId: data.organisationId,
+          relatedEntityType: 'coach', relatedEntityId: String(data.coachId),
+        });
+      }
+    },
+  },
+  {
+    events: ['coach:invite-accepted', 'coach:invite-rejected'],
+    handler: async (eventName, data, categorySlug) => {
+      if (data.organisationId) {
+        await dispatchByOrg(data.organisationId, {
+          eventName, categorySlug, action: a(`/org/${data.organisationId}/coaches`),
+          data: { ...data, title: 'Invitation response', body: `Coach has ${eventName.includes('accepted') ? 'accepted' : 'declined'} your invitation.` },
+          organisationId: data.organisationId,
+          relatedEntityType: 'coach', relatedEntityId: String(data.coachId),
+        });
+      }
+    },
+  },
+  {
     events: ['tournament:created', 'tournament:registration-open', 'tournament:registration-closed', 'tournament:starting-soon', 'tournament:match-scheduled', 'tournament:result'],
     handler: async (eventName, data, categorySlug) => {
       if (data.userId) {

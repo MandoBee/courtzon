@@ -314,6 +314,48 @@ export async function inviteCoach(orgId: number, data: { coachId: number; coachS
 export async function respondToCoachAgreement(orgId: number, coachId: number, accept: boolean) {
   const affected = await repo.respondToCoachAgreement(orgId, coachId, accept);
   if (!affected) throw new NotFoundError('Pending coach agreement');
+
+  const coachUserId = await repo.findCoachUserId(coachId);
+  const orgInfo = await repo.getOrgInfo(orgId);
+  if (coachUserId) {
+    const eventName = accept ? 'coach:org-accepted' : 'coach:org-rejected';
+    eventBusV2.emit(eventName as any, {
+      coachId,
+      coachUserId,
+      organisationId: orgId,
+      organisationName: orgInfo?.name || 'Unknown Organisation',
+    });
+  }
+}
+
+export async function suspendCoachAgreement(orgId: number, coachId: number) {
+  const affected = await repo.suspendCoachAgreement(orgId, coachId);
+  if (!affected) throw new NotFoundError('Active coach agreement');
+  const coachUserId = await repo.findCoachUserId(coachId);
+  const orgInfo = await repo.getOrgInfo(orgId);
+  if (coachUserId) {
+    eventBusV2.emit('coach:org-suspended' as any, { coachId, coachUserId, organisationId: orgId, organisationName: orgInfo?.name });
+  }
+}
+
+export async function resumeCoachAgreement(orgId: number, coachId: number) {
+  const affected = await repo.resumeCoachAgreement(orgId, coachId);
+  if (!affected) throw new NotFoundError('Suspended coach agreement');
+  const coachUserId = await repo.findCoachUserId(coachId);
+  const orgInfo = await repo.getOrgInfo(orgId);
+  if (coachUserId) {
+    eventBusV2.emit('coach:org-resumed' as any, { coachId, coachUserId, organisationId: orgId, organisationName: orgInfo?.name });
+  }
+}
+
+export async function endCoachAgreement(orgId: number, coachId: number) {
+  const affected = await repo.endCoachAgreement(orgId, coachId);
+  if (!affected) throw new NotFoundError('Active coach agreement');
+  const coachUserId = await repo.findCoachUserId(coachId);
+  const orgInfo = await repo.getOrgInfo(orgId);
+  if (coachUserId) {
+    eventBusV2.emit('coach:org-ended' as any, { coachId, coachUserId, organisationId: orgId, organisationName: orgInfo?.name });
+  }
 }
 
 export async function removeCoachAgreement(orgId: number, coachId: number) {
@@ -407,7 +449,7 @@ export async function getOrgDashboard(orgId: number): Promise<any> {
     [orgId],
   );
   const [[pendingCoaches]] = await pool.query<RowData>(
-    `SELECT COUNT(*) AS cnt FROM organisation_coaches WHERE organisation_id = ? AND status = 'pending'`,
+    `SELECT COUNT(*) AS cnt FROM coach_org_agreements WHERE organisation_id = ? AND status = 'pending'`,
     [orgId],
   );
 

@@ -40,6 +40,9 @@ export async function rbacRoutes(app: FastifyInstance): Promise<void> {
   // Coach approval — super admin only
   app.patch('/admin/users/:id/coach/approve', { preHandler: [superAdminGuard] }, ctrl.approveCoachHandler);
   app.patch('/admin/users/:id/coach/reject', { preHandler: [superAdminGuard] }, ctrl.rejectCoachHandler);
+  app.patch('/admin/users/:id/coach/suspend', { preHandler: [superAdminGuard] }, ctrl.suspendCoachHandler);
+  app.patch('/admin/users/:id/coach/reactivate', { preHandler: [superAdminGuard] }, ctrl.reactivateCoachHandler);
+  app.patch('/admin/users/:id/coach/deactivate', { preHandler: [superAdminGuard] }, ctrl.deactivateCoachHandler);
 
   // User-Role assignments — super admin only
   app.post('/user-roles', { preHandler: [superAdminGuard] }, ctrl.assignRoleHandler);
