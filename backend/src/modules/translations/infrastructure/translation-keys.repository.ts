@@ -128,8 +128,8 @@ export const translationKeysRepository = {
   async getRegistryHash(): Promise<string | null> {
     const pool = getPool();
     const [rows] = await pool.execute<RowData>(
-      'SELECT value FROM system_settings WHERE category = ? AND `key` = ? LIMIT 1',
-      ['i18n', 'translations.registry_hash']
+      'SELECT value FROM system_settings WHERE `key` = ? LIMIT 1',
+      ['translations.registry_hash']
     );
     if (!rows.length) return null;
     try { return JSON.parse((rows[0] as any).value); } catch { return null; }
@@ -138,8 +138,8 @@ export const translationKeysRepository = {
   async setRegistryHash(hash: string): Promise<void> {
     const pool = getPool();
     await pool.execute(
-      `INSERT INTO system_settings (category, \`key\`, value, value_type, description, is_public, is_editable)
-       VALUES ('i18n', 'translations.registry_hash', ?, 'string', 'SHA-256 hash of the last synced translation registry', 0, 0)
+      `INSERT INTO system_settings (\`key\`, value, description)
+       VALUES ('translations.registry_hash', ?, 'SHA-256 hash of the last synced translation registry')
        ON DUPLICATE KEY UPDATE value = VALUES(value)`,
       [JSON.stringify(hash)]
     );
