@@ -1,7 +1,7 @@
 import { translationsRepository } from '../infrastructure/repositories/translations.repository.js';
 import { translationKeysRepository } from '../infrastructure/translation-keys.repository.js';
 import { createHash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { recordAudit } from '../../audit-log/index.js';
@@ -9,7 +9,9 @@ import { getPool } from '../../../database/mysql.js';
 import type mysql from 'mysql2/promise';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const registryPath = resolve(__dirname, '../../../../../frontend/src/i18n/translation-keys.registry.ts');
+const registryPath = existsSync(resolve('/app', 'frontend-registry.ts'))
+  ? resolve('/app', 'frontend-registry.ts')
+  : resolve(__dirname, '../../../../../frontend/src/i18n/translation-keys.registry.ts');
 
 type RowData = mysql.RowDataPacket[];
 
