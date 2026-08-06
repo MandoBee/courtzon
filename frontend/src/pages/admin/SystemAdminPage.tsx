@@ -5,7 +5,7 @@ import { useTranslation } from '../../i18n';
 import { useToast } from '../../components/ui/Toast';
 import { SkeletonRow } from '../../components/ui/Skeleton';
 
-type Tab = 'settings' | 'feature-flags' | 'health' | 'cache' | 'queues' | 'audit';
+type Tab = 'settings' | 'feature-flags' | 'health' | 'cache' | 'queues' | 'audit' | 'history';
 
 export default function SystemAdminPage() {
   const { t } = useTranslation();
@@ -17,7 +17,7 @@ export default function SystemAdminPage() {
       <h1 className="text-2xl font-bold text-[var(--color-text)]">{t('admin.system.title')}</h1>
 
       <div className="flex gap-2 flex-wrap border-b border-[var(--color-border)] pb-2">
-        {(['settings', 'feature-flags', 'health', 'cache', 'queues', 'audit'] as Tab[]).map(tabId => (
+        {(['settings', 'feature-flags', 'health', 'cache', 'queues', 'audit', 'history'] as Tab[]).map(tabId => (
           <button key={tabId} onClick={() => setTab(tabId)} className={`px-4 py-2 text-sm font-medium rounded-t-lg ${tab === tabId ? 'bg-[var(--color-primary)] text-white' : 'text-[var(--color-text-muted)] hover:text-[var(--color-text)]'}`}>{t(`admin.system.tab.${tabId}`)}</button>
         ))}
       </div>
@@ -28,6 +28,7 @@ export default function SystemAdminPage() {
       {tab === 'cache' && <CachePanel />}
       {tab === 'queues' && <QueuesPanel />}
       {tab === 'audit' && <AuditPanel />}
+      {tab === 'history' && <SettingsHistoryPanel />}
     </div>
   );
 }
@@ -37,6 +38,9 @@ function SettingsPanel({ selectedCategory, onCategoryChange }: { selectedCategor
   const { showToast } = useToast();
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
+  const [typeFilter, setTypeFilter] = useState('');
+  const [scopeFilter, setScopeFilter] = useState('');
+  const [editableFilter, setEditableFilter] = useState('');
 
   const { data: meta } = useQuery({ queryKey: ['settings-metadata'], queryFn: () => api.get('/admin/settings/metadata').then(r => r.data), staleTime: 30000 });
 
@@ -47,9 +51,15 @@ function SettingsPanel({ selectedCategory, onCategoryChange }: { selectedCategor
   });
 
   const categories = meta?.data?.categories || [];
+  const scopes = meta?.data?.scopes || [];
+  const valueTypes = meta?.data?.valueTypes || [];
   let settings = meta?.data?.settings || [];
 
   if (selectedCategory) settings = settings.filter((s: any) => (s.category || 'general') === selectedCategory);
+  if (typeFilter) settings = settings.filter((s: any) => (s.value_type || 'string') === typeFilter);
+  if (scopeFilter) settings = settings.filter((s: any) => (s.scope || 'global') === scopeFilter);
+  if (editableFilter === 'editable') settings = settings.filter((s: any) => s.is_editable !== false);
+  if (editableFilter === 'readonly') settings = settings.filter((s: any) => s.is_editable === false);
   if (search) settings = settings.filter((s: any) => s.key.toLowerCase().includes(search.toLowerCase()) || (s.display_name || '').toLowerCase().includes(search.toLowerCase()) || (s.description || '').toLowerCase().includes(search.toLowerCase()));
 
   const grouped: Record<string, any[]> = {};
@@ -68,8 +78,26 @@ function SettingsPanel({ selectedCategory, onCategoryChange }: { selectedCategor
       const opts = s.allowed_values.split(',').map((o: string) => o.trim());
       return <select defaultValue={String(s.value)} onChange={e => updateMut.mutate({ key: s.key, value: e.target.value })} className="w-full px-2 py-1 text-xs border rounded">{opts.map((o: string) => <option key={o} value={o}>{o}</option>)}</select>;
     }
-    if (vt === 'number' || vt === 'decimal') {
-      return <input type="number" defaultValue={s.value} onBlur={e => { if (e.target.value !== String(s.value)) updateMut.mutate({ key: s.key, value: e.target.value }); }} min={s.min_value} max={s.max_value} step={vt === 'decimal' ? '0.01' : '1'} className="w-full px-2 py-1 text-xs border rounded" />;
+    if (vt === 'number' || vt === 'decimal' || vt === 'currency' || vt === 'percentage') {
+      return <div className="flex items-center gap-1"><input type="number" defaultValue={s.value} onBlur={e => { if (e.target.value !== String(s.value)) updateMut.mutate({ key: s.key, value: e.target.value }); }} min={s.min_value} max={s.max_value} step={vt === 'decimal' ? '0.01' : '1'} className="w-full px-2 py-1 text-xs border rounded" />{s.unit && <span className="text-[10px] text-muted">{s.unit}</span>}</div>;
+    }
+    if (vt === 'duration') {
+      return <input defaultValue={s.value} onBlur={e => { if (e.target.value !== s.value) updateMut.mutate({ key: s.key, value: e.target.value }); }} placeholder={s.placeholder || 'e.g. 48h, 30m, 7d'} className="w-full px-2 py-1 text-xs border rounded" />;
+    }
+    if (vt === 'date') {
+      return <input type="date" defaultValue={s.value} onBlur={e => { if (e.target.value !== s.value) updateMut.mutate({ key: s.key, value: e.target.value }); }} className="w-full px-2 py-1 text-xs border rounded" />;
+    }
+    if (vt === 'datetime') {
+      return <input type="datetime-local" defaultValue={s.value} onBlur={e => { if (e.target.value !== s.value) updateMut.mutate({ key: s.key, value: e.target.value }); }} className="w-full px-2 py-1 text-xs border rounded" />;
+    }
+    if (vt === 'color') {
+      return <div className="flex gap-1"><input type="color" defaultValue={s.value || '#000000'} onBlur={e => { if (e.target.value !== s.value) updateMut.mutate({ key: s.key, value: e.target.value }); }} className="w-8 h-6 border rounded cursor-pointer" /><input defaultValue={s.value} onBlur={e => { if (e.target.value !== s.value) updateMut.mutate({ key: s.key, value: e.target.value }); }} className="flex-1 px-2 py-1 text-xs border rounded font-mono" /></div>;
+    }
+    if (vt === 'email') {
+      return <input type="email" defaultValue={s.value} onBlur={e => { if (e.target.value !== s.value) updateMut.mutate({ key: s.key, value: e.target.value }); }} className="w-full px-2 py-1 text-xs border rounded" />;
+    }
+    if (vt === 'url') {
+      return <input type="url" defaultValue={s.value} onBlur={e => { if (e.target.value !== s.value) updateMut.mutate({ key: s.key, value: e.target.value }); }} className="w-full px-2 py-1 text-xs border rounded" />;
     }
     if (vt === 'text' || vt === 'json') {
       return <textarea defaultValue={s.value} rows={2} onBlur={e => { if (e.target.value !== String(s.value)) updateMut.mutate({ key: s.key, value: e.target.value }); }} className="w-full px-2 py-1 text-xs border rounded font-mono" />;
@@ -79,11 +107,24 @@ function SettingsPanel({ selectedCategory, onCategoryChange }: { selectedCategor
 
   return (
     <div className="space-y-4">
-      <div className="flex gap-3 flex-wrap">
-        <input placeholder={t('admin.system.search_settings')} value={search} onChange={e => setSearch(e.target.value)} className="px-3 py-2 text-sm bg-[var(--color-bg)] border border-[var(--color-border)] rounded-xl w-64" />
-        <select value={selectedCategory} onChange={e => onCategoryChange(e.target.value)} className="px-3 py-2 text-sm bg-[var(--color-bg)] border border-[var(--color-border)] rounded-xl">
-          <option value="">{t('admin.system.all_categories')}</option>
+      <div className="flex gap-2 flex-wrap items-center">
+        <input placeholder={t('admin.system.search_settings')} value={search} onChange={e => setSearch(e.target.value)} className="px-3 py-2 text-sm bg-[var(--color-bg)] border border-[var(--color-border)] rounded-xl w-48" />
+        <select value={selectedCategory} onChange={e => onCategoryChange(e.target.value)} className="px-3 py-2 text-xs bg-[var(--color-bg)] border border-[var(--color-border)] rounded-xl">
+          <option value="">All Categories</option>
           {categories.map((c: string) => <option key={c} value={c}>{c}</option>)}
+        </select>
+        <select value={typeFilter} onChange={e => setTypeFilter(e.target.value)} className="px-3 py-2 text-xs bg-[var(--color-bg)] border border-[var(--color-border)] rounded-xl">
+          <option value="">All Types</option>
+          {valueTypes.map((t: string) => <option key={t} value={t}>{t}</option>)}
+        </select>
+        <select value={scopeFilter} onChange={e => setScopeFilter(e.target.value)} className="px-3 py-2 text-xs bg-[var(--color-bg)] border border-[var(--color-border)] rounded-xl">
+          <option value="">All Scopes</option>
+          {scopes.map((s: string) => <option key={s} value={s}>{s}</option>)}
+        </select>
+        <select value={editableFilter} onChange={e => setEditableFilter(e.target.value)} className="px-3 py-2 text-xs bg-[var(--color-bg)] border border-[var(--color-border)] rounded-xl">
+          <option value="">All</option>
+          <option value="editable">Editable</option>
+          <option value="readonly">Read-Only</option>
         </select>
       </div>
       {Object.entries(grouped).map(([cat, catSettings]) => (
@@ -102,13 +143,14 @@ function SettingsPanel({ selectedCategory, onCategoryChange }: { selectedCategor
                   <p className="text-[10px] text-[var(--color-text-muted)]/60 font-mono">{s.key}</p>
                 </div>
                 <div className="mt-2">
-                  {s.is_editable ? renderInput(s) : <p className="text-sm font-medium text-[var(--color-text)]">{String(s.value)}{s.unit ? ` ${s.unit}` : ''}</p>}
+                  {s.is_editable !== false ? renderInput(s) : <p className="text-sm font-medium text-[var(--color-text)]">{String(s.value)}{s.unit ? ` ${s.unit}` : ''}</p>}
                 </div>
               </div>
             ))}
           </div>
         </div>
       ))}
+      {Object.keys(grouped).length === 0 && <p className="text-sm text-muted text-center py-8">No settings match the filters.</p>}
     </div>
   );
 }
@@ -220,6 +262,34 @@ function AuditPanel() {
         </div>
       ))}
       {pag.totalPages > 1 && <div className="flex justify-center gap-2 mt-4">{Array.from({ length: pag.totalPages }, (_, i) => i + 1).map(p => <button key={p} onClick={() => setPage(p)} className={`px-3 py-1 text-xs rounded ${page === p ? 'bg-[var(--color-primary)] text-white' : 'bg-[var(--color-bg)]'}`}>{p}</button>)}</div>}
+    </div>
+  );
+}
+
+function SettingsHistoryPanel() {
+  const [page, setPage] = useState(1);
+  const { data } = useQuery({ queryKey: ['settings-history', page], queryFn: () => api.get('/admin/settings/history', { params: { page } }).then(r => r.data?.data) });
+  const rows = data?.data || [];
+
+  return (
+    <div className="space-y-2">
+      <h2 className="text-sm font-semibold mb-2">Settings Change History</h2>
+      {rows.map((r: any) => (
+        <div key={r.id} className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] px-4 py-2 text-sm">
+          <div className="flex items-center justify-between">
+            <span className="font-medium">{r.setting_key}</span>
+            <span className="text-xs text-muted">{new Date(r.created_at).toLocaleString()}</span>
+          </div>
+          <div className="flex gap-2 text-xs mt-1">
+            <span className="text-red-400 line-through">{r.old_value?.substring(0, 30) || '—'}</span>
+            <span>→</span>
+            <span className="text-green-400">{r.new_value?.substring(0, 30) || '—'}</span>
+            {r.changed_by_name && <span className="text-muted ml-auto">by {r.changed_by_name}</span>}
+          </div>
+        </div>
+      ))}
+      {rows.length === 0 && <p className="text-sm text-muted text-center py-8">No settings changes recorded yet.</p>}
+      {data?.total > 50 && <div className="flex justify-center gap-2 mt-4"><button disabled={page <= 1} onClick={() => setPage(p => p - 1)} className="px-3 py-1 text-xs border rounded">Prev</button><span className="text-xs">Page {page}</span><button disabled={page * 50 >= data?.total} onClick={() => setPage(p => p + 1)} className="px-3 py-1 text-xs border rounded">Next</button></div>}
     </div>
   );
 }
