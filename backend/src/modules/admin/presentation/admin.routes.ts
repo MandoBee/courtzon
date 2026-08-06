@@ -13,6 +13,11 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
   app.get('/admin/settings/categories', { preHandler: [requirePermission(['system_settings.view'])] }, ctrl.getSettingCategoriesHandler);
   app.get('/admin/settings/:key', { preHandler: [requirePermission(['system_settings.view'])] }, ctrl.getSettingByKeyHandler);
   app.put('/admin/settings/:key', { preHandler: [requirePermission(['system_settings.update'])] }, ctrl.updateSettingHandler);
+  app.get('/admin/settings/profiles', { preHandler: [requirePermission(['system_settings.view'])] }, ctrl.listProfilesHandler);
+  app.post('/admin/settings/profiles', { preHandler: [requirePermission(['system_settings.update'])] }, ctrl.createProfileHandler);
+  app.post('/admin/settings/profiles/:id/apply', { preHandler: [requirePermission(['system_settings.update'])] }, ctrl.applyProfileHandler);
+  app.post('/admin/settings/profiles/:id/archive', { preHandler: [requirePermission(['system_settings.update'])] }, ctrl.archiveProfileHandler);
+  app.delete('/admin/settings/profiles/:id', { preHandler: [requirePermission(['system_settings.update'])] }, ctrl.deleteProfileHandler);
 
   // ── Feature Flags ─────────────────────────────────────────────────────
   app.get('/admin/feature-flags', { preHandler: [requirePermission(['feature_flags.view'])] }, ctrl.listFeatureFlagsHandler);

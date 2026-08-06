@@ -152,6 +152,8 @@ export interface DomainEventMap {
   'system:birthday': BaseEvent & { userId: number; name: string };
   'system:digest': BaseEvent & { userId: number; notifications: Array<{ id: number; title: string; categorySlug: string }> };
   'notification:broadcast': BaseEvent & { broadcastId: number; payload: BroadcastPayload; target: BroadcastTarget };
+  'setting:updated': BaseEvent & { key: string; oldValue: string; newValue: string; changedBy: number };
+  'setting:profile-applied': BaseEvent & { profileId: number; profileName: string; appliedBy: number };
 }
 
 export interface BroadcastPayload {

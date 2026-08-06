@@ -710,6 +710,19 @@ const eventGroups: EventGroupConfig[] = [
     },
   },
   {
+    events: ['setting:updated'],
+    handler: async (eventName, data, categorySlug) => {
+      if (data.key && (data.key.startsWith('security.') || data.key.startsWith('wallet.') || data.key.startsWith('payments.') || data.key.startsWith('booking.'))) {
+        await dispatchByPermission('system_settings.view', {
+          eventName, categorySlug,
+          data: { ...data, title: 'Critical Setting Changed', body: `Setting ${data.key} was updated. Old: ${String(data.oldValue || '').substring(0, 30)}, New: ${String(data.newValue || '').substring(0, 30)}.` },
+          relatedEntityType: 'setting', relatedEntityId: data.key,
+          action: a('/admin/system'),
+        });
+      }
+    },
+  },
+  {
     events: ['coupon:published'],
     handler: async (eventName, data, categorySlug) => {
       if (data.organisationIds?.length) {
@@ -817,6 +830,7 @@ class NotificationEngine {
       'coupon:published', 'booking:auto-cancelled', 'booking:application-declined',
       'notification:broadcast',
       'subscription:request-submitted', 'subscription:request-approved', 'subscription:request-rejected',
+      'setting:updated', 'setting:profile-applied',
     ];
 
     const eventMap = buildEventMap(eventGroups);
