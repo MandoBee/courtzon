@@ -1316,6 +1316,17 @@ export const translationKeysRegistry: TranslationKeyEntry[] = [
   { key: 'player.wallet.payment_submitted', defaultValue: 'Payment submitted — confirming...', moduleSlug: 'player', elementType: 'message', elementLabel: 'Payment submitted toast' },
   { key: 'player.wallet.payment_cancelled', defaultValue: 'Payment cancelled', moduleSlug: 'player', elementType: 'message', elementLabel: 'Payment cancelled toast' },
   { key: 'player.wallet.deposit_pending', defaultValue: 'Payment confirmation is taking longer than expected. Your wallet will be credited once the payment settles.', moduleSlug: 'player', elementType: 'message', elementLabel: 'Deposit pending toast' },
+  // Withdrawals
+  { key: 'wallet.withdraw.title', defaultValue: 'Withdraw Funds', moduleSlug: 'player', elementType: 'heading', elementLabel: 'Withdrawal page title' },
+  { key: 'wallet.withdraw.available', defaultValue: 'Available Balance', moduleSlug: 'player', elementType: 'label', elementLabel: 'Available balance label' },
+  { key: 'wallet.withdraw.request', defaultValue: 'Request Withdrawal', moduleSlug: 'player', elementType: 'button', elementLabel: 'Request withdrawal button' },
+  { key: 'wallet.withdraw.history', defaultValue: 'Withdrawal History', moduleSlug: 'player', elementType: 'heading', elementLabel: 'Withdrawal history heading' },
+  { key: 'wallet.withdraw.amount', defaultValue: 'Amount', moduleSlug: 'player', elementType: 'label', elementLabel: 'Amount field' },
+  { key: 'wallet.withdraw.reason', defaultValue: 'Reason', moduleSlug: 'player', elementType: 'label', elementLabel: 'Reason field' },
+  { key: 'wallet.withdraw.notes', defaultValue: 'Notes', moduleSlug: 'player', elementType: 'label', elementLabel: 'Notes field' },
+  { key: 'wallet.withdraw.submit', defaultValue: 'Submit', moduleSlug: 'player', elementType: 'button', elementLabel: 'Submit withdrawal' },
+  { key: 'wallet.withdraw.no_history', defaultValue: 'No withdrawal requests yet.', moduleSlug: 'player', elementType: 'text', elementLabel: 'No requests placeholder' },
+  { key: 'admin.withdrawals.title', defaultValue: 'Withdrawal Queue', moduleSlug: 'admin', elementType: 'heading', elementLabel: 'Admin withdrawal queue' },
   { key: 'common.page', defaultValue: 'Page', moduleSlug: 'common', elementType: 'label', elementLabel: 'Page label' },
   { key: 'common.of', defaultValue: 'of', moduleSlug: 'common', elementType: 'label', elementLabel: 'of label' },
 

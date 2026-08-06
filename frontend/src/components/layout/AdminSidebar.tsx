@@ -152,6 +152,7 @@ function buildNavItems(t: (key: string) => string, can: (perm: string) => boolea
             { label: t('admin.sidebar.ledger'), path: '/admin/finance/ledger', permissionKey: 'sidebar.finance-ledger' },
             { label: 'Reports', path: '/admin/finance/reports', permissionKey: 'sidebar.finance-reports' },
             { label: 'Withdrawal Requests', path: '/admin/withdrawal-requests', permissionKey: 'sidebar.withdrawal-requests' },
+            { label: 'Withdrawals Queue', path: '/admin/withdrawals', permissionKey: 'sidebar.withdrawals-queue' },
             { label: t('admin.sidebar.coupons'), path: '/admin/coupons', permissionKey: 'sidebar.coupons' },
             { label: 'Finance (Legacy)', path: '/admin/financial-ops', permissionKey: 'sidebar.finance-transactions' },
             { label: t('admin.sidebar.banks'), path: '/admin/banks', permissionKey: 'sidebar.banks' },
