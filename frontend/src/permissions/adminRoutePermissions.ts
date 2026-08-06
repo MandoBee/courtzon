@@ -43,6 +43,7 @@ export const ADMIN_ROUTE_PERMISSIONS: Record<string, string> = {
   'finance/reports': 'reports.view',
   'financial-ops': 'financial.view',
   'withdrawal-requests': 'financial.withdrawal-requests.view',
+  'withdrawals': 'financial.withdrawals-queue.view',
   'coupons': 'coupons.view',
   'design-tokens': 'sidebar.design-tokens',
   'tournaments': 'sidebar.tournament',
