@@ -1,5 +1,5 @@
 import { eventBusV2 } from '../../../shared/event-bus/index.js';
-import { dispatchToUser, dispatchByRole, dispatchByOrg } from './dispatcher.service.js';
+import { dispatchToUser, dispatchByRole, dispatchByOrg, dispatchByPermission } from './dispatcher.service.js';
 import { createModuleLogger } from '../../../shared/utils/logger.js';
 import type { NotificationAction } from '@courtzon/shared';
 
@@ -299,7 +299,7 @@ const eventGroups: EventGroupConfig[] = [
           action: a('/profile'),
         });
       }
-      await dispatchByRole('super_admin', {
+      await dispatchByPermission('coaches.approve', {
         eventName, categorySlug,
         data: {
           ...data,
