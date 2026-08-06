@@ -1,0 +1,16 @@
+INSERT IGNORE INTO system_settings (`key`, value, description) VALUES
+('wallet.withdrawal_sla_hours', '48', 'SLA in hours for processing withdrawal requests'),
+('security.max_login_attempts', '5', 'Maximum failed login attempts before lockout'),
+('security.lockout_duration_minutes', '30', 'Account lockout duration in minutes'),
+('security.brute_force_window_minutes', '15', 'Rolling window in minutes for counting failed login attempts'),
+('security.password_min_length', '8', 'Minimum password length required'),
+('security.password_reset_expiry_minutes', '60', 'Password reset token expiry in minutes'),
+('booking.payment_expiry_minutes', '3', 'Time window in minutes to complete payment before auto-cancellation'),
+('booking.prepare_ttl_minutes', '10', 'Booking prepare session TTL in minutes'),
+('booking.min_billable_minutes', '30', 'Minimum billable duration in minutes for any booking'),
+('wallet.low_balance_threshold', '50', 'Balance below which a low-balance event is triggered'),
+('platform.default_commission_percent', '10', 'Default platform commission percentage (fallback when no plan rate exists)'),
+('notifications.booking_reminder_offset_minutes', '30', 'Minutes before booking start to send reminder'),
+('notifications.review_reminder_offset_hours', '24', 'Hours after session completion to send review reminder'),
+('notifications.membership_reminder_days', '7', 'Default days before membership expiry for reminders'),
+('upload.max_file_size_mb', '10', 'Maximum upload file size in megabytes');

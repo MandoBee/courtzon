@@ -1,10 +1,32 @@
 import { getRedisClient } from '../../../infrastructure/redis/redis.client.js';
+import { getPool } from '../../../database/mysql.js';
 
-const MAX_LOGIN_ATTEMPTS = 5;
-const WINDOW_SECONDS = 900;
-const LOCKOUT_DURATION_SECONDS = 1800;
+async function getSetting(key: string, fallback: number): Promise<number> {
+  try {
+    const pool = getPool();
+    const [rows] = await pool.execute<any[]>(
+      'SELECT value FROM system_settings WHERE `key` = ? LIMIT 1', [key]
+    );
+    if (rows.length) return parseInt(rows[0].value, 10) || fallback;
+  } catch {}
+  return fallback;
+}
 
 class BruteForceService {
+  private maxAttempts: number | null = null;
+  private windowSecs: number | null = null;
+  private lockoutSecs: number | null = null;
+
+  private async ensureLoaded() {
+    if (this.maxAttempts === null) {
+      [this.maxAttempts, this.windowSecs, this.lockoutSecs] = await Promise.all([
+        getSetting('security.max_login_attempts', 5),
+        getSetting('security.brute_force_window_minutes', 15).then(m => m * 60),
+        getSetting('security.lockout_duration_minutes', 30).then(m => m * 60),
+      ]);
+    }
+  }
+
   private getKey(identifier: string): string {
     return `brute:login:${identifier}`;
   }
@@ -14,17 +36,18 @@ class BruteForceService {
   }
 
   async recordFailedAttempt(identifier: string): Promise<void> {
+    await this.ensureLoaded();
     const redis = getRedisClient();
     const key = this.getKey(identifier);
     const multi = redis.multi();
     multi.incr(key);
-    multi.expire(key, WINDOW_SECONDS);
+    multi.expire(key, this.windowSecs!);
     await multi.exec();
 
     const attempts = await redis.get(key);
-    if (parseInt(attempts || '0', 10) >= MAX_LOGIN_ATTEMPTS) {
+    if (parseInt(attempts || '0', 10) >= this.maxAttempts!) {
       const lockoutKey = this.getLockoutKey(identifier);
-      await redis.set(lockoutKey, '1', 'EX', LOCKOUT_DURATION_SECONDS);
+      await redis.set(lockoutKey, '1', 'EX', this.lockoutSecs!);
     }
   }
 
@@ -36,11 +59,12 @@ class BruteForceService {
   }
 
   async getRemainingAttempts(identifier: string): Promise<number> {
+    await this.ensureLoaded();
     const redis = getRedisClient();
     const key = this.getKey(identifier);
     const attempts = await redis.get(key);
     const count = parseInt(attempts || '0', 10);
-    return Math.max(0, MAX_LOGIN_ATTEMPTS - count);
+    return Math.max(0, this.maxAttempts! - count);
   }
 
   async clearAttempts(identifier: string): Promise<void> {
