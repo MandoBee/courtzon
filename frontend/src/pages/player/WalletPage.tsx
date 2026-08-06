@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -138,6 +139,9 @@ export default function WalletPage() {
           <p className="text-3xl font-bold text-[var(--color-primary)]">
             {formatPrice(Number(wallet?.balance || 0), walletCurrency)}
           </p>
+          <Link to="/wallet/withdraw" className="inline-block mt-3 text-sm text-[var(--color-primary)] hover:underline">
+            Withdraw Funds &rarr;
+          </Link>
         </Card>
 
         <Can permission="financial.wallet.deposit">
