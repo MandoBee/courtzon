@@ -38,17 +38,44 @@ function SettingsPanel({ selectedCategory, onCategoryChange }: { selectedCategor
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
 
-  const { data: settingsData } = useQuery({ queryKey: ['admin-settings', selectedCategory, search], queryFn: () => api.get('/admin/settings', { params: { category: selectedCategory || undefined, q: search || undefined } }).then(r => r.data) });
-  const { data: categories } = useQuery({ queryKey: ['admin-setting-categories'], queryFn: () => api.get('/admin/settings/categories').then(r => r.data) });
+  const { data: meta } = useQuery({ queryKey: ['settings-metadata'], queryFn: () => api.get('/admin/settings/metadata').then(r => r.data), staleTime: 30000 });
 
   const updateMut = useMutation({
     mutationFn: ({ key, value }: { key: string; value: string }) => api.put(`/admin/settings/${key}`, { value }),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['admin-settings'] }); showToast(t('admin.system.setting_updated')); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['admin-settings'] }); queryClient.invalidateQueries({ queryKey: ['settings-metadata'] }); showToast(t('admin.system.setting_updated')); },
     onError: (e: any) => showToast(e?.response?.data?.message || 'Error', 'error'),
   });
 
-  const settings = settingsData?.data || [];
-  const cats = categories?.data || [];
+  const categories = meta?.data?.categories || [];
+  let settings = meta?.data?.settings || [];
+
+  if (selectedCategory) settings = settings.filter((s: any) => (s.category || 'general') === selectedCategory);
+  if (search) settings = settings.filter((s: any) => s.key.toLowerCase().includes(search.toLowerCase()) || (s.display_name || '').toLowerCase().includes(search.toLowerCase()) || (s.description || '').toLowerCase().includes(search.toLowerCase()));
+
+  const grouped: Record<string, any[]> = {};
+  for (const s of settings) {
+    const cat = s.category || 'general';
+    if (!grouped[cat]) grouped[cat] = [];
+    grouped[cat].push(s);
+  }
+
+  const renderInput = (s: any) => {
+    const vt = s.value_type || 'string';
+    if (vt === 'boolean') {
+      return <button onClick={() => updateMut.mutate({ key: s.key, value: s.value === true || s.value === 'true' ? 'false' : 'true' })} className={`px-3 py-1 text-xs rounded-full font-medium transition ${s.value === true || s.value === 'true' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>{(s.value === true || s.value === 'true') ? 'ON' : 'OFF'}</button>;
+    }
+    if (vt === 'enum' && s.allowed_values) {
+      const opts = s.allowed_values.split(',').map((o: string) => o.trim());
+      return <select defaultValue={String(s.value)} onChange={e => updateMut.mutate({ key: s.key, value: e.target.value })} className="w-full px-2 py-1 text-xs border rounded">{opts.map((o: string) => <option key={o} value={o}>{o}</option>)}</select>;
+    }
+    if (vt === 'number' || vt === 'decimal') {
+      return <input type="number" defaultValue={s.value} onBlur={e => { if (e.target.value !== String(s.value)) updateMut.mutate({ key: s.key, value: e.target.value }); }} min={s.min_value} max={s.max_value} step={vt === 'decimal' ? '0.01' : '1'} className="w-full px-2 py-1 text-xs border rounded" />;
+    }
+    if (vt === 'text' || vt === 'json') {
+      return <textarea defaultValue={s.value} rows={2} onBlur={e => { if (e.target.value !== String(s.value)) updateMut.mutate({ key: s.key, value: e.target.value }); }} className="w-full px-2 py-1 text-xs border rounded font-mono" />;
+    }
+    return <input defaultValue={s.value} onBlur={e => { if (e.target.value !== s.value) updateMut.mutate({ key: s.key, value: e.target.value }); }} className="w-full px-2 py-1 text-xs border rounded" placeholder={s.placeholder} />;
+  };
 
   return (
     <div className="space-y-4">
@@ -56,29 +83,32 @@ function SettingsPanel({ selectedCategory, onCategoryChange }: { selectedCategor
         <input placeholder={t('admin.system.search_settings')} value={search} onChange={e => setSearch(e.target.value)} className="px-3 py-2 text-sm bg-[var(--color-bg)] border border-[var(--color-border)] rounded-xl w-64" />
         <select value={selectedCategory} onChange={e => onCategoryChange(e.target.value)} className="px-3 py-2 text-sm bg-[var(--color-bg)] border border-[var(--color-border)] rounded-xl">
           <option value="">{t('admin.system.all_categories')}</option>
-          {cats.map((c: string) => <option key={c} value={c}>{c}</option>)}
+          {categories.map((c: string) => <option key={c} value={c}>{c}</option>)}
         </select>
       </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {settings.map((s: any) => (
-          <div key={s.key} className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-4">
-            <label className="text-xs font-medium text-[var(--color-text-muted)] uppercase">{s.category}</label>
-            <p className="text-sm font-medium mt-1">{s.key}</p>
-            {s.description && <p className="text-xs text-[var(--color-text-muted)] mt-1">{s.description}</p>}
-            {s.is_editable ? (
-              <div className="flex gap-2 mt-2">
-                {s.value_type === 'boolean' ? (
-                  <button onClick={() => updateMut.mutate({ key: s.key, value: s.value === 'true' ? 'false' : 'true' })} className={`px-3 py-1 text-xs rounded-full ${s.value === 'true' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>{s.value === 'true' ? 'ON' : 'OFF'}</button>
-                ) : (
-                  <input defaultValue={s.value} onBlur={e => { if (e.target.value !== s.value) updateMut.mutate({ key: s.key, value: e.target.value }); }} className="w-full px-2 py-1 text-xs bg-[var(--color-bg)] border border-[var(--color-border)] rounded-lg" />
-                )}
+      {Object.entries(grouped).map(([cat, catSettings]) => (
+        <div key={cat}>
+          <h3 className="text-sm font-semibold text-[var(--color-text)] uppercase tracking-wider mb-2 px-1">{cat}</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {catSettings.map((s: any) => (
+              <div key={s.key} className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-4 flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-xs font-medium text-[var(--color-text)]">{s.display_name || s.key}</span>
+                    {s.unit && <span className="text-[10px] text-[var(--color-text-muted)] bg-[var(--color-bg)] px-1.5 py-0.5 rounded">{s.unit}</span>}
+                    {s.scope && s.scope !== 'global' && <span className="text-[10px] text-purple-600 bg-purple-50 px-1.5 py-0.5 rounded">{s.scope}</span>}
+                  </div>
+                  {(s.description || s.help_text) && <p className="text-[10px] text-[var(--color-text-muted)] mb-2">{s.help_text || s.description}</p>}
+                  <p className="text-[10px] text-[var(--color-text-muted)]/60 font-mono">{s.key}</p>
+                </div>
+                <div className="mt-2">
+                  {s.is_editable ? renderInput(s) : <p className="text-sm font-medium text-[var(--color-text)]">{String(s.value)}{s.unit ? ` ${s.unit}` : ''}</p>}
+                </div>
               </div>
-            ) : (
-              <p className="text-sm mt-2 text-[var(--color-text-muted)]">{s.value}</p>
-            )}
+            ))}
           </div>
-        ))}
-      </div>
+        </div>
+      ))}
     </div>
   );
 }
