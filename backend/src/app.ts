@@ -18,6 +18,7 @@ import { organisationRoutes } from "./modules/organisations/presentation/organis
 import { rbacRoutes } from "./modules/rbac/presentation/rbac.routes.js";
 import { approvalRoutes } from "./modules/approvals/presentation/approval.routes.js";
 import { walletRoutes } from "./modules/wallet/presentation/wallet.routes.js";
+import { withdrawalRoutes } from "./modules/wallet/presentation/withdrawal.routes.js";
 import { paymentRoutes } from "./modules/payment/presentation/payment.routes.js";
 import { settlementRoutes } from "./modules/settlement/presentation/settlement.routes.js";
 import { uploadRoutes } from "./modules/upload/presentation/upload.routes.js";
@@ -491,6 +492,7 @@ app.register(rbacRoutes);
 app.register(bookingRoutes);
 app.register(marketplaceRoutes, { requireFeatureFlag });
 app.register(walletRoutes);
+app.register(withdrawalRoutes);
 app.register(paymentRoutes);
 app.register(settlementRoutes);
 app.register(activitiesRoutes, { requireFeatureFlag });

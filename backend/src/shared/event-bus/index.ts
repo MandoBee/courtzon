@@ -126,6 +126,13 @@ export interface DomainEventMap {
   'wallet:withdrawal': BaseEvent & { walletId: number; userId: number; amount: number; balance: number; currency?: string };
   'wallet:low-balance': BaseEvent & { userId: number; balance: number; currency: string };
   'wallet:transaction': BaseEvent & { walletId: number; userId: number; amount: number; type: string; description?: string };
+  'wallet:withdrawal-submitted': BaseEvent & { withdrawalId: number; userId: number; amount: number; reason: string };
+  'wallet:withdrawal-under-review': BaseEvent & { withdrawalId: number; userId: number; amount: number; status: string };
+  'wallet:withdrawal-approved': BaseEvent & { withdrawalId: number; userId: number; amount: number; status: string };
+  'wallet:withdrawal-rejected': BaseEvent & { withdrawalId: number; userId: number; amount: number; status: string; reason?: string };
+  'wallet:withdrawal-processing': BaseEvent & { withdrawalId: number; userId: number; amount: number; status: string };
+  'wallet:withdrawal-completed': BaseEvent & { withdrawalId: number; userId: number; amount: number; status: string };
+  'wallet:withdrawal-cancelled': BaseEvent & { withdrawalId: number; userId: number; amount: number; status: string };
   'settlement:completed': BaseEvent & { settlementId: number; organisationId: number; amount: number };
   'settlement:failed': BaseEvent & { settlementId: number; organisationId: number; reason: string };
   'coupon:published': BaseEvent & { couponId: number; code: string; discountValue: number; discountType: string; organisationIds: number[] };

@@ -32,6 +32,7 @@ export async function depositHandler(request: FastifyRequest, reply: FastifyRepl
   return reply.send(result);
 }
 
+// Legacy instant-withdrawal handler — new requests should use POST /withdrawals (submission flow)
 export async function withdrawHandler(request: FastifyRequest, reply: FastifyReply) {
   const userId = (request as any).userId;
   const body = WithdrawSchema.parse(request.body);

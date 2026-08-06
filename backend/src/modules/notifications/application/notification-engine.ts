@@ -147,6 +147,25 @@ const eventGroups: EventGroupConfig[] = [
     },
   },
   {
+    events: ['wallet:withdrawal-submitted'],
+    handler: async (eventName, data, categorySlug) => {
+      if (data.userId) {
+        await dispatchToUser({ userId: data.userId, eventName, categorySlug, data, relatedEntityType: 'withdrawal', relatedEntityId: String(data.withdrawalId), action: a('/wallet') });
+      }
+      await dispatchByPermission('financial.reconcile', { eventName, categorySlug, data: { ...data, title: 'New Withdrawal Request', body: `A withdrawal request of ${data.amount} has been submitted.` }, relatedEntityType: 'withdrawal', relatedEntityId: String(data.withdrawalId), action: a('/admin/withdrawals') });
+    },
+  },
+  {
+    events: ['wallet:withdrawal-under-review', 'wallet:withdrawal-approved', 'wallet:withdrawal-rejected', 'wallet:withdrawal-processing', 'wallet:withdrawal-completed', 'wallet:withdrawal-cancelled'],
+    handler: async (eventName, data, categorySlug) => {
+      if (data.userId) {
+        const statusLabels: Record<string,string> = { 'under-review': 'Under Review', 'approved': 'Approved', 'rejected': 'Rejected', 'processing': 'Processing', 'completed': 'Completed', 'cancelled': 'Cancelled' };
+        const status = eventName.split('-').slice(2).join('-');
+        await dispatchToUser({ userId: data.userId, eventName, categorySlug, data: { ...data, title: `Withdrawal ${statusLabels[status] || status}`, body: `Your withdrawal request of ${data.amount} has been ${statusLabels[status]?.toLowerCase() || status}.` }, relatedEntityType: 'withdrawal', relatedEntityId: String(data.withdrawalId), action: a('/wallet') });
+      }
+    },
+  },
+  {
     events: ['marketplace:order-placed', 'marketplace:order-confirmed', 'marketplace:order-shipped', 'marketplace:order-delivered', 'marketplace:order-refunded', 'marketplace:order-cancelled', 'marketplace:order-status-changed'],
     handler: async (eventName, data, categorySlug) => {
       if (data.userId) {
@@ -765,6 +784,10 @@ class NotificationEngine {
       'chat:new-message', 'chat:group-created', 'chat:group-joined', 'chat:group-invitation',
       'membership:expiring', 'membership:expired', 'membership:renewed', 'membership:upgraded',
       'wallet:deposit', 'wallet:withdrawal', 'wallet:low-balance', 'wallet:transaction',
+      'wallet:withdrawal-submitted', 'wallet:withdrawal-under-review',
+      'wallet:withdrawal-approved', 'wallet:withdrawal-rejected',
+      'wallet:withdrawal-processing', 'wallet:withdrawal-completed',
+      'wallet:withdrawal-cancelled',
       'review:received', 'attendance:marked',
       'support:ticket-opened', 'support:ticket-resolved', 'support:ticket-closed',
       'security:suspicious-login', 'security:account-locked',

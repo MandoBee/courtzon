@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef, lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, Outlet, Link, useLocation, useNavigate, useParams } from 'react-router-dom';
+import WithdrawalPage from './pages/player/WithdrawalPage';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { queryClient } from './lib/queryClient';
 import { useAuthStore } from './store/auth.store';
@@ -127,6 +128,7 @@ const FeatureFlagsPage = lazy(() => import('./pages/admin/feature-flags/FeatureF
 const PaymentMethodsPage = lazy(() => import('./pages/admin/payment-methods/PaymentMethodsPage'));
 const PaymentGatewaysPage = lazy(() => import('./pages/admin/payment-gateways/PaymentGatewaysPage'));
 const WithdrawalRequestsPage = lazy(() => import('./pages/admin/financial/WithdrawalRequestsPage'));
+const WithdrawalQueuePage = lazy(() => import('./pages/admin/WithdrawalQueuePage'));
 const CouponListPage = lazy(() => import('./pages/admin/coupons/CouponListPage'));
 const DesignTokensPage = lazy(() => import('./pages/admin/design-tokens/DesignTokensPage'));
 const TournamentAdminPage = lazy(() => import('./pages/admin/tournaments/TournamentAdminPage'));
@@ -594,6 +596,7 @@ function AppContent() {
           <Route path="/my/qr" element={<PlayerQRProfilePage />} />
           <Route path="/my/devices" element={<PlayerDeviceManagementPage />} />
           <Route path="/my/wallet" element={<PlayerWalletPage />} />
+          <Route path="/wallet/withdraw" element={<WithdrawalPage />} />
           <Route path="/my/payments" element={<PlayerPaymentsPage />} />
           <Route path="/my/rank-history" element={<PlayerRankHistoryPage />} />
           <Route path="/my/tournaments" element={<PlayerTournamentsPage />} />
@@ -671,6 +674,7 @@ function AppContent() {
             <Route path="finance/reports" element={<ReportCenterPage />} />
             <Route path="financial-ops" element={<FinancialOpsDashboard />} />
             <Route path="withdrawal-requests" element={<WithdrawalRequestsPage />} />
+            <Route path="withdrawals" element={<WithdrawalQueuePage />} />
             <Route path="coupons" element={<CouponListPage />} />
             <Route path="design-tokens" element={<DesignTokensPage />} />
             <Route path="tournaments" element={<TournamentAdminPage />} />
