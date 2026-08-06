@@ -56,7 +56,8 @@ function parseValue(raw: string | null, valueType: string): unknown {
 function serializeValue(value: unknown, valueType: string): string {
   if (value === null || value === undefined) return '';
   switch (valueType) {
-    case 'number': return String(value);
+    case 'number':
+    case 'decimal': return String(value);
     case 'boolean': return value ? 'true' : 'false';
     case 'json': return typeof value === 'string' ? value : JSON.stringify(value);
     default: return String(value);
@@ -140,6 +141,17 @@ export class SystemSettingsService {
 
     const updated = await this.getByKey(key);
     return updated!;
+  }
+
+  async getHistory(page: number = 1, limit: number = 50): Promise<{ data: any[]; total: number }> {
+    const pool = getPool();
+    const offset = (page - 1) * limit;
+    const [countRows] = await pool.execute<RowData>('SELECT COUNT(*) as total FROM application_settings_history') as any;
+    const [rows] = await pool.execute<RowData>(
+      `SELECT h.*, u.full_name AS changed_by_name FROM application_settings_history h LEFT JOIN users u ON u.id = h.changed_by ORDER BY h.created_at DESC LIMIT ? OFFSET ?`,
+      [String(limit), String(offset)]
+    ) as any;
+    return { data: rows, total: Number(countRows[0].total) };
   }
 
   async getCategories(): Promise<string[]> {

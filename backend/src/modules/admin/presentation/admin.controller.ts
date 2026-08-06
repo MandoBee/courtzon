@@ -73,6 +73,12 @@ export async function getSettingsMetadataHandler(_request: FastifyRequest, reply
   return sendSuccess(reply, metadata, buildMeta(_request));
 }
 
+export async function getSettingsHistoryHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { page } = request.query as any;
+  const result = await systemSettingsService.getHistory(Number(page) || 1);
+  return sendSuccess(reply, result);
+}
+
 export async function getPublicSettingsHandler(_request: FastifyRequest, reply: FastifyReply) {
   const settings = await systemSettingsService.getPublic();
   return sendSuccess(reply, settings, buildMeta(_request));

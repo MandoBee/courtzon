@@ -9,6 +9,7 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
   // ── Settings ──────────────────────────────────────────────────────────
   app.get('/admin/settings', { preHandler: [requirePermission(['system_settings.view'])] }, ctrl.getSettingsHandler);
   app.get('/admin/settings/metadata', { preHandler: [requirePermission(['system_settings.view'])] }, ctrl.getSettingsMetadataHandler);
+  app.get('/admin/settings/history', { preHandler: [requirePermission(['system_settings.view'])] }, ctrl.getSettingsHistoryHandler);
   app.get('/admin/settings/categories', { preHandler: [requirePermission(['system_settings.view'])] }, ctrl.getSettingCategoriesHandler);
   app.get('/admin/settings/:key', { preHandler: [requirePermission(['system_settings.view'])] }, ctrl.getSettingByKeyHandler);
   app.put('/admin/settings/:key', { preHandler: [requirePermission(['system_settings.update'])] }, ctrl.updateSettingHandler);
