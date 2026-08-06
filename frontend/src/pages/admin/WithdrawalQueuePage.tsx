@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button, Card, Modal, Spinner } from '../../components/ui';
 import { useToast } from '../../components/ui/Toast';
+import { Can } from '../../permissions/Can';
 import api from '../../services/api';
 import { formatPrice } from '../../utils/currency';
 import { getErrorMessage } from '../../utils/errors';
@@ -106,11 +107,13 @@ export default function WithdrawalQueuePage() {
                   </td>
                   <td className="px-3 py-2 text-[10px] text-muted">{new Date(w.created_at).toLocaleDateString('en-GB')}</td>
                   <td className="px-3 py-2 text-right">
-                    {w.status === 'pending' && <Button size="sm" onClick={(e) => { e.stopPropagation(); transitionMutation.mutate({ id: w.id, toStatus: 'under_review' }); }} className="!text-[10px] !px-2 !py-1">Review</Button>}
-                    {w.status === 'under_review' && <><Button size="sm" onClick={(e) => { e.stopPropagation(); transitionMutation.mutate({ id: w.id, toStatus: 'approved' }); }} className="!text-[10px] !px-2 !py-1 mr-1">Approve</Button><Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); transitionMutation.mutate({ id: w.id, toStatus: 'rejected' }); }} className="!text-[10px] !px-2 !py-1 !text-red-600">Reject</Button></>}
-                    {w.status === 'approved' && <Button size="sm" onClick={(e) => { e.stopPropagation(); transitionMutation.mutate({ id: w.id, toStatus: 'processing' }); }} className="!text-[10px] !px-2 !py-1">Process</Button>}
-                    {w.status === 'processing' && <Button size="sm" onClick={(e) => { e.stopPropagation(); const m = prompt('Execution method (Bank Transfer/Cash/Other):'); if (m) { const r = prompt('Reference number (optional):'); transitionMutation.mutate({ id: w.id, toStatus: 'completed', executionMethod: m, referenceNumber: r || undefined }); } }} className="!text-[10px] !px-2 !py-1">Complete</Button>}
-                    {(w.status === 'pending' || w.status === 'under_review') && <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); if (confirm('Cancel?')) transitionMutation.mutate({ id: w.id, toStatus: 'cancelled' }); }} className="!text-[10px] !px-2 !py-1 !text-gray-500">Cancel</Button>}
+                    <Can permission="financial.reconcile">
+                      {w.status === 'pending' && <Button size="sm" onClick={(e) => { e.stopPropagation(); transitionMutation.mutate({ id: w.id, toStatus: 'under_review' }); }} className="!text-[10px] !px-2 !py-1">Review</Button>}
+                      {w.status === 'under_review' && <><Button size="sm" onClick={(e) => { e.stopPropagation(); transitionMutation.mutate({ id: w.id, toStatus: 'approved' }); }} className="!text-[10px] !px-2 !py-1 mr-1">Approve</Button><Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); transitionMutation.mutate({ id: w.id, toStatus: 'rejected' }); }} className="!text-[10px] !px-2 !py-1 !text-red-600">Reject</Button></>}
+                      {w.status === 'approved' && <Button size="sm" onClick={(e) => { e.stopPropagation(); transitionMutation.mutate({ id: w.id, toStatus: 'processing' }); }} className="!text-[10px] !px-2 !py-1">Process</Button>}
+                      {w.status === 'processing' && <Button size="sm" onClick={(e) => { e.stopPropagation(); const m = prompt('Execution method (Bank Transfer/Cash/Other):'); if (m) { const r = prompt('Reference number (optional):'); transitionMutation.mutate({ id: w.id, toStatus: 'completed', executionMethod: m, referenceNumber: r || undefined }); } }} className="!text-[10px] !px-2 !py-1">Complete</Button>}
+                      {(w.status === 'pending' || w.status === 'under_review') && <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); if (confirm('Cancel?')) transitionMutation.mutate({ id: w.id, toStatus: 'cancelled' }); }} className="!text-[10px] !px-2 !py-1 !text-gray-500">Cancel</Button>}
+                    </Can>
                   </td>
                 </tr>
               ))}
