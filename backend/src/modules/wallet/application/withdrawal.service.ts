@@ -5,6 +5,15 @@ import { recordAudit } from '../../audit-log/index.js';
 
 type RowData = mysql.RowDataPacket[];
 
+async function getSetting(key: string, fallback: number): Promise<number> {
+  try {
+    const pool = getPool();
+    const [rows] = await pool.execute<RowData>('SELECT value FROM system_settings WHERE `key` = ? LIMIT 1', [key]) as any;
+    if (rows.length) return parseInt(rows[0].value, 10) || fallback;
+  } catch {}
+  return fallback;
+}
+
 const VALID_TRANSITIONS: Record<string, string[]> = {
   'pending': ['under_review', 'cancelled'],
   'under_review': ['approved', 'rejected', 'cancelled'],
@@ -20,6 +29,7 @@ export const withdrawalService = {
     const pool = getPool();
     const conn = await pool.getConnection();
     try {
+      const slaHours = await getSetting('wallet.withdrawal_sla_hours', 48);
       await conn.beginTransaction();
       const [wallet] = await conn.execute<RowData>(
         'SELECT id, balance, reserved_balance FROM user_wallets WHERE user_id = ? FOR UPDATE', [userId]
@@ -35,7 +45,7 @@ export const withdrawalService = {
       );
       const [result] = await conn.execute(
         `INSERT INTO withdrawal_requests (user_id, wallet_id, amount, reason, player_notes, status, submitted_at, sla_due_at)
-         VALUES (?, ?, ?, ?, ?, 'pending', NOW(), DATE_ADD(NOW(), INTERVAL 48 HOUR))`,
+         VALUES (?, ?, ?, ?, ?, 'pending', NOW(), DATE_ADD(NOW(), INTERVAL ${slaHours} HOUR))`,
         [userId, w.id, amount, reason, playerNotes || null]
       ) as any;
       await conn.commit();
