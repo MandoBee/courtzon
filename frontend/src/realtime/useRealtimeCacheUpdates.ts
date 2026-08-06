@@ -73,6 +73,16 @@ export function useRealtimeCacheUpdates(): void {
     qc.invalidateQueries({ queryKey: ['transactions'] });
   });
 
+  for (const ev of ['wallet.withdrawal-submitted', 'wallet.withdrawal-under-review', 'wallet.withdrawal-approved', 'wallet.withdrawal-rejected', 'wallet.withdrawal-processing', 'wallet.withdrawal-completed', 'wallet.withdrawal-cancelled']) {
+    useSocketEvent(ev, () => {
+      qc.invalidateQueries({ queryKey: ['wallet'] });
+      qc.invalidateQueries({ queryKey: ['wallet', 'me'] });
+      qc.invalidateQueries({ queryKey: ['my-withdrawals'] });
+      qc.invalidateQueries({ queryKey: ['admin-withdrawals'] });
+      qc.invalidateQueries({ queryKey: ['withdrawal-stats'] });
+    });
+  }
+
   // ── Marketplace events ─────────────────────────────────────────
   useSocketEvent('marketplace.order-placed', () => {
     qc.invalidateQueries({ queryKey: ['mp-orders'] });
