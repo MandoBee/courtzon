@@ -133,6 +133,7 @@ export interface DomainEventMap {
   'wallet:withdrawal-processing': BaseEvent & { withdrawalId: number; userId: number; amount: number; status: string };
   'wallet:withdrawal-completed': BaseEvent & { withdrawalId: number; userId: number; amount: number; status: string };
   'wallet:withdrawal-cancelled': BaseEvent & { withdrawalId: number; userId: number; amount: number; status: string };
+  'wallet:withdrawal-assigned': BaseEvent & { withdrawalId: number; assignedTo: number };
   'settlement:completed': BaseEvent & { settlementId: number; organisationId: number; amount: number };
   'settlement:failed': BaseEvent & { settlementId: number; organisationId: number; reason: string };
   'coupon:published': BaseEvent & { couponId: number; code: string; discountValue: number; discountType: string; organisationIds: number[] };

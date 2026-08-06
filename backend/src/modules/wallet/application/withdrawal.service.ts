@@ -34,8 +34,8 @@ export const withdrawalService = {
         [amount, w.id]
       );
       const [result] = await conn.execute(
-        `INSERT INTO withdrawal_requests (user_id, wallet_id, amount, reason, player_notes, status)
-         VALUES (?, ?, ?, ?, ?, 'pending')`,
+        `INSERT INTO withdrawal_requests (user_id, wallet_id, amount, reason, player_notes, status, submitted_at, sla_due_at)
+         VALUES (?, ?, ?, ?, ?, 'pending', NOW(), DATE_ADD(NOW(), INTERVAL 48 HOUR))`,
         [userId, w.id, amount, reason, playerNotes || null]
       ) as any;
       await conn.commit();
@@ -86,7 +86,7 @@ export const withdrawalService = {
     finally { conn.release(); }
   },
 
-  async list(filters: { status?: string; search?: string; page?: number; limit?: number }) {
+  async list(filters: { status?: string; search?: string; page?: number; limit?: number; assignedTo?: number; unassigned?: boolean; overdue?: boolean; dueToday?: boolean }) {
     const pool = getPool();
     const page = filters.page || 1;
     const limit = filters.limit || 20;
@@ -94,13 +94,19 @@ export const withdrawalService = {
     let where = 'WHERE 1=1';
     const params: any[] = [];
     if (filters.status) { where += ' AND wr.status = ?'; params.push(filters.status); }
+    if (filters.assignedTo) { where += ' AND wr.assigned_to = ?'; params.push(filters.assignedTo); }
+    if (filters.unassigned) { where += ' AND wr.assigned_to IS NULL'; }
+    if (filters.overdue) { where += ' AND wr.sla_due_at < NOW() AND wr.status NOT IN (\'completed\',\'rejected\',\'cancelled\')'; }
+    if (filters.dueToday) { where += ' AND DATE(wr.sla_due_at) = CURDATE() AND wr.status NOT IN (\'completed\',\'rejected\',\'cancelled\')'; }
     if (filters.search) { where += ' AND (u.full_name LIKE ? OR u.email LIKE ? OR u.phone_number LIKE ?)'; params.push('%'+filters.search+'%', '%'+filters.search+'%', '%'+filters.search+'%'); }
     const [count] = await pool.execute<RowData>(`SELECT COUNT(*) as total FROM withdrawal_requests wr JOIN users u ON u.id = wr.user_id ${where}`, params) as any;
     const [rows] = await pool.execute<RowData>(
-      `SELECT wr.*, u.full_name, u.email, u.phone_number, uw.balance AS wallet_balance, uw.reserved_balance
+      `SELECT wr.*, u.full_name, u.email, u.phone_number, uw.balance AS wallet_balance, uw.reserved_balance,
+              assigned.full_name AS assigned_name
        FROM withdrawal_requests wr
        JOIN users u ON u.id = wr.user_id
        JOIN user_wallets uw ON uw.user_id = wr.user_id
+       LEFT JOIN users assigned ON assigned.id = wr.assigned_to
        ${where}
        ORDER BY FIELD(wr.status, 'pending','under_review','approved','processing') ASC, wr.created_at DESC
        LIMIT ? OFFSET ?`,
@@ -116,6 +122,16 @@ export const withdrawalService = {
     return rows[0];
   },
 
+  async assign(requestId: number, assignedTo: number, actorId: number) {
+    const pool = getPool();
+    await pool.execute(
+      'UPDATE withdrawal_requests SET assigned_to = ?, assigned_at = NOW() WHERE id = ?',
+      [assignedTo, requestId]
+    );
+    try { eventBusV2.emit('wallet:withdrawal-assigned' as any, { withdrawalId: requestId, assignedTo }); } catch {}
+    recordAudit({ actorId, action: 'WITHDRAWAL.ASSIGN', entityType: 'withdrawal_request', entityId: requestId, afterState: { assignedTo } });
+  },
+
   async listByUser(userId: number) {
     const pool = getPool();
     const [rows] = await pool.execute<RowData>('SELECT * FROM withdrawal_requests WHERE user_id = ? ORDER BY created_at DESC LIMIT 50', [userId]) as any;
@@ -124,9 +140,55 @@ export const withdrawalService = {
 
   async getStats() {
     const pool = getPool();
-    const [[pending]] = await pool.execute<RowData>('SELECT COUNT(*) as cnt, COALESCE(SUM(amount), 0) as total FROM withdrawal_requests WHERE status IN (\'pending\',\'under_review\')') as any;
-    const [[completed]] = await pool.execute<RowData>('SELECT COUNT(*) as cnt, COALESCE(SUM(amount), 0) as total FROM withdrawal_requests WHERE status = \'completed\' AND created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)') as any;
-    const [[rate]] = await pool.execute<RowData>('SELECT ROUND(100 * SUM(CASE WHEN status=\'completed\' THEN 1 ELSE 0 END) / GREATEST(SUM(CASE WHEN status IN (\'completed\',\'rejected\') THEN 1 ELSE 0 END), 1), 1) AS pct FROM withdrawal_requests') as any;
-    return { pendingCount: Number(pending.cnt), pendingAmount: Number(pending.total), completedCount: Number(completed.cnt), completedAmount: Number(completed.total), approvalRate: Number(rate.pct), totalRequests: 0 };
-  }
+    const [[pending]] = await pool.execute<RowData>(
+      'SELECT COUNT(*) as cnt, COALESCE(SUM(amount), 0) as total FROM withdrawal_requests WHERE status IN (\'pending\',\'under_review\')'
+    ) as any;
+    const [[completed]] = await pool.execute<RowData>(
+      'SELECT COUNT(*) as cnt, COALESCE(SUM(amount), 0) as total FROM withdrawal_requests WHERE status = \'completed\' AND created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)'
+    ) as any;
+    const [[rate]] = await pool.execute<RowData>(
+      'SELECT ROUND(100 * SUM(CASE WHEN status=\'completed\' THEN 1 ELSE 0 END) / GREATEST(SUM(CASE WHEN status IN (\'completed\',\'rejected\') THEN 1 ELSE 0 END), 1), 1) AS pct FROM withdrawal_requests'
+    ) as any;
+    const [[overdue]] = await pool.execute<RowData>(
+      'SELECT COUNT(*) as cnt FROM withdrawal_requests WHERE sla_due_at < NOW() AND status NOT IN (\'completed\',\'rejected\',\'cancelled\')'
+    ) as any;
+    const [[dueToday]] = await pool.execute<RowData>(
+      'SELECT COUNT(*) as cnt FROM withdrawal_requests WHERE DATE(sla_due_at) = CURDATE() AND status NOT IN (\'completed\',\'rejected\',\'cancelled\')'
+    ) as any;
+    const [[avgTime]] = await pool.execute<RowData>(
+      'SELECT ROUND(AVG(TIMESTAMPDIFF(MINUTE, submitted_at, COALESCE(executed_at, reviewed_at, NOW()))), 0) AS avg_minutes FROM withdrawal_requests WHERE status = \'completed\' AND executed_at IS NOT NULL'
+    ) as any;
+    const [[fastest]] = await pool.execute<RowData>(
+      'SELECT MIN(TIMESTAMPDIFF(MINUTE, submitted_at, executed_at)) AS fastest FROM withdrawal_requests WHERE status = \'completed\' AND executed_at IS NOT NULL'
+    ) as any;
+    const [[longest]] = await pool.execute<RowData>(
+      'SELECT MAX(TIMESTAMPDIFF(MINUTE, submitted_at, executed_at)) AS longest FROM withdrawal_requests WHERE status = \'completed\' AND executed_at IS NOT NULL'
+    ) as any;
+    const [[total]] = await pool.execute<RowData>('SELECT COUNT(*) as cnt FROM withdrawal_requests') as any;
+    return {
+      pendingCount: Number(pending.cnt), pendingAmount: Number(pending.total),
+      completedCount: Number(completed.cnt), completedAmount: Number(completed.total),
+      approvalRate: Number(rate.pct),
+      overdueCount: Number(overdue.cnt),
+      dueTodayCount: Number(dueToday.cnt),
+      avgResolutionMinutes: Number(avgTime.avg_minutes) || 0,
+      fastestResolutionMinutes: Number(fastest.fastest) || 0,
+      longestResolutionMinutes: Number(longest.longest) || 0,
+      totalRequests: Number(total.cnt),
+    };
+  },
+
+  async listAssignableAdmins() {
+    const pool = getPool();
+    const [rows] = await pool.execute<RowData>(
+      `SELECT DISTINCT u.id, u.full_name FROM users u
+       JOIN user_roles ur ON u.id = ur.user_id AND ur.is_active = TRUE
+       JOIN role_permissions rp ON ur.role_id = rp.role_id
+       JOIN permissions p ON rp.permission_id = p.id
+       WHERE p.permission_key = 'financial.reconcile'
+       AND u.account_status = 'active' AND u.deleted_at IS NULL
+       ORDER BY u.full_name`
+    ) as any;
+    return rows;
+  },
 };

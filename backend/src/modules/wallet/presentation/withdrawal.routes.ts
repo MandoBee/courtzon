@@ -10,4 +10,6 @@ export async function withdrawalRoutes(app: FastifyInstance): Promise<void> {
   app.get('/admin/withdrawals', { preHandler: [requirePermission(['financial.reconcile'])] }, ctrl.adminListWithdrawalsHandler);
   app.get('/admin/withdrawals/:id', { preHandler: [requirePermission(['financial.reconcile'])] }, ctrl.adminGetWithdrawalHandler);
   app.put('/admin/withdrawals/:id/transition', { preHandler: [requirePermission(['financial.reconcile'])] }, ctrl.adminTransitionWithdrawalHandler);
+  app.put('/admin/withdrawals/:id/assign', { preHandler: [requirePermission(['financial.reconcile'])] }, ctrl.assignWithdrawalHandler);
+  app.get('/admin/withdrawals/assignable-admins', { preHandler: [requirePermission(['financial.reconcile'])] }, ctrl.listAssignableAdminsHandler);
 }

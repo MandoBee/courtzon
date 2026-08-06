@@ -39,6 +39,7 @@ export class SocketPublisher {
       'wallet:withdrawal-approved', 'wallet:withdrawal-rejected',
       'wallet:withdrawal-processing', 'wallet:withdrawal-completed',
       'wallet:withdrawal-cancelled',
+      'wallet:withdrawal-assigned',
       'marketplace:order-placed', 'marketplace:order-confirmed', 'marketplace:order-shipped',
       'marketplace:order-delivered', 'marketplace:order-cancelled', 'marketplace:order-refunded',
       'marketplace:order-status-changed',
