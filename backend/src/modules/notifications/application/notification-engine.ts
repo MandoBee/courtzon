@@ -18,7 +18,7 @@ const eventGroups: EventGroupConfig[] = [
   {
     events: ['user:registered'],
     handler: async (eventName, data, categorySlug) => {
-      await dispatchByRole('super_admin', { eventName, categorySlug, data, action: a('/app') });
+      await dispatchByPermission('users.view', { eventName, categorySlug, data, action: a('/app') });
     },
   },
   {
@@ -224,7 +224,7 @@ const eventGroups: EventGroupConfig[] = [
   {
     events: ['marketplace:new-seller-registered'],
     handler: async (eventName, data, categorySlug) => {
-      await dispatchByRole('super_admin', {
+      await dispatchByPermission('marketplace.admin.approvals', {
         eventName, categorySlug, action: a('/admin'),
         data: { ...data, title: 'New Seller Registered', body: `${data.shopName} has registered as a seller.` },
       });
