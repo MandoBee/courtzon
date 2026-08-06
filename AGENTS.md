@@ -1,5 +1,86 @@
 # Agent Automation Rules
 
+## ⚠️ PERMANENT: CourtZon Development Policy (Effective 2026-08-06)
+
+A task is NOT complete unless ALL of the following have been analyzed and implemented where applicable.
+
+### 1. BUSINESS ANALYSIS
+- Understand the complete business workflow before writing code
+- Identify upstream/downstream impacts
+- Avoid duplicate concepts; reuse existing business logic
+
+### 2. ARCHITECTURE REVIEW
+- Classify: Bug Fix | Improvement | Missing Feature | Technical Debt | Architecture
+- Prefer extending the current architecture
+- Never redesign working modules unless explicitly justified
+
+### 3. DATABASE REVIEW
+- Check existing tables, relationships, indexes, migrations
+- Avoid duplicate data; preserve backward compatibility
+- If schema changes: create migration + update baseline
+
+### 4. RBAC-BY-DEFAULT (MANDATORY)
+- Every task MUST include a permission analysis — do NOT wait for instructions
+- Create permission key(s) → register → sync → assign to default roles
+- Protect: backend endpoints, frontend pages, menus, buttons, reports, realtime, notifications
+- Prefer `dispatchByPermission(...)` — never `dispatchByRole(...)` unless genuinely required
+
+### 5. REALTIME REVIEW
+- If change affects live users: EventBus + Socket.IO + cache invalidation + UI refresh
+- Users should never need browser refresh or logout/login to see changes
+
+### 6. NOTIFICATION REVIEW
+- Determine: who should be notified? (Player, Coach, Org, Staff, Admin, etc.)
+- Implement: in-app notification + push + EventBus + Socket.IO; support localization; prevent duplicates
+
+### 7. AUDIT REVIEW
+- Create audit log entries for state-changing operations using existing audit infrastructure
+
+### 8. REPORTING REVIEW
+- Update reports, dashboards, and KPIs if new data affects them
+
+### 9. API REVIEW
+- Review REST endpoints, DTOs, validation, error handling, version compatibility
+- Reuse existing APIs whenever possible
+
+### 10. UI REVIEW
+- Review visibility, permissions, loading, empty states, validation, mobile responsiveness, accessibility, consistency
+
+### 11. I18N REVIEW
+- Register translation keys → sync registry → add EN defaults + AR translations
+- Verify no duplicated translation sources
+
+### 12. TEST REVIEW
+- Unit tests, integration tests, manual journey, regression risk
+
+### 13. DEPLOYMENT REVIEW
+- Docker builds, Docker health, migrations, startup validation, production compatibility
+
+### 14. DELIVERY FORMAT — Every completed task must include:
+| # | Item |
+|---|------|
+| 1 | Business analysis |
+| 2 | Root cause (if bug) |
+| 3 | Architecture impact |
+| 4 | Database impact |
+| 5 | RBAC impact |
+| 6 | Realtime impact |
+| 7 | Notification impact |
+| 8 | Audit impact |
+| 9 | API changes |
+| 10 | UI changes |
+| 11 | Translation changes |
+| 12 | Modified files |
+| 13 | Database migrations |
+| 14 | Verification |
+| 15 | Docker health |
+| 16 | Commit hash |
+
+### CORE PRINCIPLE
+Do not implement features in isolation. Every implementation must be production-ready, secure, scalable, observable, permission-aware, and fully integrated.
+
+---
+
 ## CRITICAL: NEVER run destructive DB operations without explicit user approval
 
 - **NEVER** run `migrate.sh --fresh` or force-drop/recreate databases unless the user explicitly requests it.
