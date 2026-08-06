@@ -73,13 +73,14 @@ export function useRealtimeCacheUpdates(): void {
     qc.invalidateQueries({ queryKey: ['transactions'] });
   });
 
-  for (const ev of ['wallet.withdrawal-submitted', 'wallet.withdrawal-under-review', 'wallet.withdrawal-approved', 'wallet.withdrawal-rejected', 'wallet.withdrawal-processing', 'wallet.withdrawal-completed', 'wallet.withdrawal-cancelled']) {
+  for (const ev of ['wallet.withdrawal-submitted', 'wallet.withdrawal-under-review', 'wallet.withdrawal-approved', 'wallet.withdrawal-rejected', 'wallet.withdrawal-processing', 'wallet.withdrawal-completed', 'wallet.withdrawal-cancelled', 'wallet.withdrawal-assigned']) {
     useSocketEvent(ev, () => {
       qc.invalidateQueries({ queryKey: ['wallet'] });
       qc.invalidateQueries({ queryKey: ['wallet', 'me'] });
       qc.invalidateQueries({ queryKey: ['my-withdrawals'] });
       qc.invalidateQueries({ queryKey: ['admin-withdrawals'] });
       qc.invalidateQueries({ queryKey: ['withdrawal-stats'] });
+      qc.invalidateQueries({ queryKey: ['assignable-admins'] });
     });
   }
 

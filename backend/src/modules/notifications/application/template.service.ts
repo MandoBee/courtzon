@@ -747,6 +747,8 @@ export async function seedTemplates(): Promise<void> {
     { eventName: 'wallet:withdrawal-cancelled', locale: 'ar', categorySlug: 'wallet', type: 'warning', priority: 'normal',
       titleTemplate: 'تم إلغاء السحب', bodyTemplate: 'تم إلغاء طلب السحب بقيمة {{amount}}. تمت إعادة الأموال إلى محفظتك.',
       actionKey: 'view_wallet', routePattern: '/wallet' },
+    { eventName: 'wallet:withdrawal-assigned', locale: 'en', categorySlug: 'wallet', type: 'info', priority: 'normal', titleTemplate: 'Withdrawal Assigned', bodyTemplate: 'A withdrawal request has been assigned to you.', actionKey: 'view_withdrawals', routePattern: '/admin/withdrawals' },
+    { eventName: 'wallet:withdrawal-assigned', locale: 'ar', categorySlug: 'wallet', type: 'info', priority: 'normal', titleTemplate: 'تم تعيين طلب سحب', bodyTemplate: 'تم تعيين طلب سحب لك.', actionKey: 'view_withdrawals', routePattern: '/admin/withdrawals' },
 
     // ── Coupon ──
     { eventName: 'coupon:published', locale: 'en', categorySlug: 'system', type: 'info', priority: 'normal',

@@ -156,6 +156,19 @@ const eventGroups: EventGroupConfig[] = [
     },
   },
   {
+    events: ['wallet:withdrawal-assigned'],
+    handler: async (eventName, data, categorySlug) => {
+      if (data.assignedTo) {
+        await dispatchToUser({
+          userId: data.assignedTo, eventName, categorySlug,
+          data: { ...data, title: 'Withdrawal Assigned', body: 'A withdrawal request has been assigned to you.' },
+          relatedEntityType: 'withdrawal', relatedEntityId: String(data.withdrawalId),
+          action: a('/admin/withdrawals'),
+        });
+      }
+    },
+  },
+  {
     events: ['wallet:withdrawal-under-review', 'wallet:withdrawal-approved', 'wallet:withdrawal-rejected', 'wallet:withdrawal-processing', 'wallet:withdrawal-completed', 'wallet:withdrawal-cancelled'],
     handler: async (eventName, data, categorySlug) => {
       if (data.userId) {
@@ -788,6 +801,7 @@ class NotificationEngine {
       'wallet:withdrawal-approved', 'wallet:withdrawal-rejected',
       'wallet:withdrawal-processing', 'wallet:withdrawal-completed',
       'wallet:withdrawal-cancelled',
+      'wallet:withdrawal-assigned',
       'review:received', 'attendance:marked',
       'support:ticket-opened', 'support:ticket-resolved', 'support:ticket-closed',
       'security:suspicious-login', 'security:account-locked',

@@ -51,3 +51,16 @@ export async function withdrawalStatsHandler(request: FastifyRequest, reply: Fas
   const stats = await withdrawalService.getStats();
   return reply.send({ data: stats });
 }
+
+export async function assignWithdrawalHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { id } = request.params as any;
+  const { assignedTo } = request.body as any;
+  const actorId = (request as any).userId;
+  await withdrawalService.assign(Number(id), Number(assignedTo), actorId);
+  return reply.send({ data: { success: true } });
+}
+
+export async function listAssignableAdminsHandler(request: FastifyRequest, reply: FastifyReply) {
+  const admins = await withdrawalService.listAssignableAdmins();
+  return reply.send({ data: admins });
+}
