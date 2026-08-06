@@ -96,8 +96,17 @@ export const withdrawalService = {
     if (filters.status) { where += ' AND wr.status = ?'; params.push(filters.status); }
     if (filters.search) { where += ' AND (u.full_name LIKE ? OR u.email LIKE ? OR u.phone_number LIKE ?)'; params.push('%'+filters.search+'%', '%'+filters.search+'%', '%'+filters.search+'%'); }
     const [count] = await pool.execute<RowData>(`SELECT COUNT(*) as total FROM withdrawal_requests wr JOIN users u ON u.id = wr.user_id ${where}`, params) as any;
-    const [rows] = await pool.execute<RowData>(`SELECT wr.*, u.full_name, u.email, u.phone_number, uw.balance AS wallet_balance, uw.reserved_balance FROM withdrawal_requests wr JOIN users u ON u.id = wr.user_id JOIN user_wallets uw ON uw.user_id = wr.user_id ${where} ORDER BY FIELD(wr.status, 'pending','under_review','approved','processing') ASC, wr.created_at DESC LIMIT ? OFFSET ?`, [...params, limit, offset]) as any;
-    return { data: rows, total: count[0].total, page, limit };
+    const [rows] = await pool.execute<RowData>(
+      `SELECT wr.*, u.full_name, u.email, u.phone_number, uw.balance AS wallet_balance, uw.reserved_balance
+       FROM withdrawal_requests wr
+       JOIN users u ON u.id = wr.user_id
+       JOIN user_wallets uw ON uw.user_id = wr.user_id
+       ${where}
+       ORDER BY FIELD(wr.status, 'pending','under_review','approved','processing') ASC, wr.created_at DESC
+       LIMIT ? OFFSET ?`,
+      [...params, String(limit), String(offset)],
+    ) as any;
+    return { data: rows, total: Number(count[0].total), page, limit };
   },
 
   async getById(requestId: number) {
