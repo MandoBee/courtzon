@@ -244,6 +244,23 @@ export async function dispatchByRole(
   await dispatchBulk(userIds, options);
 }
 
+export async function dispatchByPermission(
+  permissionKey: string,
+  options: Omit<DispatchOptions, 'userId'>,
+): Promise<void> {
+  const pool = getPool();
+  const [rows] = await pool.execute<RowData>(
+    `SELECT DISTINCT u.id FROM users u
+     JOIN user_roles ur ON u.id = ur.user_id AND ur.is_active = TRUE
+     JOIN role_permissions rp ON ur.role_id = rp.role_id
+     JOIN permissions p ON rp.permission_id = p.id
+     WHERE p.permission_key = ? AND u.account_status = 'active' AND u.deleted_at IS NULL`,
+    [permissionKey],
+  );
+  const userIds = rows.map((r: any) => r.id);
+  await dispatchBulk(userIds, options);
+}
+
 export async function dispatchByOrg(
   organisationId: number,
   options: Omit<DispatchOptions, 'userId'>,
