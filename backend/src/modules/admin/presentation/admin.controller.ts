@@ -84,6 +84,39 @@ export async function getPublicSettingsHandler(_request: FastifyRequest, reply: 
   return sendSuccess(reply, settings, buildMeta(_request));
 }
 
+// ── Configuration Profiles ───────────────────────────────────────────────
+
+export async function listProfilesHandler(_request: FastifyRequest, reply: FastifyReply) {
+  const profiles = await systemSettingsService.listProfiles();
+  return sendSuccess(reply, profiles, buildMeta(_request));
+}
+export async function createProfileHandler(request: FastifyRequest, reply: FastifyReply) {
+  const body = request.body as any;
+  const userId = (request as any).userId;
+  const profile = await systemSettingsService.createProfile({ ...body, userId });
+  return reply.status(201).send(sendSuccess(reply, profile, buildMeta(request)));
+}
+export async function applyProfileHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { id } = request.params as any;
+  const userId = (request as any).userId;
+  const result = await systemSettingsService.applyProfile(Number(id), userId);
+  try {
+    const { eventBusV2 } = await import('../../../shared/event-bus/index.js');
+    eventBusV2.emit('setting:profile-applied' as any, { profileId: Number(id), profileName: '', appliedBy: userId });
+  } catch {}
+  return sendSuccess(reply, result, buildMeta(request));
+}
+export async function archiveProfileHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { id } = request.params as any;
+  await systemSettingsService.archiveProfile(Number(id));
+  return reply.status(204).send();
+}
+export async function deleteProfileHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { id } = request.params as any;
+  await systemSettingsService.deleteProfile(Number(id));
+  return reply.status(204).send();
+}
+
 // ── Feature Flags ────────────────────────────────────────────────────────
 
 export async function listFeatureFlagsHandler(request: FastifyRequest, reply: FastifyReply) {

@@ -775,6 +775,14 @@ export async function seedTemplates(): Promise<void> {
     { eventName: 'attendance:marked', locale: 'en', categorySlug: 'system', type: 'info', priority: 'normal',
       titleTemplate: 'Attendance Marked', bodyTemplate: 'Your attendance has been marked as {{status}}.',
       actionKey: 'view_session', routePattern: '/sessions/{{sessionId}}' },
+
+    // ── Configuration Settings ──
+    { eventName: 'setting:updated', locale: 'en', categorySlug: 'system', type: 'warning', priority: 'high',
+      titleTemplate: 'Setting Changed', bodyTemplate: 'Setting {{key}} was updated.',
+      actionKey: 'view_settings', routePattern: '/admin/system' },
+    { eventName: 'setting:updated', locale: 'ar', categorySlug: 'system', type: 'warning', priority: 'high',
+      titleTemplate: 'تم تغيير الإعداد', bodyTemplate: 'تم تحديث الإعداد {{key}}.',
+      actionKey: 'view_settings', routePattern: '/admin/system' },
   ];
 
   for (const tpl of templates) {

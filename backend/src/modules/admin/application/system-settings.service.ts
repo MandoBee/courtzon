@@ -139,8 +139,58 @@ export class SystemSettingsService {
       [key, oldValue !== null && oldValue !== undefined ? String(oldValue) : null, serialized, userId],
     );
 
+    // Emit setting change event for realtime + notifications
+    try {
+      const { eventBusV2 } = await import('../../../shared/event-bus/index.js');
+      eventBusV2.emit('setting:updated' as any, { key, oldValue: String(oldValue || ''), newValue: serialized, changedBy: userId });
+    } catch {}
+
     const updated = await this.getByKey(key);
     return updated!;
+  }
+
+  // ── Configuration Profiles ──
+  async listProfiles() {
+    const pool = getPool();
+    const [rows] = await pool.execute<RowData>('SELECT * FROM configuration_profiles WHERE is_archived = 0 ORDER BY category, name') as any;
+    const [sRows] = await pool.execute<RowData>('SELECT * FROM configuration_profile_settings') as any;
+    const settingsMap: Record<number, any[]> = {};
+    for (const s of sRows as any[]) {
+      if (!settingsMap[s.profile_id]) settingsMap[s.profile_id] = [];
+      settingsMap[s.profile_id].push({ key: s.setting_key, value: s.setting_value });
+    }
+    return rows.map((r: any) => ({ ...r, settings: settingsMap[r.id] || [] }));
+  }
+
+  async createProfile(data: { name: string; description?: string; category?: string; scope?: string; settings?: Record<string, string>; userId: number }) {
+    const pool = getPool();
+    const [result] = await pool.execute('INSERT INTO configuration_profiles (name, description, category, scope, created_by) VALUES (?, ?, ?, ?, ?)', [data.name, data.description || null, data.category || 'general', data.scope || 'global', data.userId]) as any;
+    const id = result.insertId;
+    if (data.settings) {
+      for (const [key, value] of Object.entries(data.settings)) {
+        await pool.execute('INSERT INTO configuration_profile_settings (profile_id, setting_key, setting_value) VALUES (?, ?, ?)', [id, key, value]);
+      }
+    }
+    return { id, name: data.name };
+  }
+
+  async applyProfile(profileId: number, userId: number) {
+    const pool = getPool();
+    const [sRows] = await pool.execute<RowData>('SELECT setting_key, setting_value FROM configuration_profile_settings WHERE profile_id = ?', [profileId]) as any;
+    for (const s of sRows as any[]) {
+      await pool.execute('UPDATE system_settings SET value = ?, updated_by = ? WHERE `key` = ?', [s.setting_value, userId, s.setting_key]);
+    }
+    return { applied: sRows.length };
+  }
+
+  async deleteProfile(profileId: number) {
+    const pool = getPool();
+    await pool.execute('DELETE FROM configuration_profiles WHERE id = ?', [profileId]);
+  }
+
+  async archiveProfile(profileId: number) {
+    const pool = getPool();
+    await pool.execute('UPDATE configuration_profiles SET is_archived = 1 WHERE id = ?', [profileId]);
   }
 
   async getHistory(page: number = 1, limit: number = 50): Promise<{ data: any[]; total: number }> {
