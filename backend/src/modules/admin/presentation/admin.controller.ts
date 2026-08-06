@@ -68,6 +68,11 @@ export async function getSettingCategoriesHandler(_request: FastifyRequest, repl
   return sendSuccess(reply, categories, buildMeta(_request));
 }
 
+export async function getSettingsMetadataHandler(_request: FastifyRequest, reply: FastifyReply) {
+  const metadata = await systemSettingsService.getMetadata();
+  return sendSuccess(reply, metadata, buildMeta(_request));
+}
+
 export async function getPublicSettingsHandler(_request: FastifyRequest, reply: FastifyReply) {
   const settings = await systemSettingsService.getPublic();
   return sendSuccess(reply, settings, buildMeta(_request));

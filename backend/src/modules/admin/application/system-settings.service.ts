@@ -13,8 +13,22 @@ interface SettingRow {
   value: unknown;
   value_type: string;
   description: string | null;
+  display_name: string | null;
+  unit: string | null;
+  min_value: string | null;
+  max_value: string | null;
+  allowed_values: string | null;
+  placeholder: string | null;
+  help_text: string | null;
+  sort_order: number;
+  is_visible: number;
+  is_required: number;
   is_public: number;
   is_editable: number;
+  scope: string;
+  restart_policy: string | null;
+  feature_flag: string | null;
+  setting_version: number;
   validation_rules: string | null;
   created_at: string;
   updated_at: string;
@@ -26,9 +40,12 @@ function parseValue(raw: string | null, valueType: string): unknown {
   if (raw === null || raw === undefined) return null;
   try {
     switch (valueType) {
-      case 'number': return Number(raw);
+      case 'number':
+      case 'decimal': return Number(raw);
       case 'boolean': return raw === 'true' || raw === '1';
       case 'json': return JSON.parse(raw);
+      case 'enum':
+      case 'text':
       default: return raw;
     }
   } catch {
@@ -131,6 +148,20 @@ export class SystemSettingsService {
       'SELECT DISTINCT category FROM system_settings ORDER BY category',
     );
     return rows.map((r: RowData[number]) => r.category as string);
+  }
+
+  async getMetadata(): Promise<{ categories: string[]; scopes: string[]; valueTypes: string[]; settings: SettingRow[] }> {
+    const pool = getPool();
+    const [catRows] = await pool.execute<RowData>('SELECT DISTINCT COALESCE(category, \'general\') as cat FROM system_settings ORDER BY cat') as any;
+    const [scopeRows] = await pool.execute<RowData>('SELECT DISTINCT COALESCE(scope, \'global\') as sc FROM system_settings ORDER BY sc') as any;
+    const [typeRows] = await pool.execute<RowData>('SELECT DISTINCT COALESCE(value_type, \'string\') as vt FROM system_settings ORDER BY vt') as any;
+    const [allRows] = await pool.execute<RowData>('SELECT * FROM system_settings ORDER BY COALESCE(sort_order, 100), `key`') as any;
+    return {
+      categories: catRows.map((r: any) => r.cat),
+      scopes: scopeRows.map((r: any) => r.sc),
+      valueTypes: typeRows.map((r: any) => r.vt),
+      settings: allRows.map((r: any) => ({ ...r, value: parseValue(r.value, r.value_type || 'string') })),
+    };
   }
 
   async getPublic(): Promise<Record<string, unknown>> {
