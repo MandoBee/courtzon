@@ -200,7 +200,150 @@ New decisions are logged in `docs/navigation/implementation-progress.md` §5 (AD
 
 ---
 
-## 13. Final Engineering Rules (PERMANENT)
+## 14. Blueprint Is Frozen (PERMANENT)
+
+The migration blueprint has been validated on **two consumers**:
+
+- Consumer 1 — Admin (hierarchical nav).
+- Consumer 2 — Organisation (flat nav).
+
+It is now **FROZEN**. Do NOT modify the migration process for the remaining consumers unless a **critical architectural issue** is discovered. A "nice to have" is not a reason to change the process.
+
+---
+
+## 15. Registry API Stability
+
+The Navigation Registry public interfaces are becoming **platform APIs**. Before changing any exported registry API:
+
+1. Evaluate the impact on **every existing consumer**.
+2. Document the reason.
+3. Update this blueprint if the change is architectural.
+
+Avoid unnecessary API churn. The Registry should begin stabilizing; post-migration changes are additive (new ids, new maps, new helpers), never breaking.
+
+---
+
+## 16. Shared Utilities — Immediate Promotion
+
+Any helper that becomes useful for more than one consumer **must immediately become shared infrastructure**.
+
+- ❌ `AdminHelper` / `OrgHelper` / `CoachHelper` duplication.
+- ✅ One shared helper in the `navigation/` layer, imported by all shells.
+
+If the abstraction is generic, promote it **immediately**. The goal is to prevent copy/paste divergence. Existing shared helpers: `buildNavIdKeyMaps`, `findByIdOrKey`, `toResolved`, `cloneDefs`, `resolveLabel`, id/key maps, `T`/`LIT`/`COMPOSITE`.
+
+---
+
+## 17. Consumer Complexity Report (per consumer)
+
+Every consumer report includes a short complexity comparison against previous consumers.
+
+Example scale:
+
+| Consumer | Complexity |
+|----------|------------|
+| Admin | High |
+| Organisation | Low |
+| Coach | Medium |
+| Referee | Low |
+| Player | Medium |
+| Workspace | Very High |
+
+For each consumer, explain:
+
+- Why this consumer differs.
+- Which parts of the blueprint were reused **unchanged**.
+- Which parts required **adaptation** (and why that adaptation stays inside the blueprint's constraints).
+
+---
+
+## 18. Registry Growth Review (per consumer)
+
+At the end of every consumer report include **Registry Statistics**, e.g.:
+
+- Number of Navigation IDs
+- Number of Categories (sections/shells)
+- Number of Pages (leaf nodes)
+- Number of Shared Utilities
+- Number of Consumers migrated
+- Remaining Consumers
+
+This monitors registry growth over time and prevents drift.
+
+---
+
+## 19. Navigation Cleanup Progress (per consumer)
+
+The Cleanup Register is a **living document**. Every migration report must include:
+
+- **Resolved Cleanup Items**
+- **Remaining Cleanup Items**
+- **New Cleanup Items**
+
+No cleanup item may silently disappear. A resolution must be recorded with its commit hash.
+
+---
+
+## 20. Technical Debt Budget
+
+**No consumer migration may introduce new technical debt** unless it is:
+
+1. Documented (this blueprint / cleanup register).
+2. Justified.
+3. Assigned a planned resolution phase.
+
+Undocumented technical debt is not acceptable.
+
+---
+
+## 21. Phase Health
+
+At the end of every migration report, include **Phase Health**:
+
+- 🟢 **Green** — no drift; parity + regression + build green; docs synchronized.
+- 🟡 **Yellow** — acceptable deviation documented with a resolution plan.
+- 🔴 **Red** — architectural drift or unresolved debt; migration NOT complete.
+
+The objective is to identify architectural drift early, not late.
+
+---
+
+## 22. Documentation Synchronization
+
+Every completed consumer must keep synchronized:
+
+- Migration Blueprint (fixture table, shared utilities, complexity scale).
+- Cleanup Register (resolved / remaining / new items).
+- Implementation Progress (status, checklist, ADR log, drift).
+- ADR Log (every new architectural decision).
+
+**No document may fall behind the implementation.**
+
+---
+
+## 23. Consumer Deliverables (mandatory format)
+
+Every remaining consumer migration MUST return the following 15 items:
+
+1. Architecture summary
+2. Files changed
+3. Navigation ID mapping
+4. Navigation ID ↔ Permission Key strategy
+5. Legacy compatibility report
+6. Consumer parity report
+7. Full test results
+8. Registry statistics
+9. Complexity assessment
+10. Cleanup progress (resolved / remaining / new)
+11. Risks
+12. Lessons learned
+13. Phase health
+14. Documentation updates
+15. Git commit hash
+
+---
+
+## 24. Final Engineering Rules (PERMANENT)
 
 1. Phase 2-a is the official reference implementation.
 2. Every consumer follows this migration template.
@@ -215,3 +358,8 @@ New decisions are logged in `docs/navigation/implementation-progress.md` §5 (AD
 11. Label-based navigation state is technical debt and must be eliminated (see cleanup register).
 12. No new label-based state may ever be introduced.
 13. Every remaining architectural debt is tracked in the Navigation Cleanup register until resolved.
+14. The migration blueprint is frozen; no process change without a critical architectural issue.
+15. The Registry API is stabilizing; no breaking public API change without impact review + documentation.
+16. Any helper useful to more than one consumer is promoted to shared infrastructure immediately.
+17. Every consumer reports complexity, registry statistics, cleanup progress, and phase health.
+18. No consumer migration introduces undocumented technical debt.

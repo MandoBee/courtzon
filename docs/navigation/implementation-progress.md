@@ -119,6 +119,10 @@ After each approved milestone:
 | ADR-009 | 2026-08-07 | `docs/navigation/navigation-cleanup-register.md` is the **mandatory debt tracker**; the platform is not complete until all Mandatory items resolve. Label-keyed nav state (NC-001) is the first Mandatory item. |
 | ADR-010 | 2026-08-07 | All remaining consumers are treated as **independent milestones** (Consumer 1…6), each with its own fixture, parity gate, commit, review, and approval. No consumer authorizes the next. |
 | ADR-011 | 2026-08-07 | Consumer 2 (org): org ids namespaced **`nav.org.*`**; shared **`buildNavIdKeyMaps`** helper (ADR-008, blueprint §8) replaces the admin-private indexer; **`ResolvedNavItem.id`** is now populated for every node on every shell — parity comparator excludes `id` from the legacy-visible surface. |
+| ADR-012 | 2026-08-07 | **Migration blueprint is FROZEN** after two successful consumers (Admin hierarchical, Org flat). No process change for remaining consumers without a critical architectural issue. |
+| ADR-013 | 2026-08-07 | **Registry API is stabilizing** — no breaking public API change without consumer impact review + documentation; changes are additive only. |
+| ADR-014 | 2026-08-07 | **Shared-utility promotion is mandatory** — any helper used by >1 consumer moves to the shared `navigation/` layer immediately (prevents copy/paste divergence). |
+| ADR-015 | 2026-08-07 | Consumer reports adopt the **15-item mandatory format** (blueprint §23): complexity assessment, registry statistics, cleanup progress (resolved/remaining/new), and phase health (green/yellow/red) are now required per consumer. |
 
 ## 6. Deviations
 
