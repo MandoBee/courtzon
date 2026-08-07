@@ -57,6 +57,7 @@ Existing fixtures:
 | Admin Sidebar | `parity/legacy/admin-sidebar.ts` (`buildLegacyAdminNavItems`) |
 | Organisation Sidebar | `parity/legacy/org-sidebar.ts` (`buildLegacyOrgNavItems`) |
 | Coach Navigation | `parity/legacy/coach-nav.ts` (`COACH_NAV`) |
+| Referee Navigation | `parity/legacy/referee-nav.ts` (`REFEREE_NAV`) |
 
 ---
 
@@ -388,9 +389,9 @@ Every consumer's migration characteristics are recorded in the Implementation Pr
 
 Maintained in the Implementation Progress tracker (§9). A pattern is marked **validated** only after at least one consumer passes its parity gate using it. Pending patterns are listed explicitly so no pattern is assumed validated before it has been exercised.
 
-Currently validated: hierarchical navigation, flat navigation, permission-gated flat navigation, static no-RBAC navigation, Navigation IDs, legacy compatibility (key-or-id alias), registry-first rendering, frozen legacy fixture, parity gate, generic resolver, shared registry utilities, immutable id on every resolved node, uniform (incl. empty) map exports.
+Currently validated: hierarchical navigation, flat navigation, permission-gated flat navigation, static no-RBAC navigation, Navigation IDs, legacy compatibility (key-or-id alias), registry-first rendering, frozen legacy fixture, parity gate, generic resolver, shared registry utilities, immutable id on every resolved node, uniform (incl. empty) map exports, small permission-gated shell, shared permission key navigation (one key protects multiple nodes — validated by Consumer 4 / Referee).
 
-Pending: small permission-gated shell, shared permission key across multiple items, two-tier more-sheet filtering, feature-flag gating, seller-context gating, DnD workspace reconciliation, saved-layout DB backfill, id-keyed React state cleanups.
+Pending: two-tier more-sheet filtering, feature-flag gating, seller-context gating, DnD workspace reconciliation, saved-layout DB backfill, id-keyed React state cleanups.
 
 ---
 
