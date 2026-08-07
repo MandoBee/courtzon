@@ -4,6 +4,8 @@
 **Last updated:** 2026-08-07
 **Spec:** `docs/navigation/nav-spec-v1.0.md` (frozen)
 **Report:** `docs/navigation/phase1-parity-report.md`
+**Blueprint:** `docs/navigation/migration-blueprint.md` (permanent governance)
+**Cleanup register:** `docs/navigation/navigation-cleanup-register.md`
 
 This document is the single synchronized record of navigation implementation state. It is updated after every approved milestone and must always reflect the repository as committed.
 
@@ -112,6 +114,10 @@ After each approved milestone:
 | ADR-004 | 2026-08-07 | **No DB schema changes** in Phase 2; `sidebar_layout` key-value backfill only. |
 | ADR-005 | 2026-08-07 | Admin nav ids use the **`nav.admin.*` namespace**, immutable and decoupled from `permissionKey`. Section+landing-child pairs that shared one legacy key get a distinct `{section}.landing` child id. `ADMIN_ID_TO_KEY` / `ADMIN_LEGACY_KEY_TO_ID` alias maps keep legacy keys valid; `resolveAdminNav` accepts **key OR id** in saved layouts with legacy-exact reorder semantics. |
 | ADR-006 | 2026-08-07 | The legacy `buildNavItems` definition is **frozen verbatim as the parity fixture** (`frontend/src/navigation/parity/legacy/admin-sidebar.ts`); AdminSidebar now renders only `resolveAdminNav(...)`. The parity gate compares registry vs the frozen legacy source. |
+| ADR-007 | 2026-08-07 | `docs/navigation/migration-blueprint.md` is the **permanent consumer migration template** — the Phase 2-a lifecycle (Freeze → Fixture → Registry → Parity → Remove) is the only allowed migration path; no alternatives. |
+| ADR-008 | 2026-08-07 | **Navigation Identity Rule is permanent:** Navigation IDs (immutable, structural, ordering, merge identity) and Permission Keys (authorization only, optional, shareable, RBAC) are decoupled and must never be coupled again. |
+| ADR-009 | 2026-08-07 | `docs/navigation/navigation-cleanup-register.md` is the **mandatory debt tracker**; the platform is not complete until all Mandatory items resolve. Label-keyed nav state (NC-001) is the first Mandatory item. |
+| ADR-010 | 2026-08-07 | All remaining consumers are treated as **independent milestones** (Consumer 1…6), each with its own fixture, parity gate, commit, review, and approval. No consumer authorizes the next. |
 
 ## 6. Deviations
 
@@ -119,7 +125,12 @@ After each approved milestone:
 |----|------|-----------|-------------|
 | — | — | (none) | — |
 
+## 6a. Governance Artifacts (approved 2026-08-07)
+
+- **Migration blueprint** — `docs/navigation/migration-blueprint.md`: official template, Navigation Identity Rule, frozen-fixture mandate, parity-first, backward-compat, generic-architecture, consumer independence, lessons learned, final engineering rules.
+- **Cleanup register** — `docs/navigation/navigation-cleanup-register.md`: mandatory debt tracker (NC-001 label-keyed state is Mandatory).
+
 ## 7. Known Drift (open, Phase 2-f scope)
 
-- 66 sidebar-only keys absent from the editor; 10 editor-only keys; `sidebar.roles` label drift; `sidebar.finance` path drift; per-node icon style. Full tables in `phase1-parity-report.md` §4.
+- 66 sidebar-only keys absent from the editor; 10 editor-only keys; `sidebar.roles` label drift; `sidebar.finance` path drift; per-node icon style. Full tables in `phase1-parity-report.md` §4. Tracked as NC-003 (Phase 2-f).
 - ~~5 duplicated admin IDs~~ — **resolved by Commit 1 (`52064ff`)** via `nav.admin.*` id-decoupling; the 5 shared permission keys are now intentional section+landing pairs (ADR-005).
