@@ -14,7 +14,7 @@ This document is the single synchronized record of navigation implementation sta
 | Phase | Status | Commit | Date |
 |-------|--------|--------|------|
 | **Phase 1** — Registry extraction + parity gate | ✅ Approved & committed | `2175414` | 2026-08-07 |
-| **Phase 2-a** — Admin Sidebar migration | ⬜ Not started | — | — |
+| **Phase 2-a** — Admin Sidebar migration | ✅ Committed (awaiting architecture review) | `52064ff` | 2026-08-07 |
 | **Phase 2-b** — Organisation Sidebar migration | ⬜ Not started | — | — |
 | **Phase 2-c** — Coach Navigation migration | ⬜ Not started | — | — |
 | **Phase 2-d** — Referee Navigation migration | ⬜ Not started | — | — |
@@ -90,15 +90,15 @@ After each approved milestone:
 
 ## 4. Verification Checklist (per milestone)
 
-| # | Item | Phase 1 |
-|---|------|---------|
-| 1 | Parity gate (own suite) | ✅ 30/30 |
-| 2 | Full frontend unit suite | ✅ 40/40 |
-| 3 | `npm run build` (tsc -b + vite) | ✅ PASS |
-| 4 | `scripts/ci-validate.js` (navigation checks) | ✅ PASS |
-| 5 | Isolated commit hash recorded | ✅ `2175414` |
-| 6 | Progress doc updated | ✅ |
-| 7 | Pushed (only after milestone approval) | ⬜ Local only |
+| # | Item | Phase 1 | Phase 2-a |
+|---|------|---------|-----------|
+| 1 | Parity gate (own suite) | ✅ 30/30 | ✅ 35/35 |
+| 2 | Full frontend unit suite | ✅ 40/40 | ✅ 45/45 |
+| 3 | `npm run build` (tsc -b + vite) | ✅ PASS | ✅ PASS |
+| 4 | `scripts/ci-validate.js` (navigation checks) | ✅ PASS | ✅ PASS (222 pre-existing backend errors = known noise) |
+| 5 | Isolated commit hash recorded | ✅ `2175414` | ✅ `52064ff` |
+| 6 | Progress doc updated | ✅ | ✅ |
+| 7 | Pushed (only after milestone approval) | ⬜ Local only | ⬜ Local only |
 
 ---
 
@@ -110,6 +110,8 @@ After each approved milestone:
 | ADR-002 | 2026-08-07 | **Immutable Navigation IDs** separate from `permissionKey`; legacy keys accepted via alias map during transition (`immutable-navigation-ids-design-note.md`). |
 | ADR-003 | 2026-08-07 | Phase 2 executed as **per-consumer isolated commits** (P2-a…P2-f), local-only until milestone approval. |
 | ADR-004 | 2026-08-07 | **No DB schema changes** in Phase 2; `sidebar_layout` key-value backfill only. |
+| ADR-005 | 2026-08-07 | Admin nav ids use the **`nav.admin.*` namespace**, immutable and decoupled from `permissionKey`. Section+landing-child pairs that shared one legacy key get a distinct `{section}.landing` child id. `ADMIN_ID_TO_KEY` / `ADMIN_LEGACY_KEY_TO_ID` alias maps keep legacy keys valid; `resolveAdminNav` accepts **key OR id** in saved layouts with legacy-exact reorder semantics. |
+| ADR-006 | 2026-08-07 | The legacy `buildNavItems` definition is **frozen verbatim as the parity fixture** (`frontend/src/navigation/parity/legacy/admin-sidebar.ts`); AdminSidebar now renders only `resolveAdminNav(...)`. The parity gate compares registry vs the frozen legacy source. |
 
 ## 6. Deviations
 
@@ -120,4 +122,4 @@ After each approved milestone:
 ## 7. Known Drift (open, Phase 2-f scope)
 
 - 66 sidebar-only keys absent from the editor; 10 editor-only keys; `sidebar.roles` label drift; `sidebar.finance` path drift; per-node icon style. Full tables in `phase1-parity-report.md` §4.
-- 5 duplicated admin IDs (`sidebar.organisations`, `sidebar.roles`, `sidebar.payment-methods`, `sidebar.countries`, `sidebar.security-dashboard`) — resolved by Commit 1 id-decoupling (F1).
+- ~~5 duplicated admin IDs~~ — **resolved by Commit 1 (`52064ff`)** via `nav.admin.*` id-decoupling; the 5 shared permission keys are now intentional section+landing pairs (ADR-005).
