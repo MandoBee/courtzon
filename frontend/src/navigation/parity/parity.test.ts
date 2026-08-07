@@ -4,7 +4,7 @@ import { buildLegacyAdminNavItems } from './legacy/admin-sidebar';
 import { buildLegacyOrgNavItems } from './legacy/org-sidebar';
 import { COACH_NAV as LEGACY_COACH_NAV } from './legacy/coach-nav';
 import { buildSections } from '../../pages/admin/sidebar-layout/SidebarLayoutPage';
-import { REFEREE_NAV as LEGACY_REFEREE_NAV } from '../../pages/referee/referee-nav';
+import { REFEREE_NAV as LEGACY_REFEREE_NAV } from './legacy/referee-nav';
 import {
   buildPlayerCoreTabs,
   buildPlayerMoreItems,
@@ -21,6 +21,8 @@ import {
   COACH_ID_TO_KEY,
   COACH_LEGACY_KEY_TO_ID,
   REFEREE_NAV,
+  REFEREE_ID_TO_KEY,
+  REFEREE_LEGACY_KEY_TO_ID,
   PLAYER_CORE_TABS,
   PLAYER_MORE_ITEMS,
   T,
@@ -247,7 +249,7 @@ describe('Phase 1 parity gate — coach nav (legacy/coach-nav.ts vs Navigation R
   });
 });
 
-describe('Phase 1 parity gate — referee nav (referee-nav.ts vs Navigation Registry)', () => {
+describe('Phase 1 parity gate — referee nav (legacy/referee-nav.ts vs Navigation Registry)', () => {
   function assertRefereeParity(can: (p: string) => boolean) {
     const legacy = LEGACY_REFEREE_NAV.filter((item) => !item.permission || can(item.permission)).map((i) => ({
       label: i.label,
@@ -267,6 +269,37 @@ describe('Phase 1 parity gate — referee nav (referee-nav.ts vs Navigation Regi
   });
 
   it('matches when no permissions are granted', () => assertRefereeParity(noneCan));
+});
+
+describe('Shared Permission Key Navigation (Consumer 4 architectural validation)', () => {
+  const onlySharedKey = (p: string) => p === 'referee.assignments.view';
+
+  it('one permission protects multiple nodes (Assignments + Matches) without merging identity', () => {
+    const nav = resolveRefereeNav(onlySharedKey, enT);
+    expect(nav.map((i) => i.label)).toEqual(['Assignments', 'Matches']);
+    expect(nav.map((i) => i.id)).toEqual(['nav.referee.assignments', 'nav.referee.matches']);
+    expect(nav.every((i) => i.permissionKey === 'referee.assignments.view')).toBe(true);
+    expect(new Set(nav.map((i) => i.id)).size).toBe(2);
+  });
+
+  it('granting the shared key never grants sibling nodes under a different key', () => {
+    const nav = resolveRefereeNav(onlySharedKey, enT);
+    expect(nav.some((i) => i.permissionKey !== 'referee.assignments.view')).toBe(false);
+  });
+
+  it('the resolver output is deterministic: same authorization → identical order and shape', () => {
+    const a = resolveRefereeNav(onlySharedKey, enT);
+    const b = resolveRefereeNav(onlySharedKey, enT);
+    expect(firstDiff(a, b)).toBeNull();
+    expect(a.map((i) => i.label)).toEqual(b.map((i) => i.label));
+  });
+
+  it('legacy key alias resolves to every node sharing it, in registry order', () => {
+    expect(REFEREE_LEGACY_KEY_TO_ID.get('referee.assignments.view')).toEqual([
+      'nav.referee.assignments',
+      'nav.referee.matches',
+    ]);
+  });
 });
 
 describe('Phase 1 parity gate — player nav (BottomNav vs Navigation Registry)', () => {
@@ -381,6 +414,12 @@ describe('Navigation registry integrity (immutable ids)', () => {
     expect(coachIds.length).toBe(6);
     expect(COACH_ID_TO_KEY.size).toBe(0);
     expect(COACH_LEGACY_KEY_TO_ID.size).toBe(0);
+
+    const refereeIds = collectIds(REFEREE_NAV);
+    expect(refereeIds.every((id) => id.startsWith('nav.referee.'))).toBe(true);
+    expect(refereeIds.length).toBe(6);
+    expect(REFEREE_ID_TO_KEY.size).toBe(6);
+    for (const id of refereeIds) expect(REFEREE_ID_TO_KEY.has(id)).toBe(true);
   });
 
   it('maps org legacy permission keys to their nodes', () => {
@@ -391,6 +430,18 @@ describe('Navigation registry integrity (immutable ids)', () => {
       expect(key.startsWith('org.sidebar.')).toBe(true);
       expect(ids.length).toBe(1);
     }
+  });
+
+  it('maps shared referee permission keys to every node they protect (1 key → 2 ids)', () => {
+    expect(REFEREE_LEGACY_KEY_TO_ID.size).toBe(5);
+    expect(REFEREE_ID_TO_KEY.size).toBe(6);
+    for (const [key, ids] of REFEREE_LEGACY_KEY_TO_ID) {
+      expect(key.startsWith('referee.')).toBe(true);
+      expect(ids.length).toBeGreaterThan(0);
+      expect(new Set(ids).size).toBe(ids.length);
+    }
+    const shared = [...REFEREE_LEGACY_KEY_TO_ID.entries()].filter(([, ids]) => ids.length > 1);
+    expect(shared.map(([k]) => k)).toEqual(['referee.assignments.view']);
   });
 
   it('exposes the immutable id on every resolved item (state-keying by id)', () => {
@@ -407,6 +458,11 @@ describe('Navigation registry integrity (immutable ids)', () => {
     expect(coachTop.every((it) => it.id !== undefined)).toBe(true);
     expect(coachTop[0].id).toBe('nav.coach.dashboard');
     expect(coachTop.every((it, i) => it.id === COACH_NAV[i].id)).toBe(true);
+
+    const refereeTop = resolveRefereeNav(allCan, enT);
+    expect(refereeTop.every((it) => it.id !== undefined)).toBe(true);
+    expect(refereeTop[0].id).toBe('nav.referee.dashboard');
+    expect(refereeTop.every((it, i) => it.id === REFEREE_NAV[i].id)).toBe(true);
   });
 
   it('maps legacy permission keys to the nodes that carry them (incl. section+landing pairs)', () => {

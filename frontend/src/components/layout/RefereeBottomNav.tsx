@@ -1,14 +1,16 @@
 import { useLocation, Link } from 'react-router-dom';
 import { useCan } from '../../hooks/useCan';
 import { useHaptics } from '../../hooks/useHaptics';
-import { REFEREE_NAV } from '../../pages/referee/referee-nav';
+import { useTranslation } from '../../i18n';
+import { resolveRefereeNav } from '../../navigation';
 
 export default function RefereeBottomNav() {
   const location = useLocation();
   const { can } = useCan();
   const { tap } = useHaptics();
+  const { t } = useTranslation();
 
-  const visible = REFEREE_NAV.filter((tab) => !tab.permission || can(tab.permission));
+  const visible = resolveRefereeNav(can, t);
   const isActive = (path: string) => location.pathname === path || location.pathname.startsWith(path + '/');
 
   return (
