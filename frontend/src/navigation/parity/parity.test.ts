@@ -124,7 +124,6 @@ describe('Phase 1 parity gate — admin sidebar (buildNavItems vs Navigation Reg
   it('saved layout: within-domain order preserved for Organisations children under People', () => {
     const layout = new Map<string | null, string[]>();
     layout.set('sidebar.organisations', [
-      'sidebar.settlements',
       'sidebar.organisation-types',
       'sidebar.organisations',
       'sidebar.branch-access',
@@ -132,8 +131,7 @@ describe('Phase 1 parity gate — admin sidebar (buildNavItems vs Navigation Reg
     const nav = resolveAdminNav(enT, allCan, allFlags, layout);
     const people = nav.find((d) => d.label === 'People');
     const orgSection = people?.children?.find((c) => c.id === 'nav.admin.organisations');
-    expect(orgSection?.children?.map((c) => c.permissionKey).slice(0, 4)).toEqual([
-      'sidebar.settlements',
+    expect(orgSection?.children?.map((c) => c.permissionKey)).toEqual([
       'sidebar.organisation-types',
       'sidebar.organisations',
       'sidebar.branch-access',
@@ -182,6 +180,20 @@ describe('Phase 1 parity gate — admin sidebar (buildNavItems vs Navigation Reg
     expect(comp?.children?.map((c) => c.id)).toEqual([
       'nav.admin.league',
       'nav.admin.tournament',
+    ]);
+  });
+
+  it('Commerce domain contains exactly 7 modules in correct order', () => {
+    const nav = resolveAdminNav(enT, allCan, allFlags);
+    const commerce = nav.find((d) => d.label === 'Commerce');
+    expect(commerce?.children?.map((c) => c.id)).toEqual([
+      'nav.admin.marketplace',
+      'nav.admin.pricing',
+      'nav.admin.subscription',
+      'nav.admin.subscription-requests',
+      'nav.admin.settlements',
+      'nav.admin.coupons',
+      'nav.admin.ads',
     ]);
   });
 });
