@@ -128,3 +128,29 @@ Invariants:
 1. ID namespace/format: derive from existing keys (`nav.admin.…`) vs fully opaque UUIDs. Recommendation: derived, for reviewability.
 2. Whether the 5 landing-page children keep their own ids forever, or the IA phase removes them (they may be redundant once sections are nav links). Recommendation: keep ids now; IA phase decides.
 3. Whether to expose a `legacyKey` alias column/map in the registry permanently or only during transition. Recommendation: permanent map, read-only, for forensics.
+
+---
+
+## 8. Business Domain Container IDs (IA Migration — 2026-08-07)
+
+The Business Architecture Constitution defines 8 top-level Business Domains. Each domain is a structural container in the Navigation Registry. The following IDs are **immutable platform contracts**:
+
+| Domain | Immutable ID |
+|--------|-------------|
+| Dashboard | `nav.admin.domain.dashboard` |
+| People | `nav.admin.domain.people` |
+| Facilities | `nav.admin.domain.facilities` |
+| Coaching | `nav.admin.domain.coaching` |
+| Competitions | `nav.admin.domain.competitions` |
+| Commerce | `nav.admin.domain.commerce` |
+| Finance | `nav.admin.domain.finance` |
+| Platform | `nav.admin.domain.platform` |
+
+**Rules:**
+
+- These IDs are Platform Contracts. They follow the same immutability rules as all other Navigation IDs (ADR-008).
+- They must never be renamed, repurposed, or removed.
+- They participate in Registry versioning identically to every other `nav.admin.*` ID.
+- Domain container IDs carry no `permissionKey` — domain visibility is determined by child module visibility, not by RBAC on the domain container itself.
+- Domain container IDs carry no `requiredFlag` — domain visibility is child-driven.
+- If a future Business Architecture change splits, merges, or renames a domain, the old ID is deprecated (never removed) and a new ID is introduced, following ADR-008's immutability contract.
