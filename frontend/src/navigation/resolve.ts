@@ -53,16 +53,20 @@ export function resolveAdminNav(
       items.length = 0;
       items.push(...orderedLeaf, ...sections, ...remainingLeaf);
     }
-    for (const section of sections) {
-      const order = savedLayout.get(section.id) ?? savedLayout.get(section.permissionKey ?? '');
-      if (order && section.children) {
-        const ordered = order.map((k) => findByIdOrKey(section.children!, k)).filter(Boolean) as NavDefinition[];
-        const remaining = section.children.filter(
-          (c) => c.permissionKey !== undefined && !order.includes(c.permissionKey) && !order.includes(c.id),
-        );
-        section.children = [...ordered, ...remaining];
+    function applySavedLayout(list: NavDefinition[]) {
+      for (const section of list) {
+        const order = savedLayout!.get(section.id) ?? savedLayout!.get(section.permissionKey ?? '');
+        if (order && section.children) {
+          const ordered = order.map((k) => findByIdOrKey(section.children!, k)).filter(Boolean) as NavDefinition[];
+          const remaining = section.children.filter(
+            (c) => c.permissionKey !== undefined && !order.includes(c.permissionKey) && !order.includes(c.id),
+          );
+          section.children = [...ordered, ...remaining];
+        }
+        if (section.children) applySavedLayout(section.children);
       }
     }
+    applySavedLayout(items);
   }
 
   const filterItem = (item: NavDefinition): ResolvedNavItem | null => {
