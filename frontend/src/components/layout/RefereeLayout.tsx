@@ -2,7 +2,7 @@ import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../store/auth.store';
 import { useCan } from '../../hooks/useCan';
 import { useTranslation } from '../../i18n';
-import { REFEREE_NAV } from '../../pages/referee/referee-nav';
+import { resolveRefereeNav } from '../../navigation';
 import RefereeBottomNav from './RefereeBottomNav';
 import OfflineBanner from '../pwa/OfflineBanner';
 import { ErrorBoundary } from '../ErrorBoundary';
@@ -19,7 +19,7 @@ export default function RefereeLayout() {
     navigate('/');
   };
 
-  const visibleNav = REFEREE_NAV.filter((item) => !item.permission || can(item.permission));
+  const visibleNav = resolveRefereeNav(can, t);
 
   return (
     <div className="min-h-dvh bg-[var(--color-bg)]">
