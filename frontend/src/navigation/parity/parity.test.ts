@@ -196,6 +196,22 @@ describe('Phase 1 parity gate — admin sidebar (buildNavItems vs Navigation Reg
       'nav.admin.ads',
     ]);
   });
+
+  it('Finance domain contains 8 child items in correct order under Finance section', () => {
+    const nav = resolveAdminNav(enT, allCan, allFlags);
+    const finance = nav.find((d) => d.label === 'Finance');
+    const section = finance?.children?.find((c) => c.id === 'nav.admin.finance');
+    expect(section?.children?.map((c) => c.permissionKey)).toEqual([
+      'sidebar.finance-dashboard',
+      'sidebar.finance-ledger',
+      'sidebar.finance-reports',
+      'sidebar.banks',
+      'sidebar.bank-branches',
+      'sidebar.finance-transactions',
+      'sidebar.withdrawal-requests',
+      'sidebar.withdrawals-queue',
+    ]);
+  });
 });
 
 describe('Phase 2-a saved-layout resolution (nav.admin.* ids)', () => {
