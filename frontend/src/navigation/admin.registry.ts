@@ -19,6 +19,22 @@ export const ADMIN_NAV: NavDefinition[] = [
     icon: '👥',
     path: '/admin/organisations',
     children: [
+      { id: 'nav.admin.users', label: T('admin.sidebar.users'), icon: '👥', path: '/admin/users', permissionKey: 'sidebar.users' },
+      {
+        id: 'nav.admin.roles',
+        label: COMPOSITE([
+          { kind: 't', key: 'admin.sidebar.roles' },
+          { kind: 'lit', text: ' & ' },
+          { kind: 't', key: 'admin.sidebar.permissions' },
+        ]),
+        icon: '🔐',
+        path: '/admin/roles',
+        permissionKey: 'sidebar.roles',
+        children: [
+          { id: 'nav.admin.roles.landing', label: T('admin.sidebar.roles'), path: '/admin/roles', permissionKey: 'sidebar.roles' },
+          { id: 'nav.admin.permissions', label: T('admin.sidebar.permissions'), path: '/admin/permissions', permissionKey: 'sidebar.permissions' },
+        ],
+      },
       {
         id: 'nav.admin.organisations',
         label: T('admin.sidebar.organisations'),
@@ -35,22 +51,6 @@ export const ADMIN_NAV: NavDefinition[] = [
           { id: 'nav.admin.settlements', label: T('admin.sidebar.settlements'), path: '/admin/settlements', permissionKey: 'sidebar.settlements' },
         ],
       },
-      {
-        id: 'nav.admin.roles',
-        label: COMPOSITE([
-          { kind: 't', key: 'admin.sidebar.roles' },
-          { kind: 'lit', text: ' & ' },
-          { kind: 't', key: 'admin.sidebar.permissions' },
-        ]),
-        icon: '🔐',
-        path: '/admin/roles',
-        permissionKey: 'sidebar.roles',
-        children: [
-          { id: 'nav.admin.roles.landing', label: T('admin.sidebar.roles'), path: '/admin/roles', permissionKey: 'sidebar.roles' },
-          { id: 'nav.admin.permissions', label: T('admin.sidebar.permissions'), path: '/admin/permissions', permissionKey: 'sidebar.permissions' },
-        ],
-      },
-      { id: 'nav.admin.users', label: T('admin.sidebar.users'), icon: '👥', path: '/admin/users', permissionKey: 'sidebar.users' },
       {
         id: 'nav.admin.membership',
         label: T('admin.sidebar.membership'),

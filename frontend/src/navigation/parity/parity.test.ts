@@ -139,6 +139,19 @@ describe('Phase 1 parity gate — admin sidebar (buildNavItems vs Navigation Reg
       'sidebar.branch-access',
     ]);
   });
+
+  it('People domain contains exactly 6 modules in correct order', () => {
+    const nav = resolveAdminNav(enT, allCan, allFlags);
+    const people = nav.find((d) => d.label === 'People');
+    expect(people?.children?.map((c) => c.id)).toEqual([
+      'nav.admin.users',
+      'nav.admin.roles',
+      'nav.admin.organisations',
+      'nav.admin.membership',
+      'nav.admin.crm',
+      'nav.admin.hr',
+    ]);
+  });
 });
 
 describe('Phase 2-a saved-layout resolution (nav.admin.* ids)', () => {
