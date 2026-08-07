@@ -98,7 +98,7 @@ After each approved milestone:
 | 2 | Full frontend unit suite | ✅ 40/40 | ✅ 45/45 | ✅ 47/47 | ✅ 48/48 |
 | 3 | `npm run build` (tsc -b + vite) | ✅ PASS | ✅ PASS | ✅ PASS | ✅ PASS |
 | 4 | `scripts/ci-validate.js` (navigation checks) | ✅ PASS | ✅ PASS (222 pre-existing backend errors = known noise) | ✅ PASS (222 pre-existing backend errors = known noise) | ✅ PASS (222 pre-existing backend errors = known noise) |
-| 5 | Isolated commit hash recorded | ✅ `2175414` | ✅ `52064ff` | ✅ `bbe92e1` | (after commit) |
+| 5 | Isolated commit hash recorded | ✅ `2175414` | ✅ `52064ff` | ✅ `bbe92e1` | ✅ `d0b83c6` |
 | 6 | Progress doc updated | ✅ | ✅ | ✅ | ✅ |
 | 7 | Pushed (only after milestone approval) | ⬜ Local only | ⬜ Local only | ⬜ Local only | ⬜ Local only |
 
