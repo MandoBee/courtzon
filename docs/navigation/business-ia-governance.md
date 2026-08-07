@@ -394,7 +394,199 @@ Future changes require Architecture Review, an ADR, and business approval. No ex
 
 ---
 
-## 4. Implementation Strategy — Commit Plan
+## 4. Domain Dependency Rules
+
+Business Domains form a directed acyclic graph. Dependency direction is structural — it determines which domain may reference which other domain. Circular dependencies are prohibited.
+
+### 4.1 Dependency Principles
+
+| # | Principle |
+|---|-----------|
+| 1 | Dashboard may consume every domain but owns no data in any domain. |
+| 2 | People is the identity substrate. Every business domain may reference People. People references no business domain. |
+| 3 | Facilities owns physical resources. Coaching and Competitions may reference Facilities for resource booking. Facilities does not reference Coaching or Competitions. |
+| 4 | Commerce transacts. Coaching, Competitions, and Facilities may trigger Commerce for payments. Commerce does not reference Coaching, Competitions, or Facilities — it receives transaction requests through a defined interface. |
+| 5 | Finance records. Finance depends on Commerce for transaction data. Commerce must never depend on Finance. |
+| 6 | Platform provides infrastructure. Every domain may consume Platform services (notifications, audit, localization). Platform may consume events from any domain for system-level processing (audit logging, notification dispatch). Platform never owns business data. |
+| 7 | Cross-domain references are allowed. Cross-domain ownership is forbidden. A domain may read data owned by another domain through a defined API. It may never own, redefine, or duplicate that data. |
+
+### 4.2 Dependency Matrix
+
+| Domain | Depends on | Depended on by |
+|--------|-----------|----------------|
+| Dashboard | People, Facilities, Coaching, Competitions, Commerce, Finance | None |
+| People | None | Dashboard, Facilities, Coaching, Competitions, Commerce, Platform |
+| Facilities | People | Dashboard, Coaching, Competitions |
+| Coaching | People, Facilities, Commerce | Dashboard |
+| Competitions | People, Facilities, Commerce | Dashboard |
+| Commerce | People, Platform | Dashboard, Coaching, Competitions, Finance |
+| Finance | Commerce, People | Dashboard |
+| Platform | People (for identity) | All domains |
+
+### 4.3 Forbidden Dependencies
+
+| From | To | Why prohibited |
+|------|----|----------------|
+| Commerce → Finance | Money moves in one direction: Commerce transacts, Finance records. Commerce cannot call Finance to post a journal entry. Finance observes Commerce events and records independently. |
+| Facilities → Coaching | A court does not schedule a coach. A coach books a court. Dependency flows from Coaching to Facilities, never reverse. |
+| Facilities → Competitions | A court does not schedule a tournament. A tournament books a court. Dependency flows from Competitions to Facilities, never reverse. |
+| Finance → Commerce | Finance is downstream of Commerce. Commerce is never downstream of Finance. |
+| Any business domain → Any other business domain (circular) | Circular dependencies indicate a broken boundary. If A depends on B and B depends on A, the two domains share a concept that belongs in one domain or a third domain. |
+
+### 4.4 Dependency Governance
+
+Any proposed cross-domain dependency that is not in the matrix above must pass a Dependency Review. The review verifies:
+
+- The dependency direction respects domain ownership.
+- No circular dependency is introduced.
+- The consuming domain does not duplicate or redefine the data it consumes.
+
+Circular dependencies are an architectural defect and must be resolved before implementation.
+
+---
+
+## 5. Domain API Ownership
+
+Every Business Domain owns its public API surface. No domain may own, redefine, or duplicate the API of another domain.
+
+### 5.1 API Namespace Convention
+
+```
+/{domain}/*
+```
+
+| Domain | API prefix |
+|--------|-----------|
+| Dashboard | `/dashboard/*` |
+| People | `/people/*` |
+| Facilities | `/facilities/*` |
+| Coaching | `/coaching/*` |
+| Competitions | `/competitions/*` |
+| Commerce | `/commerce/*` |
+| Finance | `/finance/*` |
+| Platform | `/platform/*` |
+
+Cross-domain APIs (e.g., `/bookings`, `/payments`) that serve multiple domains must be explicitly owned by exactly one domain and consumed by the others through that domain's API surface. No API route may exist outside a domain namespace without a documented owning domain.
+
+### 5.2 API Ownership Rules
+
+| Rule |
+|------|
+| A domain owns every API endpoint under its namespace. |
+| A domain may expose internal data to other domains through a defined, versioned API surface. |
+| A domain may consume another domain's API but must never redefine it. |
+| API changes that affect consuming domains require consumer impact review. |
+| Deprecated API endpoints must follow a deprecation period with documented migration paths. |
+
+### 5.3 Cross-Domain API Consumption
+
+When a domain consumes another domain's API:
+
+| Requirement |
+|-------------|
+| The consuming domain identifies the owning domain explicitly in code and documentation. |
+| The consumed data is treated as read-only. The consuming domain never modifies or owns it. |
+| If the consuming domain needs to enrich consumed data with domain-specific information, it stores the enrichment in its own domain, keyed by the owning domain's entity ID. |
+
+---
+
+## 6. Domain Event Ownership
+
+CourtZon is event-driven. Business ownership extends to Domain Events. The domain that owns the business capability owns the event it emits.
+
+### 6.1 Event Ownership by Domain
+
+| Domain | Events owned |
+|--------|-------------|
+| **People** | `PlayerCreated`, `PlayerUpdated`, `CoachCreated`, `CoachProfileUpdated`, `RefereeCreated`, `MemberCreated`, `MembershipActivated`, `MembershipExpired`, `UserRoleAssigned`, `UserRoleRevoked`, `UserDeactivated` |
+| **Facilities** | `CourtCreated`, `CourtUpdated`, `BranchCreated`, `BookingCreated`, `BookingConfirmed`, `BookingCancelled`, `CheckInCompleted`, `CheckOutCompleted`, `ResourceScheduled`, `MaintenanceScheduled`, `AmenityStatusChanged` |
+| **Coaching** | `CoachingSessionScheduled`, `CoachingSessionCompleted`, `CoachAssigned`, `AcademyCreated`, `CampCreated`, `PlayerProgressUpdated`, `CoachPackagePurchased` |
+| **Competitions** | `TournamentCreated`, `TournamentStarted`, `TournamentCompleted`, `LeagueCreated`, `LeagueStarted`, `MatchScheduled`, `MatchCompleted`, `RankingUpdated`, `BracketGenerated`, `ChampionshipDeclared` |
+| **Commerce** | `PaymentInitiated`, `PaymentSucceeded`, `PaymentFailed`, `PaymentRefunded`, `OrderCreated`, `OrderFulfilled`, `WalletToppedUp`, `WalletWithdrawn`, `SettlementCreated`, `SettlementPaid`, `SubscriptionRenewed`, `CouponApplied`, `PricingRuleUpdated` |
+| **Finance** | `JournalEntryPosted`, `InvoiceGenerated`, `InvoicePaid`, `FinancialPeriodClosed`, `FinancialPeriodOpened`, `TaxRateUpdated`, `FinancialReportGenerated` |
+| **Platform** | `AuditEntryCreated`, `FeatureFlagToggled`, `NotificationDispatched`, `IntegrationWebhookFired`, `SessionCreated`, `SessionTerminated`, `UserLoginFailed`, `SystemHealthAlert`, `UploadScanned` |
+| **Dashboard** | Dashboard owns zero events. It consumes events from every domain for aggregation. |
+
+### 6.2 Event Ownership Rules
+
+| Rule |
+|------|
+| Every Domain Event has exactly one owning domain. |
+| The owning domain is the domain whose business capability produced the event. |
+| A domain may subscribe to events from other domains. |
+| A domain may never emit an event owned by another domain. |
+| If an event appears to span domains, the event ownership is determined by which domain's business action produced it. Example: a payment for a coaching session is `PaymentSucceeded` (Commerce). The session completion is `CoachingSessionCompleted` (Coaching). They are separate events with separate owners. |
+| Event schemas are versioned. Breaking schema changes require a new event type with a migration period. |
+| Events are the primary integration contract between domains. Direct synchronous API calls between domains should be the exception, not the rule. |
+
+---
+
+## 7. Reporting Ownership
+
+Reporting does not change business ownership. Every report has an owning domain.
+
+### 7.1 Report Types and Ownership
+
+| Report type | Owner | Examples |
+|-------------|-------|----------|
+| **Operational reports** | The domain that owns the operational data | Coaching session attendance → Coaching. Court utilization → Facilities. Tournament participation → Competitions. Marketplace sales → Commerce. |
+| **Financial reports** | Finance | P&L, balance sheet, cash flow, revenue by branch, cost allocation. All financial reporting belongs to Finance regardless of which domain generated the revenue. |
+| **Executive / cross-domain reports** | Dashboard | Aggregated KPIs spanning multiple domains. Revenue by sport × branch × program type. Overall platform health. |
+| **BI / analytics** | Dashboard (configuration) or Platform (BI tool configuration) | Data source configuration, report builder, scheduled report delivery. The BI tool itself is Platform infrastructure. BI reports about business data are Dashboard. |
+| **Compliance / audit reports** | Platform (audit log) or Finance (financial compliance) | Access audit trails, change history, financial compliance reports. |
+
+### 7.2 Reporting Rules
+
+| Rule |
+|------|
+| A report about a single domain's operational data belongs to that domain. |
+| A report about financial data belongs to Finance, regardless of which domain generated the revenue. |
+| A report that aggregates data from three or more domains belongs to Dashboard. |
+| A report that aggregates data from exactly two domains belongs to the domain with the majority of the data, or Dashboard if tied. |
+| No domain owns a report that is exclusively about another domain's data. |
+| Reporting never transfers business ownership. A report about Facilities data does not make Finance the owner of Facilities data. |
+
+---
+
+## 8. AI Ownership
+
+CourtZon will become increasingly AI-driven. AI never becomes a pseudo-domain. AI is a capability layer that augments Business Domains.
+
+### 8.1 Core Principle
+
+**AI augments. It never owns.**
+
+AI provides intelligence within a domain's bounded context. It does not create a new bounded context. It does not blur existing boundaries. There will never be an "AI" Business Domain.
+
+### 8.2 AI Capabilities by Owning Domain
+
+| AI capability | Owning domain | Rationale |
+|---------------|---------------|-----------|
+| AI Coach Matching | Coaching | Matches players to coaches based on skill, goals, availability, and history. This is a coaching function. |
+| AI Player Development Tracking | Coaching | Analyzes session data to recommend progression paths. This is a coaching function. |
+| AI Tournament Seeding | Competitions | Generates optimal brackets based on rankings and history. This is a competition function. |
+| AI Dynamic Pricing | Commerce | Adjusts court rates, session fees, and product prices based on demand, utilization, and seasonality. This is a commerce function. |
+| AI Fraud Detection | Commerce | Identifies suspicious payment patterns. This is a commerce function. |
+| AI Financial Anomaly Detection | Finance | Flags unusual journal entries and reconciliation gaps. This is a finance function. |
+| AI Capacity Prediction | Facilities | Forecasts court utilization and suggests maintenance windows. This is a facility function. |
+| AI Member Churn Prediction | People | Identifies members at risk of lapsing. This is a people function. |
+| AI Executive Insights | Dashboard | Generates natural-language summaries of cross-domain KPIs. This is a dashboard function. |
+| AI Content Generation | Platform | Generates CMS content, translations, and documentation. This is platform infrastructure. |
+
+### 8.3 AI Ownership Rules
+
+| Rule |
+|------|
+| AI models, prompts, and training data for a domain capability belong to that domain. |
+| AI infrastructure (model hosting, inference APIs, vector databases) belongs to Platform. |
+| Platform provides AI infrastructure. Business domains provide AI domain expertise. |
+| No AI model may operate on data from a domain without that domain's ownership. |
+| AI decisions that affect business state (auto-seeding, dynamic pricing, fraud blocking) require audit logging — the audit trail records which AI model made the decision, with what confidence, on what date. |
+| There will never be an "AI" Business Domain. Any proposal to create one is an architectural anti-pattern and will be rejected. |
+
+---
+
+## 9. Implementation Strategy — Commit Plan
 
 | Commit | Phase | Scope | Gate |
 |--------|-------|-------|------|
@@ -416,7 +608,7 @@ Future changes require Architecture Review, an ADR, and business approval. No ex
 
 ---
 
-## 5. Acceptance Gates
+## 10. Acceptance Gates
 
 A commit cannot be approved unless:
 
@@ -437,33 +629,45 @@ A commit cannot be approved unless:
 
 ---
 
-## 6. Final Deliverables
+## 11. Final Deliverables
 
 | # | Deliverable |
 |---|-------------|
 | 1 | Business Domain definitions (8 domains, fully validated) |
 | 2 | Boundary validation (all 28 domain pairs) |
 | 3 | Permanent Architectural Rules (10 rules) |
-| 4 | Business Domain Governance questionnaire |
-| 5 | Boundary Review process |
-| 6 | Domain Change Governance |
-| 7 | Implementation Strategy (commit-by-commit, 15 commits) |
-| 8 | Acceptance Gates (12 gates per commit) |
-| 9 | Final Freeze policy |
-| 10 | Architecture approval status |
+| 4 | Domain Dependency Rules (dependency matrix, forbidden dependencies) |
+| 5 | Domain API Ownership (namespace convention, cross-domain API consumption) |
+| 6 | Domain Event Ownership (event catalog by domain, event governance) |
+| 7 | Reporting Ownership (report type taxonomy, reporting rules) |
+| 8 | AI Ownership (AI capability catalog, AI infrastructure separation) |
+| 9 | Business Domain Governance questionnaire |
+| 10 | Boundary Review process |
+| 11 | Domain Change Governance |
+| 12 | Implementation Strategy (commit-by-commit, 15 commits) |
+| 13 | Acceptance Gates (12 gates per commit) |
+| 14 | Final Freeze policy |
+| 15 | Architecture approval status |
 
 ---
 
-## 7. Final Freeze Declaration
+## 12. Final Freeze Declaration
 
-Upon completion of the IA migration, this document becomes the governing Business Architecture of CourtZon.
+Upon completion of the IA migration, this document becomes the constitutional Business Architecture of CourtZon.
 
-- **Business Domains** — 8 domains, frozen.
-- **Domain Names** — Frozen.
-- **Domain Ownership** — Frozen.
-- **Domain Boundaries** — Frozen.
-- **Architectural Rules** — Permanent.
-- **Governance Process** — Binding on all future development.
+**Frozen:**
+
+- Business Domain names (8 domains)
+- Domain Ownership assignments
+- Domain Boundaries
+- Domain Dependency Rules (dependency matrix, forbidden dependencies)
+- Domain API Ownership (namespace convention)
+- Domain Event Ownership (event catalog)
+- Reporting Ownership (report type taxonomy)
+- AI Ownership (no AI domain — AI augments, never owns)
+- Permanent Architectural Rules (10 rules)
+- 5 Constitutional Chapters
+- Business Domain Governance Process
 
 **No future business feature may be introduced, modified, or deprecated without reference to this document.**
 
@@ -471,9 +675,21 @@ Upon completion of the IA migration, this document becomes the governing Busines
 
 ## Status
 
-**CourtZon Business Information Architecture v1.0**
+**CourtZon Business Architecture Constitution v1.0**
 
-**Status: APPROVED — AWAITING IMPLEMENTATION**
+| Attribute | Value |
+|-----------|-------|
+| **Status** | PERMANENTLY FROZEN |
+| **Classification** | Reference Architecture |
+| **Authority** | Platform Contract |
+| **Domains** | 8 |
+| **Architectural Rules** | 10 |
+| **Constitutional Chapters** | 5 |
+| **Boundary Validations** | 28 domain pairs |
+| **Implementation Commits** | 15 |
+| **Acceptance Gates** | 12 per commit |
+
+**This document governs every future Business Module in CourtZon.**
 
 **Next: Await formal approval. Commit 1 begins after approval.**
 
