@@ -58,6 +58,7 @@ Existing fixtures:
 | Organisation Sidebar | `parity/legacy/org-sidebar.ts` (`buildLegacyOrgNavItems`) |
 | Coach Navigation | `parity/legacy/coach-nav.ts` (`COACH_NAV`) |
 | Referee Navigation | `parity/legacy/referee-nav.ts` (`REFEREE_NAV`) |
+| Player Navigation | `parity/legacy/player-nav.ts` (`buildPlayerCoreTabs`, `buildPlayerMoreItems`, `filterPlayerMoreItems`) |
 
 ---
 
@@ -389,9 +390,9 @@ Every consumer's migration characteristics are recorded in the Implementation Pr
 
 Maintained in the Implementation Progress tracker (§9). A pattern is marked **validated** only after at least one consumer passes its parity gate using it. Pending patterns are listed explicitly so no pattern is assumed validated before it has been exercised.
 
-Currently validated: hierarchical navigation, flat navigation, permission-gated flat navigation, static no-RBAC navigation, Navigation IDs, legacy compatibility (key-or-id alias), registry-first rendering, frozen legacy fixture, parity gate, generic resolver, shared registry utilities, immutable id on every resolved node, uniform (incl. empty) map exports, small permission-gated shell, shared permission key navigation (one key protects multiple nodes — validated by Consumer 4 / Referee).
+Currently validated: hierarchical navigation, flat navigation, permission-gated flat navigation, static no-RBAC navigation, Navigation IDs, legacy compatibility (key-or-id alias), registry-first rendering, frozen legacy fixture, parity gate, generic resolver, shared registry utilities, immutable id on every resolved node, uniform (incl. empty) map exports, small permission-gated shell, shared permission key navigation (one key protects multiple nodes — validated by Consumer 4 / Referee), two-tier navigation (core tabs + More sheet — validated by Consumer 5 / Player), composable filtering pipeline (Seller → Permission → FeatureFlag stages via `composeFilters` — validated by Consumer 5), seller-context gating (`sellerOnly` non-RBAC context attribute — validated by Consumer 5), feature-flag gating (`community.chat_enabled` — validated by Consumer 5).
 
-Pending: two-tier more-sheet filtering, feature-flag gating, seller-context gating, DnD workspace reconciliation, saved-layout DB backfill, id-keyed React state cleanups.
+Pending: DnD workspace reconciliation, saved-layout DB backfill, id-keyed React state cleanups.
 
 ---
 
@@ -403,8 +404,9 @@ Every shared helper is classified at each migration. Consumers rely **only on St
 |--------|-------|-------|-----------|-------|
 | `NavDefinition`, `ResolvedNavItem` | `navigation/types.ts` | **Stable** | all | Platform contract (§15) |
 | `T`, `LIT`, `COMPOSITE`, `resolveLabel` | `navigation/labels.ts` | **Stable** | all | Label system |
-| `buildNavIdKeyMaps`, `NavIdKeyMaps` | `navigation/id-key.ts` | **Stable** | admin, org, coach | Used by 3 shells |
+| `buildNavIdKeyMaps`, `NavIdKeyMaps` | `navigation/id-key.ts` | **Stable** | admin, org, coach, referee, player | Used by 5 shells |
 | Generic resolvers + `toResolved` | `navigation/resolve.ts` | **Stable** | all | |
+| `composeFilters`, `sellerFilter`, `permissionFilter`, `featureFlagFilter`, `requiredFlagFilter` | `navigation/pipeline.ts` | **Stable** | player (validated), reusable for all | Composable filtering stages; consumer-agnostic (verified against org/admin defs in Consumer 5) |
 | `findByIdOrKey` | `navigation/resolve.ts` (private) | **Experimental** | admin only | Promote to shared if a 2nd consumer needs key-or-id saved-layout resolution (review at Consumer 6 / Workspace) |
 | Parity `compare.ts` + frozen fixtures | `navigation/parity/` | **Stable (test-only)** | test suite | Permanent baselines |
 | Per-shell alias maps (`*_ID_TO_KEY`, `*_LEGACY_KEY_TO_ID`) | per registry | **Stable** | per shell | Uniform exports, additive |
