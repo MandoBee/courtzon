@@ -17,7 +17,7 @@ This document is the single synchronized record of navigation implementation sta
 |-------|--------|--------|------|
 | **Phase 1** — Registry extraction + parity gate | ✅ Approved & committed | `2175414` | 2026-08-07 |
 | **Phase 2-a** — Admin Sidebar migration | ✅ Committed (awaiting architecture review) | `52064ff` | 2026-08-07 |
-| **Phase 2-b** — Organisation Sidebar migration | ⬜ Not started | — | — |
+| **Phase 2-b** — Organisation Sidebar migration | ✅ Committed (Consumer 2, awaiting architecture review) | `bbe92e1` | 2026-08-07 |
 | **Phase 2-c** — Coach Navigation migration | ⬜ Not started | — | — |
 | **Phase 2-d** — Referee Navigation migration | ⬜ Not started | — | — |
 | **Phase 2-e** — Player Navigation migration | ⬜ Not started | — | — |
@@ -92,15 +92,15 @@ After each approved milestone:
 
 ## 4. Verification Checklist (per milestone)
 
-| # | Item | Phase 1 | Phase 2-a |
-|---|------|---------|-----------|
-| 1 | Parity gate (own suite) | ✅ 30/30 | ✅ 35/35 |
-| 2 | Full frontend unit suite | ✅ 40/40 | ✅ 45/45 |
-| 3 | `npm run build` (tsc -b + vite) | ✅ PASS | ✅ PASS |
-| 4 | `scripts/ci-validate.js` (navigation checks) | ✅ PASS | ✅ PASS (222 pre-existing backend errors = known noise) |
-| 5 | Isolated commit hash recorded | ✅ `2175414` | ✅ `52064ff` |
-| 6 | Progress doc updated | ✅ | ✅ |
-| 7 | Pushed (only after milestone approval) | ⬜ Local only | ⬜ Local only |
+| # | Item | Phase 1 | Phase 2-a | Consumer 2 |
+|---|------|---------|-----------|------------|
+| 1 | Parity gate (own suite) | ✅ 30/30 | ✅ 35/35 | ✅ 37/37 |
+| 2 | Full frontend unit suite | ✅ 40/40 | ✅ 45/45 | ✅ 47/47 |
+| 3 | `npm run build` (tsc -b + vite) | ✅ PASS | ✅ PASS | ✅ PASS |
+| 4 | `scripts/ci-validate.js` (navigation checks) | ✅ PASS | ✅ PASS (222 pre-existing backend errors = known noise) | ✅ PASS (222 pre-existing backend errors = known noise) |
+| 5 | Isolated commit hash recorded | ✅ `2175414` | ✅ `52064ff` | ✅ `bbe92e1` |
+| 6 | Progress doc updated | ✅ | ✅ | ✅ |
+| 7 | Pushed (only after milestone approval) | ⬜ Local only | ⬜ Local only | ⬜ Local only |
 
 ---
 
@@ -118,6 +118,7 @@ After each approved milestone:
 | ADR-008 | 2026-08-07 | **Navigation Identity Rule is permanent:** Navigation IDs (immutable, structural, ordering, merge identity) and Permission Keys (authorization only, optional, shareable, RBAC) are decoupled and must never be coupled again. |
 | ADR-009 | 2026-08-07 | `docs/navigation/navigation-cleanup-register.md` is the **mandatory debt tracker**; the platform is not complete until all Mandatory items resolve. Label-keyed nav state (NC-001) is the first Mandatory item. |
 | ADR-010 | 2026-08-07 | All remaining consumers are treated as **independent milestones** (Consumer 1…6), each with its own fixture, parity gate, commit, review, and approval. No consumer authorizes the next. |
+| ADR-011 | 2026-08-07 | Consumer 2 (org): org ids namespaced **`nav.org.*`**; shared **`buildNavIdKeyMaps`** helper (ADR-008, blueprint §8) replaces the admin-private indexer; **`ResolvedNavItem.id`** is now populated for every node on every shell — parity comparator excludes `id` from the legacy-visible surface. |
 
 ## 6. Deviations
 

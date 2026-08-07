@@ -75,3 +75,4 @@ Every item records: Description, Why it exists, Risk, Priority, Proposed solutio
 | Date | Item | Change |
 |------|------|--------|
 | 2026-08-07 | — | Register created from Phase 2-a review. |
+| 2026-08-07 | NC-001 | Enabler landed in Consumer 2: `ResolvedNavItem.id` is now populated on every node for every shell (commit `bbe92e1`), so the `openMenus` cleanup can key by `item.id`. |
