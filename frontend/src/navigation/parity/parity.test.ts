@@ -9,7 +9,7 @@ import {
   buildPlayerCoreTabs,
   buildPlayerMoreItems,
   filterPlayerMoreItems,
-} from '../../components/layout/BottomNav';
+} from './legacy/player-nav';
 import {
   ADMIN_NAV,
   ADMIN_ID_TO_KEY,
@@ -25,6 +25,17 @@ import {
   REFEREE_LEGACY_KEY_TO_ID,
   PLAYER_CORE_TABS,
   PLAYER_MORE_ITEMS,
+  PLAYER_ID_TO_KEY,
+  PLAYER_LEGACY_KEY_TO_ID,
+  composeFilters,
+  sellerFilter,
+  permissionFilter,
+  featureFlagFilter,
+  requiredFlagFilter,
+  projectPlayerCoreTabs,
+  projectPlayerMoreItems,
+  PLAYER_CORE_PIPELINE,
+  PLAYER_MORE_PIPELINE,
   T,
   LIT,
   resolveAdminNav,
@@ -36,6 +47,7 @@ import {
   resolveLabel,
   type ResolvedNavItem,
   type NavDefinition,
+  type NavFilterContext,
 } from '../../navigation';
 import {
   canonicalizeList,
@@ -420,6 +432,15 @@ describe('Navigation registry integrity (immutable ids)', () => {
     expect(refereeIds.length).toBe(6);
     expect(REFEREE_ID_TO_KEY.size).toBe(6);
     for (const id of refereeIds) expect(REFEREE_ID_TO_KEY.has(id)).toBe(true);
+
+    const playerIds = [...PLAYER_CORE_TABS.map((i) => i.id), ...PLAYER_MORE_ITEMS.map((i) => i.id)];
+    expect(playerIds.every((id) => id.startsWith('nav.player.'))).toBe(true);
+    expect(playerIds.length).toBe(18);
+    expect(new Set(playerIds).size).toBe(18);
+    for (const id of playerIds) {
+      const hasPermission = [...PLAYER_MORE_ITEMS].find((i) => i.id === id)?.permissionKey !== undefined;
+      if (hasPermission) expect(PLAYER_ID_TO_KEY.has(id)).toBe(true);
+    }
   });
 
   it('maps org legacy permission keys to their nodes', () => {
@@ -463,6 +484,28 @@ describe('Navigation registry integrity (immutable ids)', () => {
     expect(refereeTop.every((it) => it.id !== undefined)).toBe(true);
     expect(refereeTop[0].id).toBe('nav.referee.dashboard');
     expect(refereeTop.every((it, i) => it.id === REFEREE_NAV[i].id)).toBe(true);
+
+    const playerCore = resolvePlayerCoreTabs(enT);
+    expect(playerCore.every((it) => it.id !== undefined)).toBe(true);
+    expect(playerCore[0].id).toBe('nav.player.home');
+    expect(playerCore.every((it, i) => it.id === PLAYER_CORE_TABS[i].id)).toBe(true);
+
+    const playerMore = resolvePlayerMoreItems(enT, { isSeller: true, chatEnabled: true, can: allCan });
+    expect(playerMore.every((it) => it.id !== undefined)).toBe(true);
+    expect(playerMore.every((it, i) => it.id === PLAYER_MORE_ITEMS[i].id)).toBe(true);
+  });
+
+  it('maps player legacy permission keys to their nav.player.* nodes', () => {
+    expect(PLAYER_ID_TO_KEY.size).toBe(12);
+    expect(PLAYER_LEGACY_KEY_TO_ID.size).toBe(12);
+    expect(PLAYER_LEGACY_KEY_TO_ID.get('coaches.view')).toEqual(['nav.player.coaches']);
+    expect(PLAYER_LEGACY_KEY_TO_ID.get('player.wallet.view')).toEqual(['nav.player.wallet']);
+    expect(PLAYER_LEGACY_KEY_TO_ID.get('community.chat.view')).toEqual(['nav.player.messages']);
+    for (const [key, ids] of PLAYER_LEGACY_KEY_TO_ID) {
+      expect(ids.length).toBe(1);
+      expect(ids[0].startsWith('nav.player.')).toBe(true);
+      expect(PLAYER_ID_TO_KEY.get(ids[0])).toBe(key);
+    }
   });
 
   it('maps legacy permission keys to the nodes that carry them (incl. section+landing pairs)', () => {
@@ -482,6 +525,96 @@ describe('Navigation registry integrity (immutable ids)', () => {
     const [organisations] = keyMap.get('sidebar.organisations')!;
     expect(organisations).toBe('nav.admin.organisations');
     expect(keyMap.get('sidebar.organisations')).toContain('nav.admin.organisations.landing');
+  });
+});
+
+describe('Navigation composition pipeline (Consumer 5 — stages composable, not coupled)', () => {
+  const fullCtx: NavFilterContext = { can: allCan, flags: { 'community.chat_enabled': true }, isSeller: true };
+
+  it('composeFilters applies stages in order and is deterministic', () => {
+    const pipe = composeFilters(sellerFilter, permissionFilter, featureFlagFilter);
+    const a = pipe(PLAYER_MORE_ITEMS, fullCtx).map((i) => i.id);
+    const b = pipe(PLAYER_MORE_ITEMS, fullCtx).map((i) => i.id);
+    expect(a).toEqual(b);
+    expect(a.length).toBe(PLAYER_MORE_ITEMS.length);
+    expect(a).toEqual(PLAYER_MORE_ITEMS.map((i) => i.id));
+  });
+
+  it('sellerFilter is the only stage that reads the seller context', () => {
+    expect(PLAYER_MORE_ITEMS.filter((i) => i.sellerOnly).map((i) => i.id)).toEqual(['nav.player.my_shop']);
+    const visible = sellerFilter(PLAYER_MORE_ITEMS, { ...fullCtx, isSeller: true }).map((i) => i.id);
+    expect(visible).toContain('nav.player.my_shop');
+    const hidden = sellerFilter(PLAYER_MORE_ITEMS, { ...fullCtx, isSeller: false }).map((i) => i.id);
+    expect(hidden).not.toContain('nav.player.my_shop');
+    expect(hidden.length).toBe(PLAYER_MORE_ITEMS.length - 1);
+  });
+
+  it('permissionFilter is the only stage that reads can()', () => {
+    const gated = permissionFilter(PLAYER_MORE_ITEMS, { ...fullCtx, can: (p) => p.startsWith('player.') }).map((i) => i.id);
+    expect(gated).toContain('nav.player.wallet');
+    expect(gated).not.toContain('nav.player.coaches');
+    expect(gated).not.toContain('nav.player.tournaments');
+    expect(gated).toContain('nav.player.notifications');
+    const none = permissionFilter(PLAYER_MORE_ITEMS, { ...fullCtx, can: noneCan }).map((i) => i.id);
+    expect(none).toEqual(['nav.player.matches', 'nav.player.notifications', 'nav.player.my_shop']);
+  });
+
+  it('featureFlagFilter is the only stage that reads the flag context', () => {
+    const flagged = featureFlagFilter(PLAYER_MORE_ITEMS, { ...fullCtx, flags: { 'community.chat_enabled': false } }).map((i) => i.id);
+    expect(flagged).not.toContain('nav.player.messages');
+    const enabled = featureFlagFilter(PLAYER_MORE_ITEMS, { ...fullCtx, flags: { 'community.chat_enabled': true } }).map((i) => i.id);
+    expect(enabled).toContain('nav.player.messages');
+  });
+
+  it('requiredFlagFilter removes nodes whose required flag is false', () => {
+    const item = { id: 'nav.player.sample', label: T('nav.matches'), icon: 'x', path: '/x', requiredFlag: 'app.marketplace_enabled' };
+    expect(requiredFlagFilter([item], { ...fullCtx, flags: { 'app.marketplace_enabled': true } })).toHaveLength(1);
+    expect(requiredFlagFilter([item], { ...fullCtx, flags: { 'app.marketplace_enabled': false } })).toHaveLength(0);
+  });
+
+  it('the player More pipeline is the exact composition Seller → Permission → Flag', () => {
+    const composed = composeFilters(sellerFilter, permissionFilter, featureFlagFilter);
+    expect(PLAYER_MORE_PIPELINE(PLAYER_MORE_ITEMS, fullCtx).map((i) => i.id)).toEqual(
+      composed(PLAYER_MORE_ITEMS, fullCtx).map((i) => i.id),
+    );
+    const ctx: NavFilterContext = {
+      can: (p) => p.startsWith('player.'),
+      flags: { 'community.chat_enabled': false },
+      isSeller: false,
+    };
+    expect(PLAYER_MORE_PIPELINE(PLAYER_MORE_ITEMS, ctx).map((i) => i.id)).toEqual(
+      composed(PLAYER_MORE_ITEMS, ctx).map((i) => i.id),
+    );
+  });
+
+  it('resolvePlayerMoreItems is the pipeline + projection (no separate consumer filter)', () => {
+    for (const ctx of [
+      fullCtx,
+      { can: noneCan, flags: { 'community.chat_enabled': true }, isSeller: true },
+      { can: allCan, flags: { 'community.chat_enabled': false }, isSeller: false },
+      { can: (p: string) => p === 'coaches.view' || p === 'tournaments.view', flags: { 'community.chat_enabled': true }, isSeller: true },
+    ]) {
+      const viaPipeline = projectPlayerMoreItems(PLAYER_MORE_PIPELINE(PLAYER_MORE_ITEMS, ctx), enT);
+      const viaResolver = resolvePlayerMoreItems(enT, {
+        isSeller: ctx.isSeller,
+        chatEnabled: ctx.flags['community.chat_enabled'] === true,
+        can: ctx.can,
+      });
+      expect(viaResolver.map((i) => i.id)).toEqual(viaPipeline.map((i) => i.id));
+    }
+  });
+
+  it('resolvePlayerCoreTabs is the core pipeline + projection', () => {
+    const viaPipeline = projectPlayerCoreTabs(PLAYER_CORE_PIPELINE(PLAYER_CORE_TABS, fullCtx), enT);
+    const viaResolver = resolvePlayerCoreTabs(enT);
+    expect(viaResolver.map((i) => i.id)).toEqual(viaPipeline.map((i) => i.id));
+  });
+
+  it('stages are consumer-agnostic (operate on any node list, incl. admin/org defs)', () => {
+    expect(permissionFilter(ORG_NAV, { ...fullCtx, can: (p) => p === 'org.sidebar.dashboard' }).length).toBe(1);
+    expect(sellerFilter(ORG_NAV, fullCtx).length).toBe(ORG_NAV.length);
+    const allAdm = permissionFilter(ADMIN_NAV, { ...fullCtx, can: allCan });
+    expect(allAdm.length).toBeGreaterThan(0);
   });
 });
 
