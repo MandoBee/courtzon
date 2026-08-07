@@ -2,8 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { getRegistryDefaultsMap, useI18nStore } from '../../i18n';
 import { buildLegacyAdminNavItems } from './legacy/admin-sidebar';
 import { buildLegacyOrgNavItems } from './legacy/org-sidebar';
+import { COACH_NAV as LEGACY_COACH_NAV } from './legacy/coach-nav';
 import { buildSections } from '../../pages/admin/sidebar-layout/SidebarLayoutPage';
-import { COACH_NAV as LEGACY_COACH_NAV } from '../../pages/coaches/coach-nav';
 import { REFEREE_NAV as LEGACY_REFEREE_NAV } from '../../pages/referee/referee-nav';
 import {
   buildPlayerCoreTabs,
@@ -18,6 +18,8 @@ import {
   ORG_ID_TO_KEY,
   ORG_LEGACY_KEY_TO_ID,
   COACH_NAV,
+  COACH_ID_TO_KEY,
+  COACH_LEGACY_KEY_TO_ID,
   REFEREE_NAV,
   PLAYER_CORE_TABS,
   PLAYER_MORE_ITEMS,
@@ -231,11 +233,17 @@ describe('Phase 1 parity gate — org sidebar (buildOrgNavItems vs Navigation Re
   });
 });
 
-describe('Phase 1 parity gate — coach nav (coach-nav.ts vs Navigation Registry)', () => {
+describe('Phase 1 parity gate — coach nav (legacy/coach-nav.ts vs Navigation Registry)', () => {
   it('matches definition for definition', () => {
     const legacy = LEGACY_COACH_NAV.map((i) => ({ label: i.label, icon: i.icon, path: i.path })) as unknown as ResolvedNavItem[];
     const registry = resolveCoachNav(enT);
     expect(canonicalizeList(registry)).toBe(canonicalizeList(legacy));
+  });
+
+  it('matches regardless of permission state (coach nav carries no permission keys)', () => {
+    const registry = resolveCoachNav(strictT);
+    expect(registry.length).toBe(6);
+    expect(registry.every((i) => i.permissionKey === undefined)).toBe(true);
   });
 });
 
@@ -367,6 +375,12 @@ describe('Navigation registry integrity (immutable ids)', () => {
     expect(orgIds.length).toBe(23);
     expect(ORG_ID_TO_KEY.size).toBe(23);
     for (const id of orgIds) expect(ORG_ID_TO_KEY.has(id)).toBe(true);
+
+    const coachIds = collectIds(COACH_NAV);
+    expect(coachIds.every((id) => id.startsWith('nav.coach.'))).toBe(true);
+    expect(coachIds.length).toBe(6);
+    expect(COACH_ID_TO_KEY.size).toBe(0);
+    expect(COACH_LEGACY_KEY_TO_ID.size).toBe(0);
   });
 
   it('maps org legacy permission keys to their nodes', () => {
@@ -388,6 +402,11 @@ describe('Navigation registry integrity (immutable ids)', () => {
     expect(orgTop.every((it) => it.id !== undefined)).toBe(true);
     expect(orgTop[0].id).toBe('nav.org.dashboard');
     expect(orgTop.every((it, i) => it.id === ORG_NAV[i].id)).toBe(true);
+
+    const coachTop = resolveCoachNav(enT);
+    expect(coachTop.every((it) => it.id !== undefined)).toBe(true);
+    expect(coachTop[0].id).toBe('nav.coach.dashboard');
+    expect(coachTop.every((it, i) => it.id === COACH_NAV[i].id)).toBe(true);
   });
 
   it('maps legacy permission keys to the nodes that carry them (incl. section+landing pairs)', () => {

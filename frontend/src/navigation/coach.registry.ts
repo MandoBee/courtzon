@@ -1,11 +1,17 @@
 import type { NavDefinition } from './types';
 import { LIT } from './labels';
+import { buildNavIdKeyMaps } from './id-key';
 
 export const COACH_NAV: NavDefinition[] = [
-  { id: 'coach.dashboard', label: LIT('Dashboard'), icon: '🏠', path: '/coach/dashboard' },
-  { id: 'coach.sessions', label: LIT('Sessions'), icon: '📋', path: '/coach/sessions' },
-  { id: 'coach.requests', label: LIT('Requests'), icon: '📥', path: '/coach/requests' },
-  { id: 'coach.players', label: LIT('Players'), icon: '👥', path: '/coach/players' },
-  { id: 'coach.availability', label: LIT('Availability'), icon: '⏰', path: '/coach/availability' },
-  { id: 'coach.profile', label: LIT('Profile'), icon: '👤', path: '/coach/profile' },
+  { id: 'nav.coach.dashboard', label: LIT('Dashboard'), icon: '🏠', path: '/coach/dashboard' },
+  { id: 'nav.coach.sessions', label: LIT('Sessions'), icon: '📋', path: '/coach/sessions' },
+  { id: 'nav.coach.requests', label: LIT('Requests'), icon: '📥', path: '/coach/requests' },
+  { id: 'nav.coach.players', label: LIT('Players'), icon: '👥', path: '/coach/players' },
+  { id: 'nav.coach.availability', label: LIT('Availability'), icon: '⏰', path: '/coach/availability' },
+  { id: 'nav.coach.profile', label: LIT('Profile'), icon: '👤', path: '/coach/profile' },
 ];
+
+const { idToKey, keyToIds } = buildNavIdKeyMaps(COACH_NAV);
+
+export const COACH_ID_TO_KEY: ReadonlyMap<string, string> = idToKey;
+export const COACH_LEGACY_KEY_TO_ID: ReadonlyMap<string, string[]> = keyToIds;
