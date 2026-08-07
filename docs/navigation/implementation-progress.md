@@ -18,7 +18,7 @@ This document is the single synchronized record of navigation implementation sta
 | **Phase 1** — Registry extraction + parity gate | ✅ Approved & committed | `2175414` | 2026-08-07 |
 | **Phase 2-a** — Admin Sidebar migration | ✅ Committed (awaiting architecture review) | `52064ff` | 2026-08-07 |
 | **Phase 2-b** — Organisation Sidebar migration | ✅ Committed (Consumer 2, awaiting architecture review) | `bbe92e1` | 2026-08-07 |
-| **Phase 2-c** — Coach Navigation migration | ⬜ Not started | — | — |
+| **Phase 2-c** — Coach Navigation migration | ✅ Committed (Consumer 3, awaiting architecture review) | (see §4) | 2026-08-07 |
 | **Phase 2-d** — Referee Navigation migration | ⬜ Not started | — | — |
 | **Phase 2-e** — Player Navigation migration | ⬜ Not started | — | — |
 | **Phase 2-f** — Workspace migration | ⬜ Not started | — | — |
@@ -92,15 +92,15 @@ After each approved milestone:
 
 ## 4. Verification Checklist (per milestone)
 
-| # | Item | Phase 1 | Phase 2-a | Consumer 2 |
-|---|------|---------|-----------|------------|
-| 1 | Parity gate (own suite) | ✅ 30/30 | ✅ 35/35 | ✅ 37/37 |
-| 2 | Full frontend unit suite | ✅ 40/40 | ✅ 45/45 | ✅ 47/47 |
-| 3 | `npm run build` (tsc -b + vite) | ✅ PASS | ✅ PASS | ✅ PASS |
-| 4 | `scripts/ci-validate.js` (navigation checks) | ✅ PASS | ✅ PASS (222 pre-existing backend errors = known noise) | ✅ PASS (222 pre-existing backend errors = known noise) |
-| 5 | Isolated commit hash recorded | ✅ `2175414` | ✅ `52064ff` | ✅ `bbe92e1` |
-| 6 | Progress doc updated | ✅ | ✅ | ✅ |
-| 7 | Pushed (only after milestone approval) | ⬜ Local only | ⬜ Local only | ⬜ Local only |
+| # | Item | Phase 1 | Phase 2-a | Consumer 2 | Consumer 3 |
+|---|------|---------|-----------|------------|------------|
+| 1 | Parity gate (own suite) | ✅ 30/30 | ✅ 35/35 | ✅ 37/37 | ✅ 38/38 |
+| 2 | Full frontend unit suite | ✅ 40/40 | ✅ 45/45 | ✅ 47/47 | ✅ 48/48 |
+| 3 | `npm run build` (tsc -b + vite) | ✅ PASS | ✅ PASS | ✅ PASS | ✅ PASS |
+| 4 | `scripts/ci-validate.js` (navigation checks) | ✅ PASS | ✅ PASS (222 pre-existing backend errors = known noise) | ✅ PASS (222 pre-existing backend errors = known noise) | ✅ PASS (222 pre-existing backend errors = known noise) |
+| 5 | Isolated commit hash recorded | ✅ `2175414` | ✅ `52064ff` | ✅ `bbe92e1` | (after commit) |
+| 6 | Progress doc updated | ✅ | ✅ | ✅ | ✅ |
+| 7 | Pushed (only after milestone approval) | ⬜ Local only | ⬜ Local only | ⬜ Local only | ⬜ Local only |
 
 ---
 
@@ -123,6 +123,7 @@ After each approved milestone:
 | ADR-013 | 2026-08-07 | **Registry API is stabilizing** — no breaking public API change without consumer impact review + documentation; changes are additive only. |
 | ADR-014 | 2026-08-07 | **Shared-utility promotion is mandatory** — any helper used by >1 consumer moves to the shared `navigation/` layer immediately (prevents copy/paste divergence). |
 | ADR-015 | 2026-08-07 | Consumer reports adopt the **15-item mandatory format** (blueprint §23): complexity assessment, registry statistics, cleanup progress (resolved/remaining/new), and phase health (green/yellow/red) are now required per consumer. |
+| ADR-016 | 2026-08-07 | Consumer 3 (coach): ids namespaced **`nav.coach.*`**; coach nav carries **zero permission keys**, so `COACH_ID_TO_KEY` / `COACH_LEGACY_KEY_TO_ID` are intentionally empty (uniform map exports for API stability, ADR-013). Consumers' legacy `permission`-filter was a **no-op** (no item carried a key) and was removed as behavior-neutral; `CoachLayout`/`CoachBottomNav` now render `resolveCoachNav(t)` directly. The legacy `pages/coaches/coach-nav.ts` was fully self-contained and is **deleted** (whole file became the fixture). |
 
 ## 6. Deviations
 

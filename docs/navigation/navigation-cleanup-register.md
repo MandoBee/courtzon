@@ -76,3 +76,4 @@ Every item records: Description, Why it exists, Risk, Priority, Proposed solutio
 |------|------|--------|
 | 2026-08-07 | — | Register created from Phase 2-a review. |
 | 2026-08-07 | NC-001 | Enabler landed in Consumer 2: `ResolvedNavItem.id` is now populated on every node for every shell (commit `bbe92e1`), so the `openMenus` cleanup can key by `item.id`. |
+| 2026-08-07 | — | Consumer 3 (coach) introduced **no new cleanup items**: `CoachLayout`/`CoachBottomNav` keyed React keys by `item.path` (NC-002 pattern) and carried a no-op `permission` filter that was removed as behavior-neutral. No label-keyed state exists in the coach shell (unlike NC-001). |
