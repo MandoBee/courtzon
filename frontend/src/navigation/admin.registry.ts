@@ -44,7 +44,6 @@ export const ADMIN_NAV: NavDefinition[] = [
         children: [
           { id: 'nav.admin.organisations.landing', label: LIT('All Organisations'), path: '/admin/organisations', permissionKey: 'sidebar.organisations' },
           { id: 'nav.admin.branch-access', label: LIT('Branch Access'), path: '/admin/branch-access', permissionKey: 'sidebar.branch-access' },
-          { id: 'nav.admin.admin-bookings', label: LIT('All Bookings'), path: '/admin/bookings', permissionKey: 'sidebar.admin-bookings' },
           { id: 'nav.admin.subscription', label: LIT('Subscription Plans'), path: '/admin/subscription', permissionKey: 'sidebar.subscription' },
           { id: 'nav.admin.subscription-requests', label: LIT('Subscription Requests'), path: '/admin/subscription/requests', permissionKey: 'sidebar.subscription-requests' },
           { id: 'nav.admin.organisation-types', label: T('admin.sidebar.organisation_types'), path: '/admin/organisation-types', permissionKey: 'sidebar.organisation-types' },
@@ -99,10 +98,13 @@ export const ADMIN_NAV: NavDefinition[] = [
     id: 'nav.admin.domain.facilities',
     label: LIT('Facilities'),
     icon: '🏟️',
-    path: '/admin/sports-engine',
+    path: '/admin/reception',
     children: [
-      { id: 'nav.admin.sports-engine', label: LIT('Sports Engine'), icon: '🧠', path: '/admin/sports-engine', permissionKey: 'sidebar.sports-engine' },
       { id: 'nav.admin.reception', label: T('admin.sidebar.reception'), icon: '🏪', path: '/admin/reception', permissionKey: 'sidebar.reception' },
+      { id: 'nav.admin.admin-bookings', label: LIT('All Bookings'), path: '/admin/bookings', permissionKey: 'sidebar.admin-bookings' },
+      { id: 'nav.admin.sports-engine', label: LIT('Sports Engine'), icon: '🧠', path: '/admin/sports-engine', permissionKey: 'sidebar.sports-engine' },
+      { id: 'nav.admin.sports', label: T('admin.sidebar.sports'), path: '/admin/sports', permissionKey: 'sidebar.sports' },
+      { id: 'nav.admin.amenities', label: T('admin.sidebar.amenities'), path: '/admin/amenities', permissionKey: 'sidebar.amenities' },
       { id: 'nav.admin.community', label: LIT('Community Events'), icon: '🎉', path: '/admin/community-events', permissionKey: 'sidebar.community-admin' },
       {
         id: 'nav.admin.inventory',
@@ -274,10 +276,9 @@ export const ADMIN_NAV: NavDefinition[] = [
         id: 'nav.admin.admin-settings',
         label: LIT('Admin Settings'),
         icon: '⚙️',
-        path: '/admin/sports',
+        path: '/admin/payment-methods',
         permissionKey: 'sidebar.admin-settings',
         children: [
-          { id: 'nav.admin.sports', label: T('admin.sidebar.sports'), path: '/admin/sports', permissionKey: 'sidebar.sports' },
           {
             id: 'nav.admin.payment-methods',
             label: LIT('Payments Config'),
@@ -301,7 +302,6 @@ export const ADMIN_NAV: NavDefinition[] = [
               { id: 'nav.admin.translations', label: T('admin.sidebar.translations'), path: '/admin/translations', permissionKey: 'sidebar.translations' },
             ],
           },
-          { id: 'nav.admin.amenities', label: T('admin.sidebar.amenities'), path: '/admin/amenities', permissionKey: 'sidebar.amenities' },
           {
             id: 'nav.admin.app-settings',
             label: LIT('App Settings'),

@@ -152,6 +152,20 @@ describe('Phase 1 parity gate — admin sidebar (buildNavItems vs Navigation Reg
       'nav.admin.hr',
     ]);
   });
+
+  it('Facilities domain contains exactly 7 modules in correct order', () => {
+    const nav = resolveAdminNav(enT, allCan, allFlags);
+    const facilities = nav.find((d) => d.label === 'Facilities');
+    expect(facilities?.children?.map((c) => c.id)).toEqual([
+      'nav.admin.reception',
+      'nav.admin.admin-bookings',
+      'nav.admin.sports-engine',
+      'nav.admin.sports',
+      'nav.admin.amenities',
+      'nav.admin.community',
+      'nav.admin.inventory',
+    ]);
+  });
 });
 
 describe('Phase 2-a saved-layout resolution (nav.admin.* ids)', () => {
