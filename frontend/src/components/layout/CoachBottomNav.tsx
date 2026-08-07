@@ -1,14 +1,13 @@
 import { useLocation, Link } from 'react-router-dom';
-import { useCan } from '../../hooks/useCan';
 import { useHaptics } from '../../hooks/useHaptics';
-import { COACH_NAV } from '../../pages/coaches/coach-nav';
+import { resolveCoachNav } from '../../navigation';
+import { t } from '../../i18n';
 
 export default function CoachBottomNav() {
   const location = useLocation();
-  const { can } = useCan();
   const { tap } = useHaptics();
 
-  const visible = COACH_NAV.filter((tab) => !tab.permission || can(tab.permission));
+  const visible = resolveCoachNav(t);
   const isActive = (path: string) => location.pathname === path || location.pathname.startsWith(path + '/');
 
   return (

@@ -1,7 +1,7 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../store/auth.store';
-import { useCan } from '../../hooks/useCan';
-import { COACH_NAV } from '../../pages/coaches/coach-nav';
+import { resolveCoachNav } from '../../navigation';
+import { t } from '../../i18n';
 import CoachBottomNav from './CoachBottomNav';
 import OfflineBanner from '../pwa/OfflineBanner';
 import { ErrorBoundary } from '../ErrorBoundary';
@@ -10,14 +10,13 @@ export default function CoachLayout() {
   const navigate = useNavigate();
   const logout = useAuthStore((s) => s.logout);
   const user = useAuthStore((s) => s.user);
-  const { can } = useCan();
 
   const handleLogout = async () => {
     await logout();
     navigate('/');
   };
 
-  const visibleNav = COACH_NAV.filter((item) => !item.permission || can(item.permission));
+  const visibleNav = resolveCoachNav(t);
 
   return (
     <div className="min-h-dvh bg-[var(--color-bg)]">
