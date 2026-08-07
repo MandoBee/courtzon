@@ -59,6 +59,7 @@ Existing fixtures:
 | Coach Navigation | `parity/legacy/coach-nav.ts` (`COACH_NAV`) |
 | Referee Navigation | `parity/legacy/referee-nav.ts` (`REFEREE_NAV`) |
 | Player Navigation | `parity/legacy/player-nav.ts` (`buildPlayerCoreTabs`, `buildPlayerMoreItems`, `filterPlayerMoreItems`) |
+| Workspace Editor | `parity/legacy/workspace-nav.ts` (`buildSections`) |
 
 ---
 
@@ -156,11 +157,11 @@ Phase 2 is **not** a sequence of "2-a, 2-b, 2-c…". It is a sequence of **indep
 
 ```
 Consumer 1 (Admin)      ✅ approved
-Consumer 2 (Organisation)   ← current
-Consumer 3 (Coach)
-Consumer 4 (Referee)
-Consumer 5 (Player)
-Consumer 6 (Workspace Editor)
+Consumer 2 (Organisation)   ✅ approved
+Consumer 3 (Coach)          ✅ approved
+Consumer 4 (Referee)        ✅ approved
+Consumer 5 (Player)         ✅ approved
+Consumer 6 (Workspace)      ✅ approved  → **Program closed**
 ```
 
 Every consumer:
@@ -390,9 +391,9 @@ Every consumer's migration characteristics are recorded in the Implementation Pr
 
 Maintained in the Implementation Progress tracker (§9). A pattern is marked **validated** only after at least one consumer passes its parity gate using it. Pending patterns are listed explicitly so no pattern is assumed validated before it has been exercised.
 
-Currently validated: hierarchical navigation, flat navigation, permission-gated flat navigation, static no-RBAC navigation, Navigation IDs, legacy compatibility (key-or-id alias), registry-first rendering, frozen legacy fixture, parity gate, generic resolver, shared registry utilities, immutable id on every resolved node, uniform (incl. empty) map exports, small permission-gated shell, shared permission key navigation (one key protects multiple nodes — validated by Consumer 4 / Referee), two-tier navigation (core tabs + More sheet — validated by Consumer 5 / Player), composable filtering pipeline (Seller → Permission → FeatureFlag stages via `composeFilters` — validated by Consumer 5), seller-context gating (`sellerOnly` non-RBAC context attribute — validated by Consumer 5), feature-flag gating (`community.chat_enabled` — validated by Consumer 5).
+Currently validated: hierarchical navigation, flat navigation, permission-gated flat navigation, static no-RBAC navigation, Navigation IDs, legacy compatibility (key-or-id alias), registry-first rendering, frozen legacy fixture, parity gate, generic resolver, shared registry utilities, immutable id on every resolved node, uniform (incl. empty) map exports, small permission-gated shell, shared permission key navigation (one key protects multiple nodes — validated by Consumer 4 / Referee), two-tier navigation (core tabs + More sheet — validated by Consumer 5 / Player), composable filtering pipeline (Seller → Permission → FeatureFlag stages via `composeFilters` — validated by Consumer 5), seller-context gating (`sellerOnly` non-RBAC context attribute — validated by Consumer 5), feature-flag gating (`community.chat_enabled` — validated by Consumer 5), workspace Registry integration (DnD editor consumes ADMIN_NAV — validated by Consumer 6 / Workspace), full consumer coverage (6/6 consumers migrated — validated by Consumer 6).
 
-Pending: DnD workspace reconciliation, saved-layout DB backfill, id-keyed React state cleanups.
+Pending: saved-layout DB backfill (NC-004), id-keyed React state cleanups (NC-001, NC-002).
 
 ---
 

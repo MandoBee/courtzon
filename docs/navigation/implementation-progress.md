@@ -21,9 +21,9 @@ This document is the single synchronized record of navigation implementation sta
 | **Phase 2-c** — Coach Navigation migration | ✅ Approved (Consumer 3) | `d0b83c6` | 2026-08-07 |
 | **Phase 2-d** — Referee Navigation migration | ✅ Committed (Consumer 4 — shared-permission-key validation, awaiting architecture review) | (see §4) | 2026-08-07 |
 | **Phase 2-e** — Player Navigation migration | ✅ Committed (Consumer 5 — two-tier More + composition pipeline, awaiting architecture review) | (see §4) | 2026-08-07 |
-| **Phase 2-f** — Workspace migration | ⬜ Not started | — | — |
+| **Phase 2-f** — Workspace migration | ✅ Committed (Consumer 6 — Registry integration, drift resolved) | `d031f33` | 2026-08-07 |
 
-> **Blueprint status: 🟢 STABLE** — validated on five navigation models (Admin hierarchical, Org flat+permissions, Coach static no-RBAC, Referee shared-permission-key, Player two-tier composed gating). No architectural change during remaining migrations unless a critical issue (ADR-017).
+> **Navigation Platform: 🟢 CLOSED** — all six consumers migrated. Registry is the single source of truth. No parallel navigation model remains. Completion report: `docs/navigation/completion-report.md`.
 >
 > **Registry status: 🟢 STABLE CONTRACT** — every exported registry interface is a platform contract (ADR-018).
 
@@ -96,15 +96,15 @@ After each approved milestone:
 
 ## 4. Verification Checklist (per milestone)
 
-| # | Item | Phase 1 | Phase 2-a | Consumer 2 | Consumer 3 | Consumer 4 | Consumer 5 |
-|---|------|---------|-----------|------------|------------|------------|------------|
-| 1 | Parity gate (own suite) | ✅ 30/30 | ✅ 35/35 | ✅ 37/37 | ✅ 38/38 | ✅ 43/43 | ✅ 53/53 |
-| 2 | Full frontend unit suite | ✅ 40/40 | ✅ 45/45 | ✅ 47/47 | ✅ 48/48 | ✅ 53/53 | ✅ 63/63 |
-| 3 | `npm run build` (tsc -b + vite) | ✅ PASS | ✅ PASS | ✅ PASS | ✅ PASS | ✅ PASS | ✅ PASS |
-| 4 | `scripts/ci-validate.js` (navigation checks) | ✅ PASS | ✅ PASS (222 pre-existing backend errors = known noise) | ✅ PASS (222 pre-existing backend errors = known noise) | ✅ PASS (222 pre-existing backend errors = known noise) | ✅ PASS (222 pre-existing backend errors = known noise) | ✅ PASS (222 pre-existing backend errors = known noise) |
-| 5 | Isolated commit hash recorded | ✅ `2175414` | ✅ `52064ff` | ✅ `bbe92e1` | ✅ `d0b83c6` | ✅ `6fa7174` | ✅ `c0f04af` |
-| 6 | Progress doc updated | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| 7 | Pushed (only after milestone approval) | ⬜ Local only | ⬜ Local only | ⬜ Local only | ⬜ Local only | ⬜ Local only | ⬜ Local only |
+| # | Item | Phase 1 | Phase 2-a | Consumer 2 | Consumer 3 | Consumer 4 | Consumer 5 | Consumer 6 |
+|---|------|---------|-----------|------------|------------|------------|------------|------------|
+| 1 | Parity gate (own suite) | ✅ 30/30 | ✅ 35/35 | ✅ 37/37 | ✅ 38/38 | ✅ 43/43 | ✅ 53/53 | ✅ 67/67 |
+| 2 | Full frontend unit suite | ✅ 40/40 | ✅ 45/45 | ✅ 47/47 | ✅ 48/48 | ✅ 53/53 | ✅ 63/63 | ✅ 67/67 |
+| 3 | `npm run build` (tsc -b + vite) | ✅ PASS | ✅ PASS | ✅ PASS | ✅ PASS | ✅ PASS | ✅ PASS | ✅ PASS |
+| 4 | `scripts/ci-validate.js` (navigation checks) | ✅ PASS | ✅ PASS | ✅ PASS | ✅ PASS | ✅ PASS | ✅ PASS | ✅ PASS (222 baseline) |
+| 5 | Isolated commit hash recorded | ✅ `2175414` | ✅ `52064ff` | ✅ `bbe92e1` | ✅ `d0b83c6` | ✅ `6fa7174` | ✅ `c0f04af` | ✅ `d031f33` |
+| 6 | Progress doc updated | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| 7 | Pushed (only after milestone approval) | ⬜ Local only | ⬜ Local only | ⬜ Local only | ⬜ Local only | ⬜ Local only | ⬜ Local only | ⬜ Local only |
 
 ---
 
@@ -141,6 +141,7 @@ After each approved milestone:
 | ADR-027 | 2026-08-07 | Consumer 4 (referee) is the **architectural validation of Shared Permission Key Navigation**: ids `nav.referee.*` decoupled from keys; `referee.assignments.view` intentionally protects two nodes (Assignments + Matches); `REFEREE_LEGACY_KEY_TO_ID` maps 1 key → 2 ids (array, registry order); identity stays unique per node, authorization stays shared — the two remain completely independent. No cleanup items resolved; no registry contract change. |
 | ADR-028 | 2026-08-07 | **Navigation Composition is a multi-stage pipeline, not per-consumer filtering.** Consumer 5 (player) introduces `navigation/pipeline.ts` (Stable shared infra): discrete composable stages `sellerFilter` → `permissionFilter` → `featureFlagFilter` (plus `requiredFlagFilter`), assembled by `composeFilters(...)` into per-shell pipelines (`PLAYER_MORE_PIPELINE`, `PLAYER_CORE_PIPELINE`) and projected by `projectPlayerCoreTabs`/`projectPlayerMoreItems`. Bottom Navigation is just another projection of the same Registry; stages stay consumer-agnostic (verified: the same stages filter org/admin defs). No consumer-specific filter code remains in `BottomNav.tsx`. |
 | ADR-029 | 2026-08-07 | Consumer 5 (player): ids normalized **`nav.*` → `nav.player.*`** (18 nodes: 3 core + 15 More). `sellerOnly` is a **context-gating** attribute (declarative, projection-level), not RBAC — enforced by the Seller stage; `community.chat_enabled` is a **feature-flag** gate on the same Messages node (combined flag+permission first validated on a non-admin shell). `PLAYER_ID_TO_KEY`/`PLAYER_LEGACY_KEY_TO_ID` (12 keyed items) exported uniformly. Legacy `buildPlayerCoreTabs`/`buildPlayerMoreItems`/`filterPlayerMoreItems` frozen verbatim into `parity/legacy/player-nav.ts`; `BottomNav.tsx` now renders only registry resolvers. Cart badge (badgeCount) stays a component-level projection overlay, not registry data. |
+| ADR-030 | 2026-08-07 | Consumer 6 (workspace) is the **final integration milestone** — not another architecture validation. `SidebarLayoutPage.tsx`'s `buildSections()` (110-line parallel navigation tree) replaced with `resolveWorkspaceNav(t)`, consuming `ADMIN_NAV` directly. **Drift fully resolved:** 15 missing admin sections now visible, 10 editor-only keys removed, label/path/icon drift eliminated. DnD editor preserves all existing behavior (save/load via permission keys, backward compatible with `sidebar_layout` table). All 120 `nav.admin.*` ids carried on every workspace node via `WorkspaceNode`. The Navigation Platform is now **closed** — Registry is the single source of truth for all 6 consumers. Completion report: `docs/navigation/completion-report.md`. NC-003 (Workspace editor legacy identity) resolved by this consumer. |
 
 ## 6. Deviations
 
@@ -170,7 +171,7 @@ After each approved milestone:
 | 3 Coach | `CoachLayout` + `CoachBottomNav` | Flat static | 1 level | None (0 keys) | None | Coach | ✅ 2-c (`d0b83c6`) |
 | 4 Referee | `RefereeLayout` + `RefereeBottomNav` | Flat permission-gated | 1 level | Permissions (6 keys, **1 shared**) | None | Referee | ✅ 2-d (`6fa7174`) |
 | 5 Player | `BottomNav` | Two-tier (core + More) | 2 groups | Permissions + seller + chat flag | None | Player / Seller | ✅ 2-e (Consumer 5) |
-| 6 Workspace | `SidebarLayoutPage` (DnD editor) | Complex, legacy-keyed | Deep | Permissions | Reads/writes saved layout | Admin | ⬜ Consumer 6 |
+| 6 Workspace | `SidebarLayoutPage` (DnD editor) | Complex, Registry-driven | Deep | Permissions (key-based saved layout) | Reads/writes saved layout | Admin | ✅ 2-f (`d031f33`) |
 
 ---
 
@@ -231,16 +232,16 @@ After each approved milestone:
 |------|-------|--------|-----------|-------|
 | NC-001 — label-keyed `openMenus` | **Mandatory** | **Open** | — | Enabler landed (id on resolved items, `bbe92e1`) |
 | NC-002 — path-keyed React keys | **Optional** | **Open** | — | Coach/Org/Admin all path-keyed; low risk |
-| NC-003 — Workspace editor legacy identity | **Recommended** | **Open** | Phase 2-f | Largest consumer |
+| NC-003 — Workspace editor legacy identity | **Recommended** | **Completed** (`d031f33`) | — | Consumer 6 resolution |
 | NC-004 — saved-layout DB rows legacy-keyed | **Recommended** | **Open** | Post-2-f + approval | One-time backfill |
 
-**Burndown:** 4 open / 0 in progress / 0 completed. **Consumer 5 resolved no cleanup items** — the register is unchanged (open count must be reported every migration).
+**Burndown:** 3 open / 0 in progress / 1 completed. **Consumer 6 resolved NC-003** — workspace editor now uses Registry-driven identities.
 
 ---
 
 ## 12. Registry Metrics (ADR-023)
 
-Versioning: **Registry** v1.0 (extraction) → v1.1 (admin) → v1.2 (org) → v1.3 (coach) → v1.4 (referee) → **v1.5 (player)**. **Blueprint** v1.0 → **v2.0-STABLE** (governance formalization).
+Versioning: **Registry** v1.0 → v1.1 → v1.2 → v1.3 → v1.4 → v1.5 → **v2.0-STABLE** (all 6 consumers migrated). **Blueprint** v1.0 → **v2.0-STABLE**.
 
 | As of | Nav IDs (`nav.*`) | Categories | Pages (nodes) | Consumers migrated | Shared utilities (Stable) | Cleanup open/completed | ADRs | Registry | Blueprint |
 |-------|-------------------|------------|---------------|--------------------|---------------------------|------------------------|------|----------|-----------|
@@ -249,9 +250,10 @@ Versioning: **Registry** v1.0 (extraction) → v1.1 (admin) → v1.2 (org) → v
 | 2-b | 143 | 49 | 173 | 2/6 | 1 | 4/0 | 16 | v1.2 | v1.0 |
 | 2-c | 149 | 55 | 173 | 3/6 | 1 | 4/0 | 26 | v1.3 | v2.0-STABLE |
 | 2-d | 155 | 61 | 173 | 4/6 | 1 | 4/0 | 27 | v1.4 | v2.0-STABLE |
-| **2-e** | **173** | **79** | **173** | **5/6** | **2** | **4/0** | **29** | **v1.5** | **v2.0-STABLE** |
+| 2-e | 173 | 79 | 173 | 5/6 | 2 | 4/0 | 29 | v1.5 | v2.0-STABLE |
+| **2-f** | **173** | **79** | **173** | **6/6** | **2** | **3/1** | **30** | **v2.0-STABLE** | **v2.0-STABLE** |
 
-Definitions: Nav IDs = immutable ids in migrated shells (admin 120 + org 23 + coach 6 + referee 6 + player 18). Categories = top-level entries in migrated shells (admin 26 + org 23 + coach 6 + referee 6 + player 18). Pages = total registry nodes across all shells. Shared utilities = Stable-layer helpers (label system + `buildNavIdKeyMaps` + `pipeline.ts`; types/resolvers counted as platform surface).
+Definitions: Nav IDs = immutable ids in migrated shells (admin 120 + org 23 + coach 6 + referee 6 + player 18). Categories = top-level entries in migrated shells. Pages = total registry nodes across all shells. Workspace consumes admin's 120 ids directly — no new ids added. Cleanup: NC-003 resolved by Consumer 6 (`d031f33`).
 
 ---
 
