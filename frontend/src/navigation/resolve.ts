@@ -27,6 +27,10 @@ function toResolved(
   return resolved;
 }
 
+function findByIdOrKey(nodes: NavDefinition[], keyOrId: string): NavDefinition | undefined {
+  return nodes.find((n) => n.id === keyOrId || n.permissionKey === keyOrId);
+}
+
 export function resolveAdminNav(
   t: (key: string) => string,
   can: (perm: string) => boolean,
@@ -40,18 +44,20 @@ export function resolveAdminNav(
     const sections = items.filter((i) => i.children);
     const topOrder = savedLayout.get(null);
     if (topOrder) {
-      const orderedLeaf = topOrder.map((k) => leaf.find((i) => i.permissionKey === k)).filter(Boolean) as NavDefinition[];
-      const remainingLeaf = leaf.filter((i) => i.permissionKey !== undefined && !topOrder.includes(i.permissionKey));
+      const orderedLeaf = topOrder.map((k) => findByIdOrKey(leaf, k)).filter(Boolean) as NavDefinition[];
+      const remainingLeaf = leaf.filter(
+        (i) => i.permissionKey !== undefined && !topOrder.includes(i.permissionKey) && !topOrder.includes(i.id),
+      );
       items.length = 0;
       items.push(...orderedLeaf, ...sections, ...remainingLeaf);
     }
     for (const section of sections) {
-      const key = section.permissionKey;
-      if (key === undefined) continue;
-      const order = savedLayout.get(key);
+      const order = savedLayout.get(section.id) ?? savedLayout.get(section.permissionKey ?? '');
       if (order && section.children) {
-        const ordered = order.map((k) => section.children!.find((c) => c.permissionKey === k)).filter(Boolean) as NavDefinition[];
-        const remaining = section.children.filter((c) => c.permissionKey !== undefined && !order.includes(c.permissionKey));
+        const ordered = order.map((k) => findByIdOrKey(section.children!, k)).filter(Boolean) as NavDefinition[];
+        const remaining = section.children.filter(
+          (c) => c.permissionKey !== undefined && !order.includes(c.permissionKey) && !order.includes(c.id),
+        );
         section.children = [...ordered, ...remaining];
       }
     }
