@@ -19,11 +19,11 @@ This document is the single synchronized record of navigation implementation sta
 | **Phase 2-a** — Admin Sidebar migration | ✅ Committed (awaiting architecture review) | `52064ff` | 2026-08-07 |
 | **Phase 2-b** — Organisation Sidebar migration | ✅ Committed (Consumer 2, awaiting architecture review) | `bbe92e1` | 2026-08-07 |
 | **Phase 2-c** — Coach Navigation migration | ✅ Approved (Consumer 3) | `d0b83c6` | 2026-08-07 |
-| **Phase 2-d** — Referee Navigation migration | ⬜ Not started (Consumer 4 readiness below) | — | — |
-| **Phase 2-e** — Player Navigation migration | ⬜ Not started | — | — |
+| **Phase 2-d** — Referee Navigation migration | ✅ Committed (Consumer 4 — shared-permission-key validation, awaiting architecture review) | (see §4) | 2026-08-07 |
+| **Phase 2-e** — Player Navigation migration | ⬜ Not started (Consumer 5 readiness in §13) | — | — |
 | **Phase 2-f** — Workspace migration | ⬜ Not started | — | — |
 
-> **Blueprint status: 🟢 STABLE** — validated on three navigation models (Admin hierarchical, Org flat+permissions, Coach static no-RBAC). No architectural change during remaining migrations unless a critical issue (ADR-017).
+> **Blueprint status: 🟢 STABLE** — validated on four navigation models (Admin hierarchical, Org flat+permissions, Coach static no-RBAC, Referee shared-permission-key). No architectural change during remaining migrations unless a critical issue (ADR-017).
 >
 > **Registry status: 🟢 STABLE CONTRACT** — every exported registry interface is a platform contract (ADR-018).
 
@@ -96,15 +96,15 @@ After each approved milestone:
 
 ## 4. Verification Checklist (per milestone)
 
-| # | Item | Phase 1 | Phase 2-a | Consumer 2 | Consumer 3 |
-|---|------|---------|-----------|------------|------------|
-| 1 | Parity gate (own suite) | ✅ 30/30 | ✅ 35/35 | ✅ 37/37 | ✅ 38/38 |
-| 2 | Full frontend unit suite | ✅ 40/40 | ✅ 45/45 | ✅ 47/47 | ✅ 48/48 |
-| 3 | `npm run build` (tsc -b + vite) | ✅ PASS | ✅ PASS | ✅ PASS | ✅ PASS |
-| 4 | `scripts/ci-validate.js` (navigation checks) | ✅ PASS | ✅ PASS (222 pre-existing backend errors = known noise) | ✅ PASS (222 pre-existing backend errors = known noise) | ✅ PASS (222 pre-existing backend errors = known noise) |
-| 5 | Isolated commit hash recorded | ✅ `2175414` | ✅ `52064ff` | ✅ `bbe92e1` | ✅ `d0b83c6` |
-| 6 | Progress doc updated | ✅ | ✅ | ✅ | ✅ |
-| 7 | Pushed (only after milestone approval) | ⬜ Local only | ⬜ Local only | ⬜ Local only | ⬜ Local only |
+| # | Item | Phase 1 | Phase 2-a | Consumer 2 | Consumer 3 | Consumer 4 |
+|---|------|---------|-----------|------------|------------|------------|
+| 1 | Parity gate (own suite) | ✅ 30/30 | ✅ 35/35 | ✅ 37/37 | ✅ 38/38 | ✅ 43/43 |
+| 2 | Full frontend unit suite | ✅ 40/40 | ✅ 45/45 | ✅ 47/47 | ✅ 48/48 | ✅ 53/53 |
+| 3 | `npm run build` (tsc -b + vite) | ✅ PASS | ✅ PASS | ✅ PASS | ✅ PASS | ✅ PASS |
+| 4 | `scripts/ci-validate.js` (navigation checks) | ✅ PASS | ✅ PASS (222 pre-existing backend errors = known noise) | ✅ PASS (222 pre-existing backend errors = known noise) | ✅ PASS (222 pre-existing backend errors = known noise) | ✅ PASS (222 pre-existing backend errors = known noise) |
+| 5 | Isolated commit hash recorded | ✅ `2175414` | ✅ `52064ff` | ✅ `bbe92e1` | ✅ `d0b83c6` | ✅ `6fa7174` |
+| 6 | Progress doc updated | ✅ | ✅ | ✅ | ✅ | ✅ |
+| 7 | Pushed (only after milestone approval) | ⬜ Local only | ⬜ Local only | ⬜ Local only | ⬜ Local only | ⬜ Local only |
 
 ---
 
@@ -138,6 +138,7 @@ After each approved milestone:
 | ADR-024 | 2026-08-07 | **Consumer readiness assessment** (§13) before every consumer: complexity, dependencies, expected risks, estimated validation scope. |
 | ADR-025 | 2026-08-07 | **Documentation freeze** — the Navigation Specification stays frozen; migrations update only the tracker, cleanup register, ADR log, and blueprint (fixture/utilities/metrics tables). |
 | ADR-026 | 2026-08-07 | Consumer deliverables adopt the **16-item mandatory format** (blueprint §23): architecture, classification, files, id mapping, registry contract changes, legacy compat, parity, tests, registry stats, pattern matrix, cleanup, risks, next-consumer readiness, lessons, documentation, commit hash. |
+| ADR-027 | 2026-08-07 | Consumer 4 (referee) is the **architectural validation of Shared Permission Key Navigation**: ids `nav.referee.*` decoupled from keys; `referee.assignments.view` intentionally protects two nodes (Assignments + Matches); `REFEREE_LEGACY_KEY_TO_ID` maps 1 key → 2 ids (array, registry order); identity stays unique per node, authorization stays shared — the two remain completely independent. No cleanup items resolved; no registry contract change. |
 
 ## 6. Deviations
 
@@ -165,7 +166,7 @@ After each approved milestone:
 | 1 Admin | `AdminSidebar` | Complex hierarchical | Deep (sections + landing children) | Permissions + feature flags | Saved layouts (`sidebar_layout`) | Global admin | ✅ 2-a (`52064ff`) |
 | 2 Organisation | `OrgSidebar` | Flat | 1 level | Permissions (23 keys) | None | Org context (`{orgId}` path templates) | ✅ 2-b (`bbe92e1`) |
 | 3 Coach | `CoachLayout` + `CoachBottomNav` | Flat static | 1 level | None (0 keys) | None | Coach | ✅ 2-c (`d0b83c6`) |
-| 4 Referee | `RefereeLayout` + `RefereeBottomNav` | Flat permission-gated | 1 level | Permissions (6 keys, 1 shared) | None | Referee | ⬜ Consumer 4 |
+| 4 Referee | `RefereeLayout` + `RefereeBottomNav` | Flat permission-gated | 1 level | Permissions (6 keys, **1 shared**) | None | Referee | ✅ 2-d (`6fa7174`) |
 | 5 Player | `BottomNav` | Two-tier (core + More) | 2 groups | Permissions + seller + chat flag | None | Player / Seller | ⬜ Consumer 5 |
 | 6 Workspace | `SidebarLayoutPage` (DnD editor) | Complex, legacy-keyed | Deep | Permissions | Reads/writes saved layout | Admin | ⬜ Consumer 6 |
 
@@ -183,20 +184,20 @@ After each approved milestone:
 | ✓ Static navigation without RBAC | Coach (2-c) |
 | ✓ Navigation IDs (immutable, namespaced `nav.*`) | Admin (2-a) |
 | ✓ Legacy compatibility (key-or-id alias) | Admin (2-a), Org (2-b) |
-| ✓ Registry-first rendering | Admin, Org, Coach |
-| ✓ Frozen legacy fixture | all three |
-| ✓ Parity gate (translations, permissions, flags, saved layouts) | all three |
-| ✓ Generic resolver | all three |
-| ✓ Shared registry utilities (`buildNavIdKeyMaps`) | Org (2-b), Coach (2-c) |
-| ✓ Immutable id on every resolved node | Org (2-b), Coach (2-c) |
+| ✓ Registry-first rendering | all four |
+| ✓ Frozen legacy fixture | all four |
+| ✓ Parity gate (translations, permissions, flags, saved layouts) | all four |
+| ✓ Generic resolver | all four |
+| ✓ Shared registry utilities (`buildNavIdKeyMaps`) | Org (2-b), Coach (2-c), Referee (2-d) |
+| ✓ Immutable id on every resolved node | Org (2-b), Coach (2-c), Referee (2-d) |
 | ✓ Uniform map exports incl. empty maps | Coach (2-c) |
+| ✓ **Small permission-gated shell** | **Referee (2-d)** |
+| ✓ **Shared Permission Key Navigation** (1 key protects multiple nodes; ids stay unique, filtering stays correct, resolution deterministic) | **Referee (2-d)** — `referee.assignments.view` → Assignments + Matches |
 
 **Pending validation:**
 
 | Pattern | First exercised by |
 |---------|--------------------|
-| ◻ Small permission-gated shell | Referee (Consumer 4) |
-| ◻ Shared permission key across multiple items | Referee (Consumer 4) — `referee.assignments.view` on Assignments + Matches |
 | ◻ Two-tier more-sheet filtering | Player (Consumer 5) |
 | ◻ Feature-flag gating | Player (Consumer 5) — chat flag |
 | ◻ Seller-context gating | Player (Consumer 5) |
@@ -212,7 +213,7 @@ After each approved milestone:
 |--------|-------|-------|-----------|-------|
 | `NavDefinition`, `ResolvedNavItem` | `navigation/types.ts` | **Stable** | all | Platform contract |
 | `T`, `LIT`, `COMPOSITE`, `resolveLabel` | `navigation/labels.ts` | **Stable** | all | Label system |
-| `buildNavIdKeyMaps`, `NavIdKeyMaps` | `navigation/id-key.ts` | **Stable** | admin, org, coach | 3 shells |
+| `buildNavIdKeyMaps`, `NavIdKeyMaps` | `navigation/id-key.ts` | **Stable** | admin, org, coach, referee | 4 shells |
 | Generic resolvers + `toResolved` | `navigation/resolve.ts` | **Stable** | all | |
 | `findByIdOrKey` | `navigation/resolve.ts` (private) | **Experimental** | admin only | Promote if a 2nd consumer needs key-or-id saved layouts (review at Workspace) |
 | Parity `compare.ts` + frozen fixtures | `navigation/parity/` | **Stable (test-only)** | suite | Permanent baselines |
@@ -229,30 +230,42 @@ After each approved milestone:
 | NC-003 — Workspace editor legacy identity | **Recommended** | **Open** | Phase 2-f | Largest consumer |
 | NC-004 — saved-layout DB rows legacy-keyed | **Recommended** | **Open** | Post-2-f + approval | One-time backfill |
 
-**Burndown:** 4 open / 0 in progress / 0 completed. Open count must be reported every migration.
+**Burndown:** 4 open / 0 in progress / 0 completed. **Consumer 4 resolved no cleanup items** — the register is unchanged (open count must be reported every migration).
 
 ---
 
 ## 12. Registry Metrics (ADR-023)
 
-Versioning: **Registry** v1.0 (extraction) → v1.1 (admin) → v1.2 (org) → v1.3 (coach). **Blueprint** v1.0 → **v2.0-STABLE** (governance formalization).
+Versioning: **Registry** v1.0 (extraction) → v1.1 (admin) → v1.2 (org) → v1.3 (coach) → v1.4 (referee). **Blueprint** v1.0 → **v2.0-STABLE** (governance formalization).
 
 | As of | Nav IDs (`nav.*`) | Categories | Pages (nodes) | Consumers migrated | Shared utilities (Stable) | Cleanup open/completed | ADRs | Registry | Blueprint |
 |-------|-------------------|------------|---------------|--------------------|---------------------------|------------------------|------|----------|-----------|
 | Phase 1 | 0 | 0 | 173 | 0/6 | 0 | — | 1 | v1.0 | — |
 | 2-a | 120 | 26 | 173 | 1/6 | 1 | — | 11 | v1.1 | v1.0 |
 | 2-b | 143 | 49 | 173 | 2/6 | 1 | 4/0 | 16 | v1.2 | v1.0 |
-| **2-c** | **149** | **55** | **173** | **3/6** | **1** | **4/0** | **26** | **v1.3** | **v2.0-STABLE** |
+| 2-c | 149 | 55 | 173 | 3/6 | 1 | 4/0 | 26 | v1.3 | v2.0-STABLE |
+| **2-d** | **155** | **61** | **173** | **4/6** | **1** | **4/0** | **27** | **v1.4** | **v2.0-STABLE** |
 
-Definitions: Nav IDs = immutable ids in migrated shells (admin 120 + org 23 + coach 6). Categories = top-level entries in migrated shells (admin 26 + org 23 + coach 6). Pages = total registry nodes across all shells (incl. unmigrated referee 6, player 18). Shared utilities = Stable-layer helpers (label system + `buildNavIdKeyMaps`; types/resolvers counted as platform surface).
+Definitions: Nav IDs = immutable ids in migrated shells (admin 120 + org 23 + coach 6 + referee 6). Categories = top-level entries in migrated shells (admin 26 + org 23 + coach 6 + referee 6). Pages = total registry nodes across all shells (incl. unmigrated player 18). Shared utilities = Stable-layer helpers (label system + `buildNavIdKeyMaps`; types/resolvers counted as platform surface).
 
 ---
 
-## 13. Consumer 4 — Readiness Assessment (Referee, ADR-024)
+## 13. Consumer Readiness Assessments (ADR-024)
+
+### Consumer 4 — Referee (completed 2-d)
+
+| Item | Assessment | Outcome |
+|------|-----------|---------|
+| **Complexity** | **Low** — 6 flat nodes, 1 level, no sections, no saved layouts, no flags. Mirrors Coach (2-c) plus real RBAC. | Matched expectation. |
+| **Dependencies** | `pages/referee/referee-nav.ts` (legacy static array, self-contained → deletable after freeze); consumers `RefereeLayout.tsx` + `RefereeBottomNav.tsx` (both filter by `permission` — **real** RBAC, not a no-op); existing referee parity block in `parity.test.ts` (all/partial/none permissions). | Confirmed; legacy file fully deleted. |
+| **Expected risks** | (1) `referee.assignments.view` **shared** by Assignments + Matches → 1 key → 2 ids. (2) RBAC filter behavior-bearing → `resolveRefereeNav(can, t)`. (3) ids renamed `referee.*` → `nav.referee.*`. (4) No label-keyed state; React keys stay path-keyed (NC-002). | All confirmed; shared-key validated by 5 new tests. |
+| **Estimated validation scope** | Parity all/partial/none, registry integrity, full suite, build, ci-validate. | Done — 43/43, 53/53, build PASS, ci-validate 222 baseline. |
+
+### Consumer 5 — Player (readiness)
 
 | Item | Assessment |
 |------|-----------|
-| **Complexity** | **Low** — 6 flat nodes, 1 level, no sections, no saved layouts, no flags. Mirrors Coach (2-c) plus real RBAC. |
-| **Dependencies** | `pages/referee/referee-nav.ts` (legacy static array, self-contained → deletable after freeze); consumers `RefereeLayout.tsx` + `RefereeBottomNav.tsx` (both filter by `permission` — **real** RBAC, not a no-op); existing referee parity block in `parity.test.ts` (all/partial/none permissions). |
-| **Expected risks** | (1) `referee.assignments.view` is **shared** by Assignments + Matches → `REFEREE_LEGACY_KEY_TO_ID` maps 1 key → 2 ids (mirrors admin section+landing pairs). (2) RBAC filter must be preserved exactly → migrate to `resolveRefereeNav(can, t)`; unlike Coach, the filter is behavior-bearing. (3) ids must be renamed `referee.*` → `nav.referee.*`. (4) No label-keyed state exists (checked) — no NC-001 exposure; React keys remain path-keyed (NC-002, unchanged). |
-| **Estimated validation scope** | Parity: all / partial / none permissions (3 cases exist). Registry integrity: namespace `nav.referee.*`, count 6, key coverage 6 keys / 5 unique, shared-key map. Full frontend suite, `npm run build`, `ci-validate.js`. |
+| **Complexity** | **Medium–High** — two-tier model (3 core tabs + 15 More items), combined gating (permissions + `sellerOnly` context + `community.chat_enabled` feature flag), consumed by the large multi-purpose `BottomNav.tsx`. |
+| **Dependencies** | `components/layout/BottomNav.tsx` (exports `buildPlayerCoreTabs`, `buildPlayerMoreItems`, `filterPlayerMoreItems` used by parity; the component also renders More sheet, seller shop link, chat item); player registry already extracted (`PLAYER_CORE_TABS`, `PLAYER_MORE_ITEMS`) with generic `nav.*` ids; 18 player nodes. |
+| **Expected risks** | (1) **id namespace gap**: player ids are generic `nav.home`, `nav.bookings`, `nav.matches`… — not `nav.player.*`. Normalize to `nav.player.*` during migration (no persisted player consumer yet → safe, consistent with coach/referee normalization). (2) `sellerOnly` is a **context-gating** pattern (not RBAC) — first of its kind; must be preserved exactly. (3) `community.chat_enabled` feature flag + `permissionKey` on the same item — first combined flag+RBAC node outside admin. (4) `BottomNav.tsx` is large (mobile nav, More sheet, haptics, notifications badge) — freeze must capture the two-tier filtered output, not the whole component. (5) AppLayout uses BottomNav; no saved layouts → no NC-001/NC-004 exposure. |
+| **Estimated validation scope** | Parity: core across 3 translation modes; More items across isSeller × chatEnabled × can combinations (existing exhaustive loop); registry integrity (namespace `nav.player.*`, 3+15 ids, unique); full suite, build, ci-validate. |

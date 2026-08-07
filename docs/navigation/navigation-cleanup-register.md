@@ -107,3 +107,4 @@ Burndown is reported after every migration; a resolution must be recorded with i
 | 2026-08-07 | NC-001 | Enabler landed in Consumer 2: `ResolvedNavItem.id` is now populated on every node for every shell (commit `bbe92e1`), so the `openMenus` cleanup can key by `item.id`. |
 | 2026-08-07 | — | Consumer 3 (coach) introduced **no new cleanup items**: `CoachLayout`/`CoachBottomNav` keyed React keys by `item.path` (NC-002 pattern) and carried a no-op `permission` filter that was removed as behavior-neutral. No label-keyed state exists in the coach shell (unlike NC-001). |
 | 2026-08-07 | — | Governance formalization (ADR-022): register extended with **Status** (Open/In Progress/Completed) and **Class** (Mandatory/Recommended/Optional) + burndown summary. No items changed status. |
+| 2026-08-07 | — | Consumer 4 (referee) resolved **no cleanup items**. Register unchanged — burndown still 4 open / 0 in progress / 0 completed. |
