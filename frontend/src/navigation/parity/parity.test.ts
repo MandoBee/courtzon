@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { getRegistryDefaultsMap, useI18nStore } from '../../i18n';
 import { buildLegacyAdminNavItems } from './legacy/admin-sidebar';
+import { buildLegacyOrgNavItems } from './legacy/org-sidebar';
 import { buildSections } from '../../pages/admin/sidebar-layout/SidebarLayoutPage';
-import { buildOrgNavItems } from '../../components/layout/OrgSidebar';
 import { COACH_NAV as LEGACY_COACH_NAV } from '../../pages/coaches/coach-nav';
 import { REFEREE_NAV as LEGACY_REFEREE_NAV } from '../../pages/referee/referee-nav';
 import {
@@ -15,6 +15,8 @@ import {
   ADMIN_ID_TO_KEY,
   ADMIN_LEGACY_KEY_TO_ID,
   ORG_NAV,
+  ORG_ID_TO_KEY,
+  ORG_LEGACY_KEY_TO_ID,
   COACH_NAV,
   REFEREE_NAV,
   PLAYER_CORE_TABS,
@@ -194,7 +196,7 @@ describe('Phase 1 parity gate — org sidebar (buildOrgNavItems vs Navigation Re
   }
 
   function assertOrgParity(can: (p: string) => boolean, orgId: string, t: (k: string) => string) {
-    const legacy = buildOrgNavItems(can, orgId) as unknown as ResolvedNavItem[];
+    const legacy = buildLegacyOrgNavItems(can, orgId) as unknown as ResolvedNavItem[];
     const registry = resolveOrgNav(can, orgId, t);
     const diff = firstDiff(registry, legacy);
     expect(diff).toBeNull();
@@ -222,7 +224,7 @@ describe('Phase 1 parity gate — org sidebar (buildOrgNavItems vs Navigation Re
   });
 
   it('matches when no permissions are granted', () => {
-    const legacy = buildOrgNavItems(noneCan, '7') as unknown as ResolvedNavItem[];
+    const legacy = buildLegacyOrgNavItems(noneCan, '7') as unknown as ResolvedNavItem[];
     const registry = resolveOrgNav(noneCan, '7', enT);
     expect(registry.length).toBe(0);
     expect(legacy.length).toBe(0);
@@ -339,7 +341,7 @@ describe('Phase 1 parity gate — player nav (BottomNav vs Navigation Registry)'
   });
 });
 
-describe('Phase 2-a registry integrity (immutable ids)', () => {
+describe('Navigation registry integrity (immutable ids)', () => {
   it('assigns a unique immutable id to every node in every shell', () => {
     const shells: Record<string, ReturnType<typeof collectIds>> = {
       admin: collectIds(ADMIN_NAV),
@@ -354,13 +356,38 @@ describe('Phase 2-a registry integrity (immutable ids)', () => {
     }
   });
 
-  it('namespaces admin ids under nav.admin.* and keeps them stable per node', () => {
-    const ids = collectIds(ADMIN_NAV);
-    expect(ids.every((id) => id.startsWith('nav.admin.'))).toBe(true);
-    expect(ids.length).toBe(120);
-    const map = ADMIN_ID_TO_KEY;
-    expect(map.size).toBe(120);
-    for (const id of ids) expect(map.has(id)).toBe(true);
+  it('namespaces ids per shell (nav.admin.*, nav.org.*) and keeps them stable per node', () => {
+    const adminIds = collectIds(ADMIN_NAV);
+    expect(adminIds.every((id) => id.startsWith('nav.admin.'))).toBe(true);
+    expect(adminIds.length).toBe(120);
+    expect(ADMIN_ID_TO_KEY.size).toBe(120);
+
+    const orgIds = collectIds(ORG_NAV);
+    expect(orgIds.every((id) => id.startsWith('nav.org.'))).toBe(true);
+    expect(orgIds.length).toBe(23);
+    expect(ORG_ID_TO_KEY.size).toBe(23);
+    for (const id of orgIds) expect(ORG_ID_TO_KEY.has(id)).toBe(true);
+  });
+
+  it('maps org legacy permission keys to their nodes', () => {
+    expect(ORG_LEGACY_KEY_TO_ID.get('org.sidebar.dashboard')).toEqual(['nav.org.dashboard']);
+    expect(ORG_LEGACY_KEY_TO_ID.get('org.sidebar.payment')).toEqual(['nav.org.payment']);
+    expect(ORG_LEGACY_KEY_TO_ID.get('org.sidebar.settings')).toEqual(['nav.org.settings']);
+    for (const [key, ids] of ORG_LEGACY_KEY_TO_ID) {
+      expect(key.startsWith('org.sidebar.')).toBe(true);
+      expect(ids.length).toBe(1);
+    }
+  });
+
+  it('exposes the immutable id on every resolved item (state-keying by id)', () => {
+    const adminTop = resolveAdminNav(enT, allCan, allFlags);
+    const walk = (items: ResolvedNavItem[]): number =>
+      items.reduce((n, it) => n + (it.id ? 1 : 0) + (it.children ? walk(it.children) : 0), 0);
+    expect(walk(adminTop)).toBe(120);
+    const orgTop = resolveOrgNav(allCan, '7', enT);
+    expect(orgTop.every((it) => it.id !== undefined)).toBe(true);
+    expect(orgTop[0].id).toBe('nav.org.dashboard');
+    expect(orgTop.every((it, i) => it.id === ORG_NAV[i].id)).toBe(true);
   });
 
   it('maps legacy permission keys to the nodes that carry them (incl. section+landing pairs)', () => {

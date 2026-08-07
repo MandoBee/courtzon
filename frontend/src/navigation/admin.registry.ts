@@ -1,5 +1,6 @@
 import type { NavDefinition } from './types';
 import { T, LIT, COMPOSITE } from './labels';
+import { buildNavIdKeyMaps } from './id-key';
 
 export const ADMIN_NAV: NavDefinition[] = [
   { id: 'nav.admin.dashboard', label: T('admin.sidebar.dashboard'), icon: '📊', path: '/admin', permissionKey: 'sidebar.dashboard' },
@@ -278,21 +279,7 @@ export const ADMIN_NAV: NavDefinition[] = [
   },
 ];
 
-const idToKey = new Map<string, string>();
-const keyToIds = new Map<string, string[]>();
-
-function indexAdminNav(defs: NavDefinition[]): void {
-  for (const d of defs) {
-    if (d.permissionKey !== undefined) {
-      idToKey.set(d.id, d.permissionKey);
-      const ids = keyToIds.get(d.permissionKey) ?? [];
-      ids.push(d.id);
-      keyToIds.set(d.permissionKey, ids);
-    }
-    if (d.children) indexAdminNav(d.children);
-  }
-}
-indexAdminNav(ADMIN_NAV);
+const { idToKey, keyToIds } = buildNavIdKeyMaps(ADMIN_NAV);
 
 export const ADMIN_ID_TO_KEY: ReadonlyMap<string, string> = idToKey;
 export const ADMIN_LEGACY_KEY_TO_ID: ReadonlyMap<string, string[]> = keyToIds;

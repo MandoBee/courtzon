@@ -16,6 +16,7 @@ export interface NavDefinition {
 }
 
 export interface ResolvedNavItem {
+  id: string;
   label: string;
   icon?: string;
   path: string;

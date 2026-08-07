@@ -16,6 +16,7 @@ function toResolved(
   opts: { includeChildren: boolean } = { includeChildren: false },
 ): ResolvedNavItem {
   const resolved: ResolvedNavItem = {
+    id: item.id,
     label: resolveLabel(item.label, t),
     path: item.path,
   };
@@ -71,6 +72,7 @@ export function resolveAdminNav(
         .filter((c): c is ResolvedNavItem => c !== null);
       if (filteredChildren.length === 0) return null;
       return {
+        id: item.id,
         label: resolveLabel(item.label, t),
         path: item.path,
         ...(item.icon !== undefined ? { icon: item.icon } : {}),
@@ -81,6 +83,7 @@ export function resolveAdminNav(
     }
     if (item.permissionKey !== undefined && !can(item.permissionKey)) return null;
     return {
+      id: item.id,
       label: resolveLabel(item.label, t),
       path: item.path,
       ...(item.icon !== undefined ? { icon: item.icon } : {}),
@@ -94,6 +97,7 @@ export function resolveAdminNav(
 
 export function resolveOrgNav(can: (perm: string) => boolean, orgId: string, t: (key: string) => string): ResolvedNavItem[] {
   return ORG_NAV.map((item) => ({
+    id: item.id,
     label: resolveLabel(item.label, t),
     icon: item.icon as string,
     path: item.path.replace('{orgId}', orgId),
@@ -117,6 +121,7 @@ export interface PlayerMoreOptions {
 
 export function resolvePlayerCoreTabs(t: (key: string) => string): ResolvedNavItem[] {
   return PLAYER_CORE_TABS.map((item: PlayerCoreTabDef) => ({
+    id: item.id,
     label: resolveLabel(item.label, t),
     icon: item.icon,
     path: item.path,
@@ -128,6 +133,7 @@ export function resolvePlayerMoreItems(t: (key: string) => string, opts: PlayerM
   const flags: Record<string, boolean> = { 'community.chat_enabled': chatEnabled };
   return PLAYER_MORE_ITEMS.filter((item) => !item.sellerOnly || isSeller)
     .map((item: PlayerMoreItemDef) => ({
+      id: item.id,
       label: resolveLabel(item.label, t),
       icon: item.icon,
       path: item.path,
