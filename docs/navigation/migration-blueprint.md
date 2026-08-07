@@ -56,6 +56,7 @@ Existing fixtures:
 |----------|---------|
 | Admin Sidebar | `parity/legacy/admin-sidebar.ts` (`buildLegacyAdminNavItems`) |
 | Organisation Sidebar | `parity/legacy/org-sidebar.ts` (`buildLegacyOrgNavItems`) |
+| Coach Navigation | `parity/legacy/coach-nav.ts` (`COACH_NAV`) |
 
 ---
 
