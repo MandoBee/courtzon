@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { getRegistryDefaultsMap, useI18nStore } from '../../i18n';
-import { buildNavItems } from '../../components/layout/AdminSidebar';
+import { buildLegacyAdminNavItems } from './legacy/admin-sidebar';
 import { buildSections } from '../../pages/admin/sidebar-layout/SidebarLayoutPage';
 import { buildOrgNavItems } from '../../components/layout/OrgSidebar';
 import { COACH_NAV as LEGACY_COACH_NAV } from '../../pages/coaches/coach-nav';
@@ -12,6 +12,8 @@ import {
 } from '../../components/layout/BottomNav';
 import {
   ADMIN_NAV,
+  ADMIN_ID_TO_KEY,
+  ADMIN_LEGACY_KEY_TO_ID,
   ORG_NAV,
   COACH_NAV,
   REFEREE_NAV,
@@ -50,7 +52,7 @@ const noneCan = () => false;
 const allFlags = () => true;
 
 function assertAdminParity(t: (k: string) => string, can: (p: string) => boolean, flag: (k: string) => boolean, savedLayout?: Map<string | null, string[]>) {
-  const legacy = buildNavItems(t, can, flag, savedLayout) as unknown as ResolvedNavItem[];
+  const legacy = buildLegacyAdminNavItems(t, can, flag, savedLayout) as unknown as ResolvedNavItem[];
   const registry = resolveAdminNav(t, can, flag, savedLayout);
   const diff = firstDiff(registry, legacy);
   expect(diff).toBeNull();
@@ -105,7 +107,7 @@ describe('Phase 1 parity gate — admin sidebar (buildNavItems vs Navigation Reg
   });
 
   it('matches when no permissions are granted (empty nav)', () => {
-    const legacy = buildNavItems(enT, noneCan, allFlags) as unknown as ResolvedNavItem[];
+    const legacy = buildLegacyAdminNavItems(enT, noneCan, allFlags) as unknown as ResolvedNavItem[];
     const registry = resolveAdminNav(enT, noneCan, allFlags);
     expect(registry.length).toBe(0);
     expect(legacy.length).toBe(0);
@@ -126,6 +128,57 @@ describe('Phase 1 parity gate — admin sidebar (buildNavItems vs Navigation Reg
     layout.set('sidebar.organisations', ['sidebar.settlements', 'sidebar.organisation-types']);
     const allowCan = (perm: string) => perm.startsWith('sidebar.d') || perm === 'sidebar.users';
     assertAdminParity(strictT, allowCan, allFlags, layout);
+  });
+});
+
+describe('Phase 2-a saved-layout resolution (nav.admin.* ids)', () => {
+  it('resolves a root reorder expressed with immutable ids', () => {
+    const layout = new Map<string | null, string[]>();
+    layout.set(null, ['nav.admin.users', 'nav.admin.reports']);
+    const nav = resolveAdminNav(enT, allCan, allFlags, layout);
+    expect(nav.map((i) => i.label)).toEqual([
+      'Users',
+      'Reports',
+      ...nav.slice(2).map((i) => i.label),
+    ]);
+    expect(nav[0].label).toBe('Users');
+    expect(nav[1].label).toBe('Reports');
+    expect(nav.length).toBe(26);
+  });
+
+  it('resolves a section reorder expressed with immutable ids', () => {
+    const layout = new Map<string | null, string[]>();
+    layout.set('nav.admin.organisations', [
+      'nav.admin.settlements',
+      'nav.admin.organisation-types',
+      'nav.admin.organisations.landing',
+      'nav.admin.branch-access',
+    ]);
+    const nav = resolveAdminNav(enT, allCan, allFlags, layout);
+    const orgSection = nav.find((i) => i.label === 'Organisations');
+    expect(orgSection?.children?.map((c) => c.label)).toEqual([
+      'Settlements',
+      'Types',
+      'All Organisations',
+      'Branch Access',
+      'All Bookings',
+      'Subscription Plans',
+      'Subscription Requests',
+    ]);
+  });
+
+  it('is backward compatible: legacy permission keys and new ids are interchangeable', () => {
+    const legacyKeys = new Map<string | null, string[]>();
+    legacyKeys.set(null, ['sidebar.users', 'sidebar.reports']);
+    legacyKeys.set('sidebar.organisations', ['sidebar.settlements', 'sidebar.organisation-types']);
+
+    const ids = new Map<string | null, string[]>();
+    ids.set(null, ['nav.admin.users', 'nav.admin.reports']);
+    ids.set('nav.admin.organisations', ['nav.admin.settlements', 'nav.admin.organisation-types']);
+
+    const fromKeys = resolveAdminNav(enT, allCan, allFlags, legacyKeys);
+    const fromIds = resolveAdminNav(enT, allCan, allFlags, ids);
+    expect(firstDiff(fromKeys, fromIds)).toBeNull();
   });
 });
 
@@ -286,8 +339,8 @@ describe('Phase 1 parity gate — player nav (BottomNav vs Navigation Registry)'
   });
 });
 
-describe('Phase 1 registry integrity', () => {
-  it('documents duplicate navigation ids per shell (known admin quirk, zero elsewhere)', () => {
+describe('Phase 2-a registry integrity (immutable ids)', () => {
+  it('assigns a unique immutable id to every node in every shell', () => {
     const shells: Record<string, ReturnType<typeof collectIds>> = {
       admin: collectIds(ADMIN_NAV),
       org: collectIds(ORG_NAV),
@@ -296,23 +349,41 @@ describe('Phase 1 registry integrity', () => {
       player: [...PLAYER_CORE_TABS.map((i) => i.id), ...PLAYER_MORE_ITEMS.map((i) => i.id)],
     };
     for (const [shell, ids] of Object.entries(shells)) {
-      const dupes = findDuplicateValues(ids);
-      if (shell === 'admin') {
-        expect(dupes.sort()).toEqual(
-          [
-            'sidebar.organisations',
-            'sidebar.roles',
-            'sidebar.payment-methods',
-            'sidebar.countries',
-            'sidebar.security-dashboard',
-          ].sort(),
-        );
-      } else {
-        expect(dupes, `duplicate ids in ${shell}`).toEqual([]);
-      }
+      expect(findDuplicateValues(ids), `duplicate ids in ${shell}`).toEqual([]);
+      expect(ids.length, `missing ids in ${shell}`).toBeGreaterThan(0);
     }
   });
 
+  it('namespaces admin ids under nav.admin.* and keeps them stable per node', () => {
+    const ids = collectIds(ADMIN_NAV);
+    expect(ids.every((id) => id.startsWith('nav.admin.'))).toBe(true);
+    expect(ids.length).toBe(120);
+    const map = ADMIN_ID_TO_KEY;
+    expect(map.size).toBe(120);
+    for (const id of ids) expect(map.has(id)).toBe(true);
+  });
+
+  it('maps legacy permission keys to the nodes that carry them (incl. section+landing pairs)', () => {
+    const keyMap = ADMIN_LEGACY_KEY_TO_ID;
+    expect(keyMap.has('sidebar.dashboard')).toBe(true);
+    expect(keyMap.get('sidebar.dashboard')).toEqual(['nav.admin.dashboard']);
+    const shared = [...keyMap.entries()].filter(([, ids]) => ids.length > 1).map(([k]) => k).sort();
+    expect(shared).toEqual(
+      [
+        'sidebar.organisations',
+        'sidebar.roles',
+        'sidebar.payment-methods',
+        'sidebar.countries',
+        'sidebar.security-dashboard',
+      ].sort(),
+    );
+    const [organisations] = keyMap.get('sidebar.organisations')!;
+    expect(organisations).toBe('nav.admin.organisations');
+    expect(keyMap.get('sidebar.organisations')).toContain('nav.admin.organisations.landing');
+  });
+});
+
+describe('Phase 1 registry integrity', () => {
   it('registers every label key used in the registry', () => {
     const used: string[] = [];
     const walk = (label: ReturnType<typeof T> | ReturnType<typeof LIT>) => {
