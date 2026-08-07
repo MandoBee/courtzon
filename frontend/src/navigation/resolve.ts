@@ -1,4 +1,4 @@
-import type { NavDefinition, ResolvedNavItem, PlayerCoreTabDef, PlayerMoreItemDef } from './types';
+import type { NavDefinition, ResolvedNavItem, PlayerCoreTabDef, PlayerMoreItemDef, WorkspaceNode } from './types';
 import { resolveLabel } from './labels';
 import { composeFilters, sellerFilter, permissionFilter, featureFlagFilter, type NavFilterContext } from './pipeline';
 import { ADMIN_NAV } from './admin.registry';
@@ -141,4 +141,21 @@ export function resolvePlayerMoreItems(t: (key: string) => string, opts: PlayerM
   const { isSeller, chatEnabled, can } = opts;
   const ctx: NavFilterContext = { can, flags: { 'community.chat_enabled': chatEnabled }, isSeller };
   return projectPlayerMoreItems(PLAYER_MORE_PIPELINE(PLAYER_MORE_ITEMS, ctx), t);
+}
+
+export function resolveWorkspaceNav(t: (key: string) => string): WorkspaceNode[] {
+  function convert(item: NavDefinition): WorkspaceNode {
+    return {
+      id: item.id,
+      label: resolveLabel(item.label, t),
+      icon: item.icon ?? '',
+      path: item.path,
+      permissionKey: item.permissionKey ?? item.id,
+      ...(item.requiredFlag !== undefined ? { requiredFlag: item.requiredFlag } : {}),
+      ...(item.children && item.children.length > 0
+        ? { children: item.children.map(convert) }
+        : {}),
+    };
+  }
+  return ADMIN_NAV.map(convert);
 }

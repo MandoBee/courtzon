@@ -43,4 +43,14 @@ export interface PlayerMoreItemDef {
   sellerOnly?: boolean;
 }
 
-export type ShellKey = 'admin' | 'org' | 'coach' | 'referee' | 'player';
+export type ShellKey = 'admin' | 'org' | 'coach' | 'referee' | 'player' | 'workspace';
+
+export interface WorkspaceNode {
+  id: string;
+  label: string;
+  icon: string;
+  path: string;
+  permissionKey: string;
+  requiredFlag?: string;
+  children?: WorkspaceNode[];
+}

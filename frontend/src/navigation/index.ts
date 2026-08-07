@@ -32,5 +32,6 @@ export {
   projectPlayerMoreItems,
   PLAYER_CORE_PIPELINE,
   PLAYER_MORE_PIPELINE,
+  resolveWorkspaceNav,
   type PlayerMoreOptions,
 } from './resolve';

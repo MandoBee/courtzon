@@ -3,7 +3,7 @@ import { getRegistryDefaultsMap, useI18nStore } from '../../i18n';
 import { buildLegacyAdminNavItems } from './legacy/admin-sidebar';
 import { buildLegacyOrgNavItems } from './legacy/org-sidebar';
 import { COACH_NAV as LEGACY_COACH_NAV } from './legacy/coach-nav';
-import { buildSections } from '../../pages/admin/sidebar-layout/SidebarLayoutPage';
+import { buildSections } from './legacy/workspace-nav';
 import { REFEREE_NAV as LEGACY_REFEREE_NAV } from './legacy/referee-nav';
 import {
   buildPlayerCoreTabs,
@@ -44,17 +44,18 @@ import {
   resolveRefereeNav,
   resolvePlayerCoreTabs,
   resolvePlayerMoreItems,
+  resolveWorkspaceNav,
   resolveLabel,
   type ResolvedNavItem,
   type NavDefinition,
   type NavFilterContext,
+  type WorkspaceNode,
 } from '../../navigation';
 import {
   canonicalizeList,
   firstDiff,
   collectPermissionKeys,
   collectIds,
-  flattenTree,
   findDuplicateValues,
 } from './compare';
 
@@ -640,17 +641,54 @@ describe('Phase 1 registry integrity', () => {
   });
 });
 
-describe('Known drift: Workspace editor (buildSections) vs production sidebar (registry)', () => {
-  const registryTop = resolveAdminNav(enT, allCan, allFlags);
-  const editorTop = buildSections() as unknown as ResolvedNavItem[];
+describe('Consumer 6 — Workspace Registry integration (drift resolved)', () => {
+  const registryWorkspace = resolveWorkspaceNav(enT);
 
-  const regMap = flattenTree(registryTop);
-  const edMap = flattenTree(editorTop);
-  const regKeys = [...regMap.keys()];
-  const edKeys = [...edMap.keys()];
+  function collectAllKeys(nodes: WorkspaceNode[]): string[] {
+    const keys: string[] = [];
+    const walk = (list: WorkspaceNode[]) => {
+      for (const n of list) {
+        if (n.permissionKey) keys.push(n.permissionKey);
+        if (n.children) walk(n.children);
+      }
+    };
+    walk(nodes);
+    return keys;
+  }
 
-  it('documents sections present in the sidebar but missing from the editor', () => {
-    const missingFromEditor = regKeys.filter((k) => !edMap.has(k)).sort();
+  function collectAllIds(nodes: WorkspaceNode[]): string[] {
+    const ids: string[] = [];
+    const walk = (list: WorkspaceNode[]) => {
+      for (const n of list) {
+        if (n.id) ids.push(n.id);
+        if (n.children) walk(n.children);
+      }
+    };
+    walk(nodes);
+    return ids;
+  }
+
+  function countNodes(nodes: WorkspaceNode[]): number {
+    let c = 0;
+    const walk = (list: WorkspaceNode[]) => {
+      c += list.length;
+      for (const n of list) if (n.children) walk(n.children);
+    };
+    walk(nodes);
+    return c;
+  }
+
+  it('workspace resolver produces item keys identical to ADMIN_NAV (no drift)', () => {
+    const wsKeys = new Set(collectAllKeys(registryWorkspace));
+    const registryKeys = new Set(collectPermissionKeys(ADMIN_NAV));
+    for (const k of registryKeys) {
+      expect(wsKeys.has(k), `"${k}" should be in workspace`).toBe(true);
+    }
+    expect(wsKeys.size).toBe(registryKeys.size);
+  });
+
+  it('all 15 previously-missing admin sections are now visible in the workspace', () => {
+    const wsKeys = collectAllKeys(registryWorkspace);
     for (const key of [
       'sidebar.bi',
       'sidebar.sports-engine',
@@ -668,13 +706,12 @@ describe('Known drift: Workspace editor (buildSections) vs production sidebar (r
       'sidebar.integration',
       'sidebar.webhooks',
     ]) {
-      expect(missingFromEditor, `expected ${key} to be missing from editor`).toContain(key);
+      expect(wsKeys, `"${key}" should now appear in workspace`).toContain(key);
     }
-    console.log('[drift] sidebar-only (absent from editor):', missingFromEditor.join(', '));
   });
 
-  it('documents sections present only in the editor', () => {
-    const onlyInEditor = edKeys.filter((k) => !regMap.has(k)).sort();
+  it('all 10 previously-editor-only keys are removed', () => {
+    const wsKeys = collectAllKeys(registryWorkspace);
     for (const key of [
       'sidebar.tournaments-admin',
       'sidebar.academies-admin',
@@ -687,38 +724,40 @@ describe('Known drift: Workspace editor (buildSections) vs production sidebar (r
       'sidebar.accounting-periods',
       'sidebar.accounting-tax',
     ]) {
-      expect(onlyInEditor, `expected ${key} to be present only in editor`).toContain(key);
+      expect(wsKeys, `"${key}" must NOT appear in workspace`).not.toContain(key);
     }
-    console.log('[drift] editor-only:', onlyInEditor.join(', '));
   });
 
-  it('documents shared keys whose label or path drifted', () => {
-    const shared = regKeys.filter((k) => edMap.has(k));
-    const labelDrift: string[] = [];
-    const pathDrift: string[] = [];
-    for (const k of shared) {
-      const r = regMap.get(k)!;
-      const e = edMap.get(k)!;
-      if (r.label !== e.label) labelDrift.push(`${k}: registry="${r.label}" vs editor="${e.label}"`);
-      if (r.path !== e.path) pathDrift.push(`${k}: registry="${r.path}" vs editor="${e.path}"`);
-    }
-    expect(labelDrift).toContain('sidebar.roles: registry="Roles" vs editor="All Roles"');
-    expect(pathDrift).toContain('sidebar.finance: registry="/admin/finance" vs editor="/admin/withdrawal-requests"');
-    console.log('[drift] label differences:', labelDrift.join('\n  '));
-    console.log('[drift] path differences:', pathDrift.join('\n  '));
+  it('every workspace node carries a nav.admin.* immutable id', () => {
+    const allIds = collectAllIds(registryWorkspace);
+    expect(allIds.length).toBe(120);
+    expect(allIds.every((id) => id.startsWith('nav.admin.'))).toBe(true);
+    expect(new Set(allIds).size).toBe(120);
   });
 
-  it('documents that the editor assigns icons to child items while the sidebar does not', () => {
-    const countDeepIcons = (items: ResolvedNavItem[], depth: number): number =>
-      items.reduce((sum, it) => {
-        let n = depth >= 1 && it.icon !== undefined ? 1 : 0;
-        if (it.children) n += countDeepIcons(it.children, depth + 1);
-        return sum + n;
-      }, 0);
-    const deepIconsInEditor = countDeepIcons(editorTop, 0);
-    const deepIconsInRegistry = countDeepIcons(registryTop, 0);
-    console.log(`[drift] non-top-level nodes with icons: editor=${deepIconsInEditor} registry=${deepIconsInRegistry}`);
-    expect(deepIconsInEditor).toBeGreaterThan(deepIconsInRegistry);
-    expect(deepIconsInRegistry).toBeLessThanOrEqual(1);
+  it('workspace resolver is deterministic', () => {
+    const a = resolveWorkspaceNav(enT);
+    const b = resolveWorkspaceNav(enT);
+    expect(a.map((n) => n.id).join(',')).toBe(b.map((n) => n.id).join(','));
+  });
+
+  it('workspace shares the same tree structure as ADMIN_NAV (1:1 mapping)', () => {
+    const wsAllIds = collectAllIds(registryWorkspace);
+    const registryAllIds = collectIds(ADMIN_NAV);
+    expect(wsAllIds).toEqual(registryAllIds);
+    expect(wsAllIds.length).toBe(120);
+  });
+
+  it('workspace root count matches ADMIN_NAV root', () => {
+    expect(countNodes(registryWorkspace)).toBe(120);
+    expect(registryWorkspace.length).toBe(ADMIN_NAV.length);
+  });
+});
+
+describe('Workspace: frozen fixture preserved for audit', () => {
+  it('fixture buildSections() is frozen and still callable', () => {
+    const sections = buildSections();
+    expect(sections.length).toBeGreaterThan(0);
+    expect(sections[0].label).toBe('Dashboard');
   });
 });
