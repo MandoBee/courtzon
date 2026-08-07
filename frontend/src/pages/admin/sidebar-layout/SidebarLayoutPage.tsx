@@ -30,7 +30,7 @@ interface NavItem {
   children?: NavItem[];
 }
 
-function buildSections() {
+export function buildSections() {
   const allItems: NavItem[] = [
     { label: 'Dashboard', icon: '📊', path: '/admin', permissionKey: 'sidebar.dashboard' },
     { label: 'Reports', icon: '📈', path: '/admin/reports', permissionKey: 'sidebar.reports' },

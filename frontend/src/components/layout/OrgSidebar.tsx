@@ -21,7 +21,7 @@ interface NavItem {
   permissionKey: string;
 }
 
-function buildOrgNavItems(can: (perm: string) => boolean, orgId: string): NavItem[] {
+export function buildOrgNavItems(can: (perm: string) => boolean, orgId: string): NavItem[] {
   const allItems: NavItem[] = [
     { label: 'Dashboard', icon: '📊', path: `/org/${orgId}/dashboard`, permissionKey: 'org.sidebar.dashboard' },
     { label: 'Products', icon: '🛒', path: `/org/${orgId}/marketplace`, permissionKey: 'org.sidebar.marketplace' },
