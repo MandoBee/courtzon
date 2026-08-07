@@ -175,6 +175,15 @@ describe('Phase 1 parity gate — admin sidebar (buildNavItems vs Navigation Reg
       'nav.admin.coaches',
     ]);
   });
+
+  it('Competitions domain contains exactly 2 modules: League → Tournament', () => {
+    const nav = resolveAdminNav(enT, allCan, allFlags);
+    const comp = nav.find((d) => d.label === 'Competitions');
+    expect(comp?.children?.map((c) => c.id)).toEqual([
+      'nav.admin.league',
+      'nav.admin.tournament',
+    ]);
+  });
 });
 
 describe('Phase 2-a saved-layout resolution (nav.admin.* ids)', () => {
