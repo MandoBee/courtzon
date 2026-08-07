@@ -203,12 +203,13 @@ New decisions are logged in `docs/navigation/implementation-progress.md` §5 (AD
 
 ## 14. Blueprint Is Frozen (PERMANENT)
 
-The migration blueprint has been validated on **two consumers**:
+The migration blueprint has been validated on **three consumers** representing three distinct navigation models:
 
-- Consumer 1 — Admin (hierarchical nav).
-- Consumer 2 — Organisation (flat nav).
+- Consumer 1 — Admin (complex hierarchical nav, permissions, saved layouts, feature flags).
+- Consumer 2 — Organisation (flat nav, permissions, org context).
+- Consumer 3 — Coach (flat static nav, no permissions, no persistence).
 
-It is now **FROZEN**. Do NOT modify the migration process for the remaining consumers unless a **critical architectural issue** is discovered. A "nice to have" is not a reason to change the process.
+The blueprint is now **STABLE**. The migration process is FROZEN. Do NOT modify the migration process for the remaining consumers unless a **critical architectural issue** is discovered. A "nice to have" is not a reason to change the process. Remaining consumers (Referee, Player, Workspace) must reuse the blueprint exactly as documented.
 
 ---
 
@@ -324,23 +325,24 @@ Every completed consumer must keep synchronized:
 
 ## 23. Consumer Deliverables (mandatory format)
 
-Every remaining consumer migration MUST return the following 15 items:
+Every remaining consumer migration MUST return the following 16 items:
 
 1. Architecture summary
-2. Files changed
-3. Navigation ID mapping
-4. Navigation ID ↔ Permission Key strategy
-5. Legacy compatibility report
-6. Consumer parity report
-7. Full test results
-8. Registry statistics
-9. Complexity assessment
-10. Cleanup progress (resolved / remaining / new)
-11. Risks
-12. Lessons learned
-13. Phase health
-14. Documentation updates
-15. Git commit hash
+2. Consumer classification
+3. Files changed
+4. Navigation ID mapping
+5. Registry contract changes (if any)
+6. Legacy compatibility report
+7. Consumer parity report
+8. Full test results
+9. Registry statistics
+10. Pattern validation matrix
+11. Cleanup progress (resolved / remaining / new)
+12. Risks
+13. Readiness for the next consumer
+14. Lessons learned
+15. Documentation updates
+16. Git commit hash
 
 ---
 
@@ -364,3 +366,113 @@ Every remaining consumer migration MUST return the following 15 items:
 16. Any helper useful to more than one consumer is promoted to shared infrastructure immediately.
 17. Every consumer reports complexity, registry statistics, cleanup progress, and phase health.
 18. No consumer migration introduces undocumented technical debt.
+
+---
+
+## 25. Consumer Classification (documented)
+
+Every consumer's migration characteristics are recorded in the Implementation Progress tracker (§8 Classification). Each entry documents: model, hierarchy, RBAC, persistence, and context. The classification is the basis of the readiness assessment (§30).
+
+| Consumer | Model | Hierarchy | RBAC | Persistence | Context |
+|----------|-------|-----------|------|-------------|---------|
+| 1 Admin | Complex hierarchical | Deep (sections + landing children) | Permissions + feature flags | Saved layouts | Global admin |
+| 2 Organisation | Flat | 1 level | Permissions (23 keys) | None | Org context (path templates) |
+| 3 Coach | Flat static | 1 level | None (0 keys) | None | Coach |
+| 4 Referee | Flat permission-gated | 1 level | Permissions (6 keys, 1 shared) | None | Referee |
+| 5 Player | Two-tier (core + More) | 2 groups | Permissions + seller + chat flag | None | Player / Seller |
+| 6 Workspace | DnD editor, legacy-keyed | Deep | Permissions | Reads/writes saved layout | Admin |
+
+---
+
+## 26. Pattern Validation Matrix
+
+Maintained in the Implementation Progress tracker (§9). A pattern is marked **validated** only after at least one consumer passes its parity gate using it. Pending patterns are listed explicitly so no pattern is assumed validated before it has been exercised.
+
+Currently validated: hierarchical navigation, flat navigation, permission-gated flat navigation, static no-RBAC navigation, Navigation IDs, legacy compatibility (key-or-id alias), registry-first rendering, frozen legacy fixture, parity gate, generic resolver, shared registry utilities, immutable id on every resolved node, uniform (incl. empty) map exports.
+
+Pending: small permission-gated shell, shared permission key across multiple items, two-tier more-sheet filtering, feature-flag gating, seller-context gating, DnD workspace reconciliation, saved-layout DB backfill, id-keyed React state cleanups.
+
+---
+
+## 27. Shared Infrastructure Review (Stable / Experimental / Temporary)
+
+Every shared helper is classified at each migration. Consumers rely **only on Stable** infrastructure whenever possible.
+
+| Helper | Layer | Class | Consumers | Notes |
+|--------|-------|-------|-----------|-------|
+| `NavDefinition`, `ResolvedNavItem` | `navigation/types.ts` | **Stable** | all | Platform contract (§15) |
+| `T`, `LIT`, `COMPOSITE`, `resolveLabel` | `navigation/labels.ts` | **Stable** | all | Label system |
+| `buildNavIdKeyMaps`, `NavIdKeyMaps` | `navigation/id-key.ts` | **Stable** | admin, org, coach | Used by 3 shells |
+| Generic resolvers + `toResolved` | `navigation/resolve.ts` | **Stable** | all | |
+| `findByIdOrKey` | `navigation/resolve.ts` (private) | **Experimental** | admin only | Promote to shared if a 2nd consumer needs key-or-id saved-layout resolution (review at Consumer 6 / Workspace) |
+| Parity `compare.ts` + frozen fixtures | `navigation/parity/` | **Stable (test-only)** | test suite | Permanent baselines |
+| Per-shell alias maps (`*_ID_TO_KEY`, `*_LEGACY_KEY_TO_ID`) | per registry | **Stable** | per shell | Uniform exports, additive |
+
+---
+
+## 28. Cleanup Burndown
+
+The Cleanup Register tracks every item with: **Status** (Open / In Progress / Completed) and **Class** (Mandatory / Recommended / Optional). The tracker maintains a burndown (open vs completed) so technical-debt reduction is measurable during migration.
+
+- **Mandatory** — blocks the Navigation Platform completion declaration (NC-001).
+- **Recommended** — must be resolved before the platform is production-complete (was High/Medium).
+- **Optional** — nice-to-have, tracked for completeness (was Low).
+
+A resolution is recorded with its commit hash; no item may silently disappear.
+
+---
+
+## 29. Registry Metrics (historical record)
+
+After **every** migration, the tracker's Registry Metrics table is extended with a new as-of row:
+
+- Navigation IDs (immutable, migrated shells)
+- Categories (top-level groups in migrated shells)
+- Pages (total registry nodes across all shells)
+- Consumers migrated
+- Shared utilities (Stable)
+- Cleanup items (open / completed)
+- ADR count
+- Registry version
+- Blueprint version
+
+Versioning: **Registry version** bumps on every consumer migration (v1.0 extraction → v1.1 admin → v1.2 org → v1.3 coach → …). **Blueprint version** is v1.0 (creation) → v2.0-STABLE (governance formalization). This creates the historical engineering record.
+
+---
+
+## 30. Consumer Readiness Assessment
+
+Before beginning each consumer, the tracker records a short readiness assessment:
+
+- Complexity (Low / Medium / High / Very High)
+- Dependencies (legacy files, consumers, test suites)
+- Expected risks
+- Estimated validation scope
+
+The readiness assessment reduces surprises during implementation and is updated if reality diverges.
+
+---
+
+## 31. Documentation Freeze
+
+The **Navigation Specification** (`docs/navigation/nav-spec-v1.0.md`) remains FROZEN. If no architectural change occurs during a migration, the specification is not modified.
+
+Migrations may update only:
+
+- Implementation Progress (tracker)
+- Cleanup Register
+- ADR Log
+- Migration Blueprint (only its fixture table / shared utilities / metrics tables)
+
+No document may fall behind the implementation (§22), and no document beyond the four above changes unless the architecture changes.
+
+---
+
+## 32. Stop Rule (permanent)
+
+The Navigation Platform migration is an **engineering program with a stable blueprint**:
+
+- Migrate **exactly one consumer at a time**.
+- Every migration is an independent milestone with **independent review, approval, commit, and parity verification**.
+- Do **not** optimize for speed — optimize for architectural consistency.
+- Maintain this discipline through the final consumer.

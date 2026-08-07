@@ -7,7 +7,7 @@
 
 The Navigation Platform is **not considered complete** until all **Mandatory** items below are resolved.
 
-Every item records: Description, Why it exists, Risk, Priority, Proposed solution, Target phase.
+Every item records: Description, Why it exists, Risk, Priority, Class, Status, Proposed solution, Target phase.
 
 | Priority | Meaning |
 |----------|---------|
@@ -16,12 +16,25 @@ Every item records: Description, Why it exists, Risk, Priority, Proposed solutio
 | Medium | Should be resolved; does not block individual consumer migrations. |
 | Low | Nice-to-have; tracked for completeness. |
 
+| Class (burndown, ADR-022) | Maps from |
+|---------------------------|-----------|
+| **Mandatory** | Priority Mandatory |
+| **Recommended** | Priority High / Medium |
+| **Optional** | Priority Low |
+
+| Status (burndown, ADR-022) | Meaning |
+|----------------------------|---------|
+| **Open** | Not started |
+| **In Progress** | Work has begun, not complete |
+| **Completed** | Resolved — recorded with commit hash |
+
 ---
 
 ## NC-001 — Label-keyed navigation state (openMenus)
 
 - **Status:** Open
 - **Priority:** **Mandatory**
+- **Class:** **Mandatory**
 - **Discovered:** Phase 2-a (Consumer 1 review)
 - **Description:** `AdminSidebar.tsx` keys collapsible-section open state by the **resolved label**: `openMenus[item.label]`. This violates the Navigation Identity Rule — state must be keyed by immutable Navigation IDs.
 - **Why it exists:** Legacy implementation predates the Navigation Registry; labels were the only available identity at the time. The migration preserved behavior (parity first) and did not change state keying.
@@ -35,6 +48,7 @@ Every item records: Description, Why it exists, Risk, Priority, Proposed solutio
 
 - **Status:** Open
 - **Priority:** Low
+- **Class:** **Optional**
 - **Discovered:** Phase 2-a (Consumer 1 review)
 - **Description:** `AdminSidebar`/`OrgSidebar` render `key={item.path}` for links and section wrappers. Keys are path-based rather than id-based.
 - **Why it exists:** Legacy pattern; paths were unique per list level.
@@ -48,6 +62,7 @@ Every item records: Description, Why it exists, Risk, Priority, Proposed solutio
 
 - **Status:** Open
 - **Priority:** High
+- **Class:** **Recommended**
 - **Discovered:** Phase 1 (drift report); scope: Phase 2-f
 - **Description:** `SidebarLayoutPage.tsx` (`buildSections` + drag-and-drop) still operates on **legacy permission keys**, producing the documented drift (66 sidebar-only keys absent from the editor, 10 editor-only keys, label/path/icon drift). It has not been migrated to the registry.
 - **Why it exists:** The editor predates the registry; reconciling it is the largest consumer (Phase 2-f, Workspace).
@@ -61,12 +76,26 @@ Every item records: Description, Why it exists, Risk, Priority, Proposed solutio
 
 - **Status:** Open
 - **Priority:** Medium
+- **Class:** **Recommended**
 - **Discovered:** Phase 2-a (Consumer 1 review)
 - **Description:** Production `sidebar_layout` rows are stored with legacy permission keys (`sidebar.*`). The resolver accepts them via aliasing, so nothing is broken, but the DB does not yet reflect immutable ids.
 - **Why it exists:** Backward compatibility mandate — no data migration without explicit approval.
 - **Risk:** If a future IA phase renames a node's permissionKey, old rows referencing that key silently lose ordering for that node (alias map no longer resolves it). Aliasing hides this.
 - **Proposed solution:** After the Workspace editor (2-f) writes ids, run an approved one-time backfill rewriting `sidebar_layout.ordered_keys` to `nav.admin.*` ids using `ADMIN_LEGACY_KEY_TO_ID`. Requires explicit approval (data migration).
 - **Target phase:** Post Phase 2-f, pending approval.
+
+---
+
+## Burndown Summary (ADR-022)
+
+| Class | Open | In Progress | Completed |
+|-------|------|-------------|-----------|
+| Mandatory | 1 (NC-001) | 0 | 0 |
+| Recommended | 2 (NC-003, NC-004) | 0 | 0 |
+| Optional | 1 (NC-002) | 0 | 0 |
+| **Total** | **4** | **0** | **0** |
+
+Burndown is reported after every migration; a resolution must be recorded with its commit hash.
 
 ---
 
@@ -77,3 +106,4 @@ Every item records: Description, Why it exists, Risk, Priority, Proposed solutio
 | 2026-08-07 | — | Register created from Phase 2-a review. |
 | 2026-08-07 | NC-001 | Enabler landed in Consumer 2: `ResolvedNavItem.id` is now populated on every node for every shell (commit `bbe92e1`), so the `openMenus` cleanup can key by `item.id`. |
 | 2026-08-07 | — | Consumer 3 (coach) introduced **no new cleanup items**: `CoachLayout`/`CoachBottomNav` keyed React keys by `item.path` (NC-002 pattern) and carried a no-op `permission` filter that was removed as behavior-neutral. No label-keyed state exists in the coach shell (unlike NC-001). |
+| 2026-08-07 | — | Governance formalization (ADR-022): register extended with **Status** (Open/In Progress/Completed) and **Class** (Mandatory/Recommended/Optional) + burndown summary. No items changed status. |
