@@ -1,5 +1,6 @@
 import type { NavDefinition, ResolvedNavItem, PlayerCoreTabDef, PlayerMoreItemDef } from './types';
 import { resolveLabel } from './labels';
+import { composeFilters, sellerFilter, permissionFilter, featureFlagFilter, type NavFilterContext } from './pipeline';
 import { ADMIN_NAV } from './admin.registry';
 import { ORG_NAV } from './org.registry';
 import { COACH_NAV } from './coach.registry';
@@ -119,30 +120,25 @@ export interface PlayerMoreOptions {
   can: (perm: string) => boolean;
 }
 
+export const PLAYER_CORE_PIPELINE = composeFilters<PlayerCoreTabDef>();
+
+export const PLAYER_MORE_PIPELINE = composeFilters<PlayerMoreItemDef>(sellerFilter, permissionFilter, featureFlagFilter);
+
+export function projectPlayerCoreTabs(items: PlayerCoreTabDef[], t: (key: string) => string): ResolvedNavItem[] {
+  return items.map((item) => toResolved(item, t));
+}
+
+export function projectPlayerMoreItems(items: PlayerMoreItemDef[], t: (key: string) => string): ResolvedNavItem[] {
+  return items.map((item) => toResolved(item, t));
+}
+
 export function resolvePlayerCoreTabs(t: (key: string) => string): ResolvedNavItem[] {
-  return PLAYER_CORE_TABS.map((item: PlayerCoreTabDef) => ({
-    id: item.id,
-    label: resolveLabel(item.label, t),
-    icon: item.icon,
-    path: item.path,
-  }));
+  const ctx: NavFilterContext = { can: () => true, flags: {}, isSeller: true };
+  return projectPlayerCoreTabs(PLAYER_CORE_PIPELINE(PLAYER_CORE_TABS, ctx), t);
 }
 
 export function resolvePlayerMoreItems(t: (key: string) => string, opts: PlayerMoreOptions): ResolvedNavItem[] {
   const { isSeller, chatEnabled, can } = opts;
-  const flags: Record<string, boolean> = { 'community.chat_enabled': chatEnabled };
-  return PLAYER_MORE_ITEMS.filter((item) => !item.sellerOnly || isSeller)
-    .map((item: PlayerMoreItemDef) => ({
-      id: item.id,
-      label: resolveLabel(item.label, t),
-      icon: item.icon,
-      path: item.path,
-      ...(item.permissionKey !== undefined ? { permissionKey: item.permissionKey } : {}),
-      ...(item.featureFlag !== undefined ? { featureFlag: item.featureFlag } : {}),
-    }))
-    .filter((item) => {
-      if (item.permissionKey && !can(item.permissionKey)) return false;
-      if (item.featureFlag && !flags[item.featureFlag]) return false;
-      return true;
-    });
+  const ctx: NavFilterContext = { can, flags: { 'community.chat_enabled': chatEnabled }, isSeller };
+  return projectPlayerMoreItems(PLAYER_MORE_PIPELINE(PLAYER_MORE_ITEMS, ctx), t);
 }
