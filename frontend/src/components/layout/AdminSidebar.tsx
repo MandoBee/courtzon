@@ -18,7 +18,7 @@ interface NavItem {
   children?: NavItem[];
 }
 
-function buildNavItems(t: (key: string) => string, can: (perm: string) => boolean, flag: (key: string) => boolean, savedLayout?: Map<string | null, string[]>): NavItem[] {
+export function buildNavItems(t: (key: string) => string, can: (perm: string) => boolean, flag: (key: string) => boolean, savedLayout?: Map<string | null, string[]>): NavItem[] {
   const allItems: NavItem[] = [
     { label: t('admin.sidebar.dashboard'), icon: '📊', path: '/admin', permissionKey: 'sidebar.dashboard' },
     { label: t('admin.sidebar.reports'), icon: '📈', path: '/admin/reports', permissionKey: 'sidebar.reports' },

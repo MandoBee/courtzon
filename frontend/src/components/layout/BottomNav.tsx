@@ -9,34 +9,35 @@ import { useHaptics } from '../../hooks/useHaptics';
 import api from '../../services/api';
 import { Modal } from '../ui/Modal';
 
-export default function BottomNav() {
-  const location = useLocation();
-  const user = useAuthStore((s) => s.user);
-  const { can } = useCan();
-  const chatEnabled = useFeatureFlag('community.chat_enabled');
-  const { tap } = useHaptics();
-  const { t } = useTranslation();
-  const [moreOpen, setMoreOpen] = useState(false);
+export interface PlayerCoreTab {
+  label: string;
+  icon: string;
+  path: string;
+}
 
-  const isSeller = user && user.isSeller;
+export interface PlayerMoreItem {
+  label: string;
+  icon: string;
+  path: string;
+  perm?: string;
+  flag?: boolean;
+  show?: boolean;
+}
 
-  const { data: cart } = useQuery({
-    queryKey: ['mp-cart'],
-    queryFn: () => api.get('/marketplace/cart').then((r) => r.data),
-    staleTime: 30000,
-  });
-
-  const cartCount = cart?.items?.length || 0;
-
-  const isPath = (p: string) => (p === '/app' ? location.pathname === '/app' || location.pathname === '/' : location.pathname === p);
-
-  const coreTabs = [
+export function buildPlayerCoreTabs(t: (key: string) => string): PlayerCoreTab[] {
+  return [
     { label: t('nav.home'), icon: '🏠', path: '/app' },
     { label: t('nav.bookings'), icon: '📅', path: '/bookings' },
-    { label: t('nav.marketplace'), icon: '🛒', path: '/marketplace', badgeCount: cartCount },
+    { label: t('nav.marketplace'), icon: '🛒', path: '/marketplace' },
   ];
+}
 
-  const moreItems: { label: string; icon: string; path: string; perm?: string; flag?: boolean; show?: boolean }[] = [
+export function buildPlayerMoreItems(
+  t: (key: string) => string,
+  opts: { isSeller: boolean; chatEnabled: boolean },
+): PlayerMoreItem[] {
+  const { isSeller, chatEnabled } = opts;
+  return [
     { label: t('nav.matches'), icon: '🎯', path: '/matches' },
     { label: t('nav.coaches'), icon: '🏆', path: '/coaches', perm: 'coaches.view' },
     { label: t('nav.tournaments'), icon: '🥇', path: '/tournaments', perm: 'tournaments.view' },
@@ -53,7 +54,36 @@ export default function BottomNav() {
     { label: t('nav.notifications'), icon: '🔔', path: '/notifications' },
     ...(isSeller ? [{ label: t('nav.my_shop'), icon: '🏪', path: '/marketplace/seller' }] : []),
   ];
-  const visibleMore = moreItems.filter((i) => (i.show === undefined || i.show) && (!i.perm || can(i.perm)) && (i.flag === undefined || i.flag));
+}
+
+export function filterPlayerMoreItems(items: PlayerMoreItem[], can: (perm: string) => boolean): PlayerMoreItem[] {
+  return items.filter((i) => (i.show === undefined || i.show) && (!i.perm || can(i.perm)) && (i.flag === undefined || i.flag));
+}
+
+export default function BottomNav() {
+  const location = useLocation();
+  const user = useAuthStore((s) => s.user);
+  const { can } = useCan();
+  const chatEnabled = useFeatureFlag('community.chat_enabled');
+  const { tap } = useHaptics();
+  const { t } = useTranslation();
+  const [moreOpen, setMoreOpen] = useState(false);
+
+  const isSeller = !!(user && user.isSeller);
+
+  const { data: cart } = useQuery({
+    queryKey: ['mp-cart'],
+    queryFn: () => api.get('/marketplace/cart').then((r) => r.data),
+    staleTime: 30000,
+  });
+
+  const cartCount = cart?.items?.length || 0;
+
+  const isPath = (p: string) => (p === '/app' ? location.pathname === '/app' || location.pathname === '/' : location.pathname === p);
+
+  const coreTabs = buildPlayerCoreTabs(t).map((tab) => (tab.path === '/marketplace' ? { ...tab, badgeCount: cartCount } : tab));
+  const moreItems = buildPlayerMoreItems(t, { isSeller, chatEnabled });
+  const visibleMore = filterPlayerMoreItems(moreItems, can);
   const morePaths = visibleMore.map((i) => i.path);
   const moreActive = morePaths.some((p) => location.pathname === p);
 
