@@ -166,6 +166,15 @@ describe('Phase 1 parity gate — admin sidebar (buildNavItems vs Navigation Reg
       'nav.admin.inventory',
     ]);
   });
+
+  it('Coaching domain contains exactly 2 modules: Academy → Coaches', () => {
+    const nav = resolveAdminNav(enT, allCan, allFlags);
+    const coaching = nav.find((d) => d.label === 'Coaching');
+    expect(coaching?.children?.map((c) => c.id)).toEqual([
+      'nav.admin.academy',
+      'nav.admin.coaches',
+    ]);
+  });
 });
 
 describe('Phase 2-a saved-layout resolution (nav.admin.* ids)', () => {
