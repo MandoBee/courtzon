@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useSearchStore } from './SearchProvider';
 import api from '../../services/api';
@@ -6,12 +6,7 @@ import EntityPreview from './EntityPreview';
 import { useCan } from '../../hooks/useCan';
 import { useTranslation } from '../../i18n';
 import { useFeatureFlagsStore } from '../../store/feature-flags.store';
-import {
-  resolveAdminNav,
-  buildAdminSearchCommands,
-  matchNavSearchCommands,
-  LEGACY_NAV_COMMANDS,
-} from '../../navigation';
+import { matchNavSearchCommands, LEGACY_NAV_COMMANDS } from '../../navigation/search';
 
 export default function CommandPalette() {
   const navigate = useNavigate();
@@ -24,10 +19,18 @@ export default function CommandPalette() {
   const { t } = useTranslation();
   const flags = useFeatureFlagsStore((s) => s.flags);
 
-  const adminCommands = useMemo(
-    () => buildAdminSearchCommands(resolveAdminNav(t, can, (key) => !!flags[key])),
-    [t, can, flags],
-  );
+  const [adminCommands, setAdminCommands] = useState<any[]>([]);
+  const [searchModule, setSearchModule] = useState<any>(null);
+
+  useEffect(() => {
+    if (!isOpen || searchModule) return;
+    import('./adminSearch').then(setSearchModule).catch(() => {});
+  }, [isOpen, searchModule]);
+
+  useEffect(() => {
+    if (!searchModule) return;
+    setAdminCommands(searchModule.buildAdminCommands(t, can, (key: string) => !!flags[key]));
+  }, [searchModule, t, can, flags]);
 
   useEffect(() => {
     if (isOpen) setTimeout(() => inputRef.current?.focus(), 50);

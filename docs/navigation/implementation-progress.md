@@ -316,3 +316,40 @@ Definitions: Nav IDs = immutable ids in migrated shells (admin 120 + org 23 + co
 | **Dependencies** | `components/layout/BottomNav.tsx` (exports `buildPlayerCoreTabs`, `buildPlayerMoreItems`, `filterPlayerMoreItems` used by parity; the component also renders More sheet, seller shop link, chat item); player registry already extracted (`PLAYER_CORE_TABS`, `PLAYER_MORE_ITEMS`) with generic `nav.*` ids; 18 player nodes. | Confirmed; legacy helpers frozen into `parity/legacy/player-nav.ts`, `BottomNav.tsx` now renders registry resolvers only. |
 | **Expected risks** | (1) **id namespace gap**: player ids are generic `nav.home`, `nav.bookings`, `nav.matches`… — not `nav.player.*`. Normalize to `nav.player.*` during migration (no persisted player consumer yet → safe, consistent with coach/referee normalization). (2) `sellerOnly` is a **context-gating** pattern (not RBAC) — first of its kind; must be preserved exactly. (3) `community.chat_enabled` feature flag + `permissionKey` on the same item — first combined flag+RBAC node outside admin. (4) `BottomNav.tsx` is large (mobile nav, More sheet, haptics, notifications badge) — freeze must capture the two-tier filtered output, not the whole component. (5) AppLayout uses BottomNav; no saved layouts → no NC-001/NC-004 exposure. | All confirmed; id namespace normalized to `nav.player.*` (18 ids), seller stage preserves `sellerOnly` gating, chat flag gated via pipeline, freeze captured the two-tier filtered output, no cleanup exposure. |
 | **Estimated validation scope** | Parity: core across 3 translation modes; More items across isSeller × chatEnabled × can combinations (existing exhaustive loop); registry integrity (namespace `nav.player.*`, 3+15 ids, unique); full suite, build, ci-validate. | Done — 53/53 parity, 63/63 full suite, build PASS, ci-validate 222 baseline unchanged. +10 new tests (pipeline determinism, stage independence, consumer-agnostic stages, resolver≡pipeline composition proof, player id-key maps, namespace integrity). |
+
+---
+
+## 14. Commit 12 Regression Fix — Main-Bundle Navigation Barrel Deferral
+
+**Discovery:** Live UAT on Hostinger (https://courtzon.cloud/admin) revealed an infinite loading spinner on `/admin` after Commit 12 deployment. Investigation confirmed the regression was reproducible on `/login` in a fresh anonymous session (CSP-violating inline script was pre-existing and NOT causal; `/auth/refresh` 401 expected in fresh sessions and NOT causal).
+
+**Root Cause:** `CommandPalette.tsx` (mounted at application root, main bundle) eagerly imported `{ resolveAdminNav, buildAdminSearchCommands, matchNavSearchCommands, LEGACY_NAV_COMMANDS } from '../../navigation'`. Combined with the pre-existing `BottomNav.tsx` barrel import (`resolvePlayerCoreTabs`, `resolvePlayerMoreItems`), the double barrel import changed the Vite/rolldown module graph initialization order such that React's `Suspense`/`lazy()` pipeline could not resolve ANY lazy route — all routes displayed the `PageLoader` spinner forever. React's Suspense fiber showed `retryLane: 0` while the fallback was displayed, meaning React was not tracking any pending lazy promise. Manual `import()` of each chunk resolved correctly; all chunks loaded HTTP 200; zero runtime exceptions; no unhandled rejections.
+
+**Bisect Evidence:**
+
+| Build | Result |
+|-------|--------|
+| `3b3bb79` (pre-C12, local) | `/login` renders |
+| `457458f` (C12 regression, local) | PageLoader spinner forever |
+| `457458f` with CommandPalette reverted to pre-C12 | `/login` renders |
+| Fixed build | `/login` renders |
+
+**Fix:** Created `frontend/src/components/search/adminSearch.ts` — a dynamic-only module containing `buildAdminCommands(t, can, flag)` which imports `resolveAdminNav` + `buildAdminSearchCommands` from the navigation barrel. CommandPalette now:
+1. Statically imports `matchNavSearchCommands` + `LEGACY_NAV_COMMANDS` from `../../navigation/search` directly (lightweight; only `./types` dependency, no registries).
+2. Dynamically imports `./adminSearch` via `import()` when `isOpen` becomes true (the navigation barrel is deferred to a separate chunk).
+3. Computes `adminCommands` state from the loaded module via a `useEffect`.
+
+**Architecture Preserved:** The Navigation Registry remains the single source of truth. `resolveAdminNav(t, can, flag)` is still called (deferred behind the dynamic import). No hardcoded navigation tree, no duplicate definitions, no role-based authorization re-introduced. Permission filtering (via `can()`), feature flag filtering (via `useFeatureFlagsStore`), and domain grouping remain identical. `LEGACY_NAV_COMMANDS` preserved verbatim.
+
+**Files Changed:**
+- `frontend/src/components/search/adminSearch.ts` (NEW — dynamic module)
+- `frontend/src/components/search/CommandPalette.tsx` (imports refactored, dynamic import added)
+- `docs/navigation/ia-implementation-log.md` (regression entry)
+- `docs/navigation/implementation-progress.md` (this section)
+
+**Verification:**
+- `npm run build`: PASS (built in 6.13s, 572 precache entries)
+- `npm test`: 115/115 PASS (baseline unchanged)
+- `node scripts/ci-validate.js`: 222 errors (baseline unchanged, all pre-existing backend-level)
+- Local runtime: `/login` renders landing page with header, nav, footer, sign-in form
+- Bundle inspection: `adminSearch-BSr2s28Q.js` chunk (116 bytes) contains the deferred barrel import; main bundle contains only the lightweight `search.ts` symbols
