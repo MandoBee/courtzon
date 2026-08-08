@@ -212,6 +212,144 @@ describe('Phase 1 parity gate — admin sidebar (buildNavItems vs Navigation Reg
       'sidebar.withdrawals-queue',
     ]);
   });
+
+  it('Platform domain contains exactly 7 modules in correct order', () => {
+    const nav = resolveAdminNav(enT, allCan, allFlags);
+    const platform = nav.find((d) => d.label === 'Platform');
+    expect(platform?.children?.map((c) => c.id)).toEqual([
+      'nav.admin.security',
+      'nav.admin.notifications',
+      'nav.admin.integration',
+      'nav.admin.webhooks',
+      'nav.admin.mobile',
+      'nav.admin.admin-settings',
+      'nav.admin.bi',
+    ]);
+  });
+
+  it('Platform domain path points to its first child (Security)', () => {
+    const nav = resolveAdminNav(enT, allCan, allFlags);
+    const platform = nav.find((d) => d.label === 'Platform');
+    expect(platform?.path).toBe('/admin/security');
+  });
+
+  it('Admin Settings section contains exactly 3 Platform-owned children in order', () => {
+    const nav = resolveAdminNav(enT, allCan, allFlags);
+    const platform = nav.find((d) => d.label === 'Platform');
+    const settings = platform?.children?.find((c) => c.id === 'nav.admin.admin-settings');
+    expect(settings?.children?.map((c) => c.id)).toEqual([
+      'nav.admin.app-settings',
+      'nav.admin.countries',
+      'nav.admin.payment-methods',
+    ]);
+  });
+
+  it('Security section preserves all 11 nested children in order', () => {
+    const nav = resolveAdminNav(enT, allCan, allFlags);
+    const platform = nav.find((d) => d.label === 'Platform');
+    const security = platform?.children?.find((c) => c.id === 'nav.admin.security');
+    expect(security?.children?.map((c) => c.id)).toEqual([
+      'nav.admin.security.landing',
+      'nav.admin.security-sessions',
+      'nav.admin.security-failed-logins',
+      'nav.admin.security-uploads',
+      'nav.admin.security-system-health',
+      'nav.admin.system-settings',
+      'nav.admin.membership-view',
+      'nav.admin.audit',
+      'nav.admin.feature-flags',
+      'nav.admin.support-tickets',
+      'nav.admin.queue',
+    ]);
+  });
+
+  it('permission-filtered: granting only Platform permissions renders only the Platform domain', () => {
+    const nav = resolveAdminNav(
+      enT,
+      (p) => p === 'sidebar.security-dashboard' || p === 'notifications.broadcast' || p === 'sidebar.bi-dashboard' || p === 'sidebar.bi-observability',
+      allFlags,
+    );
+    expect(nav.map((d) => d.label)).toEqual(['Platform']);
+    expect(nav[0].children?.map((c) => c.id)).toEqual(['nav.admin.security', 'nav.admin.notifications', 'nav.admin.bi']);
+  });
+
+  it('permission-filtered: no Platform permissions granted hides the Platform domain entirely (empty state)', () => {
+    const nav = resolveAdminNav(enT, (p) => p === 'sidebar.users', allFlags);
+    expect(nav.map((d) => d.label)).toEqual(['People']);
+    expect(nav.some((d) => d.label === 'Platform')).toBe(false);
+  });
+
+  it('feature flags: Platform sections are not feature-flag-gated (flags do not apply to Platform)', () => {
+    const platform = ADMIN_NAV.find((d) => d.id === 'nav.admin.domain.platform');
+    expect(platform).toBeDefined();
+    const walk = (items: NavDefinition[]): boolean =>
+      items.every((i) => !i.requiredFlag && !i.featureFlag && (!i.children || walk(i.children)));
+    expect(walk(platform!.children ?? [])).toBe(true);
+  });
+
+  it('saved layout: within-domain order for Platform sections is honored recursively', () => {
+    const layout = new Map<string | null, string[]>();
+    layout.set('nav.admin.domain.platform', ['sidebar.mobile', 'sidebar.bi', 'sidebar.security-dashboard', 'sidebar.notifications']);
+    const nav = resolveAdminNav(enT, allCan, allFlags, layout);
+    const platform = nav.find((d) => d.label === 'Platform');
+    expect(platform?.children?.map((c) => c.permissionKey)).toEqual([
+      'sidebar.mobile',
+      'sidebar.bi',
+      'sidebar.security-dashboard',
+      'sidebar.notifications',
+      'sidebar.integration',
+      'sidebar.webhooks',
+      'sidebar.admin-settings',
+    ]);
+  });
+
+  it('saved layout: legacy key compatibility for nested Platform sections (sidebar.security-dashboard)', () => {
+    const layout = new Map<string | null, string[]>();
+    layout.set('sidebar.security-dashboard', ['sidebar.failed-logins', 'sidebar.audit', 'sidebar.active-sessions']);
+    const nav = resolveAdminNav(enT, allCan, allFlags, layout);
+    const platform = nav.find((d) => d.label === 'Platform');
+    const security = platform?.children?.find((c) => c.id === 'nav.admin.security');
+    expect(security?.children?.map((c) => c.permissionKey).slice(0, 3)).toEqual([
+      'sidebar.failed-logins',
+      'sidebar.audit',
+      'sidebar.active-sessions',
+    ]);
+  });
+
+  it('saved layout: stale keys are dropped without orphaning any Platform module', () => {
+    const layout = new Map<string | null, string[]>();
+    layout.set('nav.admin.domain.platform', ['stale.key.one', 'sidebar.webhooks', 'sidebar.integration']);
+    const nav = resolveAdminNav(enT, allCan, allFlags, layout);
+    const platform = nav.find((d) => d.label === 'Platform');
+    expect(platform?.children?.map((c) => c.id)).toEqual([
+      'nav.admin.webhooks',
+      'nav.admin.integration',
+      'nav.admin.security',
+      'nav.admin.notifications',
+      'nav.admin.mobile',
+      'nav.admin.admin-settings',
+      'nav.admin.bi',
+    ]);
+  });
+
+  it('every §1.8 Platform module resolves under the Platform domain with immutable ids intact', () => {
+    const nav = resolveAdminNav(enT, allCan, allFlags);
+    const platform = nav.find((d) => d.label === 'Platform');
+    const ids = platform?.children?.map((c) => c.id) ?? [];
+    for (const expected of [
+      'nav.admin.security',
+      'nav.admin.notifications',
+      'nav.admin.integration',
+      'nav.admin.webhooks',
+      'nav.admin.mobile',
+      'nav.admin.admin-settings',
+      'nav.admin.bi',
+    ]) {
+      expect(ids).toContain(expected);
+    }
+    const flat = collectIds(ADMIN_NAV);
+    expect(new Set(flat).size).toBe(flat.length);
+  });
 });
 
 describe('Phase 2-a saved-layout resolution (nav.admin.* ids)', () => {
