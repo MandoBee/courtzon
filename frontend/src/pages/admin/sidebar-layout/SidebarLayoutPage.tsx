@@ -20,7 +20,14 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { useToast } from '../../../components/ui/Toast';
 import { useTranslation } from '../../../i18n';
-import { resolveWorkspaceNav, type WorkspaceNode } from '../../../navigation';
+import {
+  resolveWorkspaceNav,
+  buildContainerKeys,
+  buildDefaultContainers,
+  serializeContainers,
+  mergeSavedLayout,
+  type WorkspaceNode,
+} from '../../../navigation';
 import api from '../../../services/api';
 
 interface DisplayItem {
@@ -40,35 +47,6 @@ function buildItemMap(items: WorkspaceNode[]): Map<string, DisplayItem> {
     }
   }
   walk(items);
-  return map;
-}
-
-function buildContainerKeys(items: WorkspaceNode[]): Set<string> {
-  const keys = new Set<string>();
-  function walk(list: WorkspaceNode[]) {
-    for (const it of list) {
-      if (it.children && it.children.length > 0) {
-        keys.add(it.permissionKey);
-        walk(it.children);
-      }
-    }
-  }
-  walk(items);
-  return keys;
-}
-
-function buildDefaultContainers(items: WorkspaceNode[]): Map<string | null, string[]> {
-  const map = new Map<string | null, string[]>();
-  function walk(list: WorkspaceNode[], parentKey: string | null) {
-    const keys = list.map((it: WorkspaceNode) => it.permissionKey);
-    map.set(parentKey, keys);
-    for (const it of list) {
-      if (it.children && it.children.length > 0) {
-        walk(it.children, it.permissionKey);
-      }
-    }
-  }
-  walk(items, null);
   return map;
 }
 
@@ -234,23 +212,8 @@ export default function SidebarLayoutPage() {
     if (hasLoaded.current) return;
     if (!layoutData?.data?.length) return;
     hasLoaded.current = true;
-    const map = new Map<string | null, string[]>();
-    for (const entry of layoutData.data) {
-      const existing = (entry.orderedKeys as string[]).filter((k: any) => itemMap.has(k));
-      if (existing.length) map.set(entry.parentKey, existing);
-    }
-    if (map.size === 0) return;
-    setContainers((prev) => {
-      const next = new Map<string | null, string[]>(prev);
-      for (const [parentKey, savedKeys] of map) {
-        const defaults = prev.get(parentKey) ?? [];
-        const seen = new Set<string>();
-        const ordered = savedKeys.filter((k: string) => defaults.includes(k) && !seen.has(k) && !!seen.add(k));
-        const remaining = defaults.filter((k) => !savedKeys.includes(k));
-        next.set(parentKey, [...ordered, ...remaining]);
-      }
-      return next;
-    });
+    const validKeys = new Set(itemMap.keys());
+    setContainers((prev) => mergeSavedLayout(prev, layoutData.data, validKeys));
   }, [layoutData, itemMap, defaultContainers]);
 
   const sensors = useSensors(
@@ -309,10 +272,7 @@ export default function SidebarLayoutPage() {
 
   const handleSave = async () => {
     try {
-      const layout = Array.from(containers.entries()).map(([parentKey, orderedKeys]) => ({
-        parentKey,
-        orderedKeys,
-      }));
+      const layout = serializeContainers(containers);
       await api.put('/sidebar/layout', { layout });
       queryClient.invalidateQueries({ queryKey: ['sidebar-layout'] });
       showToast('Sidebar layout saved');

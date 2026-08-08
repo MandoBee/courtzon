@@ -46,6 +46,10 @@ import {
   resolvePlayerMoreItems,
   resolveWorkspaceNav,
   resolveLabel,
+  buildDefaultContainers,
+  serializeContainers,
+  mergeSavedLayout,
+  type WorkspaceLayoutRow,
   type ResolvedNavItem,
   type NavDefinition,
   type NavFilterContext,
@@ -924,6 +928,108 @@ describe('Consumer 6 — Workspace Registry integration (drift resolved)', () =>
   it('workspace root count matches ADMIN_NAV root', () => {
     expect(countNodes(registryWorkspace)).toBe(128);
     expect(registryWorkspace.length).toBe(ADMIN_NAV.length);
+  });
+});
+
+describe('Commit 10 — Workspace DnD round-trip (saved layout compatibility)', () => {
+  function workspaceKeys(nodes: WorkspaceNode[]): Set<string> {
+    const keys = new Set<string>();
+    const walk = (list: WorkspaceNode[]) => {
+      for (const n of list) {
+        keys.add(n.permissionKey);
+        if (n.children) walk(n.children);
+      }
+    };
+    walk(nodes);
+    return keys;
+  }
+
+  it('DnD editor shows all 8 domains as sortable containers', () => {
+    const ws = resolveWorkspaceNav(enT);
+    const containers = buildDefaultContainers(ws);
+    const root = containers.get(null);
+    expect(root).toHaveLength(8);
+    expect(root).toEqual(ws.map((d) => d.permissionKey));
+    for (const domain of ws) {
+      expect(containers.has(domain.permissionKey)).toBe(true);
+    }
+    expect(containers.size).toBeGreaterThan(8);
+  });
+
+  it('round-trip: DnD reorder within a domain survives save → load → resolveAdminNav', () => {
+    const ws = resolveWorkspaceNav(enT);
+    const defaults = buildDefaultContainers(ws);
+    const peopleKey = 'nav.admin.domain.people';
+    const peopleChildren = defaults.get(peopleKey) ?? [];
+    expect(peopleChildren.length).toBeGreaterThan(1);
+    const reordered = [peopleChildren[peopleChildren.length - 1], ...peopleChildren.slice(0, -1)];
+    const containers = new Map<string | null, string[]>(defaults);
+    containers.set(peopleKey, reordered);
+
+    const rows = serializeContainers(containers);
+    const savedLayout = new Map<string | null, string[]>();
+    for (const row of rows) savedLayout.set(row.parentKey, row.orderedKeys);
+
+    const nav = resolveAdminNav(enT, allCan, allFlags, savedLayout);
+    const people = nav.find((d) => d.id === 'nav.admin.domain.people');
+    expect(people).toBeDefined();
+    expect(people?.children?.map((c) => c.permissionKey ?? c.id)).toEqual(reordered);
+    expect(nav.length).toBe(8);
+  });
+
+  it('round-trip: DnD editor load path (mergeSavedLayout) restores the reorder', () => {
+    const ws = resolveWorkspaceNav(enT);
+    const defaults = buildDefaultContainers(ws);
+    const validKeys = workspaceKeys(ws);
+    const peopleKey = 'nav.admin.domain.people';
+    const peopleChildren = defaults.get(peopleKey) ?? [];
+    const reordered = [peopleChildren[peopleChildren.length - 1], ...peopleChildren.slice(0, -1)];
+    const containers = new Map<string | null, string[]>(defaults);
+    containers.set(peopleKey, reordered);
+    const rows = serializeContainers(containers);
+
+    const merged = mergeSavedLayout(defaults, rows, validKeys);
+    expect(merged.get(peopleKey)).toEqual(reordered);
+    expect(merged.get(null)).toEqual(ws.map((d) => d.permissionKey));
+  });
+
+  it('round-trip: stale keys are dropped on load without orphaning any module', () => {
+    const ws = resolveWorkspaceNav(enT);
+    const defaults = buildDefaultContainers(ws);
+    const validKeys = workspaceKeys(ws);
+    const peopleKey = 'nav.admin.domain.people';
+    const peopleChildren = defaults.get(peopleKey) ?? [];
+    const rows: WorkspaceLayoutRow[] = [
+      { parentKey: peopleKey, orderedKeys: ['stale.key', peopleChildren[0], peopleChildren[1]] },
+    ];
+    const merged = mergeSavedLayout(defaults, rows, validKeys);
+    expect(merged.get(peopleKey)).toEqual([
+      peopleChildren[0],
+      peopleChildren[1],
+      ...peopleChildren.slice(2),
+    ]);
+  });
+
+  it('saved layout compatibility: legacy permission-key rows round-trip through the editor', () => {
+    const ws = resolveWorkspaceNav(enT);
+    const defaults = buildDefaultContainers(ws);
+    const validKeys = workspaceKeys(ws);
+    const rows: WorkspaceLayoutRow[] = [
+      {
+        parentKey: 'sidebar.organisations',
+        orderedKeys: ['sidebar.organisation-types', 'sidebar.organisations', 'sidebar.branch-access'],
+      },
+    ];
+    const merged = mergeSavedLayout(defaults, rows, validKeys);
+    const savedLayout = new Map<string | null, string[]>(merged);
+    const nav = resolveAdminNav(enT, allCan, allFlags, savedLayout);
+    const people = nav.find((d) => d.label === 'People');
+    const orgSection = people?.children?.find((c) => c.id === 'nav.admin.organisations');
+    expect(orgSection?.children?.map((c) => c.permissionKey)).toEqual([
+      'sidebar.organisation-types',
+      'sidebar.organisations',
+      'sidebar.branch-access',
+    ]);
   });
 });
 

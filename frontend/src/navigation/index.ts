@@ -2,6 +2,13 @@ export * from './types';
 export { T, LIT, COMPOSITE, resolveLabel } from './labels';
 export { buildNavIdKeyMaps, type NavIdKeyMaps } from './id-key';
 export {
+  buildContainerKeys,
+  buildDefaultContainers,
+  serializeContainers,
+  mergeSavedLayout,
+  type WorkspaceLayoutRow,
+} from './workspace-layout';
+export {
   composeFilters,
   sellerFilter,
   permissionFilter,
