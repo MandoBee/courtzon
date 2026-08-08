@@ -356,6 +356,64 @@ describe('Phase 1 parity gate — admin sidebar (buildNavItems vs Navigation Reg
   });
 });
 
+describe('Commit 11 — Sidebar verification (domain-level permission sets + marketplace flag toggle)', () => {
+  const DOMAIN_LABELS = ['Dashboard', 'People', 'Facilities', 'Coaching', 'Competitions', 'Commerce', 'Finance', 'Platform'];
+
+  const collectDomainKeys = (domain: NavDefinition): string[] =>
+    Array.from(new Set(collectPermissionKeys([domain])));
+
+  const domainKeySets = (): string[][] => ADMIN_NAV.map((d) => collectDomainKeys(d));
+
+  it('permission-filtered: granting only one domain\'s permission set renders exactly that domain (all 8)', () => {
+    const keySets = domainKeySets();
+    keySets.forEach((keys, i) => {
+      expect(keys.length).toBeGreaterThan(0);
+      const can = (p: string) => keys.includes(p);
+      const nav = resolveAdminNav(enT, can, allFlags);
+      expect(nav.map((d) => d.label)).toEqual([DOMAIN_LABELS[i]]);
+      expect(nav[0].children?.length).toBeGreaterThan(0);
+    });
+  });
+
+  it('permission-filtered: revoking every key of one domain removes exactly that domain (7 remain)', () => {
+    const keySets = domainKeySets();
+    keySets.forEach((keys, i) => {
+      const can = (p: string) => !keys.includes(p);
+      const nav = resolveAdminNav(enT, can, allFlags);
+      const labels = nav.map((d) => d.label);
+      expect(labels).not.toContain(DOMAIN_LABELS[i]);
+      expect(labels.length).toBe(7);
+    });
+  });
+
+  it('domain permission sets are disjoint — no sidebar key is shared across two domains', () => {
+    const keySets = domainKeySets();
+    const owner = new Map<string, string>();
+    keySets.forEach((keys, i) => {
+      for (const k of keys) {
+        if (owner.has(k) && owner.get(k) !== DOMAIN_LABELS[i]) {
+          expect.unreachable(`permission key ${k} is shared by ${owner.get(k)} and ${DOMAIN_LABELS[i]}`);
+        }
+        owner.set(k, DOMAIN_LABELS[i]);
+      }
+    });
+    expect(owner.size).toBeGreaterThan(0);
+  });
+
+  it('feature-flag: marketplace flag toggle ON shows Marketplace, OFF hides it (Commerce remains), re-ON restores', () => {
+    const on = resolveAdminNav(enT, allCan, allFlags);
+    const off = resolveAdminNav(enT, allCan, (f) => f !== 'app.marketplace_enabled');
+    const reOn = resolveAdminNav(enT, allCan, allFlags);
+    const commerceOn = on.find((d) => d.label === 'Commerce');
+    const commerceOff = off.find((d) => d.label === 'Commerce');
+    const commerceReOn = reOn.find((d) => d.label === 'Commerce');
+    expect(commerceOn?.children?.some((c) => c.id === 'nav.admin.marketplace')).toBe(true);
+    expect(commerceOff?.children?.some((c) => c.id === 'nav.admin.marketplace')).toBe(false);
+    expect(commerceOff?.children?.some((c) => c.id === 'nav.admin.pricing')).toBe(true);
+    expect(commerceReOn?.children?.some((c) => c.id === 'nav.admin.marketplace')).toBe(true);
+  });
+});
+
 describe('Phase 2-a saved-layout resolution (nav.admin.* ids)', () => {
   it('resolves with a saved layout expressed using legacy permission keys', () => {
     const layout = new Map<string | null, string[]>();
