@@ -1,25 +1,17 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useSearchStore } from './SearchProvider';
-import { useAuthStore } from '../../store/auth.store';
 import api from '../../services/api';
 import EntityPreview from './EntityPreview';
-
-const NAV_COMMANDS = [
-  { id: 'nav-book', label: 'Book a Court', icon: '🎾', path: '/browse', group: 'Navigation' },
-  { id: 'nav-marketplace', label: 'Marketplace', icon: '🛒', path: '/marketplace', group: 'Navigation' },
-  { id: 'nav-bookings', label: 'My Bookings', icon: '📅', path: '/bookings', group: 'Navigation' },
-  { id: 'nav-membership', label: 'Membership & Loyalty', icon: '⭐', path: '/membership', group: 'Navigation' },
-  { id: 'nav-tournaments', label: 'Tournaments', icon: '🏆', path: '/tournaments', group: 'Navigation' },
-  { id: 'nav-academies', label: 'Academies', icon: '🎓', path: '/academies', group: 'Navigation' },
-  { id: 'nav-coaches', label: 'Coaches', icon: '👨‍🏫', path: '/coaches', group: 'Navigation' },
-  { id: 'nav-notifications', label: 'Notifications', icon: '🔔', path: '/notifications', group: 'Navigation' },
-  { id: 'nav-profile', label: 'Profile', icon: '👤', path: '/profile', group: 'Navigation' },
-  { id: 'nav-admin', label: 'Admin Dashboard', icon: '📊', path: '/admin', group: 'Admin', requires: 'super_admin' },
-  { id: 'nav-reception', label: 'Reception Desk', icon: '🏪', path: '/admin/reception', group: 'Admin' },
-  { id: 'nav-finance', label: 'Finance Dashboard', icon: '💰', path: '/admin/finance', group: 'Admin' },
-  { id: 'nav-settlements', label: 'Settlements', icon: '💳', path: '/admin/settlements', group: 'Admin' },
-];
+import { useCan } from '../../hooks/useCan';
+import { useTranslation } from '../../i18n';
+import { useFeatureFlagsStore } from '../../store/feature-flags.store';
+import {
+  resolveAdminNav,
+  buildAdminSearchCommands,
+  matchNavSearchCommands,
+  LEGACY_NAV_COMMANDS,
+} from '../../navigation';
 
 export default function CommandPalette() {
   const navigate = useNavigate();
@@ -28,7 +20,14 @@ export default function CommandPalette() {
   const [selectedIdx, setSelectedIdx] = useState(0);
   const [previewEntity, setPreviewEntity] = useState<any>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const user = useAuthStore((s) => s.user);
+  const { can } = useCan();
+  const { t } = useTranslation();
+  const flags = useFeatureFlagsStore((s) => s.flags);
+
+  const adminCommands = useMemo(
+    () => buildAdminSearchCommands(resolveAdminNav(t, can, (key) => !!flags[key])),
+    [t, can, flags],
+  );
 
   useEffect(() => {
     if (isOpen) setTimeout(() => inputRef.current?.focus(), 50);
@@ -37,10 +36,7 @@ export default function CommandPalette() {
   const doSearch = useCallback(async (q: string) => {
     if (!q.trim()) { setResults([]); return; }
     const terms = q.toLowerCase();
-    const navMatches = NAV_COMMANDS.filter(c =>
-      (c.label.toLowerCase().includes(terms) || c.id.includes(terms)) &&
-      (!c.requires || user?.roles?.some((r: string) => r === c.requires))
-    );
+    const navMatches = matchNavSearchCommands([...LEGACY_NAV_COMMANDS, ...adminCommands], terms);
 
     let apiResults: any[] = [];
     try {
@@ -59,7 +55,7 @@ export default function CommandPalette() {
     } catch {}
     setResults([...navMatches, ...apiResults]);
     setSelectedIdx(0);
-  }, [user]);
+  }, [adminCommands]);
 
   useEffect(() => { doSearch(query); }, [query, doSearch]);
 
