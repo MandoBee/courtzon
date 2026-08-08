@@ -29,6 +29,13 @@ export {
   PLAYER_LEGACY_KEY_TO_ID,
 } from './player.registry';
 export {
+  buildAdminSearchCommands,
+  matchNavSearchCommands,
+  LEGACY_NAV_COMMANDS,
+  type NavSearchCommand,
+  type AdminSearchCommand,
+} from './search';
+export {
   resolveAdminNav,
   resolveOrgNav,
   resolveCoachNav,

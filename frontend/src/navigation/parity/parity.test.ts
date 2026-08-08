@@ -49,6 +49,9 @@ import {
   buildDefaultContainers,
   serializeContainers,
   mergeSavedLayout,
+  buildAdminSearchCommands,
+  matchNavSearchCommands,
+  LEGACY_NAV_COMMANDS,
   type WorkspaceLayoutRow,
   type ResolvedNavItem,
   type NavDefinition,
@@ -411,6 +414,87 @@ describe('Commit 11 — Sidebar verification (domain-level permission sets + mar
     expect(commerceOff?.children?.some((c) => c.id === 'nav.admin.marketplace')).toBe(false);
     expect(commerceOff?.children?.some((c) => c.id === 'nav.admin.pricing')).toBe(true);
     expect(commerceReOn?.children?.some((c) => c.id === 'nav.admin.marketplace')).toBe(true);
+  });
+});
+
+describe('Commit 12 — Search finds all modules under new domain paths', () => {
+  const adminAll = () => buildAdminSearchCommands(resolveAdminNav(enT, allCan, allFlags));
+  const flattenIds = (items: ResolvedNavItem[]): string[] =>
+    items.flatMap((i) => [i.id, ...(i.children ? flattenIds(i.children) : [])]);
+  const collectIds = (nav: ResolvedNavItem[]): Set<string> => new Set(flattenIds(nav));
+
+  it('search index covers every admin module under the 8 domains', () => {
+    const commands = adminAll();
+    const registryIds = collectIds(resolveAdminNav(enT, allCan, allFlags));
+    const commandIds = new Set(commands.map((c) => c.id));
+    for (const id of registryIds) expect(commandIds.has(id)).toBe(true);
+  });
+
+  it('every admin command carries a nav.admin.* immutable id and its top-level domain id', () => {
+    const commands = adminAll();
+    for (const c of commands) {
+      expect(c.id.startsWith('nav.admin.')).toBe(true);
+      expect(c.domainId.startsWith('nav.admin.domain.')).toBe(true);
+    }
+    const domains = new Set(commands.map((c) => c.domainId));
+    expect(domains.size).toBe(8);
+  });
+
+  it('admin commands are grouped by their domain label', () => {
+    const commands = adminAll();
+    for (const c of commands) {
+      const domain = resolveAdminNav(enT, allCan, allFlags).find((d) => d.id === c.domainId);
+      expect(domain).toBeDefined();
+      expect(c.group).toBe(domain!.label);
+    }
+  });
+
+  it('searching by module label finds the module under its new domain path', () => {
+    const commands = adminAll();
+    const hits = matchNavSearchCommands(commands, 'settlements');
+    expect(hits.some((c) => c.id === 'nav.admin.settlements')).toBe(true);
+    expect(hits.every((c) => c.group === 'Commerce')).toBe(true);
+  });
+
+  it('searching by domain path finds modules under that path', () => {
+    const commands = adminAll();
+    const hits = matchNavSearchCommands(commands, '/admin/security');
+    expect(hits.length).toBeGreaterThan(0);
+    expect(hits.every((c) => c.group === 'Platform')).toBe(true);
+  });
+
+  it('search is permission-gated: only granted modules surface', () => {
+    const commands = buildAdminSearchCommands(resolveAdminNav(enT, (p) => p === 'sidebar.dashboard', allFlags));
+    expect(commands.map((c) => c.id).sort()).toEqual(['nav.admin.dashboard', 'nav.admin.domain.dashboard']);
+  });
+
+  it('search is feature-flag gated: marketplace OFF hides Marketplace but keeps Commerce', () => {
+    const off = buildAdminSearchCommands(resolveAdminNav(enT, allCan, (f) => f !== 'app.marketplace_enabled'));
+    expect(off.some((c) => c.id === 'nav.admin.marketplace')).toBe(false);
+    expect(off.some((c) => c.domainId === 'nav.admin.domain.commerce')).toBe(true);
+  });
+
+  it('search never leaks admin modules to a user with no admin permissions', () => {
+    const commands = buildAdminSearchCommands(resolveAdminNav(enT, noneCan, allFlags));
+    expect(commands.length).toBe(0);
+  });
+
+  it('legacy public nav commands are preserved verbatim for backward compatibility', () => {
+    const ids = LEGACY_NAV_COMMANDS.map((c) => c.id);
+    expect(ids).toEqual([
+      'nav-book', 'nav-marketplace', 'nav-bookings', 'nav-membership',
+      'nav-tournaments', 'nav-academies', 'nav-coaches', 'nav-notifications', 'nav-profile',
+    ]);
+    expect(LEGACY_NAV_COMMANDS.every((c) => c.group === 'Navigation')).toBe(true);
+    expect(LEGACY_NAV_COMMANDS.some((c) => c.id.startsWith('nav-admin'))).toBe(false);
+  });
+
+  it('legacy admin role-checked commands no longer exist as standalone nav commands', () => {
+    const legacy = LEGACY_NAV_COMMANDS.map((c) => c.id);
+    expect(legacy).not.toContain('nav-admin');
+    expect(legacy).not.toContain('nav-reception');
+    expect(legacy).not.toContain('nav-finance');
+    expect(legacy).not.toContain('nav-settlements');
   });
 });
 
