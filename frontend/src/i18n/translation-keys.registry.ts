@@ -824,6 +824,16 @@ export const translationKeysRegistry: TranslationKeyEntry[] = [
   { key: 'admin.sidebar.expand', defaultValue: 'Expand sidebar', moduleSlug: 'admin', elementType: 'tooltip', elementLabel: 'Admin sidebar expand tooltip' },
   { key: 'admin.sidebar.collapse', defaultValue: 'Collapse sidebar', moduleSlug: 'admin', elementType: 'tooltip', elementLabel: 'Admin sidebar collapse tooltip' },
 
+  // ── Admin business domains (IA) ──
+  { key: 'nav.admin.domain.dashboard', defaultValue: 'Dashboard', moduleSlug: 'admin', elementType: 'nav', elementLabel: 'IA business domain — Dashboard' },
+  { key: 'nav.admin.domain.people', defaultValue: 'People', moduleSlug: 'admin', elementType: 'nav', elementLabel: 'IA business domain — People' },
+  { key: 'nav.admin.domain.facilities', defaultValue: 'Facilities', moduleSlug: 'admin', elementType: 'nav', elementLabel: 'IA business domain — Facilities' },
+  { key: 'nav.admin.domain.coaching', defaultValue: 'Coaching', moduleSlug: 'admin', elementType: 'nav', elementLabel: 'IA business domain — Coaching' },
+  { key: 'nav.admin.domain.competitions', defaultValue: 'Competitions', moduleSlug: 'admin', elementType: 'nav', elementLabel: 'IA business domain — Competitions' },
+  { key: 'nav.admin.domain.commerce', defaultValue: 'Commerce', moduleSlug: 'admin', elementType: 'nav', elementLabel: 'IA business domain — Commerce' },
+  { key: 'nav.admin.domain.finance', defaultValue: 'Finance', moduleSlug: 'admin', elementType: 'nav', elementLabel: 'IA business domain — Finance' },
+  { key: 'nav.admin.domain.platform', defaultValue: 'Platform', moduleSlug: 'admin', elementType: 'nav', elementLabel: 'IA business domain — Platform' },
+
   // ── Organisation sidebar ──
   { key: 'organisation.sidebar.dashboard', defaultValue: 'Dashboard', moduleSlug: 'organisation', elementType: 'nav', elementLabel: 'Org sidebar dashboard' },
   { key: 'organisation.sidebar.products', defaultValue: 'Products', moduleSlug: 'organisation', elementType: 'nav', elementLabel: 'Org sidebar products' },
