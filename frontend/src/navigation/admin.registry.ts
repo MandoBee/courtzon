@@ -5,7 +5,7 @@ import { buildNavIdKeyMaps } from './id-key';
 export const ADMIN_NAV: NavDefinition[] = [
   {
     id: 'nav.admin.domain.dashboard',
-    label: LIT('Dashboard'),
+    label: T('nav.admin.domain.dashboard'),
     icon: '📊',
     path: '/admin',
     children: [
@@ -15,7 +15,7 @@ export const ADMIN_NAV: NavDefinition[] = [
   },
   {
     id: 'nav.admin.domain.people',
-    label: LIT('People'),
+    label: T('nav.admin.domain.people'),
     icon: '👥',
     path: '/admin/organisations',
     children: [
@@ -93,7 +93,7 @@ export const ADMIN_NAV: NavDefinition[] = [
   },
   {
     id: 'nav.admin.domain.facilities',
-    label: LIT('Facilities'),
+    label: T('nav.admin.domain.facilities'),
     icon: '🏟️',
     path: '/admin/reception',
     children: [
@@ -120,7 +120,7 @@ export const ADMIN_NAV: NavDefinition[] = [
   },
   {
     id: 'nav.admin.domain.coaching',
-    label: LIT('Coaching'),
+    label: T('nav.admin.domain.coaching'),
     icon: '🎓',
     path: '/admin/academy/dashboard',
     children: [
@@ -143,7 +143,7 @@ export const ADMIN_NAV: NavDefinition[] = [
   },
   {
     id: 'nav.admin.domain.competitions',
-    label: LIT('Competitions'),
+    label: T('nav.admin.domain.competitions'),
     icon: '🏆',
     path: '/admin/league/dashboard',
     children: [
@@ -176,7 +176,7 @@ export const ADMIN_NAV: NavDefinition[] = [
   },
   {
     id: 'nav.admin.domain.commerce',
-    label: LIT('Commerce'),
+    label: T('nav.admin.domain.commerce'),
     icon: '🛒',
     path: '/admin/product-categories',
     children: [
@@ -218,7 +218,7 @@ export const ADMIN_NAV: NavDefinition[] = [
   },
   {
     id: 'nav.admin.domain.finance',
-    label: LIT('Finance'),
+    label: T('nav.admin.domain.finance'),
     icon: '💰',
     path: '/admin/finance',
     children: [
@@ -242,7 +242,7 @@ export const ADMIN_NAV: NavDefinition[] = [
   },
   {
     id: 'nav.admin.domain.platform',
-    label: LIT('Platform'),
+    label: T('nav.admin.domain.platform'),
     icon: '⚙️',
     path: '/admin/security',
     children: [

@@ -1,7 +1,7 @@
 # CourtZon Navigation — Implementation Progress
 
 **Owner:** Platform Engineering
-**Last updated:** 2026-08-07
+**Last updated:** 2026-08-08
 **Spec:** `docs/navigation/nav-spec-v1.0.md` (frozen)
 **Report:** `docs/navigation/phase1-parity-report.md`
 **Blueprint:** `docs/navigation/migration-blueprint.md` (permanent governance)
@@ -22,6 +22,7 @@ This document is the single synchronized record of navigation implementation sta
 | **Phase 2-d** — Referee Navigation migration | ✅ Committed (Consumer 4 — shared-permission-key validation, awaiting architecture review) | (see §4) | 2026-08-07 |
 | **Phase 2-e** — Player Navigation migration | ✅ Committed (Consumer 5 — two-tier More + composition pipeline, awaiting architecture review) | (see §4) | 2026-08-07 |
 | **Phase 2-f** — Workspace migration | ✅ Committed (Consumer 6 — Registry integration, drift resolved) | `d031f33` | 2026-08-07 |
+| **Commit 9** — Domain label localization (EN + AR) | ✅ Committed (translation-only; 8 domain labels `LIT`→`T`, 8 EN keys, 8 AR seed rows, integrity tests) | (see §4) | 2026-08-08 |
 
 > **Navigation Platform: 🟢 CLOSED** — all six consumers migrated. Registry is the single source of truth. No parallel navigation model remains. Completion report: `docs/navigation/completion-report.md`.
 >
@@ -106,6 +107,18 @@ After each approved milestone:
 | 6 | Progress doc updated | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | 7 | Pushed (only after milestone approval) | ⬜ Local only | ⬜ Local only | ⬜ Local only | ⬜ Local only | ⬜ Local only | ⬜ Local only | ⬜ Local only |
 
+### Commit 9 — Domain label localization (EN + AR)
+
+| # | Item | Commit 9 |
+|---|------|----------|
+| 1 | Translation integrity suite (own suite) | ✅ 16/16 |
+| 2 | Full frontend unit suite | ✅ 96/96 (80 baseline + 16 new) |
+| 3 | `npm run build` (tsc -b + vite) | ✅ PASS |
+| 4 | `scripts/ci-validate.js` (222 baseline) | ✅ 222 unchanged (section 4 Translation Registry all PASS) |
+| 5 | Isolated commit hash recorded | (see §4) |
+| 6 | Progress + log docs updated | ✅ |
+| 7 | Pushed | (see §4 / per approval gate) |
+
 ---
 
 ## 5. ADR Log
@@ -142,6 +155,7 @@ After each approved milestone:
 | ADR-028 | 2026-08-07 | **Navigation Composition is a multi-stage pipeline, not per-consumer filtering.** Consumer 5 (player) introduces `navigation/pipeline.ts` (Stable shared infra): discrete composable stages `sellerFilter` → `permissionFilter` → `featureFlagFilter` (plus `requiredFlagFilter`), assembled by `composeFilters(...)` into per-shell pipelines (`PLAYER_MORE_PIPELINE`, `PLAYER_CORE_PIPELINE`) and projected by `projectPlayerCoreTabs`/`projectPlayerMoreItems`. Bottom Navigation is just another projection of the same Registry; stages stay consumer-agnostic (verified: the same stages filter org/admin defs). No consumer-specific filter code remains in `BottomNav.tsx`. |
 | ADR-029 | 2026-08-07 | Consumer 5 (player): ids normalized **`nav.*` → `nav.player.*`** (18 nodes: 3 core + 15 More). `sellerOnly` is a **context-gating** attribute (declarative, projection-level), not RBAC — enforced by the Seller stage; `community.chat_enabled` is a **feature-flag** gate on the same Messages node (combined flag+permission first validated on a non-admin shell). `PLAYER_ID_TO_KEY`/`PLAYER_LEGACY_KEY_TO_ID` (12 keyed items) exported uniformly. Legacy `buildPlayerCoreTabs`/`buildPlayerMoreItems`/`filterPlayerMoreItems` frozen verbatim into `parity/legacy/player-nav.ts`; `BottomNav.tsx` now renders only registry resolvers. Cart badge (badgeCount) stays a component-level projection overlay, not registry data. |
 | ADR-030 | 2026-08-07 | Consumer 6 (workspace) is the **final integration milestone** — not another architecture validation. `SidebarLayoutPage.tsx`'s `buildSections()` (110-line parallel navigation tree) replaced with `resolveWorkspaceNav(t)`, consuming `ADMIN_NAV` directly. **Drift fully resolved:** 15 missing admin sections now visible, 10 editor-only keys removed, label/path/icon drift eliminated. DnD editor preserves all existing behavior (save/load via permission keys, backward compatible with `sidebar_layout` table). All 120 `nav.admin.*` ids carried on every workspace node via `WorkspaceNode`. The Navigation Platform is now **closed** — Registry is the single source of truth for all 6 consumers. Completion report: `docs/navigation/completion-report.md`. NC-003 (Workspace editor legacy identity) resolved by this consumer. |
+| ADR-031 | 2026-08-08 | **Commit 9 — IA domain label localization is a label-system change, not a navigation-migration change.** The 8 domain labels introduced by the IA restructure are now `T('nav.admin.domain.*')` (EN registry + AR seed), replacing their `LIT()` literals. **No navigation structure changed**: Navigation IDs, permission keys, routes, icons, feature flags, ordering, and hierarchy are byte-identical across locales (proved by the 16-test translation-integrity suite). The 61 remaining `LIT()` labels in `admin.registry.ts` are pre-existing (Classification D) and stay untouched. AR registration uses the existing seed convention (`INSERT IGNORE INTO translations`) — additive, ids 308-315, no schema/migration/runtime change. Pipeline: `generate-translation-artifact.js` (1525 keys) + `sync-translation-keys.js` (registry→DB; DB write blocked by local XAMPP auth, runtime uses committed artifact). |
 
 ## 6. Deviations
 
@@ -254,6 +268,8 @@ Versioning: **Registry** v1.0 → v1.1 → v1.2 → v1.3 → v1.4 → v1.5 → *
 | **2-f** | **173** | **79** | **173** | **6/6** | **2** | **3/1** | **30** | **v2.0-STABLE** | **v2.0-STABLE** |
 
 Definitions: Nav IDs = immutable ids in migrated shells (admin 120 + org 23 + coach 6 + referee 6 + player 18). Categories = top-level entries in migrated shells. Pages = total registry nodes across all shells. Workspace consumes admin's 120 ids directly — no new ids added. Cleanup: NC-003 resolved by Consumer 6 (`d031f33`).
+
+> **Commit 9 (2026-08-08) note:** Localization of the 8 IA domain labels adds **translation keys, not navigation nodes**. Nav IDs (128 admin), categories (8 domains / 79), and node count (173) are unchanged — verified structural identity across locales by the translation-integrity suite. Test suite: 80 → 96. CI baseline: 222 unchanged.
 
 ---
 
