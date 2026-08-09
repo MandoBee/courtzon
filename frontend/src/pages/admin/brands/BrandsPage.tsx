@@ -19,6 +19,7 @@ interface Brand {
   is_active: number;
 }
 
+// Brands admin page — query guarded by enabled: can('sidebar.brands')
 export default function BrandsPage() {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
