@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../../services/api';
 import { Button, Spinner } from '../../../components/ui';
 import { Can } from '../../../permissions/Can';
-import { useCan } from '../../../hooks/useCan';
+import { useAuthStore } from '../../../store/auth.store';
 import { useToast } from '../../../components/ui/Toast';
 
 interface Tag {
@@ -18,16 +18,18 @@ interface Tag {
 export default function TagsPage() {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
-  const { can } = useCan();
+  const user = useAuthStore((s) => s.user);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Tag | null>(null);
   const [name, setName] = useState('');
   const [slug, setSlug] = useState('');
 
+  const perms = user?.permissions ?? [];
+
   const { data, isLoading } = useQuery({
     queryKey: ['admin', 'tags'],
     queryFn: () => api.get('/admin/tags').then((r: any) => r.data.data),
-    enabled: can('sidebar.tags'),
+    enabled: perms.includes('*') || perms.includes('sidebar.tags'),
   });
 
   const tags: Tag[] = data || [];
