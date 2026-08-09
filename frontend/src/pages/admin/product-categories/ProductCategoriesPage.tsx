@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../../services/api';
 import { Button, Modal, Spinner, EntityImage } from '../../../components/ui';
@@ -42,6 +42,17 @@ export default function ProductCategoriesPage() {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
   const user = useAuthStore((s) => s.user);
+
+  // DEBUG: instance tracking
+  const instanceId = useRef('PC-' + Math.random().toString(36).slice(2, 8));
+  const renderCount = useRef(0);
+  renderCount.current++;
+  const perms = user?.permissions ?? [];
+  const enabled = perms.includes('*') || perms.includes('sidebar.product-categories');
+  console.debug('[ADMIN-QUERY-DBG] ProductCategoriesPage', { instance: instanceId.current, renderN: renderCount.current, userPresent: !!user, permsLen: perms.length, hasWildcard: perms.includes('*'), hasSidebarPC: perms.includes('sidebar.product-categories'), enabled });
+  useEffect(() => {
+    return () => { console.debug('[ADMIN-QUERY-UNMOUNT] ProductCategoriesPage', { instance: instanceId.current }); };
+  }, []);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<ProductCategory | null>(null);
@@ -60,12 +71,13 @@ export default function ProductCategoriesPage() {
   const [view, setView] = useState<'basic' | 'tree'>('basic');
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
 
-  const perms = user?.permissions ?? [];
-
   const { data, isLoading } = useQuery({
     queryKey: ['admin', 'product-categories'],
-    queryFn: () => api.get('/admin/product-categories').then((r: any) => r.data.data),
-    enabled: perms.includes('*') || perms.includes('sidebar.product-categories'),
+    queryFn: () => {
+      console.debug('[ADMIN-QUERY-FIRED] ProductCategoriesPage', { instance: instanceId.current });
+      return api.get('/admin/product-categories').then((r: any) => r.data.data);
+    },
+    enabled,
   });
 
   const categories: ProductCategory[] = data || [];
