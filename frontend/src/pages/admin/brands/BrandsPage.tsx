@@ -30,10 +30,12 @@ export default function BrandsPage() {
   const renderCount = useRef(0);
   renderCount.current++;
   const perms = user?.permissions ?? [];
-  const enabled = perms.includes('*') || perms.includes('sidebar.brands');
-  console.debug('[ADMIN-QUERY-DBG] BrandsPage', { instance: instanceId.current, renderN: renderCount.current, userPresent: !!user, permsLen: perms.length, hasWildcard: perms.includes('*'), hasSidebarBrands: perms.includes('sidebar.brands'), enabled });
+  const hasWildcard = perms.includes('*');
+  const hasRequiredPermission = perms.includes('sidebar.brands');
+  const enabled = hasWildcard || hasRequiredPermission;
+  console.warn('[ADMIN-QUERY-STATE]', { page: 'BrandsPage', instance: instanceId.current, renderN: renderCount.current, userPresent: !!user, permissions: perms, permsLen: perms.length, hasWildcard, hasRequiredPermission, enabled });
   useEffect(() => {
-    return () => { console.debug('[ADMIN-QUERY-UNMOUNT] BrandsPage', { instance: instanceId.current }); };
+    return () => { console.warn('[ADMIN-QUERY-UNMOUNT]', { page: 'BrandsPage', instance: instanceId.current }); };
   }, []);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Brand | null>(null);
@@ -48,7 +50,7 @@ export default function BrandsPage() {
   const { data, isLoading } = useQuery({
     queryKey: ['admin', 'brands'],
     queryFn: () => {
-      console.debug('[ADMIN-QUERY-FIRED] BrandsPage', { instance: instanceId.current });
+      console.warn('[ADMIN-QUERY-FIRED]', { page: 'BrandsPage', instance: instanceId.current });
       return api.get('/admin/brands').then((r: any) => r.data.data);
     },
     enabled,

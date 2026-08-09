@@ -48,10 +48,12 @@ export default function ProductCategoriesPage() {
   const renderCount = useRef(0);
   renderCount.current++;
   const perms = user?.permissions ?? [];
-  const enabled = perms.includes('*') || perms.includes('sidebar.product-categories');
-  console.debug('[ADMIN-QUERY-DBG] ProductCategoriesPage', { instance: instanceId.current, renderN: renderCount.current, userPresent: !!user, permsLen: perms.length, hasWildcard: perms.includes('*'), hasSidebarPC: perms.includes('sidebar.product-categories'), enabled });
+  const hasWildcard = perms.includes('*');
+  const hasRequiredPermission = perms.includes('sidebar.product-categories');
+  const enabled = hasWildcard || hasRequiredPermission;
+  console.warn('[ADMIN-QUERY-STATE]', { page: 'ProductCategoriesPage', instance: instanceId.current, renderN: renderCount.current, userPresent: !!user, permissions: perms, permsLen: perms.length, hasWildcard, hasRequiredPermission, enabled });
   useEffect(() => {
-    return () => { console.debug('[ADMIN-QUERY-UNMOUNT] ProductCategoriesPage', { instance: instanceId.current }); };
+    return () => { console.warn('[ADMIN-QUERY-UNMOUNT]', { page: 'ProductCategoriesPage', instance: instanceId.current }); };
   }, []);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [showForm, setShowForm] = useState(false);
@@ -74,7 +76,7 @@ export default function ProductCategoriesPage() {
   const { data, isLoading } = useQuery({
     queryKey: ['admin', 'product-categories'],
     queryFn: () => {
-      console.debug('[ADMIN-QUERY-FIRED] ProductCategoriesPage', { instance: instanceId.current });
+      console.warn('[ADMIN-QUERY-FIRED]', { page: 'ProductCategoriesPage', instance: instanceId.current });
       return api.get('/admin/product-categories').then((r: any) => r.data.data);
     },
     enabled,

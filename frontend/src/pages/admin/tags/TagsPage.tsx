@@ -25,10 +25,12 @@ export default function TagsPage() {
   const renderCount = useRef(0);
   renderCount.current++;
   const perms = user?.permissions ?? [];
-  const enabled = perms.includes('*') || perms.includes('sidebar.tags');
-  console.debug('[ADMIN-QUERY-DBG] TagsPage', { instance: instanceId.current, renderN: renderCount.current, userPresent: !!user, permsLen: perms.length, hasWildcard: perms.includes('*'), hasSidebarTags: perms.includes('sidebar.tags'), enabled });
+  const hasWildcard = perms.includes('*');
+  const hasRequiredPermission = perms.includes('sidebar.tags');
+  const enabled = hasWildcard || hasRequiredPermission;
+  console.warn('[ADMIN-QUERY-STATE]', { page: 'TagsPage', instance: instanceId.current, renderN: renderCount.current, userPresent: !!user, permissions: perms, permsLen: perms.length, hasWildcard, hasRequiredPermission, enabled });
   useEffect(() => {
-    return () => { console.debug('[ADMIN-QUERY-UNMOUNT] TagsPage', { instance: instanceId.current }); };
+    return () => { console.warn('[ADMIN-QUERY-UNMOUNT]', { page: 'TagsPage', instance: instanceId.current }); };
   }, []);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Tag | null>(null);
@@ -38,7 +40,7 @@ export default function TagsPage() {
   const { data, isLoading } = useQuery({
     queryKey: ['admin', 'tags'],
     queryFn: () => {
-      console.debug('[ADMIN-QUERY-FIRED] TagsPage', { instance: instanceId.current });
+      console.warn('[ADMIN-QUERY-FIRED]', { page: 'TagsPage', instance: instanceId.current });
       return api.get('/admin/tags').then((r: any) => r.data.data);
     },
     enabled,
