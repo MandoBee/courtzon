@@ -6,7 +6,7 @@ import CommandPalette from './CommandPalette';
 const buildAdminCommandsSpy = vi.fn(() => []);
 
 vi.mock('./adminSearch', () => ({
-  buildAdminCommands: (...args: any[]) => buildAdminCommandsSpy(...args),
+  buildAdminCommands: () => buildAdminCommandsSpy(),
 }));
 
 const mockUser: { permissions: string[] } = { permissions: ['marketplace.view'] };
