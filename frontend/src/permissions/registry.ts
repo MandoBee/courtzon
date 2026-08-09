@@ -207,6 +207,8 @@ export const uiRegistry: UIElement[] = [
   { permissionKey: 'matches.cancel', moduleSlug: 'bookings', elementType: 'button', elementLabel: 'Cancel Match Application', componentPath: 'pages/booking/MatchListPage.tsx' },
   { permissionKey: 'matches.manage', moduleSlug: 'bookings', elementType: 'action', elementLabel: 'Manage Match (approve/reject/close/cancel)' },
   { permissionKey: 'bookings.manage-applicants', moduleSlug: 'bookings', elementType: 'button', elementLabel: 'Manage Booking Applicants', componentPath: 'components/booking/ManageApplicantsPopup.tsx' },
+  { permissionKey: 'bookings.check-in', moduleSlug: 'bookings', elementType: 'action', elementLabel: 'Check In Booking', componentPath: 'pages/admin/ReceptionDashboard.tsx' },
+  { permissionKey: 'bookings.matchmaking', moduleSlug: 'bookings', elementType: 'action', elementLabel: 'Matchmaking Booking Actions', componentPath: 'modules/booking/presentation/booking.routes.ts' },
 
   // ==========================================================================
   // MARKETPLACE MODULE
@@ -284,6 +286,7 @@ export const uiRegistry: UIElement[] = [
   { permissionKey: 'app-settings.edit.bank', moduleSlug: 'settings', elementType: 'field', elementLabel: 'Bank Information', componentPath: 'pages/admin/app-settings/BankSettingsTab.tsx' },
   { permissionKey: 'subscription.view', moduleSlug: 'settings', elementType: 'page', elementLabel: 'Subscription Page', componentPath: 'pages/admin/subscription/SubscriptionPage.tsx' },
   { permissionKey: 'feature-flags.view', moduleSlug: 'settings', elementType: 'page', elementLabel: 'Feature Flags Page', componentPath: 'pages/admin/feature-flags/FeatureFlagsPage.tsx' },
+  { permissionKey: 'feature-flags.manage', moduleSlug: 'settings', elementType: 'action', elementLabel: 'Manage Feature Flags', componentPath: 'pages/admin/feature-flags/FeatureFlagsPage.tsx' },
   { permissionKey: 'feature-flags.toggle', moduleSlug: 'settings', elementType: 'action', elementLabel: 'Toggle Feature Flag', componentPath: 'pages/admin/feature-flags/FeatureFlagsPage.tsx' },
 
   // ==========================================================================
@@ -716,6 +719,11 @@ export const uiRegistry: UIElement[] = [
   { permissionKey: 'coaches.manage_profile', moduleSlug: 'coaches', elementType: 'action', elementLabel: 'Manage Coach Profile' },
   { permissionKey: 'coaches.manage_agreements', moduleSlug: 'coaches', elementType: 'action', elementLabel: 'Manage Coach Agreements' },
   { permissionKey: 'coaches.create_sessions', moduleSlug: 'coaches', elementType: 'action', elementLabel: 'Create Coach Sessions' },
+  { permissionKey: 'coaches.respond_request', moduleSlug: 'coaches', elementType: 'action', elementLabel: 'Respond to Session Request' },
+  { permissionKey: 'coaches.confirm_session', moduleSlug: 'coaches', elementType: 'action', elementLabel: 'Confirm Coach Session' },
+  { permissionKey: 'coaches.start_session', moduleSlug: 'coaches', elementType: 'action', elementLabel: 'Start Coach Session' },
+  { permissionKey: 'coaches.complete_session', moduleSlug: 'coaches', elementType: 'action', elementLabel: 'Complete Coach Session' },
+  { permissionKey: 'coaches.no_show', moduleSlug: 'coaches', elementType: 'action', elementLabel: 'Mark Coach Session No-Show' },
 
   // ==========================================================================
   // SUBSCRIPTION MODULE
@@ -772,6 +780,11 @@ export const uiRegistry: UIElement[] = [
   { permissionKey: 'tags.edit.name', moduleSlug: 'marketplace', elementType: 'field', elementLabel: 'Tag: Name Field', componentPath: 'pages/admin/tags/TagsPage.tsx' },
   { permissionKey: 'tags.edit.slug', moduleSlug: 'marketplace', elementType: 'field', elementLabel: 'Tag: Slug Field', componentPath: 'pages/admin/tags/TagsPage.tsx' },
   { permissionKey: 'tags.delete', moduleSlug: 'marketplace', elementType: 'button', elementLabel: 'Delete Tag', componentPath: 'pages/admin/tags/TagsPage.tsx' },
+  { permissionKey: 'brands.view', moduleSlug: 'marketplace', elementType: 'page', elementLabel: 'Brands Page', componentPath: 'pages/admin/brands/BrandsPage.tsx' },
+  { permissionKey: 'brands.manage', moduleSlug: 'marketplace', elementType: 'action', elementLabel: 'Manage Brands', componentPath: 'pages/admin/brands/BrandsPage.tsx' },
+  { permissionKey: 'tags.view', moduleSlug: 'marketplace', elementType: 'page', elementLabel: 'Tags Page', componentPath: 'pages/admin/tags/TagsPage.tsx' },
+  { permissionKey: 'tags.manage', moduleSlug: 'marketplace', elementType: 'action', elementLabel: 'Manage Tags', componentPath: 'pages/admin/tags/TagsPage.tsx' },
+  { permissionKey: 'product-categories.manage', moduleSlug: 'marketplace', elementType: 'action', elementLabel: 'Manage Product Categories', componentPath: 'pages/admin/product-categories/ProductCategoriesPage.tsx' },
 
   // ==========================================================================
   // ADMIN BOOKINGS & BRANCH ACCESS
@@ -963,6 +976,7 @@ export const uiRegistry: UIElement[] = [
   { permissionKey: 'support.tickets.create', moduleSlug: 'support', elementType: 'button', elementLabel: 'Create Support Ticket', componentPath: 'pages/admin/support/SupportTicketsPage.tsx' },
   { permissionKey: 'support.tickets.manage', moduleSlug: 'support', elementType: 'action', elementLabel: 'Manage Support Tickets', componentPath: 'pages/admin/support/SupportTicketsPage.tsx' },
   { permissionKey: 'queue.manage', moduleSlug: 'admin', elementType: 'action', elementLabel: 'Manage Message Queues', componentPath: 'pages/admin/queues/QueueManagementPage.tsx' },
+  { permissionKey: 'cache.manage', moduleSlug: 'admin', elementType: 'action', elementLabel: 'Manage Cache', componentPath: 'pages/admin/AdminCachePage.tsx' },
 
   // Sidebar
   { permissionKey: 'sidebar.support-tickets', moduleSlug: 'support', elementType: 'tab', elementLabel: 'Sidebar: Support Tickets', componentPath: 'components/layout/AdminSidebar.tsx' },
@@ -1043,6 +1057,25 @@ export const uiRegistry: UIElement[] = [
   { permissionKey: 'hr.attendance.view', moduleSlug: 'hr', elementType: 'page', elementLabel: 'Attendance Page', componentPath: 'pages/admin/hr/AttendancePage.tsx' },
   { permissionKey: 'hr.payroll.view', moduleSlug: 'hr', elementType: 'page', elementLabel: 'Payroll Page', componentPath: 'pages/admin/hr/PayrollPage.tsx' },
   { permissionKey: 'hr.payroll.manage', moduleSlug: 'hr', elementType: 'button', elementLabel: 'Manage Payroll', componentPath: 'pages/admin/hr/PayrollPage.tsx' },
+  { permissionKey: 'hr.attendance.manage', moduleSlug: 'hr', elementType: 'action', elementLabel: 'Manage Attendance', componentPath: 'pages/admin/hr/AttendancePage.tsx' },
+  { permissionKey: 'hr.contracts.view', moduleSlug: 'hr', elementType: 'page', elementLabel: 'HR Contracts Page', componentPath: 'pages/admin/hr/ContractListPage.tsx' },
+  { permissionKey: 'hr.contracts.manage', moduleSlug: 'hr', elementType: 'action', elementLabel: 'Manage HR Contracts', componentPath: 'pages/admin/hr/ContractListPage.tsx' },
+  { permissionKey: 'hr.positions.view', moduleSlug: 'hr', elementType: 'page', elementLabel: 'HR Positions Page', componentPath: 'pages/admin/hr/PositionListPage.tsx' },
+  { permissionKey: 'hr.positions.manage', moduleSlug: 'hr', elementType: 'action', elementLabel: 'Manage HR Positions', componentPath: 'pages/admin/hr/PositionListPage.tsx' },
+  { permissionKey: 'hr.leaves.types.view', moduleSlug: 'hr', elementType: 'page', elementLabel: 'Leave Types Page', componentPath: 'pages/admin/hr/LeaveTypesPage.tsx' },
+  { permissionKey: 'hr.leaves.types.manage', moduleSlug: 'hr', elementType: 'action', elementLabel: 'Manage Leave Types', componentPath: 'pages/admin/hr/LeaveTypesPage.tsx' },
+  { permissionKey: 'hr.leaves.requests.view', moduleSlug: 'hr', elementType: 'page', elementLabel: 'Leave Requests Page', componentPath: 'pages/admin/hr/LeaveRequestsPage.tsx' },
+  { permissionKey: 'hr.leaves.requests.manage', moduleSlug: 'hr', elementType: 'action', elementLabel: 'Manage Leave Requests', componentPath: 'pages/admin/hr/LeaveRequestsPage.tsx' },
+  { permissionKey: 'hr.leaves.requests.approve', moduleSlug: 'hr', elementType: 'action', elementLabel: 'Approve Leave Requests', componentPath: 'pages/admin/hr/LeaveRequestsPage.tsx' },
+  { permissionKey: 'hr.leaves.balances.view', moduleSlug: 'hr', elementType: 'page', elementLabel: 'Leave Balances Page', componentPath: 'pages/admin/hr/LeaveBalancesPage.tsx' },
+  { permissionKey: 'hr.leaves.balances.manage', moduleSlug: 'hr', elementType: 'action', elementLabel: 'Manage Leave Balances', componentPath: 'pages/admin/hr/LeaveBalancesPage.tsx' },
+  { permissionKey: 'hr.payroll.components.view', moduleSlug: 'hr', elementType: 'page', elementLabel: 'Payroll Components Page', componentPath: 'pages/admin/hr/PayrollComponentsPage.tsx' },
+  { permissionKey: 'hr.payroll.components.manage', moduleSlug: 'hr', elementType: 'action', elementLabel: 'Manage Payroll Components', componentPath: 'pages/admin/hr/PayrollComponentsPage.tsx' },
+  { permissionKey: 'hr.payroll.runs.view', moduleSlug: 'hr', elementType: 'page', elementLabel: 'Payroll Runs Page', componentPath: 'pages/admin/hr/PayrollRunsPage.tsx' },
+  { permissionKey: 'hr.payroll.runs.manage', moduleSlug: 'hr', elementType: 'action', elementLabel: 'Manage Payroll Runs', componentPath: 'pages/admin/hr/PayrollRunsPage.tsx' },
+  { permissionKey: 'hr.payroll.runs.calculate', moduleSlug: 'hr', elementType: 'action', elementLabel: 'Calculate Payroll Run', componentPath: 'pages/admin/hr/PayrollRunsPage.tsx' },
+  { permissionKey: 'hr.payroll.runs.approve', moduleSlug: 'hr', elementType: 'action', elementLabel: 'Approve Payroll Run', componentPath: 'pages/admin/hr/PayrollRunsPage.tsx' },
+  { permissionKey: 'hr.payroll.runs.post', moduleSlug: 'hr', elementType: 'action', elementLabel: 'Post Payroll Run', componentPath: 'pages/admin/hr/PayrollRunsPage.tsx' },
   { permissionKey: 'sidebar.hr', moduleSlug: 'hr', elementType: 'tab', elementLabel: 'Sidebar: HR Section', componentPath: 'components/layout/AdminSidebar.tsx' },
   { permissionKey: 'sidebar.hr-dashboard', moduleSlug: 'hr', elementType: 'tab', elementLabel: 'Sidebar: HR Dashboard', componentPath: 'components/layout/AdminSidebar.tsx' },
   { permissionKey: 'sidebar.hr-employees', moduleSlug: 'hr', elementType: 'tab', elementLabel: 'Sidebar: Employees', componentPath: 'components/layout/AdminSidebar.tsx' },

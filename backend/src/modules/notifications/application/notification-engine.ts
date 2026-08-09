@@ -713,7 +713,7 @@ const eventGroups: EventGroupConfig[] = [
     events: ['setting:updated'],
     handler: async (eventName, data, categorySlug) => {
       if (data.key && (data.key.startsWith('security.') || data.key.startsWith('wallet.') || data.key.startsWith('payments.') || data.key.startsWith('booking.'))) {
-        await dispatchByPermission('system_settings.view', {
+        await dispatchByPermission('app-settings.view', {
           eventName, categorySlug,
           data: { ...data, title: 'Critical Setting Changed', body: `Setting ${data.key} was updated. Old: ${String(data.oldValue || '').substring(0, 30)}, New: ${String(data.newValue || '').substring(0, 30)}.` },
           relatedEntityType: 'setting', relatedEntityId: data.key,

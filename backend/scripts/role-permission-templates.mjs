@@ -78,7 +78,7 @@ function matchesAny(key, patterns) {
 const PLAYER_PATTERNS = [
   /^home\./,
   /^profile\./,
-  /^bookings\.(view|create|cancel|apply|manage-applicants)/,
+  /^bookings\.(view|create|cancel|apply|manage-applicants|matchmaking)/,
   /^bookings\.create\./,
   /^marketplace\.(view|cart|order|wishlist|addresses)/,
   /^marketplace\.sell$/,
@@ -115,6 +115,16 @@ const PLAYER_EXPLICIT_KEYS = new Set([
   'tournament.view',
   'tournament.register',
   'league.self_register',
+]);
+
+// Coach-side session lifecycle actions that must NOT leak to players via the
+// broad /^coaches\./ pattern. These are coach-side session management verbs.
+const PLAYER_DENY_KEYS = new Set([
+  'coaches.complete_session',
+  'coaches.confirm_session',
+  'coaches.no_show',
+  'coaches.respond_request',
+  'coaches.start_session',
 ]);
 
 const ORG_ADMIN_PATTERNS = [
@@ -156,7 +166,7 @@ const COACH_DENY_KEYS = new Set([
 ]);
 
 const COACH_PATTERNS = [
-  /^coaches\.(profile|sessions|availability|invites|book|reviews|view|apply|manage_profile|manage_agreements|create_sessions)/,
+  /^coaches\.(profile|sessions|availability|invites|book|reviews|view|apply|manage_profile|manage_agreements|create_sessions|complete_session|confirm_session|no_show|respond_request|start_session)/,
   /^coaches\.book\./,
   /^coaches\.profile\.edit\./,
   /^coach\.revenue\./,
@@ -226,7 +236,7 @@ const ORG_ADMIN_EXPLICIT_KEYS = new Set([
 ]);
 
 const INDEPENDENT_COACH_PATTERNS = [
-  /^coaches\.(profile|sessions|availability|invites|book|reviews|view|apply|manage_profile|manage_agreements|create_sessions)/,
+  /^coaches\.(profile|sessions|availability|invites|book|reviews|view|apply|manage_profile|manage_agreements|create_sessions|complete_session|confirm_session|no_show|respond_request|start_session)/,
   /^coaches\.book\./,
   /^coaches\.profile\.edit\./,
   /^coach\.revenue\./,
@@ -251,7 +261,7 @@ const INDEPENDENT_COACH_PATTERNS = [
 ];
 
 const RESIDENT_COACH_PATTERNS = [
-  /^coaches\.(profile|sessions|availability|invites|book|reviews|view|apply|manage_profile|manage_agreements|create_sessions)/,
+  /^coaches\.(profile|sessions|availability|invites|book|reviews|view|apply|manage_profile|manage_agreements|create_sessions|complete_session|confirm_session|no_show|respond_request|start_session)/,
   /^coaches\.book\./,
   /^coaches\.profile\.edit\./,
   /^coach\.revenue\./,
@@ -313,7 +323,7 @@ const MARKETPLACE_MANAGER_PATTERNS = [
 ];
 
 const RECEPTIONIST_PATTERNS = [
-  /^bookings\.(view|create|cancel)/,
+  /^bookings\.(view|create|cancel|check-in)/,
   /^bookings\.create\./,
   /^resources\.view/,
   /^branches\.view/,
@@ -455,6 +465,7 @@ export function permissionMatchesTemplate(templateSlug, permissionKey) {
   if (templateSlug === 'player') {
     if (permissionKey === 'home.recent-activity') return false;
     if (PLAYER_EXPLICIT_KEYS.has(permissionKey)) return true;
+    if (PLAYER_DENY_KEYS.has(permissionKey)) return false;
     if (isAdminOnlyKey(permissionKey)) return false;
     if (permissionKey.startsWith('org.')) return false;
     if (matchesAny(permissionKey, PLAYER_PATTERNS)) return true;

@@ -225,6 +225,45 @@ for (const file of presentationDirs) {
 }
 if (presOK) pass('Presentation layer has zero DB access');
 
+// ─── 13. Permission keys referenced in backend guards must be registered ───
+console.log('\n13. RBAC Guard Key Consistency (backend guards ↔ UI registry)');
+const registryTs = readFileSync(join(root, 'frontend', 'src', 'permissions', 'registry.ts'), 'utf-8');
+const registeredKeys = new Set();
+{
+  const entryRe = /permissionKey:\s*['"]([^'"]+)['"]/g;
+  let m;
+  while ((m = entryRe.exec(registryTs)) !== null) registeredKeys.add(m[1]);
+}
+const backendModuleFiles = walkDir(join(root, 'backend', 'src', 'modules')).filter(
+  (f) => f.endsWith('.ts') && !f.endsWith('.d.ts') && !f.includes('__tests__') && !f.includes('.integration.'),
+);
+const guardKeys = new Set();
+{
+  const guardRe = /requirePermission\(\[([^\]]+)\]\)/g;
+  const dispatchRe = /dispatchByPermission\(['"]([^'"]+)['"]/g;
+  for (const file of backendModuleFiles) {
+    const content = readFileSync(file, 'utf-8');
+    let gm;
+    while ((gm = guardRe.exec(content)) !== null) {
+      for (const token of gm[1].split(',')) {
+        const k = token.replace(/['"]/g, '').trim();
+        if (k && /^[\w.-]+$/.test(k)) guardKeys.add(k);
+      }
+    }
+    while ((gm = dispatchRe.exec(content)) !== null) guardKeys.add(gm[1]);
+  }
+}
+let guardOK = true;
+const missingGuardKeys = [...guardKeys].filter((k) => !registeredKeys.has(k)).sort();
+if (missingGuardKeys.length === 0) {
+  pass(`All ${guardKeys.size} backend guard keys are registered in the UI registry`);
+} else {
+  for (const k of missingGuardKeys) {
+    fail(`Backend guard key "${k}" is NOT registered in frontend/src/permissions/registry.ts`);
+    guardOK = false;
+  }
+}
+
 // ─── 15. @courtzon/shared governance ───
 console.log('\n15. @courtzon/shared Governance');
 const sharedRoot = join(root, 'packages', 'shared', 'src');

@@ -58,7 +58,7 @@ export const ADMIN_ROUTE_PERMISSIONS: Record<string, string> = {
   'notifications': 'sidebar.notifications',
   'notification-types': 'sidebar.notifications',
   'templates': 'sidebar.notifications',
-  'system': 'platform.admin',
+  'system': 'app-settings.view',
   'product-categories': 'sidebar.marketplace',
   'marketplace/products': 'marketplace.admin.products',
   'marketplace/orders': 'marketplace.admin.orders',
