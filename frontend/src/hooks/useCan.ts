@@ -1,3 +1,4 @@
+import { useCallback } from 'react';
 import { useAuthStore } from '../store/auth.store';
 
 export function useCan(): {
@@ -7,8 +8,10 @@ export function useCan(): {
   const user = useAuthStore((s) => s.user);
   const permissions = user?.permissions ?? [];
 
-  return {
-    can: (permission: string) => permissions.includes('*') || permissions.includes(permission),
-    permissions,
-  };
+  const can = useCallback(
+    (permission: string) => permissions.includes('*') || permissions.includes(permission),
+    [permissions],
+  );
+
+  return { can, permissions };
 }
