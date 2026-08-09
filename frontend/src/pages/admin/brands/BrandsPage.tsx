@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../../services/api';
 import { Button, Spinner, EntityImage } from '../../../components/ui';
 import { Can } from '../../../permissions/Can';
+import { useCan } from '../../../hooks/useCan';
 import { useToast } from '../../../components/ui/Toast';
 
 interface Brand {
@@ -21,6 +22,7 @@ interface Brand {
 export default function BrandsPage() {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
+  const { can } = useCan();
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Brand | null>(null);
   const [name, setName] = useState('');
@@ -34,6 +36,7 @@ export default function BrandsPage() {
   const { data, isLoading } = useQuery({
     queryKey: ['admin', 'brands'],
     queryFn: () => api.get('/admin/brands').then((r: any) => r.data.data),
+    enabled: can('sidebar.brands'),
   });
 
   const brands: Brand[] = data || [];
