@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { getErrorMessage } from '../../../utils/errors';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../../services/api';
@@ -19,17 +19,29 @@ export default function TagsPage() {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
   const user = useAuthStore((s) => s.user);
+
+  // DEBUG: instance tracking
+  const instanceId = useRef('TP-' + Math.random().toString(36).slice(2, 8));
+  const renderCount = useRef(0);
+  renderCount.current++;
+  const perms = user?.permissions ?? [];
+  const enabled = perms.includes('*') || perms.includes('sidebar.tags');
+  console.debug('[ADMIN-QUERY-DBG] TagsPage', { instance: instanceId.current, renderN: renderCount.current, userPresent: !!user, permsLen: perms.length, hasWildcard: perms.includes('*'), hasSidebarTags: perms.includes('sidebar.tags'), enabled });
+  useEffect(() => {
+    return () => { console.debug('[ADMIN-QUERY-UNMOUNT] TagsPage', { instance: instanceId.current }); };
+  }, []);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Tag | null>(null);
   const [name, setName] = useState('');
   const [slug, setSlug] = useState('');
 
-  const perms = user?.permissions ?? [];
-
   const { data, isLoading } = useQuery({
     queryKey: ['admin', 'tags'],
-    queryFn: () => api.get('/admin/tags').then((r: any) => r.data.data),
-    enabled: perms.includes('*') || perms.includes('sidebar.tags'),
+    queryFn: () => {
+      console.debug('[ADMIN-QUERY-FIRED] TagsPage', { instance: instanceId.current });
+      return api.get('/admin/tags').then((r: any) => r.data.data);
+    },
+    enabled,
   });
 
   const tags: Tag[] = data || [];
