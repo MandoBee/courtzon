@@ -63,7 +63,7 @@ export default function ProductCategoriesPage() {
   const { data, isLoading } = useQuery({
     queryKey: ['admin', 'product-categories'],
     queryFn: () => api.get('/admin/product-categories').then((r: any) => r.data.data),
-    enabled: can('sidebar.marketplace'),
+    enabled: can('sidebar.product-categories'),
   });
 
   const categories: ProductCategory[] = data || [];
