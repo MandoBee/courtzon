@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../../services/api';
 import { Button, Modal, Spinner, EntityImage } from '../../../components/ui';
 import { Can } from '../../../permissions/Can';
-import { useCan } from '../../../hooks/useCan';
+import { useAuthStore } from '../../../store/auth.store';
 import { useToast } from '../../../components/ui/Toast';
 
 function compressImage(file: File, maxDim = 1200, quality = 0.8): Promise<Blob> {
@@ -41,7 +41,7 @@ interface ProductCategory {
 export default function ProductCategoriesPage() {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
-  const { can } = useCan();
+  const user = useAuthStore((s) => s.user);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<ProductCategory | null>(null);
@@ -60,10 +60,12 @@ export default function ProductCategoriesPage() {
   const [view, setView] = useState<'basic' | 'tree'>('basic');
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
 
+  const perms = user?.permissions ?? [];
+
   const { data, isLoading } = useQuery({
     queryKey: ['admin', 'product-categories'],
     queryFn: () => api.get('/admin/product-categories').then((r: any) => r.data.data),
-    enabled: can('sidebar.product-categories'),
+    enabled: perms.includes('*') || perms.includes('sidebar.product-categories'),
   });
 
   const categories: ProductCategory[] = data || [];

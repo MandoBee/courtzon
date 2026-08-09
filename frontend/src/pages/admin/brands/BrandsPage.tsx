@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../../services/api';
 import { Button, Spinner, EntityImage } from '../../../components/ui';
 import { Can } from '../../../permissions/Can';
-import { useCan } from '../../../hooks/useCan';
+import { useAuthStore } from '../../../store/auth.store';
 import { useToast } from '../../../components/ui/Toast';
 
 interface Brand {
@@ -19,11 +19,11 @@ interface Brand {
   is_active: number;
 }
 
-// Brands admin page — query guarded by enabled: can('sidebar.brands')
+// Brands admin page — query guarded by enabled permission check
 export default function BrandsPage() {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
-  const { can } = useCan();
+  const user = useAuthStore((s) => s.user);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Brand | null>(null);
   const [name, setName] = useState('');
@@ -34,10 +34,12 @@ export default function BrandsPage() {
   const [sortOrder, setSortOrder] = useState('0');
   const [logoUrl, setLogoUrl] = useState('');
 
+  const perms = user?.permissions ?? [];
+
   const { data, isLoading } = useQuery({
     queryKey: ['admin', 'brands'],
     queryFn: () => api.get('/admin/brands').then((r: any) => r.data.data),
-    enabled: can('sidebar.brands'),
+    enabled: perms.includes('*') || perms.includes('sidebar.brands'),
   });
 
   const brands: Brand[] = data || [];
