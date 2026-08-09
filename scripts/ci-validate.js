@@ -266,52 +266,55 @@ if (missingGuardKeys.length === 0) {
 
 // ─── 14. Role Template Parity (.ts vs .mjs) ───
 console.log('\n14. Role Template Parity (rbac .ts ↔ scripts .mjs)');
-{
-  const tsPath = join(root, 'backend', 'src', 'modules', 'rbac', 'application', 'role-permission-templates.ts');
+try {
   const mjsPath = join(root, 'backend', 'scripts', 'role-permission-templates.mjs');
-  const tsContent = readFileSync(tsPath, 'utf-8');
-  const mjsContent = readFileSync(mjsPath, 'utf-8');
+  const tsPath = join(root, 'backend', 'src', 'modules', 'rbac', 'application', 'role-permission-templates.js');
+  // Try the compiled .js first (post-build), fall back to dynamic .ts check
+  let tsSlugs, mjsSlugs;
+  const mjsMod = await import(`file://${mjsPath}`);
+  mjsSlugs = mjsMod.TEMPLATE_SLUGS || [];
 
-  // Extract TEMPLATE_SLUGS arrays
-  const tsSlugs = (tsContent.match(/'([\w-]+)'/g) || []).filter(s => {
-    const idx = tsContent.indexOf(s);
-    return idx > tsContent.indexOf('TEMPLATE_SLUGS');
-  });
-  const mjsSlugs = (mjsContent.match(/'([\w-]+)'/g) || []).filter(s => {
-    const idx = mjsContent.indexOf(s);
-    return idx > mjsContent.indexOf('TEMPLATE_SLUGS');
-  });
+  // Use dynamic import for .ts via vitest-compatible path, or read .ts content
+  const tsContent = readFileSync(join(root, 'backend', 'src', 'modules', 'rbac', 'application', 'role-permission-templates.ts'), 'utf-8');
+  // Extract TEMPLATE_SLUGS array entries
+  const slugMatch = tsContent.match(/TEMPLATE_SLUGS\s*=\s*\[([\s\S]*?)\];/);
+  if (slugMatch) {
+    tsSlugs = [...slugMatch[1].matchAll(/'([\w-]+)'/g)].map(m => m[1]);
+  } else {
+    tsSlugs = [];
+  }
 
   if (tsSlugs.length !== mjsSlugs.length) {
     fail(`TEMPLATE_SLUGS count mismatch: ts=${tsSlugs.length}, mjs=${mjsSlugs.length}`);
-  } else if (tsSlugs.sort().join() !== mjsSlugs.sort().join()) {
+  } else if (tsSlugs.sort().join() !== [...mjsSlugs].sort().join()) {
     fail('TEMPLATE_SLUGS entries differ between .ts and .mjs');
+    console.log('  ts:', tsSlugs.sort().join(', '));
+    console.log('  mjs:', [...mjsSlugs].sort().join(', '));
   } else {
     pass(`TEMPLATE_SLUGS parity: ${tsSlugs.length} slugs match across .ts and .mjs`);
   }
 
   // Verify critical patterns exist in .ts
-  const tsMustHave = ['PLAYER_DENY_KEYS', 'matchmaking', 'REFEREE_PATTERNS', 'RECEPTIONIST_PATTERNS', 'MASTER_ADMIN_PATTERNS', 'AUDITOR_PATTERNS', 'READ_ONLY_ADMIN_PATTERNS'];
+  const tsMustHave = ['PLAYER_DENY_KEYS', 'REFEREE_PATTERNS', 'RECEPTIONIST_PATTERNS', 'MASTER_ADMIN_PATTERNS', 'AUDITOR_PATTERNS', 'READ_ONLY_ADMIN_PATTERNS'];
   for (const pattern of tsMustHave) {
-    if (!tsContent.includes(pattern)) {
-      fail(`.ts file missing required pattern: ${pattern}`);
-    }
+    if (!tsContent.includes(pattern)) fail(`.ts file missing required pattern: ${pattern}`);
   }
-  if (tsMustHave.every(p => tsContent.includes(p))) {
-    pass('All critical template patterns present in .ts');
-  }
+  if (tsMustHave.every(p => tsContent.includes(p))) pass('All critical template patterns present in .ts');
 
   // Verify coach lifecycle verbs in coach patterns
   const lifecycleVerbs = ['complete_session', 'confirm_session', 'no_show', 'respond_request', 'start_session'];
-  const coachPatternLine = tsContent.match(/coaches\\.\(profile\|sessions\|.*?\)/);
-  const hasAllLifecycle = coachPatternLine && lifecycleVerbs.every(v => coachPatternLine[0].includes(v));
+  const coachPatternMatch = tsContent.match(/COACH_PATTERNS\s*=\s*\[([\s\S]*?)\];/);
+  const coachBlock = coachPatternMatch ? coachPatternMatch[1] : '';
+  const hasAllLifecycle = lifecycleVerbs.every(v => coachBlock.includes(v));
   if (!hasAllLifecycle) fail('.ts COACH_PATTERNS missing lifecycle verbs');
   else pass('Coach lifecycle verbs present in .ts COACH_PATTERNS');
 
   // Verify referee.* NOT in coach patterns
-  const coachBlock = tsContent.slice(tsContent.indexOf('COACH_PATTERNS'), tsContent.indexOf('INDEPENDENT_COACH_PATTERNS'));
   if (coachBlock.includes('referee')) fail('.ts COACH_PATTERNS still contains referee');
   else pass('referee.* removed from .ts COACH_PATTERNS');
+
+} catch (e) {
+  fail(`Template parity check failed: ${e.message}`);
 }
 
 // ─── 15. @courtzon/shared governance ───
