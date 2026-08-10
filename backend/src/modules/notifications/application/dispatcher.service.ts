@@ -300,7 +300,7 @@ export async function dispatchToAll(
   let hasMore = true;
 
   while (hasMore) {
-    const [rows] = await pool.execute<RowData>(
+    const [rows] = await pool.query<RowData>(
       'SELECT id FROM users WHERE is_active = TRUE AND deleted_at IS NULL LIMIT ? OFFSET ?',
       [batchSize, offset],
     );

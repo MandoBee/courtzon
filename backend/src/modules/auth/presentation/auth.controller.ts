@@ -3,7 +3,7 @@ import { authService } from '../application/auth.service.js';
 import { RegisterSchema, PlayerRegisterSchema, SellerRegisterSchema, OrganizationRegisterSchema, LoginSchema, RefreshSchema, LogoutSchema, UpdateProfileSchema, ForgotPasswordSchema, ResetPasswordSchema, CheckUniquenessSchema, RequestReactivationSchema, TemporaryResetVerifySchema, TemporaryResetSchema } from './auth.dto.js';
 import { AppError } from '../../../shared/errors/app-error.js';
 import { formatZodErrorDetails, isZodError } from '../../../shared/validation/zod-error.util.js';
-import { AccountNotActiveError } from '../domain/auth.errors.js';
+import { AccountNotActiveError, InvalidCredentialsError } from '../domain/auth.errors.js';
 import { bruteForceService } from '../../brute-force/index.js';
 import { recordAudit } from '../../audit-log/index.js';
 import {
@@ -148,25 +148,32 @@ export async function loginHandler(request: FastifyRequest, reply: FastifyReply)
         details: error.details,
       });
     }
-    await bruteForceService.recordFailedAttempt(identifier);
-    const remaining = await bruteForceService.getRemainingAttempts(identifier);
-    recordAudit({
-      actorId: null,
-      action: 'USER.LOGIN_FAILED',
-      entityType: 'user',
-      afterState: { reason: 'invalid_credentials', identifier, remainingAttempts: remaining },
-      ipAddress: request.ip,
-      userAgent: request.headers['user-agent'],
-    });
-    if (remaining > 0) {
-      return reply.status(401).send({
-        error: 'INVALID_CREDENTIALS',
-        message: `Invalid credentials. ${remaining} attempt(s) remaining.`,
+    if (error instanceof InvalidCredentialsError) {
+      await bruteForceService.recordFailedAttempt(identifier);
+      const remaining = await bruteForceService.getRemainingAttempts(identifier);
+      recordAudit({
+        actorId: null,
+        action: 'USER.LOGIN_FAILED',
+        entityType: 'user',
+        afterState: { reason: 'invalid_credentials', identifier, remainingAttempts: remaining },
+        ipAddress: request.ip,
+        userAgent: request.headers['user-agent'],
+      });
+      if (remaining > 0) {
+        return reply.status(401).send({
+          error: 'INVALID_CREDENTIALS',
+          message: `Invalid credentials. ${remaining} attempt(s) remaining.`,
+        });
+      }
+      return reply.status(429).send({
+        error: 'TOO_MANY_ATTEMPTS',
+        message: 'Too many failed attempts. Account locked for 30 minutes.',
       });
     }
-    return reply.status(429).send({
-      error: 'TOO_MANY_ATTEMPTS',
-      message: 'Too many failed attempts. Account locked for 30 minutes.',
+    request.log.error({ err: error, path: '/auth/login' }, 'Unexpected error during login');
+    return reply.status(500).send({
+      error: 'INTERNAL_ERROR',
+      message: 'An unexpected error occurred. Please try again later.',
     });
   }
 }

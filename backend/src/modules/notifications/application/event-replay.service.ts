@@ -19,7 +19,7 @@ export async function replayEvent(options: ReplayOptions): Promise<{ affected: n
   const pool = getPool();
   const limit = options.limit || 1000;
 
-  const [rows] = await pool.execute<RowDataPacket[]>(
+  const [rows] = await pool.query<RowDataPacket[]>(
     `SELECT * FROM notification_replay_log
      WHERE event_name = ? AND created_at >= ? AND created_at <= ?
      ORDER BY created_at ASC LIMIT ?`,
@@ -70,7 +70,7 @@ export async function getReplayLogs(
   offset: number = 0,
 ): Promise<any[]> {
   const pool = getPool();
-  const [rows] = await pool.execute(
+  const [rows] = await pool.query(
     `SELECT * FROM notification_replay_log
      ORDER BY created_at DESC LIMIT ? OFFSET ?`,
     [limit, offset],

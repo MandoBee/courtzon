@@ -121,7 +121,7 @@ export async function getPendingDeliveries(
   status: string = 'queued',
 ): Promise<DeliveryRecord[]> {
   const pool = getPool();
-  const [rows] = await pool.execute<RowData>(
+  const [rows] = await pool.query<RowData>(
     `SELECT * FROM notification_delivery
      WHERE status = ? AND attempts < max_retries
      ORDER BY queued_at ASC LIMIT ?`,
@@ -134,7 +134,7 @@ export async function getFailedDeliveries(
   limit: number = 100,
 ): Promise<DeliveryRecord[]> {
   const pool = getPool();
-  const [rows] = await pool.execute<RowData>(
+  const [rows] = await pool.query<RowData>(
     `SELECT * FROM notification_delivery
      WHERE status IN ('failed', 'dead_letter') AND attempts >= max_retries
      ORDER BY queued_at DESC LIMIT ?`,
@@ -286,7 +286,7 @@ export async function getDeadLetters(
   limit: number = 100,
 ): Promise<DeadLetterRecord[]> {
   const pool = getPool();
-  const [rows] = await pool.execute<RowData>(
+  const [rows] = await pool.query<RowData>(
     `SELECT * FROM notification_dead_letter_queue
      ORDER BY last_error_at DESC LIMIT ?`,
     [limit],

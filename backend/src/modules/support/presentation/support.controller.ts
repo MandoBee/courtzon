@@ -56,7 +56,7 @@ export async function listTicketsHandler(request: FastifyRequest, reply: Fastify
   );
   const total = countRows[0].total;
 
-  const [rows] = await pool.execute<RowData>(
+  const [rows] = await pool.query<RowData>(
     `SELECT st.*, 
       u.full_name AS user_name, u.email AS user_email,
       a.full_name AS assignee_name,
@@ -235,7 +235,7 @@ export async function getMyTicketsHandler(request: FastifyRequest, reply: Fastif
   );
   const total = countRows[0].total;
 
-  const [rows] = await pool.execute<RowData>(
+  const [rows] = await pool.query<RowData>(
     `SELECT st.*, a.full_name AS assignee_name
      FROM support_tickets st
      LEFT JOIN users a ON a.id = st.assigned_to

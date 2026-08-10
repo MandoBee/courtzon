@@ -95,7 +95,7 @@ export const templateManagementService = {
       ORDER BY ${sortBy} ${sortOrder}
       LIMIT ? OFFSET ?
     `;
-    const [rows] = await pool.execute<RowDataPacket[]>(dataSql, [...params, String(limit), String(offset)]);
+    const [rows] = await pool.query<RowDataPacket[]>(dataSql, [...params, String(limit), String(offset)]);
 
     return {
       data: rows,

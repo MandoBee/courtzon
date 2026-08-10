@@ -246,7 +246,7 @@ export class ReconciliationService {
 
   async getHistory(limit = 20): Promise<any[]> {
     const pool = getPool();
-    const [rows] = await pool.execute<any[]>(
+    const [rows] = await pool.query<any[]>(
       `SELECT * FROM audit_logs
        WHERE action = 'RECONCILIATION.RUN'
        ORDER BY created_at DESC

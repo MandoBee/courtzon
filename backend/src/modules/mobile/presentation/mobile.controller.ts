@@ -273,7 +273,7 @@ export async function getPushLogHandler(request: FastifyRequest, reply: FastifyR
   );
   const total = countRows[0].total;
 
-  const [rows] = await pool.execute<RowData>(
+  const [rows] = await pool.query<RowData>(
     `SELECT pl.*, pt.platform, pt.device_name, pt.token
      FROM push_log pl
      LEFT JOIN push_tokens pt ON pt.id = pl.push_token_id

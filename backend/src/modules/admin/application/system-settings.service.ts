@@ -197,7 +197,7 @@ export class SystemSettingsService {
     const pool = getPool();
     const offset = (page - 1) * limit;
     const [countRows] = await pool.execute<RowData>('SELECT COUNT(*) as total FROM application_settings_history') as any;
-    const [rows] = await pool.execute<RowData>(
+    const [rows] = await pool.query<RowData>(
       `SELECT h.*, u.full_name AS changed_by_name FROM application_settings_history h LEFT JOIN users u ON u.id = h.changed_by ORDER BY h.created_at DESC LIMIT ? OFFSET ?`,
       [String(limit), String(offset)]
     ) as any;
