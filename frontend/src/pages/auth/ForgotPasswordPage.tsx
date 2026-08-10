@@ -45,8 +45,8 @@ export default function ForgotPasswordPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[var(--color-bg)] flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
+    <div className="h-full bg-[var(--color-bg)] overflow-y-auto flex p-4">
+      <div className="w-full max-w-md m-auto">
         <SiteBrand className="mb-8" subtitle={t('auth.forgot.subtitle')} />
         <Card>
           {step === 'email' ? (

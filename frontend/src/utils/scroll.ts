@@ -2,4 +2,5 @@
 export function scrollToTop(behavior: ScrollBehavior = 'smooth'): void {
   window.scrollTo({ top: 0, left: 0, behavior });
   document.getElementById('root')?.scrollTo({ top: 0, behavior });
+  document.querySelector('main')?.scrollTo({ top: 0, behavior });
 }

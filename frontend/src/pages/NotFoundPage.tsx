@@ -4,7 +4,8 @@ import { useTranslation } from '../i18n';
 export default function NotFoundPage() {
   const { t } = useTranslation();
   return (
-    <div className="min-h-screen bg-[var(--color-bg)] flex flex-col items-center justify-center px-4 text-center">
+    <div className="h-full bg-[var(--color-bg)] overflow-y-auto flex px-4 text-center">
+      <div className="m-auto flex flex-col items-center">
       <div className="text-7xl font-bold text-[var(--color-primary)] mb-4">404</div>
       <h1 className="text-2xl font-semibold text-[var(--color-text)] mb-2">
         {t('common.pageNotFound') || 'Page Not Found'}
@@ -18,6 +19,7 @@ export default function NotFoundPage() {
       >
         {t('common.backHome') || 'Back to Home'}
       </Link>
+      </div>
     </div>
   );
 }

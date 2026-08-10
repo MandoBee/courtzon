@@ -444,7 +444,7 @@ function Navbar() {
 
 function AppLayout() {
   return (
-    <div className="flex flex-col h-dvh bg-[var(--color-bg)]">
+    <div className="flex flex-col h-dvh max-h-full bg-[var(--color-bg)]">
       <LoginSplash />
       <WelcomeModal />
       <OfflineBanner />

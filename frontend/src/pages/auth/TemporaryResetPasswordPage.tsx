@@ -55,8 +55,8 @@ export default function TemporaryResetPasswordPage() {
 
   if (done) {
     return (
-      <div className="min-h-screen bg-[var(--color-bg)] flex items-center justify-center p-4">
-        <div className="w-full max-w-md">
+      <div className="h-full bg-[var(--color-bg)] overflow-y-auto flex p-4">
+        <div className="w-full max-w-md m-auto">
           <Card className="text-center">
             <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-[var(--color-success-bg)] flex items-center justify-center">
               <svg className="w-8 h-8 text-[var(--color-success)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -78,8 +78,8 @@ export default function TemporaryResetPasswordPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[var(--color-bg)] flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
+    <div className="h-full bg-[var(--color-bg)] overflow-y-auto flex p-4">
+      <div className="w-full max-w-md m-auto">
         <SiteBrand className="mb-8" subtitle="Set a new password" />
         <Card>
           <div className="mb-4 p-3 bg-[var(--color-warning-bg)] border border-[var(--color-warning)] rounded-[var(--radius-md)] text-sm text-[var(--color-warning-text)]">
