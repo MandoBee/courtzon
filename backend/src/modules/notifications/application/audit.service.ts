@@ -81,7 +81,7 @@ export async function getUserAuditTrail(
   offset: number = 0,
 ): Promise<any[]> {
   const pool = getPool();
-  const [rows] = await pool.execute(
+  const [rows] = await pool.query(
     `SELECT * FROM notification_audit_trail
      WHERE user_id = ?
      ORDER BY created_at DESC

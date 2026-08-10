@@ -73,7 +73,7 @@ export class OutboxPoller {
           cursor = (cursorRows as any[])[0].last_event_id;
         }
 
-        const [events] = await pool.execute(
+        const [events] = await pool.query(
           `SELECT * FROM published_events WHERE id > ? ORDER BY id ASC LIMIT ?`,
           [cursor, OUTBOX_BATCH_SIZE],
         );

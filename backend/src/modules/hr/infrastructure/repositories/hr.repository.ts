@@ -7,7 +7,7 @@ export const hrRepository = {
   async listDepartments(page: number, limit: number) {
     const pool = getPool();
     const offset = (page - 1) * limit;
-    const [rows] = await pool.execute<RowData>('SELECT * FROM departments ORDER BY name ASC LIMIT ? OFFSET ?', [limit, offset] as any);
+    const [rows] = await pool.query<RowData>('SELECT * FROM departments ORDER BY name ASC LIMIT ? OFFSET ?', [limit, offset] as any);
     const [countResult] = await pool.execute<RowData>('SELECT COUNT(*) as total FROM departments');
     return { rows, total: (countResult[0] as any).total };
   },
@@ -27,7 +27,7 @@ export const hrRepository = {
   async listPositions(page: number, limit: number) {
     const pool = getPool();
     const offset = (page - 1) * limit;
-    const [rows] = await pool.execute<RowData>('SELECT * FROM positions ORDER BY title ASC LIMIT ? OFFSET ?', [limit, offset] as any);
+    const [rows] = await pool.query<RowData>('SELECT * FROM positions ORDER BY title ASC LIMIT ? OFFSET ?', [limit, offset] as any);
     const [countResult] = await pool.execute<RowData>('SELECT COUNT(*) as total FROM positions');
     return { rows, total: (countResult[0] as any).total };
   },

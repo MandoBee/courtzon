@@ -118,7 +118,7 @@ class PlayerService {
     );
     const total = countRow?.total ?? 0;
 
-    const [rows] = await pool.execute<any[]>(
+    const [rows] = await pool.query<any[]>(
       `SELECT u.id, u.full_name, u.email, u.avatar_url, u.is_public,
               (SELECT 1 FROM user_follows uf WHERE uf.follower_id = ? AND uf.following_id = u.id) AS is_following
        FROM users u

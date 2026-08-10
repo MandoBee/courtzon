@@ -28,7 +28,7 @@ export async function listCustomersHandler(request: FastifyRequest, reply: Fasti
   );
   const total = countRows[0].total;
 
-  const [rows] = await pool.execute<RowData>(
+  const [rows] = await pool.query<RowData>(
     `SELECT u.id, u.first_name, u.last_name, u.email, u.phone, u.is_active, u.created_at,
             (SELECT COUNT(*) FROM bookings b WHERE b.user_id = u.id) AS total_bookings,
             (SELECT COUNT(*) FROM orders o WHERE o.user_id = u.id) AS total_orders,
@@ -116,7 +116,7 @@ export async function getCustomerTimelineHandler(request: FastifyRequest, reply:
   const query = request.query as any;
   const limit = Math.min(200, Math.max(1, Number(query.limit) || 50));
 
-  const [rows] = await pool.execute<RowData>(
+  const [rows] = await pool.query<RowData>(
     `SELECT created_at, 'booking' AS type, id AS ref_id, status AS ref_status, NULL AS ref_amount FROM bookings WHERE user_id = ?
      UNION ALL
      SELECT created_at, 'order', id, status, total_amount FROM orders WHERE user_id = ?

@@ -110,7 +110,7 @@ export const withdrawalService = {
     if (filters.dueToday) { where += ' AND DATE(wr.sla_due_at) = CURDATE() AND wr.status NOT IN (\'completed\',\'rejected\',\'cancelled\')'; }
     if (filters.search) { where += ' AND (u.full_name LIKE ? OR u.email LIKE ? OR u.phone_number LIKE ?)'; params.push('%'+filters.search+'%', '%'+filters.search+'%', '%'+filters.search+'%'); }
     const [count] = await pool.execute<RowData>(`SELECT COUNT(*) as total FROM withdrawal_requests wr JOIN users u ON u.id = wr.user_id ${where}`, params) as any;
-    const [rows] = await pool.execute<RowData>(
+    const [rows] = await pool.query<RowData>(
       `SELECT wr.*, u.full_name, u.email, u.phone_number, uw.balance AS wallet_balance, uw.reserved_balance,
               assigned.full_name AS assigned_name
        FROM withdrawal_requests wr

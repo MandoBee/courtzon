@@ -89,18 +89,24 @@ export class SessionRepository {
   }
 
   async revokeOldestForUser(userId: number, keepCount: number): Promise<void> {
+    const keepCountSafe = Math.max(0, Math.floor(Number(keepCount) || 0));
+    const [rows] = await this.pool.query<RowData>(
+      `SELECT id FROM user_sessions
+       WHERE user_id = ? AND is_revoked = FALSE AND expires_at > NOW()
+       ORDER BY created_at DESC
+       LIMIT ?`,
+      [userId, keepCountSafe],
+    );
+    const keepIds = rows.map((r: any) => r.id);
+    if (keepIds.length === 0) {
+      return;
+    }
+    const placeholders = keepIds.map(() => '?').join(',');
     await this.pool.execute(
       `UPDATE user_sessions SET is_revoked = TRUE
        WHERE user_id = ? AND is_revoked = FALSE AND expires_at > NOW()
-       AND id NOT IN (
-         SELECT id FROM (
-           SELECT id FROM user_sessions
-           WHERE user_id = ? AND is_revoked = FALSE AND expires_at > NOW()
-           ORDER BY created_at DESC
-           LIMIT ?
-         ) AS keep
-       )`,
-      [userId, userId, keepCount],
+       AND id NOT IN (${placeholders})`,
+      [userId, ...keepIds],
     );
   }
 
