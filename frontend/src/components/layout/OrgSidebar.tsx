@@ -70,7 +70,7 @@ export default function OrgSidebar() {
   }
 
   return (
-    <aside className="w-64 bg-[var(--color-surface)] border-r border-[var(--color-border)] flex flex-col h-screen sticky top-0 overflow-y-auto">
+    <aside className="w-64 bg-[var(--color-surface)] border-r border-[var(--color-border)] flex flex-col h-full sticky top-0 overflow-y-auto">
       <div className="p-4 border-b border-[var(--color-border)] space-y-3">
         <SiteLogo to="/app" size="sm" variant="primary" className="shrink-0" />
         <div className="flex items-center justify-between gap-2">

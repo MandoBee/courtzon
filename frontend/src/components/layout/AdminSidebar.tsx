@@ -144,7 +144,7 @@ export default function AdminSidebar() {
   }
 
   return (
-    <aside className="w-64 bg-[var(--color-surface)] border-r border-[var(--color-border)] flex flex-col h-screen sticky top-0 overflow-y-auto">
+    <aside className="w-64 bg-[var(--color-surface)] border-r border-[var(--color-border)] flex flex-col h-full sticky top-0 overflow-y-auto">
       <div className="p-4 border-b border-[var(--color-border)] flex items-center justify-between gap-2">
         <SiteLogo to="/admin" size="sm" />
         <button onClick={() => setCollapsed(true)} className="text-sm text-[var(--color-text-muted)] shrink-0" aria-label={t('admin.sidebar.collapse')}>◀</button>

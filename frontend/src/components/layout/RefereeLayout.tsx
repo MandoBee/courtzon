@@ -22,7 +22,7 @@ export default function RefereeLayout() {
   const visibleNav = resolveRefereeNav(can, t);
 
   return (
-    <div className="min-h-dvh bg-[var(--color-bg)]">
+    <div className="h-dvh max-h-full overflow-hidden bg-[var(--color-bg)]">
       <div className="hidden md:flex flex-col fixed inset-y-0 left-0 w-60 bg-[var(--color-surface)] border-r border-[var(--color-border)] z-40">
         <div className="flex items-center gap-2 px-4 h-16 border-b border-[var(--color-border)]">
           <span className="text-xl">🧾</span>
@@ -61,7 +61,7 @@ export default function RefereeLayout() {
         </div>
       </div>
 
-      <div className="md:ml-60 flex flex-col h-dvh">
+      <div className="md:ml-60 flex flex-col h-full">
         <OfflineBanner />
         <header className="md:hidden sticky top-0 z-40 flex items-center justify-between px-4 h-14 bg-[var(--color-surface)] border-b border-[var(--color-border)]">
           <div className="flex items-center gap-2 min-w-0">

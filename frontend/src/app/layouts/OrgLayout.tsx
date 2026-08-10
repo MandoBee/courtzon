@@ -15,9 +15,9 @@ export default function OrgLayout() {
   }
 
   return (
-    <>
+    <div className="flex flex-col h-full bg-[var(--color-bg)]">
       <OfflineBanner />
-      <div className="flex h-full bg-[var(--color-bg)]">
+      <div className="flex flex-1 min-h-0">
         {drawerOpen && (
           <div className="fixed inset-0 z-30 bg-black/50 md:hidden" onClick={() => setDrawerOpen(false)} />
         )}
@@ -36,6 +36,6 @@ export default function OrgLayout() {
           </main>
         </div>
       </div>
-    </>
+    </div>
   );
 }
