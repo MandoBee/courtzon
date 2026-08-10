@@ -87,7 +87,7 @@ export default function LandingLayout() {
       : 'text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-primary-bg)]/50';
 
   return (
-    <div className="flex flex-col h-dvh max-h-full overflow-hidden bg-[var(--color-bg)]">
+    <div className="min-h-screen flex flex-col bg-[var(--color-bg)]">
       <header className="sticky top-0 z-50 bg-[var(--color-surface)]/95 backdrop-blur-sm border-b border-[var(--color-border)]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
@@ -144,7 +144,7 @@ export default function LandingLayout() {
           </div>
         </div>
         {mobileOpen && (
-          <div className="md:hidden border-t border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3 space-y-1 max-h-[calc(100dvh-4rem)] overflow-y-auto">
+          <div className="md:hidden border-t border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3 space-y-1">
             {visibleNavLinks.map((l) => {
               const active = isNavActive(location.pathname, l.to);
               return (
@@ -197,10 +197,11 @@ export default function LandingLayout() {
         )}
       </header>
 
-      <main className="flex-1 overflow-y-auto min-h-0">
+      <main className="flex-1">
         <ErrorBoundary>
           <Outlet />
         </ErrorBoundary>
+      </main>
 
       <footer className="bg-[var(--color-surface)] border-t border-[var(--color-border)]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
@@ -249,7 +250,6 @@ export default function LandingLayout() {
           </div>
         </div>
       </footer>
-      </main>
     </div>
   );
 }
