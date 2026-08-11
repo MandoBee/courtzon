@@ -25,7 +25,7 @@ export default function AdminLayout() {
   const forbidden = denied || (required !== null && !can(required));
 
   return (
-    <div className="flex flex-col h-full bg-[var(--color-bg)]">
+    <div className="flex flex-col h-full bg-[var(--color-bg)] contain-paint">
       <OfflineBanner />
       <div className="flex flex-1 min-h-0">
         {drawerOpen && (
