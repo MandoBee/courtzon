@@ -24,6 +24,23 @@ export interface LedgerEntry {
   description: string;
   referenceId?: string;
   recordedAt: string;
+  eventType?: string;
+  organisationId?: number | null;
+  chartAccountId?: number | null;
+}
+
+export interface LedgerLineInput {
+  transactionId: string;
+  sourceType: SourceType;
+  sourceId: number;
+  eventType: string;
+  organisationId?: number | null;
+  chartAccountId: number;
+  side: EntrySide;
+  amount: number;
+  currency: string;
+  description: string;
+  referenceId?: string;
 }
 
 export interface SettlementBatch {
@@ -79,6 +96,35 @@ export function validateLedgerBalance(entries: LedgerEntry[]): boolean {
   const totalDebit = entries.filter(e => e.side === 'debit').reduce((s, e) => s + e.amount, 0);
   const totalCredit = entries.filter(e => e.side === 'credit').reduce((s, e) => s + e.amount, 0);
   return Math.abs(totalDebit - totalCredit) < 0.001;
+}
+
+/**
+ * Create ledger lines from resolved inputs (N-line postings).
+ * Replaces createLedgerPair() for the new accounting-engine flow.
+ */
+export function createLedgerLines(inputs: LedgerLineInput[]): LedgerEntry[] {
+  if (inputs.length === 0) throw new Error('At least one ledger line is required');
+  const now = nowMySql();
+  const entries: LedgerEntry[] = [];
+  for (const input of inputs) {
+    if (input.amount <= 0) throw new Error('Amount must be positive');
+    entries.push({
+      transactionId: input.transactionId,
+      sourceType: input.sourceType,
+      sourceId: input.sourceId,
+      accountType: 'platform_revenue', // legacy fill — deprecated by chart_account_id
+      side: input.side,
+      amount: input.amount,
+      currency: input.currency,
+      description: input.description,
+      referenceId: input.referenceId,
+      recordedAt: now,
+      eventType: input.eventType,
+      organisationId: input.organisationId ?? null,
+      chartAccountId: input.chartAccountId,
+    });
+  }
+  return entries;
 }
 
 export type AccountClassification =

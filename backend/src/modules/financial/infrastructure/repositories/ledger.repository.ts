@@ -17,10 +17,12 @@ export class LedgerRepository {
     const db = conn ?? this.pool;
     for (const entry of entries) {
       await db.execute<ResultSetHeader>(
-        `INSERT INTO ledger_entries (transaction_id, source_type, source_id, account_type, side, amount, currency, description, reference_id, recorded_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [entry.transactionId, entry.sourceType, entry.sourceId, entry.accountType,
-         entry.side, entry.amount, entry.currency, entry.description, entry.referenceId || null, entry.recordedAt],
+        `INSERT INTO ledger_entries (transaction_id, source_type, source_id, event_type, organisation_id, chart_account_id, account_type, side, amount, currency, description, reference_id, recorded_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [entry.transactionId, entry.sourceType, entry.sourceId,
+         entry.eventType ?? null, entry.organisationId ?? null, entry.chartAccountId ?? null,
+         entry.accountType, entry.side, entry.amount, entry.currency,
+         entry.description, entry.referenceId || null, entry.recordedAt],
       );
     }
   }
@@ -31,6 +33,18 @@ export class LedgerRepository {
       [sourceType, sourceId],
     );
     return rows as LedgerEntry[];
+  }
+
+  /**
+   * Idempotency check: returns true if an accounting posting already exists
+   * for this (source_type, source_id, event_type) identity.
+   */
+  async hasPosting(sourceType: string, sourceId: number, eventType: string): Promise<boolean> {
+    const [rows] = await this.pool.execute<RowData>(
+      'SELECT 1 FROM ledger_entries WHERE source_type = ? AND source_id = ? AND event_type = ? LIMIT 1',
+      [sourceType, sourceId, eventType],
+    );
+    return (rows as any[]).length > 0;
   }
 
   async findByDateRange(from: string, to: string, accountType?: string): Promise<LedgerEntry[]> {

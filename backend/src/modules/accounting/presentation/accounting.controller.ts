@@ -550,6 +550,18 @@ export async function issueInvoiceHandler(request: FastifyRequest, reply: Fastif
     throw new AppError('No open accounting period for the invoice date', 400, 'VALIDATION_ERROR');
   }
 
+  // Resolve accounts via concepts-based mapping (no hard-coded IDs)
+  const eventType = inv.invoice_type === 'purchase' ? 'purchase_invoice_issue' : 'invoice_issue';
+  const orgId: number | null = inv.organisation_id ?? null;
+  const { accountingEngineService } = await import('../../financial/application/accounting-engine.service.js');
+  const mapping = await accountingEngineService.resolveMapping(eventType, orgId);
+
+  // Build concept→account map from resolved mapping
+  const conceptToAccount = new Map<string, number>();
+  for (const m of mapping) {
+    conceptToAccount.set(m.concept, m.accountId);
+  }
+
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
@@ -558,19 +570,52 @@ export async function issueInvoiceHandler(request: FastifyRequest, reply: Fastif
       `UPDATE invoices SET status = 'issued' WHERE id = ?`, [Number(id)]
     );
 
-    const revenueAccountId = inv.invoice_type === 'purchase' ? 9 : 2;
-    const receivableAccountId = 3;
-
-    await conn.execute(
-      `INSERT INTO general_ledger (period_id, account_id, entry_date, debit, credit, balance, reference_type, reference_id, description, created_by)
-       VALUES (?, ?, ?, ?, ?, 0, 'invoice', ?, ?, ?)`,
-      [periods[0].id, receivableAccountId, inv.issue_date, inv.total, 0, Number(id), `Invoice ${inv.invoice_number}`, userId]
-    );
-    await conn.execute(
-      `INSERT INTO general_ledger (period_id, account_id, entry_date, debit, credit, balance, reference_type, reference_id, description, created_by)
-       VALUES (?, ?, ?, ?, ?, 0, 'invoice', ?, ?, ?)`,
-      [periods[0].id, revenueAccountId, inv.issue_date, 0, inv.total, Number(id), `Invoice ${inv.invoice_number}`, userId]
-    );
+    if (eventType === 'purchase_invoice_issue') {
+      const expenseId = conceptToAccount.get('expense');
+      const payableId = conceptToAccount.get('accounts_payable');
+      if (!expenseId || !payableId) {
+        throw new AppError('Missing required account mapping for purchase_invoice_issue', 500, 'CONFIG_ERROR');
+      }
+      await conn.execute(
+        `INSERT INTO general_ledger (organisation_id, period_id, account_id, entry_date, debit, credit, balance, reference_type, reference_id, description, created_by)
+         VALUES (?, ?, ?, ?, ?, ?, 0, 'invoice', ?, ?, ?)`,
+        [orgId, periods[0].id, expenseId, inv.issue_date, inv.total, 0, Number(id), `Purchase invoice ${inv.invoice_number}`, userId]
+      );
+      await conn.execute(
+        `INSERT INTO general_ledger (organisation_id, period_id, account_id, entry_date, debit, credit, balance, reference_type, reference_id, description, created_by)
+         VALUES (?, ?, ?, ?, ?, ?, 0, 'invoice', ?, ?, ?)`,
+        [orgId, periods[0].id, payableId, inv.issue_date, 0, inv.total, Number(id), `Purchase invoice ${inv.invoice_number}`, userId]
+      );
+    } else {
+      const receivableId = conceptToAccount.get('receivable');
+      const revenueId = conceptToAccount.get('revenue');
+      const taxLiabilityId = conceptToAccount.get('tax_liability');
+      if (!receivableId || !revenueId) {
+        throw new AppError('Missing required account mapping for invoice_issue', 500, 'CONFIG_ERROR');
+      }
+      // Debit Receivable (total including tax)
+      await conn.execute(
+        `INSERT INTO general_ledger (organisation_id, period_id, account_id, entry_date, debit, credit, balance, reference_type, reference_id, description, created_by)
+         VALUES (?, ?, ?, ?, ?, ?, 0, 'invoice', ?, ?, ?)`,
+        [orgId, periods[0].id, receivableId, inv.issue_date, inv.total, 0, Number(id), `Invoice ${inv.invoice_number}`, userId]
+      );
+      // Credit Revenue (net amount = total - tax)
+      const netRevenue = Number(inv.subtotal || inv.total - inv.tax_amount);
+      await conn.execute(
+        `INSERT INTO general_ledger (organisation_id, period_id, account_id, entry_date, debit, credit, balance, reference_type, reference_id, description, created_by)
+         VALUES (?, ?, ?, ?, ?, ?, 0, 'invoice', ?, ?, ?)`,
+        [orgId, periods[0].id, revenueId, inv.issue_date, 0, netRevenue, Number(id), `Invoice ${inv.invoice_number} (net revenue)`, userId]
+      );
+      // Credit Tax Liability (tax amount) — if mapped to same account as revenue, the engine would merge it;
+      // here in general_ledger we post it as a separate line if the account differs
+      if (taxLiabilityId && Number(inv.tax_amount) > 0) {
+        await conn.execute(
+          `INSERT INTO general_ledger (organisation_id, period_id, account_id, entry_date, debit, credit, balance, reference_type, reference_id, description, created_by)
+           VALUES (?, ?, ?, ?, ?, ?, 0, 'invoice', ?, ?, ?)`,
+          [orgId, periods[0].id, taxLiabilityId, inv.issue_date, 0, Number(inv.tax_amount), Number(id), `Tax on invoice ${inv.invoice_number}`, userId]
+        );
+      }
+    }
 
     await conn.commit();
 
@@ -625,6 +670,16 @@ export async function recordInvoicePaymentHandler(request: FastifyRequest, reply
     throw new AppError('No open accounting period for today', 400, 'VALIDATION_ERROR');
   }
 
+  // Resolve accounts via concepts-based mapping
+  const eventType = inv.invoice_type === 'purchase' ? 'purchase_invoice_payment' : 'invoice_payment';
+  const orgId: number | null = inv.organisation_id ?? null;
+  const { accountingEngineService } = await import('../../financial/application/accounting-engine.service.js');
+  const mapping = await accountingEngineService.resolveMapping(eventType, orgId);
+  const conceptToAccount = new Map<string, number>();
+  for (const m of mapping) {
+    conceptToAccount.set(m.concept, m.accountId);
+  }
+
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
@@ -634,16 +689,39 @@ export async function recordInvoicePaymentHandler(request: FastifyRequest, reply
       [newPaidAmount, newStatus, Number(id)]
     );
 
-    await conn.execute(
-      `INSERT INTO general_ledger (period_id, account_id, entry_date, debit, credit, balance, reference_type, reference_id, description, created_by)
-       VALUES (?, ?, CURDATE(), ?, ?, 0, 'invoice_payment', ?, ?, ?)`,
-      [periods[0].id, 3, 0, paymentAmount, Number(id), `Payment for invoice ${inv.invoice_number}`, userId]
-    );
-    await conn.execute(
-      `INSERT INTO general_ledger (period_id, account_id, entry_date, debit, credit, balance, reference_type, reference_id, description, created_by)
-       VALUES (?, ?, CURDATE(), ?, ?, 0, 'invoice_payment', ?, ?, ?)`,
-      [periods[0].id, 2, paymentAmount, 0, Number(id), `Payment for invoice ${inv.invoice_number}`, userId]
-    );
+    if (eventType === 'purchase_invoice_payment') {
+      const payableId = conceptToAccount.get('accounts_payable');
+      const cashBankId = conceptToAccount.get('cash_bank');
+      if (!payableId || !cashBankId) {
+        throw new AppError('Missing required account mapping for purchase_invoice_payment', 500, 'CONFIG_ERROR');
+      }
+      await conn.execute(
+        `INSERT INTO general_ledger (organisation_id, period_id, account_id, entry_date, debit, credit, balance, reference_type, reference_id, description, created_by)
+         VALUES (?, ?, ?, CURDATE(), ?, ?, 0, 'invoice_payment', ?, ?, ?)`,
+        [orgId, periods[0].id, payableId, paymentAmount, 0, Number(id), `Payment for purchase invoice ${inv.invoice_number}`, userId]
+      );
+      await conn.execute(
+        `INSERT INTO general_ledger (organisation_id, period_id, account_id, entry_date, debit, credit, balance, reference_type, reference_id, description, created_by)
+         VALUES (?, ?, ?, CURDATE(), ?, ?, 0, 'invoice_payment', ?, ?, ?)`,
+        [orgId, periods[0].id, cashBankId, 0, paymentAmount, Number(id), `Payment for purchase invoice ${inv.invoice_number}`, userId]
+      );
+    } else {
+      const cashBankId = conceptToAccount.get('cash_bank');
+      const receivableId = conceptToAccount.get('receivable');
+      if (!cashBankId || !receivableId) {
+        throw new AppError('Missing required account mapping for invoice_payment', 500, 'CONFIG_ERROR');
+      }
+      await conn.execute(
+        `INSERT INTO general_ledger (organisation_id, period_id, account_id, entry_date, debit, credit, balance, reference_type, reference_id, description, created_by)
+         VALUES (?, ?, ?, CURDATE(), ?, ?, 0, 'invoice_payment', ?, ?, ?)`,
+        [orgId, periods[0].id, cashBankId, paymentAmount, 0, Number(id), `Payment for invoice ${inv.invoice_number}`, userId]
+      );
+      await conn.execute(
+        `INSERT INTO general_ledger (organisation_id, period_id, account_id, entry_date, debit, credit, balance, reference_type, reference_id, description, created_by)
+         VALUES (?, ?, ?, CURDATE(), ?, ?, 0, 'invoice_payment', ?, ?, ?)`,
+        [orgId, periods[0].id, receivableId, 0, paymentAmount, Number(id), `Payment for invoice ${inv.invoice_number}`, userId]
+      );
+    }
 
     await conn.commit();
 
@@ -692,6 +770,16 @@ export async function cancelInvoiceHandler(request: FastifyRequest, reply: Fasti
     throw new AppError('No open accounting period for today', 400, 'VALIDATION_ERROR');
   }
 
+  // Resolve accounts via concepts-based mapping
+  const eventType = inv.invoice_type === 'purchase' ? 'purchase_invoice_cancel' : 'invoice_cancel';
+  const orgId: number | null = inv.organisation_id ?? null;
+  const { accountingEngineService } = await import('../../financial/application/accounting-engine.service.js');
+  const mapping = await accountingEngineService.resolveMapping(eventType, orgId);
+  const conceptToAccount = new Map<string, number>();
+  for (const m of mapping) {
+    conceptToAccount.set(m.concept, m.accountId);
+  }
+
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
@@ -700,16 +788,39 @@ export async function cancelInvoiceHandler(request: FastifyRequest, reply: Fasti
       `UPDATE invoices SET status = 'cancelled' WHERE id = ?`, [Number(id)]
     );
 
-    await conn.execute(
-      `INSERT INTO general_ledger (period_id, account_id, entry_date, debit, credit, balance, reference_type, reference_id, description, created_by)
-       VALUES (?, ?, CURDATE(), ?, ?, 0, 'invoice_cancel', ?, ?, ?)`,
-      [periods[0].id, 3, 0, Number(inv.total), Number(id), `Reversal - cancelled invoice ${inv.invoice_number}`, userId]
-    );
-    await conn.execute(
-      `INSERT INTO general_ledger (period_id, account_id, entry_date, debit, credit, balance, reference_type, reference_id, description, created_by)
-       VALUES (?, ?, CURDATE(), ?, ?, 0, 'invoice_cancel', ?, ?, ?)`,
-      [periods[0].id, 2, Number(inv.total), 0, Number(id), `Reversal - cancelled invoice ${inv.invoice_number}`, userId]
-    );
+    if (eventType === 'purchase_invoice_cancel') {
+      const payableId = conceptToAccount.get('accounts_payable');
+      const expenseId = conceptToAccount.get('expense');
+      if (!payableId || !expenseId) {
+        throw new AppError('Missing required account mapping for purchase_invoice_cancel', 500, 'CONFIG_ERROR');
+      }
+      await conn.execute(
+        `INSERT INTO general_ledger (organisation_id, period_id, account_id, entry_date, debit, credit, balance, reference_type, reference_id, description, created_by)
+         VALUES (?, ?, ?, CURDATE(), ?, ?, 0, 'invoice_cancel', ?, ?, ?)`,
+        [orgId, periods[0].id, payableId, Number(inv.total), 0, Number(id), `Reversal - cancelled purchase invoice ${inv.invoice_number}`, userId]
+      );
+      await conn.execute(
+        `INSERT INTO general_ledger (organisation_id, period_id, account_id, entry_date, debit, credit, balance, reference_type, reference_id, description, created_by)
+         VALUES (?, ?, ?, CURDATE(), ?, ?, 0, 'invoice_cancel', ?, ?, ?)`,
+        [orgId, periods[0].id, expenseId, 0, Number(inv.total), Number(id), `Reversal - cancelled purchase invoice ${inv.invoice_number}`, userId]
+      );
+    } else {
+      const revenueId = conceptToAccount.get('revenue');
+      const receivableId = conceptToAccount.get('receivable');
+      if (!revenueId || !receivableId) {
+        throw new AppError('Missing required account mapping for invoice_cancel', 500, 'CONFIG_ERROR');
+      }
+      await conn.execute(
+        `INSERT INTO general_ledger (organisation_id, period_id, account_id, entry_date, debit, credit, balance, reference_type, reference_id, description, created_by)
+         VALUES (?, ?, ?, CURDATE(), ?, ?, 0, 'invoice_cancel', ?, ?, ?)`,
+        [orgId, periods[0].id, receivableId, 0, Number(inv.total), Number(id), `Reversal - cancelled invoice ${inv.invoice_number}`, userId]
+      );
+      await conn.execute(
+        `INSERT INTO general_ledger (organisation_id, period_id, account_id, entry_date, debit, credit, balance, reference_type, reference_id, description, created_by)
+         VALUES (?, ?, ?, CURDATE(), ?, ?, 0, 'invoice_cancel', ?, ?, ?)`,
+        [orgId, periods[0].id, revenueId, Number(inv.total), 0, Number(id), `Reversal - cancelled invoice ${inv.invoice_number}`, userId]
+      );
+    }
 
     await conn.commit();
 

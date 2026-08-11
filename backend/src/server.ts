@@ -187,6 +187,10 @@ async function bootstrap() {
     const { registerWalletPaymentListeners } = await import('./modules/wallet/application/wallet-payment.listener.js');
     registerWalletPaymentListeners();
 
+    const { registerAccountingEventListeners } = await import('./modules/financial/application/accounting-event.listener.js');
+    registerAccountingEventListeners();
+    app.log.info('Accounting event listeners registered');
+
     await queueService.add('cancel_expired_bookings', { cutoffMinutes: 5 }, {
       repeat: { every: 120_000 },
       removeOnComplete: true,

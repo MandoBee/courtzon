@@ -1,6 +1,6 @@
 import { ledgerRepository } from '../infrastructure/repositories/ledger.repository.js';
-import { createLedgerPair, validateLedgerBalance } from '../domain/ledger-aggregate.js';
-import type { LedgerEntry, SourceType, AccountType } from '../domain/ledger-aggregate.js';
+import { createLedgerPair, createLedgerLines, validateLedgerBalance } from '../domain/ledger-aggregate.js';
+import type { LedgerEntry, SourceType, AccountType, LedgerLineInput } from '../domain/ledger-aggregate.js';
 import type mysql from 'mysql2/promise';
 import { eventBusV2 } from '../../../shared/event-bus/event-bus.v2.js';
 
@@ -26,6 +26,39 @@ export class LedgerService {
 
     eventBusV2.emit('ledger.entry.created', {
       transactionId, sourceType, sourceId, amount, currency,
+    } as Record<string, unknown>, {
+      aggregateType: 'ledger',
+      aggregateId: transactionId,
+      aggregateVersion: 1,
+    });
+
+    return entries;
+  }
+
+  /**
+   * Record an accounting transaction using the new concepts-based engine.
+   * Accepts pre-resolved LedgerLineInputs from the AccountingEngineService.
+   */
+  async recordAccountingTransaction(
+    transactionId: string,
+    lines: LedgerLineInput[],
+    conn?: mysql.PoolConnection,
+  ): Promise<LedgerEntry[]> {
+    const entries = createLedgerLines(lines);
+
+    if (!validateLedgerBalance(entries)) {
+      throw new Error('Ledger entries are not balanced');
+    }
+
+    await ledgerRepository.createEntries(entries, conn);
+
+    eventBusV2.emit('ledger.entry.created', {
+      transactionId,
+      sourceType: lines[0]?.sourceType,
+      sourceId: lines[0]?.sourceId,
+      eventType: lines[0]?.eventType,
+      amount: entries.reduce((s, e) => s + e.amount, 0) / 2,
+      currency: lines[0]?.currency,
     } as Record<string, unknown>, {
       aggregateType: 'ledger',
       aggregateId: transactionId,
