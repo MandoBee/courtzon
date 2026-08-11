@@ -5,6 +5,9 @@ import * as ctrl from './accounting.controller.js';
 export async function accountingRoutes(app: FastifyInstance): Promise<void> {
   app.addHook('preHandler', authMiddleware);
 
+  // Dashboard
+  app.get('/admin/accounting/dashboard', { preHandler: [requirePermission(['accounting.dashboard'])] }, ctrl.getDashboardHandler);
+
   // Chart of Accounts
   app.get('/admin/accounting/accounts', { preHandler: [requirePermission(['accounting.coa.view'])] }, ctrl.listAccountsHandler);
   app.post('/admin/accounting/accounts', { preHandler: [requirePermission(['accounting.coa.manage'])] }, ctrl.createAccountHandler);

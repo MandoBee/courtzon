@@ -4,12 +4,15 @@ import { useNavigate } from 'react-router-dom';
 import api from '../../../services/api';
 import { ExportButton } from '../../../components/ui/ExportButton';
 import { apiDateRange } from '../../../utils/dateRange';
+import { useCan } from '../../../hooks/useCan';
 
 type ReportTab = 'revenue' | 'wallet' | 'settlements';
 const RANGE_DAYS: Record<string, number> = { '7d': 7, '30d': 30, '90d': 90, '1y': 365 };
 
 export default function ReportCenterPage() {
   const navigate = useNavigate();
+  const { can } = useCan();
+  if (!can('sidebar.finance-reports')) return null;
   const [tab, setTab] = useState<ReportTab>('revenue');
   const [range, setRange] = useState('30d');
 

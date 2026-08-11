@@ -58,9 +58,16 @@ export default function TaxRatesPage() {
     onError: (err: any) => showToast(getErrorMessage(err), 'error'),
   });
 
-  const deleteMutation = useMutation({
-    mutationFn: (id: number) => api.delete(`/admin/accounting/tax-rates/${id}`),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['accounting', 'tax-rates'] }); setDeleteId(null); showToast('Tax rate deleted!'); },
+  const deactivateMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const existing = taxRates.find(t => t.id === id);
+      if (!existing) throw new Error('Tax rate not found');
+      return api.put(`/admin/accounting/tax-rates/${id}`, {
+        name: existing.name, rate: existing.rate, type: existing.type,
+        country_code: existing.country_code, is_active: false,
+      });
+    },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['accounting', 'tax-rates'] }); setDeleteId(null); showToast('Tax rate deactivated!'); },
     onError: (err: any) => showToast(getErrorMessage(err), 'error'),
   });
 
@@ -158,7 +165,7 @@ export default function TaxRatesPage() {
                   <Can permission="accounting.tax.manage">
                     <td className="px-4 py-3 text-right">
                       <button onClick={() => openEdit(t)} className="text-xs text-[var(--color-primary)] hover:underline mr-2">Edit</button>
-                      <button onClick={() => setDeleteId(t.id)} className="text-xs text-[var(--color-error)] hover:underline">Delete</button>
+                      <button onClick={() => setDeleteId(t.id)} className="text-xs text-[var(--color-text-muted)] hover:underline">Deactivate</button>
                     </td>
                   </Can>
                 </tr>
@@ -168,14 +175,14 @@ export default function TaxRatesPage() {
           {!taxRates.length && <p className="text-center py-8 text-sm text-[var(--color-text-muted)]">No tax rates found</p>}
         </div>
 
-        <Modal open={deleteId !== null} onClose={() => setDeleteId(null)} title="Delete Tax Rate">
-          <p className="text-sm text-[var(--color-text-muted)] mb-6">Are you sure? This cannot be undone.</p>
-          <div className="flex justify-end gap-3">
-            <Button variant="ghost" onClick={() => setDeleteId(null)}>Cancel</Button>
-            <Button onClick={() => deleteMutation.mutate(deleteId!)} loading={deleteMutation.isPending}
-              className="bg-[var(--color-error)] text-white">Delete</Button>
-          </div>
-        </Modal>
+      <Modal open={deleteId !== null} onClose={() => setDeleteId(null)} title="Deactivate Tax Rate">
+        <p className="text-sm text-[var(--color-text-muted)] mb-6">Deactivate this tax rate? It can be reactivated later.</p>
+        <div className="flex justify-end gap-3">
+          <Button variant="ghost" onClick={() => setDeleteId(null)}>Cancel</Button>
+          <Button onClick={() => deactivateMutation.mutate(deleteId!)} loading={deactivateMutation.isPending}
+            className="bg-[var(--color-primary)] text-white">Deactivate</Button>
+        </div>
+      </Modal>
       </div>
     </Can>
   );

@@ -55,9 +55,17 @@ export default function ChartOfAccountsPage() {
     onError: (err: any) => showToast(getErrorMessage(err), 'error'),
   });
 
-  const deleteMutation = useMutation({
-    mutationFn: (id: number) => api.delete(`/admin/accounting/accounts/${id}`),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['accounting', 'chart-of-accounts'] }); setDeleteId(null); showToast('Account deleted!'); },
+  const deactivateMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const existing = accounts.find(a => a.id === id);
+      if (!existing) throw new Error('Account not found');
+      return api.put(`/admin/accounting/accounts/${id}`, {
+        code: existing.code, name: existing.name, type: existing.type,
+        parent_id: existing.parent_id, description: existing.description,
+        is_active: false,
+      });
+    },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['accounting', 'chart-of-accounts'] }); setDeleteId(null); showToast('Account deactivated!'); },
     onError: (err: any) => showToast(getErrorMessage(err), 'error'),
   });
 
@@ -105,7 +113,7 @@ export default function ChartOfAccountsPage() {
           <Can permission="accounting.coa.manage">
             <div className="flex items-center gap-1 ml-2">
               <button onClick={() => openEdit(node)} className="text-xs text-[var(--color-primary)] hover:underline">Edit</button>
-              <button onClick={() => setDeleteId(node.id)} className="text-xs text-[var(--color-error)] hover:underline">Delete</button>
+              <button onClick={() => setDeleteId(node.id)} className="text-xs text-[var(--color-text-muted)] hover:underline">Deactivate</button>
             </div>
           </Can>
         </div>
@@ -210,7 +218,7 @@ export default function ChartOfAccountsPage() {
                     <Can permission="accounting.coa.manage">
                       <td className="px-4 py-3 text-right">
                         <button onClick={() => openEdit(a)} className="text-xs text-[var(--color-primary)] hover:underline mr-2">Edit</button>
-                        <button onClick={() => setDeleteId(a.id)} className="text-xs text-[var(--color-error)] hover:underline">Delete</button>
+                        <button onClick={() => setDeleteId(a.id)} className="text-xs text-[var(--color-text-muted)] hover:underline">Deactivate</button>
                       </td>
                     </Can>
                   </tr>
@@ -220,12 +228,12 @@ export default function ChartOfAccountsPage() {
         {!accounts.length && <p className="text-center py-8 text-sm text-[var(--color-text-muted)]">No accounts found</p>}
       </div>
 
-      <Modal open={deleteId !== null} onClose={() => setDeleteId(null)} title="Delete Account">
-        <p className="text-sm text-[var(--color-text-muted)] mb-6">Are you sure? This cannot be undone.</p>
+      <Modal open={deleteId !== null} onClose={() => setDeleteId(null)} title="Deactivate Account">
+        <p className="text-sm text-[var(--color-text-muted)] mb-6">Deactivate this account? It can be reactivated later.</p>
         <div className="flex justify-end gap-3">
           <Button variant="ghost" onClick={() => setDeleteId(null)}>Cancel</Button>
-          <Button onClick={() => deleteMutation.mutate(deleteId!)} loading={deleteMutation.isPending}
-            className="bg-[var(--color-error)] text-white">Delete</Button>
+          <Button onClick={() => deactivateMutation.mutate(deleteId!)} loading={deactivateMutation.isPending}
+            className="bg-[var(--color-primary)] text-white">Deactivate</Button>
         </div>
       </Modal>
     </div>
