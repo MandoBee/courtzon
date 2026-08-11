@@ -41,6 +41,8 @@ export default function ReportCenterPage() {
 
   const settlementList = Array.isArray(settlements) ? settlements : [];
   const entries = Array.isArray(ledger) ? ledger : [];
+  const summary = revenue && typeof revenue === 'object' && !Array.isArray(revenue) ? revenue : null;
+  const revenueAccounts = summary?.byAccount || (Array.isArray(revenue) ? revenue : []);
 
   return (
     <div className="space-y-6">
@@ -49,7 +51,7 @@ export default function ReportCenterPage() {
         <div className="flex gap-2">
           <button onClick={() => navigate('/admin/finance')} className="text-xs text-[var(--color-primary)] hover:underline">Dashboard</button>
           <button onClick={() => navigate('/admin/finance/ledger')} className="text-xs text-[var(--color-primary)] hover:underline">Ledger</button>
-          <ExportButton data={tab === 'revenue' ? (revenue || ledger || []) : tab === 'wallet' ? [walletSummary || {}] : settlementList}
+          <ExportButton data={tab === 'revenue' ? (revenueAccounts.length ? revenueAccounts : entries) : tab === 'wallet' ? [walletSummary || {}] : settlementList}
             filename={`finance-${tab}-${from}-${to}`} />
         </div>
       </div>
@@ -81,34 +83,34 @@ export default function ReportCenterPage() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-5">
               <p className="text-xs text-[var(--color-text-muted)]">Total Revenue</p>
-              <p className="text-2xl font-bold text-green-600">EGP {Array.isArray(revenue) ? revenue.reduce((s: number, r: any) => s + Number(r.total || 0), 0).toLocaleString() : '0'}</p>
+              <p className="text-2xl font-bold text-green-600">EGP {(summary ? Number(summary.revenue || 0) : revenueAccounts.reduce((s: number, r: any) => s + (r.classification === 'revenue' ? Number(r.total || 0) : 0), 0)).toLocaleString()}</p>
             </div>
             <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-5">
               <p className="text-xs text-[var(--color-text-muted)]">Total Expenses</p>
-              <p className="text-2xl font-bold text-red-600">EGP {entries.filter((e: any) => e.side === 'debit').reduce((s: number, e: any) => s + Number(e.amount || 0), 0).toLocaleString()}</p>
+              <p className="text-2xl font-bold text-red-600">EGP {(summary ? Number(summary.expenses || 0) : entries.filter((e: any) => e.side === 'debit').reduce((s: number, e: any) => s + Number(e.amount || 0), 0)).toLocaleString()}</p>
             </div>
             <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-5">
               <p className="text-xs text-[var(--color-text-muted)]">Net Income</p>
-              <p className="text-2xl font-bold text-[var(--color-text)]">EGP {(Array.isArray(revenue) ? revenue.reduce((s: number, r: any) => s + Number(r.total || 0), 0) - entries.filter((e: any) => e.side === 'debit').reduce((s: number, e: any) => s + Number(e.amount || 0), 0) : 0).toLocaleString()}</p>
+              <p className="text-2xl font-bold text-[var(--color-text)]">EGP {(summary ? Number(summary.netIncome || 0) : 0).toLocaleString()}</p>
             </div>
             <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-5">
               <p className="text-xs text-[var(--color-text-muted)]">Transactions</p>
-              <p className="text-2xl font-bold text-[var(--color-text)]">{Array.isArray(revenue) ? revenue.reduce((s: number, r: any) => s + Number(r.count || 0), 0) : 0}</p>
+              <p className="text-2xl font-bold text-[var(--color-text)]">{summary ? Number(summary.transactions || 0) : revenueAccounts.reduce((s: number, r: any) => s + Number(r.count || 0), 0)}</p>
             </div>
           </div>
 
           <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-5">
             <h2 className="text-sm font-semibold text-[var(--color-text)] mb-4">Revenue Breakdown by Account</h2>
-            {!Array.isArray(revenue) || revenue.length === 0 ? (
+            {revenueAccounts.length === 0 ? (
               <p className="text-sm text-[var(--color-text-muted)] text-center py-4">No data.</p>
             ) : (
               <div className="space-y-3">
-                {revenue.map((r: any, i: number) => (
+                {revenueAccounts.map((r: any, i: number) => (
                   <div key={i} onClick={() => navigate(`/admin/finance/ledger?accountType=${r.account_type}`)}
                     className="flex items-center justify-between py-2 border-b border-[var(--color-border)] last:border-0 cursor-pointer hover:bg-[var(--color-bg)] -mx-5 px-5">
                     <div>
                       <p className="text-sm font-medium text-[var(--color-text)] capitalize">{r.account_type?.replace(/_/g, ' ')}</p>
-                      <p className="text-xs text-[var(--color-text-muted)]">{r.side} · {r.count} entries</p>
+                      <p className="text-xs text-[var(--color-text-muted)]">{r.side} · {r.count} entries{summary && r.classification ? ` · ${r.classification}` : ''}</p>
                     </div>
                     <p className="text-sm font-bold text-[var(--color-text)]">EGP {Number(r.total).toLocaleString()}</p>
                   </div>

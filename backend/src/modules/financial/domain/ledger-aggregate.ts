@@ -80,3 +80,69 @@ export function validateLedgerBalance(entries: LedgerEntry[]): boolean {
   const totalCredit = entries.filter(e => e.side === 'credit').reduce((s, e) => s + e.amount, 0);
   return Math.abs(totalDebit - totalCredit) < 0.001;
 }
+
+export type AccountClassification =
+  | 'revenue'
+  | 'contraRevenue'
+  | 'expense'
+  | 'asset'
+  | 'liability'
+  | 'other';
+
+export const ACCOUNT_TYPE_CLASSIFICATION: Record<AccountType, AccountClassification> = {
+  platform_revenue: 'revenue',
+  club_revenue: 'revenue',
+  wallet_liability: 'liability',
+  customer_balance: 'liability',
+  tax: 'other',
+  discount: 'contraRevenue',
+  commission: 'contraRevenue',
+  receivable: 'asset',
+  payable: 'liability',
+  refund: 'contraRevenue',
+};
+
+export function classifyAccountType(accountType: string): AccountClassification {
+  return ACCOUNT_TYPE_CLASSIFICATION[accountType as AccountType] ?? 'other';
+}
+
+export interface RevenueGroupRow {
+  account_type: string;
+  side: string;
+  total: number;
+  count: number;
+  classification: AccountClassification;
+}
+
+export interface RevenueSummary {
+  revenue: number;
+  reductions: number;
+  expenses: number;
+  netIncome: number;
+  transactions: number;
+  byAccount: RevenueGroupRow[];
+}
+
+export function buildRevenueSummary(
+  groups: Array<{ account_type: string; side: string; total: number | string; count: number | string }>,
+): RevenueSummary {
+  const byAccount: RevenueGroupRow[] = groups.map((g) => ({
+    account_type: g.account_type,
+    side: g.side,
+    total: Number(g.total),
+    count: Number(g.count),
+    classification: classifyAccountType(g.account_type),
+  }));
+
+  const signedTotal = (rows: RevenueGroupRow[], normalSide: 'credit' | 'debit') =>
+    rows.reduce((sum, r) => sum + (r.side === normalSide ? r.total : -r.total), 0);
+
+  const revenue = signedTotal(byAccount.filter((r) => r.classification === 'revenue'), 'credit');
+  const reductions = signedTotal(byAccount.filter((r) => r.classification === 'contraRevenue'), 'debit');
+  const operatingExpenses = signedTotal(byAccount.filter((r) => r.classification === 'expense'), 'debit');
+  const expenses = reductions + operatingExpenses;
+  const netIncome = revenue - expenses;
+  const transactions = byAccount.reduce((sum, r) => sum + r.count, 0);
+
+  return { revenue, reductions, expenses, netIncome, transactions, byAccount };
+}
