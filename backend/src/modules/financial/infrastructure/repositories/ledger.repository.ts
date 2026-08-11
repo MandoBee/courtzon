@@ -1,7 +1,8 @@
 import { getPool } from '../../../../database/mysql.js';
 import type mysql from 'mysql2/promise';
 import type { RowDataPacket, ResultSetHeader } from 'mysql2';
-import type { LedgerEntry, SettlementBatch } from '../../domain/ledger-aggregate.js';
+import type { LedgerEntry, SettlementBatch, RevenueSummary } from '../../domain/ledger-aggregate.js';
+import { buildRevenueSummary } from '../../domain/ledger-aggregate.js';
 
 type RowData = RowDataPacket[];
 
@@ -41,7 +42,7 @@ export class LedgerRepository {
     return rows as LedgerEntry[];
   }
 
-  async getRevenueSummary(from: string, to: string): Promise<any> {
+  async getRevenueSummary(from: string, to: string): Promise<RevenueSummary> {
     const [rows] = await this.pool.execute<RowData>(
       `SELECT account_type, side, SUM(amount) as total, COUNT(*) as count
        FROM ledger_entries
@@ -50,7 +51,7 @@ export class LedgerRepository {
        ORDER BY account_type`,
       [from, to],
     );
-    return rows;
+    return buildRevenueSummary(rows as unknown as Array<{ account_type: string; side: string; total: number | string; count: number | string }>);
   }
 
   async createSettlementBatch(batch: SettlementBatch): Promise<number> {

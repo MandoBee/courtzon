@@ -31,7 +31,10 @@ export default function FinanceDashboardPage() {
 
   if (isLoading) return <div className="space-y-6"><Skeleton width={300} height={28} /><SkeletonRow count={8} /></div>;
 
-  const totalRevenue = Array.isArray(revenue) ? revenue.reduce((s: number, r: any) => s + Number(r.total || 0), 0) : 0;
+  const isObjectSummary = revenue && typeof revenue === 'object' && !Array.isArray(revenue);
+  const summary = isObjectSummary ? revenue : null;
+  const totalRevenue = summary ? Number(summary.revenue || 0) : (Array.isArray(revenue) ? revenue.reduce((s: number, r: any) => s + Number(r.total || 0), 0) : 0);
+  const revenueAccounts = summary?.byAccount || (Array.isArray(revenue) ? revenue : []);
   const totalCredits = Array.isArray(ledger) ? ledger.filter((e: any) => e.side === 'credit').reduce((s: number, e: any) => s + Number(e.amount || 0), 0) : 0;
   const totalDebits = Array.isArray(ledger) ? ledger.filter((e: any) => e.side === 'debit').reduce((s: number, e: any) => s + Number(e.amount || 0), 0) : 0;
   const settlementList = Array.isArray(settlements) ? settlements : settlements?.data || [];
@@ -54,13 +57,13 @@ export default function FinanceDashboardPage() {
           <button onClick={() => navigate('/admin/finance/ledger')} className="text-xs text-[var(--color-primary)] hover:underline">Ledger</button>
           <button onClick={() => navigate('/admin/finance/reports')} className="text-xs text-[var(--color-primary)] hover:underline">Reports</button>
           <button onClick={() => navigate('/admin/settlements')} className="text-xs text-[var(--color-primary)] hover:underline">Settlements</button>
-          <ExportButton data={ledger || revenue || []} filename="finance-export" />
+          <ExportButton data={Array.isArray(ledger) ? ledger : (summary?.byAccount || [])} filename="finance-export" />
         </div>
       </div>
 
       {/* Row 1: Revenue KPIs */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <KPI label="Total Revenue (30d)" value={`EGP ${totalRevenue.toLocaleString()}`} sub="Click for details" onClick={() => navigate('/admin/finance/reports')} color="text-green-600" />
+        <KPI label="Total Revenue (30d)" value={`EGP ${totalRevenue.toLocaleString()}`} sub={summary ? `Net income ${Number(summary.netIncome || 0).toLocaleString()} EGP` : 'Click for details'} onClick={() => navigate('/admin/finance/reports')} color="text-green-600" />
         <KPI
           label="Wallet Balance"
           value={walletSummary ? `EGP ${Number(walletSummary.totalBalance).toLocaleString()}` : '—'}
@@ -83,15 +86,15 @@ export default function FinanceDashboardPage() {
       {/* Revenue by account type */}
       <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-5">
         <h2 className="text-sm font-semibold text-[var(--color-text)] mb-4">Revenue by Account Type (30d)</h2>
-        {!Array.isArray(revenue) || revenue.length === 0 ? (
+        {revenueAccounts.length === 0 ? (
           <p className="text-sm text-[var(--color-text-muted)] text-center py-4">No revenue data yet.</p>
         ) : (
           <div className="space-y-3">
-            {revenue.map((r: any, i: number) => (
+            {revenueAccounts.map((r: any, i: number) => (
               <div key={i} onClick={() => navigate(`/admin/finance/ledger?accountType=${r.account_type}`)} className="flex items-center justify-between py-2 border-b border-[var(--color-border)] last:border-0 cursor-pointer hover:bg-[var(--color-bg)] -mx-5 px-5">
                 <div>
                   <p className="text-sm font-medium text-[var(--color-text)] capitalize">{r.account_type?.replace(/_/g, ' ')}</p>
-                  <p className="text-xs text-[var(--color-text-muted)]">{r.side} · {r.count} entries</p>
+                  <p className="text-xs text-[var(--color-text-muted)]">{r.side} · {r.count} entries{summary && r.classification ? ` · ${r.classification}` : ''}</p>
                 </div>
                 <p className={`text-sm font-bold ${r.side === 'credit' ? 'text-green-600' : 'text-red-600'}`}>
                   {r.side === 'credit' ? '+' : '-'}EGP {Number(r.total).toLocaleString()}
