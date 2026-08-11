@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import api from '../../../services/api';
 import { Spinner } from '../../../components/ui';
+import { useCan } from '../../../hooks/useCan';
 
 interface DashboardStats {
   total_accounts: number;
@@ -23,6 +24,9 @@ const QUICK_LINKS = [
 ];
 
 export default function AccountingDashboardPage() {
+  const { can } = useCan();
+  if (!can('accounting.dashboard')) return null;
+
   const { data: stats, isLoading } = useQuery({
     queryKey: ['accounting', 'dashboard'],
     queryFn: () => api.get('/admin/accounting/dashboard').then((r: any) => r.data.data || r.data),

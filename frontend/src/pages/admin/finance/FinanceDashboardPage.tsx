@@ -4,9 +4,12 @@ import api from '../../../services/api';
 import { ExportButton } from '../../../components/ui/ExportButton';
 import { Skeleton, SkeletonRow } from '../../../components/ui/Skeleton';
 import { apiDateRange } from '../../../utils/dateRange';
+import { useCan } from '../../../hooks/useCan';
 
 export default function FinanceDashboardPage() {
   const navigate = useNavigate();
+  const { can } = useCan();
+  if (!can('sidebar.finance-dashboard')) return null;
   const { from, to } = apiDateRange(30);
 
   const { data: revenue, isLoading } = useQuery({

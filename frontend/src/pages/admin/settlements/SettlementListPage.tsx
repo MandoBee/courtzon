@@ -3,8 +3,11 @@ import { getErrorMessage } from '../../../utils/errors';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../../services/api';
 import { useToast } from '../../../components/ui/Toast';
+import { useCan } from '../../../hooks/useCan';
 
 export default function SettlementListPage() {
+  const { can } = useCan();
+  if (!can('settlements.view')) return null;
   const queryClient = useQueryClient();
   const { showToast } = useToast();
   const [page, setPage] = useState(1);

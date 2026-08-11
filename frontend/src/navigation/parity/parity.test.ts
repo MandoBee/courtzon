@@ -78,22 +78,22 @@ const noneCan = () => false;
 const allFlags = () => true;
 
 describe('Phase 1 parity gate — admin sidebar (buildNavItems vs Navigation Registry)', () => {
-  // NOTE: The IA Migration restructured ADMIN_NAV into 8 Business Domains.
+  // NOTE: The IA Migration restructured ADMIN_NAV into 9 Business Domains.
   // The legacy fixture (buildLegacyAdminNavItems) represents the pre-IA flat structure.
   // The Navigation Migration parity gate is frozen — these tests now verify the
   // IA structure is internally consistent, not that it matches the old fixture.
 
-  it('resolved admin nav has 8 Business Domains as top-level sections', () => {
+  it('resolved admin nav has 9 Business Domains as top-level sections', () => {
     const nav = resolveAdminNav(enT, allCan, allFlags);
-    expect(nav.length).toBe(8);
+    expect(nav.length).toBe(9);
     expect(nav.every((d) => d.children !== undefined && d.children.length > 0)).toBe(true);
   });
 
-  it('all 8 domain labels render correctly', () => {
+  it('all 9 domain labels render correctly', () => {
     const nav = resolveAdminNav(enT, allCan, allFlags);
     expect(nav.map((d) => d.label)).toEqual([
       'Dashboard', 'People', 'Facilities', 'Coaching',
-      'Competitions', 'Commerce', 'Finance', 'Platform',
+      'Competitions', 'Commerce', 'Finance', 'Accounting', 'Platform',
     ]);
   });
 
@@ -360,7 +360,7 @@ describe('Phase 1 parity gate — admin sidebar (buildNavItems vs Navigation Reg
 });
 
 describe('Commit 11 — Sidebar verification (domain-level permission sets + marketplace flag toggle)', () => {
-  const DOMAIN_LABELS = ['Dashboard', 'People', 'Facilities', 'Coaching', 'Competitions', 'Commerce', 'Finance', 'Platform'];
+  const DOMAIN_LABELS = ['Dashboard', 'People', 'Facilities', 'Coaching', 'Competitions', 'Commerce', 'Finance', 'Accounting', 'Platform'];
 
   const collectDomainKeys = (domain: NavDefinition): string[] =>
     Array.from(new Set(collectPermissionKeys([domain])));
@@ -385,7 +385,7 @@ describe('Commit 11 — Sidebar verification (domain-level permission sets + mar
       const nav = resolveAdminNav(enT, can, allFlags);
       const labels = nav.map((d) => d.label);
       expect(labels).not.toContain(DOMAIN_LABELS[i]);
-      expect(labels.length).toBe(7);
+      expect(labels.length).toBe(8);
     });
   });
 
@@ -423,7 +423,7 @@ describe('Commit 12 — Search finds all modules under new domain paths', () => 
     items.flatMap((i) => [i.id, ...(i.children ? flattenIds(i.children) : [])]);
   const collectIds = (nav: ResolvedNavItem[]): Set<string> => new Set(flattenIds(nav));
 
-  it('search index covers every admin module under the 8 domains', () => {
+  it('search index covers every admin module under the 9 domains', () => {
     const commands = adminAll();
     const registryIds = collectIds(resolveAdminNav(enT, allCan, allFlags));
     const commandIds = new Set(commands.map((c) => c.id));
@@ -437,7 +437,7 @@ describe('Commit 12 — Search finds all modules under new domain paths', () => 
       expect(c.domainId.startsWith('nav.admin.domain.')).toBe(true);
     }
     const domains = new Set(commands.map((c) => c.domainId));
-    expect(domains.size).toBe(8);
+    expect(domains.size).toBe(9);
   });
 
   it('admin commands are grouped by their domain label', () => {
@@ -503,14 +503,14 @@ describe('Phase 2-a saved-layout resolution (nav.admin.* ids)', () => {
     const layout = new Map<string | null, string[]>();
     layout.set(null, ['sidebar.dashboard', 'sidebar.users']);
     const nav = resolveAdminNav(enT, allCan, allFlags, layout);
-    expect(nav.length).toBe(8);
+    expect(nav.length).toBe(9);
   });
 
   it('silently drops stale keys from saved layouts', () => {
     const layout = new Map<string | null, string[]>();
     layout.set(null, ['stale.key.one', 'sidebar.dashboard', 'no.such.key']);
     const nav = resolveAdminNav(enT, allCan, allFlags, layout);
-    expect(nav.length).toBe(8);
+    expect(nav.length).toBe(9);
   });
 });
 
@@ -999,7 +999,7 @@ describe('Consumer 6 — Workspace Registry integration (drift resolved)', () =>
     }
   });
 
-  it('workspace shows all 8 domain sections', () => {
+  it('workspace shows all 9 domain sections', () => {
     expect(registryWorkspace.map((d) => d.label)).toEqual([
       'Dashboard', 'People', 'Facilities', 'Coaching',
       'Competitions', 'Commerce', 'Finance', 'Platform',
@@ -1086,7 +1086,7 @@ describe('Commit 10 — Workspace DnD round-trip (saved layout compatibility)', 
     return keys;
   }
 
-  it('DnD editor shows all 8 domains as sortable containers', () => {
+  it('DnD editor shows all 9 domains as sortable containers', () => {
     const ws = resolveWorkspaceNav(enT);
     const containers = buildDefaultContainers(ws);
     const root = containers.get(null);
@@ -1116,7 +1116,7 @@ describe('Commit 10 — Workspace DnD round-trip (saved layout compatibility)', 
     const people = nav.find((d) => d.id === 'nav.admin.domain.people');
     expect(people).toBeDefined();
     expect(people?.children?.map((c) => c.permissionKey ?? c.id)).toEqual(reordered);
-    expect(nav.length).toBe(8);
+    expect(nav.length).toBe(9);
   });
 
   it('round-trip: DnD editor load path (mergeSavedLayout) restores the reorder', () => {

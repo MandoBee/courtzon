@@ -7,6 +7,30 @@ import mysql from 'mysql2/promise';
 
 type RowData = mysql.RowDataPacket[];
 
+export async function getDashboardHandler(_request: FastifyRequest, reply: FastifyReply) {
+  const pool = getPool();
+
+  const [[coaCount]] = await pool.execute<RowData>('SELECT COUNT(*) AS cnt FROM chart_of_accounts WHERE is_active = 1');
+  const [[openPeriods]] = await pool.execute<RowData>("SELECT COUNT(*) AS cnt FROM accounting_periods WHERE status = 'open'");
+  const [[draftInvoices]] = await pool.execute<RowData>("SELECT COUNT(*) AS cnt FROM invoices WHERE status = 'draft'");
+  const [[issuedInvoices]] = await pool.execute<RowData>("SELECT COUNT(*) AS cnt FROM invoices WHERE status = 'issued'");
+  const [[paidInvoices]] = await pool.execute<RowData>("SELECT COUNT(*) AS cnt FROM invoices WHERE status = 'paid'");
+  const [[cancelledInvoices]] = await pool.execute<RowData>("SELECT COUNT(*) AS cnt FROM invoices WHERE status = 'cancelled'");
+  const [[taxCount]] = await pool.execute<RowData>('SELECT COUNT(*) AS cnt FROM tax_rates WHERE is_active = 1');
+
+  return reply.send({
+    data: {
+      total_accounts: Number((coaCount as any).cnt),
+      open_periods: Number((openPeriods as any).cnt),
+      draft_invoices: Number((draftInvoices as any).cnt),
+      issued_invoices: Number((issuedInvoices as any).cnt),
+      paid_invoices: Number((paidInvoices as any).cnt),
+      cancelled_invoices: Number((cancelledInvoices as any).cnt),
+      tax_rates: Number((taxCount as any).cnt),
+    },
+  });
+}
+
 export async function listAccountsHandler(_request: FastifyRequest, reply: FastifyReply) {
   const pool = getPool();
   const [rows] = await pool.execute<RowData>(

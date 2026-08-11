@@ -4,8 +4,11 @@ import api from '../../../services/api';
 import { ExportButton } from '../../../components/ui/ExportButton';
 import { SkeletonRow } from '../../../components/ui/Skeleton';
 import { localDaysAgo, apiDateRange } from '../../../utils/dateRange';
+import { useCan } from '../../../hooks/useCan';
 
 export default function LedgerViewerPage() {
+  const { can } = useCan();
+  if (!can('sidebar.finance-ledger')) return null;
   const dr = apiDateRange(30);
   const [from, setFrom] = useState(dr.from);
   const [to, setTo] = useState(localDaysAgo(-1));

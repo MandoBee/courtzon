@@ -1,8 +1,11 @@
 import { useQuery } from '@tanstack/react-query';
 import api from '../../../services/api';
 import { SkeletonRow } from '../../../components/ui';
+import { useCan } from '../../../hooks/useCan';
 
 export default function FinancialOpsDashboard() {
+  const { can } = useCan();
+  if (!can('sidebar.finance-transactions')) return null;
   const { data: health, isLoading: hl } = useQuery({
     queryKey: ['payments-health'],
     queryFn: () => api.get('/payments/health').then((r) => r.data),
