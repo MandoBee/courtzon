@@ -25,7 +25,7 @@ const QUICK_LINKS = [
 export default function AccountingDashboardPage() {
   const { data: stats, isLoading } = useQuery({
     queryKey: ['accounting', 'dashboard'],
-    queryFn: () => api.get('/accounting/dashboard').then((r: any) => r.data.data || r.data),
+    queryFn: () => api.get('/admin/accounting/dashboard').then((r: any) => r.data.data || r.data),
   });
 
   const s: DashboardStats = stats || {

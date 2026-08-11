@@ -38,25 +38,25 @@ export default function ChartOfAccountsPage() {
 
   const { data, isLoading } = useQuery({
     queryKey: ['accounting', 'chart-of-accounts'],
-    queryFn: () => api.get('/accounting/chart-of-accounts').then((r: any) => r.data.data || r.data),
+    queryFn: () => api.get('/admin/accounting/accounts').then((r: any) => r.data.data || r.data),
   });
 
   const accounts: Account[] = data || [];
 
   const createMutation = useMutation({
-    mutationFn: (payload: any) => api.post('/accounting/chart-of-accounts', payload),
+    mutationFn: (payload: any) => api.post('/admin/accounting/accounts', payload),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['accounting', 'chart-of-accounts'] }); resetForm(); showToast('Account created!'); },
     onError: (err: any) => showToast(getErrorMessage(err), 'error'),
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, payload }: any) => api.put(`/accounting/chart-of-accounts/${id}`, payload),
+    mutationFn: ({ id, payload }: any) => api.put(`/admin/accounting/accounts/${id}`, payload),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['accounting', 'chart-of-accounts'] }); resetForm(); showToast('Account updated!'); },
     onError: (err: any) => showToast(getErrorMessage(err), 'error'),
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (id: number) => api.delete(`/accounting/chart-of-accounts/${id}`),
+    mutationFn: (id: number) => api.delete(`/admin/accounting/accounts/${id}`),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['accounting', 'chart-of-accounts'] }); setDeleteId(null); showToast('Account deleted!'); },
     onError: (err: any) => showToast(getErrorMessage(err), 'error'),
   });
