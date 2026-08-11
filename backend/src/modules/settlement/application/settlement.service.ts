@@ -264,6 +264,19 @@ export const settlementService = {
             { transactionId: txnId, side: 'credit', entityType: 'platform_account', entityId: 2, amount: finalAmount, description: `Settlement #${settlementId}: CourtZon receives from org` },
           ], conn);
         }
+
+        // Emit accounting event at markPaid — this is when money actually moves.
+        eventBusV2.emit('settlement:paid', {
+          settlementId,
+          amount: finalAmount,
+          direction,
+          organisationId: settlement.organisation_id,
+          currency: 'EGP',
+        } as Record<string, unknown>, {
+          aggregateType: 'settlement',
+          aggregateId: String(settlementId),
+          aggregateVersion: 1,
+        });
       }
 
       return repo.getSettlementDetail(settlementId);
