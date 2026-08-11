@@ -42,7 +42,8 @@ export default function ReportCenterPage() {
   const settlementList = Array.isArray(settlements) ? settlements : [];
   const entries = Array.isArray(ledger) ? ledger : [];
   const summary = revenue && typeof revenue === 'object' && !Array.isArray(revenue) ? revenue : null;
-  const revenueAccounts = summary?.byAccount || (Array.isArray(revenue) ? revenue : []);
+  const revenueAccounts = (summary?.byAccount || (Array.isArray(revenue) ? revenue : []))
+    .filter((r: any) => r.classification === 'revenue' || r.classification === 'contraRevenue');
 
   return (
     <div className="space-y-6">

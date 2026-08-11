@@ -34,7 +34,8 @@ export default function FinanceDashboardPage() {
   const isObjectSummary = revenue && typeof revenue === 'object' && !Array.isArray(revenue);
   const summary = isObjectSummary ? revenue : null;
   const totalRevenue = summary ? Number(summary.revenue || 0) : (Array.isArray(revenue) ? revenue.reduce((s: number, r: any) => s + Number(r.total || 0), 0) : 0);
-  const revenueAccounts = summary?.byAccount || (Array.isArray(revenue) ? revenue : []);
+  const revenueAccounts = (summary?.byAccount || (Array.isArray(revenue) ? revenue : []))
+    .filter((r: any) => r.classification === 'revenue' || r.classification === 'contraRevenue');
   const totalCredits = Array.isArray(ledger) ? ledger.filter((e: any) => e.side === 'credit').reduce((s: number, e: any) => s + Number(e.amount || 0), 0) : 0;
   const totalDebits = Array.isArray(ledger) ? ledger.filter((e: any) => e.side === 'debit').reduce((s: number, e: any) => s + Number(e.amount || 0), 0) : 0;
   const settlementList = Array.isArray(settlements) ? settlements : settlements?.data || [];
