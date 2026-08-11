@@ -726,8 +726,8 @@ describe('Navigation registry integrity (immutable ids)', () => {
   it('namespaces ids per shell (nav.admin.*, nav.org.*) and keeps them stable per node', () => {
     const adminIds = collectIds(ADMIN_NAV);
     expect(adminIds.every((id) => id.startsWith('nav.admin.'))).toBe(true);
-    expect(adminIds.length).toBe(128);
-    expect(ADMIN_ID_TO_KEY.size).toBe(120);
+    expect(adminIds.length).toBe(137);
+    expect(ADMIN_ID_TO_KEY.size).toBe(129);
 
     const orgIds = collectIds(ORG_NAV);
     expect(orgIds.every((id) => id.startsWith('nav.org.'))).toBe(true);
@@ -783,7 +783,7 @@ describe('Navigation registry integrity (immutable ids)', () => {
     const adminTop = resolveAdminNav(enT, allCan, allFlags);
     const walk = (items: ResolvedNavItem[]): number =>
       items.reduce((n, it) => n + (it.id ? 1 : 0) + (it.children ? walk(it.children) : 0), 0);
-    expect(walk(adminTop)).toBe(128);
+    expect(walk(adminTop)).toBe(137);
     const orgTop = resolveOrgNav(allCan, '7', enT);
     expect(orgTop.every((it) => it.id !== undefined)).toBe(true);
     expect(orgTop[0].id).toBe('nav.org.dashboard');
@@ -829,6 +829,7 @@ describe('Navigation registry integrity (immutable ids)', () => {
     const shared = [...keyMap.entries()].filter(([, ids]) => ids.length > 1).map(([k]) => k).sort();
     expect(shared).toEqual(
       [
+        'sidebar.accounting',
         'sidebar.organisations',
         'sidebar.roles',
         'sidebar.payment-methods',
@@ -1002,7 +1003,7 @@ describe('Consumer 6 — Workspace Registry integration (drift resolved)', () =>
   it('workspace shows all 9 domain sections', () => {
     expect(registryWorkspace.map((d) => d.label)).toEqual([
       'Dashboard', 'People', 'Facilities', 'Coaching',
-      'Competitions', 'Commerce', 'Finance', 'Platform',
+      'Competitions', 'Commerce', 'Finance', 'Accounting', 'Platform',
     ]);
   });
 
@@ -1029,19 +1030,11 @@ describe('Consumer 6 — Workspace Registry integration (drift resolved)', () =>
     }
   });
 
-  it('all 10 previously-editor-only keys are removed', () => {
+  it('all 2 previously-editor-only keys are removed', () => {
     const wsKeys = collectAllKeys(registryWorkspace);
     for (const key of [
       'sidebar.tournaments-admin',
       'sidebar.academies-admin',
-      'sidebar.accounting',
-      'sidebar.accounting-dashboard',
-      'sidebar.accounting-coa',
-      'sidebar.accounting-journal',
-      'sidebar.accounting-gl',
-      'sidebar.accounting-invoices',
-      'sidebar.accounting-periods',
-      'sidebar.accounting-tax',
     ]) {
       expect(wsKeys, `"${key}" must NOT appear in workspace`).not.toContain(key);
     }
@@ -1049,9 +1042,9 @@ describe('Consumer 6 — Workspace Registry integration (drift resolved)', () =>
 
   it('every workspace node carries a nav.admin.* immutable id', () => {
     const allIds = collectAllIds(registryWorkspace);
-    expect(allIds.length).toBe(128);
+    expect(allIds.length).toBe(137);
     expect(allIds.every((id) => id.startsWith('nav.admin.'))).toBe(true);
-    expect(new Set(allIds).size).toBe(128);
+    expect(new Set(allIds).size).toBe(137);
   });
 
   it('workspace resolver is deterministic', () => {
@@ -1064,11 +1057,11 @@ describe('Consumer 6 — Workspace Registry integration (drift resolved)', () =>
     const wsAllIds = collectAllIds(registryWorkspace);
     const registryAllIds = collectIds(ADMIN_NAV);
     expect(wsAllIds).toEqual(registryAllIds);
-    expect(wsAllIds.length).toBe(128);
+    expect(wsAllIds.length).toBe(137);
   });
 
   it('workspace root count matches ADMIN_NAV root', () => {
-    expect(countNodes(registryWorkspace)).toBe(128);
+    expect(countNodes(registryWorkspace)).toBe(137);
     expect(registryWorkspace.length).toBe(ADMIN_NAV.length);
   });
 });
@@ -1090,7 +1083,7 @@ describe('Commit 10 — Workspace DnD round-trip (saved layout compatibility)', 
     const ws = resolveWorkspaceNav(enT);
     const containers = buildDefaultContainers(ws);
     const root = containers.get(null);
-    expect(root).toHaveLength(8);
+    expect(root).toHaveLength(9);
     expect(root).toEqual(ws.map((d) => d.permissionKey));
     for (const domain of ws) {
       expect(containers.has(domain.permissionKey)).toBe(true);

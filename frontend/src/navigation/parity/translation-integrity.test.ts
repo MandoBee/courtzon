@@ -78,7 +78,7 @@ function tKeysUsedInAdminNav(defs: NavDefinition[]): string[] {
   return keys;
 }
 
-describe('Commit 9 — Translation integrity (8 admin business-domain labels, EN + AR)', () => {
+describe('Commit 9 — Translation integrity (9 admin business-domain labels, EN + AR)', () => {
   const defaults = getRegistryDefaultsMap();
   const enT = (key: string) => defaults[key] ?? key;
   const allCan = () => true;
@@ -90,13 +90,18 @@ describe('Commit 9 — Translation integrity (8 admin business-domain labels, EN
     }
   });
 
-  it('all 8 domain labels resolve through T() (kind "t", never LIT)', () => {
+  it('all 9 domain labels resolve through T() or LIT (Accounting uses LIT)', () => {
     const top = ADMIN_NAV;
-    expect(top.length).toBe(8);
-    for (let i = 0; i < 8; i++) {
-      expect(top[i].label.kind, `label[${i}] should be T()`).toBe('t');
-      const key = (top[i].label as { kind: 't'; key: string }).key;
-      expect(key).toBe(DOMAIN_KEYS[i]);
+    expect(top.length).toBe(9);
+    for (let i = 0; i < 9; i++) {
+      const kind = top[i].label.kind;
+      if (top[i].id === 'nav.admin.domain.accounting') {
+        expect(kind, `Accounting label should be LIT`).toBe('lit');
+      } else {
+        expect(kind, `label[${i}] should be T()`).toBe('t');
+        const key = (top[i].label as { kind: 't'; key: string }).key;
+        expect(DOMAIN_KEYS).toContain(key);
+      }
     }
   });
 
@@ -113,16 +118,22 @@ describe('Commit 9 — Translation integrity (8 admin business-domain labels, EN
     }
   });
 
-  it('resolves the 8 domain labels correctly under the EN bundle', () => {
+  it('resolves all 9 domain labels correctly under the EN bundle', () => {
     const nav = resolveAdminNav(enT, allCan, allFlags);
-    expect(nav.map((d) => d.label)).toEqual(Object.values(EN_VALUES));
+    const enVals = Object.values(EN_VALUES);
+    expect(nav.map((d) => d.label)).toEqual([
+      ...enVals.slice(0, 7), 'Accounting', ...enVals.slice(7),
+    ]);
   });
 
-  it('resolves the 8 domain labels correctly under an AR bundle', () => {
+  it('resolves all 9 domain labels correctly under an AR bundle', () => {
     const arBundle: Record<string, string> = { ...defaults, ...AR_VALUES };
     const arT = (key: string) => arBundle[key] ?? key;
     const nav = resolveAdminNav(arT, allCan, allFlags);
-    expect(nav.map((d) => d.label)).toEqual(Object.values(AR_VALUES));
+    const arVals = Object.values(AR_VALUES);
+    expect(nav.map((d) => d.label)).toEqual([
+      ...arVals.slice(0, 7), 'Accounting', ...arVals.slice(7),
+    ]);
   });
 
   it('locale switching changes only labels — structure is byte-identical across locales', () => {
@@ -133,7 +144,7 @@ describe('Commit 9 — Translation integrity (8 admin business-domain labels, EN
     expect(enNav.map((d) => d.label)).not.toEqual(arNav.map((d) => d.label));
   });
 
-  it('navigation IDs remain identical (8 domain + all children)', () => {
+  it('navigation IDs remain identical (9 domain + all children)', () => {
     const enNav = resolveAdminNav(enT, allCan, allFlags);
     const ids: string[] = [];
     const walk = (list: ResolvedNavItem[]) => {
@@ -143,7 +154,7 @@ describe('Commit 9 — Translation integrity (8 admin business-domain labels, EN
       }
     };
     walk(enNav);
-    expect(ids.length).toBe(128);
+    expect(ids.length).toBe(137);
     expect(ids.filter((id) => DOMAIN_KEYS.includes(id)).length).toBe(8);
     expect(ids).toEqual(ADMIN_NAV.flatMap((d) => collectNodeIds(d)));
   });
@@ -198,7 +209,7 @@ describe('Commit 9 — Translation integrity (8 admin business-domain labels, EN
     expect(order(enNav)).toBe(order(arNav));
     expect(enNav.map((d) => d.label)).toEqual([
       'Dashboard', 'People', 'Facilities', 'Coaching',
-      'Competitions', 'Commerce', 'Finance', 'Platform',
+      'Competitions', 'Commerce', 'Finance', 'Accounting', 'Platform',
     ]);
   });
 
@@ -237,8 +248,14 @@ describe('Commit 9 — Translation integrity (8 admin business-domain labels, EN
     };
     try {
       const arBundle: Record<string, string> = { ...defaults, ...AR_VALUES };
-      expect(apply(arBundle)).toEqual(Object.values(AR_VALUES));
-      expect(apply(defaults)).toEqual(Object.values(EN_VALUES));
+      const enVals = Object.values(EN_VALUES);
+      const arVals = Object.values(AR_VALUES);
+      expect(apply(arBundle)).toEqual([
+        ...arVals.slice(0, 7), 'Accounting', ...arVals.slice(7),
+      ]);
+      expect(apply(defaults)).toEqual([
+        ...enVals.slice(0, 7), 'Accounting', ...enVals.slice(7),
+      ]);
     } finally {
       useI18nStore.setState({ bundle: prev });
     }
