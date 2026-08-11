@@ -56,7 +56,7 @@ export default function InvoicesPage() {
 
   const { data, isLoading } = useQuery({
     queryKey: ['accounting', 'invoices', page, pageSize],
-    queryFn: () => api.get('/accounting/invoices', { params: { page, pageSize } }).then((r: any) => r.data),
+    queryFn: () => api.get('/admin/accounting/invoices', { params: { page, pageSize } }).then((r: any) => r.data),
   });
 
   const { data: orgs } = useQuery({
@@ -75,25 +75,25 @@ export default function InvoicesPage() {
   const userList: any[] = Array.isArray(users) ? users : users?.data || [];
 
   const createMutation = useMutation({
-    mutationFn: (payload: any) => api.post('/accounting/invoices', payload),
+    mutationFn: (payload: any) => api.post('/admin/accounting/invoices', payload),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['accounting', 'invoices'] }); resetForm(); showToast('Invoice created!'); },
     onError: (err: any) => showToast(getErrorMessage(err), 'error'),
   });
 
   const issueMutation = useMutation({
-    mutationFn: (id: number) => api.put(`/accounting/invoices/${id}/issue`),
+    mutationFn: (id: number) => api.post(`/admin/accounting/invoices/${id}/issue`),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['accounting', 'invoices'] }); showToast('Invoice issued!'); },
     onError: (err: any) => showToast(getErrorMessage(err), 'error'),
   });
 
   const payMutation = useMutation({
-    mutationFn: (id: number) => api.put(`/accounting/invoices/${id}/pay`),
+    mutationFn: (id: number) => api.post(`/admin/accounting/invoices/${id}/record-payment`),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['accounting', 'invoices'] }); setPayModal(null); showToast('Payment recorded!'); },
     onError: (err: any) => showToast(getErrorMessage(err), 'error'),
   });
 
   const cancelMutation = useMutation({
-    mutationFn: (id: number) => api.put(`/accounting/invoices/${id}/cancel`),
+    mutationFn: (id: number) => api.post(`/admin/accounting/invoices/${id}/cancel`),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['accounting', 'invoices'] }); setCancelModal(null); showToast('Invoice cancelled!'); },
     onError: (err: any) => showToast(getErrorMessage(err), 'error'),
   });

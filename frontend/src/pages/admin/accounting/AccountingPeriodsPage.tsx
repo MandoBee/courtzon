@@ -31,25 +31,25 @@ export default function AccountingPeriodsPage() {
 
   const { data, isLoading } = useQuery({
     queryKey: ['accounting', 'periods'],
-    queryFn: () => api.get('/accounting/periods').then((r: any) => r.data.data || r.data),
+    queryFn: () => api.get('/admin/accounting/periods').then((r: any) => r.data.data || r.data),
   });
 
   const periods: Period[] = data || [];
 
   const generateMutation = useMutation({
-    mutationFn: () => api.post('/accounting/periods/generate', { fiscalYear, periodCount }),
+    mutationFn: () => api.post('/admin/accounting/periods/generate', { fiscalYear, periodCount }),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['accounting', 'periods'] }); setShowGenerate(false); showToast('Periods generated!'); },
     onError: (err: any) => showToast(getErrorMessage(err), 'error'),
   });
 
   const closeMutation = useMutation({
-    mutationFn: (id: number) => api.put(`/accounting/periods/${id}/close`),
+    mutationFn: (id: number) => api.post(`/admin/accounting/periods/${id}/close`),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['accounting', 'periods'] }); setActionTarget(null); showToast('Period closed!'); },
     onError: (err: any) => showToast(getErrorMessage(err), 'error'),
   });
 
   const openMutation = useMutation({
-    mutationFn: (id: number) => api.put(`/accounting/periods/${id}/open`),
+    mutationFn: (id: number) => api.post(`/admin/accounting/periods/${id}/open`),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['accounting', 'periods'] }); setActionTarget(null); showToast('Period opened!'); },
     onError: (err: any) => showToast(getErrorMessage(err), 'error'),
   });

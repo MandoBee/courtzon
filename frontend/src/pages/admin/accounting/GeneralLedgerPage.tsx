@@ -48,30 +48,30 @@ export default function GeneralLedgerPage() {
 
   const { data: periods } = useQuery({
     queryKey: ['accounting', 'periods'],
-    queryFn: () => api.get('/accounting/periods').then((r: any) => r.data.data || r.data),
+    queryFn: () => api.get('/admin/accounting/periods').then((r: any) => r.data.data || r.data),
   });
 
   const { data: journalData, isLoading: loadingJournal } = useQuery({
     queryKey: ['accounting', 'journal-entries', filters, page, pageSize],
-    queryFn: () => api.get('/accounting/journal-entries', { params: { ...filters, page, pageSize } }).then((r: any) => r.data),
+    queryFn: () => api.get('/admin/accounting/journal', { params: { ...filters, page, pageSize } }).then((r: any) => r.data),
     enabled: tab === 'journal',
   });
 
   const { data: trialBalance, isLoading: loadingTB } = useQuery({
     queryKey: ['accounting', 'trial-balance'],
-    queryFn: () => api.get('/accounting/trial-balance').then((r: any) => r.data.data || r.data),
+    queryFn: () => api.get('/admin/accounting/trial-balance').then((r: any) => r.data.data || r.data),
     enabled: tab === 'trial-balance',
   });
 
   const { data: incomeStatement, isLoading: loadingIS } = useQuery({
     queryKey: ['accounting', 'income-statement'],
-    queryFn: () => api.get('/accounting/income-statement').then((r: any) => r.data.data || r.data),
+    queryFn: () => api.get('/admin/accounting/income-statement').then((r: any) => r.data.data || r.data),
     enabled: tab === 'income-statement',
   });
 
   const { data: balanceSheet, isLoading: loadingBS } = useQuery({
     queryKey: ['accounting', 'balance-sheet'],
-    queryFn: () => api.get('/accounting/balance-sheet').then((r: any) => r.data.data || r.data),
+    queryFn: () => api.get('/admin/accounting/balance-sheet').then((r: any) => r.data.data || r.data),
     enabled: tab === 'balance-sheet',
   });
 

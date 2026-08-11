@@ -241,6 +241,30 @@ export const ADMIN_NAV: NavDefinition[] = [
     ],
   },
   {
+    id: 'nav.admin.domain.accounting',
+    label: LIT('Accounting'),
+    icon: '📒',
+    path: '/admin/accounting/dashboard',
+    permissionKey: 'sidebar.accounting',
+    children: [
+      {
+        id: 'nav.admin.accounting',
+    label: LIT('Accounting'),
+        path: '/admin/accounting/dashboard',
+        permissionKey: 'sidebar.accounting',
+        children: [
+          { id: 'nav.admin.accounting-dashboard', label: LIT('Dashboard'), path: '/admin/accounting/dashboard', permissionKey: 'sidebar.accounting-dashboard' },
+          { id: 'nav.admin.accounting-coa', label: LIT('Chart of Accounts'), path: '/admin/accounting/accounts', permissionKey: 'sidebar.accounting-coa' },
+          { id: 'nav.admin.accounting-journal', label: LIT('Journal'), path: '/admin/accounting/journal', permissionKey: 'sidebar.accounting-journal' },
+          { id: 'nav.admin.accounting-gl', label: LIT('General Ledger'), path: '/admin/accounting/ledger', permissionKey: 'sidebar.accounting-gl' },
+          { id: 'nav.admin.accounting-periods', label: LIT('Periods'), path: '/admin/accounting/periods', permissionKey: 'sidebar.accounting-periods' },
+          { id: 'nav.admin.accounting-invoices', label: LIT('Invoices'), path: '/admin/accounting/invoices', permissionKey: 'sidebar.accounting-invoices' },
+          { id: 'nav.admin.accounting-tax', label: LIT('Tax Rates'), path: '/admin/accounting/tax-rates', permissionKey: 'sidebar.accounting-tax' },
+        ],
+      },
+    ],
+  },
+  {
     id: 'nav.admin.domain.platform',
     label: T('nav.admin.domain.platform'),
     icon: '⚙️',

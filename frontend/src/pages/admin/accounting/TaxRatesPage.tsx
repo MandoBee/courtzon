@@ -41,25 +41,25 @@ export default function TaxRatesPage() {
 
   const { data, isLoading } = useQuery({
     queryKey: ['accounting', 'tax-rates'],
-    queryFn: () => api.get('/accounting/tax-rates').then((r: any) => r.data.data || r.data),
+    queryFn: () => api.get('/admin/accounting/tax-rates').then((r: any) => r.data.data || r.data),
   });
 
   const taxRates: TaxRate[] = data || [];
 
   const createMutation = useMutation({
-    mutationFn: (payload: any) => api.post('/accounting/tax-rates', payload),
+    mutationFn: (payload: any) => api.post('/admin/accounting/tax-rates', payload),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['accounting', 'tax-rates'] }); resetForm(); showToast('Tax rate created!'); },
     onError: (err: any) => showToast(getErrorMessage(err), 'error'),
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, payload }: any) => api.put(`/accounting/tax-rates/${id}`, payload),
+    mutationFn: ({ id, payload }: any) => api.put(`/admin/accounting/tax-rates/${id}`, payload),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['accounting', 'tax-rates'] }); resetForm(); showToast('Tax rate updated!'); },
     onError: (err: any) => showToast(getErrorMessage(err), 'error'),
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (id: number) => api.delete(`/accounting/tax-rates/${id}`),
+    mutationFn: (id: number) => api.delete(`/admin/accounting/tax-rates/${id}`),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['accounting', 'tax-rates'] }); setDeleteId(null); showToast('Tax rate deleted!'); },
     onError: (err: any) => showToast(getErrorMessage(err), 'error'),
   });

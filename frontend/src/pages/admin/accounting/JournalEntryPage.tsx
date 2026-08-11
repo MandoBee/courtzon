@@ -34,12 +34,12 @@ export default function JournalEntryPage() {
 
   const { data: entriesData, isLoading } = useQuery({
     queryKey: ['accounting', 'journal-entries', page, pageSize],
-    queryFn: () => api.get('/accounting/journal-entries', { params: { page, pageSize } }).then((r: any) => r.data),
+    queryFn: () => api.get('/admin/accounting/journal', { params: { page, pageSize } }).then((r: any) => r.data),
   });
 
   const { data: accounts } = useQuery({
     queryKey: ['accounting', 'chart-of-accounts'],
-    queryFn: () => api.get('/accounting/chart-of-accounts').then((r: any) => r.data.data || r.data),
+    queryFn: () => api.get('/admin/accounting/accounts').then((r: any) => r.data.data || r.data),
   });
 
   const entries: JournalEntry[] = entriesData?.data || [];
@@ -47,7 +47,7 @@ export default function JournalEntryPage() {
   const accountList: any[] = accounts || [];
 
   const createMutation = useMutation({
-    mutationFn: (payload: any) => api.post('/accounting/journal-entries', payload),
+    mutationFn: (payload: any) => api.post('/admin/accounting/journal', payload),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['accounting', 'journal-entries'] }); resetForm(); showToast('Journal entry created!'); },
     onError: (err: any) => showToast(getErrorMessage(err), 'error'),
   });
