@@ -813,6 +813,7 @@ export class BookingService {
           });
         }
       }
+      await this._emitBookingRefunded(booking, refundAmount);
     } catch {
       // Wallet refund is best-effort
     }
@@ -1078,6 +1079,7 @@ export class BookingService {
       });
       await this._createCODDoubleEntry(booking, wallet.id, refundAmount, 'credit', 'debit', 'refund',
         `Booking #${booking.id} COD cancellation refund`);
+      await this._emitBookingRefunded(booking, refundAmount);
     } catch {
       // non-fatal
     }
@@ -1108,6 +1110,40 @@ export class BookingService {
     }
   }
 
+  private async _emitBookingRefunded(booking: any, refundAmount: number): Promise<void> {
+    if (refundAmount <= 0) return;
+    const pool = getPool();
+
+    // Over-refund guard: cumulative refunds must not exceed the original gross payable.
+    const grossPayable = Number(booking.total_amount || 0) + Number(booking.tax_amount || 0);
+    const [refundRows] = await pool.execute<RowData>(
+      `SELECT COALESCE(refunded_amount, 0) AS refunded_amount FROM bookings WHERE id = ?`,
+      [booking.id],
+    );
+    const alreadyRefunded = Number((refundRows as any[])[0]?.refunded_amount ?? 0);
+    const remaining = grossPayable - alreadyRefunded;
+    if (refundAmount > remaining + 0.001) {
+      log.warn({ bookingId: booking.id, refundAmount, remaining }, 'Refund exceeds remaining refundable amount — clamping');
+      refundAmount = Math.max(0, remaining);
+    }
+    if (refundAmount <= 0) return;
+
+    // Update cumulative refunded amount (bounds repeated partial refunds).
+    await pool.execute(
+      `UPDATE bookings SET refunded_amount = refunded_amount + ? WHERE id = ?`,
+      [refundAmount, booking.id],
+    );
+
+    // Emit canonical booking refund accounting event. The accounting listener
+    // prorates the ORIGINAL snapshot economics (never current rates).
+    eventBusV2.emit('booking:refunded', {
+      bookingId: booking.id,
+      organisationId: booking.organisation_id,
+      refundAmount,
+      currency: 'EGP',
+    } as any);
+  }
+
   private async _processGatewayRefund(booking: any, refundAmount: number): Promise<void> {
     try {
       const { paymentService } = await import('../../payment/application/payment.service.js');
@@ -1123,6 +1159,7 @@ export class BookingService {
           await paymentService.refund((ptRows[0] as any).id, refundAmount, `Booking #${booking.id} cancellation refund`);
         }
       }
+      await this._emitBookingRefunded(booking, refundAmount);
     } catch {
       // gateway refund is best-effort
     }
