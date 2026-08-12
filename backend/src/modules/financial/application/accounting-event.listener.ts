@@ -56,6 +56,7 @@ async function postAccountingEvent(
   conceptAmounts: Record<string, number>,
   currency: string,
   description: string,
+  outerConn?: import('mysql2/promise').PoolConnection,
 ): Promise<void> {
   const alreadyPosted = await ledgerRepository.hasPosting(sourceType, sourceId, eventType);
   if (alreadyPosted) {
@@ -96,6 +97,26 @@ async function postAccountingEvent(
 
   // Set period_id on canonical entries
   for (const e of entries) e.periodId = periodId;
+
+  // If caller supplied an outer connection, participate in that transaction.
+  if (outerConn) {
+    const leIds = await ledgerRepository.createEntries(entries, outerConn);
+    const projectable = entries.map((e, i) => ({
+      sourceType: e.sourceType,
+      sourceId: e.sourceId,
+      eventType: e.eventType ?? null,
+      organisationId: e.organisationId ?? null,
+      chartAccountId: e.chartAccountId ?? null,
+      side: e.side,
+      amount: e.amount,
+      description: e.description,
+      recordedAt: e.recordedAt,
+      ledgerEntryId: leIds[i],
+    }));
+    await glProjectionService.projectEntries(projectable, periodId, outerConn);
+    log.info({ eventType, sourceType, sourceId, organisationId, lines: lines.length, periodId }, 'Accounting posting created (outer tx)');
+    return;
+  }
 
   const pool = getPool();
   const conn = await pool.getConnection();
