@@ -42,13 +42,15 @@ export const EVENT_CONCEPTS: Record<string, { debit: string[]; credit: string[] 
     debit: ['cash_receivable'],
     credit: ['revenue'],
   },
+  // Marketplace COD delivery — the merchant physically collected cash from the
+  // customer. CourtZon is owed commission (+ tax) = receivable from merchant.
   marketplace_delivery: {
-    debit: ['cost_of_revenue'],
-    credit: ['org_payable', 'tax_liability'],
+    debit: ['receivable_from_org'],
+    credit: ['platform_commission', 'tax_liability'],
   },
   marketplace_reversal: {
-    debit: ['org_payable', 'tax_liability'],
-    credit: ['cost_of_revenue'],
+    debit: ['platform_commission', 'tax_liability'],
+    credit: ['receivable_from_org'],
   },
   // Marketplace payment custody: CourtZon collects customer payment on behalf
   // of the merchant. Only commission is CourtZon revenue; merchant share is a
@@ -90,6 +92,17 @@ export const EVENT_CONCEPTS: Record<string, { debit: string[]; credit: string[] 
     debit: ['cash_bank'],
     credit: ['receivable_from_org'],
   },
+  // Settlement offset — never silently net down. Clear the FULL merchant
+  // payable and the FULL COD commission receivable against the net cash
+  // movement in one balanced posting.
+  settlement_paid_offset: {
+    debit: ['org_payable'],
+    credit: ['cash_bank', 'receivable_from_org'],
+  },
+  settlement_paid_otc_offset: {
+    debit: ['cash_bank', 'org_payable'],
+    credit: ['receivable_from_org'],
+  },
   payment_failure: {
     debit: ['bad_debt'],
     credit: ['payment_clearing'],
@@ -126,17 +139,23 @@ export const EVENT_CONCEPTS: Record<string, { debit: string[]; credit: string[] 
     debit: [],
     credit: ['retained_earnings'],
   },
+  // Booking payment — CourtZon is an agent for court bookings. The org/club
+  // share is a PAYABLE (liability) while CourtZon holds the funds, NOT revenue.
+  // Only commission is CourtZon revenue; tax is a separate liability.
   booking_card_payment: {
     debit: ['payment_clearing'],
-    credit: ['booking_revenue', 'platform_commission', 'tax_liability'],
+    credit: ['org_payable', 'platform_commission', 'tax_liability'],
   },
   booking_wallet_payment: {
     debit: ['wallet_liability_spend'],
-    credit: ['booking_revenue', 'platform_commission', 'tax_liability'],
+    credit: ['org_payable', 'platform_commission', 'tax_liability'],
   },
+  // COD/cash — the org physically collects the money. CourtZon is owed only
+  // commission (+ tax). The org share is the org's own revenue and does NOT
+  // appear on CourtZon's canonical ledger.
   booking_cod_payment: {
-    debit: ['cash_receivable'],
-    credit: ['booking_revenue', 'platform_commission', 'tax_liability'],
+    debit: ['receivable_from_org'],
+    credit: ['platform_commission', 'tax_liability'],
   },
   booking_coach_payout: {
     debit: ['coach_expense'],
@@ -147,7 +166,7 @@ export const EVENT_CONCEPTS: Record<string, { debit: string[]; credit: string[] 
     credit: ['coach_expense'],
   },
   booking_refund: {
-    debit: ['booking_revenue', 'platform_commission', 'tax_liability'],
+    debit: ['org_payable', 'platform_commission', 'tax_liability'],
     credit: ['payment_clearing'],
   },
   // Post-settlement recovery: the party already received settlement funds.
@@ -158,7 +177,7 @@ export const EVENT_CONCEPTS: Record<string, { debit: string[]; credit: string[] 
   },
   booking_org_recovery: {
     debit: ['org_recovery_receivable'],
-    credit: ['booking_revenue'],
+    credit: ['org_payable'],
   },
   // Booking settlement: clear the payable and record cash movement.
   booking_coach_settlement: {

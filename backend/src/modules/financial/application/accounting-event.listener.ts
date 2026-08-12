@@ -21,15 +21,6 @@ function refTypeToSourceType(referenceType: string): SourceType {
   }
 }
 
-async function resolveOrderTax(orderId: number): Promise<number> {
-  const pool = getPool();
-  const [rows] = await pool.execute<RowData>(
-    'SELECT COALESCE(tax_amount, 0) AS tax_amount FROM orders WHERE id = ? LIMIT 1',
-    [orderId],
-  );
-  return Number((rows as any[])[0]?.tax_amount ?? 0);
-}
-
 export interface OrderEconomics {
   orderId: number;
   merchantId: number | null;
@@ -255,23 +246,39 @@ async function postBookingPaymentAccounting(bookingId: number, paymentMethod: st
     log.error({ bookingId }, 'Booking economics not found — skipping booking accounting');
     return;
   }
+  const isCOD = paymentMethod === 'cod' || paymentMethod === 'cash';
   const eventType = paymentMethod === 'wallet' ? 'booking_wallet_payment'
-    : paymentMethod === 'cod' || paymentMethod === 'cash' ? 'booking_cod_payment'
+    : isCOD ? 'booking_cod_payment'
     : 'booking_card_payment';
 
-  // The debit (payment side) must equal the sum of credits:
-  //   booking_revenue + platform_commission + tax_liability
+  // The debit (payment side) must equal the sum of credits.
   const grossPayable = econ.orgAmount + econ.commissionAmount + econ.taxAmount;
+
+  if (isCOD) {
+    // COD — the org collects the cash directly. CourtZon is owed only
+    // commission + tax (a receivable from the org). The org share is the
+    // org's own revenue and never enters CourtZon's canonical ledger.
+    await postAccountingEvent(
+      eventType, 'booking', bookingId, econ.organisationId,
+      {
+        receivable_from_org: econ.commissionAmount + econ.taxAmount,
+        platform_commission: econ.commissionAmount,
+        tax_liability: econ.taxAmount,
+      },
+      currency,
+      `Booking #${bookingId} COD payment (commission receivable)`,
+    );
+    return;
+  }
 
   await postAccountingEvent(
     eventType, 'booking', bookingId, econ.organisationId,
     {
-      booking_revenue: econ.orgAmount,
+      org_payable: econ.orgAmount,
       platform_commission: econ.commissionAmount,
       tax_liability: econ.taxAmount,
       payment_clearing: eventType === 'booking_card_payment' ? grossPayable : 0,
       wallet_liability_spend: eventType === 'booking_wallet_payment' ? grossPayable : 0,
-      cash_receivable: eventType === 'booking_cod_payment' ? grossPayable : 0,
     },
     currency,
     `Booking #${bookingId} payment`,
@@ -300,7 +307,7 @@ async function postBookingRefundAccounting(bookingId: number, refundAmount: numb
   await postAccountingEvent(
     'booking_refund', 'booking', bookingId, refund.organisationId,
     {
-      booking_revenue: refund.orgAmount,
+      org_payable: refund.orgAmount,
       platform_commission: refund.commissionAmount,
       tax_liability: refund.taxAmount,
       payment_clearing: refund.paymentAmount,
@@ -339,7 +346,7 @@ async function postBookingRefundAccounting(bookingId: number, refundAmount: numb
   if (refund.orgSettled > 0) {
     await postAccountingEvent(
       'booking_org_recovery', 'booking', bookingId, refund.organisationId,
-      { org_recovery_receivable: refund.orgSettled, booking_revenue: refund.orgSettled },
+      { org_recovery_receivable: refund.orgSettled, org_payable: refund.orgSettled },
       currency,
       `Booking #${bookingId} org post-settlement recovery`,
     );
@@ -489,22 +496,21 @@ export function registerAccountingEventListeners(): void {
   eventBusV2.on('marketplace:order-delivered', async (data: any) => {
     try {
       const orderId = data.orderId || data.id;
-      const orgShare = Number(data.orgNet || data.organization_net || 0);
-      const taxAmount = await resolveOrderTax(orderId);
       const currency = data.currency || 'EGP';
-      if (!orderId || orgShare <= 0) return;
+      if (!orderId) return;
 
-      const pool = getPool();
-      const [rows] = await pool.execute<RowData>(
-        'SELECT DISTINCT seller_id FROM order_items WHERE order_id = ? LIMIT 1', [orderId],
-      );
-      const orgId = (rows as any[])[0]?.seller_id ?? null;
+      const econ = await resolveOrderEconomics(orderId);
+      if (!econ) return;
+
+      // Only COD orders need delivery recognition (card/wallet were already
+      // recognized at payment time via marketplace_card/wallet_payment).
+      if (econ.cashHolder !== 'org') return;
 
       await postAccountingEvent(
-        'marketplace_delivery', 'marketplace', orderId, orgId,
-        { cost_of_revenue: orgShare, org_payable: orgShare, tax_liability: taxAmount },
+        'marketplace_delivery', 'marketplace', orderId, econ.merchantId,
+        { receivable_from_org: econ.commission + econ.tax, platform_commission: econ.commission, tax_liability: econ.tax },
         currency,
-        `Order #${orderId} delivered`,
+        `Order #${orderId} delivered (COD — commission receivable)`,
       );
     } catch (err: any) {
       if (err?.code === 'ER_DUP_ENTRY') { log.info({ err: err.message }, 'Duplicate — skip'); return; }
@@ -515,22 +521,18 @@ export function registerAccountingEventListeners(): void {
   eventBusV2.on('marketplace:order-refunded', async (data: any) => {
     try {
       const orderId = data.orderId || data.id;
-      const orgShare = Number(data.orgNet || data.organization_net || 0);
-      const taxAmount = await resolveOrderTax(orderId);
       const currency = data.currency || 'EGP';
-      if (!orderId || orgShare <= 0) return;
+      if (!orderId) return;
 
-      const pool = getPool();
-      const [rows] = await pool.execute<RowData>(
-        'SELECT DISTINCT seller_id FROM order_items WHERE order_id = ? LIMIT 1', [orderId],
-      );
-      const orgId = (rows as any[])[0]?.seller_id ?? null;
+      const econ = await resolveOrderEconomics(orderId);
+      if (!econ) return;
+      if (econ.cashHolder !== 'org') return;
 
       await postAccountingEvent(
-        'marketplace_reversal', 'marketplace', orderId, orgId,
-        { org_payable: orgShare, cost_of_revenue: orgShare, tax_liability: taxAmount },
+        'marketplace_reversal', 'marketplace', orderId, econ.merchantId,
+        { platform_commission: econ.commission, tax_liability: econ.tax, receivable_from_org: econ.commission + econ.tax },
         currency,
-        `Order #${orderId} refunded`,
+        `Order #${orderId} refunded (COD — commission receivable reversed)`,
       );
     } catch (err: any) {
       if (err?.code === 'ER_DUP_ENTRY') { log.info({ err: err.message }, 'Duplicate — skip'); return; }
@@ -541,22 +543,18 @@ export function registerAccountingEventListeners(): void {
   eventBusV2.on('marketplace:order-cancelled', async (data: any) => {
     try {
       const orderId = data.orderId || data.id;
-      const orgShare = Number(data.orgNet || data.organization_net || 0);
-      const taxAmount = await resolveOrderTax(orderId);
       const currency = data.currency || 'EGP';
-      if (!orderId || orgShare <= 0) return;
+      if (!orderId) return;
 
-      const pool = getPool();
-      const [rows] = await pool.execute<RowData>(
-        'SELECT DISTINCT seller_id FROM order_items WHERE order_id = ? LIMIT 1', [orderId],
-      );
-      const orgId = (rows as any[])[0]?.seller_id ?? null;
+      const econ = await resolveOrderEconomics(orderId);
+      if (!econ) return;
+      if (econ.cashHolder !== 'org') return;
 
       await postAccountingEvent(
-        'marketplace_reversal', 'marketplace', orderId, orgId,
-        { org_payable: orgShare, cost_of_revenue: orgShare, tax_liability: taxAmount },
+        'marketplace_reversal', 'marketplace', orderId, econ.merchantId,
+        { platform_commission: econ.commission, tax_liability: econ.tax, receivable_from_org: econ.commission + econ.tax },
         currency,
-        `Order #${orderId} cancelled`,
+        `Order #${orderId} cancelled (COD — commission receivable reversed)`,
       );
     } catch (err: any) {
       if (err?.code === 'ER_DUP_ENTRY') { log.info({ err: err.message }, 'Duplicate — skip'); return; }
@@ -614,6 +612,26 @@ export function registerAccountingEventListeners(): void {
       const orgId = data.organisationId || null;
       const currency = data.currency || 'EGP';
       if (!settlementId || amount <= 0) return;
+
+      // When both components are present (online net vs COD fee), post an
+      // explicit offset entry — clear the FULL payable and the FULL receivable
+      // against the net cash movement. Never silently net down.
+      const onlineNet = Number(data.onlineNet || 0);
+      const codFee = Number(data.codFee || 0);
+      const hasOffset = onlineNet > 0 && codFee > 0;
+
+      if (hasOffset) {
+        const eventType = direction === 'org_to_courtzon' ? 'settlement_paid_otc_offset' : 'settlement_paid_offset';
+        const conceptAmounts = direction === 'org_to_courtzon'
+          ? ({ cash_bank: amount, org_payable: onlineNet, receivable_from_org: codFee } as Record<string, number>)
+          : ({ org_payable: onlineNet, cash_bank: amount, receivable_from_org: codFee } as Record<string, number>);
+        await postAccountingEvent(
+          eventType, 'settlement', settlementId, orgId,
+          conceptAmounts, currency,
+          `Settlement #${settlementId} paid (offset: online ${onlineNet} vs COD ${codFee})`,
+        );
+        return;
+      }
 
       const eventType = direction === 'org_to_courtzon' ? 'settlement_paid_otc' : 'settlement_paid';
       const conceptAmounts: Record<string, number> = eventType === 'settlement_paid_otc'
