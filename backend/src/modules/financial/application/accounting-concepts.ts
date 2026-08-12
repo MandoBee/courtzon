@@ -126,6 +126,16 @@ export const EVENT_CONCEPTS: Record<string, { debit: string[]; credit: string[] 
     debit: ['booking_revenue', 'platform_commission', 'tax_liability'],
     credit: ['payment_clearing'],
   },
+  // Post-settlement recovery: the party already received settlement funds.
+  // Reverse the expense/revenue and create a receivable against that party.
+  booking_coach_recovery: {
+    debit: ['coach_recovery_receivable'],
+    credit: ['coach_expense'],
+  },
+  booking_org_recovery: {
+    debit: ['org_recovery_receivable'],
+    credit: ['booking_revenue'],
+  },
 };
 
 /** Returns the flat list of concepts with their inherent sides for an event_type */
