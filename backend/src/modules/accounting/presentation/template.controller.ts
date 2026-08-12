@@ -2,6 +2,7 @@ import type { FastifyRequest, FastifyReply } from 'fastify';
 import { getPool } from '../../../database/mysql.js';
 import { recordAudit } from '../../audit-log/index.js';
 import { AppError, NotFoundError } from '../../../shared/errors/app-error.js';
+import { coaValidator } from '../../financial/application/coa-validator.service.js';
 import mysql from 'mysql2/promise';
 
 type RowData = mysql.RowDataPacket[];
@@ -198,11 +199,7 @@ export async function applyTemplateHandler(request: FastifyRequest, reply: Fasti
     await conn.beginTransaction();
 
     for (const line of lines as any[]) {
-      const l3ParentId = await resolveL3Parent(conn, line.l3_parent_code);
-      if (!l3ParentId) {
-        await conn.rollback();
-        throw new AppError(`L3 parent '${line.l3_parent_code}' not found in COA`, 500, 'CONFIG_ERROR');
-      }
+      const l3ParentId = await coaValidator.validateTemplateParent(line.l3_parent_code, 'Template Apply');
       const finalCode = await generateOrgCode(conn, orgId, line.code);
       const exists = await checkAccountExists(conn, orgId, finalCode);
       if (exists) {

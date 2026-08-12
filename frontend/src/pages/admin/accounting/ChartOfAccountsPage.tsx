@@ -18,6 +18,8 @@ interface Account {
   description: string;
   is_active: boolean;
   children?: Account[];
+  level?: number;
+  child_count?: number;
 }
 
 const ACCOUNT_TYPES = ['asset', 'liability', 'equity', 'revenue', 'expense', 'contra_asset', 'contra_liability', 'contra_equity', 'contra_revenue', 'contra_expense'] as const;
@@ -211,6 +213,7 @@ export default function ChartOfAccountsPage() {
               <th className="text-left px-4 py-3 font-medium text-[var(--color-text-muted)]">Code</th>
               <th className="text-left px-4 py-3 font-medium text-[var(--color-text-muted)]">Name</th>
               <th className="text-left px-4 py-3 font-medium text-[var(--color-text-muted)]">Type</th>
+              <th className="text-center px-3 py-3 font-medium text-[var(--color-text-muted)]">Level</th>
               <th className="text-center px-4 py-3 font-medium text-[var(--color-text-muted)]">Active</th>
               <Can permission="accounting.coa.manage">
                 <th className="text-right px-4 py-3 font-medium text-[var(--color-text-muted)]">Actions</th>
@@ -226,6 +229,11 @@ export default function ChartOfAccountsPage() {
                     <td className="px-4 py-3 text-sm text-[var(--color-text)]">{a.name}</td>
                     <td className="px-4 py-3">
                       <span className={`px-2 py-0.5 text-[10px] font-medium rounded-full ${TYPE_BADGE[a.type]}`}>{a.type}</span>
+                    </td>
+                    <td className="px-3 py-3 text-center">
+                      <span className={`text-xs px-1.5 py-0.5 rounded ${(a.child_count ?? 0) > 0 ? 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400' : 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'}`}>
+                        {a.level ?? '-'}
+                      </span>
                     </td>
                     <td className="px-4 py-3 text-center">
                       <span className={`w-2 h-2 rounded-full inline-block ${a.is_active ? 'bg-green-500' : 'bg-red-500'}`} />

@@ -3,6 +3,7 @@ import type { RowDataPacket } from 'mysql2';
 import type mysql from 'mysql2/promise';
 import { getEventConcepts, validateCompleteMapping } from './accounting-concepts.js';
 import type { AccountingConcept } from './accounting-concepts.js';
+import { coaValidator, MAX_COA_DEPTH, POSTABLE_LEVEL } from './coa-validator.service.js';
 import { createModuleLogger } from '../../../shared/utils/logger.js';
 
 const log = createModuleLogger('accounting-engine');
@@ -112,14 +113,9 @@ export class AccountingEngineService {
       }
     }
 
-    // Reject structural accounts (accounts with children cannot receive postings)
+    // Validate all accounts are L4 postable (replaces manual child-check)
     for (const id of ids) {
-      const [children] = await this.pool.execute<RowData>(
-        'SELECT 1 FROM chart_of_accounts WHERE parent_id = ? LIMIT 1', [id],
-      );
-      if ((children as any[]).length > 0) {
-        throw new Error(`Chart account ${id} is a structural parent — cannot receive postings`);
-      }
+      await coaValidator.validatePostable(id, 'Accounting Engine');
     }
   }
 

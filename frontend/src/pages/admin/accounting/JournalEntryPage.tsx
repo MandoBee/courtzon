@@ -44,7 +44,7 @@ export default function JournalEntryPage() {
 
   const entries: JournalEntry[] = entriesData?.data || [];
   const total = entriesData?.total || 0;
-  const accountList: any[] = accounts || [];
+  const accountList: any[] = (accounts || []).filter((a: any) => a.is_postable);
 
   const createMutation = useMutation({
     mutationFn: (payload: any) => api.post('/admin/accounting/journal', payload),
