@@ -913,6 +913,7 @@ export const uiRegistry: UIElement[] = [
   { permissionKey: 'settlements.complete', moduleSlug: 'settlements', elementType: 'button', elementLabel: 'Complete Settlement', componentPath: 'pages/admin/settlements/SettlementListPage.tsx' },
   { permissionKey: 'settlements.reject', moduleSlug: 'settlements', elementType: 'button', elementLabel: 'Reject Settlement', componentPath: 'pages/admin/settlements/SettlementListPage.tsx' },
   { permissionKey: 'settlements.cancel', moduleSlug: 'settlements', elementType: 'button', elementLabel: 'Cancel Settlement', componentPath: 'pages/admin/settlements/SettlementListPage.tsx' },
+  { permissionKey: 'sidebar.settlements-bookings', moduleSlug: 'settlements', elementType: 'tab', elementLabel: 'Sidebar: Booking Settlements', componentPath: 'components/layout/AdminSidebar.tsx' },
 
   // ==========================================================================
   // NOTIFICATION TEMPLATES MODULE

@@ -26,6 +26,7 @@ export function buildLegacyAdminNavItems(
         { label: 'Subscription Requests', path: '/admin/subscription/requests', permissionKey: 'sidebar.subscription-requests' },
         { label: t('admin.sidebar.organisation_types'), path: '/admin/organisation-types', permissionKey: 'sidebar.organisation-types' },
         { label: t('admin.sidebar.settlements'), path: '/admin/settlements', permissionKey: 'sidebar.settlements' },
+        { label: 'Booking Settlements', path: '/admin/settlements/bookings', permissionKey: 'sidebar.settlements-bookings' },
       ],
     },
     {

@@ -20,6 +20,7 @@ export function buildSections(): NavItem[] {
         { label: 'Subscription Plans', icon: '📋', path: '/admin/subscription', permissionKey: 'sidebar.subscription' },
         { label: 'Types', icon: '🏷️', path: '/admin/organisation-types', permissionKey: 'sidebar.organisation-types' },
         { label: 'Settlements', icon: '💰', path: '/admin/settlements', permissionKey: 'sidebar.settlements' },
+        { label: 'Booking Settlements', icon: '📅', path: '/admin/settlements/bookings', permissionKey: 'sidebar.settlements-bookings' },
       ],
     },
     {

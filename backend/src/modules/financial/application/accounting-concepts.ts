@@ -150,6 +150,16 @@ export const EVENT_CONCEPTS: Record<string, { debit: string[]; credit: string[] 
     debit: ['cash_bank'],
     credit: ['recovery_receivable'],
   },
+  // Settlement with recovery offset: clear payable against net cash + recovery
+  // receivable in a single balanced posting (no silent net-down).
+  booking_coach_settlement_offset: {
+    debit: ['coach_payable'],
+    credit: ['cash_bank', 'coach_recovery_receivable'],
+  },
+  booking_org_settlement_offset: {
+    debit: ['org_payable'],
+    credit: ['cash_bank', 'org_recovery_receivable'],
+  },
 };
 
 /** Returns the flat list of concepts with their inherent sides for an event_type */

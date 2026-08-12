@@ -121,6 +121,7 @@ const TranslationsPage = lazy(() => import('./pages/admin/translations/Translati
 const SubscriptionPage = lazy(() => import('./pages/admin/subscription/SubscriptionPage'));
 const SubscriptionRequestsPage = lazy(() => import('./pages/admin/subscription/SubscriptionRequestsPage'));
 const SettlementListPage = lazy(() => import('./pages/admin/settlements/SettlementListPage'));
+const BookingSettlementPage = lazy(() => import('./pages/admin/settlements/BookingSettlementPage'));
 
 const FinancialOpsDashboard = lazy(() => import('./pages/admin/finance/FinancialOpsDashboard'));
 const ProductCategoriesPage = lazy(() => import('./pages/admin/product-categories/ProductCategoriesPage'));
@@ -672,6 +673,7 @@ function AppContent() {
           <Route path="security/organisations" element={<OrganisationSecurityPage />} />
           <Route path="security/role-audit" element={<RoleAuditPage />} />
             <Route path="settlements" element={<SettlementListPage />} />
+            <Route path="settlements/bookings" element={<BookingSettlementPage />} />
             <Route path="finance" element={<FinanceDashboardPage />} />
             <Route path="finance/ledger" element={<LedgerViewerPage />} />
             <Route path="finance/reports" element={<ReportCenterPage />} />
