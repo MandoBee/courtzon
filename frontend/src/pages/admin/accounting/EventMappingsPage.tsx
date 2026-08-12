@@ -73,10 +73,21 @@ function EventMappingsContent() {
   const EVENT_TYPES = [
     'wallet_topup', 'card_payment', 'wallet_payment', 'card_refund', 'wallet_refund',
     'cod_payment', 'marketplace_delivery', 'marketplace_reversal',
-    'withdrawal_request', 'withdrawal_completion', 'settlement_paid', 'settlement_paid_otc',
+    'marketplace_card_payment', 'marketplace_wallet_payment', 'marketplace_merchant_refund',
+    'booking_card_payment', 'booking_wallet_payment', 'booking_cod_payment',
+    'booking_coach_payout', 'booking_coach_reversal', 'booking_refund',
+    'booking_coach_recovery', 'booking_org_recovery',
+    'booking_coach_settlement', 'booking_org_settlement',
+    'booking_coach_settlement_offset', 'booking_org_settlement_offset',
+    'booking_recovery_collection',
+    'referee_payout', 'provider_payout',
+    'withdrawal_request', 'withdrawal_completion',
+    'settlement_paid', 'settlement_paid_otc',
+    'settlement_paid_offset', 'settlement_paid_otc_offset',
     'payment_failure', 'invoice_issue', 'invoice_payment',
     'purchase_invoice_issue', 'purchase_invoice_payment',
     'invoice_cancel', 'purchase_invoice_cancel',
+    'payroll_post', 'year_close',
   ];
 
   const saveMutation = useMutation({

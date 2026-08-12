@@ -266,12 +266,16 @@ export const settlementService = {
         }
 
         // Emit accounting event at markPaid — this is when money actually moves.
+        // Carry the FULL component amounts so the accounting listener can post
+        // an explicit offset entry (never silently net down).
         eventBusV2.emit('settlement:paid', {
           settlementId,
           amount: finalAmount,
           direction,
           organisationId: settlement.organisation_id,
           currency: 'EGP',
+          onlineNet: Number(settlement.online_net_total || 0),
+          codFee: Number(settlement.cod_fee_total || 0),
         } as Record<string, unknown>, {
           aggregateType: 'settlement',
           aggregateId: String(settlementId),

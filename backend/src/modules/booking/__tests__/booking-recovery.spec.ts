@@ -111,7 +111,7 @@ describe('Post-Settlement Refund Recovery', () => {
     const orgRecovery = await accountingEngineService.resolveMapping('booking_org_recovery', null);
     const orgConcepts = orgRecovery.map(m => m.concept);
     expect(orgConcepts).toContain('org_recovery_receivable');
-    expect(orgConcepts).toContain('booking_revenue');
+    expect(orgConcepts).toContain('org_payable');
   });
 
   it('7. no double recovery: settled portion never exceeds settled amount', async () => {
