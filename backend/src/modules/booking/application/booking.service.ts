@@ -143,6 +143,23 @@ export class BookingService {
       // Commission lookup is non-fatal
     }
 
+    // Booking tax snapshot (org-specific → global fallback)
+    let taxRate = 0;
+    let taxRateId: number | null = null;
+    let taxAmount = 0;
+    let taxTreatment: 'taxable' | 'zero_rated' | 'exempt' = 'taxable';
+    try {
+      const { taxResolution } = await import('../../financial/application/tax-resolution.service.js');
+      const resolved = await taxResolution.resolveOrgTaxRate(organisationId);
+      const taxCalc = taxResolution.calculateTax(clubAmount, resolved, 'taxable');
+      taxRate = taxCalc.taxRate;
+      taxRateId = taxCalc.taxRateId;
+      taxAmount = taxCalc.taxAmount;
+      taxTreatment = taxCalc.treatment;
+    } catch {
+      // Tax lookup is non-fatal; booking proceeds untaxed (zero-rated)
+    }
+
     const paymentMethod = input.paymentMethod || 'wallet';
     const isGatewayOrWallet = paymentMethod !== 'cash' && paymentMethod !== 'cod';
 
@@ -178,6 +195,7 @@ export class BookingService {
         bookingType: input.bookingType || 'public_match', bookingDate,
         startTime: input.startTime, endTime,
           totalAmount: pricing.totalPrice, commissionAmount, clubAmount,
+          taxRate, taxRateId, taxAmount, taxTreatment, priceType: 'net',
           notes: input.notes, paymentMethod,
           bookingStatus: 'pending_payment', paymentStatus: 'pending',
           startAtUtc, endAtUtc, businessDate, expiresAt,
@@ -205,7 +223,7 @@ export class BookingService {
           gwResult = await paymentService.charge(userId, {
             referenceType: 'booking',
             referenceId: bookingId,
-            amount: pricing.totalPrice,
+            amount: Math.round((pricing.totalPrice + taxAmount) * 100) / 100,
             currency: 'EGP',
             paymentMethod: (paymentMethod === 'online' ? 'card' : paymentMethod as 'wallet' | 'card' | 'bank_transfer'),
             returnUrl: input.returnUrl,
@@ -260,6 +278,7 @@ export class BookingService {
         bookingType: input.bookingType || 'public_match', bookingDate,
         startTime: input.startTime, endTime: input.endTime,
         totalAmount: pricing.totalPrice, commissionAmount, clubAmount,
+        taxRate, taxRateId, taxAmount, taxTreatment, priceType: 'net',
         notes: input.notes, bookingStatus, paymentStatus, paymentMethod: 'cash',
         startAtUtc, endAtUtc, businessDate,
       }, conn);
@@ -282,7 +301,7 @@ export class BookingService {
         }
       }
 
-      // COD journal entries on the same connection
+      // COD journal entries on the same connection (OPERATIONAL wallet-flow history)
       if (paymentMethod === 'cash' || paymentMethod === 'cod') {
         const [txnResult] = await conn.execute<mysql.ResultSetHeader>(
           `INSERT INTO transactions (type, source_type, source_id, currency_id, total_amount, status)
@@ -292,10 +311,19 @@ export class BookingService {
         await conn.execute(
           `INSERT INTO transaction_entries (transaction_id, side, entity_type, entity_id, amount, currency_id, branch_id, organisation_id, description)
            VALUES (?, 'debit', 'user_wallet', ?, ?, 2, ?, ?, ?),
-                  (?, 'credit', 'branch', ?, ?, 2, ?, ?, ?)`,
+                   (?, 'credit', 'branch', ?, ?, 2, ?, ?, ?)`,
           [txnResult.insertId, userId, pricing.totalPrice, input.branchId, organisationId, `COD booking #${bookingId}`,
            txnResult.insertId, input.branchId, pricing.totalPrice, input.branchId, organisationId, `COD booking #${bookingId}`]
         );
+        // Canonical accounting trigger for COD — booking economics must reach
+        // ledger_entries → general_ledger via booking:paid (see accounting listener).
+        eventBusV2.emit('booking:paid', {
+          bookingId, organisationId,
+          grossAmount: pricing.totalPrice, taxAmount, coachAmount: 0,
+          organisationAmount: clubAmount, commissionAmount,
+          paymentMethod: 'cod', currency: 'EGP',
+          sourceId: bookingId,
+        });
       }
 
       await conn.commit();

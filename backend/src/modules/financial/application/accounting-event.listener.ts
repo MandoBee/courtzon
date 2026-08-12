@@ -2,6 +2,7 @@ import { eventBusV2 } from '../../../shared/event-bus/event-bus.v2.js';
 import { accountingEngineService } from './accounting-engine.service.js';
 import { ledgerRepository } from '../infrastructure/repositories/ledger.repository.js';
 import { glProjectionService } from './gl-projection.service.js';
+import { bookingAccounting } from './booking-accounting.service.js';
 import { getPool } from '../../../database/mysql.js';
 import type { RowDataPacket } from 'mysql2';
 import type { SourceType, LedgerLineInput, EntrySide, LedgerEntry } from '../domain/ledger-aggregate.js';
@@ -131,6 +132,45 @@ async function postAccountingEvent(
   }
 }
 
+async function postBookingPaymentAccounting(bookingId: number, paymentMethod: string, currency: string): Promise<void> {
+  const econ = await bookingAccounting.resolveBookingEconomics(bookingId);
+  if (!econ) {
+    log.error({ bookingId }, 'Booking economics not found — skipping booking accounting');
+    return;
+  }
+  const eventType = paymentMethod === 'wallet' ? 'booking_wallet_payment'
+    : paymentMethod === 'cod' || paymentMethod === 'cash' ? 'booking_cod_payment'
+    : 'booking_card_payment';
+
+  // The debit (payment side) must equal the sum of credits:
+  //   booking_revenue + platform_commission + tax_liability
+  const grossPayable = econ.orgAmount + econ.commissionAmount + econ.taxAmount;
+
+  await postAccountingEvent(
+    eventType, 'booking', bookingId, econ.organisationId,
+    {
+      booking_revenue: econ.orgAmount,
+      platform_commission: econ.commissionAmount,
+      tax_liability: econ.taxAmount,
+      payment_clearing: eventType === 'booking_card_payment' ? grossPayable : 0,
+      wallet_liability_spend: eventType === 'booking_wallet_payment' ? grossPayable : 0,
+      cash_receivable: eventType === 'booking_cod_payment' ? grossPayable : 0,
+    },
+    currency,
+    `Booking #${bookingId} payment`,
+  );
+
+  // Coach payable (separate explicit event, only when coach share exists)
+  if (econ.coachAmount > 0) {
+    await postAccountingEvent(
+      'booking_coach_payout', 'booking', bookingId, econ.organisationId,
+      { coach_expense: econ.coachAmount, coach_payable: econ.coachAmount },
+      currency,
+      `Booking #${bookingId} coach payout`,
+    );
+  }
+}
+
 export function registerAccountingEventListeners(): void {
   // ── Payment Events ──
 
@@ -151,6 +191,15 @@ export function registerAccountingEventListeners(): void {
           currency,
           `Card deposit (payment #${data.paymentId})`,
         );
+        return;
+      }
+
+      // ── Booking payment → booking-specific accounting (full economic split) ──
+      // A booking payment must NOT post a generic full-gross revenue entry.
+      // Instead resolve the authoritative economics (org share, commission,
+      // coach share, tax) and post the explicit booking event.
+      if (referenceType === 'booking') {
+        await postBookingPaymentAccounting(referenceId, paymentMethod, currency);
         return;
       }
 
@@ -377,6 +426,60 @@ export function registerAccountingEventListeners(): void {
     } catch (err: any) {
       if (err?.code === 'ER_DUP_ENTRY') { log.info({ err: err.message }, 'Duplicate — skip'); return; }
       log.error({ err }, 'Settlement paid accounting failed');
+    }
+  });
+
+  // ── Booking Accounting Events ──
+  // COD bookings emit booking:paid directly (they don't route through the
+  // generic payment gateway listener). Card/wallet bookings route through
+  // payment:succeeded → postBookingPaymentAccounting.
+
+  eventBusV2.on('booking:paid', async (data: any) => {
+    try {
+      const bookingId = data.bookingId || data.sourceId;
+      const currency = data.currency || 'EGP';
+      if (!bookingId) return;
+      await postBookingPaymentAccounting(Number(bookingId), data.paymentMethod || 'cod', currency);
+    } catch (err: any) {
+      if (err?.code === 'ER_DUP_ENTRY') { log.info({ err: err.message }, 'Duplicate — skip'); return; }
+      log.error({ err, bookingId: data.bookingId }, 'Booking paid accounting failed');
+    }
+  });
+
+  eventBusV2.on('booking:refunded', async (data: any) => {
+    try {
+      const bookingId = data.bookingId;
+      if (!bookingId) return;
+      const econ = await bookingAccounting.resolveBookingEconomics(Number(bookingId));
+      if (!econ) return;
+      const currency = data.currency || 'EGP';
+      const grossPayable = econ.orgAmount + econ.commissionAmount + econ.taxAmount;
+
+      // Reverse the complete original economics (payment-side credit).
+      await postAccountingEvent(
+        'booking_refund', 'booking', Number(bookingId), econ.organisationId,
+        {
+          booking_revenue: econ.orgAmount,
+          platform_commission: econ.commissionAmount,
+          tax_liability: econ.taxAmount,
+          payment_clearing: grossPayable,
+        },
+        currency,
+        `Booking #${bookingId} refund`,
+      );
+
+      // Reverse coach payable if present
+      if (econ.coachAmount > 0) {
+        await postAccountingEvent(
+          'booking_coach_reversal', 'booking', Number(bookingId), econ.organisationId,
+          { coach_payable: econ.coachAmount, coach_expense: econ.coachAmount },
+          currency,
+          `Booking #${bookingId} coach payout reversal`,
+        );
+      }
+    } catch (err: any) {
+      if (err?.code === 'ER_DUP_ENTRY') { log.info({ err: err.message }, 'Duplicate — skip'); return; }
+      log.error({ err, bookingId: data.bookingId }, 'Booking refund accounting failed');
     }
   });
 
