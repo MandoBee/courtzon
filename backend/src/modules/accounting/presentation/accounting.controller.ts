@@ -48,17 +48,36 @@ export async function createAccountHandler(request: FastifyRequest, reply: Fasti
   const body = request.body as any;
   const userId = (request as any).userId;
 
+  const parentId = body.parent_id ?? body.parentId ?? null;
+  const orgId = body.organisation_id ?? body.organisationId ?? null;
+
   const [existing] = await pool.execute<RowData>(
-    `SELECT id FROM chart_of_accounts WHERE code = ?`, [body.code]
+    `SELECT id FROM chart_of_accounts WHERE code = ? AND (organisation_id = ? OR (? IS NULL AND organisation_id IS NULL))`,
+    [body.code, orgId, orgId]
   );
   if (existing.length) {
     throw new ConflictError('Account code already exists', ErrorCodes.ACCOUNT_CODE_EXISTS);
   }
 
+  if (parentId != null) {
+    const [parent] = await pool.execute<RowData>(
+      'SELECT id, is_system, is_active FROM chart_of_accounts WHERE id = ?', [parentId]
+    );
+    if (!(parent as any[]).length) {
+      throw new AppError('Parent account does not exist', 400, 'VALIDATION_ERROR');
+    }
+    if (!(parent as any[])[0].is_active) {
+      throw new AppError('Parent account is inactive', 400, 'VALIDATION_ERROR');
+    }
+  }
+
+  const normalSide = body.normal_side ?? body.normalSide ?? null;
+  const isSystem = body.is_system ?? body.isSystem ?? 0;
+
   const [result] = await pool.execute<RowData>(
-    `INSERT INTO chart_of_accounts (code, name, type, parent_id, is_active, description)
-     VALUES (?, ?, ?, ?, ?, ?)`,
-    [body.code, body.name, body.type, body.parentId || null, body.isActive ?? 1, body.description || null]
+    `INSERT INTO chart_of_accounts (code, name, type, normal_side, parent_id, is_system, is_active, organisation_id, description)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [body.code, body.name, body.type, normalSide, parentId, isSystem, body.isActive ?? 1, orgId, body.description || null]
   );
   const insertId = (result as any).insertId;
 
@@ -67,7 +86,7 @@ export async function createAccountHandler(request: FastifyRequest, reply: Fasti
     action: 'ACCOUNTING.COA.CREATE',
     entityType: 'chart_of_accounts',
     entityId: insertId,
-    afterState: { code: body.code, name: body.name, type: body.type },
+    afterState: { code: body.code, name: body.name, type: body.type, organisationId: orgId },
     ipAddress: request.ip,
     userAgent: request.headers['user-agent'],
   });
