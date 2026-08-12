@@ -5,6 +5,7 @@ import { AppError, NotFoundError, ConflictError } from '../../../shared/errors/a
 import { ErrorCodes } from '../../../shared/errors/error-codes.js';
 import { getEventConcepts, validateCompleteMapping } from '../../financial/application/accounting-concepts.js';
 import { coaValidator } from '../../financial/application/coa-validator.service.js';
+import { yearClosingService } from '../application/year-closing.service.js';
 import mysql from 'mysql2/promise';
 
 type RowData = mysql.RowDataPacket[];
@@ -419,6 +420,9 @@ export async function openPeriodHandler(request: FastifyRequest, reply: FastifyR
   );
   if (!existing.length) {
     throw new NotFoundError('Period', ErrorCodes.PERIOD_NOT_FOUND);
+  }
+  if (existing[0].status === 'locked') {
+    throw new AppError('Locked periods require year-close reopen authorization. Use POST /admin/accounting/year-close/reopen', 403, 'FORBIDDEN');
   }
 
   await pool.execute<RowData>(
@@ -1514,3 +1518,60 @@ export async function deleteMappingHandler(request: FastifyRequest, reply: Fasti
 
   return reply.send({ data: { eventType, organisationId: orgId, message: 'Override deleted — restored to global default' } });
 }
+
+// ── Year Close Handlers ──
+
+export async function yearClosePreviewHandler(request: FastifyRequest, reply: FastifyReply) {
+  const query = request.query as any;
+  const userId = (request as any).userId;
+  const fiscalYear = Number(query.fiscalYear) || new Date().getFullYear();
+  const organisationId = query.organisationId ? Number(query.organisationId) : null;
+  await validateOrgAccess(userId, organisationId);
+
+  const preview = await yearClosingService.previewClose(fiscalYear, organisationId);
+  return reply.send({ data: preview });
+}
+
+export async function yearCloseHandler(request: FastifyRequest, reply: FastifyReply) {
+  const body = request.body as any;
+  const userId = (request as any).userId;
+  const fiscalYear = Number(body.fiscalYear) || new Date().getFullYear();
+  const organisationId = body.organisationId ? Number(body.organisationId) : null;
+  await validateOrgAccess(userId, organisationId);
+
+  try {
+    const result = await yearClosingService.closeYear(fiscalYear, organisationId, userId);
+    return reply.send({ data: result });
+  } catch (err: any) {
+    if (err?.code === 'ER_DUP_ENTRY') {
+      return reply.status(409).send({ error: 'CONFLICT', message: 'Year already closed for this organization/fiscal year' });
+    }
+    throw err;
+  }
+}
+
+export async function yearCloseHistoryHandler(request: FastifyRequest, reply: FastifyReply) {
+  const query = request.query as any;
+  const userId = (request as any).userId;
+  const organisationId = query.organisationId ? Number(query.organisationId) : null;
+  await validateOrgAccess(userId, organisationId);
+
+  const history = await yearClosingService.getHistory(organisationId);
+  return reply.send({ data: history });
+}
+
+export async function yearCloseReopenHandler(request: FastifyRequest, reply: FastifyReply) {
+  const body = request.body as any;
+  const userId = (request as any).userId;
+  const fiscalYear = Number(body.fiscalYear) || new Date().getFullYear();
+  const organisationId = body.organisationId ? Number(body.organisationId) : null;
+  const reason = body.reason || 'No reason provided';
+  await validateOrgAccess(userId, organisationId);
+
+  const result = await yearClosingService.reopenYear(fiscalYear, organisationId, userId, reason);
+  return reply.send({ data: result });
+}
+
+// ── Fixed openPeriodHandler: reject locked periods ──
+// (replaces existing openPeriodHandler with added locked check)
+

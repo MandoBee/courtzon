@@ -118,3 +118,7 @@ INSERT IGNORE INTO accounting_event_mapping_lines (event_type, organisation_id, 
 SELECT 'payroll_post', NULL, 'salary_expense', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '5100';
 INSERT IGNORE INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
 SELECT 'payroll_post', NULL, 'salary_payable', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '2200';
+
+-- 16. year_close
+INSERT IGNORE INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
+SELECT 'year_close', NULL, 'retained_earnings', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '3100';

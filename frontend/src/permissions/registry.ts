@@ -1001,6 +1001,10 @@ export const uiRegistry: UIElement[] = [
   { permissionKey: 'accounting.mappings.manage', moduleSlug: 'accounting', elementType: 'button', elementLabel: 'Manage Event Mappings', componentPath: 'pages/admin/accounting/EventMappingsPage.tsx' },
   { permissionKey: 'accounting.templates.view', moduleSlug: 'accounting', elementType: 'page', elementLabel: 'Account Templates View', componentPath: 'pages/admin/accounting/TemplatesPage.tsx' },
   { permissionKey: 'accounting.templates.manage', moduleSlug: 'accounting', elementType: 'button', elementLabel: 'Manage Account Templates', componentPath: 'pages/admin/accounting/TemplatesPage.tsx' },
+  { permissionKey: 'accounting.year-close.view', moduleSlug: 'accounting', elementType: 'page', elementLabel: 'Year Close View', componentPath: 'pages/admin/accounting/AccountingPeriodsPage.tsx' },
+  { permissionKey: 'accounting.year-close.manage', moduleSlug: 'accounting', elementType: 'button', elementLabel: 'Execute Year Close', componentPath: 'pages/admin/accounting/AccountingPeriodsPage.tsx' },
+  { permissionKey: 'accounting.year-close.reopen', moduleSlug: 'accounting', elementType: 'button', elementLabel: 'Reopen Closed Year', componentPath: 'pages/admin/accounting/AccountingPeriodsPage.tsx' },
+  { permissionKey: 'sidebar.accounting-year-close', moduleSlug: 'accounting', elementType: 'tab', elementLabel: 'Sidebar: Year Close', componentPath: 'components/layout/AdminSidebar.tsx' },
   // Accounting sidebar
   { permissionKey: 'sidebar.accounting', moduleSlug: 'accounting', elementType: 'tab', elementLabel: 'Sidebar: Accounting', componentPath: 'components/layout/AdminSidebar.tsx' },
   { permissionKey: 'sidebar.accounting-dashboard', moduleSlug: 'accounting', elementType: 'tab', elementLabel: 'Sidebar: Accounting Dashboard', componentPath: 'components/layout/AdminSidebar.tsx' },
