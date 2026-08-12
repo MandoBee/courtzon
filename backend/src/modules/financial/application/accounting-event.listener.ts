@@ -171,6 +171,38 @@ async function postBookingPaymentAccounting(bookingId: number, paymentMethod: st
   }
 }
 
+async function postBookingRefundAccounting(bookingId: number, refundAmount: number, currency: string): Promise<void> {
+  const refund = await bookingAccounting.computeRefundEconomics(bookingId, refundAmount);
+  if (!refund) {
+    log.error({ bookingId }, 'Booking refund economics not found — skipping refund accounting');
+    return;
+  }
+  if (refund.refundedAmount <= 0) return;
+
+  // Reverse the proportional economic components (debit side).
+  await postAccountingEvent(
+    'booking_refund', 'booking', bookingId, refund.organisationId,
+    {
+      booking_revenue: refund.orgAmount,
+      platform_commission: refund.commissionAmount,
+      tax_liability: refund.taxAmount,
+      payment_clearing: refund.paymentAmount,
+    },
+    currency,
+    `Booking #${bookingId} refund`,
+  );
+
+  // Reverse coach payable proportionally, if present in the original economics
+  if (refund.coachAmount > 0) {
+    await postAccountingEvent(
+      'booking_coach_reversal', 'booking', bookingId, refund.organisationId,
+      { coach_payable: refund.coachAmount, coach_expense: refund.coachAmount },
+      currency,
+      `Booking #${bookingId} coach payout reversal`,
+    );
+  }
+}
+
 export function registerAccountingEventListeners(): void {
   // ── Payment Events ──
 
@@ -235,13 +267,20 @@ export function registerAccountingEventListeners(): void {
 
   eventBusV2.on('payment:refunded', async (data: any) => {
     try {
-      const paymentMethod: string = data.metadata?.paymentMethod || 'card';
       const referenceType: string = data.referenceType;
       const referenceId: number = data.referenceId;
       const amount: number = Number(data.amount);
       const currency: string = data.metadata?.currency || 'EGP';
       if (!referenceType || !referenceId || !amount) return;
 
+      // ── Booking refund → booking-specific proportional reversal ──
+      // A booking refund must NOT post a generic revenue_contra entry.
+      if (referenceType === 'booking') {
+        await postBookingRefundAccounting(Number(referenceId), amount, currency);
+        return;
+      }
+
+      const paymentMethod: string = data.metadata?.paymentMethod || 'card';
       const eventType = paymentMethod === 'wallet' ? 'wallet_refund' : 'card_refund';
       const sourceType = refTypeToSourceType(referenceType);
       const orgId = await resolveOrgId(referenceType, referenceId);
@@ -449,34 +488,10 @@ export function registerAccountingEventListeners(): void {
   eventBusV2.on('booking:refunded', async (data: any) => {
     try {
       const bookingId = data.bookingId;
-      if (!bookingId) return;
-      const econ = await bookingAccounting.resolveBookingEconomics(Number(bookingId));
-      if (!econ) return;
+      const refundAmount = Number(data.refundAmount ?? data.grossAmount ?? 0);
       const currency = data.currency || 'EGP';
-      const grossPayable = econ.orgAmount + econ.commissionAmount + econ.taxAmount;
-
-      // Reverse the complete original economics (payment-side credit).
-      await postAccountingEvent(
-        'booking_refund', 'booking', Number(bookingId), econ.organisationId,
-        {
-          booking_revenue: econ.orgAmount,
-          platform_commission: econ.commissionAmount,
-          tax_liability: econ.taxAmount,
-          payment_clearing: grossPayable,
-        },
-        currency,
-        `Booking #${bookingId} refund`,
-      );
-
-      // Reverse coach payable if present
-      if (econ.coachAmount > 0) {
-        await postAccountingEvent(
-          'booking_coach_reversal', 'booking', Number(bookingId), econ.organisationId,
-          { coach_payable: econ.coachAmount, coach_expense: econ.coachAmount },
-          currency,
-          `Booking #${bookingId} coach payout reversal`,
-        );
-      }
+      if (!bookingId || refundAmount <= 0) return;
+      await postBookingRefundAccounting(Number(bookingId), refundAmount, currency);
     } catch (err: any) {
       if (err?.code === 'ER_DUP_ENTRY') { log.info({ err: err.message }, 'Duplicate — skip'); return; }
       log.error({ err, bookingId: data.bookingId }, 'Booking refund accounting failed');

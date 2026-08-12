@@ -79,4 +79,47 @@ export async function resolveCoachPayable(bookingId: number): Promise<{ coachAmo
   return { coachAmount: Number(s.coach_earnings || 0), orgAmount: Number(s.org_earnings || 0) };
 }
 
-export const bookingAccounting = { resolveBookingEconomics, resolveCoachPayable };
+export const bookingAccounting = { resolveBookingEconomics, resolveCoachPayable, computeRefundEconomics };
+
+export interface RefundEconomics {
+  bookingId: number;
+  organisationId: number | null;
+  refundedAmount: number;
+  refundRatio: number;
+  orgAmount: number;
+  commissionAmount: number;
+  taxAmount: number;
+  coachAmount: number;
+  paymentAmount: number;
+  paymentMethod: string;
+  currency: string;
+}
+
+/**
+ * Compute proportional refund economics from the ORIGINAL booking snapshot.
+ * Never recalculates commission/coach/tax — strictly prorates the snapshot.
+ */
+export async function computeRefundEconomics(bookingId: number, refundedAmount: number): Promise<RefundEconomics | null> {
+  const econ = await resolveBookingEconomics(bookingId);
+  if (!econ) return null;
+
+  const grossPayable = econ.orgAmount + econ.commissionAmount + econ.taxAmount;
+  if (grossPayable <= 0) return null;
+
+  const ratio = Math.min(Math.max(refundedAmount / grossPayable, 0), 1);
+  const rnd = (n: number) => Math.round(n * 100) / 100;
+
+  return {
+    bookingId,
+    organisationId: econ.organisationId,
+    refundedAmount: rnd(refundedAmount),
+    refundRatio: ratio,
+    orgAmount: rnd(econ.orgAmount * ratio),
+    commissionAmount: rnd(econ.commissionAmount * ratio),
+    taxAmount: rnd(econ.taxAmount * ratio),
+    coachAmount: rnd(econ.coachAmount * ratio),
+    paymentAmount: rnd(refundedAmount),
+    paymentMethod: econ.paymentMethod,
+    currency: econ.currency,
+  };
+}
