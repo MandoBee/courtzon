@@ -11,7 +11,12 @@ interface InvoiceLineItem {
   description: string;
   quantity: number;
   unit_price: number;
+  tax_rate_id: number | '';
   tax_rate: number;
+  price_type: 'net' | 'gross';
+  tax_treatment: 'taxable' | 'zero_rated' | 'exempt';
+  net_amount: number;
+  tax_amount: number;
   total: number;
 }
 
@@ -52,7 +57,7 @@ export default function InvoicesPage() {
   const [payModal, setPayModal] = useState<number | null>(null);
   const [cancelModal, setCancelModal] = useState<number | null>(null);
   const [form, setForm] = useState({ organisation_id: '', user_id: '', issue_date: localToday(), due_date: '', type: 'sales' as string });
-  const [lineItems, setLineItems] = useState<InvoiceLineItem[]>([{ description: '', quantity: 1, unit_price: 0, tax_rate: 0, total: 0 }]);
+  const [lineItems, setLineItems] = useState<InvoiceLineItem[]>([{ description: '', quantity: 1, unit_price: 0, tax_rate_id: '', tax_rate: 0, price_type: 'net', tax_treatment: 'taxable', net_amount: 0, tax_amount: 0, total: 0 }]);
 
   const { data, isLoading } = useQuery({
     queryKey: ['accounting', 'invoices', page, pageSize],
@@ -69,10 +74,38 @@ export default function InvoicesPage() {
     queryFn: () => api.get('/users', { params: { limit: 200 } }).then((r: any) => r.data.data || r.data),
   });
 
+  const { data: taxRates } = useQuery({
+    queryKey: ['accounting', 'tax-rates'],
+    queryFn: () => api.get('/admin/accounting/tax-rates').then((r: any) => r.data.data || r.data),
+  });
+  const taxRateList: any[] = Array.isArray(taxRates) ? taxRates : taxRates?.data || [];
+
   const invoices: Invoice[] = data?.data || [];
   const total = data?.total || 0;
   const orgList: any[] = Array.isArray(orgs) ? orgs : orgs?.data || [];
   const userList: any[] = Array.isArray(users) ? users : users?.data || [];
+
+  const emptyLine = (): InvoiceLineItem => ({ description: '', quantity: 1, unit_price: 0, tax_rate_id: '', tax_rate: 0, price_type: 'net', tax_treatment: 'taxable', net_amount: 0, tax_amount: 0, total: 0 });
+
+  const computeLine = (li: InvoiceLineItem): InvoiceLineItem => {
+    const qty = Number(li.quantity) || 0;
+    const price = Number(li.unit_price) || 0;
+    const rate = Number(li.tax_rate) || 0;
+    const isFixed = taxRateList.find(t => t.id === Number(li.tax_rate_id))?.type === 'fixed';
+    let net: number, tax: number, gross: number;
+    if (li.tax_treatment === 'exempt' || li.tax_treatment === 'zero_rated') {
+      net = Math.round(qty * price * 100) / 100; tax = 0; gross = net;
+    } else if (li.price_type === 'gross') {
+      gross = Math.round(qty * price * 100) / 100;
+      tax = isFixed ? Math.round(rate * 100) / 100 : Math.round(gross * rate / (100 + rate) * 100) / 100;
+      net = Math.round((gross - tax) * 100) / 100;
+    } else {
+      net = Math.round(qty * price * 100) / 100;
+      tax = isFixed ? Math.round(rate * 100) / 100 : Math.round(net * rate) / 100;
+      gross = Math.round((net + tax) * 100) / 100;
+    }
+    return { ...li, net_amount: net, tax_amount: tax, total: gross };
+  };
 
   const createMutation = useMutation({
     mutationFn: (payload: any) => api.post('/admin/accounting/invoices', payload),
@@ -101,27 +134,27 @@ export default function InvoicesPage() {
   const resetForm = () => {
     setShowForm(false);
     setForm({ organisation_id: '', user_id: '', issue_date: localToday(), due_date: '', type: 'sales' });
-    setLineItems([{ description: '', quantity: 1, unit_price: 0, tax_rate: 0, total: 0 }]);
+    setLineItems([emptyLine()]);
   };
 
-  const addLineItem = () => setLineItems([...lineItems, { description: '', quantity: 1, unit_price: 0, tax_rate: 0, total: 0 }]);
+  const addLineItem = () => setLineItems([...lineItems, emptyLine()]);
 
   const updateLineItem = (idx: number, field: keyof InvoiceLineItem, value: any) => {
     const updated = lineItems.map((li, i) => {
       if (i !== idx) return li;
-      const next = { ...li, [field]: value };
-      const qty = Number(next.quantity) || 1;
-      const price = Number(next.unit_price) || 0;
-      const tax = Number(next.tax_rate) || 0;
-      next.total = qty * price * (1 + tax / 100);
-      return next;
+      let next = { ...li, [field]: value };
+      if (field === 'tax_rate_id') {
+        const tr = taxRateList.find(t => t.id === Number(value));
+        if (tr) next.tax_rate = Number(tr.rate);
+      }
+      return computeLine(next);
     });
     setLineItems(updated);
   };
 
   const removeLineItem = (idx: number) => { if (lineItems.length > 1) setLineItems(lineItems.filter((_, i) => i !== idx)); };
 
-  const grandTotal = lineItems.reduce((s, li) => s + li.total, 0);
+  const grandTotal = lineItems.reduce((s, li) => s + (li.total || 0), 0);
 
   const handleCreate = () => {
     if (!form.organisation_id && !form.user_id) { showToast('Select an organisation or user', 'error'); return; }
@@ -134,7 +167,16 @@ export default function InvoicesPage() {
       issueDate: form.issue_date,
       dueDate: form.due_date,
       type: form.type,
-      items: lineItems.map(li => ({ description: li.description, quantity: Number(li.quantity), unitPrice: Number(li.unit_price), taxRate: Number(li.tax_rate) })),
+      items: lineItems.map(li => ({
+        description: li.description,
+        quantity: Number(li.quantity),
+        unitPrice: Number(li.unit_price),
+        taxRate: Number(li.tax_rate),
+        taxRateId: li.tax_rate_id ? Number(li.tax_rate_id) : null,
+        priceType: li.price_type,
+        taxTreatment: li.tax_treatment,
+        taxType: taxRateList.find(t => t.id === Number(li.tax_rate_id))?.type,
+      })),
     });
   };
 
@@ -205,10 +247,14 @@ export default function InvoicesPage() {
                   <thead>
                     <tr className="border-b border-[var(--color-border)] text-[var(--color-text-muted)] text-xs">
                       <th className="text-left px-2 py-2">Description</th>
-                      <th className="text-right px-2 py-2 w-20">Qty</th>
+                      <th className="text-right px-2 py-2 w-16">Qty</th>
                       <th className="text-right px-2 py-2 w-24">Unit Price</th>
-                      <th className="text-right px-2 py-2 w-20">Tax %</th>
-                      <th className="text-right px-2 py-2 w-24">Total</th>
+                      <th className="text-left px-2 py-2 w-28">Tax Rate</th>
+                      <th className="text-left px-2 py-2 w-24">Treatment</th>
+                      <th className="text-left px-2 py-2 w-20">Type</th>
+                      <th className="text-right px-2 py-2 w-20">Net</th>
+                      <th className="text-right px-2 py-2 w-20">Tax</th>
+                      <th className="text-right px-2 py-2 w-20">Total</th>
                       <th className="w-10"></th>
                     </tr>
                   </thead>
@@ -228,9 +274,31 @@ export default function InvoicesPage() {
                             className="w-full px-2 py-1.5 border rounded-[var(--radius-md)] bg-[var(--color-bg)] text-xs text-right" />
                         </td>
                         <td className="px-2 py-2">
-                          <input type="number" step="0.1" min="0" value={li.tax_rate} onChange={e => updateLineItem(idx, 'tax_rate', e.target.value)}
-                            className="w-full px-2 py-1.5 border rounded-[var(--radius-md)] bg-[var(--color-bg)] text-xs text-right" />
+                          <select value={li.tax_rate_id} onChange={e => updateLineItem(idx, 'tax_rate_id', e.target.value)}
+                            className="w-full px-2 py-1.5 border rounded-[var(--radius-md)] bg-[var(--color-bg)] text-xs">
+                            <option value="">No tax</option>
+                            {taxRateList.filter((t: any) => t.is_active).map((t: any) => (
+                              <option key={t.id} value={t.id}>{t.name} ({t.rate}{t.type === 'percentage' ? '%' : ''})</option>
+                            ))}
+                          </select>
                         </td>
+                        <td className="px-2 py-2">
+                          <select value={li.tax_treatment} onChange={e => updateLineItem(idx, 'tax_treatment', e.target.value)}
+                            className="w-full px-2 py-1.5 border rounded-[var(--radius-md)] bg-[var(--color-bg)] text-xs">
+                            <option value="taxable">Taxable</option>
+                            <option value="zero_rated">Zero-rated</option>
+                            <option value="exempt">Exempt</option>
+                          </select>
+                        </td>
+                        <td className="px-2 py-2">
+                          <select value={li.price_type} onChange={e => updateLineItem(idx, 'price_type', e.target.value)}
+                            className="w-full px-2 py-1.5 border rounded-[var(--radius-md)] bg-[var(--color-bg)] text-xs">
+                            <option value="net">Net</option>
+                            <option value="gross">Gross</option>
+                          </select>
+                        </td>
+                        <td className="px-2 py-2 text-right text-xs font-mono text-[var(--color-text-muted)]">{fmt(li.net_amount)}</td>
+                        <td className="px-2 py-2 text-right text-xs font-mono text-[var(--color-text-muted)]">{fmt(li.tax_amount)}</td>
                         <td className="px-2 py-2 text-right text-xs font-mono text-[var(--color-text)]">{fmt(li.total)}</td>
                         <td className="px-2 py-2">
                           <button type="button" onClick={() => removeLineItem(idx)} disabled={lineItems.length <= 1}

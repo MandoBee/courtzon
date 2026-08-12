@@ -20,6 +20,15 @@ function refTypeToSourceType(referenceType: string): SourceType {
   }
 }
 
+async function resolveOrderTax(orderId: number): Promise<number> {
+  const pool = getPool();
+  const [rows] = await pool.execute<RowData>(
+    'SELECT COALESCE(tax_amount, 0) AS tax_amount FROM orders WHERE id = ? LIMIT 1',
+    [orderId],
+  );
+  return Number((rows as any[])[0]?.tax_amount ?? 0);
+}
+
 async function resolveOrgId(referenceType: string, referenceId: number): Promise<number | null> {
   const pool = getPool();
   if (referenceType === 'booking') {
@@ -230,7 +239,7 @@ export function registerAccountingEventListeners(): void {
     try {
       const orderId = data.orderId || data.id;
       const orgShare = Number(data.orgNet || data.organization_net || 0);
-      const taxAmount = Number(data.taxAmount || data.tax || 0);
+      const taxAmount = await resolveOrderTax(orderId);
       const currency = data.currency || 'EGP';
       if (!orderId || orgShare <= 0) return;
 
@@ -256,7 +265,7 @@ export function registerAccountingEventListeners(): void {
     try {
       const orderId = data.orderId || data.id;
       const orgShare = Number(data.orgNet || data.organization_net || 0);
-      const taxAmount = Number(data.taxAmount || data.tax || 0);
+      const taxAmount = await resolveOrderTax(orderId);
       const currency = data.currency || 'EGP';
       if (!orderId || orgShare <= 0) return;
 
@@ -282,7 +291,7 @@ export function registerAccountingEventListeners(): void {
     try {
       const orderId = data.orderId || data.id;
       const orgShare = Number(data.orgNet || data.organization_net || 0);
-      const taxAmount = Number(data.taxAmount || data.tax || 0);
+      const taxAmount = await resolveOrderTax(orderId);
       const currency = data.currency || 'EGP';
       if (!orderId || orgShare <= 0) return;
 
