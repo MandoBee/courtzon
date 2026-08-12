@@ -84,14 +84,17 @@ async function postAccountingEvent(
   const periodId = await glProjectionService.resolvePeriod(entryDate, organisationId);
   await glProjectionService.validateOpenPeriod(periodId);
 
+  // Set period_id on canonical entries
+  for (const e of entries) e.periodId = periodId;
+
   const pool = getPool();
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
 
-    await ledgerRepository.createEntries(entries, conn);
+    const leIds = await ledgerRepository.createEntries(entries, conn);
 
-    const projectable = entries.map(e => ({
+    const projectable = entries.map((e, i) => ({
       sourceType: e.sourceType,
       sourceId: e.sourceId,
       eventType: e.eventType ?? null,
@@ -101,11 +104,12 @@ async function postAccountingEvent(
       amount: e.amount,
       description: e.description,
       recordedAt: e.recordedAt,
+      ledgerEntryId: leIds[i],
     }));
     await glProjectionService.projectEntries(projectable, periodId, conn);
 
     await conn.commit();
-    log.info({ eventType, sourceType, sourceId, organisationId, lines: lines.length }, 'Accounting posting created');
+    log.info({ eventType, sourceType, sourceId, organisationId, lines: lines.length, periodId }, 'Accounting posting created');
   } catch (err: any) {
     await conn.rollback();
     if (err?.code === 'ER_DUP_ENTRY') {

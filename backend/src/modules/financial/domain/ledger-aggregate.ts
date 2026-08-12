@@ -27,6 +27,7 @@ export interface LedgerEntry {
   eventType?: string;
   organisationId?: number | null;
   chartAccountId?: number | null;
+  periodId?: number | null;
 }
 
 export interface LedgerLineInput {
@@ -41,6 +42,7 @@ export interface LedgerLineInput {
   currency: string;
   description: string;
   referenceId?: string;
+  periodId?: number | null;
 }
 
 export interface SettlementBatch {
@@ -112,7 +114,7 @@ export function createLedgerLines(inputs: LedgerLineInput[]): LedgerEntry[] {
       transactionId: input.transactionId,
       sourceType: input.sourceType,
       sourceId: input.sourceId,
-      accountType: 'platform_revenue', // legacy fill — deprecated by chart_account_id
+      accountType: 'platform_revenue', // deprecated — chart_account_id is canonical; column now nullable
       side: input.side,
       amount: input.amount,
       currency: input.currency,
@@ -122,6 +124,7 @@ export function createLedgerLines(inputs: LedgerLineInput[]): LedgerEntry[] {
       eventType: input.eventType,
       organisationId: input.organisationId ?? null,
       chartAccountId: input.chartAccountId,
+      periodId: input.periodId ?? null,
     });
   }
   return entries;
@@ -149,6 +152,14 @@ export const ACCOUNT_TYPE_CLASSIFICATION: Record<AccountType, AccountClassificat
 };
 
 export function classifyAccountType(accountType: string): AccountClassification {
+  const coaMap: Record<string, AccountClassification> = {
+    revenue: 'revenue', contra_revenue: 'contraRevenue',
+    expense: 'expense', contra_expense: 'expense',
+    asset: 'asset', contra_asset: 'asset',
+    liability: 'liability', contra_liability: 'liability',
+    equity: 'other',
+  };
+  if (coaMap[accountType]) return coaMap[accountType];
   return ACCOUNT_TYPE_CLASSIFICATION[accountType as AccountType] ?? 'other';
 }
 

@@ -16,6 +16,7 @@ export interface ProjectableEntry {
   amount: number;
   description?: string;
   recordedAt: string;
+  ledgerEntryId: number;
 }
 
 export class GlProjectionService {
@@ -71,9 +72,10 @@ export class GlProjectionService {
       const refType = `${entry.sourceType}${entry.eventType ? `_${entry.eventType}` : ''}`;
 
       await conn.execute(
-        `INSERT INTO general_ledger (organisation_id, period_id, account_id, entry_date, debit, credit, balance, reference_type, reference_id, description, created_by)
-         VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?, 1)`,
+        `INSERT INTO general_ledger (ledger_entry_id, organisation_id, period_id, account_id, entry_date, debit, credit, balance, reference_type, reference_id, description, created_by)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, 1)`,
         [
+          entry.ledgerEntryId,
           entry.organisationId ?? null,
           periodId,
           entry.chartAccountId ?? 0,

@@ -247,6 +247,7 @@ export const ADMIN_NAV: NavDefinition[] = [
       { id: 'nav.admin.accounting-invoices', label: LIT('Invoices'), path: '/admin/accounting/invoices', permissionKey: 'sidebar.accounting-invoices' },
       { id: 'nav.admin.accounting-tax', label: LIT('Tax Rates'), path: '/admin/accounting/tax-rates', permissionKey: 'sidebar.accounting-tax' },
       { id: 'nav.admin.accounting-mappings', label: LIT('Event Mappings'), path: '/admin/accounting/mappings', permissionKey: 'sidebar.accounting-mappings' },
+      { id: 'nav.admin.accounting-templates', label: LIT('Account Templates'), path: '/admin/accounting/templates', permissionKey: 'sidebar.accounting-templates' },
     ],
   },
   {

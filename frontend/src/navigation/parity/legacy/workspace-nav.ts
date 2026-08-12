@@ -57,6 +57,8 @@ export function buildSections(): NavItem[] {
         { label: 'Invoices', icon: '🧾', path: '/admin/accounting/invoices', permissionKey: 'sidebar.accounting-invoices' },
         { label: 'Periods', icon: '📅', path: '/admin/accounting/periods', permissionKey: 'sidebar.accounting-periods' },
         { label: 'Tax Rates', icon: '🏷️', path: '/admin/accounting/tax-rates', permissionKey: 'sidebar.accounting-tax' },
+        { label: 'Event Mappings', icon: '🔗', path: '/admin/accounting/mappings', permissionKey: 'sidebar.accounting-mappings' },
+        { label: 'Account Templates', icon: '📐', path: '/admin/accounting/templates', permissionKey: 'sidebar.accounting-templates' },
       ],
     },
     {

@@ -445,18 +445,19 @@ async function createDualEntry(
   const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
   const desc = p.description || '';
 
-  await conn.execute(
-    `INSERT INTO ledger_entries (transaction_id, source_type, source_id, event_type, organisation_id, chart_account_id, account_type, side, amount, currency, description, reference_id, recorded_at)
-     VALUES (?, ?, ?, ?, ?, ?, 'platform_revenue', ?, ?, 'EGP', ?, ?, ?)`,
+  const [leResult] = await conn.execute<RowData>(
+    `INSERT INTO ledger_entries (transaction_id, source_type, source_id, event_type, period_id, organisation_id, chart_account_id, account_type, side, amount, currency, description, reference_id, recorded_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, 'EGP', ?, ?, ?)`,
     [`dual_${p.sourceType}_${p.sourceId}_${Date.now()}`, p.sourceType, p.sourceId,
-     p.eventType, p.orgId, p.accountId, side, amount,
+     p.eventType, p.periodId, p.orgId, p.accountId, side, amount,
      desc, String(p.accountId), now],
   );
+  const leId = (leResult as any).insertId;
 
   await conn.execute(
-    `INSERT INTO general_ledger (organisation_id, period_id, account_id, entry_date, debit, credit, balance, reference_type, reference_id, description, created_by)
-     VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?)`,
-    [p.orgId, p.periodId, p.accountId, p.entryDate,
+    `INSERT INTO general_ledger (ledger_entry_id, organisation_id, period_id, account_id, entry_date, debit, credit, balance, reference_type, reference_id, description, created_by)
+     VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?)`,
+    [leId, p.orgId, p.periodId, p.accountId, p.entryDate,
      p.debit, p.credit, p.refType, p.refId, desc, p.userId],
   );
 }
@@ -612,49 +613,52 @@ export async function createJournalEntryHandler(request: FastifyRequest, reply: 
   try {
     await conn.beginTransaction();
 
-    // 1. Create canonical ledger_entries
-    const entryIds: number[] = [];
-    for (const entry of body.entries) {
-      const debit = Number(entry.debit || 0);
-      const credit = Number(entry.credit || 0);
-      const side = debit > 0 ? 'debit' : 'credit';
-      const amount = debit > 0 ? debit : credit;
+      // 1. Create canonical ledger_entries
+      const entryIds: number[] = [];
+      for (const entry of body.entries) {
+        const debit = Number(entry.debit || 0);
+        const credit = Number(entry.credit || 0);
+        const side = debit > 0 ? 'debit' : 'credit';
+        const amount = debit > 0 ? debit : credit;
 
-      const [leResult] = await conn.execute<RowData>(
-        `INSERT INTO ledger_entries (transaction_id, source_type, source_id, event_type, organisation_id, chart_account_id, account_type, side, amount, currency, description, reference_id, recorded_at)
-         VALUES (?, 'journal', ?, 'manual_journal', ?, ?, 'platform_revenue', ?, ?, 'EGP', ?, ?, ?)`,
-        [
-          transactionId,
-          entry.accountId,
-          organisationId,
-          entry.accountId,
-          side,
-          amount,
-          entry.description || body.description || null,
-          String(entry.accountId),
-          now,
-        ]
-      );
-      entryIds.push((leResult as any).insertId);
+        const [leResult] = await conn.execute<RowData>(
+          `INSERT INTO ledger_entries (transaction_id, source_type, source_id, event_type, period_id, organisation_id, chart_account_id, account_type, side, amount, currency, description, reference_id, recorded_at)
+           VALUES (?, 'journal', ?, 'manual_journal', ?, ?, ?, NULL, ?, ?, 'EGP', ?, ?, ?)`,
+          [
+            transactionId,
+            entry.accountId,
+            periodId,
+            organisationId,
+            entry.accountId,
+            side,
+            amount,
+            entry.description || body.description || null,
+            String(entry.accountId),
+            now,
+          ]
+        );
+        const leId = (leResult as any).insertId;
+        entryIds.push(leId);
 
-      // 2. Project to general_ledger
-      await conn.execute(
-        `INSERT INTO general_ledger (organisation_id, period_id, account_id, entry_date, debit, credit, balance, reference_type, reference_id, description, created_by)
-         VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?)`,
-        [
-          organisationId,
-          periodId,
-          entry.accountId,
-          body.entryDate,
-          debit,
-          credit,
-          refType,
-          refId,
-          entry.description || body.description || null,
-          userId,
-        ]
-      );
-    }
+        // 2. Project to general_ledger with ledger_entry_id
+        await conn.execute(
+          `INSERT INTO general_ledger (ledger_entry_id, organisation_id, period_id, account_id, entry_date, debit, credit, balance, reference_type, reference_id, description, created_by)
+           VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?)`,
+          [
+            leId,
+            organisationId,
+            periodId,
+            entry.accountId,
+            body.entryDate,
+            debit,
+            credit,
+            refType,
+            refId,
+            entry.description || body.description || null,
+            userId,
+          ]
+        );
+      }
 
     await conn.commit();
 
