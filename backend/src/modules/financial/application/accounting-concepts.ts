@@ -102,6 +102,30 @@ export const EVENT_CONCEPTS: Record<string, { debit: string[]; credit: string[] 
     debit: [],
     credit: ['retained_earnings'],
   },
+  booking_card_payment: {
+    debit: ['payment_clearing'],
+    credit: ['booking_revenue', 'platform_commission', 'tax_liability'],
+  },
+  booking_wallet_payment: {
+    debit: ['wallet_liability_spend'],
+    credit: ['booking_revenue', 'platform_commission', 'tax_liability'],
+  },
+  booking_cod_payment: {
+    debit: ['cash_receivable'],
+    credit: ['booking_revenue', 'platform_commission', 'tax_liability'],
+  },
+  booking_coach_payout: {
+    debit: ['coach_expense'],
+    credit: ['coach_payable'],
+  },
+  booking_coach_reversal: {
+    debit: ['coach_payable'],
+    credit: ['coach_expense'],
+  },
+  booking_refund: {
+    debit: ['booking_revenue', 'platform_commission', 'tax_liability'],
+    credit: ['payment_clearing'],
+  },
 };
 
 /** Returns the flat list of concepts with their inherent sides for an event_type */

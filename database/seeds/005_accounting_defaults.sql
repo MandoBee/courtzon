@@ -155,3 +155,70 @@ AND NOT EXISTS (
   SELECT 1 FROM accounting_event_mapping_lines
   WHERE event_type = 'year_close' AND organisation_id IS NULL AND concept = 'retained_earnings'
 );
+
+-- 17. booking accounting concepts (card / wallet / cod / coach / refund)
+INSERT INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
+SELECT 'booking_card_payment', NULL, 'payment_clearing', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '1100'
+AND NOT EXISTS (SELECT 1 FROM accounting_event_mapping_lines WHERE event_type = 'booking_card_payment' AND organisation_id IS NULL AND concept = 'payment_clearing');
+INSERT INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
+SELECT 'booking_card_payment', NULL, 'booking_revenue', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '4100'
+AND NOT EXISTS (SELECT 1 FROM accounting_event_mapping_lines WHERE event_type = 'booking_card_payment' AND organisation_id IS NULL AND concept = 'booking_revenue');
+INSERT INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
+SELECT 'booking_card_payment', NULL, 'platform_commission', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '4100'
+AND NOT EXISTS (SELECT 1 FROM accounting_event_mapping_lines WHERE event_type = 'booking_card_payment' AND organisation_id IS NULL AND concept = 'platform_commission');
+INSERT INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
+SELECT 'booking_card_payment', NULL, 'tax_liability', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '2300'
+AND NOT EXISTS (SELECT 1 FROM accounting_event_mapping_lines WHERE event_type = 'booking_card_payment' AND organisation_id IS NULL AND concept = 'tax_liability');
+
+INSERT INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
+SELECT 'booking_wallet_payment', NULL, 'wallet_liability_spend', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '2100'
+AND NOT EXISTS (SELECT 1 FROM accounting_event_mapping_lines WHERE event_type = 'booking_wallet_payment' AND organisation_id IS NULL AND concept = 'wallet_liability_spend');
+INSERT INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
+SELECT 'booking_wallet_payment', NULL, 'booking_revenue', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '4100'
+AND NOT EXISTS (SELECT 1 FROM accounting_event_mapping_lines WHERE event_type = 'booking_wallet_payment' AND organisation_id IS NULL AND concept = 'booking_revenue');
+INSERT INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
+SELECT 'booking_wallet_payment', NULL, 'platform_commission', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '4100'
+AND NOT EXISTS (SELECT 1 FROM accounting_event_mapping_lines WHERE event_type = 'booking_wallet_payment' AND organisation_id IS NULL AND concept = 'platform_commission');
+INSERT INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
+SELECT 'booking_wallet_payment', NULL, 'tax_liability', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '2300'
+AND NOT EXISTS (SELECT 1 FROM accounting_event_mapping_lines WHERE event_type = 'booking_wallet_payment' AND organisation_id IS NULL AND concept = 'tax_liability');
+
+INSERT INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
+SELECT 'booking_cod_payment', NULL, 'cash_receivable', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '1150'
+AND NOT EXISTS (SELECT 1 FROM accounting_event_mapping_lines WHERE event_type = 'booking_cod_payment' AND organisation_id IS NULL AND concept = 'cash_receivable');
+INSERT INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
+SELECT 'booking_cod_payment', NULL, 'booking_revenue', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '4100'
+AND NOT EXISTS (SELECT 1 FROM accounting_event_mapping_lines WHERE event_type = 'booking_cod_payment' AND organisation_id IS NULL AND concept = 'booking_revenue');
+INSERT INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
+SELECT 'booking_cod_payment', NULL, 'platform_commission', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '4100'
+AND NOT EXISTS (SELECT 1 FROM accounting_event_mapping_lines WHERE event_type = 'booking_cod_payment' AND organisation_id IS NULL AND concept = 'platform_commission');
+INSERT INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
+SELECT 'booking_cod_payment', NULL, 'tax_liability', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '2300'
+AND NOT EXISTS (SELECT 1 FROM accounting_event_mapping_lines WHERE event_type = 'booking_cod_payment' AND organisation_id IS NULL AND concept = 'tax_liability');
+
+INSERT INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
+SELECT 'booking_coach_payout', NULL, 'coach_expense', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '5200'
+AND NOT EXISTS (SELECT 1 FROM accounting_event_mapping_lines WHERE event_type = 'booking_coach_payout' AND organisation_id IS NULL AND concept = 'coach_expense');
+INSERT INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
+SELECT 'booking_coach_payout', NULL, 'coach_payable', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '2200'
+AND NOT EXISTS (SELECT 1 FROM accounting_event_mapping_lines WHERE event_type = 'booking_coach_payout' AND organisation_id IS NULL AND concept = 'coach_payable');
+
+INSERT INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
+SELECT 'booking_coach_reversal', NULL, 'coach_payable', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '2200'
+AND NOT EXISTS (SELECT 1 FROM accounting_event_mapping_lines WHERE event_type = 'booking_coach_reversal' AND organisation_id IS NULL AND concept = 'coach_payable');
+INSERT INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
+SELECT 'booking_coach_reversal', NULL, 'coach_expense', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '5200'
+AND NOT EXISTS (SELECT 1 FROM accounting_event_mapping_lines WHERE event_type = 'booking_coach_reversal' AND organisation_id IS NULL AND concept = 'coach_expense');
+
+INSERT INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
+SELECT 'booking_refund', NULL, 'booking_revenue', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '4100'
+AND NOT EXISTS (SELECT 1 FROM accounting_event_mapping_lines WHERE event_type = 'booking_refund' AND organisation_id IS NULL AND concept = 'booking_revenue');
+INSERT INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
+SELECT 'booking_refund', NULL, 'platform_commission', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '4100'
+AND NOT EXISTS (SELECT 1 FROM accounting_event_mapping_lines WHERE event_type = 'booking_refund' AND organisation_id IS NULL AND concept = 'platform_commission');
+INSERT INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
+SELECT 'booking_refund', NULL, 'tax_liability', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '2300'
+AND NOT EXISTS (SELECT 1 FROM accounting_event_mapping_lines WHERE event_type = 'booking_refund' AND organisation_id IS NULL AND concept = 'tax_liability');
+INSERT INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
+SELECT 'booking_refund', NULL, 'payment_clearing', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '1100'
+AND NOT EXISTS (SELECT 1 FROM accounting_event_mapping_lines WHERE event_type = 'booking_refund' AND organisation_id IS NULL AND concept = 'payment_clearing');

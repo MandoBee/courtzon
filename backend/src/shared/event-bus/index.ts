@@ -19,6 +19,8 @@ export interface DomainEventMap {
   'booking:rescheduled': BaseEvent & { bookingId: number; userId: number; oldStart: Date; newStart: Date; organisationId?: number };
   'booking:fully-booked': BaseEvent & { bookingId: number; userId: number; resourceId: number; organisationId?: number };
   'booking:auto-cancelled': BaseEvent & { bookingId: number; userId: number; reason: string; organisationId?: number };
+  'booking:paid': BaseEvent & { bookingId: number; organisationId?: number; grossAmount: number; taxAmount: number; coachAmount: number; organisationAmount: number; commissionAmount: number; paymentMethod: string; currency: string; sourceId?: number };
+  'booking:refunded': BaseEvent & { bookingId: number; organisationId?: number; grossAmount: number; taxAmount: number; coachAmount: number; organisationAmount: number; commissionAmount: number; paymentMethod: string; currency: string; sourceId?: number };
   'booking:application-declined': BaseEvent & { bookingId: number; userId: number; ownerId: number };
   'payment:completed': BaseEvent & { paymentId: number; userId: number; amount: number; currency: string; gateway: string; organisationId?: number };
   'payment:failed': BaseEvent & { paymentId: number; userId: number; amount: number; currency?: string; error: string; organisationId?: number };

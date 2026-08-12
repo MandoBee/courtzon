@@ -33,6 +33,8 @@ export class BookingRepository {
     userId: number; branchId: number; organisationId: number; resourceId: number;
     bookingType: string; bookingDate: string; startTime: string; endTime: string;
     totalAmount: number; commissionAmount?: number; clubAmount?: number;
+    taxRate?: number; taxRateId?: number | null; taxAmount?: number;
+    taxTreatment?: string; priceType?: string; coachAmount?: number;
     notes?: string; bookingStatus?: string; paymentStatus?: string;
     paymentMethod?: string; startAtUtc?: string; endAtUtc?: string;
     businessDate?: string; expiresAt?: string;
@@ -41,14 +43,17 @@ export class BookingRepository {
     const [result] = await db.execute<ResultSetHeader>(
       `INSERT INTO bookings (public_id, user_id, organisation_id, branch_id, resource_id, booking_type,
         booking_date, business_date, start_time, end_time, start_at_utc, end_at_utc,
-        total_amount, commission_amount, club_amount,
+        total_amount, tax_rate, tax_rate_id, tax_amount, tax_treatment, price_type,
+        commission_amount, club_amount, coach_amount,
         booking_status, payment_status, payment_method, notes, expires_at, aggregate_version)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
        [generateUUID(), data.userId, data.organisationId, data.branchId, data.resourceId, data.bookingType,
         data.bookingDate, data.businessDate || data.bookingDate, data.startTime, data.endTime,
         data.startAtUtc ? toMySqlDateTime(new Date(data.startAtUtc)) : null,
         data.endAtUtc ? toMySqlDateTime(new Date(data.endAtUtc)) : null,
-       data.totalAmount, data.commissionAmount || 0, data.clubAmount || 0,
+       data.totalAmount, data.taxRate || 0, data.taxRateId || null, data.taxAmount || 0,
+       data.taxTreatment || 'taxable', data.priceType || 'net',
+       data.commissionAmount || 0, data.clubAmount || 0, data.coachAmount || 0,
        data.bookingStatus || 'pending', data.paymentStatus || 'pending', data.paymentMethod || null, data.notes || null,
        data.expiresAt || null]
     );
