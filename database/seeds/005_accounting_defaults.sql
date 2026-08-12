@@ -62,12 +62,17 @@ INSERT IGNORE INTO accounting_event_mapping_lines (event_type, organisation_id, 
 SELECT 'marketplace_delivery', NULL, 'cost_of_revenue', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '4200';
 INSERT IGNORE INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
 SELECT 'marketplace_delivery', NULL, 'org_payable', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '2200';
+-- marketplace tax (Model B default: tax_liability → same as revenue)
+INSERT IGNORE INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
+SELECT 'marketplace_delivery', NULL, 'tax_liability', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '4100';
 
 -- 8. marketplace_reversal
 INSERT IGNORE INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
 SELECT 'marketplace_reversal', NULL, 'org_payable', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '2200';
 INSERT IGNORE INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
 SELECT 'marketplace_reversal', NULL, 'cost_of_revenue', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '4200';
+INSERT IGNORE INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
+SELECT 'marketplace_reversal', NULL, 'tax_liability', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '4100';
 
 -- 9. withdrawal_request
 INSERT IGNORE INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
