@@ -997,6 +997,8 @@ export const uiRegistry: UIElement[] = [
   { permissionKey: 'accounting.invoices.manage', moduleSlug: 'accounting', elementType: 'button', elementLabel: 'Manage Invoices', componentPath: 'pages/admin/accounting/InvoicesPage.tsx' },
   { permissionKey: 'accounting.tax.view', moduleSlug: 'accounting', elementType: 'page', elementLabel: 'Tax Rates View', componentPath: 'pages/admin/accounting/TaxRatesPage.tsx' },
   { permissionKey: 'accounting.tax.manage', moduleSlug: 'accounting', elementType: 'button', elementLabel: 'Manage Tax Rates', componentPath: 'pages/admin/accounting/TaxRatesPage.tsx' },
+  { permissionKey: 'accounting.mappings.view', moduleSlug: 'accounting', elementType: 'page', elementLabel: 'View Event Mappings', componentPath: 'pages/admin/accounting/EventMappingsPage.tsx' },
+  { permissionKey: 'accounting.mappings.manage', moduleSlug: 'accounting', elementType: 'button', elementLabel: 'Manage Event Mappings', componentPath: 'pages/admin/accounting/EventMappingsPage.tsx' },
   // Accounting sidebar
   { permissionKey: 'sidebar.accounting', moduleSlug: 'accounting', elementType: 'tab', elementLabel: 'Sidebar: Accounting', componentPath: 'components/layout/AdminSidebar.tsx' },
   { permissionKey: 'sidebar.accounting-dashboard', moduleSlug: 'accounting', elementType: 'tab', elementLabel: 'Sidebar: Accounting Dashboard', componentPath: 'components/layout/AdminSidebar.tsx' },
@@ -1006,6 +1008,7 @@ export const uiRegistry: UIElement[] = [
   { permissionKey: 'sidebar.accounting-invoices', moduleSlug: 'accounting', elementType: 'tab', elementLabel: 'Sidebar: Invoices', componentPath: 'components/layout/AdminSidebar.tsx' },
   { permissionKey: 'sidebar.accounting-periods', moduleSlug: 'accounting', elementType: 'tab', elementLabel: 'Sidebar: Accounting Periods', componentPath: 'components/layout/AdminSidebar.tsx' },
   { permissionKey: 'sidebar.accounting-tax', moduleSlug: 'accounting', elementType: 'tab', elementLabel: 'Sidebar: Tax Rates', componentPath: 'components/layout/AdminSidebar.tsx' },
+  { permissionKey: 'sidebar.accounting-mappings', moduleSlug: 'accounting', elementType: 'tab', elementLabel: 'Sidebar: Event Mappings', componentPath: 'components/layout/AdminSidebar.tsx' },
 
   // ==========================================================================
   // INVENTORY MODULE (Sprint 13)
