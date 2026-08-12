@@ -1326,10 +1326,28 @@ export async function createTaxRateHandler(request: FastifyRequest, reply: Fasti
   const pool = getPool();
   const body = request.body as any;
   const userId = (request as any).userId;
+  const organisationId = body.organisationId ?? body.organisation_id ?? null;
+
+  if (organisationId != null) {
+    await validateOrgAccess(userId, Number(organisationId));
+  }
+
+  const rateType = body.rateType ?? body.rate_type ?? body.type ?? 'percentage';
+  if (!['percentage', 'fixed'].includes(rateType)) {
+    throw new AppError('Invalid rate type. Must be "percentage" or "fixed"', 400, 'VALIDATION_ERROR');
+  }
+  const taxCategory = body.taxCategory ?? body.tax_category ?? 'vat';
+  if (!['sales', 'vat', 'gst', 'withholding', 'other'].includes(taxCategory)) {
+    throw new AppError('Invalid tax category', 400, 'VALIDATION_ERROR');
+  }
+  const rate = Number(body.rate);
+  if (isNaN(rate) || rate < 0) {
+    throw new AppError('Invalid rate value', 400, 'VALIDATION_ERROR');
+  }
 
   const [result] = await pool.execute<RowData>(
-    `INSERT INTO tax_rates (name, rate, type, is_active, country_code) VALUES (?, ?, ?, ?, ?)`,
-    [body.name, body.rate, body.type || 'percentage', body.isActive ?? 1, body.countryCode || null]
+    `INSERT INTO tax_rates (organisation_id, name, rate, type, tax_category, is_active, is_global, country_code) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    [organisationId, body.name, rate, rateType, taxCategory, body.isActive ?? 1, organisationId == null ? 1 : 0, body.countryCode || null]
   );
   const insertId = (result as any).insertId;
 
@@ -1338,12 +1356,12 @@ export async function createTaxRateHandler(request: FastifyRequest, reply: Fasti
     action: 'ACCOUNTING.TAX_RATE.CREATE',
     entityType: 'tax_rates',
     entityId: insertId,
-    afterState: { name: body.name, rate: body.rate },
+    afterState: { name: body.name, rate, rateType, taxCategory, organisationId },
     ipAddress: request.ip,
     userAgent: request.headers['user-agent'],
   });
 
-  return reply.status(201).send({ data: { id: insertId } });
+  return reply.status(201).send({ data: { id: insertId, organisation_id: organisationId, tax_category: taxCategory, type: rateType, rate } });
 }
 
 export async function updateTaxRateHandler(request: FastifyRequest, reply: FastifyReply) {
@@ -1358,10 +1376,27 @@ export async function updateTaxRateHandler(request: FastifyRequest, reply: Fasti
   if (!existing.length) {
     throw new NotFoundError('Tax rate', ErrorCodes.TAX_RATE_NOT_FOUND);
   }
+  const current = existing[0];
+
+  // Prevent org users from modifying global rates
+  if (current.organisation_id == null) {
+    const organisationId = body.organisationId ?? body.organisation_id ?? null;
+    if (organisationId != null) {
+      await validateOrgAccess(userId, Number(organisationId));
+      // Org attempting to modify global rate — only allow if permitted (orgs cannot modify global)
+      throw new AppError('Global tax rates are platform-controlled', 403, 'FORBIDDEN');
+    }
+  } else {
+    await validateOrgAccess(userId, Number(current.organisation_id));
+  }
+
+  const rateType = body.rateType ?? body.rate_type ?? body.type ?? current.type;
+  const taxCategory = body.taxCategory ?? body.tax_category ?? current.tax_category ?? 'vat';
+  const rate = body.rate != null ? Number(body.rate) : current.rate;
 
   await pool.execute<RowData>(
-    `UPDATE tax_rates SET name = COALESCE(?, name), rate = COALESCE(?, rate), is_active = COALESCE(?, is_active), country_code = COALESCE(?, country_code) WHERE id = ?`,
-    [body.name ?? null, body.rate ?? null, body.isActive ?? null, body.countryCode ?? null, Number(id)]
+    `UPDATE tax_rates SET name = COALESCE(?, name), rate = COALESCE(?, rate), type = COALESCE(?, type), tax_category = COALESCE(?, tax_category), is_active = COALESCE(?, is_active), country_code = COALESCE(?, country_code) WHERE id = ?`,
+    [body.name ?? null, body.rate != null ? rate : null, rateType, taxCategory, body.isActive ?? null, body.countryCode ?? null, Number(id)]
   );
 
   recordAudit({
@@ -1369,13 +1404,13 @@ export async function updateTaxRateHandler(request: FastifyRequest, reply: Fasti
     action: 'ACCOUNTING.TAX_RATE.UPDATE',
     entityType: 'tax_rates',
     entityId: Number(id),
-    beforeState: { name: existing[0].name, rate: existing[0].rate },
-    afterState: { name: body.name, rate: body.rate },
+    beforeState: { name: current.name, rate: current.rate, taxCategory: current.tax_category, organisationId: current.organisation_id },
+    afterState: { name: body.name, rate, taxCategory, organisationId: current.organisation_id },
     ipAddress: request.ip,
     userAgent: request.headers['user-agent'],
   });
 
-  return reply.send({ data: { id: Number(id) } });
+  return reply.send({ data: { id: Number(id), organisation_id: current.organisation_id, tax_category: taxCategory, type: rateType, rate } });
 }
 
 export async function processPendingEventsHandler(request: FastifyRequest, reply: FastifyReply) {
