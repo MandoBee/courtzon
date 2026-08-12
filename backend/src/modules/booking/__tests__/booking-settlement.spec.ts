@@ -73,7 +73,7 @@ describe('Booking Settlement + Recovery Lifecycle', () => {
   it('1. getSettleable returns original economics when nothing settled/refunded', async () => {
     const bookingId = await insertBooking(30, { coach: 50, club: 50 });
     const { bookingSettlementService } = await import('../../financial/application/booking-settlement.service.js');
-    const s = await bookingSettlementService.getSettleable(bookingId);
+    const s = await bookingSettlementService.getEconomics(bookingId);
     expect(s!.coachSettleable).toBe(50);
     expect(s!.orgSettleable).toBe(50);
   });
@@ -98,7 +98,7 @@ describe('Booking Settlement + Recovery Lifecycle', () => {
     const bookingId = await insertBooking(32, { coach: 50, club: 50 });
     const { bookingSettlementService } = await import('../../financial/application/booking-settlement.service.js');
     await bookingSettlementService.settleBookingEconomics(bookingId, 50, 50, 1);
-    const s = await bookingSettlementService.getSettleable(bookingId);
+    const s = await bookingSettlementService.getEconomics(bookingId);
     expect(s!.coachSettleable).toBe(0);
     expect(s!.orgSettleable).toBe(0);
   });
@@ -107,7 +107,7 @@ describe('Booking Settlement + Recovery Lifecycle', () => {
     const bookingId = await insertBooking(33, { coach: 50, club: 50 });
     const { bookingSettlementService } = await import('../../financial/application/booking-settlement.service.js');
     await bookingSettlementService.settleBookingEconomics(bookingId, 20, 30, 1);
-    const s = await bookingSettlementService.getSettleable(bookingId);
+    const s = await bookingSettlementService.getEconomics(bookingId);
     expect(s!.coachSettleable).toBe(30);
     expect(s!.orgSettleable).toBe(20);
   });
@@ -115,7 +115,7 @@ describe('Booking Settlement + Recovery Lifecycle', () => {
   it('5. refunded economics excluded from settlement', async () => {
     const bookingId = await insertBooking(34, { coach: 50, club: 50, refunded: 50 }); // 50% refunded
     const { bookingSettlementService } = await import('../../financial/application/booking-settlement.service.js');
-    const s = await bookingSettlementService.getSettleable(bookingId);
+    const s = await bookingSettlementService.getEconomics(bookingId);
     expect(s!.coachSettleable).toBe(25); // 50 - 25 (50% refunded)
     expect(s!.orgSettleable).toBe(25);
   });
@@ -185,7 +185,7 @@ describe('Booking Settlement + Recovery Lifecycle', () => {
     // Collect full recovery
     const r = await bookingSettlementService.collectBookingRecovery(bookingId, 'org', 50, 1);
     expect(r.collected).toBe(50);
-    const s = await bookingSettlementService.getSettleable(bookingId);
+    const s = await bookingSettlementService.getEconomics(bookingId);
     expect(s!.orgRecovered).toBe(50);
     expect(s!.orgCollected).toBe(50);
   });

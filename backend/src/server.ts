@@ -13,6 +13,7 @@ import { handleExpireSubscriptions, handleSendExpirationReminders } from "./modu
 import { handleExpireMemberships, handleSendExpiringReminders } from "./modules/membership/infrastructure/membership-expiry.worker.js";
 
 import { handleAutoCompleteBookings } from "./modules/booking/infrastructure/booking-auto-complete.worker.js";
+import { handleBookingSettlementEligibility } from "./modules/booking/infrastructure/booking-settlement-eligibility.worker.js";
 import { handleSyncPendingPayments, handleExpireStalePayments } from "./modules/payment/infrastructure/payment-cron.worker.js";
 import { runDatabaseBackup } from "./infrastructure/backup/backup.service.js";
 import {
@@ -72,6 +73,7 @@ async function bootstrap() {
     registerHandler('database_backup', runDatabaseBackup);
 
     registerHandler('auto_complete_bookings', handleAutoCompleteBookings);
+    registerHandler('booking_settlement_eligibility', handleBookingSettlementEligibility);
     registerHandler('sync_pending_payments', handleSyncPendingPayments);
     registerHandler('expire_stale_payments', handleExpireStalePayments);
     registerHandler('cancel_abandoned_orders', handleCancelAbandonedOrders);

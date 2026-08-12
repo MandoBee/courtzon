@@ -38,6 +38,7 @@ export const ADMIN_ROUTE_PERMISSIONS: Record<string, string> = {
   'subscription': 'sidebar.subscription',
   'security': 'security.dashboard',
   'settlements': 'settlements.view',
+  'settlements/bookings': 'settlements.view',
   'finance': 'financial.view',
   'finance/ledger': 'financial.view',
   'finance/reports': 'reports.view',
