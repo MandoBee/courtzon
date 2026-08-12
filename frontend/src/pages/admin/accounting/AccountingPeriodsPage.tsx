@@ -1,18 +1,27 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { getErrorMessage } from '../../../utils/errors';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../../services/api';
 import { Button, Modal, Spinner } from '../../../components/ui';
 import { Can } from '../../../permissions/Can';
+import { useCan } from '../../../hooks/useCan';
 import { useToast } from '../../../components/ui/Toast';
 
 interface Period {
-  id: number;
-  fiscal_year: number;
-  period_number: number;
-  start_date: string;
-  end_date: string;
-  status: 'open' | 'closed' | 'locked';
+  id: number; fiscal_year: number; period_number: number;
+  start_date: string; end_date: string; status: 'open' | 'closed' | 'locked';
+}
+interface PreviewData {
+  fiscalYear: number; netIncome: number; totalRevenue: number; totalExpense: number;
+  affectedAccounts: number; estimatedClosingLines: number;
+  periodsStatus: string;
+  retainedEarningsAccount: { id: number; code: string; name: string };
+  accountBreakdown: any[];
+}
+interface HistoryItem {
+  id: number; fiscal_year: number; net_income: number; status: string;
+  close_count: number; reopened_at: string; reopen_reason: string;
+  created_at: string; cycle_count: number;
 }
 
 const STATUS_BADGE: Record<string, string> = {
@@ -29,12 +38,35 @@ export default function AccountingPeriodsPage() {
   const [periodCount, setPeriodCount] = useState(12);
   const [actionTarget, setActionTarget] = useState<{ id: number; action: 'close' | 'open' } | null>(null);
 
+  // Year Close state
+  const [ycFiscalYear, setYcFiscalYear] = useState(new Date().getFullYear());
+  const [ycOrgId, setYcOrgId] = useState('');
+  const [preview, setPreview] = useState<PreviewData | null>(null);
+  const [showReopen, setShowReopen] = useState<{ id: number; fy: number } | null>(null);
+  const [reopenReason, setReopenReason] = useState('');
+  const [orgs, setOrgs] = useState<{ id: number; name: string }[]>([]);
+
+  useEffect(() => {
+    api.get('/organisations?limit=200').then(r => {
+      const d = r.data?.data ?? r.data ?? [];
+      if (Array.isArray(d)) setOrgs(d.map((o: any) => ({ id: o.id, name: o.name ?? o.organisationName ?? '' })));
+    }).catch(() => {});
+  }, []);
+
   const { data, isLoading } = useQuery({
     queryKey: ['accounting', 'periods'],
     queryFn: () => api.get('/admin/accounting/periods').then((r: any) => r.data.data || r.data),
   });
 
   const periods: Period[] = data || [];
+
+  // Year Close queries
+  const ycParams = { fiscalYear: ycFiscalYear, organisationId: ycOrgId || undefined };
+  const { data: history } = useQuery({
+    queryKey: ['year-close', 'history', ycOrgId],
+    queryFn: () => api.get('/admin/accounting/year-close/history', { params: { organisationId: ycOrgId || undefined } }).then(r => r.data.data),
+    enabled: !!useCan,
+  });
 
   const generateMutation = useMutation({
     mutationFn: () => api.post('/admin/accounting/periods/generate', { fiscalYear, periodCount }),
@@ -54,7 +86,48 @@ export default function AccountingPeriodsPage() {
     onError: (err: any) => showToast(getErrorMessage(err), 'error'),
   });
 
+  const previewMut = useMutation({
+    mutationFn: () => api.get('/admin/accounting/year-close/preview', { params: ycParams }),
+    onSuccess: (r: any) => setPreview(r.data.data),
+    onError: (e: any) => showToast(getErrorMessage(e), 'error'),
+  });
+
+  const closeYrMut = useMutation({
+    mutationFn: () => api.post('/admin/accounting/year-close', ycParams),
+    onSuccess: (r: any) => {
+      const d = r.data.data;
+      showToast(`Year ${ycFiscalYear} closed. Net income: ${d.netIncome?.toLocaleString() ?? '0'}`);
+      setPreview(null);
+      queryClient.invalidateQueries({ queryKey: ['accounting', 'periods'] });
+      queryClient.invalidateQueries({ queryKey: ['year-close', 'history'] });
+    },
+    onError: (e: any) => showToast(getErrorMessage(e), 'error'),
+  });
+
+  const reopenMut = useMutation({
+    mutationFn: () => api.post('/admin/accounting/year-close/reopen', { fiscalYear: showReopen?.fy, organisationId: ycOrgId || undefined, reason: reopenReason }),
+    onSuccess: () => {
+      showToast('Year reopened. Adjustments may now be posted.');
+      setShowReopen(null); setReopenReason('');
+      queryClient.invalidateQueries({ queryKey: ['accounting', 'periods'] });
+      queryClient.invalidateQueries({ queryKey: ['year-close', 'history'] });
+    },
+    onError: (e: any) => showToast(getErrorMessage(e), 'error'),
+  });
+
   if (isLoading) return <Spinner />;
+
+  const fmt = (n: number) => n?.toLocaleString?.('en-US', { minimumFractionDigits: 2 }) ?? '0.00';
+  const historyData: HistoryItem[] = history || [];
+
+  // Check if current year has a completed close
+  const currentYearClosed = historyData.some(h => h.fiscal_year === ycFiscalYear && h.status === 'completed');
+  const currentYearReopened = historyData.some(h => h.fiscal_year === ycFiscalYear && h.status === 'reopened');
+  const ycPeriods = periods.filter(p => p.fiscal_year === ycFiscalYear);
+  const all12Exist = ycPeriods.length === 12;
+  const elevenClosed = ycPeriods.filter(p => p.period_number <= 11 && (p.status === 'closed' || p.status === 'locked')).length === 11;
+  const p12Open = ycPeriods.some(p => p.period_number === 12 && p.status === 'open');
+  const canClose = all12Exist && elevenClosed && p12Open && !currentYearClosed;
 
   return (
     <div>
@@ -133,6 +206,140 @@ export default function AccountingPeriodsPage() {
         {!periods.length && <p className="text-center py-8 text-sm text-[var(--color-text-muted)]">No periods found</p>}
       </div>
 
+      {/* ── Year Close Section ── */}
+      <Can permission="accounting.year-close.view">
+        <div className="mt-8 bg-[var(--color-surface)] rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] border p-5">
+          <h2 className="text-lg font-semibold text-[var(--color-text)] mb-4">Year-End Closing</h2>
+
+          <div className="flex items-center gap-3 mb-4 flex-wrap">
+            <div>
+              <label className="block text-xs text-[var(--color-text-muted)] mb-1">Fiscal Year</label>
+              <input type="number" value={ycFiscalYear} onChange={e => setYcFiscalYear(Number(e.target.value))}
+                className="px-3 py-2 border rounded-[var(--radius-md)] bg-[var(--color-bg)] text-sm w-28" />
+            </div>
+            <div>
+              <label className="block text-xs text-[var(--color-text-muted)] mb-1">Organization</label>
+              <select value={ycOrgId} onChange={e => setYcOrgId(e.target.value)}
+                className="px-3 py-2 border rounded-[var(--radius-md)] bg-[var(--color-bg)] text-sm min-w-[180px]">
+                <option value="">Platform (Global)</option>
+                {orgs.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
+              </select>
+            </div>
+            <div className="flex items-end gap-2">
+              <Can permission="accounting.year-close.manage">
+                <Button variant="ghost" onClick={() => previewMut.mutate()}
+                  loading={previewMut.isPending} disabled={!all12Exist}>
+                  Preview
+                </Button>
+              </Can>
+            </div>
+          </div>
+
+          {/* Period status summary */}
+          {ycPeriods.length > 0 && (
+            <div className="grid grid-cols-6 md:grid-cols-12 gap-1 mb-4">
+              {ycPeriods.map(p => (
+                <div key={p.id} className={`text-center text-[10px] px-1 py-1.5 rounded ${
+                  p.status === 'open' ? 'bg-green-100 text-green-700 dark:bg-green-900/20 dark:text-green-400' :
+                  p.status === 'closed' ? 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400' :
+                  'bg-red-100 text-red-700 dark:bg-red-900/20 dark:text-red-400'
+                }`}>
+                  P{p.period_number}
+                </div>
+              ))}
+            </div>
+          )}
+          {ycPeriods.length > 0 && ycPeriods.length < 12 && (
+            <p className="text-xs text-[var(--color-text-muted)] mb-4">Only {ycPeriods.length}/12 periods generated for this year.</p>
+          )}
+
+          {/* Preview */}
+          {preview && (
+            <div className="border-t border-[var(--color-border)] pt-4 mb-4">
+              <h3 className="text-sm font-semibold text-[var(--color-text)] mb-2">Closing Preview</h3>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3 text-sm">
+                <div><span className="text-[var(--color-text-muted)]">Net Income:</span> <span className="font-mono font-semibold">{fmt(preview.netIncome)}</span></div>
+                <div><span className="text-[var(--color-text-muted)]">Total Revenue:</span> <span className="font-mono">{fmt(preview.totalRevenue)}</span></div>
+                <div><span className="text-[var(--color-text-muted)]">Total Expense:</span> <span className="font-mono">{fmt(preview.totalExpense)}</span></div>
+                <div><span className="text-[var(--color-text-muted)]">Closing Lines:</span> <span className="font-mono">{preview.estimatedClosingLines}</span></div>
+              </div>
+              <div className="text-xs text-[var(--color-text-muted)] mb-3">
+                RE Account: <span className="font-mono">{preview.retainedEarningsAccount.code} - {preview.retainedEarningsAccount.name}</span>
+                {' | '}Affected: {preview.affectedAccounts} accounts
+              </div>
+            </div>
+          )}
+
+          {/* Actions */}
+          <div className="flex items-center gap-2 flex-wrap">
+            {!currentYearClosed && !currentYearReopened && (
+              <Can permission="accounting.year-close.manage">
+                <Button onClick={() => {
+                  if (!canClose) { showToast('Periods 1-11 must be closed and period 12 open', 'warning'); return; }
+                  if (confirm(`Close fiscal year ${ycFiscalYear}? This will lock all 12 periods. This action is irreversible without super-admin reopen.`)) {
+                    closeYrMut.mutate();
+                  }
+                }} loading={closeYrMut.isPending} disabled={!canClose}>
+                  Close Year {ycFiscalYear}
+                </Button>
+                {!canClose && <span className="text-xs text-[var(--color-text-muted)]">(requires: 12 periods, P1-11 closed, P12 open)</span>}
+              </Can>
+            )}
+            {currentYearClosed && (
+              <Can permission="accounting.year-close.reopen">
+                <Button variant="ghost" onClick={() => {
+                  const h = historyData.find(x => x.fiscal_year === ycFiscalYear && x.status === 'completed');
+                  if (h) setShowReopen({ id: h.id, fy: ycFiscalYear });
+                }}>
+                  Reopen Year
+                </Button>
+              </Can>
+            )}
+            {currentYearReopened && (
+              <span className="text-xs text-amber-600 dark:text-amber-400">Year reopened — adjustments possible. Close again when ready.</span>
+            )}
+          </div>
+
+          {/* Year Close History */}
+          {historyData.length > 0 && (
+            <div className="border-t border-[var(--color-border)] pt-4 mt-4">
+              <h3 className="text-sm font-semibold text-[var(--color-text)] mb-2">Close History</h3>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="border-b border-[var(--color-border)]">
+                      <th className="text-left px-2 py-1.5 text-[var(--color-text-muted)]">Year</th>
+                      <th className="text-left px-2 py-1.5 text-[var(--color-text-muted)]">Net Income</th>
+                      <th className="text-left px-2 py-1.5 text-[var(--color-text-muted)]">Status</th>
+                      <th className="text-left px-2 py-1.5 text-[var(--color-text-muted)]">Cycles</th>
+                      <th className="text-left px-2 py-1.5 text-[var(--color-text-muted)]">Date</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[var(--color-border)]">
+                    {historyData.map(h => (
+                      <tr key={h.id}>
+                        <td className="px-2 py-1.5 font-mono text-[var(--color-text)]">{h.fiscal_year}</td>
+                        <td className="px-2 py-1.5 font-mono text-[var(--color-text)]">{fmt(h.net_income)}</td>
+                        <td className="px-2 py-1.5">
+                          <span className={`px-1.5 py-0.5 rounded text-[10px] ${
+                            h.status === 'completed' ? 'bg-green-100 text-green-700 dark:bg-green-900/20 dark:text-green-400' :
+                            h.status === 'reopened' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400' :
+                            'bg-gray-100 text-gray-600'
+                          }`}>{h.status}</span>
+                        </td>
+                        <td className="px-2 py-1.5 text-[var(--color-text-muted)]">{h.close_count}× ({h.cycle_count})</td>
+                        <td className="px-2 py-1.5 text-[var(--color-text-muted)]">{new Date(h.created_at).toLocaleDateString()}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      </Can>
+
+      {/* Period action modal */}
       <Modal open={actionTarget !== null} onClose={() => setActionTarget(null)} title={actionTarget?.action === 'close' ? 'Close Period' : 'Open Period'}>
         <p className="text-sm text-[var(--color-text-muted)] mb-6">
           {actionTarget?.action === 'close' ? 'Are you sure you want to close this period? This may prevent new entries.' : 'Re-open this period for posting?'}
@@ -145,6 +352,24 @@ export default function AccountingPeriodsPage() {
             else openMutation.mutate(actionTarget.id);
           }} loading={closeMutation.isPending || openMutation.isPending}
             className="bg-[var(--color-primary)] text-white">Confirm</Button>
+        </div>
+      </Modal>
+
+      {/* Reopen modal */}
+      <Modal open={showReopen !== null} onClose={() => { setShowReopen(null); setReopenReason(''); }} title="Reopen Closed Year">
+        <p className="text-sm text-[var(--color-text-muted)] mb-2">
+          Reopening fiscal year {showReopen?.fy} will create reversal entries for all closing entries and open period 12 for adjustments.
+        </p>
+        <div className="mb-4">
+          <label className="block text-xs text-[var(--color-text-muted)] mb-1">Reason *</label>
+          <textarea value={reopenReason} onChange={e => setReopenReason(e.target.value)}
+            rows={3} className="w-full px-3 py-2 border rounded-[var(--radius-md)] bg-[var(--color-bg)] text-sm"
+            placeholder="E.g., Late adjustment required..." />
+        </div>
+        <div className="flex justify-end gap-3">
+          <Button variant="ghost" onClick={() => { setShowReopen(null); setReopenReason(''); }}>Cancel</Button>
+          <Button onClick={() => reopenMut.mutate()} loading={reopenMut.isPending} disabled={!reopenReason.trim()}
+            className="bg-[var(--color-primary)] text-white">Reopen Year</Button>
         </div>
       </Modal>
     </div>
