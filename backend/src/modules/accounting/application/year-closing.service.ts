@@ -87,19 +87,37 @@ export class YearClosingService {
     try {
       await conn.beginTransaction();
 
-      // Create year_closings
-      const [ycResult] = await conn.execute(
-        `INSERT INTO year_closings (organisation_id, fiscal_year, net_income, retained_earnings_account_id, status, created_by)
-         VALUES (?, ?, ?, ?, 'pending', ?)`,
-        [organisationId, fiscalYear, ni.netIncome, reAccountId, userId],
+      // Check if year_closings already exists (re-close after reopen)
+      const [existingYc] = await conn.execute<RowData>(
+        `SELECT id FROM year_closings WHERE fiscal_year = ? AND (organisation_id = ? OR (? IS NULL AND organisation_id IS NULL))`,
+        [fiscalYear, organisationId, organisationId],
       );
-      const ycId = (ycResult as any).insertId;
+      let ycId: number;
+
+      if ((existingYc as any[]).length > 0) {
+        ycId = (existingYc as any[])[0].id;
+        await conn.execute(`UPDATE year_closings SET status = 'pending', net_income = ? WHERE id = ?`, [ni.netIncome, ycId]);
+      } else {
+        const [ycResult] = await conn.execute(
+          `INSERT INTO year_closings (organisation_id, fiscal_year, net_income, retained_earnings_account_id, status, created_by)
+           VALUES (?, ?, ?, ?, 'pending', ?)`,
+          [organisationId, fiscalYear, ni.netIncome, reAccountId, userId],
+        );
+        ycId = (ycResult as any).insertId;
+      }
+
+      // Determine next cycle number from existing cycles
+      const [maxCycle] = await conn.execute<RowData>(
+        `SELECT COALESCE(MAX(cycle_number), 0) AS max_cycle FROM year_close_cycles WHERE year_closings_id = ?`,
+        [ycId],
+      );
+      const cycleNumber = Number((maxCycle as any[])[0].max_cycle) + 1;
 
       // Create close cycle
       const [cycResult] = await conn.execute(
         `INSERT INTO year_close_cycles (year_closings_id, cycle_number, net_income, entry_count, status)
-         VALUES (?, 1, ?, ?, 'pending')`,
-        [ycId, ni.netIncome, closingLines.length],
+         VALUES (?, ?, ?, ?, 'pending')`,
+        [ycId, cycleNumber, ni.netIncome, closingLines.length],
       );
       const cycleId = (cycResult as any).insertId;
 
@@ -133,9 +151,10 @@ export class YearClosingService {
         [fiscalYear, organisationId, organisationId],
       );
 
-      // Mark completed
+      // Mark completed — close_count tracks total successful close operations
       await conn.execute(
-        `UPDATE year_closings SET status = 'completed' WHERE id = ?`, [ycId],
+        `UPDATE year_closings SET status = 'completed', close_count = close_count + 1 WHERE id = ?`,
+        [ycId],
       );
       await conn.execute(
         `UPDATE year_close_cycles SET status = 'completed', entry_count = ? WHERE id = ?`,
@@ -200,13 +219,21 @@ export class YearClosingService {
     const periodId = await this.resolvePeriod12(fiscalYear, organisationId);
 
     for (const e of entries as any[]) {
-      const reverseSide = e.side === 'debit' ? 'credit' : 'debit' as EntrySide;
-      reversalLines.push(this.makeLine(
-        periodId, yc.organisation_id ?? null,
-        e.chart_account_id, reverseSide,
-        Number(e.amount),
-        `REVERSAL: ${e.description}`,
-      ));
+      const reverseSide = (e.side === 'debit' ? 'credit' : 'debit') as EntrySide;
+      reversalLines.push({
+        transactionId: `reopen_${yc.id}_${Date.now()}`,
+        sourceType: 'year_close_reopen',
+        sourceId: 0,
+        eventType: 'year_close_reopen',
+        organisationId: yc.organisation_id ?? null,
+        chartAccountId: e.chart_account_id,
+        side: reverseSide,
+        amount: Number(e.amount),
+        currency: 'EGP',
+        description: `REVERSAL: ${e.description || ''}`,
+        periodId,
+        referenceId: String(e.chart_account_id),
+      } as LedgerLineInput);
     }
 
     const conn = await this.pool.getConnection();
@@ -227,6 +254,12 @@ export class YearClosingService {
         [yc.id, nextCycle, reversalLines.length],
       );
       const cycleId = (cycResult as any).insertId;
+
+      // Update sourceId on reversal lines
+      for (const line of reversalLines) {
+        line.sourceId = cycleId;
+        line.transactionId = `reopen_${cycleId}_${Date.now()}`;
+      }
 
       // Post reversal entries
       const revEntries = createLedgerLines(reversalLines);
