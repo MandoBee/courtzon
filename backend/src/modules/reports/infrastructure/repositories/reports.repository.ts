@@ -20,7 +20,20 @@ export class ReportsRepository {
   }
 
   // ========================================================================
-  // 1. FINANCIAL REPORTS
+  // 1. FINANCIAL REPORTS (OPERATIONAL — wallet-flow revenue/activity metrics)
+  //
+  // NOTE: These report on `wallet_transactions` — the user-facing wallet
+  // activity history. They are OPERATIONAL business metrics (gross payment
+  // flows, deposits, withdrawals, refunds, settlements), NOT double-entry
+  // accounting statements.
+  //
+  // The authoritative accounting statements (Trial Balance, Income Statement,
+  // Balance Sheet, General Ledger) are served by the accounting module and
+  // read `general_ledger` (projected from the canonical `ledger_entries`).
+  //
+  // These two views are intentionally different:
+  //   - wallet_transactions = cash-flow/activity view (who paid, who withdrew)
+  //   - general_ledger     = accrual accounting view (revenue, expense, assets)
   // ========================================================================
 
   async revenueSummary(params: DateParams) {

@@ -53,6 +53,13 @@ class TransactionService {
 
   /**
    * Create booking payment journal. Accepts optional conn for transactional writes.
+   *
+   * NOTE: This writes the OPERATIONAL wallet-flow double-entry
+   * (`transactions` + `transaction_entries`), NOT the canonical accounting
+   * ledger (`ledger_entries` / `general_ledger`). The `entityId: 1` and
+   * `entityId: 2` reference rows in the `platform_accounts` table (operational
+   * float/commission staging accounts), NOT chart_of_accounts accounting
+   * accounts. These are operational entity identifiers, not COA account IDs.
    */
   async createBookingPayment(params: BookingPaymentParams, conn?: mysql.PoolConnection): Promise<number> {
     const txnId = await transactionRepository.createTransaction({
