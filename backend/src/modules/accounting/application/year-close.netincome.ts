@@ -30,7 +30,8 @@ export async function calculateFiscalYearNetIncome(
 
   const params: any[] = [fyStart, fyEnd];
   if (organisationId != null) {
-    params.push(organisationId);
+    params.push(organisationId);   // for gl.organisation_id = ?
+    params.push(organisationId);   // for coa.organisation_id = ?
   }
 
   const [rows] = await pool.execute<RowData>(
