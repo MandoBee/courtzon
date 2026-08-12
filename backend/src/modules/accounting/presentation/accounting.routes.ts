@@ -29,6 +29,12 @@ export async function accountingRoutes(app: FastifyInstance): Promise<void> {
   app.post('/admin/accounting/periods/:id/close', { preHandler: [requirePermission(['accounting.periods.manage'])] }, ctrl.closePeriodHandler);
   app.post('/admin/accounting/periods/:id/open', { preHandler: [requirePermission(['accounting.periods.manage'])] }, ctrl.openPeriodHandler);
 
+  // Year Close
+  app.get('/admin/accounting/year-close/preview', { preHandler: [requirePermission(['accounting.year-close.view'])] }, ctrl.yearClosePreviewHandler);
+  app.post('/admin/accounting/year-close', { preHandler: [requirePermission(['accounting.year-close.manage'])] }, ctrl.yearCloseHandler);
+  app.get('/admin/accounting/year-close/history', { preHandler: [requirePermission(['accounting.year-close.view'])] }, ctrl.yearCloseHistoryHandler);
+  app.post('/admin/accounting/year-close/reopen', { preHandler: [requirePermission(['accounting.year-close.reopen'])] }, ctrl.yearCloseReopenHandler);
+
   // General Ledger / Trial Balance / Reports
   app.get('/admin/accounting/trial-balance', { preHandler: [requirePermission(['accounting.gl.view'])] }, ctrl.getTrialBalanceHandler);
   app.get('/admin/accounting/income-statement', { preHandler: [requirePermission(['accounting.gl.view'])] }, ctrl.getIncomeStatementHandler);

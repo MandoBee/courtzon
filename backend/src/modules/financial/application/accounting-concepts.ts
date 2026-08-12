@@ -98,6 +98,10 @@ export const EVENT_CONCEPTS: Record<string, { debit: string[]; credit: string[] 
     debit: ['salary_expense'],
     credit: ['salary_payable'],
   },
+  year_close: {
+    debit: [],
+    credit: ['retained_earnings'],
+  },
 };
 
 /** Returns the flat list of concepts with their inherent sides for an event_type */
