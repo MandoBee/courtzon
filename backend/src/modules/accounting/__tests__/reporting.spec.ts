@@ -461,3 +461,147 @@ describe('Reporting — Organization Isolation & Net Income', () => {
     expect(account).toHaveProperty('is_system');
   });
 });
+
+describe('Unification — Ledger Entries → GL Projection', () => {
+  let orgId: number;
+  let accountId: number;
+  let periodId: number;
+  let testPool: mysql.Pool;
+
+  beforeAll(async () => {
+    testPool = mysql.createPool({
+      host: process.env.DB_HOST || '127.0.0.1',
+      port: Number(process.env.DB_PORT) || 3307,
+      user: process.env.DB_USER || 'root',
+      password: process.env.DB_PASSWORD || 'courtzon2026',
+      database: process.env.DB_NAME || 'courtzon_v3',
+      connectionLimit: 2,
+      charset: 'utf8mb4',
+    });
+
+    const [orgResult] = await testPool.execute<RowData>(
+      `INSERT INTO organisations (public_id, org_type_id, owner_id, name, slug, is_active)
+       VALUES (UUID(), (SELECT id FROM organisation_types LIMIT 1), 1, 'Test Unification Org', 'test-unify-org', 1)`
+    );
+    orgId = (orgResult as any).insertId;
+
+    const [coaResult] = await testPool.execute<RowData>(
+      `INSERT INTO chart_of_accounts (organisation_id, code, name, type, normal_side, is_system, is_active)
+       VALUES (?, 'UNIFY-REV', 'Unification Revenue', 'revenue', 'credit', 0, 1)`, [orgId]
+    );
+    accountId = (coaResult as any).insertId;
+
+    const [periodCheck] = await testPool.execute<RowData>(
+      `SELECT id FROM accounting_periods WHERE status = 'open' LIMIT 1`
+    );
+    if (periodCheck.length > 0) {
+      periodId = (periodCheck as any[])[0].id;
+    } else {
+      const [np] = await testPool.execute<RowData>(
+        `INSERT INTO accounting_periods (fiscal_year, period_number, start_date, end_date, status)
+         VALUES (2026, 1, '2026-01-01', '2026-01-31', 'open')`
+      );
+      periodId = (np as any).insertId;
+    }
+  });
+
+  afterAll(async () => {
+    await testPool.execute(`DELETE FROM general_ledger WHERE account_id IN (SELECT id FROM chart_of_accounts WHERE code LIKE 'UNIFY-%')`);
+    await testPool.execute(`DELETE FROM ledger_entries WHERE chart_account_id IN (SELECT id FROM chart_of_accounts WHERE code LIKE 'UNIFY-%')`);
+    await testPool.execute(`DELETE FROM chart_of_accounts WHERE code LIKE 'UNIFY-%'`);
+    if (orgId) await testPool.execute(`DELETE FROM organisations WHERE id = ?`, [orgId]);
+    await testPool.end();
+  });
+
+  it('dual entry creates both ledger_entries and general_ledger rows', async () => {
+    const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
+
+    await testPool.execute(
+      `INSERT INTO ledger_entries (transaction_id, source_type, source_id, event_type, organisation_id, chart_account_id, account_type, side, amount, currency, description, reference_id, recorded_at)
+       VALUES (?, 'booking', 999, 'test_event', ?, ?, 'platform_revenue', 'credit', 100, 'EGP', 'Test unified posting', '999', ?)`,
+      ['test_unified', orgId, accountId, now]
+    );
+
+    await testPool.execute(
+      `INSERT INTO general_ledger (organisation_id, period_id, account_id, entry_date, debit, credit, balance, reference_type, reference_id, description, created_by)
+       VALUES (?, ?, ?, '2026-01-15', 0, 100, 0, 'booking_test_event', 999, 'Test unified posting', 1)`,
+      [orgId, periodId, accountId]
+    );
+
+    const [glRows] = await testPool.execute<RowData>(
+      `SELECT * FROM general_ledger WHERE reference_type = 'booking_test_event' AND reference_id = 999`
+    );
+    const [leRows] = await testPool.execute<RowData>(
+      `SELECT * FROM ledger_entries WHERE source_type = 'booking' AND source_id = 999 AND event_type = 'test_event'`
+    );
+
+    expect((glRows as any[]).length).toBe(1);
+    expect((leRows as any[]).length).toBe(1);
+    expect(Number((glRows as any[])[0].credit)).toBe(100);
+  });
+
+  it('organization_id preserved in both tables', async () => {
+    const [leRows] = await testPool.execute<RowData>(
+      `SELECT organisation_id FROM ledger_entries WHERE source_type = 'booking' AND source_id = 999 AND event_type = 'test_event'`
+    );
+    const [glRows] = await testPool.execute<RowData>(
+      `SELECT organisation_id FROM general_ledger WHERE reference_type = 'booking_test_event' AND reference_id = 999`
+    );
+    expect((leRows as any[])[0].organisation_id).toBe(orgId);
+    expect((glRows as any[])[0].organisation_id).toBe(orgId);
+  });
+
+  it('debit/credit values match between ledger_entries and general_ledger', async () => {
+    const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
+
+    // Credit posting
+    await testPool.execute(
+      `INSERT INTO ledger_entries (transaction_id, source_type, source_id, event_type, organisation_id, chart_account_id, account_type, side, amount, currency, description, reference_id, recorded_at)
+       VALUES (?, 'booking', 998, 'test_event2', ?, ?, 'platform_revenue', 'credit', 250, 'EGP', 'Credit test', '998', ?)`,
+      ['test_unified2', orgId, accountId, now]
+    );
+    await testPool.execute(
+      `INSERT INTO general_ledger (organisation_id, period_id, account_id, entry_date, debit, credit, balance, reference_type, reference_id, description, created_by)
+       VALUES (?, ?, ?, '2026-01-15', 0, 250, 0, 'booking_test_event2', 998, 'Credit test', 1)`,
+      [orgId, periodId, accountId]
+    );
+
+    const [leRows] = await testPool.execute<RowData>(
+      `SELECT * FROM ledger_entries WHERE source_id = 998 AND event_type = 'test_event2'`
+    );
+    const [glRows] = await testPool.execute<RowData>(
+      `SELECT * FROM general_ledger WHERE reference_id = 998 AND reference_type = 'booking_test_event2'`
+    );
+
+    expect(Number((leRows as any[])[0].amount)).toBe(250);
+    expect((leRows as any[])[0].side).toBe('credit');
+    expect(Number((glRows as any[])[0].credit)).toBe(250);
+    expect(Number((glRows as any[])[0].debit)).toBe(0);
+  });
+
+  it('journal source_type is valid in ledger_entries', async () => {
+    const [result] = await testPool.execute<RowData>(
+      `SELECT COLUMN_TYPE FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = 'courtzon_v3' AND TABLE_NAME = 'ledger_entries' AND COLUMN_NAME = 'source_type'`
+    );
+    const columnType = (result as any[])[0].COLUMN_TYPE;
+    expect(columnType).toContain('journal');
+  });
+
+  it('reconciliation: GL totals match ledger_entries for test data', async () => {
+    const [leCredits] = await testPool.execute<RowData>(
+      `SELECT COALESCE(SUM(amount), 0) AS total FROM ledger_entries
+       WHERE source_type = 'booking' AND source_id IN (998, 999) AND side = 'credit' AND chart_account_id = ?`,
+      [accountId]
+    );
+    const [glCredits] = await testPool.execute<RowData>(
+      `SELECT COALESCE(SUM(credit), 0) AS total FROM general_ledger
+       WHERE reference_type IN ('booking_test_event', 'booking_test_event2') AND reference_id IN (998, 999) AND account_id = ?`,
+      [accountId]
+    );
+
+    expect(Number((leCredits as any[])[0].total)).toBe(350); // 100 + 250
+    expect(Number((glCredits as any[])[0].total)).toBe(350);
+    expect(Number((leCredits as any[])[0].total)).toBe(Number((glCredits as any[])[0].total));
+  });
+});

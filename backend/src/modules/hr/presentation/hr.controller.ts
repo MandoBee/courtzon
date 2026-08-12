@@ -1407,17 +1407,44 @@ export async function postPayrollRunHandler(request: FastifyRequest, reply: Fast
     );
 
     if (periods.length) {
+      const periodId = periods[0].id;
+      // Resolve payroll accounts via accounting engine (no hard-coded IDs)
+      const { accountingEngineService } = await import('../../financial/application/accounting-engine.service.js');
+      const mapping = await accountingEngineService.resolveMapping('payroll_post', null);
+      const conceptToAccount = new Map<string, number>();
+      for (const m of mapping) { conceptToAccount.set(m.concept, m.accountId); }
+      const salaryExpenseId = conceptToAccount.get('salary_expense');
+      const salaryPayableId = conceptToAccount.get('salary_payable');
+      if (!salaryExpenseId || !salaryPayableId) {
+        throw new AppError('Missing payroll account mapping — configure payroll_post event mapping', 500, 'CONFIG_ERROR');
+      }
+      const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
       for (const entry of entries) {
+        const amount = Number(entry.net_pay);
         const description = `Payroll ${run.period_start} to ${run.period_end} - Employee #${entry.employee_id}`;
+        // Canonical ledger_entries (debit expense)
         await conn.execute(
-          `INSERT INTO general_ledger (period_id, account_id, entry_date, debit, credit, balance, reference_type, reference_id, description, created_by)
-           VALUES (?, ?, ?, ?, ?, 0, 'payroll', ?, ?, ?)`,
-          [periods[0].id, 1, run.period_end, Number(entry.net_pay), 0, Number(id), description, userId]
+          `INSERT INTO ledger_entries (transaction_id, source_type, source_id, event_type, organisation_id, chart_account_id, account_type, side, amount, currency, description, reference_id, recorded_at)
+           VALUES (?, 'journal', ?, 'payroll_post', NULL, ?, 'platform_revenue', 'debit', ?, 'EGP', ?, ?, ?)`,
+          [`payroll_${run.id}_${entry.employee_id}_${Date.now()}`, Number(id), salaryExpenseId, amount, description, String(entry.employee_id), now],
         );
+        // Canonical ledger_entries (credit payable)
         await conn.execute(
-          `INSERT INTO general_ledger (period_id, account_id, entry_date, debit, credit, balance, reference_type, reference_id, description, created_by)
-           VALUES (?, ?, ?, ?, ?, 0, 'payroll', ?, ?, ?)`,
-          [periods[0].id, 5, run.period_end, 0, Number(entry.net_pay), Number(id), description, userId]
+          `INSERT INTO ledger_entries (transaction_id, source_type, source_id, event_type, organisation_id, chart_account_id, account_type, side, amount, currency, description, reference_id, recorded_at)
+           VALUES (?, 'journal', ?, 'payroll_post', NULL, ?, 'platform_revenue', 'credit', ?, 'EGP', ?, ?, ?)`,
+          [`payroll_${run.id}_${entry.employee_id}_${Date.now()}c`, Number(id), salaryPayableId, amount, description, String(entry.employee_id), now],
+        );
+        // GL projection (debit expense)
+        await conn.execute(
+          `INSERT INTO general_ledger (organisation_id, period_id, account_id, entry_date, debit, credit, balance, reference_type, reference_id, description, created_by)
+           VALUES (NULL, ?, ?, ?, ?, ?, 0, 'payroll', ?, ?, ?)`,
+          [periodId, salaryExpenseId, run.period_end, amount, 0, Number(id), description, userId]
+        );
+        // GL projection (credit payable)
+        await conn.execute(
+          `INSERT INTO general_ledger (organisation_id, period_id, account_id, entry_date, debit, credit, balance, reference_type, reference_id, description, created_by)
+           VALUES (NULL, ?, ?, ?, ?, ?, 0, 'payroll', ?, ?, ?)`,
+          [periodId, salaryPayableId, run.period_end, 0, amount, Number(id), description, userId]
         );
       }
     }

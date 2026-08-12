@@ -10,7 +10,7 @@ export type EntrySide = 'debit' | 'credit';
 export type SourceType =
   | 'booking' | 'academy' | 'membership' | 'marketplace'
   | 'wallet' | 'subscription' | 'adjustment' | 'refund'
-  | 'coupon' | 'commission' | 'settlement';
+  | 'coupon' | 'commission' | 'settlement' | 'journal';
 
 export interface LedgerEntry {
   id?: number;
