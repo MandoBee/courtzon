@@ -35,6 +35,9 @@ export async function accountingRoutes(app: FastifyInstance): Promise<void> {
   app.get('/admin/accounting/year-close/history', { preHandler: [requirePermission(['accounting.year-close.view'])] }, ctrl.yearCloseHistoryHandler);
   app.post('/admin/accounting/year-close/reopen', { preHandler: [requirePermission(['accounting.year-close.reopen'])] }, ctrl.yearCloseReopenHandler);
 
+  // Tax Summary
+  app.get('/admin/accounting/tax-summary', { preHandler: [requirePermission(['accounting.tax-report.view'])] }, ctrl.taxSummaryHandler);
+
   // General Ledger / Trial Balance / Reports
   app.get('/admin/accounting/trial-balance', { preHandler: [requirePermission(['accounting.gl.view'])] }, ctrl.getTrialBalanceHandler);
   app.get('/admin/accounting/income-statement', { preHandler: [requirePermission(['accounting.gl.view'])] }, ctrl.getIncomeStatementHandler);
