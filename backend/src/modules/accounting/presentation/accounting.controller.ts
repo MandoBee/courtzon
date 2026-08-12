@@ -4,6 +4,7 @@ import { recordAudit } from '../../audit-log/index.js';
 import { AppError, NotFoundError, ConflictError } from '../../../shared/errors/app-error.js';
 import { ErrorCodes } from '../../../shared/errors/error-codes.js';
 import { getEventConcepts, validateCompleteMapping } from '../../financial/application/accounting-concepts.js';
+import { coaValidator } from '../../financial/application/coa-validator.service.js';
 import mysql from 'mysql2/promise';
 
 type RowData = mysql.RowDataPacket[];
@@ -194,11 +195,33 @@ export async function getDashboardHandler(_request: FastifyRequest, reply: Fasti
 export async function listAccountsHandler(_request: FastifyRequest, reply: FastifyReply) {
   const pool = getPool();
   const [rows] = await pool.execute<RowData>(
-    `SELECT a.*, p.name AS parent_name, p.code AS parent_code
+    `SELECT a.*, p.name AS parent_name, p.code AS parent_code,
+            (SELECT COUNT(*) FROM chart_of_accounts WHERE parent_id = a.id AND is_active = 1) AS child_count
      FROM chart_of_accounts a
      LEFT JOIN chart_of_accounts p ON p.id = a.parent_id
+     WHERE a.is_active = 1
      ORDER BY a.code`
   );
+  // Compute approximate level from hierarchy
+  const levelMap = new Map<number | null, number>();
+  for (const r of rows as any[]) {
+    r.child_count = Number(r.child_count);
+    // Compute level: iterate to root counting levels
+    let level = 1;
+    let pid = r.parent_id;
+    const visited = new Set<number>([r.id]);
+    while (pid != null && level < 10) {
+      if (visited.has(pid)) break;
+      visited.add(pid);
+      const parent = (rows as any[]).find((a: any) => a.id === pid);
+      if (!parent) break;
+      pid = parent.parent_id;
+      level++;
+    }
+    r.level = level;
+    r.is_structural = r.child_count > 0;
+    r.is_postable = level === 4 && r.child_count === 0 && r.is_active;
+  }
   return reply.send({ data: rows });
 }
 
@@ -227,6 +250,11 @@ export async function createAccountHandler(request: FastifyRequest, reply: Fasti
     }
     if (!(parent as any[])[0].is_active) {
       throw new AppError('Parent account is inactive', 400, 'VALIDATION_ERROR');
+    }
+
+    // Enforce maximum depth: org accounts must be L4 under L3
+    if (orgId != null) {
+      await coaValidator.validateAccountCreation(parentId, orgId, 'Account Creation');
     }
   }
 
@@ -590,6 +618,11 @@ export async function createJournalEntryHandler(request: FastifyRequest, reply: 
 
   if (Math.abs(totalDebits - totalCredits) > 0.001) {
     throw new AppError('Journal entry is not balanced (total debits must equal total credits)', 400, 'VALIDATION_ERROR', { code: ErrorCodes.JOURNAL_UNBALANCED });
+  }
+
+  // Validate all target accounts are L4 postable
+  for (const entry of body.entries) {
+    await coaValidator.validatePostable(Number(entry.accountId), 'Journal Entry');
   }
 
   const [periods] = await pool.execute<RowData>(
@@ -1403,6 +1436,7 @@ export async function updateMappingHandler(request: FastifyRequest, reply: Fasti
     if (orgId != null && acct.organisation_id != null && acct.organisation_id !== orgId) {
       throw new AppError(`Account ${id} belongs to org ${acct.organisation_id}, not org ${orgId}`, 400, 'VALIDATION_ERROR');
     }
+    await coaValidator.validatePostable(id, 'Event Mapping');
   }
 
   const conn = await pool.getConnection();

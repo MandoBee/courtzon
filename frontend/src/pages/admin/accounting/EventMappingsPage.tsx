@@ -51,7 +51,7 @@ function EventMappingsContent() {
   });
 
   const accounts: AccountOption[] = (accountList || []).filter((a: any) =>
-    a.is_active &&
+    a.is_active && a.is_postable &&
     (a.organisation_id === null || a.organisation_id === numericOrgId)
   );
 
