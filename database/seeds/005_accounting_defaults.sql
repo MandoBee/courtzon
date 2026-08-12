@@ -237,3 +237,26 @@ AND NOT EXISTS (SELECT 1 FROM accounting_event_mapping_lines WHERE event_type = 
 INSERT INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
 SELECT 'booking_org_recovery', NULL, 'booking_revenue', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '4100'
 AND NOT EXISTS (SELECT 1 FROM accounting_event_mapping_lines WHERE event_type = 'booking_org_recovery' AND organisation_id IS NULL AND concept = 'booking_revenue');
+
+-- 19. booking settlement (coach + org): clear payable against cash
+INSERT INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
+SELECT 'booking_coach_settlement', NULL, 'coach_payable', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '2200'
+AND NOT EXISTS (SELECT 1 FROM accounting_event_mapping_lines WHERE event_type = 'booking_coach_settlement' AND organisation_id IS NULL AND concept = 'coach_payable');
+INSERT INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
+SELECT 'booking_coach_settlement', NULL, 'cash_bank', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '1120'
+AND NOT EXISTS (SELECT 1 FROM accounting_event_mapping_lines WHERE event_type = 'booking_coach_settlement' AND organisation_id IS NULL AND concept = 'cash_bank');
+
+INSERT INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
+SELECT 'booking_org_settlement', NULL, 'org_payable', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '2200'
+AND NOT EXISTS (SELECT 1 FROM accounting_event_mapping_lines WHERE event_type = 'booking_org_settlement' AND organisation_id IS NULL AND concept = 'org_payable');
+INSERT INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
+SELECT 'booking_org_settlement', NULL, 'cash_bank', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '1120'
+AND NOT EXISTS (SELECT 1 FROM accounting_event_mapping_lines WHERE event_type = 'booking_org_settlement' AND organisation_id IS NULL AND concept = 'cash_bank');
+
+-- 20. recovery collection: cash against recovery receivable
+INSERT INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
+SELECT 'booking_recovery_collection', NULL, 'cash_bank', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '1120'
+AND NOT EXISTS (SELECT 1 FROM accounting_event_mapping_lines WHERE event_type = 'booking_recovery_collection' AND organisation_id IS NULL AND concept = 'cash_bank');
+INSERT INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
+SELECT 'booking_recovery_collection', NULL, 'recovery_receivable', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '1140'
+AND NOT EXISTS (SELECT 1 FROM accounting_event_mapping_lines WHERE event_type = 'booking_recovery_collection' AND organisation_id IS NULL AND concept = 'recovery_receivable');

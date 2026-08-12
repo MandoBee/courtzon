@@ -136,6 +136,20 @@ export const EVENT_CONCEPTS: Record<string, { debit: string[]; credit: string[] 
     debit: ['org_recovery_receivable'],
     credit: ['booking_revenue'],
   },
+  // Booking settlement: clear the payable and record cash movement.
+  booking_coach_settlement: {
+    debit: ['coach_payable'],
+    credit: ['cash_bank'],
+  },
+  booking_org_settlement: {
+    debit: ['org_payable'],
+    credit: ['cash_bank'],
+  },
+  // Recovery collection: clear the recovery receivable.
+  booking_recovery_collection: {
+    debit: ['cash_bank'],
+    credit: ['recovery_receivable'],
+  },
 };
 
 /** Returns the flat list of concepts with their inherent sides for an event_type */
