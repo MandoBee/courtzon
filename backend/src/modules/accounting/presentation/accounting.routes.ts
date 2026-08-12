@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { authMiddleware, requirePermission } from '../../../shared/middleware/auth.middleware.js';
 import * as ctrl from './accounting.controller.js';
+import * as tplCtrl from './template.controller.js';
 
 export async function accountingRoutes(app: FastifyInstance): Promise<void> {
   app.addHook('preHandler', authMiddleware);
@@ -12,6 +13,15 @@ export async function accountingRoutes(app: FastifyInstance): Promise<void> {
   app.get('/admin/accounting/accounts', { preHandler: [requirePermission(['accounting.coa.view'])] }, ctrl.listAccountsHandler);
   app.post('/admin/accounting/accounts', { preHandler: [requirePermission(['accounting.coa.manage'])] }, ctrl.createAccountHandler);
   app.put('/admin/accounting/accounts/:id', { preHandler: [requirePermission(['accounting.coa.manage'])] }, ctrl.updateAccountHandler);
+
+  // Account Templates
+  app.get('/admin/accounting/templates', { preHandler: [requirePermission(['accounting.templates.view'])] }, tplCtrl.listTemplatesHandler);
+  app.get('/admin/accounting/templates/:id', { preHandler: [requirePermission(['accounting.templates.view'])] }, tplCtrl.getTemplateHandler);
+  app.post('/admin/accounting/templates', { preHandler: [requirePermission(['accounting.templates.manage'])] }, tplCtrl.createTemplateHandler);
+  app.put('/admin/accounting/templates/:id', { preHandler: [requirePermission(['accounting.templates.manage'])] }, tplCtrl.updateTemplateHandler);
+  app.post('/admin/accounting/templates/:id/deactivate', { preHandler: [requirePermission(['accounting.templates.manage'])] }, tplCtrl.deactivateTemplateHandler);
+  app.get('/admin/accounting/templates/preview', { preHandler: [requirePermission(['accounting.templates.view'])] }, tplCtrl.previewTemplateHandler);
+  app.post('/admin/accounting/templates/apply', { preHandler: [requirePermission(['accounting.templates.manage'])] }, tplCtrl.applyTemplateHandler);
 
   // Accounting Periods
   app.get('/admin/accounting/periods', { preHandler: [requirePermission(['accounting.periods.view'])] }, ctrl.listPeriodsHandler);

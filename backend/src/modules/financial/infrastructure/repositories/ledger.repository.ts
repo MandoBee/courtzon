@@ -13,18 +13,22 @@ export class LedgerRepository {
     this.pool = getPool();
   }
 
-  async createEntries(entries: LedgerEntry[], conn?: mysql.PoolConnection): Promise<void> {
+  async createEntries(entries: LedgerEntry[], conn?: mysql.PoolConnection): Promise<number[]> {
     const db = conn ?? this.pool;
+    const ids: number[] = [];
     for (const entry of entries) {
-      await db.execute<ResultSetHeader>(
-        `INSERT INTO ledger_entries (transaction_id, source_type, source_id, event_type, organisation_id, chart_account_id, account_type, side, amount, currency, description, reference_id, recorded_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      const [result] = await db.execute<ResultSetHeader>(
+        `INSERT INTO ledger_entries (transaction_id, source_type, source_id, event_type, period_id, organisation_id, chart_account_id, account_type, side, amount, currency, description, reference_id, recorded_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?)`,
         [entry.transactionId, entry.sourceType, entry.sourceId,
-         entry.eventType ?? null, entry.organisationId ?? null, entry.chartAccountId ?? null,
-         entry.accountType, entry.side, entry.amount, entry.currency,
+         entry.eventType ?? null, entry.periodId ?? null,
+         entry.organisationId ?? null, entry.chartAccountId ?? null,
+         entry.side, entry.amount, entry.currency,
          entry.description, entry.referenceId || null, entry.recordedAt],
       );
+      ids.push(result.insertId);
     }
+    return ids;
   }
 
   async findBySource(sourceType: string, sourceId: number): Promise<LedgerEntry[]> {
@@ -58,11 +62,12 @@ export class LedgerRepository {
 
   async getRevenueSummary(from: string, to: string): Promise<RevenueSummary> {
     const [rows] = await this.pool.execute<RowData>(
-      `SELECT account_type, side, SUM(amount) as total, COUNT(*) as count
-       FROM ledger_entries
-       WHERE recorded_at >= ? AND recorded_at <= ?
-       GROUP BY account_type, side
-       ORDER BY account_type`,
+      `SELECT coa.type AS account_type, le.side, SUM(le.amount) as total, COUNT(*) as count
+       FROM ledger_entries le
+       JOIN chart_of_accounts coa ON coa.id = le.chart_account_id
+       WHERE le.recorded_at >= ? AND le.recorded_at <= ?
+       GROUP BY coa.type, le.side
+       ORDER BY coa.type`,
       [from, to],
     );
     return buildRevenueSummary(rows as unknown as Array<{ account_type: string; side: string; total: number | string; count: number | string }>);
