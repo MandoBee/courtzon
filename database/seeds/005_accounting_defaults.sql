@@ -99,19 +99,42 @@ INSERT IGNORE INTO accounting_event_mapping_lines (event_type, organisation_id, 
 SELECT 'payment_failure', NULL, 'payment_clearing', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '1100';
 
 -- 13. invoice_issue (2-line default: tax embedded in Revenue)
-INSERT IGNORE INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
-SELECT 'invoice_issue', NULL, 'receivable', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '1140';
-INSERT IGNORE INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
-SELECT 'invoice_issue', NULL, 'revenue', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '4100';
-INSERT IGNORE INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
-SELECT 'invoice_issue', NULL, 'tax_liability', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '4100';
--- ↑ tax_liability → same Revenue account = tax embedded (Model B default)
+INSERT INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
+SELECT 'invoice_issue', NULL, 'receivable', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '1140'
+AND NOT EXISTS (SELECT 1 FROM accounting_event_mapping_lines WHERE event_type = 'invoice_issue' AND organisation_id IS NULL AND concept = 'receivable' AND is_active = 1);
+INSERT INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
+SELECT 'invoice_issue', NULL, 'revenue', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '4100'
+AND NOT EXISTS (SELECT 1 FROM accounting_event_mapping_lines WHERE event_type = 'invoice_issue' AND organisation_id IS NULL AND concept = 'revenue' AND is_active = 1);
+INSERT INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
+SELECT 'invoice_issue', NULL, 'tax_liability', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '4100'
+AND NOT EXISTS (SELECT 1 FROM accounting_event_mapping_lines WHERE event_type = 'invoice_issue' AND organisation_id IS NULL AND concept = 'tax_liability' AND is_active = 1);
 
 -- 14. invoice_payment
-INSERT IGNORE INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
-SELECT 'invoice_payment', NULL, 'cash_bank', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '1120';
-INSERT IGNORE INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
-SELECT 'invoice_payment', NULL, 'receivable', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '1140';
+INSERT INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
+SELECT 'invoice_payment', NULL, 'cash_bank', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '1120'
+AND NOT EXISTS (SELECT 1 FROM accounting_event_mapping_lines WHERE event_type = 'invoice_payment' AND organisation_id IS NULL AND concept = 'cash_bank' AND is_active = 1);
+INSERT INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
+SELECT 'invoice_payment', NULL, 'receivable', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '1140'
+AND NOT EXISTS (SELECT 1 FROM accounting_event_mapping_lines WHERE event_type = 'invoice_payment' AND organisation_id IS NULL AND concept = 'receivable' AND is_active = 1);
+
+-- 15. invoice_cancel (with tax_liability reversal for Advanced Mode)
+INSERT INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
+SELECT 'invoice_cancel', NULL, 'revenue', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '4100'
+AND NOT EXISTS (SELECT 1 FROM accounting_event_mapping_lines WHERE event_type = 'invoice_cancel' AND organisation_id IS NULL AND concept = 'revenue' AND is_active = 1);
+INSERT INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
+SELECT 'invoice_cancel', NULL, 'receivable', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '1140'
+AND NOT EXISTS (SELECT 1 FROM accounting_event_mapping_lines WHERE event_type = 'invoice_cancel' AND organisation_id IS NULL AND concept = 'receivable' AND is_active = 1);
+INSERT INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
+SELECT 'invoice_cancel', NULL, 'tax_liability', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '4100'
+AND NOT EXISTS (SELECT 1 FROM accounting_event_mapping_lines WHERE event_type = 'invoice_cancel' AND organisation_id IS NULL AND concept = 'tax_liability' AND is_active = 1);
+
+-- 16. input_tax for purchase invoices
+INSERT INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
+SELECT 'purchase_invoice_issue', NULL, 'input_tax', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = 'INPUT-TAX'
+AND NOT EXISTS (SELECT 1 FROM accounting_event_mapping_lines WHERE event_type = 'purchase_invoice_issue' AND organisation_id IS NULL AND concept = 'input_tax' AND is_active = 1);
+INSERT INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
+SELECT 'purchase_invoice_cancel', NULL, 'input_tax', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = 'INPUT-TAX'
+AND NOT EXISTS (SELECT 1 FROM accounting_event_mapping_lines WHERE event_type = 'purchase_invoice_cancel' AND organisation_id IS NULL AND concept = 'input_tax' AND is_active = 1);
 
 -- 15. payroll_post
 INSERT IGNORE INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)

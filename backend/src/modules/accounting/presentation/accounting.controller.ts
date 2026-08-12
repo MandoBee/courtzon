@@ -794,20 +794,43 @@ export async function createInvoiceHandler(request: FastifyRequest, reply: Fasti
   let subtotal = 0;
   let taxAmount = 0;
   const items = body.items.map((item: any) => {
-    const lineTotal = Number(item.quantity || 1) * Number(item.unitPrice || 0);
-    const lineTax = lineTotal * (Number(item.taxRate || 0) / 100);
-    subtotal += lineTotal;
+    const qty = Number(item.quantity || 1);
+    const price = Number(item.unitPrice || 0);
+    const rate = Number(item.taxRate || 0);
+    const priceType = item.priceType || 'net';
+    const treatment = item.taxTreatment || (rate === 0 ? 'zero_rated' : 'taxable');
+    const isFixed = item.taxType === 'fixed';
+
+    let netAmount: number, lineTax: number, lineTotal: number;
+
+    if (treatment === 'exempt' || treatment === 'zero_rated') {
+      netAmount = qty * price;
+      lineTax = 0;
+      lineTotal = netAmount;
+    } else if (priceType === 'gross') {
+      const grossPrice = qty * price;
+      lineTax = isFixed ? rate : Math.round(grossPrice * rate / (100 + rate) * 100) / 100;
+      netAmount = Math.round((grossPrice - lineTax) * 100) / 100;
+      lineTotal = grossPrice;
+    } else {
+      netAmount = Math.round(qty * price * 100) / 100;
+      lineTax = isFixed ? rate : Math.round(netAmount * rate * 100) / 10000;
+      lineTotal = Math.round((netAmount + lineTax) * 100) / 100;
+    }
+
+    subtotal += netAmount;
     taxAmount += lineTax;
     return {
-      ...item,
-      quantity: Number(item.quantity || 1),
-      unitPrice: Number(item.unitPrice || 0),
-      taxRate: Number(item.taxRate || 0),
-      taxAmount: lineTax,
-      total: lineTotal + lineTax,
+      quantity: qty, unitPrice: price, taxRate: rate,
+      taxRateId: item.taxRateId || null,
+      priceType, taxTreatment: treatment,
+      netAmount: Math.round(netAmount * 100) / 100,
+      taxAmount: Math.round(lineTax * 100) / 100,
+      total: Math.round(lineTotal * 100) / 100,
+      description: item.description || '',
     };
   });
-  const total = subtotal + taxAmount;
+  const total = Math.round((subtotal + taxAmount) * 100) / 100;
 
   const conn = await pool.getConnection();
   try {
@@ -836,8 +859,10 @@ export async function createInvoiceHandler(request: FastifyRequest, reply: Fasti
 
     for (const item of items) {
       await conn.execute(
-        `INSERT INTO invoice_items (invoice_id, description, quantity, unit_price, tax_rate, tax_amount, total) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        [invoiceId, item.description, item.quantity, item.unitPrice, item.taxRate, item.taxAmount, item.total]
+        `INSERT INTO invoice_items (invoice_id, description, quantity, unit_price, price_type, tax_treatment, net_amount, tax_rate, tax_amount, tax_rate_id, total) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [invoiceId, item.description, item.quantity, item.unitPrice,
+         item.priceType, item.taxTreatment, item.netAmount,
+         item.taxRate, item.taxAmount, item.taxRateId, item.total]
       );
     }
 
@@ -1162,43 +1187,49 @@ export async function cancelInvoiceHandler(request: FastifyRequest, reply: Fasti
     if (eventType === 'purchase_invoice_cancel') {
       const payableId = conceptToAccount.get('accounts_payable');
       const expenseId = conceptToAccount.get('expense');
+      const inputTaxId = conceptToAccount.get('input_tax');
       if (!payableId || !expenseId) {
         throw new AppError('Missing required account mapping for purchase_invoice_cancel', 500, 'CONFIG_ERROR');
       }
-      await createDualEntry(conn, {
-        sourceType: 'invoice', sourceId: Number(id), eventType,
-        orgId, periodId, accountId: payableId,
+      const taxAmt = Number(inv.tax_amount) || 0;
+      const netAmt = Number(inv.total) - taxAmt;
+      // Dr Payable (total)
+      await createDualEntry(conn, { sourceType: 'invoice', sourceId: Number(id), eventType, orgId, periodId, accountId: payableId,
         entryDate: new Date().toISOString().slice(0, 10), debit: Number(inv.total), credit: 0,
-        refType: 'invoice_cancel', refId: Number(id), userId,
-        description: `Reversal - cancelled purchase invoice ${inv.invoice_number}`,
-      });
-      await createDualEntry(conn, {
-        sourceType: 'invoice', sourceId: Number(id), eventType,
-        orgId, periodId, accountId: expenseId,
-        entryDate: new Date().toISOString().slice(0, 10), debit: 0, credit: Number(inv.total),
-        refType: 'invoice_cancel', refId: Number(id), userId,
-        description: `Reversal - cancelled purchase invoice ${inv.invoice_number}`,
-      });
+        refType: 'invoice_cancel', refId: Number(id), userId, description: `Reversal - cancelled purchase invoice ${inv.invoice_number}` });
+      // Cr Expense (net)
+      await createDualEntry(conn, { sourceType: 'invoice', sourceId: Number(id), eventType, orgId, periodId, accountId: expenseId,
+        entryDate: new Date().toISOString().slice(0, 10), debit: 0, credit: netAmt,
+        refType: 'invoice_cancel', refId: Number(id), userId, description: `Reversal - cancelled purchase invoice ${inv.invoice_number}` });
+      // Cr Input Tax (if mapped separately from expense)
+      if (inputTaxId && inputTaxId !== expenseId && taxAmt > 0) {
+        await createDualEntry(conn, { sourceType: 'invoice', sourceId: Number(id), eventType, orgId, periodId, accountId: inputTaxId,
+          entryDate: new Date().toISOString().slice(0, 10), debit: 0, credit: taxAmt,
+          refType: 'invoice_cancel', refId: Number(id), userId, description: `Reversal - cancelled purchase invoice ${inv.invoice_number}` });
+      }
     } else {
       const revenueId = conceptToAccount.get('revenue');
       const receivableId = conceptToAccount.get('receivable');
+      const taxLiabId = conceptToAccount.get('tax_liability');
       if (!revenueId || !receivableId) {
         throw new AppError('Missing required account mapping for invoice_cancel', 500, 'CONFIG_ERROR');
       }
-      await createDualEntry(conn, {
-        sourceType: 'invoice', sourceId: Number(id), eventType,
-        orgId, periodId, accountId: receivableId,
+      const taxAmt = Number(inv.tax_amount) || 0;
+      const netAmt = Number(inv.total) - taxAmt;
+      // Cr Receivable (total)
+      await createDualEntry(conn, { sourceType: 'invoice', sourceId: Number(id), eventType, orgId, periodId, accountId: receivableId,
         entryDate: new Date().toISOString().slice(0, 10), debit: 0, credit: Number(inv.total),
-        refType: 'invoice_cancel', refId: Number(id), userId,
-        description: `Reversal - cancelled invoice ${inv.invoice_number}`,
-      });
-      await createDualEntry(conn, {
-        sourceType: 'invoice', sourceId: Number(id), eventType,
-        orgId, periodId, accountId: revenueId,
-        entryDate: new Date().toISOString().slice(0, 10), debit: Number(inv.total), credit: 0,
-        refType: 'invoice_cancel', refId: Number(id), userId,
-        description: `Reversal - cancelled invoice ${inv.invoice_number}`,
-      });
+        refType: 'invoice_cancel', refId: Number(id), userId, description: `Reversal - cancelled invoice ${inv.invoice_number}` });
+      // Dr Revenue (net)
+      await createDualEntry(conn, { sourceType: 'invoice', sourceId: Number(id), eventType, orgId, periodId, accountId: revenueId,
+        entryDate: new Date().toISOString().slice(0, 10), debit: netAmt, credit: 0,
+        refType: 'invoice_cancel', refId: Number(id), userId, description: `Reversal - cancelled invoice ${inv.invoice_number}` });
+      // Dr Tax Liability (if mapped separately from revenue)
+      if (taxLiabId && taxLiabId !== revenueId && taxAmt > 0) {
+        await createDualEntry(conn, { sourceType: 'invoice', sourceId: Number(id), eventType, orgId, periodId, accountId: taxLiabId,
+          entryDate: new Date().toISOString().slice(0, 10), debit: taxAmt, credit: 0,
+          refType: 'invoice_cancel', refId: Number(id), userId, description: `Reversal - cancelled invoice ${inv.invoice_number}` });
+      }
     }
 
     await conn.commit();

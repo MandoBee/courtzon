@@ -79,7 +79,7 @@ export const EVENT_CONCEPTS: Record<string, { debit: string[]; credit: string[] 
     credit: ['receivable'],
   },
   purchase_invoice_issue: {
-    debit: ['expense'],
+    debit: ['expense', 'input_tax'],
     credit: ['accounts_payable'],
   },
   purchase_invoice_payment: {
@@ -87,12 +87,12 @@ export const EVENT_CONCEPTS: Record<string, { debit: string[]; credit: string[] 
     credit: ['cash_bank'],
   },
   invoice_cancel: {
-    debit: ['revenue'],
+    debit: ['revenue', 'tax_liability'],
     credit: ['receivable'],
   },
   purchase_invoice_cancel: {
     debit: ['accounts_payable'],
-    credit: ['expense'],
+    credit: ['expense', 'input_tax'],
   },
   payroll_post: {
     debit: ['salary_expense'],
