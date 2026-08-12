@@ -192,13 +192,31 @@ async function postBookingRefundAccounting(bookingId: number, refundAmount: numb
     `Booking #${bookingId} refund`,
   );
 
-  // Reverse coach payable proportionally, if present in the original economics
-  if (refund.coachAmount > 0) {
+  // Coach: unsettled portion → payable reversal; settled portion → recovery.
+  if (refund.coachUnsettled > 0) {
     await postAccountingEvent(
       'booking_coach_reversal', 'booking', bookingId, refund.organisationId,
-      { coach_payable: refund.coachAmount, coach_expense: refund.coachAmount },
+      { coach_payable: refund.coachUnsettled, coach_expense: refund.coachUnsettled },
       currency,
       `Booking #${bookingId} coach payout reversal`,
+    );
+  }
+  if (refund.coachSettled > 0) {
+    await postAccountingEvent(
+      'booking_coach_recovery', 'booking', bookingId, refund.organisationId,
+      { coach_recovery_receivable: refund.coachSettled, coach_expense: refund.coachSettled },
+      currency,
+      `Booking #${bookingId} coach post-settlement recovery`,
+    );
+  }
+
+  // Org: settled portion → recovery (org already received settlement funds).
+  if (refund.orgSettled > 0) {
+    await postAccountingEvent(
+      'booking_org_recovery', 'booking', bookingId, refund.organisationId,
+      { org_recovery_receivable: refund.orgSettled, booking_revenue: refund.orgSettled },
+      currency,
+      `Booking #${bookingId} org post-settlement recovery`,
     );
   }
 }

@@ -222,3 +222,18 @@ AND NOT EXISTS (SELECT 1 FROM accounting_event_mapping_lines WHERE event_type = 
 INSERT INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
 SELECT 'booking_refund', NULL, 'payment_clearing', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '1100'
 AND NOT EXISTS (SELECT 1 FROM accounting_event_mapping_lines WHERE event_type = 'booking_refund' AND organisation_id IS NULL AND concept = 'payment_clearing');
+
+-- 18. post-settlement recovery (coach + org) — receivable accounts
+INSERT INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
+SELECT 'booking_coach_recovery', NULL, 'coach_recovery_receivable', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '1160'
+AND NOT EXISTS (SELECT 1 FROM accounting_event_mapping_lines WHERE event_type = 'booking_coach_recovery' AND organisation_id IS NULL AND concept = 'coach_recovery_receivable');
+INSERT INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
+SELECT 'booking_coach_recovery', NULL, 'coach_expense', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '5200'
+AND NOT EXISTS (SELECT 1 FROM accounting_event_mapping_lines WHERE event_type = 'booking_coach_recovery' AND organisation_id IS NULL AND concept = 'coach_expense');
+
+INSERT INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
+SELECT 'booking_org_recovery', NULL, 'org_recovery_receivable', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '1160'
+AND NOT EXISTS (SELECT 1 FROM accounting_event_mapping_lines WHERE event_type = 'booking_org_recovery' AND organisation_id IS NULL AND concept = 'org_recovery_receivable');
+INSERT INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
+SELECT 'booking_org_recovery', NULL, 'booking_revenue', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '4100'
+AND NOT EXISTS (SELECT 1 FROM accounting_event_mapping_lines WHERE event_type = 'booking_org_recovery' AND organisation_id IS NULL AND concept = 'booking_revenue');

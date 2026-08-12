@@ -93,11 +93,20 @@ export interface RefundEconomics {
   paymentAmount: number;
   paymentMethod: string;
   currency: string;
+  // Settled vs unsettled split for coach/org recovery
+  coachSettled: number;
+  coachUnsettled: number;
+  orgSettled: number;
+  orgUnsettled: number;
 }
 
 /**
  * Compute proportional refund economics from the ORIGINAL booking snapshot.
  * Never recalculates commission/coach/tax — strictly prorates the snapshot.
+ *
+ * Splits the coach and org components into SETTLED (already paid via settlement)
+ * and UNSETTLED portions. The settled portion requires recovery; the unsettled
+ * portion is reversed through the normal payable/revenue reversal.
  */
 export async function computeRefundEconomics(bookingId: number, refundedAmount: number): Promise<RefundEconomics | null> {
   const econ = await resolveBookingEconomics(bookingId);
@@ -109,17 +118,38 @@ export async function computeRefundEconomics(bookingId: number, refundedAmount: 
   const ratio = Math.min(Math.max(refundedAmount / grossPayable, 0), 1);
   const rnd = (n: number) => Math.round(n * 100) / 100;
 
+  // Determine how much of coach/org economics has already been settled.
+  const pool = getPool();
+  const [rows] = await pool.execute<RowData>(
+    `SELECT COALESCE(coach_settled_amount, 0) AS coach_settled, COALESCE(org_settled_amount, 0) AS org_settled FROM bookings WHERE id = ?`,
+    [bookingId],
+  );
+  const coachSettledTotal = Number((rows as any[])[0]?.coach_settled ?? 0);
+  const orgSettledTotal = Number((rows as any[])[0]?.org_settled ?? 0);
+
+  const coachRefund = rnd(econ.coachAmount * ratio);
+  const orgRefund = rnd(econ.orgAmount * ratio);
+
+  const coachSettled = rnd(Math.min(coachRefund, coachSettledTotal));
+  const coachUnsettled = rnd(coachRefund - coachSettled);
+  const orgSettled = rnd(Math.min(orgRefund, orgSettledTotal));
+  const orgUnsettled = rnd(orgRefund - orgSettled);
+
   return {
     bookingId,
     organisationId: econ.organisationId,
     refundedAmount: rnd(refundedAmount),
     refundRatio: ratio,
-    orgAmount: rnd(econ.orgAmount * ratio),
+    orgAmount: orgRefund,
     commissionAmount: rnd(econ.commissionAmount * ratio),
     taxAmount: rnd(econ.taxAmount * ratio),
-    coachAmount: rnd(econ.coachAmount * ratio),
+    coachAmount: coachRefund,
     paymentAmount: rnd(refundedAmount),
     paymentMethod: econ.paymentMethod,
     currency: econ.currency,
+    coachSettled,
+    coachUnsettled,
+    orgSettled,
+    orgUnsettled,
   };
 }
