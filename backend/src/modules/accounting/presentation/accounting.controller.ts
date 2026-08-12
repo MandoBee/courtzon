@@ -8,6 +8,151 @@ import mysql from 'mysql2/promise';
 
 type RowData = mysql.RowDataPacket[];
 
+interface CoaNode {
+  id: number;
+  code: string;
+  name: string;
+  type: string;
+  normal_side: string | null;
+  parent_id: number | null;
+  organisation_id: number | null;
+  is_system: number;
+  children: CoaNode[];
+}
+
+interface ReportLine {
+  account_id: number;
+  code: string;
+  name: string;
+  type: string;
+  normal_side: string | null;
+  total_debits: number;
+  total_credits: number;
+  balance: number;
+  level: number;
+  parent_id: number | null;
+  has_children: boolean;
+}
+
+async function buildHierarchicalReport(
+  pool: mysql.Pool,
+  dateFilter: string,
+  params: any[],
+  typeFilter: string[] | null,
+): Promise<ReportLine[]> {
+  // 1. Fetch COA tree
+  const [coaRows] = await pool.execute<RowData>(
+    `SELECT id, code, name, type, normal_side, parent_id, organisation_id, is_system
+     FROM chart_of_accounts
+     WHERE organisation_id IS NULL AND is_active = 1
+     ORDER BY code`
+  );
+
+  const coaMap = new Map<number, CoaNode>();
+  const roots: CoaNode[] = [];
+  for (const r of coaRows as any[]) {
+    const node: CoaNode = { ...r, children: [] };
+    coaMap.set(r.id, node);
+  }
+  for (const node of coaMap.values()) {
+    if (node.parent_id != null && coaMap.has(node.parent_id)) {
+      coaMap.get(node.parent_id)!.children.push(node);
+    } else {
+      roots.push(node);
+    }
+  }
+
+  // 2. Fetch GL balances grouped by account
+  let typeClause = '';
+  if (typeFilter) {
+    const placeholders = typeFilter.map(() => '?').join(',');
+    typeClause = ` AND a.type IN (${placeholders})`;
+    params.push(...typeFilter);
+  }
+
+  const [glRows] = await pool.execute<RowData>(
+    `SELECT gl.account_id, COALESCE(SUM(gl.debit), 0) AS total_debits,
+            COALESCE(SUM(gl.credit), 0) AS total_credits
+     FROM general_ledger gl
+     JOIN chart_of_accounts a ON a.id = gl.account_id
+     WHERE 1=1${dateFilter}${typeClause}
+     GROUP BY gl.account_id`,
+    params
+  );
+
+  const leafBalances = new Map<number, { debits: number; credits: number }>();
+  for (const r of glRows as any[]) {
+    leafBalances.set(r.account_id, { debits: Number(r.total_debits), credits: Number(r.total_credits) });
+  }
+
+  // 3. Compute balance with normal_side
+  function computeBalance(node: CoaNode, debits: number, credits: number): number {
+    if (node.normal_side === 'credit') return credits - debits;
+    return debits - credits;
+  }
+
+  // 4. Recursive aggregation
+  function aggregate(node: CoaNode): { debits: number; credits: number } {
+    let totalDebits = leafBalances.get(node.id)?.debits ?? 0;
+    let totalCredits = leafBalances.get(node.id)?.credits ?? 0;
+
+    for (const child of node.children) {
+      const childBal = aggregate(child);
+      totalDebits += childBal.debits;
+      totalCredits += childBal.credits;
+    }
+
+    leafBalances.set(node.id, { debits: totalDebits, credits: totalCredits });
+    return { debits: totalDebits, credits: totalCredits };
+  }
+
+  for (const root of roots) aggregate(root);
+
+  // 5. Collect all nodes in hierarchy order with level info
+  const result: ReportLine[] = [];
+  const typeSet = new Set(typeFilter);
+
+  function collect(node: CoaNode, level: number) {
+    const bal = leafBalances.get(node.id) ?? { debits: 0, credits: 0 };
+    const balance = computeBalance(node, bal.debits, bal.credits);
+
+    // Only include accounts in the type filter (if specified), or all accounts for trial balance
+    if (!typeSet.size || typeSet.has(node.type)) {
+      result.push({
+        account_id: node.id,
+        code: node.code,
+        name: node.name,
+        type: node.type,
+        normal_side: node.normal_side,
+        total_debits: bal.debits,
+        total_credits: bal.credits,
+        balance,
+        level,
+        parent_id: node.parent_id,
+        has_children: node.children.length > 0,
+      });
+    }
+
+    for (const child of node.children) collect(child, level + 1);
+  }
+
+  if (typeSet.size) {
+    // Filtered report: only collect nodes matching type filter
+    for (const root of roots) {
+      if (typeSet.has(root.type)) {
+        collect(root, 0);
+      } else {
+        for (const child of root.children) collect(child, 1);
+      }
+    }
+  } else {
+    // Trial balance: all nodes
+    for (const root of roots) collect(root, 0);
+  }
+
+  return result;
+}
+
 export async function getDashboardHandler(_request: FastifyRequest, reply: FastifyReply) {
   const pool = getPool();
 
@@ -259,27 +404,10 @@ export async function getTrialBalanceHandler(request: FastifyRequest, reply: Fas
 
   let dateFilter = '';
   const params: any[] = [];
-  if (query.from) {
-    dateFilter += ' AND gl.entry_date >= ?';
-    params.push(query.from);
-  }
-  if (query.to) {
-    dateFilter += ' AND gl.entry_date <= ?';
-    params.push(query.to);
-  }
+  if (query.from) { dateFilter += ' AND gl.entry_date >= ?'; params.push(query.from); }
+  if (query.to) { dateFilter += ' AND gl.entry_date <= ?'; params.push(query.to); }
 
-  const [rows] = await pool.execute<RowData>(
-    `SELECT gl.account_id, a.code, a.name, a.type,
-            COALESCE(SUM(gl.debit), 0) AS total_debits,
-            COALESCE(SUM(gl.credit), 0) AS total_credits,
-            COALESCE(SUM(gl.debit), 0) - COALESCE(SUM(gl.credit), 0) AS balance
-     FROM general_ledger gl
-     JOIN chart_of_accounts a ON a.id = gl.account_id
-     WHERE 1=1${dateFilter}
-     GROUP BY gl.account_id, a.code, a.name, a.type
-     ORDER BY a.code`,
-    params
-  );
+  const rows = await buildHierarchicalReport(pool, dateFilter, params, null);
   return reply.send({ data: rows });
 }
 
@@ -292,18 +420,7 @@ export async function getIncomeStatementHandler(request: FastifyRequest, reply: 
   if (query.from) { dateFilter += ' AND gl.entry_date >= ?'; params.push(query.from); }
   if (query.to) { dateFilter += ' AND gl.entry_date <= ?'; params.push(query.to); }
 
-  const [rows] = await pool.execute<RowData>(
-    `SELECT gl.account_id, a.code, a.name, a.type,
-            COALESCE(SUM(gl.debit), 0) AS total_debits,
-            COALESCE(SUM(gl.credit), 0) AS total_credits,
-            COALESCE(SUM(gl.credit), 0) - COALESCE(SUM(gl.debit), 0) AS balance
-     FROM general_ledger gl
-     JOIN chart_of_accounts a ON a.id = gl.account_id
-     WHERE a.type IN ('revenue','expense','contra_revenue','contra_expense')${dateFilter}
-     GROUP BY gl.account_id, a.code, a.name, a.type
-     ORDER BY a.code`,
-    params
-  );
+  const rows = await buildHierarchicalReport(pool, dateFilter, params, ['revenue','expense','contra_revenue','contra_expense']);
   return reply.send({ data: rows });
 }
 
@@ -315,18 +432,7 @@ export async function getBalanceSheetHandler(request: FastifyRequest, reply: Fas
   let dateFilter = '';
   if (query.asOf) { dateFilter = ' AND gl.entry_date <= ?'; params.push(query.asOf); }
 
-  const [rows] = await pool.execute<RowData>(
-    `SELECT gl.account_id, a.code, a.name, a.type,
-            COALESCE(SUM(gl.debit), 0) AS total_debits,
-            COALESCE(SUM(gl.credit), 0) AS total_credits,
-            COALESCE(SUM(gl.debit), 0) - COALESCE(SUM(gl.credit), 0) AS balance
-     FROM general_ledger gl
-     JOIN chart_of_accounts a ON a.id = gl.account_id
-     WHERE a.type IN ('asset','liability','equity','contra_asset','contra_liability','contra_equity')${dateFilter}
-     GROUP BY gl.account_id, a.code, a.name, a.type
-     ORDER BY a.code`,
-    params
-  );
+  const rows = await buildHierarchicalReport(pool, dateFilter, params, ['asset','liability','equity','contra_asset','contra_liability','contra_equity']);
   return reply.send({ data: rows });
 }
 
