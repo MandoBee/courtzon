@@ -427,8 +427,30 @@ export const marketplaceService = {
       return s + (v.rateType === 'fixed' ? v.commission : (v.commission / 100) * adjustedShare);
     }, 0);
 
-    const taxAmount = 0;
-    const total = afterDiscount + shippingCost;
+    // Calculate tax per seller using active org-scoped (or global) tax rate
+    let taxAmount = 0;
+    for (const [sellerId, sellerShare] of sellerShares) {
+      const discountFactor = subtotal > 0 ? afterDiscount / subtotal : 1;
+      const adjustedShare = sellerShare * discountFactor;
+      const taxPool = getPool();
+      const [taxRows] = await taxPool.execute<any[]>(
+        `SELECT rate, type FROM tax_rates
+         WHERE is_active = 1 AND (organisation_id = ? OR organisation_id IS NULL)
+         ORDER BY (organisation_id IS NOT NULL) DESC, id ASC
+         LIMIT 1`,
+        [sellerId],
+      );
+      if (taxRows.length > 0) {
+        const taxRate = taxRows[0];
+        if (taxRate.type === 'fixed') {
+          taxAmount += Number(taxRate.rate);
+        } else {
+          taxAmount += Math.round(adjustedShare * Number(taxRate.rate)) / 100;
+        }
+      }
+    }
+
+    const total = Math.round((afterDiscount + shippingCost + taxAmount) * 100) / 100;
 
     const shippingAddress = addr;
 
