@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import api from '../../../services/api';
 import { Spinner, Pagination } from '../../../components/ui';
@@ -16,26 +16,29 @@ interface JournalEntry {
   reference: string;
 }
 
-interface TrialBalanceRow {
-  account_code: string;
-  account_name: string;
-  debit_total: number;
-  credit_total: number;
+interface ReportLine {
+  account_id: number;
+  code: string;
+  name: string;
+  type: string;
+  normal_side: string | null;
+  total_debits: number;
+  total_credits: number;
   balance: number;
+  level: number;
+  parent_id: number | null;
+  has_children: boolean;
 }
 
-interface IncomeStatementRow {
-  account_type: string;
-  account_code: string;
-  account_name: string;
-  total: number;
-}
-
-interface BalanceSheetRow {
-  account_type: string;
-  account_code: string;
-  account_name: string;
-  balance: number;
+interface IncomeStatementData {
+  lines: ReportLine[];
+  net_income: number;
+  net_revenue: number;
+  net_expense: number;
+  total_revenue: number;
+  total_expense: number;
+  contra_revenue: number;
+  contra_expense: number;
 }
 
 type Tab = 'journal' | 'trial-balance' | 'income-statement' | 'balance-sheet';
@@ -45,6 +48,17 @@ export default function GeneralLedgerPage() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
   const [filters, setFilters] = useState({ period_id: '', account_code: '', date_from: '', date_to: '' });
+  const [selectedOrg, setSelectedOrg] = useState('');
+  const [orgs, setOrgs] = useState<{ id: number; name: string }[]>([]);
+
+  useEffect(() => {
+    api.get('/organisations?limit=200').then((r) => {
+      const orgsList = r.data?.data ?? r.data ?? [];
+      if (Array.isArray(orgsList)) setOrgs(orgsList.map((o: any) => ({ id: o.id, name: o.name ?? o.organisationName ?? '' })));
+    }).catch(() => {});
+  }, []);
+
+  const orgParam = selectedOrg ? { organisationId: selectedOrg } : {};
 
   const { data: periods } = useQuery({
     queryKey: ['accounting', 'periods'],
@@ -58,28 +72,29 @@ export default function GeneralLedgerPage() {
   });
 
   const { data: trialBalance, isLoading: loadingTB } = useQuery({
-    queryKey: ['accounting', 'trial-balance'],
-    queryFn: () => api.get('/admin/accounting/trial-balance').then((r: any) => r.data.data || r.data),
+    queryKey: ['accounting', 'trial-balance', selectedOrg],
+    queryFn: () => api.get('/admin/accounting/trial-balance', { params: orgParam }).then((r: any) => r.data.data || r.data),
     enabled: tab === 'trial-balance',
   });
 
-  const { data: incomeStatement, isLoading: loadingIS } = useQuery({
-    queryKey: ['accounting', 'income-statement'],
-    queryFn: () => api.get('/admin/accounting/income-statement').then((r: any) => r.data.data || r.data),
+  const { data: incomeStatementData, isLoading: loadingIS } = useQuery({
+    queryKey: ['accounting', 'income-statement', selectedOrg],
+    queryFn: () => api.get('/admin/accounting/income-statement', { params: orgParam }).then((r: any) => r.data.data || r.data),
     enabled: tab === 'income-statement',
   });
 
   const { data: balanceSheet, isLoading: loadingBS } = useQuery({
-    queryKey: ['accounting', 'balance-sheet'],
-    queryFn: () => api.get('/admin/accounting/balance-sheet').then((r: any) => r.data.data || r.data),
+    queryKey: ['accounting', 'balance-sheet', selectedOrg],
+    queryFn: () => api.get('/admin/accounting/balance-sheet', { params: orgParam }).then((r: any) => r.data.data || r.data),
     enabled: tab === 'balance-sheet',
   });
 
   const entries: JournalEntry[] = journalData?.data || [];
   const total = journalData?.total || 0;
-  const tbRows: TrialBalanceRow[] = trialBalance || [];
-  const isRows: IncomeStatementRow[] = incomeStatement || [];
-  const bsRows: BalanceSheetRow[] = balanceSheet || [];
+  const tbRows: ReportLine[] = trialBalance || [];
+  const isData: IncomeStatementData | null = incomeStatementData?.lines ? incomeStatementData : null;
+  const isRows: ReportLine[] = incomeStatementData?.lines || (Array.isArray(incomeStatementData) ? incomeStatementData : []);
+  const bsRows: ReportLine[] = balanceSheet || [];
 
   const TABS: { key: Tab; label: string }[] = [
     { key: 'journal', label: 'Journal Entries' },
@@ -93,8 +108,21 @@ export default function GeneralLedgerPage() {
   return (
     <Can permission="accounting.gl.view">
       <div>
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center justify-between mb-6 gap-4 flex-wrap">
           <h1 className="text-2xl font-bold text-[var(--color-text)]">General Ledger</h1>
+          <div className="flex items-center gap-2">
+            <label className="text-sm text-[var(--color-text-muted)]">Organization:</label>
+            <select
+              value={selectedOrg}
+              onChange={(e) => { setSelectedOrg(e.target.value); }}
+              className="px-3 py-2 border rounded-[var(--radius-md)] bg-[var(--color-bg)] text-sm min-w-[200px]"
+            >
+              <option value="">All Organizations</option>
+              {orgs.map((org) => (
+                <option key={org.id} value={org.id}>{org.name}</option>
+              ))}
+            </select>
+          </div>
         </div>
 
         <div className="flex gap-1 mb-6 bg-[var(--color-bg)] rounded-[var(--radius-lg)] p-1 border border-[var(--color-border)] w-fit">
@@ -171,6 +199,7 @@ export default function GeneralLedgerPage() {
                   <tr className="border-b border-[var(--color-border)] bg-[var(--color-bg)]/50">
                     <th className="text-left px-4 py-3 font-medium text-[var(--color-text-muted)]">Code</th>
                     <th className="text-left px-4 py-3 font-medium text-[var(--color-text-muted)]">Account</th>
+                    <th className="text-left px-4 py-3 font-medium text-[var(--color-text-muted)]">Type</th>
                     <th className="text-right px-4 py-3 font-medium text-[var(--color-text-muted)]">Debit Total</th>
                     <th className="text-right px-4 py-3 font-medium text-[var(--color-text-muted)]">Credit Total</th>
                     <th className="text-right px-4 py-3 font-medium text-[var(--color-text-muted)]">Balance</th>
@@ -178,11 +207,12 @@ export default function GeneralLedgerPage() {
                 </thead>
                 <tbody className="divide-y divide-[var(--color-border)]">
                   {tbRows.map((r, i) => (
-                    <tr key={i} className="hover:bg-[var(--color-bg)]/30">
-                      <td className="px-4 py-3 text-xs font-mono text-[var(--color-text-muted)]">{r.account_code}</td>
-                      <td className="px-4 py-3 text-[var(--color-text)]">{r.account_name}</td>
-                      <td className="px-4 py-3 text-right font-mono">{r.debit_total ? fmt(r.debit_total) : '-'}</td>
-                      <td className="px-4 py-3 text-right font-mono">{r.credit_total ? fmt(r.credit_total) : '-'}</td>
+                    <tr key={i} className={`hover:bg-[var(--color-bg)]/30 ${r.level === 0 ? 'font-semibold' : ''} ${r.has_children ? 'text-[var(--color-primary)]' : ''}`}>
+                      <td className="px-4 py-3 text-xs font-mono text-[var(--color-text-muted)]" style={{ paddingLeft: `${r.level * 16 + 16}px` }}>{r.code}</td>
+                      <td className="px-4 py-3 text-[var(--color-text)]">{r.name}</td>
+                      <td className="px-4 py-3 text-xs text-[var(--color-text-muted)] capitalize">{r.type.replace(/_/g, ' ')}</td>
+                      <td className="px-4 py-3 text-right font-mono">{r.total_debits ? fmt(r.total_debits) : '-'}</td>
+                      <td className="px-4 py-3 text-right font-mono">{r.total_credits ? fmt(r.total_credits) : '-'}</td>
                       <td className={`px-4 py-3 text-right font-mono ${r.balance < 0 ? 'text-red-500' : 'text-[var(--color-text)]'}`}>{fmt(Math.abs(r.balance))} {r.balance < 0 ? 'CR' : 'DR'}</td>
                     </tr>
                   ))}
@@ -199,37 +229,72 @@ export default function GeneralLedgerPage() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-[var(--color-border)] bg-[var(--color-bg)]/50">
-                      <th className="text-left px-4 py-3 font-medium text-[var(--color-text-muted)]">Type</th>
                       <th className="text-left px-4 py-3 font-medium text-[var(--color-text-muted)]">Code</th>
                       <th className="text-left px-4 py-3 font-medium text-[var(--color-text-muted)]">Account</th>
+                      <th className="text-left px-4 py-3 font-medium text-[var(--color-text-muted)]">Type</th>
                       <th className="text-right px-4 py-3 font-medium text-[var(--color-text-muted)]">Amount</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[var(--color-border)]">
                     <tr className="bg-green-50 dark:bg-green-900/10"><td colSpan={4} className="px-4 py-2 text-sm font-semibold text-green-700 dark:text-green-400">Revenue</td></tr>
-                    {isRows.filter(r => r.account_type === 'revenue').map((r, i) => (
-                      <tr key={i} className="hover:bg-[var(--color-bg)]/30">
-                        <td className="px-4 py-2 text-[var(--color-text-muted)]">{r.account_type}</td>
-                        <td className="px-4 py-2 text-xs font-mono text-[var(--color-text-muted)]">{r.account_code}</td>
-                        <td className="px-4 py-2 text-[var(--color-text)]">{r.account_name}</td>
-                        <td className="px-4 py-2 text-right font-mono text-[var(--color-text)]">{fmt(r.total)}</td>
+                    {isRows.filter(r => r.type === 'revenue').map((r, i) => (
+                      <tr key={i} className={`hover:bg-[var(--color-bg)]/30 ${r.level === 0 ? 'font-semibold' : ''}`}>
+                        <td className="px-4 py-2 text-xs font-mono text-[var(--color-text-muted)]" style={{ paddingLeft: `${r.level * 16 + 16}px` }}>{r.code}</td>
+                        <td className="px-4 py-2 text-[var(--color-text)]">{r.name}</td>
+                        <td className="px-4 py-2 text-xs text-[var(--color-text-muted)] capitalize">{r.type.replace(/_/g, ' ')}</td>
+                        <td className="px-4 py-2 text-right font-mono text-[var(--color-text)]">{fmt(r.balance)}</td>
                       </tr>
                     ))}
+                    {isRows.filter(r => r.type === 'contra_revenue').length > 0 && (
+                      <>
+                        <tr className="bg-orange-50 dark:bg-orange-900/10"><td colSpan={4} className="px-4 py-2 text-sm font-semibold text-orange-700 dark:text-orange-400">Contra Revenue</td></tr>
+                        {isRows.filter(r => r.type === 'contra_revenue').map((r, i) => (
+                          <tr key={i} className={`hover:bg-[var(--color-bg)]/30 ${r.level === 0 ? 'font-semibold' : ''}`}>
+                            <td className="px-4 py-2 text-xs font-mono text-[var(--color-text-muted)]" style={{ paddingLeft: `${r.level * 16 + 16}px` }}>{r.code}</td>
+                            <td className="px-4 py-2 text-[var(--color-text)]">{r.name}</td>
+                            <td className="px-4 py-2 text-xs text-[var(--color-text-muted)] capitalize">{r.type.replace(/_/g, ' ')}</td>
+                            <td className="px-4 py-2 text-right font-mono text-[var(--color-text)]">({fmt(Math.abs(r.balance))})</td>
+                          </tr>
+                        ))}
+                      </>
+                    )}
                     <tr className="bg-red-50 dark:bg-red-900/10"><td colSpan={4} className="px-4 py-2 text-sm font-semibold text-red-700 dark:text-red-400">Expenses</td></tr>
-                    {isRows.filter(r => r.account_type === 'expense').map((r, i) => (
-                      <tr key={i} className="hover:bg-[var(--color-bg)]/30">
-                        <td className="px-4 py-2 text-[var(--color-text-muted)]">{r.account_type}</td>
-                        <td className="px-4 py-2 text-xs font-mono text-[var(--color-text-muted)]">{r.account_code}</td>
-                        <td className="px-4 py-2 text-[var(--color-text)]">{r.account_name}</td>
-                        <td className="px-4 py-2 text-right font-mono text-[var(--color-text)]">{fmt(r.total)}</td>
+                    {isRows.filter(r => r.type === 'expense').map((r, i) => (
+                      <tr key={i} className={`hover:bg-[var(--color-bg)]/30 ${r.level === 0 ? 'font-semibold' : ''}`}>
+                        <td className="px-4 py-2 text-xs font-mono text-[var(--color-text-muted)]" style={{ paddingLeft: `${r.level * 16 + 16}px` }}>{r.code}</td>
+                        <td className="px-4 py-2 text-[var(--color-text)]">{r.name}</td>
+                        <td className="px-4 py-2 text-xs text-[var(--color-text-muted)] capitalize">{r.type.replace(/_/g, ' ')}</td>
+                        <td className="px-4 py-2 text-right font-mono text-[var(--color-text)]">{fmt(Math.abs(r.balance))}</td>
                       </tr>
                     ))}
+                    {isRows.filter(r => r.type === 'contra_expense').length > 0 && (
+                      <>
+                        <tr className="bg-amber-50 dark:bg-amber-900/10"><td colSpan={4} className="px-4 py-2 text-sm font-semibold text-amber-700 dark:text-amber-400">Contra Expense</td></tr>
+                        {isRows.filter(r => r.type === 'contra_expense').map((r, i) => (
+                          <tr key={i} className={`hover:bg-[var(--color-bg)]/30 ${r.level === 0 ? 'font-semibold' : ''}`}>
+                            <td className="px-4 py-2 text-xs font-mono text-[var(--color-text-muted)]" style={{ paddingLeft: `${r.level * 16 + 16}px` }}>{r.code}</td>
+                            <td className="px-4 py-2 text-[var(--color-text)]">{r.name}</td>
+                            <td className="px-4 py-2 text-xs text-[var(--color-text-muted)] capitalize">{r.type.replace(/_/g, ' ')}</td>
+                            <td className="px-4 py-2 text-right font-mono text-[var(--color-text)]">{fmt(r.balance)}</td>
+                          </tr>
+                        ))}
+                      </>
+                    )}
                   </tbody>
                 </table>
-                <div className="px-4 py-3 border-t border-[var(--color-border)] flex justify-end">
-                  <span className="text-sm font-semibold text-[var(--color-text)]">
-                    Net Income: {fmt(isRows.filter(r => r.account_type === 'revenue').reduce((s, r) => s + r.total, 0) - isRows.filter(r => r.account_type === 'expense').reduce((s, r) => s + r.total, 0))}
-                  </span>
+                <div className="px-4 py-3 border-t border-[var(--color-border)] space-y-1">
+                  <div className="flex justify-end gap-4 text-sm">
+                    <span className="text-[var(--color-text-muted)]">Net Revenue:</span>
+                    <span className="font-mono text-[var(--color-text)]">{fmt(isData?.net_revenue ?? 0)}</span>
+                  </div>
+                  <div className="flex justify-end gap-4 text-sm">
+                    <span className="text-[var(--color-text-muted)]">Net Expense:</span>
+                    <span className="font-mono text-[var(--color-text)]">{fmt(isData?.net_expense ?? 0)}</span>
+                  </div>
+                  <div className="flex justify-end gap-4 text-base font-bold border-t border-[var(--color-border)] pt-2 mt-1">
+                    <span className="text-[var(--color-text)]">Net Income:</span>
+                    <span className={`font-mono ${(isData?.net_income ?? 0) >= 0 ? 'text-green-600' : 'text-red-500'}`}>{fmt(isData?.net_income ?? 0)}</span>
+                  </div>
                 </div>
               </>
             )}
@@ -243,28 +308,28 @@ export default function GeneralLedgerPage() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-[var(--color-border)] bg-[var(--color-bg)]/50">
-                      <th className="text-left px-4 py-3 font-medium text-[var(--color-text-muted)]">Type</th>
                       <th className="text-left px-4 py-3 font-medium text-[var(--color-text-muted)]">Code</th>
                       <th className="text-left px-4 py-3 font-medium text-[var(--color-text-muted)]">Account</th>
+                      <th className="text-left px-4 py-3 font-medium text-[var(--color-text-muted)]">Type</th>
                       <th className="text-right px-4 py-3 font-medium text-[var(--color-text-muted)]">Balance</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[var(--color-border)]">
                     <tr className="bg-blue-50 dark:bg-blue-900/10"><td colSpan={4} className="px-4 py-2 text-sm font-semibold text-blue-700 dark:text-blue-400">Assets</td></tr>
-                    {bsRows.filter(r => r.account_type === 'asset').map((r, i) => (
-                      <tr key={i} className="hover:bg-[var(--color-bg)]/30">
-                        <td className="px-4 py-2 text-[var(--color-text-muted)]">{r.account_type}</td>
-                        <td className="px-4 py-2 text-xs font-mono text-[var(--color-text-muted)]">{r.account_code}</td>
-                        <td className="px-4 py-2 text-[var(--color-text)]">{r.account_name}</td>
+                    {bsRows.filter(r => r.type === 'asset' || r.type === 'contra_asset').map((r, i) => (
+                      <tr key={i} className={`hover:bg-[var(--color-bg)]/30 ${r.level === 0 ? 'font-semibold' : ''}`}>
+                        <td className="px-4 py-2 text-xs font-mono text-[var(--color-text-muted)]" style={{ paddingLeft: `${r.level * 16 + 16}px` }}>{r.code}</td>
+                        <td className="px-4 py-2 text-[var(--color-text)]">{r.name}</td>
+                        <td className="px-4 py-2 text-xs text-[var(--color-text-muted)] capitalize">{r.type.replace(/_/g, ' ')}</td>
                         <td className="px-4 py-2 text-right font-mono text-[var(--color-text)]">{fmt(r.balance)}</td>
                       </tr>
                     ))}
                     <tr className="bg-amber-50 dark:bg-amber-900/10"><td colSpan={4} className="px-4 py-2 text-sm font-semibold text-amber-700 dark:text-amber-400">Liabilities & Equity</td></tr>
-                    {bsRows.filter(r => r.account_type === 'liability' || r.account_type === 'equity').map((r, i) => (
-                      <tr key={i} className="hover:bg-[var(--color-bg)]/30">
-                        <td className="px-4 py-2 text-[var(--color-text-muted)]">{r.account_type}</td>
-                        <td className="px-4 py-2 text-xs font-mono text-[var(--color-text-muted)]">{r.account_code}</td>
-                        <td className="px-4 py-2 text-[var(--color-text)]">{r.account_name}</td>
+                    {bsRows.filter(r => r.type === 'liability' || r.type === 'equity' || r.type === 'contra_liability' || r.type === 'contra_equity').map((r, i) => (
+                      <tr key={i} className={`hover:bg-[var(--color-bg)]/30 ${r.level === 0 ? 'font-semibold' : ''}`}>
+                        <td className="px-4 py-2 text-xs font-mono text-[var(--color-text-muted)]" style={{ paddingLeft: `${r.level * 16 + 16}px` }}>{r.code}</td>
+                        <td className="px-4 py-2 text-[var(--color-text)]">{r.name}</td>
+                        <td className="px-4 py-2 text-xs text-[var(--color-text-muted)] capitalize">{r.type.replace(/_/g, ' ')}</td>
                         <td className="px-4 py-2 text-right font-mono text-[var(--color-text)]">{fmt(r.balance)}</td>
                       </tr>
                     ))}

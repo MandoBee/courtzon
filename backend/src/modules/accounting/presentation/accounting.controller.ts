@@ -39,13 +39,21 @@ async function buildHierarchicalReport(
   dateFilter: string,
   params: any[],
   typeFilter: string[] | null,
+  organisationId: number | null = null,
 ): Promise<ReportLine[]> {
-  // 1. Fetch COA tree
+  // 1. Fetch COA tree (global + org-owned if scoped)
+  const coaAllParams: any[] = [];
+  let coaWhere = 'organisation_id IS NULL';
+  if (organisationId != null) {
+    coaWhere = '(organisation_id IS NULL OR organisation_id = ?)';
+    coaAllParams.push(organisationId);
+  }
   const [coaRows] = await pool.execute<RowData>(
     `SELECT id, code, name, type, normal_side, parent_id, organisation_id, is_system
      FROM chart_of_accounts
-     WHERE organisation_id IS NULL AND is_active = 1
-     ORDER BY code`
+     WHERE ${coaWhere} AND is_active = 1
+     ORDER BY code`,
+    coaAllParams
   );
 
   const coaMap = new Map<number, CoaNode>();
@@ -70,12 +78,18 @@ async function buildHierarchicalReport(
     params.push(...typeFilter);
   }
 
+  let orgClause = '';
+  if (organisationId != null) {
+    orgClause = ' AND gl.organisation_id = ?';
+    params.push(organisationId);
+  }
+
   const [glRows] = await pool.execute<RowData>(
     `SELECT gl.account_id, COALESCE(SUM(gl.debit), 0) AS total_debits,
             COALESCE(SUM(gl.credit), 0) AS total_credits
      FROM general_ledger gl
      JOIN chart_of_accounts a ON a.id = gl.account_id
-     WHERE 1=1${dateFilter}${typeClause}
+     WHERE 1=1${dateFilter}${typeClause}${orgClause}
      GROUP BY gl.account_id`,
     params
   );
@@ -398,47 +412,111 @@ export async function openPeriodHandler(request: FastifyRequest, reply: FastifyR
   return reply.send({ data: { id: Number(id), status: 'open' } });
 }
 
+async function validateOrgAccess(userId: number, orgId: number | null): Promise<void> {
+  if (orgId == null) return;
+  const pool = getPool();
+  const [rows] = await pool.execute<RowData>(
+    `SELECT 1 FROM user_organisations WHERE user_id = ? AND organisation_id = ? LIMIT 1`,
+    [userId, orgId],
+  );
+  if (!rows.length) {
+    const [ownerRows] = await pool.execute<RowData>(
+      `SELECT 1 FROM organisations WHERE id = ? AND owner_id = ? AND deleted_at IS NULL LIMIT 1`,
+      [orgId, userId],
+    );
+    if (!ownerRows.length) {
+      throw new AppError('You do not have access to this organisation', 403, 'FORBIDDEN');
+    }
+  }
+}
+
 export async function getTrialBalanceHandler(request: FastifyRequest, reply: FastifyReply) {
   const pool = getPool();
   const query = request.query as any;
+  const userId = (request as any).userId;
+  const organisationId = query.organisationId ? Number(query.organisationId) : null;
+
+  await validateOrgAccess(userId, organisationId);
 
   let dateFilter = '';
   const params: any[] = [];
   if (query.from) { dateFilter += ' AND gl.entry_date >= ?'; params.push(query.from); }
   if (query.to) { dateFilter += ' AND gl.entry_date <= ?'; params.push(query.to); }
 
-  const rows = await buildHierarchicalReport(pool, dateFilter, params, null);
+  const rows = await buildHierarchicalReport(pool, dateFilter, params, null, organisationId);
   return reply.send({ data: rows });
 }
 
 export async function getIncomeStatementHandler(request: FastifyRequest, reply: FastifyReply) {
   const pool = getPool();
   const query = request.query as any;
+  const userId = (request as any).userId;
+  const organisationId = query.organisationId ? Number(query.organisationId) : null;
   const params: any[] = [];
+
+  await validateOrgAccess(userId, organisationId);
 
   let dateFilter = '';
   if (query.from) { dateFilter += ' AND gl.entry_date >= ?'; params.push(query.from); }
   if (query.to) { dateFilter += ' AND gl.entry_date <= ?'; params.push(query.to); }
 
-  const rows = await buildHierarchicalReport(pool, dateFilter, params, ['revenue','expense','contra_revenue','contra_expense']);
-  return reply.send({ data: rows });
+  const rows = await buildHierarchicalReport(pool, dateFilter, params, ['revenue','expense','contra_revenue','contra_expense'], organisationId);
+
+  const totalRevenue = rows
+    .filter(r => r.type === 'revenue')
+    .reduce((sum, r) => sum + r.balance, 0);
+  const totalContraRevenue = rows
+    .filter(r => r.type === 'contra_revenue')
+    .reduce((sum, r) => sum + r.balance, 0);
+  const totalExpense = rows
+    .filter(r => r.type === 'expense')
+    .reduce((sum, r) => sum + r.balance, 0);
+  const totalContraExpense = rows
+    .filter(r => r.type === 'contra_expense')
+    .reduce((sum, r) => sum + r.balance, 0);
+
+  const netRevenue = totalRevenue - totalContraRevenue;
+  const netExpense = totalExpense - totalContraExpense;
+  const netIncome = netRevenue - netExpense;
+
+  return reply.send({
+    data: {
+      lines: rows,
+      net_income: Math.round(netIncome * 100) / 100,
+      net_revenue: Math.round(netRevenue * 100) / 100,
+      net_expense: Math.round(netExpense * 100) / 100,
+      total_revenue: Math.round(totalRevenue * 100) / 100,
+      total_expense: Math.round(totalExpense * 100) / 100,
+      contra_revenue: Math.round(totalContraRevenue * 100) / 100,
+      contra_expense: Math.round(totalContraExpense * 100) / 100,
+    },
+  });
 }
 
 export async function getBalanceSheetHandler(request: FastifyRequest, reply: FastifyReply) {
   const pool = getPool();
   const query = request.query as any;
+  const userId = (request as any).userId;
+  const organisationId = query.organisationId ? Number(query.organisationId) : null;
   const params: any[] = [];
+
+  await validateOrgAccess(userId, organisationId);
 
   let dateFilter = '';
   if (query.asOf) { dateFilter = ' AND gl.entry_date <= ?'; params.push(query.asOf); }
 
-  const rows = await buildHierarchicalReport(pool, dateFilter, params, ['asset','liability','equity','contra_asset','contra_liability','contra_equity']);
+  const rows = await buildHierarchicalReport(pool, dateFilter, params, ['asset','liability','equity','contra_asset','contra_liability','contra_equity'], organisationId);
   return reply.send({ data: rows });
 }
 
 export async function getAccountLedgerHandler(request: FastifyRequest, reply: FastifyReply) {
   const pool = getPool();
   const { accountId } = request.params as any;
+  const query = request.query as any;
+  const userId = (request as any).userId;
+  const organisationId = query.organisationId ? Number(query.organisationId) : null;
+
+  await validateOrgAccess(userId, organisationId);
 
   const [account] = await pool.execute<RowData>(
     `SELECT * FROM chart_of_accounts WHERE id = ?`, [Number(accountId)]
@@ -447,14 +525,15 @@ export async function getAccountLedgerHandler(request: FastifyRequest, reply: Fa
     throw new NotFoundError('Account', ErrorCodes.ACCOUNT_NOT_FOUND);
   }
 
-  const query = request.query as any;
   let dateFilter = '';
+  let orgFilter = '';
   const params: any[] = [Number(accountId)];
   if (query.from) { dateFilter += ' AND entry_date >= ?'; params.push(query.from); }
   if (query.to) { dateFilter += ' AND entry_date <= ?'; params.push(query.to); }
+  if (organisationId != null) { orgFilter = ' AND organisation_id = ?'; params.push(organisationId); }
 
   const [rows] = await pool.execute<RowData>(
-    `SELECT * FROM general_ledger WHERE account_id = ?${dateFilter} ORDER BY entry_date ASC, id ASC`,
+    `SELECT * FROM general_ledger WHERE account_id = ?${dateFilter}${orgFilter} ORDER BY entry_date ASC, id ASC`,
     params
   );
   return reply.send({ data: { account: account[0], entries: rows } });
