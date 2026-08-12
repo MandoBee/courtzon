@@ -1,10 +1,11 @@
 import { eventBusV2 } from '../../../shared/event-bus/event-bus.v2.js';
 import { accountingEngineService } from './accounting-engine.service.js';
-import { ledgerService } from './ledger.service.js';
 import { ledgerRepository } from '../infrastructure/repositories/ledger.repository.js';
+import { glProjectionService } from './gl-projection.service.js';
 import { getPool } from '../../../database/mysql.js';
 import type { RowDataPacket } from 'mysql2';
-import type { SourceType, LedgerLineInput, EntrySide } from '../domain/ledger-aggregate.js';
+import type { SourceType, LedgerLineInput, EntrySide, LedgerEntry } from '../domain/ledger-aggregate.js';
+import { createLedgerLines, validateLedgerBalance } from '../domain/ledger-aggregate.js';
 import { createModuleLogger } from '../../../shared/utils/logger.js';
 
 const log = createModuleLogger('accounting-listener');
@@ -73,8 +74,48 @@ async function postAccountingEvent(
     description,
   }));
 
-  await ledgerService.recordAccountingTransaction(transactionId, lines);
-  log.info({ eventType, sourceType, sourceId, organisationId, lines: lines.length }, 'Accounting posting created');
+  const entries = createLedgerLines(lines);
+  if (!validateLedgerBalance(entries)) {
+    throw new Error('Ledger lines are not balanced');
+  }
+
+  const recordedAt = entries[0]?.recordedAt || new Date().toISOString().slice(0, 19).replace('T', ' ');
+  const entryDate = recordedAt.slice(0, 10);
+  const periodId = await glProjectionService.resolvePeriod(entryDate, organisationId);
+  await glProjectionService.validateOpenPeriod(periodId);
+
+  const pool = getPool();
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+
+    await ledgerRepository.createEntries(entries, conn);
+
+    const projectable = entries.map(e => ({
+      sourceType: e.sourceType,
+      sourceId: e.sourceId,
+      eventType: e.eventType ?? null,
+      organisationId: e.organisationId ?? null,
+      chartAccountId: e.chartAccountId ?? null,
+      side: e.side,
+      amount: e.amount,
+      description: e.description,
+      recordedAt: e.recordedAt,
+    }));
+    await glProjectionService.projectEntries(projectable, periodId, conn);
+
+    await conn.commit();
+    log.info({ eventType, sourceType, sourceId, organisationId, lines: lines.length }, 'Accounting posting created');
+  } catch (err: any) {
+    await conn.rollback();
+    if (err?.code === 'ER_DUP_ENTRY') {
+      log.info({ err: err.message }, 'Duplicate — idempotent rollback from DB constraint');
+      return;
+    }
+    throw err;
+  } finally {
+    conn.release();
+  }
 }
 
 export function registerAccountingEventListeners(): void {
@@ -325,3 +366,5 @@ export function registerAccountingEventListeners(): void {
 
   log.info('Accounting event listeners registered');
 }
+
+export { postAccountingEvent };

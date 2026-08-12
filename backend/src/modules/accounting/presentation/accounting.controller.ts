@@ -430,6 +430,37 @@ async function validateOrgAccess(userId: number, orgId: number | null): Promise<
   }
 }
 
+async function createDualEntry(
+  conn: mysql.PoolConnection,
+  p: {
+    sourceType: string; sourceId: number; eventType: string;
+    orgId: number | null; periodId: number; accountId: number;
+    entryDate: string; debit: number; credit: number;
+    refType: string; refId: string | number | null; userId: number;
+    description?: string | null;
+  },
+): Promise<void> {
+  const side: 'debit' | 'credit' = p.debit > 0 ? 'debit' : 'credit';
+  const amount = p.debit > 0 ? p.debit : p.credit;
+  const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
+  const desc = p.description || '';
+
+  await conn.execute(
+    `INSERT INTO ledger_entries (transaction_id, source_type, source_id, event_type, organisation_id, chart_account_id, account_type, side, amount, currency, description, reference_id, recorded_at)
+     VALUES (?, ?, ?, ?, ?, ?, 'platform_revenue', ?, ?, 'EGP', ?, ?, ?)`,
+    [`dual_${p.sourceType}_${p.sourceId}_${Date.now()}`, p.sourceType, p.sourceId,
+     p.eventType, p.orgId, p.accountId, side, amount,
+     desc, String(p.accountId), now],
+  );
+
+  await conn.execute(
+    `INSERT INTO general_ledger (organisation_id, period_id, account_id, entry_date, debit, credit, balance, reference_type, reference_id, description, created_by)
+     VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?)`,
+    [p.orgId, p.periodId, p.accountId, p.entryDate,
+     p.debit, p.credit, p.refType, p.refId, desc, p.userId],
+  );
+}
+
 export async function getTrialBalanceHandler(request: FastifyRequest, reply: FastifyReply) {
   const pool = getPool();
   const query = request.query as any;
@@ -543,6 +574,11 @@ export async function createJournalEntryHandler(request: FastifyRequest, reply: 
   const pool = getPool();
   const body = request.body as any;
   const userId = (request as any).userId;
+  const organisationId = body.organisationId ? Number(body.organisationId) : null;
+
+  if (organisationId != null) {
+    await validateOrgAccess(userId, organisationId);
+  }
 
   if (!body.entries || !Array.isArray(body.entries) || body.entries.length < 2) {
     throw new AppError('Journal entry must have at least 2 lines', 400, 'VALIDATION_ERROR');
@@ -565,29 +601,59 @@ export async function createJournalEntryHandler(request: FastifyRequest, reply: 
   if (periods[0].status === 'closed' || periods[0].status === 'locked') {
     throw new AppError('Accounting period is closed', 409, 'CONFLICT', { code: ErrorCodes.PERIOD_ALREADY_CLOSED });
   }
+  const periodId = periods[0].id;
+
+  const transactionId = `journal_${Date.now()}_${userId}`;
+  const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
+  const refType = body.referenceType || 'journal';
+  const refId = body.referenceId || null;
 
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
 
-    const insertIds: number[] = [];
+    // 1. Create canonical ledger_entries
+    const entryIds: number[] = [];
     for (const entry of body.entries) {
-      const [result] = await conn.execute<RowData>(
-        `INSERT INTO general_ledger (period_id, account_id, entry_date, debit, credit, balance, reference_type, reference_id, description, created_by)
-         VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, ?)`,
+      const debit = Number(entry.debit || 0);
+      const credit = Number(entry.credit || 0);
+      const side = debit > 0 ? 'debit' : 'credit';
+      const amount = debit > 0 ? debit : credit;
+
+      const [leResult] = await conn.execute<RowData>(
+        `INSERT INTO ledger_entries (transaction_id, source_type, source_id, event_type, organisation_id, chart_account_id, account_type, side, amount, currency, description, reference_id, recorded_at)
+         VALUES (?, 'journal', ?, 'manual_journal', ?, ?, 'platform_revenue', ?, ?, 'EGP', ?, ?, ?)`,
         [
-          periods[0].id,
+          transactionId,
+          entry.accountId,
+          organisationId,
+          entry.accountId,
+          side,
+          amount,
+          entry.description || body.description || null,
+          String(entry.accountId),
+          now,
+        ]
+      );
+      entryIds.push((leResult as any).insertId);
+
+      // 2. Project to general_ledger
+      await conn.execute(
+        `INSERT INTO general_ledger (organisation_id, period_id, account_id, entry_date, debit, credit, balance, reference_type, reference_id, description, created_by)
+         VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?)`,
+        [
+          organisationId,
+          periodId,
           entry.accountId,
           body.entryDate,
-          entry.debit || 0,
-          entry.credit || 0,
-          body.referenceType || null,
-          body.referenceId || null,
+          debit,
+          credit,
+          refType,
+          refId,
           entry.description || body.description || null,
           userId,
         ]
       );
-      insertIds.push((result as any).insertId);
     }
 
     await conn.commit();
@@ -595,14 +661,14 @@ export async function createJournalEntryHandler(request: FastifyRequest, reply: 
     recordAudit({
       actorId: userId,
       action: 'ACCOUNTING.JOURNAL.CREATE',
-      entityType: 'general_ledger',
-      entityId: insertIds[0],
-      afterState: { entryDate: body.entryDate, lineCount: body.entries.length, totalDebits, totalCredits },
+      entityType: 'journal_entry',
+      entityId: entryIds[0],
+      afterState: { entryDate: body.entryDate, lineCount: body.entries.length, totalDebits, totalCredits, organisationId },
       ipAddress: request.ip,
       userAgent: request.headers['user-agent'],
     });
 
-    return reply.status(201).send({ data: { ids: insertIds } });
+    return reply.status(201).send({ data: { ids: entryIds } });
   } catch (err) {
     await conn.rollback();
     throw err;
@@ -798,6 +864,7 @@ export async function issueInvoiceHandler(request: FastifyRequest, reply: Fastif
     await conn.execute(
       `UPDATE invoices SET status = 'issued' WHERE id = ?`, [Number(id)]
     );
+    const periodId = periods[0].id;
 
     if (eventType === 'purchase_invoice_issue') {
       const expenseId = conceptToAccount.get('expense');
@@ -805,16 +872,20 @@ export async function issueInvoiceHandler(request: FastifyRequest, reply: Fastif
       if (!expenseId || !payableId) {
         throw new AppError('Missing required account mapping for purchase_invoice_issue', 500, 'CONFIG_ERROR');
       }
-      await conn.execute(
-        `INSERT INTO general_ledger (organisation_id, period_id, account_id, entry_date, debit, credit, balance, reference_type, reference_id, description, created_by)
-         VALUES (?, ?, ?, ?, ?, ?, 0, 'invoice', ?, ?, ?)`,
-        [orgId, periods[0].id, expenseId, inv.issue_date, inv.total, 0, Number(id), `Purchase invoice ${inv.invoice_number}`, userId]
-      );
-      await conn.execute(
-        `INSERT INTO general_ledger (organisation_id, period_id, account_id, entry_date, debit, credit, balance, reference_type, reference_id, description, created_by)
-         VALUES (?, ?, ?, ?, ?, ?, 0, 'invoice', ?, ?, ?)`,
-        [orgId, periods[0].id, payableId, inv.issue_date, 0, inv.total, Number(id), `Purchase invoice ${inv.invoice_number}`, userId]
-      );
+      await createDualEntry(conn, {
+        sourceType: 'invoice', sourceId: Number(id), eventType,
+        orgId, periodId, accountId: expenseId,
+        entryDate: inv.issue_date, debit: Number(inv.total), credit: 0,
+        refType: 'invoice', refId: Number(id), userId,
+        description: `Purchase invoice ${inv.invoice_number}`,
+      });
+      await createDualEntry(conn, {
+        sourceType: 'invoice', sourceId: Number(id), eventType,
+        orgId, periodId, accountId: payableId,
+        entryDate: inv.issue_date, debit: 0, credit: Number(inv.total),
+        refType: 'invoice', refId: Number(id), userId,
+        description: `Purchase invoice ${inv.invoice_number}`,
+      });
     } else {
       const receivableId = conceptToAccount.get('receivable');
       const revenueId = conceptToAccount.get('revenue');
@@ -822,27 +893,29 @@ export async function issueInvoiceHandler(request: FastifyRequest, reply: Fastif
       if (!receivableId || !revenueId) {
         throw new AppError('Missing required account mapping for invoice_issue', 500, 'CONFIG_ERROR');
       }
-      // Debit Receivable (total including tax)
-      await conn.execute(
-        `INSERT INTO general_ledger (organisation_id, period_id, account_id, entry_date, debit, credit, balance, reference_type, reference_id, description, created_by)
-         VALUES (?, ?, ?, ?, ?, ?, 0, 'invoice', ?, ?, ?)`,
-        [orgId, periods[0].id, receivableId, inv.issue_date, inv.total, 0, Number(id), `Invoice ${inv.invoice_number}`, userId]
-      );
-      // Credit Revenue (net amount = total - tax)
+      await createDualEntry(conn, {
+        sourceType: 'invoice', sourceId: Number(id), eventType,
+        orgId, periodId, accountId: receivableId,
+        entryDate: inv.issue_date, debit: Number(inv.total), credit: 0,
+        refType: 'invoice', refId: Number(id), userId,
+        description: `Invoice ${inv.invoice_number}`,
+      });
       const netRevenue = Number(inv.subtotal || inv.total - inv.tax_amount);
-      await conn.execute(
-        `INSERT INTO general_ledger (organisation_id, period_id, account_id, entry_date, debit, credit, balance, reference_type, reference_id, description, created_by)
-         VALUES (?, ?, ?, ?, ?, ?, 0, 'invoice', ?, ?, ?)`,
-        [orgId, periods[0].id, revenueId, inv.issue_date, 0, netRevenue, Number(id), `Invoice ${inv.invoice_number} (net revenue)`, userId]
-      );
-      // Credit Tax Liability (tax amount) — if mapped to same account as revenue, the engine would merge it;
-      // here in general_ledger we post it as a separate line if the account differs
+      await createDualEntry(conn, {
+        sourceType: 'invoice', sourceId: Number(id), eventType,
+        orgId, periodId, accountId: revenueId,
+        entryDate: inv.issue_date, debit: 0, credit: netRevenue,
+        refType: 'invoice', refId: Number(id), userId,
+        description: `Invoice ${inv.invoice_number} (net revenue)`,
+      });
       if (taxLiabilityId && Number(inv.tax_amount) > 0) {
-        await conn.execute(
-          `INSERT INTO general_ledger (organisation_id, period_id, account_id, entry_date, debit, credit, balance, reference_type, reference_id, description, created_by)
-           VALUES (?, ?, ?, ?, ?, ?, 0, 'invoice', ?, ?, ?)`,
-          [orgId, periods[0].id, taxLiabilityId, inv.issue_date, 0, Number(inv.tax_amount), Number(id), `Tax on invoice ${inv.invoice_number}`, userId]
-        );
+        await createDualEntry(conn, {
+          sourceType: 'invoice', sourceId: Number(id), eventType,
+          orgId, periodId, accountId: taxLiabilityId,
+          entryDate: inv.issue_date, debit: 0, credit: Number(inv.tax_amount),
+          refType: 'invoice', refId: Number(id), userId,
+          description: `Tax on invoice ${inv.invoice_number}`,
+        });
       }
     }
 
@@ -917,6 +990,7 @@ export async function recordInvoicePaymentHandler(request: FastifyRequest, reply
       `UPDATE invoices SET paid_amount = ?, status = ? WHERE id = ?`,
       [newPaidAmount, newStatus, Number(id)]
     );
+    const periodId = periods[0].id;
 
     if (eventType === 'purchase_invoice_payment') {
       const payableId = conceptToAccount.get('accounts_payable');
@@ -924,32 +998,40 @@ export async function recordInvoicePaymentHandler(request: FastifyRequest, reply
       if (!payableId || !cashBankId) {
         throw new AppError('Missing required account mapping for purchase_invoice_payment', 500, 'CONFIG_ERROR');
       }
-      await conn.execute(
-        `INSERT INTO general_ledger (organisation_id, period_id, account_id, entry_date, debit, credit, balance, reference_type, reference_id, description, created_by)
-         VALUES (?, ?, ?, CURDATE(), ?, ?, 0, 'invoice_payment', ?, ?, ?)`,
-        [orgId, periods[0].id, payableId, paymentAmount, 0, Number(id), `Payment for purchase invoice ${inv.invoice_number}`, userId]
-      );
-      await conn.execute(
-        `INSERT INTO general_ledger (organisation_id, period_id, account_id, entry_date, debit, credit, balance, reference_type, reference_id, description, created_by)
-         VALUES (?, ?, ?, CURDATE(), ?, ?, 0, 'invoice_payment', ?, ?, ?)`,
-        [orgId, periods[0].id, cashBankId, 0, paymentAmount, Number(id), `Payment for purchase invoice ${inv.invoice_number}`, userId]
-      );
+      await createDualEntry(conn, {
+        sourceType: 'invoice', sourceId: Number(id), eventType,
+        orgId, periodId, accountId: payableId,
+        entryDate: new Date().toISOString().slice(0, 10), debit: paymentAmount, credit: 0,
+        refType: 'invoice_payment', refId: Number(id), userId,
+        description: `Payment for purchase invoice ${inv.invoice_number}`,
+      });
+      await createDualEntry(conn, {
+        sourceType: 'invoice', sourceId: Number(id), eventType,
+        orgId, periodId, accountId: cashBankId,
+        entryDate: new Date().toISOString().slice(0, 10), debit: 0, credit: paymentAmount,
+        refType: 'invoice_payment', refId: Number(id), userId,
+        description: `Payment for purchase invoice ${inv.invoice_number}`,
+      });
     } else {
       const cashBankId = conceptToAccount.get('cash_bank');
       const receivableId = conceptToAccount.get('receivable');
       if (!cashBankId || !receivableId) {
         throw new AppError('Missing required account mapping for invoice_payment', 500, 'CONFIG_ERROR');
       }
-      await conn.execute(
-        `INSERT INTO general_ledger (organisation_id, period_id, account_id, entry_date, debit, credit, balance, reference_type, reference_id, description, created_by)
-         VALUES (?, ?, ?, CURDATE(), ?, ?, 0, 'invoice_payment', ?, ?, ?)`,
-        [orgId, periods[0].id, cashBankId, paymentAmount, 0, Number(id), `Payment for invoice ${inv.invoice_number}`, userId]
-      );
-      await conn.execute(
-        `INSERT INTO general_ledger (organisation_id, period_id, account_id, entry_date, debit, credit, balance, reference_type, reference_id, description, created_by)
-         VALUES (?, ?, ?, CURDATE(), ?, ?, 0, 'invoice_payment', ?, ?, ?)`,
-        [orgId, periods[0].id, receivableId, 0, paymentAmount, Number(id), `Payment for invoice ${inv.invoice_number}`, userId]
-      );
+      await createDualEntry(conn, {
+        sourceType: 'invoice', sourceId: Number(id), eventType,
+        orgId, periodId, accountId: cashBankId,
+        entryDate: new Date().toISOString().slice(0, 10), debit: paymentAmount, credit: 0,
+        refType: 'invoice_payment', refId: Number(id), userId,
+        description: `Payment for invoice ${inv.invoice_number}`,
+      });
+      await createDualEntry(conn, {
+        sourceType: 'invoice', sourceId: Number(id), eventType,
+        orgId, periodId, accountId: receivableId,
+        entryDate: new Date().toISOString().slice(0, 10), debit: 0, credit: paymentAmount,
+        refType: 'invoice_payment', refId: Number(id), userId,
+        description: `Payment for invoice ${inv.invoice_number}`,
+      });
     }
 
     await conn.commit();
@@ -1016,6 +1098,7 @@ export async function cancelInvoiceHandler(request: FastifyRequest, reply: Fasti
     await conn.execute(
       `UPDATE invoices SET status = 'cancelled' WHERE id = ?`, [Number(id)]
     );
+    const periodId = periods[0].id;
 
     if (eventType === 'purchase_invoice_cancel') {
       const payableId = conceptToAccount.get('accounts_payable');
@@ -1023,32 +1106,40 @@ export async function cancelInvoiceHandler(request: FastifyRequest, reply: Fasti
       if (!payableId || !expenseId) {
         throw new AppError('Missing required account mapping for purchase_invoice_cancel', 500, 'CONFIG_ERROR');
       }
-      await conn.execute(
-        `INSERT INTO general_ledger (organisation_id, period_id, account_id, entry_date, debit, credit, balance, reference_type, reference_id, description, created_by)
-         VALUES (?, ?, ?, CURDATE(), ?, ?, 0, 'invoice_cancel', ?, ?, ?)`,
-        [orgId, periods[0].id, payableId, Number(inv.total), 0, Number(id), `Reversal - cancelled purchase invoice ${inv.invoice_number}`, userId]
-      );
-      await conn.execute(
-        `INSERT INTO general_ledger (organisation_id, period_id, account_id, entry_date, debit, credit, balance, reference_type, reference_id, description, created_by)
-         VALUES (?, ?, ?, CURDATE(), ?, ?, 0, 'invoice_cancel', ?, ?, ?)`,
-        [orgId, periods[0].id, expenseId, 0, Number(inv.total), Number(id), `Reversal - cancelled purchase invoice ${inv.invoice_number}`, userId]
-      );
+      await createDualEntry(conn, {
+        sourceType: 'invoice', sourceId: Number(id), eventType,
+        orgId, periodId, accountId: payableId,
+        entryDate: new Date().toISOString().slice(0, 10), debit: Number(inv.total), credit: 0,
+        refType: 'invoice_cancel', refId: Number(id), userId,
+        description: `Reversal - cancelled purchase invoice ${inv.invoice_number}`,
+      });
+      await createDualEntry(conn, {
+        sourceType: 'invoice', sourceId: Number(id), eventType,
+        orgId, periodId, accountId: expenseId,
+        entryDate: new Date().toISOString().slice(0, 10), debit: 0, credit: Number(inv.total),
+        refType: 'invoice_cancel', refId: Number(id), userId,
+        description: `Reversal - cancelled purchase invoice ${inv.invoice_number}`,
+      });
     } else {
       const revenueId = conceptToAccount.get('revenue');
       const receivableId = conceptToAccount.get('receivable');
       if (!revenueId || !receivableId) {
         throw new AppError('Missing required account mapping for invoice_cancel', 500, 'CONFIG_ERROR');
       }
-      await conn.execute(
-        `INSERT INTO general_ledger (organisation_id, period_id, account_id, entry_date, debit, credit, balance, reference_type, reference_id, description, created_by)
-         VALUES (?, ?, ?, CURDATE(), ?, ?, 0, 'invoice_cancel', ?, ?, ?)`,
-        [orgId, periods[0].id, receivableId, 0, Number(inv.total), Number(id), `Reversal - cancelled invoice ${inv.invoice_number}`, userId]
-      );
-      await conn.execute(
-        `INSERT INTO general_ledger (organisation_id, period_id, account_id, entry_date, debit, credit, balance, reference_type, reference_id, description, created_by)
-         VALUES (?, ?, ?, CURDATE(), ?, ?, 0, 'invoice_cancel', ?, ?, ?)`,
-        [orgId, periods[0].id, revenueId, Number(inv.total), 0, Number(id), `Reversal - cancelled invoice ${inv.invoice_number}`, userId]
-      );
+      await createDualEntry(conn, {
+        sourceType: 'invoice', sourceId: Number(id), eventType,
+        orgId, periodId, accountId: receivableId,
+        entryDate: new Date().toISOString().slice(0, 10), debit: 0, credit: Number(inv.total),
+        refType: 'invoice_cancel', refId: Number(id), userId,
+        description: `Reversal - cancelled invoice ${inv.invoice_number}`,
+      });
+      await createDualEntry(conn, {
+        sourceType: 'invoice', sourceId: Number(id), eventType,
+        orgId, periodId, accountId: revenueId,
+        entryDate: new Date().toISOString().slice(0, 10), debit: Number(inv.total), credit: 0,
+        refType: 'invoice_cancel', refId: Number(id), userId,
+        description: `Reversal - cancelled invoice ${inv.invoice_number}`,
+      });
     }
 
     await conn.commit();
