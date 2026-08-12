@@ -192,6 +192,8 @@ async function postBookingRefundAccounting(bookingId: number, refundAmount: numb
     `Booking #${bookingId} refund`,
   );
 
+  const pool = getPool();
+
   // Coach: unsettled portion → payable reversal; settled portion → recovery.
   if (refund.coachUnsettled > 0) {
     await postAccountingEvent(
@@ -208,6 +210,12 @@ async function postBookingRefundAccounting(bookingId: number, refundAmount: numb
       currency,
       `Booking #${bookingId} coach post-settlement recovery`,
     );
+    // Cumulative recovery tracking (bounded at DB level — never exceeds settled).
+    await pool.execute(
+      `UPDATE bookings SET coach_recovered_amount = coach_recovered_amount + ?
+       WHERE id = ? AND coach_recovered_amount + ? <= coach_settled_amount`,
+      [refund.coachSettled, bookingId, refund.coachSettled],
+    );
   }
 
   // Org: settled portion → recovery (org already received settlement funds).
@@ -217,6 +225,11 @@ async function postBookingRefundAccounting(bookingId: number, refundAmount: numb
       { org_recovery_receivable: refund.orgSettled, booking_revenue: refund.orgSettled },
       currency,
       `Booking #${bookingId} org post-settlement recovery`,
+    );
+    await pool.execute(
+      `UPDATE bookings SET org_recovered_amount = org_recovered_amount + ?
+       WHERE id = ? AND org_recovered_amount + ? <= org_settled_amount`,
+      [refund.orgSettled, bookingId, refund.orgSettled],
     );
   }
 }

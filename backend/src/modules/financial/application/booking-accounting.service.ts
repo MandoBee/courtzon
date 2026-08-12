@@ -107,6 +107,12 @@ export interface RefundEconomics {
  * Splits the coach and org components into SETTLED (already paid via settlement)
  * and UNSETTLED portions. The settled portion requires recovery; the unsettled
  * portion is reversed through the normal payable/revenue reversal.
+ *
+ * Recovery is bounded by REMAINING recovery capacity:
+ *   remainingRecoverable = settledAmount - recoveredAmount
+ *   currentRecovery      = min(refundComponent, remainingRecoverable)
+ * This prevents multiple sequential refunds from over-recovering the same
+ * settled economics.
  */
 export async function computeRefundEconomics(bookingId: number, refundedAmount: number): Promise<RefundEconomics | null> {
   const econ = await resolveBookingEconomics(bookingId);
@@ -118,21 +124,32 @@ export async function computeRefundEconomics(bookingId: number, refundedAmount: 
   const ratio = Math.min(Math.max(refundedAmount / grossPayable, 0), 1);
   const rnd = (n: number) => Math.round(n * 100) / 100;
 
-  // Determine how much of coach/org economics has already been settled.
+  // Determine how much of coach/org economics has already been settled AND recovered.
   const pool = getPool();
   const [rows] = await pool.execute<RowData>(
-    `SELECT COALESCE(coach_settled_amount, 0) AS coach_settled, COALESCE(org_settled_amount, 0) AS org_settled FROM bookings WHERE id = ?`,
+    `SELECT COALESCE(coach_settled_amount, 0) AS coach_settled,
+            COALESCE(org_settled_amount, 0) AS org_settled,
+            COALESCE(coach_recovered_amount, 0) AS coach_recovered,
+            COALESCE(org_recovered_amount, 0) AS org_recovered
+     FROM bookings WHERE id = ?`,
     [bookingId],
   );
-  const coachSettledTotal = Number((rows as any[])[0]?.coach_settled ?? 0);
-  const orgSettledTotal = Number((rows as any[])[0]?.org_settled ?? 0);
+  const row = (rows as any[])[0] ?? {};
+  const coachSettledTotal = Number(row.coach_settled ?? 0);
+  const orgSettledTotal = Number(row.org_settled ?? 0);
+  const coachRecovered = Number(row.coach_recovered ?? 0);
+  const orgRecovered = Number(row.org_recovered ?? 0);
 
   const coachRefund = rnd(econ.coachAmount * ratio);
   const orgRefund = rnd(econ.orgAmount * ratio);
 
-  const coachSettled = rnd(Math.min(coachRefund, coachSettledTotal));
+  // Remaining recovery capacity (never negative)
+  const coachCapacity = Math.max(0, rnd(coachSettledTotal - coachRecovered));
+  const orgCapacity = Math.max(0, rnd(orgSettledTotal - orgRecovered));
+
+  const coachSettled = rnd(Math.min(coachRefund, coachCapacity));
   const coachUnsettled = rnd(coachRefund - coachSettled);
-  const orgSettled = rnd(Math.min(orgRefund, orgSettledTotal));
+  const orgSettled = rnd(Math.min(orgRefund, orgCapacity));
   const orgUnsettled = rnd(orgRefund - orgSettled);
 
   return {

@@ -136,4 +136,45 @@ describe('Post-Settlement Refund Recovery', () => {
     expect(refund!.taxAmount).toBeGreaterThan(0);
     expect(refund!.taxAmount).toBeLessThanOrEqual(9);
   });
+
+  it('9. cumulative recovery: 3x200 refunds against settled 500 → 200,400,500', async () => {
+    const bookingId = await insertBooking(27, { coach: 500, club: 500, commission: 0, coachSettled: 500, orgSettled: 500 });
+    const { bookingAccounting } = await import('../../financial/application/booking-accounting.service.js');
+
+    // Refund #1 = 200 → coach recovery 200
+    const r1 = await bookingAccounting.computeRefundEconomics(bookingId, 200);
+    expect(r1!.coachSettled).toBeCloseTo(200, 0);
+    expect(r1!.coachUnsettled).toBeCloseTo(0, 0);
+
+    // Simulate posting: update recovered amounts
+    await pool.execute(`UPDATE bookings SET coach_recovered_amount = coach_recovered_amount + ? WHERE id = ?`, [r1!.coachSettled, bookingId]);
+    await pool.execute(`UPDATE bookings SET org_recovered_amount = org_recovered_amount + ? WHERE id = ?`, [r1!.orgSettled, bookingId]);
+
+    // Refund #2 = 200 → coach recovery 200 (cumulative 400)
+    const r2 = await bookingAccounting.computeRefundEconomics(bookingId, 200);
+    expect(r2!.coachSettled).toBeCloseTo(200, 0);
+    await pool.execute(`UPDATE bookings SET coach_recovered_amount = coach_recovered_amount + ? WHERE id = ?`, [r2!.coachSettled, bookingId]);
+    await pool.execute(`UPDATE bookings SET org_recovered_amount = org_recovered_amount + ? WHERE id = ?`, [r2!.orgSettled, bookingId]);
+
+    // Refund #3 = 200 → only 100 remaining recoverable
+    const r3 = await bookingAccounting.computeRefundEconomics(bookingId, 200);
+    expect(r3!.coachSettled).toBeCloseTo(100, 0);
+    expect(r3!.coachUnsettled).toBeCloseTo(100, 0); // remaining reverses as unsettled
+
+    const [rows] = await pool.execute<RowData>(`SELECT coach_recovered_amount, org_recovered_amount FROM bookings WHERE id = ?`, [bookingId]);
+    expect(Number((rows as any[])[0].coach_recovered_amount)).toBeCloseTo(400, 0);
+    expect(Number((rows as any[])[0].org_recovered_amount)).toBeCloseTo(400, 0);
+  });
+
+  it('10. recovery never exceeds settled amount (DB bounded)', async () => {
+    const bookingId = await insertBooking(28, { coach: 500, club: 500, commission: 0, coachSettled: 500 });
+    // Attempt to recover more than settled — bounded UPDATE rejects
+    const [res] = await pool.execute<RowData>(
+      `UPDATE bookings SET coach_recovered_amount = coach_recovered_amount + ? WHERE id = ? AND coach_recovered_amount + ? <= coach_settled_amount`,
+      [600, bookingId, 600],
+    );
+    expect((res as any).affectedRows).toBe(0);
+    const [rows] = await pool.execute<RowData>(`SELECT coach_recovered_amount FROM bookings WHERE id = ?`, [bookingId]);
+    expect(Number((rows as any[])[0].coach_recovered_amount)).toBe(0);
+  });
 });
