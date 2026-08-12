@@ -44,10 +44,10 @@ export const EVENT_CONCEPTS: Record<string, { debit: string[]; credit: string[] 
   },
   marketplace_delivery: {
     debit: ['cost_of_revenue'],
-    credit: ['org_payable'],
+    credit: ['org_payable', 'tax_liability'],
   },
   marketplace_reversal: {
-    debit: ['org_payable'],
+    debit: ['org_payable', 'tax_liability'],
     credit: ['cost_of_revenue'],
   },
   withdrawal_request: {

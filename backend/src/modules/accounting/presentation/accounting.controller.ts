@@ -981,7 +981,17 @@ export async function issueInvoiceHandler(request: FastifyRequest, reply: Fastif
   }
 
   // Resolve accounts via concepts-based mapping (no hard-coded IDs)
-  const eventType = inv.invoice_type === 'purchase' ? 'purchase_invoice_issue' : 'invoice_issue';
+  const isPurchase = inv.invoice_type === 'purchase';
+  let eventType: string;
+  if (inv.invoice_type === 'credit_note') {
+    eventType = 'invoice_cancel';  // reversal of the original economic effect
+  } else if (inv.invoice_type === 'debit_note') {
+    eventType = 'invoice_issue';   // increase, similar to issue
+  } else if (inv.invoice_type === 'purchase') {
+    eventType = 'purchase_invoice_issue';
+  } else {
+    eventType = 'invoice_issue';
+  }
   const orgId: number | null = inv.organisation_id ?? null;
   const { accountingEngineService } = await import('../../financial/application/accounting-engine.service.js');
   const mapping = await accountingEngineService.resolveMapping(eventType, orgId);

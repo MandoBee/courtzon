@@ -246,6 +246,7 @@ const InvoicesPage = lazy(() => import('./pages/admin/accounting/InvoicesPage'))
 const TaxRatesPage = lazy(() => import('./pages/admin/accounting/TaxRatesPage'));
 const EventMappingsPage = lazy(() => import('./pages/admin/accounting/EventMappingsPage'));
 const AccountingTemplatesPage = lazy(() => import('./pages/admin/accounting/TemplatesPage'));
+const TaxSummaryPage = lazy(() => import('./pages/admin/accounting/TaxSummaryPage'));
 const SportsEnginePage = lazy(() => import('./pages/admin/sports/SportsEnginePage'));
 const HRDashboardPage = lazy(() => import('./pages/admin/hr/HRDashboardPage'));
 const DepartmentListPage = lazy(() => import('./pages/admin/hr/DepartmentListPage'));
@@ -743,6 +744,7 @@ function AppContent() {
             <Route path="accounting/tax-rates" element={<TaxRatesPage />} />
             <Route path="accounting/mappings" element={<EventMappingsPage />} />
             <Route path="accounting/templates" element={<AccountingTemplatesPage />} />
+            <Route path="accounting/tax-report" element={<TaxSummaryPage />} />
             <Route path="crm/dashboard" element={<CRMDashboardPage />} />
             <Route path="crm/customers" element={<CustomerListPage />} />
             <Route path="crm/customers/:id" element={<CustomerDetailPage />} />

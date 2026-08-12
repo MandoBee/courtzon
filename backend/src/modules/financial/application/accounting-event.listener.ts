@@ -230,6 +230,7 @@ export function registerAccountingEventListeners(): void {
     try {
       const orderId = data.orderId || data.id;
       const orgShare = Number(data.orgNet || data.organization_net || 0);
+      const taxAmount = Number(data.taxAmount || data.tax || 0);
       const currency = data.currency || 'EGP';
       if (!orderId || orgShare <= 0) return;
 
@@ -241,7 +242,7 @@ export function registerAccountingEventListeners(): void {
 
       await postAccountingEvent(
         'marketplace_delivery', 'marketplace', orderId, orgId,
-        { cost_of_revenue: orgShare, org_payable: orgShare },
+        { cost_of_revenue: orgShare, org_payable: orgShare, tax_liability: taxAmount },
         currency,
         `Order #${orderId} delivered`,
       );
@@ -255,6 +256,7 @@ export function registerAccountingEventListeners(): void {
     try {
       const orderId = data.orderId || data.id;
       const orgShare = Number(data.orgNet || data.organization_net || 0);
+      const taxAmount = Number(data.taxAmount || data.tax || 0);
       const currency = data.currency || 'EGP';
       if (!orderId || orgShare <= 0) return;
 
@@ -266,7 +268,7 @@ export function registerAccountingEventListeners(): void {
 
       await postAccountingEvent(
         'marketplace_reversal', 'marketplace', orderId, orgId,
-        { org_payable: orgShare, cost_of_revenue: orgShare },
+        { org_payable: orgShare, cost_of_revenue: orgShare, tax_liability: taxAmount },
         currency,
         `Order #${orderId} refunded`,
       );
@@ -280,6 +282,7 @@ export function registerAccountingEventListeners(): void {
     try {
       const orderId = data.orderId || data.id;
       const orgShare = Number(data.orgNet || data.organization_net || 0);
+      const taxAmount = Number(data.taxAmount || data.tax || 0);
       const currency = data.currency || 'EGP';
       if (!orderId || orgShare <= 0) return;
 
@@ -291,7 +294,7 @@ export function registerAccountingEventListeners(): void {
 
       await postAccountingEvent(
         'marketplace_reversal', 'marketplace', orderId, orgId,
-        { org_payable: orgShare, cost_of_revenue: orgShare },
+        { org_payable: orgShare, cost_of_revenue: orgShare, tax_liability: taxAmount },
         currency,
         `Order #${orderId} cancelled`,
       );
