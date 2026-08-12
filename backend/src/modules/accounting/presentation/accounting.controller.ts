@@ -6,6 +6,7 @@ import { ErrorCodes } from '../../../shared/errors/error-codes.js';
 import { getEventConcepts, validateCompleteMapping } from '../../financial/application/accounting-concepts.js';
 import { coaValidator } from '../../financial/application/coa-validator.service.js';
 import { yearClosingService } from '../application/year-closing.service.js';
+import { calculateFiscalYearNetIncome } from '../application/year-close.netincome.js';
 import mysql from 'mysql2/promise';
 
 type RowData = mysql.RowDataPacket[];
@@ -526,22 +527,39 @@ export async function getIncomeStatementHandler(request: FastifyRequest, reply: 
 
   const rows = await buildHierarchicalReport(pool, dateFilter, params, ['revenue','expense','contra_revenue','contra_expense'], organisationId);
 
-  const totalRevenue = rows
-    .filter(r => r.type === 'revenue')
-    .reduce((sum, r) => sum + r.balance, 0);
-  const totalContraRevenue = rows
-    .filter(r => r.type === 'contra_revenue')
-    .reduce((sum, r) => sum + r.balance, 0);
-  const totalExpense = rows
-    .filter(r => r.type === 'expense')
-    .reduce((sum, r) => sum + r.balance, 0);
-  const totalContraExpense = rows
-    .filter(r => r.type === 'contra_expense')
-    .reduce((sum, r) => sum + r.balance, 0);
+  // Use shared canonical net income calculation when fiscal year is implied (no custom date range)
+  let netIncome: number, netRevenue: number, netExpense: number, totalRevenue: number, totalExpense: number, totalContraRevenue: number, totalContraExpense: number;
 
-  const netRevenue = totalRevenue - totalContraRevenue;
-  const netExpense = totalExpense - totalContraExpense;
-  const netIncome = netRevenue - netExpense;
+  if (!query.from && !query.to && query.fiscalYear) {
+    const ni = await calculateFiscalYearNetIncome(Number(query.fiscalYear), organisationId);
+    totalRevenue = ni.totalRevenue;
+    totalContraRevenue = ni.totalContraRevenue;
+    totalExpense = ni.totalExpense;
+    totalContraExpense = ni.totalContraExpense;
+    netRevenue = ni.netRevenue;
+    netExpense = ni.netExpense;
+    netIncome = ni.netIncome;
+  } else if (!query.from && !query.to) {
+    // Default to current fiscal year
+    const currentFY = new Date().getFullYear();
+    const ni = await calculateFiscalYearNetIncome(currentFY, organisationId);
+    totalRevenue = ni.totalRevenue;
+    totalContraRevenue = ni.totalContraRevenue;
+    totalExpense = ni.totalExpense;
+    totalContraExpense = ni.totalContraExpense;
+    netRevenue = ni.netRevenue;
+    netExpense = ni.netExpense;
+    netIncome = ni.netIncome;
+  } else {
+    // Custom date range: use inline calculation (backward compatibility)
+    totalRevenue = rows.filter(r => r.type === 'revenue').reduce((sum, r) => sum + r.balance, 0);
+    totalContraRevenue = rows.filter(r => r.type === 'contra_revenue').reduce((sum, r) => sum + r.balance, 0);
+    totalExpense = rows.filter(r => r.type === 'expense').reduce((sum, r) => sum + r.balance, 0);
+    totalContraExpense = rows.filter(r => r.type === 'contra_expense').reduce((sum, r) => sum + r.balance, 0);
+    netRevenue = totalRevenue - totalContraRevenue;
+    netExpense = totalExpense - totalContraExpense;
+    netIncome = netRevenue - netExpense;
+  }
 
   return reply.send({
     data: {
