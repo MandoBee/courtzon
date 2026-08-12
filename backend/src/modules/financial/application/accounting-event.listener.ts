@@ -30,6 +30,102 @@ async function resolveOrderTax(orderId: number): Promise<number> {
   return Number((rows as any[])[0]?.tax_amount ?? 0);
 }
 
+export interface OrderEconomics {
+  orderId: number;
+  merchantId: number | null;
+  merchantShare: number;
+  commission: number;
+  tax: number;
+  grossAmount: number;
+  paymentMethod: string;
+  cashHolder: string;
+}
+
+/**
+ * Resolve marketplace order economics for custody-correct accounting.
+ * CourtZon revenue = commission only; merchant share = payable; tax = liability.
+ */
+async function resolveOrderEconomics(orderId: number): Promise<OrderEconomics | null> {
+  const pool = getPool();
+  const [rows] = await pool.execute<RowData>(
+    `SELECT o.id, o.total, o.tax_amount, o.commission_amount, o.courtzon_fee, o.payment_method, o.cash_holder
+     FROM orders o WHERE o.id = ? LIMIT 1`,
+    [orderId],
+  );
+  if (!rows.length) return null;
+  const o = rows[0] as any;
+  const [items] = await pool.execute<RowData>(
+    `SELECT DISTINCT seller_id FROM order_items WHERE order_id = ? LIMIT 1`, [orderId],
+  );
+  const merchantId = (items as any[])[0]?.seller_id ?? null;
+  const grossAmount = Number(o.total || 0);
+  const tax = Number(o.tax_amount || 0);
+  // commission_amount is persisted at order creation; courtzon_fee is only set
+  // later during confirmation (after payment:succeeded fires) — prefer the
+  // creation-time snapshot, fall back to courtzon_fee for older rows.
+  const commission = Number(o.commission_amount || o.courtzon_fee || 0);
+  const merchantShare = Math.round((grossAmount - commission - tax) * 100) / 100;
+
+  // cash_holder is only set during confirmation — derive from payment_method
+  // for the payment-time custody decision (cash/COD ⇒ org holds cash).
+  const paymentMethod = o.payment_method || 'card';
+  const cashHolder = o.cash_holder || (paymentMethod === 'cash' ? 'org' : 'courtzon');
+
+  return {
+    orderId,
+    merchantId,
+    merchantShare,
+    commission,
+    tax,
+    grossAmount,
+    paymentMethod,
+    cashHolder,
+  };
+}
+
+async function postMarketplacePaymentAccounting(orderId: number, paymentMethod: string, currency: string): Promise<void> {
+  const econ = await resolveOrderEconomics(orderId);
+  if (!econ) {
+    log.error({ orderId }, 'Marketplace order economics not found — skipping accounting');
+    return;
+  }
+  // CourtZon collected payment: commission = revenue, merchant share = payable.
+  // (COD/cash orders never emit payment:succeeded — they are recognized at delivery.)
+  const eventType = paymentMethod === 'wallet' ? 'marketplace_wallet_payment' : 'marketplace_card_payment';
+  await postAccountingEvent(
+    eventType, 'marketplace', orderId, econ.merchantId,
+    {
+      merchant_payable: econ.merchantShare,
+      platform_commission: econ.commission,
+      tax_liability: econ.tax,
+      payment_clearing: eventType === 'marketplace_card_payment' ? econ.grossAmount : 0,
+      wallet_liability_spend: eventType === 'marketplace_wallet_payment' ? econ.grossAmount : 0,
+    },
+    currency,
+    `Order #${orderId} payment (custody: ${econ.cashHolder})`,
+  );
+}
+
+async function postMarketplaceRefundAccounting(orderId: number, currency: string): Promise<void> {
+  const econ = await resolveOrderEconomics(orderId);
+  if (!econ) {
+    log.error({ orderId }, 'Marketplace order economics not found — skipping refund accounting');
+    return;
+  }
+  // Reverse merchant payable + commission + tax against clearing.
+  await postAccountingEvent(
+    'marketplace_merchant_refund', 'marketplace', orderId, econ.merchantId,
+    {
+      merchant_payable: econ.merchantShare,
+      platform_commission: econ.commission,
+      tax_liability: econ.tax,
+      payment_clearing: econ.grossAmount,
+    },
+    currency,
+    `Order #${orderId} refunded (custody reversal)`,
+  );
+}
+
 async function resolveOrgId(referenceType: string, referenceId: number): Promise<number | null> {
   const pool = getPool();
   if (referenceType === 'booking') {
@@ -287,6 +383,14 @@ export function registerAccountingEventListeners(): void {
         return;
       }
 
+      // ── Marketplace order payment → custody-correct accounting ──
+      // CourtZon is an agent: only commission is revenue; merchant share is a
+      // payable; tax is a liability. Never post full gross as revenue.
+      if (referenceType === 'order') {
+        await postMarketplacePaymentAccounting(referenceId, paymentMethod, currency);
+        return;
+      }
+
       // booking or order payment — distinguish card vs wallet vs cod
       let eventType: string;
       if (paymentMethod === 'wallet') {
@@ -329,6 +433,13 @@ export function registerAccountingEventListeners(): void {
       // A booking refund must NOT post a generic revenue_contra entry.
       if (referenceType === 'booking') {
         await postBookingRefundAccounting(Number(referenceId), amount, currency);
+        return;
+      }
+
+      // ── Marketplace order refund → custody-correct reversal ──
+      // Reverse merchant payable + commission + tax, not generic revenue_contra.
+      if (referenceType === 'order') {
+        await postMarketplaceRefundAccounting(Number(referenceId), currency);
         return;
       }
 

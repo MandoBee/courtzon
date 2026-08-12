@@ -50,6 +50,30 @@ export const EVENT_CONCEPTS: Record<string, { debit: string[]; credit: string[] 
     debit: ['org_payable', 'tax_liability'],
     credit: ['cost_of_revenue'],
   },
+  // Marketplace payment custody: CourtZon collects customer payment on behalf
+  // of the merchant. Only commission is CourtZon revenue; merchant share is a
+  // payable; tax is a liability. (custody model)
+  marketplace_card_payment: {
+    debit: ['payment_clearing'],
+    credit: ['merchant_payable', 'platform_commission', 'tax_liability'],
+  },
+  marketplace_wallet_payment: {
+    debit: ['wallet_liability_spend'],
+    credit: ['merchant_payable', 'platform_commission', 'tax_liability'],
+  },
+  marketplace_merchant_refund: {
+    debit: ['merchant_payable', 'platform_commission', 'tax_liability'],
+    credit: ['payment_clearing'],
+  },
+  // Referee / Provider compensation (universal provider party model)
+  referee_payout: {
+    debit: ['referee_expense'],
+    credit: ['referee_payable'],
+  },
+  provider_payout: {
+    debit: ['provider_expense'],
+    credit: ['provider_payable'],
+  },
   withdrawal_request: {
     debit: ['wallet_liability'],
     credit: ['withdrawal_clearing'],
