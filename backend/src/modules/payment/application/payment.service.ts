@@ -841,7 +841,13 @@ export class PaymentService {
       );
 
       await eventBusV2.emit('payment:refunded', {
-        paymentId, amount, reason, traceId,
+        paymentId,
+        amount,
+        reason,
+        traceId,
+        referenceType: (transaction as any).reference_type,
+        referenceId: (transaction as any).order_id || (transaction as any).booking_id || null,
+        metadata: { paymentMethod: (transaction as any).payment_method || 'card' },
       }, undefined, conn);
 
       // NOTE: canonical refund accounting is produced by the Accounting Engine
