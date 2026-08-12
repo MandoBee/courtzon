@@ -3,6 +3,7 @@ import { getPool } from '../../../database/mysql.js';
 import { recordAudit } from '../../audit-log/index.js';
 import { AppError, NotFoundError, ConflictError } from '../../../shared/errors/app-error.js';
 import { ErrorCodes } from '../../../shared/errors/error-codes.js';
+import { getEventConcepts, validateCompleteMapping } from '../../financial/application/accounting-concepts.js';
 import mysql from 'mysql2/promise';
 
 type RowData = mysql.RowDataPacket[];
@@ -949,4 +950,234 @@ export async function processPendingEventsHandler(request: FastifyRequest, reply
   });
 
   return reply.send({ data: { eventsProcessed, message: 'Event-to-journal processing completed. 0 events processed.' } });
+}
+
+// ── Accounting Event Mappings ──
+
+export async function listMappingsHandler(request: FastifyRequest, reply: FastifyReply) {
+  const pool = getPool();
+  const { organisationId } = request.query as any;
+  const orgId = organisationId ? Number(organisationId) : null;
+
+  const [rows] = await pool.execute<RowData>(
+    `SELECT ael.event_type, ael.organisation_id, ael.concept, ael.account_id,
+            ael.is_active, coa.code AS account_code, coa.name AS account_name
+     FROM accounting_event_mapping_lines ael
+     JOIN chart_of_accounts coa ON coa.id = ael.account_id
+     WHERE ael.organisation_id IS NULL
+        OR (ael.organisation_id = ?)
+     ORDER BY ael.event_type, ael.organisation_id, ael.concept`,
+    [orgId],
+  );
+
+  const global = new Map<string, Map<string, any>>();
+  const orgMappings = new Map<string, Map<string, any>>();
+  for (const r of rows as any[]) {
+    const map = r.organisation_id === null ? global : orgMappings;
+    if (!map.has(r.event_type)) map.set(r.event_type, new Map());
+    map.get(r.event_type)!.set(r.concept, r);
+  }
+
+  const concepts = getEventConcepts;
+  const result: any[] = [];
+
+  for (const [eventType] of global) {
+    const gMap = global.get(eventType)!;
+    const oMap = orgMappings.get(eventType);
+    for (const [, gRow] of gMap) {
+      const conceptDef = concepts(eventType).find(c => c.concept === gRow.concept);
+      const orgRow = oMap?.get(gRow.concept);
+      result.push({
+        event_type: eventType,
+        organisation_id: orgRow ? orgId : null,
+        concept: gRow.concept,
+        side: conceptDef?.side ?? 'debit',
+        account_id: orgRow ? orgRow.account_id : gRow.account_id,
+        account_code: orgRow ? orgRow.account_code : gRow.account_code,
+        account_name: orgRow ? orgRow.account_name : gRow.account_name,
+        is_active: orgRow ? !!orgRow.is_active : !!gRow.is_active,
+        is_global: !orgRow,
+        is_overridden: !!orgRow,
+      });
+    }
+  }
+
+  return reply.send({ data: result });
+}
+
+export async function getMappingHandler(request: FastifyRequest, reply: FastifyReply) {
+  const pool = getPool();
+  const { eventType } = request.params as any;
+  const { organisationId } = request.query as any;
+  const orgId = organisationId ? Number(organisationId) : null;
+
+  const requiredConcepts = getEventConcepts(eventType);
+
+  const [gRows] = await pool.execute<RowData>(
+    `SELECT ael.concept, ael.account_id, coa.code AS account_code, coa.name AS account_name, coa.is_active
+     FROM accounting_event_mapping_lines ael
+     JOIN chart_of_accounts coa ON coa.id = ael.account_id
+     WHERE ael.event_type = ? AND ael.organisation_id IS NULL AND ael.is_active = 1`,
+    [eventType],
+  );
+
+  let orgRows: any[] = [];
+  let isOverridden = false;
+  if (orgId != null) {
+    const [oRows] = await pool.execute<RowData>(
+      `SELECT ael.concept, ael.account_id, coa.code AS account_code, coa.name AS account_name, coa.is_active
+       FROM accounting_event_mapping_lines ael
+       JOIN chart_of_accounts coa ON coa.id = ael.account_id
+       WHERE ael.event_type = ? AND ael.organisation_id = ? AND ael.is_active = 1`,
+      [eventType, orgId],
+    );
+    orgRows = oRows as any[];
+    isOverridden = orgRows.length > 0;
+  }
+
+  const conceptMap = new Map<string, any>();
+  for (const r of gRows as any[]) conceptMap.set(r.concept, r);
+
+  if (isOverridden) {
+    for (const r of orgRows) conceptMap.set(r.concept, r);
+  }
+
+  const lines = requiredConcepts.map(c => {
+    const m = conceptMap.get(c.concept);
+    return {
+      concept: c.concept,
+      side: c.side,
+      account_id: m?.account_id ?? null,
+      account_code: m?.account_code ?? null,
+      account_name: m?.account_name ?? null,
+      account_active: m?.is_active ?? false,
+      mapped: !!m,
+    };
+  });
+
+  return reply.send({
+    data: {
+      eventType,
+      requiredConcepts: lines,
+      isOverridden,
+      source: isOverridden ? 'organization' : 'global',
+      organisationId: orgId,
+    },
+  });
+}
+
+export async function updateMappingHandler(request: FastifyRequest, reply: FastifyReply) {
+  const pool = getPool();
+  const { eventType } = request.params as any;
+  const body = request.body as any;
+  const userId = (request as any).userId;
+  const orgId = body.organisationId ? Number(body.organisationId) : null;
+
+  if (!body.lines || !Array.isArray(body.lines) || body.lines.length === 0) {
+    throw new AppError('lines array is required', 400, 'VALIDATION_ERROR');
+  }
+
+  const requiredConcepts = getEventConcepts(eventType);
+  const submittedConcepts = body.lines.map((l: any) => l.concept);
+  const missing = validateCompleteMapping(eventType, submittedConcepts);
+  if (missing.length > 0) {
+    throw new AppError(`Incomplete mapping. Missing concepts: ${missing.join(', ')}`, 400, 'VALIDATION_ERROR');
+  }
+
+  const conceptSet = new Set<string>(submittedConcepts);
+  if (conceptSet.size !== submittedConcepts.length) {
+    throw new AppError('Duplicate concepts in mapping lines', 400, 'VALIDATION_ERROR');
+  }
+
+  const accountIds: number[] = body.lines.map((l: any) => Number(l.accountId));
+  const uniqueIds = [...new Set(accountIds)];
+  const placeholders = uniqueIds.map(() => '?').join(',');
+  const [accounts] = await pool.execute<RowData>(
+    `SELECT id, is_active, organisation_id FROM chart_of_accounts WHERE id IN (${placeholders})`,
+    uniqueIds,
+  );
+  const acctMap = new Map((accounts as any[]).map((a: any) => [a.id, a]));
+  for (const id of uniqueIds) {
+    const acct = acctMap.get(id);
+    if (!acct) throw new AppError(`Account ${id} does not exist`, 400, 'VALIDATION_ERROR');
+    if (!acct.is_active) throw new AppError(`Account ${id} is inactive`, 400, 'VALIDATION_ERROR');
+    if (orgId != null && acct.organisation_id != null && acct.organisation_id !== orgId) {
+      throw new AppError(`Account ${id} belongs to org ${acct.organisation_id}, not org ${orgId}`, 400, 'VALIDATION_ERROR');
+    }
+  }
+
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+
+    await conn.execute(
+      'DELETE FROM accounting_event_mapping_lines WHERE event_type = ? AND organisation_id = ?',
+      [eventType, orgId],
+    );
+
+    for (const line of body.lines) {
+      await conn.execute(
+        `INSERT INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
+         VALUES (?, ?, ?, ?, 1)`,
+        [eventType, orgId, line.concept, Number(line.accountId)],
+      );
+    }
+
+    await conn.commit();
+
+    recordAudit({
+      actorId: userId,
+      action: 'ACCOUNTING.MAPPING.UPDATE',
+      entityType: 'accounting_event_mapping_lines',
+      entityId: 0,
+      afterState: { eventType, organisationId: orgId, concepts: body.lines.map((l: any) => l.concept) },
+      ipAddress: request.ip,
+      userAgent: request.headers['user-agent'],
+    });
+
+    return reply.send({ data: { eventType, organisationId: orgId, message: 'Mapping updated' } });
+  } catch (err) {
+    await conn.rollback();
+    throw err;
+  } finally {
+    conn.release();
+  }
+}
+
+export async function deleteMappingHandler(request: FastifyRequest, reply: FastifyReply) {
+  const pool = getPool();
+  const { eventType } = request.params as any;
+  const { organisationId } = request.query as any;
+  const userId = (request as any).userId;
+  const orgId = organisationId ? Number(organisationId) : null;
+
+  if (orgId == null) {
+    throw new AppError('organisationId is required to delete an org override', 400, 'VALIDATION_ERROR');
+  }
+
+  const [existing] = await pool.execute<RowData>(
+    'SELECT id FROM accounting_event_mapping_lines WHERE event_type = ? AND organisation_id = ? LIMIT 1',
+    [eventType, orgId],
+  );
+
+  if ((existing as any[]).length === 0) {
+    return reply.send({ data: { eventType, organisationId: orgId, message: 'No override to delete — already using global default' } });
+  }
+
+  await pool.execute(
+    'DELETE FROM accounting_event_mapping_lines WHERE event_type = ? AND organisation_id = ?',
+    [eventType, orgId],
+  );
+
+  recordAudit({
+    actorId: userId,
+    action: 'ACCOUNTING.MAPPING.DELETE',
+    entityType: 'accounting_event_mapping_lines',
+    entityId: 0,
+    afterState: { eventType, organisationId: orgId, restoredTo: 'global_default' },
+    ipAddress: request.ip,
+    userAgent: request.headers['user-agent'],
+  });
+
+  return reply.send({ data: { eventType, organisationId: orgId, message: 'Override deleted — restored to global default' } });
 }

@@ -76,6 +76,7 @@ export const ADMIN_ROUTE_PERMISSIONS: Record<string, string> = {
   'integration/api-keys': 'integration.api-keys.view',
   'inventory': 'sidebar.inventory',
   'accounting': 'sidebar.accounting',
+  'accounting/mappings': 'sidebar.accounting-mappings',
   'crm': 'crm.dashboard.view',
   'hr': 'hr.dashboard.view',
   'bi': 'bi.dashboard.view',

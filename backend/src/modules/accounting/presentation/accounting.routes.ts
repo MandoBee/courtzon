@@ -44,4 +44,10 @@ export async function accountingRoutes(app: FastifyInstance): Promise<void> {
 
   // Event-to-Journal processing
   app.post('/admin/accounting/process-events', { preHandler: [requirePermission(['accounting.journal.create'])] }, ctrl.processPendingEventsHandler);
+
+  // Accounting Event Mappings (Decision #2)
+  app.get('/admin/accounting/mappings', { preHandler: [requirePermission(['accounting.mappings.view'])] }, ctrl.listMappingsHandler);
+  app.get('/admin/accounting/mappings/:eventType', { preHandler: [requirePermission(['accounting.mappings.view'])] }, ctrl.getMappingHandler);
+  app.put('/admin/accounting/mappings/:eventType', { preHandler: [requirePermission(['accounting.mappings.manage'])] }, ctrl.updateMappingHandler);
+  app.delete('/admin/accounting/mappings/:eventType', { preHandler: [requirePermission(['accounting.mappings.manage'])] }, ctrl.deleteMappingHandler);
 }
