@@ -150,20 +150,9 @@ export class PaymentService {
         conn, locked, 'paid', `wallet_${paymentId}`, traceId, 'wallet',
       );
 
-      // 7. Journal entry (inside tx). Wallet top-ups are pure liability
-      //    movements (Dr Cash / Cr Wallet Liability, written by the
-      //    wallet-payment listener) — they must never produce Cash → Revenue.
-      if (input.referenceType !== 'wallet_topup') {
-        await paymentRepository.createJournalEntry({
-          entryType: 'payment',
-          referenceType: input.referenceType,
-          referenceId: input.referenceId,
-          debitAccount: 'Cash',
-          creditAccount: 'Revenue',
-          amount: input.amount,
-          description: `${input.referenceType} payment via wallet`,
-        }, conn);
-      }
+      // NOTE: canonical accounting for this payment is produced by the
+      // Accounting Engine (accounting-event.listener.ts) via payment:succeeded.
+      // No financial_journal_entries write here — single source of truth.
     });
 
     log.info({ traceId, paymentId, userId, amount: input.amount, referenceType: input.referenceType, newBalance }, 'Wallet payment completed');
@@ -652,22 +641,9 @@ export class PaymentService {
       }, undefined, conn);
     }
 
-    // Journal entry for this outcome.
-    // Wallet top-ups are pure liability movements (Dr Cash / Cr Wallet Liability,
-    // written by the wallet-payment listener) — they must never produce the
-    // generic Cash → Revenue journal.
-    if (transaction.reference_type !== 'wallet_topup') {
-      await conn.execute(
-        `INSERT INTO financial_journal_entries
-          (entry_type, reference_type, reference_id, debit_account, credit_account, amount, description)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        ['payment', `gateway_${source}`, transaction.id,
-         newStatus === 'paid' ? 'Cash' : 'Bad Debt',
-         newStatus === 'paid' ? 'Revenue' : 'Cash',
-         Number(transaction.amount),
-         `${source}: ${gatewayRef} → ${newStatus}`],
-      );
-    }
+    // NOTE: canonical accounting for this payment outcome is produced by the
+    // Accounting Engine (accounting-event.listener.ts) via payment:succeeded /
+    // payment:failed-event. No financial_journal_entries write here.
 
     log.info({ traceId, txnId: transaction.id, status: newStatus, source }, 'Payment outcome processed');
 
@@ -868,15 +844,9 @@ export class PaymentService {
         paymentId, amount, reason, traceId,
       }, undefined, conn);
 
-      await paymentRepository.createJournalEntry({
-        entryType: 'refund',
-        referenceType: 'payment',
-        referenceId: paymentId,
-        debitAccount: 'Refund Expense',
-        creditAccount: 'Cash',
-        amount,
-        description: reason || `Refund of ${amount}`,
-      });
+      // NOTE: canonical refund accounting is produced by the Accounting Engine
+      // (accounting-event.listener.ts) via payment:refunded.
+      // No financial_journal_entries write here.
     });
 
     log.info({ traceId, paymentId, amount, reason }, 'Payment refunded');

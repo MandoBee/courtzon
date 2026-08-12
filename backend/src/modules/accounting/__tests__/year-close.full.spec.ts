@@ -74,6 +74,9 @@ describe('Year Close — Full Integration', () => {
 
   afterAll(async () => {
     if (ycId) { await pool.execute(`DELETE FROM year_close_cycles WHERE year_closings_id = ?`, [ycId]); await pool.execute(`DELETE FROM year_closings WHERE id = ?`, [ycId]); }
+    // Delete ledger_entries BEFORE the referenced COA accounts/periods/orgs,
+    // otherwise the SET NULL FKs orphan the rows (chart_account_id/period_id → NULL).
+    await pool.execute(`DELETE FROM ledger_entries WHERE organisation_id = ?`, [orgId]);
     await pool.execute(`DELETE FROM general_ledger WHERE organisation_id = ?`, [orgId]);
     for (const pid of periods) await pool.execute(`DELETE FROM accounting_periods WHERE id = ?`, [pid]);
     await pool.execute(`DELETE FROM accounting_event_mapping_lines WHERE organisation_id = ? AND event_type = 'year_close'`, [orgId]);

@@ -55,24 +55,20 @@ function makeConn() {
   return { execute };
 }
 
-describe('Payment journal guard (wallet top-ups must never create Cash→Revenue)', () => {
+describe('Payment accounting — legacy financial_journal_entries eliminated', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('writes a Cash→Revenue journal for normal bookings', async () => {
+  it('does NOT write financial_journal_entries for normal bookings (canonical engine owns accounting)', async () => {
     const service = new PaymentService();
     const conn = makeConn();
     await (service as any)._processPaymentOutcome(conn, makeTransaction(), 'paid', 'g-ref', 'trace-1', 'webhook');
     const journalCalls = conn.execute.mock.calls.filter((c: any[]) => String(c[0]).includes(JOURNAL_INSERT));
-    expect(journalCalls).toHaveLength(1);
-    const params = journalCalls[0][1];
-    expect(params[1]).toBe('gateway_webhook');
-    expect(params[3]).toBe('Cash');
-    expect(params[4]).toBe('Revenue');
+    expect(journalCalls).toHaveLength(0);
   });
 
-  it('skips the journal entirely for wallet_topup reference type', async () => {
+  it('does NOT write financial_journal_entries for wallet_topup', async () => {
     const service = new PaymentService();
     const conn = makeConn();
     await (service as any)._processPaymentOutcome(
@@ -82,7 +78,7 @@ describe('Payment journal guard (wallet top-ups must never create Cash→Revenue
     expect(journalCalls).toHaveLength(0);
   });
 
-  it('still emits payment events for wallet_topup outcomes', async () => {
+  it('still emits payment:succeeded events for outcomes', async () => {
     const service = new PaymentService();
     const conn = makeConn();
     await (service as any)._processPaymentOutcome(
