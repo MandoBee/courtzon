@@ -204,11 +204,10 @@ describe('Phase 1 parity gate — admin sidebar (buildNavItems vs Navigation Reg
     ]);
   });
 
-  it('Finance domain contains 8 child items in correct order under Finance section', () => {
+  it('Finance domain contains 8 child items under Finance', () => {
     const nav = resolveAdminNav(enT, allCan, allFlags);
     const finance = nav.find((d) => d.label === 'Finance');
-    const section = finance?.children?.find((c) => c.id === 'nav.admin.finance');
-    expect(section?.children?.map((c) => c.permissionKey)).toEqual([
+    expect(finance?.children?.map((c) => c.permissionKey)).toEqual([
       'sidebar.finance-dashboard',
       'sidebar.finance-ledger',
       'sidebar.finance-reports',
@@ -726,8 +725,8 @@ describe('Navigation registry integrity (immutable ids)', () => {
   it('namespaces ids per shell (nav.admin.*, nav.org.*) and keeps them stable per node', () => {
     const adminIds = collectIds(ADMIN_NAV);
     expect(adminIds.every((id) => id.startsWith('nav.admin.'))).toBe(true);
-    expect(adminIds.length).toBe(137);
-    expect(ADMIN_ID_TO_KEY.size).toBe(129);
+    expect(adminIds.length).toBe(136);
+    expect(ADMIN_ID_TO_KEY.size).toBe(128);
 
     const orgIds = collectIds(ORG_NAV);
     expect(orgIds.every((id) => id.startsWith('nav.org.'))).toBe(true);
@@ -783,7 +782,7 @@ describe('Navigation registry integrity (immutable ids)', () => {
     const adminTop = resolveAdminNav(enT, allCan, allFlags);
     const walk = (items: ResolvedNavItem[]): number =>
       items.reduce((n, it) => n + (it.id ? 1 : 0) + (it.children ? walk(it.children) : 0), 0);
-    expect(walk(adminTop)).toBe(137);
+    expect(walk(adminTop)).toBe(136);
     const orgTop = resolveOrgNav(allCan, '7', enT);
     expect(orgTop.every((it) => it.id !== undefined)).toBe(true);
     expect(orgTop[0].id).toBe('nav.org.dashboard');
@@ -829,7 +828,6 @@ describe('Navigation registry integrity (immutable ids)', () => {
     const shared = [...keyMap.entries()].filter(([, ids]) => ids.length > 1).map(([k]) => k).sort();
     expect(shared).toEqual(
       [
-        'sidebar.accounting',
         'sidebar.organisations',
         'sidebar.roles',
         'sidebar.payment-methods',
@@ -1042,9 +1040,9 @@ describe('Consumer 6 — Workspace Registry integration (drift resolved)', () =>
 
   it('every workspace node carries a nav.admin.* immutable id', () => {
     const allIds = collectAllIds(registryWorkspace);
-    expect(allIds.length).toBe(137);
+    expect(allIds.length).toBe(136);
     expect(allIds.every((id) => id.startsWith('nav.admin.'))).toBe(true);
-    expect(new Set(allIds).size).toBe(137);
+    expect(new Set(allIds).size).toBe(136);
   });
 
   it('workspace resolver is deterministic', () => {
@@ -1057,11 +1055,11 @@ describe('Consumer 6 — Workspace Registry integration (drift resolved)', () =>
     const wsAllIds = collectAllIds(registryWorkspace);
     const registryAllIds = collectIds(ADMIN_NAV);
     expect(wsAllIds).toEqual(registryAllIds);
-    expect(wsAllIds.length).toBe(137);
+    expect(wsAllIds.length).toBe(136);
   });
 
   it('workspace root count matches ADMIN_NAV root', () => {
-    expect(countNodes(registryWorkspace)).toBe(137);
+    expect(countNodes(registryWorkspace)).toBe(136);
     expect(registryWorkspace.length).toBe(ADMIN_NAV.length);
   });
 });

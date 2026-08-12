@@ -10,14 +10,17 @@ interface Account {
   id: number;
   code: string;
   name: string;
-  type: 'asset' | 'liability' | 'equity' | 'revenue' | 'expense';
+  type: 'asset' | 'liability' | 'equity' | 'revenue' | 'expense' | 'contra_asset' | 'contra_liability' | 'contra_equity' | 'contra_revenue' | 'contra_expense';
+  normal_side?: string;
   parent_id: number | null;
+  organisation_id?: number | null;
+  is_system?: number;
   description: string;
   is_active: boolean;
   children?: Account[];
 }
 
-const ACCOUNT_TYPES = ['asset', 'liability', 'equity', 'revenue', 'expense'] as const;
+const ACCOUNT_TYPES = ['asset', 'liability', 'equity', 'revenue', 'expense', 'contra_asset', 'contra_liability', 'contra_equity', 'contra_revenue', 'contra_expense'] as const;
 
 const TYPE_BADGE: Record<string, string> = {
   asset: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400',
@@ -25,6 +28,11 @@ const TYPE_BADGE: Record<string, string> = {
   equity: 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400',
   revenue: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400',
   expense: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400',
+  contra_asset: 'bg-blue-50 text-blue-600',
+  contra_liability: 'bg-amber-50 text-amber-600',
+  contra_equity: 'bg-purple-50 text-purple-600',
+  contra_revenue: 'bg-green-50 text-green-600',
+  contra_expense: 'bg-red-50 text-red-600',
 };
 
 export default function ChartOfAccountsPage() {
@@ -100,22 +108,29 @@ export default function ChartOfAccountsPage() {
   };
 
   function renderNode(node: Account, depth: number = 0) {
+    const isStructural = node.is_system && node.children && node.children.length > 0;
+    const isLeaf = !node.children || node.children.length === 0;
     return (
       <div key={node.id}>
         <div className="flex items-center gap-3 px-4 py-2.5 border-b border-[var(--color-border)] last:border-0 hover:bg-[var(--color-bg)]/30 transition-colors"
           style={{ paddingLeft: `${12 + depth * 24}px` }}>
-          <span className="text-xs font-mono text-[var(--color-text-muted)] w-20 shrink-0">{node.code}</span>
+          <span className={`text-xs font-mono w-28 shrink-0 ${isStructural ? 'text-[var(--color-text-muted)] font-bold' : 'text-[var(--color-text-muted)]'}`}>{node.code}</span>
           <span className="text-sm font-medium text-[var(--color-text)] flex-1">{node.name}</span>
+          {node.normal_side && <span className="text-[10px] text-[var(--color-text-muted)] uppercase">{node.normal_side?.slice(0,2)}</span>}
           <span className={`px-2 py-0.5 text-[10px] font-medium rounded-full ${TYPE_BADGE[node.type] || ''}`}>
             {node.type}
           </span>
+          {node.is_system ? <span className="px-1.5 py-0.5 text-[10px] font-medium rounded-full bg-gray-100 text-gray-600">System</span> : null}
+          {!isLeaf && <span className="text-[10px] text-[var(--color-text-muted)]">Parent</span>}
           <span className={`w-2 h-2 rounded-full ${node.is_active ? 'bg-green-500' : 'bg-red-500'}`} />
-          <Can permission="accounting.coa.manage">
-            <div className="flex items-center gap-1 ml-2">
-              <button onClick={() => openEdit(node)} className="text-xs text-[var(--color-primary)] hover:underline">Edit</button>
-              <button onClick={() => setDeleteId(node.id)} className="text-xs text-[var(--color-text-muted)] hover:underline">Deactivate</button>
-            </div>
-          </Can>
+          {!isStructural && (
+            <Can permission="accounting.coa.manage">
+              <div className="flex items-center gap-1 ml-2">
+                <button onClick={() => openEdit(node)} className="text-xs text-[var(--color-primary)] hover:underline">Edit</button>
+                <button onClick={() => setDeleteId(node.id)} className="text-xs text-[var(--color-text-muted)] hover:underline">Deactivate</button>
+              </div>
+            </Can>
+          )}
         </div>
         {node.children?.map(child => renderNode(child, depth + 1))}
       </div>

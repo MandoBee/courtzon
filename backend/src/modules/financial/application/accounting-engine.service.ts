@@ -111,6 +111,16 @@ export class AccountingEngineService {
         throw new Error(`Chart account ${row.id} belongs to org ${row.organisation_id}, not org ${organisationId}`);
       }
     }
+
+    // Reject structural accounts (accounts with children cannot receive postings)
+    for (const id of ids) {
+      const [children] = await this.pool.execute<RowData>(
+        'SELECT 1 FROM chart_of_accounts WHERE parent_id = ? LIMIT 1', [id],
+      );
+      if ((children as any[]).length > 0) {
+        throw new Error(`Chart account ${id} is a structural parent — cannot receive postings`);
+      }
+    }
   }
 
   /**
