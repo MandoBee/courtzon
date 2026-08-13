@@ -54,6 +54,7 @@ export const ORG_NAV: NavDefinition[] = [
     path: '/org/{orgId}/finance',
     children: [
       { id: 'nav.org.finance', label: LIT('Transactions & Settlements'), icon: '💸', path: '/org/{orgId}/finance', permissionKey: 'org.sidebar.finance' },
+      { id: 'nav.org.reports', label: LIT('Reports'), icon: '📈', path: '/org/{orgId}/reports', permissionKey: 'org.reports.view' },
       {
         id: 'nav.org.accounting',
         label: LIT('Accounting'),
@@ -87,10 +88,8 @@ export const ORG_NAV: NavDefinition[] = [
     icon: '🏛️',
     path: '/org/{orgId}/profile',
     children: [
-      { id: 'nav.org.profile', label: T('org.sidebar.profile'), icon: '🏛️', path: '/org/{orgId}/profile', permissionKey: 'org.sidebar.profile' },
-      { id: 'nav.org.branches', label: T('org.sidebar.branches'), icon: '🏢', path: '/org/{orgId}/branches', permissionKey: 'org.sidebar.branches' },
-      { id: 'nav.org.working-hours', label: T('org.sidebar.working_hours'), icon: '🕐', path: '/org/{orgId}/working-hours', permissionKey: 'org.sidebar.working-hours' },
-      { id: 'nav.org.payment', label: T('org.sidebar.payment_settings'), icon: '💳', path: '/org/{orgId}/payment-settings', permissionKey: 'org.sidebar.payment' },
+      { id: 'nav.org.profile', label: LIT('Profile & Settings'), icon: '🏛️', path: '/org/{orgId}/profile', permissionKey: 'org.sidebar.profile' },
+      { id: 'nav.org.branches', label: LIT('Branches'), icon: '🏢', path: '/org/{orgId}/branches', permissionKey: 'org.sidebar.branches' },
     ],
   },
 

@@ -46,6 +46,7 @@ export function buildLegacyOrgNavItems(can: (perm: string) => boolean, orgId: st
       label: 'Finance', icon: '💰', path: p('finance'),
       children: [
         { label: 'Transactions & Settlements', icon: '💸', path: p('finance'), permissionKey: 'org.sidebar.finance' },
+        { label: 'Reports', icon: '📈', path: p('reports'), permissionKey: 'org.reports.view' },
         {
           label: 'Accounting', icon: '📒', path: p('accounting/dashboard'), permissionKey: 'org.sidebar.accounting',
           children: [
@@ -68,10 +69,8 @@ export function buildLegacyOrgNavItems(can: (perm: string) => boolean, orgId: st
     {
       label: 'Organisation', icon: '🏛️', path: p('profile'),
       children: [
-        { label: t('org.sidebar.profile'), icon: '🏛️', path: p('profile'), permissionKey: 'org.sidebar.profile' },
-        { label: t('org.sidebar.branches'), icon: '🏢', path: p('branches'), permissionKey: 'org.sidebar.branches' },
-        { label: t('org.sidebar.working_hours'), icon: '🕐', path: p('working-hours'), permissionKey: 'org.sidebar.working-hours' },
-        { label: t('org.sidebar.payment_settings'), icon: '💳', path: p('payment-settings'), permissionKey: 'org.sidebar.payment' },
+        { label: 'Profile & Settings', icon: '🏛️', path: p('profile'), permissionKey: 'org.sidebar.profile' },
+        { label: 'Branches', icon: '🏢', path: p('branches'), permissionKey: 'org.sidebar.branches' },
       ],
     },
 
