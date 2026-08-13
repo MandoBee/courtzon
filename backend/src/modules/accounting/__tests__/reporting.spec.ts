@@ -27,6 +27,12 @@ describe('Reporting — Organization Isolation & Net Income', () => {
       charset: 'utf8mb4',
     });
 
+    // Idempotent fixture: remove any leftovers from interrupted runs before seeding
+    await testPool.execute(`DELETE FROM general_ledger WHERE account_id IN (SELECT id FROM chart_of_accounts WHERE code LIKE '999%' OR code LIKE 'ORG-%')`);
+    await testPool.execute(`DELETE FROM ledger_entries WHERE chart_account_id IN (SELECT id FROM chart_of_accounts WHERE code LIKE '999%' OR code LIKE 'ORG-%')`);
+    await testPool.execute(`DELETE FROM chart_of_accounts WHERE code LIKE '999%' OR code LIKE 'ORG-%'`);
+    await testPool.execute(`DELETE FROM organisations WHERE slug IN ('test-org-a-reporting', 'test-org-b-reporting')`);
+
     // Create 2 test orgs
     const [orgResultA] = await testPool.execute<RowData>(
       `INSERT INTO organisations (public_id, org_type_id, owner_id, name, slug, is_active)
@@ -460,6 +466,124 @@ describe('Reporting — Organization Isolation & Net Income', () => {
     expect(account).toHaveProperty('organisation_id');
     expect(account).toHaveProperty('is_system');
   });
+
+  it('parent aggregation cannot cross organizations', async () => {
+    // Global parent revenue account with a child owned by Org A and a child owned by Org B.
+    // buildHierarchicalReport builds the COA tree scoped to (global OR own-org) accounts, so
+    // Org B's child is excluded from Org A's tree and its GL balance can never be aggregated
+    // into a parent that is visible to Org A.
+    const [coaParent] = await testPool.execute<RowData>(
+      `INSERT INTO chart_of_accounts (organisation_id, code, name, type, normal_side, is_system, is_active, parent_id)
+       VALUES (NULL, '9996', 'Test Global Parent Revenue', 'revenue', 'credit', 1, 1, NULL)`
+    );
+    const parentId = (coaParent as any).insertId;
+
+    const [coaChildA] = await testPool.execute<RowData>(
+      `INSERT INTO chart_of_accounts (organisation_id, code, name, type, normal_side, is_system, is_active, parent_id)
+       VALUES (?, '9995', 'Org A Parent Child Revenue', 'revenue', 'credit', 0, 1, ?)`,
+      [orgAId, parentId]
+    );
+    const childAId = (coaChildA as any).insertId;
+
+    const [coaChildB] = await testPool.execute<RowData>(
+      `INSERT INTO chart_of_accounts (organisation_id, code, name, type, normal_side, is_system, is_active, parent_id)
+       VALUES (?, '9994', 'Org B Parent Child Revenue', 'revenue', 'credit', 0, 1, ?)`,
+      [orgBId, parentId]
+    );
+    const childBId = (coaChildB as any).insertId;
+
+    // Parent direct credit (org A) = 50, Child A credit (org A) = 100, Child B credit (org B) = 200
+    await testPool.execute(
+      `INSERT INTO general_ledger (organisation_id, period_id, account_id, entry_date, debit, credit, balance, created_by)
+       VALUES (?, ?, ?, '2026-01-15', 0, 50, 0, 1)`, [orgAId, periodId, parentId]
+    );
+    await testPool.execute(
+      `INSERT INTO general_ledger (organisation_id, period_id, account_id, entry_date, debit, credit, balance, created_by)
+       VALUES (?, ?, ?, '2026-01-15', 0, 100, 0, 1)`, [orgAId, periodId, childAId]
+    );
+    await testPool.execute(
+      `INSERT INTO general_ledger (organisation_id, period_id, account_id, entry_date, debit, credit, balance, created_by)
+       VALUES (?, ?, ?, '2026-01-15', 0, 200, 0, 1)`, [orgBId, periodId, childBId]
+    );
+
+    // Org A scoped aggregation: only global + org-A-owned accounts are in the tree,
+    // so Child B (200) must NOT leak into Org A's parent total.
+    const [orgAResult] = await testPool.execute<RowData>(
+      `SELECT COALESCE(SUM(gl.credit), 0) - COALESCE(SUM(gl.debit), 0) AS balance
+       FROM general_ledger gl
+       JOIN chart_of_accounts a ON a.id = gl.account_id
+       WHERE gl.organisation_id = ?
+         AND a.code IN ('9996', '9995', '9994')
+         AND (a.organisation_id IS NULL OR a.organisation_id = ?)`,
+      [orgAId, orgAId]
+    );
+    // Parent own (50) + Child A (100) = 150; Child B excluded
+    expect(Number((orgAResult as any[])[0].balance)).toBe(150);
+
+    // Org B scoped aggregation: Parent (global) + Child B (200) = 200; Child A excluded
+    const [orgBResult] = await testPool.execute<RowData>(
+      `SELECT COALESCE(SUM(gl.credit), 0) - COALESCE(SUM(gl.debit), 0) AS balance
+       FROM general_ledger gl
+       JOIN chart_of_accounts a ON a.id = gl.account_id
+       WHERE gl.organisation_id = ?
+         AND a.code IN ('9996', '9995', '9994')
+         AND (a.organisation_id IS NULL OR a.organisation_id = ?)`,
+      [orgBId, orgBId]
+    );
+    expect(Number((orgBResult as any[])[0].balance)).toBe(200);
+
+    // Unscoped (platform) view aggregates both children under the same parent: 50 + 100 + 200 = 350
+    const [platformResult] = await testPool.execute<RowData>(
+      `SELECT COALESCE(SUM(gl.credit), 0) - COALESCE(SUM(gl.debit), 0) AS balance
+       FROM general_ledger gl
+       JOIN chart_of_accounts a ON a.id = gl.account_id
+       WHERE a.code IN ('9996', '9995', '9994')`
+    );
+    expect(Number((platformResult as any[])[0].balance)).toBe(350);
+
+    // Cleanup this test's data (afterAll also sweeps 999%/ORG-% codes as belt-and-suspenders)
+    await testPool.execute(
+      `DELETE FROM general_ledger WHERE account_id IN (?, ?, ?)`, [parentId, childAId, childBId]
+    );
+    await testPool.execute(
+      `DELETE FROM chart_of_accounts WHERE id IN (?, ?, ?)`, [parentId, childAId, childBId]
+    );
+  });
+
+  it('contra expense reduces net expense (contra_expense behavior)', async () => {
+    // Post a credit to a contra_expense account for Org A. Org A has gross expense 500
+    // (300 global + 200 org-owned) with no previous contra_expense, so net expense drops to 470.
+    const [coaCE] = await testPool.execute<RowData>(
+      `INSERT INTO chart_of_accounts (organisation_id, code, name, type, normal_side, is_system, is_active)
+       VALUES (NULL, '9993', 'Test Global Contra Expense', 'contra_expense', 'credit', 1, 1)`
+    );
+    const contraExpenseId = (coaCE as any).insertId;
+
+    await testPool.execute(
+      `INSERT INTO general_ledger (organisation_id, period_id, account_id, entry_date, debit, credit, balance, created_by)
+       VALUES (?, ?, ?, '2026-01-15', 0, 30, 0, 1)`,
+      [orgAId, periodId, contraExpenseId]
+    );
+
+    // Gross expense is debit-normal; contra_expense credits offset it.
+    const [expResult] = await testPool.execute<RowData>(
+      `SELECT COALESCE(SUM(gl.debit), 0) AS debits, COALESCE(SUM(gl.credit), 0) AS credits
+       FROM general_ledger gl
+       JOIN chart_of_accounts a ON a.id = gl.account_id
+       WHERE gl.organisation_id = ? AND a.type IN ('expense', 'contra_expense')`,
+      [orgAId]
+    );
+    const debits = Number((expResult as any[])[0].debits);
+    const credits = Number((expResult as any[])[0].credits);
+
+    expect(debits).toBe(500);   // 300 + 200 gross expense
+    expect(credits).toBe(30);   // contra_expense credit
+    expect(debits - credits).toBe(470); // net expense after contra
+
+    // Cleanup this test's data
+    await testPool.execute(`DELETE FROM general_ledger WHERE account_id = ?`, [contraExpenseId]);
+    await testPool.execute(`DELETE FROM chart_of_accounts WHERE id = ?`, [contraExpenseId]);
+  });
 });
 
 describe('Unification — Ledger Entries → GL Projection', () => {
@@ -478,6 +602,12 @@ describe('Unification — Ledger Entries → GL Projection', () => {
       connectionLimit: 2,
       charset: 'utf8mb4',
     });
+
+    // Idempotent fixture: remove any leftovers from interrupted runs before seeding
+    await testPool.execute(`DELETE FROM general_ledger WHERE account_id IN (SELECT id FROM chart_of_accounts WHERE code LIKE 'UNIFY-%')`);
+    await testPool.execute(`DELETE FROM ledger_entries WHERE chart_account_id IN (SELECT id FROM chart_of_accounts WHERE code LIKE 'UNIFY-%')`);
+    await testPool.execute(`DELETE FROM chart_of_accounts WHERE code LIKE 'UNIFY-%'`);
+    await testPool.execute(`DELETE FROM organisations WHERE slug = 'test-unify-org'`);
 
     const [orgResult] = await testPool.execute<RowData>(
       `INSERT INTO organisations (public_id, org_type_id, owner_id, name, slug, is_active)
