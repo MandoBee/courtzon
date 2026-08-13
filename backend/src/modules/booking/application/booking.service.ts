@@ -1190,6 +1190,31 @@ export class BookingService {
     }
 
     await bookingRepository.persistPaymentStatus(id, paymentStatus);
+
+    // ── COD economic recognition ──
+    // COD cash is collected by the organization, not CourtZon. The strongest
+    // real signal that the COD obligation was economically realized is this
+    // manual payment-status confirmation. Recognize CourtZon's receivable
+    // (commission + tax) ONLY now — never at booking creation. Idempotent via
+    // the canonical accounting engine (booking_cod_payment posting identity).
+    if (paymentStatus === 'paid' || paymentStatus === 'partially_refunded') {
+      try {
+        eventBusV2.emit('booking:paid', {
+          bookingId: id,
+          organisationId: booking.organisation_id,
+          grossAmount: Number(booking.total_amount || 0),
+          taxAmount: Number(booking.tax_amount || 0),
+          coachAmount: 0,
+          organisationAmount: Number(booking.club_amount || 0),
+          commissionAmount: Number(booking.commission_amount || 0),
+          paymentMethod: 'cod',
+          currency: 'EGP',
+          sourceId: id,
+        });
+      } catch (err) {
+        log.warn({ err, bookingId: id }, 'COD accounting emit failed on payment status update');
+      }
+    }
   }
 
   async getAllBookings(filters?: { orgId?: number; branchId?: number; resourceId?: number; resource?: string; branch?: string; orgName?: string; date?: string; status?: string; paymentStatus?: string; bookingType?: string; page?: number; limit?: number }) {

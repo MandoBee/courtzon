@@ -206,6 +206,17 @@ INSERT INTO accounting_event_mapping_lines (event_type, organisation_id, concept
 SELECT 'booking_cod_payment', NULL, 'tax_liability', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '2300'
 AND NOT EXISTS (SELECT 1 FROM accounting_event_mapping_lines WHERE event_type = 'booking_cod_payment' AND organisation_id IS NULL AND concept = 'tax_liability');
 
+-- booking_cod_reversal (reverse COD economics: commission + tax vs receivable)
+INSERT INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
+SELECT 'booking_cod_reversal', NULL, 'platform_commission', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '4100'
+AND NOT EXISTS (SELECT 1 FROM accounting_event_mapping_lines WHERE event_type = 'booking_cod_reversal' AND organisation_id IS NULL AND concept = 'platform_commission');
+INSERT INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
+SELECT 'booking_cod_reversal', NULL, 'tax_liability', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '2300'
+AND NOT EXISTS (SELECT 1 FROM accounting_event_mapping_lines WHERE event_type = 'booking_cod_reversal' AND organisation_id IS NULL AND concept = 'tax_liability');
+INSERT INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
+SELECT 'booking_cod_reversal', NULL, 'receivable_from_org', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '1160'
+AND NOT EXISTS (SELECT 1 FROM accounting_event_mapping_lines WHERE event_type = 'booking_cod_reversal' AND organisation_id IS NULL AND concept = 'receivable_from_org');
+
 INSERT INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
 SELECT 'booking_coach_payout', NULL, 'coach_expense', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '5200'
 AND NOT EXISTS (SELECT 1 FROM accounting_event_mapping_lines WHERE event_type = 'booking_coach_payout' AND organisation_id IS NULL AND concept = 'coach_expense');

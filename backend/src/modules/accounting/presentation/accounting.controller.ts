@@ -1462,21 +1462,48 @@ export async function listMappingsHandler(request: FastifyRequest, reply: Fastif
   const concepts = getEventConcepts;
   const result: any[] = [];
 
-  for (const [eventType] of global) {
-    const gMap = global.get(eventType)!;
+  // Iterate over the union of global + org event types so events that ONLY
+  // have an org override (no global row) are still listed correctly.
+  const allEventTypes = new Set<string>([...global.keys(), ...orgMappings.keys()]);
+  for (const eventType of allEventTypes) {
+    const gMap = global.get(eventType) ?? new Map<string, any>();
     const oMap = orgMappings.get(eventType);
-    for (const [, gRow] of gMap) {
-      const conceptDef = concepts(eventType).find(c => c.concept === gRow.concept);
-      const orgRow = oMap?.get(gRow.concept);
+    // Anchor on the required concept set so unmapped concepts still render.
+    let conceptNames: string[];
+    try {
+      conceptNames = concepts(eventType).map(c => c.concept);
+    } catch {
+      conceptNames = [...new Set([...gMap.keys(), ...(oMap?.keys() ?? [])])];
+    }
+    for (const conceptName of conceptNames) {
+      const gRow = gMap.get(conceptName);
+      const orgRow = oMap?.get(conceptName);
+      const row = orgRow ?? gRow;
+      if (!row) {
+        // No mapping at all for this concept — still render as unmapped.
+        result.push({
+          event_type: eventType,
+          organisation_id: orgId,
+          concept: conceptName,
+          side: concepts(eventType).find(c => c.concept === conceptName)?.side ?? 'debit',
+          account_id: null,
+          account_code: null,
+          account_name: null,
+          is_active: false,
+          is_global: true,
+          is_overridden: false,
+        });
+        continue;
+      }
       result.push({
         event_type: eventType,
         organisation_id: orgRow ? orgId : null,
-        concept: gRow.concept,
-        side: conceptDef?.side ?? 'debit',
-        account_id: orgRow ? orgRow.account_id : gRow.account_id,
-        account_code: orgRow ? orgRow.account_code : gRow.account_code,
-        account_name: orgRow ? orgRow.account_name : gRow.account_name,
-        is_active: orgRow ? !!orgRow.is_active : !!gRow.is_active,
+        concept: conceptName,
+        side: concepts(eventType).find(c => c.concept === conceptName)?.side ?? 'debit',
+        account_id: orgRow ? orgRow.account_id : row.account_id,
+        account_code: orgRow ? orgRow.account_code : row.account_code,
+        account_name: orgRow ? orgRow.account_name : row.account_name,
+        is_active: orgRow ? !!orgRow.is_active : !!row.is_active,
         is_global: !orgRow,
         is_overridden: !!orgRow,
       });

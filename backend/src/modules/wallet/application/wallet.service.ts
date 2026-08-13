@@ -95,6 +95,7 @@ export class WalletService {
     const wallet = await this.getMyWallet(userId);
     if (Number(wallet.balance) < amount) throw new Error('Insufficient balance');
 
+    let withdrawalId = 0;
     const doDeduction = async (c: mysql.PoolConnection) => {
       const state = await walletRepository.lockAndGetBalance(wallet.id, c);
       if (!state) throw new ConflictError('Wallet is locked');
@@ -102,11 +103,12 @@ export class WalletService {
       const updated = await walletRepository.updateBalance(wallet.id, balance, state.version, c);
       if (!updated) throw new ConflictError('Concurrent wallet update');
 
-      await c.execute(
+      const [wdResult] = await c.execute(
         `INSERT INTO withdrawal_requests (user_id, wallet_id, amount, branch_financial_details_id, status, created_at)
          VALUES (?, ?, ?, ?, 'pending', NOW())`,
         [userId, wallet.id, amount, branchFinancialDetailsId || null]
       );
+      withdrawalId = (wdResult as any).insertId;
 
       await transactionService.createWalletWithdraw({
         userId, walletId: wallet.id, amount,
@@ -117,6 +119,19 @@ export class WalletService {
     };
 
     const newBalance = conn ? await doDeduction(conn) : await withTransaction(doDeduction);
+
+    // Canonical accounting trigger — same event as the submission flow.
+    // One withdrawal request → one canonical `withdrawal_request` posting.
+    if (withdrawalId) {
+      try {
+        eventBusV2.emit('wallet:withdrawal-submitted', {
+          withdrawalId,
+          userId,
+          amount,
+          reason: notes || 'Withdrawal request',
+        });
+      } catch {}
+    }
 
     eventBusV2.emit('wallet:withdrawal', {
       walletId: wallet.id,
@@ -138,6 +153,8 @@ export class WalletService {
   private async withdrawV2(userId: number, amount: number, notes?: string, branchFinancialDetailsId?: number) {
     const wallet = await this.getMyWallet(userId);
 
+    let withdrawalId = 0;
+
     const command: Command = {
       commandId: `withdraw-wallet-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       commandType: 'WithdrawWallet',
@@ -152,11 +169,12 @@ export class WalletService {
       execute: async (cmd, conn) => {
         const withdrawResult = await withdrawWalletHandler.execute(cmd, conn);
 
-        await conn.execute(
+        const [wdResult] = await conn.execute(
           `INSERT INTO withdrawal_requests (user_id, wallet_id, amount, branch_financial_details_id, status, created_at)
            VALUES (?, ?, ?, ?, 'pending', NOW())`,
           [userId, wallet.id, amount, branchFinancialDetailsId || null]
         );
+        withdrawalId = (wdResult as any).insertId;
 
         await transactionService.createWalletWithdraw({
           userId, walletId: wallet.id, amount,
@@ -173,6 +191,19 @@ export class WalletService {
     }
 
     const data = result.data!;
+
+    // Canonical accounting trigger — same event as the submission flow.
+    if (withdrawalId) {
+      try {
+        eventBusV2.emit('wallet:withdrawal-submitted', {
+          withdrawalId,
+          userId,
+          amount,
+          reason: notes || 'Withdrawal request',
+        });
+      } catch {}
+    }
+
     eventBusV2.emit('wallet:withdrawal', {
       walletId: wallet.id,
       userId,

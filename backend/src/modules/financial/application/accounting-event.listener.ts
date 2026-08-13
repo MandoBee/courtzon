@@ -303,6 +303,26 @@ async function postBookingRefundAccounting(bookingId: number, refundAmount: numb
   }
   if (refund.refundedAmount <= 0) return;
 
+  // ── COD refund: reverse the COD economics (receivable + commission + tax) ──
+  // COD bookings never created org_payable or payment_clearing; they created
+  // receivable_from_org. Reversing them through booking_refund (card/wallet)
+  // would fabricate org_payable/payment_clearing entries for money that was
+  // never in CourtZon's custody.
+  const isCOD = refund.paymentMethod === 'cash' || refund.paymentMethod === 'cod';
+  if (isCOD) {
+    await postAccountingEvent(
+      'booking_cod_reversal', 'booking', bookingId, refund.organisationId,
+      {
+        platform_commission: refund.commissionAmount,
+        tax_liability: refund.taxAmount,
+        receivable_from_org: refund.commissionAmount + refund.taxAmount,
+      },
+      currency,
+      `Booking #${bookingId} COD refund`,
+    );
+    return;
+  }
+
   // Reverse the proportional economic components (debit side).
   await postAccountingEvent(
     'booking_refund', 'booking', bookingId, refund.organisationId,
@@ -519,6 +539,12 @@ export function registerAccountingEventListeners(): void {
       if (!econ) return;
       if (econ.cashHolder !== 'org') return;
 
+      // Only reverse a COD receivable if delivery recognition actually posted.
+      // A COD order cancelled/refunded before delivery never posted
+      // marketplace_delivery, so reversing it would create a phantom credit.
+      const delivered = await ledgerRepository.hasPosting('marketplace', orderId, 'marketplace_delivery');
+      if (!delivered) return;
+
       await postAccountingEvent(
         'marketplace_reversal', 'marketplace', orderId, econ.merchantId,
         { platform_commission: econ.commission, tax_liability: econ.tax, receivable_from_org: econ.commission + econ.tax },
@@ -540,6 +566,10 @@ export function registerAccountingEventListeners(): void {
       const econ = await resolveOrderEconomics(orderId);
       if (!econ) return;
       if (econ.cashHolder !== 'org') return;
+
+      // Same guard: only reverse if delivery recognition actually posted.
+      const delivered = await ledgerRepository.hasPosting('marketplace', orderId, 'marketplace_delivery');
+      if (!delivered) return;
 
       await postAccountingEvent(
         'marketplace_reversal', 'marketplace', orderId, econ.merchantId,
