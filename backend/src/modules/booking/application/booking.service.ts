@@ -811,7 +811,9 @@ export class BookingService {
           });
         }
       }
-      await this._emitBookingRefunded(booking, refundAmount);
+      // NOTE: _emitBookingRefunded is emitted by the caller (_processGatewayRefund)
+      // after this helper returns — emitting it here as well would double-increment
+      // refunded_amount and double-post booking:refunded for wallet refunds.
     } catch {
       // Wallet refund is best-effort
     }

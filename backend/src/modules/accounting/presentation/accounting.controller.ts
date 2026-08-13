@@ -1014,16 +1014,30 @@ export async function issueInvoiceHandler(request: FastifyRequest, reply: Fastif
     if (eventType === 'purchase_invoice_issue') {
       const expenseId = conceptToAccount.get('expense');
       const payableId = conceptToAccount.get('accounts_payable');
+      const inputTaxId = conceptToAccount.get('input_tax');
       if (!expenseId || !payableId) {
         throw new AppError('Missing required account mapping for purchase_invoice_issue', 500, 'CONFIG_ERROR');
       }
+      const taxAmt = Number(inv.tax_amount) || 0;
+      const netAmt = Number(inv.total) - taxAmt;
+      // Dr Expense (net) + Dr Input Tax (tax) = Cr Accounts Payable (total).
+      // Mirrors the cancel path and the purchase_invoice_issue concept mapping.
       await createDualEntry(conn, {
         sourceType: 'invoice', sourceId: Number(id), eventType,
         orgId, periodId, accountId: expenseId,
-        entryDate: inv.issue_date, debit: Number(inv.total), credit: 0,
+        entryDate: inv.issue_date, debit: netAmt, credit: 0,
         refType: 'invoice', refId: Number(id), userId,
-        description: `Purchase invoice ${inv.invoice_number}`,
+        description: `Purchase invoice ${inv.invoice_number} (net)`,
       });
+      if (inputTaxId && inputTaxId !== expenseId && taxAmt > 0) {
+        await createDualEntry(conn, {
+          sourceType: 'invoice', sourceId: Number(id), eventType,
+          orgId, periodId, accountId: inputTaxId,
+          entryDate: inv.issue_date, debit: taxAmt, credit: 0,
+          refType: 'invoice', refId: Number(id), userId,
+          description: `Input tax on purchase invoice ${inv.invoice_number}`,
+        });
+      }
       await createDualEntry(conn, {
         sourceType: 'invoice', sourceId: Number(id), eventType,
         orgId, periodId, accountId: payableId,
