@@ -46,6 +46,7 @@ export function buildLegacyOrgNavItems(can: (perm: string) => boolean, orgId: st
       label: 'Finance', icon: '💰', path: p('finance'),
       children: [
         { label: 'Transactions & Settlements', icon: '💸', path: p('finance'), permissionKey: 'org.sidebar.finance' },
+        { label: 'Booking Settlements', icon: '🤝', path: p('finance/bookings'), permissionKey: 'settlements.view' },
         { label: 'Reports', icon: '📈', path: p('reports'), permissionKey: 'org.reports.view' },
         {
           label: 'Accounting', icon: '📒', path: p('accounting/dashboard'), permissionKey: 'org.sidebar.accounting',
