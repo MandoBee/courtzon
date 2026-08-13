@@ -18,9 +18,14 @@ interface LineItem {
 interface JournalEntry {
   id: number;
   entry_date: string;
+  account_code: string;
+  account_name: string;
+  debit: number;
+  credit: number;
   description: string;
-  total_debits: number;
-  total_credits: number;
+  reference_type: string;
+  reference_id: string | number;
+  organisation_id: number | null;
 }
 
 export default function JournalEntryPage() {
@@ -84,7 +89,7 @@ export default function JournalEntryPage() {
     createMutation.mutate({
       entryDate: form.entry_date,
       description: form.description,
-      lines: lines.map(l => ({ accountId: Number(l.account_id), debit: Number(l.debit) || 0, credit: Number(l.credit) || 0 })),
+      entries: lines.map(l => ({ accountId: Number(l.account_id), debit: Number(l.debit) || 0, credit: Number(l.credit) || 0 })),
     });
   };
 
@@ -184,18 +189,23 @@ export default function JournalEntryPage() {
                 <thead>
                   <tr className="border-b border-[var(--color-border)] bg-[var(--color-bg)]/50">
                     <th className="text-left px-4 py-3 font-medium text-[var(--color-text-muted)]">Date</th>
+                    <th className="text-left px-4 py-3 font-medium text-[var(--color-text-muted)]">Account</th>
+                    <th className="text-right px-4 py-3 font-medium text-[var(--color-text-muted)]">Debit</th>
+                    <th className="text-right px-4 py-3 font-medium text-[var(--color-text-muted)]">Credit</th>
                     <th className="text-left px-4 py-3 font-medium text-[var(--color-text-muted)]">Description</th>
-                    <th className="text-right px-4 py-3 font-medium text-[var(--color-text-muted)]">Total Debits</th>
-                    <th className="text-right px-4 py-3 font-medium text-[var(--color-text-muted)]">Total Credits</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[var(--color-border)]">
                   {entries.map(e => (
                     <tr key={e.id} className="hover:bg-[var(--color-bg)]/30">
                       <td className="px-4 py-3 text-[var(--color-text)]">{new Date(e.entry_date).toLocaleDateString()}</td>
-                      <td className="px-4 py-3 text-[var(--color-text)]">{e.description}</td>
-                      <td className="px-4 py-3 text-right font-mono text-[var(--color-text)]">{fmt(e.total_debits)}</td>
-                      <td className="px-4 py-3 text-right font-mono text-[var(--color-text)]">{fmt(e.total_credits)}</td>
+                      <td className="px-4 py-3">
+                        <div className="text-[var(--color-text)]">{e.account_name}</div>
+                        <div className="text-xs font-mono text-[var(--color-text-muted)]">{e.account_code}</div>
+                      </td>
+                      <td className="px-4 py-3 text-right font-mono text-[var(--color-text)]">{e.debit ? fmt(Number(e.debit)) : '-'}</td>
+                      <td className="px-4 py-3 text-right font-mono text-[var(--color-text)]">{e.credit ? fmt(Number(e.credit)) : '-'}</td>
+                      <td className="px-4 py-3 text-[var(--color-text-muted)] max-w-[240px] truncate">{e.description}</td>
                     </tr>
                   ))}
                 </tbody>

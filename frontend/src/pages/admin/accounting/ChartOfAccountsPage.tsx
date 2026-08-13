@@ -42,16 +42,27 @@ export default function ChartOfAccountsPage() {
   const { showToast } = useToast();
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Account | null>(null);
-  const [form, setForm] = useState({ code: '', name: '', type: 'asset' as string, parent_id: '' as string | number, description: '' });
+  const [form, setForm] = useState({ code: '', name: '', type: 'asset' as string, parent_id: '' as string | number, normal_side: 'debit' as string, organisation_id: '' as string, description: '' });
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const [viewTree, setViewTree] = useState(true);
+  const [scopeFilter, setScopeFilter] = useState<'all' | 'global' | 'org' | string>('all');
 
   const { data, isLoading } = useQuery({
     queryKey: ['accounting', 'chart-of-accounts'],
     queryFn: () => api.get('/admin/accounting/accounts').then((r: any) => r.data.data || r.data),
   });
 
-  const accounts: Account[] = data || [];
+  const { data: orgData } = useQuery({
+    queryKey: ['organisations', 'list-minimal'],
+    queryFn: () => api.get('/organisations', { params: { limit: 200 } }).then((r: any) => r.data.data || r.data),
+  });
+
+  const allAccounts: Account[] = data || [];
+  const accounts: Account[] = (() => {
+    const list = scopeFilter === 'all' ? allAccounts : allAccounts.filter(a => scopeFilter === 'global' ? a.organisation_id == null : a.organisation_id === Number(scopeFilter));
+    return list;
+  })();
+  const orgList: any[] = Array.isArray(orgData) ? orgData : orgData?.data || [];
 
   const createMutation = useMutation({
     mutationFn: (payload: any) => api.post('/admin/accounting/accounts', payload),
@@ -67,30 +78,31 @@ export default function ChartOfAccountsPage() {
 
   const deactivateMutation = useMutation({
     mutationFn: async (id: number) => {
-      const existing = accounts.find(a => a.id === id);
+      const existing = allAccounts.find(a => a.id === id);
       if (!existing) throw new Error('Account not found');
-      return api.put(`/admin/accounting/accounts/${id}`, {
-        code: existing.code, name: existing.name, type: existing.type,
-        parent_id: existing.parent_id, description: existing.description,
-        is_active: false,
-      });
+      return api.put(`/admin/accounting/accounts/${id}`, { isActive: false });
     },
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['accounting', 'chart-of-accounts'] }); setDeleteId(null); showToast('Account deactivated!'); },
     onError: (err: any) => showToast(getErrorMessage(err), 'error'),
   });
 
-  const resetForm = () => { setShowForm(false); setEditing(null); setForm({ code: '', name: '', type: 'asset', parent_id: '', description: '' }); };
+  const resetForm = () => { setShowForm(false); setEditing(null); setForm({ code: '', name: '', type: 'asset', parent_id: '', normal_side: 'debit', organisation_id: '', description: '' }); };
 
   const openEdit = (a: Account) => {
     setEditing(a);
-    setForm({ code: a.code, name: a.name, type: a.type, parent_id: a.parent_id ?? '', description: a.description || '' });
+    setForm({ code: a.code, name: a.name, type: a.type, parent_id: a.parent_id ?? '', normal_side: a.normal_side ?? 'debit', organisation_id: a.organisation_id != null ? String(a.organisation_id) : '', description: a.description || '' });
     setShowForm(true);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.code || !form.name) return;
-    const payload = { ...form, parent_id: form.parent_id === '' ? null : Number(form.parent_id) };
+    const payload = {
+      ...form,
+      parent_id: form.parent_id === '' ? null : Number(form.parent_id),
+      normal_side: form.normal_side || null,
+      organisation_id: form.organisation_id === '' ? null : Number(form.organisation_id),
+    };
     if (editing) { updateMutation.mutate({ id: editing.id, payload }); }
     else { createMutation.mutate(payload); }
   };
@@ -111,6 +123,7 @@ export default function ChartOfAccountsPage() {
 
   function renderNode(node: Account, depth: number = 0) {
     const isStructural = node.is_system && node.children && node.children.length > 0;
+    const isProtected = !!node.is_system;
     const isLeaf = !node.children || node.children.length === 0;
     return (
       <div key={node.id}>
@@ -123,9 +136,12 @@ export default function ChartOfAccountsPage() {
             {node.type}
           </span>
           {node.is_system ? <span className="px-1.5 py-0.5 text-[10px] font-medium rounded-full bg-gray-100 text-gray-600">System</span> : null}
+          <span className={`px-1.5 py-0.5 text-[10px] font-medium rounded-full ${node.organisation_id == null ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' : 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'}`}>
+            {node.organisation_id == null ? 'Global' : 'Org'}
+          </span>
           {!isLeaf && <span className="text-[10px] text-[var(--color-text-muted)]">Parent</span>}
           <span className={`w-2 h-2 rounded-full ${node.is_active ? 'bg-green-500' : 'bg-red-500'}`} />
-          {!isStructural && (
+          {!isProtected && (
             <Can permission="accounting.coa.manage">
               <div className="flex items-center gap-1 ml-2">
                 <button onClick={() => openEdit(node)} className="text-xs text-[var(--color-primary)] hover:underline">Edit</button>
@@ -145,9 +161,15 @@ export default function ChartOfAccountsPage() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
         <h1 className="text-2xl font-bold text-[var(--color-text)]">Chart of Accounts</h1>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
+          <select value={scopeFilter} onChange={(e) => setScopeFilter(e.target.value)}
+            className="px-3 py-1.5 text-xs font-medium rounded-full bg-[var(--color-bg)] border border-[var(--color-border)] text-[var(--color-text-muted)] hover:text-[var(--color-text)]">
+            <option value="all">All Scopes</option>
+            <option value="global">Platform (Global)</option>
+            {orgList.map((o: any) => <option key={o.id} value={o.id}>{o.name}</option>)}
+          </select>
           <button onClick={() => setViewTree(!viewTree)}
             className="px-3 py-1.5 text-xs font-medium rounded-full bg-[var(--color-bg)] border border-[var(--color-border)] text-[var(--color-text-muted)] hover:text-[var(--color-text)]">
             {viewTree ? 'Flat View' : 'Tree View'}
@@ -165,8 +187,8 @@ export default function ChartOfAccountsPage() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div>
               <label className="block text-xs text-[var(--color-text-muted)] mb-1">Code *</label>
-              <input value={form.code} onChange={e => setForm({ ...form, code: e.target.value })} required
-                className="w-full px-3 py-2 border rounded-[var(--radius-md)] bg-[var(--color-bg)] text-sm" />
+              <input value={form.code} onChange={e => setForm({ ...form, code: e.target.value })} required disabled={!!editing}
+                className="w-full px-3 py-2 border rounded-[var(--radius-md)] bg-[var(--color-bg)] text-sm disabled:opacity-50" />
             </div>
             <div>
               <label className="block text-xs text-[var(--color-text-muted)] mb-1">Name *</label>
@@ -175,19 +197,35 @@ export default function ChartOfAccountsPage() {
             </div>
             <div>
               <label className="block text-xs text-[var(--color-text-muted)] mb-1">Type</label>
-              <select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })}
-                className="w-full px-3 py-2 border rounded-[var(--radius-md)] bg-[var(--color-bg)] text-sm">
+              <select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })} disabled={!!editing}
+                className="w-full px-3 py-2 border rounded-[var(--radius-md)] bg-[var(--color-bg)] text-sm disabled:opacity-50">
                 {ACCOUNT_TYPES.map(t => <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>)}
               </select>
             </div>
             <div>
+              <label className="block text-xs text-[var(--color-text-muted)] mb-1">Normal Side</label>
+              <select value={form.normal_side} onChange={e => setForm({ ...form, normal_side: e.target.value })} disabled={!!editing}
+                className="w-full px-3 py-2 border rounded-[var(--radius-md)] bg-[var(--color-bg)] text-sm disabled:opacity-50">
+                <option value="debit">Debit</option>
+                <option value="credit">Credit</option>
+              </select>
+            </div>
+            <div>
               <label className="block text-xs text-[var(--color-text-muted)] mb-1">Parent Account</label>
-              <select value={String(form.parent_id)} onChange={e => setForm({ ...form, parent_id: e.target.value })}
-                className="w-full px-3 py-2 border rounded-[var(--radius-md)] bg-[var(--color-bg)] text-sm">
+              <select value={String(form.parent_id)} onChange={e => setForm({ ...form, parent_id: e.target.value })} disabled={!!editing}
+                className="w-full px-3 py-2 border rounded-[var(--radius-md)] bg-[var(--color-bg)] text-sm disabled:opacity-50">
                 <option value="">None (Top Level)</option>
-                {accounts.filter(a => !editing || a.id !== editing.id).map(a => (
-                  <option key={a.id} value={a.id}>{a.code} - {a.name}</option>
+                {allAccounts.filter(a => !editing || a.id !== editing.id).map(a => (
+                  <option key={a.id} value={a.id}>[{a.code}] {a.name}</option>
                 ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs text-[var(--color-text-muted)] mb-1">Scope</label>
+              <select value={form.organisation_id} onChange={e => setForm({ ...form, organisation_id: e.target.value })} disabled={!!editing}
+                className="w-full px-3 py-2 border rounded-[var(--radius-md)] bg-[var(--color-bg)] text-sm disabled:opacity-50">
+                <option value="">Platform (Global)</option>
+                {orgList.map((o: any) => <option key={o.id} value={o.id}>{o.name}</option>)}
               </select>
             </div>
           </div>
@@ -226,7 +264,13 @@ export default function ChartOfAccountsPage() {
               : accounts.map(a => (
                   <tr key={a.id} className="hover:bg-[var(--color-bg)]/30">
                     <td className="px-4 py-3 text-xs font-mono text-[var(--color-text-muted)]">{a.code}</td>
-                    <td className="px-4 py-3 text-sm text-[var(--color-text)]">{a.name}</td>
+                    <td className="px-4 py-3 text-sm text-[var(--color-text)]">
+                      {a.name}
+                      {a.is_system ? <span className="ml-2 px-1.5 py-0.5 text-[10px] font-medium rounded-full bg-gray-100 text-gray-600">System</span> : null}
+                      <span className={`ml-2 px-1.5 py-0.5 text-[10px] font-medium rounded-full ${a.organisation_id == null ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' : 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'}`}>
+                        {a.organisation_id == null ? 'Global' : 'Org'}
+                      </span>
+                    </td>
                     <td className="px-4 py-3">
                       <span className={`px-2 py-0.5 text-[10px] font-medium rounded-full ${TYPE_BADGE[a.type]}`}>{a.type}</span>
                     </td>
@@ -240,8 +284,12 @@ export default function ChartOfAccountsPage() {
                     </td>
                     <Can permission="accounting.coa.manage">
                       <td className="px-4 py-3 text-right">
-                        <button onClick={() => openEdit(a)} className="text-xs text-[var(--color-primary)] hover:underline mr-2">Edit</button>
-                        <button onClick={() => setDeleteId(a.id)} className="text-xs text-[var(--color-text-muted)] hover:underline">Deactivate</button>
+                        {!a.is_system && (
+                          <>
+                            <button onClick={() => openEdit(a)} className="text-xs text-[var(--color-primary)] hover:underline mr-2">Edit</button>
+                            <button onClick={() => setDeleteId(a.id)} className="text-xs text-[var(--color-text-muted)] hover:underline">Deactivate</button>
+                          </>
+                        )}
                       </td>
                     </Can>
                   </tr>
