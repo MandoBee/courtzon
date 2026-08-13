@@ -208,8 +208,6 @@ const OrgGalleryPage = lazy(() => import('./pages/org/OrgGalleryPage'));
 const OrgReportsPage = lazy(() => import('./pages/org/OrgReportsPage'));
 const OrgProfilePage = lazy(() => import('./pages/org/OrgProfilePage'));
 const OrgBranchesPage = lazy(() => import('./pages/org/OrgBranchesPage'));
-const OrgWorkingHoursPage = lazy(() => import('./pages/org/OrgWorkingHoursPage'));
-const OrgPaymentSettingsPage = lazy(() => import('./pages/org/OrgPaymentSettingsPage'));
 const OrgReviewsPage = lazy(() => import('./pages/org/OrgReviewsPage'));
 const OrgRefereesPage = lazy(() => import('./pages/org/OrgRefereesPage'));
 const OrgAcademiesPage = lazy(() => import('./pages/org/OrgAcademiesPage'));
@@ -798,8 +796,8 @@ function AppContent() {
             <Route path="reports" element={<OrgReportsPage />} />
             <Route path="profile" element={<OrgProfilePage />} />
             <Route path="branches" element={<OrgBranchesPage />} />
-            <Route path="working-hours" element={<OrgWorkingHoursPage />} />
-            <Route path="payment-settings" element={<OrgPaymentSettingsPage />} />
+            <Route path="working-hours" element={<Navigate to="branches" replace />} />
+            <Route path="payment-settings" element={<Navigate to="branches" replace />} />
             <Route path="reviews" element={<OrgReviewsPage />} />
             <Route path="referees" element={<OrgRefereesPage />} />
             <Route path="academies" element={<OrgAcademiesPage />} />

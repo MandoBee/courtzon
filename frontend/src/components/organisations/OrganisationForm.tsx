@@ -33,6 +33,8 @@ interface Props {
   onClose: () => void;
   /** When embedded in org portal pages (branches/resources), open this tab. */
   initialTab?: FormTab;
+  /** Restrict which top-level tabs are visible (defaults by context when omitted). */
+  tabs?: FormTab[];
   variant?: 'modal' | 'page';
   pageTitle?: string;
 }
@@ -47,7 +49,7 @@ const blankForm: OrgFormData = {
 const branchBlank = { name: '', slug: '', description: '', email: '', phone: '', addressLine1: '', city: '', state: '', postalCode: '', accessType: 'open', timezone: 'Africa/Cairo', countryId: undefined as number | undefined, openingTime: '00:00', closingTime: '23:59', latitude: undefined as number | undefined, longitude: undefined as number | undefined };
 const branchFinBlank = { bankName: '', bankAccountName: '', bankAccountNumber: '', iban: '', swift: '', billingAddress: '', billingEmail: '', payoutSchedule: 'monthly' };
 
-export default function OrganisationForm({ orgId, context, onClose, initialTab, variant = 'modal', pageTitle }: Props) {
+export default function OrganisationForm({ orgId, context, onClose, initialTab, tabs, variant = 'modal', pageTitle }: Props) {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
   const isCreate = !orgId;
@@ -520,9 +522,9 @@ export default function OrganisationForm({ orgId, context, onClose, initialTab, 
 
   const activeCountries = (countries || []).filter((c: any) => c.is_active).sort((a: any, b: any) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
 
-  const visibleTabs = (context === 'org'
+  const visibleTabs = (tabs ?? (context === 'org'
     ? ['basic', 'branches', 'resources']
-    : ['basic', 'docs', ...(policyLevel === 'organisation' ? ['cancellation'] : []), 'branches', 'resources']) as FormTab[];
+    : ['basic', 'docs', ...(policyLevel === 'organisation' ? ['cancellation'] : []), 'branches', 'resources'])) as FormTab[];
 
   const branchSubTabs = context === 'org'
     ? (['basic', 'financial', ...(policyLevel === 'branch' ? ['cancellation' as const] : []), 'amenities', 'holidays'] as const)
