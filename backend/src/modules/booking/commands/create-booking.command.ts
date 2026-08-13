@@ -20,6 +20,14 @@ export interface CreateBookingPayload {
   bookingType: string;
   paymentMethod?: string;
   notes?: string;
+  // Economic snapshot (computed by the caller at booking time, never recalculated).
+  commissionAmount?: number;
+  clubAmount?: number;
+  taxRate?: number;
+  taxRateId?: number | null;
+  taxAmount?: number;
+  taxTreatment?: string;
+  priceType?: string;
 }
 
 export interface CreateBookingResult {
@@ -53,6 +61,13 @@ export const createBookingHandler: CommandHandler<Command, CreateBookingResult> 
       startTime: payload.startTime,
       endTime: payload.endTime,
       totalAmount: payload.totalAmount,
+      commissionAmount: payload.commissionAmount,
+      clubAmount: payload.clubAmount,
+      taxRate: payload.taxRate,
+      taxRateId: payload.taxRateId,
+      taxAmount: payload.taxAmount,
+      taxTreatment: payload.taxTreatment,
+      priceType: payload.priceType,
       startAtUtc: payload.startAtUtc,
       endAtUtc: payload.endAtUtc,
       notes: payload.notes,
