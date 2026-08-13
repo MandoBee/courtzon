@@ -157,6 +157,13 @@ export const EVENT_CONCEPTS: Record<string, { debit: string[]; credit: string[] 
     debit: ['receivable_from_org'],
     credit: ['platform_commission', 'tax_liability'],
   },
+  // COD refund/cancellation — reverse the COD economics EXACTLY (the original
+  // posting was receivable_from_org debit + commission/tax credit). Never use
+  // the card/wallet booking_refund (org_payable/payment_clearing) for COD.
+  booking_cod_reversal: {
+    debit: ['platform_commission', 'tax_liability'],
+    credit: ['receivable_from_org'],
+  },
   booking_coach_payout: {
     debit: ['coach_expense'],
     credit: ['coach_payable'],
