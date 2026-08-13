@@ -14,6 +14,11 @@ export async function accountingRoutes(app: FastifyInstance): Promise<void> {
   app.post('/admin/accounting/accounts', { preHandler: [requirePermission(['accounting.coa.manage'])] }, ctrl.createAccountHandler);
   app.put('/admin/accounting/accounts/:id', { preHandler: [requirePermission(['accounting.coa.manage'])] }, ctrl.updateAccountHandler);
 
+  // Organisation COA customization (per-org overlay on global default accounts)
+  app.get('/admin/accounting/org-accounts', { preHandler: [requirePermission(['accounting.coa.view'])] }, ctrl.listOrgAccountsHandler);
+  app.put('/admin/accounting/org-customizations/:accountId', { preHandler: [requirePermission(['accounting.coa.manage'])] }, ctrl.upsertOrgCustomizationHandler);
+  app.delete('/admin/accounting/org-customizations/:accountId', { preHandler: [requirePermission(['accounting.coa.manage'])] }, ctrl.resetOrgCustomizationHandler);
+
   // Account Templates
   app.get('/admin/accounting/templates', { preHandler: [requirePermission(['accounting.templates.view'])] }, tplCtrl.listTemplatesHandler);
   app.get('/admin/accounting/templates/:id', { preHandler: [requirePermission(['accounting.templates.view'])] }, tplCtrl.getTemplateHandler);
