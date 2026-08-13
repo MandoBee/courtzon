@@ -521,10 +521,8 @@ function orgIdFromRequest(request: FastifyRequest): number {
 
 function scopedRequest(request: FastifyRequest): FastifyRequest {
   const organisationId = orgIdFromRequest(request);
-  return {
-    ...request,
-    query: { ...(request.query || {}), organisationId: String(organisationId) },
-  } as FastifyRequest;
+  (request as any).query = { ...((request as any).query || {}), organisationId: String(organisationId) };
+  return request;
 }
 
 export async function orgDashboardHandler(request: FastifyRequest, reply: FastifyReply) {
@@ -568,8 +566,8 @@ export async function orgCoaHandler(request: FastifyRequest, reply: FastifyReply
 
 export async function orgUpsertCustomizationHandler(request: FastifyRequest, reply: FastifyReply) {
   const organisationId = orgIdFromRequest(request);
-  const scoped = { ...request, body: { ...(request.body || {}), organisationId } } as FastifyRequest;
-  return upsertOrgCustomizationHandler(scoped, reply);
+  (request.body as any).organisationId = organisationId;
+  return upsertOrgCustomizationHandler(request, reply);
 }
 
 export async function orgResetCustomizationHandler(request: FastifyRequest, reply: FastifyReply) {
@@ -644,9 +642,10 @@ export async function orgJournalCreateHandler(request: FastifyRequest, reply: Fa
   await validateOrgJournalAccounts(organisationId, accountIds);
 
   // Force the organisationId from the route (ignore any spoofed body value) and
-  // delegate to the canonical posting logic.
-  const scoped = { ...request, body: { ...body, organisationId } } as FastifyRequest;
-  return createJournalEntryHandler(scoped, reply);
+  // delegate to the canonical posting logic on the ORIGINAL request object (so
+  // Fastify request.ip / request.headers remain intact for the audit trail).
+  body.organisationId = organisationId;
+  return createJournalEntryHandler(request, reply);
 }
 
 /** Organisation-scoped manual journal list (own journals only). */
