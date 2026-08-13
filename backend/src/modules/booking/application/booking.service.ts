@@ -421,15 +421,10 @@ export class BookingService {
 
     // Pricing
     const pricing = await pricingEngine.calculatePrice(input.resourceId, input.startTime, endTime);
-    let commissionAmount = 0;
-    let clubAmount = pricing.totalPrice;
-    try {
-      const comm = await commissionService.calculate(input.branchId, 'booking', pricing.totalPrice);
-      commissionAmount = comm.commissionAmount;
-      clubAmount = comm.netAmount;
-    } catch {
-      // non-fatal
-    }
+    // Economic snapshot (commission + org share + tax) — same helper as V2 create.
+    const economics = await this.computeBookingEconomics(organisationId, input.branchId, pricing.totalPrice);
+    const commissionAmount = economics.commissionAmount;
+    const clubAmount = economics.clubAmount;
 
     // Redis lock with prepare TTL (10 min)
     const lockOwner = `user:${userId}`;
@@ -479,6 +474,8 @@ export class BookingService {
         bookingType: input.bookingType || 'public_match', bookingDate,
         startTime: input.startTime, endTime,
         totalAmount: pricing.totalPrice, commissionAmount, clubAmount,
+        taxRate: economics.taxRate, taxRateId: economics.taxRateId,
+        taxAmount: economics.taxAmount, taxTreatment: economics.taxTreatment,
         notes: input.notes || null, paymentMethod: input.paymentMethod,
         startAtUtc, endAtUtc, businessDate,
         individualSlots,
@@ -550,6 +547,7 @@ export class BookingService {
         bookingType: data.bookingType, bookingDate: data.bookingDate,
         startTime: data.startTime, endTime: data.endTime,
         totalAmount: data.totalAmount, commissionAmount: data.commissionAmount, clubAmount: data.clubAmount,
+        taxRate: data.taxRate, taxRateId: data.taxRateId, taxAmount: data.taxAmount, taxTreatment: data.taxTreatment, priceType: 'net',
         notes: data.notes, paymentMethod: data.paymentMethod,
         bookingStatus: 'pending_payment', paymentStatus: 'pending',
         startAtUtc: data.startAtUtc, endAtUtc: data.endAtUtc, businessDate: data.businessDate,
@@ -1424,6 +1422,12 @@ export class BookingService {
       input.resourceId, input.startTime, endTime,
     );
 
+    // ── Economic snapshot: commission + org share + tax ──
+    // Computed once at booking time from the CURRENT subscription/tax config,
+    // then persisted as an immutable snapshot. The accounting engine reads
+    // this snapshot (never the live config) so historical postings never drift.
+    const economics = await this.computeBookingEconomics(organisationId, input.branchId, pricing.totalPrice);
+
     const command: Command = {
       commandId: `create-booking-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       commandType: 'CreateBooking',
@@ -1438,6 +1442,13 @@ export class BookingService {
         startTime: input.startTime,
         endTime: input.endTime,
         totalAmount: pricing.totalPrice,
+        commissionAmount: economics.commissionAmount,
+        clubAmount: economics.clubAmount,
+        taxRate: economics.taxRate,
+        taxRateId: economics.taxRateId,
+        taxAmount: economics.taxAmount,
+        taxTreatment: economics.taxTreatment,
+        priceType: 'net',
         startAtUtc,
         endAtUtc,
         bookingType: input.bookingType || 'standard',
@@ -1483,6 +1494,42 @@ export class BookingService {
     }
 
     return { id: bookingId, bookingId };
+  }
+
+  /**
+   * Compute the immutable booking economic snapshot: commission, org net share,
+   * and tax. This is the single source of truth for booking economics used by
+   * both the V2 create path and the gateway prepare path. Non-fatal on missing
+   * subscription/tax config (falls back to zero commission / zero-rated).
+   */
+  private async computeBookingEconomics(organisationId: number, branchId: number, totalPrice: number) {
+    let commissionAmount = 0;
+    let clubAmount = totalPrice;
+    try {
+      const comm = await commissionService.calculate(branchId, 'booking', totalPrice);
+      commissionAmount = comm.commissionAmount;
+      clubAmount = comm.netAmount;
+    } catch {
+      // Commission lookup is non-fatal — proceed with zero commission.
+    }
+
+    let taxRate = 0;
+    let taxRateId: number | null = null;
+    let taxAmount = 0;
+    let taxTreatment: 'taxable' | 'zero_rated' | 'exempt' = 'taxable';
+    try {
+      const { taxResolution } = await import('../../financial/application/tax-resolution.service.js');
+      const resolved = await taxResolution.resolveOrgTaxRate(organisationId);
+      const taxCalc = taxResolution.calculateTax(clubAmount, resolved, 'taxable');
+      taxRate = taxCalc.taxRate;
+      taxRateId = taxCalc.taxRateId;
+      taxAmount = taxCalc.taxAmount;
+      taxTreatment = taxCalc.treatment;
+    } catch {
+      // Tax lookup is non-fatal; booking proceeds untaxed (zero-rated).
+    }
+
+    return { commissionAmount, clubAmount, taxRate, taxRateId, taxAmount, taxTreatment };
   }
 
   private async confirmBookingV2(bookingId: number) {

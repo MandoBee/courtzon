@@ -46,7 +46,7 @@ export class BookingRepository {
         total_amount, tax_rate, tax_rate_id, tax_amount, tax_treatment, price_type,
         commission_amount, club_amount, coach_amount,
         booking_status, payment_status, payment_method, notes, expires_at, aggregate_version)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
        [generateUUID(), data.userId, data.organisationId, data.branchId, data.resourceId, data.bookingType,
         data.bookingDate, data.businessDate || data.bookingDate, data.startTime, data.endTime,
         data.startAtUtc ? toMySqlDateTime(new Date(data.startAtUtc)) : null,
