@@ -39,13 +39,14 @@ export async function resolveBookingEconomics(bookingId: number): Promise<Bookin
   const gross = Number(b.total_amount || 0);
   const tax = Number(b.tax_amount || 0);
   const commission = Number(b.commission_amount || 0);
-  // Coach share is authoritative from coach_sessions when a coach is linked;
-  // the bookings.coach_amount snapshot is the fallback.
-  let coach = Number(b.coach_amount || 0);
-  const linkedCoach = await resolveCoachPayable(bookingId);
-  if (linkedCoach) {
-    coach = linkedCoach.coachAmount;
-  }
+  // Coach share for the BOOKING's canonical economics comes ONLY from the
+  // bookings.coach_amount snapshot (the portion of the booking payment that is
+  // the coach's share). We intentionally do NOT inject coach_sessions.
+  // coach_earnings here: that is a separate reporting/earnings figure for the
+  // coach's session fee, which is NOT collected through the booking payment
+  // (bookings.total_amount covers the court fee only). Injecting it would
+  // fabricate a coach payable for money CourtZon never collected.
+  const coach = Number(b.coach_amount || 0);
   // club_amount already = gross - commission (org net). If absent, derive.
   const orgAmount = b.club_amount != null
     ? Number(b.club_amount)
