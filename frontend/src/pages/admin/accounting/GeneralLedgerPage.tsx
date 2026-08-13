@@ -11,9 +11,9 @@ interface JournalEntry {
   account_name: string;
   debit: number;
   credit: number;
-  balance: number;
   description: string;
-  reference: string;
+  reference_type: string;
+  reference_id: string | number;
 }
 
 interface ReportLine {
@@ -50,6 +50,10 @@ export default function GeneralLedgerPage() {
   const [filters, setFilters] = useState({ period_id: '', account_code: '', date_from: '', date_to: '' });
   const [selectedOrg, setSelectedOrg] = useState('');
   const [orgs, setOrgs] = useState<{ id: number; name: string }[]>([]);
+  const [reportFrom, setReportFrom] = useState('');
+  const [reportTo, setReportTo] = useState('');
+  const [asOf, setAsOf] = useState('');
+  const [ledgerAccount, setLedgerAccount] = useState<{ id: number; code: string; name: string } | null>(null);
 
   useEffect(() => {
     api.get('/organisations?limit=200').then((r) => {
@@ -72,21 +76,27 @@ export default function GeneralLedgerPage() {
   });
 
   const { data: trialBalance, isLoading: loadingTB } = useQuery({
-    queryKey: ['accounting', 'trial-balance', selectedOrg],
-    queryFn: () => api.get('/admin/accounting/trial-balance', { params: orgParam }).then((r: any) => r.data.data || r.data),
+    queryKey: ['accounting', 'trial-balance', selectedOrg, reportFrom, reportTo],
+    queryFn: () => api.get('/admin/accounting/trial-balance', { params: { ...orgParam, from: reportFrom || undefined, to: reportTo || undefined } }).then((r: any) => r.data.data || r.data),
     enabled: tab === 'trial-balance',
   });
 
   const { data: incomeStatementData, isLoading: loadingIS } = useQuery({
-    queryKey: ['accounting', 'income-statement', selectedOrg],
-    queryFn: () => api.get('/admin/accounting/income-statement', { params: orgParam }).then((r: any) => r.data.data || r.data),
+    queryKey: ['accounting', 'income-statement', selectedOrg, reportFrom, reportTo],
+    queryFn: () => api.get('/admin/accounting/income-statement', { params: { ...orgParam, from: reportFrom || undefined, to: reportTo || undefined } }).then((r: any) => r.data.data || r.data),
     enabled: tab === 'income-statement',
   });
 
   const { data: balanceSheet, isLoading: loadingBS } = useQuery({
-    queryKey: ['accounting', 'balance-sheet', selectedOrg],
-    queryFn: () => api.get('/admin/accounting/balance-sheet', { params: orgParam }).then((r: any) => r.data.data || r.data),
+    queryKey: ['accounting', 'balance-sheet', selectedOrg, asOf],
+    queryFn: () => api.get('/admin/accounting/balance-sheet', { params: { ...orgParam, asOf: asOf || undefined } }).then((r: any) => r.data.data || r.data),
     enabled: tab === 'balance-sheet',
+  });
+
+  const { data: accountLedger, isLoading: loadingAcctLedger } = useQuery({
+    queryKey: ['accounting', 'account-ledger', ledgerAccount?.id],
+    queryFn: () => api.get(`/admin/accounting/ledger/${ledgerAccount!.id}`).then((r: any) => r.data.data || r.data),
+    enabled: !!ledgerAccount,
   });
 
   const entries: JournalEntry[] = journalData?.data || [];
@@ -134,6 +144,33 @@ export default function GeneralLedgerPage() {
           ))}
         </div>
 
+        {tab !== 'journal' && (
+          <div className="flex items-end gap-3 mb-4 flex-wrap">
+            {tab === 'balance-sheet' ? (
+              <div>
+                <label className="block text-xs text-[var(--color-text-muted)] mb-1">As Of Date</label>
+                <input type="date" value={asOf} onChange={e => setAsOf(e.target.value)}
+                  className="px-3 py-2 border rounded-[var(--radius-md)] bg-[var(--color-bg)] text-sm" />
+              </div>
+            ) : (
+              <>
+                <div>
+                  <label className="block text-xs text-[var(--color-text-muted)] mb-1">From</label>
+                  <input type="date" value={reportFrom} onChange={e => setReportFrom(e.target.value)}
+                    className="px-3 py-2 border rounded-[var(--radius-md)] bg-[var(--color-bg)] text-sm" />
+                </div>
+                <div>
+                  <label className="block text-xs text-[var(--color-text-muted)] mb-1">To</label>
+                  <input type="date" value={reportTo} onChange={e => setReportTo(e.target.value)}
+                    className="px-3 py-2 border rounded-[var(--radius-md)] bg-[var(--color-bg)] text-sm" />
+                </div>
+              </>
+            )}
+            <button onClick={() => { setReportFrom(''); setReportTo(''); setAsOf(''); }}
+              className="text-xs text-[var(--color-primary)] hover:underline">Reset</button>
+          </div>
+        )}
+
         {tab === 'journal' && (
           <div>
             <div className="flex gap-3 mb-4 flex-wrap">
@@ -163,7 +200,6 @@ export default function GeneralLedgerPage() {
                         <th className="text-left px-4 py-3 font-medium text-[var(--color-text-muted)]">Name</th>
                         <th className="text-right px-4 py-3 font-medium text-[var(--color-text-muted)]">Debit</th>
                         <th className="text-right px-4 py-3 font-medium text-[var(--color-text-muted)]">Credit</th>
-                        <th className="text-right px-4 py-3 font-medium text-[var(--color-text-muted)]">Balance</th>
                         <th className="text-left px-4 py-3 font-medium text-[var(--color-text-muted)]">Description</th>
                         <th className="text-left px-4 py-3 font-medium text-[var(--color-text-muted)]">Reference</th>
                       </tr>
@@ -176,9 +212,8 @@ export default function GeneralLedgerPage() {
                           <td className="px-4 py-3 text-[var(--color-text)]">{e.account_name}</td>
                           <td className="px-4 py-3 text-right font-mono text-[var(--color-text)]">{e.debit ? fmt(e.debit) : '-'}</td>
                           <td className="px-4 py-3 text-right font-mono text-[var(--color-text)]">{e.credit ? fmt(e.credit) : '-'}</td>
-                          <td className="px-4 py-3 text-right font-mono text-[var(--color-text)]">{fmt(e.balance)}</td>
                           <td className="px-4 py-3 text-[var(--color-text-muted)] max-w-[200px] truncate">{e.description}</td>
-                          <td className="px-4 py-3 text-[var(--color-text-muted)]">{e.reference}</td>
+                          <td className="px-4 py-3 text-[var(--color-text-muted)] text-xs">{e.reference_type || '—'}{e.reference_id ? ` #${e.reference_id}` : ''}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -207,7 +242,10 @@ export default function GeneralLedgerPage() {
                 </thead>
                 <tbody className="divide-y divide-[var(--color-border)]">
                   {tbRows.map((r, i) => (
-                    <tr key={i} className={`hover:bg-[var(--color-bg)]/30 ${r.level === 0 ? 'font-semibold' : ''} ${r.has_children ? 'text-[var(--color-primary)]' : ''}`}>
+                    <tr key={i}
+                      onClick={() => !r.has_children && setLedgerAccount({ id: r.account_id, code: r.code, name: r.name })}
+                      className={`hover:bg-[var(--color-bg)]/30 ${r.level === 0 ? 'font-semibold' : ''} ${r.has_children ? 'text-[var(--color-primary)]' : 'cursor-pointer'}`}
+                      title={r.has_children ? undefined : 'View account ledger'}>
                       <td className="px-4 py-3 text-xs font-mono text-[var(--color-text-muted)]" style={{ paddingLeft: `${r.level * 16 + 16}px` }}>{r.code}</td>
                       <td className="px-4 py-3 text-[var(--color-text)]">{r.name}</td>
                       <td className="px-4 py-3 text-xs text-[var(--color-text-muted)] capitalize">{r.type.replace(/_/g, ' ')}</td>
@@ -337,6 +375,53 @@ export default function GeneralLedgerPage() {
                 </table>
               </>
             )}
+          </div>
+        )}
+
+        {ledgerAccount && (
+          <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4" onClick={() => setLedgerAccount(null)}>
+            <div className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] border border-[var(--color-border)] w-full max-w-4xl max-h-[80vh] flex flex-col"
+              onClick={e => e.stopPropagation()}>
+              <div className="flex items-center justify-between p-4 border-b border-[var(--color-border)]">
+                <div>
+                  <h2 className="text-lg font-bold text-[var(--color-text)]">Account Ledger</h2>
+                  <p className="text-xs font-mono text-[var(--color-text-muted)]">[{ledgerAccount.code}] {ledgerAccount.name}</p>
+                </div>
+                <button onClick={() => setLedgerAccount(null)}
+                  className="text-[var(--color-text-muted)] hover:text-[var(--color-text)] text-xl leading-none">&times;</button>
+              </div>
+              <div className="overflow-auto p-4">
+                {loadingAcctLedger ? <Spinner /> : (
+                  <>
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-[var(--color-border)] bg-[var(--color-bg)]/50">
+                          <th className="text-left px-3 py-2 font-medium text-[var(--color-text-muted)]">Date</th>
+                          <th className="text-right px-3 py-2 font-medium text-[var(--color-text-muted)]">Debit</th>
+                          <th className="text-right px-3 py-2 font-medium text-[var(--color-text-muted)]">Credit</th>
+                          <th className="text-left px-3 py-2 font-medium text-[var(--color-text-muted)]">Description</th>
+                          <th className="text-left px-3 py-2 font-medium text-[var(--color-text-muted)]">Reference</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-[var(--color-border)]">
+                        {(accountLedger?.entries || []).map((e: any, i: number) => (
+                          <tr key={i} className="hover:bg-[var(--color-bg)]/30">
+                            <td className="px-3 py-2 text-[var(--color-text)]">{new Date(e.entry_date).toLocaleDateString()}</td>
+                            <td className="px-3 py-2 text-right font-mono text-[var(--color-text)]">{e.debit ? fmt(Number(e.debit)) : '-'}</td>
+                            <td className="px-3 py-2 text-right font-mono text-[var(--color-text)]">{e.credit ? fmt(Number(e.credit)) : '-'}</td>
+                            <td className="px-3 py-2 text-[var(--color-text-muted)] max-w-[240px] truncate">{e.description || '—'}</td>
+                            <td className="px-3 py-2 text-[var(--color-text-muted)] text-xs">{e.reference_type || '—'}{e.reference_id ? ` #${e.reference_id}` : ''}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    {!(accountLedger?.entries || []).length && (
+                      <p className="text-center py-8 text-sm text-[var(--color-text-muted)]">No ledger entries for this account in the selected scope.</p>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
           </div>
         )}
       </div>

@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../../services/api';
-import { Spinner } from '../../../components/ui';
+import { Button, Spinner } from '../../../components/ui';
 import { Can } from '../../../permissions/Can';
 import { useToast } from '../../../components/ui/Toast';
+import { getErrorMessage } from '../../../utils/errors';
 
 interface Template {
   id: number;
@@ -39,6 +40,19 @@ interface PreviewLine {
   status: 'skipped' | 'will_create';
 }
 
+interface TemplateLineDraft {
+  l3_parent_code: string;
+  code: string;
+  name: string;
+  account_type: string;
+  normal_side: string;
+  description: string;
+}
+
+const ACCOUNT_TYPES = ['asset', 'liability', 'equity', 'revenue', 'expense', 'contra_asset', 'contra_liability', 'contra_equity', 'contra_revenue', 'contra_expense'] as const;
+
+const emptyLine = (): TemplateLineDraft => ({ l3_parent_code: '', code: '', name: '', account_type: 'asset', normal_side: 'debit', description: '' });
+
 export default function TemplatesPage() {
   const { showToast } = useToast();
   const qc = useQueryClient();
@@ -48,6 +62,10 @@ export default function TemplatesPage() {
   const [orgs, setOrgs] = useState<{ id: number; name: string }[]>([]);
   const [createMode, setCreateMode] = useState(false);
   const [editMode, setEditMode] = useState(false);
+
+  const [tplForm, setTplForm] = useState({ name: '', templateKey: '', description: '' });
+  const [tplLines, setTplLines] = useState<TemplateLineDraft[]>([emptyLine()]);
+  const [l3Options, setL3Options] = useState<{ code: string; name: string }[]>([]);
 
   useEffect(() => {
     api.get('/organisations?limit=200').then(r => {
@@ -67,6 +85,20 @@ export default function TemplatesPage() {
     enabled: !!selectedId,
   });
 
+  const { data: accounts } = useQuery({
+    queryKey: ['accounting', 'accounts'],
+    queryFn: () => api.get('/admin/accounting/accounts').then(r => r.data.data || r.data),
+  });
+
+  useEffect(() => {
+    const accs = Array.isArray(accounts) ? accounts : accounts?.data || [];
+    setL3Options(
+      accs
+        .filter((a: any) => a.level === 3 && a.organisation_id === null)
+        .map((a: any) => ({ code: a.code, name: a.name })),
+    );
+  }, [accounts]);
+
   const handlePreview = async () => {
     if (!applyOrgId) { showToast('Select an organization first', 'warning'); return; }
     const r = await api.get('/admin/accounting/templates/preview', { params: { templateId: selectedId, organisationId: applyOrgId } });
@@ -83,6 +115,81 @@ export default function TemplatesPage() {
     },
     onError: (e: any) => { showToast(e?.response?.data?.message || 'Apply failed', 'error'); },
   });
+
+  const createTplMut = useMutation({
+    mutationFn: () => api.post('/admin/accounting/templates', {
+      name: tplForm.name,
+      templateKey: tplForm.templateKey,
+      description: tplForm.description,
+      lines: tplLines.map((l, i) => ({
+        l3_parent_code: l.l3_parent_code,
+        code: l.code,
+        name: l.name,
+        account_type: l.account_type,
+        normal_side: l.normal_side,
+        is_postable: 1,
+        description: l.description,
+        display_order: i * 10,
+      })),
+    }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['accounting', 'templates'] });
+      setCreateMode(false);
+      showToast('Template created!');
+    },
+    onError: (e: any) => showToast(getErrorMessage(e), 'error'),
+  });
+
+  const updateTplMut = useMutation({
+    mutationFn: () => api.put(`/admin/accounting/templates/${selectedId}`, {
+      name: tplForm.name,
+      description: tplForm.description,
+      lines: tplLines.map((l, i) => ({
+        l3_parent_code: l.l3_parent_code,
+        code: l.code,
+        name: l.name,
+        account_type: l.account_type,
+        normal_side: l.normal_side,
+        is_postable: 1,
+        description: l.description,
+        display_order: i * 10,
+      })),
+    }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['accounting', 'templates'] });
+      qc.invalidateQueries({ queryKey: ['accounting', 'template', selectedId] });
+      setEditMode(false);
+      showToast('Template updated!');
+    },
+    onError: (e: any) => showToast(getErrorMessage(e), 'error'),
+  });
+
+  const startCreate = () => {
+    setCreateMode(true); setEditMode(false); setSelectedId(null); setPreview(null);
+    setTplForm({ name: '', templateKey: '', description: '' });
+    setTplLines([emptyLine()]);
+  };
+
+  const startEdit = () => {
+    setEditMode(true); setCreateMode(false);
+    setTplForm({ name: selected?.name || '', templateKey: selected?.template_key || '', description: selected?.description || '' });
+    setTplLines(lines.length ? lines.map(l => ({
+      l3_parent_code: l.l3_parent_code, code: l.code, name: l.name,
+      account_type: l.account_type, normal_side: l.normal_side, description: l.description || '',
+    })) : [emptyLine()]);
+  };
+
+  const updateTplLine = (idx: number, field: keyof TemplateLineDraft, value: string) => {
+    setTplLines(prev => prev.map((l, i) => (i === idx ? { ...l, [field]: value } : l)));
+  };
+  const addTplLine = () => setTplLines(prev => [...prev, emptyLine()]);
+  const removeTplLine = (idx: number) => { if (tplLines.length > 1) setTplLines(prev => prev.filter((_, i) => i !== idx)); };
+
+  const canSave = () => {
+    if (!tplForm.name.trim()) return false;
+    if (createMode && !tplForm.templateKey.trim()) return false;
+    return tplLines.every(l => l.l3_parent_code && l.code.trim() && l.name.trim());
+  };
 
   if (isLoading) return <Spinner />;
 
@@ -116,7 +223,7 @@ export default function TemplatesPage() {
               ))}
             </div>
             <Can permission="accounting.templates.manage">
-              <button onClick={() => { setCreateMode(true); setEditMode(false); setSelectedId(null); setPreview(null); }}
+              <button onClick={startCreate}
                 className="mt-3 w-full text-sm px-3 py-2 border border-dashed border-[var(--color-border)] rounded-[var(--radius-md)] text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:border-[var(--color-primary)]/30">
                 + Create Template
               </button>
@@ -131,6 +238,107 @@ export default function TemplatesPage() {
               </div>
             )}
 
+            {(createMode || editMode) && (
+              <div className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] border p-4 space-y-4">
+                <h2 className="text-lg font-semibold text-[var(--color-text)]">
+                  {createMode ? 'Create Template' : 'Edit Template'}
+                </h2>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs text-[var(--color-text-muted)] mb-1">Name *</label>
+                    <input value={tplForm.name} onChange={e => setTplForm({ ...tplForm, name: e.target.value })}
+                      className="w-full px-3 py-2 border rounded-[var(--radius-md)] bg-[var(--color-bg)] text-sm" />
+                  </div>
+                  {createMode && (
+                    <div>
+                      <label className="block text-xs text-[var(--color-text-muted)] mb-1">Template Key *</label>
+                      <input value={tplForm.templateKey} onChange={e => setTplForm({ ...tplForm, templateKey: e.target.value })}
+                        placeholder="e.g. sports_club_custom"
+                        className="w-full px-3 py-2 border rounded-[var(--radius-md)] bg-[var(--color-bg)] text-sm" />
+                    </div>
+                  )}
+                  <div className={createMode ? 'md:col-span-2' : ''}>
+                    <label className="block text-xs text-[var(--color-text-muted)] mb-1">Description</label>
+                    <input value={tplForm.description} onChange={e => setTplForm({ ...tplForm, description: e.target.value })}
+                      className="w-full px-3 py-2 border rounded-[var(--radius-md)] bg-[var(--color-bg)] text-sm" />
+                  </div>
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="text-sm font-semibold text-[var(--color-text)]">Accounts</h3>
+                    <Button type="button" variant="ghost" onClick={addTplLine}>+ Add Account</Button>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="border-b border-[var(--color-border)] text-[var(--color-text-muted)]">
+                          <th className="text-left px-2 py-1.5">L3 Parent</th>
+                          <th className="text-left px-2 py-1.5">Code</th>
+                          <th className="text-left px-2 py-1.5">Name</th>
+                          <th className="text-left px-2 py-1.5">Type</th>
+                          <th className="text-left px-2 py-1.5">Side</th>
+                          <th className="w-10"></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {tplLines.map((l, idx) => (
+                          <tr key={idx} className="border-b border-[var(--color-border)]">
+                            <td className="px-2 py-1.5">
+                              <select value={l.l3_parent_code} onChange={e => updateTplLine(idx, 'l3_parent_code', e.target.value)}
+                                className="w-full px-2 py-1.5 border rounded-[var(--radius-md)] bg-[var(--color-bg)] text-xs">
+                                <option value="">Select L3 parent...</option>
+                                {l3Options.map(o => <option key={o.code} value={o.code}>[{o.code}] {o.name}</option>)}
+                              </select>
+                            </td>
+                            <td className="px-2 py-1.5">
+                              <input value={l.code} onChange={e => updateTplLine(idx, 'code', e.target.value)}
+                                placeholder="CODE"
+                                className="w-full px-2 py-1.5 border rounded-[var(--radius-md)] bg-[var(--color-bg)] text-xs font-mono" />
+                            </td>
+                            <td className="px-2 py-1.5">
+                              <input value={l.name} onChange={e => updateTplLine(idx, 'name', e.target.value)}
+                                placeholder="Account name"
+                                className="w-full px-2 py-1.5 border rounded-[var(--radius-md)] bg-[var(--color-bg)] text-xs" />
+                            </td>
+                            <td className="px-2 py-1.5">
+                              <select value={l.account_type} onChange={e => updateTplLine(idx, 'account_type', e.target.value)}
+                                className="w-full px-2 py-1.5 border rounded-[var(--radius-md)] bg-[var(--color-bg)] text-xs">
+                                {ACCOUNT_TYPES.map(t => <option key={t} value={t}>{t.replace(/_/g, ' ')}</option>)}
+                              </select>
+                            </td>
+                            <td className="px-2 py-1.5">
+                              <select value={l.normal_side} onChange={e => updateTplLine(idx, 'normal_side', e.target.value)}
+                                className="w-full px-2 py-1.5 border rounded-[var(--radius-md)] bg-[var(--color-bg)] text-xs">
+                                <option value="debit">Debit</option>
+                                <option value="credit">Credit</option>
+                              </select>
+                            </td>
+                            <td className="px-2 py-1.5">
+                              <button type="button" onClick={() => removeTplLine(idx)} disabled={tplLines.length <= 1}
+                                className="text-xs text-[var(--color-error)] disabled:opacity-30">✕</button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                <div className="flex gap-3">
+                  <Button onClick={() => createMode ? createTplMut.mutate() : updateTplMut.mutate()}
+                    loading={createTplMut.isPending || updateTplMut.isPending}
+                    disabled={!canSave()}>
+                    {createMode ? 'Create' : 'Save'}
+                  </Button>
+                  <Button variant="ghost" onClick={() => { setCreateMode(false); setEditMode(false); }}>
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            )}
+
             {selected && !createMode && !editMode && (
               <div className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] border p-4 space-y-4">
                 <div className="flex items-center justify-between">
@@ -140,7 +348,7 @@ export default function TemplatesPage() {
                   </div>
                   {selected.scope !== 'system' && (
                     <Can permission="accounting.templates.manage">
-                      <button onClick={() => setEditMode(true)}
+                      <button onClick={startEdit}
                         className="text-xs px-3 py-1.5 border rounded-[var(--radius-md)] text-[var(--color-text-muted)] hover:text-[var(--color-text)]">
                         Edit
                       </button>

@@ -295,6 +295,29 @@ export async function updateAccountHandler(request: FastifyRequest, reply: Fasti
   if (!existing.length) {
     throw new NotFoundError('Account', ErrorCodes.ACCOUNT_NOT_FOUND);
   }
+  const current = (existing as any[])[0];
+  const isSystem = current.is_system === 1;
+  const wantsNameChange = body.name != null && body.name !== current.name;
+  const wantsDeactivate = body.isActive === false && current.is_active === 1;
+
+  // System accounts (fixed L1–L4 platform structure) are immutable — they may
+  // not be renamed or deactivated, preventing accidental breakage of the
+  // platform's default chart of accounts and event mappings.
+  if (isSystem && (wantsNameChange || wantsDeactivate)) {
+    throw new AppError('System accounts are protected and cannot be renamed or deactivated', 403, 'FORBIDDEN');
+  }
+
+  // Never allow deactivating an account that is still referenced by active
+  // event mappings — doing so would silently break accounting posting.
+  if (wantsDeactivate) {
+    const [refs] = await pool.execute<RowData>(
+      `SELECT COUNT(*) AS cnt FROM accounting_event_mapping_lines WHERE account_id = ? AND is_active = 1`,
+      [Number(id)],
+    );
+    if (Number((refs as any[])[0].cnt) > 0) {
+      throw new AppError('Account is referenced by active event mappings and cannot be deactivated', 409, 'CONFLICT');
+    }
+  }
 
   await pool.execute<RowData>(
     `UPDATE chart_of_accounts SET name = COALESCE(?, name), description = COALESCE(?, description), is_active = COALESCE(?, is_active) WHERE id = ?`,
