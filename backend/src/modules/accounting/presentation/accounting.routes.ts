@@ -21,6 +21,12 @@ export async function accountingRoutes(app: FastifyInstance): Promise<void> {
   app.put('/org/:orgId/accounting/coa/customizations/:accountId', { preHandler: [orgAccountingManage] }, ctrl.orgUpsertCustomizationHandler);
   app.delete('/org/:orgId/accounting/coa/customizations/:accountId', { preHandler: [orgAccountingManage] }, ctrl.orgResetCustomizationHandler);
 
+  // ── Organisation-scoped Manual Journal ──
+  const orgJournalView = requireOrgScopedPermission('org.accounting.journal.view');
+  const orgJournalCreate = requireOrgScopedPermission('org.accounting.journal.create');
+  app.get('/org/:orgId/accounting/journal', { preHandler: [orgJournalView] }, ctrl.orgJournalListHandler);
+  app.post('/org/:orgId/accounting/journal', { preHandler: [orgJournalCreate] }, ctrl.orgJournalCreateHandler);
+
   // Dashboard
   app.get('/admin/accounting/dashboard', { preHandler: [requirePermission(['accounting.dashboard'])] }, ctrl.getDashboardHandler);
 

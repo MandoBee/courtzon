@@ -5,6 +5,7 @@ import api from '../../services/api';
 import { Can } from '../../permissions/Can';
 import { useToast } from '../../components/ui/Toast';
 import { getWalletTransactionLabel } from '../../utils/walletTransactions';
+import OrgBookingSettlements from './OrgBookingSettlements';
 
 const SETTLEMENT_STATUS_COLORS: Record<string, string> = {
   requested: 'bg-gray-100 text-gray-600',
@@ -254,7 +255,7 @@ function SettlementActions({ orgId, settlement, onUpdated }: { orgId: string; se
 
 export default function OrgFinancePage() {
   const { orgId } = useParams<{ orgId: string }>();
-  const [tab, setTab] = useState<'transactions' | 'settlements'>('transactions');
+  const [tab, setTab] = useState<'transactions' | 'settlements' | 'bookings'>('transactions');
   const [txPage, setTxPage] = useState(1);
   const [stPage, setStPage] = useState(1);
   const [showRequestModal, setShowRequestModal] = useState(false);
@@ -315,7 +316,17 @@ export default function OrgFinancePage() {
           }`}>
           Settlements
         </button>
+        <button onClick={() => setTab('bookings')}
+          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+            tab === 'bookings'
+              ? 'border-[var(--color-primary)] text-[var(--color-primary)]'
+              : 'border-transparent text-[var(--color-text-muted)] hover:text-[var(--color-text)]'
+          }`}>
+          Booking Settlements
+        </button>
       </div>
+
+      {tab === 'bookings' && <OrgBookingSettlements orgId={orgId} />}
 
       {tab === 'transactions' && (
         <div className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] border border-[var(--color-border)] overflow-hidden">
