@@ -63,6 +63,21 @@ async function isSuperAdmin(userId: number): Promise<boolean> {
   return rows.length > 0;
 }
 
+/**
+ * Resolve a settlement and assert the caller may act on it. Reuses the same
+ * ownership model as requestSettlement/getSettlement (super_admin, owner, or
+ * organisation-scoped role). Returns { allowed, detail } so callers can deny
+ * before any state transition or accounting event is emitted.
+ */
+async function resolveSettlementAccess(userId: number, settlementId: number): Promise<{ allowed: boolean; detail: any }> {
+  const detail = await settlementService.getSettlementDetail(settlementId);
+  if (!detail) return { allowed: false, detail: null };
+  const admin = await isSuperAdmin(userId);
+  if (admin) return { allowed: true, detail };
+  const owns = await verifyOrgOwnership(userId, detail.organisation_id);
+  return { allowed: owns, detail };
+}
+
 export async function requestSettlementHandler(request: FastifyRequest, reply: FastifyReply) {
   const parsed = RequestSettlementSchema.safeParse(request.body);
   if (!parsed.success) {
@@ -96,6 +111,10 @@ export async function approveSettlementHandler(request: FastifyRequest, reply: F
     return reply.status(400).send({ error: 'VALIDATION_ERROR', details: formatZodErrorDetails(parsed.error) });
   }
   const userId = (request as any).userId;
+  const { allowed } = await resolveSettlementAccess(userId, Number(id));
+  if (!allowed) {
+    return reply.status(403).send({ error: 'FORBIDDEN', message: 'You do not have access to this settlement' });
+  }
   const result = await settlementService.approveSettlement(Number(id), userId, parsed.data.notes);
   return reply.send(result);
 }
@@ -106,12 +125,22 @@ export async function markPaidHandler(request: FastifyRequest, reply: FastifyRep
   if (!parsed.success) {
     return reply.status(400).send({ error: 'VALIDATION_ERROR', details: formatZodErrorDetails(parsed.error) });
   }
+  const userId = (request as any).userId;
+  const { allowed } = await resolveSettlementAccess(userId, Number(id));
+  if (!allowed) {
+    return reply.status(403).send({ error: 'FORBIDDEN', message: 'You do not have access to this settlement' });
+  }
   const result = await settlementService.markPaid(Number(id), parsed.data.bankAccountId, parsed.data.transferReference);
   return reply.send(result);
 }
 
 export async function completeSettlementHandler(request: FastifyRequest, reply: FastifyReply) {
   const { id } = request.params as any;
+  const userId = (request as any).userId;
+  const { allowed } = await resolveSettlementAccess(userId, Number(id));
+  if (!allowed) {
+    return reply.status(403).send({ error: 'FORBIDDEN', message: 'You do not have access to this settlement' });
+  }
   const result = await settlementService.completeSettlement(Number(id));
   return reply.send(result);
 }
@@ -122,6 +151,11 @@ export async function rejectSettlementHandler(request: FastifyRequest, reply: Fa
   if (!parsed.success) {
     return reply.status(400).send({ error: 'VALIDATION_ERROR', details: formatZodErrorDetails(parsed.error) });
   }
+  const userId = (request as any).userId;
+  const { allowed } = await resolveSettlementAccess(userId, Number(id));
+  if (!allowed) {
+    return reply.status(403).send({ error: 'FORBIDDEN', message: 'You do not have access to this settlement' });
+  }
   const result = await settlementService.rejectSettlement(Number(id), parsed.data.reason);
   return reply.send(result);
 }
@@ -131,6 +165,11 @@ export async function cancelSettlementHandler(request: FastifyRequest, reply: Fa
   const parsed = CancelSettlementSchema.safeParse(request.body || {});
   if (!parsed.success) {
     return reply.status(400).send({ error: 'VALIDATION_ERROR', details: formatZodErrorDetails(parsed.error) });
+  }
+  const userId = (request as any).userId;
+  const { allowed } = await resolveSettlementAccess(userId, Number(id));
+  if (!allowed) {
+    return reply.status(403).send({ error: 'FORBIDDEN', message: 'You do not have access to this settlement' });
   }
   const result = await settlementService.cancelSettlement(Number(id), parsed.data.reason);
   return reply.send(result);

@@ -375,6 +375,9 @@ const OPERATIONS_MANAGER_PATTERNS = [
   /^org\.(sidebar\.(staff|members|coaches)|staff\.manage|members\.manage|coaches\.manage|branches\.manage|resources\.manage)/,
   /^profile\./,
   /^organisations\.storefront\./,
+  // Operational settlement responsibilities: view + request + settle eligible
+  // bookings / collect recoveries. Marketplace approval/payout remains finance-only.
+  /^settlements\.(view|request)$/,
 ];
 
 const TOURNAMENT_MANAGER_PATTERNS = [
@@ -450,6 +453,9 @@ const AUDITOR_PATTERNS = [
   /^home\./,
   /^sidebar\./,
   /^notifications\.view/,
+  // Read-only Finance navigation (view-only capabilities already granted above)
+  /^org\.sidebar\.finance/,
+  /^org\.sidebar\.accounting/,
 ];
 
 const READ_ONLY_ADMIN_PATTERNS = [
@@ -460,6 +466,9 @@ const READ_ONLY_ADMIN_PATTERNS = [
   /^home\./,
   /^sidebar\./,
   /^notifications\.view/,
+  // Read-only Finance navigation (view-only capabilities already granted above)
+  /^org\.sidebar\.finance/,
+  /^org\.sidebar\.accounting/,
 ];
 
 export function permissionMatchesTemplate(templateSlug, permissionKey) {

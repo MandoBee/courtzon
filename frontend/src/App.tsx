@@ -197,6 +197,7 @@ const OrgCoachesPage = lazy(() => import('./pages/org/OrgCoachesPage'));
 const OrgMembersPage = lazy(() => import('./pages/org/OrgMembersPage'));
 const OrgPendingApprovalPage = lazy(() => import('./pages/org/OrgPendingApprovalPage'));
 const OrgFinancePage = lazy(() => import('./pages/org/OrgFinancePage'));
+const OrgBookingSettlementsPage = lazy(() => import('./pages/org/OrgBookingSettlementsPage'));
 const OrgAccountingDashboardPage = lazy(() => import('./pages/org/OrgAccountingDashboardPage'));
 const OrgChartOfAccountsPage = lazy(() => import('./pages/org/OrgChartOfAccountsPage'));
 const OrgJournalPage = lazy(() => import('./pages/org/OrgJournalPage'));
@@ -784,6 +785,7 @@ function AppContent() {
             <Route path="members" element={<OrgMembersPage />} />
             <Route path="coaches" element={<OrgCoachesPage />} />
             <Route path="finance" element={<OrgFinancePage />} />
+            <Route path="finance/bookings" element={<OrgBookingSettlementsPage />} />
             <Route path="accounting" element={<Navigate to="accounting/dashboard" replace />} />
             <Route path="accounting/dashboard" element={<OrgAccountingDashboardPage />} />
             <Route path="accounting/coa" element={<OrgChartOfAccountsPage />} />
