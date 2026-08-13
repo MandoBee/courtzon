@@ -61,6 +61,35 @@ export class AccountingEngineService {
     return this.validateAndReturn(eventType, rows as any[], organisationId);
   }
 
+  /**
+   * Resolve the effective set of tax account IDs (concepts `tax_liability` and
+   * `input_tax`) for a scope. Applies the same complete-override model as
+   * resolveMapping: org-owned lines replace global lines per event_type, and
+   * event types without an org override fall back to global lines.
+   * No account codes/names/IDs are hard-coded — only the stable concepts.
+   */
+  async resolveTaxAccountIds(organisationId: number | null): Promise<number[]> {
+    let [rows] = await this.pool.execute<RowData>(
+      `SELECT DISTINCT account_id
+       FROM accounting_event_mapping_lines
+       WHERE is_active = 1
+         AND concept IN ('tax_liability', 'input_tax')
+         AND (
+           organisation_id = ?
+           OR (
+             organisation_id IS NULL
+             AND event_type NOT IN (
+               SELECT DISTINCT event_type
+               FROM accounting_event_mapping_lines
+               WHERE organisation_id = ? AND is_active = 1
+             )
+           )
+         )`,
+      [organisationId ?? null, organisationId ?? null],
+    );
+    return (rows as any[]).map((r: any) => Number(r.account_id));
+  }
+
   private validateAndReturn(
     eventType: string,
     rows: { concept: string; accountId: number }[],
