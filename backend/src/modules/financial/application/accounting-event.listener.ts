@@ -103,14 +103,19 @@ async function postMarketplaceRefundAccounting(orderId: number, currency: string
     log.error({ orderId }, 'Marketplace order economics not found — skipping refund accounting');
     return;
   }
-  // Reverse merchant payable + commission + tax against clearing.
+  // Reverse merchant payable + commission + tax. Wallet orders return funds to
+  // the customer's wallet (wallet_liability credit); card orders reverse the
+  // payment_clearing asset.
+  const isWallet = econ.paymentMethod === 'wallet';
+  const eventType = isWallet ? 'marketplace_wallet_refund' : 'marketplace_merchant_refund';
   await postAccountingEvent(
-    'marketplace_merchant_refund', 'marketplace', orderId, econ.merchantId,
+    eventType, 'marketplace', orderId, econ.merchantId,
     {
       merchant_payable: econ.merchantShare,
       platform_commission: econ.commission,
       tax_liability: econ.tax,
-      payment_clearing: econ.grossAmount,
+      payment_clearing: isWallet ? 0 : econ.grossAmount,
+      wallet_liability: isWallet ? econ.grossAmount : 0,
     },
     currency,
     `Order #${orderId} refunded (custody reversal)`,
@@ -324,13 +329,16 @@ async function postBookingRefundAccounting(bookingId: number, refundAmount: numb
   }
 
   // Reverse the proportional economic components (debit side).
+  const isWallet = refund.paymentMethod === 'wallet';
+  const eventType = isWallet ? 'booking_wallet_refund' : 'booking_refund';
   await postAccountingEvent(
-    'booking_refund', 'booking', bookingId, refund.organisationId,
+    eventType, 'booking', bookingId, refund.organisationId,
     {
       org_payable: refund.orgAmount,
       platform_commission: refund.commissionAmount,
       tax_liability: refund.taxAmount,
-      payment_clearing: refund.paymentAmount,
+      payment_clearing: isWallet ? 0 : refund.paymentAmount,
+      wallet_liability: isWallet ? refund.paymentAmount : 0,
     },
     currency,
     `Booking #${bookingId} refund`,

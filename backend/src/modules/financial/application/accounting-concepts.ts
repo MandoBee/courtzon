@@ -67,6 +67,12 @@ export const EVENT_CONCEPTS: Record<string, { debit: string[]; credit: string[] 
     debit: ['merchant_payable', 'platform_commission', 'tax_liability'],
     credit: ['payment_clearing'],
   },
+  // Wallet-funded marketplace refund — credit wallet_liability, not
+  // payment_clearing (card clearing asset was never debited for wallet orders).
+  marketplace_wallet_refund: {
+    debit: ['merchant_payable', 'platform_commission', 'tax_liability'],
+    credit: ['wallet_liability'],
+  },
   // Referee / Provider compensation (universal provider party model)
   referee_payout: {
     debit: ['referee_expense'],
@@ -175,6 +181,13 @@ export const EVENT_CONCEPTS: Record<string, { debit: string[]; credit: string[] 
   booking_refund: {
     debit: ['org_payable', 'platform_commission', 'tax_liability'],
     credit: ['payment_clearing'],
+  },
+  // Wallet-funded booking refund — money returns to the customer's wallet, so
+  // the credit is wallet_liability (NOT payment_clearing, which is a card
+  // clearing asset that was never debited for wallet bookings).
+  booking_wallet_refund: {
+    debit: ['org_payable', 'platform_commission', 'tax_liability'],
+    credit: ['wallet_liability'],
   },
   // Post-settlement recovery: the party already received settlement funds.
   // Reverse the expense/revenue and create a receivable against that party.
