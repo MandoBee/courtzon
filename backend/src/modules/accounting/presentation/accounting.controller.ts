@@ -476,16 +476,24 @@ export async function taxSummaryHandler(request: FastifyRequest, reply: FastifyR
     params
   );
 
-  const [accountingTax] = await pool.execute<RowData>(
-    `SELECT coa.code, coa.name, coa.type,
-            COALESCE(SUM(gl.debit), 0) AS total_debits, COALESCE(SUM(gl.credit), 0) AS total_credits
-     FROM chart_of_accounts coa
-     LEFT JOIN general_ledger gl ON gl.account_id = coa.id ${organisationId != null ? 'AND gl.organisation_id = ?' : ''}
-     WHERE (coa.code = '2300' OR coa.code = 'INPUT-TAX' OR coa.code LIKE 'TX-%' OR coa.name LIKE '%Tax%')
-       AND coa.is_active = 1 AND coa.organisation_id IS NULL
-     GROUP BY coa.id, coa.code, coa.name, coa.type`,
-    organisationId != null ? [organisationId] : []
-  );
+  // Resolve effective tax accounts through the mapping architecture (concepts:
+  // tax_liability, input_tax). No hard-coded account codes/names/IDs.
+  const { accountingEngineService } = await import('../../financial/application/accounting-engine.service.js');
+  const taxAccountIds = await accountingEngineService.resolveTaxAccountIds(organisationId);
+
+  const [accountingTax] = taxAccountIds.length > 0
+    ? await pool.execute<RowData>(
+        `SELECT coa.code, coa.name, coa.type,
+                COALESCE(SUM(gl.debit), 0) AS total_debits, COALESCE(SUM(gl.credit), 0) AS total_credits
+         FROM chart_of_accounts coa
+         LEFT JOIN general_ledger gl ON gl.account_id = coa.id ${organisationId != null ? 'AND gl.organisation_id = ?' : ''}
+         WHERE coa.id IN (${taxAccountIds.map(() => '?').join(',')})
+           AND coa.is_active = 1
+         GROUP BY coa.id, coa.code, coa.name, coa.type
+         ORDER BY coa.code`,
+        organisationId != null ? [organisationId, ...taxAccountIds] : taxAccountIds
+      )
+    : [];
 
   return reply.send({
     data: {
