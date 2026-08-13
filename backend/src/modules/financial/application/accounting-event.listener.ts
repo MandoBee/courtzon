@@ -469,26 +469,17 @@ export function registerAccountingEventListeners(): void {
     }
   });
 
+  // A failed payment (pending → failed) is a non-event economically:
+  //   - No money moved (gateway declined / wallet never debited).
+  //   - No revenue was recognized (recognition only happens on payment:succeeded).
+  //   - No payment_clearing position exists to reverse.
+  // Therefore a failed payment MUST NOT create any accounting entry. Posting
+  // bad_debt/payment_clearing here would credit a clearing asset that was never
+  // debited and fabricate a bad-debt expense for money never collected.
+  // (Bad debt / receivable write-off for genuinely uncollectible COD receivables
+  //  is a distinct future flow and is intentionally NOT handled here.)
   eventBusV2.on('payment:failed-event', async (data: any) => {
-    try {
-      const referenceType: string = data.referenceType;
-      const referenceId: number = data.referenceId;
-      const amount: number = Number(data.amount);
-      const currency: string = data.metadata?.currency || 'EGP';
-      if (!referenceType || !referenceId || !amount) return;
-
-      const sourceType = refTypeToSourceType(referenceType);
-      const orgId = await resolveOrgId(referenceType, referenceId);
-      await postAccountingEvent(
-        'payment_failure', sourceType, referenceId, orgId,
-        { bad_debt: amount, payment_clearing: amount },
-        currency,
-        `${referenceType} #${referenceId} payment failed`,
-      );
-    } catch (err: any) {
-      if (err?.code === 'ER_DUP_ENTRY') { log.info({ err: err.message }, 'Duplicate — skip'); return; }
-      log.error({ err }, 'Accounting failure event failed');
-    }
+    log.info({ paymentId: data.paymentId, referenceType: data.referenceType, reason: data.reason }, 'payment:failed — no accounting entry (non-event)');
   });
 
   // ── Marketplace Events ──

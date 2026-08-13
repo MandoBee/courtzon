@@ -351,4 +351,89 @@ describe('Financial Custody & Counterparty', () => {
     const after = await accountSums(clearingId);
     expect(after.debit).toBe(before.debit);
   });
+
+  it('12. payment:failed is a non-event — creates zero ledger entries', async () => {
+    const { eventBusV2 } = await import('../../../shared/event-bus/event-bus.v2.js');
+    // Re-register accounting listeners (fresh state in this test process).
+    const { registerAccountingEventListeners } = await import('../application/accounting-event.listener.js');
+    registerAccountingEventListeners();
+
+    const [before] = await pool.execute<RowData>(
+      `SELECT COUNT(*) AS cnt FROM ledger_entries WHERE organisation_id = ?`, [orgId],
+    );
+    const beforeCnt = Number((before as any[])[0].cnt);
+
+    await eventBusV2.emit('payment:failed-event', {
+      paymentId: 990001,
+      referenceType: 'booking',
+      referenceId: 999999,
+      amount: 1000,
+      reason: 'card_declined',
+      metadata: { paymentMethod: 'card' },
+    } as any);
+
+    // Give the async in-memory handler a tick to run.
+    await new Promise((r) => setTimeout(r, 300));
+
+    const [after] = await pool.execute<RowData>(
+      `SELECT COUNT(*) AS cnt FROM ledger_entries WHERE organisation_id = ?`, [orgId],
+    );
+    const afterCnt = Number((after as any[])[0].cnt);
+    expect(afterCnt).toBe(beforeCnt);
+  });
+
+  it('13. COD booking receivable equals commission+tax only (NOT full gross)', async () => {
+    const { postAccountingEvent } = await import('../application/accounting-event.listener.js');
+    const bookingId = await insertBooking({ hour: 16, paymentMethod: 'cash', total: 1000, tax: 100, commission: 200, club: 700 });
+    await postAccountingEvent(
+      'booking_cod_payment', 'booking', bookingId, orgId,
+      { receivable_from_org: 300, platform_commission: 200, tax_liability: 100 },
+      'EGP', 'custody COD gross 1000',
+    );
+
+    const receivableId = await accountCode('1160');
+    const receivable = await accountSums(receivableId);
+    // Receivable must be 300 (commission+tax), NOT the 1000 gross.
+    // This booking adds 300 to the prior receivable debit (38 from earlier tests).
+    expect(receivable.debit).toBe(338); // 38 prior + 300
+  });
+
+  it('14. settlement/collection of COD receivable clears receivable_from_org', async () => {
+    const { postAccountingEvent } = await import('../application/accounting-event.listener.js');
+    // Collect 300 of the receivable (the COD commission) via settlement_paid_otc.
+    await postAccountingEvent(
+      'settlement_paid_otc', 'settlement', 990002, orgId,
+      { cash_bank: 300, receivable_from_org: 300 },
+      'EGP', 'custody COD collection',
+    );
+
+    const receivableId = await accountCode('1160');
+    const cashId = await accountCode('1120');
+    const receivable = await accountSums(receivableId);
+    const cash = await accountSums(cashId);
+    // Receivable credited 300 (cleared); cash debited 300 (collected).
+    expect(receivable.credit).toBe(330); // 30 (offset) + 300 (collection)
+    expect(cash.debit).toBe(300);
+  });
+
+  it('15. coach COD is unreachable: BookSessionSchema has no paymentMethod', async () => {
+    const { BookSessionSchema } = await import('../../scheduling/presentation/scheduling.dto.js');
+    const parsed = BookSessionSchema.safeParse({
+      coachId: 1, resourceId: 1, date: '2026-07-01', startTime: '10:00', endTime: '11:00',
+      paymentMethod: 'cash',
+    });
+    // The schema strips the unknown field; the booking always uses 'wallet'.
+    expect(parsed.success).toBe(true);
+    expect((parsed as any).data?.paymentMethod).toBeUndefined();
+  });
+
+  it('16. coach session fee is NOT collected through booking (no phantom coach payable)', async () => {
+    const { bookingAccounting } = await import('../application/booking-accounting.service.js');
+    // A coach_session booking with coach_amount=0 and NO coach_sessions link.
+    const bookingId = await insertBooking({ hour: 17, paymentMethod: 'wallet', coach: 0 });
+    const econ = await bookingAccounting.resolveBookingEconomics(bookingId);
+    expect(econ).not.toBeNull();
+    // Coach share must be 0 (coach_sessions.coach_earnings must NOT leak in).
+    expect(econ!.coachAmount).toBe(0);
+  });
 });
