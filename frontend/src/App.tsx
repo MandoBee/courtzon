@@ -199,6 +199,7 @@ const OrgPendingApprovalPage = lazy(() => import('./pages/org/OrgPendingApproval
 const OrgFinancePage = lazy(() => import('./pages/org/OrgFinancePage'));
 const OrgAccountingDashboardPage = lazy(() => import('./pages/org/OrgAccountingDashboardPage'));
 const OrgChartOfAccountsPage = lazy(() => import('./pages/org/OrgChartOfAccountsPage'));
+const OrgJournalPage = lazy(() => import('./pages/org/OrgJournalPage'));
 const OrgFinancialReportsPage = lazy(() => import('./pages/org/OrgFinancialReportsPage'));
 const OrgTaxSummaryPage = lazy(() => import('./pages/org/OrgTaxSummaryPage'));
 const OrgSubscriptionPage = lazy(() => import('./pages/org/OrgSubscriptionPage'));
@@ -786,6 +787,7 @@ function AppContent() {
             <Route path="accounting" element={<Navigate to="accounting/dashboard" replace />} />
             <Route path="accounting/dashboard" element={<OrgAccountingDashboardPage />} />
             <Route path="accounting/coa" element={<OrgChartOfAccountsPage />} />
+            <Route path="accounting/journal" element={<OrgJournalPage />} />
             <Route path="accounting/reports" element={<Navigate to="reports/trial-balance" replace />} />
             <Route path="accounting/reports/:reportType" element={<OrgFinancialReportsPage />} />
             <Route path="accounting/tax-summary" element={<OrgTaxSummaryPage />} />

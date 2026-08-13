@@ -393,7 +393,40 @@ export async function listOrgAccountsHandler(request: FastifyRequest, reply: Fas
     };
   });
 
-  return reply.send({ data: { global: decorate(global as any[]), org: decorate(orgAccts as any[]) } });
+  // Compute level + postable status across the combined global + org sets
+  // (org accounts hang under global L3 parents).
+  const combined = [...(global as any[]), ...(orgAccts as any[])];
+  const idToParent = new Map<number, number | null>();
+  for (const r of combined) idToParent.set(r.id, r.parent_id);
+
+  const computeLevel = (r: any): number => {
+    let level = 1;
+    let pid: number | null = r.parent_id;
+    const visited = new Set<number>([r.id]);
+    while (pid != null && level < 10) {
+      if (visited.has(pid)) break;
+      visited.add(pid);
+      const parent = idToParent.get(pid);
+      if (parent === undefined) break;
+      pid = parent;
+      level++;
+    }
+    return level;
+  };
+
+  const withLevel = (rows: any[]) => rows.map((r: any) => {
+    const level = computeLevel(r);
+    return {
+      ...r,
+      level,
+      is_postable: level === 4 && Number(r.child_count) === 0 && !!r.is_active,
+    };
+  });
+
+  const globalDecorated = withLevel(decorate(global as any[]));
+  const orgDecorated = withLevel(decorate(orgAccts as any[]));
+
+  return reply.send({ data: { global: globalDecorated, org: orgDecorated } });
 }
 
 /** Upsert a per-organisation visibility/rename override for a global L4 account. */
@@ -561,6 +594,81 @@ export async function orgAccountLedgerHandler(request: FastifyRequest, reply: Fa
 
 export async function orgTaxSummaryHandler(request: FastifyRequest, reply: FastifyReply) {
   return taxSummaryHandler(scopedRequest(request), reply);
+}
+
+/**
+ * Validate that every journal target account is usable by the organisation:
+ * exists, active, belongs to the org (or is a global default that is not
+ * hidden by the org's COA customisation), and is an L4 postable account.
+ */
+async function validateOrgJournalAccounts(organisationId: number, accountIds: number[]): Promise<void> {
+  const pool = getPool();
+  const ids = [...new Set(accountIds.filter((n) => Number.isFinite(n) && n > 0))];
+  if (ids.length === 0) {
+    throw new AppError('At least one valid account is required', 400, 'VALIDATION_ERROR');
+  }
+  const placeholders = ids.map(() => '?').join(',');
+  const [rows] = await pool.execute<RowData>(
+    `SELECT id, organisation_id, is_active FROM chart_of_accounts WHERE id IN (${placeholders})`,
+    ids,
+  );
+  const found = new Map((rows as any[]).map((r: any) => [r.id, r]));
+  for (const id of ids) {
+    const acct = found.get(id);
+    if (!acct) throw new AppError(`Account ${id} does not exist`, 400, 'VALIDATION_ERROR');
+    if (!acct.is_active) throw new AppError(`Account ${id} is inactive`, 400, 'VALIDATION_ERROR');
+    if (acct.organisation_id != null && acct.organisation_id !== organisationId) {
+      throw new AppError(`Account ${id} belongs to another organisation`, 403, 'FORBIDDEN');
+    }
+    if (acct.organisation_id == null) {
+      const [hidden] = await pool.execute<RowData>(
+        `SELECT 1 FROM organisation_coa_customizations WHERE organisation_id = ? AND account_id = ? AND is_visible = 0 LIMIT 1`,
+        [organisationId, id],
+      );
+      if ((hidden as any[]).length) {
+        throw new AppError(`Account ${id} is hidden for this organisation`, 400, 'VALIDATION_ERROR');
+      }
+    }
+    await coaValidator.validatePostable(id, 'Organisation Journal');
+  }
+}
+
+/** Organisation-scoped manual journal creation — :orgId is authoritative. */
+export async function orgJournalCreateHandler(request: FastifyRequest, reply: FastifyReply) {
+  const organisationId = orgIdFromRequest(request);
+  const body = request.body as any;
+  if (!body.entries || !Array.isArray(body.entries) || body.entries.length < 2) {
+    throw new AppError('Journal entry must have at least 2 lines', 400, 'VALIDATION_ERROR');
+  }
+  const accountIds = body.entries.map((e: any) => Number(e.accountId));
+  await validateOrgJournalAccounts(organisationId, accountIds);
+
+  // Force the organisationId from the route (ignore any spoofed body value) and
+  // delegate to the canonical posting logic.
+  const scoped = { ...request, body: { ...body, organisationId } } as FastifyRequest;
+  return createJournalEntryHandler(scoped, reply);
+}
+
+/** Organisation-scoped manual journal list (own journals only). */
+export async function orgJournalListHandler(request: FastifyRequest, reply: FastifyReply) {
+  const pool = getPool();
+  const organisationId = orgIdFromRequest(request);
+  const query = request.query as any;
+  const conditions = ['gl.organisation_id = ?', "gl.reference_type = 'journal'"];
+  const params: any[] = [organisationId];
+  if (query.from) { conditions.push('gl.entry_date >= ?'); params.push(query.from); }
+  if (query.to) { conditions.push('gl.entry_date <= ?'); params.push(query.to); }
+
+  const [rows] = await pool.execute<RowData>(
+    `SELECT gl.*, a.code AS account_code, a.name AS account_name
+     FROM general_ledger gl
+     JOIN chart_of_accounts a ON a.id = gl.account_id
+     WHERE ${conditions.join(' AND ')}
+     ORDER BY gl.entry_date DESC, gl.id DESC
+     LIMIT 500`,
+    params,
+  );
+  return reply.send({ data: rows });
 }
 
 export async function listPeriodsHandler(_request: FastifyRequest, reply: FastifyReply) {
@@ -987,6 +1095,14 @@ export async function createJournalEntryHandler(request: FastifyRequest, reply: 
   try {
     await conn.beginTransaction();
 
+    // Unique journal source_id: each manual journal is a distinct "source" so the
+    // (source_type, source_id, event_type, chart_account_id, side) dedup key does
+    // not collide across journals that reuse the same account/side.
+    const [seqRows] = await conn.execute<RowData>(
+      `SELECT COALESCE(MAX(source_id), 0) + 1 AS n FROM ledger_entries WHERE source_type = 'journal'`,
+    );
+    const journalSourceId = Number((seqRows as any[])[0].n);
+
       // 1. Create canonical ledger_entries
       const entryIds: number[] = [];
       for (const entry of body.entries) {
@@ -1000,14 +1116,14 @@ export async function createJournalEntryHandler(request: FastifyRequest, reply: 
            VALUES (?, 'journal', ?, 'manual_journal', ?, ?, ?, NULL, ?, ?, 'EGP', ?, ?, ?)`,
           [
             transactionId,
-            entry.accountId,
+            journalSourceId,
             periodId,
             organisationId,
             entry.accountId,
             side,
             amount,
             entry.description || body.description || null,
-            String(entry.accountId),
+            String(journalSourceId),
             now,
           ]
         );
