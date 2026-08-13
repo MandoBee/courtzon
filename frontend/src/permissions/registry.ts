@@ -899,6 +899,9 @@ export const uiRegistry: UIElement[] = [
   // Finance
   { permissionKey: 'org.sidebar.finance', moduleSlug: 'org', elementType: 'tab', elementLabel: 'Org Sidebar: Finance', componentPath: 'components/layout/OrgSidebar.tsx' },
   { permissionKey: 'org.finance.view', moduleSlug: 'org', elementType: 'page', elementLabel: 'Organisation Finance', componentPath: 'pages/org/OrgFinancePage.tsx' },
+  { permissionKey: 'org.sidebar.accounting', moduleSlug: 'org', elementType: 'tab', elementLabel: 'Org Sidebar: Accounting', componentPath: 'components/layout/OrgSidebar.tsx' },
+  { permissionKey: 'org.accounting.view', moduleSlug: 'org', elementType: 'page', elementLabel: 'Organisation Accounting View', componentPath: 'pages/org/OrgAccountingDashboardPage.tsx' },
+  { permissionKey: 'org.accounting.manage', moduleSlug: 'org', elementType: 'button', elementLabel: 'Organisation Accounting Manage (COA customisation)', componentPath: 'pages/org/OrgChartOfAccountsPage.tsx' },
 
   // Subscription
   { permissionKey: 'org.subscription.view', moduleSlug: 'org', elementType: 'page', elementLabel: 'Organisation Subscription', componentPath: 'pages/org/OrgSubscriptionPage.tsx' },
