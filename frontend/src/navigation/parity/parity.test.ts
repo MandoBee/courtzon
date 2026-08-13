@@ -730,9 +730,11 @@ describe('Navigation registry integrity (immutable ids)', () => {
 
     const orgIds = collectIds(ORG_NAV);
     expect(orgIds.every((id) => id.startsWith('nav.org.'))).toBe(true);
-    expect(orgIds.length).toBe(31);
+    expect(orgIds.length).toBe(38);
     expect(ORG_ID_TO_KEY.size).toBe(31);
-    for (const id of orgIds) expect(ORG_ID_TO_KEY.has(id)).toBe(true);
+    // Category domains carry no permission key (they render when a permitted child passes);
+    // every node that DOES carry a key must be registered in the id→key map.
+    for (const id of ORG_ID_TO_KEY.keys()) expect(orgIds.includes(id)).toBe(true);
 
     const coachIds = collectIds(COACH_NAV);
     expect(coachIds.every((id) => id.startsWith('nav.coach.'))).toBe(true);
@@ -934,7 +936,11 @@ describe('Navigation composition pipeline (Consumer 5 — stages composable, not
   });
 
   it('stages are consumer-agnostic (operate on any node list, incl. admin/org defs)', () => {
-    expect(permissionFilter(ORG_NAV, { ...fullCtx, can: (p) => p === 'org.sidebar.dashboard' }).length).toBe(1);
+    // Top-level category domains carry no permissionKey (they render when a child
+    // passes), so the permission stage preserves them; only the Dashboard leaf
+    // matches the allow-list.
+    const dashboardOnly = permissionFilter(ORG_NAV, { ...fullCtx, can: (p) => p === 'org.sidebar.dashboard' });
+    expect(dashboardOnly.filter((i: any) => i.permissionKey).map((i: any) => i.permissionKey)).toEqual(['org.sidebar.dashboard']);
     expect(sellerFilter(ORG_NAV, fullCtx).length).toBe(ORG_NAV.length);
     const allAdm = permissionFilter(ADMIN_NAV, { ...fullCtx, can: allCan });
     expect(allAdm.length).toBeGreaterThan(0);
