@@ -46,6 +46,9 @@ export default function ChartOfAccountsPage() {
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const [viewTree, setViewTree] = useState(true);
   const [scopeFilter, setScopeFilter] = useState<'all' | 'global' | 'org' | string>('all');
+  const [customizeOrgId, setCustomizeOrgId] = useState('');
+  const [renameTarget, setRenameTarget] = useState<{ id: number; name: string } | null>(null);
+  const [renameValue, setRenameValue] = useState('');
 
   const { data, isLoading } = useQuery({
     queryKey: ['accounting', 'chart-of-accounts'],
@@ -55,6 +58,12 @@ export default function ChartOfAccountsPage() {
   const { data: orgData } = useQuery({
     queryKey: ['organisations', 'list-minimal'],
     queryFn: () => api.get('/organisations', { params: { limit: 200 } }).then((r: any) => r.data.data || r.data),
+  });
+
+  const { data: orgCoa } = useQuery({
+    queryKey: ['accounting', 'org-accounts', customizeOrgId],
+    queryFn: () => api.get('/admin/accounting/org-accounts', { params: { organisationId: customizeOrgId } }).then((r: any) => r.data.data || r.data),
+    enabled: !!customizeOrgId,
   });
 
   const allAccounts: Account[] = data || [];
@@ -85,6 +94,29 @@ export default function ChartOfAccountsPage() {
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['accounting', 'chart-of-accounts'] }); setDeleteId(null); showToast('Account deactivated!'); },
     onError: (err: any) => showToast(getErrorMessage(err), 'error'),
   });
+
+  const customizeMutation = useMutation({
+    mutationFn: ({ accountId, isVisible, displayName }: { accountId: number; isVisible?: boolean; displayName?: string }) =>
+      api.put(`/admin/accounting/org-customizations/${accountId}`, { organisationId: Number(customizeOrgId), isVisible, displayName }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['accounting', 'org-accounts', customizeOrgId] });
+      setRenameTarget(null);
+      showToast('Saved!');
+    },
+    onError: (err: any) => showToast(getErrorMessage(err), 'error'),
+  });
+
+  const resetCustomizationMutation = useMutation({
+    mutationFn: (accountId: number) => api.delete(`/admin/accounting/org-customizations/${accountId}`, { params: { organisationId: Number(customizeOrgId) } }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['accounting', 'org-accounts', customizeOrgId] });
+      showToast('Restored global default!');
+    },
+    onError: (err: any) => showToast(getErrorMessage(err), 'error'),
+  });
+
+  const orgGlobalAccounts: any[] = orgCoa?.global || [];
+  const orgOwnAccounts: any[] = orgCoa?.org || [];
 
   const resetForm = () => { setShowForm(false); setEditing(null); setForm({ code: '', name: '', type: 'asset', parent_id: '', normal_side: 'debit', organisation_id: '', description: '' }); };
 
@@ -178,6 +210,109 @@ export default function ChartOfAccountsPage() {
             <Button onClick={() => { resetForm(); setShowForm(true); }}>+ New Account</Button>
           </Can>
         </div>
+      </div>
+
+      {/* ── Organisation Account Customization ── */}
+      <div className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] p-5 mb-6 border">
+        <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
+          <div>
+            <h2 className="text-lg font-semibold text-[var(--color-text)]">Organisation Account Customization</h2>
+            <p className="text-xs text-[var(--color-text-muted)] mt-0.5">
+              Hide, show, or locally rename default accounts for a single organisation. Never affects the global catalog or other organisations.
+            </p>
+          </div>
+          <select value={customizeOrgId} onChange={(e) => { setCustomizeOrgId(e.target.value); setRenameTarget(null); }}
+            className="px-3 py-2 border rounded-[var(--radius-md)] bg-[var(--color-bg)] text-sm min-w-[200px]">
+            <option value="">Select organisation…</option>
+            {orgList.map((o: any) => <option key={o.id} value={o.id}>{o.name}</option>)}
+          </select>
+        </div>
+
+        {customizeOrgId && (
+          <div className="space-y-4">
+            <div>
+              <h3 className="text-sm font-semibold text-[var(--color-text)] mb-2">Default Accounts ({orgGlobalAccounts.filter((a: any) => (a.customization?.is_visible ?? true)).length} visible / {orgGlobalAccounts.length} total)</h3>
+              <div className="overflow-x-auto max-h-[420px] overflow-y-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-[var(--color-border)] text-[var(--color-text-muted)] text-xs sticky top-0 bg-[var(--color-surface)]">
+                      <th className="text-left px-3 py-2">Code</th>
+                      <th className="text-left px-3 py-2">Name</th>
+                      <th className="text-left px-3 py-2">Type</th>
+                      <th className="text-center px-3 py-2">Visible</th>
+                      <th className="text-right px-3 py-2">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[var(--color-border)]">
+                    {orgGlobalAccounts.map((a: any) => {
+                      const vis = a.customization?.is_visible ?? true;
+                      return (
+                        <tr key={a.id} className={`hover:bg-[var(--color-bg)]/30 ${vis ? '' : 'opacity-50'}`}>
+                          <td className="px-3 py-2 text-xs font-mono text-[var(--color-text-muted)]">{a.code}</td>
+                          <td className="px-3 py-2 text-[var(--color-text)]">
+                            {renameTarget?.id === a.id ? (
+                              <input autoFocus value={renameValue} onChange={e => setRenameValue(e.target.value)}
+                                onKeyDown={e => { if (e.key === 'Enter') customizeMutation.mutate({ accountId: a.id, isVisible: vis, displayName: renameValue }); if (e.key === 'Escape') setRenameTarget(null); }}
+                                className="px-2 py-1 border rounded-[var(--radius-md)] bg-[var(--color-bg)] text-xs" />
+                            ) : (
+                              <span>{a.effective_name}{a.customization?.display_name ? <span className="ml-1 text-[10px] text-amber-600">(renamed)</span> : null}</span>
+                            )}
+                          </td>
+                          <td className="px-3 py-2 text-xs text-[var(--color-text-muted)] capitalize">{a.type.replace(/_/g, ' ')}</td>
+                          <td className="px-3 py-2 text-center">
+                            <Can permission="accounting.coa.manage">
+                              <input type="checkbox" checked={vis}
+                                onChange={e => customizeMutation.mutate({ accountId: a.id, isVisible: e.target.checked, displayName: a.customization?.display_name ?? undefined })}
+                                className="w-4 h-4 accent-[var(--color-primary)]" />
+                            </Can>
+                          </td>
+                          <td className="px-3 py-2 text-right">
+                            <Can permission="accounting.coa.manage">
+                              <div className="flex items-center justify-end gap-2">
+                                <button onClick={() => { setRenameTarget({ id: a.id, name: a.effective_name }); setRenameValue(a.effective_name); }}
+                                  className="text-xs text-[var(--color-primary)] hover:underline">Rename</button>
+                                {a.customization && (
+                                  <button onClick={() => resetCustomizationMutation.mutate(a.id)}
+                                    className="text-xs text-[var(--color-text-muted)] hover:underline">Reset</button>
+                                )}
+                              </div>
+                            </Can>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {orgOwnAccounts.length > 0 && (
+              <div>
+                <h3 className="text-sm font-semibold text-[var(--color-text)] mb-2">Organisation-specific Accounts ({orgOwnAccounts.length})</h3>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-[var(--color-border)] text-[var(--color-text-muted)] text-xs">
+                        <th className="text-left px-3 py-2">Code</th>
+                        <th className="text-left px-3 py-2">Name</th>
+                        <th className="text-left px-3 py-2">Type</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[var(--color-border)]">
+                      {orgOwnAccounts.map((a: any) => (
+                        <tr key={a.id} className="hover:bg-[var(--color-bg)]/30">
+                          <td className="px-3 py-2 text-xs font-mono text-[var(--color-text-muted)]">{a.code}</td>
+                          <td className="px-3 py-2 text-[var(--color-text)]">{a.name}</td>
+                          <td className="px-3 py-2 text-xs text-[var(--color-text-muted)] capitalize">{a.type.replace(/_/g, ' ')}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {showForm && (

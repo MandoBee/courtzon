@@ -338,6 +338,141 @@ export async function updateAccountHandler(request: FastifyRequest, reply: Fasti
   return reply.send({ data: { id: Number(id) } });
 }
 
+// ── Organisation COA Customization (per-org overlay on global defaults) ──
+
+/**
+ * List an organisation's effective chart of accounts:
+ *   - global DEFAULT L4 accounts with the organisation's visibility/rename
+ *     overlay applied (never mutates the global account)
+ *   - the organisation's own org-scoped accounts
+ * Used by the admin to configure an organisation's accounting without touching
+ * the global catalog or other organisations.
+ */
+export async function listOrgAccountsHandler(request: FastifyRequest, reply: FastifyReply) {
+  const pool = getPool();
+  const organisationId = request.query && (request.query as any).organisationId
+    ? Number((request.query as any).organisationId) : null;
+  if (organisationId == null) {
+    throw new AppError('organisationId query param is required', 400, 'VALIDATION_ERROR');
+  }
+
+  const [global] = await pool.execute<RowData>(
+    `SELECT a.*, p.name AS parent_name, p.code AS parent_code,
+            (SELECT COUNT(*) FROM chart_of_accounts WHERE parent_id = a.id AND is_active = 1) AS child_count
+     FROM chart_of_accounts a
+     LEFT JOIN chart_of_accounts p ON p.id = a.parent_id
+     WHERE a.organisation_id IS NULL AND a.is_active = 1
+     ORDER BY a.code`
+  );
+
+  const [customs] = await pool.execute<RowData>(
+    `SELECT account_id, is_visible, display_name
+     FROM organisation_coa_customizations WHERE organisation_id = ?`,
+    [organisationId],
+  );
+  const customMap = new Map<number, any>();
+  for (const c of customs as any[]) customMap.set(c.account_id, c);
+
+  const [orgAccts] = await pool.execute<RowData>(
+    `SELECT a.*, p.name AS parent_name, p.code AS parent_code,
+            (SELECT COUNT(*) FROM chart_of_accounts WHERE parent_id = a.id AND is_active = 1) AS child_count
+     FROM chart_of_accounts a
+     LEFT JOIN chart_of_accounts p ON p.id = a.parent_id
+     WHERE a.organisation_id = ? AND a.is_active = 1
+     ORDER BY a.code`,
+    [organisationId],
+  );
+
+  const decorate = (rows: any[]) => rows.map((r: any) => {
+    const c = customMap.get(r.id);
+    return {
+      ...r,
+      child_count: Number(r.child_count),
+      customization: c ? { is_visible: !!c.is_visible, display_name: c.display_name ?? null } : null,
+      effective_name: c?.display_name ?? r.name,
+    };
+  });
+
+  return reply.send({ data: { global: decorate(global as any[]), org: decorate(orgAccts as any[]) } });
+}
+
+/** Upsert a per-organisation visibility/rename override for a global L4 account. */
+export async function upsertOrgCustomizationHandler(request: FastifyRequest, reply: FastifyReply) {
+  const pool = getPool();
+  const { accountId } = request.params as any;
+  const body = request.body as any;
+  const userId = (request as any).userId;
+  const organisationId = body.organisationId ? Number(body.organisationId) : null;
+
+  if (!organisationId) {
+    throw new AppError('organisationId is required', 400, 'VALIDATION_ERROR');
+  }
+
+  const [acct] = await pool.execute<RowData>(
+    'SELECT id, organisation_id FROM chart_of_accounts WHERE id = ?', [Number(accountId)],
+  );
+  if (!(acct as any[]).length) {
+    throw new NotFoundError('Account', ErrorCodes.ACCOUNT_NOT_FOUND);
+  }
+  // Only global default accounts may be customised (org-specific accounts are
+  // edited directly; the overlay exists only for shared defaults).
+  if ((acct as any[])[0].organisation_id != null) {
+    throw new AppError('Only global default accounts can be customised per organisation', 400, 'VALIDATION_ERROR');
+  }
+
+  const isVisible = body.isVisible == null ? 1 : (body.isVisible ? 1 : 0);
+  const displayName = body.displayName ?? null;
+
+  await pool.execute(
+    `INSERT INTO organisation_coa_customizations (organisation_id, account_id, is_visible, display_name)
+     VALUES (?, ?, ?, ?)
+     ON DUPLICATE KEY UPDATE is_visible = VALUES(is_visible), display_name = VALUES(display_name)`,
+    [organisationId, Number(accountId), isVisible, displayName],
+  );
+
+  recordAudit({
+    actorId: userId,
+    action: 'ACCOUNTING.COA.ORG_CUSTOMIZE',
+    entityType: 'organisation_coa_customizations',
+    entityId: Number(accountId),
+    afterState: { organisationId, accountId: Number(accountId), isVisible, displayName },
+    ipAddress: request.ip,
+    userAgent: request.headers['user-agent'],
+  });
+
+  return reply.send({ data: { organisationId, accountId: Number(accountId), isVisible: !!isVisible, displayName } });
+}
+
+/** Remove an organisation's override, restoring the global default presentation. */
+export async function resetOrgCustomizationHandler(request: FastifyRequest, reply: FastifyReply) {
+  const pool = getPool();
+  const { accountId } = request.params as any;
+  const organisationId = (request.query as any).organisationId
+    ? Number((request.query as any).organisationId) : null;
+  const userId = (request as any).userId;
+
+  if (!organisationId) {
+    throw new AppError('organisationId query param is required', 400, 'VALIDATION_ERROR');
+  }
+
+  await pool.execute(
+    'DELETE FROM organisation_coa_customizations WHERE organisation_id = ? AND account_id = ?',
+    [organisationId, Number(accountId)],
+  );
+
+  recordAudit({
+    actorId: userId,
+    action: 'ACCOUNTING.COA.ORG_CUSTOMIZE_RESET',
+    entityType: 'organisation_coa_customizations',
+    entityId: Number(accountId),
+    afterState: { organisationId, accountId: Number(accountId) },
+    ipAddress: request.ip,
+    userAgent: request.headers['user-agent'],
+  });
+
+  return reply.send({ data: { organisationId, accountId: Number(accountId), restored: true } });
+}
+
 export async function listPeriodsHandler(_request: FastifyRequest, reply: FastifyReply) {
   const pool = getPool();
   const [rows] = await pool.execute<RowData>(
