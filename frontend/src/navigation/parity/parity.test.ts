@@ -730,8 +730,8 @@ describe('Navigation registry integrity (immutable ids)', () => {
 
     const orgIds = collectIds(ORG_NAV);
     expect(orgIds.every((id) => id.startsWith('nav.org.'))).toBe(true);
-    expect(orgIds.length).toBe(23);
-    expect(ORG_ID_TO_KEY.size).toBe(23);
+    expect(orgIds.length).toBe(31);
+    expect(ORG_ID_TO_KEY.size).toBe(31);
     for (const id of orgIds) expect(ORG_ID_TO_KEY.has(id)).toBe(true);
 
     const coachIds = collectIds(COACH_NAV);
@@ -760,9 +760,19 @@ describe('Navigation registry integrity (immutable ids)', () => {
     expect(ORG_LEGACY_KEY_TO_ID.get('org.sidebar.dashboard')).toEqual(['nav.org.dashboard']);
     expect(ORG_LEGACY_KEY_TO_ID.get('org.sidebar.payment')).toEqual(['nav.org.payment']);
     expect(ORG_LEGACY_KEY_TO_ID.get('org.sidebar.settings')).toEqual(['nav.org.settings']);
+    // Accounting items share a single page-level permission key.
+    expect(ORG_LEGACY_KEY_TO_ID.get('org.accounting.view')).toEqual([
+      'nav.org.accounting-dashboard',
+      'nav.org.accounting-coa',
+      'nav.org.accounting-reports',
+      'nav.org.accounting-trial-balance',
+      'nav.org.accounting-income-statement',
+      'nav.org.accounting-balance-sheet',
+      'nav.org.accounting-tax',
+    ]);
     for (const [key, ids] of ORG_LEGACY_KEY_TO_ID) {
-      expect(key.startsWith('org.sidebar.')).toBe(true);
-      expect(ids.length).toBe(1);
+      expect(ids.length).toBeGreaterThan(0);
+      if (key.startsWith('org.sidebar.')) expect(ids.length).toBe(1);
     }
   });
 

@@ -473,6 +473,96 @@ export async function resetOrgCustomizationHandler(request: FastifyRequest, repl
   return reply.send({ data: { organisationId, accountId: Number(accountId), restored: true } });
 }
 
+// ── Organisation-scoped accounting handlers ──
+// The route :orgId is authoritative; handlers force organisationId from it so
+// an organisation user can never read global/platform data. Membership is
+// enforced by requireOrganisationAccess on the route and re-checked here.
+
+function orgIdFromRequest(request: FastifyRequest): number {
+  const orgId = Number((request.params as any).orgId);
+  if (!orgId || Number.isNaN(orgId)) {
+    throw new AppError('Invalid organisation ID', 400, 'VALIDATION_ERROR');
+  }
+  return orgId;
+}
+
+function scopedRequest(request: FastifyRequest): FastifyRequest {
+  const organisationId = orgIdFromRequest(request);
+  return {
+    ...request,
+    query: { ...(request.query || {}), organisationId: String(organisationId) },
+  } as FastifyRequest;
+}
+
+export async function orgDashboardHandler(request: FastifyRequest, reply: FastifyReply) {
+  const pool = getPool();
+  const orgId = orgIdFromRequest(request);
+
+  const [[visibleAccounts]] = await pool.execute<RowData>(
+    `SELECT COUNT(*) AS cnt FROM chart_of_accounts a
+     WHERE (a.organisation_id = ? AND a.is_active = 1)
+        OR (a.organisation_id IS NULL AND a.is_active = 1 AND a.is_system = 1
+            AND NOT EXISTS (SELECT 1 FROM organisation_coa_customizations c
+                            WHERE c.organisation_id = ? AND c.account_id = a.id AND c.is_visible = 0))`,
+    [orgId, orgId],
+  );
+  const [[draftInvoices]] = await pool.execute<RowData>(`SELECT COUNT(*) AS cnt FROM invoices WHERE organisation_id = ? AND status = 'draft'`, [orgId]);
+  const [[issuedInvoices]] = await pool.execute<RowData>(`SELECT COUNT(*) AS cnt FROM invoices WHERE organisation_id = ? AND status = 'issued'`, [orgId]);
+  const [[paidInvoices]] = await pool.execute<RowData>(`SELECT COUNT(*) AS cnt FROM invoices WHERE organisation_id = ? AND status = 'paid'`, [orgId]);
+  const [[cancelledInvoices]] = await pool.execute<RowData>(`SELECT COUNT(*) AS cnt FROM invoices WHERE organisation_id = ? AND status = 'cancelled'`, [orgId]);
+
+  let netIncome = 0;
+  try {
+    const ni = await calculateFiscalYearNetIncome(new Date().getFullYear(), orgId);
+    netIncome = ni.netIncome;
+  } catch { /* no org periods / mappings yet */ }
+
+  return reply.send({
+    data: {
+      visible_accounts: Number((visibleAccounts as any).cnt),
+      draft_invoices: Number((draftInvoices as any).cnt),
+      issued_invoices: Number((issuedInvoices as any).cnt),
+      paid_invoices: Number((paidInvoices as any).cnt),
+      cancelled_invoices: Number((cancelledInvoices as any).cnt),
+      net_income: Math.round(netIncome * 100) / 100,
+    },
+  });
+}
+
+export async function orgCoaHandler(request: FastifyRequest, reply: FastifyReply) {
+  return listOrgAccountsHandler(scopedRequest(request), reply);
+}
+
+export async function orgUpsertCustomizationHandler(request: FastifyRequest, reply: FastifyReply) {
+  const organisationId = orgIdFromRequest(request);
+  const scoped = { ...request, body: { ...(request.body || {}), organisationId } } as FastifyRequest;
+  return upsertOrgCustomizationHandler(scoped, reply);
+}
+
+export async function orgResetCustomizationHandler(request: FastifyRequest, reply: FastifyReply) {
+  return resetOrgCustomizationHandler(scopedRequest(request), reply);
+}
+
+export async function orgTrialBalanceHandler(request: FastifyRequest, reply: FastifyReply) {
+  return getTrialBalanceHandler(scopedRequest(request), reply);
+}
+
+export async function orgIncomeStatementHandler(request: FastifyRequest, reply: FastifyReply) {
+  return getIncomeStatementHandler(scopedRequest(request), reply);
+}
+
+export async function orgBalanceSheetHandler(request: FastifyRequest, reply: FastifyReply) {
+  return getBalanceSheetHandler(scopedRequest(request), reply);
+}
+
+export async function orgAccountLedgerHandler(request: FastifyRequest, reply: FastifyReply) {
+  return getAccountLedgerHandler(scopedRequest(request), reply);
+}
+
+export async function orgTaxSummaryHandler(request: FastifyRequest, reply: FastifyReply) {
+  return taxSummaryHandler(scopedRequest(request), reply);
+}
+
 export async function listPeriodsHandler(_request: FastifyRequest, reply: FastifyReply) {
   const pool = getPool();
   const [rows] = await pool.execute<RowData>(
@@ -665,19 +755,31 @@ export async function taxSummaryHandler(request: FastifyRequest, reply: FastifyR
 async function validateOrgAccess(userId: number, orgId: number | null): Promise<void> {
   if (orgId == null) return;
   const pool = getPool();
-  const [rows] = await pool.execute<RowData>(
+
+  const [ownerRows] = await pool.execute<RowData>(
+    `SELECT 1 FROM organisations WHERE id = ? AND owner_id = ? AND deleted_at IS NULL LIMIT 1`,
+    [orgId, userId],
+  );
+  if ((ownerRows as any[]).length) return;
+
+  const [memberRows] = await pool.execute<RowData>(
     `SELECT 1 FROM user_organisations WHERE user_id = ? AND organisation_id = ? LIMIT 1`,
     [userId, orgId],
   );
-  if (!rows.length) {
-    const [ownerRows] = await pool.execute<RowData>(
-      `SELECT 1 FROM organisations WHERE id = ? AND owner_id = ? AND deleted_at IS NULL LIMIT 1`,
-      [orgId, userId],
-    );
-    if (!ownerRows.length) {
-      throw new AppError('You do not have access to this organisation', 403, 'FORBIDDEN');
-    }
-  }
+  if ((memberRows as any[]).length) return;
+
+  // Org staff assigned through the org portal hold org-scoped roles, not a
+  // user_organisations row. Accept them the same way requireOrganisationAccess does.
+  const [scopedRows] = await pool.execute<RowData>(
+    `SELECT 1 FROM user_role_scopes urs
+     JOIN user_roles ur ON ur.id = urs.user_role_id
+     WHERE ur.user_id = ? AND urs.scope_type = 'organisation' AND urs.scope_id = ? AND ur.is_active = TRUE
+     LIMIT 1`,
+    [userId, orgId],
+  );
+  if ((scopedRows as any[]).length) return;
+
+  throw new AppError('You do not have access to this organisation', 403, 'FORBIDDEN');
 }
 
 async function createDualEntry(

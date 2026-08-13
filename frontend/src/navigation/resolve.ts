@@ -101,13 +101,33 @@ export function resolveAdminNav(
 }
 
 export function resolveOrgNav(can: (perm: string) => boolean, orgId: string, t: (key: string) => string): ResolvedNavItem[] {
-  return ORG_NAV.map((item) => ({
-    id: item.id,
-    label: resolveLabel(item.label, t),
-    icon: item.icon as string,
-    path: item.path.replace('{orgId}', orgId),
-    permissionKey: item.permissionKey as string,
-  })).filter((item) => can(item.permissionKey as string));
+  const filterItem = (item: NavDefinition): ResolvedNavItem | null => {
+    if (item.requiredFlag) return null; // org nav has no feature-flag gating currently
+    if (item.children && item.children.length > 0) {
+      const children = item.children
+        .map((c) => filterItem(c))
+        .filter((c): c is ResolvedNavItem => c !== null);
+      if (children.length === 0) return null;
+      return {
+        id: item.id,
+        label: resolveLabel(item.label, t),
+        icon: item.icon,
+        path: item.path.replace('{orgId}', orgId),
+        ...(item.permissionKey !== undefined ? { permissionKey: item.permissionKey } : {}),
+        children: children.map((c) => ({ ...c, path: c.path.replace('{orgId}', orgId) })),
+      };
+    }
+    if (item.permissionKey !== undefined && !can(item.permissionKey)) return null;
+    return {
+      id: item.id,
+      label: resolveLabel(item.label, t),
+      icon: item.icon as string,
+      path: item.path.replace('{orgId}', orgId),
+      permissionKey: item.permissionKey as string,
+    };
+  };
+
+  return ORG_NAV.map(filterItem).filter((i): i is ResolvedNavItem => i !== null);
 }
 
 export function resolveCoachNav(t: (key: string) => string): ResolvedNavItem[] {

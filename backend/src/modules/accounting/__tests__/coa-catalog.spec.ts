@@ -143,4 +143,32 @@ describe('L4 Catalog + Organisation COA Customization', () => {
 
     await pool.execute(`DELETE FROM chart_of_accounts WHERE id = ?`, [orgAcctId]);
   });
+
+  it('org-scoped routes force :orgId and ignore a spoofed query/body organisationId', async () => {
+    const mod = await import('../presentation/accounting.controller.js');
+    const reply = { status: (c: number) => ({ send: (b: any) => b }), send: (b: any) => b };
+
+    const [rows] = await pool.execute<RowData>(`SELECT id FROM chart_of_accounts WHERE code = '1110' AND organisation_id IS NULL`);
+    const acctId = (rows as any[])[0].id;
+
+    // Customise as orgA via the org route (body.organisationId spoofed to orgB).
+    await mod.orgUpsertCustomizationHandler(
+      { params: { orgId: String(orgA), accountId: String(acctId) }, body: { organisationId: orgB, isVisible: false, displayName: 'Org A Local Name' }, userId: 1, ip: '', headers: {} } as any,
+      reply as any,
+    );
+
+    // orgA sees its customization; the route orgId wins over any query spoof.
+    const resA: any = await mod.orgCoaHandler({ params: { orgId: String(orgA) }, query: { organisationId: String(orgB) } } as any, reply as any);
+    const ga = resA.data.global.find((g: any) => g.id === acctId);
+    expect(ga.customization.is_visible).toBe(false);
+    expect(ga.effective_name).toBe('Org A Local Name');
+
+    // orgB is unaffected.
+    const resB: any = await mod.orgCoaHandler({ params: { orgId: String(orgB) } } as any, reply as any);
+    const gb = resB.data.global.find((g: any) => g.id === acctId);
+    expect(gb.customization).toBeNull();
+
+    // Cleanup: reset orgA's customization.
+    await mod.orgResetCustomizationHandler({ params: { orgId: String(orgA), accountId: String(acctId) }, query: { organisationId: String(orgB) }, userId: 1, ip: '', headers: {} } as any, reply as any);
+  });
 });

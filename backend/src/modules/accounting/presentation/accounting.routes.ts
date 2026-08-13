@@ -1,10 +1,25 @@
 import type { FastifyInstance } from 'fastify';
 import { authMiddleware, requirePermission } from '../../../shared/middleware/auth.middleware.js';
+import { requireOrgScopedPermission } from '../../../shared/middleware/route-guard.js';
 import * as ctrl from './accounting.controller.js';
 import * as tplCtrl from './template.controller.js';
 
 export async function accountingRoutes(app: FastifyInstance): Promise<void> {
   app.addHook('preHandler', authMiddleware);
+
+  // ── Organisation-scoped accounting (tenant-isolated; :orgId is authoritative) ──
+  const orgAccountingView = requireOrgScopedPermission('org.accounting.view');
+  const orgAccountingManage = requireOrgScopedPermission('org.accounting.manage');
+
+  app.get('/org/:orgId/accounting/dashboard', { preHandler: [orgAccountingView] }, ctrl.orgDashboardHandler);
+  app.get('/org/:orgId/accounting/coa', { preHandler: [orgAccountingView] }, ctrl.orgCoaHandler);
+  app.get('/org/:orgId/accounting/trial-balance', { preHandler: [orgAccountingView] }, ctrl.orgTrialBalanceHandler);
+  app.get('/org/:orgId/accounting/income-statement', { preHandler: [orgAccountingView] }, ctrl.orgIncomeStatementHandler);
+  app.get('/org/:orgId/accounting/balance-sheet', { preHandler: [orgAccountingView] }, ctrl.orgBalanceSheetHandler);
+  app.get('/org/:orgId/accounting/ledger/:accountId', { preHandler: [orgAccountingView] }, ctrl.orgAccountLedgerHandler);
+  app.get('/org/:orgId/accounting/tax-summary', { preHandler: [orgAccountingView] }, ctrl.orgTaxSummaryHandler);
+  app.put('/org/:orgId/accounting/coa/customizations/:accountId', { preHandler: [orgAccountingManage] }, ctrl.orgUpsertCustomizationHandler);
+  app.delete('/org/:orgId/accounting/coa/customizations/:accountId', { preHandler: [orgAccountingManage] }, ctrl.orgResetCustomizationHandler);
 
   // Dashboard
   app.get('/admin/accounting/dashboard', { preHandler: [requirePermission(['accounting.dashboard'])] }, ctrl.getDashboardHandler);

@@ -190,6 +190,9 @@ const ACCOUNTANT_PATTERNS = [
   /^coupons\./,
   /^commission-rules\./,
   /^wallet\./,
+  // Organisation-scoped accounting (assigned via org portal)
+  /^org\.accounting\./,
+  /^org\.sidebar\.accounting/,
   // AdminLayout finance sidebar (leaf items only; parents render when a child passes)
   /^sidebar\.(dashboard|reports|settlements|admin-bookings|finance-dashboard|finance-ledger|finance-reports|finance-transactions|withdrawal-requests|coupons|marketplace-orders)$/,
 ];
