@@ -13,11 +13,14 @@ export default defineConfig(({ command }) => ({
   },
   plugins: [
     react(),
-    // Service worker auto-update reloads the page during `npm run dev` and causes visible flicker.
+    // PWA is only registered in production builds (`command === 'build'`), never in dev.
+    // autoUpdate makes the service worker skipWaiting + claim clients on a new build,
+    // so users always receive the latest bundle on the next load — a prompt-based
+    // worker otherwise keeps serving a stale cached bundle after a redeploy.
     ...(command === 'build'
       ? [
     VitePWA({
-      registerType: 'prompt',
+      registerType: 'autoUpdate',
       includeAssets: ['favicon.svg', 'favicon-16x16.png', 'favicon-32x32.png', 'images/favicon-light.svg', 'images/favicon-dark.svg', 'icons.svg', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png', 'screenshot-phone.png', 'apple-splash-*.png', 'browserconfig.xml'],
       manifest: {
         id: '/',
@@ -53,6 +56,8 @@ export default defineConfig(({ command }) => ({
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
         cleanupOutdatedCaches: true,
+        skipWaiting: true,
+        clientsClaim: true,
         runtimeCaching: [
           {
             // Fresh-first for user-specific data; fall back to cache when offline.
