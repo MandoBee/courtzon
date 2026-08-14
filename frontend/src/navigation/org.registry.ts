@@ -6,16 +6,16 @@ export const ORG_NAV: NavDefinition[] = [
   // ── Dashboard (top-level) ──
   { id: 'nav.org.dashboard', label: LIT('Dashboard'), icon: '📊', path: '/org/{orgId}/dashboard', permissionKey: 'org.sidebar.dashboard' },
 
-  // ── Operations ──
+  // ── Marketplace (formerly Operations) ──
   {
-    id: 'nav.org.domain.operations',
-    label: LIT('Operations'),
-    icon: '📋',
-    path: '/org/{orgId}/bookings',
+    id: 'nav.org.domain.marketplace',
+    label: LIT('Marketplace'),
+    icon: '🛒',
+    path: '/org/{orgId}/marketplace',
     children: [
-      { id: 'nav.org.bookings', label: LIT('Bookings'), icon: '📅', path: '/org/{orgId}/bookings', permissionKey: 'org.sidebar.bookings' },
       { id: 'nav.org.marketplace', label: LIT('Products'), icon: '🛒', path: '/org/{orgId}/marketplace', permissionKey: 'org.sidebar.marketplace' },
       { id: 'nav.org.orders', label: LIT('Orders'), icon: '📦', path: '/org/{orgId}/orders', permissionKey: 'org.sidebar.orders' },
+      { id: 'nav.org.settings', label: LIT('Shipping Rate'), icon: '⚙️', path: '/org/{orgId}/shipping-rates', permissionKey: 'org.sidebar.settings' },
     ],
   },
 
@@ -38,24 +38,23 @@ export const ORG_NAV: NavDefinition[] = [
     id: 'nav.org.domain.sports',
     label: LIT('Sports & Programs'),
     icon: '🏆',
-    path: '/org/{orgId}/academies',
+    path: '/org/{orgId}/bookings',
     children: [
+      { id: 'nav.org.bookings', label: LIT('Bookings'), icon: '📅', path: '/org/{orgId}/bookings', permissionKey: 'org.sidebar.bookings' },
       { id: 'nav.org.academies', label: T('org.sidebar.academies'), icon: '🎓', path: '/org/{orgId}/academies', permissionKey: 'org.sidebar.academies' },
       { id: 'nav.org.leagues', label: T('org.sidebar.leagues'), icon: '🏅', path: '/org/{orgId}/leagues', permissionKey: 'org.sidebar.leagues' },
       { id: 'nav.org.tournaments', label: T('org.sidebar.tournaments'), icon: '🏆', path: '/org/{orgId}/tournaments', permissionKey: 'org.sidebar.tournaments' },
     ],
   },
 
-  // ── Finance (operational money movement + accounting records) ──
+  // ── Finance & Accounting (operational money movement + accounting records) ──
   {
     id: 'nav.org.domain.finance',
-    label: LIT('Finance'),
+    label: LIT('Finance & Accounting'),
     icon: '💰',
     path: '/org/{orgId}/finance',
     children: [
-      { id: 'nav.org.finance', label: LIT('Transactions & Settlements'), icon: '💸', path: '/org/{orgId}/finance', permissionKey: 'org.sidebar.finance' },
       { id: 'nav.org.booking-settlements', label: LIT('Booking Settlements'), icon: '🤝', path: '/org/{orgId}/finance/bookings', permissionKey: 'settlements.view' },
-      { id: 'nav.org.reports', label: LIT('Reports'), icon: '📈', path: '/org/{orgId}/reports', permissionKey: 'org.reports.view' },
       {
         id: 'nav.org.accounting',
         label: LIT('Accounting'),
@@ -63,21 +62,23 @@ export const ORG_NAV: NavDefinition[] = [
         path: '/org/{orgId}/accounting/dashboard',
         permissionKey: 'org.sidebar.accounting',
         children: [
+          { id: 'nav.org.finance', label: LIT('Transactions & Settlements'), icon: '💸', path: '/org/{orgId}/finance', permissionKey: 'org.sidebar.finance' },
           { id: 'nav.org.accounting-dashboard', label: LIT('Dashboard'), path: '/org/{orgId}/accounting/dashboard', permissionKey: 'org.accounting.view' },
           { id: 'nav.org.accounting-coa', label: LIT('Chart of Accounts'), path: '/org/{orgId}/accounting/coa', permissionKey: 'org.accounting.view' },
           { id: 'nav.org.accounting-journal', label: LIT('Manual Journal'), path: '/org/{orgId}/accounting/journal', permissionKey: 'org.accounting.journal.view' },
           {
             id: 'nav.org.accounting-reports',
-            label: LIT('Financial Reports'),
+            label: LIT('Financial'),
             path: '/org/{orgId}/accounting/reports/trial-balance',
             permissionKey: 'org.accounting.view',
             children: [
               { id: 'nav.org.accounting-trial-balance', label: LIT('Trial Balance'), path: '/org/{orgId}/accounting/reports/trial-balance', permissionKey: 'org.accounting.view' },
               { id: 'nav.org.accounting-income-statement', label: LIT('Income Statement'), path: '/org/{orgId}/accounting/reports/income-statement', permissionKey: 'org.accounting.view' },
               { id: 'nav.org.accounting-balance-sheet', label: LIT('Balance Sheet'), path: '/org/{orgId}/accounting/reports/balance-sheet', permissionKey: 'org.accounting.view' },
+              { id: 'nav.org.reports', label: LIT('Reports'), icon: '📈', path: '/org/{orgId}/reports', permissionKey: 'org.reports.view' },
+              { id: 'nav.org.accounting-tax', label: LIT('Tax Summary'), path: '/org/{orgId}/accounting/tax-summary', permissionKey: 'org.accounting.view' },
             ],
           },
-          { id: 'nav.org.accounting-tax', label: LIT('Tax Summary'), path: '/org/{orgId}/accounting/tax-summary', permissionKey: 'org.accounting.view' },
         ],
       },
     ],
@@ -91,7 +92,8 @@ export const ORG_NAV: NavDefinition[] = [
     path: '/org/{orgId}/profile',
     children: [
       { id: 'nav.org.profile', label: LIT('Profile & Settings'), icon: '🏛️', path: '/org/{orgId}/profile', permissionKey: 'org.sidebar.profile' },
-      { id: 'nav.org.branches', label: LIT('Branches'), icon: '🏢', path: '/org/{orgId}/branches', permissionKey: 'org.sidebar.branches' },
+      { id: 'nav.org.branches', label: LIT('Branches & Resources'), icon: '🏢', path: '/org/{orgId}/branches', permissionKey: 'org.sidebar.branches' },
+      { id: 'nav.org.subscription', label: LIT('Subscription'), icon: '📋', path: '/org/{orgId}/subscription', permissionKey: 'org.sidebar.subscription' },
     ],
   },
 
@@ -106,19 +108,7 @@ export const ORG_NAV: NavDefinition[] = [
       { id: 'nav.org.documents', label: T('org.sidebar.documents'), icon: '📄', path: '/org/{orgId}/documents', permissionKey: 'org.sidebar.documents' },
       { id: 'nav.org.gallery', label: T('org.sidebar.gallery'), icon: '🖼️', path: '/org/{orgId}/gallery', permissionKey: 'org.sidebar.gallery' },
       { id: 'nav.org.reviews', label: T('org.sidebar.reviews'), icon: '⭐', path: '/org/{orgId}/reviews', permissionKey: 'org.sidebar.reviews' },
-    ],
-  },
-
-  // ── Account & Platform ──
-  {
-    id: 'nav.org.domain.account',
-    label: LIT('Account & Platform'),
-    icon: '⚙️',
-    path: '/org/{orgId}/settings',
-    children: [
       { id: 'nav.org.verification', label: T('org.sidebar.verification'), icon: '✅', path: '/org/{orgId}/verification', permissionKey: 'org.sidebar.verification' },
-      { id: 'nav.org.subscription', label: LIT('Subscription'), icon: '📋', path: '/org/{orgId}/subscription', permissionKey: 'org.sidebar.subscription' },
-      { id: 'nav.org.settings', label: LIT('Settings'), icon: '⚙️', path: '/org/{orgId}/settings', permissionKey: 'org.sidebar.settings' },
     ],
   },
 ];
