@@ -3,6 +3,11 @@ import { getPool } from '../../../../database/mysql.js';
 import { ValidationError } from '../../../../shared/errors/app-error.js';
 import { buildPagination, paginationClause } from '../../../../shared/utils/pagination.js';
 import { transactionRepository } from '../../../../modules/financial/infrastructure/transaction.repository.js';
+import { eventBusV2 } from '../../../../shared/event-bus/index.js';
+import { recordAudit } from '../../../../modules/audit-log/index.js';
+import { createModuleLogger } from '../../../../shared/utils/logger.js';
+
+const log = createModuleLogger('org-portal-repository');
 
 type RowData = mysql.RowDataPacket[];
 
@@ -630,7 +635,7 @@ export async function listSubscriptionRequests(filters?: {
   return { rows, total, page: pag.page, limit: pag.limit };
 }
 
-export async function approveSubscriptionRequest(requestId: number, adminId: number, approvalNotes?: string) {
+export async function approveSubscriptionRequest(requestId: number, adminId: number | null, approvalNotes?: string) {
   const pool = getPool();
   const conn = await pool.getConnection();
   try {
@@ -717,23 +722,40 @@ export async function approveSubscriptionRequest(requestId: number, adminId: num
       };
       const snapshotJson = JSON.stringify(planSnapshot);
 
+      // Compute subscription dates from the requested billing cycle (or the live plan)
+      const billingCycle = req.requested_billing_cycle || planSnapshot.billingCycle || 'monthly';
+      const isUnlimited = !!planRow?.is_unlimited;
+      const startDate = new Date();
+      let endDate: Date | null = isUnlimited ? null : addPeriod(startDate, billingCycle);
+
       const [existing] = await conn.execute<RowData>(
-        'SELECT id FROM organisation_subscriptions WHERE organisation_id = ? AND subscription_status IN (\'pending\', \'active\') LIMIT 1',
+        `SELECT id, end_date, start_date, billing_cycle, subscription_status
+         FROM organisation_subscriptions WHERE organisation_id = ? AND subscription_status IN ('pending', 'active') LIMIT 1`,
         [req.organisation_id],
       );
       if (existing.length) {
+        const existingSub = existing[0] as any;
+        let newStart = startDate;
+        if (req.request_type === 'RENEWAL' && existingSub.end_date) {
+          // Graceful renewal: extend from current end_date when it's still in the future
+          const currentEnd = new Date(existingSub.end_date);
+          if (currentEnd > startDate && !isUnlimited) {
+            newStart = existingSub.start_date ? new Date(existingSub.start_date) : startDate;
+            endDate = addPeriod(currentEnd, billingCycle);
+          }
+        }
         await conn.execute(
           `UPDATE organisation_subscriptions
-           SET plan_id = ?, subscription_status = 'active', start_date = NOW(), end_date = NULL,
-               plan_snapshot = ?, updated_at = NOW()
+           SET plan_id = ?, subscription_status = 'active', billing_cycle = ?,
+               start_date = ?, end_date = ?, plan_snapshot = ?, updated_at = NOW()
            WHERE id = ?`,
-          [req.requested_plan_id, snapshotJson, (existing[0] as any).id],
+          [req.requested_plan_id, billingCycle, toSqlDate(newStart), endDate ? toSqlDate(endDate) : null, snapshotJson, existingSub.id],
         );
       } else {
         await conn.execute(
-          `INSERT INTO organisation_subscriptions (organisation_id, plan_id, subscription_status, start_date, billing_cycle, auto_renew, plan_snapshot)
-           VALUES (?, ?, 'active', NOW(), 'monthly', TRUE, ?)`,
-          [req.organisation_id, req.requested_plan_id, snapshotJson],
+          `INSERT INTO organisation_subscriptions (organisation_id, plan_id, subscription_status, start_date, end_date, billing_cycle, auto_renew, plan_snapshot)
+           VALUES (?, ?, 'active', ?, ?, ?, TRUE, ?)`,
+          [req.organisation_id, req.requested_plan_id, toSqlDate(startDate), endDate ? toSqlDate(endDate) : null, billingCycle, snapshotJson],
         );
       }
     }
@@ -760,6 +782,38 @@ export async function approveSubscriptionRequest(requestId: number, adminId: num
     // Invalidate resolver cache after successful approval
     const { clearSubscriptionCache } = await import('../../application/current-subscription.service.js');
     clearSubscriptionCache();
+
+    // Notify the requester / organisation
+    eventBusV2.emit('subscription:request-approved', {
+      organisationId: req.organisation_id,
+      userId: req.requested_by,
+      requestId,
+      requestType: req.request_type,
+      requestedPlanName: req.requested_plan_name,
+      billingCycle: req.requested_billing_cycle || 'monthly',
+    });
+    if (req.request_type === 'RENEWAL') {
+      eventBusV2.emit('organisation:subscription-renewed', {
+        organisationId: req.organisation_id,
+        planName: req.requested_plan_name,
+        billingCycle: req.requested_billing_cycle || 'monthly',
+      });
+    }
+
+    recordAudit({
+      actorId: adminId ?? 0,
+      action: 'SUBSCRIPTION.REQUEST.APPROVED',
+      entityType: 'organisation_upgrade_request',
+      entityId: requestId,
+      afterState: {
+        organisationId: req.organisation_id,
+        requestType: req.request_type,
+        requestedPlanId: req.requested_plan_id,
+        requestedPlanName: req.requested_plan_name,
+        approvedBy: adminId,
+      },
+    }).catch((err) => log.error({ err, requestId }, 'Audit failed on subscription approval'));
+
     return req;
   } catch (e) {
     await conn.rollback();
@@ -767,6 +821,20 @@ export async function approveSubscriptionRequest(requestId: number, adminId: num
   } finally {
     conn.release();
   }
+}
+
+function addPeriod(date: Date, billingCycle: string): Date {
+  const d = new Date(date);
+  if (billingCycle === 'yearly') d.setFullYear(d.getFullYear() + 1);
+  else d.setMonth(d.getMonth() + 1);
+  return d;
+}
+
+function toSqlDate(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
 }
 
 export async function rejectSubscriptionRequest(requestId: number, adminId: number, reason: string) {

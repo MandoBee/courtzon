@@ -424,7 +424,8 @@ export async function updateOrgPolicySettingsHandler(request: FastifyRequest, re
 
 const RequestSubscriptionSchema = z.object({
   planId: z.coerce.number().int().positive(),
-  requestType: z.enum(['NEW_SUBSCRIPTION', 'PLAN_CHANGE']),
+  requestType: z.enum(['NEW_SUBSCRIPTION', 'PLAN_CHANGE', 'RENEWAL']),
+  billingCycle: z.enum(['monthly', 'yearly']).optional().default('monthly'),
   notes: z.string().max(500).optional(),
 });
 
@@ -443,10 +444,10 @@ export async function getAvailablePlansHandler(request: FastifyRequest, reply: F
 export async function submitSubscriptionRequestHandler(request: FastifyRequest, reply: FastifyReply) {
   const { orgId } = request.params as { orgId: string };
   const oid = parseInt(orgId, 10);
-  const { planId, requestType, notes } = RequestSubscriptionSchema.parse(request.body);
+  const { planId, requestType, billingCycle, notes } = RequestSubscriptionSchema.parse(request.body);
   const userId = (request as any).userId;
-  const result = await service.submitSubscriptionRequest(oid, userId, planId, requestType, notes);
-  auditOrganisationMutation(request, 'SUBSCRIPTION.REQUEST', 'organisation', oid, { planId, requestType, notes });
+  const result = await service.submitSubscriptionRequest(oid, userId, planId, requestType, notes, billingCycle);
+  auditOrganisationMutation(request, 'SUBSCRIPTION.REQUEST', 'organisation', oid, { planId, requestType, billingCycle, notes });
   return reply.status(201).send(result);
 }
 

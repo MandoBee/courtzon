@@ -7,7 +7,7 @@ import { createModuleLogger } from '../../../shared/utils/logger.js';
 const log = createModuleLogger('subscription-lifecycle');
 type RowData = mysql.RowDataPacket[];
 
-const REMINDER_INTERVALS = [30, 14, 7, 3, 1] as const;
+const REMINDER_INTERVALS = [30, 14, 7, 5, 3, 1] as const;
 
 /**
  * Daily job: expire active subscriptions where end_date < CURDATE()

@@ -8,7 +8,7 @@ import SubscriptionRequestModal from '../../components/subscription/Subscription
 export default function OrgSubscriptionPage() {
   const { orgId } = useParams<{ orgId: string }>();
   const [showRequestModal, setShowRequestModal] = useState(false);
-  const [requestType, setRequestType] = useState<'NEW_SUBSCRIPTION' | 'PLAN_CHANGE'>('PLAN_CHANGE');
+  const [requestType, setRequestType] = useState<'NEW_SUBSCRIPTION' | 'PLAN_CHANGE' | 'RENEWAL'>('PLAN_CHANGE');
 
   const { data: subscription, isLoading, isError, error } = useQuery<any>({
     queryKey: ['org-subscription', orgId],
@@ -87,15 +87,15 @@ export default function OrgSubscriptionPage() {
                 </p>
               )}
             </div>
-            <Can permission="subscription.request">
-              {sub.pendingRequest ? (
-                <div className="bg-[var(--color-warning-bg)] border border-[var(--color-warning-border)] rounded-[var(--radius-md)] p-3 text-xs max-w-xs">
-                  <p className="font-medium mb-1">Pending {sub.pendingRequest.requestType === 'NEW_SUBSCRIPTION' ? 'Subscription' : 'Change'} Request</p>
-                  <p>{sub.pendingRequest.requestedPlanName && <>To: <strong>{sub.pendingRequest.requestedPlanName}</strong></>}</p>
-                  <p className="mt-1">Submitted: {new Date(sub.pendingRequest.createdAt).toLocaleDateString('en-GB')}</p>
-                </div>
-              ) : (
-                <div className="flex gap-2">
+            {sub.pendingRequest ? (
+              <div className="bg-[var(--color-warning-bg)] border border-[var(--color-warning-border)] rounded-[var(--radius-md)] p-3 text-xs max-w-xs">
+                <p className="font-medium mb-1">Pending {sub.pendingRequest.requestType === 'NEW_SUBSCRIPTION' ? 'Subscription' : sub.pendingRequest.requestType === 'RENEWAL' ? 'Renewal' : 'Change'} Request</p>
+                <p>{sub.pendingRequest.requestedPlanName && <>To: <strong>{sub.pendingRequest.requestedPlanName}</strong></>}</p>
+                <p className="mt-1">Submitted: {new Date(sub.pendingRequest.createdAt).toLocaleDateString('en-GB')}</p>
+              </div>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                <Can permission="org.subscription.promote">
                   {hasPlan && (
                     <button
                       onClick={() => { setRequestType('PLAN_CHANGE'); setShowRequestModal(true); }}
@@ -112,9 +112,26 @@ export default function OrgSubscriptionPage() {
                       Get a Plan
                     </button>
                   )}
-                </div>
-              )}
-            </Can>
+                </Can>
+                <Can permission="org.subscription.renew">
+                  {hasPlan && sub.planId && (() => {
+                    const end = sub.endDate ? new Date(sub.endDate) : null;
+                    const now = new Date();
+                    const daysLeft = end ? Math.ceil((end.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)) : null;
+                    const shouldRenew = !end || daysLeft !== null && daysLeft <= 5;
+                    if (!shouldRenew) return null;
+                    return (
+                      <button
+                        onClick={() => { setRequestType('RENEWAL'); setShowRequestModal(true); }}
+                        className="px-3 py-1.5 bg-[var(--color-success)] text-white rounded-[var(--radius-md)] text-xs font-medium"
+                      >
+                        {end && daysLeft !== null && daysLeft < 0 ? 'Renew (Expired)' : 'Renew'}
+                      </button>
+                    );
+                  })()}
+                </Can>
+              </div>
+            )}
           </div>
 
           {/* Features */}

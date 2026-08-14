@@ -1,6 +1,6 @@
 import { eventBusV2 } from '../../../shared/event-bus/index.js';
 import { createModuleLogger } from '../../../shared/utils/logger.js';
-import { getSubscriptionRequestById } from '../../organisations/infrastructure/repositories/org-portal.repository.js';
+import { getSubscriptionRequestById, approveSubscriptionRequest } from '../../organisations/infrastructure/repositories/org-portal.repository.js';
 
 const log = createModuleLogger('registration-payment-listener');
 
@@ -13,7 +13,7 @@ export function registerRegistrationPaymentListeners() {
       return;
     }
 
-    log.info({ paymentId: data.paymentId, requestId }, 'Subscription payment succeeded — approving seller registration');
+    log.info({ paymentId: data.paymentId, requestId }, 'Subscription payment succeeded — activating subscription');
     try {
       const request = await getSubscriptionRequestById(requestId);
       if (!request) {
@@ -24,16 +24,18 @@ export function registerRegistrationPaymentListeners() {
         log.info({ requestId, status: request.status }, 'Upgrade request not pending — idempotent skip');
         return;
       }
-      if (request.registration_type !== 'seller') {
-        log.warn({ requestId, registrationType: request.registration_type }, 'Subscription payment for non-seller request — skipping');
-        return;
-      }
 
-      const { approvalService } = await import('../../approvals/application/approval.service.js');
-      await approvalService.approveRegistration(request.requested_by, requestId);
-      log.info({ requestId, orgId: request.organisation_id }, 'Seller registration auto-approved via card payment');
+      if (request.registration_type === 'seller') {
+        const { approvalService } = await import('../../approvals/application/approval.service.js');
+        await approvalService.approveRegistration(request.requested_by, requestId);
+        log.info({ requestId, orgId: request.organisation_id }, 'Seller registration auto-approved via card payment');
+      } else {
+        // General org subscription (upgrade / plan change / renewal) — activate immediately on payment
+        await approveSubscriptionRequest(requestId, null, 'Auto-approved after card payment');
+        log.info({ requestId, orgId: request.organisation_id }, 'Org subscription activated via card payment');
+      }
     } catch (err: any) {
-      log.error({ err, paymentId: data.paymentId, requestId }, 'Seller registration approval failed on payment succeeded');
+      log.error({ err, paymentId: data.paymentId, requestId }, 'Subscription activation failed on payment succeeded');
     }
   });
 
@@ -42,7 +44,7 @@ export function registerRegistrationPaymentListeners() {
       if (data.referenceType !== 'subscription') return;
       const requestId = data.referenceId;
       if (!requestId) return;
-      log.warn({ eventName, paymentId: data.paymentId, requestId }, 'Seller registration payment did not complete — request stays pending for admin review');
+      log.warn({ eventName, paymentId: data.paymentId, requestId }, 'Subscription payment did not complete — request stays pending for admin review');
     });
   }
 

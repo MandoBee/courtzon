@@ -196,7 +196,14 @@ export async function getAvailablePlansForOrg(orgId: number) {
   }));
 }
 
-export async function submitSubscriptionRequest(orgId: number, userId: number, planId: number, requestType: 'NEW_SUBSCRIPTION' | 'PLAN_CHANGE', notes?: string) {
+export async function submitSubscriptionRequest(
+  orgId: number,
+  userId: number,
+  planId: number,
+  requestType: 'NEW_SUBSCRIPTION' | 'PLAN_CHANGE' | 'RENEWAL',
+  notes?: string,
+  billingCycle: 'monthly' | 'yearly' = 'monthly',
+) {
   const pending = await repo.getOrgPendingSubscriptionRequest(orgId);
   if (pending) throw new ConflictError('You already have a pending subscription request. Please wait for it to be reviewed.');
 
@@ -205,7 +212,7 @@ export async function submitSubscriptionRequest(orgId: number, userId: number, p
 
   // Snapshot current plan data
   const [subRows] = await pool.execute<any[]>(
-    `SELECT os.plan_id, sp.plan_name, sp.price_monthly, sp.price_yearly, os.billing_cycle
+    `SELECT os.plan_id, sp.plan_name, sp.price_monthly, sp.price_yearly, os.billing_cycle, os.end_date
      FROM organisation_subscriptions os
      LEFT JOIN subscription_plans sp ON sp.id = os.plan_id
      WHERE os.organisation_id = ? AND os.subscription_status = 'active'
@@ -222,22 +229,29 @@ export async function submitSubscriptionRequest(orgId: number, userId: number, p
 
   // Snapshot requested plan data
   const [planRows] = await pool.execute<any[]>(
-    `SELECT plan_name, price_monthly, price_yearly, is_active FROM subscription_plans WHERE id = ?`,
+    `SELECT plan_name, price_monthly, price_yearly, is_active, is_unlimited FROM subscription_plans WHERE id = ?`,
     [planId],
   );
   if (!planRows.length || !planRows[0].is_active) {
     throw new ConflictError('The requested plan is not available');
   }
 
-  // Prevent requesting the same plan
-  if (currentPlanId === planId) {
+  // Prevent requesting the same plan — except when renewing the current plan
+  if (currentPlanId === planId && requestType !== 'RENEWAL') {
     throw new ConflictError('You are already on this plan');
+  }
+  // A renewal must target the plan the org is currently on
+  if (requestType === 'RENEWAL' && currentPlanId && currentPlanId !== planId) {
+    throw new ValidationError('Renewal must target your current plan');
   }
 
   const rp = planRows[0];
   const requestedPlanName = rp.plan_name;
-  const requestedPrice = Number(rp.price_monthly || rp.price_yearly || 0);
-  const requestedBillingCycle = 'monthly';
+  const isUnlimited = !!rp.is_unlimited;
+  const requestedPrice = isUnlimited
+    ? 0
+    : Number(billingCycle === 'yearly' ? rp.price_yearly : rp.price_monthly) || 0;
+  const requestedBillingCycle = billingCycle;
 
   const id = await repo.createSubscriptionRequest({
     organisationId: orgId,
@@ -255,17 +269,65 @@ export async function submitSubscriptionRequest(orgId: number, userId: number, p
   });
 
   // Emit notification event
-  const { eventBus } = await import('../../../shared/event-bus/index.js');
   eventBusV2.emit('subscription:request-submitted', {
     organisationId: orgId,
     userId,
     requestId: id,
     requestType,
     requestedPlanName,
+    requestedBillingCycle,
     notes,
   });
 
-  return { id, status: 'pending', requestType, requestedPlanName };
+  // Free / unlimited plan → no payment, activate immediately
+  if (isUnlimited || requestedPrice <= 0) {
+    await repo.approveSubscriptionRequest(id, null, 'Free plan auto-approved');
+    return { id, status: 'active', activated: true, requestType, requestedPlanName };
+  }
+
+  // Paid plan → create a Paymob payment intention linked to the request.
+  const paymentRepository = (await import('../../payment/infrastructure/repositories/payment.repository.js')).paymentRepository;
+  const currency = await paymentRepository.getUserDefaultCurrency(userId);
+
+  const [userRows] = await pool.execute<any[]>(
+    'SELECT full_name, email, full_phone FROM users WHERE id = ?',
+    [userId],
+  );
+  const customerName = userRows.length ? userRows[0].full_name : undefined;
+  const customerEmail = userRows.length ? userRows[0].email : undefined;
+  const customerPhone = userRows.length ? userRows[0].full_phone : undefined;
+
+  const { paymentService } = await import('../../payment/application/payment.service.js');
+  const gwResult = await (paymentService.createGatewayIntention as any)(userId, {
+    referenceType: 'subscription',
+    referenceId: id,
+    amount: requestedPrice,
+    currency,
+    paymentMethod: 'card',
+    customerName,
+    customerEmail,
+    customerPhone,
+  });
+
+  if (!gwResult.success) {
+    // Gateway unavailable — request stays pending for admin review.
+    return {
+      id,
+      status: 'pending',
+      requestType,
+      requestedPlanName,
+      payment: null,
+      paymentWarning: (gwResult as any).errorMessage || 'Payment gateway is unavailable. Your request is pending review.',
+    };
+  }
+
+  return {
+    id,
+    status: 'pending',
+    requestType,
+    requestedPlanName,
+    payment: { paymentId: gwResult.paymentId, clientSecret: gwResult.clientSecret || null },
+  };
 }
 
 export async function cancelMySubscriptionRequest(orgId: number, requestId: number, userId: number) {

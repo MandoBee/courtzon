@@ -146,7 +146,7 @@ const ORG_ADMIN_PATTERNS = [
 const SHOP_ADMIN_PATTERNS = [
   /^marketplace\./,
   /^org\.sidebar\.(dashboard|marketplace|orders|settings|staff|accounting|finance|profile|branches|subscription)$/,
-  /^org\.(dashboard\.view|marketplace\.manage|settings\.edit|settings\.shipping-rates-tab|staff\.manage|profile\.view|branches\.view|branches\.manage|subscription\.view|finance\.view|reports\.view)$/,
+  /^org\.(dashboard\.view|marketplace\.manage|settings\.edit|settings\.shipping-rates-tab|staff\.manage|profile\.view|branches\.view|branches\.manage|subscription\.(view|promote|renew|pay)|finance\.view|reports\.view)$/,
   /^org\.accounting\.(view|manage|journal\.view|journal\.create)$/,
   /^settlements\.request$/,
   /^profile\./,
