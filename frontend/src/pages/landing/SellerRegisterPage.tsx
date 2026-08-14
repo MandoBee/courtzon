@@ -115,9 +115,8 @@ export default function SellerRegisterPage() {
   const finishApproved = (msg: string) => {
     setPollingPaid(false);
     setPaymentInfo(null);
-    setResult('approved');
-    setStep(5);
     showToast(msg);
+    navigate('/login');
   };
 
   const handleSubmit = async () => {

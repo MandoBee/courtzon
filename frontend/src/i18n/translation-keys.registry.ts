@@ -83,7 +83,7 @@ export const translationKeysRegistry: TranslationKeyEntry[] = [
   { key: 'nav.profile', defaultValue: 'Profile', moduleSlug: 'nav', elementType: 'nav', elementLabel: 'Nav profile' },
   { key: 'nav.facilities', defaultValue: 'Facilities', moduleSlug: 'nav', elementType: 'nav', elementLabel: 'Nav facilities' },
   { key: 'nav.coaches', defaultValue: 'Coaches', moduleSlug: 'nav', elementType: 'nav', elementLabel: 'Nav coaches' },
-  { key: 'nav.messages', defaultValue: 'Messages', moduleSlug: 'nav', elementType: 'nav', elementLabel: 'Nav messages' },
+  { key: 'nav.messages', defaultValue: 'Chat', moduleSlug: 'nav', elementType: 'nav', elementLabel: 'Nav messages' },
   { key: 'nav.sell', defaultValue: 'Sell Something', moduleSlug: 'nav', elementType: 'nav', elementLabel: 'Nav sell' },
   { key: 'nav.my_shop', defaultValue: 'My Shop', moduleSlug: 'nav', elementType: 'nav', elementLabel: 'Nav my shop' },
   { key: 'nav.logout', defaultValue: 'Logout', moduleSlug: 'nav', elementType: 'nav', elementLabel: 'Nav logout' },
