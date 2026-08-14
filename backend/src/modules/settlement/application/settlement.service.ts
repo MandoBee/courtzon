@@ -8,6 +8,7 @@ import { eventBusV2 } from '../../../shared/event-bus/index.js';
 import { commandPipeline } from '../../../shared/command/command-pipeline.js';
 import { isFeatureEnabled } from '../../../shared/utils/feature-flags.js';
 import { changeSettlementStatusHandler, type ChangeSettlementStatusPayload } from '../commands/change-settlement-status.command.js';
+import { markSettlementPaidHandler, type MarkSettlementPaidPayload } from '../commands/mark-settlement-paid.command.js';
 import type { SettlementStatus } from '../domain/settlement-aggregate.js';
 import type { Command } from '../../../shared/command/command-base.js';
 import type mysql from 'mysql2/promise';
@@ -219,6 +220,10 @@ export const settlementService = {
   // ── Mark as Paid ──
 
   async markPaid(settlementId: number, bankAccountId?: number, transferReference?: string) {
+    if (isFeatureEnabled('SETTLEMENT_V2_PAY')) {
+      return this.markPaidV2(settlementId, bankAccountId, transferReference);
+    }
+
     const settlement = await repo.findSettlementById(settlementId);
     if (!settlement) throw new NotFoundError('Settlement');
     if (settlement.settlement_status !== 'approved') {
@@ -423,6 +428,30 @@ export const settlementService = {
         organisationId: 0,
         amount: 0,
       });
+    }
+
+    return repo.getSettlementDetail(settlementId);
+  },
+
+  async markPaidV2(settlementId: number, bankAccountId?: number, transferReference?: string) {
+    const command: Command = {
+      commandId: `mark-settlement-paid-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      commandType: 'MarkSettlementPaid',
+      aggregateType: 'settlement',
+      aggregateId: String(settlementId),
+      payload: { settlementId, bankAccountId: bankAccountId ?? null, transferReference: transferReference ?? null } satisfies MarkSettlementPaidPayload,
+      correlationId: `stl_pay_${Date.now()}`,
+    };
+
+    const result = await commandPipeline.execute(command, {
+      validate: async () => markSettlementPaidHandler.validate(command),
+      execute: async (cmd, conn) => markSettlementPaidHandler.execute(cmd, conn),
+      events: (cmd, res) => markSettlementPaidHandler.events!(cmd, res),
+    });
+
+    if (result.status === 'error') {
+      // Surface version conflicts / invalid states as a clean 409.
+      throw new ConflictError(result.message || 'Failed to mark settlement as paid');
     }
 
     return repo.getSettlementDetail(settlementId);
