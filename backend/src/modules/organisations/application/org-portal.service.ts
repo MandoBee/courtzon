@@ -434,7 +434,7 @@ export async function getOrgDashboard(orgId: number): Promise<any> {
     [orgId, today],
   );
   const [[totalSlots]] = await pool.query<RowData>(
-    `SELECT COALESCE(SUM(r.slot_count), 0) AS cnt FROM resources r
+    `SELECT COALESCE(SUM(r.capacity), 0) AS cnt FROM resources r
      JOIN branches br ON br.id = r.branch_id
      WHERE br.organisation_id = ? AND r.is_active = 1`,
     [orgId],

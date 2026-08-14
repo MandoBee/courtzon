@@ -54,6 +54,7 @@ export const ORG_NAV: NavDefinition[] = [
     icon: '💰',
     path: '/org/{orgId}/finance',
     children: [
+      { id: 'nav.org.finance', label: LIT('Finance'), icon: '💸', path: '/org/{orgId}/finance', permissionKey: 'org.sidebar.finance' },
       { id: 'nav.org.booking-settlements', label: LIT('Booking Settlements'), icon: '🤝', path: '/org/{orgId}/finance/bookings', permissionKey: 'settlements.view' },
       {
         id: 'nav.org.accounting',
@@ -62,7 +63,6 @@ export const ORG_NAV: NavDefinition[] = [
         path: '/org/{orgId}/accounting/dashboard',
         permissionKey: 'org.sidebar.accounting',
         children: [
-          { id: 'nav.org.finance', label: LIT('Transactions & Settlements'), icon: '💸', path: '/org/{orgId}/finance', permissionKey: 'org.sidebar.finance' },
           { id: 'nav.org.accounting-dashboard', label: LIT('Dashboard'), path: '/org/{orgId}/accounting/dashboard', permissionKey: 'org.accounting.view' },
           { id: 'nav.org.accounting-coa', label: LIT('Chart of Accounts'), path: '/org/{orgId}/accounting/coa', permissionKey: 'org.accounting.view' },
           { id: 'nav.org.accounting-journal', label: LIT('Manual Journal'), path: '/org/{orgId}/accounting/journal', permissionKey: 'org.accounting.journal.view' },
@@ -100,7 +100,7 @@ export const ORG_NAV: NavDefinition[] = [
   // ── Content & Communication ──
   {
     id: 'nav.org.domain.content',
-    label: LIT('Content & Communication'),
+    label: LIT('Content & Comm.'),
     icon: '📢',
     path: '/org/{orgId}/announcements',
     children: [

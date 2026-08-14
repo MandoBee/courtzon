@@ -22,7 +22,19 @@ export default function OrgDashboardPage() {
   if (orgLoading) return <div className="py-8"><SkeletonRow count={4} /></div>;
 
   const orgName = org?.name || 'Organization';
-  const d = dash || {};
+  const d = dash ? {
+    todayBookings: dash.today?.booking_count,
+    todayRevenue: dash.today?.revenue,
+    totalBranches: dash.stats?.total_branches,
+    totalResources: dash.stats?.total_resources,
+    totalMembers: dash.stats?.total_members,
+    pendingAccessRequests: dash.pending_actions?.access_requests,
+    pendingCoachInvites: dash.pending_actions?.coach_invites,
+    bookingTrend: dash.trends?.weekly || [],
+    monthlyRevenue: dash.trends?.monthly || [],
+    topResources: (dash.top_resources || []).map((r: any) => ({ name: r.name, bookings: r.booking_count })),
+    occupancyRate: dash.occupancy_rate,
+  } : {};
 
   const maxBookingTrend = Math.max(1, ...((d.bookingTrend || []).map((b: any) => b.count)));
   const maxMonthlyRevenue = Math.max(1, ...((d.monthlyRevenue || []).map((m: any) => m.revenue)));

@@ -46,11 +46,11 @@ export function buildLegacyOrgNavItems(can: (perm: string) => boolean, orgId: st
     {
       label: 'Finance & Accounting', icon: '💰', path: p('finance'),
       children: [
+        { label: 'Finance', icon: '💸', path: p('finance'), permissionKey: 'org.sidebar.finance' },
         { label: 'Booking Settlements', icon: '🤝', path: p('finance/bookings'), permissionKey: 'settlements.view' },
         {
           label: 'Accounting', icon: '📒', path: p('accounting/dashboard'), permissionKey: 'org.sidebar.accounting',
           children: [
-            { label: 'Transactions & Settlements', icon: '💸', path: p('finance'), permissionKey: 'org.sidebar.finance' },
             { label: 'Dashboard', path: p('accounting/dashboard'), permissionKey: 'org.accounting.view' },
             { label: 'Chart of Accounts', path: p('accounting/coa'), permissionKey: 'org.accounting.view' },
             { label: 'Manual Journal', path: p('accounting/journal'), permissionKey: 'org.accounting.journal.view' },
@@ -79,7 +79,7 @@ export function buildLegacyOrgNavItems(can: (perm: string) => boolean, orgId: st
     },
 
     {
-      label: 'Content & Communication', icon: '📢', path: p('announcements'),
+      label: 'Content & Comm.', icon: '📢', path: p('announcements'),
       children: [
         { label: t('org.sidebar.announcements'), icon: '📢', path: p('announcements'), permissionKey: 'org.sidebar.announcements' },
         { label: t('org.sidebar.documents'), icon: '📄', path: p('documents'), permissionKey: 'org.sidebar.documents' },

@@ -37,7 +37,7 @@ import RoleSwitcher from './components/workspace/RoleSwitcher';
 import CoachLayout from './components/layout/CoachLayout';
 import RefereeLayout from './components/layout/RefereeLayout';
 import { isOrganisationPendingApproval, orgPortalPath } from './utils/organisation';
-import { resolveUserHome } from './store/workspace.store';
+import { resolveUserHome, useWorkspaceStore } from './store/workspace.store';
 
 // Route-level code splitting: every page/layout below is lazily imported so the
 // initial bundle only ships the shell (guards, navbar, stores). See G8.
@@ -298,13 +298,14 @@ function BrandedSplash() {
 function ProtectedRoute() {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const user = useAuthStore((s) => s.user);
+  const activeWorkspace = useWorkspaceStore((s) => s.activeWorkspace);
   const location = useLocation();
   if (!isAuthenticated) return <Navigate to="/login" replace />;
   const isAdmin = user?.roles?.some(r => r === 'super-admin' || r === 'admin' || r === 'super_admin' || r === 'accountant');
   if (isAdmin && !location.pathname.startsWith('/admin') && !location.pathname.startsWith('/org') && !location.pathname.startsWith('/notifications')) {
     return <Navigate to="/admin" replace />;
   }
-  if (!isAdmin && location.pathname === '/app') {
+  if (!isAdmin && location.pathname === '/app' && activeWorkspace !== 'player') {
     const home = resolveUserHome();
     if (home.workspace !== 'player' && home.path !== '/app') {
       return <Navigate to={home.path} replace />;
