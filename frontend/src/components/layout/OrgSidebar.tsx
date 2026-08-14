@@ -138,7 +138,7 @@ export default function OrgSidebar() {
   return (
     <aside className="w-64 bg-[var(--color-surface)] border-r border-[var(--color-border)] flex flex-col h-full sticky top-0 overflow-y-auto">
       <div className="p-4 border-b border-[var(--color-border)] space-y-3">
-        <SiteLogo to="/app" size="sm" variant="primary" className="shrink-0" />
+        <SiteLogo to="/app" size="sm" variant="primary" showText={false} className="shrink-0" />
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 min-w-0">
             <EntityImage
@@ -160,9 +160,6 @@ export default function OrgSidebar() {
         <button onClick={handleBackToPlayer} className="w-full flex items-center gap-2 px-3 py-2 rounded-[var(--radius-md)] text-sm text-[var(--color-text-muted)] hover:text-[var(--color-primary)] hover:bg-[var(--color-bg)] transition-colors">
           ← Back to Player
         </button>
-        <Link to="/profile" className="flex items-center gap-2 px-3 py-2 rounded-[var(--radius-md)] text-sm text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-border)] hover:bg-[var(--color-bg)]">
-          👤 Profile
-        </Link>
         <button onClick={() => setMode(theme === 'dark' ? 'light' : 'dark')}
           className="w-full flex items-center gap-2 px-3 py-2 rounded-[var(--radius-md)] text-sm text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-border)] hover:bg-[var(--color-bg)] transition-colors">
           {theme === 'dark' ? '☀️ Light Mode' : '🌙 Dark Mode'}
