@@ -10,14 +10,24 @@ import PhoneNumberInput from '../../components/form/PhoneNumberInput';
 import { isValidLocalPhone } from '../../utils/phone';
 import { useDetectedCountry } from '../../hooks/useDetectedCountry';
 import { scrollToTop } from '../../utils/scroll';
-import { buildAuthRegisterPayload, filterRegistrationPaymentMethods } from '../../utils/registration';
+import { buildAuthRegisterPayload, filterSellerRegistrationPaymentMethods } from '../../utils/registration';
 import { getErrorMessage } from '../../utils/errors';
 import { useTranslation } from '../../i18n';
 import { PasswordInput } from '../../components/ui/PasswordInput';
 import LegalConsent from '../../components/legal/LegalConsent';
+import { Modal } from '../../components/ui';
+import { useToast } from '../../components/ui/Toast';
+import PaymobPixelCard from '../../components/payment/PaymobPixelCard';
+import PaymentStatusPoller from '../../components/payment/PaymentStatusPoller';
+import { usePaymentConfirm } from '../../hooks/usePaymentConfirm';
+import { useAuthStore } from '../../store/auth.store';
+import { resolveUserHome } from '../../store/workspace.store';
 
 interface Country { id: number; name: string; phone_code: string; iso_code: string; flag_emoji?: string; default_currency?: string; currency_symbol?: string | null; }
 interface PaymentMethod { id: number; slug: string; name: string; icon: string; description: string; requiresApproval: boolean; }
+interface PaymentInfo { paymentId: number; clientSecret: string; }
+
+type ResultMode = 'pending' | 'approved' | 'submitted';
 
 const STEP_KEYS = ['landing.seller_reg.step1', 'landing.seller_reg.step2', 'landing.seller_reg.step3', 'landing.seller_reg.step4', 'landing.seller_reg.step5'];
 
@@ -37,13 +47,21 @@ export default function SellerRegisterPage() {
   const [submitting, setSubmitting] = useState(false);
   const [agreed, setAgreed] = useState(false);
   const { t } = useTranslation();
+  const { showToast } = useToast();
+  const checkAuth = useAuthStore((s) => s.checkAuth);
+  const { state: confirmState, confirm: confirmPayment, reset: resetConfirm } = usePaymentConfirm();
 
   const [form, setForm] = useState({
     planId: initialPlanId,
     countryId: 0, phoneNumber: '', fullName: '', email: '',
     password: '', confirmPassword: '', gender: '', birthDate: '',
-    shopName: '', paymentMethod: '',
+    shopName: '', paymentMethod: 'card',
   });
+
+  const [paymentInfo, setPaymentInfo] = useState<PaymentInfo | null>(null);
+  const [result, setResult] = useState<ResultMode | null>(null);
+  const [pollingPaid, setPollingPaid] = useState(false);
+  const paymentIdRef = useRef<number>(0);
 
   const update = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }));
 
@@ -66,7 +84,7 @@ export default function SellerRegisterPage() {
     api.get('/public/countries').then(r => setCountries(r.data?.data || r.data || [])).catch(() => {});
     api.get('/public/payment-methods').then(r => {
       const methods = r.data?.data || [];
-      setPaymentMethods(filterRegistrationPaymentMethods(methods));
+      setPaymentMethods(filterSellerRegistrationPaymentMethods(methods));
     }).catch(() => {});
   }, []);
 
@@ -89,6 +107,19 @@ export default function SellerRegisterPage() {
     }
   };
 
+  const goDashboard = async () => {
+    await checkAuth();
+    navigate(resolveUserHome().path);
+  };
+
+  const finishApproved = (msg: string) => {
+    setPollingPaid(false);
+    setPaymentInfo(null);
+    setResult('approved');
+    setStep(5);
+    showToast(msg);
+  };
+
   const handleSubmit = async () => {
     if (submitting) return;
     setError('');
@@ -101,13 +132,55 @@ export default function SellerRegisterPage() {
         planId: form.planId || undefined,
         billingCycle: billingPeriod,
       };
-      await api.post('/auth/register-seller', payload);
+      const res = await api.post('/auth/register-seller', payload);
+      const data = res.data;
+      if (data.payment?.clientSecret) {
+        paymentIdRef.current = data.payment.paymentId;
+        setPaymentInfo({ paymentId: data.payment.paymentId, clientSecret: data.payment.clientSecret });
+        return;
+      }
+      if (data.isApproved) {
+        setResult('approved');
+        setStep(5);
+        showToast(t('landing.seller_reg.approved_toast'));
+        return;
+      }
+      if (data.paymentWarning) {
+        showToast(data.paymentWarning, 'warning');
+      }
+      setResult('pending');
       setStep(5);
     } catch (err: unknown) {
       setError(getErrorMessage(err, 'Registration failed. Please try again.'));
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const handlePaymentCancel = () => {
+    resetConfirm();
+    setPaymentInfo(null);
+    setResult('pending');
+    setStep(5);
+    showToast(t('landing.seller_reg.payment_cancelled'), 'warning');
+  };
+
+  const handlePaymentComplete = async () => {
+    const pmId = paymentIdRef.current;
+    setPaymentInfo(null);
+    showToast(t('landing.seller_reg.payment_submitted_info'), 'info');
+    if (!pmId) return;
+    try {
+      const cResult = await confirmPayment(pmId);
+      if (cResult.confirmed) {
+        finishApproved(t('landing.seller_reg.approved_toast'));
+        return;
+      }
+    } catch {
+      // fall through to polling
+    }
+    // Not yet confirmed locally — the Paymob webhook will approve; poll as fallback
+    setPollingPaid(true);
   };
 
   return (
@@ -117,15 +190,38 @@ export default function SellerRegisterPage() {
           {t('landing.back_options')}
         </Link>
 
-        {step === 5 ? (
-          <div className="bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)] p-10 text-center animate-fade-in">
-            <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-[var(--color-warning-bg)] dark:bg-yellow-900/30 flex items-center justify-center">
-              <svg className="w-8 h-8 text-yellow-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+        {step === 5 && result ? (
+          result === 'approved' ? (
+            <div className="bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)] p-10 text-center animate-fade-in">
+              <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-[var(--color-success-bg)] flex items-center justify-center">
+                <svg className="w-8 h-8 text-[var(--color-success-text)]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+              </div>
+              <h2 className="text-2xl font-bold text-[var(--color-text)] mb-2">{t('landing.seller_reg.approved_title')}</h2>
+              <p className="text-[var(--color-text-muted)] max-w-md mx-auto">{t('landing.seller_reg.approved_desc')}</p>
+              <button onClick={goDashboard} className="mt-6 px-6 py-3 bg-[var(--gradient-primary)] text-white font-semibold rounded-xl">{t('landing.seller_reg.approved_cta')}</button>
             </div>
-            <h2 className="text-2xl font-bold text-[var(--color-text)] mb-2">{t('landing.seller_reg.pending_title')}</h2>
-            <p className="text-[var(--color-text-muted)] max-w-md mx-auto">{t('landing.seller_reg.pending_desc')}</p>
-            <button onClick={() => navigate('/login')} className="mt-6 px-6 py-3 bg-[var(--gradient-primary)] text-white font-semibold rounded-xl">{t('landing.player_reg.go_login')}</button>
-          </div>
+          ) : result === 'submitted' ? (
+            <div className="bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)] p-10 text-center animate-fade-in">
+              <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-[var(--color-warning-bg)] dark:bg-yellow-900/30 flex items-center justify-center">
+                <svg className="w-8 h-8 text-yellow-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+              </div>
+              <h2 className="text-2xl font-bold text-[var(--color-text)] mb-2">{t('landing.seller_reg.submitted_title')}</h2>
+              <p className="text-[var(--color-text-muted)] max-w-md mx-auto">{t('landing.seller_reg.submitted_desc')}</p>
+              <div className="mt-6 flex flex-col sm:flex-row gap-3 justify-center">
+                <button onClick={() => { setResult(null); setPollingPaid(true); }} className="px-6 py-3 bg-[var(--gradient-primary)] text-white font-semibold rounded-xl">{t('landing.seller_reg.check_status')}</button>
+                <button onClick={() => navigate('/login')} className="px-6 py-3 border border-[var(--color-border)] text-[var(--color-text)] font-semibold rounded-xl">{t('landing.player_reg.go_login')}</button>
+              </div>
+            </div>
+          ) : (
+            <div className="bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)] p-10 text-center animate-fade-in">
+              <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-[var(--color-warning-bg)] dark:bg-yellow-900/30 flex items-center justify-center">
+                <svg className="w-8 h-8 text-yellow-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+              </div>
+              <h2 className="text-2xl font-bold text-[var(--color-text)] mb-2">{t('landing.seller_reg.pending_title')}</h2>
+              <p className="text-[var(--color-text-muted)] max-w-md mx-auto">{t('landing.seller_reg.pending_desc')}</p>
+              <button onClick={() => navigate('/login')} className="mt-6 px-6 py-3 bg-[var(--gradient-primary)] text-white font-semibold rounded-xl">{t('landing.player_reg.go_login')}</button>
+            </div>
+          )
         ) : (
           <>
             <div className="flex items-center gap-2 mb-8">
@@ -284,7 +380,7 @@ export default function SellerRegisterPage() {
                     <div className="flex justify-between py-2 border-b border-[var(--color-border)]"><span className="text-[var(--color-text-muted)]">{t('auth.register.gender')}</span><span className="font-medium text-[var(--color-text)] capitalize">{form.gender}</span></div>
                     <div className="flex justify-between py-2 border-b border-[var(--color-border)]"><span className="text-[var(--color-text-muted)]">{t('auth.register.birth_date')}</span><span className="font-medium text-[var(--color-text)]">{form.birthDate}</span></div>
                     <div className="flex justify-between py-2 border-b border-[var(--color-border)]"><span className="text-[var(--color-text-muted)]">{t('landing.seller_reg.shop_name')}</span><span className="font-medium text-[var(--color-text)]">{form.shopName}</span></div>
-                    <div className="flex justify-between py-2 border-b border-[var(--color-border)]"><span className="text-[var(--color-text-muted)]">{t('landing.seller_reg.payment_method')}</span><span className="font-medium text-[var(--color-text)] capitalize">{form.paymentMethod}</span></div>
+                    <div className="flex justify-between py-2 border-b border-[var(--color-border)]"><span className="text-[var(--color-text-muted)]">{t('landing.seller_reg.payment_method')}</span><span className="font-medium text-[var(--color-text)] capitalize">{form.paymentMethod === 'card' ? t('landing.seller_reg.payment_card') : form.paymentMethod === 'cash' ? t('landing.seller_reg.payment_cash') : form.paymentMethod}</span></div>
                   </div>
                   <div className="mt-6">
                     <LegalConsent onChange={setAgreed} />
@@ -315,6 +411,50 @@ export default function SellerRegisterPage() {
           </>
         )}
       </div>
+
+      {/* Card payment modal (same Paymob widget used for booking a court) */}
+      <Modal open={!!paymentInfo} onClose={handlePaymentCancel} title={t('landing.seller_reg.pay_title')} size="lg">
+        {paymentInfo && (
+          <div>
+            <p className="text-sm text-[var(--color-text-muted)] mb-4">{t('landing.seller_reg.pay_desc')}</p>
+            <PaymobPixelCard
+              clientSecret={paymentInfo.clientSecret}
+              beforePaymentComplete={async () => true}
+              onComplete={handlePaymentComplete}
+              onCancel={handlePaymentCancel}
+            />
+          </div>
+        )}
+      </Modal>
+
+      {/* Payment confirming overlay */}
+      {(confirmState === 'confirming' || confirmState === 'polling') && (
+        <div className="fixed inset-0 z-[70] bg-black/40 flex items-center justify-center">
+          <div className="bg-[var(--color-surface)] rounded-xl shadow-xl p-6 text-center space-y-3">
+            <div className="animate-spin w-8 h-8 border-4 border-[var(--color-primary)] border-t-transparent rounded-full mx-auto" />
+            <p className="text-sm text-[var(--color-text-muted)]">
+              {confirmState === 'confirming' ? t('landing.seller_reg.confirming_payment') : t('landing.seller_reg.waiting_confirmation')}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Fallback polling (webhook will approve the seller) */}
+      {pollingPaid && paymentIdRef.current > 0 && (
+        <PaymentStatusPoller
+          endpoint={`/payments/status/${paymentIdRef.current}`}
+          isComplete={(data: any) => data?.paymentStatus === 'paid'}
+          interval={2000}
+          timeout={90000}
+          onPaid={() => finishApproved(t('landing.seller_reg.approved_toast'))}
+          onTimeout={() => {
+            setPollingPaid(false);
+            setResult('submitted');
+            setStep(5);
+            showToast(t('landing.seller_reg.payment_confirmation_slow'), 'warning');
+          }}
+        />
+      )}
     </div>
   );
 }
