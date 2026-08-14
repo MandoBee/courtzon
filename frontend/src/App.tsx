@@ -808,8 +808,8 @@ function AppContent() {
             <Route path="leagues" element={<OrgLeaguesPage />} />
             <Route path="tournaments" element={<OrgTournamentsPage />} />
             <Route path="verification" element={<OrgVerificationPage />} />
-            <Route path="settings" element={<OrgSettingsPage />} />
-            <Route path="shipping-rates" element={<Navigate to="settings" replace />} />
+            <Route path="shipping-rates" element={<OrgSettingsPage />} />
+            <Route path="settings" element={<Navigate to="shipping-rates" replace />} />
           </Route>
           </Route>
         </Route>
