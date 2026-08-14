@@ -1,5 +1,6 @@
 import { userRepository } from '../infrastructure/repositories/user.repository.js';
 import { sessionRepository } from '../infrastructure/repositories/session.repository.js';
+import { paymentRepository } from '../../payment/infrastructure/repositories/payment.repository.js';
 import { DeviceRepository } from '../infrastructure/repositories/device.repository.js';
 import { hashPassword, verifyPassword } from '../../../shared/utils/password.js';
 import { generateSessionToken, generateRefreshToken, generateUUID, hashToken } from '../../../shared/utils/token.js';
@@ -133,7 +134,7 @@ export class AuthService {
     return { user: this.mapUserResponse(user, roles, permissions), isApproved: false };
   }
 
-  async registerSeller(input: SellerRegisterInput, meta: { ip: string; userAgent?: string; deviceFingerprint?: string }): Promise<{ user: any; isApproved: boolean }> {
+  async registerSeller(input: SellerRegisterInput, meta: { ip: string; userAgent?: string; deviceFingerprint?: string }): Promise<{ user: any; isApproved: boolean; session?: AuthResponse['session']; payment?: { paymentId: number; clientSecret: string | null } | null; paymentWarning?: string }> {
     const countryPhoneCode = input.countryCode || await userRepository.getCountryPhoneCode(input.countryId);
     if (!countryPhoneCode) throw new Error(`Country ${input.countryId} not found`);
 
@@ -213,16 +214,78 @@ export class AuthService {
     }
 
     // Create upgrade request
-    await pool.execute(
+    const [upgradeResult] = await pool.execute(
       `INSERT INTO organisation_upgrade_requests (organisation_id, registration_type, requested_by, requested_plan_id, chosen_payment_method, status, metadata)
        VALUES (?, 'seller', ?, ?, ?, 'pending', ?)`,
       [orgId, userId, input.planId || null, input.paymentMethod, JSON.stringify({ shopName: input.shopName })]
-    );
+    ) as any;
+    const upgradeRequestId = upgradeResult.insertId as number;
 
     const user = await userRepository.findById(userId);
     const roles = await this.getUserRoles(userId);
     const permissions = await rbacRepository.getUserPermissionKeys(userId);
-    return { user: this.mapUserResponse(user, roles, permissions), isApproved: false };
+    const baseUser = this.mapUserResponse(user, roles, permissions);
+
+    const isCardPayment = (input.paymentMethod || '').trim().toLowerCase() === 'card';
+    if (!isCardPayment) {
+      return { user: baseUser, isApproved: false };
+    }
+
+    // Card flow: the seller pays for the plan online (same Paymob widget used when
+    // booking a court). Create a session so the freshly-registered seller can
+    // confirm the payment via POST /payments/confirm.
+    const sessionResult = await this.createSession(userId, meta);
+    const session = sessionResult.session;
+
+    // Resolve plan price (0 for free/unlimited plans → no online charge)
+    let amount = 0;
+    if (input.planId) {
+      const plan = await paymentRepository.getPlanPrice(input.planId);
+      if (plan) {
+        amount = plan.isUnlimited
+          ? 0
+          : (input.billingCycle === 'yearly' ? plan.priceYearly : plan.priceMonthly);
+      }
+    }
+
+    if (amount <= 0) {
+      // Free plan — nothing to charge, approve the seller immediately.
+      const { approvalService } = await import('../../approvals/application/approval.service.js');
+      await approvalService.approveRegistration(userId, upgradeRequestId);
+      return { user: baseUser, isApproved: true, session };
+    }
+
+    // Paid plan — create a Paymob payment intention linked to the upgrade request.
+    const currency = await paymentRepository.getUserDefaultCurrency(userId);
+
+    const { paymentService } = await import('../../payment/application/payment.service.js');
+    const gwResult = await (paymentService.createGatewayIntention as any)(userId, {
+      referenceType: 'subscription',
+      referenceId: upgradeRequestId,
+      amount,
+      currency,
+      paymentMethod: 'card',
+      customerName: input.fullName,
+      customerPhone: fullPhone,
+      customerEmail: input.email,
+    });
+
+    if (!gwResult.success) {
+      return {
+        user: baseUser,
+        isApproved: false,
+        session,
+        payment: null,
+        paymentWarning: (gwResult as any).errorMessage || 'Payment gateway is unavailable. Your registration is pending review.',
+      };
+    }
+
+    return {
+      user: baseUser,
+      isApproved: false,
+      session,
+      payment: { paymentId: gwResult.paymentId, clientSecret: gwResult.clientSecret || null },
+    };
   }
 
   async registerOrganization(input: OrganizationRegisterInput, meta: { ip: string; userAgent?: string; deviceFingerprint?: string }): Promise<{ user: any; isApproved: boolean }> {

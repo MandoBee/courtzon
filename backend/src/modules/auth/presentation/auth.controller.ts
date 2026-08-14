@@ -62,12 +62,15 @@ export async function registerSellerHandler(request: FastifyRequest, reply: Fast
     userAgent: request.headers['user-agent'],
     deviceFingerprint: (request.headers['x-device-fingerprint'] as string) || undefined,
   });
+  if (result.session) {
+    setAuthCookies(reply, result.session.sessionToken, result.session.refreshToken);
+  }
   recordAudit({
     actorId: result.user.id,
     action: 'USER.REGISTER',
     entityType: 'seller',
     entityId: result.user.id,
-    afterState: { fullName: result.user.fullName, shopName: body.shopName },
+    afterState: { fullName: result.user.fullName, shopName: body.shopName, paymentMethod: body.paymentMethod },
     ipAddress: request.ip,
     userAgent: request.headers['user-agent'],
   });

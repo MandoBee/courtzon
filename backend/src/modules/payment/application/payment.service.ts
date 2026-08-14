@@ -97,6 +97,7 @@ export class PaymentService {
         userId,
         bookingId: input.referenceType === 'booking' ? input.referenceId : undefined,
         orderId: input.referenceType === 'order' ? input.referenceId : undefined,
+        referenceId: input.referenceType !== 'booking' && input.referenceType !== 'order' ? input.referenceId : undefined,
         referenceType: input.referenceType,
         paymentMethod: 'wallet',
         gatewayProvider: 'wallet_system',
@@ -217,6 +218,7 @@ export class PaymentService {
       userId,
       bookingId: input.referenceType === 'booking' ? input.referenceId : undefined,
       orderId: input.referenceType === 'order' ? input.referenceId : undefined,
+      referenceId: input.referenceType !== 'booking' && input.referenceType !== 'order' ? input.referenceId : undefined,
       referenceType: input.referenceType,
       paymentMethod: input.paymentMethod,
       gatewayProvider: paymentGateway.provider,
@@ -407,7 +409,7 @@ export class PaymentService {
         );
         if (updateResult.affectedRows > 0) {
           log.info({ traceId, txnId: transaction.id, status: newStatus }, 'Payment cancelled/expired via webhook');
-          const refId = transaction.order_id || transaction.booking_id || null;
+          const refId = transaction.reference_id || transaction.order_id || transaction.booking_id || null;
           const eventName = newStatus === 'cancelled' ? 'payment:cancelled-event' as const : 'payment:expired-event' as const;
           await eventBusV2.emit(eventName, {
             paymentId: transaction.id,
@@ -600,7 +602,7 @@ export class PaymentService {
     //   1. published_events is written atomically with the status update
     //   2. emit()'s own onAfterCommit fires in-memory handlers (booking listener,
     //      notification engine, socket publisher) after commit — no nested hook nesting.
-    const refId = transaction.order_id || transaction.booking_id || null;
+    const refId = transaction.reference_id || transaction.order_id || transaction.booking_id || null;
     const commonMeta = {
       gatewayRef,
       userId: transaction.user_id,
@@ -878,7 +880,7 @@ export class PaymentService {
             `UPDATE payment_transactions SET payment_status = 'expired', expired_at = NOW(), updated_at = NOW() WHERE id = ? AND payment_status NOT IN ('paid', 'failed', 'cancelled', 'expired', 'refunded')`,
             [ptx.id],
           );
-          const refId = ptx.order_id || ptx.booking_id || null;
+          const refId = ptx.reference_id || ptx.order_id || ptx.booking_id || null;
           await eventBusV2.emit('payment:expired-event', {
             paymentId: ptx.id,
             referenceType: ptx.reference_type,
@@ -969,6 +971,7 @@ export class PaymentService {
       userId,
       bookingId: input.referenceType === 'booking' ? input.referenceId : undefined,
       orderId: input.referenceType === 'order' ? input.referenceId : undefined,
+      referenceId: input.referenceType !== 'booking' && input.referenceType !== 'order' ? input.referenceId : undefined,
       referenceType: input.referenceType,
       paymentMethod: input.paymentMethod,
       gatewayProvider: paymentGateway.provider,

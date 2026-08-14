@@ -189,6 +189,10 @@ async function bootstrap() {
     const { registerWalletPaymentListeners } = await import('./modules/wallet/application/wallet-payment.listener.js');
     registerWalletPaymentListeners();
 
+    const { registerRegistrationPaymentListeners } = await import('./modules/approvals/application/registration-payment.listener.js');
+    registerRegistrationPaymentListeners();
+    app.log.info('Registration payment listeners registered');
+
     const { registerAccountingEventListeners } = await import('./modules/financial/application/accounting-event.listener.js');
     registerAccountingEventListeners();
     app.log.info('Accounting event listeners registered');

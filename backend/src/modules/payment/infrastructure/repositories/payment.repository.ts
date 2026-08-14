@@ -11,7 +11,7 @@ function resolvePool(conn?: mysql.PoolConnection): mysql.Pool | mysql.PoolConnec
 
 export const paymentRepository = {
   async create(data: {
-    userId: number; bookingId?: number; orderId?: number; referenceType?: string; paymentMethod: string;
+    userId: number; bookingId?: number; orderId?: number; referenceId?: number; referenceType?: string; paymentMethod: string;
     gatewayProvider: string; gatewayReference: string; amount: number;
     status?: string; currency?: string; gatewayResponse?: unknown; traceId?: string;
     idempotencyKey?: string;
@@ -22,12 +22,13 @@ export const paymentRepository = {
     const traceId = data.traceId || randomUUID();
     const [result] = await db.execute<mysql.ResultSetHeader>(
       `INSERT INTO payment_transactions
-        (user_id, booking_id, order_id, idempotency_key, reference_type, payment_method, gateway_provider,
+        (user_id, booking_id, order_id, reference_id, idempotency_key, reference_type, payment_method, gateway_provider,
          gateway_reference, amount, currency, payment_status, gateway_response, trace_id, aggregate_version)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
       [data.userId,
        isBooking ? (data.bookingId ?? null) : null,
        isOrder ? (data.orderId ?? null) : null,
+       data.referenceId ?? null,
        data.idempotencyKey || null,
        data.referenceType || null,
        data.paymentMethod, data.gatewayProvider, data.gatewayReference, data.amount,
@@ -83,6 +84,30 @@ export const paymentRepository = {
     return rows[0] || null;
   },
 
+  async getPlanPrice(planId: number): Promise<{ priceMonthly: number; priceYearly: number; isUnlimited: boolean } | null> {
+    const pool = getPool();
+    const [rows] = await pool.execute<RowData>(
+      'SELECT price_monthly, price_yearly, is_unlimited FROM subscription_plans WHERE id = ? AND is_active = TRUE',
+      [planId],
+    );
+    const row = rows[0] as any;
+    if (!row) return null;
+    return {
+      priceMonthly: Number(row.price_monthly || 0),
+      priceYearly: Number(row.price_yearly || 0),
+      isUnlimited: !!row.is_unlimited,
+    };
+  },
+
+  async getUserDefaultCurrency(userId: number): Promise<string> {
+    const pool = getPool();
+    const [rows] = await pool.execute<RowData>(
+      'SELECT c.default_currency FROM users u JOIN countries c ON c.id = u.country_id WHERE u.id = ?',
+      [userId],
+    );
+    return (rows[0] as any)?.default_currency || 'EGP';
+  },
+
   async findByBookingId(bookingId: number) {
     const pool = getPool();
     const [rows] = await pool.execute<RowData>(
@@ -96,9 +121,9 @@ export const paymentRepository = {
     const pool = getPool();
     const [rows] = await pool.execute<RowData>(
       `SELECT * FROM payment_transactions
-       WHERE reference_type = ? AND (booking_id = ? OR order_id = ?)
+       WHERE reference_type = ? AND (booking_id = ? OR order_id = ? OR reference_id = ?)
        ORDER BY id DESC LIMIT 1`,
-      [referenceType, referenceId, referenceId]
+      [referenceType, referenceId, referenceId, referenceId]
     );
     return rows[0] || null;
   },

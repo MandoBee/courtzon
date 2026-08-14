@@ -4,12 +4,29 @@ import { normalizeOptionalWebsiteUrl } from './website';
 /** Wallet requires an existing member account — hide during signup. */
 export const REGISTRATION_EXCLUDED_PAYMENT_SLUGS = new Set(['wallet']);
 
+/** Seller registration: only card (auto-approve after online payment) and cash are offered. */
+export const SELLER_REGISTRATION_PAYMENT_SLUGS = new Set(['card', 'cash']);
+
 export function filterRegistrationPaymentMethods<T extends { slug: string; isActive?: boolean }>(
   methods: T[],
 ): T[] {
   return methods.filter(
     (m) => m.isActive !== false && !REGISTRATION_EXCLUDED_PAYMENT_SLUGS.has(m.slug.toLowerCase()),
   );
+}
+
+/** Keep only the seller registration payment methods (card + cash), card first. */
+export function filterSellerRegistrationPaymentMethods<T extends { slug: string; isActive?: boolean }>(
+  methods: T[],
+): T[] {
+  const allowed = methods.filter(
+    (m) => m.isActive !== false && SELLER_REGISTRATION_PAYMENT_SLUGS.has(m.slug.toLowerCase()),
+  );
+  return allowed.sort((a, b) => {
+    const pa = a.slug.toLowerCase() === 'card' ? 0 : 1;
+    const pb = b.slug.toLowerCase() === 'card' ? 0 : 1;
+    return pa - pb;
+  });
 }
 
 export function buildAuthRegisterPayload(form: {
