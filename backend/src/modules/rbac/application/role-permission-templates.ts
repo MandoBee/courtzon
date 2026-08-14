@@ -167,13 +167,13 @@ const ORG_ADMIN_EXPLICIT_KEYS = new Set([
 
 const SHOP_ADMIN_PATTERNS = [
   /^marketplace\./,
-  /^org\./,
-  /^org\.settings\.shipping-rates-tab$/,
-  /^settlements\.(view|request)$/,
-  /^resources\./,
+  /^org\.sidebar\.(dashboard|marketplace|orders|settings|staff|accounting|finance|profile|branches|subscription)$/,
+  /^org\.(dashboard\.view|marketplace\.manage|settings\.edit|settings\.shipping-rates-tab|staff\.manage|profile\.view|branches\.view|branches\.manage|subscription\.view|finance\.view|reports\.view)$/,
+  /^org\.accounting\.(view|manage|journal\.view|journal\.create)$/,
+  /^settlements\.request$/,
   /^profile\./,
   /^organisations\.edit\.(name|description|logo|cover|email|phone|website|slug|country)/,
-  /^organisations\.edit\.(basic|branches|resources)/,
+  /^organisations\.edit\.(basic|branches)/,
   /^branches\.edit\.(basic|name|email|phone|address|status)/,
   /^branches\.edit$/,
   /^branches\.view$/,
