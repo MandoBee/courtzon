@@ -260,6 +260,33 @@ const eventGroups: EventGroupConfig[] = [
           relatedEntityType: 'organisation', relatedEntityId: String(data.organisationId),
           action: a(`/organisations/${data.organisationId}`),
         });
+      } else if (data.organisationId) {
+        await dispatchByOrg(data.organisationId, {
+          eventName, categorySlug, data,
+          organisationId: data.organisationId,
+          relatedEntityType: 'organisation', relatedEntityId: String(data.organisationId),
+          action: a(`/organisations/${data.organisationId}`),
+        });
+      }
+    },
+  },
+  {
+    events: ['subscription:request-submitted', 'subscription:request-approved', 'subscription:request-rejected'],
+    handler: async (eventName, data, categorySlug) => {
+      if (data.userId) {
+        await dispatchToUser({
+          userId: data.userId, eventName, categorySlug, data,
+          organisationId: data.organisationId,
+          relatedEntityType: 'organisation', relatedEntityId: String(data.organisationId),
+          action: a(`/org/${data.organisationId}/subscription`),
+        });
+      } else if (data.organisationId) {
+        await dispatchByOrg(data.organisationId, {
+          eventName, categorySlug, data,
+          organisationId: data.organisationId,
+          relatedEntityType: 'organisation', relatedEntityId: String(data.organisationId),
+          action: a(`/org/${data.organisationId}/subscription`),
+        });
       }
     },
   },

@@ -907,6 +907,9 @@ export const uiRegistry: UIElement[] = [
 
   // Subscription
   { permissionKey: 'org.subscription.view', moduleSlug: 'org', elementType: 'page', elementLabel: 'Organisation Subscription', componentPath: 'pages/org/OrgSubscriptionPage.tsx' },
+  { permissionKey: 'org.subscription.promote', moduleSlug: 'org', elementType: 'button', elementLabel: 'Promote Plan (Get/Change Plan)', componentPath: 'pages/org/OrgSubscriptionPage.tsx' },
+  { permissionKey: 'org.subscription.renew', moduleSlug: 'org', elementType: 'button', elementLabel: 'Renew Subscription', componentPath: 'pages/org/OrgSubscriptionPage.tsx' },
+  { permissionKey: 'org.subscription.pay', moduleSlug: 'org', elementType: 'action', elementLabel: 'Pay for Subscription (card)', componentPath: 'components/subscription/SubscriptionRequestModal.tsx' },
 
   // ==========================================================================
   // SETTLEMENTS MODULE
