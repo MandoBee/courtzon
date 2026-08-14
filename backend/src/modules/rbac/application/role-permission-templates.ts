@@ -160,6 +160,7 @@ const ORG_ADMIN_EXPLICIT_KEYS = new Set([
   'coaches.reviews.create',
   'coaches.approve',
   'coaches.assign',
+  'settlements.view',
   'settlements.request',
   'academies.enroll',
 ]);
