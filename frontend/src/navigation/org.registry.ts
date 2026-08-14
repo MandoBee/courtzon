@@ -54,7 +54,6 @@ export const ORG_NAV: NavDefinition[] = [
     icon: '💰',
     path: '/org/{orgId}/finance',
     children: [
-      { id: 'nav.org.finance', label: LIT('Finance'), icon: '💸', path: '/org/{orgId}/finance', permissionKey: 'org.sidebar.finance' },
       { id: 'nav.org.booking-settlements', label: LIT('Booking Settlements'), icon: '🤝', path: '/org/{orgId}/finance/bookings', permissionKey: 'settlements.view' },
       {
         id: 'nav.org.accounting',
@@ -66,19 +65,20 @@ export const ORG_NAV: NavDefinition[] = [
           { id: 'nav.org.accounting-dashboard', label: LIT('Dashboard'), path: '/org/{orgId}/accounting/dashboard', permissionKey: 'org.accounting.view' },
           { id: 'nav.org.accounting-coa', label: LIT('Chart of Accounts'), path: '/org/{orgId}/accounting/coa', permissionKey: 'org.accounting.view' },
           { id: 'nav.org.accounting-journal', label: LIT('Manual Journal'), path: '/org/{orgId}/accounting/journal', permissionKey: 'org.accounting.journal.view' },
-          {
-            id: 'nav.org.accounting-reports',
-            label: LIT('Financial'),
-            path: '/org/{orgId}/accounting/reports/trial-balance',
-            permissionKey: 'org.accounting.view',
-            children: [
-              { id: 'nav.org.accounting-trial-balance', label: LIT('Trial Balance'), path: '/org/{orgId}/accounting/reports/trial-balance', permissionKey: 'org.accounting.view' },
-              { id: 'nav.org.accounting-income-statement', label: LIT('Income Statement'), path: '/org/{orgId}/accounting/reports/income-statement', permissionKey: 'org.accounting.view' },
-              { id: 'nav.org.accounting-balance-sheet', label: LIT('Balance Sheet'), path: '/org/{orgId}/accounting/reports/balance-sheet', permissionKey: 'org.accounting.view' },
-              { id: 'nav.org.reports', label: LIT('Reports'), icon: '📈', path: '/org/{orgId}/reports', permissionKey: 'org.reports.view' },
-              { id: 'nav.org.accounting-tax', label: LIT('Tax Summary'), path: '/org/{orgId}/accounting/tax-summary', permissionKey: 'org.accounting.view' },
-            ],
-          },
+        ],
+      },
+      {
+        id: 'nav.org.accounting-reports',
+        label: LIT('Financial'),
+        path: '/org/{orgId}/accounting/reports/trial-balance',
+        permissionKey: 'org.accounting.view',
+        children: [
+          { id: 'nav.org.finance', label: LIT('Transactions & Settlements'), icon: '💸', path: '/org/{orgId}/finance', permissionKey: 'org.sidebar.finance' },
+          { id: 'nav.org.accounting-trial-balance', label: LIT('Trial Balance'), path: '/org/{orgId}/accounting/reports/trial-balance', permissionKey: 'org.accounting.view' },
+          { id: 'nav.org.accounting-income-statement', label: LIT('Income Statement'), path: '/org/{orgId}/accounting/reports/income-statement', permissionKey: 'org.accounting.view' },
+          { id: 'nav.org.accounting-balance-sheet', label: LIT('Balance Sheet'), path: '/org/{orgId}/accounting/reports/balance-sheet', permissionKey: 'org.accounting.view' },
+          { id: 'nav.org.reports', label: LIT('Reports'), icon: '📈', path: '/org/{orgId}/reports', permissionKey: 'org.reports.view' },
+          { id: 'nav.org.accounting-tax', label: LIT('Tax Summary'), path: '/org/{orgId}/accounting/tax-summary', permissionKey: 'org.accounting.view' },
         ],
       },
     ],

@@ -46,7 +46,6 @@ export function buildLegacyOrgNavItems(can: (perm: string) => boolean, orgId: st
     {
       label: 'Finance & Accounting', icon: '💰', path: p('finance'),
       children: [
-        { label: 'Finance', icon: '💸', path: p('finance'), permissionKey: 'org.sidebar.finance' },
         { label: 'Booking Settlements', icon: '🤝', path: p('finance/bookings'), permissionKey: 'settlements.view' },
         {
           label: 'Accounting', icon: '📒', path: p('accounting/dashboard'), permissionKey: 'org.sidebar.accounting',
@@ -54,16 +53,17 @@ export function buildLegacyOrgNavItems(can: (perm: string) => boolean, orgId: st
             { label: 'Dashboard', path: p('accounting/dashboard'), permissionKey: 'org.accounting.view' },
             { label: 'Chart of Accounts', path: p('accounting/coa'), permissionKey: 'org.accounting.view' },
             { label: 'Manual Journal', path: p('accounting/journal'), permissionKey: 'org.accounting.journal.view' },
-            {
-              label: 'Financial', path: p('accounting/reports/trial-balance'), permissionKey: 'org.accounting.view',
-              children: [
-                { label: 'Trial Balance', path: p('accounting/reports/trial-balance'), permissionKey: 'org.accounting.view' },
-                { label: 'Income Statement', path: p('accounting/reports/income-statement'), permissionKey: 'org.accounting.view' },
-                { label: 'Balance Sheet', path: p('accounting/reports/balance-sheet'), permissionKey: 'org.accounting.view' },
-                { label: 'Reports', icon: '📈', path: p('reports'), permissionKey: 'org.reports.view' },
-                { label: 'Tax Summary', path: p('accounting/tax-summary'), permissionKey: 'org.accounting.view' },
-              ],
-            },
+          ],
+        },
+        {
+          label: 'Financial', path: p('accounting/reports/trial-balance'), permissionKey: 'org.accounting.view',
+          children: [
+            { label: 'Transactions & Settlements', icon: '💸', path: p('finance'), permissionKey: 'org.sidebar.finance' },
+            { label: 'Trial Balance', path: p('accounting/reports/trial-balance'), permissionKey: 'org.accounting.view' },
+            { label: 'Income Statement', path: p('accounting/reports/income-statement'), permissionKey: 'org.accounting.view' },
+            { label: 'Balance Sheet', path: p('accounting/reports/balance-sheet'), permissionKey: 'org.accounting.view' },
+            { label: 'Reports', icon: '📈', path: p('reports'), permissionKey: 'org.reports.view' },
+            { label: 'Tax Summary', path: p('accounting/tax-summary'), permissionKey: 'org.accounting.view' },
           ],
         },
       ],
