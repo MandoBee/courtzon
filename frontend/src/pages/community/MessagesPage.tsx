@@ -473,7 +473,7 @@ export default function MessagesPage() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-[var(--color-text)]">💬 Messages</h1>
+        <h1 className="text-2xl font-bold text-[var(--color-text)]">💬 Chat</h1>
         <div className="flex gap-2">
           <Can permission="community.chat.view">
             <button

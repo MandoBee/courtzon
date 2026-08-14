@@ -167,8 +167,9 @@ const ORG_ADMIN_EXPLICIT_KEYS = new Set([
 
 const SHOP_ADMIN_PATTERNS = [
   /^marketplace\./,
-  /^org\.(sidebar\.(dashboard|marketplace|orders|staff|settings|resources)|dashboard\.view|marketplace\.manage|settings\.edit|staff\.manage|resources\.manage)/,
+  /^org\./,
   /^org\.settings\.shipping-rates-tab$/,
+  /^settlements\.(view|request)$/,
   /^resources\./,
   /^profile\./,
   /^organisations\.edit\.(name|description|logo|cover|email|phone|website|slug|country)/,
