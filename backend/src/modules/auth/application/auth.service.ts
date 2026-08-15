@@ -165,6 +165,11 @@ export class AuthService {
 
     const pool = getPool();
 
+    // Normalize the optional payment method: free plans omit it entirely, so store explicit
+    // SQL NULL (never undefined) in chosen_payment_method. .optional() lets undefined through
+    // the DTO, and mysql2 rejects undefined bind values.
+    const paymentMethod = input.paymentMethod?.trim() || null;
+
     // Create Shop org
     const [orgTypeRows] = await pool.execute(
       `SELECT id FROM organisation_types WHERE slug = 'shop' LIMIT 1`
@@ -217,7 +222,7 @@ export class AuthService {
     const [upgradeResult] = await pool.execute(
       `INSERT INTO organisation_upgrade_requests (organisation_id, registration_type, requested_by, requested_plan_id, chosen_payment_method, status, metadata)
        VALUES (?, 'seller', ?, ?, ?, 'pending', ?)`,
-      [orgId, userId, input.planId || null, input.paymentMethod, JSON.stringify({ shopName: input.shopName })]
+      [orgId, userId, input.planId || null, paymentMethod, JSON.stringify({ shopName: input.shopName })]
     ) as any;
     const upgradeRequestId = upgradeResult.insertId as number;
 
@@ -237,7 +242,7 @@ export class AuthService {
       }
     }
 
-    const isCardPayment = (input.paymentMethod || '').trim().toLowerCase() === 'card';
+    const isCardPayment = (paymentMethod || '').toLowerCase() === 'card';
 
     // Free plan — nothing to charge, approve the seller immediately so they can log in right away.
     // No payment method is required for free plans.
@@ -324,6 +329,9 @@ export class AuthService {
 
     const pool = getPool();
 
+    // Normalize the optional payment method (free plans omit it) to explicit SQL NULL.
+    const paymentMethod = input.paymentMethod?.trim() || null;
+
     const [orgTypeRows] = await pool.execute(
       'SELECT id, slug FROM organisation_types WHERE id = ? AND is_active = TRUE AND deleted_at IS NULL',
       [input.orgTypeId],
@@ -376,7 +384,7 @@ export class AuthService {
     await pool.execute(
       `INSERT INTO organisation_upgrade_requests (organisation_id, registration_type, requested_by, requested_plan_id, requested_org_type_id, chosen_payment_method, status, metadata)
        VALUES (?, 'organization', ?, ?, ?, ?, 'pending', ?)`,
-      [orgId, userId, input.planId, input.orgTypeId, input.paymentMethod, JSON.stringify({ orgName: input.orgName, documents: input.orgDocuments || [] })]
+      [orgId, userId, input.planId, input.orgTypeId, paymentMethod, JSON.stringify({ orgName: input.orgName, documents: input.orgDocuments || [] })]
     );
 
     const user = await userRepository.findById(userId);
