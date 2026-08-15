@@ -67,7 +67,7 @@ export default function OrgSubscriptionPage() {
                   sub.status === 'active' ? 'bg-[var(--color-success-bg)] text-[var(--color-success-text)]' :
                   sub.status === 'pending' ? 'bg-[var(--color-warning-bg)] text-[var(--color-warning-text)]' :
                   'bg-[var(--color-error-bg)] text-[var(--color-error-text)]'
-                }`}>{sub.status}</span>
+                }`}>{sub.status === 'active' ? 'Active' : sub.status === 'pending' ? 'Suspended' : sub.status}</span>
               </div>
               {/* Expiration */}
               {sub.startDate && (

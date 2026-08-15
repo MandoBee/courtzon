@@ -17,7 +17,6 @@ export default function OrganisationListPage() {
   const [typeFilter, setTypeFilter] = useState('all');
   const [countryFilter, setCountryFilter] = useState('all');
   const [ratingFilter, setRatingFilter] = useState('all');
-  const [verifiedFilter, setVerifiedFilter] = useState('all');
   const [activeFilter, setActiveFilter] = useState('all');
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(20);
@@ -47,7 +46,6 @@ export default function OrganisationListPage() {
   if (typeFilter !== 'all') queryParams.set('typeId', typeFilter);
   if (countryFilter !== 'all') queryParams.set('countryId', countryFilter);
   if (ratingFilter !== 'all') queryParams.set('ratingMin', ratingFilter);
-  if (verifiedFilter !== 'all') queryParams.set('verified', verifiedFilter);
   if (activeFilter !== 'all') queryParams.set('active', activeFilter);
   queryParams.set('page', String(page));
   queryParams.set('limit', String(limit));
@@ -65,11 +63,6 @@ export default function OrganisationListPage() {
   const organisations = data?.data || [];
   const total = data?.total || 0;
   const totalPages = Math.ceil(total / limit);
-
-  const verifyMutation = useMutation({
-    mutationFn: ({ id, isVerified }: { id: number; isVerified: boolean }) => api.put(`/organisations/${id}`, { isVerified }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['admin', 'organisations'] }),
-  });
 
   const toggleActiveMutation = useMutation({
     mutationFn: ({ id, isActive }: { id: number; isActive: boolean }) => api.put(`/organisations/${id}`, { isActive }),
@@ -108,7 +101,6 @@ export default function OrganisationListPage() {
     setCountryFilter('all');
     setTypeFilter('all');
     setRatingFilter('all');
-    setVerifiedFilter('all');
     setActiveFilter('all');
     setPage(1);
   };
@@ -165,12 +157,6 @@ export default function OrganisationListPage() {
               className="px-3 py-2 rounded-[var(--radius-md)] border text-sm">
               {ratingOptions.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
             </select>
-            <select value={verifiedFilter} onChange={(e) => { setVerifiedFilter(e.target.value); setPage(1); }}
-              className="px-3 py-2 rounded-[var(--radius-md)] border text-sm">
-              <option value="all">Verification</option>
-              <option value="true">Verified</option>
-              <option value="false">Pending</option>
-            </select>
             <select value={activeFilter} onChange={(e) => { setActiveFilter(e.target.value); setPage(1); }}
               className="px-3 py-2 rounded-[var(--radius-md)] border text-sm">
               <option value="all">Status</option>
@@ -196,8 +182,7 @@ export default function OrganisationListPage() {
                       <th className="text-center px-4 py-3 text-sm font-medium text-[var(--color-text-muted)]">Country</th>
                       <th className="text-left px-4 py-3 text-sm font-medium text-[var(--color-text-muted)]">Type</th>
                       <th className="text-center px-4 py-3 text-sm font-medium text-[var(--color-text-muted)]">Rating</th>
-                      <th className="text-left px-4 py-3 text-sm font-medium text-[var(--color-text-muted)]">Verified</th>
-                      <th className="text-left px-4 py-3 text-sm font-medium text-[var(--color-text-muted)]">Active</th>
+                      <th className="text-left px-4 py-3 text-sm font-medium text-[var(--color-text-muted)]">Organisation Status</th>
                       <th className="text-right px-4 py-3 text-sm font-medium text-[var(--color-text-muted)]">Actions</th>
                     </tr>
                   </thead>
@@ -224,20 +209,6 @@ export default function OrganisationListPage() {
                         <td className="px-4 py-3 text-sm text-[var(--color-text-muted)]">{org.org_type_slug || '—'}</td>
                         <td className="px-4 py-3 text-center text-sm">
                           {(org.rating_avg ?? 0) > 0 ? <span className="text-amber-600">★ {Number(org.rating_avg).toFixed(1)}</span> : <span className="text-[var(--color-text-muted)]">—</span>}
-                        </td>
-                        <td className="px-4 py-3">
-                          <Can permission="organisations.table.is-verified">
-                            <Can permission="organisations.verify" fallback={
-                              <span className={`px-2 py-0.5 text-xs rounded-full font-medium ${org.is_verified ? 'bg-[var(--color-success-bg)] text-[var(--color-success-text)]' : 'bg-[var(--color-warning-bg)] text-[var(--color-warning-text)]'}`}>
-                                {org.is_verified ? 'Verified' : 'Pending'}
-                              </span>
-                            }>
-                              <button onClick={() => verifyMutation.mutate({ id: org.id, isVerified: !org.is_verified })}
-                                className={`px-2 py-0.5 text-xs rounded-full font-medium cursor-pointer border transition-colors ${org.is_verified ? 'bg-[var(--color-success-bg)] text-[var(--color-success-text)] border-green-300 hover:opacity-80' : 'bg-[var(--color-warning-bg)] text-[var(--color-warning-text)] border-yellow-300 hover:bg-yellow-200'}`}>
-                                {org.is_verified ? 'Verified' : 'Pending'}
-                              </button>
-                            </Can>
-                          </Can>
                         </td>
                         <td className="px-4 py-3">
                           <Can permission="organisations.table.is-active">
@@ -270,7 +241,7 @@ export default function OrganisationListPage() {
                       </tr>
                     ))}
                     {filtered.length === 0 && (
-                      <tr><td colSpan={7} className="px-4 py-8 text-center text-sm text-[var(--color-text-muted)]">No organisations found.</td></tr>
+                      <tr><td colSpan={6} className="px-4 py-8 text-center text-sm text-[var(--color-text-muted)]">No organisations found.</td></tr>
                     )}
                   </tbody>
                 </table>
