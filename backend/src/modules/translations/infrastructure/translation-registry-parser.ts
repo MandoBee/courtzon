@@ -54,7 +54,11 @@ export function parseTranslationKeysRegistry(registryPath?: string): RegistryTra
   const entries: RegistryTranslationKey[] = [];
   let match;
   while ((match = entryRe.exec(content)) !== null) {
-    const unescape = (s: string) => s.replace(/\\'/g, "'").replace(/\\"/g, '"').replace(/\\n/g, '\n');
+    const unescape = (s: string) => s
+      .replace(/\\'/g, "'")
+      .replace(/\\"/g, '"')
+      .replace(/\\n/g, '\n')
+      .replace(/\\u([0-9a-fA-F]{4})/g, (_m, hex: string) => String.fromCharCode(parseInt(hex, 16)));
     entries.push({
       key: match[1],
       defaultValue: unescape(match[3]),

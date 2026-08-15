@@ -69,7 +69,7 @@ export class PaymobGateway implements PaymentGateway {
         },
         special_reference: `${request.referenceType}_${request.referenceId}_${Date.now()}`,
         notification_url: `${process.env.WEBHOOK_BASE_URL || process.env.APP_URL || 'http://localhost:3000'}/payments/webhook`,
-        redirection_url: request.returnUrl,
+        redirection_url: request.returnUrl || `${process.env.APP_URL || 'http://localhost:5173'}/payments/return`,
       };
       const response = await fetch(`${this.baseUrl}/v1/intention/`, {
         method: 'POST',

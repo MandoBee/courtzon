@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useWorkspaceStore, getWorkspaceHomePath, type Workspace } from '../../store/workspace.store';
 import { useAuthStore } from '../../store/auth.store';
 import { useHaptics } from '../../hooks/useHaptics';
+import { orgPortalPath } from '../../utils/organisation';
 
 const workspaceMeta: Record<Workspace, { label: string; icon: string }> = {
   player: { label: 'Player', icon: '👤' },
@@ -30,7 +31,13 @@ export default function RoleSwitcher() {
   const handleSwitch = (ws: Workspace) => {
     tap();
     setActiveWorkspace(ws);
-    navigate(getWorkspaceHomePath(ws, userOrganisations));
+    if (ws === 'organization' && userOrganisations.length > 0) {
+      // orgPortalPath routes pending orgs straight to the pending-approval
+      // screen instead of bouncing off OrgApprovedGuard on the dashboard.
+      navigate(orgPortalPath(userOrganisations[0]));
+    } else {
+      navigate(getWorkspaceHomePath(ws, userOrganisations));
+    }
     setOpen(false);
   };
 

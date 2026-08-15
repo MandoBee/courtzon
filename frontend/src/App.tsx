@@ -49,6 +49,7 @@ const SellerRegisterPage = lazy(() => import('./pages/landing/SellerRegisterPage
 const BlogDetailPage = lazy(() => import('./pages/landing/BlogDetailPage'));
 const SubscriptionPlanDetailPage = lazy(() => import('./pages/subscription/SubscriptionPlanDetailPage'));
 const LoginPage = lazy(() => import('./pages/auth/LoginPage'));
+const PaymentReturnPage = lazy(() => import('./pages/payment/PaymentReturnPage'));
 const ForgotPasswordPage = lazy(() => import('./pages/auth/ForgotPasswordPage'));
 const ResetPasswordPage = lazy(() => import('./pages/auth/ResetPasswordPage'));
 const TemporaryResetPasswordPage = lazy(() => import('./pages/auth/TemporaryResetPasswordPage'));
@@ -562,6 +563,10 @@ function AppContent() {
         <Route path="/reset-password" element={<ResetPasswordPage />} />
         <Route path="/temporary-reset-password" element={<TemporaryResetPasswordPage />} />
       </Route>
+      {/* Paymob redirect destination — reachable by both guests and authenticated users.
+          Must NOT be inside ProtectedRoute/LandingRoute/PublicRoute (they redirect away);
+          the page itself routes to the correct workspace home or /login. */}
+      <Route path="/payments/return" element={<PaymentReturnPage />} />
       <Route element={<ProtectedRoute />}>
         <Route element={<AppLayout />}>
           <Route path="/app" element={<PlayerDashboardPage />} />
