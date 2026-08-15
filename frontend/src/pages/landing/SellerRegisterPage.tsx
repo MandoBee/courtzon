@@ -115,11 +115,19 @@ export default function SellerRegisterPage() {
     navigate(resolveUserHome().path);
   };
 
-  const finishApproved = (msg: string) => {
+  const finishApproved = async (msg: string) => {
     setPollingPaid(false);
     setPaymentInfo(null);
     showToast(msg);
-    navigate('/login');
+    // Card flow creates an authenticated session (like the Free flow), so the
+    // user should land on their workspace home — not be sent to /login where a
+    // freshly-registered session would silently redirect them away again.
+    await checkAuth();
+    if (useAuthStore.getState().user) {
+      navigate(resolveUserHome().path);
+    } else {
+      navigate('/login');
+    }
   };
 
   const handleSubmit = async () => {

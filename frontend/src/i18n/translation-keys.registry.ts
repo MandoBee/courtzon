@@ -121,7 +121,8 @@ export const translationKeysRegistry: TranslationKeyEntry[] = [
   { key: 'org.pendingApproval.title', defaultValue: 'Awaiting approval', moduleSlug: 'organisations', elementType: 'heading', elementLabel: 'Org pending approval title', componentPath: 'pages/org/OrgPendingApprovalPage.tsx' },
   { key: 'org.pendingApproval.message', defaultValue: 'This organization is still under CourtZon review. It must be both verified and active before you can manage it. You will get full access once an administrator approves your organization.', moduleSlug: 'organisations', elementType: 'text', elementLabel: 'Org pending approval message', componentPath: 'pages/org/OrgPendingApprovalPage.tsx' },
   { key: 'home.organization_desc', defaultValue: 'Manage your organization', moduleSlug: 'home', elementType: 'text', elementLabel: 'Home organization card description', componentPath: 'pages/home/DashboardPage.tsx' },
-  { key: 'org.pendingApproval.redirect', defaultValue: 'Returning to the previous page in {seconds} seconds\u2026', moduleSlug: 'organisations', elementType: 'text', elementLabel: 'Org pending approval redirect countdown', componentPath: 'pages/org/OrgPendingApprovalPage.tsx' },
+  { key: 'org.pendingApproval.redirect', defaultValue: 'Returning to the previous page in {seconds} seconds…', moduleSlug: 'organisations', elementType: 'text', elementLabel: 'Org pending approval redirect countdown', componentPath: 'pages/org/OrgPendingApprovalPage.tsx' },
+  { key: 'org.pendingApproval.player_home', defaultValue: 'Back to player home', moduleSlug: 'organisations', elementType: 'button', elementLabel: 'Org pending approval player home link', componentPath: 'pages/org/OrgPendingApprovalPage.tsx' },
 
   // Home dashboard
   { key: 'home.welcome', defaultValue: 'Welcome back, {name}', moduleSlug: 'home', elementType: 'heading', elementLabel: 'Home welcome', componentPath: 'pages/home/DashboardPage.tsx' },
@@ -703,9 +704,15 @@ export const translationKeysRegistry: TranslationKeyEntry[] = [
   { key: 'landing.contact.referral_source', defaultValue: 'How did you hear about us?', moduleSlug: 'landing', elementType: 'label', elementLabel: 'Contact referral source label' },
   { key: 'landing.contact.select_referral', defaultValue: 'Select one', moduleSlug: 'landing', elementType: 'placeholder', elementLabel: 'Contact select referral' },
   { key: 'landing.contact.specify_referral', defaultValue: 'Please specify *', moduleSlug: 'landing', elementType: 'label', elementLabel: 'Contact specify referral' },
-  { key: 'landing.contact.sending', defaultValue: 'Sending\u2026', moduleSlug: 'landing', elementType: 'text', elementLabel: 'Contact sending' },
+  { key: 'landing.contact.sending', defaultValue: 'Sending…', moduleSlug: 'landing', elementType: 'text', elementLabel: 'Contact sending' },
   { key: 'landing.contact.send', defaultValue: 'Send message', moduleSlug: 'landing', elementType: 'button', elementLabel: 'Contact send button' },
   { key: 'landing.contact_email', defaultValue: 'Info', moduleSlug: 'landing', elementType: 'nav', elementLabel: 'Landing contact email nav' },
+
+  // Payment return (Paymob redirect destination)
+  { key: 'payment.return.processing', defaultValue: 'Returning to CourtZon…', moduleSlug: 'payment', elementType: 'text', elementLabel: 'Payment return processing' },
+  { key: 'payment.return.success', defaultValue: 'Payment confirmed successfully!', moduleSlug: 'payment', elementType: 'text', elementLabel: 'Payment return success' },
+  { key: 'payment.return.failed', defaultValue: 'Payment was not completed.', moduleSlug: 'payment', elementType: 'text', elementLabel: 'Payment return failed' },
+  { key: 'payment.return.cancelled', defaultValue: 'Payment was cancelled.', moduleSlug: 'payment', elementType: 'text', elementLabel: 'Payment return cancelled' },
 
   // Landing mobile
   { key: 'landing.mobile.close_menu', defaultValue: 'Close menu', moduleSlug: 'landing', elementType: 'button', elementLabel: 'Landing mobile close menu' },
