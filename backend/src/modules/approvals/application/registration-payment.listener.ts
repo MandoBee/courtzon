@@ -1,6 +1,6 @@
 import { eventBusV2 } from '../../../shared/event-bus/index.js';
 import { createModuleLogger } from '../../../shared/utils/logger.js';
-import { getSubscriptionRequestById, approveSubscriptionRequest } from '../../organisations/infrastructure/repositories/org-portal.repository.js';
+import { getSubscriptionRequestById } from '../../organisations/infrastructure/repositories/org-portal.repository.js';
 
 const log = createModuleLogger('registration-payment-listener');
 
@@ -20,18 +20,21 @@ export function registerRegistrationPaymentListeners() {
         log.warn({ requestId }, 'Upgrade request not found for subscription payment');
         return;
       }
-      if (request.status !== 'pending') {
-        log.info({ requestId, status: request.status }, 'Upgrade request not pending — idempotent skip');
+      if (request.status === 'rejected' || request.status === 'cancelled') {
+        log.info({ requestId, status: request.status }, 'Upgrade request already rejected/cancelled — skip');
         return;
       }
+      // Idempotent: the activation mechanism accepts pending OR already-approved requests so a
+      // payment arriving after an earlier approval can still complete activation exactly once.
 
       if (request.registration_type === 'seller') {
         const { approvalService } = await import('../../approvals/application/approval.service.js');
         await approvalService.approveRegistration(request.requested_by, requestId);
-        log.info({ requestId, orgId: request.organisation_id }, 'Seller registration auto-approved via card payment');
+        log.info({ requestId, orgId: request.organisation_id }, 'Seller registration activated via card payment');
       } else {
-        // General org subscription (upgrade / plan change / renewal) — activate immediately on payment
-        await approveSubscriptionRequest(requestId, null, 'Auto-approved after card payment');
+        // General org subscription (upgrade / plan change / renewal) — activate immediately on payment.
+        const { tryActivateSubscriptionRequest } = await import('../../organisations/application/subscription-activation.service.js');
+        await tryActivateSubscriptionRequest(requestId, { adminId: null, approvalNotes: 'Auto-approved after card payment' });
         log.info({ requestId, orgId: request.organisation_id }, 'Org subscription activated via card payment');
       }
     } catch (err: any) {

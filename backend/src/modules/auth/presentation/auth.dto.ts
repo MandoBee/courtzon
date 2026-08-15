@@ -132,7 +132,7 @@ export const SellerRegisterSchema = RegisterSchema.extend({
   paymentMethod: z.string().min(1).refine(
     (slug) => slug.trim().toLowerCase() !== 'wallet',
     { message: 'CourtZon Wallet is not available during registration' },
-  ),
+  ).optional(),
   planId: z.number().int().positive().optional(),
   billingCycle: z.enum(['monthly', 'yearly']).optional().default('monthly'),
 });
@@ -158,7 +158,7 @@ export const OrganizationRegisterSchema = RegisterSchema.extend({
   paymentMethod: z.string().min(1).refine(
     (slug) => slug.trim().toLowerCase() !== 'wallet',
     { message: 'CourtZon Wallet is not available during registration' },
-  ),
+  ).optional(),
 });
 
 export type RegisterInput = z.infer<typeof RegisterSchema>;

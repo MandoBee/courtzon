@@ -35,6 +35,20 @@ export function isInternalSubscriptionPlan(
   return raw === true || raw === 1;
 }
 
+/** Parse a plan's `applicable_org_types` (JSON array column) into a plain array. */
+export function parseApplicableOrgTypes(raw: unknown): (number | string)[] {
+  if (Array.isArray(raw)) return raw;
+  if (typeof raw === 'string') {
+    try {
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
+
 /** Whether a subscription plan may be chosen during organization registration. */
 export function isOrganizationRegistrationPlan(
   plan: { plan_name?: string; planName?: string; applicable_org_types?: unknown; is_internal?: number | boolean | null; isInternal?: boolean | null },
@@ -45,16 +59,7 @@ export function isOrganizationRegistrationPlan(
   const planName = plan.plan_name ?? plan.planName ?? '';
   if (isNonOrganizationPlanName(planName)) return false;
 
-  let applicable: (number | string)[] = [];
-  const raw = plan.applicable_org_types;
-  if (Array.isArray(raw)) applicable = raw;
-  else if (typeof raw === 'string') {
-    try {
-      applicable = JSON.parse(raw);
-    } catch {
-      applicable = [];
-    }
-  }
+  const applicable = parseApplicableOrgTypes(plan.applicable_org_types);
   if (!applicable.length) return false;
 
   const excludedIds = new Set<number>();

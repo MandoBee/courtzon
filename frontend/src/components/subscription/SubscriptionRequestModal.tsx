@@ -255,14 +255,16 @@ export default function SubscriptionRequestModal({ orgId, open, onClose, request
                   />
                 </div>
 
-                <div className="pt-1">
-                  <LegalConsent onChange={setAgreed} />
-                </div>
+                {isNew && (
+                  <div className="pt-1">
+                    <LegalConsent onChange={setAgreed} />
+                  </div>
+                )}
 
                 <Can permission="org.subscription.pay">
                   <button
                     onClick={handleSubmit}
-                    disabled={!selectedPlanId || requestMutation.isPending || !!pendingRequest || !agreed}
+                    disabled={!selectedPlanId || requestMutation.isPending || !!pendingRequest || (isNew && !agreed)}
                     className="w-full px-4 py-2.5 bg-[var(--color-primary)] text-white rounded-[var(--radius-md)] text-sm font-medium disabled:opacity-50"
                   >
                     {requestMutation.isPending

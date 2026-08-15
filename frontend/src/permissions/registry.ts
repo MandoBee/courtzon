@@ -740,6 +740,7 @@ export const uiRegistry: UIElement[] = [
   { permissionKey: 'subscription.assign', moduleSlug: 'subscription', elementType: 'button', elementLabel: 'Assign Plan', componentPath: 'pages/admin/subscription/SubscriptionPage.tsx' },
   { permissionKey: 'subscription.assignments.is-verified', moduleSlug: 'subscription', elementType: 'field', elementLabel: 'Subscription Assignments: Verified Column', componentPath: 'pages/admin/subscription/SubscriptionPage.tsx' },
   { permissionKey: 'subscription.assignments.is-active', moduleSlug: 'subscription', elementType: 'field', elementLabel: 'Subscription Assignments: Active Column', componentPath: 'pages/admin/subscription/SubscriptionPage.tsx' },
+  { permissionKey: 'subscription.assignments.status', moduleSlug: 'subscription', elementType: 'field', elementLabel: 'Subscription Assignments: Status Column', componentPath: 'pages/admin/subscription/SubscriptionPage.tsx' },
   { permissionKey: 'subscription.activate', moduleSlug: 'subscription', elementType: 'button', elementLabel: 'Activate Subscription', componentPath: 'pages/admin/subscription/SubscriptionPage.tsx' },
   { permissionKey: 'subscription.features.view', moduleSlug: 'subscription', elementType: 'page', elementLabel: 'Plan Features Section', componentPath: 'pages/admin/subscription/SubscriptionPage.tsx' },
   { permissionKey: 'subscription.features.edit', moduleSlug: 'subscription', elementType: 'section', elementLabel: 'Edit Plan Features', componentPath: 'pages/admin/subscription/SubscriptionPage.tsx' },
