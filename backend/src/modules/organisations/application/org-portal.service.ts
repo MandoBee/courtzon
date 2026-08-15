@@ -185,6 +185,7 @@ export async function getOrgSubscriptionWithUsage(orgId: number) {
 
 export async function getAvailablePlansForOrg(orgId: number) {
   const plans = await repo.getAvailablePlansForOrg(orgId);
+  const { parseApplicableOrgTypes } = await import('../../../shared/constants/org-registration.js');
   return plans.map((p: any) => ({
     id: p.id,
     planName: p.plan_name,
@@ -192,6 +193,7 @@ export async function getAvailablePlansForOrg(orgId: number) {
     priceYearly: p.price_yearly != null ? Number(p.price_yearly) : null,
     isUnlimited: !!p.is_unlimited,
     isInternal: !!p.is_internal,
+    applicableOrgTypes: parseApplicableOrgTypes(p.applicable_org_types),
     features: [] as any[],
   }));
 }
@@ -265,6 +267,7 @@ export async function submitSubscriptionRequest(
     requestedPlanName,
     requestedPrice,
     requestedBillingCycle,
+    chosenPaymentMethod: 'card',
     notes,
   });
 

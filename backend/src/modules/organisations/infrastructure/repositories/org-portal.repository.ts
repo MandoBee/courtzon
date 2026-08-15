@@ -2,12 +2,6 @@ import type mysql from 'mysql2/promise';
 import { getPool } from '../../../../database/mysql.js';
 import { ValidationError } from '../../../../shared/errors/app-error.js';
 import { buildPagination, paginationClause } from '../../../../shared/utils/pagination.js';
-import { transactionRepository } from '../../../../modules/financial/infrastructure/transaction.repository.js';
-import { eventBusV2 } from '../../../../shared/event-bus/index.js';
-import { recordAudit } from '../../../../modules/audit-log/index.js';
-import { createModuleLogger } from '../../../../shared/utils/logger.js';
-
-const log = createModuleLogger('org-portal-repository');
 
 type RowData = mysql.RowDataPacket[];
 
@@ -527,15 +521,28 @@ export async function getFeatureUsageCounts(orgId: number): Promise<Record<strin
   };
 }
 
-export async function getAvailablePlansForOrg(_orgId: number) {
+export async function getAvailablePlansForOrg(orgId: number) {
   const pool = getPool();
+  const [orgRows] = await pool.execute<RowData>(
+    'SELECT org_type_id FROM organisations WHERE id = ? AND deleted_at IS NULL',
+    [orgId],
+  );
+  const orgTypeId = (orgRows[0] as any)?.org_type_id ?? null;
+
   const [plans] = await pool.execute<RowData>(
     `SELECT sp.* FROM subscription_plans sp
      WHERE sp.is_active = TRUE AND sp.is_internal = FALSE
      ORDER BY COALESCE(sp.price_monthly, sp.price_yearly, 0) ASC`,
   );
 
-  return plans;
+  if (orgTypeId == null) return plans;
+
+  const { parseApplicableOrgTypes } = await import('../../../../shared/constants/org-registration.js');
+  return plans.filter((raw: any) => {
+    const applicable = parseApplicableOrgTypes(raw.applicable_org_types);
+    if (!applicable.length) return false;
+    return applicable.some((t) => String(t) === String(orgTypeId));
+  });
 }
 
 export async function createSubscriptionRequest(data: {
@@ -550,6 +557,7 @@ export async function createSubscriptionRequest(data: {
   requestedPlanName?: string | null;
   requestedPrice?: number | null;
   requestedBillingCycle?: string | null;
+  chosenPaymentMethod?: string | null;
   notes?: string;
 }) {
   const pool = getPool();
@@ -557,12 +565,12 @@ export async function createSubscriptionRequest(data: {
     `INSERT INTO organisation_upgrade_requests
      (organisation_id, requested_by, requested_plan_id, registration_type, request_type,
       current_plan_id, current_plan_name, current_price, current_billing_cycle,
-      requested_plan_name, requested_price, requested_billing_cycle, status, notes)
-     VALUES (?, ?, ?, 'upgrade', ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)`,
+      requested_plan_name, requested_price, requested_billing_cycle, chosen_payment_method, status, notes)
+     VALUES (?, ?, ?, 'upgrade', ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)`,
     [data.organisationId, data.requestedBy, data.requestedPlanId, data.requestType,
      data.currentPlanId || null, data.currentPlanName || null, data.currentPrice || null, data.currentBillingCycle || null,
      data.requestedPlanName || null, data.requestedPrice || null, data.requestedBillingCycle || null,
-     data.notes || null],
+     data.chosenPaymentMethod || null, data.notes || null],
   );
   return (result as any).insertId;
 }
@@ -636,205 +644,10 @@ export async function listSubscriptionRequests(filters?: {
 }
 
 export async function approveSubscriptionRequest(requestId: number, adminId: number | null, approvalNotes?: string) {
-  const pool = getPool();
-  const conn = await pool.getConnection();
-  try {
-    await conn.beginTransaction();
-
-    const [reqRows] = await conn.execute<RowData>(
-      'SELECT * FROM organisation_upgrade_requests WHERE id = ? AND status = \'pending\' FOR UPDATE',
-      [requestId],
-    );
-    if (!reqRows.length) throw new ValidationError('Subscription request not found or already processed');
-    const req = reqRows[0] as any;
-
-    // Re-validate: organisation still exists
-    const [orgRows] = await conn.execute<RowData>(
-      'SELECT id, deleted_at FROM organisations WHERE id = ?',
-      [req.organisation_id],
-    );
-    if (!orgRows.length || orgRows[0].deleted_at) {
-      throw new ValidationError('Organisation no longer exists');
-    }
-
-    // Re-validate: requested plan still active
-    if (req.requested_plan_id) {
-      const [planRows] = await conn.execute<RowData>(
-        'SELECT id, is_active FROM subscription_plans WHERE id = ?',
-        [req.requested_plan_id],
-      );
-      if (!planRows.length || !planRows[0].is_active) {
-        throw new ValidationError('Requested plan is no longer available');
-      }
-    }
-
-    // Re-validate: no conflicting pending request
-    const [conflictRows] = await conn.execute<RowData>(
-      'SELECT id FROM organisation_upgrade_requests WHERE organisation_id = ? AND status = \'pending\' AND id != ? LIMIT 1',
-      [req.organisation_id, requestId],
-    );
-    if (conflictRows.length) {
-      throw new ValidationError('Another pending request exists for this organisation');
-    }
-
-    await conn.execute(
-      'UPDATE organisation_upgrade_requests SET status = \'approved\', approved_by = ?, approved_at = NOW(), approval_notes = ?, updated_at = NOW() WHERE id = ?',
-      [adminId, approvalNotes || null, requestId],
-    );
-
-    if (req.requested_plan_id) {
-      // Build plan snapshot (immutable record at approval time)
-      const [planRows] = await conn.execute<RowData>(
-        `SELECT sp.*, GROUP_CONCAT(DISTINCT JSON_OBJECT('feature_key', sf.feature_key, 'label', sf.label, 'value', spf.value, 'value_type', sf.value_type) SEPARATOR '||') as _features
-         FROM subscription_plans sp
-         LEFT JOIN subscription_plan_features spf ON spf.plan_id = sp.id
-         LEFT JOIN subscription_features sf ON sf.id = spf.feature_id
-         WHERE sp.id = ?
-         GROUP BY sp.id`,
-        [req.requested_plan_id],
-      );
-      const planRow = planRows[0] as any;
-      const features: any[] = [];
-      if (planRow?._features) {
-        for (const raw of String(planRow._features).split('||')) {
-          try { features.push(JSON.parse(raw)); } catch { /* skip */ }
-        }
-      }
-
-      // Fetch commission rates for this plan
-      const [rateRows] = await conn.execute<RowData>(
-        `SELECT applicable_entity, amount, rate_type FROM subscription_plan_rates WHERE plan_id = ?`,
-        [req.requested_plan_id],
-      );
-
-      const planSnapshot = {
-        planName: planRow?.plan_name || req.requested_plan_name,
-        priceMonthly: planRow?.price_monthly ? Number(planRow.price_monthly) : null,
-        priceYearly: planRow?.price_yearly ? Number(planRow.price_yearly) : null,
-        isUnlimited: !!planRow?.is_unlimited,
-        billingCycle: req.requested_billing_cycle || 'monthly',
-        features,
-        commissionRates: rateRows.map((r: any) => ({
-          entity: r.applicable_entity,
-          amount: Number(r.amount),
-          rateType: r.rate_type,
-        })),
-      };
-      const snapshotJson = JSON.stringify(planSnapshot);
-
-      // Compute subscription dates from the requested billing cycle (or the live plan)
-      const billingCycle = req.requested_billing_cycle || planSnapshot.billingCycle || 'monthly';
-      const isUnlimited = !!planRow?.is_unlimited;
-      const startDate = new Date();
-      let endDate: Date | null = isUnlimited ? null : addPeriod(startDate, billingCycle);
-
-      const [existing] = await conn.execute<RowData>(
-        `SELECT id, end_date, start_date, billing_cycle, subscription_status
-         FROM organisation_subscriptions WHERE organisation_id = ? AND subscription_status IN ('pending', 'active') LIMIT 1`,
-        [req.organisation_id],
-      );
-      if (existing.length) {
-        const existingSub = existing[0] as any;
-        let newStart = startDate;
-        if (req.request_type === 'RENEWAL' && existingSub.end_date) {
-          // Graceful renewal: extend from current end_date when it's still in the future
-          const currentEnd = new Date(existingSub.end_date);
-          if (currentEnd > startDate && !isUnlimited) {
-            newStart = existingSub.start_date ? new Date(existingSub.start_date) : startDate;
-            endDate = addPeriod(currentEnd, billingCycle);
-          }
-        }
-        await conn.execute(
-          `UPDATE organisation_subscriptions
-           SET plan_id = ?, subscription_status = 'active', billing_cycle = ?,
-               start_date = ?, end_date = ?, plan_snapshot = ?, updated_at = NOW()
-           WHERE id = ?`,
-          [req.requested_plan_id, billingCycle, toSqlDate(newStart), endDate ? toSqlDate(endDate) : null, snapshotJson, existingSub.id],
-        );
-      } else {
-        await conn.execute(
-          `INSERT INTO organisation_subscriptions (organisation_id, plan_id, subscription_status, start_date, end_date, billing_cycle, auto_renew, plan_snapshot)
-           VALUES (?, ?, 'active', ?, ?, ?, TRUE, ?)`,
-          [req.organisation_id, req.requested_plan_id, toSqlDate(startDate), endDate ? toSqlDate(endDate) : null, billingCycle, snapshotJson],
-        );
-      }
-    }
-
-    // Create financial audit trail
-    if (Number(req.requested_price) > 0) {
-      await transactionRepository.createTransaction({
-        type: 'subscription',
-        sourceType: 'organisation_upgrade_request',
-        sourceId: requestId,
-        totalAmount: Number(req.requested_price),
-        status: 'completed',
-        metadata: {
-          organisationId: req.organisation_id,
-          requestType: req.request_type,
-          requestedPlanName: req.requested_plan_name,
-          previousPlanName: req.current_plan_name,
-          approvedBy: adminId,
-        },
-      }, conn);
-    }
-
-    await conn.commit();
-    // Invalidate resolver cache after successful approval
-    const { clearSubscriptionCache } = await import('../../application/current-subscription.service.js');
-    clearSubscriptionCache();
-
-    // Notify the requester / organisation
-    eventBusV2.emit('subscription:request-approved', {
-      organisationId: req.organisation_id,
-      userId: req.requested_by,
-      requestId,
-      requestType: req.request_type,
-      requestedPlanName: req.requested_plan_name,
-      billingCycle: req.requested_billing_cycle || 'monthly',
-    });
-    if (req.request_type === 'RENEWAL') {
-      eventBusV2.emit('organisation:subscription-renewed', {
-        organisationId: req.organisation_id,
-        planName: req.requested_plan_name,
-        billingCycle: req.requested_billing_cycle || 'monthly',
-      });
-    }
-
-    recordAudit({
-      actorId: adminId ?? 0,
-      action: 'SUBSCRIPTION.REQUEST.APPROVED',
-      entityType: 'organisation_upgrade_request',
-      entityId: requestId,
-      afterState: {
-        organisationId: req.organisation_id,
-        requestType: req.request_type,
-        requestedPlanId: req.requested_plan_id,
-        requestedPlanName: req.requested_plan_name,
-        approvedBy: adminId,
-      },
-    }).catch((err) => log.error({ err, requestId }, 'Audit failed on subscription approval'));
-
-    return req;
-  } catch (e) {
-    await conn.rollback();
-    throw e;
-  } finally {
-    conn.release();
-  }
-}
-
-function addPeriod(date: Date, billingCycle: string): Date {
-  const d = new Date(date);
-  if (billingCycle === 'yearly') d.setFullYear(d.getFullYear() + 1);
-  else d.setMonth(d.getMonth() + 1);
-  return d;
-}
-
-function toSqlDate(date: Date): string {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
+  // Delegates to the single authoritative activation mechanism
+  // (concurrency-safe transaction + org-active gate + payment gate + idempotency).
+  const { tryActivateSubscriptionRequest } = await import('../../application/subscription-activation.service.js');
+  return tryActivateSubscriptionRequest(requestId, { adminId, approvalNotes });
 }
 
 export async function rejectSubscriptionRequest(requestId: number, adminId: number, reason: string) {

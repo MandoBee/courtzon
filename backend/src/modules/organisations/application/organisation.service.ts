@@ -829,168 +829,171 @@ export class OrganisationService {
 
   async updateOrgSubscription(orgId: number, planId: number, billingCycle: BillingPeriod = 'monthly') {
     const pool = getPool();
-    const [plan] = await pool.execute<RowData>(
-      'SELECT id, is_unlimited, price_monthly, price_yearly, plan_name FROM subscription_plans WHERE id = ? AND is_active = TRUE',
-      [planId]
-    );
-    if (!plan.length) throw new NotFoundError('Subscription plan');
-    const p = plan[0];
-    if (!p.is_unlimited && billingCycle === 'yearly' && p.price_yearly == null) {
-      throw new ValidationError('This plan has no yearly price');
-    }
-    if (!p.is_unlimited && billingCycle === 'monthly' && p.price_monthly == null) {
-      throw new ValidationError('This plan has no monthly price');
-    }
+    const conn = await pool.getConnection();
+    try {
+      await conn.beginTransaction();
 
-    // Build plan snapshot
-    const [featRows] = await pool.execute<RowData>(
-      `SELECT sf.feature_key, sf.label, spf.value, sf.value_type
-       FROM subscription_plan_features spf
-       JOIN subscription_features sf ON sf.id = spf.feature_id
-       WHERE spf.plan_id = ?`, [planId]
-    );
-    const [rateRows] = await pool.execute<RowData>(
-      'SELECT applicable_entity, amount, rate_type FROM subscription_plan_rates WHERE plan_id = ?', [planId]
-    );
-    const planSnapshot = JSON.stringify({
-      planName: p.plan_name,
-      priceMonthly: p.price_monthly ? Number(p.price_monthly) : null,
-      priceYearly: p.price_yearly ? Number(p.price_yearly) : null,
-      isUnlimited: !!p.is_unlimited,
-      billingCycle,
-      features: featRows.map((f: any) => ({ featureKey: f.feature_key, label: f.label, value: String(f.value ?? ''), valueType: f.value_type })),
-      commissionRates: rateRows.map((r: any) => ({ entity: r.applicable_entity, amount: Number(r.amount), rateType: r.rate_type })),
-    });
-
-    // Compute dates
-    const startDate = new Date().toISOString().slice(0, 10);
-    let endDate: string | null;
-    if (p.is_unlimited) {
-      endDate = null;
-    } else if (billingCycle === 'yearly') {
-      const d = new Date(); d.setFullYear(d.getFullYear() + 1); endDate = d.toISOString().slice(0, 10);
-    } else {
-      const d = new Date(); d.setMonth(d.getMonth() + 1); endDate = d.toISOString().slice(0, 10);
-    }
-
-    const [existing] = await pool.execute<RowData>(
-      `SELECT id FROM organisation_subscriptions
-       WHERE organisation_id = ? AND subscription_status IN ('pending', 'active')
-       LIMIT 1`,
-      [orgId]
-    );
-
-    if (existing.length) {
-      await pool.execute(
-        `UPDATE organisation_subscriptions SET plan_id = ?, billing_cycle = ?, start_date = ?, end_date = ?,
-         subscription_status = 'active', plan_snapshot = ?, auto_renew = TRUE, updated_at = NOW()
-         WHERE id = ?`,
-        [planId, billingCycle, startDate, endDate, planSnapshot, existing[0].id]
+      const [plan] = await conn.execute<RowData>(
+        'SELECT id, is_unlimited, price_monthly, price_yearly, plan_name FROM subscription_plans WHERE id = ? AND is_active = TRUE',
+        [planId]
       );
-    } else {
-      await pool.execute(
-        `INSERT INTO organisation_subscriptions (organisation_id, plan_id, billing_cycle, start_date, end_date, subscription_status, plan_snapshot, auto_renew)
-         VALUES (?, ?, ?, ?, ?, 'active', ?, TRUE)`,
-        [orgId, planId, billingCycle, startDate, endDate, planSnapshot]
-      );
-    }
+      if (!plan.length) throw new NotFoundError('Subscription plan');
+      const p = plan[0];
+      if (!p.is_unlimited && billingCycle === 'yearly' && p.price_yearly == null) {
+        throw new ValidationError('This plan has no yearly price');
+      }
+      if (!p.is_unlimited && billingCycle === 'monthly' && p.price_monthly == null) {
+        throw new ValidationError('This plan has no monthly price');
+      }
 
-    // Clear resolver cache
-    const { clearSubscriptionCache } = await import('./current-subscription.service.js');
-    clearSubscriptionCache();
+      // Build plan snapshot
+      const [featRows] = await conn.execute<RowData>(
+        `SELECT sf.feature_key, sf.label, spf.value, sf.value_type
+         FROM subscription_plan_features spf
+         JOIN subscription_features sf ON sf.id = spf.feature_id
+         WHERE spf.plan_id = ?`, [planId]
+      );
+      const [rateRows] = await conn.execute<RowData>(
+        'SELECT applicable_entity, amount, rate_type FROM subscription_plan_rates WHERE plan_id = ?', [planId]
+      );
+      const planSnapshot = JSON.stringify({
+        planName: p.plan_name,
+        priceMonthly: p.price_monthly ? Number(p.price_monthly) : null,
+        priceYearly: p.price_yearly ? Number(p.price_yearly) : null,
+        isUnlimited: !!p.is_unlimited,
+        billingCycle,
+        features: featRows.map((f: any) => ({ featureKey: f.feature_key, label: f.label, value: String(f.value ?? ''), valueType: f.value_type })),
+        commissionRates: rateRows.map((r: any) => ({ entity: r.applicable_entity, amount: Number(r.amount), rateType: r.rate_type })),
+      });
+
+      // Single authoritative writer for status + period
+      const { writeActiveSubscription } = await import('./subscription-activation.service.js');
+      await writeActiveSubscription({
+        conn,
+        orgId,
+        planId,
+        billingCycle,
+        planSnapshot,
+        isUnlimited: !!p.is_unlimited,
+      });
+
+      await conn.commit();
+      // Clear resolver cache
+      const { clearSubscriptionCache } = await import('./current-subscription.service.js');
+      clearSubscriptionCache();
+    } catch (e) {
+      await conn.rollback();
+      throw e;
+    } finally {
+      conn.release();
+    }
   }
 
   async toggleSubscriptionStatus(orgId: number): Promise<{ status: string }> {
     const pool = getPool();
-    const [rows] = await pool.execute<RowData>(
-      `SELECT id, subscription_status FROM organisation_subscriptions
-       WHERE organisation_id = ? AND subscription_status IN ('active', 'pending')
-       ORDER BY created_at DESC LIMIT 1`,
-      [orgId]
-    );
-    if (!rows.length) throw new NotFoundError('No active or pending subscription found');
+    const conn = await pool.getConnection();
+    try {
+      await conn.beginTransaction();
+      const [rows] = await conn.execute<RowData>(
+        `SELECT id, plan_id, billing_cycle, plan_snapshot, subscription_status FROM organisation_subscriptions
+         WHERE organisation_id = ? AND subscription_status IN ('active', 'pending')
+         ORDER BY created_at DESC LIMIT 1`,
+        [orgId]
+      );
+      if (!rows.length) throw new NotFoundError('No active or pending subscription found');
 
-    const sub = rows[0];
-    const newStatus = sub.subscription_status === 'active' ? 'pending' : 'active';
+      const sub = rows[0] as any;
+      const wasActive = sub.subscription_status === 'active';
 
-    await pool.execute(
-      `UPDATE organisation_subscriptions SET subscription_status = ?, updated_at = NOW() WHERE id = ?`,
-      [newStatus, sub.id]
-    );
+      if (wasActive) {
+        // Suspend — allowed to leave 'active' (the single-writer rule protects activation).
+        await conn.execute(
+          `UPDATE organisation_subscriptions SET subscription_status = 'pending', updated_at = NOW() WHERE id = ?`,
+          [sub.id]
+        );
+      } else {
+        // Resume — reactivate keeping the existing period via the single authoritative writer.
+        const { writeActiveSubscription } = await import('./subscription-activation.service.js');
+        await writeActiveSubscription({
+          conn,
+          orgId,
+          planId: sub.plan_id,
+          billingCycle: sub.billing_cycle || 'monthly',
+          planSnapshot: typeof sub.plan_snapshot === 'string' ? sub.plan_snapshot : (sub.plan_snapshot ? JSON.stringify(sub.plan_snapshot) : '{}'),
+          isUnlimited: false,
+          keepDates: true,
+        });
+      }
 
-    const { clearSubscriptionCache } = await import('./current-subscription.service.js');
-    clearSubscriptionCache();
+      await conn.commit();
+      const { clearSubscriptionCache } = await import('./current-subscription.service.js');
+      clearSubscriptionCache();
 
-    return { status: newStatus };
+      return { status: wasActive ? 'pending' : 'active' };
+    } catch (e) {
+      await conn.rollback();
+      throw e;
+    } finally {
+      conn.release();
+    }
   }
 
   async activateSubscription(orgId: number) {
     const pool = getPool();
-    const [rows] = await pool.execute<RowData>(
-      `SELECT os.id, os.billing_cycle, os.plan_id, sp.is_unlimited, sp.plan_name
-       FROM organisation_subscriptions os
-       JOIN subscription_plans sp ON sp.id = os.plan_id
-       WHERE os.organisation_id = ? AND os.subscription_status = 'pending'
-       ORDER BY os.created_at DESC LIMIT 1`,
-      [orgId]
-    );
-    if (!rows.length) throw new NotFoundError('No pending subscription found');
+    const conn = await pool.getConnection();
+    try {
+      await conn.beginTransaction();
+      const [rows] = await conn.execute<RowData>(
+        `SELECT os.id, os.billing_cycle, os.plan_id, sp.is_unlimited, sp.plan_name
+         FROM organisation_subscriptions os
+         JOIN subscription_plans sp ON sp.id = os.plan_id
+         WHERE os.organisation_id = ? AND os.subscription_status = 'pending'
+         ORDER BY os.created_at DESC LIMIT 1`,
+        [orgId]
+      );
+      if (!rows.length) throw new NotFoundError('No pending subscription found');
 
-    const sub = rows[0];
-    const startDate = new Date().toISOString().slice(0, 10);
-    let endDate: string | null;
-    if (sub.is_unlimited) {
-      endDate = null;
-    } else if (sub.billing_cycle === 'yearly') {
-      const d = new Date(); d.setFullYear(d.getFullYear() + 1);
-      endDate = d.toISOString().slice(0, 10);
-    } else {
-      const d = new Date(); d.setMonth(d.getMonth() + 1);
-      endDate = d.toISOString().slice(0, 10);
-    }
+      const sub = rows[0];
+      const billingCycle = sub.billing_cycle || 'monthly';
 
-    // Build and write plan snapshot
-    const [featRows] = await pool.execute<RowData>(
-      `SELECT sf.feature_key, sf.label, spf.value, sf.value_type
-       FROM subscription_plan_features spf
-       JOIN subscription_features sf ON sf.id = spf.feature_id
-       WHERE spf.plan_id = ?`, [sub.plan_id]
-    );
-    const [rateRows] = await pool.execute<RowData>(
-      'SELECT applicable_entity, amount, rate_type FROM subscription_plan_rates WHERE plan_id = ?', [sub.plan_id]
-    );
-    const planSnapshot = JSON.stringify({
-      planName: sub.plan_name,
-      priceMonthly: null, priceYearly: null, isUnlimited: !!sub.is_unlimited,
-      billingCycle: sub.billing_cycle || 'monthly',
-      features: featRows.map((f: any) => ({ featureKey: f.feature_key, label: f.label, value: String(f.value ?? ''), valueType: f.value_type })),
-      commissionRates: rateRows.map((r: any) => ({ entity: r.applicable_entity, amount: Number(r.amount), rateType: r.rate_type })),
-    });
-
-    await pool.execute(
-      `UPDATE organisation_subscriptions SET start_date = ?, end_date = ?, subscription_status = 'active', plan_snapshot = ?, updated_at = NOW() WHERE id = ?`,
-      [startDate, endDate, planSnapshot, sub.id]
-    );
-
-    // Clear resolver cache
-    const { clearSubscriptionCache } = await import('./current-subscription.service.js');
-    clearSubscriptionCache();
-
-    const [prevSubs] = await pool.execute<RowData>(
-      'SELECT COUNT(*) as cnt FROM organisation_subscriptions WHERE organisation_id = ? AND id != ?',
-      [orgId, sub.id]
-    );
-    const isRenewal = (prevSubs[0] as any).cnt > 0;
-
-    if (isRenewal) {
-      eventBusV2.emit('organisation:subscription-renewed', {
-        organisationId: orgId,
-        planName: sub.plan_name,
-        billingCycle: sub.billing_cycle || 'monthly',
+      // Build snapshot + write the active subscription via the single authoritative mechanism
+      const { writeActiveSubscription, buildPlanSnapshot } = await import('./subscription-activation.service.js');
+      const { isUnlimited, snapshot } = await buildPlanSnapshot(conn, sub.plan_id, billingCycle, sub.plan_name);
+      const { startDate, endDate } = await writeActiveSubscription({
+        conn,
+        orgId,
+        planId: sub.plan_id,
+        billingCycle,
+        planSnapshot: JSON.stringify(snapshot),
+        isUnlimited,
       });
-    }
 
-    return { startDate, endDate, status: 'active' };
+      await conn.commit();
+      // Clear resolver cache
+      const { clearSubscriptionCache } = await import('./current-subscription.service.js');
+      clearSubscriptionCache();
+
+      const [prevSubs] = await pool.execute<RowData>(
+        'SELECT COUNT(*) as cnt FROM organisation_subscriptions WHERE organisation_id = ? AND id != ?',
+        [orgId, sub.id]
+      );
+      const isRenewal = (prevSubs[0] as any).cnt > 0;
+
+      if (isRenewal) {
+        eventBusV2.emit('organisation:subscription-renewed', {
+          organisationId: orgId,
+          planName: sub.plan_name,
+          billingCycle,
+        });
+      }
+
+      return { startDate, endDate, status: 'active' };
+    } catch (e) {
+      await conn.rollback();
+      throw e;
+    } finally {
+      conn.release();
+    }
   }
 
   async listSubscriptionFeatures() {

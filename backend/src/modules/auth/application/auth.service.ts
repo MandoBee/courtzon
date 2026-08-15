@@ -226,17 +226,6 @@ export class AuthService {
     const permissions = await rbacRepository.getUserPermissionKeys(userId);
     const baseUser = this.mapUserResponse(user, roles, permissions);
 
-    const isCardPayment = (input.paymentMethod || '').trim().toLowerCase() === 'card';
-    if (!isCardPayment) {
-      return { user: baseUser, isApproved: false };
-    }
-
-    // Card flow: the seller pays for the plan online (same Paymob widget used when
-    // booking a court). Create a session so the freshly-registered seller can
-    // confirm the payment via POST /payments/confirm.
-    const sessionResult = await this.createSession(userId, meta);
-    const session = sessionResult.session;
-
     // Resolve plan price (0 for free/unlimited plans → no online charge)
     let amount = 0;
     if (input.planId) {
@@ -248,12 +237,28 @@ export class AuthService {
       }
     }
 
+    const isCardPayment = (input.paymentMethod || '').trim().toLowerCase() === 'card';
+
+    // Free plan — nothing to charge, approve the seller immediately so they can log in right away.
+    // No payment method is required for free plans.
     if (amount <= 0) {
-      // Free plan — nothing to charge, approve the seller immediately.
+      const sessionResult = await this.createSession(userId, meta);
+      const session = sessionResult.session;
       const { approvalService } = await import('../../approvals/application/approval.service.js');
       await approvalService.approveRegistration(userId, upgradeRequestId);
       return { user: baseUser, isApproved: true, session };
     }
+
+    // Paid plan without card — stays pending until an admin approves (cash/bank/offline).
+    if (!isCardPayment) {
+      return { user: baseUser, isApproved: false };
+    }
+
+    // Card flow: the seller pays for the plan online (same Paymob widget used when
+    // booking a court). Create a session so the freshly-registered seller can
+    // confirm the payment via POST /payments/confirm.
+    const sessionResult = await this.createSession(userId, meta);
+    const session = sessionResult.session;
 
     // Paid plan — create a Paymob payment intention linked to the upgrade request.
     const currency = await paymentRepository.getUserDefaultCurrency(userId);

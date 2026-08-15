@@ -97,12 +97,15 @@ export default function SellerRegisterPage() {
     return filtered.length ? filtered : plans;
   })();
 
+  const selectedPlan = plans.find(p => p.id === form.planId);
+  const isFreePlan = !!selectedPlan && resolveDisplayPrice(selectedPlan, billingPeriod) <= 0;
+
   const canNext = () => {
     switch (step) {
       case 0: return form.planId > 0;
       case 1: return form.countryId > 0 && isValidLocalPhone(form.phoneNumber) && form.fullName.trim() && form.email.includes('@');
       case 2: return form.password.length >= 6 && form.password === form.confirmPassword && form.gender && form.birthDate;
-      case 3: return form.shopName.trim() && form.paymentMethod;
+      case 3: return form.shopName.trim() && (isFreePlan || !!form.paymentMethod);
       default: return true;
     }
   };
@@ -127,7 +130,7 @@ export default function SellerRegisterPage() {
       const payload = {
         ...buildAuthRegisterPayload(form),
         shopName: form.shopName.trim(),
-        paymentMethod: form.paymentMethod,
+        ...(isFreePlan ? {} : { paymentMethod: form.paymentMethod }),
         planId: form.planId || undefined,
         billingCycle: billingPeriod,
       };
@@ -341,26 +344,28 @@ export default function SellerRegisterPage() {
                       <label className="block text-sm font-medium text-[var(--color-text)] mb-1.5">{t('landing.seller_reg.shop_name')} *</label>
                       <input type="text" value={form.shopName} onChange={e => update('shopName', e.target.value)} placeholder={t('landing.seller_reg.shop_name_placeholder')} className="w-full px-4 py-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] text-[var(--color-text)] focus:ring-2 focus:ring-[var(--color-primary)]/30 focus:border-[var(--color-primary)] outline-none" />
                     </div>
-                    <div>
-                      <label className="block text-sm font-medium text-[var(--color-text)] mb-1.5">{t('landing.seller_reg.payment_method')} *</label>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        {paymentMethods.map(m => (
-                          <button key={m.id} type="button" onClick={() => update('paymentMethod', m.slug)}
-                            className={`p-4 rounded-xl border-2 text-left transition-all ${form.paymentMethod === m.slug ? 'border-[var(--color-primary)] bg-[var(--color-primary-bg)]/30' : 'border-[var(--color-border)] hover:border-[var(--color-primary)]/30'}`}>
-                            <div className="flex items-center gap-2 mb-1">
-                              <span className="text-lg">{m.icon === 'wallet' ? '💰' : m.icon === 'cash' ? '💵' : m.icon === 'card' ? '💳' : m.icon === 'bank_transfer' ? '🏦' : '💳'}</span>
-                              <span className="font-semibold text-[var(--color-text)]">{m.name}</span>
-                            </div>
-                            <p className="text-xs text-[var(--color-text-muted)]">{m.description}</p>
-                            {m.requiresApproval ? (
-                              <span className="inline-block mt-2 px-2 py-0.5 text-[10px] font-bold text-[var(--color-warning-text)] bg-[var(--color-warning-bg)] dark:bg-yellow-900/30 dark:text-yellow-400 rounded-full">Requires Approval</span>
-                            ) : (
-                              <span className="inline-block mt-2 px-2 py-0.5 text-[10px] font-bold text-[var(--color-success-text)] bg-[var(--color-success-bg)] text-[var(--color-success-text)] rounded-full">Instant</span>
-                            )}
-                          </button>
-                        ))}
+                    {!isFreePlan && (
+                      <div>
+                        <label className="block text-sm font-medium text-[var(--color-text)] mb-1.5">{t('landing.seller_reg.payment_method')} *</label>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          {paymentMethods.map(m => (
+                            <button key={m.id} type="button" onClick={() => update('paymentMethod', m.slug)}
+                              className={`p-4 rounded-xl border-2 text-left transition-all ${form.paymentMethod === m.slug ? 'border-[var(--color-primary)] bg-[var(--color-primary-bg)]/30' : 'border-[var(--color-border)] hover:border-[var(--color-primary)]/30'}`}>
+                              <div className="flex items-center gap-2 mb-1">
+                                <span className="text-lg">{m.icon === 'wallet' ? '💰' : m.icon === 'cash' ? '💵' : m.icon === 'card' ? '💳' : m.icon === 'bank_transfer' ? '🏦' : '💳'}</span>
+                                <span className="font-semibold text-[var(--color-text)]">{m.name}</span>
+                              </div>
+                              <p className="text-xs text-[var(--color-text-muted)]">{m.description}</p>
+                              {m.requiresApproval ? (
+                                <span className="inline-block mt-2 px-2 py-0.5 text-[10px] font-bold text-[var(--color-warning-text)] bg-[var(--color-warning-bg)] dark:bg-yellow-900/30 dark:text-yellow-400 rounded-full">Requires Approval</span>
+                              ) : (
+                                <span className="inline-block mt-2 px-2 py-0.5 text-[10px] font-bold text-[var(--color-success-text)] bg-[var(--color-success-bg)] text-[var(--color-success-text)] rounded-full">Instant</span>
+                              )}
+                            </button>
+                          ))}
+                        </div>
                       </div>
-                    </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -379,7 +384,7 @@ export default function SellerRegisterPage() {
                     <div className="flex justify-between py-2 border-b border-[var(--color-border)]"><span className="text-[var(--color-text-muted)]">{t('auth.register.gender')}</span><span className="font-medium text-[var(--color-text)] capitalize">{form.gender}</span></div>
                     <div className="flex justify-between py-2 border-b border-[var(--color-border)]"><span className="text-[var(--color-text-muted)]">{t('auth.register.birth_date')}</span><span className="font-medium text-[var(--color-text)]">{form.birthDate}</span></div>
                     <div className="flex justify-between py-2 border-b border-[var(--color-border)]"><span className="text-[var(--color-text-muted)]">{t('landing.seller_reg.shop_name')}</span><span className="font-medium text-[var(--color-text)]">{form.shopName}</span></div>
-                    <div className="flex justify-between py-2 border-b border-[var(--color-border)]"><span className="text-[var(--color-text-muted)]">{t('landing.seller_reg.payment_method')}</span><span className="font-medium text-[var(--color-text)] capitalize">{form.paymentMethod === 'card' ? t('landing.seller_reg.payment_card') : form.paymentMethod === 'cash' ? t('landing.seller_reg.payment_cash') : form.paymentMethod}</span></div>
+                    {!isFreePlan && <div className="flex justify-between py-2 border-b border-[var(--color-border)]"><span className="text-[var(--color-text-muted)]">{t('landing.seller_reg.payment_method')}</span><span className="font-medium text-[var(--color-text)] capitalize">{form.paymentMethod === 'card' ? t('landing.seller_reg.payment_card') : form.paymentMethod === 'cash' ? t('landing.seller_reg.payment_cash') : form.paymentMethod}</span></div>}
                   </div>
                   <div className="mt-6">
                     <LegalConsent onChange={setAgreed} />

@@ -1124,6 +1124,7 @@ function ViewAssignments() {
             <th className="text-left px-4 py-3 font-medium">Organisation</th>
             <th className="text-left px-4 py-3 font-medium">Verified</th>
             <th className="text-left px-4 py-3 font-medium">Active</th>
+            <th className="text-left px-4 py-3 font-medium">Status</th>
             <th className="text-left px-4 py-3 font-medium">Plan</th>
             <th className="text-left px-4 py-3 font-medium">Cycle</th>
             <th className="text-left px-4 py-3 font-medium">Price</th>
@@ -1146,6 +1147,24 @@ function ViewAssignments() {
                 <Can permission="subscription.assignments.is-active">
                   <span className={`w-2 h-2 rounded-full inline-block ${item.is_active ? 'bg-[var(--color-success)]' : 'bg-[var(--color-error)]'}`} title={item.is_active ? 'Active' : 'Suspended'} />
                   <span className="ml-1.5 text-xs text-[var(--color-text-muted)]">{item.is_active ? 'Active' : 'Suspended'}</span>
+                </Can>
+              </td>
+              <td className="px-4 py-3">
+                <Can permission="subscription.assignments.status">
+                  {(() => {
+                    const status = item.subscription_status || '—';
+                    const styles: Record<string, string> = {
+                      active: 'bg-[var(--color-success-bg)] text-[var(--color-success-text)]',
+                      pending: 'bg-[var(--color-warning-bg)] text-[var(--color-warning-text)]',
+                      expired: 'bg-gray-100 text-[var(--color-text-muted)]',
+                      cancelled: 'bg-[var(--color-error-bg)] text-[var(--color-error-text)]',
+                    };
+                    return (
+                      <span className={`px-2 py-0.5 text-xs rounded-full capitalize ${styles[status] || 'bg-gray-100 text-[var(--color-text-muted)]'}`}>
+                        {status}
+                      </span>
+                    );
+                  })()}
                 </Can>
               </td>
               <td className="px-4 py-3">

@@ -81,12 +81,15 @@ export default function OrganizationRegisterPage() {
 
   const orgPlans = filterOrgRegistrationPlans(plans, allOrgTypes);
 
+  const selectedPlan = plans.find(p => p.id === form.planId);
+  const isFreePlan = !!selectedPlan && resolveDisplayPrice(selectedPlan, billingPeriod) <= 0;
+
   const canNext = () => {
     switch (step) {
       case 0: return form.planId > 0;
       case 1: return form.countryId > 0 && isValidLocalPhone(form.phoneNumber) && form.fullName.trim() && form.email.includes('@');
       case 2: return form.password.length >= 6 && form.password === form.confirmPassword && form.gender && form.birthDate;
-      case 3: return form.orgName.trim() && form.orgTypeId > 0 && form.paymentMethod;
+      case 3: return form.orgName.trim() && form.orgTypeId > 0 && (isFreePlan || !!form.paymentMethod);
       default: return true;
     }
   };
@@ -102,7 +105,7 @@ export default function OrganizationRegisterPage() {
         orgName: form.orgName.trim(),
         orgTypeId: form.orgTypeId,
         orgDocuments: form.documents,
-        paymentMethod: form.paymentMethod,
+        ...(isFreePlan ? {} : { paymentMethod: form.paymentMethod }),
       };
       await api.post('/auth/register-organization', payload);
       setStep(5);
@@ -265,26 +268,28 @@ export default function OrganizationRegisterPage() {
                       <label className="block text-sm font-medium text-[var(--color-text)] mb-1.5">Organization Email</label>
                       <input type="email" value={form.orgEmail} onChange={e => update('orgEmail', e.target.value)} placeholder="org@example.com" className="w-full px-4 py-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] text-[var(--color-text)] focus:ring-2 focus:ring-[var(--color-primary)]/30 focus:border-[var(--color-primary)] outline-none" />
                     </div>
-                    <div>
-                      <label className="block text-sm font-medium text-[var(--color-text)] mb-1.5">Payment Method *</label>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        {paymentMethods.map(m => (
-                          <button key={m.id} type="button" onClick={() => update('paymentMethod', m.slug)}
-                            className={`p-4 rounded-xl border-2 text-left transition-all ${form.paymentMethod === m.slug ? 'border-[var(--color-primary)] bg-[var(--color-primary-bg)]/30' : 'border-[var(--color-border)] hover:border-[var(--color-primary)]/30'}`}>
-                            <div className="flex items-center gap-2 mb-1">
-                              <span className="text-lg">{m.icon === 'wallet' ? '\uD83D\uDCB0' : m.icon === 'cash' ? '\uD83D\uDCB5' : m.icon === 'card' ? '\uD83D\uDCB3' : m.icon === 'bank_transfer' ? '\uD83C\uDFE6' : '\uD83D\uDCB3'}</span>
-                              <span className="font-semibold text-[var(--color-text)]">{m.name}</span>
-                            </div>
-                            <p className="text-xs text-[var(--color-text-muted)]">{m.description}</p>
-                            {m.requiresApproval ? (
-                              <span className="inline-block mt-2 px-2 py-0.5 text-[10px] font-bold text-[var(--color-warning-text)] bg-[var(--color-warning-bg)] dark:bg-yellow-900/30 dark:text-yellow-400 rounded-full">Requires Approval</span>
-                            ) : (
-                              <span className="inline-block mt-2 px-2 py-0.5 text-[10px] font-bold text-[var(--color-success-text)] bg-[var(--color-success-bg)] text-[var(--color-success-text)] rounded-full">Instant</span>
-                            )}
-                          </button>
-                        ))}
+                    {!isFreePlan && (
+                      <div>
+                        <label className="block text-sm font-medium text-[var(--color-text)] mb-1.5">Payment Method *</label>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          {paymentMethods.map(m => (
+                            <button key={m.id} type="button" onClick={() => update('paymentMethod', m.slug)}
+                              className={`p-4 rounded-xl border-2 text-left transition-all ${form.paymentMethod === m.slug ? 'border-[var(--color-primary)] bg-[var(--color-primary-bg)]/30' : 'border-[var(--color-border)] hover:border-[var(--color-primary)]/30'}`}>
+                              <div className="flex items-center gap-2 mb-1">
+                                <span className="text-lg">{m.icon === 'wallet' ? '\uD83D\uDCB0' : m.icon === 'cash' ? '\uD83D\uDCB5' : m.icon === 'card' ? '\uD83D\uDCB3' : m.icon === 'bank_transfer' ? '\uD83C\uDFE6' : '\uD83D\uDCB3'}</span>
+                                <span className="font-semibold text-[var(--color-text)]">{m.name}</span>
+                              </div>
+                              <p className="text-xs text-[var(--color-text-muted)]">{m.description}</p>
+                              {m.requiresApproval ? (
+                                <span className="inline-block mt-2 px-2 py-0.5 text-[10px] font-bold text-[var(--color-warning-text)] bg-[var(--color-warning-bg)] dark:bg-yellow-900/30 dark:text-yellow-400 rounded-full">Requires Approval</span>
+                              ) : (
+                                <span className="inline-block mt-2 px-2 py-0.5 text-[10px] font-bold text-[var(--color-success-text)] bg-[var(--color-success-bg)] text-[var(--color-success-text)] rounded-full">Instant</span>
+                              )}
+                            </button>
+                          ))}
+                        </div>
                       </div>
-                    </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -304,7 +309,7 @@ export default function OrganizationRegisterPage() {
                     <div className="flex justify-between py-2 border-b border-[var(--color-border)]"><span className="text-[var(--color-text-muted)]">Date of Birth</span><span className="font-medium text-[var(--color-text)]">{form.birthDate}</span></div>
                     <div className="flex justify-between py-2 border-b border-[var(--color-border)]"><span className="text-[var(--color-text-muted)]">Org Name</span><span className="font-medium text-[var(--color-text)]">{form.orgName}</span></div>
                     <div className="flex justify-between py-2 border-b border-[var(--color-border)]"><span className="text-[var(--color-text-muted)]">Org Type</span><span className="font-medium text-[var(--color-text)]">{orgTypes.find(t => t.id === form.orgTypeId)?.name || '\u2014'}</span></div>
-                    <div className="flex justify-between py-2 border-b border-[var(--color-border)]"><span className="text-[var(--color-text-muted)]">Payment</span><span className="font-medium text-[var(--color-text)] capitalize">{form.paymentMethod}</span></div>
+                    {!isFreePlan && <div className="flex justify-between py-2 border-b border-[var(--color-border)]"><span className="text-[var(--color-text-muted)]">Payment</span><span className="font-medium text-[var(--color-text)] capitalize">{form.paymentMethod}</span></div>}
                   </div>
                   <div className="mt-6">
                     <LegalConsent onChange={setAgreed} />

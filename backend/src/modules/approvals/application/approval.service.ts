@@ -71,35 +71,7 @@ export class ApprovalService {
       [orgId]
     );
 
-    // 2. Activate subscription (set dates only if null)
-    if (planId) {
-      // Set status, start_date, and end_date in one pass by joining plan
-      await pool.execute(
-        `UPDATE organisation_subscriptions os
-         JOIN subscription_plans sp ON sp.id = os.plan_id
-         SET os.subscription_status = 'active',
-             os.start_date = COALESCE(os.start_date, CURDATE()),
-             os.end_date = COALESCE(os.end_date,
-               CASE
-                 WHEN sp.is_unlimited = 1 THEN NULL
-                 WHEN os.billing_cycle = 'yearly' THEN DATE_ADD(CURDATE(), INTERVAL 1 YEAR)
-                 ELSE DATE_ADD(CURDATE(), INTERVAL 1 MONTH)
-               END
-             )
-         WHERE os.organisation_id = ?
-         ORDER BY os.id DESC LIMIT 1`,
-        [orgId]
-      );
-    } else {
-      // Even without planId, activate subscription
-      await pool.execute(
-        `UPDATE organisation_subscriptions SET subscription_status = 'active'
-         WHERE organisation_id = ? ORDER BY id DESC LIMIT 1`,
-        [orgId]
-      );
-    }
-
-    // 3. For player→seller upgrades: switch role + change org type
+    // 2. For player→seller upgrades: switch role + change org type
     if (regType === 'player' && planId) {
       const shopTypeId = await this.getOrgTypeId('shop');
       if (shopTypeId) {
@@ -120,17 +92,26 @@ export class ApprovalService {
       }
     }
 
-    // 4. Mark request as approved
-    await pool.execute(
-      `UPDATE organisation_upgrade_requests SET status = 'approved', approved_by = ?, approved_at = NOW() WHERE id = ?`,
-      [adminUserId, requestId]
-    );
+    // 3. Mark the request approved + activate the subscription through the single authoritative
+    //    mechanism. It is idempotent and payment-gated: for card payments that are still pending,
+    //    the request stays pending here and the later payment:succeeded event completes it.
+    const { tryActivateSubscriptionRequest } = await import('../../organisations/application/subscription-activation.service.js');
+    const activation = await tryActivateSubscriptionRequest(requestId, {
+      adminId: adminUserId,
+      approvalNotes: 'Approved registration',
+    });
 
     const [orgRows] = await pool.execute<RowData>('SELECT name FROM organisations WHERE id = ?', [orgId]);
     const orgName = (orgRows[0] as any)?.name || 'Organisation';
     eventBusV2.emit('organisation:approved', { organisationId: orgId, name: orgName, userId: adminUserId });
 
-    return { success: true, orgId, registrationType: regType };
+    return {
+      success: true,
+      orgId,
+      registrationType: regType,
+      activated: activation.activated,
+      deferred: activation.deferred,
+    };
   }
 
   async rejectRegistration(adminUserId: number, requestId: number, reason?: string) {
