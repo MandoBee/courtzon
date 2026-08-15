@@ -6,8 +6,12 @@ describe('subscriptionStatusLabel', () => {
     expect(subscriptionStatusLabel('active')).toBe('Active');
   });
 
-  it('maps pending to Suspended (admin-suspend / pre-activation workflow state)', () => {
-    expect(subscriptionStatusLabel('pending')).toBe('Suspended');
+  it('maps suspended to Suspended (admin-suspend)', () => {
+    expect(subscriptionStatusLabel('suspended')).toBe('Suspended');
+  });
+
+  it('maps pending to Pending (workflow state, NOT Suspended)', () => {
+    expect(subscriptionStatusLabel('pending')).toBe('Pending');
   });
 
   it('maps expired and cancelled to their terminal labels', () => {
@@ -26,6 +30,7 @@ describe('isSubscriptionEnabled', () => {
   it('is true only for active', () => {
     expect(isSubscriptionEnabled('active')).toBe(true);
     expect(isSubscriptionEnabled('pending')).toBe(false);
+    expect(isSubscriptionEnabled('suspended')).toBe(false);
     expect(isSubscriptionEnabled('expired')).toBe(false);
     expect(isSubscriptionEnabled(null)).toBe(false);
   });

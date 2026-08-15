@@ -1,6 +1,6 @@
 import type mysql from 'mysql2/promise';
 import { getPool } from '../../../../database/mysql.js';
-import { activeSubscriptionCondition } from '../../../../shared/utils/subscription-validator.js';
+import { activeSubscriptionCondition, nonExpiredSubscriptionCondition } from '../../../../shared/utils/subscription-validator.js';
 
 type RowData = mysql.RowDataPacket[];
 
@@ -237,6 +237,24 @@ export const marketplaceRepository = {
       orgIds,
     );
     const map: Record<number, any> = {};
+    for (const r of rows as any[]) {
+      if (!map[r.organisation_id]) map[r.organisation_id] = r;
+    }
+    return map;
+  },
+
+  async findLatestSubscriptionsBatch(orgIds: number[]) {
+    if (!orgIds.length) return {};
+    const pool = getPool();
+    const placeholders = orgIds.map(() => '?').join(',');
+    const [rows] = await pool.execute<RowData>(
+      `SELECT os.organisation_id, os.subscription_status, os.plan_id
+       FROM organisation_subscriptions os
+       WHERE os.organisation_id IN (${placeholders}) AND ${nonExpiredSubscriptionCondition('os')}
+       ORDER BY os.created_at DESC`,
+      orgIds,
+    );
+    const map: Record<number, { subscription_status: string; plan_id: number | null }> = {};
     for (const r of rows as any[]) {
       if (!map[r.organisation_id]) map[r.organisation_id] = r;
     }

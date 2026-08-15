@@ -48,9 +48,9 @@ export interface CurrentSubscription {
   exists: boolean;
   /**
    * Computed effective status — simplifies UI logic.
-   * One of: 'none' | 'pending' | 'active' | 'expired'
+   * One of: 'none' | 'pending' | 'suspended' | 'active' | 'expired'
    */
-  effectiveStatus: 'none' | 'pending' | 'active' | 'expired';
+  effectiveStatus: 'none' | 'pending' | 'suspended' | 'active' | 'expired';
 }
 
 export interface CurrentSubscriptionFeature {
@@ -191,9 +191,10 @@ export async function getCurrentSubscription(orgId: number, conn?: mysql.PoolCon
   if (isInternal === null) isInternal = false;
 
   // Compute effective status
-  let effectiveStatus: 'none' | 'pending' | 'active' | 'expired' = 'active';
+  let effectiveStatus: 'none' | 'pending' | 'suspended' | 'active' | 'expired' = 'active';
   if (isExpired) effectiveStatus = 'expired';
   else if (sub.subscription_status === 'pending') effectiveStatus = 'pending';
+  else if (sub.subscription_status === 'suspended') effectiveStatus = 'suspended';
 
   const result: CurrentSubscription = {
     subscriptionId: sub.id,

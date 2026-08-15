@@ -1,4 +1,5 @@
 import { createModuleLogger } from '../../../shared/utils/logger.js';
+import { ADMIN_ROOM } from '../domain/realtime-rooms.js';
 
 const log = createModuleLogger('socket-mapper');
 
@@ -144,6 +145,20 @@ function mapSettlementEvent(eventName: string, p: Record<string, any>): MappedSo
 }
 
 function mapOrganisationEvent(eventName: string, p: Record<string, any>): MappedSocketEvent {
+  if (eventName === 'organisation:status-changed') {
+    return {
+      type: 'organisation.status-changed',
+      payload: { organisationId: p.organisationId, status: p.status },
+      rooms: p.organisationId ? [`organisation:${p.organisationId}`, ADMIN_ROOM] : [ADMIN_ROOM],
+    };
+  }
+  if (eventName === 'organisation:subscription-status-changed') {
+    return {
+      type: 'organisation.subscription-status-changed',
+      payload: { organisationId: p.organisationId, subscriptionStatus: p.subscriptionStatus },
+      rooms: p.organisationId ? [`organisation:${p.organisationId}`, ADMIN_ROOM] : [ADMIN_ROOM],
+    };
+  }
   const rooms: string[] = [];
   if (p.organisationId) rooms.push(`organisation:${p.organisationId}`);
   if (p.userId) rooms.push(`user:${p.userId}`);

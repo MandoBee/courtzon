@@ -63,7 +63,8 @@ export default function SubscriptionCard({ orgId }: Props) {
     if (isExpired) return { label: 'Expired', style: 'bg-[var(--color-error-bg)] text-[var(--color-error-text)] border-[var(--color-error-border)]', ariaLabel: 'Subscription expired' };
     if (expiringSoon) return { label: 'Expiring Soon', style: 'bg-amber-100 text-amber-700 border-amber-200', ariaLabel: 'Subscription expiring soon' };
     if (sub?.status === 'active') return { label: 'Active', style: 'bg-[var(--color-success-bg)] text-[var(--color-success-text)] border-[var(--color-success-border)]', ariaLabel: 'Subscription active' };
-    if (sub?.status === 'pending') return { label: 'Suspended', style: 'bg-[var(--color-warning-bg)] text-[var(--color-warning-text)] border-[var(--color-warning-border)]', ariaLabel: 'Subscription suspended' };
+    if (sub?.status === 'suspended') return { label: 'Suspended', style: 'bg-[var(--color-warning-bg)] text-[var(--color-warning-text)] border-[var(--color-warning-border)]', ariaLabel: 'Subscription suspended' };
+    if (sub?.status === 'pending') return { label: 'Pending Activation', style: 'bg-blue-100 text-blue-700 border-blue-200', ariaLabel: 'Subscription pending activation' };
     return { label: 'No Subscription', style: 'bg-gray-100 text-gray-500 border-gray-200', ariaLabel: 'No active subscription' };
   };
 

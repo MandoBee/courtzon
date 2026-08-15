@@ -267,6 +267,14 @@ export class OrganisationService {
     if (mapped.taxIdType !== undefined) { mapped.tax_id_type = mapped.taxIdType; delete mapped.taxIdType; }
     await organisationRepository.update(id, mapped);
 
+    if (data.isActive !== undefined && Boolean(data.isActive) !== Boolean(org.is_active)) {
+      // Realtime: Organisation Status changed — broadcast after the update persisted.
+      eventBusV2.emit('organisation:status-changed', {
+        organisationId: id,
+        status: data.isActive ? 'active' : 'suspended',
+      });
+    }
+
     if (data.isVerified === true && !org.is_verified) {
       try { await this.activateSubscription(id); } catch {}
     }
@@ -715,8 +723,8 @@ export class OrganisationService {
     try {
       await conn.beginTransaction();
       await conn.execute(
-        `UPDATE organisation_subscriptions SET subscription_status = 'cancelled', auto_renew = 0, updated_at = NOW()
-         WHERE plan_id = ? AND subscription_status IN ('active', 'pending')`,
+          `UPDATE organisation_subscriptions SET subscription_status = 'cancelled', auto_renew = 0, updated_at = NOW()
+           WHERE plan_id = ? AND subscription_status IN ('active', 'pending', 'suspended')`,
         [id],
       );
       await conn.execute('DELETE FROM subscription_plan_features WHERE plan_id = ?', [id]);
@@ -896,19 +904,19 @@ export class OrganisationService {
       await conn.beginTransaction();
       const [rows] = await conn.execute<RowData>(
         `SELECT id, plan_id, billing_cycle, plan_snapshot, subscription_status FROM organisation_subscriptions
-         WHERE organisation_id = ? AND subscription_status IN ('active', 'pending')
+         WHERE organisation_id = ? AND subscription_status IN ('active', 'suspended')
          ORDER BY created_at DESC LIMIT 1`,
         [orgId]
       );
-      if (!rows.length) throw new NotFoundError('No active or pending subscription found');
+      if (!rows.length) throw new NotFoundError('No active or suspended subscription found');
 
       const sub = rows[0] as any;
       const wasActive = sub.subscription_status === 'active';
 
       if (wasActive) {
-        // Suspend — allowed to leave 'active' (the single-writer rule protects activation).
+        // Suspend — leaving 'active' is allowed (the single-writer rule protects activation).
         await conn.execute(
-          `UPDATE organisation_subscriptions SET subscription_status = 'pending', updated_at = NOW() WHERE id = ?`,
+          `UPDATE organisation_subscriptions SET subscription_status = 'suspended', updated_at = NOW() WHERE id = ?`,
           [sub.id]
         );
       } else {
@@ -929,7 +937,14 @@ export class OrganisationService {
       const { clearSubscriptionCache } = await import('./current-subscription.service.js');
       clearSubscriptionCache();
 
-      return { status: wasActive ? 'pending' : 'active' };
+      const newStatus = wasActive ? 'suspended' : 'active';
+      // Realtime: broadcast after the change is durably committed.
+      eventBusV2.emit('organisation:subscription-status-changed', {
+        organisationId: orgId,
+        subscriptionStatus: newStatus,
+      });
+
+      return { status: newStatus };
     } catch (e) {
       await conn.rollback();
       throw e;
@@ -1200,7 +1215,7 @@ export class OrganisationService {
   async #cascadeDeleteOrganisation(orgId: number, conn: any): Promise<void> {
     await conn.execute(
       `UPDATE organisation_subscriptions SET subscription_status = 'cancelled', auto_renew = 0, updated_at = NOW()
-       WHERE organisation_id = ? AND subscription_status IN ('active', 'pending')`,
+       WHERE organisation_id = ? AND subscription_status IN ('active', 'pending', 'suspended')`,
       [orgId],
     );
     await conn.execute(

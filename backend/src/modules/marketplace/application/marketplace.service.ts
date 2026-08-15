@@ -1483,15 +1483,17 @@ export const marketplaceService = {
   async adminListSellers(filters: { search?: string; orgType?: string; page: number; limit: number }) {
     const result = await repo.adminFindSellerOrgs(filters);
     const orgIds = (result.data || []).map((org: any) => org.id);
-    // Batch: 2 queries instead of N×2
-    const [statsMap, subsMap] = await Promise.all([
+    // Batch: 3 queries instead of N×2
+    const [statsMap, subsMap, latestSubsMap] = await Promise.all([
       repo.adminGetSellerStatsBatch(orgIds),
       repo.findActiveSubscriptionsBatch(orgIds),
+      repo.findLatestSubscriptionsBatch(orgIds),
     ]);
     const enriched = (result.data || []).map((org: any) => ({
       ...org,
       stats: statsMap[org.id] || { total_products: 0, active_products: 0, total_orders: 0, total_revenue: 0 },
       subscription: subsMap[org.id] || null,
+      subscriptionStatus: latestSubsMap[org.id]?.subscription_status || null,
     }));
     return { ...result, data: enriched };
   },

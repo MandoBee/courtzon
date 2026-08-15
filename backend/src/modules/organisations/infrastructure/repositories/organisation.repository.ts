@@ -13,40 +13,52 @@ export class OrganisationRepository {
   }
 
   async findAll(countryId?: number | null, typeId?: number | null, ratingMin?: number | null, verified?: boolean | null, active?: boolean | null, page = 1, limit = 20): Promise<{ data: any[]; total: number }> {
-    let sql = `SELECT o.*, ot.slug as org_type_slug, ot.sort_order as org_type_sort,
-                      c.name as country_name, c.flag_emoji as country_flag, c.iso_code as country_iso
-       FROM organisations o
-       JOIN organisation_types ot ON ot.id = o.org_type_id
-       LEFT JOIN countries c ON c.id = o.country_id
-       WHERE o.deleted_at IS NULL`;
+    const conditions: string[] = ['o.deleted_at IS NULL'];
     const params: any[] = [];
     if (countryId) {
-      sql += ` AND o.country_id = ?`;
+      conditions.push('o.country_id = ?');
       params.push(countryId);
     }
     if (typeId) {
-      sql += ` AND o.org_type_id = ?`;
+      conditions.push('o.org_type_id = ?');
       params.push(typeId);
     }
     if (ratingMin !== null && ratingMin !== undefined) {
-      sql += ` AND o.rating_avg >= ?`;
+      conditions.push('o.rating_avg >= ?');
       params.push(ratingMin);
     }
     if (verified !== null && verified !== undefined) {
-      sql += ` AND o.is_verified = ?`;
+      conditions.push('o.is_verified = ?');
       params.push(verified ? 1 : 0);
     }
     if (active !== null && active !== undefined) {
-      sql += ` AND o.is_active = ?`;
+      conditions.push('o.is_active = ?');
       params.push(active ? 1 : 0);
     }
+    const where = `WHERE ${conditions.join(' AND ')}`;
 
-    const countSql = sql.replace(/SELECT o\.\*,[\s\S]*FROM/, 'SELECT COUNT(*) as cnt FROM');
-    const [countRows] = await this.pool.execute<RowData>(countSql, params);
+    const [countRows] = await this.pool.execute<RowData>(
+      `SELECT COUNT(*) as cnt FROM organisations o
+       JOIN organisation_types ot ON ot.id = o.org_type_id
+       LEFT JOIN countries c ON c.id = o.country_id
+       ${where}`,
+      params
+    );
     const total = (countRows[0] as any)?.cnt || 0;
 
     const offset = (page - 1) * limit;
-    const [rows] = await this.pool.query<RowData>(`${sql} ORDER BY o.name LIMIT ? OFFSET ?`, [...params, limit, offset]);
+    const [rows] = await this.pool.query<RowData>(
+      `SELECT o.*, ot.slug as org_type_slug, ot.sort_order as org_type_sort,
+              c.name as country_name, c.flag_emoji as country_flag, c.iso_code as country_iso,
+              (SELECT os.id FROM organisation_subscriptions os WHERE os.organisation_id = o.id ORDER BY os.created_at DESC LIMIT 1) as subscription_id,
+              (SELECT os.subscription_status FROM organisation_subscriptions os WHERE os.organisation_id = o.id ORDER BY os.created_at DESC LIMIT 1) as subscription_status
+       FROM organisations o
+       JOIN organisation_types ot ON ot.id = o.org_type_id
+       LEFT JOIN countries c ON c.id = o.country_id
+       ${where}
+       ORDER BY o.name LIMIT ? OFFSET ?`,
+      [...params, limit, offset]
+    );
     return { data: rows, total };
   }
 

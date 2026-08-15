@@ -22,6 +22,7 @@ export interface OrganisationSummary extends IdName {
   org_type_slug?: string | null;
   is_active?: boolean;
   is_verified?: boolean;
+  subscription_status?: string | null;
   country_id?: number;
   country_iso?: string | null;
   country_name?: string | null;

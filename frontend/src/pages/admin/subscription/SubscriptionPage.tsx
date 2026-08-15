@@ -792,13 +792,14 @@ function AssignPlan() {
                       <span className="text-sm font-bold text-[var(--color-text)]">{currentSub.planName}</span>
                       <button
                         onClick={() => { if (!isExpired) toggleStatusMutation.mutate(); }}
-                        disabled={isExpired || toggleStatusMutation.isPending}
+                        disabled={isExpired || toggleStatusMutation.isPending || (currentSub.status !== 'active' && currentSub.status !== 'suspended')}
                         className={`px-2 py-0.5 rounded-full text-xs font-medium border transition-colors ${
                           isExpired ? 'bg-[var(--color-error-bg)] text-[var(--color-error-text)] cursor-not-allowed' :
                           currentSub.status === 'active' ? 'bg-[var(--color-success-bg)] text-[var(--color-success-text)] border-green-200 hover:bg-green-200 cursor-pointer' :
-                          'bg-[var(--color-warning-bg)] text-[var(--color-warning-text)] border-yellow-200 hover:bg-yellow-200 cursor-pointer'
+                          currentSub.status === 'suspended' ? 'bg-[var(--color-warning-bg)] text-[var(--color-warning-text)] border-yellow-200 hover:bg-yellow-200 cursor-pointer' :
+                          'bg-[var(--color-info-bg)] text-[var(--color-info-text)] cursor-not-allowed'
                         }`}
-                        title={isExpired ? 'Expired subscriptions cannot be toggled' : `Click to ${currentSub.status === 'active' ? 'suspend' : 'activate'} this subscription`}
+                        title={isExpired ? 'Expired subscriptions cannot be toggled' : currentSub.status === 'active' ? 'Click to suspend this subscription' : currentSub.status === 'suspended' ? 'Click to activate this subscription' : 'This subscription is not toggleable in its current state'}
                         aria-label={`Current status: ${isExpired ? 'Expired' : subscriptionStatusLabel(currentSub.status)}. Click to toggle.`}
                       >
                         {toggleStatusMutation.isPending ? '...' : (isExpired ? 'Expired' : subscriptionStatusLabel(currentSub.status))}
@@ -1149,6 +1150,7 @@ function ViewAssignments() {
                     const styles: Record<string, string> = {
                       Active: 'bg-[var(--color-success-bg)] text-[var(--color-success-text)]',
                       Suspended: 'bg-[var(--color-warning-bg)] text-[var(--color-warning-text)]',
+                      Pending: 'bg-[var(--color-info-bg)] text-[var(--color-info-text)]',
                       Expired: 'bg-gray-100 text-[var(--color-text-muted)]',
                       Cancelled: 'bg-[var(--color-error-bg)] text-[var(--color-error-text)]',
                     };
