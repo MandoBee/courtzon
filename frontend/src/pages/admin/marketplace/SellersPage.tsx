@@ -16,11 +16,6 @@ export default function SellersPage() {
     queryFn: () => api.get('/marketplace/admin/sellers', { params: { search: search || undefined, orgType: orgType || undefined, page, limit } }).then((r: any) => r.data),
   });
 
-  const toggleVerified = useMutation({
-    mutationFn: ({ id, isVerified }: { id: number; isVerified: boolean }) => api.put(`/organisations/${id}`, { isVerified }),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['admin-marketplace-sellers'] }); setDetail(null); },
-  });
-
   const toggleStatus = useMutation({
     mutationFn: ({ id, isActive }: { id: number; isActive: boolean }) => api.put(`/organisations/${id}`, { isActive }),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['admin-marketplace-sellers'] }); setDetail(null); },
@@ -44,7 +39,7 @@ export default function SellersPage() {
       </div>
       <div className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] overflow-x-auto">
         <table className="w-full text-sm">
-          <thead><tr className="border-b bg-[var(--color-bg)]/50"><th className="text-left px-4 py-3">Shop</th><th className="text-left px-4 py-3">Owner</th><th className="text-left px-4 py-3">Type</th><th className="text-left px-4 py-3">Products</th><th className="text-left px-4 py-3">Orders</th><th className="text-left px-4 py-3">Revenue</th><th className="text-left px-4 py-3">Verified</th><th className="text-left px-4 py-3">Status</th><th className="text-right px-4 py-3">Actions</th></tr></thead>
+          <thead><tr className="border-b bg-[var(--color-bg)]/50"><th className="text-left px-4 py-3">Shop</th><th className="text-left px-4 py-3">Owner</th><th className="text-left px-4 py-3">Type</th><th className="text-left px-4 py-3">Products</th><th className="text-left px-4 py-3">Orders</th><th className="text-left px-4 py-3">Revenue</th><th className="text-left px-4 py-3">Organisation Status</th><th className="text-right px-4 py-3">Actions</th></tr></thead>
           <tbody className="divide-y">
             {data?.data?.map((s: any) => (
               <tr key={s.id} className="hover:bg-[var(--color-bg)]/30">
@@ -54,20 +49,6 @@ export default function SellersPage() {
                 <td className="px-4 py-3">{s.stats?.active_products || 0}/{s.stats?.total_products || 0}</td>
                 <td className="px-4 py-3">{s.stats?.total_orders || 0}</td>
                 <td className="px-4 py-3">{Number(s.stats?.total_revenue || 0).toFixed(2)}</td>
-                <td className="px-4 py-3">
-                  <Can permission="marketplace.admin.sellers.is-verified">
-                    <Can permission="organisations.verify" fallback={
-                      <span className={`text-xs px-2 py-0.5 rounded-full ${s.is_verified ? 'bg-[var(--color-success-bg)] text-[var(--color-success-text)]' : 'bg-[var(--color-warning-bg)] text-[var(--color-warning-text)]'}`}>
-                        {s.is_verified ? 'Verified' : 'Pending'}
-                      </span>
-                    }>
-                      <button onClick={() => toggleVerified.mutate({ id: s.id, isVerified: !s.is_verified })}
-                        className={`text-xs px-2 py-0.5 rounded-full cursor-pointer border transition-colors ${s.is_verified ? 'bg-[var(--color-success-bg)] text-[var(--color-success-text)] border-green-300 hover:opacity-80' : 'bg-[var(--color-warning-bg)] text-[var(--color-warning-text)] border-yellow-300 hover:bg-yellow-200'}`}>
-                        {s.is_verified ? 'Verified' : 'Pending'}
-                      </button>
-                    </Can>
-                  </Can>
-                </td>
                 <td className="px-4 py-3">
                   <Can permission="marketplace.admin.sellers.is-active">
                     <Can permission="marketplace.admin.sellers.toggle" fallback={
@@ -118,7 +99,7 @@ export default function SellersPage() {
               <div className="flex justify-between"><span className="text-[var(--color-text-muted)]">Owner</span><span>{detail.owner_name}</span></div>
               <div className="flex justify-between"><span className="text-[var(--color-text-muted)]">Email</span><span>{detail.owner_email || detail.email || '—'}</span></div>
               <div className="flex justify-between"><span className="text-[var(--color-text-muted)]">Phone</span><span>{detail.owner_phone || detail.phone || '—'}</span></div>
-              <div className="flex justify-between"><span className="text-[var(--color-text-muted)]">Verified</span><span>{detail.is_verified ? 'Yes' : 'No'}</span></div>
+              <div className="flex justify-between"><span className="text-[var(--color-text-muted)]">Organisation Status</span><span>{detail.is_active ? 'Active' : 'Suspended'}</span></div>
               <div className="flex justify-between"><span className="text-[var(--color-text-muted)]">Plan</span><span>{detail.subscription?.plan_name || '—'}</span></div>
               {detail.stats && (<>
                 <div className="border-t pt-2 mt-2"><span className="text-[var(--color-text-muted)]">Stats</span></div>

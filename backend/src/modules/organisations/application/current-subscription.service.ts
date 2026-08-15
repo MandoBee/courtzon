@@ -107,46 +107,60 @@ export async function getCurrentSubscription(orgId: number, conn?: mysql.PoolCon
   const isExpired = endDate ? endDate < now : false;
 
   // Default: live plan data
-  let planName = 'Unknown';
-  let isInternal = false;
+  let planName = '';
+  let isInternal: boolean | null = null;
   let features: CurrentSubscriptionFeature[] = [];
   let commissionRates: CurrentSubscriptionCommissionRate[] = [];
   let fromSnapshot = false;
 
-  // Try snapshot first
+  // Parse the snapshot once — it may be absent or malformed (treated as null).
+  let parsedSnapshot: Record<string, any> | null = null;
   if (sub.plan_snapshot) {
     try {
-      const snap = typeof sub.plan_snapshot === 'string' ? JSON.parse(sub.plan_snapshot) : sub.plan_snapshot;
-      planName = snap.planName || 'Unknown';
-      isInternal = !!snap.isInternal;
-      features = Array.isArray(snap.features) ? snap.features.map((f: any) => ({
-        featureKey: f.feature_key || f.featureKey || '',
-        label: f.label || '',
-        value: String(f.value ?? ''),
-        valueType: f.value_type || f.valueType || 'text',
-      })) : [];
-      commissionRates = Array.isArray(snap.commissionRates) ? snap.commissionRates.map((r: any) => ({
-        entity: r.entity || r.applicable_entity || '',
-        amount: Number(r.amount ?? 0),
-        rateType: r.rateType || r.rate_type || 'percentage',
-      })) : [];
-      fromSnapshot = true;
+      parsedSnapshot = typeof sub.plan_snapshot === 'string'
+        ? JSON.parse(sub.plan_snapshot)
+        : sub.plan_snapshot;
     } catch {
-      // Malformed snapshot — fall through to live
+      parsedSnapshot = null;
     }
   }
 
-  // Fallback: live plan tables
-  if (!fromSnapshot && sub.plan_id) {
+  // Try snapshot first
+  if (parsedSnapshot) {
+    const snap = parsedSnapshot;
+    if (typeof snap.planName === 'string' && snap.planName.trim()) planName = snap.planName;
+    if (typeof snap.isInternal === 'boolean') isInternal = snap.isInternal;
+    features = Array.isArray(snap.features) ? snap.features.map((f: any) => ({
+      featureKey: f.feature_key || f.featureKey || '',
+      label: f.label || '',
+      value: String(f.value ?? ''),
+      valueType: f.value_type || f.valueType || 'text',
+    })) : [];
+    commissionRates = Array.isArray(snap.commissionRates) ? snap.commissionRates.map((r: any) => ({
+      entity: r.entity || r.applicable_entity || '',
+      amount: Number(r.amount ?? 0),
+      rateType: r.rateType || r.rate_type || 'percentage',
+    })) : [];
+    fromSnapshot = true;
+  }
+
+  // Resolve the plan name / internal flag from the live plan table whenever the
+  // snapshot did not provide them. This covers snapshots written without a plan
+  // name (e.g. a bare `{}` from suspend/resume or legacy rows) — the resolver
+  // must never return 'Unknown' while a valid plan_id still exists.
+  if (sub.plan_id && (!planName || isInternal === null)) {
     const [planRows] = await db.execute<RowData>(
       `SELECT sp.plan_name, sp.is_internal FROM subscription_plans sp WHERE sp.id = ?`,
       [sub.plan_id],
     );
     if (planRows.length) {
-      planName = planRows[0].plan_name || 'Unknown';
-      isInternal = !!planRows[0].is_internal;
+      if (!planName) planName = planRows[0].plan_name || '';
+      if (isInternal === null) isInternal = !!planRows[0].is_internal;
     }
+  }
 
+  // Features / rates come from the live tables only when there is no snapshot at all.
+  if (!fromSnapshot && sub.plan_id) {
     const [featRows] = await db.execute<RowData>(
       `SELECT sf.feature_key, sf.label, spf.value, sf.value_type
        FROM subscription_plan_features spf
@@ -173,6 +187,9 @@ export async function getCurrentSubscription(orgId: number, conn?: mysql.PoolCon
     }));
   }
 
+  if (!planName) planName = 'Unknown';
+  if (isInternal === null) isInternal = false;
+
   // Compute effective status
   let effectiveStatus: 'none' | 'pending' | 'active' | 'expired' = 'active';
   if (isExpired) effectiveStatus = 'expired';
@@ -182,7 +199,7 @@ export async function getCurrentSubscription(orgId: number, conn?: mysql.PoolCon
     subscriptionId: sub.id,
     planId: sub.plan_id,
     planName,
-    planSnapshot: sub.plan_snapshot ? (typeof sub.plan_snapshot === 'string' ? JSON.parse(sub.plan_snapshot) : sub.plan_snapshot) : null,
+    planSnapshot: parsedSnapshot,
     subscriptionStatus: sub.subscription_status,
     effectiveStatus,
     billingCycle: sub.billing_cycle || 'monthly',

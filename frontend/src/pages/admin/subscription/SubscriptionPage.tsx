@@ -5,6 +5,7 @@ import api from '../../../services/api';
 import { useToast } from '../../../components/ui/Toast';
 import { Can } from '../../../permissions/Can';
 import { formatPrice } from '../../../utils/currency';
+import { subscriptionStatusLabel } from '../../../utils/subscription-status';
 import BillingPeriodToggle from '../../../components/subscription/BillingPeriodToggle';
 import {
   annualSavingsPercent,
@@ -797,10 +798,10 @@ function AssignPlan() {
                           currentSub.status === 'active' ? 'bg-[var(--color-success-bg)] text-[var(--color-success-text)] border-green-200 hover:bg-green-200 cursor-pointer' :
                           'bg-[var(--color-warning-bg)] text-[var(--color-warning-text)] border-yellow-200 hover:bg-yellow-200 cursor-pointer'
                         }`}
-                        title={isExpired ? 'Expired subscriptions cannot be toggled' : `Click to change to ${currentSub.status === 'active' ? 'pending' : 'active'}`}
-                        aria-label={`Current status: ${isExpired ? 'Expired' : currentSub.status}. Click to toggle.`}
+                        title={isExpired ? 'Expired subscriptions cannot be toggled' : `Click to ${currentSub.status === 'active' ? 'suspend' : 'activate'} this subscription`}
+                        aria-label={`Current status: ${isExpired ? 'Expired' : subscriptionStatusLabel(currentSub.status)}. Click to toggle.`}
                       >
-                        {toggleStatusMutation.isPending ? '...' : (isExpired ? 'Expired' : currentSub.status)}
+                        {toggleStatusMutation.isPending ? '...' : (isExpired ? 'Expired' : subscriptionStatusLabel(currentSub.status))}
                       </button>
                     </div>
                     <div className="text-xs text-[var(--color-text-muted)] space-y-1">
@@ -1122,9 +1123,8 @@ function ViewAssignments() {
         <thead>
           <tr className="border-b border-[var(--color-border)] text-[var(--color-text-muted)]">
             <th className="text-left px-4 py-3 font-medium">Organisation</th>
-            <th className="text-left px-4 py-3 font-medium">Verified</th>
-            <th className="text-left px-4 py-3 font-medium">Active</th>
-            <th className="text-left px-4 py-3 font-medium">Status</th>
+            <th className="text-left px-4 py-3 font-medium">Organisation Status</th>
+            <th className="text-left px-4 py-3 font-medium">Subscription Status</th>
             <th className="text-left px-4 py-3 font-medium">Plan</th>
             <th className="text-left px-4 py-3 font-medium">Cycle</th>
             <th className="text-left px-4 py-3 font-medium">Price</th>
@@ -1137,13 +1137,6 @@ function ViewAssignments() {
             <tr key={item.org_id} className="border-b border-[var(--color-border)] hover:bg-[var(--color-bg)]">
               <td className="px-4 py-3 font-medium text-[var(--color-text)]">{item.org_name}</td>
               <td className="px-4 py-3">
-                <Can permission="subscription.assignments.is-verified">
-                  <span className={`px-2 py-0.5 text-xs rounded-full ${item.is_verified ? 'bg-[var(--color-success-bg)] text-[var(--color-success-text)]' : 'bg-[var(--color-warning-bg)] text-[var(--color-warning-text)]'}`}>
-                    {item.is_verified ? 'Verified' : 'Pending'}
-                  </span>
-                </Can>
-              </td>
-              <td className="px-4 py-3">
                 <Can permission="subscription.assignments.is-active">
                   <span className={`w-2 h-2 rounded-full inline-block ${item.is_active ? 'bg-[var(--color-success)]' : 'bg-[var(--color-error)]'}`} title={item.is_active ? 'Active' : 'Suspended'} />
                   <span className="ml-1.5 text-xs text-[var(--color-text-muted)]">{item.is_active ? 'Active' : 'Suspended'}</span>
@@ -1152,16 +1145,16 @@ function ViewAssignments() {
               <td className="px-4 py-3">
                 <Can permission="subscription.assignments.status">
                   {(() => {
-                    const status = item.subscription_status || '—';
+                    const label = subscriptionStatusLabel(item.subscription_status);
                     const styles: Record<string, string> = {
-                      active: 'bg-[var(--color-success-bg)] text-[var(--color-success-text)]',
-                      pending: 'bg-[var(--color-warning-bg)] text-[var(--color-warning-text)]',
-                      expired: 'bg-gray-100 text-[var(--color-text-muted)]',
-                      cancelled: 'bg-[var(--color-error-bg)] text-[var(--color-error-text)]',
+                      Active: 'bg-[var(--color-success-bg)] text-[var(--color-success-text)]',
+                      Suspended: 'bg-[var(--color-warning-bg)] text-[var(--color-warning-text)]',
+                      Expired: 'bg-gray-100 text-[var(--color-text-muted)]',
+                      Cancelled: 'bg-[var(--color-error-bg)] text-[var(--color-error-text)]',
                     };
                     return (
-                      <span className={`px-2 py-0.5 text-xs rounded-full capitalize ${styles[status] || 'bg-gray-100 text-[var(--color-text-muted)]'}`}>
-                        {status}
+                      <span className={`px-2 py-0.5 text-xs rounded-full ${styles[label] || 'bg-gray-100 text-[var(--color-text-muted)]'}`}>
+                        {label}
                       </span>
                     );
                   })()}
