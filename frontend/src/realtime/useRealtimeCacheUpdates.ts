@@ -219,6 +219,22 @@ export function useRealtimeCacheUpdates(): void {
     qc.invalidateQueries({ queryKey: ['org-subscription'] });
   });
 
+  // Organisation Status changed (Active ↔ Suspended)
+  useSocketEvent('organisation.status-changed', () => {
+    qc.invalidateQueries({ queryKey: ['admin', 'organisations'] });
+    qc.invalidateQueries({ queryKey: ['admin-marketplace-sellers'] });
+    qc.invalidateQueries({ queryKey: ['admin', 'organisation-subscriptions'] });
+    qc.invalidateQueries({ queryKey: ['organisation'] });
+  });
+
+  // Subscription Status changed (Active ↔ Suspended)
+  useSocketEvent('organisation.subscription-status-changed', () => {
+    qc.invalidateQueries({ queryKey: ['admin', 'organisations'] });
+    qc.invalidateQueries({ queryKey: ['admin-marketplace-sellers'] });
+    qc.invalidateQueries({ queryKey: ['admin', 'organisation-subscriptions'] });
+    qc.invalidateQueries({ queryKey: ['org-subscription'] });
+  });
+
   // ── Membership events ──────────────────────────────────────────
   useSocketEvent('membership.renewed', () => {
     qc.invalidateQueries({ queryKey: ['memberships'] });

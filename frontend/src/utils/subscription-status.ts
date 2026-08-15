@@ -2,22 +2,29 @@
  * Subscription status presentation mapping.
  *
  * The database `organisation_subscriptions.subscription_status` enum stores
- * lifecycle/workflow states ('active', 'pending', 'expired', 'cancelled').
- * The visible business model exposes only two primary states — Active and
- * Suspended. 'pending' is used internally for both "awaiting activation"
- * (workflow — surfaced via the subscription-request flow) and "suspended by
- * admin", so it is presented as Suspended here. Transient/terminal states
- * (expired, cancelled) are kept as-is.
+ * lifecycle states: 'active', 'expired', 'cancelled', 'pending', 'suspended'.
+ *
+ * The visible business model exposes two primary states — Active and Suspended:
+ *   - 'active'    → Active   (subscription enabled)
+ *   - 'suspended' → Suspended (admin-suspended subscription)
+ *
+ * 'pending' is a WORKFLOW state (awaiting activation/payment/approval), surfaced
+ * contextually through the subscription-request flow — it is NOT a permanent
+ * Subscription Status and must never be mislabeled as Suspended.
+ *
+ * 'expired' and 'cancelled' are terminal states shown as-is.
  */
 
-export type SubscriptionStatusLabel = 'Active' | 'Suspended' | 'Expired' | 'Cancelled' | 'No Subscription';
+export type SubscriptionStatusLabel = 'Active' | 'Suspended' | 'Pending' | 'Expired' | 'Cancelled' | 'No Subscription';
 
 export function subscriptionStatusLabel(status: string | null | undefined): SubscriptionStatusLabel {
   switch (status) {
     case 'active':
       return 'Active';
-    case 'pending':
+    case 'suspended':
       return 'Suspended';
+    case 'pending':
+      return 'Pending';
     case 'expired':
       return 'Expired';
     case 'cancelled':
@@ -31,3 +38,4 @@ export function subscriptionStatusLabel(status: string | null | undefined): Subs
 export function isSubscriptionEnabled(status: string | null | undefined): boolean {
   return status === 'active';
 }
+

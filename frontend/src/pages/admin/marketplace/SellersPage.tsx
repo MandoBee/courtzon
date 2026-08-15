@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../../services/api';
 import { Can } from '../../../permissions/Can';
+import { subscriptionStatusLabel } from '../../../utils/subscription-status';
 
 export default function SellersPage() {
   const queryClient = useQueryClient();
@@ -18,6 +19,11 @@ export default function SellersPage() {
 
   const toggleStatus = useMutation({
     mutationFn: ({ id, isActive }: { id: number; isActive: boolean }) => api.put(`/organisations/${id}`, { isActive }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['admin-marketplace-sellers'] }); setDetail(null); },
+  });
+
+  const toggleSubscription = useMutation({
+    mutationFn: (orgId: number) => api.post(`/organisations/${orgId}/subscription/toggle-status`),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['admin-marketplace-sellers'] }); setDetail(null); },
   });
 
@@ -39,7 +45,7 @@ export default function SellersPage() {
       </div>
       <div className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] overflow-x-auto">
         <table className="w-full text-sm">
-          <thead><tr className="border-b bg-[var(--color-bg)]/50"><th className="text-left px-4 py-3">Shop</th><th className="text-left px-4 py-3">Owner</th><th className="text-left px-4 py-3">Type</th><th className="text-left px-4 py-3">Products</th><th className="text-left px-4 py-3">Orders</th><th className="text-left px-4 py-3">Revenue</th><th className="text-left px-4 py-3">Organisation Status</th><th className="text-right px-4 py-3">Actions</th></tr></thead>
+          <thead><tr className="border-b bg-[var(--color-bg)]/50"><th className="text-left px-4 py-3">Shop</th><th className="text-left px-4 py-3">Owner</th><th className="text-left px-4 py-3">Type</th><th className="text-left px-4 py-3">Products</th><th className="text-left px-4 py-3">Orders</th><th className="text-left px-4 py-3">Revenue</th><th className="text-left px-4 py-3">Organisation Status</th><th className="text-left px-4 py-3">Subscription Status</th><th className="text-right px-4 py-3">Actions</th></tr></thead>
           <tbody className="divide-y">
             {data?.data?.map((s: any) => (
               <tr key={s.id} className="hover:bg-[var(--color-bg)]/30">
@@ -61,6 +67,36 @@ export default function SellersPage() {
                         {s.is_active ? 'Active' : 'Suspended'}
                       </button>
                     </Can>
+                  </Can>
+                </td>
+                <td className="px-4 py-3">
+                  <Can permission="subscription.assignments.status">
+                    {(() => {
+                      const status = s.subscriptionStatus;
+                      const isToggleable = status === 'active' || status === 'suspended';
+                      const label = subscriptionStatusLabel(status);
+                      if (!isToggleable) {
+                        return (
+                          <span className={`text-xs px-2 py-0.5 rounded-full ${label === 'Pending' ? 'bg-[var(--color-info-bg)] text-[var(--color-info-text)]' : 'bg-gray-100 text-[var(--color-text-muted)]'}`}>
+                            {label}
+                          </span>
+                        );
+                      }
+                      return (
+                        <button
+                          onClick={() => toggleSubscription.mutate(s.id)}
+                          disabled={toggleSubscription.isPending}
+                          className={`text-xs px-2 py-0.5 rounded-full cursor-pointer border transition-colors ${
+                            status === 'active'
+                              ? 'bg-[var(--color-success-bg)] text-[var(--color-success-text)] border-green-300 hover:opacity-80'
+                              : 'bg-[var(--color-warning-bg)] text-[var(--color-warning-text)] border-yellow-300 hover:bg-yellow-200'
+                          }`}
+                          title={status === 'active' ? 'Suspend subscription' : 'Activate subscription'}
+                        >
+                          {label}
+                        </button>
+                      );
+                    })()}
                   </Can>
                 </td>
                 <td className="px-4 py-3 text-right">

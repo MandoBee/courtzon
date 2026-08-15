@@ -7,6 +7,7 @@ import { Can } from '../../../permissions/Can';
 import type { ApiData, PaginatedResult } from '../../../types/api';
 import type { Country, OrganisationSummary, OrganisationType } from '../../../types/admin/common';
 import { EntityImage, CountryFlag } from '../../../components/ui';
+import { subscriptionStatusLabel } from '../../../utils/subscription-status';
 
 const PAGE_SIZES = [10, 20, 30, 50];
 export default function OrganisationListPage() {
@@ -67,6 +68,15 @@ export default function OrganisationListPage() {
   const toggleActiveMutation = useMutation({
     mutationFn: ({ id, isActive }: { id: number; isActive: boolean }) => api.put(`/organisations/${id}`, { isActive }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['admin', 'organisations'] }),
+  });
+
+  const toggleSubscriptionMutation = useMutation({
+    mutationFn: (orgId: number) => api.post(`/organisations/${orgId}/subscription/toggle-status`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'organisations'] });
+      queryClient.invalidateQueries({ queryKey: ['admin', 'organisation-subscriptions'] });
+      queryClient.invalidateQueries({ queryKey: ['org-subscription'] });
+    },
   });
 
   const deleteMutation = useMutation({
@@ -183,6 +193,7 @@ export default function OrganisationListPage() {
                       <th className="text-left px-4 py-3 text-sm font-medium text-[var(--color-text-muted)]">Type</th>
                       <th className="text-center px-4 py-3 text-sm font-medium text-[var(--color-text-muted)]">Rating</th>
                       <th className="text-left px-4 py-3 text-sm font-medium text-[var(--color-text-muted)]">Organisation Status</th>
+                      <th className="text-left px-4 py-3 text-sm font-medium text-[var(--color-text-muted)]">Subscription Status</th>
                       <th className="text-right px-4 py-3 text-sm font-medium text-[var(--color-text-muted)]">Actions</th>
                     </tr>
                   </thead>
@@ -224,6 +235,35 @@ export default function OrganisationListPage() {
                             </Can>
                           </Can>
                         </td>
+                        <td className="px-4 py-3">
+                          <Can permission="subscription.assignments.status">
+                            {(() => {
+                              const isToggleable = org.subscription_status === 'active' || org.subscription_status === 'suspended';
+                              const label = subscriptionStatusLabel(org.subscription_status);
+                              if (!isToggleable) {
+                                return (
+                                  <span className={`px-2 py-0.5 text-xs rounded-full font-medium ${label === 'Pending' ? 'bg-[var(--color-info-bg)] text-[var(--color-info-text)]' : 'bg-gray-100 text-[var(--color-text-muted)]'}`}>
+                                    {label}
+                                  </span>
+                                );
+                              }
+                              return (
+                                <button
+                                  onClick={() => toggleSubscriptionMutation.mutate(org.id)}
+                                  disabled={toggleSubscriptionMutation.isPending}
+                                  className={`px-2 py-0.5 text-xs rounded-full font-medium cursor-pointer border transition-colors ${
+                                    org.subscription_status === 'active'
+                                      ? 'bg-[var(--color-success-bg)] text-[var(--color-success-text)] border-green-300 hover:opacity-80'
+                                      : 'bg-[var(--color-warning-bg)] text-[var(--color-warning-text)] border-yellow-300 hover:bg-yellow-200'
+                                  }`}
+                                  title={org.subscription_status === 'active' ? 'Suspend subscription' : 'Activate subscription'}
+                                >
+                                  {label}
+                                </button>
+                              );
+                            })()}
+                          </Can>
+                        </td>
                         <td className="px-4 py-3 text-right">
                           <div className="flex items-center justify-end gap-1.5">
                             <Can permission="organisations.edit">
@@ -241,7 +281,7 @@ export default function OrganisationListPage() {
                       </tr>
                     ))}
                     {filtered.length === 0 && (
-                      <tr><td colSpan={6} className="px-4 py-8 text-center text-sm text-[var(--color-text-muted)]">No organisations found.</td></tr>
+                      <tr><td colSpan={7} className="px-4 py-8 text-center text-sm text-[var(--color-text-muted)]">No organisations found.</td></tr>
                     )}
                   </tbody>
                 </table>

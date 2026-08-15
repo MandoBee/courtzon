@@ -60,9 +60,9 @@ describe('activeSubscriptionCondition', () => {
 });
 
 describe('nonExpiredSubscriptionCondition', () => {
-  it('includes active and pending in the condition', () => {
+  it('includes active, pending and suspended in the condition', () => {
     const sql = nonExpiredSubscriptionCondition('s');
-    expect(sql).toContain("s.subscription_status IN ('active', 'pending')");
+    expect(sql).toContain("s.subscription_status IN ('active', 'pending', 'suspended')");
     expect(sql).toContain('s.end_date IS NULL');
     expect(sql).toContain('s.end_date >= CURDATE()');
   });

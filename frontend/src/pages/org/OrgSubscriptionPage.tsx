@@ -65,9 +65,10 @@ export default function OrgSubscriptionPage() {
                 )}
                 <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
                   sub.status === 'active' ? 'bg-[var(--color-success-bg)] text-[var(--color-success-text)]' :
-                  sub.status === 'pending' ? 'bg-[var(--color-warning-bg)] text-[var(--color-warning-text)]' :
+                  sub.status === 'suspended' ? 'bg-[var(--color-warning-bg)] text-[var(--color-warning-text)]' :
+                  sub.status === 'pending' ? 'bg-[var(--color-info-bg)] text-[var(--color-info-text)]' :
                   'bg-[var(--color-error-bg)] text-[var(--color-error-text)]'
-                }`}>{sub.status === 'active' ? 'Active' : sub.status === 'pending' ? 'Suspended' : sub.status}</span>
+                }`}>{sub.status === 'active' ? 'Active' : sub.status === 'suspended' ? 'Suspended' : sub.status === 'pending' ? 'Pending Activation' : sub.status}</span>
               </div>
               {/* Expiration */}
               {sub.startDate && (

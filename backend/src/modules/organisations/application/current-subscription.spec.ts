@@ -21,6 +21,7 @@ import {
 
 interface SubRow {
   plan_snapshot: string | null;
+  subscription_status?: string;
 }
 
 function makeConn(subRow: SubRow, planName: string) {
@@ -31,7 +32,7 @@ function makeConn(subRow: SubRow, planName: string) {
         organisation_id: 6,
         plan_id: 9,
         billing_cycle: 'monthly',
-        subscription_status: 'active',
+        subscription_status: subRow.subscription_status || 'active',
         start_date: '2026-08-01',
         end_date: null,
         auto_renew: 1,
@@ -77,5 +78,16 @@ describe('getCurrentSubscription plan name resolution', () => {
     const snap = JSON.stringify({ planName: 'Snap Seller', isInternal: false, features: [], commissionRates: [] });
     const sub = await getCurrentSubscription(6, makeConn({ plan_snapshot: snap }, 'Ignored'));
     expect(sub.planName).toBe('Snap Seller');
+  });
+
+  it('reflects suspended status as effectiveStatus suspended (not active)', async () => {
+    const sub = await getCurrentSubscription(6, makeConn({ plan_snapshot: null, subscription_status: 'suspended' }, 'Pro Seller'));
+    expect(sub.effectiveStatus).toBe('suspended');
+    expect(sub.subscriptionStatus).toBe('suspended');
+  });
+
+  it('reflects pending status as effectiveStatus pending (not suspended)', async () => {
+    const sub = await getCurrentSubscription(6, makeConn({ plan_snapshot: null, subscription_status: 'pending' }, 'Pro Seller'));
+    expect(sub.effectiveStatus).toBe('pending');
   });
 });
