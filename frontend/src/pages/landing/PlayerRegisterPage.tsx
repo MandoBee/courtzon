@@ -11,6 +11,8 @@ import { useToast } from '../../components/ui/Toast';
 import { ReactivationModal } from '../../components/ui/ReactivationModal';
 import { PasswordInput } from '../../components/ui/PasswordInput';
 import LegalConsent from '../../components/legal/LegalConsent';
+import { useAuthStore } from '../../store/auth.store';
+import { resolveUserHome } from '../../store/workspace.store';
 
 interface Country { id: number; name: string; phone_code: string; iso_code: string; flag_emoji?: string; default_currency?: string; }
 interface Sport { id: number; name: string; }
@@ -37,6 +39,7 @@ export default function PlayerRegisterPage() {
   const [showReactivationModal, setShowReactivationModal] = useState(false);
   const { t } = useTranslation();
   const { showToast } = useToast();
+  const checkAuth = useAuthStore((s) => s.checkAuth);
 
   const [form, setForm] = useState({
     countryId: 0, phoneNumber: '', fullName: '', email: '',
@@ -142,7 +145,12 @@ export default function PlayerRegisterPage() {
         interestedSportIds: form.interestedSportIds,
         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       });
+      // The backend creates an authenticated session and sets HttpOnly cookies,
+      // so the player can go straight to their dashboard without logging in again.
       setSuccess(true);
+      showToast(t('landing.player_reg.success_title'));
+      await checkAuth();
+      navigate(resolveUserHome().path, { replace: true });
     } catch (err: unknown) {
       setError(getErrorMessage(err, 'Registration failed. Please try again.'));
     } finally {
