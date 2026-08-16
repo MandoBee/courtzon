@@ -56,4 +56,21 @@ describe('Event contract: booking.cancelled', () => {
     const events = cancelBookingHandler.events!(cmd, result);
     expect(events[0].payload.reason).toBeNull();
   });
+
+  it('carries booking identity for realtime room resolution', () => {
+    const events = cancelBookingHandler.events!(command, {
+      bookingId: 42, aggregateVersion: 2, userId: 7,
+      organisationId: 5, branchId: 3, resourceId: 9,
+      bookingDate: '2026-08-20', startTime: '10:00', endTime: '11:00',
+    });
+    const payload = events[0].payload as Record<string, unknown>;
+    expect(payload.userId).toBe(7);
+    expect(payload.organisationId).toBe(5);
+    expect(payload.branchId).toBe(3);
+    expect(payload.resourceId).toBe(9);
+    expect(payload.bookingDate).toBe('2026-08-20');
+    expect(payload.startTime).toBe('10:00');
+    expect(payload.endTime).toBe('11:00');
+    expect(payload.reason).toBe('User request');
+  });
 });

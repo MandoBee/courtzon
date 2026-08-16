@@ -9,6 +9,7 @@ import { Can } from '../../permissions/Can';
 import { useToast } from '../../components/ui/Toast';
 import { useTranslation } from '../../i18n';
 import { localToday } from '../../utils/dateRange';
+import { useResourceRoom } from '../../realtime/useResourceRoom';
 
 const BookingSchema = z.object({
   bookingDate: z.string().min(1, 'Date is required'),
@@ -40,6 +41,8 @@ export default function BookingFormPage() {
 
   const date = watch('bookingDate');
   const startTime = watch('startTime');
+
+  useResourceRoom(resourceId ? Number(resourceId) : null);
 
   const { data: resource } = useQuery({
     queryKey: ['resource', resourceId],

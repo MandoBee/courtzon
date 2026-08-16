@@ -1,4 +1,5 @@
 import { securityRepository } from '../infrastructure/security.repository.js';
+import { eventBusV2 } from '../../../shared/event-bus/event-bus.v2.js';
 
 class SecurityService {
   async getDashboard() {
@@ -23,7 +24,15 @@ class SecurityService {
   }
 
   async revokeSession(sessionId: number) {
+    const session = await securityRepository.getSessionById(sessionId);
     await securityRepository.revokeSession(sessionId);
+    if (session?.user_id) {
+      eventBusV2.emit('security:session-revoked', { userId: session.user_id, sessionId }, {
+        aggregateType: 'session',
+        aggregateId: String(sessionId),
+        aggregateVersion: 1,
+      });
+    }
   }
 
   async getFailedLoginStats(days?: number) {

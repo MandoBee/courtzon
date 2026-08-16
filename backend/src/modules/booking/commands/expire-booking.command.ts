@@ -10,7 +10,17 @@ import type { BookingStatus } from '../domain/booking-aggregate.js';
 const log = createModuleLogger('booking');
 
 export interface ExpireBookingPayload { bookingId: number }
-export interface ExpireBookingResult { bookingId: number; aggregateVersion?: number }
+export interface ExpireBookingResult {
+  bookingId: number;
+  aggregateVersion?: number;
+  userId?: number;
+  organisationId?: number | null;
+  branchId?: number | null;
+  resourceId?: number | null;
+  bookingDate?: string | null;
+  startTime?: string | null;
+  endTime?: string | null;
+}
 
 export const expireBookingHandler: CommandHandler<Command, ExpireBookingResult> = {
 
@@ -26,7 +36,16 @@ export const expireBookingHandler: CommandHandler<Command, ExpireBookingResult> 
 
     if (booking.booking_status === 'expired') {
       log.warn({ bookingId: p.bookingId }, 'booking.already_expired');
-      return { bookingId: p.bookingId };
+      return {
+        bookingId: p.bookingId,
+        userId: booking.user_id,
+        organisationId: booking.organisation_id,
+        branchId: booking.branch_id,
+        resourceId: booking.resource_id,
+        bookingDate: booking.booking_date,
+        startTime: booking.start_time,
+        endTime: booking.end_time,
+      };
     }
 
     canExpire(booking, systemClock);
@@ -39,12 +58,32 @@ export const expireBookingHandler: CommandHandler<Command, ExpireBookingResult> 
 
     await bookingRepository.persistTransition(p.bookingId, 'expired', undefined, booking.aggregate_version || 1, conn);
     log.info({ bookingId: p.bookingId, version: transition.newVersion }, 'booking.expired');
-    return { bookingId: p.bookingId, aggregateVersion: transition.newVersion };
+    return {
+      bookingId: p.bookingId,
+      aggregateVersion: transition.newVersion,
+      userId: booking.user_id,
+      organisationId: booking.organisation_id,
+      branchId: booking.branch_id,
+      resourceId: booking.resource_id,
+      bookingDate: booking.booking_date,
+      startTime: booking.start_time,
+      endTime: booking.end_time,
+    };
   },
 
   events: (command, result) => [{
     eventName: 'booking:expired',
-    payload: { bookingId: result.bookingId, aggregateVersion: result.aggregateVersion },
+    payload: {
+      bookingId: result.bookingId,
+      aggregateVersion: result.aggregateVersion,
+      userId: result.userId,
+      organisationId: result.organisationId,
+      branchId: result.branchId,
+      resourceId: result.resourceId,
+      bookingDate: result.bookingDate,
+      startTime: result.startTime,
+      endTime: result.endTime,
+    },
     context: {
       aggregateType: 'booking', aggregateId: String(result.bookingId),
       aggregateVersion: result.aggregateVersion || 1,

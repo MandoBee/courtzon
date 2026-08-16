@@ -11,6 +11,7 @@ import PaymobPixelCard from '../payment/PaymobPixelCard';
 import PaymentStatusPoller from '../payment/PaymentStatusPoller';
 import { usePaymentConfirm } from '../../hooks/usePaymentConfirm';
 import WalletPaymentOption from '../payment/WalletPaymentOption';
+import { useResourceRoom } from '../../realtime/useResourceRoom';
 
 interface BookingModalProps {
   open: boolean;
@@ -213,6 +214,9 @@ export default function BookingModal({ open, onClose }: BookingModalProps) {
   const [pendingBookingId, setPendingBookingId] = useState<number | null>(null);
   const [paymentId, setPaymentId] = useState<number | null>(null);
   const prepareIdRef = useRef<string | null>(null);
+
+  // Real-time availability: join resource:{id} room while the modal is open.
+  useResourceRoom(open ? selectedResourceId : null);
 
   const requestAccessMutation = useMutation({
     mutationFn: (branchId: number) => api.post(`/branches/${branchId}/request-access`),

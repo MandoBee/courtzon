@@ -30,7 +30,7 @@ export function mapDomainEvent(eventName: string, payload: Record<string, unknow
         rooms: payload.targetRole ? [`role:${payload.targetRole}`] : ['player'],
       };
     }
-    if (eventName.startsWith('user:') || eventName.startsWith('auth:') || eventName.startsWith('security:')) {
+    if (eventName.startsWith('user:') || eventName.startsWith('auth:') || eventName.startsWith('security:') || eventName.startsWith('user.')) {
       return mapUserSecurityEvent(eventName, payload);
     }
     return null;
@@ -44,13 +44,6 @@ function roomsForUser(userId: number): string[] {
   return userId ? [`user:${userId}`] : [];
 }
 
-function roomsForBooking(bookingId: number, userId?: number): string[] {
-  const rooms: string[] = [];
-  if (bookingId) rooms.push(`booking:${bookingId}`);
-  if (userId) rooms.push(`user:${userId}`);
-  return rooms;
-}
-
 function mapBookingEvent(eventName: string, p: Record<string, any>): MappedSocketEvent {
   const sub = eventName.split(':')[1] || 'updated';
   const typeMap: Record<string, string> = {
@@ -58,10 +51,28 @@ function mapBookingEvent(eventName: string, p: Record<string, any>): MappedSocke
     'no-show': 'no_show',
   };
   const type = `booking.${typeMap[sub] || sub}`;
+  const resourceId = p.resourceId ?? p.courtId ?? null;
+  const rooms: string[] = [];
+  if (p.bookingId) rooms.push(`booking:${p.bookingId}`);
+  if (p.userId) rooms.push(`user:${p.userId}`);
+  if (resourceId) rooms.push(`resource:${resourceId}`);
+  if (p.organisationId) rooms.push(`organisation:${p.organisationId}`);
   return {
     type,
-    payload: { bookingId: p.bookingId, userId: p.userId, status: p.booking_status || p.status, startTime: p.startTime, endTime: p.endTime },
-    rooms: roomsForBooking(p.bookingId, p.userId),
+    payload: {
+      bookingId: p.bookingId,
+      userId: p.userId,
+      status: p.booking_status || p.status,
+      resourceId,
+      courtId: resourceId,
+      bookingDate: p.bookingDate || null,
+      startTime: p.startTime,
+      endTime: p.endTime,
+      organisationId: p.organisationId,
+      branchId: p.branchId,
+      reason: p.reason,
+    },
+    rooms,
   };
 }
 
@@ -229,6 +240,8 @@ function mapUserSecurityEvent(eventName: string, p: Record<string, any>): Mapped
     'user:deleted': 'user.account.deleted',
     'auth:logout': 'user.force.logout',
     'security:permission-changed': 'user.permissions.changed',
+    'security:session-revoked': 'user.force.logout',
+    'user.role.changed': 'user.roles.changed',
   };
   const type = types[eventName] || eventName.replace(/:/g, '.');
   return {

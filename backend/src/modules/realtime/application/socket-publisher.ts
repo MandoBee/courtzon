@@ -63,6 +63,8 @@ export class SocketPublisher {
       'membership:expiring', 'membership:expired', 'membership:renewed',
       'system:announcement',
       'setting:updated', 'setting:profile-applied',
+      'user:suspended', 'user:activated', 'user:deleted', 'user.role.changed',
+      'security:session-revoked',
     ];
 
     for (const eventName of subscribedEvents) {

@@ -9,7 +9,17 @@ import type { BookingStatus } from '../domain/booking-aggregate.js';
 const log = createModuleLogger('booking');
 
 export interface CancelBookingPayload { bookingId: number; reason?: string }
-export interface CancelBookingResult { bookingId: number; aggregateVersion?: number }
+export interface CancelBookingResult {
+  bookingId: number;
+  aggregateVersion?: number;
+  userId?: number;
+  organisationId?: number | null;
+  branchId?: number | null;
+  resourceId?: number | null;
+  bookingDate?: string | null;
+  startTime?: string | null;
+  endTime?: string | null;
+}
 
 export const cancelBookingHandler: CommandHandler<Command, CancelBookingResult> = {
 
@@ -35,14 +45,35 @@ export const cancelBookingHandler: CommandHandler<Command, CancelBookingResult> 
 
     await bookingRepository.persistTransition(p.bookingId, 'cancelled', undefined, booking.aggregate_version || 1, conn);
     log.info({ bookingId: p.bookingId, version: transition.newVersion }, 'booking.cancelled');
-    return { bookingId: p.bookingId, aggregateVersion: transition.newVersion };
+    return {
+      bookingId: p.bookingId,
+      aggregateVersion: transition.newVersion,
+      userId: booking.user_id,
+      organisationId: booking.organisation_id,
+      branchId: booking.branch_id,
+      resourceId: booking.resource_id,
+      bookingDate: booking.booking_date,
+      startTime: booking.start_time,
+      endTime: booking.end_time,
+    };
   },
 
   events: (command, result) => {
     const p = command.payload as unknown as CancelBookingPayload;
     return [{
       eventName: 'booking:cancelled',
-      payload: { bookingId: result.bookingId, reason: p.reason || null, aggregateVersion: result.aggregateVersion },
+      payload: {
+        bookingId: result.bookingId,
+        reason: p.reason || null,
+        aggregateVersion: result.aggregateVersion,
+        userId: result.userId,
+        organisationId: result.organisationId,
+        branchId: result.branchId,
+        resourceId: result.resourceId,
+        bookingDate: result.bookingDate,
+        startTime: result.startTime,
+        endTime: result.endTime,
+      },
       context: {
         aggregateType: 'booking', aggregateId: String(result.bookingId),
         aggregateVersion: result.aggregateVersion || 1,

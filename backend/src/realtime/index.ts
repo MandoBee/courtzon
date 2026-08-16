@@ -92,6 +92,16 @@ export function setupRealtime(app: FastifyInstance): SocketIOServer {
       const userId: number = session.user_id;
       socket.data.userId = userId;
 
+      const [userRows] = await pool.execute<any[]>(
+        'SELECT account_status, deleted_at FROM users WHERE id = ? LIMIT 1',
+        [userId],
+      );
+      const account = userRows[0];
+      if (!account || account.account_status !== 'active' || account.deleted_at) {
+        slog(sid, 'REJECT: Account not active');
+        return next(new Error('Authentication failed'));
+      }
+
       const [roles] = await pool.execute<any[]>(
         `SELECT DISTINCT r.slug FROM user_roles ur
          JOIN roles r ON r.id = ur.role_id
@@ -158,6 +168,8 @@ export function setupRealtime(app: FastifyInstance): SocketIOServer {
     socket.on('leave:match', (id: number) => { socket.leave(`match:${id}`); });
     socket.on('join:conversation', (id: number) => { socket.join(`conversation:${id}`); });
     socket.on('leave:conversation', (id: number) => { socket.leave(`conversation:${id}`); });
+    socket.on('join:resource', (id: number) => { if (id) socket.join(`resource:${id}`); });
+    socket.on('leave:resource', (id: number) => { if (id) socket.leave(`resource:${id}`); });
 
     socket.on('notification:read', async (data) => {
       if (!data?.notificationId) return;
