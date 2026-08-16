@@ -95,7 +95,7 @@ export class AuthService {
     return this.createSession(userId, meta);
   }
 
-  async registerPlayer(input: PlayerRegisterInput, meta: { ip: string; userAgent?: string; deviceFingerprint?: string }): Promise<{ user: any; isApproved: boolean }> {
+  async registerPlayer(input: PlayerRegisterInput, meta: { ip: string; userAgent?: string; deviceFingerprint?: string }): Promise<{ user: any; session: AuthResponse['session']; isApproved: boolean }> {
     const countryPhoneCode = input.countryCode || await userRepository.getCountryPhoneCode(input.countryId);
     if (!countryPhoneCode) throw new Error(`Country ${input.countryId} not found`);
 
@@ -128,10 +128,12 @@ export class AuthService {
       await userRepository.setSportInterestIds(userId, input.interestedSportIds);
     }
 
-    const user = await userRepository.findById(userId);
-    const roles = await this.getUserRoles(userId);
-    const permissions = await rbacRepository.getUserPermissionKeys(userId);
-    return { user: this.mapUserResponse(user, roles, permissions), isApproved: false };
+    // Player registration is self-service (no approval step), so create an
+    // authenticated session immediately — same as the base `register` and the
+    // seller free/card flows. This lets the frontend land the player directly
+    // on their dashboard instead of forcing a second manual login.
+    const sessionResult = await this.createSession(userId, meta);
+    return { ...sessionResult, isApproved: false };
   }
 
   async registerSeller(input: SellerRegisterInput, meta: { ip: string; userAgent?: string; deviceFingerprint?: string }): Promise<{ user: any; isApproved: boolean; session?: AuthResponse['session']; payment?: { paymentId: number; clientSecret: string | null } | null; paymentWarning?: string }> {
