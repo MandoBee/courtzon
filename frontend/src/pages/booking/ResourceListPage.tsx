@@ -2,8 +2,10 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useParams, Link } from 'react-router-dom';
 import api from '../../services/api';
+import { useResourceRoom } from '../../realtime/useResourceRoom';
 
 function ResourceSlots({ resourceId, date }: { resourceId: number; date: string }) {
+  useResourceRoom(resourceId);
   const { data: slotsData, isLoading } = useQuery({
     queryKey: ['resource-slots', resourceId, date],
     queryFn: () => api.get(`/resources/${resourceId}/slots?date=${date}`).then((r) => r.data.data),

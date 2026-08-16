@@ -1,5 +1,7 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { useSocketEvent } from './useSocket';
+import { useAuthStore } from '../store/auth.store';
+import { disconnectSocket, createSocket } from './socket-client';
 
 /**
  * Centralized realtime cache update handler.
@@ -10,11 +12,18 @@ export function useRealtimeCacheUpdates(): void {
   const qc = useQueryClient();
 
   // ── Booking events ─────────────────────────────────────────────
-  useSocketEvent('booking.created', () => {
+  const invalidateSlots = (p: any) => {
+    if (p?.resourceId && p?.bookingDate) {
+      qc.invalidateQueries({ queryKey: ['resource-slots', p.resourceId, p.bookingDate] });
+    }
+  };
+
+  useSocketEvent('booking.created', (p: any) => {
     console.log(`[TRACE][React][${new Date().toISOString()}] [useRealtimeCacheUpdates] booking.created RECEIVED — invalidating queries`);
     qc.invalidateQueries({ queryKey: ['user-bookings'] });
     qc.invalidateQueries({ queryKey: ['home-upcoming-bookings'] });
     qc.invalidateQueries({ queryKey: ['home-recent-activity'] });
+    invalidateSlots(p);
   });
 
   useSocketEvent('booking.confirmed', (p: any) => {
@@ -30,11 +39,13 @@ export function useRealtimeCacheUpdates(): void {
     qc.invalidateQueries({ queryKey: ['org-bookings'] });
     qc.invalidateQueries({ queryKey: ['admin-bookings'] });
     qc.invalidateQueries({ queryKey: ['home-upcoming-bookings'] });
+    invalidateSlots(p);
   });
 
   useSocketEvent('booking.expired', (p: any) => {
     qc.setQueryData(['booking', p.bookingId], (old: any) => old ? { ...old, booking_status: 'expired' } : old);
     qc.invalidateQueries({ queryKey: ['user-bookings'] });
+    invalidateSlots(p);
   });
 
   useSocketEvent('booking.completed', (p: any) => {
@@ -251,5 +262,28 @@ export function useRealtimeCacheUpdates(): void {
 
   useSocketEvent('presence.offline', (p: any) => {
     qc.setQueryData(['user-presence', p.userId], () => false);
+  });
+
+  // ── Security / access events (centralized force logout) ────────
+  const forceLogout = useAuthStore((s) => s.forceLogout);
+
+  useSocketEvent('user.account.suspended', (p: any) => {
+    forceLogout(p?.reason || 'Your account has been suspended');
+  });
+
+  useSocketEvent('user.account.deleted', () => {
+    forceLogout('Your account has been deleted');
+  });
+
+  useSocketEvent('user.force.logout', (p: any) => {
+    forceLogout(p?.reason || 'Session terminated by administrator');
+  });
+
+  useSocketEvent('user.roles.changed', () => {
+    qc.invalidateQueries({ queryKey: ['me'] });
+    qc.invalidateQueries({ queryKey: ['admin', 'user'] });
+    // Refresh socket room membership (role/admin/org rooms) for the new role set.
+    disconnectSocket();
+    createSocket();
   });
 }

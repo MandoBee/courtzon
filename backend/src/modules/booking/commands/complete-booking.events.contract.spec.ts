@@ -26,4 +26,20 @@ describe('Event contract: booking.completed', () => {
     expect(events[0].context.aggregateType).toBe('booking');
     expect(events[0].context.aggregateVersion).toBe(3);
   });
+
+  it('carries booking identity for realtime room resolution', () => {
+    const events = completeBookingHandler.events!(
+      { commandId: 'ec3', commandType: 'CompleteBooking', aggregateType: 'booking', aggregateId: '42', payload: { bookingId: 42 } } as Command,
+      {
+        bookingId: 42, aggregateVersion: 3, userId: 7,
+        organisationId: 5, branchId: 3, resourceId: 9,
+        bookingDate: '2026-08-20', startTime: '10:00', endTime: '11:00',
+      },
+    );
+    const payload = events[0].payload as Record<string, unknown>;
+    expect(payload.userId).toBe(7);
+    expect(payload.organisationId).toBe(5);
+    expect(payload.resourceId).toBe(9);
+    expect(payload.bookingDate).toBe('2026-08-20');
+  });
 });
