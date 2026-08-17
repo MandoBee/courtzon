@@ -156,7 +156,7 @@ export class RBACService {
     const user = await rbacRepository.getUserById(userId);
     if (!user) throw new NotFoundError('User');
     const prevStatus = user.account_status;
-    await rbacRepository.updateUser(userId, data);
+    const coachChanged = await rbacRepository.updateUser(userId, data);
     if (data.accountStatus && data.accountStatus !== prevStatus) {
       if (data.accountStatus === 'suspended') {
         try { eventBus.emit('user:suspended' as any, { userId, reason: 'Admin action' }); } catch {}
@@ -164,7 +164,8 @@ export class RBACService {
         try { eventBus.emit('user:activated' as any, { userId }); } catch {}
       }
     }
-    return this.getUserById(userId);
+    const updated = await this.getUserById(userId);
+    return { ...updated, coachChanged };
   }
 
   async deleteUser(userId: number, actorId: number) {
