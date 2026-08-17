@@ -318,6 +318,7 @@ export function useRealtimeCacheUpdates(): void {
       qc.invalidateQueries({ queryKey: ['org-subscription-requests'] });
       qc.invalidateQueries({ queryKey: ['admin-approvals'] });
       qc.invalidateQueries({ queryKey: ['org-subscription'] });
+      qc.invalidateQueries({ queryKey: ['admin', 'organisation-subscriptions'] });
     });
   }
 

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../../services/api';
 import { useToast } from '../../../components/ui/Toast';
@@ -8,21 +9,24 @@ import { getErrorMessage } from '../../../utils/errors';
 export default function SubscriptionRequestsPage() {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
-  const [statusFilter, setStatusFilter] = useState('pending');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [statusFilter, setStatusFilter] = useState(searchParams.get('status') || 'pending');
+  const [orgFilter, setOrgFilter] = useState<string>(searchParams.get('orgId') || '');
   const [typeFilter, setTypeFilter] = useState('');
   const [page, setPage] = useState(1);
   const [rejectingId, setRejectingId] = useState<number | null>(null);
   const [rejectReason, setRejectReason] = useState('');
 
   const { data, isLoading } = useQuery({
-    queryKey: ['admin', 'subscription-requests', { status: statusFilter, type: typeFilter, page }],
+    queryKey: ['admin', 'subscription-requests', { status: statusFilter, type: typeFilter, page, orgId: orgFilter }],
     queryFn: () =>
       api.get('/admin/subscription-requests', {
         params: {
-          status: statusFilter === 'all' ? undefined : statusFilter || undefined,
+          status: statusFilter,
           type: typeFilter || undefined,
           page,
           limit: 20,
+          orgId: orgFilter || undefined,
         },
       }).then((r: any) => r.data),
   });
@@ -65,7 +69,11 @@ export default function SubscriptionRequestsPage() {
           {['pending', 'approved', 'rejected', 'cancelled', 'all'].map(s => (
             <button
               key={s}
-              onClick={() => { setStatusFilter(s); setPage(1); }}
+              onClick={() => {
+                setStatusFilter(s);
+                setPage(1);
+                setSearchParams(s === 'all' ? {} : { status: s });
+              }}
               className={`px-3 py-1.5 text-xs font-medium rounded-[var(--radius-md)] transition-colors ${
                 statusFilter === s
                   ? 'bg-[var(--color-primary)] text-white'
@@ -76,6 +84,17 @@ export default function SubscriptionRequestsPage() {
             </button>
           ))}
         </div>
+        {orgFilter && (
+          <button
+            onClick={() => { setOrgFilter(''); setPage(1); setSearchParams({ status: statusFilter }); }}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-full bg-[var(--color-info-bg)] text-[var(--color-info-text)] border border-[var(--color-info)]/40 hover:bg-[var(--color-info-bg)]/70"
+            title="Remove organisation filter"
+          >
+            <span aria-hidden="true">🔍</span>
+            Organisation #{orgFilter}
+            <span aria-hidden="true" className="font-bold">×</span>
+          </button>
+        )}
         <select
           value={typeFilter}
           onChange={e => { setTypeFilter(e.target.value); setPage(1); }}

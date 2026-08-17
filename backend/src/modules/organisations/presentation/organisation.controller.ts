@@ -991,7 +991,7 @@ export async function upsertResourcePeakHoursHandler(request: FastifyRequest, re
 // ── Admin subscription requests ──
 
 export async function listSubscriptionRequestsHandler(request: FastifyRequest, reply: FastifyReply) {
-  const { status, page, limit, type, search, dateFrom, dateTo, sortBy, sortDir } = request.query as any;
+  const { status, page, limit, type, search, dateFrom, dateTo, sortBy, sortDir, orgId } = request.query as any;
   const result = await organisationService.listSubscriptionRequests({
     status: status || 'pending',
     page: page ? Number(page) : 1,
@@ -1002,6 +1002,7 @@ export async function listSubscriptionRequestsHandler(request: FastifyRequest, r
     dateTo,
     sortBy,
     sortDir,
+    orgId: orgId ? Number(orgId) : undefined,
   });
   return reply.send({ data: result.rows, total: result.total, page: result.page, limit: result.limit });
 }
