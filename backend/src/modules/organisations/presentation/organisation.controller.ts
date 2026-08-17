@@ -1017,7 +1017,7 @@ export async function getSubscriptionRequestDetailHandler(request: FastifyReques
 export async function approveSubscriptionRequestHandler(request: FastifyRequest, reply: FastifyReply) {
   const { requestId } = request.params as any;
   const adminId = (request as any).userId;
-  const { approvalNotes } = request.body as any;
+  const { approvalNotes } = (request.body ?? {}) as any;
   await organisationService.approveSubscriptionRequest(Number(requestId), adminId, approvalNotes);
 
   return reply.send({ success: true });
@@ -1030,7 +1030,7 @@ export async function getSubscriptionRequestStatsHandler(request: FastifyRequest
 
 export async function rejectSubscriptionRequestHandler(request: FastifyRequest, reply: FastifyReply) {
   const { requestId } = request.params as any;
-  const { reason } = request.body as any;
+  const { reason } = (request.body ?? {}) as any;
   const adminId = (request as any).userId;
   const result = await organisationService.rejectSubscriptionRequest(Number(requestId), adminId, reason || 'No reason provided');
   recordAudit({
