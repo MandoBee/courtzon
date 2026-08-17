@@ -101,3 +101,39 @@ describe('dispatchToUser', () => {
     expect(execute).not.toHaveBeenCalledWith(expect.stringContaining('INSERT INTO notifications'), expect.anything());
   });
 });
+
+describe('Dispatcher target queries use users.account_status (not non-existent users.is_active)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    execute.mockReset();
+    execute.mockImplementation(async (sql: string) => {
+      if (sql.includes('SELECT id FROM notification_actions')) return [[{ id: 7 }]];
+      if (sql.includes('INSERT INTO notifications')) return [{ insertId: 123 }];
+      return [[]];
+    });
+  });
+
+  it('dispatchByRole filters active users by account_status', async () => {
+    const { dispatchByRole } = await import('./dispatcher.service.js');
+    await dispatchByRole('org-admin', { eventName: 'x', categorySlug: 'c', data: {} });
+    const orgRoleSql = execute.mock.calls.find(([s]) => String(s).includes('user_roles') && String(s).includes('JOIN roles r'));
+    expect(String(orgRoleSql[0])).toContain("u.account_status = 'active'");
+    expect(String(orgRoleSql[0])).not.toContain('u.is_active');
+  });
+
+  it('dispatchByOrg filters active users by account_status', async () => {
+    const { dispatchByOrg } = await import('./dispatcher.service.js');
+    await dispatchByOrg(6, { eventName: 'x', categorySlug: 'c', data: {} });
+    const orgSql = execute.mock.calls.find(([s]) => String(s).includes('user_organisations'));
+    expect(String(orgSql[0])).toContain("u.account_status = 'active'");
+    expect(String(orgSql[0])).not.toContain('u.is_active');
+  });
+
+  it('dispatchByBranch filters active users by account_status', async () => {
+    const { dispatchByBranch } = await import('./dispatcher.service.js');
+    await dispatchByBranch(3, { eventName: 'x', categorySlug: 'c', data: {} });
+    const branchSql = execute.mock.calls.find(([s]) => String(s).includes('user_branches'));
+    expect(String(branchSql[0])).toContain("u.account_status = 'active'");
+    expect(String(branchSql[0])).not.toContain('u.is_active');
+  });
+});
