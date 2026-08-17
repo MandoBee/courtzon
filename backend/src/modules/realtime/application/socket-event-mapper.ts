@@ -22,12 +22,20 @@ export function mapDomainEvent(eventName: string, payload: Record<string, unknow
     if (eventName.startsWith('coach:')) return mapCoachEvent(eventName, payload);
     if (eventName.startsWith('attendance:')) return mapAttendanceEvent(eventName, payload);
     if (eventName.startsWith('membership:')) return mapMembershipEvent(eventName, payload);
+    if (eventName.startsWith('tournament:')) return mapTournamentEvent(eventName, payload);
     if (eventName.startsWith('match:')) return mapMatchEvent(eventName, payload);
     if (eventName === 'system:announcement') {
       return {
         type: 'system.announcement',
         payload: { title: payload.title, body: payload.body, level: payload.level },
         rooms: payload.targetRole ? [`role:${payload.targetRole}`] : ['player'],
+      };
+    }
+    if (eventName.startsWith('setting:')) {
+      return {
+        type: `setting.${eventName.split(':')[1] || 'updated'}`,
+        payload: { key: payload.key, profileId: payload.profileId },
+        rooms: [ADMIN_ROOM],
       };
     }
     if (eventName.startsWith('user:') || eventName.startsWith('auth:') || eventName.startsWith('security:') || eventName.startsWith('user.')) {
@@ -220,6 +228,18 @@ function mapMembershipEvent(eventName: string, p: Record<string, any>): MappedSo
     type: `membership.${eventName.split(':')[1] || 'updated'}`,
     payload: { membershipId: p.membershipId, userId: p.userId, type: p.type },
     rooms: roomsForUser(p.userId),
+  };
+}
+
+function mapTournamentEvent(eventName: string, p: Record<string, any>): MappedSocketEvent {
+  const sub = eventName.split(':')[1] || 'updated';
+  const rooms: string[] = [];
+  if (p.userId) rooms.push(`user:${p.userId}`);
+  if (p.organisationId) rooms.push(`organisation:${p.organisationId}`);
+  return {
+    type: `tournament.${sub}`,
+    payload: { tournamentId: p.tournamentId, matchId: p.matchId, userId: p.userId, name: p.name, result: p.result },
+    rooms,
   };
 }
 

@@ -155,6 +155,19 @@ export interface DomainEventMap {
   'system:birthday': BaseEvent & { userId: number; name: string };
   'system:digest': BaseEvent & { userId: number; notifications: Array<{ id: number; title: string; categorySlug: string }> };
   'notification:broadcast': BaseEvent & { broadcastId: number; payload: BroadcastPayload; target: BroadcastTarget };
+  'notification:delivered': BaseEvent & { notificationId: number; userId: number; title?: string; body?: string; type?: string };
+  'notification:unread-count': BaseEvent & { userId: number };
+  'notification:sync-read': BaseEvent & { notificationId: number; userId: number; sourceDeviceId?: string; timestamp?: number };
+  'notification:sync-deleted': BaseEvent & { notificationId: number; userId: number; sourceDeviceId?: string; timestamp?: number };
+  'membership:created': BaseEvent & { membershipId: number; userId: number; planId: number; endDate?: string };
+  'organisation:status-changed': BaseEvent & { organisationId: number; status: string };
+  'organisation:subscription-status-changed': BaseEvent & { organisationId: number; subscriptionStatus: string };
+  'match:available': BaseEvent & { matchId: number; userId?: number };
+  'match:removed': BaseEvent & { matchId: number; userId?: number };
+  'match:updated': BaseEvent & { matchId: number; userId?: number; status?: string };
+  'match:pending': BaseEvent & { matchId: number; userId: number };
+  'user.role.changed': BaseEvent & { userId: number; roleId?: number; roleName?: string };
+  'security:session-revoked': BaseEvent & { userId: number; reason?: string };
   'setting:updated': BaseEvent & { key: string; oldValue: string; newValue: string; changedBy: number };
   'setting:profile-applied': BaseEvent & { profileId: number; profileName: string; appliedBy: number };
 }
