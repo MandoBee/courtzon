@@ -1042,15 +1042,6 @@ export async function rejectSubscriptionRequestHandler(request: FastifyRequest, 
     ipAddress: request.ip,
     userAgent: request.headers['user-agent'],
   });
-  recordAudit({
-    actorId: adminId,
-    action: 'SUBSCRIPTION.REJECTED',
-    entityType: 'organisation_subscription',
-    entityId: (result as any).organisation_id,
-    afterState: { reason, requestType: (result as any).request_type },
-    ipAddress: request.ip,
-    userAgent: request.headers['user-agent'],
-  });
 
   const { eventBus: eventBusV2 } = await import('../../../shared/event-bus/index.js');
   eventBusV2.emit('subscription:request-rejected', {
