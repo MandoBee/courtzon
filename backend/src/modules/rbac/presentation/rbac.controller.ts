@@ -174,7 +174,7 @@ export async function updateUserHandler(request: FastifyRequest, reply: FastifyR
   const { id } = request.params as any;
   const body = request.body as any;
   const user = await rbacService.updateUser(Number(id), body);
-  if (body.isCoach !== undefined) {
+  if (body.isCoach !== undefined && user.coachChanged) {
     const actorId = (request as any).userId;
     recordAudit({
       actorId,

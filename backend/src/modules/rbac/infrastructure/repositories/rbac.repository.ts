@@ -551,7 +551,7 @@ export class RBACRepository {
     return (result as mysql.ResultSetHeader).affectedRows > 0;
   }
 
-  async updateUser(userId: number, data: any): Promise<void> {
+  async updateUser(userId: number, data: any): Promise<boolean> {
     const fields: string[] = [];
     const values: any[] = [];
     const map: Record<string, string> = {
@@ -560,35 +560,78 @@ export class RBACRepository {
       birthDate: 'birth_date', languageId: 'language_id', countryId: 'country_id',
       timezone: 'timezone', darkMode: 'dark_mode',
     };
+    // Columns that may legitimately be cleared back to NULL by an empty selection.
+    const nullableCols = new Set(['language_id', 'birth_date', 'timezone']);
     for (const [key, col] of Object.entries(map)) {
-      if (data[key] !== undefined) { fields.push(`${col} = ?`); values.push(data[key]); }
+      if (data[key] === undefined) continue;
+      // Empty string from an unselected dropdown: clear nullable columns, skip NOT NULL ones.
+      if (data[key] === '') {
+        if (nullableCols.has(col)) fields.push(`${col} = NULL`);
+        continue;
+      }
+      fields.push(`${col} = ?`);
+      values.push(data[key]);
     }
     if (fields.length) {
       values.push(userId);
       await this.pool.execute(`UPDATE users SET ${fields.join(', ')} WHERE id = ?`, values);
     }
-    if (data.isCoach !== undefined) {
-      const status = data.isCoach ? 'pending' : 'none';
-      // coach_profiles is the source of truth: upsert the row.
+
+    // Main sport / level live on player_profiles (nullable). Empty selection clears them.
+    const profileFields: string[] = [];
+    const profileValues: any[] = [];
+    if (data.mainSportId !== undefined) {
+      profileFields.push('main_sport_id');
+      profileValues.push(data.mainSportId === '' || data.mainSportId === null ? null : data.mainSportId);
+    }
+    if (data.mainLevelId !== undefined) {
+      profileFields.push('main_level_id');
+      profileValues.push(data.mainLevelId === '' || data.mainLevelId === null ? null : data.mainLevelId);
+    }
+    if (profileFields.length) {
+      const setClause = profileFields.map((c) => `${c} = VALUES(${c})`).join(', ');
       await this.pool.execute(
-        `INSERT INTO coach_profiles (user_id, status) VALUES (?, ?)
-         ON DUPLICATE KEY UPDATE status = VALUES(status), deleted_at = NULL`,
-        [userId, status]
+        `INSERT INTO player_profiles (user_id, ${profileFields.join(', ')})
+         VALUES (?, ${profileValues.map(() => '?').join(', ')})
+         ON DUPLICATE KEY UPDATE ${setClause}`,
+        [userId, ...profileValues]
       );
-      // Transitional dual-write to the legacy player_profiles columns (dropped later).
-      const [existing] = await this.pool.execute<RowData>(`SELECT id FROM player_profiles WHERE user_id = ?`, [userId]);
-      if (existing.length) {
+    }
+
+    // Only touch coach_profiles when the coach flag actually changes vs the current DB state.
+    let coachChanged = false;
+    if (data.isCoach !== undefined) {
+      const [coachRows] = await this.pool.execute<RowData>(
+        `SELECT status FROM coach_profiles WHERE user_id = ? AND deleted_at IS NULL`,
+        [userId]
+      );
+      const currentStatus = coachRows[0]?.status ?? 'none';
+      const isCurrentlyCoach = currentStatus === 'approved';
+      if (data.isCoach !== isCurrentlyCoach) {
+        coachChanged = true;
+        const status = data.isCoach ? 'pending' : 'none';
+        // coach_profiles is the source of truth: upsert the row.
         await this.pool.execute(
-          `UPDATE player_profiles SET is_coach = ?, coach_status = ? WHERE user_id = ?`,
-          [data.isCoach ? 1 : 0, status, userId]
+          `INSERT INTO coach_profiles (user_id, status) VALUES (?, ?)
+           ON DUPLICATE KEY UPDATE status = VALUES(status), deleted_at = NULL`,
+          [userId, status]
         );
-      } else if (data.isCoach) {
-        await this.pool.execute(
-          `INSERT INTO player_profiles (user_id, is_coach, coach_status) VALUES (?, 1, 'pending')`,
-          [userId]
-        );
+        // Transitional dual-write to the legacy player_profiles columns (dropped later).
+        const [existing] = await this.pool.execute<RowData>(`SELECT id FROM player_profiles WHERE user_id = ?`, [userId]);
+        if (existing.length) {
+          await this.pool.execute(
+            `UPDATE player_profiles SET is_coach = ?, coach_status = ? WHERE user_id = ?`,
+            [data.isCoach ? 1 : 0, status, userId]
+          );
+        } else if (data.isCoach) {
+          await this.pool.execute(
+            `INSERT INTO player_profiles (user_id, is_coach, coach_status) VALUES (?, 1, 'pending')`,
+            [userId]
+          );
+        }
       }
     }
+    return coachChanged;
   }
 
   async updateCoachStatus(userId: number, status: string, reason?: string): Promise<void> {
