@@ -398,6 +398,7 @@ export async function tryActivateSubscriptionRequest(
       requestType: req.request_type,
       requestedPlanName: req.requested_plan_name,
       billingCycle: req.requested_billing_cycle || 'monthly',
+      approvedBy: adminId,
     });
     if (req.request_type === 'RENEWAL') {
       eventBusV2.emit('organisation:subscription-renewed', {
