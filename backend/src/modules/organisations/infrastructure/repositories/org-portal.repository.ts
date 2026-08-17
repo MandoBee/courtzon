@@ -579,7 +579,7 @@ export async function getOrgPendingSubscriptionRequest(orgId: number) {
   const pool = getPool();
   const [rows] = await pool.execute<RowData>(
     `SELECT * FROM organisation_upgrade_requests
-     WHERE organisation_id = ? AND request_type IS NOT NULL AND status = 'pending'
+     WHERE organisation_id = ? AND status = 'pending'
      ORDER BY created_at DESC
      LIMIT 1`,
     [orgId],
@@ -590,11 +590,15 @@ export async function getOrgPendingSubscriptionRequest(orgId: number) {
 export async function listSubscriptionRequests(filters?: {
   status?: string; page?: number; limit?: number;
   type?: string; search?: string; dateFrom?: string; dateTo?: string;
-  sortBy?: string; sortDir?: string;
+  sortBy?: string; sortDir?: string; orgId?: number;
 }) {
   const pool = getPool();
-  const conditions: string[] = ["our.request_type IS NOT NULL"];
+  const conditions: string[] = [];
   const params: any[] = [];
+  if (filters?.orgId) {
+    conditions.push('our.organisation_id = ?');
+    params.push(filters.orgId);
+  }
   if (filters?.status && filters.status !== 'all') {
     conditions.push('our.status = ?');
     params.push(filters.status);
@@ -686,7 +690,7 @@ export async function listOrgSubscriptionRequests(orgId: number) {
      LEFT JOIN subscription_plans sp ON sp.id = our.requested_plan_id
      LEFT JOIN subscription_plans cp ON cp.id = our.current_plan_id
      JOIN users u ON u.id = our.requested_by
-     WHERE our.organisation_id = ? AND our.request_type IS NOT NULL
+     WHERE our.organisation_id = ?
      ORDER BY our.created_at DESC
      LIMIT 50`,
     [orgId],

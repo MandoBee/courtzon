@@ -1149,7 +1149,7 @@ export class OrganisationService {
   async listSubscriptionRequests(filters?: {
     status?: string; page?: number; limit?: number;
     type?: string; search?: string; dateFrom?: string; dateTo?: string;
-    sortBy?: string; sortDir?: string;
+    sortBy?: string; sortDir?: string; orgId?: number;
   }) {
     const { listSubscriptionRequests } = await import('../infrastructure/repositories/org-portal.repository.js');
     return listSubscriptionRequests(filters);
@@ -1180,7 +1180,7 @@ export class OrganisationService {
          SUM(status = 'approved' AND DATE(approved_at) = CURDATE()) as approved_today,
          SUM(status = 'rejected' AND DATE(approved_at) = CURDATE()) as rejected_today,
          ROUND(AVG(CASE WHEN status = 'approved' THEN TIMESTAMPDIFF(HOUR, created_at, approved_at) END), 1) as avg_approval_hours
-       FROM organisation_upgrade_requests WHERE request_type IS NOT NULL`,
+       FROM organisation_upgrade_requests`,
     );
     const s = rows[0] || {};
     // Active subscriptions

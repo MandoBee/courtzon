@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { getErrorMessage } from '../../../utils/errors';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../../services/api';
@@ -1154,6 +1155,18 @@ function ViewAssignments() {
                       Expired: 'bg-gray-100 text-[var(--color-text-muted)]',
                       Cancelled: 'bg-[var(--color-error-bg)] text-[var(--color-error-text)]',
                     };
+                    if (label === 'Pending') {
+                      return (
+                        <Link
+                          to={`/admin/subscription/requests?status=pending&orgId=${item.org_id}`}
+                          className={`inline-flex items-center gap-1.5 px-2 py-0.5 text-xs rounded-full no-underline hover:opacity-80 hover:ring-2 hover:ring-[var(--color-info)]/40 ${styles[label] || 'bg-gray-100 text-[var(--color-text-muted)]'}`}
+                          title="Review the pending subscription request for this organisation"
+                        >
+                          {label}
+                          <span aria-hidden="true" className="font-bold">→</span>
+                        </Link>
+                      );
+                    }
                     return (
                       <span className={`px-2 py-0.5 text-xs rounded-full ${styles[label] || 'bg-gray-100 text-[var(--color-text-muted)]'}`}>
                         {label}
