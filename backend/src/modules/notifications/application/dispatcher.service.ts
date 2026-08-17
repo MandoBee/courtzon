@@ -237,7 +237,7 @@ export async function dispatchByRole(
     `SELECT DISTINCT u.id FROM users u
      JOIN user_roles ur ON u.id = ur.user_id
      JOIN roles r ON ur.role_id = r.id
-     WHERE r.slug = ? AND u.is_active = TRUE AND u.deleted_at IS NULL`,
+     WHERE r.slug = ? AND u.account_status = 'active' AND u.deleted_at IS NULL`,
     [roleSlug],
   );
   const userIds = rows.map((r: any) => r.id);
@@ -269,7 +269,7 @@ export async function dispatchByOrg(
   const [rows] = await pool.execute<RowData>(
     `SELECT DISTINCT u.id FROM users u
      JOIN user_organisations uo ON u.id = uo.user_id
-     WHERE uo.organisation_id = ? AND u.is_active = TRUE AND u.deleted_at IS NULL`,
+     WHERE uo.organisation_id = ? AND u.account_status = 'active' AND u.deleted_at IS NULL`,
     [organisationId],
   );
   const userIds = rows.map((r: any) => r.id);
@@ -284,7 +284,7 @@ export async function dispatchByBranch(
   const [rows] = await pool.execute<RowData>(
     `SELECT DISTINCT u.id FROM users u
      JOIN user_branches ub ON u.id = ub.user_id
-     WHERE ub.branch_id = ? AND u.is_active = TRUE AND u.deleted_at IS NULL`,
+     WHERE ub.branch_id = ? AND u.account_status = 'active' AND u.deleted_at IS NULL`,
     [branchId],
   );
   const userIds = rows.map((r: any) => r.id);
@@ -301,7 +301,7 @@ export async function dispatchToAll(
 
   while (hasMore) {
     const [rows] = await pool.query<RowData>(
-      'SELECT id FROM users WHERE is_active = TRUE AND deleted_at IS NULL LIMIT ? OFFSET ?',
+      'SELECT id FROM users WHERE account_status = \'active\' AND deleted_at IS NULL LIMIT ? OFFSET ?',
       [batchSize, offset],
     );
     const userIds = rows.map((r: any) => r.id);
