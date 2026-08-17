@@ -1040,17 +1040,6 @@ export async function approveSubscriptionRequestHandler(request: FastifyRequest,
     userAgent: request.headers['user-agent'],
   });
 
-  // Notify org
-  const { eventBus: eventBusV2 } = await import('../../../shared/event-bus/index.js');
-  eventBusV2.emit('subscription:request-approved', {
-    organisationId: (result as any).organisation_id,
-    userId: (result as any).requested_by,
-    requestId: Number(requestId),
-    requestType: (result as any).request_type,
-    requestedPlanName: (result as any).requested_plan_name,
-    approvedBy: adminId,
-  });
-
   return reply.send({ success: true });
 }
 
