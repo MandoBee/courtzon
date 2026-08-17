@@ -7,6 +7,7 @@ import { redisLock } from '../../booking/infrastructure/redis/redis-lock.js';
 import { NotFoundError, ConflictError } from '../../../shared/errors/app-error.js';
 import { createModuleLogger } from '../../../shared/utils/logger.js';
 import { getPool } from '../../../database/mysql.js';
+import { eventBusV2 } from '../../../shared/event-bus/event-bus.v2.js';
 import { commandPipeline } from '../../../shared/command/command-pipeline.js';
 import { cancelBookingHandler } from '../../booking/commands/cancel-booking.command.js';
 import { CancellationReason } from '../../../platform/shared/booking-types.js';
@@ -239,6 +240,15 @@ export class SchedulingBookingService {
                 organisationId: booking.organisation_id,
                 amount: totalAmount,
                 sourceId: bookingId,
+                description: `Compensation refund: ${reason}`,
+              });
+
+              eventBusV2.emit('wallet:transaction', {
+                walletId: wallet.id,
+                userId,
+                amount: totalAmount,
+                balance: newBalance,
+                type: 'refund',
                 description: `Compensation refund: ${reason}`,
               });
 

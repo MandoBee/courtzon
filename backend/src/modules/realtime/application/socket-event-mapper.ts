@@ -80,6 +80,7 @@ function mapPaymentEvent(eventName: string, p: Record<string, any>): MappedSocke
   const sub = eventName.split(':')[1] || 'updated';
   const typeMap: Record<string, string> = {
     'expired-event': 'expired',
+    'cancelled-event': 'cancelled',
   };
   return {
     type: `payment.${typeMap[sub] || sub}`,

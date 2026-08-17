@@ -58,6 +58,14 @@ export function useRealtimeCacheUpdates(): void {
     qc.invalidateQueries({ queryKey: ['org-bookings'] });
   });
 
+  useSocketEvent('booking.refunded', () => {
+    qc.invalidateQueries({ queryKey: ['user-bookings'] });
+    qc.invalidateQueries({ queryKey: ['payment-history'] });
+    qc.invalidateQueries({ queryKey: ['wallet'] });
+    qc.invalidateQueries({ queryKey: ['wallet', 'me'] });
+    qc.invalidateQueries({ queryKey: ['transactions'] });
+  });
+
   // ── Payment events ─────────────────────────────────────────────
   useSocketEvent('payment.completed', () => {
     console.log(`[TRACE][React][${new Date().toISOString()}] [useRealtimeCacheUpdates] payment.completed RECEIVED — invalidating queries`);
@@ -73,6 +81,25 @@ export function useRealtimeCacheUpdates(): void {
     qc.invalidateQueries({ queryKey: ['payment-history'] });
   });
 
+  useSocketEvent('payment.expired', () => {
+    qc.invalidateQueries({ queryKey: ['payment-history'] });
+    qc.invalidateQueries({ queryKey: ['wallet'] });
+    qc.invalidateQueries({ queryKey: ['wallet', 'me'] });
+  });
+
+  useSocketEvent('payment.cancelled', () => {
+    qc.invalidateQueries({ queryKey: ['payment-history'] });
+    qc.invalidateQueries({ queryKey: ['wallet'] });
+    qc.invalidateQueries({ queryKey: ['wallet', 'me'] });
+  });
+
+  useSocketEvent('payment.refunded', () => {
+    qc.invalidateQueries({ queryKey: ['payment-history'] });
+    qc.invalidateQueries({ queryKey: ['wallet'] });
+    qc.invalidateQueries({ queryKey: ['wallet', 'me'] });
+    qc.invalidateQueries({ queryKey: ['transactions'] });
+  });
+
   // ── Wallet events ──────────────────────────────────────────────
   useSocketEvent('wallet.deposit', () => {
     qc.invalidateQueries({ queryKey: ['wallet'] });
@@ -81,6 +108,13 @@ export function useRealtimeCacheUpdates(): void {
 
   useSocketEvent('wallet.withdrawal', () => {
     qc.invalidateQueries({ queryKey: ['wallet'] });
+    qc.invalidateQueries({ queryKey: ['transactions'] });
+  });
+
+  useSocketEvent('wallet.transaction', () => {
+    qc.invalidateQueries({ queryKey: ['wallet'] });
+    qc.invalidateQueries({ queryKey: ['wallet', 'me'] });
+    qc.invalidateQueries({ queryKey: ['my-wallet'] });
     qc.invalidateQueries({ queryKey: ['transactions'] });
   });
 
@@ -219,6 +253,21 @@ export function useRealtimeCacheUpdates(): void {
   useSocketEvent('settlement.completed', () => {
     qc.invalidateQueries({ queryKey: ['settlements'] });
     qc.invalidateQueries({ queryKey: ['seller-settlements'] });
+    qc.invalidateQueries({ queryKey: ['org-settlements'] });
+    qc.invalidateQueries({ queryKey: ['booking-settlements'] });
+  });
+
+  useSocketEvent('settlement.paid', () => {
+    qc.invalidateQueries({ queryKey: ['settlements'] });
+    qc.invalidateQueries({ queryKey: ['seller-settlements'] });
+    qc.invalidateQueries({ queryKey: ['org-settlements'] });
+    qc.invalidateQueries({ queryKey: ['booking-settlements'] });
+  });
+
+  useSocketEvent('settlement.failed', () => {
+    qc.invalidateQueries({ queryKey: ['settlements'] });
+    qc.invalidateQueries({ queryKey: ['seller-settlements'] });
+    qc.invalidateQueries({ queryKey: ['org-settlements'] });
   });
 
   // ── Organisation events ────────────────────────────────────────

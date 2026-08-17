@@ -32,7 +32,8 @@ export class SocketPublisher {
     const subscribedEvents = [
       'booking:created', 'booking:confirmed', 'booking:cancelled', 'booking:expired',
       'booking:completed', 'booking:no-show', 'booking:check-in', 'booking:rescheduled',
-      'payment:completed', 'payment:failed', 'payment:refunded', 'payment:expired-event',
+      'booking:refunded',
+      'payment:completed', 'payment:failed', 'payment:refunded', 'payment:expired-event', 'payment:cancelled-event',
       'payment:wallet-topup', 'payment:wallet-low-balance',
       'wallet:deposit', 'wallet:withdrawal', 'wallet:low-balance', 'wallet:transaction',
       'wallet:withdrawal-submitted', 'wallet:withdrawal-under-review',
@@ -47,7 +48,7 @@ export class SocketPublisher {
       'notification:delivered', 'notification:unread-count',
       'notification:sync-read', 'notification:sync-deleted',
       'match:available', 'match:removed', 'match:updated', 'match:pending',
-      'settlement:completed', 'settlement:failed',
+      'settlement:completed', 'settlement:failed', 'settlement:paid',
       'organisation:subscription-renewed', 'organisation:subscription-expired',
       'organisation:subscription-expiring',
       'organisation:status-changed', 'organisation:subscription-status-changed',

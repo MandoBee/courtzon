@@ -804,7 +804,8 @@ export class BookingService {
       if (wallet) {
         const current = await walletRepository.lockAndGetBalance(wallet.id);
         if (current) {
-          await walletRepository.updateBalance(wallet.id, current.balance + refundAmount, current.version);
+          const newBalance = current.balance + refundAmount;
+          await walletRepository.updateBalance(wallet.id, newBalance, current.version);
 
           await transactionService.createRefund({
             userId,
@@ -813,6 +814,15 @@ export class BookingService {
             organisationId: booking.organisation_id,
             amount: refundAmount,
             sourceId: booking.id,
+            description: `Booking #${booking.id} cancellation refund`,
+          });
+
+          eventBusV2.emit('wallet:transaction', {
+            walletId: wallet.id,
+            userId,
+            amount: refundAmount,
+            balance: newBalance,
+            type: 'refund',
             description: `Booking #${booking.id} cancellation refund`,
           });
         }
@@ -1017,6 +1027,15 @@ export class BookingService {
         description,
       });
       await this._createCODDoubleEntry(booking, wallet.id, amount, 'debit', 'credit', type, description);
+
+      eventBusV2.emit('wallet:transaction', {
+        walletId: wallet.id,
+        userId: booking.user_id,
+        amount,
+        balance: newBalance,
+        type,
+        description,
+      });
     } catch {
       // non-fatal
     }
@@ -1061,6 +1080,15 @@ export class BookingService {
         description,
       });
       await this._createCODDoubleEntry(booking, wallet.id, amount, 'credit', 'debit', type, description);
+
+      eventBusV2.emit('wallet:transaction', {
+        walletId: wallet.id,
+        userId: booking.user_id,
+        amount,
+        balance: newBalance,
+        type,
+        description,
+      });
     } catch {
       // non-fatal
     }
@@ -1086,6 +1114,15 @@ export class BookingService {
       await this._createCODDoubleEntry(booking, wallet.id, refundAmount, 'credit', 'debit', 'refund',
         `Booking #${booking.id} COD cancellation refund`);
       await this._emitBookingRefunded(booking, refundAmount);
+
+      eventBusV2.emit('wallet:transaction', {
+        walletId: wallet.id,
+        userId: booking.user_id,
+        amount: refundAmount,
+        balance: newBalance,
+        type: 'refund',
+        description: `Booking #${booking.id} COD cancellation refund`,
+      });
     } catch {
       // non-fatal
     }
@@ -1144,6 +1181,7 @@ export class BookingService {
     // prorates the ORIGINAL snapshot economics (never current rates).
     eventBusV2.emit('booking:refunded', {
       bookingId: booking.id,
+      userId: booking.user_id,
       organisationId: booking.organisation_id,
       refundAmount,
       currency: 'EGP',
