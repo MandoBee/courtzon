@@ -19,100 +19,106 @@ export function useRealtimeCacheUpdates(): void {
   };
 
   useSocketEvent('booking.created', (p: any) => {
-    console.log(`[TRACE][React][${new Date().toISOString()}] [useRealtimeCacheUpdates] booking.created RECEIVED — invalidating queries`);
-    qc.invalidateQueries({ queryKey: ['user-bookings'] });
+    qc.invalidateQueries({ queryKey: ['my-bookings'] });
     qc.invalidateQueries({ queryKey: ['home-upcoming-bookings'] });
     qc.invalidateQueries({ queryKey: ['home-recent-activity'] });
     invalidateSlots(p);
   });
 
   useSocketEvent('booking.confirmed', (p: any) => {
-    console.log(`[TRACE][React][${new Date().toISOString()}] [useRealtimeCacheUpdates] booking.confirmed RECEIVED bookingId=${p.bookingId} — updating cache`);
     qc.setQueryData(['booking', p.bookingId], (old: any) => old ? { ...old, booking_status: 'confirmed' } : old);
-    qc.invalidateQueries({ queryKey: ['user-bookings'] });
+    qc.invalidateQueries({ queryKey: ['my-bookings'] });
     qc.invalidateQueries({ queryKey: ['home-upcoming-bookings'] });
   });
 
   useSocketEvent('booking.cancelled', (p: any) => {
     qc.setQueryData(['booking', p.bookingId], (old: any) => old ? { ...old, booking_status: 'cancelled' } : old);
-    qc.invalidateQueries({ queryKey: ['user-bookings'] });
+    qc.invalidateQueries({ queryKey: ['my-bookings'] });
     qc.invalidateQueries({ queryKey: ['org-bookings'] });
-    qc.invalidateQueries({ queryKey: ['admin-bookings'] });
+    qc.invalidateQueries({ queryKey: ['admin', 'bookings'] });
     qc.invalidateQueries({ queryKey: ['home-upcoming-bookings'] });
     invalidateSlots(p);
   });
 
   useSocketEvent('booking.expired', (p: any) => {
     qc.setQueryData(['booking', p.bookingId], (old: any) => old ? { ...old, booking_status: 'expired' } : old);
-    qc.invalidateQueries({ queryKey: ['user-bookings'] });
+    qc.invalidateQueries({ queryKey: ['my-bookings'] });
     invalidateSlots(p);
   });
 
   useSocketEvent('booking.completed', (p: any) => {
     qc.setQueryData(['booking', p.bookingId], (old: any) => old ? { ...old, booking_status: 'completed' } : old);
-    qc.invalidateQueries({ queryKey: ['user-bookings'] });
+    qc.invalidateQueries({ queryKey: ['my-bookings'] });
   });
 
   useSocketEvent('booking.checked_in', (p: any) => {
     qc.setQueryData(['booking', p.bookingId], (old: any) => old ? { ...old, booking_status: 'checked_in' } : old);
     qc.invalidateQueries({ queryKey: ['org-bookings'] });
+    qc.invalidateQueries({ queryKey: ['admin', 'bookings'] });
   });
 
   useSocketEvent('booking.refunded', () => {
-    qc.invalidateQueries({ queryKey: ['user-bookings'] });
-    qc.invalidateQueries({ queryKey: ['payment-history'] });
-    qc.invalidateQueries({ queryKey: ['wallet'] });
+    qc.invalidateQueries({ queryKey: ['my-bookings'] });
     qc.invalidateQueries({ queryKey: ['wallet', 'me'] });
     qc.invalidateQueries({ queryKey: ['transactions'] });
+  });
+
+  useSocketEvent('booking.paid', (p: any) => {
+    qc.setQueryData(['booking', p.bookingId], (old: any) => old ? { ...old, booking_status: 'paid' } : old);
+    qc.invalidateQueries({ queryKey: ['my-bookings'] });
+  });
+
+  useSocketEvent('booking.fully-booked', () => {
+    qc.invalidateQueries({ queryKey: ['my-bookings'] });
+    qc.invalidateQueries({ queryKey: ['home-upcoming-bookings'] });
+  });
+
+  useSocketEvent('booking.application-declined', () => {
+    qc.invalidateQueries({ queryKey: ['my-bookings'] });
   });
 
   // ── Payment events ─────────────────────────────────────────────
   useSocketEvent('payment.completed', () => {
-    console.log(`[TRACE][React][${new Date().toISOString()}] [useRealtimeCacheUpdates] payment.completed RECEIVED — invalidating queries`);
-    qc.invalidateQueries({ queryKey: ['wallet'] });
+    qc.invalidateQueries({ queryKey: ['wallet', 'me'] });
     qc.invalidateQueries({ queryKey: ['transactions'] });
     qc.invalidateQueries({ queryKey: ['mp-orders'] });
     qc.invalidateQueries({ queryKey: ['mp-order'] });
-    qc.invalidateQueries({ queryKey: ['payment-history'] });
   });
 
   useSocketEvent('payment.failed', () => {
     qc.invalidateQueries({ queryKey: ['mp-orders'] });
-    qc.invalidateQueries({ queryKey: ['payment-history'] });
   });
 
   useSocketEvent('payment.expired', () => {
-    qc.invalidateQueries({ queryKey: ['payment-history'] });
-    qc.invalidateQueries({ queryKey: ['wallet'] });
     qc.invalidateQueries({ queryKey: ['wallet', 'me'] });
   });
 
   useSocketEvent('payment.cancelled', () => {
-    qc.invalidateQueries({ queryKey: ['payment-history'] });
-    qc.invalidateQueries({ queryKey: ['wallet'] });
     qc.invalidateQueries({ queryKey: ['wallet', 'me'] });
   });
 
   useSocketEvent('payment.refunded', () => {
-    qc.invalidateQueries({ queryKey: ['payment-history'] });
-    qc.invalidateQueries({ queryKey: ['wallet'] });
+    qc.invalidateQueries({ queryKey: ['wallet', 'me'] });
+    qc.invalidateQueries({ queryKey: ['transactions'] });
+  });
+
+  useSocketEvent('payment.succeeded', () => {
     qc.invalidateQueries({ queryKey: ['wallet', 'me'] });
     qc.invalidateQueries({ queryKey: ['transactions'] });
   });
 
   // ── Wallet events ──────────────────────────────────────────────
   useSocketEvent('wallet.deposit', () => {
-    qc.invalidateQueries({ queryKey: ['wallet'] });
+    qc.invalidateQueries({ queryKey: ['wallet', 'me'] });
     qc.invalidateQueries({ queryKey: ['transactions'] });
   });
 
   useSocketEvent('wallet.withdrawal', () => {
-    qc.invalidateQueries({ queryKey: ['wallet'] });
+    qc.invalidateQueries({ queryKey: ['wallet', 'me'] });
     qc.invalidateQueries({ queryKey: ['transactions'] });
   });
 
   useSocketEvent('wallet.transaction', () => {
-    qc.invalidateQueries({ queryKey: ['wallet'] });
     qc.invalidateQueries({ queryKey: ['wallet', 'me'] });
     qc.invalidateQueries({ queryKey: ['my-wallet'] });
     qc.invalidateQueries({ queryKey: ['transactions'] });
@@ -120,7 +126,6 @@ export function useRealtimeCacheUpdates(): void {
 
   for (const ev of ['wallet.withdrawal-submitted', 'wallet.withdrawal-under-review', 'wallet.withdrawal-approved', 'wallet.withdrawal-rejected', 'wallet.withdrawal-processing', 'wallet.withdrawal-completed', 'wallet.withdrawal-cancelled', 'wallet.withdrawal-assigned']) {
     useSocketEvent(ev, () => {
-      qc.invalidateQueries({ queryKey: ['wallet'] });
       qc.invalidateQueries({ queryKey: ['wallet', 'me'] });
       qc.invalidateQueries({ queryKey: ['my-withdrawals'] });
       qc.invalidateQueries({ queryKey: ['admin-withdrawals'] });
@@ -171,6 +176,10 @@ export function useRealtimeCacheUpdates(): void {
     qc.invalidateQueries({ queryKey: ['mp-seller-orders'] });
   });
 
+  useSocketEvent('marketplace.new-seller-registered', () => {
+    qc.invalidateQueries({ queryKey: ['admin-marketplace-sellers'] });
+  });
+
   // ── Notification events ────────────────────────────────────────
   useSocketEvent('notification.new', () => {
     qc.invalidateQueries({ queryKey: ['notifications'] });
@@ -210,30 +219,22 @@ export function useRealtimeCacheUpdates(): void {
     qc.invalidateQueries({ queryKey: ['home-upcoming-matches'] });
   });
 
-  useSocketEvent('match.pending', () => {
-    qc.invalidateQueries({ queryKey: ['my-matches'] });
-  });
-
   // ── Academy events ─────────────────────────────────────────────
   useSocketEvent('academy.enrolled', () => {
     qc.invalidateQueries({ queryKey: ['academies'] });
-    qc.invalidateQueries({ queryKey: ['my-academies'] });
   });
 
   useSocketEvent('academy.graduated', () => {
     qc.invalidateQueries({ queryKey: ['academies'] });
-    qc.invalidateQueries({ queryKey: ['my-academies'] });
   });
 
   // ── Coaching events ────────────────────────────────────────────
   useSocketEvent('coaching.session-scheduled', () => {
-    qc.invalidateQueries({ queryKey: ['coach-sessions'] });
-    qc.invalidateQueries({ queryKey: ['coach-availability'] });
+    qc.invalidateQueries({ queryKey: ['home-upcoming-bookings'] });
   });
 
   useSocketEvent('coaching.session-cancelled', () => {
-    qc.invalidateQueries({ queryKey: ['coach-sessions'] });
-    qc.invalidateQueries({ queryKey: ['coach-availability'] });
+    qc.invalidateQueries({ queryKey: ['home-upcoming-bookings'] });
   });
 
   // ── Coach lifecycle events ─────────────────────────────────────
@@ -249,40 +250,26 @@ export function useRealtimeCacheUpdates(): void {
 
   for (const eventName of coachLifecycleEvents) {
     useSocketEvent(eventName, () => {
-      qc.invalidateQueries({ queryKey: ['me'] });
       qc.invalidateQueries({ queryKey: ['admin-coaches'] });
       qc.invalidateQueries({ queryKey: ['admin', 'user'] });
       qc.invalidateQueries({ queryKey: ['my-coach-agreements'] });
       qc.invalidateQueries({ queryKey: ['org-coaches'] });
-      qc.invalidateQueries({ queryKey: ['coach-profile'] });
     });
   }
-
-  // ── Attendance events ──────────────────────────────────────────
-  useSocketEvent('attendance.updated', () => {
-    qc.invalidateQueries({ queryKey: ['attendance'] });
-    qc.invalidateQueries({ queryKey: ['session-attendance'] });
-  });
 
   // ── Settlement events ──────────────────────────────────────────
   useSocketEvent('settlement.completed', () => {
     qc.invalidateQueries({ queryKey: ['settlements'] });
-    qc.invalidateQueries({ queryKey: ['seller-settlements'] });
-    qc.invalidateQueries({ queryKey: ['org-settlements'] });
     qc.invalidateQueries({ queryKey: ['booking-settlements'] });
   });
 
   useSocketEvent('settlement.paid', () => {
     qc.invalidateQueries({ queryKey: ['settlements'] });
-    qc.invalidateQueries({ queryKey: ['seller-settlements'] });
-    qc.invalidateQueries({ queryKey: ['org-settlements'] });
     qc.invalidateQueries({ queryKey: ['booking-settlements'] });
   });
 
   useSocketEvent('settlement.failed', () => {
     qc.invalidateQueries({ queryKey: ['settlements'] });
-    qc.invalidateQueries({ queryKey: ['seller-settlements'] });
-    qc.invalidateQueries({ queryKey: ['org-settlements'] });
   });
 
   // ── Organisation events ────────────────────────────────────────
@@ -299,7 +286,6 @@ export function useRealtimeCacheUpdates(): void {
     qc.invalidateQueries({ queryKey: ['org-subscription'] });
   });
 
-  // Organisation Status changed (Active ↔ Suspended)
   useSocketEvent('organisation.status-changed', () => {
     qc.invalidateQueries({ queryKey: ['admin', 'organisations'] });
     qc.invalidateQueries({ queryKey: ['admin-marketplace-sellers'] });
@@ -307,7 +293,6 @@ export function useRealtimeCacheUpdates(): void {
     qc.invalidateQueries({ queryKey: ['organisation'] });
   });
 
-  // Subscription Status changed (Active ↔ Suspended)
   useSocketEvent('organisation.subscription-status-changed', () => {
     qc.invalidateQueries({ queryKey: ['admin', 'organisations'] });
     qc.invalidateQueries({ queryKey: ['admin-marketplace-sellers'] });
@@ -315,7 +300,15 @@ export function useRealtimeCacheUpdates(): void {
     qc.invalidateQueries({ queryKey: ['org-subscription'] });
   });
 
-  // Subscription request lifecycle (submit / approve / reject)
+  useSocketEvent('organisation.approved', () => {
+    qc.invalidateQueries({ queryKey: ['admin', 'organisations'] });
+    qc.invalidateQueries({ queryKey: ['org-subscription'] });
+  });
+
+  useSocketEvent('organisation.rejected', () => {
+    qc.invalidateQueries({ queryKey: ['admin', 'organisations'] });
+  });
+
   const subscriptionRequestEvents = [
     'subscription.request-submitted', 'subscription.request-approved', 'subscription.request-rejected',
   ];
@@ -330,19 +323,38 @@ export function useRealtimeCacheUpdates(): void {
 
   // ── Membership events ──────────────────────────────────────────
   useSocketEvent('membership.created', () => {
-    qc.invalidateQueries({ queryKey: ['memberships'] });
+    qc.invalidateQueries({ queryKey: ['membership'] });
   });
 
   useSocketEvent('membership.renewed', () => {
-    qc.invalidateQueries({ queryKey: ['memberships'] });
+    qc.invalidateQueries({ queryKey: ['membership'] });
   });
 
   useSocketEvent('membership.expiring', () => {
-    qc.invalidateQueries({ queryKey: ['memberships'] });
+    qc.invalidateQueries({ queryKey: ['membership'] });
   });
 
   useSocketEvent('membership.expired', () => {
-    qc.invalidateQueries({ queryKey: ['memberships'] });
+    qc.invalidateQueries({ queryKey: ['membership'] });
+  });
+
+  // ── Tournament events ──────────────────────────────────────────
+  useSocketEvent('tournament.created', () => {
+    qc.invalidateQueries({ queryKey: ['tournaments'] });
+  });
+
+  useSocketEvent('tournament.match-scheduled', (p: any) => {
+    if (p?.tournamentId) {
+      qc.invalidateQueries({ queryKey: ['tournament', p.tournamentId] });
+      qc.invalidateQueries({ queryKey: ['tournament', p.tournamentId, 'bracket'] });
+    }
+  });
+
+  useSocketEvent('tournament.result', (p: any) => {
+    if (p?.tournamentId) {
+      qc.invalidateQueries({ queryKey: ['tournament', p.tournamentId] });
+      qc.invalidateQueries({ queryKey: ['tournament', p.tournamentId, 'standings'] });
+    }
   });
 
   // ── Presence events ────────────────────────────────────────────
@@ -370,9 +382,7 @@ export function useRealtimeCacheUpdates(): void {
   });
 
   useSocketEvent('user.roles.changed', () => {
-    qc.invalidateQueries({ queryKey: ['me'] });
     qc.invalidateQueries({ queryKey: ['admin', 'user'] });
-    // Refresh socket room membership (role/admin/org rooms) for the new role set.
     disconnectSocket();
     createSocket();
   });

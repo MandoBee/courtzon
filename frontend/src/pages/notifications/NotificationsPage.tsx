@@ -73,9 +73,9 @@ export default function NotificationsPage() {
     return () => observer.disconnect();
   }, [hasNextPage, fetchNextPage]);
 
-  // Socket event: refresh on new notification
+  // Socket event: refresh unread count when new notification arrives.
+  // Full list invalidation handled by centralized useRealtimeCacheUpdates.
   useSocketEvent('notification.new', () => {
-    queryClient.invalidateQueries({ queryKey: ['notifications', 'list'] });
     refreshUnreadCount();
   });
 
