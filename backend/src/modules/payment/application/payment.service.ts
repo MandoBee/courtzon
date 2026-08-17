@@ -413,6 +413,7 @@ export class PaymentService {
           const eventName = newStatus === 'cancelled' ? 'payment:cancelled-event' as const : 'payment:expired-event' as const;
           await eventBusV2.emit(eventName, {
             paymentId: transaction.id,
+            userId: transaction.user_id,
             referenceType: transaction.reference_type,
             referenceId: refId,
             metadata: {
@@ -844,6 +845,7 @@ export class PaymentService {
 
       await eventBusV2.emit('payment:refunded', {
         paymentId,
+        userId: (transaction as any).user_id,
         amount,
         reason,
         traceId,
@@ -883,6 +885,7 @@ export class PaymentService {
           const refId = ptx.reference_id || ptx.order_id || ptx.booking_id || null;
           await eventBusV2.emit('payment:expired-event', {
             paymentId: ptx.id,
+            userId: ptx.user_id,
             referenceType: ptx.reference_type,
             referenceId: refId,
             metadata: {
