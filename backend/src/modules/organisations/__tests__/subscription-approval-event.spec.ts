@@ -1,12 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { mockExecute, mockBeginTransaction, mockCommit, mockRollback, mockRelease, mockEmit } = vi.hoisted(() => ({
+const { mockExecute, mockBeginTransaction, mockCommit, mockRollback, mockRelease, mockEmit, mockRecordAudit } = vi.hoisted(() => ({
   mockExecute: vi.fn(),
   mockBeginTransaction: vi.fn(),
   mockCommit: vi.fn(),
   mockRollback: vi.fn(),
   mockRelease: vi.fn(),
   mockEmit: vi.fn(),
+  mockRecordAudit: vi.fn(async () => undefined),
 }));
 
 vi.mock('../../../database/mysql.js', () => ({
@@ -24,7 +25,7 @@ vi.mock('../../../shared/event-bus/index.js', () => ({ eventBusV2: { emit: mockE
 vi.mock('../../financial/infrastructure/transaction.repository.js', () => ({
   transactionRepository: { createTransaction: vi.fn(async () => 1) },
 }));
-vi.mock('../../audit-log/index.js', () => ({ recordAudit: vi.fn(async () => undefined) }));
+vi.mock('../../audit-log/index.js', () => ({ recordAudit: mockRecordAudit }));
 vi.mock('./current-subscription.service.js', () => ({ clearSubscriptionCache: vi.fn() }));
 
 import { tryActivateSubscriptionRequest } from '../application/subscription-activation.service.js';
@@ -53,6 +54,7 @@ describe('tryActivateSubscriptionRequest — exactly one subscription:request-ap
     mockRollback.mockReset();
     mockRelease.mockReset();
     mockEmit.mockReset();
+    mockRecordAudit.mockReset();
   });
 
   it('emits subscription:request-approved exactly once on a successful paid approval', async () => {
@@ -95,6 +97,17 @@ describe('tryActivateSubscriptionRequest — exactly one subscription:request-ap
     expect(payload.requestType).toBe('PLAN_CHANGE');
     expect(payload.requestedPlanName).toBe('Elite Club');
     expect(payload.approvedBy).toBe(1);
+
+    // Exactly ONE authoritative audit record for the approval (SUBSCRIPTION.REQUEST.APPROVED).
+    const approvalAudits = mockRecordAudit.mock.calls.filter(
+      ([entry]) => entry.action === 'SUBSCRIPTION.REQUEST.APPROVED',
+    );
+    expect(approvalAudits).toHaveLength(1);
+    const auditEntry = approvalAudits[0][0];
+    expect(auditEntry.actorId).toBe(1);
+    expect(auditEntry.entityType).toBe('organisation_upgrade_request');
+    expect(auditEntry.entityId).toBe(7);
+    expect(auditEntry.afterState.organisationId).toBe(6);
   });
 
   it('does not emit subscription:request-approved when approval is deferred (org inactive)', async () => {
@@ -114,5 +127,7 @@ describe('tryActivateSubscriptionRequest — exactly one subscription:request-ap
     expect(mockCommit).not.toHaveBeenCalled();
     expect(mockRollback).toHaveBeenCalled();
     expect(mockEmit).not.toHaveBeenCalled();
+    // No approval audit should be recorded for a deferred (non-successful) approval.
+    expect(mockRecordAudit).not.toHaveBeenCalled();
   });
 });
