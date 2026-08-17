@@ -132,52 +132,67 @@ export function useRealtimeCacheUpdates(): void {
   // ── Marketplace events ─────────────────────────────────────────
   useSocketEvent('marketplace.order-placed', () => {
     qc.invalidateQueries({ queryKey: ['mp-orders'] });
-    qc.invalidateQueries({ queryKey: ['seller-orders'] });
+    qc.invalidateQueries({ queryKey: ['mp-seller-orders'] });
   });
 
   useSocketEvent('marketplace.order-confirmed', () => {
     qc.invalidateQueries({ queryKey: ['mp-orders'] });
-    qc.invalidateQueries({ queryKey: ['seller-orders'] });
+    qc.invalidateQueries({ queryKey: ['mp-seller-orders'] });
     qc.invalidateQueries({ queryKey: ['mp-cart'] });
   });
 
   useSocketEvent('marketplace.order-shipped', (p: any) => {
     qc.setQueryData(['mp-order', p.orderId], (old: any) => old ? { ...old, status: 'shipped' } : old);
     qc.invalidateQueries({ queryKey: ['mp-orders'] });
-    qc.invalidateQueries({ queryKey: ['seller-orders'] });
+    qc.invalidateQueries({ queryKey: ['mp-seller-orders'] });
   });
 
   useSocketEvent('marketplace.order-delivered', (p: any) => {
     qc.setQueryData(['mp-order', p.orderId], (old: any) => old ? { ...old, status: 'delivered' } : old);
     qc.invalidateQueries({ queryKey: ['mp-orders'] });
-    qc.invalidateQueries({ queryKey: ['seller-orders'] });
+    qc.invalidateQueries({ queryKey: ['mp-seller-orders'] });
   });
 
   useSocketEvent('marketplace.order-cancelled', (p: any) => {
     qc.setQueryData(['mp-order', p.orderId], (old: any) => old ? { ...old, status: 'cancelled' } : old);
     qc.invalidateQueries({ queryKey: ['mp-orders'] });
-    qc.invalidateQueries({ queryKey: ['seller-orders'] });
+    qc.invalidateQueries({ queryKey: ['mp-seller-orders'] });
     qc.invalidateQueries({ queryKey: ['mp-cart'] });
+  });
+
+  useSocketEvent('marketplace.order-status-changed', () => {
+    qc.invalidateQueries({ queryKey: ['mp-orders'] });
+    qc.invalidateQueries({ queryKey: ['mp-seller-orders'] });
+  });
+
+  useSocketEvent('marketplace.order-refunded', (p: any) => {
+    qc.setQueryData(['mp-order', p.orderId], (old: any) => old ? { ...old, status: 'refunded' } : old);
+    qc.invalidateQueries({ queryKey: ['mp-orders'] });
+    qc.invalidateQueries({ queryKey: ['mp-seller-orders'] });
   });
 
   // ── Notification events ────────────────────────────────────────
   useSocketEvent('notification.new', () => {
     qc.invalidateQueries({ queryKey: ['notifications'] });
     qc.invalidateQueries({ queryKey: ['notification-unread-count'] });
+    qc.invalidateQueries({ queryKey: ['notifications', 'unread-count'] });
   });
 
   useSocketEvent('notification.unread-count', () => {
     qc.invalidateQueries({ queryKey: ['notification-unread-count'] });
+    qc.invalidateQueries({ queryKey: ['notifications', 'unread-count'] });
   });
 
   useSocketEvent('notification.sync-read', () => {
     qc.invalidateQueries({ queryKey: ['notifications'] });
     qc.invalidateQueries({ queryKey: ['notification-unread-count'] });
+    qc.invalidateQueries({ queryKey: ['notifications', 'unread-count'] });
   });
 
   useSocketEvent('notification.sync-deleted', () => {
     qc.invalidateQueries({ queryKey: ['notifications'] });
     qc.invalidateQueries({ queryKey: ['notification-unread-count'] });
+    qc.invalidateQueries({ queryKey: ['notifications', 'unread-count'] });
   });
 
   // ── Match events ───────────────────────────────────────────────
@@ -275,6 +290,11 @@ export function useRealtimeCacheUpdates(): void {
     qc.invalidateQueries({ queryKey: ['org-subscription'] });
   });
 
+  useSocketEvent('organisation.subscription-expiring', () => {
+    qc.invalidateQueries({ queryKey: ['org-subscription'] });
+    qc.invalidateQueries({ queryKey: ['admin', 'organisation-subscriptions'] });
+  });
+
   useSocketEvent('organisation.subscription-expired', () => {
     qc.invalidateQueries({ queryKey: ['org-subscription'] });
   });
@@ -295,8 +315,29 @@ export function useRealtimeCacheUpdates(): void {
     qc.invalidateQueries({ queryKey: ['org-subscription'] });
   });
 
+  // Subscription request lifecycle (submit / approve / reject)
+  const subscriptionRequestEvents = [
+    'subscription.request-submitted', 'subscription.request-approved', 'subscription.request-rejected',
+  ];
+  for (const ev of subscriptionRequestEvents) {
+    useSocketEvent(ev, () => {
+      qc.invalidateQueries({ queryKey: ['admin', 'subscription-requests'] });
+      qc.invalidateQueries({ queryKey: ['org-subscription-requests'] });
+      qc.invalidateQueries({ queryKey: ['admin-approvals'] });
+      qc.invalidateQueries({ queryKey: ['org-subscription'] });
+    });
+  }
+
   // ── Membership events ──────────────────────────────────────────
+  useSocketEvent('membership.created', () => {
+    qc.invalidateQueries({ queryKey: ['memberships'] });
+  });
+
   useSocketEvent('membership.renewed', () => {
+    qc.invalidateQueries({ queryKey: ['memberships'] });
+  });
+
+  useSocketEvent('membership.expiring', () => {
     qc.invalidateQueries({ queryKey: ['memberships'] });
   });
 

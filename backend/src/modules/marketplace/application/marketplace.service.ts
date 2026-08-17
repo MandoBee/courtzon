@@ -803,25 +803,25 @@ export const marketplaceService = {
     const sellerId = firstItem?.sellerId ?? 0;
 
     eventBusV2.emit('marketplace:order-status-changed', {
-      orderId, userId,
+      orderId, userId, sellerId,
       fromStatus: order.status,
       toStatus: data.status,
     });
 
     if (data.status === 'shipped') {
       eventBusV2.emit('marketplace:order-shipped', {
-        orderId, userId,
+        orderId, userId, sellerId,
         trackingNumber: data.trackingNumber,
       });
     } else if (data.status === 'delivered') {
-      eventBusV2.emit('marketplace:order-delivered', { orderId, userId });
+      eventBusV2.emit('marketplace:order-delivered', { orderId, userId, sellerId });
     } else if (data.status === 'cancelled') {
       eventBusV2.emit('marketplace:order-cancelled', {
-        orderId, userId, reason: data.note,
+        orderId, userId, sellerId, reason: data.note,
       });
     } else if (data.status === 'refunded') {
       eventBusV2.emit('marketplace:order-refunded', {
-        orderId, userId, reason: data.note,
+        orderId, userId, sellerId, reason: data.note,
       });
     }
 

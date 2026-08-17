@@ -36,7 +36,7 @@ export const updateOrgStatusHandler: CommandHandler<Command, UpdateOrgStatusResu
     return { organisationId: p.organisationId, status: p.status };
   },
   events: (command, result) => [{
-    eventName: `organisation.${result.status}`,
+    eventName: 'organisation:status-changed',
     payload: { organisationId: result.organisationId, status: result.status },
     context: {
       aggregateType: 'organisation',

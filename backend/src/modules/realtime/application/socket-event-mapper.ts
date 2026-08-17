@@ -171,6 +171,27 @@ function mapOrganisationEvent(eventName: string, p: Record<string, any>): Mapped
       rooms: p.organisationId ? [`organisation:${p.organisationId}`, ADMIN_ROOM] : [ADMIN_ROOM],
     };
   }
+  if (eventName === 'subscription:request-submitted') {
+    const rooms: string[] = [];
+    if (p.organisationId) rooms.push(`organisation:${p.organisationId}`);
+    if (p.userId) rooms.push(`user:${p.userId}`);
+    rooms.push(ADMIN_ROOM);
+    return { type: 'subscription.request-submitted', payload: { organisationId: p.organisationId, userId: p.userId, requestId: p.requestId, requestType: p.requestType }, rooms };
+  }
+  if (eventName === 'subscription:request-approved') {
+    const rooms: string[] = [];
+    if (p.organisationId) rooms.push(`organisation:${p.organisationId}`);
+    if (p.userId) rooms.push(`user:${p.userId}`);
+    rooms.push(ADMIN_ROOM);
+    return { type: 'subscription.request-approved', payload: { organisationId: p.organisationId, userId: p.userId, requestId: p.requestId, requestType: p.requestType }, rooms };
+  }
+  if (eventName === 'subscription:request-rejected') {
+    const rooms: string[] = [];
+    if (p.organisationId) rooms.push(`organisation:${p.organisationId}`);
+    if (p.userId) rooms.push(`user:${p.userId}`);
+    rooms.push(ADMIN_ROOM);
+    return { type: 'subscription.request-rejected', payload: { organisationId: p.organisationId, userId: p.userId, requestId: p.requestId, requestType: p.requestType }, rooms };
+  }
   const rooms: string[] = [];
   if (p.organisationId) rooms.push(`organisation:${p.organisationId}`);
   if (p.userId) rooms.push(`user:${p.userId}`);
