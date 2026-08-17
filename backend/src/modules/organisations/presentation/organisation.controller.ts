@@ -1018,27 +1018,7 @@ export async function approveSubscriptionRequestHandler(request: FastifyRequest,
   const { requestId } = request.params as any;
   const adminId = (request as any).userId;
   const { approvalNotes } = request.body as any;
-  const result = await organisationService.approveSubscriptionRequest(Number(requestId), adminId, approvalNotes);
-  recordAudit({
-    actorId: adminId,
-    action: 'SUBSCRIPTION_REQUEST.APPROVE',
-    entityType: 'organisation_upgrade_request',
-    entityId: Number(requestId),
-    afterState: { organisationId: (result as any).organisation_id, requestType: (result as any).request_type },
-    ipAddress: request.ip,
-    userAgent: request.headers['user-agent'],
-  });
-
-  // Record subscription activation
-  recordAudit({
-    actorId: adminId,
-    action: 'SUBSCRIPTION.ACTIVATED',
-    entityType: 'organisation_subscription',
-    entityId: (result as any).organisation_id,
-    afterState: { organisationId: (result as any).organisation_id, requestType: (result as any).request_type, requestedPlan: (result as any).requested_plan_name },
-    ipAddress: request.ip,
-    userAgent: request.headers['user-agent'],
-  });
+  await organisationService.approveSubscriptionRequest(Number(requestId), adminId, approvalNotes);
 
   return reply.send({ success: true });
 }
