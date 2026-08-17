@@ -1043,6 +1043,7 @@ export async function approveSubscriptionRequestHandler(request: FastifyRequest,
   const { eventBus: eventBusV2 } = await import('../../../shared/event-bus/index.js');
   eventBusV2.emit('subscription:request-approved', {
     organisationId: (result as any).organisation_id,
+    userId: (result as any).requested_by,
     requestId: Number(requestId),
     requestType: (result as any).request_type,
     requestedPlanName: (result as any).requested_plan_name,
@@ -1084,6 +1085,7 @@ export async function rejectSubscriptionRequestHandler(request: FastifyRequest, 
   const { eventBus: eventBusV2 } = await import('../../../shared/event-bus/index.js');
   eventBusV2.emit('subscription:request-rejected', {
     organisationId: (result as any).organisation_id,
+    userId: (result as any).requested_by,
     requestId: Number(requestId),
     requestType: (result as any).request_type,
     requestedPlanName: (result as any).requested_plan_name,

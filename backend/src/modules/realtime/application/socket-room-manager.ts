@@ -25,6 +25,14 @@ export class SocketRoomManager {
         rooms.push(`branch:${row.branch_id}`);
       }
 
+      const [sellerRows] = await pool.execute<any[]>(
+        `SELECT organisation_id FROM seller_profiles WHERE user_id = ? AND organisation_id IS NOT NULL AND deleted_at IS NULL`,
+        [userId],
+      );
+      for (const row of sellerRows) {
+        rooms.push(`marketplace:seller:${row.organisation_id}`);
+      }
+
       const [roleRows] = await pool.execute<any[]>(
         `SELECT r.slug FROM user_roles ur JOIN roles r ON r.id = ur.role_id WHERE ur.user_id = ? AND ur.is_active = TRUE`,
         [userId],

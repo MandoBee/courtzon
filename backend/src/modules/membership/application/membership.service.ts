@@ -33,7 +33,7 @@ export class MembershipService {
 
     const id = await membershipRepository.createMembership(membership);
 
-    eventBusV2.emit('membership.created', { membershipId: id, userId, planId, endDate: endDate.toISOString() } as Record<string, unknown>, {
+    eventBusV2.emit('membership:created', { membershipId: id, userId, planId, endDate: endDate.toISOString() } as Record<string, unknown>, {
       aggregateType: 'membership', aggregateId: String(id), aggregateVersion: 1,
     });
 

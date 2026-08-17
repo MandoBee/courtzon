@@ -122,8 +122,8 @@ export interface DomainEventMap {
   'subscription:upgraded': BaseEvent & { subscriptionId: number; userId: number; planName: string };
   'subscription:cancelled': BaseEvent & { subscriptionId: number; userId: number; planName: string };
   'subscription:request-submitted': BaseEvent & { organisationId: number; userId: number; requestId: number; requestType: string; requestedPlanName?: string; notes?: string };
-  'subscription:request-approved': BaseEvent & { organisationId: number; requestId: number; requestType: string; requestedPlanName?: string; approvedBy: number };
-  'subscription:request-rejected': BaseEvent & { organisationId: number; requestId: number; requestType: string; requestedPlanName?: string; reason: string; rejectedBy: number };
+  'subscription:request-approved': BaseEvent & { organisationId: number; userId?: number; requestId: number; requestType: string; requestedPlanName?: string; approvedBy: number };
+  'subscription:request-rejected': BaseEvent & { organisationId: number; userId?: number; requestId: number; requestType: string; requestedPlanName?: string; reason: string; rejectedBy: number };
   'wallet:deposit': BaseEvent & { walletId: number; userId: number; amount: number; balance: number; currency?: string };
   'wallet:withdrawal': BaseEvent & { walletId: number; userId: number; amount: number; balance: number; currency?: string };
   'wallet:low-balance': BaseEvent & { userId: number; balance: number; currency: string };
