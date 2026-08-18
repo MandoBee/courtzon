@@ -1160,6 +1160,11 @@ export class OrganisationService {
     return approveSubscriptionRequest(requestId, adminId, approvalNotes);
   }
 
+  async activatePendingSubscriptionForOrg(orgId: number, adminId: number) {
+    const { activatePendingSubscriptionForOrg } = await import('../infrastructure/repositories/org-portal.repository.js');
+    return activatePendingSubscriptionForOrg(orgId, adminId);
+  }
+
   async getSubscriptionRequestDetail(requestId: number) {
     const { getSubscriptionRequestById, getSubscriptionRequestStatusHistory } = await import('../infrastructure/repositories/org-portal.repository.js');
     const req = await getSubscriptionRequestById(requestId);

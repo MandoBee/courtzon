@@ -83,6 +83,7 @@ export async function organisationRoutes(app: FastifyInstance): Promise<void> {
   app.put('/organisations/:orgId/subscription', { preHandler: [adminGuard] }, ctrl.updateOrgSubscriptionHandler);
   app.post('/organisations/:orgId/subscription/activate', { preHandler: [adminGuard] }, ctrl.activateSubscriptionHandler);
   app.post('/organisations/:orgId/subscription/toggle-status', { preHandler: [adminGuard] }, ctrl.toggleSubscriptionStatusHandler);
+  app.post('/organisations/:orgId/activate-pending', { preHandler: [adminGuard] }, ctrl.activatePendingSubscriptionHandler);
   app.get('/admin/organisation-subscriptions', { preHandler: [adminGuard] }, ctrl.getAllOrgSubscriptionsHandler);
 
   // Payment Methods Admin

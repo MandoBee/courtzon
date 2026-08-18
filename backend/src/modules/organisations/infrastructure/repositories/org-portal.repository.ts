@@ -654,6 +654,12 @@ export async function approveSubscriptionRequest(requestId: number, adminId: num
   return tryActivateSubscriptionRequest(requestId, { adminId, approvalNotes });
 }
 
+export async function activatePendingSubscriptionForOrg(orgId: number, adminId: number) {
+  const pending = await getOrgPendingSubscriptionRequest(orgId);
+  if (!pending) throw new ValidationError('No pending subscription request for this organisation');
+  return approveSubscriptionRequest(pending.id, adminId);
+}
+
 export async function rejectSubscriptionRequest(requestId: number, adminId: number, reason: string) {
   const pool = getPool();
   const conn = await pool.getConnection();
