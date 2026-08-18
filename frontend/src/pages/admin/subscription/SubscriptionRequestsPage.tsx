@@ -41,7 +41,7 @@ export default function SubscriptionRequestsPage() {
 
   const approveMutation = useMutation({
     mutationFn: (requestId: number) =>
-      api.post(`/admin/subscription-requests/${requestId}/approve`),
+      api.post(`/admin/subscription-requests/${requestId}/approve`, {}),
     onSuccess: () => {
       invalidateAll();
       setApprovingId(null);
@@ -64,7 +64,7 @@ export default function SubscriptionRequestsPage() {
 
   const reopenMutation = useMutation({
     mutationFn: (requestId: number) =>
-      api.post(`/admin/subscription-requests/${requestId}/reopen`),
+      api.post(`/admin/subscription-requests/${requestId}/reopen`, {}),
     onSuccess: () => {
       invalidateAll();
       setReopeningId(null);

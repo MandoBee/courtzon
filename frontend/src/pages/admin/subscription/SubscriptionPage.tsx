@@ -1117,7 +1117,7 @@ function ViewAssignments() {
   const { showToast } = useToast();
   const [pendingActivation, setPendingActivation] = useState<{ orgId: number; orgName: string; planName?: string } | null>(null);
   const activatePendingMutation = useMutation({
-    mutationFn: (orgId: number) => api.post(`/organisations/${orgId}/activate-pending`),
+    mutationFn: (orgId: number) => api.post(`/organisations/${orgId}/activate-pending`, {}),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'organisation-subscriptions'] });
       queryClient.invalidateQueries({ queryKey: ['admin', 'organisations'] });
