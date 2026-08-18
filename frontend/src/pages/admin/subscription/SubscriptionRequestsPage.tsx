@@ -16,6 +16,14 @@ export default function SubscriptionRequestsPage() {
   const [page, setPage] = useState(1);
   const [rejectingId, setRejectingId] = useState<number | null>(null);
   const [rejectReason, setRejectReason] = useState('');
+  const [approvingId, setApprovingId] = useState<number | null>(null);
+  const [reopeningId, setReopeningId] = useState<number | null>(null);
+
+  const invalidateAll = () => {
+    queryClient.invalidateQueries({ queryKey: ['admin', 'subscription-requests'] });
+    queryClient.invalidateQueries({ queryKey: ['admin', 'organisation-subscriptions'] });
+    queryClient.invalidateQueries({ queryKey: ['organisations'] });
+  };
 
   const { data, isLoading } = useQuery({
     queryKey: ['admin', 'subscription-requests', { status: statusFilter, type: typeFilter, page, orgId: orgFilter }],
@@ -35,7 +43,8 @@ export default function SubscriptionRequestsPage() {
     mutationFn: (requestId: number) =>
       api.post(`/admin/subscription-requests/${requestId}/approve`),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin', 'subscription-requests'] });
+      invalidateAll();
+      setApprovingId(null);
       showToast('Subscription request approved!');
     },
     onError: (err: any) => showToast(getErrorMessage(err), 'error'),
@@ -45,10 +54,21 @@ export default function SubscriptionRequestsPage() {
     mutationFn: ({ requestId, reason }: { requestId: number; reason: string }) =>
       api.post(`/admin/subscription-requests/${requestId}/reject`, { reason }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin', 'subscription-requests'] });
+      invalidateAll();
       setRejectingId(null);
       setRejectReason('');
       showToast('Subscription request rejected');
+    },
+    onError: (err: any) => showToast(getErrorMessage(err), 'error'),
+  });
+
+  const reopenMutation = useMutation({
+    mutationFn: (requestId: number) =>
+      api.post(`/admin/subscription-requests/${requestId}/reopen`),
+    onSuccess: () => {
+      invalidateAll();
+      setReopeningId(null);
+      showToast('Subscription request reopened');
     },
     onError: (err: any) => showToast(getErrorMessage(err), 'error'),
   });
@@ -169,13 +189,34 @@ export default function SubscriptionRequestsPage() {
                     {req.status === 'pending' && (
                       <div className="flex items-center gap-1">
                         <Can permission="subscription.request.approve">
-                          <button
-                            onClick={() => approveMutation.mutate(req.id)}
-                            disabled={approveMutation.isPending}
-                            className="px-2 py-1 bg-[var(--color-primary)] text-white rounded-[var(--radius-md)] text-[10px] font-medium disabled:opacity-50"
-                          >
-                            {approveMutation.isPending ? '...' : 'Approve'}
-                          </button>
+                          {approvingId === req.id ? (
+                            <div className="flex items-center gap-1">
+                              <span className="text-[10px] text-[var(--color-text-muted)]">
+                                Approve <strong>{req.requested_plan_name}</strong> for {req.org_name}?
+                              </span>
+                              <button
+                                onClick={() => approveMutation.mutate(req.id)}
+                                disabled={approveMutation.isPending}
+                                className="px-2 py-1 bg-[var(--color-primary)] text-white rounded-[var(--radius-md)] text-[10px] font-medium disabled:opacity-50"
+                              >
+                                {approveMutation.isPending ? '...' : 'Yes'}
+                              </button>
+                              <button
+                                onClick={() => setApprovingId(null)}
+                                className="px-2 py-1 border rounded-[var(--radius-md)] text-[10px]"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => setApprovingId(req.id)}
+                              disabled={approveMutation.isPending}
+                              className="px-2 py-1 bg-[var(--color-primary)] text-white rounded-[var(--radius-md)] text-[10px] font-medium disabled:opacity-50"
+                            >
+                              Approve
+                            </button>
+                          )}
                         </Can>
                         <Can permission="subscription.request.reject">
                           {rejectingId === req.id ? (
@@ -206,6 +247,39 @@ export default function SubscriptionRequestsPage() {
                               className="px-2 py-1 border border-[var(--color-error)] text-[var(--color-error)] rounded-[var(--radius-md)] text-[10px] font-medium"
                             >
                               Reject
+                            </button>
+                          )}
+                        </Can>
+                      </div>
+                    )}
+                    {req.status === 'rejected' && (
+                      <div className="flex items-center gap-1">
+                        <Can permission="subscription.request.reopen">
+                          {reopeningId === req.id ? (
+                            <div className="flex items-center gap-1">
+                              <span className="text-[10px] text-[var(--color-text-muted)]">
+                                Reopen this request?
+                              </span>
+                              <button
+                                onClick={() => reopenMutation.mutate(req.id)}
+                                disabled={reopenMutation.isPending}
+                                className="px-2 py-1 bg-[var(--color-warning)] text-white rounded-[var(--radius-md)] text-[10px] font-medium disabled:opacity-50"
+                              >
+                                {reopenMutation.isPending ? '...' : 'Yes'}
+                              </button>
+                              <button
+                                onClick={() => setReopeningId(null)}
+                                className="px-2 py-1 border rounded-[var(--radius-md)] text-[10px]"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => setReopeningId(req.id)}
+                              className="px-2 py-1 border border-[var(--color-warning)] text-[var(--color-warning-text)] rounded-[var(--radius-md)] text-[10px] font-medium"
+                            >
+                              Reopen
                             </button>
                           )}
                         </Can>

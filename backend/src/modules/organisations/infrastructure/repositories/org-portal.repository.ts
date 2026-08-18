@@ -695,6 +695,54 @@ export async function rejectSubscriptionRequest(requestId: number, adminId: numb
   }
 }
 
+export async function reopenSubscriptionRequest(requestId: number, adminId: number) {
+  const pool = getPool();
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+
+    const [reqRows] = await conn.execute<RowData>(
+      "SELECT * FROM organisation_upgrade_requests WHERE id = ? AND status = 'rejected' FOR UPDATE",
+      [requestId],
+    );
+    if (!reqRows.length) throw new ValidationError('Subscription request not found or not rejected');
+    const req = reqRows[0] as any;
+
+    await conn.execute(
+      `UPDATE organisation_upgrade_requests
+       SET status = 'pending', approved_by = NULL, rejection_reason = NULL,
+           approved_at = NULL, updated_at = NOW()
+       WHERE id = ?`,
+      [requestId],
+    );
+
+    // Restore the cancelled registration-created subscription if one exists.
+    if (req.requested_plan_id) {
+      const [subRows] = await conn.execute<RowData>(
+        `SELECT id FROM organisation_subscriptions
+         WHERE organisation_id = ? AND plan_id = ? AND subscription_status = 'cancelled' AND start_date IS NULL`,
+        [req.organisation_id, req.requested_plan_id],
+      );
+      if (subRows.length) {
+        await conn.execute(
+          `UPDATE organisation_subscriptions
+           SET subscription_status = 'pending', updated_at = NOW()
+           WHERE id = ?`,
+          [(subRows[0] as any).id],
+        );
+      }
+    }
+
+    await conn.commit();
+    return req;
+  } catch (e) {
+    await conn.rollback();
+    throw e;
+  } finally {
+    conn.release();
+  }
+}
+
 export async function listOrgSubscriptionRequests(orgId: number) {
   const pool = getPool();
   const [rows] = await pool.execute<RowData>(

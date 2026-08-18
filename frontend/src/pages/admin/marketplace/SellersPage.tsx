@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../../services/api';
 import { Can } from '../../../permissions/Can';
@@ -76,8 +77,20 @@ export default function SellersPage() {
                       const isToggleable = status === 'active' || status === 'suspended';
                       const label = subscriptionStatusLabel(status);
                       if (!isToggleable) {
+                        if (label === 'Pending') {
+                          return (
+                            <Link
+                              to={`/admin/subscription/requests?status=pending&orgId=${s.id}`}
+                              className="inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full font-medium bg-[var(--color-info-bg)] text-[var(--color-info-text)] no-underline hover:opacity-80 hover:ring-2 hover:ring-[var(--color-info)]/40"
+                              title="Review the pending subscription request for this seller"
+                            >
+                              {label}
+                              <span aria-hidden="true" className="font-bold">→</span>
+                            </Link>
+                          );
+                        }
                         return (
-                          <span className={`text-xs px-2 py-0.5 rounded-full ${label === 'Pending' ? 'bg-[var(--color-info-bg)] text-[var(--color-info-text)]' : 'bg-gray-100 text-[var(--color-text-muted)]'}`}>
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-[var(--color-text-muted)]">
                             {label}
                           </span>
                         );

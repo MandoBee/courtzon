@@ -647,6 +647,9 @@ export async function seedTemplates(): Promise<void> {
     { eventName: 'subscription:request-rejected', locale: 'en', categorySlug: 'system', type: 'error', priority: 'high',
       titleTemplate: 'Subscription Request Rejected', bodyTemplate: 'Your request for {{requestedPlanName}} has been rejected{{#if reason}}: {{reason}}{{/if}}.',
       actionKey: 'view_subscription', routePattern: '/org/{{organisationId}}/subscription' },
+    { eventName: 'subscription:request-reopened', locale: 'en', categorySlug: 'system', type: 'info', priority: 'normal',
+      titleTemplate: 'Subscription Request Reopened', bodyTemplate: 'Your request for {{requestedPlanName}} ({{requestType}}) has been reopened and is pending review again.',
+      actionKey: 'view_subscription', routePattern: '/org/{{organisationId}}/subscription' },
 
     // ── Club ──
     { eventName: 'club:created', locale: 'en', categorySlug: 'system', type: 'info', priority: 'normal',

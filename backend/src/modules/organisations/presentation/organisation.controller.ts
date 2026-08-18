@@ -1059,3 +1059,34 @@ export async function rejectSubscriptionRequestHandler(request: FastifyRequest, 
 
   return reply.send({ success: true });
 }
+
+export async function reopenSubscriptionRequestHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { requestId } = request.params as any;
+  const adminId = (request as any).userId;
+  const result = await organisationService.reopenSubscriptionRequest(Number(requestId), adminId);
+
+  recordAudit({
+    actorId: adminId,
+    action: 'SUBSCRIPTION_REQUEST.REOPEN',
+    entityType: 'organisation_upgrade_request',
+    entityId: Number(requestId),
+    afterState: { requestType: (result as any).request_type },
+    ipAddress: request.ip,
+    userAgent: request.headers['user-agent'],
+  });
+
+  const { clearSubscriptionCache } = await import('../application/current-subscription.service.js');
+  clearSubscriptionCache();
+
+  const { eventBus: eventBusV2 } = await import('../../../shared/event-bus/index.js');
+  eventBusV2.emit('subscription:request-reopened', {
+    organisationId: (result as any).organisation_id,
+    userId: (result as any).requested_by,
+    requestId: Number(requestId),
+    requestType: (result as any).request_type,
+    requestedPlanName: (result as any).requested_plan_name,
+    reopenedBy: adminId,
+  });
+
+  return reply.send({ success: true });
+}

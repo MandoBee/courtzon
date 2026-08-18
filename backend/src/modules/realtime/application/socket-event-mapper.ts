@@ -200,6 +200,13 @@ function mapOrganisationEvent(eventName: string, p: Record<string, any>): Mapped
     rooms.push(ADMIN_ROOM);
     return { type: 'subscription.request-rejected', payload: { organisationId: p.organisationId, userId: p.userId, requestId: p.requestId, requestType: p.requestType }, rooms };
   }
+  if (eventName === 'subscription:request-reopened') {
+    const rooms: string[] = [];
+    if (p.organisationId) rooms.push(`organisation:${p.organisationId}`);
+    if (p.userId) rooms.push(`user:${p.userId}`);
+    rooms.push(ADMIN_ROOM);
+    return { type: 'subscription.request-reopened', payload: { organisationId: p.organisationId, userId: p.userId, requestId: p.requestId, requestType: p.requestType }, rooms };
+  }
   const rooms: string[] = [];
   if (p.organisationId) rooms.push(`organisation:${p.organisationId}`);
   if (p.userId) rooms.push(`user:${p.userId}`);
