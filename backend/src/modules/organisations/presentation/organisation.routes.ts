@@ -127,6 +127,7 @@ export async function organisationRoutes(app: FastifyInstance): Promise<void> {
   app.get('/admin/subscription-requests/:requestId', { preHandler: [adminGuard] }, ctrl.getSubscriptionRequestDetailHandler);
   app.post('/admin/subscription-requests/:requestId/approve', { preHandler: [adminGuard] }, ctrl.approveSubscriptionRequestHandler);
   app.post('/admin/subscription-requests/:requestId/reject', { preHandler: [adminGuard] }, ctrl.rejectSubscriptionRequestHandler);
+  app.post('/admin/subscription-requests/:requestId/reopen', { preHandler: [adminGuard] }, ctrl.reopenSubscriptionRequestHandler);
 
   // Org portal (self-service under /org/:orgId — merged from legacy `modules/org`)
   await registerOrgPortalRoutes(app);

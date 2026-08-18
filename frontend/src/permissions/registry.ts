@@ -748,6 +748,7 @@ export const uiRegistry: UIElement[] = [
   { permissionKey: 'subscription.request.view', moduleSlug: 'subscription', elementType: 'page', elementLabel: 'View Subscription Requests', componentPath: 'pages/admin/subscription/SubscriptionRequestsPage.tsx' },
   { permissionKey: 'subscription.request.approve', moduleSlug: 'subscription', elementType: 'button', elementLabel: 'Approve Request', componentPath: 'pages/admin/subscription/SubscriptionRequestsPage.tsx' },
   { permissionKey: 'subscription.request.reject', moduleSlug: 'subscription', elementType: 'button', elementLabel: 'Reject Request', componentPath: 'pages/admin/subscription/SubscriptionRequestsPage.tsx' },
+  { permissionKey: 'subscription.request.reopen', moduleSlug: 'subscription', elementType: 'button', elementLabel: 'Reopen Rejected Request', componentPath: 'pages/admin/subscription/SubscriptionRequestsPage.tsx' },
   { permissionKey: 'sidebar.subscription-requests', moduleSlug: 'subscription', elementType: 'tab', elementLabel: 'Sidebar: Subscription Requests', componentPath: 'components/layout/AdminSidebar.tsx' },
   { permissionKey: 'subscription-plans.view', moduleSlug: 'subscription', elementType: 'page', elementLabel: 'Subscription Plan Detail Page', componentPath: 'pages/subscription/SubscriptionPlanDetailPage.tsx' },
 

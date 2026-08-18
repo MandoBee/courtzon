@@ -124,6 +124,7 @@ export interface DomainEventMap {
   'subscription:request-submitted': BaseEvent & { organisationId: number; userId: number; requestId: number; requestType: string; requestedPlanName?: string; notes?: string };
   'subscription:request-approved': BaseEvent & { organisationId: number; userId?: number; requestId: number; requestType: string; requestedPlanName?: string; approvedBy: number };
   'subscription:request-rejected': BaseEvent & { organisationId: number; userId?: number; requestId: number; requestType: string; requestedPlanName?: string; reason: string; rejectedBy: number };
+  'subscription:request-reopened': BaseEvent & { organisationId: number; userId?: number; requestId: number; requestType: string; requestedPlanName?: string; reopenedBy: number };
   'wallet:deposit': BaseEvent & { walletId: number; userId: number; amount: number; balance: number; currency?: string };
   'wallet:withdrawal': BaseEvent & { walletId: number; userId: number; amount: number; balance: number; currency?: string };
   'wallet:low-balance': BaseEvent & { userId: number; balance: number; currency: string };

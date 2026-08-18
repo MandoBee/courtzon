@@ -1212,6 +1212,11 @@ export class OrganisationService {
     return rejectSubscriptionRequest(requestId, adminId, reason);
   }
 
+  async reopenSubscriptionRequest(requestId: number, adminId: number) {
+    const { reopenSubscriptionRequest } = await import('../infrastructure/repositories/org-portal.repository.js');
+    return reopenSubscriptionRequest(requestId, adminId);
+  }
+
   async #cascadeDeleteOrganisation(orgId: number, conn: any): Promise<void> {
     await conn.execute(
       `UPDATE organisation_subscriptions SET subscription_status = 'cancelled', auto_renew = 0, updated_at = NOW()

@@ -271,7 +271,7 @@ const eventGroups: EventGroupConfig[] = [
     },
   },
   {
-    events: ['subscription:request-submitted', 'subscription:request-approved', 'subscription:request-rejected'],
+    events: ['subscription:request-submitted', 'subscription:request-approved', 'subscription:request-rejected', 'subscription:request-reopened'],
     handler: async (eventName, data, categorySlug) => {
       if (data.userId) {
         await dispatchToUser({

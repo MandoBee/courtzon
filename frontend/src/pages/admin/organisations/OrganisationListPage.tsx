@@ -241,8 +241,20 @@ export default function OrganisationListPage() {
                               const isToggleable = org.subscription_status === 'active' || org.subscription_status === 'suspended';
                               const label = subscriptionStatusLabel(org.subscription_status);
                               if (!isToggleable) {
+                                if (label === 'Pending') {
+                                  return (
+                                    <Link
+                                      to={`/admin/subscription/requests?status=pending&orgId=${org.id}`}
+                                      className="inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full font-medium bg-[var(--color-info-bg)] text-[var(--color-info-text)] no-underline hover:opacity-80 hover:ring-2 hover:ring-[var(--color-info)]/40"
+                                      title="Review the pending subscription request for this organisation"
+                                    >
+                                      {label}
+                                      <span aria-hidden="true" className="font-bold">→</span>
+                                    </Link>
+                                  );
+                                }
                                 return (
-                                  <span className={`px-2 py-0.5 text-xs rounded-full font-medium ${label === 'Pending' ? 'bg-[var(--color-info-bg)] text-[var(--color-info-text)]' : 'bg-gray-100 text-[var(--color-text-muted)]'}`}>
+                                  <span className="px-2 py-0.5 text-xs rounded-full font-medium bg-gray-100 text-[var(--color-text-muted)]">
                                     {label}
                                   </span>
                                 );
