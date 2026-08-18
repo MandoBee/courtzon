@@ -115,6 +115,15 @@ export const app = Fastify({
   trustProxy: true,
 });
 
+// Accept empty JSON bodies — Fastify's default parser rejects `Content-Type: application/json`
+// when the body is empty, but many frontend mutations POST without a body (e.g. approve, toggle).
+app.addContentTypeParser('application/json', { parseAs: 'string' }, (_req, body, done) => {
+  const str = typeof body === 'string' ? body : String(body);
+  if (!str || str.trim() === '') return done(null, {});
+  try { done(null, JSON.parse(str)); }
+  catch (err: any) { done(err, undefined); }
+});
+
 await app.register(helmet, {
   contentSecurityPolicy: {
     directives: {
