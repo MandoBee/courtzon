@@ -1,9 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { mockRecordAudit, mockEmit, mockReject } = vi.hoisted(() => ({
+const { mockRecordAudit, mockEmit, mockReject, mockClearCache } = vi.hoisted(() => ({
   mockRecordAudit: vi.fn(async () => undefined),
   mockEmit: vi.fn(),
   mockReject: vi.fn(),
+  mockClearCache: vi.fn(),
 }));
 
 vi.mock('../../audit-log/index.js', () => ({ recordAudit: mockRecordAudit }));
@@ -13,6 +14,9 @@ vi.mock('../../../shared/event-bus/index.js', () => ({
 }));
 vi.mock('../application/organisation.service.js', () => ({
   organisationService: { rejectSubscriptionRequest: mockReject },
+}));
+vi.mock('../application/current-subscription.service.js', () => ({
+  clearSubscriptionCache: mockClearCache,
 }));
 vi.mock('../../rbac/application/user-country-scope.js', () => ({
   getUserCountryScope: vi.fn(async () => ({ countryId: null })),
@@ -24,7 +28,7 @@ vi.mock('../../../infrastructure/redis/redis.client.js', () => ({ getRedisClient
 vi.mock('../../../infrastructure/queue/queue.service.js', () => ({ queueService: { add: vi.fn() } }));
 vi.mock('../../../shared/command/command-pipeline.js', () => ({ commandPipeline: { execute: vi.fn() } }));
 
-// The DTO module is side-effect free (zod schemas), so import it normally.
+// The DTO module is side-effect-free (zod schemas), so import it normally.
 import { rejectSubscriptionRequestHandler } from '../presentation/organisation.controller.js';
 
 function makeReqReply() {
@@ -39,11 +43,12 @@ function makeReqReply() {
   return { request: request as any, reply: reply as any };
 }
 
-describe('rejectSubscriptionRequestHandler — single authoritative audit + single event', () => {
+describe('rejectSubscriptionRequestHandler — single authoritative audit + single event + cache clear', () => {
   beforeEach(() => {
     mockRecordAudit.mockReset();
     mockEmit.mockReset();
     mockReject.mockReset();
+    mockClearCache.mockReset();
     mockReject.mockResolvedValue({
       id: 17,
       organisation_id: 6,
@@ -53,7 +58,7 @@ describe('rejectSubscriptionRequestHandler — single authoritative audit + sing
     });
   });
 
-  it('records exactly one SUBSCRIPTION_REQUEST.REJECT audit, emits event once, and never records SUBSCRIPTION.REJECTED', async () => {
+  it('records exactly one SUBSCRIPTION_REQUEST.REJECT audit, emits event once, clears cache, and never records SUBSCRIPTION.REJECTED', async () => {
     const { request, reply } = makeReqReply();
     await rejectSubscriptionRequestHandler(request, reply);
 
@@ -77,6 +82,9 @@ describe('rejectSubscriptionRequestHandler — single authoritative audit + sing
     expect(rejectEmits[0][1].requestId).toBe(17);
     expect(rejectEmits[0][1].reason).toBe('Test rejection');
     expect(rejectEmits[0][1].rejectedBy).toBe(1);
+
+    // Subscription cache must be cleared after rejection.
+    expect(mockClearCache).toHaveBeenCalledTimes(1);
 
     expect(reply.send).toHaveBeenCalledWith({ success: true });
   });

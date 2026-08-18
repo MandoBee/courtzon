@@ -665,11 +665,25 @@ export async function rejectSubscriptionRequest(requestId: number, adminId: numb
       [requestId],
     );
     if (!reqRows.length) throw new ValidationError('Subscription request not found or already processed');
+    const req = reqRows[0] as any;
 
     await conn.execute(
       'UPDATE organisation_upgrade_requests SET status = \'rejected\', approved_by = ?, rejection_reason = ?, updated_at = NOW() WHERE id = ?',
       [adminId, reason, requestId],
     );
+
+    // Cancel any registration-created pending subscription for this request.
+    // Only targets subscriptions that were created alongside the registration
+    // (pending status, no start_date = never activated).
+    // Does NOT touch existing active/suspended subscriptions from PLAN_CHANGE requests.
+    if (req.requested_plan_id) {
+      await conn.execute(
+        `UPDATE organisation_subscriptions
+         SET subscription_status = 'cancelled', auto_renew = 0, updated_at = NOW()
+         WHERE organisation_id = ? AND plan_id = ? AND subscription_status = 'pending' AND start_date IS NULL`,
+        [req.organisation_id, req.requested_plan_id],
+      );
+    }
 
     await conn.commit();
     return reqRows[0];
@@ -729,14 +743,42 @@ export async function getSubscriptionRequestStatusHistory(requestId: number) {
 
 export async function cancelSubscriptionRequest(requestId: number, cancelledBy: number, reason?: string) {
   const pool = getPool();
-  const [result] = await pool.execute<mysql.ResultSetHeader>(
-    `UPDATE organisation_upgrade_requests
-     SET status = 'cancelled', cancelled_by = ?, cancelled_at = NOW(), cancellation_reason = ?, updated_at = NOW()
-     WHERE id = ? AND status = 'pending'`,
-    [cancelledBy, reason || null, requestId],
-  );
-  if (result.affectedRows === 0) throw new ValidationError('Subscription request not found or already processed');
-  return { success: true };
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+
+    const [reqRows] = await conn.execute<RowData>(
+      'SELECT * FROM organisation_upgrade_requests WHERE id = ? AND status = \'pending\' FOR UPDATE',
+      [requestId],
+    );
+    if (!reqRows.length) throw new ValidationError('Subscription request not found or already processed');
+    const req = reqRows[0] as any;
+
+    await conn.execute(
+      `UPDATE organisation_upgrade_requests
+       SET status = 'cancelled', cancelled_by = ?, cancelled_at = NOW(), cancellation_reason = ?, updated_at = NOW()
+       WHERE id = ?`,
+      [cancelledBy, reason || null, requestId],
+    );
+
+    // Cancel any registration-created pending subscription for this request.
+    if (req.requested_plan_id) {
+      await conn.execute(
+        `UPDATE organisation_subscriptions
+         SET subscription_status = 'cancelled', auto_renew = 0, updated_at = NOW()
+         WHERE organisation_id = ? AND plan_id = ? AND subscription_status = 'pending' AND start_date IS NULL`,
+        [req.organisation_id, req.requested_plan_id],
+      );
+    }
+
+    await conn.commit();
+    return { success: true };
+  } catch (e) {
+    await conn.rollback();
+    throw e;
+  } finally {
+    conn.release();
+  }
 }
 
 export async function getOrgProducts(orgId: number, page = 1, limit = 20, sportId?: number, status?: string, branchId?: number) {
