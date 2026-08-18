@@ -8,6 +8,8 @@ import type { ApiData, PaginatedResult } from '../../../types/api';
 import type { Country, OrganisationSummary, OrganisationType } from '../../../types/admin/common';
 import { EntityImage, CountryFlag } from '../../../components/ui';
 import { subscriptionStatusLabel } from '../../../utils/subscription-status';
+import { useToast } from '../../../components/ui/Toast';
+import { getErrorMessage } from '../../../utils/errors';
 
 const PAGE_SIZES = [10, 20, 30, 50];
 export default function OrganisationListPage() {
@@ -84,6 +86,22 @@ export default function OrganisationListPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'organisations'] });
       queryClient.invalidateQueries({ queryKey: ['admin', 'organisation-subscriptions'] });
+    },
+  });
+
+  const { showToast } = useToast();
+  const [pendingActivation, setPendingActivation] = useState<{ orgId: number; orgName: string } | null>(null);
+  const activatePendingMutation = useMutation({
+    mutationFn: (orgId: number) => api.post(`/organisations/${orgId}/activate-pending`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'organisations'] });
+      queryClient.invalidateQueries({ queryKey: ['admin', 'organisation-subscriptions'] });
+      queryClient.invalidateQueries({ queryKey: ['org-subscription'] });
+      showToast('Subscription activated', 'success');
+      setPendingActivation(null);
+    },
+    onError: (err: any) => {
+      showToast(getErrorMessage(err, 'Activation failed'), 'error');
     },
   });
 
@@ -243,14 +261,14 @@ export default function OrganisationListPage() {
                               if (!isToggleable) {
                                 if (label === 'Pending') {
                                   return (
-                                    <Link
-                                      to={`/admin/subscription/requests?status=pending&orgId=${org.id}`}
-                                      className="inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full font-medium bg-[var(--color-info-bg)] text-[var(--color-info-text)] no-underline hover:opacity-80 hover:ring-2 hover:ring-[var(--color-info)]/40"
-                                      title="Review the pending subscription request for this organisation"
+                                    <button
+                                      onClick={() => setPendingActivation({ orgId: org.id, orgName: org.name })}
+                                      className="inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full font-medium bg-[var(--color-info-bg)] text-[var(--color-info-text)] cursor-pointer hover:opacity-80 hover:ring-2 hover:ring-[var(--color-info)]/40"
+                                      title="Activate the pending subscription for this organisation"
                                     >
                                       {label}
                                       <span aria-hidden="true" className="font-bold">→</span>
-                                    </Link>
+                                    </button>
                                   );
                                 }
                                 return (
@@ -321,6 +339,27 @@ export default function OrganisationListPage() {
             </div>
           )}
         </>
+      )}
+
+      {pendingActivation && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50">
+          <div className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] shadow-lg p-6 w-full max-w-md">
+            <h2 className="text-lg font-semibold mb-2">Activate Pending Subscription</h2>
+            <p className="text-sm text-[var(--color-text-muted)] mb-4">
+              Are you sure you want to activate the pending subscription for <strong>{pendingActivation.orgName}</strong>?
+            </p>
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setPendingActivation(null)} className="px-4 py-2 text-sm border rounded-[var(--radius-md)]">Cancel</button>
+              <button
+                onClick={() => activatePendingMutation.mutate(pendingActivation.orgId)}
+                disabled={activatePendingMutation.isPending}
+                className="px-4 py-2 text-sm rounded-[var(--radius-md)] bg-[var(--color-success)] text-white disabled:opacity-50"
+              >
+                {activatePendingMutation.isPending ? 'Activating…' : 'Activate'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

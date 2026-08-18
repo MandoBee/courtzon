@@ -1023,6 +1023,13 @@ export async function approveSubscriptionRequestHandler(request: FastifyRequest,
   return reply.send({ success: true });
 }
 
+export async function activatePendingSubscriptionHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { orgId } = request.params as any;
+  const adminId = (request as any).userId;
+  await organisationService.activatePendingSubscriptionForOrg(Number(orgId), adminId);
+  return reply.send({ success: true });
+}
+
 export async function getSubscriptionRequestStatsHandler(request: FastifyRequest, reply: FastifyReply) {
   const stats = await organisationService.getSubscriptionRequestStats();
   return reply.send(stats);

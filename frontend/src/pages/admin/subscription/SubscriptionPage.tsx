@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
 import { getErrorMessage } from '../../../utils/errors';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../../services/api';
@@ -1114,6 +1113,22 @@ function ViewAssignments() {
     queryKey: ['admin', 'organisation-subscriptions'],
     queryFn: () => api.get('/admin/organisation-subscriptions').then(r => r.data.data),
   });
+  const queryClient = useQueryClient();
+  const { showToast } = useToast();
+  const [pendingActivation, setPendingActivation] = useState<{ orgId: number; orgName: string; planName?: string } | null>(null);
+  const activatePendingMutation = useMutation({
+    mutationFn: (orgId: number) => api.post(`/organisations/${orgId}/activate-pending`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'organisation-subscriptions'] });
+      queryClient.invalidateQueries({ queryKey: ['admin', 'organisations'] });
+      queryClient.invalidateQueries({ queryKey: ['org-subscription'] });
+      showToast('Subscription activated', 'success');
+      setPendingActivation(null);
+    },
+    onError: (err: any) => {
+      showToast(getErrorMessage(err, 'Activation failed'), 'error');
+    },
+  });
 
   if (isLoading) return <p className="text-sm text-[var(--color-text-muted)]">Loading...</p>;
 
@@ -1157,14 +1172,14 @@ function ViewAssignments() {
                     };
                     if (label === 'Pending') {
                       return (
-                        <Link
-                          to={`/admin/subscription/requests?status=pending&orgId=${item.org_id}`}
-                          className={`inline-flex items-center gap-1.5 px-2 py-0.5 text-xs rounded-full no-underline hover:opacity-80 hover:ring-2 hover:ring-[var(--color-info)]/40 ${styles[label] || 'bg-gray-100 text-[var(--color-text-muted)]'}`}
-                          title="Review the pending subscription request for this organisation"
+                        <button
+                          onClick={() => setPendingActivation({ orgId: item.org_id, orgName: item.org_name, planName: item.plan_name })}
+                          className={`inline-flex items-center gap-1.5 px-2 py-0.5 text-xs rounded-full cursor-pointer hover:opacity-80 hover:ring-2 hover:ring-[var(--color-info)]/40 ${styles[label] || 'bg-gray-100 text-[var(--color-text-muted)]'}`}
+                          title="Activate the pending subscription for this organisation"
                         >
                           {label}
                           <span aria-hidden="true" className="font-bold">→</span>
-                        </Link>
+                        </button>
                       );
                     }
                     return (
@@ -1191,6 +1206,28 @@ function ViewAssignments() {
         </tbody>
       </table>
       {!items.length && <p className="text-center py-8 text-sm text-[var(--color-text-muted)]">No organisation subscriptions found.</p>}
+
+      {pendingActivation && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50">
+          <div className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] shadow-lg p-6 w-full max-w-md">
+            <h2 className="text-lg font-semibold mb-2">Activate Pending Subscription</h2>
+            <p className="text-sm text-[var(--color-text-muted)] mb-4">
+              Activate the pending subscription for <strong>{pendingActivation.orgName}</strong>
+              {pendingActivation.planName ? <> on plan <strong>{pendingActivation.planName}</strong></> : ''}?
+            </p>
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setPendingActivation(null)} className="px-4 py-2 text-sm border rounded-[var(--radius-md)]">Cancel</button>
+              <button
+                onClick={() => activatePendingMutation.mutate(pendingActivation.orgId)}
+                disabled={activatePendingMutation.isPending}
+                className="px-4 py-2 text-sm rounded-[var(--radius-md)] bg-[var(--color-success)] text-white disabled:opacity-50"
+              >
+                {activatePendingMutation.isPending ? 'Activating…' : 'Activate'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
