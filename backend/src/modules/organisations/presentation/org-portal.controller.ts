@@ -455,6 +455,8 @@ export async function cancelSubscriptionRequestHandler(request: FastifyRequest, 
   const { orgId, requestId } = request.params as { orgId: string; requestId: string };
   const userId = (request as any).userId;
   const result = await service.cancelMySubscriptionRequest(parseInt(orgId, 10), parseInt(requestId, 10), userId);
+  const { clearSubscriptionCache } = await import('../application/current-subscription.service.js');
+  clearSubscriptionCache();
   auditOrganisationMutation(request, 'SUBSCRIPTION.REQUEST.CANCEL', 'organisation_upgrade_request', parseInt(requestId, 10), {});
   return reply.send(result);
 }

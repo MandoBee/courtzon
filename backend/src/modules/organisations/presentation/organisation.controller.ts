@@ -1043,6 +1043,9 @@ export async function rejectSubscriptionRequestHandler(request: FastifyRequest, 
     userAgent: request.headers['user-agent'],
   });
 
+  const { clearSubscriptionCache } = await import('../application/current-subscription.service.js');
+  clearSubscriptionCache();
+
   const { eventBus: eventBusV2 } = await import('../../../shared/event-bus/index.js');
   eventBusV2.emit('subscription:request-rejected', {
     organisationId: (result as any).organisation_id,
