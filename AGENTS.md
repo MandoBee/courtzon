@@ -124,6 +124,19 @@ V3 uses a **single authoritative baseline** — no migration chain.
 - **Historical migrations:** Archived at `archive/database/schema/` (128 files) — preserved for audit, **never required for deployment**
 - **New migrations:** Place in `database/migrations/` as sequential SQL files. Update baseline after adding them.
 
+### Required seed files (ALL must be applied — do not skip any)
+
+A fresh or restored environment MUST apply every seed file below, in order. The accounting seeds (`004`/`005`/`006`) are **not** part of `001_baseline.sql` and are silently skipped if omitted — a known cause of empty accounting screens (see Account Templates incident). `scripts/seed.sh` refuses to run the full set when `users` has >5 rows; on populated DBs run each file individually with `node backend/scripts/seed.js --seed-file <file>`.
+
+| File | Purpose |
+|------|---------|
+| `001_baseline.sql` | Reference data (countries, permissions, roles, amenities, languages, etc.) |
+| `002_academy_programs.sql` | Academy programs reference data |
+| `003_player_demo.sql` | Player demo data |
+| `004_chart_of_accounts.sql` | Global Chart of Accounts (structural + posting accounts) |
+| `005_accounting_defaults.sql` | Default accounting event mappings (event → GL account) |
+| `006_account_templates.sql` | System account templates (3: sports_club, +academy, +marketplace) + 26 lines |
+
 ### Creating a new DB migration
 1. Add the migration SQL file to `database/migrations/`
 2. Update the baseline by running the full chain against a fresh DB and re-exporting
@@ -134,8 +147,12 @@ V3 uses a **single authoritative baseline** — no migration chain.
 # Import schema
 mysql -u root -p courtzon_v3 < database/baseline/001_courtzon_v3.sql
 
-# Import seed data
-mysql -u root -p courtzon_v3 < database/seeds/001_baseline.sql
+# Import ALL seed data (see required seed files table above — never stop at 001)
+for f in database/seeds/001_baseline.sql database/seeds/002_academy_programs.sql \
+         database/seeds/003_player_demo.sql database/seeds/004_chart_of_accounts.sql \
+         database/seeds/005_accounting_defaults.sql database/seeds/006_account_templates.sql; do
+  mysql -u root -p courtzon_v3 < "$f"
+done
 ```
 
 For Docker: import into `courtzon_v3` database on MySQL container (port 3307).
