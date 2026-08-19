@@ -1018,16 +1018,33 @@ export async function approveSubscriptionRequestHandler(request: FastifyRequest,
   const { requestId } = request.params as any;
   const adminId = (request as any).userId;
   const { approvalNotes } = (request.body ?? {}) as any;
-  await organisationService.approveSubscriptionRequest(Number(requestId), adminId, approvalNotes);
+  const result = await organisationService.approveSubscriptionRequest(Number(requestId), adminId, approvalNotes);
 
-  return reply.send({ success: true });
+  if (!result.activated && !result.alreadyProcessed) {
+    return reply.status(422).send({
+      success: false,
+      code: result.deferred?.toUpperCase() || 'ACTIVATION_BLOCKED',
+      message: result.reason || 'Subscription activation could not be completed',
+    });
+  }
+
+  return reply.send({ success: true, alreadyProcessed: result.alreadyProcessed || undefined });
 }
 
 export async function activatePendingSubscriptionHandler(request: FastifyRequest, reply: FastifyReply) {
   const { orgId } = request.params as any;
   const adminId = (request as any).userId;
-  await organisationService.activatePendingSubscriptionForOrg(Number(orgId), adminId);
-  return reply.send({ success: true });
+  const result = await organisationService.activatePendingSubscriptionForOrg(Number(orgId), adminId);
+
+  if (!result.activated && !result.alreadyProcessed) {
+    return reply.status(422).send({
+      success: false,
+      code: result.deferred?.toUpperCase() || 'ACTIVATION_BLOCKED',
+      message: result.reason || 'Subscription activation could not be completed',
+    });
+  }
+
+  return reply.send({ success: true, alreadyProcessed: result.alreadyProcessed || undefined });
 }
 
 export async function getSubscriptionRequestStatsHandler(request: FastifyRequest, reply: FastifyReply) {
