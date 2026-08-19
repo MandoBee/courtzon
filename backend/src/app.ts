@@ -121,7 +121,7 @@ app.addContentTypeParser('application/json', { parseAs: 'string' }, (_req, body,
   const str = typeof body === 'string' ? body : String(body);
   if (!str || str.trim() === '') return done(null, {});
   try { done(null, JSON.parse(str)); }
-  catch (err: any) { done(err, undefined); }
+  catch { done(null, {}); }
 });
 
 await app.register(helmet, {
