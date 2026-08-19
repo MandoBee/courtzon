@@ -295,18 +295,10 @@ export async function tryActivateSubscriptionRequest(
       return { ...baseResult(req), activated: false, deferred: 'conflict', reason: 'Another pending request exists for this organisation' };
     }
 
-    // Org-active gate (business rule)
-    const isPaid = await isPaidPlan(conn, req);
-    if (isPaid && !(org.is_active && org.is_verified)) {
-      await conn.rollback();
-      return {
-        ...baseResult(req),
-        activated: false,
-        deferred: 'org-inactive',
-        reason: 'Organisation must be active and verified before a paid subscription can activate',
-      };
-    }
-    if (!isPaid && !org.is_active) {
+    // Org-active gate — subscription status is independent of org verification status.
+    // Only require the org to exist and be active (not suspended/deleted).
+    // Paid plans no longer require is_verified: subscription approval is a separate workflow.
+    if (!org.is_active) {
       await conn.rollback();
       return { ...baseResult(req), activated: false, deferred: 'org-inactive', reason: 'Organisation must be active before a subscription can activate' };
     }

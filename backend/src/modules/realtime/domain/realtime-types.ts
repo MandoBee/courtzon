@@ -17,6 +17,7 @@ export type SocketRoom =
   | `booking:${number}`
   | `coach:${number}`
   | 'superadmin'
+  | 'admin'
   | 'finance'
   | `marketplace:seller:${number}`;
 
