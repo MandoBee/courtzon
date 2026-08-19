@@ -52,11 +52,11 @@ describe('activatePendingSubscriptionHandler', () => {
     expect(reply.send).toHaveBeenCalledWith({ success: true });
   });
 
-  it('returns 422 when activation is blocked (org not verified)', async () => {
+  it('returns 422 when activation is blocked (org not active)', async () => {
     mockActivate.mockResolvedValue({
       activated: false,
       deferred: 'org-inactive',
-      reason: 'Organisation must be active and verified before a paid subscription can activate',
+      reason: 'Organisation must be active before a subscription can activate',
     });
     const { request, reply } = makeReqReply();
 
@@ -66,7 +66,7 @@ describe('activatePendingSubscriptionHandler', () => {
     expect(reply.send).toHaveBeenCalledWith({
       success: false,
       code: 'ORG-INACTIVE',
-      message: 'Organisation must be active and verified before a paid subscription can activate',
+      message: 'Organisation must be active before a subscription can activate',
     });
   });
 

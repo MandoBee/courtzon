@@ -41,6 +41,7 @@ export class SocketRoomManager {
       for (const row of roleRows) {
         if (row.slug === 'super_admin' || row.slug === 'super-admin') {
           rooms.push('superadmin');
+          rooms.push('admin');
           rooms.push('finance');
           isSuperAdmin = true;
         }

@@ -63,13 +63,13 @@ describe('approveSubscriptionRequestHandler — tolerates missing request body',
     expect(reply.send).toHaveBeenCalledWith({ success: true });
   });
 
-  it('returns 422 when activation is blocked (e.g. org not verified)', async () => {
+  it('returns 422 when activation is blocked (org not active)', async () => {
     mockApprove.mockResolvedValue({
       id: 10,
       organisation_id: 17,
       activated: false,
       deferred: 'org-inactive',
-      reason: 'Organisation must be active and verified before a paid subscription can activate',
+      reason: 'Organisation must be active before a subscription can activate',
     });
     const { request, reply } = makeReqReply({ body: undefined });
 
@@ -79,7 +79,7 @@ describe('approveSubscriptionRequestHandler — tolerates missing request body',
     expect(reply.send).toHaveBeenCalledWith({
       success: false,
       code: 'ORG-INACTIVE',
-      message: 'Organisation must be active and verified before a paid subscription can activate',
+      message: 'Organisation must be active before a subscription can activate',
     });
   });
 

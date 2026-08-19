@@ -310,7 +310,7 @@ export function useRealtimeCacheUpdates(): void {
   });
 
   const subscriptionRequestEvents = [
-    'subscription.request-submitted', 'subscription.request-approved', 'subscription.request-rejected',
+    'subscription.request-submitted', 'subscription.request-approved', 'subscription.request-rejected', 'subscription.request-reopened',
   ];
   for (const ev of subscriptionRequestEvents) {
     useSocketEvent(ev, () => {
