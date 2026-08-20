@@ -16,13 +16,13 @@ describe('Financial Entitlement Aggregate — State machine', () => {
     ['AVAILABLE', 'CANCELLED'],
     ['ON_HOLD', 'AVAILABLE'],
     ['ON_HOLD', 'CANCELLED'],
+    ['ON_HOLD', 'SETTLED'],
   ];
 
   const FORBIDDEN_TRANSITIONS: [EntitlementStatus, EntitlementStatus][] = [
     ['PENDING', 'ON_HOLD'],
     ['PENDING', 'SETTLED'],
     ['AVAILABLE', 'PENDING'],
-    ['ON_HOLD', 'SETTLED'],
     ['ON_HOLD', 'PENDING'],
     ['SETTLED', 'PENDING'],
     ['SETTLED', 'AVAILABLE'],

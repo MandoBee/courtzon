@@ -14,7 +14,7 @@ const round2 = (n: number) => Math.round(n * 100) / 100;
  *
  * Summed across items this equals `order.total − courtzon_fee` (within rounding).
  */
-export function buildEntitlementInputs(order: any, items: any[]): any[] {
+export function buildEntitlementInputs(order: any, items: any[], collector?: 'courtzon' | 'org'): any[] {
   const currency = order.currency_code || 'EGP';
   const subtotal = Number(order.subtotal || 0);
   const discount = Number(order.discount_amount || 0);
@@ -62,6 +62,7 @@ export function buildEntitlementInputs(order: any, items: any[]): any[] {
         entitlementType: 'ORGANIZATION_EARNING',
         sourceType: 'marketplace',
         sourceId: item.item_id,
+        collector,
         amount: orgEarning,
         currency,
         availableAt: null,
@@ -77,6 +78,7 @@ export function buildEntitlementInputs(order: any, items: any[]): any[] {
         entitlementType: 'COURTZON_COMMISSION',
         sourceType: 'marketplace',
         sourceId: item.item_id,
+        collector,
         amount: itemCommission,
         currency,
         availableAt: null,

@@ -12,12 +12,15 @@ export type SourceType =
   | 'coach_session'
   | 'manual';
 
+/** Who originally collected the money for this entitlement. */
+export type EntitlementCollector = 'courtzon' | 'org';
+
 export type EntitlementStatus = 'PENDING' | 'AVAILABLE' | 'ON_HOLD' | 'SETTLED' | 'CANCELLED';
 
 const ALLOWED_TRANSITIONS: Record<EntitlementStatus, EntitlementStatus[]> = {
   PENDING:    ['AVAILABLE', 'CANCELLED'],
   AVAILABLE:  ['ON_HOLD', 'SETTLED', 'CANCELLED'],
-  ON_HOLD:    ['AVAILABLE', 'CANCELLED'],
+  ON_HOLD:    ['AVAILABLE', 'CANCELLED', 'SETTLED'],
   SETTLED:    [],
   CANCELLED:  [],
 };
@@ -30,6 +33,7 @@ export interface EntitlementRecord {
   entitlement_type: EntitlementType;
   source_type: SourceType;
   source_id: number | null;
+  collector: EntitlementCollector | null;
   amount: number;
   currency: string;
   status: EntitlementStatus;
@@ -53,6 +57,7 @@ export interface CreateEntitlementInput {
   entitlementType: EntitlementType;
   sourceType: SourceType;
   sourceId?: number | null;
+  collector?: EntitlementCollector | null;
   amount: number;
   currency?: string;
   availableAt?: Date | null;

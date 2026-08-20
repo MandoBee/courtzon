@@ -289,6 +289,73 @@ export class FinancialEntitlementService {
   async getSettlementEntitlements(settlementId: number) {
     return financialEntitlementRepository.findBySettlement(settlementId);
   }
+
+  async getAvailableForOrganisation(orgId: number) {
+    return financialEntitlementRepository.findAvailableForOrganisation(orgId);
+  }
+
+  /**
+   * Reserve AVAILABLE entitlements for a settlement: transition to ON_HOLD and
+   * attach settlement_id, so they cannot enter another settlement. Runs on the
+   * caller's transaction connector (atomic with settlement creation).
+   */
+  async reserveForSettlement(ids: number[], settlementId: number, conn: mysql.PoolConnection): Promise<void> {
+    for (const id of ids) {
+      const ent = await financialEntitlementRepository.findById(id, conn);
+      if (!ent) throw new ConflictError(`Entitlement ${id} not found`);
+      if (ent.status === 'ON_HOLD' && ent.settlement_id === settlementId) continue; // already reserved for this settlement
+      if (ent.status !== 'AVAILABLE') {
+        throw new ConflictError(`Entitlement ${id} is not AVAILABLE (status ${ent.status})`);
+      }
+      planTransition({ fromStatus: ent.status, toStatus: 'ON_HOLD', currentVersion: ent.aggregate_version });
+      await financialEntitlementRepository.persistTransition(id, 'ON_HOLD', ent.aggregate_version, {
+        hold_reason: `Settlement reserved (${settlementId})`,
+        settlement_id: settlementId,
+      }, conn);
+    }
+  }
+
+  /**
+   * Finalize ON_HOLD entitlements of a settlement as SETTLED (immutable).
+   * Runs on the caller's transaction connector (atomic with payment recording).
+   */
+  async finalizeSettled(ids: number[], settlementId: number, paidBy: number | null, conn: mysql.PoolConnection): Promise<void> {
+    for (const id of ids) {
+      const ent = await financialEntitlementRepository.findById(id, conn);
+      if (!ent) throw new ConflictError(`Entitlement ${id} not found`);
+      if (ent.status === 'SETTLED') continue; // already settled — idempotent
+      if (ent.status !== 'ON_HOLD' || ent.settlement_id !== settlementId) {
+        throw new ConflictError(`Entitlement ${id} is not reserved for this settlement (status ${ent.status})`);
+      }
+      planTransition({ fromStatus: ent.status, toStatus: 'SETTLED', currentVersion: ent.aggregate_version });
+      await financialEntitlementRepository.persistTransition(id, 'SETTLED', ent.aggregate_version, {
+        settled_by: paidBy,
+        settlement_id: settlementId,
+        hold_reason: null,
+      }, conn);
+    }
+  }
+
+  /**
+   * Release ON_HOLD entitlements back to AVAILABLE when a settlement is
+   * cancelled before payment. Clears the settlement reservation. Runs on the
+   * caller's transaction connector (atomic with settlement cancellation).
+   */
+  async releaseFromSettlement(ids: number[], settlementId: number, conn: mysql.PoolConnection): Promise<void> {
+    for (const id of ids) {
+      const ent = await financialEntitlementRepository.findById(id, conn);
+      if (!ent) throw new ConflictError(`Entitlement ${id} not found`);
+      if (ent.status === 'AVAILABLE') continue; // already released
+      if (ent.status !== 'ON_HOLD' || ent.settlement_id !== settlementId) {
+        throw new ConflictError(`Entitlement ${id} is not reserved for this settlement (status ${ent.status})`);
+      }
+      planTransition({ fromStatus: ent.status, toStatus: 'AVAILABLE', currentVersion: ent.aggregate_version });
+      await financialEntitlementRepository.persistTransition(id, 'AVAILABLE', ent.aggregate_version, {
+        hold_reason: null,
+        settlement_id: null,
+      }, conn);
+    }
+  }
 }
 
 export const financialEntitlementService = new FinancialEntitlementService();

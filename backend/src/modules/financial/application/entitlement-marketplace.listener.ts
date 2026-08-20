@@ -128,7 +128,7 @@ export async function handleMarketplaceOrderConfirmed(envelope: EventEnvelope): 
     return;
   }
 
-  const inputs = buildEntitlementInputs(order, items);
+  const inputs = buildEntitlementInputs(order, items, order.cash_holder === 'org' ? 'org' : 'courtzon');
   if (!inputs.length) {
     log.warn({ orderId: data.orderId }, 'No positive entitlement amounts computed — skipping');
     return;
