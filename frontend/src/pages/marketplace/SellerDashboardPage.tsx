@@ -433,23 +433,25 @@ export default function SellerDashboardPage() {
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-sm font-medium">
-                        {formatPrice(Number(s.amount), s.currency_code)}
+                        {formatPrice(Number(s.final_amount), 'EGP')}
                       </p>
                       <p className="text-xs text-[var(--color-text-muted)]">
                         {new Date(s.requested_at || s.created_at).toLocaleDateString('en-GB')}
                         {s.notes && ` · ${s.notes}`}
+                        {s.settlement_direction && ` · ${s.settlement_direction === 'courtzon_to_org' ? 'CourtZon → Org' : 'Org → CourtZon'}`}
                       </p>
                     </div>
                     <span className={`text-xs px-2 py-0.5 rounded-full ${
-                      s.status === 'paid' ? 'bg-[var(--color-success-bg)] text-[var(--color-success-text)]' :
-                      s.status === 'approved' ? 'bg-[var(--color-info-bg)] text-[var(--color-info-text)]' :
-                      s.status === 'rejected' ? 'bg-[var(--color-error-bg)] text-[var(--color-error-text)]' :
-                      s.status === 'cancelled' ? 'bg-[var(--color-border)] text-[var(--color-text-muted)]' :
+                      s.settlement_status === 'paid' ? 'bg-[var(--color-info-bg)] text-[var(--color-info-text)]' :
+                      s.settlement_status === 'completed' ? 'bg-[var(--color-success-bg)] text-[var(--color-success-text)]' :
+                      s.settlement_status === 'approved' ? 'bg-[var(--color-info-bg)] text-[var(--color-info-text)]' :
+                      s.settlement_status === 'rejected' ? 'bg-[var(--color-error-bg)] text-[var(--color-error-text)]' :
+                      s.settlement_status === 'cancelled' ? 'bg-[var(--color-border)] text-[var(--color-text-muted)]' :
                       'bg-[var(--color-warning-bg)] text-[var(--color-warning-text)]'
-                    }`}>{s.status}</span>
+                    }`}>{s.settlement_status?.replace(/_/g, ' ')}</span>
                   </div>
-                  {s.fee > 0 && (
-                    <p className="text-xs text-[var(--color-text-muted)] mt-1">Fee: {Number(s.fee).toFixed(2)} · Net: {Number(s.net_amount).toFixed(2)}</p>
+                  {(Number(s.commission_amount) > 0 || Number(s.net_amount) > 0) && (
+                    <p className="text-xs text-[var(--color-text-muted)] mt-1">Fee: {Number(s.commission_amount).toFixed(2)} · Net: {Number(s.net_amount).toFixed(2)}</p>
                   )}
                 </div>
               ))}

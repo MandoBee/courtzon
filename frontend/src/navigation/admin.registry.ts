@@ -211,7 +211,7 @@ export const ADMIN_NAV: NavDefinition[] = [
       },
       { id: 'nav.admin.subscription', label: LIT('Subscription Plans'), path: '/admin/subscription', permissionKey: 'sidebar.subscription' },
       { id: 'nav.admin.subscription-requests', label: LIT('Subscription Requests'), path: '/admin/subscription/requests', permissionKey: 'sidebar.subscription-requests' },
-      { id: 'nav.admin.settlements', label: T('admin.sidebar.settlements'), path: '/admin/settlements', permissionKey: 'sidebar.settlements' },
+      { id: 'nav.admin.settlements', label: T('admin.sidebar.settlements'), path: '/admin/unified-settlements', permissionKey: 'sidebar.settlements' },
       { id: 'nav.admin.settlements-bookings', label: LIT('Booking Settlements'), path: '/admin/settlements/bookings', permissionKey: 'sidebar.settlements-bookings' },
       { id: 'nav.admin.coupons', label: T('admin.sidebar.coupons'), path: '/admin/coupons', permissionKey: 'sidebar.coupons' },
       { id: 'nav.admin.ads', label: T('admin.sidebar.ads'), icon: '📢', path: '/admin/ads', permissionKey: 'sidebar.ads', requiredFlag: 'community.events_enabled' },

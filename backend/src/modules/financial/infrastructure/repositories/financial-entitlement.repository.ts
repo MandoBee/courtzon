@@ -257,16 +257,6 @@ export const financialEntitlementRepository = {
 
   // ── Settlement linkage ──
 
-  async linkToSettlement(ids: number[], settlementId: number): Promise<void> {
-    if (!ids.length) return;
-    const pool = getPool();
-    const placeholders = ids.map(() => '?').join(',');
-    await pool.execute(
-      `UPDATE financial_entitlements SET settlement_id = ? WHERE id IN (${placeholders})`,
-      [settlementId, ...ids],
-    );
-  },
-
   async findBySettlement(settlementId: number): Promise<EntitlementRecord[]> {
     const pool = getPool();
     const [rows] = await pool.execute<RowData>(

@@ -72,6 +72,7 @@ function RequestSettlementModal({ orgId, onClose }: { orgId: string; onClose: ()
 
 function SettlementDetailModal({ settlement, onClose }: { settlement: any; onClose: () => void }) {
   const items = settlement?.items || [];
+  const entitlements = settlement?.entitlements || [];
   const sumProductsPrice = items.reduce((s: number, i: any) => s + Number(i.products_price || 0), 0);
   const sumShippingPrice = items.reduce((s: number, i: any) => s + Number(i.shipping_price || 0), 0);
   const sumGross = items.reduce((s: number, i: any) => s + Number(i.gross_amount || 0), 0);
@@ -103,8 +104,36 @@ function SettlementDetailModal({ settlement, onClose }: { settlement: any; onClo
           </div>
         )}
 
-        {!items.length ? (
+        {!items.length && !entitlements.length ? (
           <p className="p-6 text-sm text-[var(--color-text-muted)]">No order items in this settlement.</p>
+        ) : !items.length && entitlements.length ? (
+          <div className="p-4">
+            <h3 className="text-sm font-medium text-[var(--color-text)] mb-2">Linked Financial Entitlements</h3>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-[var(--color-border)] bg-[var(--color-bg)]">
+                    <th className="text-left px-4 py-3 font-medium text-[var(--color-text-muted)]">Entitlement</th>
+                    <th className="text-right px-4 py-3 font-medium text-[var(--color-text-muted)]">Amount</th>
+                    <th className="text-left px-4 py-3 font-medium text-[var(--color-text-muted)]">Collector</th>
+                    <th className="text-left px-4 py-3 font-medium text-[var(--color-text-muted)]">Source</th>
+                    <th className="text-left px-4 py-3 font-medium text-[var(--color-text-muted)]">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {entitlements.map((e: any) => (
+                    <tr key={e.id} className="border-b border-[var(--color-border)]">
+                      <td className="px-4 py-3 text-[var(--color-text)]">{e.entitlement_type?.replace(/_/g, ' ')}</td>
+                      <td className="px-4 py-3 text-right text-[var(--color-text)]">{Number(e.amount).toFixed(2)}</td>
+                      <td className="px-4 py-3 text-[var(--color-text-muted)] capitalize">{e.collector || '-'}</td>
+                      <td className="px-4 py-3 text-[var(--color-text-muted)]">{e.source_type || '-'}{e.source_id ? ` #${e.source_id}` : ''}</td>
+                      <td className="px-4 py-3 text-[var(--color-text-muted)] capitalize">{e.status?.toLowerCase()}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
