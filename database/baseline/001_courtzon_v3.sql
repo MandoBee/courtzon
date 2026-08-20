@@ -2996,8 +2996,15 @@ CREATE TABLE `settlements` (
   `settlement_direction` enum('courtzon_to_org','org_to_courtzon') DEFAULT NULL COMMENT 'Who pays whom after netting',
   `final_amount` decimal(12,2) NOT NULL DEFAULT 0.00 COMMENT 'Net transfer amount after netting',
   `settlement_type` varchar(50) DEFAULT NULL,
+  `batch_code` varchar(50) DEFAULT NULL COMMENT 'Shared batch grouping code (e.g. SET-2026-08-001); multiple settlements may share it',
   `commission_amount` decimal(14,2) NOT NULL DEFAULT 0.00,
   `net_amount` decimal(14,2) NOT NULL DEFAULT 0.00,
+  `organization_position` decimal(14,2) NOT NULL DEFAULT 0.00 COMMENT 'Net organization position included in this settlement',
+  `courtzon_position` decimal(14,2) NOT NULL DEFAULT 0.00 COMMENT 'Net CourtZon position included in this settlement',
+  `payment_method` varchar(50) DEFAULT NULL,
+  `payment_reference` varchar(255) DEFAULT NULL,
+  `paid_amount` decimal(14,2) DEFAULT NULL,
+  `paid_by` int(10) unsigned DEFAULT NULL,
   `processed_at` timestamp NULL DEFAULT NULL,
   `bank_account_id` int(10) unsigned DEFAULT NULL,
   `bank_account_snapshot` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL CHECK (json_valid(`bank_account_snapshot`)),
@@ -3017,6 +3024,7 @@ CREATE TABLE `settlements` (
   KEY `idx_stl_branch` (`branch_id`),
   KEY `idx_stl_status` (`settlement_status`),
   KEY `idx_stl_requested_by` (`requested_by`),
+  KEY `idx_stl_batch_code` (`batch_code`),
   KEY `idx_settlements_org_status_requested` (`organisation_id`,`settlement_status`,`requested_at`),
   CONSTRAINT `fk_stl_branch` FOREIGN KEY (`branch_id`) REFERENCES `branches` (`id`) ON DELETE SET NULL,
   CONSTRAINT `fk_stl_org` FOREIGN KEY (`organisation_id`) REFERENCES `organisations` (`id`) ON DELETE CASCADE
@@ -4367,6 +4375,7 @@ CREATE TABLE IF NOT EXISTS `financial_entitlements` (
   `entitlement_type` enum('ORGANIZATION_EARNING','COURTZON_COMMISSION','ORGANIZATION_ADJUSTMENT','COURTZON_ADJUSTMENT') NOT NULL,
   `source_type` enum('booking','academy','marketplace','tournament','coach_session','manual') NOT NULL,
   `source_id` bigint(20) unsigned DEFAULT NULL,
+  `collector` enum('courtzon','org') DEFAULT NULL COMMENT 'Who originally collected the money: courtzon (online/wallet) or org (cash/COD)',
   `amount` decimal(14,2) NOT NULL,
   `currency` char(3) NOT NULL DEFAULT 'EGP',
   `status` enum('PENDING','AVAILABLE','ON_HOLD','SETTLED','CANCELLED') NOT NULL DEFAULT 'PENDING',
@@ -4392,10 +4401,23 @@ CREATE TABLE IF NOT EXISTS `financial_entitlements` (
   KEY `idx_fe_settlement` (`settlement_id`),
   KEY `idx_fe_branch` (`branch_id`),
   KEY `idx_fe_created_at` (`created_at`),
+  KEY `idx_fe_org_status_settlement` (`organisation_id`, `status`, `settlement_id`),
   CONSTRAINT `fk_fe_org` FOREIGN KEY (`organisation_id`) REFERENCES `organisations` (`id`) ON DELETE CASCADE,
   CONSTRAINT `fk_fe_branch` FOREIGN KEY (`branch_id`) REFERENCES `branches` (`id`) ON DELETE SET NULL,
   CONSTRAINT `fk_fe_settlement` FOREIGN KEY (`settlement_id`) REFERENCES `settlements` (`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `settlement_entitlements` (
+  `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  `settlement_id` int(10) unsigned NOT NULL,
+  `entitlement_id` bigint(20) unsigned NOT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_se_entitlement` (`entitlement_id`) COMMENT 'One entitlement may belong to at most one settlement',
+  KEY `idx_se_settlement` (`settlement_id`),
+  CONSTRAINT `fk_se_settlement` FOREIGN KEY (`settlement_id`) REFERENCES `settlements` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_se_entitlement` FOREIGN KEY (`entitlement_id`) REFERENCES `financial_entitlements` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Entitlements included in each unified settlement';
 
 CREATE TABLE IF NOT EXISTS `marketplace_complaint_config` (
   `id` tinyint(3) unsigned NOT NULL DEFAULT 1 COMMENT 'Singleton row (always 1)',

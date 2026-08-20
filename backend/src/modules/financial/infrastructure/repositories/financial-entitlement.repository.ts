@@ -28,6 +28,7 @@ function mapRow(row: any): EntitlementRecord {
     entitlement_type: row.entitlement_type,
     source_type: row.source_type,
     source_id: row.source_id,
+    collector: row.collector ?? null,
     amount: Number(row.amount),
     currency: row.currency,
     status: row.status,
@@ -55,8 +56,8 @@ export const financialEntitlementRepository = {
     const [result] = await db.execute<mysql.ResultSetHeader>(
       `INSERT INTO financial_entitlements
         (public_id, organisation_id, branch_id, entitlement_type, source_type, source_id,
-         amount, currency, status, available_at, description, metadata, created_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'PENDING', ?, ?, ?, ?)`,
+         collector, amount, currency, status, available_at, description, metadata, created_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDING', ?, ?, ?, ?)`,
       [
         publicId,
         data.organisationId,
@@ -64,6 +65,7 @@ export const financialEntitlementRepository = {
         data.entitlementType,
         data.sourceType,
         data.sourceId ?? null,
+        data.collector ?? null,
         data.amount,
         data.currency ?? 'EGP',
         data.availableAt ?? null,
@@ -270,6 +272,24 @@ export const financialEntitlementRepository = {
     const [rows] = await pool.execute<RowData>(
       'SELECT * FROM financial_entitlements WHERE settlement_id = ? ORDER BY id',
       [settlementId],
+    );
+    return rows.map(mapRow);
+  },
+
+  /**
+   * All AVAILABLE entitlements for an organisation that are not yet reserved for
+   * any settlement (settlement_id IS NULL). These are the eligible pool for a
+   * unified settlement.
+   */
+  async findAvailableForOrganisation(orgId: number): Promise<EntitlementRecord[]> {
+    const pool = getPool();
+    const [rows] = await pool.execute<RowData>(
+      `SELECT * FROM financial_entitlements
+       WHERE organisation_id = ?
+         AND status = 'AVAILABLE'
+         AND settlement_id IS NULL
+       ORDER BY id`,
+      [orgId],
     );
     return rows.map(mapRow);
   },

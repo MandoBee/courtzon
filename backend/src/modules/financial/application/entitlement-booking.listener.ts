@@ -118,6 +118,10 @@ async function handleBookingConfirmed(envelope: EventEnvelope): Promise<void> {
 
   const availableAt = await resolveCancellationWindow(booking);
 
+  // Determine who collected the money: cash/COD is collected by the org;
+  // card/online/wallet is collected by CourtZon.
+  const collector: 'courtzon' | 'org' = ['cash', 'cod'].includes(booking.payment_method) ? 'org' : 'courtzon';
+
   const pool = getPool();
   const conn = await pool.getConnection();
   try {
@@ -132,6 +136,7 @@ async function handleBookingConfirmed(envelope: EventEnvelope): Promise<void> {
         entitlementType: 'ORGANIZATION_EARNING',
         sourceType: 'booking',
         sourceId: booking.id,
+        collector,
         amount: orgNetAmount,
         currency: booking.currency || 'EGP',
         availableAt,
@@ -154,6 +159,7 @@ async function handleBookingConfirmed(envelope: EventEnvelope): Promise<void> {
         entitlementType: 'COURTZON_COMMISSION',
         sourceType: 'booking',
         sourceId: booking.id,
+        collector,
         amount: commissionAmount,
         currency: booking.currency || 'EGP',
         availableAt,
