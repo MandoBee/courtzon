@@ -49,6 +49,7 @@ import { notificationTypeRoutes } from "./modules/notifications/presentation/not
 import { templateManagementRoutes } from "./modules/notifications/presentation/template-management.routes.js";
 import { communicationPreferenceRoutes } from "./modules/notifications/presentation/communication-preference.routes.js";
 import { financialAdminRoutes } from "./modules/financial/presentation/financial-admin.routes.js";
+import { financialEntitlementRoutes } from "./modules/financial/presentation/financial-entitlement.routes.js";
 import { couponRoutes } from "./modules/coupon/presentation/coupon.routes.js";
 import { appearanceRoutes, designTokenRoutes, publicThemeRoutes } from "./modules/design-tokens/presentation/design-token.routes.js";
 import { appSettingsRoutes } from "./modules/app-settings/presentation/app-settings.routes.js";
@@ -538,6 +539,7 @@ app.register(adminTagRoutes);
   app.register(templateManagementRoutes);
   app.register(communicationPreferenceRoutes);
   app.register(financialAdminRoutes);
+  app.register(financialEntitlementRoutes);
   app.register(couponRoutes);
   app.register(designTokenRoutes);
   app.register(appSettingsRoutes);

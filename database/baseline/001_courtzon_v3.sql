@@ -4358,6 +4358,43 @@ DELIMITER ;
 /*!50106 SET TIME_ZONE= @save_time_zone */ ;
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
 
+CREATE TABLE IF NOT EXISTS `financial_entitlements` (
+  `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  `public_id` char(36) NOT NULL,
+  `organisation_id` int(10) unsigned NOT NULL,
+  `branch_id` int(10) unsigned DEFAULT NULL,
+  `entitlement_type` enum('ORGANIZATION_EARNING','COURTZON_COMMISSION','ORGANIZATION_ADJUSTMENT','COURTZON_ADJUSTMENT') NOT NULL,
+  `source_type` enum('booking','academy','marketplace','tournament','coach_session','manual') NOT NULL,
+  `source_id` bigint(20) unsigned DEFAULT NULL,
+  `amount` decimal(14,2) NOT NULL,
+  `currency` char(3) NOT NULL DEFAULT 'EGP',
+  `status` enum('PENDING','AVAILABLE','ON_HOLD','SETTLED','CANCELLED') NOT NULL DEFAULT 'PENDING',
+  `hold_reason` varchar(255) DEFAULT NULL,
+  `cancelled_reason` varchar(255) DEFAULT NULL,
+  `available_at` timestamp NULL DEFAULT NULL,
+  `settled_at` timestamp NULL DEFAULT NULL,
+  `settled_by` bigint(20) unsigned DEFAULT NULL,
+  `settlement_id` int(10) unsigned DEFAULT NULL,
+  `description` text DEFAULT NULL,
+  `metadata` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL CHECK (json_valid(`metadata`)),
+  `aggregate_version` int(10) unsigned NOT NULL DEFAULT 1,
+  `created_by` bigint(20) unsigned DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_fe_public_id` (`public_id`),
+  KEY `idx_fe_org_status` (`organisation_id`, `status`),
+  KEY `idx_fe_source` (`source_type`, `source_id`),
+  KEY `idx_fe_type_status` (`entitlement_type`, `status`),
+  KEY `idx_fe_available_at` (`available_at`, `status`),
+  KEY `idx_fe_settlement` (`settlement_id`),
+  KEY `idx_fe_branch` (`branch_id`),
+  KEY `idx_fe_created_at` (`created_at`),
+  CONSTRAINT `fk_fe_org` FOREIGN KEY (`organisation_id`) REFERENCES `organisations` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_fe_branch` FOREIGN KEY (`branch_id`) REFERENCES `branches` (`id`) ON DELETE SET NULL,
+  CONSTRAINT `fk_fe_settlement` FOREIGN KEY (`settlement_id`) REFERENCES `settlements` (`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 /*!40101 SET SQL_MODE=@OLD_SQL_MODE */;
 /*!40014 SET FOREIGN_KEY_CHECKS=@OLD_FOREIGN_KEY_CHECKS */;
 /*!40014 SET UNIQUE_CHECKS=@OLD_UNIQUE_CHECKS */;
