@@ -5,7 +5,7 @@ import { eventBusV2 } from '../../../shared/event-bus/event-bus.v2.js';
 import { createModuleLogger } from '../../../shared/utils/logger.js';
 import { ConflictError } from '../../../shared/errors/app-error.js';
 import {
-  validateAmount,
+  validateEntitlementAmount,
   isTerminal,
   planTransition,
   type CreateEntitlementInput,
@@ -20,7 +20,7 @@ export class FinancialEntitlementService {
   // ── Create entitlements (called by domain listeners) ──
 
   async createEntitlement(input: CreateEntitlementInput): Promise<number> {
-    validateAmount(input.amount);
+    validateEntitlementAmount(input.entitlementType, input.amount);
     const id = await financialEntitlementRepository.create(input);
     log.info({ id, orgId: input.organisationId, type: input.entitlementType, source: input.sourceType, amount: input.amount }, 'Entitlement created');
     return id;
@@ -29,7 +29,7 @@ export class FinancialEntitlementService {
   async createEntitlements(inputs: CreateEntitlementInput[], conn?: mysql.PoolConnection): Promise<number[]> {
     const ids: number[] = [];
     for (const input of inputs) {
-      validateAmount(input.amount);
+      validateEntitlementAmount(input.entitlementType, input.amount);
       const id = await financialEntitlementRepository.create(input, conn);
       ids.push(id);
     }

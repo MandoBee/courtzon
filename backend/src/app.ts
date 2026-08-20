@@ -63,6 +63,7 @@ import { playerRoutes } from "./modules/player-experience/presentation/player.ro
 import { supportRoutes } from "./modules/support/index.js";
 import { adminRoutes, publicAdminRoutes } from "./modules/admin/presentation/admin.routes.js";
 import { inventoryRoutes } from "./modules/marketplace/presentation/inventory.routes.js";
+import { marketplaceComplaintRoutes } from "./modules/marketplace/presentation/marketplace-complaint.routes.js";
 import { accountingRoutes } from "./modules/accounting/presentation/accounting.routes.js";
 import { crmRoutes } from "./modules/crm/index.js";
 import { hrRoutes } from "./modules/hr/index.js";
@@ -553,6 +554,7 @@ app.register(adminTagRoutes);
   app.register(playerRoutes);
   app.register(supportRoutes);
   app.register(inventoryRoutes);
+  app.register(marketplaceComplaintRoutes);
 app.register(accountingRoutes);
 app.register(crmRoutes);
 app.register(hrRoutes);

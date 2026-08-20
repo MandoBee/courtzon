@@ -16,6 +16,7 @@ import { handleAutoCompleteBookings } from "./modules/booking/infrastructure/boo
 import { handleBookingSettlementEligibility } from "./modules/booking/infrastructure/booking-settlement-eligibility.worker.js";
 import { handleActivateEntitlements } from "./modules/financial/infrastructure/financial-entitlement.worker.js";
 import { handleComplaintPeriodActivation } from "./modules/financial/infrastructure/marketplace-complaint-period.worker.js";
+import { handleComplaintReceiptTimeout } from "./modules/marketplace/infrastructure/marketplace-complaint.worker.js";
 import { handleSyncPendingPayments, handleExpireStalePayments } from "./modules/payment/infrastructure/payment-cron.worker.js";
 import { runDatabaseBackup } from "./infrastructure/backup/backup.service.js";
 import {
@@ -100,6 +101,7 @@ async function bootstrap() {
     });
     registerHandler('activate_entitlements', handleActivateEntitlements);
     registerHandler('complaint_period_activation', handleComplaintPeriodActivation);
+    registerHandler('complaint_receipt_timeout', handleComplaintReceiptTimeout);
 
     registerCommandHandler('ConfirmBooking', confirmBookingHandler as any);
     registerCommandHandler('CancelBooking', cancelBookingHandler as any);
@@ -331,6 +333,13 @@ async function bootstrap() {
     // Marketplace complaint-period activation — every 5 minutes
     await queueService.add('complaint_period_activation', {}, {
       repeat: { every: 300_000 },
+      removeOnComplete: true,
+      removeOnFail: { age: 86400 },
+    });
+
+    // Marketplace complaint receipt-confirmation timeout — every 10 minutes
+    await queueService.add('complaint_receipt_timeout', {}, {
+      repeat: { every: 600_000 },
       removeOnComplete: true,
       removeOnFail: { age: 86400 },
     });

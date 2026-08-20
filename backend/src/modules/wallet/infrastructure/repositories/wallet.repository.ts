@@ -119,4 +119,14 @@ export const walletRepository = {
     );
     return rows.length ? Number(rows[0].balance) : 0;
   },
+
+  /** Find wallet transactions by reference (idempotency check for refunds). */
+  async findTransactionsByReference(referenceType: string, referenceId: number, conn?: mysql.PoolConnection) {
+    const pool = resolvePool(conn);
+    const [rows] = await pool.execute<RowData>(
+      'SELECT * FROM wallet_transactions WHERE reference_type = ? AND reference_id = ? ORDER BY id',
+      [referenceType, referenceId]
+    );
+    return rows;
+  },
 };

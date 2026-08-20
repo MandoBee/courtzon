@@ -93,3 +93,23 @@ export function validateAmount(amount: number): void {
   if (!Number.isFinite(amount)) throw new Error('Entitlement amount must be finite');
   if (Math.round(amount * 100) !== amount * 100) throw new Error('Entitlement amount must have at most 2 decimal places');
 }
+
+/**
+ * ADJUSTMENT entitlements may be negative (debit) to represent reductions to an
+ * organisation's position (e.g. refunds). Magnitude is preserved immutably; the
+ * direction is conveyed by the sign and the metadata (`direction: 'debit'`).
+ * A zero amount is never allowed.
+ */
+export function validateAdjustmentAmount(amount: number): void {
+  if (amount === 0) throw new Error('Adjustment amount must be non-zero');
+  if (!Number.isFinite(amount)) throw new Error('Adjustment amount must be finite');
+  if (Math.round(amount * 100) !== amount * 100) throw new Error('Adjustment amount must have at most 2 decimal places');
+}
+
+export function validateEntitlementAmount(type: EntitlementType, amount: number): void {
+  if (type === 'ORGANIZATION_ADJUSTMENT' || type === 'COURTZON_ADJUSTMENT') {
+    validateAdjustmentAmount(amount);
+    return;
+  }
+  validateAmount(amount);
+}
