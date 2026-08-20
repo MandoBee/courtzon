@@ -86,6 +86,87 @@ export function computeRefundFinancials(
 }
 
 /**
+ * Cumulative-aware refund split for multi-refund support on a single order item.
+ *
+ * When a refund is executed, the available "original disputed value" and
+ * "original commission" are reduced by every prior refund that touched the same
+ * order item. This function splits the current refund into:
+ *
+ *   - originalValuePortion   = the part attributable to the remaining original
+ *                              disputed value (never exceeds the remaining value)
+ *   - additionalCompensation = the part above the remaining original value
+ *                              (org-only, never reverses CourtZon commission)
+ *
+ * The original-value portion is split proportionally per the HISTORICAL split:
+ *   orgOriginalReversal = originalValuePortion × (orgEarning / (orgEarning+commission))
+ *   commissionReversal  = originalValuePortion × (commission / (orgEarning+commission))
+ *
+ * Both reversals are additionally capped by the REMAINING capacity (original
+ * minus the absolute sum of all prior adjustments of that type for this item),
+ * so multiple refunds can never reverse more than the original amounts.
+ *
+ * Conceptually (per requirements):
+ *   remainingOriginalDisputedValue = originalValue − priorOriginalValueReversed
+ *   originalValuePortion           = min(currentRefund, remainingOriginalDisputedValue)
+ *   additionalCompensation         = max(0, currentRefund − remainingOriginalDisputedValue)
+ *   commissionReversal             = min(originalCommission − priorCommission,
+ *                                       originalValuePortion × commissionRatio)
+ *   orgOriginalReversal            = min(originalOrgEarning − priorOrgOriginalReversal,
+ *                                       originalValuePortion × orgRatio)
+ *   orgAdjustment                  = orgOriginalReversal + additionalCompensation
+ */
+export interface CumulativeRefundFinancials {
+  originalValuePortion: number;      // portion of refund attributable to remaining original value
+  additionalCompensation: number;    // portion above remaining original value (org-only)
+  commissionReversal: number;        // CourtZon commission reversal for THIS refund (never exceeds remaining)
+  orgOriginalReversal: number;       // org reversal of original value for THIS refund
+  orgAdjustment: number;             // total org adjustment magnitude (orgOriginalReversal + additionalCompensation)
+}
+
+export function computeCumulativeRefundFinancials(
+  refundAmount: number,
+  originalOrgEarning: number,
+  originalCommission: number,
+  originalDisputedValue: number,
+  priorOrgOriginalReversal: number,
+  priorCommissionReversal: number,
+): CumulativeRefundFinancials {
+  if (refundAmount < 0) throw new Error('Refund amount cannot be negative');
+  if (originalOrgEarning < 0 || originalCommission < 0 || originalDisputedValue <= 0) {
+    throw new Error('Original financial values must be positive');
+  }
+
+  const orgRatio = originalOrgEarning + originalCommission > 0
+    ? originalOrgEarning / (originalOrgEarning + originalCommission)
+    : 0;
+  const commissionRatio = 1 - orgRatio;
+
+  const remainingCommission = Math.max(0, originalCommission - priorCommissionReversal);
+  const remainingOrg = Math.max(0, originalOrgEarning - priorOrgOriginalReversal);
+
+  // Remaining original disputed value = what hasn't been reversed as original value yet.
+  const priorOriginalValueReversed = priorOrgOriginalReversal + priorCommissionReversal;
+  const remainingOriginalValue = Math.max(0, originalDisputedValue - priorOriginalValueReversed);
+
+  const originalValuePortion = round2(Math.min(refundAmount, remainingOriginalValue));
+  const additionalCompensation = round2(Math.max(0, refundAmount - remainingOriginalValue));
+
+  // Split the original-value portion per the historical ratio, then cap by remaining capacity.
+  const commissionReversal = round2(Math.min(
+    remainingCommission,
+    originalValuePortion * commissionRatio,
+  ));
+  const orgOriginalReversal = round2(Math.min(
+    remainingOrg,
+    originalValuePortion * orgRatio,
+  ));
+
+  const orgAdjustment = round2(orgOriginalReversal + additionalCompensation);
+
+  return { originalValuePortion, additionalCompensation, commissionReversal, orgOriginalReversal, orgAdjustment };
+}
+
+/**
  * Computes the system-determined disputed/refundable value for a set of disputed
  * order items. Pass the disputed items; non-disputed items should be excluded by
  * the caller.
