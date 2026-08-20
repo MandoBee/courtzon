@@ -4383,6 +4383,7 @@ CREATE TABLE IF NOT EXISTS `financial_entitlements` (
   `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_fe_public_id` (`public_id`),
+  UNIQUE KEY `uk_fe_source_type` (`source_type`, `source_id`, `entitlement_type`),
   KEY `idx_fe_org_status` (`organisation_id`, `status`),
   KEY `idx_fe_source` (`source_type`, `source_id`),
   KEY `idx_fe_type_status` (`entitlement_type`, `status`),

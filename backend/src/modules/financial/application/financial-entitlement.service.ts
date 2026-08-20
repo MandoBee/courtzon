@@ -26,10 +26,11 @@ export class FinancialEntitlementService {
     return id;
   }
 
-  async createEntitlements(inputs: CreateEntitlementInput[]): Promise<number[]> {
+  async createEntitlements(inputs: CreateEntitlementInput[], conn?: mysql.PoolConnection): Promise<number[]> {
     const ids: number[] = [];
     for (const input of inputs) {
-      const id = await this.createEntitlement(input);
+      validateAmount(input.amount);
+      const id = await financialEntitlementRepository.create(input, conn);
       ids.push(id);
     }
     return ids;
@@ -148,9 +149,16 @@ export class FinancialEntitlementService {
     const entitlements = await financialEntitlementRepository.findBySource(sourceType as any, sourceId);
     let cancelled = 0;
     for (const e of entitlements) {
-      if (!isTerminal(e.status)) {
+      if (isTerminal(e.status)) continue;
+      try {
         await this.cancelEntitlement(e.id, reason);
         cancelled++;
+      } catch (err: any) {
+        if (err?.message?.includes('version conflict')) {
+          log.warn({ entitlementId: e.id, err: err.message }, 'Optimistic lock conflict during cancelBySource — skipping');
+          continue;
+        }
+        throw err;
       }
     }
     return cancelled;

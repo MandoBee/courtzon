@@ -36,6 +36,8 @@ import { WhatsAppProvider } from "./modules/notifications/infrastructure/provide
 import { WebhookProvider } from "./modules/notifications/infrastructure/providers/webhook.provider.js";
 import { bookingRepository } from "./modules/booking/infrastructure/repositories/booking.repository.js";
 import { paymentRepository } from "./modules/payment/infrastructure/repositories/payment.repository.js";
+import { OutboxPoller } from "./shared/event-bus/outbox-poller.js";
+import { eventBusV2 } from "./shared/event-bus/event-bus.v2.js";
 
 import { registerCommandHandler } from "./shared/workflow/command-handler-registry.js";
 import { workflowRegistry } from "./shared/workflow/workflow-registry.js";
@@ -198,9 +200,20 @@ async function bootstrap() {
     const { registerAccountingEventListeners } = await import('./modules/financial/application/accounting-event.listener.js');
     registerAccountingEventListeners();
 
-    const { registerEntitlementBookingListeners } = await import('./modules/financial/application/entitlement-booking.listener.js');
-    registerEntitlementBookingListeners();
-    app.log.info('Accounting event listeners registered');
+    const { registerEntitlementBookingSubscribers, createEntitlementBookingWorkers } = await import('./modules/financial/application/entitlement-booking.listener.js');
+    registerEntitlementBookingSubscribers();
+    createEntitlementBookingWorkers();
+    app.log.info('Entitlement booking subscribers + workers registered');
+
+    const outboxPoller = new OutboxPoller(
+      () => eventBusV2.getAllSubscriberIds(),
+      (subscriberId, eventName) => {
+        const subs = eventBusV2.getSubscribersFor(eventName);
+        return subs.some(s => s.queueName === subscriberId);
+      },
+    );
+    outboxPoller.start();
+    app.log.info('Outbox poller started');
 
     await queueService.add('cancel_expired_bookings', { cutoffMinutes: 5 }, {
       repeat: { every: 120_000 },
