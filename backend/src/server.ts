@@ -15,6 +15,7 @@ import { handleExpireMemberships, handleSendExpiringReminders } from "./modules/
 import { handleAutoCompleteBookings } from "./modules/booking/infrastructure/booking-auto-complete.worker.js";
 import { handleBookingSettlementEligibility } from "./modules/booking/infrastructure/booking-settlement-eligibility.worker.js";
 import { handleActivateEntitlements } from "./modules/financial/infrastructure/financial-entitlement.worker.js";
+import { handleComplaintPeriodActivation } from "./modules/financial/infrastructure/marketplace-complaint-period.worker.js";
 import { handleSyncPendingPayments, handleExpireStalePayments } from "./modules/payment/infrastructure/payment-cron.worker.js";
 import { runDatabaseBackup } from "./infrastructure/backup/backup.service.js";
 import {
@@ -98,6 +99,7 @@ async function bootstrap() {
       await runCleanupPolicies();
     });
     registerHandler('activate_entitlements', handleActivateEntitlements);
+    registerHandler('complaint_period_activation', handleComplaintPeriodActivation);
 
     registerCommandHandler('ConfirmBooking', confirmBookingHandler as any);
     registerCommandHandler('CancelBooking', cancelBookingHandler as any);
@@ -204,6 +206,11 @@ async function bootstrap() {
     registerEntitlementBookingSubscribers();
     createEntitlementBookingWorkers();
     app.log.info('Entitlement booking subscribers + workers registered');
+
+    const { registerEntitlementMarketplaceSubscribers, createEntitlementMarketplaceWorkers } = await import('./modules/financial/application/entitlement-marketplace.listener.js');
+    registerEntitlementMarketplaceSubscribers();
+    createEntitlementMarketplaceWorkers();
+    app.log.info('Entitlement marketplace subscribers + workers registered');
 
     const outboxPoller = new OutboxPoller(
       () => eventBusV2.getAllSubscriberIds(),
@@ -316,6 +323,13 @@ async function bootstrap() {
 
     // Entitlement activation — every 5 minutes
     await queueService.add('activate_entitlements', {}, {
+      repeat: { every: 300_000 },
+      removeOnComplete: true,
+      removeOnFail: { age: 86400 },
+    });
+
+    // Marketplace complaint-period activation — every 5 minutes
+    await queueService.add('complaint_period_activation', {}, {
       repeat: { every: 300_000 },
       removeOnComplete: true,
       removeOnFail: { age: 86400 },

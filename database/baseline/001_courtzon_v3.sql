@@ -1912,6 +1912,7 @@ CREATE TABLE `orders` (
   `tracking_number` varchar(255) DEFAULT NULL,
   `notes` text DEFAULT NULL,
   `paid_at` timestamp NULL DEFAULT NULL,
+  `delivered_at` timestamp NULL DEFAULT NULL COMMENT 'Actual delivery timestamp (entitlement complaint window basis)',
   `cancelled_at` timestamp NULL DEFAULT NULL,
   `cancellation_reason` varchar(500) DEFAULT NULL,
   `deleted_at` timestamp NULL DEFAULT NULL,
@@ -4395,6 +4396,18 @@ CREATE TABLE IF NOT EXISTS `financial_entitlements` (
   CONSTRAINT `fk_fe_branch` FOREIGN KEY (`branch_id`) REFERENCES `branches` (`id`) ON DELETE SET NULL,
   CONSTRAINT `fk_fe_settlement` FOREIGN KEY (`settlement_id`) REFERENCES `settlements` (`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `marketplace_complaint_config` (
+  `id` tinyint(3) unsigned NOT NULL DEFAULT 1 COMMENT 'Singleton row (always 1)',
+  `complaint_period_days` int(10) unsigned NOT NULL DEFAULT 7 COMMENT 'Days after delivery during which buyers may raise a complaint/refund',
+  `is_active` tinyint(1) NOT NULL DEFAULT 1 COMMENT '0 disables the complaint window (entitlements activate immediately on delivery)',
+  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Platform-wide marketplace complaint window configuration';
+
+INSERT INTO `marketplace_complaint_config` (`id`, `complaint_period_days`, `is_active`)
+VALUES (1, 7, 1)
+ON DUPLICATE KEY UPDATE `id` = `id`;
 
 /*!40101 SET SQL_MODE=@OLD_SQL_MODE */;
 /*!40014 SET FOREIGN_KEY_CHECKS=@OLD_FOREIGN_KEY_CHECKS */;

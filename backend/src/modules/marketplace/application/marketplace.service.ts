@@ -7,7 +7,9 @@ import { commissionService } from '../../financial/application/commission.servic
 import { organisationService } from '../../organisations/application/organisation.service.js';
 import { transactionService } from '../../financial/application/transaction.service.js';
 import { transactionRepository } from '../../financial/infrastructure/transaction.repository.js';
+import { walletRepository } from '../../wallet/infrastructure/repositories/wallet.repository.js';
 import { getPool } from '../../../database/mysql.js';
+import { withTransaction } from '../../../database/database.transaction.js';
 import type mysql from 'mysql2/promise';
 import { getPlanNumericLimit } from '../../organisations/application/plan-limits.util.js';
 import { userRepository } from '../../auth/infrastructure/repositories/user.repository.js';
@@ -787,16 +789,11 @@ export const marketplaceService = {
       }
     }
 
-    // If cancelled and payment was made, process refund
-    if (data.status === 'cancelled' && order.payment_status === 'paid') {
-      try {
-        const paymentTxn = await paymentRepository.findByOrderId(orderId);
-        if (paymentTxn && paymentTxn.id) {
-          await paymentService.refund(paymentTxn.id, order.total, 'Order cancelled');
-        }
-      } catch {
-        // Refund failure is non-fatal
-      }
+    // If the order was already paid, refund the payment for cancelled/refunded orders.
+    // Wallet-funded orders are credited directly to the buyer's wallet; card/online
+    // orders go through the gateway refund. COD orders have no pre-collected payment.
+    if ((data.status === 'cancelled' || data.status === 'refunded') && order.payment_status === 'paid') {
+      await this._processOrderRefund(order, orderId, data.note || (data.status === 'cancelled' ? 'Order cancelled' : 'Order refunded'));
     }
 
     const firstItem = order.items?.[0];
@@ -1096,6 +1093,96 @@ export const marketplaceService = {
       cashHolder: order.cash_holder || 'courtzon',
       cashCollectionStatus: 'under_collection',
     });
+  },
+
+  // ── Refund execution ──
+  // Credits the buyer's wallet directly for wallet-funded orders (the gateway has
+  // no record of a synthetic wallet charge, so paymentService.refund() would fail
+  // silently). Card/online orders are refunded via the gateway. COD orders have no
+  // pre-collected payment and require no action.
+  async _processOrderRefund(order: any, orderId: number, reason: string) {
+    if (order.payment_status !== 'paid') {
+      log.info({ orderId }, 'Order refund: payment not paid — nothing to refund');
+      return;
+    }
+
+    const paymentTxn = await paymentRepository.findByOrderId(orderId);
+    if (!paymentTxn?.id) {
+      log.warn({ orderId }, 'Order refund: no paid payment transaction found');
+      return;
+    }
+
+    const method = (paymentTxn as any).payment_method || order.payment_method || 'card';
+    const amount = Number(order.total || 0);
+    if (amount <= 0) {
+      log.warn({ orderId, amount }, 'Order refund: zero/negative amount — skipping');
+      return;
+    }
+
+    if (method === 'wallet') {
+      await withTransaction(async (conn) => {
+        const wallet = await walletRepository.findByUserId(order.buyer_id);
+        if (!wallet) {
+          log.warn({ orderId, userId: order.buyer_id }, 'Order refund: buyer wallet not found');
+          return;
+        }
+        const state = await walletRepository.lockAndGetBalance(wallet.id, conn);
+        if (!state) {
+          throw new ConflictError('Wallet is locked');
+        }
+
+        const newBalance = state.balance + amount;
+        await walletRepository.updateBalance(wallet.id, newBalance, state.version, conn);
+
+        await walletRepository.createTransaction({
+          walletId: wallet.id,
+          type: 'refund',
+          amount,
+          direction: 'credit',
+          referenceType: 'order',
+          referenceId: orderId,
+          description: `Order #${orderId} refund: ${reason || 'order refund'}`,
+        }, conn);
+
+        await conn.execute(
+          `UPDATE payment_transactions
+           SET payment_status = 'refunded', refunded_at = NOW(), updated_at = NOW()
+           WHERE id = ? AND payment_status = 'paid'`,
+          [paymentTxn.id],
+        );
+
+        await eventBusV2.emit('payment:refunded', {
+          paymentId: paymentTxn.id,
+          userId: order.buyer_id,
+          amount,
+          reason,
+          referenceType: 'order',
+          referenceId: orderId,
+          metadata: { paymentMethod: 'wallet' },
+        }, undefined, conn);
+
+        eventBusV2.emit('wallet:transaction', {
+          walletId: wallet.id,
+          userId: order.buyer_id,
+          amount,
+          balance: newBalance,
+          type: 'refund',
+          description: `Order #${orderId} refund`,
+        });
+      });
+      log.info({ orderId, amount }, 'Order refund: wallet credited');
+    } else if (method === 'cash') {
+      log.info({ orderId }, 'Order refund: COD order — no pre-collected payment');
+    } else {
+      try {
+        const result = await paymentService.refund(paymentTxn.id, amount, reason || 'Order refunded');
+        if (!result?.success) {
+          log.error({ orderId, paymentId: paymentTxn.id, method }, 'Order refund: gateway refund failed');
+        }
+      } catch (err) {
+        log.error({ err, orderId, paymentId: paymentTxn.id, method }, 'Order refund: gateway refund threw');
+      }
+    }
   },
 
   async _getUserRoleInOrder(userId: number, order: any): Promise<'buyer' | 'seller' | 'admin'> {

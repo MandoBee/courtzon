@@ -119,9 +119,11 @@ class BookingSettlementService {
     const total = Number((countRows as any[])[0].cnt || 0);
 
     const offset = (page - 1) * limit;
+    const safeLimit = Math.max(1, Math.floor(Number(limit) || 20));
+    const safeOffset = Math.max(0, Math.floor(Number(offset) || 0));
     const [rows] = await this.pool.execute<RowData>(
-      `SELECT id FROM bookings WHERE ${where.join(' AND ')} ORDER BY booking_date DESC, start_time DESC LIMIT ? OFFSET ?`,
-      [...params, limit, offset],
+      `SELECT id FROM bookings WHERE ${where.join(' AND ')} ORDER BY booking_date DESC, start_time DESC LIMIT ${safeLimit} OFFSET ${safeOffset}`,
+      params,
     );
 
     const data: BookingEconomics[] = [];

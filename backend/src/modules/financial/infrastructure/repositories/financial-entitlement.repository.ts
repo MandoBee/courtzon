@@ -137,13 +137,53 @@ export const financialEntitlementRepository = {
 
   async findPendingForActivation(batchSize: number = 200): Promise<EntitlementRecord[]> {
     const pool = getPool();
+    const safeBatch = Math.max(1, Math.floor(Number(batchSize) || 200));
     const [rows] = await pool.execute<RowData>(
       `SELECT * FROM financial_entitlements
        WHERE status = 'PENDING'
          AND (available_at IS NULL OR available_at <= NOW())
+         -- Marketplace entitlements are activated by the complaint-period worker
+         -- (after delivered_at + complaint window), never by the generic worker.
+         AND NOT (source_type = 'marketplace' AND available_at IS NULL)
        ORDER BY created_at ASC
-       LIMIT ?`,
-      [batchSize],
+       LIMIT ${safeBatch}`,
+    );
+    return rows.map(mapRow);
+  },
+
+  /**
+   * Marketplace entitlements that are still PENDING whose delivery complaint
+   * window has passed. Joins financial_entitlements → order_items → orders so
+   * activation happens only after actual delivery + complaint_period_days.
+   */
+  async findPendingMarketplaceDueForActivation(periodDays: number, batchSize: number = 200): Promise<EntitlementRecord[]> {
+    const pool = getPool();
+    const safePeriod = Math.max(0, Math.floor(Number(periodDays) || 0));
+    const safeBatch = Math.max(1, Math.floor(Number(batchSize) || 200));
+    const [rows] = await pool.execute<RowData>(
+      `SELECT fe.*
+       FROM financial_entitlements fe
+       JOIN order_items oi ON fe.source_type = 'marketplace' AND oi.id = fe.source_id
+       JOIN orders o ON o.id = oi.order_id
+       WHERE fe.status = 'PENDING'
+         AND o.status = 'delivered'
+         AND o.delivered_at IS NOT NULL
+         AND (o.delivered_at + INTERVAL ${safePeriod} DAY) <= NOW()
+       ORDER BY fe.created_at ASC
+       LIMIT ${safeBatch}`,
+    );
+    return rows.map(mapRow);
+  },
+
+  async findBySourceIds(sourceType: SourceType, sourceIds: number[]): Promise<EntitlementRecord[]> {
+    if (!sourceIds.length) return [];
+    const pool = getPool();
+    const placeholders = sourceIds.map(() => '?').join(',');
+    const [rows] = await pool.execute<RowData>(
+      `SELECT * FROM financial_entitlements
+       WHERE source_type = ? AND source_id IN (${placeholders})
+       ORDER BY id`,
+      [sourceType, ...sourceIds],
     );
     return rows.map(mapRow);
   },
