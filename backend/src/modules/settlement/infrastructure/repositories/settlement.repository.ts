@@ -20,72 +20,6 @@ export class AggregateVersionConflict extends ConflictError {
 export const settlementRepository = {
   // ── Create ──
 
-  async requestSettlement(data: {
-    organisationId: number;
-    branchId?: number | null;
-    requestedBy: number;
-    requestedByRole: string;
-    periodStart?: string;
-    periodEnd?: string;
-    notes?: string;
-  }) {
-    const pool = getPool();
-    const [result] = await pool.execute<mysql.ResultSetHeader>(
-      `INSERT INTO settlements (organisation_id, branch_id, settlement_status, requested_by, requested_by_role,
-        settlement_period_start, settlement_period_end, notes)
-       VALUES (?, ?, 'requested', ?, ?, ?, ?, ?)`,
-      [data.organisationId, data.branchId ?? null, data.requestedBy ?? null, data.requestedByRole ?? null,
-       data.periodStart ?? null, data.periodEnd ?? null, data.notes ?? null]
-    );
-    return result.insertId;
-  },
-
-  async createSettlementOrders(items: {
-    settlementId: number;
-    orderId: number;
-    productsPrice: number;
-    shippingPrice: number;
-    grossAmount: number;
-    courtzonFee: number;
-    organizationNet: number;
-    paymentMethod: string | null;
-  }[]) {
-    if (!items.length) return;
-    const pool = getPool();
-    const placeholders = items.map(() => '(?, ?, ?, ?, ?, ?, ?, ?)').join(', ');
-    const params = items.flatMap(i => [
-      i.settlementId, i.orderId, i.productsPrice, i.shippingPrice,
-      i.grossAmount, i.courtzonFee, i.organizationNet, i.paymentMethod ?? null,
-    ]);
-    await pool.execute(
-      `INSERT INTO settlement_orders (settlement_id, order_id, products_price, shipping_price,
-        gross_amount, courtzon_fee, organization_net, payment_method)
-       VALUES ${placeholders}`,
-      params,
-    );
-  },
-
-  async createSettlementTransfer(data: {
-    settlementId: number;
-    direction: 'courtzon_to_org' | 'org_to_courtzon';
-    amount: number;
-    bankAccountId?: number | null;
-    bankAccountSnapshot?: any;
-    reference?: string;
-  }) {
-    const pool = getPool();
-    const [result] = await pool.execute<mysql.ResultSetHeader>(
-      `INSERT INTO settlement_transfers (settlement_id, transfer_direction, amount,
-        bank_account_id, bank_account_snapshot, transfer_reference)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [data.settlementId, data.direction, data.amount,
-       data.bankAccountId ?? null,
-       data.bankAccountSnapshot ? JSON.stringify(data.bankAccountSnapshot) : null,
-       data.reference ?? null],
-    );
-    return result.insertId;
-  },
-
   // ── Read ──
 
   async findSettlementById(id: number, conn?: mysql.PoolConnection) {
@@ -213,47 +147,6 @@ export const settlementRepository = {
     await pool.execute(`UPDATE settlements SET ${fields.join(', ')} WHERE id = ?`, params);
   },
 
-  async updateSettlementTotals(settlementId: number, totals: {
-    grossAmount: number;
-    shippingAmount: number;
-    courtzonFee: number;
-    organizationNet: number;
-    codFeeTotal: number;
-    onlineNetTotal: number;
-    settlementDirection: 'courtzon_to_org' | 'org_to_courtzon';
-    finalAmount: number;
-  }) {
-    const pool = getPool();
-    await pool.execute(
-      `UPDATE settlements SET
-         gross_amount = ?, shipping_amount = ?, courtzon_fee = ?, organization_net = ?,
-         cod_fee_total = ?, online_net_total = ?,
-         settlement_direction = ?, final_amount = ?
-       WHERE id = ?`,
-      [totals.grossAmount, totals.shippingAmount, totals.courtzonFee, totals.organizationNet,
-       totals.codFeeTotal, totals.onlineNetTotal,
-       totals.settlementDirection, totals.finalAmount,
-       settlementId],
-    );
-  },
-
-  async updateSettlementBankAccount(settlementId: number, bankAccountId: number, snapshot: any) {
-    const pool = getPool();
-    await pool.execute(
-      'UPDATE settlements SET bank_account_id = ?, bank_account_snapshot = ? WHERE id = ?',
-      [bankAccountId, snapshot ? JSON.stringify(snapshot) : null, settlementId],
-    );
-  },
-
-  async markOrdersSettled(orderIds: number[]) {
-    if (!orderIds.length) return;
-    const pool = getPool();
-    await pool.execute(
-      `UPDATE orders SET settlement_status = 'settled' WHERE id IN (${orderIds.map(() => '?').join(',')})`,
-      orderIds,
-    );
-  },
-
   // ── Bank Account ──
 
   async getBankAccount(id: number) {
@@ -263,31 +156,5 @@ export const settlementRepository = {
       [id],
     );
     return rows[0] || null;
-  },
-
-  async getBranchBankAccounts(branchId: number) {
-    const pool = getPool();
-    const [rows] = await pool.execute<RowData>(
-      'SELECT * FROM bank_accounts WHERE branch_id = ?',
-      [branchId],
-    );
-    return rows;
-  },
-
-  // ── Transfer ──
-
-  async updateTransferStatus(transferId: number, status: string, reason?: string) {
-    const pool = getPool();
-    if (reason) {
-      await pool.execute(
-        'UPDATE settlement_transfers SET transfer_status = ?, failure_reason = ?, transfer_date = NOW() WHERE id = ?',
-        [status, reason, transferId],
-      );
-    } else {
-      await pool.execute(
-        'UPDATE settlement_transfers SET transfer_status = ?, transfer_date = NOW() WHERE id = ?',
-        [status, transferId],
-      );
-    }
   },
 };
