@@ -16,7 +16,7 @@ import { handleAutoCompleteBookings } from "./modules/booking/infrastructure/boo
 import { handleBookingSettlementEligibility } from "./modules/booking/infrastructure/booking-settlement-eligibility.worker.js";
 import { handleActivateEntitlements } from "./modules/financial/infrastructure/financial-entitlement.worker.js";
 import { handleComplaintPeriodActivation } from "./modules/financial/infrastructure/marketplace-complaint-period.worker.js";
-import { handleComplaintReceiptTimeout } from "./modules/marketplace/infrastructure/marketplace-complaint.worker.js";
+import { handleComplaintReceiptTimeout, handleComplaintCollectionEscalation } from "./modules/marketplace/infrastructure/marketplace-complaint.worker.js";
 import { handleSyncPendingPayments, handleExpireStalePayments } from "./modules/payment/infrastructure/payment-cron.worker.js";
 import { runDatabaseBackup } from "./infrastructure/backup/backup.service.js";
 import {
@@ -102,6 +102,7 @@ async function bootstrap() {
     registerHandler('activate_entitlements', handleActivateEntitlements);
     registerHandler('complaint_period_activation', handleComplaintPeriodActivation);
     registerHandler('complaint_receipt_timeout', handleComplaintReceiptTimeout);
+    registerHandler('complaint_collection_escalation', handleComplaintCollectionEscalation);
 
     registerCommandHandler('ConfirmBooking', confirmBookingHandler as any);
     registerCommandHandler('CancelBooking', cancelBookingHandler as any);
@@ -340,6 +341,13 @@ async function bootstrap() {
     // Marketplace complaint receipt-confirmation timeout — every 10 minutes
     await queueService.add('complaint_receipt_timeout', {}, {
       repeat: { every: 600_000 },
+      removeOnComplete: true,
+      removeOnFail: { age: 86400 },
+    });
+
+    // Marketplace complaint collection-deadline escalation — every 15 minutes
+    await queueService.add('complaint_collection_escalation', {}, {
+      repeat: { every: 900_000 },
       removeOnComplete: true,
       removeOnFail: { age: 86400 },
     });

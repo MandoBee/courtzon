@@ -1,6 +1,7 @@
 import { getPool } from '../../../database/mysql.js';
 import { createModuleLogger } from '../../../shared/utils/logger.js';
 import { marketplaceComplaintRepository } from '../infrastructure/repositories/marketplace-complaint.repository.js';
+import { marketplaceComplaintService } from '../application/marketplace-complaint.service.js';
 
 const log = createModuleLogger('marketplace-complaint-worker');
 
@@ -42,4 +43,17 @@ export async function handleComplaintReceiptTimeout(): Promise<void> {
   }
 
   log.info({ resolved }, 'Complaint receipt timeout resolution completed');
+}
+
+/**
+ * Scheduled BullMQ worker: escalates complaints whose collection deadline has
+ * passed while collection is still pending. The complaint stays open and the
+ * disputed Financial Entitlement stays ON_HOLD; CourtZon staff are notified for
+ * manual intervention. Idempotent (collection_escalated_at guard).
+ */
+export async function handleComplaintCollectionEscalation(): Promise<void> {
+  const escalated = await marketplaceComplaintService.escalateOverdueCollections(100);
+  if (escalated > 0) {
+    log.info({ escalated }, 'Collection-deadline escalation completed');
+  }
 }

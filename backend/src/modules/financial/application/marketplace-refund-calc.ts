@@ -43,6 +43,49 @@ export interface RefundCalcResult {
 }
 
 /**
+ * Computes the split of a manual refund between the organisation and CourtZon
+ * based on the HISTORICAL financial snapshot (original commission + disputed
+ * value). CourtZon's commission is reversed proportionally to the refunded
+ * portion of the original disputed value and NEVER exceeds the original
+ * commission. The organisation absorbs the full refund minus the reversed
+ * commission (including any additional compensation above the disputed value).
+ *
+ *   refundPortion      = min(1, refundAmount / disputedValue)
+ *   commissionReversal = min(originalCommission, originalCommission × refundPortion)
+ *   orgAdjustment      = refundAmount − commissionReversal
+ *
+ * Examples (original: org earning 900, commission 100, disputed 1000):
+ *   full refund 1000 → org −900, courtzon −100
+ *   partial 500     → org −450, courtzon −50
+ *   above original 1200 → org −1100, courtzon −100 (extra 200 is org-only)
+ */
+export interface RefundFinancials {
+  refundPortion: number;        // 0..1 portion of disputed value refunded
+  commissionReversal: number;   // CourtZon commission reversal (never > originalCommission)
+  orgAdjustment: number;        // organisation adjustment magnitude (refund − commissionReversal)
+  isFullRefund: boolean;        // refundAmount >= disputedValue
+  extraCompensation: number;    // max(0, refundAmount − disputedValue)
+}
+
+export function computeRefundFinancials(
+  refundAmount: number,
+  disputedValue: number,
+  originalCommission: number,
+): RefundFinancials {
+  if (refundAmount < 0) throw new Error('Refund amount cannot be negative');
+  if (disputedValue <= 0) throw new Error('Disputed value must be positive');
+  if (originalCommission < 0) throw new Error('Original commission cannot be negative');
+
+  const refundPortion = Math.min(1, refundAmount / disputedValue);
+  const commissionReversal = round2(Math.min(originalCommission, originalCommission * refundPortion));
+  const orgAdjustment = round2(refundAmount - commissionReversal);
+  const isFullRefund = refundAmount >= disputedValue;
+  const extraCompensation = round2(Math.max(0, refundAmount - disputedValue));
+
+  return { refundPortion, commissionReversal, orgAdjustment, isFullRefund, extraCompensation };
+}
+
+/**
  * Computes the system-determined disputed/refundable value for a set of disputed
  * order items. Pass the disputed items; non-disputed items should be excluded by
  * the caller.

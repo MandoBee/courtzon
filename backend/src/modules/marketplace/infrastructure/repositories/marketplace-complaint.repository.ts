@@ -36,6 +36,7 @@ export interface ComplaintRecord {
   collection_status: CollectionStatus;
   collection_due_at: Date | null;
   collection_completed_at: Date | null;
+  collection_escalated_at: Date | null;
   replacement_sent_at: Date | null;
   reshipment_sent_at: Date | null;
   receipt_awaited: boolean;
@@ -85,6 +86,7 @@ function mapRow(row: any): ComplaintRecord {
     collection_status: row.collection_status,
     collection_due_at: row.collection_due_at,
     collection_completed_at: row.collection_completed_at,
+    collection_escalated_at: row.collection_escalated_at,
     replacement_sent_at: row.replacement_sent_at,
     reshipment_sent_at: row.reshipment_sent_at,
     receipt_awaited: !!row.receipt_awaited,
@@ -253,5 +255,38 @@ export const marketplaceComplaintRepository = {
     const params = keys.map((k) => fields[k]);
     params.push(id);
     await pool.execute(`UPDATE marketplace_complaints SET ${set}, aggregate_version = aggregate_version + 1 WHERE id = ?`, params);
+  },
+
+  /**
+   * Complaints whose collection deadline has passed but collection is still
+   * pending/in-progress and has not yet been escalated to CourtZon staff.
+   * Scans with the idx_mc_collection_due index.
+   */
+  async findDueForCollectionEscalation(batchSize: number = 100): Promise<ComplaintRecord[]> {
+    const pool = getPool();
+    const safeBatch = Math.max(1, Math.floor(Number(batchSize) || 100));
+    const [rows] = await pool.execute<RowData>(
+      `SELECT * FROM marketplace_complaints
+       WHERE status = 'awaiting_return'
+         AND collection_status IN ('pending', 'in_progress')
+         AND collection_due_at IS NOT NULL
+         AND collection_due_at <= NOW()
+         AND collection_escalated_at IS NULL
+       ORDER BY collection_due_at ASC
+       LIMIT ${safeBatch}`,
+    );
+    return rows.map(mapRow);
+  },
+
+  /** Idempotent: only escalates a complaint that has not already been escalated. */
+  async markCollectionEscalated(id: number): Promise<boolean> {
+    const pool = getPool();
+    const [result] = await pool.execute<mysql.ResultSetHeader>(
+      `UPDATE marketplace_complaints
+       SET collection_escalated_at = NOW(), aggregate_version = aggregate_version + 1
+       WHERE id = ? AND collection_escalated_at IS NULL`,
+      [id],
+    );
+    return result.affectedRows > 0;
   },
 };
