@@ -171,6 +171,12 @@ export interface DomainEventMap {
   'security:session-revoked': BaseEvent & { userId: number; reason?: string };
   'setting:updated': BaseEvent & { key: string; oldValue: string; newValue: string; changedBy: number };
   'setting:profile-applied': BaseEvent & { profileId: number; profileName: string; appliedBy: number };
+  'entitlement:created': BaseEvent & { entitlementId: number; publicId: string; organisationId: number; entitlementType: string; sourceType: string; sourceId?: number; amount: number; currency: string };
+  'entitlement:activated': BaseEvent & { entitlementId: number; publicId: string; organisationId: number; entitlementType: string; sourceType: string; sourceId?: number; amount: number; currency: string };
+  'entitlement:on-hold': BaseEvent & { entitlementId: number; publicId: string; organisationId: number; reason: string };
+  'entitlement:released': BaseEvent & { entitlementId: number; publicId: string; organisationId: number };
+  'entitlement:cancelled': BaseEvent & { entitlementId: number; publicId: string; organisationId: number; sourceType: string; sourceId?: number; amount: number; reason: string };
+  'entitlement:settled': BaseEvent & { entitlementId: number; publicId: string; organisationId: number; amount: number; settlementId?: number };
 }
 
 export interface BroadcastPayload {

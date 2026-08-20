@@ -14,7 +14,8 @@ export type JobType = 'send_email' | 'process_settlement' | 'cancel_expired_book
   | 'send_subscription_reminders'
   | 'expire_memberships'
   | 'send_membership_reminders'
-  | 'booking_settlement_eligibility';
+  | 'booking_settlement_eligibility'
+  | 'activate_entitlements';
 
 export interface EmailAttachment {
   filename: string;
@@ -135,6 +136,7 @@ export type JobPayloadMap = {
   expire_memberships: Record<string, never>;
   send_membership_reminders: Record<string, never>;
   booking_settlement_eligibility: Record<string, never>;
+  activate_entitlements: Record<string, never>;
 };
 
 export const DEFAULT_QUEUE_NAME = 'default';

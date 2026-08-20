@@ -14,6 +14,7 @@ import { handleExpireMemberships, handleSendExpiringReminders } from "./modules/
 
 import { handleAutoCompleteBookings } from "./modules/booking/infrastructure/booking-auto-complete.worker.js";
 import { handleBookingSettlementEligibility } from "./modules/booking/infrastructure/booking-settlement-eligibility.worker.js";
+import { handleActivateEntitlements } from "./modules/financial/infrastructure/financial-entitlement.worker.js";
 import { handleSyncPendingPayments, handleExpireStalePayments } from "./modules/payment/infrastructure/payment-cron.worker.js";
 import { runDatabaseBackup } from "./infrastructure/backup/backup.service.js";
 import {
@@ -94,6 +95,7 @@ async function bootstrap() {
     registerHandler('run_cleanup', async (_data: Record<string, never>) => {
       await runCleanupPolicies();
     });
+    registerHandler('activate_entitlements', handleActivateEntitlements);
 
     registerCommandHandler('ConfirmBooking', confirmBookingHandler as any);
     registerCommandHandler('CancelBooking', cancelBookingHandler as any);
@@ -195,6 +197,9 @@ async function bootstrap() {
 
     const { registerAccountingEventListeners } = await import('./modules/financial/application/accounting-event.listener.js');
     registerAccountingEventListeners();
+
+    const { registerEntitlementBookingListeners } = await import('./modules/financial/application/entitlement-booking.listener.js');
+    registerEntitlementBookingListeners();
     app.log.info('Accounting event listeners registered');
 
     await queueService.add('cancel_expired_bookings', { cutoffMinutes: 5 }, {
@@ -294,6 +299,13 @@ async function bootstrap() {
       repeat: { pattern: '0 4 * * *' },
       removeOnComplete: true,
       removeOnFail: { age: 604800 },
+    });
+
+    // Entitlement activation — every 5 minutes
+    await queueService.add('activate_entitlements', {}, {
+      repeat: { every: 300_000 },
+      removeOnComplete: true,
+      removeOnFail: { age: 86400 },
     });
 
     process.on('SIGTERM', () => shutdown('SIGTERM'));
