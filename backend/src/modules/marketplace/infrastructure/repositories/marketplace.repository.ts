@@ -1531,27 +1531,30 @@ export const marketplaceRepository = {
     order_count: number;
   }> {
     const pool = getPool();
+    // Phase 4B: the seller settlement balance is now computed from AVAILABLE
+    // financial entitlements (the authoritative source of truth), not from
+    // order_items.settlement_status. Available org position = AVAILABLE
+    // ORGANIZATION_EARNING + AVAILABLE ORGANIZATION_ADJUSTMENT. pending_fee is
+    // the AVAILABLE COURTZON_COMMISSION (informational).
     const [rows] = await pool.execute<RowData>(
       `SELECT
-         SUM(oi.total_price - oi.commission_amount) as product_net,
-         SUM(oi.commission_amount) as total_fee,
-         COUNT(DISTINCT o.id) as order_count
-       FROM order_items oi
-       JOIN orders o ON o.id = oi.order_id
-       WHERE oi.seller_id = ?
-         AND oi.settlement_status = 'pending'
-         AND o.status = 'delivered'
-         AND (o.payment_method = 'cash' OR o.payment_status = 'paid')`,
+         COALESCE(SUM(CASE WHEN fe.entitlement_type IN ('ORGANIZATION_EARNING','ORGANIZATION_ADJUSTMENT') THEN fe.amount END), 0) AS org_available,
+         COALESCE(SUM(CASE WHEN fe.entitlement_type = 'COURTZON_COMMISSION' THEN fe.amount END), 0) AS commission_available,
+         COUNT(DISTINCT fe.id) AS entitlement_count
+       FROM financial_entitlements fe
+       WHERE fe.organisation_id = ?
+         AND fe.status = 'AVAILABLE'
+         AND fe.settlement_id IS NULL`,
       [orgId],
     );
     const r = rows[0] as any;
-    const productNet = Number(r?.product_net || 0);
-    const totalFee = Number(r?.total_fee || 0);
-    const orderCount = Number(r?.order_count || 0);
+    const orgAvailable = Number(r?.org_available || 0);
+    const commissionAvailable = Number(r?.commission_available || 0);
+    const entitlementCount = Number(r?.entitlement_count || 0);
     return {
-      available_balance: Math.round(productNet * 100) / 100,
-      pending_fee: Math.round(totalFee * 100) / 100,
-      order_count: orderCount,
+      available_balance: Math.round(orgAvailable * 100) / 100,
+      pending_fee: Math.round(commissionAvailable * 100) / 100,
+      order_count: entitlementCount,
     };
   },
 
