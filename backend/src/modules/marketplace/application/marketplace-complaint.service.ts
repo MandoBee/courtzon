@@ -7,7 +7,7 @@ import { marketplaceRepository } from '../infrastructure/repositories/marketplac
 import { marketplaceComplaintRepository, type ComplaintRecord } from '../infrastructure/repositories/marketplace-complaint.repository.js';
 import { financialEntitlementService } from '../../financial/application/financial-entitlement.service.js';
 import { walletRepository } from '../../wallet/infrastructure/repositories/wallet.repository.js';
-import { calculateDisputedValue, computeRefundFinancials } from '../../financial/application/marketplace-refund-calc.js';
+import { calculateDisputedValue, computeCumulativeRefundFinancials } from '../../financial/application/marketplace-refund-calc.js';
 import {
   assertComplaintTransition,
   classifyRefund,
@@ -595,13 +595,23 @@ export const marketplaceComplaintService = {
     const currency = commissionEnt?.currency || orgEarningEnt?.currency || 'EGP';
     const branchId = orgEarningEnt?.branch_id ?? commissionEnt?.branch_id ?? null;
 
-    // Historical original commission — NEVER recomputed from current config.
+    // Historical original amounts — NEVER recomputed from current config.
     const originalCommission = commissionEnt ? Number(commissionEnt.amount) : 0;
-    // Historical original org earning (positive magnitude).
     const originalOrgEarning = orgEarningEnt ? Number(orgEarningEnt.amount) : 0;
 
-    // Split the refund between org and CourtZon based on the historical snapshot.
-    const fin = computeRefundFinancials(refundAmount, disputedValue, originalCommission);
+    // Cumulative remaining capacity across ALL prior refunds on this order item.
+    const prior = await marketplaceComplaintRepository.sumPriorAdjustmentsByOrderItem(itemId);
+
+    // Split THIS refund into original-value reversal + additional compensation,
+    // capped by the remaining cumulative capacity. Uses the historical split.
+    const fin = computeCumulativeRefundFinancials(
+      refundAmount,
+      originalOrgEarning,
+      originalCommission,
+      disputedValue,
+      prior.orgOriginalReversed,
+      prior.commissionReversed,
+    );
 
     const pool = getPool();
     const conn = await pool.getConnection();
@@ -640,53 +650,63 @@ export const marketplaceComplaintService = {
           }
           continue;
         }
-        // PENDING/ON_HOLD(never activated): a FULL refund cancels the PENDING
-        // entitlement (consistent with Phase 1 booking behavior); partial refunds
-        // leave it intact and are captured as adjustments below.
-        if (fin.isFullRefund) {
+        // PENDING/ON_HOLD(never activated): a FULL refund of the remaining
+        // original value cancels the PENDING entitlement (Phase 1 consistency);
+        // partial refunds leave it intact and are captured as adjustments below.
+        if (refundAmount >= Math.max(0, disputedValue - prior.orgOriginalReversed - prior.commissionReversed)) {
           await financialEntitlementService.cancelEntitlement(ent.id, `Refund for complaint #${complaintId}`).catch((err: any) => {
             if (!String(err?.message || '').includes('version conflict')) throw err;
           });
         }
       }
 
-      // Organisation adjustment: the org absorbs refund minus the reversed commission.
+      // Each executed refund writes its OWN adjustment rows, uniquely identified
+      // by source_id = complaint.id (preserving uk_fe_source_type: one
+      // ORGANIZATION_ADJUSTMENT + one COURTZON_ADJUSTMENT per complaint/refund).
+      // Traceability back to the original order item is stored in metadata.itemId.
+      const adjustmentSourceId = complaint.id;
+
+      // Organisation adjustment: original-value reversal + additional compensation.
       if (fin.orgAdjustment > 0) {
         adjustments.push({
           organisationId: orgId,
           branchId,
           entitlementType: 'ORGANIZATION_ADJUSTMENT',
           sourceType: 'marketplace',
-          sourceId: itemId,
+          sourceId: adjustmentSourceId,
           amount: -fin.orgAdjustment,
           currency,
           description: `Refund for complaint #${complaintId}`,
           metadata: {
-            complaintId, direction: 'debit', disputedValue, itemId,
-            refundAmount, commissionReversal: fin.commissionReversal,
-            refundPortion: fin.refundPortion, extraCompensation: fin.extraCompensation,
+            complaintId, itemId, direction: 'debit', disputedValue,
+            originalOrgEarning, originalCommission,
+            refundAmount, originalValuePortion: fin.originalValuePortion,
+            orgOriginalReversal: fin.orgOriginalReversal,
+            additionalCompensation: fin.additionalCompensation,
+            commissionReversal: fin.commissionReversal,
           },
           createdBy: complaint.resolved_by ?? undefined,
         });
       }
 
-      // CourtZon commission reversal: proportional to the refunded disputed value,
-      // capped at the original commission. Additional compensation never reverses
-      // CourtZon commission.
+      // CourtZon commission reversal: proportional to the original-value portion,
+      // capped at the remaining cumulative commission. Additional compensation
+      // never reverses CourtZon commission.
       if (fin.commissionReversal > 0) {
         adjustments.push({
           organisationId: orgId,
           branchId,
           entitlementType: 'COURTZON_ADJUSTMENT',
           sourceType: 'marketplace',
-          sourceId: itemId,
+          sourceId: adjustmentSourceId,
           amount: -fin.commissionReversal,
           currency,
           description: `Commission reversal for complaint #${complaintId}`,
           metadata: {
-            complaintId, direction: 'debit', disputedValue, itemId,
-            refundAmount, originalCommission, refundPortion: fin.refundPortion,
-            extraCompensation: fin.extraCompensation,
+            complaintId, itemId, direction: 'debit', disputedValue,
+            originalCommission, originalValuePortion: fin.originalValuePortion,
+            commissionReversal: fin.commissionReversal,
+            additionalCompensation: fin.additionalCompensation,
           },
           createdBy: complaint.resolved_by ?? undefined,
         });

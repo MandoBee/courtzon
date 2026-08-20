@@ -289,4 +289,47 @@ export const marketplaceComplaintRepository = {
     );
     return result.affectedRows > 0;
   },
+
+  /**
+   * Sums the magnitudes of all prior financial adjustments created by executed
+   * refunds for a given order item, traced through complaints.
+   *
+   * Each executed refund writes adjustment entitlement rows with
+   * source_type='marketplace' and source_id = marketplace_complaints.id (the
+   * executed-refund identity). This query joins those adjustment rows back to
+   * the complaint to group them by the ORIGINAL order item, so cumulative
+   * reversal capacity can be computed across multiple refunds on the same item.
+   *
+   * Returns:
+   *   commissionReversed   — abs sum of COURTZON_ADJUSTMENT amounts (this item)
+   *   orgOriginalReversed  — abs sum of the ORIGINAL-VALUE portion of each
+   *                          ORGANIZATION_ADJUSTMENT (ABS(amount) minus the
+   *                          additional-compensation component stored in the
+   *                          adjustment's metadata). Additional compensation is
+   *                          org-only and does not consume original-value
+   *                          reversal capacity.
+   */
+  async sumPriorAdjustmentsByOrderItem(
+    orderItemId: number,
+  ): Promise<{ commissionReversed: number; orgOriginalReversed: number }> {
+    const pool = getPool();
+    const [rows] = await pool.execute<RowData>(
+      `SELECT
+         COALESCE(SUM(CASE WHEN fe.entitlement_type = 'COURTZON_ADJUSTMENT' THEN ABS(fe.amount) END), 0) AS commission_reversed,
+         COALESCE(SUM(CASE WHEN fe.entitlement_type = 'ORGANIZATION_ADJUSTMENT'
+                            THEN ABS(fe.amount) - COALESCE(JSON_UNQUOTE(JSON_EXTRACT(fe.metadata, '$.additionalCompensation')), 0)
+                          END), 0) AS org_original_reversed
+       FROM financial_entitlements fe
+       JOIN marketplace_complaints mc ON fe.source_type = 'marketplace' AND fe.source_id = mc.id
+       WHERE mc.order_item_id = ?
+         AND fe.entitlement_type IN ('COURTZON_ADJUSTMENT', 'ORGANIZATION_ADJUSTMENT')
+         AND fe.status <> 'CANCELLED'`,
+      [orderItemId],
+    );
+    const row = rows[0] as any;
+    return {
+      commissionReversed: Number(row?.commission_reversed || 0),
+      orgOriginalReversed: Number(row?.org_original_reversed || 0),
+    };
+  },
 };
