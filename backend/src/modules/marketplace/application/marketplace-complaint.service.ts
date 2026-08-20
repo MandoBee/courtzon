@@ -7,7 +7,7 @@ import { marketplaceRepository } from '../infrastructure/repositories/marketplac
 import { marketplaceComplaintRepository, type ComplaintRecord } from '../infrastructure/repositories/marketplace-complaint.repository.js';
 import { financialEntitlementService } from '../../financial/application/financial-entitlement.service.js';
 import { walletRepository } from '../../wallet/infrastructure/repositories/wallet.repository.js';
-import { calculateDisputedValue } from '../../financial/application/marketplace-refund-calc.js';
+import { calculateDisputedValue, computeRefundFinancials } from '../../financial/application/marketplace-refund-calc.js';
 import {
   assertComplaintTransition,
   classifyRefund,
@@ -532,6 +532,34 @@ export const marketplaceComplaintService = {
 
   // ── Internal: transition + refund execution ──
 
+  /**
+   * Scheduled escalation: when a complaint's collection deadline has passed and
+   * the organisation has not completed collection, alert CourtZon staff for
+   * manual intervention. The complaint stays OPEN and the disputed Financial
+   * Entitlement stays ON_HOLD. Idempotent — each complaint escalates at most once.
+   */
+  async escalateOverdueCollections(batchSize: number = 100): Promise<number> {
+    const due = await marketplaceComplaintRepository.findDueForCollectionEscalation(batchSize);
+    let escalated = 0;
+    for (const complaint of due) {
+      const marked = await marketplaceComplaintRepository.markCollectionEscalated(complaint.id);
+      if (!marked) continue; // another worker instance already escalated it
+      escalated++;
+      eventBusV2.emit('marketplace:complaint-collection-escalated', {
+        complaintId: complaint.id,
+        orderId: complaint.order_id,
+        orderItemId: complaint.order_item_id,
+        buyerId: complaint.buyer_id,
+        sellerId: complaint.seller_org_id,
+        collectionDueAt: complaint.collection_due_at,
+      });
+    }
+    if (escalated > 0) {
+      log.warn({ escalated }, 'Collection-deadline complaints escalated to CourtZon staff');
+    }
+    return escalated;
+  },
+
   async _transition(complaint: ComplaintRecord, to: ComplaintStatus, extra?: Record<string, any>): Promise<void> {
     if (isTerminalComplaint(complaint.status)) {
       throw new ConflictError(`Complaint is already ${complaint.status}`);
@@ -542,8 +570,8 @@ export const marketplaceComplaintService = {
 
   /**
    * Executes the refund once (idempotent): credits the buyer's wallet, records a
-   * wallet transaction, and adjusts the organisation's financial position without
-   * mutating the original entitlement amounts.
+   * wallet transaction, and applies the proportional CourtZon commission reversal
+   * + organisation adjustment without mutating the original entitlement amounts.
    */
   async _executeRefund(complaintId: number, refundAmount: number, disputedValue: number): Promise<void> {
     const complaint = await marketplaceComplaintRepository.findById(complaintId);
@@ -560,8 +588,20 @@ export const marketplaceComplaintService = {
       return;
     }
 
-    // Load entitlements for the disputed item to decide cancel vs adjust.
+    // Load the disputed item's entitlements (the historical financial source of truth).
     const entitlements = await financialEntitlementService.getEntitlementsBySourceIds('marketplace', [itemId]);
+    const orgEarningEnt = entitlements.find((e) => e.entitlement_type === 'ORGANIZATION_EARNING');
+    const commissionEnt = entitlements.find((e) => e.entitlement_type === 'COURTZON_COMMISSION');
+    const currency = commissionEnt?.currency || orgEarningEnt?.currency || 'EGP';
+    const branchId = orgEarningEnt?.branch_id ?? commissionEnt?.branch_id ?? null;
+
+    // Historical original commission — NEVER recomputed from current config.
+    const originalCommission = commissionEnt ? Number(commissionEnt.amount) : 0;
+    // Historical original org earning (positive magnitude).
+    const originalOrgEarning = orgEarningEnt ? Number(orgEarningEnt.amount) : 0;
+
+    // Split the refund between org and CourtZon based on the historical snapshot.
+    const fin = computeRefundFinancials(refundAmount, disputedValue, originalCommission);
 
     const pool = getPool();
     const conn = await pool.getConnection();
@@ -585,39 +625,73 @@ export const marketplaceComplaintService = {
         description: `Refund for complaint #${complaintId}`,
       }, conn);
 
-      // 2. Adjust or cancel the disputed entitlements (immutable — never mutate original amounts).
+      // 2. Adjust/cancel the disputed entitlements + apply immutable financial adjustments.
       const adjustments: any[] = [];
+
       for (const ent of entitlements) {
         if (ent.status === 'SETTLED') {
           throw new ConflictError(`Cannot refund a settled entitlement (id ${ent.id}) — contact support`);
         }
         if (ent.status === 'CANCELLED') continue;
-
-        const wasActivated = ent.available_at != null;
-        if (wasActivated) {
-          // AVAILABLE/ON_HOLD(was-available): create a negative adjustment, keep the original intact.
-          adjustments.push({
-            organisationId: orgId,
-            branchId: ent.branch_id,
-            entitlementType: 'ORGANIZATION_ADJUSTMENT',
-            sourceType: 'marketplace',
-            sourceId: itemId,
-            amount: -refundAmount,
-            currency: ent.currency || 'EGP',
-            description: `Refund for complaint #${complaintId}`,
-            metadata: { complaintId, direction: 'debit', disputedValue, itemId },
-            createdBy: complaint.resolved_by ?? undefined,
-          });
+        // AVAILABLE/ON_HOLD(was-available): keep the original intact, add an adjustment later.
+        if (ent.available_at != null) {
           if (ent.status === 'ON_HOLD') {
             await financialEntitlementService.releaseEntitlement(ent.id).catch(() => undefined);
           }
-        } else {
-          // PENDING/ON_HOLD(never activated): cancel (consistent with Phase 1 booking behavior).
+          continue;
+        }
+        // PENDING/ON_HOLD(never activated): a FULL refund cancels the PENDING
+        // entitlement (consistent with Phase 1 booking behavior); partial refunds
+        // leave it intact and are captured as adjustments below.
+        if (fin.isFullRefund) {
           await financialEntitlementService.cancelEntitlement(ent.id, `Refund for complaint #${complaintId}`).catch((err: any) => {
             if (!String(err?.message || '').includes('version conflict')) throw err;
           });
         }
       }
+
+      // Organisation adjustment: the org absorbs refund minus the reversed commission.
+      if (fin.orgAdjustment > 0) {
+        adjustments.push({
+          organisationId: orgId,
+          branchId,
+          entitlementType: 'ORGANIZATION_ADJUSTMENT',
+          sourceType: 'marketplace',
+          sourceId: itemId,
+          amount: -fin.orgAdjustment,
+          currency,
+          description: `Refund for complaint #${complaintId}`,
+          metadata: {
+            complaintId, direction: 'debit', disputedValue, itemId,
+            refundAmount, commissionReversal: fin.commissionReversal,
+            refundPortion: fin.refundPortion, extraCompensation: fin.extraCompensation,
+          },
+          createdBy: complaint.resolved_by ?? undefined,
+        });
+      }
+
+      // CourtZon commission reversal: proportional to the refunded disputed value,
+      // capped at the original commission. Additional compensation never reverses
+      // CourtZon commission.
+      if (fin.commissionReversal > 0) {
+        adjustments.push({
+          organisationId: orgId,
+          branchId,
+          entitlementType: 'COURTZON_ADJUSTMENT',
+          sourceType: 'marketplace',
+          sourceId: itemId,
+          amount: -fin.commissionReversal,
+          currency,
+          description: `Commission reversal for complaint #${complaintId}`,
+          metadata: {
+            complaintId, direction: 'debit', disputedValue, itemId,
+            refundAmount, originalCommission, refundPortion: fin.refundPortion,
+            extraCompensation: fin.extraCompensation,
+          },
+          createdBy: complaint.resolved_by ?? undefined,
+        });
+      }
+
       if (adjustments.length) {
         await financialEntitlementService.createEntitlements(adjustments, conn);
       }
@@ -638,7 +712,7 @@ export const marketplaceComplaintService = {
         reason: `Refund for complaint #${complaintId}`,
         referenceType: 'complaint',
         referenceId: complaintId,
-        metadata: { complaintId, paymentMethod: 'wallet' },
+        metadata: { complaintId, paymentMethod: 'wallet', commissionReversal: fin.commissionReversal, orgAdjustment: fin.orgAdjustment },
       }, undefined, conn);
 
       await conn.commit();
@@ -656,6 +730,6 @@ export const marketplaceComplaintService = {
       description: `Refund for complaint #${complaintId}`,
     });
 
-    log.info({ complaintId, refundAmount, itemId, orgId }, 'Complaint refund executed');
+    log.info({ complaintId, refundAmount, itemId, orgId, commissionReversal: fin.commissionReversal, orgAdjustment: fin.orgAdjustment }, 'Complaint refund executed');
   },
 };

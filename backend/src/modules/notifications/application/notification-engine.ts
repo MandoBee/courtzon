@@ -252,6 +252,20 @@ const eventGroups: EventGroupConfig[] = [
     },
   },
   {
+    events: ['marketplace:complaint-collection-escalated'],
+    handler: async (eventName, data, categorySlug) => {
+      await dispatchByPermission('marketplace.complaints.approve', {
+        eventName, categorySlug,
+        action: a(`/admin/marketplace/complaints/${data.complaintId}`),
+        data: {
+          ...data,
+          title: 'Collection Deadline Missed',
+          body: `Complaint #${data.complaintId} (order #${data.orderId}) collection deadline passed and is still pending. Manual intervention required.`,
+        },
+      });
+    },
+  },
+  {
     events: ['marketplace:product-back-in-stock', 'marketplace:price-drop', 'marketplace:flash-sale'],
     handler: async (eventName, data, categorySlug) => {
       if (data.userId) {
@@ -867,6 +881,7 @@ class NotificationEngine {
       'marketplace:complaint-admin-approval-required', 'marketplace:complaint-admin-decision',
       'marketplace:complaint-shipped', 'marketplace:complaint-receipt-confirmation-required',
       'marketplace:complaint-receipt-confirmed', 'marketplace:complaint-return-status',
+      'marketplace:complaint-collection-escalated',
       'user:registered', 'user:approved', 'user:rejected', 'user:suspended',
       'user:activated', 'user:profile-updated', 'user:deleted',
       'auth:password-reset', 'auth:password-changed', 'auth:login', 'auth:logout', 'auth:2fa-setup',

@@ -660,6 +660,12 @@ export async function seedTemplates(): Promise<void> {
     { eventName: 'marketplace:complaint-return-status', locale: 'ar', categorySlug: 'marketplace', type: 'info', priority: 'normal',
       titleTemplate: 'تحديث حالة الإرجاع', bodyTemplate: 'الشكوى رقم {{complaintId}}: حالة الإرجاع الآن {{status}}.',
       actionKey: 'view_complaint', routePattern: '/marketplace/complaints/{{complaintId}}' },
+    { eventName: 'marketplace:complaint-collection-escalated', locale: 'en', categorySlug: 'marketplace', type: 'warning', priority: 'high',
+      titleTemplate: 'Collection Deadline Missed', bodyTemplate: 'Complaint #{{complaintId}} (order #{{orderId}}) collection deadline passed and is still pending. Manual intervention required.',
+      actionKey: 'view_complaint', routePattern: '/admin/marketplace/complaints/{{complaintId}}' },
+    { eventName: 'marketplace:complaint-collection-escalated', locale: 'ar', categorySlug: 'marketplace', type: 'warning', priority: 'high',
+      titleTemplate: 'تجاوز مهلة الاستلام', bodyTemplate: 'الشكوى رقم {{complaintId}} (الطلب رقم {{orderId}}) تجاوزت مهلة الاستلام وما زالت معلقة. التدخل اليدوي مطلوب.',
+      actionKey: 'view_complaint', routePattern: '/admin/marketplace/complaints/{{complaintId}}' },
 
     // ── User & Auth Missing ──
     { eventName: 'user:rejected', locale: 'en', categorySlug: 'system', type: 'error', priority: 'high',
