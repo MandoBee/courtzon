@@ -847,7 +847,7 @@ export const marketplaceRepository = {
     const params: any[] = [status];
     if (status === 'cancelled') { updates.push('cancelled_at = NOW(), cancellation_reason = ?'); params.push(reason || null); }
     if (status === 'confirmed' || status === 'paid') { updates.push('paid_at = NOW(), payment_status = ?'); params.push('paid'); }
-    if (status === 'delivered') { updates.push("payment_status = 'paid'"); }
+    if (status === 'delivered') { updates.push("payment_status = 'paid', delivered_at = NOW()"); }
     params.push(id);
     await pool.execute(`UPDATE orders SET ${updates.join(', ')} WHERE id = ?`, params);
   },

@@ -52,6 +52,44 @@ export async function financialEntitlementRoutes(app: FastifyInstance): Promise<
     return reply.send(entitlements);
   });
 
+  // Bulk hold entitlements by source IDs (e.g., disputed marketplace order_items)
+  app.post('/entitlements/hold-by-source', {
+    preHandler: [requirePermission(['financial.entitlements.hold'])],
+  }, async (request: any, reply: any) => {
+    const { sourceType, sourceIds, reason } = request.body as any;
+    if (!sourceType || !Array.isArray(sourceIds) || !sourceIds.length) {
+      return reply.status(400).send({ error: 'sourceType and non-empty sourceIds[] are required' });
+    }
+    if (!reason) return reply.status(400).send({ error: 'reason is required' });
+    const held = await financialEntitlementService.holdBySourceIds(sourceType, sourceIds.map(Number), reason);
+    return reply.send({ success: true, held });
+  });
+
+  // Bulk release entitlements by source IDs back to AVAILABLE
+  app.post('/entitlements/release-by-source', {
+    preHandler: [requirePermission(['financial.entitlements.hold'])],
+  }, async (request: any, reply: any) => {
+    const { sourceType, sourceIds } = request.body as any;
+    if (!sourceType || !Array.isArray(sourceIds) || !sourceIds.length) {
+      return reply.status(400).send({ error: 'sourceType and non-empty sourceIds[] are required' });
+    }
+    const released = await financialEntitlementService.releaseBySourceIds(sourceType, sourceIds.map(Number));
+    return reply.send({ success: true, released });
+  });
+
+  // Bulk cancel entitlements by source IDs (e.g., partially refunded marketplace items)
+  app.post('/entitlements/cancel-by-source', {
+    preHandler: [requirePermission(['financial.entitlements.cancel'])],
+  }, async (request: any, reply: any) => {
+    const { sourceType, sourceIds, reason } = request.body as any;
+    if (!sourceType || !Array.isArray(sourceIds) || !sourceIds.length) {
+      return reply.status(400).send({ error: 'sourceType and non-empty sourceIds[] are required' });
+    }
+    if (!reason) return reply.status(400).send({ error: 'reason is required' });
+    const cancelled = await financialEntitlementService.cancelBySourceIds(sourceType, sourceIds.map(Number), reason);
+    return reply.send({ success: true, cancelled });
+  });
+
   // Get organisation balance summary
   app.get('/entitlements/balance/:organisationId', {
     preHandler: [requirePermission(['financial.entitlements.view'])],

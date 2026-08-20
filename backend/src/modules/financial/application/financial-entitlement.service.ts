@@ -146,7 +146,16 @@ export class FinancialEntitlementService {
   // ── Cancel by source (used for booking refunds) ──
 
   async cancelBySource(sourceType: string, sourceId: number, reason: string): Promise<number> {
-    const entitlements = await financialEntitlementRepository.findBySource(sourceType as any, sourceId);
+    return this.cancelBySourceIds(sourceType, [sourceId], reason);
+  }
+
+  /**
+   * Cancel all non-terminal entitlements for a set of source IDs (e.g. all
+   * order_items of a cancelled/refunded marketplace order). Skips SETTLED and
+   * already-CANCELLED records; optimistic-lock conflicts are logged and skipped.
+   */
+  async cancelBySourceIds(sourceType: string, sourceIds: number[], reason: string): Promise<number> {
+    const entitlements = await financialEntitlementRepository.findBySourceIds(sourceType as any, sourceIds);
     let cancelled = 0;
     for (const e of entitlements) {
       if (isTerminal(e.status)) continue;
@@ -155,13 +164,87 @@ export class FinancialEntitlementService {
         cancelled++;
       } catch (err: any) {
         if (err?.message?.includes('version conflict')) {
-          log.warn({ entitlementId: e.id, err: err.message }, 'Optimistic lock conflict during cancelBySource — skipping');
+          log.warn({ entitlementId: e.id, err: err.message }, 'Optimistic lock conflict during cancelBySourceIds — skipping');
           continue;
         }
         throw err;
       }
     }
     return cancelled;
+  }
+
+  /**
+   * Hold all non-terminal entitlements for a set of source IDs (e.g. disputed
+   * order_items). Used by the complaint system to freeze disputed funds.
+   */
+  async holdBySourceIds(sourceType: string, sourceIds: number[], reason: string): Promise<number> {
+    const entitlements = await financialEntitlementRepository.findBySourceIds(sourceType as any, sourceIds);
+    let held = 0;
+    for (const e of entitlements) {
+      if (isTerminal(e.status) || e.status === 'ON_HOLD') continue;
+      try {
+        await this.holdEntitlement(e.id, reason);
+        held++;
+      } catch (err: any) {
+        if (err?.message?.includes('version conflict')) {
+          log.warn({ entitlementId: e.id, err: err.message }, 'Optimistic lock conflict during holdBySourceIds — skipping');
+          continue;
+        }
+        throw err;
+      }
+    }
+    return held;
+  }
+
+  /**
+   * Release all ON_HOLD entitlements for a set of source IDs back to AVAILABLE.
+   */
+  async releaseBySourceIds(sourceType: string, sourceIds: number[]): Promise<number> {
+    const entitlements = await financialEntitlementRepository.findBySourceIds(sourceType as any, sourceIds);
+    let released = 0;
+    for (const e of entitlements) {
+      if (e.status !== 'ON_HOLD') continue;
+      try {
+        await this.releaseEntitlement(e.id);
+        released++;
+      } catch (err: any) {
+        if (err?.message?.includes('version conflict')) {
+          log.warn({ entitlementId: e.id, err: err.message }, 'Optimistic lock conflict during releaseBySourceIds — skipping');
+          continue;
+        }
+        throw err;
+      }
+    }
+    return released;
+  }
+
+  /**
+   * Activate marketplace entitlements whose delivery complaint window has passed.
+   * Called by the scheduled complaint-period worker. Idempotent (only PENDING rows
+   * are activated). Returns the number activated.
+   */
+  async activateMarketplaceEligible(periodDays: number, batchSize: number = 200): Promise<number> {
+    const pending = await financialEntitlementRepository.findPendingMarketplaceDueForActivation(periodDays, batchSize);
+    if (!pending.length) return 0;
+
+    const ids = pending.map(e => e.id);
+    const activated = await financialEntitlementRepository.batchActivate(ids);
+
+    for (const e of pending) {
+      eventBusV2.emit('entitlement:activated', {
+        entitlementId: e.id,
+        publicId: e.public_id,
+        organisationId: e.organisation_id,
+        entitlementType: e.entitlement_type,
+        sourceType: e.source_type,
+        sourceId: e.source_id,
+        amount: e.amount,
+        currency: e.currency,
+      } as any);
+    }
+
+    log.info({ activated, periodDays }, 'Activated marketplace entitlements past complaint window');
+    return activated;
   }
 
   // ── Read ──
@@ -195,6 +278,10 @@ export class FinancialEntitlementService {
 
   async getEntitlementsBySource(sourceType: string, sourceId: number) {
     return financialEntitlementRepository.findBySource(sourceType as any, sourceId);
+  }
+
+  async getEntitlementsBySourceIds(sourceType: string, sourceIds: number[]) {
+    return financialEntitlementRepository.findBySourceIds(sourceType as any, sourceIds);
   }
 
   // ── Settlement linkage ──
