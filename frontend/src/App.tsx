@@ -67,6 +67,10 @@ const PlayerProductsPage = lazy(() => import('./pages/marketplace/PlayerProducts
 const CartPage = lazy(() => import('./pages/marketplace/CartPage'));
 const OrderListPage = lazy(() => import('./pages/marketplace/OrderListPage'));
 const OrderDetailPage = lazy(() => import('./pages/marketplace/OrderDetailPage'));
+const ComplaintsPage = lazy(() => import('./pages/marketplace/ComplaintsPage'));
+const ComplaintDetailPage = lazy(() => import('./pages/marketplace/ComplaintDetailPage'));
+const SellerComplaintsPage = lazy(() => import('./pages/marketplace/SellerComplaintsPage'));
+const AdminComplaintsPage = lazy(() => import('./pages/marketplace/AdminComplaintsPage'));
 const SellerDashboardPage = lazy(() => import('./pages/marketplace/SellerDashboardPage'));
 const WishlistPage = lazy(() => import('./pages/marketplace/WishlistPage'));
 const TournamentListPage = lazy(() => import('./pages/tournaments/TournamentListPage'));
@@ -585,6 +589,9 @@ function AppContent() {
           <Route path="/marketplace/cart" element={<CartPage />} />
           <Route path="/marketplace/orders" element={<OrderListPage />} />
           <Route path="/marketplace/orders/:id" element={<OrderDetailPage />} />
+          <Route path="/marketplace/complaints" element={<ComplaintsPage />} />
+          <Route path="/marketplace/complaints/:id" element={<ComplaintDetailPage />} />
+          <Route path="/marketplace/seller/complaints" element={<SellerComplaintsPage />} />
           <Route path="/marketplace/seller" element={<SellerDashboardPage />} />
           <Route path="/marketplace/player/products" element={<PlayerProductsPage />} />
           <Route path="/marketplace/wishlist" element={<WishlistPage />} />
@@ -653,6 +660,7 @@ function AppContent() {
           <Route path="permissions" element={<UIPermissionsPage />} />
           <Route path="ui-permissions" element={<Navigate to="/admin/permissions" replace />} />
           <Route path="feature-flags" element={<FeatureFlagsPage />} />
+          <Route path="marketplace/complaints" element={<AdminComplaintsPage />} />
           <Route path="cms" element={<CmsPage />} />
           <Route path="payment-methods" element={<PaymentMethodsPage />} />
           <Route path="payment-gateways" element={<PaymentGatewaysPage />} />

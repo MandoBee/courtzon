@@ -210,6 +210,48 @@ const eventGroups: EventGroupConfig[] = [
     },
   },
   {
+    events: [
+      'marketplace:complaint-submitted',
+      'marketplace:complaint-decision',
+      'marketplace:complaint-return-required',
+      'marketplace:complaint-refund-executed',
+      'marketplace:complaint-admin-decision',
+      'marketplace:complaint-shipped',
+      'marketplace:complaint-receipt-confirmation-required',
+      'marketplace:complaint-receipt-confirmed',
+      'marketplace:complaint-return-status',
+    ],
+    handler: async (eventName, data, categorySlug) => {
+      const complaintUrl = `/marketplace/complaints/${data.complaintId}`;
+      // Notify the buyer (player).
+      if (data.buyerId) {
+        await dispatchToUser({
+          userId: data.buyerId, eventName, categorySlug, data,
+          relatedEntityType: 'complaint', relatedEntityId: String(data.complaintId),
+          action: a(complaintUrl),
+        });
+      }
+      // Notify the seller organisation (sellerId is the org id).
+      if (data.sellerId && data.sellerId !== data.buyerId) {
+        await dispatchByOrg(data.sellerId, { eventName, categorySlug, data, action: a(complaintUrl) });
+      }
+    },
+  },
+  {
+    events: ['marketplace:complaint-admin-approval-required'],
+    handler: async (eventName, data, categorySlug) => {
+      await dispatchByPermission('marketplace.complaints.approve', {
+        eventName, categorySlug,
+        action: a(`/admin/marketplace/complaints/${data.complaintId}`),
+        data: {
+          ...data,
+          title: 'Refund Approval Required',
+          body: `Complaint #${data.complaintId} requests a refund of ${data.refundAmount} (${data.ratio}× the disputed value).`,
+        },
+      });
+    },
+  },
+  {
     events: ['marketplace:product-back-in-stock', 'marketplace:price-drop', 'marketplace:flash-sale'],
     handler: async (eventName, data, categorySlug) => {
       if (data.userId) {
@@ -820,6 +862,11 @@ class NotificationEngine {
       'marketplace:order-status-changed', 'marketplace:order-refunded',
       'marketplace:new-review', 'marketplace:product-back-in-stock',
       'marketplace:price-drop', 'marketplace:flash-sale', 'marketplace:new-seller-registered',
+      'marketplace:complaint-submitted', 'marketplace:complaint-decision',
+      'marketplace:complaint-return-required', 'marketplace:complaint-refund-executed',
+      'marketplace:complaint-admin-approval-required', 'marketplace:complaint-admin-decision',
+      'marketplace:complaint-shipped', 'marketplace:complaint-receipt-confirmation-required',
+      'marketplace:complaint-receipt-confirmed', 'marketplace:complaint-return-status',
       'user:registered', 'user:approved', 'user:rejected', 'user:suspended',
       'user:activated', 'user:profile-updated', 'user:deleted',
       'auth:password-reset', 'auth:password-changed', 'auth:login', 'auth:logout', 'auth:2fa-setup',
