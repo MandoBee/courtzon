@@ -124,7 +124,6 @@ const AppSettingsPage = lazy(() => import('./pages/admin/app-settings/AppSetting
 const TranslationsPage = lazy(() => import('./pages/admin/translations/TranslationsPage'));
 const SubscriptionPage = lazy(() => import('./pages/admin/subscription/SubscriptionPage'));
 const SubscriptionRequestsPage = lazy(() => import('./pages/admin/subscription/SubscriptionRequestsPage'));
-const SettlementListPage = lazy(() => import('./pages/admin/settlements/SettlementListPage'));
 const UnifiedSettlementListPage = lazy(() => import('./pages/admin/settlements/UnifiedSettlementListPage'));
 const UnifiedSettlementCreatePage = lazy(() => import('./pages/admin/settlements/UnifiedSettlementCreatePage'));
 const UnifiedSettlementDetailPage = lazy(() => import('./pages/admin/settlements/UnifiedSettlementDetailPage'));
@@ -691,7 +690,7 @@ function AppContent() {
           <Route path="security/system-health" element={<SystemHealthPage />} />
           <Route path="security/organisations" element={<OrganisationSecurityPage />} />
           <Route path="security/role-audit" element={<RoleAuditPage />} />
-            <Route path="settlements" element={<SettlementListPage />} />
+            <Route path="settlements" element={<Navigate to="/admin/unified-settlements" replace />} />
             <Route path="unified-settlements" element={<UnifiedSettlementListPage />} />
             <Route path="unified-settlements/new" element={<UnifiedSettlementCreatePage />} />
             <Route path="unified-settlements/:id" element={<UnifiedSettlementDetailPage />} />

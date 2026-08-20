@@ -1243,46 +1243,6 @@ export const marketplaceRepository = {
     return (result as any).affectedRows > 0;
   },
 
-  // ── Settlements ──
-  async findSettlementsByOrg(orgId: number, page: number, limit: number) {
-    const pool = getPool();
-    const offset = (page - 1) * limit;
-    const [rows] = await pool.query<RowData>(
-      'SELECT * FROM settlements WHERE organisation_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?',
-      [orgId, limit, offset]
-    );
-    const [countRows] = await pool.query<RowData>(
-      'SELECT COUNT(*) as total FROM settlements WHERE organisation_id = ?', [orgId]
-    );
-    return { data: rows, total: countRows[0].total, page, limit };
-  },
-
-  async createSettlement(orgId: number, data: { amount: number; fee: number; netAmount: number; notes?: string }) {
-    const pool = getPool();
-    const [result] = await pool.execute(
-      `INSERT INTO settlements (organisation_id, amount, fee, net_amount, notes)
-       VALUES (?, ?, ?, ?, ?)`,
-      [orgId, data.amount, data.fee, data.netAmount, data.notes || null]
-    );
-    return (result as any).insertId;
-  },
-
-  async getSettlementBalance(orgId: number) {
-    const pool = getPool();
-    const [rows] = await pool.execute<RowData>(
-      `SELECT
-         (SELECT COALESCE(SUM(oi.total_price - oi.commission_amount), 0)
-          FROM order_items oi
-          JOIN orders o ON o.id = oi.order_id
-          WHERE oi.seller_id = ? AND o.status = 'delivered') as available_balance,
-         (SELECT COALESCE(SUM(amount), 0)
-          FROM settlements
-          WHERE organisation_id = ? AND status IN ('pending','approved')) as pending_settlements`,
-      [orgId, orgId]
-    );
-    return rows[0];
-  },
-
   // ── Product Images, Specs, Related ──
   async findProductImages(productId: number) {
     const pool = getPool();
@@ -1556,59 +1516,6 @@ export const marketplaceRepository = {
       pending_fee: Math.round(commissionAvailable * 100) / 100,
       order_count: entitlementCount,
     };
-  },
-
-  async markOrderSettled(orderId: number) {
-    const pool = getPool();
-    await pool.execute('UPDATE orders SET settlement_status = ? WHERE id = ?', ['settled', orderId]);
-  },
-
-  async markOrderItemsSettled(orderIds: number[], sellerId: number) {
-    if (!orderIds.length) return;
-    const pool = getPool();
-    const placeholders = orderIds.map(() => '?').join(',');
-    await pool.execute(
-      `UPDATE order_items SET settlement_status = 'settled'
-       WHERE order_id IN (${placeholders}) AND seller_id = ?`,
-      [...orderIds, sellerId],
-    );
-  },
-
-  async markOrdersFullySettled(orderIds: number[]) {
-    if (!orderIds.length) return;
-    const pool = getPool();
-    const placeholders = orderIds.map(() => '?').join(',');
-    await pool.execute(
-      `UPDATE orders o SET settlement_status = 'settled'
-       WHERE o.id IN (${placeholders})
-       AND NOT EXISTS (
-         SELECT 1 FROM order_items oi
-         WHERE oi.order_id = o.id AND oi.settlement_status = 'pending'
-       )`,
-      orderIds,
-    );
-  },
-
-  async unmarkSettlementOrders(settlementId: number) {
-    const pool = getPool();
-    const [soRows] = await pool.execute<RowData>(
-      'SELECT order_id FROM settlement_orders WHERE settlement_id = ?',
-      [settlementId],
-    );
-    const orderIds = soRows.map((r: any) => r.order_id);
-    if (!orderIds.length) return;
-    const placeholders = orderIds.map(() => '?').join(',');
-    await pool.execute(
-      `UPDATE order_items oi SET oi.settlement_status = 'pending'
-       WHERE oi.order_id IN (${placeholders})
-       AND oi.settlement_status = 'settled'`,
-      orderIds,
-    );
-    await pool.execute(
-      `UPDATE orders o SET o.settlement_status = 'pending'
-       WHERE o.id IN (${placeholders})`,
-      orderIds,
-    );
   },
 
   // ── Marketplace Accounting Ledger ──

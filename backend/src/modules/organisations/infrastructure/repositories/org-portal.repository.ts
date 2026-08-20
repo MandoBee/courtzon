@@ -897,11 +897,11 @@ export async function getOrgSettlements(orgId: number, page = 1, limit = 20) {
   );
   const total = (countRows[0] as any)?.total || 0;
   const [rows] = await pool.execute<RowData>(
-    `SELECT s.*, COUNT(so.id) as item_count
+    `SELECT s.*,
+            (SELECT COUNT(*) FROM settlement_orders so WHERE so.settlement_id = s.id) +
+            (SELECT COUNT(*) FROM settlement_entitlements se WHERE se.settlement_id = s.id) as item_count
      FROM settlements s
-     LEFT JOIN settlement_orders so ON so.settlement_id = s.id
      WHERE s.organisation_id = ?
-     GROUP BY s.id
      ORDER BY s.requested_at DESC${paginationClause(pag)}`,
     [orgId],
   );
@@ -935,5 +935,19 @@ export async function getOrgSettlementDetail(orgId: number, settlementId: number
     [settlementId]
   );
 
-  return { ...settlement, items };
+  // Unified settlements link entitlements (settlement_entitlements) instead of
+  // settlement_orders. Return those linked entitlements so the org UI can
+  // display unified-created settlements using the authoritative data.
+  const [entitlements] = await pool.execute<RowData>(
+    `SELECT fe.id, fe.entitlement_type, fe.amount, fe.currency,
+            fe.collector, fe.status, fe.source_type, fe.source_id,
+            fe.description, fe.settlement_id
+     FROM settlement_entitlements se
+     JOIN financial_entitlements fe ON fe.id = se.entitlement_id
+     WHERE se.settlement_id = ?
+     ORDER BY se.id`,
+    [settlementId]
+  );
+
+  return { ...settlement, items, entitlements };
 }
