@@ -8,6 +8,7 @@ vi.hoisted(() => {
 
 import mysql from 'mysql2/promise';
 import type { RowDataPacket } from 'mysql2';
+import { createProductFixture, cleanupProductFixture, type ProductFixture } from '../../../tests/helpers/product-fixture.js';
 type RowData = RowDataPacket[];
 
 /**
@@ -23,6 +24,7 @@ describe('Financial Custody & Counterparty', () => {
   let orgId: number;
   let branchId: number;
   let resourceId: number;
+  let productFixture: ProductFixture;
 
   beforeAll(async () => {
     pool = mysql.createPool({ host: '127.0.0.1', port: 3307, user: 'root', password: 'courtzon2026', database: 'courtzon_v3', connectionLimit: 5, charset: 'utf8mb4' });
@@ -52,6 +54,7 @@ describe('Financial Custody & Counterparty', () => {
       [branchId],
     );
     resourceId = (r as any).insertId;
+    productFixture = await createProductFixture(pool, orgId);
   });
 
   afterAll(async () => {
@@ -62,6 +65,7 @@ describe('Financial Custody & Counterparty', () => {
     if (resourceId) await pool.execute(`DELETE FROM resources WHERE id = ?`, [resourceId]);
     if (branchId) await pool.execute(`DELETE FROM branches WHERE id = ?`, [branchId]);
     await pool.execute(`DELETE FROM organisations WHERE id = ?`, [orgId]);
+    await cleanupProductFixture(pool, productFixture);
     await pool.end();
   });
 
@@ -208,8 +212,8 @@ describe('Financial Custody & Counterparty', () => {
     const orderId = (o as any).insertId;
     await pool.execute(
       `INSERT INTO order_items (order_id, product_id, seller_id, quantity, unit_price, total_price, commission_rate, commission_amount)
-       VALUES (?, 1, ?, 1, 100, 100, 10, 10)`,
-      [orderId, orgId],
+       VALUES (?, ?, ?, 1, 100, 100, 10, 10)`,
+      [orderId, productFixture.productId, orgId],
     );
 
     await postAccountingEvent(
@@ -238,8 +242,8 @@ describe('Financial Custody & Counterparty', () => {
     const orderId = (o as any).insertId;
     await pool.execute(
       `INSERT INTO order_items (order_id, product_id, seller_id, quantity, unit_price, total_price, commission_rate, commission_amount)
-       VALUES (?, 1, ?, 1, 100, 100, 10, 10)`,
-      [orderId, orgId],
+       VALUES (?, ?, ?, 1, 100, 100, 10, 10)`,
+      [orderId, productFixture.productId, orgId],
     );
 
     await postAccountingEvent(

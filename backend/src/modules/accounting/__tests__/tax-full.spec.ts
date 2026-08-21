@@ -19,6 +19,19 @@ describe('Tax Accounting — Full Integration', () => {
   beforeAll(async () => {
     pool = mysql.createPool({ host: '127.0.0.1', port: 3307, user: 'root', password: 'courtzon2026', database: 'courtzon_v3', connectionLimit: 5, charset: 'utf8mb4' });
 
+    // Idempotent pre-cleanup: a previous aborted run may have left these test
+    // organisations (and their dependents) behind. Remove only the test rows so
+    // the suite passes on repeated runs and never collides on the slug.
+    await pool.execute(`DELETE FROM general_ledger WHERE organisation_id IN (SELECT id FROM organisations WHERE slug IN ('tax-test-a','tax-test-b'))`);
+    await pool.execute(`DELETE FROM ledger_entries WHERE organisation_id IN (SELECT id FROM organisations WHERE slug IN ('tax-test-a','tax-test-b'))`);
+    await pool.execute(`DELETE FROM invoice_items WHERE invoice_id IN (SELECT id FROM invoices WHERE organisation_id IN (SELECT id FROM organisations WHERE slug IN ('tax-test-a','tax-test-b')))`);
+    await pool.execute(`DELETE FROM invoices WHERE organisation_id IN (SELECT id FROM organisations WHERE slug IN ('tax-test-a','tax-test-b'))`);
+    await pool.execute(`DELETE FROM accounting_event_mapping_lines WHERE organisation_id IN (SELECT id FROM organisations WHERE slug IN ('tax-test-a','tax-test-b'))`);
+    await pool.execute(`DELETE FROM chart_of_accounts WHERE organisation_id IN (SELECT id FROM organisations WHERE slug IN ('tax-test-a','tax-test-b')) AND code LIKE 'TX-%'`);
+    await pool.execute(`DELETE FROM accounting_periods WHERE organisation_id IN (SELECT id FROM organisations WHERE slug IN ('tax-test-a','tax-test-b'))`);
+    await pool.execute(`DELETE FROM tax_rates WHERE name LIKE 'Global VAT%' OR name LIKE 'Org A VAT%'`);
+    await pool.execute(`DELETE FROM organisations WHERE slug IN ('tax-test-a','tax-test-b')`);
+
     const [oT] = await pool.execute<RowData>(`SELECT id FROM organisation_types LIMIT 1`);
     const otId = (oT as any[])[0].id;
     const [oa] = await pool.execute<RowData>(`INSERT INTO organisations (public_id, org_type_id, owner_id, name, slug, is_active) VALUES (UUID(), ?, 1, 'Tax Test Org A', 'tax-test-a', 1)`, [otId]);
