@@ -1,7 +1,7 @@
 import { getPool } from '../../../../database/mysql.js';
 import type mysql from 'mysql2/promise';
 import type { RowDataPacket, ResultSetHeader } from 'mysql2';
-import type { LedgerEntry, SettlementBatch, RevenueSummary } from '../../domain/ledger-aggregate.js';
+import type { LedgerEntry, RevenueSummary } from '../../domain/ledger-aggregate.js';
 import { buildRevenueSummary } from '../../domain/ledger-aggregate.js';
 
 type RowData = RowDataPacket[];
@@ -71,32 +71,6 @@ export class LedgerRepository {
       [from, to],
     );
     return buildRevenueSummary(rows as unknown as Array<{ account_type: string; side: string; total: number | string; count: number | string }>);
-  }
-
-  async createSettlementBatch(batch: SettlementBatch): Promise<number> {
-    const [result] = await this.pool.execute<ResultSetHeader>(
-      `INSERT INTO settlement_batches (batch_type, period_start, period_end, gross_amount, discount_amount, tax_amount, commission_amount, refund_amount, net_amount, status, organisation_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [batch.batchType, batch.periodStart, batch.periodEnd, batch.grossAmount,
-       batch.discountAmount, batch.taxAmount, batch.commissionAmount, batch.refundAmount,
-       batch.netAmount, batch.status || 'pending', batch.organisationId || null],
-    );
-    return result.insertId;
-  }
-
-  async findSettlementBatches(filters?: { status?: string; from?: string; to?: string }): Promise<SettlementBatch[]> {
-    let sql = 'SELECT * FROM settlement_batches WHERE 1=1';
-    const params: any[] = [];
-    if (filters?.status) { sql += ' AND status = ?'; params.push(filters.status); }
-    if (filters?.from) { sql += ' AND period_end >= ?'; params.push(filters.from); }
-    if (filters?.to) { sql += ' AND period_start <= ?'; params.push(filters.to); }
-    sql += ' ORDER BY period_end DESC';
-    const [rows] = await this.pool.execute<RowData>(sql, params);
-    return rows as SettlementBatch[];
-  }
-
-  async updateSettlementStatus(id: number, status: string): Promise<void> {
-    await this.pool.execute('UPDATE settlement_batches SET status = ? WHERE id = ?', [status, id]);
   }
 }
 
