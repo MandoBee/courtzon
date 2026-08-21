@@ -549,7 +549,7 @@ CREATE TABLE `booking_slots` (
   `is_available` tinyint(1) DEFAULT 1,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
   PRIMARY KEY (`id`),
-  UNIQUE KEY `uk_slot` (`resource_id`,`booking_date`,`slot_start`),
+  KEY `idx_resource_date_slot` (`resource_id`,`booking_date`,`slot_start`),
   KEY `idx_booking` (`booking_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
@@ -592,6 +592,7 @@ CREATE TABLE `bookings` (
   KEY `idx_status` (`booking_status`,`payment_status`),
   KEY `idx_organisation` (`organisation_id`),
   KEY `idx_resource` (`resource_id`),
+  KEY `idx_bookings_resource_date_start` (`resource_id`,`booking_date`,`start_time`),
   KEY `idx_branch` (`branch_id`),
   KEY `idx_bookings_org_resource` (`organisation_id`,`resource_id`,`booking_date`,`booking_status`),
   KEY `idx_bookings_start_at_utc` (`start_at_utc`),

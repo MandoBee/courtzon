@@ -14,7 +14,8 @@ beforeAll(async () => {
   // Clean up
   await pool.execute(`DELETE FROM booking_cancellations WHERE booking_id IN (SELECT id FROM bookings WHERE user_id = ${TEST_USER})`);
   await pool.execute(`DELETE FROM booking_participants WHERE booking_id IN (SELECT id FROM bookings WHERE user_id = ${TEST_USER})`);
-  await pool.execute(`DELETE FROM bookings WHERE user_id = ${TEST_USER} AND booking_date = ?`, [TEST_DATE]);
+  await pool.execute(`DELETE FROM booking_slots WHERE booking_id IN (SELECT id FROM bookings WHERE user_id = ${TEST_USER})`);
+  await pool.execute(`DELETE FROM bookings WHERE user_id = ${TEST_USER}`);
   await pool.execute(`DELETE FROM payment_transactions WHERE gateway_reference LIKE 'test_book_%'`);
   await pool.execute(`DELETE FROM user_wallets WHERE user_id = ${TEST_USER}`);
   await pool.execute(`DELETE FROM users WHERE id = ${TEST_USER}`);
@@ -34,7 +35,8 @@ beforeAll(async () => {
 afterAll(async () => {
   await pool.execute(`DELETE FROM booking_cancellations WHERE booking_id IN (SELECT id FROM bookings WHERE user_id = ${TEST_USER})`);
   await pool.execute(`DELETE FROM booking_participants WHERE booking_id IN (SELECT id FROM bookings WHERE user_id = ${TEST_USER})`);
-  await pool.execute(`DELETE FROM bookings WHERE user_id = ${TEST_USER} AND booking_date = ?`, [TEST_DATE]);
+  await pool.execute(`DELETE FROM booking_slots WHERE booking_id IN (SELECT id FROM bookings WHERE user_id = ${TEST_USER})`);
+  await pool.execute(`DELETE FROM bookings WHERE user_id = ${TEST_USER}`);
   await pool.execute(`DELETE FROM payment_transactions WHERE gateway_reference LIKE 'test_book_%'`);
   await pool.execute(`DELETE FROM user_wallets WHERE user_id = ${TEST_USER}`);
   await pool.execute(`DELETE FROM users WHERE id = ${TEST_USER}`);
@@ -42,37 +44,43 @@ afterAll(async () => {
 });
 
 describe('Booking Concurrency', () => {
-  it('double-booking via UNIQUE constraint is prevented at DB level', async () => {
+  it('raw duplicate INSERTs are allowed at DB level (status-blind unique key removed)', async () => {
+    // Group D: uq_booking_slot was removed. The database no longer rejects
+    // identical (resource_id, booking_date, start_time) rows — overlap safety
+    // is enforced by the authoritative service-layer availability guard
+    // (resource-row serialization + overlap check), not by a unique key.
     const uuid1 = require('crypto').randomUUID();
     const uuid2 = require('crypto').randomUUID();
 
-    // Insert first booking
     await pool.execute(`INSERT INTO bookings (public_id, user_id, organisation_id, branch_id, resource_id, booking_type, booking_date, start_time, end_time, total_amount, booking_status, payment_status)
       VALUES (?, ${TEST_USER}, 1, ${TEST_BRANCH}, ${TEST_RESOURCE}, 'public_match', ?, ?, ?, 50, 'confirmed', 'paid')`,
       [uuid1, TEST_DATE, TEST_START, TEST_END]);
 
-    // Second booking with same resource+date+start_time must fail due to UNIQUE constraint
+    // Second identical-slot booking is allowed at the raw DB level (no unique
+    // collision). Booking concurrency is the responsibility of the service layer.
     await expect(
       pool.execute(`INSERT INTO bookings (public_id, user_id, organisation_id, branch_id, resource_id, booking_type, booking_date, start_time, end_time, total_amount, booking_status, payment_status)
         VALUES (?, ${TEST_USER}, 1, ${TEST_BRANCH}, ${TEST_RESOURCE}, 'public_match', ?, ?, ?, 50, 'confirmed', 'paid')`,
         [uuid2, TEST_DATE, TEST_START, TEST_END])
-    ).rejects.toThrow(/Duplicate entry/);
+    ).resolves.toBeDefined();
   });
 
-  it('concurrent booking attempts — only one succeeds', async () => {
-    // Different start time to avoid UNIQUE constraint from previous test
+  it('concurrent raw identical inserts no longer collide (service layer enforces availability)', async () => {
+    // Different date to avoid interference with the previous test.
     const date2 = '2027-12-26';
     const start = '14:00';
     const end = '15:00';
 
-    // Clean up from previous runs
     await pool.execute(`DELETE FROM bookings WHERE user_id = ${TEST_USER} AND booking_date = ?`, [date2]);
 
     const uuid = () => require('crypto').randomUUID();
 
     const results: string[] = [];
 
-    // Run 5 concurrent INSERTs simulating 5 users booking the same slot
+    // Run 5 concurrent raw INSERTs of the same slot. With uq_booking_slot
+    // removed, all succeed at the DB level. Service-layer concurrency safety is
+    // covered separately in booking.concurrency.service.spec.ts (identical-slot
+    // race → exactly one booking + ConflictError for the loser).
     const promises = Array.from({ length: 5 }, async (_, i) => {
       try {
         await pool.execute(`INSERT INTO bookings (public_id, user_id, organisation_id, branch_id, resource_id, booking_type, booking_date, start_time, end_time, total_amount, booking_status, payment_status)
@@ -80,18 +88,15 @@ describe('Booking Concurrency', () => {
           [uuid(), date2, start, end]);
         results.push('success');
       } catch (e: any) {
-        if (e.message?.includes('Duplicate entry')) results.push('duplicate');
-        else results.push('error: ' + e.message);
+        results.push('error: ' + e.message);
       }
     });
 
     await Promise.all(promises);
 
-    // Exactly 1 should succeed, 4 should get duplicate entry
+    // All 5 succeed at the raw DB level (no unique-key rejection anymore).
     const successes = results.filter(r => r === 'success').length;
-    const duplicates = results.filter(r => r === 'duplicate').length;
-    expect(successes).toBe(1);
-    expect(duplicates).toBe(4);
+    expect(successes).toBe(5);
   });
 
   it('cancellation: INSERT + UPDATE are atomic in transaction', async () => {

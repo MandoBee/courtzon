@@ -943,7 +943,7 @@ export const activitiesRepository = {
   async findPendingCourtSessions(coachId: number) {
     const pool = getPool();
     const [rows] = await pool.execute<RowData>(
-      `SELECT cs.*, u.full_name as player_name, u.phone as player_phone,
+      `SELECT cs.*, u.full_name as player_name, u.phone_number as player_phone,
               b.name as branch_name, o.name as organisation_name
        FROM coach_sessions cs
        JOIN users u ON cs.player_id = u.id
@@ -960,7 +960,7 @@ export const activitiesRepository = {
     const pool = getPool();
     const [rows] = await pool.execute<RowData>(
       `SELECT cs.*, cp.user_id as coach_user_id,
-              u.full_name as player_name, u.phone as player_phone, u.email as player_email,
+              u.full_name as player_name, u.phone_number as player_phone, u.email as player_email,
               cu.full_name as coach_name,
               b.name as branch_name, o.name as organisation_name,
               bk.id as booking_id, bk.booking_status, bk.payment_status,
