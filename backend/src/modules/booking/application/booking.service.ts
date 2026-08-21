@@ -1534,6 +1534,12 @@ export class BookingService {
     });
 
     if (result.status === 'error') {
+      // Preserve the application conflict (409) surfaced by the create command
+      // (availability conflict or uq_booking_slot duplicate) instead of turning
+      // it into a generic 500.
+      if ((result as any).code === 'CONFLICT') {
+        throw new ConflictError((result as any).message);
+      }
       throw new Error(`CreateBooking failed: ${result.message}`);
     }
 

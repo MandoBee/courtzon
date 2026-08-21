@@ -7,6 +7,7 @@ import type { Command } from '../../../shared/command/command-base.js';
 vi.mock('../infrastructure/repositories/booking.repository.js', () => ({
   bookingRepository: {
     create: vi.fn(),
+    checkSlotAvailability: vi.fn(),
   },
 }));
 
@@ -68,6 +69,7 @@ describe('CreateBooking command', () => {
 
   it('executes the handler and creates a booking via repository', async () => {
     vi.mocked(bookingRepository.create).mockResolvedValue(123);
+    vi.mocked(bookingRepository.checkSlotAvailability).mockResolvedValue(true);
 
     const command: Command = {
       commandId: 'test-004',
@@ -86,6 +88,9 @@ describe('CreateBooking command', () => {
     const result = await createBookingHandler.execute(command, mockConn);
 
     expect(result.bookingId).toBe(123);
+    expect(bookingRepository.checkSlotAvailability).toHaveBeenCalledWith(
+      42, '2026-07-23', [{ start: '10:00', end: '11:00', date: '2026-07-23' }], mockConn,
+    );
     expect(bookingRepository.create).toHaveBeenCalledWith(
       expect.objectContaining({
         userId: 1,
@@ -95,6 +100,27 @@ describe('CreateBooking command', () => {
       }),
       mockConn,
     );
+  });
+
+  it('rejects the command with a ConflictError when a slot is unavailable', async () => {
+    vi.mocked(bookingRepository.checkSlotAvailability).mockResolvedValue(false);
+
+    const command: Command = {
+      commandId: 'test-006',
+      commandType: 'CreateBooking',
+      aggregateType: 'booking',
+      aggregateId: '42',
+      payload: {
+        userId: 1, branchId: 10, organisationId: 5, resourceId: 42,
+        bookingDate: '2026-07-23', startTime: '10:00', endTime: '11:00',
+        totalAmount: 100, startAtUtc: '2026-07-23T08:00:00Z', endAtUtc: '2026-07-23T09:00:00Z',
+        bookingType: 'standard',
+      },
+      actorId: 1,
+    };
+
+    await expect(createBookingHandler.execute(command, mockConn)).rejects.toMatchObject({ statusCode: 409 });
+    expect(bookingRepository.create).not.toHaveBeenCalled();
   });
 
   it('emits booking.created event on success', () => {
