@@ -41,24 +41,35 @@ export class BookingRepository {
     businessDate?: string; expiresAt?: string;
   }, conn?: mysql.PoolConnection): Promise<number> {
     const db = this.resolve(conn);
-    const [result] = await db.execute<ResultSetHeader>(
-      `INSERT INTO bookings (public_id, user_id, organisation_id, branch_id, resource_id, booking_type,
-        booking_date, business_date, start_time, end_time, start_at_utc, end_at_utc,
-        total_amount, tax_rate, tax_rate_id, tax_amount, tax_treatment, price_type,
-        commission_amount, club_amount, coach_amount,
-        booking_status, payment_status, payment_method, notes, expires_at, aggregate_version)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
-       [generateUUID(), data.userId, data.organisationId, data.branchId, data.resourceId, data.bookingType,
-        data.bookingDate, data.businessDate || data.bookingDate, data.startTime, data.endTime,
-        data.startAtUtc ? toMySqlDateTime(new Date(data.startAtUtc)) : null,
-        data.endAtUtc ? toMySqlDateTime(new Date(data.endAtUtc)) : null,
-       data.totalAmount, data.taxRate || 0, data.taxRateId || null, data.taxAmount || 0,
-       data.taxTreatment || 'taxable', data.priceType || 'net',
-       data.commissionAmount || 0, data.clubAmount || 0, data.coachAmount || 0,
-       data.bookingStatus || 'pending', data.paymentStatus || 'pending', data.paymentMethod || null, data.notes || null,
-       data.expiresAt || null]
-    );
-    return result.insertId;
+    try {
+      const [result] = await db.execute<ResultSetHeader>(
+        `INSERT INTO bookings (public_id, user_id, organisation_id, branch_id, resource_id, booking_type,
+          booking_date, business_date, start_time, end_time, start_at_utc, end_at_utc,
+          total_amount, tax_rate, tax_rate_id, tax_amount, tax_treatment, price_type,
+          commission_amount, club_amount, coach_amount,
+          booking_status, payment_status, payment_method, notes, expires_at, aggregate_version)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
+         [generateUUID(), data.userId, data.organisationId, data.branchId, data.resourceId, data.bookingType,
+          data.bookingDate, data.businessDate || data.bookingDate, data.startTime, data.endTime,
+          data.startAtUtc ? toMySqlDateTime(new Date(data.startAtUtc)) : null,
+          data.endAtUtc ? toMySqlDateTime(new Date(data.endAtUtc)) : null,
+         data.totalAmount, data.taxRate || 0, data.taxRateId || null, data.taxAmount || 0,
+         data.taxTreatment || 'taxable', data.priceType || 'net',
+         data.commissionAmount || 0, data.clubAmount || 0, data.coachAmount || 0,
+         data.bookingStatus || 'pending', data.paymentStatus || 'pending', data.paymentMethod || null, data.notes || null,
+         data.expiresAt || null]
+      );
+      return result.insertId;
+    } catch (err: any) {
+      // A duplicate on uq_booking_slot (resource_id, booking_date, start_time)
+      // means this exact slot was already taken by a concurrent/earlier booking.
+      // Surface it as the application's standard booking conflict (HTTP 409)
+      // rather than leaking a raw database duplicate-entry error (HTTP 500).
+      if (err?.code === 'ER_DUP_ENTRY' || err?.errno === 1062) {
+        throw new ConflictError('This time slot has already been booked. Please choose another time.');
+      }
+      throw err;
+    }
   }
 
   async persistTransition(
@@ -192,9 +203,33 @@ export class BookingRepository {
 
   /**
    * Check slot availability. Pass a transaction conn for FOR UPDATE semantics.
+   *
+   * Authoritative concurrency protection: BEFORE the overlap count, acquire an
+   * exclusive lock on the `resources` row for the requested resource. This is
+   * the aggregate serialization point for all booking creation on that resource:
+   * concurrent booking attempts (identical, partially overlapping, or adjacent
+   * windows) serialize on this single row lock, so the loser's availability
+   * re-check observes the winner's committed booking and rejects overlaps.
+   *
+   * A range lock on the bookings start_time index was avoided because InnoDB
+   * gap locks over-serialize ADJACENT windows (a [10:00,11:00) scan's gap lock
+   * blocks an 11:00 insert), causing lock-wait timeouts for legitimate
+   * non-overlapping bookings. A single-row lock on `resources` is narrow, has
+   * no gap-lock semantics, and keeps adjacent bookings both succeeding.
+   *
+   * Redis locks are an optimization only — this is the database-level guard.
    */
   async checkSlotAvailability(resourceId: number, date: string, slots: { start: string; end: string; date?: string }[], conn?: mysql.PoolConnection): Promise<boolean> {
     const db = this.resolve(conn);
+
+    // Serialize concurrent booking creation on this resource.
+    if (resourceId) {
+      await db.execute<RowData>(
+        `SELECT id FROM resources WHERE id = ? FOR UPDATE`,
+        [resourceId],
+      );
+    }
+
     const bookingSql = `SELECT COUNT(*) as cnt FROM bookings
                  WHERE resource_id = ? AND booking_date = ?
                  AND booking_status NOT IN ('cancelled', 'expired', 'no_show')

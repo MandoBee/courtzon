@@ -2,6 +2,7 @@ import type { PoolConnection } from 'mysql2/promise';
 import { createModuleLogger } from '../../../shared/utils/logger.js';
 import { bookingRepository } from '../infrastructure/repositories/booking.repository.js';
 import { generateUlid } from '../../../shared/event-bus/event-envelope.js';
+import { ConflictError } from '../../../shared/errors/app-error.js';
 import type { Command, CommandHandler, CommandResult } from '../../../shared/command/command-base.js';
 
 const log = createModuleLogger('booking');
@@ -50,6 +51,19 @@ export const createBookingHandler: CommandHandler<Command, CreateBookingResult> 
 
     const paymentMethod = payload.paymentMethod || 'wallet';
     const bookingStatus = paymentMethod === 'wallet' ? 'pending_payment' : 'pending';
+
+    // Authoritative availability + concurrency guard, inside the same
+    // transaction as the insert. checkSlotAvailability acquires an exclusive
+    // lock on the resource row, serializing concurrent overlapping booking
+    // attempts and rejecting overlaps before any row is persisted.
+    const available = await bookingRepository.checkSlotAvailability(
+      payload.resourceId, payload.bookingDate,
+      [{ start: payload.startTime, end: payload.endTime, date: payload.bookingDate }],
+      conn,
+    );
+    if (!available) {
+      throw new ConflictError('One or more slots are no longer available');
+    }
 
     const bookingId = await bookingRepository.create({
       userId: payload.userId,
