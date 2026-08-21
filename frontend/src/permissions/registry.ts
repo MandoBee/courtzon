@@ -20,7 +20,7 @@ export const uiRegistry: UIElement[] = [
   // ==========================================================================
   // HOME MODULE (player app landing)
   // ==========================================================================
-  { permissionKey: 'home.recent-activity', moduleSlug: 'home', elementType: 'section', elementLabel: 'Home Recent Activity', componentPath: 'pages/home/DashboardPage.tsx' },
+  { permissionKey: 'home.recent-activity', moduleSlug: 'home', elementType: 'section', elementLabel: 'Home Recent Activity', componentPath: 'pages/player/DashboardPage.tsx' },
 
   // ==========================================================================
   // USERS MODULE
@@ -223,8 +223,8 @@ export const uiRegistry: UIElement[] = [
   // ==========================================================================
   // FINANCIAL MODULE
   // ==========================================================================
-  { permissionKey: 'financial.wallet.view', moduleSlug: 'financial', elementType: 'page', elementLabel: 'Wallet Page', componentPath: 'pages/profile/WalletPage.tsx' },
-  { permissionKey: 'financial.settlements.view', moduleSlug: 'financial', elementType: 'page', elementLabel: 'Settlements Page', componentPath: 'pages/admin/settlements/SettlementListPage.tsx' },
+  { permissionKey: 'financial.wallet.view', moduleSlug: 'financial', elementType: 'page', elementLabel: 'Wallet Page', componentPath: 'pages/player/WalletPage.tsx' },
+  { permissionKey: 'financial.settlements.view', moduleSlug: 'financial', elementType: 'page', elementLabel: 'Settlements Page', componentPath: 'pages/admin/settlements/UnifiedSettlementListPage.tsx' },
   { permissionKey: 'financial.payment-methods.view', moduleSlug: 'financial', elementType: 'page', elementLabel: 'Payment Methods Page', componentPath: 'pages/admin/payment-methods/PaymentMethodsPage.tsx' },
   { permissionKey: 'financial.payment-gateways.view', moduleSlug: 'financial', elementType: 'page', elementLabel: 'Payment Gateways Page', componentPath: 'pages/admin/payment-gateways/PaymentGatewaysPage.tsx' },
   // Payment method form fields
@@ -244,9 +244,9 @@ export const uiRegistry: UIElement[] = [
   { permissionKey: 'payment-gateways.edit.status', moduleSlug: 'financial', elementType: 'field', elementLabel: 'Gateway Status Field', componentPath: 'pages/admin/payment-gateways/PaymentGatewaysPage.tsx' },
   { permissionKey: 'payment-gateways.edit.sort-order', moduleSlug: 'financial', elementType: 'field', elementLabel: 'Gateway Sort Order Field', componentPath: 'pages/admin/payment-gateways/PaymentGatewaysPage.tsx' },
   // Wallet form fields
-  { permissionKey: 'financial.wallet.deposit', moduleSlug: 'financial', elementType: 'field', elementLabel: 'Deposit Amount Field', componentPath: 'pages/profile/WalletPage.tsx' },
-  { permissionKey: 'financial.wallet.deposit.payment-method', moduleSlug: 'financial', elementType: 'field', elementLabel: 'Deposit Payment Method Field', componentPath: 'pages/profile/WalletPage.tsx' },
-  { permissionKey: 'financial.wallet.withdraw', moduleSlug: 'financial', elementType: 'field', elementLabel: 'Withdraw Amount Field', componentPath: 'pages/profile/WalletPage.tsx' },
+  { permissionKey: 'financial.wallet.deposit', moduleSlug: 'financial', elementType: 'field', elementLabel: 'Deposit Amount Field', componentPath: 'pages/player/WalletPage.tsx' },
+  { permissionKey: 'financial.wallet.deposit.payment-method', moduleSlug: 'financial', elementType: 'field', elementLabel: 'Deposit Payment Method Field', componentPath: 'pages/player/WalletPage.tsx' },
+  { permissionKey: 'financial.wallet.withdraw', moduleSlug: 'financial', elementType: 'field', elementLabel: 'Withdraw Amount Field', componentPath: 'pages/player/WalletPage.tsx' },
   // Withdrawal requests
   { permissionKey: 'financial.withdrawal-requests.view', moduleSlug: 'financial', elementType: 'page', elementLabel: 'Withdrawal Requests Page', componentPath: 'pages/admin/financial/WithdrawalRequestsPage.tsx' },
   { permissionKey: 'financial.withdrawal-requests.approve', moduleSlug: 'financial', elementType: 'button', elementLabel: 'Approve Withdrawal', componentPath: 'pages/admin/financial/WithdrawalRequestsPage.tsx' },
@@ -923,13 +923,13 @@ export const uiRegistry: UIElement[] = [
   // ==========================================================================
   // SETTLEMENTS MODULE
   // ==========================================================================
-  { permissionKey: 'settlements.view', moduleSlug: 'settlements', elementType: 'page', elementLabel: 'View Settlements', componentPath: 'pages/admin/settlements/SettlementListPage.tsx' },
-  { permissionKey: 'settlements.request', moduleSlug: 'settlements', elementType: 'button', elementLabel: 'Request Settlement', componentPath: 'pages/admin/settlements/SettlementListPage.tsx' },
-  { permissionKey: 'settlements.approve', moduleSlug: 'settlements', elementType: 'button', elementLabel: 'Approve Settlement', componentPath: 'pages/admin/settlements/SettlementListPage.tsx' },
-  { permissionKey: 'settlements.pay', moduleSlug: 'settlements', elementType: 'button', elementLabel: 'Mark Settlement Paid', componentPath: 'pages/admin/settlements/SettlementListPage.tsx' },
-  { permissionKey: 'settlements.complete', moduleSlug: 'settlements', elementType: 'button', elementLabel: 'Complete Settlement', componentPath: 'pages/admin/settlements/SettlementListPage.tsx' },
-  { permissionKey: 'settlements.reject', moduleSlug: 'settlements', elementType: 'button', elementLabel: 'Reject Settlement', componentPath: 'pages/admin/settlements/SettlementListPage.tsx' },
-  { permissionKey: 'settlements.cancel', moduleSlug: 'settlements', elementType: 'button', elementLabel: 'Cancel Settlement', componentPath: 'pages/admin/settlements/SettlementListPage.tsx' },
+  { permissionKey: 'settlements.view', moduleSlug: 'settlements', elementType: 'page', elementLabel: 'View Settlements', componentPath: 'pages/admin/settlements/UnifiedSettlementListPage.tsx' },
+  { permissionKey: 'settlements.request', moduleSlug: 'settlements', elementType: 'button', elementLabel: 'Request Settlement', componentPath: 'pages/admin/settlements/UnifiedSettlementCreatePage.tsx' },
+  { permissionKey: 'settlements.approve', moduleSlug: 'settlements', elementType: 'button', elementLabel: 'Approve Settlement', componentPath: 'pages/admin/settlements/UnifiedSettlementDetailPage.tsx' },
+  { permissionKey: 'settlements.pay', moduleSlug: 'settlements', elementType: 'button', elementLabel: 'Mark Settlement Paid', componentPath: 'pages/admin/settlements/UnifiedSettlementDetailPage.tsx' },
+  { permissionKey: 'settlements.complete', moduleSlug: 'settlements', elementType: 'button', elementLabel: 'Complete Settlement', componentPath: 'pages/admin/settlements/UnifiedSettlementDetailPage.tsx' },
+  { permissionKey: 'settlements.reject', moduleSlug: 'settlements', elementType: 'button', elementLabel: 'Reject Settlement', componentPath: 'pages/admin/settlements/UnifiedSettlementDetailPage.tsx' },
+  { permissionKey: 'settlements.cancel', moduleSlug: 'settlements', elementType: 'button', elementLabel: 'Cancel Settlement', componentPath: 'pages/admin/settlements/UnifiedSettlementDetailPage.tsx' },
   { permissionKey: 'sidebar.settlements-bookings', moduleSlug: 'settlements', elementType: 'tab', elementLabel: 'Sidebar: Booking Settlements', componentPath: 'components/layout/AdminSidebar.tsx' },
 
   // ==========================================================================

@@ -98,27 +98,6 @@ CREATE TABLE `academy_groups` (
   CONSTRAINT `fk_group_coach` FOREIGN KEY (`coach_id`) REFERENCES `users` (`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
-DROP TABLE IF EXISTS `academy_enrollments_legacy`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!40101 SET character_set_client = utf8 */;
-CREATE TABLE `academy_enrollments_legacy` (
-  `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
-  `academy_id` int(10) unsigned NOT NULL,
-  `curriculum_id` int(10) unsigned DEFAULT NULL,
-  `player_id` int(10) unsigned NOT NULL,
-  `status` enum('active','completed','dropped','waitlisted') NOT NULL DEFAULT 'active',
-  `enrolled_at` timestamp NOT NULL DEFAULT current_timestamp(),
-  `completed_at` timestamp NULL DEFAULT NULL,
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `uk_player_acad` (`academy_id`,`player_id`),
-  KEY `idx_academy` (`academy_id`),
-  KEY `idx_player` (`player_id`),
-  KEY `fk_enroll_cur` (`curriculum_id`),
-  CONSTRAINT `fk_enroll_acad` FOREIGN KEY (`academy_id`) REFERENCES `academies` (`id`) ON DELETE CASCADE,
-  CONSTRAINT `fk_enroll_cur` FOREIGN KEY (`curriculum_id`) REFERENCES `academy_curriculums` (`id`) ON DELETE SET NULL,
-  CONSTRAINT `fk_enroll_player` FOREIGN KEY (`player_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-/*!40101 SET character_set_client = @saved_cs_client */;
 DROP TABLE IF EXISTS `academy_enrollments`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8 */;
@@ -371,44 +350,6 @@ CREATE TABLE `ad_placements` (
   UNIQUE KEY `placement_key` (`placement_key`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
-DROP TABLE IF EXISTS `ad_pricing`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!40101 SET character_set_client = utf8 */;
-CREATE TABLE `ad_pricing` (
-  `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
-  `placement_id` int(10) unsigned NOT NULL,
-  `pricing_model` enum('cpm','cpc','flat') NOT NULL,
-  `price` decimal(12,6) NOT NULL,
-  `currency_code` char(3) NOT NULL,
-  `is_active` tinyint(1) NOT NULL DEFAULT 1,
-  `valid_from` date DEFAULT NULL,
-  `valid_until` date DEFAULT NULL,
-  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
-  PRIMARY KEY (`id`),
-  KEY `idx_placement` (`placement_id`),
-  CONSTRAINT `fk_price_placement` FOREIGN KEY (`placement_id`) REFERENCES `ad_placements` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-/*!40101 SET character_set_client = @saved_cs_client */;
-DROP TABLE IF EXISTS `ad_targeting_rules`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!40101 SET character_set_client = utf8 */;
-CREATE TABLE `ad_targeting_rules` (
-  `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
-  `campaign_id` int(10) unsigned NOT NULL,
-  `countries` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL COMMENT 'Array of country ISO codes' CHECK (json_valid(`countries`)),
-  `sports` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL COMMENT 'Array of sport IDs' CHECK (json_valid(`sports`)),
-  `player_levels` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL COMMENT 'Array of level IDs' CHECK (json_valid(`player_levels`)),
-  `age_min` tinyint(3) unsigned DEFAULT NULL,
-  `age_max` tinyint(3) unsigned DEFAULT NULL,
-  `gender` enum('male','female','all') DEFAULT 'all',
-  `user_types` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL COMMENT 'Array: player, coach, etc.' CHECK (json_valid(`user_types`)),
-  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
-  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `campaign_id` (`campaign_id`),
-  CONSTRAINT `fk_target_camp` FOREIGN KEY (`campaign_id`) REFERENCES `ad_campaigns` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-/*!40101 SET character_set_client = @saved_cs_client */;
 DROP TABLE IF EXISTS `amenities`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8 */;
@@ -425,41 +366,6 @@ CREATE TABLE `amenities` (
   KEY `idx_category` (`category`),
   KEY `idx_active` (`is_active`)
 ) ENGINE=InnoDB AUTO_INCREMENT=21 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-/*!40101 SET character_set_client = @saved_cs_client */;
-DROP TABLE IF EXISTS `announcement_comments`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!40101 SET character_set_client = utf8 */;
-CREATE TABLE `announcement_comments` (
-  `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
-  `announcement_id` int(10) unsigned NOT NULL,
-  `user_id` int(10) unsigned NOT NULL,
-  `parent_id` int(10) unsigned DEFAULT NULL,
-  `content` text NOT NULL,
-  `deleted_at` timestamp NULL DEFAULT NULL,
-  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
-  PRIMARY KEY (`id`),
-  KEY `idx_announcement` (`announcement_id`),
-  KEY `fk_comment_user` (`user_id`),
-  KEY `fk_comment_parent` (`parent_id`),
-  CONSTRAINT `fk_comment_announce` FOREIGN KEY (`announcement_id`) REFERENCES `announcements` (`id`) ON DELETE CASCADE,
-  CONSTRAINT `fk_comment_parent` FOREIGN KEY (`parent_id`) REFERENCES `announcement_comments` (`id`) ON DELETE SET NULL,
-  CONSTRAINT `fk_comment_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-/*!40101 SET character_set_client = @saved_cs_client */;
-DROP TABLE IF EXISTS `announcement_likes`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!40101 SET character_set_client = utf8 */;
-CREATE TABLE `announcement_likes` (
-  `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
-  `announcement_id` int(10) unsigned NOT NULL,
-  `user_id` int(10) unsigned NOT NULL,
-  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `uk_like` (`announcement_id`,`user_id`),
-  KEY `fk_like_user` (`user_id`),
-  CONSTRAINT `fk_like_announce` FOREIGN KEY (`announcement_id`) REFERENCES `announcements` (`id`) ON DELETE CASCADE,
-  CONSTRAINT `fk_like_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 DROP TABLE IF EXISTS `announcements`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
@@ -571,39 +477,6 @@ CREATE TABLE `booking_cancellations` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `booking_id` (`booking_id`),
   KEY `idx_booking` (`booking_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-/*!40101 SET character_set_client = @saved_cs_client */;
-DROP TABLE IF EXISTS `booking_intents`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!40101 SET character_set_client = utf8 */;
-CREATE TABLE `booking_intents` (
-  `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
-  `user_id` bigint(20) unsigned NOT NULL,
-  `branch_id` int(10) unsigned NOT NULL,
-  `organisation_id` bigint(20) unsigned NOT NULL,
-  `resource_id` bigint(20) unsigned NOT NULL,
-  `booking_type` enum('public_match','private_match','academy','clinic','coach_session') NOT NULL DEFAULT 'private_match',
-  `booking_date` date NOT NULL,
-  `business_date` date NOT NULL COMMENT 'The Business Day this intent belongs to. Resolved by OperatingHoursEngine.',
-  `start_time` time NOT NULL,
-  `end_time` time NOT NULL,
-  `start_at_utc` timestamp NOT NULL COMMENT 'Absolute start time in UTC.',
-  `end_at_utc` timestamp NOT NULL COMMENT 'Absolute end time in UTC.',
-  `total_amount` decimal(12,2) NOT NULL,
-  `commission_amount` decimal(12,2) DEFAULT 0.00,
-  `club_amount` decimal(12,2) DEFAULT 0.00,
-  `payment_method` varchar(50) DEFAULT NULL,
-  `notes` text DEFAULT NULL,
-  `matchmaking` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL CHECK (json_valid(`matchmaking`)),
-  `participants` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL CHECK (json_valid(`participants`)),
-  `expires_at` timestamp NOT NULL DEFAULT (current_timestamp() + interval 15 minute),
-  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
-  PRIMARY KEY (`id`),
-  KEY `idx_expires` (`expires_at`),
-  KEY `idx_booking_intents_user` (`user_id`),
-  KEY `idx_booking_intents_resource_date` (`resource_id`,`booking_date`),
-  KEY `idx_booking_intents_start_at_utc` (`start_at_utc`),
-  KEY `idx_booking_intents_business_date` (`business_date`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 DROP TABLE IF EXISTS `booking_invitations`;
@@ -787,24 +660,6 @@ CREATE TABLE `branch_player_access` (
   CONSTRAINT `fk_access_branch` FOREIGN KEY (`branch_id`) REFERENCES `branches` (`id`) ON DELETE CASCADE,
   CONSTRAINT `fk_access_player` FOREIGN KEY (`player_id`) REFERENCES `users` (`id`) ON DELETE CASCADE,
   CONSTRAINT `fk_access_reviewer` FOREIGN KEY (`reviewed_by`) REFERENCES `users` (`id`) ON DELETE SET NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-/*!40101 SET character_set_client = @saved_cs_client */;
-DROP TABLE IF EXISTS `branch_unavailability`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!40101 SET character_set_client = utf8 */;
-CREATE TABLE `branch_unavailability` (
-  `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
-  `branch_id` int(10) unsigned NOT NULL,
-  `start_date` date NOT NULL,
-  `end_date` date DEFAULT NULL,
-  `start_time` time DEFAULT NULL,
-  `end_time` time DEFAULT NULL,
-  `reason` varchar(500) DEFAULT NULL,
-  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
-  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
-  PRIMARY KEY (`id`),
-  KEY `idx_branch_date` (`branch_id`,`start_date`,`end_date`),
-  CONSTRAINT `fk_unavail_branch` FOREIGN KEY (`branch_id`) REFERENCES `branches` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 DROP TABLE IF EXISTS `branches`;
@@ -1249,20 +1104,6 @@ CREATE TABLE `coach_sessions` (
   CONSTRAINT `fk_cs_resource` FOREIGN KEY (`resource_id`) REFERENCES `resources` (`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
-DROP TABLE IF EXISTS `commission_rules`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!40101 SET character_set_client = utf8 */;
-CREATE TABLE `commission_rules` (
-  `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
-  `rule_name` varchar(255) DEFAULT NULL,
-  `rule_type` enum('percentage','fixed') NOT NULL,
-  `amount` decimal(12,2) NOT NULL,
-  `applicable_entity` varchar(100) DEFAULT NULL,
-  `is_active` tinyint(1) DEFAULT 1,
-  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
-  PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-/*!40101 SET character_set_client = @saved_cs_client */;
 DROP TABLE IF EXISTS `community_event_participants`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8 */;
@@ -1306,39 +1147,6 @@ CREATE TABLE `community_events` (
   CONSTRAINT `fk_event_branch` FOREIGN KEY (`branch_id`) REFERENCES `branches` (`id`) ON DELETE SET NULL,
   CONSTRAINT `fk_event_creator` FOREIGN KEY (`creator_id`) REFERENCES `users` (`id`),
   CONSTRAINT `fk_event_org` FOREIGN KEY (`organisation_id`) REFERENCES `organisations` (`id`) ON DELETE SET NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-/*!40101 SET character_set_client = @saved_cs_client */;
-DROP TABLE IF EXISTS `community_tournaments`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!40101 SET character_set_client = utf8 */;
-CREATE TABLE `community_tournaments` (
-  `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
-  `creator_id` int(10) unsigned NOT NULL,
-  `organisation_id` int(10) unsigned DEFAULT NULL,
-  `branch_id` int(10) unsigned DEFAULT NULL,
-  `sport_id` int(10) unsigned DEFAULT NULL,
-  `name` varchar(255) NOT NULL,
-  `description` text DEFAULT NULL,
-  `bracket_type_id` int(10) unsigned NOT NULL,
-  `max_participants` int(10) unsigned NOT NULL,
-  `entry_fee` decimal(12,2) NOT NULL DEFAULT 0.00,
-  `currency_code` char(3) NOT NULL,
-  `start_date` date NOT NULL,
-  `end_date` date DEFAULT NULL,
-  `status` enum('open','in_progress','completed','cancelled') NOT NULL DEFAULT 'open',
-  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
-  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
-  PRIMARY KEY (`id`),
-  KEY `fk_ct_creator` (`creator_id`),
-  KEY `fk_ct_org` (`organisation_id`),
-  KEY `fk_ct_branch` (`branch_id`),
-  KEY `fk_ct_sport` (`sport_id`),
-  KEY `fk_ct_bracket` (`bracket_type_id`),
-  CONSTRAINT `fk_ct_bracket` FOREIGN KEY (`bracket_type_id`) REFERENCES `tournament_bracket_types` (`id`),
-  CONSTRAINT `fk_ct_branch` FOREIGN KEY (`branch_id`) REFERENCES `branches` (`id`) ON DELETE SET NULL,
-  CONSTRAINT `fk_ct_creator` FOREIGN KEY (`creator_id`) REFERENCES `users` (`id`),
-  CONSTRAINT `fk_ct_org` FOREIGN KEY (`organisation_id`) REFERENCES `organisations` (`id`) ON DELETE SET NULL,
-  CONSTRAINT `fk_ct_sport` FOREIGN KEY (`sport_id`) REFERENCES `sports` (`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 DROP TABLE IF EXISTS `conversation_participants`;
@@ -1459,23 +1267,6 @@ CREATE TABLE `coupons` (
   KEY `idx_coupon_sport` (`sport_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
-DROP TABLE IF EXISTS `cron_jobs`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!40101 SET character_set_client = utf8 */;
-CREATE TABLE `cron_jobs` (
-  `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
-  `job_name` varchar(100) NOT NULL,
-  `handler` varchar(255) NOT NULL COMMENT 'Service/method to call',
-  `cron_expression` varchar(100) NOT NULL,
-  `is_active` tinyint(1) NOT NULL DEFAULT 1,
-  `last_run_at` timestamp NULL DEFAULT NULL,
-  `last_error` text DEFAULT NULL,
-  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
-  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `job_name` (`job_name`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-/*!40101 SET character_set_client = @saved_cs_client */;
 DROP TABLE IF EXISTS `currencies`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8 */;
@@ -1538,36 +1329,6 @@ CREATE TABLE `design_tokens` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `token_key` (`token_key`)
 ) ENGINE=InnoDB AUTO_INCREMENT=160 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-/*!40101 SET character_set_client = @saved_cs_client */;
-DROP TABLE IF EXISTS `email_verification_tokens`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!40101 SET character_set_client = utf8 */;
-CREATE TABLE `email_verification_tokens` (
-  `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
-  `user_id` int(10) unsigned NOT NULL,
-  `token` varchar(255) NOT NULL,
-  `expires_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
-  `is_used` tinyint(1) NOT NULL DEFAULT 0,
-  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `token` (`token`),
-  KEY `idx_user` (`user_id`),
-  CONSTRAINT `fk_email_ver_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-/*!40101 SET character_set_client = @saved_cs_client */;
-DROP TABLE IF EXISTS `exchange_rates`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!40101 SET character_set_client = utf8 */;
-CREATE TABLE `exchange_rates` (
-  `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
-  `from_currency` char(3) NOT NULL,
-  `to_currency` char(3) NOT NULL,
-  `rate` decimal(18,8) NOT NULL,
-  `recorded_at` timestamp NOT NULL DEFAULT current_timestamp(),
-  `source` varchar(50) DEFAULT 'manual',
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `uk_rate` (`from_currency`,`to_currency`,`recorded_at`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 DROP TABLE IF EXISTS `feature_flags`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
@@ -1691,26 +1452,6 @@ CREATE TABLE `marketplace_ledger_entries` (
   CONSTRAINT `fk_mle_org` FOREIGN KEY (`organisation_id`) REFERENCES `organisations` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
-DROP TABLE IF EXISTS `media_uploads`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!40101 SET character_set_client = utf8 */;
-CREATE TABLE `media_uploads` (
-  `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
-  `owner_type` varchar(50) NOT NULL COMMENT 'entity type',
-  `owner_id` int(10) unsigned NOT NULL,
-  `file_url` varchar(500) NOT NULL,
-  `file_type` varchar(50) NOT NULL COMMENT 'mime type',
-  `file_size` int(10) unsigned NOT NULL COMMENT 'bytes',
-  `file_name` varchar(255) DEFAULT NULL,
-  `alt_text` varchar(255) DEFAULT NULL,
-  `sort_order` smallint(5) unsigned NOT NULL DEFAULT 0,
-  `uploaded_by` int(10) unsigned DEFAULT NULL,
-  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
-  PRIMARY KEY (`id`),
-  KEY `idx_owner` (`owner_type`,`owner_id`),
-  KEY `idx_uploader` (`uploaded_by`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-/*!40101 SET character_set_client = @saved_cs_client */;
 DROP TABLE IF EXISTS `messages`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8 */;
@@ -1817,24 +1558,6 @@ CREATE TABLE `notifications` (
   CONSTRAINT `fk_notif_action` FOREIGN KEY (`action_id`) REFERENCES `notification_actions` (`id`) ON DELETE SET NULL,
   CONSTRAINT `fk_notif_category` FOREIGN KEY (`category_id`) REFERENCES `notification_categories` (`id`) ON DELETE SET NULL,
   CONSTRAINT `fk_notif_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-/*!40101 SET character_set_client = @saved_cs_client */;
-DROP TABLE IF EXISTS `operating_hours`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!40101 SET character_set_client = utf8 */;
-CREATE TABLE `operating_hours` (
-  `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
-  `owner_type` enum('organisation','branch','resource') NOT NULL,
-  `owner_id` int(10) unsigned NOT NULL,
-  `day_of_week` tinyint(3) unsigned NOT NULL COMMENT '0=Monday, 6=Sunday (international)',
-  `is_open` tinyint(1) NOT NULL DEFAULT 1,
-  `open_time` time DEFAULT NULL,
-  `close_time` time DEFAULT NULL,
-  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
-  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `uk_hours` (`owner_type`,`owner_id`,`day_of_week`),
-  KEY `idx_hours_owner` (`owner_type`,`owner_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 DROP TABLE IF EXISTS `order_items`;
@@ -2388,26 +2111,6 @@ CREATE TABLE `player_profiles` (
   CONSTRAINT `fk_player_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
-DROP TABLE IF EXISTS `player_ratings`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!40101 SET character_set_client = utf8 */;
-CREATE TABLE `player_ratings` (
-  `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
-  `rater_id` int(10) unsigned NOT NULL,
-  `rated_id` int(10) unsigned NOT NULL,
-  `booking_id` bigint(20) unsigned DEFAULT NULL,
-  `rating` tinyint(3) unsigned NOT NULL CHECK (`rating` between 1 and 5),
-  `review_text` text DEFAULT NULL,
-  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `uk_rating` (`rater_id`,`rated_id`,`booking_id`),
-  KEY `idx_rated` (`rated_id`),
-  KEY `fk_pr_booking` (`booking_id`),
-  CONSTRAINT `fk_pr_booking` FOREIGN KEY (`booking_id`) REFERENCES `bookings` (`id`) ON DELETE SET NULL,
-  CONSTRAINT `fk_pr_rated` FOREIGN KEY (`rated_id`) REFERENCES `users` (`id`) ON DELETE CASCADE,
-  CONSTRAINT `fk_pr_rater` FOREIGN KEY (`rater_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-/*!40101 SET character_set_client = @saved_cs_client */;
 DROP TABLE IF EXISTS `player_sport_interests`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8 */;
@@ -2725,24 +2428,6 @@ CREATE TABLE `resource_types` (
   UNIQUE KEY `slug` (`slug`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
-DROP TABLE IF EXISTS `resource_unavailability`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!40101 SET character_set_client = utf8 */;
-CREATE TABLE `resource_unavailability` (
-  `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
-  `resource_id` int(10) unsigned NOT NULL,
-  `start_date` date NOT NULL,
-  `end_date` date DEFAULT NULL,
-  `start_time` time DEFAULT NULL,
-  `end_time` time DEFAULT NULL,
-  `reason` varchar(500) DEFAULT NULL,
-  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
-  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
-  PRIMARY KEY (`id`),
-  KEY `idx_resource_date` (`resource_id`,`start_date`,`end_date`),
-  CONSTRAINT `fk_unavail_resource` FOREIGN KEY (`resource_id`) REFERENCES `resources` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-/*!40101 SET character_set_client = @saved_cs_client */;
 DROP TABLE IF EXISTS `resources`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8 */;
@@ -2777,23 +2462,6 @@ CREATE TABLE `resources` (
   CONSTRAINT `fk_res_branch` FOREIGN KEY (`branch_id`) REFERENCES `branches` (`id`) ON DELETE CASCADE,
   CONSTRAINT `fk_res_sport` FOREIGN KEY (`sport_id`) REFERENCES `sports` (`id`) ON DELETE SET NULL,
   CONSTRAINT `fk_res_type` FOREIGN KEY (`resource_type_id`) REFERENCES `resource_types` (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-/*!40101 SET character_set_client = @saved_cs_client */;
-DROP TABLE IF EXISTS `revert_logs`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!40101 SET character_set_client = utf8 */;
-CREATE TABLE `revert_logs` (
-  `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
-  `super_admin_id` int(10) unsigned NOT NULL,
-  `audit_log_id` bigint(20) unsigned NOT NULL COMMENT 'The original action being reverted',
-  `reason` varchar(500) NOT NULL,
-  `reverted_state` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL COMMENT 'Snapshot after revert' CHECK (json_valid(`reverted_state`)),
-  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
-  PRIMARY KEY (`id`),
-  KEY `fk_revert_admin` (`super_admin_id`),
-  KEY `fk_revert_audit` (`audit_log_id`),
-  CONSTRAINT `fk_revert_admin` FOREIGN KEY (`super_admin_id`) REFERENCES `users` (`id`) ON DELETE CASCADE,
-  CONSTRAINT `fk_revert_audit` FOREIGN KEY (`audit_log_id`) REFERENCES `audit_logs` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 DROP TABLE IF EXISTS `role_permissions`;
@@ -2843,25 +2511,6 @@ CREATE TABLE `roles` (
   KEY `idx_org_role` (`organisation_id`),
   CONSTRAINT `fk_role_org` FOREIGN KEY (`organisation_id`) REFERENCES `organisations` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB AUTO_INCREMENT=9 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-/*!40101 SET character_set_client = @saved_cs_client */;
-DROP TABLE IF EXISTS `scheduled_jobs`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!40101 SET character_set_client = utf8 */;
-CREATE TABLE `scheduled_jobs` (
-  `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
-  `job_type` varchar(100) NOT NULL,
-  `payload` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL CHECK (json_valid(`payload`)),
-  `priority` tinyint(3) unsigned NOT NULL DEFAULT 0,
-  `status` enum('pending','running','completed','failed','cancelled') NOT NULL DEFAULT 'pending',
-  `scheduled_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
-  `started_at` timestamp NULL DEFAULT NULL,
-  `completed_at` timestamp NULL DEFAULT NULL,
-  `error_message` text DEFAULT NULL,
-  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
-  PRIMARY KEY (`id`),
-  KEY `idx_status` (`status`),
-  KEY `idx_scheduled` (`scheduled_at`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 DROP TABLE IF EXISTS `seller_profiles`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
@@ -3205,22 +2854,6 @@ CREATE TABLE `tournament_bracket_types` (
   UNIQUE KEY `slug` (`slug`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
-DROP TABLE IF EXISTS `tournament_participants`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!40101 SET character_set_client = utf8 */;
-CREATE TABLE `tournament_participants` (
-  `id` int unsigned NOT NULL AUTO_INCREMENT,
-  `tournament_id` int unsigned NOT NULL,
-  `user_id` int unsigned DEFAULT NULL,
-  `team_name` varchar(255) DEFAULT NULL,
-  `seed` int NOT NULL DEFAULT '0',
-  `status` enum('registered','approved','rejected','checked_in') NOT NULL DEFAULT 'registered',
-  `registered_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  PRIMARY KEY (`id`),
-  KEY `idx_tp_tournament` (`tournament_id`),
-  KEY `idx_tp_user` (`user_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-/*!40101 SET character_set_client = @saved_cs_client */;
 DROP TABLE IF EXISTS `elo_ratings`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8 */;
@@ -3402,22 +3035,6 @@ CREATE TABLE `tournament_group_members` (
   KEY `idx_registration` (`registration_id`),
   CONSTRAINT `fk_tgm_group` FOREIGN KEY (`group_id`) REFERENCES `tournament_groups` (`id`) ON DELETE CASCADE,
   CONSTRAINT `fk_tgm_reg` FOREIGN KEY (`registration_id`) REFERENCES `tournament_registrations` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-/*!40101 SET character_set_client = @saved_cs_client */;
-DROP TABLE IF EXISTS `tournament_match_players`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!40101 SET character_set_client = utf8 */;
-CREATE TABLE `tournament_match_players` (
-  `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
-  `match_id` int(10) unsigned NOT NULL,
-  `player_id` int(10) unsigned NOT NULL,
-  `side` enum('home','away') NOT NULL DEFAULT 'home',
-  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
-  PRIMARY KEY (`id`),
-  KEY `idx_match` (`match_id`),
-  KEY `idx_player` (`player_id`),
-  CONSTRAINT `fk_tmp_match` FOREIGN KEY (`match_id`) REFERENCES `tournament_matches` (`id`) ON DELETE CASCADE,
-  CONSTRAINT `fk_tmp_player` FOREIGN KEY (`player_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 DROP TABLE IF EXISTS `tournament_match_results`;
@@ -4208,23 +3825,6 @@ CREATE TABLE `referees` (
   UNIQUE KEY `uk_referee_user` (`user_id`),
   KEY `idx_ref_status` (`status`),
   CONSTRAINT `fk_ref_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-/*!40101 SET character_set_client = @saved_cs_client */;
-DROP TABLE IF EXISTS `referee_assignments`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!40101 SET character_set_client = utf8 */;
-CREATE TABLE `referee_assignments` (
-  `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
-  `referee_id` int(10) unsigned NOT NULL,
-  `match_type` varchar(50) DEFAULT NULL,
-  `match_id` int(10) unsigned DEFAULT NULL,
-  `status` enum('pending','accepted','declined','completed') NOT NULL DEFAULT 'pending',
-  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
-  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
-  PRIMARY KEY (`id`),
-  KEY `idx_ra2_referee` (`referee_id`),
-  KEY `idx_ra2_status` (`status`),
-  CONSTRAINT `fk_ra2_referee` FOREIGN KEY (`referee_id`) REFERENCES `referees` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 DROP TABLE IF EXISTS `referee_availability`;
