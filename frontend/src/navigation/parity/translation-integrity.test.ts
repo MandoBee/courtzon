@@ -154,7 +154,7 @@ describe('Commit 9 — Translation integrity (9 admin business-domain labels, EN
       }
     };
     walk(enNav);
-    expect(ids.length).toBe(136);
+    expect(ids.length).toBe(138);
     expect(ids.filter((id) => DOMAIN_KEYS.includes(id)).length).toBe(8);
     expect(ids).toEqual(ADMIN_NAV.flatMap((d) => collectNodeIds(d)));
   });

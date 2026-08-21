@@ -1,3 +1,19 @@
+// The player service (via database/mysql.js → config/env.js) validates required
+// environment variables at import time and exits if they are missing. Provide a
+// test-safe env BEFORE importing the module under test (same pattern as the other
+// DB-backed integration specs). Production env validation is untouched.
+vi.hoisted(() => {
+  process.env.NODE_ENV = 'test';
+  process.env.DB_HOST = '127.0.0.1';
+  process.env.DB_PORT = '3307';
+  process.env.DB_USER = 'root';
+  process.env.DB_PASSWORD = 'courtzon2026';
+  process.env.DB_NAME = 'courtzon_v3';
+  process.env.REDIS_HOST = '127.0.0.1';
+  process.env.REDIS_PORT = '6379';
+  process.env.SESSION_SECRET = 'test-session-secret-at-least-32-chars';
+});
+
 import { describe, it, expect, vi, beforeAll } from 'vitest';
 import { playerService } from '../application/player.service.js';
 
