@@ -245,6 +245,8 @@ export async function getBranchHandler(request: FastifyRequest, reply: FastifyRe
 
 export async function getBranchFinancialDetailsHandler(request: FastifyRequest, reply: FastifyReply) {
   const { branchId } = request.params as any;
+  const userId = (request as any).userId;
+  await organisationService.assertCanManageBranch(Number(branchId), userId);
   const details = await organisationService.getBranchFinancialDetails(Number(branchId));
   return reply.send({ data: details });
 }
@@ -252,6 +254,8 @@ export async function getBranchFinancialDetailsHandler(request: FastifyRequest, 
 export async function upsertBranchFinancialDetailsHandler(request: FastifyRequest, reply: FastifyReply) {
   const { branchId } = request.params as any;
   const body = BranchFinancialDetailsSchema.parse(request.body);
+  const userId = (request as any).userId;
+  await organisationService.assertCanManageBranch(Number(branchId), userId);
   const details = await organisationService.upsertBranchFinancialDetails(Number(branchId), body);
   recordAudit({
     actorId: (request as any).userId ?? null,

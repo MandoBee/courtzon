@@ -2,6 +2,7 @@ import type mysql from 'mysql2/promise';
 import { getPool } from '../../../database/mysql.js';
 import { transactionRepository } from '../infrastructure/transaction.repository.js';
 import { walletRepository } from '../../wallet/infrastructure/repositories/wallet.repository.js';
+import { canAccessOrganisation, isPlatformAdmin } from '../../../shared/middleware/org-access.js';
 
 export interface BookingPaymentParams {
   userId: number;
@@ -151,8 +152,25 @@ class TransactionService {
     return txnId;
   }
 
-  async getTransaction(id: number) {
-    return transactionRepository.findById(id);
+  /**
+   * Load a transaction only if the requesting user is entitled to it: the
+   * user is a platform admin, the transaction is one of the user's wallet
+   * transactions, or the user has access to an organisation the transaction
+   * is scoped to. Returns null otherwise (caller returns 404) to avoid
+   * leaking the existence of other tenants' transactions.
+   */
+  async getTransaction(id: number, userId?: number) {
+    if (!userId || await isPlatformAdmin(userId)) {
+      return transactionRepository.findById(id);
+    }
+    const txn = await transactionRepository.findById(id);
+    if (!txn) return null;
+    if (await transactionRepository.isUserTransaction(userId, id)) return txn;
+    const orgIds = await transactionRepository.getTransactionOrgIds(id);
+    for (const orgId of orgIds) {
+      if (await canAccessOrganisation(userId, orgId)) return txn;
+    }
+    return null;
   }
 
   async getUserTransactions(userId: number, page = 1, limit = 20) {

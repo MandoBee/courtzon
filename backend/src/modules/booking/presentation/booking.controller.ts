@@ -177,19 +177,18 @@ export async function getAllBookingsHandler(request: FastifyRequest, reply: Fast
   if (bookingType) filters.bookingType = bookingType;
   if (page) filters.page = Number(page);
   if (limit) filters.limit = Number(limit);
-  // Require orgId unless super_admin/super-admin
+  // Require orgId unless super_admin/super-admin. When orgId is supplied, the
+  // caller must have access to that organisation (owner, super-admin, or an
+  // org role-scope) — never trust a client-supplied orgId for cross-tenant reads.
+  const { isPlatformAdmin } = await import('../../../shared/middleware/org-access.js');
+
   if (orgId) {
     filters.orgId = Number(orgId);
+    if (!(await isPlatformAdmin(userId)) && !(await bookingService.canAccessOrganisation(userId, filters.orgId))) {
+      throw new ForbiddenError('Access to this organisation denied');
+    }
   } else {
-    const { getPool } = await import('../../../database/mysql.js');
-    const pool = getPool();
-    const [adminRows] = await pool.execute<any[]>(
-      `SELECT 1 FROM user_roles ur JOIN roles r ON r.id = ur.role_id
-       WHERE ur.user_id = ? AND ur.is_active = TRUE
-         AND r.slug IN ('super_admin', 'super-admin') LIMIT 1`,
-      [userId],
-    );
-    if (adminRows.length === 0) {
+    if (!(await isPlatformAdmin(userId))) {
       throw new ForbiddenError('Specify an orgId or use GET /organisations/:orgId/bookings');
     }
   }
