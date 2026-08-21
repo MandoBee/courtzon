@@ -134,7 +134,6 @@ const ProductCategoriesPage = lazy(() => import('./pages/admin/product-categorie
 const FeatureFlagsPage = lazy(() => import('./pages/admin/feature-flags/FeatureFlagsPage'));
 const PaymentMethodsPage = lazy(() => import('./pages/admin/payment-methods/PaymentMethodsPage'));
 const PaymentGatewaysPage = lazy(() => import('./pages/admin/payment-gateways/PaymentGatewaysPage'));
-const WithdrawalRequestsPage = lazy(() => import('./pages/admin/financial/WithdrawalRequestsPage'));
 const WithdrawalQueuePage = lazy(() => import('./pages/admin/WithdrawalQueuePage'));
 const CouponListPage = lazy(() => import('./pages/admin/coupons/CouponListPage'));
 const DesignTokensPage = lazy(() => import('./pages/admin/design-tokens/DesignTokensPage'));
@@ -699,7 +698,7 @@ function AppContent() {
             <Route path="finance/ledger" element={<LedgerViewerPage />} />
             <Route path="finance/reports" element={<ReportCenterPage />} />
             <Route path="financial-ops" element={<FinancialOpsDashboard />} />
-            <Route path="withdrawal-requests" element={<WithdrawalRequestsPage />} />
+            <Route path="withdrawal-requests" element={<Navigate to="/admin/withdrawals" replace />} />
             <Route path="withdrawals" element={<WithdrawalQueuePage />} />
             <Route path="coupons" element={<CouponListPage />} />
             <Route path="design-tokens" element={<DesignTokensPage />} />

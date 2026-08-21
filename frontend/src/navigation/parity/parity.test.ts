@@ -204,7 +204,7 @@ describe('Phase 1 parity gate — admin sidebar (buildNavItems vs Navigation Reg
     ]);
   });
 
-  it('Finance domain contains 8 child items under Finance', () => {
+  it('Finance domain contains 7 child items under Finance', () => {
     const nav = resolveAdminNav(enT, allCan, allFlags);
     const finance = nav.find((d) => d.label === 'Finance');
     expect(finance?.children?.map((c) => c.permissionKey)).toEqual([
@@ -214,7 +214,6 @@ describe('Phase 1 parity gate — admin sidebar (buildNavItems vs Navigation Reg
       'sidebar.banks',
       'sidebar.bank-branches',
       'sidebar.finance-transactions',
-      'sidebar.withdrawal-requests',
       'sidebar.withdrawals-queue',
     ]);
   });
@@ -569,7 +568,7 @@ describe('Phase 1 parity gate — coach nav (legacy/coach-nav.ts vs Navigation R
 
   it('matches regardless of permission state (coach nav carries no permission keys)', () => {
     const registry = resolveCoachNav(strictT);
-    expect(registry.length).toBe(6);
+    expect(registry.length).toBe(8);
     expect(registry.every((i) => i.permissionKey === undefined)).toBe(true);
   });
 });
@@ -738,7 +737,7 @@ describe('Navigation registry integrity (immutable ids)', () => {
 
     const coachIds = collectIds(COACH_NAV);
     expect(coachIds.every((id) => id.startsWith('nav.coach.'))).toBe(true);
-    expect(coachIds.length).toBe(6);
+    expect(coachIds.length).toBe(8);
     expect(COACH_ID_TO_KEY.size).toBe(0);
     expect(COACH_LEGACY_KEY_TO_ID.size).toBe(0);
 

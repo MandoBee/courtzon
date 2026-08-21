@@ -229,7 +229,6 @@ export const ADMIN_NAV: NavDefinition[] = [
       { id: 'nav.admin.banks', label: T('admin.sidebar.banks'), path: '/admin/banks', permissionKey: 'sidebar.banks' },
       { id: 'nav.admin.bank-branches', label: LIT('Bank Branches'), path: '/admin/bank-branches', permissionKey: 'sidebar.bank-branches' },
       { id: 'nav.admin.finance-transactions', label: LIT('Finance (Legacy)'), path: '/admin/financial-ops', permissionKey: 'sidebar.finance-transactions' },
-      { id: 'nav.admin.withdrawal-requests', label: LIT('Withdrawal Requests'), path: '/admin/withdrawal-requests', permissionKey: 'sidebar.withdrawal-requests' },
       { id: 'nav.admin.withdrawals-queue', label: LIT('Withdrawals Queue'), path: '/admin/withdrawals', permissionKey: 'sidebar.withdrawals-queue' },
     ],
   },

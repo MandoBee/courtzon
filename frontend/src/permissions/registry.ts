@@ -248,9 +248,9 @@ export const uiRegistry: UIElement[] = [
   { permissionKey: 'financial.wallet.deposit.payment-method', moduleSlug: 'financial', elementType: 'field', elementLabel: 'Deposit Payment Method Field', componentPath: 'pages/player/WalletPage.tsx' },
   { permissionKey: 'financial.wallet.withdraw', moduleSlug: 'financial', elementType: 'field', elementLabel: 'Withdraw Amount Field', componentPath: 'pages/player/WalletPage.tsx' },
   // Withdrawal requests
-  { permissionKey: 'financial.withdrawal-requests.view', moduleSlug: 'financial', elementType: 'page', elementLabel: 'Withdrawal Requests Page', componentPath: 'pages/admin/financial/WithdrawalRequestsPage.tsx' },
-  { permissionKey: 'financial.withdrawal-requests.approve', moduleSlug: 'financial', elementType: 'button', elementLabel: 'Approve Withdrawal', componentPath: 'pages/admin/financial/WithdrawalRequestsPage.tsx' },
-  { permissionKey: 'financial.withdrawal-requests.reject', moduleSlug: 'financial', elementType: 'button', elementLabel: 'Reject Withdrawal', componentPath: 'pages/admin/financial/WithdrawalRequestsPage.tsx' },
+  { permissionKey: 'financial.withdrawal-requests.view', moduleSlug: 'financial', elementType: 'page', elementLabel: 'Withdrawal Requests Page', componentPath: 'pages/admin/WithdrawalQueuePage.tsx' },
+  { permissionKey: 'financial.withdrawal-requests.approve', moduleSlug: 'financial', elementType: 'button', elementLabel: 'Approve Withdrawal', componentPath: 'pages/admin/WithdrawalQueuePage.tsx' },
+  { permissionKey: 'financial.withdrawal-requests.reject', moduleSlug: 'financial', elementType: 'button', elementLabel: 'Reject Withdrawal', componentPath: 'pages/admin/WithdrawalQueuePage.tsx' },
   // Coupons
   { permissionKey: 'coupons.view', moduleSlug: 'financial', elementType: 'page', elementLabel: 'Coupons Page', componentPath: 'pages/admin/coupons/CouponListPage.tsx' },
   { permissionKey: 'coupons.create', moduleSlug: 'financial', elementType: 'button', elementLabel: 'Create Coupon', componentPath: 'pages/admin/coupons/CouponListPage.tsx' },

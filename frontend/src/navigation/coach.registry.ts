@@ -8,6 +8,8 @@ export const COACH_NAV: NavDefinition[] = [
   { id: 'nav.coach.requests', label: LIT('Requests'), icon: '📥', path: '/coach/requests' },
   { id: 'nav.coach.players', label: LIT('Players'), icon: '👥', path: '/coach/players' },
   { id: 'nav.coach.availability', label: LIT('Availability'), icon: '⏰', path: '/coach/availability' },
+  { id: 'nav.coach.revenue', label: LIT('Revenue'), icon: '💰', path: '/coach/revenue' },
+  { id: 'nav.coach.attendance', label: LIT('Attendance'), icon: '📊', path: '/coach/attendance' },
   { id: 'nav.coach.profile', label: LIT('Profile'), icon: '👤', path: '/coach/profile' },
 ];
 

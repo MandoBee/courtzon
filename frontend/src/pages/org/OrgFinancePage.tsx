@@ -27,9 +27,9 @@ function RequestSettlementModal({ orgId, onClose }: { orgId: string; onClose: ()
   const { showToast } = useToast();
 
   const requestMutation = useMutation({
-    mutationFn: () => api.post('/settlements/request', { organisationId: Number(orgId) }),
+    mutationFn: () => api.post('/unified-settlements', { orgId: Number(orgId) }),
     onSuccess: (res: any) => {
-      showToast(`Settlement #${res.data?.id || ''} requested successfully`);
+      showToast(`Settlement #${res.settlement?.id || ''} requested successfully`);
       queryClient.invalidateQueries({ queryKey: ['org-settlements', orgId] });
       onClose();
     },
@@ -47,10 +47,10 @@ function RequestSettlementModal({ orgId, onClose }: { orgId: string; onClose: ()
         </div>
         <div className="p-4 space-y-3">
           <p className="text-sm text-[var(--color-text-muted)]">
-            This will create a settlement for all delivered, unsettled orders belonging to this organisation.
+            This will create a settlement for all available financial entitlements belonging to this organisation.
           </p>
           <p className="text-sm text-[var(--color-text-muted)]">
-            <strong>Cash orders</strong> are included immediately. <strong>Card payments</strong> require payment confirmation from the gateway before inclusion.
+            Once created, the settlement can be marked as paid or cancelled from the settlement history.
           </p>
         </div>
         <div className="flex justify-end gap-2 p-4 border-t border-[var(--color-border)]">
@@ -196,38 +196,16 @@ function SettlementActions({ orgId, settlement, onUpdated }: { orgId: string; se
   const { showToast } = useToast();
   const status = settlement.settlement_status;
 
-  const approveMut = useMutation({
-    mutationFn: () => api.post(`/settlements/${settlement.id}/approve`),
-    onSuccess: () => { showToast('Settlement approved'); queryClient.invalidateQueries({ queryKey: ['org-settlements', orgId] }); onUpdated(); },
-    onError: (err: any) => showToast(err?.response?.data?.message || err?.message, 'error'),
-  });
-
   const payMut = useMutation({
-    mutationFn: () => api.post(`/settlements/${settlement.id}/pay`),
-    onSuccess: () => { showToast('Settlement marked as paid'); queryClient.invalidateQueries({ queryKey: ['org-settlements', orgId] }); onUpdated(); },
+    mutationFn: () => api.post(`/unified-settlements/${settlement.id}/pay`),
+    onSuccess: () => { showToast('Settlement marked as paid and finalized'); queryClient.invalidateQueries({ queryKey: ['org-settlements', orgId] }); onUpdated(); },
     onError: (err: any) => showToast(err?.response?.data?.message || err?.message, 'error'),
-  });
-
-  const completeMut = useMutation({
-    mutationFn: () => api.post(`/settlements/${settlement.id}/complete`),
-    onSuccess: () => { showToast('Settlement completed'); queryClient.invalidateQueries({ queryKey: ['org-settlements', orgId] }); onUpdated(); },
-    onError: (err: any) => showToast(err?.response?.data?.message || err?.message, 'error'),
-  });
-
-  const rejectMut = useMutation({
-    mutationFn: () => {
-      const reason = prompt('Rejection reason:');
-      if (!reason) return Promise.reject();
-      return api.post(`/settlements/${settlement.id}/reject`, { reason });
-    },
-    onSuccess: () => { showToast('Settlement rejected', 'warning'); queryClient.invalidateQueries({ queryKey: ['org-settlements', orgId] }); onUpdated(); },
-    onError: (err: any) => { if (err) showToast(err?.response?.data?.message || err?.message, 'error'); },
   });
 
   const cancelMut = useMutation({
     mutationFn: () => {
       const reason = prompt('Cancel reason (optional):');
-      return api.post(`/settlements/${settlement.id}/cancel`, { reason: reason || undefined });
+      return api.post(`/unified-settlements/${settlement.id}/cancel`, { reason: reason || undefined });
     },
     onSuccess: () => { showToast('Settlement cancelled', 'warning'); queryClient.invalidateQueries({ queryKey: ['org-settlements', orgId] }); onUpdated(); },
     onError: (err: any) => showToast(err?.response?.data?.message || err?.message, 'error'),
@@ -237,42 +215,18 @@ function SettlementActions({ orgId, settlement, onUpdated }: { orgId: string; se
 
   const buttons: React.ReactNode[] = [];
 
-  if (status === 'pending_approval') {
-    buttons.push(
-      <Can key="approve" permission="settlements.approve">
-        <button onClick={() => approveMut.mutate()} disabled={approveMut.isPending} className={`${btnClass} border-green-300 bg-green-50 text-green-700`}>Approve</button>
-      </Can>
-    );
-    buttons.push(
-      <Can key="reject" permission="settlements.reject">
-        <button onClick={() => rejectMut.mutate()} disabled={rejectMut.isPending} className={`${btnClass} border-red-300 bg-red-50 text-red-700`}>Reject</button>
-      </Can>
-    );
-    buttons.push(
-      <Can key="cancel" permission="settlements.cancel">
-        <button onClick={() => cancelMut.mutate()} disabled={cancelMut.isPending} className={`${btnClass} border-gray-300 bg-gray-50 text-gray-600`}>Cancel</button>
-      </Can>
-    );
-  } else if (status === 'approved') {
+  // Unified lifecycle: a settlement can be paid (finalizes to completed) or
+  // cancelled while it is still open (requested/pending_approval/approved).
+  // The old multi-step approve -> pay -> complete flow is intentionally
+  // collapsed into create -> record payment -> (cancelled | completed).
+  if (status === 'requested' || status === 'pending_approval' || status === 'approved') {
     buttons.push(
       <Can key="pay" permission="settlements.pay">
         <button onClick={() => payMut.mutate()} disabled={payMut.isPending} className={`${btnClass} border-blue-300 bg-blue-50 text-blue-700`}>Mark Paid</button>
       </Can>
     );
     buttons.push(
-      <Can key="cancel2" permission="settlements.cancel">
-        <button onClick={() => cancelMut.mutate()} disabled={cancelMut.isPending} className={`${btnClass} border-gray-300 bg-gray-50 text-gray-600`}>Cancel</button>
-      </Can>
-    );
-  } else if (status === 'paid') {
-    buttons.push(
-      <Can key="complete" permission="settlements.complete">
-        <button onClick={() => completeMut.mutate()} disabled={completeMut.isPending} className={`${btnClass} border-emerald-300 bg-emerald-50 text-emerald-700`}>Complete</button>
-      </Can>
-    );
-  } else if (status === 'requested' || status === 'calculating') {
-    buttons.push(
-      <Can key="cancel3" permission="settlements.cancel">
+      <Can key="cancel" permission="settlements.cancel">
         <button onClick={() => cancelMut.mutate()} disabled={cancelMut.isPending} className={`${btnClass} border-gray-300 bg-gray-50 text-gray-600`}>Cancel</button>
       </Can>
     );
