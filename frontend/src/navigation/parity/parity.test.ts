@@ -190,7 +190,7 @@ describe('Phase 1 parity gate — admin sidebar (buildNavItems vs Navigation Reg
     ]);
   });
 
-  it('Commerce domain contains exactly 7 modules in correct order', () => {
+  it('Commerce domain contains exactly 8 modules in correct order', () => {
     const nav = resolveAdminNav(enT, allCan, allFlags);
     const commerce = nav.find((d) => d.label === 'Commerce');
     expect(commerce?.children?.map((c) => c.id)).toEqual([
@@ -199,6 +199,7 @@ describe('Phase 1 parity gate — admin sidebar (buildNavItems vs Navigation Reg
       'nav.admin.subscription',
       'nav.admin.subscription-requests',
       'nav.admin.settlements',
+      'nav.admin.settlements-bookings',
       'nav.admin.coupons',
       'nav.admin.ads',
     ]);
@@ -724,8 +725,8 @@ describe('Navigation registry integrity (immutable ids)', () => {
   it('namespaces ids per shell (nav.admin.*, nav.org.*) and keeps them stable per node', () => {
     const adminIds = collectIds(ADMIN_NAV);
     expect(adminIds.every((id) => id.startsWith('nav.admin.'))).toBe(true);
-    expect(adminIds.length).toBe(136);
-    expect(ADMIN_ID_TO_KEY.size).toBe(128);
+    expect(adminIds.length).toBe(138);
+    expect(ADMIN_ID_TO_KEY.size).toBe(130);
 
     const orgIds = collectIds(ORG_NAV);
     expect(orgIds.every((id) => id.startsWith('nav.org.'))).toBe(true);
@@ -793,7 +794,7 @@ describe('Navigation registry integrity (immutable ids)', () => {
     const adminTop = resolveAdminNav(enT, allCan, allFlags);
     const walk = (items: ResolvedNavItem[]): number =>
       items.reduce((n, it) => n + (it.id ? 1 : 0) + (it.children ? walk(it.children) : 0), 0);
-    expect(walk(adminTop)).toBe(136);
+    expect(walk(adminTop)).toBe(138);
     const orgTop = resolveOrgNav(allCan, '7', enT);
     expect(orgTop.every((it) => it.id !== undefined)).toBe(true);
     expect(orgTop[0].id).toBe('nav.org.dashboard');
@@ -1055,9 +1056,9 @@ describe('Consumer 6 — Workspace Registry integration (drift resolved)', () =>
 
   it('every workspace node carries a nav.admin.* immutable id', () => {
     const allIds = collectAllIds(registryWorkspace);
-    expect(allIds.length).toBe(136);
+    expect(allIds.length).toBe(138);
     expect(allIds.every((id) => id.startsWith('nav.admin.'))).toBe(true);
-    expect(new Set(allIds).size).toBe(136);
+    expect(new Set(allIds).size).toBe(138);
   });
 
   it('workspace resolver is deterministic', () => {
@@ -1070,11 +1071,11 @@ describe('Consumer 6 — Workspace Registry integration (drift resolved)', () =>
     const wsAllIds = collectAllIds(registryWorkspace);
     const registryAllIds = collectIds(ADMIN_NAV);
     expect(wsAllIds).toEqual(registryAllIds);
-    expect(wsAllIds.length).toBe(136);
+    expect(wsAllIds.length).toBe(138);
   });
 
   it('workspace root count matches ADMIN_NAV root', () => {
-    expect(countNodes(registryWorkspace)).toBe(136);
+    expect(countNodes(registryWorkspace)).toBe(138);
     expect(registryWorkspace.length).toBe(ADMIN_NAV.length);
   });
 });

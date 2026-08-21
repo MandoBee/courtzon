@@ -385,17 +385,22 @@ describe('Financial Custody & Counterparty', () => {
   it('13. COD booking receivable equals commission+tax only (NOT full gross)', async () => {
     const { postAccountingEvent } = await import('../application/accounting-event.listener.js');
     const bookingId = await insertBooking({ hour: 16, paymentMethod: 'cash', total: 1000, tax: 100, commission: 200, club: 700 });
+
+    // Deterministic delta assertion: capture the receivable BEFORE this booking's
+    // event, then assert the delta is exactly 300 (commission+tax), never the 1000
+    // gross. This no longer depends on any pre-existing ledger balance for the org.
+    const receivableId = await accountCode('1160');
+    const before = await accountSums(receivableId);
+
     await postAccountingEvent(
       'booking_cod_payment', 'booking', bookingId, orgId,
       { receivable_from_org: 300, platform_commission: 200, tax_liability: 100 },
       'EGP', 'custody COD gross 1000',
     );
 
-    const receivableId = await accountCode('1160');
-    const receivable = await accountSums(receivableId);
-    // Receivable must be 300 (commission+tax), NOT the 1000 gross.
-    // This booking adds 300 to the prior receivable debit (38 from earlier tests).
-    expect(receivable.debit).toBe(338); // 38 prior + 300
+    const after = await accountSums(receivableId);
+    // Receivable must increase by 300 (commission+tax), NOT the 1000 gross.
+    expect(after.debit - before.debit).toBe(300);
   });
 
   it('14. settlement/collection of COD receivable clears receivable_from_org', async () => {
