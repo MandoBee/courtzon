@@ -8,6 +8,7 @@ import { resourceRepository } from '../infrastructure/repositories/resource.repo
 import { amenityRepository } from '../infrastructure/repositories/amenity.repository.js';
 import { countriesRepository } from '../../countries/infrastructure/repositories/countries.repository.js';
 import { NotFoundError, ConflictError, ValidationError } from '../../../shared/errors/app-error.js';
+import { canAccessOrganisation } from '../../../shared/middleware/org-access.js';
 import { resolveOrganisationMedia } from './organisation-media.util.js';
 import { eventBusV2 } from '../../../shared/event-bus/index.js';
 import { commandPipeline } from '../../../shared/command/command-pipeline.js';
@@ -289,6 +290,19 @@ export class OrganisationService {
     const branch = await branchRepository.findById(branchId);
     if (!branch) throw new NotFoundError('Branch');
     return branchFinancialRepository.getByBranchId(branchId);
+  }
+
+  /**
+   * Authorize an actor to read/update a branch's financial details. The branch's
+   * organisation is resolved server-side; platform admins and users with access
+   * to that organisation are allowed, everyone else is denied (non-revealing 404).
+   */
+  async assertCanManageBranch(branchId: number, actorId: number): Promise<void> {
+    if (!actorId) throw new NotFoundError('Branch');
+    const branch = await branchRepository.findById(branchId);
+    if (!branch) throw new NotFoundError('Branch');
+    const allowed = await canAccessOrganisation(actorId, branch.organisation_id);
+    if (!allowed) throw new NotFoundError('Branch');
   }
 
   async upsertBranchFinancialDetails(branchId: number, data: any) {

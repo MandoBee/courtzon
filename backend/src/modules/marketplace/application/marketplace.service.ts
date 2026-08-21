@@ -753,6 +753,7 @@ export const marketplaceService = {
   async updateOrderStatus(orderId: number, userId: number, data: any) {
     const order = await this.getOrder(orderId);
     const userRole = await this._getUserRoleInOrder(userId, order);
+    if (!userRole) throw new NotFoundError('Order not found');
 
     this._validateStatusTransition(order.status, data.status, userRole);
 
@@ -1185,7 +1186,7 @@ export const marketplaceService = {
     }
   },
 
-  async _getUserRoleInOrder(userId: number, order: any): Promise<'buyer' | 'seller' | 'admin'> {
+  async _getUserRoleInOrder(userId: number, order: any): Promise<'buyer' | 'seller' | 'admin' | null> {
     if (order.buyer_id === userId) return 'buyer';
     const orgs = await repo.findOrgByOwnerId(userId);
     if (orgs?.length) {
@@ -1194,7 +1195,11 @@ export const marketplaceService = {
         return 'seller';
       }
     }
-    return 'admin';
+    // A user who is neither the buyer nor a seller on this order must be a
+    // genuine platform admin to manage it. Do NOT fall back to 'admin' for
+    // unrelated users holding a broad view permission.
+    if (await repo.isPlatformAdmin(userId)) return 'admin';
+    return null;
   },
 
   _validateStatusTransition(current: string, next: string, role: string) {

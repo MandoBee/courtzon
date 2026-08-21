@@ -1,5 +1,6 @@
 import type mysql from 'mysql2/promise';
 import { getPool } from '../../../../database/mysql.js';
+import { canAccessOrganisation as canAccessOrganisationShared } from '../../../../shared/middleware/org-access.js';
 import { generateUUID, generateQRToken } from '../../../../shared/utils/token.js';
 import { ConflictError } from '../../../../shared/errors/app-error.js';
 import type { RowDataPacket, ResultSetHeader } from 'mysql2';
@@ -615,6 +616,10 @@ export class BookingRepository {
       [userId, roleSlug]
     );
     return rows.length > 0;
+  }
+
+  async canAccessOrganisation(userId: number, orgId: number): Promise<boolean> {
+    return canAccessOrganisationShared(userId, orgId);
   }
 
   async releaseSlots(bookingId: number, conn?: mysql.PoolConnection): Promise<void> {

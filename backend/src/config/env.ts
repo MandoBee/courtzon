@@ -76,6 +76,10 @@ const envSchema = z.object({
   MAIL_FROM: z.string().optional(),
 
   LOG_LEVEL: z.string().optional(),
+  // Explicit opt-in gate for the unauthenticated temporary password reset routes.
+  // These routes are secured by default (disabled) and require BOTH this env flag
+  // AND the auth.temporary_password_reset_enabled DB feature flag to be enabled.
+  AUTH_TEMPORARY_RESET_ENABLED: z.string().optional(),
   RELAX_RATE_LIMIT: z.string().optional(),
   ENABLE_API_DOCS: z.string().optional(),
   METRICS_TOKEN: z.string().optional(),

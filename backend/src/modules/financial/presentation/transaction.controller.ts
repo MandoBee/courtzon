@@ -18,7 +18,8 @@ export async function getBranchTransactions(request: FastifyRequest, reply: Fast
 
 export async function getTransaction(request: FastifyRequest, reply: FastifyReply) {
   const id = parseInt((request.params as any).id);
-  const txn = await transactionService.getTransaction(id);
+  const userId = (request as any).userId;
+  const txn = await transactionService.getTransaction(id, userId);
   if (!txn) return reply.status(404).send({ error: 'Transaction not found' });
   return reply.send(txn);
 }

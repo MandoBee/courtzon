@@ -722,6 +722,25 @@ export class BookingService {
     return this.getBooking(id);
   }
 
+  /**
+   * Authorize an actor to mutate a booking's status/payment on behalf of the
+   * booking's organisation. The organisation is resolved server-side from the
+   * booking record (never from client input). Super-admins, the org owner, and
+   * users with an org role-scope on that organisation are allowed. Everyone
+   * else is denied with a non-revealing 404.
+   */
+  private async _assertCanManageBooking(id: number, actorId?: number): Promise<void> {
+    if (!actorId) throw new NotFoundError('Booking');
+    const booking = await bookingRepository.findById(id);
+    if (!booking) throw new NotFoundError('Booking');
+    const allowed = await bookingRepository.canAccessOrganisation(actorId, booking.organisation_id);
+    if (!allowed) throw new NotFoundError('Booking');
+  }
+
+  async canAccessOrganisation(userId: number, orgId: number): Promise<boolean> {
+    return bookingRepository.canAccessOrganisation(userId, orgId);
+  }
+
   private async _canUserCancel(booking: any): Promise<boolean> {
     const pool = getPool();
     const [orgRows] = await pool.execute<RowData>(
@@ -916,6 +935,8 @@ export class BookingService {
   }
 
   async updateBookingStatus(id: number, status: string, actorId?: number) {
+    await this._assertCanManageBooking(id, actorId);
+
     if (status === 'confirmed' && isFeatureEnabled('BOOKING_V2_CONFIRM')) {
       return this.confirmBookingV2(id);
     }
@@ -1226,6 +1247,8 @@ export class BookingService {
   }
 
   async updatePaymentStatus(id: number, paymentStatus: string, userId?: number) {
+    await this._assertCanManageBooking(id, userId);
+
     const booking = await bookingRepository.findById(id);
     if (!booking) throw new NotFoundError('Booking');
 

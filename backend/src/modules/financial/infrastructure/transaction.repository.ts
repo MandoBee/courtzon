@@ -80,6 +80,36 @@ export const transactionRepository = {
     return { ...txn, entries };
   },
 
+  /**
+   * True if this transaction has a user_wallet entry whose wallet belongs to
+   * the given user (i.e. it is one of that user's wallet transactions).
+   */
+  async isUserTransaction(userId: number, transactionId: number): Promise<boolean> {
+    const pool = getPool();
+    const [rows] = await pool.execute<RowData>(
+      `SELECT 1 FROM transaction_entries te
+       JOIN user_wallets uw ON te.entity_type = 'user_wallet' AND te.entity_id = uw.id
+       WHERE te.transaction_id = ? AND uw.user_id = ?
+       LIMIT 1`,
+      [transactionId, userId],
+    );
+    return rows.length > 0;
+  },
+
+  /**
+   * Returns the set of organisation ids referenced by this transaction's
+   * entries (branch/organisation-scoped entries).
+   */
+  async getTransactionOrgIds(transactionId: number): Promise<number[]> {
+    const pool = getPool();
+    const [rows] = await pool.execute<RowData>(
+      `SELECT DISTINCT organisation_id FROM transaction_entries
+       WHERE transaction_id = ? AND organisation_id IS NOT NULL`,
+      [transactionId],
+    );
+    return (rows as any[]).map((r) => Number(r.organisation_id));
+  },
+
   async findBySource(sourceType: string, sourceId: number): Promise<any[]> {
     const pool = getPool();
     const [rows] = await pool.execute<RowData>(

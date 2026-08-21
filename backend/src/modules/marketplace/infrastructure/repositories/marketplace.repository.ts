@@ -1,6 +1,7 @@
 import type mysql from 'mysql2/promise';
 import { getPool } from '../../../../database/mysql.js';
 import { activeSubscriptionCondition, nonExpiredSubscriptionCondition } from '../../../../shared/utils/subscription-validator.js';
+import { isPlatformAdmin as isPlatformAdminShared } from '../../../../shared/middleware/org-access.js';
 
 type RowData = mysql.RowDataPacket[];
 
@@ -326,6 +327,10 @@ export const marketplaceRepository = {
       [id, sellerId]
     );
     return (result as any).affectedRows > 0;
+  },
+
+  async isPlatformAdmin(userId: number) {
+    return isPlatformAdminShared(userId);
   },
 
   async findOrgByOwnerId(userId: number) {
