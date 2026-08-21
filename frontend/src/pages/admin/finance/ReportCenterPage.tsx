@@ -223,7 +223,7 @@ export default function ReportCenterPage() {
                   <th className="text-left px-3 py-2">ID</th><th className="text-left px-3 py-2">Org</th><th className="text-left px-3 py-2">Status</th><th className="text-right px-3 py-2">Gross</th><th className="text-right px-3 py-2">Net</th><th className="text-left px-3 py-2">Date</th>
                 </tr></thead>
                 <tbody>{settlementList.map((s: any, i: number) => (
-                  <tr key={i} className="border-b border-[var(--color-border)] last:border-0 cursor-pointer hover:bg-[var(--color-bg)]" onClick={() => navigate(`/admin/settlements`)}>
+                  <tr key={i} className="border-b border-[var(--color-border)] last:border-0 cursor-pointer hover:bg-[var(--color-bg)]" onClick={() => navigate(`/admin/unified-settlements`)}>
                     <td className="px-3 py-2 text-xs">#{s.id}</td>
                     <td className="px-3 py-2 text-xs">{s.organisation_name || s.organisation_id}</td>
                     <td className="px-3 py-2"><span className={`text-xs px-1.5 py-0.5 rounded capitalize ${s.settlement_status === 'completed' ? 'bg-green-100 text-green-700' : s.settlement_status === 'pending_approval' ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-100 text-gray-600'}`}>{s.settlement_status}</span></td>
