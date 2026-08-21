@@ -60,7 +60,7 @@ export default function FinanceDashboardPage() {
         <div className="flex gap-2">
           <button onClick={() => navigate('/admin/finance/ledger')} className="text-xs text-[var(--color-primary)] hover:underline">Ledger</button>
           <button onClick={() => navigate('/admin/finance/reports')} className="text-xs text-[var(--color-primary)] hover:underline">Reports</button>
-          <button onClick={() => navigate('/admin/settlements')} className="text-xs text-[var(--color-primary)] hover:underline">Settlements</button>
+          <button onClick={() => navigate('/admin/unified-settlements')} className="text-xs text-[var(--color-primary)] hover:underline">Settlements</button>
           <ExportButton data={Array.isArray(ledger) ? ledger : (summary?.byAccount || [])} filename="finance-export" />
         </div>
       </div>
@@ -75,8 +75,8 @@ export default function FinanceDashboardPage() {
           onClick={() => navigate('/admin/finance/ledger?accountType=wallet_liability')}
           color="text-blue-600"
         />
-        <KPI label="Pending Settlements" value={String(pendingSettlements.length)} sub={`${pendingSettlements.reduce((s: number, x: any) => s + Number(x.final_amount || 0), 0).toLocaleString()} EGP`} onClick={() => navigate('/admin/settlements')} color="text-yellow-600" />
-        <KPI label="Completed Settlements" value={String(completedSettlements.length)} sub={`${completedSettlements.reduce((s: number, x: any) => s + Number(x.final_amount || 0), 0).toLocaleString()} EGP`} onClick={() => navigate('/admin/settlements')} color="text-green-600" />
+        <KPI label="Pending Settlements" value={String(pendingSettlements.length)} sub={`${pendingSettlements.reduce((s: number, x: any) => s + Number(x.final_amount || 0), 0).toLocaleString()} EGP`} onClick={() => navigate('/admin/unified-settlements')} color="text-yellow-600" />
+        <KPI label="Completed Settlements" value={String(completedSettlements.length)} sub={`${completedSettlements.reduce((s: number, x: any) => s + Number(x.final_amount || 0), 0).toLocaleString()} EGP`} onClick={() => navigate('/admin/unified-settlements')} color="text-green-600" />
       </div>
 
       {/* Row 2: Ledger summary */}

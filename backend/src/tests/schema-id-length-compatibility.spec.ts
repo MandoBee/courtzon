@@ -104,7 +104,6 @@ const GENERATOR_MAX_LENGTHS: Record<string, number> = {
   'command.confirm-booking':            36,  // "confirm-booking"(15) + 21
   'command.cancel-booking':             35,  // "cancel-booking"(14) + 21
   'command.dispatch-notification':      42,  // "dispatch-notification"(21) + 21
-  'command.change-settlement-status':   45,  // "change-settlement-status"(24) + 21
 
   // Workflow command ID: `${correlationId}:${step.name}`
   // correlationId = ULID(26), step.name typically ≤ 40 chars
@@ -175,7 +174,6 @@ const GENERATOR_TO_COLUMN: Record<string, string[]> = {
   'command.confirm-booking':      ['processed_commands.command_id', 'dead_letter_entries.message_id'],
   'command.cancel-booking':       ['processed_commands.command_id', 'dead_letter_entries.message_id'],
   'command.dispatch-notification':['processed_commands.command_id', 'dead_letter_entries.message_id'],
-  'command.change-settlement-status': ['processed_commands.command_id', 'dead_letter_entries.message_id'],
   'command.workflow-composite':   ['processed_commands.command_id', 'dead_letter_entries.message_id'],
   'workflow.public_id':           ['workflow_instances.public_id'],
   'gateway.wallet_reference':     ['payment_transactions.gateway_reference'],
@@ -247,7 +245,6 @@ describe('Schema ↔ Code ID Length Compatibility', () => {
       { name: 'confirm-booking',      prefix: 'confirm-booking' },
       { name: 'cancel-booking',       prefix: 'cancel-booking' },
       { name: 'dispatch-notification', prefix: 'dispatch-notification' },
-      { name: 'change-settlement-status', prefix: 'change-settlement-status' },
     ];
 
     for (const gen of templateGenerators) {

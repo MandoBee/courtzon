@@ -112,7 +112,7 @@ export default function AdminDashboard() {
         { label: 'Today\'s Bookings', icon: '📅', path: '/admin/bookings', count: stats?.todayBookings ?? 0 },
         { label: 'Active Users Today', icon: '👥', path: '/admin/users', count: stats?.activeUsersToday ?? 0 },
         { label: 'View Reports', icon: '📈', path: '/admin/reports' },
-        { label: 'Settlements', icon: '💰', path: '/admin/settlements' },
+        { label: 'Settlements', icon: '💰', path: '/admin/unified-settlements' },
         { label: 'Reception', icon: '🏪', path: '/admin/reception' },
       ]} />
 
