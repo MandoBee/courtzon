@@ -1,58 +1,11 @@
 import type mysql from 'mysql2/promise';
 import { getPool } from '../../../../database/mysql.js';
 import { buildPagination, paginationClause } from '../../../../shared/utils/pagination.js';
-import { ConflictError } from '../../../../shared/errors/app-error.js';
-import { aggregateVersionConflictsTotal } from '../../../../infrastructure/metrics/metrics.js';
 
 type RowData = mysql.RowDataPacket[];
-type Executor = mysql.Pool | mysql.PoolConnection;
-
-function resolvePool(conn?: mysql.PoolConnection): Executor {
-  return conn ?? getPool();
-}
-
-export class AggregateVersionConflict extends ConflictError {
-  constructor(id: number, expectedVersion: number, actualVersion: number) {
-    super(`Settlement ${id} version conflict: expected ${expectedVersion}, actual ${actualVersion}`);
-  }
-}
 
 export const settlementRepository = {
-  // ── Create ──
-
   // ── Read ──
-
-  async findSettlementById(id: number, conn?: mysql.PoolConnection) {
-    const pool = resolvePool(conn);
-    const [rows] = await pool.execute<RowData>(
-      'SELECT s.*, o.name as organisation_name FROM settlements s JOIN organisations o ON o.id = s.organisation_id WHERE s.id = ?',
-      [id],
-    );
-    return rows[0] || null;
-  },
-
-  async persistTransition(id: number, status: string, expectedVersion: number, extra?: Record<string, any>, conn?: mysql.PoolConnection): Promise<void> {
-    const pool = resolvePool(conn);
-    const fields: string[] = ['settlement_status = ?', 'aggregate_version = aggregate_version + 1', 'updated_at = NOW()'];
-    const params: any[] = [status];
-    if (extra) {
-      for (const [key, value] of Object.entries(extra)) {
-        fields.push(`${key} = ?`);
-        params.push(value);
-      }
-    }
-    params.push(id, expectedVersion);
-    const [result] = await pool.execute<mysql.ResultSetHeader>(
-      `UPDATE settlements SET ${fields.join(', ')} WHERE id = ? AND aggregate_version = ?`,
-      params,
-    );
-    if (result.affectedRows === 0) {
-      const [rows] = await pool.execute('SELECT aggregate_version FROM settlements WHERE id = ?', [id]);
-      const actual = (rows as any[])[0]?.aggregate_version;
-      aggregateVersionConflictsTotal.inc({ aggregate_type: 'settlement' });
-      throw new AggregateVersionConflict(id, expectedVersion, actual ?? 0);
-    }
-  },
 
   async getSettlementDetail(settlementId: number) {
     const pool = getPool();
@@ -127,34 +80,5 @@ export const settlementRepository = {
 
   async findOrgSettlements(orgId: number, page: number, limit: number) {
     return this.findSettlements({ orgId, page, limit });
-  },
-
-  // ── Update ──
-
-  async updateSettlementStatus(id: number, status: string, extra?: Record<string, any>) {
-    const pool = getPool();
-    const fields: string[] = ['settlement_status = ?'];
-    const params: any[] = [status];
-
-    if (extra) {
-      for (const [key, value] of Object.entries(extra)) {
-        fields.push(`${key} = ?`);
-        params.push(value);
-      }
-    }
-
-    params.push(id);
-    await pool.execute(`UPDATE settlements SET ${fields.join(', ')} WHERE id = ?`, params);
-  },
-
-  // ── Bank Account ──
-
-  async getBankAccount(id: number) {
-    const pool = getPool();
-    const [rows] = await pool.execute<RowData>(
-      'SELECT * FROM bank_accounts WHERE id = ?',
-      [id],
-    );
-    return rows[0] || null;
   },
 };
