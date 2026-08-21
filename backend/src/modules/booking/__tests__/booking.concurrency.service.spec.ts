@@ -17,6 +17,7 @@ async function cleanupFixtures(exec: (sql: string, params?: any[]) => Promise<an
   await exec(`DELETE FROM bookings WHERE user_id = ${TEST_USER}`);
   await exec(`DELETE FROM resources WHERE id = ${TEST_RESOURCE}`);
   await exec(`DELETE FROM branches WHERE id = ${TEST_BRANCH}`);
+  await exec(`DELETE FROM tax_rates WHERE organisation_id = ${TEST_ORG} AND org_scope = 'gd-fixture'`);
   await exec(`DELETE FROM organisations WHERE id = ${TEST_ORG}`);
   await exec(`DELETE FROM user_wallets WHERE user_id = ${TEST_USER}`);
   await exec(`DELETE FROM users WHERE id = ${TEST_USER}`);
@@ -78,6 +79,10 @@ beforeAll(async () => {
   // Org + branch + resource
   await pool.execute(`INSERT IGNORE INTO organisations (id, public_id, org_type_id, owner_id, name, slug, is_active)
     VALUES (${TEST_ORG}, UUID(), 1, ${TEST_USER}, 'Test Conc Org', 'test-conc-org', TRUE)`);
+  // Org-specific tax rate owned by this fixture (prevents cross-test FK
+  // interference from other suites that delete global tax_rates mid-run).
+  await pool.execute(`INSERT IGNORE INTO tax_rates (organisation_id, name, rate, type, tax_category, org_scope, is_active, is_global)
+    VALUES (${TEST_ORG}, 'GD Fixture VAT', 0, 'percentage', 'vat', 'gd-fixture', 1, 0)`);
   await pool.execute(`INSERT IGNORE INTO branches (id, public_id, organisation_id, name, slug, timezone, opening_time, closing_time)
     VALUES (${TEST_BRANCH}, UUID(), ${TEST_ORG}, 'Test Conc Branch', 'test-conc-branch', 'Africa/Cairo', '08:00:00', '22:00:00')`);
   const [sports] = await pool.execute<any[]>(`SELECT id FROM sports WHERE deleted_at IS NULL ORDER BY id LIMIT 1`);
@@ -115,6 +120,7 @@ afterAll(async () => {
   await pool.execute(`DELETE FROM bookings WHERE user_id = ${TEST_USER}`);
   await pool.execute(`DELETE FROM resources WHERE id = ${TEST_RESOURCE}`);
   await pool.execute(`DELETE FROM branches WHERE id = ${TEST_BRANCH}`);
+  await pool.execute(`DELETE FROM tax_rates WHERE organisation_id = ${TEST_ORG} AND org_scope = 'gd-fixture'`);
   await pool.execute(`DELETE FROM organisations WHERE id = ${TEST_ORG}`);
   await pool.execute(`DELETE FROM user_wallets WHERE user_id = ${TEST_USER}`);
   await pool.execute(`DELETE FROM users WHERE id = ${TEST_USER}`);
@@ -244,6 +250,158 @@ describe('Booking service-layer concurrency', () => {
        LEFT JOIN bookings b ON b.id = bs.booking_id
        WHERE bs.booking_id IN (SELECT id FROM bookings WHERE user_id = ${TEST_USER} AND booking_date = ?) AND b.id IS NULL`, [date]);
     expect(slots.length).toBe(0);
+  });
+
+});
+
+describe('Group D — booking history preservation / terminal rebooking', () => {
+
+  async function createBookingRow(date: string, start: string, end: string, status: string): Promise<number> {
+    const [r] = await pool.execute<any[]>(
+      `INSERT INTO bookings (public_id, user_id, organisation_id, branch_id, resource_id, booking_type,
+         booking_date, business_date, start_time, end_time, start_at_utc, end_at_utc,
+         total_amount, booking_status, payment_status, payment_method)
+       VALUES (UUID(), ${TEST_USER}, ${TEST_ORG}, ${TEST_BRANCH}, ${TEST_RESOURCE}, 'private_match',
+         ?, ?, ?, ?, TIMESTAMP(?), TIMESTAMP(?),
+         100, ?, 'paid', 'cash')`,
+      [date, date, start, end, `${date} ${start}:00`, `${date} ${end}:00`, status],
+    );
+    return (r as any).insertId;
+  }
+
+  async function rebookSameSlot(date: string, start: string, end: string) {
+    return bookingService.createBooking({
+      branchId: TEST_BRANCH,
+      resourceId: TEST_RESOURCE,
+      bookingType: 'private_match',
+      bookingDate: date,
+      startTime: start,
+      endTime: end,
+      paymentMethod: 'cash',
+    }, TEST_USER);
+  }
+
+  it('TEST 1 — cancelled booking remains in DB after a new booking for the same slot is created', async () => {
+    const date = '2027-12-01';
+    await cleanDate(date);
+    const oldId = await createBookingRow(date, '10:00', '11:00', 'cancelled');
+
+    const result = await rebookSameSlot(date, '10:00', '11:00');
+
+    // Old terminal booking preserved.
+    const [oldRows] = await pool.execute<any[]>(`SELECT booking_status FROM bookings WHERE id = ?`, [oldId]);
+    expect(oldRows[0].booking_status).toBe('cancelled');
+    // New booking exists.
+    const [newRows] = await pool.execute<any[]>(`SELECT COUNT(*) as cnt FROM bookings WHERE id = ?`, [result.bookingId]);
+    expect(newRows[0].cnt).toBe(1);
+    // Total = 2 (old + new), nothing deleted.
+    const [total] = await pool.execute<any[]>(`SELECT COUNT(*) as cnt FROM bookings WHERE user_id = ${TEST_USER} AND booking_date = ?`, [date]);
+    expect(total[0].cnt).toBe(2);
+  });
+
+  it('TEST 2 — expired booking remains in DB after same-slot rebooking', async () => {
+    const date = '2027-12-02';
+    await cleanDate(date);
+    const oldId = await createBookingRow(date, '10:00', '11:00', 'expired');
+    const result = await rebookSameSlot(date, '10:00', '11:00');
+
+    const [oldRows] = await pool.execute<any[]>(`SELECT booking_status FROM bookings WHERE id = ?`, [oldId]);
+    expect(oldRows[0].booking_status).toBe('expired');
+    const [newRows] = await pool.execute<any[]>(`SELECT COUNT(*) as cnt FROM bookings WHERE id = ?`, [result.bookingId]);
+    expect(newRows[0].cnt).toBe(1);
+    const [total] = await pool.execute<any[]>(`SELECT COUNT(*) as cnt FROM bookings WHERE user_id = ${TEST_USER} AND booking_date = ?`, [date]);
+    expect(total[0].cnt).toBe(2);
+  });
+
+  it('TEST 3 — no-show booking remains in DB after same-slot rebooking', async () => {
+    const date = '2027-12-03';
+    await cleanDate(date);
+    const oldId = await createBookingRow(date, '10:00', '11:00', 'no_show');
+    const result = await rebookSameSlot(date, '10:00', '11:00');
+
+    const [oldRows] = await pool.execute<any[]>(`SELECT booking_status FROM bookings WHERE id = ?`, [oldId]);
+    expect(oldRows[0].booking_status).toBe('no_show');
+    const [total] = await pool.execute<any[]>(`SELECT COUNT(*) as cnt FROM bookings WHERE user_id = ${TEST_USER} AND booking_date = ?`, [date]);
+    expect(total[0].cnt).toBe(2);
+    expect(result.bookingId).toBeGreaterThan(0);
+  });
+
+  it('TEST 4 — concurrent rebooking after a terminal booking: one new booking wins, loser 409, old terminal remains', async () => {
+    const date = '2027-12-04';
+    await cleanDate(date);
+    const oldId = await createBookingRow(date, '10:00', '11:00', 'cancelled');
+
+    const results = await Promise.allSettled([
+      rebookSameSlot(date, '10:00', '11:00'),
+      rebookSameSlot(date, '10:00', '11:00'),
+    ]);
+    const fulfilled = results.filter((r) => r.status === 'fulfilled');
+    const rejected = results.filter((r) => r.status === 'rejected');
+    expect(fulfilled.length).toBe(1);
+    expect(rejected.length).toBe(1);
+    const loser = rejected[0] as PromiseRejectedResult;
+    expect((loser.reason as any)?.statusCode).toBe(409);
+
+    // Old terminal booking still present + exactly one new active booking.
+    const [oldRows] = await pool.execute<any[]>(`SELECT booking_status FROM bookings WHERE id = ?`, [oldId]);
+    expect(oldRows[0].booking_status).toBe('cancelled');
+    const [active] = await pool.execute<any[]>(
+      `SELECT COUNT(*) as cnt FROM bookings WHERE user_id = ${TEST_USER} AND booking_date = ? AND booking_status NOT IN ('cancelled','expired','no_show')`, [date]);
+    expect(active[0].cnt).toBe(1);
+  });
+
+  it('TEST 5 — partial-overlap concurrency after a terminal booking: only non-overlapping booking commits', async () => {
+    const date = '2027-12-05';
+    await cleanDate(date);
+    const oldId = await createBookingRow(date, '10:00', '11:00', 'expired');
+
+    // 10:00-11:00 and 10:30-11:30 overlap → only one may commit.
+    const results = await Promise.allSettled([
+      rebookSameSlot(date, '10:00', '11:00'),
+      rebookSameSlot(date, '10:30', '11:30'),
+    ]);
+    const fulfilled = results.filter((r) => r.status === 'fulfilled');
+    const rejected = results.filter((r) => r.status === 'rejected');
+    expect(fulfilled.length).toBe(1);
+    expect(rejected.length).toBe(1);
+    const loser = rejected[0] as PromiseRejectedResult;
+    expect((loser.reason as any)?.statusCode).toBe(409);
+
+    // Old terminal preserved; only one new active booking.
+    const [oldRows] = await pool.execute<any[]>(`SELECT booking_status FROM bookings WHERE id = ?`, [oldId]);
+    expect(oldRows[0].booking_status).toBe('expired');
+    const [active] = await pool.execute<any[]>(
+      `SELECT COUNT(*) as cnt FROM bookings WHERE user_id = ${TEST_USER} AND booking_date = ? AND booking_status NOT IN ('cancelled','expired','no_show')`, [date]);
+    expect(active[0].cnt).toBe(1);
+  });
+
+  it('TEST 6 — public match / matches RESTRICT: terminal booking with attached match is not deleted, rebooking succeeds', async () => {
+    const date = '2027-12-06';
+    await cleanDate(date);
+    // Terminal booking with an attached match row (matches.booking_id is UNIQUE + RESTRICT).
+    const bookingId = await createBookingRow(date, '10:00', '11:00', 'cancelled');
+    await pool.execute(`INSERT INTO matches (type, status, booking_id, sport_id) VALUES ('public', 'cancelled', ?, (SELECT id FROM sports WHERE deleted_at IS NULL ORDER BY id LIMIT 1))`, [bookingId]);
+
+    const result = await rebookSameSlot(date, '10:00', '11:00');
+
+    // Historical booking + its match remain intact.
+    const [oldRows] = await pool.execute<any[]>(`SELECT booking_status FROM bookings WHERE id = ?`, [bookingId]);
+    expect(oldRows[0].booking_status).toBe('cancelled');
+    const [matchRows] = await pool.execute<any[]>(`SELECT COUNT(*) as cnt FROM matches WHERE booking_id = ?`, [bookingId]);
+    expect(matchRows[0].cnt).toBe(1);
+    // New booking created.
+    expect(result.bookingId).toBeGreaterThan(0);
+
+    await pool.execute(`DELETE FROM matches WHERE booking_id = ?`, [bookingId]);
+  });
+
+  it('TEST 7 — completed booking still blocks identical slot (past context: completed is blocking)', async () => {
+    const date = '2027-12-07';
+    await cleanDate(date);
+    await createBookingRow(date, '10:00', '11:00', 'completed');
+
+    // completed is NOT in the availability exclusion list → identical slot rebook is rejected (409).
+    await expect(rebookSameSlot(date, '10:00', '11:00')).rejects.toMatchObject({ statusCode: 409 });
   });
 
 });

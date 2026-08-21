@@ -14,6 +14,7 @@ import { cancelBookingHandler } from '../../booking/commands/cancel-booking.comm
 import { CancellationReason } from '../../../platform/shared/booking-types.js';
 import type { Command } from '../../../shared/command/command-base.js';
 import { toMySqlDateTime } from '../../../shared/utils/mysql-date.js';
+import { bookingRepository } from '../../booking/infrastructure/repositories/booking.repository.js';
 
 type RowData = mysql.RowDataPacket[];
 
@@ -487,6 +488,18 @@ export const activitiesService = {
     const conn = await pool.getConnection();
     try {
       await conn.beginTransaction();
+
+      // Authoritative availability + concurrency guard (same as booking V2):
+      // resource-row FOR UPDATE serialization + overlap check. A court that
+      // overlaps a blocking booking (or a concurrent identical/partial-overlap
+      // booking) is rejected with ConflictError (HTTP 409) — never a raw
+      // ER_DUP_ENTRY 500.
+      const available = await bookingRepository.checkSlotAvailability(
+        data.resourceId, bookingDate, [{ start: startTime, end: endTime, date: bookingDate }], conn,
+      );
+      if (!available) {
+        throw new ConflictError('One or more slots are no longer available');
+      }
 
       const [result] = await conn.execute(
         `INSERT INTO bookings (public_id, user_id, organisation_id, branch_id, resource_id, booking_type,
