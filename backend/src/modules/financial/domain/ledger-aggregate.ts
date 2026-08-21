@@ -46,22 +46,6 @@ export interface LedgerLineInput {
   periodId?: number | null;
 }
 
-export interface SettlementBatch {
-  id?: number;
-  batchType: 'daily' | 'weekly' | 'monthly' | 'manual';
-  periodStart: string;
-  periodEnd: string;
-  grossAmount: number;
-  discountAmount: number;
-  taxAmount: number;
-  commissionAmount: number;
-  refundAmount: number;
-  netAmount: number;
-  status: 'pending' | 'completed' | 'failed';
-  organisationId?: number;
-  createdAt: string;
-}
-
 export interface CommissionRule {
   id?: number;
   entityType: 'booking' | 'academy' | 'marketplace' | 'membership';

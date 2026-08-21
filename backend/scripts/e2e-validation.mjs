@@ -205,13 +205,13 @@ try {
   const WA = 'Admin';
   let r;
 
-  // Withdrawal requests
-  r = await api('GET', '/admin/withdrawal-requests?page=1&limit=5', { token: adminToken });
-  record(WA, 'Withdrawal requests', r.status === 200 && typeof r.body.total === 'number');
+  // Withdrawal queue
+  r = await api('GET', '/admin/withdrawals?page=1&limit=5', { token: adminToken });
+  record(WA, 'Withdrawal queue', r.status === 200 && typeof r.body.total === 'number');
 
-  // Transactions
-  r = await api('GET', '/admin/transactions?page=1&limit=5', { token: adminToken });
-  record(WA, 'Transactions', r.status === 200 && typeof r.body.total === 'number');
+  // Ledger
+  r = await api('GET', '/admin/financial/ledger?from=2020-01-01&to=2026-12-31', { token: adminToken });
+  record(WA, 'Ledger', r.status === 200 && Array.isArray(r.body.data));
 
   // Organisations
   r = await api('GET', '/organisations?page=1&limit=5', { token: adminToken });

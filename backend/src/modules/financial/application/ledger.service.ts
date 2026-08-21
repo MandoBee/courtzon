@@ -85,10 +85,6 @@ export class LedgerService {
   async getRevenue(from: string, to: string) {
     return ledgerRepository.getRevenueSummary(from, to);
   }
-
-  async getSettlements(filters?: { status?: string; from?: string; to?: string }) {
-    return ledgerRepository.findSettlementBatches(filters);
-  }
 }
 
 export const ledgerService = new LedgerService();

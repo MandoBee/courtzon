@@ -55,25 +55,6 @@ export async function listEligibleBookingsHandler(request: FastifyRequest, reply
   return reply.send(result);
 }
 
-export async function getBookingSettlementHandler(request: FastifyRequest, reply: FastifyReply) {
-  const { bookingId } = request.params as any;
-  const userId = (request as any).userId;
-
-  const econ = await bookingSettlementService.getEconomics(Number(bookingId));
-  if (!econ) {
-    return reply.status(404).send({ error: 'NOT_FOUND', message: 'Booking not found' });
-  }
-
-  const admin = await isSuperAdmin(userId);
-  if (!admin) {
-    if (econ.organisationId == null || !(await verifyOrgAccess(userId, econ.organisationId))) {
-      return reply.status(403).send({ error: 'FORBIDDEN', message: 'You do not have access to this booking' });
-    }
-  }
-
-  return reply.send(econ);
-}
-
 export async function settleBookingHandler(request: FastifyRequest, reply: FastifyReply) {
   const { bookingId } = request.params as any;
   const parsed = BookingSettleSchema.safeParse(request.body || {});
