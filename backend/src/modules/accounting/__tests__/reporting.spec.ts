@@ -6,6 +6,54 @@ type RowData = RowDataPacket[];
 
 let testPool: mysql.Pool;
 
+// Exact global test-account codes owned by this suite. Cleanup must filter on
+// (organisation_id IS NULL, code IN (...)) so InnoDB uses the uk_org_code index
+// range instead of a full table scan (a full-scan DELETE under REPEATABLE READ
+// takes next-key locks across the whole table and deadlocks against parallel
+// workers holding FK parent S-locks on chart_of_accounts).
+const GLOBAL_TEST_CODES = ['9993', '9994', '9995', '9996', '9997', '9998', '9999'];
+const REPORTING_ORG_SLUGS = ['test-org-a-reporting', 'test-org-b-reporting'];
+
+async function purgeGlobalTestAccounts(pool: mysql.Pool): Promise<void> {
+  const [rows] = await pool.execute<RowData>(
+    `SELECT id FROM chart_of_accounts WHERE organisation_id IS NULL AND code IN (${GLOBAL_TEST_CODES.map(() => '?').join(',')})`,
+    GLOBAL_TEST_CODES
+  );
+  const ids = (rows as any[]).map((r) => r.id);
+  if (ids.length === 0) return;
+  const placeholders = ids.map(() => '?').join(',');
+  await pool.execute(`DELETE FROM general_ledger WHERE account_id IN (${placeholders})`, ids);
+  await pool.execute(`DELETE FROM ledger_entries WHERE chart_account_id IN (${placeholders})`, ids);
+  await pool.execute(`DELETE FROM chart_of_accounts WHERE id IN (${placeholders})`, ids);
+}
+
+async function purgeReportingOrgsBySlug(pool: mysql.Pool): Promise<void> {
+  // Deleting the test orgs cascades their org-owned ORG-% accounts (fk_coa_org);
+  // clear their GL/ledger rows first so the cascade never hits child FK rows.
+  const [orgs] = await pool.execute<RowData>(
+    `SELECT id FROM organisations WHERE slug IN (${REPORTING_ORG_SLUGS.map(() => '?').join(',')})`,
+    REPORTING_ORG_SLUGS
+  );
+  const ids = (orgs as any[]).map((r) => r.id);
+  if (ids.length === 0) return;
+  const placeholders = ids.map(() => '?').join(',');
+  await pool.execute(`DELETE FROM general_ledger WHERE organisation_id IN (${placeholders})`, ids);
+  await pool.execute(`DELETE FROM ledger_entries WHERE organisation_id IN (${placeholders})`, ids);
+  await pool.execute(`DELETE FROM organisations WHERE id IN (${placeholders})`, ids);
+}
+
+async function purgeReportingOrgsBySlugUnify(pool: mysql.Pool): Promise<void> {
+  const [orgs] = await pool.execute<RowData>(
+    `SELECT id FROM organisations WHERE slug = 'test-unify-org'`
+  );
+  const ids = (orgs as any[]).map((r) => r.id);
+  if (ids.length === 0) return;
+  const placeholders = ids.map(() => '?').join(',');
+  await pool.execute(`DELETE FROM general_ledger WHERE organisation_id IN (${placeholders})`, ids);
+  await pool.execute(`DELETE FROM ledger_entries WHERE organisation_id IN (${placeholders})`, ids);
+  await pool.execute(`DELETE FROM organisations WHERE id IN (${placeholders})`, ids);
+}
+
 describe('Reporting — Organization Isolation & Net Income', () => {
   let orgAId: number;
   let orgBId: number;
@@ -27,11 +75,10 @@ describe('Reporting — Organization Isolation & Net Income', () => {
       charset: 'utf8mb4',
     });
 
-    // Idempotent fixture: remove any leftovers from interrupted runs before seeding
-    await testPool.execute(`DELETE FROM general_ledger WHERE account_id IN (SELECT id FROM chart_of_accounts WHERE code LIKE '999%' OR code LIKE 'ORG-%')`);
-    await testPool.execute(`DELETE FROM ledger_entries WHERE chart_account_id IN (SELECT id FROM chart_of_accounts WHERE code LIKE '999%' OR code LIKE 'ORG-%')`);
-    await testPool.execute(`DELETE FROM chart_of_accounts WHERE code LIKE '999%' OR code LIKE 'ORG-%'`);
-    await testPool.execute(`DELETE FROM organisations WHERE slug IN ('test-org-a-reporting', 'test-org-b-reporting')`);
+    // Idempotent fixture: remove any leftovers from interrupted runs before seeding.
+    // All deletes are index-scoped to this suite's own fixtures (see helpers above).
+    await purgeGlobalTestAccounts(testPool);
+    await purgeReportingOrgsBySlug(testPool);
 
     // Create 2 test orgs
     const [orgResultA] = await testPool.execute<RowData>(
@@ -174,13 +221,18 @@ describe('Reporting — Organization Isolation & Net Income', () => {
   });
 
   afterAll(async () => {
-    // Clean up GL entries
-    await testPool.execute(`DELETE FROM general_ledger WHERE account_id IN (SELECT id FROM chart_of_accounts WHERE code LIKE '999%' OR code LIKE 'ORG-%')`);
-    // Clean up COA accounts
-    await testPool.execute(`DELETE FROM chart_of_accounts WHERE code LIKE '999%' OR code LIKE 'ORG-%'`);
-    // Clean up test orgs
-    if (orgAId) await testPool.execute(`DELETE FROM organisations WHERE id = ?`, [orgAId]);
-    if (orgBId) await testPool.execute(`DELETE FROM organisations WHERE id = ?`, [orgBId]);
+    // 1) Global test accounts (+ any GL/ledger rows referencing them)
+    await purgeGlobalTestAccounts(testPool);
+    // 2) Org-scoped GL/ledger rows must go before org deletion: the org→accounts
+    //    cascade would otherwise hit fk_gl_account (RESTRICT) on ORG-% accounts.
+    const orgIds = [orgAId, orgBId].filter(Boolean);
+    if (orgIds.length > 0) {
+      const placeholders = orgIds.map(() => '?').join(',');
+      await testPool.execute(`DELETE FROM general_ledger WHERE organisation_id IN (${placeholders})`, orgIds);
+      await testPool.execute(`DELETE FROM ledger_entries WHERE organisation_id IN (${placeholders})`, orgIds);
+      // 3) Test orgs last (cascades remaining org-owned ORG-% accounts)
+      await testPool.execute(`DELETE FROM organisations WHERE id IN (${placeholders})`, orgIds);
+    }
     await testPool.end();
   });
 
@@ -603,11 +655,10 @@ describe('Unification — Ledger Entries → GL Projection', () => {
       charset: 'utf8mb4',
     });
 
-    // Idempotent fixture: remove any leftovers from interrupted runs before seeding
-    await testPool.execute(`DELETE FROM general_ledger WHERE account_id IN (SELECT id FROM chart_of_accounts WHERE code LIKE 'UNIFY-%')`);
-    await testPool.execute(`DELETE FROM ledger_entries WHERE chart_account_id IN (SELECT id FROM chart_of_accounts WHERE code LIKE 'UNIFY-%')`);
-    await testPool.execute(`DELETE FROM chart_of_accounts WHERE code LIKE 'UNIFY-%'`);
-    await testPool.execute(`DELETE FROM organisations WHERE slug = 'test-unify-org'`);
+    // Idempotent fixture: remove any leftovers from interrupted runs before seeding.
+    // UNIFY-% accounts are owned by this suite's org, so purging by slug-scoped org id
+    // keeps every delete on a narrow index range (no full table scans).
+    await purgeReportingOrgsBySlugUnify(testPool);
 
     const [orgResult] = await testPool.execute<RowData>(
       `INSERT INTO organisations (public_id, org_type_id, owner_id, name, slug, is_active)
@@ -636,9 +687,8 @@ describe('Unification — Ledger Entries → GL Projection', () => {
   });
 
   afterAll(async () => {
-    await testPool.execute(`DELETE FROM general_ledger WHERE account_id IN (SELECT id FROM chart_of_accounts WHERE code LIKE 'UNIFY-%')`);
-    await testPool.execute(`DELETE FROM ledger_entries WHERE chart_account_id IN (SELECT id FROM chart_of_accounts WHERE code LIKE 'UNIFY-%')`);
-    await testPool.execute(`DELETE FROM chart_of_accounts WHERE code LIKE 'UNIFY-%'`);
+    await testPool.execute(`DELETE FROM general_ledger WHERE organisation_id = ?`, [orgId]);
+    await testPool.execute(`DELETE FROM ledger_entries WHERE organisation_id = ?`, [orgId]);
     if (orgId) await testPool.execute(`DELETE FROM organisations WHERE id = ?`, [orgId]);
     await testPool.end();
   });
