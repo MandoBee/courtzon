@@ -120,12 +120,12 @@ export const translationKeysRegistry: TranslationKeyEntry[] = [
 
   { key: 'org.pendingApproval.title', defaultValue: 'Awaiting approval', moduleSlug: 'organisations', elementType: 'heading', elementLabel: 'Org pending approval title', componentPath: 'pages/org/OrgPendingApprovalPage.tsx' },
   { key: 'org.pendingApproval.message', defaultValue: 'This organization is still under CourtZon review. It must be both verified and active before you can manage it. You will get full access once an administrator approves your organization.', moduleSlug: 'organisations', elementType: 'text', elementLabel: 'Org pending approval message', componentPath: 'pages/org/OrgPendingApprovalPage.tsx' },
-  { key: 'home.organization_desc', defaultValue: 'Manage your organization', moduleSlug: 'home', elementType: 'text', elementLabel: 'Home organization card description', componentPath: 'pages/home/DashboardPage.tsx' },
+  { key: 'home.organization_desc', defaultValue: 'Manage your organization', moduleSlug: 'home', elementType: 'text', elementLabel: 'Home organization card description', componentPath: 'pages/player/DashboardPage.tsx' },
   { key: 'org.pendingApproval.redirect', defaultValue: 'Returning to the previous page in {seconds} seconds…', moduleSlug: 'organisations', elementType: 'text', elementLabel: 'Org pending approval redirect countdown', componentPath: 'pages/org/OrgPendingApprovalPage.tsx' },
   { key: 'org.pendingApproval.player_home', defaultValue: 'Back to player home', moduleSlug: 'organisations', elementType: 'button', elementLabel: 'Org pending approval player home link', componentPath: 'pages/org/OrgPendingApprovalPage.tsx' },
 
   // Home dashboard
-  { key: 'home.welcome', defaultValue: 'Welcome back, {name}', moduleSlug: 'home', elementType: 'heading', elementLabel: 'Home welcome', componentPath: 'pages/home/DashboardPage.tsx' },
+  { key: 'home.welcome', defaultValue: 'Welcome back, {name}', moduleSlug: 'home', elementType: 'heading', elementLabel: 'Home welcome', componentPath: 'pages/player/DashboardPage.tsx' },
   { key: 'home.recent_activity', defaultValue: 'Recent Activity', moduleSlug: 'home', elementType: 'heading', elementLabel: 'Home recent activity' },
   { key: 'home.no_activity', defaultValue: 'No recent activity', moduleSlug: 'home', elementType: 'text', elementLabel: 'Home no activity' },
   { key: 'home.seller_dashboard', defaultValue: 'Seller Dashboard', moduleSlug: 'home', elementType: 'heading', elementLabel: 'Home seller dashboard' },

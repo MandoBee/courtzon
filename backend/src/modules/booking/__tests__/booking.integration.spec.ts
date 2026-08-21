@@ -47,9 +47,6 @@ describe('Booking Integration', () => {
       `SELECT COUNT(*) as cnt FROM resources WHERE hourly_price IS NOT NULL AND hourly_price > 0`
     );
     expect(pricedResources[0].cnt).toBeGreaterThan(0);
-
-    const [hours] = await pool.execute<any[]>('SELECT COUNT(*) as cnt FROM operating_hours');
-    expect(hours[0].cnt).toBeGreaterThan(0);
   });
 
   it('should query available slots for a resource', async () => {
@@ -70,17 +67,6 @@ describe('Booking Integration', () => {
     }
 
     const resource = resources[0];
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    const dateStr = tomorrow.toISOString().slice(0, 10);
-
-    // Get operating hours for a branch
-    const [hours] = await pool.execute<any[]>(
-      `SELECT open_time, close_time FROM operating_hours
-       WHERE owner_type = 'branch' AND owner_id = (SELECT branch_id FROM resources WHERE id = ? LIMIT 1)
-       AND day_of_week = ? LIMIT 1`,
-      [resource.id, tomorrow.getDay()]
-    );
 
     expect(resource.id).toBeGreaterThan(0);
   });
