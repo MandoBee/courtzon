@@ -1,10 +1,11 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import mysql from 'mysql2/promise';
+import { createProductFixture, cleanupProductFixture, type ProductFixture } from '../../../tests/helpers/product-fixture.js';
 
 let pool: mysql.Pool;
 const TEST_USER = 999996;
 const TEST_ORG = 6;
-const TEST_PRODUCT = 1;
+let productFixture: ProductFixture;
 
 beforeAll(async () => {
   pool = mysql.createPool({ host: '127.0.0.1', port: 3307, user: 'root', password: 'courtzon2026', database: 'courtzon_v3' });
@@ -18,6 +19,8 @@ beforeAll(async () => {
 
   await pool.execute(`INSERT INTO users (id, public_id, country_id, phone_number, full_phone, email, password_hash, full_name, gender, account_status)
     VALUES (${TEST_USER}, UUID(), 1, '01299999996', '+201299999996', 'test-mp-pay@test.com', '$2b$10$test', 'Test MP Buyer', 'male', 'active')`);
+
+  productFixture = await createProductFixture(pool, TEST_ORG);
 });
 
 afterAll(async () => {
@@ -27,6 +30,7 @@ afterAll(async () => {
   await pool.execute(`DELETE FROM payment_transactions WHERE reference_type = 'order' AND user_id = ${TEST_USER}`);
   await pool.execute(`DELETE FROM orders WHERE buyer_id = ${TEST_USER}`);
   await pool.execute(`DELETE FROM users WHERE id = ${TEST_USER}`);
+  await cleanupProductFixture(pool, productFixture);
   await pool.end();
 });
 
@@ -40,7 +44,7 @@ async function createTestOrder(buyerId: number, totalAmount: number = 500): Prom
   await pool.execute(
     `INSERT INTO order_items (order_id, product_id, seller_id, quantity, unit_price, total_price, commission_rate, commission_amount)
      VALUES (?, ?, ?, 1, ?, ?, 0, 0)`,
-    [orderId, TEST_PRODUCT, TEST_ORG, totalAmount, totalAmount],
+    [orderId, productFixture.productId, TEST_ORG, totalAmount, totalAmount],
   );
   await pool.execute(
     `INSERT INTO order_status_history (order_id, to_status, changed_by, changed_by_role, note)
@@ -228,19 +232,19 @@ describe('Marketplace Payment Integration', () => {
     const orderId = await createTestOrder(TEST_USER, 180);
 
     const [prodBefore] = await pool.execute<any[]>(
-      'SELECT quantity FROM products WHERE id = ?', [TEST_PRODUCT],
+      'SELECT quantity FROM products WHERE id = ?', [productFixture.productId],
     );
     const qtyBefore = Number(prodBefore[0].quantity);
 
     const [updateResult] = await pool.execute<mysql.ResultSetHeader>(
       `UPDATE products SET quantity = quantity - 1 WHERE id = ? AND quantity >= 1`,
-      [TEST_PRODUCT],
+      [productFixture.productId],
     );
 
     if (qtyBefore >= 1) {
       expect(updateResult.affectedRows).toBe(1);
       const [prodAfter] = await pool.execute<any[]>(
-        'SELECT quantity FROM products WHERE id = ?', [TEST_PRODUCT],
+        'SELECT quantity FROM products WHERE id = ?', [productFixture.productId],
       );
       expect(Number(prodAfter[0].quantity)).toBe(qtyBefore - 1);
     } else {
@@ -248,7 +252,7 @@ describe('Marketplace Payment Integration', () => {
     }
 
     if (updateResult.affectedRows > 0) {
-      await pool.execute(`UPDATE products SET quantity = quantity + 1 WHERE id = ?`, [TEST_PRODUCT]);
+      await pool.execute(`UPDATE products SET quantity = quantity + 1 WHERE id = ?`, [productFixture.productId]);
     }
     await pool.execute('DELETE FROM order_items WHERE order_id = ?', [orderId]);
     await pool.execute('DELETE FROM order_status_history WHERE order_id = ?', [orderId]);
