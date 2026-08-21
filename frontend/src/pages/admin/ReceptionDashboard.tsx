@@ -21,7 +21,7 @@ export default function ReceptionDashboard() {
 
   const { data: pendingPayments } = useQuery({
     queryKey: ['reception', 'pending-payments'],
-    queryFn: () => api.get('/admin/withdrawal-requests').then(r => r.data?.data || []),
+    queryFn: () => api.get('/admin/withdrawals', { params: { limit: 100 } }).then(r => r.data?.data || []),
   });
 
   const checkIn = useMutation({
@@ -114,7 +114,7 @@ export default function ReceptionDashboard() {
         <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-4">
           <h3 className="text-xs font-semibold text-[var(--color-text-muted)] uppercase">Pending Payments</h3>
           <p className="text-2xl font-bold text-yellow-600 mt-1">{Array.isArray(pendingPayments) ? pendingPayments.filter((p: any) => p.status === 'pending').length : '—'}</p>
-          <button onClick={() => navigate('/admin/withdrawal-requests')} className="text-xs text-[var(--color-primary)] hover:underline mt-2">View All</button>
+          <button onClick={() => navigate('/admin/withdrawals')} className="text-xs text-[var(--color-primary)] hover:underline mt-2">View All</button>
         </div>
         <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-4">
           <h3 className="text-xs font-semibold text-[var(--color-text-muted)] uppercase">Today's Arrivals</h3>

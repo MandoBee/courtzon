@@ -11,5 +11,7 @@ export const COACH_NAV: CoachNavItem[] = [
   { label: 'Requests', icon: '📥', path: '/coach/requests' },
   { label: 'Players', icon: '👥', path: '/coach/players' },
   { label: 'Availability', icon: '⏰', path: '/coach/availability' },
+  { label: 'Revenue', icon: '💰', path: '/coach/revenue' },
+  { label: 'Attendance', icon: '📊', path: '/coach/attendance' },
   { label: 'Profile', icon: '👤', path: '/coach/profile' },
 ];

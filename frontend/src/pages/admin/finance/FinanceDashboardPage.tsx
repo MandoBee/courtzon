@@ -84,7 +84,7 @@ export default function FinanceDashboardPage() {
         <KPI label="Total Credits" value={`EGP ${totalCredits.toLocaleString()}`} sub="30 day ledger" onClick={() => navigate('/admin/finance/ledger')} color="text-blue-600" />
         <KPI label="Total Debits" value={`EGP ${totalDebits.toLocaleString()}`} sub="30 day ledger" onClick={() => navigate('/admin/finance/ledger')} color="text-red-600" />
         <KPI label="Net Flow" value={`EGP ${(totalCredits - totalDebits).toLocaleString()}`} sub="Credits - Debits" />
-        <KPI label="Withdrawal Requests" value="—" sub="Check finance admin" onClick={() => navigate('/admin/withdrawal-requests')} />
+        <KPI label="Withdrawals Queue" value="—" sub="Open withdrawal queue" onClick={() => navigate('/admin/withdrawals')} />
       </div>
 
       {/* Revenue by account type */}
