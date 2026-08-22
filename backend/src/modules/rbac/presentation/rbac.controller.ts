@@ -52,8 +52,12 @@ export async function deletePermissionHandler(request: FastifyRequest, reply: Fa
 }
 
 export async function getRolesHandler(request: FastifyRequest, reply: FastifyReply) {
-  const { organisationId, includeDeleted } = request.query as any;
-  const roles = await rbacService.getRoles(organisationId ? Number(organisationId) : null, includeDeleted === 'true');
+  const { organisationId, includeDeleted, scope } = request.query as any;
+  const roles = await rbacService.getRoles(
+    organisationId ? Number(organisationId) : null,
+    includeDeleted === 'true',
+    scope === 'global' ? 'global' : null,
+  );
   return reply.send({ data: roles });
 }
 

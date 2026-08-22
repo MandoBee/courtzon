@@ -35,8 +35,8 @@ export class RBACService {
   }
 
   // Roles
-  async getRoles(organisationId?: number | null, includeDeleted = false) {
-    return rbacRepository.getRoles(organisationId, includeDeleted);
+  async getRoles(organisationId?: number | null, includeDeleted = false, scope?: 'global' | null) {
+    return rbacRepository.getRoles(organisationId, includeDeleted, scope);
   }
 
   async restoreRole(id: number) {

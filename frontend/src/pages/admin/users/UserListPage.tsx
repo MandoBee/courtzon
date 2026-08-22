@@ -7,6 +7,7 @@ import { Can } from '../../../permissions/Can';
 import { useToast } from '../../../components/ui/Toast';
 import { EntityImage, CountryFlag } from '../../../components/ui';
 import { useTranslation } from '../../../i18n';
+import { dedupeRolesBySlug } from '../../../utils/roles';
 
 const statusColors: Record<string, string> = {
   active: 'bg-[var(--color-success-bg)] text-[var(--color-success-text)]',
@@ -86,8 +87,8 @@ export default function UserListPage() {
   });
 
   const { data: rolesData } = useQuery({
-    queryKey: ['admin', 'roles'],
-    queryFn: () => api.get('/roles').then((r: any) => r.data.data),
+    queryKey: ['admin', 'roles', 'global'],
+    queryFn: () => api.get('/roles?scope=global').then((r: any) => r.data.data),
     staleTime: 60000,
   });
 
@@ -95,7 +96,7 @@ export default function UserListPage() {
   const total = data?.total || 0;
   const totalPages = Math.ceil(total / limit);
   const countries = countriesData || [];
-  const roles = rolesData || [];
+  const roles = dedupeRolesBySlug(rolesData);
 
   const handleFilterChange = useCallback((setter: (v: string) => void, value: string) => {
     setter(value);
