@@ -4,6 +4,7 @@ import api from '../../../services/api';
 import { Can } from '../../../permissions/Can';
 import { useToast } from '../../../components/ui/Toast';
 import { useTranslation } from '../../../i18n';
+import { dedupeRolesByIdentity, groupRolesByOrganisation } from '../../../utils/roles';
 
 export default function RoleListPage() {
   const queryClient = useQueryClient();
@@ -151,21 +152,21 @@ export default function RoleListPage() {
     });
   }, [roles, roleSearch, orgFilter, statusFilter]);
 
+  const uniqueRoles = useMemo(() => dedupeRolesByIdentity(filteredRoles), [filteredRoles]);
+
   const groupedRoles = useMemo(() => {
-    const groups: Record<string, { orgName: string; isSystem: boolean; roles: any[] }> = {};
-    for (const r of filteredRoles) {
-      const key = r.organisation_id ? String(r.organisation_id) : r.is_system ? '__system' : '__global';
-      if (!groups[key]) {
-        groups[key] = {
-          orgName: r.organisation_name || (r.is_system ? 'System' : 'CourtZon (global)'),
-          isSystem: !!r.is_system,
-          roles: [],
-        };
-      }
-      groups[key].roles.push(r);
-    }
-    return Object.entries(groups);
-  }, [filteredRoles]);
+    const orgNameById = new Map<number, string>(
+      (organisations || []).map((o: any) => [Number(o.id), o.name]),
+    );
+    const resolveOrgName = (organisationId: number) => {
+      // Prefer the live organisations list; fall back to the JOINed name on the row.
+      const fromList = orgNameById.get(organisationId);
+      if (fromList) return fromList;
+      const row = filteredRoles.find((r: any) => Number(r.organisation_id) === organisationId);
+      return row?.organisation_name ?? null;
+    };
+    return groupRolesByOrganisation(uniqueRoles, resolveOrgName);
+  }, [uniqueRoles, filteredRoles, organisations]);
 
   const filteredModules = useMemo(() => {
     if (!permModules) return [];
@@ -280,8 +281,8 @@ export default function RoleListPage() {
                 <option value="active">{t('common.active')}</option>
                 <option value="inactive">{t('common.inactive')}</option>
               </select>
-              {filteredRoles.length !== roles?.length && (
-                <span className="text-[10px] text-[var(--color-text-muted)]">{filteredRoles.length} of {roles?.length} roles</span>
+              {uniqueRoles.length !== roles?.length && (
+                <span className="text-[10px] text-[var(--color-text-muted)]">{uniqueRoles.length} of {roles?.length} roles</span>
               )}
               <label className="flex items-center gap-1.5 text-xs cursor-pointer text-[var(--color-text-muted)] ml-auto">
                 <input type="checkbox" checked={showDeleted} onChange={e => setShowDeleted(e.target.checked)}
@@ -297,7 +298,7 @@ export default function RoleListPage() {
             {groupedRoles.map(([key, group]) => (
               <div key={key}>
                 <div className="sticky top-0 z-10 px-4 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-[var(--color-text-muted)] bg-[var(--color-bg)] border-b flex items-center gap-1.5">
-                  {group.orgName}
+                  {group.label}
                   {group.isSystem && <span className="text-[9px] px-1 py-0.5 rounded bg-[var(--color-info-bg)] text-[var(--color-info-text)]">SYS</span>}
                 </div>
                 {group.roles.map((role: any) => {
