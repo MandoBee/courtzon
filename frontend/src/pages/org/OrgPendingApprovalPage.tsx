@@ -6,6 +6,7 @@ import { useWorkspaceStore } from '../../store/workspace.store';
 import { isOrganisationPendingApproval } from '../../utils/organisation';
 
 const REDIRECT_MS = 5000;
+const SCOPE_POLL_MS = 8000;
 
 /**
  * Safe escape route: switches to the player workspace BEFORE navigating to
@@ -31,15 +32,24 @@ export default function OrgPendingApprovalPage() {
   const { t } = useTranslation();
   const [secondsLeft, setSecondsLeft] = useState(5);
 
+  // All hooks run on EVERY render — the approved/missing checks below return
+  // early, so nothing that calls hooks may live after them.
   const org = user?.organisations?.find((o) => String(o.id) === orgId);
-  if (!org) {
-    return <PlayerHomeRedirect />;
-  }
-  if (!isOrganisationPendingApproval(org)) {
-    return <Navigate to={`/org/${orgId}/dashboard`} replace />;
-  }
+  const isPending = !!org && isOrganisationPendingApproval(org);
 
   useEffect(() => {
+    if (!isPending) return;
+    // Poll the scopes endpoint as a fallback alongside the realtime
+    // organisation.approved push — the moment the org is approved the store
+    // updates and this page redirects into the dashboard automatically.
+    const poll = window.setInterval(() => {
+      void useAuthStore.getState().refreshOrganisations();
+    }, SCOPE_POLL_MS);
+    return () => window.clearInterval(poll);
+  }, [isPending]);
+
+  useEffect(() => {
+    if (!isPending) return;
     const redirectTimer = window.setTimeout(() => {
       setActiveWorkspace('player');
       navigate('/app', { replace: true });
@@ -51,7 +61,14 @@ export default function OrgPendingApprovalPage() {
       window.clearTimeout(redirectTimer);
       window.clearInterval(tick);
     };
-  }, [navigate, setActiveWorkspace]);
+  }, [isPending, navigate, setActiveWorkspace]);
+
+  if (!org) {
+    return <PlayerHomeRedirect />;
+  }
+  if (!isOrganisationPendingApproval(org)) {
+    return <Navigate to={`/org/${orgId}/dashboard`} replace />;
+  }
 
   const goPlayerHome = () => {
     setActiveWorkspace('player');

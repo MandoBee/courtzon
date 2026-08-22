@@ -52,7 +52,7 @@ export class SocketPublisher {
       'organisation:subscription-renewed', 'organisation:subscription-expired',
       'organisation:subscription-expiring',
       'organisation:status-changed', 'organisation:subscription-status-changed',
-      'organisation:approved', 'organisation:rejected',
+      'organisation:created', 'organisation:approved', 'organisation:rejected',
       'subscription:request-submitted', 'subscription:request-approved', 'subscription:request-rejected', 'subscription:request-reopened',
       'academy:enrolled', 'academy:session-reminder', 'academy:graduated',
       'coaching:session-scheduled', 'coaching:session-cancelled',
