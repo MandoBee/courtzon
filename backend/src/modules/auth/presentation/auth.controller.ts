@@ -87,12 +87,15 @@ export async function registerOrganizationHandler(request: FastifyRequest, reply
     userAgent: request.headers['user-agent'],
     deviceFingerprint: (request.headers['x-device-fingerprint'] as string) || undefined,
   });
+  if (result.session) {
+    setAuthCookies(reply, result.session.sessionToken, result.session.refreshToken);
+  }
   recordAudit({
     actorId: result.user.id,
     action: 'USER.REGISTER',
     entityType: 'organization',
     entityId: result.user.id,
-    afterState: { fullName: result.user.fullName, orgName: body.orgName },
+    afterState: { fullName: result.user.fullName, orgName: body.orgName, paymentMethod: body.paymentMethod },
     ipAddress: request.ip,
     userAgent: request.headers['user-agent'],
   });

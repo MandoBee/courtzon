@@ -165,6 +165,13 @@ function mapSettlementEvent(eventName: string, p: Record<string, any>): MappedSo
 }
 
 function mapOrganisationEvent(eventName: string, p: Record<string, any>): MappedSocketEvent {
+  if (eventName === 'organisation:created') {
+    return {
+      type: 'organisation.created',
+      payload: { organisationId: p.organisationId, name: p.name, userId: p.userId },
+      rooms: p.organisationId ? [`organisation:${p.organisationId}`, ADMIN_ROOM] : [ADMIN_ROOM],
+    };
+  }
   if (eventName === 'organisation:status-changed') {
     return {
       type: 'organisation.status-changed',

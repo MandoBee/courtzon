@@ -18,10 +18,18 @@ import { buildAuthRegisterPayload, filterRegistrationPaymentMethods } from '../.
 import { getErrorMessage } from '../../utils/errors';
 import { PasswordInput } from '../../components/ui/PasswordInput';
 import LegalConsent from '../../components/legal/LegalConsent';
+import { Modal } from '../../components/ui';
+import { useToast } from '../../components/ui/Toast';
+import PaymobPixelCard from '../../components/payment/PaymobPixelCard';
+import PaymentStatusPoller from '../../components/payment/PaymentStatusPoller';
+import { usePaymentConfirm } from '../../hooks/usePaymentConfirm';
+import { useAuthStore } from '../../store/auth.store';
+import { resolveUserHome } from '../../store/workspace.store';
 
 interface Country { id: number; name: string; phone_code: string; iso_code: string; flag_emoji?: string; default_currency?: string; currency_symbol?: string | null; }
 interface OrgType { id: number; slug: string; name: string; description?: string; }
 interface PaymentMethod { id: number; slug: string; name: string; icon: string; description: string; requiresApproval: boolean; }
+interface PaymentInfo { paymentId: number; clientSecret: string; }
 
 const STEPS = ['Pick a Plan', 'Personal Info', 'Account Setup', 'Organization Details', 'Review & Submit'];
 
@@ -39,6 +47,14 @@ export default function OrganizationRegisterPage() {
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [agreed, setAgreed] = useState(false);
+  const { showToast } = useToast();
+  const checkAuth = useAuthStore((s) => s.checkAuth);
+  const { state: confirmState, confirm: confirmPayment, reset: resetConfirm } = usePaymentConfirm();
+
+  const [approvedResult, setApprovedResult] = useState(false);
+  const [paymentInfo, setPaymentInfo] = useState<PaymentInfo | null>(null);
+  const [pollingPaid, setPollingPaid] = useState(false);
+  const paymentIdRef = useRef<number>(0);
 
   const [form, setForm] = useState({
     planId: 0,
@@ -94,6 +110,24 @@ export default function OrganizationRegisterPage() {
     }
   };
 
+  const goDashboard = async () => {
+    await checkAuth();
+    if (useAuthStore.getState().user) {
+      navigate(resolveUserHome().path);
+    } else {
+      navigate('/login');
+    }
+  };
+
+  const finishApproved = async (msg: string) => {
+    setPollingPaid(false);
+    setPaymentInfo(null);
+    showToast(msg);
+    // Card/free flows create an authenticated session, so land the owner on
+    // their workspace home instead of /login.
+    await goDashboard();
+  };
+
   const handleSubmit = async () => {
     setError('');
     setSubmitting(true);
@@ -107,13 +141,54 @@ export default function OrganizationRegisterPage() {
         orgDocuments: form.documents,
         ...(isFreePlan ? {} : { paymentMethod: form.paymentMethod }),
       };
-      await api.post('/auth/register-organization', payload);
+      const res = await api.post('/auth/register-organization', payload);
+      const data = res.data;
+      // Card flow — backend created a session + Paymob intention; show the widget.
+      if (data.payment?.clientSecret) {
+        paymentIdRef.current = data.payment.paymentId;
+        setPaymentInfo({ paymentId: data.payment.paymentId, clientSecret: data.payment.clientSecret });
+        return;
+      }
+      if (data.isApproved) {
+        setApprovedResult(true);
+        setStep(5);
+        showToast('Your organization is approved and ready!');
+        return;
+      }
+      if (data.paymentWarning) {
+        showToast(data.paymentWarning, 'warning');
+      }
       setStep(5);
     } catch (err: unknown) {
       setError(getErrorMessage(err, 'Registration failed. Please try again.'));
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const handlePaymentCancel = () => {
+    resetConfirm();
+    setPaymentInfo(null);
+    setStep(5);
+    showToast('Payment cancelled — your organization is pending review.', 'warning');
+  };
+
+  const handlePaymentComplete = async () => {
+    const pmId = paymentIdRef.current;
+    setPaymentInfo(null);
+    showToast('Payment submitted — confirming…', 'info');
+    if (!pmId) return;
+    try {
+      const cResult = await confirmPayment(pmId);
+      if (cResult.confirmed) {
+        await finishApproved('Payment confirmed — your organization is active!');
+        return;
+      }
+    } catch {
+      // fall through to polling
+    }
+    // Not yet confirmed locally — the Paymob webhook will approve; poll as fallback
+    setPollingPaid(true);
   };
 
   return (
@@ -124,14 +199,25 @@ export default function OrganizationRegisterPage() {
         </Link>
 
         {step === 5 ? (
-          <div className="bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)] p-10 text-center animate-fade-in">
-            <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-[var(--color-warning-bg)] dark:bg-yellow-900/30 flex items-center justify-center">
-              <svg className="w-8 h-8 text-yellow-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+          approvedResult ? (
+            <div className="bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)] p-10 text-center animate-fade-in">
+              <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-[var(--color-success-bg)] flex items-center justify-center">
+                <svg className="w-8 h-8 text-[var(--color-success-text)]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+              </div>
+              <h2 className="text-2xl font-bold text-[var(--color-text)] mb-2">Organization Active</h2>
+              <p className="text-[var(--color-text-muted)] max-w-md mx-auto">Your organization has been approved and is ready to use. You are already logged in.</p>
+              <button onClick={goDashboard} className="mt-6 px-6 py-3 bg-[var(--gradient-primary)] text-white font-semibold rounded-xl">Go to Dashboard</button>
             </div>
-            <h2 className="text-2xl font-bold text-[var(--color-text)] mb-2">Pending Approval</h2>
-            <p className="text-[var(--color-text-muted)] max-w-md mx-auto">Your organization registration has been submitted for review. A super admin will approve your account shortly. You'll be able to log in with player access in the meantime.</p>
-            <button onClick={() => navigate('/login')} className="mt-6 px-6 py-3 bg-[var(--gradient-primary)] text-white font-semibold rounded-xl">Go to Login</button>
-          </div>
+          ) : (
+            <div className="bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)] p-10 text-center animate-fade-in">
+              <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-[var(--color-warning-bg)] dark:bg-yellow-900/30 flex items-center justify-center">
+                <svg className="w-8 h-8 text-yellow-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+              </div>
+              <h2 className="text-2xl font-bold text-[var(--color-text)] mb-2">Pending Approval</h2>
+              <p className="text-[var(--color-text-muted)] max-w-md mx-auto">Your organization registration has been submitted for review. A super admin will approve your account shortly. You'll be able to log in with player access in the meantime.</p>
+              <button onClick={() => navigate('/login')} className="mt-6 px-6 py-3 bg-[var(--gradient-primary)] text-white font-semibold rounded-xl">Go to Login</button>
+            </div>
+          )
         ) : (
           <>
             <div className="flex items-center gap-2 mb-8">
@@ -340,6 +426,49 @@ export default function OrganizationRegisterPage() {
           </>
         )}
       </div>
+
+      {/* Card payment modal (same Paymob widget used for booking a court) */}
+      <Modal open={!!paymentInfo} onClose={handlePaymentCancel} title="Complete Payment" size="lg">
+        {paymentInfo && (
+          <div>
+            <p className="text-sm text-[var(--color-text-muted)] mb-4">Pay securely to activate your organization immediately.</p>
+            <PaymobPixelCard
+              clientSecret={paymentInfo.clientSecret}
+              beforePaymentComplete={async () => true}
+              onComplete={handlePaymentComplete}
+              onCancel={handlePaymentCancel}
+            />
+          </div>
+        )}
+      </Modal>
+
+      {/* Payment confirming overlay */}
+      {(confirmState === 'confirming' || confirmState === 'polling') && (
+        <div className="fixed inset-0 z-[70] bg-black/40 flex items-center justify-center">
+          <div className="bg-[var(--color-surface)] rounded-xl shadow-xl p-6 text-center space-y-3">
+            <div className="animate-spin w-8 h-8 border-4 border-[var(--color-primary)] border-t-transparent rounded-full mx-auto" />
+            <p className="text-sm text-[var(--color-text-muted)]">
+              {confirmState === 'confirming' ? 'Confirming payment…' : 'Waiting for confirmation…'}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Fallback polling (webhook will activate the organization) */}
+      {pollingPaid && paymentIdRef.current > 0 && (
+        <PaymentStatusPoller
+          endpoint={`/payments/status/${paymentIdRef.current}`}
+          isComplete={(data: any) => data?.paymentStatus === 'paid'}
+          interval={2000}
+          timeout={90000}
+          onPaid={() => void finishApproved('Payment confirmed — your organization is active!')}
+          onTimeout={() => {
+            setPollingPaid(false);
+            setStep(5);
+            showToast('Payment confirmation is taking longer than expected. Your organization will be activated automatically.', 'warning');
+          }}
+        />
+      )}
     </div>
   );
 }

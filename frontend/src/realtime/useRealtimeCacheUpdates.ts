@@ -303,10 +303,19 @@ export function useRealtimeCacheUpdates(): void {
   useSocketEvent('organisation.approved', () => {
     qc.invalidateQueries({ queryKey: ['admin', 'organisations'] });
     qc.invalidateQueries({ queryKey: ['org-subscription'] });
+    // The owner's scopes changed (org is now verified+active) — refresh auth state
+    // so route guards stop showing "Awaiting approval" without a manual re-login.
+    void useAuthStore.getState().refreshOrganisations();
   });
 
   useSocketEvent('organisation.rejected', () => {
     qc.invalidateQueries({ queryKey: ['admin', 'organisations'] });
+    void useAuthStore.getState().refreshOrganisations();
+  });
+
+  useSocketEvent('organisation.created', () => {
+    qc.invalidateQueries({ queryKey: ['admin', 'organisations'] });
+    qc.invalidateQueries({ queryKey: ['admin-approvals'] });
   });
 
   const subscriptionRequestEvents = [

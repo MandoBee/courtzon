@@ -101,9 +101,12 @@ export class ApprovalService {
       approvalNotes: 'Approved registration',
     });
 
-    const [orgRows] = await pool.execute<RowData>('SELECT name FROM organisations WHERE id = ?', [orgId]);
+    const [orgRows] = await pool.execute<RowData>('SELECT name, owner_id FROM organisations WHERE id = ?', [orgId]);
     const orgName = (orgRows[0] as any)?.name || 'Organisation';
-    eventBusV2.emit('organisation:approved', { organisationId: orgId, name: orgName, userId: adminUserId });
+    const ownerId = (orgRows[0] as any)?.owner_id || null;
+    // Notify the ORGANISATION OWNER (not the approving admin) so the owner's
+    // notification + realtime room receive the approval event.
+    eventBusV2.emit('organisation:approved', { organisationId: orgId, name: orgName, userId: ownerId ?? adminUserId });
 
     return {
       success: true,
@@ -129,8 +132,12 @@ export class ApprovalService {
       [adminUserId, reason || null, requestId]
     );
 
+    // Notify the organisation owner so their UI can reflect the rejected state.
+    const [orgRows] = await pool.execute<RowData>('SELECT owner_id FROM organisations WHERE id = ?', [request.organisation_id]);
+    const ownerId = (orgRows[0] as any)?.owner_id || null;
     eventBusV2.emit('organisation:rejected', {
       organisationId: request.organisation_id,
+      userId: ownerId ?? adminUserId,
       reason,
     });
 

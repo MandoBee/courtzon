@@ -27,10 +27,14 @@ export function registerRegistrationPaymentListeners() {
       // Idempotent: the activation mechanism accepts pending OR already-approved requests so a
       // payment arriving after an earlier approval can still complete activation exactly once.
 
-      if (request.registration_type === 'seller') {
+      // Registration flows ('seller' / 'organization') must activate the ORGANISATION
+      // itself (is_verified + is_active) in addition to the subscription — a successful
+      // card payment never requires manual admin approval. Other request types
+      // (upgrade / plan change / renewal) only need the subscription activated.
+      if (request.registration_type === 'seller' || request.registration_type === 'organization') {
         const { approvalService } = await import('../../approvals/application/approval.service.js');
         await approvalService.approveRegistration(request.requested_by, requestId);
-        log.info({ requestId, orgId: request.organisation_id }, 'Seller registration activated via card payment');
+        log.info({ requestId, orgId: request.organisation_id, type: request.registration_type }, 'Registration activated via card payment');
       } else {
         // General org subscription (upgrade / plan change / renewal) — activate immediately on payment.
         const { tryActivateSubscriptionRequest } = await import('../../organisations/application/subscription-activation.service.js');

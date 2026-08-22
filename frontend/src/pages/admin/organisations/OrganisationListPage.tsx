@@ -61,6 +61,10 @@ export default function OrganisationListPage() {
           `/organisations?${queryParams.toString()}`,
         )
         .then((r) => r.data),
+    // Pick up newly registered organisations without a manual page reload
+    // (realtime invalidation via organisation.created also refreshes this list).
+    refetchInterval: 15000,
+    staleTime: 0,
   });
 
   const organisations = data?.data || [];

@@ -13,6 +13,9 @@ export default function AdminApprovalsPage() {
   const { data, isLoading } = useQuery({
     queryKey: ['admin-approvals', statusFilter, page],
     queryFn: () => api.get('/admin/approvals', { params: { status: statusFilter || undefined, page, limit: 20 } }).then((r: any) => r.data),
+    // Pick up newly registered organisations without a manual page reload.
+    refetchInterval: 15000,
+    staleTime: 0,
   });
 
   const approve = useMutation({
