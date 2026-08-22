@@ -392,6 +392,16 @@ export class AuthService {
 
     eventBusV2.emit('organisation:created', { organisationId: orgId, name: input.orgName, userId });
 
+    // The pending request row exists for every registration (free plans get it
+    // approved right below), so notify admins that a new registration request
+    // needs attention — approval lists/users/roles refresh without a manual reload.
+    eventBusV2.emit('subscription:request-submitted', {
+      organisationId: orgId,
+      userId,
+      requestId: upgradeRequestId,
+      requestType: 'organization',
+    });
+
     const user = await userRepository.findById(userId);
     const roles = await this.getUserRoles(userId);
     const permissions = await rbacRepository.getUserPermissionKeys(userId);

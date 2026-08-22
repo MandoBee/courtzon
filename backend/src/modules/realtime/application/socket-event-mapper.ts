@@ -214,9 +214,24 @@ function mapOrganisationEvent(eventName: string, p: Record<string, any>): Mapped
     rooms.push(ADMIN_ROOM);
     return { type: 'subscription.request-reopened', payload: { organisationId: p.organisationId, userId: p.userId, requestId: p.requestId, requestType: p.requestType }, rooms };
   }
+  if (eventName === 'organisation:approved' || eventName === 'organisation:rejected') {
+    // Admins act on approvals — without ADMIN_ROOM here the central frontend
+    // handlers never fire and admin lists stay stale until a manual refresh.
+    const sub = eventName.split(':')[1] || 'updated';
+    const rooms: string[] = [];
+    if (p.organisationId) rooms.push(`organisation:${p.organisationId}`);
+    if (p.userId) rooms.push(`user:${p.userId}`);
+    rooms.push(ADMIN_ROOM);
+    return {
+      type: `organisation.${sub}`,
+      payload: { organisationId: p.organisationId, userId: p.userId, name: p.name, reason: p.reason },
+      rooms,
+    };
+  }
   const rooms: string[] = [];
   if (p.organisationId) rooms.push(`organisation:${p.organisationId}`);
   if (p.userId) rooms.push(`user:${p.userId}`);
+  rooms.push(ADMIN_ROOM);
   return { type: `organisation.${eventName.split(':')[1] || 'updated'}`, payload: { organisationId: p.organisationId, userId: p.userId }, rooms };
 }
 

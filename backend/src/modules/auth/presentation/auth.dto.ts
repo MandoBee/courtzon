@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { localPhoneNumberSchema } from '../../../shared/validation/local-phone.js';
 import { normalizeOptionalWebsiteUrl } from '../../../shared/validation/website-url.js';
+import { isPaymentMethodAllowedForOrganizationRegistration } from '../../../shared/constants/payment-methods.js';
 
 export const RegisterSchema = z.object({
   countryId: z.number().int().positive(),
@@ -156,8 +157,12 @@ export const OrganizationRegisterSchema = RegisterSchema.extend({
   orgEmail: optionalEmailOrEmpty,
   orgDocuments: z.array(z.string()).optional().default([]),
   paymentMethod: z.string().min(1).refine(
-    (slug) => slug.trim().toLowerCase() !== 'wallet',
-    { message: 'CourtZon Wallet is not available during registration' },
+    (slug) => {
+      const s = slug.trim().toLowerCase();
+      if (s === 'wallet') return false;
+      return isPaymentMethodAllowedForOrganizationRegistration(s);
+    },
+    { message: 'Selected payment method is not available for organization registration' },
   ).optional(),
 });
 

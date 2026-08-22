@@ -114,4 +114,38 @@ describe('SocketEventMapper', () => {
     expect(result!.type).toBe('user.roles.changed');
     expect(result!.rooms).toContain('user:42');
   });
+
+  // ── Organisation registration lifecycle (admin visibility regression) ──
+  it('routes organisation:created to the admin room', () => {
+    const result = mapDomainEvent('organisation:created', { organisationId: 5, name: 'Org', userId: 42 });
+    expect(result!.type).toBe('organisation.created');
+    expect(result!.rooms).toContain('admin');
+    expect(result!.rooms).toContain('organisation:5');
+  });
+
+  it('routes organisation:approved to the admin room (was fall-through without admin)', () => {
+    const result = mapDomainEvent('organisation:approved', { organisationId: 5, name: 'Org', userId: 42 });
+    expect(result!.type).toBe('organisation.approved');
+    expect(result!.rooms).toContain('admin');
+    expect(result!.rooms).toContain('organisation:5');
+    expect(result!.rooms).toContain('user:42');
+  });
+
+  it('routes organisation:rejected to the admin room with reason', () => {
+    const result = mapDomainEvent('organisation:rejected', { organisationId: 5, userId: 42, reason: 'Incomplete documents' });
+    expect(result!.type).toBe('organisation.rejected');
+    expect(result!.rooms).toContain('admin');
+    expect(result!.payload.reason).toBe('Incomplete documents');
+  });
+
+  it('routes subscription:request-submitted to the admin room for self-registration', () => {
+    const result = mapDomainEvent('subscription:request-submitted', {
+      organisationId: 5, userId: 42, requestId: 9, requestType: 'organization',
+    });
+    expect(result!.type).toBe('subscription.request-submitted');
+    expect(result!.rooms).toContain('admin');
+    expect(result!.rooms).toContain('organisation:5');
+    expect(result!.rooms).toContain('user:42');
+    expect(result!.payload.requestId).toBe(9);
+  });
 });

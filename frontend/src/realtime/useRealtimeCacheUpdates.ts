@@ -8,6 +8,47 @@ import { disconnectSocket, createSocket } from './socket-client';
  * Mount ONCE in the app root.
  * Every socket event updates the React Query cache directly.
  */
+
+/**
+ * Query-key prefixes invalidated when the organization registration lifecycle
+ * changes server state. Keys mirror the inline keys used by the admin pages:
+ * - created: new user + org + cloned org-admin role/scope + pending subscription/request
+ * - approved: organisation verified/active, request approved, subscription activated
+ * - rejected: request rejected (org stays unverified)
+ * React Query prefix-matches, so ['admin','users'] covers every page/filter variant.
+ */
+export const ORG_LIFECYCLE_INVALIDATIONS = {
+  created: [
+    ['admin', 'organisations'],
+    ['admin-approvals'],
+    ['admin', 'users'],
+    ['admin', 'roles'],
+    ['admin', 'organisation-subscriptions'],
+    ['admin', 'dashboard'],
+    ['admin', 'dashboard-trends'],
+  ],
+  approved: [
+    ['admin', 'organisations'],
+    ['admin-approvals'],
+    ['admin', 'organisation-subscriptions'],
+    ['org-subscription'],
+    ['admin', 'dashboard'],
+    ['admin', 'dashboard-trends'],
+  ],
+  rejected: [
+    ['admin', 'organisations'],
+    ['admin-approvals'],
+    ['admin', 'dashboard'],
+  ],
+} as const;
+
+export type OrgLifecycleEvent = keyof typeof ORG_LIFECYCLE_INVALIDATIONS;
+
+export function invalidateOrgLifecycle(qc: { invalidateQueries: (opts: { queryKey: readonly string[] }) => void }, event: OrgLifecycleEvent): void {
+  for (const queryKey of ORG_LIFECYCLE_INVALIDATIONS[event]) {
+    qc.invalidateQueries({ queryKey });
+  }
+}
 export function useRealtimeCacheUpdates(): void {
   const qc = useQueryClient();
 
@@ -301,21 +342,19 @@ export function useRealtimeCacheUpdates(): void {
   });
 
   useSocketEvent('organisation.approved', () => {
-    qc.invalidateQueries({ queryKey: ['admin', 'organisations'] });
-    qc.invalidateQueries({ queryKey: ['org-subscription'] });
+    invalidateOrgLifecycle(qc, 'approved');
     // The owner's scopes changed (org is now verified+active) — refresh auth state
     // so route guards stop showing "Awaiting approval" without a manual re-login.
     void useAuthStore.getState().refreshOrganisations();
   });
 
   useSocketEvent('organisation.rejected', () => {
-    qc.invalidateQueries({ queryKey: ['admin', 'organisations'] });
+    invalidateOrgLifecycle(qc, 'rejected');
     void useAuthStore.getState().refreshOrganisations();
   });
 
   useSocketEvent('organisation.created', () => {
-    qc.invalidateQueries({ queryKey: ['admin', 'organisations'] });
-    qc.invalidateQueries({ queryKey: ['admin-approvals'] });
+    invalidateOrgLifecycle(qc, 'created');
   });
 
   const subscriptionRequestEvents = [
