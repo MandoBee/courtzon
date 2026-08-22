@@ -14,7 +14,7 @@ import {
   filterOrgRegistrationTypes,
 } from '../../utils/org-registration-filters';
 import { scrollToTop } from '../../utils/scroll';
-import { buildAuthRegisterPayload, filterRegistrationPaymentMethods } from '../../utils/registration';
+import { buildAuthRegisterPayload, filterOrganizationRegistrationPaymentMethods, DEFAULT_ORGANIZATION_PAYMENT_METHOD } from '../../utils/registration';
 import { getErrorMessage } from '../../utils/errors';
 import { PasswordInput } from '../../components/ui/PasswordInput';
 import LegalConsent from '../../components/legal/LegalConsent';
@@ -84,9 +84,14 @@ export default function OrganizationRegisterPage() {
       setPlans(d);
     }).catch(() => {});
     api.get('/public/countries').then(r => setCountries(r.data?.data || r.data || [])).catch(() => {});
-    api.get('/public/payment-methods').then(r => {
-      const methods = r.data?.data || [];
-      setPaymentMethods(filterRegistrationPaymentMethods(methods));
+    api.get('/public/payment-methods', { params: { context: 'organization-registration' } }).then(r => {
+      const methods = filterOrganizationRegistrationPaymentMethods<PaymentMethod>(r.data?.data || []);
+      setPaymentMethods(methods);
+      // Credit/Debit Card is the default organization payment method — preselect
+      // it unless the user already chose one (server filters the allowed set).
+      if (methods.some(m => m.slug === DEFAULT_ORGANIZATION_PAYMENT_METHOD)) {
+        setForm(f => (f.paymentMethod ? f : { ...f, paymentMethod: DEFAULT_ORGANIZATION_PAYMENT_METHOD }));
+      }
     }).catch(() => {});
     api.get('/public/organisation-types').then(r => {
       const types = r.data?.data || r.data || [];

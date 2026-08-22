@@ -29,6 +29,30 @@ export function filterSellerRegistrationPaymentMethods<T extends { slug: string;
   });
 }
 
+/**
+ * Mirrors the backend `organization-registration` context allowlist
+ * (shared/constants/payment-methods.ts). The server already filters
+ * `/public/payment-methods?context=organization-registration` — this client
+ * guard only defends against an API that returns a broader list, and orders
+ * card first because it is the default organization payment method.
+ */
+export const ORGANIZATION_REGISTRATION_PAYMENT_SLUGS = new Set(['card', 'cash']);
+
+export const DEFAULT_ORGANIZATION_PAYMENT_METHOD = 'card';
+
+export function filterOrganizationRegistrationPaymentMethods<T extends { slug: string; isActive?: boolean }>(
+  methods: T[],
+): T[] {
+  const allowed = methods.filter(
+    (m) => m.isActive !== false && ORGANIZATION_REGISTRATION_PAYMENT_SLUGS.has(m.slug.toLowerCase()),
+  );
+  return allowed.sort((a, b) => {
+    const pa = a.slug.toLowerCase() === DEFAULT_ORGANIZATION_PAYMENT_METHOD ? 0 : 1;
+    const pb = b.slug.toLowerCase() === DEFAULT_ORGANIZATION_PAYMENT_METHOD ? 0 : 1;
+    return pa - pb;
+  });
+}
+
 export function buildAuthRegisterPayload(form: {
   countryId: number;
   phoneNumber: string;
