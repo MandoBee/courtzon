@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../../services/api';
 import { uiRegistry } from '../../../permissions/registry';
 import { useToast } from '../../../components/ui/Toast';
+import { dedupeRolesBySlug } from '../../../utils/roles';
 
 type ElementType = 'button' | 'tab' | 'page' | 'section' | 'action' | 'field';
 
@@ -31,9 +32,11 @@ export default function UIPermissionsPage() {
   });
 
   const { data: roles } = useQuery({
-    queryKey: ['admin', 'roles'],
-    queryFn: () => api.get('/roles').then((r: any) => r.data.data),
+    queryKey: ['admin', 'roles', 'global'],
+    queryFn: () => api.get('/roles?scope=global').then((r: any) => r.data.data),
   });
+
+  const visibleRoles = useMemo(() => dedupeRolesBySlug(roles), [roles]);
 
   const syncMutation = useMutation({
     mutationFn: async () => {
@@ -241,7 +244,7 @@ export default function UIPermissionsPage() {
                 </div>
                 <code className="text-[11px] font-mono text-[var(--color-text-muted)] block">{perm.permission_key}</code>
                 <div className="flex flex-wrap gap-1.5 pt-1">
-                  {roles?.filter((r: any) => !r.deleted_at).map((role: any) => {
+                  {visibleRoles.map((role: any) => {
                     const roleAssignment = perm.roles?.find((ra: any) => ra.role_id === role.id);
                     const hasPerm = roleAssignment?.has_permission ?? false;
                     return (
@@ -290,7 +293,7 @@ export default function UIPermissionsPage() {
                   <code className="text-[10px] font-mono text-[var(--color-text-muted)] break-all">{perm.permission_key}</code>
                 </div>
                 <div className="flex flex-wrap gap-1 justify-end">
-                  {roles?.filter((r: any) => !r.deleted_at).map((role: any) => {
+                  {visibleRoles.map((role: any) => {
                     const roleAssignment = perm.roles?.find((ra: any) => ra.role_id === role.id);
                     const hasPerm = roleAssignment?.has_permission ?? false;
                     return (

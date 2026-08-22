@@ -16,6 +16,7 @@ import { VisualStyleControl } from './VisualStyleControl';
 import { getPropertyMeta } from '../../../theme/component-styles';
 import { ThemePreviewPane } from './ThemePreviewPane';
 import { StickyPreviewPanel } from './StickyPreviewPanel';
+import { dedupeRolesBySlug } from '../../../utils/roles';
 
 function publishedValue(t: EditorToken): string {
   return t.current_value ?? t.default_value;
@@ -33,9 +34,11 @@ export function RoleThemesPanel({
   const [roleId, setRoleId] = useState<number | ''>('');
 
   const { data: roles } = useQuery({
-    queryKey: ['roles-list'],
-    queryFn: () => api.get('/roles').then((r: any) => r.data.data as { id: number; name: string; slug: string }[]),
+    queryKey: ['roles-list', 'global'],
+    queryFn: () => api.get('/roles?scope=global').then((r: any) => r.data.data as { id: number; name: string; slug: string; organisation_id?: number | null }[]),
   });
+
+  const visibleRoles = useMemo(() => dedupeRolesBySlug(roles), [roles]);
 
   const { data: roleTheme, isLoading } = useQuery({
     queryKey: ['role-theme', roleId],
@@ -114,7 +117,7 @@ export function RoleThemesPanel({
             className="w-full max-w-md"
           >
             <option value="">Select role…</option>
-            {(roles || []).map((r) => (
+            {visibleRoles.map((r) => (
               <option key={r.id} value={r.id}>
                 {r.name} ({r.slug})
               </option>

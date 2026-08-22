@@ -6,6 +6,7 @@ import { Button, Spinner, EntityImage, PasswordInput } from '../../../components
 import { Can } from '../../../permissions/Can';
 import { useToast } from '../../../components/ui/Toast';
 import { formatISODate } from '../../../utils/formatDate';
+import { dedupeRolesBySlug } from '../../../utils/roles';
 import CoachTab from './CoachTab';
 
 interface UserEditModalProps {
@@ -174,12 +175,12 @@ export default function UserEditModal({ userId, onClose }: UserEditModalProps) {
   const sports = allSports || [];
   const levels = allLevels || [];
 
-  const orgRoleOptions = roles.filter((r: any) => {
+  const orgRoleOptions = dedupeRolesBySlug(roles.filter((r: any) => {
     if (selectedOrgId === '') return false;
     if (selectedOrgId === 'none') return r.organisation_id === null && !r.is_system;
     if (selectedOrgId === 'system') return r.is_system;
     return r.organisation_id === Number(selectedOrgId);
-  });
+  }));
 
   const set = (k: string, v: any) => setForm((f: any) => ({ ...f, [k]: v }));
 

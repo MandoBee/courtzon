@@ -54,7 +54,7 @@ export class RBACRepository {
     await this.pool.execute(`DELETE FROM permissions WHERE id = ?`, [id]);
   }
 
-  async getRoles(organisationId?: number | null, includeDeleted = false): Promise<any[]> {
+  async getRoles(organisationId?: number | null, includeDeleted = false, scope?: 'global' | null): Promise<any[]> {
     let sql = `SELECT r.id, r.name, r.slug, r.is_system, r.is_active, r.organisation_id, r.deleted_at,
                       o.name as organisation_name,
                       (SELECT COUNT(*) FROM role_permissions rp WHERE rp.role_id = r.id) AS permission_count
@@ -64,6 +64,9 @@ export class RBACRepository {
     const params: any[] = [];
     if (!includeDeleted) {
       sql += ` AND r.deleted_at IS NULL`;
+    }
+    if (scope === 'global') {
+      sql += ` AND r.organisation_id IS NULL`;
     }
     if (organisationId != null) {
       sql += ` AND (r.organisation_id = ? OR (r.organisation_id IS NULL AND r.is_system = TRUE))`;
