@@ -233,6 +233,16 @@ async function postAccountingEvent(
 
     await conn.commit();
     log.info({ eventType, sourceType, sourceId, organisationId, lines: lines.length, periodId }, 'Accounting posting created');
+    // Post-COMMIT realtime signal: finance surfaces may now refetch. Only the
+    // self-committing path emits here — callers that pass an outer connection
+    // emit themselves after their own commit, so the UI never refreshes on an
+    // entry that is not yet durable. Idempotent skips above never emit.
+    eventBusV2.emit('accounting:entry-recorded', {
+      eventType,
+      sourceType,
+      sourceId,
+      organisationId,
+    });
   } catch (err: any) {
     await conn.rollback();
     if (err?.code === 'ER_DUP_ENTRY') {

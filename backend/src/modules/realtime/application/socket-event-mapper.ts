@@ -38,6 +38,20 @@ export function mapDomainEvent(eventName: string, payload: Record<string, unknow
         rooms: [ADMIN_ROOM],
       };
     }
+    if (eventName.startsWith('accounting:')) {
+      // A ledger entry was durably committed — finance/accounting surfaces in
+      // the admin room (and the finance room) may refetch.
+      return {
+        type: `accounting.${eventName.split(':')[1] || 'updated'}`,
+        payload: {
+          eventType: payload.eventType,
+          sourceType: payload.sourceType,
+          sourceId: payload.sourceId,
+          organisationId: payload.organisationId,
+        },
+        rooms: [ADMIN_ROOM, 'finance'],
+      };
+    }
     if (eventName === 'user:registered') {
       // Fresh registrations must reach admin surfaces immediately. Routing to
       // the new user's personal room would be useless here — the Admin Users

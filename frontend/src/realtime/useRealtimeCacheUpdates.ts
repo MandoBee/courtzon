@@ -65,6 +65,26 @@ export function invalidateUserRegistration(qc: { invalidateQueries: (opts: { que
     qc.invalidateQueries({ queryKey });
   }
 }
+
+/**
+ * Fired by `accounting.entry-recorded` AFTER a ledger entry + GL projection
+ * have durably committed. The `['accounting']` and `['finance']` roots are
+ * used exclusively by the Admin Accounting/Finance screens (verified across
+ * pages/admin/accounting/* and pages/admin/finance/*) — React Query
+ * prefix-matching therefore refreshes exactly those screens (General Ledger,
+ * Journal Entries, dashboards, reports, …) without touching any
+ * consumer/org query.
+ */
+export const FINANCE_INVALIDATIONS = [
+  ['accounting'],
+  ['finance'],
+] as const;
+
+export function invalidateFinanceEntries(qc: { invalidateQueries: (opts: { queryKey: readonly string[] }) => void }): void {
+  for (const queryKey of FINANCE_INVALIDATIONS) {
+    qc.invalidateQueries({ queryKey });
+  }
+}
 export function useRealtimeCacheUpdates(): void {
   const qc = useQueryClient();
 
@@ -376,6 +396,11 @@ export function useRealtimeCacheUpdates(): void {
   // ── User registration events (player / seller) ─────────────────
   useSocketEvent('user.registered', () => {
     invalidateUserRegistration(qc);
+  });
+
+  // ── Accounting events (post-commit ledger entries) ─────────────
+  useSocketEvent('accounting.entry-recorded', () => {
+    invalidateFinanceEntries(qc);
   });
 
   const subscriptionRequestEvents = [

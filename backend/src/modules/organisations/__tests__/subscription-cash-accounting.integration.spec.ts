@@ -643,6 +643,16 @@ async function seedPaidCardTxn(requestId: number, userId: number, amount: number
 }
 
 describe('SELLER subscription accounting parity - REAL engine (integration)', () => {
+  // Register the production accounting listeners exactly once per process —
+  // duplicate registrations would double-handle events (no-duplicate rule).
+  let acctListenersReady = false;
+  async function ensureAccountingListeners(): Promise<void> {
+    if (acctListenersReady) return;
+    const { registerAccountingEventListeners } = await import('../../financial/application/accounting-event.listener.js');
+    registerAccountingEventListeners();
+    acctListenersReady = true;
+  }
+
   it('A+E+F: seller+cash approval → active org/subscription + exactly ONE balanced cash/revenue posting; idempotent on re-approval', async () => {
     diag('test: seller+cash parity');
     const { getPool: gp } = await import('../../../database/mysql.js');
@@ -702,8 +712,7 @@ describe('SELLER subscription accounting parity - REAL engine (integration)', ()
 
     // Register the REAL production listeners, then emit the REAL domain event —
     // no test-local posting shortcuts.
-    const { registerAccountingEventListeners } = await import('../../financial/application/accounting-event.listener.js');
-    registerAccountingEventListeners();
+    await ensureAccountingListeners();
     const { eventBusV2 } = await import('../../../shared/event-bus/index.js');
     await eventBusV2.emit('payment:succeeded', {
       paymentId: 900001,
