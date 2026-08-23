@@ -25,6 +25,11 @@ vi.mock('../../../shared/event-bus/index.js', () => ({ eventBusV2: { emit: mockE
 vi.mock('../../financial/infrastructure/transaction.repository.js', () => ({
   transactionRepository: { createTransaction: vi.fn(async () => 1) },
 }));
+// Cash activations post through the canonical engine — keep the real listener
+// (and its queue/redis imports) out of unit tests.
+vi.mock('../../financial/application/accounting-event.listener.js', () => ({
+  postAccountingEvent: vi.fn(async () => undefined),
+}));
 vi.mock('../../audit-log/index.js', () => ({ recordAudit: mockRecordAudit }));
 vi.mock('./current-subscription.service.js', () => ({ clearSubscriptionCache: vi.fn() }));
 

@@ -42,6 +42,15 @@ export const EVENT_CONCEPTS: Record<string, { debit: string[]; credit: string[] 
     debit: ['cash_receivable'],
     credit: ['revenue'],
   },
+  // Subscription paid in cash — admin approval of an offline cash subscription
+  // IS the collection evidence (the registrant handed money to CourtZon).
+  // Platform subscription revenue: debit Cash/Bank, credit Revenue.
+  // Posted from subscription-activation.service inside the activation
+  // transaction; idempotent via uk_dedup(source_type='subscription').
+  subscription_cash_payment: {
+    debit: ['cash_bank'],
+    credit: ['revenue'],
+  },
   // Marketplace COD delivery — the merchant physically collected cash from the
   // customer. CourtZon is owed commission (+ tax) = receivable from merchant.
   marketplace_delivery: {

@@ -27,6 +27,8 @@ export interface ActivationResult {
   requestedPlanName?: string | null;
   startDate?: string | null;
   endDate?: string | null;
+  /** True when this activation also flipped the organisation to verified+active (registration requests only). */
+  organisationActivated?: boolean;
   // snake_case aliases preserved for existing admin controllers / audit consumers
   organisation_id?: number;
   request_type?: string | null;
@@ -214,6 +216,15 @@ async function isPaymentSatisfied(
   return txn.payment_status === 'paid';
 }
 
+/**
+ * Registration request types: the organisation is BORN is_active=FALSE/is_verified=FALSE
+ * (auth.service) and the pending registration approval is its only blocking condition.
+ * Activating such a request therefore also activates the organisation — in the same
+ * transaction, regardless of which admin surface triggered it (Registrations page,
+ * Subscription Management, "activate pending", or a card payment listener).
+ */
+const REGISTRATION_REQUEST_TYPES = new Set(['organization', 'seller']);
+
 function baseResult(req: any, extras: Partial<Omit<ActivationResult, 'activated'>> = {}): ActivationResult {
   return {
     activated: false,
@@ -233,12 +244,15 @@ function baseResult(req: any, extras: Partial<Omit<ActivationResult, 'activated'
  *
  * Concurrency-safe and event-order independent:
  *   - The request row is locked (SELECT ... FOR UPDATE) so payment events and admin approvals
- *     can never double-activate.
+ *     can never double-activate; an already-approved request short-circuits (idempotent skip).
  *   - Accepts a request that is `pending` OR already `approved` (a late payment after an earlier
  *     run is idempotent) and never activates `rejected`/`cancelled` requests.
- *   - Applies the org-active gate (paid plans require is_active && is_verified; free plans only
- *     require is_active) and the payment gate before writing anything.
+ *   - Applies the org-active gate (non-registration requests require is_active) and the payment
+ *     gate before writing anything. Registration requests ('organization'/'seller') activate the
+ *     organisation (verified + active) in the same transaction — subscription active ⇒ org active.
  *   - Delegates the only status/dates write to writeActiveSubscription.
+ *   - Cash subscriptions post a `subscription_cash_payment` ledger entry inside the same
+ *     transaction, so accounting can never exist without activation or vice versa.
  */
 export async function tryActivateSubscriptionRequest(
   requestId: number,
@@ -267,11 +281,12 @@ export async function tryActivateSubscriptionRequest(
 
     // Organisation must exist and not be deleted
     const [orgRows] = await conn.execute<RowData>(
-      'SELECT id, is_verified, is_active, deleted_at FROM organisations WHERE id = ? FOR UPDATE',
+      'SELECT id, name, owner_id, is_verified, is_active, deleted_at FROM organisations WHERE id = ? FOR UPDATE',
       [req.organisation_id],
     );
     if (!orgRows.length || orgRows[0].deleted_at) throw new ValidationError('Organisation no longer exists');
     const org = orgRows[0] as any;
+    const isRegistration = REGISTRATION_REQUEST_TYPES.has(String(req.registration_type || '').toLowerCase());
 
     // Requested plan must still be available
     if (req.requested_plan_id) {
@@ -298,7 +313,9 @@ export async function tryActivateSubscriptionRequest(
     // Org-active gate — subscription status is independent of org verification status.
     // Only require the org to exist and be active (not suspended/deleted).
     // Paid plans no longer require is_verified: subscription approval is a separate workflow.
-    if (!org.is_active) {
+    // Registration requests are exempt: the org was born inactive and THIS pending request
+    // is its only blocking condition — activation below also activates the organisation.
+    if (!org.is_active && !isRegistration) {
       await conn.rollback();
       return { ...baseResult(req), activated: false, deferred: 'org-inactive', reason: 'Organisation must be active before a subscription can activate' };
     }
@@ -362,6 +379,40 @@ export async function tryActivateSubscriptionRequest(
       [adminId, opts.approvalNotes || null, requestId],
     );
 
+    // Registration requests: activate the organisation in the SAME transaction.
+    // Subscription active ⇒ organisation active — for an org whose only blocking
+    // condition was this pending registration. Admin suspensions of existing orgs
+    // are unaffected (non-registration requests still defer with 'org-inactive').
+    let organisationActivated = false;
+    if (isRegistration && (!org.is_verified || !org.is_active)) {
+      await conn.execute(
+        `UPDATE organisations SET is_verified = TRUE, is_active = TRUE WHERE id = ?`,
+        [req.organisation_id],
+      );
+      organisationActivated = true;
+    }
+
+    // Cash accounting — admin confirmation of a cash subscription IS the collection
+    // evidence: CourtZon received the money. Post through the canonical engine
+    // INSIDE this transaction (atomic with activation). Idempotent: hasPosting
+    // pre-check + ledger_entries.uk_dedup(source_type='subscription', source_id=requestId).
+    const paymentMethod = String(req.chosen_payment_method || '').trim().toLowerCase();
+    const cashAmount = Number(req.requested_price);
+    if (paymentMethod === 'cash' && cashAmount > 0) {
+      // Lazy import: the accounting listener pulls in queue/redis clients at module load.
+      const { postAccountingEvent } = await import('../../financial/application/accounting-event.listener.js');
+      await postAccountingEvent(
+        'subscription_cash_payment',
+        'subscription',
+        requestId,
+        req.organisation_id,
+        { cash_bank: cashAmount, revenue: cashAmount },
+        'EGP',
+        `Cash subscription payment — request #${requestId}${req.requested_plan_name ? ` (${req.requested_plan_name})` : ''}`,
+        conn,
+      );
+    }
+
     // Financial audit trail (only for requests with a requested price)
     if (Number(req.requested_price) > 0) {
       await transactionRepository.createTransaction({
@@ -392,6 +443,15 @@ export async function tryActivateSubscriptionRequest(
       billingCycle: req.requested_billing_cycle || 'monthly',
       approvedBy: adminId,
     });
+    if (organisationActivated) {
+      // Registration approval completed — mirrors the event previously emitted by
+      // ApprovalService.approveRegistration, now from the single authoritative path.
+      eventBusV2.emit('organisation:approved', {
+        organisationId: req.organisation_id,
+        name: org.name,
+        userId: org.owner_id ?? req.requested_by ?? adminId,
+      });
+    }
     if (req.request_type === 'RENEWAL') {
       eventBusV2.emit('organisation:subscription-renewed', {
         organisationId: req.organisation_id,
@@ -412,6 +472,8 @@ export async function tryActivateSubscriptionRequest(
         requestedPlanName: req.requested_plan_name,
         approvedBy: adminId,
         activatedAt: startDate,
+        organisationActivated,
+        cashAccountingPosted: paymentMethod === 'cash' && cashAmount > 0,
       },
     }).catch((err) => log.error({ err, requestId }, 'Audit failed on subscription activation'));
 
@@ -420,6 +482,7 @@ export async function tryActivateSubscriptionRequest(
       activated: true,
       startDate,
       endDate,
+      organisationActivated,
     };
   } catch (e) {
     await conn.rollback();

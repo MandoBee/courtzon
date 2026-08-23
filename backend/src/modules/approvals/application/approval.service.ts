@@ -65,13 +65,7 @@ export class ApprovalService {
 
     const { organisation_id: orgId, registration_type: regType, requested_plan_id: planId } = request;
 
-    // 1. Activate organisation
-    await pool.execute(
-      `UPDATE organisations SET is_verified = TRUE, is_active = TRUE WHERE id = ?`,
-      [orgId]
-    );
-
-    // 2. For player→seller upgrades: switch role + change org type
+    // 1. For player→seller upgrades: switch role + change org type
     if (regType === 'player' && planId) {
       const shopTypeId = await this.getOrgTypeId('shop');
       if (shopTypeId) {
@@ -92,21 +86,16 @@ export class ApprovalService {
       }
     }
 
-    // 3. Mark the request approved + activate the subscription through the single authoritative
+    // 2. Mark the request approved + activate the subscription through the single authoritative
     //    mechanism. It is idempotent and payment-gated: for card payments that are still pending,
     //    the request stays pending here and the later payment:succeeded event completes it.
+    //    Registration requests ('organization'/'seller') also activate (verify) the organisation
+    //    inside that transaction — subscription active ⇒ organisation active.
     const { tryActivateSubscriptionRequest } = await import('../../organisations/application/subscription-activation.service.js');
     const activation = await tryActivateSubscriptionRequest(requestId, {
       adminId: adminUserId,
       approvalNotes: 'Approved registration',
     });
-
-    const [orgRows] = await pool.execute<RowData>('SELECT name, owner_id FROM organisations WHERE id = ?', [orgId]);
-    const orgName = (orgRows[0] as any)?.name || 'Organisation';
-    const ownerId = (orgRows[0] as any)?.owner_id || null;
-    // Notify the ORGANISATION OWNER (not the approving admin) so the owner's
-    // notification + realtime room receive the approval event.
-    eventBusV2.emit('organisation:approved', { organisationId: orgId, name: orgName, userId: ownerId ?? adminUserId });
 
     return {
       success: true,
