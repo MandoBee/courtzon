@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { ORG_LIFECYCLE_INVALIDATIONS, invalidateOrgLifecycle, USER_REGISTRATION_INVALIDATIONS, invalidateUserRegistration } from './useRealtimeCacheUpdates';
+import { ORG_LIFECYCLE_INVALIDATIONS, invalidateOrgLifecycle, USER_REGISTRATION_INVALIDATIONS, invalidateUserRegistration, FINANCE_INVALIDATIONS, invalidateFinanceEntries } from './useRealtimeCacheUpdates';
 
 function hasPrefix(keys: readonly (readonly string[])[], prefix: string[]): boolean {
   return keys.some((k) => prefix.every((part, i) => k[i] === part));
@@ -83,6 +83,33 @@ describe('USER_REGISTRATION_INVALIDATIONS (player/seller registration realtime s
     };
     invalidateUserRegistration(fakeQc as any);
     expect(invalidated).toHaveLength(USER_REGISTRATION_INVALIDATIONS.length);
+    expect(new Set(invalidated.map((k) => k.join(':'))).size).toBe(invalidated.length);
+  });
+});
+
+describe('FINANCE_INVALIDATIONS (post-commit accounting realtime strategy)', () => {
+  it('targets exactly the two admin-finance query roots', () => {
+    expect(FINANCE_INVALIDATIONS).toHaveLength(2);
+    expect(FINANCE_INVALIDATIONS.some((k) => k[0] === 'accounting')).toBe(true);
+    expect(FINANCE_INVALIDATIONS.some((k) => k[0] === 'finance')).toBe(true);
+  });
+
+  it('never invalidates consumer/org/admin-lifecycle roots (precise, not global)', () => {
+    const forbiddenRoots = ['admin', 'wallet', 'my-bookings', 'mp-orders', 'notifications', 'organisation', 'org-subscription'];
+    for (const key of FINANCE_INVALIDATIONS) {
+      for (const root of forbiddenRoots) expect(key[0]).not.toBe(root);
+    }
+  });
+
+  it('invalidateFinanceEntries runs through the query client without duplicates', () => {
+    const invalidated: string[][] = [];
+    const fakeQc = {
+      invalidateQueries: ({ queryKey }: { queryKey: readonly string[] }) => {
+        invalidated.push([...queryKey]);
+      },
+    };
+    invalidateFinanceEntries(fakeQc as any);
+    expect(invalidated).toHaveLength(FINANCE_INVALIDATIONS.length);
     expect(new Set(invalidated.map((k) => k.join(':'))).size).toBe(invalidated.length);
   });
 });

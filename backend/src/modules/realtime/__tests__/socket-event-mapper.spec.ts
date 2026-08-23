@@ -172,4 +172,37 @@ describe('SocketEventMapper', () => {
       expect(result!.rooms).not.toContain('user:99');
     });
   });
+
+  // ── accounting:entry-recorded (post-commit ledger signal) ──
+  describe('accounting:entry-recorded', () => {
+    it('routes a committed subscription cash entry to admin + finance rooms', () => {
+      const result = mapDomainEvent('accounting:entry-recorded', {
+        eventType: 'subscription_cash_payment', sourceType: 'subscription', sourceId: 33, organisationId: 12,
+      });
+      expect(result).not.toBeNull();
+      expect(result!.type).toBe('accounting.entry-recorded');
+      expect(result!.rooms).toContain('admin');
+      expect(result!.rooms).toContain('finance');
+    });
+
+    it('routes a committed card entry identically (org and seller share the event)', () => {
+      for (const organisationId of [7, null]) {
+        const result = mapDomainEvent('accounting:entry-recorded', {
+          eventType: 'card_payment', sourceType: 'subscription', sourceId: 34, organisationId,
+        });
+        expect(result!.type).toBe('accounting.entry-recorded');
+        expect(result!.rooms).toEqual(['admin', 'finance']);
+        expect(result!.payload).toMatchObject({ eventType: 'card_payment', sourceType: 'subscription', sourceId: 34 });
+      }
+    });
+
+    it('carries the payload needed to scope a targeted refetch', () => {
+      const result = mapDomainEvent('accounting:entry-recorded', {
+        eventType: 'booking_card_payment', sourceType: 'booking', sourceId: 55, organisationId: 3,
+      });
+      expect(result!.payload).toMatchObject({
+        eventType: 'booking_card_payment', sourceType: 'booking', sourceId: 55, organisationId: 3,
+      });
+    });
+  });
 });

@@ -495,6 +495,18 @@ export async function tryActivateSubscriptionRequest(
     await conn.commit();
     clearSubscriptionCache();
 
+    // The cash posting above participated in THIS transaction (outerConn) —
+    // announce it only now that the commit is durable, so finance screens
+    // never refresh on an uncommitted entry.
+    if (paymentMethod === 'cash' && cashAmount > 0) {
+      eventBusV2.emit('accounting:entry-recorded', {
+        eventType: 'subscription_cash_payment',
+        sourceType: 'subscription',
+        sourceId: requestId,
+        organisationId: req.organisation_id,
+      });
+    }
+
     eventBusV2.emit('subscription:request-approved', {
       organisationId: req.organisation_id,
       userId: req.requested_by,
