@@ -28,7 +28,9 @@ export async function uploadFileHandler(request: FastifyRequest, reply: FastifyR
     const params = request.params as { entityType: string; entityId: string; fileCategory: string };
     const userId = (request as any).userId;
 
-    const SAFE_ENTITY_TYPES = ['user', 'sport', 'coach', 'product', 'blog'];
+    // 'marketplace' is the canonical entity_type for product images (matches
+    // existing uploads rows and stored /uploads/marketplace/... URLs).
+    const SAFE_ENTITY_TYPES = ['user', 'sport', 'coach', 'product', 'blog', 'marketplace'];
     const RESTRICTED_ENTITY_TYPES = ['organisation', 'organization', 'branch', 'resource'];
 
     if (RESTRICTED_ENTITY_TYPES.includes(params.entityType.toLowerCase())) {
@@ -44,9 +46,15 @@ export async function uploadFileHandler(request: FastifyRequest, reply: FastifyR
     }
 
     const { buffer, mimeType, originalName } = await readFileBody(request);
+    // Product imagery is displayed in cards/grids — tighter bounds than the
+    // generic 1920 default give a better quality-to-size ratio.
+    const options = params.fileCategory === 'product-image'
+      ? { maxWidth: 1600, maxHeight: 1600, quality: 80 }
+      : undefined;
     const result = await uploadService.upload(
       buffer, mimeType, originalName,
       params.entityType, parseInt(params.entityId), params.fileCategory,
+      options,
     );
     return reply.status(201).send(result);
   } catch (err: any) {

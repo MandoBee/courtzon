@@ -205,4 +205,30 @@ describe('SocketEventMapper', () => {
       });
     });
   });
+
+  // ── marketplace:product-status-changed (approval realtime) ──
+  describe('marketplace:product-status-changed', () => {
+    it('D: org product approval reaches seller, organisation, player and admin rooms', () => {
+      const result = mapDomainEvent('marketplace:product-status-changed', {
+        productId: 501, name: 'Racket', previousStatus: 'pending', status: 'active',
+        sellerType: 'org', organisationId: 77, sellerUserId: null,
+      });
+      expect(result!.type).toBe('marketplace.product-status-changed');
+      expect(result!.rooms).toContain('marketplace:seller:77');
+      expect(result!.rooms).toContain('organisation:77');
+      expect(result!.rooms).toContain('player');
+      expect(result!.rooms).toContain('admin');
+    });
+
+    it('player-seller products reach the owner personal room instead of org rooms', () => {
+      const result = mapDomainEvent('marketplace:product-status-changed', {
+        productId: 502, status: 'rejected', previousStatus: 'pending',
+        sellerType: 'player', organisationId: null, sellerUserId: 901,
+      });
+      expect(result!.rooms).toContain('user:901');
+      expect(result!.rooms).not.toContain('organisation:null');
+      expect(result!.rooms).toContain('player');
+      expect(result!.rooms).toContain('admin');
+    });
+  });
 });

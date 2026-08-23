@@ -1529,7 +1529,26 @@ export const marketplaceService = {
   },
 
   async adminUpdateProductStatus(productId: number, status: string) {
+    const previous = await repo.findProductById(productId);
+    if (!previous) throw new NotFoundError('Product');
+    if (previous.status === status) {
+      return previous; // no transition — nothing to announce
+    }
+
     await repo.adminUpdateProduct(productId, { status });
+
+    // Post-commit announcement: sellers, org staff, consumers and admins
+    // refresh their product lists/details without a manual reload.
+    eventBusV2.emit('marketplace:product-status-changed', {
+      productId,
+      name: (previous as any).name,
+      previousStatus: previous.status,
+      status,
+      sellerType: (previous as any).seller_type,
+      organisationId: (previous as any).seller_id ?? null,
+      sellerUserId: (previous as any).seller_user_id ?? null,
+    });
+
     return repo.findProductById(productId);
   },
 

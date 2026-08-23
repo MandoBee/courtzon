@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { ORG_LIFECYCLE_INVALIDATIONS, invalidateOrgLifecycle, USER_REGISTRATION_INVALIDATIONS, invalidateUserRegistration, FINANCE_INVALIDATIONS, invalidateFinanceEntries } from './useRealtimeCacheUpdates';
+import { ORG_LIFECYCLE_INVALIDATIONS, invalidateOrgLifecycle, USER_REGISTRATION_INVALIDATIONS, invalidateUserRegistration, FINANCE_INVALIDATIONS, invalidateFinanceEntries, MARKETPLACE_PRODUCT_INVALIDATIONS, invalidateMarketplaceProducts } from './useRealtimeCacheUpdates';
 
 function hasPrefix(keys: readonly (readonly string[])[], prefix: string[]): boolean {
   return keys.some((k) => prefix.every((part, i) => k[i] === part));
@@ -110,6 +110,34 @@ describe('FINANCE_INVALIDATIONS (post-commit accounting realtime strategy)', () 
     };
     invalidateFinanceEntries(fakeQc as any);
     expect(invalidated).toHaveLength(FINANCE_INVALIDATIONS.length);
+    expect(new Set(invalidated.map((k) => k.join(':'))).size).toBe(invalidated.length);
+  });
+});
+
+describe('MARKETPLACE_PRODUCT_INVALIDATIONS (product approval realtime strategy)', () => {
+  it('E+F+G+H: covers seller, org, player catalog/details and admin lists', () => {
+    const roots = MARKETPLACE_PRODUCT_INVALIDATIONS.map((k) => k[0]);
+    for (const expected of ['mp-products', 'mp-product', 'mp-player-products', 'mp-seller-products', 'mp-seller-stats', 'org-products', 'product-detail', 'admin-marketplace-products', 'admin-product']) {
+      expect(roots).toContain(expected);
+    }
+  });
+
+  it('I: never invalidates unrelated roots (finance, wallet, bookings, admin users)', () => {
+    const roots = MARKETPLACE_PRODUCT_INVALIDATIONS.map((k) => k[0]);
+    for (const forbidden of ['accounting', 'finance', 'wallet', 'my-bookings', 'admin', 'notifications']) {
+      expect(roots).not.toContain(forbidden);
+    }
+  });
+
+  it('invalidateMarketplaceProducts runs through the query client without duplicates', () => {
+    const invalidated: string[][] = [];
+    const fakeQc = {
+      invalidateQueries: ({ queryKey }: { queryKey: readonly string[] }) => {
+        invalidated.push([...queryKey]);
+      },
+    };
+    invalidateMarketplaceProducts(fakeQc as any);
+    expect(invalidated).toHaveLength(MARKETPLACE_PRODUCT_INVALIDATIONS.length);
     expect(new Set(invalidated.map((k) => k.join(':'))).size).toBe(invalidated.length);
   });
 });
