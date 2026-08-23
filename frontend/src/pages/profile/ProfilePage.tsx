@@ -13,6 +13,7 @@ import { Modal } from '../../components/ui/Modal';
 import { Can } from '../../permissions/Can';
 import { useCan } from '../../hooks/useCan';
 import { Link } from 'react-router-dom';
+import { applyMainSportChange, selectableInterestSports, withMainSportInterest } from '../../utils/player-sports';
 
 const LEVELS = [
   { id: 1, name: 'Beginner' }, { id: 2, name: 'Intermediate' },
@@ -369,15 +370,24 @@ export default function ProfilePage() {
     }
   }, [editing, darkModeValue]);
 
+  // Main-sport/interests invariant: the form's interest list always contains
+  // the main sport. When the main sport changes, the previous main sport's
+  // auto-managed entry is dropped and the new one is added; explicit
+  // secondary selections are preserved. (Mirrors the backend normalization.)
+  const lastMainSportRef = useRef<number | null>(null);
+  const sportsHydratedRef = useRef(false);
   useEffect(() => {
-    if (!mainSportIdValue) return;
+    if (!sportsHydratedRef.current) {
+      lastMainSportRef.current = mainSportIdValue ?? null;
+      return;
+    }
+    const nextMain = mainSportIdValue ?? null;
+    if ((lastMainSportRef.current ?? null) === nextMain) return;
     const current = getValues('interestedSportIds') || [];
-    if (current.includes(mainSportIdValue)) {
-      setValue(
-        'interestedSportIds',
-        current.filter((id) => id !== mainSportIdValue),
-        { shouldDirty: true }
-      );
+    const next = applyMainSportChange(lastMainSportRef.current, nextMain, current);
+    lastMainSportRef.current = nextMain;
+    if (`${next}` !== `${current}`) {
+      setValue('interestedSportIds', next, { shouldDirty: true });
     }
   }, [mainSportIdValue, setValue, getValues]);
 
@@ -402,12 +412,14 @@ export default function ProfilePage() {
         languageId: user.languageId ?? null,
         mainSportId: user.mainSportId ?? undefined,
         mainLevelId: user.mainLevelId ?? undefined,
-        interestedSportIds: user.interestedSportIds || [],
+        interestedSportIds: withMainSportInterest(user.mainSportId, user.interestedSportIds || []),
         avatarUrl: user.avatarUrl || null,
         playing_hand: (user as any).playing_hand || undefined,
         bio: (user as any).bio || '',
         emergencyContacts: emergencyContacts.length ? emergencyContacts : [{ name: '', phone: '', relation: '' }],
       });
+      lastMainSportRef.current = user.mainSportId ?? null;
+      sportsHydratedRef.current = true;
     }
   }, [user, reset]);
 
@@ -470,10 +482,10 @@ export default function ProfilePage() {
     languages.find((l) => l.id === user.languageId)?.native_name ||
     languages.find((l) => l.id === user.languageId)?.code ||
     '—';
-  const interestedNames = (user.interestedSportIds || [])
+  const interestedNames = withMainSportInterest(user.mainSportId, user.interestedSportIds || [])
     .map((id) => sportsList?.find((s: any) => s.id === id)?.name)
     .filter(Boolean);
-  const otherSports = (sportsList || []).filter((s: any) => s.id !== mainSportIdValue);
+  const otherSports = selectableInterestSports(sportsList || [], mainSportIdValue);
 
   const viewContacts = (user as any).emergencyContacts?.length
     ? (user as any).emergencyContacts

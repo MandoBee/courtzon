@@ -13,6 +13,7 @@ import { PasswordInput } from '../../components/ui/PasswordInput';
 import LegalConsent from '../../components/legal/LegalConsent';
 import { useAuthStore } from '../../store/auth.store';
 import { resolveUserHome } from '../../store/workspace.store';
+import { applyMainSportChange, selectableInterestSports, withMainSportInterest } from '../../utils/player-sports';
 
 interface Country { id: number; name: string; phone_code: string; iso_code: string; flag_emoji?: string; default_currency?: string; }
 interface Sport { id: number; name: string; }
@@ -142,7 +143,7 @@ export default function PlayerRegisterPage() {
         birthDate: form.birthDate || undefined,
         mainSportId: form.mainSportId,
         mainLevelId: form.mainLevelId,
-        interestedSportIds: form.interestedSportIds,
+        interestedSportIds: withMainSportInterest(form.mainSportId || null, form.interestedSportIds),
         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       });
       // The backend creates an authenticated session and sets HttpOnly cookies,
@@ -263,7 +264,11 @@ export default function PlayerRegisterPage() {
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-[var(--color-text)] mb-1.5">{t('player.main_sport')} *</label>
-                  <select value={form.mainSportId} onChange={e => update('mainSportId', Number(e.target.value))} className={`w-full px-4 py-3 rounded-xl border bg-[var(--color-bg)] text-[var(--color-text)] focus:ring-2 focus:ring-[var(--color-primary)]/30 focus:border-[var(--color-primary)] outline-none ${fieldErrors.mainSportId ? 'border-[var(--color-error)]' : 'border-[var(--color-border)]'}`}>
+                  <select value={form.mainSportId} onChange={e => {
+                    const next = Number(e.target.value) || 0;
+                    setForm(f => ({ ...f, mainSportId: next, interestedSportIds: applyMainSportChange(f.mainSportId || null, next || null, f.interestedSportIds) }));
+                    clearFieldError('mainSportId');
+                  }} className={`w-full px-4 py-3 rounded-xl border bg-[var(--color-bg)] text-[var(--color-text)] focus:ring-2 focus:ring-[var(--color-primary)]/30 focus:border-[var(--color-primary)] outline-none ${fieldErrors.mainSportId ? 'border-[var(--color-error)]' : 'border-[var(--color-border)]'}`}>
                     <option value={0}>{t('landing.player_reg.select_main_sport')}</option>
                     {sports.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                   </select>
@@ -281,7 +286,7 @@ export default function PlayerRegisterPage() {
                   <label className="block text-sm font-medium text-[var(--color-text)] mb-1.5">{t('landing.player_reg.interested_sports')}</label>
                   <p className="text-xs text-[var(--color-text-muted)] mb-2">{t('landing.player_reg.interested_sports_desc')}</p>
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-48 overflow-y-auto p-1">
-                    {sports.map(s => {
+                    {selectableInterestSports(sports, form.mainSportId || null).map(s => {
                       const checked = form.interestedSportIds.includes(s.id);
                       return (
                         <label key={s.id} className={`flex items-center gap-2 p-2 rounded-xl border cursor-pointer transition-all ${checked ? 'border-[var(--color-primary)] bg-[var(--color-primary-bg)]/30' : 'border-[var(--color-border)] hover:border-[var(--color-primary)]/30'}`}>
@@ -313,7 +318,7 @@ export default function PlayerRegisterPage() {
                   {form.interestedSportIds.length > 0 && (
                   <div className="flex justify-between py-2 border-b border-[var(--color-border)]">
                     <span className="text-[var(--color-text-muted)]">{t('landing.player_reg.interested_sports')}</span>
-                    <span className="font-medium text-[var(--color-text)] text-right">{form.interestedSportIds.map(id => sports.find(s => s.id === id)?.name).filter(Boolean).join(', ')}</span>
+                    <span className="font-medium text-[var(--color-text)] text-right">{withMainSportInterest(form.mainSportId || null, form.interestedSportIds).map(id => sports.find(s => s.id === id)?.name).filter(Boolean).join(', ')}</span>
                   </div>
                 )}
               </div>

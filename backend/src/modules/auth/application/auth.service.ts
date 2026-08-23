@@ -26,6 +26,7 @@ import {
   isInternalSubscriptionPlan,
   isOrganizationRegistrationPlan,
 } from '../../../shared/constants/org-registration.js';
+import { normalizeSportInterests } from '../domain/sport-interests.js';
 
 function parseDurationMs(value: string | undefined, fallbackMs: number): number {
   if (!value) return fallbackMs;
@@ -124,8 +125,10 @@ export class AuthService {
     await userRepository.createWallet(userId);
     await userRepository.assignPlayerRole(userId);
 
-    if (input.interestedSportIds?.length) {
-      await userRepository.setSportInterestIds(userId, input.interestedSportIds);
+    // The main sport is always part of the player's sport interests (deduped).
+    const interestIds = normalizeSportInterests(input.mainSportId || null, input.interestedSportIds);
+    if (interestIds.length) {
+      await userRepository.setSportInterestIds(userId, interestIds);
     }
 
     // Player registration is self-service (no approval step), so create an
@@ -604,6 +607,10 @@ export class AuthService {
   }
 
   async updateProfile(userId: number, input: any) {
+    const touchesSports = input.mainSportId !== undefined || input.interestedSportIds !== undefined;
+    const current = touchesSports ? await userRepository.findById(userId) : null;
+    const previousMainSportId = (current as any)?.main_sport_id ?? null;
+
     const userData: Record<string, any> = {};
     if (input.fullName !== undefined) userData.full_name = input.fullName;
     if (input.email !== undefined) userData.email = input.email;
@@ -657,8 +664,18 @@ export class AuthService {
       await userRepository.updatePlayerProfile(userId, profileData);
     }
 
-    if (input.interestedSportIds !== undefined) {
-      await userRepository.setSportInterestIds(userId, input.interestedSportIds);
+    // Main-sport/interests invariant: the (possibly new) main sport is always
+    // part of the saved interests; the previous main sport's auto-managed entry
+    // is dropped on change; explicit secondary selections are preserved.
+    if (touchesSports) {
+      const effectiveMain = input.mainSportId !== undefined ? input.mainSportId : previousMainSportId;
+      const providedIds = input.interestedSportIds !== undefined
+        ? input.interestedSportIds
+        : await userRepository.getSportInterestIds(userId);
+      await userRepository.setSportInterestIds(
+        userId,
+        normalizeSportInterests(effectiveMain, providedIds, previousMainSportId),
+      );
     }
 
     recordAudit({
@@ -864,6 +881,9 @@ export class AuthService {
             relation: user.emergency_contact_relation || null,
           }]
         : [];
+    // Legacy rows may predate the main-sport-in-interests invariant — expose
+    // the merged view so the profile always shows the main sport as an interest.
+    const mergedInterestIds = normalizeSportInterests(user.main_sport_id, interestedSportIds);
     return {
       id: user.id,
       publicId: user.public_id,
@@ -884,7 +904,7 @@ export class AuthService {
       isPublic: !!(user.is_public ?? 1),
       mainSportId: user.main_sport_id,
       mainLevelId: user.main_level_id,
-      interestedSportIds,
+      interestedSportIds: mergedInterestIds,
       playing_hand: user.playing_hand || null,
       bio: user.bio || null,
       emergency_contact_name: user.emergency_contact_name || null,
