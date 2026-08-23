@@ -358,3 +358,12 @@ AND NOT EXISTS (SELECT 1 FROM accounting_event_mapping_lines WHERE event_type = 
 INSERT INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
 SELECT 'provider_payout', NULL, 'provider_payable', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '2200'
 AND NOT EXISTS (SELECT 1 FROM accounting_event_mapping_lines WHERE event_type = 'provider_payout' AND organisation_id IS NULL AND concept = 'provider_payable');
+
+-- 24. subscription_cash_payment — cash subscription collected via admin approval
+-- (admin confirmation of an offline cash subscription is the collection evidence)
+INSERT INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
+SELECT 'subscription_cash_payment', NULL, 'cash_bank', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '1120'
+AND NOT EXISTS (SELECT 1 FROM accounting_event_mapping_lines WHERE event_type = 'subscription_cash_payment' AND organisation_id IS NULL AND concept = 'cash_bank');
+INSERT INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
+SELECT 'subscription_cash_payment', NULL, 'revenue', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '4100'
+AND NOT EXISTS (SELECT 1 FROM accounting_event_mapping_lines WHERE event_type = 'subscription_cash_payment' AND organisation_id IS NULL AND concept = 'revenue');
