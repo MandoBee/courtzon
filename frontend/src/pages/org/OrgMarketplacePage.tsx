@@ -92,6 +92,7 @@ export default function OrgMarketplacePage() {
         onClose={handleClose}
         orgId={orgId}
         editId={editId}
+        product={(prods?.data || []).find((p: any) => Number(p.id) === Number(editId)) || null}
         sports={Array.isArray(sports) ? sports : []}
         categories={Array.isArray(categories) ? categories : []}
         brands={Array.isArray(brands) ? brands : []}

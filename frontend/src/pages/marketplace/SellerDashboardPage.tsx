@@ -481,6 +481,7 @@ export default function SellerDashboardPage() {
         open={showForm}
         onClose={resetForm}
         editId={editingProductId}
+        product={(products?.data || []).find((p: any) => Number(p.id) === Number(editingProductId)) || null}
         sports={sports || []}
         categories={categories || []}
         brands={brands || []}

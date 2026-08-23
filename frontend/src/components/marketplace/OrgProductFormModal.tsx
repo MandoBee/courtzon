@@ -11,6 +11,7 @@ interface Props {
   onClose: () => void;
   orgId: string;
   editId: number | null;
+  product?: any;
   sports: any[];
   categories: any[];
   brands: any[];
@@ -18,7 +19,7 @@ interface Props {
   onUpgrade?: () => void;
 }
 
-export default function OrgProductFormModal({ open, onClose, orgId: _orgId, editId, sports, categories, brands, tags, onUpgrade }: Props) {
+export default function OrgProductFormModal({ open, onClose, orgId: _orgId, editId, product, sports, categories, brands, tags, onUpgrade }: Props) {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
   const fileRef = useRef<HTMLInputElement>(null);
@@ -74,9 +75,20 @@ export default function OrgProductFormModal({ open, onClose, orgId: _orgId, edit
     enabled: !!editId && open,
   });
 
-  useEffect(() => {
-    if (!productDetail) return;
-    const p = productDetail.data || productDetail;
+  const parseTagIds = (p: any): number[] => {
+    if (Array.isArray(p.tag_ids)) return p.tag_ids.map(Number);
+    if (typeof p.tag_ids === 'string') return p.tag_ids.split(',').map(Number).filter(Boolean);
+    if (Array.isArray(p.tags)) return p.tags.map((t: any) => t.id || t).filter(Boolean);
+    return [];
+  };
+  const parseImages = (raw: any): string[] => {
+    if (Array.isArray(raw)) return raw;
+    if (typeof raw === 'string') try { const parsed = JSON.parse(raw); return Array.isArray(parsed) ? parsed : []; } catch { return []; }
+    return [];
+  };
+
+  // Populate the form from a product payload (list-row item OR full detail).
+  const applyProduct = (p: any) => {
     setF({
       name: p.name || '', desc: p.description || '',
       sportId: p.sport_id ? String(p.sport_id) : '',
@@ -90,18 +102,7 @@ export default function OrgProductFormModal({ open, onClose, orgId: _orgId, edit
       gender: p.gender || 'unisex',
       branchId: p.branch_id ? String(p.branch_id) : '',
     });
-    const parseTagIds = (p: any): number[] => {
-      if (Array.isArray(p.tag_ids)) return p.tag_ids.map(Number);
-      if (typeof p.tag_ids === 'string') return p.tag_ids.split(',').map(Number).filter(Boolean);
-      if (Array.isArray(p.tags)) return p.tags.map((t: any) => t.id || t).filter(Boolean);
-      return [];
-    };
     setSelectedTags(parseTagIds(p));
-    const parseImages = (raw: any): string[] => {
-      if (Array.isArray(raw)) return raw;
-      if (typeof raw === 'string') try { const parsed = JSON.parse(raw); return Array.isArray(parsed) ? parsed : []; } catch { return []; }
-      return [];
-    };
     setImgs(parseImages(p.images));
     if (Array.isArray(p.variants) && p.variants.length) {
       const groups: Record<string, { type: string; items: any[] }> = {};
@@ -119,7 +120,23 @@ export default function OrgProductFormModal({ open, onClose, orgId: _orgId, edit
         });
       });
       setVariantGroups(Object.values(groups));
+    } else {
+      setVariantGroups([]);
     }
+  };
+
+  // Seed immediately from the selected product the card already holds, so the
+  // modal is never empty even before/if the detail fetch resolves.
+  useEffect(() => {
+    if (product && open) applyProduct(product);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [product, open]);
+
+  // Enrich with the authoritative detail (adds variants/tags if present).
+  useEffect(() => {
+    if (!productDetail) return;
+    const p = productDetail.data || productDetail;
+    applyProduct(p);
   }, [productDetail]);
 
   const reset = () => {
