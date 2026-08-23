@@ -220,11 +220,21 @@ export class AuthService {
       );
     }
 
-    // Create upgrade request
+    // Create upgrade request — persist plan price/cycle/name (see organization flow)
+    const sellerBillingCycle = input.billingCycle === 'yearly' ? 'yearly' : 'monthly';
+    let sellerRequestedPrice: number | null = null;
+    let sellerRequestedPlanName: string | null = null;
+    if (input.planId) {
+      const planInfo = await paymentRepository.getPlanPrice(input.planId);
+      if (planInfo) {
+        sellerRequestedPlanName = planInfo.planName;
+        sellerRequestedPrice = sellerBillingCycle === 'yearly' ? planInfo.priceYearly : planInfo.priceMonthly;
+      }
+    }
     const [upgradeResult] = await pool.execute(
-      `INSERT INTO organisation_upgrade_requests (organisation_id, registration_type, requested_by, requested_plan_id, chosen_payment_method, status, metadata)
-       VALUES (?, 'seller', ?, ?, ?, 'pending', ?)`,
-      [orgId, userId, input.planId || null, paymentMethod, JSON.stringify({ shopName: input.shopName })]
+      `INSERT INTO organisation_upgrade_requests (organisation_id, registration_type, requested_by, requested_plan_id, requested_plan_name, requested_price, requested_billing_cycle, chosen_payment_method, status, metadata)
+       VALUES (?, 'seller', ?, ?, ?, ?, ?, ?, 'pending', ?)`,
+      [orgId, userId, input.planId || null, sellerRequestedPlanName, sellerRequestedPrice, sellerBillingCycle, paymentMethod, JSON.stringify({ shopName: input.shopName })]
     ) as any;
     const upgradeRequestId = upgradeResult.insertId as number;
 
@@ -382,11 +392,23 @@ export class AuthService {
       );
     }
 
-    // Create upgrade request
+    // Create upgrade request — persist the resolved plan price/cycle/name so
+    // downstream cash-accounting posting has an explicit amount to work with
+    // (a NULL requested_price silently skips the accounting entry).
+    const billingCycle = input.billingCycle === 'yearly' ? 'yearly' : 'monthly';
+    let requestedPrice: number | null = null;
+    let requestedPlanName: string | null = null;
+    if (input.planId) {
+      const planInfo = await paymentRepository.getPlanPrice(input.planId);
+      if (planInfo) {
+        requestedPlanName = planInfo.planName;
+        requestedPrice = billingCycle === 'yearly' ? planInfo.priceYearly : planInfo.priceMonthly;
+      }
+    }
     const [upgradeResult] = await pool.execute(
-      `INSERT INTO organisation_upgrade_requests (organisation_id, registration_type, requested_by, requested_plan_id, requested_org_type_id, chosen_payment_method, status, metadata)
-       VALUES (?, 'organization', ?, ?, ?, ?, 'pending', ?)`,
-      [orgId, userId, input.planId, input.orgTypeId, paymentMethod, JSON.stringify({ orgName: input.orgName, documents: input.orgDocuments || [] })]
+      `INSERT INTO organisation_upgrade_requests (organisation_id, registration_type, requested_by, requested_plan_id, requested_org_type_id, requested_plan_name, requested_price, requested_billing_cycle, chosen_payment_method, status, metadata)
+       VALUES (?, 'organization', ?, ?, ?, ?, ?, ?, ?, 'pending', ?)`,
+      [orgId, userId, input.planId, input.orgTypeId, requestedPlanName, requestedPrice, billingCycle, paymentMethod, JSON.stringify({ orgName: input.orgName, documents: input.orgDocuments || [] })]
     ) as any;
     const upgradeRequestId = upgradeResult.insertId as number;
 

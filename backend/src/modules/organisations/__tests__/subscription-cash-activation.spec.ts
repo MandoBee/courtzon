@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { mockExecute, mockBeginTransaction, mockCommit, mockRollback, mockRelease, mockEmit, mockRecordAudit, mockPostAccountingEvent } = vi.hoisted(() => ({
+const { mockExecute, mockBeginTransaction, mockCommit, mockRollback, mockRelease, mockEmit, mockRecordAudit, mockPostAccountingEvent, mockHasPosting } = vi.hoisted(() => ({
   mockExecute: vi.fn(),
   mockBeginTransaction: vi.fn(),
   mockCommit: vi.fn(),
@@ -9,6 +9,7 @@ const { mockExecute, mockBeginTransaction, mockCommit, mockRollback, mockRelease
   mockEmit: vi.fn(),
   mockRecordAudit: vi.fn(async () => undefined),
   mockPostAccountingEvent: vi.fn(async () => undefined),
+  mockHasPosting: vi.fn(async () => false),
 }));
 
 vi.mock('../../../database/mysql.js', () => ({
@@ -23,6 +24,9 @@ vi.mock('../../../database/mysql.js', () => ({
   }),
 }));
 vi.mock('../../../shared/event-bus/index.js', () => ({ eventBusV2: { emit: mockEmit } }));
+vi.mock('../../financial/infrastructure/repositories/ledger.repository.js', () => ({
+  ledgerRepository: { hasPosting: mockHasPosting },
+}));
 vi.mock('../../financial/infrastructure/transaction.repository.js', () => ({
   transactionRepository: { createTransaction: vi.fn(async () => 1) },
 }));
@@ -88,6 +92,7 @@ describe('cash subscription activation — organisation + accounting consistency
     mockEmit.mockReset();
     mockRecordAudit.mockReset();
     mockPostAccountingEvent.mockClear();
+    mockHasPosting.mockReset().mockResolvedValue(false);
   });
 
   it('approving a pending Cash subscription activates the subscription AND the organisation', async () => {
@@ -142,19 +147,49 @@ describe('cash subscription activation — organisation + accounting consistency
     expect(orgApprovedEmits[0][1]).toMatchObject({ organisationId: 6, name: 'Padel Edge', userId: 3 });
   });
 
-  it('is idempotent: approving an already-approved request posts nothing and emits nothing', async () => {
+  it('already-approved request with an EXISTING cash posting: pure idempotent skip, no back-fill', async () => {
     // 1. SELECT request FOR UPDATE -> already approved
     mockExecute.mockResolvedValueOnce([[{ ...CASH_REGISTRATION_REQ, status: 'approved' }], []]);
+    // hasPosting: the ledger entry already exists
+    mockHasPosting.mockResolvedValueOnce(true);
 
     const result = await tryActivateSubscriptionRequest(7, { adminId: 1 });
 
     expect(result.activated).toBe(false);
     expect(result.alreadyProcessed).toBe(true);
+    expect(result.accountingBackfilled).toBeUndefined();
     expect(mockRollback).toHaveBeenCalled();
     expect(mockCommit).not.toHaveBeenCalled();
     expect(mockPostAccountingEvent).not.toHaveBeenCalled();
     expect(mockEmit).not.toHaveBeenCalled();
     expect(mockRecordAudit).not.toHaveBeenCalled();
+  });
+
+  it('legacy already-approved request MISSING its cash posting: back-fills exactly once through the canonical engine', async () => {
+    // Regression: request #26 was activated before atomic cash accounting existed —
+    // re-approval must heal the missing ledger entry instead of silently skipping.
+    mockExecute.mockResolvedValueOnce([[{ ...CASH_REGISTRATION_REQ, status: 'approved' }], []]);
+    mockHasPosting.mockResolvedValueOnce(false);
+
+    const result = await tryActivateSubscriptionRequest(7, { adminId: 1 });
+
+    expect(result.activated).toBe(false);
+    expect(result.alreadyProcessed).toBe(true);
+    expect(result.accountingBackfilled).toBe(true);
+    expect(mockHasPosting).toHaveBeenCalledWith('subscription', 7, 'subscription_cash_payment');
+    expect(mockPostAccountingEvent).toHaveBeenCalledTimes(1);
+    const [eventType, sourceType, sourceId, organisationId, concepts] = mockPostAccountingEvent.mock.calls[0];
+    expect(eventType).toBe('subscription_cash_payment');
+    expect(sourceType).toBe('subscription');
+    expect(sourceId).toBe(7);
+    expect(organisationId).toBe(6);
+    expect(concepts).toEqual({ cash_bank: 500, revenue: 500 });
+    // Back-fill runs in its OWN transaction (original activation long gone): no outerConn passed
+    expect(mockPostAccountingEvent.mock.calls[0][6]).toContain('back-fill');
+    expect(mockPostAccountingEvent.mock.calls[0][7]).toBeUndefined();
+    // No re-activation side effects
+    expect(mockCommit).not.toHaveBeenCalled();
+    expect(mockEmit).not.toHaveBeenCalled();
   });
 
   it('non-registration requests on a suspended organisation still defer (org-inactive), no accounting', async () => {
@@ -215,13 +250,21 @@ describe('cash subscription activation — organisation + accounting consistency
     // 6-7. snapshot
     mockExecute.mockResolvedValueOnce([[{ id: 1, plan_name: 'Free', price_monthly: 0, price_yearly: 0, is_unlimited: 1, _features: null }], []]);
     mockExecute.mockResolvedValueOnce([[], []]);
-    // 8-9. subscription update, request approve
+    // 8. existing subscription dates (writeActiveSubscription pre-SELECT)
+    mockExecute.mockResolvedValueOnce([[{ id: 5, start_date: null, end_date: null }], []]);
+    // 9. INSERT active subscription
+    mockExecute.mockResolvedValueOnce([{ affectedRows: 1, insertId: 55 }, []]);
+    // 10. approve UPDATE
     mockExecute.mockResolvedValueOnce([{ affectedRows: 1 }, []]);
+    // 11. org activation UPDATE
     mockExecute.mockResolvedValueOnce([{ affectedRows: 1 }, []]);
-    // 10. org activation UPDATE
-    mockExecute.mockResolvedValueOnce([{ affectedRows: 1 }, []]);
+    // 12. resolveRequestAmount fallback plan-price lookup (requested_price=0 → still 0)
+    mockExecute.mockResolvedValueOnce([[{ price_monthly: 0, price_yearly: 0 }], []]);
 
-    const result = await tryActivateSubscriptionRequest(7, { adminId: 1 });
+    const result = await tryActivateSubscriptionRequest(7, { adminId: 1 }).catch((e) => {
+      console.error('CALLS:', mockExecute.mock.calls.length, JSON.stringify(mockExecute.mock.calls.map((c: any[]) => String(c[0]).slice(0, 60))));
+      throw e;
+    });
 
     expect(result.activated).toBe(true);
     expect(result.organisationActivated).toBe(true);
