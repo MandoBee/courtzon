@@ -167,7 +167,7 @@ export default function PlayerRegisterPage() {
           </div>
           <h2 className="text-2xl font-bold text-[var(--color-text)] mb-2">{t('landing.player_reg.success_title')}</h2>
           <p className="text-[var(--color-text-muted)]">{t('landing.player_reg.success_desc')}</p>
-          <button onClick={() => navigate('/login')} className="mt-6 px-6 py-3 bg-[var(--gradient-primary)] text-white font-semibold rounded-xl">{t('landing.player_reg.go_login')}</button>
+          <button onClick={() => navigate('/login')} className="cz-btn-primary mt-6 px-6 py-3 font-semibold rounded-xl">{t('landing.player_reg.go_login')}</button>
         </div>
       </div>
     );
@@ -327,17 +327,17 @@ export default function PlayerRegisterPage() {
 
           <div className="flex items-center justify-between mt-8 pt-6 border-t border-[var(--color-border)]">
             <button onClick={() => setStep(s => Math.max(0, s - 1))} disabled={step === 0}
-              className="px-5 py-2.5 text-sm font-medium border border-[var(--color-border)] rounded-xl hover:bg-[var(--color-bg)] disabled:opacity-30 transition-all text-[var(--color-text)]">
+              className="cz-btn-outline px-5 py-2.5 text-sm font-medium rounded-xl transition-all">
               {t('common.back')}
             </button>
             {step < 2 ? (
               <button onClick={goNext}
-                className="px-6 py-2.5 text-sm font-semibold text-white bg-[var(--gradient-primary)] rounded-xl hover:opacity-90 transition-all">
+                className="cz-btn-primary px-6 py-2.5 text-sm font-semibold rounded-xl transition-all">
                 {t('common.next')}
               </button>
             ) : (
               <button type="button" onClick={handleSubmit} disabled={submitting || !agreed}
-                className="px-6 py-2.5 text-sm font-semibold text-white bg-[var(--gradient-primary)] rounded-xl disabled:opacity-40 hover:opacity-90 transition-all">
+                className="cz-btn-primary px-6 py-2.5 text-sm font-semibold rounded-xl transition-all">
                 {submitting ? t('landing.player_reg.submitting') : t('landing.player_reg.submit')}
               </button>
             )}
