@@ -4,7 +4,7 @@ import { marketplaceRepository as repo } from '../infrastructure/repositories/ma
 import { recordAudit } from '../../audit-log/index.js';
 import { NotFoundError } from '../../../shared/errors/app-error.js';
 import {
-  CreateProductSchema, UpdateProductSchema, ProductQuerySchema,
+  CreateProductSchema, UpdateProductSchema, ProductQuerySchema, SetProductVisibilitySchema,
   AddToCartSchema, UpdateCartItemSchema, CreateOrderSchema, UpdateOrderStatusSchema,
   CreateReviewSchema, CategoryQuerySchema,
   CreateVariantSchema, UpdateVariantSchema, ApplyCouponSchema,
@@ -44,7 +44,8 @@ export async function listProductsHandler(request: FastifyRequest, reply: Fastif
 
 export async function getProductHandler(request: FastifyRequest, reply: FastifyReply) {
   const { id } = request.params as any;
-  const product = await svc.getProduct(Number(id));
+  const viewerUserId = (request as any).userId ?? null;
+  const product = await svc.getProductForRequester(Number(id), viewerUserId);
   return reply.send(product);
 }
 
@@ -74,6 +75,23 @@ export async function updateProductHandler(request: FastifyRequest, reply: Fasti
     action: 'PRODUCT.UPDATE',
     entityType: 'product',
     entityId: Number(id),
+    ipAddress: request.ip,
+    userAgent: request.headers['user-agent'],
+  });
+  return reply.send(product);
+}
+
+export async function setProductVisibilityHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { id } = request.params as any;
+  const body = SetProductVisibilitySchema.parse(request.body);
+  const userId = (request as any).userId;
+  const product = await svc.setProductVisibility(userId, Number(id), body.visible === true);
+  recordAudit({
+    actorId: userId ?? null,
+    action: 'PRODUCT.VISIBILITY',
+    entityType: 'product',
+    entityId: Number(id),
+    afterState: { visible: body.visible === true },
     ipAddress: request.ip,
     userAgent: request.headers['user-agent'],
   });

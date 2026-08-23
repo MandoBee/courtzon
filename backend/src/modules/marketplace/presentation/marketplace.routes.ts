@@ -23,6 +23,7 @@ export async function marketplaceRoutes(app: FastifyInstance, opts: { requireFea
   const sellMod = { preHandler: [requirePermission(['marketplace.sell']), requireApprovedOrg()] };
   app.post('/marketplace/products', sellMod, ctrl.createProductHandler);
   app.put('/marketplace/products/:id', sellMod, ctrl.updateProductHandler);
+app.put('/marketplace/products/:id/visibility', sellMod, ctrl.setProductVisibilityHandler);
   app.delete('/marketplace/products/:id', sellMod, ctrl.deleteProductHandler);
   app.post('/marketplace/products/:id/variants', sellMod, ctrl.createVariantHandler);
   app.put('/marketplace/variants/:variantId', sellMod, ctrl.updateVariantHandler);

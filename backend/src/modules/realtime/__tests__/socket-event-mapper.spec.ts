@@ -231,4 +231,29 @@ describe('SocketEventMapper', () => {
       expect(result!.rooms).toContain('admin');
     });
   });
+
+  // ── marketplace:product-visibility-changed ──
+  describe('marketplace:product-visibility-changed', () => {
+    it('15+16+17: hide reaches admin, seller/org, and player catalog rooms', () => {
+      const result = mapDomainEvent('marketplace:product-visibility-changed', {
+        productId: 505, name: 'Racket', visible: false, status: 'active',
+        sellerType: 'org', organisationId: 77, sellerUserId: null,
+      });
+      expect(result!.type).toBe('marketplace.product-visibility-changed');
+      expect(result!.payload).toMatchObject({ productId: 505, visible: false, status: 'active' });
+      expect(result!.rooms).toContain('admin');
+      expect(result!.rooms).toContain('player');
+      expect(result!.rooms).toContain('marketplace:seller:77');
+      expect(result!.rooms).toContain('organisation:77');
+    });
+
+    it('player-seller visibility reaches owner personal room', () => {
+      const result = mapDomainEvent('marketplace:product-visibility-changed', {
+        productId: 506, visible: true, status: 'active',
+        sellerType: 'player', organisationId: null, sellerUserId: 901,
+      });
+      expect(result!.rooms).toContain('user:901');
+      expect(result!.rooms).not.toContain('organisation:null');
+    });
+  });
 });

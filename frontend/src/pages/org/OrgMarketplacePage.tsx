@@ -8,6 +8,7 @@ import { Can } from '../../permissions/Can';
 import { EntityImage } from '../../components/ui';
 import UpgradeRequestModal from '../../components/subscription/UpgradeRequestModal';
 import OrgProductFormModal from '../../components/marketplace/OrgProductFormModal';
+import { ProductVisibilityToggle } from '../../components/marketplace/ProductVisibilityToggle';
 
 export default function OrgMarketplacePage() {
   const { orgId } = useParams<{ orgId: string }>();
@@ -125,6 +126,7 @@ export default function OrgMarketplacePage() {
                   <Can permission="marketplace.seller.create-product"><button onClick={() => { setEditId(p.id); setShowForm(true); }} className="text-xs text-[var(--color-primary)] hover:underline">Edit</button></Can>
                   <Can permission="marketplace.seller.delete-product"><button onClick={() => { if (confirm('Delete?')) delMut.mutate(p.id); }} className="text-xs text-[var(--color-error)] hover:underline">Delete</button></Can>
                 </div>
+                <div className="pt-1"><ProductVisibilityToggle product={p} /></div>
               </div>
             </div>
           ))}

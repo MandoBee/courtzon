@@ -2277,6 +2277,7 @@ CREATE TABLE `products` (
   `images` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL CHECK (json_valid(`images`)),
   `metadata` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL COMMENT 'Brand, size, color, etc.' CHECK (json_valid(`metadata`)),
   `is_active` tinyint(1) NOT NULL DEFAULT 1,
+  `marketplace_visible` tinyint(1) NOT NULL DEFAULT 1 COMMENT 'Independent of approval: active products can be hidden from the public Marketplace while remaining visible to owners and admins',
   `deleted_at` timestamp NULL DEFAULT NULL,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
   `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),

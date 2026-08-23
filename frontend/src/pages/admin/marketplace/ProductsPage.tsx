@@ -64,6 +64,7 @@ export default function ProductsPage() {
               <th className="text-left px-4 py-2 font-medium text-[var(--color-text-muted)]">Category</th>
               <th className="text-left px-4 py-2 font-medium text-[var(--color-text-muted)]">Price</th>
               <th className="text-left px-4 py-2 font-medium text-[var(--color-text-muted)]">Status</th>
+              <th className="text-left px-4 py-2 font-medium text-[var(--color-text-muted)]">Visibility</th>
               <th className="text-right px-4 py-2 font-medium text-[var(--color-text-muted)]">Actions</th>
             </tr>
           </thead>
@@ -86,6 +87,15 @@ export default function ProductsPage() {
                     <option value="draft">Draft</option>
                     <option value="archived">Archived</option>
                   </select>
+                </td>
+                <td className="px-4 py-3">
+                  <span className={`text-xs px-2 py-1 rounded-full border ${
+                    Number(p.marketplace_visible) === 1
+                      ? 'bg-[var(--color-success-bg)] text-[var(--color-success-text)] border-[var(--color-success)]/30'
+                      : 'bg-[var(--color-border)] text-[var(--color-text-muted)] border-[var(--color-border)]'
+                  }`}>
+                    {Number(p.marketplace_visible) === 1 ? 'Visible' : 'Hidden'}
+                  </span>
                 </td>
                 <td className="px-4 py-3 text-right">
                   <button onClick={() => setEditingProduct(p)} className="text-xs text-[var(--color-primary)] mr-3 hover:underline">Edit</button>

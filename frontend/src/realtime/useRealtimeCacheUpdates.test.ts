@@ -129,7 +129,7 @@ describe('MARKETPLACE_PRODUCT_INVALIDATIONS (product approval realtime strategy)
     }
   });
 
-  it('invalidateMarketplaceProducts runs through the query client without duplicates', () => {
+it('invalidateMarketplaceProducts runs through the query client without duplicates', () => {
     const invalidated: string[][] = [];
     const fakeQc = {
       invalidateQueries: ({ queryKey }: { queryKey: readonly string[] }) => {
@@ -139,5 +139,20 @@ describe('MARKETPLACE_PRODUCT_INVALIDATIONS (product approval realtime strategy)
     invalidateMarketplaceProducts(fakeQc as any);
     expect(invalidated).toHaveLength(MARKETPLACE_PRODUCT_INVALIDATIONS.length);
     expect(new Set(invalidated.map((k) => k.join(':'))).size).toBe(invalidated.length);
+  });
+
+  it('product visibility changes reuse the exact marketplace roots (18) and no unrelated ones (19)', () => {
+    // The visibility socket handler calls invalidateMarketplaceProducts — the
+    // same roots as status changes. Assert the set is identical and scoped.
+    const roots = MARKETPLACE_PRODUCT_INVALIDATIONS.map((k) => k[0]);
+    expect(roots).toContain('mp-products');
+    expect(roots).toContain('mp-product');
+    expect(roots).toContain('mp-seller-products');
+    expect(roots).toContain('org-products');
+    expect(roots).toContain('admin-marketplace-products');
+    expect(roots).toContain('admin-product');
+    for (const forbidden of ['accounting', 'finance', 'wallet', 'my-bookings', 'admin', 'notifications', 'organisation']) {
+      expect(roots).not.toContain(forbidden);
+    }
   });
 });
