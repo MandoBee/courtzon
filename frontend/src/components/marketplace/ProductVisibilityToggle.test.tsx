@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ProductVisibilityToggle } from './ProductVisibilityToggle';
 
@@ -9,10 +10,6 @@ vi.mock('../../services/api', () => ({
   default: { put: (...a: any[]) => mockPut(...a) },
 }));
 vi.mock('../ui/Toast', () => ({ useToast: () => ({ showToast: vi.fn() }) }));
-vi.mock('../../store/auth.store', () => ({
-  useAuthStore: (selector: (s: any) => unknown) =>
-    selector({ user: { permissions: ['*'] } }),
-}));
 
 function renderToggle(product: any) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -48,5 +45,30 @@ describe('ProductVisibilityToggle badge', () => {
     await waitFor(() => {
       expect(screen.getByText('Awaiting approval')).toBeTruthy();
     });
+  });
+
+  it('control is always rendered on the owner card (not permission-gated) — Visible badge', async () => {
+    renderToggle({ id: 4, status: 'active', marketplace_visible: 1 });
+    await waitFor(() => {
+      expect(screen.getByText('Visible')).toBeTruthy();
+    });
+  });
+
+  it('clicking Visible hides the product via the existing visibility API', async () => {
+    renderToggle({ id: 5, status: 'active', marketplace_visible: 1 });
+    await waitFor(() => {
+      expect(screen.getByText('Visible')).toBeTruthy();
+    });
+    await userEvent.click(screen.getByText('Visible'));
+    expect(mockPut).toHaveBeenCalledWith('/marketplace/products/5/visibility', { visible: false });
+  });
+
+  it('clicking Hidden shows the product via the existing visibility API', async () => {
+    renderToggle({ id: 6, status: 'active', marketplace_visible: 0 });
+    await waitFor(() => {
+      expect(screen.getByText('Hidden')).toBeTruthy();
+    });
+    await userEvent.click(screen.getByText('Hidden'));
+    expect(mockPut).toHaveBeenCalledWith('/marketplace/products/6/visibility', { visible: true });
   });
 });
