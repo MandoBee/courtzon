@@ -116,7 +116,11 @@ export const marketplaceService = {
       sellerUserId: (product as any).seller_user_id ?? null,
     });
 
-    return this.getProduct(productId);
+    // Return the product already fetched above (with the new visibility flag) —
+    // NOT a fresh full re-fetch. The DB update has committed; a response must
+    // never depend on auxiliary queries that can fail after commit and turn a
+    // successful visibility change into a 500 for the client.
+    return { ...product, marketplace_visible: visible ? 1 : 0 };
   },
 
   async getProduct(id: number) {

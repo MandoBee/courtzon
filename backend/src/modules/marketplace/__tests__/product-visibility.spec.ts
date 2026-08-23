@@ -84,6 +84,20 @@ describe('marketplace product visibility', () => {
     expect(payload).toMatchObject({ productId: 501, visible: false, status: 'active', sellerType: 'org', organisationId: 77 });
   });
 
+  it('500 regression: the response is built from the already-fetched product — no post-commit getProduct re-fetch', async () => {
+    // If a visibility change committed but a follow-up full-fetch (getProduct)
+    // failed, the client got a 500 while the DB was already updated. The
+    // response must not depend on auxiliary queries after commit.
+    vi.mocked(repo.findVariants).mockClear();
+    const result = await marketplaceService.setProductVisibility(10, 501, false);
+
+    expect(result.id).toBe(501);
+    expect(result.marketplace_visible).toBe(0);
+    expect(result.status).toBe('active');
+    // getProduct's finders must NOT be touched when building the response
+    expect(vi.mocked(repo.findVariants)).not.toHaveBeenCalled();
+  });
+
   it('6: owner shows an Active product → emit visible true (12: status unchanged)', async () => {
     await marketplaceService.setProductVisibility(10, 503, true);
     const [, payload] = mockEmit.mock.calls[0];

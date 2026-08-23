@@ -285,7 +285,6 @@ export default function SellerDashboardPage() {
                     p.status === 'draft' ? 'bg-[var(--color-border)] text-[var(--color-text-muted)]' : 'bg-[var(--color-warning-bg)] text-[var(--color-warning-text)]'
                   }`}>{p.status}</span>
                   <div className="flex gap-2 items-center">
-                    <ProductVisibilityToggle product={p} />
                     <button onClick={() => { setEditingProductId(p.id); setShowForm(true); }}
                       className="text-xs text-[var(--color-info-text)]">{t('common.edit')}</button>
                     <Can permission="marketplace.seller.delete-product">
@@ -293,6 +292,9 @@ export default function SellerDashboardPage() {
                         className="text-xs text-[var(--color-error)]">{t('common.delete')}</button>
                     </Can>
                   </div>
+                </div>
+                <div className="mt-2 pt-2 border-t border-[var(--color-border)]">
+                  <ProductVisibilityToggle product={p} />
                 </div>
               </div>
             ))}

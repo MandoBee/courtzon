@@ -127,7 +127,7 @@ export default function OrgMarketplacePage() {
                   <Can permission="marketplace.seller.create-product"><button onClick={() => { setEditId(p.id); setShowForm(true); }} className="text-xs text-[var(--color-primary)] hover:underline">Edit</button></Can>
                   <Can permission="marketplace.seller.delete-product"><button onClick={() => { if (confirm('Delete?')) delMut.mutate(p.id); }} className="text-xs text-[var(--color-error)] hover:underline">Delete</button></Can>
                 </div>
-                <div className="pt-1"><ProductVisibilityToggle product={p} /></div>
+                <div className="mt-2 pt-2 border-t border-[var(--color-border)]"><ProductVisibilityToggle product={p} /></div>
               </div>
             </div>
           ))}
