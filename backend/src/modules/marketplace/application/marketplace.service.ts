@@ -103,6 +103,9 @@ export const marketplaceService = {
     if (!org) org = await repo.findOrgByUserScope(userId);
     if (!org) throw new ForbiddenError('Not a seller');
 
+    const previous = await repo.findProductById(productId);
+    if (!previous) throw new NotFoundError('Product');
+
     data.status = 'pending';
     const { variants, tagIds, ...productData } = data;
     const updated = await repo.updateProduct(productId, org.id, productData);
@@ -126,6 +129,23 @@ export const marketplaceService = {
     if (tagIds !== undefined) {
       await repo.setProductTags(productId, tagIds);
     }
+
+    // Post-commit announce: a seller/org edit re-submits the product for
+    // review (→ pending). The ADMIN Products screen must refresh immediately,
+    // alongside the seller/org/player audiences. Skip when there is no
+    // transition (editing an already-pending product).
+    if (previous.status !== 'pending') {
+      eventBusV2.emit('marketplace:product-status-changed', {
+        productId,
+        name: (previous as any).name,
+        previousStatus: previous.status,
+        status: 'pending',
+        sellerType: (previous as any).seller_type,
+        organisationId: (previous as any).seller_id ?? null,
+        sellerUserId: (previous as any).seller_user_id ?? null,
+      });
+    }
+
     return this.getProduct(productId);
   },
 
@@ -1553,7 +1573,24 @@ export const marketplaceService = {
   },
 
   async adminUpdateProduct(productId: number, data: any) {
+    const previous = await repo.findProductById(productId);
+    if (!previous) throw new NotFoundError('Product');
     await repo.adminUpdateProduct(productId, data);
+
+    // Post-commit announce when a full edit carries a status transition, so
+    // seller/org/player audiences refresh (mirrors adminUpdateProductStatus).
+    if (data.status !== undefined && previous.status !== data.status) {
+      eventBusV2.emit('marketplace:product-status-changed', {
+        productId,
+        name: (previous as any).name,
+        previousStatus: previous.status,
+        status: data.status,
+        sellerType: (previous as any).seller_type,
+        organisationId: (previous as any).seller_id ?? null,
+        sellerUserId: (previous as any).seller_user_id ?? null,
+      });
+    }
+
     return repo.findProductById(productId);
   },
 
