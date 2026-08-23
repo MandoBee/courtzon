@@ -208,7 +208,7 @@ export default function SellerRegisterPage() {
               </div>
               <h2 className="text-2xl font-bold text-[var(--color-text)] mb-2">{t('landing.seller_reg.approved_title')}</h2>
               <p className="text-[var(--color-text-muted)] max-w-md mx-auto">{t('landing.seller_reg.approved_desc')}</p>
-              <button onClick={goDashboard} className="mt-6 px-6 py-3 bg-[var(--gradient-primary)] text-white font-semibold rounded-xl">{t('landing.seller_reg.approved_cta')}</button>
+              <button onClick={goDashboard} className="cz-btn-primary mt-6 px-6 py-3 font-semibold rounded-xl">{t('landing.seller_reg.approved_cta')}</button>
             </div>
           ) : result === 'submitted' ? (
             <div className="bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)] p-10 text-center animate-fade-in">
@@ -218,7 +218,7 @@ export default function SellerRegisterPage() {
               <h2 className="text-2xl font-bold text-[var(--color-text)] mb-2">{t('landing.seller_reg.submitted_title')}</h2>
               <p className="text-[var(--color-text-muted)] max-w-md mx-auto">{t('landing.seller_reg.submitted_desc')}</p>
               <div className="mt-6 flex flex-col sm:flex-row gap-3 justify-center">
-                <button onClick={() => { setResult(null); setPollingPaid(true); }} className="px-6 py-3 bg-[var(--gradient-primary)] text-white font-semibold rounded-xl">{t('landing.seller_reg.check_status')}</button>
+                <button onClick={() => { setResult(null); setPollingPaid(true); }} className="cz-btn-primary mt-6 px-6 py-3 font-semibold rounded-xl">{t('landing.seller_reg.check_status')}</button>
                 <button onClick={() => navigate('/login')} className="px-6 py-3 border border-[var(--color-border)] text-[var(--color-text)] font-semibold rounded-xl">{t('landing.player_reg.go_login')}</button>
               </div>
             </div>
@@ -229,7 +229,7 @@ export default function SellerRegisterPage() {
               </div>
               <h2 className="text-2xl font-bold text-[var(--color-text)] mb-2">{t('landing.seller_reg.pending_title')}</h2>
               <p className="text-[var(--color-text-muted)] max-w-md mx-auto">{t('landing.seller_reg.pending_desc')}</p>
-              <button onClick={() => navigate('/login')} className="mt-6 px-6 py-3 bg-[var(--gradient-primary)] text-white font-semibold rounded-xl">{t('landing.player_reg.go_login')}</button>
+              <button onClick={() => navigate('/login')} className="cz-btn-primary mt-6 px-6 py-3 font-semibold rounded-xl">{t('landing.player_reg.go_login')}</button>
             </div>
           )
         ) : (
@@ -404,17 +404,17 @@ export default function SellerRegisterPage() {
 
               <div className="flex items-center justify-between mt-8 pt-6 border-t border-[var(--color-border)]">
                 <button onClick={() => setStep(s => Math.max(0, s - 1))} disabled={step === 0}
-                  className="px-5 py-2.5 text-sm font-medium border border-[var(--color-border)] rounded-xl hover:bg-[var(--color-bg)] disabled:opacity-30 transition-all text-[var(--color-text)]">
+                  className="cz-btn-outline px-5 py-2.5 text-sm font-medium rounded-xl transition-all">
                   {t('common.back')}
                 </button>
                 {step < 4 ? (
                   <button onClick={() => setStep(s => s + 1)} disabled={!canNext()}
-                    className="px-6 py-2.5 text-sm font-semibold text-white bg-[var(--gradient-primary)] rounded-xl disabled:opacity-40 hover:opacity-90 transition-all">
+                    className="cz-btn-primary px-6 py-2.5 text-sm font-semibold rounded-xl transition-all">
                     {t('common.next')}
                   </button>
                 ) : (
                   <button type="button" onClick={handleSubmit} disabled={submitting || !agreed}
-                    className="px-6 py-2.5 text-sm font-semibold text-white bg-[var(--gradient-primary)] rounded-xl disabled:opacity-40 hover:opacity-90 transition-all">
+                    className="cz-btn-primary px-6 py-2.5 text-sm font-semibold rounded-xl transition-all">
                     {submitting ? t('landing.player_reg.submitting') : t('landing.seller_reg.submit')}
                   </button>
                 )}

@@ -466,6 +466,35 @@ html[dir="rtl"] {
     background: var(--gradient-primary);
   }
 
+  /* Wizard / form action buttons (registration flows etc.). The gradient must
+     go through the `background` shorthand — a Tailwind bg-[var(--gradient-*)]
+     utility emits background-color, which cannot hold a gradient and is
+     silently dropped, leaving white text on a transparent button. */
+  .cz-btn-primary {
+    color: var(--color-accent-text, #fff);
+    background: var(--gradient-primary);
+  }
+  .cz-btn-primary:hover:not(:disabled) {
+    opacity: 0.9;
+  }
+  .cz-btn-primary:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+  .cz-btn-outline {
+    color: var(--color-text);
+    background-color: var(--color-surface);
+    border: 1px solid var(--color-border);
+  }
+  .cz-btn-outline:hover:not(:disabled) {
+    background-color: var(--color-primary-bg);
+    border-color: var(--color-primary);
+  }
+  .cz-btn-outline:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+  }
+
   /* Landing CMS blocks — Appearance Studio → Landing tab */
   .cz-landing-section {
     padding-top: var(--landing-section-padding-y, 5rem);

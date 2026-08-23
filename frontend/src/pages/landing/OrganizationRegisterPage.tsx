@@ -211,7 +211,7 @@ export default function OrganizationRegisterPage() {
               </div>
               <h2 className="text-2xl font-bold text-[var(--color-text)] mb-2">Organization Active</h2>
               <p className="text-[var(--color-text-muted)] max-w-md mx-auto">Your organization has been approved and is ready to use. You are already logged in.</p>
-              <button onClick={goDashboard} className="mt-6 px-6 py-3 bg-[var(--gradient-primary)] text-white font-semibold rounded-xl">Go to Dashboard</button>
+              <button onClick={goDashboard} className="cz-btn-primary mt-6 px-6 py-3 font-semibold rounded-xl">Go to Dashboard</button>
             </div>
           ) : (
             <div className="bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)] p-10 text-center animate-fade-in">
@@ -220,7 +220,7 @@ export default function OrganizationRegisterPage() {
               </div>
               <h2 className="text-2xl font-bold text-[var(--color-text)] mb-2">Pending Approval</h2>
               <p className="text-[var(--color-text-muted)] max-w-md mx-auto">Your organization registration has been submitted for review. A super admin will approve your account shortly. You'll be able to log in with player access in the meantime.</p>
-              <button onClick={() => navigate('/login')} className="mt-6 px-6 py-3 bg-[var(--gradient-primary)] text-white font-semibold rounded-xl">Go to Login</button>
+              <button onClick={() => navigate('/login')} className="cz-btn-primary mt-6 px-6 py-3 font-semibold rounded-xl">Go to Login</button>
             </div>
           )
         ) : (
@@ -412,17 +412,17 @@ export default function OrganizationRegisterPage() {
 
               <div className="flex items-center justify-between mt-8 pt-6 border-t border-[var(--color-border)]">
                 <button onClick={() => setStep(s => Math.max(0, s - 1))} disabled={step === 0}
-                  className="px-5 py-2.5 text-sm font-medium border border-[var(--color-border)] rounded-xl hover:bg-[var(--color-bg)] disabled:opacity-30 transition-all text-[var(--color-text)]">
+                  className="cz-btn-outline px-5 py-2.5 text-sm font-medium rounded-xl transition-all">
                   Back
                 </button>
                 {step < 4 ? (
                   <button onClick={() => setStep(s => s + 1)} disabled={!canNext()}
-                    className="px-6 py-2.5 text-sm font-semibold text-white bg-[var(--gradient-primary)] rounded-xl disabled:opacity-40 hover:opacity-90 transition-all">
+                    className="cz-btn-primary px-6 py-2.5 text-sm font-semibold rounded-xl transition-all">
                     Next
                   </button>
                 ) : (
                   <button type="button" onClick={handleSubmit} disabled={submitting || !agreed}
-                    className="px-6 py-2.5 text-sm font-semibold text-white bg-[var(--gradient-primary)] rounded-xl disabled:opacity-40 hover:opacity-90 transition-all">
+                    className="cz-btn-primary px-6 py-2.5 text-sm font-semibold rounded-xl transition-all">
                     {submitting ? 'Submitting...' : 'Submit Registration'}
                   </button>
                 )}
