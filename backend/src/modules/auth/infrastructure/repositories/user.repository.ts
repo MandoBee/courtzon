@@ -343,7 +343,12 @@ export class UserRepository {
     );
     if (!rows.length) return null;
     const profile = rows[0] as any;
-    const interestedSportIds = await this.getSportInterestIds(userId);
+    // Main sport is always part of the interests view (legacy rows may lack it).
+    const storedInterestIds = await this.getSportInterestIds(userId);
+    const interestedSportIds =
+      profile.main_sport_id && !storedInterestIds.includes(profile.main_sport_id)
+        ? [profile.main_sport_id, ...storedInterestIds]
+        : storedInterestIds;
     const interestedSports: { id: number; name: string }[] = [];
     if (interestedSportIds.length) {
       const placeholders = interestedSportIds.map(() => '?').join(', ');
