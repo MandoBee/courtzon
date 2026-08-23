@@ -229,6 +229,17 @@ async function seedPostableCoA(): Promise<{
      VALUES ('subscription_cash_payment', NULL, 'cash_bank', ?, 1), ('subscription_cash_payment', NULL, 'revenue', ?, 1)`,
     [cashLeaf, revLeaf],
   );
+  // Card subscription payments post through the generic 'card_payment' event
+  // (payment_clearing + revenue). Give it the same postable test leaves — the
+  // production chart evolved its own L4 leaves; the fresh clone lacks them.
+  await pool.execute(
+    "DELETE FROM accounting_event_mapping_lines WHERE event_type='card_payment'",
+  );
+  await pool.execute(
+    `INSERT INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
+     VALUES ('card_payment', NULL, 'payment_clearing', ?, 1), ('card_payment', NULL, 'revenue', ?, 1)`,
+    [cashLeaf, revLeaf],
+  );
   return {
     cashLeafId: cashLeaf,
     revLeafId: revLeaf,
@@ -567,5 +578,186 @@ describe('Cash subscription approval - REAL accounting posting path (integration
       [fx.requestId],
     );
     expect(ledger).toHaveLength(0);
+  });
+});
+
+/**
+ * ─── SELLER SUBSCRIPTION ACCOUNTING PARITY ─────────────────────────────────
+ * Sellers must behave EXACTLY like organization subscriptions: same activation
+ * service, same cash concept on admin approval, same generic card_payment
+ * posting on payment:succeeded, same amount source, same idempotency.
+ */
+async function seedSellerFixture(
+  suffix: string,
+  opts: { method?: string; price?: number | null } = {},
+): Promise<FixtureIds> {
+  const { getPool } = await import('../../../database/mysql.js');
+  const pool = getPool();
+  fixtureSeq += 1;
+  const base = 930000 + fixtureSeq * 10;
+  const userId = base;
+  const orgId = userId;
+  const planId = userId;
+  const method = opts.method ?? 'cash';
+  const withPrice = opts.price !== null;
+
+  await pool.execute(
+    `INSERT INTO users (id, public_id, country_id, phone_number, full_phone, email, password_hash, full_name, gender)
+     VALUES (?, UUID(), 1, ?, ?, ?, 'x', ?, 'male')`,
+    [userId, String(800000000 + base), `+249${String(800000000 + base)}`, `seller${suffix}@test.local`, `Seller Owner ${suffix}`],
+  );
+  await pool.execute(
+    `INSERT INTO organisations (id, public_id, org_type_id, owner_id, name, slug, is_verified, is_active)
+     VALUES (?, UUID(), 1, ?, ?, ?, FALSE, FALSE)`,
+    [orgId, userId, `Seller Shop ${suffix}`, `seller-shop-${suffix}`],
+  );
+  await pool.execute(
+    `INSERT INTO subscription_plans (id, plan_name, price_monthly, price_yearly, is_active, is_unlimited, is_internal)
+     VALUES (?, 'Seller Test Plan', 777.00, 7770.00, TRUE, FALSE, FALSE)`,
+    [planId],
+  );
+  await pool.execute(
+    `INSERT INTO organisation_subscriptions (organisation_id, plan_id, billing_cycle, subscription_status, auto_renew)
+     VALUES (?, ?, 'monthly', 'pending', TRUE)`,
+    [orgId, planId],
+  );
+  // Mirrors auth.service.registerSeller's request INSERT (registration_type='seller')
+  const [res]: any = await pool.execute(
+    `INSERT INTO organisation_upgrade_requests
+       (organisation_id, registration_type, requested_by, requested_plan_id,
+        requested_plan_name, requested_price, requested_billing_cycle, chosen_payment_method, status)
+     VALUES (?, 'seller', ?, ?, ?, ?, 'monthly', ?, 'pending')`,
+    [orgId, userId, planId, withPrice ? 'Seller Test Plan' : null, withPrice ? (opts.price ?? 777.0) : null, method],
+  );
+  return { userId, orgId, planId, requestId: Number(res.insertId) };
+}
+
+async function seedPaidCardTxn(requestId: number, userId: number, amount: number): Promise<void> {
+  const { getPool } = await import('../../../database/mysql.js');
+  await getPool().execute(
+    `INSERT INTO payment_transactions
+       (user_id, reference_type, reference_id, payment_method, gateway_provider, gateway_reference, amount, currency, payment_status)
+     VALUES (?, 'subscription', ?, 'card', 'paymob', ?, ?, 'EGP', 'paid')`,
+    [userId, requestId, `e2e-${requestId}`, amount],
+  );
+}
+
+describe('SELLER subscription accounting parity - REAL engine (integration)', () => {
+  it('A+E+F: seller+cash approval → active org/subscription + exactly ONE balanced cash/revenue posting; idempotent on re-approval', async () => {
+    diag('test: seller+cash parity');
+    const { getPool: gp } = await import('../../../database/mysql.js');
+    const fx = await seedSellerFixture(`a${Date.now()}`, { method: 'cash', price: 777 });
+
+    const { tryActivateSubscriptionRequest } = await import('../application/subscription-activation.service.js');
+
+    // D first: NOTHING posted while still pending
+    const [pre] = await gp().execute<RowData>(
+      "SELECT 1 FROM ledger_entries WHERE source_type='subscription' AND source_id=?", [fx.requestId],
+    );
+    expect(pre).toHaveLength(0);
+
+    const result = await tryActivateSubscriptionRequest(fx.requestId, { adminId: 910000 });
+    expect(result.activated).toBe(true);
+
+    const [[sub]] = await gp().execute<RowData>(
+      'SELECT subscription_status FROM organisation_subscriptions WHERE organisation_id=?', [fx.orgId],
+    ) as any;
+    expect(sub.subscription_status).toBe('active');
+    const [[org]] = await gp().execute<RowData>(
+      'SELECT is_verified, is_active FROM organisations WHERE id=?', [fx.orgId],
+    ) as any;
+    expect(Number(org.is_verified)).toBe(1);
+    expect(Number(org.is_active)).toBe(1);
+
+    // Exactly ONE balanced posting — debit cash leaf / credit revenue leaf @ exact price
+    const [ledger] = await gp().execute<RowData>(
+      `SELECT le.side, le.amount, coa.code AS account_code
+       FROM ledger_entries le JOIN chart_of_accounts coa ON coa.id=le.chart_account_id
+       WHERE le.source_type='subscription' AND le.source_id=? AND le.event_type='subscription_cash_payment'
+       ORDER BY le.side`,
+      [fx.requestId],
+    );
+    expect(ledger).toHaveLength(2);
+    const debit = ledger.find((r: any) => r.side === 'debit');
+    const credit = ledger.find((r: any) => r.side === 'credit');
+    expect(debit.account_code).toBe(coa.cashLeafCode);
+    expect(credit.account_code).toBe(coa.revenueLeafCode);
+    expect(Number(debit.amount)).toBe(777);
+    expect(Number(credit.amount)).toBe(777);
+
+    // F: re-approval must not duplicate
+    await tryActivateSubscriptionRequest(fx.requestId, { adminId: 910000 });
+    const [afterRe] = await gp().execute<RowData>(
+      "SELECT 1 FROM ledger_entries WHERE source_type='subscription' AND source_id=? AND event_type='subscription_cash_payment'",
+      [fx.requestId],
+    );
+    expect(afterRe).toHaveLength(2);
+  });
+
+  it('B+C+E: seller+card payment:succeeded → active subscription + card_payment revenue posting, NO cash entry', async () => {
+    diag('test: seller+card parity');
+    const { getPool: gp } = await import('../../../database/mysql.js');
+    const fx = await seedSellerFixture(`c${Date.now()}`, { method: 'card', price: 777 });
+    await seedPaidCardTxn(fx.requestId, fx.userId, 777);
+
+    // Register the REAL production listeners, then emit the REAL domain event —
+    // no test-local posting shortcuts.
+    const { registerAccountingEventListeners } = await import('../../financial/application/accounting-event.listener.js');
+    registerAccountingEventListeners();
+    const { eventBusV2 } = await import('../../../shared/event-bus/index.js');
+    await eventBusV2.emit('payment:succeeded', {
+      paymentId: 900001,
+      referenceType: 'subscription',
+      referenceId: fx.requestId,
+      amount: 777,
+      metadata: { paymentMethod: 'card', currency: 'EGP' },
+    });
+
+    // Activation follows the same authoritative mechanism as the production
+    // registration-payment.listener uses for registration requests.
+    const { tryActivateSubscriptionRequest } = await import('../application/subscription-activation.service.js');
+    const result = await tryActivateSubscriptionRequest(fx.requestId, { adminId: null, approvalNotes: 'Auto-approved after card payment' });
+    expect(result.activated).toBe(true);
+    const [[sub]] = await gp().execute<RowData>(
+      'SELECT subscription_status FROM organisation_subscriptions WHERE organisation_id=?', [fx.orgId],
+    ) as any;
+    expect(sub.subscription_status).toBe('active');
+
+    // C: NO cash entry for card flows
+    const [cashRows] = await gp().execute<RowData>(
+      "SELECT 1 FROM ledger_entries WHERE source_type='subscription' AND source_id=? AND event_type='subscription_cash_payment'",
+      [fx.requestId],
+    );
+    expect(cashRows).toHaveLength(0);
+
+    // B/E: exactly one balanced card_payment posting @ exact paid amount
+    const [card] = await gp().execute<RowData>(
+      `SELECT le.side, le.amount, coa.code AS account_code
+       FROM ledger_entries le JOIN chart_of_accounts coa ON coa.id=le.chart_account_id
+       WHERE le.source_type='subscription' AND le.source_id=? AND le.event_type='card_payment'
+       ORDER BY le.side`,
+      [fx.requestId],
+    );
+    expect(card).toHaveLength(2);
+    const debit = card.find((r: any) => r.side === 'debit');
+    const credit = card.find((r: any) => r.side === 'credit');
+    expect(debit.account_code).toBe(coa.cashLeafCode);
+    expect(credit.account_code).toBe(coa.revenueLeafCode);
+    expect(Number(debit.amount)).toBe(777);
+    expect(Number(credit.amount)).toBe(777);
+
+    // F: duplicate payment:succeeded events must not duplicate entries
+    await eventBusV2.emit('payment:succeeded', {
+      paymentId: 900001,
+      referenceType: 'subscription',
+      referenceId: fx.requestId,
+      amount: 777,
+      metadata: { paymentMethod: 'card', currency: 'EGP' },
+    });
+    const [afterDup] = await gp().execute<RowData>(
+      "SELECT 1 FROM ledger_entries WHERE source_type='subscription' AND source_id=? AND event_type='card_payment'",
+      [fx.requestId],
+    );
+    expect(afterDup).toHaveLength(2);
   });
 });

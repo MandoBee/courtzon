@@ -250,6 +250,15 @@ export class AuthService {
     // Admin Users list immediately after registration.
     eventBusV2.emit('user:registered', { userId, name: input.fullName, userType: 'seller' });
 
+    // Realtime/notification parity with organization registration: admins see
+    // the pending subscription request in their approval queues immediately.
+    eventBusV2.emit('subscription:request-submitted', {
+      organisationId: orgId,
+      userId,
+      requestId: upgradeRequestId,
+      requestType: 'seller',
+    });
+
     const user = await userRepository.findById(userId);
     const roles = await this.getUserRoles(userId);
     const permissions = await rbacRepository.getUserPermissionKeys(userId);
