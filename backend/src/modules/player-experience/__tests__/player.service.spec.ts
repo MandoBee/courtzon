@@ -69,8 +69,12 @@ describe('PlayerService', () => {
   });
 
   describe('getQRProfile', () => {
+    // NOTE: deliberately NOT 999999 — wallet.transaction.spec inserts/deletes
+    // that exact id in the shared dev DB and runs in parallel with this file.
+    const NON_EXISTENT_USER_ID = 999888777;
+
     it('should throw for non-existent user', async () => {
-      await expect(playerService.getQRProfile(999999)).rejects.toThrow('User not found');
+      await expect(playerService.getQRProfile(NON_EXISTENT_USER_ID)).rejects.toThrow('User not found');
     });
   });
 
@@ -82,7 +86,7 @@ describe('PlayerService', () => {
     });
 
     it('should return default achievements when no targeted ones exist', async () => {
-      const result = await playerService.getAchievements(999999);
+      const result = await playerService.getAchievements(999888777);
       expect(result.length).toBeGreaterThanOrEqual(5);
       expect(result[0]).toHaveProperty('key');
       expect(result[0]).toHaveProperty('title');

@@ -68,6 +68,7 @@ export class SocketPublisher {
       'tournament:created', 'tournament:match-scheduled', 'tournament:result',
       'setting:updated', 'setting:profile-applied',
       'user:suspended', 'user:activated', 'user:deleted', 'user.role.changed',
+      'user:registered',
       'security:session-revoked',
     ];
 

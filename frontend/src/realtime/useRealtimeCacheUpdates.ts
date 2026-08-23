@@ -49,6 +49,22 @@ export function invalidateOrgLifecycle(qc: { invalidateQueries: (opts: { queryKe
     qc.invalidateQueries({ queryKey });
   }
 }
+
+/**
+ * Player/Seller registrations bypass the org lifecycle events entirely — the
+ * backend publishes `user.registered` to the Admin room instead. Keys mirror
+ * the org 'created' strategy for the surfaces a new user mutates.
+ */
+export const USER_REGISTRATION_INVALIDATIONS = [
+  ['admin', 'users'],
+  ['admin', 'dashboard'],
+] as const;
+
+export function invalidateUserRegistration(qc: { invalidateQueries: (opts: { queryKey: readonly string[] }) => void }): void {
+  for (const queryKey of USER_REGISTRATION_INVALIDATIONS) {
+    qc.invalidateQueries({ queryKey });
+  }
+}
 export function useRealtimeCacheUpdates(): void {
   const qc = useQueryClient();
 
@@ -355,6 +371,11 @@ export function useRealtimeCacheUpdates(): void {
 
   useSocketEvent('organisation.created', () => {
     invalidateOrgLifecycle(qc, 'created');
+  });
+
+  // ── User registration events (player / seller) ─────────────────
+  useSocketEvent('user.registered', () => {
+    invalidateUserRegistration(qc);
   });
 
   const subscriptionRequestEvents = [

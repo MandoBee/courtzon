@@ -148,4 +148,28 @@ describe('SocketEventMapper', () => {
     expect(result!.rooms).toContain('user:42');
     expect(result!.payload.requestId).toBe(9);
   });
+
+  // ── user:registered (player/seller) → Admin Users realtime refresh ──
+  describe('user:registered', () => {
+    it('routes player registration to the admin room with the user payload', () => {
+      const result = mapDomainEvent('user:registered', { userId: 77, name: 'New Player', userType: 'player' });
+      expect(result).not.toBeNull();
+      expect(result!.type).toBe('user.registered');
+      expect(result!.rooms).toEqual(['admin']);
+      expect(result!.payload).toMatchObject({ userId: 77, userType: 'player' });
+    });
+
+    it('routes seller registration to the admin room with the user payload', () => {
+      const result = mapDomainEvent('user:registered', { userId: 88, name: 'New Seller', userType: 'seller' });
+      expect(result).not.toBeNull();
+      expect(result!.type).toBe('user.registered');
+      expect(result!.rooms).toEqual(['admin']);
+      expect(result!.payload).toMatchObject({ userId: 88, userType: 'seller' });
+    });
+
+    it('does NOT rely on the freshly-created personal user room (regression: admin list staleness)', () => {
+      const result = mapDomainEvent('user:registered', { userId: 99, name: 'X', userType: 'player' });
+      expect(result!.rooms).not.toContain('user:99');
+    });
+  });
 });
