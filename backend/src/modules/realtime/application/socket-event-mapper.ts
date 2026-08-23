@@ -38,6 +38,16 @@ export function mapDomainEvent(eventName: string, payload: Record<string, unknow
         rooms: [ADMIN_ROOM],
       };
     }
+    if (eventName === 'user:registered') {
+      // Fresh registrations must reach admin surfaces immediately. Routing to
+      // the new user's personal room would be useless here — the Admin Users
+      // list listens on the ADMIN_ROOM broadcast.
+      return {
+        type: 'user.registered',
+        payload: { userId: payload.userId, name: payload.name, userType: payload.userType },
+        rooms: [ADMIN_ROOM],
+      };
+    }
     if (eventName.startsWith('user:') || eventName.startsWith('auth:') || eventName.startsWith('security:') || eventName.startsWith('user.')) {
       return mapUserSecurityEvent(eventName, payload);
     }

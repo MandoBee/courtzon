@@ -131,6 +131,11 @@ export class AuthService {
       await userRepository.setSportInterestIds(userId, interestIds);
     }
 
+    // Admin realtime surfaces (Users list, dashboards) refresh via the socket
+    // publisher — mirror organisation:created so player registrations also
+    // invalidate admin caches without a manual browser refresh.
+    eventBusV2.emit('user:registered', { userId, name: input.fullName, userType: 'player' });
+
     // Player registration is self-service (no approval step), so create an
     // authenticated session immediately — same as the base `register` and the
     // seller free/card flows. This lets the frontend land the player directly
@@ -240,6 +245,10 @@ export class AuthService {
       [orgId, userId, input.planId || null, sellerRequestedPlanName, sellerRequestedPrice, sellerBillingCycle, paymentMethod, JSON.stringify({ shopName: input.shopName })]
     ) as any;
     const upgradeRequestId = upgradeResult.insertId as number;
+
+    // Same realtime contract as the player flow — sellers must appear in the
+    // Admin Users list immediately after registration.
+    eventBusV2.emit('user:registered', { userId, name: input.fullName, userType: 'seller' });
 
     const user = await userRepository.findById(userId);
     const roles = await this.getUserRoles(userId);
