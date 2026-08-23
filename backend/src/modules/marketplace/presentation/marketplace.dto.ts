@@ -39,6 +39,10 @@ export const CreateProductSchema = z.object({
 
 export const UpdateProductSchema = CreateProductSchema.partial();
 
+export const SetProductVisibilitySchema = z.object({
+  visible: z.boolean(),
+});
+
 export const ProductQuerySchema = z.object({
   categoryId: z.string().transform(Number).optional(),
   sellerId: z.string().transform(Number).optional(),

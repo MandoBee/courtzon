@@ -44,7 +44,7 @@ export class SocketPublisher {
       'marketplace:order-placed', 'marketplace:order-confirmed', 'marketplace:order-shipped',
       'marketplace:order-delivered', 'marketplace:order-cancelled', 'marketplace:order-refunded',
       'marketplace:order-status-changed', 'marketplace:new-seller-registered',
-      'marketplace:product-status-changed',
+      'marketplace:product-status-changed', 'marketplace:product-visibility-changed',
       'notification:broadcast',
       'notification:delivered', 'notification:unread-count',
       'notification:sync-read', 'notification:sync-deleted',

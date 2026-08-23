@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../services/api';
 import { useAuthStore } from '../../store/auth.store';
 import OrganisationForm from '../../components/organisations/OrganisationForm';
+import { ProductVisibilityToggle } from '../../components/marketplace/ProductVisibilityToggle';
 import { useToast } from '../../components/ui/Toast';
 import { Can } from '../../permissions/Can';
 import { useCan } from '../../hooks/useCan';
@@ -283,7 +284,8 @@ export default function SellerDashboardPage() {
                     p.status === 'active' ? 'bg-[var(--color-success-bg)] text-[var(--color-success-text)]' :
                     p.status === 'draft' ? 'bg-[var(--color-border)] text-[var(--color-text-muted)]' : 'bg-[var(--color-warning-bg)] text-[var(--color-warning-text)]'
                   }`}>{p.status}</span>
-                  <div className="flex gap-2">
+                  <div className="flex gap-2 items-center">
+                    <ProductVisibilityToggle product={p} />
                     <button onClick={() => { setEditingProductId(p.id); setShowForm(true); }}
                       className="text-xs text-[var(--color-info-text)]">{t('common.edit')}</button>
                     <Can permission="marketplace.seller.delete-product">

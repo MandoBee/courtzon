@@ -49,10 +49,18 @@ export const marketplaceRepository = {
     categoryId?: number; categoryIds?: number[]; sellerId?: number; sportId?: number; sportIds?: number[]; search?: string;
     minPrice?: number; maxPrice?: number; status?: string; stockStatus?: string; sellerType?: string;
     brandId?: number; brandIds?: number[]; tagIds?: number[]; gender?: string; branchId?: number;
+    visibleOnly?: boolean;
     page: number; limit: number; sort: string;
   }) {
     const pool = getPool();
     const conditions: string[] = ['p.is_active = TRUE', 'p.deleted_at IS NULL'];
+
+    // Public Marketplace surfaces require Active AND Marketplace-visible.
+    // Management queries (seller/org own lists) omit this flag so hidden
+    // products stay visible to their owners.
+    if (filters.visibleOnly) {
+      conditions.push('p.marketplace_visible = 1');
+    }
     const params: any[] = [];
 
     if (filters.status) { conditions.push("p.status = ?"); params.push(filters.status); }
@@ -1120,6 +1128,16 @@ export const marketplaceRepository = {
     return (result as any).affectedRows > 0;
   },
 
+  /** Marketplace visibility toggle (independent of approval status). */
+  async setMarketplaceVisible(productId: number, visible: boolean): Promise<boolean> {
+    const pool = getPool();
+    const [result] = await pool.execute(
+      'UPDATE products SET marketplace_visible = ? WHERE id = ? AND deleted_at IS NULL',
+      [visible ? 1 : 0, productId],
+    );
+    return (result as any).affectedRows > 0;
+  },
+
   // ── Admin: Orders ──
   async adminFindAllOrders(filters: { status?: string; search?: string; sellerId?: number; page: number; limit: number }) {
     const pool = getPool();
@@ -1273,7 +1291,8 @@ export const marketplaceRepository = {
       `SELECT rp.*, p.name as related_product_name, p.price as related_product_price, p.images as related_product_images
        FROM related_products rp
        JOIN products p ON p.id = rp.related_product_id
-       WHERE rp.product_id = ? ORDER BY rp.sort_order ASC`,
+       WHERE rp.product_id = ? AND p.status = 'active' AND p.marketplace_visible = 1
+       ORDER BY rp.sort_order ASC`,
       [productId]
     );
     return rows;

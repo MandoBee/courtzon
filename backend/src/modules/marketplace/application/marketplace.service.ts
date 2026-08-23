@@ -21,6 +21,15 @@ const log = createModuleLogger('marketplace');
 
 type RowData = mysql.RowDataPacket[];
 
+/**
+ * Purchase eligibility: a product is purchasable only when Active AND
+ * Marketplace-visible. Hidden products can never be bought through stale UI or
+ * direct API calls.
+ */
+export function isProductPurchasable(product: any): boolean {
+  return !!product && product.status === 'active' && Number(product.marketplace_visible) === 1;
+}
+
 export const marketplaceService = {
   // ── Categories ──
   async getCategories(parentId?: number | null) {
@@ -41,7 +50,73 @@ export const marketplaceService = {
       filters.categoryIds = [filters.categoryId, ...descIds];
       delete filters.categoryId;
     }
+    // Public catalog: only Active + Marketplace-visible products.
+    filters.visibleOnly = true;
     return repo.findProducts(filters);
+  },
+
+  /**
+   * Public product detail, ownership-aware: hidden products are exposed only
+   * to their owner (org or player-seller); everyone else gets a 404. Active +
+   * visible products are public as before.
+   */
+  async getProductForRequester(id: number, viewerUserId: number | null) {
+    const product = await repo.findProductById(id);
+    if (!product) throw new NotFoundError('Product');
+    const publiclyVisible = product.status === 'active' && Number(product.marketplace_visible) === 1;
+    if (publiclyVisible) return this.getProduct(id);
+
+    if (viewerUserId) {
+      const isPlayerOwner = product.seller_user_id && Number(product.seller_user_id) === Number(viewerUserId);
+      if (isPlayerOwner) return this.getProduct(id);
+      const org = await repo.findOrgByUserId(viewerUserId, 'seller')
+        || await repo.findOrgByUserId(viewerUserId, 'player')
+        || await repo.findOrgByUserScope(viewerUserId);
+      if (org && Number(product.seller_id) === Number(org.id)) return this.getProduct(id);
+    }
+    throw new NotFoundError('Product');
+  },
+
+  /**
+   * Owner-controlled Marketplace visibility (independent of approval).
+   * - Show requires the product to be Active (visibility can never bypass approval).
+   * - Hide is allowed whenever the owner wants the product off the public catalog.
+   * - Approval status is never modified. Emits only on an actual change.
+   */
+  async setProductVisibility(userId: number, productId: number, visible: boolean) {
+    const product = await repo.findProductById(productId);
+    if (!product) throw new NotFoundError('Product');
+
+    const org = await repo.findOrgByUserId(userId, 'seller')
+      || await repo.findOrgByUserId(userId, 'player')
+      || await repo.findOrgByUserScope(userId);
+    const isOrgOwner = !!org && Number(product.seller_id) === Number(org.id);
+    const isPlayerOwner = !!product.seller_user_id && Number(product.seller_user_id) === Number(userId);
+    if (!isOrgOwner && !isPlayerOwner) throw new ForbiddenError('Not your product');
+
+    if (visible && product.status !== 'active') {
+      throw new ConflictError('Product must be approved before it can appear in the Marketplace.');
+    }
+
+    if (Number(product.marketplace_visible) === (visible ? 1 : 0)) {
+      return product; // no transition — nothing to announce
+    }
+
+    const ok = await repo.setMarketplaceVisible(productId, visible);
+    if (!ok) throw new NotFoundError('Product');
+
+    // Post-commit announce to admin, owner, and player catalog consumers.
+    eventBusV2.emit('marketplace:product-visibility-changed', {
+      productId,
+      name: (product as any).name,
+      visible,
+      status: product.status,
+      sellerType: (product as any).seller_type,
+      organisationId: (product as any).seller_id ?? null,
+      sellerUserId: (product as any).seller_user_id ?? null,
+    });
+
+    return this.getProduct(productId);
   },
 
   async getProduct(id: number) {
@@ -345,7 +420,7 @@ export const marketplaceService = {
 
     for (const item of cartItems) {
       const product = productMap.get(item.product_id);
-      if (!product || product.status !== 'active') {
+      if (!isProductPurchasable(product)) {
         throw new ConflictError(`Product "${item.name}" is no longer available`);
       }
       if (item.variant_id) {

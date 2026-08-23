@@ -40,6 +40,7 @@ export interface DomainEventMap {
   'marketplace:flash-sale': BaseEvent & { productId: number; userId: number; discountPercent: number; productName: string; endsAt: Date };
   'marketplace:new-seller-registered': BaseEvent & { sellerId: number; userId: number; shopName: string };
   'marketplace:product-status-changed': BaseEvent & { productId: number; name?: string; previousStatus?: string; status: string; sellerType?: string; organisationId?: number | null; sellerUserId?: number | null };
+  'marketplace:product-visibility-changed': BaseEvent & { productId: number; name?: string; visible: boolean; status?: string; sellerType?: string; organisationId?: number | null; sellerUserId?: number | null };
   'marketplace:order-status-changed': BaseEvent & { orderId: number; userId: number; fromStatus: string; toStatus: string };
   'marketplace:order-refunded': BaseEvent & { orderId: number; userId: number; amount?: number; reason?: string };
   'user:registered': BaseEvent & { userId: number; email: string; role?: string };

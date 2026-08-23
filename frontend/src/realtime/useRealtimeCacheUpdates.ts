@@ -240,6 +240,11 @@ export function useRealtimeCacheUpdates(): void {
     invalidateMarketplaceProducts(qc);
   });
 
+  // Visibility changes affect the same Marketplace/Product surfaces.
+  useSocketEvent('marketplace.product-visibility-changed', () => {
+    invalidateMarketplaceProducts(qc);
+  });
+
   useSocketEvent('marketplace.order-placed', () => {
     qc.invalidateQueries({ queryKey: ['mp-orders'] });
     qc.invalidateQueries({ queryKey: ['mp-seller-orders'] });

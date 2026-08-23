@@ -765,6 +765,7 @@ export const uiRegistry: UIElement[] = [
   { permissionKey: 'marketplace.seller.create-product', moduleSlug: 'marketplace', elementType: 'button', elementLabel: 'Create Product', componentPath: 'pages/marketplace/SellerDashboardPage.tsx' },
   { permissionKey: 'marketplace.seller.branch-select', moduleSlug: 'marketplace', elementType: 'field', elementLabel: 'Branch Selection on Product Form/Filter', componentPath: 'components/marketplace/SellerProductFormModal.tsx' },
   { permissionKey: 'marketplace.seller.delete-product', moduleSlug: 'marketplace', elementType: 'button', elementLabel: 'Delete Product', componentPath: 'pages/marketplace/SellerDashboardPage.tsx' },
+  { permissionKey: 'marketplace.seller.visibility', moduleSlug: 'marketplace', elementType: 'button', elementLabel: 'Toggle Marketplace Visibility', componentPath: 'components/marketplace/ProductVisibilityToggle.tsx' },
   { permissionKey: 'marketplace.seller.manage-orders', moduleSlug: 'marketplace', elementType: 'button', elementLabel: 'Manage Orders', componentPath: 'pages/marketplace/SellerDashboardPage.tsx' },
   { permissionKey: 'marketplace.seller.stats', moduleSlug: 'marketplace', elementType: 'tab', elementLabel: 'Seller Stats Tab', componentPath: 'pages/marketplace/SellerDashboardPage.tsx' },
   { permissionKey: 'marketplace.seller.products-tab', moduleSlug: 'marketplace', elementType: 'tab', elementLabel: 'Seller Products Tab', componentPath: 'pages/marketplace/SellerDashboardPage.tsx' },
