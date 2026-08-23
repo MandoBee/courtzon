@@ -10,6 +10,7 @@ interface Props {
   open: boolean;
   onClose: () => void;
   editId: number | null;
+  product?: any;
   sports: any[];
   categories: any[];
   brands: any[];
@@ -37,7 +38,7 @@ function compressImage(file: File, maxDim = 1200, quality = 0.8): Promise<Blob> 
   });
 }
 
-export default function SellerProductFormModal({ open, onClose, editId, sports, categories, brands, tags, orgId }: Props) {
+export default function SellerProductFormModal({ open, onClose, editId, product, sports, categories, brands, tags, orgId }: Props) {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -93,27 +94,30 @@ export default function SellerProductFormModal({ open, onClose, editId, sports, 
     enabled: !!editId && open,
   });
 
-  useEffect(() => {
-    if (!productDetail) return;
-    const detail = productDetail.data || productDetail;
+  // Populate the form from a product payload (list-row item OR full detail).
+  // Images arrive as a JSON string (product row) or an array (detail).
+  const applyProduct = (p: any) => {
     setForm({
-      name: detail.name || '', description: detail.description || '',
-      sportId: detail.sport_id ? String(detail.sport_id) : '',
-      categoryId: detail.category_id ? String(detail.category_id) : '',
-      brandId: detail.brand_id ? String(detail.brand_id) : '',
-      price: String(detail.price || ''),
-      discountedPrice: detail.discounted_price ? String(detail.discounted_price) : '',
-      quantity: String(detail.quantity || '1'),
-      currencyCode: detail.currency_code || 'EGP',
-      gender: detail.gender || 'unisex',
-      condition: detail.condition_status || detail.condition || '',
-      branchId: detail.branch_id ? String(detail.branch_id) : '',
+      name: p.name || '', description: p.description || '',
+      sportId: p.sport_id ? String(p.sport_id) : '',
+      categoryId: p.category_id ? String(p.category_id) : '',
+      brandId: p.brand_id ? String(p.brand_id) : '',
+      price: String(p.price || ''),
+      discountedPrice: p.discounted_price ? String(p.discounted_price) : '',
+      quantity: String(p.quantity || '1'),
+      currencyCode: p.currency_code || 'EGP',
+      gender: p.gender || 'unisex',
+      condition: p.condition_status || p.condition || '',
+      branchId: p.branch_id ? String(p.branch_id) : '',
     });
-    setSelectedTagIds((detail.tags || []).map((t: any) => t.id));
-    try { setImageUrls(JSON.parse(detail.images || '[]')); } catch { setImageUrls([]); }
-    if (detail.variants?.length) {
+    setSelectedTagIds((Array.isArray(p.tags) ? p.tags : []).map((t: any) => t.id).filter(Boolean));
+    let imgs: string[] = [];
+    if (Array.isArray(p.images)) imgs = p.images;
+    else if (typeof p.images === 'string') { try { const parsed = JSON.parse(p.images); imgs = Array.isArray(parsed) ? parsed : []; } catch { imgs = []; } }
+    setImageUrls(imgs);
+    if (p.variants?.length) {
       const groups: Record<string, any[]> = {};
-      for (const v of detail.variants) {
+      for (const v of p.variants) {
         const gt = v.variant_type || 'other';
         if (!groups[gt]) groups[gt] = [];
         groups[gt].push({
@@ -130,6 +134,20 @@ export default function SellerProductFormModal({ open, onClose, editId, sports, 
     } else {
       setVariantGroups([]);
     }
+  };
+
+  // Seed immediately from the selected product the card already holds, so the
+  // modal is never empty even before/if the detail fetch resolves.
+  useEffect(() => {
+    if (product && open) applyProduct(product);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [product, open]);
+
+  // Enrich with the authoritative detail (adds variants/tags if present).
+  useEffect(() => {
+    if (!productDetail) return;
+    const detail = productDetail.data || productDetail;
+    applyProduct(detail);
   }, [productDetail]);
 
   const resetForm = () => {

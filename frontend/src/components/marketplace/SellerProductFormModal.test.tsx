@@ -41,7 +41,7 @@ const PRODUCT = {
   status: 'active',
 };
 
-function renderModal() {
+function renderModal(overrides: any = {}) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>
@@ -54,6 +54,7 @@ function renderModal() {
         brands={[{ id: 9, name: 'Wilson' }]}
         tags={[{ id: 21, name: 'Pro' }, { id: 22, name: 'Red' }]}
         orgId={1}
+        {...overrides}
       />
     </QueryClientProvider>,
   );
@@ -111,5 +112,39 @@ describe('SellerProductFormModal edit population', () => {
       const proTag = screen.getByText('Pro').closest('button');
       expect(proTag).toBeTruthy();
     });
+  });
+
+  it('populates immediately from the selected product prop even if the detail fetch is unavailable (regression: empty edit modal)', async () => {
+    // Simulate the live failure mode: the detail request errors, so
+    // productDetail stays undefined. The modal must still seed every field
+    // from the product object the card already holds. Branches stay available.
+    mockGet.mockReset();
+    mockGet.mockImplementation((url: string) => {
+      if (url.includes('/marketplace/products/')) return Promise.reject(new Error('network'));
+      if (url.includes('/branches')) return Promise.resolve({ data: { data: [{ id: 11, name: 'Main Branch' }] } });
+      return Promise.resolve({ data: [] });
+    });
+
+    renderModal({ product: {
+      id: 7, name: 'Tennis Racket', description: 'Pro racket',
+      price: '200.00', discounted_price: '180.00', quantity: 3,
+      currency_code: 'EGP', gender: 'unisex', condition_status: 'new',
+      sport_id: 3, category_id: 5, brand_id: 9, branch_id: 11,
+      images: '["/uploads/a.webp"]',
+      tags: [{ id: 21, name: 'Pro' }],
+    } });
+
+    await waitFor(() => {
+      expect((screen.getByDisplayValue('Tennis Racket') as HTMLInputElement).value).toBe('Tennis Racket');
+    });
+    expect((screen.getByDisplayValue('200.00') as HTMLInputElement).value).toBe('200.00');
+    expect((screen.getByDisplayValue('180.00') as HTMLInputElement).value).toBe('180.00');
+    expect((screen.getByDisplayValue('Pro racket') as HTMLTextAreaElement).value).toBe('Pro racket');
+    const selectByValue = (v: string) => screen.getAllByRole('combobox').find((s: any) => s.value === v);
+    expect(selectByValue('3')).toBeTruthy(); // sport
+    expect(selectByValue('5')).toBeTruthy(); // category
+    expect(selectByValue('9')).toBeTruthy(); // brand
+    await waitFor(() => { expect(selectByValue('11')).toBeTruthy(); }); // branch (options load async)
+    expect(selectByValue('new')).toBeTruthy(); // condition
   });
 });
