@@ -29,6 +29,8 @@ export interface ActivationResult {
   endDate?: string | null;
   /** True when this activation also flipped the organisation to verified+active (registration requests only). */
   organisationActivated?: boolean;
+  /** True when an already-approved request was missing its cash posting and one was back-filled through the canonical engine. */
+  accountingBackfilled?: boolean;
   // snake_case aliases preserved for existing admin controllers / audit consumers
   organisation_id?: number;
   request_type?: string | null;
@@ -240,6 +242,29 @@ function baseResult(req: any, extras: Partial<Omit<ActivationResult, 'activated'
 }
 
 /**
+ * Cash amount for the accounting posting: prefer the explicit requested_price
+ * captured at creation time; fall back to the requested plan's price for legacy
+ * rows created before registration flows persisted prices (their
+ * requested_price is NULL, which must NOT silently skip the posting).
+ */
+async function resolveRequestAmount(
+  executor: mysql.Pool | mysql.PoolConnection,
+  req: any,
+): Promise<number> {
+  const direct = Number(req.requested_price);
+  if (Number.isFinite(direct) && direct > 0) return direct;
+  if (!req.requested_plan_id) return 0;
+  const [rows] = await executor.execute<RowData>(
+    'SELECT price_monthly, price_yearly FROM subscription_plans WHERE id = ?',
+    [req.requested_plan_id],
+  );
+  if (!rows.length) return 0;
+  const cycle = String(req.requested_billing_cycle || '').trim().toLowerCase() === 'yearly';
+  const price = Number(cycle ? (rows[0] as any).price_yearly : (rows[0] as any).price_monthly);
+  return Number.isFinite(price) ? price : 0;
+}
+
+/**
  * Activate the subscription behind an upgrade/registration request.
  *
  * Concurrency-safe and event-order independent:
@@ -253,6 +278,9 @@ function baseResult(req: any, extras: Partial<Omit<ActivationResult, 'activated'
  *   - Delegates the only status/dates write to writeActiveSubscription.
  *   - Cash subscriptions post a `subscription_cash_payment` ledger entry inside the same
  *     transaction, so accounting can never exist without activation or vice versa.
+ *   - An already-approved request that is missing its cash posting (activated before this
+ *     guarantee existed) is healed on the next approval call: the posting is back-filled
+ *     through the canonical engine, idempotently.
  */
 export async function tryActivateSubscriptionRequest(
   requestId: number,
@@ -274,8 +302,41 @@ export async function tryActivateSubscriptionRequest(
       throw new ValidationError(`Cannot activate a ${req.status} subscription request`);
     }
     if (req.status === 'approved') {
-      // A prior run already activated it — idempotent skip.
+      // A prior run already activated it — idempotent skip, EXCEPT for the
+      // legacy-consistency repair below: requests activated before atomic cash
+      // accounting existed (or by an older deployed build) would otherwise stay
+      // forever Active-without-ledger, which is unacceptable for a Cash subscription.
       await conn.rollback();
+
+      const approvedMethod = String(req.chosen_payment_method || '').trim().toLowerCase();
+      const approvedAmount = await resolveRequestAmount(pool, req);
+      if (approvedMethod === 'cash' && approvedAmount > 0) {
+        const { ledgerRepository } = await import('../../financial/infrastructure/repositories/ledger.repository.js');
+        const posted = await ledgerRepository.hasPosting('subscription', requestId, 'subscription_cash_payment');
+        if (!posted) {
+          // Heal through the SAME canonical engine in its own committed transaction
+          // (the original activation transaction is long gone). Idempotent via the
+          // hasPosting pre-check above + ledger_entries.uk_dedup. A failure here
+          // propagates so the admin sees the accounting error instead of silent success.
+          const { postAccountingEvent } = await import('../../financial/application/accounting-event.listener.js');
+          await postAccountingEvent(
+            'subscription_cash_payment',
+            'subscription',
+            requestId,
+            req.organisation_id,
+            { cash_bank: approvedAmount, revenue: approvedAmount },
+            'EGP',
+            `Cash subscription payment (back-fill) — request #${requestId}${req.requested_plan_name ? ` (${req.requested_plan_name})` : ''}`,
+          );
+          return {
+            ...baseResult(req),
+            activated: false,
+            alreadyProcessed: true,
+            accountingBackfilled: true,
+            reason: 'Request already approved — missing cash accounting entry back-filled',
+          };
+        }
+      }
       return { ...baseResult(req), activated: false, alreadyProcessed: true, reason: 'Request already approved' };
     }
 
@@ -397,7 +458,7 @@ export async function tryActivateSubscriptionRequest(
     // INSIDE this transaction (atomic with activation). Idempotent: hasPosting
     // pre-check + ledger_entries.uk_dedup(source_type='subscription', source_id=requestId).
     const paymentMethod = String(req.chosen_payment_method || '').trim().toLowerCase();
-    const cashAmount = Number(req.requested_price);
+    const cashAmount = await resolveRequestAmount(conn, req);
     if (paymentMethod === 'cash' && cashAmount > 0) {
       // Lazy import: the accounting listener pulls in queue/redis clients at module load.
       const { postAccountingEvent } = await import('../../financial/application/accounting-event.listener.js');

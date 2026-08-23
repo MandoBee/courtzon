@@ -84,15 +84,16 @@ export const paymentRepository = {
     return rows[0] || null;
   },
 
-  async getPlanPrice(planId: number): Promise<{ priceMonthly: number; priceYearly: number; isUnlimited: boolean } | null> {
+  async getPlanPrice(planId: number): Promise<{ planName: string | null; priceMonthly: number; priceYearly: number; isUnlimited: boolean } | null> {
     const pool = getPool();
     const [rows] = await pool.execute<RowData>(
-      'SELECT price_monthly, price_yearly, is_unlimited FROM subscription_plans WHERE id = ? AND is_active = TRUE',
+      'SELECT plan_name, price_monthly, price_yearly, is_unlimited FROM subscription_plans WHERE id = ? AND is_active = TRUE',
       [planId],
     );
     const row = rows[0] as any;
     if (!row) return null;
     return {
+      planName: (row.plan_name as string) || null,
       priceMonthly: Number(row.price_monthly || 0),
       priceYearly: Number(row.price_yearly || 0),
       isUnlimited: !!row.is_unlimited,
