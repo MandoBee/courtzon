@@ -1,12 +1,13 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useToast } from '../ui/Toast';
 import api from '../../services/api';
-import { Can } from '../../permissions/Can';
 
 /**
  * Seller/Organisation Marketplace-visibility control for their own products.
  * Independent of approval status: only Active products can be shown; hiding is
- * always allowed. Pending/rejected products show a disabled hint instead.
+ * always allowed. Rendered on the owner's own product management cards only;
+ * ownership is additionally enforced by the backend (PUT .../visibility).
+ * Pending/rejected products show a disabled hint instead.
  */
 export function ProductVisibilityToggle({ product }: { product: any }) {
   const { showToast } = useToast();
@@ -42,20 +43,18 @@ export function ProductVisibilityToggle({ product }: { product: any }) {
   }
 
   return (
-    <Can permission="marketplace.seller.visibility">
-      <button
-        type="button"
-        disabled={mutation.isPending}
-        onClick={() => mutation.mutate(!visible)}
-        className={`text-xs px-2 py-0.5 rounded-full border font-medium transition-colors disabled:opacity-50 ${
-          visible
-            ? 'text-[var(--color-success-text)] border-[var(--color-success)]/40 bg-[var(--color-success-bg)]'
-            : 'text-[var(--color-text-muted)] border-[var(--color-border)] bg-[var(--color-bg)]'
-        }`}
-        title={visible ? 'Visible in Marketplace' : 'Hidden from Marketplace'}
-      >
-        {visible ? 'Visible' : 'Hidden'}
-      </button>
-    </Can>
+    <button
+      type="button"
+      disabled={mutation.isPending}
+      onClick={() => mutation.mutate(!visible)}
+      className={`text-xs px-2 py-0.5 rounded-full border font-medium transition-colors disabled:opacity-50 ${
+        visible
+          ? 'text-[var(--color-success-text)] border-[var(--color-success)]/40 bg-[var(--color-success-bg)]'
+          : 'text-[var(--color-text-muted)] border-[var(--color-border)] bg-[var(--color-bg)]'
+      }`}
+      title={visible ? 'Visible in Marketplace — click to hide' : 'Hidden from Marketplace — click to show'}
+    >
+      {visible ? 'Visible' : 'Hidden'}
+    </button>
   );
 }
