@@ -36,10 +36,33 @@ export class SharpProcessor {
     const metadata = await image.metadata();
     const hasAlpha = metadata.hasAlpha ?? false;
 
-    let pipeline = image.resize(opts.maxWidth, opts.maxHeight, {
-      fit: opts.fit,
-      withoutEnlargement: true,
-    });
+    // Already-optimized inputs pass through untouched: re-encoding a WebP at
+    // lossy quality only degrades it. Animated GIFs also pass through —
+    // single-frame WebP conversion would silently flatten the animation.
+    const withinBounds = (metadata.width ?? 0) <= opts.maxWidth && (metadata.height ?? 0) <= opts.maxHeight;
+    if ((metadata.format === 'webp' || metadata.format === 'gif') && withinBounds) {
+      const passthroughMeta = await sharp(input).metadata();
+      return {
+        buffer: input,
+        mimeType: metadata.format === 'gif' ? 'image/gif'
+          : opts.outputFormat === 'png' ? 'image/png'
+          : 'image/webp',
+        width: passthroughMeta.width ?? 0,
+        height: passthroughMeta.height ?? 0,
+        hasAlpha: passthroughMeta.hasAlpha ?? false,
+        originalFormat: metadata.format ?? 'unknown',
+      };
+    }
+
+    let pipeline = image
+      // Normalise EXIF orientation into pixel data (mobile photos are stored
+      // rotated); without this, resized output keeps the raw orientation tag
+      // and renders sideways in <img> contexts that ignore EXIF.
+      .rotate()
+      .resize(opts.maxWidth, opts.maxHeight, {
+        fit: opts.fit,
+        withoutEnlargement: true,
+      });
 
     if (!opts.stripMetadata) {
       pipeline = pipeline.withMetadata();

@@ -14,6 +14,29 @@ export function mapDomainEvent(eventName: string, payload: Record<string, unknow
     if (eventName.startsWith('booking:')) return mapBookingEvent(eventName, payload);
     if (eventName.startsWith('payment:')) return mapPaymentEvent(eventName, payload);
     if (eventName.startsWith('wallet:')) return mapWalletEvent(eventName, payload);
+    if (eventName === 'marketplace:product-status-changed') {
+      // Product lifecycle transition (approved/rejected/paused/…): the seller's
+      // room, the owning organisation, every consumer (player room) and admins.
+      const rooms: string[] = [ADMIN_ROOM, 'player'];
+      if (payload.organisationId) {
+        rooms.push(`marketplace:seller:${payload.organisationId}`);
+        rooms.push(`organisation:${payload.organisationId}`);
+      }
+      if (payload.sellerUserId) rooms.push(`user:${payload.sellerUserId}`);
+      return {
+        type: 'marketplace.product-status-changed',
+        payload: {
+          productId: payload.productId,
+          name: payload.name,
+          status: payload.status,
+          previousStatus: payload.previousStatus,
+          sellerType: payload.sellerType,
+          organisationId: payload.organisationId,
+          sellerUserId: payload.sellerUserId,
+        },
+        rooms,
+      };
+    }
     if (eventName.startsWith('marketplace:')) return mapMarketplaceEvent(eventName, payload);
     if (eventName.startsWith('notification:')) return mapNotificationEvent(eventName, payload);
     if (eventName.startsWith('settlement:')) return mapSettlementEvent(eventName, payload);

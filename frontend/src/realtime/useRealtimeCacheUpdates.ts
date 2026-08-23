@@ -85,6 +85,30 @@ export function invalidateFinanceEntries(qc: { invalidateQueries: (opts: { query
     qc.invalidateQueries({ queryKey });
   }
 }
+
+/**
+ * Fired by `marketplace.product-status-changed` after a product lifecycle
+ * transition commits (admin approval/rejection/pause). Covers every audience:
+ * player catalog + details, player own-products, seller management, org
+ * marketplace, and admin lists. Roots are marketplace-scoped only.
+ */
+export const MARKETPLACE_PRODUCT_INVALIDATIONS = [
+  ['mp-products'],
+  ['mp-product'],
+  ['mp-player-products'],
+  ['mp-seller-products'],
+  ['mp-seller-stats'],
+  ['org-products'],
+  ['product-detail'],
+  ['admin-marketplace-products'],
+  ['admin-product'],
+] as const;
+
+export function invalidateMarketplaceProducts(qc: { invalidateQueries: (opts: { queryKey: readonly string[] }) => void }): void {
+  for (const queryKey of MARKETPLACE_PRODUCT_INVALIDATIONS) {
+    qc.invalidateQueries({ queryKey });
+  }
+}
 export function useRealtimeCacheUpdates(): void {
   const qc = useQueryClient();
 
@@ -212,6 +236,10 @@ export function useRealtimeCacheUpdates(): void {
   }
 
   // ── Marketplace events ─────────────────────────────────────────
+  useSocketEvent('marketplace.product-status-changed', () => {
+    invalidateMarketplaceProducts(qc);
+  });
+
   useSocketEvent('marketplace.order-placed', () => {
     qc.invalidateQueries({ queryKey: ['mp-orders'] });
     qc.invalidateQueries({ queryKey: ['mp-seller-orders'] });
