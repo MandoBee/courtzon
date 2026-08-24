@@ -243,17 +243,29 @@ function mapOrganisationEvent(eventName: string, p: Record<string, any>): Mapped
     };
   }
   if (eventName === 'organisation:status-changed') {
+    // userId routes the event to the owner's socket room — owners are NOT in
+    // the organisation room (user_organisations is never populated), so without
+    // it an approval/status change never reaches the org portal live and the
+    // guard keeps showing "Awaiting approval" until a manual refresh.
+    const rooms: string[] = [];
+    if (p.organisationId) rooms.push(`organisation:${p.organisationId}`);
+    if (p.userId) rooms.push(`user:${p.userId}`);
+    rooms.push(ADMIN_ROOM);
     return {
       type: 'organisation.status-changed',
-      payload: { organisationId: p.organisationId, status: p.status },
-      rooms: p.organisationId ? [`organisation:${p.organisationId}`, ADMIN_ROOM] : [ADMIN_ROOM],
+      payload: { organisationId: p.organisationId, userId: p.userId, status: p.status },
+      rooms,
     };
   }
   if (eventName === 'organisation:subscription-status-changed') {
+    const rooms: string[] = [];
+    if (p.organisationId) rooms.push(`organisation:${p.organisationId}`);
+    if (p.userId) rooms.push(`user:${p.userId}`);
+    rooms.push(ADMIN_ROOM);
     return {
       type: 'organisation.subscription-status-changed',
-      payload: { organisationId: p.organisationId, subscriptionStatus: p.subscriptionStatus },
-      rooms: p.organisationId ? [`organisation:${p.organisationId}`, ADMIN_ROOM] : [ADMIN_ROOM],
+      payload: { organisationId: p.organisationId, userId: p.userId, subscriptionStatus: p.subscriptionStatus },
+      rooms,
     };
   }
   if (eventName === 'subscription:request-submitted') {
