@@ -401,6 +401,9 @@ export function useRealtimeCacheUpdates(): void {
     qc.invalidateQueries({ queryKey: ['admin-marketplace-sellers'] });
     qc.invalidateQueries({ queryKey: ['admin', 'organisation-subscriptions'] });
     qc.invalidateQueries({ queryKey: ['organisation'] });
+    // Owner scopes embed is_active/is_verified — refresh so portal guards
+    // react to (de)activation without a manual re-login.
+    void useAuthStore.getState().refreshOrganisations();
   });
 
   useSocketEvent('organisation.subscription-status-changed', () => {
@@ -408,6 +411,7 @@ export function useRealtimeCacheUpdates(): void {
     qc.invalidateQueries({ queryKey: ['admin-marketplace-sellers'] });
     qc.invalidateQueries({ queryKey: ['admin', 'organisation-subscriptions'] });
     qc.invalidateQueries({ queryKey: ['org-subscription'] });
+    void useAuthStore.getState().refreshOrganisations();
   });
 
   useSocketEvent('organisation.approved', () => {

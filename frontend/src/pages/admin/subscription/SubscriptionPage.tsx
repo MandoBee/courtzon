@@ -585,7 +585,9 @@ function AssignPlan() {
 
   const { data: orgs, isLoading: orgsLoading } = useQuery({
     queryKey: ['admin', 'organisations'],
-    queryFn: () => api.get('/organisations').then((r: any) => r.data.data),
+    // Backend caps the default page at 20 rows — without an explicit limit the
+    // org picker silently truncates and admins cannot select most orgs.
+    queryFn: () => api.get('/organisations', { params: { limit: 200 } }).then((r: any) => r.data.data),
   });
 
   const { data: plans } = useQuery({
@@ -1162,7 +1164,9 @@ function ViewAssignments() {
               <td className="px-4 py-3">
                 <Can permission="subscription.assignments.status">
                   {(() => {
-                    const label = subscriptionStatusLabel(item.subscription_status);
+                    // Rows past their end_date keep subscription_status 'active'
+                    // in storage — the backend is_expired flag is authoritative.
+                    const label = item.is_expired ? 'Expired' : subscriptionStatusLabel(item.subscription_status);
                     const styles: Record<string, string> = {
                       Active: 'bg-[var(--color-success-bg)] text-[var(--color-success-text)]',
                       Suspended: 'bg-[var(--color-warning-bg)] text-[var(--color-warning-text)]',
