@@ -1191,9 +1191,9 @@ function ViewAssignments() {
               <td className="px-4 py-3">
                 <Can permission="subscription.assignments.status">
                   {(() => {
-                    // Rows past their end_date keep subscription_status 'active'
-                    // in storage — the backend is_expired flag is authoritative.
-                    const label = item.is_expired ? 'Expired' : subscriptionStatusLabel(item.subscription_status);
+                    // effective_status is derived by the SAME canonical rule the
+                    // current-subscription resolver uses (deriveEffectiveStatus).
+                    const label = subscriptionStatusLabel(item.effective_status ?? item.subscription_status);
                     const styles: Record<string, string> = {
                       Active: 'bg-[var(--color-success-bg)] text-[var(--color-success-text)]',
                       Suspended: 'bg-[var(--color-warning-bg)] text-[var(--color-warning-text)]',

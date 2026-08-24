@@ -52,4 +52,36 @@ export function isSubscriptionActive(sub: { subscription_status?: string; end_da
   return true;
 }
 
+/**
+ * THE canonical per-row effective-status derivation. This is the single
+ * source of truth shared by CurrentSubscriptionService (resolver DTOs) and
+ * display listings (e.g. admin View Assignments) so no screen maintains a
+ * second, divergent status calculation.
+ *
+ * Precedence (identical to CurrentSubscription.effectiveStatus):
+ *   cancelled  — explicit terminal state wins over dates
+ *   expired    — end_date is strictly in the past
+ *   pending    — awaiting activation/payment/approval (incl. scheduled renewal)
+ *   suspended  — admin-suspended
+ *   active     — otherwise
+ */
+export type EffectiveSubscriptionStatus = 'active' | 'expired' | 'pending' | 'suspended' | 'cancelled';
+
+export function deriveEffectiveStatus(row: {
+  subscription_status?: string | null;
+  end_date?: Date | string | null;
+}): EffectiveSubscriptionStatus {
+  const status = row?.subscription_status ?? null;
+  if (status === 'cancelled') return 'cancelled';
+  if (row.end_date != null) {
+    const end = typeof row.end_date === 'string' ? new Date(row.end_date) : row.end_date;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    if (end < today) return 'expired';
+  }
+  if (status === 'pending') return 'pending';
+  if (status === 'suspended') return 'suspended';
+  return 'active';
+}
+
 

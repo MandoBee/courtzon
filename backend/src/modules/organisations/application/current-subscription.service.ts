@@ -20,7 +20,7 @@
 
 import type mysql from 'mysql2/promise';
 import { getPool } from '../../../database/mysql.js';
-import { nonExpiredSubscriptionCondition } from '../../../shared/utils/subscription-validator.js';
+import { nonExpiredSubscriptionCondition, deriveEffectiveStatus } from '../../../shared/utils/subscription-validator.js';
 
 type RowData = mysql.RowDataPacket[];
 
@@ -233,14 +233,9 @@ export async function getCurrentSubscription(
 
   if (!planName) planName = 'Unknown';
   if (isInternal === null) isInternal = false;
-
-  // Compute effective status. Explicit terminal states win over the derived
-  // date-based expiry; 'cancelled' is only reachable via includeInactive.
-  let effectiveStatus: CurrentSubscription['effectiveStatus'] = 'active';
-  if (sub.subscription_status === 'cancelled') effectiveStatus = 'cancelled';
-  else if (isExpired) effectiveStatus = 'expired';
-  else if (sub.subscription_status === 'pending') effectiveStatus = 'pending';
-  else if (sub.subscription_status === 'suspended') effectiveStatus = 'suspended';
+  // Compute effective status via THE canonical derivation shared with every
+  // display listing (single source of truth — see deriveEffectiveStatus).
+  const effectiveStatus: CurrentSubscription['effectiveStatus'] = deriveEffectiveStatus(sub);
 
   const result: CurrentSubscription = {
     subscriptionId: sub.id,
