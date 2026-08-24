@@ -1,7 +1,7 @@
 import type mysql from 'mysql2/promise';
 import { getPool } from '../../../../database/mysql.js';
 import { generateUUID } from '../../../../shared/utils/token.js';
-import { nonExpiredSubscriptionCondition } from '../../../../shared/utils/subscription-validator.js';
+import { nonExpiredSubscriptionCondition, deriveEffectiveStatus } from '../../../../shared/utils/subscription-validator.js';
 
 type RowData = mysql.RowDataPacket[];
 
@@ -186,7 +186,6 @@ export class OrganisationRepository {
     let sql = `SELECT o.id as org_id, o.name as org_name, o.slug as org_slug, o.is_verified, o.is_active,
               os.id as subscription_id, os.plan_id, os.subscription_status, os.start_date, os.end_date, os.auto_renew,
               os.billing_cycle,
-              CASE WHEN os.end_date IS NOT NULL AND os.end_date < CURDATE() THEN 1 ELSE 0 END AS is_expired,
               sp.plan_name, sp.price_monthly, sp.price_yearly, sp.is_unlimited,
               CASE
                 WHEN sp.is_unlimited = 1 THEN 0
@@ -205,7 +204,9 @@ export class OrganisationRepository {
     // assignment history reads as a timeline (expired periods before active).
     sql += ` ORDER BY o.name, (os.start_date IS NULL), os.start_date ASC, os.created_at ASC`;
     const [rows] = await this.pool.execute<RowData>(sql, params);
-    return rows;
+    // Canonical status derivation — the SAME rule the current-subscription
+    // resolver applies (deriveEffectiveStatus). No second calculation here.
+    return (rows as any[]).map((row) => ({ ...row, effective_status: deriveEffectiveStatus(row) }));
   }
 
   async getOrganisationTypes(): Promise<any[]> {
