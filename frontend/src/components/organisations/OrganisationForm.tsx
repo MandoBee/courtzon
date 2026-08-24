@@ -531,7 +531,7 @@ export default function OrganisationForm({ orgId, context, onClose, initialTab, 
     : (['basic', 'financial', ...(policyLevel === 'branch' ? ['cancellation' as const] : []), 'amenities', 'holidays'] as const);
 
   return (
-    <div className={`bg-[var(--color-surface)] rounded-[var(--radius-lg)] ${variant === 'page' ? '' : 'shadow-[var(--shadow-md)] p-5 mb-6 border'}`}>
+    <div className={`bg-[var(--color-surface)] rounded-[var(--radius-lg)] ${variant === 'page' ? 'p-4 sm:p-6' : 'shadow-[var(--shadow-md)] p-5 mb-6 border'}`}>
       <div className={`flex items-center justify-between ${variant === 'page' ? 'mb-6' : 'mb-4'}`}>
         {variant === 'page' ? (
           <h1 className="text-2xl font-bold text-[var(--color-text)]">
