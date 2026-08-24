@@ -204,4 +204,43 @@ describe('Shop-admin seller branch Financials tab (seller branch editor parity)'
       expect(mjsMatch('shop-admin', key)).toBe(false);
     }
   });
+
+  // ── Identity fields (Name / Type / Country) are super-admin-managed ──
+  describe('org & seller identity fields are read-only (super-admin only)', () => {
+    const identityKeys = [
+      'organisations.edit.name',
+      'organisations.edit.org-type',
+      'organisations.edit.country',
+    ];
+
+    it('org-admin can NOT edit name/type/country', () => {
+      for (const key of identityKeys) {
+        expect(permissionMatchesTemplate('org-admin', key)).toBe(false);
+        expect(mjsMatch('org-admin', key)).toBe(false);
+      }
+    });
+
+    it('shop-admin can NOT edit name/type/country', () => {
+      for (const key of identityKeys) {
+        expect(permissionMatchesTemplate('shop-admin', key)).toBe(false);
+        expect(mjsMatch('shop-admin', key)).toBe(false);
+      }
+    });
+
+    it('operations-manager and master-admin can NOT edit identity fields', () => {
+      for (const slug of ['operations-manager', 'master-admin']) {
+        for (const key of identityKeys) {
+          expect(permissionMatchesTemplate(slug, key)).toBe(false);
+          expect(mjsMatch(slug, key)).toBe(false);
+        }
+      }
+    });
+
+    it('super_admin CAN edit identity fields', () => {
+      for (const key of identityKeys) {
+        expect(permissionMatchesTemplate('super_admin', key)).toBe(true);
+        expect(mjsMatch('super_admin', key)).toBe(true);
+      }
+    });
+  });
 });

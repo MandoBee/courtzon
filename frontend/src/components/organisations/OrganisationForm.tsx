@@ -49,6 +49,18 @@ const blankForm: OrgFormData = {
 const branchBlank = { name: '', slug: '', description: '', email: '', phone: '', addressLine1: '', city: '', state: '', postalCode: '', accessType: 'open', timezone: 'Africa/Cairo', countryId: undefined as number | undefined, openingTime: '00:00', closingTime: '23:59', latitude: undefined as number | undefined, longitude: undefined as number | undefined };
 const branchFinBlank = { bankName: '', bankAccountName: '', bankAccountNumber: '', iban: '', swift: '', billingAddress: '', billingEmail: '', payoutSchedule: 'monthly' };
 
+/** Read-only display for super-admin-managed identity fields (Name / Type / Country). */
+function ReadonlyOrgField({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <label className="block text-sm font-medium text-[var(--color-text)] mb-1">{label}</label>
+      <div className="w-full px-3 py-2 rounded-[var(--radius-md)] border text-sm text-[var(--color-text)] bg-[var(--color-bg)]">
+        {children}
+      </div>
+    </div>
+  );
+}
+
 export default function OrganisationForm({ orgId, context, onClose, initialTab, tabs, variant = 'modal', pageTitle }: Props) {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
@@ -561,7 +573,10 @@ export default function OrganisationForm({ orgId, context, onClose, initialTab, 
         {formTab === 'basic' && (
           <div className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <Can permission="organisations.edit.name">
+              <Can
+                permission="organisations.edit.name"
+                fallback={<ReadonlyOrgField label="Name *">{form.name || '—'}</ReadonlyOrgField>}
+              >
                 <div><label className="block text-sm font-medium text-[var(--color-text)] mb-1">Name *</label>
                   <input value={form.name} onChange={e => { set('name', e.target.value); set('slug', autoSlug(e.target.value)); }} required
                     className="w-full px-3 py-2 rounded-[var(--radius-md)] border text-sm text-[var(--color-text)]" /></div>
@@ -574,7 +589,10 @@ export default function OrganisationForm({ orgId, context, onClose, initialTab, 
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <Can permission="organisations.edit.org-type">
+              <Can
+                permission="organisations.edit.org-type"
+                fallback={<ReadonlyOrgField label="Organisation Type *">{(orgTypes || []).find((t: any) => t.id === form.orgTypeId)?.name || '—'}</ReadonlyOrgField>}
+              >
                 <div><label className="block text-sm font-medium text-[var(--color-text)] mb-1">Organisation Type *</label>
                   <select value={form.orgTypeId} onChange={e => set('orgTypeId', Number(e.target.value))}
                     className="w-full px-3 py-2 rounded-[var(--radius-md)] border text-sm text-[var(--color-text)]">
@@ -589,7 +607,21 @@ export default function OrganisationForm({ orgId, context, onClose, initialTab, 
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <Can permission="organisations.edit.country">
+              <Can
+                permission="organisations.edit.country"
+                fallback={(
+                  <ReadonlyOrgField label="Country *">
+                    {form.countryId && (
+                      <CountryFlag
+                        countryCode={activeCountries.find((c: any) => c.id === form.countryId)?.iso_code}
+                        countryName={activeCountries.find((c: any) => c.id === form.countryId)?.name}
+                        size={20}
+                      />
+                    )}
+                    <span className="ml-2">{activeCountries.find((c: any) => c.id === form.countryId)?.name || '—'}</span>
+                  </ReadonlyOrgField>
+                )}
+              >
                 <div><label className="block text-sm font-medium text-[var(--color-text)] mb-1">Country *</label>
                   {showNewCountry && isCreate ? (
                     <div className="space-y-2">

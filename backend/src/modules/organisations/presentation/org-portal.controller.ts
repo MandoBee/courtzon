@@ -92,6 +92,9 @@ export async function updateOrgInfoHandler(request: FastifyRequest, reply: Fasti
   const body: Record<string, unknown> = { ...(request.body as any) };
   // Org self-service must NOT be able to self-verify / (de)activate or change ownership.
   for (const k of ['isVerified', 'isActive', 'is_verified', 'is_active', 'ownerId', 'owner_id']) delete body[k];
+  // Identity fields (Name / Type / Country) are super-admin managed — org self-service
+  // can view them read-only but never change them.
+  for (const k of ['name', 'slug', 'orgTypeId', 'org_type_id', 'countryId', 'country_id']) delete body[k];
   const org = await organisationService.updateOrganisation(oid, body);
   auditOrganisationMutation(request, 'ORGANISATION.UPDATE', 'organisation', oid);
   return reply.send(org);
