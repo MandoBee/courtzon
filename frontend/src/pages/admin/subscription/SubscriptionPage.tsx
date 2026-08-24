@@ -1137,7 +1137,14 @@ function AssignPlanCard({
   );
 }
 
-function ViewAssignments() {
+const VIEW_ASSIGNMENTS_PAGE_SIZE = 10;
+
+/** Distinct sorted values for a column filter ("All" is prepended by the renderer). */
+function uniqueValues(items: any[], pick: (item: any) => string): string[] {
+  return [...new Set(items.map(pick).filter((v) => v !== ''))].sort((a, b) => a.localeCompare(b));
+}
+
+export function ViewAssignments() {
   const { data, isLoading } = useQuery({
     queryKey: ['admin', 'organisation-subscriptions'],
     queryFn: () => api.get('/admin/organisation-subscriptions').then(r => r.data.data),
@@ -1159,27 +1166,85 @@ function ViewAssignments() {
     },
   });
 
+  const [filters, setFilters] = useState({ organisation: 'all', orgStatus: 'all', subStatus: 'all', plan: 'all', cycle: 'all' });
+  const [page, setPage] = useState(1);
+
   if (isLoading) return <p className="text-sm text-[var(--color-text-muted)]">Loading...</p>;
 
   const items = data || [];
+
+  // Column accessors — each filter matches exactly what its cell renders.
+  const accessors = {
+    organisation: (item: any) => item.org_name || '',
+    orgStatus: (item: any) => (item.is_active ? 'Active' : 'Suspended'),
+    // Canonical status only — same derivation every other screen uses.
+    subStatus: (item: any) => subscriptionStatusLabel(item.effective_status ?? item.subscription_status),
+    plan: (item: any) => item.plan_name || 'No plan',
+    cycle: (item: any) => item.billing_cycle || '—',
+  };
+
+  const filtered = items.filter((item: any) =>
+    (filters.organisation === 'all' || accessors.organisation(item) === filters.organisation) &&
+    (filters.orgStatus === 'all' || accessors.orgStatus(item) === filters.orgStatus) &&
+    (filters.subStatus === 'all' || accessors.subStatus(item) === filters.subStatus) &&
+    (filters.plan === 'all' || accessors.plan(item) === filters.plan) &&
+    (filters.cycle === 'all' || accessors.cycle(item) === filters.cycle),
+  );
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / VIEW_ASSIGNMENTS_PAGE_SIZE));
+  const safePage = Math.min(page, totalPages);
+  const pageRows = filtered.slice((safePage - 1) * VIEW_ASSIGNMENTS_PAGE_SIZE, safePage * VIEW_ASSIGNMENTS_PAGE_SIZE);
+
+  /** Filter changes always restart pagination at page 1. */
+  const setFilter = (key: keyof typeof filters, value: string) => {
+    setFilters((f) => ({ ...f, [key]: value }));
+    setPage(1);
+  };
+
+  const renderFilterSelect = (key: keyof typeof filters, label: string, options: string[]) => (
+    <select
+      aria-label={`Filter by ${label}`}
+      value={filters[key]}
+      onChange={(e) => setFilter(key, e.target.value)}
+      className="mt-1 w-full max-w-[10rem] px-1.5 py-0.5 text-xs border border-[var(--color-border)] rounded-[var(--radius-sm)] bg-[var(--color-bg)] text-[var(--color-text-muted)] cursor-pointer"
+    >
+      <option value="all">All</option>
+      {options.map((v) => <option key={v} value={v}>{v}</option>)}
+    </select>
+  );
 
   return (
     <div className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] overflow-x-auto">
       <table className="w-full text-sm">
         <thead>
           <tr className="border-b border-[var(--color-border)] text-[var(--color-text-muted)]">
-            <th className="text-left px-4 py-3 font-medium">Organisation</th>
-            <th className="text-left px-4 py-3 font-medium">Organisation Status</th>
-            <th className="text-left px-4 py-3 font-medium">Subscription Status</th>
-            <th className="text-left px-4 py-3 font-medium">Plan</th>
-            <th className="text-left px-4 py-3 font-medium">Cycle</th>
+            <th className="text-left px-4 py-3 font-medium align-top">
+              <div>Organisation</div>
+              {renderFilterSelect('organisation', 'Organisation', uniqueValues(items, accessors.organisation))}
+            </th>
+            <th className="text-left px-4 py-3 font-medium align-top">
+              <div>Organisation Status</div>
+              {renderFilterSelect('orgStatus', 'Organisation Status', uniqueValues(items, accessors.orgStatus))}
+            </th>
+            <th className="text-left px-4 py-3 font-medium align-top">
+              <div>Subscription Status</div>
+              {renderFilterSelect('subStatus', 'Subscription Status', uniqueValues(items, accessors.subStatus))}
+            </th>
+            <th className="text-left px-4 py-3 font-medium align-top">
+              <div>Plan</div>
+              {renderFilterSelect('plan', 'Plan', uniqueValues(items, accessors.plan))}
+            </th>
+            <th className="text-left px-4 py-3 font-medium align-top">
+              <div>Cycle</div>
+              {renderFilterSelect('cycle', 'Cycle', uniqueValues(items, accessors.cycle))}
+            </th>
             <th className="text-left px-4 py-3 font-medium">Price</th>
             <th className="text-left px-4 py-3 font-medium">Start Date</th>
             <th className="text-left px-4 py-3 font-medium">End Date</th>
           </tr>
         </thead>
         <tbody>
-          {items.map((item: any) => (
+          {pageRows.map((item: any) => (
             <tr key={`${item.org_id}-${item.subscription_id ?? item.start_date ?? 'none'}`} className="border-b border-[var(--color-border)] hover:bg-[var(--color-bg)]">
               <td className="px-4 py-3 font-medium text-[var(--color-text)]">{item.org_name}</td>
               <td className="px-4 py-3">
@@ -1237,6 +1302,36 @@ function ViewAssignments() {
         </tbody>
       </table>
       {!items.length && <p className="text-center py-8 text-sm text-[var(--color-text-muted)]">No organisation subscriptions found.</p>}
+      {!!items.length && !filtered.length && (
+        <p className="text-center py-8 text-sm text-[var(--color-text-muted)]">No subscriptions match the selected filters.</p>
+      )}
+
+      {filtered.length > VIEW_ASSIGNMENTS_PAGE_SIZE && (
+        <div className="flex items-center justify-between gap-2 px-4 py-2.5 border-t border-[var(--color-border)] text-xs text-[var(--color-text-muted)]">
+          <span>
+            Showing {(safePage - 1) * VIEW_ASSIGNMENTS_PAGE_SIZE + 1}–{Math.min(safePage * VIEW_ASSIGNMENTS_PAGE_SIZE, filtered.length)} of {filtered.length}
+          </span>
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={safePage <= 1}
+              className="px-2 py-1 rounded-[var(--radius-sm)] border border-[var(--color-border)] disabled:opacity-40 hover:bg-[var(--color-bg)] cursor-pointer disabled:cursor-not-allowed"
+              aria-label="Previous page"
+            >
+              ← Prev
+            </button>
+            <span>Page {safePage} / {totalPages}</span>
+            <button
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={safePage >= totalPages}
+              className="px-2 py-1 rounded-[var(--radius-sm)] border border-[var(--color-border)] disabled:opacity-40 hover:bg-[var(--color-bg)] cursor-pointer disabled:cursor-not-allowed"
+              aria-label="Next page"
+            >
+              Next →
+            </button>
+          </div>
+        </div>
+      )}
 
       {pendingActivation && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50">
