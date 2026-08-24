@@ -255,6 +255,17 @@ export default function OrganisationListPage() {
                                 {org.is_active ? 'Active' : 'Suspended'}
                               </button>
                             </Can>
+                            {/* Verification is part of the org's approval state (the owner
+                                portal guard requires verified AND active). Surfacing it keeps
+                                the admin view consistent with what the owner experiences. */}
+                            {!Number(org.is_verified) && (
+                              <span
+                                className="ml-1.5 px-1.5 py-0.5 text-[10px] rounded-full font-medium bg-[var(--color-warning-bg)] text-[var(--color-warning-text)] align-middle"
+                                title="Not verified — the owner cannot access organisation screens until this organisation is approved"
+                              >
+                                Unverified
+                              </span>
+                            )}
                           </Can>
                         </td>
                         <td className="px-4 py-3">

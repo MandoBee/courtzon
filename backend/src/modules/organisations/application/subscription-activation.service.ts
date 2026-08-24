@@ -123,6 +123,7 @@ export async function writeActiveSubscription(input: WriteActiveSubscriptionInpu
   const [existingRows] = await conn.execute<RowData>(
     `SELECT id, start_date, end_date FROM organisation_subscriptions
      WHERE organisation_id = ? AND subscription_status IN ('pending', 'suspended', 'active')
+       AND (start_date IS NULL OR start_date <= CURDATE())
      ORDER BY created_at DESC LIMIT 1`,
     [orgId],
   );

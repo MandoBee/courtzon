@@ -96,17 +96,42 @@ export async function getCurrentSubscription(
   if (cache.has(cacheKey)) return cache.get(cacheKey)!;
 
   const db = conn ?? getPool();
-  const where = options?.includeInactive
-    ? 'os.organisation_id = ?'
-    : `os.organisation_id = ? AND ${nonExpiredSubscriptionCondition('os')}`;
-  const [rows] = await db.execute<RowData>(
-    `SELECT os.*
-     FROM organisation_subscriptions os
-     WHERE ${where}
-     ORDER BY os.created_at DESC
-     LIMIT 1`,
-    [orgId],
-  );
+
+  // Display/admin mode still resolves the CURRENTLY-EFFECTIVE period first so
+  // that a scheduled (future-dated) pending renewal can never shadow the
+  // subscription that governs today — every screen must agree on what
+  // "current" means. Only when no effective row exists do we fall back to the
+  // newest row of any status (expired/cancelled) for truthful admin display.
+  let rows: RowData = [];
+  if (options?.includeInactive) {
+    [rows] = await db.execute<RowData>(
+      `SELECT os.*
+       FROM organisation_subscriptions os
+       WHERE os.organisation_id = ? AND ${nonExpiredSubscriptionCondition('os')}
+       ORDER BY os.created_at DESC
+       LIMIT 1`,
+      [orgId],
+    );
+    if (!rows.length) {
+      [rows] = await db.execute<RowData>(
+        `SELECT os.*
+         FROM organisation_subscriptions os
+         WHERE os.organisation_id = ?
+         ORDER BY os.created_at DESC
+         LIMIT 1`,
+        [orgId],
+      );
+    }
+  } else {
+    [rows] = await db.execute<RowData>(
+      `SELECT os.*
+       FROM organisation_subscriptions os
+       WHERE os.organisation_id = ? AND ${nonExpiredSubscriptionCondition('os')}
+       ORDER BY os.created_at DESC
+       LIMIT 1`,
+      [orgId],
+    );
+  }
 
   if (!rows.length) {
     const empty: CurrentSubscription = {

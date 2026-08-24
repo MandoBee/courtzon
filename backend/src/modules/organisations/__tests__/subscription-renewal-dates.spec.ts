@@ -174,6 +174,19 @@ describe('writeActiveSubscription renewal period chaining', () => {
     expect(update!.params[2]).toBe(dayOffset(0)); // start = activation date
     expect(update!.params[5]).toBe(77);
   });
+
+  it('Issue 1 edge I: the existing-row probe excludes FUTURE-DATED rows (start_date gate)', async () => {
+    // A scheduled renewal must never be hijacked/mutated by a non-renewal write.
+    const { conn, capture } = makeConn({});
+    await writeActiveSubscription({ conn, ...baseInput });
+    const probe = capture().find(
+      c => c.sql.includes("IN ('pending', 'suspended', 'active')") && c.sql.startsWith('SELECT'),
+    );
+    expect(probe).toBeDefined();
+    expect(probe!.sql).toContain('start_date <= CURDATE()');
+    // With no eligible existing row the writer INSERTs instead of mutating.
+    expect(capture().some(c => c.sql.startsWith('INSERT INTO organisation_subscriptions'))).toBe(true);
+  });
 });
 
 describe('addMonths clamping', () => {

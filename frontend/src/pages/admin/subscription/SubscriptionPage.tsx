@@ -1180,7 +1180,7 @@ function ViewAssignments() {
         </thead>
         <tbody>
           {items.map((item: any) => (
-            <tr key={item.org_id} className="border-b border-[var(--color-border)] hover:bg-[var(--color-bg)]">
+            <tr key={`${item.org_id}-${item.subscription_id ?? item.start_date ?? 'none'}`} className="border-b border-[var(--color-border)] hover:bg-[var(--color-bg)]">
               <td className="px-4 py-3 font-medium text-[var(--color-text)]">{item.org_name}</td>
               <td className="px-4 py-3">
                 <Can permission="subscription.assignments.is-active">

@@ -149,6 +149,42 @@ describe('SocketEventMapper', () => {
     expect(result!.payload.requestId).toBe(9);
   });
 
+  // ── Issue 2: approval/status changes must reach the OWNER's personal room ──
+  // Owners are not members of the organisation room (user_organisations is
+  // never populated) — without user:{ownerId} targeting the org portal guard
+  // keeps showing "Awaiting approval" until a manual refresh.
+  describe('organisation:status-changed owner targeting (Issue 2)', () => {
+    it('routes an activation to admin + organisation + owner rooms', () => {
+      const result = mapDomainEvent('organisation:status-changed', { organisationId: 6, userId: 77, status: 'active' });
+      expect(result!.type).toBe('organisation.status-changed');
+      expect(result!.rooms).toContain('admin');
+      expect(result!.rooms).toContain('organisation:6');
+      expect(result!.rooms).toContain('user:77');
+    });
+
+    it('still reaches admin when no owner is supplied (legacy emitters)', () => {
+      const result = mapDomainEvent('organisation:status-changed', { organisationId: 6, status: 'suspended' });
+      expect(result!.rooms).toContain('admin');
+      expect(result!.rooms).toContain('organisation:6');
+    });
+  });
+
+  describe('organisation:subscription-status-changed owner targeting (Issue 2)', () => {
+    it('routes a subscription toggle to admin + organisation + owner rooms', () => {
+      const result = mapDomainEvent('organisation:subscription-status-changed', { organisationId: 6, userId: 77, subscriptionStatus: 'active' });
+      expect(result!.type).toBe('organisation.subscription-status-changed');
+      expect(result!.rooms).toContain('admin');
+      expect(result!.rooms).toContain('organisation:6');
+      expect(result!.rooms).toContain('user:77');
+    });
+
+    it('renewal promotion payload carries the owner id for scope refresh', () => {
+      const result = mapDomainEvent('organisation:subscription-status-changed', { organisationId: 9, userId: 31, subscriptionStatus: 'active' });
+      expect(result!.payload.userId).toBe(31);
+      expect(result!.payload.subscriptionStatus).toBe('active');
+    });
+  });
+
   // ── user:registered (player/seller) → Admin Users realtime refresh ──
   describe('user:registered', () => {
     it('routes player registration to the admin room with the user payload', () => {

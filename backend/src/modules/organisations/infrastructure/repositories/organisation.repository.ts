@@ -1,6 +1,7 @@
 import type mysql from 'mysql2/promise';
 import { getPool } from '../../../../database/mysql.js';
 import { generateUUID } from '../../../../shared/utils/token.js';
+import { nonExpiredSubscriptionCondition } from '../../../../shared/utils/subscription-validator.js';
 
 type RowData = mysql.RowDataPacket[];
 
@@ -46,11 +47,15 @@ export class OrganisationRepository {
     const total = (countRows[0] as any)?.cnt || 0;
 
     const offset = (page - 1) * limit;
+    // Canonical resolution: the Subscription Status column must reflect the
+    // EFFECTIVE subscription (non-expired gate, future-dated renewals excluded)
+    // — never just the newest row, which during an overlap window is a
+    // pending renewal and would disagree with org-portal/entitlement screens.
     const [rows] = await this.pool.query<RowData>(
       `SELECT o.*, ot.slug as org_type_slug, ot.sort_order as org_type_sort,
               c.name as country_name, c.flag_emoji as country_flag, c.iso_code as country_iso,
-              (SELECT os.id FROM organisation_subscriptions os WHERE os.organisation_id = o.id ORDER BY os.created_at DESC LIMIT 1) as subscription_id,
-              (SELECT os.subscription_status FROM organisation_subscriptions os WHERE os.organisation_id = o.id ORDER BY os.created_at DESC LIMIT 1) as subscription_status
+              (SELECT os.id FROM organisation_subscriptions os WHERE os.organisation_id = o.id AND ${nonExpiredSubscriptionCondition('os')} ORDER BY os.created_at DESC LIMIT 1) as subscription_id,
+              (SELECT os.subscription_status FROM organisation_subscriptions os WHERE os.organisation_id = o.id AND ${nonExpiredSubscriptionCondition('os')} ORDER BY os.created_at DESC LIMIT 1) as subscription_status
        FROM organisations o
        JOIN organisation_types ot ON ot.id = o.org_type_id
        LEFT JOIN countries c ON c.id = o.country_id
@@ -179,7 +184,7 @@ export class OrganisationRepository {
     // nonExpiredSubscriptionCondition gate is only for entitlement checks;
     // is_expired lets the UI label past-end-date rows as Expired.
     let sql = `SELECT o.id as org_id, o.name as org_name, o.slug as org_slug, o.is_verified, o.is_active,
-              os.plan_id, os.subscription_status, os.start_date, os.end_date, os.auto_renew,
+              os.id as subscription_id, os.plan_id, os.subscription_status, os.start_date, os.end_date, os.auto_renew,
               os.billing_cycle,
               CASE WHEN os.end_date IS NOT NULL AND os.end_date < CURDATE() THEN 1 ELSE 0 END AS is_expired,
               sp.plan_name, sp.price_monthly, sp.price_yearly, sp.is_unlimited,
@@ -196,7 +201,9 @@ export class OrganisationRepository {
       sql += ` AND o.country_id = ?`;
       params.push(countryId);
     }
-    sql += ` ORDER BY o.name`;
+    // Stable chronological order per organisation: oldest period first so the
+    // assignment history reads as a timeline (expired periods before active).
+    sql += ` ORDER BY o.name, (os.start_date IS NULL), os.start_date ASC, os.created_at ASC`;
     const [rows] = await this.pool.execute<RowData>(sql, params);
     return rows;
   }

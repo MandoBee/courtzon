@@ -163,8 +163,8 @@ export interface DomainEventMap {
   'notification:sync-read': BaseEvent & { notificationId: number; userId: number; sourceDeviceId?: string; timestamp?: number };
   'notification:sync-deleted': BaseEvent & { notificationId: number; userId: number; sourceDeviceId?: string; timestamp?: number };
   'membership:created': BaseEvent & { membershipId: number; userId: number; planId: number; endDate?: string };
-  'organisation:status-changed': BaseEvent & { organisationId: number; status: string };
-  'organisation:subscription-status-changed': BaseEvent & { organisationId: number; subscriptionStatus: string };
+  'organisation:status-changed': BaseEvent & { organisationId: number; userId?: number; status: string };
+  'organisation:subscription-status-changed': BaseEvent & { organisationId: number; userId?: number; subscriptionStatus: string };
   'match:available': BaseEvent & { matchId: number; userId?: number };
   'match:removed': BaseEvent & { matchId: number; userId?: number };
   'match:updated': BaseEvent & { matchId: number; userId?: number; status?: string };

@@ -280,8 +280,11 @@ export class OrganisationService {
 
     if (data.isActive !== undefined && Boolean(data.isActive) !== Boolean(org.is_active)) {
       // Realtime: Organisation Status changed — broadcast after the update persisted.
+      // userId targets the owner's socket room so their session scopes refresh
+      // live and approval guards stop showing "Awaiting approval" immediately.
       eventBusV2.emit('organisation:status-changed', {
         organisationId: id,
+        userId: (org as any).owner_id,
         status: data.isActive ? 'active' : 'suspended',
       });
     }
@@ -958,9 +961,11 @@ export class OrganisationService {
     try {
       await conn.beginTransaction();
       const [rows] = await conn.execute<RowData>(
-        `SELECT id, plan_id, billing_cycle, plan_snapshot, subscription_status FROM organisation_subscriptions
-         WHERE organisation_id = ? AND subscription_status IN ('active', 'suspended')
-         ORDER BY created_at DESC LIMIT 1`,
+        `SELECT s.id, s.plan_id, s.billing_cycle, s.plan_snapshot, s.subscription_status, o.owner_id
+         FROM organisation_subscriptions s
+         JOIN organisations o ON o.id = s.organisation_id
+         WHERE s.organisation_id = ? AND s.subscription_status IN ('active', 'suspended')
+         ORDER BY s.created_at DESC LIMIT 1`,
         [orgId]
       );
       if (!rows.length) throw new NotFoundError('No active or suspended subscription found');
@@ -994,8 +999,11 @@ export class OrganisationService {
 
       const newStatus = wasActive ? 'suspended' : 'active';
       // Realtime: broadcast after the change is durably committed.
+      // userId targets the owner's socket room (owners are not in the
+      // organisation room — user_organisations is never populated).
       eventBusV2.emit('organisation:subscription-status-changed', {
         organisationId: orgId,
+        userId: sub.owner_id,
         subscriptionStatus: newStatus,
       });
 

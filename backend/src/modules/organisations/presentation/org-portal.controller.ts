@@ -1020,7 +1020,9 @@ export async function getOrgVerificationHandler(request: FastifyRequest, reply: 
   const pool = getPool();
   type RowData = import('mysql2').RowDataPacket[];
   const [[org]] = await pool.query<RowData>(
-    `SELECT id, name, is_verified, is_active, verification_status, verified_at FROM organisations WHERE id = ?`,
+    // Only columns that exist in the baseline schema — verification state is
+    // is_verified/is_active; there is no verification_status/verified_at column.
+    `SELECT id, name, is_verified, is_active, updated_at FROM organisations WHERE id = ?`,
     [Number(orgId)],
   );
   if (!org) return reply.status(404).send({ error: 'NOT_FOUND', message: 'Organisation not found' });

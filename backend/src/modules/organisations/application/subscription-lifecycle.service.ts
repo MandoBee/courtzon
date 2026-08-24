@@ -23,10 +23,12 @@ export async function activateDueRenewals(): Promise<{ promoted: number }> {
   let promoted = 0;
   await withTransaction(async (conn) => {
     const [rows] = await conn.execute<RowData>(
-      `SELECT id, organisation_id, plan_id, start_date, end_date,
-              COALESCE(JSON_UNQUOTE(JSON_EXTRACT(plan_snapshot, '$.planName')), 'Unknown') as plan_name
-       FROM organisation_subscriptions
-       WHERE subscription_status = 'pending' AND start_date IS NOT NULL AND start_date <= CURDATE()
+      `SELECT s.id, s.organisation_id, s.plan_id, s.start_date, s.end_date,
+              o.owner_id,
+              COALESCE(JSON_UNQUOTE(JSON_EXTRACT(s.plan_snapshot, '$.planName')), 'Unknown') as plan_name
+       FROM organisation_subscriptions s
+       JOIN organisations o ON o.id = s.organisation_id
+       WHERE s.subscription_status = 'pending' AND s.start_date IS NOT NULL AND s.start_date <= CURDATE()
        FOR UPDATE`,
     );
 
@@ -35,17 +37,20 @@ export async function activateDueRenewals(): Promise<{ promoted: number }> {
         `UPDATE organisation_subscriptions SET subscription_status = 'active', updated_at = NOW() WHERE id = ?`,
         [sub.id],
       );
-      // Exactly one effective subscription: close earlier periods this row supersedes.
+      // Exactly one effective subscription: close every other live row this
+      // promotion supersedes. Unconditional (not just end_date < start) so an
+      // admin plan reassignment made inside the overlap window cannot survive
+      // alongside the promoted renewal — never two simultaneous actives.
       await conn.execute(
         `UPDATE organisation_subscriptions SET subscription_status = 'expired', updated_at = NOW()
          WHERE organisation_id = ? AND id <> ?
-           AND subscription_status IN ('active', 'suspended', 'pending')
-           AND (end_date IS NULL OR end_date < ?)`,
-        [sub.organisation_id, sub.id, sub.start_date],
+           AND subscription_status IN ('active', 'suspended', 'pending')`,
+        [sub.organisation_id, sub.id],
       );
 
       eventBusV2.emit('organisation:subscription-status-changed', {
         organisationId: sub.organisation_id,
+        userId: sub.owner_id,
         subscriptionStatus: 'active',
       });
 
