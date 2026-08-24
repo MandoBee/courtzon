@@ -1613,6 +1613,14 @@ export const marketplaceService = {
     if (!org) org = await repo.findOrgByUserId(userId, 'seller');
     if (!org) throw new NotFoundError('Seller account');
     const { financialDetails, ...orgData } = data;
+    // Identity fields (Name / Type / Country) are super-admin managed — sellers
+    // can view them read-only on their profile but never change them.
+    delete orgData.name;
+    delete (orgData as any).slug;
+    delete (orgData as any).orgTypeId;
+    delete (orgData as any).org_type_id;
+    delete (orgData as any).countryId;
+    delete (orgData as any).country_id;
     if (Object.keys(orgData).length > 0) {
       await repo.updateOrganisation(org.id, orgData);
     }

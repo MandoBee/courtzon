@@ -15,6 +15,11 @@ const ADMIN_ONLY_PREFIXES = [
   'organisations.create',
   'organisations.delete',
   'organisations.verify',
+  // Identity fields are super-admin-managed: orgs/sellers can view them
+  // read-only on their profile screen but never change them.
+  'organisations.edit.name',
+  'organisations.edit.org-type',
+  'organisations.edit.country',
   'organisation-types.',
   'subscription.',
   'cms.',
