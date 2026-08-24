@@ -740,6 +740,7 @@ export const uiRegistry: UIElement[] = [
   { permissionKey: 'subscription.edit.price-monthly', moduleSlug: 'subscription', elementType: 'field', elementLabel: 'Plan Monthly Price', componentPath: 'pages/admin/subscription/SubscriptionPage.tsx' },
   { permissionKey: 'subscription.edit.price-yearly', moduleSlug: 'subscription', elementType: 'field', elementLabel: 'Plan Annual Price', componentPath: 'pages/admin/subscription/SubscriptionPage.tsx' },
   { permissionKey: 'subscription.edit.is-unlimited', moduleSlug: 'subscription', elementType: 'field', elementLabel: 'Unlimited Plan Flag', componentPath: 'pages/admin/subscription/SubscriptionPage.tsx' },
+  { permissionKey: 'subscription.edit.duration-months', moduleSlug: 'subscription', elementType: 'field', elementLabel: 'Plan Duration Months', componentPath: 'pages/admin/subscription/SubscriptionPage.tsx' },
   { permissionKey: 'subscription.edit.is-internal', moduleSlug: 'subscription', elementType: 'field', elementLabel: 'Internal Plan Flag', componentPath: 'pages/admin/subscription/SubscriptionPage.tsx' },
   { permissionKey: 'subscription.plans.billing-period-toggle', moduleSlug: 'subscription', elementType: 'action', elementLabel: 'Billing Period Toggle (Monthly/Annual)', componentPath: 'components/subscription/BillingPeriodToggle.tsx' },
   { permissionKey: 'subscription.delete', moduleSlug: 'subscription', elementType: 'button', elementLabel: 'Delete Plan', componentPath: 'pages/admin/subscription/SubscriptionPage.tsx' },

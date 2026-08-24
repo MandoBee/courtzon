@@ -18,18 +18,18 @@
  * @param alias - the table alias (e.g., 'os', 'sub')
  */
 export function activeSubscriptionCondition(alias: string): string {
-  return `${alias}.subscription_status = 'active' AND (${alias}.end_date IS NULL OR ${alias}.end_date >= CURDATE())`;
+  return `${alias}.subscription_status = 'active' AND (${alias}.end_date IS NULL OR ${alias}.end_date >= CURDATE()) AND (${alias}.start_date IS NULL OR ${alias}.start_date <= CURDATE())`;
 }
 
 /**
  * SQL fragment for the WHERE clause that includes active, pending (workflow)
  * and suspended subscriptions (useful for admin/portal displays) while still
- * checking end_date. Suspended subscriptions are surfaced for display and for
- * resume, but do NOT count as "active" for transactional validity (see
- * activeSubscriptionCondition).
+ * checking end_date AND start_date. A scheduled (future-dated) renewal row is
+ * 'pending' but has NOT started yet — it must never satisfy entitlement or
+ * visibility queries before its start_date.
  */
 export function nonExpiredSubscriptionCondition(alias: string): string {
-  return `${alias}.subscription_status IN ('active', 'pending', 'suspended') AND (${alias}.end_date IS NULL OR ${alias}.end_date >= CURDATE())`;
+  return `${alias}.subscription_status IN ('active', 'pending', 'suspended') AND (${alias}.end_date IS NULL OR ${alias}.end_date >= CURDATE()) AND (${alias}.start_date IS NULL OR ${alias}.start_date <= CURDATE())`;
 }
 
 /**

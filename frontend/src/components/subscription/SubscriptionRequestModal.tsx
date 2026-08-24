@@ -30,6 +30,7 @@ export default function SubscriptionRequestModal({ orgId, open, onClose, request
   const { state: confirmState, confirm: confirmPayment } = usePaymentConfirm();
   const [selectedPlanId, setSelectedPlanId] = useState<number | null>(null);
   const [billingCycle, setBillingCycle] = useState<BillingPeriod>('monthly');
+  const [paymentMethod, setPaymentMethod] = useState<'card' | 'cash'>('card');
   const [notes, setNotes] = useState('');
   const [agreed, setAgreed] = useState(false);
   const [paymentInfo, setPaymentInfo] = useState<PaymentInfo | null>(null);
@@ -65,13 +66,14 @@ export default function SubscriptionRequestModal({ orgId, open, onClose, request
     if (open) {
       setNotes('');
       setAgreed(false);
+      setPaymentMethod('card');
       setPaymentInfo(null);
       setPollingPaid(false);
     }
   }, [open]);
 
   const requestMutation = useMutation({
-    mutationFn: (data: { planId: number; requestType: string; billingCycle: string; notes?: string }) =>
+    mutationFn: (data: { planId: number; requestType: string; billingCycle: string; paymentMethod: string; notes?: string }) =>
       api.post(`/org/${orgId}/subscription/request`, data),
     onSuccess: (res: any) => {
       const data = res.data;
@@ -138,6 +140,7 @@ export default function SubscriptionRequestModal({ orgId, open, onClose, request
       planId: selectedPlanId,
       requestType,
       billingCycle,
+      paymentMethod,
       notes: notes || undefined,
     });
   };
@@ -188,7 +191,7 @@ export default function SubscriptionRequestModal({ orgId, open, onClose, request
                 {isRenewal && (
                   <p className="text-xs text-[var(--color-text-muted)]">
                     {currentPlan.endDate
-                      ? `Renewing extends your subscription from ${new Date(currentPlan.endDate).toLocaleDateString('en-GB')}.`
+                      ? `Your renewal starts the day after your current period ends (${new Date(currentPlan.endDate).toLocaleDateString('en-GB')}) — regardless of when payment is completed.`
                       : 'Your subscription does not have an expiry date.'}
                   </p>
                 )}
@@ -200,6 +203,34 @@ export default function SubscriptionRequestModal({ orgId, open, onClose, request
               <div className="flex items-center gap-3">
                 <span className="text-xs text-[var(--color-text-muted)]">Billing period:</span>
                 <BillingPeriodToggle value={billingCycle} onChange={setBillingCycle} permission={null} />
+              </div>
+            )}
+
+            {/* Payment method (paid plans only) */}
+            {!pendingRequest && displayPrice !== null && displayPrice !== 'FREE' && (
+              <div className="flex items-center gap-3">
+                <span className="text-xs text-[var(--color-text-muted)]">Payment method:</span>
+                <div className="flex gap-2" role="radiogroup" aria-label="Payment method">
+                  {(['card', 'cash'] as const).map(m => (
+                    <button
+                      key={m}
+                      type="button"
+                      role="radio"
+                      aria-checked={paymentMethod === m}
+                      onClick={() => setPaymentMethod(m)}
+                      className={`px-3 py-1.5 text-xs font-medium rounded-[var(--radius-md)] border transition-colors ${
+                        paymentMethod === m
+                          ? 'border-[var(--color-primary)] bg-[var(--color-primary)]/5 text-[var(--color-primary)]'
+                          : 'border-[var(--color-border)] text-[var(--color-text-muted)] hover:text-[var(--color-text)]'
+                      }`}
+                    >
+                      {m === 'card' ? 'Credit Card' : 'Cash'}
+                    </button>
+                  ))}
+                </div>
+                {paymentMethod === 'cash' && (
+                  <span className="text-[11px] text-[var(--color-warning-text)]">Admin approval required after submission.</span>
+                )}
               </div>
             )}
 

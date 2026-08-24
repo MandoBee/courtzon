@@ -145,6 +145,7 @@ export async function getOrgSubscriptionWithUsage(orgId: number) {
 
   const usage = await repo.getFeatureUsageCounts(orgId);
   const pendingRequest = await repo.getOrgPendingSubscriptionRequest(orgId);
+  const upcomingRenewal = await repo.getUpcomingRenewalForOrg(orgId);
 
   const featureList = sub.features.map((f: any) => ({
     featureKey: f.featureKey,
@@ -169,7 +170,15 @@ export async function getOrgSubscriptionWithUsage(orgId: number) {
     startDate: sub.startDate,
     endDate: sub.endDate,
     status: sub.subscriptionStatus,
-    autoRenew: sub.autoRenew,
+    autoRenew: false,
+    upcomingRenewal: upcomingRenewal
+      ? {
+          id: upcomingRenewal.id,
+          planName: upcomingRenewal.plan_name,
+          startDate: upcomingRenewal.start_date,
+          endDate: upcomingRenewal.end_date,
+        }
+      : null,
     pendingRequest: pendingRequest
       ? {
           id: pendingRequest.id,
@@ -192,6 +201,7 @@ export async function getAvailablePlansForOrg(orgId: number) {
     priceMonthly: p.price_monthly != null ? Number(p.price_monthly) : null,
     priceYearly: p.price_yearly != null ? Number(p.price_yearly) : null,
     isUnlimited: !!p.is_unlimited,
+    durationMonths: p.duration_months != null ? Number(p.duration_months) : null,
     isInternal: !!p.is_internal,
     applicableOrgTypes: parseApplicableOrgTypes(p.applicable_org_types),
     features: [] as any[],
@@ -205,9 +215,16 @@ export async function submitSubscriptionRequest(
   requestType: 'NEW_SUBSCRIPTION' | 'PLAN_CHANGE' | 'RENEWAL',
   notes?: string,
   billingCycle: 'monthly' | 'yearly' = 'monthly',
+  paymentMethod: 'card' | 'cash' = 'card',
 ) {
   const pending = await repo.getOrgPendingSubscriptionRequest(orgId);
   if (pending) throw new ConflictError('You already have a pending subscription request. Please wait for it to be reviewed.');
+
+  // A scheduled (future-dated) renewal already secures the next period —
+  // never allow a second overlapping renewal.
+  if (await repo.getUpcomingRenewalForOrg(orgId)) {
+    throw new ConflictError('Your next subscription period is already scheduled. No further renewal is needed right now.');
+  }
 
   const { getPool } = await import('../../../database/mysql.js');
   const pool = getPool();
@@ -267,7 +284,7 @@ export async function submitSubscriptionRequest(
     requestedPlanName,
     requestedPrice,
     requestedBillingCycle,
-    chosenPaymentMethod: 'card',
+    chosenPaymentMethod: paymentMethod,
     notes,
   });
 
@@ -288,7 +305,14 @@ export async function submitSubscriptionRequest(
     return { id, status: 'active', activated: true, requestType, requestedPlanName };
   }
 
-  // Paid plan → create a Paymob payment intention linked to the request.
+  // Cash renewal/subscription: no gateway — the request stays pending until an
+  // admin confirms collection. Approval IS the payment evidence and posts the
+  // cash accounting atomically with activation (existing canonical path).
+  if (paymentMethod === 'cash') {
+    return { id, status: 'pending', requestType, requestedPlanName, payment: null };
+  }
+
+  // Paid card plan → create a Paymob payment intention linked to the request.
   const paymentRepository = (await import('../../payment/infrastructure/repositories/payment.repository.js')).paymentRepository;
   const currency = await paymentRepository.getUserDefaultCurrency(userId);
 

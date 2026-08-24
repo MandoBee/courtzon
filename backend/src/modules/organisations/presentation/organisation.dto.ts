@@ -194,6 +194,9 @@ const PlanPricingFieldsSchema = z.object({
   priceMonthly: z.number().nonnegative().nullable().optional(),
   priceYearly: z.number().nonnegative().nullable().optional(),
   isUnlimited: z.boolean().optional().default(false),
+  // Business rule: a finite plan must declare an explicit duration of 1-12
+  // months. Unlimited plans have no expiry and store NULL.
+  durationMonths: z.number().int().min(1).max(12).nullable().optional(),
   isInternal: z.boolean().optional().default(false),
   sortOrder: z.number().int().nonnegative().optional().default(0),
   applicableOrgTypes: z.array(z.number().nullable()).optional().default([]).transform(arr => arr.filter(t => t != null)),
@@ -208,9 +211,16 @@ const PlanPricingFieldsSchema = z.object({
 export const CreatePlanSchema = PlanPricingFieldsSchema.refine(
   (d) => d.isUnlimited || (d.priceMonthly != null && d.priceMonthly >= 0) || (d.priceYearly != null && d.priceYearly >= 0),
   { message: 'At least one price (monthly or yearly) is required unless the plan is unlimited' },
+).refine(
+  (d) => d.isUnlimited || (d.durationMonths != null && Number.isInteger(d.durationMonths) && d.durationMonths >= 1 && d.durationMonths <= 12),
+  { message: 'Duration months (1-12) is required unless the plan is unlimited' },
 );
 
-export const UpdatePlanSchema = PlanPricingFieldsSchema.partial();
+export const UpdatePlanSchema = PlanPricingFieldsSchema.partial().refine(
+  (d) => d.isUnlimited === true || d.durationMonths == null ||
+    (Number.isInteger(d.durationMonths) && d.durationMonths >= 1 && d.durationMonths <= 12),
+  { message: 'Duration months must be an integer between 1 and 12' },
+);
 
 export const UpdateOrgSubscriptionSchema = z.object({
   planId: z.number().int().positive(),

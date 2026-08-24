@@ -2806,13 +2806,15 @@ CREATE TABLE `subscription_plans` (
   `price_monthly` decimal(12,2) DEFAULT NULL,
   `price_yearly` decimal(12,2) DEFAULT NULL,
   `is_unlimited` tinyint(1) NOT NULL DEFAULT 0,
+  `duration_months` tinyint(3) unsigned DEFAULT NULL COMMENT 'Explicit plan length in months (1-12) when not unlimited; NULL = derive from billing_cycle',
   `features` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL CHECK (json_valid(`features`)),
   `applicable_org_types` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL COMMENT 'e.g. ["club","gym"] or ["seller"]' CHECK (json_valid(`applicable_org_types`)),
   `is_active` tinyint(1) NOT NULL DEFAULT 1,
   `is_internal` tinyint(1) NOT NULL DEFAULT 0 COMMENT 'Admin-assignment only; excluded from public catalog',
   `sort_order` int(10) unsigned NOT NULL DEFAULT 0,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
-  PRIMARY KEY (`id`)
+  PRIMARY KEY (`id`),
+  CONSTRAINT `chk_plan_duration_months` CHECK (`duration_months` IS NULL OR (`duration_months` BETWEEN 1 AND 12))
 ) ENGINE=InnoDB AUTO_INCREMENT=8 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 DROP TABLE IF EXISTS `system_settings`;

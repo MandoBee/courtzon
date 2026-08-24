@@ -53,6 +53,7 @@ export function mapSubscriptionPlanBase(row: Record<string, unknown>) {
     priceMonthly,
     priceYearly,
     isUnlimited,
+    durationMonths: row.duration_months != null ? Number(row.duration_months) : null,
     annualSavingsPercent: annualSavingsPercent(priceMonthly, priceYearly),
     applicableOrgTypes: row.applicable_org_types
       ? typeof row.applicable_org_types === 'string'
