@@ -174,7 +174,7 @@ const SHOP_ADMIN_PATTERNS = [
   /^profile\./,
   /^organisations\.edit\.(name|description|logo|cover|email|phone|website|slug|country)/,
   /^organisations\.edit\.(basic|branches)/,
-  /^branches\.edit\.(basic|name|email|phone|address|status)/,
+  /^branches\.edit\.(basic|financial|name|email|phone|address|status)/,
   /^branches\.edit$/,
   /^branches\.view$/,
   /^bookings\.create\.resource$/,

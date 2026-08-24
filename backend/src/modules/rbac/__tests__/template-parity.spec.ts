@@ -168,3 +168,40 @@ describe('Role template parity — .ts matches .mjs', () => {
     }
   });
 });
+
+describe('Shop-admin seller branch Financials tab (seller branch editor parity)', () => {
+
+  it('shop-admin receives branches.edit.financial so the Financials tab renders for sellers', () => {
+    expect(permissionMatchesTemplate('shop-admin', 'branches.edit.financial')).toBe(true);
+    expect(mjsMatch('shop-admin', 'branches.edit.financial')).toBe(true);
+  });
+
+  it('shop-admin retains its existing branch edit grants', () => {
+    for (const key of [
+      'branches.edit',
+      'branches.edit.basic',
+      'branches.edit.name',
+      'branches.edit.email',
+      'branches.edit.phone',
+      'branches.edit.address',
+      'branches.edit.status',
+    ]) {
+      expect(permissionMatchesTemplate('shop-admin', key)).toBe(true);
+      expect(mjsMatch('shop-admin', key)).toBe(true);
+    }
+  });
+
+  it('shop-admin does NOT gain unrelated branch sub-tabs or admin-only keys', () => {
+    for (const key of [
+      'branches.edit.amenities',
+      'branches.edit.holidays',
+      'branches.edit.cancellation',
+      'branches.create',
+      'branches.delete',
+      'organisations.delete',
+    ]) {
+      expect(permissionMatchesTemplate('shop-admin', key)).toBe(false);
+      expect(mjsMatch('shop-admin', key)).toBe(false);
+    }
+  });
+});
