@@ -260,6 +260,16 @@ export class OrganisationService {
     if (mapped.orgTypeId !== undefined) { mapped.org_type_id = mapped.orgTypeId; delete mapped.orgTypeId; }
     if (mapped.isActive !== undefined) { mapped.is_active = mapped.isActive; delete mapped.isActive; }
     if (mapped.isVerified !== undefined) { mapped.is_verified = mapped.isVerified; delete mapped.isVerified; }
+
+    // Activating an unverified organisation is an approval decision: the org
+    // portal guard requires verified AND active, so an activation that leaves
+    // is_verified=0 would strand the owner in "Awaiting approval" while the
+    // admin list shows Active. Manual activation therefore implies approval
+    // unless the caller set isVerified explicitly in the same request.
+    const approvesByActivation =
+      data.isActive === true && !org.is_active && !org.is_verified && mapped.is_verified === undefined;
+    if (approvesByActivation) { mapped.is_verified = true; }
+
     if (mapped.crNumber !== undefined) { mapped.cr_number = mapped.crNumber; delete mapped.crNumber; }
     if (mapped.countryId !== undefined) { mapped.country_id = mapped.countryId; delete mapped.countryId; }
     if (mapped.logoUrl !== undefined) { mapped.logo_url = mapped.logoUrl; delete mapped.logoUrl; }
@@ -276,8 +286,19 @@ export class OrganisationService {
       });
     }
 
-    if (data.isVerified === true && !org.is_verified) {
+    if ((data.isVerified === true && !org.is_verified) || approvesByActivation) {
       try { await this.activateSubscription(id); } catch {}
+    }
+
+    if (approvesByActivation) {
+      // Same lifecycle event as the approval flow so the owner's session
+      // scopes refresh live (route guards stop showing "Awaiting approval")
+      // and the notification platform delivers the approved notification.
+      eventBusV2.emit('organisation:approved', {
+        organisationId: id,
+        userId: (org as any).owner_id,
+        name: org.name,
+      });
     }
 
     if (data.attributes) {
@@ -818,7 +839,10 @@ export class OrganisationService {
 
   async getOrgSubscription(orgId: number) {
     const { getCurrentSubscription } = await import('./current-subscription.service.js');
-    const sub = await getCurrentSubscription(orgId);
+    // Display endpoint: surface expired/cancelled rows too so admins see the
+    // real state instead of a misleading "no subscription". Entitlement checks
+    // elsewhere keep the default validity gate.
+    const sub = await getCurrentSubscription(orgId, undefined, { includeInactive: true });
 
     if (!sub.exists) return { plan: null, status: 'none' };
 
@@ -841,6 +865,7 @@ export class OrganisationService {
       startDate: sub.startDate,
       endDate: sub.endDate,
       status: sub.subscriptionStatus,
+      effectiveStatus: sub.effectiveStatus,
       autoRenew: sub.autoRenew,
     };
   }

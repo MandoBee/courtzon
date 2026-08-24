@@ -48,9 +48,18 @@ export interface CurrentSubscription {
   exists: boolean;
   /**
    * Computed effective status — simplifies UI logic.
-   * One of: 'none' | 'pending' | 'suspended' | 'active' | 'expired'
+   * One of: 'none' | 'pending' | 'suspended' | 'active' | 'expired' | 'cancelled'
    */
-  effectiveStatus: 'none' | 'pending' | 'suspended' | 'active' | 'expired';
+  effectiveStatus: 'none' | 'pending' | 'suspended' | 'active' | 'expired' | 'cancelled';
+}
+
+export interface GetCurrentSubscriptionOptions {
+  /**
+   * Include rows that fail the transactional-validity gate (expired by
+   * end_date, cancelled). Display/admin endpoints only — entitlement checks
+   * must keep the default behavior so expired plans stay denied.
+   */
+  includeInactive?: boolean;
 }
 
 export interface CurrentSubscriptionFeature {
@@ -68,7 +77,7 @@ export interface CurrentSubscriptionCommissionRate {
 
 // ── Cache (per-request) ─────────────────────────────────────
 
-const cache = new Map<number, CurrentSubscription>();
+const cache = new Map<number | string, CurrentSubscription>();
 
 export function clearSubscriptionCache(): void {
   cache.clear();
@@ -76,14 +85,24 @@ export function clearSubscriptionCache(): void {
 
 // ── Resolver ─────────────────────────────────────────────────
 
-export async function getCurrentSubscription(orgId: number, conn?: mysql.PoolConnection): Promise<CurrentSubscription> {
-  if (cache.has(orgId)) return cache.get(orgId)!;
+export async function getCurrentSubscription(
+  orgId: number,
+  conn?: mysql.PoolConnection,
+  options?: GetCurrentSubscriptionOptions,
+): Promise<CurrentSubscription> {
+  // Cache keys must never cross modes: an inactive-inclusive row must not be
+  // served to entitlement checks that expect the validity gate.
+  const cacheKey = options?.includeInactive ? `${orgId}::all` : orgId;
+  if (cache.has(cacheKey)) return cache.get(cacheKey)!;
 
   const db = conn ?? getPool();
+  const where = options?.includeInactive
+    ? 'os.organisation_id = ?'
+    : `os.organisation_id = ? AND ${nonExpiredSubscriptionCondition('os')}`;
   const [rows] = await db.execute<RowData>(
     `SELECT os.*
      FROM organisation_subscriptions os
-     WHERE os.organisation_id = ? AND ${nonExpiredSubscriptionCondition('os')}
+     WHERE ${where}
      ORDER BY os.created_at DESC
      LIMIT 1`,
     [orgId],
@@ -97,7 +116,7 @@ export async function getCurrentSubscription(orgId: number, conn?: mysql.PoolCon
       isExpired: false, isInternal: false, autoRenew: false,
       features: [], commissionRates: [], fromSnapshot: false, exists: false,
     };
-    cache.set(orgId, empty);
+    cache.set(cacheKey, empty);
     return empty;
   }
 
@@ -190,9 +209,11 @@ export async function getCurrentSubscription(orgId: number, conn?: mysql.PoolCon
   if (!planName) planName = 'Unknown';
   if (isInternal === null) isInternal = false;
 
-  // Compute effective status
-  let effectiveStatus: 'none' | 'pending' | 'suspended' | 'active' | 'expired' = 'active';
-  if (isExpired) effectiveStatus = 'expired';
+  // Compute effective status. Explicit terminal states win over the derived
+  // date-based expiry; 'cancelled' is only reachable via includeInactive.
+  let effectiveStatus: CurrentSubscription['effectiveStatus'] = 'active';
+  if (sub.subscription_status === 'cancelled') effectiveStatus = 'cancelled';
+  else if (isExpired) effectiveStatus = 'expired';
   else if (sub.subscription_status === 'pending') effectiveStatus = 'pending';
   else if (sub.subscription_status === 'suspended') effectiveStatus = 'suspended';
 
@@ -215,7 +236,7 @@ export async function getCurrentSubscription(orgId: number, conn?: mysql.PoolCon
     exists: true,
   };
 
-  cache.set(orgId, result);
+  cache.set(cacheKey, result);
   return result;
 }
 

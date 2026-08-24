@@ -1,7 +1,6 @@
 import type mysql from 'mysql2/promise';
 import { getPool } from '../../../../database/mysql.js';
 import { generateUUID } from '../../../../shared/utils/token.js';
-import { nonExpiredSubscriptionCondition } from '../../../../shared/utils/subscription-validator.js';
 
 type RowData = mysql.RowDataPacket[];
 
@@ -175,9 +174,14 @@ export class OrganisationRepository {
   }
 
   async getAllOrganisationSubscriptions(countryId?: number | null): Promise<any[]> {
+    // Admin display: include EVERY assignment — expired by date, cancelled,
+    // pending, suspended — so Subscription Management reflects reality. The
+    // nonExpiredSubscriptionCondition gate is only for entitlement checks;
+    // is_expired lets the UI label past-end-date rows as Expired.
     let sql = `SELECT o.id as org_id, o.name as org_name, o.slug as org_slug, o.is_verified, o.is_active,
               os.plan_id, os.subscription_status, os.start_date, os.end_date, os.auto_renew,
               os.billing_cycle,
+              CASE WHEN os.end_date IS NOT NULL AND os.end_date < CURDATE() THEN 1 ELSE 0 END AS is_expired,
               sp.plan_name, sp.price_monthly, sp.price_yearly, sp.is_unlimited,
               CASE
                 WHEN sp.is_unlimited = 1 THEN 0
@@ -186,8 +190,7 @@ export class OrganisationRepository {
               END AS price
        FROM organisation_subscriptions os
        INNER JOIN organisations o ON o.id = os.organisation_id AND o.deleted_at IS NULL
-       INNER JOIN subscription_plans sp ON sp.id = os.plan_id
-       WHERE ${nonExpiredSubscriptionCondition('os')}`;
+       INNER JOIN subscription_plans sp ON sp.id = os.plan_id`;
     const params: any[] = [];
     if (countryId) {
       sql += ` AND o.country_id = ?`;
