@@ -22,6 +22,12 @@ export default function OrgSubscriptionPage() {
     enabled: !!orgId,
   });
 
+  const { data: periodsData } = useQuery<any>({
+    queryKey: ['org-subscription-periods', orgId],
+    queryFn: () => api.get(`/org/${orgId}/subscription/periods`).then(r => r.data),
+    enabled: !!orgId,
+  });
+
   const { data: transactionsData } = useQuery<any>({
     queryKey: ['org-transactions', orgId],
     queryFn: () => api.get(`/org/${orgId}/transactions`, { params: { page: 1, limit: 10 } }).then(r => r.data),
@@ -42,6 +48,7 @@ export default function OrgSubscriptionPage() {
 
   const sub = subscription;
   const requests = requestsData?.data || [];
+  const periods = periodsData?.data || [];
   const transactions = transactionsData?.data || [];
   const hasPlan = !!sub?.planId;
 
@@ -82,11 +89,6 @@ export default function OrgSubscriptionPage() {
                   {new Date(sub.endDate).toLocaleDateString('en-GB')}
                 </p>
               )}
-              {sub.autoRenew !== undefined && (
-                <p className="text-xs text-[var(--color-text-muted)] mt-0.5">
-                  Auto-renew: {sub.autoRenew ? 'Enabled' : 'Disabled'}
-                </p>
-              )}
             </div>
             {sub.pendingRequest ? (
               <div className="bg-[var(--color-warning-bg)] border border-[var(--color-warning-border)] rounded-[var(--radius-md)] p-3 text-xs max-w-xs">
@@ -115,18 +117,21 @@ export default function OrgSubscriptionPage() {
                   )}
                 </Can>
                 <Can permission="org.subscription.renew">
-                  {hasPlan && sub.planId && (() => {
+                  {hasPlan && sub.planId && !sub.upcomingRenewal && (() => {
                     const end = sub.endDate ? new Date(sub.endDate) : null;
                     const now = new Date();
                     const daysLeft = end ? Math.ceil((end.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)) : null;
-                    const shouldRenew = !end || daysLeft !== null && daysLeft <= 5;
-                    if (!shouldRenew) return null;
+                    const expiredish = end && daysLeft !== null && daysLeft < 0;
                     return (
                       <button
                         onClick={() => { setRequestType('RENEWAL'); setShowRequestModal(true); }}
-                        className="px-3 py-1.5 bg-[var(--color-success)] text-white rounded-[var(--radius-md)] text-xs font-medium"
+                        className={`px-3 py-1.5 rounded-[var(--radius-md)] text-xs font-medium ${
+                          expiredish || (daysLeft !== null && daysLeft <= 30)
+                            ? 'bg-[var(--color-success)] text-white'
+                            : 'border border-[var(--color-border)] text-[var(--color-text-muted)] hover:text-[var(--color-text)]'
+                        }`}
                       >
-                        {end && daysLeft !== null && daysLeft < 0 ? 'Renew (Expired)' : 'Renew'}
+                        {expiredish ? 'Renew (Expired)' : 'Renew'}
                       </button>
                     );
                   })()}
@@ -138,8 +143,7 @@ export default function OrgSubscriptionPage() {
           {/* Features */}
           {sub.features && sub.features.length > 0 && (
             <div className="border-t border-[var(--color-border)] pt-4 mt-2">
-              <h3 className="text-sm font-semibold text-[var(--color-text)] mb-3">Plan Features & Usage</h3>
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+              <h3 className="text-sm font-semibold text-[var(--color-text)] mb-3">Plan Features & Usage</h3>              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                 {sub.features.map((f: any) => {
                   const isNumeric = f.valueType === 'numeric';
                   const limit = parseInt(f.value, 10);
@@ -158,6 +162,56 @@ export default function OrgSubscriptionPage() {
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Scheduled renewal — next period already secured */}
+      {sub?.upcomingRenewal && (
+        <div className="bg-[var(--color-info-bg)] border border-[var(--color-info-border)] rounded-[var(--radius-lg)] p-5">
+          <h2 className="font-semibold text-[var(--color-text)] mb-1">Renewal Scheduled</h2>
+          <p className="text-sm text-[var(--color-text-muted)]">
+            Your next period{sub.upcomingRenewal.planName ? <> on <strong className="text-[var(--color-text)]">{sub.upcomingRenewal.planName}</strong></> : ''} starts on{' '}
+            <strong className="text-[var(--color-text)]">{new Date(sub.upcomingRenewal.startDate).toLocaleDateString('en-GB')}</strong>
+            {sub.upcomingRenewal.endDate && <> and runs until {new Date(sub.upcomingRenewal.endDate).toLocaleDateString('en-GB')}</>}.
+            No further action is needed.
+          </p>
+        </div>
+      )}
+
+      {/* Subscription Period History */}
+      {periods.length > 0 && (
+        <div className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] border border-[var(--color-border)] p-5">
+          <h2 className="font-semibold text-[var(--color-text)] mb-3">Subscription History</h2>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-[var(--color-border)] text-left text-xs text-[var(--color-text-muted)]">
+                  <th className="pb-2 pr-3 font-medium">Plan</th>
+                  <th className="pb-2 pr-3 font-medium">Start</th>
+                  <th className="pb-2 pr-3 font-medium">End</th>
+                  <th className="pb-2 pr-3 font-medium">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {periods.map((p: any) => (
+                  <tr key={p.id} className="border-b border-[var(--color-border)] last:border-0">
+                    <td className="py-2 pr-3 text-xs font-medium text-[var(--color-text)]">{p.plan_name}</td>
+                    <td className="py-2 pr-3 text-xs text-[var(--color-text-muted)]">{p.start_date ? new Date(p.start_date).toLocaleDateString('en-GB') : '—'}</td>
+                    <td className="py-2 pr-3 text-xs text-[var(--color-text-muted)]">{p.end_date ? new Date(p.end_date).toLocaleDateString('en-GB') : 'No expiry'}</td>
+                    <td className="py-2 pr-3">
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${
+                        p.subscription_status === 'active' ? 'bg-[var(--color-success-bg)] text-[var(--color-success-text)]' :
+                        p.subscription_status === 'pending' ? 'bg-[var(--color-info-bg)] text-[var(--color-info-text)]' :
+                        p.subscription_status === 'suspended' ? 'bg-[var(--color-warning-bg)] text-[var(--color-warning-text)]' :
+                        p.subscription_status === 'cancelled' ? 'bg-gray-100 text-gray-500' :
+                        'bg-[var(--color-error-bg)] text-[var(--color-error-text)]'
+                      }`}>{p.subscription_status}</span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 

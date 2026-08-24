@@ -426,6 +426,7 @@ const RequestSubscriptionSchema = z.object({
   planId: z.coerce.number().int().positive(),
   requestType: z.enum(['NEW_SUBSCRIPTION', 'PLAN_CHANGE', 'RENEWAL']),
   billingCycle: z.enum(['monthly', 'yearly']).optional().default('monthly'),
+  paymentMethod: z.enum(['card', 'cash']).optional().default('card'),
   notes: z.string().max(500).optional(),
 });
 
@@ -444,10 +445,10 @@ export async function getAvailablePlansHandler(request: FastifyRequest, reply: F
 export async function submitSubscriptionRequestHandler(request: FastifyRequest, reply: FastifyReply) {
   const { orgId } = request.params as { orgId: string };
   const oid = parseInt(orgId, 10);
-  const { planId, requestType, billingCycle, notes } = RequestSubscriptionSchema.parse(request.body);
+  const { planId, requestType, billingCycle, paymentMethod, notes } = RequestSubscriptionSchema.parse(request.body);
   const userId = (request as any).userId;
-  const result = await service.submitSubscriptionRequest(oid, userId, planId, requestType, notes, billingCycle);
-  auditOrganisationMutation(request, 'SUBSCRIPTION.REQUEST', 'organisation', oid, { planId, requestType, billingCycle, notes });
+  const result = await service.submitSubscriptionRequest(oid, userId, planId, requestType, notes, billingCycle, paymentMethod);
+  auditOrganisationMutation(request, 'SUBSCRIPTION.REQUEST', 'organisation', oid, { planId, requestType, billingCycle, paymentMethod, notes });
   return reply.status(201).send(result);
 }
 
@@ -465,6 +466,12 @@ export async function listOrgSubscriptionRequestsHandler(request: FastifyRequest
   const { orgId } = request.params as { orgId: string };
   const requests = await service.listOrgSubscriptionRequests(parseInt(orgId, 10));
   return reply.send({ data: requests });
+}
+
+export async function listOrgSubscriptionPeriodsHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { orgId } = request.params as { orgId: string };
+  const periods = await orgRepo.listOrgSubscriptionPeriods(parseInt(orgId, 10));
+  return reply.send({ data: periods });
 }
 
 export async function getOrgTransactionsHandler(request: FastifyRequest, reply: FastifyReply) {

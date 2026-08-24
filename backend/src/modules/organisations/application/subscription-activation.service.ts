@@ -44,17 +44,23 @@ export interface WriteActiveSubscriptionInput {
   billingCycle: string;
   planSnapshot: string;
   isUnlimited: boolean;
-  /** 'RENEWAL' extends an existing future end_date while preserving the original start_date. */
+  /** 'RENEWAL' creates the NEXT period row chained from the previous period's end_date. */
   requestType?: string | null;
   /** Keep existing start/end dates unchanged (e.g. resume after suspension). */
   keepDates?: boolean;
 }
 
-function addPeriod(date: Date, billingCycle: string): Date {
-  const d = new Date(date);
-  if (billingCycle === 'yearly') d.setFullYear(d.getFullYear() + 1);
-  else d.setMonth(d.getMonth() + 1);
-  return d;
+/**
+ * Add months to a date, clamping to the last valid day of the target month
+ * (Jan 31 + 1 month = Feb 28/29, never Mar 2).
+ */
+export function addMonths(date: Date, months: number): Date {
+  const target = new Date(date.getFullYear(), date.getMonth() + months, 1);
+  const daysInTargetMonth = new Date(target.getFullYear(), target.getMonth() + 1, 0).getDate();
+  target.setDate(Math.min(date.getDate(), daysInTargetMonth));
+  // Preserve time-of-day from the source date for same-day comparisons
+  target.setHours(date.getHours(), date.getMinutes(), date.getSeconds(), date.getMilliseconds());
+  return target;
 }
 
 function toSqlDate(date: Date): string {
@@ -64,22 +70,55 @@ function toSqlDate(date: Date): string {
   return `${y}-${m}-${day}`;
 }
 
+function startOfDay(date: Date): Date {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
 /**
- * SINGLE authoritative writer of `subscription_status = 'active'`, `start_date` and `end_date`
- * on `organisation_subscriptions`. Every activation path (payment, admin approval, free plans,
- * direct admin assignment, resume) MUST go through here so that:
- *   - renewals extend from the existing future end_date (original start_date preserved);
+ * Resolve the entitlement period length of a plan in whole months.
+ *   - Unlimited plans: null (no expiry).
+ *   - Explicit duration_months (admin-managed, 1..12): used as-is.
+ *   - Legacy rows without duration: derived from billing_cycle (monthly=1, yearly=12)
+ *     so pre-existing plans keep their exact current behavior.
+ */
+export async function resolvePlanPeriodMonths(
+  conn: mysql.PoolConnection,
+  planId: number,
+  billingCycle: string,
+): Promise<number | null> {
+  const [rows] = await conn.execute<RowData>(
+    'SELECT is_unlimited, duration_months FROM subscription_plans WHERE id = ?',
+    [planId],
+  );
+  if (!rows.length) return billingCycle === 'yearly' ? 12 : 1;
+  const p = rows[0] as any;
+  if (p.is_unlimited) return null;
+  if (p.duration_months != null) return Number(p.duration_months);
+  return billingCycle === 'yearly' ? 12 : 1;
+}
+
+/**
+ * SINGLE authoritative writer of `subscription_status = 'active'|'pending'`, `start_date`
+ * and `end_date` on `organisation_subscriptions`. Every activation path (payment, admin
+ * approval, free plans, direct admin assignment, resume) MUST go through here so that:
+ *   - renewals create the NEXT period row chained from the previous period's end_date
+ *     (+1 day), never from the payment/approval date — history is preserved per period;
+ *   - no automatic renewal exists: auto_renew is always written FALSE;
  *   - expired / new subscriptions start a fresh period from the activation date;
  *   - no other code can flip a subscription active or rewrite its period.
  */
 export async function writeActiveSubscription(input: WriteActiveSubscriptionInput): Promise<{
   startDate: string | null;
   endDate: string | null;
+  /** Effective status written for this period: 'active' or — for a scheduled future renewal — 'pending'. */
+  status: 'active' | 'pending';
   subscriptionId: number;
 }> {
   const { conn, orgId, planId, billingCycle, planSnapshot, isUnlimited, requestType, keepDates } = input;
 
-  const today = new Date();
+  const today = startOfDay(new Date());
 
   const [existingRows] = await conn.execute<RowData>(
     `SELECT id, start_date, end_date FROM organisation_subscriptions
@@ -89,24 +128,90 @@ export async function writeActiveSubscription(input: WriteActiveSubscriptionInpu
   );
   const existing = existingRows[0] as any;
 
+  // ── Renewal: chain the NEXT period from the previous period's end ──
+  if (requestType === 'RENEWAL' && !keepDates) {
+    // Edge case I — never two scheduled/overlapping periods: reject when a
+    // future-dated renewal is already scheduled for this organisation.
+    const [futureRows] = await conn.execute<RowData>(
+      `SELECT id FROM organisation_subscriptions
+       WHERE organisation_id = ? AND start_date > CURDATE()
+         AND subscription_status IN ('pending', 'active')
+       LIMIT 1`,
+      [orgId],
+    );
+    if (futureRows.length) {
+      throw new ValidationError('A renewal is already scheduled for this organisation');
+    }
+
+    // Continuity anchor: latest known period end across history. Cancelled
+    // periods are excluded — a cancellation terminates the chain deliberately.
+    const [anchorRows] = await conn.execute<RowData>(
+      `SELECT MAX(end_date) AS prev_end FROM organisation_subscriptions
+       WHERE organisation_id = ? AND end_date IS NOT NULL AND subscription_status <> 'cancelled'`,
+      [orgId],
+    );
+    const prevEndRaw = (anchorRows[0] as any)?.prev_end ?? null;
+
+    // Business rule: a renewal starts the day AFTER the previous subscription
+    // ends, regardless of when payment/approval happens. First-ever period
+    // (no anchor) starts on the activation day.
+    let startDate: Date;
+    if (prevEndRaw) {
+      startDate = startOfDay(new Date(prevEndRaw));
+      startDate.setDate(startDate.getDate() + 1);
+    } else {
+      startDate = today;
+    }
+    const months = isUnlimited ? null : await resolvePlanPeriodMonths(conn, planId, billingCycle);
+    const endDate = months == null ? null : addMonths(startDate, months);
+    const newStart = toSqlDate(startDate);
+    const newEnd = endDate ? toSqlDate(endDate) : null;
+    const newStatus = startDate.getTime() > today.getTime() ? 'pending' : 'active';
+
+    const [result] = await conn.execute<mysql.ResultSetHeader>(
+      `INSERT INTO organisation_subscriptions
+        (organisation_id, plan_id, billing_cycle, subscription_status, start_date, end_date, plan_snapshot, auto_renew)
+       VALUES (?, ?, ?, ?, ?, ?, ?, FALSE)`,
+      [orgId, planId, billingCycle, newStatus, newStart, newEnd, planSnapshot],
+    );
+    const newId = (result as any).insertId;
+
+    if (newStatus === 'active') {
+      // Close every earlier period so exactly one effective subscription remains.
+      await conn.execute(
+        `UPDATE organisation_subscriptions SET subscription_status = 'expired', updated_at = NOW()
+         WHERE organisation_id = ? AND id <> ?
+           AND subscription_status IN ('active', 'suspended', 'pending')`,
+        [orgId, newId],
+      );
+    }
+
+    return { startDate: newStart, endDate: newEnd, status: newStatus, subscriptionId: newId };
+  }
+
+  // ── Non-renewal paths (registration activation, plan change, admin assign,
+  //    resume) — preserve the existing mutate-in-place semantics. ──
   let startDate: Date;
   let endDate: Date | null;
 
   if (keepDates && existing) {
     startDate = existing.start_date ? new Date(existing.start_date) : today;
-    endDate = existing.end_date ? new Date(existing.end_date) : (isUnlimited ? null : addPeriod(today, billingCycle));
-  } else if (requestType === 'RENEWAL' && existing?.end_date && !isUnlimited) {
-    const currentEnd = new Date(existing.end_date);
-    if (currentEnd > today) {
-      startDate = existing.start_date ? new Date(existing.start_date) : today;
-      endDate = addPeriod(currentEnd, billingCycle);
+    if (existing.end_date) {
+      endDate = new Date(existing.end_date);
+    } else if (isUnlimited) {
+      endDate = null;
     } else {
-      startDate = today;
-      endDate = addPeriod(today, billingCycle);
+      const months = await resolvePlanPeriodMonths(conn, planId, billingCycle);
+      endDate = addMonths(startDate, months ?? 1);
     }
   } else {
     startDate = today;
-    endDate = isUnlimited ? null : addPeriod(today, billingCycle);
+    if (isUnlimited) {
+      endDate = null;
+    } else {
+      const months = await resolvePlanPeriodMonths(conn, planId, billingCycle);
+      endDate = addMonths(startDate, months ?? 1);
+    }
   }
 
   const newStart = toSqlDate(startDate);
@@ -116,19 +221,19 @@ export async function writeActiveSubscription(input: WriteActiveSubscriptionInpu
     await conn.execute(
       `UPDATE organisation_subscriptions
        SET plan_id = ?, billing_cycle = ?, subscription_status = 'active',
-           start_date = ?, end_date = ?, plan_snapshot = ?, auto_renew = TRUE, updated_at = NOW()
+           start_date = ?, end_date = ?, plan_snapshot = ?, auto_renew = FALSE, updated_at = NOW()
        WHERE id = ?`,
       [planId, billingCycle, newStart, newEnd, planSnapshot, existing.id],
     );
-    return { startDate: newStart, endDate: newEnd, subscriptionId: existing.id };
+    return { startDate: newStart, endDate: newEnd, status: 'active', subscriptionId: existing.id };
   }
 
   const [result] = await conn.execute(
     `INSERT INTO organisation_subscriptions (organisation_id, plan_id, billing_cycle, subscription_status, start_date, end_date, plan_snapshot, auto_renew)
-     VALUES (?, ?, ?, 'active', ?, ?, ?, TRUE)`,
+     VALUES (?, ?, ?, 'active', ?, ?, ?, FALSE)`,
     [orgId, planId, billingCycle, newStart, newEnd, planSnapshot],
   );
-  return { startDate: newStart, endDate: newEnd, subscriptionId: (result as any).insertId };
+  return { startDate: newStart, endDate: newEnd, status: 'active', subscriptionId: (result as any).insertId };
 }
 
 export async function buildPlanSnapshot(
@@ -163,6 +268,7 @@ export async function buildPlanSnapshot(
     priceMonthly: planRow?.price_monthly ? Number(planRow.price_monthly) : null,
     priceYearly: planRow?.price_yearly ? Number(planRow.price_yearly) : null,
     isUnlimited: !!planRow?.is_unlimited,
+    durationMonths: planRow?.duration_months != null ? Number(planRow.duration_months) : null,
     billingCycle,
     features,
     commissionRates: rateRows.map((r: any) => ({
@@ -526,10 +632,16 @@ export async function tryActivateSubscriptionRequest(
       });
     }
     if (req.request_type === 'RENEWAL') {
+      // The renewal event means the next period is secured. When the chained
+      // start is still in the future the current period keeps serving until
+      // the daily lifecycle job promotes the scheduled row to 'active'
+      // (which emits organisation:subscription-status-changed).
       eventBusV2.emit('organisation:subscription-renewed', {
         organisationId: req.organisation_id,
         planName: req.requested_plan_name,
         billingCycle: req.requested_billing_cycle || 'monthly',
+        startDate,
+        endDate,
       });
     }
 

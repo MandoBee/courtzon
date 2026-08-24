@@ -10,6 +10,67 @@ type RowData = mysql.RowDataPacket[];
 const REMINDER_INTERVALS = [30, 14, 7, 5, 3, 1] as const;
 
 /**
+ * Daily job (runs BEFORE expireSubscriptions): promote scheduled renewals.
+ *
+ * A renewal approved/paid before the current period ends is stored as a
+ * future-dated row with status 'pending' (chained to start on the day after
+ * the previous period ends). When that start date arrives this job flips it
+ * to 'active', closes the superseded periods, and announces it so screens
+ * update without a manual refresh. There is NO automatic renewal anywhere —
+ * this only activates periods an organisation explicitly paid for.
+ */
+export async function activateDueRenewals(): Promise<{ promoted: number }> {
+  let promoted = 0;
+  await withTransaction(async (conn) => {
+    const [rows] = await conn.execute<RowData>(
+      `SELECT id, organisation_id, plan_id, start_date, end_date,
+              COALESCE(JSON_UNQUOTE(JSON_EXTRACT(plan_snapshot, '$.planName')), 'Unknown') as plan_name
+       FROM organisation_subscriptions
+       WHERE subscription_status = 'pending' AND start_date IS NOT NULL AND start_date <= CURDATE()
+       FOR UPDATE`,
+    );
+
+    for (const sub of rows as any[]) {
+      await conn.execute(
+        `UPDATE organisation_subscriptions SET subscription_status = 'active', updated_at = NOW() WHERE id = ?`,
+        [sub.id],
+      );
+      // Exactly one effective subscription: close earlier periods this row supersedes.
+      await conn.execute(
+        `UPDATE organisation_subscriptions SET subscription_status = 'expired', updated_at = NOW()
+         WHERE organisation_id = ? AND id <> ?
+           AND subscription_status IN ('active', 'suspended', 'pending')
+           AND (end_date IS NULL OR end_date < ?)`,
+        [sub.organisation_id, sub.id, sub.start_date],
+      );
+
+      eventBusV2.emit('organisation:subscription-status-changed', {
+        organisationId: sub.organisation_id,
+        subscriptionStatus: 'active',
+      });
+
+      recordAudit({
+        actorId: 0,
+        action: 'SUBSCRIPTION.RENEWAL.STARTED',
+        entityType: 'organisation_subscription',
+        entityId: sub.id,
+        afterState: { organisationId: sub.organisation_id, planId: sub.plan_id, startDate: sub.start_date, endDate: sub.end_date },
+      });
+
+      promoted++;
+      log.info({ subscriptionId: sub.id, organisationId: sub.organisation_id }, 'Scheduled renewal promoted to active');
+    }
+
+    if (promoted > 0) {
+      const { clearSubscriptionCache } = await import('./current-subscription.service.js');
+      clearSubscriptionCache();
+    }
+  });
+  log.info({ promoted }, 'Due-renewal promotion completed');
+  return { promoted };
+}
+
+/**
  * Daily job: expire active subscriptions where end_date < CURDATE()
  */
 export async function expireSubscriptions(): Promise<{ expired: number }> {
@@ -71,6 +132,15 @@ export async function sendExpirationReminders(): Promise<{ notified: number }> {
        FROM organisation_subscriptions s
        LEFT JOIN subscription_plans sp ON sp.id = s.plan_id
        WHERE s.subscription_status = 'active' AND s.end_date IS NOT NULL AND s.end_date > CURDATE()
+         -- A scheduled renewal already secures the next period: the expiry
+         -- reminders for the current period are no longer actionable.
+         AND NOT EXISTS (
+           SELECT 1 FROM organisation_subscriptions f
+           WHERE f.organisation_id = s.organisation_id
+             AND f.id <> s.id
+             AND f.subscription_status IN ('pending', 'active')
+             AND f.start_date IS NOT NULL AND f.start_date > s.end_date
+         )
        FOR UPDATE`,
     );
 

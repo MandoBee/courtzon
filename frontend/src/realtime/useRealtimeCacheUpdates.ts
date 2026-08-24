@@ -385,6 +385,7 @@ export function useRealtimeCacheUpdates(): void {
   // ── Organisation events ────────────────────────────────────────
   useSocketEvent('organisation.subscription-renewed', () => {
     qc.invalidateQueries({ queryKey: ['org-subscription'] });
+    qc.invalidateQueries({ queryKey: ['org-subscription-periods'] });
   });
 
   useSocketEvent('organisation.subscription-expiring', () => {
@@ -394,6 +395,7 @@ export function useRealtimeCacheUpdates(): void {
 
   useSocketEvent('organisation.subscription-expired', () => {
     qc.invalidateQueries({ queryKey: ['org-subscription'] });
+    qc.invalidateQueries({ queryKey: ['org-subscription-periods'] });
   });
 
   useSocketEvent('organisation.status-changed', () => {
@@ -411,6 +413,7 @@ export function useRealtimeCacheUpdates(): void {
     qc.invalidateQueries({ queryKey: ['admin-marketplace-sellers'] });
     qc.invalidateQueries({ queryKey: ['admin', 'organisation-subscriptions'] });
     qc.invalidateQueries({ queryKey: ['org-subscription'] });
+    qc.invalidateQueries({ queryKey: ['org-subscription-periods'] });
     void useAuthStore.getState().refreshOrganisations();
   });
 
@@ -447,6 +450,7 @@ export function useRealtimeCacheUpdates(): void {
     useSocketEvent(ev, () => {
       qc.invalidateQueries({ queryKey: ['admin', 'subscription-requests'] });
       qc.invalidateQueries({ queryKey: ['org-subscription-requests'] });
+      qc.invalidateQueries({ queryKey: ['org-subscription-periods'] });
       qc.invalidateQueries({ queryKey: ['admin-approvals'] });
       qc.invalidateQueries({ queryKey: ['org-subscription'] });
       qc.invalidateQueries({ queryKey: ['admin', 'organisation-subscriptions'] });

@@ -606,24 +606,30 @@ export class OrganisationService {
     priceMonthly?: number | null;
     priceYearly?: number | null;
     isUnlimited?: boolean;
+    durationMonths?: number | null;
     isInternal?: boolean;
     sortOrder?: number;
     applicableOrgTypes?: number[];
     commissionRates?: { entity: string; rate: number; type: string }[];
     features?: { featureKey: string; value: string }[];
   }) {
+    const durationMonths = data.isUnlimited ? null : (data.durationMonths ?? null);
+    if (!data.isUnlimited && durationMonths == null) {
+      throw new ValidationError('Duration months (1-12) is required for a finite plan');
+    }
     const pool = getPool();
     const conn = await pool.getConnection();
     try {
       await conn.beginTransaction();
       const [result] = await conn.execute<RowData>(
-        `INSERT INTO subscription_plans (plan_name, price_monthly, price_yearly, is_unlimited, applicable_org_types, is_internal, sort_order)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO subscription_plans (plan_name, price_monthly, price_yearly, is_unlimited, duration_months, applicable_org_types, is_internal, sort_order)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           data.planName,
           data.isUnlimited ? 0 : (data.priceMonthly ?? null),
           data.isUnlimited ? null : (data.priceYearly ?? null),
           data.isUnlimited ? 1 : 0,
+          durationMonths,
           data.applicableOrgTypes?.length ? JSON.stringify(data.applicableOrgTypes.filter(t => t != null)) : null,
           data.isInternal ? 1 : 0,
           data.sortOrder ?? 0,
@@ -673,6 +679,7 @@ export class OrganisationService {
     priceMonthly?: number | null;
     priceYearly?: number | null;
     isUnlimited?: boolean;
+    durationMonths?: number | null;
     isInternal?: boolean;
     sortOrder?: number;
     applicableOrgTypes?: number[];
@@ -695,9 +702,18 @@ export class OrganisationService {
         fields.push('is_unlimited = ?');
         params.push(data.isUnlimited ? 1 : 0);
         if (data.isUnlimited) {
-          fields.push('price_monthly = ?', 'price_yearly = ?');
-          params.push(0, null);
+          fields.push('price_monthly = ?', 'price_yearly = ?', 'duration_months = ?');
+          params.push(0, null, null);
         }
+      }
+      // Finite plans must keep an explicit 1-12 month duration.
+      if (data.durationMonths !== undefined && !data.isUnlimited) {
+        const m = Number(data.durationMonths);
+        if (data.durationMonths == null || !Number.isInteger(m) || m < 1 || m > 12) {
+          throw new ValidationError('Duration months must be an integer between 1 and 12');
+        }
+        fields.push('duration_months = ?');
+        params.push(m);
       }
       if (data.applicableOrgTypes !== undefined) { fields.push('applicable_org_types = ?'); params.push(data.applicableOrgTypes.length ? JSON.stringify(data.applicableOrgTypes.filter(t => t != null)) : null); }
       if (data.isInternal !== undefined) { fields.push('is_internal = ?'); params.push(data.isInternal ? 1 : 0); }

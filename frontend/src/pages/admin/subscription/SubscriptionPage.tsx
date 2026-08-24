@@ -38,6 +38,7 @@ type Plan = {
   priceMonthly: number | null;
   priceYearly: number | null;
   isUnlimited: boolean;
+  durationMonths?: number | null;
   annualSavingsPercent: number | null;
   applicableOrgTypes: number[];
   isActive: boolean;
@@ -52,6 +53,7 @@ type PlanForm = {
   priceMonthly: string;
   priceYearly: string;
   isUnlimited: boolean;
+  durationMonths: string;
   isInternal: boolean;
   sortOrder: string;
   applicableOrgTypes: number[];
@@ -60,7 +62,7 @@ type PlanForm = {
 };
 
 const emptyForm: PlanForm = {
-  planName: '', priceMonthly: '', priceYearly: '', isUnlimited: false, isInternal: false, sortOrder: '0',
+  planName: '', priceMonthly: '', priceYearly: '', isUnlimited: false, durationMonths: '1', isInternal: false, sortOrder: '0',
   applicableOrgTypes: [], commissionRates: [], features: [],
 };
 
@@ -168,6 +170,7 @@ function ManagePlans() {
       priceMonthly: plan.priceMonthly != null ? String(plan.priceMonthly) : '',
       priceYearly: plan.priceYearly != null ? String(plan.priceYearly) : '',
       isUnlimited: !!plan.isUnlimited,
+      durationMonths: plan.durationMonths != null ? String(plan.durationMonths) : '',
       applicableOrgTypes: Array.isArray(plan.applicableOrgTypes) ? plan.applicableOrgTypes.map(Number) : [],
       isInternal: !!plan.isInternal,
       sortOrder: String((plan as any).sortOrder ?? 0),
@@ -199,11 +202,21 @@ function ManagePlans() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!form.isUnlimited) {
+      const m = parseInt(form.durationMonths, 10);
+      if (!Number.isInteger(m) || m < 1 || m > 12) {
+        showToast('Duration must be between 1 and 12 months (or enable Unlimited).', 'warning');
+        return;
+      }
+    }
     const payload = {
       planName: form.planName,
       priceMonthly: form.isUnlimited ? 0 : (form.priceMonthly === '' ? null : parseFloat(form.priceMonthly) || 0),
       priceYearly: form.isUnlimited ? null : (form.priceYearly === '' ? null : parseFloat(form.priceYearly) || 0),
       isUnlimited: form.isUnlimited,
+      durationMonths: form.isUnlimited
+        ? null
+        : (form.durationMonths === '' ? null : parseInt(form.durationMonths, 10)),
       isInternal: form.isInternal,
       sortOrder: parseInt(form.sortOrder, 10) || 0,
       applicableOrgTypes: form.applicableOrgTypes.map(Number),
@@ -261,6 +274,20 @@ function ManagePlans() {
                 <input type="number" step="0.01" min="0" value={form.priceYearly} disabled={form.isUnlimited}
                   onChange={e => setForm(f => ({ ...f, priceYearly: e.target.value }))}
                   className="w-full px-3 py-2 border rounded-[var(--radius-md)] bg-[var(--color-bg)] text-sm disabled:opacity-50" />
+              </div>
+            </Can>
+            <Can permission="subscription.edit.duration-months">
+              <div>
+                <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+                  Duration (months) {form.isUnlimited && <span className="opacity-60">— unlimited, no expiry</span>}
+                </label>
+                <select value={form.isUnlimited ? '' : form.durationMonths} disabled={form.isUnlimited}
+                  onChange={e => setForm(f => ({ ...f, durationMonths: e.target.value }))}
+                  className="w-full px-3 py-2 border rounded-[var(--radius-md)] bg-[var(--color-bg)] text-sm disabled:opacity-50">
+                  {Array.from({ length: 12 }, (_, i) => String(i + 1)).map(mn => (
+                    <option key={mn} value={mn}>{mn} month{mn !== '1' ? 's' : ''}</option>
+                  ))}
+                </select>
               </div>
             </Can>
           </div>

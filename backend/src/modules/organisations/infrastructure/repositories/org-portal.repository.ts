@@ -572,8 +572,49 @@ export async function createSubscriptionRequest(data: {
      data.requestedPlanName || null, data.requestedPrice || null, data.requestedBillingCycle || null,
      data.chosenPaymentMethod || null, data.notes || null],
   );
-  return (result as any).insertId;
+   return (result as any).insertId;
 }
+
+/**
+ * The scheduled next period for an organisation: a renewal row that was
+ * approved/paid but has not started yet (future-dated 'pending').
+ */
+export async function getUpcomingRenewalForOrg(orgId: number) {
+  const pool = getPool();
+  const [rows] = await pool.execute<RowData>(
+    `SELECT os.id, os.plan_id, os.start_date, os.end_date, os.billing_cycle,
+            COALESCE(JSON_UNQUOTE(JSON_EXTRACT(os.plan_snapshot, '$.planName')), sp.plan_name, 'Unknown') as plan_name
+     FROM organisation_subscriptions os
+     LEFT JOIN subscription_plans sp ON sp.id = os.plan_id
+     WHERE os.organisation_id = ? AND os.subscription_status = 'pending'
+       AND os.start_date IS NOT NULL AND os.start_date > CURDATE()
+     ORDER BY os.start_date ASC
+     LIMIT 1`,
+    [orgId],
+  );
+  return rows[0] || null;
+}
+
+/**
+ * Full subscription history for an organisation — every period row, oldest
+ * state preserved. Expired/cancelled rows are history, never hidden.
+ */
+export async function listOrgSubscriptionPeriods(orgId: number) {
+  const pool = getPool();
+  const [rows] = await pool.execute<RowData>(
+    `SELECT os.id, os.plan_id, os.billing_cycle, os.subscription_status,
+            os.start_date, os.end_date, os.created_at,
+            COALESCE(JSON_UNQUOTE(JSON_EXTRACT(os.plan_snapshot, '$.planName')), sp.plan_name, 'Unknown') as plan_name
+     FROM organisation_subscriptions os
+     LEFT JOIN subscription_plans sp ON sp.id = os.plan_id
+     WHERE os.organisation_id = ?
+     ORDER BY (os.start_date IS NULL), os.start_date DESC, os.created_at DESC
+     LIMIT 100`,
+    [orgId],
+  );
+  return rows;
+}
+
 
 export async function getOrgPendingSubscriptionRequest(orgId: number) {
   const pool = getPool();
