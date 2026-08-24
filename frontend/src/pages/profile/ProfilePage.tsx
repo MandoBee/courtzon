@@ -507,7 +507,7 @@ export default function ProfilePage() {
   };
 
   return (
-    <div className="max-w-2xl mx-auto space-y-6">
+    <div className="max-w-2xl mx-auto space-y-6 p-4 sm:p-6">
       <div className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] shadow-[var(--shadow-md)] p-6 md:p-8">
         <div className="flex items-center gap-4 mb-6">
           <AvatarDisplay user={previewUser} />
