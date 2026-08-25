@@ -146,6 +146,7 @@ describe('Multi-seller order split', () => {
     repoMock.findOrgByUserId = vi.fn(async () => null);
     repoMock.findOrgByUserScope = vi.fn(async () => null);
     repoMock.findOrgByOwnerId = vi.fn(async () => []);
+    repoMock.findSellerOrgsForUser = vi.fn(async () => []);
     repoMock.isPlatformAdmin = vi.fn(async () => false);
     repoMock.findAddressById = vi.fn(async () => ({ id: 1, province_id: 1, city_id: 1, country: 'EG' }));
     repoMock.findShippingRateForSeller = vi.fn(async () => ({ price: 50, estimated_days: 3 }));
@@ -262,7 +263,7 @@ describe('Multi-seller order split', () => {
         item_total: 1000, seller_id: SELLER_A, shop_name: 'Shop A',
       }]);
 
-      repoMock.findOrgByUserId.mockResolvedValue({ id: SELLER_A });
+      repoMock.findSellerOrgsForUser.mockResolvedValue([{ id: SELLER_A, is_active: 1, owner_id: 1 }]);
       repoMock.findOrdersBySeller.mockResolvedValueOnce({
         data: sellerAItemRows,
         total: 1,
@@ -273,7 +274,7 @@ describe('Multi-seller order split', () => {
       const result = await marketplaceService.getSellerOrders(1, { page: 1, limit: 10 });
 
       expect(repoMock.findOrdersBySeller).toHaveBeenCalledWith(
-        SELLER_A,
+        [SELLER_A],
         expect.objectContaining({ page: 1, limit: 10 }),
       );
 
@@ -283,7 +284,7 @@ describe('Multi-seller order split', () => {
     });
 
     it('seller B orders are completely absent from seller A result', async () => {
-      repoMock.findOrgByUserId.mockResolvedValue({ id: SELLER_A });
+      repoMock.findSellerOrgsForUser.mockResolvedValue([{ id: SELLER_A, is_active: 1, owner_id: 1 }]);
       repoMock.findOrdersBySeller.mockResolvedValueOnce({
         data: [],
         total: 0,
@@ -965,16 +966,17 @@ describe('Multi-seller order split', () => {
         { product_id: 2, product_name: 'Shoes B', quantity: 1, unit_price: 300, item_total: 300, seller_id: SELLER_B },
       ]);
 
-      repoMock.findOrderById.mockImplementation(async (id: number, buyerId?: number, sellerOrgId?: number) => {
+      repoMock.findOrderById.mockImplementation(async (id: number, buyerId?: number, sellerOrgIds?: number | number[]) => {
         // Buyer filter: fails because seller is not buyer
         if (buyerId) return [];
         // Seller filter: returns only seller A's order
-        if (sellerOrgId === SELLER_A) return rowsA;
+        const ids = Array.isArray(sellerOrgIds) ? sellerOrgIds : (sellerOrgIds !== undefined ? [sellerOrgIds] : []);
+        if (ids.includes(SELLER_A)) return rowsA;
         // Unfiltered: returns seller A's order (the one with matching ID)
         return rowsA;
       });
 
-      repoMock.findOrgByUserId.mockResolvedValue({ id: SELLER_A });
+      repoMock.findSellerOrgsForUser.mockResolvedValue([{ id: SELLER_A, is_active: 1, owner_id: SELLER_A + 1000 }]);
 
       const result = await marketplaceService.getOrderForUser(11001, SELLER_A + 1000);
 
@@ -1003,8 +1005,7 @@ describe('Multi-seller order split', () => {
       });
 
       repoMock.findOrdersByCheckoutGroup.mockResolvedValue([...rowsA, ...rowsB]);
-      repoMock.findOrgByUserId.mockResolvedValue(null);
-      repoMock.findOrgByUserScope.mockResolvedValue(null);
+      repoMock.findSellerOrgsForUser.mockResolvedValue([]);
 
       const result = await marketplaceService.getOrderForUser(11011, BUYER);
 

@@ -67,8 +67,7 @@ describe('Phase 4B — Legacy Marketplace Settlement Retirement', () => {
     const { marketplaceService } = await import('../../marketplace/application/marketplace.service.js');
     const { marketplaceRepository } = await import('../../marketplace/infrastructure/repositories/marketplace.repository.js');
 
-    vi.spyOn(marketplaceRepository, 'findOrgByUserId').mockResolvedValue({ id: 5 } as any);
-    vi.spyOn(marketplaceRepository, 'findOrgByUserScope').mockResolvedValue(null as any);
+    vi.spyOn(marketplaceRepository, 'findSellerOrgsForUser').mockResolvedValue([{ id: 5, is_active: 1, owner_id: 9 }] as any);
     const createSpy = vi.spyOn(unifiedSettlementService, 'create').mockResolvedValue({
       settlement: { id: 2, organisation_id: 5 },
       entitlements: [],

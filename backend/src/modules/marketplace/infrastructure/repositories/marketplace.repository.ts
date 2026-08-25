@@ -46,7 +46,7 @@ export const marketplaceRepository = {
 
   // ── Products ──
   async findProducts(filters: {
-    categoryId?: number; categoryIds?: number[]; sellerId?: number; sportId?: number; sportIds?: number[]; search?: string;
+    categoryId?: number; categoryIds?: number[]; sellerId?: number; sellerIds?: number[]; sportId?: number; sportIds?: number[]; search?: string;
     minPrice?: number; maxPrice?: number; status?: string; stockStatus?: string; sellerType?: string;
     brandId?: number; brandIds?: number[]; tagIds?: number[]; gender?: string; branchId?: number;
     visibleOnly?: boolean;
@@ -69,7 +69,10 @@ export const marketplaceRepository = {
       conditions.push(`p.category_id IN (${filters.categoryIds.map(() => '?').join(', ')})`);
       params.push(...filters.categoryIds);
     } else if (filters.categoryId) { conditions.push('p.category_id = ?'); params.push(filters.categoryId); }
-    if (filters.sellerId) { conditions.push('p.seller_id = ?'); params.push(filters.sellerId); }
+    if (filters.sellerIds?.length) {
+      conditions.push(`p.seller_id IN (${filters.sellerIds.map(() => '?').join(', ')})`);
+      params.push(...filters.sellerIds);
+    } else if (filters.sellerId) { conditions.push('p.seller_id = ?'); params.push(filters.sellerId); }
     if (filters.sportIds?.length) {
       conditions.push(`p.sport_id IN (${filters.sportIds.map(() => '?').join(', ')})`);
       params.push(...filters.sportIds);
@@ -280,8 +283,9 @@ export const marketplaceRepository = {
     return (result as any).insertId;
   },
 
-  async updateProduct(id: number, sellerId: number, data: any) {
+  async updateProduct(id: number, sellerIds: number | number[], data: any) {
     const pool = getPool();
+    const ids = Array.isArray(sellerIds) ? sellerIds : [sellerIds];
     const fields: string[] = []; const params: any[] = [];
     if (data.categoryId !== undefined) { fields.push('category_id = ?'); params.push(data.categoryId); }
     if (data.branchId !== undefined) { fields.push('branch_id = ?'); params.push(data.branchId); }
@@ -301,9 +305,12 @@ export const marketplaceRepository = {
     if (data.gender !== undefined) { fields.push('gender = ?'); params.push(data.gender); }
     if (data.condition !== undefined) { fields.push('condition_status = ?'); params.push(data.condition); }
     if (!fields.length) return false;
-    params.push(id, sellerId);
+    const sellerClause = ids.length
+      ? `AND seller_id IN (${ids.map(() => '?').join(', ')})`
+      : 'AND seller_id = ?';
+    params.push(id, ...(ids.length ? ids : [0]));
     const [result] = await pool.execute(
-      `UPDATE products SET ${fields.join(', ')} WHERE id = ? AND seller_id = ? AND deleted_at IS NULL`,
+      `UPDATE products SET ${fields.join(', ')} WHERE id = ? ${sellerClause} AND deleted_at IS NULL`,
       params
     );
     return (result as any).affectedRows > 0;
@@ -370,7 +377,7 @@ export const marketplaceRepository = {
     return (result as any).insertId;
   },
 
-  async updateVariant(id: number, data: any, sellerId?: number) {
+  async updateVariant(id: number, data: any, sellerIds?: number | number[]) {
     const pool = getPool();
     const fields: string[] = []; const params: any[] = [];
     if (data.sku !== undefined) { fields.push('sku = ?'); params.push(data.sku); }
@@ -383,13 +390,17 @@ export const marketplaceRepository = {
     if (data.isActive !== undefined) { fields.push('is_active = ?'); params.push(data.isActive); }
     if (!fields.length) return false;
     params.push(id);
-    if (sellerId !== undefined) {
+    if (sellerIds !== undefined) {
+      const ids = Array.isArray(sellerIds) ? sellerIds : [sellerIds];
+      const clause = ids.length
+        ? `AND p.seller_id IN (${ids.map(() => '?').join(', ')})`
+        : 'AND p.seller_id = ?';
       const [result] = await pool.execute(
         `UPDATE product_variants pv
          JOIN products p ON p.id = pv.product_id
          SET ${fields.map(f => `pv.${f}`).join(', ')}
-         WHERE pv.id = ? AND p.seller_id = ?`,
-        [...params, sellerId],
+         WHERE pv.id = ? ${clause}`,
+        [...params, ...(ids.length ? ids : [0])],
       );
       return (result as any).affectedRows > 0;
     }
@@ -397,15 +408,19 @@ export const marketplaceRepository = {
     return (result as any).affectedRows > 0;
   },
 
-  async deleteVariant(id: number, sellerId?: number) {
+  async deleteVariant(id: number, sellerIds?: number | number[]) {
     const pool = getPool();
-    if (sellerId !== undefined) {
+    if (sellerIds !== undefined) {
+      const ids = Array.isArray(sellerIds) ? sellerIds : [sellerIds];
+      const clause = ids.length
+        ? `AND p.seller_id IN (${ids.map(() => '?').join(', ')})`
+        : 'AND p.seller_id = ?';
       const [result] = await pool.execute(
         `UPDATE product_variants pv
          JOIN products p ON p.id = pv.product_id
          SET pv.is_active = FALSE
-         WHERE pv.id = ? AND p.seller_id = ?`,
-        [id, sellerId],
+         WHERE pv.id = ? ${clause}`,
+        [id, ...(ids.length ? ids : [0])],
       );
       return (result as any).affectedRows > 0;
     }
@@ -804,8 +819,11 @@ export const marketplaceRepository = {
     return (rows as any[]).map((r: any) => r.id);
   },
 
-  async findOrdersBySeller(sellerId: number, filters: { status?: string; page: number; limit: number }) {
+  async findOrdersBySeller(sellerIds: number | number[], filters: { status?: string; page: number; limit: number }) {
     const pool = getPool();
+    const ids = Array.isArray(sellerIds) ? sellerIds : [sellerIds];
+    if (!ids.length) return { data: [], total: 0, page: filters.page, limit: filters.limit };
+    const placeholders = ids.map(() => '?').join(', ');
     let sql = `SELECT o.*, oi.product_id, oi.variant_id, oi.quantity, oi.unit_price, oi.total_price as item_total,
                p.name as product_name, p.images, pv.variant_name, buyer.full_name as buyer_name, buyer.full_phone as buyer_phone
                FROM order_items oi
@@ -813,8 +831,8 @@ export const marketplaceRepository = {
                JOIN products p ON oi.product_id = p.id
                LEFT JOIN product_variants pv ON oi.variant_id = pv.id
                LEFT JOIN users buyer ON o.buyer_id = buyer.id
-               WHERE oi.seller_id = ?`;
-    const params: any[] = [sellerId];
+               WHERE oi.seller_id IN (${placeholders})`;
+    const params: any[] = [...ids];
     if (filters.status) { sql += ' AND o.status = ?'; params.push(filters.status); }
     sql += ' ORDER BY o.created_at DESC';
     const offset = (filters.page - 1) * filters.limit;
@@ -823,12 +841,12 @@ export const marketplaceRepository = {
 
     const [rows] = await pool.query<RowData>(sql, params);
 
-    const countSql = `SELECT COUNT(*) as total FROM order_items oi JOIN orders o ON o.id = oi.order_id WHERE oi.seller_id = ?${filters.status ? ' AND o.status = ?' : ''}`;
-    const [countRows] = await pool.query<RowData>(countSql, filters.status ? [sellerId, filters.status] : [sellerId]);
+    const countSql = `SELECT COUNT(*) as total FROM order_items oi JOIN orders o ON o.id = oi.order_id WHERE oi.seller_id IN (${placeholders})${filters.status ? ' AND o.status = ?' : ''}`;
+    const [countRows] = await pool.query<RowData>(countSql, filters.status ? [...ids, filters.status] : ids);
     return { data: rows, total: countRows[0].total, page: filters.page, limit: filters.limit };
   },
 
-  async findOrderById(id: number, buyerId?: number, sellerOrgId?: number) {
+  async findOrderById(id: number, buyerId?: number, sellerOrgIds?: number | number[]) {
     const pool = getPool();
     let sql = `SELECT o.*, oi.id as item_id, oi.seller_id as item_seller_id, oi.product_id, oi.variant_id,
                oi.quantity, oi.unit_price, oi.total_price as item_total,
@@ -845,7 +863,11 @@ export const marketplaceRepository = {
                WHERE o.id = ?`;
     const params: any[] = [id];
     if (buyerId) { sql += ' AND o.buyer_id = ?'; params.push(buyerId); }
-    if (sellerOrgId) { sql += ' AND oi.seller_id = ?'; params.push(sellerOrgId); }
+    const sellerFilter = sellerOrgIds === undefined ? [] : (Array.isArray(sellerOrgIds) ? sellerOrgIds : [sellerOrgIds]);
+    if (sellerFilter.length) {
+      sql += ` AND oi.seller_id IN (${sellerFilter.map(() => '?').join(', ')})`;
+      params.push(...sellerFilter);
+    }
     const [rows] = await pool.execute<RowData>(sql, params);
     return rows;
   },
@@ -922,6 +944,26 @@ export const marketplaceRepository = {
     sql += ' ORDER BY o.id DESC LIMIT 1';
     const [rows] = await pool.execute<RowData>(sql, params);
     return rows[0] || null;
+  },
+
+  /**
+   * ALL active organizations the user can act as seller for: owned orgs (any
+   * type — an organisation can be a Marketplace seller regardless of type)
+   * plus orgs where the user holds an organisation-scoped role. Deduped.
+   */
+  async findSellerOrgsForUser(userId: number) {
+    const pool = getPool();
+    const [rows] = await pool.query<RowData>(
+      `SELECT o.* FROM organisations o
+       WHERE o.owner_id = ? AND o.is_active = TRUE AND o.deleted_at IS NULL
+       UNION
+       SELECT o.* FROM organisations o
+       JOIN user_role_scopes urs ON urs.scope_type = 'organisation' AND urs.scope_id = o.id
+       JOIN user_roles ur ON ur.id = urs.user_role_id
+       WHERE ur.user_id = ? AND ur.is_active = TRUE AND o.is_active = TRUE AND o.deleted_at IS NULL`,
+      [userId, userId]
+    );
+    return rows;
   },
 
   async findOrgByUserScope(userId: number) {
@@ -1006,18 +1048,23 @@ export const marketplaceRepository = {
     return rows[0].cnt;
   },
 
-  async getSellerStats(orgId: number) {
+  async getSellerStats(orgIds: number | number[]) {
     const pool = getPool();
+    const ids = Array.isArray(orgIds) ? orgIds : [orgIds];
+    if (!ids.length) {
+      return { total_orders: 0, completed_orders: 0, total_revenue: 0, total_commission: 0, pending_orders: 0, active_listings: 0 };
+    }
+    const placeholders = ids.map(() => '?').join(', ');
     const [rows] = await pool.execute<RowData>(
       `SELECT
-         (SELECT COUNT(*) FROM order_items oi JOIN orders o ON o.id = oi.order_id WHERE oi.seller_id = ? AND o.status != 'cancelled') as total_orders,
-         (SELECT COUNT(*) FROM order_items oi JOIN orders o ON o.id = oi.order_id WHERE oi.seller_id = ? AND o.status = 'delivered') as completed_orders,
-         (SELECT COALESCE(SUM(oi.total_price), 0) FROM order_items oi JOIN orders o ON o.id = oi.order_id WHERE oi.seller_id = ? AND o.status = 'delivered') as total_revenue,
-         (SELECT COALESCE(SUM(oi.commission_amount), 0) FROM order_items oi JOIN orders o ON o.id = oi.order_id WHERE oi.seller_id = ? AND o.status = 'delivered') as total_commission,
-         (SELECT COUNT(*) FROM order_items oi JOIN orders o ON o.id = oi.order_id WHERE oi.seller_id = ? AND o.status = 'pending') as pending_orders,
-         (SELECT COUNT(*) FROM products WHERE seller_id = ? AND deleted_at IS NULL AND status = 'active') as active_listings
+         (SELECT COUNT(*) FROM order_items oi JOIN orders o ON o.id = oi.order_id WHERE oi.seller_id IN (${placeholders}) AND o.status != 'cancelled') as total_orders,
+         (SELECT COUNT(*) FROM order_items oi JOIN orders o ON o.id = oi.order_id WHERE oi.seller_id IN (${placeholders}) AND o.status = 'delivered') as completed_orders,
+         (SELECT COALESCE(SUM(oi.total_price), 0) FROM order_items oi JOIN orders o ON o.id = oi.order_id WHERE oi.seller_id IN (${placeholders}) AND o.status = 'delivered') as total_revenue,
+         (SELECT COALESCE(SUM(oi.commission_amount), 0) FROM order_items oi JOIN orders o ON o.id = oi.order_id WHERE oi.seller_id IN (${placeholders}) AND o.status = 'delivered') as total_commission,
+         (SELECT COUNT(*) FROM order_items oi JOIN orders o ON o.id = oi.order_id WHERE oi.seller_id IN (${placeholders}) AND o.status = 'pending') as pending_orders,
+         (SELECT COUNT(*) FROM products WHERE seller_id IN (${placeholders}) AND deleted_at IS NULL AND status = 'active') as active_listings
       `,
-      [orgId, orgId, orgId, orgId, orgId, orgId]
+      [...ids, ...ids, ...ids, ...ids, ...ids, ...ids]
     );
     return rows[0];
   },

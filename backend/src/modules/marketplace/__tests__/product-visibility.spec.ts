@@ -45,6 +45,7 @@ vi.mock('../infrastructure/repositories/marketplace.repository.js', () => ({
     findProducts: vi.fn(async (filters: any) => ({ data: [], total: 0, page: 1, limit: 10 })),
     findOrgByUserId: vi.fn(async (_uid: number, slug?: string) => slug === 'seller' ? { id: 77 } : null),
     findOrgByUserScope: vi.fn(async () => null),
+    findSellerOrgsForUser: vi.fn(async (uid: number) => (uid === 10 || uid === 77) ? [{ id: 77, is_active: 1, owner_id: 10 }] : []),
     findVariants: vi.fn(async () => []),
     findProductTags: vi.fn(async () => []),
     findProductImages: vi.fn(async () => []),

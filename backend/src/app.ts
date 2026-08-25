@@ -265,18 +265,21 @@ initAuthMiddleware({
     return permissions.some((perm) => userPermissions.includes(perm));
   },
   checkOrgApproved: async (userId) => {
+    // An organisation of ANY type can be a Marketplace seller — approval is
+    // ownership + verification, not membership of legacy 'seller'/'player'
+    // organisation-type slugs (which no longer exist).
     const [orgRows] = await pool.execute<RowData>(
-      `SELECT o.is_verified, o.is_active
+      `SELECT o.id, o.is_verified, o.is_active
        FROM organisations o
-       JOIN organisation_types ot ON ot.id = o.org_type_id
-       WHERE o.owner_id = ? AND ot.slug IN ('seller', 'player')
+       WHERE o.owner_id = ? AND o.is_active = TRUE AND o.is_verified = TRUE AND o.deleted_at IS NULL
        ORDER BY o.created_at DESC LIMIT 1`,
       [userId],
     );
-    if (orgRows.length && orgRows[0].is_active && orgRows[0].is_verified) return true;
+    if (orgRows.length) return true;
     const [scopedRows] = await pool.execute<RowData>(
       `SELECT 1 FROM user_role_scopes urs
        JOIN user_roles ur ON ur.id = urs.user_role_id
+       JOIN organisations o ON o.id = urs.scope_id AND o.is_active = TRUE AND o.deleted_at IS NULL
        WHERE ur.user_id = ? AND urs.scope_type = 'organisation' AND ur.is_active = TRUE
        LIMIT 1`,
       [userId],

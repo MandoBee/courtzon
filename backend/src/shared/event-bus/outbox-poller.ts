@@ -104,7 +104,7 @@ export class OutboxPoller {
               };
 
               await queueService.addToQueue(subscriberId, envelope as unknown as Record<string, unknown>, {
-                jobId: `${event.event_id}:${subscriberId}`,
+                jobId: `${event.event_id}--${subscriberId}`,
               });
 
               outboxRecoveredTotal.inc({ event_name: event.event_name });

@@ -127,7 +127,7 @@ class EventBusV2 {
         for (const sub of subs) {
           try {
             await queueService.addToQueue(sub.queueName, envelope as unknown as Record<string, unknown>, {
-              jobId: `${envelope.eventId}:${sub.queueName}`,
+              jobId: `${envelope.eventId}--${sub.queueName}`,
               attempts: sub.options?.attempts ?? 6,
               backoffDelay: sub.options?.backoffDelay ?? 2000,
             });
@@ -160,7 +160,7 @@ class EventBusV2 {
           for (const sub of subs) {
             try {
               await queueService.addToQueue(sub.queueName, envelope as unknown as Record<string, unknown>, {
-                jobId: `${envelope.eventId}:${sub.queueName}`,
+                jobId: `${envelope.eventId}--${sub.queueName}`,
                 attempts: sub.options?.attempts ?? 6,
                 backoffDelay: sub.options?.backoffDelay ?? 2000,
               });

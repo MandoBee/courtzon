@@ -845,7 +845,7 @@ export class PaymentService {
     await withTransaction(async (conn) => {
       await conn.execute<mysql.ResultSetHeader>(
         `UPDATE payment_transactions
-         SET payment_status = 'refunded', refunded_at = NOW(), updated_at = NOW()
+         SET payment_status = 'refunded', updated_at = NOW()
          WHERE id = ? AND payment_status = 'paid'`,
         [paymentId],
       );
