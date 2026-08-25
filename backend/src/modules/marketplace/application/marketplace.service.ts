@@ -957,16 +957,20 @@ export const marketplaceService = {
   },
 
   async getOrderForUser(orderId: number, userId: number) {
+    // 1. Try buyer view
     let rows = await repo.findOrderById(orderId, userId);
     let viewedAsSeller = false;
-    if (!rows.length) {
-      // Try without buyer filter (order was just created, race condition)
-      rows = await repo.findOrderById(orderId);
-    }
+
+    // 2. If not the buyer, check if the user is a seller on this order
     if (!rows.length) {
       let org = await repo.findOrgByUserId(userId, 'seller') || await repo.findOrgByUserId(userId, 'player');
       if (!org) org = await repo.findOrgByUserScope(userId);
       if (org) { rows = await repo.findOrderById(orderId, undefined, org.id); viewedAsSeller = true; }
+    }
+
+    // 3. Unfiltered fallback (race condition: order was just created and buyer_id join not yet visible)
+    if (!rows.length) {
+      rows = await repo.findOrderById(orderId);
     }
     if (!rows.length) throw new NotFoundError('Order');
 
@@ -1101,6 +1105,43 @@ export const marketplaceService = {
     // orders go through the gateway refund. COD orders have no pre-collected payment.
     if ((data.status === 'cancelled' || data.status === 'refunded') && order.payment_status === 'paid') {
       await this._processOrderRefund(order, orderId, data.note || (data.status === 'cancelled' ? 'Order cancelled' : 'Order refunded'));
+    }
+
+    // Multi-seller: when cancelling/refunding, also cancel all sibling orders in the checkout group
+    if ((data.status === 'cancelled' || data.status === 'refunded') && order.checkout_group_id) {
+      const siblingIds = await repo.findOrderIdsByCheckoutGroup(order.checkout_group_id);
+      for (const siblingId of siblingIds) {
+        if (siblingId === orderId) continue;
+        const siblingRows = await repo.findOrderById(siblingId);
+        const siblingOrder = siblingRows?.length ? this._formatOrder(siblingRows) : null;
+        if (siblingOrder && siblingOrder.status !== 'cancelled' && siblingOrder.status !== 'refunded') {
+          try {
+            await this._validateStatusTransition(siblingOrder.status, data.status, userRole);
+            await repo.updateOrderStatus(siblingId, data.status, data.note || `Checkout group ${data.status}`);
+            // Restore stock for sibling
+            for (const row of siblingRows as any[]) {
+              if (!row.product_id) continue;
+              await repo.restoreStock(row.product_id, row.variant_id, row.quantity);
+              await repo.insertLedgerEntry({
+                orderId: siblingId, organisationId: row.item_seller_id || 0,
+                entryType: 'reversal', amount: row.quantity,
+                currencyCode: order.currency_code,
+                description: `Reversal: +${row.quantity} stock restored for ${row.product_name || 'item #' + row.product_id}`,
+                metadata: { reason: data.status, productId: row.product_id, checkoutGroupCancelled: true },
+              });
+            }
+            await repo.createOrderStatusHistory({
+              orderId: siblingId, fromStatus: siblingOrder.status, toStatus: data.status,
+              changedBy: userId, changedByRole: userRole,
+              note: data.note || `Checkout group ${data.status}`,
+            });
+            // Process refund for sibling if it was paid
+            if (siblingOrder.payment_status === 'paid') {
+              await this._processOrderRefund(siblingOrder, siblingId, data.note || `Checkout group ${data.status}`);
+            }
+          } catch (_e) { /* may fail if status transition invalid — log and continue */ }
+        }
+      }
     }
 
     const firstItem = order.items?.[0];
@@ -1264,7 +1305,7 @@ export const marketplaceService = {
       note,
     });
     await repo.clearCart(userId);
-    const sellerId = orderRows?.[0]?.seller_id || 0;
+    const sellerId = orderRows?.[0]?.item_seller_id || 0;
     eventBusV2.emit('marketplace:order-confirmed', {
       orderId, userId,
       sellerId,

@@ -949,4 +949,124 @@ describe('Multi-seller order split', () => {
       expect(subtotals).toContain(sellerBSubtotal);
     });
   });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Test 11: getOrderForUser seller view — must NOT see buyer's merged view (BUG #3)
+  // ─────────────────────────────────────────────────────────────────────────
+  describe('getOrderForUser seller isolation (BUG #3 fix)', () => {
+    it('seller sees only their own items, not the merged checkout group', async () => {
+      const orderA = buildOrderRow({ id: 11001, checkout_group_id: CHECKOUT_GROUP_ID, status: 'confirmed', buyer_id: BUYER });
+      const orderB = buildOrderRow({ id: 11002, checkout_group_id: CHECKOUT_GROUP_ID, status: 'confirmed', buyer_id: BUYER });
+
+      const rowsA = buildOrderRowsWithItems(orderA, [
+        { product_id: 1, product_name: 'Racket A', quantity: 2, unit_price: 500, item_total: 1000, seller_id: SELLER_A },
+      ]);
+      const rowsB = buildOrderRowsWithItems(orderB, [
+        { product_id: 2, product_name: 'Shoes B', quantity: 1, unit_price: 300, item_total: 300, seller_id: SELLER_B },
+      ]);
+
+      repoMock.findOrderById.mockImplementation(async (id: number, buyerId?: number, sellerOrgId?: number) => {
+        // Buyer filter: fails because seller is not buyer
+        if (buyerId) return [];
+        // Seller filter: returns only seller A's order
+        if (sellerOrgId === SELLER_A) return rowsA;
+        // Unfiltered: returns seller A's order (the one with matching ID)
+        return rowsA;
+      });
+
+      repoMock.findOrgByUserId.mockResolvedValue({ id: SELLER_A });
+
+      const result = await marketplaceService.getOrderForUser(11001, SELLER_A + 1000);
+
+      expect(result.viewedAsSeller).toBe(true);
+      // Seller should see ONLY their items, NOT the merged checkout group
+      expect(result.items).toHaveLength(1);
+      expect(result.items[0].productName).toBe('Racket A');
+      expect(result._isGrouped).toBeFalsy();
+    });
+
+    it('buyer sees the merged checkout group with all sellers items', async () => {
+      const orderA = buildOrderRow({ id: 11011, checkout_group_id: CHECKOUT_GROUP_ID, status: 'confirmed', buyer_id: BUYER });
+      const orderB = buildOrderRow({ id: 11012, checkout_group_id: CHECKOUT_GROUP_ID, status: 'confirmed', buyer_id: BUYER });
+
+      const rowsA = buildOrderRowsWithItems(orderA, [
+        { product_id: 1, product_name: 'Racket A', quantity: 2, unit_price: 500, item_total: 1000, seller_id: SELLER_A },
+      ]);
+      const rowsB = buildOrderRowsWithItems(orderB, [
+        { product_id: 2, product_name: 'Shoes B', quantity: 1, unit_price: 300, item_total: 300, seller_id: SELLER_B },
+      ]);
+
+      repoMock.findOrderById.mockImplementation(async (id: number, buyerId?: number) => {
+        if (buyerId === BUYER) return rowsA;
+        if (!buyerId) return [...rowsA, ...rowsB];
+        return [];
+      });
+
+      repoMock.findOrdersByCheckoutGroup.mockResolvedValue([...rowsA, ...rowsB]);
+      repoMock.findOrgByUserId.mockResolvedValue(null);
+      repoMock.findOrgByUserScope.mockResolvedValue(null);
+
+      const result = await marketplaceService.getOrderForUser(11011, BUYER);
+
+      expect(result.viewedAsSeller).toBe(false);
+      // Buyer should see merged items from both sellers
+      expect(result.items).toHaveLength(2);
+      expect(result._isGrouped).toBe(true);
+    });
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Test 12: updateOrderStatus cancels sibling orders (BUG #6 fix)
+  // ─────────────────────────────────────────────────────────────────────────
+  describe('updateOrderStatus cancels checkout group siblings (BUG #6 fix)', () => {
+    it('cancelling via status endpoint cancels all sibling orders in checkout group', async () => {
+      const orderA = buildOrderRow({ id: 12001, checkout_group_id: CHECKOUT_GROUP_ID, status: 'confirmed', buyer_id: BUYER });
+      const orderB = buildOrderRow({ id: 12002, checkout_group_id: CHECKOUT_GROUP_ID, status: 'confirmed', buyer_id: BUYER });
+
+      const rowsA = buildOrderRowsWithItems(orderA, [
+        { product_id: 1, product_name: 'Racket A', quantity: 1, unit_price: 500, item_total: 500, seller_id: SELLER_A },
+      ]);
+      const rowsB = buildOrderRowsWithItems(orderB, [
+        { product_id: 2, product_name: 'Shoes B', quantity: 1, unit_price: 300, item_total: 300, seller_id: SELLER_B },
+      ]);
+
+      repoMock.findOrderById.mockImplementation(async (id: number) => {
+        if (id === 12001) return rowsA;
+        if (id === 12002) return rowsB;
+        return [];
+      });
+      repoMock.findOrderIdsByCheckoutGroup.mockResolvedValue([12001, 12002]);
+
+      await marketplaceService.updateOrderStatus(12001, BUYER, { status: 'cancelled', note: 'Buyer cancelled' });
+
+      // Both orders should be cancelled
+      expect(repoMock.updateOrderStatus).toHaveBeenCalledWith(12001, 'cancelled', 'Buyer cancelled');
+      expect(repoMock.updateOrderStatus).toHaveBeenCalledWith(12002, 'cancelled', 'Buyer cancelled');
+      // Stock should be restored for both
+      expect(repoMock.restoreStock).toHaveBeenCalled();
+    });
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Test 13: _fulfillAndConfirmOrder emits correct sellerId (BUG #7 fix)
+  // ─────────────────────────────────────────────────────────────────────────
+  describe('_fulfillAndConfirmOrder emits correct sellerId (BUG #7 fix)', () => {
+    it('order-confirmed event uses item_seller_id, not orders.seller_id', async () => {
+      const orderA = buildOrderRow({ id: 13001, checkout_group_id: null, status: 'pending', buyer_id: BUYER });
+      const rowsA = buildOrderRowsWithItems(orderA, [
+        { product_id: 1, product_name: 'Racket A', quantity: 1, unit_price: 500, item_total: 500, seller_id: SELLER_A },
+      ]);
+
+      repoMock.findOrderById.mockResolvedValue(rowsA);
+      repoMock.orderHasPaidPayment.mockResolvedValue(false);
+
+      await marketplaceService._fulfillAndConfirmOrder(13001, BUYER, 'Payment confirmed');
+
+      const confirmedEvent = mockEmit.mock.calls.find(
+        (c: any[]) => c[0] === 'marketplace:order-confirmed'
+      );
+      expect(confirmedEvent).toBeDefined();
+      expect(confirmedEvent![1].sellerId).toBe(SELLER_A);
+    });
+  });
 });
