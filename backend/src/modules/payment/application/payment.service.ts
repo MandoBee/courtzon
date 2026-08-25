@@ -56,6 +56,13 @@ export class PaymentService {
       return this.chargeByWallet(userId, input);
     }
 
+    // Card / online payments need the real gateway to produce a clientSecret
+    // or paymentUrl for the frontend card widget. chargeV2 skips the gateway
+    // entirely (CQRS pipeline only) and never returns these fields.
+    if (input.paymentMethod === 'card') {
+      return this.chargeByGateway(userId, input);
+    }
+
     if (isFeatureEnabled('PAYMENT_V2_PROCESS')) {
       return this.chargeV2(userId, input);
     }
