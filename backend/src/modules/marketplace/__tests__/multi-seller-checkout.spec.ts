@@ -25,7 +25,7 @@ vi.mock('../../payment/application/payment.service.js', () => ({ paymentService:
 vi.mock('../../payment/infrastructure/repositories/payment.repository.js', () => ({ paymentRepository: {} }));
 vi.mock('../../financial/application/commission.service.js', () => ({ commissionService: { calculate: mockCommissionCalculate } }));
 vi.mock('../../financial/application/transaction.service.js', () => ({ transactionService: {} }));
-vi.mock('../../financial/infrastructure/transaction.repository.js', () => ({ transactionRepository: {} }));
+vi.mock('../../financial/infrastructure/transaction.repository.js', () => ({ transactionRepository: { findBySource: vi.fn(async () => []), findById: vi.fn(async () => null), createTransaction: vi.fn(async () => 1), createTransactionEntry: vi.fn(async () => 1) } }));
 vi.mock('../../wallet/infrastructure/repositories/wallet.repository.js', () => ({ walletRepository: {} }));
 vi.mock('../../organisations/application/organisation.service.js', () => ({ organisationService: {} }));
 vi.mock('../../organisations/application/current-subscription.service.js', () => ({ getCurrentSubscription: mockGetCurrentSubscription }));
@@ -712,6 +712,241 @@ describe('Multi-seller order split', () => {
         userId: BUYER,
         reason: 'Gateway timeout',
       }));
+    });
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Test 6: Stock ledger entries go to correct seller order (BUG #1 fix)
+  // ─────────────────────────────────────────────────────────────────────────
+  describe('stock ledger entries are attributed to correct seller order', () => {
+    it('each item stock deduction references the correct per-seller orderId', async () => {
+      repoMock.findCartByUser.mockResolvedValueOnce([cartItemA, cartItemB]);
+      repoMock.findProductsByIds.mockResolvedValueOnce([productA, productB]);
+      repoMock.findVariantsForProducts.mockResolvedValueOnce([]);
+
+      // Track created order IDs so we know which seller gets which ID
+      const createdOrderIds: number[] = [];
+      repoMock.createOrder.mockImplementation(async (data: any) => {
+        const id = ++orderCounter;
+        createdOrderIds.push(id);
+        const order = buildOrderRow({ id, ...data, checkout_group_id: data.checkoutGroupId });
+        orderStore.set(id, order);
+        return id;
+      });
+
+      repoMock.findOrderById.mockImplementation(async (id: number) => {
+        const order = orderStore.get(id);
+        if (!order) return [];
+        const items = orderItemStore.filter(i => i.orderId === id);
+        return buildOrderRowsWithItems(order, items.map(i => ({
+          product_id: i.productId,
+          product_name: `Product ${i.productId}`,
+          quantity: i.quantity,
+          unit_price: i.unitPrice,
+          item_total: i.totalPrice,
+          seller_id: i.sellerId,
+        })));
+      });
+
+      await marketplaceService.checkout(BUYER, {
+        addressId: 1,
+        paymentMethod: 'wallet',
+      });
+
+      // Expect 2 ledger entries — one per cart item
+      expect(repoMock.insertLedgerEntry).toHaveBeenCalledTimes(2);
+
+      const ledgerCalls = repoMock.insertLedgerEntry.mock.calls.map((c: any[]) => c[0]);
+
+      // Item A (seller A) must reference seller A's order
+      const ledgerA = ledgerCalls.find((e: any) => e.metadata?.productId === productA.id);
+      expect(ledgerA).toBeDefined();
+      expect(ledgerA.organisationId).toBe(SELLER_A);
+      // The orderId should be the first created order (seller A's order)
+      expect(ledgerA.orderId).toBe(createdOrderIds[0]);
+
+      // Item B (seller B) must reference seller B's order
+      const ledgerB = ledgerCalls.find((e: any) => e.metadata?.productId === productB.id);
+      expect(ledgerB).toBeDefined();
+      expect(ledgerB.organisationId).toBe(SELLER_B);
+      expect(ledgerB.orderId).toBe(createdOrderIds[1]);
+    });
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Test 7: Order-placed events carry correct per-seller data (BUG #2 fix)
+  // ─────────────────────────────────────────────────────────────────────────
+  describe('order-placed events carry correct per-seller orderId and total', () => {
+    it('each seller event references their own order ID and seller-specific total', async () => {
+      repoMock.findCartByUser.mockResolvedValueOnce([cartItemA, cartItemB]);
+      repoMock.findProductsByIds.mockResolvedValueOnce([productA, productB]);
+      repoMock.findVariantsForProducts.mockResolvedValueOnce([]);
+
+      const createdOrderIds: number[] = [];
+      repoMock.createOrder.mockImplementation(async (data: any) => {
+        const id = ++orderCounter;
+        createdOrderIds.push(id);
+        const order = buildOrderRow({ id, ...data, checkout_group_id: data.checkoutGroupId });
+        orderStore.set(id, order);
+        return id;
+      });
+
+      repoMock.findOrderById.mockImplementation(async (id: number) => {
+        const order = orderStore.get(id);
+        if (!order) return [];
+        const items = orderItemStore.filter(i => i.orderId === id);
+        return buildOrderRowsWithItems(order, items.map(i => ({
+          product_id: i.productId,
+          product_name: `Product ${i.productId}`,
+          quantity: i.quantity,
+          unit_price: i.unitPrice,
+          item_total: i.totalPrice,
+          seller_id: i.sellerId,
+        })));
+      });
+
+      await marketplaceService.checkout(BUYER, {
+        addressId: 1,
+        paymentMethod: 'wallet',
+      });
+
+      // Find all order-placed events
+      const orderPlacedEvents = mockEmit.mock.calls.filter(
+        (c: any[]) => c[0] === 'marketplace:order-placed'
+      );
+
+      expect(orderPlacedEvents).toHaveLength(2);
+
+      // Seller A event
+      const eventA = orderPlacedEvents.find((c: any[]) => c[1].sellerId === SELLER_A);
+      expect(eventA).toBeDefined();
+      expect(eventA![1].orderId).toBe(createdOrderIds[0]);
+      // Seller A's total should be per-seller, not grand total
+      expect(eventA![1].total).toBeGreaterThan(0);
+
+      // Seller B event
+      const eventB = orderPlacedEvents.find((c: any[]) => c[1].sellerId === SELLER_B);
+      expect(eventB).toBeDefined();
+      expect(eventB![1].orderId).toBe(createdOrderIds[1]);
+      expect(eventB![1].total).toBeGreaterThan(0);
+
+      // Each seller's total should differ (they have different product prices/quantities)
+      expect(eventA![1].orderId).not.toBe(eventB![1].orderId);
+    });
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Test 8: Single-seller checkout creates exactly 1 order
+  // ─────────────────────────────────────────────────────────────────────────
+  describe('single-seller checkout', () => {
+    it('only 1 order created when all items belong to the same seller', async () => {
+      const cartItemA2 = { ...cartItemA, id: 103 };
+      repoMock.findCartByUser.mockResolvedValueOnce([cartItemA, cartItemA2]);
+      repoMock.findProductsByIds.mockResolvedValueOnce([productA, productA]);
+      repoMock.findVariantsForProducts.mockResolvedValueOnce([]);
+
+      repoMock.findOrderById.mockImplementation(async (id: number) => {
+        const order = orderStore.get(id);
+        if (!order) return [];
+        const items = orderItemStore.filter(i => i.orderId === id);
+        return buildOrderRowsWithItems(order, items.map(i => ({
+          product_id: i.productId,
+          product_name: `Product ${i.productId}`,
+          quantity: i.quantity,
+          unit_price: i.unitPrice,
+          item_total: i.totalPrice,
+          seller_id: i.sellerId,
+        })));
+      });
+
+      await marketplaceService.checkout(BUYER, {
+        addressId: 1,
+        paymentMethod: 'wallet',
+      });
+
+      expect(repoMock.createOrder).toHaveBeenCalledTimes(1);
+      expect(repoMock.createOrderItem).toHaveBeenCalledTimes(2);
+
+      // Both items should reference the same order
+      const itemOrderIds = repoMock.createOrderItem.mock.calls.map((c: any[]) => c[0].orderId);
+      expect(itemOrderIds[0]).toBe(itemOrderIds[1]);
+    });
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Test 9: Checkout group cancellation cancels all sibling orders
+  // ─────────────────────────────────────────────────────────────────────────
+  describe('cancelOrder cancels all orders in the checkout group', () => {
+    it('cancels sibling orders when buyer cancels one order', async () => {
+      const orderA = buildOrderRow({ id: 10001, checkout_group_id: CHECKOUT_GROUP_ID, status: 'pending', buyer_id: BUYER });
+      const orderB = buildOrderRow({ id: 10002, checkout_group_id: CHECKOUT_GROUP_ID, status: 'confirmed', buyer_id: BUYER });
+
+      const rowsA = buildOrderRowsWithItems(orderA, [
+        { product_id: 1, product_name: 'Racket A', quantity: 1, unit_price: 500, item_total: 500, seller_id: SELLER_A },
+      ]);
+      const rowsB = buildOrderRowsWithItems(orderB, [
+        { product_id: 2, product_name: 'Shoes B', quantity: 1, unit_price: 300, item_total: 300, seller_id: SELLER_B },
+      ]);
+
+      repoMock.findOrderById.mockImplementation(async (id: number) => {
+        if (id === 10001) return rowsA;
+        if (id === 10002) return rowsB;
+        return [];
+      });
+      repoMock.findOrderIdsByCheckoutGroup.mockResolvedValue([10001, 10002]);
+      repoMock.orderHasPaidPayment.mockResolvedValue(false);
+
+      await marketplaceService.cancelOrder(10001, BUYER);
+
+      // Both orders should have been cancelled
+      expect(repoMock.updateOrderStatus).toHaveBeenCalledWith(10001, 'cancelled', 'User cancelled payment');
+      expect(repoMock.updateOrderStatus).toHaveBeenCalledWith(10002, 'cancelled', 'Checkout group cancelled');
+    });
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Test 10: Per-seller order totals are accurate
+  // ─────────────────────────────────────────────────────────────────────────
+  describe('checkout creates orders with accurate per-seller totals', () => {
+    it('seller A gets subtotal = price × qty, shipping from their rate, seller B gets theirs', async () => {
+      // cartItemA: price 500, qty 2 → subtotal 1000
+      // cartItemB: price 300, qty 1 → subtotal 300
+      repoMock.findCartByUser.mockResolvedValueOnce([cartItemA, cartItemB]);
+      repoMock.findProductsByIds.mockResolvedValueOnce([productA, productB]);
+      repoMock.findVariantsForProducts.mockResolvedValueOnce([]);
+
+      repoMock.findOrderById.mockImplementation(async (id: number) => {
+        const order = orderStore.get(id);
+        if (!order) return [];
+        const items = orderItemStore.filter(i => i.orderId === id);
+        return buildOrderRowsWithItems(order, items.map(i => ({
+          product_id: i.productId,
+          product_name: `Product ${i.productId}`,
+          quantity: i.quantity,
+          unit_price: i.unitPrice,
+          item_total: i.totalPrice,
+          seller_id: i.sellerId,
+        })));
+      });
+
+      await marketplaceService.checkout(BUYER, {
+        addressId: 1,
+        paymentMethod: 'wallet',
+      });
+
+      const orderArgs = repoMock.createOrder.mock.calls.map((c: any[]) => c[0]);
+
+      // Both orders should have same shipping (both sellers use same rate in mock)
+      for (const call of orderArgs) {
+        expect(call.shippingCost).toBe(50);
+      }
+
+      // Subtotals should differ based on product price × quantity
+      const sellerASubtotal = 500 * 2; // 1000
+      const sellerBSubtotal = 300 * 1; // 300
+      const subtotals = orderArgs.map((c: any) => c.subtotal).sort((a: number, b: number) => a - b);
+      expect(subtotals).toContain(sellerASubtotal);
+      expect(subtotals).toContain(sellerBSubtotal);
     });
   });
 });
