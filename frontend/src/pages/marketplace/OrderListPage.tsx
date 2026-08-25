@@ -123,43 +123,89 @@ export default function OrderListPage() {
           {orders.data.map((order: any) => {
             const items = order.items || [];
             const expectedDate = order.estimated_delivery_date ? new Date(order.estimated_delivery_date).toLocaleDateString('en-GB') : 'N/A';
-            const shippingCost = Number(order.shipping_cost || 0);
-            const subtotal = Number(order.subtotal || 0);
+            const isGrouped = order._isGrouped && order._sellerOrders?.length > 1;
+            const currencyCode = order.currency_code;
             return (
             <div key={order.id}
               className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] hover:shadow-md transition-shadow">
               <Link to={`/marketplace/orders/${order.id}`} className="block p-4">
-                {items.map((item: any, idx: number) => {
-                  const images = (() => { try { return JSON.parse(item.images || '[]'); } catch { return []; } })();
-                  const firstImage = images[0];
-                  return (
-                    <div key={idx} className={`flex gap-3 ${idx > 0 ? 'mt-3 pt-3 border-t border-[var(--color-border)]' : ''}`}>
-                      {firstImage ? (
-                        <img src={firstImage} alt="" className="w-12 h-12 rounded object-cover flex-shrink-0" />
-                      ) : (
-                        <div className="w-12 h-12 rounded bg-[var(--color-bg)] flex items-center justify-center flex-shrink-0">
-                          <svg className="w-5 h-5 text-[var(--color-text-muted)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 10.5V6a3.75 3.75 0 10-7.5 0v4.5m11.356-1.993l1.263 12c.07.665-.45 1.243-1.119 1.243H4.25a1.125 1.125 0 01-1.12-1.243l1.264-12A1.125 1.125 0 015.513 7.5h12.974c.576 0 1.059.435 1.119 1.007zM8.625 10.5a.375.375 0 11-.75 0 .375.375 0 01.75 0zm7.5 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" /></svg>
-                        </div>
-                      )}
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-[var(--color-text)] truncate">
-                          {item.productName}{item.variantName ? ` (${item.variantName})` : ''}
+                {isGrouped ? (
+                  /* Multi-seller: group items by seller */
+                  <div className="space-y-3">
+                    {order._sellerOrders.map((sellerOrder: any) => (
+                      <div key={sellerOrder.id}>
+                        <p className="text-xs font-semibold text-[var(--color-primary)] mb-1">
+                          {sellerOrder.shop_name || `Seller #${sellerOrder.seller_id}`}
                         </p>
-                        <p className="text-xs text-[var(--color-text-muted)]">{item.shopName}</p>
-                        <p className="text-xs text-[var(--color-text-muted)]">Qty: {item.quantity}</p>
+                        <div className="space-y-2">
+                          {sellerOrder.items?.map((item: any, idx: number) => {
+                            const images = (() => { try { return JSON.parse(item.images || '[]'); } catch { return []; } })();
+                            const firstImage = images[0];
+                            return (
+                              <div key={idx} className="flex gap-3">
+                                {firstImage ? (
+                                  <img src={firstImage} alt="" className="w-10 h-10 rounded object-cover flex-shrink-0" />
+                                ) : (
+                                  <div className="w-10 h-10 rounded bg-[var(--color-bg)] flex items-center justify-center flex-shrink-0">
+                                    <svg className="w-5 h-5 text-[var(--color-text-muted)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 10.5V6a3.75 3.75 0 10-7.5 0v4.5m11.356-1.993l1.263 12c.07.665-.45 1.243-1.119 1.243H4.25a1.125 1.125 0 01-1.12-1.243l1.264-12A1.125 1.125 0 015.513 7.5h12.974c.576 0 1.059.435 1.119 1.007zM8.625 10.5a.375.375 0 11-.75 0 .375.375 0 01.75 0zm7.5 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" /></svg>
+                                  </div>
+                                )}
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm font-medium text-[var(--color-text)] truncate">
+                                    {item.productName}{item.variantName ? ` (${item.variantName})` : ''}
+                                  </p>
+                                  <p className="text-xs text-[var(--color-text-muted)]">Qty: {item.quantity}</p>
+                                </div>
+                                <p className="text-sm font-semibold text-[var(--color-text)] flex-shrink-0">{formatPrice(Number(item.totalPrice), currencyCode)}</p>
+                              </div>
+                            );
+                          })}
+                        </div>
                       </div>
-                      <p className="text-sm font-semibold text-[var(--color-text)] flex-shrink-0">{formatPrice(Number(item.totalPrice), order.currency_code)}</p>
+                    ))}
+                    {/* Grand total for multi-seller */}
+                    <div className="mt-3 pt-3 border-t border-[var(--color-border)] flex justify-between items-center text-xs text-[var(--color-text-muted)]">
+                      <div>
+                        <p>Shipping: {formatPrice(Number(order.shipping_cost), currencyCode)}</p>
+                      </div>
+                      <p className="text-sm font-bold text-[var(--color-text)]">Grand Total: {formatPrice(Number(order.total), currencyCode)}</p>
                     </div>
-                  );
-                })}
-                {/* Order totals footer */}
-                <div className="mt-3 pt-3 border-t border-[var(--color-border)] flex justify-between items-center text-xs text-[var(--color-text-muted)]">
-                  <div>
-                    <p>Subtotal: {formatPrice(subtotal, order.currency_code)}</p>
-                    <p>Shipping: {formatPrice(shippingCost, order.currency_code)}</p>
                   </div>
-                  <p className="text-sm font-bold text-[var(--color-text)]">Total: {formatPrice(Number(order.total), order.currency_code)}</p>
-                </div>
+                ) : (
+                  /* Single-seller: flat items */
+                  <>
+                    {items.map((item: any, idx: number) => {
+                      const images = (() => { try { return JSON.parse(item.images || '[]'); } catch { return []; } })();
+                      const firstImage = images[0];
+                      return (
+                        <div key={idx} className={`flex gap-3 ${idx > 0 ? 'mt-3 pt-3 border-t border-[var(--color-border)]' : ''}`}>
+                          {firstImage ? (
+                            <img src={firstImage} alt="" className="w-12 h-12 rounded object-cover flex-shrink-0" />
+                          ) : (
+                            <div className="w-12 h-12 rounded bg-[var(--color-bg)] flex items-center justify-center flex-shrink-0">
+                              <svg className="w-5 h-5 text-[var(--color-text-muted)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 10.5V6a3.75 3.75 0 10-7.5 0v4.5m11.356-1.993l1.263 12c.07.665-.45 1.243-1.119 1.243H4.25a1.125 1.125 0 01-1.12-1.243l1.264-12A1.125 1.125 0 015.513 7.5h12.974c.576 0 1.059.435 1.119 1.007zM8.625 10.5a.375.375 0 11-.75 0 .375.375 0 01.75 0zm7.5 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" /></svg>
+                            </div>
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-[var(--color-text)] truncate">
+                              {item.productName}{item.variantName ? ` (${item.variantName})` : ''}
+                            </p>
+                            <p className="text-xs text-[var(--color-text-muted)]">{item.shopName}</p>
+                            <p className="text-xs text-[var(--color-text-muted)]">Qty: {item.quantity}</p>
+                          </div>
+                          <p className="text-sm font-semibold text-[var(--color-text)] flex-shrink-0">{formatPrice(Number(item.totalPrice), currencyCode)}</p>
+                        </div>
+                      );
+                    })}
+                    <div className="mt-3 pt-3 border-t border-[var(--color-border)] flex justify-between items-center text-xs text-[var(--color-text-muted)]">
+                      <div>
+                        <p>Subtotal: {formatPrice(Number(order.subtotal), currencyCode)}</p>
+                        <p>Shipping: {formatPrice(Number(order.shipping_cost), currencyCode)}</p>
+                      </div>
+                      <p className="text-sm font-bold text-[var(--color-text)]">Total: {formatPrice(Number(order.total), currencyCode)}</p>
+                    </div>
+                  </>
+                )}
               </Link>
               {/* Status bar outside the link to allow button clicks */}
               <div className="flex items-center gap-3 px-4 pb-3">

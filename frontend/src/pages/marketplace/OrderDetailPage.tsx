@@ -36,6 +36,8 @@ export default function OrderDetailPage() {
   if (!order) return <div className="text-center py-8">Order not found</div>;
 
   const formatId = (publicId: string) => publicId?.slice(0, 8).toUpperCase() || `#${id}`;
+  const isGrouped = order._isGrouped && order._sellerOrders?.length > 1;
+  const currencyCode = order.currency_code;
 
   return (
     <div className="max-w-3xl mx-auto space-y-6">
@@ -52,24 +54,77 @@ export default function OrderDetailPage() {
           </span>
         </div>
 
-        {/* Items */}
-        <div className="border-t pt-4">
-          <h2 className="text-sm font-medium mb-2">Items</h2>
-          <div className="space-y-2">
-            {order.items?.map((item: any, i: number) => (
-              <div key={i} className="flex items-center justify-between text-sm border-b border-[var(--color-border)] pb-2">
-                <div>
-                  <p className="text-[var(--color-text)]">{item.productName}</p>
-                  {item.variantName && <p className="text-xs text-[var(--color-text-muted)]">{item.variantName}</p>}
-                  <p className="text-xs text-[var(--color-text-muted)]">Qty: {item.quantity} × {item.unitPrice}</p>
+        {/* ── Multi-seller: per-seller sections ── */}
+        {isGrouped ? (
+          <div className="space-y-4">
+            {order._sellerOrders.map((sellerOrder: any) => (
+              <div key={sellerOrder.id} className="border border-[var(--color-border)] rounded-[var(--radius-md)] overflow-hidden">
+                {/* Seller header */}
+                <div className="bg-[var(--color-surface-alt)] px-4 py-2 flex items-center justify-between">
+                  <span className="text-sm font-semibold text-[var(--color-text)]">
+                    {sellerOrder.shop_name || `Seller #${sellerOrder.seller_id}`}
+                  </span>
+                  <span className="text-xs text-[var(--color-text-muted)]">
+                    {sellerOrder.items?.length || 0} item{(sellerOrder.items?.length || 0) !== 1 ? 's' : ''}
+                  </span>
                 </div>
-                <p className="font-medium">{formatPrice(Number(item.totalPrice), order.currency_code)}</p>
+                {/* Seller items */}
+                <div className="px-4 py-2 space-y-2">
+                  {sellerOrder.items?.map((item: any, i: number) => (
+                    <div key={i} className="flex items-center justify-between text-sm border-b border-[var(--color-border)] last:border-0 pb-2 last:pb-0">
+                      <div>
+                        <p className="text-[var(--color-text)]">{item.productName}</p>
+                        {item.variantName && <p className="text-xs text-[var(--color-text-muted)]">{item.variantName}</p>}
+                        <p className="text-xs text-[var(--color-text-muted)]">Qty: {item.quantity} × {formatPrice(Number(item.unitPrice), currencyCode)}</p>
+                      </div>
+                      <p className="font-medium">{formatPrice(Number(item.totalPrice), currencyCode)}</p>
+                    </div>
+                  ))}
+                </div>
+                {/* Seller subtotal */}
+                <div className="border-t border-[var(--color-border)] px-4 py-2 space-y-1 text-xs">
+                  <div className="flex justify-between text-[var(--color-text-muted)]">
+                    <span>Subtotal</span>
+                    <span>{formatPrice(Number(sellerOrder.subtotal), currencyCode)}</span>
+                  </div>
+                  <div className="flex justify-between text-[var(--color-text-muted)]">
+                    <span>Shipping</span>
+                    <span>{formatPrice(Number(sellerOrder.shipping_cost), currencyCode)}</span>
+                  </div>
+                  {Number(sellerOrder.tax_amount) > 0 && (
+                    <div className="flex justify-between text-[var(--color-text-muted)]">
+                      <span>Tax</span>
+                      <span>{formatPrice(Number(sellerOrder.tax_amount), currencyCode)}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between font-semibold text-[var(--color-text)] pt-1 border-t border-[var(--color-border)]">
+                    <span>Seller Total</span>
+                    <span>{formatPrice(Number(sellerOrder.total), currencyCode)}</span>
+                  </div>
+                </div>
               </div>
             ))}
           </div>
-        </div>
+        ) : (
+          /* ── Single-seller / legacy: flat items list ── */
+          <div className="border-t pt-4">
+            <h2 className="text-sm font-medium mb-2">Items</h2>
+            <div className="space-y-2">
+              {order.items?.map((item: any, i: number) => (
+                <div key={i} className="flex items-center justify-between text-sm border-b border-[var(--color-border)] pb-2">
+                  <div>
+                    <p className="text-[var(--color-text)]">{item.productName}</p>
+                    {item.variantName && <p className="text-xs text-[var(--color-text-muted)]">{item.variantName}</p>}
+                    <p className="text-xs text-[var(--color-text-muted)]">Qty: {item.quantity} × {item.unitPrice}</p>
+                  </div>
+                  <p className="font-medium">{formatPrice(Number(item.totalPrice), currencyCode)}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
-        {/* Shipping */}
+        {/* Shipping Address */}
         {order.shipping_address && (
           <div className="border-t pt-4">
             <h2 className="text-sm font-medium mb-2">Shipping Address</h2>
@@ -99,15 +154,22 @@ export default function OrderDetailPage() {
           </div>
         )}
 
-        {/* Payment Summary */}
+        {/* Payment Summary — Grand Total */}
         <div className="border-t pt-4 space-y-1 text-sm">
-          <div className="flex justify-between"><span>Subtotal</span><span>{formatPrice(Number(order.subtotal), order.currency_code)}</span></div>
-          {Number(order.discount_amount) > 0 && (
-            <div className="flex justify-between text-[var(--color-success)]"><span>Discount</span><span>-{formatPrice(Number(order.discount_amount), order.currency_code)}</span></div>
+          {isGrouped && (
+            <p className="text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wide mb-2">Order Summary</p>
           )}
-          <div className="flex justify-between"><span>Shipping</span><span>{formatPrice(Number(order.shipping_cost), order.currency_code)}</span></div>
+          <div className="flex justify-between"><span>Subtotal</span><span>{formatPrice(Number(order.subtotal), currencyCode)}</span></div>
+          {Number(order.discount_amount) > 0 && (
+            <div className="flex justify-between text-[var(--color-success)]"><span>Discount</span><span>-{formatPrice(Number(order.discount_amount), currencyCode)}</span></div>
+          )}
+          <div className="flex justify-between"><span>Shipping</span><span>{formatPrice(Number(order.shipping_cost), currencyCode)}</span></div>
+          {Number(order.tax_amount) > 0 && (
+            <div className="flex justify-between"><span>Tax</span><span>{formatPrice(Number(order.tax_amount), currencyCode)}</span></div>
+          )}
           <div className="flex justify-between font-bold text-base border-t pt-2">
-            <span>Total</span><span>{formatPrice(Number(order.total), order.currency_code)}</span>
+            <span>{isGrouped ? 'Grand Total' : 'Total'}</span>
+            <span>{formatPrice(Number(order.total), currencyCode)}</span>
           </div>
           <div className="flex justify-between text-xs text-[var(--color-text-muted)]">
             <span>Payment</span><span className="capitalize">{order.payment_method} · {order.payment_status}</span>
