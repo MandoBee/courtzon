@@ -253,7 +253,6 @@ export function useRealtimeCacheUpdates(): void {
   useSocketEvent('marketplace.order-confirmed', () => {
     qc.invalidateQueries({ queryKey: ['mp-orders'] });
     qc.invalidateQueries({ queryKey: ['mp-seller-orders'] });
-    qc.invalidateQueries({ queryKey: ['mp-cart'] });
   });
 
   useSocketEvent('marketplace.order-shipped', (p: any) => {
@@ -272,7 +271,6 @@ export function useRealtimeCacheUpdates(): void {
     qc.setQueryData(['mp-order', p.orderId], (old: any) => old ? { ...old, status: 'cancelled' } : old);
     qc.invalidateQueries({ queryKey: ['mp-orders'] });
     qc.invalidateQueries({ queryKey: ['mp-seller-orders'] });
-    qc.invalidateQueries({ queryKey: ['mp-cart'] });
   });
 
   useSocketEvent('marketplace.order-status-changed', () => {

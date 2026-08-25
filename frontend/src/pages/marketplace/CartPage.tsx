@@ -10,23 +10,32 @@ import PaymobPixelCard from '../../components/payment/PaymobPixelCard';
 import PaymentStatusPoller from '../../components/payment/PaymentStatusPoller';
 import WalletPaymentOption from '../../components/payment/WalletPaymentOption';
 import { usePaymentConfirm } from '../../hooks/usePaymentConfirm';
+import { useAuthStore } from '../../store/auth.store';
 
 function AddressFormModal({ open, address, onClose, onDone }: { open: boolean; address?: any; onClose: () => void; onDone: (id: number) => void }) {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
+  const user = useAuthStore((s) => s.user);
   const isEdit = !!address;
   const [form, setForm] = useState({
     label: '', fullName: '', phone: '', streetAddress: '', provinceId: '', cityId: '',
   });
   useEffect(() => {
     if (open) {
-      setForm({
-        label: address?.label || '', fullName: address?.full_name || '', phone: address?.phone || '',
-        streetAddress: address?.street_address || '', provinceId: String(address?.province_id || ''),
-        cityId: String(address?.city_id || ''),
-      });
+      if (address) {
+        setForm({
+          label: address.label || '', fullName: address.full_name || '', phone: address.phone || '',
+          streetAddress: address.street_address || '', provinceId: String(address.province_id || ''),
+          cityId: String(address.city_id || ''),
+        });
+      } else {
+        setForm({
+          label: '', fullName: user?.fullName || '', phone: user?.phoneNumber || '',
+          streetAddress: '', provinceId: '', cityId: '',
+        });
+      }
     }
-  }, [open, address]);
+  }, [open, address, user?.fullName, user?.phoneNumber]);
 
   const { data: provinces } = useQuery({
     queryKey: ['mp-address-provinces'],
@@ -73,8 +82,8 @@ function AddressFormModal({ open, address, onClose, onDone }: { open: boolean; a
         <h3 className="text-sm font-semibold mb-4 text-[var(--color-text)]">{isEdit ? 'Edit Shipping Address' : 'New Shipping Address'}</h3>
         <div className="space-y-3">
           <input value={form.label} onChange={(e) => setForm({ ...form, label: e.target.value })} placeholder="Label (e.g. Home, Work)" className="w-full px-3 py-2 text-sm rounded-lg border" />
-          <input value={form.fullName} onChange={(e) => setForm({ ...form, fullName: e.target.value })} placeholder="Full Name *" className="w-full px-3 py-2 text-sm rounded-lg border" />
-          <input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="Phone *" className="w-full px-3 py-2 text-sm rounded-lg border" />
+          <input value={form.fullName} onChange={(e) => setForm({ ...form, fullName: e.target.value })} placeholder="Full Name *" readOnly className="w-full px-3 py-2 text-sm rounded-lg border bg-[var(--color-bg)] opacity-70 cursor-not-allowed" />
+          <input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="Phone *" readOnly className="w-full px-3 py-2 text-sm rounded-lg border bg-[var(--color-bg)] opacity-70 cursor-not-allowed" />
           <input value={form.streetAddress} onChange={(e) => setForm({ ...form, streetAddress: e.target.value })} placeholder="Street Address *" className="w-full px-3 py-2 text-sm rounded-lg border" />
           <select value={form.provinceId} onChange={(e) => { setForm({ ...form, provinceId: e.target.value, cityId: '' }); }} className="w-full px-3 py-2 text-sm rounded-lg border bg-[var(--color-bg)]">
             <option value="">Select Province</option>
