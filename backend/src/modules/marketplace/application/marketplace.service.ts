@@ -477,8 +477,7 @@ export const marketplaceService = {
     if (!provinceId) throw new ConflictError('Selected address has no province — please update it');
 
     const sellerIds = [...new Set(cartItems.map((i: any) => i.seller_id))];
-    let shippingCost = 0;
-    let maxDays = 0;
+    const sellerShipping = new Map<number, { price: number; maxDays: number }>();
     const shippingErrors: string[] = [];
     for (const sid of sellerIds) {
       const rate = await repo.findShippingRateForSeller(sid, provinceId, cityId);
@@ -486,15 +485,13 @@ export const marketplaceService = {
       if (!rate) {
         shippingErrors.push(`"${shopName}" does not ship to your address`);
       } else {
-        shippingCost += Number(rate.price);
-        if (rate.estimated_days && Number(rate.estimated_days) > maxDays) {
-          maxDays = Number(rate.estimated_days);
-        }
+        sellerShipping.set(sid, { price: Number(rate.price), maxDays: Number(rate.estimated_days || 0) });
       }
     }
     if (shippingErrors.length) {
       throw new ConflictError(shippingErrors.join('. '));
     }
+    const maxDays = Math.max(0, ...[...sellerShipping.values()].map(s => s.maxDays));
     const estimatedDeliveryDate = maxDays > 0
       ? new Date(Date.now() + maxDays * 86400000).toISOString().slice(0, 10)
       : null;
@@ -518,21 +515,59 @@ export const marketplaceService = {
       couponId = validation.coupon.id;
       discountAmount = validation.discount;
     }
-
-    // Calculate commission on discounted subtotal
     const afterDiscount = subtotal - discountAmount;
-    const totalCommission = [...seenSellers.values()].reduce((s, v) => {
-      const sellerShare = sellerShares.get(v.sellerId) || 0;
-      const discountFactor = subtotal > 0 ? afterDiscount / subtotal : 1;
-      const adjustedShare = sellerShare * discountFactor;
-      return s + (v.rateType === 'fixed' ? v.commission : (v.commission / 100) * adjustedShare);
-    }, 0);
+    const discountFactor = subtotal > 0 ? afterDiscount / subtotal : 1;
 
-    // Calculate tax per seller using active org-scoped (or global) tax rate
-    let taxAmount = 0;
-    for (const [sellerId, sellerShare] of sellerShares) {
-      const discountFactor = subtotal > 0 ? afterDiscount / subtotal : 1;
-      const adjustedShare = sellerShare * discountFactor;
+    // ── Group cart items by seller for per-seller order creation ──
+    const checkoutGroupId = randomUUID();
+    const sellerItemGroups = new Map<number, any[]>();
+    for (const item of cartItems) {
+      const product = productMap.get(item.product_id)!;
+      const sid = product.seller_id;
+      if (!sellerItemGroups.has(sid)) sellerItemGroups.set(sid, []);
+      sellerItemGroups.get(sid)!.push(item);
+    }
+
+    const createdOrderIds: number[] = [];
+    let grandTotal = 0;
+    let grandShippingCost = 0;
+    let grandCommission = 0;
+    let grandTax = 0;
+    let grandSubtotal = 0;
+    let grandDiscount = 0;
+
+    // ── Create one order per seller ──
+    for (const [sellerId, sellerItems] of sellerItemGroups) {
+      const sellerInfo = seenSellers.get(sellerId)!;
+
+      // Calculate this seller's subtotal
+      let sellerSubtotal = 0;
+      for (const item of sellerItems) {
+        const basePrice = Number(item.price) || 0;
+        const discPrice = item.discounted_price ? Number(item.discounted_price) : null;
+        const adjustment = Number(item.price_adjustment || 0);
+        const hasDiscount = discPrice !== null && discPrice > 0 && discPrice < basePrice;
+        const price = (hasDiscount ? discPrice : basePrice) + adjustment;
+        sellerSubtotal += price * item.quantity;
+      }
+
+      // Proportional discount for this seller
+      const sellerDiscount = Math.round(sellerSubtotal * discountFactor * 100) / 100 - sellerSubtotal + discountAmount * (sellerSubtotal / subtotal || 0);
+      const sellerAfterDiscount = sellerSubtotal - Math.round(discountAmount * (sellerSubtotal / (subtotal || 1)) * 100) / 100;
+
+      // Shipping for this seller
+      const shipping = sellerShipping.get(sellerId) || { price: 0, maxDays: 0 };
+
+      // Commission for this seller
+      let sellerCommission = 0;
+      if (sellerInfo.rateType === 'fixed') {
+        sellerCommission = sellerInfo.commission;
+      } else {
+        sellerCommission = Math.round((sellerInfo.commission / 100) * sellerAfterDiscount * 100) / 100;
+      }
+
+      // Tax for this seller
+      let sellerTax = 0;
       const taxPool = getPool();
       const [taxRows] = await taxPool.execute<any[]>(
         `SELECT rate, type FROM tax_rates
@@ -544,56 +579,72 @@ export const marketplaceService = {
       if (taxRows.length > 0) {
         const taxRate = taxRows[0];
         if (taxRate.type === 'fixed') {
-          taxAmount += Number(taxRate.rate);
+          sellerTax = Number(taxRate.rate);
         } else {
-          taxAmount += Math.round(adjustedShare * Number(taxRate.rate)) / 100;
+          sellerTax = Math.round(sellerAfterDiscount * Number(taxRate.rate)) / 100;
         }
       }
-    }
 
-    const total = Math.round((afterDiscount + shippingCost + taxAmount) * 100) / 100;
+      const sellerTotal = Math.round((sellerAfterDiscount + shipping.price + sellerTax) * 100) / 100;
+      const sellerDiscountAmount = Math.round(discountAmount * (sellerSubtotal / (subtotal || 1)) * 100) / 100;
 
-    const shippingAddress = addr;
+      // ── Create order for this seller ──
+      const orderId = await repo.createOrder({
+        buyerId: userId,
+        subtotal: sellerSubtotal,
+        shippingCost: shipping.price,
+        commission: sellerCommission,
+        total: sellerTotal,
+        couponId,
+        discountAmount: sellerDiscountAmount,
+        taxAmount: sellerTax,
+        currencyCode,
+        shippingAddress: addr || null,
+        notes: data.notes || '',
+        paymentMethod: data.paymentMethod || 'wallet',
+        estimatedDeliveryDate,
+        checkoutGroupId,
+      });
+      createdOrderIds.push(orderId);
+      grandTotal += sellerTotal;
+      grandShippingCost += shipping.price;
+      grandCommission += sellerCommission;
+      grandTax += sellerTax;
+      grandSubtotal += sellerSubtotal;
+      grandDiscount += sellerDiscountAmount;
 
-    const orderId = await repo.createOrder({
-      buyerId: userId, subtotal, shippingCost, commission: totalCommission, total,
-      couponId, discountAmount, taxAmount, currencyCode,
-      shippingAddress: shippingAddress || null, notes: data.notes || '',
-      paymentMethod: data.paymentMethod || 'wallet',
-      estimatedDeliveryDate,
-    });
-    log.info({ traceId, orderId, total, currencyCode, paymentMethod: data.paymentMethod }, 'checkout: order created');
+      log.info({ traceId, orderId, sellerId, total: sellerTotal }, 'checkout: per-seller order created');
 
-    // ── Second pass: create order items using pre-fetched product map ──
-    for (const item of cartItems) {
-      const product = productMap.get(item.product_id)!; // guaranteed to exist from first pass
-      const sellerInfo = seenSellers.get(product.seller_id)!;
-      const basePrice = Number(item.price) || 0;
-      const discPrice = item.discounted_price ? Number(item.discounted_price) : null;
-      const adjustment = Number(item.price_adjustment || 0);
-      const hasDiscount = discPrice !== null && discPrice > 0 && discPrice < basePrice;
-      const price = (hasDiscount ? discPrice : basePrice) + adjustment;
-      const itemTotal = price * item.quantity;
-      const discountFactor = subtotal > 0 ? afterDiscount / subtotal : 1;
-      const adjustedTotal = itemTotal * discountFactor;
-      const commissionAmount = sellerInfo.rateType === 'fixed'
-        ? sellerInfo.commission
-        : (sellerInfo.commission / 100) * adjustedTotal;
-      await repo.createOrderItem({
-        orderId, productId: item.product_id, variantId: item.variant_id || undefined,
-        sellerId: product.seller_id, quantity: item.quantity, unitPrice: price,
-        totalPrice: itemTotal, commissionRate: sellerInfo.commission, commissionAmount,
+      // ── Create order items for this seller ──
+      for (const item of sellerItems) {
+        const product = productMap.get(item.product_id)!;
+        const basePrice = Number(item.price) || 0;
+        const discPrice = item.discounted_price ? Number(item.discounted_price) : null;
+        const adjustment = Number(item.price_adjustment || 0);
+        const hasDiscount = discPrice !== null && discPrice > 0 && discPrice < basePrice;
+        const price = (hasDiscount ? discPrice : basePrice) + adjustment;
+        const itemTotal = price * item.quantity;
+        const adjustedTotal = itemTotal * discountFactor;
+        const commissionAmount = sellerInfo.rateType === 'fixed'
+          ? sellerInfo.commission
+          : (sellerInfo.commission / 100) * adjustedTotal;
+        await repo.createOrderItem({
+          orderId, productId: item.product_id, variantId: item.variant_id || undefined,
+          sellerId, quantity: item.quantity, unitPrice: price,
+          totalPrice: itemTotal, commissionRate: sellerInfo.commission, commissionAmount,
+        });
+      }
+
+      // ── Status history for this order ──
+      await repo.createOrderStatusHistory({
+        orderId, toStatus: 'pending', changedBy: userId, changedByRole: 'buyer',
+        note: 'Order placed',
       });
     }
 
-    await repo.createOrderStatusHistory({
-      orderId, toStatus: 'pending', changedBy: userId, changedByRole: 'buyer',
-      note: 'Order placed',
-    });
-
-    // Record coupon usage
-    if (couponId) {
-      await repo.recordCouponUsage(couponId, userId, orderId);
+    // Record coupon usage once (on the first order)
+    if (couponId && createdOrderIds.length) {
+      await repo.recordCouponUsage(couponId, userId, createdOrderIds[0]);
     }
 
     // ── Decrement stock atomically (prevents overselling) ──
@@ -602,24 +653,28 @@ export const marketplaceService = {
         await repo.decrementStock(item.product_id, item.variant_id || undefined, item.quantity);
         const product = productMap.get(item.product_id);
         if (product) {
+          // Find which order this item belongs to
+          const itemOrderId = createdOrderIds[createdOrderIds.length - 1]; // last created = current seller's order
           await repo.insertLedgerEntry({
-            orderId, organisationId: product.seller_id,
+            orderId: itemOrderId, organisationId: product.seller_id,
             entryType: 'inventory_deduction', amount: item.quantity,
             currencyCode, description: `Stock: -${item.quantity} x ${product.name} (#${product.id})`,
-            metadata: { productId: item.product_id, variantId: item.variant_id, quantity: item.quantity },
+            metadata: { productId: item.product_id, variantId: item.variant_id, quantity: item.quantity, checkoutGroupId },
           });
         }
       }
     } catch (stockErr: any) {
-      // Atomic decrement failed — restore any stock that was decremented, cancel order
-      await this._restoreOrderStock(orderId, stockErr.message || 'Insufficient stock');
-      await repo.updateOrderStatus(orderId, 'cancelled', 'Insufficient stock');
-      await repo.createOrderStatusHistory({
-        orderId, toStatus: 'cancelled', changedBy: userId, changedByRole: 'system',
-        note: 'Insufficient stock — cancelled by overselling guard',
-      });
+      // Atomic decrement failed — restore stock for ALL orders in this checkout group, cancel all
+      for (const oid of createdOrderIds) {
+        await this._restoreOrderStock(oid, stockErr.message || 'Insufficient stock');
+        await repo.updateOrderStatus(oid, 'cancelled', 'Insufficient stock');
+        await repo.createOrderStatusHistory({
+          orderId: oid, toStatus: 'cancelled', changedBy: userId, changedByRole: 'system',
+          note: 'Insufficient stock — cancelled by overselling guard',
+        });
+      }
       eventBusV2.emit('marketplace:order-cancelled', {
-        orderId, userId, reason: 'Insufficient stock',
+        orderId: createdOrderIds[0], userId, reason: 'Insufficient stock', checkoutGroupId,
       });
       throw new ConflictError(stockErr.message || 'Insufficient stock');
     }
@@ -642,51 +697,63 @@ export const marketplaceService = {
       },
     } : undefined;
 
-    // Process payment (cart cleared inside on success)
-    const firstSellerId = cartItems[0]?.seller_id;
-    eventBusV2.emit('marketplace:order-placed', {
-      orderId,
-      userId,
-      sellerId: firstSellerId || 0,
-      total,
-      organisationId: firstSellerId || undefined,
-    });
-    log.info({ traceId, orderId, paymentMethod: data.paymentMethod, total }, 'checkout: processing payment');
-    const result = await this._processOrderPayment(userId, orderId, total, currencyCode, data.paymentMethod, data.returnUrl, customerData);
-    log.info({ traceId, orderId, paymentMethod: data.paymentMethod }, 'checkout: completed successfully');
+    // Emit order-placed event for each seller
+    for (const [sellerId] of sellerItemGroups) {
+      eventBusV2.emit('marketplace:order-placed', {
+        orderId: createdOrderIds[0],
+        userId,
+        sellerId,
+        total: grandTotal,
+        organisationId: sellerId,
+        checkoutGroupId,
+      });
+    }
+
+    log.info({ traceId, checkoutGroupId, orderIds: createdOrderIds, grandTotal, paymentMethod: data.paymentMethod }, 'checkout: processing payment');
+    const result = await this._processOrderPayment(userId, createdOrderIds, grandTotal, currencyCode, data.paymentMethod, data.returnUrl, customerData, checkoutGroupId);
+    log.info({ traceId, checkoutGroupId, paymentMethod: data.paymentMethod }, 'checkout: completed successfully');
     return result;
   },
 
-  async _processOrderPayment(userId: number, orderId: number, total: number, currency: string, paymentMethod: string, returnUrl?: string, customerData?: { customerEmail?: string; customerPhone?: string; customerName?: string; customerAddress?: Record<string, any> }) {
+  async _processOrderPayment(userId: number, orderIds: number[], total: number, currency: string, paymentMethod: string, returnUrl?: string, customerData?: { customerEmail?: string; customerPhone?: string; customerName?: string; customerAddress?: Record<string, any> }, checkoutGroupId?: string) {
+    const primaryOrderId = orderIds[0];
     if (paymentMethod === 'wallet') {
       try {
         const result = await paymentService.charge(userId, {
           referenceType: 'order',
-          referenceId: orderId,
+          referenceId: primaryOrderId,
           amount: total,
           currency,
           paymentMethod: 'wallet',
         });
         if (result.success) {
-          await this._fulfillAndConfirmOrder(orderId, userId, 'Payment via wallet');
-          const orderRows = await repo.findOrderById(orderId);
+          for (const oid of orderIds) {
+            await this._fulfillAndConfirmOrder(oid, userId, 'Payment via wallet');
+          }
+          const orderRows = await repo.findOrderById(primaryOrderId);
           if (orderRows?.length) {
             const order = this._formatOrder(orderRows);
             return order;
           }
-          return this.getOrderForUser(orderId, userId);
+          return this.getOrderForUser(primaryOrderId, userId);
         }
-        await this._restoreOrderStock(orderId, 'Wallet payment returned not successful');
-        await repo.updateOrderStatus(orderId, 'cancelled', 'Wallet payment failed');
+        await this._restoreOrdersStock(orderIds, 'Wallet payment returned not successful');
+        for (const oid of orderIds) {
+          await repo.updateOrderStatus(oid, 'cancelled', 'Wallet payment failed');
+        }
       } catch (err: any) {
-        log.error({ err, orderId, userId }, 'Wallet payment failed — restoring stock and cancelling order');
-        await this._restoreOrderStock(orderId, 'Wallet payment failed — stock restored');
-        await repo.updateOrderStatus(orderId, 'cancelled', `Wallet payment error: ${err?.message || 'Unknown error'}`);
+        log.error({ err, orderIds, userId }, 'Wallet payment failed — restoring stock and cancelling orders');
+        await this._restoreOrdersStock(orderIds, 'Wallet payment failed — stock restored');
+        for (const oid of orderIds) {
+          await repo.updateOrderStatus(oid, 'cancelled', `Wallet payment error: ${err?.message || 'Unknown error'}`);
+        }
         throw new ConflictError(err?.message || 'Wallet payment failed');
       }
     } else if (paymentMethod === 'cash') {
-      await this._fulfillAndConfirmOrder(orderId, userId, 'Payment on delivery (cash)');
-      return this.getOrderForUser(orderId, userId);
+      for (const oid of orderIds) {
+        await this._fulfillAndConfirmOrder(oid, userId, 'Payment on delivery (cash)');
+      }
+      return this.getOrderForUser(primaryOrderId, userId);
     } else {
       // ── Card / Online payment via gateway ──
       // Clear cart immediately after order creation — order is now the source of truth.
@@ -697,7 +764,7 @@ export const marketplaceService = {
       try {
         const result = await paymentService.charge(userId, {
           referenceType: 'order',
-          referenceId: orderId,
+          referenceId: primaryOrderId,
           amount: total,
           currency,
           paymentMethod: paymentMethod as any,
@@ -707,10 +774,10 @@ export const marketplaceService = {
 
         if (!result.success) {
           await repo.restoreCart(userId, cartSnapshot);
-          await this._restoreOrderStock(orderId, 'Gateway charge failed — stock restored');
+          await this._restoreOrdersStock(orderIds, 'Gateway charge failed — stock restored');
           const errMsg = (result as any).errorMessage || 'Payment gateway rejected the transaction';
           const rawResp = (result as any).rawResponse ? JSON.stringify((result as any).rawResponse).substring(0, 300) : '';
-          log.error({ orderId, errorMessage: errMsg, rawResponse: rawResp }, 'Gateway charge failed');
+          log.error({ primaryOrderId, errorMessage: errMsg, rawResponse: rawResp }, 'Gateway charge failed');
           throw new ConflictError(errMsg);
         }
 
@@ -718,25 +785,25 @@ export const marketplaceService = {
         const clientSecret = 'clientSecret' in result ? result.clientSecret : undefined;
         if (!paymentUrl && !clientSecret) {
           await repo.restoreCart(userId, cartSnapshot);
-          await this._restoreOrderStock(orderId, 'Gateway returned no payment URL — stock restored');
+          await this._restoreOrdersStock(orderIds, 'Gateway returned no payment URL — stock restored');
           throw new ConflictError('Payment gateway did not return a checkout URL or client secret');
         }
 
         const paymentId = 'paymentId' in result ? result.paymentId : undefined;
-        const order = await this.getOrder(orderId);
-        return { ...order, paymentUrl, clientSecret, paymentId };
+        const order = await this.getOrder(primaryOrderId);
+        return { ...order, paymentUrl, clientSecret, paymentId, checkoutGroupId, orderIds };
       } catch (err) {
         await repo.restoreCart(userId, cartSnapshot);
-        await this._restoreOrderStock(orderId, 'Gateway charge exception — stock restored');
+        await this._restoreOrdersStock(orderIds, 'Gateway charge exception — stock restored');
         throw err;
       }
     }
 
-    const orderRows = await repo.findOrderById(orderId);
+    const orderRows = await repo.findOrderById(primaryOrderId);
     if (orderRows?.length) {
       return this._formatOrder(orderRows);
     }
-    return this.getOrderForUser(orderId, userId);
+    return this.getOrderForUser(primaryOrderId, userId);
   },
 
   async getOrders(userId: number, page: number, limit: number, status?: string) {
@@ -749,44 +816,140 @@ export const marketplaceService = {
   },
 
   _groupOrdersByItem(result: { data: any[]; total: number; page: number; limit: number }) {
-    const orders = new Map<number, any>();
+    // Group by checkout_group_id when present (multi-seller orders)
+    const groups = new Map<string, { checkoutGroupId: string; orders: Map<number, any>; totalAmount: number }>();
+    const ungrouped = new Map<number, any>();
+
     for (const row of result.data as any[]) {
-      if (!orders.has(row.id)) {
-        orders.set(row.id, {
-          id: row.id,
-          public_id: row.public_id,
-          status: row.status,
-          payment_status: row.payment_status,
-          subtotal: row.subtotal,
-          shipping_cost: row.shipping_cost,
-          discount_amount: row.discount_amount,
-          total: row.total,
-          currency_code: row.currency_code,
-          payment_method: row.payment_method,
-          created_at: row.created_at,
-          estimated_delivery_date: row.estimated_delivery_date,
-          tracking_number: row.tracking_number,
-          shipping_carrier: row.shipping_carrier,
-          buyer_name: row.buyer_name || null,
-          buyer_phone: row.buyer_phone || null,
-          items: [],
-        });
-      }
-      const order = orders.get(row.id);
-      if (row.product_id) {
-        order.items.push({
-          productId: row.product_id,
-          productName: row.product_name,
-          variantName: row.variant_name || null,
-          shopName: row.shop_name || row.org_name || null,
-          quantity: row.quantity,
-          unitPrice: row.unit_price,
-          totalPrice: row.item_total,
-          images: row.images,
-        });
+      const groupId = row.checkout_group_id;
+      if (groupId) {
+        if (!groups.has(groupId)) {
+          groups.set(groupId, { checkoutGroupId: groupId, orders: new Map(), totalAmount: 0 });
+        }
+        const grp = groups.get(groupId)!;
+        if (!grp.orders.has(row.id)) {
+          grp.orders.set(row.id, {
+            id: row.id,
+            public_id: row.public_id,
+            checkout_group_id: groupId,
+            status: row.status,
+            payment_status: row.payment_status,
+            subtotal: Number(row.subtotal || 0),
+            shipping_cost: Number(row.shipping_cost || 0),
+            discount_amount: Number(row.discount_amount || 0),
+            total: Number(row.total || 0),
+            currency_code: row.currency_code,
+            payment_method: row.payment_method,
+            created_at: row.created_at,
+            estimated_delivery_date: row.estimated_delivery_date,
+            tracking_number: row.tracking_number,
+            shipping_carrier: row.shipping_carrier,
+            buyer_name: row.buyer_name || null,
+            buyer_phone: row.buyer_phone || null,
+            shop_name: row.shop_name || null,
+            seller_id: row.item_seller_id || null,
+            items: [],
+            tax_amount: Number(row.tax_amount || 0),
+            commission_amount: Number(row.commission_amount || 0),
+          });
+        }
+        const order = grp.orders.get(row.id);
+        if (row.product_id) {
+          order.items.push({
+            productId: row.product_id,
+            productName: row.product_name,
+            variantName: row.variant_name || null,
+            shopName: row.shop_name || row.org_name || null,
+            quantity: row.quantity,
+            unitPrice: row.unit_price,
+            totalPrice: row.item_total,
+            images: row.images,
+          });
+        }
+        grp.totalAmount += Number(row.total || 0);
+      } else {
+        // Legacy single-order (no group)
+        if (!ungrouped.has(row.id)) {
+          ungrouped.set(row.id, {
+            id: row.id,
+            public_id: row.public_id,
+            status: row.status,
+            payment_status: row.payment_status,
+            subtotal: row.subtotal,
+            shipping_cost: row.shipping_cost,
+            discount_amount: row.discount_amount,
+            total: row.total,
+            currency_code: row.currency_code,
+            payment_method: row.payment_method,
+            created_at: row.created_at,
+            estimated_delivery_date: row.estimated_delivery_date,
+            tracking_number: row.tracking_number,
+            shipping_carrier: row.shipping_carrier,
+            buyer_name: row.buyer_name || null,
+            buyer_phone: row.buyer_phone || null,
+            items: [],
+          });
+        }
+        const order = ungrouped.get(row.id);
+        if (row.product_id) {
+          order.items.push({
+            productId: row.product_id,
+            productName: row.product_name,
+            variantName: row.variant_name || null,
+            shopName: row.shop_name || row.org_name || null,
+            quantity: row.quantity,
+            unitPrice: row.unit_price,
+            totalPrice: row.item_total,
+            images: row.images,
+          });
+        }
       }
     }
-    return { ...result, data: Array.from(orders.values()) };
+
+    // Merge groups into a flat list for the buyer view
+    const merged: any[] = [];
+    for (const [, grp] of groups) {
+      const orders = Array.from(grp.orders.values());
+      // Aggregate all items across all seller-orders in this checkout group
+      const allItems: any[] = [];
+      let totalSubtotal = 0;
+      let totalShipping = 0;
+      let totalDiscount = 0;
+      let totalTax = 0;
+      let totalCommission = 0;
+      for (const o of orders) {
+        allItems.push(...o.items);
+        totalSubtotal += Number(o.subtotal || 0);
+        totalShipping += Number(o.shipping_cost || 0);
+        totalDiscount += Number(o.discount_amount || 0);
+        totalTax += Number(o.tax_amount || 0);
+        totalCommission += Number(o.commission_amount || 0);
+      }
+      // Use the primary order as the representative
+      const primary = orders[0];
+      merged.push({
+        ...primary,
+        // Override with aggregated values across all seller-orders
+        subtotal: totalSubtotal,
+        shipping_cost: totalShipping,
+        discount_amount: totalDiscount,
+        tax_amount: totalTax,
+        commission_amount: totalCommission,
+        total: grp.totalAmount,
+        items: allItems,
+        _isGrouped: orders.length > 1,
+        _sellerOrderCount: orders.length,
+        _sellerOrders: orders,
+      });
+    }
+    for (const [, order] of ungrouped) {
+      merged.push(order);
+    }
+
+    // Sort by created_at DESC
+    merged.sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+    return { ...result, data: merged, total: merged.length };
   },
 
   async getOrderForUser(orderId: number, userId: number) {
@@ -802,8 +965,32 @@ export const marketplaceService = {
       if (org) { rows = await repo.findOrderById(orderId, undefined, org.id); viewedAsSeller = true; }
     }
     if (!rows.length) throw new NotFoundError('Order');
+
     const order = this._formatOrder(rows);
     order.viewedAsSeller = viewedAsSeller;
+
+    // For buyer view: if this order belongs to a checkout group, fetch all sibling orders
+    // and merge their items so the buyer sees the complete checkout.
+    if (!viewedAsSeller && order.checkout_group_id) {
+      const allGroupRows = await repo.findOrdersByCheckoutGroup(order.checkout_group_id);
+      if (allGroupRows.length > 1) {
+        const allOrders = this._groupOrdersByItem({ data: allGroupRows, total: allGroupRows.length, page: 1, limit: 100 });
+        if (allOrders.data.length === 1) {
+          // Merge the grouped result into the primary order
+          const grouped = allOrders.data[0];
+          order.items = grouped.items;
+          order.subtotal = grouped.subtotal;
+          order.shipping_cost = grouped.shipping_cost;
+          order.discount_amount = grouped.discount_amount;
+          order.tax_amount = grouped.tax_amount;
+          order.commission_amount = grouped.commission_amount;
+          order.total = grouped.total;
+          order._sellerOrders = grouped._sellerOrders;
+          order._isGrouped = true;
+        }
+      }
+    }
+
     return order;
   },
 
@@ -841,6 +1028,22 @@ export const marketplaceService = {
 
     // Cancel the order (restores stock in the status transition handler)
     await this.updateOrderStatus(orderId, userId, { status: 'cancelled', note: 'User cancelled payment' });
+
+    // If this order belongs to a checkout group, cancel all sibling orders too
+    const checkoutGroupId = order.checkout_group_id;
+    if (checkoutGroupId) {
+      const siblingIds = await repo.findOrderIdsByCheckoutGroup(checkoutGroupId);
+      for (const siblingId of siblingIds) {
+        if (siblingId === orderId) continue;
+        const siblingRows = await repo.findOrderById(siblingId);
+        const siblingOrder = siblingRows?.length ? this._formatOrder(siblingRows) : null;
+        if (siblingOrder && siblingOrder.status !== 'cancelled') {
+          try {
+            await this.updateOrderStatus(siblingId, userId, { status: 'cancelled', note: 'Checkout group cancelled' });
+          } catch (_e) { /* may fail if seller already progressed — log and continue */ }
+        }
+      }
+    }
 
     // Restore cart from order items
     const orderRows = await repo.findOrderById(orderId);
@@ -947,7 +1150,16 @@ export const marketplaceService = {
       return;
     }
 
-    await this._fulfillAndConfirmOrder(data.referenceId, order.buyer_id, 'Payment confirmed');
+    // Fulfill all orders in the checkout group (multi-seller)
+    const checkoutGroupId = order.checkout_group_id;
+    if (checkoutGroupId) {
+      const allOrderIds = await repo.findOrderIdsByCheckoutGroup(checkoutGroupId);
+      for (const oid of allOrderIds) {
+        await this._fulfillAndConfirmOrder(oid, order.buyer_id, 'Payment confirmed');
+      }
+    } else {
+      await this._fulfillAndConfirmOrder(data.referenceId, order.buyer_id, 'Payment confirmed');
+    }
   },
 
   // Restore stock for order items (used by immediate gateway failure and payment:failed-event listener)
@@ -976,16 +1188,35 @@ export const marketplaceService = {
     }
   },
 
+  // Restore stock for multiple orders at once (checkout group rollback)
+  async _restoreOrdersStock(orderIds: number[], reason: string) {
+    for (const oid of orderIds) {
+      await this._restoreOrderStock(oid, reason);
+    }
+  },
+
   async handlePaymentFailed(data: { paymentId: number; referenceType: string; referenceId: number; amount: number; reason?: string; metadata?: Record<string, any> }) {
     if (data.referenceType !== 'order' || !data.referenceId) return;
 
     log.error({ orderId: data.referenceId, reason: data.reason }, 'handlePaymentFailed: order payment failed');
-    await this._restoreOrderStock(data.referenceId, data.reason || 'Payment failed');
-    // Update order status
-    await repo.updateOrderStatus(data.referenceId, 'cancelled', data.reason || 'Payment failed');
-    // Notify
+
+    // Restore stock for all orders in the checkout group
     const orderRows = await repo.findOrderById(data.referenceId);
     const userId = data.metadata?.userId || (orderRows?.length ? orderRows[0].buyer_id : 0) || 0;
+    const checkoutGroupId = orderRows?.length ? (orderRows[0] as any).checkout_group_id : null;
+
+    if (checkoutGroupId) {
+      const allOrderIds = await repo.findOrderIdsByCheckoutGroup(checkoutGroupId);
+      await this._restoreOrdersStock(allOrderIds, data.reason || 'Payment failed');
+      for (const oid of allOrderIds) {
+        await repo.updateOrderStatus(oid, 'cancelled', data.reason || 'Payment failed');
+      }
+    } else {
+      await this._restoreOrderStock(data.referenceId, data.reason || 'Payment failed');
+      await repo.updateOrderStatus(data.referenceId, 'cancelled', data.reason || 'Payment failed');
+    }
+
+    // Notify
     eventBusV2.emit('marketplace:order-cancelled', {
       orderId: data.referenceId,
       userId,

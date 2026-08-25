@@ -196,6 +196,7 @@ const OrgDashboardPage = lazy(() => import('./pages/org/OrgDashboardPage'));
 const OrgBookingsPage = lazy(() => import('./pages/org/OrgBookingsPage'));
 const OrgMarketplacePage = lazy(() => import('./pages/org/OrgMarketplacePage'));
 const OrgOrdersPage = lazy(() => import('./pages/org/OrgOrdersPage'));
+const OrgOrderDetailPage = lazy(() => import('./pages/org/OrgOrderDetailPage'));
 const OrgSettingsPage = lazy(() => import('./pages/org/OrgSettingsPage'));
 const OrgStaffPage = lazy(() => import('./pages/org/OrgStaffPage'));
 const OrgCoachesPage = lazy(() => import('./pages/org/OrgCoachesPage'));
@@ -797,6 +798,7 @@ function AppContent() {
             <Route path="bookings" element={<OrgBookingsPage />} />
             <Route path="marketplace" element={<OrgMarketplacePage />} />
             <Route path="orders" element={<OrgOrdersPage />} />
+            <Route path="orders/:id" element={<OrgOrderDetailPage />} />
             <Route path="staff" element={<OrgStaffPage />} />
             <Route path="members" element={<OrgMembersPage />} />
             <Route path="coaches" element={<OrgCoachesPage />} />

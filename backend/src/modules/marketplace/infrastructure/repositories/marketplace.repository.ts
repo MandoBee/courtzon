@@ -721,12 +721,12 @@ export const marketplaceRepository = {
   },
 
   // ── Orders ──
-  async createOrder(data: { buyerId: number; subtotal: number; shippingCost: number; commission: number; total: number; currencyCode: string; shippingAddress: any; notes: string; couponId?: number; discountAmount?: number; taxAmount?: number; paymentMethod?: string; estimatedDeliveryDate?: string | null }) {
+  async createOrder(data: { buyerId: number; subtotal: number; shippingCost: number; commission: number; total: number; currencyCode: string; shippingAddress: any; notes: string; couponId?: number; discountAmount?: number; taxAmount?: number; paymentMethod?: string; estimatedDeliveryDate?: string | null; checkoutGroupId?: string | null }) {
     const pool = getPool();
     const [result] = await pool.execute(
-      `INSERT INTO orders (public_id, buyer_id, status, subtotal, shipping_cost, estimated_delivery_date, commission_amount, coupon_id, discount_amount, tax_amount, total, currency_code, shipping_address, notes, payment_method)
-       VALUES (UUID(), ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [data.buyerId, data.subtotal, data.shippingCost, data.estimatedDeliveryDate || null, data.commission, data.couponId || null, data.discountAmount || 0, data.taxAmount || 0, data.total, data.currencyCode, data.shippingAddress ? JSON.stringify(data.shippingAddress) : null, data.notes || null, data.paymentMethod || 'wallet']
+      `INSERT INTO orders (public_id, checkout_group_id, buyer_id, status, subtotal, shipping_cost, estimated_delivery_date, commission_amount, coupon_id, discount_amount, tax_amount, total, currency_code, shipping_address, notes, payment_method)
+       VALUES (UUID(), ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [data.checkoutGroupId || null, data.buyerId, data.subtotal, data.shippingCost, data.estimatedDeliveryDate || null, data.commission, data.couponId || null, data.discountAmount || 0, data.taxAmount || 0, data.total, data.currencyCode, data.shippingAddress ? JSON.stringify(data.shippingAddress) : null, data.notes || null, data.paymentMethod || 'wallet']
     );
     return (result as any).insertId;
   },
@@ -770,6 +770,38 @@ export const marketplaceRepository = {
       countParams
     );
     return { data: rows, total: countRows[0].total, page, limit };
+  },
+
+  async findOrdersByCheckoutGroup(checkoutGroupId: string) {
+    const pool = getPool();
+    const [rows] = await pool.query<RowData>(
+      `SELECT o.*, oi.id as item_id, oi.seller_id as item_seller_id, oi.product_id, oi.variant_id,
+              oi.quantity, oi.unit_price, oi.total_price as item_total,
+              oi.commission_rate, oi.commission_amount,
+              p.name as product_name, p.images, pv.variant_name,
+              COALESCE(org.name, u.full_name) as shop_name, org.owner_id as seller_user_id,
+              prov.name as province_name
+       FROM orders o
+       LEFT JOIN order_items oi ON o.id = oi.order_id
+       LEFT JOIN products p ON oi.product_id = p.id
+       LEFT JOIN product_variants pv ON oi.variant_id = pv.id
+       LEFT JOIN organisations org ON oi.seller_id = org.id
+       LEFT JOIN users u ON org.owner_id = u.id
+       LEFT JOIN provinces prov ON prov.id = JSON_UNQUOTE(JSON_EXTRACT(o.shipping_address, '$.province_id'))
+       WHERE o.checkout_group_id = ?
+       ORDER BY o.id ASC`,
+      [checkoutGroupId],
+    );
+    return rows;
+  },
+
+  async findOrderIdsByCheckoutGroup(checkoutGroupId: string): Promise<number[]> {
+    const pool = getPool();
+    const [rows] = await pool.execute<RowData>(
+      'SELECT id FROM orders WHERE checkout_group_id = ? ORDER BY id ASC',
+      [checkoutGroupId],
+    );
+    return (rows as any[]).map((r: any) => r.id);
   },
 
   async findOrdersBySeller(sellerId: number, filters: { status?: string; page: number; limit: number }) {
@@ -1612,8 +1644,9 @@ export const marketplaceRepository = {
 
   async getOrderCountsByBuyer(buyerId: number) {
     const pool = getPool();
+    // Count distinct checkout groups (or individual orders for legacy data without groups)
     const [rows] = await pool.execute<RowData>(
-      `SELECT status, COUNT(*) as cnt FROM orders
+      `SELECT status, COUNT(DISTINCT COALESCE(checkout_group_id, CAST(id AS CHAR))) as cnt FROM orders
        WHERE buyer_id = ? AND deleted_at IS NULL
        GROUP BY status`,
       [buyerId]

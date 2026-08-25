@@ -1612,6 +1612,7 @@ DROP TABLE IF EXISTS `orders`;
 CREATE TABLE `orders` (
   `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
   `public_id` char(36) NOT NULL,
+  `checkout_group_id` char(36) DEFAULT NULL COMMENT 'UUID linking all seller-orders from one checkout',
   `buyer_id` int(10) unsigned NOT NULL,
   `status` enum('pending','confirmed','processing','shipped','delivered','cancelled','refunded') NOT NULL DEFAULT 'pending',
   `payment_status` enum('unpaid','paid','refunded','partial_refund') NOT NULL DEFAULT 'unpaid',
@@ -1649,6 +1650,7 @@ CREATE TABLE `orders` (
   KEY `idx_status` (`status`,`payment_status`),
   KEY `idx_orders_buyer_created` (`buyer_id`,`created_at`),
   KEY `idx_orders_settlement_status` (`settlement_status`,`status`,`payment_status`),
+  KEY `idx_orders_checkout_group` (`checkout_group_id`),
   CONSTRAINT `fk_order_buyer` FOREIGN KEY (`buyer_id`) REFERENCES `users` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
