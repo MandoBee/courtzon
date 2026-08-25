@@ -573,14 +573,15 @@ export default function OrganisationForm({ orgId, context, onClose, initialTab, 
         {formTab === 'basic' && (
           <div className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <Can
-                permission="organisations.edit.name"
-                fallback={<ReadonlyOrgField label="Name *">{form.name || '—'}</ReadonlyOrgField>}
-              >
-                <div><label className="block text-sm font-medium text-[var(--color-text)] mb-1">Name *</label>
-                  <input value={form.name} onChange={e => { set('name', e.target.value); set('slug', autoSlug(e.target.value)); }} required
-                    className="w-full px-3 py-2 rounded-[var(--radius-md)] border text-sm text-[var(--color-text)]" /></div>
-              </Can>
+              {context === 'admin' ? (
+                <Can permission="organisations.edit.name">
+                  <div><label className="block text-sm font-medium text-[var(--color-text)] mb-1">Name *</label>
+                    <input value={form.name} onChange={e => { set('name', e.target.value); set('slug', autoSlug(e.target.value)); }} required
+                      className="w-full px-3 py-2 rounded-[var(--radius-md)] border text-sm text-[var(--color-text)]" /></div>
+                </Can>
+              ) : (
+                <ReadonlyOrgField label="Name *">{form.name || '—'}</ReadonlyOrgField>
+              )}
               <Can permission="organisations.edit.website">
                 <div><label className="block text-sm font-medium text-[var(--color-text)] mb-1">Website</label>
                   <input value={form.website} onChange={e => set('website', e.target.value)}
@@ -589,16 +590,17 @@ export default function OrganisationForm({ orgId, context, onClose, initialTab, 
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <Can
-                permission="organisations.edit.org-type"
-                fallback={<ReadonlyOrgField label="Organisation Type *">{(orgTypes || []).find((t: any) => t.id === form.orgTypeId)?.name || '—'}</ReadonlyOrgField>}
-              >
-                <div><label className="block text-sm font-medium text-[var(--color-text)] mb-1">Organisation Type *</label>
-                  <select value={form.orgTypeId} onChange={e => set('orgTypeId', Number(e.target.value))}
-                    className="w-full px-3 py-2 rounded-[var(--radius-md)] border text-sm text-[var(--color-text)]">
-                    {(orgTypes || []).map((t: any) => <option key={t.id} value={t.id}>{t.name}</option>)}
-                  </select></div>
-              </Can>
+              {context === 'admin' ? (
+                <Can permission="organisations.edit.org-type">
+                  <div><label className="block text-sm font-medium text-[var(--color-text)] mb-1">Organisation Type *</label>
+                    <select value={form.orgTypeId} onChange={e => set('orgTypeId', Number(e.target.value))}
+                      className="w-full px-3 py-2 rounded-[var(--radius-md)] border text-sm text-[var(--color-text)]">
+                      {(orgTypes || []).map((t: any) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                    </select></div>
+                </Can>
+              ) : (
+                <ReadonlyOrgField label="Organisation Type *">{(orgTypes || []).find((t: any) => t.id === form.orgTypeId)?.name || '—'}</ReadonlyOrgField>
+              )}
               <Can permission="organisations.edit.email">
                 <div><label className="block text-sm font-medium text-[var(--color-text)] mb-1">Email</label>
                   <input value={form.email} onChange={e => set('email', e.target.value)}
@@ -607,51 +609,50 @@ export default function OrganisationForm({ orgId, context, onClose, initialTab, 
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <Can
-                permission="organisations.edit.country"
-                fallback={(
-                  <ReadonlyOrgField label="Country *">
-                    {form.countryId && (
-                      <CountryFlag
-                        countryCode={activeCountries.find((c: any) => c.id === form.countryId)?.iso_code}
-                        countryName={activeCountries.find((c: any) => c.id === form.countryId)?.name}
-                        size={20}
-                      />
-                    )}
-                    <span className="ml-2">{activeCountries.find((c: any) => c.id === form.countryId)?.name || '—'}</span>
-                  </ReadonlyOrgField>
-                )}
-              >
-                <div><label className="block text-sm font-medium text-[var(--color-text)] mb-1">Country *</label>
-                  {showNewCountry && isCreate ? (
-                    <div className="space-y-2">
-                      <div className="grid grid-cols-2 gap-2">
-                        <input placeholder="Name (e.g. Egypt)" value={newCountryForm.name} onChange={e => setNewCountryForm(f => ({ ...f, name: e.target.value }))} className="px-2 py-1.5 rounded-[var(--radius-md)] border text-sm" />
-                        <input placeholder="ISO2 (e.g. EG)" value={newCountryForm.isoCode} onChange={e => setNewCountryForm(f => ({ ...f, isoCode: e.target.value.toUpperCase() }))} maxLength={2} className="px-2 py-1.5 rounded-[var(--radius-md)] border text-sm font-mono" />
-                        <input placeholder="ISO3 (e.g. EGY)" value={newCountryForm.isoCode3} onChange={e => setNewCountryForm(f => ({ ...f, isoCode3: e.target.value.toUpperCase() }))} maxLength={3} className="px-2 py-1.5 rounded-[var(--radius-md)] border text-sm font-mono" />
-                        <input placeholder="Phone code (e.g. +20)" value={newCountryForm.phoneCode} onChange={e => setNewCountryForm(f => ({ ...f, phoneCode: e.target.value }))} className="px-2 py-1.5 rounded-[var(--radius-md)] border text-sm" />
-                        <input placeholder="Currency code (e.g. EGP)" value={newCountryForm.defaultCurrency} onChange={e => setNewCountryForm(f => ({ ...f, defaultCurrency: e.target.value.toUpperCase() }))} maxLength={3} className="px-2 py-1.5 rounded-[var(--radius-md)] border text-sm font-mono" />
+              {context === 'admin' ? (
+                <Can permission="organisations.edit.country">
+                  <div><label className="block text-sm font-medium text-[var(--color-text)] mb-1">Country *</label>
+                    {showNewCountry && isCreate ? (
+                      <div className="space-y-2">
+                        <div className="grid grid-cols-2 gap-2">
+                          <input placeholder="Name (e.g. Egypt)" value={newCountryForm.name} onChange={e => setNewCountryForm(f => ({ ...f, name: e.target.value }))} className="px-2 py-1.5 rounded-[var(--radius-md)] border text-sm" />
+                          <input placeholder="ISO2 (e.g. EG)" value={newCountryForm.isoCode} onChange={e => setNewCountryForm(f => ({ ...f, isoCode: e.target.value.toUpperCase() }))} maxLength={2} className="px-2 py-1.5 rounded-[var(--radius-md)] border text-sm font-mono" />
+                          <input placeholder="ISO3 (e.g. EGY)" value={newCountryForm.isoCode3} onChange={e => setNewCountryForm(f => ({ ...f, isoCode3: e.target.value.toUpperCase() }))} maxLength={3} className="px-2 py-1.5 rounded-[var(--radius-md)] border text-sm font-mono" />
+                          <input placeholder="Phone code (e.g. +20)" value={newCountryForm.phoneCode} onChange={e => setNewCountryForm(f => ({ ...f, phoneCode: e.target.value }))} className="px-2 py-1.5 rounded-[var(--radius-md)] border text-sm" />
+                          <input placeholder="Currency code (e.g. EGP)" value={newCountryForm.defaultCurrency} onChange={e => setNewCountryForm(f => ({ ...f, defaultCurrency: e.target.value.toUpperCase() }))} maxLength={3} className="px-2 py-1.5 rounded-[var(--radius-md)] border text-sm font-mono" />
+                        </div>
+                        <button type="button" onClick={() => setShowNewCountry(false)} className="text-xs text-[var(--color-primary)] hover:underline">← Pick existing country</button>
                       </div>
-                      <button type="button" onClick={() => setShowNewCountry(false)} className="text-xs text-[var(--color-primary)] hover:underline">← Pick existing country</button>
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-2">
-                      {form.countryId && (
-                        <CountryFlag
-                          countryCode={activeCountries.find((c: any) => c.id === form.countryId)?.iso_code}
-                          countryName={activeCountries.find((c: any) => c.id === form.countryId)?.name}
-                          size={24}
-                        />
-                      )}
-                      <select value={form.countryId} onChange={e => set('countryId', Number(e.target.value))}
-                        className="flex-1 px-3 py-2 rounded-[var(--radius-md)] border text-sm text-[var(--color-text)]">
-                        {activeCountries.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                      </select>
-                      {isCreate && <button type="button" onClick={() => setShowNewCountry(true)} className="px-2.5 py-2 rounded-[var(--radius-md)] border text-xs text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-bg)] hover:bg-[var(--color-border)]">+ New</button>}
-                    </div>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        {form.countryId && (
+                          <CountryFlag
+                            countryCode={activeCountries.find((c: any) => c.id === form.countryId)?.iso_code}
+                            countryName={activeCountries.find((c: any) => c.id === form.countryId)?.name}
+                            size={24}
+                          />
+                        )}
+                        <select value={form.countryId} onChange={e => set('countryId', Number(e.target.value))}
+                          className="flex-1 px-3 py-2 rounded-[var(--radius-md)] border text-sm text-[var(--color-text)]">
+                          {activeCountries.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                        </select>
+                        {isCreate && <button type="button" onClick={() => setShowNewCountry(true)} className="px-2.5 py-2 rounded-[var(--radius-md)] border text-xs text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-bg)] hover:bg-[var(--color-border)]">+ New</button>}
+                      </div>
+                    )}
+                  </div>
+                </Can>
+              ) : (
+                <ReadonlyOrgField label="Country *">
+                  {form.countryId && (
+                    <CountryFlag
+                      countryCode={activeCountries.find((c: any) => c.id === form.countryId)?.iso_code}
+                      countryName={activeCountries.find((c: any) => c.id === form.countryId)?.name}
+                      size={20}
+                    />
                   )}
-                </div>
-              </Can>
+                  <span className="ml-2">{activeCountries.find((c: any) => c.id === form.countryId)?.name || '—'}</span>
+                </ReadonlyOrgField>
+              )}
               <Can permission="organisations.edit.phone">
                 <div>
                   <label className="block text-sm font-medium text-[var(--color-text)] mb-1">Phone</label>
