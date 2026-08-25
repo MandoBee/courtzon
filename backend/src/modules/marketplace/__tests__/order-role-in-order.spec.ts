@@ -23,7 +23,7 @@ vi.mock('../../../infrastructure/redis/redis.client.js', () => ({
 }));
 vi.mock('../infrastructure/repositories/marketplace.repository.js', () => ({
   marketplaceRepository: {
-    findOrgByOwnerId: vi.fn(),
+    findSellerOrgsForUser: vi.fn(),
     isPlatformAdmin: vi.fn(),
   },
 }));
@@ -46,18 +46,18 @@ describe('MarketplaceService._getUserRoleInOrder (A2 no admin fallback)', () => 
   });
 
   it('returns seller when the user owns a seller org on the order', async () => {
-    (repo.findOrgByOwnerId as any).mockResolvedValue([{ id: 100 }]);
+    (repo.findSellerOrgsForUser as any).mockResolvedValue([{ id: 100, is_active: 1 }]);
     await expect(marketplaceService._getUserRoleInOrder(2, order)).resolves.toBe('seller');
   });
 
   it('returns admin ONLY for a genuine platform admin', async () => {
-    (repo.findOrgByOwnerId as any).mockResolvedValue([]);
+    (repo.findSellerOrgsForUser as any).mockResolvedValue([]);
     (repo.isPlatformAdmin as any).mockResolvedValue(true);
     await expect(marketplaceService._getUserRoleInOrder(3, order)).resolves.toBe('admin');
   });
 
   it('returns null for an unrelated user (no buyer/seller/admin relationship)', async () => {
-    (repo.findOrgByOwnerId as any).mockResolvedValue([]);
+    (repo.findSellerOrgsForUser as any).mockResolvedValue([]);
     (repo.isPlatformAdmin as any).mockResolvedValue(false);
     await expect(marketplaceService._getUserRoleInOrder(4, order)).resolves.toBeNull();
   });

@@ -30,11 +30,9 @@ export async function getComplaintHandler(request: FastifyRequest, reply: Fastif
   const userId = (request as any).userId;
   const complaint = await svc.getComplaintDetail(Number(id));
   if (complaint.buyer_id === userId) return reply.send(complaint);
-  // Organisation owners may view complaints on their shop.
-  const org = await marketplaceRepository.findOrgByUserId(userId, 'seller')
-    || await marketplaceRepository.findOrgByUserId(userId, 'player')
-    || await marketplaceRepository.findOrgByUserScope(userId);
-  if (org && org.id === complaint.seller_org_id) return reply.send(complaint);
+  // Organisation owners / staff may view complaints on their org (any org type).
+  const orgs = await marketplaceRepository.findSellerOrgsForUser(userId);
+  if ((orgs as any[]).some((o: any) => o.id === complaint.seller_org_id)) return reply.send(complaint);
   // CourtZon admins may view any complaint.
   if (await isSuperAdmin(userId)) return reply.send(complaint);
   return reply.status(403).send({ error: 'FORBIDDEN', message: 'Access denied' });

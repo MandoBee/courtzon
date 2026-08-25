@@ -45,6 +45,7 @@ vi.mock('../infrastructure/repositories/marketplace.repository.js', () => ({
     adminFindAllProducts: vi.fn(async () => []),
     findOrgByUserId: vi.fn(async () => ({ id: 77 })),
     findOrgByUserScope: vi.fn(async () => null),
+    findSellerOrgsForUser: vi.fn(async (uid: number) => uid === 1 ? [{ id: 77, is_active: 1, owner_id: uid }] : []),
     updateProduct: vi.fn(async () => true),
     getProduct: vi.fn(async (id: number) => ({ id, status: 'pending', seller_id: 77, seller_type: 'org' })),
     findVariants: vi.fn(async () => []),
@@ -131,7 +132,7 @@ describe('updateProduct (seller/organisation edit) → ADMIN_ROOM announcement',
       sellerUserId: 901,
     });
     // Emit happens only after the product row was updated (post-commit)
-    expect(vi.mocked(repo.updateProduct)).toHaveBeenCalledWith(501, 77, expect.objectContaining({ status: 'pending' }));
+    expect(vi.mocked(repo.updateProduct)).toHaveBeenCalledWith(501, [77], expect.objectContaining({ status: 'pending' }));
   });
 
   it('C: organisation path uses the same event (same service method, org scoping)', async () => {

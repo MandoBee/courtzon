@@ -67,12 +67,7 @@ export const marketplaceService = {
     if (publiclyVisible) return this.getProduct(id);
 
     if (viewerUserId) {
-      const isPlayerOwner = product.seller_user_id && Number(product.seller_user_id) === Number(viewerUserId);
-      if (isPlayerOwner) return this.getProduct(id);
-      const org = await repo.findOrgByUserId(viewerUserId, 'seller')
-        || await repo.findOrgByUserId(viewerUserId, 'player')
-        || await repo.findOrgByUserScope(viewerUserId);
-      if (org && Number(product.seller_id) === Number(org.id)) return this.getProduct(id);
+      if (await this._ownsProductAsSeller(viewerUserId, product)) return this.getProduct(id);
     }
     throw new NotFoundError('Product');
   },
@@ -87,12 +82,7 @@ export const marketplaceService = {
     const product = await repo.findProductById(productId);
     if (!product) throw new NotFoundError('Product');
 
-    const org = await repo.findOrgByUserId(userId, 'seller')
-      || await repo.findOrgByUserId(userId, 'player')
-      || await repo.findOrgByUserScope(userId);
-    const isOrgOwner = !!org && Number(product.seller_id) === Number(org.id);
-    const isPlayerOwner = !!product.seller_user_id && Number(product.seller_user_id) === Number(userId);
-    if (!isOrgOwner && !isPlayerOwner) throw new ForbiddenError('Not your product');
+    if (!(await this._ownsProductAsSeller(userId, product))) throw new ForbiddenError('Not your product');
 
     if (visible && product.status !== 'active') {
       throw new ConflictError('Product must be approved before it can appear in the Marketplace.');
@@ -135,20 +125,16 @@ export const marketplaceService = {
   },
 
   async createProduct(userId: number, data: any) {
-    let org = await repo.findOrgByUserId(userId, 'seller');
-    let orgType = 'seller';
-    if (!org) {
-      org = await repo.findOrgByUserId(userId, 'player');
-      if (org) orgType = 'player';
-    }
-    if (!org) {
-      org = await repo.findOrgByUserScope(userId);
-      orgType = org?.org_type_slug || 'seller';
-    }
+    // Resolve the creating organisation via product ownership: orgs the user
+    // owns (ANY type) plus scoped roles. Deterministic: lowest id (= primary).
+    const candidates = await repo.findSellerOrgsForUser(userId);
+    const owned = (candidates as any[]).filter((o: any) => Number(o.owner_id) === Number(userId));
+    const orgPool = owned.length ? owned : (candidates as any[]);
+    const org = orgPool.slice().sort((a: any, b: any) => a.id - b.id)[0] || null;
     if (!org) throw new ForbiddenError('You must be a seller to create products');
     if (!org.is_active) throw new ForbiddenError('Seller account is inactive');
 
-    const defaultLimit = orgType === 'player' ? 5 : 3;
+    const defaultLimit = 3;
     const maxListings = await getPlanNumericLimit(org.id, 'products', defaultLimit);
     const currentCount = await repo.countOrgProducts(org.id);
     if (currentCount >= maxListings) {
@@ -178,28 +164,28 @@ export const marketplaceService = {
   },
 
   async updateProduct(userId: number, productId: number, data: any) {
-    let org = await repo.findOrgByUserId(userId, 'seller') || await repo.findOrgByUserId(userId, 'player');
-    if (!org) org = await repo.findOrgByUserScope(userId);
-    if (!org) throw new ForbiddenError('Not a seller');
+    const orgIds = await this._resolveSellerOrgIds(userId);
+    if (!orgIds.length) throw new ForbiddenError('Not a seller');
 
     const previous = await repo.findProductById(productId);
     if (!previous) throw new NotFoundError('Product');
+    if (!orgIds.includes(Number(previous.seller_id))) throw new ForbiddenError('Not your product');
 
     data.status = 'pending';
     const { variants, tagIds, ...productData } = data;
-    const updated = await repo.updateProduct(productId, org.id, productData);
+    const updated = await repo.updateProduct(productId, orgIds, productData);
     if (!updated) throw new NotFoundError('Product');
     if (variants !== undefined) {
       const existingVariants = await repo.findVariants(productId);
       const incomingIds = variants.filter((v: any) => v.id).map((v: any) => v.id);
       for (const existing of existingVariants) {
         if (!incomingIds.includes(existing.id)) {
-          await repo.deleteVariant(existing.id, org.id);
+          await repo.deleteVariant(existing.id, orgIds);
         }
       }
       for (const v of variants) {
         if (v.id) {
-          await repo.updateVariant(v.id, v, org.id);
+          await repo.updateVariant(v.id, v, orgIds);
         } else {
           await repo.createVariant({ ...v, productId });
         }
@@ -229,11 +215,11 @@ export const marketplaceService = {
   },
 
   async deleteProduct(userId: number, productId: number) {
-    let org = await repo.findOrgByUserId(userId, 'seller') || await repo.findOrgByUserId(userId, 'player');
-    if (!org) org = await repo.findOrgByUserScope(userId);
-    if (!org) throw new ForbiddenError('Not a seller');
+    const orgIds = await this._resolveSellerOrgIds(userId);
+    if (!orgIds.length) throw new ForbiddenError('Not a seller');
     const product = await repo.findProductById(productId);
-    if (!product || product.seller_id !== org.id) throw new NotFoundError('Product');
+    if (!product || !orgIds.includes(Number(product.seller_id))) throw new NotFoundError('Product');
+    const placeholders = orgIds.map(() => '?').join(', ');
     const pool = getPool();
     const conn = await pool.getConnection();
     try {
@@ -242,8 +228,8 @@ export const marketplaceService = {
       await conn.execute('DELETE FROM wishlist_items WHERE product_id = ?', [productId]);
       await conn.execute('UPDATE products SET is_active = 0 WHERE id = ? AND deleted_at IS NULL', [productId]);
       const [result] = await conn.execute(
-        'UPDATE products SET deleted_at = NOW() WHERE id = ? AND seller_id = ? AND deleted_at IS NULL',
-        [productId, org.id],
+        `UPDATE products SET deleted_at = NOW() WHERE id = ? AND seller_id IN (${placeholders}) AND deleted_at IS NULL`,
+        [productId, ...orgIds],
       );
       if (!(result as { affectedRows: number }).affectedRows) throw new NotFoundError('Product');
       await conn.commit();
@@ -257,36 +243,33 @@ export const marketplaceService = {
 
   // ── Variants (seller-only management) ──
   async createVariant(userId: number, productId: number, data: any) {
-    let org = await repo.findOrgByUserId(userId, 'seller') || await repo.findOrgByUserId(userId, 'player');
-    if (!org) org = await repo.findOrgByUserScope(userId);
-    if (!org) throw new ForbiddenError('Not a seller');
+    const orgIds = await this._resolveSellerOrgIds(userId);
+    if (!orgIds.length) throw new ForbiddenError('Not a seller');
     const product = await repo.findProductById(productId);
     if (!product) throw new NotFoundError('Product');
-    if (product.seller_id !== org.id) throw new ForbiddenError('Not your product');
+    if (!orgIds.includes(Number(product.seller_id))) throw new ForbiddenError('Not your product');
     const id = await repo.createVariant({ ...data, productId });
     return { id };
   },
 
   async updateVariant(userId: number, variantId: number, data: any) {
-    let org = await repo.findOrgByUserId(userId, 'seller') || await repo.findOrgByUserId(userId, 'player');
-    if (!org) org = await repo.findOrgByUserScope(userId);
-    if (!org) throw new ForbiddenError('Not a seller');
+    const orgIds = await this._resolveSellerOrgIds(userId);
+    if (!orgIds.length) throw new ForbiddenError('Not a seller');
     const variant = await repo.findVariantById(variantId);
     if (!variant) throw new NotFoundError('Variant');
-    if (variant.seller_id !== org.id) throw new ForbiddenError('Variant does not belong to your organisation');
-    const ok = await repo.updateVariant(variantId, data, org.id);
+    if (!orgIds.includes(Number(variant.seller_id))) throw new ForbiddenError('Variant does not belong to your organisation');
+    const ok = await repo.updateVariant(variantId, data, orgIds);
     if (!ok) throw new NotFoundError('Variant');
     return { success: true };
   },
 
   async deleteVariant(userId: number, variantId: number) {
-    let org = await repo.findOrgByUserId(userId, 'seller') || await repo.findOrgByUserId(userId, 'player');
-    if (!org) org = await repo.findOrgByUserScope(userId);
-    if (!org) throw new ForbiddenError('Not a seller');
+    const orgIds = await this._resolveSellerOrgIds(userId);
+    if (!orgIds.length) throw new ForbiddenError('Not a seller');
     const variant = await repo.findVariantById(variantId);
     if (!variant) throw new NotFoundError('Variant');
-    if (variant.seller_id !== org.id) throw new ForbiddenError('Variant does not belong to your organisation');
-    await repo.deleteVariant(variantId, org.id);
+    if (!orgIds.includes(Number(variant.seller_id))) throw new ForbiddenError('Variant does not belong to your organisation');
+    await repo.deleteVariant(variantId, orgIds);
   },
 
   // ── Wishlist ──
@@ -962,10 +945,10 @@ export const marketplaceService = {
     let viewedAsSeller = false;
 
     // 2. If not the buyer, check if the user is a seller on this order
+    //    (any organisation they own or act for — not just 'shop' types).
     if (!rows.length) {
-      let org = await repo.findOrgByUserId(userId, 'seller') || await repo.findOrgByUserId(userId, 'player');
-      if (!org) org = await repo.findOrgByUserScope(userId);
-      if (org) { rows = await repo.findOrderById(orderId, undefined, org.id); viewedAsSeller = true; }
+      const orgIds = await this._resolveSellerOrgIds(userId);
+      if (orgIds.length) { rows = await repo.findOrderById(orderId, undefined, orgIds); viewedAsSeller = true; }
     }
 
     // 3. Unfiltered fallback (race condition: order was just created and buyer_id join not yet visible)
@@ -1347,8 +1330,15 @@ export const marketplaceService = {
   },
 
   // ── Financial recording: Delivered ──
-  // Updates cash collection status and creates double-entry revenue recognition.
-  // New model: courtzon_fee = fee on (products + shipping), shipping belongs to org.
+  // Balanced double-entry revenue recognition (debits = credits):
+  //   CARD/WALLET (CourtZon collected the buyer's money):
+  //     debit  platform_account(1)  totalAmount      — collected cash moves out of staging
+  //     credit platform_account(2)  courtzonFee       — CourtZon commission earned
+  //     credit branch(seller)       net = total − fee — payable to seller
+  //   CASH/COD (the SELLER collected the buyer's money — never CourtZon's cash):
+  //     debit  branch(seller)       totalAmount       — seller physically holds the cash
+  //     credit platform_account(2)  courtzonFee       — CourtZon receivable FROM the seller
+  //     credit branch(seller)       net = total − fee — seller entitlement
   async _recordDeliveryFinancials(orderId: number) {
     const rows = await repo.findOrderById(orderId);
     if (!rows?.length) return;
@@ -1358,12 +1348,13 @@ export const marketplaceService = {
     // Update cash collection status
     await repo.updateCashCollectionStatus(orderId, isCOD ? 'held_by_org' : 'held_by_courtzon');
 
-    // Use order-level courtzon_fee (fee on products+shipping)
+    // Use order-level courtzon_fee (fee on products only — shipping is 100% org)
     const courtzonFee = Number(order.courtzon_fee || order.courtzon_commission || 0);
     const totalProduct = Number(order.subtotal || 0);
     const totalShipping = Number(order.shipping_cost || 0);
-    const totalAmount = totalProduct + totalShipping;
-    const netAmount = totalAmount - courtzonFee;
+    const totalTax = Number(order.tax_amount || 0);
+    const totalAmount = Math.round((totalProduct + totalShipping + totalTax) * 100) / 100;
+    const netAmount = Math.round((totalAmount - courtzonFee) * 100) / 100;
 
     const sellerDetails = new Map<number, { branchId: number | null }>();
     for (const row of rows as any[]) {
@@ -1384,8 +1375,35 @@ export const marketplaceService = {
 
     const entries: any[] = [];
 
-    // Credit: CourtZon fee
-      if (courtzonFee > 0) {
+    // Debit: where the buyer's money actually sits at delivery time.
+    const firstSeller = sellerDetails.keys().next().value;
+    const firstBranchId = firstSeller ? sellerDetails.get(firstSeller)?.branchId : null;
+    if (isCOD) {
+      // Cash held by the seller organisation — NOT collected by CourtZon.
+      entries.push({
+        transactionId: txnId,
+        side: 'debit',
+        entityType: 'branch',
+        entityId: firstBranchId || 0,
+        amount: totalAmount,
+        branchId: firstBranchId || undefined,
+        organisationId: firstSeller || undefined,
+        description: `COD cash held by seller for order #${orderId}`,
+      });
+    } else {
+      // Card/wallet — payment previously landed on the platform float.
+      entries.push({
+        transactionId: txnId,
+        side: 'debit',
+        entityType: 'platform_account',
+        entityId: 1,
+        amount: totalAmount,
+        description: `Collected payment routed for order #${orderId}`,
+      });
+    }
+
+    // Credit: CourtZon fee (commission on products only)
+    if (courtzonFee > 0) {
       entries.push({
         transactionId: txnId,
         side: 'credit',
@@ -1396,9 +1414,7 @@ export const marketplaceService = {
       });
     }
 
-    // Credit: org revenue (net = total - fee, includes shipping)
-    const firstSeller = sellerDetails.keys().next().value;
-    const firstBranchId = firstSeller ? sellerDetails.get(firstSeller)?.branchId : null;
+    // Credit: org revenue (net = products − fee + shipping + tax)
     if (netAmount > 0) {
       entries.push({
         transactionId: txnId,
@@ -1476,13 +1492,42 @@ export const marketplaceService = {
   // no record of a synthetic wallet charge, so paymentService.refund() would fail
   // silently). Card/online orders are refunded via the gateway. COD orders have no
   // pre-collected payment and require no action.
+  //
+  // Multi-seller checkouts charge ONCE against the primary order of the checkout
+  // group. Sibling seller-orders therefore locate that same payment through the
+  // group and refund only their own total — the payment row stays 'paid' until
+  // every order in the group has been refunded.
+  async _findPaymentForOrder(order: any, orderId: number) {
+    const direct = await paymentRepository.findByOrderId(orderId);
+    if (direct?.id) return direct;
+    if (!order.checkout_group_id) return null;
+    // Fallback: the group payment lives on the primary (lowest-id) order.
+    const groupIds = await repo.findOrderIdsByCheckoutGroup(order.checkout_group_id);
+    const primaryId = groupIds.length ? Math.min(...groupIds) : null;
+    if (primaryId === null || primaryId === orderId) return null;
+    return paymentRepository.findByOrderIdIncludingRefunded(primaryId);
+  },
+
+  /** True when at least one sibling order in the group is still active. */
+  async _hasActiveGroupSiblings(order: any, orderId: number): Promise<boolean> {
+    if (!order.checkout_group_id) return false;
+    const siblingIds = (await repo.findOrderIdsByCheckoutGroup(order.checkout_group_id))
+      .filter((oid: number) => oid !== orderId);
+    for (const sid of siblingIds) {
+      const rows = await repo.findOrderById(sid);
+      const status = rows?.length ? (rows[0] as any).status : null;
+      if (status && status !== 'cancelled' && status !== 'refunded') return true;
+    }
+    return false;
+  },
+
   async _processOrderRefund(order: any, orderId: number, reason: string) {
     if (order.payment_status !== 'paid') {
       log.info({ orderId }, 'Order refund: payment not paid — nothing to refund');
       return;
     }
 
-    const paymentTxn = await paymentRepository.findByOrderId(orderId);
+    const paymentTxn = await this._findPaymentForOrder(order, orderId);
     if (!paymentTxn?.id) {
       log.warn({ orderId }, 'Order refund: no paid payment transaction found');
       return;
@@ -1515,17 +1560,24 @@ export const marketplaceService = {
           type: 'refund',
           amount,
           direction: 'credit',
-          referenceType: 'order',
+          // uq_wallet_txn_ref (reference_type, reference_id) ignores
+          // direction/type, so a refund row must not reuse the charge's
+          // ('order', orderId) pair — use the order_refund pseudo-type.
+          referenceType: 'order_refund',
           referenceId: orderId,
           description: `Order #${orderId} refund: ${reason || 'order refund'}`,
         }, conn);
 
-        await conn.execute(
-          `UPDATE payment_transactions
-           SET payment_status = 'refunded', refunded_at = NOW(), updated_at = NOW()
-           WHERE id = ? AND payment_status = 'paid'`,
-          [paymentTxn.id],
-        );
+        // Only close the payment once EVERY order in the checkout group is terminal.
+        const siblingsActive = await this._hasActiveGroupSiblings(order, orderId);
+        if (!siblingsActive) {
+          await conn.execute(
+            `UPDATE payment_transactions
+             SET payment_status = 'refunded', updated_at = NOW()
+             WHERE id = ? AND payment_status IN ('paid', 'refunded')`,
+            [paymentTxn.id],
+          );
+        }
 
         await eventBusV2.emit('payment:refunded', {
           paymentId: paymentTxn.id,
@@ -1534,7 +1586,7 @@ export const marketplaceService = {
           reason,
           referenceType: 'order',
           referenceId: orderId,
-          metadata: { paymentMethod: 'wallet' },
+          metadata: { paymentMethod: 'wallet', checkoutGroupId: order.checkout_group_id || null },
         }, undefined, conn);
 
         eventBusV2.emit('wallet:transaction', {
@@ -1561,14 +1613,36 @@ export const marketplaceService = {
     }
   },
 
+  /**
+   * Resolve ALL organisation ids through which the user can act as a
+   * Marketplace seller: organisations they OWN (any org type — a sports club,
+   * academy, gym, etc. can be a seller exactly like a shop) plus organisations
+   * where they hold an active organisation-scoped role. Deduped, order-stable.
+   * Ownership (organisations.owner_id) is the authoritative product-ownership
+   * relationship; role scopes cover staff acting on behalf of an org.
+   */
+  async _resolveSellerOrgIds(userId: number): Promise<number[]> {
+    const orgs = await repo.findSellerOrgsForUser(userId);
+    const ids = new Set<number>();
+    for (const o of orgs as any[]) {
+      if (o?.id && Number(o.is_active) === 1) ids.add(Number(o.id));
+    }
+    return [...ids];
+  },
+
+  /** True when product.seller_id belongs to one of the user's seller orgs. */
+  async _ownsProductAsSeller(userId: number, product: any): Promise<boolean> {
+    if (!product) return false;
+    if (product.seller_user_id && Number(product.seller_user_id) === Number(userId)) return true;
+    const orgIds = await this._resolveSellerOrgIds(userId);
+    return orgIds.includes(Number(product.seller_id));
+  },
+
   async _getUserRoleInOrder(userId: number, order: any): Promise<'buyer' | 'seller' | 'admin' | null> {
     if (order.buyer_id === userId) return 'buyer';
-    const orgs = await repo.findOrgByOwnerId(userId);
-    if (orgs?.length) {
-      const orgIds = new Set(orgs.map((o: any) => o.id));
-      if (order.items?.some((i: any) => orgIds.has(i.sellerId))) {
-        return 'seller';
-      }
+    const orgIds = await this._resolveSellerOrgIds(userId);
+    if (orgIds.length && order.items?.some((i: any) => orgIds.includes(Number(i.sellerId)))) {
+      return 'seller';
     }
     // A user who is neither the buyer nor a seller on this order must be a
     // genuine platform admin to manage it. Do NOT fall back to 'admin' for
@@ -1616,29 +1690,23 @@ export const marketplaceService = {
 
   // ── Seller Orders ──
   async getSellerOrders(userId: number, filters: any) {
-    let org = await repo.findOrgByUserId(userId, 'seller') || await repo.findOrgByUserId(userId, 'player');
-    if (!org) org = await repo.findOrgByUserScope(userId);
-    if (!org) throw new ForbiddenError('Not a seller');
-    const result = await repo.findOrdersBySeller(org.id, filters);
+    const orgIds = await this._resolveSellerOrgIds(userId);
+    if (!orgIds.length) throw new ForbiddenError('Not a seller');
+    const result = await repo.findOrdersBySeller(orgIds, filters);
     return this._groupOrdersByItem(result);
   },
 
   async getSellerStats(userId: number) {
-    let org = await repo.findOrgByUserId(userId, 'seller') || await repo.findOrgByUserId(userId, 'player');
-    if (!org) org = await repo.findOrgByUserScope(userId);
-    if (!org) throw new ForbiddenError('Not a seller');
-    return repo.getSellerStats(org.id);
+    const orgIds = await this._resolveSellerOrgIds(userId);
+    if (!orgIds.length) throw new ForbiddenError('Not a seller');
+    return repo.getSellerStats(orgIds);
   },
 
   // ── Seller products (manage) ──
   async getSellerProducts(userId: number, page: number, limit: number, filters?: { sportId?: number; status?: string; branchId?: number }) {
-    let org = await repo.findOrgByUserId(userId, 'seller') || await repo.findOrgByUserId(userId, 'player');
-    if (!org) {
-      // Fallback: find org via scoped roles (org-admin, shop-admin, etc.)
-      org = await repo.findOrgByUserScope(userId);
-    }
-    if (!org) throw new ForbiddenError('Not a seller');
-    return repo.findProducts({ sellerId: org.id, page, limit, sort: 'newest', status: filters?.status, sportId: filters?.sportId, branchId: filters?.branchId });
+    const orgIds = await this._resolveSellerOrgIds(userId);
+    if (!orgIds.length) throw new ForbiddenError('Not a seller');
+    return repo.findProducts({ sellerIds: orgIds, page, limit, sort: 'newest', status: filters?.status, sportId: filters?.sportId, branchId: filters?.branchId });
   },
 
   // ── Reviews ──
@@ -1746,28 +1814,35 @@ export const marketplaceService = {
 
   // ── Settlements (delegated to settlement module) ──
   async getSettlementsByUser(userId: number, page: number, limit: number) {
-    const org = await repo.findOrgByUserId(userId, 'seller') || await repo.findOrgByUserId(userId, 'player');
-    if (!org) throw new ForbiddenError('No seller account found');
-    return (await import('../../settlement/application/settlement.service.js')).settlementService.getOrganisationSettlements(org.id, page, limit);
+    const orgIds = await this._resolveSellerOrgIds(userId);
+    if (!orgIds.length) throw new ForbiddenError('No seller account found');
+    return (await import('../../settlement/application/settlement.service.js')).settlementService.getOrganisationSettlements(orgIds[0], page, limit);
   },
 
   async getSettlementBalanceByUser(userId: number) {
-    const org = await repo.findOrgByUserId(userId, 'seller') || await repo.findOrgByUserId(userId, 'player');
-    if (!org) throw new ForbiddenError('No seller account found');
-    const balance = await repo.getSettlementBalanceBySeller(org.id);
+    const orgIds = await this._resolveSellerOrgIds(userId);
+    if (!orgIds.length) throw new ForbiddenError('No seller account found');
+    // Aggregate across every organisation the user sells through.
+    let available = 0, fee = 0, count = 0;
+    for (const oid of orgIds) {
+      const balance = await repo.getSettlementBalanceBySeller(oid);
+      available += Number(balance.available_balance || 0);
+      fee += Number(balance.pending_fee || 0);
+      count += Number(balance.order_count || 0);
+    }
     return {
-      available_balance: balance.available_balance,
-      pending_fee: balance.pending_fee,
+      available_balance: Math.round(available * 100) / 100,
+      pending_fee: Math.round(fee * 100) / 100,
       pending_settlements: 0,
-      unsettled_orders: balance.order_count,
+      unsettled_orders: count,
     };
   },
 
   async requestSettlement(userId: number) {
-    const org = await repo.findOrgByUserId(userId, 'seller') || await repo.findOrgByUserId(userId, 'player');
-    if (!org) throw new ForbiddenError('No seller account found');
+    const orgIds = await this._resolveSellerOrgIds(userId);
+    if (!orgIds.length) throw new ForbiddenError('No seller account found');
     return (await import('../../settlement/application/settlement.service.js')).settlementService.requestSettlement({
-      organisationId: org.id,
+      organisationId: orgIds[0],
       requestedBy: userId,
       requestedByRole: 'seller',
     });
@@ -1885,9 +1960,10 @@ export const marketplaceService = {
   },
 
   async updateSellerOrg(userId: number, data: { name?: string; description?: string; email?: string; phone?: string; website?: string; crNumber?: string; taxId?: string; isVatRegistered?: boolean; financialDetails?: any }) {
-    let org = await repo.findOrgByUserId(userId, 'player');
-    if (!org) org = await repo.findOrgByUserId(userId, 'seller');
-    if (!org) throw new NotFoundError('Seller account');
+    const orgIds = await this._resolveSellerOrgIds(userId);
+    const orgId = orgIds[0];
+    if (!orgId) throw new NotFoundError('Seller account');
+    const org = { id: orgId };
     const { financialDetails, ...orgData } = data;
     // Identity fields (Name / Type / Country) are super-admin managed — sellers
     // can view them read-only on their profile but never change them.

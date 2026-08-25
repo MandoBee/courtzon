@@ -141,6 +141,23 @@ export const paymentRepository = {
   },
 
   /**
+   * Find a paid (or already partially refunded) payment for an order.
+   * Multi-seller checkouts charge once against the PRIMARY order of the
+   * checkout group; sibling orders must be able to locate that same payment
+   * to receive their proportional refund.
+   */
+  async findByOrderIdIncludingRefunded(orderId: number) {
+    const pool = getPool();
+    const [rows] = await pool.execute<RowData>(
+      `SELECT * FROM payment_transactions
+       WHERE order_id = ? AND payment_status IN ('paid', 'refunded')
+       ORDER BY created_at DESC LIMIT 1`,
+      [orderId],
+    );
+    return rows[0] || null;
+  },
+
+  /**
    * Internal: single authority for persisting payment status transitions.
    * All status-changing methods must delegate to this.
    * @internal @deprecated External callers should use PaymentSaga instead.
