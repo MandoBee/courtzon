@@ -529,6 +529,8 @@ export const marketplaceService = {
     }
 
     const createdOrderIds: number[] = [];
+    const sellerToOrderId = new Map<number, number>();
+    const sellerToTotal = new Map<number, number>();
     let grandTotal = 0;
     let grandShippingCost = 0;
     let grandCommission = 0;
@@ -606,6 +608,8 @@ export const marketplaceService = {
         checkoutGroupId,
       });
       createdOrderIds.push(orderId);
+      sellerToOrderId.set(sellerId, orderId);
+      sellerToTotal.set(sellerId, sellerTotal);
       grandTotal += sellerTotal;
       grandShippingCost += shipping.price;
       grandCommission += sellerCommission;
@@ -653,8 +657,8 @@ export const marketplaceService = {
         await repo.decrementStock(item.product_id, item.variant_id || undefined, item.quantity);
         const product = productMap.get(item.product_id);
         if (product) {
-          // Find which order this item belongs to
-          const itemOrderId = createdOrderIds[createdOrderIds.length - 1]; // last created = current seller's order
+          // Find which order this item belongs to via seller→orderId map
+          const itemOrderId = sellerToOrderId.get(product.seller_id) || createdOrderIds[createdOrderIds.length - 1];
           await repo.insertLedgerEntry({
             orderId: itemOrderId, organisationId: product.seller_id,
             entryType: 'inventory_deduction', amount: item.quantity,
@@ -700,10 +704,10 @@ export const marketplaceService = {
     // Emit order-placed event for each seller
     for (const [sellerId] of sellerItemGroups) {
       eventBusV2.emit('marketplace:order-placed', {
-        orderId: createdOrderIds[0],
+        orderId: sellerToOrderId.get(sellerId) || createdOrderIds[0],
         userId,
         sellerId,
-        total: grandTotal,
+        total: sellerToTotal.get(sellerId) || grandTotal,
         organisationId: sellerId,
         checkoutGroupId,
       });
