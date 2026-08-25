@@ -128,7 +128,7 @@ describe('cash subscription activation — organisation + accounting consistency
     expect(eventType).toBe('subscription_cash_payment');
     expect(sourceType).toBe('subscription');
     expect(sourceId).toBe(7);
-    expect(organisationId).toBe(6);
+    expect(organisationId).toBeNull();
     expect(concepts).toEqual({ cash_bank: 500, revenue: 500 });
     expect(currency).toBe('EGP');
     // Posting participates in the activation transaction (atomic)
@@ -182,7 +182,7 @@ describe('cash subscription activation — organisation + accounting consistency
     expect(eventType).toBe('subscription_cash_payment');
     expect(sourceType).toBe('subscription');
     expect(sourceId).toBe(7);
-    expect(organisationId).toBe(6);
+    expect(organisationId).toBeNull();
     expect(concepts).toEqual({ cash_bank: 500, revenue: 500 });
     // Back-fill runs in its OWN transaction (original activation long gone): no outerConn passed
     expect(mockPostAccountingEvent.mock.calls[0][6]).toContain('back-fill');

@@ -229,15 +229,15 @@ async function seedPostableCoA(): Promise<{
      VALUES ('subscription_cash_payment', NULL, 'cash_bank', ?, 1), ('subscription_cash_payment', NULL, 'revenue', ?, 1)`,
     [cashLeaf, revLeaf],
   );
-  // Card subscription payments post through the generic 'card_payment' event
-  // (payment_clearing + revenue). Give it the same postable test leaves — the
-  // production chart evolved its own L4 leaves; the fresh clone lacks them.
+  // Card subscription payments post through the dedicated
+  // 'subscription_card_payment' event (payment_clearing + revenue) — Phase 1
+  // Model B: subscriptions never ride the generic card_payment mapping.
   await pool.execute(
-    "DELETE FROM accounting_event_mapping_lines WHERE event_type='card_payment'",
+    "DELETE FROM accounting_event_mapping_lines WHERE event_type='subscription_card_payment'",
   );
   await pool.execute(
     `INSERT INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
-     VALUES ('card_payment', NULL, 'payment_clearing', ?, 1), ('card_payment', NULL, 'revenue', ?, 1)`,
+     VALUES ('subscription_card_payment', NULL, 'payment_clearing', ?, 1), ('subscription_card_payment', NULL, 'revenue', ?, 1)`,
     [cashLeaf, revLeaf],
   );
   return {
@@ -385,7 +385,7 @@ describe('Cash subscription approval - REAL accounting posting path (integration
 
     // - ledger_entries: exactly 2 rows, debit 1120 / credit 4100, exact amount -
     const [ledger] = await gp().execute<RowData>(
-      `SELECT le.side, le.amount, le.currency, coa.code AS account_code
+      `SELECT le.side, le.amount, le.currency, le.organisation_id, coa.code AS account_code
        FROM ledger_entries le
        JOIN chart_of_accounts coa ON coa.id = le.chart_account_id
        WHERE le.source_type = 'subscription' AND le.source_id = ? AND le.event_type = 'subscription_cash_payment'
@@ -400,6 +400,10 @@ describe('Cash subscription approval - REAL accounting posting path (integration
     expect(credit.account_code).toBe(coa.revenueLeafCode);
     expect(Number(credit.amount)).toBe(777);
     expect(debit.currency).toBe('EGP');
+    // MODEL B: subscription postings are platform revenue — never attributed
+    // to the paying organisation's GL view.
+    expect(debit.organisation_id).toBeNull();
+    expect(credit.organisation_id).toBeNull();
 
     // - general_ledger projection exists for both legs -
     const [gl] = await gp().execute<RowData>(
@@ -739,11 +743,11 @@ describe('SELLER subscription accounting parity - REAL engine (integration)', ()
     );
     expect(cashRows).toHaveLength(0);
 
-    // B/E: exactly one balanced card_payment posting @ exact paid amount
+    // B/E: exactly one balanced card subscription posting @ exact paid amount
     const [card] = await gp().execute<RowData>(
-      `SELECT le.side, le.amount, coa.code AS account_code
+      `SELECT le.side, le.amount, le.organisation_id, coa.code AS account_code
        FROM ledger_entries le JOIN chart_of_accounts coa ON coa.id=le.chart_account_id
-       WHERE le.source_type='subscription' AND le.source_id=? AND le.event_type='card_payment'
+       WHERE le.source_type='subscription' AND le.source_id=? AND le.event_type='subscription_card_payment'
        ORDER BY le.side`,
       [fx.requestId],
     );
@@ -754,6 +758,9 @@ describe('SELLER subscription accounting parity - REAL engine (integration)', ()
     expect(credit.account_code).toBe(coa.revenueLeafCode);
     expect(Number(debit.amount)).toBe(777);
     expect(Number(credit.amount)).toBe(777);
+    // MODEL B: platform revenue — no organisation attribution on either leg
+    expect(debit.organisation_id).toBeNull();
+    expect(credit.organisation_id).toBeNull();
 
     // F: duplicate payment:succeeded events must not duplicate entries
     await eventBusV2.emit('payment:succeeded', {
@@ -764,7 +771,7 @@ describe('SELLER subscription accounting parity - REAL engine (integration)', ()
       metadata: { paymentMethod: 'card', currency: 'EGP' },
     });
     const [afterDup] = await gp().execute<RowData>(
-      "SELECT 1 FROM ledger_entries WHERE source_type='subscription' AND source_id=? AND event_type='card_payment'",
+      "SELECT 1 FROM ledger_entries WHERE source_type='subscription' AND source_id=? AND event_type='subscription_card_payment'",
       [fx.requestId],
     );
     expect(afterDup).toHaveLength(2);

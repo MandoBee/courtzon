@@ -45,10 +45,28 @@ export const EVENT_CONCEPTS: Record<string, { debit: string[]; credit: string[] 
   // Subscription paid in cash — admin approval of an offline cash subscription
   // IS the collection evidence (the registrant handed money to CourtZon).
   // Platform subscription revenue: debit Cash/Bank, credit Revenue.
-  // Posted from subscription-activation.service inside the activation
+  // Posted from subscription-activation.service inside the same
   // transaction; idempotent via uk_dedup(source_type='subscription').
+  //
+  // MODEL B PRINCIPLE (Phase 1): subscriptions are 100% CourtZon platform
+  // revenue — CourtZon is the PRINCIPAL selling its own service. Postings go
+  // to account 4170 via mapping, and organisation_id stays NULL: the paying
+  // org is a customer counterparty, not a bookkeeping party here.
   subscription_cash_payment: {
     debit: ['cash_bank'],
+    credit: ['revenue'],
+  },
+  // Card-paid subscription — dedicated event so subscriptions never ride the
+  // generic card_payment mapping (which other flows may repoint). Same
+  // principal-revenue treatment: debit Payment Clearing, credit 4170.
+  subscription_card_payment: {
+    debit: ['payment_clearing'],
+    credit: ['revenue'],
+  },
+  // Wallet-funded subscription — buyer's stored value moves from the customer
+  // wallet liability into platform revenue.
+  subscription_wallet_payment: {
+    debit: ['wallet_liability_spend'],
     credit: ['revenue'],
   },
   // Marketplace COD delivery — the merchant physically collected cash from the

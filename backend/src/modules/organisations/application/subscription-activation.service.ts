@@ -430,7 +430,10 @@ export async function tryActivateSubscriptionRequest(
             'subscription_cash_payment',
             'subscription',
             requestId,
-            req.organisation_id,
+            // MODEL B: subscription fees are 100% CourtZon platform revenue
+            // (account 4170). The paying org is a customer counterparty — the
+            // posting must NOT be attributed to the org's GL view.
+            null,
             { cash_bank: approvedAmount, revenue: approvedAmount },
             'EGP',
             `Cash subscription payment (back-fill) — request #${requestId}${req.requested_plan_name ? ` (${req.requested_plan_name})` : ''}`,
@@ -573,7 +576,9 @@ export async function tryActivateSubscriptionRequest(
         'subscription_cash_payment',
         'subscription',
         requestId,
-        req.organisation_id,
+        // MODEL B: platform revenue — organisation_id stays NULL (see Phase 1
+        // subscription accounting principle).
+        null,
         { cash_bank: cashAmount, revenue: cashAmount },
         'EGP',
         `Cash subscription payment — request #${requestId}${req.requested_plan_name ? ` (${req.requested_plan_name})` : ''}`,

@@ -361,9 +361,28 @@ AND NOT EXISTS (SELECT 1 FROM accounting_event_mapping_lines WHERE event_type = 
 
 -- 24. subscription_cash_payment — cash subscription collected via admin approval
 -- (admin confirmation of an offline cash subscription is the collection evidence)
+-- MODEL B: subscription fees are 100% CourtZon platform revenue → 4170.
 INSERT INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
 SELECT 'subscription_cash_payment', NULL, 'cash_bank', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '1120'
 AND NOT EXISTS (SELECT 1 FROM accounting_event_mapping_lines WHERE event_type = 'subscription_cash_payment' AND organisation_id IS NULL AND concept = 'cash_bank');
 INSERT INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
-SELECT 'subscription_cash_payment', NULL, 'revenue', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '4100'
+SELECT 'subscription_cash_payment', NULL, 'revenue', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '4170'
 AND NOT EXISTS (SELECT 1 FROM accounting_event_mapping_lines WHERE event_type = 'subscription_cash_payment' AND organisation_id IS NULL AND concept = 'revenue');
+
+-- 25. subscription_card_payment — card-paid subscription (dedicated event;
+-- never the generic card_payment mapping). Dr Payment Clearing / Cr 4170.
+INSERT INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
+SELECT 'subscription_card_payment', NULL, 'payment_clearing', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '1100'
+AND NOT EXISTS (SELECT 1 FROM accounting_event_mapping_lines WHERE event_type = 'subscription_card_payment' AND organisation_id IS NULL AND concept = 'payment_clearing');
+INSERT INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
+SELECT 'subscription_card_payment', NULL, 'revenue', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '4170'
+AND NOT EXISTS (SELECT 1 FROM accounting_event_mapping_lines WHERE event_type = 'subscription_card_payment' AND organisation_id IS NULL AND concept = 'revenue');
+
+-- 26. subscription_wallet_payment — wallet-funded subscription.
+-- Dr Customer Wallet Liability / Cr 4170.
+INSERT INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
+SELECT 'subscription_wallet_payment', NULL, 'wallet_liability_spend', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '2100'
+AND NOT EXISTS (SELECT 1 FROM accounting_event_mapping_lines WHERE event_type = 'subscription_wallet_payment' AND organisation_id IS NULL AND concept = 'wallet_liability_spend');
+INSERT INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
+SELECT 'subscription_wallet_payment', NULL, 'revenue', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '4170'
+AND NOT EXISTS (SELECT 1 FROM accounting_event_mapping_lines WHERE event_type = 'subscription_wallet_payment' AND organisation_id IS NULL AND concept = 'revenue');
