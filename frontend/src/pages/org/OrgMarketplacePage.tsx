@@ -105,7 +105,8 @@ export default function OrgMarketplacePage() {
       ) : !prods?.data?.length ? (
         <div className="bg-[var(--color-surface)] rounded-xl p-8 text-center border"><p className="text-[var(--color-text-muted)]">No products. Click + Add Product to create one.</p></div>
       ) : (
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+        <div className="max-w-7xl w-full mx-auto">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
           {prods.data.map((p: any) => (
             <div key={p.id} className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] overflow-hidden hover:shadow-md transition-shadow group">
               <div className="aspect-square bg-[var(--color-border)] bg-[var(--color-surface)] relative">
@@ -131,6 +132,7 @@ export default function OrgMarketplacePage() {
               </div>
             </div>
           ))}
+        </div>
         </div>
       )}
 
