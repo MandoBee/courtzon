@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import api from '../../services/api';
 import { useToast } from '../../components/ui/Toast';
 import { formatPrice } from '../../utils/currency';
@@ -22,6 +22,7 @@ export default function OrgOrdersPage() {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
   const navigate = useNavigate();
+  const { orgId } = useParams<{ orgId: string }>();
   const [page, setPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState('');
 
@@ -77,7 +78,7 @@ export default function OrgOrdersPage() {
             const shipping = Number(order.shipping_cost || 0);
             const subtotal = Number(order.subtotal || 0);
             return (
-            <div key={order.id} className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] border border-[var(--color-border)] hover:border-[var(--color-primary)] transition-colors cursor-pointer" onClick={() => navigate(`/marketplace/orders/${order.id}`)}>
+            <div key={order.id} className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] border border-[var(--color-border)] hover:border-[var(--color-primary)] transition-colors cursor-pointer" onClick={() => navigate(`/org/${orgId}/orders/${order.id}`)}>
               {/* Header */}
               <div className="flex items-center gap-3 px-4 py-3 border-b border-[var(--color-border)] text-xs text-[var(--color-text-muted)]">
                 <span className="font-mono text-[var(--color-text)]">#{order.public_id?.slice(0, 8) || order.id}</span>

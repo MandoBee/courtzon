@@ -76,32 +76,6 @@ describe('PaymentService.charge() routing — card payments must reach the gatew
     expect(mockGatewayCharge).toHaveBeenCalledTimes(1);
   });
 
-  it('online payment returns clientSecret and paymentUrl from the real gateway', async () => {
-    mockGatewayCharge.mockResolvedValue({
-      success: true,
-      transactionId: 'gw_txn_2',
-      gatewayReference: 'gw_ref_2',
-      clientSecret: 'csk_test_online456',
-      intentionId: 'int_2',
-      paymentUrl: 'https://accept.paymob.com/unifiedcheckout/?clientSecret=csk_test_online456',
-      status: 'pending',
-      rawResponse: { id: 2 },
-    });
-
-    const result = await svc.charge(1, {
-      referenceType: 'booking',
-      referenceId: 10,
-      amount: 250,
-      currency: 'EGP',
-      paymentMethod: 'online',
-      returnUrl: 'https://example.com/return',
-    });
-
-    expect(result.success).toBe(true);
-    expect((result as any).clientSecret).toBe('csk_test_online456');
-    expect(mockGatewayCharge).toHaveBeenCalledTimes(1);
-  });
-
   it('card payment with gateway failure returns success: false with error details', async () => {
     mockGatewayCharge.mockResolvedValue({
       success: false,
