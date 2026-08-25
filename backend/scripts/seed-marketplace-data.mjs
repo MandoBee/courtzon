@@ -25,6 +25,12 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const API_URL = process.env.API_URL || 'http://localhost:3000';
 const UPLOADS_ROOT = join(__dirname, '..', 'uploads');
 const DRY_RUN = process.argv.includes('--dry-run');
+const SEED_PASSWORD = process.env.SEED_PASSWORD || '123456';
+
+// LIVE_MODE: when targeting the production DB/API, use external placeholder
+// image URLs (production stores images in products.images only, served from a
+// CDN). Local dev writes real files to backend/uploads + product_images rows.
+const LIVE_MODE = !process.env.API_URL || !process.env.API_URL.includes('localhost');
 
 const DB = {
   host: process.env.DB_HOST || '127.0.0.1',
@@ -38,18 +44,18 @@ const DB = {
 const MARKER = 'TEST/MARKETPLACE-SEED';
 const TAG = 'MS'; // short tag for shop slug / names
 
-// ── Reference data (created only if missing) ──
+// ── Reference data (created only if missing; reuses existing on live DB) ──
 const CATEGORIES = [
-  { name: 'Rackets', slug: 'ms-rackets', sport: 'padel' },
-  { name: 'Balls', slug: 'ms-balls', sport: 'padel' },
-  { name: 'Court Shoes', slug: 'ms-court-shoes', sport: 'padel' },
-  { name: 'Tennis Rackets', slug: 'ms-tennis-rackets', sport: 'tennis' },
-  { name: 'Football Boots', slug: 'ms-football-boots', sport: 'football' },
-  { name: 'Gym Apparel', slug: 'ms-gym-apparel', sport: 'gym' },
-  { name: 'Fitness Equipment', slug: 'ms-fitness-equipment', sport: 'gym' },
-  { name: 'Training Bags', slug: 'ms-training-bags', sport: null },
-  { name: 'Accessories', slug: 'ms-accessories', sport: null },
-  { name: 'Hydration', slug: 'ms-hydration', sport: null },
+  { name: 'Rackets', slug: 'rackets', sport: 'padel' },
+  { name: 'Balls', slug: 'balls', sport: 'padel' },
+  { name: 'Court Shoes', slug: 'court-shoes', sport: 'padel' },
+  { name: 'Tennis Rackets', slug: 'rackets', sport: 'tennis', useName: 'Rackets' },
+  { name: 'Football Boots', slug: 'football-boots', sport: 'football' },
+  { name: 'Gym Apparel', slug: 'gym-apparel', sport: 'gym' },
+  { name: 'Fitness Equipment', slug: 'fitness-equipment', sport: 'gym' },
+  { name: 'Training Bags', slug: 'bags', sport: null },
+  { name: 'Accessories', slug: 'accessories', sport: null },
+  { name: 'Hydration', slug: 'nutrition-hydration', sport: null },
 ];
 
 const BRANDS = [
@@ -495,12 +501,6 @@ function getCategoryId(catName) {
   return CATEGORIES.find((c) => c.name === catName)?.slug;
 }
 
-// eslint-disable-next-line no-unused-vars
-function log(step, ok, detail = '') {
-  console.log(`${ok ? 'PASS' : 'FAIL'}  ${step}${detail ? ' — ' + detail : ''}`);
-  return ok;
-}
-
 // ── Main ──
 const results = [];
 function record(step, ok, detail = '') {
@@ -514,8 +514,8 @@ async function main() {
   if (!admin) throw new Error('Admin login failed');
 
   // 1. Create realistic categories + brands via admin API (idempotent)
-  const catIds = await ensureCategories(admin);
-  const brandIds = await ensureBrands(admin);
+  const catIds = await ensureCategories(admin, pool);
+  const brandIds = await ensureBrands(admin, pool);
 
   // 2. Create shops via register-seller (free plan -> auto-approved)
   const shops = [];
@@ -540,30 +540,38 @@ async function main() {
 }
 
 async function loginAdmin(pool) {
-  // diag-admin super_admin (01511111101) — set known password if needed
-  const { hashPassword } = await import('./load-file-env.js').catch(() => ({}));
-  const [rows] = await pool.execute(`SELECT id, phone_number FROM users WHERE id = 1000382 LIMIT 1`);
+  // Resolve the platform super_admin from the DB (works on live + local).
+  const [rows] = await pool.execute(
+    `SELECT u.id, u.phone_number FROM users u
+     JOIN user_roles ur ON ur.user_id = u.id AND ur.is_active = TRUE
+     JOIN roles r ON r.id = ur.role_id
+     WHERE r.slug = 'super_admin' AND u.deleted_at IS NULL
+     ORDER BY u.id LIMIT 1`
+  );
   if (!rows.length) return null;
-  // Ensure the admin password is known for the seed run
-  const { pbkdf2Sync, randomBytes } = await import('node:crypto');
-  const toB64 = (b) => b.toString('base64').replace(/\+/g, '-').replace(/\//g, '_');
-  const salt = randomBytes(32);
-  const hash = pbkdf2Sync('Test123456!', salt, 210000, 64, 'sha512');
-  const v = Buffer.from([2]); const it = Buffer.alloc(4); it.writeUInt32BE(210000); const kl = Buffer.alloc(2); kl.writeUInt16BE(64);
-  await pool.execute(`UPDATE users SET password_hash = ? WHERE id = ?`, [`$pbkdf2-sha512$${toB64(Buffer.concat([v, it, kl, salt, hash]))}`, rows[0].id]);
-  const res = await api('POST', '/auth/login', { body: { phoneNumber: '01511111101', countryCode: '+20', password: 'Test123456!' } });
+  const admin = rows[0];
+  const res = await api('POST', '/auth/login', { body: { phoneNumber: admin.phone_number, countryCode: '+20', password: SEED_PASSWORD } });
   const cookies = cookiesFrom(res);
-  record('admin login', res.status === 200, `status=${res.status}`);
+  record('admin login', res.status === 200, `status=${res.status} user=${admin.id}`);
   return cookies;
 }
 
-async function ensureCategories(adminCookies) {
+async function ensureCategories(adminCookies, pool) {
   const map = {};
+  // Prefer resolving from the live DB (existing reference data) — no duplicates.
+  const [rows] = await pool.execute(
+    `SELECT id, name, slug FROM product_categories WHERE is_active = 1`
+  );
+  const byName = new Map((rows || []).map((r) => [r.name.toLowerCase(), r.id]));
+  const bySlug = new Map((rows || []).map((r) => [r.slug, r.id]));
   for (const c of CATEGORIES) {
-    // find existing
-    const list = await api('GET', '/admin/product-categories', { cookies: adminCookies });
-    const existing = (list.body?.data || []).find((x) => x.slug === c.slug);
-    if (existing) { map[c.name] = existing.id; record(`category ${c.name}`, true, `reused id=${existing.id}`); continue; }
+    const resolved = byName.get(c.name.toLowerCase()) || bySlug.get(c.slug)
+      || (c.useName ? byName.get(c.useName.toLowerCase()) : null) || bySlug.get('bags');
+    if (resolved) {
+      map[c.name] = resolved;
+      record(`category ${c.name}`, true, `reused id=${resolved}`);
+      continue;
+    }
     const res = await api('POST', '/admin/product-categories', { cookies: adminCookies, body: { name: c.name, slug: c.slug, description: 'TEST/MARKETPLACE-SEED reference category', sortOrder: 1 } });
     const id = res.body?.id || res.body?.categoryId || null;
     map[c.name] = id;
@@ -572,12 +580,13 @@ async function ensureCategories(adminCookies) {
   return map;
 }
 
-async function ensureBrands(adminCookies) {
+async function ensureBrands(adminCookies, pool) {
   const map = {};
+  const [rows] = await pool.execute(`SELECT id, name FROM brands`);
+  const byName = new Map((rows || []).map((r) => [r.name.toLowerCase(), r.id]));
   for (const name of BRANDS) {
-    const list = await api('GET', '/admin/brands', { cookies: adminCookies });
-    const existing = (list.body?.data || []).find((x) => x.name === name);
-    if (existing) { map[name] = existing.id; continue; }
+    const existing = byName.get(name.toLowerCase());
+    if (existing) { map[name] = existing; continue; }
     const res = await api('POST', '/admin/brands', { cookies: adminCookies, body: { name, slug: name.toLowerCase(), description: 'TEST/MARKETPLACE-SEED brand', sortOrder: 1 } });
     map[name] = res.body?.id || null;
   }
@@ -586,15 +595,18 @@ async function ensureBrands(adminCookies) {
 }
 
 async function ensureShop(pool, def) {
-  // Existing shop? Match by name + marker email
+  // Existing shop? Match by name (works on live DB where Shop 1/2/3/5 exist)
   const [existing] = await pool.execute(
-    `SELECT o.id FROM organisations o JOIN users u ON u.id = o.owner_id WHERE o.name = ? AND u.email = ? AND o.deleted_at IS NULL LIMIT 1`,
-    [def.name, def.email]
+    `SELECT o.id, o.owner_id FROM organisations o WHERE o.name = ? AND o.org_type_id = 10 AND o.deleted_at IS NULL LIMIT 1`,
+    [def.name]
   );
   if (existing.length) {
-    record(`shop ${def.name}`, true, `reused id=${existing[0].id}`);
-    return { id: existing[0].id, name: def.name, owner: def };
+    const [u] = await pool.execute(`SELECT id, phone_number, email FROM users WHERE id = ? LIMIT 1`, [existing[0].owner_id]);
+    record(`shop ${def.name}`, true, `reused id=${existing[0].id} owner=${u[0]?.id}`);
+    const owner = { ...def, phone: u[0]?.phone_number || def.phone, email: u[0]?.email || def.email };
+    return { id: existing[0].id, name: def.name, owner };
   }
+  // Otherwise register via the app flow (local/test DB where shops are missing)
   const res = await api('POST', '/auth/register-seller', { body: {
     countryId: 1, countryCode: '+20', phoneNumber: def.phone, password: 'Test123456!',
     fullName: def.fullName, email: def.email, gender: 'male', timezone: 'UTC',
@@ -624,16 +636,7 @@ async function seedProducts(pool, shops, catIds, brandIds) {
 }
 
 async function loginShopOwner(pool, def) {
-  const [u] = await pool.execute(`SELECT id FROM users WHERE email = ? LIMIT 1`, [def.email]);
-  if (u.length) {
-    const { pbkdf2Sync, randomBytes } = await import('node:crypto');
-    const toB64 = (b) => b.toString('base64').replace(/\+/g, '-').replace(/\//g, '_');
-    const salt = randomBytes(32);
-    const hash = pbkdf2Sync('Test123456!', salt, 210000, 64, 'sha512');
-    const v = Buffer.from([2]); const it = Buffer.alloc(4); it.writeUInt32BE(210000); const kl = Buffer.alloc(2); kl.writeUInt16BE(64);
-    await pool.execute(`UPDATE users SET password_hash = ? WHERE id = ?`, [`$pbkdf2-sha512$${toB64(Buffer.concat([v, it, kl, salt, hash]))}`, u[0].id]);
-  }
-  const res = await api('POST', '/auth/login', { body: { phoneNumber: def.phone, countryCode: '+20', password: 'Test123456!' } });
+  const res = await api('POST', '/auth/login', { body: { phoneNumber: def.phone, countryCode: '+20', password: SEED_PASSWORD } });
   return cookiesFrom(res);
 }
 
@@ -769,6 +772,15 @@ async function applyApprovalMix(pool, adminCookies, shops, products) {
 
 async function persistImages(pool, productId, sellerId, productName, categoryName) {
   try {
+    // Production pattern: external CDN/placeholder URLs in products.images JSON.
+    if (LIVE_MODE) {
+      const slug = (productName + '-' + categoryName).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+      return [
+        `https://placehold.co/800x800/1a1a2e/e94560?text=${encodeURIComponent(slug.slice(0, 40))}`,
+        `https://placehold.co/800x800/0f3460/e3e3e3?text=View+2`,
+        `https://placehold.co/800x800/2d3436/00cec9?text=View+3`,
+      ];
+    }
     const dir = `marketplace/${sellerId}/products/${productId}`;
     const urls = [];
     for (let i = 0; i < 3; i++) {
