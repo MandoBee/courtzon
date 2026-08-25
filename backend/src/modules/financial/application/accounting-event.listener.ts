@@ -419,6 +419,25 @@ export function registerAccountingEventListeners(): void {
         return;
       }
 
+      // ── Subscription payment → principal platform revenue (Model B) ──
+      // Subscriptions are 100% CourtZon's own service revenue. Dedicated
+      // subscription_* events keep them on account 4170 (never the generic
+      // card_payment mapping / 4100) and organisation_id stays NULL: the
+      // paying org is a customer, not a bookkeeping party. Renewals use the
+      // identical request+activation machinery, so they inherit this path.
+      if (referenceType === 'subscription') {
+        const eventType = paymentMethod === 'wallet' ? 'subscription_wallet_payment' : 'subscription_card_payment';
+        await postAccountingEvent(
+          eventType, 'subscription', referenceId, null,
+          eventType === 'subscription_wallet_payment'
+            ? { wallet_liability_spend: amount, revenue: amount }
+            : { payment_clearing: amount, revenue: amount },
+          currency,
+          `Subscription #${referenceId} payment`,
+        );
+        return;
+      }
+
       // ── Booking payment → booking-specific accounting (full economic split) ──
       // A booking payment must NOT post a generic full-gross revenue entry.
       // Instead resolve the authoritative economics (org share, commission,
