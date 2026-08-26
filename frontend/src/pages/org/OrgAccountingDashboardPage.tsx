@@ -29,7 +29,7 @@ export default function OrgAccountingDashboardPage() {
             { label: 'Issued Invoices', value: s.issued_invoices, color: 'bg-blue-400' },
             { label: 'Paid Invoices', value: s.paid_invoices, color: 'bg-green-400' },
             { label: 'Cancelled Invoices', value: s.cancelled_invoices, color: 'bg-red-400' },
-            { label: 'Net Income (FY)', value: fmt(s.net_income), color: 'bg-purple-500' },
+            { label: 'GL Net Income (Accounting)', value: fmt(s.net_income), color: 'bg-purple-500' },
           ].map((c) => (
             <div key={c.label} className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] p-4 border">
               <div className={`w-3 h-3 rounded-full ${c.color} mb-2`} />
@@ -38,6 +38,10 @@ export default function OrgAccountingDashboardPage() {
             </div>
           ))}
         </div>
+
+        <p className="text-xs text-[var(--color-text-muted)] leading-relaxed mb-8 max-w-3xl">
+          GL Net Income is the accounting/reporting result derived from your organisation's slice of CourtZon's general ledger. It is not your settlement earnings — your settlement position is tracked separately by financial entitlements (see Financial Position).
+        </p>
 
         <h2 className="text-lg font-semibold text-[var(--color-text)] mb-4">Quick Links</h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
