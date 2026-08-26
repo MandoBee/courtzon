@@ -166,6 +166,38 @@ export class PositionService {
       position,
     };
   }
+
+  /**
+   * Seller settlement balance summary — compatible shape for the existing
+   * marketplace seller settlement endpoint. Reads ONLY financial_entitlements.
+   * Replaces the legacy getSettlementBalanceBySeller as the canonical source.
+   */
+  async getSellerBalanceSummary(orgId: number): Promise<{
+    available_balance: number;
+    pending_fee: number;
+    unsettled_orders: number;
+  }> {
+    const rows = await positionRepository.collectorBreakdown(orgId, ['AVAILABLE']);
+    let available = 0, fee = 0, count = 0;
+    for (const r of rows) {
+      const amt = Number(r.total);
+      if (r.entitlementType === 'ORGANIZATION_EARNING' && r.collector === 'courtzon') available += amt;
+      else if (r.entitlementType === 'ORGANIZATION_ADJUSTMENT' && r.collector === 'courtzon') available += amt;
+      else if (r.entitlementType === 'COURTZON_COMMISSION') fee += amt;
+    }
+    // Count of distinct sources contributing to the available balance
+    const detail = await positionRepository.openPositions(orgId);
+    const availableSources = new Set(
+      detail.filter((d) => d.status === 'AVAILABLE').map((d) => `${d.source_type}#${d.source_id}`),
+    );
+    count = availableSources.size;
+
+    return {
+      available_balance: round2(available),
+      pending_fee: round2(fee),
+      unsettled_orders: count,
+    };
+  }
 }
 
 export const positionService = new PositionService();

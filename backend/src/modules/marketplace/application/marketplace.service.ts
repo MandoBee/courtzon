@@ -1822,13 +1822,15 @@ export const marketplaceService = {
   async getSettlementBalanceByUser(userId: number) {
     const orgIds = await this._resolveSellerOrgIds(userId);
     if (!orgIds.length) throw new ForbiddenError('No seller account found');
-    // Aggregate across every organisation the user sells through.
+    // Phase 2 Step 3: delegate to PositionService — the canonical facade over
+    // financial_entitlements (single authority). Legacy repo method superseded.
+    const { positionService } = await import('../../financial/application/position.service.js');
     let available = 0, fee = 0, count = 0;
     for (const oid of orgIds) {
-      const balance = await repo.getSettlementBalanceBySeller(oid);
-      available += Number(balance.available_balance || 0);
-      fee += Number(balance.pending_fee || 0);
-      count += Number(balance.order_count || 0);
+      const balance = await positionService.getSellerBalanceSummary(oid);
+      available += balance.available_balance;
+      fee += balance.pending_fee;
+      count += balance.unsettled_orders;
     }
     return {
       available_balance: Math.round(available * 100) / 100,
