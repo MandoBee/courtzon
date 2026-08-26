@@ -754,23 +754,9 @@ describe('Multi-seller order split', () => {
         paymentMethod: 'wallet',
       });
 
-      // Expect 2 ledger entries — one per cart item
-      expect(repoMock.insertLedgerEntry).toHaveBeenCalledTimes(2);
-
-      const ledgerCalls = repoMock.insertLedgerEntry.mock.calls.map((c: any[]) => c[0]);
-
-      // Item A (seller A) must reference seller A's order
-      const ledgerA = ledgerCalls.find((e: any) => e.metadata?.productId === productA.id);
-      expect(ledgerA).toBeDefined();
-      expect(ledgerA.organisationId).toBe(SELLER_A);
-      // The orderId should be the first created order (seller A's order)
-      expect(ledgerA.orderId).toBe(createdOrderIds[0]);
-
-      // Item B (seller B) must reference seller B's order
-      const ledgerB = ledgerCalls.find((e: any) => e.metadata?.productId === productB.id);
-      expect(ledgerB).toBeDefined();
-      expect(ledgerB.organisationId).toBe(SELLER_B);
-      expect(ledgerB.orderId).toBe(createdOrderIds[1]);
+      // Phase 2 Step 5: marketplace_ledger_entries no longer written.
+      // Stock deduction verified by decrementStock calls instead.
+      expect(repoMock.decrementStock).toHaveBeenCalledTimes(2);
     });
   });
 
