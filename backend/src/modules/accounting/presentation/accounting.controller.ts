@@ -1196,6 +1196,55 @@ export async function listJournalEntriesHandler(request: FastifyRequest, reply: 
   return reply.send({ data: rows });
 }
 
+/** Read-only CSV export of GL journal entries â€” same filters, all rows (no LIMIT). */
+export async function exportJournalEntriesHandler(request: FastifyRequest, reply: FastifyReply) {
+  const pool = getPool();
+  const query = request.query as any;
+  const params: any[] = [];
+  const conditions: string[] = [];
+
+  if (query.periodId) { conditions.push('gl.period_id = ?'); params.push(Number(query.periodId)); }
+  if (query.accountId) { conditions.push('gl.account_id = ?'); params.push(Number(query.accountId)); }
+  if (query.from) { conditions.push('gl.entry_date >= ?'); params.push(query.from); }
+  if (query.to) { conditions.push('gl.entry_date <= ?'); params.push(query.to); }
+  if (query.referenceType) { conditions.push('gl.reference_type = ?'); params.push(query.referenceType); }
+  if (query.referenceId) { conditions.push('gl.reference_id = ?'); params.push(Number(query.referenceId)); }
+
+  const where = conditions.length ? 'WHERE ' + conditions.join(' AND ') : '';
+  const [rows] = await pool.execute<RowData>(
+    `SELECT gl.*, a.code AS account_code, a.name AS account_name
+     FROM general_ledger gl
+     JOIN chart_of_accounts a ON a.id = gl.account_id
+     ${where}
+     ORDER BY gl.entry_date DESC, gl.id DESC`,
+    params
+  );
+
+  const headers = [
+    'Entry ID', 'Date', 'Account Code', 'Account Name', 'Organisation ID',
+    'Debit', 'Credit', 'Balance', 'Reference Type', 'Reference ID', 'Description',
+  ];
+  const data = rows.map((r: any) => [
+    r.id,
+    r.entry_date ? new Date(r.entry_date).toISOString() : '',
+    r.account_code ?? '',
+    r.account_name ?? '',
+    r.organisation_id ?? '',
+    r.debit ?? 0,
+    r.credit ?? 0,
+    r.balance ?? '',
+    r.reference_type ?? '',
+    r.reference_id ?? '',
+    r.description ?? '',
+  ]);
+
+  const { toCsv, csvFilename } = await import('../../../shared/utils/csv.js');
+  const csv = toCsv(headers, data);
+  reply.header('Content-Type', 'text/csv; charset=utf-8');
+  reply.header('Content-Disposition', `attachment; filename="${csvFilename('general-ledger')}"`);
+  return reply.send(csv);
+}
+
 export async function listInvoicesHandler(request: FastifyRequest, reply: FastifyReply) {
   const pool = getPool();
   const query = request.query as any;
@@ -2145,7 +2194,7 @@ export async function yearCloseReopenHandler(request: FastifyRequest, reply: Fas
 // (replaces existing openPeriodHandler with added locked check)
 
 
-// -- Position Reconciliation (Phase 2 Step 1 — READ-ONLY) ------------------
+// -- Position Reconciliation (Phase 2 Step 1 ï¿½ READ-ONLY) ------------------
 // Compares financial_entitlements (single authoritative position subledger)
 // against GL control accounts (2200/1160 mirror). Pure SELECTs; never mutates.
 
@@ -2162,6 +2211,35 @@ export async function getPositionReconciliationListHandler(request: FastifyReque
       reports: query?.status === 'drift' ? reports.filter((r) => !r.reconciled) : reports,
     },
   });
+}
+
+/** Read-only CSV export of the reconciliation report (canonical reconcileAll). */
+export async function exportReconciliationHandler(request: FastifyRequest, reply: FastifyReply) {
+  const query = request.query as any;
+  const limit = Math.min(Number(query?.limit) || 200, 500);
+  const { reports } = await reconciliationService.reconcileAll({ limit });
+  const filtered = query?.status === 'drift' ? reports.filter((r) => !r.reconciled) : reports;
+
+  const headers = [
+    'Organisation ID', 'Organisation Name', 'Entitlement Net', 'GL Net',
+    'Difference', 'Direction', 'Reconciled', 'Affected Positions Count',
+  ];
+  const data = filtered.map((r: any) => [
+    r.organisationId,
+    r.organisationName ?? '',
+    r.entitlements?.net ?? 0,
+    r.gl?.net ?? 0,
+    r.difference ?? 0,
+    r.direction ?? '',
+    r.reconciled ? 'true' : 'false',
+    r.entitlements?.openCount ?? 0,
+  ]);
+
+  const { toCsv, csvFilename } = await import('../../../shared/utils/csv.js');
+  const csv = toCsv(headers, data);
+  reply.header('Content-Type', 'text/csv; charset=utf-8');
+  reply.header('Content-Disposition', `attachment; filename="${csvFilename('reconciliation')}"`);
+  return reply.send(csv);
 }
 
 export async function getOrgPositionReconciliationHandler(request: FastifyRequest, reply: FastifyReply) {

@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import api from '../../../services/api';
 import { Spinner, Pagination } from '../../../components/ui';
 import { Can } from '../../../permissions/Can';
+import { ExportCsvButton } from '../../../components/ui/ExportCsvButton';
 
 interface JournalEntry {
   id: number;
@@ -187,6 +188,16 @@ export default function GeneralLedgerPage() {
                 className="px-3 py-2 border rounded-[var(--radius-md)] bg-[var(--color-bg)] text-sm" />
               <input type="date" value={filters.date_to} onChange={e => setFilters({ ...filters, date_to: e.target.value })}
                 className="px-3 py-2 border rounded-[var(--radius-md)] bg-[var(--color-bg)] text-sm" />
+              <ExportCsvButton
+                endpoint="/admin/accounting/journal/export"
+                params={{
+                  periodId: filters.period_id || undefined,
+                  from: filters.date_from || undefined,
+                  to: filters.date_to || undefined,
+                }}
+                filename="general-ledger"
+                label="Export CSV"
+              />
             </div>
 
             <div className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] overflow-x-auto">

@@ -4,6 +4,7 @@ import api from '../../../services/api';
 import { Spinner } from '../../../components/ui';
 import { Can } from '../../../permissions/Can';
 import { useTranslation } from '../../../i18n';
+import { ExportCsvButton } from '../../../components/ui/ExportCsvButton';
 
 interface GlAccount {
   code: string;
@@ -176,6 +177,12 @@ export default function ReconciliationPage() {
             placeholder={t('accounting.reconciliation.search_placeholder', 'Search by name or ID…')}
             className="px-3 py-2 border rounded-[var(--radius-md)] bg-[var(--color-bg)] text-sm min-w-[200px]"
             aria-label={t('accounting.reconciliation.search', 'Search organisations')}
+          />
+          <ExportCsvButton
+            endpoint="/admin/accounting/reconciliation/export"
+            params={{ status: statusFilter === 'drift' ? 'drift' : undefined }}
+            filename="reconciliation"
+            label={t('accounting.reconciliation.export', 'Export CSV')}
           />
         </div>
 
