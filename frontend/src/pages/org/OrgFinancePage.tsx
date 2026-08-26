@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useParams } from 'react-router-dom';
+import { useParams, Link } from 'react-router-dom';
 import api from '../../services/api';
 import { Can } from '../../permissions/Can';
 import { useToast } from '../../components/ui/Toast';
@@ -277,8 +277,24 @@ export default function OrgFinancePage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-[var(--color-text)]">Finance</h1>
-          <p className="text-sm text-[var(--color-text-muted)]">View transactions and settlements</p>
+          <p className="text-sm text-[var(--color-text-muted)]">Operational transactions, settlements, and financial position</p>
         </div>
+        <Link
+          to={`/org/${orgId}/finance/position`}
+          className="px-3 py-1.5 rounded-[var(--radius-md)] border border-[var(--color-border)] text-sm text-[var(--color-primary)] hover:bg-[var(--color-bg)]"
+        >
+          Financial Position
+        </Link>
+      </div>
+
+      <div className="bg-[var(--color-bg)] border border-[var(--color-border)] rounded-[var(--radius-md)] p-3 text-xs text-[var(--color-text-muted)] leading-relaxed">
+        <p>
+          <strong className="text-[var(--color-text)]">Operational Transactions</strong> shows the organisation's day-to-day activity
+          history (booking payments, marketplace purchases, withdrawals, wallet payments, subscriptions) from the operational ledger.
+          It is <strong className="text-[var(--color-text)]">not</strong> your financial position or balance.
+          Your authoritative earnings, balances, and settlement position are shown on the{' '}
+          <Link to={`/org/${orgId}/finance/position`} className="text-[var(--color-primary)] underline">Financial Position</Link> page.
+        </p>
       </div>
 
       <div className="flex gap-1 border-b border-[var(--color-border)]">
@@ -288,7 +304,7 @@ export default function OrgFinancePage() {
               ? 'border-[var(--color-primary)] text-[var(--color-primary)]'
               : 'border-transparent text-[var(--color-text-muted)] hover:text-[var(--color-text)]'
           }`}>
-          Transactions
+          Operational Transactions
         </button>
         <button onClick={() => { setTab('settlements'); setStPage(1); }}
           className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
