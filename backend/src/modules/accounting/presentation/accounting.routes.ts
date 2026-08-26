@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { authMiddleware, requirePermission } from '../../../shared/middleware/auth.middleware.js';
+import { authMiddleware, requirePermission, requireRole } from '../../../shared/middleware/auth.middleware.js';
 import { requireOrgScopedPermission } from '../../../shared/middleware/route-guard.js';
 import * as ctrl from './accounting.controller.js';
 import * as tplCtrl from './template.controller.js';
@@ -22,8 +22,13 @@ export async function accountingRoutes(app: FastifyInstance): Promise<void> {
   app.delete('/org/:orgId/accounting/coa/customizations/:accountId', { preHandler: [orgAccountingManage] }, ctrl.orgResetCustomizationHandler);
 
   // ── Organisation-scoped Manual Journal ──
+  // P1-1: Org users must NOT create arbitrary manual entries in CourtZon's
+  // canonical general_ledger. The POST path is restricted to CourtZon platform
+  // accounting roles (super_admin / super-admin). Organisation journal viewing
+  // remains available to authorised org accounting users. CourtZon admins can
+  // still post org-scoped journals through /admin/accounting/journal.
   const orgJournalView = requireOrgScopedPermission('org.accounting.journal.view');
-  const orgJournalCreate = requireOrgScopedPermission('org.accounting.journal.create');
+  const orgJournalCreate = requireRole(['super_admin', 'super-admin']);
   app.get('/org/:orgId/accounting/journal', { preHandler: [orgJournalView] }, ctrl.orgJournalListHandler);
   app.post('/org/:orgId/accounting/journal', { preHandler: [orgJournalCreate] }, ctrl.orgJournalCreateHandler);
 
