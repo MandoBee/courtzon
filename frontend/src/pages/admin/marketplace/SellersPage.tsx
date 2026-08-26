@@ -46,7 +46,7 @@ export default function SellersPage() {
       </div>
       <div className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] overflow-x-auto">
         <table className="w-full text-sm">
-          <thead><tr className="border-b bg-[var(--color-bg)]/50"><th className="text-left px-4 py-3">Shop</th><th className="text-left px-4 py-3">Owner</th><th className="text-left px-4 py-3">Type</th><th className="text-left px-4 py-3">Products</th><th className="text-left px-4 py-3">Orders</th><th className="text-left px-4 py-3">Revenue</th><th className="text-left px-4 py-3">Organisation Status</th><th className="text-left px-4 py-3">Subscription Status</th><th className="text-right px-4 py-3">Actions</th></tr></thead>
+          <thead><tr className="border-b bg-[var(--color-bg)]/50"><th className="text-left px-4 py-3">Shop</th><th className="text-left px-4 py-3">Owner</th><th className="text-left px-4 py-3">Type</th><th className="text-left px-4 py-3">Products</th><th className="text-left px-4 py-3">Orders</th><th className="text-left px-4 py-3">Gross Sales</th><th className="text-left px-4 py-3">Organisation Status</th><th className="text-left px-4 py-3">Subscription Status</th><th className="text-right px-4 py-3">Actions</th></tr></thead>
           <tbody className="divide-y">
             {data?.data?.map((s: any) => (
               <tr key={s.id} className="hover:bg-[var(--color-bg)]/30">
@@ -154,7 +154,7 @@ export default function SellersPage() {
                 <div className="border-t pt-2 mt-2"><span className="text-[var(--color-text-muted)]">Stats</span></div>
                 <div className="flex justify-between"><span className="text-[var(--color-text-muted)]">Products</span><span>{detail.stats.active_products} active / {detail.stats.total_products} total</span></div>
                 <div className="flex justify-between"><span className="text-[var(--color-text-muted)]">Orders</span><span>{detail.stats.total_orders}</span></div>
-                <div className="flex justify-between"><span className="text-[var(--color-text-muted)]">Revenue</span><span>{Number(detail.stats.total_revenue).toFixed(2)}</span></div>
+                <div className="flex justify-between"><span className="text-[var(--color-text-muted)]">Gross Sales</span><span>{Number(detail.stats.total_revenue).toFixed(2)}</span></div>
               </>)}
             </div>
             <button onClick={() => setDetail(null)} className="mt-6 w-full px-4 py-2 border rounded-lg text-sm">Close</button>

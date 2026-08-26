@@ -51,26 +51,85 @@ export class LedgerRepository {
     return (rows as any[]).length > 0;
   }
 
-  async findByDateRange(from: string, to: string, accountType?: string): Promise<LedgerEntry[]> {
-    let sql = 'SELECT * FROM ledger_entries WHERE recorded_at >= ? AND recorded_at <= ?';
+  /**
+   * Canonical ledger read — the CourtZon GL book.
+   *
+   * Reads from `general_ledger` joined with `chart_of_accounts` (the same
+   * canonical source used by the Accounting module's trial balance / income
+   * statement / journal). The old `ledger_entries.account_type` filter is
+   * replaced by the COA relationship: filter by `chart_of_accounts.code`
+   * (e.g. "2100") or `chart_of_accounts.type` (e.g. "liability").
+   */
+  async findByDateRange(from: string, to: string, filter?: { accountCode?: string; accountType?: string }): Promise<any[]> {
+    let sql = `SELECT gl.id, gl.ledger_entry_id, gl.organisation_id, gl.period_id,
+                      gl.account_id, gl.entry_date, gl.debit, gl.credit, gl.balance,
+                      gl.reference_type AS source_type, gl.reference_id AS source_id,
+                      gl.description, gl.created_at,
+                      coa.code AS account_code, coa.name AS account_name, coa.type AS account_type
+               FROM general_ledger gl
+               JOIN chart_of_accounts coa ON coa.id = gl.account_id
+               WHERE gl.entry_date >= ? AND gl.entry_date <= ?`;
     const params: any[] = [from, to];
-    if (accountType) { sql += ' AND account_type = ?'; params.push(accountType); }
-    sql += ' ORDER BY id';
+    if (filter?.accountCode) { sql += ' AND coa.code = ?'; params.push(filter.accountCode); }
+    if (filter?.accountType) { sql += ' AND coa.type = ?'; params.push(filter.accountType); }
+    sql += ' ORDER BY gl.entry_date DESC, gl.id DESC';
     const [rows] = await this.pool.execute<RowData>(sql, params);
-    return rows as LedgerEntry[];
+    return (rows as any[]).map((r: any) => {
+      const debit = Number(r.debit || 0);
+      const credit = Number(r.credit || 0);
+      return {
+        id: r.id,
+        ledger_entry_id: r.ledger_entry_id,
+        recorded_at: r.created_at,
+        entry_date: r.entry_date,
+        transaction_id: r.ledger_entry_id,
+        source_type: r.source_type,
+        source_id: r.source_id,
+        account_type: r.account_type,
+        account_code: r.account_code,
+        account_name: r.account_name,
+        side: debit > 0 ? 'debit' : 'credit',
+        amount: debit > 0 ? debit : credit,
+        debit,
+        credit,
+        balance: Number(r.balance || 0),
+        organisation_id: r.organisation_id,
+        period_id: r.period_id,
+        account_id: r.account_id,
+        description: r.description,
+      };
+    });
   }
 
+  /**
+   * Canonical revenue summary — from `general_ledger` + `chart_of_accounts`.
+   * Groups by COA type and side (debit/credit), same classification logic as
+   * the Accounting module's income statement.
+   */
   async getRevenueSummary(from: string, to: string): Promise<RevenueSummary> {
     const [rows] = await this.pool.execute<RowData>(
-      `SELECT coa.type AS account_type, le.side, SUM(le.amount) as total, COUNT(*) as count
-       FROM ledger_entries le
-       JOIN chart_of_accounts coa ON coa.id = le.chart_account_id
-       WHERE le.recorded_at >= ? AND le.recorded_at <= ?
-       GROUP BY coa.type, le.side
-       ORDER BY coa.type`,
+      `SELECT coa.type AS account_type, gl.debit, gl.credit
+       FROM general_ledger gl
+       JOIN chart_of_accounts coa ON coa.id = gl.account_id
+       WHERE gl.entry_date >= ? AND gl.entry_date <= ?`,
       [from, to],
     );
-    return buildRevenueSummary(rows as unknown as Array<{ account_type: string; side: string; total: number | string; count: number | string }>);
+    const grouped = new Map<string, { credit: number; debit: number; count: number }>();
+    for (const r of rows as any[]) {
+      const key = r.account_type;
+      if (!grouped.has(key)) grouped.set(key, { credit: 0, debit: 0, count: 0 });
+      const g = grouped.get(key)!;
+      g.credit += Number(r.credit || 0);
+      g.debit += Number(r.debit || 0);
+      g.count += 1;
+    }
+    const groups = [...grouped.entries()].flatMap(([accountType, g]) => {
+      const out: Array<{ account_type: string; side: string; total: number; count: number }> = [];
+      if (g.credit > 0) out.push({ account_type: accountType, side: 'credit', total: g.credit, count: g.count });
+      if (g.debit > 0) out.push({ account_type: accountType, side: 'debit', total: g.debit, count: g.count });
+      return out;
+    });
+    return buildRevenueSummary(groups);
   }
 }
 

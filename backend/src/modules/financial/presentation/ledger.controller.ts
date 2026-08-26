@@ -12,7 +12,10 @@ export async function getRevenueHandler(request: FastifyRequest, reply: FastifyR
 
 export async function getLedgerHandler(request: FastifyRequest, reply: FastifyReply) {
   const query = LedgerQuerySchema.parse(request.query);
-  const data = await ledgerRepository.findByDateRange(query.from, query.to, query.accountType);
+  const data = await ledgerRepository.findByDateRange(query.from, query.to, {
+    accountType: query.accountType,
+    accountCode: query.accountCode,
+  });
   return reply.send({ data });
 }
 

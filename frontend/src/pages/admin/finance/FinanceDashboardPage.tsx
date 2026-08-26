@@ -56,7 +56,10 @@ export default function FinanceDashboardPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-bold text-[var(--color-text)]">Finance Dashboard</h1>
+        <div>
+          <h1 className="text-xl font-bold text-[var(--color-text)]">Finance Dashboard</h1>
+          <p className="text-xs text-[var(--color-text-muted)]">CourtZon General Ledger (canonical accounting book)</p>
+        </div>
         <div className="flex gap-2">
           <button onClick={() => navigate('/admin/finance/ledger')} className="text-xs text-[var(--color-primary)] hover:underline">Ledger</button>
           <button onClick={() => navigate('/admin/finance/reports')} className="text-xs text-[var(--color-primary)] hover:underline">Reports</button>
@@ -72,7 +75,7 @@ export default function FinanceDashboardPage() {
           label="Wallet Balance"
           value={walletSummary ? `EGP ${Number(walletSummary.totalBalance).toLocaleString()}` : '—'}
           sub={walletSummary ? `${walletSummary.totalWallets} wallets` : ''}
-          onClick={() => navigate('/admin/finance/ledger?accountType=wallet_liability')}
+          onClick={() => navigate('/admin/finance/ledger?accountCode=2100')}
           color="text-blue-600"
         />
         <KPI label="Pending Settlements" value={String(pendingSettlements.length)} sub={`${pendingSettlements.reduce((s: number, x: any) => s + Number(x.final_amount || 0), 0).toLocaleString()} EGP`} onClick={() => navigate('/admin/unified-settlements')} color="text-yellow-600" />
@@ -121,9 +124,9 @@ export default function FinanceDashboardPage() {
             </tr></thead>
             <tbody>{ledger.slice(0, 10).map((e: any, i: number) => (
               <tr key={i} className="border-b border-[var(--color-border)] last:border-0">
-                <td className="px-2 py-2 text-xs text-[var(--color-text-muted)]">{new Date(e.recorded_at).toLocaleDateString()}</td>
+                <td className="px-2 py-2 text-xs text-[var(--color-text-muted)]">{new Date(e.entry_date || e.recorded_at).toLocaleDateString()}</td>
                 <td className="px-2 py-2"><span className="text-xs capitalize">{e.source_type?.replace(/_/g, ' ')}</span></td>
-                <td className="px-2 py-2 text-xs capitalize">{e.account_type?.replace(/_/g, ' ')}</td>
+                <td className="px-2 py-2 text-xs"><span className="font-mono text-[var(--color-text-muted)]">{e.account_code}</span> <span className="capitalize">{e.account_name}</span></td>
                 <td className={`px-2 py-2 text-right text-xs font-medium ${e.side === 'credit' ? 'text-green-600' : 'text-red-600'}`}>{e.side === 'credit' ? '+' : '-'}EGP {Number(e.amount).toLocaleString()}</td>
                 <td className="px-2 py-2 text-xs text-[var(--color-text-muted)] truncate max-w-[200px]">{e.description}</td>
               </tr>

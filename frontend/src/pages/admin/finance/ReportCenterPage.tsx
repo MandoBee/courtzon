@@ -44,6 +44,7 @@ export default function ReportCenterPage() {
 
   const settlementList = Array.isArray(settlements) ? settlements : [];
   const entries = Array.isArray(ledger) ? ledger : [];
+  const walletEntries = entries.filter((e: any) => e.account_code === '2100');
   const summary = revenue && typeof revenue === 'object' && !Array.isArray(revenue) ? revenue : null;
   const revenueAccounts = (summary?.byAccount || (Array.isArray(revenue) ? revenue : []))
     .filter((r: any) => r.classification === 'revenue' || r.classification === 'contraRevenue');
@@ -134,9 +135,9 @@ export default function ReportCenterPage() {
                 </tr></thead>
                 <tbody>{entries.slice(0, 10).map((e: any, i: number) => (
                   <tr key={i} className="border-b border-[var(--color-border)] last:border-0">
-                    <td className="px-2 py-2 text-xs text-[var(--color-text-muted)]">{new Date(e.recorded_at).toLocaleDateString()}</td>
+                    <td className="px-2 py-2 text-xs text-[var(--color-text-muted)]">{new Date(e.entry_date || e.recorded_at).toLocaleDateString()}</td>
                     <td className="px-2 py-2 text-xs capitalize">{e.source_type?.replace(/_/g, ' ')} #{e.source_id}</td>
-                    <td className="px-2 py-2 text-xs capitalize">{e.account_type?.replace(/_/g, ' ')}</td>
+                    <td className="px-2 py-2 text-xs"><span className="font-mono text-[var(--color-text-muted)]">{e.account_code}</span> <span className="capitalize">{e.account_name}</span></td>
                     <td className="px-2 py-2"><span className={`text-xs px-1 py-0.5 rounded ${e.side === 'credit' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{e.side}</span></td>
                     <td className="px-2 py-2 text-right text-xs font-medium">{e.side === 'credit' ? '+' : '-'}EGP {Number(e.amount).toLocaleString()}</td>
                   </tr>
@@ -165,7 +166,7 @@ export default function ReportCenterPage() {
                   <div><p className="text-xs text-[var(--color-text-muted)]">Total Wallets</p><p className="text-sm font-medium">{walletSummary.totalWallets}</p></div>
                 </div>
                 <div className="flex gap-2">
-                  <button onClick={() => navigate('/admin/finance/ledger?accountType=wallet_liability')} className="text-xs text-[var(--color-primary)] hover:underline">View Wallet Ledger</button>
+                  <button onClick={() => navigate('/admin/finance/ledger?accountCode=2100')} className="text-xs text-[var(--color-primary)] hover:underline">View Wallet Ledger</button>
                 </div>
               </div>
             ) : (
@@ -174,17 +175,17 @@ export default function ReportCenterPage() {
           </div>
 
           <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-5">
-            <h2 className="text-sm font-semibold text-[var(--color-text)] mb-4">Wallet Ledger Entries</h2>
-            {entries.filter((e: any) => e.account_type === 'wallet_liability').length === 0 ? (
+            <h2 className="text-sm font-semibold text-[var(--color-text)] mb-4">Wallet Ledger Entries (Customer Wallet Liability, account 2100)</h2>
+            {walletEntries.length === 0 ? (
               <p className="text-sm text-[var(--color-text-muted)] text-center py-4">No wallet ledger entries.</p>
             ) : (
               <table className="w-full text-sm">
                 <thead><tr className="border-b border-[var(--color-border)] text-[var(--color-text-muted)] text-xs">
                   <th className="text-left px-2 py-2">Date</th><th className="text-left px-2 py-2">Side</th><th className="text-right px-2 py-2">Amount</th><th className="text-left px-2 py-2">Description</th>
                 </tr></thead>
-                <tbody>{entries.filter((e: any) => e.account_type === 'wallet_liability').slice(0, 20).map((e: any, i: number) => (
+                <tbody>{walletEntries.slice(0, 20).map((e: any, i: number) => (
                   <tr key={i} className="border-b border-[var(--color-border)] last:border-0">
-                    <td className="px-2 py-2 text-xs text-[var(--color-text-muted)]">{new Date(e.recorded_at).toLocaleDateString()}</td>
+                    <td className="px-2 py-2 text-xs text-[var(--color-text-muted)]">{new Date(e.entry_date || e.recorded_at).toLocaleDateString()}</td>
                     <td className="px-2 py-2"><span className={`text-xs px-1 py-0.5 rounded ${e.side === 'credit' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{e.side}</span></td>
                     <td className="px-2 py-2 text-right text-xs font-medium">EGP {Number(e.amount).toLocaleString()}</td>
                     <td className="px-2 py-2 text-xs text-[var(--color-text-muted)]">{e.description || '—'}</td>
