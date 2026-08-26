@@ -226,20 +226,40 @@ export default function SellerDashboardPage() {
 
       {/* Stats Tab */}
       {tab === 'stats' && stats && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {[
-            { label: 'Total Orders', value: stats.total_orders },
-            { label: 'Completed', value: stats.completed_orders },
-            { label: 'Revenue', value: formatPrice(Number(stats.total_revenue)) },
-            { label: 'Commission', value: formatPrice(Number(stats.total_commission)) },
-            { label: 'Pending Orders', value: stats.pending_orders },
-            { label: 'Active Listings', value: stats.active_listings },
-          ].map((s) => (
-            <div key={s.label} className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] p-4">
-              <p className="text-xs text-[var(--color-text-muted)]">{s.label}</p>
-              <p className="text-lg font-bold text-[var(--color-text)]">{s.value}</p>
+        <div className="space-y-4">
+          {/* Financial Position — from PositionService (financial_entitlements) */}
+          {stats.financial_position && (
+            <div>
+              <p className="text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wide mb-2">Financial Position</p>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] p-4 border-l-4 border-[var(--color-primary)]">
+                  <p className="text-xs text-[var(--color-text-muted)]">Available Balance</p>
+                  <p className="text-lg font-bold text-[var(--color-text)]">{formatPrice(Number(stats.financial_position.available_balance))}</p>
+                </div>
+                <div className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] p-4 border-l-4 border-[var(--color-warning)]">
+                  <p className="text-xs text-[var(--color-text-muted)]">Pending Commission</p>
+                  <p className="text-lg font-bold text-[var(--color-text)]">{formatPrice(Number(stats.financial_position.pending_commission))}</p>
+                </div>
+              </div>
             </div>
-          ))}
+          )}
+          {/* Sales Performance — gross order metrics, NOT seller earnings */}
+          <div>
+            <p className="text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wide mb-2">Sales Performance</p>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              {[
+                { label: 'Gross Sales', value: formatPrice(Number(stats.gross_sales_volume ?? stats.total_revenue)) },
+                { label: 'Total Orders', value: stats.total_orders },
+                { label: 'Completed', value: stats.completed_orders },
+                { label: 'Active Listings', value: stats.active_listings },
+              ].map((s) => (
+                <div key={s.label} className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] p-4">
+                  <p className="text-xs text-[var(--color-text-muted)]">{s.label}</p>
+                  <p className="text-lg font-bold text-[var(--color-text)]">{s.value}</p>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       )}
 
