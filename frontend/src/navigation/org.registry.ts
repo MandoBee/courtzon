@@ -55,6 +55,7 @@ export const ORG_NAV: NavDefinition[] = [
     path: '/org/{orgId}/finance',
     children: [
       { id: 'nav.org.booking-settlements', label: LIT('Booking Settlements'), icon: '🤝', path: '/org/{orgId}/finance/bookings', permissionKey: 'settlements.view' },
+      { id: 'nav.org.financial-position', label: LIT('Financial Position'), icon: '💰', path: '/org/{orgId}/finance/position', permissionKey: 'org.finance.position.view' },
       {
         id: 'nav.org.accounting',
         label: LIT('Accounting'),

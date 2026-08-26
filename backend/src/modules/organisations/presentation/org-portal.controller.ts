@@ -9,6 +9,7 @@ import { cancellationPolicyRepository } from '../infrastructure/repositories/can
 import { rbacRepository } from '../../rbac/infrastructure/repositories/rbac.repository.js';
 import { getPool } from '../../../database/mysql.js';
 import { recordAudit } from '../../audit-log/index.js';
+import { positionService } from '../../financial/application/position.service.js';
 
 const ASSIGNABLE_ROLES = ['org-admin', 'shop-admin', 'branch-mgr', 'resource-mgr', 'coach', 'accountant'] as const;
 const AddStaffSchema = z.object({
@@ -1014,6 +1015,14 @@ export async function listOrgTournamentsHandler(request: FastifyRequest, reply: 
     [Number(orgId)],
   );
   return reply.send(tournaments);
+}
+
+// ── Financial Position ──
+
+export async function getOrgPositionHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { orgId } = request.params as { orgId: string };
+  const position = await positionService.getOrganisationPositionSummary(Number(orgId));
+  return reply.send({ data: position });
 }
 
 // ── Club Verification ──
