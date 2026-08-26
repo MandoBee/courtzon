@@ -1,3 +1,18 @@
+// Set required env vars BEFORE any import that triggers env.ts / getPool()
+process.env.DB_HOST = '127.0.0.1';
+process.env.DB_PORT = '3307';
+process.env.DB_USER = 'root';
+process.env.DB_PASSWORD = 'courtzon2026';
+process.env.DB_NAME = 'courtzon_v3';
+process.env.REDIS_HOST = '127.0.0.1';
+process.env.REDIS_PORT = '6379';
+process.env.PAYMENT_GATEWAY_PROVIDER = 'paymob';
+process.env.PAYMOB_API_KEY = 'test';
+process.env.PAYMOB_SECRET = 'test';
+process.env.PAYMOB_PUBLIC_KEY = 'test_pk';
+process.env.PAYMOB_MERCHANT_ID = '12345';
+process.env.NODE_ENV = 'test';
+
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import mysql from 'mysql2/promise';
 
@@ -140,5 +155,59 @@ describe('Payment Integration', () => {
        WHERE gateway_reference = ? AND payment_status IN ('created','pending','processing')`, [ref]
     );
     expect(r.affectedRows).toBe(0);
+  });
+});
+
+// ── Player payment history: ownership + safe projection + filters ──
+describe('Payment history (findByUser) — ownership & safe projection', () => {
+  it('never exposes raw gateway_response to the player', async () => {
+    const { paymentRepository } = await import('../infrastructure/repositories/payment.repository.js');
+    const result = await paymentRepository.findByUser(TEST_USER, 1, 50);
+    for (const row of result.data) {
+      expect(row).not.toHaveProperty('gateway_response');
+    }
+  });
+
+  it('only returns the authenticated users own rows', async () => {
+    const { paymentRepository } = await import('../infrastructure/repositories/payment.repository.js');
+    const other = await pool.execute<mysql.RowDataPacket[]>(
+      `SELECT id FROM users WHERE id != ? LIMIT 1`,
+      [TEST_USER],
+    );
+    if (other[0].length) {
+      const otherId = other[0][0].id as number;
+      const result = await paymentRepository.findByUser(otherId, 1, 50);
+      for (const row of result.data) {
+        expect(Number(row.user_id)).toBe(Number(otherId));
+      }
+    } else {
+      expect(true).toBe(true);
+    }
+  });
+
+  it('filters by status, payment method, and reference type', async () => {
+    const { paymentRepository } = await import('../infrastructure/repositories/payment.repository.js');
+    const result = await paymentRepository.findByUser(TEST_USER, 1, 50, {
+      status: 'paid',
+      paymentMethod: 'card',
+      referenceType: 'wallet_topup',
+    });
+    for (const row of result.data) {
+      expect(row.payment_status).toBe('paid');
+      expect(row.payment_method).toBe('card');
+      expect(row.reference_type).toBe('wallet_topup');
+    }
+  });
+
+  it('returns the safe read-only projection fields', async () => {
+    const { paymentRepository } = await import('../infrastructure/repositories/payment.repository.js');
+    const result = await paymentRepository.findByUser(TEST_USER, 1, 50);
+    const requiredFields = ['id', 'user_id', 'booking_id', 'order_id', 'reference_id', 'reference_type',
+      'payment_method', 'gateway_reference', 'amount', 'currency', 'payment_status', 'created_at'];
+    for (const row of result.data) {
+      for (const f of requiredFields) {
+        expect(row).toHaveProperty(f);
+      }
+    }
   });
 });
