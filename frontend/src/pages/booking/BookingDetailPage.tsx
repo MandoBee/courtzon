@@ -3,6 +3,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../services/api';
 import { formatISODate } from '../../utils/formatDate';
+import { formatPrice } from '../../utils/currency';
 import { useToast } from '../../components/ui/Toast';
 import { useTranslation } from '../../i18n';
 import ManageApplicantsPopup from '../../components/booking/ManageApplicantsPopup';
@@ -28,6 +29,24 @@ const statusColors: Record<string, string> = {
   completed: 'bg-[var(--color-border)] text-[var(--color-text-muted)]',
   cancelled: 'bg-[var(--color-error-bg)] text-[var(--color-error-text)]',
   no_show: 'bg-[var(--color-error-bg)] text-[var(--color-error-text)]',
+};
+
+const paymentStatusColors: Record<string, string> = {
+  pending: 'bg-[var(--color-warning-bg)] text-[var(--color-warning-text)]',
+  paid: 'bg-[var(--color-success-bg)] text-[var(--color-success-text)]',
+  refunded: 'bg-[var(--color-info-bg)] text-[var(--color-info-text)]',
+  partially_refunded: 'bg-[var(--color-warning-bg)] text-[var(--color-warning-text)]',
+  failed: 'bg-[var(--color-error-bg)] text-[var(--color-error-text)]',
+  penalty: 'bg-[var(--color-error-bg)] text-[var(--color-error-text)]',
+};
+
+const paymentMethodLabels: Record<string, string> = {
+  wallet: 'Wallet',
+  card: 'Credit/Debit Card',
+  cash: 'Cash',
+  cod: 'Cash on Delivery',
+  bank_transfer: 'Bank Transfer',
+  online: 'Online Payment',
 };
 
 export default function BookingDetailPage() {
@@ -65,6 +84,7 @@ export default function BookingDetailPage() {
   const canCancel = booking.booking_status === 'confirmed' || booking.booking_status === 'pending' || booking.booking_status === 'pending_payment';
   const isPublicMatch = booking.booking_type === 'public_match';
   const duration = calcDuration(booking.start_time, booking.end_time);
+  const hasRefund = Number(booking.refunded_amount) > 0;
 
   return (
     <div className="max-w-2xl mx-auto">
@@ -108,9 +128,38 @@ export default function BookingDetailPage() {
               <p className="text-[var(--color-text)] font-medium">{booking.organisation_name}</p>
             </div>
           )}
-          <div>
-            <p className="text-[var(--color-text-muted)] text-xs">{t('booking.payment') || 'Payment'}</p>
-            <p className="text-[var(--color-text)] font-medium capitalize">{booking.payment_status?.replace(/_/g, ' ') || '—'}</p>
+        </div>
+
+        <div className="border-t border-[var(--color-border)] pt-4 mb-4">
+          <h2 className="text-sm font-semibold text-[var(--color-text)] mb-3">{t('booking.financial_details') || 'Payment & Financial Details'}</h2>
+
+          <div className="grid grid-cols-2 gap-3 text-sm">
+            <div>
+              <p className="text-[var(--color-text-muted)] text-xs">{t('booking.total_amount') || 'Total'}</p>
+              <p className="text-[var(--color-text)] font-semibold text-base">
+                {formatPrice(Number(booking.total_amount))}
+              </p>
+            </div>
+            <div>
+              <p className="text-[var(--color-text-muted)] text-xs">{t('booking.payment_method') || 'Payment Method'}</p>
+              <p className="text-[var(--color-text)] font-medium">
+                {paymentMethodLabels[booking.payment_method] || booking.payment_method || '—'}
+              </p>
+            </div>
+            <div>
+              <p className="text-[var(--color-text-muted)] text-xs">{t('booking.payment_status') || 'Payment Status'}</p>
+              <span className={`inline-block px-2 py-0.5 text-xs rounded-full font-medium ${paymentStatusColors[booking.payment_status] || ''}`}>
+                {booking.payment_status?.replace(/_/g, ' ') || '—'}
+              </span>
+            </div>
+            {hasRefund && (
+              <div>
+                <p className="text-[var(--color-text-muted)] text-xs">{t('booking.refunded_amount') || 'Refunded'}</p>
+                <p className="text-[var(--color-info)] font-medium">
+                  {formatPrice(Number(booking.refunded_amount))}
+                </p>
+              </div>
+            )}
           </div>
         </div>
 
