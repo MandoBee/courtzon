@@ -9,6 +9,7 @@ export const LedgerQuerySchema = z.object({
   from: z.string(),
   to: z.string(),
   accountType: z.string().optional(),
+  accountCode: z.string().optional(),
 });
 
 export type RevenueQuery = z.infer<typeof RevenueQuerySchema>;
