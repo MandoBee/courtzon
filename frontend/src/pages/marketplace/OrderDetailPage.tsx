@@ -2,6 +2,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../services/api';
 import { formatPrice } from '../../utils/currency';
+import { Can } from '../../permissions/Can';
 
 const STATUS_COLORS: Record<string, string> = {
   pending: 'bg-[var(--color-warning-bg)] text-[var(--color-warning-text)]',
@@ -64,9 +65,27 @@ export default function OrderDetailPage() {
                   <span className="text-sm font-semibold text-[var(--color-text)]">
                     {sellerOrder.shop_name || `Seller #${sellerOrder.seller_id}`}
                   </span>
-                  <span className="text-xs text-[var(--color-text-muted)]">
-                    {sellerOrder.items?.length || 0} item{(sellerOrder.items?.length || 0) !== 1 ? 's' : ''}
-                  </span>
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs text-[var(--color-text-muted)]">
+                      {sellerOrder.items?.length || 0} item{(sellerOrder.items?.length || 0) !== 1 ? 's' : ''}
+                    </span>
+                    {order.status === 'delivered' && !order.viewedAsSeller && sellerOrder.items?.[0] && (
+                      <Can permission="marketplace.complaints.submit">
+                        <button
+                          onClick={() => {
+                            const params = new URLSearchParams();
+                            params.set('orderId', String(sellerOrder.id));
+                            params.set('orderItemId', String(sellerOrder.items[0].itemId));
+                            params.set('seller', sellerOrder.shop_name || `Seller #${sellerOrder.seller_id}`);
+                            navigate(`/marketplace/complaints?${params.toString()}`);
+                          }}
+                          className="text-xs text-[var(--color-primary)] hover:underline"
+                        >
+                          File Complaint
+                        </button>
+                      </Can>
+                    )}
+                  </div>
                 </div>
                 {/* Seller items */}
                 <div className="px-4 py-2 space-y-2">
@@ -193,15 +212,23 @@ export default function OrderDetailPage() {
             </button>
           )}
           {order.status === 'delivered' && !order.viewedAsSeller && (
-            <button onClick={() => {
-              // Phase 3 P0-3: Navigate to the existing complaint system instead
-              // of instantly executing a refund. The complaint flow provides
-              // admin review, partial-refund amounts, and proper lifecycle.
-              window.location.href = `/marketplace/complaints`;
-            }}
-              className="px-4 py-2 text-sm border border-orange-300 text-[var(--color-warning-text)] rounded-[var(--radius-md)] disabled:opacity-50">
-              File a Complaint / Refund Request
-            </button>
+            <Can permission="marketplace.complaints.submit">
+              <button onClick={() => {
+                // Phase 3 P0-3 + Step 10: Open the existing complaint system
+                // (with order + item context) instead of instantly executing a
+                // refund. The complaint flow provides admin review, partial-refund
+                // amounts, and proper lifecycle. Never executes a refund here.
+                const firstItem = order.items?.[0];
+                const params = new URLSearchParams();
+                params.set('orderId', String(order.id));
+                if (firstItem?.itemId) params.set('orderItemId', String(firstItem.itemId));
+                if (order.shop_name) params.set('seller', order.shop_name);
+                navigate(`/marketplace/complaints?${params.toString()}`);
+              }}
+                className="px-4 py-2 text-sm border border-orange-300 text-[var(--color-warning-text)] rounded-[var(--radius-md)] disabled:opacity-50">
+                File a Complaint / Refund Request
+              </button>
+            </Can>
           )}
           <span className="text-xs text-[var(--color-text-muted)] self-center ml-2">
             {updateStatus.isPending && 'Updating...'}
