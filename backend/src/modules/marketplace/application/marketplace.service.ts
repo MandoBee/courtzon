@@ -635,20 +635,11 @@ export const marketplaceService = {
     }
 
     // ── Decrement stock atomically (prevents overselling) ──
+    // Phase 2 Step 5: insertLedgerEntry (marketplace_ledger_entries) removed —
+    // stock deduction is tracked by products.quantity + order_items snapshot.
     try {
       for (const item of cartItems) {
         await repo.decrementStock(item.product_id, item.variant_id || undefined, item.quantity);
-        const product = productMap.get(item.product_id);
-        if (product) {
-          // Find which order this item belongs to via seller→orderId map
-          const itemOrderId = sellerToOrderId.get(product.seller_id) || createdOrderIds[createdOrderIds.length - 1];
-          await repo.insertLedgerEntry({
-            orderId: itemOrderId, organisationId: product.seller_id,
-            entryType: 'inventory_deduction', amount: item.quantity,
-            currencyCode, description: `Stock: -${item.quantity} x ${product.name} (#${product.id})`,
-            metadata: { productId: item.product_id, variantId: item.variant_id, quantity: item.quantity, checkoutGroupId },
-          });
-        }
       }
     } catch (stockErr: any) {
       // Atomic decrement failed — restore stock for ALL orders in this checkout group, cancel all
@@ -1072,13 +1063,6 @@ export const marketplaceService = {
         for (const row of orderRows as any[]) {
           if (!row.product_id) continue;
           await repo.restoreStock(row.product_id, row.variant_id, row.quantity);
-          await repo.insertLedgerEntry({
-            orderId, organisationId: row.item_seller_id || 0,
-            entryType: 'reversal', amount: row.quantity,
-            currencyCode: order.currency_code,
-            description: `Reversal: +${row.quantity} stock restored for ${row.product_name || 'item #' + row.product_id}`,
-            metadata: { reason: data.status, productId: row.product_id },
-          });
         }
       }
     }
@@ -1105,13 +1089,6 @@ export const marketplaceService = {
             for (const row of siblingRows as any[]) {
               if (!row.product_id) continue;
               await repo.restoreStock(row.product_id, row.variant_id, row.quantity);
-              await repo.insertLedgerEntry({
-                orderId: siblingId, organisationId: row.item_seller_id || 0,
-                entryType: 'reversal', amount: row.quantity,
-                currencyCode: order.currency_code,
-                description: `Reversal: +${row.quantity} stock restored for ${row.product_name || 'item #' + row.product_id}`,
-                metadata: { reason: data.status, productId: row.product_id, checkoutGroupCancelled: true },
-              });
             }
             await repo.createOrderStatusHistory({
               orderId: siblingId, fromStatus: siblingOrder.status, toStatus: data.status,
@@ -1202,17 +1179,9 @@ export const marketplaceService = {
 
     const orderRows = await repo.findOrderById(orderId);
     if (!orderRows?.length) return;
-    const currencyCode = (orderRows[0] as any).currency_code || 'EGP';
     for (const row of orderRows as any[]) {
       if (!row.product_id) continue;
       await repo.restoreStock(row.product_id, row.variant_id, row.quantity);
-      await repo.insertLedgerEntry({
-        orderId, organisationId: row.item_seller_id || 0,
-        entryType: 'reversal', amount: row.quantity,
-        currencyCode,
-        description: reason ? `${reason} — ${row.product_name || 'item #' + row.product_id}` : `Stock restored for ${row.product_name || 'item #' + row.product_id}`,
-        metadata: { reason, productId: row.product_id },
-      });
     }
   },
 
@@ -1429,21 +1398,9 @@ export const marketplaceService = {
     }
 
     await transactionRepository.createEntries(entries);
-
-    // Ledger entries
-    for (const [sellerId] of sellerDetails) {
-    if (courtzonFee > 0) {
-        await repo.insertLedgerEntry({
-          orderId, organisationId: sellerId,
-          entryType: 'due_to_courtzon',
-          paymentMethod: isCOD ? 'cod' : 'online',
-          amount: courtzonFee,
-          currencyCode: order.currency_code || 'EGP',
-          description: `CourtZon fee for order #${orderId} (seller ${sellerId})`,
-          metadata: { commissionRate: rows.find((r: any) => r.item_seller_id === sellerId)?.commission_rate },
-        });
-      }
-    }
+    // Phase 2 Step 5: insertLedgerEntry (due_to_courtzon) removed — commission
+    // receivable/payable is already represented by financial_entitlements and
+    // GL control accounts via the canonical accounting engine.
   },
 
   // ── Financial reversal: Cancelled / Refunded ──

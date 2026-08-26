@@ -185,13 +185,8 @@ export const transactionRepository = {
     if (filters.from) { conditions.push('t.created_at >= ?'); params.push(filters.from); }
     if (filters.to) { conditions.push('t.created_at <= ?'); params.push(filters.to); }
 
-    if (filters.settlementStatus) {
-      if (filters.settlementStatus === 'settled') {
-        extraJoin = 'JOIN orders ord ON t.source_type = \'marketplace\' AND t.source_id = ord.id AND ord.settlement_status = \'settled\'';
-      } else if (filters.settlementStatus === 'unsettled') {
-        extraJoin = 'JOIN orders ord ON t.source_type = \'marketplace\' AND t.source_id = ord.id AND ord.settlement_status = \'pending\'';
-      }
-    }
+    // Phase 2 Step 5: dead settlementStatus filter removed — orders.settlement_status
+    // has zero writers and was never promoted beyond 'pending'.
 
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
 

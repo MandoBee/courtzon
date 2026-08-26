@@ -1531,62 +1531,10 @@ export const marketplaceRepository = {
     await pool.execute('UPDATE orders SET cash_collection_status = ? WHERE id = ?', [status, orderId]);
   },
 
-  async getUnsettledOrders(orgId: number) {
-    const pool = getPool();
-    const [rows] = await pool.execute<RowData>(
-      `SELECT o.id as order_id,
-              o.public_id as order_public_id,
-              o.subtotal, o.shipping_cost, o.total,
-              o.payment_method, o.payment_status,
-              o.courtzon_commission, o.courtzon_fee,
-              o.org_product_share, o.org_shipping_share,
-              o.cash_holder, o.cash_collection_status,
-              o.created_at as order_date
-       FROM orders o
-       WHERE EXISTS (
-         SELECT 1 FROM order_items oi WHERE oi.order_id = o.id AND oi.seller_id = ?
-       )
-       AND o.status = 'delivered'
-       AND o.settlement_status = 'pending'
-       AND (o.payment_method = 'cash' OR o.payment_status = 'paid')
-       ORDER BY o.id`,
-      [orgId],
-    );
-    return rows;
-  },
-
-  async getUnsettledOrdersBySeller(orgId: number) {
-    const pool = getPool();
-    const [rows] = await pool.execute<RowData>(
-      `SELECT o.id as order_id,
-              o.public_id as order_public_id,
-              o.payment_method, o.payment_status,
-              o.status as order_status,
-              o.created_at as order_date,
-              SUM(oi.total_price) as seller_subtotal,
-              SUM(oi.commission_amount) as seller_fee,
-              SUM(oi.total_price) - SUM(oi.commission_amount) as seller_product_net,
-              CASE WHEN o.subtotal > 0
-                THEN ROUND(o.shipping_cost * (SUM(oi.total_price) / o.subtotal), 2)
-                ELSE 0
-              END as seller_shipping,
-              CASE WHEN o.subtotal > 0
-                THEN ROUND(o.courtzon_fee * (SUM(oi.total_price) / o.subtotal), 2)
-                ELSE 0
-              END as seller_courtzon_fee
-       FROM orders o
-       JOIN order_items oi ON oi.order_id = o.id
-       WHERE oi.seller_id = ?
-         AND oi.settlement_status = 'pending'
-         AND o.status = 'delivered'
-         AND o.settlement_status = 'pending'
-         AND (o.payment_method = 'cash' OR o.payment_status = 'paid')
-       GROUP BY o.id
-       ORDER BY o.id`,
-      [orgId],
-    );
-    return rows;
-  },
+  // Phase 2 Step 5: dead legacy methods removed (getUnsettledOrders,
+  // getUnsettledOrdersBySeller, getLedgerBalance, getLedgerEntries).
+  // These had zero production callers. Settlement positions are read from
+  // financial_entitlements via PositionService.
 
   async getSettlementBalanceBySeller(orgId: number): Promise<{
     available_balance: number;
@@ -1648,46 +1596,8 @@ export const marketplaceRepository = {
     );
   },
 
-  async getLedgerBalance(organisationId: number): Promise<{
-    due_to_collect: number;
-    due_to_transfer: number;
-    due_to_courtzon: number;
-    total_reversals: number;
-    total_refunds: number;
-  }> {
-    const pool = getPool();
-    const [rows] = await pool.execute<RowData>(
-      `SELECT entry_type, SUM(amount) as total
-       FROM marketplace_ledger_entries
-       WHERE organisation_id = ?
-       GROUP BY entry_type`,
-      [organisationId]
-    );
-    const result = { due_to_collect: 0, due_to_transfer: 0, due_to_courtzon: 0, total_reversals: 0, total_refunds: 0 };
-    for (const r of rows as any[]) {
-      switch (r.entry_type) {
-        case 'due_to_collect': result.due_to_collect = Number(r.total); break;
-        case 'due_to_transfer': result.due_to_transfer = Number(r.total); break;
-        case 'due_to_courtzon': result.due_to_courtzon = Number(r.total); break;
-        case 'reversal': result.total_reversals = Number(r.total); break;
-        case 'refund': result.total_refunds = Number(r.total); break;
-      }
-    }
-    return result;
-  },
-
-  async getLedgerEntries(organisationId: number, filters?: { entryType?: string; orderId?: number }) {
-    const pool = getPool();
-    const conditions = ['organisation_id = ?'];
-    const params: any[] = [organisationId];
-    if (filters?.entryType) { conditions.push('entry_type = ?'); params.push(filters.entryType); }
-    if (filters?.orderId) { conditions.push('order_id = ?'); params.push(filters.orderId); }
-    const [rows] = await pool.execute<RowData>(
-      `SELECT * FROM marketplace_ledger_entries WHERE ${conditions.join(' AND ')} ORDER BY created_at DESC`,
-      params
-    );
-    return rows;
-  },
+  // Phase 2 Step 5: getLedgerBalance and getLedgerEntries removed —
+  // zero production callers; settlement positions come from PositionService.
 
   async getOrderCountsByBuyer(buyerId: number) {
     const pool = getPool();
