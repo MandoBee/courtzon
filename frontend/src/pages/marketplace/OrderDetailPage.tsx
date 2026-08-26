@@ -193,10 +193,14 @@ export default function OrderDetailPage() {
             </button>
           )}
           {order.status === 'delivered' && !order.viewedAsSeller && (
-            <button onClick={() => updateStatus.mutate({ status: 'refunded', note: 'Refund requested' })}
-              disabled={updateStatus.isPending}
+            <button onClick={() => {
+              // Phase 3 P0-3: Navigate to the existing complaint system instead
+              // of instantly executing a refund. The complaint flow provides
+              // admin review, partial-refund amounts, and proper lifecycle.
+              window.location.href = `/marketplace/complaints`;
+            }}
               className="px-4 py-2 text-sm border border-orange-300 text-[var(--color-warning-text)] rounded-[var(--radius-md)] disabled:opacity-50">
-              Request Refund
+              File a Complaint / Refund Request
             </button>
           )}
           <span className="text-xs text-[var(--color-text-muted)] self-center ml-2">
