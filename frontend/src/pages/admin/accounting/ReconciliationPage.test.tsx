@@ -12,6 +12,9 @@ vi.mock('../../../services/api', () => ({
 vi.mock('../../../components/ui', () => ({
   Spinner: () => <div data-testid="spinner">Loading…</div>,
 }));
+vi.mock('../../../components/ui/Toast', () => ({
+  useToast: () => ({ showToast: vi.fn() }),
+}));
 vi.mock('../../../permissions/Can', () => ({
   Can: ({ children }: { children: any }) => <>{children}</>,
 }));

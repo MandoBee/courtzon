@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import api from '../../../services/api';
 import { useCan } from '../../../hooks/useCan';
 import { formatPrice } from '../../../utils/currency';
+import { ExportCsvButton } from '../../../components/ui/ExportCsvButton';
 
 const STATUS_BADGE: Record<string, string> = {
   requested: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
@@ -42,6 +43,14 @@ export default function UnifiedSettlementListPage() {
           <h1 className="text-xl font-bold text-[var(--color-text)]">Unified Settlements</h1>
           <p className="text-xs text-[var(--color-text-muted)]">Settle AVAILABLE financial entitlements between CourtZon and an organization</p>
         </div>
+{can('settlements.view') && (
+          <ExportCsvButton
+            endpoint="/unified-settlements/export"
+            params={{ status: statusFilter || undefined }}
+            filename="settlements"
+            label="Export CSV"
+          />
+        )}
         {can('settlements.request') && (
           <Link to="/admin/unified-settlements/new" className="px-4 py-2 rounded-lg bg-[var(--color-primary)] text-white text-sm font-medium">
             New Settlement

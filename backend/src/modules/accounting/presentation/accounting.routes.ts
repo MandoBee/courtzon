@@ -73,6 +73,7 @@ export async function accountingRoutes(app: FastifyInstance): Promise<void> {
   // Journal Entry
   app.post('/admin/accounting/journal', { preHandler: [requirePermission(['accounting.journal.create'])] }, ctrl.createJournalEntryHandler);
   app.get('/admin/accounting/journal', { preHandler: [requirePermission(['accounting.journal.view'])] }, ctrl.listJournalEntriesHandler);
+  app.get('/admin/accounting/journal/export', { preHandler: [requirePermission(['accounting.journal.view'])] }, ctrl.exportJournalEntriesHandler);
 
   // Invoices
   app.get('/admin/accounting/invoices', { preHandler: [requirePermission(['accounting.invoices.view'])] }, ctrl.listInvoicesHandler);
@@ -99,5 +100,6 @@ export async function accountingRoutes(app: FastifyInstance): Promise<void> {
   // ── Position Reconciliation (Phase 2 Step 1 — READ-ONLY, admin-only) ──
   // financial_entitlements (single position authority) vs GL control accounts.
   app.get('/admin/accounting/reconciliation', { preHandler: [requirePermission(['accounting.gl.view'])] }, ctrl.getPositionReconciliationListHandler);
+  app.get('/admin/accounting/reconciliation/export', { preHandler: [requirePermission(['accounting.gl.view'])] }, ctrl.exportReconciliationHandler);
   app.get('/admin/accounting/reconciliation/organisations/:organisationId', { preHandler: [requirePermission(['accounting.gl.view'])] }, ctrl.getOrgPositionReconciliationHandler);
 }

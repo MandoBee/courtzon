@@ -3,6 +3,7 @@ import { unifiedSettlementService as svc } from '../application/unified-settleme
 import { recordAudit } from '../../audit-log/index.js';
 import { canAccessOrganisation, isPlatformAdmin } from '../../../shared/middleware/org-access.js';
 import { ForbiddenError } from '../../../shared/errors/app-error.js';
+import { toCsv, csvFilename } from '../../../shared/utils/csv.js';
 import {
   SettlementPreviewQuerySchema, CreateSettlementSchema, RecordPaymentSchema,
   CancelSettlementSchema, SettlementListQuerySchema,
@@ -74,4 +75,42 @@ export async function listSettlementsHandler(request: FastifyRequest, reply: Fas
   const query = SettlementListQuerySchema.parse(request.query);
   const result = await svc.list(query);
   return reply.send(result);
+}
+
+/** Read-only CSV export of unified settlements with canonical financials. */
+export async function exportSettlementsHandler(request: FastifyRequest, reply: FastifyReply) {
+  const query = SettlementListQuerySchema.parse(request.query);
+  const rows = await svc.listForExport({
+    status: query.status,
+    orgId: query.orgId,
+    batchCode: query.batchCode,
+  });
+
+  const headers = [
+    'Settlement ID', 'Organisation', 'Status', 'Requested Date', 'Paid Date',
+    'Final Amount', 'Org Earnings', 'CourtZon Commission', 'Org Adjustments',
+    'CourtZon Adjustments', 'Entitlement Count',
+  ];
+  const data = rows.map((r: any) => {
+    const s = r.settlement;
+    const f = r.financials || {};
+    return [
+      s.id,
+      s.organisation_name || s.organisation_id,
+      s.settlement_status,
+      s.requested_at ? new Date(s.requested_at).toISOString() : '',
+      s.paid_at ? new Date(s.paid_at).toISOString() : '',
+      s.final_amount ?? f.finalAmount ?? 0,
+      f.totalOrgEarnings ?? 0,
+      f.totalCommission ?? 0,
+      f.totalOrgAdjustments ?? 0,
+      f.totalCourtZonAdjustments ?? 0,
+      r.entitlements?.length ?? s.entitlement_count ?? 0,
+    ];
+  });
+
+  const csv = toCsv(headers, data);
+  reply.header('Content-Type', 'text/csv; charset=utf-8');
+  reply.header('Content-Disposition', `attachment; filename="${csvFilename('settlements')}"`);
+  return reply.send(csv);
 }

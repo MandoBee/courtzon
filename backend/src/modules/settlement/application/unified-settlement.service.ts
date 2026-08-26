@@ -269,6 +269,59 @@ export const unifiedSettlementService = {
   async list(filters: { status?: string; orgId?: number; batchCode?: string; page: number; limit: number }) {
     return unifiedSettlementRepository.findSettlements(filters);
   },
+
+  /**
+   * Read-only export payload: every settlement matching the filters (all pages,
+   * not just the current page) with its canonical financials recomputed from
+   * the linked financial_entitlements via computeSettlementFinancials — the SAME
+   * authority the detail endpoint uses. Nothing is recalculated independently.
+   */
+  async listForExport(filters: { status?: string; orgId?: number; batchCode?: string }): Promise<any[]> {
+    const settlements: any[] = [];
+    let page = 1;
+    const limit = 100;
+    // Loop pages until we have fetched every matching settlement.
+    for (;;) {
+      const result = await unifiedSettlementRepository.findSettlements({ ...filters, page, limit });
+      settlements.push(...result.data);
+      if (page * limit >= result.total || result.data.length === 0) break;
+      page += 1;
+    }
+    if (!settlements.length) return [];
+
+    // Batch-fetch the settlement → entitlement links + entitlement rows.
+    const pool = getPool();
+    const ids = settlements.map((s: any) => s.id);
+    const linkPlaceholders = ids.map(() => '?').join(',');
+    const [linkRows] = await pool.execute<any[]>(
+      `SELECT se.settlement_id, se.entitlement_id
+       FROM settlement_entitlements se
+       WHERE se.settlement_id IN (${linkPlaceholders})`,
+      ids,
+    );
+    const entitlementIds = linkRows.map((r: any) => r.entitlement_id);
+    const entitlements = entitlementIds.length ? await fetchEntitlementsByIds(entitlementIds) : [];
+    const entById = new Map<number, any>(entitlements.map((e: any) => [e.id, e]));
+    const linksBySettlement = new Map<number, number[]>();
+    for (const link of linkRows) {
+      const list = linksBySettlement.get(Number(link.settlement_id)) || [];
+      list.push(Number(link.entitlement_id));
+      linksBySettlement.set(Number(link.settlement_id), list);
+    }
+
+    return settlements.map((s: any) => {
+      const idsForSettlement = linksBySettlement.get(Number(s.id)) || [];
+      const ents = idsForSettlement.map((id) => entById.get(id)).filter(Boolean);
+      const financials = computeSettlementFinancials(ents.map((e: any) => ({
+        id: e.id,
+        organisationId: e.organisation_id,
+        entitlementType: e.entitlement_type,
+        amount: Number(e.amount),
+        collector: e.collector,
+      })));
+      return { settlement: s, entitlements: ents, financials };
+    });
+  },
 };
 
 function generateBatchCode(date: Date): string {

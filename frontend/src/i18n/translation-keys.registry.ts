@@ -1836,6 +1836,9 @@ export const translationKeysRegistry: TranslationKeyEntry[] = [
   { key: 'accounting.reconciliation.gl_debits', defaultValue: 'Debits', moduleSlug: 'accounting', elementType: 'label', elementLabel: 'GL debits column' },
   { key: 'accounting.reconciliation.gl_credits', defaultValue: 'Credits', moduleSlug: 'accounting', elementType: 'label', elementLabel: 'GL credits column' },
   { key: 'accounting.reconciliation.gl_balance', defaultValue: 'Signed Balance', moduleSlug: 'accounting', elementType: 'label', elementLabel: 'GL signed balance column' },
+  { key: 'accounting.reconciliation.export', defaultValue: 'Export CSV', moduleSlug: 'accounting', elementType: 'button', elementLabel: 'Export reconciliation CSV' },
+  { key: 'accounting.general_ledger.export', defaultValue: 'Export CSV', moduleSlug: 'accounting', elementType: 'button', elementLabel: 'Export general ledger CSV' },
+  { key: 'admin.settlements.export', defaultValue: 'Export CSV', moduleSlug: 'admin', elementType: 'button', elementLabel: 'Export unified settlements CSV' },
 
   // ── Financial Position (Phase 3 Step 3) ──
   { key: 'financial_position.title', defaultValue: 'Financial Position & Settlement Readiness', moduleSlug: 'org', elementType: 'heading', elementLabel: 'Financial position page title' },
