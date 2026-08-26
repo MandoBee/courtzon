@@ -835,6 +835,7 @@ export const marketplaceService = {
         const order = grp.orders.get(row.id);
         if (row.product_id) {
           order.items.push({
+            itemId: row.item_id,
             productId: row.product_id,
             productName: row.product_name,
             variantName: row.variant_name || null,
@@ -874,6 +875,7 @@ export const marketplaceService = {
         const order = ungrouped.get(row.id);
         if (row.product_id) {
           order.items.push({
+            itemId: row.item_id,
             productId: row.product_id,
             productName: row.product_name,
             variantName: row.variant_name || null,
@@ -1076,6 +1078,7 @@ export const marketplaceService = {
     const order = { ...rows[0] };
     order.items = rows.map((r: any) => {
       const item: any = {
+        itemId: r.item_id,
         productId: r.product_id,
         productName: r.product_name,
         variantName: r.variant_name || null,

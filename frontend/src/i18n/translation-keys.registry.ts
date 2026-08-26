@@ -386,6 +386,19 @@ export const translationKeysRegistry: TranslationKeyEntry[] = [
   { key: 'marketplace.next', defaultValue: 'Next', moduleSlug: 'marketplace', elementType: 'button', elementLabel: 'Marketplace next page' },
   { key: 'marketplace.back', defaultValue: 'Back to Marketplace', moduleSlug: 'marketplace', elementType: 'link', elementLabel: 'Marketplace back link' },
 
+  // Marketplace complaints (player-facing)
+  { key: 'marketplace.complaint.file', defaultValue: 'File a Complaint / Refund Request', moduleSlug: 'marketplace', elementType: 'button', elementLabel: 'File complaint button on order detail' },
+  { key: 'marketplace.complaint.new', defaultValue: 'New Complaint', moduleSlug: 'marketplace', elementType: 'button', elementLabel: 'New complaint button' },
+  { key: 'marketplace.complaint.not_instant', defaultValue: 'Submitting a complaint requests a review — it does not instantly refund your order.', moduleSlug: 'marketplace', elementType: 'text', elementLabel: 'Complaint not-instant-refund explanation' },
+  { key: 'marketplace.complaint.status_pending', defaultValue: 'Pending', moduleSlug: 'marketplace', elementType: 'label', elementLabel: 'Complaint status Pending' },
+  { key: 'marketplace.complaint.status_in_review', defaultValue: 'Under Review', moduleSlug: 'marketplace', elementType: 'label', elementLabel: 'Complaint status Under Review' },
+  { key: 'marketplace.complaint.status_awaiting_return', defaultValue: 'Awaiting Return', moduleSlug: 'marketplace', elementType: 'label', elementLabel: 'Complaint status Awaiting Return' },
+  { key: 'marketplace.complaint.status_refund_pending_approval', defaultValue: 'Refund Pending Approval', moduleSlug: 'marketplace', elementType: 'label', elementLabel: 'Complaint status Refund Pending Approval' },
+  { key: 'marketplace.complaint.status_refunded', defaultValue: 'Refunded', moduleSlug: 'marketplace', elementType: 'label', elementLabel: 'Complaint status Refunded' },
+  { key: 'marketplace.complaint.status_awaiting_confirmation', defaultValue: 'Awaiting Confirmation', moduleSlug: 'marketplace', elementType: 'label', elementLabel: 'Complaint status Awaiting Confirmation' },
+  { key: 'marketplace.complaint.status_resolved', defaultValue: 'Resolved', moduleSlug: 'marketplace', elementType: 'label', elementLabel: 'Complaint status Resolved' },
+  { key: 'marketplace.complaint.status_rejected', defaultValue: 'Rejected', moduleSlug: 'marketplace', elementType: 'label', elementLabel: 'Complaint status Rejected' },
+
   // Cart
   { key: 'cart.title', defaultValue: 'Shopping Cart', moduleSlug: 'cart', elementType: 'heading', elementLabel: 'Cart title' },
   { key: 'cart.empty', defaultValue: 'Your cart is empty', moduleSlug: 'cart', elementType: 'text', elementLabel: 'Cart empty state' },

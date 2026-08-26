@@ -1,8 +1,10 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../../services/api';
 import { useToast } from '../../components/ui/Toast';
+import { useCan } from '../../hooks/useCan';
+import { formatPrice } from '../../utils/currency';
 
 const COMPLAINT_TYPES = [
   { value: 'defective', label: 'Defective product', ar: 'منتج معيب' },
@@ -24,12 +26,37 @@ const STATUS_BADGE: Record<string, string> = {
   rejected: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300',
 };
 
+const STATUS_LABEL: Record<string, string> = {
+  pending: 'Pending',
+  in_review: 'Under Review',
+  awaiting_return: 'Awaiting Return',
+  refund_pending_approval: 'Refund Pending Approval',
+  refunded: 'Refunded',
+  awaiting_confirmation: 'Awaiting Confirmation',
+  resolved: 'Resolved',
+  rejected: 'Rejected',
+};
+
 export default function ComplaintsPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const { showToast } = useToast();
+  const { can } = useCan();
+
+  // Prefill from order detail navigation (orderId + orderItemId + seller).
+  const prefillOrderId = searchParams.get('orderId') || '';
+  const prefillItemId = searchParams.get('orderItemId') || '';
+  const prefillSeller = searchParams.get('seller') || '';
+
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ orderId: '', orderItemId: '', complaintType: 'defective', reason: '', images: [] as string[] });
+  const [form, setForm] = useState({
+    orderId: prefillOrderId,
+    orderItemId: prefillItemId,
+    complaintType: 'defective',
+    reason: '',
+    images: [] as string[],
+  });
 
   const { data, isLoading } = useQuery({
     queryKey: ['my-complaints'],
@@ -74,6 +101,10 @@ export default function ComplaintsPage() {
     setForm((f) => ({ ...f, images: urls }));
   };
 
+  const canSubmit = can('marketplace.complaints.submit');
+  const canView = can('marketplace.complaints.view');
+  if (!canView) return null;
+
   return (
     <div className="max-w-3xl mx-auto space-y-6 p-4 pb-24 md:pb-6">
       <div className="flex items-center justify-between">
@@ -81,14 +112,26 @@ export default function ComplaintsPage() {
           <h1 className="text-xl font-bold text-[var(--color-text)]">My Complaints</h1>
           <p className="text-xs text-[var(--color-text-muted)]">Track and manage your purchase complaints</p>
         </div>
-        <button onClick={() => setShowForm((v) => !v)} className="px-4 py-2 rounded-lg bg-[var(--color-primary)] text-white text-sm font-medium">
-          {showForm ? 'Cancel' : 'New Complaint'}
-        </button>
+        {canSubmit && (
+          <button onClick={() => setShowForm((v) => !v)} className="px-4 py-2 rounded-lg bg-[var(--color-primary)] text-white text-sm font-medium">
+            {showForm ? 'Cancel' : 'New Complaint'}
+          </button>
+        )}
       </div>
 
-      {showForm && (
+      {canSubmit && showForm && (
         <form onSubmit={(e) => { e.preventDefault(); submitComplaint.mutate(form); }} className="bg-[var(--color-surface)] rounded-xl shadow-[var(--shadow-md)] p-5 space-y-4">
           <h2 className="font-semibold text-[var(--color-text)]">Submit a Complaint</h2>
+          <p className="text-xs text-[var(--color-text-muted)]">
+            Submitting a complaint requests a review — it does not instantly refund your order. The seller or CourtZon will review it.
+          </p>
+
+          {prefillSeller && (
+            <div className="bg-[var(--color-bg)] border border-[var(--color-border)] rounded-lg p-3 text-sm">
+              <span className="text-[var(--color-text-muted)]">Seller:</span> <span className="font-medium text-[var(--color-text)]">{prefillSeller}</span>
+            </div>
+          )}
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <label className="block text-sm text-[var(--color-text-muted)]">
               Order ID
@@ -131,13 +174,14 @@ export default function ComplaintsPage() {
           <button onClick={() => navigate(`/marketplace/complaints/${c.id}`)} key={c.id} className="w-full text-left bg-[var(--color-surface)] rounded-xl shadow-[var(--shadow-md)] p-4 space-y-2">
             <div className="flex items-center justify-between">
               <span className="font-medium text-[var(--color-text)]">Complaint #{c.id} · {c.complaint_type.replace(/_/g, ' ')}</span>
-              <span className={`text-xs px-2 py-0.5 rounded-full ${STATUS_BADGE[c.status] || ''}`}>{c.status.replace(/_/g, ' ')}</span>
+              <span className={`text-xs px-2 py-0.5 rounded-full ${STATUS_BADGE[c.status] || ''}`}>{STATUS_LABEL[c.status] || c.status.replace(/_/g, ' ')}</span>
             </div>
             <p className="text-sm text-[var(--color-text-muted)] line-clamp-2">{c.reason}</p>
             <div className="flex items-center gap-2 text-xs text-[var(--color-text-muted)]">
-              <span>Attempt {c.attempt_number} of 2</span>
+              <span>Order #{c.order_id}</span>
+              <span>· Attempt {c.attempt_number} of 2</span>
               <span>· {new Date(c.created_at).toLocaleDateString('en-GB')}</span>
-              {c.refund_amount != null && <span className="text-emerald-600 dark:text-emerald-400">Refunded {c.refund_amount}</span>}
+              {c.refund_amount != null && <span className="text-emerald-600 dark:text-emerald-400">Refunded {formatPrice(Number(c.refund_amount), c.order?.currency_code || 'EGP')}</span>}
             </div>
           </button>
         ))}

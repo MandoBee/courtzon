@@ -17,6 +17,17 @@ const STATUS_BADGE: Record<string, string> = {
   rejected: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300',
 };
 
+const STATUS_LABEL: Record<string, string> = {
+  pending: 'Pending',
+  in_review: 'Under Review',
+  awaiting_return: 'Awaiting Return',
+  refund_pending_approval: 'Refund Pending Approval',
+  refunded: 'Refunded',
+  awaiting_confirmation: 'Awaiting Confirmation',
+  resolved: 'Resolved',
+  rejected: 'Rejected',
+};
+
 const TYPE_LABEL: Record<string, string> = {
   defective: 'Defective product', damaged: 'Damaged on arrival', wrong_item: 'Wrong item received',
   missing_item: 'Missing item/quantity', not_as_described: 'Not as described', other: 'Other',
@@ -125,7 +136,7 @@ export default function ComplaintDetailPage() {
             <h1 className="text-xl font-bold text-[var(--color-text)]">Complaint #{complaint.id}</h1>
             <p className="text-xs text-[var(--color-text-muted)]">Submitted {new Date(complaint.created_at).toLocaleString('en-GB')} · Attempt {complaint.attempt_number} of 2</p>
           </div>
-          <span className={`text-sm px-3 py-1 rounded-full ${STATUS_BADGE[complaint.status] || ''}`}>{complaint.status.replace(/_/g, ' ')}</span>
+          <span className={`text-sm px-3 py-1 rounded-full ${STATUS_BADGE[complaint.status] || ''}`}>{STATUS_LABEL[complaint.status] || complaint.status.replace(/_/g, ' ')}</span>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm border-t pt-4">
@@ -145,6 +156,32 @@ export default function ComplaintDetailPage() {
           <p className="text-sm font-medium mb-1">Reason</p>
           <p className="text-sm text-[var(--color-text)] bg-[var(--color-surface-alt)] rounded-lg p-3">{complaint.reason}</p>
         </div>
+
+        {isBuyer && complaint.status === 'refunded' && (
+          <div className="border-t pt-4">
+            <p className="text-sm font-medium mb-2">Refund Result</p>
+            <div className="bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-lg p-3 text-sm space-y-1">
+              <div className="flex justify-between">
+                <span className="text-[var(--color-text-muted)]">Refunded amount</span>
+                <span className="font-semibold text-emerald-700 dark:text-emerald-300">{formatPrice(Number(complaint.refund_amount), complaint.order?.currency_code || 'EGP')}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-[var(--color-text-muted)]">Status</span>
+                <span className="font-medium capitalize">{STATUS_LABEL[complaint.status] || complaint.status}</span>
+              </div>
+              {complaint.resolved_at && (
+                <div className="flex justify-between">
+                  <span className="text-[var(--color-text-muted)]">Date</span>
+                  <span className="font-medium">{new Date(complaint.resolved_at).toLocaleDateString('en-GB')}</span>
+                </div>
+              )}
+              <div className="flex justify-between">
+                <span className="text-[var(--color-text-muted)]">Paid to</span>
+                <span className="font-medium">Your wallet</span>
+              </div>
+            </div>
+          </div>
+        )}
 
         {complaint.images?.length > 0 && (
           <div className="border-t pt-4">
