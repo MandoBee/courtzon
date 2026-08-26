@@ -1202,21 +1202,10 @@ export class BookingService {
     } as any);
   }
 
-  /**
-   * Record that a portion of the booking's coach/organization economics has
-   * been paid out via settlement. This is authoritative for post-settlement
-   * refund recovery (refunds of settled economics create recovery receivables).
-   */
-  async markBookingSettled(bookingId: number, coachAmount: number, orgAmount: number): Promise<void> {
-    const pool = getPool();
-    await pool.execute(
-      `UPDATE bookings
-       SET coach_settled_amount = LEAST(coach_amount, coach_settled_amount + ?),
-           org_settled_amount = LEAST(club_amount, org_settled_amount + ?)
-       WHERE id = ?`,
-      [Math.max(0, coachAmount), Math.max(0, orgAmount), bookingId],
-    );
-  }
+  // Phase 2 Step 7: markBookingSettled removed — duplicate settlement authority.
+  // Booking settlements MUST go through bookingSettlementService.settleBookingEconomics
+  // which consumes financial_entitlements via the unified settlement engine.
+  // org_settled_amount is now a read-through projection of entitlement SETTLED state.
 
   private async _processGatewayRefund(booking: any, refundAmount: number): Promise<void> {
     try {
