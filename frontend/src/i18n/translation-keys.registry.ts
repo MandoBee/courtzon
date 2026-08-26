@@ -887,6 +887,14 @@ export const translationKeysRegistry: TranslationKeyEntry[] = [
   { key: 'organisation.sidebar.settings', defaultValue: 'Settings', moduleSlug: 'organisation', elementType: 'nav', elementLabel: 'Org sidebar settings' },
   { key: 'organisation.sidebar.logout', defaultValue: 'Logout', moduleSlug: 'organisation', elementType: 'tooltip', elementLabel: 'Org sidebar logout tooltip' },
 
+  // ── Organisation subscription billing ──
+  { key: 'organisation.subscription.billing', defaultValue: 'Billing', moduleSlug: 'organisation', elementType: 'label', elementLabel: 'Org subscription billing label' },
+  { key: 'organisation.subscription.payment_method', defaultValue: 'Payment', moduleSlug: 'organisation', elementType: 'label', elementLabel: 'Org subscription payment method' },
+  { key: 'organisation.subscription.payment_status', defaultValue: 'Status', moduleSlug: 'organisation', elementType: 'label', elementLabel: 'Org subscription payment status' },
+  { key: 'organisation.subscription.amount', defaultValue: 'Amount', moduleSlug: 'organisation', elementType: 'label', elementLabel: 'Org subscription amount' },
+  { key: 'organisation.subscription.billing_cycle', defaultValue: 'Billing', moduleSlug: 'organisation', elementType: 'label', elementLabel: 'Org subscription billing cycle' },
+  { key: 'organisation.subscription.internal', defaultValue: 'Internal', moduleSlug: 'organisation', elementType: 'label', elementLabel: 'Org subscription internal plan marker' },
+
   // ── Notifications ──
   { key: 'notification.bell_title', defaultValue: 'Notifications', moduleSlug: 'notification', elementType: 'tooltip', elementLabel: 'Notification bell tooltip' },
   { key: 'notification.preferences', defaultValue: 'Preferences', moduleSlug: 'notification', elementType: 'button', elementLabel: 'Notification preferences button' },

@@ -598,13 +598,27 @@ export async function getUpcomingRenewalForOrg(orgId: number) {
 /**
  * Full subscription history for an organisation — every period row, oldest
  * state preserved. Expired/cancelled rows are history, never hidden.
+ *
+ * Includes the billing-cycle-matched price and internal-plan flag so the
+ * organisation can understand what it paid for each period. All values come
+ * from the persisted plan_snapshot (falling back to the live plan table) —
+ * the frontend never computes prices itself.
  */
 export async function listOrgSubscriptionPeriods(orgId: number) {
   const pool = getPool();
   const [rows] = await pool.execute<RowData>(
     `SELECT os.id, os.plan_id, os.billing_cycle, os.subscription_status,
             os.start_date, os.end_date, os.created_at,
-            COALESCE(JSON_UNQUOTE(JSON_EXTRACT(os.plan_snapshot, '$.planName')), sp.plan_name, 'Unknown') as plan_name
+            COALESCE(JSON_UNQUOTE(JSON_EXTRACT(os.plan_snapshot, '$.planName')), sp.plan_name, 'Unknown') as plan_name,
+            COALESCE(JSON_UNQUOTE(JSON_EXTRACT(os.plan_snapshot, '$.isUnlimited')), sp.is_unlimited, 0) as is_unlimited,
+            COALESCE(sp.is_internal, 0) as is_internal,
+            CASE
+              WHEN COALESCE(JSON_UNQUOTE(JSON_EXTRACT(os.plan_snapshot, '$.isUnlimited')), sp.is_unlimited, 0) = '1'
+                THEN 0
+              WHEN os.billing_cycle = 'yearly'
+                THEN COALESCE(JSON_UNQUOTE(JSON_EXTRACT(os.plan_snapshot, '$.priceYearly')), sp.price_yearly, 0)
+              ELSE COALESCE(JSON_UNQUOTE(JSON_EXTRACT(os.plan_snapshot, '$.priceMonthly')), sp.price_monthly, 0)
+            END as price
      FROM organisation_subscriptions os
      LEFT JOIN subscription_plans sp ON sp.id = os.plan_id
      WHERE os.organisation_id = ?
@@ -626,6 +640,57 @@ export async function getOrgPendingSubscriptionRequest(orgId: number) {
     [orgId],
   );
   return rows[0] || null;
+}
+
+/**
+ * Read-only payment information for the organisation's most recent
+ * subscription request (the one that created/activated the current period)
+ * and its linked payment transaction. Returns the actual stored
+ * chosen_payment_method, the payment amount, and the payment_transactions
+ * status when a transaction exists — never derived in the frontend.
+ */
+export async function getOrgSubscriptionPaymentInfo(orgId: number): Promise<{
+  paymentMethod: string | null;
+  paymentStatus: string | null;
+  paymentAmount: number | null;
+}> {
+  const pool = getPool();
+  const [reqRows] = await pool.execute<RowData>(
+    `SELECT id, chosen_payment_method, requested_price, status
+     FROM organisation_upgrade_requests
+     WHERE organisation_id = ?
+     ORDER BY created_at DESC
+     LIMIT 1`,
+    [orgId],
+  );
+  if (!reqRows.length) return { paymentMethod: null, paymentStatus: null, paymentAmount: null };
+
+  const req = reqRows[0] as any;
+  const paymentMethod = req.chosen_payment_method || null;
+
+  const [txRows] = await pool.execute<RowData>(
+    `SELECT amount, payment_status
+     FROM payment_transactions
+     WHERE reference_type = 'subscription' AND reference_id = ?
+     ORDER BY id DESC
+     LIMIT 1`,
+    [req.id],
+  );
+
+  if (txRows.length) {
+    const tx = txRows[0] as any;
+    return {
+      paymentMethod,
+      paymentStatus: tx.payment_status || null,
+      paymentAmount: tx.amount != null ? Number(tx.amount) : (req.requested_price != null ? Number(req.requested_price) : null),
+    };
+  }
+
+  return {
+    paymentMethod,
+    paymentStatus: req.status === 'approved' ? 'approved' : req.status,
+    paymentAmount: req.requested_price != null ? Number(req.requested_price) : null,
+  };
 }
 
 export async function listSubscriptionRequests(filters?: {

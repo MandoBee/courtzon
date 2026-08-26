@@ -146,6 +146,7 @@ export async function getOrgSubscriptionWithUsage(orgId: number) {
   const usage = await repo.getFeatureUsageCounts(orgId);
   const pendingRequest = await repo.getOrgPendingSubscriptionRequest(orgId);
   const upcomingRenewal = await repo.getUpcomingRenewalForOrg(orgId);
+  const paymentInfo = await repo.getOrgSubscriptionPaymentInfo(orgId);
 
   const featureList = sub.features.map((f: any) => ({
     featureKey: f.featureKey,
@@ -164,13 +165,18 @@ export async function getOrgSubscriptionWithUsage(orgId: number) {
     priceMonthly: sub.planSnapshot?.priceMonthly ?? null,
     priceYearly: sub.planSnapshot?.priceYearly ?? null,
     isUnlimited: sub.planSnapshot?.isUnlimited ?? false,
+    isInternal: sub.isInternal ?? false,
     billingCycle: sub.billingCycle,
+    durationMonths: sub.planSnapshot?.durationMonths ?? null,
     features: featureList,
     usage,
     startDate: sub.startDate,
     endDate: sub.endDate,
     status: sub.subscriptionStatus,
     autoRenew: false,
+    paymentMethod: paymentInfo.paymentMethod,
+    paymentStatus: paymentInfo.paymentStatus,
+    paymentAmount: paymentInfo.paymentAmount,
     upcomingRenewal: upcomingRenewal
       ? {
           id: upcomingRenewal.id,
