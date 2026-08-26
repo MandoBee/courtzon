@@ -348,6 +348,13 @@ export const translationKeysRegistry: TranslationKeyEntry[] = [
   { key: 'booking.change_payment', defaultValue: 'Change payment status', moduleSlug: 'booking', elementType: 'button', elementLabel: 'Booking change payment title' },
   { key: 'booking.empty_table', defaultValue: 'No bookings found.', moduleSlug: 'booking', elementType: 'text', elementLabel: 'Booking table empty' },
 
+  // Player booking financial details
+  { key: 'booking.financial_details', defaultValue: 'Payment & Financial Details', moduleSlug: 'booking', elementType: 'heading', elementLabel: 'Booking financial details section title' },
+  { key: 'booking.total_amount', defaultValue: 'Total', moduleSlug: 'booking', elementType: 'label', elementLabel: 'Booking total amount' },
+  { key: 'booking.payment_method', defaultValue: 'Payment Method', moduleSlug: 'booking', elementType: 'label', elementLabel: 'Booking payment method' },
+  { key: 'booking.payment_status', defaultValue: 'Payment Status', moduleSlug: 'booking', elementType: 'label', elementLabel: 'Booking payment status' },
+  { key: 'booking.refunded_amount', defaultValue: 'Refunded', moduleSlug: 'booking', elementType: 'label', elementLabel: 'Booking refunded amount' },
+
   // Player / org / resource
   { key: 'player.main_sport', defaultValue: 'Main Sport', moduleSlug: 'player', elementType: 'label', elementLabel: 'Player main sport' },
   { key: 'player.level', defaultValue: 'Skill Level', moduleSlug: 'player', elementType: 'label', elementLabel: 'Player skill level' },
