@@ -2,9 +2,13 @@ import { getPool } from '../../../database/mysql.js';
 import type { RowDataPacket } from 'mysql2';
 import { createModuleLogger } from '../../../shared/utils/logger.js';
 import { postAccountingEvent } from './accounting-event.listener.js';
+import { financialEntitlementService } from './financial-entitlement.service.js';
+import { unifiedSettlementService } from '../../settlement/application/unified-settlement.service.js';
 
 const log = createModuleLogger('booking-settlement');
 type RowData = RowDataPacket[];
+
+const round2 = (n: number) => Math.round(n * 100) / 100;
 
 export type EligibilityStatus = 'NOT_ELIGIBLE' | 'ELIGIBLE' | 'PARTIALLY_SETTLED' | 'SETTLED';
 
@@ -137,13 +141,25 @@ class BookingSettlementService {
   /**
    * Settle eligible booking economics (coach + org) atomically, auto-offsetting
    * any outstanding recovery receivable for the SAME party.
+   *
+   * MODEL B (Phase 2 Step 2): the ORG leg consumes AVAILABLE
+   * financial_entitlements through the unified settlement engine — the single
+   * authoritative position subledger. `bookings.org_settled_amount` is a
+   * READ-THROUGH PROJECTION written only here, after entitlements are SETTLED.
+   * Complaint-held (ON_HOLD, dispute) and reserved entitlements can never be
+   * consumed; CASH/COD bookings (collector='org') have no cross-party payable.
+   * The COACH leg keeps its operational mechanics (coaches are providers, not
+   * organisations — no entitlement type exists for them yet).
    */
   async settleBookingEconomics(
     bookingId: number,
     coachAmount: number,
     orgAmount: number,
     actorId: number,
-  ): Promise<{ coachSettled: number; orgSettled: number; coachOffset: number; orgOffset: number; coachCash: number; orgCash: number }> {
+  ): Promise<{
+    coachSettled: number; orgSettled: number; coachOffset: number; orgOffset: number; coachCash: number; orgCash: number;
+    settlementId?: number; batchCode?: string;
+  }> {
     const conn = await this.pool.getConnection();
     try {
       await conn.beginTransaction();
@@ -165,21 +181,102 @@ class BookingSettlementService {
 
       const settleable = this.computeSettleableLocked(b);
       const coachSettle = Math.min(Math.max(coachAmount, 0), settleable.coachSettleable);
-      const orgSettle = Math.min(Math.max(orgAmount, 0), settleable.orgSettleable);
 
-      // Outstanding recovery per party (must match settlement party).
+      // ── ORG leg (Model B): consume AVAILABLE payable entitlements ──
+      let orgSettle = 0;
+      let orgOffset = 0;
+      let orgCash = 0;
+      let settlementId: number | undefined;
+      let batchCode: string | undefined;
+      if (organisationId != null && orgAmount > 0) {
+        const sourceEnts = await financialEntitlementService.getEntitlementsBySourceIds('booking', [bookingId]);
+        const payable = sourceEnts
+          .filter((e: any) => e.status === 'AVAILABLE'
+            && e.collector === 'courtzon'
+            && (e.entitlement_type === 'ORGANIZATION_EARNING' || e.entitlement_type === 'ORGANIZATION_ADJUSTMENT'))
+          .sort((x: any, y: any) => Number(y.amount) - Number(x.amount)); // largest-first
+
+        let available = 0;
+        for (const p of payable) available = Math.round((available + Number(p.amount)) * 100) / 100;
+
+        const legacyCap = settleable.orgSettleable;
+        const target = round2(Math.min(Math.max(orgAmount, 0), legacyCap, available));
+
+        // Greedy full-row selection ≤ target (partial consumption impossible —
+        // an entitlement settles whole or stays open).
+        const selectedIds: number[] = [];
+        let running = 0;
+        for (const p of payable) {
+          const amt = Number(p.amount);
+          if (round2(running + amt) <= target + 1e-9) {
+            selectedIds.push(p.id);
+            running = round2(running + amt);
+          }
+        }
+
+        if (selectedIds.length > 0) {
+          // Recovery offset preserved: collect outstanding org recovery first,
+          // so net cash equals the legacy combined entry.
+          const orgRecovered = Number(b.org_recovered_amount || 0);
+          const orgCollected = Number(b.org_recovery_collected || 0);
+          const orgOutstanding = Math.max(0, Math.round((orgRecovered - orgCollected) * 100) / 100);
+          orgOffset = Math.min(running, orgOutstanding);
+          orgCash = round2(running - orgOffset);
+
+          const settlement = await unifiedSettlementService.create({
+            orgId: organisationId,
+            selectedEntitlementIds: selectedIds,
+            requestedBy: actorId,
+            requestedByRole: 'admin',
+            notes: `Booking #${bookingId} org settlement`,
+          });
+
+          await unifiedSettlementService.recordPayment(settlement.settlement.id, {
+            paidBy: actorId,
+            paymentMethod: 'settlement',
+            paymentReference: `booking:${bookingId}`,
+          });
+
+          if (orgOffset > 0) {
+            await postAccountingEvent(
+              'booking_recovery_collection', 'booking', bookingId, organisationId,
+              { cash_bank: orgOffset, recovery_receivable: orgOffset },
+              'EGP',
+              `Booking #${bookingId} org recovery offset collection`,
+              conn,
+            );
+            await conn.execute(
+              `UPDATE bookings SET org_recovery_collected = LEAST(org_recovered_amount, org_recovery_collected + ?) WHERE id = ?`,
+              [orgOffset, bookingId],
+            );
+          }
+
+          // Read-through projection of the authoritative settled position.
+          await conn.execute(
+            `UPDATE bookings SET org_settled_amount = LEAST(club_amount, org_settled_amount + ?) WHERE id = ?`,
+            [running, bookingId],
+          );
+
+          // Traceability audit row referencing the unified batch.
+          await conn.execute(
+            `INSERT INTO booking_settlements (booking_id, organisation_id, settlement_type, amount, status, batch_reference, created_by, created_at)
+             VALUES (?, ?, 'org', ?, 'settled', ?, ?, ?)`,
+            [bookingId, organisationId, running, settlement.settlement.batch_code ?? `unified_${settlement.settlement.id}`, actorId, new Date().toISOString().slice(0, 19).replace('T', ' ')],
+          );
+
+          orgSettle = running;
+          settlementId = settlement.settlement.id;
+          batchCode = (settlement.settlement as any).batch_code ?? undefined;
+        }
+      }
+      
+
+      // Recovery offsets for the COACH party (legacy mechanics).
       const coachRecovered = Number(b.coach_recovered_amount || 0);
-      const orgRecovered = Number(b.org_recovered_amount || 0);
       const coachCollected = Number(b.coach_recovery_collected || 0);
-      const orgCollected = Number(b.org_recovery_collected || 0);
       const coachOutstanding = Math.max(0, Math.round((coachRecovered - coachCollected) * 100) / 100);
-      const orgOutstanding = Math.max(0, Math.round((orgRecovered - orgCollected) * 100) / 100);
-
-      // Auto-offset: offset = min(outstanding recovery, settle amount).
       const coachOffset = Math.min(coachSettle, coachOutstanding);
-      const orgOffset = Math.min(orgSettle, orgOutstanding);
-      const coachCash = Math.round((coachSettle - coachOffset) * 100) / 100;
-      const orgCash = Math.round((orgSettle - orgOffset) * 100) / 100;
+      const coachCash = round2(coachSettle - coachOffset);
 
       if (coachSettle <= 0 && orgSettle <= 0) {
         await conn.rollback();
@@ -210,26 +307,9 @@ class BookingSettlementService {
         }
       }
 
-      // Org settlement accounting (with or without recovery offset).
-      if (orgSettle > 0) {
-        if (orgOffset > 0) {
-          await postAccountingEvent(
-            'booking_org_settlement_offset', 'booking', bookingId, organisationId,
-            { org_payable: orgSettle, cash_bank: orgCash, org_recovery_receivable: orgOffset },
-            'EGP',
-            `Booking #${bookingId} org settlement (recovery offset ${orgOffset})`,
-            conn,
-          );
-        } else {
-          await postAccountingEvent(
-            'booking_org_settlement', 'booking', bookingId, organisationId,
-            { org_payable: orgSettle, cash_bank: orgSettle },
-            'EGP',
-            `Booking #${bookingId} org settlement`,
-            conn,
-          );
-        }
-      }
+      // Org settlement accounting is handled by the unified settlement engine
+      // above (settlement:paid → GL settlement_paid clearing entry). No direct
+      // booking_org_settlement posting anymore — single authority.
 
       // Update settled amounts (bounded).
       if (coachSettle > 0) {
@@ -238,23 +318,12 @@ class BookingSettlementService {
           [coachSettle, bookingId],
         );
       }
-      if (orgSettle > 0) {
-        await conn.execute(
-          `UPDATE bookings SET org_settled_amount = LEAST(club_amount, org_settled_amount + ?) WHERE id = ?`,
-          [orgSettle, bookingId],
-        );
-      }
+      // org_settled_amount projection already synced inside the Model B org leg.
       // Update recovery collected when offset applied (bounded).
       if (coachOffset > 0) {
         await conn.execute(
           `UPDATE bookings SET coach_recovery_collected = LEAST(coach_recovered_amount, coach_recovery_collected + ?) WHERE id = ?`,
           [coachOffset, bookingId],
-        );
-      }
-      if (orgOffset > 0) {
-        await conn.execute(
-          `UPDATE bookings SET org_recovery_collected = LEAST(org_recovered_amount, org_recovery_collected + ?) WHERE id = ?`,
-          [orgOffset, bookingId],
         );
       }
 
@@ -266,16 +335,9 @@ class BookingSettlementService {
           [bookingId, organisationId, coachSettle, batchRef, actorId, now],
         );
       }
-      if (orgSettle > 0) {
-        await conn.execute(
-          `INSERT INTO booking_settlements (booking_id, organisation_id, settlement_type, amount, status, batch_reference, created_by, created_at)
-           VALUES (?, ?, 'org', ?, 'settled', ?, ?, ?)`,
-          [bookingId, organisationId, orgSettle, batchRef, actorId, now],
-        );
-      }
 
       await conn.commit();
-      return { coachSettled: coachSettle, orgSettled: orgSettle, coachOffset, orgOffset, coachCash, orgCash };
+      return { coachSettled: coachSettle, orgSettled: orgSettle, coachOffset, orgOffset, coachCash, orgCash, settlementId, batchCode };
     } catch (err) {
       await conn.rollback();
       throw err;

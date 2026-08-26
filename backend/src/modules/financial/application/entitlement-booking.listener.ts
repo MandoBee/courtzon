@@ -74,7 +74,7 @@ export function createEntitlementBookingWorkers(): Worker[] {
   ];
 }
 
-async function handleBookingConfirmed(envelope: EventEnvelope): Promise<void> {
+export async function handleBookingConfirmed(envelope: EventEnvelope): Promise<void> {
   const data = envelope.payload as any;
   if (!data?.bookingId) return;
 

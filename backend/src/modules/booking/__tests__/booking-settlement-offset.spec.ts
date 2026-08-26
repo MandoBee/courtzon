@@ -36,9 +36,12 @@ describe('Booking Settlement Offset + Eligibility', () => {
   });
 
   afterAll(async () => {
+    await pool.execute(`DELETE FROM settlement_entitlements WHERE settlement_id IN (SELECT id FROM settlements WHERE organisation_id = ?)`, [orgId]);
+    await pool.execute(`DELETE FROM financial_entitlements WHERE source_type = 'booking' AND organisation_id = ?`, [orgId]);
+    await pool.execute(`DELETE FROM settlements WHERE organisation_id = ?`, [orgId]);
+    await pool.execute(`DELETE FROM ledger_entries WHERE source_type IN ('booking', 'settlement') AND organisation_id = ?`, [orgId]);
+    await pool.execute(`DELETE FROM general_ledger WHERE organisation_id = ? AND (reference_type LIKE 'booking%' OR reference_type LIKE 'settlement%')`, [orgId]);
     await pool.execute(`DELETE FROM booking_settlements WHERE booking_id IN (SELECT id FROM bookings WHERE organisation_id = ?)`, [orgId]);
-    await pool.execute(`DELETE FROM ledger_entries WHERE source_type = 'booking' AND organisation_id = ?`, [orgId]);
-    await pool.execute(`DELETE FROM general_ledger WHERE organisation_id = ? AND reference_type LIKE 'booking%'`, [orgId]);
     await pool.execute(`DELETE FROM bookings WHERE organisation_id = ?`, [orgId]);
     if (resourceId) await pool.execute(`DELETE FROM resources WHERE id = ?`, [resourceId]);
     if (branchId) await pool.execute(`DELETE FROM branches WHERE id = ?`, [branchId]);
@@ -55,7 +58,14 @@ describe('Booking Settlement Offset + Eligibility', () => {
        VALUES (1, ?, ?, ?, 'private_match', '2026-06-15', ?, ?, 100, 0, 0, ?, ?, ?, ?, 'card')`,
       [orgId, branchId, resourceId, `${String(hour).padStart(2, '0')}:00:00`, `${String(hour + 1).padStart(2, '0')}:00:00`, club, coach, status, payment],
     );
-    return (res as any).insertId;
+    const bookingId = (res as any).insertId;
+    // MODEL B: mirror production booking:confirmed -> ORGANIZATION_EARNING
+    await pool.execute(
+      `INSERT INTO financial_entitlements (public_id, organisation_id, branch_id, entitlement_type, source_type, source_id, collector, status, amount, currency)
+       SELECT UUID(), ?, NULL, 'ORGANIZATION_EARNING', 'booking', ?, 'courtzon', 'AVAILABLE', ?, 'EGP'`,
+      [orgId, bookingId, club],
+    );
+    return bookingId;
   }
 
   it('1. future/confirmed booking is NOT eligible', async () => {

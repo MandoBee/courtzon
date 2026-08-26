@@ -46,8 +46,11 @@ describe('Booking Settlement + Recovery Lifecycle', () => {
 
   afterAll(async () => {
     await pool.execute(`DELETE FROM booking_settlements WHERE booking_id IN (SELECT id FROM bookings WHERE organisation_id = ?)`, [orgId]);
-    await pool.execute(`DELETE FROM ledger_entries WHERE source_type = 'booking' AND organisation_id = ?`, [orgId]);
-    await pool.execute(`DELETE FROM general_ledger WHERE organisation_id = ? AND reference_type LIKE 'booking%'`, [orgId]);
+    await pool.execute(`DELETE FROM settlement_entitlements WHERE settlement_id IN (SELECT id FROM settlements WHERE organisation_id = ?)`, [orgId]);
+    await pool.execute(`DELETE FROM financial_entitlements WHERE source_type = 'booking' AND organisation_id = ?`, [orgId]);
+    await pool.execute(`DELETE FROM settlements WHERE organisation_id = ?`, [orgId]);
+    await pool.execute(`DELETE FROM ledger_entries WHERE source_type IN ('booking', 'settlement') AND organisation_id = ?`, [orgId]);
+    await pool.execute(`DELETE FROM general_ledger WHERE organisation_id = ? AND (reference_type LIKE 'booking%' OR reference_type LIKE 'settlement%')`, [orgId]);
     await pool.execute(`DELETE FROM bookings WHERE organisation_id = ?`, [orgId]);
     if (resourceId) await pool.execute(`DELETE FROM resources WHERE id = ?`, [resourceId]);
     if (branchId) await pool.execute(`DELETE FROM branches WHERE id = ?`, [branchId]);
@@ -55,7 +58,7 @@ describe('Booking Settlement + Recovery Lifecycle', () => {
     await pool.end();
   });
 
-  async function insertBooking(hour: number, opts: { coach?: number; club?: number; commission?: number; refunded?: number } = {}) {
+  async function insertBooking(hour: number, opts: { coach?: number; club?: number; commission?: number; refunded?: number; split?: number[] } = {}) {
     const coach = opts.coach ?? 50; const club = opts.club ?? 50; const commission = opts.commission ?? 0;
     const refunded = opts.refunded ?? 0;
     const [res] = await pool.execute<RowData>(
@@ -67,7 +70,18 @@ describe('Booking Settlement + Recovery Lifecycle', () => {
        `${String(hour).padStart(2, '0')}:00:00`, `${String(hour + 1).padStart(2, '0')}:00:00`,
        commission, club, coach, refunded],
     );
-    return (res as any).insertId;
+    const bookingId = (res as any).insertId;
+    // MODEL B: mirror production booking:confirmed -> ORGANIZATION_EARNING.
+    // `split` seeds multiple rows (tests whole-row consumption granularity).
+    const amounts = opts.split ?? [club];
+    for (const amt of amounts) {
+      await pool.execute(
+        `INSERT INTO financial_entitlements (public_id, organisation_id, branch_id, entitlement_type, source_type, source_id, collector, status, amount, currency)
+         SELECT UUID(), ?, NULL, 'ORGANIZATION_EARNING', 'booking', ?, 'courtzon', 'AVAILABLE', ?, 'EGP'`,
+        [orgId, bookingId, amt],
+      );
+    }
+    return bookingId;
   }
 
   it('1. getSettleable returns original economics when nothing settled/refunded', async () => {
@@ -103,9 +117,10 @@ describe('Booking Settlement + Recovery Lifecycle', () => {
     expect(s!.orgSettleable).toBe(0);
   });
 
-  it('4. partial settlement: remaining settleable reduced', async () => {
-    const bookingId = await insertBooking(33, { coach: 50, club: 50 });
+  it('4. partial settlement: whole-row grain — request below largest row consumes the fitting row only', async () => {
+    const bookingId = await insertBooking(33, { coach: 50, club: 50, split: [30] });
     const { bookingSettlementService } = await import('../../financial/application/booking-settlement.service.js');
+    // Request org=30 → consumes the 30-row (largest-first ≤ target); 20-row remains.
     await bookingSettlementService.settleBookingEconomics(bookingId, 20, 30, 1);
     const s = await bookingSettlementService.getEconomics(bookingId);
     expect(s!.coachSettleable).toBe(30);
@@ -167,7 +182,7 @@ describe('Booking Settlement + Recovery Lifecycle', () => {
     await bookingSettlementService.settleBookingEconomics(bookingId, 50, 50, 1);
 
     const [le] = await pool.execute<RowData>(
-      `SELECT side, SUM(amount) AS total FROM ledger_entries WHERE source_type = 'booking' AND source_id = ? AND event_type IN ('booking_coach_settlement','booking_org_settlement') GROUP BY side`,
+      `SELECT side, SUM(amount) AS total FROM ledger_entries WHERE source_type = 'booking' AND source_id = ? AND event_type IN ('booking_coach_settlement','settlement_paid','booking_recovery_collection') GROUP BY side`,
       [bookingId],
     );
     const dr = Number((le as any[]).find((x: any) => x.side === 'debit')?.total ?? 0);
@@ -190,3 +205,4 @@ describe('Booking Settlement + Recovery Lifecycle', () => {
     expect(s!.orgCollected).toBe(50);
   });
 });
+
