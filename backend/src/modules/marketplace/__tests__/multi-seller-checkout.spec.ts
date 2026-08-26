@@ -125,6 +125,9 @@ function buildOrderRowsWithItems(order: any, items: any[]) {
 vi.mock('../infrastructure/repositories/marketplace.repository.js', () => ({
   marketplaceRepository: repoMock,
 }));
+vi.mock('../../financial/infrastructure/repositories/financial-entitlement.repository.js', () => ({
+  financialEntitlementRepository: { findBySourceIds: vi.fn(async () => []), create: vi.fn(async () => 1), update: vi.fn(async () => true) },
+}));
 
 // ── Import after mocks ──
 import { marketplaceService } from '../application/marketplace.service.js';
@@ -141,6 +144,7 @@ describe('Multi-seller order split', () => {
     mockGetPool.mockReturnValue({ execute: vi.fn(async () => [[], []]) });
 
     repoMock.findCartByUser = vi.fn(async () => []);
+    repoMock.findOrderItemIdsBySellerOrders = vi.fn(async () => []);
     repoMock.findProductsByIds = vi.fn(async () => []);
     repoMock.findVariantsForProducts = vi.fn(async () => []);
     repoMock.findOrgByUserId = vi.fn(async () => null);

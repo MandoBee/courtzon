@@ -872,6 +872,20 @@ export const marketplaceRepository = {
     return rows;
   },
 
+  async findOrderItemIdsBySellerOrders(orderIds: number[], sellerOrgIds: number[]): Promise<{ orderId: number; orderItemId: number }[]> {
+    if (!orderIds.length || !sellerOrgIds.length) return [];
+    const pool = getPool();
+    const orderPlaceholders = orderIds.map(() => '?').join(',');
+    const sellerPlaceholders = sellerOrgIds.map(() => '?').join(',');
+    const [rows] = await pool.execute<RowData>(
+      `SELECT oi.id as order_item_id, oi.order_id as order_id
+       FROM order_items oi
+       WHERE oi.order_id IN (${orderPlaceholders}) AND oi.seller_id IN (${sellerPlaceholders})`,
+      [...orderIds, ...sellerOrgIds],
+    );
+    return (rows as any[]).map((r: any) => ({ orderId: r.order_id, orderItemId: r.order_item_id }));
+  },
+
   async findAbandonedPendingOrders(cutoff: string) {
     const pool = getPool();
     const [rows] = await pool.execute<RowData>(

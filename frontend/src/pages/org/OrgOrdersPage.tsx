@@ -141,10 +141,33 @@ export default function OrgOrdersPage() {
               })}
 
               {/* Totals footer */}
-              <div className="flex justify-end gap-6 px-4 py-3 border-t border-[var(--color-border)] bg-[var(--color-bg)] text-xs">
-                <span className="text-[var(--color-text-muted)]">Subtotal: {formatPrice(subtotal, order.currency_code)}</span>
-                <span className="text-[var(--color-text-muted)]">Shipping: {formatPrice(shipping, order.currency_code)}</span>
-                <span className="font-bold text-[var(--color-text)]">Total: {formatPrice(Number(order.total), order.currency_code)}</span>
+              <div className="px-4 py-3 border-t border-[var(--color-border)] bg-[var(--color-bg)] text-xs space-y-1">
+                <div className="flex justify-between"><span className="text-[var(--color-text-muted)]">Subtotal</span><span>{formatPrice(subtotal, order.currency_code)}</span></div>
+                {Number(order.discount_amount || 0) > 0 && (
+                  <div className="flex justify-between text-[var(--color-success)]"><span>Discount</span><span>-{formatPrice(Number(order.discount_amount), order.currency_code)}</span></div>
+                )}
+                <div className="flex justify-between"><span className="text-[var(--color-text-muted)]">Shipping</span><span>{formatPrice(shipping, order.currency_code)}</span></div>
+                {Number(order.tax_amount || 0) > 0 && (
+                  <div className="flex justify-between"><span className="text-[var(--color-text-muted)]">Tax</span><span>{formatPrice(Number(order.tax_amount), order.currency_code)}</span></div>
+                )}
+                <div className="flex justify-between font-bold text-[var(--color-text)] border-t border-[var(--color-border)] pt-1"><span>Total</span><span>{formatPrice(Number(order.total), order.currency_code)}</span></div>
+                <div className="flex justify-between"><span className="text-[var(--color-text-muted)]">Commission</span><span>{formatPrice(Number(order.commission_amount || 0), order.currency_code)}</span></div>
+                <div className="flex justify-between font-bold text-sm border-t border-[var(--color-border)] pt-1">
+                  <span>Seller Net</span>
+                  <span className="text-[var(--color-success)]">{formatPrice(Number(order.seller_net ?? (Number(order.total) - Number(order.commission_amount || 0))), order.currency_code)}</span>
+                </div>
+                {order.financial_status && (
+                  <div className="flex justify-between pt-1">
+                    <span className="text-[var(--color-text-muted)]">Financial Status</span>
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                      order.financial_status === 'Settled' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
+                      order.financial_status === 'Available' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' :
+                      order.financial_status === 'Held' ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400' :
+                      order.financial_status === 'Cancelled' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' :
+                      'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
+                    }`}>{order.financial_status}</span>
+                  </div>
+                )}
               </div>
             </div>
             );
