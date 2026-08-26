@@ -725,8 +725,8 @@ describe('Navigation registry integrity (immutable ids)', () => {
   it('namespaces ids per shell (nav.admin.*, nav.org.*) and keeps them stable per node', () => {
     const adminIds = collectIds(ADMIN_NAV);
     expect(adminIds.every((id) => id.startsWith('nav.admin.'))).toBe(true);
-    expect(adminIds.length).toBe(138);
-    expect(ADMIN_ID_TO_KEY.size).toBe(130);
+    expect(adminIds.length).toBe(139);
+    expect(ADMIN_ID_TO_KEY.size).toBe(131);
 
     const orgIds = collectIds(ORG_NAV);
     expect(orgIds.every((id) => id.startsWith('nav.org.'))).toBe(true);
@@ -794,7 +794,7 @@ describe('Navigation registry integrity (immutable ids)', () => {
     const adminTop = resolveAdminNav(enT, allCan, allFlags);
     const walk = (items: ResolvedNavItem[]): number =>
       items.reduce((n, it) => n + (it.id ? 1 : 0) + (it.children ? walk(it.children) : 0), 0);
-    expect(walk(adminTop)).toBe(138);
+    expect(walk(adminTop)).toBe(139);
     const orgTop = resolveOrgNav(allCan, '7', enT);
     expect(orgTop.every((it) => it.id !== undefined)).toBe(true);
     expect(orgTop[0].id).toBe('nav.org.dashboard');
@@ -1056,9 +1056,9 @@ describe('Consumer 6 — Workspace Registry integration (drift resolved)', () =>
 
   it('every workspace node carries a nav.admin.* immutable id', () => {
     const allIds = collectAllIds(registryWorkspace);
-    expect(allIds.length).toBe(138);
+    expect(allIds.length).toBe(139);
     expect(allIds.every((id) => id.startsWith('nav.admin.'))).toBe(true);
-    expect(new Set(allIds).size).toBe(138);
+    expect(new Set(allIds).size).toBe(139);
   });
 
   it('workspace resolver is deterministic', () => {
@@ -1071,11 +1071,11 @@ describe('Consumer 6 — Workspace Registry integration (drift resolved)', () =>
     const wsAllIds = collectAllIds(registryWorkspace);
     const registryAllIds = collectIds(ADMIN_NAV);
     expect(wsAllIds).toEqual(registryAllIds);
-    expect(wsAllIds.length).toBe(138);
+    expect(wsAllIds.length).toBe(139);
   });
 
   it('workspace root count matches ADMIN_NAV root', () => {
-    expect(countNodes(registryWorkspace)).toBe(138);
+    expect(countNodes(registryWorkspace)).toBe(139);
     expect(registryWorkspace.length).toBe(ADMIN_NAV.length);
   });
 });

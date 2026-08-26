@@ -1025,6 +1025,7 @@ export const uiRegistry: UIElement[] = [
   { permissionKey: 'accounting.year-close.manage', moduleSlug: 'accounting', elementType: 'button', elementLabel: 'Execute Year Close', componentPath: 'pages/admin/accounting/AccountingPeriodsPage.tsx' },
   { permissionKey: 'accounting.year-close.reopen', moduleSlug: 'accounting', elementType: 'button', elementLabel: 'Reopen Closed Year', componentPath: 'pages/admin/accounting/AccountingPeriodsPage.tsx' },
   { permissionKey: 'accounting.tax-report.view', moduleSlug: 'accounting', elementType: 'page', elementLabel: 'Tax Summary View', componentPath: 'pages/admin/accounting/TaxSummaryPage.tsx' },
+  { permissionKey: 'accounting.reconciliation.view', moduleSlug: 'accounting', elementType: 'page', elementLabel: 'Reconciliation View', componentPath: 'pages/admin/accounting/ReconciliationPage.tsx' },
   { permissionKey: 'sidebar.accounting-tax-report', moduleSlug: 'accounting', elementType: 'tab', elementLabel: 'Sidebar: Tax Summary', componentPath: 'components/layout/AdminSidebar.tsx' },
   { permissionKey: 'sidebar.accounting-year-close', moduleSlug: 'accounting', elementType: 'tab', elementLabel: 'Sidebar: Year Close', componentPath: 'components/layout/AdminSidebar.tsx' },
   // Accounting sidebar
