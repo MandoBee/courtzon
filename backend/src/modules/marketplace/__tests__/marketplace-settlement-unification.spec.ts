@@ -43,6 +43,9 @@ vi.mock('../../settlement/application/settlement.service.js', () => ({
 vi.mock('../../audit-log/index.js', () => ({ recordAudit: vi.fn() }));
 vi.mock('../../../shared/event-bus/index.js', () => ({ eventBusV2: { emit: mockEmit, on: vi.fn() } }));
 vi.mock('../infrastructure/repositories/marketplace.repository.js', () => ({ marketplaceRepository: repoMock }));
+vi.mock('../../financial/infrastructure/repositories/financial-entitlement.repository.js', () => ({
+  financialEntitlementRepository: { findBySourceIds: vi.fn(async () => []), create: vi.fn(async () => 1), update: vi.fn(async () => true) },
+}));
 
 import { marketplaceService } from '../application/marketplace.service.js';
 import { financialEntitlementService } from '../../financial/application/financial-entitlement.service.js';
@@ -53,6 +56,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   // Default repo mocks
   repoMock.findSellerOrgsForUser = vi.fn(async () => []);
+  repoMock.findOrderItemIdsBySellerOrders = vi.fn(async () => []);
   repoMock.getSettlementBalanceBySeller = vi.fn(async () => ({ available_balance: 0, pending_fee: 0, order_count: 0 }));
   repoMock.findOrdersBySeller = vi.fn(async () => ({ data: [], total: 0, page: 1, limit: 10 }));
   repoMock.findOrderById = vi.fn(async () => []);

@@ -50,6 +50,9 @@ vi.mock('../../auth/infrastructure/repositories/user.repository.js', () => ({ us
 vi.mock('../../audit-log/index.js', () => ({ recordAudit: vi.fn() }));
 vi.mock('../../../shared/event-bus/index.js', () => ({ eventBusV2: { emit: mockEmit, on: vi.fn() } }));
 vi.mock('../infrastructure/repositories/marketplace.repository.js', () => ({ marketplaceRepository: repoMock }));
+vi.mock('../../financial/infrastructure/repositories/financial-entitlement.repository.js', () => ({
+  financialEntitlementRepository: { findBySourceIds: vi.fn(async () => []), create: vi.fn(async () => 1), update: vi.fn(async () => true) },
+}));
 
 import { marketplaceService } from '../application/marketplace.service.js';
 
@@ -85,6 +88,7 @@ beforeEach(() => {
   repoMock.findSellerOrgsForUser = vi.fn(async () => []);
   repoMock.isPlatformAdmin = vi.fn(async () => false);
   repoMock.findCartByUser = vi.fn(async () => []);
+  repoMock.findOrderItemIdsBySellerOrders = vi.fn(async () => []);
   repoMock.findProductsByIds = vi.fn(async (ids: number[]) => ids.map((id: number) => productMap.get(Number(id))).filter(Boolean));
   repoMock.findVariantsForProducts = vi.fn(async () => []);
   repoMock.findAddressById = vi.fn(async () => ({ id: 1, province_id: 1, city_id: 1, country: 'EG', city: 'Cairo' }));

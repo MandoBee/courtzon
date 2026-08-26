@@ -16,6 +16,7 @@ import { userRepository } from '../../auth/infrastructure/repositories/user.repo
 import { createModuleLogger } from '../../../shared/utils/logger.js';
 import { eventBusV2 } from '../../../shared/event-bus/index.js';
 import { toMySqlDateTime } from '../../../shared/utils/mysql-date.js';
+import { financialEntitlementRepository } from '../../financial/infrastructure/repositories/financial-entitlement.repository.js';
 
 const log = createModuleLogger('marketplace');
 
@@ -856,7 +857,9 @@ export const marketplaceService = {
             subtotal: row.subtotal,
             shipping_cost: row.shipping_cost,
             discount_amount: row.discount_amount,
+            tax_amount: row.tax_amount,
             total: row.total,
+            commission_amount: row.commission_amount,
             currency_code: row.currency_code,
             payment_method: row.payment_method,
             created_at: row.created_at,
@@ -930,16 +933,97 @@ export const marketplaceService = {
     return { ...result, data: merged, total: merged.length };
   },
 
+  /**
+   * Enriches grouped seller orders with canonical financial status and seller_net
+   * from financial_entitlements. The seller_net is the sum of ORGANIZATION_EARNING
+   * amounts — the authoritative source for seller economics.
+   *
+   * financial_status is derived per order from the entitlement statuses of its
+   * order_items: Pending / Available / Held / Reserved / Settled / Cancelled.
+   */
+  async _enrichGroupedOrdersWithFinancials(orders: any[], sellerOrgIds: number[]): Promise<any[]> {
+    if (!orders.length || !sellerOrgIds.length) return orders;
+
+    const allOrderIds = orders.map((o: any) => o.id);
+    if (!allOrderIds.length) return orders;
+
+    const orderItemLinks = await repo.findOrderItemIdsBySellerOrders(allOrderIds, sellerOrgIds);
+    if (!orderItemLinks.length) {
+      return orders.map((o: any) => ({ ...o, seller_net: 0, financial_status: 'Pending' }));
+    }
+
+    const orderItemIds = orderItemLinks.map((l) => l.orderItemId);
+    const entitlements = await financialEntitlementRepository.findBySourceIds('marketplace', orderItemIds);
+
+    const itemToOrder = new Map<number, number>();
+    for (const link of orderItemLinks) {
+      itemToOrder.set(link.orderItemId, link.orderId);
+    }
+
+    const orderEarningMap = new Map<number, number>();
+    const orderEntitlementStatuses = new Map<number, string[]>();
+
+    for (const ent of entitlements) {
+      const orderId = ent.source_id != null ? itemToOrder.get(ent.source_id) : undefined;
+      if (orderId === undefined) continue;
+
+      if (ent.entitlement_type === 'ORGANIZATION_EARNING') {
+        orderEarningMap.set(orderId, (orderEarningMap.get(orderId) || 0) + Number(ent.amount));
+      }
+      if (ent.entitlement_type === 'ORGANIZATION_EARNING') {
+        if (!orderEntitlementStatuses.has(orderId)) orderEntitlementStatuses.set(orderId, []);
+        orderEntitlementStatuses.get(orderId)!.push(ent.status);
+      }
+    }
+
+    const deriveFinancialStatus = (statuses: string[]): string => {
+      if (!statuses.length) return 'Pending';
+      const s = new Set(statuses);
+      if (s.has('CANCELLED')) return 'Cancelled';
+      if (s.has('SETTLED')) return 'Settled';
+      if (s.has('ON_HOLD')) {
+        const allOnHold = statuses.every((st) => st === 'ON_HOLD');
+        return allOnHold ? 'Held' : 'Held';
+      }
+      if (s.has('AVAILABLE')) return 'Available';
+      if (s.has('PENDING')) return 'Pending';
+      return 'Pending';
+    };
+
+    return orders.map((order: any) => {
+      const statuses = orderEntitlementStatuses.get(order.id) || [];
+      const enriched = {
+        ...order,
+        seller_net: Math.round((orderEarningMap.get(order.id) || 0) * 100) / 100,
+        financial_status: deriveFinancialStatus(statuses),
+      };
+
+      if (order._sellerOrders) {
+        enriched._sellerOrders = order._sellerOrders.map((so: any) => {
+          const soStatuses = orderEntitlementStatuses.get(so.id) || [];
+          return {
+            ...so,
+            seller_net: Math.round((orderEarningMap.get(so.id) || 0) * 100) / 100,
+            financial_status: deriveFinancialStatus(soStatuses),
+          };
+        });
+      }
+
+      return enriched;
+    });
+  },
+
   async getOrderForUser(orderId: number, userId: number) {
     // 1. Try buyer view
     let rows = await repo.findOrderById(orderId, userId);
     let viewedAsSeller = false;
+    let sellerOrgIds: number[] = [];
 
     // 2. If not the buyer, check if the user is a seller on this order
     //    (any organisation they own or act for — not just 'shop' types).
     if (!rows.length) {
       const orgIds = await this._resolveSellerOrgIds(userId);
-      if (orgIds.length) { rows = await repo.findOrderById(orderId, undefined, orgIds); viewedAsSeller = true; }
+      if (orgIds.length) { rows = await repo.findOrderById(orderId, undefined, orgIds); viewedAsSeller = true; sellerOrgIds = orgIds; }
     }
 
     // 3. Unfiltered fallback (race condition: order was just created and buyer_id join not yet visible)
@@ -971,6 +1055,12 @@ export const marketplaceService = {
           order._isGrouped = true;
         }
       }
+    }
+
+    // Enrich with canonical seller economics when viewed as seller
+    if (viewedAsSeller && sellerOrgIds.length) {
+      const enriched = await this._enrichGroupedOrdersWithFinancials([order], sellerOrgIds);
+      if (enriched.length) Object.assign(order, { seller_net: enriched[0].seller_net, financial_status: enriched[0].financial_status });
     }
 
     return order;
@@ -1650,7 +1740,9 @@ export const marketplaceService = {
     const orgIds = await this._resolveSellerOrgIds(userId);
     if (!orgIds.length) throw new ForbiddenError('Not a seller');
     const result = await repo.findOrdersBySeller(orgIds, filters);
-    return this._groupOrdersByItem(result);
+    const grouped = this._groupOrdersByItem(result);
+    grouped.data = await this._enrichGroupedOrdersWithFinancials(grouped.data, orgIds);
+    return grouped;
   },
 
   async getSellerStats(userId: number) {
