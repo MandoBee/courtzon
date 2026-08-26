@@ -3,7 +3,37 @@ import { useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import api from '../../services/api';
 import { Can } from '../../permissions/Can';
+import { formatPrice } from '../../utils/currency';
 import SubscriptionRequestModal from '../../components/subscription/SubscriptionRequestModal';
+
+const billingCycleLabels: Record<string, string> = {
+  monthly: 'Monthly',
+  yearly: 'Yearly',
+};
+
+const paymentMethodLabels: Record<string, string> = {
+  card: 'Credit Card',
+  cash: 'Cash',
+  wallet: 'Wallet',
+  bank_transfer: 'Bank Transfer',
+  online: 'Online',
+};
+
+const statusColors: Record<string, string> = {
+  active: 'bg-[var(--color-success-bg)] text-[var(--color-success-text)]',
+  suspended: 'bg-[var(--color-warning-bg)] text-[var(--color-warning-text)]',
+  pending: 'bg-[var(--color-info-bg)] text-[var(--color-info-text)]',
+  expired: 'bg-[var(--color-error-bg)] text-[var(--color-error-text)]',
+  cancelled: 'bg-gray-100 text-gray-500',
+};
+
+function formatBillingCycle(c?: string | null): string {
+  return (billingCycleLabels[c || ''] || c || '—');
+}
+
+function formatPaymentMethod(m?: string | null): string {
+  return (paymentMethodLabels[m || ''] || m || '—');
+}
 
 export default function OrgSubscriptionPage() {
   const { orgId } = useParams<{ orgId: string }>();
@@ -65,17 +95,26 @@ export default function OrgSubscriptionPage() {
                 {sub.planName || 'No Plan'}
               </h2>
               <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1 text-sm text-[var(--color-text-muted)]">
-                {sub.priceMonthly != null && (
-                  <span>
-                    {sub.isUnlimited ? 'Free' : `${Number(sub.priceMonthly).toFixed(0)} EGP/mo`}
-                  </span>
+                {sub.isUnlimited ? (
+                  <span className="text-[var(--color-text)] font-medium">Free</span>
+                ) : (
+                  sub.priceMonthly != null && (
+                    <span className="text-[var(--color-text)] font-medium">
+                      {sub.billingCycle === 'yearly' && sub.priceYearly != null
+                        ? `${formatPrice(Number(sub.priceYearly))}/yr`
+                        : `${formatPrice(Number(sub.priceMonthly))}/mo`}
+                    </span>
+                  )
                 )}
-                <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                  sub.status === 'active' ? 'bg-[var(--color-success-bg)] text-[var(--color-success-text)]' :
-                  sub.status === 'suspended' ? 'bg-[var(--color-warning-bg)] text-[var(--color-warning-text)]' :
-                  sub.status === 'pending' ? 'bg-[var(--color-info-bg)] text-[var(--color-info-text)]' :
-                  'bg-[var(--color-error-bg)] text-[var(--color-error-text)]'
-                }`}>{sub.status === 'active' ? 'Active' : sub.status === 'suspended' ? 'Suspended' : sub.status === 'pending' ? 'Pending Activation' : sub.status}</span>
+                {sub.billingCycle && (
+                  <span>{formatBillingCycle(sub.billingCycle)}</span>
+                )}
+                {sub.isInternal && (
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-[var(--color-border)] text-[var(--color-text-muted)]">Internal</span>
+                )}
+                <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${statusColors[sub.status] || ''}`}>
+                  {sub.status === 'active' ? 'Active' : sub.status === 'suspended' ? 'Suspended' : sub.status === 'pending' ? 'Pending Activation' : sub.status}
+                </span>
               </div>
               {/* Expiration */}
               {sub.startDate && (
@@ -88,6 +127,21 @@ export default function OrgSubscriptionPage() {
                   {new Date(sub.endDate) < new Date() ? 'Expired: ' : 'Expires: '}
                   {new Date(sub.endDate).toLocaleDateString('en-GB')}
                 </p>
+              )}
+              {/* Payment method / status (only when the backend provides it) */}
+              {(sub.paymentMethod || sub.paymentStatus) && (
+                <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1 text-xs text-[var(--color-text-muted)]">
+                  {sub.paymentMethod && (
+                    <span>
+                      Payment: <span className="text-[var(--color-text)] font-medium">{formatPaymentMethod(sub.paymentMethod)}</span>
+                    </span>
+                  )}
+                  {sub.paymentStatus && (
+                    <span>
+                      Status: <span className="text-[var(--color-text)] font-medium capitalize">{sub.paymentStatus.replace(/_/g, ' ')}</span>
+                    </span>
+                  )}
+                </div>
               )}
             </div>
             {sub.pendingRequest ? (
@@ -187,6 +241,8 @@ export default function OrgSubscriptionPage() {
               <thead>
                 <tr className="border-b border-[var(--color-border)] text-left text-xs text-[var(--color-text-muted)]">
                   <th className="pb-2 pr-3 font-medium">Plan</th>
+                  <th className="pb-2 pr-3 font-medium">Billing</th>
+                  <th className="pb-2 pr-3 font-medium">Amount</th>
                   <th className="pb-2 pr-3 font-medium">Start</th>
                   <th className="pb-2 pr-3 font-medium">End</th>
                   <th className="pb-2 pr-3 font-medium">Status</th>
@@ -195,17 +251,18 @@ export default function OrgSubscriptionPage() {
               <tbody>
                 {periods.map((p: any) => (
                   <tr key={p.id} className="border-b border-[var(--color-border)] last:border-0">
-                    <td className="py-2 pr-3 text-xs font-medium text-[var(--color-text)]">{p.plan_name}</td>
+                    <td className="py-2 pr-3 text-xs font-medium text-[var(--color-text)]">
+                      {p.plan_name}
+                      {p.is_internal == 1 && <span className="ml-1 px-1.5 py-0.5 rounded text-[9px] font-medium bg-[var(--color-border)] text-[var(--color-text-muted)]">Internal</span>}
+                    </td>
+                    <td className="py-2 pr-3 text-xs text-[var(--color-text-muted)]">{formatBillingCycle(p.billing_cycle)}</td>
+                    <td className="py-2 pr-3 text-xs font-medium text-[var(--color-text)]">
+                      {Number(p.is_unlimited) === 1 ? 'Free' : (p.price != null ? formatPrice(Number(p.price)) : '—')}
+                    </td>
                     <td className="py-2 pr-3 text-xs text-[var(--color-text-muted)]">{p.start_date ? new Date(p.start_date).toLocaleDateString('en-GB') : '—'}</td>
                     <td className="py-2 pr-3 text-xs text-[var(--color-text-muted)]">{p.end_date ? new Date(p.end_date).toLocaleDateString('en-GB') : 'No expiry'}</td>
                     <td className="py-2 pr-3">
-                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${
-                        p.subscription_status === 'active' ? 'bg-[var(--color-success-bg)] text-[var(--color-success-text)]' :
-                        p.subscription_status === 'pending' ? 'bg-[var(--color-info-bg)] text-[var(--color-info-text)]' :
-                        p.subscription_status === 'suspended' ? 'bg-[var(--color-warning-bg)] text-[var(--color-warning-text)]' :
-                        p.subscription_status === 'cancelled' ? 'bg-gray-100 text-gray-500' :
-                        'bg-[var(--color-error-bg)] text-[var(--color-error-text)]'
-                      }`}>{p.subscription_status}</span>
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${statusColors[p.subscription_status] || ''}`}>{p.subscription_status}</span>
                     </td>
                   </tr>
                 ))}
@@ -226,6 +283,9 @@ export default function OrgSubscriptionPage() {
                   <th className="pb-2 pr-3 font-medium">Date</th>
                   <th className="pb-2 pr-3 font-medium">Type</th>
                   <th className="pb-2 pr-3 font-medium">Requested Plan</th>
+                  <th className="pb-2 pr-3 font-medium">Billing</th>
+                  <th className="pb-2 pr-3 font-medium">Amount</th>
+                  <th className="pb-2 pr-3 font-medium">Payment</th>
                   <th className="pb-2 pr-3 font-medium">Status</th>
                 </tr>
               </thead>
@@ -236,9 +296,14 @@ export default function OrgSubscriptionPage() {
                     <td className="py-2 pr-3 text-xs">
                       <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
                         r.request_type === 'NEW_SUBSCRIPTION' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'
-                      }`}>{r.request_type === 'NEW_SUBSCRIPTION' ? 'New' : 'Change'}</span>
+                      }`}>{r.request_type === 'NEW_SUBSCRIPTION' ? 'New' : r.request_type === 'RENEWAL' ? 'Renewal' : 'Change'}</span>
                     </td>
                     <td className="py-2 pr-3 text-xs text-[var(--color-text)]">{r.requested_plan_name || '—'}</td>
+                    <td className="py-2 pr-3 text-xs text-[var(--color-text-muted)]">{formatBillingCycle(r.requested_billing_cycle)}</td>
+                    <td className="py-2 pr-3 text-xs font-medium text-[var(--color-text)]">
+                      {r.requested_price != null ? formatPrice(Number(r.requested_price)) : '—'}
+                    </td>
+                    <td className="py-2 pr-3 text-xs text-[var(--color-text)]">{formatPaymentMethod(r.chosen_payment_method)}</td>
                     <td className="py-2 pr-3">
                       <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${
                         r.status === 'approved' ? 'bg-[var(--color-success-bg)] text-[var(--color-success-text)]' :
