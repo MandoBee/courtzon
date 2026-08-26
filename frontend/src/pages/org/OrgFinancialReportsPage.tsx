@@ -112,9 +112,12 @@ function IncomeStatement({ data }: { data: any }) {
         </table>
       </div>
       <div className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] border p-4 space-y-1">
-        <div className="flex justify-end gap-4 text-sm"><span className="text-[var(--color-text-muted)]">Net Income:</span>
+        <div className="flex justify-end gap-4 text-sm"><span className="text-[var(--color-text-muted)]">GL Net Income (Accounting):</span>
           <span className={`font-mono font-semibold ${(data?.net_income ?? 0) >= 0 ? 'text-green-600' : 'text-red-500'}`}>{fmt(data?.net_income ?? 0)}</span>
         </div>
+        <p className="text-xs text-[var(--color-text-muted)] text-right max-w-xl ml-auto leading-relaxed">
+          Accounting/reporting result from your organisation's general-ledger slice. Not your settlement earnings — your settlement position is tracked by financial entitlements (see Financial Position).
+        </p>
       </div>
     </div>
   );

@@ -101,7 +101,7 @@ export function CollectorInfoSection({ position, t }: { position: PositionSummar
         </p>
         <div className="grid grid-cols-2 gap-4 text-sm">
           <div>
-            <p className="font-medium text-[var(--color-text)] mb-1">{t('financial_position.your_earnings', 'Your Earnings')}</p>
+            <p className="font-medium text-[var(--color-text)] mb-1">{t('financial_position.your_earnings', 'Position Earnings (Settlement)')}</p>
             <div className="space-y-1 text-[var(--color-text-muted)]">
               <p>Digital (via CourtZon): <span className="font-medium text-[var(--color-text)]">{formatPrice(earnings.courtzonCollected)}</span></p>
               <p>Cash/COD (direct): <span className="font-medium text-[var(--color-text)]">{formatPrice(earnings.orgCollected)}</span></p>
@@ -191,6 +191,9 @@ export default function FinancialPositionPage() {
 
         <p className="text-xs text-[var(--color-text-muted)] leading-relaxed max-w-3xl">
           {t('financial_position.explanation', 'Your financial position across all revenue streams — bookings, coach sessions, marketplace orders, and adjustments. Each bucket represents a different stage in the settlement lifecycle.')}
+        </p>
+        <p className="text-xs text-[var(--color-text-muted)] leading-relaxed max-w-3xl">
+          {t('financial_position.position_vs_gl', 'Position Earnings below are your settlement position, tracked by financial entitlements and used for settlement — they are not the same as the GL Net Income shown on the accounting dashboard (the accounting/reporting view of your general-ledger slice).')}
         </p>
 
         {/* Net Position Banner */}
