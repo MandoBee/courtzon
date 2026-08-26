@@ -10,6 +10,7 @@ import { useCan } from '../../hooks/useCan';
 import { formatPrice } from '../../utils/currency';
 import { useTranslation } from '../../i18n';
 import SellerProductFormModal from '../../components/marketplace/SellerProductFormModal';
+import { BalanceCard, CollectorInfoSection, BUCKET_BORDER_COLORS } from '../org/FinancialPositionPage';
 
 type Tab = 'products' | 'orders' | 'stats' | 'settings' | 'settlements';
 
@@ -101,6 +102,12 @@ export default function SellerDashboardPage() {
     queryKey: ['mp-seller-settlement-balance'],
     queryFn: () => api.get('/marketplace/seller/settlements/balance').then((r) => r.data),
     enabled: !!profile?.active && tab === 'settlements',
+  });
+
+  const { data: positionData } = useQuery({
+    queryKey: ['org-position', org?.id],
+    queryFn: () => api.get(`/org/${org.id}/position`).then((r) => r.data?.data || r.data),
+    enabled: !!org?.id && tab === 'stats',
   });
 
   const requestSettlement = useMutation({
@@ -227,20 +234,40 @@ export default function SellerDashboardPage() {
       {/* Stats Tab */}
       {tab === 'stats' && stats && (
         <div className="space-y-4">
-          {/* Financial Position — from PositionService (financial_entitlements) */}
-          {stats.financial_position && (
+          {/* Financial Position — 5-bucket breakdown from PositionService */}
+          {positionData?.balances && (
             <div>
               <p className="text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wide mb-2">Financial Position</p>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] p-4 border-l-4 border-[var(--color-primary)]">
-                  <p className="text-xs text-[var(--color-text-muted)]">Available Balance</p>
-                  <p className="text-lg font-bold text-[var(--color-text)]">{formatPrice(Number(stats.financial_position.available_balance))}</p>
-                </div>
-                <div className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] p-4 border-l-4 border-[var(--color-warning)]">
-                  <p className="text-xs text-[var(--color-text-muted)]">Pending Commission</p>
-                  <p className="text-lg font-bold text-[var(--color-text)]">{formatPrice(Number(stats.financial_position.pending_commission))}</p>
-                </div>
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                <BalanceCard label={t('financial_position.available', 'Available')} bucket={positionData.balances.available} borderClass={BUCKET_BORDER_COLORS.available} tooltipKey="available" />
+                <BalanceCard label={t('financial_position.pending', 'Pending')} bucket={positionData.balances.pending} borderClass={BUCKET_BORDER_COLORS.pending} tooltipKey="pending" />
+                <BalanceCard label={t('financial_position.held', 'Held')} bucket={positionData.balances.held} borderClass={BUCKET_BORDER_COLORS.held} tooltipKey="held" />
+                <BalanceCard label={t('financial_position.reserved', 'Reserved')} bucket={positionData.balances.reserved} borderClass={BUCKET_BORDER_COLORS.reserved} tooltipKey="reserved" />
+                <BalanceCard label={t('financial_position.settled', 'Settled')} bucket={positionData.balances.settled} borderClass={BUCKET_BORDER_COLORS.settled} tooltipKey="settled" />
               </div>
+              {/* Net position */}
+              {positionData.position && (
+                <div className="mt-3 bg-[var(--color-surface)] rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] border p-4">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <div>
+                      <p className="text-xs text-[var(--color-text-muted)] uppercase tracking-wide">Net Position</p>
+                      <p className={`text-lg font-bold ${
+                        positionData.position.direction === 'PAYABLE_TO_ORGANISATION' ? 'text-[var(--color-success)]' :
+                        positionData.position.direction === 'RECEIVABLE_FROM_ORGANISATION' ? 'text-[var(--color-error)]' :
+                        'text-[var(--color-text-muted)]'
+                      }`}>
+                        {formatPrice(Math.abs(positionData.position.net))}
+                        <span className="text-xs font-normal ml-2">
+                          {positionData.position.direction === 'PAYABLE_TO_ORGANISATION' ? 'CourtZon owes you' :
+                           positionData.position.direction === 'RECEIVABLE_FROM_ORGANISATION' ? 'You owe CourtZon' :
+                           'Settled up'}
+                        </span>
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+              {positionData.position && <CollectorInfoSection position={positionData} t={t} />}
             </div>
           )}
           {/* Sales Performance — gross order metrics, NOT seller earnings */}

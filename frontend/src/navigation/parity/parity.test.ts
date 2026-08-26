@@ -730,8 +730,8 @@ describe('Navigation registry integrity (immutable ids)', () => {
 
     const orgIds = collectIds(ORG_NAV);
     expect(orgIds.every((id) => id.startsWith('nav.org.'))).toBe(true);
-    expect(orgIds.length).toBe(38);
-    expect(ORG_ID_TO_KEY.size).toBe(32);
+    expect(orgIds.length).toBe(39);
+    expect(ORG_ID_TO_KEY.size).toBe(33);
     // Category domains carry no permission key (they render when a permitted child passes);
     // every node that DOES carry a key must be registered in the id→key map.
     for (const id of ORG_ID_TO_KEY.keys()) expect(orgIds.includes(id)).toBe(true);
