@@ -2144,3 +2144,31 @@ export async function yearCloseReopenHandler(request: FastifyRequest, reply: Fas
 // ── Fixed openPeriodHandler: reject locked periods ──
 // (replaces existing openPeriodHandler with added locked check)
 
+
+// -- Position Reconciliation (Phase 2 Step 1 � READ-ONLY) ------------------
+// Compares financial_entitlements (single authoritative position subledger)
+// against GL control accounts (2200/1160 mirror). Pure SELECTs; never mutates.
+
+import { reconciliationService } from '../../financial/application/reconciliation.service.js';
+import { positionService } from '../../financial/application/position.service.js';
+
+export async function getPositionReconciliationListHandler(request: FastifyRequest, reply: FastifyReply) {
+  const query = request.query as any;
+  const limit = Math.min(Number(query?.limit) || 200, 500);
+  const { summary, reports } = await reconciliationService.reconcileAll({ limit });
+  return reply.send({
+    data: {
+      summary,
+      reports: query?.status === 'drift' ? reports.filter((r) => !r.reconciled) : reports,
+    },
+  });
+}
+
+export async function getOrgPositionReconciliationHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { organisationId } = request.params as any;
+  const [report, position] = await Promise.all([
+    reconciliationService.reconcileOrganisation(Number(organisationId)),
+    positionService.getOrganisationPositionSummary(Number(organisationId)),
+  ]);
+  return reply.send({ data: { reconciliation: report, position } });
+}

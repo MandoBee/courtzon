@@ -95,4 +95,9 @@ export async function accountingRoutes(app: FastifyInstance): Promise<void> {
   app.get('/admin/accounting/mappings/:eventType', { preHandler: [requirePermission(['accounting.mappings.view'])] }, ctrl.getMappingHandler);
   app.put('/admin/accounting/mappings/:eventType', { preHandler: [requirePermission(['accounting.mappings.manage'])] }, ctrl.updateMappingHandler);
   app.delete('/admin/accounting/mappings/:eventType', { preHandler: [requirePermission(['accounting.mappings.manage'])] }, ctrl.deleteMappingHandler);
+
+  // ── Position Reconciliation (Phase 2 Step 1 — READ-ONLY, admin-only) ──
+  // financial_entitlements (single position authority) vs GL control accounts.
+  app.get('/admin/accounting/reconciliation', { preHandler: [requirePermission(['accounting.gl.view'])] }, ctrl.getPositionReconciliationListHandler);
+  app.get('/admin/accounting/reconciliation/organisations/:organisationId', { preHandler: [requirePermission(['accounting.gl.view'])] }, ctrl.getOrgPositionReconciliationHandler);
 }
