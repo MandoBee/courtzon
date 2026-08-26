@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
 import api from '../../services/api';
 import { Can } from '../../permissions/Can';
 import { useToast } from '../../components/ui/Toast';
@@ -78,6 +79,17 @@ export default function OrgBookingSettlements({ orgId }: { orgId: string }) {
 
   return (
     <div className="space-y-4">
+      <div className="bg-[var(--color-bg)] border border-[var(--color-border)] rounded-[var(--radius-md)] p-3 text-xs text-[var(--color-text-muted)] leading-relaxed">
+        <p>
+          <strong className="text-[var(--color-text)]">Booking Settlement</strong> settles coach and organisation economics per booking.
+          The <strong className="text-[var(--color-text)]">Org (settleable)</strong> and <strong className="text-[var(--color-text)]">Org recovery</strong> figures
+          below are operational per-booking projections. Your <strong className="text-[var(--color-text)]">authoritative organisation position</strong> is tracked by
+          financial entitlements and shown on the{' '}
+          <Link to={`/org/${orgId}/finance/position`} className="text-[var(--color-primary)] underline">Financial Position</Link> page.
+          Coach settlement and recovery are separate provider economics (coaches are not organisations).
+        </p>
+      </div>
+
       <div className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] border border-[var(--color-border)] overflow-hidden">
         {isLoading ? (
           <p className="p-6 text-sm text-[var(--color-text-muted)]">Loading eligible bookings...</p>
@@ -90,10 +102,10 @@ export default function OrgBookingSettlements({ orgId }: { orgId: string }) {
                 <tr className="border-b border-[var(--color-border)] bg-[var(--color-bg)]">
                   <th className="text-left px-4 py-3 font-medium text-[var(--color-text-muted)]">Booking</th>
                   <th className="text-left px-4 py-3 font-medium text-[var(--color-text-muted)]">Date</th>
-                  <th className="text-right px-4 py-3 font-medium text-[var(--color-text-muted)]">Coach (settleable)</th>
-                  <th className="text-right px-4 py-3 font-medium text-[var(--color-text-muted)]">Org (settleable)</th>
-                  <th className="text-right px-4 py-3 font-medium text-[var(--color-text-muted)]">Coach recovery</th>
-                  <th className="text-right px-4 py-3 font-medium text-[var(--color-text-muted)]">Org recovery</th>
+                  <th className="text-right px-4 py-3 font-medium text-[var(--color-text-muted)]" title="Coach economics — coaches are providers and are settled separately from organisation entitlements.">Coach (settleable)</th>
+                  <th className="text-right px-4 py-3 font-medium text-[var(--color-text-muted)]" title="Operational per-booking projection — the authoritative org position is on the Financial Position page (financial entitlements).">Org (settleable)</th>
+                  <th className="text-right px-4 py-3 font-medium text-[var(--color-text-muted)]" title="Coach recovery receivable — recovery tracking is preserved independently of organisation entitlements.">Coach recovery</th>
+                  <th className="text-right px-4 py-3 font-medium text-[var(--color-text-muted)]" title="Organisation recovery receivable — recovery tracking is a separate structure from the entitlement position.">Org recovery</th>
                   <th className="text-right px-4 py-3 font-medium text-[var(--color-text-muted)]">Actions</th>
                 </tr>
               </thead>
