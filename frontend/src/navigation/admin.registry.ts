@@ -249,6 +249,7 @@ export const ADMIN_NAV: NavDefinition[] = [
       { id: 'nav.admin.accounting-mappings', label: LIT('Event Mappings'), path: '/admin/accounting/mappings', permissionKey: 'sidebar.accounting-mappings' },
       { id: 'nav.admin.accounting-templates', label: LIT('Account Templates'), path: '/admin/accounting/templates', permissionKey: 'sidebar.accounting-templates' },
       { id: 'nav.admin.accounting-tax-report', label: LIT('Tax Summary'), path: '/admin/accounting/tax-report', permissionKey: 'sidebar.accounting-tax-report' },
+      { id: 'nav.admin.accounting-reconciliation', label: LIT('Reconciliation'), path: '/admin/accounting/reconciliation', permissionKey: 'accounting.gl.view' },
     ],
   },
   {

@@ -80,6 +80,7 @@ export const ADMIN_ROUTE_PERMISSIONS: Record<string, string> = {
   'accounting': 'sidebar.accounting',
   'accounting/mappings': 'sidebar.accounting-mappings',
   'accounting/templates': 'sidebar.accounting-templates',
+  'accounting/reconciliation': 'accounting.gl.view',
   'crm': 'crm.dashboard.view',
   'hr': 'hr.dashboard.view',
   'bi': 'bi.dashboard.view',
