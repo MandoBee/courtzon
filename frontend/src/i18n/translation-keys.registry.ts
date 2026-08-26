@@ -1391,6 +1391,19 @@ export const translationKeysRegistry: TranslationKeyEntry[] = [
   // Sprint 9 — payments
   { key: 'player.payments.title', defaultValue: 'Payment History', moduleSlug: 'player', elementType: 'heading', elementLabel: 'Payments page title' },
   { key: 'player.payments.no_payments', defaultValue: 'No payments found.', moduleSlug: 'player', elementType: 'text', elementLabel: 'No payments' },
+  { key: 'player.payments.details', defaultValue: 'Payment Details', moduleSlug: 'player', elementType: 'heading', elementLabel: 'Payment receipt/details heading' },
+  { key: 'player.payments.reference', defaultValue: 'Reference', moduleSlug: 'player', elementType: 'label', elementLabel: 'Payment reference' },
+  { key: 'player.payments.date', defaultValue: 'Date & Time', moduleSlug: 'player', elementType: 'label', elementLabel: 'Payment date and time' },
+  { key: 'player.payments.amount', defaultValue: 'Amount', moduleSlug: 'player', elementType: 'label', elementLabel: 'Payment amount' },
+  { key: 'player.payments.method', defaultValue: 'Payment Method', moduleSlug: 'player', elementType: 'label', elementLabel: 'Payment method' },
+  { key: 'player.payments.status', defaultValue: 'Status', moduleSlug: 'player', elementType: 'label', elementLabel: 'Payment status' },
+  { key: 'player.payments.type', defaultValue: 'Type', moduleSlug: 'player', elementType: 'label', elementLabel: 'Payment type' },
+  { key: 'player.payments.gateway_ref', defaultValue: 'Gateway Reference', moduleSlug: 'player', elementType: 'label', elementLabel: 'Gateway reference' },
+  { key: 'player.payments.view_order', defaultValue: 'View Order', moduleSlug: 'player', elementType: 'button', elementLabel: 'View related order' },
+  { key: 'player.payments.view_booking', defaultValue: 'View Booking', moduleSlug: 'player', elementType: 'button', elementLabel: 'View related booking' },
+  { key: 'player.payments.view_wallet', defaultValue: 'View Wallet', moduleSlug: 'player', elementType: 'button', elementLabel: 'View wallet' },
+  { key: 'player.payments.all_methods', defaultValue: 'All Methods', moduleSlug: 'player', elementType: 'label', elementLabel: 'All payment methods filter' },
+  { key: 'player.payments.all_types', defaultValue: 'All Types', moduleSlug: 'player', elementType: 'label', elementLabel: 'All payment types filter' },
 
   // Sprint 9 — rank history
   { key: 'player.rank.title', defaultValue: 'Rank History', moduleSlug: 'player', elementType: 'heading', elementLabel: 'Rank history title' },

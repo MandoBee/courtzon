@@ -1003,8 +1003,13 @@ export class PaymentService {
     };
   }
 
-  async getTransactions(userId: number, page: number, limit: number) {
-    return paymentRepository.findByUser(userId, page, limit);
+  async getTransactions(
+    userId: number,
+    page: number,
+    limit: number,
+    filters?: { status?: string; paymentMethod?: string; referenceType?: string },
+  ) {
+    return paymentRepository.findByUser(userId, page, limit, filters);
   }
 }
 

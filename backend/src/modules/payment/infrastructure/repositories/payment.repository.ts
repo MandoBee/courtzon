@@ -213,16 +213,46 @@ export const paymentRepository = {
     return result.affectedRows > 0;
   },
 
-  async findByUser(userId: number, page: number, limit: number) {
+  async findByUser(
+    userId: number,
+    page: number,
+    limit: number,
+    filters?: { status?: string; paymentMethod?: string; referenceType?: string },
+  ) {
     const pool = getPool();
+    const conditions: string[] = ['user_id = ?'];
+    const params: any[] = [userId];
+    if (filters?.status) {
+      conditions.push('payment_status = ?');
+      params.push(filters.status);
+    }
+    if (filters?.paymentMethod) {
+      conditions.push('payment_method = ?');
+      params.push(filters.paymentMethod);
+    }
+    if (filters?.referenceType) {
+      conditions.push('reference_type = ?');
+      params.push(filters.referenceType);
+    }
+    const where = conditions.join(' AND ');
     const offset = (page - 1) * limit;
+
+    // Safe read-only projection — the raw `gateway_response` JSON (which may
+    // contain provider secrets/PCI fragments) is NEVER exposed to the player.
     const [rows] = await pool.query<RowData>(
-      'SELECT * FROM payment_transactions WHERE user_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?',
-      [userId, limit, offset]
+      `SELECT id, user_id, booking_id, order_id, reference_id, reference_type,
+              payment_method, gateway_provider, gateway_reference,
+              amount, currency, payment_status,
+              paid_at, cancelled_at, expired_at, created_at, updated_at
+       FROM payment_transactions
+       WHERE ${where}
+       ORDER BY created_at DESC
+       LIMIT ? OFFSET ?`,
+      [...params, limit, offset]
     );
     const [countRows] = await pool.query<RowData>(
-      'SELECT COUNT(*) as cnt FROM payment_transactions WHERE user_id = ?',
-      [userId]
+      `SELECT COUNT(*) as cnt FROM payment_transactions WHERE ${where}`,
+      params
     );
     return { data: rows, total: countRows[0].cnt, page, limit };
   },

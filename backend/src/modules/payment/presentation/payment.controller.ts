@@ -121,8 +121,12 @@ export async function webhookHandler(request: FastifyRequest, reply: FastifyRepl
 
 export async function getTransactionsHandler(request: FastifyRequest, reply: FastifyReply) {
   const userId = (request as any).userId;
-  const { page = 1, limit = 20 } = request.query as any;
-  const result = await paymentService.getTransactions(userId, Number(page), Number(limit));
+  const { page = 1, limit = 20, status, paymentMethod, referenceType } = request.query as any;
+  const result = await paymentService.getTransactions(userId, Number(page), Number(limit), {
+    status: status || undefined,
+    paymentMethod: paymentMethod || undefined,
+    referenceType: referenceType || undefined,
+  });
   return reply.send(result);
 }
 
