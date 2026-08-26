@@ -1656,7 +1656,25 @@ export const marketplaceService = {
   async getSellerStats(userId: number) {
     const orgIds = await this._resolveSellerOrgIds(userId);
     if (!orgIds.length) throw new ForbiddenError('Not a seller');
-    return repo.getSellerStats(orgIds);
+    const stats = await repo.getSellerStats(orgIds);
+    // Phase 2 Step 6: add financial-position metrics from PositionService
+    // (single authority) alongside sales metrics. gross_sales_volume clarifies
+    // that total_revenue is GROSS SALES, not seller earnings.
+    const { positionService } = await import('../../financial/application/position.service.js');
+    let available = 0, pendingFee = 0;
+    for (const oid of orgIds) {
+      const bal = await positionService.getSellerBalanceSummary(oid);
+      available += bal.available_balance;
+      pendingFee += bal.pending_fee;
+    }
+    return {
+      ...stats,
+      gross_sales_volume: stats.total_revenue,
+      financial_position: {
+        available_balance: Math.round(available * 100) / 100,
+        pending_commission: Math.round(pendingFee * 100) / 100,
+      },
+    };
   },
 
   // ── Seller products (manage) ──
