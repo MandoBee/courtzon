@@ -446,7 +446,7 @@ export default function SellerDashboardPage() {
                     <div className="flex justify-between"><span className="text-[var(--color-text-muted)]">{t('seller.orders.commission', 'Commission')}</span><span>{formatPrice(Number(order.commission_amount || 0), order.currency_code)}</span></div>
                     <div className="flex justify-between font-bold text-sm border-t border-[var(--color-border)] pt-1">
                       <span>{t('seller.orders.seller_net', 'Seller Net')}</span>
-                      <span className="text-[var(--color-success)]">{formatPrice(Number(order.seller_net ?? (Number(order.total) - Number(order.commission_amount || 0))), order.currency_code)}</span>
+                      <span className="text-[var(--color-success)]">{order.seller_net != null ? formatPrice(Number(order.seller_net), order.currency_code) : '—'}</span>
                     </div>
                     {order.financial_status && (
                       <div className="flex justify-between pt-1">
@@ -488,11 +488,8 @@ export default function SellerDashboardPage() {
             <div>
               <p className="text-sm text-[var(--color-text-muted)]">Available Balance</p>
               <p className="text-xl font-bold text-[var(--color-text)]">
-                {settlementBalance ? (Number(settlementBalance.available_balance) - Number(settlementBalance.pending_settlements)).toFixed(2) : '0.00'}
+                {settlementBalance ? Number(settlementBalance.available_balance).toFixed(2) : '0.00'}
               </p>
-              {settlementBalance && Number(settlementBalance.pending_settlements) > 0 && (
-                <p className="text-xs text-[var(--color-text-muted)]">{Number(settlementBalance.pending_settlements).toFixed(2)} pending settlement</p>
-              )}
               {orgList.length > 1 && (
                 <div className="mt-2">
                   <label className="block text-xs text-[var(--color-text-muted)] mb-1">Organisation</label>
@@ -510,7 +507,7 @@ export default function SellerDashboardPage() {
             <Can permission="marketplace.seller.request-settlement">
               <button
                 onClick={() => requestSettlement.mutate()}
-                disabled={requestSettlement.isPending || (orgList.length > 1 && !settlementOrgId) || (settlementBalance && Number(settlementBalance.available_balance) - Number(settlementBalance.pending_settlements) <= 0)}
+                disabled={requestSettlement.isPending || (orgList.length > 1 && !settlementOrgId) || (settlementBalance && Number(settlementBalance.available_balance) <= 0)}
                 className="px-4 py-2 bg-[var(--color-primary)] text-white text-sm rounded-[var(--radius-md)] disabled:opacity-50"
               >
                 {requestSettlement.isPending ? 'Requesting...' : 'Request Settlement'}
