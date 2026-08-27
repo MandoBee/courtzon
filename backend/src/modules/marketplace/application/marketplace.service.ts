@@ -2061,10 +2061,28 @@ export const marketplaceService = {
     );
   },
 
-  async updateSellerOrg(userId: number, data: { name?: string; description?: string; email?: string; phone?: string; website?: string; crNumber?: string; taxId?: string; isVatRegistered?: boolean; financialDetails?: any }) {
+  async updateSellerOrg(userId: number, data: { organisationId?: number; name?: string; description?: string; email?: string; phone?: string; website?: string; crNumber?: string; taxId?: string; isVatRegistered?: boolean; financialDetails?: any }) {
     const orgIds = await this._resolveSellerOrgIds(userId);
-    const orgId = orgIds[0];
-    if (!orgId) throw new NotFoundError('Seller account');
+    if (!orgIds.length) throw new NotFoundError('Seller account');
+
+    // F-11: resolve the target organisation EXPLICITLY. A single-org seller keeps
+    // backward-compatible behavior (default to their only org). A multi-org seller
+    // MUST specify which organisation to update — never silently pick orgIds[0].
+    // The requested org is always verified against the authorised seller org ids
+    // (strict organisation isolation).
+    let orgId: number;
+    if (data.organisationId == null) {
+      if (orgIds.length > 1) {
+        throw new ValidationError('organisationId is required when a seller manages multiple organisations');
+      }
+      orgId = orgIds[0];
+    } else {
+      if (!orgIds.includes(Number(data.organisationId))) {
+        throw new ForbiddenError('You do not have access to this organisation');
+      }
+      orgId = Number(data.organisationId);
+    }
+
     const org = { id: orgId };
     const { financialDetails, ...orgData } = data;
     // Identity fields (Name / Type / Country) are super-admin managed — sellers
@@ -2075,6 +2093,7 @@ export const marketplaceService = {
     delete (orgData as any).org_type_id;
     delete (orgData as any).countryId;
     delete (orgData as any).country_id;
+    delete (orgData as any).organisationId;
     if (Object.keys(orgData).length > 0) {
       await repo.updateOrganisation(org.id, orgData);
     }

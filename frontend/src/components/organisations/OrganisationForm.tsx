@@ -295,7 +295,7 @@ export default function OrganisationForm({ orgId, context, onClose, initialTab, 
       ? api.put(`/organisations/${orgId}`, data)
       : context === 'org'
       ? api.put(`/org/${orgId}/info`, data)
-      : api.put('/marketplace/seller/shop', data),
+      : api.put('/marketplace/seller/shop', { ...data, ...(orgId ? { organisationId: orgId } : {}) }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'organisations'] });
       queryClient.invalidateQueries({ queryKey: ['mp-player-status'] });
@@ -407,7 +407,7 @@ export default function OrganisationForm({ orgId, context, onClose, initialTab, 
         return api.put(paths.branchFinancialDetails(editingBranchId), data);
       }
       if (context === 'seller') {
-        return api.put('/marketplace/seller/shop', { financialDetails: data });
+        return api.put('/marketplace/seller/shop', { financialDetails: data, ...(orgId ? { organisationId: orgId } : {}) });
       }
       return Promise.reject(new Error('Save the branch before adding financial details'));
     },
