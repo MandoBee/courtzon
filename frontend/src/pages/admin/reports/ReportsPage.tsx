@@ -189,14 +189,6 @@ export default function ReportsPage() {
     <div>
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold text-[var(--color-text)]">Reports</h1>
-        <div className="flex items-center gap-2">
-          <button onClick={() => {
-            document.title = 'CourtZon Reports';
-          }}
-            className="px-3 py-1.5 text-xs border rounded-[var(--radius-md)] text-[var(--color-text-muted)] hover:text-[var(--color-text)]">
-            📥 Export CSV
-          </button>
-        </div>
       </div>
 
       <div className="flex items-center gap-1 mb-4 overflow-x-auto pb-2">
