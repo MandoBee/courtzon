@@ -9,11 +9,15 @@ import fs from 'fs';
 describe('P0-1: SellerDashboard — Gross Sales separated from Available Balance', () => {
   const src = () => fs.readFileSync('src/pages/marketplace/SellerDashboardPage.tsx', 'utf-8');
 
-  it('contains "Gross Sales" label and financial_position fields', () => {
+  it('contains "Gross Sales" label and PositionService-backed financial fields', () => {
     const s = src();
     expect(s).toContain('Gross Sales');
     expect(s).toContain('Available Balance');
-    expect(s).toContain('Pending Commission');
+    // Position buckets come from PositionService (financial_entitlements).
+    expect(s).toContain('Pending');
+    expect(s).toContain('Held');
+    expect(s).toContain('Reserved');
+    expect(s).toContain('Settled');
     expect(s).toContain('gross_sales_volume');
     expect(s).toContain('financial_position');
   });

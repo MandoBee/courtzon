@@ -86,7 +86,7 @@ const PLAYER_PATTERNS = [
   /^profile\./,
   /^bookings\.(view|create|cancel|apply|manage-applicants|matchmaking)/,
   /^bookings\.create\./,
-  /^marketplace\.(view|cart|order|wishlist|addresses)/,
+  /^marketplace\.(view|cart|order|wishlist|addresses|complaints\.(submit|view))$/,
   /^marketplace\.sell$/,
   /^marketplace\.player\.status$/,
   /^coaches\./,
@@ -191,6 +191,17 @@ const COACH_DENY_KEYS = new Set([
   'coaches.delete',
   'coaches.approve',
   'coaches.assign',
+]);
+
+// Organisation and shop-admin roles must NOT hold CourtZon platform-level
+// financial approval authority. marketplace.complaints.approve controls the
+// /admin/marketplace/complaints/*/approve path which executes CourtZon-level
+// refund approval for over-threshold complaints (refund > 125% of disputed
+// value). Org/shop admins already resolve complaints via
+// marketplace.complaints.manage; granting approve would let an org/shop self-
+// approve its own over-threshold refunds without CourtZon oversight.
+const ORG_SHOP_ADMIN_DENY_KEYS = new Set([
+  'marketplace.complaints.approve',
 ]);
 
 const COACH_PATTERNS = [
@@ -314,6 +325,7 @@ const CUSTOMER_SERVICE_PATTERNS = [
   /^bookings\./,
   /^marketplace\.admin\.orders\.view/,
   /^marketplace\.admin\.orders\.moderate/,
+  /^marketplace\.complaints\.approve$/,
   /^organisations\.view/,
   /^profile\./,
   /^notifications\.view/,
@@ -483,6 +495,7 @@ export function permissionMatchesTemplate(templateSlug: string, permissionKey: s
   if (templateSlug === 'org-admin') {
     if (isAdminOnlyKey(permissionKey)) return false;
     if (permissionKey.startsWith('marketplace.admin.')) return false;
+    if (ORG_SHOP_ADMIN_DENY_KEYS.has(permissionKey)) return false;
     if (ORG_ADMIN_EXPLICIT_KEYS.has(permissionKey)) return true;
     return matchesAny(permissionKey, ORG_ADMIN_PATTERNS);
   }
@@ -502,6 +515,7 @@ export function permissionMatchesTemplate(templateSlug: string, permissionKey: s
   if (templateSlug === 'shop-admin') {
     if (isAdminOnlyKey(permissionKey)) return false;
     if (permissionKey.startsWith('marketplace.admin.')) return false;
+    if (ORG_SHOP_ADMIN_DENY_KEYS.has(permissionKey)) return false;
     if (matchesAny(permissionKey, SHOP_ADMIN_PATTERNS)) return true;
     return false;
   }

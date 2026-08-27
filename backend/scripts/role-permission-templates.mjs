@@ -171,6 +171,17 @@ const COACH_DENY_KEYS = new Set([
   'coaches.assign',
 ]);
 
+// Organisation and shop-admin roles must NOT hold CourtZon platform-level
+// financial approval authority. marketplace.complaints.approve controls the
+// /admin/marketplace/complaints/*/approve path which executes CourtZon-level
+// refund approval for over-threshold complaints (refund > 125% of disputed
+// value). Org/shop admins already resolve complaints via
+// marketplace.complaints.manage; granting approve would let an org/shop self-
+// approve its own over-threshold refunds without CourtZon oversight.
+const ORG_SHOP_ADMIN_DENY_KEYS = new Set([
+  'marketplace.complaints.approve',
+]);
+
 const COACH_PATTERNS = [
   /^coaches\.(profile|sessions|availability|invites|book|reviews|view|apply|manage_profile|manage_agreements|create_sessions|complete_session|confirm_session|no_show|respond_request|start_session)/,
   /^coaches\.book\./,
@@ -496,6 +507,7 @@ export function permissionMatchesTemplate(templateSlug, permissionKey) {
   if (templateSlug === 'org-admin') {
     if (isAdminOnlyKey(permissionKey)) return false;
     if (permissionKey.startsWith('marketplace.admin.')) return false;
+    if (ORG_SHOP_ADMIN_DENY_KEYS.has(permissionKey)) return false;
     if (ORG_ADMIN_EXPLICIT_KEYS.has(permissionKey)) return true;
     return matchesAny(permissionKey, ORG_ADMIN_PATTERNS);
   }
@@ -515,6 +527,7 @@ export function permissionMatchesTemplate(templateSlug, permissionKey) {
   if (templateSlug === 'shop-admin') {
     if (isAdminOnlyKey(permissionKey)) return false;
     if (permissionKey.startsWith('marketplace.admin.')) return false;
+    if (ORG_SHOP_ADMIN_DENY_KEYS.has(permissionKey)) return false;
     if (matchesAny(permissionKey, SHOP_ADMIN_PATTERNS)) return true;
     return false;
   }

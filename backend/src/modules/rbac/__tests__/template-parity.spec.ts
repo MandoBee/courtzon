@@ -244,3 +244,42 @@ describe('Shop-admin seller branch Financials tab (seller branch editor parity)'
     });
   });
 });
+
+describe('P2-4 — marketplace.complaints.approve RBAC scope', () => {
+  const approveKey = 'marketplace.complaints.approve';
+
+  it('org-admin is NOT granted CourtZon-level complaint approval', () => {
+    expect(permissionMatchesTemplate('org-admin', approveKey)).toBe(false);
+    expect(mjsMatch('org-admin', approveKey)).toBe(false);
+  });
+
+  it('shop-admin is NOT granted CourtZon-level complaint approval', () => {
+    expect(permissionMatchesTemplate('shop-admin', approveKey)).toBe(false);
+    expect(mjsMatch('shop-admin', approveKey)).toBe(false);
+  });
+
+  it('org-admin / shop-admin keep complaint manage (resolve) but not approve', () => {
+    for (const slug of ['org-admin', 'shop-admin']) {
+      expect(permissionMatchesTemplate(slug, 'marketplace.complaints.manage')).toBe(true);
+      expect(mjsMatch(slug, 'marketplace.complaints.manage')).toBe(true);
+      expect(permissionMatchesTemplate(slug, approveKey)).toBe(false);
+    }
+  });
+
+  it('CourtZon platform roles retain complaint approval', () => {
+    for (const slug of ['super_admin', 'customer-service', 'master-admin', 'marketplace-manager']) {
+      expect(permissionMatchesTemplate(slug, approveKey)).toBe(true);
+      expect(mjsMatch(slug, approveKey)).toBe(true);
+    }
+  });
+
+  it('player does NOT hold complaint approval', () => {
+    expect(permissionMatchesTemplate('player', approveKey)).toBe(false);
+    expect(mjsMatch('player', approveKey)).toBe(false);
+  });
+
+  it('player retains submit + view', () => {
+    expect(permissionMatchesTemplate('player', 'marketplace.complaints.submit')).toBe(true);
+    expect(permissionMatchesTemplate('player', 'marketplace.complaints.view')).toBe(true);
+  });
+});
