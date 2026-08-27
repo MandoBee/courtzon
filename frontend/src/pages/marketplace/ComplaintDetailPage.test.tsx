@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+﻿import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
@@ -10,8 +10,9 @@ vi.mock('../../components/ui/Toast', () => ({
   useToast: () => ({ showToast: vi.fn() }),
 }));
 vi.mock('../../hooks/useCan', () => ({
-  useCan: () => ({ can: (k: string) => k === 'marketplace.complaints.approve' }),
+  useCan: vi.fn(() => ({ can: (k: string) => k === 'marketplace.complaints.approve', permissions: [] })),
 }));
+import { useCan as useCanModule } from '../../hooks/useCan';
 vi.mock('../../utils/currency', () => ({
   formatPrice: (n: number, _c?: string) => `${n.toFixed(2)} ${_c || ''}`.trim(),
 }));
@@ -61,7 +62,7 @@ function makeComplaint(overrides: Record<string, any> = {}) {
   };
 }
 
-describe('ComplaintDetailPage — status + refund result (Step 10)', () => {
+describe('ComplaintDetailPage â€” status + refund result (Step 10)', () => {
   beforeEach(() => {
     mockGet.mockReset();
   });
@@ -108,5 +109,71 @@ describe('ComplaintDetailPage — status + refund result (Step 10)', () => {
     await waitFor(() => expect(screen.getByText('Pending')).toBeTruthy());
     // Admin-only approve panel is not shown to a buyer without approve permission
     expect(screen.queryByText('CourtZon Admin Approval Required')).toBeNull();
+  });
+});
+
+describe('F-14 â€” ComplaintDetailPage action authorization', () => {
+  beforeEach(() => {
+    mockGet.mockReset();
+    vi.mocked(useCanModule).mockReturnValue({ can: () => false, permissions: [] });
+  });
+
+  it('a buyer (viewerId === buyer_id) does NOT see seller operational actions', async () => {
+    const complaint = makeComplaint({ status: 'pending', viewerId: 100 });
+    mockGet.mockResolvedValue({ data: complaint });
+    renderDetail(complaint);
+    await waitFor(() => expect(screen.getByText('Pending')).toBeTruthy());
+    // Buyer must not see review/resolve/refund/reject controls even though
+    // !isBuyer was previously true (viewerId missing). Backend enforces too.
+    expect(screen.queryByText('Review Complaint')).toBeNull();
+    expect(screen.queryByText('Execute Refund')).toBeNull();
+    expect(screen.queryByText('Reject Complaint')).toBeNull();
+  });
+
+  it('a seller (viewerId !== buyer_id, manage permission) sees operational actions', async () => {
+    // useCan mock returns true for 'marketplace.complaints.manage' in this block.
+    vi.mocked(useCanModule).mockReturnValue({
+      can: (k: string) => k === 'marketplace.complaints.manage' || k === 'marketplace.complaints.approve',
+      permissions: ['marketplace.complaints.manage'],
+    });
+    const complaint = makeComplaint({ status: 'pending', buyer_id: 100, viewerId: 200 });
+    mockGet.mockResolvedValue({ data: complaint });
+    renderDetail(complaint);
+    await waitFor(() => expect(screen.getByText('Review Complaint')).toBeTruthy());
+    expect(screen.getByText('Execute Refund')).toBeTruthy();
+    expect(screen.getByText('Reject Complaint')).toBeTruthy();
+  });
+
+  it('a non-manage viewer (not buyer, no manage) does NOT see seller actions', async () => {
+    vi.mocked(useCanModule).mockReturnValue({
+      can: (k: string) => k === 'marketplace.complaints.approve',
+      permissions: ['marketplace.complaints.approve'],
+    });
+    const complaint = makeComplaint({ status: 'pending', buyer_id: 100, viewerId: 200 });
+    mockGet.mockResolvedValue({ data: complaint });
+    renderDetail(complaint);
+    await waitFor(() => expect(screen.getByText('Pending')).toBeTruthy());
+    expect(screen.queryByText('Review Complaint')).toBeNull();
+    expect(screen.queryByText('Execute Refund')).toBeNull();
+  });
+
+  it('a buyer sees the confirm-receipt action when awaiting confirmation', async () => {
+    const complaint = makeComplaint({ status: 'awaiting_confirmation', viewerId: 100, resolution_type: 'replacement', receipt_confirmed_at: null });
+    mockGet.mockResolvedValue({ data: complaint });
+    renderDetail(complaint);
+    await waitFor(() => expect(screen.getByText(/Confirm Receipt of replacement/i)).toBeTruthy());
+  });
+
+  it('a buyer with manage permission still does NOT see seller actions (buyer trumps manage)', async () => {
+    // Buyer who somehow also holds manage must not see seller controls.
+    vi.mocked(useCanModule).mockReturnValue({
+      can: () => true,
+      permissions: ['marketplace.complaints.manage', 'marketplace.complaints.approve'],
+    });
+    const complaint = makeComplaint({ status: 'pending', viewerId: 100 });
+    mockGet.mockResolvedValue({ data: complaint });
+    renderDetail(complaint);
+    await waitFor(() => expect(screen.getByText('Pending')).toBeTruthy());
+    expect(screen.queryByText('Review Complaint')).toBeNull();
   });
 });

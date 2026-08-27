@@ -2,6 +2,7 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import api from '../../services/api';
 import { formatPrice } from '../../utils/currency';
+import { Can } from '../../permissions/Can';
 
 export default function AdminComplaintsPage() {
   const navigate = useNavigate();
@@ -11,7 +12,8 @@ export default function AdminComplaintsPage() {
   });
 
   return (
-    <div className="max-w-4xl mx-auto p-4 space-y-4">
+    <Can permission="marketplace.complaints.approve">
+      <div className="max-w-4xl mx-auto p-4 space-y-4">
       <div>
         <h1 className="text-xl font-bold text-[var(--color-text)]">Refund Approvals</h1>
         <p className="text-xs text-[var(--color-text-muted)]">Refunds exceeding 125% of the disputed value require approval</p>
@@ -40,6 +42,7 @@ export default function AdminComplaintsPage() {
           </button>
         ))}
       </div>
-    </div>
+      </div>
+    </Can>
   );
 }
