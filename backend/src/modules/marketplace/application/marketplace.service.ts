@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { NotFoundError, ConflictError, ForbiddenError } from '../../../shared/errors/app-error.js';
+import { NotFoundError, ConflictError, ForbiddenError, ValidationError } from '../../../shared/errors/app-error.js';
 import { marketplaceRepository as repo } from '../infrastructure/repositories/marketplace.repository.js';
 import { paymentService } from '../../payment/application/payment.service.js';
 import { paymentRepository } from '../../payment/infrastructure/repositories/payment.repository.js';
@@ -1886,7 +1886,11 @@ export const marketplaceService = {
   async getSettlementsByUser(userId: number, page: number, limit: number) {
     const orgIds = await this._resolveSellerOrgIds(userId);
     if (!orgIds.length) throw new ForbiddenError('No seller account found');
-    return (await import('../../settlement/application/settlement.service.js')).settlementService.getOrganisationSettlements(orgIds[0], page, limit);
+    // P2-5: aggregate across ALL authorised seller organisations (never orgIds[0]
+    // only). Each settlement keeps its organisation identity. If the seller has a
+    // single org, behavior is identical to before.
+    const { settlementRepository } = await import('../../settlement/infrastructure/repositories/settlement.repository.js');
+    return settlementRepository.findSettlementsForOrgs(orgIds, page, limit);
   },
 
   async getSettlementBalanceByUser(userId: number) {
@@ -1910,11 +1914,30 @@ export const marketplaceService = {
     };
   },
 
-  async requestSettlement(userId: number) {
+  async requestSettlement(userId: number, organisationId?: number) {
     const orgIds = await this._resolveSellerOrgIds(userId);
     if (!orgIds.length) throw new ForbiddenError('No seller account found');
+
+    // P2-5: explicit multi-organisation selection. A single-org seller keeps
+    // backward-compatible behavior (default to their only org). A multi-org
+    // seller MUST specify which organisation to settle — never silently pick
+    // orgIds[0]. The requested org is always verified against the authorised
+    // seller org ids (strict organisation isolation).
+    let targetOrgId: number;
+    if (organisationId == null) {
+      if (orgIds.length > 1) {
+        throw new ValidationError('organisationId is required when a seller manages multiple organisations');
+      }
+      targetOrgId = orgIds[0];
+    } else {
+      if (!orgIds.includes(Number(organisationId))) {
+        throw new ForbiddenError('You do not have access to this organisation');
+      }
+      targetOrgId = Number(organisationId);
+    }
+
     return (await import('../../settlement/application/settlement.service.js')).settlementService.requestSettlement({
-      organisationId: orgIds[0],
+      organisationId: targetOrgId,
       requestedBy: userId,
       requestedByRole: 'seller',
     });
@@ -1933,7 +1956,14 @@ export const marketplaceService = {
       [userId]
     );
     const activeProductCount = Number((countRows[0] as any)?.cnt ?? 0);
-    return { active, activeProductCount };
+    // P2-5: expose the seller's authorised organisations so a multi-org seller
+    // can select which organisation to view/request settlement for.
+    const orgRows = await repo.findSellerOrgsForUser(userId);
+    const orgs = (orgRows as any[]).filter((o: any) => Number(o.is_active) === 1).map((o: any) => ({
+      id: Number(o.id),
+      name: o.name,
+    }));
+    return { active, activeProductCount, orgs };
   },
 
   // ── Player Products ──

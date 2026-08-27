@@ -42,11 +42,17 @@ export default function SellerDashboardPage() {
     queryKey: ['seller-orgs'],
     queryFn: () => api.get('/marketplace/player/status').then((r) => {
       const status = r.data;
-      return status.org || null;
+      // Multi-org support: the status now exposes the authorised org list.
+      return (Array.isArray(status.orgs) && status.orgs.length ? status.orgs : []) || [];
     }),
   });
 
-  const org = orgs || profile?.org;
+  const orgList: { id: number; name: string }[] = Array.isArray(orgs) ? orgs : [];
+  // For single-org sellers keep the existing `org` (used by branches/position/
+  // settings). Multi-org sellers use the explicit settlement org selector.
+  const org = orgList.length === 1 ? orgList[0] : (profile?.org || null);
+  // P2-5: a multi-org seller explicitly selects which organisation to settle.
+  const [settlementOrgId, setSettlementOrgId] = useState<number | ''>('');
 
   const { data: stats } = useQuery({
     queryKey: ['mp-seller-stats'],
@@ -111,7 +117,7 @@ export default function SellerDashboardPage() {
   });
 
   const requestSettlement = useMutation({
-    mutationFn: () => api.post('/marketplace/seller/settlements'),
+    mutationFn: () => api.post('/marketplace/seller/settlements', { organisationId: Number(settlementOrgId) || undefined }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['mp-seller-settlements'] });
       queryClient.invalidateQueries({ queryKey: ['mp-seller-settlement-balance'] });
@@ -487,10 +493,26 @@ export default function SellerDashboardPage() {
               {settlementBalance && Number(settlementBalance.pending_settlements) > 0 && (
                 <p className="text-xs text-[var(--color-text-muted)]">{Number(settlementBalance.pending_settlements).toFixed(2)} pending settlement</p>
               )}
+              {orgList.length > 1 && (
+                <div className="mt-2">
+                  <label className="block text-xs text-[var(--color-text-muted)] mb-1">Organisation</label>
+                  <select
+                    value={String(settlementOrgId)}
+                    onChange={(e) => setSettlementOrgId(e.target.value ? Number(e.target.value) : '')}
+                    className="px-3 py-1.5 text-sm border border-[var(--color-border)] rounded-[var(--radius-md)] bg-[var(--color-bg)]"
+                  >
+                    <option value="">Select organisation…</option>
+                    {orgList.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+                  </select>
+                </div>
+              )}
             </div>
             <Can permission="marketplace.seller.request-settlement">
-              <button onClick={() => requestSettlement.mutate()} disabled={requestSettlement.isPending || (settlementBalance && Number(settlementBalance.available_balance) - Number(settlementBalance.pending_settlements) <= 0)}
-                className="px-4 py-2 bg-[var(--color-primary)] text-white text-sm rounded-[var(--radius-md)] disabled:opacity-50">
+              <button
+                onClick={() => requestSettlement.mutate()}
+                disabled={requestSettlement.isPending || (orgList.length > 1 && !settlementOrgId) || (settlementBalance && Number(settlementBalance.available_balance) - Number(settlementBalance.pending_settlements) <= 0)}
+                className="px-4 py-2 bg-[var(--color-primary)] text-white text-sm rounded-[var(--radius-md)] disabled:opacity-50"
+              >
                 {requestSettlement.isPending ? 'Requesting...' : 'Request Settlement'}
               </button>
             </Can>
@@ -511,6 +533,7 @@ export default function SellerDashboardPage() {
                       </p>
                       <p className="text-xs text-[var(--color-text-muted)]">
                         {new Date(s.requested_at || s.created_at).toLocaleDateString('en-GB')}
+                        {s.organisation_name && <span className="font-medium text-[var(--color-text)]"> · {s.organisation_name}</span>}
                         {s.notes && ` · ${s.notes}`}
                         {s.settlement_direction && ` · ${s.settlement_direction === 'courtzon_to_org' ? 'CourtZon → Org' : 'Org → CourtZon'}`}
                       </p>
