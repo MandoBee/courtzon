@@ -100,6 +100,17 @@ export const EVENT_CONCEPTS: Record<string, { debit: string[]; credit: string[] 
     debit: ['merchant_payable', 'platform_commission', 'tax_liability'],
     credit: ['wallet_liability'],
   },
+  // Marketplace complaint refund — symmetric reversal of the original
+  // marketplace custody economics when a complaint refunds the buyer to their
+  // wallet (CARD/WALLET custody: CourtZon collected, so merchant_payable is
+  // reversed; COD custody uses receivable_from_org instead — see listener).
+  // The buyer is always refunded to wallet (2100), matching the complaint
+  // refund engine. This replaces the previous generic wallet_refund (4300
+  // revenue_contra) which did not mirror the original marketplace legs.
+  complaint_refund: {
+    debit: ['merchant_payable', 'platform_commission', 'tax_liability', 'receivable_from_org'],
+    credit: ['wallet_liability'],
+  },
   // Referee / Provider compensation (universal provider party model)
   referee_payout: {
     debit: ['referee_expense'],

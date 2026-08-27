@@ -759,6 +759,24 @@ export const marketplaceComplaintService = {
       );
 
       // 4. Emit payment refunded event (accounting engine listens for this).
+      // F-2: enrich metadata with the order's custody (payment method +
+      // cash_holder) so the accounting listener posts the symmetric marketplace
+      // reversal instead of a generic 4300/2100 revenue_contra entry.
+      let orderPaymentMethod = 'wallet';
+      let orderCashHolder: string | null = null;
+      let orderTax = 0;
+      try {
+        const orderRows = await marketplaceRepository.findOrderById(complaint.order_id);
+        const ord = orderRows?.[0] as any;
+        if (ord) {
+          orderPaymentMethod = ord.payment_method || 'wallet';
+          orderCashHolder = ord.cash_holder ?? null;
+          orderTax = Number(ord.tax_amount || 0);
+        }
+      } catch (err: any) {
+        log.warn({ err, complaintId }, 'Could not resolve order custody for complaint refund accounting — defaulting to wallet');
+      }
+      const itemTax = Number(orgEarningEnt?.metadata?.allocatedTax ?? 0);
       await eventBusV2.emit('payment:refunded', {
         paymentId: null,
         userId: buyerId,
@@ -766,7 +784,17 @@ export const marketplaceComplaintService = {
         reason: orgEarningSettled ? `Post-settlement recovery for complaint #${complaintId}` : `Refund for complaint #${complaintId}`,
         referenceType: 'complaint',
         referenceId: complaintId,
-        metadata: { complaintId, paymentMethod: 'wallet', commissionReversal: fin.commissionReversal, orgAdjustment: orgRecoveryAmount, settledRecovery: orgEarningSettled, settledOrgEarning: originalOrgEarning },
+        metadata: {
+          complaintId, itemId, organisationId: orgId,
+          paymentMethod: orderPaymentMethod,
+          cashHolder: orderCashHolder,
+          orderTax,
+          itemTax,
+          commissionReversal: fin.commissionReversal,
+          orgAdjustment: orgRecoveryAmount,
+          settledRecovery: orgEarningSettled,
+          settledOrgEarning: originalOrgEarning,
+        },
       }, undefined, conn);
 
       await conn.commit();
