@@ -595,12 +595,15 @@ export async function getSettlementBalanceHandler(request: FastifyRequest, reply
 
 export async function requestSettlementHandler(request: FastifyRequest, reply: FastifyReply) {
   const userId = (request as any).userId;
-  const result = await svc.requestSettlement(userId);
+  const body = (request.body as any) || {};
+  const organisationId = body.organisationId != null ? Number(body.organisationId) : undefined;
+  const result = await svc.requestSettlement(userId, organisationId);
   recordAudit({
     actorId: (request as any).userId ?? null,
     action: 'SETTLEMENT.REQUEST',
     entityType: 'settlement',
     entityId: (result as any)?.id,
+    afterState: { organisationId: body.organisationId ?? null },
     ipAddress: request.ip,
     userAgent: request.headers['user-agent'],
   });

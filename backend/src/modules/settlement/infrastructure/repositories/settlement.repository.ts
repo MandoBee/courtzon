@@ -40,6 +40,7 @@ export const settlementRepository = {
   async findSettlements(filters: {
     status?: string;
     orgId?: number;
+    orgIds?: number[];
     branchId?: number;
     from?: string;
     to?: string;
@@ -52,6 +53,11 @@ export const settlementRepository = {
 
     if (filters.status) { conditions.push('s.settlement_status = ?'); params.push(filters.status); }
     if (filters.orgId) { conditions.push('s.organisation_id = ?'); params.push(filters.orgId); }
+    if (filters.orgIds?.length) {
+      const placeholders = filters.orgIds.map(() => '?').join(',');
+      conditions.push(`s.organisation_id IN (${placeholders})`);
+      params.push(...filters.orgIds);
+    }
     if (filters.branchId) { conditions.push('s.branch_id = ?'); params.push(filters.branchId); }
     if (filters.from) { conditions.push('s.requested_at >= ?'); params.push(filters.from); }
     if (filters.to) { conditions.push('s.requested_at <= ?'); params.push(filters.to); }
@@ -80,5 +86,11 @@ export const settlementRepository = {
 
   async findOrgSettlements(orgId: number, page: number, limit: number) {
     return this.findSettlements({ orgId, page, limit });
+  },
+
+  /** Settlements across multiple organisations (used by multi-org sellers). */
+  async findSettlementsForOrgs(orgIds: number[], page: number, limit: number) {
+    if (!orgIds.length) return { data: [], total: 0, page, limit };
+    return this.findSettlements({ orgIds, page, limit });
   },
 };
