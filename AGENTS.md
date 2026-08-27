@@ -117,12 +117,12 @@ The third parameter is an optional action (e.g. "Undo" for delete rollback). Dur
 
 ## Database architecture
 
-V3 uses a **single authoritative baseline** — no migration chain.
+V3 uses a **single authoritative baseline** — no migration chain required for deployment.
 
-- **Baseline schema:** `database/baseline/001_courtzon_v3.sql` (207 KB, 162 tables)
+- **Baseline schema:** `database/baseline/001_courtzon_v3.sql` (regenerated from the full migration chain; ~292 tables, ~387 KB)
 - **Seed data:** `database/seeds/001_baseline.sql` (reference data: countries, permissions, roles, amenities, etc.)
 - **Historical migrations:** Archived at `archive/database/schema/` (128 files) — preserved for audit, **never required for deployment**
-- **New migrations:** Place in `database/migrations/` as sequential SQL files. Update baseline after adding them.
+- **New migrations:** Place in `database/migrations/` as sequential SQL files. Update baseline after adding them (regenerate from the full chain and re-export).
 
 ### Required seed files (ALL must be applied — do not skip any)
 
