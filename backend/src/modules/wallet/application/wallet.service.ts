@@ -31,6 +31,11 @@ export class WalletService {
     return {
       id: wallet.id,
       balance: Number(wallet.balance),
+      reserved_balance: Number(wallet.reserved_balance || 0),
+      // Canonical available balance (single authority) — balance minus reserved
+      // funds. The frontend must display this value directly rather than
+      // reconstructing `balance − reserved_balance` client-side.
+      available_balance: Number(wallet.balance) - Number(wallet.reserved_balance || 0),
       currencyCode: wallet.currency_code,
       isLocked: !!wallet.is_locked,
     };
