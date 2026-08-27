@@ -62,23 +62,25 @@ describe('Marketplace Entitlement Inputs — per-item calculation', () => {
 
     expect(inputs).toHaveLength(4);
 
-    // Item 11 share = 1/3 → discount 10, shipping 6.67, tax 5
+    // F-9: org earning is TAX-EXCLUSIVE (tax is a pass-through liability, never
+    // part of the seller's position). Item 11 share = 1/3 → discount 10,
+    // shipping 6.67, tax 5 (tax allocated but EXCLUDED from org earning).
     const org1 = inputs.find(i => i.sourceId === 11 && i.entitlementType === 'ORGANIZATION_EARNING');
     const comm1 = inputs.find(i => i.sourceId === 11 && i.entitlementType === 'COURTZON_COMMISSION');
-    expect(org1!.amount).toBeCloseTo(100 - 10 - 10 + 6.67 + 5, 1);
+    expect(org1!.amount).toBeCloseTo(100 - 10 - 10 + 6.67, 1);
     expect(comm1!.amount).toBe(10.0);
 
     // Item 12 share = 2/3 → discount 20, shipping 13.33, tax 10
     const org2 = inputs.find(i => i.sourceId === 12 && i.entitlementType === 'ORGANIZATION_EARNING');
     const comm2 = inputs.find(i => i.sourceId === 12 && i.entitlementType === 'COURTZON_COMMISSION');
-    expect(org2!.amount).toBeCloseTo(200 - 20 - 20 + 13.33 + 10, 1);
+    expect(org2!.amount).toBeCloseTo(200 - 20 - 20 + 13.33, 1);
     expect(comm2!.amount).toBe(20.0);
 
-    // Org earnings sum = total - courtzon_fee = 305 - 30 = 275
+    // F-9: org earnings sum = total - courtzon_fee - tax = 305 - 30 - 15 = 260
     const totalOrg = inputs
       .filter(i => i.entitlementType === 'ORGANIZATION_EARNING')
       .reduce((sum, i) => sum + i.amount, 0);
-    expect(totalOrg).toBeCloseTo(275.0, 1);
+    expect(totalOrg).toBeCloseTo(260.0, 1);
 
     // Commission sum = courtzon_fee
     const totalComm = inputs
