@@ -135,13 +135,27 @@ async function postMarketplaceRefundAccounting(orderId: number, currency: string
  *                for the refunded merchant share).
  *
  * The refund split comes from the complaint refund engine metadata:
- *   orgAdjustment     = org's share being reversed (tax-inclusive org earning)
+ *   orgAdjustment     = org's share being reversed (tax-inclusive org earning;
+ *                        for post-settlement recovery this is the BOUNDED
+ *                        orgRecoveryAmount, which can be < the full refund)
  *   commissionReversal = CourtZon commission being reversed
  * The org earning includes tax (F-9 pass-through), so the tax-consistent
  * merchant_payable reversal is orgAdjustment − taxReversal, with taxReversal
  * booked separately to tax_liability. Balance is preserved:
  *   (orgAdjustment − taxReversal) + commissionReversal + taxReversal
- *     = orgAdjustment + commissionReversal = refundAmount = wallet credit.
+ *     = orgAdjustment + commissionReversal.
+ *
+ * F-2 × F-5: for a POST-SETTLEMENT refund, orgAdjustment is the bounded
+ * recovery amount (never more than the settled org earning), so it can be LESS
+ * than refundAmount − commissionReversal. The residual
+ *   excessRefund = refundAmount − orgAdjustment − commissionReversal
+ * is money CourtZon refunds to the buyer that cannot be recovered from the org
+ * (already settled, bounded) or from CourtZon's own commission. That remainder
+ * is a genuine CourtZon refund/chargeback cost, booked to refund_expense
+ * (5220 Refund / Chargeback Costs) — an existing COA account. This keeps every
+ * valid complaint refund posting balanced and prevents the GL reversal from
+ * being silently dropped:
+ *   CARD/WALLET: (orgAdj − tax) + commission + tax + excess = refundAmount.
  *
  * Replaces the previous generic wallet_refund (4300 revenue_contra / 2100)
  * which did not reverse the original marketplace legs.
@@ -191,13 +205,17 @@ export async function postMarketplaceComplaintRefundAccounting(
   }
 
   // CARD / WALLET custody: reverse the merchant payable + commission + tax,
-  // crediting the buyer's wallet.
+  // crediting the buyer's wallet. When a bounded post-settlement recovery
+  // leaves an unrecoverable excess, book it to refund_expense so the posting
+  // stays balanced.
+  const excessRefund = Math.max(0, Math.round((refundAmountR - orgAdjustment - commissionReversal) * 100) / 100);
   await postAccountingEvent(
     'complaint_refund', 'marketplace', complaintId, organisationId,
     {
       merchant_payable: merchantPayableReversal,
       platform_commission: commissionReversal,
       tax_liability: taxReversal,
+      refund_expense: excessRefund,
       wallet_liability: refundAmountR,
     },
     currency,

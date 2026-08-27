@@ -75,10 +75,11 @@ beforeEach(() => {
         { concept: 'tax_liability', accountId: 9 },
         { concept: 'wallet_liability', accountId: 7 },
         { concept: 'receivable_from_org', accountId: 6 },
+        { concept: 'refund_expense', accountId: 1316 },
       ]];
     }
     if (sql.includes('chart_of_accounts')) {
-      return [[{ id: 8, is_active: 1, organisation_id: null }, { id: 10, is_active: 1, organisation_id: null }, { id: 9, is_active: 1, organisation_id: null }, { id: 7, is_active: 1, organisation_id: null }, { id: 6, is_active: 1, organisation_id: null }]];
+      return [[{ id: 8, is_active: 1, organisation_id: null }, { id: 10, is_active: 1, organisation_id: null }, { id: 9, is_active: 1, organisation_id: null }, { id: 7, is_active: 1, organisation_id: null }, { id: 6, is_active: 1, organisation_id: null }, { id: 1316, is_active: 1, organisation_id: null }]];
     }
     return [[], []];
   });
