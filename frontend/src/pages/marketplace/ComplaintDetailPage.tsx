@@ -125,6 +125,11 @@ export default function ComplaintDetailPage() {
   if (!complaint) return <div className="text-center py-8 text-[var(--color-text-muted)]">Complaint not found</div>;
 
   const isBuyer = complaint.buyer_id === complaint.viewerId;
+  // F-14: seller/org operational actions mirror the backend
+  // `marketplace.complaints.manage` + requireApprovedOrg() gate. A buyer (or a
+  // viewer without manage) must never see review/resolve/refund/reject controls,
+  // even though the backend remains the authoritative enforcement layer.
+  const isOrgActor = !isBuyer && can('marketplace.complaints.manage');
 
   return (
     <div className="max-w-3xl mx-auto p-4 pb-24 md:pb-6 space-y-4">
@@ -217,11 +222,11 @@ export default function ComplaintDetailPage() {
 
         {/* Actions */}
         <div className="border-t pt-4 space-y-3">
-          {!isBuyer && complaint.status === 'pending' && (
+          {isOrgActor && complaint.status === 'pending' && (
             <button onClick={() => review.mutate()} disabled={review.isPending} className="w-full px-4 py-2 rounded-lg bg-[var(--color-primary)] text-white text-sm font-medium disabled:opacity-50">Review Complaint</button>
           )}
 
-          {!isBuyer && ['pending', 'in_review'].includes(complaint.status) && (
+          {isOrgActor && ['pending', 'in_review'].includes(complaint.status) && (
             <div className="space-y-3">
               <div className="flex flex-wrap gap-2">
                 <button onClick={() => resolveReplace.mutate()} disabled={resolveReplace.isPending} className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-medium disabled:opacity-50">Replace Product</button>
@@ -240,7 +245,7 @@ export default function ComplaintDetailPage() {
             </div>
           )}
 
-          {!isBuyer && complaint.status === 'awaiting_return' && complaint.resolution_type === 'refund' && (
+          {isOrgActor && complaint.status === 'awaiting_return' && complaint.resolution_type === 'refund' && (
             <div className="space-y-2 border border-[var(--color-border)] rounded-lg p-3">
               <p className="text-sm font-medium">Return Collection</p>
               <div className="flex gap-2">
@@ -259,7 +264,7 @@ export default function ComplaintDetailPage() {
             </div>
           )}
 
-          {!isBuyer && complaint.collection_status === 'collected' && complaint.status === 'awaiting_return' && complaint.resolution_type !== 'refund' && (
+          {isOrgActor && complaint.collection_status === 'collected' && complaint.status === 'awaiting_return' && complaint.resolution_type !== 'refund' && (
             <div className="flex gap-2">
               <button onClick={() => ship.mutate('replacement')} disabled={ship.isPending} className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-medium disabled:opacity-50">Record Replacement Sent</button>
               <button onClick={() => ship.mutate('reshipment')} disabled={ship.isPending} className="px-4 py-2 rounded-lg bg-sky-600 text-white text-sm font-medium disabled:opacity-50">Record Reshipment Sent</button>
@@ -272,7 +277,7 @@ export default function ComplaintDetailPage() {
             </button>
           )}
 
-          {!isBuyer && ['pending', 'in_review', 'awaiting_return', 'refund_pending_approval'].includes(complaint.status) && (
+          {isOrgActor && ['pending', 'in_review', 'awaiting_return', 'refund_pending_approval'].includes(complaint.status) && (
             <div className="flex gap-2">
               <input type="text" value={rejectionReason} onChange={(e) => setRejectionReason(e.target.value)} className="input input-bordered w-full" placeholder="Rejection reason (required)" />
               <button onClick={() => rejectComplaint.mutate()} disabled={rejectComplaint.isPending} className="px-4 py-2 rounded-lg bg-red-600 text-white text-sm font-medium disabled:opacity-50">Reject Complaint</button>

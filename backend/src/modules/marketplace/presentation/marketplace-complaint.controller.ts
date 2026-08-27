@@ -29,12 +29,17 @@ export async function getComplaintHandler(request: FastifyRequest, reply: Fastif
   const { id } = request.params as any;
   const userId = (request as any).userId;
   const complaint = await svc.getComplaintDetail(Number(id));
-  if (complaint.buyer_id === userId) return reply.send(complaint);
+  // F-14: enrich the response with the requesting viewer id so the UI can
+  // correctly distinguish buyer vs seller vs admin (the backend remains the
+  // authoritative access gate above). The frontend uses viewerId to render
+  // the right action set; without it `isBuyer` is always false.
+  const enriched = { ...complaint, viewerId: userId };
+  if (complaint.buyer_id === userId) return reply.send(enriched);
   // Organisation owners / staff may view complaints on their org (any org type).
   const orgs = await marketplaceRepository.findSellerOrgsForUser(userId);
-  if ((orgs as any[]).some((o: any) => o.id === complaint.seller_org_id)) return reply.send(complaint);
+  if ((orgs as any[]).some((o: any) => o.id === complaint.seller_org_id)) return reply.send(enriched);
   // CourtZon admins may view any complaint.
-  if (await isSuperAdmin(userId)) return reply.send(complaint);
+  if (await isSuperAdmin(userId)) return reply.send(enriched);
   return reply.status(403).send({ error: 'FORBIDDEN', message: 'Access denied' });
 }
 
