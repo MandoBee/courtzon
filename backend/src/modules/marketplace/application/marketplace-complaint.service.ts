@@ -646,9 +646,23 @@ export const marketplaceComplaintService = {
       // 2. Adjust/cancel the disputed entitlements + apply immutable financial adjustments.
       const adjustments: any[] = [];
 
+      // F-5: post-settlement recovery. When the org's earning entitlement is
+      // already SETTLED, the seller received those funds via Unified Settlement
+      // and cannot be "un-settled". The original SETTLED rows stay immutable;
+      // recovery is represented by bounded signed adjustment rows below. The
+      // recovery is capped at the settled org amount actually received (minus
+      // any prior recoveries on this item) so it can never over-recover.
+      const orgEarningSettled = orgEarningEnt?.status === 'SETTLED';
+      const remainingSettledOrg = Math.max(0, round2(originalOrgEarning - prior.orgOriginalReversed));
+      const orgRecoveryAmount = orgEarningSettled
+        ? Math.min(fin.orgAdjustment, remainingSettledOrg)
+        : fin.orgAdjustment;
+
       for (const ent of entitlements) {
         if (ent.status === 'SETTLED') {
-          throw new ConflictError(`Cannot refund a settled entitlement (id ${ent.id}) — contact support`);
+          // Post-settlement: keep the historical SETTLED entitlement immutable.
+          // The recovery is written as a bounded signed adjustment below.
+          continue;
         }
         if (ent.status === 'CANCELLED') continue;
         // AVAILABLE/ON_HOLD(was-available): keep the original intact, add an adjustment later.
@@ -675,7 +689,9 @@ export const marketplaceComplaintService = {
       const adjustmentSourceId = complaint.id;
 
       // Organisation adjustment: original-value reversal + additional compensation.
-      if (fin.orgAdjustment > 0) {
+      // For a post-settlement recovery the magnitude is bounded to the settled
+      // org amount actually received (orgRecoveryAmount).
+      if (orgRecoveryAmount > 0) {
         adjustments.push({
           organisationId: orgId,
           branchId,
@@ -683,16 +699,24 @@ export const marketplaceComplaintService = {
           sourceType: 'marketplace',
           sourceId: adjustmentSourceId,
           collector: orgEarningEnt?.collector ?? 'org',
-          amount: -fin.orgAdjustment,
+          amount: -orgRecoveryAmount,
           currency,
-          description: `Refund for complaint #${complaintId}`,
+          description: orgEarningSettled
+            ? `Post-settlement recovery for complaint #${complaintId}`
+            : `Refund for complaint #${complaintId}`,
           metadata: {
             complaintId, itemId, direction: 'debit', disputedValue,
             originalOrgEarning, originalCommission,
             refundAmount, originalValuePortion: fin.originalValuePortion,
-            orgOriginalReversal: fin.orgOriginalReversal,
-            additionalCompensation: fin.additionalCompensation,
+            orgOriginalReversal: orgEarningSettled ? orgRecoveryAmount : fin.orgOriginalReversal,
+            // For a post-settlement recovery, compensation above the original
+            // value is absorbed by CourtZon (the org never received it), so
+            // additionalCompensation is recorded as 0 to keep the cumulative
+            // capacity tracker (ABS − additionalCompensation) correct and
+            // prevent over-recovery across sequential refunds.
+            additionalCompensation: orgEarningSettled ? 0 : fin.additionalCompensation,
             commissionReversal: fin.commissionReversal,
+            ...(orgEarningSettled ? { settledRecovery: true, settledOrgEarning: originalOrgEarning, recoveredAmount: orgRecoveryAmount } : {}),
           },
           createdBy: complaint.resolved_by ?? undefined,
         });
@@ -739,10 +763,10 @@ export const marketplaceComplaintService = {
         paymentId: null,
         userId: buyerId,
         amount: refundAmount,
-        reason: `Refund for complaint #${complaintId}`,
+        reason: orgEarningSettled ? `Post-settlement recovery for complaint #${complaintId}` : `Refund for complaint #${complaintId}`,
         referenceType: 'complaint',
         referenceId: complaintId,
-        metadata: { complaintId, paymentMethod: 'wallet', commissionReversal: fin.commissionReversal, orgAdjustment: fin.orgAdjustment },
+        metadata: { complaintId, paymentMethod: 'wallet', commissionReversal: fin.commissionReversal, orgAdjustment: orgRecoveryAmount, settledRecovery: orgEarningSettled, settledOrgEarning: originalOrgEarning },
       }, undefined, conn);
 
       await conn.commit();
