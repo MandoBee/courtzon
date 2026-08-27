@@ -103,12 +103,24 @@ export const unifiedSettlementRepository = {
     }
   },
 
-  async findSettlements(filters: { status?: string; orgId?: number; batchCode?: string; page: number; limit: number }) {
+  async findSettlements(filters: { status?: string; orgId?: number; orgIds?: number[]; batchCode?: string; page: number; limit: number }) {
+    // An explicit empty org set means "no organisation is authorised" — an
+    // empty result, never "all organisations". This is the tenant-isolation
+    // boundary for non-platform users.
+    if (filters.orgIds && filters.orgIds.length === 0) {
+      const pag = buildPagination(filters.page, filters.limit);
+      return { data: [], total: 0, page: pag.page, limit: pag.limit };
+    }
     const pool = getPool();
     const conditions: string[] = [];
     const params: any[] = [];
     if (filters.status) { conditions.push('s.settlement_status = ?'); params.push(filters.status); }
     if (filters.orgId) { conditions.push('s.organisation_id = ?'); params.push(filters.orgId); }
+    if (filters.orgIds?.length) {
+      const placeholders = filters.orgIds.map(() => '?').join(',');
+      conditions.push(`s.organisation_id IN (${placeholders})`);
+      params.push(...filters.orgIds);
+    }
     if (filters.batchCode) { conditions.push('s.batch_code = ?'); params.push(filters.batchCode); }
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
 
