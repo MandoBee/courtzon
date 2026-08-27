@@ -10,9 +10,17 @@ const round2 = (n: number) => Math.round(n * 100) / 100;
  * immutable checkout snapshots. Order-level discount/shipping/tax are allocated
  * proportionally per item (same convention as settlement shipping allocation).
  *
- *   orgEarning = (itemTotal − itemDiscount − itemCommission) + itemShipping + itemTax
+ * F-9: the organisation earning is TAX-EXCLUSIVE. Tax is a pass-through
+ * liability (collected from the customer and remitted to the tax authority) —
+ * it is never part of the seller's economic position. The GL mirrors this:
+ * merchant_payable excludes tax (tax is booked separately to 2300
+ * tax_liability). Including tax in the entitlement inflated the org position
+ * and caused settlement to over-clear the GL payable by the tax amount.
  *
- * Summed across items this equals `order.total − courtzon_fee` (within rounding).
+ *   orgEarning = (itemTotal − itemDiscount − itemCommission) + itemShipping
+ *
+ * Summed across items this equals `order.total − courtzon_fee − order.tax`
+ * (within rounding) — the org's tax-exclusive share.
  */
 export function buildEntitlementInputs(order: any, items: any[], collector?: 'courtzon' | 'org'): any[] {
   const currency = order.currency_code || 'EGP';
@@ -37,7 +45,8 @@ export function buildEntitlementInputs(order: any, items: any[], collector?: 'co
     const itemShipping = round2(shipping * share);
     const itemTax = round2(tax * share);
 
-    const orgEarning = round2((itemTotal - itemDiscount - itemCommission) + itemShipping + itemTax);
+    // F-9: org earning excludes the pass-through tax (matches GL merchant_payable).
+    const orgEarning = round2((itemTotal - itemDiscount - itemCommission) + itemShipping);
 
     const metadata = {
       orderId: order.id,

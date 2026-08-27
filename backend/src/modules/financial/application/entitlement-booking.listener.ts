@@ -98,7 +98,15 @@ export async function handleBookingConfirmed(envelope: EventEnvelope): Promise<v
 
   const totalAmount = Number(booking.total_amount || 0);
   const taxAmount = Number(booking.tax_amount || 0);
-  const grossPayable = totalAmount + taxAmount;
+  // F-9: the entitlement org earning is TAX-EXCLUSIVE. Tax is a pass-through
+  // liability (collected and remitted to the tax authority) — it is never part
+  // of the org's economic position. The GL mirrors this: org_payable equals
+  // club_amount (total − commission), with tax booked separately to 2300
+  // tax_liability. Using the tax-inclusive gross here inflated the org position
+  // by the tax amount and caused settlement to over-clear the GL payable.
+  // Commission is therefore based on the tax-exclusive gross, matching the
+  // persisted commission_amount / club_amount snapshot convention.
+  const grossPayable = totalAmount;
 
   if (grossPayable <= 0) {
     log.warn({ bookingId: booking.id, grossPayable }, 'Booking has zero/negative gross — skipping entitlements');
