@@ -107,8 +107,16 @@ export const EVENT_CONCEPTS: Record<string, { debit: string[]; credit: string[] 
   // The buyer is always refunded to wallet (2100), matching the complaint
   // refund engine. This replaces the previous generic wallet_refund (4300
   // revenue_contra) which did not mirror the original marketplace legs.
+  //
+  // refund_expense (5220 Refund / Chargeback Costs): the residual excess when a
+  // POST-SETTLEMENT refund exceeds the recoverable economics — the buyer is
+  // refunded an amount that cannot be recovered from the org (bounded recovery)
+  // or from CourtZon's own commission. That unrecoverable remainder is a cost
+  // to CourtZon, booked to the existing refund/chargeback expense account so
+  // the posting always balances and no valid complaint refund silently drops
+  // its GL reversal.
   complaint_refund: {
-    debit: ['merchant_payable', 'platform_commission', 'tax_liability', 'receivable_from_org'],
+    debit: ['merchant_payable', 'platform_commission', 'tax_liability', 'receivable_from_org', 'refund_expense'],
     credit: ['wallet_liability'],
   },
   // Referee / Provider compensation (universal provider party model)

@@ -408,3 +408,12 @@ AND NOT EXISTS (SELECT 1 FROM accounting_event_mapping_lines WHERE event_type = 
 INSERT INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
 SELECT 'complaint_refund', NULL, 'receivable_from_org', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '1160'
 AND NOT EXISTS (SELECT 1 FROM accounting_event_mapping_lines WHERE event_type = 'complaint_refund' AND organisation_id IS NULL AND concept = 'receivable_from_org');
+
+-- 27b. complaint_refund — refund_expense (F-2 × F-5): the residual excess when a
+-- POST-SETTLEMENT complaint refund exceeds the recoverable economics (bounded
+-- org recovery + commission). The unrecoverable remainder is a genuine CourtZon
+-- refund/chargeback cost booked to 5220 (Refund / Chargeback Costs) so the
+-- posting always balances and the GL reversal is never silently dropped.
+INSERT INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
+SELECT 'complaint_refund', NULL, 'refund_expense', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '5220'
+AND NOT EXISTS (SELECT 1 FROM accounting_event_mapping_lines WHERE event_type = 'complaint_refund' AND organisation_id IS NULL AND concept = 'refund_expense');
