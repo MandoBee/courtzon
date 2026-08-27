@@ -592,6 +592,7 @@ export function registerAccountingEventListeners(): void {
       const referenceId: number = data.referenceId;
       const amount: number = Number(data.amount);
       const currency: string = data.metadata?.currency || 'EGP';
+      const paymentMethod: string = data.metadata?.paymentMethod || 'card';
       if (!referenceType || !referenceId || !amount) return;
 
       // ── Booking refund → booking-specific proportional reversal ──
@@ -619,7 +620,31 @@ export function registerAccountingEventListeners(): void {
         return;
       }
 
-      const paymentMethod: string = data.metadata?.paymentMethod || 'card';
+      // ── Subscription refund → symmetric reversal of principal platform
+      //    revenue (F-12) ──
+      // Subscriptions are recognized as 100% CourtZon principal revenue to 4170
+      // (MODEL B). A refund must reverse the revenue leg (4170) and the custody
+      // leg (payment_clearing for card, wallet_liability for wallet, cash_bank
+      // for cash) — NOT the generic revenue_contra (4300) path used by
+      // marketplace/booking refunds. organisation_id stays NULL (the paying org
+      // is a customer, not a bookkeeping party), matching the original payment.
+      if (referenceType === 'subscription') {
+        const eventType = paymentMethod === 'wallet' ? 'subscription_wallet_refund'
+          : paymentMethod === 'cash' ? 'subscription_cash_refund'
+          : 'subscription_card_refund';
+        const conceptAmounts: Record<string, number> = eventType === 'subscription_wallet_refund'
+          ? { revenue: amount, wallet_liability: amount }
+          : eventType === 'subscription_cash_refund'
+            ? { revenue: amount, cash_bank: amount }
+            : { revenue: amount, payment_clearing: amount };
+        await postAccountingEvent(
+          eventType, 'subscription', referenceId, null,
+          conceptAmounts, currency,
+          `Subscription #${referenceId} refund`,
+        );
+        return;
+      }
+
       const eventType = paymentMethod === 'wallet' ? 'wallet_refund' : 'card_refund';
       const sourceType = refTypeToSourceType(referenceType);
       const orgId = await resolveOrgId(referenceType, referenceId);
