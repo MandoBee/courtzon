@@ -175,8 +175,8 @@ export async function healthHandler(_request: FastifyRequest, reply: FastifyRepl
      WHERE payment_status = 'failed' AND created_at > NOW() - INTERVAL 1 HOUR`
   );
   const [lastWebhook] = await pool.execute<any[]>(
-    `SELECT MAX(created_at) as last_at FROM financial_journal_entries
-     WHERE reference_type = 'gateway_webhook'`
+    `SELECT MAX(updated_at) as last_at FROM payment_transactions
+     WHERE payment_status IN ('paid', 'failed', 'cancelled', 'refunded')`
   );
   const [successRate] = await pool.execute<any[]>(
     `SELECT
