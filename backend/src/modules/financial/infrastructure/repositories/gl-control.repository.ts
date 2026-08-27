@@ -27,18 +27,18 @@ export interface ControlAccountTotals {
 }
 
 export const glControlRepository = {
-  async resolveControlAccountIds(): Promise<Array<{ id: number; code: string }>> {
+  async resolveControlAccountIds(): Promise<Array<{ id: number; code: string; account_type: string }>> {
     const pool = getPool();
     const placeholders = CONTROL_CONCEPTS.map(() => '?').join(', ');
     const [rows] = await pool.execute<RowData>(
-      `SELECT DISTINCT c.id, c.code
+      `SELECT DISTINCT c.id, c.code, c.type AS account_type
        FROM accounting_event_mapping_lines m
        JOIN chart_of_accounts c ON c.id = m.account_id
        WHERE m.organisation_id IS NULL AND m.concept IN (${placeholders})
          AND m.is_active = 1`,
       [...CONTROL_CONCEPTS],
     );
-    return (rows as any[]).map((r) => ({ id: Number(r.id), code: String(r.code) }));
+    return (rows as any[]).map((r) => ({ id: Number(r.id), code: String(r.code), account_type: String(r.account_type) }));
   },
 
   /** Debit/credit totals per control account for one organisation. */

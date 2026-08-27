@@ -21,8 +21,8 @@ const captured: CapturedQuery[] = [];
 const entitlementRowsByOrg = new Map<number, any[]>();
 const glRowsByOrg = new Map<number, any[]>();
 const controlAccounts = [
-  { id: 27, code: '2200' },
-  { id: 36, code: '1160' },
+  { id: 27, code: '2200', account_type: 'liability' },
+  { id: 36, code: '1160', account_type: 'asset' },
 ];
 
 vi.mock('../../../database/mysql.js', () => ({
@@ -72,7 +72,7 @@ vi.mock('../../../database/mysql.js', () => ({
       }
 
       if (lower.includes('from accounting_event_mapping_lines') && lower.includes('join chart_of_accounts')) {
-        return [controlAccounts.map((c) => ({ id: c.id, code: c.code })), []];
+        return [controlAccounts.map((c) => ({ id: c.id, code: c.code, account_type: c.account_type })), []];
       }
 
       if (lower.includes('from general_ledger')) {

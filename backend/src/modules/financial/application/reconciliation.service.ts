@@ -2,6 +2,7 @@ import { positionRepository, type OpenPositionRow } from '../infrastructure/repo
 import {
   glControlRepository,
 } from '../infrastructure/repositories/gl-control.repository.js';
+import { classifyAccountType } from '../domain/ledger-aggregate.js';
 
 /**
  * Position Reconciliation — Phase 2 Step 1 (READ-ONLY).
@@ -88,13 +89,17 @@ export class ReconciliationService {
 
     // Liability control (2200-family): credit-positive = CourtZon owes org.
     // Asset control (1160-family): debit-positive = org owes CourtZon.
+    // Direction comes from the account's semantic COA classification
+    // (account_type: liability/asset), NOT from a code-prefix convention.
+    // F-24: a future control account whose code does not start with "2"/"1"
+    // is still classified correctly by its account_type.
     let glPayable = 0;
     let glReceivable = 0;
     const glAccounts = controlAccounts.map((acc) => {
       const t = totals.find((x) => x.accountId === acc.id);
       const debits = round2(t?.debits ?? 0);
       const credits = round2(t?.credits ?? 0);
-      const isLiabilityControl = acc.code.startsWith('2'); // 2200/2202 liabilities; 1160 asset
+      const isLiabilityControl = classifyAccountType(acc.account_type) === 'liability';
       if (isLiabilityControl) glPayable += round2(credits - debits);
       else glReceivable += round2(debits - credits);
       return {
