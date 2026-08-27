@@ -97,10 +97,10 @@ function SettlementDetailModal({ settlement, onClose }: { settlement: any; onClo
           <div className="grid grid-cols-3 gap-3 p-4 border-b border-[var(--color-border)]">
             <div className="text-sm"><span className="text-[var(--color-text-muted)]">Status:</span> <span className={`px-2 py-0.5 rounded-full text-xs font-medium capitalize ${SETTLEMENT_STATUS_COLORS[settlement.settlement_status] || ''}`}>{settlement.settlement_status?.replace(/_/g, ' ')}</span></div>
             <div className="text-sm"><span className="text-[var(--color-text-muted)]">Direction:</span> <span className="font-medium">{direction}</span></div>
-            <div className="text-sm"><span className="text-[var(--color-text-muted)]">Final Transfer:</span> <span className="font-medium text-[var(--color-primary)]">{finalAmount.toFixed(2)}</span></div>
-            <div className="text-sm"><span className="text-[var(--color-text-muted)]">Shipping:</span> <span>{Number(settlement.shipping_amount || 0).toFixed(2)}</span></div>
-            <div className="text-sm"><span className="text-[var(--color-text-muted)]">COD Fees:</span> <span>{Number(settlement.cod_fee_total || 0).toFixed(2)}</span></div>
-            <div className="text-sm"><span className="text-[var(--color-text-muted)]">Online Nets:</span> <span>{Number(settlement.online_net_total || 0).toFixed(2)}</span></div>
+            <div className="text-sm"><span className="text-[var(--color-text-muted)]">Settlement Amount:</span> <span className="font-medium text-[var(--color-primary)]">{finalAmount.toFixed(2)}</span></div>
+            <div className="text-sm"><span className="text-[var(--color-text-muted)]">CourtZon Commission:</span> <span className="font-medium">{Number(settlement.commission_amount || 0).toFixed(2)}</span></div>
+            <div className="text-sm"><span className="text-[var(--color-text-muted)]">CourtZon Position:</span> <span className="font-medium">{Number(settlement.courtzon_position || 0).toFixed(2)}</span></div>
+            <div className="text-sm"><span className="text-[var(--color-text-muted)]">Organisation Position:</span> <span className="font-medium">{Number(settlement.organization_position || 0).toFixed(2)}</span></div>
           </div>
         )}
 
@@ -394,30 +394,26 @@ export default function OrgFinancePage() {
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-[var(--color-border)] bg-[var(--color-bg)]">
-                    <th className="text-left px-4 py-3 font-medium text-[var(--color-text-muted)]">#</th>
-                    <th className="text-right px-4 py-3 font-medium text-[var(--color-text-muted)]">Gross</th>
-                    <th className="text-right px-4 py-3 font-medium text-[var(--color-text-muted)]">CourtZon Fee</th>
-                    <th className="text-right px-4 py-3 font-medium text-[var(--color-text-muted)]">Org Net</th>
-                    <th className="text-center px-4 py-3 font-medium text-[var(--color-text-muted)]">Direction</th>
-                    <th className="text-right px-4 py-3 font-medium text-[var(--color-text-muted)]">Final</th>
-                    <th className="text-center px-4 py-3 font-medium text-[var(--color-text-muted)]">Status</th>
-                    <th className="text-right px-4 py-3 font-medium text-[var(--color-text-muted)]">Orders</th>
-                    <th className="text-center px-4 py-3 font-medium text-[var(--color-text-muted)]">Actions</th>
-                  </tr>
+<tr className="border-b border-[var(--color-border)] bg-[var(--color-bg)]">
+                  <th className="text-left px-4 py-3 font-medium text-[var(--color-text-muted)]">#</th>
+                  <th className="text-right px-4 py-3 font-medium text-[var(--color-text-muted)]" title="Canonical settlement amount (settlements.final_amount). Not gross marketplace sales.">Settlement Amount</th>
+                  <th className="text-right px-4 py-3 font-medium text-[var(--color-text-muted)]" title="CourtZon commission from canonical settlement financials (settlements.commission_amount).">CourtZon Commission</th>
+                  <th className="text-center px-4 py-3 font-medium text-[var(--color-text-muted)]">Direction</th>
+                  <th className="text-center px-4 py-3 font-medium text-[var(--color-text-muted)]">Status</th>
+                  <th className="text-right px-4 py-3 font-medium text-[var(--color-text-muted)]">Orders</th>
+                  <th className="text-center px-4 py-3 font-medium text-[var(--color-text-muted)]">Actions</th>
+                </tr>
                 </thead>
                 <tbody>
                   {stData.data.map((s: any) => (
                     <tr key={s.id} onClick={() => handleRowClick(s)}
                       className={`border-b border-[var(--color-border)] hover:bg-[var(--color-bg)] cursor-pointer ${selectedSettlement?.id === s.id ? 'bg-[var(--color-bg)]' : ''}`}>
                       <td className="px-4 py-3 text-[var(--color-text)]">#{s.id}</td>
-                      <td className="px-4 py-3 text-right">{Number(s.gross_amount || 0).toFixed(2)}</td>
-                      <td className="px-4 py-3 text-right text-[var(--color-text-muted)]">{Number(s.courtzon_fee || 0).toFixed(2)}</td>
-                      <td className="px-4 py-3 text-right font-medium">{Number(s.organization_net || 0).toFixed(2)}</td>
+                      <td className="px-4 py-3 text-right font-medium text-[var(--color-primary)]">{Number(s.final_amount || s.net_amount || 0).toFixed(2)}</td>
+                      <td className="px-4 py-3 text-right text-[var(--color-text-muted)]">{Number(s.commission_amount || 0).toFixed(2)}</td>
                       <td className="px-4 py-3 text-center text-xs">
                         {s.settlement_direction ? DIRECTION_LABELS[s.settlement_direction] || s.settlement_direction : '-'}
                       </td>
-                      <td className="px-4 py-3 text-right font-medium text-[var(--color-primary)]">{Number(s.final_amount || 0).toFixed(2)}</td>
                       <td className="px-4 py-3 text-center">
                         <span className={`px-2 py-0.5 rounded-full text-xs font-medium capitalize ${SETTLEMENT_STATUS_COLORS[s.settlement_status] || ''}`}>
                           {s.settlement_status?.replace(/_/g, ' ')}
