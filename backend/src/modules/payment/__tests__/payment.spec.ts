@@ -58,9 +58,12 @@ describe('Payment Integration', () => {
 
   it('records a journal entry for payment', async () => {
     // Use the correct table: financial_journal_entries
+    // F-7: the test row uses reference_type='test_pay' so the beforeAll/afterAll
+    // cleanup deletes it — it must NOT pollute the (dead) gateway_webhook rows
+    // that the payment health endpoint no longer reads.
     const [r] = await pool.execute<mysql.ResultSetHeader>(
       `INSERT INTO financial_journal_entries (entry_type, reference_type, reference_id, debit_account, credit_account, amount, description)
-       VALUES ('payment', 'gateway_webhook', 999, 'Cash', 'Revenue', 199, 'Test journal entry')`,
+       VALUES ('payment', 'test_pay', 999, 'Cash', 'Revenue', 199, 'Test journal entry')`,
     );
     expect(r.insertId).toBeGreaterThan(0);
   });
