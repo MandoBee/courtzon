@@ -297,7 +297,10 @@ const MARKETPLACE_MANAGER_PATTERNS = [
   /^marketplace\./,
   /^org\.sidebar\.marketplace/,
   /^org\.marketplace\.manage/,
-  /^settlements\./,
+  // Operational settlement responsibilities: view + request eligible
+  // settlements. Marketplace approval/payout remains finance-only (mirrors
+  // operations-manager; see role-permission-templates.mjs).
+  /^settlements\.(view|request)$/,
   /^financial\.settlements/,
   /^organisations\.view/,
   /^profile\./,

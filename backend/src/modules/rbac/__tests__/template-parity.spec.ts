@@ -283,3 +283,80 @@ describe('P2-4 — marketplace.complaints.approve RBAC scope', () => {
     expect(permissionMatchesTemplate('player', 'marketplace.complaints.view')).toBe(true);
   });
 });
+
+describe('F-19 — marketplace-manager settlement authority (finance-only payouts)', () => {
+  const viewKey = 'settlements.view';
+  const requestKey = 'settlements.request';
+  const financeKeys = ['settlements.approve', 'settlements.pay', 'settlements.complete', 'settlements.reject', 'settlements.cancel'];
+
+  it('marketplace-manager retains settlements.view + settlements.request', () => {
+    expect(permissionMatchesTemplate('marketplace-manager', viewKey)).toBe(true);
+    expect(mjsMatch('marketplace-manager', viewKey)).toBe(true);
+    expect(permissionMatchesTemplate('marketplace-manager', requestKey)).toBe(true);
+    expect(mjsMatch('marketplace-manager', requestKey)).toBe(true);
+  });
+
+  it('marketplace-manager does NOT receive finance-only settlement actions', () => {
+    for (const key of financeKeys) {
+      expect(permissionMatchesTemplate('marketplace-manager', key)).toBe(false);
+      expect(mjsMatch('marketplace-manager', key)).toBe(false);
+    }
+  });
+
+  it('operations-manager mirrors the same restricted settlement scope (sync source .mjs)', () => {
+    // The .mjs is the role-sync source of truth and already restricts
+    // operations-manager to view+request (finance-only payouts). This asserts
+    // the intended architecture reference for marketplace-manager.
+    for (const key of [viewKey, requestKey]) {
+      expect(mjsMatch('operations-manager', key)).toBe(true);
+    }
+    for (const key of financeKeys) {
+      expect(mjsMatch('operations-manager', key)).toBe(false);
+    }
+  });
+
+  it('finance/platform roles retain full settlement authority', () => {
+    for (const slug of ['finance-manager', 'accountant']) {
+      for (const key of [viewKey, requestKey, ...financeKeys]) {
+        expect(permissionMatchesTemplate(slug, key)).toBe(true);
+        expect(mjsMatch(slug, key)).toBe(true);
+      }
+    }
+  });
+
+  it('super_admin retains full settlement authority', () => {
+    for (const key of [viewKey, requestKey, ...financeKeys]) {
+      expect(permissionMatchesTemplate('super_admin', key)).toBe(true);
+    }
+  });
+
+  it('org-admin / shop-admin have view+request only (no platform settlement financial actions)', () => {
+    // org-admin: explicit view+request keys.
+    expect(permissionMatchesTemplate('org-admin', viewKey)).toBe(true);
+    expect(permissionMatchesTemplate('org-admin', requestKey)).toBe(true);
+    // shop-admin: request via SHOP_ADMIN_PATTERNS; views via the org-scoped
+    // org-portal endpoint (org access), not settlements.view.
+    expect(permissionMatchesTemplate('shop-admin', requestKey)).toBe(true);
+    expect(permissionMatchesTemplate('shop-admin', viewKey)).toBe(false);
+    for (const slug of ['org-admin', 'shop-admin']) {
+      for (const key of financeKeys) {
+        expect(permissionMatchesTemplate(slug, key)).toBe(false);
+        expect(mjsMatch(slug, key)).toBe(false);
+      }
+    }
+  });
+
+  it('player/customer has no settlement authority', () => {
+    for (const key of [viewKey, requestKey, ...financeKeys]) {
+      expect(permissionMatchesTemplate('player', key)).toBe(false);
+      expect(mjsMatch('player', key)).toBe(false);
+    }
+  });
+
+  it('.mjs and .ts marketplace-manager settlement grants are synchronized (F-19 only)', () => {
+    for (const key of [viewKey, requestKey, ...financeKeys]) {
+      expect(permissionMatchesTemplate('marketplace-manager', key))
+        .toBe(mjsMatch('marketplace-manager', key));
+    }
+  });
+});
