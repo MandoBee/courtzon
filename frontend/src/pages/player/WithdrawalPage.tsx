@@ -45,7 +45,10 @@ export default function WithdrawalPage() {
     onError: (err: any) => showToast(getErrorMessage(err), 'error'),
   });
 
-  const available = wallet ? Number(wallet.balance || 0) - Number(wallet.reserved_balance || 0) : 0;
+  // F-13: use the backend-exposed canonical available balance (the single
+  // financial authority). The backend computes it as balance − reserved funds;
+  // the frontend must not reconstruct it from wallet.balance/reserved_balance.
+  const available = wallet ? Number(wallet.available_balance ?? 0) : 0;
 
   const statusBadge = (s: string) => {
     const map: Record<string, string> = { pending: 'bg-yellow-100 text-yellow-800', under_review: 'bg-blue-100 text-blue-800', approved: 'bg-green-100 text-green-800', rejected: 'bg-red-100 text-red-800', processing: 'bg-purple-100 text-purple-800', completed: 'bg-green-200 text-green-900', cancelled: 'bg-gray-200 text-gray-700' };
