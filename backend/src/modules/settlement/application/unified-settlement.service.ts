@@ -266,7 +266,7 @@ export const unifiedSettlementService = {
     }
   },
 
-  async list(filters: { status?: string; orgId?: number; batchCode?: string; page: number; limit: number }) {
+  async list(filters: { status?: string; orgId?: number; orgIds?: number[]; batchCode?: string; page: number; limit: number }) {
     return unifiedSettlementRepository.findSettlements(filters);
   },
 
@@ -276,7 +276,7 @@ export const unifiedSettlementService = {
    * the linked financial_entitlements via computeSettlementFinancials — the SAME
    * authority the detail endpoint uses. Nothing is recalculated independently.
    */
-  async listForExport(filters: { status?: string; orgId?: number; batchCode?: string }): Promise<any[]> {
+  async listForExport(filters: { status?: string; orgId?: number; orgIds?: number[]; batchCode?: string }): Promise<any[]> {
     const settlements: any[] = [];
     let page = 1;
     const limit = 100;

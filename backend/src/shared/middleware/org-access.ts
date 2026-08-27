@@ -43,3 +43,27 @@ export async function canAccessOrganisation(userId: number, orgId: number): Prom
   );
   return scopeRows.length > 0;
 }
+
+/**
+ * IDs of every organisation the user may operate on: orgs they own, orgs they
+ * hold an active organisation role-scope for, and (via isPlatformAdmin) all
+ * orgs. Platform admins get an empty array (meaning "no tenant restriction").
+ * Used to scope list endpoints to the caller's authorised organisations.
+ */
+export async function findAccessibleOrgIds(userId: number): Promise<number[]> {
+  if (!userId) return [];
+  if (await isPlatformAdmin(userId)) return [];
+  const pool = getPool();
+  const [rows] = await pool.execute<RowData>(
+    `SELECT DISTINCT org_id AS id FROM (
+       SELECT o.id AS org_id FROM organisations o
+       WHERE o.owner_id = ? AND o.deleted_at IS NULL
+       UNION
+       SELECT urs.scope_id AS org_id FROM user_role_scopes urs
+       JOIN user_roles ur ON ur.id = urs.user_role_id
+       WHERE ur.user_id = ? AND urs.scope_type = 'organisation' AND ur.is_active = TRUE
+     ) t`,
+    [userId, userId],
+  );
+  return rows.map((r: any) => Number(r.id));
+}

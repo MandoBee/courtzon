@@ -1,8 +1,9 @@
 import type { FastifyRequest, FastifyReply } from 'fastify';
 import { unifiedSettlementService as svc } from '../application/unified-settlement.service.js';
+import { unifiedSettlementRepository } from '../infrastructure/repositories/unified-settlement.repository.js';
 import { recordAudit } from '../../audit-log/index.js';
-import { canAccessOrganisation, isPlatformAdmin } from '../../../shared/middleware/org-access.js';
-import { ForbiddenError } from '../../../shared/errors/app-error.js';
+import { canAccessOrganisation, isPlatformAdmin, findAccessibleOrgIds } from '../../../shared/middleware/org-access.js';
+import { ForbiddenError, NotFoundError } from '../../../shared/errors/app-error.js';
 import { toCsv, csvFilename } from '../../../shared/utils/csv.js';
 import {
   SettlementPreviewQuerySchema, CreateSettlementSchema, RecordPaymentSchema,
@@ -47,8 +48,38 @@ async function assertOrgAccess(userId: number, orgId: number): Promise<void> {
   throw new ForbiddenError('Access to this organisation denied');
 }
 
+/**
+ * Resolve the organisation that owns a settlement from the canonical
+ * settlement record (never from a client-supplied id) and assert the actor may
+ * operate on it. Throws 404 when the settlement does not exist and 403 when the
+ * actor is not authorised for its organisation. Must run BEFORE any protected
+ * financial operation on the settlement.
+ */
+async function assertSettlementOrgAccess(userId: number, settlementId: number): Promise<void> {
+  if (!userId) throw new ForbiddenError('Access to this organisation denied');
+  const settlement = await unifiedSettlementRepository.findBySettlementId(settlementId);
+  if (!settlement) throw new NotFoundError('Settlement not found');
+  await assertOrgAccess(userId, Number(settlement.organisation_id));
+}
+
+/**
+ * Resolve the organisation-scope filter for list/export. Returns null for
+ * platform admins (no tenant restriction — all organisations). For all other
+ * users returns the array of organisations they are authorised for; a
+ * client-supplied orgId query filter is honoured only when the caller is
+ * authorised for it (otherwise the intersection is empty, never trusted).
+ */
+async function resolveOrgScope(userId: number, clientOrgId?: number): Promise<number[] | null> {
+  if (await isPlatformAdmin(userId)) return null;
+  const accessible = await findAccessibleOrgIds(userId);
+  if (!clientOrgId) return accessible;
+  return accessible.includes(clientOrgId) ? [clientOrgId] : [];
+}
+
 export async function getSettlementHandler(request: FastifyRequest, reply: FastifyReply) {
   const { id } = request.params as any;
+  const userId = (request as any).userId;
+  await assertSettlementOrgAccess(userId, Number(id));
   const detail = await svc.get(Number(id));
   return reply.send(detail);
 }
@@ -57,6 +88,7 @@ export async function recordSettlementPaymentHandler(request: FastifyRequest, re
   const { id } = request.params as any;
   const body = RecordPaymentSchema.parse(request.body ?? {});
   const userId = (request as any).userId;
+  await assertSettlementOrgAccess(userId, Number(id));
   const detail = await svc.recordPayment(Number(id), { ...body, paidBy: userId });
   recordAudit({ actorId: userId, action: 'SETTLEMENT.PAY', entityType: 'settlement', entityId: detail.settlement.id, afterState: { status: detail.settlement.settlement_status } });
   return reply.send(detail);
@@ -66,6 +98,7 @@ export async function cancelSettlementHandler(request: FastifyRequest, reply: Fa
   const { id } = request.params as any;
   const body = CancelSettlementSchema.parse(request.body ?? {});
   const userId = (request as any).userId;
+  await assertSettlementOrgAccess(userId, Number(id));
   const detail = await svc.cancel(Number(id), userId, body.reason);
   recordAudit({ actorId: userId, action: 'SETTLEMENT.CANCEL', entityType: 'settlement', entityId: detail.settlement.id, afterState: { status: detail.settlement.settlement_status } });
   return reply.send(detail);
@@ -73,17 +106,31 @@ export async function cancelSettlementHandler(request: FastifyRequest, reply: Fa
 
 export async function listSettlementsHandler(request: FastifyRequest, reply: FastifyReply) {
   const query = SettlementListQuerySchema.parse(request.query);
-  const result = await svc.list(query);
+  const userId = (request as any).userId;
+  const scope = await resolveOrgScope(userId, query.orgId);
+  const result = await svc.list({
+    status: query.status,
+    batchCode: query.batchCode,
+    page: query.page,
+    limit: query.limit,
+    ...(scope === null
+      ? { orgId: query.orgId }
+      : { orgIds: scope }),
+  });
   return reply.send(result);
 }
 
 /** Read-only CSV export of unified settlements with canonical financials. */
 export async function exportSettlementsHandler(request: FastifyRequest, reply: FastifyReply) {
   const query = SettlementListQuerySchema.parse(request.query);
+  const userId = (request as any).userId;
+  const scope = await resolveOrgScope(userId, query.orgId);
   const rows = await svc.listForExport({
     status: query.status,
-    orgId: query.orgId,
     batchCode: query.batchCode,
+    ...(scope === null
+      ? { orgId: query.orgId }
+      : { orgIds: scope }),
   });
 
   const headers = [
