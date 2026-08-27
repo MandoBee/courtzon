@@ -122,6 +122,89 @@ async function postMarketplaceRefundAccounting(orderId: number, currency: string
   );
 }
 
+/**
+ * F-2: Marketplace complaint refund — symmetric reversal of the original
+ * marketplace custody economics.
+ *
+ * A complaint refund credits the buyer's wallet (2100). It must reverse the
+ * SAME economic legs the original marketplace payment posted:
+ *   CARD/WALLET: Dr merchant_payable + platform_commission + tax_liability
+ *   COD:         Dr platform_commission + tax_liability + merchant-share
+ *                receivable (CourtZon refunded the buyer from its own wallet;
+ *                the org collected the COD cash, so CourtZon holds a receivable
+ *                for the refunded merchant share).
+ *
+ * The refund split comes from the complaint refund engine metadata:
+ *   orgAdjustment     = org's share being reversed (tax-inclusive org earning)
+ *   commissionReversal = CourtZon commission being reversed
+ * The org earning includes tax (F-9 pass-through), so the tax-consistent
+ * merchant_payable reversal is orgAdjustment − taxReversal, with taxReversal
+ * booked separately to tax_liability. Balance is preserved:
+ *   (orgAdjustment − taxReversal) + commissionReversal + taxReversal
+ *     = orgAdjustment + commissionReversal = refundAmount = wallet credit.
+ *
+ * Replaces the previous generic wallet_refund (4300 revenue_contra / 2100)
+ * which did not reverse the original marketplace legs.
+ */
+export async function postMarketplaceComplaintRefundAccounting(
+  complaintId: number,
+  refundAmount: number,
+  currency: string,
+  data: any,
+): Promise<void> {
+  const m = data.metadata || {};
+  const orgAdjustment = Math.max(0, Number(m.orgAdjustment ?? 0));
+  const commissionReversal = Math.max(0, Number(m.commissionReversal ?? 0));
+  const organisationId = Number(m.organisationId ?? 0) || null;
+  const itemTax = Math.max(0, Number(m.itemTax ?? 0));
+  const originalOrgEarning = Math.max(0, Number(m.settledOrgEarning ?? m.originalOrgEarning ?? 0));
+  const cashHolder = m.cashHolder;
+  const isCOD = cashHolder === 'org';
+  const refundAmountR = Math.max(0, Number(refundAmount) || 0);
+
+  // Tax-consistent split: taxReversal is the tax share of the refunded org
+  // adjustment (org earning includes tax per F-9). When no tax is present the
+  // split collapses to orgAdjustment and the posting is still balanced.
+  let taxReversal = 0;
+  if (itemTax > 0 && originalOrgEarning > 0 && orgAdjustment > 0) {
+    taxReversal = Math.min(itemTax, Math.round((orgAdjustment * (itemTax / originalOrgEarning)) * 100) / 100);
+  }
+  const merchantPayableReversal = Math.max(0, Math.round((orgAdjustment - taxReversal) * 100) / 100);
+
+  if (isCOD) {
+    // COD custody: no merchant_payable was ever posted (the org collected
+    // cash). CourtZon refunded the buyer from its wallet; the refunded
+    // merchant share becomes a receivable from the org.
+    const merchantShareReceivable = Math.max(0, Math.round((refundAmountR - commissionReversal - taxReversal) * 100) / 100);
+    await postAccountingEvent(
+      'complaint_refund', 'marketplace', complaintId, organisationId,
+      {
+        platform_commission: commissionReversal,
+        tax_liability: taxReversal,
+        receivable_from_org: merchantShareReceivable,
+        wallet_liability: refundAmountR,
+      },
+      currency,
+      `Complaint #${complaintId} refunded (COD custody reversal)`,
+    );
+    return;
+  }
+
+  // CARD / WALLET custody: reverse the merchant payable + commission + tax,
+  // crediting the buyer's wallet.
+  await postAccountingEvent(
+    'complaint_refund', 'marketplace', complaintId, organisationId,
+    {
+      merchant_payable: merchantPayableReversal,
+      platform_commission: commissionReversal,
+      tax_liability: taxReversal,
+      wallet_liability: refundAmountR,
+    },
+    currency,
+    `Complaint #${complaintId} refunded (custody reversal)`,
+  );
+}
+
 async function resolveOrgId(referenceType: string, referenceId: number): Promise<number | null> {
   const pool = getPool();
   if (referenceType === 'booking') {
@@ -504,6 +587,17 @@ export function registerAccountingEventListeners(): void {
       // Reverse merchant payable + commission + tax, not generic revenue_contra.
       if (referenceType === 'order') {
         await postMarketplaceRefundAccounting(Number(referenceId), currency);
+        return;
+      }
+
+      // ── Marketplace complaint refund → symmetric custody reversal (F-2) ──
+      // A complaint refund credits the buyer's wallet. Reverse the ORIGINAL
+      // marketplace economic legs (merchant_payable + platform_commission +
+      // tax_liability for CARD/WALLET custody; receivable_from_org for COD)
+      // instead of a generic 4300/2100 revenue_contra entry that never mirrored
+      // the original marketplace posting.
+      if (referenceType === 'complaint') {
+        await postMarketplaceComplaintRefundAccounting(Number(referenceId), amount, currency, data);
         return;
       }
 
