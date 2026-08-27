@@ -154,7 +154,7 @@ export default function OrgOrdersPage() {
                 <div className="flex justify-between"><span className="text-[var(--color-text-muted)]">Commission</span><span>{formatPrice(Number(order.commission_amount || 0), order.currency_code)}</span></div>
                 <div className="flex justify-between font-bold text-sm border-t border-[var(--color-border)] pt-1">
                   <span>Seller Net</span>
-                  <span className="text-[var(--color-success)]">{formatPrice(Number(order.seller_net ?? (Number(order.total) - Number(order.commission_amount || 0))), order.currency_code)}</span>
+                  <span className="text-[var(--color-success)]">{order.seller_net != null ? formatPrice(Number(order.seller_net), order.currency_code) : '—'}</span>
                 </div>
                 {order.financial_status && (
                   <div className="flex justify-between pt-1">
