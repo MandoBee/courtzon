@@ -1378,7 +1378,7 @@ export async function postPayrollRunHandler(request: FastifyRequest, reply: Fast
   const { id } = request.params as any;
   const userId = (request as any).userId;
 
-  const [existing] = await pool.execute<RowData>(`SELECT * FROM payroll_runs WHERE id = ?`, [Number(id)]);
+  const [existing] = await pool.execute<RowData>(`SELECT * FROM payroll_runs WHERE id = ? FOR UPDATE`, [Number(id)]);
   if (!existing.length) throw new NotFoundError('Payroll run', ErrorCodes.PAYROLL_RUN_NOT_FOUND);
   assertValidTransition(existing[0].status, 'posted', PAYROLL_TRANSITIONS);
   if (existing[0].status === 'posted') {
@@ -1391,10 +1391,19 @@ export async function postPayrollRunHandler(request: FastifyRequest, reply: Fast
   try {
     await conn.beginTransaction();
 
-    await conn.execute(
-      `UPDATE payroll_runs SET status = 'posted', posted_at = NOW(), posted_by = ? WHERE id = ?`,
-      [userId, Number(id)]
+    // F-6 hardening: the transition UPDATE is guarded by the expected status so a
+    // second concurrent post of the same run cannot overwrite it (0 rows ⇒ another
+    // actor already posted it). Together with the FOR UPDATE read above this keeps
+    // whole-run idempotency even under concurrent requests.
+    const [postRes] = await conn.execute<RowData>(
+      `UPDATE payroll_runs SET status = 'posted', posted_at = NOW(), posted_by = ? WHERE id = ? AND status = ?`,
+      [userId, Number(id), existing[0].status]
     );
+    if ((postRes as any).affectedRows === 0) {
+      await conn.rollback();
+      conn.release();
+      throw new AppError('Payroll is already posted', 400, 'VALIDATION_ERROR', { code: ErrorCodes.PAYROLL_ALREADY_POSTED });
+    }
 
     const [entries] = await conn.execute<RowData>(
       `SELECT pe.*, e.user_id FROM payroll_entries pe JOIN employees e ON e.id = pe.employee_id WHERE pe.payroll_run_id = ?`,
@@ -1423,10 +1432,19 @@ export async function postPayrollRunHandler(request: FastifyRequest, reply: Fast
         const amount = Number(entry.net_pay);
         const description = `Payroll ${run.period_start} to ${run.period_end} - Employee #${entry.employee_id}`;
         // Canonical ledger_entries (debit expense)
+        // F-6: source_id is the per-employee payroll_entries.id, NOT the run id.
+        // ledger_entries.uk_dedup is (source_type, source_id, event_type,
+        // chart_account_id, side); using the run id for every employee would
+        // collide on the same salary_expense debit / salary_payable credit rows
+        // and roll back legitimate multi-employee runs. A per-employee source_id
+        // makes each Dr/Cr pair a distinct dedup identity while preserving
+        // source_type='journal' + event_type='payroll_post' and the
+        // employee-level reference_id traceability. Run-level idempotency is
+        // enforced by the payroll_runs state machine (approved → posted).
         const [leDrResult] = await conn.execute<RowData>(
           `INSERT INTO ledger_entries (transaction_id, source_type, source_id, event_type, period_id, organisation_id, chart_account_id, account_type, side, amount, currency, description, reference_id, recorded_at)
            VALUES (?, 'journal', ?, 'payroll_post', ?, NULL, ?, NULL, 'debit', ?, 'EGP', ?, ?, ?)`,
-          [`payroll_${run.id}_${entry.employee_id}_${Date.now()}`, Number(id), periodId, salaryExpenseId, amount, description, String(entry.employee_id), now],
+          [`payroll_${run.id}_${entry.employee_id}_${Date.now()}`, Number(entry.id), periodId, salaryExpenseId, amount, description, String(entry.employee_id), now],
         );
         const leDrId = (leDrResult as any).insertId;
         await conn.execute(
@@ -1439,7 +1457,7 @@ export async function postPayrollRunHandler(request: FastifyRequest, reply: Fast
         const [leCrResult] = await conn.execute<RowData>(
           `INSERT INTO ledger_entries (transaction_id, source_type, source_id, event_type, period_id, organisation_id, chart_account_id, account_type, side, amount, currency, description, reference_id, recorded_at)
            VALUES (?, 'journal', ?, 'payroll_post', ?, NULL, ?, NULL, 'credit', ?, 'EGP', ?, ?, ?)`,
-          [`payroll_${run.id}_${entry.employee_id}_${Date.now()}c`, Number(id), periodId, salaryPayableId, amount, description, String(entry.employee_id), now],
+          [`payroll_${run.id}_${entry.employee_id}_${Date.now()}c`, Number(entry.id), periodId, salaryPayableId, amount, description, String(entry.employee_id), now],
         );
         const leCrId = (leCrResult as any).insertId;
         await conn.execute(
