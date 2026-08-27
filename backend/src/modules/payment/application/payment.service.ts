@@ -857,7 +857,12 @@ export class PaymentService {
         reason,
         traceId,
         referenceType: (transaction as any).reference_type,
-        referenceId: (transaction as any).order_id || (transaction as any).booking_id || null,
+        // F-12: for subscription payments the business reference lives in
+        // `reference_id` (booking_id/order_id are NULL for subscriptions). Fall
+        // back to it so a subscription refund reaches the accounting listener
+        // with a valid reference id instead of being silently dropped (which
+        // would leave the original 4170 revenue posting un-reversed).
+        referenceId: (transaction as any).order_id || (transaction as any).booking_id || (transaction as any).reference_id || null,
         metadata: { paymentMethod: (transaction as any).payment_method || 'card' },
       }, undefined, conn);
 

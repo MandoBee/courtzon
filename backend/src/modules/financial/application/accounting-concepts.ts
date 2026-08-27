@@ -69,6 +69,25 @@ export const EVENT_CONCEPTS: Record<string, { debit: string[]; credit: string[] 
     debit: ['wallet_liability_spend'],
     credit: ['revenue'],
   },
+  // Subscription refunds — symmetric reversal of the original subscription
+  // payment (F-12). Subscriptions are 100% CourtZon principal platform revenue
+  // recognized to 4170 (MODEL B), so a refund must reverse that revenue leg and
+  // the custody/payment leg — NOT the generic revenue_contra (4300) path that
+  // marketplace/booking refunds use. organisation_id stays NULL (the paying org
+  // is a customer counterparty, not a bookkeeping party). One event per custody
+  // mirrors the payment events above.
+  subscription_card_refund: {
+    debit: ['revenue'],
+    credit: ['payment_clearing'],
+  },
+  subscription_wallet_refund: {
+    debit: ['revenue'],
+    credit: ['wallet_liability'],
+  },
+  subscription_cash_refund: {
+    debit: ['revenue'],
+    credit: ['cash_bank'],
+  },
   // Marketplace COD delivery — the merchant physically collected cash from the
   // customer. CourtZon is owed commission (+ tax) = receivable from merchant.
   marketplace_delivery: {

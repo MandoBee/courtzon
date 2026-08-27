@@ -387,6 +387,30 @@ INSERT INTO accounting_event_mapping_lines (event_type, organisation_id, concept
 SELECT 'subscription_wallet_payment', NULL, 'revenue', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '4170'
 AND NOT EXISTS (SELECT 1 FROM accounting_event_mapping_lines WHERE event_type = 'subscription_wallet_payment' AND organisation_id IS NULL AND concept = 'revenue');
 
+-- 26b. subscription refunds — F-12: symmetric reversal of the original
+-- subscription payment (MODEL B principal revenue to 4170). Dr Revenue (4170) /
+-- Cr the custody leg (payment_clearing 1100 for card, wallet_liability 2100 for
+-- wallet, cash_bank 1120 for cash), organisation_id NULL (customer is not a
+-- bookkeeping party) — NOT the generic 4300 revenue_contra path.
+INSERT INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
+SELECT 'subscription_card_refund', NULL, 'revenue', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '4170'
+AND NOT EXISTS (SELECT 1 FROM accounting_event_mapping_lines WHERE event_type = 'subscription_card_refund' AND organisation_id IS NULL AND concept = 'revenue');
+INSERT INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
+SELECT 'subscription_card_refund', NULL, 'payment_clearing', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '1100'
+AND NOT EXISTS (SELECT 1 FROM accounting_event_mapping_lines WHERE event_type = 'subscription_card_refund' AND organisation_id IS NULL AND concept = 'payment_clearing');
+INSERT INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
+SELECT 'subscription_wallet_refund', NULL, 'revenue', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '4170'
+AND NOT EXISTS (SELECT 1 FROM accounting_event_mapping_lines WHERE event_type = 'subscription_wallet_refund' AND organisation_id IS NULL AND concept = 'revenue');
+INSERT INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
+SELECT 'subscription_wallet_refund', NULL, 'wallet_liability', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '2100'
+AND NOT EXISTS (SELECT 1 FROM accounting_event_mapping_lines WHERE event_type = 'subscription_wallet_refund' AND organisation_id IS NULL AND concept = 'wallet_liability');
+INSERT INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
+SELECT 'subscription_cash_refund', NULL, 'revenue', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '4170'
+AND NOT EXISTS (SELECT 1 FROM accounting_event_mapping_lines WHERE event_type = 'subscription_cash_refund' AND organisation_id IS NULL AND concept = 'revenue');
+INSERT INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
+SELECT 'subscription_cash_refund', NULL, 'cash_bank', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '1120'
+AND NOT EXISTS (SELECT 1 FROM accounting_event_mapping_lines WHERE event_type = 'subscription_cash_refund' AND organisation_id IS NULL AND concept = 'cash_bank');
+
 -- 27. complaint_refund — F-2: symmetric reversal of the original
 -- marketplace custody economics for a complaint refund. Mirrors the CARD/WALLET
 -- custody legs (merchant_payable + platform_commission + tax_liability) and the
