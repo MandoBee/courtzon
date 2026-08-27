@@ -36,6 +36,10 @@ export async function handleComplaintReceiptTimeout(): Promise<void> {
       await marketplaceComplaintRepository.updateStatus(complaint.id, 'resolved', complaint.aggregate_version, {
         resolved_at: new Date(),
       });
+      // F-4: receipt-timeout auto-resolution is a terminal non-refund outcome
+      // (replacement/reshipment) — release the complaint hold so the seller's
+      // funds are not left permanently frozen.
+      await marketplaceComplaintService.releaseComplaintFinancialHold(complaint);
       resolved++;
     } catch (err) {
       log.warn({ err, complaintId: complaint.id }, 'Complaint receipt timeout resolution skipped (version conflict or race)');

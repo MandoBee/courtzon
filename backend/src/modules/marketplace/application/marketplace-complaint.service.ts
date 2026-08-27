@@ -250,6 +250,8 @@ export const marketplaceComplaintService = {
         resolved_by: orgUserId,
         resolved_at: new Date(),
       });
+      // F-4: rejection is a terminal non-refund outcome — release the complaint hold.
+      await this.releaseComplaintFinancialHold(complaint);
       eventBusV2.emit('marketplace:complaint-decision', {
         complaintId, orderId: complaint.order_id, buyerId: complaint.buyer_id, sellerId: complaint.seller_org_id,
         decision: 'rejected', reason: resolution.rejectionReason,
@@ -448,6 +450,9 @@ export const marketplaceComplaintService = {
       resolved_at: new Date(),
       resolved_by: userId,
     });
+    // F-4: receipt confirmation resolves a replacement/reshipment without a
+    // refund — the financial dispute is closed, release the complaint hold.
+    await this.releaseComplaintFinancialHold(complaint);
     eventBusV2.emit('marketplace:complaint-receipt-confirmed', {
       complaintId,
       orderId: complaint.order_id,
@@ -519,6 +524,9 @@ export const marketplaceComplaintService = {
       resolved_by: adminUserId,
       resolved_at: new Date(),
     });
+    // F-4: admin rejection of the refund is a terminal non-refund outcome —
+    // release the complaint hold.
+    await this.releaseComplaintFinancialHold(complaint);
     eventBusV2.emit('marketplace:complaint-admin-decision', {
       complaintId,
       orderId: complaint.order_id,
@@ -753,5 +761,57 @@ export const marketplaceComplaintService = {
     });
 
     log.info({ complaintId, refundAmount, itemId, orgId, commissionReversal: fin.commissionReversal, orgAdjustment: fin.orgAdjustment }, 'Complaint refund executed');
+  },
+
+  // ── Internal: release complaint-created financial hold (F-4) ──
+
+  /**
+   * Release the financial entitlement(s) held by a complaint that reached a
+   * TERMINAL NON-REFUND outcome (rejected, or resolved via replacement /
+   * reshipment). The complaint's financial dispute is no longer active, so the
+   * frozen funds must return to the seller's available position.
+   *
+   * Rules (F-4 correction):
+   *   - Only releases entitlement IDs recorded on THIS complaint at submission
+   *     (complaint.entitlement_ids). This is multi-seller safe: a marketplace
+   *     order may contain many sellers, and only the complained item's own
+   *     entitlements were held by this complaint.
+   *   - Only releases an entitlement still ON_HOLD due to the complaint
+   *     (settlement_id IS NULL). Settlement reservations (ON_HOLD with a
+   *     settlement_id) are never touched.
+   *   - Idempotent: an entitlement that is already AVAILABLE/SETTLED/CANCELLED
+   *     is skipped — retrying a terminal action has no second financial effect.
+   *   - No GL entry, no wallet transaction, no settlement, no adjustment row is
+   *     created. Releasing a hold is a pure entitlement lifecycle transition.
+   *
+   * Returns the number of entitlements actually released.
+   */
+  async releaseComplaintFinancialHold(complaint: ComplaintRecord): Promise<number> {
+    const heldIds = complaint.entitlement_ids || [];
+    if (!heldIds.length) return 0;
+
+    let released = 0;
+    for (const id of heldIds) {
+      const ent = await financialEntitlementService.getEntitlement(id);
+      if (!ent) continue;
+      // Only complaint-created holds: ON_HOLD and not reserved for a settlement.
+      if (ent.status !== 'ON_HOLD') continue;
+      if (ent.settlement_id != null) continue;
+      try {
+        await financialEntitlementService.releaseEntitlement(id);
+        released++;
+      } catch (err: any) {
+        // Concurrent transition (optimistic-lock version conflict) — the
+        // entitlement was changed by another actor; skip, not fatal.
+        if (err?.message?.includes('version conflict')) {
+          log.warn({ entitlementId: id, err: err.message }, 'Complaint hold release skipped (version conflict)');
+          continue;
+        }
+        // Any other error is surfaced — never silently report success when the
+        // financial hold could not be released.
+        throw err;
+      }
+    }
+    return released;
   },
 };
