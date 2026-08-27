@@ -359,6 +359,9 @@ const OPERATIONS_MANAGER_PATTERNS = [
   /^org\.(sidebar\.(staff|members|coaches)|staff\.manage|members\.manage|coaches\.manage|branches\.manage|resources\.manage)/,
   /^profile\./,
   /^organisations\.storefront\./,
+  // Operational settlement responsibilities: view + request + settle eligible
+  // bookings / collect recoveries. Marketplace approval/payout remains finance-only.
+  /^settlements\.(view|request)$/,
 ];
 
 const TOURNAMENT_MANAGER_PATTERNS = [

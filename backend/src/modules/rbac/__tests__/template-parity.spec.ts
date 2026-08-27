@@ -303,15 +303,25 @@ describe('F-19 — marketplace-manager settlement authority (finance-only payout
     }
   });
 
-  it('operations-manager mirrors the same restricted settlement scope (sync source .mjs)', () => {
-    // The .mjs is the role-sync source of truth and already restricts
-    // operations-manager to view+request (finance-only payouts). This asserts
-    // the intended architecture reference for marketplace-manager.
+  it('operations-manager has view+request only in BOTH .ts and .mjs (F-20 parity)', () => {
+    // F-20: operations-manager is an operational role — it may view + request
+    // settlements but MUST NOT hold any financial finalization action. Both the
+    // .ts runtime template and the .mjs sync template must agree. This test
+    // fails if either representation drifts again.
     for (const key of [viewKey, requestKey]) {
+      expect(permissionMatchesTemplate('operations-manager', key)).toBe(true);
       expect(mjsMatch('operations-manager', key)).toBe(true);
     }
     for (const key of financeKeys) {
+      expect(permissionMatchesTemplate('operations-manager', key)).toBe(false);
       expect(mjsMatch('operations-manager', key)).toBe(false);
+    }
+  });
+
+  it('.mjs and .ts operations-manager settlement grants are synchronized (F-20)', () => {
+    for (const key of [viewKey, requestKey, ...financeKeys]) {
+      expect(permissionMatchesTemplate('operations-manager', key))
+        .toBe(mjsMatch('operations-manager', key));
     }
   });
 
