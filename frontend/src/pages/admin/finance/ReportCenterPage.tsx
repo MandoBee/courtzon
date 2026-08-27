@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import api from '../../../services/api';
 import { ExportButton } from '../../../components/ui/ExportButton';
+import { ExportCsvButton } from '../../../components/ui/ExportCsvButton';
 import { apiDateRange } from '../../../utils/dateRange';
 import { useCan } from '../../../hooks/useCan';
 
@@ -56,8 +57,16 @@ export default function ReportCenterPage() {
         <div className="flex gap-2">
           <button onClick={() => navigate('/admin/finance')} className="text-xs text-[var(--color-primary)] hover:underline">Dashboard</button>
           <button onClick={() => navigate('/admin/finance/ledger')} className="text-xs text-[var(--color-primary)] hover:underline">Ledger</button>
-          <ExportButton data={tab === 'revenue' ? (revenueAccounts.length ? revenueAccounts : entries) : tab === 'wallet' ? [walletSummary || {}] : settlementList}
-            filename={`finance-${tab}-${from}-${to}`} />
+          {tab === 'settlements' ? (
+            // F-15: settlements export must come from the server-side complete
+            // dataset (/unified-settlements/export streams every matching
+            // settlement), not the paginated first-page snapshot loaded for the
+            // on-screen table. Same settlements.view permission as the tab.
+            <ExportCsvButton endpoint="/unified-settlements/export" filename="finance-settlements" label="Export CSV" />
+          ) : (
+            <ExportButton data={tab === 'revenue' ? (revenueAccounts.length ? revenueAccounts : entries) : [walletSummary || {}]}
+              filename={`finance-${tab}-${from}-${to}`} />
+          )}
         </div>
       </div>
 
