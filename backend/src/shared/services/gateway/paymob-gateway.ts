@@ -20,6 +20,11 @@ export class PaymobGateway implements PaymentGateway {
   private cachedToken: string | null = null;
   private tokenExpiresAt: number = 0;
 
+  /** Hard bound on pages scanned when following Paymob's `next` link. 5 pages
+   *  × Paymob's default page size (10) = 50 records max — enough to locate the
+   *  target transaction in normal merchant volumes, never unbounded. */
+  private static readonly MAX_TRANSACTIONS_PAGES = 5;
+
   constructor(config: GatewayConfig) {
     this.config = config;
     this.baseUrl = 'https://accept.paymob.com';
@@ -164,51 +169,117 @@ export class PaymobGateway implements PaymentGateway {
    *   - Any network/parse/matching uncertainty → `{ outcome: 'unknown' }` so the
    *     caller fails closed (no second refund, no false finalize).
    *   - MUST never throw.
+   *
+   * Lookup strategy (in order, never unbounded):
+   *   1. Numeric-id safety guard — synthetic/non-Paymob references cannot be
+   *      resolved against Paymob and return 'unknown' immediately (prevents
+   *      wasted scan and impossible matches; also closes the gap exposed by
+   *      UAT where 637 local DB rows carry non-numeric gateway_reference).
+   *   2. Accept transactions filtered by `?order_id=` — the deterministic
+   *      Paymob filter (verified in sandbox) that returns only the matching
+   *      order's records (original + refund children). One request, small
+   *      result. Paymob's order API does NOT expose refund evidence, so it is
+   *      NOT used as a lookup path here.
+   *   3. Bounded pagination via `next` URL — only when step 2 fails, follow
+   *      the Paymob `next` link up to MAX_TRANSACTIONS_PAGES, stopping early
+   *      on match or when `next` is null. Never unbounded.
+   *   4. No match → 'unknown'.
    */
   async getRefundState(transactionId: string): Promise<RefundState> {
     const FETCH_TIMEOUT_MS = 8000;
+
+    // (1) Paymob order/transaction IDs are numeric. Non-numeric inputs are
+    // synthetic/local and CANNOT be mapped to a Paymob record — return
+    // 'unknown' immediately to keep the lookup bounded and deterministic.
+    if (typeof transactionId !== 'string' || !/^\d+$/.test(transactionId)) {
+      return { outcome: 'unknown', reason: 'unsupported paymob reference shape (non-numeric)' };
+    }
+
     try {
       const authToken = await this.getAuthToken();
       if (!authToken) return { outcome: 'unknown', reason: 'Paymob auth failed' };
 
-      // PRIMARY: Order API — the same endpoint getTransactionStatus relies on.
-      const orderRes = await fetch(
-        `${this.baseUrl}/api/ecommerce/orders/${encodeURIComponent(transactionId)}`,
-        { headers: { Authorization: `Bearer ${authToken}` }, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) },
-      );
-      const orderText = await orderRes.text();
-      let orderData: any;
-      try { orderData = JSON.parse(orderText); } catch { orderData = {}; }
-      if (orderRes.ok && orderData) {
-        const fromOrder = this._readRefundFields(orderData);
-        if (fromOrder) return fromOrder;
-      }
+      // (2) Deterministic filtered lookup: only the target order's records.
+      const filteredState = await this._readRefundStateFromOrderFiltered(authToken, transactionId, FETCH_TIMEOUT_MS);
+      if (filteredState) return filteredState;
 
-      // FALLBACK: transactions list (Accept API) — locate the transaction by id
-      // or order id; only classify when a definitive match is found.
-      const txnRes = await fetch(
-        `${this.baseUrl}/api/acceptance/transactions`,
-        { headers: { Authorization: `Bearer ${authToken}` }, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) },
-      );
-      const txnBody = await txnRes.json() as any;
-      const list: any[] = Array.isArray(txnBody) ? txnBody : (txnBody?.results ?? []);
-      if (list.length > 0) {
-        const subject = String(transactionId);
-        const matching = list.find((t) =>
-          String(t.id) === subject ||
-          String(t.order?.id) === subject ||
-          String(t.merchant_order_id ?? t.order?.merchant_order_id ?? '') === subject);
-        if (matching) {
-          const fromTxn = this._readRefundFields(matching);
-          if (fromTxn) return fromTxn;
-        }
-      }
+      // (3) Bounded paginated fallback: follow Paymob's `next` link.
+      const pagedState = await this._readRefundStateFromPaginated(authToken, transactionId, FETCH_TIMEOUT_MS);
+      if (pagedState) return pagedState;
 
       return { outcome: 'unknown', reason: `Paymob returned no conclusive refund state for transaction ${transactionId}` };
     } catch (err: unknown) {
       const reason = err instanceof Error ? err.message : String(err);
       return { outcome: 'unknown', reason };
     }
+  }
+
+  /** Deterministic filtered lookup: `?order_id={id}` returns ONLY the target
+   *  order's records (the original + any refund children). We pick the
+   *  ORIGINAL record (is_refund !== true) so a refund child is never mistaken
+   *  for the parent. Returns null when no record can be classified. */
+  private async _readRefundStateFromOrderFiltered(
+    authToken: string,
+    transactionId: string,
+    timeoutMs: number,
+  ): Promise<RefundState | null> {
+    try {
+      const res = await fetch(
+        `${this.baseUrl}/api/acceptance/transactions?order_id=${encodeURIComponent(transactionId)}`,
+        { headers: { Authorization: `Bearer ${authToken}` }, signal: AbortSignal.timeout(timeoutMs) },
+      );
+      if (!res.ok) return null;
+      const body = await res.json() as any;
+      const list: any[] = Array.isArray(body) ? body : (body?.results ?? []);
+      return this._classifyOriginalFromList(list, transactionId);
+    } catch {
+      return null;
+    }
+  }
+
+  /** Bounded paginated fallback. Follows the Paymob `next` link at most
+   *  MAX_TRANSACTIONS_PAGES times. Stops early when a definitive match is
+   *  found or when `next` is null. Returns null when the bound is exhausted
+   *  or any page fails — the caller reports 'unknown'. */
+  private async _readRefundStateFromPaginated(
+    authToken: string,
+    transactionId: string,
+    timeoutMs: number,
+  ): Promise<RefundState | null> {
+    let nextUrl: string | null = `${this.baseUrl}/api/acceptance/transactions?page=1`;
+    for (let page = 1; page <= PaymobGateway.MAX_TRANSACTIONS_PAGES && nextUrl; page++) {
+      try {
+        const res = await fetch(nextUrl, {
+          headers: { Authorization: `Bearer ${authToken}` },
+          signal: AbortSignal.timeout(timeoutMs),
+        });
+        if (!res.ok) return null;
+        const body = await res.json() as any;
+        const list: any[] = Array.isArray(body) ? body : (body?.results ?? []);
+        const classified = this._classifyOriginalFromList(list, transactionId);
+        if (classified) return classified;
+        const candidate = typeof body?.next === 'string' && body.next ? body.next : null;
+        nextUrl = candidate;
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  }
+
+  /** Pick the ORIGINAL (non-refund) Paymob transaction matching `subject` and
+   *  classify it via the existing field reader. A refund child transaction
+   *  (`is_refund === true`, `parent_transaction` set) is NEVER selected as the
+   *  match target — only the parent charge carries the cumulative refund
+   *  evidence used by the recovery branch. */
+  private _classifyOriginalFromList(list: any[], subject: string): RefundState | null {
+    const original = list.find((t) => {
+      if (!t || typeof t !== 'object') return false;
+      if (t.is_refund === true) return false; // never match a refund child
+      return String(t.id) === subject || String(t?.order?.id) === subject;
+    });
+    if (!original) return null;
+    return this._readRefundFields(original);
   }
 
   /**
