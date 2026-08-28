@@ -283,18 +283,42 @@ export const activitiesService = {
         throw new ForbiddenError('Coach does not have an active agreement with this organisation');
       }
     }
+    // ── Backend-authoritative pricing (client-supplied `price` is IGNORED) ──
+    // The legacy route accepted a client-computed price and derived coach
+    // earnings / platform commission from it (D-level client-controlled input).
+    // The authoritative amount is derived from trusted backend data only:
+    //   org-agreement hourly_rate (when an org is selected) else the coach's
+    //   default hourly_rate, multiplied by the requested duration. This mirrors
+    //   the newer /scheduling/book server-priced flow. The client may still
+    //   send `price` for API compatibility, but it is never used for earnings,
+    //   commission, or persistence.
+    const orgAgreement = data.organisationId
+      ? await repo.findOrgAgreement(coach.id, data.organisationId)
+      : null;
+    const hourlyRate = Number(orgAgreement?.hourly_rate ?? coach.hourly_rate ?? 0);
+    const durationHours = Math.max(
+      0,
+      (Date.parse(data.endTime) - Date.parse(data.startTime)) / 3600000,
+    );
+    const authoritativePrice = Math.round(hourlyRate * durationHours * 100) / 100;
     let platformCommissionPct = 10;
     if (data.organisationId) {
       try {
-        const comm = await commissionService.calculate(data.organisationId, 'coach_session', data.price);
+        const comm = await commissionService.calculate(data.organisationId, 'coach_session', authoritativePrice);
         platformCommissionPct = comm.rate;
       } catch { /* use default */ }
     }
     const remaining = 100 - platformCommissionPct;
-    const coachEarnings = (data.price * remaining) / 100;
-    const orgEarnings = data.price - coachEarnings - (data.price * platformCommissionPct) / 100;
+    const coachEarnings = (authoritativePrice * remaining) / 100;
+    const orgEarnings = authoritativePrice - coachEarnings - (authoritativePrice * platformCommissionPct) / 100;
     const id = await repo.createCoachSession({
-      ...data, coachId: coach.id, platformCommissionPct, coachEarnings, orgEarnings,
+      ...data,
+      coachId: coach.id,
+      price: authoritativePrice,
+      currencyCode: data.currencyCode || coach.currency_code || 'EGP',
+      platformCommissionPct,
+      coachEarnings,
+      orgEarnings,
     });
     eventBusV2.emit('coaching:session-scheduled', {
       sessionId: id,
