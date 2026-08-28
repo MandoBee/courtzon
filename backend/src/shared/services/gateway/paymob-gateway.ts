@@ -1,5 +1,5 @@
 import type {
-  PaymentGateway, PaymentRequest, PaymentResult, RefundRequest, RefundResult, GatewayConfig,
+  PaymentGateway, PaymentRequest, PaymentResult, RefundRequest, RefundResult, RefundState, GatewayConfig,
 } from './payment-gateway.types.js';
 
 /**
@@ -153,6 +153,105 @@ export class PaymobGateway implements PaymentGateway {
       const message = err instanceof Error ? err.message : 'Paymob refund failed';
       return { success: false, refundId: '', status: 'failed', errorMessage: message };
     }
+  }
+
+  /**
+   * Resolve the true refund state of a transaction — used ONLY to recover an
+   * uncertain refund attempt (crash after the refund reached Paymob but before
+   * our commit). Conservative by construction:
+   *   - Reads ONLY well-documented Accept/Paymob fields (`refunded_amount_cents`,
+   *     `is_refunded`, `payment_status`); never invents fields or endpoints.
+   *   - Any network/parse/matching uncertainty → `{ outcome: 'unknown' }` so the
+   *     caller fails closed (no second refund, no false finalize).
+   *   - MUST never throw.
+   */
+  async getRefundState(transactionId: string): Promise<RefundState> {
+    const FETCH_TIMEOUT_MS = 8000;
+    try {
+      const authToken = await this.getAuthToken();
+      if (!authToken) return { outcome: 'unknown', reason: 'Paymob auth failed' };
+
+      // PRIMARY: Order API — the same endpoint getTransactionStatus relies on.
+      const orderRes = await fetch(
+        `${this.baseUrl}/api/ecommerce/orders/${encodeURIComponent(transactionId)}`,
+        { headers: { Authorization: `Bearer ${authToken}` }, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) },
+      );
+      const orderText = await orderRes.text();
+      let orderData: any;
+      try { orderData = JSON.parse(orderText); } catch { orderData = {}; }
+      if (orderRes.ok && orderData) {
+        const fromOrder = this._readRefundFields(orderData);
+        if (fromOrder) return fromOrder;
+      }
+
+      // FALLBACK: transactions list (Accept API) — locate the transaction by id
+      // or order id; only classify when a definitive match is found.
+      const txnRes = await fetch(
+        `${this.baseUrl}/api/acceptance/transactions`,
+        { headers: { Authorization: `Bearer ${authToken}` }, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) },
+      );
+      const txnBody = await txnRes.json() as any;
+      const list: any[] = Array.isArray(txnBody) ? txnBody : (txnBody?.results ?? []);
+      if (list.length > 0) {
+        const subject = String(transactionId);
+        const matching = list.find((t) =>
+          String(t.id) === subject ||
+          String(t.order?.id) === subject ||
+          String(t.merchant_order_id ?? t.order?.merchant_order_id ?? '') === subject);
+        if (matching) {
+          const fromTxn = this._readRefundFields(matching);
+          if (fromTxn) return fromTxn;
+        }
+      }
+
+      return { outcome: 'unknown', reason: `Paymob returned no conclusive refund state for transaction ${transactionId}` };
+    } catch (err: unknown) {
+      const reason = err instanceof Error ? err.message : String(err);
+      return { outcome: 'unknown', reason };
+    }
+  }
+
+  /**
+   * Interpret a Paymob order/transaction object for refund evidence.
+   * Returns null when the payload is inconclusive (so the caller reports
+   * 'unknown' instead of guessing). Explicit refund flags without an amount
+   * are returned as 'refunded' with 0 cents — the caller's satisfied-check then
+   * rejects (fail-closed) rather than risk a second refund.
+   */
+  private _readRefundFields(data: Record<string, any>): RefundState | null {
+    const rawCents = data.refunded_amount_cents;
+    let refundedCents: number = Number.NaN;
+    if (typeof rawCents === 'number' && Number.isInteger(rawCents) && rawCents >= 0) {
+      refundedCents = rawCents;
+    } else if (typeof rawCents === 'string' && /^\d+$/.test(rawCents)) {
+      refundedCents = Number(rawCents);
+    }
+
+    const paymentStatus = typeof data.payment_status === 'string' ? data.payment_status.toLowerCase() : '';
+    const isRefunded = data.is_refunded === true;
+    const refundFlag = isRefunded || paymentStatus === 'refunded' || paymentStatus === 'fully_refunded' || paymentStatus === 'partially_refunded';
+
+    if (refundFlag) {
+      const cents = Number.isNaN(refundedCents) ? 0 : refundedCents;
+      return { outcome: 'refunded', refundedCents: cents, isFullyRefunded: cents > 0 };
+    }
+    if (Number.isNaN(refundedCents)) {
+      // No refund field present: only conclusive if the transaction positively
+      // shows as paid (then: definitely not refunded). Anything else → unknown.
+      if (data.success === true || data.paid === true || paymentStatus === 'paid') {
+        return { outcome: 'not_refunded', refundedCents: 0 };
+      }
+      return null;
+    }
+    if (refundedCents > 0) {
+      const capturedCents = Number(data.amount_cents);
+      return {
+        outcome: 'refunded',
+        refundedCents,
+        isFullyRefunded: Number.isInteger(capturedCents) && capturedCents > 0 && refundedCents >= capturedCents,
+      };
+    }
+    return { outcome: 'not_refunded', refundedCents: 0 };
   }
 
   async verifyWebhook(payload: unknown, signature: string): Promise<boolean> {

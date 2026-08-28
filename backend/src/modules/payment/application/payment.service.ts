@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
-import { paymentRepository } from '../infrastructure/repositories/payment.repository.js';
+import { paymentRepository, type RefundIntent } from '../infrastructure/repositories/payment.repository.js';
 import { paymentGateway } from '../../../shared/services/gateway/gateway-factory.js';
+import type { RefundState } from '../../../shared/services/gateway/payment-gateway.types.js';
 import { walletService } from '../../wallet/application/wallet.service.js';
 import { walletRepository } from '../../wallet/infrastructure/repositories/wallet.repository.js';
 import { transactionService } from '../../financial/application/transaction.service.js';
@@ -23,6 +24,33 @@ const log = createModuleLogger('payment');
 type RowData = mysql.RowDataPacket[];
 
 const FINAL_STATES = new Set(['paid', 'failed', 'cancelled', 'expired', 'refunded']);
+
+// ── Card refund crash-window hardening ───────────────────────────────
+// After a gateway refund succeeds remotely, the local row is marked 'refunded'
+// and the accounting event emitted in the SAME commit. A process crash between
+// gateway success and that commit leaves the row 'paid' — a naive retry would
+// re-call the gateway and double-refund. The durable refund intent (committed
+// BEFORE the gateway call, stored in gateway_response JSON) records executedAt:
+//   - within REFUND_RESOLUTION_WINDOW_MS of an arm, a retry refuses to re-call
+//     the gateway — it either observes the executor's committed 'refunded'
+//     (idempotent) or defers until the window passes;
+//   - after the window, a retry asks the gateway for the true refund state and
+//     only re-executes when the gateway POSITIVELY reports not_refunded;
+//   - any uncertainty fails closed (no second gateway call, no false finalize).
+const REFUND_RESOLUTION_WINDOW_MS = 60_000;
+const REFUND_DEFER_STEP_MS = 40;
+const REFUND_DEFER_MAX_ITERATIONS = 40;
+
+/** Parameters describing one card-refund operation (crash-window hardened). */
+type CardRefundOp = {
+  paymentId: number;
+  gatewayRef: string;
+  currency: string;
+  amount: number;
+  amountCents: number;
+  reason?: string;
+  traceId: string;
+};
 
 const PCI_SENSITIVE_FIELDS = new Set([
   'pan', 'card_number', 'cvv', 'cvv2', 'exp', 'expiry', 'expire',
@@ -900,65 +928,310 @@ export class PaymentService {
     }
 
     // ── Card / gateway payment ──
-    // Serialize gateway refund execution per underlying payment transaction.
-    // A multi-seller group card payment is captured ONCE on the primary order's
-    // payment_transactions row; every sibling order's refund resolves back to
-    // that same row (see marketplace _findPaymentForOrder). lockById() (SELECT
-    // ... FOR UPDATE) makes exactly ONE caller reach the gateway while the row
-    // is 'paid'; concurrent sibling/duplicate/retry requests acquire the lock
-    // after the first execution commits, observe 'refunded', and take the
-    // idempotent path — the same underlying card transaction can never be
-    // gateway-refunded twice. The gateway call happens INSIDE the locked
-    // transaction so the row lock cannot be released before execution; a
-    // gateway failure returns and the transaction rolls back, so no 'refunded'
-    // state is persisted until the gateway actually succeeded.
-    const outcome = await withTransaction(async (conn) => {
+    // Crash-window hardened refund (approved Option B design).
+    //
+    // The multi-seller group card payment is captured ONCE on the primary
+    // order's payment_transactions row; every sibling order's refund resolves
+    // back to that same row (see marketplace _findPaymentForOrder). The FOR
+    // UPDATE lock guarantees the underlying card transaction can never be
+    // gateway-refunded twice by concurrent/duplicate/retry requests.
+    //
+    // Crash safety (the window this fixes): the gateway refund succeeds, then a
+    // crash before the local 'refunded' commit leaves the row 'paid' — a naive
+    // retry would re-call the gateway and double-refund. Default response:
+    //   T1  short COMMITTED transaction writes a durable refund intent into the
+    //       gateway_response JSON (survives any later crash) BEFORE the call;
+    //   T2  short COMMITTED transaction "arms" the intent (executedAt, attempts)
+    //       immediately before the external call — the arm is durable;
+    //   T3  the gateway call runs, then the row is re-locked and marked
+    //       'refunded' + accounting event in ONE transaction;
+    //   resolve  - executedAt committed & the executor finished → idempotent;
+    //       - crash after success: within the cool-off window we never re-call;
+    //         afterwards getRefundState() decides — refunded → finalize locally
+    //         WITHOUT a second call; not_refunded → execute once; ANY
+    //         uncertainty → FAIL CLOSED (no call, no finalize, retryable error).
+    return this._refundCard(transaction, amount, reason, traceId);
+  }
+
+  /**
+   * Card/gateway refund with crash-window hardening (T1 + resolution loop +
+   * T2 arm / T3 finalize). See refund() for the full rationale.
+   */
+  private async _refundCard(
+    payment: any,
+    amount: number,
+    reason: string | undefined,
+    traceId: string,
+  ) {
+    const paymentId = (payment as any).id;
+    const op: CardRefundOp = {
+      paymentId,
+      gatewayRef: String((payment as any).gateway_reference || paymentId),
+      currency: String((payment as any).currency || (payment as any).currency_code || 'EGP'),
+      amount,
+      amountCents: Math.round(amount * 100),
+      reason,
+      traceId,
+    };
+
+    const idempotentResult = { success: true, idempotent: true as const, refundId: `existing_refund_${paymentId}`, paymentId };
+
+    // ── T1: durable refund intent (own committed transaction) ──────────
+    const ensured = await withTransaction(async (conn) => {
       const locked = await paymentRepository.lockById(paymentId, conn);
-      if (!locked) {
-        throw new NotFoundError('Payment transaction');
+      if (!locked) throw new NotFoundError('Payment transaction');
+      if ((locked as any).payment_status === 'refunded') return null;
+      if ((locked as any).payment_status !== 'paid') {
+        throw new ConflictError(`Payment ${paymentId} is not refundable from status '${(locked as any).payment_status}'`);
       }
-
-      const lockedStatus = (locked as any).payment_status;
-      if (lockedStatus === 'refunded') {
-        // Payment already refunded — a sibling order in the same checkout
-        // group, a retried request, or a duplicate admin refund. Never re-call
-        // the gateway; the accounting reversal was already emitted by whoever
-        // executed the refund.
-        return { idempotent: true, paymentId };
-      }
-
-      if (lockedStatus !== 'paid') {
-        throw new ConflictError(`Payment ${paymentId} is not refundable from status '${lockedStatus}'`);
-      }
-
-      const result = await paymentGateway.refund({
-        transactionId: String((locked as any).gateway_reference || locked.id),
+      const existing = paymentRepository.readRefundIntent((locked as any).gateway_response);
+      if (existing) return existing;
+      const intent = paymentRepository.newRefundIntent({
         amount,
-        reason,
+        currency: op.currency,
+        paymentAmount: Number((locked as any).amount),
       });
+      await conn.execute(
+        `UPDATE payment_transactions
+         SET gateway_response = ?, updated_at = NOW()
+         WHERE id = ? AND payment_status = 'paid'`,
+        [paymentRepository.writeGatewayResponse((locked as any).gateway_response, intent), paymentId],
+      );
+      return intent;
+    });
 
-      if (!result.success) {
-        return { failed: true, gatewayResult: result, paymentId };
+    if (ensured == null) {
+      // Already refunded — whoever executed it emitted the single accounting
+      // reversal; never re-call the gateway.
+      log.info({ traceId, paymentId }, 'Payment already refunded — idempotent, no second gateway refund');
+      return idempotentResult;
+    }
+    let intent = ensured;
+
+    // ── Resolution loop ──────────────────────────────────────────────────
+    for (let iteration = 0; iteration <= REFUND_DEFER_MAX_ITERATIONS; iteration++) {
+      const row = await paymentRepository.findById(paymentId);
+      if (!row) throw new NotFoundError('Payment transaction');
+      const rowStatus = (row as any).payment_status;
+      if (rowStatus === 'refunded') {
+        log.info({ traceId, paymentId }, 'Payment already refunded by concurrent execution — idempotent');
+        return idempotentResult;
+      }
+      if (rowStatus !== 'paid') {
+        throw new ConflictError(`Payment ${paymentId} is not refundable from status '${rowStatus}'`);
+      }
+      intent = paymentRepository.readRefundIntent((row as any).gateway_response) ?? intent;
+
+      if (intent.executedAt == null) {
+        // Clean slate — execute (or re-execute after an explicit gateway
+        // failure cleared the arm).
+        const attempt = await this._executeCardRefund(op, intent);
+        if ('deferred' in attempt) {
+          await new Promise((r) => setTimeout(r, REFUND_DEFER_STEP_MS));
+          continue;
+        }
+        return attempt.result;
       }
 
+      const ageMs = Date.now() - new Date(intent.executedAt).getTime();
+      if (ageMs < REFUND_RESOLUTION_WINDOW_MS) {
+        // Fresh arm: a concurrent executor is live (we'll observe its committed
+        // 'refunded' state) OR a crash happened inside the window (we must NOT
+        // re-call — the first execution may still have landed).
+        if (iteration >= REFUND_DEFER_MAX_ITERATIONS) {
+          log.warn({ traceId, paymentId, opId: intent.opId }, 'Refund arm unresolved inside resolution window — refusing to re-execute');
+          throw new ConflictError(`Refund for payment ${paymentId} is already being resolved; try again shortly`);
+        }
+        await new Promise((r) => setTimeout(r, REFUND_DEFER_STEP_MS));
+        continue;
+      }
+
+      // Stale arm (past the cool-off): the gateway is the only source of truth.
+      // Never re-call the gateway blind after an uncertain first attempt.
+      let state: RefundState;
+      try {
+        state = await paymentGateway.getRefundState(op.gatewayRef);
+      } catch (err: unknown) {
+        log.error({ traceId, paymentId, err }, 'getRefundState threw — failing closed');
+        state = { outcome: 'unknown', reason: err instanceof Error ? err.message : String(err) };
+      }
+
+      if (state.outcome === 'refunded') {
+        if (state.refundedCents - intent.priorRefundedCents < op.amountCents) {
+          log.error({
+            traceId, paymentId, opId: intent.opId,
+            gatewayRefundedCents: state.refundedCents, priorRefundedCents: intent.priorRefundedCents, expectedCents: op.amountCents,
+          }, 'Gateway refund amount insufficient for recovery — reconciling');
+          throw new ConflictError(
+            `Gateway shows ${state.refundedCents}¢ refunded for payment ${paymentId} but the operation needs ${op.amountCents}¢ — reconcile before retry`,
+          );
+        }
+        await this._finalizeCardRefund(op, intent, {
+          refundedCents: state.refundedCents,
+          isFullyRefunded: state.isFullyRefunded,
+          gatewayRefundId: null,
+        });
+        log.warn({ traceId, paymentId, refundedCents: state.refundedCents, opId: intent.opId }, 'Refund recovered from gateway state — finalized without a second gateway call');
+        return idempotentResult;
+      }
+
+      if (state.outcome === 'not_refunded') {
+        // Gateway has no record of a refund — safe to execute exactly once.
+        const attempt = await this._executeCardRefund(op, intent);
+        if ('deferred' in attempt) {
+          await new Promise((r) => setTimeout(r, REFUND_DEFER_STEP_MS));
+          continue;
+        }
+        return attempt.result;
+      }
+
+      // unknown → FAIL CLOSED: never execute, never finalize without proof.
+      log.warn({ traceId, paymentId, reason: state.reason, opId: intent.opId }, 'Refund gateway state unknown — failing closed, no refund issued');
+      throw new ConflictError(
+        `Cannot verify refund state for payment ${paymentId} with the gateway (${state.reason}); no refund was issued — reconcile and retry`,
+      );
+    }
+
+    throw new ConflictError(`Refund for payment ${paymentId} could not be resolved in time; try again shortly`);
+  }
+
+  /**
+   * T2 arm + external call + T3 finalize for one refund execution.
+   * Returns { deferred: true } when a concurrent caller owns the fresh arm — the
+   * caller defers and re-reads until it observes the committed outcome.
+   */
+  private async _executeCardRefund(
+    op: CardRefundOp,
+    intent: RefundIntent,
+  ): Promise<{ deferred: true } | { result: any }> {
+    // ── T2: durable arm — own COMMITTED transaction (survives a crash) ──
+    const arm = await withTransaction(async (conn) => {
+      const locked = await paymentRepository.lockById(op.paymentId, conn);
+      if (!locked) throw new NotFoundError('Payment transaction');
+      if ((locked as any).payment_status === 'refunded') return { kind: 'idempotent' as const };
+      if ((locked as any).payment_status !== 'paid') {
+        throw new ConflictError(`Payment ${op.paymentId} is not refundable from status '${(locked as any).payment_status}'`);
+      }
+      const cur = paymentRepository.readRefundIntent((locked as any).gateway_response) ?? intent;
+      if (cur.executedAt != null && Date.now() - new Date(cur.executedAt).getTime() < REFUND_RESOLUTION_WINDOW_MS) {
+        // A concurrent caller armed first — we must not double-execute.
+        return { kind: 'deferred' as const };
+      }
+      const armed: RefundIntent = {
+        ...cur,
+        status: 'confirmed',
+        attempts: cur.attempts + 1,
+        executedAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      await conn.execute(
+        `UPDATE payment_transactions
+         SET gateway_response = ?, updated_at = NOW()
+         WHERE id = ? AND payment_status = 'paid'`,
+        [paymentRepository.writeGatewayResponse((locked as any).gateway_response, armed), op.paymentId],
+      );
+      return { kind: 'armed' as const };
+    });
+
+    if (arm.kind === 'idempotent') {
+      return { result: { success: true, idempotent: true, refundId: `existing_refund_${op.paymentId}`, paymentId: op.paymentId } };
+    }
+    if (arm.kind === 'deferred') return { deferred: true };
+
+    // ── External gateway call (no transaction held; the arm is already
+    //    committed, so a crash here is recoverable via getRefundState) ──
+    const result = await paymentGateway.refund({
+      transactionId: op.gatewayRef,
+      amount: op.amount,
+      reason: op.reason,
+    });
+
+    if (!result.success) {
+      // Explicit gateway refusal: clear the arm in its OWN committed update so
+      // a retry re-executes immediately instead of waiting out the window.
+      await withTransaction(async (conn) => {
+        const locked = await paymentRepository.lockById(op.paymentId, conn);
+        if (!locked) {
+          // Payment vanished between execution and failure handling — nothing to clear.
+          return;
+        }
+        const cur = paymentRepository.readRefundIntent((locked as any).gateway_response) ?? intent;
+        const cleared: RefundIntent = {
+          ...cur,
+          status: 'initiated',
+          executedAt: null,
+          updatedAt: new Date().toISOString(),
+        };
+        await conn.execute(
+          `UPDATE payment_transactions
+           SET gateway_response = ?, updated_at = NOW()
+           WHERE id = ? AND payment_status = 'paid'`,
+          [paymentRepository.writeGatewayResponse((locked as any).gateway_response, cleared), op.paymentId],
+        );
+      });
+      log.error({ traceId: op.traceId, paymentId: op.paymentId, gatewayError: result.errorMessage }, 'Gateway refund failed (arm cleared)');
+      return { result };
+    }
+
+    // ── T3: finalize atomically under the row lock ──
+    const finalized = await this._finalizeCardRefund(op, intent, {
+      refundedCents: op.amountCents,
+      isFullyRefunded: true,
+      gatewayRefundId: (result as any).refundId || null,
+    });
+    if (finalized.idempotent) {
+      return { result: { success: true, idempotent: true, refundId: `existing_refund_${op.paymentId}`, paymentId: op.paymentId } };
+    }
+    return { result: { success: true, refundId: (result as any).refundId, paymentId: op.paymentId } };
+  }
+
+  /**
+   * Finalize a known-successful refund: mark 'refunded' + persist the completed
+   * intent + emit the canonical payment:refunded accounting event, atomically
+   * under the row lock (affectedRows guard). A crash inside rolls back the
+   * status/event, but the T2 arm was already committed — the recovery path
+   * gate-keeps any re-call of the gateway.
+   */
+  private async _finalizeCardRefund(
+    op: CardRefundOp,
+    intent: RefundIntent,
+    state: { refundedCents: number; isFullyRefunded: boolean; gatewayRefundId: string | null },
+  ) {
+    return withTransaction(async (conn) => {
+      const locked = await paymentRepository.lockById(op.paymentId, conn);
+      if (!locked) throw new NotFoundError('Payment transaction');
+      if ((locked as any).payment_status === 'refunded') {
+        // Another path already finalized exactly one accounting reversal.
+        return { idempotent: true };
+      }
+      if ((locked as any).payment_status !== 'paid') {
+        throw new ConflictError(`Payment ${op.paymentId} is not refundable from status '${(locked as any).payment_status}'`);
+      }
+      const cur = paymentRepository.readRefundIntent((locked as any).gateway_response) ?? intent;
+      const completed: RefundIntent = {
+        ...cur,
+        status: 'completed',
+        executedAt: cur.executedAt ?? new Date().toISOString(),
+        gatewayRefundId: state.gatewayRefundId ?? cur.gatewayRefundId,
+        updatedAt: new Date().toISOString(),
+      };
       const [updated] = await conn.execute<mysql.ResultSetHeader>(
         `UPDATE payment_transactions
-         SET payment_status = 'refunded', updated_at = NOW()
+         SET payment_status = 'refunded', gateway_response = ?, updated_at = NOW()
          WHERE id = ? AND payment_status = 'paid'`,
-        [paymentId],
+        [paymentRepository.writeGatewayResponse((locked as any).gateway_response, completed), op.paymentId],
       );
       if (updated.affectedRows === 0) {
         // Under the row lock this must not happen; guard anyway so a state
         // change by another path cannot silently pass as a successful refund.
-        throw new Error(`Payment ${paymentId} refund state lost under lock`);
+        throw new Error(`Payment ${op.paymentId} refund state lost under lock`);
       }
-
       await eventBusV2.emit('payment:refunded', {
-        paymentId,
+        paymentId: op.paymentId,
         userId: (locked as any).user_id,
-        amount,
-        reason,
-        traceId,
+        amount: op.amount,
+        reason: op.reason,
+        traceId: op.traceId,
         referenceType: (locked as any).reference_type,
         referenceId: (locked as any).order_id || (locked as any).booking_id || (locked as any).reference_id || null,
         metadata: { paymentMethod: (locked as any).payment_method || 'card' },
@@ -968,24 +1241,8 @@ export class PaymentService {
       // (accounting-event.listener.ts) via payment:refunded.
       // No financial_journal_entries write here.
 
-      return { success: true, gatewayResult: result, paymentId };
+      return { idempotent: false };
     });
-
-    if (outcome.failed) {
-      const gatewayResult = (outcome as any).gatewayResult as { success: boolean; errorMessage?: string; refundId?: string };
-      log.error({ traceId, paymentId, amount, reason, gatewayError: gatewayResult?.errorMessage }, 'Gateway refund failed');
-      return gatewayResult;
-    }
-
-    if ((outcome as any).idempotent) {
-      log.info({ traceId, paymentId }, 'Payment already refunded — idempotent, no second gateway refund');
-      return { success: true, idempotent: true, refundId: `existing_refund_${paymentId}`, paymentId };
-    }
-
-    log.info({ traceId, paymentId, amount, reason }, 'Payment refunded');
-
-    const executed = outcome as { success: boolean; gatewayResult: { success: boolean; refundId?: string }; paymentId: number };
-    return { success: true, refundId: executed.gatewayResult.refundId, paymentId };
   }
 
   /**
