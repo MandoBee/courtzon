@@ -9,6 +9,28 @@ function resolvePool(conn?: mysql.PoolConnection): mysql.Pool | mysql.PoolConnec
   return conn ?? getPool();
 }
 
+/**
+ * Durable refund operation intent, stored inside the existing
+ * `payment_transactions.gateway_response` JSON (no schema change). Written and
+ * COMMITTED BEFORE the first gateway refund call so a crash between gateway
+ * success and the local 'refunded' commit leaves durable evidence that a refund
+ * may have been executed — a retry then asks the gateway for the truth instead
+ * of blindly refunding a second time.
+ */
+export interface RefundIntent {
+  opId: string;
+  amount: number;
+  currency: string;
+  type: 'full' | 'partial';
+  priorRefundedCents: number;
+  status: 'initiated' | 'confirmed' | 'completed';
+  attempts: number;
+  executedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  gatewayRefundId: string | null;
+}
+
 export const paymentRepository = {
   async create(data: {
     userId: number; bookingId?: number; orderId?: number; referenceId?: number; referenceType?: string; paymentMethod: string;
@@ -82,6 +104,59 @@ export const paymentRepository = {
       [key]
     );
     return rows[0] || null;
+  },
+
+  /** Tolerant parse of the stored `gateway_response` JSON. Legacy rows may be
+   *  empty, NULL, malformed, or hold a non-object string — never throw here. */
+  parseGatewayResponse(raw: unknown): Record<string, any> | null {
+    if (raw == null) return null;
+    if (typeof raw === 'string') {
+      try {
+        const parsed = JSON.parse(raw);
+        return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null;
+      } catch {
+        return null;
+      }
+    }
+    if (typeof raw === 'object') return raw as Record<string, any>;
+    return null;
+  },
+
+  /** Extract the refund intent from a stored gateway response, if present. */
+  readRefundIntent(raw: unknown): RefundIntent | null {
+    const parsed = this.parseGatewayResponse(raw);
+    const intent = parsed?.refundIntent;
+    if (!intent || typeof intent !== 'object' || Array.isArray(intent)) return null;
+    if (typeof intent.opId !== 'string' || typeof intent.amount !== 'number') return null;
+    return intent as RefundIntent;
+  },
+
+  /** Fresh refund intent for a payment (v1: single operation per payment). */
+  newRefundIntent(input: { amount: number; currency: string; paymentAmount: number }): RefundIntent {
+    const now = new Date().toISOString();
+    const amountCents = Math.round(input.amount * 100);
+    const paymentCents = Math.round(input.paymentAmount * 100);
+    return {
+      opId: randomUUID(),
+      amount: input.amount,
+      currency: input.currency,
+      type: amountCents >= paymentCents ? 'full' : 'partial',
+      priorRefundedCents: 0,
+      status: 'initiated',
+      attempts: 0,
+      executedAt: null,
+      createdAt: now,
+      updatedAt: now,
+      gatewayRefundId: null,
+    };
+  },
+
+  /** Serialize a gateway_response with the refund intent merged in, preserving
+   *  every unrelated key (e.g. the raw charge response). Always valid JSON. */
+  writeGatewayResponse(raw: unknown, intent: RefundIntent): string {
+    const parsed = this.parseGatewayResponse(raw) ?? {};
+    parsed.refundIntent = intent;
+    return JSON.stringify(parsed);
   },
 
   async getPlanPrice(planId: number): Promise<{ planName: string | null; priceMonthly: number; priceYearly: number; isUnlimited: boolean } | null> {
