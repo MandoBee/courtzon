@@ -877,4 +877,84 @@ export function registerAccountingEventListeners(): void {
   log.info('Accounting event listeners registered');
 }
 
+/**
+ * Durable accounting replay — Exception 3 hardening.
+ *
+ * The in-memory `on()` handlers above run POST-COMMIT in the same process. If
+ * the process crashes in the window between the business transaction committing
+ * (which atomically persisted the event to `published_events`) and the in-memory
+ * handler running, the accounting posting would be lost — a payment could remain
+ * `paid` with no GL.
+ *
+ * The existing durable outbox mechanism (outbox poller → BullMQ subscribers →
+ * `processed_events` idempotency) already replays events after a crash for the
+ * entitlement listeners. These registrations route the SAME accounting events
+ * through that same durable infrastructure: on normal operation the in-memory
+ * handler posts immediately; if the process dies before it runs, the outbox
+ * poller re-delivers the event to the BullMQ worker which re-dispatches to the
+ * same in-memory handler function (single source of logic — no duplicated
+ * Accounting Engine code). Replay is idempotent via `processed_events` +
+ * `hasPosting` + `uk_dedup`, so a re-delivered event that was already posted is
+ * a safe no-op.
+ */
+const ACCOUNTING_REPLAY_EVENTS = [
+  'payment:succeeded',
+  'payment:refunded',
+  'marketplace:order-delivered',
+  'marketplace:order-refunded',
+  'marketplace:order-cancelled',
+  'wallet:withdrawal-submitted',
+  'wallet:withdrawal-completed',
+  'settlement:paid',
+  'booking:paid',
+  'booking:refunded',
+] as const;
+
+const ACCOUNTING_REPLAY_QUEUE = 'accounting-replay';
+
+function replayDispatch(eventName: string, payload: unknown): Promise<void> {
+  const handlers = eventBusV2.getInMemoryHandlers(eventName);
+  const results: Promise<unknown>[] = [];
+  for (const h of handlers) {
+    try {
+      results.push(Promise.resolve(h(payload)));
+    } catch (err) {
+      log.error({ err, eventName }, 'Accounting replay dispatch failed');
+    }
+  }
+  return Promise.all(results).then(() => undefined);
+}
+
+export function registerAccountingReplaySubscribers(): void {
+  for (const eventName of ACCOUNTING_REPLAY_EVENTS) {
+    eventBusV2.subscribe({
+      subscriberId: ACCOUNTING_REPLAY_QUEUE,
+      eventName,
+      queueName: ACCOUNTING_REPLAY_QUEUE,
+      handler: (envelope) => replayDispatch(envelope.eventName, envelope.payload),
+      options: { attempts: 6, backoffDelay: 2000, startingCursor: 'latest', concurrency: 2 },
+    });
+  }
+  log.info({ events: ACCOUNTING_REPLAY_EVENTS.length }, 'Accounting replay subscribers registered');
+}
+
+export async function createAccountingReplayWorkers(): Promise<any[]> {
+  // Lazy dynamic import: subscriber.worker pulls redis.client → config/env which
+  // is not needed at listener import time and would break unit specs that mock
+  // the DB layer without full env.
+  const { createSubscriberWorker } = await import('../../../shared/event-bus/subscriber.worker.js');
+  const worker = createSubscriberWorker({
+    subscriberId: ACCOUNTING_REPLAY_QUEUE,
+    queueName: ACCOUNTING_REPLAY_QUEUE,
+    handler: async (envelope) => {
+      await replayDispatch(envelope.eventName, envelope.payload);
+    },
+    concurrency: 2,
+    attempts: 6,
+    backoffDelay: 2000,
+  });
+  log.info('Accounting replay worker created');
+  return [worker];
+}
+
 export { postAccountingEvent };

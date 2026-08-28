@@ -181,6 +181,11 @@ class EventBusV2 {
     this.inMemoryHandlers.set(eventName, existing);
   }
 
+  /** In-memory handlers registered for an event (used by durable replay dispatchers). */
+  getInMemoryHandlers(eventName: string): Array<(data: any) => void> {
+    return this.inMemoryHandlers.get(eventName) || [];
+  }
+
   getSubscribersFor(eventName: string): SubscriberRegistration[] {
     return this.subscribers.get(eventName) || [];
   }
