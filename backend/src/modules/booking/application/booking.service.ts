@@ -811,40 +811,46 @@ export class BookingService {
   }
 
   private async _processRefund(booking: any, refundAmount: number, userId: number): Promise<void> {
-    try {
-      const wallet = await walletRepository.findByUserId(userId);
-      if (wallet) {
-        const current = await walletRepository.lockAndGetBalance(wallet.id);
-        if (current) {
-          const newBalance = current.balance + refundAmount;
-          await walletRepository.updateBalance(wallet.id, newBalance, current.version);
+    // Money movement is the gating step for a refund. Failures are propagated
+    // (not swallowed): if the wallet credit cannot be persisted, the caller
+    // must NOT advance booking:refunded / refunded_amount — that would be a
+    // false refund (R2/W4). Previously the updateBalance result was ignored and
+    // every failure was caught, silently posting refund accounting without
+    // returning the money.
+    if (refundAmount <= 0) return;
 
-          await transactionService.createRefund({
-            userId,
-            walletId: wallet.id,
-            branchId: booking.branch_id,
-            organisationId: booking.organisation_id,
-            amount: refundAmount,
-            sourceId: booking.id,
-            description: `Booking #${booking.id} cancellation refund`,
-          });
-
-          eventBusV2.emit('wallet:transaction', {
-            walletId: wallet.id,
-            userId,
-            amount: refundAmount,
-            balance: newBalance,
-            type: 'refund',
-            description: `Booking #${booking.id} cancellation refund`,
-          });
-        }
-      }
-      // NOTE: _emitBookingRefunded is emitted by the caller (_processGatewayRefund)
-      // after this helper returns — emitting it here as well would double-increment
-      // refunded_amount and double-post booking:refunded for wallet refunds.
-    } catch {
-      // Wallet refund is best-effort
+    const wallet = await walletRepository.findByUserId(userId);
+    if (!wallet) {
+      throw new Error(`Cannot refund booking #${booking.id}: user ${userId} has no wallet`);
     }
+    const current = await walletRepository.lockAndGetBalance(wallet.id);
+    if (!current) {
+      throw new Error(`Cannot refund booking #${booking.id}: wallet ${wallet.id} is locked or missing`);
+    }
+    const newBalance = current.balance + refundAmount;
+    const updated = await walletRepository.updateBalance(wallet.id, newBalance, current.version);
+    if (!updated) {
+      throw new Error(`Cannot refund booking #${booking.id}: concurrent wallet update — please retry`);
+    }
+
+    await transactionService.createRefund({
+      userId,
+      walletId: wallet.id,
+      branchId: booking.branch_id,
+      organisationId: booking.organisation_id,
+      amount: refundAmount,
+      sourceId: booking.id,
+      description: `Booking #${booking.id} cancellation refund`,
+    });
+
+    eventBusV2.emit('wallet:transaction', {
+      walletId: wallet.id,
+      userId,
+      amount: refundAmount,
+      balance: newBalance,
+      type: 'refund',
+      description: `Booking #${booking.id} cancellation refund`,
+    });
   }
 
   async isAcceptedParticipant(bookingId: number, userId: number): Promise<boolean> {
@@ -1023,122 +1029,71 @@ export class BookingService {
   }
 
   private async _recordCODWalletEntry(booking: any, type: string, description: string): Promise<void> {
+    // COD funds never enter user_wallets.balance — the "wallet" leg of the
+    // operational double-entry is bookkeeping only. No wallet balance mutation,
+    // no wallet_transactions row (W1: minting money for uncollected COD). No
+    // live callers — retained for operational-ledger parity.
     try {
-      const wallet = await walletRepository.findByUserId(booking.user_id);
-      if (!wallet) return;
       const amount = Number(booking.total_amount);
-      const current = await walletRepository.lockAndGetBalance(wallet.id);
-      if (!current) return;
-      const newBalance = current.balance - amount;
-      await walletRepository.updateBalance(wallet.id, newBalance, current.version);
-      await walletRepository.createTransaction({
-        walletId: wallet.id,
-        type,
-        amount,
-        direction: 'debit',
-        referenceType: 'booking',
-        referenceId: booking.id,
-        description,
-      });
-      await this._createCODDoubleEntry(booking, wallet.id, amount, 'debit', 'credit', type, description);
-
-      eventBusV2.emit('wallet:transaction', {
-        walletId: wallet.id,
-        userId: booking.user_id,
-        amount,
-        balance: newBalance,
-        type,
-        description,
-      });
-    } catch {
-      // non-fatal
+      if (amount <= 0) return;
+      await this._createCODDoubleEntry(booking, booking.user_id, amount, 'debit', 'credit', type, description);
+    } catch (err) {
+      log.error({ err, bookingId: booking.id }, 'COD entry operational write failed');
     }
   }
 
   private async _recordCODWalletTransaction(booking: any, type: string, description: string): Promise<void> {
+    // COD penalties are recorded as the operational double-entry only — never a
+    // wallet balance mutation or wallet_transactions row (W1). The wallet was
+    // never debited for COD money, so a fictional wallet debit must not appear
+    // in the user's wallet history.
     try {
-      const wallet = await walletRepository.findByUserId(booking.user_id);
-      if (!wallet) return;
       const amount = Number(booking.total_amount);
-      await walletRepository.createTransaction({
-        walletId: wallet.id,
-        type,
-        amount,
-        direction: 'debit',
-        referenceType: 'booking',
-        referenceId: booking.id,
-        description,
-      });
-      await this._createCODDoubleEntry(booking, wallet.id, amount, 'debit', 'credit', type, description);
-    } catch {
-      // non-fatal
+      if (amount <= 0) return;
+      await this._createCODDoubleEntry(booking, booking.user_id, amount, 'debit', 'credit', type, description);
+    } catch (err) {
+      log.error({ err, bookingId: booking.id }, 'COD penalty operational write failed');
     }
   }
 
   private async _settleCODWallet(booking: any, type: string, description: string): Promise<void> {
+    // COD funds never enter user_wallets.balance — settlements are recorded as
+    // the operational double-entry paired with the create-time booking_payment
+    // entry. Crediting balance here would mint money from nothing for cash the
+    // org collected outside the platform (W1). No wallet balance mutation, no
+    // wallet_transactions row.
     try {
-      const wallet = await walletRepository.findByUserId(booking.user_id);
-      if (!wallet) return;
       const amount = Number(booking.total_amount);
-      const current = await walletRepository.lockAndGetBalance(wallet.id);
-      if (!current) return;
-      const newBalance = current.balance + amount;
-      await walletRepository.updateBalance(wallet.id, newBalance, current.version);
-      await walletRepository.createTransaction({
-        walletId: wallet.id,
-        type,
-        amount,
-        direction: 'credit',
-        referenceType: 'booking',
-        referenceId: booking.id,
-        description,
-      });
-      await this._createCODDoubleEntry(booking, wallet.id, amount, 'credit', 'debit', type, description);
-
-      eventBusV2.emit('wallet:transaction', {
-        walletId: wallet.id,
-        userId: booking.user_id,
-        amount,
-        balance: newBalance,
-        type,
-        description,
-      });
-    } catch {
-      // non-fatal
+      if (amount <= 0) return;
+      await this._createCODDoubleEntry(booking, booking.user_id, amount, 'credit', 'debit', type, description);
+    } catch (err) {
+      log.error({ err, bookingId: booking.id }, 'COD settle operational write failed');
     }
   }
 
   private async _refundCODWallet(booking: any, refundAmount: number): Promise<void> {
+    // COD funds never entered user_wallets.balance — the wallet is not credited
+    // for a COD refund (W1: minting money for uncollected cash). Only the
+    // operational double-entry (paired with the create-time booking_payment
+    // entry) and the canonical accounting reversal are recorded; the canonical
+    // booking:refunded emit clamps to the remaining refundable amount.
     try {
-      const wallet = await walletRepository.findByUserId(booking.user_id);
-      if (!wallet) return;
-      const current = await walletRepository.lockAndGetBalance(wallet.id);
-      if (!current) return;
-      const newBalance = current.balance + refundAmount;
-      await walletRepository.updateBalance(wallet.id, newBalance, current.version);
-      await walletRepository.createTransaction({
-        walletId: wallet.id,
-        type: 'refund',
-        amount: refundAmount,
-        direction: 'credit',
-        referenceType: 'booking',
-        referenceId: booking.id,
-        description: `Booking #${booking.id} COD cancellation refund`,
-      });
-      await this._createCODDoubleEntry(booking, wallet.id, refundAmount, 'credit', 'debit', 'refund',
+      const amount = Number(refundAmount);
+      if (amount <= 0) return;
+      const cap = await this._computeRefundCap(booking);
+      const moveAmount = Math.min(amount, cap);
+      if (moveAmount <= 0) {
+        log.warn({ bookingId: booking.id, amount }, 'No remaining refundable amount — skipping COD refund');
+        return;
+      }
+      await this._createCODDoubleEntry(booking, booking.user_id, moveAmount, 'credit', 'debit', 'refund',
         `Booking #${booking.id} COD cancellation refund`);
-      await this._emitBookingRefunded(booking, refundAmount);
-
-      eventBusV2.emit('wallet:transaction', {
-        walletId: wallet.id,
-        userId: booking.user_id,
-        amount: refundAmount,
-        balance: newBalance,
-        type: 'refund',
-        description: `Booking #${booking.id} COD cancellation refund`,
-      });
-    } catch {
-      // non-fatal
+      await this._emitBookingRefunded(booking, moveAmount);
+    } catch (err) {
+      // Refund accounting is non-fatal to the cancel operation, but must be
+      // observable — a silent failure would report a "refunded" COD booking
+      // with no accounting reversal.
+      log.error({ err, bookingId: booking.id, amount: Number(refundAmount) }, 'COD refund accounting emit failed');
     }
   }
 
@@ -1207,25 +1162,68 @@ export class BookingService {
   // which consumes financial_entitlements via the unified settlement engine.
   // org_settled_amount is now a read-through projection of entitlement SETTLED state.
 
+  /**
+   * Remaining refundable amount for a booking = gross payable (total + tax)
+   * minus the cumulative refunds already recorded. The single source for
+   * clamping money movement so a refund can never return more than what has
+   * actually been captured.
+   */
+  private async _computeRefundCap(booking: any): Promise<number> {
+    const grossPayable = Number(booking.total_amount || 0) + Number(booking.tax_amount || 0);
+    const [refundRows] = await getPool().execute<RowData>(
+      `SELECT COALESCE(refunded_amount, 0) AS refunded_amount FROM bookings WHERE id = ?`,
+      [booking.id],
+    );
+    const alreadyRefunded = Number((refundRows as any[])[0]?.refunded_amount ?? 0);
+    return Math.max(0, grossPayable - alreadyRefunded);
+  }
+
   private async _processGatewayRefund(booking: any, refundAmount: number): Promise<void> {
-    try {
-      const { paymentService } = await import('../../payment/application/payment.service.js');
-      const paymentMethod = booking.payment_method;
-      if (paymentMethod === 'wallet') {
-        await this._processRefund(booking, refundAmount, booking.user_id);
-      } else {
-        const [ptRows] = await getPool().execute<RowData>(
-          `SELECT id FROM payment_transactions WHERE booking_id = ? ORDER BY id DESC LIMIT 1`,
-          [booking.id]
-        );
-        if (ptRows.length) {
-          await paymentService.refund((ptRows[0] as any).id, refundAmount, `Booking #${booking.id} cancellation refund`);
-        }
-      }
-      await this._emitBookingRefunded(booking, refundAmount);
-    } catch {
-      // gateway refund is best-effort
+    // Money movement MUST succeed before the canonical refund accounting
+    // (booking:refunded) is allowed to advance. Previously every failure was
+    // swallowed — a gateway/wallet refund could fail silently while
+    // _emitBookingRefunded still posted a reversal and incremented
+    // refunded_amount, producing a book entry with no actual money movement
+    // (false refund, R2/W4). Now the credit must be verified first.
+    const requested = Number(refundAmount);
+    if (requested <= 0) return;
+
+    // Money never refunded more than the remaining refundable gross.
+    const cap = await this._computeRefundCap(booking);
+    const moveAmount = Math.min(requested, cap);
+    if (moveAmount <= 0) {
+      log.warn({ bookingId: booking.id, requested }, 'No remaining refundable amount — skipping refund');
+      return;
     }
+
+    const { paymentService } = await import('../../payment/application/payment.service.js');
+    const paymentMethod = booking.payment_method;
+    if (paymentMethod === 'wallet') {
+      await this._processRefund(booking, moveAmount, booking.user_id);
+    } else {
+      const [ptRows] = await getPool().execute<RowData>(
+        `SELECT id FROM payment_transactions WHERE booking_id = ? ORDER BY id DESC LIMIT 1`,
+        [booking.id]
+      );
+      if (!ptRows.length) {
+        // No captured money record exists — nothing can be refunded. Do NOT
+        // advance the refund accounting (a GL reversal without money movement
+        // is a false refund). Log as error for manual review.
+        log.error({ bookingId: booking.id, paymentMethod, amount: moveAmount }, 'Cannot refund booking: no payment_transactions record found');
+        return;
+      }
+      const result = await (paymentService.refund as any)(
+        (ptRows[0] as any).id,
+        moveAmount,
+        `Booking #${booking.id} cancellation refund`,
+      );
+      if (!result?.success) {
+        throw new Error(`Payment gateway refund failed for booking #${booking.id}: ${(result as any)?.errorMessage || 'unknown error'}`);
+      }
+    }
+
+    // Money moved — now advance the canonical refund accounting.
+    await this._emitBookingRefunded(booking, moveAmount);
   }
 
   async updatePaymentStatus(id: number, paymentStatus: string, userId?: number) {

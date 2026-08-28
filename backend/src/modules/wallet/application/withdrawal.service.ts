@@ -80,10 +80,23 @@ export const withdrawalService = {
         params.push(actorId);
         if (data?.executionMethod) { updates.push('execution_method = ?'); params.push(data.executionMethod); }
         if (data?.referenceNumber) { updates.push('reference_number = ?'); params.push(data.referenceNumber); }
-        await conn.execute('UPDATE user_wallets SET balance = balance - ?, reserved_balance = reserved_balance - ? WHERE user_id = ? AND reserved_balance >= ?', [req.amount, req.amount, req.user_id, req.amount]);
+        const [debitResult] = await conn.execute('UPDATE user_wallets SET balance = balance - ?, reserved_balance = reserved_balance - ? WHERE user_id = ? AND reserved_balance >= ?', [req.amount, req.amount, req.user_id, req.amount]) as any;
+        // W3: the debit MUST actually happen. A zero-row UPDATE means the
+        // reservation is missing/insufficient — marking the request completed
+        // while the funds remain in the wallet would pay the player without
+        // moving money. Throw → rollback → the request stays 'processing'.
+        if (!debitResult || debitResult.affectedRows === 0) {
+          throw new Error(`Withdrawal ${requestId}: wallet debit failed — reserved balance insufficient or wallet missing`);
+        }
       }
       if (toStatus === 'rejected' || toStatus === 'cancelled') {
-        await conn.execute('UPDATE user_wallets SET reserved_balance = reserved_balance - ? WHERE user_id = ? AND reserved_balance >= ?', [req.amount, req.user_id, req.amount]);
+        const [releaseResult] = await conn.execute('UPDATE user_wallets SET reserved_balance = reserved_balance - ? WHERE user_id = ? AND reserved_balance >= ?', [req.amount, req.user_id, req.amount]) as any;
+        // W3: releasing a reservation that is not present is a data-integrity
+        // failure — never silently succeed. Throw → rollback → no negative
+        // reserved_balance and no falsely-released request.
+        if (!releaseResult || releaseResult.affectedRows === 0) {
+          throw new Error(`Withdrawal ${requestId}: reservation release failed — reserved balance insufficient or wallet missing`);
+        }
       }
       params.push(requestId);
       await conn.execute(`UPDATE withdrawal_requests SET ${updates.join(', ')} WHERE id = ?`, params);

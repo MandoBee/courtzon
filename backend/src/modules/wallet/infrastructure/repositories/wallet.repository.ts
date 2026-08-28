@@ -53,15 +53,21 @@ export const walletRepository = {
   /**
    * Lock wallet balance row for update. Accepts an optional transaction connection;
    * when provided the FOR UPDATE lock is held until the transaction commits/rolls back.
+   * Returns the reserved_balance alongside balance so spend paths can validate the
+   * true available amount (balance − reserved_balance) under the same lock (W2).
    */
-  async lockAndGetBalance(walletId: number, conn?: mysql.PoolConnection): Promise<{ balance: number; version: number } | null> {
+  async lockAndGetBalance(walletId: number, conn?: mysql.PoolConnection): Promise<{ balance: number; reserved_balance: number; version: number } | null> {
     const pool = resolvePool(conn);
     const [rows] = await pool.execute<RowData>(
-      "SELECT balance, version FROM user_wallets WHERE id = ? AND is_locked = FALSE FOR UPDATE",
+      "SELECT balance, reserved_balance, version FROM user_wallets WHERE id = ? AND is_locked = FALSE FOR UPDATE",
       [walletId]
     );
     if (!rows.length) return null;
-    return { balance: Number(rows[0].balance), version: rows[0].version };
+    return {
+      balance: Number(rows[0].balance),
+      reserved_balance: Number(rows[0].reserved_balance ?? 0),
+      version: rows[0].version,
+    };
   },
 
   /**
