@@ -1678,9 +1678,25 @@ export const marketplaceService = {
     } else if (method === 'cash') {
       log.info({ orderId }, 'Order refund: COD order — no pre-collected payment');
     } else {
+      // Gateway refund. A multi-seller group CARD payment is captured ONCE on
+      // the PRIMARY order's payment_transactions row, for the CHECKOUT GROUP's
+      // grand total — not the individual sibling's share. Every sibling order's
+      // refund resolves back to that same row (see _findPaymentForOrder), so a
+      // sibling that refunded its own `order.total` would NOT return the other
+      // siblings' money. Instead, every group member requests the FULL captured
+      // amount (paymentTxn.amount); paymentService.refund serializes the
+      // execution per payment (row lock) so the gateway is called exactly
+      // ONCE — whoever acquires the lock first — and sibling/retry requests
+      // take the idempotent path. The buyer's per-seller reversal accounting is
+      // produced independently per order by the Accounting Engine, so a single
+      // full money movement never double-posts or under-posts the ledger.
+      const gatewayAmount = order.checkout_group_id
+        ? Number((paymentTxn as any).amount || amount)
+        : amount;
+
       // Gateway refund failure must surface (throw) — swallowing it let the
       // order claim refunded while the gateway kept the payment (W4).
-      const result = await paymentService.refund(paymentTxn.id, amount, reason || 'Order refunded');
+      const result = await paymentService.refund(paymentTxn.id, gatewayAmount, reason || 'Order refunded');
       if (!result?.success) {
         throw new Error(`Order #${orderId} gateway refund failed: ${(result as any)?.errorMessage || 'unknown error'}`);
       }

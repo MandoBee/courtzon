@@ -900,44 +900,92 @@ export class PaymentService {
     }
 
     // ── Card / gateway payment ──
-    const result = await paymentGateway.refund({
-      transactionId: String(transaction.gateway_reference || transaction.id),
-      amount,
-      reason,
-    });
+    // Serialize gateway refund execution per underlying payment transaction.
+    // A multi-seller group card payment is captured ONCE on the primary order's
+    // payment_transactions row; every sibling order's refund resolves back to
+    // that same row (see marketplace _findPaymentForOrder). lockById() (SELECT
+    // ... FOR UPDATE) makes exactly ONE caller reach the gateway while the row
+    // is 'paid'; concurrent sibling/duplicate/retry requests acquire the lock
+    // after the first execution commits, observe 'refunded', and take the
+    // idempotent path — the same underlying card transaction can never be
+    // gateway-refunded twice. The gateway call happens INSIDE the locked
+    // transaction so the row lock cannot be released before execution; a
+    // gateway failure returns and the transaction rolls back, so no 'refunded'
+    // state is persisted until the gateway actually succeeded.
+    const outcome = await withTransaction(async (conn) => {
+      const locked = await paymentRepository.lockById(paymentId, conn);
+      if (!locked) {
+        throw new NotFoundError('Payment transaction');
+      }
 
-    if (!result.success) {
-      log.error({ traceId, paymentId, amount, reason, gatewayError: result.errorMessage }, 'Gateway refund failed');
-      return result;
-    }
+      const lockedStatus = (locked as any).payment_status;
+      if (lockedStatus === 'refunded') {
+        // Payment already refunded — a sibling order in the same checkout
+        // group, a retried request, or a duplicate admin refund. Never re-call
+        // the gateway; the accounting reversal was already emitted by whoever
+        // executed the refund.
+        return { idempotent: true, paymentId };
+      }
 
-    await withTransaction(async (conn) => {
-      await conn.execute<mysql.ResultSetHeader>(
+      if (lockedStatus !== 'paid') {
+        throw new ConflictError(`Payment ${paymentId} is not refundable from status '${lockedStatus}'`);
+      }
+
+      const result = await paymentGateway.refund({
+        transactionId: String((locked as any).gateway_reference || locked.id),
+        amount,
+        reason,
+      });
+
+      if (!result.success) {
+        return { failed: true, gatewayResult: result, paymentId };
+      }
+
+      const [updated] = await conn.execute<mysql.ResultSetHeader>(
         `UPDATE payment_transactions
          SET payment_status = 'refunded', updated_at = NOW()
          WHERE id = ? AND payment_status = 'paid'`,
         [paymentId],
       );
+      if (updated.affectedRows === 0) {
+        // Under the row lock this must not happen; guard anyway so a state
+        // change by another path cannot silently pass as a successful refund.
+        throw new Error(`Payment ${paymentId} refund state lost under lock`);
+      }
 
       await eventBusV2.emit('payment:refunded', {
         paymentId,
-        userId: (transaction as any).user_id,
+        userId: (locked as any).user_id,
         amount,
         reason,
         traceId,
-        referenceType: (transaction as any).reference_type,
-        referenceId: (transaction as any).order_id || (transaction as any).booking_id || (transaction as any).reference_id || null,
-        metadata: { paymentMethod: (transaction as any).payment_method || 'card' },
+        referenceType: (locked as any).reference_type,
+        referenceId: (locked as any).order_id || (locked as any).booking_id || (locked as any).reference_id || null,
+        metadata: { paymentMethod: (locked as any).payment_method || 'card' },
       }, undefined, conn);
 
       // NOTE: canonical refund accounting is produced by the Accounting Engine
       // (accounting-event.listener.ts) via payment:refunded.
       // No financial_journal_entries write here.
+
+      return { success: true, gatewayResult: result, paymentId };
     });
+
+    if (outcome.failed) {
+      const gatewayResult = (outcome as any).gatewayResult as { success: boolean; errorMessage?: string; refundId?: string };
+      log.error({ traceId, paymentId, amount, reason, gatewayError: gatewayResult?.errorMessage }, 'Gateway refund failed');
+      return gatewayResult;
+    }
+
+    if ((outcome as any).idempotent) {
+      log.info({ traceId, paymentId }, 'Payment already refunded — idempotent, no second gateway refund');
+      return { success: true, idempotent: true, refundId: `existing_refund_${paymentId}`, paymentId };
+    }
 
     log.info({ traceId, paymentId, amount, reason }, 'Payment refunded');
 
-    return { success: true, refundId: result.refundId, paymentId };
+    const executed = outcome as { success: boolean; gatewayResult: { success: boolean; refundId?: string }; paymentId: number };
+    return { success: true, refundId: executed.gatewayResult.refundId, paymentId };
   }
 
   /**
