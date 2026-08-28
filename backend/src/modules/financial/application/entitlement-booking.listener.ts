@@ -118,8 +118,14 @@ export async function handleBookingConfirmed(envelope: EventEnvelope): Promise<v
     const commResult = await commissionService.calculate(orgId, 'booking', grossPayable);
     commissionAmount = commResult.commissionAmount;
   } catch (err: any) {
-    log.error({ err, bookingId: booking.id, orgId }, 'Commission calculation failed — aborting entitlement creation');
-    return;
+    // NEVER swallow: a booking is already confirmed/paid here and its financial
+    // entitlements (org earning + platform commission) must exist. Returning
+    // silently drops them permanently — the org's earnings and CourtZon's
+    // commission simply vanish from settlement. This handler runs in a BullMQ
+    // subscriber (6 attempts, exponential backoff) and is replayed via the
+    // outbox poller, so rethrowing lets the platform retry.
+    log.error({ err, bookingId: booking.id, orgId }, 'Commission calculation failed — retrying entitlement creation');
+    throw err;
   }
 
   const orgNetAmount = grossPayable - commissionAmount;

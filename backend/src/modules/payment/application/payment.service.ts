@@ -116,11 +116,15 @@ export class PaymentService {
       }, conn);
       paymentId = created.id;
 
-      // 2. Lock wallet + validate balance
+      // 2. Lock wallet + validate availability (W2: a wallet can only spend
+      // balance minus reserved funds — reserved money belongs to an in-flight
+      // withdrawal and must never be spendable).
       const state = await walletRepository.lockAndGetBalance(wallet.id, conn);
       if (!state) throw new ConflictError('Wallet is locked');
-      if (state.balance < input.amount) {
-        throw new ConflictError(`Insufficient wallet balance: ${state.balance} < ${input.amount}`);
+      const reserved = Number((state as any).reserved_balance ?? 0);
+      const available = state.balance - reserved;
+      if (available < input.amount) {
+        throw new ConflictError(`Insufficient available wallet balance: ${available} < ${input.amount}`);
       }
 
       // 3. Debit wallet balance
@@ -830,7 +834,72 @@ export class PaymentService {
     if (!transaction) throw new NotFoundError('Payment transaction');
 
     const traceId = (transaction as any).trace_id || randomUUID();
+    const paymentMethod = (transaction as any).payment_method || 'card';
 
+    // ── Wallet-paid payment (R4) ──
+    // Wallet funds live in user_wallets.balance — the gateway has no record of
+    // a synthetic wallet charge, so refunding it through the gateway either
+    // fails (Paymob) or falsely "succeeds" (MockGateway) and reverses the GL
+    // wallet-liability without ever crediting the wallet. Refund by moving the
+    // money back through the canonical wallet credit path, then emit the
+    // canonical payment:refunded accounting event ONLY after the credit
+    // persisted. Idempotency: exactly one (payment_refund, paymentId) row + the
+    // paid→refunded guard, both inside the transaction.
+    if (paymentMethod === 'wallet') {
+      const userId = (transaction as any).user_id;
+      const wallet = await walletRepository.findByUserId(userId);
+      if (!wallet) {
+        throw new Error(`Cannot refund wallet payment ${paymentId}: user ${userId} has no wallet`);
+      }
+
+      await withTransaction(async (conn) => {
+        const state = await walletRepository.lockAndGetBalance(wallet.id, conn);
+        if (!state) throw new ConflictError('Wallet is locked');
+
+        const newBalance = state.balance + amount;
+        const updated = await walletRepository.updateBalance(wallet.id, newBalance, state.version, conn);
+        if (!updated) throw new ConflictError('Concurrent wallet update — please retry');
+
+        await walletRepository.createTransaction({
+          walletId: wallet.id,
+          type: 'refund',
+          amount,
+          direction: 'credit',
+          referenceType: 'payment_refund',
+          referenceId: paymentId,
+          description: reason || `Refund for payment #${paymentId}`,
+        }, conn);
+
+        const [result] = await conn.execute<mysql.ResultSetHeader>(
+          `UPDATE payment_transactions
+           SET payment_status = 'refunded', updated_at = NOW()
+           WHERE id = ? AND payment_status = 'paid'`,
+          [paymentId],
+        );
+        if (result.affectedRows === 0) {
+          throw new Error(`Payment ${paymentId} is not in 'paid' state — cannot mark refunded`);
+        }
+
+        await eventBusV2.emit('payment:refunded', {
+          paymentId,
+          userId,
+          amount,
+          reason,
+          traceId,
+          referenceType: (transaction as any).reference_type,
+          // For subscription payments the business reference lives in
+          // `reference_id` (booking_id/order_id are NULL) — fall back to it so a
+          // subscription refund reaches the accounting listener with a valid id.
+          referenceId: (transaction as any).order_id || (transaction as any).booking_id || (transaction as any).reference_id || null,
+          metadata: { paymentMethod: 'wallet' },
+        }, undefined, conn);
+      });
+
+      log.info({ traceId, paymentId, amount, reason }, 'Wallet payment refunded (wallet credited)');
+      return { success: true, refundId: `wallet_${paymentId}`, paymentId };
+    }
+
+    // ── Card / gateway payment ──
     const result = await paymentGateway.refund({
       transactionId: String(transaction.gateway_reference || transaction.id),
       amount,
@@ -857,11 +926,6 @@ export class PaymentService {
         reason,
         traceId,
         referenceType: (transaction as any).reference_type,
-        // F-12: for subscription payments the business reference lives in
-        // `reference_id` (booking_id/order_id are NULL for subscriptions). Fall
-        // back to it so a subscription refund reaches the accounting listener
-        // with a valid reference id instead of being silently dropped (which
-        // would leave the original 4170 revenue posting un-reversed).
         referenceId: (transaction as any).order_id || (transaction as any).booking_id || (transaction as any).reference_id || null,
         metadata: { paymentMethod: (transaction as any).payment_method || 'card' },
       }, undefined, conn);

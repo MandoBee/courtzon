@@ -15,6 +15,7 @@
  */
 
 const rows: any[] = [];
+let failWalletUpdate = false;
 
 vi.mock('../../../database/mysql.js', () => ({
   getPool: () => ({
@@ -38,10 +39,16 @@ vi.mock('../../../database/mysql.js', () => ({
         }
         // update withdrawal_requests SET status = ? ... â†’ mutate the mock row
         if (lower.includes('update withdrawal_requests set status')) {
+          if (failWalletUpdate) return [{ affectedRows: 0 }, []]; // simulates rollback
           const id = params[params.length - 1];
           const row = rows.find((r) => r.id === id);
           if (row) row.status = params[0];
           return [{ affectedRows: 1 }, []];
+        }
+        // update user_wallets (debit / release reserved balance) â†’ the service
+        // now verifies affectedRows before committing a transition.
+        if (lower.includes('update user_wallets')) {
+          return [{ affectedRows: failWalletUpdate ? 0 : 1 }, []];
         }
         // insert withdrawal_requests â†’ return insertId
         if (lower.includes('into withdrawal_requests')) {
@@ -65,6 +72,7 @@ import { withdrawalService } from '../application/withdrawal.service.js';
 
 beforeEach(() => {
   rows.length = 0;
+  failWalletUpdate = false;
 });
 
 describe('Legacy withdraw route â†’ reservation flow (reject/cancel release funds)', () => {
@@ -101,5 +109,33 @@ describe('Legacy withdraw route â†’ reservation flow (reject/cancel release
     await withdrawalService.transition(id, 'processing', 1);
     const res = await withdrawalService.transition(id, 'completed', 1, { executionMethod: 'bank' });
     expect(res.status).toBe('completed');
+  });
+
+  it('W3: completion with a MISSING reservation throws (no false payout)', async () => {
+    const { id } = await withdrawalService.submit(5, 100, 'Payout');
+    await withdrawalService.transition(id, 'under_review', 1);
+    await withdrawalService.transition(id, 'approved', 1);
+    await withdrawalService.transition(id, 'processing', 1);
+
+    // The wallet debit fails (reservation missing/insufficient): affectedRows 0.
+    // Previously the service ignored the UPDATE result and marked the request
+    // completed — a payout recorded without money moving. Now it must throw and
+    // the transaction rolls back, so the request stays 'processing'.
+    failWalletUpdate = true;
+    await expect(
+      withdrawalService.transition(id, 'completed', 1, { executionMethod: 'bank' }),
+    ).rejects.toThrow(/wallet debit failed/i);
+  });
+
+  it('W3: rejection with a MISSING reservation throws (no false release)', async () => {
+    const { id } = await withdrawalService.submit(5, 50, 'Payout');
+    await withdrawalService.transition(id, 'under_review', 1);
+
+    // Reservation release fails (affectedRows 0): the service must not silently
+    // mark the request rejected while the reserved funds are still held.
+    failWalletUpdate = true;
+    await expect(
+      withdrawalService.transition(id, 'rejected', 1, { rejectionReason: 'no' }),
+    ).rejects.toThrow(/release failed/i);
   });
 });

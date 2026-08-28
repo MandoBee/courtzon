@@ -1134,6 +1134,21 @@ export const marketplaceService = {
 
     this._validateStatusTransition(order.status, data.status, userRole);
 
+    const isRefundOrCancel = data.status === 'cancelled' || data.status === 'refunded';
+    const refundReason = data.note || (data.status === 'cancelled' ? 'Order cancelled' : 'Order refunded');
+
+    // ── Money movement FIRST (source of truth) ──
+    // The order must not claim a cancelled/refunded state until the customer's
+    // money has actually moved back. If the wallet credit or gateway refund
+    // fails, _processOrderRefund throws and the order stays in its previous
+    // state: an observable failure with a clean retry — never a silent "refunded"
+    // with funds still captured (W4/R2). Idempotent: wallet orders are guarded
+    // by the unique order_refund transaction; direct card orders by the
+    // paid-only payment lookup.
+    if (isRefundOrCancel && order.payment_status === 'paid') {
+      await this._processOrderRefund(order, orderId, refundReason);
+    }
+
     await repo.updateOrderStatus(orderId, data.status, data.note);
     if (data.trackingNumber || data.shippingCarrier) {
       await repo.updateOrderTracking(orderId, data.shippingCarrier || '', data.trackingNumber || '');
@@ -1148,7 +1163,7 @@ export const marketplaceService = {
       await this._recordOrderFinancials(orderId);
     } else if (data.status === 'delivered') {
       await this._recordDeliveryFinancials(orderId);
-    } else if (data.status === 'cancelled' || data.status === 'refunded') {
+    } else if (isRefundOrCancel) {
       await this._recordReversalFinancials(orderId, data.status, data.note);
       // Restore stock for cancelled/refunded orders
       const orderRows = await repo.findOrderById(orderId);
@@ -1160,15 +1175,8 @@ export const marketplaceService = {
       }
     }
 
-    // If the order was already paid, refund the payment for cancelled/refunded orders.
-    // Wallet-funded orders are credited directly to the buyer's wallet; card/online
-    // orders go through the gateway refund. COD orders have no pre-collected payment.
-    if ((data.status === 'cancelled' || data.status === 'refunded') && order.payment_status === 'paid') {
-      await this._processOrderRefund(order, orderId, data.note || (data.status === 'cancelled' ? 'Order cancelled' : 'Order refunded'));
-    }
-
     // Multi-seller: when cancelling/refunding, also cancel all sibling orders in the checkout group
-    if ((data.status === 'cancelled' || data.status === 'refunded') && order.checkout_group_id) {
+    if (isRefundOrCancel && order.checkout_group_id) {
       const siblingIds = await repo.findOrderIdsByCheckoutGroup(order.checkout_group_id);
       for (const siblingId of siblingIds) {
         if (siblingId === orderId) continue;
@@ -1177,6 +1185,7 @@ export const marketplaceService = {
         if (siblingOrder && siblingOrder.status !== 'cancelled' && siblingOrder.status !== 'refunded') {
           try {
             await this._validateStatusTransition(siblingOrder.status, data.status, userRole);
+            await this._processOrderRefund(siblingOrder, siblingId, data.note || `Checkout group ${data.status}`);
             await repo.updateOrderStatus(siblingId, data.status, data.note || `Checkout group ${data.status}`);
             // Restore stock for sibling
             for (const row of siblingRows as any[]) {
@@ -1188,11 +1197,12 @@ export const marketplaceService = {
               changedBy: userId, changedByRole: userRole,
               note: data.note || `Checkout group ${data.status}`,
             });
-            // Process refund for sibling if it was paid
-            if (siblingOrder.payment_status === 'paid') {
-              await this._processOrderRefund(siblingOrder, siblingId, data.note || `Checkout group ${data.status}`);
-            }
-          } catch (_e) { /* may fail if status transition invalid — log and continue */ }
+          } catch (e) {
+            // A sibling that fails its refund stays in its previous state (money
+            // moved first). Log loudly — the old silent swallow hid refund failures,
+            // letting a sibling claim refunded with the money still captured (W4).
+            log.error({ err: e, siblingId, orderId, toStatus: data.status }, 'Sibling order cancellation/refund failed');
+          }
         }
       }
     }
@@ -1591,11 +1601,22 @@ export const marketplaceService = {
     }
 
     if (method === 'wallet') {
+      // Idempotency anchor: a successful wallet refund for this order writes a
+      // single unique (order_refund, orderId) wallet_transactions row. If it
+      // already exists, the refund completed on a previous attempt — skip
+      // instead of re-crediting the wallet (no duplicate refunds on retry).
+      const existingRefunds = await walletRepository.findTransactionsByReference('order_refund', orderId);
+      if (existingRefunds.length > 0) {
+        log.info({ orderId }, 'Order refund: wallet already refunded — idempotent skip');
+        return;
+      }
+
       await withTransaction(async (conn) => {
         const wallet = await walletRepository.findByUserId(order.buyer_id);
         if (!wallet) {
-          log.warn({ orderId, userId: order.buyer_id }, 'Order refund: buyer wallet not found');
-          return;
+          // Money cannot move — throw so the order never claims refunded with
+          // the funds still captured (W4). Previously this returned silently.
+          throw new Error(`Order #${orderId} refund failed: buyer ${order.buyer_id} has no wallet`);
         }
         const state = await walletRepository.lockAndGetBalance(wallet.id, conn);
         if (!state) {
@@ -1603,7 +1624,12 @@ export const marketplaceService = {
         }
 
         const newBalance = state.balance + amount;
-        await walletRepository.updateBalance(wallet.id, newBalance, state.version, conn);
+        const updated = await walletRepository.updateBalance(wallet.id, newBalance, state.version, conn);
+        if (!updated) {
+          // Rollback (throws inside withTransaction): the payment must NOT be
+          // marked refunded when the credit did not persist.
+          throw new Error(`Order #${orderId} refund failed: concurrent wallet update — retry`);
+        }
 
         await walletRepository.createTransaction({
           walletId: wallet.id,
@@ -1652,13 +1678,11 @@ export const marketplaceService = {
     } else if (method === 'cash') {
       log.info({ orderId }, 'Order refund: COD order — no pre-collected payment');
     } else {
-      try {
-        const result = await paymentService.refund(paymentTxn.id, amount, reason || 'Order refunded');
-        if (!result?.success) {
-          log.error({ orderId, paymentId: paymentTxn.id, method }, 'Order refund: gateway refund failed');
-        }
-      } catch (err) {
-        log.error({ err, orderId, paymentId: paymentTxn.id, method }, 'Order refund: gateway refund threw');
+      // Gateway refund failure must surface (throw) — swallowing it let the
+      // order claim refunded while the gateway kept the payment (W4).
+      const result = await paymentService.refund(paymentTxn.id, amount, reason || 'Order refunded');
+      if (!result?.success) {
+        throw new Error(`Order #${orderId} gateway refund failed: ${(result as any)?.errorMessage || 'unknown error'}`);
       }
     }
   },
