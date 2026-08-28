@@ -202,8 +202,11 @@ async function bootstrap() {
     registerRegistrationPaymentListeners();
     app.log.info('Registration payment listeners registered');
 
-    const { registerAccountingEventListeners } = await import('./modules/financial/application/accounting-event.listener.js');
+    const { registerAccountingEventListeners, registerAccountingReplaySubscribers, createAccountingReplayWorkers } = await import('./modules/financial/application/accounting-event.listener.js');
     registerAccountingEventListeners();
+    registerAccountingReplaySubscribers();
+    await createAccountingReplayWorkers();
+    app.log.info('Accounting event listeners + durable replay subscribers/workers registered');
 
     const { registerEntitlementBookingSubscribers, createEntitlementBookingWorkers } = await import('./modules/financial/application/entitlement-booking.listener.js');
     registerEntitlementBookingSubscribers();
