@@ -112,7 +112,7 @@ describe('Financial Custody & Counterparty', () => {
     );
 
     const payableId = await accountCode('2200');
-    const revenueId = await accountCode('4100');
+    const revenueId = await accountCode('4110'); // booking commission revenue
     const taxId = await accountCode('2300');
     const clearingId = await accountCode('1100');
 
@@ -140,7 +140,7 @@ describe('Financial Custody & Counterparty', () => {
     );
 
     const receivableId = await accountCode('1160');
-    const revenueId = await accountCode('4100');
+    const revenueId = await accountCode('4110'); // booking commission revenue
     const payableId = await accountCode('2200');
 
     const receivable = await accountSums(receivableId);
@@ -186,7 +186,7 @@ describe('Financial Custody & Counterparty', () => {
     );
 
     const payableId = await accountCode('2200');
-    const revenueId = await accountCode('4100');
+    const revenueId = await accountCode('4110'); // booking commission revenue
     const clearingId = await accountCode('1100');
     const payable = await accountSums(payableId);
     const revenue = await accountSums(revenueId);
@@ -222,12 +222,12 @@ describe('Financial Custody & Counterparty', () => {
       'EGP', 'custody marketplace card',
     );
 
-    const payableId = await accountCode('2200');
-    const revenueId = await accountCode('4100');
+    const payableId = await accountCode('2202'); // merchant payable
+    const revenueId = await accountCode('4160'); // marketplace commission revenue
     const payable = await accountSums(payableId);
     const revenue = await accountSums(revenueId);
-    expect(payable.credit).toBe(360); // 270 + 90 merchant payable
-    expect(revenue.credit).toBe(50); // 40 + 10
+    expect(payable.credit).toBe(90); // 90 merchant payable (marketplace, in 2202)
+    expect(revenue.credit).toBe(10); // 10 marketplace commission
 
     await pool.execute(`DELETE FROM order_items WHERE order_id = ?`, [orderId]);
     await pool.execute(`DELETE FROM orders WHERE id = ?`, [orderId]);
@@ -253,11 +253,11 @@ describe('Financial Custody & Counterparty', () => {
     );
 
     const receivableId = await accountCode('1160');
-    const revenueId = await accountCode('4100');
+    const revenueId = await accountCode('4160'); // marketplace commission revenue
     const receivable = await accountSums(receivableId);
     const revenue = await accountSums(revenueId);
     expect(receivable.debit).toBe(38); // 19 booking COD + 19 marketplace COD
-    expect(revenue.credit).toBe(60); // 50 + 10
+    expect(revenue.credit).toBe(20); // 10 (marketplace card) + 10 (marketplace COD)
 
     await pool.execute(`DELETE FROM order_items WHERE order_id = ?`, [orderId]);
     await pool.execute(`DELETE FROM orders WHERE id = ?`, [orderId]);

@@ -149,7 +149,7 @@ describe('COD Custody Remediation', () => {
       'EGP', 'COD recognition on confirmation',
     );
     const receivableId = await accountId('1160');
-    const revenueId = await accountId('4100');
+    const revenueId = await accountId('4110'); // booking commission revenue
     const taxId = await accountId('2300');
     const r = await sourceSums(receivableId, 'booking', bookingId);
     const rev = await sourceSums(revenueId, 'booking', bookingId);
@@ -173,7 +173,7 @@ describe('COD Custody Remediation', () => {
       'EGP', 'COD full refund',
     );
     const receivableId = await accountId('1160');
-    const revenueId = await accountId('4100');
+    const revenueId = await accountId('4110'); // booking commission revenue
     const taxId = await accountId('2300');
     const payableId = await accountId('2200');
     const clearingId = await accountId('1100');
