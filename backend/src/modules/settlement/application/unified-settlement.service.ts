@@ -209,8 +209,10 @@ export const unifiedSettlementService = {
         settlementId,
         organisationId: settlement.organisation_id,
         paidBy: data.paidBy,
+        amount: paidAmount,
+        direction: settlement.settlement_direction ?? null,
+        currency: 'EGP',
         paidAmount,
-        direction,
         paymentMethod: data.paymentMethod ?? null,
         paymentReference: data.paymentReference ?? null,
       });
