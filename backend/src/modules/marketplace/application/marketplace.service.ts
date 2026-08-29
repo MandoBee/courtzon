@@ -831,6 +831,7 @@ export const marketplaceService = {
             tax_amount: Number(row.tax_amount || 0),
             commission_amount: Number(row.commission_amount || 0),
           });
+          grp.totalAmount += Number(row.total || 0);
         }
         const order = grp.orders.get(row.id);
         if (row.product_id) {
@@ -846,7 +847,6 @@ export const marketplaceService = {
             images: row.images,
           });
         }
-        grp.totalAmount += Number(row.total || 0);
       } else {
         // Legacy single-order (no group)
         if (!ungrouped.has(row.id)) {
