@@ -249,7 +249,7 @@ export class OrganisationService {
     return this.getOrganisation(id);
   }
 
-  async updateOrganisation(id: number, data: any) {
+  async updateOrganisation(id: number, data: any, opts: { adminId?: number | null } = {}) {
     const org = await organisationRepository.findById(id);
     if (!org) throw new NotFoundError('Organisation');
     if (data.slug && data.slug !== org.slug) {
@@ -289,11 +289,30 @@ export class OrganisationService {
       });
     }
 
-    if ((data.isVerified === true && !org.is_verified) || approvesByActivation) {
-      try { await this.activateSubscription(id); } catch {}
-    }
-
     if (approvesByActivation) {
+      // A single activation action must complete the whole registration
+      // lifecycle, consistent with the CREDIT CARD and Registration-Approvals
+      // flows. Route through the canonical activation so the subscription is
+      // activated, the pending upgrade request is marked approved (clearing it
+      // from Registration Approvals) and — for Cash — the platform revenue
+      // journal entry (Dr 1120 / Cr 4170) is posted, atomically.
+      // If no pending request exists (or the canonical engine defers, e.g. an
+      // unpaid Card registration) we fall back to the legacy behaviour so the
+      // admin's ability to force-activate is preserved unchanged.
+      try {
+        const { getOrgPendingSubscriptionRequest } = await import('../infrastructure/repositories/org-portal.repository.js');
+        const pending = await getOrgPendingSubscriptionRequest(id);
+        if (pending && (await this.routeActivationThroughCanonicalEngine(pending.id, opts.adminId))) {
+          if (data.attributes) {
+            await organisationRepository.saveOrgAttributeValues(id, data.attributes);
+          }
+          return this.getOrganisation(id);
+        }
+      } catch {
+        // canonical activation failed synchronously — fall back to legacy
+      }
+
+      try { await this.activateSubscription(id); } catch {}
       // Same lifecycle event as the approval flow so the owner's session
       // scopes refresh live (route guards stop showing "Awaiting approval")
       // and the notification platform delivers the approved notification.
@@ -302,12 +321,29 @@ export class OrganisationService {
         userId: (org as any).owner_id,
         name: org.name,
       });
+    } else if (data.isVerified === true && !org.is_verified) {
+      try { await this.activateSubscription(id); } catch {}
     }
 
     if (data.attributes) {
       await organisationRepository.saveOrgAttributeValues(id, data.attributes);
     }
     return this.getOrganisation(id);
+  }
+
+  /**
+   * Run the canonical subscription activation for a pending upgrade request and
+   * report whether it fully completed (activated or idempotently already
+   * processed). A deferred activation (e.g. unpaid Card) returns false so the
+   * caller can fall back to the legacy behaviour.
+   */
+  private async routeActivationThroughCanonicalEngine(requestId: number, adminId?: number | null): Promise<boolean> {
+    const { tryActivateSubscriptionRequest } = await import('./subscription-activation.service.js');
+    const activation = await tryActivateSubscriptionRequest(requestId, {
+      adminId: adminId ?? null,
+      approvalNotes: 'Activated from organisation list',
+    });
+    return activation.activated === true || activation.alreadyProcessed === true;
   }
 
   async getBranchFinancialDetails(branchId: number) {
