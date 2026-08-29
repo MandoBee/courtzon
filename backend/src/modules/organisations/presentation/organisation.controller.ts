@@ -187,7 +187,7 @@ export async function updateOrganisationHandler(request: FastifyRequest, reply: 
         return reply.status(404).send({ error: 'NOT_FOUND', message: 'Organisation not found' });
       }
     }
-    const org = await organisationService.updateOrganisation(Number(id), body);
+    const org = await organisationService.updateOrganisation(Number(id), body, { adminId: (request as any).userId ?? null });
     recordAudit({
       actorId: (request as any).userId ?? null,
       action: 'ORGANISATION.UPDATE',

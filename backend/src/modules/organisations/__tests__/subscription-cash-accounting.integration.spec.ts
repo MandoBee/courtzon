@@ -777,3 +777,101 @@ describe('SELLER subscription accounting parity - REAL engine (integration)', ()
     expect(afterDup).toHaveLength(2);
   });
 });
+
+/**
+ * ─── ORGANISATIONS-PAGE ACTIVATION PARITY ─────────────────────────────────
+ * The admin "Organisation Status" toggle on the Organisations page calls
+ * PUT /organisations/:id { isActive: true } → organisationService.updateOrganisation.
+ * For a Cash registration that toggle must complete the WHOLE lifecycle in a
+ * SINGLE action — org active, subscription active, upgrade request approved
+ * (so it disappears from Registration Approvals) and the balanced Cash
+ * journal entry posted — exactly like the canonical approval flow. Card flows
+ * must stay untouched (no cash posting).
+ */
+describe('Organisation page activation (updateOrganisation isActive toggle) — lifecycle parity', () => {
+  it('one activation action on a Cash registration activates org+subscription, approves the request and posts the Cash entry', async () => {
+    const { getPool: gp } = await import('../../../database/mysql.js');
+    const fx = await seedCashRegistrationFixture(`orgt${Date.now()}`);
+
+    const { organisationService } = await import('../application/organisation.service.js');
+    await organisationService.updateOrganisation(fx.orgId, { isActive: true }, { adminId: 910000 });
+
+    // Org active + verified
+    const [[org]] = await gp().execute<RowData>(
+      'SELECT is_verified, is_active FROM organisations WHERE id = ?', [fx.orgId],
+    ) as any;
+    expect(Number(org.is_verified)).toBe(1);
+    expect(Number(org.is_active)).toBe(1);
+
+    // Subscription active AND upgrade request approved (no longer pending)
+    const [[sub]] = await gp().execute<RowData>(
+      'SELECT subscription_status FROM organisation_subscriptions WHERE organisation_id=?', [fx.orgId],
+    ) as any;
+    expect(sub.subscription_status).toBe('active');
+    const [[req]] = await gp().execute<RowData>(
+      'SELECT status FROM organisation_upgrade_requests WHERE id=?', [fx.requestId],
+    ) as any;
+    expect(req.status).toBe('approved');
+
+    // Exactly one balanced Cash posting @ exact price
+    const [ledger] = await gp().execute<RowData>(
+      `SELECT le.side, le.amount, coa.code AS account_code, le.organisation_id
+       FROM ledger_entries le JOIN chart_of_accounts coa ON coa.id=le.chart_account_id
+       WHERE le.source_type='subscription' AND le.source_id=? AND le.event_type='subscription_cash_payment'
+       ORDER BY le.side`,
+      [fx.requestId],
+    );
+    expect(ledger).toHaveLength(2);
+    const debit = ledger.find((r: any) => r.side === 'debit');
+    const credit = ledger.find((r: any) => r.side === 'credit');
+    expect(debit.account_code).toBe(coa.cashLeafCode);
+    expect(Number(debit.amount)).toBe(777);
+    // MODEL B: subscription postings are platform revenue — never attributed
+    // to the paying organisation (fx.orgId). The column may be stored as SQL
+    // NULL or the platform 0 sentinel, but must never equal the org id.
+    expect(Number(debit.organisation_id || 0)).not.toBe(fx.orgId);
+    expect(credit.account_code).toBe(coa.revenueLeafCode);
+    expect(Number(credit.amount)).toBe(777);
+    expect(Number(credit.organisation_id || 0)).not.toBe(fx.orgId);
+  });
+
+  it('re-activating an already-active org does not create a duplicate posting', async () => {
+    const { getPool: gp } = await import('../../../database/mysql.js');
+    const fx = await seedCashRegistrationFixture(`orgt2${Date.now()}`);
+    const { organisationService } = await import('../application/organisation.service.js');
+
+    await organisationService.updateOrganisation(fx.orgId, { isActive: true }, { adminId: 910000 });
+
+    // Second activation (same action) — must not duplicate the ledger entry
+    await organisationService.updateOrganisation(fx.orgId, { isActive: true }, { adminId: 910000 });
+
+    const [ledger] = await gp().execute<RowData>(
+      "SELECT 1 FROM ledger_entries WHERE source_type='subscription' AND source_id=? AND event_type='subscription_cash_payment'",
+      [fx.requestId],
+    );
+    expect(ledger).toHaveLength(2);
+  });
+
+  it('Card registration activated via the org toggle posts NO cash entry (paymob path preserved)', async () => {
+    const { getPool: gp } = await import('../../../database/mysql.js');
+    const fx = await seedCashRegistrationFixture(`cardorg${Date.now()}`);
+    await seedPaidCardTxn(fx.requestId, fx.userId, 777);
+    const { organisationService } = await import('../application/organisation.service.js');
+
+    // Card flow: org-status toggle routes through the canonical engine which
+    // recognises a paid card transaction — org activates but NO cash posting.
+    await organisationService.updateOrganisation(fx.orgId, { isActive: true }, { adminId: 910000 });
+
+    const [[org]] = await gp().execute<RowData>(
+      'SELECT is_verified, is_active FROM organisations WHERE id = ?', [fx.orgId],
+    ) as any;
+    expect(Number(org.is_verified)).toBe(1);
+    expect(Number(org.is_active)).toBe(1);
+
+    const [cashRows] = await gp().execute<RowData>(
+      "SELECT 1 FROM ledger_entries WHERE source_type='subscription' AND source_id=? AND event_type='subscription_cash_payment'",
+      [fx.requestId],
+    );
+    expect(cashRows).toHaveLength(0);
+  });
+});
