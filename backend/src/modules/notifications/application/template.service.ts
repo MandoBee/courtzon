@@ -311,6 +311,20 @@ export async function seedTemplates(): Promise<void> {
       titleTemplate: 'طلب اتفاقية مدرب', bodyTemplate: 'طلب {{coachName}} إضافة اتفاقية تدريب مع {{organisationName}}. قم بمراجعتها والموافقة عليها.',
       actionKey: 'view_org_coaches', routePattern: '/org/{{organisationId}}/coaches' },
 
+    // Referee assignments
+    { eventName: 'referee:assigned', locale: 'en', categorySlug: 'system', type: 'info', priority: 'high',
+      titleTemplate: 'Match Officiating Assignment', bodyTemplate: 'You have been assigned to officiate a {{matchType}} match.',
+      actionKey: 'view_referee_assignments', routePattern: '/referee/assignments' },
+    { eventName: 'referee:assigned', locale: 'ar', categorySlug: 'system', type: 'info', priority: 'high',
+      titleTemplate: 'إسناد مباراة للتحكيم', bodyTemplate: 'تم إسناد مباراة {{matchType}} إليك للتحكيم.',
+      actionKey: 'view_referee_assignments', routePattern: '/referee/assignments' },
+    { eventName: 'referee:unassigned', locale: 'en', categorySlug: 'system', type: 'warning', priority: 'high',
+      titleTemplate: 'Match Officiating Assignment Removed', bodyTemplate: 'You have been unassigned from officiating a {{matchType}} match.',
+      actionKey: 'view_referee_assignments', routePattern: '/referee/assignments' },
+    { eventName: 'referee:unassigned', locale: 'ar', categorySlug: 'system', type: 'warning', priority: 'high',
+      titleTemplate: 'إلغاء إسناد مباراة للتحكيم', bodyTemplate: 'تم إلغاء إسناد مباراة {{matchType}} إليك للتحكيم.',
+      actionKey: 'view_referee_assignments', routePattern: '/referee/assignments' },
+
     // ── Coach Lifecycle Templates ──
     { eventName: 'coach:application-submitted', locale: 'en', categorySlug: 'system', type: 'info', priority: 'normal',
       titleTemplate: 'Coach Application Submitted', bodyTemplate: 'Your coach application has been received successfully. Our team is reviewing your application. You will be notified once a decision has been made.',

@@ -60,6 +60,27 @@ export class FixtureService {
     const match = await fixtureRepository.findMatchById(matchId);
     if (!match) throw new NotFoundError('Match', ErrorCodes.MATCH_NOT_FOUND);
     await fixtureRepository.assignReferee(matchId, refereeId);
+    await this.emitRefereeAssigned(match, refereeId, 'league');
+  }
+
+  /** Emit referee:assigned with the referee's user_id (non-fatal). */
+  private async emitRefereeAssigned(match: any, refereeId: number, matchType: 'league' | 'tournament'): Promise<void> {
+    try {
+      const [rows] = await getPool().execute<RowData>(
+        'SELECT user_id FROM referees WHERE id = ? AND deleted_at IS NULL LIMIT 1', [refereeId],
+      );
+      const userId = (rows as any[])[0]?.user_id;
+      if (!userId) return;
+      eventBusV2.emit('referee:assigned', {
+        matchId: Number(match.id),
+        refereeId,
+        userId,
+        matchType,
+      } as any);
+    } catch (err) {
+      // Notification emission is non-fatal; assignment already persisted.
+      console.error('emitRefereeAssigned failed', err);
+    }
   }
 
   async recordResult(
