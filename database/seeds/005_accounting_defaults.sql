@@ -161,6 +161,12 @@ SELECT 'payroll_post', NULL, 'salary_expense', id, 1 FROM chart_of_accounts WHER
 INSERT IGNORE INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
 SELECT 'payroll_post', NULL, 'salary_payable', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '2200';
 
+-- 15a. payroll_paid (clearing entry when a posted payroll run is marked paid)
+INSERT IGNORE INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
+SELECT 'payroll_paid', NULL, 'salary_payable', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '2200';
+INSERT IGNORE INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
+SELECT 'payroll_paid', NULL, 'cash_bank', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '1120';
+
 -- 16. year_close (prevent duplicates with NULL organisation_id via dual-key check)
 INSERT INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
 SELECT 'year_close', NULL, 'retained_earnings', id, 1

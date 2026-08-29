@@ -206,6 +206,16 @@ export const EVENT_CONCEPTS: Record<string, { debit: string[]; credit: string[] 
     debit: ['salary_expense'],
     credit: ['salary_payable'],
   },
+  // Payroll paid — clearing entry when a posted payroll run is marked paid.
+  // Mirrors the payroll_post accrual (salary_expense Dr / salary_payable Cr):
+  // the liability is cleared against cash, keeping the payroll accounting
+  // cycle balanced. Posting is done by markPayrollPaidHandler inside the same
+  // transaction; idempotent via uk_dedup(source_type='journal',
+  // source_id=payroll_entries.id, event_type='payroll_paid').
+  payroll_paid: {
+    debit: ['salary_payable'],
+    credit: ['cash_bank'],
+  },
   year_close: {
     debit: [],
     credit: ['retained_earnings'],
