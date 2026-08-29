@@ -80,6 +80,42 @@ function matchesAny(key, patterns) {
   return patterns.some((re) => re.test(key));
 }
 
+// P0-1 (upload authorization hardening): which template roles may upload their
+// own content (files.upload) versus which may view/delete arbitrary uploads
+// (files.view / files.delete). Super Admin is handled separately (all).
+const FILES_UPLOAD_ROLES = new Set([
+  'player',
+  'coach',
+  'independent_coach',
+  'resident_coach',
+  'org-admin',
+  'shop-admin',
+  'branch-mgr',
+  'resource-mgr',
+  'master-admin',
+  'court-manager',
+  'marketplace-manager',
+  'content-manager',
+]);
+
+const FILES_VIEW_ROLES = new Set([
+  'master-admin',
+  'court-manager',
+  'marketplace-manager',
+  'content-manager',
+  'auditor',
+  'read-only-admin',
+]);
+
+// Delete of arbitrary uploads is restricted to file-management roles (not
+// read-only/audit roles).
+const FILES_DELETE_ROLES = new Set([
+  'master-admin',
+  'court-manager',
+  'marketplace-manager',
+  'content-manager',
+]);
+
 const PLAYER_PATTERNS = [
   /^home\./,
   /^profile\./,
@@ -496,6 +532,19 @@ const READ_ONLY_ADMIN_PATTERNS = [
 
 export function permissionMatchesTemplate(templateSlug, permissionKey) {
   if (templateSlug === 'super_admin') return true;
+
+  // P0-1 (upload authorization hardening): server-side file permissions.
+  //   files.upload  → roles that legitimately upload their own content
+  //                   (players: product images/avatar; coaches: certs; orgs:
+  //                   shop/org images; managers: platform content).
+  //   files.view    → file-administration roles (view/uploads listing).
+  //   files.delete  → file-administration roles only (delete arbitrary uploads).
+  if (permissionKey.startsWith('files.')) {
+    if (permissionKey === 'files.upload') return FILES_UPLOAD_ROLES.has(templateSlug);
+    if (permissionKey === 'files.view') return FILES_VIEW_ROLES.has(templateSlug);
+    if (permissionKey === 'files.delete') return FILES_DELETE_ROLES.has(templateSlug);
+    return false;
+  }
 
   if (templateSlug === 'player') {
     if (permissionKey === 'home.recent-activity') return false;

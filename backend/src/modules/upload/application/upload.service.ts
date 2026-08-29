@@ -176,7 +176,7 @@ class UploadService {
     return uploadRepository.findByEntity(entityType, entityId, fileCategory);
   }
 
-  async delete(id: number) {
+  async delete(id: number, actorId?: number | null) {
     const upload = await uploadRepository.findById(id);
     if (!upload) throw Object.assign(new Error('Upload not found'), { statusCode: 404 });
 
@@ -185,7 +185,7 @@ class UploadService {
     await uploadRepository.delete(id);
 
     recordAudit({
-      actorId: null,
+      actorId: actorId ?? null,
       action: 'UPLOAD.DELETE',
       entityType: 'upload',
       entityId: id,

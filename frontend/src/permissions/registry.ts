@@ -522,6 +522,12 @@ export const uiRegistry: UIElement[] = [
   { permissionKey: 'sidebar.active-sessions', moduleSlug: 'settings', elementType: 'tab', elementLabel: 'Sidebar: Active Sessions', componentPath: 'components/layout/AdminSidebar.tsx' },
   { permissionKey: 'sidebar.failed-logins', moduleSlug: 'settings', elementType: 'tab', elementLabel: 'Sidebar: Failed Logins', componentPath: 'components/layout/AdminSidebar.tsx' },
   { permissionKey: 'sidebar.upload-security', moduleSlug: 'settings', elementType: 'tab', elementLabel: 'Sidebar: Upload Security', componentPath: 'components/layout/AdminSidebar.tsx' },
+  // ==========================================================================
+  // FILES MODULE — upload endpoints authorization (server-side gating)
+  // ==========================================================================
+  { permissionKey: 'files.upload', moduleSlug: 'files', elementType: 'action', elementLabel: 'Upload Files', componentPath: 'components/upload/UploadActions.tsx' },
+  { permissionKey: 'files.view', moduleSlug: 'files', elementType: 'action', elementLabel: 'View Uploads', componentPath: 'components/upload/UploadActions.tsx' },
+  { permissionKey: 'files.delete', moduleSlug: 'files', elementType: 'action', elementLabel: 'Delete Uploads', componentPath: 'components/upload/UploadActions.tsx' },
   { permissionKey: 'sidebar.system-health', moduleSlug: 'settings', elementType: 'tab', elementLabel: 'Sidebar: System Health', componentPath: 'components/layout/AdminSidebar.tsx' },
   { permissionKey: 'sidebar.ui-permissions', moduleSlug: 'settings', elementType: 'tab', elementLabel: 'Sidebar: UI Permissions', componentPath: 'components/layout/AdminSidebar.tsx' },
   { permissionKey: 'sidebar.admin-bookings', moduleSlug: 'bookings', elementType: 'tab', elementLabel: 'Sidebar: Admin Bookings', componentPath: 'components/layout/AdminSidebar.tsx' },
