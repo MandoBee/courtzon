@@ -521,6 +521,42 @@ describe('Multi-seller order split', () => {
       expect(grouped.total).toBe(1380);
     });
 
+    it('does NOT double-count an order total when the order has 2+ items (order_items join rows)', () => {
+      const padelEdge = buildOrderRow({
+        id: 5551, checkout_group_id: CHECKOUT_GROUP_ID, shop_name: 'Padel Edge',
+        subtotal: 350, shipping_cost: 50, commission_amount: 17.5, total: 400,
+      });
+      const padelRows = buildOrderRowsWithItems(padelEdge, [
+        { product_id: 1, product_name: 'Wilson Padel Ball 150', quantity: 1, unit_price: 150, item_total: 150, seller_id: SELLER_A },
+        { product_id: 2, product_name: 'Adidas Padel Pro Ball 200', quantity: 1, unit_price: 200, item_total: 200, seller_id: SELLER_A },
+      ]);
+
+      const shop5 = buildOrderRow({
+        id: 5552, checkout_group_id: CHECKOUT_GROUP_ID, shop_name: 'Shop 5',
+        subtotal: 85, shipping_cost: 60, commission_amount: 4.25, total: 145,
+      });
+      const shop5Rows = buildOrderRowsWithItems(shop5, [
+        { product_id: 3, product_name: 'Match Badminton Racket', quantity: 1, unit_price: 85, item_total: 85, seller_id: SELLER_B },
+      ]);
+
+      const result = marketplaceService._groupOrdersByItem({
+        data: [...padelRows, ...shop5Rows],
+        total: 3,
+        page: 1,
+        limit: 10,
+      });
+
+      const grouped = result.data[0];
+      expect(grouped._sellerOrderCount).toBe(2);
+
+      const peOrder = grouped._sellerOrders.find((o: any) => o.id === 5551);
+      expect(peOrder.items).toHaveLength(2);
+      expect(peOrder.total).toBe(400);
+      expect(grouped.subtotal).toBe(435);
+      expect(grouped.shipping_cost).toBe(110);
+      expect(grouped.total).toBe(545);
+    });
+
     it('tax_amount is tracked per-seller and aggregated correctly', () => {
       const orderA = buildOrderRow({
         id: 7001, checkout_group_id: CHECKOUT_GROUP_ID,
