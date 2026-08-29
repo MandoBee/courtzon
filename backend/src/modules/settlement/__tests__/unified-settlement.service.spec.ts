@@ -158,3 +158,89 @@ describe('Unified Settlement Service — orchestration', () => {
     await expect(unifiedSettlementService.cancel(7, 9)).rejects.toThrow(/cannot cancel/i);
   });
 });
+
+describe('P3-7 — settlement:paid emit payload contract', () => {
+  let conn: any;
+
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    vi.spyOn(eventBusV2, 'emit').mockResolvedValue(undefined as any);
+    const pool = getPool();
+    vi.spyOn(pool, 'execute').mockResolvedValue([[], []] as any);
+    conn = { beginTransaction: vi.fn(), commit: vi.fn(), rollback: vi.fn(), release: vi.fn() };
+  });
+
+  async function stubPaymentSettlement(overrides: any) {
+    const { getPool } = await import('../../../database/mysql.js');
+    vi.spyOn(getPool(), 'getConnection').mockResolvedValue(conn);
+    vi.spyOn(unifiedSettlementRepository, 'findBySettlementId').mockResolvedValue({
+      id: 5,
+      organisation_id: 1,
+      settlement_status: 'requested',
+      aggregate_version: 1,
+      final_amount: 600,
+      settlement_direction: 'courtzon_to_org',
+      ...overrides,
+    });
+    vi.spyOn(unifiedSettlementRepository, 'findEntitlementIds').mockResolvedValue([1, 2]);
+    vi.spyOn(financialEntitlementService, 'finalizeSettled').mockResolvedValue(undefined);
+    vi.spyOn(unifiedSettlementRepository, 'persistTransition').mockResolvedValue(undefined);
+  }
+
+  function paidPayload(): Record<string, any> {
+    const calls = vi.mocked(eventBusV2.emit).mock.calls.filter((c: any) => c[0] === 'settlement:paid');
+    return calls.length ? (calls[calls.length - 1][1] as Record<string, any>) : null as any;
+  }
+
+  it('COURTZON → ORGANIZATION: emits amount=paidAmount=final, lowercase direction, currency, ids', async () => {
+    await stubPaymentSettlement({});
+    await unifiedSettlementService.recordPayment(5, { paymentMethod: 'bank_transfer', paymentReference: 'REF-1', paidBy: 9 });
+
+    const paidCalls = vi.mocked(eventBusV2.emit).mock.calls.filter((c: any) => c[0] === 'settlement:paid');
+    expect(paidCalls).toHaveLength(1);
+
+    const p = paidPayload();
+    expect(p.settlementId).toBe(5);
+    expect(p.organisationId).toBe(1);
+    expect(p.amount).toBe(600);
+    expect(p.paidAmount).toBe(600);
+    expect(p.direction).toBe('courtzon_to_org');
+    expect(p.currency).toBe('EGP');
+  });
+
+  it('ORGANIZATION → COURTZON: emits amount=paidAmount=final, lowercase direction, currency', async () => {
+    await stubPaymentSettlement({ final_amount: 300, settlement_direction: 'org_to_courtzon' });
+    await unifiedSettlementService.recordPayment(5, { paidBy: 9 });
+
+    const p = paidPayload();
+    expect(p.amount).toBe(300);
+    expect(p.paidAmount).toBe(300);
+    expect(p.direction).toBe('org_to_courtzon');
+    expect(p.currency).toBe('EGP');
+  });
+
+  it('ZERO_BALANCE: emits amount=paidAmount=0 and direction null (listener safely no-ops)', async () => {
+    await stubPaymentSettlement({ final_amount: 0, settlement_direction: null });
+    await unifiedSettlementService.recordPayment(5, { paidBy: 9 });
+
+    const p = paidPayload();
+    expect(p.amount).toBe(0);
+    expect(p.paidAmount).toBe(0);
+    expect(p.direction).toBeNull();
+    // 0 amount → accounting listener `amount <= 0` guard prevents any posting.
+  });
+
+  it('backward compatibility: paidAmount retained; no consumer field removed', async () => {
+    await stubPaymentSettlement({});
+    await unifiedSettlementService.recordPayment(5, { paymentMethod: 'bank_transfer', paidBy: 9 });
+
+    const p = paidPayload();
+    // Both the new contract field and the legacy field are present.
+    expect(p.amount).toBe(600);
+    expect(p.paidAmount).toBe(600);
+    expect('amount' in p).toBe(true);
+    expect('paidAmount' in p).toBe(true);
+    expect(p.paymentMethod).toBe('bank_transfer');
+    expect(p.paidBy).toBe(9);
+  });
+});
