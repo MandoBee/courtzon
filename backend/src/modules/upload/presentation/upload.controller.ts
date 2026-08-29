@@ -212,6 +212,6 @@ export async function getUploadsByEntity(request: FastifyRequest, reply: Fastify
 
 export async function deleteUpload(request: FastifyRequest, reply: FastifyReply) {
   const id = parseInt((request.params as any).id);
-  await uploadService.delete(id);
+  await uploadService.delete(id, (request as any).userId);
   return reply.status(204).send();
 }

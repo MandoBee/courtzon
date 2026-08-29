@@ -5,6 +5,7 @@ import {
   uploadSportIconHandler, getUploadsByEntity, deleteUpload,
 } from './upload.controller.js';
 import { authMiddleware } from '../../../shared/middleware/auth.middleware.js';
+import { requirePermission } from '../../../shared/middleware/auth.middleware.js';
 import { requireOrganisationAccess } from '../../../shared/middleware/route-guard.js';
 import { getPool } from '../../../database/mysql.js';
 import type mysql from 'mysql2/promise';
@@ -89,7 +90,7 @@ async function requireResourceAccess(request: FastifyRequest, reply: FastifyRepl
 export async function uploadRoutes(app: FastifyInstance): Promise<void> {
   // Generic entity upload
   app.post('/upload/:entityType/:entityId/:fileCategory',
-    { preHandler: [authMiddleware] }, uploadFileHandler);
+    { preHandler: [authMiddleware, requirePermission(['files.upload'])] }, uploadFileHandler);
 
   // Organisation-specific (guarded by requireOrganisationAccess)
   app.post('/organisations/:orgId/logo',
@@ -107,9 +108,9 @@ export async function uploadRoutes(app: FastifyInstance): Promise<void> {
 
   // Avatar & Sport icon (backward compatible + enhanced)
   app.post('/upload/avatar',
-    { preHandler: [authMiddleware] }, uploadAvatarHandler);
+    { preHandler: [authMiddleware, requirePermission(['files.upload'])] }, uploadAvatarHandler);
   app.post('/upload/sport-icon',
-    { preHandler: [authMiddleware] }, async (request, reply) => {
+    { preHandler: [authMiddleware, requirePermission(['files.upload'])] }, async (request, reply) => {
       const userId = (request as any).userId;
       if (!userId) return reply.status(401).send({ error: 'Not authenticated' });
       const file = await request.file();
@@ -124,7 +125,7 @@ export async function uploadRoutes(app: FastifyInstance): Promise<void> {
       return reply.send({ iconUrl: result.url });
     });
   app.post('/sports/:sportId/icon',
-    { preHandler: [authMiddleware] }, async (request, reply) => {
+    { preHandler: [authMiddleware, requirePermission(['files.upload'])] }, async (request, reply) => {
       const sportId = parseInt((request.params as any).sportId);
       const file = await request.file();
       if (!file) return reply.status(400).send({ error: 'No file' });
@@ -139,7 +140,7 @@ export async function uploadRoutes(app: FastifyInstance): Promise<void> {
 
   // Coach certification upload (image or PDF)
   app.post('/upload/coach-cert',
-    { preHandler: [authMiddleware] }, async (request, reply) => {
+    { preHandler: [authMiddleware, requirePermission(['files.upload'])] }, async (request, reply) => {
       const userId = (request as any).userId;
       if (!userId) return reply.status(401).send({ error: 'Not authenticated' });
       const file = await request.file();
@@ -154,6 +155,6 @@ export async function uploadRoutes(app: FastifyInstance): Promise<void> {
     });
 
   // Query & delete
-  app.get('/uploads', { preHandler: [authMiddleware] }, getUploadsByEntity);
-  app.delete('/uploads/:id', { preHandler: [authMiddleware] }, deleteUpload);
+  app.get('/uploads', { preHandler: [authMiddleware, requirePermission(['files.view'])] }, getUploadsByEntity);
+  app.delete('/uploads/:id', { preHandler: [authMiddleware, requirePermission(['files.delete'])] }, deleteUpload);
 }
