@@ -5,6 +5,7 @@ import { validateTournamentTransition, validateRegistrationTransition } from '..
 import { NotFoundError, ConflictError } from '../../../shared/errors/app-error.js';
 import { ErrorCodes } from '../../../shared/errors/error-codes.js';
 import { eventBusV2 } from '../../../shared/event-bus/event-bus.v2.js';
+import { getPool } from '../../../database/mysql.js';
 import { recordAudit } from '../../audit-log/index.js';
 
 export class TournamentService {
@@ -258,6 +259,27 @@ export class TournamentService {
     const match = await tournamentRepository.findMatchById(matchId);
     if (!match) throw new NotFoundError('Match', ErrorCodes.MATCH_NOT_FOUND);
     await tournamentRepository.assignReferee(matchId, refereeId);
+    await this.emitRefereeAssigned(match, refereeId, 'tournament');
+  }
+
+  /** Emit referee:assigned with the referee's user_id (non-fatal). */
+  private async emitRefereeAssigned(match: any, refereeId: number, matchType: 'league' | 'tournament'): Promise<void> {
+    try {
+      const [rows] = await getPool().execute<any[]>(
+        'SELECT user_id FROM referees WHERE id = ? AND deleted_at IS NULL LIMIT 1', [refereeId],
+      );
+      const userId = rows[0]?.user_id;
+      if (!userId) return;
+      eventBusV2.emit('referee:assigned', {
+        matchId: Number(match.id),
+        refereeId,
+        userId,
+        matchType,
+      } as any);
+    } catch (err) {
+      // Notification emission is non-fatal; assignment already persisted.
+      console.error('emitRefereeAssigned failed', err);
+    }
   }
 
   async recalculateStandings(tournamentId: number): Promise<void> {

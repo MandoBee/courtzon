@@ -405,6 +405,18 @@ const eventGroups: EventGroupConfig[] = [
     },
   },
   {
+    events: ['referee:assigned', 'referee:unassigned'],
+    handler: async (eventName, data, categorySlug) => {
+      if (data.userId) {
+        await dispatchToUser({
+          userId: data.userId, eventName, categorySlug, data,
+          relatedEntityType: 'match', relatedEntityId: String(data.matchId),
+          action: a('/referee/assignments'),
+        });
+      }
+    },
+  },
+  {
     events: ['coach:application-submitted'],
     handler: async (eventName, data, categorySlug) => {
       if (data.userId) {

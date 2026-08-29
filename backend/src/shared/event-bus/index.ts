@@ -79,6 +79,8 @@ export interface DomainEventMap {
   'coaching:session-scheduled': BaseEvent & { sessionId: number; coachId: number; userId: number; startTime: Date };
   'coaching:session-cancelled': BaseEvent & { sessionId: number; userId: number; reason?: string };
   'coaching:session-reminder': BaseEvent & { sessionId: number; userId: number; startTime: Date; coachName: string };
+  'referee:assigned': BaseEvent & { matchId: number; refereeId: number; userId: number; matchType: 'league' | 'tournament' };
+  'referee:unassigned': BaseEvent & { matchId: number; refereeId: number; userId: number; matchType: 'league' | 'tournament' };
   'coach:invited': BaseEvent & { coachId: number; userId: number; organisationId: number; organisationName: string; invitedBy: number };
   'coach:agreement-added': BaseEvent & { coachId: number; coachName: string; userId: number; organisationId: number; organisationName: string };
   'coach:application-submitted': BaseEvent & { userId: number; coachId: number; playerName?: string };
