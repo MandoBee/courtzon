@@ -773,7 +773,15 @@ export class BookingService {
     );
 
     let feeAmount = 0;
-    const totalAmount = Number(booking.total_amount);
+    // P3-9: the refund/fee base is the ACTUAL amount paid for the booking
+    // (payment_transactions.amount), not an inferred total. V1 sync charges
+    // total + tax; V2 / prepare charge total. Using the real captured amount
+    // means a full V1 refund returns the tax that was actually collected,
+    // while a V2 refund never returns tax that was never charged. Bookings
+    // with no captured payment row (COD / legacy 'paid' rows) fall back to
+    // total_amount, preserving existing behavior and the refund ceiling.
+    const paidAmount = await this._resolveBookingPaidAmount(booking);
+    const refundBase = paidAmount > 0 ? paidAmount : Number(booking.total_amount);
 
     const bookingStart = new Date(`${booking.booking_date}T${booking.start_time}`);
     const now = new Date();
@@ -801,13 +809,13 @@ export class BookingService {
 
       if (matched) {
         const feePct = 100 - Number(matched.refund_percent || 100);
-        feeAmount = totalAmount * feePct / 100;
+        feeAmount = refundBase * feePct / 100;
       } else if (policies.length > 0) {
-        feeAmount = totalAmount;
+        feeAmount = refundBase;
       }
     }
 
-    return { feeAmount, refundAmount: totalAmount - feeAmount };
+    return { feeAmount, refundAmount: Math.max(0, refundBase - feeAmount) };
   }
 
   private async _processRefund(booking: any, refundAmount: number, userId: number): Promise<void> {
@@ -1178,6 +1186,23 @@ export class BookingService {
     return Math.max(0, grossPayable - alreadyRefunded);
   }
 
+  /**
+   * P3-9: authoritative amount actually paid for a booking = the sum of its
+   * captured payment transactions (status paid/refunded). V1 sync charges
+   * total + tax; V2 / prepare charge total. Returns 0 when no captured payment
+   * row exists (COD / legacy rows), in which case callers fall back to
+   * total_amount so the refund ceiling is never inflated beyond what was paid.
+   */
+  private async _resolveBookingPaidAmount(booking: any): Promise<number> {
+    const [rows] = await getPool().execute<RowData>(
+      `SELECT COALESCE(SUM(amount), 0) AS paid
+       FROM payment_transactions
+       WHERE booking_id = ? AND payment_status IN ('paid', 'refunded')`,
+      [booking.id],
+    );
+    return Number((rows[0] as any)?.paid ?? 0);
+  }
+
   private async _processGatewayRefund(booking: any, refundAmount: number): Promise<void> {
     // Money movement MUST succeed before the canonical refund accounting
     // (booking:refunded) is allowed to advance. Previously every failure was
@@ -1188,9 +1213,14 @@ export class BookingService {
     const requested = Number(refundAmount);
     if (requested <= 0) return;
 
-    // Money never refunded more than the remaining refundable gross.
+    // Money never refunded more than the remaining refundable gross, and never
+    // more than the ACTUAL amount captured for the booking (P3-9 ceiling: the
+    // paid amount is the source of truth — V1 charged total+tax, V2 charged
+    // total, so the refund can never exceed what was really collected).
     const cap = await this._computeRefundCap(booking);
-    const moveAmount = Math.min(requested, cap);
+    const paidAmount = await this._resolveBookingPaidAmount(booking);
+    const ceiling = paidAmount > 0 ? Math.min(cap, paidAmount) : cap;
+    const moveAmount = Math.min(requested, ceiling);
     if (moveAmount <= 0) {
       log.warn({ bookingId: booking.id, requested }, 'No remaining refundable amount — skipping refund');
       return;
