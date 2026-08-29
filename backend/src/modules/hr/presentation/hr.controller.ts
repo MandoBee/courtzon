@@ -1495,27 +1495,112 @@ export async function markPayrollPaidHandler(request: FastifyRequest, reply: Fas
   const { id } = request.params as any;
   const userId = (request as any).userId;
 
-  const [existing] = await pool.execute<RowData>(`SELECT * FROM payroll_runs WHERE id = ?`, [Number(id)]);
+  const [existing] = await pool.execute<RowData>(`SELECT * FROM payroll_runs WHERE id = ? FOR UPDATE`, [Number(id)]);
   if (!existing.length) throw new NotFoundError('Payroll run', ErrorCodes.PAYROLL_RUN_NOT_FOUND);
+  if (existing[0].status === 'paid') {
+    throw new AppError('Payroll is already paid', 400, 'VALIDATION_ERROR', { code: ErrorCodes.PAYROLL_ALREADY_PAID });
+  }
   assertValidTransition(existing[0].status, 'paid', PAYROLL_TRANSITIONS);
 
-  await pool.execute<RowData>(
-    `UPDATE payroll_runs SET status = 'paid', paid_at = NOW() WHERE id = ?`,
-    [Number(id)]
-  );
+  const run = existing[0];
+  const conn = await pool.getConnection();
 
-  recordAudit({
-    actorId: userId,
-    action: 'HR.PAYROLL_RUN.MARK_PAID',
-    entityType: 'payroll_runs',
-    entityId: Number(id),
-    beforeState: { status: existing[0].status },
-    afterState: { status: 'paid' },
-    ipAddress: request.ip,
-    userAgent: request.headers['user-agent'],
-  });
+  try {
+    await conn.beginTransaction();
 
-  return reply.send({ data: { id: Number(id), status: 'paid' } });
+    // P3-8: the transition UPDATE is guarded by the expected status so a
+    // second concurrent mark-paid of the same run cannot overwrite it
+    // (0 rows ⇒ another actor already paid it). Together with the FOR UPDATE
+    // read above this keeps whole-run idempotency even under concurrent
+    // requests — mirroring postPayrollRunHandler.
+    const [paidRes] = await conn.execute<RowData>(
+      `UPDATE payroll_runs SET status = 'paid', paid_at = NOW() WHERE id = ? AND status = ?`,
+      [Number(id), existing[0].status]
+    );
+    if ((paidRes as any).affectedRows === 0) {
+      await conn.rollback();
+      conn.release();
+      throw new AppError('Payroll is already paid', 400, 'VALIDATION_ERROR', { code: ErrorCodes.PAYROLL_ALREADY_PAID });
+    }
+
+    const [entries] = await conn.execute<RowData>(
+      `SELECT pe.*, e.user_id FROM payroll_entries pe JOIN employees e ON e.id = pe.employee_id WHERE pe.payroll_run_id = ?`,
+      [Number(id)]
+    );
+
+    const [periods] = await conn.execute<RowData>(
+      `SELECT id FROM accounting_periods WHERE ? BETWEEN start_date AND end_date AND status = 'open' LIMIT 1`,
+      [run.period_end]
+    );
+
+    if (periods.length) {
+      const periodId = periods[0].id;
+      // Resolve payroll-paid accounts via accounting engine (no hard-coded IDs)
+      const { accountingEngineService } = await import('../../financial/application/accounting-engine.service.js');
+      const mapping = await accountingEngineService.resolveMapping('payroll_paid', null);
+      const conceptToAccount = new Map<string, number>();
+      for (const m of mapping) { conceptToAccount.set(m.concept, m.accountId); }
+      const salaryPayableId = conceptToAccount.get('salary_payable');
+      const cashBankId = conceptToAccount.get('cash_bank');
+      if (!salaryPayableId || !cashBankId) {
+        throw new AppError('Missing payroll-paid account mapping — configure payroll_paid event mapping', 500, 'CONFIG_ERROR');
+      }
+
+      const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
+      for (const entry of entries) {
+        const amount = Number(entry.net_pay);
+        const description = `Payroll paid ${run.period_start} to ${run.period_end} - Employee #${entry.employee_id}`;
+        // P3-8: per-employee source_id (payroll_entries.id) matches the payroll
+        // POST/F-6 dedup convention (uk_dedup on source_type/source_id/
+        // event_type/chart_account_id/side) so the clearing Dr/Cr rows are
+        // distinct per employee and cannot duplicate on retry.
+        const [leDrResult] = await conn.execute<RowData>(
+          `INSERT INTO ledger_entries (transaction_id, source_type, source_id, event_type, period_id, organisation_id, chart_account_id, account_type, side, amount, currency, description, reference_id, recorded_at)
+           VALUES (?, 'journal', ?, 'payroll_paid', ?, NULL, ?, NULL, 'debit', ?, 'EGP', ?, ?, ?)`,
+          [`payroll_paid_${run.id}_${entry.employee_id}_${Date.now()}`, Number(entry.id), periodId, salaryPayableId, amount, description, String(entry.employee_id), now],
+        );
+        const leDrId = (leDrResult as any).insertId;
+        await conn.execute(
+          `INSERT INTO general_ledger (ledger_entry_id, organisation_id, period_id, account_id, entry_date, debit, credit, balance, reference_type, reference_id, description, created_by)
+           VALUES (?, NULL, ?, ?, ?, ?, ?, 0, 'payroll', ?, ?, ?)`,
+          [leDrId, periodId, salaryPayableId, run.period_end, amount, 0, Number(id), description, userId]
+        );
+
+        // Canonical ledger_entries (credit cash_bank)
+        const [leCrResult] = await conn.execute<RowData>(
+          `INSERT INTO ledger_entries (transaction_id, source_type, source_id, event_type, period_id, organisation_id, chart_account_id, account_type, side, amount, currency, description, reference_id, recorded_at)
+           VALUES (?, 'journal', ?, 'payroll_paid', ?, NULL, ?, NULL, 'credit', ?, 'EGP', ?, ?, ?)`,
+          [`payroll_paid_${run.id}_${entry.employee_id}_${Date.now()}c`, Number(entry.id), periodId, cashBankId, amount, description, String(entry.employee_id), now],
+        );
+        const leCrId = (leCrResult as any).insertId;
+        await conn.execute(
+          `INSERT INTO general_ledger (ledger_entry_id, organisation_id, period_id, account_id, entry_date, debit, credit, balance, reference_type, reference_id, description, created_by)
+           VALUES (?, NULL, ?, ?, ?, ?, ?, 0, 'payroll', ?, ?, ?)`,
+          [leCrId, periodId, cashBankId, run.period_end, 0, amount, Number(id), description, userId]
+        );
+      }
+    }
+
+    await conn.commit();
+
+    recordAudit({
+      actorId: userId,
+      action: 'HR.PAYROLL_RUN.MARK_PAID',
+      entityType: 'payroll_runs',
+      entityId: Number(id),
+      beforeState: { status: existing[0].status },
+      afterState: { status: 'paid' },
+      ipAddress: request.ip,
+      userAgent: request.headers['user-agent'],
+    });
+
+    return reply.send({ data: { id: Number(id), status: 'paid' } });
+  } catch (err) {
+    await conn.rollback();
+    throw err;
+  } finally {
+    conn.release();
+  }
 }
 
 export async function closePayrollRunHandler(request: FastifyRequest, reply: FastifyReply) {
