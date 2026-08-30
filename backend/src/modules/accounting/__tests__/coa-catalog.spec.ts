@@ -33,11 +33,15 @@ describe('L4 Catalog + Organisation COA Customization', () => {
 
   it('every EVENT_CONCEPTS event resolves a complete global mapping', async () => {
     const { EVENT_CONCEPTS, getEventConcepts, validateCompleteMapping } = await import('../../financial/application/accounting-concepts.js');
-    const { accountingEngineService } = await import('../../financial/application/accounting-engine.service.js');
+    const { accountingEngineService, ORG_BOOK_EVENTS } = await import('../../financial/application/accounting-engine.service.js');
     const eventTypes = Object.keys(EVENT_CONCEPTS);
-    expect(eventTypes.length).toBeGreaterThanOrEqual(44);
+    expect(eventTypes.length).toBeGreaterThanOrEqual(46);
 
     for (const eventType of eventTypes) {
+      // Organization-book events are org-scoped by design (their accounts are
+      // org-owned L4 accounts MKT-SALES / MKT-COMM-EXP / MKT-SHIP-LIAB / org 1161).
+      // They have NO global mapping — resolving them with org=null is invalid.
+      if (ORG_BOOK_EVENTS[eventType]) continue;
       const mapping = await accountingEngineService.resolveMapping(eventType, null);
       const mappedConcepts = mapping.map(m => m.concept);
       const missing = validateCompleteMapping(eventType, mappedConcepts);

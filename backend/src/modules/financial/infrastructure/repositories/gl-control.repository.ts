@@ -17,7 +17,7 @@ import { getPool } from '../../../../database/mysql.js';
 type RowData = RowDataPacket[];
 
 /** Counterparty-position concepts (organisation/seller — coach excluded). */
-export const CONTROL_CONCEPTS = ['org_payable', 'merchant_payable', 'receivable_from_org'];
+export const CONTROL_CONCEPTS = ['org_payable', 'merchant_payable', 'receivable_from_org', 'marketplace_receivable'];
 
 export interface ControlAccountTotals {
   code: string;

@@ -98,26 +98,28 @@ export const EVENT_CONCEPTS: Record<string, { debit: string[]; credit: string[] 
     debit: ['platform_commission', 'tax_liability'],
     credit: ['receivable_from_org'],
   },
-  // Marketplace payment custody: CourtZon collects customer payment on behalf
-  // of the merchant. Only commission is CourtZon revenue; merchant share is a
-  // payable; tax is a liability. Shipping is a distinct payable (2400), never
-  // merged into the merchant merchandise payable (2202). (custody model)
+  // Marketplace payment custody (COURTZON BOOK): CourtZon collects customer
+  // payment on behalf of the merchants. CourtZon's Merchant Payable control is
+  // the TOTAL owed to each seller (merchandise net + shipping), posted to the
+  // global control account 2202 with organisation_id = NULL. Shipping belongs
+  // economically to the ORGANIZATION (org book), never to CourtZon — so no
+  // shipping concept appears here. Only commission (4160) is CourtZon revenue.
   marketplace_card_payment: {
     debit: ['payment_clearing'],
-    credit: ['merchant_payable', 'shipping', 'platform_commission', 'tax_liability'],
+    credit: ['merchant_payable', 'platform_commission', 'tax_liability'],
   },
   marketplace_wallet_payment: {
     debit: ['wallet_liability_spend'],
-    credit: ['merchant_payable', 'shipping', 'platform_commission', 'tax_liability'],
+    credit: ['merchant_payable', 'platform_commission', 'tax_liability'],
   },
   marketplace_merchant_refund: {
-    debit: ['merchant_payable', 'shipping', 'platform_commission', 'tax_liability'],
+    debit: ['merchant_payable', 'platform_commission', 'tax_liability'],
     credit: ['payment_clearing'],
   },
   // Wallet-funded marketplace refund — credit wallet_liability, not
   // payment_clearing (card clearing asset was never debited for wallet orders).
   marketplace_wallet_refund: {
-    debit: ['merchant_payable', 'shipping', 'platform_commission', 'tax_liability'],
+    debit: ['merchant_payable', 'platform_commission', 'tax_liability'],
     credit: ['wallet_liability'],
   },
   // Marketplace CASH / COD — the seller physically collected the customer's
@@ -133,6 +135,29 @@ export const EVENT_CONCEPTS: Record<string, { debit: string[]; credit: string[] 
   marketplace_cash_reversal: {
     debit: ['platform_commission'],
     credit: ['marketplace_receivable'],
+  },
+  // ── ORGANIZATION BOOK ──
+  // The organization records its OWN economics for a marketplace sale, entirely
+  // separate from CourtZon's book. All lines are org-scoped (organisation_id =
+  // seller). For CARD/WALLET/CASH the org's net position is identical:
+  //   Dr org Marketplace Receivable   = merchantNet + shipping
+  //   Dr org Marketplace Commission Exp = CourtZon commission
+  //   Cr org Marketplace Sales Revenue = gross merchandise − discount
+  //   Cr org Shipping Liability        = shipping
+  // Balanced: Dr (merchantNet + shipping) + commission = Cr (merchantNet + commission) + shipping.
+  // Receivable (merchantNet + shipping) equals the amount due from CourtZon per
+  // the approved model; for CASH it represents the org's retained net (it
+  // already holds the customer's cash — CourtZon's 1161 records the commission
+  // receivable from the org).
+  marketplace_org_receivable: {
+    debit: ['marketplace_receivable', 'commission_expense'],
+    credit: ['sales_revenue', 'shipping_liability'],
+  },
+  // Organization-book reversal (refund/cancel) — symmetric reversal of the org's
+  // marketplace economics without touching CourtZon's book.
+  marketplace_org_receivable_reversal: {
+    debit: ['sales_revenue', 'shipping_liability'],
+    credit: ['marketplace_receivable', 'commission_expense'],
   },
   // Marketplace complaint refund — symmetric reversal of the original
   // marketplace custody economics when a complaint refunds the buyer to their

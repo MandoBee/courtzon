@@ -89,10 +89,14 @@ export class ReconciliationService {
 
     // Liability control (2200-family): credit-positive = CourtZon owes org.
     // Asset control (1160-family): debit-positive = org owes CourtZon.
-    // Direction comes from the account's semantic COA classification
-    // (account_type: liability/asset), NOT from a code-prefix convention.
+    // ORG-BOOK Marketplace Receivable (1161): the organization's claim on
+    // CourtZon (its mirror of CourtZon's Merchant Payable control). Although it
+    // is an asset account, a debit-positive balance means COURTZON OWES THE ORG
+    // (payable-to-org), so it is added to the payable leg — NOT the receivable
+    // leg. This preserves reconciliation after the multi-book split (CourtZon
+    // 2202 control is global/org NULL; the org's mirror is its own 1161).
     // F-24: a future control account whose code does not start with "2"/"1"
-    // is still classified correctly by its account_type.
+    // is still classified correctly by its account_type + 1161 rule.
     let glPayable = 0;
     let glReceivable = 0;
     const glAccounts = controlAccounts.map((acc) => {
@@ -100,15 +104,20 @@ export class ReconciliationService {
       const debits = round2(t?.debits ?? 0);
       const credits = round2(t?.credits ?? 0);
       const isLiabilityControl = classifyAccountType(acc.account_type) === 'liability';
-      if (isLiabilityControl) glPayable += round2(credits - debits);
-      else glReceivable += round2(debits - credits);
-      return {
-        code: acc.code,
-        accountId: acc.id,
-        debits,
-        credits,
-        signedBalance: isLiabilityControl ? round2(credits - debits) : round2(debits - credits),
-      };
+      // Org-book 1161: org's receivable from CourtZon = payable-to-org mirror.
+      const isOrgBookReceivableMirror = acc.code === '1161' && classifyAccountType(acc.account_type) === 'asset';
+      let signedBalance: number;
+      if (isLiabilityControl) {
+        signedBalance = round2(credits - debits);
+        glPayable += signedBalance;
+      } else if (isOrgBookReceivableMirror) {
+        signedBalance = round2(debits - credits);
+        glPayable += signedBalance;
+      } else {
+        signedBalance = round2(debits - credits);
+        glReceivable += signedBalance;
+      }
+      return { code: acc.code, accountId: acc.id, debits, credits, signedBalance };
     });
     const glNet = round2(glPayable - glReceivable);
 

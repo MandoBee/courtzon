@@ -115,11 +115,82 @@ async function resolveCheckoutOrderIds(orderId: number): Promise<number[]> {
 }
 
 /**
+ * Post the ORGANIZATION BOOK for a single seller-order. The organization records
+ * its OWN economics entirely separate from CourtZon's book (org-scoped lines).
+ *   Dr org Marketplace Receivable   = merchantNet + shipping  (due from CourtZon)
+ *   Dr org Marketplace Commission Exp = commission
+ *   Cr org Marketplace Sales Revenue = gross merchandise − discount
+ *   Cr org Shipping Liability        = shipping
+ * Balanced: Dr (merchantNet+shipping+commission) = Cr (merchantNet+commission+shipping).
+ * Idempotent per (source_type, source_id, 'marketplace_org_receivable').
+ */
+async function postOrganisationBookAccounting(econ: OrderEconomics, currency: string, oid: number): Promise<void> {
+  if (!econ.merchantId) return;
+  await postAccountingEvent(
+    'marketplace_org_receivable', 'marketplace', oid, econ.merchantId,
+    {
+      marketplace_receivable: Math.round((econ.merchantNet + econ.shipping) * 100) / 100,
+      commission_expense: econ.commission,
+      sales_revenue: Math.round((econ.grossMerchandise - econ.discountAmount) * 100) / 100,
+      shipping_liability: econ.shipping,
+    },
+    currency,
+    `Order #${oid} organization book (sales/commission/shipping)`,
+    undefined,
+    {
+      marketplace_receivable: econ.merchantId,
+      commission_expense: econ.merchantId,
+      sales_revenue: econ.merchantId,
+      shipping_liability: econ.merchantId,
+    },
+  );
+}
+
+/**
+ * Post the ORGANIZATION BOOK reversal for a single seller-order (refund/cancel).
+ * Symmetric reversal of the org's marketplace economics.
+ */
+async function postOrganisationBookReversalAccounting(econ: OrderEconomics, currency: string, oid: number): Promise<void> {
+  if (!econ.merchantId) return;
+  await postAccountingEvent(
+    'marketplace_org_receivable_reversal', 'marketplace', oid, econ.merchantId,
+    {
+      sales_revenue: Math.round((econ.grossMerchandise - econ.discountAmount) * 100) / 100,
+      shipping_liability: econ.shipping,
+      marketplace_receivable: Math.round((econ.merchantNet + econ.shipping) * 100) / 100,
+      commission_expense: econ.commission,
+    },
+    currency,
+    `Order #${oid} organization book reversal`,
+    undefined,
+    {
+      sales_revenue: econ.merchantId,
+      shipping_liability: econ.merchantId,
+      marketplace_receivable: econ.merchantId,
+      commission_expense: econ.merchantId,
+    },
+  );
+}
+
+/**
  * Post marketplace CARD/WALLET payment accounting for EVERY seller-order in the
- * checkout group. CourtZon collects the full customer amount (clearing), owes
- * each beneficiary its merchandise net (2202) + shipping (2400), and retains
- * its commission (4160, platform-scoped). Each seller-order is posted
- * independently and idempotently.
+ * checkout group.
+ *
+ * COURTZON BOOK (organisation_id = NULL):
+ *   Dr 1100 Payment Clearing            gross
+ *   Cr 2202 Merchant Payable (control)  merchantNet + shipping  (total owed to seller)
+ *   Cr 4160 Marketplace Revenue         commission
+ * The Merchant Payable control is global; per-seller traceability is preserved
+ * via source_type/source_id and the seller's own organization-book 1161
+ * receivable + financial_entitlements.
+ *
+ * ORGANIZATION BOOK (organisation_id = seller):
+ *   Dr org 1161 Marketplace Receivable (merchantNet + shipping)
+ *   Dr org Marketplace Commission Expense
+ *   Cr org Marketplace Sales Revenue (gross merchandise − discount)
+ *   Cr org Shipping Liability
+ *
+ * Each seller-order is posted independently and idempotently.
  */
 async function postMarketplacePaymentAccounting(orderId: number, paymentMethod: string, currency: string): Promise<void> {
   const orderIds = await resolveCheckoutOrderIds(orderId);
@@ -130,11 +201,12 @@ async function postMarketplacePaymentAccounting(orderId: number, paymentMethod: 
       continue;
     }
     const eventType = paymentMethod === 'wallet' ? 'marketplace_wallet_payment' : 'marketplace_card_payment';
+    // CourtZon total payable to the seller = merchandise net + shipping.
+    const totalPayable = Math.round((econ.merchantNet + econ.shipping) * 100) / 100;
     await postAccountingEvent(
       eventType, 'marketplace', oid, null,
       {
-        merchant_payable: econ.merchantNet,
-        shipping: econ.shipping,
+        merchant_payable: totalPayable,
         platform_commission: econ.commission,
         tax_liability: econ.tax,
         payment_clearing: eventType === 'marketplace_card_payment' ? econ.grossAmount : 0,
@@ -144,14 +216,14 @@ async function postMarketplacePaymentAccounting(orderId: number, paymentMethod: 
       `Order #${oid} payment (custody: ${econ.cashHolder})`,
       undefined,
       {
-        merchant_payable: econ.merchantId,
-        shipping: econ.merchantId,
+        merchant_payable: null,
         platform_commission: null,
         payment_clearing: null,
         tax_liability: null,
         wallet_liability_spend: null,
       },
     );
+    await postOrganisationBookAccounting(econ, currency, oid);
   }
 }
 
@@ -163,16 +235,15 @@ async function postMarketplaceRefundAccounting(orderId: number, currency: string
       log.error({ orderId: oid }, 'Marketplace order economics not found — skipping refund accounting');
       continue;
     }
-    // Reverse merchant merchandise payable + shipping + commission + tax.
-    // Wallet orders return funds to the customer's wallet (wallet_liability
-    // credit); card orders reverse the payment_clearing asset.
+    // Reverse the CourtZon book (merchant payable control + commission + tax)
+    // and the organization book.
     const isWallet = econ.paymentMethod === 'wallet';
     const eventType = isWallet ? 'marketplace_wallet_refund' : 'marketplace_merchant_refund';
+    const totalPayable = Math.round((econ.merchantNet + econ.shipping) * 100) / 100;
     await postAccountingEvent(
       eventType, 'marketplace', oid, null,
       {
-        merchant_payable: econ.merchantNet,
-        shipping: econ.shipping,
+        merchant_payable: totalPayable,
         platform_commission: econ.commission,
         tax_liability: econ.tax,
         payment_clearing: isWallet ? 0 : econ.grossAmount,
@@ -182,14 +253,14 @@ async function postMarketplaceRefundAccounting(orderId: number, currency: string
       `Order #${oid} refunded (custody reversal)`,
       undefined,
       {
-        merchant_payable: econ.merchantId,
-        shipping: econ.merchantId,
+        merchant_payable: null,
         platform_commission: null,
         payment_clearing: null,
         tax_liability: null,
         wallet_liability: null,
       },
     );
+    await postOrganisationBookReversalAccounting(econ, currency, oid);
   }
 }
 
@@ -197,6 +268,20 @@ async function postMarketplaceRefundAccounting(orderId: number, currency: string
  * Post marketplace CASH/COD commission receivable. The seller collected the
  * customer's cash directly, so CourtZon is owed only its commission (a
  * receivable from the seller). The full customer amount NEVER enters 1100.
+ * Per-seller-order, idempotent.
+ */
+/**
+ * Post marketplace CASH/COD accounting for EVERY seller-order.
+ *
+ * COURTZON BOOK (org NULL): the seller collected the customer's cash directly,
+ * so CourtZon records ONLY its commission receivable:
+ *   Dr 1161 Marketplace Receivable  commission
+ *   Cr 4160 Marketplace Revenue      commission
+ * The full customer amount NEVER enters 1100, and CourtZon's 1161 is CourtZon's
+ * own asset (org NULL) — never org-scoped.
+ *
+ * ORGANIZATION BOOK (org = seller): the org records its own economics
+ * (sales revenue / commission expense / shipping liability / receivable).
  * Per-seller-order, idempotent.
  */
 async function postMarketplaceCashCommissionAccounting(orderId: number, currency: string): Promise<void> {
@@ -213,14 +298,16 @@ async function postMarketplaceCashCommissionAccounting(orderId: number, currency
       currency,
       `Order #${oid} delivered (cash — commission receivable)`,
       undefined,
-      { marketplace_receivable: econ.merchantId, platform_commission: null },
+      { marketplace_receivable: null, platform_commission: null },
     );
+    await postOrganisationBookAccounting(econ, currency, oid);
   }
 }
 
 /**
  * Reverse a marketplace cash/COD commission receivable on refund/cancel.
- * Reverses 1161 (receivable) and 4160 (platform revenue) — per-seller-order.
+ * Reverses CourtZon's 1161 receivable + 4160 revenue (org NULL) and the
+ * organization book — per-seller-order.
  */
 async function postMarketplaceCashReversalAccounting(orderId: number, currency: string, action: 'refunded' | 'cancelled'): Promise<void> {
   const orderIds = await resolveCheckoutOrderIds(orderId);
@@ -238,8 +325,9 @@ async function postMarketplaceCashReversalAccounting(orderId: number, currency: 
       currency,
       `Order #${oid} ${action} (cash — commission receivable reversed)`,
       undefined,
-      { platform_commission: null, marketplace_receivable: econ.merchantId },
+      { platform_commission: null, marketplace_receivable: null },
     );
+    await postOrganisationBookReversalAccounting(econ, currency, oid);
   }
 }
 

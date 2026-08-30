@@ -300,11 +300,23 @@ export async function updateAccountHandler(request: FastifyRequest, reply: Fasti
   const wantsNameChange = body.name != null && body.name !== current.name;
   const wantsDeactivate = body.isActive === false && current.is_active === 1;
 
-  // System accounts (fixed L1–L4 platform structure) are immutable — they may
-  // not be renamed or deactivated, preventing accidental breakage of the
-  // platform's default chart of accounts and event mappings.
-  if (isSystem && (wantsNameChange || wantsDeactivate)) {
-    throw new AppError('System accounts are protected and cannot be renamed or deactivated', 403, 'FORBIDDEN');
+  // ── System-controlled account protection ──
+  // Accounts used by automatic/system accounting (is_system = 1) are protected
+  // infrastructure: no rename, no structural change (code / type / normal_side /
+  // parent / organisation ownership), no deactivation. This includes CourtZon
+  // system accounts AND organization-scoped system accounts (e.g. the
+  // auto-provisioned marketplace org-book accounts MKT-SALES / MKT-COMM-EXP /
+  // MKT-SHIP-LIAB / org 1161).
+  if (isSystem) {
+    const structuralFields = ['code', 'type', 'normal_side', 'normalSide', 'parent_id', 'parentId', 'organisation_id', 'organisationId'];
+    const structuralAttempt = structuralFields.some((f) => body[f] != null && body[f] !== current[f]);
+    if (wantsNameChange || structuralAttempt || wantsDeactivate) {
+      throw new AppError(
+        'System accounts are protected: rename, code/type/normal_side/parent/ownership changes and deactivation are forbidden',
+        403,
+        'FORBIDDEN',
+      );
+    }
   }
 
   // Never allow deactivating an account that is still referenced by active
