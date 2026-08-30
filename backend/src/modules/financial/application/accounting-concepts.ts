@@ -100,24 +100,39 @@ export const EVENT_CONCEPTS: Record<string, { debit: string[]; credit: string[] 
   },
   // Marketplace payment custody: CourtZon collects customer payment on behalf
   // of the merchant. Only commission is CourtZon revenue; merchant share is a
-  // payable; tax is a liability. (custody model)
+  // payable; tax is a liability. Shipping is a distinct payable (2400), never
+  // merged into the merchant merchandise payable (2202). (custody model)
   marketplace_card_payment: {
     debit: ['payment_clearing'],
-    credit: ['merchant_payable', 'platform_commission', 'tax_liability'],
+    credit: ['merchant_payable', 'shipping', 'platform_commission', 'tax_liability'],
   },
   marketplace_wallet_payment: {
     debit: ['wallet_liability_spend'],
-    credit: ['merchant_payable', 'platform_commission', 'tax_liability'],
+    credit: ['merchant_payable', 'shipping', 'platform_commission', 'tax_liability'],
   },
   marketplace_merchant_refund: {
-    debit: ['merchant_payable', 'platform_commission', 'tax_liability'],
+    debit: ['merchant_payable', 'shipping', 'platform_commission', 'tax_liability'],
     credit: ['payment_clearing'],
   },
   // Wallet-funded marketplace refund — credit wallet_liability, not
   // payment_clearing (card clearing asset was never debited for wallet orders).
   marketplace_wallet_refund: {
-    debit: ['merchant_payable', 'platform_commission', 'tax_liability'],
+    debit: ['merchant_payable', 'shipping', 'platform_commission', 'tax_liability'],
     credit: ['wallet_liability'],
+  },
+  // Marketplace CASH / COD — the seller physically collected the customer's
+  // money. CourtZon is owed ONLY its commission (a receivable from the seller),
+  // booked to the dedicated Marketplace Receivable (1161). The seller keeps the
+  // merchandise + shipping cash; the full customer amount NEVER enters 1100.
+  marketplace_cash_commission: {
+    debit: ['marketplace_receivable'],
+    credit: ['platform_commission'],
+  },
+  // Marketplace CASH / COD reversal — symmetric reversal of the cash commission
+  // receivable (used for cash refunds/cancellations).
+  marketplace_cash_reversal: {
+    debit: ['platform_commission'],
+    credit: ['marketplace_receivable'],
   },
   // Marketplace complaint refund — symmetric reversal of the original
   // marketplace custody economics when a complaint refunds the buyer to their

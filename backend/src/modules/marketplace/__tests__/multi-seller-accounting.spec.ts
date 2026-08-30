@@ -281,58 +281,24 @@ describe('accounting: confirm + delivery journals (example: 1000 / 60 / 10%)', (
     ]));
   }
 
-  it('CARD delivery journal: debit platform 1060 = credit fee 100 + credit seller 960', async () => {
+  it('CARD delivery — legacy path retired: only cash-collection status, NO legacy transaction/entries', async () => {
     seedConfirmedOrder('card');
     await marketplaceService._recordDeliveryFinancials(6001);
 
-    expect(mockCreateTransaction).toHaveBeenCalledWith(expect.objectContaining({
-      type: 'marketplace_order', sourceType: 'marketplace', sourceId: 6001, totalAmount: 1060, status: 'completed',
-    }));
-
-    const entries = mockCreateEntries.mock.calls[0][0];
-    const debits = entries.filter((e: any) => e.side === 'debit');
-    const credits = entries.filter((e: any) => e.side === 'credit');
-
-    // Balanced double-entry: debits == credits == buyer payment
-    expect(debits.reduce((s: number, e: any) => s + e.amount, 0)).toBe(1060);
-    expect(credits.reduce((s: number, e: any) => s + e.amount, 0)).toBe(1060);
-
-    // Debit: collected cash leaves platform float staging
-    expect(debits[0]).toMatchObject({ entityType: 'platform_account', entityId: 1, amount: 1060 });
-
-    // Credit: CourtZon revenue = 100 (commission on products only)
-    const feeCredit = credits.find((e: any) => e.entityType === 'platform_account');
-    expect(feeCredit).toMatchObject({ entityId: 2, amount: 100 });
-
-    // Credit: seller entitlement = 960 (900 net products + 60 shipping)
-    const branchCredit = credits.find((e: any) => e.entityType === 'branch');
-    expect(branchCredit).toMatchObject({ amount: 960, organisationId: 10, branchId: 55 });
-    // Phase 2 Step 5: due_to_courtzon ledger removed — commission in financial_entitlements
+    // The legacy transactions/transaction_entries double-post is retired — the
+    // canonical Accounting Engine is the single source of truth.
+    expect(mockCreateTransaction).not.toHaveBeenCalled();
+    expect(mockCreateEntries).not.toHaveBeenCalled();
+    expect(repoMock.updateCashCollectionStatus).toHaveBeenCalledWith(6001, 'held_by_courtzon');
   });
 
-  it('CASH delivery journal: debit seller-cash 1060 = credit fee 100 + credit entitlement 960', async () => {
+  it('CASH delivery — legacy path retired: only cash-collection status, NO legacy transaction/entries', async () => {
     seedConfirmedOrder('cash');
     await marketplaceService._recordDeliveryFinancials(6001);
 
-    const entries = mockCreateEntries.mock.calls[0][0];
-    const debits = entries.filter((e: any) => e.side === 'debit');
-    const credits = entries.filter((e: any) => e.side === 'credit');
-
-    expect(debits.reduce((s: number, e: any) => s + e.amount, 0)).toBe(1060);
-    expect(credits.reduce((s: number, e: any) => s + e.amount, 0)).toBe(1060);
-
-    // Cash sits with the SELLER â€” never booked as CourtZon collection
-    expect(debits[0]).toMatchObject({ entityType: 'branch', amount: 1060, organisationId: 10, branchId: 55 });
-
-    // CourtZon commission receivable FROM the seller
-    const feeCredit = credits.find((e: any) => e.entityType === 'platform_account');
-    expect(feeCredit?.amount).toBe(100);
-
-    // Seller keeps 960 of the cash it collected
-    const branchCredit = credits.find((e: any) => e.entityType === 'branch' && String(e.description).includes('Org net'));
-    expect(branchCredit?.amount).toBe(960);
-
-    // Phase 2 Step 5: due_to_courtzon ledger removed — commission in financial_entitlements
+    expect(mockCreateTransaction).not.toHaveBeenCalled();
+    expect(mockCreateEntries).not.toHaveBeenCalled();
+    expect(repoMock.updateCashCollectionStatus).toHaveBeenCalledWith(6001, 'held_by_org');
   });
 
   it('confirm financials: courtzon_fee = 10% of products only, shipping 100% org', async () => {
@@ -348,7 +314,7 @@ describe('accounting: confirm + delivery journals (example: 1000 / 60 / 10%)', (
     }));
   });
 
-  it('multi-seller: each seller order produces its own isolated delivery journal', async () => {
+  it('multi-seller delivery — legacy path retired: NO legacy transaction/entries, status-only per order', async () => {
     const mk = (id: number, sellerId: number, subtotal: number, ship: number) => {
       const o: any = {
         id, buyer_id: 777, status: 'delivered', subtotal, shipping_cost: ship,
@@ -365,28 +331,10 @@ describe('accounting: confirm + delivery journals (example: 1000 / 60 / 10%)', (
     repoMock.findOrderById.mockResolvedValueOnce(mk(7002, 20, 300, 30));
     await marketplaceService._recordDeliveryFinancials(7002);
 
-    expect(mockCreateEntries).toHaveBeenCalledTimes(2);
-    const first = mockCreateEntries.mock.calls[0][0];
-    const second = mockCreateEntries.mock.calls[1][0];
-
-    // Journal 1 belongs ONLY to seller 10 with example numbers
-    const j1branch = first.find((e: any) => e.entityType === 'branch' && e.side === 'credit');
-    expect(j1branch.organisationId).toBe(10);
-    expect(j1branch.amount).toBe(960);
-
-    // Journal 2 belongs ONLY to seller 20 â€” no cross-seller contamination
-    const j2branch = second.find((e: any) => e.entityType === 'branch' && e.side === 'credit');
-    expect(j2branch.organisationId).toBe(20);
-    expect(j2branch.amount).toBe(300 - 30 + 30); // net products + shipping
-
-    const orgs1 = new Set(first.filter((e: any) => e.organisationId).map((e: any) => e.organisationId));
-    const orgs2 = new Set(second.filter((e: any) => e.organisationId).map((e: any) => e.organisationId));
-    expect(orgs1).toEqual(new Set([10]));
-    expect(orgs2).toEqual(new Set([20]));
-
-    // No duplicate accounting: distinct transactions per order
-    expect(mockCreateTransaction.mock.calls[0][0].sourceId).toBe(7001);
-    expect(mockCreateTransaction.mock.calls[1][0].sourceId).toBe(7002);
+    // Legacy delivery journal removed — canonical engine posts per seller-order.
+    expect(mockCreateEntries).not.toHaveBeenCalled();
+    expect(mockCreateTransaction).not.toHaveBeenCalled();
+    expect(repoMock.updateCashCollectionStatus).toHaveBeenCalledTimes(2);
   });
 
   it('no duplicate confirm financials on re-run (idempotent columns update)', async () => {

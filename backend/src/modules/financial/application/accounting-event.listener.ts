@@ -24,22 +24,29 @@ function refTypeToSourceType(referenceType: string): SourceType {
 export interface OrderEconomics {
   orderId: number;
   merchantId: number | null;
-  merchantShare: number;
+  /** Seller merchandise gross (products before shipping/tax AND before discount). */
+  grossMerchandise: number;
+  discountAmount: number;
   commission: number;
+  shipping: number;
   tax: number;
+  /** Seller net merchandise payable = grossMerchandise − discount − commission (2202). */
+  merchantNet: number;
+  /** Full collected amount = merchandise − discount + shipping + tax (clearing). */
   grossAmount: number;
   paymentMethod: string;
   cashHolder: string;
 }
 
 /**
- * Resolve marketplace order economics for custody-correct accounting.
- * CourtZon revenue = commission only; merchant share = payable; tax = liability.
+ * Resolve marketplace order economics for a SINGLE seller-order (one seller per
+ * order row). CourtZon revenue = commission only; merchant share = payable;
+ * tax = liability; shipping = separate payable to the beneficiary.
  */
 async function resolveOrderEconomics(orderId: number): Promise<OrderEconomics | null> {
   const pool = getPool();
   const [rows] = await pool.execute<RowData>(
-    `SELECT o.id, o.total, o.tax_amount, o.commission_amount, o.courtzon_fee, o.payment_method, o.cash_holder
+    `SELECT o.id, o.subtotal, o.discount_amount, o.shipping_cost, o.total, o.tax_amount, o.commission_amount, o.courtzon_fee, o.payment_method, o.cash_holder
      FROM orders o WHERE o.id = ? LIMIT 1`,
     [orderId],
   );
@@ -49,13 +56,21 @@ async function resolveOrderEconomics(orderId: number): Promise<OrderEconomics | 
     `SELECT DISTINCT seller_id FROM order_items WHERE order_id = ? LIMIT 1`, [orderId],
   );
   const merchantId = (items as any[])[0]?.seller_id ?? null;
-  const grossAmount = Number(o.total || 0);
+  const grossMerchandise = Number(o.subtotal || 0);
+  // orders.subtotal is the GROSS merchandise (pre-discount); discount_amount is
+  // stored separately and `total` = subtotal − discount + shipping + tax. The
+  // GL seller net must subtract the discount so the ledger balances against the
+  // customer-charged clearing amount and reconciles to the entitlement formula
+  // (ORGANIZATION_EARNING = itemTotal − itemDiscount − itemCommission + shipping).
+  const discountAmount = Number(o.discount_amount || 0);
+  const shipping = Number(o.shipping_cost || 0);
   const tax = Number(o.tax_amount || 0);
   // commission_amount is persisted at order creation; courtzon_fee is only set
   // later during confirmation (after payment:succeeded fires) — prefer the
   // creation-time snapshot, fall back to courtzon_fee for older rows.
   const commission = Number(o.commission_amount || o.courtzon_fee || 0);
-  const merchantShare = Math.round((grossAmount - commission - tax) * 100) / 100;
+  const merchantNet = Math.round((grossMerchandise - discountAmount - commission) * 100) / 100;
+  const grossAmount = Number(o.total || 0);
 
   // cash_holder is only set during confirmation — derive from payment_method
   // for the payment-time custody decision (cash/COD ⇒ org holds cash).
@@ -65,61 +80,167 @@ async function resolveOrderEconomics(orderId: number): Promise<OrderEconomics | 
   return {
     orderId,
     merchantId,
-    merchantShare,
+    grossMerchandise,
+    discountAmount,
     commission,
+    shipping,
     tax,
+    merchantNet,
     grossAmount,
     paymentMethod,
     cashHolder,
   };
 }
 
-async function postMarketplacePaymentAccounting(orderId: number, paymentMethod: string, currency: string): Promise<void> {
-  const econ = await resolveOrderEconomics(orderId);
-  if (!econ) {
-    log.error({ orderId }, 'Marketplace order economics not found — skipping accounting');
-    return;
-  }
-  // CourtZon collected payment: commission = revenue, merchant share = payable.
-  // (COD/cash orders never emit payment:succeeded — they are recognized at delivery.)
-  const eventType = paymentMethod === 'wallet' ? 'marketplace_wallet_payment' : 'marketplace_card_payment';
-  await postAccountingEvent(
-    eventType, 'marketplace', orderId, econ.merchantId,
-    {
-      merchant_payable: econ.merchantShare,
-      platform_commission: econ.commission,
-      tax_liability: econ.tax,
-      payment_clearing: eventType === 'marketplace_card_payment' ? econ.grossAmount : 0,
-      wallet_liability_spend: eventType === 'marketplace_wallet_payment' ? econ.grossAmount : 0,
-    },
-    currency,
-    `Order #${orderId} payment (custody: ${econ.cashHolder})`,
+/**
+ * Resolve ALL seller-orders belonging to the same checkout group as `orderId`.
+ * A multi-seller checkout creates one order per seller sharing a
+ * checkout_group_id; the payment:succeeded event references only the primary
+ * order, so accounting must fan out to every sibling order in the group.
+ */
+async function resolveCheckoutOrderIds(orderId: number): Promise<number[]> {
+  const pool = getPool();
+  const [rows] = await pool.execute<RowData>(
+    `SELECT checkout_group_id FROM orders WHERE id = ? LIMIT 1`,
+    [orderId],
   );
+  const groupId = (rows as any[])[0]?.checkout_group_id;
+  if (!groupId) return [orderId];
+  const [group] = await pool.execute<RowData>(
+    `SELECT id FROM orders WHERE checkout_group_id = ? ORDER BY id`,
+    [groupId],
+  );
+  const ids = (group as any[]).map((r: any) => Number(r.id));
+  return ids.length ? ids : [orderId];
+}
+
+/**
+ * Post marketplace CARD/WALLET payment accounting for EVERY seller-order in the
+ * checkout group. CourtZon collects the full customer amount (clearing), owes
+ * each beneficiary its merchandise net (2202) + shipping (2400), and retains
+ * its commission (4160, platform-scoped). Each seller-order is posted
+ * independently and idempotently.
+ */
+async function postMarketplacePaymentAccounting(orderId: number, paymentMethod: string, currency: string): Promise<void> {
+  const orderIds = await resolveCheckoutOrderIds(orderId);
+  for (const oid of orderIds) {
+    const econ = await resolveOrderEconomics(oid);
+    if (!econ) {
+      log.error({ orderId: oid }, 'Marketplace order economics not found — skipping accounting');
+      continue;
+    }
+    const eventType = paymentMethod === 'wallet' ? 'marketplace_wallet_payment' : 'marketplace_card_payment';
+    await postAccountingEvent(
+      eventType, 'marketplace', oid, null,
+      {
+        merchant_payable: econ.merchantNet,
+        shipping: econ.shipping,
+        platform_commission: econ.commission,
+        tax_liability: econ.tax,
+        payment_clearing: eventType === 'marketplace_card_payment' ? econ.grossAmount : 0,
+        wallet_liability_spend: eventType === 'marketplace_wallet_payment' ? econ.grossAmount : 0,
+      },
+      currency,
+      `Order #${oid} payment (custody: ${econ.cashHolder})`,
+      undefined,
+      {
+        merchant_payable: econ.merchantId,
+        shipping: econ.merchantId,
+        platform_commission: null,
+        payment_clearing: null,
+        tax_liability: null,
+        wallet_liability_spend: null,
+      },
+    );
+  }
 }
 
 async function postMarketplaceRefundAccounting(orderId: number, currency: string): Promise<void> {
-  const econ = await resolveOrderEconomics(orderId);
-  if (!econ) {
-    log.error({ orderId }, 'Marketplace order economics not found — skipping refund accounting');
-    return;
+  const orderIds = await resolveCheckoutOrderIds(orderId);
+  for (const oid of orderIds) {
+    const econ = await resolveOrderEconomics(oid);
+    if (!econ) {
+      log.error({ orderId: oid }, 'Marketplace order economics not found — skipping refund accounting');
+      continue;
+    }
+    // Reverse merchant merchandise payable + shipping + commission + tax.
+    // Wallet orders return funds to the customer's wallet (wallet_liability
+    // credit); card orders reverse the payment_clearing asset.
+    const isWallet = econ.paymentMethod === 'wallet';
+    const eventType = isWallet ? 'marketplace_wallet_refund' : 'marketplace_merchant_refund';
+    await postAccountingEvent(
+      eventType, 'marketplace', oid, null,
+      {
+        merchant_payable: econ.merchantNet,
+        shipping: econ.shipping,
+        platform_commission: econ.commission,
+        tax_liability: econ.tax,
+        payment_clearing: isWallet ? 0 : econ.grossAmount,
+        wallet_liability: isWallet ? econ.grossAmount : 0,
+      },
+      currency,
+      `Order #${oid} refunded (custody reversal)`,
+      undefined,
+      {
+        merchant_payable: econ.merchantId,
+        shipping: econ.merchantId,
+        platform_commission: null,
+        payment_clearing: null,
+        tax_liability: null,
+        wallet_liability: null,
+      },
+    );
   }
-  // Reverse merchant payable + commission + tax. Wallet orders return funds to
-  // the customer's wallet (wallet_liability credit); card orders reverse the
-  // payment_clearing asset.
-  const isWallet = econ.paymentMethod === 'wallet';
-  const eventType = isWallet ? 'marketplace_wallet_refund' : 'marketplace_merchant_refund';
-  await postAccountingEvent(
-    eventType, 'marketplace', orderId, econ.merchantId,
-    {
-      merchant_payable: econ.merchantShare,
-      platform_commission: econ.commission,
-      tax_liability: econ.tax,
-      payment_clearing: isWallet ? 0 : econ.grossAmount,
-      wallet_liability: isWallet ? econ.grossAmount : 0,
-    },
-    currency,
-    `Order #${orderId} refunded (custody reversal)`,
-  );
+}
+
+/**
+ * Post marketplace CASH/COD commission receivable. The seller collected the
+ * customer's cash directly, so CourtZon is owed only its commission (a
+ * receivable from the seller). The full customer amount NEVER enters 1100.
+ * Per-seller-order, idempotent.
+ */
+async function postMarketplaceCashCommissionAccounting(orderId: number, currency: string): Promise<void> {
+  const orderIds = await resolveCheckoutOrderIds(orderId);
+  for (const oid of orderIds) {
+    const econ = await resolveOrderEconomics(oid);
+    if (!econ) {
+      log.error({ orderId: oid }, 'Marketplace order economics not found — skipping cash accounting');
+      continue;
+    }
+    await postAccountingEvent(
+      'marketplace_cash_commission', 'marketplace', oid, null,
+      { marketplace_receivable: econ.commission, platform_commission: econ.commission },
+      currency,
+      `Order #${oid} delivered (cash — commission receivable)`,
+      undefined,
+      { marketplace_receivable: econ.merchantId, platform_commission: null },
+    );
+  }
+}
+
+/**
+ * Reverse a marketplace cash/COD commission receivable on refund/cancel.
+ * Reverses 1161 (receivable) and 4160 (platform revenue) — per-seller-order.
+ */
+async function postMarketplaceCashReversalAccounting(orderId: number, currency: string, action: 'refunded' | 'cancelled'): Promise<void> {
+  const orderIds = await resolveCheckoutOrderIds(orderId);
+  for (const oid of orderIds) {
+    const econ = await resolveOrderEconomics(oid);
+    if (!econ) {
+      log.error({ orderId: oid }, 'Marketplace order economics not found — skipping cash reversal');
+      continue;
+    }
+    const delivered = await ledgerRepository.hasPosting('marketplace', oid, 'marketplace_cash_commission');
+    if (!delivered) continue;
+    await postAccountingEvent(
+      'marketplace_cash_reversal', 'marketplace', oid, null,
+      { platform_commission: econ.commission, marketplace_receivable: econ.commission },
+      currency,
+      `Order #${oid} ${action} (cash — commission receivable reversed)`,
+      undefined,
+      { platform_commission: null, marketplace_receivable: econ.merchantId },
+    );
+  }
 }
 
 /**
@@ -250,6 +371,7 @@ async function postAccountingEvent(
   currency: string,
   description: string,
   outerConn?: import('mysql2/promise').PoolConnection,
+  conceptOrganisations?: Record<string, number | null>,
 ): Promise<void> {
   const alreadyPosted = await ledgerRepository.hasPosting(sourceType, sourceId, eventType);
   if (alreadyPosted) {
@@ -261,16 +383,18 @@ async function postAccountingEvent(
   const accountIds = mapping.map(m => m.accountId);
   await accountingEngineService.validateAccounts(accountIds, organisationId);
 
-  const resolved = accountingEngineService.buildLedgerLines(eventType, mapping, conceptAmounts);
+  const resolved = accountingEngineService.buildLedgerLines(eventType, mapping, conceptAmounts, conceptOrganisations);
   accountingEngineService.validateBalance(resolved);
 
-  const transactionId = `acct_${eventType}_${sourceType}_${sourceId}_${Date.now()}`;
+  // transaction_id is varchar(64) — keep it within the limit for long event
+  // type names (e.g. marketplace_cash_commission) and large source ids.
+  const transactionId = `acct_${eventType}_${sourceType}_${sourceId}_${Date.now().toString(36)}`.slice(0, 64);
   const lines: LedgerLineInput[] = resolved.map(l => ({
     transactionId,
     sourceType,
     sourceId,
     eventType,
-    organisationId,
+    organisationId: l.organisationId !== undefined ? l.organisationId : organisationId,
     chartAccountId: l.accountId,
     side: l.side as EntrySide,
     amount: l.amount,
@@ -687,16 +811,13 @@ export function registerAccountingEventListeners(): void {
       const econ = await resolveOrderEconomics(orderId);
       if (!econ) return;
 
-      // Only COD orders need delivery recognition (card/wallet were already
-      // recognized at payment time via marketplace_card/wallet_payment).
+      // Only COD/cash orders need delivery recognition (card/wallet were already
+      // recognized at payment time via marketplace_card/wallet_payment). Cash is
+      // recognised as a commission RECEIVABLE from the seller (1161) — the seller
+      // collected the customer's cash, so the full amount never enters 1100.
       if (econ.cashHolder !== 'org') return;
 
-      await postAccountingEvent(
-        'marketplace_delivery', 'marketplace', orderId, econ.merchantId,
-        { receivable_from_org: econ.commission + econ.tax, platform_commission: econ.commission, tax_liability: econ.tax },
-        currency,
-        `Order #${orderId} delivered (COD — commission receivable)`,
-      );
+      await postMarketplaceCashCommissionAccounting(orderId, currency);
     } catch (err: any) {
       if (err?.code === 'ER_DUP_ENTRY') { log.info({ err: err.message }, 'Duplicate — skip'); return; }
       log.error({ err }, 'Marketplace delivery accounting failed');
@@ -713,18 +834,7 @@ export function registerAccountingEventListeners(): void {
       if (!econ) return;
       if (econ.cashHolder !== 'org') return;
 
-      // Only reverse a COD receivable if delivery recognition actually posted.
-      // A COD order cancelled/refunded before delivery never posted
-      // marketplace_delivery, so reversing it would create a phantom credit.
-      const delivered = await ledgerRepository.hasPosting('marketplace', orderId, 'marketplace_delivery');
-      if (!delivered) return;
-
-      await postAccountingEvent(
-        'marketplace_reversal', 'marketplace', orderId, econ.merchantId,
-        { platform_commission: econ.commission, tax_liability: econ.tax, receivable_from_org: econ.commission + econ.tax },
-        currency,
-        `Order #${orderId} refunded (COD — commission receivable reversed)`,
-      );
+      await postMarketplaceCashReversalAccounting(orderId, currency, 'refunded');
     } catch (err: any) {
       if (err?.code === 'ER_DUP_ENTRY') { log.info({ err: err.message }, 'Duplicate — skip'); return; }
       log.error({ err }, 'Marketplace refund accounting failed');
@@ -741,16 +851,7 @@ export function registerAccountingEventListeners(): void {
       if (!econ) return;
       if (econ.cashHolder !== 'org') return;
 
-      // Same guard: only reverse if delivery recognition actually posted.
-      const delivered = await ledgerRepository.hasPosting('marketplace', orderId, 'marketplace_delivery');
-      if (!delivered) return;
-
-      await postAccountingEvent(
-        'marketplace_reversal', 'marketplace', orderId, econ.merchantId,
-        { platform_commission: econ.commission, tax_liability: econ.tax, receivable_from_org: econ.commission + econ.tax },
-        currency,
-        `Order #${orderId} cancelled (COD — commission receivable reversed)`,
-      );
+      await postMarketplaceCashReversalAccounting(orderId, currency, 'cancelled');
     } catch (err: any) {
       if (err?.code === 'ER_DUP_ENTRY') { log.info({ err: err.message }, 'Duplicate — skip'); return; }
       log.error({ err }, 'Marketplace cancel accounting failed');
@@ -957,4 +1058,4 @@ export async function createAccountingReplayWorkers(): Promise<any[]> {
   return [worker];
 }
 
-export { postAccountingEvent };
+export { postAccountingEvent, postMarketplacePaymentAccounting, postMarketplaceRefundAccounting, postMarketplaceCashCommissionAccounting };
