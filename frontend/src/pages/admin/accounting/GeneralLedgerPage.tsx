@@ -4,6 +4,8 @@ import api from '../../../services/api';
 import { Spinner, Pagination } from '../../../components/ui';
 import { Can } from '../../../permissions/Can';
 import { ExportCsvButton } from '../../../components/ui/ExportCsvButton';
+import ShowZeroBalancesToggle from '../../../components/accounting/ShowZeroBalancesToggle';
+import { filterZeroBalanceRows } from '../../../utils/accountingZero';
 
 interface JournalEntry {
   id: number;
@@ -54,6 +56,7 @@ export default function GeneralLedgerPage() {
   const [reportFrom, setReportFrom] = useState('');
   const [reportTo, setReportTo] = useState('');
   const [asOf, setAsOf] = useState('');
+  const [showZeroBalances, setShowZeroBalances] = useState(false);
   const [ledgerAccount, setLedgerAccount] = useState<{ id: number; code: string; name: string } | null>(null);
 
   useEffect(() => {
@@ -106,6 +109,11 @@ export default function GeneralLedgerPage() {
   const isData: IncomeStatementData | null = incomeStatementData?.lines ? incomeStatementData : null;
   const isRows: ReportLine[] = incomeStatementData?.lines || (Array.isArray(incomeStatementData) ? incomeStatementData : []);
   const bsRows: ReportLine[] = balanceSheet || [];
+
+  // Display-only filter: hide zero-balance rows unless the toggle is ON.
+  const tbVisible = filterZeroBalanceRows(tbRows, showZeroBalances);
+  const isVisible = filterZeroBalanceRows(isRows, showZeroBalances);
+  const bsVisible = filterZeroBalanceRows(bsRows, showZeroBalances);
 
   const TABS: { key: Tab; label: string }[] = [
     { key: 'journal', label: 'Journal Entries' },
@@ -169,6 +177,7 @@ export default function GeneralLedgerPage() {
             )}
             <button onClick={() => { setReportFrom(''); setReportTo(''); setAsOf(''); }}
               className="text-xs text-[var(--color-primary)] hover:underline">Reset</button>
+            <ShowZeroBalancesToggle checked={showZeroBalances} onChange={setShowZeroBalances} className="self-end pb-2" />
           </div>
         )}
 
@@ -252,7 +261,7 @@ export default function GeneralLedgerPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[var(--color-border)]">
-                  {tbRows.map((r, i) => (
+                  {tbVisible.map((r, i) => (
                     <tr key={i}
                       onClick={() => !r.has_children && setLedgerAccount({ id: r.account_id, code: r.code, name: r.name })}
                       className={`hover:bg-[var(--color-bg)]/30 ${r.level === 0 ? 'font-semibold' : ''} ${r.has_children ? 'text-[var(--color-primary)]' : 'cursor-pointer'}`}
@@ -286,7 +295,7 @@ export default function GeneralLedgerPage() {
                   </thead>
                   <tbody className="divide-y divide-[var(--color-border)]">
                     <tr className="bg-green-50 dark:bg-green-900/10"><td colSpan={4} className="px-4 py-2 text-sm font-semibold text-green-700 dark:text-green-400">Revenue</td></tr>
-                    {isRows.filter(r => r.type === 'revenue').map((r, i) => (
+                    {isVisible.filter(r => r.type === 'revenue').map((r, i) => (
                       <tr key={i} className={`hover:bg-[var(--color-bg)]/30 ${r.level === 0 ? 'font-semibold' : ''}`}>
                         <td className="px-4 py-2 text-xs font-mono text-[var(--color-text-muted)]" style={{ paddingLeft: `${r.level * 16 + 16}px` }}>{r.code}</td>
                         <td className="px-4 py-2 text-[var(--color-text)]">{r.name}</td>
@@ -294,10 +303,10 @@ export default function GeneralLedgerPage() {
                         <td className="px-4 py-2 text-right font-mono text-[var(--color-text)]">{fmt(r.balance)}</td>
                       </tr>
                     ))}
-                    {isRows.filter(r => r.type === 'contra_revenue').length > 0 && (
+                    {isVisible.filter(r => r.type === 'contra_revenue').length > 0 && (
                       <>
                         <tr className="bg-orange-50 dark:bg-orange-900/10"><td colSpan={4} className="px-4 py-2 text-sm font-semibold text-orange-700 dark:text-orange-400">Contra Revenue</td></tr>
-                        {isRows.filter(r => r.type === 'contra_revenue').map((r, i) => (
+                        {isVisible.filter(r => r.type === 'contra_revenue').map((r, i) => (
                           <tr key={i} className={`hover:bg-[var(--color-bg)]/30 ${r.level === 0 ? 'font-semibold' : ''}`}>
                             <td className="px-4 py-2 text-xs font-mono text-[var(--color-text-muted)]" style={{ paddingLeft: `${r.level * 16 + 16}px` }}>{r.code}</td>
                             <td className="px-4 py-2 text-[var(--color-text)]">{r.name}</td>
@@ -308,7 +317,7 @@ export default function GeneralLedgerPage() {
                       </>
                     )}
                     <tr className="bg-red-50 dark:bg-red-900/10"><td colSpan={4} className="px-4 py-2 text-sm font-semibold text-red-700 dark:text-red-400">Expenses</td></tr>
-                    {isRows.filter(r => r.type === 'expense').map((r, i) => (
+                    {isVisible.filter(r => r.type === 'expense').map((r, i) => (
                       <tr key={i} className={`hover:bg-[var(--color-bg)]/30 ${r.level === 0 ? 'font-semibold' : ''}`}>
                         <td className="px-4 py-2 text-xs font-mono text-[var(--color-text-muted)]" style={{ paddingLeft: `${r.level * 16 + 16}px` }}>{r.code}</td>
                         <td className="px-4 py-2 text-[var(--color-text)]">{r.name}</td>
@@ -316,10 +325,10 @@ export default function GeneralLedgerPage() {
                         <td className="px-4 py-2 text-right font-mono text-[var(--color-text)]">{fmt(Math.abs(r.balance))}</td>
                       </tr>
                     ))}
-                    {isRows.filter(r => r.type === 'contra_expense').length > 0 && (
+                    {isVisible.filter(r => r.type === 'contra_expense').length > 0 && (
                       <>
                         <tr className="bg-amber-50 dark:bg-amber-900/10"><td colSpan={4} className="px-4 py-2 text-sm font-semibold text-amber-700 dark:text-amber-400">Contra Expense</td></tr>
-                        {isRows.filter(r => r.type === 'contra_expense').map((r, i) => (
+                        {isVisible.filter(r => r.type === 'contra_expense').map((r, i) => (
                           <tr key={i} className={`hover:bg-[var(--color-bg)]/30 ${r.level === 0 ? 'font-semibold' : ''}`}>
                             <td className="px-4 py-2 text-xs font-mono text-[var(--color-text-muted)]" style={{ paddingLeft: `${r.level * 16 + 16}px` }}>{r.code}</td>
                             <td className="px-4 py-2 text-[var(--color-text)]">{r.name}</td>
@@ -365,7 +374,7 @@ export default function GeneralLedgerPage() {
                   </thead>
                   <tbody className="divide-y divide-[var(--color-border)]">
                     <tr className="bg-blue-50 dark:bg-blue-900/10"><td colSpan={4} className="px-4 py-2 text-sm font-semibold text-blue-700 dark:text-blue-400">Assets</td></tr>
-                    {bsRows.filter(r => r.type === 'asset' || r.type === 'contra_asset').map((r, i) => (
+                    {bsVisible.filter(r => r.type === 'asset' || r.type === 'contra_asset').map((r, i) => (
                       <tr key={i} className={`hover:bg-[var(--color-bg)]/30 ${r.level === 0 ? 'font-semibold' : ''}`}>
                         <td className="px-4 py-2 text-xs font-mono text-[var(--color-text-muted)]" style={{ paddingLeft: `${r.level * 16 + 16}px` }}>{r.code}</td>
                         <td className="px-4 py-2 text-[var(--color-text)]">{r.name}</td>
@@ -374,7 +383,7 @@ export default function GeneralLedgerPage() {
                       </tr>
                     ))}
                     <tr className="bg-amber-50 dark:bg-amber-900/10"><td colSpan={4} className="px-4 py-2 text-sm font-semibold text-amber-700 dark:text-amber-400">Liabilities & Equity</td></tr>
-                    {bsRows.filter(r => r.type === 'liability' || r.type === 'equity' || r.type === 'contra_liability' || r.type === 'contra_equity').map((r, i) => (
+                    {bsVisible.filter(r => r.type === 'liability' || r.type === 'equity' || r.type === 'contra_liability' || r.type === 'contra_equity').map((r, i) => (
                       <tr key={i} className={`hover:bg-[var(--color-bg)]/30 ${r.level === 0 ? 'font-semibold' : ''}`}>
                         <td className="px-4 py-2 text-xs font-mono text-[var(--color-text-muted)]" style={{ paddingLeft: `${r.level * 16 + 16}px` }}>{r.code}</td>
                         <td className="px-4 py-2 text-[var(--color-text)]">{r.name}</td>

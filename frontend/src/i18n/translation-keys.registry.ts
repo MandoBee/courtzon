@@ -1673,6 +1673,7 @@ export const translationKeysRegistry: TranslationKeyEntry[] = [
   { key: 'accounting.invoices.new', defaultValue: 'New Invoice', moduleSlug: 'accounting', elementType: 'button', elementLabel: 'New invoice button' },
   { key: 'accounting.tax.title', defaultValue: 'Tax Rates', moduleSlug: 'accounting', elementType: 'heading', elementLabel: 'Tax rates title' },
   { key: 'accounting.tax.new', defaultValue: 'New Tax Rate', moduleSlug: 'accounting', elementType: 'button', elementLabel: 'New tax rate button' },
+  { key: 'accounting.reports.show_zero_balances', defaultValue: 'Show Zero Balances', moduleSlug: 'accounting', elementType: 'label', elementLabel: 'Toggle zero-balance rows in accounting reports' },
 
   // CRM (Sprint 15)
   { key: 'crm.dashboard.title', defaultValue: 'CRM Dashboard', moduleSlug: 'crm', elementType: 'heading', elementLabel: 'CRM dashboard title' },
