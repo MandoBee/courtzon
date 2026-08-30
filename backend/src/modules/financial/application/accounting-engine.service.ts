@@ -45,6 +45,52 @@ const CONCEPT_ACCOUNT_CODE_DEFAULTS: Record<string, Record<string, string>> = {
   marketplace_cash_reversal: { marketplace_receivable: '1161', platform_commission: '4160' },
 };
 
+/**
+ * Organization-Book account codes per concept (org-scoped L4 accounts).
+ * These are provisioned per organisation (idempotently) and used ONLY in the
+ * organisation's own book — never in CourtZon's book (org NULL).
+ */
+export const ORG_MARKETPLACE_ACCOUNT_CODES: Record<string, { code: string; name: string; type: string; normalSide: 'debit' | 'credit'; parentCode: string; description: string }> = {
+  sales_revenue: {
+    code: 'MKT-SALES',
+    name: 'Marketplace Sales Revenue',
+    type: 'revenue',
+    normalSide: 'credit',
+    parentCode: 'REVENUE-COURT',
+    description: 'Organization marketplace product/service sales revenue',
+  },
+  commission_expense: {
+    code: 'MKT-COMM-EXP',
+    name: 'Marketplace Commission Expense',
+    type: 'expense',
+    normalSide: 'debit',
+    parentCode: 'EXPENSES-GENERAL',
+    description: 'CourtZon marketplace commission charged to this organization',
+  },
+  shipping_liability: {
+    code: 'MKT-SHIP-LIAB',
+    name: 'Shipping Liability',
+    type: 'liability',
+    normalSide: 'credit',
+    parentCode: 'LIABILITIES-PAYABLES',
+    description: 'Organization shipping collected from customers, owed to the shipping party',
+  },
+  marketplace_receivable: {
+    code: '1161',
+    name: 'Marketplace Receivable',
+    type: 'asset',
+    normalSide: 'debit',
+    parentCode: 'ASSETS-RECEIVABLES',
+    description: 'Amount due from CourtZon for marketplace sales (organization book)',
+  },
+};
+
+/** Organization-book event types and the concepts they require (org-scoped). */
+export const ORG_BOOK_EVENTS: Record<string, string[]> = {
+  marketplace_org_receivable: ['marketplace_receivable', 'commission_expense', 'sales_revenue', 'shipping_liability'],
+  marketplace_org_receivable_reversal: ['sales_revenue', 'shipping_liability', 'marketplace_receivable', 'commission_expense'],
+};
+
 export class AccountingEngineService {
   private pool: mysql.Pool;
 
@@ -68,6 +114,12 @@ export class AccountingEngineService {
     let rows: RowData;
 
     if (organisationId != null) {
+      // Organization-Book events require org-scoped mappings. Auto-provision the
+      // org's marketplace COA accounts + mappings idempotently so the org book
+      // never falls back to CourtZon's accounts (book separation).
+      if (ORG_BOOK_EVENTS[eventType]) {
+        await this.provisionOrganisationMarketplaceAccounts(organisationId);
+      }
       [rows] = await this.pool.execute<RowData>(
         `SELECT concept, account_id AS accountId
          FROM accounting_event_mapping_lines
@@ -91,6 +143,59 @@ export class AccountingEngineService {
     );
     await this.applyConceptCodeDefaults(eventType, rows as any[]);
     return this.validateAndReturn(eventType, rows as any[], organisationId);
+  }
+
+  /**
+   * Idempotently provision the organization's marketplace COA accounts and the
+   * org-book event mappings. Safe to run repeatedly. Creates:
+   *   - org-scoped L4 accounts (MKT-SALES, MKT-COMM-EXP, MKT-SHIP-LIAB, 1161)
+   *   - org-scoped accounting_event_mapping_lines for the org-book events
+   * Never touches CourtZon (org NULL) rows, other orgs, or existing org custom
+   * accounts.
+   */
+  async provisionOrganisationMarketplaceAccounts(organisationId: number): Promise<void> {
+    if (!organisationId) return;
+
+    // 1. Provision org-scoped L4 accounts (INSERT IGNORE on (organisation_id, code)).
+    const accountIdByConcept = new Map<string, number>();
+    for (const [concept, def] of Object.entries(ORG_MARKETPLACE_ACCOUNT_CODES)) {
+      const [existing] = await this.pool.execute<RowData>(
+        `SELECT id FROM chart_of_accounts WHERE organisation_id = ? AND code = ? LIMIT 1`,
+        [organisationId, def.code],
+      );
+      if ((existing as any[]).length > 0) {
+        accountIdByConcept.set(concept, Number((existing as any[])[0].id));
+        continue;
+      }
+      const [parent] = await this.pool.execute<RowData>(
+        `SELECT id FROM chart_of_accounts WHERE code = ? AND organisation_id IS NULL AND is_active = 1 LIMIT 1`,
+        [def.parentCode],
+      );
+      if (!(parent as any[]).length) {
+        log.error({ orgId: organisationId, code: def.code, parentCode: def.parentCode }, 'Org-book parent account not found — skipping provision');
+        continue;
+      }
+      const [res] = await this.pool.execute<RowData>(
+        `INSERT IGNORE INTO chart_of_accounts (organisation_id, code, name, type, normal_side, parent_id, is_system, is_active, description)
+         VALUES (?, ?, ?, ?, ?, ?, 1, 1, ?)`,
+        [organisationId, def.code, def.name, def.type, def.normalSide, (parent as any[])[0].id, def.description || null],
+      );
+      accountIdByConcept.set(concept, (res as any).insertId);
+    }
+
+    // 2. Provision org-scoped mapping lines for the org-book events.
+    for (const [eventType, concepts] of Object.entries(ORG_BOOK_EVENTS)) {
+      for (const concept of concepts) {
+        const accountId = accountIdByConcept.get(concept);
+        if (accountId == null) continue;
+        await this.pool.execute<RowData>(
+          `INSERT IGNORE INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
+           VALUES (?, ?, ?, ?, 1)`,
+          [eventType, organisationId, concept, accountId],
+        );
+      }
+    }
+    log.info({ organisationId }, 'Organisation marketplace accounts provisioned (idempotent)');
   }
 
   /** Append code-level concept→account fallback lines for any missing required concept. */

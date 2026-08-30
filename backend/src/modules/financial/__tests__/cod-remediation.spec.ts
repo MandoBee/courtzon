@@ -264,32 +264,45 @@ describe('COD Custody Remediation', () => {
     await pool.execute(`DELETE FROM orders WHERE id=?`, [orderId]);
   });
 
-  it('7. marketplace COD delivered then cancelled → reversal happens (1161 Marketplace Receivable)', async () => {
+  it('7. marketplace COD delivered then cancelled → reversal happens (1161 Marketplace Receivable, CourtZon org NULL)', async () => {
     const { postAccountingEvent } = await import('../application/accounting-event.listener.js');
     const { eventBusV2 } = await import('../../../shared/event-bus/event-bus.v2.js');
     const { registerAccountingEventListeners } = await import('../application/accounting-event.listener.js');
     registerAccountingEventListeners();
 
     const orderId = await insertOrder('cash', 'delivered');
-    // Cash delivery recognition: Dr 1161 Marketplace Receivable / Cr 4160 (platform).
+    // Cash delivery recognition: CourtZon book Dr 1161 Marketplace Receivable /
+    // Cr 4160 (platform) — both org NULL (CourtZon's own asset, never org-scoped).
     await postAccountingEvent(
       'marketplace_cash_commission', 'marketplace', orderId, null,
       { marketplace_receivable: 200, platform_commission: 200 },
       'EGP', 'COD delivery',
       undefined,
-      { marketplace_receivable: orgId, platform_commission: null },
+      { marketplace_receivable: null, platform_commission: null },
     );
 
     const receivableId = await accountId('1161');
-    const before = await sourceSums(receivableId, 'marketplace', orderId);
-    expect(before.debit).toBeGreaterThan(0);
+    const [beforeRows] = await pool.execute<RowData>(
+      `SELECT COALESCE(SUM(CASE WHEN side='credit' THEN amount ELSE 0 END),0) AS c,
+              COALESCE(SUM(CASE WHEN side='debit' THEN amount ELSE 0 END),0) AS d
+       FROM ledger_entries WHERE chart_account_id = ? AND organisation_id IS NULL AND source_type = ? AND source_id = ?`,
+      [receivableId, 'marketplace', orderId],
+    );
+    const before = { debit: Number((beforeRows as any[])[0].d), credit: Number((beforeRows as any[])[0].c) };
+    expect(before.debit).toBe(200);
     expect(before.credit).toBe(0);
 
     // Cancellation after delivery → reversal.
     await eventBusV2.emit('marketplace:order-cancelled', { orderId, userId: 1 } as any);
     await new Promise((r) => setTimeout(r, 300));
 
-    const after = await sourceSums(receivableId, 'marketplace', orderId);
+    const [afterRows] = await pool.execute<RowData>(
+      `SELECT COALESCE(SUM(CASE WHEN side='credit' THEN amount ELSE 0 END),0) AS c,
+              COALESCE(SUM(CASE WHEN side='debit' THEN amount ELSE 0 END),0) AS d
+       FROM ledger_entries WHERE chart_account_id = ? AND organisation_id IS NULL AND source_type = ? AND source_id = ?`,
+      [receivableId, 'marketplace', orderId],
+    );
+    const after = { debit: Number((afterRows as any[])[0].d), credit: Number((afterRows as any[])[0].c) };
     // Receivable cleared by the reversal credit (debit 200, credit 200 → net 0).
     expect(after.debit).toBe(before.debit);
     expect(after.credit).toBe(before.debit);
