@@ -25,6 +25,7 @@ vi.mock('../infrastructure/repositories/marketplace.repository.js', () => ({
   marketplaceRepository: {
     findSellerOrgsForUser: vi.fn(),
     isPlatformAdmin: vi.fn(),
+    findOrderById: vi.fn(),
   },
 }));
 
@@ -60,5 +61,39 @@ describe('MarketplaceService._getUserRoleInOrder (A2 no admin fallback)', () => 
     (repo.findSellerOrgsForUser as any).mockResolvedValue([]);
     (repo.isPlatformAdmin as any).mockResolvedValue(false);
     await expect(marketplaceService._getUserRoleInOrder(4, order)).resolves.toBeNull();
+  });
+});
+
+describe('MarketplaceService._formatOrder sellerId mapping (findOrderById real shape)', () => {
+  // findOrderById aliases oi.seller_id AS item_seller_id and exposes NO
+  // top-level seller_id column (orders has no seller_id column). _formatOrder
+  // must map item.sellerId from item_seller_id so the seller-role check in
+  // _getUserRoleInOrder succeeds. Regression for the "Order not found" failure
+  // on seller "Start Processing" (CASH + CREDIT).
+  const rows = [
+    { id: 9001, buyer_id: 1, status: 'confirmed', payment_status: 'paid',
+      item_id: 1, item_seller_id: 100, product_id: 11, product_name: 'Racket',
+      variant_id: null, quantity: 1, unit_price: 500, item_total: 500,
+      commission_rate: 10, commission_amount: 50, shop_name: 'Shop', branch_id: null },
+  ];
+
+  beforeEach(() => {
+    (repo.findOrderById as any).mockResolvedValue(rows);
+  });
+
+  it('maps item.sellerId from item_seller_id (no seller_id column in rows)', async () => {
+    const formatted = await marketplaceService.getOrder(9001);
+    expect(formatted.items).toBeDefined();
+    expect(formatted.items[0].sellerId).toBe(100);
+    expect(formatted.items[0].sellerId).toBeDefined();
+  });
+
+  it('seller is recognised through getOrder -> _getUserRoleInOrder when sellerId is undefined', async () => {
+    // Sanity: without the mapping the seller check must still be exercised on
+    // the real DB row shape (item_seller_id), not an absent seller_id field.
+    (repo.findSellerOrgsForUser as any).mockResolvedValue([{ id: 100, is_active: 1 }]);
+    const formatted = await marketplaceService.getOrder(9001);
+    const role = await marketplaceService._getUserRoleInOrder(7, formatted);
+    expect(role).toBe('seller');
   });
 });
