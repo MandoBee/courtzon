@@ -43,6 +43,11 @@ const CONCEPT_ACCOUNT_CODE_DEFAULTS: Record<string, Record<string, string>> = {
   // from code (platform_commission → 4160, marketplace_receivable → 1161).
   marketplace_cash_commission: { marketplace_receivable: '1161', platform_commission: '4160' },
   marketplace_cash_reversal: { marketplace_receivable: '1161', platform_commission: '4160' },
+  // Payment-gateway settlement has no DB mapping row — resolve from code so the
+  // clearing → bank transfer posts without a migration. 1100 Payment Clearing is
+  // the existing gateway-clearing asset; 1120 Cash / Bank is the destination.
+  // CourtZon book only (org NULL); org books never carry these accounts.
+  payment_gateway_settlement: { cash_bank: '1120', payment_clearing: '1100' },
 };
 
 /**
@@ -83,12 +88,22 @@ export const ORG_MARKETPLACE_ACCOUNT_CODES: Record<string, { code: string; name:
     parentCode: 'ASSETS-RECEIVABLES',
     description: 'Amount due from CourtZon for marketplace sales (organization book)',
   },
+  courtzon_payable: {
+    code: 'MKT-CZ-PAY',
+    name: 'CourtZon Payable',
+    type: 'liability',
+    normalSide: 'credit',
+    parentCode: 'LIABILITIES-PAYABLES',
+    description: 'CourtZon marketplace commission owed by this organization (organization book)',
+  },
 };
 
 /** Organization-book event types and the concepts they require (org-scoped). */
 export const ORG_BOOK_EVENTS: Record<string, string[]> = {
   marketplace_org_receivable: ['marketplace_receivable', 'commission_expense', 'sales_revenue', 'shipping_liability'],
   marketplace_org_receivable_reversal: ['sales_revenue', 'shipping_liability', 'marketplace_receivable', 'commission_expense'],
+  marketplace_org_cash_receivable: ['marketplace_receivable', 'commission_expense', 'sales_revenue', 'shipping_liability', 'courtzon_payable'],
+  marketplace_org_cash_receivable_rev: ['sales_revenue', 'shipping_liability', 'courtzon_payable', 'marketplace_receivable', 'commission_expense'],
 };
 
 export class AccountingEngineService {
