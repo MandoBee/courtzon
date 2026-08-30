@@ -1214,7 +1214,10 @@ export const marketplaceService = {
       toStatus: data.status,
     });
 
-    if (data.status === 'shipped') {
+    if (data.status === 'processing') {
+      // START PROCESSING — CASH/COD marketplace accounting is released here.
+      eventBusV2.emit('marketplace:order-processing', { orderId, userId, sellerId });
+    } else if (data.status === 'shipped') {
       eventBusV2.emit('marketplace:order-shipped', {
         orderId, userId, sellerId,
         trackingNumber: data.trackingNumber,

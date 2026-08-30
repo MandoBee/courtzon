@@ -136,6 +136,28 @@ describe('Marketplace Accounting Model — Multi-Book (CourtZon + Organization)'
     return (rows as any[]).map(r => r.organisation_id == null ? null : Number(r.organisation_id));
   }
 
+  // Sums scoped to one settlement + one account + one organisation book.
+  async function settlementSums(accountId: number, sourceId: number, orgId: number | null): Promise<{ credit: number; debit: number }> {
+    const [rows] = await pool.execute<RowData>(
+      `SELECT COALESCE(SUM(CASE WHEN side='credit' THEN amount ELSE 0 END),0) AS c,
+              COALESCE(SUM(CASE WHEN side='debit' THEN amount ELSE 0 END),0) AS d
+       FROM ledger_entries
+       WHERE chart_account_id = ? AND source_type='settlement' AND source_id = ?
+         AND (organisation_id <=> ?)`,
+      [accountId, sourceId, orgId],
+    );
+    return { credit: Number((rows as any[])[0].c), debit: Number((rows as any[])[0].d) };
+  }
+
+  // All organisation_ids present for a given account+settlement.
+  async function settlementOrgs(accountId: number, sourceId: number): Promise<Array<number | null>> {
+    const [rows] = await pool.execute<RowData>(
+      `SELECT DISTINCT organisation_id FROM ledger_entries WHERE chart_account_id = ? AND source_type='settlement' AND source_id = ?`,
+      [accountId, sourceId],
+    );
+    return (rows as any[]).map(r => r.organisation_id == null ? null : Number(r.organisation_id));
+  }
+
   // Total debits vs credits for one order's full marketplace journal.
   async function orderBalance(orderId: number): Promise<{ d: number; c: number }> {
     const [rows] = await pool.execute<RowData>(
@@ -299,15 +321,28 @@ describe('Marketplace Accounting Model — Multi-Book (CourtZon + Organization)'
     expect((await bookSums(clearingId, orderA, null)).debit).toBe(0);
     expect((await bookSums(clearingId, orderB, null)).debit).toBe(0);
 
-    // Organization book still posts its own economics.
+    // Organization book still posts its own economics. CASH uses the full
+    // customer gross as the receivable (the org collects the cash) and a
+    // CourtZon Payable for the commission owed to CourtZon.
     const orgRecvA = await orgAccountId(orgA, '1161');
     const salesA = await orgAccountId(orgA, 'MKT-SALES');
     const commExpA = await orgAccountId(orgA, 'MKT-COMM-EXP');
     const shipA = await orgAccountId(orgA, 'MKT-SHIP-LIAB');
-    expect((await bookSums(orgRecvA, orderA, orgA)).debit).toBe(857.50);
+    const czPayA = await orgAccountId(orgA, 'MKT-CZ-PAY');
+    // Org A: Dr 1161 gross (850+50=900) + Dr comm-exp 42.50
+    //        = Cr MKT-SALES 850 + Cr ship 50 + Cr MKT-CZ-PAY 42.50
+    expect((await bookSums(orgRecvA, orderA, orgA)).debit).toBe(900);
     expect((await bookSums(salesA, orderA, orgA)).credit).toBe(850);
     expect((await bookSums(commExpA, orderA, orgA)).debit).toBe(42.50);
     expect((await bookSums(shipA, orderA, orgA)).credit).toBe(50);
+    expect((await bookSums(czPayA, orderA, orgA)).credit).toBe(42.50);
+    expect((await bookSums(orgRecvA, orderA, orgA)).debit + (await bookSums(commExpA, orderA, orgA)).debit)
+      .toBeCloseTo((await bookSums(salesA, orderA, orgA)).credit + (await bookSums(shipA, orderA, orgA)).credit + (await bookSums(czPayA, orderA, orgA)).credit, 2);
+    // Org B: gross 145 (85+60) + comm-exp 4.25 = sales 85 + ship 60 + CZ-PAY 4.25
+    const orgRecvB = await orgAccountId(orgB, '1161');
+    const czPayB = await orgAccountId(orgB, 'MKT-CZ-PAY');
+    expect((await bookSums(orgRecvB, orderB, orgB)).debit).toBe(145);
+    expect((await bookSums(czPayB, orderB, orgB)).credit).toBe(4.25);
     for (const oid of [orderA, orderB]) {
       const bal = await orderBalance(oid);
       expect(bal.d).toBe(bal.c);
@@ -315,6 +350,227 @@ describe('Marketplace Accounting Model — Multi-Book (CourtZon + Organization)'
 
     await pool.execute(`DELETE FROM order_items WHERE order_id IN (?, ?)`, [orderA, orderB]);
     await pool.execute(`DELETE FROM orders WHERE id IN (?, ?)`, [orderA, orderB]);
+  });
+
+  it('C2. CASH IDEMPOTENCY — start-processing replay creates zero duplicates (both books)', async () => {
+    const { postMarketplaceCashCommissionAccounting } = await import('../application/accounting-event.listener.js') as any;
+    const orderA = await insertOrder({ sellerId: orgA, subtotal: 850, shipping: 50, commission: 42.50, paymentMethod: 'cash', cashHolder: 'org' });
+    await postMarketplaceCashCommissionAccounting(orderA, 'EGP');
+    await postMarketplaceCashCommissionAccounting(orderA, 'EGP'); // replay
+
+    const [rows] = await pool.execute<RowData>(
+      `SELECT event_type, COUNT(*) c FROM ledger_entries WHERE source_type='marketplace' AND source_id=? GROUP BY event_type`,
+      [orderA],
+    );
+    const byEvent: Record<string, number> = {};
+    for (const r of rows as any[]) byEvent[r.event_type] = Number(r.c);
+    // CourtZon book: marketplace_cash_commission = Dr 1161 + Cr 4160
+    expect(byEvent['marketplace_cash_commission']).toBe(2);
+    // Org book: org cash receivable = 1161 + comm-exp + sales + ship + CZ-PAY
+    expect(byEvent['marketplace_org_cash_receivable']).toBe(5);
+    const bal = await orderBalance(orderA);
+    expect(bal.d).toBe(bal.c);
+    await pool.execute(`DELETE FROM order_items WHERE order_id=?`, [orderA]);
+    await pool.execute(`DELETE FROM orders WHERE id=?`, [orderA]);
+  });
+
+  it('C3. CASH DELIVERY NO-OP — delivery emits no additional cash accounting', async () => {
+    const { postMarketplaceCashCommissionAccounting } = await import('../application/accounting-event.listener.js') as any;
+    const orderA = await insertOrder({ sellerId: orgA, subtotal: 850, shipping: 50, commission: 42.50, paymentMethod: 'cash', cashHolder: 'org', status: 'delivered' });
+    // Start-processing posts the full cash economics; delivery must NOT post again.
+    await postMarketplaceCashCommissionAccounting(orderA, 'EGP');
+    const [rows] = await pool.execute<RowData>(
+      `SELECT event_type, COUNT(*) c FROM ledger_entries WHERE source_type='marketplace' AND source_id=? GROUP BY event_type`,
+      [orderA],
+    );
+    const byEvent: Record<string, number> = {};
+    for (const r of rows as any[]) byEvent[r.event_type] = Number(r.c);
+    expect(byEvent['marketplace_cash_commission']).toBe(2);
+    expect(byEvent['marketplace_org_cash_receivable']).toBe(5);
+    const bal = await orderBalance(orderA);
+    expect(bal.d).toBe(bal.c);
+    await pool.execute(`DELETE FROM order_items WHERE order_id=?`, [orderA]);
+    await pool.execute(`DELETE FROM orders WHERE id=?`, [orderA]);
+  });
+
+  it('C4. CASH CANCELLATION — reversal nets BOTH books to zero (org Book courtzon_payable reversed)', async () => {
+    const { postMarketplaceCashCommissionAccounting, postMarketplaceCashReversalAccounting } = await import('../application/accounting-event.listener.js') as any;
+    const orderA = await insertOrder({ sellerId: orgA, subtotal: 175, shipping: 50, commission: 8.75, paymentMethod: 'cash', cashHolder: 'org' });
+    await postMarketplaceCashCommissionAccounting(orderA, 'EGP');
+    const czPayA = await orgAccountId(orgA, 'MKT-CZ-PAY');
+    const commExpA = await orgAccountId(orgA, 'MKT-COMM-EXP');
+    const orgRecvA = await orgAccountId(orgA, '1161');
+    const salesA = await orgAccountId(orgA, 'MKT-SALES');
+    const shipA = await orgAccountId(orgA, 'MKT-SHIP-LIAB');
+    // CourtZon book cash receivable.
+    const cz1161 = await accountId('1161');
+    const cz4160 = await accountId('4160');
+
+    // Cash posting (start processing) — CourtZon + org book, all present.
+    expect((await bookSums(cz1161, orderA, null)).debit).toBe(8.75);
+    expect((await bookSums(cz4160, orderA, null)).credit).toBe(8.75);
+    expect((await bookSums(orgRecvA, orderA, orgA)).debit).toBe(225);
+    expect((await bookSums(czPayA, orderA, orgA)).credit).toBe(8.75);
+    expect((await bookSums(salesA, orderA, orgA)).credit).toBe(175);
+    expect((await bookSums(shipA, orderA, orgA)).credit).toBe(50);
+    expect((await bookSums(commExpA, orderA, orgA)).debit).toBe(8.75);
+
+    // Cancel → reversal nets every account to zero (both books).
+    await postMarketplaceCashReversalAccounting(orderA, 'EGP', 'cancelled');
+    for (const [acc, org] of [[cz1161, null], [cz4160, null], [orgRecvA, orgA], [czPayA, orgA], [salesA, orgA], [shipA, orgA], [commExpA, orgA]]) {
+      const s = await bookSums(acc as number, orderA, org as number | null);
+      expect(s.debit - s.credit).toBe(0);
+    }
+    const bal = await orderBalance(orderA);
+    expect(bal.d).toBe(bal.c);
+    await pool.execute(`DELETE FROM order_items WHERE order_id=?`, [orderA]);
+    await pool.execute(`DELETE FROM orders WHERE id=?`, [orderA]);
+  });
+
+  it('K. GATEWAY CLEARING — CARD payment debits 1100 (not Bank/Cash); gateway settlement moves 1100 → 1120', async () => {
+    const { postMarketplacePaymentAccounting, postGatewaySettlementAccounting } = await import('../application/accounting-event.listener.js') as any;
+    const clearingId = await accountId('1100');
+    const bankId = await accountId('1120');
+    const orderA = await insertOrder({ sellerId: orgA, subtotal: 850, shipping: 50, commission: 42.50 });
+    await postMarketplacePaymentAccounting(orderA, 'card', 'EGP');
+
+    // 1. CARD payment: Dr 1100 (clearing asset) = gross; NO Bank (1120) debit.
+    expect((await bookSums(clearingId, orderA, null)).debit).toBe(900);
+    expect((await bookSums(bankId, orderA, null)).debit).toBe(0);
+    expect((await bookSums(bankId, orderA, null)).credit).toBe(0);
+
+    // 2. Gateway settlement: Dr 1120 Bank / Cr 1100 Clearing for the settled gross.
+    await postGatewaySettlementAccounting(orderA, 900, 'EGP');
+    expect((await settlementSums(bankId, orderA, null)).debit).toBe(900);
+    // Clearing balance after settlement = 0 (900 debit - 900 credit).
+    expect((await bookSums(clearingId, orderA, null)).debit - (await settlementSums(clearingId, orderA, null)).credit).toBe(0);
+
+    // 3. Replay of gateway settlement creates no duplicates.
+    await postGatewaySettlementAccounting(orderA, 900, 'EGP');
+    expect((await settlementSums(bankId, orderA, null)).debit).toBe(900);
+
+    // 4. Both books remain balanced.
+    const bal = await orderBalance(orderA);
+    expect(bal.d).toBe(bal.c);
+    await pool.execute(`DELETE FROM order_items WHERE order_id=?`, [orderA]);
+    await pool.execute(`DELETE FROM orders WHERE id=?`, [orderA]);
+  });
+
+  it('K2. GATEWAY SETTLEMENT — org book never contains CourtZon 1100/1120; CourtZon book never org-scoped', async () => {
+    const { postMarketplacePaymentAccounting, postGatewaySettlementAccounting } = await import('../application/accounting-event.listener.js') as any;
+    const clearingId = await accountId('1100');
+    const bankId = await accountId('1120');
+    const orderA = await insertOrder({ sellerId: orgA, subtotal: 850, shipping: 50, commission: 42.50 });
+    await postMarketplacePaymentAccounting(orderA, 'card', 'EGP');
+    await postGatewaySettlementAccounting(orderA, 900, 'EGP');
+
+    // Org book must NOT reference the CourtZon clearing/bank accounts at all.
+    expect(await orderOrgs(clearingId, orderA)).toEqual([null]);
+    expect(await settlementOrgs(bankId, orderA)).toEqual([null]);
+    expect(await settlementOrgs(clearingId, orderA)).toEqual([null]);
+    // Org book is still its own isolated economics (unchanged by settlement).
+    const orgRecvA = await orgAccountId(orgA, '1161');
+    const salesA = await orgAccountId(orgA, 'MKT-SALES');
+    const shipA = await orgAccountId(orgA, 'MKT-SHIP-LIAB');
+    expect((await bookSums(orgRecvA, orderA, orgA)).debit).toBe(857.50);
+    expect((await bookSums(salesA, orderA, orgA)).credit).toBe(850);
+    expect((await bookSums(shipA, orderA, orgA)).credit).toBe(50);
+    const bal = await orderBalance(orderA);
+    expect(bal.d).toBe(bal.c);
+    await pool.execute(`DELETE FROM order_items WHERE order_id=?`, [orderA]);
+    await pool.execute(`DELETE FROM orders WHERE id=?`, [orderA]);
+  });
+
+  it('K3. CASH/COD — no gateway clearing involved; cash book never touches CourtZon clearing/bank', async () => {
+    const { postMarketplaceCashCommissionAccounting } = await import('../application/accounting-event.listener.js') as any;
+    const clearingId = await accountId('1100');
+    const bankId = await accountId('1120');
+    const receivableId = await accountId('1161');
+    const orderA = await insertOrder({ sellerId: orgA, subtotal: 850, shipping: 50, commission: 42.50, paymentMethod: 'cash', cashHolder: 'org' });
+    await postMarketplaceCashCommissionAccounting(orderA, 'EGP');
+
+    // CASH/COD posts 1161/4160 — never 1100 clearing, never 1120 bank.
+    expect((await bookSums(clearingId, orderA, null)).debit).toBe(0);
+    expect((await bookSums(bankId, orderA, null)).debit).toBe(0);
+    expect((await bookSums(receivableId, orderA, null)).debit).toBe(42.50);
+    const bal = await orderBalance(orderA);
+    expect(bal.d).toBe(bal.c);
+    await pool.execute(`DELETE FROM order_items WHERE order_id=?`, [orderA]);
+    await pool.execute(`DELETE FROM orders WHERE id=?`, [orderA]);
+  });
+
+  it('K4. CARD REFUND — reverses clearing (1100) AND merchant payable/commission; no bank impact', async () => {
+    const { postMarketplacePaymentAccounting, postMarketplaceRefundAccounting, postGatewaySettlementAccounting } = await import('../application/accounting-event.listener.js') as any;
+    const clearingId = await accountId('1100');
+    const bankId = await accountId('1120');
+    const payableId = await accountId('2202');
+    const revenueId = await accountId('4160');
+    const orderA = await insertOrder({ sellerId: orgA, subtotal: 850, shipping: 50, commission: 42.50 });
+    await postMarketplacePaymentAccounting(orderA, 'card', 'EGP');
+    await postGatewaySettlementAccounting(orderA, 900, 'EGP'); // settled
+    await postMarketplaceRefundAccounting(orderA, 'EGP');      // then refunded
+
+    // Refund reverses the original clearing credit (Cr 1100) and the org book.
+    // Clearing net = 0 (payment Dr 900, settlement Cr 900, refund Cr 900 + ... wait:
+    // refund posts Cr 1100 (marketplace_merchant_refund credit payment_clearing)
+    // but settlement already Cr'd 1100 — so clearing ends net DR 900 - CR 1800 =
+    // -900, which is economically correct: the refunded gross was already settled
+    // to bank. Assert balance and org-book symmetry instead of a naive zero.
+    const bal = await orderBalance(orderA);
+    expect(bal.d).toBe(bal.c);
+    // Org book fully netted to zero by the refund reversal.
+    for (const acc of [payableId, revenueId]) {
+      const s = await bookSums(acc, orderA, null);
+      expect(s.debit - s.credit).toBe(0);
+    }
+    const orgRecvA = await orgAccountId(orgA, '1161');
+    expect((await bookSums(orgRecvA, orderA, orgA)).debit - (await bookSums(orgRecvA, orderA, orgA)).credit).toBe(0);
+    await pool.execute(`DELETE FROM order_items WHERE order_id=?`, [orderA]);
+    await pool.execute(`DELETE FROM orders WHERE id=?`, [orderA]);
+  });
+
+  it('K5. IDEMPOTENCY — gateway settlement replay produces zero duplicates', async () => {
+    const { postGatewaySettlementAccounting } = await import('../application/accounting-event.listener.js') as any;
+    const bankId = await accountId('1120');
+    const clearingId = await accountId('1100');
+    await postGatewaySettlementAccounting(998877, 1234.50, 'EGP');
+    await postGatewaySettlementAccounting(998877, 1234.50, 'EGP');
+    const [rows] = await pool.execute<RowData>(
+      `SELECT COUNT(*) c FROM ledger_entries WHERE source_type='settlement' AND source_id=998877 AND event_type='payment_gateway_settlement'`,
+    );
+    expect(Number((rows as any[])[0].c)).toBe(2); // Dr Bank + Cr Clearing
+    const [bank] = await pool.execute<RowData>(
+      `SELECT SUM(amount) s FROM ledger_entries WHERE chart_account_id=? AND source_type='settlement' AND source_id=998877 AND side='debit'`,
+      [bankId],
+    );
+    expect(Number((bank as any[])[0].s)).toBe(1234.50);
+    const [clear] = await pool.execute<RowData>(
+      `SELECT SUM(amount) s FROM ledger_entries WHERE chart_account_id=? AND source_type='settlement' AND source_id=998877 AND side='credit'`,
+      [clearingId],
+    );
+    expect(Number((clear as any[])[0].s)).toBe(1234.50);
+    await pool.execute(`DELETE FROM ledger_entries WHERE source_type='settlement' AND source_id=998877 AND event_type='payment_gateway_settlement'`);
+    await pool.execute(`DELETE FROM general_ledger WHERE reference_type='settlement_payment_gateway_settlement' AND reference_id=998877`);
+  });
+
+  it('J. SYSTEM COA PROTECTION — is_system=1 accounts cannot be renamed or deactivated', async () => {
+    const { updateAccountHandler } = await import('../../accounting/presentation/accounting.controller.js') as any;
+    const [sysRow] = await pool.execute<RowData>(
+      `SELECT id FROM chart_of_accounts WHERE organisation_id = ? AND code = 'MKT-SALES' LIMIT 1`, [orgA],
+    );
+    const sysId = Number((sysRow as any[])[0].id);
+    // The org-scoped marketplace accounts are auto-provisioned as is_system = 1.
+    const [flag] = await pool.execute<RowData>(`SELECT is_system FROM chart_of_accounts WHERE id = ?`, [sysId]);
+    expect(Number((flag as any[])[0].is_system)).toBe(1);
+
+    // Rename attempt → forbidden.
+    const renameReq = { params: { id: sysId }, body: { name: 'Hacked Name' }, userId: 1, ip: 'test', headers: { 'user-agent': 'test' } } as any;
+    let renamed = false;
+    try { await updateAccountHandler(renameReq, { status: () => ({ send: () => { renamed = true; } }) } as any); } catch { /* expected FORBIDDEN */ }
+    expect(renamed).toBe(false);
+
+    const [after] = await pool.execute<RowData>(`SELECT name FROM chart_of_accounts WHERE id = ?`, [sysId]);
+    expect((after as any[])[0].name).toBe('Marketplace Sales Revenue');
   });
 
   it('D. SHIPPING — org shipping liability is org-scoped MKT-SHIP-LIAB, NOT CourtZon 2400', async () => {

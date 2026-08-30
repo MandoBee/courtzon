@@ -159,6 +159,26 @@ export const EVENT_CONCEPTS: Record<string, { debit: string[]; credit: string[] 
     debit: ['sales_revenue', 'shipping_liability'],
     credit: ['marketplace_receivable', 'commission_expense'],
   },
+  // ── ORGANIZATION BOOK — CASH/COD (released at START PROCESSING) ──
+  // The CASH org-book split differs from card/wallet. At start-of-processing the
+  // seller collected (or is about to collect) the customer's cash directly, so
+  // the org:
+  //   Dr org Marketplace Receivable      = full customer gross (sales + shipping)
+  //   Dr org Marketplace Commission Exp  = CourtZon commission
+  //   Cr org Marketplace Sales Revenue   = gross merchandise − discount
+  //   Cr org Shipping Liability          = shipping
+  //   Cr org CourtZon Payable            = commission owed to CourtZon
+  // Balanced: Dr (gross + commission) = Cr (sales + shipping + commission).
+  // Idempotent per (source_type, source_id, 'marketplace_org_cash_receivable').
+  marketplace_org_cash_receivable: {
+    debit: ['marketplace_receivable', 'commission_expense'],
+    credit: ['sales_revenue', 'shipping_liability', 'courtzon_payable'],
+  },
+  // Organization-book CASH reversal (refund/cancel) — symmetric reversal.
+  marketplace_org_cash_receivable_rev: {
+    debit: ['sales_revenue', 'shipping_liability', 'courtzon_payable'],
+    credit: ['marketplace_receivable', 'commission_expense'],
+  },
   // Marketplace complaint refund — symmetric reversal of the original
   // marketplace custody economics when a complaint refunds the buyer to their
   // wallet (CARD/WALLET custody: CourtZon collected, so merchant_payable is
@@ -216,6 +236,16 @@ export const EVENT_CONCEPTS: Record<string, { debit: string[]; credit: string[] 
   },
   payment_failure: {
     debit: ['bad_debt'],
+    credit: ['payment_clearing'],
+  },
+  // Payment-gateway settlement — the payment gateway has actually transferred
+  // accumulated card/credit clearing funds into CourtZon's bank. CourtZon book
+  // (org NULL): Dr Bank (1120 Cash / Bank) / Cr Payment Clearing (1100).
+  // THIS is the ONLY event that moves clearing → bank. Payment success itself
+  // debits 1100 (clearing asset), never Bank/Cash. Posted from the gateway
+  // settlement process on a genuine settlement signal; idempotent.
+  payment_gateway_settlement: {
+    debit: ['cash_bank'],
     credit: ['payment_clearing'],
   },
   invoice_issue: {

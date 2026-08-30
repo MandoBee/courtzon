@@ -173,6 +173,80 @@ async function postOrganisationBookReversalAccounting(econ: OrderEconomics, curr
 }
 
 /**
+ * Post the ORGANIZATION BOOK for a CASH/COD seller-order at START PROCESSING.
+ * The org collected (or will collect) the customer's cash directly, so the org
+ * records the FULL customer gross (receivable from the customer) and the
+ * commission it owes CourtZon as a payable — a distinct split from card/wallet:
+ *   Dr org Marketplace Receivable      = gross (sales − discount + shipping)
+ *   Dr org Marketplace Commission Exp  = commission
+ *   Cr org Marketplace Sales Revenue   = gross merchandise − discount
+ *   Cr org Shipping Liability          = shipping
+ *   Cr org CourtZon Payable            = commission (owed to CourtZon)
+ * Balanced: Dr (gross + commission) = Cr (sales + shipping + commission).
+ * Idempotent per (source_type, source_id, 'marketplace_org_cash_receivable').
+ */
+async function postOrganisationCashBookAccounting(econ: OrderEconomics, currency: string, oid: number): Promise<void> {
+  if (!econ.merchantId) return;
+  const gross = Math.round(((econ.grossMerchandise - econ.discountAmount) + econ.shipping) * 100) / 100;
+  const salesRevenue = Math.round((econ.grossMerchandise - econ.discountAmount) * 100) / 100;
+  await postAccountingEvent(
+    'marketplace_org_cash_receivable', 'marketplace', oid, econ.merchantId,
+    {
+      marketplace_receivable: gross,
+      commission_expense: econ.commission,
+      sales_revenue: salesRevenue,
+      shipping_liability: econ.shipping,
+      courtzon_payable: econ.commission,
+    },
+    currency,
+    `Order #${oid} organization book (cash at start processing)`,
+    undefined,
+    {
+      marketplace_receivable: econ.merchantId,
+      commission_expense: econ.merchantId,
+      sales_revenue: econ.merchantId,
+      shipping_liability: econ.merchantId,
+      courtzon_payable: econ.merchantId,
+    },
+  );
+}
+
+/**
+ * Reverse the ORGANIZATION BOOK CASH postings (refund/cancel) for a seller-order.
+ */
+async function postOrganisationCashBookReversalAccounting(econ: OrderEconomics, currency: string, oid: number): Promise<void> {
+  if (!econ.merchantId) return;
+  // Reverse the org book only if the original org cash book posting actually
+  // exists. Cash books at START PROCESSING; if that posting was never created
+  // (e.g. an order cancelled before processing), there is nothing to reverse —
+  // posting a reversal-only org entry would leave an unbalanced/spurious row.
+  const orgBooked = await ledgerRepository.hasPosting('marketplace', oid, 'marketplace_org_cash_receivable');
+  if (!orgBooked) return;
+  const gross = Math.round(((econ.grossMerchandise - econ.discountAmount) + econ.shipping) * 100) / 100;
+  const salesRevenue = Math.round((econ.grossMerchandise - econ.discountAmount) * 100) / 100;
+  await postAccountingEvent(
+    'marketplace_org_cash_receivable_rev', 'marketplace', oid, econ.merchantId,
+    {
+      sales_revenue: salesRevenue,
+      shipping_liability: econ.shipping,
+      courtzon_payable: econ.commission,
+      marketplace_receivable: gross,
+      commission_expense: econ.commission,
+    },
+    currency,
+    `Order #${oid} organization book cash reversal`,
+    undefined,
+    {
+      sales_revenue: econ.merchantId,
+      shipping_liability: econ.merchantId,
+      courtzon_payable: econ.merchantId,
+      marketplace_receivable: econ.merchantId,
+      commission_expense: econ.merchantId,
+    },
+  );
+}
+
+/**
  * Post marketplace CARD/WALLET payment accounting for EVERY seller-order in the
  * checkout group.
  *
@@ -225,6 +299,33 @@ async function postMarketplacePaymentAccounting(orderId: number, paymentMethod: 
     );
     await postOrganisationBookAccounting(econ, currency, oid);
   }
+}
+
+/**
+ * Post PAYMENT-GATEWAY SETTLEMENT accounting (CourtZon book only).
+ *
+ * A successful CARD/CREDIT marketplace payment debits 1100 Payment Clearing
+ * (the gateway-clearing asset) — the money is held by the payment gateway, NOT
+ * yet in CourtZon's bank/cash. Only when the gateway ACTUALLY settles and
+ * transfers the accumulated clearing balance to CourtZon's bank does this
+ * event post:
+ *   Dr 1120 Cash / Bank
+ *   Cr 1100 Payment Clearing
+ * which zeroes the gateway clearing asset for the settled amount and increases
+ * Bank ONLY on a genuine settlement signal.
+ *
+ * organisation_id stays NULL: the gateway clearing asset and the bank are
+ * CourtZon's accounts, never org-scoped. Idempotent per
+ * (source_type='settlement', source_id, event_type='payment_gateway_settlement').
+ */
+async function postGatewaySettlementAccounting(sourceId: number, amount: number, currency: string): Promise<void> {
+  if (!sourceId || amount <= 0) return;
+  await postAccountingEvent(
+    'payment_gateway_settlement', 'settlement', sourceId, null,
+    { cash_bank: amount, payment_clearing: amount },
+    currency,
+    `Payment gateway settlement #${sourceId} (clearing → bank)`,
+  );
 }
 
 async function postMarketplaceRefundAccounting(orderId: number, currency: string): Promise<void> {
@@ -296,11 +397,11 @@ async function postMarketplaceCashCommissionAccounting(orderId: number, currency
       'marketplace_cash_commission', 'marketplace', oid, null,
       { marketplace_receivable: econ.commission, platform_commission: econ.commission },
       currency,
-      `Order #${oid} delivered (cash — commission receivable)`,
+      `Order #${oid} start processing (cash — commission receivable)`,
       undefined,
       { marketplace_receivable: null, platform_commission: null },
     );
-    await postOrganisationBookAccounting(econ, currency, oid);
+    await postOrganisationCashBookAccounting(econ, currency, oid);
   }
 }
 
@@ -327,7 +428,7 @@ async function postMarketplaceCashReversalAccounting(orderId: number, currency: 
       undefined,
       { platform_commission: null, marketplace_receivable: null },
     );
-    await postOrganisationBookReversalAccounting(econ, currency, oid);
+    await postOrganisationCashBookReversalAccounting(econ, currency, oid);
   }
 }
 
@@ -890,7 +991,12 @@ export function registerAccountingEventListeners(): void {
 
   // ── Marketplace Events ──
 
-  eventBusV2.on('marketplace:order-delivered', async (data: any) => {
+  // CASH/COD marketplace accounting is released at START PROCESSING (order →
+  // `processing`), when the seller begins fulfilment and is deemed to have
+  // taken on the sale + its CourtZon commission obligation. Only COD/cash
+  // orders post here (card/wallet were already recognized at payment time via
+  // marketplace_card/wallet_payment). Idempotent per posting.
+  eventBusV2.on('marketplace:order-processing', async (data: any) => {
     try {
       const orderId = data.orderId || data.id;
       const currency = data.currency || 'EGP';
@@ -898,14 +1004,29 @@ export function registerAccountingEventListeners(): void {
 
       const econ = await resolveOrderEconomics(orderId);
       if (!econ) return;
-
-      // Only COD/cash orders need delivery recognition (card/wallet were already
-      // recognized at payment time via marketplace_card/wallet_payment). Cash is
-      // recognised as a commission RECEIVABLE from the seller (1161) — the seller
-      // collected the customer's cash, so the full amount never enters 1100.
       if (econ.cashHolder !== 'org') return;
 
       await postMarketplaceCashCommissionAccounting(orderId, currency);
+    } catch (err: any) {
+      if (err?.code === 'ER_DUP_ENTRY') { log.info({ err: err.message }, 'Duplicate — skip'); return; }
+      log.error({ err }, 'Marketplace start-processing (cash) accounting failed');
+    }
+  });
+
+  // Delivery is a business-state event only. CASH/COD accounting is already
+  // released at START PROCESSING (see marketplace:order-processing); card/wallet
+  // were recognized at payment time. No additional accounting is posted here.
+  eventBusV2.on('marketplace:order-delivered', async (data: any) => {
+    try {
+      const orderId = data.orderId || data.id;
+      if (!orderId) return;
+
+      const econ = await resolveOrderEconomics(orderId);
+      if (!econ) return;
+
+      // Cash accounting was released at start-processing; delivery adds nothing.
+      if (econ.cashHolder !== 'org') return;
+      log.info({ orderId }, 'Marketplace delivered — cash accounting already released at start processing; no-op');
     } catch (err: any) {
       if (err?.code === 'ER_DUP_ENTRY') { log.info({ err: err.message }, 'Duplicate — skip'); return; }
       log.error({ err }, 'Marketplace delivery accounting failed');
@@ -983,6 +1104,27 @@ export function registerAccountingEventListeners(): void {
     } catch (err: any) {
       if (err?.code === 'ER_DUP_ENTRY') { log.info({ err: err.message }, 'Duplicate — skip'); return; }
       log.error({ err }, 'Withdrawal completion accounting failed');
+    }
+  });
+
+  // ── Payment Gateway Settlement Event ──
+
+  // A successful CARD/CREDIT marketplace payment debits 1100 Payment Clearing
+  // (gateway clearing asset); it NEVER debits Bank/Cash. Only an ACTUAL gateway
+  // settlement (the gateway transferring cleared funds to CourtZon's bank)
+  // emits this event → Dr Bank / Cr Payment Clearing. No fake/simulated
+  // settlement is generated anywhere; the gateway settlement process emits it
+  // when a real settlement occurs.
+  eventBusV2.on('payment:gateway-settled', async (data: any) => {
+    try {
+      const sourceId = Number(data.settlementId || data.id || 0);
+      const amount = Number(data.amount || 0);
+      const currency = data.currency || 'EGP';
+      if (!sourceId || amount <= 0) return;
+      await postGatewaySettlementAccounting(sourceId, amount, currency);
+    } catch (err: any) {
+      if (err?.code === 'ER_DUP_ENTRY') { log.info({ err: err.message }, 'Duplicate — skip'); return; }
+      log.error({ err }, 'Payment gateway settlement accounting failed');
     }
   });
 
@@ -1089,6 +1231,8 @@ export function registerAccountingEventListeners(): void {
 const ACCOUNTING_REPLAY_EVENTS = [
   'payment:succeeded',
   'payment:refunded',
+  'payment:gateway-settled',
+  'marketplace:order-processing',
   'marketplace:order-delivered',
   'marketplace:order-refunded',
   'marketplace:order-cancelled',
@@ -1146,4 +1290,4 @@ export async function createAccountingReplayWorkers(): Promise<any[]> {
   return [worker];
 }
 
-export { postAccountingEvent, postMarketplacePaymentAccounting, postMarketplaceRefundAccounting, postMarketplaceCashCommissionAccounting };
+export { postAccountingEvent, postGatewaySettlementAccounting, postMarketplacePaymentAccounting, postMarketplaceRefundAccounting, postMarketplaceCashCommissionAccounting, postMarketplaceCashReversalAccounting };
