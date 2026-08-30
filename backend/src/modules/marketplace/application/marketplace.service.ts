@@ -1084,7 +1084,7 @@ export const marketplaceService = {
         unitPrice: r.unit_price,
         totalPrice: r.item_total,
         shopName: r.shop_name,
-        sellerId: r.seller_id,
+        sellerId: r.item_seller_id ?? r.seller_id,
       };
       return item;
     });
