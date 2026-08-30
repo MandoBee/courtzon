@@ -1,8 +1,11 @@
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useParams } from 'react-router-dom';
 import api from '../../services/api';
 import { Spinner } from '../../components/ui';
 import { Can } from '../../permissions/Can';
+import ShowZeroBalancesToggle from '../../components/accounting/ShowZeroBalancesToggle';
+import { filterZeroBalanceRows } from '../../utils/accountingZero';
 
 interface ReportLine {
   account_id: number;
@@ -21,6 +24,7 @@ const fmt = (n: number) => (n ?? 0).toLocaleString('en-US', { minimumFractionDig
 
 export default function OrgFinancialReportsPage() {
   const { orgId, reportType } = useParams<{ orgId: string; reportType: string }>();
+  const [showZeroBalances, setShowZeroBalances] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ['org', 'accounting', 'report', reportType, orgId],
@@ -38,19 +42,23 @@ export default function OrgFinancialReportsPage() {
   return (
     <Can permission="org.accounting.view">
       <div>
-        <h1 className="text-2xl font-bold text-[var(--color-text)] mb-6">{title}</h1>
+        <div className="flex items-center justify-between mb-6 gap-4 flex-wrap">
+          <h1 className="text-2xl font-bold text-[var(--color-text)]">{title}</h1>
+          <ShowZeroBalancesToggle checked={showZeroBalances} onChange={setShowZeroBalances} />
+        </div>
 
         {reportType === 'trial-balance' && (
-          <ReportTable rows={(Array.isArray(data) ? data : data?.lines || []) as ReportLine[]} />
+          <ReportTable rows={(Array.isArray(data) ? data : data?.lines || []) as ReportLine[]} showZeroBalances={showZeroBalances} />
         )}
-        {reportType === 'income-statement' && <IncomeStatement data={data} />}
-        {reportType === 'balance-sheet' && <BalanceSheet rows={(Array.isArray(data) ? data : []) as ReportLine[]} />}
+        {reportType === 'income-statement' && <IncomeStatement data={data} showZeroBalances={showZeroBalances} />}
+        {reportType === 'balance-sheet' && <BalanceSheet rows={(Array.isArray(data) ? data : []) as ReportLine[]} showZeroBalances={showZeroBalances} />}
       </div>
     </Can>
   );
 }
 
-function ReportTable({ rows }: { rows: ReportLine[] }) {
+function ReportTable({ rows, showZeroBalances }: { rows: ReportLine[]; showZeroBalances: boolean }) {
+  const visibleRows = filterZeroBalanceRows(rows, showZeroBalances);
   return (
     <div className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] overflow-x-auto">
       <table className="w-full text-sm">
@@ -64,7 +72,7 @@ function ReportTable({ rows }: { rows: ReportLine[] }) {
           </tr>
         </thead>
         <tbody className="divide-y divide-[var(--color-border)]">
-          {rows.map((r, i) => (
+          {visibleRows.map((r, i) => (
             <tr key={i} className={`hover:bg-[var(--color-bg)]/30 ${r.has_children ? 'text-[var(--color-primary)]' : ''}`}>
               <td className="px-4 py-3 text-xs font-mono text-[var(--color-text-muted)]" style={{ paddingLeft: `${r.level * 16 + 16}px` }}>{r.code}</td>
               <td className="px-4 py-3 text-[var(--color-text)]">{r.name}</td>
@@ -75,15 +83,16 @@ function ReportTable({ rows }: { rows: ReportLine[] }) {
               </td>
             </tr>
           ))}
-          {!rows.length && <tr><td colSpan={5} className="px-4 py-8 text-center text-sm text-[var(--color-text-muted)]">No data</td></tr>}
+          {!visibleRows.length && <tr><td colSpan={5} className="px-4 py-8 text-center text-sm text-[var(--color-text-muted)]">No data</td></tr>}
         </tbody>
       </table>
     </div>
   );
 }
 
-function IncomeStatement({ data }: { data: any }) {
-  const rows: ReportLine[] = data?.lines || (Array.isArray(data) ? data : []);
+function IncomeStatement({ data, showZeroBalances }: { data: any; showZeroBalances: boolean }) {
+  const allRows: ReportLine[] = data?.lines || (Array.isArray(data) ? data : []);
+  const rows = filterZeroBalanceRows(allRows, showZeroBalances);
   const rev = rows.filter((r) => r.type === 'revenue');
   const contraRev = rows.filter((r) => r.type === 'contra_revenue');
   const exp = rows.filter((r) => r.type === 'expense');
@@ -133,9 +142,10 @@ function LineRow({ r, negative }: { r: ReportLine; negative?: boolean }) {
   );
 }
 
-function BalanceSheet({ rows }: { rows: ReportLine[] }) {
-  const assets = rows.filter((r) => r.type === 'asset' || r.type === 'contra_asset');
-  const liabEquity = rows.filter((r) => ['liability', 'equity', 'contra_liability', 'contra_equity'].includes(r.type));
+function BalanceSheet({ rows, showZeroBalances }: { rows: ReportLine[]; showZeroBalances: boolean }) {
+  const visibleRows = filterZeroBalanceRows(rows, showZeroBalances);
+  const assets = visibleRows.filter((r) => r.type === 'asset' || r.type === 'contra_asset');
+  const liabEquity = visibleRows.filter((r) => ['liability', 'equity', 'contra_liability', 'contra_equity'].includes(r.type));
   return (
     <div className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] overflow-x-auto">
       <table className="w-full text-sm">
@@ -163,7 +173,7 @@ function BalanceSheet({ rows }: { rows: ReportLine[] }) {
               <td className="px-4 py-2 text-right font-mono text-[var(--color-text)]">{fmt(r.balance)}</td>
             </tr>
           ))}
-          {!rows.length && <tr><td colSpan={3} className="px-4 py-8 text-center text-sm text-[var(--color-text-muted)]">No data</td></tr>}
+          {!visibleRows.length && <tr><td colSpan={3} className="px-4 py-8 text-center text-sm text-[var(--color-text-muted)]">No data</td></tr>}
         </tbody>
       </table>
     </div>
