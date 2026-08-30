@@ -5,8 +5,6 @@ import { paymentService } from '../../payment/application/payment.service.js';
 import { paymentRepository } from '../../payment/infrastructure/repositories/payment.repository.js';
 import { commissionService } from '../../financial/application/commission.service.js';
 import { organisationService } from '../../organisations/application/organisation.service.js';
-import { transactionService } from '../../financial/application/transaction.service.js';
-import { transactionRepository } from '../../financial/infrastructure/transaction.repository.js';
 import { walletRepository } from '../../wallet/infrastructure/repositories/wallet.repository.js';
 import { getPool } from '../../../database/mysql.js';
 import { withTransaction } from '../../../database/database.transaction.js';
@@ -1402,139 +1400,31 @@ export const marketplaceService = {
   },
 
   // ── Financial recording: Delivered ──
-  // Balanced double-entry revenue recognition (debits = credits):
-  //   CARD/WALLET (CourtZon collected the buyer's money):
-  //     debit  platform_account(1)  totalAmount      — collected cash moves out of staging
-  //     credit platform_account(2)  courtzonFee       — CourtZon commission earned
-  //     credit branch(seller)       net = total − fee — payable to seller
-  //   CASH/COD (the SELLER collected the buyer's money — never CourtZon's cash):
-  //     debit  branch(seller)       totalAmount       — seller physically holds the cash
-  //     credit platform_account(2)  courtzonFee       — CourtZon receivable FROM the seller
-  //     credit branch(seller)       net = total − fee — seller entitlement
+  // The canonical Accounting Engine (accounting-event.listener) is the SINGLE
+  // source of truth for marketplace delivery accounting:
+  //   CARD/WALLET → recognized at payment time (marketplace_card/wallet_payment).
+  //   CASH/COD    → recognized at delivery (marketplace_cash_commission: Dr 1161
+  //                 Marketplace Receivable / Cr 4160 Marketplace Revenue).
+  // This method only updates the business-state cash collection status. The
+  // legacy `transactions`/`transaction_entries` delivery double-post was retired
+  // so no second accounting model competes with the canonical ledger.
   async _recordDeliveryFinancials(orderId: number) {
     const rows = await repo.findOrderById(orderId);
     if (!rows?.length) return;
     const order = rows[0] as any;
     const isCOD = order.payment_method === 'cash';
-
-    // Update cash collection status
     await repo.updateCashCollectionStatus(orderId, isCOD ? 'held_by_org' : 'held_by_courtzon');
-
-    // Use order-level courtzon_fee (fee on products only — shipping is 100% org)
-    const courtzonFee = Number(order.courtzon_fee || order.courtzon_commission || 0);
-    const totalProduct = Number(order.subtotal || 0);
-    const totalShipping = Number(order.shipping_cost || 0);
-    const totalTax = Number(order.tax_amount || 0);
-    const totalAmount = Math.round((totalProduct + totalShipping + totalTax) * 100) / 100;
-    const netAmount = Math.round((totalAmount - courtzonFee) * 100) / 100;
-
-    const sellerDetails = new Map<number, { branchId: number | null }>();
-    for (const row of rows as any[]) {
-      if (!row.item_seller_id) continue;
-      if (!sellerDetails.has(row.item_seller_id)) {
-        sellerDetails.set(row.item_seller_id, { branchId: row.branch_id || null });
-      }
-    }
-
-    // Create a single transaction for the whole order
-    const txnId = await transactionRepository.createTransaction({
-      type: 'marketplace_order',
-      sourceType: 'marketplace',
-      sourceId: orderId,
-      totalAmount,
-      status: 'completed',
-    });
-
-    const entries: any[] = [];
-
-    // Debit: where the buyer's money actually sits at delivery time.
-    const firstSeller = sellerDetails.keys().next().value;
-    const firstBranchId = firstSeller ? sellerDetails.get(firstSeller)?.branchId : null;
-    if (isCOD) {
-      // Cash held by the seller organisation — NOT collected by CourtZon.
-      entries.push({
-        transactionId: txnId,
-        side: 'debit',
-        entityType: 'branch',
-        entityId: firstBranchId || 0,
-        amount: totalAmount,
-        branchId: firstBranchId || undefined,
-        organisationId: firstSeller || undefined,
-        description: `COD cash held by seller for order #${orderId}`,
-      });
-    } else {
-      // Card/wallet — payment previously landed on the platform float.
-      entries.push({
-        transactionId: txnId,
-        side: 'debit',
-        entityType: 'platform_account',
-        entityId: 1,
-        amount: totalAmount,
-        description: `Collected payment routed for order #${orderId}`,
-      });
-    }
-
-    // Credit: CourtZon fee (commission on products only)
-    if (courtzonFee > 0) {
-      entries.push({
-        transactionId: txnId,
-        side: 'credit',
-        entityType: 'platform_account',
-        entityId: 2,
-        amount: courtzonFee,
-        description: `CourtZon fee for order #${orderId}`,
-      });
-    }
-
-    // Credit: org revenue (net = products − fee + shipping + tax)
-    if (netAmount > 0) {
-      entries.push({
-        transactionId: txnId,
-        side: 'credit',
-        entityType: 'branch',
-        entityId: firstBranchId || 0,
-        amount: netAmount,
-        branchId: firstBranchId || undefined,
-        organisationId: firstSeller || undefined,
-        description: `Org net + Shipping Rate for order #${orderId}`,
-      });
-    }
-
-    await transactionRepository.createEntries(entries);
-    // Phase 2 Step 5: insertLedgerEntry (due_to_courtzon) removed — commission
-    // receivable/payable is already represented by financial_entitlements and
-    // GL control accounts via the canonical accounting engine.
   },
 
   // ── Financial reversal: Cancelled / Refunded ──
-  // Reverses delivery entries and resets financial columns.
+  // Reversal accounting is handled by the canonical engine (marketplace cash
+  // reversal / merchant/wallet refund events). This only resets the order's
+  // financial columns; legacy `transactions`/`transaction_entries` reversals
+  // were retired with the legacy delivery double-post.
   async _recordReversalFinancials(orderId: number, reason: string, note?: string) {
     const rows = await repo.findOrderById(orderId);
     if (!rows?.length) return;
     const order = rows[0] as any;
-
-    // Reverse delivery transaction entries if they exist
-    const txns = await transactionRepository.findBySource('marketplace', orderId);
-    for (const txn of txns as any[]) {
-      const txnWithEntries = await transactionRepository.findById(txn.id);
-      if (!txnWithEntries?.entries?.length) continue;
-      const reverseEntries: any[] = [];
-      for (const entry of txnWithEntries.entries) {
-        reverseEntries.push({
-          transactionId: entry.transaction_id,
-          side: entry.side === 'credit' ? 'debit' : 'credit',
-          entityType: entry.entity_type,
-          entityId: entry.entity_id,
-          amount: Number(entry.amount),
-          branchId: entry.branch_id || undefined,
-          organisationId: entry.organisation_id || undefined,
-          description: `Reversal (${reason}) for order #${orderId}`,
-        });
-      }
-      if (reverseEntries.length) {
-        await transactionRepository.createEntries(reverseEntries);
-      }
-    }
 
     // Reset financial columns
     await repo.updateOrderFinancials(orderId, {

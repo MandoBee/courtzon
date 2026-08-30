@@ -20,7 +20,30 @@ export interface ResolvedConcept {
   side: 'debit' | 'credit';
   accountId: number;
   amount: number;
+  /** Per-line organisation override (e.g. seller-scoped payable vs platform-scoped revenue). */
+  organisationId?: number | null;
 }
+
+/**
+ * Code-level concept → account CODE fallback for concepts intentionally resolved
+ * in code rather than the DB mapping table. Keyed by EVENT TYPE so it never
+ * leaks into other accounting domains (e.g. booking platform_commission must stay
+ * 4110, subscription revenue 4170). Marketplace uses:
+ *   `shipping` → 2400 Accounts Payable
+ *   `marketplace_receivable` → 1161 Marketplace Receivable
+ * These have no DB mapping row and require no migration; the accounts already
+ * exist globally (no COA/schema/migration change).
+ */
+const CONCEPT_ACCOUNT_CODE_DEFAULTS: Record<string, Record<string, string>> = {
+  marketplace_card_payment: { shipping: '2400' },
+  marketplace_wallet_payment: { shipping: '2400' },
+  marketplace_merchant_refund: { shipping: '2400' },
+  marketplace_wallet_refund: { shipping: '2400' },
+  // New cash events have no DB mapping rows at all — resolve the full concept set
+  // from code (platform_commission → 4160, marketplace_receivable → 1161).
+  marketplace_cash_commission: { marketplace_receivable: '1161', platform_commission: '4160' },
+  marketplace_cash_reversal: { marketplace_receivable: '1161', platform_commission: '4160' },
+};
 
 export class AccountingEngineService {
   private pool: mysql.Pool;
@@ -33,6 +56,13 @@ export class AccountingEngineService {
    * Resolve the mapping for an event_type + organisation_id.
    * Returns the set of {concept, accountId} lines.
    * Complete-override model: org rows replace global rows entirely.
+   *
+   * Code-level fallback: if a concept required by the event (per EVENT_CONCEPTS)
+   * has no DB mapping row but a code-level account CODE default exists, the
+   * account is resolved by code (global scope) and appended. This lets the
+   * marketplace shipping (2400) and cash receivable (1161) post without a
+   * migration/DB row, while keeping the DB mapping authoritative for everything
+   * else.
    */
   async resolveMapping(eventType: string, organisationId: number | null): Promise<MappingLine[]> {
     let rows: RowData;
@@ -46,6 +76,7 @@ export class AccountingEngineService {
         [eventType, organisationId],
       );
       if ((rows as any[]).length > 0) {
+        await this.applyConceptCodeDefaults(eventType, rows as any[]);
         return this.validateAndReturn(eventType, rows as any[], organisationId);
       }
       log.info({ eventType, organisationId }, 'No org override — falling back to global mapping');
@@ -58,7 +89,32 @@ export class AccountingEngineService {
        ORDER BY concept`,
       [eventType],
     );
+    await this.applyConceptCodeDefaults(eventType, rows as any[]);
     return this.validateAndReturn(eventType, rows as any[], organisationId);
+  }
+
+  /** Append code-level concept→account fallback lines for any missing required concept. */
+  private async applyConceptCodeDefaults(eventType: string, rows: { concept: string; accountId: number }[]): Promise<void> {
+    const defaults = CONCEPT_ACCOUNT_CODE_DEFAULTS[eventType];
+    if (!defaults) return;
+    const required = getEventConcepts(eventType).map(c => c.concept);
+    const present = new Set(rows.map(r => r.concept));
+    const missing = required.filter(c => !present.has(c) && defaults[c]);
+    if (!missing.length) return;
+
+    const codes = [...new Set(missing.map(c => defaults[c]))];
+    const placeholders = codes.map(() => '?').join(',');
+    const [acctRows] = await this.pool.execute<RowData>(
+      `SELECT id, code FROM chart_of_accounts
+       WHERE code IN (${placeholders}) AND organisation_id IS NULL AND is_active = 1`,
+      codes,
+    );
+    const codeToId = new Map((acctRows as any[]).map(a => [a.code, a.id]));
+    for (const c of missing) {
+      const code = defaults[c];
+      const id = codeToId.get(code);
+      if (id != null) rows.push({ concept: c, accountId: Number(id) });
+    }
   }
 
   /**
@@ -150,18 +206,20 @@ export class AccountingEngineService {
 
   /**
    * Build resolved ledger lines from mapping + concept amounts.
-   * Merges lines with the same (side, accountId).
+   * Merges lines with the same (side, accountId) — but keeps lines with
+   * different organisation attribution separate (seller-scoped vs platform).
    */
   buildLedgerLines(
     eventType: string,
     mapping: MappingLine[],
     conceptAmounts: Record<string, number>,
+    conceptOrganisations?: Record<string, number | null>,
   ): ResolvedConcept[] {
     const concepts = getEventConcepts(eventType);
     const conceptMap = new Map(concepts.map(c => [c.concept, c]));
     const mappingMap = new Map(mapping.map(m => [m.concept, m.accountId]));
 
-    const lines: { side: 'debit' | 'credit'; accountId: number; amount: number }[] = [];
+    const lines: { side: 'debit' | 'credit'; accountId: number; amount: number; organisationId?: number | null }[] = [];
 
     for (const [conceptName, amount] of Object.entries(conceptAmounts)) {
       if (amount === 0) continue;
@@ -177,13 +235,22 @@ export class AccountingEngineService {
         throw new Error(`Concept '${conceptName}' not found in resolved mapping for event_type '${eventType}'`);
       }
 
-      lines.push({ side: conceptDef.side, accountId, amount });
+      const orgOverride = conceptOrganisations ? conceptOrganisations[conceptName] : undefined;
+      const line: { side: 'debit' | 'credit'; accountId: number; amount: number; organisationId?: number | null } = {
+        side: conceptDef.side,
+        accountId,
+        amount,
+      };
+      // Only set organisationId when an explicit per-line override exists, so
+      // the caller's event-level organisationId remains the default.
+      if (orgOverride !== undefined) line.organisationId = orgOverride;
+      lines.push(line);
     }
 
-    // Merge lines with same side + accountId
-    const merged = new Map<string, { side: 'debit' | 'credit'; accountId: number; amount: number }>();
+    // Merge lines with same side + accountId + organisation (per-line attribution preserved)
+    const merged = new Map<string, { side: 'debit' | 'credit'; accountId: number; amount: number; organisationId?: number | null }>();
     for (const line of lines) {
-      const key = `${line.side}:${line.accountId}`;
+      const key = `${line.side}:${line.accountId}:${line.organisationId ?? 'null'}`;
       const existing = merged.get(key);
       if (existing) {
         existing.amount += line.amount;
@@ -197,6 +264,7 @@ export class AccountingEngineService {
       side: l.side,
       accountId: l.accountId,
       amount: l.amount,
+      organisationId: l.organisationId,
     }));
   }
 

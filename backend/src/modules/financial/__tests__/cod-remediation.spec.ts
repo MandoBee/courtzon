@@ -264,21 +264,23 @@ describe('COD Custody Remediation', () => {
     await pool.execute(`DELETE FROM orders WHERE id=?`, [orderId]);
   });
 
-  it('7. marketplace COD delivered then cancelled → reversal happens', async () => {
+  it('7. marketplace COD delivered then cancelled → reversal happens (1161 Marketplace Receivable)', async () => {
     const { postAccountingEvent } = await import('../application/accounting-event.listener.js');
     const { eventBusV2 } = await import('../../../shared/event-bus/event-bus.v2.js');
     const { registerAccountingEventListeners } = await import('../application/accounting-event.listener.js');
     registerAccountingEventListeners();
 
     const orderId = await insertOrder('cash', 'delivered');
-    // Delivery recognition (as the listener would do).
+    // Cash delivery recognition: Dr 1161 Marketplace Receivable / Cr 4160 (platform).
     await postAccountingEvent(
-      'marketplace_delivery', 'marketplace', orderId, orgId,
-      { receivable_from_org: 300, platform_commission: 200, tax_liability: 100 },
+      'marketplace_cash_commission', 'marketplace', orderId, null,
+      { marketplace_receivable: 200, platform_commission: 200 },
       'EGP', 'COD delivery',
+      undefined,
+      { marketplace_receivable: orgId, platform_commission: null },
     );
 
-    const receivableId = await accountId('1160');
+    const receivableId = await accountId('1161');
     const before = await sourceSums(receivableId, 'marketplace', orderId);
     expect(before.debit).toBeGreaterThan(0);
     expect(before.credit).toBe(0);
@@ -288,7 +290,7 @@ describe('COD Custody Remediation', () => {
     await new Promise((r) => setTimeout(r, 300));
 
     const after = await sourceSums(receivableId, 'marketplace', orderId);
-    // Receivable cleared by the reversal credit (debit 300, credit 300 → net 0).
+    // Receivable cleared by the reversal credit (debit 200, credit 200 → net 0).
     expect(after.debit).toBe(before.debit);
     expect(after.credit).toBe(before.debit);
     await pool.execute(`DELETE FROM order_items WHERE order_id=?`, [orderId]);
