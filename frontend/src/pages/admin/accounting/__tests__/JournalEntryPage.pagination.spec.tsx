@@ -20,6 +20,8 @@ const makeEntries = (start: number, n: number) =>
     lines: makeLines(),
   }));
 
+export const __mockApi = { total: 2774 };
+
 vi.mock('../../../../services/api', () => ({
   default: {
     get: vi.fn((_url: string, config?: any) => {
@@ -27,7 +29,7 @@ vi.mock('../../../../services/api', () => ({
       const pageSize = config?.params?.pageSize || 25;
       const dateFrom = config?.params?.dateFrom;
       const dateTo = config?.params?.dateTo;
-      let total = 2774;
+      let total = __mockApi.total;
       if (dateFrom && dateTo) total = 203;
       const start = (page - 1) * pageSize;
       const entries = makeEntries(start, Math.min(pageSize, Math.max(0, total - start)));
@@ -71,6 +73,7 @@ describe('JournalEntryPage pagination', () => {
   };
 
   beforeEach(() => {
+    __mockApi.total = 2774;
     (api.get as any).mockClear();
   });
 
@@ -79,7 +82,18 @@ describe('JournalEntryPage pagination', () => {
     await screen.findByText('Entry 0');
     expect(screen.getAllByText('common.previous').length).toBeGreaterThan(0);
     expect(screen.getAllByText('common.next').length).toBeGreaterThan(0);
-    expect(screen.getByText('1–25 of 2774')).toBeTruthy();
+    expect(screen.getByText('1–25 of 2774 records')).toBeTruthy();
+  });
+
+  it('keeps the footer visible with disabled navigation when total <= pageSize (single page)', async () => {
+    __mockApi.total = 13;
+    renderPage();
+    await screen.findByText('Entry 0');
+    expect(screen.getByText('1–13 of 13 records')).toBeTruthy();
+    expect(screen.getByText('1 of 1')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'common.previous' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'common.next' })).toBeDisabled();
+    expect(screen.getAllByText('common.rows_per_page').length).toBeGreaterThan(0);
   });
 
   it('requests page 2 when Next is clicked and receives different entries', async () => {
