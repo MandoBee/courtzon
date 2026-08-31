@@ -25,7 +25,7 @@ function getPageNumbers(current: number, total: number): (number | 'ellipsis')[]
 
 export function Pagination({ total, page, pageSize, onPageChange, onPageSizeChange }: PaginationProps) {
   const { t } = useTranslation();
-  if (total <= pageSize) return null;
+  if (total <= 0) return null;
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const safePage = Math.min(page, totalPages);
@@ -45,7 +45,8 @@ export function Pagination({ total, page, pageSize, onPageChange, onPageSizeChan
       ) : <div />}
 
       <div className="flex items-center gap-2 text-sm text-[var(--color-text-muted)]">
-        <span>{(safePage - 1) * pageSize + 1}–{Math.min(safePage * pageSize, total)} of {total}</span>
+        <span>{(safePage - 1) * pageSize + 1}–{Math.min(safePage * pageSize, total)} of {total} records</span>
+        <span>{safePage} of {totalPages}</span>
       </div>
 
       <div className="flex items-center gap-1">
