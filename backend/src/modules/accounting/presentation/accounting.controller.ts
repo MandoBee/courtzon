@@ -1199,25 +1199,34 @@ export async function listJournalEntriesHandler(request: FastifyRequest, reply: 
 
   const where = conditions.length ? 'WHERE ' + conditions.join(' AND ') : '';
 
+  const groupKey = (r: any) =>
+    `${String(r.entry_date ?? '')}|${r.description ?? ''}|${r.reference_type ?? ''}|${String(r.reference_id ?? '')}|${String(r.organisation_id ?? '')}`;
+
   if (query.grouped) {
     const page = Math.max(1, Number(query.page) || 1);
     const pageSize = Math.min(100, Math.max(1, Number(query.pageSize) || 25));
     const offset = (page - 1) * pageSize;
 
-    const groupExpr = `CONCAT(COALESCE(CAST(gl.entry_date AS CHAR), ''), '||', COALESCE(gl.reference_type, ''), '||', COALESCE(CAST(gl.reference_id AS CHAR), ''), '||', COALESCE(gl.description, ''))`;
-
+    // Group rows into complete journal entries by the business composite key
+    // (entry date + reference + description). All selected non-aggregated
+    // columns are part of the GROUP BY so this is compatible with
+    // ONLY_FULL_GROUP_BY.
     const [countResult] = await pool.execute<RowData>(
-      `SELECT COUNT(*) AS total FROM (SELECT ${groupExpr} AS grp FROM general_ledger gl ${where} GROUP BY grp) sub`,
+      `SELECT COUNT(*) AS total FROM (
+         SELECT 1
+         FROM general_ledger gl ${where}
+         GROUP BY gl.entry_date, gl.description, gl.reference_type, gl.reference_id, gl.organisation_id
+       ) sub`,
       params
     );
     const total = Number((countResult as any[])[0]?.total || 0);
 
-    const [groupRows] = await pool.execute<RowData>(
+    const [groupRows] = await pool.query<RowData>(
       `SELECT MIN(gl.id) AS group_id, gl.entry_date, gl.description, gl.reference_type, gl.reference_id, gl.organisation_id
        FROM general_ledger gl ${where}
-       GROUP BY grp
+       GROUP BY gl.entry_date, gl.description, gl.reference_type, gl.reference_id, gl.organisation_id
        ORDER BY gl.entry_date DESC, group_id DESC
-       LIMIT ? OFFSET ?`.replace('grp', groupExpr),
+       LIMIT ? OFFSET ?`,
       [...params, pageSize, offset]
     );
 
@@ -1226,15 +1235,14 @@ export async function listJournalEntriesHandler(request: FastifyRequest, reply: 
     }
 
     const groupIds = (groupRows as any[]).map((r: any) => Number(r.group_id));
-    const placeholders = groupIds.map(() => '?').join(',');
 
     const groupKeyConditions: string[] = [];
     const groupKeyParams: any[] = [];
     for (const g of groupRows as any[]) {
       groupKeyConditions.push(
-        `(gl.entry_date = ? AND COALESCE(gl.reference_type,'') = ? AND COALESCE(CAST(gl.reference_id AS CHAR),'') = ? AND COALESCE(gl.description,'') = ?)`
+        `(gl.entry_date = ? AND gl.description <=> ? AND gl.reference_type <=> ? AND gl.reference_id <=> ? AND gl.organisation_id <=> ?)`
       );
-      groupKeyParams.push(g.entry_date, g.reference_type || '', String(g.reference_id ?? ''), g.description || '');
+      groupKeyParams.push(g.entry_date, g.description ?? null, g.reference_type ?? null, g.reference_id ?? null, g.organisation_id ?? null);
     }
 
     const [lineRows] = await pool.execute<RowData>(
@@ -1247,6 +1255,7 @@ export async function listJournalEntriesHandler(request: FastifyRequest, reply: 
     );
 
     const groupMap = new Map<number, any>();
+    const lineKeyToGroup = new Map<string, number>();
     for (const g of groupRows as any[]) {
       groupMap.set(Number(g.group_id), {
         id: Number(g.group_id),
@@ -1257,17 +1266,11 @@ export async function listJournalEntriesHandler(request: FastifyRequest, reply: 
         organisation_id: g.organisation_id,
         lines: [],
       });
-    }
-
-    const lineKeyMap = new Map<string, number>();
-    for (const g of groupRows as any[]) {
-      const gk = `${g.entry_date}||${g.reference_type || ''}||${g.reference_id ?? ''}||${g.description || ''}`;
-      lineKeyMap.set(gk, Number(g.group_id));
+      lineKeyToGroup.set(groupKey(g), Number(g.group_id));
     }
 
     for (const row of lineRows as any[]) {
-      const rk = `${row.entry_date}||${row.reference_type || ''}||${row.reference_id ?? ''}||${row.description || ''}`;
-      const gid = lineKeyMap.get(rk);
+      const gid = lineKeyToGroup.get(groupKey(row));
       if (gid && groupMap.has(gid)) {
         groupMap.get(gid)!.lines.push({
           account_code: row.account_code,
