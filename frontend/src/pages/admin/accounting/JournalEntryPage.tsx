@@ -15,17 +15,14 @@ interface LineItem {
   credit: number;
 }
 
-interface JournalEntry {
+interface GroupedEntry {
   id: number;
   entry_date: string;
-  account_code: string;
-  account_name: string;
-  debit: number;
-  credit: number;
   description: string;
   reference_type: string;
-  reference_id: string | number;
+  reference_id: string | number | null;
   organisation_id: number | null;
+  lines: { account_code: string; account_name: string; debit: number; credit: number }[];
 }
 
 export default function JournalEntryPage() {
@@ -34,12 +31,18 @@ export default function JournalEntryPage() {
   const [showForm, setShowForm] = useState(false);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
+  const [filterFrom, setFilterFrom] = useState('');
+  const [filterTo, setFilterTo] = useState('');
+  const [appliedFrom, setAppliedFrom] = useState('');
+  const [appliedTo, setAppliedTo] = useState('');
   const [form, setForm] = useState({ entry_date: localToday(), description: '' });
   const [lines, setLines] = useState<LineItem[]>([{ account_id: '', account_code: '', account_name: '', debit: 0, credit: 0 }]);
 
   const { data: entriesData, isLoading } = useQuery({
-    queryKey: ['accounting', 'journal-entries', page, pageSize],
-    queryFn: () => api.get('/admin/accounting/journal', { params: { page, pageSize } }).then((r: any) => r.data),
+    queryKey: ['accounting', 'journal-entries-grouped', page, pageSize, appliedFrom, appliedTo],
+    queryFn: () => api.get('/admin/accounting/journal', {
+      params: { grouped: true, page, pageSize, dateFrom: appliedFrom || undefined, dateTo: appliedTo || undefined },
+    }).then((r: any) => r.data),
   });
 
   const { data: accounts } = useQuery({
@@ -47,13 +50,13 @@ export default function JournalEntryPage() {
     queryFn: () => api.get('/admin/accounting/accounts').then((r: any) => r.data.data || r.data),
   });
 
-  const entries: JournalEntry[] = entriesData?.data || [];
+  const entries: GroupedEntry[] = entriesData?.data || [];
   const total = entriesData?.total || 0;
   const accountList: any[] = (accounts || []).filter((a: any) => a.is_postable);
 
   const createMutation = useMutation({
     mutationFn: (payload: any) => api.post('/admin/accounting/journal', payload),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['accounting', 'journal-entries'] }); resetForm(); showToast('Journal entry created!'); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['accounting', 'journal-entries-grouped'] }); resetForm(); showToast('Journal entry created!'); },
     onError: (err: any) => showToast(getErrorMessage(err), 'error'),
   });
 
@@ -91,6 +94,24 @@ export default function JournalEntryPage() {
       description: form.description,
       entries: lines.map(l => ({ accountId: Number(l.account_id), debit: Number(l.debit) || 0, credit: Number(l.credit) || 0 })),
     });
+  };
+
+  const applyFilters = () => {
+    if (filterFrom && filterTo && filterFrom > filterTo) {
+      showToast('From date must be before or equal to To date', 'error');
+      return;
+    }
+    setPage(1);
+    setAppliedFrom(filterFrom);
+    setAppliedTo(filterTo);
+  };
+
+  const clearFilters = () => {
+    setFilterFrom('');
+    setFilterTo('');
+    setAppliedFrom('');
+    setAppliedTo('');
+    setPage(1);
   };
 
   const fmt = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -182,37 +203,105 @@ export default function JournalEntryPage() {
           </form>
         )}
 
-        <div className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] overflow-x-auto">
-          {isLoading ? <Spinner /> : (
-            <>
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-[var(--color-border)] bg-[var(--color-bg)]/50">
-                    <th className="text-left px-4 py-3 font-medium text-[var(--color-text-muted)]">Date</th>
-                    <th className="text-left px-4 py-3 font-medium text-[var(--color-text-muted)]">Account</th>
-                    <th className="text-right px-4 py-3 font-medium text-[var(--color-text-muted)]">Debit</th>
-                    <th className="text-right px-4 py-3 font-medium text-[var(--color-text-muted)]">Credit</th>
-                    <th className="text-left px-4 py-3 font-medium text-[var(--color-text-muted)]">Description</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[var(--color-border)]">
-                  {entries.map(e => (
-                    <tr key={e.id} className="hover:bg-[var(--color-bg)]/30">
-                      <td className="px-4 py-3 text-[var(--color-text)]">{new Date(e.entry_date).toLocaleDateString()}</td>
-                      <td className="px-4 py-3">
-                        <div className="text-[var(--color-text)]">{e.account_name}</div>
-                        <div className="text-xs font-mono text-[var(--color-text-muted)]">{e.account_code}</div>
-                      </td>
-                      <td className="px-4 py-3 text-right font-mono text-[var(--color-text)]">{e.debit ? fmt(Number(e.debit)) : '-'}</td>
-                      <td className="px-4 py-3 text-right font-mono text-[var(--color-text)]">{e.credit ? fmt(Number(e.credit)) : '-'}</td>
-                      <td className="px-4 py-3 text-[var(--color-text-muted)] max-w-[240px] truncate">{e.description}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              {!entries.length && <p className="text-center py-8 text-sm text-[var(--color-text-muted)]">No journal entries found</p>}
-              <Pagination total={total} page={page} pageSize={pageSize} onPageChange={setPage} onPageSizeChange={setPageSize} />
-            </>
+        <div className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] border mb-4 p-4">
+          <div className="flex items-end gap-3 flex-wrap">
+            <div>
+              <label className="block text-xs text-[var(--color-text-muted)] mb-1">From Date</label>
+              <input type="date" value={filterFrom} onChange={e => setFilterFrom(e.target.value)}
+                className="px-3 py-2 border rounded-[var(--radius-md)] bg-[var(--color-bg)] text-sm" />
+            </div>
+            <div>
+              <label className="block text-xs text-[var(--color-text-muted)] mb-1">To Date</label>
+              <input type="date" value={filterTo} onChange={e => setFilterTo(e.target.value)}
+                className="px-3 py-2 border rounded-[var(--radius-md)] bg-[var(--color-bg)] text-sm" />
+            </div>
+            <Button onClick={applyFilters}>Apply</Button>
+            <Button variant="ghost" onClick={clearFilters}>Clear</Button>
+          </div>
+        </div>
+
+        <div>
+          {isLoading ? (
+            <div className="py-12"><Spinner /></div>
+          ) : !entries.length ? (
+            <div className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] border p-12 text-center">
+              <p className="text-sm text-[var(--color-text-muted)]">No journal entries found</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {entries.map(entry => {
+                const debits = entry.lines.filter(l => l.debit > 0);
+                const credits = entry.lines.filter(l => l.credit > 0);
+                const totalDebit = debits.reduce((s, l) => s + l.debit, 0);
+                const totalCredit = credits.reduce((s, l) => s + l.credit, 0);
+
+                return (
+                  <div key={entry.id}
+                    className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] border border-[var(--color-border)] overflow-hidden">
+                    <div className="px-5 py-4 border-b border-[var(--color-border)] bg-[var(--color-bg)]/30 flex items-center justify-between gap-4 flex-wrap">
+                      <div className="flex items-center gap-3">
+                        <span className="text-sm font-semibold text-[var(--color-text)]">
+                          {new Date(entry.entry_date).toLocaleDateString()}
+                        </span>
+                        {entry.reference_type && (
+                          <span className="px-2 py-0.5 text-[10px] font-medium rounded-full bg-[var(--color-primary)]/10 text-[var(--color-primary)]">
+                            {entry.reference_type}{entry.reference_id ? ` #${entry.reference_id}` : ''}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-sm text-[var(--color-text-muted)] max-w-md truncate">{entry.description || '—'}</p>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-[var(--color-border)]">
+                      <div className="p-4">
+                        <h4 className="text-xs font-semibold uppercase tracking-wide text-[var(--color-text-muted)] mb-2">Debit</h4>
+                        <div className="space-y-1.5">
+                          {debits.map((line, i) => (
+                            <div key={i} className="flex items-center justify-between text-sm">
+                              <span className="text-[var(--color-text)]">
+                                <span className="font-mono text-[var(--color-text-muted)]">{line.account_code}</span>
+                                <span className="mx-1.5 text-[var(--color-text-muted)]">—</span>
+                                {line.account_name}
+                              </span>
+                              <span className="font-mono font-medium text-[var(--color-text)]">{fmt(line.debit)}</span>
+                            </div>
+                          ))}
+                          {!debits.length && <p className="text-xs text-[var(--color-text-muted)]">None</p>}
+                        </div>
+                        <div className="flex items-center justify-between text-sm font-semibold mt-2 pt-2 border-t border-[var(--color-border)]">
+                          <span className="text-[var(--color-text-muted)]">Total</span>
+                          <span className="font-mono text-[var(--color-text)]">{fmt(totalDebit)}</span>
+                        </div>
+                      </div>
+
+                      <div className="p-4">
+                        <h4 className="text-xs font-semibold uppercase tracking-wide text-[var(--color-text-muted)] mb-2">Credit</h4>
+                        <div className="space-y-1.5">
+                          {credits.map((line, i) => (
+                            <div key={i} className="flex items-center justify-between text-sm">
+                              <span className="text-[var(--color-text)]">
+                                <span className="font-mono text-[var(--color-text-muted)]">{line.account_code}</span>
+                                <span className="mx-1.5 text-[var(--color-text-muted)]">—</span>
+                                {line.account_name}
+                              </span>
+                              <span className="font-mono font-medium text-[var(--color-text)]">{fmt(line.credit)}</span>
+                            </div>
+                          ))}
+                          {!credits.length && <p className="text-xs text-[var(--color-text-muted)]">None</p>}
+                        </div>
+                        <div className="flex items-center justify-between text-sm font-semibold mt-2 pt-2 border-t border-[var(--color-border)]">
+                          <span className="text-[var(--color-text-muted)]">Total</span>
+                          <span className="font-mono text-[var(--color-text)]">{fmt(totalCredit)}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          {total > 0 && (
+            <Pagination total={total} page={page} pageSize={pageSize} onPageChange={setPage} onPageSizeChange={(size) => { setPageSize(size); setPage(1); }} />
           )}
         </div>
       </div>
