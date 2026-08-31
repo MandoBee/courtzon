@@ -50,6 +50,7 @@ export class SocketPublisher {
       'notification:sync-read', 'notification:sync-deleted',
       'match:available', 'match:removed', 'match:updated', 'match:pending',
       'settlement:completed', 'settlement:failed', 'settlement:paid',
+      'payment:gateway-settled',
       'organisation:subscription-renewed', 'organisation:subscription-expired',
       'organisation:subscription-expiring',
       'organisation:status-changed', 'organisation:subscription-status-changed',

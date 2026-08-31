@@ -8,6 +8,7 @@ import type { RowDataPacket } from 'mysql2';
 import type { SourceType, LedgerLineInput, EntrySide, LedgerEntry } from '../domain/ledger-aggregate.js';
 import { createLedgerLines, validateLedgerBalance } from '../domain/ledger-aggregate.js';
 import { createModuleLogger } from '../../../shared/utils/logger.js';
+import { getLocalBusinessDate } from '../../../shared/utils/business-date.js';
 
 const log = createModuleLogger('accounting-listener');
 type RowData = RowDataPacket[];
@@ -309,22 +310,56 @@ async function postMarketplacePaymentAccounting(orderId: number, paymentMethod: 
  * yet in CourtZon's bank/cash. Only when the gateway ACTUALLY settles and
  * transfers the accumulated clearing balance to CourtZon's bank does this
  * event post:
- *   Dr 1120 Cash / Bank
- *   Cr 1100 Payment Clearing
+ *   Dr 1120 Cash / Bank (net received)
+ *   Dr 5210 Payment Gateway Fees (gateway fee expense)
+ *   Cr 1100 Payment Clearing (gross)
  * which zeroes the gateway clearing asset for the settled amount and increases
- * Bank ONLY on a genuine settlement signal.
+ * Bank ONLY on a genuine settlement signal. When no gateway fee applies
+ * (net == gross, fee == 0) the fee leg is omitted and the posting is exactly
+ * the historical Dr 1120 / Cr 1100 for the gross.
  *
  * organisation_id stays NULL: the gateway clearing asset and the bank are
  * CourtZon's accounts, never org-scoped. Idempotent per
  * (source_type='settlement', source_id, event_type='payment_gateway_settlement').
+ *
+ * Backward-compatible signature: callers that pass (sourceId, amount, currency)
+ * are treated as a settlement with no gateway fee (gross == net == amount).
  */
-async function postGatewaySettlementAccounting(sourceId: number, amount: number, currency: string): Promise<void> {
-  if (!sourceId || amount <= 0) return;
+async function postGatewaySettlementAccounting(sourceId: number, amount: number, currency: string): Promise<void>;
+async function postGatewaySettlementAccounting(sourceId: number, gross: number, net: number, fee: number, currency: string, outerConn?: import('mysql2/promise').PoolConnection): Promise<void>;
+async function postGatewaySettlementAccounting(
+  sourceId: number,
+  gross: number,
+  netOrAmount: number | string,
+  feeOrCurrency?: number | string,
+  currency?: string,
+  outerConn?: import('mysql2/promise').PoolConnection,
+): Promise<void> {
+  if (!sourceId || gross <= 0) return;
+
+  let net: number;
+  let fee: number;
+  let cur: string;
+  if (typeof netOrAmount === 'string') {
+    // Legacy call: postGatewaySettlementAccounting(sourceId, amount, currency)
+    net = gross;
+    fee = 0;
+    cur = netOrAmount;
+  } else {
+    net = netOrAmount as number;
+    fee = (feeOrCurrency as number) ?? 0;
+    cur = currency || 'EGP';
+  }
+
+  const conceptAmounts: Record<string, number> = { cash_bank: net, payment_clearing: gross };
+  if (fee > 0) conceptAmounts.payment_gateway_fee = fee;
+
   await postAccountingEvent(
     'payment_gateway_settlement', 'settlement', sourceId, null,
-    { cash_bank: amount, payment_clearing: amount },
-    currency,
-    `Payment gateway settlement #${sourceId} (clearing → bank)`,
+    conceptAmounts,
+    cur,
+    `Payment gateway settlement #${sourceId} (clearing → bank${fee > 0 ? `, gateway fee ${fee}` : ''})`,
+    outerConn,
   );
 }
 
@@ -561,6 +596,7 @@ async function postAccountingEvent(
   description: string,
   outerConn?: import('mysql2/promise').PoolConnection,
   conceptOrganisations?: Record<string, number | null>,
+  timezone?: string | null,
 ): Promise<void> {
   const alreadyPosted = await ledgerRepository.hasPosting(sourceType, sourceId, eventType);
   if (alreadyPosted) {
@@ -597,7 +633,12 @@ async function postAccountingEvent(
   }
 
   const recordedAt = entries[0]?.recordedAt || new Date().toISOString().slice(0, 19).replace('T', ' ');
-  const entryDate = recordedAt.slice(0, 10);
+  // The GL business date is the LOCAL date in the configured timezone (default
+  // platform `localization.timezone`, e.g. Africa/Cairo), NOT the server UTC
+  // date — this keeps the accounting period correct for transactions around
+  // midnight. `recordedAt` itself stays a UTC instant; only the date
+  // projection changes.
+  const entryDate = await getLocalBusinessDate(recordedAt, timezone);
   const periodId = await glProjectionService.resolvePeriod(entryDate, organisationId);
   await glProjectionService.validateOpenPeriod(periodId);
 
@@ -1118,10 +1159,12 @@ export function registerAccountingEventListeners(): void {
   eventBusV2.on('payment:gateway-settled', async (data: any) => {
     try {
       const sourceId = Number(data.settlementId || data.id || 0);
-      const amount = Number(data.amount || 0);
+      const gross = Number(data.gross ?? data.amount ?? 0);
+      const net = Number(data.net ?? gross);
+      const fee = Number(data.fee ?? 0);
       const currency = data.currency || 'EGP';
-      if (!sourceId || amount <= 0) return;
-      await postGatewaySettlementAccounting(sourceId, amount, currency);
+      if (!sourceId || gross <= 0) return;
+      await postGatewaySettlementAccounting(sourceId, gross, net, fee, currency);
     } catch (err: any) {
       if (err?.code === 'ER_DUP_ENTRY') { log.info({ err: err.message }, 'Duplicate — skip'); return; }
       log.error({ err }, 'Payment gateway settlement accounting failed');

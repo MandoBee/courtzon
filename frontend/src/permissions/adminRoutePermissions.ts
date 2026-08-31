@@ -40,6 +40,7 @@ export const ADMIN_ROUTE_PERMISSIONS: Record<string, string> = {
   'settlements': 'settlements.view',
   'unified-settlements': 'settlements.view',
   'settlements/bookings': 'settlements.view',
+  'gateway-settlements': 'financial.gateway-settlement.view',
   'finance': 'financial.view',
   'finance/ledger': 'financial.view',
   'finance/reports': 'reports.view',

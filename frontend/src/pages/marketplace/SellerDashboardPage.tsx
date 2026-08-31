@@ -526,7 +526,7 @@ export default function SellerDashboardPage() {
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-sm font-medium">
-                        {formatPrice(Number(s.final_amount), 'EGP')}
+                        {formatPrice(Number(s.final_amount))}
                       </p>
                       <p className="text-xs text-[var(--color-text-muted)]">
                         {new Date(s.requested_at || s.created_at).toLocaleDateString('en-GB')}

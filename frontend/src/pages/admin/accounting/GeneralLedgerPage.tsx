@@ -6,6 +6,7 @@ import { Can } from '../../../permissions/Can';
 import { ExportCsvButton } from '../../../components/ui/ExportCsvButton';
 import ShowZeroBalancesToggle from '../../../components/accounting/ShowZeroBalancesToggle';
 import { filterZeroBalanceRows } from '../../../utils/accountingZero';
+import { getCurrencySymbol } from '../../../utils/currency';
 
 interface JournalEntry {
   id: number;
@@ -122,7 +123,7 @@ export default function GeneralLedgerPage() {
     { key: 'balance-sheet', label: 'Balance Sheet' },
   ];
 
-  const fmt = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const fmt = (n: number) => `${getCurrencySymbol()} ${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
   return (
     <Can permission="accounting.gl.view">

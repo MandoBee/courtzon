@@ -6,6 +6,8 @@ import { Button, Spinner, Pagination } from '../../../components/ui';
 import { Can } from '../../../permissions/Can';
 import { useToast } from '../../../components/ui/Toast';
 import { localToday } from '../../../utils/dateRange';
+import { formatISODate } from '../../../utils/formatDate';
+import { getCurrencySymbol } from '../../../utils/currency';
 
 interface LineItem {
   account_id: number | '';
@@ -114,7 +116,7 @@ export default function JournalEntryPage() {
     setPage(1);
   };
 
-  const fmt = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const fmt = (n: number) => `${getCurrencySymbol()} ${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
   return (
     <Can permission="accounting.journal.view">
@@ -241,7 +243,7 @@ export default function JournalEntryPage() {
                     <div className="px-5 py-4 border-b border-[var(--color-border)] bg-[var(--color-bg)]/30 flex items-center justify-between gap-4 flex-wrap">
                       <div className="flex items-center gap-3">
                         <span className="text-sm font-semibold text-[var(--color-text)]">
-                          {new Date(entry.entry_date).toLocaleDateString()}
+                          {formatISODate(entry.entry_date)}
                         </span>
                         {entry.reference_type && (
                           <span className="px-2 py-0.5 text-[10px] font-medium rounded-full bg-[var(--color-primary)]/10 text-[var(--color-primary)]">

@@ -91,7 +91,7 @@ export default function UnifiedSettlementCreatePage() {
                     <span className="text-xs text-[var(--color-text-muted)]">({ent.source_type})</span>
                   </span>
                   <span className={`font-medium ${Number(ent.amount) < 0 ? 'text-red-500' : 'text-emerald-600 dark:text-emerald-400'}`}>
-                    {formatPrice(Number(ent.amount), 'EGP')}
+                    {formatPrice(Number(ent.amount))}
                   </span>
                 </label>
               );
@@ -101,15 +101,15 @@ export default function UnifiedSettlementCreatePage() {
           <div className="bg-[var(--color-surface)] rounded-xl shadow-[var(--shadow-md)] p-4 grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
             <div>
               <p className="text-[var(--color-text-muted)]">CourtZon owes Organization</p>
-              <p className="text-lg font-bold text-[var(--color-text)]">{formatPrice(f?.courtzonOwedToOrg || 0, 'EGP')}</p>
+              <p className="text-lg font-bold text-[var(--color-text)]">{formatPrice(f?.courtzonOwedToOrg || 0)}</p>
             </div>
             <div>
               <p className="text-[var(--color-text-muted)]">Organization owes CourtZon</p>
-              <p className="text-lg font-bold text-[var(--color-text)]">{formatPrice(f?.orgOwedToCourtZon || 0, 'EGP')}</p>
+              <p className="text-lg font-bold text-[var(--color-text)]">{formatPrice(f?.orgOwedToCourtZon || 0)}</p>
             </div>
             <div>
               <p className="text-[var(--color-text-muted)]">Net ({preview.data.selectedIds.length} entitlements)</p>
-              <p className="text-lg font-bold text-[var(--color-text)]">{formatPrice(f?.finalAmount || 0, 'EGP')}</p>
+              <p className="text-lg font-bold text-[var(--color-text)]">{formatPrice(f?.finalAmount || 0)}</p>
               <p className="text-xs text-[var(--color-text-muted)]">{DIRECTION_LABEL[f?.direction] || ''}</p>
             </div>
           </div>

@@ -270,15 +270,33 @@ export const financialEntitlementRepository = {
    * All AVAILABLE entitlements for an organisation that are not yet reserved for
    * any settlement (settlement_id IS NULL). These are the eligible pool for a
    * unified settlement.
+   *
+   * GATEWAY-SETTLEMENT ELIGIBILITY (seller settlement):
+   *   Customer Paid ≠ Gateway Settled ≠ Seller Settled. An entitlement backed by
+   *   a card/online payment is only eligible for seller settlement once the
+   *   gateway funds have actually been settled to CourtZon (i.e. no outstanding
+   *   paid card/online payment for the underlying order is still sitting in
+   *   Payment Clearing). Cash/COD (collector=org) and wallet payments are not
+   *   subject to this check — the seller collected the cash directly, and wallet
+   *   funds are already held by CourtZon (never in 1100 clearing).
    */
   async findAvailableForOrganisation(orgId: number): Promise<EntitlementRecord[]> {
     const pool = getPool();
     const [rows] = await pool.execute<RowData>(
-      `SELECT * FROM financial_entitlements
-       WHERE organisation_id = ?
-         AND status = 'AVAILABLE'
-         AND settlement_id IS NULL
-       ORDER BY id`,
+      `SELECT fe.* FROM financial_entitlements fe
+       WHERE fe.organisation_id = ?
+         AND fe.status = 'AVAILABLE'
+         AND fe.settlement_id IS NULL
+         AND NOT EXISTS (
+           SELECT 1
+           FROM orders o
+           JOIN payment_transactions pt ON pt.order_id = o.id
+           WHERE o.id = CAST(JSON_UNQUOTE(JSON_EXTRACT(fe.metadata, '$.orderId')) AS UNSIGNED)
+             AND pt.payment_status = 'paid'
+             AND pt.payment_method IN ('card','online')
+             AND pt.gateway_settlement_id IS NULL
+         )
+       ORDER BY fe.id`,
       [orgId],
     );
     return rows.map(mapRow);

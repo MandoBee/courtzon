@@ -135,7 +135,7 @@ export default function UnifiedSettlementDetailPage() {
         </div>
         <div>
           <p className="text-[var(--color-text-muted)] text-xs">Final Amount</p>
-          <p className="font-medium">{formatPrice(Number(s.final_amount ?? f?.finalAmount ?? 0), 'EGP')}</p>
+          <p className="font-medium">{formatPrice(Number(s.final_amount ?? f?.finalAmount ?? 0))}</p>
         </div>
         <div>
           <p className="text-[var(--color-text-muted)] text-xs">Created</p>
@@ -151,15 +151,15 @@ export default function UnifiedSettlementDetailPage() {
       <div className="bg-[var(--color-surface)] rounded-xl shadow-[var(--shadow-md)] p-4 grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
         <div>
           <p className="text-[var(--color-text-muted)]">CourtZon owes Organization</p>
-          <p className="text-lg font-bold">{formatPrice(f?.courtzonOwedToOrg ?? 0, 'EGP')}</p>
+          <p className="text-lg font-bold">{formatPrice(f?.courtzonOwedToOrg ?? 0)}</p>
         </div>
         <div>
           <p className="text-[var(--color-text-muted)]">Organization owes CourtZon</p>
-          <p className="text-lg font-bold">{formatPrice(f?.orgOwedToCourtZon ?? 0, 'EGP')}</p>
+          <p className="text-lg font-bold">{formatPrice(f?.orgOwedToCourtZon ?? 0)}</p>
         </div>
         <div>
           <p className="text-[var(--color-text-muted)]">Net result</p>
-          <p className="text-lg font-bold">{formatPrice(f?.finalAmount ?? 0, 'EGP')}</p>
+          <p className="text-lg font-bold">{formatPrice(f?.finalAmount ?? 0)}</p>
           <p className="text-xs text-[var(--color-text-muted)]">{DIRECTION_LABEL[f?.direction] || ''}</p>
         </div>
       </div>
@@ -170,27 +170,27 @@ export default function UnifiedSettlementDetailPage() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <div>
             <p className="text-[var(--color-text-muted)] text-xs">Org Earnings</p>
-            <p className="font-semibold text-emerald-600 dark:text-emerald-400">{formatPrice(Number(f?.totalOrgEarnings ?? 0), 'EGP')}</p>
+            <p className="font-semibold text-emerald-600 dark:text-emerald-400">{formatPrice(Number(f?.totalOrgEarnings ?? 0))}</p>
           </div>
           <div>
             <p className="text-[var(--color-text-muted)] text-xs">CourtZon Commission</p>
-            <p className="font-semibold">{formatPrice(Number(f?.totalCommission ?? 0), 'EGP')}</p>
+            <p className="font-semibold">{formatPrice(Number(f?.totalCommission ?? 0))}</p>
           </div>
           <div>
             <p className="text-[var(--color-text-muted)] text-xs">Org Adjustments</p>
             <p className={`font-semibold ${Number(f?.totalOrgAdjustments ?? 0) < 0 ? 'text-red-500' : 'text-emerald-600 dark:text-emerald-400'}`}>
-              {formatPrice(Number(f?.totalOrgAdjustments ?? 0), 'EGP')}
+              {formatPrice(Number(f?.totalOrgAdjustments ?? 0))}
             </p>
           </div>
           <div>
             <p className="text-[var(--color-text-muted)] text-xs">CourtZon Adjustments</p>
             <p className={`font-semibold ${Number(f?.totalCourtZonAdjustments ?? 0) < 0 ? 'text-red-500' : 'text-emerald-600 dark:text-emerald-400'}`}>
-              {formatPrice(Number(f?.totalCourtZonAdjustments ?? 0), 'EGP')}
+              {formatPrice(Number(f?.totalCourtZonAdjustments ?? 0))}
             </p>
           </div>
           <div className="col-span-2 md:col-span-4 pt-2 border-t border-[var(--color-border)] flex items-center justify-between">
             <span className="text-[var(--color-text-muted)]">Final Settlement Amount</span>
-            <span className="font-bold text-[var(--color-text)]">{formatPrice(Number(s.final_amount ?? f?.finalAmount ?? 0), 'EGP')}</span>
+            <span className="font-bold text-[var(--color-text)]">{formatPrice(Number(s.final_amount ?? f?.finalAmount ?? 0))}</span>
           </div>
         </div>
       </div>
@@ -232,7 +232,7 @@ export default function UnifiedSettlementDetailPage() {
                       </span>
                     </div>
                     <span className={`font-medium ${Number(ent.amount) < 0 ? 'text-red-500' : 'text-emerald-600 dark:text-emerald-400'}`}>
-                      {formatPrice(Number(ent.amount), 'EGP')}
+                      {formatPrice(Number(ent.amount))}
                     </span>
                   </div>
                 ))}
@@ -244,7 +244,7 @@ export default function UnifiedSettlementDetailPage() {
 
       {s.paid_at && (
         <div className="bg-[var(--color-surface)] rounded-xl shadow-[var(--shadow-md)] p-4 text-sm grid grid-cols-2 md:grid-cols-3 gap-3">
-          <div><span className="text-[var(--color-text-muted)]">Paid amount:</span> <span className="font-medium">{formatPrice(Number(s.paid_amount), 'EGP')}</span></div>
+          <div><span className="text-[var(--color-text-muted)]">Paid amount:</span> <span className="font-medium">{formatPrice(Number(s.paid_amount))}</span></div>
           <div><span className="text-[var(--color-text-muted)]">Method:</span> {s.payment_method || '—'}</div>
           <div><span className="text-[var(--color-text-muted)]">Reference:</span> {s.payment_reference || '—'}</div>
           <div><span className="text-[var(--color-text-muted)]">Paid at:</span> {s.paid_at ? new Date(s.paid_at).toLocaleString('en-GB') : '—'}</div>
