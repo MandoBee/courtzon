@@ -1192,10 +1192,96 @@ export async function listJournalEntriesHandler(request: FastifyRequest, reply: 
   if (query.accountId) { conditions.push('gl.account_id = ?'); params.push(Number(query.accountId)); }
   if (query.from) { conditions.push('gl.entry_date >= ?'); params.push(query.from); }
   if (query.to) { conditions.push('gl.entry_date <= ?'); params.push(query.to); }
+  if (query.dateFrom) { conditions.push('gl.entry_date >= ?'); params.push(query.dateFrom); }
+  if (query.dateTo) { conditions.push('gl.entry_date <= ?'); params.push(query.dateTo); }
   if (query.referenceType) { conditions.push('gl.reference_type = ?'); params.push(query.referenceType); }
   if (query.referenceId) { conditions.push('gl.reference_id = ?'); params.push(Number(query.referenceId)); }
 
   const where = conditions.length ? 'WHERE ' + conditions.join(' AND ') : '';
+
+  if (query.grouped) {
+    const page = Math.max(1, Number(query.page) || 1);
+    const pageSize = Math.min(100, Math.max(1, Number(query.pageSize) || 25));
+    const offset = (page - 1) * pageSize;
+
+    const groupExpr = `CONCAT(COALESCE(CAST(gl.entry_date AS CHAR), ''), '||', COALESCE(gl.reference_type, ''), '||', COALESCE(CAST(gl.reference_id AS CHAR), ''), '||', COALESCE(gl.description, ''))`;
+
+    const [countResult] = await pool.execute<RowData>(
+      `SELECT COUNT(*) AS total FROM (SELECT ${groupExpr} AS grp FROM general_ledger gl ${where} GROUP BY grp) sub`,
+      params
+    );
+    const total = Number((countResult as any[])[0]?.total || 0);
+
+    const [groupRows] = await pool.execute<RowData>(
+      `SELECT MIN(gl.id) AS group_id, gl.entry_date, gl.description, gl.reference_type, gl.reference_id, gl.organisation_id
+       FROM general_ledger gl ${where}
+       GROUP BY grp
+       ORDER BY gl.entry_date DESC, group_id DESC
+       LIMIT ? OFFSET ?`.replace('grp', groupExpr),
+      [...params, pageSize, offset]
+    );
+
+    if (!groupRows.length) {
+      return reply.send({ data: [], total, page, pageSize });
+    }
+
+    const groupIds = (groupRows as any[]).map((r: any) => Number(r.group_id));
+    const placeholders = groupIds.map(() => '?').join(',');
+
+    const groupKeyConditions: string[] = [];
+    const groupKeyParams: any[] = [];
+    for (const g of groupRows as any[]) {
+      groupKeyConditions.push(
+        `(gl.entry_date = ? AND COALESCE(gl.reference_type,'') = ? AND COALESCE(CAST(gl.reference_id AS CHAR),'') = ? AND COALESCE(gl.description,'') = ?)`
+      );
+      groupKeyParams.push(g.entry_date, g.reference_type || '', String(g.reference_id ?? ''), g.description || '');
+    }
+
+    const [lineRows] = await pool.execute<RowData>(
+      `SELECT gl.*, a.code AS account_code, a.name AS account_name
+       FROM general_ledger gl
+       JOIN chart_of_accounts a ON a.id = gl.account_id
+       WHERE (${groupKeyConditions.join(' OR ')})
+       ORDER BY gl.entry_date DESC, gl.id ASC`,
+      groupKeyParams
+    );
+
+    const groupMap = new Map<number, any>();
+    for (const g of groupRows as any[]) {
+      groupMap.set(Number(g.group_id), {
+        id: Number(g.group_id),
+        entry_date: g.entry_date,
+        description: g.description,
+        reference_type: g.reference_type,
+        reference_id: g.reference_id,
+        organisation_id: g.organisation_id,
+        lines: [],
+      });
+    }
+
+    const lineKeyMap = new Map<string, number>();
+    for (const g of groupRows as any[]) {
+      const gk = `${g.entry_date}||${g.reference_type || ''}||${g.reference_id ?? ''}||${g.description || ''}`;
+      lineKeyMap.set(gk, Number(g.group_id));
+    }
+
+    for (const row of lineRows as any[]) {
+      const rk = `${row.entry_date}||${row.reference_type || ''}||${row.reference_id ?? ''}||${row.description || ''}`;
+      const gid = lineKeyMap.get(rk);
+      if (gid && groupMap.has(gid)) {
+        groupMap.get(gid)!.lines.push({
+          account_code: row.account_code,
+          account_name: row.account_name,
+          debit: Number(row.debit) || 0,
+          credit: Number(row.credit) || 0,
+        });
+      }
+    }
+
+    const data = groupIds.map((gid) => groupMap.get(gid)!).filter(Boolean);
+    return reply.send({ data, total, page, pageSize });
+  }
+
   const [rows] = await pool.execute<RowData>(
     `SELECT gl.*, a.code AS account_code, a.name AS account_name
      FROM general_ledger gl
