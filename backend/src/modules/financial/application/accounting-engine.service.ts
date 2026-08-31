@@ -45,9 +45,10 @@ const CONCEPT_ACCOUNT_CODE_DEFAULTS: Record<string, Record<string, string>> = {
   marketplace_cash_reversal: { marketplace_receivable: '1161', platform_commission: '4160' },
   // Payment-gateway settlement has no DB mapping row — resolve from code so the
   // clearing → bank transfer posts without a migration. 1100 Payment Clearing is
-  // the existing gateway-clearing asset; 1120 Cash / Bank is the destination.
-  // CourtZon book only (org NULL); org books never carry these accounts.
-  payment_gateway_settlement: { cash_bank: '1120', payment_clearing: '1100' },
+  // the existing gateway-clearing asset; 1120 Cash / Bank is the destination;
+  // 5210 Payment Gateway Fees (existing COA L4) receives the gateway fee
+  // expense. CourtZon book only (org NULL); org books never carry these accounts.
+  payment_gateway_settlement: { cash_bank: '1120', payment_clearing: '1100', payment_gateway_fee: '5210' },
 };
 
 /**

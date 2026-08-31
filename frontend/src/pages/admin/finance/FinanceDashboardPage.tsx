@@ -4,6 +4,7 @@ import api from '../../../services/api';
 import { ExportButton } from '../../../components/ui/ExportButton';
 import { Skeleton, SkeletonRow } from '../../../components/ui/Skeleton';
 import { apiDateRange } from '../../../utils/dateRange';
+import { formatPrice } from '../../../utils/currency';
 import { useCan } from '../../../hooks/useCan';
 
 export default function FinanceDashboardPage() {
@@ -78,8 +79,8 @@ export default function FinanceDashboardPage() {
           onClick={() => navigate('/admin/finance/ledger?accountCode=2100')}
           color="text-blue-600"
         />
-        <KPI label="Pending Settlements" value={String(pendingSettlements.length)} sub={`${pendingSettlements.reduce((s: number, x: any) => s + Number(x.final_amount || 0), 0).toLocaleString()} EGP`} onClick={() => navigate('/admin/unified-settlements')} color="text-yellow-600" />
-        <KPI label="Completed Settlements" value={String(completedSettlements.length)} sub={`${completedSettlements.reduce((s: number, x: any) => s + Number(x.final_amount || 0), 0).toLocaleString()} EGP`} onClick={() => navigate('/admin/unified-settlements')} color="text-green-600" />
+        <KPI label="Pending Settlements" value={String(pendingSettlements.length)} sub={`${formatPrice(pendingSettlements.reduce((s: number, x: any) => s + Number(x.final_amount || 0), 0))}`} onClick={() => navigate('/admin/unified-settlements')} color="text-yellow-600" />
+        <KPI label="Completed Settlements" value={String(completedSettlements.length)} sub={`${formatPrice(completedSettlements.reduce((s: number, x: any) => s + Number(x.final_amount || 0), 0))}`} onClick={() => navigate('/admin/unified-settlements')} color="text-green-600" />
       </div>
 
       {/* Row 2: Ledger summary */}

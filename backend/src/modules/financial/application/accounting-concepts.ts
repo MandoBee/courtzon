@@ -240,12 +240,14 @@ export const EVENT_CONCEPTS: Record<string, { debit: string[]; credit: string[] 
   },
   // Payment-gateway settlement — the payment gateway has actually transferred
   // accumulated card/credit clearing funds into CourtZon's bank. CourtZon book
-  // (org NULL): Dr Bank (1120 Cash / Bank) / Cr Payment Clearing (1100).
-  // THIS is the ONLY event that moves clearing → bank. Payment success itself
-  // debits 1100 (clearing asset), never Bank/Cash. Posted from the gateway
-  // settlement process on a genuine settlement signal; idempotent.
+  // (org NULL): Dr Bank (1120 Cash / Bank) net received + Dr Payment Gateway
+  // Fees (5210) / Cr Payment Clearing (1100) gross. THIS is the ONLY event
+  // that moves clearing → bank. Payment success itself debits 1100 (clearing
+  // asset), never Bank/Cash. Posted from the gateway settlement process on a
+  // genuine settlement signal; idempotent. When no fee is configured, net ==
+  // gross and the fee leg is skipped (balance preserved).
   payment_gateway_settlement: {
-    debit: ['cash_bank'],
+    debit: ['cash_bank', 'payment_gateway_fee'],
     credit: ['payment_clearing'],
   },
   invoice_issue: {

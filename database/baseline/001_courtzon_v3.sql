@@ -6549,6 +6549,56 @@ DELIMITER ;
 /*!50003 SET collation_connection  = @saved_col_connection */ ;
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
 
+DROP TABLE IF EXISTS `gateway_settlement_transactions`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `gateway_settlement_transactions` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `gateway_settlement_id` int unsigned NOT NULL,
+  `payment_transaction_id` bigint unsigned NOT NULL,
+  `payment_method_id` int unsigned DEFAULT NULL,
+  `gross_amount` decimal(14,2) NOT NULL DEFAULT '0.00',
+  `gateway_fee_pct` decimal(5,2) NOT NULL DEFAULT '0.00',
+  `gateway_fee_fixed` decimal(12,2) NOT NULL DEFAULT '0.00',
+  `gateway_fee_amount` decimal(14,2) NOT NULL DEFAULT '0.00',
+  `net_amount` decimal(14,2) NOT NULL DEFAULT '0.00',
+  `currency` char(3) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'EGP',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_gst_payment` (`payment_transaction_id`),
+  KEY `idx_gst_settlement` (`gateway_settlement_id`),
+  CONSTRAINT `fk_gst_settlement` FOREIGN KEY (`gateway_settlement_id`) REFERENCES `gateway_settlements` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_gst_payment` FOREIGN KEY (`payment_transaction_id`) REFERENCES `payment_transactions` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+DROP TABLE IF EXISTS `gateway_settlements`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `gateway_settlements` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `batch_code` varchar(50) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `settlement_status` enum('completed') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'completed',
+  `gross_amount` decimal(14,2) NOT NULL DEFAULT '0.00',
+  `gateway_fee_amount` decimal(14,2) NOT NULL DEFAULT '0.00',
+  `net_amount` decimal(14,2) NOT NULL DEFAULT '0.00',
+  `currency` char(3) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'EGP',
+  `transaction_count` int unsigned NOT NULL DEFAULT '0',
+  `settled_by` int unsigned DEFAULT NULL,
+  `settled_at` timestamp NULL DEFAULT NULL,
+  `notes` text COLLATE utf8mb4_unicode_ci,
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_gs_batch_code` (`batch_code`),
+  KEY `idx_gs_settled_at` (`settled_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+ALTER TABLE `payment_transactions`
+  ADD COLUMN `gateway_settlement_id` int unsigned DEFAULT NULL AFTER `paid_at`,
+  ADD COLUMN `gateway_settled_at` timestamp NULL DEFAULT NULL AFTER `gateway_settlement_id`,
+  ADD KEY `idx_payment_gateway_settlement` (`gateway_settlement_id`),
+  ADD CONSTRAINT `fk_payment_gateway_settlement` FOREIGN KEY (`gateway_settlement_id`) REFERENCES `gateway_settlements` (`id`) ON DELETE SET NULL;
 
 INSERT INTO audit_logs (actor_id, action, entity_type, entity_id, after_state) VALUES (1, 'BASELINE', 'system', 1, NULL);
 

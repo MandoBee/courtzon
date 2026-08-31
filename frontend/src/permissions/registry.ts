@@ -226,6 +226,11 @@ export const uiRegistry: UIElement[] = [
   { permissionKey: 'financial.wallet.view', moduleSlug: 'financial', elementType: 'page', elementLabel: 'Wallet Page', componentPath: 'pages/player/WalletPage.tsx' },
   { permissionKey: 'financial.settlements.view', moduleSlug: 'financial', elementType: 'page', elementLabel: 'Settlements Page', componentPath: 'pages/admin/settlements/UnifiedSettlementListPage.tsx' },
   { permissionKey: 'financial.payment-methods.view', moduleSlug: 'financial', elementType: 'page', elementLabel: 'Payment Methods Page', componentPath: 'pages/admin/payment-methods/PaymentMethodsPage.tsx' },
+  { permissionKey: 'payment-methods.create', moduleSlug: 'financial', elementType: 'button', elementLabel: 'Create Payment Method', componentPath: 'pages/admin/payment-methods/PaymentMethodsPage.tsx' },
+  { permissionKey: 'payment-methods.edit', moduleSlug: 'financial', elementType: 'button', elementLabel: 'Update Payment Method', componentPath: 'pages/admin/payment-methods/PaymentMethodsPage.tsx' },
+  { permissionKey: 'payment-methods.delete', moduleSlug: 'financial', elementType: 'button', elementLabel: 'Delete Payment Method', componentPath: 'pages/admin/payment-methods/PaymentMethodsPage.tsx' },
+  { permissionKey: 'financial.gateway-settlement.view', moduleSlug: 'financial', elementType: 'page', elementLabel: 'Gateway Settlements Page', componentPath: 'pages/admin/gateway-settlements/GatewaySettlementPage.tsx' },
+  { permissionKey: 'financial.gateway-settlement.create', moduleSlug: 'financial', elementType: 'button', elementLabel: 'Receive Gateway Settlement', componentPath: 'pages/admin/gateway-settlements/GatewaySettlementPage.tsx' },
   { permissionKey: 'financial.payment-gateways.view', moduleSlug: 'financial', elementType: 'page', elementLabel: 'Payment Gateways Page', componentPath: 'pages/admin/payment-gateways/PaymentGatewaysPage.tsx' },
   // Payment method form fields
   { permissionKey: 'payment-methods.edit.name', moduleSlug: 'financial', elementType: 'field', elementLabel: 'Payment Method Name Field', componentPath: 'pages/admin/payment-methods/PaymentMethodsPage.tsx' },

@@ -128,6 +128,7 @@ const UnifiedSettlementListPage = lazy(() => import('./pages/admin/settlements/U
 const UnifiedSettlementCreatePage = lazy(() => import('./pages/admin/settlements/UnifiedSettlementCreatePage'));
 const UnifiedSettlementDetailPage = lazy(() => import('./pages/admin/settlements/UnifiedSettlementDetailPage'));
 const BookingSettlementPage = lazy(() => import('./pages/admin/settlements/BookingSettlementPage'));
+const GatewaySettlementPage = lazy(() => import('./pages/admin/gateway-settlements/GatewaySettlementPage'));
 
 const FinancialOpsDashboard = lazy(() => import('./pages/admin/finance/FinancialOpsDashboard'));
 const ProductCategoriesPage = lazy(() => import('./pages/admin/product-categories/ProductCategoriesPage'));
@@ -697,6 +698,7 @@ function AppContent() {
             <Route path="unified-settlements/new" element={<UnifiedSettlementCreatePage />} />
             <Route path="unified-settlements/:id" element={<UnifiedSettlementDetailPage />} />
             <Route path="settlements/bookings" element={<BookingSettlementPage />} />
+            <Route path="gateway-settlements" element={<GatewaySettlementPage />} />
             <Route path="finance" element={<FinanceDashboardPage />} />
             <Route path="finance/ledger" element={<LedgerViewerPage />} />
             <Route path="finance/reports" element={<ReportCenterPage />} />

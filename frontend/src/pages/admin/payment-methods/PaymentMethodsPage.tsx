@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../../services/api';
 import { Can } from '../../../permissions/Can';
 import { useToast } from '../../../components/ui/Toast';
+import { formatPrice, getDefaultCurrency } from '../../../utils/currency';
 
 export default function PaymentMethodsPage() {
   const queryClient = useQueryClient();
@@ -12,9 +13,9 @@ export default function PaymentMethodsPage() {
   const [form, setForm] = useState({ slug: '', name: '', icon: '', description: '', processingFeePct: 0, processingFeeFixed: 0, requiresApproval: false, isActive: true, sortOrder: 0 });
 
   const { data } = useQuery<any[]>({ queryKey: ['admin','payment-methods'], queryFn: () => api.get('/admin/payment-methods').then(r => r.data.data) });
-  const createMut = useMutation({ mutationFn: (d: any) => api.post('/admin/payment-methods', d), onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['admin','payment-methods'] }); resetForm(); showToast('Created successfully!'); } });
-  const updateMut = useMutation({ mutationFn: ({ id, data }: any) => api.put(`/admin/payment-methods/${id}`, data), onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['admin','payment-methods'] }); resetForm(); showToast('Updated successfully!'); } });
-  const deleteMut = useMutation({ mutationFn: (id: number) => api.delete(`/admin/payment-methods/${id}`), onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['admin','payment-methods'] }); showToast('Deleted!'); } });
+  const createMut = useMutation({ mutationFn: (d: any) => api.post('/admin/payment-methods', d), onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['admin','payment-methods'] }); resetForm(); showToast('Created successfully!'); }, onError: (e: any) => showToast(e?.response?.data?.message || 'Failed to create payment method', 'error') });
+  const updateMut = useMutation({ mutationFn: ({ id, data }: any) => api.put(`/admin/payment-methods/${id}`, data), onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['admin','payment-methods'] }); resetForm(); showToast('Updated successfully!'); }, onError: (e: any) => showToast(e?.response?.data?.message || 'Failed to update payment method', 'error') });
+  const deleteMut = useMutation({ mutationFn: (id: number) => api.delete(`/admin/payment-methods/${id}`), onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['admin','payment-methods'] }); showToast('Deleted!'); }, onError: (e: any) => showToast(e?.response?.data?.message || 'Failed to delete payment method', 'error') });
 
   const resetForm = () => { setShowForm(false); setEditingId(null); setForm({ slug: '', name: '', icon: '', description: '', processingFeePct: 0, processingFeeFixed: 0, requiresApproval: false, isActive: true, sortOrder: 0 }); };
   const openEdit = (m: any) => {
@@ -71,12 +72,16 @@ export default function PaymentMethodsPage() {
               <td className="px-4 py-3 text-lg">{m.icon || '💳'}</td>
               <td className="px-4 py-3 font-medium text-[var(--color-text)]">{m.name}</td>
               <td className="px-4 py-3 text-[var(--color-text-muted)]">{m.slug}</td>
-              <td className="px-4 py-3 text-xs text-[var(--color-text-muted)]">{m.processingFeePct}% + ${m.processingFeeFixed}</td>
+              <td className="px-4 py-3 text-xs text-[var(--color-text-muted)]">{m.processingFeePct}% + {formatPrice(m.processingFeeFixed, getDefaultCurrency())}</td>
               <td className="px-4 py-3"><span className={`px-2 py-0.5 rounded-full text-xs font-medium ${m.requiresApproval ? 'bg-[var(--color-warning-bg)] text-[var(--color-warning-text)]' : 'bg-[var(--color-success-bg)] text-[var(--color-success-text)]'}`}>{m.requiresApproval ? 'Yes' : 'No'}</span></td>
               <td className="px-4 py-3"><span className={`px-2 py-0.5 rounded-full text-xs font-medium ${m.isActive ? 'bg-[var(--color-success-bg)] text-[var(--color-success-text)]' : 'bg-[var(--color-border)] text-[var(--color-text-muted)]'}`}>{m.isActive ? 'Yes' : 'No'}</span></td>
               <td className="px-4 py-3"><div className="flex items-center gap-1">
-                <button onClick={() => openEdit(m)} className="text-xs px-2.5 py-1 border rounded-[var(--radius-md)] hover:bg-[var(--color-bg)]">Edit</button>
-                <button onClick={() => { if (confirm(`Delete "${m.name}"?`)) deleteMut.mutate(m.id); }} className="text-xs px-2.5 py-1 border rounded-[var(--radius-md)] text-[var(--color-error)]">Del</button>
+                <Can permission="payment-methods.edit">
+                  <button onClick={() => openEdit(m)} className="text-xs px-2.5 py-1 border rounded-[var(--radius-md)] hover:bg-[var(--color-bg)]">Edit</button>
+                </Can>
+                <Can permission="payment-methods.delete">
+                  <button onClick={() => { if (confirm(`Delete "${m.name}"?`)) deleteMut.mutate(m.id); }} className="text-xs px-2.5 py-1 border rounded-[var(--radius-md)] text-[var(--color-error)]">Del</button>
+                </Can>
               </div></td>
             </tr>
           ))}

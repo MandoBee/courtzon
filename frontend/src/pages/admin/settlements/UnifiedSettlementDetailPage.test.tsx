@@ -16,7 +16,7 @@ vi.mock('../../../hooks/useCan', () => ({
 }));
 
 vi.mock('../../../utils/currency', () => ({
-  formatPrice: (n: number, _c?: string) => `${n.toFixed(2)} ${_c || ''}`.trim(),
+  formatPrice: (n: number, _c?: string) => `${n.toFixed(2)} ${_c || 'EGP'}`.trim(),
 }));
 
 import api from '../../../services/api';

@@ -380,6 +380,13 @@ export function useRealtimeCacheUpdates(): void {
     qc.invalidateQueries({ queryKey: ['settlements'] });
   });
 
+  // ── Gateway settlement events ─────────────────────────────────
+  useSocketEvent('payment.gateway-settled', () => {
+    qc.invalidateQueries({ queryKey: ['gateway-settlements'] });
+    qc.invalidateQueries({ queryKey: ['settlements'] });
+    qc.invalidateQueries({ queryKey: ['mp-seller-settlements'] });
+  });
+
   // ── Organisation events ────────────────────────────────────────
   useSocketEvent('organisation.subscription-renewed', () => {
     qc.invalidateQueries({ queryKey: ['org-subscription'] });

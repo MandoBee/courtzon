@@ -93,10 +93,10 @@ export default function UnifiedSettlementListPage() {
                 <td className="p-3 font-medium">#{s.id}</td>
                 <td className="p-3">{s.organisation_name}</td>
                 <td className="p-3 text-xs">{s.batch_code || '—'}</td>
-                <td className="p-3">{formatPrice(Number(s.organization_position), 'EGP')}</td>
-                <td className="p-3">{formatPrice(Number(s.courtzon_position), 'EGP')}</td>
+                <td className="p-3">{formatPrice(Number(s.organization_position))}</td>
+                <td className="p-3">{formatPrice(Number(s.courtzon_position))}</td>
                 <td className="p-3">
-                  <span className="font-medium">{formatPrice(Number(s.final_amount), 'EGP')}</span>
+                  <span className="font-medium">{formatPrice(Number(s.final_amount))}</span>
                   <span className="block text-xs text-[var(--color-text-muted)]">{DIRECTION_LABEL[s.settlement_direction] || 'Zero balance'}</span>
                 </td>
                 <td className="p-3">
