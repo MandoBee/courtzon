@@ -37,10 +37,35 @@ describe('Gateway Settlement + Seller Entitlement Eligibility', () => {
   let orderId: number;
   let cardPaymentId: number;
   let entitlementIds: number[] = [];
+  let createdPeriodId: number | null = null;
 
   beforeAll(async () => {
     setPlatformTimezone('Africa/Cairo');
     pool = mysql.createPool({ host: '127.0.0.1', port: 3307, user: 'root', password: 'courtzon2026', database: 'courtzon_v3', connectionLimit: 5, charset: 'utf8mb4' });
+
+    // Ensure an open accounting period exists for the current Cairo business
+    // month (a freshly-started month may not yet have a period seeded). The
+    // accounting engine derives the GL entry date in the platform timezone, so
+    // a period for the LOCAL business month must exist. This is a test fixture:
+    // it is removed in afterAll and never touches schema or existing records.
+    const { getLocalToday } = await import('../../../shared/utils/business-date.js');
+    const today = await getLocalToday('Africa/Cairo');
+    const [yy, mm] = today.split('-').map(Number);
+    const monthStart = `${today.slice(0, 7)}-01`;
+    const lastDay = new Date(Date.UTC(yy, mm, 0)).getUTCDate();
+    const monthEnd = `${today.slice(0, 7)}-${String(lastDay).padStart(2, '0')}`;
+    const [existingPeriod] = await pool.execute<RowData>(
+      `SELECT id FROM accounting_periods WHERE organisation_id IS NULL AND fiscal_year = ? AND period_number = ? AND status = 'open' LIMIT 1`,
+      [yy, mm],
+    );
+    if (!(existingPeriod as any[]).length) {
+      const [ins] = await pool.execute<RowData>(
+        `INSERT INTO accounting_periods (organisation_id, fiscal_year, period_number, start_date, end_date, status)
+         VALUES (NULL, ?, ?, ?, ?, 'open')`,
+        [yy, mm, monthStart, monthEnd],
+      );
+      createdPeriodId = (ins as any).insertId;
+    }
 
     // Clean any prior fixture rows.
     await pool.execute(`DELETE FROM gateway_settlement_transactions WHERE payment_transaction_id IN (SELECT id FROM payment_transactions WHERE order_id IN (SELECT id FROM orders WHERE public_id LIKE 'gws-fixture-%'))`);
@@ -84,6 +109,9 @@ describe('Gateway Settlement + Seller Entitlement Eligibility', () => {
   });
 
   afterAll(async () => {
+    // Remove ONLY this test's financial rows (by reference, never by period)
+    // so parallel accounting tests sharing the dev DB are never affected.
+    await pool.execute(`DELETE FROM general_ledger WHERE reference_type = 'settlement_payment_gateway_settlement' AND reference_id IN (SELECT id FROM gateway_settlements WHERE settled_by = 999901)`);
     await pool.execute(`DELETE FROM gateway_settlement_transactions WHERE payment_transaction_id = ?`, [cardPaymentId]);
     await pool.execute(`DELETE FROM gateway_settlements WHERE batch_code LIKE 'GWS-%' AND settled_by = 999901`);
     await pool.execute(`DELETE FROM ledger_entries WHERE source_type='settlement' AND source_id IN (SELECT id FROM gateway_settlements WHERE settled_by = 999901)`);
@@ -91,6 +119,14 @@ describe('Gateway Settlement + Seller Entitlement Eligibility', () => {
     await pool.execute(`DELETE FROM payment_transactions WHERE id = ?`, [cardPaymentId]);
     await pool.execute(`DELETE FROM orders WHERE id = ?`, [orderId]);
     await pool.execute(`DELETE FROM organisations WHERE id = ?`, [orgId]);
+    // Remove the fixture period only if this test created it AND no other rows
+    // reference it (safe under parallel execution).
+    if (createdPeriodId != null) {
+      const [refs] = await pool.execute<RowData>(`SELECT COUNT(*) AS c FROM general_ledger WHERE period_id = ?`, [createdPeriodId]);
+      if (Number((refs as any[])[0].c) === 0) {
+        await pool.execute(`DELETE FROM accounting_periods WHERE id = ?`, [createdPeriodId]);
+      }
+    }
     setPlatformTimezone(null);
     await pool.end();
   });
@@ -171,5 +207,25 @@ describe('Gateway Settlement + Seller Entitlement Eligibility', () => {
     expect(Number(snap.gateway_fee_pct)).toBe(2.5);
     expect(Number(snap.gateway_fee_fixed)).toBe(1);
     expect(Number(snap.gateway_fee_amount)).toBe(22.25);
+  });
+
+  it('B. missing payment-method configuration fails clearly instead of silently recording 0%', async () => {
+    // 'online' passes the gateway eligibility filter (card/online) but there is
+    // NO payment_methods row with slug='online' → the LEFT JOIN misses →
+    // payment_method_id IS NULL → the defensive guard must throw instead of
+    // silently computing a 0% / E£0.00 fee.
+    const [pt] = await pool.execute<RowData>(
+      `INSERT INTO payment_transactions (user_id, reference_type, reference_id, payment_method, gateway_provider, gateway_reference, amount, currency, payment_status, paid_at)
+       VALUES (1, 'order', 1, 'online', 'paymob', 'gws-missing-ref-1', 250, 'EGP', 'paid', NOW())`,
+    );
+    const onlineId = (pt as any).insertId;
+    try {
+      await expect(gatewaySettlementService.listEligible())
+        .rejects.toThrow(ConflictError);
+      await expect(gatewaySettlementService.listEligible())
+        .rejects.toThrow(/fee configuration is missing|missing/i);
+    } finally {
+      await pool.execute('DELETE FROM payment_transactions WHERE id = ?', [onlineId]);
+    }
   });
 });

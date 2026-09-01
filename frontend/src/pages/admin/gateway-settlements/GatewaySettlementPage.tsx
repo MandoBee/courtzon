@@ -37,6 +37,9 @@ export default function GatewaySettlementPage() {
   const { data, isLoading, isError, error, refetch } = useQuery<{ data: EligibleRow[] }>({
     queryKey: ['gateway-settlements', 'eligible'],
     queryFn: () => api.get('/admin/gateway-settlements/eligible').then((r) => r.data),
+    // Always fetch the current eligible transactions + fee configuration on
+    // open/refresh — never serve a stale zero-fee response from the cache.
+    staleTime: 0,
   });
 
   const createMut = useMutation({
