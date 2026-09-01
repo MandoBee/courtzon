@@ -75,6 +75,14 @@ export const gatewaySettlementService = {
 
   _computeFee(r: any): GatewayEligibleTransaction {
     const grossAmount = round2(Number(r.amount || 0));
+    // Defensive: a card/online gateway payment MUST resolve its fee
+    // configuration. If the payment_methods row is missing, fail loudly instead
+    // of silently recording a 0% / E£0.00 fee on a settlement.
+    if (r.payment_method_id == null && GATEWAY_PAYMENT_METHODS.includes(r.payment_method)) {
+      throw new ConflictError(
+        `Payment method fee configuration is missing for '${r.payment_method}' — cannot resolve gateway fees for payment transaction ${r.id}`,
+      );
+    }
     const gatewayFeePct = Number(r.processing_fee_pct ?? 0);
     const gatewayFeeFixed = Number(r.processing_fee_fixed ?? 0);
     const gatewayFeeAmount = round2(grossAmount * (gatewayFeePct / 100) + gatewayFeeFixed);
@@ -149,6 +157,14 @@ export const gatewaySettlementService = {
         }
         if (!GATEWAY_PAYMENT_METHODS.includes(txn.payment_method)) {
           throw new ConflictError(`Payment transaction ${id} is not a gateway payment (${txn.payment_method})`);
+        }
+        // Defensive: a card/online gateway payment MUST resolve its fee
+        // configuration. If the payment_methods row is missing, fail loudly
+        // instead of silently recording a 0% / E£0.00 fee on the settlement.
+        if (txn.payment_method_id == null) {
+          throw new ConflictError(
+            `Payment method fee configuration is missing for '${txn.payment_method}' — cannot resolve gateway fees for payment transaction ${id}`,
+          );
         }
         const gross = round2(Number(txn.amount || 0));
         if (gross <= 0) throw new ConflictError(`Payment transaction ${id} has an invalid amount`);
