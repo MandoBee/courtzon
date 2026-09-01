@@ -18,10 +18,12 @@ interface EligibleRow {
   paidAt: string | null;
   currency: string;
   grossAmount: number;
-  gatewayFeePct: number;
-  gatewayFeeFixed: number;
-  gatewayFeeAmount: number;
-  netAmount: number;
+  feeConfigStatus: 'ok' | 'missing';
+  feeConfigError: string | null;
+  gatewayFeePct: number | null;
+  gatewayFeeFixed: number | null;
+  gatewayFeeAmount: number | null;
+  netAmount: number | null;
 }
 
 export default function GatewaySettlementPage() {
@@ -58,14 +60,22 @@ export default function GatewaySettlementPage() {
 
   const rows: EligibleRow[] = data?.data || [];
 
+  const settleableRows = rows.filter((r) => r.feeConfigStatus === 'ok');
+  const misconfiguredCount = rows.length - settleableRows.length;
+  const allSelected = settleableRows.length > 0 && selected.size === settleableRows.length;
+
   const totals = useMemo(() => {
-    const chosen = rows.filter((r) => selected.has(r.paymentTransactionId));
+    const chosen = rows.filter((r) => selected.has(r.paymentTransactionId) && r.feeConfigStatus === 'ok');
     const gross = chosen.reduce((s, r) => s + Number(r.grossAmount || 0), 0);
     const fee = chosen.reduce((s, r) => s + Number(r.gatewayFeeAmount || 0), 0);
     return { gross, fee, net: gross - fee };
   }, [rows, selected]);
 
   const toggle = (id: number) => {
+    const row = rows.find((r) => r.paymentTransactionId === id);
+    // Misconfigured transactions (missing fee configuration) are never
+    // selectable for settlement.
+    if (row && row.feeConfigStatus !== 'ok') return;
     setSelected((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id); else next.add(id);
@@ -74,7 +84,8 @@ export default function GatewaySettlementPage() {
   };
 
   const toggleAll = () => {
-    setSelected((prev) => prev.size === rows.length ? new Set() : new Set(rows.map((r) => r.paymentTransactionId)));
+    const settleable = rows.filter((r) => r.feeConfigStatus === 'ok').map((r) => r.paymentTransactionId);
+    setSelected((prev) => prev.size === settleable.length ? new Set() : new Set(settleable));
   };
 
   return (
@@ -103,12 +114,18 @@ export default function GatewaySettlementPage() {
         </div>
       )}
 
+      {!isError && misconfiguredCount > 0 && (
+        <div className="p-3 rounded-xl border border-[var(--color-warning)] bg-[var(--color-warning)]/10 text-sm text-[var(--color-warning)]">
+          {misconfiguredCount} payment transaction(s) are missing gateway fee configuration and cannot be settled. Supported methods are identified below; settleable transactions are unaffected.
+        </div>
+      )}
+
       <div className="bg-[var(--color-surface)] rounded-xl shadow-[var(--shadow-md)] overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="text-left text-xs text-[var(--color-text-muted)] border-b border-[var(--color-border)]">
             <tr>
               <th className="p-3 w-8">
-                <input type="checkbox" checked={rows.length > 0 && selected.size === rows.length} onChange={toggleAll} />
+                <input type="checkbox" checked={allSelected} onChange={toggleAll} />
               </th>
               <th className="p-3">Reference</th>
               <th className="p-3">Transaction Ref</th>
@@ -128,10 +145,18 @@ export default function GatewaySettlementPage() {
                 No eligible gateway payments awaiting settlement. Paid card/online customer payments that have not yet been settled to CourtZon appear here.
               </td></tr>
             )}
-            {rows.map((r) => (
-              <tr key={r.paymentTransactionId} className="border-b border-[var(--color-border)] hover:bg-[var(--color-surface-alt)]">
+            {rows.map((r) => {
+              const misconfigured = r.feeConfigStatus === 'missing';
+              return (
+              <tr key={r.paymentTransactionId} className={`border-b border-[var(--color-border)] hover:bg-[var(--color-surface-alt)] ${misconfigured ? 'opacity-75' : ''}`}>
                 <td className="p-3">
-                  <input type="checkbox" checked={selected.has(r.paymentTransactionId)} onChange={() => toggle(r.paymentTransactionId)} />
+                  <input
+                    type="checkbox"
+                    checked={selected.has(r.paymentTransactionId)}
+                    onChange={() => toggle(r.paymentTransactionId)}
+                    disabled={misconfigured}
+                    title={misconfigured ? (r.feeConfigError || 'Fee configuration missing — not settleable') : undefined}
+                  />
                 </td>
                 <td className="p-3 font-medium">
                   {r.referenceType ? `${r.referenceType} #${r.referenceId ?? r.orderId ?? r.bookingId ?? ''}` : `Payment #${r.paymentTransactionId}`}
@@ -139,13 +164,27 @@ export default function GatewaySettlementPage() {
                 <td className="p-3 text-xs text-[var(--color-text-muted)]">{r.gatewayReference || `txn-${r.paymentTransactionId}`}</td>
                 <td className="p-3">{r.paidAt ? formatISODate(r.paidAt.slice(0, 10)) : '—'}</td>
                 <td className="p-3 capitalize">{r.paymentMethod}</td>
-                <td className="p-3 text-right font-medium">{formatPrice(Number(r.grossAmount), getDefaultCurrency())}</td>
-                <td className="p-3 text-right text-[var(--color-text-muted)]">{Number(r.gatewayFeePct || 0)}%</td>
-                <td className="p-3 text-right text-[var(--color-text-muted)]">{formatPrice(Number(r.gatewayFeeFixed || 0), getDefaultCurrency())}</td>
-                <td className="p-3 text-right text-[var(--color-text-muted)]">{formatPrice(Number(r.gatewayFeeAmount || 0), getDefaultCurrency())}</td>
-                <td className="p-3 text-right font-semibold">{formatPrice(Number(r.netAmount || 0), getDefaultCurrency())}</td>
+                {misconfigured ? (
+                  <td colSpan={5} className="p-3">
+                    <span
+                      className="inline-block text-xs px-2 py-1 rounded-full border border-[var(--color-error)] text-[var(--color-error)]"
+                      title={r.feeConfigError || ''}
+                    >
+                      Fee configuration missing — cannot compute gateway fees. Fix the payment method configuration before settlement.
+                    </span>
+                  </td>
+                ) : (
+                  <>
+                    <td className="p-3 text-right font-medium">{formatPrice(Number(r.grossAmount), getDefaultCurrency())}</td>
+                    <td className="p-3 text-right text-[var(--color-text-muted)]">{Number(r.gatewayFeePct || 0)}%</td>
+                    <td className="p-3 text-right text-[var(--color-text-muted)]">{formatPrice(Number(r.gatewayFeeFixed || 0), getDefaultCurrency())}</td>
+                    <td className="p-3 text-right text-[var(--color-text-muted)]">{formatPrice(Number(r.gatewayFeeAmount || 0), getDefaultCurrency())}</td>
+                    <td className="p-3 text-right font-semibold">{formatPrice(Number(r.netAmount || 0), getDefaultCurrency())}</td>
+                  </>
+                )}
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       </div>

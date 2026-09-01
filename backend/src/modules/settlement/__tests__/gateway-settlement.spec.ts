@@ -13,6 +13,11 @@
  *      AVAILABLE for seller settlement until the gateway funds are settled;
  *      after gateway settlement they become eligible.
  *   F. Historical fee snapshot is preserved when payment_methods fees change.
+ *   G. A gateway payment with MISSING fee configuration (e.g. 'online' has no
+ *      payment_methods row) is surfaced as feeConfigStatus='missing' with NULL
+ *      fees — it never takes down the whole eligible list, is never presented
+ *      as 0% / E£0.00, and create() rejects it with ConflictError while valid
+ *      payments in the same list remain settleable.
  */
 import { vi, describe, it, expect, beforeAll, afterAll } from 'vitest';
 
@@ -209,23 +214,92 @@ describe('Gateway Settlement + Seller Entitlement Eligibility', () => {
     expect(Number(snap.gateway_fee_amount)).toBe(22.25);
   });
 
-  it('B. missing payment-method configuration fails clearly instead of silently recording 0%', async () => {
+  it('B. one misconfigured gateway payment does not break the eligible list; confirm of a valid payment still works (and a misconfigured payment is rejected)', async () => {
     // 'online' passes the gateway eligibility filter (card/online) but there is
     // NO payment_methods row with slug='online' → the LEFT JOIN misses →
-    // payment_method_id IS NULL → the defensive guard must throw instead of
-    // silently computing a 0% / E£0.00 fee.
-    const [pt] = await pool.execute<RowData>(
+    // payment_method_id IS NULL → the row MUST surface as feeConfigStatus
+    // 'missing' (NULL fee/net) WITHOUT failing the whole eligible list. The
+    // valid 'card' payment in the SAME response keeps its computed fees and
+    // remains settleable. create() must still reject the misconfigured row.
+    const [ptOnline] = await pool.execute<RowData>(
       `INSERT INTO payment_transactions (user_id, reference_type, reference_id, payment_method, gateway_provider, gateway_reference, amount, currency, payment_status, paid_at)
        VALUES (1, 'order', 1, 'online', 'paymob', 'gws-missing-ref-1', 250, 'EGP', 'paid', NOW())`,
     );
-    const onlineId = (pt as any).insertId;
+    const onlineId = (ptOnline as any).insertId;
+    const [ptValid] = await pool.execute<RowData>(
+      `INSERT INTO payment_transactions (user_id, reference_type, reference_id, payment_method, gateway_provider, gateway_reference, amount, currency, payment_status, paid_at)
+       VALUES (1, 'order', 1, 'card', 'paymob', 'gws-valid-ref-2', 250, 'EGP', 'paid', NOW())`,
+    );
+    const validCardId = (ptValid as any).insertId;
+    const [ptValid2] = await pool.execute<RowData>(
+      `INSERT INTO payment_transactions (user_id, reference_type, reference_id, payment_method, gateway_provider, gateway_reference, amount, currency, payment_status, paid_at)
+       VALUES (1, 'order', 1, 'card', 'paymob', 'gws-valid-ref-3', 100, 'EGP', 'paid', NOW())`,
+    );
+    const validCardId2 = (ptValid2 as any).insertId;
     try {
-      await expect(gatewaySettlementService.listEligible())
+      // listEligible() RESOLVES despite the misconfigured row.
+      const eligible = await gatewaySettlementService.listEligible();
+      const online = eligible.find((e) => e.paymentTransactionId === onlineId);
+      const valid = eligible.find((e) => e.paymentTransactionId === validCardId);
+      const valid2 = eligible.find((e) => e.paymentTransactionId === validCardId2);
+
+      // Misconfigured row surfaced, flagged, and NEVER given a silent 0% fee.
+      expect(online).toBeDefined();
+      expect(online!.feeConfigStatus).toBe('missing');
+      expect(online!.feeConfigError).toMatch(/missing/i);
+      expect(online!.gatewayFeePct).toBeNull();
+      expect(online!.gatewayFeeFixed).toBeNull();
+      expect(online!.gatewayFeeAmount).toBeNull();
+      expect(online!.netAmount).toBeNull();
+
+      // Multiple valid rows in the SAME response are untouched and correct.
+      expect(valid).toBeDefined();
+      expect(valid!.feeConfigStatus).toBe('ok');
+      expect(valid!.grossAmount).toBe(250);
+      expect(valid!.gatewayFeePct).toBe(2.5);
+      expect(valid!.gatewayFeeFixed).toBe(1);
+      expect(valid!.gatewayFeeAmount).toBe(7.25); // 250 × 2.5% + 1.00
+      expect(valid!.netAmount).toBe(242.75); // 250 − 7.25
+      expect(valid2).toBeDefined();
+      expect(valid2!.feeConfigStatus).toBe('ok');
+      expect(valid2!.grossAmount).toBe(100);
+      expect(valid2!.gatewayFeeAmount).toBe(3.5); // 100 × 2.5% + 1.00
+      expect(valid2!.netAmount).toBe(96.5);
+
+      // Confirming the misconfigured payment fails clearly (backend re-validates
+      // from DB — it never trusts frontend filtering).
+      await expect(gatewaySettlementService.create({ paymentTransactionIds: [onlineId], settledBy: 999901 }))
         .rejects.toThrow(ConflictError);
-      await expect(gatewaySettlementService.listEligible())
+      await expect(gatewaySettlementService.create({ paymentTransactionIds: [onlineId], settledBy: 999901 }))
         .rejects.toThrow(/fee configuration is missing|missing/i);
+
+      // Valid payment in the same response is still settleable.
+      const detail = await gatewaySettlementService.create({ paymentTransactionIds: [validCardId], settledBy: 999901 });
+      expect(detail.settlement.gross_amount).toBe(250);
+      expect(detail.settlement.gateway_fee_amount).toBe(7.25);
+      expect(detail.settlement.net_amount).toBe(242.75);
+      expect(detail.transactions).toHaveLength(1);
+
+      // Fee snapshot captured at settlement time for the valid payment.
+      const [snap] = await pool.execute<RowData>(
+        `SELECT gateway_fee_pct, gateway_fee_fixed, gateway_fee_amount FROM gateway_settlement_transactions WHERE payment_transaction_id = ?`, [validCardId],
+      );
+      expect(Number((snap as any[])[0].gateway_fee_pct)).toBe(2.5);
+      expect(Number((snap as any[])[0].gateway_fee_fixed)).toBe(1);
+      expect(Number((snap as any[])[0].gateway_fee_amount)).toBe(7.25);
+
+      // Atomic accounting for the valid settlement.
+      expect(await settlementSums(detail.settlement.id, '1120', 'debit')).toBe(242.75);
+      expect(await settlementSums(detail.settlement.id, '5210', 'debit')).toBe(7.25);
+      expect(await settlementSums(detail.settlement.id, '1100', 'credit')).toBe(250);
+
+      // The valid payment is no longer eligible after being settled.
+      const after = await gatewaySettlementService.listEligible();
+      expect(after.find((e) => e.paymentTransactionId === validCardId)).toBeUndefined();
     } finally {
       await pool.execute('DELETE FROM payment_transactions WHERE id = ?', [onlineId]);
+      await pool.execute('DELETE FROM payment_transactions WHERE id = ?', [validCardId]);
+      await pool.execute('DELETE FROM payment_transactions WHERE id = ?', [validCardId2]);
     }
   });
 });

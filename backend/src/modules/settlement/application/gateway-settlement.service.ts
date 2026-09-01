@@ -31,10 +31,19 @@ export interface GatewayEligibleTransaction {
   paidAt: string | null;
   currency: string;
   grossAmount: number;
-  gatewayFeePct: number;
-  gatewayFeeFixed: number;
-  gatewayFeeAmount: number;
-  netAmount: number;
+  /**
+   * 'ok' — the payment_methods fee configuration resolved and fees/net were
+   * computed. 'missing' — the gateway payment has no resolvable fee
+   * configuration (e.g. no payment_methods row with matching slug), so NO fee
+   * can be computed. Such rows are surfaced in the eligible list (so admins SEE
+   * them) but carry null fee values and must NOT be settled.
+   */
+  feeConfigStatus: 'ok' | 'missing';
+  feeConfigError: string | null;
+  gatewayFeePct: number | null;
+  gatewayFeeFixed: number | null;
+  gatewayFeeAmount: number | null;
+  netAmount: number | null;
 }
 
 /**
@@ -53,6 +62,12 @@ export const gatewaySettlementService = {
    *   - NOT already included in a gateway settlement (gateway_settlement_id IS NULL)
    *   - financially valid (paid_at present, positive amount)
    * Gateway fee is computed from the configured payment_method (never hard-coded).
+   *
+   * A gateway payment that cannot resolve its fee configuration is returned
+   * with feeConfigStatus='missing' and NULL fee/net values (rather than
+   * throwing for the whole list), so ONE misconfigured row can never hide
+   * every other valid, settleable transaction. create() still validates
+   * strictly and rejects such rows.
    */
   async listEligible(): Promise<GatewayEligibleTransaction[]> {
     const pool = getPool();
@@ -74,21 +89,10 @@ export const gatewaySettlementService = {
   },
 
   _computeFee(r: any): GatewayEligibleTransaction {
+    const paymentTransactionId = Number(r.id);
     const grossAmount = round2(Number(r.amount || 0));
-    // Defensive: a card/online gateway payment MUST resolve its fee
-    // configuration. If the payment_methods row is missing, fail loudly instead
-    // of silently recording a 0% / E£0.00 fee on a settlement.
-    if (r.payment_method_id == null && GATEWAY_PAYMENT_METHODS.includes(r.payment_method)) {
-      throw new ConflictError(
-        `Payment method fee configuration is missing for '${r.payment_method}' — cannot resolve gateway fees for payment transaction ${r.id}`,
-      );
-    }
-    const gatewayFeePct = Number(r.processing_fee_pct ?? 0);
-    const gatewayFeeFixed = Number(r.processing_fee_fixed ?? 0);
-    const gatewayFeeAmount = round2(grossAmount * (gatewayFeePct / 100) + gatewayFeeFixed);
-    const netAmount = round2(grossAmount - gatewayFeeAmount);
-    return {
-      paymentTransactionId: Number(r.id),
+    const base = {
+      paymentTransactionId,
       referenceType: r.reference_type ?? null,
       referenceId: r.reference_id != null ? Number(r.reference_id) : null,
       orderId: r.order_id != null ? Number(r.order_id) : null,
@@ -100,6 +104,31 @@ export const gatewaySettlementService = {
       paidAt: r.paid_at ? new Date(r.paid_at).toISOString() : null,
       currency: r.currency || 'EGP',
       grossAmount,
+    };
+    // Defensive: a card/online gateway payment MUST resolve its fee
+    // configuration. If the payment_methods row is missing, mark the row as
+    // misconfigured (NULL fees) instead of silently recording a 0% / E£0.00 fee
+    // OR failing the entire eligible list. Settling such a row is still
+    // rejected by create().
+    if (r.payment_method_id == null && GATEWAY_PAYMENT_METHODS.includes(r.payment_method)) {
+      return {
+        ...base,
+        feeConfigStatus: 'missing',
+        feeConfigError: `Payment method fee configuration is missing for '${r.payment_method}' — cannot resolve gateway fees for payment transaction ${paymentTransactionId}`,
+        gatewayFeePct: null,
+        gatewayFeeFixed: null,
+        gatewayFeeAmount: null,
+        netAmount: null,
+      };
+    }
+    const gatewayFeePct = Number(r.processing_fee_pct ?? 0);
+    const gatewayFeeFixed = Number(r.processing_fee_fixed ?? 0);
+    const gatewayFeeAmount = round2(grossAmount * (gatewayFeePct / 100) + gatewayFeeFixed);
+    const netAmount = round2(grossAmount - gatewayFeeAmount);
+    return {
+      ...base,
+      feeConfigStatus: 'ok',
+      feeConfigError: null,
       gatewayFeePct,
       gatewayFeeFixed,
       gatewayFeeAmount,
@@ -159,8 +188,10 @@ export const gatewaySettlementService = {
           throw new ConflictError(`Payment transaction ${id} is not a gateway payment (${txn.payment_method})`);
         }
         // Defensive: a card/online gateway payment MUST resolve its fee
-        // configuration. If the payment_methods row is missing, fail loudly
-        // instead of silently recording a 0% / E£0.00 fee on the settlement.
+        // configuration. listEligible() surfaces misconfigured rows to the
+        // admin, but create() NEVER settles them — fail loudly instead of
+        // silently recording a 0% / E£0.00 fee on the settlement. The backend
+        // re-validates from the DB, so frontend filtering is never trusted.
         if (txn.payment_method_id == null) {
           throw new ConflictError(
             `Payment method fee configuration is missing for '${txn.payment_method}' — cannot resolve gateway fees for payment transaction ${id}`,
