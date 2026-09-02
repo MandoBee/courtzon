@@ -42,6 +42,43 @@ describe('Marketplace Entitlement Inputs — per-item calculation', () => {
     });
   });
 
+  it('E£800 products + E£50 shipping + E£40 commission → org net E£810, commission E£40, gross E£850', () => {
+    const order = {
+      id: 24,
+      currency_code: 'EGP',
+      subtotal: 800.0,
+      discount_amount: 0,
+      shipping_cost: 50.0,
+      tax_amount: 0,
+      total: 850.0,
+      courtzon_fee: 40.0,
+    };
+    const items = [
+      { item_id: 45, item_seller_id: 6, branch_id: 2, product_id: 80, unit_price: 600, quantity: 1, item_total: 600.0, commission_amount: 30.0 },
+      { item_id: 46, item_seller_id: 6, branch_id: 1, product_id: 67, unit_price: 200, quantity: 1, item_total: 200.0, commission_amount: 10.0 },
+    ];
+
+    const inputs = buildEntitlementInputs(order, items);
+
+    // Both items → org earning + commission = 4 entitlements.
+    expect(inputs).toHaveLength(4);
+
+    const orgTotal = inputs.filter(i => i.entitlementType === 'ORGANIZATION_EARNING').reduce((s, i) => s + i.amount, 0);
+    const commTotal = inputs.filter(i => i.entitlementType === 'COURTZON_COMMISSION').reduce((s, i) => s + i.amount, 0);
+
+    expect(orgTotal).toBe(810);   // 800 − 40 commission + 50 shipping
+    expect(commTotal).toBe(40);   // CourtZon commission
+    expect(orgTotal + commTotal).toBe(850); // gross marketplace value
+
+    // Per-item shares (shipping allocated by subtotal share).
+    const org45 = inputs.find(i => i.sourceId === 45 && i.entitlementType === 'ORGANIZATION_EARNING');
+    const org46 = inputs.find(i => i.sourceId === 46 && i.entitlementType === 'ORGANIZATION_EARNING');
+    expect(org45!.amount).toBe(607.5); // (600 − 30) + 37.5
+    expect(org46!.amount).toBe(202.5); // (200 − 10) + 12.5
+    expect(org45!.organisationId).toBe(6);
+    expect(org46!.organisationId).toBe(6);
+  });
+
   it('allocates discount, shipping and tax proportionally across multi-seller items', () => {
     const order = {
       id: 200,

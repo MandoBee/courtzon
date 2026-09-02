@@ -26,27 +26,66 @@ const grant = (...keys: string[]) => { mockPermissions = new Set(keys); };
 const REQUEST_KEY = 'settlements.request';
 const PAY_KEY = 'settlements.pay';
 
-const ent24 = { id: 24, source_type: 'marketplace', source_id: 100, entitlement_type: 'ORGANIZATION_EARNING', amount: 850, currency: 'EGP', available_at: '2026-09-01T00:00:00.000Z' };
-const ent25 = { id: 25, source_type: 'marketplace', source_id: 101, entitlement_type: 'ORGANIZATION_EARNING', amount: 1200, currency: 'EGP', available_at: '2026-09-02T00:00:00.000Z' };
-const ent26 = { id: 26, source_type: 'booking', source_id: 55, entitlement_type: 'ORGANIZATION_EARNING', amount: 450, currency: 'EGP', available_at: '2026-09-02T00:00:00.000Z' };
+const ent24 = { id: 24, source_type: 'marketplace', source_id: 100, entitlement_type: 'ORGANIZATION_EARNING', amount: 850, currency: 'EGP', available_at: '2026-09-01T00:00:00.000Z', collector: 'courtzon' };
+const ent25 = { id: 25, source_type: 'marketplace', source_id: 101, entitlement_type: 'ORGANIZATION_EARNING', amount: 1200, currency: 'EGP', available_at: '2026-09-02T00:00:00.000Z', collector: 'courtzon' };
+const ent26 = { id: 26, source_type: 'booking', source_id: 55, entitlement_type: 'ORGANIZATION_EARNING', amount: 450, currency: 'EGP', available_at: '2026-09-02T00:00:00.000Z', collector: 'courtzon' };
 const ORG_7_POOL = [ent24, ent25, ent26];
 
+// Padel Edge-like org: E£810 org earning + E£40 CourtZon commission → payout E£810, NEVER E£850.
+const entEarn = { id: 60, source_type: 'marketplace', source_id: 201, entitlement_type: 'ORGANIZATION_EARNING', amount: 810, currency: 'EGP', available_at: '2026-09-01T00:00:00.000Z', collector: 'courtzon' };
+const entComm = { id: 61, source_type: 'marketplace', source_id: 201, entitlement_type: 'COURTZON_COMMISSION', amount: 40, currency: 'EGP', available_at: '2026-09-01T00:00:00.000Z', collector: 'courtzon' };
+const ORG_9_POOL = [entEarn, entComm];
+
+// Canonical financials — mirrors computeSettlementFinancials: commission collected by
+// CourtZon never inflates the organisation payable.
 function financials(pool: any[]) {
-  const sum = pool.reduce((s, e) => s + Number(e.amount), 0);
-  return { courtzonOwedToOrg: sum, orgOwedToCourtZon: 0, net: sum, direction: 'COURTZON_TO_ORGANIZATION', finalAmount: sum, totalOrgEarnings: sum, totalCommission: 0, totalOrgAdjustments: 0, totalCourtZonAdjustments: 0 };
+  let courtzonOwedToOrg = 0;
+  let orgOwedToCourtZon = 0;
+  let totalOrgEarnings = 0;
+  let totalCommission = 0;
+  for (const e of pool) {
+    const amt = Number(e.amount || 0);
+    if (e.entitlement_type === 'ORGANIZATION_EARNING') {
+      totalOrgEarnings += amt;
+      if (e.collector === 'courtzon') courtzonOwedToOrg += amt;
+    } else if (e.entitlement_type === 'COURTZON_COMMISSION') {
+      totalCommission += amt;
+      if (e.collector === 'org') orgOwedToCourtZon += amt;
+    }
+  }
+  const net = courtzonOwedToOrg - orgOwedToCourtZon;
+  return {
+    courtzonOwedToOrg,
+    orgOwedToCourtZon,
+    net,
+    direction: net > 0 ? 'COURTZON_TO_ORGANIZATION' : net < 0 ? 'ORGANIZATION_TO_COURTZON' : 'ZERO_BALANCE',
+    finalAmount: Math.abs(net),
+    totalOrgEarnings,
+    totalCommission,
+    totalOrgAdjustments: 0,
+    totalCourtZonAdjustments: 0,
+  };
 }
 
 vi.mocked(api.get).mockImplementation((url: string, config?: any) => {
   if (url === '/admin/organisations') {
-    return Promise.resolve({ data: [{ id: 7, name: 'Cairo Padel Club' }, { id: 8, name: 'Giza Tennis Academy' }] });
+    return Promise.resolve({ data: [{ id: 7, name: 'Cairo Padel Club' }, { id: 8, name: 'Giza Tennis Academy' }, { id: 9, name: 'Padel Edge' }] });
   }
   if (url === '/unified-settlements/preview') {
     const params = config?.params || {};
     const orgId = Number(params.orgId);
     const exclude = String(params.exclude || '').split(',').filter(Boolean).map(Number);
-    const pool = orgId === 7 ? ORG_7_POOL : [];
+    const pool = orgId === 7 ? ORG_7_POOL : orgId === 9 ? ORG_9_POOL : [];
     const selected = pool.filter((e) => !exclude.includes(e.id));
-    return Promise.resolve({ data: { entitlements: pool, selectedIds: selected.map((e) => e.id), excludedIds: exclude, financials: financials(selected) } });
+    return Promise.resolve({
+      data: {
+        entitlements: pool,
+        selectedIds: selected.map((e) => e.id),
+        excludedIds: exclude,
+        financials: financials(selected),
+        financialsAll: financials(pool),
+      },
+    });
   }
   return Promise.resolve({ data: { data: [] } });
 });
@@ -153,6 +192,26 @@ describe('UnifiedSettlementCreatePage — organisation-first finance workflow', 
     expect(await screen.findByText('No eligible settlements for this organisation.')).toBeTruthy();
     expect(screen.queryByText('Outstanding Settlements')).toBeNull();
     expect(screen.queryByText(/Settlement #24/)).toBeNull();
+  });
+
+  it('shows the canonical payout for a pool containing CourtZon commission (E£810, never E£850)', async () => {
+    renderPage();
+    fireEvent.click(screen.getByText('Select organisation…'));
+    const option = await screen.findByText('Padel Edge');
+    fireEvent.mouseDown(option);
+    await screen.findByText(/Settlement #60/);
+
+    // Both rows are visible (org earning + CourtZon commission)…
+    expect(screen.getByText(/Settlement #60/)).toBeTruthy();
+    expect(screen.getByText(/Settlement #61/)).toBeTruthy();
+    expect(screen.getAllByText(/CourtZon Commission/).length).toBeGreaterThan(0);
+
+    // …but payout + available are the canonical org net (810), never the gross 850.
+    expect(screen.getByText('2')).toBeTruthy(); // selected settlements (earning + commission rows)
+    expect(screen.getAllByText(/810\.00/).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/850\.00/)).toBeNull();
+    // The commission is explicitly called out as NOT part of the org payout.
+    expect(screen.getByText(/CourtZon Commission in the selected items:/)).toBeTruthy();
   });
 
   it('loads ONLY the selected organisation eligible items after selection', async () => {
