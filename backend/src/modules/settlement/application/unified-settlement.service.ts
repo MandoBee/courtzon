@@ -27,6 +27,7 @@ export const unifiedSettlementService = {
     selectedIds: number[];
     excludedIds: number[];
     financials: ReturnType<typeof computeSettlementFinancials>;
+    financialsAll: ReturnType<typeof computeSettlementFinancials>;
   }> {
     const eligible = await financialEntitlementService.getAvailableForOrganisation(orgId);
     const excludedSet = new Set(excludeEntitlementIds.map(Number));
@@ -39,7 +40,17 @@ export const unifiedSettlementService = {
       amount: Number(e.amount),
       collector: e.collector,
     })));
-    return { entitlements: eligible, selectedIds, excludedIds: [...excludedSet], financials };
+    // Canonical financials over ALL eligible entitlements (ignoring exclusions)
+    // so callers can show the full "available to settle" position without
+    // independently summing mixed-direction entitlement amounts.
+    const financialsAll = computeSettlementFinancials(eligible.map((e) => ({
+      id: e.id,
+      organisationId: e.organisation_id,
+      entitlementType: e.entitlement_type,
+      amount: Number(e.amount),
+      collector: e.collector,
+    })));
+    return { entitlements: eligible, selectedIds, excludedIds: [...excludedSet], financials, financialsAll };
   },
 
   /**

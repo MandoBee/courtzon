@@ -127,9 +127,13 @@ export default function UnifiedSettlementCreatePage() {
 
   const ents: any[] = preview.data?.entitlements || [];
   const selectedEnts = ents.filter((e: any) => !excluded.has(e.id));
-  const availableTotal = useMemo(() => ents.reduce((s, e: any) => s + Number(e.amount || 0), 0), [ents]);
-  const selectedTotal = useMemo(() => selectedEnts.reduce((s, e: any) => s + Number(e.amount || 0), 0), [selectedEnts]);
+  // All totals derive from the canonical backend calculation (computeSettlementFinancials),
+  // never by summing mixed-direction entitlement amounts: COURTZON_COMMISSION is CourtZon's
+  // share and must not inflate the organisation payout.
   const f = preview.data?.financials;
+  const fAll = preview.data?.financialsAll || f;
+  const availableTotal = useMemo(() => Number(fAll?.finalAmount || 0), [fAll]);
+  const selectedTotal = useMemo(() => Number(f?.finalAmount || 0), [f]);
 
   const invalidateAndGo = (settlementId: number) => {
     queryClient.invalidateQueries({ queryKey: ['unified-settlements'] });
@@ -330,6 +334,11 @@ export default function UnifiedSettlementCreatePage() {
               <span className="text-xs text-[var(--color-text-muted)]">Total payout</span>
               <p className="text-lg font-bold text-[var(--color-primary)]">{formatPrice(selectedTotal)}</p>
             </div>
+            {Number(f?.totalCommission || 0) > 0 && (
+              <p className="w-full text-xs text-[var(--color-text-muted)]">
+                CourtZon Commission in the selected items: {formatPrice(Number(f?.totalCommission || 0))} — kept by CourtZon and not part of the organisation payout.
+              </p>
+            )}
           </div>
 
           {/* Step 4 — canonical preview financials (recomputed by the backend for the selected set) */}

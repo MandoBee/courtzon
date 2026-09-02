@@ -110,6 +110,28 @@ describe('Unified Settlement Service — orchestration', () => {
     expect(conn.rollback).toHaveBeenCalled();
   });
 
+  it('preview nets CourtZon commission OUT of the organisation payable (810, not 850)', async () => {
+    const ents = [
+      mkEnt({ id: 1, entitlementType: 'ORGANIZATION_EARNING', amount: 810, collector: 'courtzon' }),
+      mkEnt({ id: 2, entitlementType: 'COURTZON_COMMISSION', amount: 40, collector: 'courtzon' }),
+    ];
+    vi.spyOn(financialEntitlementService, 'getAvailableForOrganisation').mockResolvedValue(ents);
+
+    const result = await unifiedSettlementService.preview(1);
+
+    // Both entitlement rows are returned (commission remains part of the pool/composition)…
+    expect(result.entitlements).toHaveLength(2);
+    expect(result.selectedIds).toEqual([1, 2]);
+    // …but the organisation payable is the org net only — NEVER earning + commission.
+    expect(result.financials.courtzonOwedToOrg).toBe(810);
+    expect(result.financials.orgOwedToCourtZon).toBe(0);
+    expect(result.financials.finalAmount).toBe(810);
+    expect(result.financials.totalCommission).toBe(40);
+    // financialsAll (all-eligible, ignore exclusions) matches the full pool.
+    expect(result.financialsAll.finalAmount).toBe(810);
+    expect(result.financialsAll.courtzonOwedToOrg).toBe(810);
+  });
+
   it('recordPayment finalizes entitlements as SETTLED and records payment', async () => {
     const { getPool } = await import('../../../database/mysql.js');
     vi.spyOn(getPool(), 'getConnection').mockResolvedValue(conn);
