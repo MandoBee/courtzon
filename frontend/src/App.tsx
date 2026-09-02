@@ -208,7 +208,6 @@ const FinancialPositionPage = lazy(() => import('./pages/org/FinancialPositionPa
 const OrgBookingSettlementsPage = lazy(() => import('./pages/org/OrgBookingSettlementsPage'));
 const OrgAccountingDashboardPage = lazy(() => import('./pages/org/OrgAccountingDashboardPage'));
 const OrgChartOfAccountsPage = lazy(() => import('./pages/org/OrgChartOfAccountsPage'));
-const OrgJournalPage = lazy(() => import('./pages/org/OrgJournalPage'));
 const OrgAccountingRecordsPage = lazy(() => import('./pages/org/OrgAccountingRecordsPage'));
 const OrgFinancialReportsPage = lazy(() => import('./pages/org/OrgFinancialReportsPage'));
 const OrgTaxSummaryPage = lazy(() => import('./pages/org/OrgTaxSummaryPage'));
@@ -366,6 +365,11 @@ function OrgApprovedGuard() {
     return <Navigate to={`/org/${orgId}/pending-approval`} replace />;
   }
   return <Outlet />;
+}
+
+function OrgJournalRedirect() {
+  const { orgId } = useParams<{ orgId: string }>();
+  return <Navigate to={`/org/${orgId}/accounting/records`} replace />;
 }
 
 function PublicRoute() {
@@ -814,7 +818,7 @@ function AppContent() {
             <Route path="accounting" element={<Navigate to="accounting/dashboard" replace />} />
             <Route path="accounting/dashboard" element={<OrgAccountingDashboardPage />} />
             <Route path="accounting/coa" element={<OrgChartOfAccountsPage />} />
-            <Route path="accounting/journal" element={<OrgJournalPage />} />
+            <Route path="accounting/journal" element={<OrgJournalRedirect />} />
             <Route path="accounting/records" element={<OrgAccountingRecordsPage />} />
             <Route path="accounting/reports" element={<Navigate to="reports/trial-balance" replace />} />
             <Route path="accounting/reports/:reportType" element={<OrgFinancialReportsPage />} />

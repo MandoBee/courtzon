@@ -561,6 +561,36 @@ describe('Phase 1 parity gate — org sidebar (buildOrgNavItems vs Navigation Re
   });
 });
 
+describe('Org sidebar — Manual Journal removed (org-facing journal lives in Accounting Records only)', () => {
+  const flatten = (items: ResolvedNavItem[]): ResolvedNavItem[] =>
+    items.flatMap((i) => [i, ...(i.children ? flatten(i.children) : [])]);
+
+  it('does not expose the org journal node in the navigation registry', () => {
+    const flat = flatten(resolveOrgNav(allCan, '7', enT));
+    expect(flat.some((i) => i.id === 'nav.org.accounting-journal')).toBe(false);
+    expect(flat.some((i) => i.path.includes('/accounting/journal'))).toBe(false);
+  });
+
+  it('does not expose Manual Journal in the legacy org sidebar builder', () => {
+    const flat = flatten(buildLegacyOrgNavItems(allCan, '7') as unknown as ResolvedNavItem[]);
+    expect(flat.some((i) => i.label === 'Manual Journal')).toBe(false);
+    expect(flat.some((i) => i.path.includes('/accounting/journal'))).toBe(false);
+  });
+
+  it('keeps Accounting Records as the org-facing journal source', () => {
+    const flat = flatten(resolveOrgNav(allCan, '7', enT));
+    const records = flat.find((i) => i.id === 'nav.org.accounting-records');
+    expect(records).toBeDefined();
+    expect(records?.path).toBe('/org/7/accounting/records');
+  });
+
+  it('drops the org.accounting.journal.view legacy key mapping', () => {
+    expect(ORG_NAV.some((n) => n.permissionKey === 'org.accounting.journal.view')).toBe(false);
+    expect(ORG_ID_TO_KEY.has('nav.org.accounting-journal')).toBe(false);
+    expect(ORG_LEGACY_KEY_TO_ID.has('org.accounting.journal.view')).toBe(false);
+  });
+});
+
 describe('Phase 1 parity gate — coach nav (legacy/coach-nav.ts vs Navigation Registry)', () => {
   it('matches definition for definition', () => {
     const legacy = LEGACY_COACH_NAV.map((i) => ({ label: i.label, icon: i.icon, path: i.path })) as unknown as ResolvedNavItem[];
@@ -731,8 +761,8 @@ describe('Navigation registry integrity (immutable ids)', () => {
 
     const orgIds = collectIds(ORG_NAV);
     expect(orgIds.every((id) => id.startsWith('nav.org.'))).toBe(true);
-    expect(orgIds.length).toBe(40);
-    expect(ORG_ID_TO_KEY.size).toBe(34);
+    expect(orgIds.length).toBe(39);
+    expect(ORG_ID_TO_KEY.size).toBe(33);
     // Category domains carry no permission key (they render when a permitted child passes);
     // every node that DOES carry a key must be registered in the id→key map.
     for (const id of ORG_ID_TO_KEY.keys()) expect(orgIds.includes(id)).toBe(true);
