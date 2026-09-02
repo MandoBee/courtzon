@@ -66,6 +66,7 @@ export const ORG_NAV: NavDefinition[] = [
           { id: 'nav.org.accounting-dashboard', label: LIT('Dashboard'), path: '/org/{orgId}/accounting/dashboard', permissionKey: 'org.accounting.view' },
           { id: 'nav.org.accounting-records', label: LIT('Accounting Records'), path: '/org/{orgId}/accounting/records', permissionKey: 'org.accounting.view' },
           { id: 'nav.org.accounting-coa', label: LIT('Chart of Accounts'), path: '/org/{orgId}/accounting/coa', permissionKey: 'org.accounting.view' },
+          { id: 'nav.org.accounting-periods', label: LIT('Accounting Periods'), path: '/org/{orgId}/accounting/periods', permissionKey: 'org.accounting.view' },
         ],
       },
       {

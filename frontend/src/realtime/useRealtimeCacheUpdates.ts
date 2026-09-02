@@ -80,6 +80,7 @@ export const FINANCE_INVALIDATIONS = [
   ['accounting'],
   ['finance'],
   ['account-ledger'],
+  ['year-close'],
 ] as const;
 
 export function invalidateFinanceEntries(qc: QueryClient): void {

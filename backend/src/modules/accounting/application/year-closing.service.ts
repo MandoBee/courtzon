@@ -2,6 +2,7 @@ import type mysql from 'mysql2/promise';
 import type { RowDataPacket } from 'mysql2';
 import { getPool } from '../../../database/mysql.js';
 import { recordAudit } from '../../audit-log/index.js';
+import { eventBusV2 } from '../../../shared/event-bus/event-bus.v2.js';
 import { accountingEngineService } from '../../financial/application/accounting-engine.service.js';
 import { ledgerRepository } from '../../financial/infrastructure/repositories/ledger.repository.js';
 import { glProjectionService } from '../../financial/application/gl-projection.service.js';
@@ -163,6 +164,17 @@ export class YearClosingService {
 
       await conn.commit();
 
+      // Post-COMMIT realtime signal: closing entries are durable — every
+      // affected accounting view (Super Admin + organisation, scoped) may
+      // refetch immediately. Routed to the organisation room by the socket
+      // mapper when organisationId is set.
+      eventBusV2.emit('accounting:entry-recorded', {
+        eventType: 'year_close',
+        sourceType: 'year_close',
+        sourceId: cycleId,
+        organisationId,
+      });
+
       recordAudit({
         actorId: userId, action: 'ACCOUNTING.YEAR_CLOSE',
         entityType: 'year_closings', entityId: ycId,
@@ -292,6 +304,15 @@ export class YearClosingService {
       );
 
       await conn.commit();
+
+      // Post-COMMIT realtime signal: the reversal (opening) entries are
+      // durable — accounting views may refetch immediately.
+      eventBusV2.emit('accounting:entry-recorded', {
+        eventType: 'year_close_reopen',
+        sourceType: 'year_close_reopen',
+        sourceId: cycleId,
+        organisationId: yc.organisation_id ?? null,
+      });
 
       recordAudit({
         actorId: userId, action: 'ACCOUNTING.YEAR_CLOSE.REOPEN',

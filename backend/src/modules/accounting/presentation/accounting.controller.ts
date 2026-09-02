@@ -6,6 +6,7 @@ import { AppError, NotFoundError, ConflictError } from '../../../shared/errors/a
 import { ErrorCodes } from '../../../shared/errors/error-codes.js';
 import { getEventConcepts, validateCompleteMapping } from '../../financial/application/accounting-concepts.js';
 import { coaValidator } from '../../financial/application/coa-validator.service.js';
+import { glProjectionService } from '../../financial/application/gl-projection.service.js';
 import { yearClosingService } from '../application/year-closing.service.js';
 import { calculateFiscalYearNetIncome } from '../application/year-close.netincome.js';
 import mysql from 'mysql2/promise';
@@ -607,6 +608,45 @@ export async function orgTaxSummaryHandler(request: FastifyRequest, reply: Fasti
   return taxSummaryHandler(scopedRequest(request), reply);
 }
 
+// ── Organisation-scoped Accounting Periods & Year Close ──
+// Org admins manage their OWN accounting periods and year-end closing through
+// the same canonical handlers/logic — scopedRequest injects the route :orgId as
+// the authoritative organisationId, so an organisation can never see, close, or
+// carry balances for another organisation. Platform (Super Admin) behaviour is
+// unchanged (no organisationId → platform scope).
+
+export async function orgListPeriodsHandler(request: FastifyRequest, reply: FastifyReply) {
+  return listPeriodsHandler(scopedRequest(request), reply);
+}
+
+export async function orgGeneratePeriodsHandler(request: FastifyRequest, reply: FastifyReply) {
+  return generatePeriodsHandler(scopedRequest(request), reply);
+}
+
+export async function orgClosePeriodHandler(request: FastifyRequest, reply: FastifyReply) {
+  return closePeriodHandler(scopedRequest(request), reply);
+}
+
+export async function orgOpenPeriodHandler(request: FastifyRequest, reply: FastifyReply) {
+  return openPeriodHandler(scopedRequest(request), reply);
+}
+
+export async function orgYearClosePreviewHandler(request: FastifyRequest, reply: FastifyReply) {
+  return yearClosePreviewHandler(scopedRequest(request), reply);
+}
+
+export async function orgYearCloseHandler(request: FastifyRequest, reply: FastifyReply) {
+  return yearCloseHandler(scopedRequest(request), reply);
+}
+
+export async function orgYearCloseHistoryHandler(request: FastifyRequest, reply: FastifyReply) {
+  return yearCloseHistoryHandler(scopedRequest(request), reply);
+}
+
+export async function orgYearCloseReopenHandler(request: FastifyRequest, reply: FastifyReply) {
+  return yearCloseReopenHandler(scopedRequest(request), reply);
+}
+
 /**
  * Validate that every journal target account is usable by the organisation:
  * exists, active, belongs to the org (or is a global default that is not
@@ -703,10 +743,16 @@ export async function orgJournalEntriesHandler(request: FastifyRequest, reply: F
   return listJournalEntriesHandler(request, reply);
 }
 
-export async function listPeriodsHandler(_request: FastifyRequest, reply: FastifyReply) {
+export async function listPeriodsHandler(request: FastifyRequest, reply: FastifyReply) {
   const pool = getPool();
+  const query = request.query as any;
+  const organisationId = query.organisationId ? Number(query.organisationId) : null;
+
+  const orgWhere = organisationId != null ? 'organisation_id = ?' : '1=1';
+  const params: any[] = organisationId != null ? [organisationId] : [];
   const [rows] = await pool.execute<RowData>(
-    `SELECT * FROM accounting_periods ORDER BY fiscal_year DESC, period_number DESC`
+    `SELECT * FROM accounting_periods WHERE ${orgWhere} ORDER BY fiscal_year DESC, period_number DESC`,
+    params
   );
   return reply.send({ data: rows });
 }
@@ -714,11 +760,18 @@ export async function listPeriodsHandler(_request: FastifyRequest, reply: Fastif
 export async function generatePeriodsHandler(request: FastifyRequest, reply: FastifyReply) {
   const pool = getPool();
   const body = request.body as any;
+  const query = request.query as any;
   const userId = (request as any).userId;
   const fiscalYear = body.fiscalYear || new Date().getFullYear();
+  // Organisation-scoped generation: scopedRequest injects organisationId into
+  // the query; the admin path leaves it null (platform periods).
+  const organisationId = query.organisationId ? Number(query.organisationId)
+    : body.organisationId ? Number(body.organisationId) : null;
 
+  const orgWhere = organisationId != null ? 'organisation_id = ?' : 'organisation_id IS NULL';
+  const orgParams: any[] = organisationId != null ? [organisationId] : [];
   const [existing] = await pool.execute<RowData>(
-    `SELECT id FROM accounting_periods WHERE fiscal_year = ?`, [fiscalYear]
+    `SELECT id FROM accounting_periods WHERE fiscal_year = ? AND ${orgWhere}`, [fiscalYear, ...orgParams]
   );
   if (existing.length) {
     return reply.status(409).send({ error: 'CONFLICT', message: `Periods already exist for fiscal year ${fiscalYear}` });
@@ -729,6 +782,7 @@ export async function generatePeriodsHandler(request: FastifyRequest, reply: Fas
     const startDate = new Date(fiscalYear, p - 1, 1);
     const endDate = new Date(fiscalYear, p, 0);
     periods.push([
+      organisationId,
       fiscalYear, p,
       startDate.toISOString().slice(0, 10),
       endDate.toISOString().slice(0, 10),
@@ -740,7 +794,7 @@ export async function generatePeriodsHandler(request: FastifyRequest, reply: Fas
     await conn.beginTransaction();
     for (const p of periods) {
       await conn.execute(
-        `INSERT INTO accounting_periods (fiscal_year, period_number, start_date, end_date) VALUES (?, ?, ?, ?)`,
+        `INSERT INTO accounting_periods (organisation_id, fiscal_year, period_number, start_date, end_date) VALUES (?, ?, ?, ?, ?)`,
         p
       );
     }
@@ -757,21 +811,28 @@ export async function generatePeriodsHandler(request: FastifyRequest, reply: Fas
     action: 'ACCOUNTING.PERIODS.GENERATE',
     entityType: 'accounting_periods',
     entityId: fiscalYear,
-    afterState: { fiscalYear, periodsGenerated: 12 },
+    afterState: { fiscalYear, organisationId, periodsGenerated: 12 },
     ipAddress: request.ip,
     userAgent: request.headers['user-agent'],
   });
 
-  return reply.status(201).send({ data: { fiscalYear, periodsGenerated: 12 } });
+  return reply.status(201).send({ data: { fiscalYear, organisationId, periodsGenerated: 12 } });
 }
 
 export async function closePeriodHandler(request: FastifyRequest, reply: FastifyReply) {
   const pool = getPool();
   const { id } = request.params as any;
+  const query = request.query as any;
   const userId = (request as any).userId;
+  // Organisation-scoped close: when organisationId is injected (scopedRequest)
+  // the period must belong to that organisation — another org's (or a platform)
+  // period is never touched.
+  const organisationId = query.organisationId ? Number(query.organisationId) : null;
+  const orgWhere = organisationId != null ? ' AND organisation_id = ?' : '';
+  const orgParams: any[] = organisationId != null ? [organisationId] : [];
 
   const [existing] = await pool.execute<RowData>(
-    `SELECT * FROM accounting_periods WHERE id = ?`, [Number(id)]
+    `SELECT * FROM accounting_periods WHERE id = ?${orgWhere}`, [Number(id), ...orgParams]
   );
   if (!existing.length) {
     throw new NotFoundError('Period', ErrorCodes.PERIOD_NOT_FOUND);
@@ -781,8 +842,8 @@ export async function closePeriodHandler(request: FastifyRequest, reply: Fastify
   }
 
   await pool.execute<RowData>(
-    `UPDATE accounting_periods SET status = 'closed', closed_at = NOW(), closed_by = ? WHERE id = ?`,
-    [userId, Number(id)]
+    `UPDATE accounting_periods SET status = 'closed', closed_at = NOW(), closed_by = ? WHERE id = ?${orgWhere}`,
+    [userId, Number(id), ...orgParams]
   );
 
   recordAudit({
@@ -790,8 +851,8 @@ export async function closePeriodHandler(request: FastifyRequest, reply: Fastify
     action: 'ACCOUNTING.PERIODS.CLOSE',
     entityType: 'accounting_periods',
     entityId: Number(id),
-    beforeState: { status: existing[0].status },
-    afterState: { status: 'closed' },
+    beforeState: { status: existing[0].status, organisationId },
+    afterState: { status: 'closed', organisationId },
     ipAddress: request.ip,
     userAgent: request.headers['user-agent'],
   });
@@ -802,10 +863,16 @@ export async function closePeriodHandler(request: FastifyRequest, reply: Fastify
 export async function openPeriodHandler(request: FastifyRequest, reply: FastifyReply) {
   const pool = getPool();
   const { id } = request.params as any;
+  const query = request.query as any;
   const userId = (request as any).userId;
+  // Organisation-scoped open: when organisationId is injected (scopedRequest)
+  // the period must belong to that organisation.
+  const organisationId = query.organisationId ? Number(query.organisationId) : null;
+  const orgWhere = organisationId != null ? ' AND organisation_id = ?' : '';
+  const orgParams: any[] = organisationId != null ? [organisationId] : [];
 
   const [existing] = await pool.execute<RowData>(
-    `SELECT * FROM accounting_periods WHERE id = ?`, [Number(id)]
+    `SELECT * FROM accounting_periods WHERE id = ?${orgWhere}`, [Number(id), ...orgParams]
   );
   if (!existing.length) {
     throw new NotFoundError('Period', ErrorCodes.PERIOD_NOT_FOUND);
@@ -815,8 +882,8 @@ export async function openPeriodHandler(request: FastifyRequest, reply: FastifyR
   }
 
   await pool.execute<RowData>(
-    `UPDATE accounting_periods SET status = 'open', closed_at = NULL, closed_by = NULL WHERE id = ?`,
-    [Number(id)]
+    `UPDATE accounting_periods SET status = 'open', closed_at = NULL, closed_by = NULL WHERE id = ?${orgWhere}`,
+    [Number(id), ...orgParams]
   );
 
   recordAudit({
@@ -824,8 +891,8 @@ export async function openPeriodHandler(request: FastifyRequest, reply: FastifyR
     action: 'ACCOUNTING.PERIODS.OPEN',
     entityType: 'accounting_periods',
     entityId: Number(id),
-    beforeState: { status: existing[0].status },
-    afterState: { status: 'open' },
+    beforeState: { status: existing[0].status, organisationId },
+    afterState: { status: 'open', organisationId },
     ipAddress: request.ip,
     userAgent: request.headers['user-agent'],
   });
@@ -1106,17 +1173,23 @@ export async function createJournalEntryHandler(request: FastifyRequest, reply: 
     await coaValidator.validatePostable(Number(entry.accountId), 'Journal Entry');
   }
 
-  const [periods] = await pool.execute<RowData>(
-    `SELECT id, status FROM accounting_periods WHERE ? BETWEEN start_date AND end_date LIMIT 1`,
-    [body.entryDate]
-  );
-  if (!periods.length) {
-    throw new NotFoundError('Accounting period for the given date', ErrorCodes.PERIOD_NOT_FOUND);
+  // Resolve the posting period organisation-scoped: an organisation's entry
+  // uses its OWN period (open required); when the org has no period for the
+  // date it falls back to the platform open period. A closed/locked period —
+  // platform or organisation — always rejects posting.
+  let postingPeriod: { id: number; status: string };
+  try {
+    postingPeriod = await glProjectionService.resolvePostingPeriod(body.entryDate, organisationId);
+  } catch (err: any) {
+    if (err?.message?.includes('No accounting period found')) {
+      throw new NotFoundError('Accounting period for the given date', ErrorCodes.PERIOD_NOT_FOUND);
+    }
+    throw err;
   }
-  if (periods[0].status === 'closed' || periods[0].status === 'locked') {
+  if (postingPeriod.status === 'closed' || postingPeriod.status === 'locked') {
     throw new AppError('Accounting period is closed', 409, 'CONFLICT', { code: ErrorCodes.PERIOD_ALREADY_CLOSED });
   }
-  const periodId = periods[0].id;
+  const periodId = postingPeriod.id;
 
   const transactionId = `journal_${Date.now()}_${userId}`;
   const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
@@ -2290,9 +2363,11 @@ export async function yearClosePreviewHandler(request: FastifyRequest, reply: Fa
 
 export async function yearCloseHandler(request: FastifyRequest, reply: FastifyReply) {
   const body = request.body as any;
+  const query = request.query as any;
   const userId = (request as any).userId;
   const fiscalYear = Number(body.fiscalYear) || new Date().getFullYear();
-  const organisationId = body.organisationId ? Number(body.organisationId) : null;
+  const organisationId = query.organisationId ? Number(query.organisationId)
+    : body.organisationId ? Number(body.organisationId) : null;
   await validateOrgAccess(userId, organisationId);
 
   try {
@@ -2318,9 +2393,11 @@ export async function yearCloseHistoryHandler(request: FastifyRequest, reply: Fa
 
 export async function yearCloseReopenHandler(request: FastifyRequest, reply: FastifyReply) {
   const body = request.body as any;
+  const query = request.query as any;
   const userId = (request as any).userId;
   const fiscalYear = Number(body.fiscalYear) || new Date().getFullYear();
-  const organisationId = body.organisationId ? Number(body.organisationId) : null;
+  const organisationId = query.organisationId ? Number(query.organisationId)
+    : body.organisationId ? Number(body.organisationId) : null;
   const reason = body.reason || 'No reason provided';
   await validateOrgAccess(userId, organisationId);
 
