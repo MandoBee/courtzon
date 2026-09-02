@@ -6610,6 +6610,26 @@ ALTER TABLE `payment_transactions`
 INSERT INTO audit_logs (actor_id, action, entity_type, entity_id, after_state) VALUES (1, 'BASELINE', 'system', 1, NULL);
 
 INSERT INTO `marketplace_complaint_config` (`id`, `complaint_period_days`, `is_active`) VALUES (1, 7, 1) ON DUPLICATE KEY UPDATE `id`=`id`;
+
+-- Canonical admin-controllable marketplace complaint period (default 7 days).
+-- All complaint-window eligibility logic reads this via getMarketplaceComplaintPeriodDays().
+INSERT IGNORE INTO `system_settings`
+  (`category`, `key`, `value`, `value_type`, `description`, `display_name`, `unit`,
+   `min_value`, `help_text`, `sort_order`, `is_visible`, `is_editable`, `scope`)
+VALUES
+  ('marketplace',
+   'marketplace.complaint_period_days',
+   '7',
+   'number',
+   'Number of days after marketplace delivery during which the buyer can submit a complaint before the entitlement becomes available for settlement.',
+   'Complaint Period',
+   'days',
+   '0',
+   'Entitlements become settlement-eligible only after delivery + this many days. Set to 0 to disable the complaint window (immediate eligibility).',
+   10,
+   1,
+   1,
+   'global');
 /*!40101 SET SQL_MODE=@OLD_SQL_MODE */;
 /*!40014 SET FOREIGN_KEY_CHECKS=@OLD_FOREIGN_KEY_CHECKS */;
 /*!40014 SET UNIQUE_CHECKS=@OLD_UNIQUE_CHECKS */;

@@ -118,6 +118,20 @@ export class SystemSettingsService {
     return row;
   }
 
+  /**
+   * Canonical typed read for a numeric system setting. Returns the stored value
+   * coerced to a non-negative integer, or `fallback` when the setting row is
+   * absent or holds an invalid value. This is the single read path business
+   * logic should use for configuration that is admin-controllable.
+   */
+  async getInt(key: string, fallback: number): Promise<number> {
+    const row = await this.getByKey(key);
+    if (!row || row.value === null || row.value === undefined || row.value === '') return fallback;
+    const num = Math.floor(Number(row.value));
+    if (!Number.isFinite(num) || num < 0) return fallback;
+    return num;
+  }
+
   async update(key: string, value: unknown, userId: number): Promise<SettingRow> {
     const pool = getPool();
     const existing = await this.getByKey(key);
