@@ -14,12 +14,18 @@ vi.mock('../../../services/api', () => ({
 }));
 
 vi.mock('../../../hooks/useCan', () => ({
-  useCan: () => ({ can: () => true }),
+  useCan: () => ({ can: (permission: string) => mockPermissions.has('*') || mockPermissions.has(permission), permissions: [...mockPermissions] }),
 }));
 
 vi.mock('../../../permissions/Can', () => ({
   Can: ({ children }: any) => <>{children}</>,
 }));
+
+let mockPermissions = new Set<string>();
+const grant = (...keys: string[]) => { mockPermissions = new Set(keys); };
+const REVERSE_KEY = 'financial.gateway-settlement.reverse';
+const SETTLE_ORGS_KEY = 'financial.gateway-settlement.settle-orgs';
+const VIEW_KEY = 'financial.gateway-settlement.view';
 
 const completed = {
   id: 11,
@@ -91,6 +97,30 @@ vi.mocked(api.get).mockImplementation((url: string, config?: any) => {
   if (url === '/admin/gateway-settlements/11') {
     return Promise.resolve({ data: detail11 });
   }
+  if (url === '/admin/gateway-settlements/12') {
+    return Promise.resolve({
+      data: {
+        settlement: reversed,
+        transactions: [
+          {
+            id: 102,
+            payment_transaction_id: 900012,
+            payment_method_name: 'Card',
+            gross_amount: 500,
+            gateway_fee_pct: 2.5,
+            gateway_fee_fixed: 1,
+            gateway_fee_amount: 13.5,
+            net_amount: 486.5,
+            currency: 'EGP',
+            order_id: 900012,
+            booking_id: null,
+            gateway_reference: 'pm-rev-2',
+            paid_at: '2026-08-29T09:00:00.000Z',
+          },
+        ],
+      },
+    });
+  }
   if (url === '/admin/gateway-settlements') {
     const status = config?.params?.status;
     const filtered = status ? [completed, reversed].filter((s) => s.settlement_status === status) : [completed, reversed];
@@ -130,6 +160,8 @@ describe('GatewaySettlementPage — settled gateway payments tab', () => {
     vi.mocked(api.post).mockClear();
     (api.get as any).mockImplementation(vi.mocked(api.get).getMockImplementation()!);
     (api.post as any).mockImplementation(vi.mocked(api.post).getMockImplementation()!);
+    // Default: full finance access (like super_admin / accountant / finance-manager / master-admin).
+    grant(VIEW_KEY, REVERSE_KEY, SETTLE_ORGS_KEY);
   });
 
   it('shows the pending tab by default and switches to the settled list', async () => {
@@ -143,6 +175,60 @@ describe('GatewaySettlementPage — settled gateway payments tab', () => {
     expect(screen.getByRole('button', { name: 'Completed / Received' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Reversed / Cancelled' })).toBeTruthy();
     expect(screen.getByText(/827\.75/)).toBeTruthy();
+  });
+
+  it('renders BOTH actions for a completed settlement (Reverse + Settle Organisations)', async () => {
+    renderPage();
+    fireEvent.click(screen.getByText('Settled Gateway Payments'));
+    await screen.findByText('GWS-2026-09-01-042');
+
+    const completedRow = screen.getByText('GWS-2026-09-01-042').closest('tr')!;
+    const rowButtons = Array.from(completedRow.querySelectorAll('button')).map((b) => b.textContent?.trim());
+    expect(rowButtons).toContain('Reverse');
+
+    expect(screen.getByRole('button', { name: 'Settle Organisations' })).toBeTruthy();
+  });
+
+  it('hides Reverse Settlement when the reverse permission is missing', async () => {
+    grant(VIEW_KEY, SETTLE_ORGS_KEY); // no REVERSE_KEY
+    renderPage();
+    fireEvent.click(screen.getByText('Settled Gateway Payments'));
+    await screen.findByText('GWS-2026-09-01-042');
+
+    const completedRow = screen.getByText('GWS-2026-09-01-042').closest('tr')!;
+    const reverseBtns = Array.from(completedRow.querySelectorAll('button')).filter((b) => b.textContent?.includes('Reverse'));
+    expect(reverseBtns.length).toBe(0);
+    // Actions cell falls back to the dash.
+    expect(completedRow.textContent).toContain('—');
+
+    // Settle Organisations is independently visible (different permission).
+    expect(screen.getByRole('button', { name: 'Settle Organisations' })).toBeTruthy();
+  });
+
+  it('hides Settle Organisations when the settle-orgs permission is missing', async () => {
+    grant(VIEW_KEY, REVERSE_KEY); // no SETTLE_ORGS_KEY
+    renderPage();
+    fireEvent.click(screen.getByText('Settled Gateway Payments'));
+    await screen.findByText('GWS-2026-09-01-042');
+
+    expect(screen.queryByRole('button', { name: 'Settle Organisations' })).toBeNull();
+
+    const completedRow = screen.getByText('GWS-2026-09-01-042').closest('tr')!;
+    const reverseBtns = Array.from(completedRow.querySelectorAll('button')).filter((b) => b.textContent?.includes('Reverse'));
+    expect(reverseBtns.length).toBe(1);
+  });
+
+  it('hides BOTH actions when only the view permission is present', async () => {
+    grant(VIEW_KEY);
+    renderPage();
+    fireEvent.click(screen.getByText('Settled Gateway Payments'));
+    await screen.findByText('GWS-2026-09-01-042');
+
+    expect(screen.queryByRole('button', { name: 'Settle Organisations' })).toBeNull();
+    const completedRow = screen.getByText('GWS-2026-09-01-042').closest('tr')!;
+    const reverseBtns = Array.from(completedRow.querySelectorAll('button')).filter((b) => b.textContent?.includes('Reverse'));
+    expect(reverseBtns.length).toBe(0);
+    expect(completedRow.textContent).toContain('—');
   });
 
   it('filters the settled list by status and surfaces reversal metadata', async () => {
@@ -198,6 +284,58 @@ describe('GatewaySettlementPage — settled gateway payments tab', () => {
     await waitFor(() => {
       expect(api.post).toHaveBeenCalledWith('/admin/gateway-settlements/11/reverse', { reason: 'Paid in error' });
     });
+  });
+
+  it('does NOT render Reverse Settlement for a reversed settlement (and still shows reversal metadata)', async () => {
+    renderPage();
+    fireEvent.click(screen.getByText('Settled Gateway Payments'));
+    await screen.findByText('GWS-2026-08-29-017');
+
+    const reversedRow = screen.getByText('GWS-2026-08-29-017').closest('tr')!;
+    const reverseBtns = Array.from(reversedRow.querySelectorAll('button')).filter((b) => b.textContent?.includes('Reverse'));
+    expect(reverseBtns.length).toBe(0);
+    // Reversal identity is surfaced on the row.
+    expect(reversedRow.textContent).toContain('Omar Admin');
+
+    // Its expandable detail still shows the reversal reference.
+    fireEvent.click(screen.getAllByText('▸')[1]);
+    expect(await screen.findByText('REV-12-K3XA')).toBeTruthy();
+  });
+
+  it('prevents duplicate reverse submissions while the request is in flight', async () => {
+    // The reverse endpoint stays pending until we resolve it manually.
+    let resolveReverse: (v: unknown) => void = () => {};
+    (api.post as any).mockImplementation((url: string) => {
+      if (url === '/admin/gateway-settlements/11/reverse') {
+        return new Promise((res) => { resolveReverse = res; });
+      }
+      return Promise.resolve({ data: {} });
+    });
+
+    renderPage();
+    fireEvent.click(screen.getByText('Settled Gateway Payments'));
+    await screen.findByText('GWS-2026-09-01-042');
+
+    const row = screen.getByText('GWS-2026-09-01-042').closest('tr')!;
+    const reverseBtn = Array.from(row.querySelectorAll('button')).find((b) => b.textContent?.includes('Reverse'));
+    fireEvent.click(reverseBtn!);
+    await waitFor(() => expect(document.body.textContent).toContain('Reverse Gateway Settlement GWS-2026-09-01-042'));
+
+    fireEvent.change(screen.getByPlaceholderText('Reversal reason (required)'), { target: { value: 'Paid in error' } });
+    const confirm = screen.getByText('Reverse Settlement') as HTMLButtonElement;
+    await waitFor(() => expect(confirm.disabled).toBe(false));
+
+    fireEvent.click(confirm);
+    await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
+
+    // While pending the confirm button is disabled → a second click cannot fire.
+    const pendingConfirm = screen.getByText('Reversing...') as HTMLButtonElement;
+    expect(pendingConfirm.disabled).toBe(true);
+    fireEvent.click(pendingConfirm);
+    expect(api.post).toHaveBeenCalledTimes(1);
+
+    resolveReverse({ data: { settlement: { ...completed, settlement_status: 'reversed', reversal_reference: 'REV-11-ABC' }, transactions: [] } });
+    await waitFor(() => expect(screen.queryByText('Reversing...')).toBeNull());
   });
 
   it('navigates to the canonical takeover flow via "Settle Organisations"', async () => {

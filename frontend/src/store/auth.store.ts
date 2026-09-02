@@ -62,7 +62,27 @@ let refreshTimer: ReturnType<typeof setInterval> | null = null;
 function startProactiveRefresh() {
   stopProactiveRefresh();
   refreshTimer = setInterval(() => {
-    authApi.refresh().catch(() => {});
+    authApi
+      .refresh()
+      .then((res: any) => {
+        // /auth/refresh returns a fresh user (roles + permissions) from the
+        // server. Apply it so newly granted permissions reach existing
+        // sessions without a logout/login (the 401-interceptor path refreshes
+        // tokens only). Preserve org scopes, which /auth/refresh does not carry.
+        const fresh = res?.user;
+        const current = useAuthStore.getState().user;
+        if (fresh && current) {
+          const finalUser = {
+            ...current,
+            ...fresh,
+            roles: fresh.roles || current.roles || [],
+            permissions: fresh.permissions || current.permissions || [],
+            organisations: current.organisations,
+          };
+          useAuthStore.getState().setUser(finalUser);
+        }
+      })
+      .catch(() => {});
   }, 12 * 60 * 1000);
 }
 
