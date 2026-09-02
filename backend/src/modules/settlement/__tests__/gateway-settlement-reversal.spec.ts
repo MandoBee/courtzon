@@ -213,6 +213,12 @@ describe('Gateway Settlement Reversal', () => {
     expect(await journalSums(firstSettlementId, '1100', 'debit', 'payment_gateway_settlement_reversal')).toBe(850);
     expect(await journalSums(detail.settlement.id, '1120', 'debit', 'payment_gateway_settlement')).toBe(827.75);
 
+    // The reverse → re-settle lifecycle restores organisation entitlement
+    // eligibility: after the corrected gateway batch is completed, the org's
+    // card-backed entitlement is AVAILABLE for organisation settlement again.
+    const available = await financialEntitlementService.getAvailableForOrganisation(orgId);
+    expect(available.some((e) => e.id === entitlementIds[0])).toBe(true);
+
     // Reversing the NEW settlement also works.
     const rev2 = await gatewaySettlementService.reverse({
       settlementId: detail.settlement.id,
