@@ -1,4 +1,4 @@
-import { useQueryClient } from '@tanstack/react-query';
+import { useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { useSocketEvent } from './useSocket';
 import { useAuthStore } from '../store/auth.store';
 import { disconnectSocket, createSocket } from './socket-client';
@@ -72,17 +72,55 @@ export function invalidateUserRegistration(qc: { invalidateQueries: (opts: { que
  * used exclusively by the Admin Accounting/Finance screens (verified across
  * pages/admin/accounting/* and pages/admin/finance/*) — React Query
  * prefix-matching therefore refreshes exactly those screens (General Ledger,
- * Journal Entries, dashboards, reports, …) without touching any
- * consumer/org query.
+ * Journal Entries, dashboards, reports, …). `['account-ledger']` covers the
+ * shared account ledger drill-down modal used by both Super Admin and org
+ * reports. This never touches consumer queries.
  */
 export const FINANCE_INVALIDATIONS = [
   ['accounting'],
   ['finance'],
+  ['account-ledger'],
 ] as const;
 
-export function invalidateFinanceEntries(qc: { invalidateQueries: (opts: { queryKey: readonly string[] }) => void }): void {
+export function invalidateFinanceEntries(qc: QueryClient): void {
   for (const queryKey of FINANCE_INVALIDATIONS) {
-    qc.invalidateQueries({ queryKey });
+    qc.invalidateQueries({ queryKey, type: 'all' });
+  }
+}
+
+/**
+ * Org-scoped accounting/finance query roots. These keys are owned by the
+ * organisation portal (Org Accounting Records, Accounting Dashboard, Chart of
+ * Accounts, Trial Balance / Income Statement / Balance Sheet, Tax Summary,
+ * Financial Position, transactions/settlements, booking settlements). All of
+ * them embed the organisation id in the key, so invalidation is additionally
+ * narrowed by a predicate that matches only the changed organisation — the org
+ * room signal carries organisationId, keeping the refresh scoped to that org.
+ */
+export const ORG_ACCOUNTING_ROOTS = [
+  ['org', 'accounting'],
+  ['org-position'],
+  ['org-transactions'],
+  ['org-settlements'],
+  ['org-settlement-detail'],
+  ['org', 'booking-settlements'],
+] as const;
+
+export function invalidateOrgAccounting(
+  qc: QueryClient,
+  organisationId: number | null | undefined,
+): void {
+  if (organisationId == null) return; // platform-only entry — no organisation impact
+  const orgId = String(organisationId);
+  for (const root of ORG_ACCOUNTING_ROOTS) {
+    qc.invalidateQueries({
+      queryKey: root,
+      type: 'all',
+      predicate: (query: any) => {
+        const key = query?.queryKey;
+        return Array.isArray(key) && key.some((part: unknown) => String(part) === orgId);
+      },
+    });
   }
 }
 
@@ -452,8 +490,12 @@ export function useRealtimeCacheUpdates(): void {
   });
 
   // ── Accounting events (post-commit ledger entries) ─────────────
-  useSocketEvent('accounting.entry-recorded', () => {
+  useSocketEvent('accounting.entry-recorded', (p: any) => {
+    // Super Admin finance/accounting surfaces + the shared account-ledger modal.
     invalidateFinanceEntries(qc);
+    // Organisation portal accounting/finance surfaces (own org only, scoped by
+    // the organisationId carried in the payload).
+    invalidateOrgAccounting(qc, p?.organisationId);
   });
 
   const subscriptionRequestEvents = [

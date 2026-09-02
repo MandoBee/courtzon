@@ -1,6 +1,7 @@
 import type { FastifyRequest, FastifyReply } from 'fastify';
 import { getPool } from '../../../database/mysql.js';
 import { recordAudit } from '../../audit-log/index.js';
+import { eventBusV2 } from '../../../shared/event-bus/event-bus.v2.js';
 import { AppError, NotFoundError, ConflictError } from '../../../shared/errors/app-error.js';
 import { ErrorCodes } from '../../../shared/errors/error-codes.js';
 import { getEventConcepts, validateCompleteMapping } from '../../financial/application/accounting-concepts.js';
@@ -1191,6 +1192,18 @@ export async function createJournalEntryHandler(request: FastifyRequest, reply: 
       afterState: { entryDate: body.entryDate, lineCount: body.entries.length, totalDebits, totalCredits, organisationId },
       ipAddress: request.ip,
       userAgent: request.headers['user-agent'],
+    });
+
+    // Post-COMMIT realtime signal (same event as the automatic posting path):
+    // finance/accounting surfaces may refetch now that the entry is durable.
+    // organisationId is null for platform-wide manual entries (admin only) and
+    // the org id for organisation manual journals — the socket mapper routes
+    // org entries to the organisation room so org views refresh immediately.
+    eventBusV2.emit('accounting:entry-recorded', {
+      eventType: 'manual_journal',
+      sourceType: 'journal',
+      sourceId: journalSourceId,
+      organisationId,
     });
 
     return reply.status(201).send({ data: { ids: entryIds } });
