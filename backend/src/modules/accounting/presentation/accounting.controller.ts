@@ -682,6 +682,37 @@ export async function orgJournalListHandler(request: FastifyRequest, reply: Fast
   return reply.send({ data: rows });
 }
 
+/**
+ * Organisation-scoped accounting RECORDS — every general-ledger entry belonging
+ * to the organisation (automatic entries from marketplace orders, bookings,
+ * settlements, etc. plus manual journal entries). The :orgId route param is
+ * authoritative; the caller can never read another organisation's (or the
+ * platform's) records.
+ */
+export async function orgAccountingRecordsHandler(request: FastifyRequest, reply: FastifyReply) {
+  const pool = getPool();
+  const organisationId = orgIdFromRequest(request);
+  const query = request.query as any;
+  const conditions = ['gl.organisation_id = ?'];
+  const params: any[] = [organisationId];
+  if (query.from) { conditions.push('gl.entry_date >= ?'); params.push(query.from); }
+  if (query.to) { conditions.push('gl.entry_date <= ?'); params.push(query.to); }
+  if (query.accountId) { conditions.push('gl.account_id = ?'); params.push(Number(query.accountId)); }
+
+  const [rows] = await pool.execute<RowData>(
+    `SELECT gl.id, gl.entry_date, gl.reference_type, gl.reference_id,
+            gl.debit, gl.credit, gl.description,
+            a.code AS account_code, a.name AS account_name
+     FROM general_ledger gl
+     JOIN chart_of_accounts a ON a.id = gl.account_id
+     WHERE ${conditions.join(' AND ')}
+     ORDER BY gl.entry_date DESC, gl.id DESC
+     LIMIT 500`,
+    params,
+  );
+  return reply.send({ data: rows });
+}
+
 export async function listPeriodsHandler(_request: FastifyRequest, reply: FastifyReply) {
   const pool = getPool();
   const [rows] = await pool.execute<RowData>(

@@ -52,6 +52,7 @@ export function buildLegacyOrgNavItems(can: (perm: string) => boolean, orgId: st
           label: 'Accounting', icon: '📒', path: p('accounting/dashboard'), permissionKey: 'org.sidebar.accounting',
           children: [
             { label: 'Dashboard', path: p('accounting/dashboard'), permissionKey: 'org.accounting.view' },
+            { label: 'Accounting Records', path: p('accounting/records'), permissionKey: 'org.accounting.view' },
             { label: 'Chart of Accounts', path: p('accounting/coa'), permissionKey: 'org.accounting.view' },
             { label: 'Manual Journal', path: p('accounting/journal'), permissionKey: 'org.accounting.journal.view' },
           ],

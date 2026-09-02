@@ -731,8 +731,8 @@ describe('Navigation registry integrity (immutable ids)', () => {
 
     const orgIds = collectIds(ORG_NAV);
     expect(orgIds.every((id) => id.startsWith('nav.org.'))).toBe(true);
-    expect(orgIds.length).toBe(39);
-    expect(ORG_ID_TO_KEY.size).toBe(33);
+    expect(orgIds.length).toBe(40);
+    expect(ORG_ID_TO_KEY.size).toBe(34);
     // Category domains carry no permission key (they render when a permitted child passes);
     // every node that DOES carry a key must be registered in the id→key map.
     for (const id of ORG_ID_TO_KEY.keys()) expect(orgIds.includes(id)).toBe(true);
@@ -766,6 +766,7 @@ describe('Navigation registry integrity (immutable ids)', () => {
     // Accounting items share a single page-level permission key.
     expect(ORG_LEGACY_KEY_TO_ID.get('org.accounting.view')).toEqual([
       'nav.org.accounting-dashboard',
+      'nav.org.accounting-records',
       'nav.org.accounting-coa',
       'nav.org.accounting-reports',
       'nav.org.accounting-trial-balance',
