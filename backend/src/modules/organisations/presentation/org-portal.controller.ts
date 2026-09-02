@@ -10,6 +10,7 @@ import { rbacRepository } from '../../rbac/infrastructure/repositories/rbac.repo
 import { getPool } from '../../../database/mysql.js';
 import { recordAudit } from '../../audit-log/index.js';
 import { positionService } from '../../financial/application/position.service.js';
+import { unifiedSettlementService } from '../../settlement/application/unified-settlement.service.js';
 
 const ASSIGNABLE_ROLES = ['org-admin', 'shop-admin', 'branch-mgr', 'resource-mgr', 'coach', 'accountant'] as const;
 const AddStaffSchema = z.object({
@@ -490,6 +491,55 @@ export async function getOrgSettlementsHandler(request: FastifyRequest, reply: F
   const { page = 1, limit = 20 } = request.query as any;
   const result = await service.getOrgSettlements(parseInt(orgId, 10), Number(page), Number(limit));
   return reply.send(result);
+}
+
+/**
+ * Organisation outstanding/available-to-settle projection.
+ *
+ * This is the SAME canonical projection the Super Admin "New Unified Settlement"
+ * flow uses (unifiedSettlementService.preview → financial_entitlements
+ * AVAILABLE + computeSettlementFinancials). The orgId comes exclusively from the
+ * route (:orgId), which is already guarded by requireOrganisationAccess — never
+ * from client input. The organisation therefore sees exactly what Super Admin
+ * sees for its own organisation, scoped and nothing more.
+ */
+export async function getOrgSettlementsOutstandingHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { orgId } = request.params as { orgId: string };
+  const result = await unifiedSettlementService.preview(parseInt(orgId, 10));
+  return reply.send(result);
+}
+
+/**
+ * Organisation settlement request — scoped view of the SAME canonical create.
+ * The orgId is forced from the route (:orgId, guarded by requireOrganisationAccess)
+ * and a client-supplied body organisationId is never trusted. The canonical
+ * service recomputes financials from the org's AVAILABLE entitlements server-side
+ * (no client-supplied amount), reserves them atomically (unique constraint +
+ * row reservation) and emits settlement:created on commit.
+ */
+export async function createOrgSettlementHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { orgId } = request.params as { orgId: string };
+  const userId = getUserId(request);
+  const body = (request.body ?? {}) as any;
+  const orgIdNum = parseInt(orgId, 10);
+  const detail = await unifiedSettlementService.create({
+    orgId: orgIdNum,
+    excludeEntitlementIds: body.excludeEntitlementIds,
+    selectedEntitlementIds: body.selectedEntitlementIds,
+    requestedBy: userId,
+    requestedByRole: 'org',
+    notes: body.notes,
+  });
+  recordAudit({
+    actorId: userId,
+    action: 'SETTLEMENT.CREATE',
+    entityType: 'settlement',
+    entityId: detail.settlement.id,
+    afterState: { orgId: orgIdNum, net: detail.settlement.net_amount, direction: detail.settlement.settlement_direction },
+    ipAddress: request.ip,
+    userAgent: getUserAgent(request),
+  });
+  return reply.status(201).send(detail);
 }
 
 export async function getOrgSettlementDetailHandler(request: FastifyRequest, reply: FastifyReply) {
