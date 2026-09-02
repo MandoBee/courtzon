@@ -683,34 +683,23 @@ export async function orgJournalListHandler(request: FastifyRequest, reply: Fast
 }
 
 /**
- * Organisation-scoped accounting RECORDS — every general-ledger entry belonging
- * to the organisation (automatic entries from marketplace orders, bookings,
- * settlements, etc. plus manual journal entries). The :orgId route param is
- * authoritative; the caller can never read another organisation's (or the
- * platform's) records.
+ * Organisation-scoped Journal Entries — READ-ONLY.
+ *
+ * Delegates to the SAME canonical grouped journal-entry query used by the Super
+ * Admin Journal Entries screen (listJournalEntriesHandler). The :orgId route
+ * param is authoritative and is injected as the organisation scope, so an
+ * organisation user sees exactly their own general-ledger journal entries —
+ * the identical data, entry semantics, lines and debit/credit as the canonical
+ * screen — and nothing else.
  */
-export async function orgAccountingRecordsHandler(request: FastifyRequest, reply: FastifyReply) {
-  const pool = getPool();
+export async function orgJournalEntriesHandler(request: FastifyRequest, reply: FastifyReply) {
   const organisationId = orgIdFromRequest(request);
-  const query = request.query as any;
-  const conditions = ['gl.organisation_id = ?'];
-  const params: any[] = [organisationId];
-  if (query.from) { conditions.push('gl.entry_date >= ?'); params.push(query.from); }
-  if (query.to) { conditions.push('gl.entry_date <= ?'); params.push(query.to); }
-  if (query.accountId) { conditions.push('gl.account_id = ?'); params.push(Number(query.accountId)); }
-
-  const [rows] = await pool.execute<RowData>(
-    `SELECT gl.id, gl.entry_date, gl.reference_type, gl.reference_id,
-            gl.debit, gl.credit, gl.description,
-            a.code AS account_code, a.name AS account_name
-     FROM general_ledger gl
-     JOIN chart_of_accounts a ON a.id = gl.account_id
-     WHERE ${conditions.join(' AND ')}
-     ORDER BY gl.entry_date DESC, gl.id DESC
-     LIMIT 500`,
-    params,
-  );
-  return reply.send({ data: rows });
+  (request as any).query = {
+    ...((request as any).query || {}),
+    grouped: true,
+    organisationId: String(organisationId),
+  };
+  return listJournalEntriesHandler(request, reply);
 }
 
 export async function listPeriodsHandler(_request: FastifyRequest, reply: FastifyReply) {
@@ -1219,6 +1208,10 @@ export async function listJournalEntriesHandler(request: FastifyRequest, reply: 
   const params: any[] = [];
   const conditions: string[] = [];
 
+  // Canonical organisation scoping: when an organisationId is provided the SAME
+  // query is restricted to that organisation's own ledger. Super Admin calls
+  // omit it → unchanged (all organisations + platform rows).
+  if (query.organisationId) { conditions.push('gl.organisation_id = ?'); params.push(Number(query.organisationId)); }
   if (query.periodId) { conditions.push('gl.period_id = ?'); params.push(Number(query.periodId)); }
   if (query.accountId) { conditions.push('gl.account_id = ?'); params.push(Number(query.accountId)); }
   if (query.from) { conditions.push('gl.entry_date >= ?'); params.push(query.from); }
