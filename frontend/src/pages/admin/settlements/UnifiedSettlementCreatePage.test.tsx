@@ -80,11 +80,13 @@ const renderPage = () => {
 };
 
 async function selectCairo() {
-  fireEvent.change(screen.getByLabelText('Search organisation'), { target: { value: 'Cairo' } });
+  fireEvent.click(screen.getByText('Select organisation…'));
+  const search = await screen.findByLabelText('Search organisations');
+  fireEvent.change(search, { target: { value: 'Cairo' } });
   const option = await screen.findByText('Cairo Padel Club');
   fireEvent.mouseDown(option);
-  // The organisation name becomes the selector's value (no manual ID entry).
-  await screen.findByDisplayValue('Cairo Padel Club');
+  // Selecting immediately loads the canonical preview (name-first, no manual ID entry).
+  await screen.findByText(/Settlement #24/);
 }
 
 describe('UnifiedSettlementCreatePage — organisation-first finance workflow', () => {
@@ -96,21 +98,43 @@ describe('UnifiedSettlementCreatePage — organisation-first finance workflow', 
     grant(REQUEST_KEY, PAY_KEY, 'settlements.view');
   });
 
-  it('renders a searchable organisation selector (no manual ID entry)', () => {
+  it('renders a dropdown/select organisation selector (no manual ID entry)', () => {
     renderPage();
-    expect(screen.getByLabelText('Search organisation')).toBeTruthy();
+    expect(screen.getByRole('button', { name: /Select organisation…/ })).toBeTruthy();
     expect(screen.getByText('Select Organisation')).toBeTruthy();
     // No numeric ID input anywhere.
     expect(screen.queryByLabelText('Organization ID')).toBeNull();
   });
 
-  it('searches and selects an organisation by name', async () => {
+  it('lists organisations by name (ID secondary), filters by name, and selects', async () => {
     renderPage();
-    fireEvent.change(screen.getByLabelText('Search organisation'), { target: { value: 'Cairo' } });
+    fireEvent.click(screen.getByText('Select organisation…'));
+    // The dropdown lists accessible organisations by name, #id as secondary info.
+    expect(await screen.findByText('Cairo Padel Club')).toBeTruthy();
+    expect(screen.getByText('Giza Tennis Academy')).toBeTruthy();
+    expect(screen.getAllByText('#7').length).toBeGreaterThan(0);
+
+    // Search/filter inside the dropdown by name.
+    const search = screen.getByLabelText('Search organisations');
+    fireEvent.change(search, { target: { value: 'Giza' } });
+    expect(await screen.findByText('Giza Tennis Academy')).toBeTruthy();
+    await waitFor(() => expect(screen.queryByText('Cairo Padel Club')).toBeNull());
+
+    // Reset the filter and select Cairo by name.
+    fireEvent.change(search, { target: { value: 'Cairo' } });
     const option = await screen.findByText('Cairo Padel Club');
-    expect(screen.getByText('#7')).toBeTruthy();
     fireEvent.mouseDown(option);
-    expect(await screen.findByDisplayValue('Cairo Padel Club')).toBeTruthy();
+    // Selecting immediately loads the canonical preview for that organisation.
+    expect(await screen.findByText(/Settlement #24/)).toBeTruthy();
+    expect(screen.getAllByText('Cairo Padel Club').length).toBeGreaterThan(0);
+  });
+
+  it('shows a no-results state inside the dropdown when filtering matches nothing', async () => {
+    renderPage();
+    fireEvent.click(screen.getByText('Select organisation…'));
+    await screen.findByText('Cairo Padel Club');
+    fireEvent.change(screen.getByLabelText('Search organisations'), { target: { value: 'zzz' } });
+    expect(await screen.findByText('No organisations match.')).toBeTruthy();
   });
 
   it('shows NO settlement items before an organisation is selected', () => {
@@ -118,6 +142,17 @@ describe('UnifiedSettlementCreatePage — organisation-first finance workflow', 
     expect(screen.queryByText('Outstanding Settlements')).toBeNull();
     expect(screen.queryByText(/Settlement #24/)).toBeNull();
     expect(screen.queryByText(/Select an organisation to load/)).toBeTruthy();
+  });
+
+  it('shows the empty-eligibility state only when the backend returns no eligible items', async () => {
+    renderPage();
+    fireEvent.click(screen.getByText('Select organisation…'));
+    // Giza Tennis Academy (org 8) has no eligible entitlements in the mock backend.
+    const option = await screen.findByText('Giza Tennis Academy');
+    fireEvent.mouseDown(option);
+    expect(await screen.findByText('No eligible settlements for this organisation.')).toBeTruthy();
+    expect(screen.queryByText('Outstanding Settlements')).toBeNull();
+    expect(screen.queryByText(/Settlement #24/)).toBeNull();
   });
 
   it('loads ONLY the selected organisation eligible items after selection', async () => {

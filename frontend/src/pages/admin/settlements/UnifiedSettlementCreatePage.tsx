@@ -37,11 +37,11 @@ export default function UnifiedSettlementCreatePage() {
   const { showToast } = useToast();
   const { can } = useCan();
 
-  // Step 1 — Organisation selector (searchable, server-side).
-  const [orgQuery, setOrgQuery] = useState('');
-  const [debouncedQuery, setDebouncedQuery] = useState('');
-  const [orgOpen, setOrgOpen] = useState(false);
+  // Step 1 — Organisation dropdown/select (searchable, name-first).
+  const [orgMenuOpen, setOrgMenuOpen] = useState(false);
+  const [orgSearch, setOrgSearch] = useState('');
   const [selectedOrg, setSelectedOrg] = useState<{ id: number; name: string } | null>(null);
+  const orgMenuRef = useRef<HTMLDivElement | null>(null);
 
   // Step 2 — settlement item selection (all selected by default; uncheck to exclude).
   const [excluded, setExcluded] = useState<Set<number>>(new Set());
@@ -54,33 +54,64 @@ export default function UnifiedSettlementCreatePage() {
   // Guards a single create→pay sequence against double submission.
   const busyRef = useRef(false);
 
-  useEffect(() => {
-    const t = setTimeout(() => setDebouncedQuery(orgQuery.trim()), 300);
-    return () => clearTimeout(t);
-  }, [orgQuery]);
-
-  // Server-side organisation search (financial.view). Falls back to the
-  // caller's own scoped organisations (/my/scopes) so org-scoped admins without
-  // financial.view can still select their own organisation. Both data sources
-  // are backend-enforced — no frontend-only authorization.
-  const orgSearch = useQuery<{ id: number; name: string }[]>({
-    queryKey: ['admin-org-search', debouncedQuery],
+  // Accessible organisations, loaded when the dropdown opens. Primary source is
+  // the admin organisation lookup (financial.view, server-side); falls back to
+  // the caller's own scoped organisations (/my/scopes) for org-scoped admins.
+  // Both data sources are backend-enforced — no frontend-only authorization.
+  const orgsQuery = useQuery<{ id: number; name: string }[]>({
+    queryKey: ['admin-org-options'],
     queryFn: async () => {
       try {
-        const r = await api.get('/admin/organisations', { params: { search: debouncedQuery } });
+        const r = await api.get('/admin/organisations');
         return (r.data || []).map((o: any) => ({ id: Number(o.id), name: String(o.name || '') }));
       } catch {
         const r = await api.get('/my/scopes');
         const arr = (r.data?.data || []) as any[];
-        const term = debouncedQuery.toLowerCase();
         return arr
-          .filter((s: any) => !term || String(s.name || '').toLowerCase().includes(term))
+          .filter((s: any) => s.scope_id != null)
           .map((s: any) => ({ id: Number(s.scope_id), name: String(s.name || '') }));
       }
     },
-    enabled: debouncedQuery.length > 0,
-    staleTime: 30_000,
+    enabled: orgMenuOpen,
+    staleTime: 60_000,
   });
+
+  const filteredOrgs = useMemo(() => {
+    const term = orgSearch.trim().toLowerCase();
+    const list = orgsQuery.data || [];
+    if (!term) return list;
+    return list.filter((o) => o.name.toLowerCase().includes(term) || String(o.id).includes(term));
+  }, [orgsQuery.data, orgSearch]);
+
+  // Close the dropdown on outside click or Escape.
+  useEffect(() => {
+    if (!orgMenuOpen) return;
+    const onDocMouseDown = (e: MouseEvent) => {
+      if (orgMenuRef.current && !orgMenuRef.current.contains(e.target as Node)) setOrgMenuOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOrgMenuOpen(false); };
+    document.addEventListener('mousedown', onDocMouseDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDocMouseDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [orgMenuOpen]);
+
+  const pickOrg = (org: { id: number; name: string }) => {
+    setSelectedOrg(org);
+    setOrgSearch('');
+    setOrgMenuOpen(false);
+    setExcluded(new Set());
+  };
+
+  const toggleExclude = (id: number) => {
+    setExcluded((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
 
   // Step 2/3 — canonical preview: only the selected organisation's eligible
   // AVAILABLE entitlements (authoritative eligibility incl. gateway-settlement
@@ -93,21 +124,6 @@ export default function UnifiedSettlementCreatePage() {
       }).then((r) => r.data),
     enabled: !!selectedOrg,
   });
-
-  const pickOrg = (org: { id: number; name: string }) => {
-    setSelectedOrg(org);
-    setOrgQuery(org.name);
-    setOrgOpen(false);
-    setExcluded(new Set());
-  };
-
-  const toggleExclude = (id: number) => {
-    setExcluded((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
-    });
-  };
 
   const ents: any[] = preview.data?.entitlements || [];
   const selectedEnts = ents.filter((e: any) => !excluded.has(e.id));
@@ -191,42 +207,64 @@ export default function UnifiedSettlementCreatePage() {
         </p>
       </div>
 
-      {/* Step 1 — Organisation selector */}
+      {/* Step 1 — Organisation dropdown/select */}
       <div className="bg-[var(--color-surface)] rounded-xl shadow-[var(--shadow-md)] p-4 space-y-2">
         <label className="block text-sm text-[var(--color-text-muted)]">Select Organisation</label>
-        <div className="relative">
-          <input
-            type="text"
-            value={orgQuery}
-            onChange={(e) => { setOrgQuery(e.target.value); setOrgOpen(true); }}
-            onFocus={() => setOrgOpen(true)}
-            onBlur={() => setTimeout(() => setOrgOpen(false), 150)}
-            placeholder="Search organisation…"
-            className="w-full input input-bordered"
-            aria-label="Search organisation"
-          />
-          {orgOpen && (
-            <div className="absolute z-20 mt-1 w-full max-h-64 overflow-auto rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-lg">
-              {debouncedQuery.length === 0 && (
-                <div className="px-3 py-2 text-sm text-[var(--color-text-muted)]">Type at least one character to search organisations.</div>
-              )}
-              {debouncedQuery.length > 0 && orgSearch.isLoading && (
-                <div className="px-3 py-2 text-sm text-[var(--color-text-muted)]">Searching…</div>
-              )}
-              {debouncedQuery.length > 0 && !orgSearch.isLoading && (orgSearch.data?.length || 0) === 0 && (
-                <div className="px-3 py-2 text-sm text-[var(--color-text-muted)]">No organisations match "{debouncedQuery}".</div>
-              )}
-              {(orgSearch.data || []).map((org) => (
-                <button
-                  key={org.id}
-                  type="button"
-                  onMouseDown={(e) => { e.preventDefault(); pickOrg(org); }}
-                  className="w-full text-left px-3 py-2 text-sm hover:bg-[var(--color-surface-alt)] flex items-center justify-between gap-2"
-                >
-                  <span className="font-medium text-[var(--color-text)]">{org.name}</span>
-                  <span className="text-xs text-[var(--color-text-muted)]">#{org.id}</span>
-                </button>
-              ))}
+        <div className="relative" ref={orgMenuRef}>
+          <button
+            type="button"
+            onClick={() => setOrgMenuOpen((v) => !v)}
+            aria-haspopup="listbox"
+            aria-expanded={orgMenuOpen}
+            className={`w-full flex items-center justify-between gap-2 rounded-xl border px-3 py-2 text-sm text-left ${
+              orgMenuOpen ? 'border-[var(--color-primary)]' : 'border-[var(--color-border)]'
+            } bg-[var(--color-bg)]`}
+          >
+            <span className={selectedOrg ? 'font-medium text-[var(--color-text)]' : 'text-[var(--color-text-muted)]'}>
+              {selectedOrg ? selectedOrg.name : 'Select organisation…'}
+            </span>
+            <span className="flex items-center gap-2">
+              {selectedOrg && <span className="text-xs text-[var(--color-text-muted)]">#{selectedOrg.id}</span>}
+              <span className="text-xs text-[var(--color-text-muted)]">{orgMenuOpen ? '▴' : '▾'}</span>
+            </span>
+          </button>
+
+          {orgMenuOpen && (
+            <div className="absolute z-20 mt-1 w-full rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-lg" role="listbox">
+              <div className="p-2 border-b border-[var(--color-border)]">
+                <input
+                  autoFocus
+                  type="text"
+                  value={orgSearch}
+                  onChange={(e) => setOrgSearch(e.target.value)}
+                  placeholder="Search organisations…"
+                  aria-label="Search organisations"
+                  className="w-full px-3 py-1.5 text-sm rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)]"
+                />
+              </div>
+              <div className="max-h-64 overflow-auto p-1">
+                {orgsQuery.isLoading && (
+                  <div className="px-3 py-2 text-sm text-[var(--color-text-muted)]">Loading organisations…</div>
+                )}
+                {orgsQuery.isError && (
+                  <div className="px-3 py-2 text-sm text-[var(--color-error)]">Failed to load organisations.</div>
+                )}
+                {!orgsQuery.isLoading && !orgsQuery.isError && filteredOrgs.length === 0 && (
+                  <div className="px-3 py-2 text-sm text-[var(--color-text-muted)]">No organisations match.</div>
+                )}
+                {filteredOrgs.map((org) => (
+                  <button
+                    key={org.id}
+                    type="button"
+                    role="option"
+                    onMouseDown={(e) => { e.preventDefault(); pickOrg(org); }}
+                    className="w-full text-left px-3 py-2 text-sm hover:bg-[var(--color-surface-alt)] rounded-lg flex items-center justify-between gap-2"
+                  >
+                    <span className="font-medium text-[var(--color-text)]">{org.name}</span>
+                    <span className="text-xs text-[var(--color-text-muted)]">#{org.id}</span>
+                  </button>
+                ))}
+              </div>
             </div>
           )}
         </div>

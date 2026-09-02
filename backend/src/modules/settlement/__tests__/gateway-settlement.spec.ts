@@ -76,6 +76,10 @@ describe('Gateway Settlement + Seller Entitlement Eligibility', () => {
     await pool.execute(`DELETE FROM gateway_settlement_transactions WHERE payment_transaction_id IN (SELECT id FROM payment_transactions WHERE order_id IN (SELECT id FROM orders WHERE public_id LIKE 'gws-fixture-%'))`);
     await pool.execute(`DELETE FROM gateway_settlements WHERE batch_code LIKE 'GWS-%' AND settled_by = 999901`);
     await pool.execute(`DELETE FROM financial_entitlements WHERE description LIKE 'GWS fixture%'`);
+    // Self-heal: also drop orphaned gws-* payment rows directly (their fixture
+    // order may already be gone after an interrupted/parallel run), otherwise a
+    // stale row trips payment_transactions.uq_gateway_reference on insert.
+    await pool.execute(`DELETE FROM payment_transactions WHERE gateway_reference LIKE 'gws-%'`);
     await pool.execute(`DELETE FROM payment_transactions WHERE order_id IN (SELECT id FROM orders WHERE public_id LIKE 'gws-fixture-%')`);
     await pool.execute(`DELETE FROM ledger_entries WHERE source_type='settlement' AND source_id IN (SELECT id FROM gateway_settlements WHERE settled_by = 999901)`);
     await pool.execute(`DELETE FROM orders WHERE public_id LIKE 'gws-fixture-%'`);
