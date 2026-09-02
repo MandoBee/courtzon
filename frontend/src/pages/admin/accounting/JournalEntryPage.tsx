@@ -37,14 +37,35 @@ export default function JournalEntryPage() {
   const [filterTo, setFilterTo] = useState('');
   const [appliedFrom, setAppliedFrom] = useState('');
   const [appliedTo, setAppliedTo] = useState('');
+  const [entityType, setEntityType] = useState<'courtzon' | 'organisation' | 'merchant' | 'all'>('courtzon');
+  const [entityId, setEntityId] = useState('');
+  const [appliedEntityType, setAppliedEntityType] = useState<'courtzon' | 'organisation' | 'merchant' | 'all'>('courtzon');
+  const [appliedEntityId, setAppliedEntityId] = useState('');
   const [form, setForm] = useState({ entry_date: localToday(), description: '' });
   const [lines, setLines] = useState<LineItem[]>([{ account_id: '', account_code: '', account_name: '', debit: 0, credit: 0 }]);
 
   const { data: entriesData, isLoading } = useQuery({
-    queryKey: ['accounting', 'journal-entries-grouped', page, pageSize, appliedFrom, appliedTo],
+    queryKey: ['accounting', 'journal-entries-grouped', page, pageSize, appliedFrom, appliedTo, appliedEntityType, appliedEntityId],
     queryFn: () => api.get('/admin/accounting/journal', {
-      params: { grouped: true, page, pageSize, dateFrom: appliedFrom || undefined, dateTo: appliedTo || undefined },
+      params: {
+        grouped: true, page, pageSize,
+        dateFrom: appliedFrom || undefined, dateTo: appliedTo || undefined,
+        entityType: appliedEntityType, entityId: appliedEntityId || undefined,
+      },
     }).then((r: any) => r.data),
+  });
+
+  // Canonical entity sources (same endpoints used elsewhere in the admin app):
+  // organisations from /admin/organisations, marketplace sellers (merchants)
+  // from /marketplace/admin/sellers. Server-side validated on query.
+  const { data: orgs } = useQuery({
+    queryKey: ['accounting', 'journal-entity-orgs'],
+    queryFn: () => api.get('/admin/organisations').then((r: any) => (Array.isArray(r.data) ? r.data : (r.data?.data || []))),
+  });
+
+  const { data: merchants } = useQuery({
+    queryKey: ['accounting', 'journal-entity-merchants'],
+    queryFn: () => api.get('/marketplace/admin/sellers', { params: { limit: 500 } }).then((r: any) => r.data?.data || []),
   });
 
   const { data: accounts } = useQuery({
@@ -106,6 +127,8 @@ export default function JournalEntryPage() {
     setPage(1);
     setAppliedFrom(filterFrom);
     setAppliedTo(filterTo);
+    setAppliedEntityType(entityType);
+    setAppliedEntityId(entityId);
   };
 
   const clearFilters = () => {
@@ -113,8 +136,30 @@ export default function JournalEntryPage() {
     setFilterTo('');
     setAppliedFrom('');
     setAppliedTo('');
+    // Entity resets to the default CourtZon scope (consistent with the page default).
+    setEntityType('courtzon');
+    setEntityId('');
+    setAppliedEntityType('courtzon');
+    setAppliedEntityId('');
     setPage(1);
   };
+
+  const onEntityChange = (value: string) => {
+    if (value === 'courtzon' || value === 'all') {
+      setEntityType(value);
+      setEntityId('');
+      return;
+    }
+    const sep = value.indexOf(':');
+    const t = value.slice(0, sep) as 'organisation' | 'merchant';
+    const id = value.slice(sep + 1);
+    setEntityType(t);
+    setEntityId(id);
+  };
+
+  const entitySelectValue = entityType === 'organisation' || entityType === 'merchant'
+    ? `${entityType}:${entityId}`
+    : entityType;
 
   const fmt = (n: number) => `${getCurrencySymbol()} ${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
@@ -209,16 +254,38 @@ export default function JournalEntryPage() {
           <div className="flex items-end gap-3 flex-wrap">
             <div>
               <label className="block text-xs text-[var(--color-text-muted)] mb-1">From Date</label>
-              <input type="date" value={filterFrom} onChange={e => setFilterFrom(e.target.value)}
+              <input type="date" value={filterFrom} onChange={e => setFilterFrom(e.target.value)} aria-label="From Date"
                 className="px-3 py-2 border rounded-[var(--radius-md)] bg-[var(--color-bg)] text-sm" />
             </div>
             <div>
               <label className="block text-xs text-[var(--color-text-muted)] mb-1">To Date</label>
-              <input type="date" value={filterTo} onChange={e => setFilterTo(e.target.value)}
+              <input type="date" value={filterTo} onChange={e => setFilterTo(e.target.value)} aria-label="To Date"
                 className="px-3 py-2 border rounded-[var(--radius-md)] bg-[var(--color-bg)] text-sm" />
             </div>
             <Button onClick={applyFilters}>Apply</Button>
             <Button variant="ghost" onClick={clearFilters}>Clear</Button>
+            <div className="ml-auto">
+              <label className="block text-xs text-[var(--color-text-muted)] mb-1">Entity</label>
+              <select
+                value={entitySelectValue}
+                onChange={(e) => onEntityChange(e.target.value)}
+                aria-label="Entity"
+                className="px-3 py-2 border rounded-[var(--radius-md)] bg-[var(--color-bg)] text-sm min-w-[240px]"
+              >
+                <option value="courtzon">CourtZon</option>
+                <optgroup label="Organisations">
+                  {(orgs || []).map((o: any) => (
+                    <option key={`org-${o.id}`} value={`organisation:${o.id}`}>{o.name} — Organisation</option>
+                  ))}
+                </optgroup>
+                <optgroup label="Merchants">
+                  {(merchants || []).map((m: any) => (
+                    <option key={`mer-${m.id}`} value={`merchant:${m.id}`}>{m.name} — Merchant</option>
+                  ))}
+                </optgroup>
+                <option value="all">All</option>
+              </select>
+            </div>
           </div>
         </div>
 
