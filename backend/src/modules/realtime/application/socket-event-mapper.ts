@@ -11,6 +11,24 @@ export interface MappedSocketEvent {
 
 export function mapDomainEvent(eventName: string, payload: Record<string, unknown>): MappedSocketEvent | null {
   try {
+    if (eventName === 'payment:gateway-settlement-reversed') {
+      // Gateway settlement reversal is a CourtZon-book finance event: admins and
+      // the finance room must refresh the Settled Gateway Payments list and the
+      // pending (re-eligible) list immediately.
+      return {
+        type: 'payment.gateway-settlement-reversed',
+        payload: {
+          settlementId: payload.settlementId,
+          reversalReference: payload.reversalReference,
+          reversedBy: payload.reversedBy,
+          gross: payload.gross,
+          net: payload.net,
+          fee: payload.fee,
+          currency: payload.currency,
+        },
+        rooms: [ADMIN_ROOM, 'finance'],
+      };
+    }
     if (eventName.startsWith('booking:')) return mapBookingEvent(eventName, payload);
     if (eventName.startsWith('payment:')) return mapPaymentEvent(eventName, payload);
     if (eventName.startsWith('wallet:')) return mapWalletEvent(eventName, payload);

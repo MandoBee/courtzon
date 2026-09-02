@@ -49,6 +49,9 @@ const CONCEPT_ACCOUNT_CODE_DEFAULTS: Record<string, Record<string, string>> = {
   // 5210 Payment Gateway Fees (existing COA L4) receives the gateway fee
   // expense. CourtZon book only (org NULL); org books never carry these accounts.
   payment_gateway_settlement: { cash_bank: '1120', payment_clearing: '1100', payment_gateway_fee: '5210' },
+  // Same account set as the settlement, with inverted sides — always resolves to
+  // the SAME canonical accounts (1100 / 1120 / 5210), never hard-coded IDs.
+  payment_gateway_settlement_reversal: { cash_bank: '1120', payment_clearing: '1100', payment_gateway_fee: '5210' },
 };
 
 /**

@@ -2,7 +2,7 @@ import { getPool } from '../../../database/mysql.js';
 import { ConflictError } from '../../../shared/errors/app-error.js';
 import { eventBusV2 } from '../../../shared/event-bus/index.js';
 import { createModuleLogger } from '../../../shared/utils/logger.js';
-import { postGatewaySettlementAccounting } from '../../financial/application/accounting-event.listener.js';
+import { postGatewaySettlementAccounting, postGatewaySettlementReversalAccounting } from '../../financial/application/accounting-event.listener.js';
 import type mysql from 'mysql2/promise';
 
 const log = createModuleLogger('gateway-settlement');
@@ -147,8 +147,9 @@ export const gatewaySettlementService = {
    *   - posts the accounting entry in the SAME transaction (atomic)
    *
    * Duplicate protection:
-   *   - uk_gst_payment UNIQUE(payment_transaction_id) throws ER_DUP_ENTRY
-   *     (full rollback) if any payment is already settled
+   *   - uk_gst_active_payment UNIQUE(active_payment_transaction_id) throws
+   *     ER_DUP_ENTRY (full rollback) if any payment is already in an ACTIVE
+   *     (non-reversed) settlement
    *   - UPDATE ... WHERE gateway_settlement_id IS NULL guard
    */
   async create(data: {
@@ -229,11 +230,11 @@ export const gatewaySettlementService = {
       for (const l of lines) {
         await conn.execute<mysql.ResultSetHeader>(
           `INSERT INTO gateway_settlement_transactions
-             (gateway_settlement_id, payment_transaction_id, payment_method_id,
+             (gateway_settlement_id, payment_transaction_id, active_payment_transaction_id, payment_method_id,
               gross_amount, gateway_fee_pct, gateway_fee_fixed, gateway_fee_amount,
               net_amount, currency)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [settlementId, l.id, l.methodId, l.gross, l.feePct, l.feeFixed, l.fee, l.net, l.currency],
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [settlementId, l.id, l.id, l.methodId, l.gross, l.feePct, l.feeFixed, l.fee, l.net, l.currency],
         );
       }
 
@@ -280,30 +281,187 @@ export const gatewaySettlementService = {
     }
   },
 
-  async list(filters: { page?: number; limit?: number }): Promise<{ data: any[]; total: number }> {
+  /**
+   * Reverse (cancel) a completed gateway settlement and restore payment
+   * re-eligibility. Runs in ONE DB transaction:
+   *   - FOR UPDATE locks the settlement row + its linked transaction lines and
+   *     payment transactions (concurrency guard)
+   *   - validates state: only 'completed' settlements can be reversed; a
+   *     missing, already-reversed settlement is rejected
+   *   - posts the EXACT reversal journal in the SAME transaction
+   *     (Dr Payment Clearing gross / Cr Cash-Bank net / Cr Gateway Fees) using
+   *     the STORED batch amounts — the ORIGINAL journal is never edited/deleted
+   *   - clears payment_transactions.gateway_settlement_id/gateway_settled_at,
+   *     which IMMEDIATELY makes the payments eligible again and re-locks any
+   *     org/seller entitlement availability backed by those card/online orders
+   *     (financial_entitlement gating is query-derived from
+   *     gateway_settlement_id IS NULL)
+   *   - NULLs active_payment_transaction_id on its lines to release the
+   *     partial-unique key (uk_gst_active_payment), so the payments CAN be
+   *     re-settled later while the reversal + original history rows remain
+   *   - marks the settlement 'reversed' with metadata + reversal reference
+   *
+   * The reversal is irreversible by design — only an accounting correction and a
+   * re-settlement can follow; the reversal journal itself is never undone.
+   */
+  async reverse(data: { settlementId: number; reversedBy: number; reason: string }): Promise<any> {
+    const settlementId = Number(data.settlementId || 0);
+    if (settlementId <= 0) throw new ConflictError('Invalid gateway settlement id');
+    const reason = (data.reason || '').trim();
+    if (!reason) throw new ConflictError('A reversal reason is required');
+
+    const pool = getPool();
+    const conn = await pool.getConnection();
+    try {
+      await conn.beginTransaction();
+
+      // 1. Lock the settlement row and validate its state.
+      const [rows] = await conn.execute<RowData>(
+        `SELECT id, batch_code, settlement_status, gross_amount, gateway_fee_amount,
+                net_amount, currency
+         FROM gateway_settlements
+         WHERE id = ?
+         FOR UPDATE`,
+        [settlementId],
+      );
+      const gs = (rows as any[])[0];
+      if (!gs) throw new ConflictError('Gateway settlement not found');
+      if (gs.settlement_status !== 'completed') {
+        throw new ConflictError(
+          `Gateway settlement ${settlementId} is already ${gs.settlement_status.replace(/_/g, ' ')} — only 'completed' settlements can be reversed`,
+        );
+      }
+
+      // Original amounts come from the STORED batch — never recomputed.
+      const gross = Number(gs.gross_amount || 0);
+      const fee = Number(gs.gateway_fee_amount || 0);
+      const net = Number(gs.net_amount || 0);
+      const currency = gs.currency || 'EGP';
+
+      // 2. Lock this settlement's transaction lines AND the linked payment
+      //    transactions (prevents a concurrent settle/reverse race).
+      const [lines] = await conn.execute<RowData>(
+        `SELECT gst.id AS line_id, gst.payment_transaction_id
+         FROM gateway_settlement_transactions gst
+         WHERE gst.gateway_settlement_id = ?
+         ORDER BY gst.id ASC
+         FOR UPDATE`,
+        [settlementId],
+      );
+      if ((lines as any[]).length > 0) {
+        const txnIds = [...new Set((lines as any[]).map((l) => Number(l.payment_transaction_id)))];
+        const placeholders = txnIds.map(() => '?').join(',');
+        await conn.execute<RowData>(
+          `SELECT pt.id FROM payment_transactions pt WHERE pt.id IN (${placeholders}) FOR UPDATE`,
+          txnIds,
+        );
+      }
+
+      // 3. Post the reversal journal in the SAME transaction (atomic
+      //    accounting + state; the original journal is untouched).
+      await postGatewaySettlementReversalAccounting(settlementId, gross, net, fee, currency, conn);
+
+      // 4. Restore payment re-eligibility (guarded UPDATE) + release the
+      //    partial-unique key so the payments can be re-settled later.
+      for (const l of lines as any[]) {
+        const [upd] = await conn.execute<mysql.ResultSetHeader>(
+          `UPDATE payment_transactions
+           SET gateway_settlement_id = NULL, gateway_settled_at = NULL, updated_at = NOW()
+           WHERE id = ? AND gateway_settlement_id = ?`,
+          [l.payment_transaction_id, settlementId],
+        );
+        if (upd.affectedRows !== 1) {
+          throw new ConflictError(`Payment transaction ${l.payment_transaction_id} linkage changed concurrently — reversal aborted`);
+        }
+        await conn.execute<mysql.ResultSetHeader>(
+          `UPDATE gateway_settlement_transactions
+           SET active_payment_transaction_id = NULL
+           WHERE id = ? AND active_payment_transaction_id IS NOT NULL`,
+          [l.line_id],
+        );
+      }
+
+      // 5. Mark the settlement reversed + capture the audit metadata.
+      const reversalReference = `REV-${settlementId}-${Date.now().toString(36).toUpperCase()}`;
+      await conn.execute<mysql.ResultSetHeader>(
+        `UPDATE gateway_settlements
+         SET settlement_status = 'reversed',
+             reversed_at = NOW(),
+             reversed_by = ?,
+             reversal_reason = ?,
+             reversal_reference = ?
+         WHERE id = ?`,
+        [data.reversedBy, reason, reversalReference, settlementId],
+      );
+
+      await conn.commit();
+      conn.release();
+
+      // Post-COMMIT realtime signal — the finance/admin rooms refresh the
+      // Settled Gateway Payments list AND the pending eligible list (the
+      // reversed payments are eligible again).
+      eventBusV2.emit('payment:gateway-settlement-reversed', {
+        settlementId,
+        reversalReference,
+        reversedBy: data.reversedBy,
+        gross,
+        net,
+        fee,
+        currency,
+      });
+
+      log.info({ settlementId, reversalReference, count: (lines as any[]).length, gross, net, fee }, 'Gateway settlement reversed');
+      return this.get(settlementId);
+    } catch (err: any) {
+      await conn.rollback();
+      conn.release();
+      if (err?.code === 'ER_DUP_ENTRY') {
+        throw new ConflictError('Gateway settlement reversal failed (duplicate posting)');
+      }
+      throw err;
+    }
+  },
+
+  async list(filters: { page?: number; limit?: number; status?: string }): Promise<{ data: any[]; total: number }> {
     const pool = getPool();
     const page = Math.max(1, Number(filters.page) || 1);
     const limit = Math.min(100, Math.max(1, Number(filters.limit) || 20));
     const offset = (page - 1) * limit;
-    const [countRows] = await pool.execute<RowData>('SELECT COUNT(*) AS total FROM gateway_settlements');
+    const where: string[] = [];
+    const params: (string | number)[] = [];
+    if (filters.status === 'completed' || filters.status === 'reversed') {
+      where.push('gs.settlement_status = ?');
+      params.push(filters.status);
+    }
+    const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+    const [countRows] = await pool.execute<RowData>(
+      `SELECT COUNT(*) AS total FROM gateway_settlements gs ${whereSql}`,
+      params,
+    );
     const total = Number((countRows as any[])[0]?.total || 0);
-    const [rows] = await pool.execute<RowData>(
-      `SELECT gs.*, u.full_name AS settled_by_name
+    const [rows] = await pool.query<RowData>(
+      `SELECT gs.*,
+              u.full_name AS settled_by_name,
+              rb.full_name AS reversed_by_name,
+              (SELECT COUNT(*) FROM gateway_settlement_transactions gst WHERE gst.gateway_settlement_id = gs.id) AS transaction_count
        FROM gateway_settlements gs
        LEFT JOIN users u ON u.id = gs.settled_by
+       LEFT JOIN users rb ON rb.id = gs.reversed_by
+       ${whereSql}
        ORDER BY gs.created_at DESC
        LIMIT ? OFFSET ?`,
-      [limit, offset],
+      [...params, limit, offset],
     );
-    return { data: (rows as any[]).map((r) => ({ ...r, gross_amount: Number(r.gross_amount), gateway_fee_amount: Number(r.gateway_fee_amount), net_amount: Number(r.net_amount) })), total };
+    return { data: (rows as any[]).map((r) => ({ ...r, gross_amount: Number(r.gross_amount), gateway_fee_amount: Number(r.gateway_fee_amount), net_amount: Number(r.net_amount), transaction_count: Number(r.transaction_count || 0) })), total };
   },
 
   async get(settlementId: number): Promise<any> {
     const pool = getPool();
     const [rows] = await pool.execute<RowData>(
-      `SELECT gs.*, u.full_name AS settled_by_name
+      `SELECT gs.*, u.full_name AS settled_by_name, rb.full_name AS reversed_by_name
        FROM gateway_settlements gs
        LEFT JOIN users u ON u.id = gs.settled_by
+       LEFT JOIN users rb ON rb.id = gs.reversed_by
        WHERE gs.id = ?`,
       [settlementId],
     );

@@ -6556,6 +6556,7 @@ CREATE TABLE `gateway_settlement_transactions` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT,
   `gateway_settlement_id` int unsigned NOT NULL,
   `payment_transaction_id` bigint unsigned NOT NULL,
+  `active_payment_transaction_id` bigint unsigned DEFAULT NULL,
   `payment_method_id` int unsigned DEFAULT NULL,
   `gross_amount` decimal(14,2) NOT NULL DEFAULT '0.00',
   `gateway_fee_pct` decimal(5,2) NOT NULL DEFAULT '0.00',
@@ -6565,8 +6566,9 @@ CREATE TABLE `gateway_settlement_transactions` (
   `currency` char(3) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'EGP',
   `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `uk_gst_payment` (`payment_transaction_id`),
+  UNIQUE KEY `uk_gst_active_payment` (`active_payment_transaction_id`),
   KEY `idx_gst_settlement` (`gateway_settlement_id`),
+  KEY `idx_gst_payment_txn` (`payment_transaction_id`),
   CONSTRAINT `fk_gst_settlement` FOREIGN KEY (`gateway_settlement_id`) REFERENCES `gateway_settlements` (`id`) ON DELETE CASCADE,
   CONSTRAINT `fk_gst_payment` FOREIGN KEY (`payment_transaction_id`) REFERENCES `payment_transactions` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -6577,7 +6579,7 @@ DROP TABLE IF EXISTS `gateway_settlements`;
 CREATE TABLE `gateway_settlements` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,
   `batch_code` varchar(50) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
-  `settlement_status` enum('completed') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'completed',
+  `settlement_status` enum('completed','reversed') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'completed',
   `gross_amount` decimal(14,2) NOT NULL DEFAULT '0.00',
   `gateway_fee_amount` decimal(14,2) NOT NULL DEFAULT '0.00',
   `net_amount` decimal(14,2) NOT NULL DEFAULT '0.00',
@@ -6585,12 +6587,17 @@ CREATE TABLE `gateway_settlements` (
   `transaction_count` int unsigned NOT NULL DEFAULT '0',
   `settled_by` int unsigned DEFAULT NULL,
   `settled_at` timestamp NULL DEFAULT NULL,
+  `reversed_at` timestamp NULL DEFAULT NULL,
+  `reversed_by` int unsigned DEFAULT NULL,
+  `reversal_reason` text COLLATE utf8mb4_unicode_ci,
+  `reversal_reference` varchar(100) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `notes` text COLLATE utf8mb4_unicode_ci,
   `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   KEY `idx_gs_batch_code` (`batch_code`),
-  KEY `idx_gs_settled_at` (`settled_at`)
+  KEY `idx_gs_settled_at` (`settled_at`),
+  KEY `idx_gs_reversed_at` (`reversed_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 

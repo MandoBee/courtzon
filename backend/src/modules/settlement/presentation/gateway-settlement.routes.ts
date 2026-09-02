@@ -5,6 +5,7 @@ import {
   createGatewaySettlementHandler,
   listGatewaySettlementsHandler,
   getGatewaySettlementHandler,
+  reverseGatewaySettlementHandler,
 } from './gateway-settlement.controller.js';
 
 export async function gatewaySettlementRoutes(app: FastifyInstance): Promise<void> {
@@ -15,4 +16,5 @@ export async function gatewaySettlementRoutes(app: FastifyInstance): Promise<voi
   app.get('/admin/gateway-settlements', { preHandler: [requirePermission(['financial.gateway-settlement.view'])] }, listGatewaySettlementsHandler);
   app.get('/admin/gateway-settlements/:id', { preHandler: [requirePermission(['financial.gateway-settlement.view'])] }, getGatewaySettlementHandler);
   app.post('/admin/gateway-settlements', { preHandler: [requirePermission(['financial.gateway-settlement.create'])] }, createGatewaySettlementHandler);
+  app.post('/admin/gateway-settlements/:id/reverse', { preHandler: [requirePermission(['financial.gateway-settlement.reverse'])] }, reverseGatewaySettlementHandler);
 }
