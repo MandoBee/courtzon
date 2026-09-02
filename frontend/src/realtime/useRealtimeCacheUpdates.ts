@@ -405,19 +405,24 @@ export function useRealtimeCacheUpdates(): void {
   }
 
   // ── Settlement events ──────────────────────────────────────────
-  useSocketEvent('settlement.completed', () => {
-    qc.invalidateQueries({ queryKey: ['settlements'] });
+  const invalidateSettlementViews = () => {
+    // Super Admin unified settlement list + preview (same canonical projection).
+    qc.invalidateQueries({ queryKey: ['unified-settlements'] });
+    qc.invalidateQueries({ queryKey: ['unified-settlement-preview'] });
+    // Organisation portal settlement history, outstanding projection and position.
+    qc.invalidateQueries({ queryKey: ['org-settlements'] });
+    qc.invalidateQueries({ queryKey: ['org-settlement-detail'] });
+    qc.invalidateQueries({ queryKey: ['org-settlement-outstanding'] });
+    qc.invalidateQueries({ queryKey: ['org-position'] });
+    // Legacy booking-settlements root.
     qc.invalidateQueries({ queryKey: ['booking-settlements'] });
-  });
-
-  useSocketEvent('settlement.paid', () => {
     qc.invalidateQueries({ queryKey: ['settlements'] });
-    qc.invalidateQueries({ queryKey: ['booking-settlements'] });
-  });
+  };
 
-  useSocketEvent('settlement.failed', () => {
-    qc.invalidateQueries({ queryKey: ['settlements'] });
-  });
+  useSocketEvent('settlement.created', invalidateSettlementViews);
+  useSocketEvent('settlement.completed', invalidateSettlementViews);
+  useSocketEvent('settlement.paid', invalidateSettlementViews);
+  useSocketEvent('settlement.failed', invalidateSettlementViews);
 
   // ── Gateway settlement events ─────────────────────────────────
   useSocketEvent('payment.gateway-settled', () => {

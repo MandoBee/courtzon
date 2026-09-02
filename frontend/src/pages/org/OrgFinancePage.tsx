@@ -22,15 +22,30 @@ const DIRECTION_LABELS: Record<string, string> = {
   org_to_courtzon: 'Org → CourtZon',
 };
 
+const OUTSTANDING_DIRECTION_LABELS: Record<string, string> = {
+  COURTZON_TO_ORGANIZATION: 'CourtZon pays Organization',
+  ORGANIZATION_TO_COURTZON: 'Organization pays CourtZon',
+  ZERO_BALANCE: 'Zero balance — no payment required',
+};
+
+const OUTSTANDING_TYPE_LABELS: Record<string, string> = {
+  ORGANIZATION_EARNING: 'Organization Earning',
+  COURTZON_COMMISSION: 'CourtZon Commission',
+  ORGANIZATION_ADJUSTMENT: 'Organization Adjustment',
+  COURTZON_ADJUSTMENT: 'CourtZon Adjustment',
+};
+
 function RequestSettlementModal({ orgId, onClose }: { orgId: string; onClose: () => void }) {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
 
   const requestMutation = useMutation({
-    mutationFn: () => api.post('/unified-settlements', { orgId: Number(orgId) }),
+    mutationFn: () => api.post(`/org/${orgId}/settlements`),
     onSuccess: (res: any) => {
       showToast(`Settlement #${res.settlement?.id || ''} requested successfully`);
       queryClient.invalidateQueries({ queryKey: ['org-settlements', orgId] });
+      queryClient.invalidateQueries({ queryKey: ['org-settlement-outstanding', orgId] });
+      queryClient.invalidateQueries({ queryKey: ['org-position', orgId] });
       onClose();
     },
     onError: (err: any) => {
@@ -196,9 +211,15 @@ function SettlementActions({ orgId, settlement, onUpdated }: { orgId: string; se
   const { showToast } = useToast();
   const status = settlement.settlement_status;
 
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: ['org-settlements', orgId] });
+    queryClient.invalidateQueries({ queryKey: ['org-settlement-outstanding', orgId] });
+    queryClient.invalidateQueries({ queryKey: ['org-position', orgId] });
+  };
+
   const payMut = useMutation({
     mutationFn: () => api.post(`/unified-settlements/${settlement.id}/pay`),
-    onSuccess: () => { showToast('Settlement marked as paid and finalized'); queryClient.invalidateQueries({ queryKey: ['org-settlements', orgId] }); onUpdated(); },
+    onSuccess: () => { showToast('Settlement marked as paid and finalized'); invalidate(); onUpdated(); },
     onError: (err: any) => showToast(err?.response?.data?.message || err?.message, 'error'),
   });
 
@@ -207,7 +228,7 @@ function SettlementActions({ orgId, settlement, onUpdated }: { orgId: string; se
       const reason = prompt('Cancel reason (optional):');
       return api.post(`/unified-settlements/${settlement.id}/cancel`, { reason: reason || undefined });
     },
-    onSuccess: () => { showToast('Settlement cancelled', 'warning'); queryClient.invalidateQueries({ queryKey: ['org-settlements', orgId] }); onUpdated(); },
+    onSuccess: () => { showToast('Settlement cancelled', 'warning'); invalidate(); onUpdated(); },
     onError: (err: any) => showToast(err?.response?.data?.message || err?.message, 'error'),
   });
 
@@ -252,6 +273,15 @@ export default function OrgFinancePage() {
   const { data: stData, isLoading: stLoading } = useQuery({
     queryKey: ['org-settlements', orgId, stPage],
     queryFn: () => api.get(`/org/${orgId}/settlements`, { params: { page: stPage, limit: 20 } }).then((r) => r.data),
+    enabled: !!orgId && tab === 'settlements',
+  });
+
+  // Canonical outstanding/available-to-settle projection — the SAME source the
+  // Super Admin "New Unified Settlement" flow uses (server-side AVAILABLE
+  // financial entitlements + computeSettlementFinancials), scoped to this org.
+  const { data: outstanding, isLoading: outstandingLoading } = useQuery({
+    queryKey: ['org-settlement-outstanding', orgId],
+    queryFn: () => api.get(`/org/${orgId}/settlements/outstanding`).then((r) => r.data),
     enabled: !!orgId && tab === 'settlements',
   });
 
@@ -373,9 +403,13 @@ export default function OrgFinancePage() {
       )}
 
       {tab === 'settlements' && (
+        <>
         <div className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] border border-[var(--color-border)] overflow-hidden">
           <div className="flex items-center justify-between p-4 border-b border-[var(--color-border)]">
-            <h3 className="text-sm font-medium text-[var(--color-text)]">Settlement History</h3>
+            <div>
+              <h3 className="text-sm font-medium text-[var(--color-text)]">Outstanding / Available to Settle</h3>
+              <p className="text-xs text-[var(--color-text-muted)]">The same canonical settlement projection Super Admin uses, scoped to this organisation.</p>
+            </div>
             <Can permission="settlements.request">
               <button
                 onClick={() => setShowRequestModal(true)}
@@ -384,6 +418,74 @@ export default function OrgFinancePage() {
                 + Request Settlement
               </button>
             </Can>
+          </div>
+
+          {outstandingLoading ? (
+            <p className="p-6 text-sm text-[var(--color-text-muted)]">Loading outstanding settlements...</p>
+          ) : !outstanding || !(outstanding.entitlements || []).length ? (
+            <p className="p-6 text-sm text-[var(--color-text-muted)]">No outstanding settlements available. When revenue events mature they appear here.</p>
+          ) : (
+            <div className="p-4 space-y-4">
+              <div className="flex flex-wrap gap-6 text-sm">
+                <div>
+                  <span className="text-xs text-[var(--color-text-muted)]">Available to settle</span>
+                  <p className="text-lg font-bold text-[var(--color-primary)]">{(Number(outstanding.financialsAll?.finalAmount || 0)).toFixed(2)}</p>
+                </div>
+                <div>
+                  <span className="text-xs text-[var(--color-text-muted)]">Organization Earning</span>
+                  <p className="text-lg font-bold text-[var(--color-text)]">{(Number(outstanding.financialsAll?.totalOrgEarnings || 0)).toFixed(2)}</p>
+                </div>
+                <div>
+                  <span className="text-xs text-[var(--color-text-muted)]">CourtZon Commission</span>
+                  <p className="text-lg font-bold text-[var(--color-text)]">{(Number(outstanding.financialsAll?.totalCommission || 0)).toFixed(2)}</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
+                <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] p-3">
+                  <p className="text-[var(--color-text-muted)]">CourtZon owes Organization</p>
+                  <p className="text-lg font-bold text-[var(--color-text)]">{(Number(outstanding.financialsAll?.courtzonOwedToOrg || 0)).toFixed(2)}</p>
+                </div>
+                <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] p-3">
+                  <p className="text-[var(--color-text-muted)]">Organization owes CourtZon</p>
+                  <p className="text-lg font-bold text-[var(--color-text)]">{(Number(outstanding.financialsAll?.orgOwedToCourtZon || 0)).toFixed(2)}</p>
+                </div>
+                <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] p-3">
+                  <p className="text-[var(--color-text-muted)]">Net settlement</p>
+                  <p className="text-lg font-bold text-[var(--color-primary)]">{(Number(outstanding.financialsAll?.finalAmount || 0)).toFixed(2)}</p>
+                  <p className="text-xs text-[var(--color-text-muted)]">{OUTSTANDING_DIRECTION_LABELS[outstanding.financialsAll?.direction] || outstanding.financialsAll?.direction || '-'}</p>
+                </div>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-[var(--color-border)] bg-[var(--color-bg)]">
+                      <th className="text-left px-4 py-2 font-medium text-[var(--color-text-muted)]">Type</th>
+                      <th className="text-left px-4 py-2 font-medium text-[var(--color-text-muted)]">Source</th>
+                      <th className="text-left px-4 py-2 font-medium text-[var(--color-text-muted)]">Available</th>
+                      <th className="text-right px-4 py-2 font-medium text-[var(--color-text-muted)]">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {outstanding.entitlements.map((e: any) => (
+                      <tr key={e.id} className="border-b border-[var(--color-border)]">
+                        <td className="px-4 py-2 text-[var(--color-text)]">{OUTSTANDING_TYPE_LABELS[e.entitlement_type] || e.entitlement_type}</td>
+                        <td className="px-4 py-2 text-xs text-[var(--color-text-muted)]">{e.source_type || '-'}{e.source_id ? ` #${e.source_id}` : ''}</td>
+                        <td className="px-4 py-2 text-xs text-[var(--color-text-muted)]">{e.available_at ? new Date(e.available_at).toLocaleDateString() : '-'}</td>
+                        <td className="px-4 py-2 text-right font-mono text-[var(--color-text)]">{(Number(e.amount)).toFixed(2)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] border border-[var(--color-border)] overflow-hidden">
+          <div className="flex items-center justify-between p-4 border-b border-[var(--color-border)]">
+            <h3 className="text-sm font-medium text-[var(--color-text)]">Settlement History</h3>
           </div>
 
           {stLoading ? (
@@ -439,6 +541,7 @@ export default function OrgFinancePage() {
             </div>
           )}
         </div>
+        </>
       )}
 
       {/* Settlement Detail Modal (fetches full detail on click) */}
