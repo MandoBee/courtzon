@@ -40,12 +40,51 @@ export async function createGatewaySettlementHandler(request: FastifyRequest, re
 
 export async function listGatewaySettlementsHandler(request: FastifyRequest, reply: FastifyReply) {
   const query = request.query as any;
-  const result = await svc.list({ page: Number(query.page) || 1, limit: Number(query.limit) || 20 });
+  const result = await svc.list({
+    page: Number(query.page) || 1,
+    limit: Number(query.limit) || 20,
+    status: query.status || undefined,
+  });
   return reply.send(result);
 }
 
 export async function getGatewaySettlementHandler(request: FastifyRequest, reply: FastifyReply) {
   const { id } = request.params as any;
   const detail = await svc.get(Number(id));
+  return reply.send(detail);
+}
+
+export async function reverseGatewaySettlementHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { id } = request.params as any;
+  const body = request.body as any;
+  const userId = (request as any).userId;
+  const reason = typeof body?.reason === 'string' ? body.reason.trim() : '';
+  if (!reason) {
+    throw new ConflictError('A reversal reason is required');
+  }
+  const detail = await svc.reverse({
+    settlementId: Number(id),
+    reversedBy: userId,
+    reason,
+  });
+  recordAudit({
+    actorId: userId,
+    action: 'GATEWAY_SETTLEMENT.REVERSE',
+    entityType: 'gateway_settlement',
+    entityId: detail.settlement.id,
+    afterState: {
+      batchCode: detail.settlement.batch_code,
+      status: detail.settlement.settlement_status,
+      gross: detail.settlement.gross_amount,
+      gatewayFee: detail.settlement.gateway_fee_amount,
+      net: detail.settlement.net_amount,
+      reversalReference: detail.settlement.reversal_reference,
+      reversalReason: detail.settlement.reversal_reason,
+      transactionCount: detail.transactions.length,
+      originalJournalPreserved: true,
+    },
+    ipAddress: request.ip,
+    userAgent: request.headers['user-agent'],
+  });
   return reply.send(detail);
 }

@@ -231,6 +231,8 @@ export const uiRegistry: UIElement[] = [
   { permissionKey: 'payment-methods.delete', moduleSlug: 'financial', elementType: 'button', elementLabel: 'Delete Payment Method', componentPath: 'pages/admin/payment-methods/PaymentMethodsPage.tsx' },
   { permissionKey: 'financial.gateway-settlement.view', moduleSlug: 'financial', elementType: 'page', elementLabel: 'Gateway Settlements Page', componentPath: 'pages/admin/gateway-settlements/GatewaySettlementPage.tsx' },
   { permissionKey: 'financial.gateway-settlement.create', moduleSlug: 'financial', elementType: 'button', elementLabel: 'Receive Gateway Settlement', componentPath: 'pages/admin/gateway-settlements/GatewaySettlementPage.tsx' },
+  { permissionKey: 'financial.gateway-settlement.reverse', moduleSlug: 'financial', elementType: 'action', elementLabel: 'Reverse Gateway Settlement', componentPath: 'pages/admin/gateway-settlements/GatewaySettlementPage.tsx' },
+  { permissionKey: 'financial.gateway-settlement.settle-orgs', moduleSlug: 'financial', elementType: 'action', elementLabel: 'Settle Organisations (from Gateway Settlements)', componentPath: 'pages/admin/gateway-settlements/GatewaySettlementPage.tsx' },
   { permissionKey: 'financial.payment-gateways.view', moduleSlug: 'financial', elementType: 'page', elementLabel: 'Payment Gateways Page', componentPath: 'pages/admin/payment-gateways/PaymentGatewaysPage.tsx' },
   // Payment method form fields
   { permissionKey: 'payment-methods.edit.name', moduleSlug: 'financial', elementType: 'field', elementLabel: 'Payment Method Name Field', componentPath: 'pages/admin/payment-methods/PaymentMethodsPage.tsx' },

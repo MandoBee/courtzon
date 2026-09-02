@@ -250,6 +250,16 @@ export const EVENT_CONCEPTS: Record<string, { debit: string[]; credit: string[] 
     debit: ['cash_bank', 'payment_gateway_fee'],
     credit: ['payment_clearing'],
   },
+  // Reversal of a payment-gateway settlement. The original journal (Dr Bank net
+  // + Dr Gateway Fees / Cr Payment Clearing gross) stays IMMUTABLE history; this
+  // event posts the exact opposite movement (Dr Payment Clearing gross / Cr Bank
+  // net + Cr Gateway Fees) so clearing → bank is undone without ever editing or
+  // deleting the original. Concept names are the SAME stable concepts
+  // (cash_bank, payment_gateway_fee, payment_clearing), sides inverted.
+  payment_gateway_settlement_reversal: {
+    debit: ['payment_clearing'],
+    credit: ['cash_bank', 'payment_gateway_fee'],
+  },
   invoice_issue: {
     debit: ['receivable'],
     credit: ['revenue', 'tax_liability'],

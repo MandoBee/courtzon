@@ -387,6 +387,14 @@ export function useRealtimeCacheUpdates(): void {
     qc.invalidateQueries({ queryKey: ['mp-seller-settlements'] });
   });
 
+  // A reversed gateway settlement is eligible again on the pending list and the
+  // settled list must reflect the new 'reversed' status.
+  useSocketEvent('payment.gateway-settlement-reversed', () => {
+    qc.invalidateQueries({ queryKey: ['gateway-settlements'] });
+    qc.invalidateQueries({ queryKey: ['settlements'] });
+    qc.invalidateQueries({ queryKey: ['mp-seller-settlements'] });
+  });
+
   // ── Organisation events ────────────────────────────────────────
   useSocketEvent('organisation.subscription-renewed', () => {
     qc.invalidateQueries({ queryKey: ['org-subscription'] });

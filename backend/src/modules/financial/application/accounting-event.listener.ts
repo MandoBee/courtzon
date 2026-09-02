@@ -363,6 +363,46 @@ async function postGatewaySettlementAccounting(
   );
 }
 
+/**
+ * Reversal of a payment-gateway settlement — posts the exact opposite movement
+ * (Dr Payment Clearing gross / Cr Cash-Bank net + Cr Payment Gateway Fees fee)
+ * with event_type='payment_gateway_settlement_reversal'. The ORIGINAL journal
+ * (payment_gateway_settlement) is preserved as immutable history — it is never
+ * edited or deleted; the reversal is a NEW balanced journal referencing the same
+ * (source_type='settlement', source_id). Amounts come from the STORED settlement
+ * batch (never recomputed from payment rows). When no fee is configured
+ * (fee == 0, net == gross) the fee leg is omitted and the posting is exactly
+ * Dr 1100 / Cr 1120 for the gross.
+ *
+ * organisation_id stays NULL (CourtZon book). Idempotent per
+ * (source_type='settlement', source_id, event_type='payment_gateway_settlement_reversal')
+ * — a crash-safe replay or the post-commit listener re-dispatching the event is a
+ * safe no-op.
+ */
+async function postGatewaySettlementReversalAccounting(
+  sourceId: number,
+  gross: number,
+  net: number,
+  fee: number,
+  currency: string,
+  outerConn?: import('mysql2/promise').PoolConnection,
+): Promise<void> {
+  if (!sourceId || gross <= 0) return;
+
+  const conceptAmounts: Record<string, number> = {};
+  conceptAmounts.payment_clearing = gross;
+  conceptAmounts.cash_bank = fee > 0 ? net : gross;
+  if (fee > 0) conceptAmounts.payment_gateway_fee = fee;
+
+  await postAccountingEvent(
+    'payment_gateway_settlement_reversal', 'settlement', sourceId, null,
+    conceptAmounts,
+    currency || 'EGP',
+    `Reversal of payment gateway settlement #${sourceId} (bank → clearing${fee > 0 ? `, gateway fee ${fee}` : ''})`,
+    outerConn,
+  );
+}
+
 async function postMarketplaceRefundAccounting(orderId: number, currency: string): Promise<void> {
   const orderIds = await resolveCheckoutOrderIds(orderId);
   for (const oid of orderIds) {
@@ -1171,6 +1211,25 @@ export function registerAccountingEventListeners(): void {
     }
   });
 
+  // Reversal of a gateway settlement. The reversal journal is ALREADY posted
+  // inside the reversing transaction (atomic with status/metadata); this
+  // listener exists only for crash-safe replay symmetry with the create event
+  // and safely no-ops (hasPosting) when the durable posting already exists.
+  eventBusV2.on('payment:gateway-settlement-reversed', async (data: any) => {
+    try {
+      const sourceId = Number(data.settlementId || 0);
+      const gross = Number(data.gross ?? 0);
+      const net = Number(data.net ?? gross);
+      const fee = Number(data.fee ?? 0);
+      const currency = data.currency || 'EGP';
+      if (!sourceId || gross <= 0) return;
+      await postGatewaySettlementReversalAccounting(sourceId, gross, net, fee, currency);
+    } catch (err: any) {
+      if (err?.code === 'ER_DUP_ENTRY') { log.info({ err: err.message }, 'Duplicate — skip'); return; }
+      log.error({ err }, 'Payment gateway settlement reversal accounting failed');
+    }
+  });
+
   // ── Settlement Events ──
 
   eventBusV2.on('settlement:paid', async (data: any) => {
@@ -1274,7 +1333,8 @@ export function registerAccountingEventListeners(): void {
 const ACCOUNTING_REPLAY_EVENTS = [
   'payment:succeeded',
   'payment:refunded',
-  'payment:gateway-settled',
+'payment:gateway-settled',
+  'payment:gateway-settlement-reversed',
   'marketplace:order-processing',
   'marketplace:order-delivered',
   'marketplace:order-refunded',
@@ -1333,4 +1393,4 @@ export async function createAccountingReplayWorkers(): Promise<any[]> {
   return [worker];
 }
 
-export { postAccountingEvent, postGatewaySettlementAccounting, postMarketplacePaymentAccounting, postMarketplaceRefundAccounting, postMarketplaceCashCommissionAccounting, postMarketplaceCashReversalAccounting };
+export { postAccountingEvent, postGatewaySettlementAccounting, postGatewaySettlementReversalAccounting, postMarketplacePaymentAccounting, postMarketplaceRefundAccounting, postMarketplaceCashCommissionAccounting, postMarketplaceCashReversalAccounting };
