@@ -13,6 +13,7 @@ export async function accountingRoutes(app: FastifyInstance): Promise<void> {
 
   app.get('/org/:orgId/accounting/dashboard', { preHandler: [orgAccountingView] }, ctrl.orgDashboardHandler);
   app.get('/org/:orgId/accounting/coa', { preHandler: [orgAccountingView] }, ctrl.orgCoaHandler);
+  app.get('/org/:orgId/accounting/records', { preHandler: [orgAccountingView] }, ctrl.orgAccountingRecordsHandler);
   app.get('/org/:orgId/accounting/trial-balance', { preHandler: [orgAccountingView] }, ctrl.orgTrialBalanceHandler);
   app.get('/org/:orgId/accounting/income-statement', { preHandler: [orgAccountingView] }, ctrl.orgIncomeStatementHandler);
   app.get('/org/:orgId/accounting/balance-sheet', { preHandler: [orgAccountingView] }, ctrl.orgBalanceSheetHandler);
