@@ -2,8 +2,9 @@ import type { FastifyRequest, FastifyReply } from 'fastify';
 import { getPool } from '../../../database/mysql.js';
 import { recordAudit } from '../../audit-log/index.js';
 import { eventBusV2 } from '../../../shared/event-bus/event-bus.v2.js';
-import { AppError, NotFoundError, ConflictError } from '../../../shared/errors/app-error.js';
+import { AppError, NotFoundError, ConflictError, ForbiddenError } from '../../../shared/errors/app-error.js';
 import { ErrorCodes } from '../../../shared/errors/error-codes.js';
+import { isPlatformAdmin, canAccessOrganisation } from '../../../shared/middleware/org-access.js';
 import { getEventConcepts, validateCompleteMapping } from '../../financial/application/accounting-concepts.js';
 import { coaValidator } from '../../financial/application/coa-validator.service.js';
 import { glProjectionService } from '../../financial/application/gl-projection.service.js';
@@ -1288,6 +1289,64 @@ export async function createJournalEntryHandler(request: FastifyRequest, reply: 
   }
 }
 
+/**
+ * Resolve the canonical journal entity scope from the request query.
+ *
+ * The canonical ownership mechanism for a journal entry is
+ * `general_ledger.organisation_id`:
+ *   - NULL    → CourtZon / platform scope (CourtZon book, gateway, subscriptions,
+ *               platform manual journals)
+ *   - <orgId> → that organisation's ledger (organisation manual journals, booking
+ *               economics, marketplace organisation/merchant book, settlement
+ *               entries projected to the org GL)
+ *
+ * Marketplace merchants are organisation sellers (order_items.seller_id →
+ * organisations); their entries carry the seller organisation_id in the GL, so a
+ * merchant filter is the SAME organisation_id scope, validated against the seller
+ * set. This is a server-side, canonical filter — never a text/label/description
+ * match.
+ *
+ * entityType: 'courtzon' | 'organisation' | 'merchant' | 'all' (absent ⇒ all).
+ * The supplied org/merchant id must exist (a merchant must be a seller org) and
+ * the actor must be a platform admin or have access to the organisation — an
+ * arbitrary client-supplied id is never trusted.
+ */
+export async function resolveJournalEntityScope(
+  query: any,
+  userId: number,
+): Promise<{ condition: string; params: any[] }> {
+  const entityType = query.entityType;
+  if (!entityType || entityType === 'all') return { condition: '', params: [] };
+  if (entityType === 'courtzon') return { condition: 'gl.organisation_id IS NULL', params: [] };
+
+  const entityId = Number(query.entityId);
+  if (!Number.isFinite(entityId) || entityId <= 0) {
+    throw new AppError('Invalid entity id', 400, 'VALIDATION_ERROR');
+  }
+
+  const pool = getPool();
+  const [orgRows] = await pool.execute<RowData>(
+    `SELECT id FROM organisations WHERE id = ? AND deleted_at IS NULL LIMIT 1`, [entityId],
+  );
+  if (!(orgRows as any[]).length) {
+    throw new NotFoundError('Organisation', ErrorCodes.ORGANISATION_NOT_FOUND);
+  }
+  if (entityType === 'merchant') {
+    const [sellerRows] = await pool.execute<RowData>(
+      `SELECT DISTINCT p.seller_id FROM products p
+       WHERE p.seller_id = ? AND p.seller_type = 'org' AND p.deleted_at IS NULL LIMIT 1`, [entityId],
+    );
+    if (!(sellerRows as any[]).length) {
+      throw new NotFoundError('Merchant', ErrorCodes.ORGANISATION_NOT_FOUND);
+    }
+  }
+
+  if (!(await isPlatformAdmin(userId)) && !(await canAccessOrganisation(userId, entityId))) {
+    throw new ForbiddenError('Access to this organisation denied');
+  }
+  return { condition: 'gl.organisation_id = ?', params: [entityId] };
+}
+
 export async function listJournalEntriesHandler(request: FastifyRequest, reply: FastifyReply) {
   const pool = getPool();
   const query = request.query as any;
@@ -1298,6 +1357,15 @@ export async function listJournalEntriesHandler(request: FastifyRequest, reply: 
   // query is restricted to that organisation's own ledger. Super Admin calls
   // omit it → unchanged (all organisations + platform rows).
   if (query.organisationId) { conditions.push('gl.organisation_id = ?'); params.push(Number(query.organisationId)); }
+
+  // Canonical entity scope (CourtZon / organisation / merchant / all). Validated
+  // server-side and applied to the SAME general_ledger organisation_id column.
+  const entityScope = await resolveJournalEntityScope(query, (request as any).userId);
+  if (entityScope.condition) {
+    conditions.push(entityScope.condition);
+    params.push(...entityScope.params);
+  }
+
   if (query.periodId) { conditions.push('gl.period_id = ?'); params.push(Number(query.periodId)); }
   if (query.accountId) { conditions.push('gl.account_id = ?'); params.push(Number(query.accountId)); }
   if (query.from) { conditions.push('gl.entry_date >= ?'); params.push(query.from); }
@@ -1413,6 +1481,14 @@ export async function exportJournalEntriesHandler(request: FastifyRequest, reply
   const query = request.query as any;
   const params: any[] = [];
   const conditions: string[] = [];
+
+  // Canonical entity scope (CourtZon / organisation / merchant / all) — same
+  // server-side validation as the list endpoint, so exports honour the filter.
+  const entityScope = await resolveJournalEntityScope(query, (request as any).userId);
+  if (entityScope.condition) {
+    conditions.push(entityScope.condition);
+    params.push(...entityScope.params);
+  }
 
   if (query.periodId) { conditions.push('gl.period_id = ?'); params.push(Number(query.periodId)); }
   if (query.accountId) { conditions.push('gl.account_id = ?'); params.push(Number(query.accountId)); }
