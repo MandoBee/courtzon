@@ -211,7 +211,7 @@ describe('SocketEventMapper', () => {
 
   // ── accounting:entry-recorded (post-commit ledger signal) ──
   describe('accounting:entry-recorded', () => {
-    it('routes a committed subscription cash entry to admin + finance rooms', () => {
+    it('routes a committed subscription cash entry to admin, finance and the organisation room', () => {
       const result = mapDomainEvent('accounting:entry-recorded', {
         eventType: 'subscription_cash_payment', sourceType: 'subscription', sourceId: 33, organisationId: 12,
       });
@@ -219,17 +219,21 @@ describe('SocketEventMapper', () => {
       expect(result!.type).toBe('accounting.entry-recorded');
       expect(result!.rooms).toContain('admin');
       expect(result!.rooms).toContain('finance');
+      expect(result!.rooms).toContain('organisation:12');
     });
 
-    it('routes a committed card entry identically (org and seller share the event)', () => {
-      for (const organisationId of [7, null]) {
-        const result = mapDomainEvent('accounting:entry-recorded', {
-          eventType: 'card_payment', sourceType: 'subscription', sourceId: 34, organisationId,
-        });
-        expect(result!.type).toBe('accounting.entry-recorded');
-        expect(result!.rooms).toEqual(['admin', 'finance']);
-        expect(result!.payload).toMatchObject({ eventType: 'card_payment', sourceType: 'subscription', sourceId: 34 });
-      }
+    it('routes org-scoped entries to the organisation room, platform entries do not', () => {
+      const orgResult = mapDomainEvent('accounting:entry-recorded', {
+        eventType: 'card_payment', sourceType: 'subscription', sourceId: 34, organisationId: 7,
+      });
+      expect(orgResult!.rooms).toEqual(['admin', 'finance', 'organisation:7']);
+
+      const platformResult = mapDomainEvent('accounting:entry-recorded', {
+        eventType: 'card_payment', sourceType: 'subscription', sourceId: 34, organisationId: null,
+      });
+      expect(platformResult!.type).toBe('accounting.entry-recorded');
+      expect(platformResult!.rooms).toEqual(['admin', 'finance']);
+      expect(platformResult!.rooms).not.toContain('organisation:null');
     });
 
     it('carries the payload needed to scope a targeted refetch', () => {
@@ -239,6 +243,7 @@ describe('SocketEventMapper', () => {
       expect(result!.payload).toMatchObject({
         eventType: 'booking_card_payment', sourceType: 'booking', sourceId: 55, organisationId: 3,
       });
+      expect(result!.rooms).toContain('organisation:3');
     });
   });
 

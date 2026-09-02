@@ -104,7 +104,15 @@ export function mapDomainEvent(eventName: string, payload: Record<string, unknow
     }
     if (eventName.startsWith('accounting:')) {
       // A ledger entry was durably committed — finance/accounting surfaces in
-      // the admin room (and the finance room) may refetch.
+      // the admin room (and the finance room) may refetch. When the entry
+      // belongs to an organisation (organisationId set), the organisation room
+      // also receives it so the org's own accounting views (Accounting Records,
+      // Trial Balance / Income Statement / Balance Sheet, Financial Position,
+      // ledger drill-downs) refresh immediately and never show stale GL data.
+      const rooms = [ADMIN_ROOM, 'finance'];
+      if (payload.organisationId != null) {
+        rooms.push(`organisation:${payload.organisationId}`);
+      }
       return {
         type: `accounting.${eventName.split(':')[1] || 'updated'}`,
         payload: {
@@ -113,7 +121,7 @@ export function mapDomainEvent(eventName: string, payload: Record<string, unknow
           sourceId: payload.sourceId,
           organisationId: payload.organisationId,
         },
-        rooms: [ADMIN_ROOM, 'finance'],
+        rooms,
       };
     }
     if (eventName === 'user:registered') {

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { ORG_LIFECYCLE_INVALIDATIONS, invalidateOrgLifecycle, USER_REGISTRATION_INVALIDATIONS, invalidateUserRegistration, FINANCE_INVALIDATIONS, invalidateFinanceEntries, MARKETPLACE_PRODUCT_INVALIDATIONS, invalidateMarketplaceProducts } from './useRealtimeCacheUpdates';
+import { ORG_LIFECYCLE_INVALIDATIONS, invalidateOrgLifecycle, USER_REGISTRATION_INVALIDATIONS, invalidateUserRegistration, FINANCE_INVALIDATIONS, invalidateFinanceEntries, MARKETPLACE_PRODUCT_INVALIDATIONS, invalidateMarketplaceProducts, ORG_ACCOUNTING_ROOTS, invalidateOrgAccounting } from './useRealtimeCacheUpdates';
 
 function hasPrefix(keys: readonly (readonly string[])[], prefix: string[]): boolean {
   return keys.some((k) => prefix.every((part, i) => k[i] === part));
@@ -88,14 +88,15 @@ describe('USER_REGISTRATION_INVALIDATIONS (player/seller registration realtime s
 });
 
 describe('FINANCE_INVALIDATIONS (post-commit accounting realtime strategy)', () => {
-  it('targets exactly the two admin-finance query roots', () => {
-    expect(FINANCE_INVALIDATIONS).toHaveLength(2);
+  it('targets the admin-finance query roots plus the shared account-ledger modal', () => {
+    expect(FINANCE_INVALIDATIONS).toHaveLength(3);
     expect(FINANCE_INVALIDATIONS.some((k) => k[0] === 'accounting')).toBe(true);
     expect(FINANCE_INVALIDATIONS.some((k) => k[0] === 'finance')).toBe(true);
+    expect(FINANCE_INVALIDATIONS.some((k) => k[0] === 'account-ledger')).toBe(true);
   });
 
   it('never invalidates consumer/org/admin-lifecycle roots (precise, not global)', () => {
-    const forbiddenRoots = ['admin', 'wallet', 'my-bookings', 'mp-orders', 'notifications', 'organisation', 'org-subscription'];
+    const forbiddenRoots = ['admin', 'wallet', 'my-bookings', 'mp-orders', 'notifications', 'organisation', 'org-subscription', 'org'];
     for (const key of FINANCE_INVALIDATIONS) {
       for (const root of forbiddenRoots) expect(key[0]).not.toBe(root);
     }
@@ -111,6 +112,57 @@ describe('FINANCE_INVALIDATIONS (post-commit accounting realtime strategy)', () 
     invalidateFinanceEntries(fakeQc as any);
     expect(invalidated).toHaveLength(FINANCE_INVALIDATIONS.length);
     expect(new Set(invalidated.map((k) => k.join(':'))).size).toBe(invalidated.length);
+  });
+});
+
+describe('ORG_ACCOUNTING_ROOTS (organisation accounting realtime invalidation)', () => {
+  it('covers every org accounting/finance surface a ledger entry mutates', () => {
+    const roots = ORG_ACCOUNTING_ROOTS.map((k) => k.join(':'));
+    for (const expected of ['org:accounting', 'org-position', 'org-transactions', 'org-settlements', 'org-settlement-detail', 'org:booking-settlements']) {
+      expect(roots).toContain(expected);
+    }
+  });
+
+  it('never targets admin/consumer roots', () => {
+    for (const key of ORG_ACCOUNTING_ROOTS) {
+      expect(key[0]).not.toBe('accounting');
+      expect(key[0]).not.toBe('finance');
+      expect(key[0]).not.toBe('admin');
+    }
+  });
+
+  it('invalidates only org-scoped keys for the changed organisation', () => {
+    const invalidated: Array<{ key: string[]; org: string | null }> = [];
+    const fakeQc = {
+      invalidateQueries: ({ queryKey, predicate }: { queryKey: readonly string[]; predicate?: (q: any) => boolean }) => {
+        // Collect the root + every query-key it would match for org 6 vs org 9.
+        const candidates: unknown[][] = [
+          [...queryKey, 6],                // e.g. ['org','accounting','coa',6]
+          [...queryKey, 9],                // e.g. ['org-position',9]
+          [...queryKey, 6, 1, 25],         // e.g. ['org','accounting','journal-entries',6,1,25]
+        ];
+        for (const candidate of candidates) {
+          if (predicate?.({ queryKey: candidate })) invalidated.push({ key: candidate.map(String), org: String(candidate).includes('6') ? '6' : null });
+        }
+      },
+    };
+    invalidateOrgAccounting(fakeQc as any, 6);
+    // Every invalidated candidate must contain org 6 somewhere in its key.
+    for (const inv of invalidated) expect(inv.key.some((part) => part === '6')).toBe(true);
+    // Org 9 keys must never be invalidated.
+    expect(invalidated.some((inv) => inv.key.includes('9'))).toBe(false);
+    // At least one org-scoped root was exercised.
+    expect(invalidated.length).toBeGreaterThan(0);
+  });
+
+  it('does nothing for a platform-only entry (organisationId null)', () => {
+    let called = 0;
+    const fakeQc = {
+      invalidateQueries: () => { called += 1; },
+    };
+    invalidateOrgAccounting(fakeQc as any, null);
+    invalidateOrgAccounting(fakeQc as any, undefined);
+    expect(called).toBe(0);
   });
 });
 
