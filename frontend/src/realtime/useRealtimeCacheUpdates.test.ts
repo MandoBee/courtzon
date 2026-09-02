@@ -88,11 +88,12 @@ describe('USER_REGISTRATION_INVALIDATIONS (player/seller registration realtime s
 });
 
 describe('FINANCE_INVALIDATIONS (post-commit accounting realtime strategy)', () => {
-  it('targets the admin-finance query roots plus the shared account-ledger modal', () => {
-    expect(FINANCE_INVALIDATIONS).toHaveLength(3);
+  it('targets the admin-finance query roots plus the shared account-ledger modal and year-close history', () => {
+    expect(FINANCE_INVALIDATIONS).toHaveLength(4);
     expect(FINANCE_INVALIDATIONS.some((k) => k[0] === 'accounting')).toBe(true);
     expect(FINANCE_INVALIDATIONS.some((k) => k[0] === 'finance')).toBe(true);
     expect(FINANCE_INVALIDATIONS.some((k) => k[0] === 'account-ledger')).toBe(true);
+    expect(FINANCE_INVALIDATIONS.some((k) => k[0] === 'year-close')).toBe(true);
   });
 
   it('never invalidates consumer/org/admin-lifecycle roots (precise, not global)', () => {

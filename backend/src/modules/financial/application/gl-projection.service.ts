@@ -26,27 +26,50 @@ export class GlProjectionService {
     this.pool = getPool();
   }
 
-  async resolvePeriod(entryDate: string, organisationId: number | null): Promise<number> {
-    let [periods] = await this.pool.execute<RowData>(
-      `SELECT id FROM accounting_periods WHERE ? BETWEEN start_date AND end_date AND status = 'open' LIMIT 1`,
-      [entryDate],
-    );
-    if (periods.length === 0 && organisationId != null) {
-      [periods] = await this.pool.execute<RowData>(
-        `SELECT id FROM accounting_periods WHERE ? BETWEEN start_date AND end_date AND status = 'open' AND organisation_id = ? LIMIT 1`,
+  /**
+   * Resolve the posting period for a business date, organisation-scoped.
+   *
+   * Rules (single source of truth for every posting path — automatic and manual):
+   * - When an organisation is set, the org's OWN period covering the date is
+   *   authoritative. It is returned even when closed so the caller can reject
+   *   posting with the proper error — a closed/locked org period must never
+   *   accept a posting.
+   * - When the org has no period for that date, fall back to the platform
+   *   period (organisation_id NULL, open preferred) for backward compatibility
+   *   with orgs that have not generated their own periods yet.
+   * - Platform postings (organisationId null) use the platform period only.
+   * - Another organisation's period is NEVER returned (org isolation).
+   */
+  async resolvePostingPeriod(entryDate: string, organisationId: number | null): Promise<{ id: number; status: string }> {
+    if (organisationId != null) {
+      const [orgPeriods] = await this.pool.execute<RowData>(
+        `SELECT id, status FROM accounting_periods WHERE ? BETWEEN start_date AND end_date AND organisation_id = ? LIMIT 1`,
         [entryDate, organisationId],
       );
+      if (orgPeriods.length) {
+        return { id: (orgPeriods as any[])[0].id, status: (orgPeriods as any[])[0].status };
+      }
     }
-    if (periods.length === 0) {
-      [periods] = await this.pool.execute<RowData>(
-        `SELECT id FROM accounting_periods WHERE ? BETWEEN start_date AND end_date LIMIT 1`,
-        [entryDate],
-      );
+    // Platform period (open preferred; a closed platform period is returned so
+    // the caller can reject posting with a meaningful error).
+    const [platformPeriods] = await this.pool.execute<RowData>(
+      `SELECT id, status FROM accounting_periods
+       WHERE ? BETWEEN start_date AND end_date AND organisation_id IS NULL
+       ORDER BY (status = 'open') DESC, id ASC LIMIT 1`,
+      [entryDate],
+    );
+    if (platformPeriods.length) {
+      return { id: (platformPeriods as any[])[0].id, status: (platformPeriods as any[])[0].status };
     }
-    if (periods.length === 0) {
-      throw new Error(`No accounting period found for date ${entryDate}`);
+    throw new Error(`No accounting period found for date ${entryDate}`);
+  }
+
+  async resolvePeriod(entryDate: string, organisationId: number | null): Promise<number> {
+    const period = await this.resolvePostingPeriod(entryDate, organisationId);
+    if (period.status !== 'open') {
+      throw new Error(`Accounting period ${period.id} is not open`);
     }
-    return (periods as any[])[0].id;
+    return period.id;
   }
 
   validateOpenPeriod(periodId: number): Promise<void> {

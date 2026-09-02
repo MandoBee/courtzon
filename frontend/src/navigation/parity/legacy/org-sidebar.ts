@@ -54,6 +54,7 @@ export function buildLegacyOrgNavItems(can: (perm: string) => boolean, orgId: st
             { label: 'Dashboard', path: p('accounting/dashboard'), permissionKey: 'org.accounting.view' },
             { label: 'Accounting Records', path: p('accounting/records'), permissionKey: 'org.accounting.view' },
             { label: 'Chart of Accounts', path: p('accounting/coa'), permissionKey: 'org.accounting.view' },
+            { label: 'Accounting Periods', path: p('accounting/periods'), permissionKey: 'org.accounting.view' },
           ],
         },
         {

@@ -35,6 +35,21 @@ export async function accountingRoutes(app: FastifyInstance): Promise<void> {
   app.get('/org/:orgId/accounting/journal', { preHandler: [orgJournalView] }, ctrl.orgJournalListHandler);
   app.post('/org/:orgId/accounting/journal', { preHandler: [orgJournalCreate] }, ctrl.orgJournalCreateHandler);
 
+  // ── Organisation-scoped Accounting Periods & Year Close ──
+  // Org admins manage their own periods and year-end closing through the SAME
+  // canonical logic as Super Admin. scopedRequest injects the route :orgId as
+  // the authoritative organisationId on every handler, so an organisation can
+  // only ever list/generate/close/open ITS OWN periods and close/reopen ITS OWN
+  // fiscal year. Platform (Super Admin) behaviour is unchanged.
+  app.get('/org/:orgId/accounting/periods', { preHandler: [orgAccountingView] }, ctrl.orgListPeriodsHandler);
+  app.post('/org/:orgId/accounting/periods/generate', { preHandler: [orgAccountingManage] }, ctrl.orgGeneratePeriodsHandler);
+  app.post('/org/:orgId/accounting/periods/:id/close', { preHandler: [orgAccountingManage] }, ctrl.orgClosePeriodHandler);
+  app.post('/org/:orgId/accounting/periods/:id/open', { preHandler: [orgAccountingManage] }, ctrl.orgOpenPeriodHandler);
+  app.get('/org/:orgId/accounting/year-close/preview', { preHandler: [orgAccountingView] }, ctrl.orgYearClosePreviewHandler);
+  app.post('/org/:orgId/accounting/year-close', { preHandler: [orgAccountingManage] }, ctrl.orgYearCloseHandler);
+  app.get('/org/:orgId/accounting/year-close/history', { preHandler: [orgAccountingView] }, ctrl.orgYearCloseHistoryHandler);
+  app.post('/org/:orgId/accounting/year-close/reopen', { preHandler: [orgAccountingManage] }, ctrl.orgYearCloseReopenHandler);
+
   // Dashboard
   app.get('/admin/accounting/dashboard', { preHandler: [requirePermission(['accounting.dashboard'])] }, ctrl.getDashboardHandler);
 

@@ -208,6 +208,7 @@ const FinancialPositionPage = lazy(() => import('./pages/org/FinancialPositionPa
 const OrgBookingSettlementsPage = lazy(() => import('./pages/org/OrgBookingSettlementsPage'));
 const OrgAccountingDashboardPage = lazy(() => import('./pages/org/OrgAccountingDashboardPage'));
 const OrgChartOfAccountsPage = lazy(() => import('./pages/org/OrgChartOfAccountsPage'));
+const OrgAccountingPeriodsPage = lazy(() => import('./pages/org/OrgAccountingPeriodsPage'));
 const OrgAccountingRecordsPage = lazy(() => import('./pages/org/OrgAccountingRecordsPage'));
 const OrgFinancialReportsPage = lazy(() => import('./pages/org/OrgFinancialReportsPage'));
 const OrgTaxSummaryPage = lazy(() => import('./pages/org/OrgTaxSummaryPage'));
@@ -818,6 +819,7 @@ function AppContent() {
             <Route path="accounting" element={<Navigate to="accounting/dashboard" replace />} />
             <Route path="accounting/dashboard" element={<OrgAccountingDashboardPage />} />
             <Route path="accounting/coa" element={<OrgChartOfAccountsPage />} />
+            <Route path="accounting/periods" element={<OrgAccountingPeriodsPage />} />
             <Route path="accounting/journal" element={<OrgJournalRedirect />} />
             <Route path="accounting/records" element={<OrgAccountingRecordsPage />} />
             <Route path="accounting/reports" element={<Navigate to="reports/trial-balance" replace />} />
