@@ -6,6 +6,7 @@ import { createModuleLogger } from '../../../shared/utils/logger.js';
 import { marketplaceRepository } from '../infrastructure/repositories/marketplace.repository.js';
 import { marketplaceComplaintRepository, type ComplaintRecord } from '../infrastructure/repositories/marketplace-complaint.repository.js';
 import { financialEntitlementService } from '../../financial/application/financial-entitlement.service.js';
+import { getMarketplaceComplaintPeriodDays } from '../../financial/application/complaint-period.config.js';
 import { walletRepository } from '../../wallet/infrastructure/repositories/wallet.repository.js';
 import { calculateDisputedValue, computeCumulativeRefundFinancials } from '../../financial/application/marketplace-refund-calc.js';
 import {
@@ -23,8 +24,6 @@ import {
 
 const log = createModuleLogger('marketplace-complaint');
 
-type RowData = import('mysql2/promise').RowDataPacket[];
-
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
 interface ComplaintDetail extends ComplaintRecord {
@@ -35,14 +34,13 @@ interface ComplaintDetail extends ComplaintRecord {
 export const marketplaceComplaintService = {
   // ── Eligibility helper ──
 
+  /**
+   * The buyer complaint window in days, read from the canonical admin-controlled
+   * setting `marketplace.complaint_period_days` (default 7). 0 disables the
+   * window (complaints allowed anytime, entitlement activates immediately).
+   */
   async getComplaintWindowDays(): Promise<number> {
-    const pool = getPool();
-    const [rows] = await pool.execute<RowData>(
-      'SELECT complaint_period_days, is_active FROM marketplace_complaint_config WHERE id = 1',
-    );
-    if (!rows.length) return 0;
-    const cfg = rows[0] as any;
-    return cfg.is_active ? Number(cfg.complaint_period_days || 0) : 0;
+    return getMarketplaceComplaintPeriodDays();
   },
 
   /**
