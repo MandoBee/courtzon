@@ -77,8 +77,10 @@ describe('P1-2d: No frontend financial calculation introduced', () => {
 
   it('GL net income is read from the backend value, not recomputed', () => {
     const dashboard = readFrontend('./OrgAccountingDashboardPage.tsx');
-    const report = readFrontend('./OrgFinancialReportsPage.tsx');
+    const sharedReports = readFrontend('../../components/accounting/financialReports.tsx');
     expect(dashboard).toContain('s.net_income');
-    expect(report).toContain('data?.net_income');
+    // The income statement footer (shared by Super Admin + org reports) reads the
+    // canonical backend value — never recomputed on the client.
+    expect(sharedReports).toContain('data?.net_income');
   });
 });
