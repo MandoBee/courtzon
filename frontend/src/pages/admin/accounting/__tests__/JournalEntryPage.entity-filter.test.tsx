@@ -170,18 +170,37 @@ describe('JournalEntryPage — entity filter (CourtZon / Organisation / Merchant
     expect(byLabel.get('Merchant B')).toBe('merchant:89');
   });
 
-  it('selecting a deduplicated organisation or merchant sends the same existing entityType/entityId', async () => {
+  it('changing the Entity triggers a refetch IMMEDIATELY (no Apply click required)', async () => {
     renderPage();
     await screen.findByText('Entry 0');
-    fireEvent.change(screen.getByLabelText('Entity'), { target: { value: 'organisation:51' } });
-    fireEvent.click(screen.getByText('Apply'));
+    const before = journalCalls().length;
+
+    fireEvent.change(screen.getByLabelText('Entity'), { target: { value: 'organisation:7' } });
+
+    // No Apply click — the entity-only request fires on its own.
     await waitFor(() => {
       const last: any = journalCalls().slice(-1)[0];
       expect(last[1].params.entityType).toBe('organisation');
-      expect(last[1].params.entityId).toBe('51');
+      expect(last[1].params.entityId).toBe('7');
+      expect(journalCalls().length).toBeGreaterThan(before);
     });
+  });
+
+  it('changing the Entity to All applies immediately and sends entityType=all (no entityId)', async () => {
+    renderPage();
+    await screen.findByText('Entry 0');
+    fireEvent.change(screen.getByLabelText('Entity'), { target: { value: 'all' } });
+    await waitFor(() => {
+      const last: any = journalCalls().slice(-1)[0];
+      expect(last[1].params.entityType).toBe('all');
+      expect(last[1].params.entityId).toBeUndefined();
+    });
+  });
+
+  it('selecting a merchant applies immediately with entityType=merchant&entityId', async () => {
+    renderPage();
+    await screen.findByText('Entry 0');
     fireEvent.change(screen.getByLabelText('Entity'), { target: { value: 'merchant:88' } });
-    fireEvent.click(screen.getByText('Apply'));
     await waitFor(() => {
       const last: any = journalCalls().slice(-1)[0];
       expect(last[1].params.entityType).toBe('merchant');
@@ -189,34 +208,68 @@ describe('JournalEntryPage — entity filter (CourtZon / Organisation / Merchant
     });
   });
 
-  it('selecting an organisation + Apply sends entityType=organisation&entityId', async () => {
+  it('changing From Date ALONE does NOT trigger a request', async () => {
     renderPage();
     await screen.findByText('Entry 0');
+    const before = journalCalls().length;
+    fireEvent.change(screen.getByLabelText('From Date'), { target: { value: '2026-03-09' } });
+    await waitFor(() => {});
+    expect(journalCalls().length).toBe(before);
+  });
+
+  it('changing To Date ALONE does NOT trigger a request', async () => {
+    renderPage();
+    await screen.findByText('Entry 0');
+    const before = journalCalls().length;
+    fireEvent.change(screen.getByLabelText('To Date'), { target: { value: '2026-03-05' } });
+    await waitFor(() => {});
+    expect(journalCalls().length).toBe(before);
+  });
+
+  it('changing BOTH dates alone does NOT trigger a request until Apply', async () => {
+    renderPage();
+    await screen.findByText('Entry 0');
+    const before = journalCalls().length;
+    fireEvent.change(screen.getByLabelText('From Date'), { target: { value: '2026-03-09' } });
+    fireEvent.change(screen.getByLabelText('To Date'), { target: { value: '2026-03-05' } });
+    await waitFor(() => {});
+    expect(journalCalls().length).toBe(before);
+  });
+
+  it('Apply after changing dates uses the selected Entity plus the newly applied dates (no entity re-apply needed)', async () => {
+    renderPage();
+    await screen.findByText('Entry 0');
+
+    // Apply an entity first — applied immediately.
     fireEvent.change(screen.getByLabelText('Entity'), { target: { value: 'organisation:7' } });
-    fireEvent.click(screen.getByText('Apply'));
     await waitFor(() => {
       const last: any = journalCalls().slice(-1)[0];
       expect(last[1].params.entityType).toBe('organisation');
       expect(last[1].params.entityId).toBe('7');
     });
-  });
 
-  it('selecting a merchant + Apply sends entityType=merchant&entityId', async () => {
-    renderPage();
-    await screen.findByText('Entry 0');
-    fireEvent.change(screen.getByLabelText('Entity'), { target: { value: 'merchant:88' } });
+    // Change both date inputs — no request.
+    const beforeDates = journalCalls().length;
+    fireEvent.change(screen.getByLabelText('From Date'), { target: { value: '2026-03-09' } });
+    fireEvent.change(screen.getByLabelText('To Date'), { target: { value: '2026-05-09' } });
+    await waitFor(() => {});
+    expect(journalCalls().length).toBe(beforeDates);
+
+    // Apply — request carries the entity + the newly applied dates.
     fireEvent.click(screen.getByText('Apply'));
     await waitFor(() => {
+      expect(journalCalls().length).toBeGreaterThan(0);
       const last: any = journalCalls().slice(-1)[0];
-      expect(last[1].params.entityType).toBe('merchant');
-      expect(last[1].params.entityId).toBe('88');
+      expect(last[1].params.entityType).toBe('organisation');
+      expect(last[1].params.entityId).toBe('7');
+      expect(last[1].params.dateFrom).toBe('2026-03-09');
+      expect(last[1].params.dateTo).toBe('2026-05-09');
     });
   });
 
   it('entity filter combines with From/To dates', async () => {
     renderPage();
     await screen.findByText('Entry 0');
-    const dateInputs = screen.getAllByLabelText(/From Date|To Date/);
     fireEvent.change(screen.getByLabelText('From Date'), { target: { value: '2026-01-01' } });
     fireEvent.change(screen.getByLabelText('To Date'), { target: { value: '2026-12-31' } });
     fireEvent.change(screen.getByLabelText('Entity'), { target: { value: 'organisation:7' } });
@@ -228,39 +281,80 @@ describe('JournalEntryPage — entity filter (CourtZon / Organisation / Merchant
       expect(last[1].params.dateFrom).toBe('2026-01-01');
       expect(last[1].params.dateTo).toBe('2026-12-31');
     });
-    void dateInputs;
   });
 
-  it('All sends entityType=all (no entityId)', async () => {
+  it('a single Entity change generates no duplicate request (one new journal fetch)', async () => {
     renderPage();
     await screen.findByText('Entry 0');
-    fireEvent.change(screen.getByLabelText('Entity'), { target: { value: 'all' } });
-    fireEvent.click(screen.getByText('Apply'));
-    await waitFor(() => {
-      const last: any = journalCalls().slice(-1)[0];
-      expect(last[1].params.entityType).toBe('all');
-      expect(last[1].params.entityId).toBeUndefined();
-    });
-  });
+    const before = journalCalls().length;
 
-  it('Clear resets dates and returns the entity to CourtZon', async () => {
-    renderPage();
-    await screen.findByText('Entry 0');
-    fireEvent.change(screen.getByLabelText('From Date'), { target: { value: '2026-01-01' } });
     fireEvent.change(screen.getByLabelText('Entity'), { target: { value: 'organisation:7' } });
-    fireEvent.click(screen.getByText('Apply'));
     await waitFor(() => {
       const last: any = journalCalls().slice(-1)[0];
       expect(last[1].params.entityType).toBe('organisation');
     });
+
+    // Buffer a tick to let any duplicate fire, then assert exactly one more call.
+    await waitFor(() => {});
+    const entityChangeCalls = journalCalls().slice(before);
+    expect(entityChangeCalls.length).toBe(1);
+    const singleCall: any = entityChangeCalls[0];
+    expect(singleCall[1].params.entityType).toBe('organisation');
+    expect(singleCall[1].params.entityId).toBe('7');
+  });
+
+  it('clicking Apply WITHOUT changing dates does NOT generate a duplicate request', async () => {
+    renderPage();
+    await screen.findByText('Entry 0');
+    const before = journalCalls().length;
+    fireEvent.click(screen.getByText('Apply'));
+    await waitFor(() => {});
+    expect(journalCalls().length).toBe(before);
+  });
+
+  it('Clear removes the applied date range, refreshes, and PRESERVES the selected Entity', async () => {
+    renderPage();
+    await screen.findByText('Entry 0');
+
+    // Pick an entity (applies immediately) and apply a date range.
+    fireEvent.change(screen.getByLabelText('Entity'), { target: { value: 'organisation:7' } });
+    fireEvent.change(screen.getByLabelText('From Date'), { target: { value: '2026-01-01' } });
+    fireEvent.click(screen.getByText('Apply'));
+    await waitFor(() => {
+      const last: any = journalCalls().slice(-1)[0];
+      expect(last[1].params.entityType).toBe('organisation');
+      expect(last[1].params.dateFrom).toBe('2026-01-01');
+    });
+
+    // Clear — the date range is removed but the entity is preserved.
     fireEvent.click(screen.getByText('Clear'));
     await waitFor(() => {
       const last: any = journalCalls().slice(-1)[0];
-      expect(last[1].params.entityType).toBe('courtzon');
       expect(last[1].params.dateFrom).toBeUndefined();
       expect(last[1].params.dateTo).toBeUndefined();
-      expect(last[1].params.entityId).toBeUndefined();
+      expect(last[1].params.entityType).toBe('organisation');
+      expect(last[1].params.entityId).toBe('7');
     });
-    expect((screen.getByLabelText('Entity') as HTMLSelectElement).value).toBe('courtzon');
+    expect((screen.getByLabelText('Entity') as HTMLSelectElement).value).toBe('organisation:7');
+    expect((screen.getByLabelText('From Date') as HTMLInputElement).value).toBe('');
+    expect((screen.getByLabelText('To Date') as HTMLInputElement).value).toBe('');
+  });
+
+  it('Clear preserves a merchant entity selection too', async () => {
+    renderPage();
+    await screen.findByText('Entry 0');
+    fireEvent.change(screen.getByLabelText('Entity'), { target: { value: 'merchant:88' } });
+    await waitFor(() => {
+      const last: any = journalCalls().slice(-1)[0];
+      expect(last[1].params.entityType).toBe('merchant');
+      expect(last[1].params.entityId).toBe('88');
+    });
+    fireEvent.click(screen.getByText('Clear'));
+    await waitFor(() => {
+      const last: any = journalCalls().slice(-1)[0];
+      expect(last[1].params.entityType).toBe('merchant');
+      expect(last[1].params.entityId).toBe('88');
+    });
+    expect((screen.getByLabelText('Entity') as HTMLSelectElement).value).toBe('merchant:88');
   });
 });

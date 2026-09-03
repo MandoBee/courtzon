@@ -73,20 +73,21 @@ export default function JournalEntryPage() {
   const [filterTo, setFilterTo] = useState('');
   const [appliedFrom, setAppliedFrom] = useState('');
   const [appliedTo, setAppliedTo] = useState('');
+  // Entity selection is applied IMMEDIATELY (independent of Apply). Dates are
+  // applied only on Apply. `entityType`/`entityId` are therefore always the
+  // active query scope, while `appliedFrom`/`appliedTo` are the active date range.
   const [entityType, setEntityType] = useState<'courtzon' | 'organisation' | 'merchant' | 'all'>('courtzon');
   const [entityId, setEntityId] = useState('');
-  const [appliedEntityType, setAppliedEntityType] = useState<'courtzon' | 'organisation' | 'merchant' | 'all'>('courtzon');
-  const [appliedEntityId, setAppliedEntityId] = useState('');
   const [form, setForm] = useState({ entry_date: localToday(), description: '' });
   const [lines, setLines] = useState<LineItem[]>([{ account_id: '', account_code: '', account_name: '', debit: 0, credit: 0 }]);
 
   const { data: entriesData, isLoading } = useQuery({
-    queryKey: ['accounting', 'journal-entries-grouped', page, pageSize, appliedFrom, appliedTo, appliedEntityType, appliedEntityId],
+    queryKey: ['accounting', 'journal-entries-grouped', page, pageSize, appliedFrom, appliedTo, entityType, entityId],
     queryFn: () => api.get('/admin/accounting/journal', {
       params: {
         grouped: true, page, pageSize,
         dateFrom: appliedFrom || undefined, dateTo: appliedTo || undefined,
-        entityType: appliedEntityType, entityId: appliedEntityId || undefined,
+        entityType, entityId: entityId || undefined,
       },
     }).then((r: any) => r.data),
   });
@@ -159,6 +160,8 @@ export default function JournalEntryPage() {
     });
   };
 
+  // Apply is concerned ONLY with the date range. The entity is already applied
+  // immediately on change, so this does not re-apply the entity scope.
   const applyFilters = () => {
     if (filterFrom && filterTo && filterFrom > filterTo) {
       showToast('From date must be before or equal to To date', 'error');
@@ -167,34 +170,31 @@ export default function JournalEntryPage() {
     setPage(1);
     setAppliedFrom(filterFrom);
     setAppliedTo(filterTo);
-    setAppliedEntityType(entityType);
-    setAppliedEntityId(entityId);
   };
 
+  // Clear resets ONLY the date filter state. The entity selection is preserved
+  // because it is now an immediately-applied independent filter.
   const clearFilters = () => {
     setFilterFrom('');
     setFilterTo('');
     setAppliedFrom('');
     setAppliedTo('');
-    // Entity resets to the default CourtZon scope (consistent with the page default).
-    setEntityType('courtzon');
-    setEntityId('');
-    setAppliedEntityType('courtzon');
-    setAppliedEntityId('');
     setPage(1);
   };
 
+  // Entity selection applies immediately (no Apply click required).
   const onEntityChange = (value: string) => {
     if (value === 'courtzon' || value === 'all') {
       setEntityType(value);
       setEntityId('');
-      return;
+    } else {
+      const sep = value.indexOf(':');
+      const t = value.slice(0, sep) as 'organisation' | 'merchant';
+      const id = value.slice(sep + 1);
+      setEntityType(t);
+      setEntityId(id);
     }
-    const sep = value.indexOf(':');
-    const t = value.slice(0, sep) as 'organisation' | 'merchant';
-    const id = value.slice(sep + 1);
-    setEntityType(t);
-    setEntityId(id);
+    setPage(1);
   };
 
   const entitySelectValue = entityType === 'organisation' || entityType === 'merchant'
