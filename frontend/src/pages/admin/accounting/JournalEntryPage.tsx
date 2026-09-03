@@ -27,6 +27,42 @@ interface GroupedEntry {
   lines: { account_code: string; account_name: string; debit: number; credit: number }[];
 }
 
+export interface JournalEntityOption {
+  id: number;
+  name: string;
+  value: string;
+}
+
+/**
+ * Build ONE option per unique entity from the organisation + merchant sources.
+ *
+ * Root cause of duplicates: merchants are seller ORGANISATIONS, so the SAME
+ * entity (same organisation_id) can be returned by both the organisation source
+ * and the merchant source. Deduplicate by the canonical entity identity
+ * (organisation_id), preferring the organisation identity (`organisation:<id>`)
+ * whenever the id is present in the organisation source. An entity that exists
+ * ONLY in the merchant source keeps its `merchant:<id>` value. Two genuinely
+ * different entities that merely share a display name have different ids and are
+ * NEVER merged. The visible label is just the entity name.
+ */
+export function buildUniqueEntities(
+  orgs: { id: number | string; name?: string }[],
+  merchants: { id: number | string; name?: string }[],
+): JournalEntityOption[] {
+  const byId = new Map<number, JournalEntityOption>();
+  for (const o of orgs || []) {
+    const id = Number(o.id);
+    if (!Number.isFinite(id)) continue;
+    byId.set(id, { id, name: String(o.name || `Entity #${id}`), value: `organisation:${id}` });
+  }
+  for (const m of merchants || []) {
+    const id = Number(m.id);
+    if (!Number.isFinite(id) || byId.has(id)) continue;
+    byId.set(id, { id, name: String(m.name || `Entity #${id}`), value: `merchant:${id}` });
+  }
+  return [...byId.values()];
+}
+
 export default function JournalEntryPage() {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
@@ -67,6 +103,10 @@ export default function JournalEntryPage() {
     queryKey: ['accounting', 'journal-entity-merchants'],
     queryFn: () => api.get('/marketplace/admin/sellers', { params: { limit: 500 } }).then((r: any) => r.data?.data || []),
   });
+
+  // One option per unique entity (merchants are seller orgs and can overlap with
+  // the organisation source — deduplicate by canonical entity id).
+  const entityOptions = buildUniqueEntities(orgs || [], merchants || []);
 
   const { data: accounts } = useQuery({
     queryKey: ['accounting', 'chart-of-accounts'],
@@ -273,11 +313,8 @@ export default function JournalEntryPage() {
                 className="px-3 py-2 border rounded-[var(--radius-md)] bg-[var(--color-bg)] text-sm min-w-[200px]"
               >
                 <option value="courtzon">CourtZon</option>
-                {(orgs || []).map((o: any) => (
-                  <option key={`org-${o.id}`} value={`organisation:${o.id}`}>{o.name}</option>
-                ))}
-                {(merchants || []).map((m: any) => (
-                  <option key={`mer-${m.id}`} value={`merchant:${m.id}`}>{m.name}</option>
+                {entityOptions.map((e) => (
+                  <option key={e.value} value={e.value}>{e.name}</option>
                 ))}
                 <option value="all">All</option>
               </select>

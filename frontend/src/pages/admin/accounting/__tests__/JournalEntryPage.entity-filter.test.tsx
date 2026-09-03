@@ -45,10 +45,22 @@ function mockDefault() {
       return Promise.resolve({ data: { data: [makeEntry(start, orgId)], total: 1, page, pageSize } });
     }
     if (url === '/admin/organisations') {
-      return Promise.resolve({ data: [{ id: 7, name: 'Padel Edge' }, { id: 8, name: 'Org B' }] });
+      // Every org. Merchants (sellers) below are a SUBSET sharing the same ids.
+      return Promise.resolve({ data: [
+        { id: 7, name: 'Padel Edge' }, { id: 8, name: 'Org B' },
+        { id: 95, name: 'Club 1' }, { id: 90, name: 'Club 9' },
+        { id: 93, name: 'Shop 1' }, { id: 94, name: 'Shop 2' },
+        { id: 91, name: 'Shop 3' }, { id: 92, name: 'Shop 5' },
+        { id: 52, name: 'Shop 6' }, { id: 51, name: 'Shop 7' },
+      ] });
     }
     if (url === '/marketplace/admin/sellers') {
-      return Promise.resolve({ data: { data: [{ id: 88, name: 'Merchant A' }, { id: 89, name: 'Merchant B' }], total: 2 } });
+      // Seller orgs — ids 7/51/52/90 overlap with the organisation source.
+      return Promise.resolve({ data: { data: [
+        { id: 7, name: 'Padel Edge' }, { id: 51, name: 'Shop 7' },
+        { id: 52, name: 'Shop 6' }, { id: 90, name: 'Club 9' },
+        { id: 88, name: 'Merchant A' }, { id: 89, name: 'Merchant B' },
+      ], total: 6 } });
     }
     if (url === '/admin/accounting/accounts') {
       return Promise.resolve({ data: { data: [] } });
@@ -101,9 +113,10 @@ describe('JournalEntryPage — entity filter (CourtZon / Organisation / Merchant
       expect(label).not.toContain('— Organisation');
       expect(label).not.toContain('— Merchant');
     }
-    // No internal ids visible in the labels.
+    // No option shows ONLY a bare internal id (entity names may legitimately
+    // contain digits, e.g. "Club 1" / "Shop 7").
     for (const label of labels) {
-      expect(label).not.toMatch(/\b\d{1,6}\b/);
+      expect(label).not.toMatch(/^#?\d+$/);
     }
     // No nested optgroups rendered.
     expect(Array.from(select.querySelectorAll('optgroup'))).toHaveLength(0);
@@ -112,6 +125,68 @@ describe('JournalEntryPage — entity filter (CourtZon / Organisation / Merchant
     expect(order[0]).toBe('CourtZon');
     expect(order[order.length - 1]).toBe('All');
     expect(order.indexOf('Padel Edge')).toBeLessThan(order.indexOf('Merchant A'));
+  });
+
+  it('deduplicates entities returned by BOTH the organisation and merchant sources (one option per entity)', async () => {
+    renderPage();
+    await screen.findByText('Entry 0');
+    const select = screen.getByLabelText('Entity') as HTMLSelectElement;
+    const labels = Array.from(select.options).map((o) => o.textContent || '');
+    const count = (name: string) => labels.filter((l) => l === name).length;
+
+    // CourtZon / All appear exactly once.
+    expect(count('CourtZon')).toBe(1);
+    expect(count('All')).toBe(1);
+    // Overlapping entities (present in both sources) appear exactly once.
+    expect(count('Padel Edge')).toBe(1);
+    expect(count('Shop 7')).toBe(1);
+    expect(count('Shop 6')).toBe(1);
+    expect(count('Club 9')).toBe(1);
+    // Merchant-only entities appear exactly once.
+    expect(count('Merchant A')).toBe(1);
+    expect(count('Merchant B')).toBe(1);
+    // Every organisation appears exactly once.
+    for (const name of ['Org B', 'Club 1', 'Shop 1', 'Shop 2', 'Shop 3', 'Shop 5']) {
+      expect(count(name)).toBe(1);
+    }
+    // No visible name is ever repeated.
+    for (const label of labels) expect(count(label)).toBe(1);
+  });
+
+  it('a deduplicated entity keeps its canonical internal value (organisation preferred, merchant-only keeps merchant)', async () => {
+    renderPage();
+    await screen.findByText('Entry 0');
+    const select = screen.getByLabelText('Entity') as HTMLSelectElement;
+    const opts = Array.from(select.options).filter((o) => o.value !== 'courtzon' && o.value !== 'all');
+    const byLabel = new Map(opts.map((o) => [o.textContent || '', o.value]));
+
+    // Entities in BOTH sources keep the organisation identity.
+    expect(byLabel.get('Padel Edge')).toBe('organisation:7');
+    expect(byLabel.get('Shop 7')).toBe('organisation:51');
+    expect(byLabel.get('Shop 6')).toBe('organisation:52');
+    expect(byLabel.get('Club 9')).toBe('organisation:90');
+    // Merchant-only entities keep the merchant identity.
+    expect(byLabel.get('Merchant A')).toBe('merchant:88');
+    expect(byLabel.get('Merchant B')).toBe('merchant:89');
+  });
+
+  it('selecting a deduplicated organisation or merchant sends the same existing entityType/entityId', async () => {
+    renderPage();
+    await screen.findByText('Entry 0');
+    fireEvent.change(screen.getByLabelText('Entity'), { target: { value: 'organisation:51' } });
+    fireEvent.click(screen.getByText('Apply'));
+    await waitFor(() => {
+      const last: any = journalCalls().slice(-1)[0];
+      expect(last[1].params.entityType).toBe('organisation');
+      expect(last[1].params.entityId).toBe('51');
+    });
+    fireEvent.change(screen.getByLabelText('Entity'), { target: { value: 'merchant:88' } });
+    fireEvent.click(screen.getByText('Apply'));
+    await waitFor(() => {
+      const last: any = journalCalls().slice(-1)[0];
+      expect(last[1].params.entityType).toBe('merchant');
+      expect(last[1].params.entityId).toBe('88');
+    });
   });
 
   it('selecting an organisation + Apply sends entityType=organisation&entityId', async () => {
