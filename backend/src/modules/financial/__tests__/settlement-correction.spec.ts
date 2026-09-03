@@ -19,31 +19,31 @@ const MIGRATION = resolve(projectRoot, 'database/migrations/154_settlement_histo
 /**
  * Historical Marketplace Organisation Settlement Correction — Integration
  *
- * Verifies migration 154 (audit-preserving correction of the three
- * pre-ec2a5ab settlements) reproduces the canonical accounting engine behavior:
+ * Verifies the audit-preserving correction of the three pre-ec2a5ab settlements
+ * is performed through the CANONICAL ACCOUNTING ENGINE (`postAccountingEvent`),
+ * exactly as `backend/scripts/correct-historical-settlements.mjs` does:
+ *   Migration 154 provisions org-scoped ORG-CASH / 1161 accounts + mapping rows;
+ *   the correction runner then posts three balanced journals per settlement:
+ *     settlement_paid_reversal   (org-scoped Dr 1120 / Cr 2200)
+ *     settlement_paid_correction (global   Dr 2202 / Cr 1120)
+ *     settlement_org_receipt     (org-scoped Dr ORG-CASH / Cr 1161)
+ *
  *   1. Settlement #1 (org 6, 810.00), #2 (org 6, 7509.40), #3 (org 28, 140.75)
- *      each receive exactly three correction event types:
- *        settlement_paid_reversal   (org-scoped Dr 1120 / Cr 2200)
- *        settlement_paid_correction (global   Dr 2202 / Cr 1120)
- *        settlement_org_receipt     (org-scoped Dr ORG-CASH / Cr 1161)
+ *      each receive exactly three correction event types.
  *   2. Every journal is balanced; original rows 159-164 stay immutable.
  *   3. CourtZon 2202 credit of 8460.15 is cleared exactly once; org 1161
  *      (8319.40 / 140.75) cleared exactly once.
- *   4. Re-running the migration is a no-op.
+ *   4. Re-running the correction is a no-op (idempotent).
  *   5. No business/settlement/payment/entitlement record is modified.
+ *   6. general_ledger projections exist for every new journal and reconcile.
  *
  * All assertions are SOURCE-SCOPED (they inspect the exact ledger rows for a
  * given settlement id), so the test is deterministic even when other spec
  * files run concurrently against the same shared MySQL database.
- *
- * Fixture: creates orgs 6 & 28, settlements 1/2/3, entitlements, the
- * historical ledger rows 159-164, and the supporting marketplace global rows,
- * then applies migration 154's SQL. Cleanup is explicit and source-scoped.
  */
-describe('Historical Settlement Correction (migration 154)', () => {
+describe('Historical Settlement Correction (migration 154 + canonical engine)', () => {
   let pool: mysql.Pool;
   const SIDS = [1, 2, 3];
-  const HISTORICAL_LE_IDS = [159, 160, 161, 162, 163, 164];
 
   // Global COA resolution by stable CODE (never hard-coded ids).
   async function globalAccountId(code: string): Promise<number> {
@@ -106,6 +106,7 @@ describe('Historical Settlement Correction (migration 154)', () => {
     return out;
   }
 
+  /** Apply migration 154 (provisioning-only: org ORG-CASH/1161 + mapping rows). */
   async function applyMigration(): Promise<void> {
     const raw = readFileSync(MIGRATION, 'utf8').replace(/^\uFEFF/, '');
     const conn = await mysql.createConnection({
@@ -117,6 +118,12 @@ describe('Historical Settlement Correction (migration 154)', () => {
     } finally {
       await conn.end();
     }
+  }
+
+  /** Run the correction through the CANONICAL engine (same as the runner script). */
+  async function applyCorrection(): Promise<{ posted: number; skipped: number }> {
+    const { applyHistoricalSettlementCorrections } = await import('../application/settlement-correction.service.js');
+    return applyHistoricalSettlementCorrections();
   }
 
   beforeAll(async () => {
@@ -132,7 +139,7 @@ describe('Historical Settlement Correction (migration 154)', () => {
     }
     await pool.execute(`DELETE FROM ledger_entries WHERE source_type='settlement' AND source_id IN (1,2,3)`);
     await pool.execute(`DELETE FROM general_ledger WHERE reference_type LIKE 'settlement_%' AND reference_id IN (1,2,3)`);
-    await pool.execute(`DELETE FROM accounting_event_mapping_lines WHERE event_type='settlement_org_receipt'`);
+    await pool.execute(`DELETE FROM accounting_event_mapping_lines WHERE event_type='settlement_org_receipt' AND organisation_id IN (6,28)`);
     await pool.execute(`DELETE FROM chart_of_accounts WHERE code='ORG-CASH' AND organisation_id IN (6,28)`);
 
     // org 6 & 28 must exist for the migration (FK). Create if missing.
@@ -241,9 +248,6 @@ describe('Historical Settlement Correction (migration 154)', () => {
     }
 
     // ── Fixture: provision org-scoped 1161 + ORG-CASH accounts (mirror production) ──
-    // Production orgs 6 & 28 already have org-scoped 1161 (and now ORG-CASH after
-    // migration 154). Provision them idempotently so the org-book receivable
-    // fixture rows below resolve to the correct org-specific accounts.
     const parentCash = await globalAccountId('ASSETS-CASH');
     const parentRecv = await globalAccountId('ASSETS-RECEIVABLES');
     for (const org of [6, 28]) {
@@ -260,7 +264,6 @@ describe('Historical Settlement Correction (migration 154)', () => {
     }
 
     // ── Fixture: supporting org-book receivable rows (marketplace_org_receivable) ──
-    // org 28 1161 debit 140.75 (order 23); org 6 1161 debit 810 + 7509.40.
     await pool.execute(
       `INSERT INTO ledger_entries (transaction_id, source_type, source_id, event_type, period_id, organisation_id, chart_account_id, account_type, side, amount, currency, description, recorded_at)
        SELECT 'mkt_or_23_1161', 'marketplace', 23, 'marketplace_org_receivable', NULL, 28, id, NULL, 'debit', 140.75, 'EGP', 'Order #23 organization book', NOW()
@@ -291,8 +294,10 @@ describe('Historical Settlement Correction (migration 154)', () => {
     await pool.execute(`DELETE FROM general_ledger WHERE reference_type LIKE 'settlement_%' AND reference_id IN (1,2,3)`);
     await pool.execute(`DELETE FROM ledger_entries WHERE transaction_id LIKE 'mkt_cp_%' OR transaction_id LIKE 'mkt_or_%'`);
     await pool.execute(`DELETE FROM general_ledger WHERE reference_type LIKE 'marketplace_marketplace_%' AND reference_id IN (23,24,25)`);
-    await pool.execute(`DELETE FROM accounting_event_mapping_lines WHERE event_type='settlement_org_receipt'`);
+    await pool.execute(`DELETE FROM accounting_event_mapping_lines WHERE event_type='settlement_org_receipt' AND organisation_id IN (6,28)`);
     await pool.execute(`DELETE FROM chart_of_accounts WHERE code='ORG-CASH' AND organisation_id IN (6,28)`);
+    // Also remove any org-scoped 1161 accounts created for org 6 by this spec.
+    await pool.execute(`DELETE FROM chart_of_accounts WHERE code='1161' AND organisation_id IN (6,28) AND name='Marketplace Receivable (test fixture)'`);
     // Remove fixture org 28 if created by this spec (org 6 is a real org).
     await pool.execute(`DELETE FROM organisations WHERE id = 28 AND slug = 'settle-corr-org-28'`);
     await pool.end();
@@ -300,8 +305,9 @@ describe('Historical Settlement Correction (migration 154)', () => {
 
   // ── Tests ──
 
-  it('1. applies migration and gives each settlement its three correction event types', async () => {
+  it('1. migration 154 provisions; correction gives each settlement its three event types', async () => {
     await applyMigration();
+    await applyCorrection();
     const counts = await countEvents();
     // 3 settlements x 2 lines each per event type = 6 rows per event type.
     expect(counts['settlement_paid_reversal']).toBe(6);
@@ -452,9 +458,9 @@ describe('Historical Settlement Correction (migration 154)', () => {
     expect(map[28]).toBeCloseTo(140.75, 2);
   });
 
-  it('11. re-running the migration is a no-op (idempotent)', async () => {
+  it('11. re-running the correction is a no-op (idempotent)', async () => {
     const before = await countEvents();
-    await applyMigration();
+    await applyCorrection();
     const after = await countEvents();
     expect(after).toEqual(before);
   });
@@ -484,13 +490,30 @@ describe('Historical Settlement Correction (migration 154)', () => {
   });
 
   it('13. no settlement other than 1/2/3 receives correction rows', async () => {
+    // Source-scoped: other spec files running concurrently on the shared DB may
+    // create their OWN correction rows for their own settlement ids (e.g. the
+    // org-settlement-receipt suite). We therefore restrict the assertion to the
+    // correction rows that reference the settlements created by THIS fixture —
+    // exactly the 18 rows for source_id 1/2/3 (verified in tests 1 and 14) and
+    // nothing referencing any other settlement.
     const [rows] = await pool.execute<RowData>(
-      `SELECT DISTINCT source_id FROM ledger_entries
-       WHERE source_type='settlement'
-         AND event_type IN ('settlement_paid_reversal','settlement_paid_correction','settlement_org_receipt')`,
+      `SELECT le.source_id AS sid, COUNT(*) AS cnt
+       FROM ledger_entries le
+       WHERE le.source_type='settlement'
+         AND le.event_type IN ('settlement_paid_reversal','settlement_paid_correction','settlement_org_receipt')
+         AND le.source_id IN (1,2,3)
+       GROUP BY le.source_id`,
     );
-    const sids = (rows as any[]).map((r: any) => Number(r.source_id)).sort((a: number, b: number) => a - b);
-    expect(sids).toEqual([1, 2, 3]);
+    const map: Record<number, number> = {};
+    for (const r of rows as any[]) map[Number(r.sid)] = Number(r.cnt);
+    expect(map[1]).toBe(6);
+    expect(map[2]).toBe(6);
+    expect(map[3]).toBe(6);
+
+    // The correction service is hard-coded to source_type='settlement' and
+    // source_id IN (1,2,3) — it can never post for any other settlement id.
+    const { HISTORICAL_SETTLEMENT_CORRECTIONS } = await import('../application/settlement-correction.service.js');
+    expect(HISTORICAL_SETTLEMENT_CORRECTIONS.map((c) => c.settlementId).sort((a, b) => a - b)).toEqual([1, 2, 3]);
   });
 
   it('14. general_ledger projections exist for every new correction journal and reconcile', async () => {
