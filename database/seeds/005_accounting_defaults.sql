@@ -87,8 +87,13 @@ INSERT IGNORE INTO accounting_event_mapping_lines (event_type, organisation_id, 
 SELECT 'withdrawal_completion', NULL, 'cash_bank', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '1120';
 
 -- 11. settlement_paid (courtzon_to_org direction)
+-- NOTE: organization settlements clear the MERCHANT PAYABLE control (2202),
+-- NOT org_payable (2200). The CourtZon payout journal is org NULL
+-- (platform book); the org side is booked via `settlement_org_receipt`
+-- (Dr org Cash/Bank / Cr org 1161) — auto-provisioned per org, so no global
+-- row is needed for the org receipt here.
 INSERT IGNORE INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
-SELECT 'settlement_paid', NULL, 'org_payable', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '2200';
+SELECT 'settlement_paid', NULL, 'merchant_payable', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '2202';
 INSERT IGNORE INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
 SELECT 'settlement_paid', NULL, 'cash_bank', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '1120';
 -- settlement_paid org_to_courtzon direction (alternate concepts)
@@ -99,7 +104,7 @@ SELECT 'settlement_paid_otc', NULL, 'receivable_from_org', id, 1 FROM chart_of_a
 
 -- 11b. settlement offset (explicit net-down: clear full payable + full receivable against net cash)
 INSERT IGNORE INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
-SELECT 'settlement_paid_offset', NULL, 'org_payable', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '2200';
+SELECT 'settlement_paid_offset', NULL, 'merchant_payable', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '2202';
 INSERT IGNORE INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
 SELECT 'settlement_paid_offset', NULL, 'cash_bank', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '1120';
 INSERT IGNORE INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
@@ -107,7 +112,7 @@ SELECT 'settlement_paid_offset', NULL, 'receivable_from_org', id, 1 FROM chart_o
 INSERT IGNORE INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
 SELECT 'settlement_paid_otc_offset', NULL, 'cash_bank', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '1120';
 INSERT IGNORE INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
-SELECT 'settlement_paid_otc_offset', NULL, 'org_payable', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '2200';
+SELECT 'settlement_paid_otc_offset', NULL, 'merchant_payable', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '2202';
 INSERT IGNORE INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
 SELECT 'settlement_paid_otc_offset', NULL, 'receivable_from_org', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '1160';
 
