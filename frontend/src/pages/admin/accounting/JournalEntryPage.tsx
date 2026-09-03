@@ -270,19 +270,15 @@ export default function JournalEntryPage() {
                 value={entitySelectValue}
                 onChange={(e) => onEntityChange(e.target.value)}
                 aria-label="Entity"
-                className="px-3 py-2 border rounded-[var(--radius-md)] bg-[var(--color-bg)] text-sm min-w-[240px]"
+                className="px-3 py-2 border rounded-[var(--radius-md)] bg-[var(--color-bg)] text-sm min-w-[200px]"
               >
                 <option value="courtzon">CourtZon</option>
-                <optgroup label="Organisations">
-                  {(orgs || []).map((o: any) => (
-                    <option key={`org-${o.id}`} value={`organisation:${o.id}`}>{o.name} — Organisation</option>
-                  ))}
-                </optgroup>
-                <optgroup label="Merchants">
-                  {(merchants || []).map((m: any) => (
-                    <option key={`mer-${m.id}`} value={`merchant:${m.id}`}>{m.name} — Merchant</option>
-                  ))}
-                </optgroup>
+                {(orgs || []).map((o: any) => (
+                  <option key={`org-${o.id}`} value={`organisation:${o.id}`}>{o.name}</option>
+                ))}
+                {(merchants || []).map((m: any) => (
+                  <option key={`mer-${m.id}`} value={`merchant:${m.id}`}>{m.name}</option>
+                ))}
                 <option value="all">All</option>
               </select>
             </div>
