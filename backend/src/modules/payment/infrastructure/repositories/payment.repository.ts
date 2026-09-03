@@ -42,6 +42,15 @@ export const paymentRepository = {
     const isBooking = data.referenceType === 'booking';
     const isOrder = data.referenceType === 'order';
     const traceId = data.traceId || randomUUID();
+    // `reference_id` is `bigint unsigned` — only store genuine numeric references.
+    // Some flows (e.g. booking_prepare) legitimately pass a UUID string that is
+    // later relinked via `booking_id`; writing the UUID into a bigint column
+    // raises ER_TRUNCATED_WRONG_VALUE_FOR_FIELD under STRICT mode (the
+    // "Payment preparation failed: Internal Server Error" 500). Non-numeric
+    // values are stored as NULL, matching wallet/marketplace-intent rows.
+    const numericReferenceId = typeof data.referenceId === 'number' && Number.isFinite(data.referenceId)
+      ? data.referenceId
+      : null;
     const [result] = await db.execute<mysql.ResultSetHeader>(
       `INSERT INTO payment_transactions
         (user_id, booking_id, order_id, reference_id, idempotency_key, reference_type, payment_method, gateway_provider,
@@ -50,7 +59,7 @@ export const paymentRepository = {
       [data.userId,
        isBooking ? (data.bookingId ?? null) : null,
        isOrder ? (data.orderId ?? null) : null,
-       data.referenceId ?? null,
+       numericReferenceId,
        data.idempotencyKey || null,
        data.referenceType || null,
        data.paymentMethod, data.gatewayProvider, data.gatewayReference, data.amount,

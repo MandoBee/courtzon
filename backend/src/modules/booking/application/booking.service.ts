@@ -349,7 +349,18 @@ export class BookingService {
           branchId: input.branchId || undefined,
         });
 
-        eventBusV2.emit('booking:confirmed', { bookingId, userId, bookingType });
+        eventBusV2.emit('booking:confirmed', {
+          bookingId, userId, bookingType,
+          organisationId: booking.organisation_id || undefined,
+          branchId: input.branchId || undefined,
+          resourceId: input.resourceId || undefined,
+          courtId: input.resourceId || undefined,
+          bookingDate,
+          startTime: new Date(startAtUtc),
+          endTime: new Date(endAtUtc),
+          startAtUtc,
+          endAtUtc,
+        });
 
         const startDate = new Date(startAtUtc);
         const { scheduleBookingReminder } = await import('../../notifications/application/scheduler.service.js');
@@ -938,6 +949,29 @@ export class BookingService {
 
   async checkIn(id: number, userId: number) {
     await bookingRepository.persistTransition(id, 'checked_in');
+
+    // Realtime + notification: the booking's visible state changed. Emit the
+    // canonical `booking:check-in` event so the socket publisher routes it to
+    // the customer, organisation and resource rooms without a page refresh.
+    try {
+      const booking = await bookingRepository.findById(id);
+      if (booking) {
+        eventBusV2.emit('booking:check-in', {
+          bookingId: id,
+          userId,
+          organisationId: booking.organisation_id || undefined,
+          branchId: booking.branch_id || undefined,
+          resourceId: booking.resource_id || undefined,
+          courtId: booking.resource_id || undefined,
+          bookingDate: booking.booking_date || undefined,
+          startTime: booking.start_time || undefined,
+          endTime: booking.end_time || undefined,
+        });
+      }
+    } catch (err) {
+      log.warn({ err, bookingId: id }, 'booking:check-in emit failed');
+    }
+
     return this.getBooking(id);
   }
 
@@ -988,6 +1022,7 @@ export class BookingService {
 
       if (!isCOD && status === 'no_show') {
         await executeBookingCommand('CancelBooking', cancelBookingHandler, { bookingId: id, reason: CancellationReason.ADMIN_CANCELLED, actorId: actorId ?? booking.user_id }, String(id));
+        this._emitBookingNoShow(id, booking, actorId ?? booking.user_id);
         return;
       }
 
@@ -1014,6 +1049,10 @@ export class BookingService {
           await executeBookingCommand('CancelBooking', cancelBookingHandler, { bookingId: id, reason, actorId: resolvedUserId }, String(id));
         } else {
           await executeBookingCommand('CancelBooking', cancelBookingHandler, { bookingId: id, reason, actorId: resolvedUserId }, String(id));
+        }
+
+        if (status === 'no_show') {
+          this._emitBookingNoShow(id, booking, resolvedUserId);
         }
 
         if (paymentStatus === 'refunded') {
@@ -1163,6 +1202,33 @@ export class BookingService {
       refundAmount,
       currency: 'EGP',
     } as any);
+  }
+
+  /**
+   * Emit the canonical `booking:no-show` realtime/notification event after a
+   * no-show status transition. The underlying CancelBooking command already
+   * emits `booking:cancelled` (state change); this dedicated event carries the
+   * no-show semantics so the socket publisher routes `booking.no_show` and the
+   * notification engine shows a no-show notification (both are subscribed but
+   * were never emitted before).
+   */
+  private _emitBookingNoShow(bookingId: number, booking: any, actorId: number): void {
+    try {
+      eventBusV2.emit('booking:no-show', {
+        bookingId,
+        userId: booking?.user_id ?? actorId,
+        organisationId: booking?.organisation_id || undefined,
+        branchId: booking?.branch_id || undefined,
+        resourceId: booking?.resource_id || undefined,
+        courtId: booking?.resource_id || undefined,
+        bookingDate: booking?.booking_date || undefined,
+        startTime: booking?.start_time || undefined,
+        endTime: booking?.end_time || undefined,
+        reason: 'no_show',
+      } as any);
+    } catch (err) {
+      log.warn({ err, bookingId }, 'booking:no-show emit failed');
+    }
   }
 
   // Phase 2 Step 7: markBookingSettled removed — duplicate settlement authority.
