@@ -59,6 +59,13 @@ const CONCEPT_ACCOUNT_CODE_DEFAULTS: Record<string, Record<string, string>> = {
   settlement_paid: { merchant_payable: '2202', cash_bank: '1120' },
   settlement_paid_offset: { merchant_payable: '2202', cash_bank: '1120', receivable_from_org: '1160' },
   settlement_paid_otc_offset: { merchant_payable: '2202', cash_bank: '1120', receivable_from_org: '1160' },
+  // Historical correction of pre-ec2a5ab settlements — distinct event identities
+  // so they cannot collide with the original `settlement_paid` posting (see
+  // accounting-concepts.ts). Resolved by stable CODE:
+  //   settlement_paid_reversal  → Dr 1120 (org-scoped) / Cr 2200 (org-scoped)
+  //   settlement_paid_correction → Dr 2202 (global) / Cr 1120 (global)
+  settlement_paid_reversal: { cash_bank: '1120', org_payable: '2200' },
+  settlement_paid_correction: { merchant_payable: '2202', cash_bank: '1120' },
 };
 
 /**
