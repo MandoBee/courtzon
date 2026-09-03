@@ -33,6 +33,7 @@ export class SocketPublisher {
       'booking:created', 'booking:confirmed', 'booking:cancelled', 'booking:expired',
       'booking:completed', 'booking:no-show', 'booking:check-in', 'booking:rescheduled',
       'booking:refunded', 'booking:paid', 'booking:fully-booked', 'booking:application-declined',
+      'booking:rejected', 'booking:updated',
       'payment:completed', 'payment:failed', 'payment:refunded', 'payment:expired-event', 'payment:cancelled-event',
       'payment:wallet-topup', 'payment:wallet-low-balance', 'payment:succeeded',
       'wallet:deposit', 'wallet:withdrawal', 'wallet:low-balance', 'wallet:transaction',

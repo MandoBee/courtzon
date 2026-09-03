@@ -15,6 +15,9 @@ export interface ConfirmBookingResult {
   aggregateVersion?: number;
   bookingType: string;
   userId: number;
+  organisationId?: number | null;
+  branchId?: number | null;
+  resourceId?: number | null;
 }
 
 export const confirmBookingHandler: CommandHandler<Command, ConfirmBookingResult> = {
@@ -40,7 +43,12 @@ export const confirmBookingHandler: CommandHandler<Command, ConfirmBookingResult
 
     if (booking.booking_status === 'confirmed') {
       log.warn({ bookingId: p.bookingId }, 'booking.already_confirmed');
-      return { bookingId: p.bookingId, bookingType: booking.booking_type, userId: booking.user_id };
+      return {
+        bookingId: p.bookingId, bookingType: booking.booking_type, userId: booking.user_id,
+        organisationId: booking.organisation_id ?? null,
+        branchId: booking.branch_id ?? null,
+        resourceId: booking.resource_id ?? null,
+      };
     }
 
     let transition: any;
@@ -61,13 +69,26 @@ export const confirmBookingHandler: CommandHandler<Command, ConfirmBookingResult
     }
 
     log.info({ bookingId: p.bookingId, version: transition.newVersion }, 'booking.confirmed');
-    return { bookingId: p.bookingId, aggregateVersion: transition.newVersion, bookingType: booking.booking_type, userId: booking.user_id };
+    return {
+      bookingId: p.bookingId, aggregateVersion: transition.newVersion,
+      bookingType: booking.booking_type, userId: booking.user_id,
+      organisationId: booking.organisation_id ?? null,
+      branchId: booking.branch_id ?? null,
+      resourceId: booking.resource_id ?? null,
+    };
   },
 
   events: (command, result) => {
     return [{
       eventName: 'booking:confirmed',
-      payload: { bookingId: result.bookingId, aggregateVersion: result.aggregateVersion, bookingType: result.bookingType, userId: result.userId },
+      payload: {
+        bookingId: result.bookingId, aggregateVersion: result.aggregateVersion,
+        bookingType: result.bookingType, userId: result.userId,
+        organisationId: result.organisationId ?? undefined,
+        branchId: result.branchId ?? undefined,
+        resourceId: result.resourceId ?? undefined,
+        courtId: result.resourceId ?? undefined,
+      },
       context: {
         aggregateType: 'booking',
         aggregateId: String(result.bookingId),

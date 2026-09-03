@@ -9,6 +9,50 @@ describe('SocketEventMapper', () => {
     expect(result!.rooms).toContain('user:42');
   });
 
+  it('routes booking:confirmed to the organisation + resource rooms when org/resource are present', () => {
+    // Regression: ConfirmBooking previously emitted without organisationId, so
+    // the org/admin screens never received the confirmation in realtime. The
+    // event must now carry org + resource scope so it reaches those rooms.
+    const result = mapDomainEvent('booking:confirmed', {
+      bookingId: 1,
+      userId: 42,
+      organisationId: 9,
+      resourceId: 7,
+      courtId: 7,
+    });
+    expect(result).not.toBeNull();
+    expect(result!.type).toBe('booking.confirmed');
+    expect(result!.rooms).toContain('booking:1');
+    expect(result!.rooms).toContain('user:42');
+    expect(result!.rooms).toContain('organisation:9');
+    expect(result!.rooms).toContain('resource:7');
+  });
+
+  it('routes booking:no-show to the organisation + resource rooms', () => {
+    const result = mapDomainEvent('booking:no-show', {
+      bookingId: 5,
+      userId: 42,
+      organisationId: 9,
+      resourceId: 7,
+    });
+    expect(result).not.toBeNull();
+    expect(result!.type).toBe('booking.no_show');
+    expect(result!.rooms).toContain('organisation:9');
+    expect(result!.rooms).toContain('resource:7');
+  });
+
+  it('routes booking:check-in to the organisation room', () => {
+    const result = mapDomainEvent('booking:check-in', {
+      bookingId: 5,
+      userId: 42,
+      organisationId: 9,
+      resourceId: 7,
+    });
+    expect(result).not.toBeNull();
+    expect(result!.type).toBe('booking.checked_in');
+    expect(result!.rooms).toContain('organisation:9');
+  });
+
   it('maps payment:completed', () => {
     const result = mapDomainEvent('payment:completed', { paymentId: 1, userId: 42, amount: 100 });
     expect(result).not.toBeNull();

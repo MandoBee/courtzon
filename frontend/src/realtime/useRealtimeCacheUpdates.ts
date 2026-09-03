@@ -162,13 +162,41 @@ export function useRealtimeCacheUpdates(): void {
     qc.invalidateQueries({ queryKey: ['my-bookings'] });
     qc.invalidateQueries({ queryKey: ['home-upcoming-bookings'] });
     qc.invalidateQueries({ queryKey: ['home-recent-activity'] });
+    qc.invalidateQueries({ queryKey: ['org-bookings'] });
+    qc.invalidateQueries({ queryKey: ['admin', 'bookings'] });
     invalidateSlots(p);
   });
 
   useSocketEvent('booking.confirmed', (p: any) => {
-    qc.setQueryData(['booking', p.bookingId], (old: any) => old ? { ...old, booking_status: 'confirmed' } : old);
+    qc.setQueryData(['booking', p.bookingId], (old: any) => old ? { ...old, booking_status: 'confirmed', payment_status: old.payment_status || 'pending' } : old);
     qc.invalidateQueries({ queryKey: ['my-bookings'] });
+    qc.invalidateQueries({ queryKey: ['org-bookings'] });
+    qc.invalidateQueries({ queryKey: ['admin', 'bookings'] });
     qc.invalidateQueries({ queryKey: ['home-upcoming-bookings'] });
+  });
+
+  useSocketEvent('booking.rejected', (p: any) => {
+    qc.setQueryData(['booking', p.bookingId], (old: any) => old ? { ...old, booking_status: 'rejected' } : old);
+    qc.invalidateQueries({ queryKey: ['my-bookings'] });
+    qc.invalidateQueries({ queryKey: ['org-bookings'] });
+    qc.invalidateQueries({ queryKey: ['admin', 'bookings'] });
+    invalidateSlots(p);
+  });
+
+  useSocketEvent('booking.updated', (p: any) => {
+    qc.setQueryData(['booking', p.bookingId], (old: any) => old ? { ...old, ...(p.status ? { booking_status: p.status } : {}) } : old);
+    qc.invalidateQueries({ queryKey: ['my-bookings'] });
+    qc.invalidateQueries({ queryKey: ['org-bookings'] });
+    qc.invalidateQueries({ queryKey: ['admin', 'bookings'] });
+    invalidateSlots(p);
+  });
+
+  useSocketEvent('booking.rescheduled', (p: any) => {
+    qc.invalidateQueries({ queryKey: ['my-bookings'] });
+    qc.invalidateQueries({ queryKey: ['org-bookings'] });
+    qc.invalidateQueries({ queryKey: ['admin', 'bookings'] });
+    qc.invalidateQueries({ queryKey: ['home-upcoming-bookings'] });
+    invalidateSlots(p);
   });
 
   useSocketEvent('booking.cancelled', (p: any) => {
@@ -183,29 +211,45 @@ export function useRealtimeCacheUpdates(): void {
   useSocketEvent('booking.expired', (p: any) => {
     qc.setQueryData(['booking', p.bookingId], (old: any) => old ? { ...old, booking_status: 'expired' } : old);
     qc.invalidateQueries({ queryKey: ['my-bookings'] });
+    qc.invalidateQueries({ queryKey: ['org-bookings'] });
+    qc.invalidateQueries({ queryKey: ['admin', 'bookings'] });
     invalidateSlots(p);
   });
 
   useSocketEvent('booking.completed', (p: any) => {
     qc.setQueryData(['booking', p.bookingId], (old: any) => old ? { ...old, booking_status: 'completed' } : old);
     qc.invalidateQueries({ queryKey: ['my-bookings'] });
+    qc.invalidateQueries({ queryKey: ['org-bookings'] });
+    qc.invalidateQueries({ queryKey: ['admin', 'bookings'] });
+  });
+
+  useSocketEvent('booking.no_show', (p: any) => {
+    qc.setQueryData(['booking', p.bookingId], (old: any) => old ? { ...old, booking_status: 'no_show' } : old);
+    qc.invalidateQueries({ queryKey: ['my-bookings'] });
+    qc.invalidateQueries({ queryKey: ['org-bookings'] });
+    qc.invalidateQueries({ queryKey: ['admin', 'bookings'] });
   });
 
   useSocketEvent('booking.checked_in', (p: any) => {
     qc.setQueryData(['booking', p.bookingId], (old: any) => old ? { ...old, booking_status: 'checked_in' } : old);
+    qc.invalidateQueries({ queryKey: ['my-bookings'] });
     qc.invalidateQueries({ queryKey: ['org-bookings'] });
     qc.invalidateQueries({ queryKey: ['admin', 'bookings'] });
   });
 
   useSocketEvent('booking.refunded', () => {
     qc.invalidateQueries({ queryKey: ['my-bookings'] });
+    qc.invalidateQueries({ queryKey: ['org-bookings'] });
+    qc.invalidateQueries({ queryKey: ['admin', 'bookings'] });
     qc.invalidateQueries({ queryKey: ['wallet', 'me'] });
     qc.invalidateQueries({ queryKey: ['transactions'] });
   });
 
   useSocketEvent('booking.paid', (p: any) => {
-    qc.setQueryData(['booking', p.bookingId], (old: any) => old ? { ...old, booking_status: 'paid' } : old);
+    qc.setQueryData(['booking', p.bookingId], (old: any) => old ? { ...old, payment_status: 'paid', booking_status: old.booking_status || 'confirmed' } : old);
     qc.invalidateQueries({ queryKey: ['my-bookings'] });
+    qc.invalidateQueries({ queryKey: ['org-bookings'] });
+    qc.invalidateQueries({ queryKey: ['admin', 'bookings'] });
   });
 
   useSocketEvent('booking.fully-booked', () => {
