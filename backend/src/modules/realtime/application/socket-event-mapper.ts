@@ -80,6 +80,31 @@ export function mapDomainEvent(eventName: string, payload: Record<string, unknow
     }
     if (eventName.startsWith('marketplace:')) return mapMarketplaceEvent(eventName, payload);
     if (eventName.startsWith('notification:')) return mapNotificationEvent(eventName, payload);
+    if (eventName === 'entitlement:activated') {
+      // A financial entitlement became AVAILABLE (e.g. a marketplace order's
+      // complaint window is cleared immediately on delivery). The owning
+      // organisation and the finance room must refresh balance/position,
+      // outstanding and settlement-preview surfaces right away — no manual
+      // refresh or 5-minute worker wait.
+      const rooms: string[] = ['finance'];
+      if (payload.organisationId != null) {
+        rooms.push(`organisation:${payload.organisationId}`);
+      }
+      return {
+        type: 'entitlement.activated',
+        payload: {
+          entitlementId: payload.entitlementId,
+          publicId: payload.publicId,
+          organisationId: payload.organisationId,
+          entitlementType: payload.entitlementType,
+          sourceType: payload.sourceType,
+          sourceId: payload.sourceId != null ? Number(payload.sourceId) : null,
+          amount: payload.amount,
+          currency: payload.currency,
+        },
+        rooms,
+      };
+    }
     if (eventName.startsWith('settlement:')) return mapSettlementEvent(eventName, payload);
     if (eventName.startsWith('organisation:') || eventName.startsWith('subscription:')) return mapOrganisationEvent(eventName, payload);
     if (eventName.startsWith('academy:') || eventName.startsWith('coaching:')) return mapAcademyEvent(eventName, payload);
