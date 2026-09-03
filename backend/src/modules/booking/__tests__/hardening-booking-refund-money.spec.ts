@@ -40,6 +40,30 @@ describe('Hardening Booking Refund Money Movement', () => {
   beforeAll(async () => {
     pool = mysql.createPool({ host: '127.0.0.1', port: 3307, user: 'root', password: 'courtzon2026', database: 'courtzon_v3', connectionLimit: 5, charset: 'utf8mb4' });
 
+    // ── Deterministic cleanup of leftover fixture orgs (shared-DB crash hygiene) ──
+    // A prior interrupted run can leave an org with this slug behind; without
+    // cleanup the INSERT below collides (Duplicate entry ... organisations.slug).
+    // Delete child rows first (FK-safe), then the org, keyed by the exact slug.
+    for (const slug of ['hardening-refund-money', 'p39-refund-tax']) {
+      const [existing] = await pool.execute<RowData>(`SELECT id FROM organisations WHERE slug = ?`, [slug]);
+      for (const row of existing as any[]) {
+        const oid = Number(row.id);
+        await pool.execute(`DELETE FROM wallet_transactions WHERE wallet_id IN (SELECT id FROM user_wallets WHERE user_id IN (SELECT id FROM users WHERE id IN (SELECT owner_id FROM organisations WHERE id = ?)))`, [oid]);
+        await pool.execute(`DELETE FROM payment_transactions WHERE user_id IN (SELECT owner_id FROM organisations WHERE id = ?)`, [oid]);
+        await pool.execute(`DELETE FROM booking_slots WHERE booking_id IN (SELECT id FROM bookings WHERE organisation_id = ?)`, [oid]);
+        await pool.execute(`DELETE FROM bookings WHERE organisation_id = ?`, [oid]);
+        await pool.execute(`DELETE FROM ledger_entries WHERE organisation_id = ?`, [oid]);
+        await pool.execute(`DELETE FROM general_ledger WHERE organisation_id = ?`, [oid]);
+        await pool.execute(`DELETE FROM resources WHERE branch_id IN (SELECT id FROM branches WHERE organisation_id = ?)`, [oid]);
+        await pool.execute(`DELETE FROM branches WHERE organisation_id = ?`, [oid]);
+        // Cleanup the fixture's dedicated user/wallet (unique phone/email) so a
+        // crashed prior run cannot collide on users.full_phone.
+        await pool.execute(`DELETE FROM user_wallets WHERE user_id IN (SELECT id FROM users WHERE full_phone = ? OR email = ?)`, ['+2010111222333', 'hardening-refund-money@courtzon.test']);
+        await pool.execute(`DELETE FROM users WHERE full_phone = ? OR email = ?`, ['+2010111222333', 'hardening-refund-money@courtzon.test']);
+        await pool.execute(`DELETE FROM organisations WHERE id = ?`, [oid]);
+      }
+    }
+
     // ── Sandbox org ──
     const [ot] = await pool.execute<RowData>(`SELECT id FROM organisation_types LIMIT 1`);
     const [o] = await pool.execute<RowData>(

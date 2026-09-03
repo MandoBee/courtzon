@@ -304,6 +304,11 @@ export class BookingService {
       }
 
       // COD journal entries on the same connection (OPERATIONAL wallet-flow history)
+      // The canonical booking:paid emit is intentionally deferred until AFTER
+      // conn.commit() below (S11 hardening): a pre-commit emit would let the
+      // realtime socket/notification handlers fire for a booking that could still
+      // be rolled back. Preserving the exact payload.
+      let codPaidPayload: Record<string, unknown> | null = null;
       if (paymentMethod === 'cash' || paymentMethod === 'cod') {
         const [txnResult] = await conn.execute<mysql.ResultSetHeader>(
           `INSERT INTO transactions (type, source_type, source_id, currency_id, total_amount, status)
@@ -319,16 +324,23 @@ export class BookingService {
         );
         // Canonical accounting trigger for COD — booking economics must reach
         // ledger_entries → general_ledger via booking:paid (see accounting listener).
-        eventBusV2.emit('booking:paid', {
+        // Emitted after commit below so the event never fires for a rolled-back booking.
+        codPaidPayload = {
           bookingId, organisationId,
           grossAmount: pricing.totalPrice, taxAmount, coachAmount: 0,
           organisationAmount: clubAmount, commissionAmount,
           paymentMethod: 'cod', currency: 'EGP',
           sourceId: bookingId,
-        });
+        };
       }
 
       await conn.commit();
+
+      // S11 hardening: booking:paid for COD/cash is emitted ONLY after commit.
+      // If commit failed the catch below rolls back and this line is never reached.
+      if (codPaidPayload) {
+        eventBusV2.emit('booking:paid', codPaidPayload as any);
+      }
 
       const booking = await bookingRepository.findById(bookingId);
 
@@ -453,6 +465,10 @@ export class BookingService {
       throw new ConflictError('One or more slots are currently being booked by another user. Please try again.');
     }
 
+    // Local payment row id created by createGatewayIntention on gateway success.
+    // Used by the catch to best-effort expire an orphaned pending payment row.
+    let localPaymentId: number | null = null;
+
     try {
       // Check slot availability
       const available = await bookingRepository.checkSlotAvailability(
@@ -466,9 +482,13 @@ export class BookingService {
       const user = userRows[0] as any;
 
       const prepareId = generateUUID();
+      // booking_prepare has NO numeric reference — referenceId stays undefined so
+      // the UUID is never written to payment_transactions.reference_id (bigint).
+      // The payment row is later relinked to the booking via booking_id; the
+      // gateway_reference (stored by createGatewayIntention) drives webhook lookup.
       const gwResult = await (paymentService.createGatewayIntention as any)(userId, {
         referenceType: 'booking_prepare',
-        referenceId: prepareId,
+        referenceId: undefined,
         amount: pricing.totalPrice,
         currency: 'EGP',
         paymentMethod: input.paymentMethod === 'online' ? 'card' : input.paymentMethod as 'card',
@@ -477,6 +497,15 @@ export class BookingService {
         customerPhone: user?.full_phone,
         customerEmail: user?.email,
       });
+
+      // The local payment_transactions row (created by createGatewayIntention on
+      // gateway success) is tracked so a later local failure can mark it expired
+      // (best-effort local protection). The external gateway abstraction exposes
+      // NO cancel/void/expire for an intention — a late webhook on an expired
+      // local row is safely ignored (FINAL_STATES) without double-processing.
+      if (gwResult.success) {
+        localPaymentId = ('paymentId' in gwResult ? Number(gwResult.paymentId) : null) || null;
+      }
 
       if (!gwResult.success) {
         throw new ConflictError((gwResult as any).errorMessage || 'Payment gateway rejected the transaction');
@@ -508,6 +537,19 @@ export class BookingService {
       };
     } catch (err) {
       await redisLock.releaseAll(lockSlots, lockOwner);
+      // Best-effort local protection for an orphaned gateway intention: if the
+      // gateway intention was created (local payment row exists) but a later step
+      // failed, mark the local row expired so a late webhook is idempotently
+      // skipped. This NEVER hides the original error and NEVER touches the gateway.
+      if (localPaymentId != null) {
+        try {
+          const { paymentRepository } = await import('../../payment/infrastructure/repositories/payment.repository.js');
+          await paymentRepository.expirePayment(localPaymentId);
+          log.warn({ err, paymentId: localPaymentId }, 'prepareGatewayBooking: local payment row expired after gateway success + local failure (gateway intention has no cancel/void API)');
+        } catch (cleanupErr: any) {
+          log.error({ cleanupErr, paymentId: localPaymentId, originalErr: err }, 'prepareGatewayBooking: local payment expiry cleanup failed');
+        }
+      }
       throw err;
     }
   }
