@@ -49,6 +49,7 @@ export class SocketPublisher {
       'notification:delivered', 'notification:unread-count',
       'notification:sync-read', 'notification:sync-deleted',
       'match:available', 'match:removed', 'match:updated', 'match:pending',
+      'entitlement:activated',
       'settlement:created', 'settlement:completed', 'settlement:failed', 'settlement:paid',
       'payment:gateway-settled', 'payment:gateway-settlement-reversed',
       'organisation:subscription-renewed', 'organisation:subscription-expired',

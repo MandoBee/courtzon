@@ -424,6 +424,28 @@ export function useRealtimeCacheUpdates(): void {
   useSocketEvent('settlement.paid', invalidateSettlementViews);
   useSocketEvent('settlement.failed', invalidateSettlementViews);
 
+  // ── Entitlement activation events ─────────────────────────────
+  // A financial entitlement becoming AVAILABLE (e.g. a marketplace order's
+  // complaint window clears immediately on delivery) increases the org's
+  // available balance / settlement position. Refresh all settlement-sensitive
+  // seller + org surfaces so they update live instead of on the 5-min worker.
+  const invalidateEntitlementViews = () => {
+    // Organisation position + outstanding (AVAILABLE balance feeding both).
+    qc.invalidateQueries({ queryKey: ['org-position'] });
+    qc.invalidateQueries({ queryKey: ['org-settlement-outstanding'] });
+    qc.invalidateQueries({ queryKey: ['org-settlements'] });
+    qc.invalidateQueries({ queryKey: ['org-settlement-detail'] });
+    // Seller marketplace dashboard balance + settlement list.
+    qc.invalidateQueries({ queryKey: ['mp-seller-settlement-balance'] });
+    qc.invalidateQueries({ queryKey: ['mp-seller-settlements'] });
+    qc.invalidateQueries({ queryKey: ['mp-seller-orders'] });
+    // Unified settlement workbench used by Super Admin finance.
+    qc.invalidateQueries({ queryKey: ['unified-settlements'] });
+    qc.invalidateQueries({ queryKey: ['unified-settlement-preview'] });
+  };
+
+  useSocketEvent('entitlement.activated', invalidateEntitlementViews);
+
   // ── Gateway settlement events ─────────────────────────────────
   useSocketEvent('payment.gateway-settled', () => {
     qc.invalidateQueries({ queryKey: ['gateway-settlements'] });

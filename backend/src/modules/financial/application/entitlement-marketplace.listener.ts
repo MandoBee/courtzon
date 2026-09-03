@@ -7,6 +7,7 @@ import { getPool } from '../../../database/mysql.js';
 import { marketplaceRepository } from '../../marketplace/infrastructure/repositories/marketplace.repository.js';
 import { financialEntitlementService } from './financial-entitlement.service.js';
 import { buildEntitlementInputs } from './marketplace-entitlement-calc.js';
+import { getMarketplaceComplaintPeriodDays } from './complaint-period.config.js';
 import type { Worker } from 'bullmq';
 
 const log = createModuleLogger('entitlement-marketplace-listener');
@@ -16,6 +17,9 @@ type RowData = mysql.RowDataPacket[];
 const SUBSCRIBER_ID_CONFIRMED = 'entitlement-marketplace-confirmed';
 const SUBSCRIBER_ID_REFUNDED = 'entitlement-marketplace-refunded';
 const SUBSCRIBER_ID_CANCELLED = 'entitlement-marketplace-cancelled';
+const SUBSCRIBER_ID_DELIVERED = 'entitlement-marketplace-delivered';
+
+const BATCH_SIZE = 200;
 
 /**
  * Creates financial entitlements when a marketplace order is confirmed
@@ -61,6 +65,14 @@ export function registerEntitlementMarketplaceSubscribers(): void {
     options: { attempts: 6, backoffDelay: 2000, startingCursor: 'latest' },
   });
 
+  eventBusV2.subscribe({
+    subscriberId: SUBSCRIBER_ID_DELIVERED,
+    eventName: 'marketplace:order-delivered',
+    queueName: SUBSCRIBER_ID_DELIVERED,
+    handler: handleMarketplaceOrderDelivered,
+    options: { attempts: 6, backoffDelay: 2000, startingCursor: 'latest' },
+  });
+
   log.info('Entitlement marketplace subscribers registered');
 }
 
@@ -86,6 +98,14 @@ export function createEntitlementMarketplaceWorkers(): Worker[] {
       subscriberId: SUBSCRIBER_ID_CANCELLED,
       queueName: SUBSCRIBER_ID_CANCELLED,
       handler: handleMarketplaceOrderCancelled,
+      concurrency: 2,
+      attempts: 6,
+      backoffDelay: 2000,
+    }),
+    createSubscriberWorker({
+      subscriberId: SUBSCRIBER_ID_DELIVERED,
+      queueName: SUBSCRIBER_ID_DELIVERED,
+      handler: handleMarketplaceOrderDelivered,
       concurrency: 2,
       attempts: 6,
       backoffDelay: 2000,
@@ -146,6 +166,38 @@ export async function handleMarketplaceOrderConfirmed(envelope: EventEnvelope): 
     throw err;
   } finally {
     conn.release();
+  }
+}
+
+/**
+ * Activates marketplace financial entitlements immediately when an order is
+ * marked delivered. Reuses the SAME canonical idempotent activation as the
+ * periodic complaint-period worker (`activateMarketplaceEligible`): it scans
+ * PENDING marketplace entitlements whose order is delivered and whose delivery
+ * complaint window has passed, and transitions them to AVAILABLE.
+ *
+ * This removes the up-to-5-minute wait caused by the scheduled worker while
+ * keeping the worker as an idempotent recovery fallback (batch activation only
+ * touches PENDING rows, so a concurrent/duplicate run is always safe). Each
+ * activated entitlement emits `entitlement:activated`, which the realtime
+ * publisher forwards to the owning organisation + finance rooms.
+ */
+export async function handleMarketplaceOrderDelivered(envelope: EventEnvelope): Promise<void> {
+  const data = envelope.payload as any;
+  if (!data?.orderId) return;
+
+  try {
+    const periodDays = await getMarketplaceComplaintPeriodDays();
+    const activated = await financialEntitlementService.activateMarketplaceEligible(periodDays, BATCH_SIZE);
+    if (activated > 0) {
+      log.info({ orderId: data.orderId, activated, periodDays }, 'Marketplace entitlements activated on order delivered');
+    }
+  } catch (err: any) {
+    // Activation is idempotent and re-scanned by the periodic worker and the
+    // BullMQ retry/outbox machinery — do not leave state half-handled by a
+    // transient failure; let a later retry re-run it.
+    log.error({ err, orderId: data.orderId }, 'Failed to activate marketplace entitlements on delivered');
+    throw err;
   }
 }
 

@@ -44,6 +44,37 @@ describe('SocketEventMapper', () => {
     expect(result!.rooms).toContain('finance');
   });
 
+  // ── entitlement:activated (marketplace delivery realtime) ──
+  describe('entitlement:activated', () => {
+    it('routes an org entitlement activation to the organisation and finance rooms', () => {
+      const result = mapDomainEvent('entitlement:activated', {
+        entitlementId: 55, publicId: 'ENT-ABC', organisationId: 6,
+        entitlementType: 'ORGANIZATION_EARNING', sourceType: 'marketplace',
+        sourceId: 101, amount: 1200, currency: 'EGP',
+      });
+      expect(result).not.toBeNull();
+      expect(result!.type).toBe('entitlement.activated');
+      expect(result!.rooms).toContain('organisation:6');
+      expect(result!.rooms).toContain('finance');
+      expect(result!.payload).toMatchObject({
+        entitlementId: 55, publicId: 'ENT-ABC', organisationId: 6,
+        entitlementType: 'ORGANIZATION_EARNING', sourceType: 'marketplace',
+        sourceId: 101, amount: 1200, currency: 'EGP',
+      });
+    });
+
+    it('routes to finance only when no organisation scope is present', () => {
+      const result = mapDomainEvent('entitlement:activated', {
+        entitlementId: 1, publicId: 'X', organisationId: null,
+        entitlementType: 'COURTZON_COMMISSION', sourceType: 'marketplace',
+        amount: 80, currency: 'EGP',
+      });
+      expect(result!.type).toBe('entitlement.activated');
+      expect(result!.rooms).toEqual(['finance']);
+      expect(result!.rooms).not.toContain('organisation:null');
+    });
+  });
+
   it('returns null for unmapped event', () => {
     const result = mapDomainEvent('unknown:event', {});
     expect(result).toBeNull();
