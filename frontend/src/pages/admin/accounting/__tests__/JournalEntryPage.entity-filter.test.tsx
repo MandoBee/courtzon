@@ -80,15 +80,38 @@ describe('JournalEntryPage — entity filter (CourtZon / Organisation / Merchant
     expect(last[1].params.entityId).toBeUndefined();
   });
 
-  it('organisations and merchants render with their type label', async () => {
+  it('renders a flat list of entity names (no groups, no headings, no type suffixes)', async () => {
     renderPage();
     await screen.findByText('Entry 0');
     const select = screen.getByLabelText('Entity') as HTMLSelectElement;
     const labels = Array.from(select.options).map((o) => o.textContent || '');
+    // Plain entity names only.
     expect(labels).toContain('CourtZon');
-    expect(labels).toContain('Padel Edge — Organisation');
-    expect(labels).toContain('Merchant A — Merchant');
+    expect(labels).toContain('Padel Edge');
+    expect(labels).toContain('Org B');
+    expect(labels).toContain('Merchant A');
+    expect(labels).toContain('Merchant B');
     expect(labels).toContain('All');
+    // No category headings / pseudo options.
+    for (const forbidden of ['Organizations', 'All Organizations', 'Merchants', 'All Merchants']) {
+      expect(labels).not.toContain(forbidden);
+    }
+    // No visible type suffixes.
+    for (const label of labels) {
+      expect(label).not.toContain('— Organisation');
+      expect(label).not.toContain('— Merchant');
+    }
+    // No internal ids visible in the labels.
+    for (const label of labels) {
+      expect(label).not.toMatch(/\b\d{1,6}\b/);
+    }
+    // No nested optgroups rendered.
+    expect(Array.from(select.querySelectorAll('optgroup'))).toHaveLength(0);
+    // Order: CourtZon, organisations, merchants, All.
+    const order = labels.map((l) => l);
+    expect(order[0]).toBe('CourtZon');
+    expect(order[order.length - 1]).toBe('All');
+    expect(order.indexOf('Padel Edge')).toBeLessThan(order.indexOf('Merchant A'));
   });
 
   it('selecting an organisation + Apply sends entityType=organisation&entityId', async () => {
