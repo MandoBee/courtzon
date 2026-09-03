@@ -251,6 +251,27 @@ export const EVENT_CONCEPTS: Record<string, { debit: string[]; credit: string[] 
     debit: ['org_cash_bank'],
     credit: ['marketplace_receivable'],
   },
+  // Historical correction of pre-ec2a5ab settlements. The original payout was
+  // posted org-scoped with the WRONG account (Dr 2200 Org Payable / Cr 1120
+  // Cash-Bank stamped organisation_id = seller). This event NEUTRALIZES that
+  // leak INSIDE the organisation's book (same org scope, same global accounts):
+  //   Dr 1120 Cash/Bank (org-scoped) / Cr 2200 Org Payable (org-scoped)
+  // It is NOT a second payout — it only cancels the historical leakage rows so
+  // the org book no longer shows global 2200/1120 accounts. Immutable history
+  // is preserved; this is a separate, balanced, idempotent corrective journal.
+  settlement_paid_reversal: {
+    debit: ['cash_bank'],
+    credit: ['org_payable'],
+  },
+  // Historical correction of pre-ec2a5ab settlements. The REAL CourtZon payout
+  // belongs in the CourtZon book (organisation_id = NULL): clear the Merchant
+  // Payable control (2202) against Cash/Bank (1120). This records the cash
+  // movement that actually happened and clears the merchant liability that was
+  // never cleared historically.
+  settlement_paid_correction: {
+    debit: ['merchant_payable'],
+    credit: ['cash_bank'],
+  },
   payment_failure: {
     debit: ['bad_debt'],
     credit: ['payment_clearing'],
