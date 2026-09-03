@@ -52,6 +52,13 @@ const CONCEPT_ACCOUNT_CODE_DEFAULTS: Record<string, Record<string, string>> = {
   // Same account set as the settlement, with inverted sides — always resolves to
   // the SAME canonical accounts (1100 / 1120 / 5210), never hard-coded IDs.
   payment_gateway_settlement_reversal: { cash_bank: '1120', payment_clearing: '1100', payment_gateway_fee: '5210' },
+  // Organization (merchant) settlement payout — CourtZon clears the MERCHANT
+  // PAYABLE (2202) against Cash/Bank on settlement for ALL settlements. Code
+  // default is a safety net so the payout never falls back to the old 2200
+  // even if a fresh environment's mapping rows are incomplete.
+  settlement_paid: { merchant_payable: '2202', cash_bank: '1120' },
+  settlement_paid_offset: { merchant_payable: '2202', cash_bank: '1120', receivable_from_org: '1160' },
+  settlement_paid_otc_offset: { merchant_payable: '2202', cash_bank: '1120', receivable_from_org: '1160' },
 };
 
 /**
@@ -100,6 +107,14 @@ export const ORG_MARKETPLACE_ACCOUNT_CODES: Record<string, { code: string; name:
     parentCode: 'LIABILITIES-PAYABLES',
     description: 'CourtZon marketplace commission owed by this organization (organization book)',
   },
+  org_cash_bank: {
+    code: 'ORG-CASH',
+    name: 'Organization Cash / Bank',
+    type: 'asset',
+    normalSide: 'debit',
+    parentCode: 'ASSETS-CASH',
+    description: 'Organization cash/bank account for settled marketplace receipts (organization book)',
+  },
 };
 
 /** Organization-book event types and the concepts they require (org-scoped). */
@@ -108,6 +123,10 @@ export const ORG_BOOK_EVENTS: Record<string, string[]> = {
   marketplace_org_receivable_reversal: ['sales_revenue', 'shipping_liability', 'marketplace_receivable', 'commission_expense'],
   marketplace_org_cash_receivable: ['marketplace_receivable', 'commission_expense', 'sales_revenue', 'shipping_liability', 'courtzon_payable'],
   marketplace_org_cash_receivable_rev: ['sales_revenue', 'shipping_liability', 'courtzon_payable', 'marketplace_receivable', 'commission_expense'],
+  // Settlement receipt (org book): Dr org Cash/Bank / Cr org 1161 Marketplace
+  // Receivable — clears the org's receivable against the cash received from
+  // CourtZon on settlement.
+  settlement_org_receipt: ['org_cash_bank', 'marketplace_receivable'],
 };
 
 export class AccountingEngineService {

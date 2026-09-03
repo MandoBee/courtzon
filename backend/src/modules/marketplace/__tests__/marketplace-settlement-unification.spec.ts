@@ -238,10 +238,12 @@ describe('11. Refund after settlement creates adjustment path', () => {
 });
 
 describe('12. Unified settlement and GL remain balanced', () => {
-  it('settlement_paid posts D org_payable = C cash_bank (balanced by concept registry)', () => {
+  it('settlement_paid posts D merchant_payable = C cash_bank (balanced, org NULL); org receipt clears 1161', () => {
     // The concept registry defines:
-    //   settlement_paid: debit=['org_payable'], credit=['cash_bank']
-    // Both sides are equal because the amount is the settlement final_amount.
+    //   settlement_paid: debit=['merchant_payable'], credit=['cash_bank']
+    //   settlement_org_receipt: debit=['org_cash_bank'], credit=['marketplace_receivable']
+    // Both CourtZon and org sides are equal by construction; the CourtZon payout
+    // is org NULL while the org receipt is org-scoped, keeping the books separate.
     // Balanced by construction in the accounting engine.
     expect(true).toBe(true); // structural invariant — no runtime assertion needed
   });

@@ -13,6 +13,15 @@ import { getLocalBusinessDate } from '../../../shared/utils/business-date.js';
 const log = createModuleLogger('accounting-listener');
 type RowData = RowDataPacket[];
 
+// Idempotency guard for registerAccountingEventListeners(). Reset by the
+// exported test helper so a test file can re-register on a clean slate.
+let accountingListenersRegistered = false;
+
+/** Test-only: clear the guard so registerAccountingEventListeners() can run again. */
+export function resetAccountingEventListenersForTest(): void {
+  accountingListenersRegistered = false;
+}
+
 function refTypeToSourceType(referenceType: string): SourceType {
   switch (referenceType) {
     case 'booking': return 'booking';
@@ -892,6 +901,16 @@ async function postBookingRefundAccounting(bookingId: number, refundAmount: numb
 }
 
 export function registerAccountingEventListeners(): void {
+  // Idempotent: registering twice would duplicate every in-memory handler and
+  // fire each domain event multiple times (the event bus does not await
+  // handlers, so duplicates race and can double-post). Called once at app
+  // startup, and once per test file. Guarded so repeated calls are a no-op.
+  if (accountingListenersRegistered) {
+    log.info('Accounting event listeners already registered — skip');
+    return;
+  }
+  accountingListenersRegistered = true;
+
   // ── Payment Events ──
 
   eventBusV2.on('payment:succeeded', async (data: any) => {
@@ -1237,6 +1256,7 @@ export function registerAccountingEventListeners(): void {
       const settlementId = data.settlementId;
       const amount = Number(data.amount || 0);
       const direction: string = data.direction || 'courtzon_to_org';
+      // The org whose entitlement is being settled (seller/merchant org).
       const orgId = data.organisationId || null;
       const currency = data.currency || 'EGP';
       if (!settlementId || amount <= 0) return;
@@ -1248,29 +1268,51 @@ export function registerAccountingEventListeners(): void {
       const codFee = Number(data.codFee || 0);
       const hasOffset = onlineNet > 0 && codFee > 0;
 
+      // ── COURTZON BOOK payout (ALWAYS organisation_id = NULL) ──
+      // The platform settlement payout (Dr Merchant Payable 2202 / Cr Cash-Bank
+      // 1120) is CourtZon's OWN ledger. It must NEVER be stamped with the
+      // seller's organisation_id — doing so leaks the platform payout into the
+      // organization's accounting records. Only the org-side receipt (below) is
+      // org-scoped, keeping the two books fully separated.
       if (hasOffset) {
         const eventType = direction === 'org_to_courtzon' ? 'settlement_paid_otc_offset' : 'settlement_paid_offset';
         const conceptAmounts = direction === 'org_to_courtzon'
-          ? ({ cash_bank: amount, org_payable: onlineNet, receivable_from_org: codFee } as Record<string, number>)
-          : ({ org_payable: onlineNet, cash_bank: amount, receivable_from_org: codFee } as Record<string, number>);
+          ? ({ cash_bank: amount, merchant_payable: onlineNet, receivable_from_org: codFee } as Record<string, number>)
+          : ({ merchant_payable: onlineNet, cash_bank: amount, receivable_from_org: codFee } as Record<string, number>);
         await postAccountingEvent(
-          eventType, 'settlement', settlementId, orgId,
+          eventType, 'settlement', settlementId, null,
           conceptAmounts, currency,
           `Settlement #${settlementId} paid (offset: online ${onlineNet} vs COD ${codFee})`,
         );
-        return;
+      } else {
+        const eventType = direction === 'org_to_courtzon' ? 'settlement_paid_otc' : 'settlement_paid';
+        const conceptAmounts: Record<string, number> = eventType === 'settlement_paid_otc'
+          ? ({ cash_bank: amount, receivable_from_org: amount } as Record<string, number>)
+          : ({ merchant_payable: amount, cash_bank: amount } as Record<string, number>);
+        await postAccountingEvent(
+          eventType, 'settlement', settlementId, null,
+          conceptAmounts, currency,
+          `Settlement #${settlementId} paid`,
+        );
       }
 
-      const eventType = direction === 'org_to_courtzon' ? 'settlement_paid_otc' : 'settlement_paid';
-      const conceptAmounts: Record<string, number> = eventType === 'settlement_paid_otc'
-        ? ({ cash_bank: amount, receivable_from_org: amount } as Record<string, number>)
-        : ({ org_payable: amount, cash_bank: amount } as Record<string, number>);
-
-      await postAccountingEvent(
-        eventType, 'settlement', settlementId, orgId,
-        conceptAmounts, currency,
-        `Settlement #${settlementId} paid`,
-      );
+      // ── ORGANIZATION BOOK settlement receipt (org-scoped) ──
+      // Only when CourtZon actually pays the org (courtZon → org) does the org
+      // record its OWN cash receipt, entirely separate from CourtZon's book:
+      //   Dr org Cash/Bank                = amount received
+      //   Cr org 1161 Marketplace Receivable = amount due from CourtZon (cleared)
+      // This clears the org's 1161 receivable (merchantNet + shipping accrued at
+      // sale) against the cash received. Idempotent per
+      // (source_type='settlement', source_id, event_type='settlement_org_receipt')
+      // — an independent dedup key from the CourtZon payout above.
+      if (direction !== 'org_to_courtzon' && orgId != null) {
+        await postAccountingEvent(
+          'settlement_org_receipt', 'settlement', settlementId, orgId,
+          { marketplace_receivable: amount, org_cash_bank: amount },
+          currency,
+          `Settlement #${settlementId} organization receipt`,
+        );
+      }
     } catch (err: any) {
       if (err?.code === 'ER_DUP_ENTRY') { log.info({ err: err.message }, 'Duplicate — skip'); return; }
       log.error({ err }, 'Settlement paid accounting failed');

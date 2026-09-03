@@ -215,8 +215,15 @@ export const EVENT_CONCEPTS: Record<string, { debit: string[]; credit: string[] 
     debit: ['withdrawal_clearing'],
     credit: ['cash_bank'],
   },
+  // Settlement paid — CourtZon settles an ORGANIZATION (seller/merchant) for its
+  // net entitlement. The CourtZon book is a payout that clears the MERCHANT
+  // PAYABLE (2202) against Cash/Bank (1120); organisation_id STAYS NULL — the
+  // platform payout is CourtZon's own book, never org-scoped. The org side of
+  // the settlement is posted separately as `settlement_org_receipt` (org book:
+  // Dr org Cash/Bank / Cr org 1161 Marketplace Receivable) to clear the org's
+  // receivable without leaking the platform entry into the org's records.
   settlement_paid: {
-    debit: ['org_payable'],
+    debit: ['merchant_payable'],
     credit: ['cash_bank'],
   },
   settlement_paid_otc: {
@@ -227,12 +234,22 @@ export const EVENT_CONCEPTS: Record<string, { debit: string[]; credit: string[] 
   // payable and the FULL COD commission receivable against the net cash
   // movement in one balanced posting.
   settlement_paid_offset: {
-    debit: ['org_payable'],
+    debit: ['merchant_payable'],
     credit: ['cash_bank', 'receivable_from_org'],
   },
   settlement_paid_otc_offset: {
-    debit: ['cash_bank', 'org_payable'],
+    debit: ['cash_bank', 'merchant_payable'],
     credit: ['receivable_from_org'],
+  },
+  // Organization-book settlement receipt — the org records its OWN cash receipt
+  // from CourtZon entirely separate from CourtZon's book (org-scoped lines):
+  //   Dr org Cash/Bank                 = settlement amount received
+  //   Cr org 1161 Marketplace Receivable = amount due from CourtZon (cleared)
+  // Clears the org's marketplace 1161 receivable (merchantNet + shipping accrued
+  // at sale) against the cash actually received on settlement.
+  settlement_org_receipt: {
+    debit: ['org_cash_bank'],
+    credit: ['marketplace_receivable'],
   },
   payment_failure: {
     debit: ['bad_debt'],

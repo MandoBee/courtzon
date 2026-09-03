@@ -36,6 +36,11 @@ describe('Financial Custody & Counterparty', () => {
     await pool.execute(`DELETE FROM bookings WHERE organisation_id IN (SELECT id FROM organisations WHERE slug = 'custody-it-org')`);
     await pool.execute(`DELETE FROM organisations WHERE slug = 'custody-it-org'`);
 
+    // CourtZon-book settlement postings are org NULL — clean their global ledger
+    // rows too (else hasPosting would skip in a later run, making deltas 0).
+    await pool.execute(`DELETE FROM ledger_entries WHERE source_type='settlement' AND source_id IN (990001, 990002)`);
+    await pool.execute(`DELETE FROM general_ledger WHERE reference_type='settlement' AND reference_id IN (990001, 990002)`);
+
     const [ot] = await pool.execute<RowData>('SELECT id FROM organisation_types LIMIT 1');
     const otId = (ot as any[])[0].id;
     const [o] = await pool.execute<RowData>(
@@ -84,6 +89,18 @@ describe('Financial Custody & Counterparty', () => {
               COALESCE(SUM(CASE WHEN side='debit' THEN amount ELSE 0 END),0) AS d
        FROM ledger_entries WHERE chart_account_id = ? AND organisation_id = ?`,
       [accountId, orgId],
+    );
+    return { credit: Number((rows as any[])[0].c), debit: Number((rows as any[])[0].d) };
+  }
+
+  // Returns {credit, debit} sums for a GLOBAL (organisation_id IS NULL) account —
+  // used for CourtZon-book settlement postings, which are deliberately org NULL.
+  async function globalAccountSums(accountId: number): Promise<{ credit: number; debit: number }> {
+    const [rows] = await pool.execute<RowData>(
+      `SELECT COALESCE(SUM(CASE WHEN side='credit' THEN amount ELSE 0 END),0) AS c,
+              COALESCE(SUM(CASE WHEN side='debit' THEN amount ELSE 0 END),0) AS d
+       FROM ledger_entries WHERE chart_account_id = ? AND organisation_id IS NULL`,
+      [accountId],
     );
     return { credit: Number((rows as any[])[0].c), debit: Number((rows as any[])[0].d) };
   }
@@ -265,22 +282,36 @@ describe('Financial Custody & Counterparty', () => {
 
   it('7. settlement offset: clears full payable + full receivable against net cash', async () => {
     const { postAccountingEvent } = await import('../application/accounting-event.listener.js');
+    const cashId = await accountCode('1120');
+    const receivableId = await accountCode('1160');
+    const merchantPayableId = await accountCode('2202');
+    const orgPayableId = await accountCode('2200');
+
+    // CourtZon book postings are org NULL — capture global deltas BEFORE the
+    // post (isolated from any pre-existing shared-DB history for these GLOBAL
+    // accounts).
+    const cashBefore = await globalAccountSums(cashId);
+    const receivableBefore = await globalAccountSums(receivableId);
+    const merchantPayableBefore = await globalAccountSums(merchantPayableId);
+    const orgPayableBefore = await globalAccountSums(orgPayableId);
+
     await postAccountingEvent(
-      'settlement_paid_offset', 'settlement', 990001, orgId,
-      { org_payable: 100, cash_bank: 70, receivable_from_org: 30 },
+      'settlement_paid_offset', 'settlement', 990001,
+      // CourtZon book is ALWAYS org NULL — the platform settlement payout never
+      // leaks into the org's records. The payable cleared is MERCHANT_PAYABLE
+      // (2202), not org_payable (2200) — the org settlement clears the merchant
+      // payable control for ALL settlements.
+      null,
+      { merchant_payable: 100, cash_bank: 70, receivable_from_org: 30 },
       'EGP', 'custody settlement offset',
     );
 
-    const cashId = await accountCode('1120');
-    const receivableId = await accountCode('1160');
-    const payableId = await accountCode('2200');
-    const cash = await accountSums(cashId);
-    const receivable = await accountSums(receivableId);
-    const payable = await accountSums(payableId);
-
-    expect(cash.credit).toBe(70);
-    expect(receivable.credit).toBe(30); // cleared 30 of the receivable
-    expect(payable.debit).toBe(190);    // 90 (booking refund) + 100 (settlement) cleared
+    expect((await globalAccountSums(cashId)).credit - cashBefore.credit).toBe(70);
+    expect((await globalAccountSums(receivableId)).credit - receivableBefore.credit).toBe(30); // cleared 30 of the receivable
+    // Settlement now clears the MERCHANT PAYABLE (2202): 100 — not org_payable.
+    expect((await globalAccountSums(merchantPayableId)).debit - merchantPayableBefore.debit).toBe(100);
+    // Org Payable (2200) is untouched by the settlement — delta 0.
+    expect((await globalAccountSums(orgPayableId)).debit - orgPayableBefore.debit).toBe(0);
   });
 
   it('8. event mapping resolves org_payable (no hard-coded COA); org override works', async () => {
@@ -409,20 +440,23 @@ describe('Financial Custody & Counterparty', () => {
 
   it('14. settlement/collection of COD receivable clears receivable_from_org', async () => {
     const { postAccountingEvent } = await import('../application/accounting-event.listener.js');
+    const receivableId = await accountCode('1160');
+    const cashId = await accountCode('1120');
+    // OTC collection is a CourtZon-book operation → org NULL.
+    const receivableBefore = await globalAccountSums(receivableId);
+    const cashBefore = await globalAccountSums(cashId);
+
     // Collect 300 of the receivable (the COD commission) via settlement_paid_otc.
     await postAccountingEvent(
-      'settlement_paid_otc', 'settlement', 990002, orgId,
+      'settlement_paid_otc', 'settlement', 990002, null,
       { cash_bank: 300, receivable_from_org: 300 },
       'EGP', 'custody COD collection',
     );
 
-    const receivableId = await accountCode('1160');
-    const cashId = await accountCode('1120');
-    const receivable = await accountSums(receivableId);
-    const cash = await accountSums(cashId);
-    // Receivable credited 300 (cleared); cash debited 300 (collected).
-    expect(receivable.credit).toBe(330); // 30 (offset) + 300 (collection)
-    expect(cash.debit).toBe(300);
+    // Receivable credited 300 (cleared); cash debited 300 (collected) — all in
+    // CourtZon's global book, delta-based to isolate from shared-DB history.
+    expect((await globalAccountSums(receivableId)).credit - receivableBefore.credit).toBe(300);
+    expect((await globalAccountSums(cashId)).debit - cashBefore.debit).toBe(300);
   });
 
   it('15. coach COD is unreachable: BookSessionSchema has no paymentMethod', async () => {
