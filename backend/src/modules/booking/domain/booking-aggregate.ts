@@ -1,4 +1,5 @@
 import type { Clock } from '../../../shared/utils/clock.js';
+import { ConflictError } from '../../../shared/errors/app-error.js';
 
 export type BookingStatus = 'pending' | 'pending_payment' | 'confirmed' | 'cancelled' | 'expired' | 'completed' | 'checked_in' | 'no_show' | 'cancelled_with_fee';
 export type PaymentStatus = 'pending' | 'paid' | 'refunded' | 'partially_refunded' | 'penalty' | 'failed';
@@ -35,7 +36,7 @@ export interface TransitionResult {
 export function assertValidTransition(from: BookingStatus, to: BookingStatus): void {
   const allowed = ALLOWED_TRANSITIONS[from];
   if (!allowed || !allowed.includes(to)) {
-    throw new Error(`Illegal booking state transition: ${from} → ${to}`);
+    throw new ConflictError(`Illegal booking state transition: ${from} → ${to}`);
   }
 }
 

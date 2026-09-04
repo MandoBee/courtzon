@@ -23,10 +23,23 @@ import { confirmBookingHandler, type ConfirmBookingPayload } from '../commands/c
 import { cancelBookingHandler, type CancelBookingPayload } from '../commands/cancel-booking.command.js';
 import { completeBookingHandler, type CompleteBookingPayload } from '../commands/complete-booking.command.js';
 import { expireBookingHandler } from '../commands/expire-booking.command.js';
+import { noShowBookingHandler, type NoShowBookingPayload } from '../commands/no-show-booking.command.js';
 import type { Command } from '../../../shared/command/command-base.js';
 import { CancellationReason } from '../../../platform/shared/booking-types.js';
 
 type RowData = mysql.RowDataPacket[];
+
+/**
+ * A rejected command surfaces as { status:'error', code, message } from the
+ * command pipeline. Rebuild the original AppError so invalid lifecycle
+ * transitions return the appropriate 4xx instead of being wrapped into a
+ * generic Error that the global handler maps to 500.
+ */
+function throwCommandError(result: { code?: string; message?: string }): never {
+  if (result.code === 'FORBIDDEN') throw new ForbiddenError(result.message || 'Forbidden');
+  if (result.code === 'VALIDATION_ERROR') throw new ConflictError(result.message || 'Invalid command');
+  throw new ConflictError(result.message || 'Command rejected');
+}
 
 async function executeBookingCommand(commandType: string, handler: any, payload: Record<string, unknown>, aggregateId: string): Promise<any> {
   const command: Command = {
@@ -41,7 +54,7 @@ async function executeBookingCommand(commandType: string, handler: any, payload:
     execute: async (cmd, conn) => handler.execute(cmd, conn),
     events: (cmd, res) => handler.events!(cmd, res),
   });
-  if (result.status === 'error') throw new Error(`${commandType} failed: ${result.message}`);
+  if (result.status === 'error') throwCommandError(result);
   return result.data;
 }
 
@@ -326,7 +339,8 @@ export class BookingService {
         // ledger_entries → general_ledger via booking:paid (see accounting listener).
         // Emitted after commit below so the event never fires for a rolled-back booking.
         codPaidPayload = {
-          bookingId, organisationId,
+          bookingId, userId,
+          organisationId,
           grossAmount: pricing.totalPrice, taxAmount, coachAmount: 0,
           organisationAmount: clubAmount, commissionAmount,
           paymentMethod: 'cod', currency: 'EGP',
@@ -811,11 +825,30 @@ export class BookingService {
     const maxWindow = (polRows[0] as any)?.max_window;
     if (!maxWindow) return true;
 
-    const bookingStart = new Date(`${booking.booking_date}T${booking.start_time}`);
+    const bookingStart = this._parseBookingStartDate(booking);
     const now = new Date();
     const minutesUntil = (bookingStart.getTime() - now.getTime()) / (1000 * 60);
 
     return minutesUntil >= maxWindow;
+  }
+
+  /**
+   * Build the booking's start instant from its local booking_date + start_time.
+   *
+   * mysql2 returns DATE columns as JS Date objects (the pool does not set
+   * `dateStrings: true`), so `new Date(\`${booking_date}T${start_time}\`)`
+   * templates the Date's toString() and yields an Invalid Date (NaN). This
+   * normalizes the date part to `YYYY-MM-DD` (UTC) before appending the local
+   * time, preserving the intended local-time parsing semantics. Falls back to
+   * an Invalid Date when the booking has no usable date/time, which callers
+   * treat as "no policy applicable" (their existing conservative behavior).
+   */
+  private _parseBookingStartDate(booking: any): Date {
+    const datePart = booking?.booking_date instanceof Date
+      ? booking.booking_date.toISOString().slice(0, 10)
+      : String(booking?.booking_date || '').slice(0, 10);
+    const timePart = String(booking?.start_time || '00:00:00');
+    return new Date(`${datePart}T${timePart}`);
   }
 
   private async _calculateCancellationFee(booking: any): Promise<{ feeAmount: number; refundAmount: number }> {
@@ -836,7 +869,7 @@ export class BookingService {
     const paidAmount = await this._resolveBookingPaidAmount(booking);
     const refundBase = paidAmount > 0 ? paidAmount : Number(booking.total_amount);
 
-    const bookingStart = new Date(`${booking.booking_date}T${booking.start_time}`);
+    const bookingStart = this._parseBookingStartDate(booking);
     const now = new Date();
     const hoursUntilBooking = (bookingStart.getTime() - now.getTime()) / (1000 * 60 * 60);
 
@@ -1000,7 +1033,7 @@ export class BookingService {
       if (booking) {
         eventBusV2.emit('booking:check-in', {
           bookingId: id,
-          userId,
+          userId: booking.user_id,
           organisationId: booking.organisation_id || undefined,
           branchId: booking.branch_id || undefined,
           resourceId: booking.resource_id || undefined,
@@ -1048,12 +1081,27 @@ export class BookingService {
       return;
     }
 
-    if (status === 'cancelled' || status === 'no_show') {
-      if (status === 'cancelled' && isFeatureEnabled('BOOKING_V2_CANCEL')) {
-        await this.cancelBookingV2(id);
-        return;
+    if (status === 'no_show') {
+      const booking = await bookingRepository.findById(id);
+      if (!booking) throw new NotFoundError('Booking');
+      if (booking.booking_status === 'no_show') {
+        throw new ConflictError('Booking already no-show');
       }
 
+      // Dedicated no-show lifecycle transition (confirmed/checked_in → no_show).
+      // Emits ONLY booking:no-show — never booking:cancelled, so a no-show can
+      // never degrade into a cancellation state or produce a duplicate cancelled
+      // event/notification (BUG 1 + BUG 2).
+      await executeBookingCommand('NoShowBooking', noShowBookingHandler, { bookingId: id }, String(id));
+
+      // Preserve the existing COD no-show penalty operational accounting.
+      if (booking.payment_method === 'cash' || booking.payment_method === 'cod') {
+        await this._recordCODWalletTransaction(booking, 'penalty', `Booking #${booking.id} no-show penalty`);
+      }
+      return;
+    }
+
+    if (status === 'cancelled') {
       const booking = await bookingRepository.findById(id);
       if (!booking) throw new NotFoundError('Booking');
       if (booking.booking_status === 'cancelled' || booking.booking_status === 'no_show') {
@@ -1061,40 +1109,22 @@ export class BookingService {
       }
 
       const isCOD = booking.payment_method === 'cash' || booking.payment_method === 'cod';
-
-      if (!isCOD && status === 'no_show') {
-        await executeBookingCommand('CancelBooking', cancelBookingHandler, { bookingId: id, reason: CancellationReason.ADMIN_CANCELLED, actorId: actorId ?? booking.user_id }, String(id));
-        this._emitBookingNoShow(id, booking, actorId ?? booking.user_id);
-        return;
-      }
-
       const { feeAmount, refundAmount } = await this._calculateCancellationFee(booking);
       const totalAmount = Number(booking.total_amount);
       const reason = CancellationReason.ADMIN_CANCELLED;
       const resolvedUserId = actorId ?? booking.user_id;
 
       if (isCOD) {
-        let paymentStatus: string;
-        if (status === 'no_show') {
-          paymentStatus = 'penalty';
-        } else {
-          if (refundAmount >= totalAmount) {
-            paymentStatus = 'refunded';
-          } else if (refundAmount > 0) {
-            paymentStatus = 'partially_refunded';
-          } else {
-            paymentStatus = 'penalty';
-          }
-        }
+        const paymentStatus = refundAmount >= totalAmount ? 'refunded' : refundAmount > 0 ? 'partially_refunded' : 'penalty';
 
-        if (status === 'cancelled') {
-          await executeBookingCommand('CancelBooking', cancelBookingHandler, { bookingId: id, reason, actorId: resolvedUserId }, String(id));
+        // The V2 cancel path must run the SAME canonical financial lifecycle as
+        // legacy: the cancel transition first, then the COD refund/penalty
+        // accounting (BUG 5). The accounting is idempotent (booking:refunded
+        // posting identity) so running it here cannot double-post.
+        if (isFeatureEnabled('BOOKING_V2_CANCEL')) {
+          await this.cancelBookingV2(id);
         } else {
           await executeBookingCommand('CancelBooking', cancelBookingHandler, { bookingId: id, reason, actorId: resolvedUserId }, String(id));
-        }
-
-        if (status === 'no_show') {
-          this._emitBookingNoShow(id, booking, resolvedUserId);
         }
 
         if (paymentStatus === 'refunded') {
@@ -1102,11 +1132,14 @@ export class BookingService {
         } else if (paymentStatus === 'partially_refunded') {
           await this._refundCODWallet(booking, refundAmount);
         } else if (paymentStatus === 'penalty') {
-          await this._recordCODWalletTransaction(booking, 'penalty',
-            `Booking #${booking.id} ${status === 'no_show' ? 'no-show penalty' : 'cancellation penalty'}`);
+          await this._recordCODWalletTransaction(booking, 'penalty', `Booking #${booking.id} cancellation penalty`);
         }
       } else {
-        await executeBookingCommand('CancelBooking', cancelBookingHandler, { bookingId: id, reason, actorId: resolvedUserId }, String(id));
+        if (isFeatureEnabled('BOOKING_V2_CANCEL')) {
+          await this.cancelBookingV2(id);
+        } else {
+          await executeBookingCommand('CancelBooking', cancelBookingHandler, { bookingId: id, reason, actorId: resolvedUserId }, String(id));
+        }
         if (refundAmount > 0 && booking.payment_status === 'paid') {
           await this._processGatewayRefund(booking, refundAmount);
         }
@@ -1246,33 +1279,6 @@ export class BookingService {
     } as any);
   }
 
-  /**
-   * Emit the canonical `booking:no-show` realtime/notification event after a
-   * no-show status transition. The underlying CancelBooking command already
-   * emits `booking:cancelled` (state change); this dedicated event carries the
-   * no-show semantics so the socket publisher routes `booking.no_show` and the
-   * notification engine shows a no-show notification (both are subscribed but
-   * were never emitted before).
-   */
-  private _emitBookingNoShow(bookingId: number, booking: any, actorId: number): void {
-    try {
-      eventBusV2.emit('booking:no-show', {
-        bookingId,
-        userId: booking?.user_id ?? actorId,
-        organisationId: booking?.organisation_id || undefined,
-        branchId: booking?.branch_id || undefined,
-        resourceId: booking?.resource_id || undefined,
-        courtId: booking?.resource_id || undefined,
-        bookingDate: booking?.booking_date || undefined,
-        startTime: booking?.start_time || undefined,
-        endTime: booking?.end_time || undefined,
-        reason: 'no_show',
-      } as any);
-    } catch (err) {
-      log.warn({ err, bookingId }, 'booking:no-show emit failed');
-    }
-  }
-
   // Phase 2 Step 7: markBookingSettled removed — duplicate settlement authority.
   // Booking settlements MUST go through bookingSettlementService.settleBookingEconomics
   // which consumes financial_entitlements via the unified settlement engine.
@@ -1386,6 +1392,7 @@ export class BookingService {
       try {
         eventBusV2.emit('booking:paid', {
           bookingId: id,
+          userId: booking.user_id,
           organisationId: booking.organisation_id,
           grossAmount: Number(booking.total_amount || 0),
           taxAmount: Number(booking.tax_amount || 0),
@@ -1741,7 +1748,7 @@ export class BookingService {
     });
 
     if (result.status === 'error') {
-      throw new Error(`ConfirmBooking failed: ${result.message}`);
+      throwCommandError(result);
     }
 
     log.info({ bookingId }, 'booking.confirmed_v2');
@@ -1762,9 +1769,7 @@ export class BookingService {
       events: (cmd, res) => cancelBookingHandler.events!(cmd, res),
     });
 
-    if (result.status === 'error') {
-      throw new Error(`CancelBooking failed: ${result.message}`);
-    }
+    if (result.status === 'error') throwCommandError(result);
 
     log.info({ bookingId }, 'booking.cancelled_v2');
   }
@@ -1785,7 +1790,7 @@ export class BookingService {
     });
 
     if (result.status === 'error') {
-      throw new Error(`CompleteBooking failed: ${result.message}`);
+      throwCommandError(result);
     }
 
     log.info({ bookingId }, 'booking.completed_v2');
