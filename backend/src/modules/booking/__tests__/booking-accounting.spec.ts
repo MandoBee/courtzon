@@ -114,7 +114,7 @@ describe('Booking Accounting Integration', () => {
     const mapping = await accountingEngineService.resolveMapping('booking_card_payment', null);
     expect(mapping.length).toBeGreaterThanOrEqual(3);
     const concepts = mapping.map(m => m.concept);
-    expect(concepts).toContain('org_payable');
+    expect(concepts).toContain('merchant_payable');
     expect(concepts).toContain('platform_commission');
     expect(concepts).toContain('tax_liability');
   });
@@ -131,7 +131,7 @@ describe('Booking Accounting Integration', () => {
     const { accountingEngineService } = await import('../../financial/application/accounting-engine.service.js');
     const mapping = await accountingEngineService.resolveMapping('booking_refund', null);
     const concepts = mapping.map(m => m.concept);
-    expect(concepts).toContain('org_payable');
+    expect(concepts).toContain('merchant_payable');
     expect(concepts).toContain('tax_liability');
   });
 

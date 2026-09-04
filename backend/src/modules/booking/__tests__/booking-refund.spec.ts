@@ -89,11 +89,11 @@ describe('Booking Partial Refund Accounting', () => {
     expect(Number((rows as any[])[0].refunded_amount)).toBe(80);
   });
 
-  it('5. booking refund concept reverses org_payable + commission + tax', async () => {
+  it('5. booking refund concept reverses merchant_payable + commission + tax', async () => {
     const { accountingEngineService } = await import('../../financial/application/accounting-engine.service.js');
     const mapping = await accountingEngineService.resolveMapping('booking_refund', null);
     const concepts = mapping.map(m => m.concept);
-    expect(concepts).toContain('org_payable');
+    expect(concepts).toContain('merchant_payable');
     expect(concepts).toContain('platform_commission');
     expect(concepts).toContain('tax_liability');
   });

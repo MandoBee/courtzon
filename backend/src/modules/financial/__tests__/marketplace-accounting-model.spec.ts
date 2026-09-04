@@ -612,12 +612,13 @@ describe('Marketplace Accounting Model — Multi-Book (CourtZon + Organization)'
     await pool.execute(`DELETE FROM orders WHERE id=?`, [orderA]);
   });
 
-  it('G. SUBSCRIPTION / BOOKING untouched — mappings resolve unchanged', async () => {
+  it('G. SUBSCRIPTION revenue mapping + BOOKING shares the merchant_payable model — mappings resolve unchanged', async () => {
     const { accountingEngineService } = await import('../application/accounting-engine.service.js');
     const sub = await accountingEngineService.resolveMapping('subscription_card_payment', null);
     expect(sub.find(m => m.concept === 'revenue')).toBeTruthy();
     const bk = await accountingEngineService.resolveMapping('booking_card_payment', null);
-    expect(bk.find(m => m.concept === 'org_payable')).toBeTruthy();
+    // Bookings now mirror the marketplace model: org share = merchant_payable (2202).
+    expect(bk.find(m => m.concept === 'merchant_payable')).toBeTruthy();
     // CourtZon marketplace card: no shipping concept (shipping moved to org book).
     const mp = await accountingEngineService.resolveMapping('marketplace_card_payment', null);
     expect(mp.find(m => m.concept === 'merchant_payable')).toBeTruthy();

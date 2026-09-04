@@ -3,6 +3,7 @@ import { accountingEngineService } from './accounting-engine.service.js';
 import { ledgerRepository } from '../infrastructure/repositories/ledger.repository.js';
 import { glProjectionService } from './gl-projection.service.js';
 import { bookingAccounting } from './booking-accounting.service.js';
+import type { RefundEconomics } from './booking-accounting.service.js';
 import { getPool } from '../../../database/mysql.js';
 import type { RowDataPacket } from 'mysql2';
 import type { SourceType, LedgerLineInput, EntrySide, LedgerEntry } from '../domain/ledger-aggregate.js';
@@ -12,6 +13,29 @@ import { getLocalBusinessDate } from '../../../shared/utils/business-date.js';
 
 const log = createModuleLogger('accounting-listener');
 type RowData = RowDataPacket[];
+
+// In-process per-entity mutexes. Booking accounting is legitimately triggered
+// from two concurrent event paths per payment (payment:succeeded AND the
+// booking:paid emitted by the booking-payment listener). Without serialization
+// the two handlers race into concurrent first-time org provisioning and the
+// org-book posting stalls on MySQL gap locks for ~1s — or deadlocks on busy
+// traffic. The mutex makes the second trigger deterministically idempotent
+// (it re-runs after the first completes and hits the hasPosting skip). Cross-
+// process safety remains enforced by the ledger_entries.uk_dedup constraint.
+const accountingEntityLocks = new Map<string, Promise<unknown>>();
+
+async function runEntityExclusive<T>(key: string, fn: () => Promise<T>): Promise<T> {
+  const prev = accountingEntityLocks.get(key) ?? Promise.resolve();
+  const run = prev.catch(() => undefined).then(fn);
+  const tail = run.then(() => undefined, () => undefined);
+  accountingEntityLocks.set(key, tail);
+  tail.finally(() => {
+    // Garbage-collect idle keys: only delete if we are still the latest tail
+    // (a newer caller replaces the map entry, so we must not clear their lock).
+    if (accountingEntityLocks.get(key) === tail) accountingEntityLocks.delete(key);
+  });
+  return run;
+}
 
 // Idempotency guard for registerAccountingEventListeners(). Reset by the
 // exported test helper so a test file can re-register on a clean slate.
@@ -760,6 +784,15 @@ async function postAccountingEvent(
 }
 
 async function postBookingPaymentAccounting(bookingId: number, paymentMethod: string, currency: string): Promise<void> {
+  // Serialize per organisation (not per booking): the double-trigger handlers
+  // (payment:succeeded + booking:paid) and concurrent bookings of the same org
+  // must not race first-time org provisioning, which stalls on MySQL gap locks.
+  const econ = await bookingAccounting.resolveBookingEconomics(bookingId);
+  const key = econ ? `booking-org:${econ.organisationId ?? 'global'}` : `booking:${bookingId}`;
+  return runEntityExclusive(key, () => postBookingPaymentAccountingInner(bookingId, paymentMethod, currency));
+}
+
+async function postBookingPaymentAccountingInner(bookingId: number, paymentMethod: string, currency: string): Promise<void> {
   const econ = await bookingAccounting.resolveBookingEconomics(bookingId);
   if (!econ) {
     log.error({ bookingId }, 'Booking economics not found — skipping booking accounting');
@@ -774,39 +807,138 @@ async function postBookingPaymentAccounting(bookingId: number, paymentMethod: st
   const grossPayable = econ.orgAmount + econ.commissionAmount + econ.taxAmount;
 
   if (isCOD) {
-    // COD — the org collects the cash directly. CourtZon is owed only
-    // commission + tax (a receivable from the org). The org share is the
-    // org's own revenue and never enters CourtZon's canonical ledger.
+    // COD — the org collects the customer's cash directly, mirroring the
+    // marketplace cash/COD custody model.
+    //
+    // COURTZON BOOK (organisation_id = NULL):
+    //   Dr 1161 Marketplace Receivable = commission + tax
+    //   Cr 4110 Platform Commission     = commission
+    //   Cr 2300 Tax Liability           = tax
+    // CourtZon is owed ONLY its commission (+ VAT collected on its behalf);
+    // the org's share NEVER enters CourtZon's book as a payable — the org
+    // collected it directly from the customer.
+    //
+    // ORGANIZATION BOOK (organisation_id = org): the org records
+    //   Dr org 1161 Marketplace Receivable = orgAmount + commission (full
+    //                                            collected court fee, pre-tax)
+    //   Dr org Commission Expense          = commission
+    //   Cr org Sales Revenue               = orgAmount + commission
+    //   Cr org CourtZon Payable            = commission (owed to CourtZon)
+    // Balanced: Dr(gross + commission) = Cr(gross + commission).
     await postAccountingEvent(
-      eventType, 'booking', bookingId, econ.organisationId,
+      eventType, 'booking', bookingId, null,
       {
-        receivable_from_org: econ.commissionAmount + econ.taxAmount,
+        marketplace_receivable: econ.commissionAmount + econ.taxAmount,
         platform_commission: econ.commissionAmount,
         tax_liability: econ.taxAmount,
       },
       currency,
-      `Booking #${bookingId} COD payment (commission receivable)`,
+      `Booking #${bookingId} COD payment (commission/tax receivable)`,
+      undefined,
+      {
+        marketplace_receivable: null,
+        platform_commission: null,
+        tax_liability: null,
+      },
     );
+
+    const orgId = econ.organisationId;
+    if (orgId != null) {
+      const cashGross = Math.round((econ.orgAmount + econ.commissionAmount) * 100) / 100;
+      await postAccountingEvent(
+        'booking_org_cash_receivable', 'booking', bookingId, orgId,
+        {
+          marketplace_receivable: cashGross,
+          commission_expense: econ.commissionAmount,
+          sales_revenue: cashGross,
+          courtzon_payable: econ.commissionAmount,
+        },
+        currency,
+        `Booking #${bookingId} organization book (COD cash receivable)`,
+        undefined,
+        {
+          marketplace_receivable: orgId,
+          commission_expense: orgId,
+          sales_revenue: orgId,
+          courtzon_payable: orgId,
+        },
+      );
+    }
+
+    // Coach payable (separate explicit event, only when coach share exists)
+    if (econ.coachAmount > 0 && orgId != null) {
+      await postAccountingEvent(
+        'booking_coach_payout', 'booking', bookingId, orgId,
+        { coach_expense: econ.coachAmount, coach_payable: econ.coachAmount },
+        currency,
+        `Booking #${bookingId} coach payout`,
+      );
+    }
     return;
   }
 
+  // CARD / WALLET — mirror marketplace custody (marketplace_card_payment /
+  // marketplace_wallet_payment) exactly.
+  //
+  // COURTZON BOOK (organisation_id = NULL):
+  //   Dr 1100 Payment Clearing / 2100 Wallet Liability Spend = gross
+  //   Cr 2202 Merchant Payable (control)                    = orgAmount
+  //   Cr 4110 Platform Commission                            = commission
+  //   Cr 2300 Tax Liability                                  = tax
+  // CourtZon holds the funds; the org share is CourtZon's PAYABLE to the org
+  // (same 2202 control the settlement engine clears), NOT org revenue.
+  //
+  // ORGANIZATION BOOK (organisation_id = org): the org records
+  //   Dr org 1161 Marketplace Receivable = orgAmount   (due from CourtZon)
+  //   Dr org Commission Expense          = commission
+  //   Cr org Sales Revenue               = orgAmount + commission
+  // Balanced: Dr(orgAmount + commission) = Cr(orgAmount + commission).
   await postAccountingEvent(
-    eventType, 'booking', bookingId, econ.organisationId,
+    eventType, 'booking', bookingId, null,
     {
-      org_payable: econ.orgAmount,
+      merchant_payable: econ.orgAmount,
       platform_commission: econ.commissionAmount,
       tax_liability: econ.taxAmount,
       payment_clearing: eventType === 'booking_card_payment' ? grossPayable : 0,
       wallet_liability_spend: eventType === 'booking_wallet_payment' ? grossPayable : 0,
     },
     currency,
-    `Booking #${bookingId} payment`,
+    `Booking #${bookingId} payment (custody: card/wallet)`,
+    undefined,
+    {
+      merchant_payable: null,
+      platform_commission: null,
+      tax_liability: null,
+      payment_clearing: null,
+      wallet_liability_spend: null,
+    },
   );
 
-  // Coach payable (separate explicit event, only when coach share exists)
-  if (econ.coachAmount > 0) {
+  const orgId = econ.organisationId;
+  if (orgId != null) {
+    const salesRevenue = Math.round((econ.orgAmount + econ.commissionAmount) * 100) / 100;
     await postAccountingEvent(
-      'booking_coach_payout', 'booking', bookingId, econ.organisationId,
+      'booking_org_receivable', 'booking', bookingId, orgId,
+      {
+        marketplace_receivable: econ.orgAmount,
+        commission_expense: econ.commissionAmount,
+        sales_revenue: salesRevenue,
+      },
+      currency,
+      `Booking #${bookingId} organization book (sales/commission)`,
+      undefined,
+      {
+        marketplace_receivable: orgId,
+        commission_expense: orgId,
+        sales_revenue: orgId,
+      },
+    );
+  }
+
+  // Coach payable (separate explicit event, only when coach share exists)
+  if (econ.coachAmount > 0 && orgId != null) {
+    await postAccountingEvent(
+      'booking_coach_payout', 'booking', bookingId, orgId,
       { coach_expense: econ.coachAmount, coach_payable: econ.coachAmount },
       currency,
       `Booking #${bookingId} coach payout`,
@@ -816,6 +948,12 @@ async function postBookingPaymentAccounting(bookingId: number, paymentMethod: st
 
 async function postBookingRefundAccounting(bookingId: number, refundAmount: number, currency: string): Promise<void> {
   const refund = await bookingAccounting.computeRefundEconomics(bookingId, refundAmount);
+  const key = refund ? `booking-org:${refund.organisationId ?? 'global'}` : `booking:${bookingId}`;
+  return runEntityExclusive(key, () => postBookingRefundAccountingInner(bookingId, refundAmount, currency));
+}
+
+async function postBookingRefundAccountingInner(bookingId: number, refundAmount: number, currency: string): Promise<void> {
+  const refund = await bookingAccounting.computeRefundEconomics(bookingId, refundAmount);
   if (!refund) {
     log.error({ bookingId }, 'Booking refund economics not found — skipping refund accounting');
     return;
@@ -823,40 +961,58 @@ async function postBookingRefundAccounting(bookingId: number, refundAmount: numb
   if (refund.refundedAmount <= 0) return;
 
   // ── COD refund: reverse the COD economics (receivable + commission + tax) ──
-  // COD bookings never created org_payable or payment_clearing; they created
-  // receivable_from_org. Reversing them through booking_refund (card/wallet)
-  // would fabricate org_payable/payment_clearing entries for money that was
-  // never in CourtZon's custody.
+  // COD bookings never created merchant_payable or payment_clearing; they
+  // created a CourtZon marketplace_receivable (1161). Reversing them through
+  // booking_refund (card/wallet) would fabricate merchant_payable/payment_clearing
+  // entries for money that was never in CourtZon's custody.
   const isCOD = refund.paymentMethod === 'cash' || refund.paymentMethod === 'cod';
   if (isCOD) {
+    // COURTZON BOOK (org NULL): reverse the 1161 receivable + commission + tax.
     await postAccountingEvent(
-      'booking_cod_reversal', 'booking', bookingId, refund.organisationId,
+      'booking_cod_reversal', 'booking', bookingId, null,
       {
         platform_commission: refund.commissionAmount,
         tax_liability: refund.taxAmount,
-        receivable_from_org: refund.commissionAmount + refund.taxAmount,
+        marketplace_receivable: refund.commissionAmount + refund.taxAmount,
       },
       currency,
-      `Booking #${bookingId} COD refund`,
+      `Booking #${bookingId} COD refund (CourtZon book)`,
+      undefined,
+      {
+        platform_commission: null,
+        tax_liability: null,
+        marketplace_receivable: null,
+      },
     );
+    await postBookingOrganisationCashBookReversal(refund, bookingId, currency);
     return;
   }
 
-  // Reverse the proportional economic components (debit side).
+  // Reversing the CourtZon book (debit side) + the organization book — mirrors
+  // the marketplace merchant refund (postMarketplaceRefundAccounting / F-2).
   const isWallet = refund.paymentMethod === 'wallet';
   const eventType = isWallet ? 'booking_wallet_refund' : 'booking_refund';
   await postAccountingEvent(
-    eventType, 'booking', bookingId, refund.organisationId,
+    eventType, 'booking', bookingId, null,
     {
-      org_payable: refund.orgAmount,
+      merchant_payable: refund.orgAmount,
       platform_commission: refund.commissionAmount,
       tax_liability: refund.taxAmount,
       payment_clearing: isWallet ? 0 : refund.paymentAmount,
       wallet_liability: isWallet ? refund.paymentAmount : 0,
     },
     currency,
-    `Booking #${bookingId} refund`,
+    `Booking #${bookingId} refund (CourtZon book)`,
+    undefined,
+    {
+      merchant_payable: null,
+      platform_commission: null,
+      tax_liability: null,
+      payment_clearing: null,
+      wallet_liability: null,
+    },
   );
+  await postBookingOrganisationBookReversal(refund, bookingId, currency);
 
   const pool = getPool();
 
@@ -898,6 +1054,73 @@ async function postBookingRefundAccounting(bookingId: number, refundAmount: numb
       [refund.orgSettled, bookingId, refund.orgSettled],
     );
   }
+}
+
+/**
+ * Post the ORGANIZATION BOOK reversal for a CARD/WALLET booking refund/cancel.
+ * Symmetric reversal of the org's booking economics (booking_org_receivable):
+ *   Dr org Sales Revenue               = orgAmount + commission
+ *   Cr org 1161 Marketplace Receivable = orgAmount
+ *   Cr org Commission Expense          = commission
+ * Balanced. Idempotent per (booking, booking_id, 'booking_org_receivable_reversal').
+ */
+async function postBookingOrganisationBookReversal(refund: RefundEconomics, bookingId: number, currency: string): Promise<void> {
+  const orgId = refund.organisationId;
+  if (orgId == null) return;
+  const salesRevenue = Math.round((refund.orgAmount + refund.commissionAmount) * 100) / 100;
+  await postAccountingEvent(
+    'booking_org_receivable_reversal', 'booking', bookingId, orgId,
+    {
+      sales_revenue: salesRevenue,
+      marketplace_receivable: refund.orgAmount,
+      commission_expense: refund.commissionAmount,
+    },
+    currency,
+    `Booking #${bookingId} organization book reversal`,
+    undefined,
+    {
+      sales_revenue: orgId,
+      marketplace_receivable: orgId,
+      commission_expense: orgId,
+    },
+  );
+}
+
+/**
+ * Post the ORGANIZATION BOOK reversal for a COD/CASH booking refund/cancel.
+ * Symmetric reversal of the booking COD org book (booking_org_cash_receivable):
+ *   Dr org Sales Revenue               = gross (orgAmount + commission)
+ *   Dr org CourtZon Payable            = commission
+ *   Cr org 1161 Marketplace Receivable = gross (orgAmount + commission)
+ *   Cr org Commission Expense          = commission
+ * Balanced. Skips when the original COD org-book posting never existed (e.g.
+ * a legacy booking posted before the org-book split) — mirror of
+ * postOrganisationCashBookReversalAccounting.
+ */
+async function postBookingOrganisationCashBookReversal(refund: RefundEconomics, bookingId: number, currency: string): Promise<void> {
+  const orgId = refund.organisationId;
+  if (orgId == null) return;
+  const orgBooked = await ledgerRepository.hasPosting('booking', bookingId, 'booking_org_cash_receivable');
+  if (!orgBooked) return;
+  const gross = Math.round((refund.orgAmount + refund.commissionAmount) * 100) / 100;
+  await postAccountingEvent(
+    'booking_org_cash_receivable_rev', 'booking', bookingId, orgId,
+    {
+      sales_revenue: gross,
+      courtzon_payable: refund.commissionAmount,
+      marketplace_receivable: gross,
+      commission_expense: refund.commissionAmount,
+    },
+    currency,
+    `Booking #${bookingId} organization book cash reversal`,
+    undefined,
+    {
+      sales_revenue: orgId,
+      courtzon_payable: orgId,
+      marketplace_receivable: orgId,
+      commission_expense: orgId,
+    },
+  );
 }
 
 export function registerAccountingEventListeners(): void {

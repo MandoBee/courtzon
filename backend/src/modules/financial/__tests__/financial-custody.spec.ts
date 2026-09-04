@@ -119,105 +119,121 @@ describe('Financial Custody & Counterparty', () => {
     return (res as any).insertId;
   }
 
-  it('1. booking card payment: org share → payable (liability), not revenue', async () => {
+  it('1. booking card payment: org share → merchant payable (liability), not revenue', async () => {
     const { postAccountingEvent } = await import('../application/accounting-event.listener.js');
     const bookingId = await insertBooking({ hour: 10 });
-    await postAccountingEvent(
-      'booking_card_payment', 'booking', bookingId, orgId,
-      { org_payable: 90, platform_commission: 10, tax_liability: 9, payment_clearing: 109 },
-      'EGP', 'custody test card payment',
-    );
-
-    const payableId = await accountCode('2200');
+    const payableId = await accountCode('2202'); // merchant payable (SAME control settlement clears)
     const revenueId = await accountCode('4110'); // booking commission revenue
     const taxId = await accountCode('2300');
     const clearingId = await accountCode('1100');
 
-    const payable = await accountSums(payableId);
-    const revenue = await accountSums(revenueId);
-    const tax = await accountSums(taxId);
-    const clearing = await accountSums(clearingId);
+    // COURTZON BOOK: booking postings are now org NULL (mirror marketplace
+    // custody). Global deltas isolate from shared-DB history.
+    const payableBefore = await globalAccountSums(payableId);
+    const revenueBefore = await globalAccountSums(revenueId);
+    const taxBefore = await globalAccountSums(taxId);
+    const clearingBefore = await globalAccountSums(clearingId);
 
-    // Org share is a payable credit (liability), NOT revenue.
-    expect(payable.credit).toBe(90);
-    expect(payable.debit).toBe(0);
+    await postAccountingEvent(
+      'booking_card_payment', 'booking', bookingId, null,
+      { merchant_payable: 90, platform_commission: 10, tax_liability: 9, payment_clearing: 109 },
+      'EGP', 'custody test card payment',
+    );
+
+    const payable = await globalAccountSums(payableId);
+    const revenue = await globalAccountSums(revenueId);
+    const tax = await globalAccountSums(taxId);
+    const clearing = await globalAccountSums(clearingId);
+
+    // Org share is a merchant payable credit (liability), NOT revenue.
+    expect(payable.credit - payableBefore.credit).toBe(90);
     // CourtZon revenue is only the commission.
-    expect(revenue.credit).toBe(10);
-    expect(tax.credit).toBe(9);
-    expect(clearing.debit).toBe(109);
+    expect(revenue.credit - revenueBefore.credit).toBe(10);
+    expect(tax.credit - taxBefore.credit).toBe(9);
+    expect(clearing.debit - clearingBefore.debit).toBe(109);
   });
 
-  it('2. booking COD: commission+tax → receivable from org; org share absent', async () => {
+  it('2. booking COD: commission+tax → marketplace receivable (1161) from org; org share absent', async () => {
     const { postAccountingEvent } = await import('../application/accounting-event.listener.js');
     const bookingId = await insertBooking({ hour: 11, paymentMethod: 'cash' });
+    const receivableId = await accountCode('1161'); // marketplace receivable (SAME as marketplace COD)
+    const revenueId = await accountCode('4110'); // booking commission revenue
+    const receivableBefore = await globalAccountSums(receivableId);
+    const revenueBefore = await globalAccountSums(revenueId);
+
     await postAccountingEvent(
-      'booking_cod_payment', 'booking', bookingId, orgId,
-      { receivable_from_org: 19, platform_commission: 10, tax_liability: 9 },
+      'booking_cod_payment', 'booking', bookingId, null,
+      { marketplace_receivable: 19, platform_commission: 10, tax_liability: 9 },
       'EGP', 'custody test COD payment',
     );
 
-    const receivableId = await accountCode('1160');
-    const revenueId = await accountCode('4110'); // booking commission revenue
-    const payableId = await accountCode('2200');
+    const receivable = await globalAccountSums(receivableId);
+    const revenue = await globalAccountSums(revenueId);
 
-    const receivable = await accountSums(receivableId);
-    const revenue = await accountSums(revenueId);
-    const payable = await accountSums(payableId);
-
-    // Commission + tax are debited to receivable (asset) — CourtZon not holding cash.
-    expect(receivable.debit).toBe(19);
-    expect(revenue.credit).toBe(20); // 10 (card) + 10 (COD)
-    // Org payable unchanged by COD (org already holds the money).
-    expect(payable.credit).toBe(90);
+    // Commission + tax are debited to the 1161 receivable (asset) — CourtZon
+    // not holding cash. Org share never enters CourtZon's book.
+    expect(receivable.debit - receivableBefore.debit).toBe(19);
+    expect(revenue.credit - revenueBefore.credit).toBe(10);
   });
 
-  it('3. booking wallet payment uses wallet_liability_spend, org share still payable', async () => {
+  it('3. booking wallet payment uses wallet_liability_spend, org share still merchant payable', async () => {
     const { postAccountingEvent } = await import('../application/accounting-event.listener.js');
     const bookingId = await insertBooking({ hour: 12, paymentMethod: 'wallet' });
+    const walletId = await accountCode('2100');
+    const payableId = await accountCode('2202');
+    const walletBefore = await globalAccountSums(walletId);
+    const payableBefore = await globalAccountSums(payableId);
+
     await postAccountingEvent(
-      'booking_wallet_payment', 'booking', bookingId, orgId,
-      { org_payable: 90, platform_commission: 10, tax_liability: 9, wallet_liability_spend: 109 },
+      'booking_wallet_payment', 'booking', bookingId, null,
+      { merchant_payable: 90, platform_commission: 10, tax_liability: 9, wallet_liability_spend: 109 },
       'EGP', 'custody test wallet payment',
     );
 
-    const walletId = await accountCode('2100');
-    const payableId = await accountCode('2200');
-    const wallet = await accountSums(walletId);
-    const payable = await accountSums(payableId);
-    expect(wallet.debit).toBe(109);
-    expect(payable.credit).toBe(180); // 90 (card) + 90 (wallet)
+    const wallet = await globalAccountSums(walletId);
+    const payable = await globalAccountSums(payableId);
+    expect(wallet.debit - walletBefore.debit).toBe(109);
+    expect(payable.credit - payableBefore.credit).toBe(90);
   });
 
-  it('4. booking refund reverses org_payable + commission + tax', async () => {
+  it('4. booking refund reverses merchant_payable + commission + tax', async () => {
     const { postAccountingEvent } = await import('../application/accounting-event.listener.js');
-    const bookingId = await insertBooking({ hour: 13 });
+    const bookId = await insertBooking({ hour: 13 });
+    const refundId = await insertBooking({ hour: 14 });
+    const payableId = await accountCode('2202');
+    const revenueId = await accountCode('4110'); // booking commission revenue
+    const clearingId = await accountCode('1100');
+    const payableBefore = await globalAccountSums(payableId);
+    const revenueBefore = await globalAccountSums(revenueId);
+    const clearingBefore = await globalAccountSums(clearingId);
+
     await postAccountingEvent(
-      'booking_card_payment', 'booking', bookingId, orgId,
-      { org_payable: 90, platform_commission: 10, tax_liability: 9, payment_clearing: 109 },
+      'booking_card_payment', 'booking', bookId, null,
+      { merchant_payable: 90, platform_commission: 10, tax_liability: 9, payment_clearing: 109 },
       'EGP', 'custody refund payment',
     );
+    const payableAfterPay = await globalAccountSums(payableId);
+    const revenueAfterPay = await globalAccountSums(revenueId);
+    const clearingAfterPay = await globalAccountSums(clearingId);
+
     await postAccountingEvent(
-      'booking_refund', 'booking', bookingId, orgId,
-      { org_payable: 90, platform_commission: 10, tax_liability: 9, payment_clearing: 109 },
+      'booking_refund', 'booking', refundId, null,
+      { merchant_payable: 90, platform_commission: 10, tax_liability: 9, payment_clearing: 109 },
       'EGP', 'custody refund',
     );
 
-    const payableId = await accountCode('2200');
-    const revenueId = await accountCode('4110'); // booking commission revenue
-    const clearingId = await accountCode('1100');
-    const payable = await accountSums(payableId);
-    const revenue = await accountSums(revenueId);
-    const clearing = await accountSums(clearingId);
+    const payable = await globalAccountSums(payableId);
+    const revenue = await globalAccountSums(revenueId);
+    const clearing = await globalAccountSums(clearingId);
 
-    // Refund debits org_payable (reversing the booking's own credit).
-    expect(payable.credit).toBe(270); // 180 + 90 (this booking)
-    expect(payable.debit).toBe(90);   // refund reversal
-    // Commission: 10 (card) + 10 (COD) + 10 (wallet) + 10 (this booking) = 40; refund reverses 10.
-    expect(revenue.credit).toBe(40);
-    expect(revenue.debit).toBe(10);
-    // Payment clearing: 109 (card) + 109 (this booking) = 218 debit; refund credits 109.
-    expect(clearing.debit).toBe(218);
-    expect(clearing.credit).toBe(109);
+    // Refund debits merchant_payable (reversing the payment's own credit).
+    expect(payable.credit - payableAfterPay.credit).toBe(0);   // refund credits nothing to payable
+    expect(payable.debit - payableAfterPay.debit).toBe(90);    // refund reversal
+    // Commission: the refund reverses this booking's own commission credit.
+    expect(revenue.credit - revenueAfterPay.credit).toBe(0);
+    expect(revenue.debit - revenueAfterPay.debit).toBe(10);
+    // Clearing: payment debits 109; refund credits 109 (money returned).
+    expect(clearing.credit - clearingAfterPay.credit).toBe(109);
   });
 
   it('5. marketplace card payment: merchant share → payable, commission only revenue', async () => {
@@ -263,18 +279,24 @@ describe('Financial Custody & Counterparty', () => {
       [orderId, productFixture.productId, orgId],
     );
 
+    const receivableId = await accountCode('1160');
+    const revenueId = await accountCode('4160'); // marketplace commission revenue
+    const receivableBefore = await accountSums(receivableId);
+    const revenueBefore = await accountSums(revenueId);
+
     await postAccountingEvent(
       'marketplace_delivery', 'marketplace', orderId, orgId,
       { receivable_from_org: 19, platform_commission: 10, tax_liability: 9 },
       'EGP', 'custody marketplace COD delivery',
     );
 
-    const receivableId = await accountCode('1160');
-    const revenueId = await accountCode('4160'); // marketplace commission revenue
     const receivable = await accountSums(receivableId);
     const revenue = await accountSums(revenueId);
-    expect(receivable.debit).toBe(38); // 19 booking COD + 19 marketplace COD
-    expect(revenue.credit).toBe(20); // 10 (marketplace card) + 10 (marketplace COD)
+    // Booking COD is NO LONGER on 1160 receivable_from_org — it uses the same
+    // 1161 marketplace_receivable as marketplace COD, so this ONLY reflects the
+    // marketplace delivery receivable.
+    expect(receivable.debit - receivableBefore.debit).toBe(19);
+    expect(revenue.credit - revenueBefore.credit).toBe(10);
 
     await pool.execute(`DELETE FROM order_items WHERE order_id = ?`, [orderId]);
     await pool.execute(`DELETE FROM orders WHERE id = ?`, [orderId]);
@@ -314,20 +336,20 @@ describe('Financial Custody & Counterparty', () => {
     expect((await globalAccountSums(orgPayableId)).debit - orgPayableBefore.debit).toBe(0);
   });
 
-  it('8. event mapping resolves org_payable (no hard-coded COA); org override works', async () => {
+  it('8. event mapping resolves merchant_payable (no hard-coded COA); org override works', async () => {
     const { accountingEngineService } = await import('../application/accounting-engine.service.js');
     const mapping = await accountingEngineService.resolveMapping('booking_card_payment', null);
     const concepts = mapping.map(m => m.concept);
-    expect(concepts).toContain('org_payable');
+    expect(concepts).toContain('merchant_payable');
     expect(concepts).toContain('platform_commission');
     expect(concepts).toContain('tax_liability');
     expect(concepts).toContain('payment_clearing');
 
     const [accRows] = await pool.execute<RowData>(
-      `SELECT id FROM chart_of_accounts WHERE organisation_id IS NULL AND code IN ('2200','4100','2300','1100') ORDER BY FIELD(code,'2200','4100','2300','1100')`,
+      `SELECT id FROM chart_of_accounts WHERE organisation_id IS NULL AND code IN ('2202','4100','2300','1100') ORDER BY FIELD(code,'2202','4100','2300','1100')`,
     );
     const ids = (accRows as any[]).map((r: any) => r.id);
-    const concepts2 = ['org_payable', 'platform_commission', 'tax_liability', 'payment_clearing'];
+    const concepts2 = ['merchant_payable', 'platform_commission', 'tax_liability', 'payment_clearing'];
     for (let i = 0; i < concepts2.length; i++) {
       await pool.execute(
         `INSERT IGNORE INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
@@ -372,18 +394,18 @@ describe('Financial Custody & Counterparty', () => {
     const { postAccountingEvent } = await import('../application/accounting-event.listener.js');
     const bookingId = await insertBooking({ hour: 15 });
     await postAccountingEvent(
-      'booking_card_payment', 'booking', bookingId, orgId,
-      { org_payable: 90, platform_commission: 10, tax_liability: 9, payment_clearing: 109 },
+      'booking_card_payment', 'booking', bookingId, null,
+      { merchant_payable: 90, platform_commission: 10, tax_liability: 9, payment_clearing: 109 },
       'EGP', 'custody idempotency',
     );
     const clearingId = await accountCode('1100');
-    const before = await accountSums(clearingId);
+    const before = await globalAccountSums(clearingId);
     await postAccountingEvent(
-      'booking_card_payment', 'booking', bookingId, orgId,
-      { org_payable: 90, platform_commission: 10, tax_liability: 9, payment_clearing: 109 },
+      'booking_card_payment', 'booking', bookingId, null,
+      { merchant_payable: 90, platform_commission: 10, tax_liability: 9, payment_clearing: 109 },
       'EGP', 'custody idempotency (dup)',
     );
-    const after = await accountSums(clearingId);
+    const after = await globalAccountSums(clearingId);
     expect(after.debit).toBe(before.debit);
   });
 
@@ -423,17 +445,17 @@ describe('Financial Custody & Counterparty', () => {
 
     // Deterministic delta assertion: capture the receivable BEFORE this booking's
     // event, then assert the delta is exactly 300 (commission+tax), never the 1000
-    // gross. This no longer depends on any pre-existing ledger balance for the org.
-    const receivableId = await accountCode('1160');
-    const before = await accountSums(receivableId);
+    // gross. This no longer depends on any pre-existing ledger balance.
+    const receivableId = await accountCode('1161'); // marketplace receivable
+    const before = await globalAccountSums(receivableId);
 
     await postAccountingEvent(
-      'booking_cod_payment', 'booking', bookingId, orgId,
-      { receivable_from_org: 300, platform_commission: 200, tax_liability: 100 },
+      'booking_cod_payment', 'booking', bookingId, null,
+      { marketplace_receivable: 300, platform_commission: 200, tax_liability: 100 },
       'EGP', 'custody COD gross 1000',
     );
 
-    const after = await accountSums(receivableId);
+    const after = await globalAccountSums(receivableId);
     // Receivable must increase by 300 (commission+tax), NOT the 1000 gross.
     expect(after.debit - before.debit).toBe(300);
   });
