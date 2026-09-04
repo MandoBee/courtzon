@@ -8,7 +8,7 @@ import type { BookingStatus } from '../domain/booking-aggregate.js';
 
 const log = createModuleLogger('booking');
 
-export interface ConfirmBookingPayload { bookingId: number }
+export interface ConfirmBookingPayload { bookingId: number; paymentStatus?: string }
 
 export interface ConfirmBookingResult {
   bookingId: number;
@@ -63,7 +63,11 @@ export const confirmBookingHandler: CommandHandler<Command, ConfirmBookingResult
     }
 
     try {
-      await bookingRepository.persistTransition(p.bookingId, 'confirmed', undefined, booking.aggregate_version || 1, conn);
+      // paymentStatus is applied atomically with the transition (persistTransition
+      // does payment_status = COALESCE(paymentStatus, payment_status)). Callers
+      // that confirm on an authoritative gateway success pass 'paid'; manual /
+      // COD confirmations leave it unchanged.
+      await bookingRepository.persistTransition(p.bookingId, 'confirmed', p.paymentStatus, booking.aggregate_version || 1, conn);
     } catch (persistErr: any) {
       throw persistErr;
     }
