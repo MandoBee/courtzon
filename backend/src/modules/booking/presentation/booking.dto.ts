@@ -5,7 +5,10 @@ const MatchmakingSchema = z.object({
   maxAge: z.number().int().positive().optional(),
   targetGender: z.enum(['male', 'female', 'any']).optional().default('any'),
   targetLevelId: z.number().int().positive().optional(),
-  maxPlayers: z.number().int().positive().min(2).optional().default(2),
+  // maxPlayers = number of ADDITIONAL players to accept, EXCLUDING the creator
+  // (e.g. 3 => creator + 3 accepted = 4 total). Consistent with the capacity
+  // checks (accepted players are invitations/joiners, never the host).
+  maxPlayers: z.number().int().positive().min(1).max(49).optional().default(2),
   deadline: z.string().datetime().optional(),
   autoApply: z.boolean().optional().default(false),
 }).optional();
@@ -38,7 +41,8 @@ export const StartMatchmakingSchema = z.object({
   maxAge: z.number().int().positive().optional(),
   targetGender: z.enum(['male', 'female', 'any']).optional().default('any'),
   targetLevelId: z.number().int().positive().optional(),
-  maxPlayers: z.number().int().positive().min(2).optional().default(2),
+  // maxPlayers = ADDITIONAL players (excluding creator); 3 => 4 total.
+  maxPlayers: z.number().int().positive().min(1).max(49).optional().default(2),
   deadline: z.string().datetime().optional(),
   autoApply: z.boolean().optional().default(false),
 });

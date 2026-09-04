@@ -205,7 +205,7 @@ export default function BookingModal({ open, onClose }: BookingModalProps) {
   const [matchmakingMaxAge, setMatchmakingMaxAge] = useState('');
   const [matchmakingGender, setMatchmakingGender] = useState<'male' | 'female' | 'any'>('any');
   const [matchmakingLevelId, setMatchmakingLevelId] = useState<number | ''>('');
-  const [matchmakingMaxPlayers, setMatchmakingMaxPlayers] = useState(2);
+  const [matchmakingMaxPlayers, setMatchmakingMaxPlayers] = useState('2');
   const [matchmakingDeadline, setMatchmakingDeadline] = useState('');
   const [matchmakingAutoApply, setMatchmakingAutoApply] = useState(false);
   const [pendingAccessBranches, setPendingAccessBranches] = useState<Record<number, boolean>>({});
@@ -344,7 +344,7 @@ export default function BookingModal({ open, onClose }: BookingModalProps) {
     setMatchmakingMaxAge('');
     setMatchmakingGender('any');
     setMatchmakingLevelId('');
-    setMatchmakingMaxPlayers(2);
+    setMatchmakingMaxPlayers('2');
     setMatchmakingDeadline('');
     setMatchmakingAutoApply(false);
     setPendingAccessBranches({});
@@ -498,7 +498,7 @@ export default function BookingModal({ open, onClose }: BookingModalProps) {
         maxAge: matchmakingMaxAge ? Number(matchmakingMaxAge) : undefined,
         targetGender: matchmakingGender,
         targetLevelId: matchmakingLevelId || undefined,
-        maxPlayers: matchmakingMaxPlayers,
+        maxPlayers: matchmakingMaxPlayers === '' ? 2 : Number(matchmakingMaxPlayers),
         deadline: matchmakingDeadline ? `${matchmakingDeadline}:00Z` : undefined,
         autoApply: matchmakingAutoApply,
       };
@@ -873,6 +873,7 @@ export default function BookingModal({ open, onClose }: BookingModalProps) {
                   <label className="block text-xs text-[var(--color-text-muted)] mb-1">Min Age</label>
                   <input type="number" value={matchmakingMinAge}
                     onChange={(e) => setMatchmakingMinAge(e.target.value)}
+                    onFocus={(e) => e.target.select()}
                     className="w-full px-2 py-1.5 text-sm rounded-[var(--radius-md)] border border-[var(--color-border)] text-[var(--color-text)]"
                     placeholder="18" min="10" max="100" />
                 </div>
@@ -880,6 +881,7 @@ export default function BookingModal({ open, onClose }: BookingModalProps) {
                   <label className="block text-xs text-[var(--color-text-muted)] mb-1">Max Age</label>
                   <input type="number" value={matchmakingMaxAge}
                     onChange={(e) => setMatchmakingMaxAge(e.target.value)}
+                    onFocus={(e) => e.target.select()}
                     className="w-full px-2 py-1.5 text-sm rounded-[var(--radius-md)] border border-[var(--color-border)] text-[var(--color-text)]"
                     placeholder="60" min="10" max="100" />
                 </div>
@@ -908,11 +910,14 @@ export default function BookingModal({ open, onClose }: BookingModalProps) {
               </div>
 
               <div className="mb-3">
-                <label className="block text-xs text-[var(--color-text-muted)] mb-1">Max Players</label>
+                <label className="block text-xs text-[var(--color-text-muted)] mb-1">Number of Players</label>
                 <input type="number" value={matchmakingMaxPlayers}
-                  onChange={(e) => setMatchmakingMaxPlayers(Math.max(2, Number(e.target.value)))}
+                  onChange={(e) => setMatchmakingMaxPlayers(e.target.value)}
                   className="w-full max-w-[12rem] px-2 py-1.5 text-sm rounded-[var(--radius-md)] border border-[var(--color-border)] text-[var(--color-text)]"
-                  min="2" max="50" />
+                  min="1" max="49" placeholder="2" />
+                <p className="text-[10px] text-[var(--color-text-muted)] mt-0.5">
+                  Additional players to accept (excluding you). Value 3 = 4 players total.
+                </p>
               </div>
 
               <div className="mb-3">

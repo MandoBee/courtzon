@@ -541,6 +541,7 @@ export class BookingService {
         lockOwner,
         paymentId: gwResult.paymentId || null,
         timezone: branchTz,
+        matchmaking: input.matchmaking || null,
       });
       await redis.set(`booking:prepare:${prepareId}`, prepareData, 'PX', 600000);
 
@@ -606,6 +607,7 @@ export class BookingService {
       // (terminal statuses are excluded), not by status-blind unique keys.
 
       // Create booking as pending_payment
+      const expiresAt = toMySqlDateTime(new Date(Date.now() + 10 * 60 * 1000));
       const bookingId = await bookingRepository.create({
         userId, branchId: data.branchId, organisationId: data.organisationId, resourceId: data.resourceId,
         bookingType: data.bookingType, bookingDate: data.bookingDate,
@@ -615,6 +617,7 @@ export class BookingService {
         notes: data.notes, paymentMethod: data.paymentMethod,
         bookingStatus: 'pending_payment', paymentStatus: 'pending',
         startAtUtc: data.startAtUtc, endAtUtc: data.endAtUtc, businessDate: data.businessDate,
+        expiresAt,
       }, conn);
 
       // Populate booking_slots
@@ -624,6 +627,23 @@ export class BookingService {
            VALUES (?, ?, ?, ?, ?, FALSE)`,
           [bookingId, data.resourceId, data.bookingDate, slot.start, slot.end],
         );
+      }
+
+      // Persist matchmaking criteria for a public match — the prepare (card)
+      // flow previously dropped them (they were only stored in the gateway
+      // prepare payload, never on the booking), so the created match silently
+      // defaulted to 2 players / no age criteria.
+      if (data.bookingType === 'public_match' && data.matchmaking) {
+        await bookingRepository.createMatchmakingRequest({
+          bookingId,
+          minAge: data.matchmaking.minAge,
+          maxAge: data.matchmaking.maxAge,
+          targetGender: data.matchmaking.targetGender || 'any',
+          targetLevelId: data.matchmaking.targetLevelId,
+          maxPlayers: data.matchmaking.maxPlayers || 2,
+          deadline: data.matchmaking.deadline,
+          autoApply: data.matchmaking.autoApply || false,
+        });
       }
 
       // Emit booking:created INSIDE transaction so in-memory handlers (notifications, socket) fire
@@ -1672,6 +1692,48 @@ export class BookingService {
     log.info({ bookingId }, 'booking.created_v2');
 
     if (!bookingId) return { bookingId: 0 };
+
+    // Persist matchmaking criteria for a public match at creation time (cash
+    // path). Previously these were only stored when the owner later called
+    // startMatchmaking, so a public-match booking created without that call
+    // silently defaulted to 2 players / no age criteria.
+    if ((input.bookingType || 'public_match') === 'public_match' && input.matchmaking) {
+      await bookingRepository.createMatchmakingRequest({
+        bookingId,
+        minAge: input.matchmaking.minAge,
+        maxAge: input.matchmaking.maxAge,
+        targetGender: input.matchmaking.targetGender || 'any',
+        targetLevelId: input.matchmaking.targetLevelId,
+        maxPlayers: input.matchmaking.maxPlayers || 2,
+        deadline: input.matchmaking.deadline,
+        autoApply: input.matchmaking.autoApply || false,
+      });
+    }
+
+    // CASH/COD — cash is collected immediately at the court. Confirm the booking
+    // and emit booking:paid so the COD accounting lifecycle (same as V1 cash and
+    // the marketplace cash model) posts and booking:confirmed creates the public
+    // match. Without this, a V2 cash booking stayed `pending` forever (no
+    // accounting, no match, no realtime).
+    if (input.paymentMethod === 'cash' || input.paymentMethod === 'cod') {
+      try {
+        await this.confirmBookingV2(bookingId);
+      } catch (confirmErr: any) {
+        log.error({ err: confirmErr, bookingId }, 'createBookingV2: cash confirm failed');
+      }
+      eventBusV2.emit('booking:paid', {
+        bookingId, userId,
+        organisationId,
+        grossAmount: pricing.totalPrice,
+        taxAmount: economics.taxAmount,
+        coachAmount: 0,
+        organisationAmount: economics.clubAmount,
+        commissionAmount: economics.commissionAmount,
+        paymentMethod: input.paymentMethod,
+        currency: 'EGP',
+        sourceId: bookingId,
+      } as any);
+    }
 
     // ── Process payment for wallet (synchronous) ──
     if (input.paymentMethod === 'wallet') {

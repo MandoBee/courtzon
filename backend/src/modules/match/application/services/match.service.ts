@@ -71,13 +71,19 @@ export class MatchService {
          FROM booking_matchmaking_requests WHERE booking_id = ?`, [bookingId]
       );
       const mm = (mmRows as any[])[0] || {};
+      // max_players on the booking request is the number of ADDITIONAL players
+      // to accept (EXCLUDING the creator/host). public_match_details.max_players
+      // is compared against participantCount (which INCLUDES the host), so we
+      // persist TOTAL = additional + 1 (host). E.g. request 3 => 4 total.
+      const additionalPlayers = Number(mm.max_players) > 0 ? Number(mm.max_players) : 2;
+      const totalMaxPlayers = additionalPlayers + 1;
 
       await conn.execute(
         `INSERT INTO public_match_details
          (match_id, creator_id, visibility, auto_accept, max_players,
           min_age, max_age, target_gender, target_level_id, deadline)
          VALUES (?, ?, 'public', ?, ?, ?, ?, ?, ?, ?)`,
-        [matchId, bk.user_id, mm.auto_apply || 0, mm.max_players || 2,
+        [matchId, bk.user_id, mm.auto_apply || 0, totalMaxPlayers,
          mm.min_age || null, mm.max_age || null,
          mm.target_gender || 'any', mm.target_level_id || null,
          mm.deadline || null]

@@ -845,19 +845,28 @@ async function postBookingPaymentAccountingInner(bookingId: number, paymentMetho
     const orgId = econ.organisationId;
     if (orgId != null) {
       const cashGross = Math.round((econ.orgAmount + econ.commissionAmount) * 100) / 100;
+      // ORGANIZATION BOOK (organisation_id = org): the org collected the cash
+      // IMMEDIATELY at the court, so its book increases Cash/Bank (ORG-CASH)
+      // directly instead of booking a receivable from CourtZon:
+      //   Dr org Cash / Bank (ORG-CASH)      = gross (orgAmount + commission)
+      //   Dr org Commission Expense          = commission
+      //   Cr org Sales Revenue               = gross (orgAmount + commission)
+      //   Cr org CourtZon Payable            = commission (owed to CourtZon)
+      // Balanced: Dr (gross + commission) = Cr (gross + commission). Same account
+      // set as the marketplace org book (ORG-CASH/MKT-COMM-EXP/MKT-SALES/MKT-CZ-PAY).
       await postAccountingEvent(
         'booking_org_cash_receivable', 'booking', bookingId, orgId,
         {
-          marketplace_receivable: cashGross,
+          org_cash_bank: cashGross,
           commission_expense: econ.commissionAmount,
           sales_revenue: cashGross,
           courtzon_payable: econ.commissionAmount,
         },
         currency,
-        `Booking #${bookingId} organization book (COD cash receivable)`,
+        `Booking #${bookingId} organization book (COD cash collected)`,
         undefined,
         {
-          marketplace_receivable: orgId,
+          org_cash_bank: orgId,
           commission_expense: orgId,
           sales_revenue: orgId,
           courtzon_payable: orgId,
@@ -1091,7 +1100,7 @@ async function postBookingOrganisationBookReversal(refund: RefundEconomics, book
  * Symmetric reversal of the booking COD org book (booking_org_cash_receivable):
  *   Dr org Sales Revenue               = gross (orgAmount + commission)
  *   Dr org CourtZon Payable            = commission
- *   Cr org 1161 Marketplace Receivable = gross (orgAmount + commission)
+ *   Cr org Cash / Bank (ORG-CASH)      = gross (orgAmount + commission)
  *   Cr org Commission Expense          = commission
  * Balanced. Skips when the original COD org-book posting never existed (e.g.
  * a legacy booking posted before the org-book split) — mirror of
@@ -1108,7 +1117,7 @@ async function postBookingOrganisationCashBookReversal(refund: RefundEconomics, 
     {
       sales_revenue: gross,
       courtzon_payable: refund.commissionAmount,
-      marketplace_receivable: gross,
+      org_cash_bank: gross,
       commission_expense: refund.commissionAmount,
     },
     currency,
@@ -1117,7 +1126,7 @@ async function postBookingOrganisationCashBookReversal(refund: RefundEconomics, 
     {
       sales_revenue: orgId,
       courtzon_payable: orgId,
-      marketplace_receivable: orgId,
+      org_cash_bank: orgId,
       commission_expense: orgId,
     },
   );
