@@ -7,6 +7,7 @@ describe('BookingAggregate — state machine', () => {
     const allowed: [string, string][] = [
       ['pending', 'confirmed'], ['pending', 'cancelled'], ['pending', 'expired'],
       ['confirmed', 'completed'], ['confirmed', 'cancelled'],
+      ['confirmed', 'no_show'], ['checked_in', 'no_show'],
     ];
     const denied: [string, string][] = [
       ['confirmed', 'confirmed'], ['cancelled', 'confirmed'], ['expired', 'confirmed'],

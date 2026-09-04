@@ -1,7 +1,7 @@
 import type { PoolConnection } from 'mysql2/promise';
 import { createModuleLogger } from '../../../shared/utils/logger.js';
 import { bookingRepository } from '../infrastructure/repositories/booking.repository.js';
-import { NotFoundError } from '../../../shared/errors/app-error.js';
+import { NotFoundError, ConflictError } from '../../../shared/errors/app-error.js';
 import { planTransition, isTerminal } from '../domain/booking-aggregate.js';
 import type { Command, CommandHandler } from '../../../shared/command/command-base.js';
 import type { BookingStatus } from '../domain/booking-aggregate.js';
@@ -34,7 +34,7 @@ export const cancelBookingHandler: CommandHandler<Command, CancelBookingResult> 
     if (!booking) throw new NotFoundError('Booking');
 
     if (isTerminal(booking.booking_status as BookingStatus)) {
-      throw new Error(`Booking is already in terminal state: ${booking.booking_status}`);
+      throw new ConflictError(`Booking is already in terminal state: ${booking.booking_status}`);
     }
 
     const transition = planTransition({

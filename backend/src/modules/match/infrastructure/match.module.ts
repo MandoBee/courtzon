@@ -1,4 +1,4 @@
-import { eventBusV2 } from '../../../shared/event-bus/index.js';
+﻿import { eventBusV2 } from '../../../shared/event-bus/index.js';
 import { bookingConfirmedHandler } from './event-handlers/booking-confirmed.handler.js';
 import { bookingCancelledHandler } from './event-handlers/booking-cancelled.handler.js';
 import { paymentFailedHandler } from './event-handlers/payment-failed.handler.js';
@@ -7,12 +7,12 @@ import { createModuleLogger } from '../../../shared/utils/logger.js';
 const log = createModuleLogger('match-module');
 
 export function startMatchModule(): void {
-  log.info('startMatchModule() called — registering event handlers');
+  log.info('startMatchModule() called â€” registering event handlers');
 
   eventBusV2.on('booking:confirmed', (data: any) => {
     log.info({ event: 'booking:confirmed', bookingId: data.bookingId, bookingType: data.bookingType, userId: data.userId }, 'booking:confirmed event received by match module');
     if (data.bookingType === 'public_match') {
-      log.info({ bookingId: data.bookingId }, 'booking:confirmed is public_match — calling BookingConfirmedHandler');
+      log.info({ bookingId: data.bookingId }, 'booking:confirmed is public_match â€” calling BookingConfirmedHandler');
       bookingConfirmedHandler.handle(data.bookingId, data.bookingType).then((match) => {
         if (match) {
           log.info({ bookingId: data.bookingId, matchId: match.id }, 'Match created successfully from booking');
@@ -23,7 +23,7 @@ export function startMatchModule(): void {
         log.error({ err, bookingId: data.bookingId }, 'BookingConfirmedHandler threw');
       });
     } else {
-      log.info({ bookingId: data.bookingId, bookingType: data.bookingType }, 'booking:confirmed is NOT public_match — skipping match creation');
+      log.info({ bookingId: data.bookingId, bookingType: data.bookingType }, 'booking:confirmed is NOT public_match â€” skipping match creation');
     }
   });
 
@@ -34,15 +34,25 @@ export function startMatchModule(): void {
     );
   });
 
+  // No-show is its own lifecycle state and no longer routes through
+  // booking:cancelled â€” the match/slot must still be cleaned up when a booking
+  // is marked no-show (same idempotent handler as a cancellation).
+  eventBusV2.on('booking:no-show', (data: any) => {
+    log.info({ event: 'booking:no-show', bookingId: data.bookingId }, 'booking:no-show event received');
+    bookingCancelledHandler.handle(data.bookingId).catch((err) =>
+      log.error({ err, bookingId: data.bookingId }, 'BookingCancelledHandler failed on no-show')
+    );
+  });
+
   eventBusV2.on('payment:failed-event', (data: any) => {
     if (data.referenceType === 'booking' && data.referenceId) {
-      log.info({ event: 'payment:failed-event', bookingId: data.referenceId, reason: data.reason }, 'payment:failed-event received — cancelling match');
+      log.info({ event: 'payment:failed-event', bookingId: data.referenceId, reason: data.reason }, 'payment:failed-event received â€” cancelling match');
       paymentFailedHandler.handle(data.referenceId).catch((err) =>
         log.error({ err, bookingId: data.referenceId }, 'PaymentFailedHandler failed')
       );
     }
   });
 
-  log.info('Match module event handlers registered — ready to receive booking:confirmed');
+  log.info('Match module event handlers registered â€” ready to receive booking:confirmed');
 }
 
