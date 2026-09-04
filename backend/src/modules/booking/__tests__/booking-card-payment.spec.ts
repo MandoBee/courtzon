@@ -36,10 +36,13 @@ describe('Card payment success → booking paid lifecycle + accounting', () => {
     const [existing] = await pool.execute<RowData>(`SELECT id FROM organisations WHERE slug = ?`, [SLUG]);
     for (const row of existing as any[]) {
       const oid = Number(row.id);
+      await pool.execute(`DELETE FROM general_ledger WHERE organisation_id = ?`, [oid]);
       await pool.execute(`DELETE FROM ledger_entries WHERE organisation_id = ?`, [oid]);
       await pool.execute(`DELETE FROM bookings WHERE organisation_id = ?`, [oid]);
       await pool.execute(`DELETE FROM resources WHERE branch_id IN (SELECT id FROM branches WHERE organisation_id = ?)`, [oid]);
       await pool.execute(`DELETE FROM branches WHERE organisation_id = ?`, [oid]);
+      await pool.execute(`DELETE FROM accounting_event_mapping_lines WHERE account_id IN (SELECT id FROM chart_of_accounts WHERE organisation_id = ?)`, [oid]);
+      await pool.execute(`DELETE FROM chart_of_accounts WHERE organisation_id = ?`, [oid]);
       await pool.execute(`DELETE FROM organisations WHERE id = ?`, [oid]);
     }
     await pool.execute(`DELETE FROM users WHERE full_phone = ? OR email = ?`, [PHONE, EMAIL]);
@@ -68,6 +71,12 @@ describe('Card payment success → booking paid lifecycle + accounting', () => {
     );
     userId = (u as any).insertId;
 
+    // Pre-provision the org's marketplace COA + org-book mappings so the first
+    // booking does not pay the one-time ~600ms provisioning cost inside the
+    // (serialized) accounting posting — otherwise the 400ms UAT window races it.
+    const { accountingEngineService } = await import('../../financial/application/accounting-engine.service.js');
+    await accountingEngineService.provisionOrganisationMarketplaceAccounts(orgId);
+
     // Register the in-memory handlers under test (same registration as app startup).
     const { registerAccountingEventListeners } = await import('../../financial/application/accounting-event.listener.js');
     registerAccountingEventListeners();
@@ -76,10 +85,13 @@ describe('Card payment success → booking paid lifecycle + accounting', () => {
   });
 
   afterAll(async () => {
+    await pool.execute(`DELETE FROM general_ledger WHERE organisation_id = ?`, [orgId]);
     await pool.execute(`DELETE FROM ledger_entries WHERE organisation_id = ?`, [orgId]);
     await pool.execute(`DELETE FROM bookings WHERE organisation_id = ?`, [orgId]);
     if (resourceId) await pool.execute(`DELETE FROM resources WHERE id = ?`, [resourceId]);
     if (branchId) await pool.execute(`DELETE FROM branches WHERE id = ?`, [branchId]);
+    await pool.execute(`DELETE FROM accounting_event_mapping_lines WHERE account_id IN (SELECT id FROM chart_of_accounts WHERE organisation_id = ?)`, [orgId]);
+    await pool.execute(`DELETE FROM chart_of_accounts WHERE organisation_id = ?`, [orgId]);
     await pool.execute(`DELETE FROM organisations WHERE id = ?`, [orgId]);
     await pool.execute(`DELETE FROM users WHERE id = ?`, [userId]);
     await pool.end();
@@ -144,13 +156,13 @@ describe('Card payment success → booking paid lifecycle + accounting', () => {
     emitSpy.mockRestore();
   });
 
-  it('Issue#2: card payment posts booking_card_payment exactly once (org_payable + commission + clearing), balanced', async () => {
+  it('Issue#2: card payment posts booking_card_payment exactly once (merchant_payable + commission + clearing), balanced, CourtZon book + org book', async () => {
     const bookingId = await insertBooking({ hour: 12 });
     await eventBusV2.emit('payment:succeeded', paidEvent(bookingId, 9015002));
     await sleep(400);
 
     const rows = await ledgerRows(bookingId, 'booking_card_payment');
-    expect(rows.length).toBeGreaterThanOrEqual(3); // clearing + org_payable + commission (+ tax)
+    expect(rows.length).toBeGreaterThanOrEqual(3); // clearing + merchant_payable + commission (+ tax)
     const txIds = new Set(rows.map((r) => r.transaction_id));
     expect(txIds.size).toBe(1); // a single accounting transaction
 
@@ -158,10 +170,28 @@ describe('Card payment success → booking paid lifecycle + accounting', () => {
     for (const r of rows) {
       const amt = Number(r.amount);
       if (r.side === 'debit') debit += amt; else credit += amt;
-      expect(Number(r.organisation_id)).toBe(orgId);
+      // COURTZON BOOK: postings for the card payment are org NULL — mirrors
+      // the marketplace custody model (CourtZon holds funds; org records its
+      // own receivable in the org book).
+      expect(r.organisation_id).toBeNull();
     }
     expect(debit).toBe(credit); // balanced double-entry
     expect(debit).toBe(100); // gross payable
+
+    // ORGANIZATION BOOK: the org records its own receivable in 1161
+    // (orgAmount due from CourtZon) + commission expense vs sales revenue.
+    const orgRows = await ledgerRows(bookingId, 'booking_org_receivable');
+    expect(orgRows.length).toBe(3); // 1161 receivable + commission expense + sales revenue
+    const orgTxs = new Set(orgRows.map((r) => r.transaction_id));
+    expect(orgTxs.size).toBe(1);
+    let oDebit = 0, oCredit = 0;
+    for (const r of orgRows) {
+      const amt = Number(r.amount);
+      if (r.side === 'debit') oDebit += amt; else oCredit += amt;
+      expect(Number(r.organisation_id)).toBe(orgId);
+    }
+    expect(oDebit).toBe(oCredit); // org book balanced
+    expect(oDebit).toBe(100); // orgAmount(90) + commission(10)
   });
 
   it('Issue#2: the same successful payment cannot duplicate accounting (idempotent replay)', async () => {
@@ -208,6 +238,8 @@ describe('Card payment success → booking paid lifecycle + accounting', () => {
     for (const r of rows) {
       const amt = Number(r.amount);
       if (r.side === 'debit') debit += amt; else credit += amt;
+      // COURTZON BOOK: COD receivable is org NULL (CourtZon's own asset).
+      expect(r.organisation_id).toBeNull();
     }
     expect(debit).toBe(credit);
     expect(debit).toBe(10); // CourtZon receivable = commission only for cash
@@ -217,5 +249,20 @@ describe('Card payment success → booking paid lifecycle + accounting', () => {
       [bookingId],
     );
     expect(Number((clear[0] as any[])[0].c)).toBe(0);
+
+    // ORGANIZATION BOOK cash: org collected the cash — records its own gross
+    // receivable + commission expense vs sales revenue + CourtZon payable.
+    const orgRows = await ledgerRows(bookingId, 'booking_org_cash_receivable');
+    expect(orgRows.length).toBe(4);
+    const orgTxs = new Set(orgRows.map((r) => r.transaction_id));
+    expect(orgTxs.size).toBe(1);
+    let oDebit = 0, oCredit = 0;
+    for (const r of orgRows) {
+      const amt = Number(r.amount);
+      if (r.side === 'debit') oDebit += amt; else oCredit += amt;
+      expect(Number(r.organisation_id)).toBe(orgId);
+    }
+    expect(oDebit).toBe(oCredit);
+    expect(oDebit).toBe(110); // gross(90+10) + commission(10)
   });
 });

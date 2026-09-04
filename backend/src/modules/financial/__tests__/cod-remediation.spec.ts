@@ -128,7 +128,7 @@ describe('COD Custody Remediation', () => {
     const { bookingAccounting } = await import('../application/booking-accounting.service.js');
     const bookingId = await insertBooking({ hour: 8 });
     // The booking exists but payment_status is 'pending' — no accounting event fired yet.
-    const receivableId = await accountId('1160');
+    const receivableId = await accountId('1161');
     const before = await accountSums(receivableId);
     // No posting should exist for this booking yet.
     const [rows] = await pool.execute<RowData>(
@@ -145,10 +145,10 @@ describe('COD Custody Remediation', () => {
     // Simulate the updatePaymentStatus → 'paid' signal: post the COD payment event.
     await postAccountingEvent(
       'booking_cod_payment', 'booking', bookingId, orgId,
-      { receivable_from_org: 300, platform_commission: 200, tax_liability: 100 },
+      { marketplace_receivable: 300, platform_commission: 200, tax_liability: 100 },
       'EGP', 'COD recognition on confirmation',
     );
-    const receivableId = await accountId('1160');
+    const receivableId = await accountId('1161');
     const revenueId = await accountId('4110'); // booking commission revenue
     const taxId = await accountId('2300');
     const r = await sourceSums(receivableId, 'booking', bookingId);
@@ -164,15 +164,15 @@ describe('COD Custody Remediation', () => {
     const bookingId = await insertBooking({ hour: 10 });
     await postAccountingEvent(
       'booking_cod_payment', 'booking', bookingId, orgId,
-      { receivable_from_org: 300, platform_commission: 200, tax_liability: 100 },
+      { marketplace_receivable: 300, platform_commission: 200, tax_liability: 100 },
       'EGP', 'COD recognition',
     );
     await postAccountingEvent(
       'booking_cod_reversal', 'booking', bookingId, orgId,
-      { platform_commission: 200, tax_liability: 100, receivable_from_org: 300 },
+      { platform_commission: 200, tax_liability: 100, marketplace_receivable: 300 },
       'EGP', 'COD full refund',
     );
-    const receivableId = await accountId('1160');
+    const receivableId = await accountId('1161');
     const revenueId = await accountId('4110'); // booking commission revenue
     const taxId = await accountId('2300');
     const payableId = await accountId('2200');
@@ -198,16 +198,16 @@ describe('COD Custody Remediation', () => {
     const bookingId = await insertBooking({ hour: 11 });
     await postAccountingEvent(
       'booking_cod_payment', 'booking', bookingId, orgId,
-      { receivable_from_org: 300, platform_commission: 200, tax_liability: 100 },
+      { marketplace_receivable: 300, platform_commission: 200, tax_liability: 100 },
       'EGP', 'COD recognition',
     );
     // 50% refund → 150 receivable, 100 commission, 50 tax.
     await postAccountingEvent(
       'booking_cod_reversal', 'booking', bookingId, orgId,
-      { platform_commission: 100, tax_liability: 50, receivable_from_org: 150 },
+      { platform_commission: 100, tax_liability: 50, marketplace_receivable: 150 },
       'EGP', 'COD 50% refund',
     );
-    const receivableId = await accountId('1160');
+    const receivableId = await accountId('1161');
     const r = await sourceSums(receivableId, 'booking', bookingId);
     // Net receivable = 300 debit - 150 credit = 150 remaining.
     expect(r.debit).toBe(300);
@@ -219,20 +219,20 @@ describe('COD Custody Remediation', () => {
     const bookingId = await insertBooking({ hour: 12 });
     await postAccountingEvent(
       'booking_cod_payment', 'booking', bookingId, orgId,
-      { receivable_from_org: 300, platform_commission: 200, tax_liability: 100 },
+      { marketplace_receivable: 300, platform_commission: 200, tax_liability: 100 },
       'EGP', 'COD recognition',
     );
     await postAccountingEvent(
       'booking_cod_reversal', 'booking', bookingId, orgId,
-      { platform_commission: 200, tax_liability: 100, receivable_from_org: 300 },
+      { platform_commission: 200, tax_liability: 100, marketplace_receivable: 300 },
       'EGP', 'COD refund',
     );
-    const receivableId = await accountId('1160');
+    const receivableId = await accountId('1161');
     const before = await sourceSums(receivableId, 'booking', bookingId);
     // Re-post the same reversal — must be a no-op.
     await postAccountingEvent(
       'booking_cod_reversal', 'booking', bookingId, orgId,
-      { platform_commission: 200, tax_liability: 100, receivable_from_org: 300 },
+      { platform_commission: 200, tax_liability: 100, marketplace_receivable: 300 },
       'EGP', 'COD refund (dup)',
     );
     const after = await sourceSums(receivableId, 'booking', bookingId);
@@ -316,16 +316,16 @@ describe('COD Custody Remediation', () => {
     const concepts = mapping.map(m => m.concept);
     expect(concepts).toContain('platform_commission');
     expect(concepts).toContain('tax_liability');
-    expect(concepts).toContain('receivable_from_org');
+    expect(concepts).toContain('marketplace_receivable');
   });
 
   it('9. booking_cod_reversal supports org override', async () => {
     const { accountingEngineService } = await import('../application/accounting-engine.service.js');
     const [accRows] = await pool.execute<RowData>(
-      `SELECT id FROM chart_of_accounts WHERE organisation_id IS NULL AND code IN ('4100','2300','1160') ORDER BY FIELD(code,'4100','2300','1160')`,
+      `SELECT id FROM chart_of_accounts WHERE organisation_id IS NULL AND code IN ('4100','2300','1161') ORDER BY FIELD(code,'4100','2300','1161')`,
     );
     const ids = (accRows as any[]).map((r: any) => r.id);
-    const concepts = ['platform_commission', 'tax_liability', 'receivable_from_org'];
+    const concepts = ['platform_commission', 'tax_liability', 'marketplace_receivable'];
     for (let i = 0; i < concepts.length; i++) {
       await pool.execute(
         `INSERT IGNORE INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)

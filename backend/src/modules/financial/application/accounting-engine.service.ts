@@ -52,6 +52,19 @@ const CONCEPT_ACCOUNT_CODE_DEFAULTS: Record<string, Record<string, string>> = {
   // Same account set as the settlement, with inverted sides — always resolves to
   // the SAME canonical accounts (1100 / 1120 / 5210), never hard-coded IDs.
   payment_gateway_settlement_reversal: { cash_bank: '1120', payment_clearing: '1100', payment_gateway_fee: '5210' },
+  // Booking events — mirror the marketplace custody model without requiring a
+  // DB mapping change. merchant_payable resolves to the SAME 2202 Merchant
+  // Payable control that the unified settlement engine clears on settlement
+  // (settlement_paid → Dr 2202 / Cr 1120). The stale org_payable (2200) DB row
+  // is ignored because buildLedgerLines only materializes provided concepts.
+  // COD uses marketplace_receivable (1161) — the same CourtZon receivable used
+  // for marketplace cash/COD, cleared via settlement offsets.
+  booking_card_payment: { merchant_payable: '2202' },
+  booking_wallet_payment: { merchant_payable: '2202' },
+  booking_refund: { merchant_payable: '2202' },
+  booking_wallet_refund: { merchant_payable: '2202' },
+  booking_cod_payment: { marketplace_receivable: '1161' },
+  booking_cod_reversal: { marketplace_receivable: '1161' },
   // Organization (merchant) settlement payout — CourtZon clears the MERCHANT
   // PAYABLE (2202) against Cash/Bank on settlement for ALL settlements. Code
   // default is a safety net so the payout never falls back to the old 2200
@@ -130,6 +143,13 @@ export const ORG_BOOK_EVENTS: Record<string, string[]> = {
   marketplace_org_receivable_reversal: ['sales_revenue', 'shipping_liability', 'marketplace_receivable', 'commission_expense'],
   marketplace_org_cash_receivable: ['marketplace_receivable', 'commission_expense', 'sales_revenue', 'shipping_liability', 'courtzon_payable'],
   marketplace_org_cash_receivable_rev: ['sales_revenue', 'shipping_liability', 'courtzon_payable', 'marketplace_receivable', 'commission_expense'],
+  // Booking org book — mirrors the marketplace org book EXACTLY (same 1161 /
+  // MKT-SALES / MKT-COMM-EXP / MKT-CZ-PAY account codes), so the shared
+  // settlement_org_receipt clears booking receivables for the org on settlement.
+  booking_org_receivable: ['marketplace_receivable', 'commission_expense', 'sales_revenue'],
+  booking_org_receivable_reversal: ['sales_revenue', 'marketplace_receivable', 'commission_expense'],
+  booking_org_cash_receivable: ['marketplace_receivable', 'commission_expense', 'sales_revenue', 'courtzon_payable'],
+  booking_org_cash_receivable_rev: ['sales_revenue', 'courtzon_payable', 'marketplace_receivable', 'commission_expense'],
   // Settlement receipt (org book): Dr org Cash/Bank / Cr org 1161 Marketplace
   // Receivable — clears the org's receivable against the cash received from
   // CourtZon on settlement.
@@ -200,6 +220,25 @@ export class AccountingEngineService {
    */
   async provisionOrganisationMarketplaceAccounts(organisationId: number): Promise<void> {
     if (!organisationId) return;
+
+    // Fast path: org is already fully provisioned — two counting queries instead
+    // of ~29 SELECT/INSERT IGNORE round-trips on every org-book posting.
+    const codes = [...new Set(Object.values(ORG_MARKETPLACE_ACCOUNT_CODES).map((d) => d.code))];
+    const allEventTypes = Object.keys(ORG_BOOK_EVENTS);
+    const expectedLines = allEventTypes.reduce((n, et) => n + ORG_BOOK_EVENTS[et].length, 0);
+    if (codes.length > 0 && allEventTypes.length > 0) {
+      const codePh = codes.map(() => '?').join(',');
+      const eventPh = allEventTypes.map(() => '?').join(',');
+      const [fastCheck] = await this.pool.execute<RowData>(
+        `SELECT
+           (SELECT COUNT(*) FROM chart_of_accounts WHERE organisation_id = ? AND code IN (${codePh})) AS accounts,
+           (SELECT COUNT(*) FROM accounting_event_mapping_lines WHERE organisation_id = ? AND event_type IN (${eventPh})) AS lineCount`,
+        [organisationId, ...codes, organisationId, ...allEventTypes],
+      );
+      if (Number((fastCheck as any[])[0].accounts) === codes.length && Number((fastCheck as any[])[0].lineCount) === expectedLines) {
+        return;
+      }
+    }
 
     // 1. Provision org-scoped L4 accounts (INSERT IGNORE on (organisation_id, code)).
     const accountIdByConcept = new Map<string, number>();

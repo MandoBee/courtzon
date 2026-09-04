@@ -341,29 +341,68 @@ export const EVENT_CONCEPTS: Record<string, { debit: string[]; credit: string[] 
     credit: ['retained_earnings'],
   },
   // Booking payment — CourtZon is an agent for court bookings. The org/club
-  // share is a PAYABLE (liability) while CourtZon holds the funds, NOT revenue.
-  // Only commission is CourtZon revenue; tax is a separate liability.
+  // share is a PAYABLE while CourtZon holds the funds (merchant_payable 2202 —
+  // the SAME control the settlement engine clears), NOT revenue. Only
+  // commission is CourtZon revenue; tax is a separate liability.
+  // COURTZON BOOK only (organisation_id = NULL): mirrors marketplace custody
+  // (marketplace_card_payment). The organization records its OWN economics in
+  // its own book via booking_org_receivable (org-scoped).
   booking_card_payment: {
     debit: ['payment_clearing'],
-    credit: ['org_payable', 'platform_commission', 'tax_liability'],
+    credit: ['merchant_payable', 'platform_commission', 'tax_liability'],
   },
   booking_wallet_payment: {
     debit: ['wallet_liability_spend'],
-    credit: ['org_payable', 'platform_commission', 'tax_liability'],
+    credit: ['merchant_payable', 'platform_commission', 'tax_liability'],
   },
   // COD/cash — the org physically collects the money. CourtZon is owed only
-  // commission (+ tax). The org share is the org's own revenue and does NOT
-  // appear on CourtZon's canonical ledger.
+  // commission (+ tax) = a receivable from the org (marketplace_receivable
+  // 1161 — the SAME CourtZon receivable used for marketplace cash/COD), NOT a
+  // payable. COURTZON BOOK (org NULL). The org share is recorded in the org's
+  // own book via booking_org_cash_receivable.
   booking_cod_payment: {
-    debit: ['receivable_from_org'],
+    debit: ['marketplace_receivable'],
     credit: ['platform_commission', 'tax_liability'],
   },
   // COD refund/cancellation — reverse the COD economics EXACTLY (the original
-  // posting was receivable_from_org debit + commission/tax credit). Never use
-  // the card/wallet booking_refund (org_payable/payment_clearing) for COD.
+  // posting was marketplace_receivable debit + commission/tax credit).
   booking_cod_reversal: {
     debit: ['platform_commission', 'tax_liability'],
-    credit: ['receivable_from_org'],
+    credit: ['marketplace_receivable'],
+  },
+  // ── BOOKING ORGANIZATION BOOK (org-scoped) — mirrors marketplace org book ──
+  // CARD/WALLET custody (CourtZon holds the funds) org book:
+  //   Dr org 1161 Marketplace Receivable = orgAmount        (due from CourtZon)
+  //   Dr org Commission Expense          = commission
+  //   Cr org Sales Revenue               = orgAmount + commission (gross rental)
+  // Balanced: Dr (orgAmount + commission) = Cr (orgAmount + commission).
+  // The org's 1161 receivable uses the SAME account code as marketplace so the
+  // shared settlement receipt (settlement_org_receipt → Dr org Cash / Cr org
+  // 1161) clears it when the org is settled.
+  booking_org_receivable: {
+    debit: ['marketplace_receivable', 'commission_expense'],
+    credit: ['sales_revenue'],
+  },
+  // Organization-book reversal (refund/cancel) for CARD/WALLET — symmetric.
+  booking_org_receivable_reversal: {
+    debit: ['sales_revenue'],
+    credit: ['marketplace_receivable', 'commission_expense'],
+  },
+  // CASH/COD org book (org collected the cash) — the org records the FULL
+  // customer gross and the commission it owes CourtZon as a payable:
+  //   Dr org 1161 Marketplace Receivable = gross (orgAmount + commission)
+  //   Dr org Commission Expense          = commission
+  //   Cr org Sales Revenue               = gross (orgAmount + commission)
+  //   Cr org CourtZon Payable            = commission (owed to CourtZon)
+  // Balanced: Dr (gross + commission) = Cr (gross + commission).
+  booking_org_cash_receivable: {
+    debit: ['marketplace_receivable', 'commission_expense'],
+    credit: ['sales_revenue', 'courtzon_payable'],
+  },
+  // Organization-book CASH reversal (refund/cancel) — symmetric.
+  booking_org_cash_receivable_rev: {
+    debit: ['sales_revenue', 'courtzon_payable'],
+    credit: ['marketplace_receivable', 'commission_expense'],
   },
   booking_coach_payout: {
     debit: ['coach_expense'],
@@ -374,14 +413,14 @@ export const EVENT_CONCEPTS: Record<string, { debit: string[]; credit: string[] 
     credit: ['coach_expense'],
   },
   booking_refund: {
-    debit: ['org_payable', 'platform_commission', 'tax_liability'],
+    debit: ['merchant_payable', 'platform_commission', 'tax_liability'],
     credit: ['payment_clearing'],
   },
   // Wallet-funded booking refund — money returns to the customer's wallet, so
   // the credit is wallet_liability (NOT payment_clearing, which is a card
   // clearing asset that was never debited for wallet bookings).
   booking_wallet_refund: {
-    debit: ['org_payable', 'platform_commission', 'tax_liability'],
+    debit: ['merchant_payable', 'platform_commission', 'tax_liability'],
     credit: ['wallet_liability'],
   },
   // Post-settlement recovery: the party already received settlement funds.

@@ -71,13 +71,39 @@ describe('Accounting source segregation — mapping resolves by economic source'
     for (const et of ['marketplace_card_payment', 'marketplace_wallet_payment', 'marketplace_merchant_refund', 'marketplace_wallet_refund', 'complaint_refund']) {
       expect(await resolveCode(et, 'merchant_payable'), et).toBe('2202');
     }
+    // BOOKING org share now uses the SAME merchant_payable control (2202) as
+    // marketplace — the unified settlement engine clears 2202, so bookings must
+    // post there too (org_payable 2200 is no longer used by new bookings).
+    // Resolved through the ENGINE (applies code-level 2202 default since the
+    // booking events have no DB merchant_payable row).
+    const engine = await import('../application/accounting-engine.service.js');
+    for (const et of ['booking_card_payment', 'booking_wallet_payment', 'booking_refund', 'booking_wallet_refund']) {
+      const mapping = await engine.accountingEngineService.resolveMapping(et, null);
+      const line = mapping.find(m => m.concept === 'merchant_payable');
+      expect(line, et).toBeTruthy();
+      const [coa] = await pool.execute<RowData>(
+        `SELECT code FROM chart_of_accounts WHERE id = ?`,
+        [(line! as any).accountId],
+      );
+      expect((coa as any[])[0]?.code, et).toBe('2202');
+    }
     for (const et of ['booking_coach_payout', 'booking_coach_reversal', 'booking_coach_settlement', 'booking_coach_settlement_offset']) {
       expect(await resolveCode(et, 'coach_payable'), et).toBe('2201');
     }
   });
 
-  it('booking org payable → 2200 (unchanged)', async () => {
-    expect(await resolveCode('booking_card_payment', 'org_payable')).toBe('2200');
+  it('booking COD receivable → same 1161 marketplace receivable as marketplace COD', async () => {
+    const engine = await import('../application/accounting-engine.service.js');
+    for (const et of ['booking_cod_payment', 'booking_cod_reversal']) {
+      const mapping = await engine.accountingEngineService.resolveMapping(et, null);
+      const line = mapping.find(m => m.concept === 'marketplace_receivable');
+      expect(line, et).toBeTruthy();
+      const [coa] = await pool.execute<RowData>(
+        `SELECT code FROM chart_of_accounts WHERE id = ?`,
+        [(line! as any).accountId],
+      );
+      expect((coa as any[])[0]?.code, et).toBe('1161');
+    }
   });
 
   it('coaching expense → 5270; referee/provider expense → 5200', async () => {
