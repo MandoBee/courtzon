@@ -29,35 +29,62 @@ export function registerBookingPaymentListeners() {
       }
 
       if (booking.booking_status === 'confirmed') {
-        log.info({ bookingId }, 'Booking already confirmed — idempotent skip');
-        return;
-      }
-
-      if (booking.booking_status !== 'pending_payment' && booking.booking_status !== 'pending') {
+        log.info({ bookingId }, 'Booking already confirmed — marking payment paid');
+        // The booking was confirmed earlier (e.g. manual org confirmation);
+        // the authoritative gateway success still marks the payment as paid.
+        await bookingRepository.persistPaymentStatus(bookingId, 'paid');
+      } else if (booking.booking_status !== 'pending_payment' && booking.booking_status !== 'pending') {
         log.warn({ bookingId, status: booking.booking_status }, 'Booking in unexpected status for payment confirmation');
         return;
-      }
+      } else {
+        const confirmCommand: Command = {
+          commandId: `ConfirmBooking-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          commandType: 'ConfirmBooking',
+          aggregateType: 'booking',
+          aggregateId: String(bookingId),
+          // paymentStatus 'paid' is applied atomically with the transition so the
+          // booking's payment_status reflects the authoritative gateway success.
+          payload: { bookingId, paymentStatus: 'paid' },
+          correlationId: `corr_${Date.now()}`,
+        };
 
-      const confirmCommand: Command = {
-        commandId: `ConfirmBooking-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        commandType: 'ConfirmBooking',
-        aggregateType: 'booking',
-        aggregateId: String(bookingId),
-        payload: { bookingId },
-        correlationId: `corr_${Date.now()}`,
-      };
+        const confirmResult = await commandPipeline.execute(confirmCommand, {
+          validate: async () => confirmBookingHandler.validate(confirmCommand),
+          execute: async (cmd, conn) => confirmBookingHandler.execute(cmd, conn),
+          events: (cmd, res) => confirmBookingHandler.events!(cmd, res),
+        });
 
-      const confirmResult = await commandPipeline.execute(confirmCommand, {
-        validate: async () => confirmBookingHandler.validate(confirmCommand),
-        execute: async (cmd, conn) => confirmBookingHandler.execute(cmd, conn),
-        events: (cmd, res) => confirmBookingHandler.events!(cmd, res),
-      });
-
-      if (confirmResult.status === 'error') {
-        throw new Error(`ConfirmBooking failed: ${confirmResult.message}`);
+        if (confirmResult.status === 'error') {
+          throw new Error(`ConfirmBooking failed: ${confirmResult.message}`);
+        }
       }
 
       log.info({ bookingId }, 'Booking confirmed via payment succeeded event');
+
+      // ── Canonical realtime paid event ──
+      // Emit booking:paid so the socket publisher routes it to the player's
+      // user:{ownerId} room and the organisation:{orgId} room, and the frontend
+      // `booking.paid` handler refreshes the payment status without a page
+      // refresh. Accounting for a card/wallet booking is already posted by this
+      // payment:succeeded event (booking_card_payment / booking_wallet_payment);
+      // the accounting listener's booking:paid handler is idempotent
+      // (hasPosting), so this emit cannot double-post.
+      eventBusV2.emit('booking:paid', {
+        bookingId,
+        userId: booking.user_id,
+        organisationId: booking.organisation_id || undefined,
+        branchId: booking.branch_id || undefined,
+        resourceId: booking.resource_id || undefined,
+        courtId: booking.resource_id || undefined,
+        paymentMethod: booking.payment_method || 'card',
+        grossAmount: Number(booking.total_amount || 0),
+        taxAmount: Number(booking.tax_amount || 0),
+        coachAmount: Number(booking.coach_amount || 0),
+        organisationAmount: Number(booking.club_amount || 0),
+        commissionAmount: Number(booking.commission_amount || 0),
+        currency: 'EGP',
+        sourceId: bookingId,
+      } as any);
     } catch (err: any) {
       log.error({ err, paymentId: data.paymentId, bookingId }, 'Booking: confirmBooking failed on payment succeeded');
     }
