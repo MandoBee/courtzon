@@ -642,42 +642,49 @@ export class PaymentService {
     //   1. published_events is written atomically with the status update
     //   2. emit()'s own onAfterCommit fires in-memory handlers (booking listener,
     //      notification engine, socket publisher) after commit — no nested hook nesting.
-    const refId = transaction.reference_id || transaction.order_id || transaction.booking_id || null;
+    const [freshRows] = await conn.execute<RowData>(
+      `SELECT id, reference_type, reference_id, booking_id, order_id, user_id,
+              amount, payment_method, currency_code
+       FROM payment_transactions WHERE id = ? LIMIT 1`,
+      [transaction.id],
+    );
+    const fresh = (freshRows as any[])[0] || transaction;
+    const refId = fresh.reference_id || fresh.order_id || fresh.booking_id || null;
     const commonMeta = {
       gatewayRef,
-      userId: transaction.user_id,
-      paymentMethod: transaction.payment_method,
-      currency: transaction.currency_code || 'EGP',
+      userId: fresh.user_id,
+      paymentMethod: fresh.payment_method,
+      currency: fresh.currency_code || 'EGP',
       gateway: paymentGateway.provider,
     };
     if (newStatus === 'paid') {
       await eventBusV2.emit('payment:succeeded', {
-        paymentId: transaction.id,
-        referenceType: transaction.reference_type,
+        paymentId: fresh.id,
+        referenceType: fresh.reference_type,
         referenceId: refId,
-        amount: Number(transaction.amount),
+        amount: Number(fresh.amount),
         metadata: commonMeta,
       }, undefined, conn);
       await eventBusV2.emit('payment:completed', {
-        paymentId: transaction.id,
-        userId: transaction.user_id,
-        amount: Number(transaction.amount),
+        paymentId: fresh.id,
+        userId: fresh.user_id,
+        amount: Number(fresh.amount),
         currency: commonMeta.currency,
         gateway: commonMeta.gateway,
       }, undefined, conn);
     } else if (newStatus === 'failed') {
       await eventBusV2.emit('payment:failed-event', {
-        paymentId: transaction.id,
-        referenceType: transaction.reference_type,
+        paymentId: fresh.id,
+        referenceType: fresh.reference_type,
         referenceId: refId,
-        amount: Number(transaction.amount),
+        amount: Number(fresh.amount),
         reason: gatewayStatus || `Payment ${newStatus}`,
         metadata: commonMeta,
       }, undefined, conn);
       await eventBusV2.emit('payment:failed', {
-        paymentId: transaction.id,
-        userId: transaction.user_id,
-        amount: Number(transaction.amount),
+        paymentId: fresh.id,
+        userId: fresh.user_id,
+        amount: Number(fresh.amount),
         currency: commonMeta.currency,
         error: gatewayStatus || `Payment ${newStatus}`,
       }, undefined, conn);

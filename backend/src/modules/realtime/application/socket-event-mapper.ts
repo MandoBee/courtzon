@@ -181,11 +181,17 @@ function mapBookingEvent(eventName: string, p: Record<string, any>): MappedSocke
   };
   const type = `booking.${typeMap[sub] || sub}`;
   const resourceId = p.resourceId ?? p.courtId ?? null;
-  const rooms: string[] = [];
+  // Super Admin / global org management screens subscribe to the `admin` room
+  // (see useRealtimeCacheUpdates -> ['admin', 'bookings']). Without this the
+  // Super Admin bookings table only refreshes on mount/filter change.
+  const rooms: string[] = [ADMIN_ROOM];
   if (p.bookingId) rooms.push(`booking:${p.bookingId}`);
   if (p.userId) rooms.push(`user:${p.userId}`);
   if (resourceId) rooms.push(`resource:${resourceId}`);
   if (p.organisationId) rooms.push(`organisation:${p.organisationId}`);
+  // Financial booking events (payment confirmation / refund) also drive the
+  // finance room (accounting journal screens).
+  if (sub === 'paid' || sub === 'refunded') rooms.push('finance');
   return {
     type,
     payload: {

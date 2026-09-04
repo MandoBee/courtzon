@@ -388,21 +388,24 @@ export const EVENT_CONCEPTS: Record<string, { debit: string[]; credit: string[] 
     debit: ['sales_revenue'],
     credit: ['marketplace_receivable', 'commission_expense'],
   },
-  // CASH/COD org book (org collected the cash) — the org records the FULL
-  // customer gross and the commission it owes CourtZon as a payable:
-  //   Dr org 1161 Marketplace Receivable = gross (orgAmount + commission)
+  // CASH/COD org book (org collected the cash IMMEDIATELY at the court) — the
+  // org already holds the money, so the org book increases its Cash/Bank
+  // (ORG-CASH) directly instead of booking a receivable from CourtZon:
+  //   Dr org Cash / Bank (ORG-CASH)      = gross (orgAmount + commission)
   //   Dr org Commission Expense          = commission
   //   Cr org Sales Revenue               = gross (orgAmount + commission)
   //   Cr org CourtZon Payable            = commission (owed to CourtZon)
-  // Balanced: Dr (gross + commission) = Cr (gross + commission).
+  // Balanced: Dr (gross + commission) = Cr (gross + commission). Same account
+  // set (ORG-CASH / MKT-COMM-EXP / MKT-SALES / MKT-CZ-PAY) as the marketplace
+  // org book — no new accounts, no new model.
   booking_org_cash_receivable: {
-    debit: ['marketplace_receivable', 'commission_expense'],
+    debit: ['org_cash_bank', 'commission_expense'],
     credit: ['sales_revenue', 'courtzon_payable'],
   },
   // Organization-book CASH reversal (refund/cancel) — symmetric.
   booking_org_cash_receivable_rev: {
     debit: ['sales_revenue', 'courtzon_payable'],
-    credit: ['marketplace_receivable', 'commission_expense'],
+    credit: ['org_cash_bank', 'commission_expense'],
   },
   booking_coach_payout: {
     debit: ['coach_expense'],

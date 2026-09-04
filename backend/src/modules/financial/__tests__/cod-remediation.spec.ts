@@ -343,4 +343,60 @@ describe('COD Custody Remediation', () => {
       );
     }
   });
+
+  it('10. booking COD org book increases org Cash/Bank (ORG-CASH) directly, NOT 1161 receivable', async () => {
+    // Cash is collected immediately at the court: the org book must Dr its OWN
+    // Cash/Bank (ORG-CASH) rather than a receivable from CourtZon. CourtZon's
+    // book still records its commission receivable (1161, org NULL). Mirror of
+    // the marketplace org-book cash treatment, using the same account set.
+    const { accountingEngineService } = await import('../application/accounting-engine.service.js');
+    await accountingEngineService.provisionOrganisationMarketplaceAccounts(orgId);
+
+    const bookingId = await insertBooking({ hour: 20, total: 1000, tax: 100, commission: 200, club: 700 });
+    const { postAccountingEvent } = await import('../application/accounting-event.listener.js');
+    await postAccountingEvent(
+      'booking_cod_payment', 'booking', bookingId, null,
+      { marketplace_receivable: 300, platform_commission: 200, tax_liability: 100 },
+      'EGP', 'COD recognition',
+    );
+    await postAccountingEvent(
+      'booking_org_cash_receivable', 'booking', bookingId, orgId,
+      { org_cash_bank: 900, commission_expense: 200, sales_revenue: 900, courtzon_payable: 200 },
+      'EGP', 'COD org book cash',
+      undefined,
+      { org_cash_bank: orgId, commission_expense: orgId, sales_revenue: orgId, courtzon_payable: orgId },
+    );
+
+    const [cashAcc] = await pool.execute<RowData>(
+      `SELECT id FROM chart_of_accounts WHERE organisation_id = ? AND code = 'ORG-CASH' LIMIT 1`, [orgId],
+    );
+    expect((cashAcc as any[]).length).toBe(1);
+    const cashId = Number((cashAcc as any[])[0].id);
+    const cashSums = await sourceSums(cashId, 'booking', bookingId);
+    // Org Cash/Bank increased by the FULL collected gross (org + commission).
+    expect(cashSums.debit).toBe(900);
+    expect(cashSums.credit).toBe(0);
+
+    // NO org-scoped 1161 receivable debit for a CASH booking (only CourtZon's
+    // org-NULL 1161 receivable for its commission).
+    const [org1161] = await pool.execute<RowData>(
+      `SELECT id FROM chart_of_accounts WHERE organisation_id = ? AND code = '1161' LIMIT 1`, [orgId],
+    );
+    if ((org1161 as any[]).length) {
+      const r1161 = await sourceSums(Number((org1161 as any[])[0].id), 'booking', bookingId);
+      expect(r1161.debit).toBe(0);
+      expect(r1161.credit).toBe(0);
+    }
+
+    // CourtZon book receivable unchanged (commission + tax, org NULL).
+    const czRecv = await accountId('1161');
+    const [czRows] = await pool.execute<RowData>(
+      `SELECT COALESCE(SUM(CASE WHEN side='credit' THEN amount ELSE 0 END),0) AS c,
+              COALESCE(SUM(CASE WHEN side='debit' THEN amount ELSE 0 END),0) AS d
+       FROM ledger_entries WHERE chart_account_id = ? AND organisation_id IS NULL AND source_type = 'booking' AND source_id = ?`,
+      [czRecv, bookingId],
+    );
+    expect(Number((czRows as any[])[0].d)).toBe(300);
+    expect(Number((czRows as any[])[0].c)).toBe(0);
+  });
 });

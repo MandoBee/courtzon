@@ -148,8 +148,10 @@ export const ORG_BOOK_EVENTS: Record<string, string[]> = {
   // settlement_org_receipt clears booking receivables for the org on settlement.
   booking_org_receivable: ['marketplace_receivable', 'commission_expense', 'sales_revenue'],
   booking_org_receivable_reversal: ['sales_revenue', 'marketplace_receivable', 'commission_expense'],
-  booking_org_cash_receivable: ['marketplace_receivable', 'commission_expense', 'sales_revenue', 'courtzon_payable'],
-  booking_org_cash_receivable_rev: ['sales_revenue', 'courtzon_payable', 'marketplace_receivable', 'commission_expense'],
+  // CASH/COD org book — the org collected cash immediately, so it increases its
+  // OWN Cash/Bank (ORG-CASH) directly rather than a receivable from CourtZon.
+  booking_org_cash_receivable: ['org_cash_bank', 'commission_expense', 'sales_revenue', 'courtzon_payable'],
+  booking_org_cash_receivable_rev: ['sales_revenue', 'courtzon_payable', 'org_cash_bank', 'commission_expense'],
   // Settlement receipt (org book): Dr org Cash/Bank / Cr org 1161 Marketplace
   // Receivable — clears the org's receivable against the cash received from
   // CourtZon on settlement.
@@ -221,21 +223,29 @@ export class AccountingEngineService {
   async provisionOrganisationMarketplaceAccounts(organisationId: number): Promise<void> {
     if (!organisationId) return;
 
-    // Fast path: org is already fully provisioned — two counting queries instead
-    // of ~29 SELECT/INSERT IGNORE round-trips on every org-book posting.
+    // Fast path: org is already fully provisioned — a single query counting the
+    // org's book-event mapping concept pairs, verified BY CONCEPT (not just
+    // count), so a concept-set change (e.g. booking_org_cash_receivable moving
+    // from marketplace_receivable to org_cash_bank) re-provisions existing orgs
+    // instead of leaving a stale mapping that fails resolveMapping on the next
+    // posting. A SUBSET check tolerates legacy/extra lines.
     const codes = [...new Set(Object.values(ORG_MARKETPLACE_ACCOUNT_CODES).map((d) => d.code))];
     const allEventTypes = Object.keys(ORG_BOOK_EVENTS);
-    const expectedLines = allEventTypes.reduce((n, et) => n + ORG_BOOK_EVENTS[et].length, 0);
     if (codes.length > 0 && allEventTypes.length > 0) {
       const codePh = codes.map(() => '?').join(',');
-      const eventPh = allEventTypes.map(() => '?').join(',');
+      const requiredPairs: Array<[string, string]> = [];
+      for (const [et, concepts] of Object.entries(ORG_BOOK_EVENTS)) {
+        for (const c of concepts) requiredPairs.push([et, c]);
+      }
+      const pairPh = requiredPairs.map(() => '(?, ?)').join(',');
       const [fastCheck] = await this.pool.execute<RowData>(
         `SELECT
-           (SELECT COUNT(*) FROM chart_of_accounts WHERE organisation_id = ? AND code IN (${codePh})) AS accounts,
-           (SELECT COUNT(*) FROM accounting_event_mapping_lines WHERE organisation_id = ? AND event_type IN (${eventPh})) AS lineCount`,
-        [organisationId, ...codes, organisationId, ...allEventTypes],
+           (SELECT COUNT(*) FROM chart_of_accounts WHERE organisation_id = ? AND code IN (${codePh}) AND is_active = 1) AS accounts,
+           (SELECT COUNT(*) FROM accounting_event_mapping_lines
+            WHERE organisation_id = ? AND is_active = 1 AND (event_type, concept) IN (${pairPh})) AS lineCount`,
+        [organisationId, ...codes, organisationId, ...requiredPairs.flat()],
       );
-      if (Number((fastCheck as any[])[0].accounts) === codes.length && Number((fastCheck as any[])[0].lineCount) === expectedLines) {
+      if (Number((fastCheck as any[])[0].accounts) === codes.length && Number((fastCheck as any[])[0].lineCount) === requiredPairs.length) {
         return;
       }
     }

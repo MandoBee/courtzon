@@ -294,7 +294,14 @@ describe('Historical Settlement Correction (migration 154 + canonical engine)', 
     await pool.execute(`DELETE FROM general_ledger WHERE reference_type LIKE 'settlement_%' AND reference_id IN (1,2,3)`);
     await pool.execute(`DELETE FROM ledger_entries WHERE transaction_id LIKE 'mkt_cp_%' OR transaction_id LIKE 'mkt_or_%'`);
     await pool.execute(`DELETE FROM general_ledger WHERE reference_type LIKE 'marketplace_marketplace_%' AND reference_id IN (23,24,25)`);
-    await pool.execute(`DELETE FROM accounting_event_mapping_lines WHERE event_type='settlement_org_receipt' AND organisation_id IN (6,28)`);
+    // Remove ALL org-book mapping lines for org 6/28 (including the booking
+    // cash/COD lines provisioned by the shared accounting engine) before the
+    // ORG-CASH / 1161 accounts they reference, so the FK never blocks cleanup.
+    await pool.execute(
+      `DELETE FROM accounting_event_mapping_lines WHERE organisation_id IN (6,28) AND account_id IN (
+        SELECT id FROM chart_of_accounts WHERE organisation_id IN (6,28) AND code IN ('ORG-CASH','1161')
+      )`,
+    );
     await pool.execute(`DELETE FROM chart_of_accounts WHERE code='ORG-CASH' AND organisation_id IN (6,28)`);
     // Also remove any org-scoped 1161 accounts created for org 6 by this spec.
     await pool.execute(`DELETE FROM chart_of_accounts WHERE code='1161' AND organisation_id IN (6,28) AND name='Marketplace Receivable (test fixture)'`);

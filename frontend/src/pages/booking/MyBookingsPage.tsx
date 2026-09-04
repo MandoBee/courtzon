@@ -67,13 +67,14 @@ export default function MyBookingsPage() {
   const statusColors: Record<string, string> = {
     confirmed: 'bg-[var(--color-success-bg)] text-[var(--color-success-text)]',
     pending: 'bg-[var(--color-warning-bg)] text-[var(--color-warning-text)]',
+    pending_payment: 'bg-[var(--color-warning-bg)] text-[var(--color-warning-text)]',
     cancelled: 'bg-[var(--color-error-bg)] text-[var(--color-error-text)]',
     checked_in: 'bg-[var(--color-info-bg)] text-[var(--color-info-text)]',
     completed: 'bg-[var(--color-border)] text-[var(--color-text-muted)] bg-[var(--color-surface)] text-[var(--color-text-muted)]',
     no_show: 'bg-[var(--color-error-bg)] text-[var(--color-error-text)]',
   };
 
-  const filterStatuses = ['confirmed', 'pending', 'checked_in', 'completed', 'cancelled', ''];
+  const filterStatuses = ['confirmed', 'pending_payment', 'pending', 'checked_in', 'completed', 'cancelled', ''];
 
   const statusLabel = (s: string) => {
     if (s === 'confirmed') {

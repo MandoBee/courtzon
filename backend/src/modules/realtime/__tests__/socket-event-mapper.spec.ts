@@ -26,6 +26,8 @@ describe('SocketEventMapper', () => {
     expect(result!.rooms).toContain('user:42');
     expect(result!.rooms).toContain('organisation:9');
     expect(result!.rooms).toContain('resource:7');
+    // Super Admin global bookings screen subscribes to the admin room.
+    expect(result!.rooms).toContain('admin');
   });
 
   it('routes booking:no-show to the organisation + resource rooms', () => {
@@ -39,6 +41,7 @@ describe('SocketEventMapper', () => {
     expect(result!.type).toBe('booking.no_show');
     expect(result!.rooms).toContain('organisation:9');
     expect(result!.rooms).toContain('resource:7');
+    expect(result!.rooms).toContain('admin');
   });
 
   it('routes booking:check-in to the organisation room', () => {
@@ -51,6 +54,24 @@ describe('SocketEventMapper', () => {
     expect(result).not.toBeNull();
     expect(result!.type).toBe('booking.checked_in');
     expect(result!.rooms).toContain('organisation:9');
+    expect(result!.rooms).toContain('admin');
+  });
+
+  it('routes booking:paid to the admin + finance rooms (accounting refresh)', () => {
+    const result = mapDomainEvent('booking:paid', {
+      bookingId: 5,
+      userId: 42,
+      organisationId: 9,
+      resourceId: 7,
+      paymentMethod: 'card',
+      grossAmount: 100,
+    });
+    expect(result).not.toBeNull();
+    expect(result!.type).toBe('booking.paid');
+    expect(result!.rooms).toContain('admin');
+    expect(result!.rooms).toContain('finance');
+    expect(result!.rooms).toContain('organisation:9');
+    expect(result!.rooms).toContain('user:42');
   });
 
   it('maps payment:completed', () => {
@@ -157,10 +178,11 @@ describe('SocketEventMapper', () => {
     expect(result!.payload.reason).toBe('User request');
   });
 
-  it('maps booking:expired/completed without identity to no rooms but type intact', () => {
+  it('maps booking:expired/completed without identity to admin + booking rooms but type intact', () => {
     const result = mapDomainEvent('booking:expired', { bookingId: 10 });
     expect(result!.type).toBe('booking.expired');
-    expect(result!.rooms).toEqual(['booking:10']);
+    expect(result!.rooms).toContain('booking:10');
+    expect(result!.rooms).toContain('admin');
   });
 
   it('maps user:suspended to user.account.suspended in user room', () => {

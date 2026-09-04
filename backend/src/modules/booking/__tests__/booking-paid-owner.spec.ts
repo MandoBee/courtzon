@@ -35,8 +35,11 @@ describe('COD booking:paid owner routing (BUG 3)', () => {
     const [existing] = await pool.execute<RowData>(`SELECT id FROM organisations WHERE slug = ?`, [SLUG]);
     for (const row of existing as any[]) {
       const oid = Number(row.id);
+      await pool.execute(`DELETE FROM general_ledger WHERE organisation_id = ?`, [oid]);
       await pool.execute(`DELETE FROM bookings WHERE organisation_id = ?`, [oid]);
       await pool.execute(`DELETE FROM ledger_entries WHERE organisation_id = ?`, [oid]);
+      await pool.execute(`DELETE FROM accounting_event_mapping_lines WHERE account_id IN (SELECT id FROM chart_of_accounts WHERE organisation_id = ?)`, [oid]);
+      await pool.execute(`DELETE FROM chart_of_accounts WHERE organisation_id = ?`, [oid]);
       await pool.execute(`DELETE FROM resources WHERE branch_id IN (SELECT id FROM branches WHERE organisation_id = ?)`, [oid]);
       await pool.execute(`DELETE FROM branches WHERE organisation_id = ?`, [oid]);
       await pool.execute(`DELETE FROM organisations WHERE id = ?`, [oid]);
@@ -69,8 +72,11 @@ describe('COD booking:paid owner routing (BUG 3)', () => {
   });
 
   afterAll(async () => {
+    await pool.execute(`DELETE FROM general_ledger WHERE organisation_id = ?`, [orgId]);
     await pool.execute(`DELETE FROM bookings WHERE organisation_id = ?`, [orgId]);
     await pool.execute(`DELETE FROM ledger_entries WHERE organisation_id = ?`, [orgId]);
+    await pool.execute(`DELETE FROM accounting_event_mapping_lines WHERE account_id IN (SELECT id FROM chart_of_accounts WHERE organisation_id = ?)`, [orgId]);
+    await pool.execute(`DELETE FROM chart_of_accounts WHERE organisation_id = ?`, [orgId]);
     if (resourceId) await pool.execute(`DELETE FROM resources WHERE id = ?`, [resourceId]);
     if (branchId) await pool.execute(`DELETE FROM branches WHERE id = ?`, [branchId]);
     await pool.execute(`DELETE FROM organisations WHERE id = ?`, [orgId]);
