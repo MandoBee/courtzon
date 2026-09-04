@@ -48,8 +48,13 @@ export async function prepareBookingHandler(request: FastifyRequest, reply: Fast
     actorId: userId ?? null,
     action: 'BOOKING.PREPARE',
     entityType: 'booking_prepare',
-    entityId: result.prepareId,
-    afterState: { resourceId: body.resourceId },
+    // audit_logs.entity_id is INT UNSIGNED. The prepare session key (prepareId)
+    // is a UUID string and cannot be stored there (MySQL "Data truncated").
+    // The numeric payment_transactions.id returned by the prepare flow is the
+    // correct numeric identifier; the UUID session key is preserved in
+    // after-state as metadata.
+    entityId: result.paymentId,
+    afterState: { resourceId: body.resourceId, prepareId: result.prepareId },
     ipAddress: request.ip,
     userAgent: request.headers['user-agent'],
   });
