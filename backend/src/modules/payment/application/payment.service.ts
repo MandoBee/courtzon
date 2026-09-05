@@ -406,11 +406,30 @@ export class PaymentService {
     let resolvedGatewayRef = '';
     let preCheck = null as any;
 
+    // Exact gateway_reference match first (fast path — the webhook carries the
+    // intention order id directly, or the row was already correlated to the real
+    // order id by a previous webhook).
     for (const ref of possibleRefs) {
       preCheck = await paymentRepository.findByGatewayRef(ref);
       if (preCheck) {
         resolvedGatewayRef = ref;
         break;
+      }
+    }
+
+    // Booking PREPARE correlation: the local row stores gateway_reference = the
+    // Paymob INTENTION order id, but the Accept/iframe webhook carries a
+    // DIFFERENT transaction order id. Re-correlate via the persisted intention
+    // JSON (intention_id / intention_order_id / special_reference == the
+    // webhook's merchant_order_id). This is the root-cause fix for the
+    // "payment stays pending after Paymob success" production defect.
+    if (!preCheck) {
+      preCheck = await paymentRepository.findByWebhookCorrelation(possibleRefs, merchantOrderId);
+      if (preCheck) {
+        // Use the webhook's REAL Accept order id if present, else keep the row's
+        // stored intention order id — either way the row is now resolved.
+        resolvedGatewayRef = String(orderId || rootOrderId || (preCheck as any).gateway_reference || '');
+        log.warn({ possibleRefs, matchedId: (preCheck as any).id, resolvedGatewayRef }, 'Webhook: booking_prepare correlated via intention JSON');
       }
     }
 
@@ -431,6 +450,28 @@ export class PaymentService {
     if (!preCheck) {
       log.error({ possibleRefs, merchantOrderId }, 'Payment transaction not found via any reference');
       throw new NotFoundError('Payment transaction');
+    }
+
+    // Persist the REAL Accept transaction order id onto the local row so the
+    // webhook/sync/expiry jobs resolve it by the same id going forward.
+    // Best-effort: ignores UNIQUE collisions (a concurrent webhook may already
+    // have persisted the same real id). resolvedGatewayRef is only set to the
+    // real id when the row actually stores it (lockByGatewayRef below depends
+    // on the stored value).
+    const realOrderId = String(orderId || rootOrderId || obj.id || '');
+    if (realOrderId && realOrderId !== String(preCheck.gateway_reference || '')) {
+      try {
+        const persisted = await paymentRepository.persistGatewayReference(preCheck.id, realOrderId);
+        if (persisted) {
+          resolvedGatewayRef = realOrderId;
+          log.info({ paymentId: preCheck.id, from: preCheck.gateway_reference, to: realOrderId }, 'Webhook: gateway_reference re-correlated to real Accept order id');
+        } else {
+          resolvedGatewayRef = String(preCheck.gateway_reference || resolvedGatewayRef);
+        }
+      } catch (persistErr: any) {
+        log.warn({ err: persistErr, paymentId: preCheck.id }, 'Webhook: could not persist real order id (best-effort)');
+        resolvedGatewayRef = String(preCheck.gateway_reference || resolvedGatewayRef);
+      }
     }
 
     const traceId = (preCheck as any).trace_id || '';
@@ -590,7 +631,7 @@ export class PaymentService {
     newStatus: 'paid' | 'failed',
     gatewayRef: string,
     traceId: string,
-    source: 'webhook' | 'sync' | 'manual' | 'confirm' | 'wallet',
+    source: 'webhook' | 'sync' | 'manual' | 'confirm' | 'wallet' | 'expiry',
     gatewayStatus?: string,
     payloadSuccess?: boolean,
   ): Promise<{ idempotent: boolean }> {
@@ -644,7 +685,7 @@ export class PaymentService {
     //      notification engine, socket publisher) after commit — no nested hook nesting.
     const [freshRows] = await conn.execute<RowData>(
       `SELECT id, reference_type, reference_id, booking_id, order_id, user_id,
-              amount, payment_method, currency_code
+              amount, payment_method, currency
        FROM payment_transactions WHERE id = ? LIMIT 1`,
       [transaction.id],
     );
@@ -654,7 +695,7 @@ export class PaymentService {
       gatewayRef,
       userId: fresh.user_id,
       paymentMethod: fresh.payment_method,
-      currency: fresh.currency_code || 'EGP',
+      currency: fresh.currency || 'EGP',
       gateway: paymentGateway.provider,
     };
     if (newStatus === 'paid') {
@@ -1255,16 +1296,56 @@ export class PaymentService {
   /**
    * Expire stale payments that exceeded the timeout.
    * Should be called by a scheduled job every ~2 minutes.
+   *
+   * SAFETY: before marking a payment expired, verify its ACTUAL Paymob status.
+   *   - Paymob confirms paid  → recover: mark local row paid and continue the
+   *     normal payment:succeeded → booking:paid flow (never cancel a booking
+   *     whose payment succeeded but whose webhook was lost/unmatched).
+   *   - Paymob confirms failed/expired/cancelled → expire.
+   *   - Paymob pending / unknown / unreachable → do NOT expire (leave for the
+   *     webhook / sync job to resolve; never race-cancel a possibly-paid booking).
    */
   async expireStalePayments(timeoutMinutes: number = 15) {
     const payments = await paymentRepository.findPendingPayments(timeoutMinutes);
-    if (payments.length === 0) return { expired: 0 };
+    if (payments.length === 0) return { expired: 0, recovered: 0 };
 
     log.info({ count: payments.length, timeoutMinutes }, 'Starting payment expiry');
 
     let expired = 0;
+    let recovered = 0;
     for (const ptx of payments as any[]) {
       try {
+        // ── Paymob verification BEFORE expiring ──
+        // getTransactionStatus is keyed on the stored gateway_reference. For
+        // booking_prepare the stored ref is the INTENTION order id — Paymob's
+        // order API resolves it to the same paid order (the intention order is
+        // the charge order), so a paid card booking is recovered, not expired.
+        const remoteStatus = await paymentGateway.getTransactionStatus(ptx.gateway_reference, ptx.order_id);
+
+        if (remoteStatus.status === 'paid') {
+          log.info({ txnId: ptx.id, gatewayRef: ptx.gateway_reference }, 'Expiry: Paymob confirms PAID — recovering payment');
+          await withTransaction(async (conn) => {
+            const locked = await paymentRepository.lockById(ptx.id, conn);
+            if (!locked) return;
+            if (FINAL_STATES.has(locked.payment_status)) return;
+            const result = await this._processPaymentOutcome(
+              conn, locked, 'paid', ptx.gateway_reference, ptx.trace_id || '', 'expiry',
+              remoteStatus.status, remoteStatus.success,
+            );
+            if (!result.idempotent) recovered++;
+          });
+          continue;
+        }
+
+        // Paymob confirms NOT paid (failed/expired/cancelled) → safe to expire.
+        // Any other status (pending/unknown/unreachable) → skip; never
+        // race-cancel a possibly-paid booking.
+        if (remoteStatus.status === 'pending' || remoteStatus.status === 'refunded' || remoteStatus.errorMessage) {
+          log.info({ txnId: ptx.id, gatewayRef: ptx.gateway_reference, remoteStatus: remoteStatus.status, error: remoteStatus.errorMessage }, 'Expiry: Paymob not confirmed failed — skipping expiry (pending/unknown)');
+          continue;
+        }
+
+        // Paymob confirms NOT paid → safe to expire locally.
         await withTransaction(async (conn) => {
           await conn.execute(
             `UPDATE payment_transactions SET payment_status = 'expired', expired_at = NOW(), updated_at = NOW() WHERE id = ? AND payment_status NOT IN ('paid', 'failed', 'cancelled', 'expired', 'refunded')`,
@@ -1282,15 +1363,15 @@ export class PaymentService {
             },
           }, undefined, conn);
           expired++;
-          log.info({ txnId: ptx.id, gatewayRef: ptx.gateway_reference, created: ptx.created_at }, 'Payment expired');
+          log.info({ txnId: ptx.id, gatewayRef: ptx.gateway_reference, created: ptx.created_at, remoteStatus: remoteStatus.status }, 'Payment expired (Paymob confirmed not paid)');
         });
       } catch (err) {
         log.error({ err, txnId: ptx.id }, 'Failed to expire payment');
       }
     }
 
-    log.info({ expired, total: payments.length }, 'Payment expiry complete');
-    return { expired, total: payments.length };
+    log.info({ expired, recovered, total: payments.length }, 'Payment expiry complete');
+    return { expired, recovered, total: payments.length };
   }
 
   private async chargeV2(userId: number, input: ChargeInput) {
@@ -1342,6 +1423,7 @@ export class PaymentService {
       currency: input.currency,
       referenceId: input.referenceId,
       referenceType: input.referenceType,
+      idempotencyKey: input.idempotencyKey,
       returnUrl: input.returnUrl,
       customerEmail: input.customerEmail,
       customerPhone: input.customerPhone,

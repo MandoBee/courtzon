@@ -49,6 +49,14 @@ export class PaymobGateway implements PaymentGateway {
 
   async charge(request: PaymentRequest): Promise<PaymentResult> {
     try {
+      // special_reference doubles as Paymob's merchant_order_id — the ONLY
+      // correlation key the Accept webhook reliably echoes back. For
+      // booking_prepare the referenceId is undefined (the booking does not
+      // exist yet), so we embed the idempotencyKey (prepareId UUID) instead —
+      // NEVER "undefined" (booking_prepare_undefined_* cannot be re-parsed).
+      const refToken = request.referenceId != null && Number.isFinite(Number(request.referenceId))
+        ? request.referenceId
+        : (request.idempotencyKey ?? 'noref');
       const body = {
         amount: Math.round(request.amount * 100),
         currency: request.currency || 'EGP',
@@ -72,7 +80,7 @@ export class PaymobGateway implements PaymentGateway {
           email: request.customerEmail || 'customer@example.com',
           phone_number: request.customerPhone || '0000000000',
         },
-        special_reference: `${request.referenceType}_${request.referenceId}_${Date.now()}`,
+        special_reference: `${request.referenceType}_${refToken}_${Date.now()}`,
         notification_url: `${process.env.WEBHOOK_BASE_URL || process.env.APP_URL || 'http://localhost:3000'}/payments/webhook`,
         redirection_url: request.returnUrl || `${process.env.APP_URL || 'http://localhost:5173'}/payments/return`,
       };
