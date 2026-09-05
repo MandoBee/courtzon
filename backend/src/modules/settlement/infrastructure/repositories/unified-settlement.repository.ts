@@ -18,6 +18,11 @@ export interface CreateUnifiedSettlementData {
   direction: 'COURTZON_TO_ORGANIZATION' | 'ORGANIZATION_TO_COURTZON' | 'ZERO_BALANCE';
   finalAmount: number;
   commissionAmount: number;
+  grossAmount?: number;
+  courtzonFee?: number;
+  organizationNet?: number;
+  onlineNetTotal?: number;
+  codFeeTotal?: number;
   notes?: string;
 }
 
@@ -34,14 +39,18 @@ export const unifiedSettlementRepository = {
       `INSERT INTO settlements
         (organisation_id, branch_id, settlement_status, requested_by, requested_by_role,
          settlement_type, batch_code, organization_position, courtzon_position,
-         net_amount, final_amount, settlement_direction, commission_amount, notes,
-         requested_at, created_at)
-       VALUES (?, ?, 'requested', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+         net_amount, final_amount, settlement_direction, commission_amount,
+         gross_amount, courtzon_fee, organization_net, online_net_total, cod_fee_total,
+         notes, requested_at, created_at)
+       VALUES (?, ?, 'requested', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
       [
         data.organisationId, data.branchId, data.requestedBy, data.requestedByRole,
         data.settlementType, data.batchCode, data.organizationPosition, data.courtzonPosition,
         data.net, data.finalAmount, data.direction === 'ZERO_BALANCE' ? null : (data.direction === 'COURTZON_TO_ORGANIZATION' ? 'courtzon_to_org' : 'org_to_courtzon'),
-        data.commissionAmount, data.notes ?? null,
+        data.commissionAmount,
+        data.grossAmount ?? null, data.courtzonFee ?? null, data.organizationNet ?? null,
+        data.onlineNetTotal ?? null, data.codFeeTotal ?? null,
+        data.notes ?? null,
       ],
     );
     return result.insertId;

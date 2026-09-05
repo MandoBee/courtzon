@@ -164,6 +164,33 @@ export default function UnifiedSettlementDetailPage() {
         </div>
       </div>
 
+      {/* Netting breakdown — online vs COD, both directions */}
+      <div className="bg-[var(--color-surface)] rounded-xl shadow-[var(--shadow-md)] p-4 text-sm">
+        <p className="text-sm font-medium mb-3">Netting Breakdown</p>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="rounded-lg border border-[var(--color-border)] p-3">
+            <p className="text-[var(--color-text-muted)] text-xs mb-1">Online / Card — held by CourtZon</p>
+            <p className="text-lg font-bold text-[var(--color-text)]">{formatPrice(Number(s.online_net_total ?? f?.courtzonOwedToOrg ?? 0))}</p>
+            <p className="text-xs text-[var(--color-text-muted)]">Collected online by CourtZon → owed to the organization (settlement clears merchant payable 2202).</p>
+          </div>
+          <div className="rounded-lg border border-[var(--color-border)] p-3">
+            <p className="text-[var(--color-text-muted)] text-xs mb-1">Cash / COD commission — held by Organization</p>
+            <p className="text-lg font-bold text-[var(--color-text)]">{formatPrice(Number(s.cod_fee_total ?? f?.orgOwedToCourtZon ?? 0))}</p>
+            <p className="text-xs text-[var(--color-text-muted)]">Collected in cash by the organization → owed to CourtZon (settlement clears receivable 1161).</p>
+          </div>
+        </div>
+        <div className="mt-3 pt-3 border-t border-[var(--color-border)] flex flex-wrap items-center justify-between gap-2">
+          <span className="text-[var(--color-text-muted)]">
+            {f?.direction === 'COURTZON_TO_ORGANIZATION'
+              ? `CourtZon pays the net ${formatPrice(f?.finalAmount ?? 0)} to the organization (online net minus COD commission).`
+              : f?.direction === 'ORGANIZATION_TO_COURTZON'
+                ? `Organization pays the net ${formatPrice(f?.finalAmount ?? 0)} to CourtZon (COD commission minus online net).`
+                : 'Zero balance — no payment required.'}
+          </span>
+          <span className="font-bold text-[var(--color-text)]">{formatPrice(Number(s.final_amount ?? f?.finalAmount ?? 0))}</span>
+        </div>
+      </div>
+
       {/* Totals breakdown — canonical values from backend financials */}
       <div className="bg-[var(--color-surface)] rounded-xl shadow-[var(--shadow-md)] p-4 text-sm">
         <p className="text-sm font-medium mb-2">Settlement Composition</p>

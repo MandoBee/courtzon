@@ -116,9 +116,13 @@ const postedLines = (): any[] =>
   (ledgerRepository.createEntries as any).mock.calls.at(-1)?.[0] ?? [];
 
 beforeEach(() => {
-  vi.resetAllMocks();
-  busHandlers.clear();
-  // Re-establish the default mocks after resetAllMocks clears implementations.
+  vi.clearAllMocks();
+  // NOTE: do NOT clear busHandlers here. registerAccountingEventListeners() is
+  // idempotent (module guard) and only registers the mocked bus handlers on the
+  // first call, so clearing the map on every test would leave later tests with
+  // no payment:refunded handler. clearAllMocks (not resetAllMocks) keeps the
+  // eventBusV2.on implementation intact across tests.
+  // Re-establish the default mocks after clearAllMocks.
   (ledgerRepository.hasPosting as any).mockImplementation(async () => false);
   (ledgerRepository.createEntries as any).mockImplementation(async (entries: any[]) => entries.map((_, i) => 1000 + i));
   (accountingEngineService.resolveMapping as any).mockImplementation(async (eventType: string, orgId?: any) => MAPPINGS[eventType] ?? []);

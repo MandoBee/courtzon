@@ -135,7 +135,9 @@ export async function exportSettlementsHandler(request: FastifyRequest, reply: F
 
   const headers = [
     'Settlement ID', 'Organisation', 'Status', 'Requested Date', 'Paid Date',
-    'Final Amount', 'Org Earnings', 'CourtZon Commission', 'Org Adjustments',
+    'Final Amount', 'Gross Amount', 'Direction',
+    'Online Net (held by CourtZon, owed to org)', 'COD Fee (held by org, owed to CourtZon)',
+    'Org Earnings', 'CourtZon Commission', 'Org Adjustments',
     'CourtZon Adjustments', 'Entitlement Count',
   ];
   const data = rows.map((r: any) => {
@@ -148,6 +150,10 @@ export async function exportSettlementsHandler(request: FastifyRequest, reply: F
       s.requested_at ? new Date(s.requested_at).toISOString() : '',
       s.paid_at ? new Date(s.paid_at).toISOString() : '',
       s.final_amount ?? f.finalAmount ?? 0,
+      s.gross_amount ?? (f.totalOrgEarnings ?? 0) + (f.totalCommission ?? 0),
+      s.settlement_direction ?? f.direction ?? '',
+      s.online_net_total ?? f.courtzonOwedToOrg ?? 0,
+      s.cod_fee_total ?? f.orgOwedToCourtZon ?? 0,
       f.totalOrgEarnings ?? 0,
       f.totalCommission ?? 0,
       f.totalOrgAdjustments ?? 0,

@@ -164,12 +164,13 @@ describe('Marketplace / Org Settlement Receipt Accounting', () => {
     await emitSettlement(SID_OTC, 100, 'org_to_courtzon', orgA);
     await waitFor(async () => (await countEvent(SID_OTC, 'settlement_paid_otc', null)) === 2, 'OTC CourtZon post');
 
-    // OTC posts CourtZon book (Dr 1120 / Cr 1160) but NO org-scoped org receipt.
+    // OTC posts CourtZon book (Dr 1120 / Cr 1161 Marketplace Receivable) but
+    // NO org-scoped org receipt.
     const rows = await rowsFor(SID_OTC);
     expect(await countEvent(SID_OTC, 'settlement_org_receipt', orgA)).toBe(0);
     expect(rows.every((r) => r.orgId === null)).toBe(true); // no leak into org book
     expect(rows.find((r) => r.side === 'debit' && r.code === '1120')?.amount).toBe(100);
-    expect(rows.find((r) => r.side === 'credit' && r.code === '1160')?.amount).toBe(100);
+    expect(rows.find((r) => r.side === 'credit' && r.code === '1161')?.amount).toBe(100);
   });
 
   it('4. organisations are isolated — org B does not see org A receipt', async () => {

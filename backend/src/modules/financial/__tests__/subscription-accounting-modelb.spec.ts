@@ -123,7 +123,10 @@ const postedLines = (): any[] =>
 
 beforeEach(() => {
   vi.clearAllMocks();
-  busHandlers.clear();
+  // NOTE: do NOT clear busHandlers here. registerAccountingEventListeners() is
+  // idempotent (module guard) and only registers the mocked bus handlers on the
+  // first call, so clearing the map on every test would leave later handler
+  // tests (e.g. RENEWAL) with no payment:succeeded handler.
 });
 
 describe('Phase 1 — subscription accounting (Model B)', () => {

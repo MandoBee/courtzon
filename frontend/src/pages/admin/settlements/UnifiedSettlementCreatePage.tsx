@@ -356,6 +356,14 @@ export default function UnifiedSettlementCreatePage() {
               <p className="text-lg font-bold text-[var(--color-text)]">{formatPrice(f?.finalAmount || 0)}</p>
               <p className="text-xs text-[var(--color-text-muted)]">{DIRECTION_LABEL[f?.direction] || ''}</p>
             </div>
+            <div className="col-span-1 md:col-span-3 pt-3 border-t border-[var(--color-border)] text-xs text-[var(--color-text-muted)] space-y-1">
+              <p>
+                <span className="font-medium text-[var(--color-text)]">Online / Card (held by CourtZon):</span> {formatPrice(f?.courtzonOwedToOrg || 0)} — collected online by CourtZon, owed to the organization (settlement clears merchant payable 2202).
+              </p>
+              <p>
+                <span className="font-medium text-[var(--color-text)]">Cash / COD commission (held by Organization):</span> {formatPrice(f?.orgOwedToCourtZon || 0)} — collected in cash by the organization, owed to CourtZon (settlement clears receivable 1161).
+              </p>
+            </div>
           </div>
 
           {/* Step 5 — payment method + reference (canonical, pay-capable roles only) */}

@@ -850,16 +850,17 @@ async function postBookingPaymentAccountingInner(bookingId: number, paymentMetho
       // directly instead of booking a receivable from CourtZon:
       //   Dr org Cash / Bank (ORG-CASH)      = gross (orgAmount + commission)
       //   Dr org Commission Expense          = commission
-      //   Cr org Sales Revenue               = gross (orgAmount + commission)
+      //   Cr org Court Rental Revenue        = gross (orgAmount + commission)
       //   Cr org CourtZon Payable            = commission (owed to CourtZon)
       // Balanced: Dr (gross + commission) = Cr (gross + commission). Same account
-      // set as the marketplace org book (ORG-CASH/MKT-COMM-EXP/MKT-SALES/MKT-CZ-PAY).
+      // set as the marketplace org book except the revenue leg (Court Rental
+      // Revenue instead of Marketplace Sales Revenue).
       await postAccountingEvent(
         'booking_org_cash_receivable', 'booking', bookingId, orgId,
         {
           org_cash_bank: cashGross,
           commission_expense: econ.commissionAmount,
-          sales_revenue: cashGross,
+          court_rental_revenue: cashGross,
           courtzon_payable: econ.commissionAmount,
         },
         currency,
@@ -868,7 +869,7 @@ async function postBookingPaymentAccountingInner(bookingId: number, paymentMetho
         {
           org_cash_bank: orgId,
           commission_expense: orgId,
-          sales_revenue: orgId,
+          court_rental_revenue: orgId,
           courtzon_payable: orgId,
         },
       );
@@ -900,7 +901,7 @@ async function postBookingPaymentAccountingInner(bookingId: number, paymentMetho
   // ORGANIZATION BOOK (organisation_id = org): the org records
   //   Dr org 1161 Marketplace Receivable = orgAmount   (due from CourtZon)
   //   Dr org Commission Expense          = commission
-  //   Cr org Sales Revenue               = orgAmount + commission
+  //   Cr org Court Rental Revenue        = orgAmount + commission
   // Balanced: Dr(orgAmount + commission) = Cr(orgAmount + commission).
   await postAccountingEvent(
     eventType, 'booking', bookingId, null,
@@ -931,15 +932,15 @@ async function postBookingPaymentAccountingInner(bookingId: number, paymentMetho
       {
         marketplace_receivable: econ.orgAmount,
         commission_expense: econ.commissionAmount,
-        sales_revenue: salesRevenue,
+        court_rental_revenue: salesRevenue,
       },
       currency,
-      `Booking #${bookingId} organization book (sales/commission)`,
+      `Booking #${bookingId} organization book (court rental/commission)`,
       undefined,
       {
         marketplace_receivable: orgId,
         commission_expense: orgId,
-        sales_revenue: orgId,
+        court_rental_revenue: orgId,
       },
     );
   }
@@ -1068,7 +1069,7 @@ async function postBookingRefundAccountingInner(bookingId: number, refundAmount:
 /**
  * Post the ORGANIZATION BOOK reversal for a CARD/WALLET booking refund/cancel.
  * Symmetric reversal of the org's booking economics (booking_org_receivable):
- *   Dr org Sales Revenue               = orgAmount + commission
+ *   Dr org Court Rental Revenue          = orgAmount + commission
  *   Cr org 1161 Marketplace Receivable = orgAmount
  *   Cr org Commission Expense          = commission
  * Balanced. Idempotent per (booking, booking_id, 'booking_org_receivable_reversal').
@@ -1080,7 +1081,7 @@ async function postBookingOrganisationBookReversal(refund: RefundEconomics, book
   await postAccountingEvent(
     'booking_org_receivable_reversal', 'booking', bookingId, orgId,
     {
-      sales_revenue: salesRevenue,
+      court_rental_revenue: salesRevenue,
       marketplace_receivable: refund.orgAmount,
       commission_expense: refund.commissionAmount,
     },
@@ -1088,7 +1089,7 @@ async function postBookingOrganisationBookReversal(refund: RefundEconomics, book
     `Booking #${bookingId} organization book reversal`,
     undefined,
     {
-      sales_revenue: orgId,
+      court_rental_revenue: orgId,
       marketplace_receivable: orgId,
       commission_expense: orgId,
     },
@@ -1098,7 +1099,7 @@ async function postBookingOrganisationBookReversal(refund: RefundEconomics, book
 /**
  * Post the ORGANIZATION BOOK reversal for a COD/CASH booking refund/cancel.
  * Symmetric reversal of the booking COD org book (booking_org_cash_receivable):
- *   Dr org Sales Revenue               = gross (orgAmount + commission)
+ *   Dr org Court Rental Revenue         = gross (orgAmount + commission)
  *   Dr org CourtZon Payable            = commission
  *   Cr org Cash / Bank (ORG-CASH)      = gross (orgAmount + commission)
  *   Cr org Commission Expense          = commission
@@ -1115,7 +1116,7 @@ async function postBookingOrganisationCashBookReversal(refund: RefundEconomics, 
   await postAccountingEvent(
     'booking_org_cash_receivable_rev', 'booking', bookingId, orgId,
     {
-      sales_revenue: gross,
+      court_rental_revenue: gross,
       courtzon_payable: refund.commissionAmount,
       org_cash_bank: gross,
       commission_expense: refund.commissionAmount,
@@ -1124,7 +1125,7 @@ async function postBookingOrganisationCashBookReversal(refund: RefundEconomics, 
     `Booking #${bookingId} organization book cash reversal`,
     undefined,
     {
-      sales_revenue: orgId,
+      court_rental_revenue: orgId,
       courtzon_payable: orgId,
       org_cash_bank: orgId,
       commission_expense: orgId,
@@ -1509,8 +1510,8 @@ export function registerAccountingEventListeners(): void {
       if (hasOffset) {
         const eventType = direction === 'org_to_courtzon' ? 'settlement_paid_otc_offset' : 'settlement_paid_offset';
         const conceptAmounts = direction === 'org_to_courtzon'
-          ? ({ cash_bank: amount, merchant_payable: onlineNet, receivable_from_org: codFee } as Record<string, number>)
-          : ({ merchant_payable: onlineNet, cash_bank: amount, receivable_from_org: codFee } as Record<string, number>);
+          ? ({ cash_bank: amount, merchant_payable: onlineNet, marketplace_receivable: codFee } as Record<string, number>)
+          : ({ merchant_payable: onlineNet, cash_bank: amount, marketplace_receivable: codFee } as Record<string, number>);
         await postAccountingEvent(
           eventType, 'settlement', settlementId, null,
           conceptAmounts, currency,
@@ -1519,7 +1520,7 @@ export function registerAccountingEventListeners(): void {
       } else {
         const eventType = direction === 'org_to_courtzon' ? 'settlement_paid_otc' : 'settlement_paid';
         const conceptAmounts: Record<string, number> = eventType === 'settlement_paid_otc'
-          ? ({ cash_bank: amount, receivable_from_org: amount } as Record<string, number>)
+          ? ({ cash_bank: amount, marketplace_receivable: amount } as Record<string, number>)
           : ({ merchant_payable: amount, cash_bank: amount } as Record<string, number>);
         await postAccountingEvent(
           eventType, 'settlement', settlementId, null,

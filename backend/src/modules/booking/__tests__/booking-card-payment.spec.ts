@@ -179,9 +179,9 @@ describe('Card payment success → booking paid lifecycle + accounting', () => {
     expect(debit).toBe(100); // gross payable
 
     // ORGANIZATION BOOK: the org records its own receivable in 1161
-    // (orgAmount due from CourtZon) + commission expense vs sales revenue.
+    // (orgAmount due from CourtZon) + commission expense vs court rental revenue.
     const orgRows = await ledgerRows(bookingId, 'booking_org_receivable');
-    expect(orgRows.length).toBe(3); // 1161 receivable + commission expense + sales revenue
+    expect(orgRows.length).toBe(3); // 1161 receivable + commission expense + court rental revenue
     const orgTxs = new Set(orgRows.map((r) => r.transaction_id));
     expect(orgTxs.size).toBe(1);
     let oDebit = 0, oCredit = 0;

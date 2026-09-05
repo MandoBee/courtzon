@@ -70,8 +70,16 @@ const CONCEPT_ACCOUNT_CODE_DEFAULTS: Record<string, Record<string, string>> = {
   // default is a safety net so the payout never falls back to the old 2200
   // even if a fresh environment's mapping rows are incomplete.
   settlement_paid: { merchant_payable: '2202', cash_bank: '1120' },
-  settlement_paid_offset: { merchant_payable: '2202', cash_bank: '1120', receivable_from_org: '1160' },
-  settlement_paid_otc_offset: { merchant_payable: '2202', cash_bank: '1120', receivable_from_org: '1160' },
+  // OTC (org pays CourtZon) clears the COD commission receivable against the
+  // cash actually received — the SAME 1161 Marketplace Receivable the COD
+  // commission booked to (booking_cod_payment / marketplace cash commission).
+  settlement_paid_otc: { cash_bank: '1120', marketplace_receivable: '1161' },
+  // Settlement offsets clear the FULL merchant payable (2202) AND the FULL COD
+  // commission receivable (1161) against the net cash movement in one balanced
+  // posting — never a silent net-down, and always against the receivable
+  // account the COD commissions actually book to.
+  settlement_paid_offset: { merchant_payable: '2202', cash_bank: '1120', marketplace_receivable: '1161' },
+  settlement_paid_otc_offset: { merchant_payable: '2202', cash_bank: '1120', marketplace_receivable: '1161' },
   // Historical correction of pre-ec2a5ab settlements — distinct event identities
   // so they cannot collide with the original `settlement_paid` posting (see
   // accounting-concepts.ts). Resolved by stable CODE:
@@ -94,6 +102,14 @@ export const ORG_MARKETPLACE_ACCOUNT_CODES: Record<string, { code: string; name:
     normalSide: 'credit',
     parentCode: 'REVENUE-COURT',
     description: 'Organization marketplace product/service sales revenue',
+  },
+  court_rental_revenue: {
+    code: 'MKT-COURT-REN',
+    name: 'Court Rental Revenue',
+    type: 'revenue',
+    normalSide: 'credit',
+    parentCode: 'REVENUE-COURT',
+    description: 'Organization court rental revenue collected from bookings',
   },
   commission_expense: {
     code: 'MKT-COMM-EXP',
@@ -143,15 +159,18 @@ export const ORG_BOOK_EVENTS: Record<string, string[]> = {
   marketplace_org_receivable_reversal: ['sales_revenue', 'shipping_liability', 'marketplace_receivable', 'commission_expense'],
   marketplace_org_cash_receivable: ['marketplace_receivable', 'commission_expense', 'sales_revenue', 'shipping_liability', 'courtzon_payable'],
   marketplace_org_cash_receivable_rev: ['sales_revenue', 'shipping_liability', 'courtzon_payable', 'marketplace_receivable', 'commission_expense'],
-  // Booking org book — mirrors the marketplace org book EXACTLY (same 1161 /
-  // MKT-SALES / MKT-COMM-EXP / MKT-CZ-PAY account codes), so the shared
-  // settlement_org_receipt clears booking receivables for the org on settlement.
-  booking_org_receivable: ['marketplace_receivable', 'commission_expense', 'sales_revenue'],
-  booking_org_receivable_reversal: ['sales_revenue', 'marketplace_receivable', 'commission_expense'],
+  // Booking org book — mirrors the marketplace org book EXCEPT the revenue
+  // leg, which uses its own org-scoped Court Rental Revenue account
+  // (MKT-COURT-REN) so booking rental revenue is never mixed with marketplace
+  // sales revenue. The 1161 / MKT-COMM-EXP / MKT-CZ-PAY accounts are shared,
+  // so the settlement_org_receipt clears booking receivables for the org on
+  // settlement exactly as before.
+  booking_org_receivable: ['marketplace_receivable', 'commission_expense', 'court_rental_revenue'],
+  booking_org_receivable_reversal: ['court_rental_revenue', 'marketplace_receivable', 'commission_expense'],
   // CASH/COD org book — the org collected cash immediately, so it increases its
   // OWN Cash/Bank (ORG-CASH) directly rather than a receivable from CourtZon.
-  booking_org_cash_receivable: ['org_cash_bank', 'commission_expense', 'sales_revenue', 'courtzon_payable'],
-  booking_org_cash_receivable_rev: ['sales_revenue', 'courtzon_payable', 'org_cash_bank', 'commission_expense'],
+  booking_org_cash_receivable: ['org_cash_bank', 'commission_expense', 'court_rental_revenue', 'courtzon_payable'],
+  booking_org_cash_receivable_rev: ['court_rental_revenue', 'courtzon_payable', 'org_cash_bank', 'commission_expense'],
   // Settlement receipt (org book): Dr org Cash/Bank / Cr org 1161 Marketplace
   // Receivable — clears the org's receivable against the cash received from
   // CourtZon on settlement.

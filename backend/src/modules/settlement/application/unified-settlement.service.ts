@@ -118,6 +118,11 @@ export const unifiedSettlementService = {
         direction: financials.direction,
         finalAmount: financials.finalAmount,
         commissionAmount: financials.totalCommission,
+        grossAmount: round2(financials.totalOrgEarnings + financials.totalCommission),
+        courtzonFee: financials.totalCommission,
+        organizationNet: financials.totalOrgEarnings,
+        onlineNetTotal: financials.courtzonOwedToOrg,
+        codFeeTotal: financials.orgOwedToCourtZon,
         notes: data.notes,
       }, conn);
 
@@ -226,6 +231,12 @@ export const unifiedSettlementService = {
         paidAmount,
         paymentMethod: data.paymentMethod ?? null,
         paymentReference: data.paymentReference ?? null,
+        // Explicit online (CourtZon-held → owed to org) vs COD (org-held →
+        // owed to CourtZon) split, persisted at settlement creation, so the GL
+        // settlement:paid handler can clear the FULL merchant payable AND the
+        // FULL COD commission receivable against the net cash movement.
+        onlineNet: settlement.online_net_total != null ? Number(settlement.online_net_total) : 0,
+        codFee: settlement.cod_fee_total != null ? Number(settlement.cod_fee_total) : 0,
       });
 
       log.info({ settlementId, paidAmount, direction }, 'Unified settlement finalized as paid');

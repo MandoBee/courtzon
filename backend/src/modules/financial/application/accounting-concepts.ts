@@ -228,18 +228,19 @@ export const EVENT_CONCEPTS: Record<string, { debit: string[]; credit: string[] 
   },
   settlement_paid_otc: {
     debit: ['cash_bank'],
-    credit: ['receivable_from_org'],
+    credit: ['marketplace_receivable'],
   },
   // Settlement offset — never silently net down. Clear the FULL merchant
   // payable and the FULL COD commission receivable against the net cash
-  // movement in one balanced posting.
+  // movement in one balanced posting. The receivable cleared is 1161
+  // Marketplace Receivable — the SAME account the COD commission booked to.
   settlement_paid_offset: {
     debit: ['merchant_payable'],
-    credit: ['cash_bank', 'receivable_from_org'],
+    credit: ['cash_bank', 'marketplace_receivable'],
   },
   settlement_paid_otc_offset: {
     debit: ['cash_bank', 'merchant_payable'],
-    credit: ['receivable_from_org'],
+    credit: ['marketplace_receivable'],
   },
   // Organization-book settlement receipt — the org records its OWN cash receipt
   // from CourtZon entirely separate from CourtZon's book (org-scoped lines):
@@ -374,18 +375,20 @@ export const EVENT_CONCEPTS: Record<string, { debit: string[]; credit: string[] 
   // CARD/WALLET custody (CourtZon holds the funds) org book:
   //   Dr org 1161 Marketplace Receivable = orgAmount        (due from CourtZon)
   //   Dr org Commission Expense          = commission
-  //   Cr org Sales Revenue               = orgAmount + commission (gross rental)
+  //   Cr org Court Rental Revenue        = orgAmount + commission (gross rental)
   // Balanced: Dr (orgAmount + commission) = Cr (orgAmount + commission).
   // The org's 1161 receivable uses the SAME account code as marketplace so the
   // shared settlement receipt (settlement_org_receipt → Dr org Cash / Cr org
-  // 1161) clears it when the org is settled.
+  // 1161) clears it when the org is settled. The revenue leg is the org-scoped
+  // Court Rental Revenue account (MKT-COURT-REN), separate from marketplace
+  // sales revenue, so booking rental revenue is never mixed with sales.
   booking_org_receivable: {
     debit: ['marketplace_receivable', 'commission_expense'],
-    credit: ['sales_revenue'],
+    credit: ['court_rental_revenue'],
   },
   // Organization-book reversal (refund/cancel) for CARD/WALLET — symmetric.
   booking_org_receivable_reversal: {
-    debit: ['sales_revenue'],
+    debit: ['court_rental_revenue'],
     credit: ['marketplace_receivable', 'commission_expense'],
   },
   // CASH/COD org book (org collected the cash IMMEDIATELY at the court) — the
@@ -393,18 +396,18 @@ export const EVENT_CONCEPTS: Record<string, { debit: string[]; credit: string[] 
   // (ORG-CASH) directly instead of booking a receivable from CourtZon:
   //   Dr org Cash / Bank (ORG-CASH)      = gross (orgAmount + commission)
   //   Dr org Commission Expense          = commission
-  //   Cr org Sales Revenue               = gross (orgAmount + commission)
+  //   Cr org Court Rental Revenue        = gross (orgAmount + commission)
   //   Cr org CourtZon Payable            = commission (owed to CourtZon)
   // Balanced: Dr (gross + commission) = Cr (gross + commission). Same account
-  // set (ORG-CASH / MKT-COMM-EXP / MKT-SALES / MKT-CZ-PAY) as the marketplace
-  // org book — no new accounts, no new model.
+  // set as the marketplace org book except the revenue leg (Court Rental
+  // Revenue instead of Marketplace Sales Revenue).
   booking_org_cash_receivable: {
     debit: ['org_cash_bank', 'commission_expense'],
-    credit: ['sales_revenue', 'courtzon_payable'],
+    credit: ['court_rental_revenue', 'courtzon_payable'],
   },
   // Organization-book CASH reversal (refund/cancel) — symmetric.
   booking_org_cash_receivable_rev: {
-    debit: ['sales_revenue', 'courtzon_payable'],
+    debit: ['court_rental_revenue', 'courtzon_payable'],
     credit: ['org_cash_bank', 'commission_expense'],
   },
   booking_coach_payout: {

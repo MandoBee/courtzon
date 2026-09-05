@@ -361,10 +361,10 @@ describe('COD Custody Remediation', () => {
     );
     await postAccountingEvent(
       'booking_org_cash_receivable', 'booking', bookingId, orgId,
-      { org_cash_bank: 900, commission_expense: 200, sales_revenue: 900, courtzon_payable: 200 },
+      { org_cash_bank: 900, commission_expense: 200, court_rental_revenue: 900, courtzon_payable: 200 },
       'EGP', 'COD org book cash',
       undefined,
-      { org_cash_bank: orgId, commission_expense: orgId, sales_revenue: orgId, courtzon_payable: orgId },
+      { org_cash_bank: orgId, commission_expense: orgId, court_rental_revenue: orgId, courtzon_payable: orgId },
     );
 
     const [cashAcc] = await pool.execute<RowData>(

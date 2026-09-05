@@ -305,7 +305,7 @@ describe('Financial Custody & Counterparty', () => {
   it('7. settlement offset: clears full payable + full receivable against net cash', async () => {
     const { postAccountingEvent } = await import('../application/accounting-event.listener.js');
     const cashId = await accountCode('1120');
-    const receivableId = await accountCode('1160');
+    const receivableId = await accountCode('1161');
     const merchantPayableId = await accountCode('2202');
     const orgPayableId = await accountCode('2200');
 
@@ -322,9 +322,10 @@ describe('Financial Custody & Counterparty', () => {
       // CourtZon book is ALWAYS org NULL — the platform settlement payout never
       // leaks into the org's records. The payable cleared is MERCHANT_PAYABLE
       // (2202), not org_payable (2200) — the org settlement clears the merchant
-      // payable control for ALL settlements.
+      // payable control for ALL settlements. The receivable cleared is the
+      // Marketplace Receivable (1161) the COD commissions actually book to.
       null,
-      { merchant_payable: 100, cash_bank: 70, receivable_from_org: 30 },
+      { merchant_payable: 100, cash_bank: 70, marketplace_receivable: 30 },
       'EGP', 'custody settlement offset',
     );
 
@@ -460,9 +461,9 @@ describe('Financial Custody & Counterparty', () => {
     expect(after.debit - before.debit).toBe(300);
   });
 
-  it('14. settlement/collection of COD receivable clears receivable_from_org', async () => {
+  it('14. settlement/collection of COD receivable clears marketplace_receivable (1161)', async () => {
     const { postAccountingEvent } = await import('../application/accounting-event.listener.js');
-    const receivableId = await accountCode('1160');
+    const receivableId = await accountCode('1161');
     const cashId = await accountCode('1120');
     // OTC collection is a CourtZon-book operation → org NULL.
     const receivableBefore = await globalAccountSums(receivableId);
@@ -471,7 +472,7 @@ describe('Financial Custody & Counterparty', () => {
     // Collect 300 of the receivable (the COD commission) via settlement_paid_otc.
     await postAccountingEvent(
       'settlement_paid_otc', 'settlement', 990002, null,
-      { cash_bank: 300, receivable_from_org: 300 },
+      { cash_bank: 300, marketplace_receivable: 300 },
       'EGP', 'custody COD collection',
     );
 
