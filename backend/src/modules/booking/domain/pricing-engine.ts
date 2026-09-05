@@ -34,7 +34,11 @@ export class PricingEngine {
     const [startH, startM] = startTime.split(':').map(Number);
     const [endH, endM] = endTime.split(':').map(Number);
     const startMinutes = startH * 60 + startM;
-    const endMinutes = endH * 60 + endM;
+    let endMinutes = endH * 60 + endM;
+    // Overnight session: the end time falls on the next calendar day
+    // (e.g. 23:00 → 00:00). Without this, a 1-hour midnight-adjacent booking
+    // computes a negative duration and is under-charged (400 → 200).
+    if (endMinutes <= startMinutes) endMinutes += 24 * 60;
     const totalMinutes = endMinutes - startMinutes;
     const hours = Math.max(totalMinutes / 60, 0.5);
 
@@ -71,8 +75,11 @@ export class PricingEngine {
       const segmentHours = (segmentEnd - cursor) / 60;
 
       const activePeak = peakRows.find((p: any) => {
-        const pStart = toMinutes(p.start_time);
-        const pEnd = toMinutes(p.end_time);
+        let pStart = toMinutes(p.start_time);
+        let pEnd = toMinutes(p.end_time);
+        // Normalize overnight peak windows (e.g. 23:00 → 01:00) onto the same
+        // continuous axis as the booking cursor.
+        if (pEnd <= pStart) pEnd += 24 * 60;
         return cursor < pEnd && segmentEnd > pStart;
       });
 
