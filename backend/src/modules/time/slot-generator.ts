@@ -83,8 +83,10 @@ export function generateSlots(
       })
     } else {
       // Normal case: single slot
-      const startUtc = localToUtc(slotDate, localStartTime, timezone)
-      const endUtc = localToUtc(slotDate, localEndTime, timezone)
+      const startDate = addDaysToDate(businessDate, currentDayOffset)
+      const endDate = addDaysToDate(businessDate, endDayOffset)
+      const startUtc = localToUtc(startDate, localStartTime, timezone)
+      const endUtc = localToUtc(endDate, localEndTime, timezone)
       const offset = getUtcOffsetMinutes(startUtc, timezone)
 
       slots.push({

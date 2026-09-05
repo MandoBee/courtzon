@@ -234,11 +234,32 @@ export class BookingRepository {
                  WHERE resource_id = ? AND booking_date = ?
                  AND booking_status NOT IN ('cancelled', 'expired', 'no_show')
                  AND ((start_time < ? AND end_time > ?) OR (start_time < ? AND end_time > ?))`;
+    // Overnight slots (end before start, e.g. 23:00 → 00:00) extend onto the
+    // NEXT calendar day. The plain TIME comparison cannot express this, so the
+    // candidate is tested against: (a) the portion [start, 24:00) on its own
+    // date — any existing row whose time window wraps midnight (end_time <=
+    // start_time) covers part of it, plus same-day rows that end after start;
+    // (b) the portion [00:00, end) on the following date when end > 00:00.
+    const overnightSql = `SELECT COUNT(*) as cnt FROM bookings
+                 WHERE resource_id = ? AND booking_status NOT IN ('cancelled', 'expired', 'no_show')
+                 AND (
+                   (booking_date = ? AND (end_time > ? OR end_time <= start_time))
+                   OR (booking_date = DATE_ADD(?, INTERVAL 1 DAY) AND start_time < ? AND end_time > '00:00')
+                 )`;
     let totalOverlap = 0;
     for (const slot of slots) {
       const slotDate = slot.date || date;
-      const [bRows] = await db.execute<RowData>(bookingSql, [resourceId, slotDate, slot.end, slot.start, slot.end, slot.start]);
-      totalOverlap += (bRows[0] as any).cnt;
+      const [sh, sm] = slot.start.split(':').map(Number);
+      const [eh, em] = slot.end.split(':').map(Number);
+      const sMin = sh * 60 + sm;
+      const eMin = eh * 60 + em;
+      if (eMin > sMin) {
+        const [bRows] = await db.execute<RowData>(bookingSql, [resourceId, slotDate, slot.end, slot.start, slot.end, slot.start]);
+        totalOverlap += (bRows[0] as any).cnt;
+      } else {
+        const [bRows] = await db.execute<RowData>(overnightSql, [resourceId, slotDate, slot.start, slotDate, slot.end]);
+        totalOverlap += (bRows[0] as any).cnt;
+      }
     }
     return totalOverlap === 0;
   }

@@ -1010,8 +1010,18 @@ export class BookingService {
       // Legacy booking without UTC timestamps — compute from local date/time
       if (b.bookingDate && b.startTime && b.endTime) {
         try {
+          // Overnight booking (end before start, e.g. 23:00 → 00:00) ends on
+          // the NEXT calendar day in UTC. Without the bump, localToUtc(bookingDate,
+          // '00:00') resolves to midnight at the START of the day and produces an
+          // inverted window that never overlaps the 23:00 slot.
+          let endDate = b.bookingDate;
+          if (b.endTime < b.startTime) {
+            const [y, m, d] = b.bookingDate.split('-').map(Number);
+            const next = new Date(Date.UTC(y, m - 1, d + 1));
+            endDate = `${next.getUTCFullYear()}-${String(next.getUTCMonth() + 1).padStart(2, '0')}-${String(next.getUTCDate()).padStart(2, '0')}`;
+          }
           const startUtc = TimeEngine.localToUtc(b.bookingDate, b.startTime, tz);
-          const endUtc = TimeEngine.localToUtc(b.bookingDate, b.endTime, tz);
+          const endUtc = TimeEngine.localToUtc(endDate, b.endTime, tz);
           return { startAtUtc: startUtc, endAtUtc: endUtc };
         } catch {
           // DST gap or invalid time — skip this booking
