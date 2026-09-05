@@ -90,6 +90,90 @@ export const paymentRepository = {
     return rows[0] || null;
   },
 
+  /**
+   * Correlate a webhook payload to the local payment row for the booking
+   * PREPARE/intention flow. The local row stores gateway_reference = the Paymob
+   * INTENTION order id, but the Accept/iframe transaction webhook carries a
+   * DIFFERENT transaction order id, so a plain gateway_reference match misses.
+   *
+   * Resolution order (first hit wins):
+   *  1. exact gateway_reference match on any candidate ref (existing behaviour);
+   *  2. the stored intention id / intention_order_id inside the intention JSON
+   *     (we persist the full intention response in gateway_response at creation);
+   *  3. the stored special_reference == the webhook's merchant_order_id (Paymob
+   *     echoes our special_reference back as the Accept order merchant_order_id).
+   */
+  async findByWebhookCorrelation(possibleRefs: string[], merchantOrderId?: string | null): Promise<any | null> {
+    const pool = getPool();
+    const refs = [...new Set(possibleRefs.filter(Boolean))];
+
+    // 1. Exact gateway_reference match (covers the case where the webhook DOES
+    //    carry the intention order id, plus previously-correlated real order ids).
+    for (const ref of refs) {
+      const exact = await this.findByGatewayRef(ref);
+      if (exact) return exact;
+    }
+
+    // 1b. Exact idempotency_key match — the booking_prepare prepareId UUID is
+    //     stored there, and Paymob's special_reference/merchant_order_id embeds
+    //     it (`booking_prepare_<prepareId>_<ts>`). This is the deterministic
+    //     booking_prepare correlation path (never relies on `undefined` refId).
+    for (const ref of refs) {
+      const [byKey] = await pool.execute<RowData>(
+        'SELECT * FROM payment_transactions WHERE idempotency_key = ? LIMIT 1',
+        [ref],
+      );
+      if ((byKey as any[]).length) return (byKey as any[])[0];
+    }
+    if (merchantOrderId && typeof merchantOrderId === 'string') {
+      const token = merchantOrderId.split('_').slice(-2, -1)[0];
+      if (token && token.length >= 8) {
+        const [byKey] = await pool.execute<RowData>(
+          'SELECT * FROM payment_transactions WHERE idempotency_key = ? LIMIT 1',
+          [token],
+        );
+        if ((byKey as any[]).length) return (byKey as any[])[0];
+      }
+    }
+
+    // 2 & 3. JSON correlation against the persisted intention response. The
+    //    gateway_response for a booking_prepare row contains fields like
+    //    {"id":"pi_...","intention_order_id":602564039,"special_reference":"..."}.
+    //    Build targeted LIKE patterns (bounded: only rows that store intention JSON).
+    const patterns: string[] = [];
+    for (const ref of refs) {
+      if (/^\d+$/.test(ref)) patterns.push(`"intention_order_id":${ref}`);
+      patterns.push(`"id":"${ref}"`);
+    }
+    if (merchantOrderId && typeof merchantOrderId === 'string') {
+      patterns.push(`"special_reference":"${merchantOrderId.replace(/"/g, '')}"`);
+    }
+    if (patterns.length === 0) return null;
+
+    const likes = patterns.map(() => `gateway_response LIKE ?`).join(' OR ');
+    const params = patterns.map((p) => `%${p}%`);
+    const [rows] = await pool.execute<RowData>(
+      `SELECT * FROM payment_transactions
+       WHERE gateway_response IS NOT NULL AND (${likes})
+       ORDER BY id DESC LIMIT 1`,
+      params,
+    );
+    return rows[0] || null;
+  },
+
+  /** Persist the REAL Accept transaction order id onto the local row so the
+   *  webhook, sync job and expiry job all resolve it by the same id going
+   *  forward. Best-effort: only when the new ref differs and is non-empty. */
+  async persistGatewayReference(id: number, gatewayReference: string, conn?: mysql.PoolConnection): Promise<boolean> {
+    if (!gatewayReference) return false;
+    const db = resolvePool(conn);
+    const [result] = await db.execute<mysql.ResultSetHeader>(
+      `UPDATE payment_transactions SET gateway_reference = ? WHERE id = ? AND gateway_reference <> ?`,
+      [gatewayReference, id, gatewayReference],
+    );
+    return result.affectedRows > 0;
+  },
+
   async lockByGatewayRef(gatewayReference: string, conn: mysql.PoolConnection) {
     const [rows] = await conn.execute<RowData>(
       'SELECT * FROM payment_transactions WHERE gateway_reference = ? FOR UPDATE',

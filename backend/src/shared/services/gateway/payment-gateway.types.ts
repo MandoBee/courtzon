@@ -10,6 +10,11 @@ export interface PaymentRequest {
   description?: string;
   returnUrl?: string;
   metadata?: Record<string, string>;
+  /** Correlation token persisted on the local payment row (e.g. booking_prepare
+   *  prepareId UUID). Used to build a parseable Paymob `special_reference` so the
+   *  webhook can re-correlate even when the Accept order id differs from the
+   *  intention order id. */
+  idempotencyKey?: string;
 }
 
 export interface PaymentResult {

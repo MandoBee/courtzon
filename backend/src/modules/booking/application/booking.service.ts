@@ -500,9 +500,13 @@ export class BookingService {
       // the UUID is never written to payment_transactions.reference_id (bigint).
       // The payment row is later relinked to the booking via booking_id; the
       // gateway_reference (stored by createGatewayIntention) drives webhook lookup.
+      // The prepareId UUID is passed as the gateway idempotencyKey so Paymob's
+      // special_reference/merchant_order_id becomes `booking_prepare_<prepareId>_<ts>`
+      // — a parseable, stable correlation token (never `booking_prepare_undefined_*`).
       const gwResult = await (paymentService.createGatewayIntention as any)(userId, {
         referenceType: 'booking_prepare',
         referenceId: undefined,
+        idempotencyKey: prepareId,
         amount: pricing.totalPrice,
         currency: 'EGP',
         paymentMethod: input.paymentMethod === 'online' ? 'card' : input.paymentMethod as 'card',

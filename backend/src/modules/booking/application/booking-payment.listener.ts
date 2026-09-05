@@ -9,7 +9,18 @@ import type { Command } from '../../../shared/command/command-base.js';
 
 const log = createModuleLogger('booking-payment-listener');
 
+// Idempotency guard — registering twice would duplicate every in-memory handler
+// and fire each domain event multiple times (e.g. two ConfirmBooking commands on
+// one payment:succeeded → AggregateVersionConflict on the second). Called once
+// at app startup, and once per test file. Guarded so repeated calls are a no-op.
+let bookingPaymentListenersRegistered = false;
+
 export function registerBookingPaymentListeners() {
+  if (bookingPaymentListenersRegistered) {
+    log.info('Booking payment listeners already registered — skip');
+    return;
+  }
+  bookingPaymentListenersRegistered = true;
   eventBusV2.on('payment:succeeded', async (data) => {
     if (data.referenceType !== 'booking') return;
 
