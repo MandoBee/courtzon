@@ -301,14 +301,16 @@ export class BookingRepository {
   async createMatchmakingRequest(data: {
     bookingId: number; minAge?: number; maxAge?: number; targetGender: string;
     targetLevelId?: number; maxPlayers: number; deadline?: string; autoApply: boolean;
-  }): Promise<void> {
-    await this.pool.execute(
+  }, conn?: mysql.PoolConnection): Promise<void> {
+    const db = this.resolve(conn);
+    const deadline = data.deadline ? toMySqlDateTime(new Date(data.deadline)) : null;
+    await db.execute(
       `INSERT INTO booking_matchmaking_requests (booking_id, min_age, max_age, target_gender, target_level_id, max_players, deadline, auto_apply)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
        ON DUPLICATE KEY UPDATE min_age = VALUES(min_age), max_age = VALUES(max_age), target_gender = VALUES(target_gender),
        target_level_id = VALUES(target_level_id), max_players = VALUES(max_players), deadline = VALUES(deadline),
        auto_apply = VALUES(auto_apply), is_active = 1`,
-      [data.bookingId, data.minAge || null, data.maxAge || null, data.targetGender, data.targetLevelId || null, data.maxPlayers, data.deadline || null, data.autoApply]
+      [data.bookingId, data.minAge || null, data.maxAge || null, data.targetGender, data.targetLevelId || null, data.maxPlayers, deadline, data.autoApply]
     );
   }
 

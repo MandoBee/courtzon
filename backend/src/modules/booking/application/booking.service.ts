@@ -647,7 +647,7 @@ export class BookingService {
           maxPlayers: data.matchmaking.maxPlayers || 2,
           deadline: data.matchmaking.deadline,
           autoApply: data.matchmaking.autoApply || false,
-        });
+        }, conn);
       }
 
       // Emit booking:created INSIDE transaction so in-memory handlers (notifications, socket) fire
