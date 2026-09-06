@@ -81,7 +81,10 @@ export const CreateCoachProfileSchema = z.object({
   bio: z.string().optional(),
   experienceYears: z.number().int().positive().optional(),
   certifications: z.array(z.object({ name: z.string(), url: z.string() })).optional(),
-  sports: z.array(z.number().int().positive()).optional(),
+  // Business rule: a coach selects ONE sport only. Reject any request that
+  // attempts to submit multiple sports so the rule cannot be bypassed via the
+  // API. Empty array = no sport selected.
+  sports: z.array(z.number().int().positive()).max(1).optional(),
   hourlyRate: z.number().min(0).optional(),
   currencyCode: z.string().length(3).optional(),
   isAvailable: z.boolean().optional(),

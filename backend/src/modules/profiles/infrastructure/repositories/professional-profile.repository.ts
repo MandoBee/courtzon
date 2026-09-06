@@ -40,7 +40,15 @@ const INPUT_TO_COLUMN: Record<keyof ProfessionalProfileInput, string> = {
 };
 
 function serialize(value: any, column: string): any {
-  if (['certifications', 'sports'].includes(column)) {
+  if (column === 'sports') {
+    // Single-sport business rule: a coach stores exactly ONE primary/professional
+    // sport. Normalize to the first element so no persistence path can ever
+    // store multiple sports (defense-in-depth on top of the DTO max(1) check).
+    if (value === undefined || value === null) return null;
+    const arr = Array.isArray(value) ? value : [];
+    return JSON.stringify(arr.slice(0, 1));
+  }
+  if (column === 'certifications') {
     if (value === undefined || value === null) return null;
     return JSON.stringify(value);
   }

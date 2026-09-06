@@ -123,7 +123,7 @@ function CreateCoachForm({ sportsList, queryClient, showToast, user }: any) {
         <div className="flex flex-wrap gap-2">
           {(sportsList || []).map((s: any) => (
             <label key={s.id} className="flex items-center gap-1.5 text-sm cursor-pointer">
-              <input type="checkbox" checked={sportIds.includes(s.id)} onChange={() => setSportIds((prev) => prev.includes(s.id) ? prev.filter((id) => id !== s.id) : [...prev, s.id])} />
+              <input type="radio" name="coach-sport" value={s.id} checked={sportIds[0] === s.id} onChange={() => setSportIds([s.id])} />
               {s.name}
             </label>
           ))}
@@ -144,7 +144,11 @@ function CoachProfileTab({ profile, sportsList, user, queryClient, showToast }: 
   const [currency, setCurrency] = useState(profile.currency_code || user?.defaultCurrency || 'USD');
   const [available, setAvailable] = useState(profile.is_available !== false);
   const parseJSON = (v: any): any[] => typeof v === 'string' ? JSON.parse(v) : (v || []);
-  const [sportIds, setSportIds] = useState<number[]>(parseJSON(profile.sports));
+  // Single-sport business rule: a coach has ONE primary/professional sport.
+  // Existing legacy profiles that stored multiple sports are normalized to the
+  // FIRST (primary) sport for display/selection; saving persists only that one.
+  const legacySports = parseJSON(profile.sports);
+  const [sportIds, setSportIds] = useState<number[]>(legacySports.length ? [Number(legacySports[0])] : []);
   const [certs, setCerts] = useState<{ name: string; url: string }[]>(parseJSON(profile.certifications));
   const [uploading, setUploading] = useState(false);
 
@@ -232,7 +236,7 @@ function CoachProfileTab({ profile, sportsList, user, queryClient, showToast }: 
         <div className="flex flex-wrap gap-3">
           {(sportsList || []).map((s: any) => (
             <label key={s.id} className="flex items-center gap-2 text-sm cursor-pointer border rounded-[var(--radius-md)] px-3 py-2 hover:border-[var(--color-primary)]">
-              <input type="checkbox" checked={sportIds.includes(s.id)} onChange={() => setSportIds((prev) => prev.includes(s.id) ? prev.filter((id) => id !== s.id) : [...prev, s.id])} />
+              <input type="radio" name="coach-sport" value={s.id} checked={sportIds[0] === s.id} onChange={() => setSportIds([s.id])} />
               {s.name}
             </label>
           ))}

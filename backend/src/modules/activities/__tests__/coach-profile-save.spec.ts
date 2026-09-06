@@ -88,7 +88,7 @@ describe('Coach self-service profile save/update', () => {
       hourlyRate: 150,
       currencyCode: 'EGP',
       isAvailable: false,
-      sports: [1, 2],
+      sports: [1],
       certifications: [{ name: 'Cert One', url: 'https://x/1' }],
     });
     expect(ok).toBe(true);
@@ -99,7 +99,7 @@ describe('Coach self-service profile save/update', () => {
     expect(Number(p.experience_years)).toBe(7);
     // is_available lives on professional_profiles (NOT coach_profiles) and persisted.
     expect(Number(p.is_available)).toBe(0);
-    expect(JSON_ARR(p.sports)).toEqual([1, 2]);
+    expect(JSON_ARR(p.sports)).toEqual([1]);
     expect(JSON_ARR(p.certifications)).toEqual([{ name: 'Cert One', url: 'https://x/1' }]);
     expect(Number(p.hourly_rate)).toBe(150);
     expect(p.currency_code).toBe('EGP');
@@ -204,5 +204,30 @@ describe('Coach self-service profile save/update', () => {
     // No stray professional_profiles row was created for the non-coach user.
     const [rows] = await pool.execute<any[]>(`SELECT id FROM professional_profiles WHERE user_id = ?`, [NON_COACH]);
     expect(rows.length).toBe(0);
+  });
+
+  it('7. the coach profile DTO rejects a multi-sport submission (single-sport rule) and accepts one sport', async () => {
+    const { CreateCoachProfileSchema } = await import('../presentation/activities.dto.js');
+    expect(CreateCoachProfileSchema.safeParse({ sports: [1, 2] }).success).toBe(false);
+    expect(CreateCoachProfileSchema.safeParse({ sports: [1, 2, 3] }).success).toBe(false);
+    expect(CreateCoachProfileSchema.safeParse({ sports: [7] }).success).toBe(true);
+    expect(CreateCoachProfileSchema.safeParse({ sports: [] }).success).toBe(true);
+    expect(CreateCoachProfileSchema.safeParse({}).success).toBe(true);
+  });
+
+  it('8. profile save persists exactly one sport and reload returns it', async () => {
+    const { activitiesRepository } = await import('../infrastructure/repositories/activities.repository.js');
+    const ok = await activitiesRepository.updateCoachProfile(COACH, { sports: [7] });
+    expect(ok).toBe(true);
+    const p: any = await activitiesRepository.findCoachByUserId(COACH);
+    expect(JSON_ARR(p.sports)).toEqual([7]);
+  });
+
+  it('9. a multi-sport array is normalized to the FIRST sport at persistence (defense-in-depth)', async () => {
+    const { activitiesRepository } = await import('../infrastructure/repositories/activities.repository.js');
+    // Even a direct repository call cannot store multiple sports — normalize to the primary.
+    await activitiesRepository.updateCoachProfile(COACH, { sports: [1, 2] });
+    const p: any = await activitiesRepository.findCoachByUserId(COACH);
+    expect(JSON_ARR(p.sports)).toEqual([1]);
   });
 });
