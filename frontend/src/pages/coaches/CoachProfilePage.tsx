@@ -184,9 +184,12 @@ function CoachProfileTab({ profile, sportsList, user, queryClient, showToast }: 
       hourlyRate: rate ? Number(rate) : undefined,
       currencyCode: currency,
       isAvailable: available,
-      sessionDurations: durations.length ? durations : undefined,
-      sports: sportIds.length ? sportIds : undefined,
-      certifications: certs.length ? certs : undefined,
+      // Send the real arrays (even empty) so clearing all durations / sports /
+      // certifications is persisted — omitting them (undefined) would make the
+      // backend treat them as "no change" and the old values would survive.
+      sessionDurations: durations,
+      sports: sportIds,
+      certifications: certs,
     });
   }
 

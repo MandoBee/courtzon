@@ -69,7 +69,27 @@ export const professionalServiceRepository = {
         data.price !== undefined && data.price > 0 ? 1 : 0,
       ],
     );
-    if (data.sessionDurations?.length) {
+    // When the caller provides sessionDurations (even an empty array) it is
+    // authoritative: remove any session service NOT in the selection so the
+    // coach can clear previously-selected durations. When omitted (undefined)
+    // the existing partial-update behaviour is preserved.
+    if (data.sessionDurations !== undefined) {
+      if (data.sessionDurations.length > 0) {
+        const keys = data.sessionDurations.map((d) => `coach_session_${d}min`);
+        const placeholders = keys.map(() => '?').join(',');
+        await pool.execute(
+          `DELETE FROM professional_services
+           WHERE professional_profile_id = ? AND pricing_model = 'session'
+             AND service_key NOT IN (${placeholders})`,
+          [professionalProfileId, ...keys],
+        );
+      } else {
+        await pool.execute(
+          `DELETE FROM professional_services
+           WHERE professional_profile_id = ? AND pricing_model = 'session'`,
+          [professionalProfileId],
+        );
+      }
       for (const duration of data.sessionDurations) {
         const proportionalPrice = data.price
           ? Math.round(data.price * duration / 60 * 100) / 100
