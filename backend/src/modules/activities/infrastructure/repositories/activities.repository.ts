@@ -928,16 +928,29 @@ export const activitiesRepository = {
 
   async toggleCoachAvailability(id: number) {
     const pool = getPool();
+    // LEFT JOIN: a coach whose professional_profiles row is missing (or was
+    // never created) is still found by its canonical coach_profile id — the
+    // admin list (findCoachesAdmin) also LEFT JOINs professional_profiles, so
+    // such coaches are displayed and MUST be togglable. The lookup still
+    // returns null (→ "Coach not found") only when the coach itself does not
+    // exist.
     const [rows] = await pool.execute<RowData>(
-      `SELECT pp.is_available FROM professional_profiles pp
-       JOIN coach_profiles cp ON cp.user_id = pp.user_id
+      `SELECT cp.id, cp.user_id, pp.is_available
+       FROM coach_profiles cp
+       LEFT JOIN professional_profiles pp ON pp.user_id = cp.user_id
        WHERE cp.id = ?`,
       [id],
     );
     if (!rows.length) return null;
-    const newVal = (rows[0] as any).is_available ? 0 : 1;
-    await professionalProfileRepository.setAvailabilityByCoachProfileId(id, !!newVal);
-    return { is_available: !!newVal };
+    const row = rows[0] as any;
+    const newVal = row.is_available ? 0 : 1;
+    // Upsert availability on the coach's user_id — INSERTs a minimal
+    // professional_profiles row when none exists yet (all other columns are
+    // nullable/defaulted), so the toggle never silently no-ops on a coach
+    // that exists. Returns user_id so the service can emit the correct
+    // coach:availability-changed payload.
+    await professionalProfileRepository.setAvailabilityByUserId(row.user_id, !!newVal);
+    return { is_available: !!newVal, user_id: row.user_id };
   },
 
   async findPendingCourtSessions(coachId: number) {
