@@ -11,18 +11,24 @@ import type { RowDataPacket } from 'mysql2';
 type RowData = RowDataPacket[];
 
 /**
- * Booking Settlements — entitlement-driven eligibility (UAT).
+ * Booking Settlements — entitlement-driven eligibility + fulfilment gate (UAT).
  *
  * Model under test (unified settlement + financial entitlements, commit
- * f003b82 and earlier):
+ * f003b82 and later):
  *   - Card/online booking → ORGANIZATION_EARNING collector='courtzon'
  *     (CourtZon holds the money, owes the org the org net).
  *   - Cash/COD booking → COURTZON_COMMISSION collector='org'
  *     (the org holds the gross, owes CourtZon the commission).
  *   - Both sides are netted via computeSettlementFinancials.
  *
- * UAT fixture: 4 bookings at E£400, E£20 commission each (2 card + 2 COD,
- * 2 private + 2 public) for ONE organisation.
+ * HARDENED RULE (this change): a booking is settlement-eligible ONLY when it is
+ * FULFILLED — booking_status IN ('completed','checked_in') AND payment_status IN
+ * ('paid','partially_refunded') — AND its entitlements are AVAILABLE without a
+ * settlement. Future / unfulfilled bookings are NEVER eligible, even when an
+ * entitlement is AVAILABLE ahead of the session.
+ *
+ * UAT fixture: 4 FULFILLED bookings at E£400, E£20 commission each (2 card +
+ * 2 COD, 2 private + 2 public) for ONE organisation.
  * Expected: gross 1600, online net 760, COD fee 40, net 720 (CourtZon → org).
  */
 describe('Booking Settlements — entitlement-driven eligibility', () => {
@@ -31,6 +37,65 @@ describe('Booking Settlements — entitlement-driven eligibility', () => {
   let branchId: number;
   let resourceId: number;
   const bookingIds: number[] = [];
+
+  async function insertBooking(f: { type: string; method: string; bookingStatus: string; paymentStatus: string; date?: string; hour?: number }): Promise<number> {
+    const hour = f.hour ?? 9;
+    const date = f.date ?? '2026-08-10';
+    const [ins] = await pool.execute<RowData>(
+      `INSERT INTO bookings (user_id, organisation_id, branch_id, resource_id, booking_type, booking_date, start_time, end_time,
+        total_amount, tax_amount, commission_amount, club_amount, coach_amount, booking_status, payment_status, payment_method)
+       VALUES (1, ?, ?, ?, ?, ?, ?, ?, 400, 0, 20, 380, 0, ?, ?, ?)`,
+      [orgId, branchId, resourceId, f.type, date,
+       `${String(hour).padStart(2, '0')}:00:00`, `${String(hour + 1).padStart(2, '0')}:00:00`,
+       f.bookingStatus, f.paymentStatus, f.method],
+    );
+    return (ins as any).insertId;
+  }
+
+  async function createAvailableEntitlements(bookingId: number, method: string): Promise<void> {
+    const { financialEntitlementService } = await import('../../financial/application/financial-entitlement.service.js');
+    const collector: 'courtzon' | 'org' = ['cash', 'cod'].includes(method) ? 'org' : 'courtzon';
+    await financialEntitlementService.createEntitlements([
+      {
+        organisationId: orgId,
+        branchId,
+        entitlementType: 'ORGANIZATION_EARNING',
+        sourceType: 'booking',
+        sourceId: bookingId,
+        collector,
+        amount: 380,
+        currency: 'EGP',
+        availableAt: null,
+        description: `Booking #${bookingId} — org earning`,
+      },
+      {
+        organisationId: orgId,
+        branchId,
+        entitlementType: 'COURTZON_COMMISSION',
+        sourceType: 'booking',
+        sourceId: bookingId,
+        collector,
+        amount: 20,
+        currency: 'EGP',
+        availableAt: null,
+        description: `Booking #${bookingId} — CourtZon commission`,
+      },
+    ]);
+    // Activate: PENDING → AVAILABLE (what the activation worker does). This is
+    // deliberately kept so the tests focus on the booking fulfilment gate — an
+    // AVAILABLE entitlement alone is NOT sufficient for eligibility.
+    await pool.execute(
+      `UPDATE financial_entitlements SET status = 'AVAILABLE'
+       WHERE source_type = 'booking' AND source_id = ?`,
+      [bookingId],
+    );
+  }
+
+  async function cleanupBooking(bookingId: number): Promise<void> {
+    await pool.execute(`DELETE FROM financial_entitlements WHERE source_type = 'booking' AND source_id = ?`, [bookingId]);
+    await pool.execute(`DELETE FROM booking_settlements WHERE booking_id = ?`, [bookingId]);
+    await pool.execute(`DELETE FROM bookings WHERE id = ?`, [bookingId]);
+  }
 
   beforeAll(async () => {
     pool = mysql.createPool({ host: '127.0.0.1', port: 3307, user: 'root', password: 'courtzon2026', database: 'courtzon_v3', connectionLimit: 5, charset: 'utf8mb4' });
@@ -64,9 +129,8 @@ describe('Booking Settlements — entitlement-driven eligibility', () => {
     );
     resourceId = (r as any).insertId;
 
-    // The 4-booking UAT fixture: E£400, E£20 commission, E£380 org net.
-    // booking_status is 'confirmed' — eligibility must NOT depend on the legacy
-    // completed/checked_in status, only on AVAILABLE booking entitlements.
+    // The 4-booking UAT fixture: FULFILLED (completed + paid) bookings at E£400,
+    // E£20 commission, E£380 org net — 2 card + 2 COD, 2 private + 2 public.
     const fixture: Array<{ type: string; method: string }> = [
       { type: 'private_match', method: 'card' },
       { type: 'private_match', method: 'cash' },
@@ -74,54 +138,15 @@ describe('Booking Settlements — entitlement-driven eligibility', () => {
       { type: 'public_match', method: 'cash' },
     ];
     for (let i = 0; i < fixture.length; i++) {
-      const f = fixture[i];
-      const [ins] = await pool.execute<RowData>(
-        `INSERT INTO bookings (user_id, organisation_id, branch_id, resource_id, booking_type, booking_date, start_time, end_time,
-          total_amount, tax_amount, commission_amount, club_amount, coach_amount, booking_status, payment_status, payment_method)
-         VALUES (1, ?, ?, ?, ?, '2026-08-10', ?, ?, 400, 0, 20, 380, 0, 'confirmed', 'paid', ?)`,
-        [orgId, branchId, resourceId, f.type,
-         `${String(9 + i).padStart(2, '0')}:00:00`, `${String(10 + i).padStart(2, '0')}:00:00`, f.method],
-      );
-      bookingIds.push((ins as any).insertId);
-    }
-
-    // Create entitlements exactly like entitlement-booking.listener does.
-    const { financialEntitlementService } = await import('../../financial/application/financial-entitlement.service.js');
-    for (const bookingId of bookingIds) {
-      const method = fixture[bookingIds.indexOf(bookingId)].method;
-      const collector: 'courtzon' | 'org' = ['cash', 'cod'].includes(method) ? 'org' : 'courtzon';
-      await financialEntitlementService.createEntitlements([
-        {
-          organisationId: orgId,
-          branchId,
-          entitlementType: 'ORGANIZATION_EARNING',
-          sourceType: 'booking',
-          sourceId: bookingId,
-          collector,
-          amount: 380,
-          currency: 'EGP',
-          availableAt: null,
-          description: `Booking #${bookingId} — org earning`,
-        },
-        {
-          organisationId: orgId,
-          branchId,
-          entitlementType: 'COURTZON_COMMISSION',
-          sourceType: 'booking',
-          sourceId: bookingId,
-          collector,
-          amount: 20,
-          currency: 'EGP',
-          availableAt: null,
-          description: `Booking #${bookingId} — CourtZon commission`,
-        },
-      ]);
-      // Activate: PENDING → AVAILABLE (what the activation worker does).
-      await pool.execute(
-        `UPDATE financial_entitlements SET status = 'AVAILABLE'
-         WHERE source_type = 'booking' AND source_id = ?`,
-        [bookingId],
-      );
+      const id = await insertBooking({
+        type: fixture[i].type,
+        method: fixture[i].method,
+        bookingStatus: 'completed',
+        paymentStatus: 'paid',
+        hour: 9 + i,
+      });
+      bookingIds.push(id);
+      await createAvailableEntitlements(id, fixture[i].method);
     }
   });
 
@@ -210,5 +235,82 @@ describe('Booking Settlements — entitlement-driven eligibility', () => {
     const after = await bookingSettlementService.listEligible(orgId, 1, 20);
     expect(after.total).toBe(0);
     expect(after.preview.eligibleBookings).toBe(0);
+  });
+
+  it('G1. FUTURE confirmed + paid booking with AVAILABLE entitlement is NOT settlement-eligible', async () => {
+    const { bookingSettlementService } = await import('../../financial/application/booking-settlement.service.js');
+    // Future date + 'confirmed' status: service obligation NOT yet delivered,
+    // even though payment is collected and the entitlement is AVAILABLE.
+    const futureId = await insertBooking({ type: 'private_match', method: 'card', bookingStatus: 'confirmed', paymentStatus: 'paid', date: '2026-09-06', hour: 14 });
+    await createAvailableEntitlements(futureId, 'card');
+    try {
+      const result = await bookingSettlementService.listEligible(orgId, 1, 50);
+      expect(result.data.some((e) => e.bookingId === futureId)).toBe(false);
+      expect(result.preview.eligibleBookings).not.toBeGreaterThan(0);
+    } finally {
+      await cleanupBooking(futureId);
+    }
+  });
+
+  it('G2. COMPLETED + paid booking with AVAILABLE entitlement IS settlement-eligible', async () => {
+    const { bookingSettlementService } = await import('../../financial/application/booking-settlement.service.js');
+    const doneId = await insertBooking({ type: 'private_match', method: 'card', bookingStatus: 'completed', paymentStatus: 'paid', date: '2026-08-11', hour: 9 });
+    await createAvailableEntitlements(doneId, 'card');
+    try {
+      const result = await bookingSettlementService.listEligible(orgId, 1, 50);
+      const row = result.data.find((e) => e.bookingId === doneId);
+      expect(row).toBeTruthy();
+      expect(row!.cardOnlineNet).toBe(380);
+      expect(row!.eligibility).toBe('ELIGIBLE');
+    } finally {
+      await cleanupBooking(doneId);
+    }
+  });
+
+  it('G3. CHECKED_IN + paid booking with AVAILABLE entitlement IS settlement-eligible', async () => {
+    const { bookingSettlementService } = await import('../../financial/application/booking-settlement.service.js');
+    const checkedId = await insertBooking({ type: 'private_match', method: 'card', bookingStatus: 'checked_in', paymentStatus: 'paid', date: '2026-08-11', hour: 10 });
+    await createAvailableEntitlements(checkedId, 'card');
+    try {
+      const result = await bookingSettlementService.listEligible(orgId, 1, 50);
+      const row = result.data.find((e) => e.bookingId === checkedId);
+      expect(row).toBeTruthy();
+      expect(row!.cardOnlineNet).toBe(380);
+      expect(row!.eligibility).toBe('ELIGIBLE');
+    } finally {
+      await cleanupBooking(checkedId);
+    }
+  });
+
+  it('G4. COMPLETED + partially_refunded booking with AVAILABLE entitlement IS settlement-eligible', async () => {
+    const { bookingSettlementService } = await import('../../financial/application/booking-settlement.service.js');
+    const partialId = await insertBooking({ type: 'private_match', method: 'cash', bookingStatus: 'completed', paymentStatus: 'partially_refunded', date: '2026-08-11', hour: 11 });
+    await createAvailableEntitlements(partialId, 'cash');
+    try {
+      const result = await bookingSettlementService.listEligible(orgId, 1, 50);
+      const row = result.data.find((e) => e.bookingId === partialId);
+      expect(row).toBeTruthy();
+      expect(row!.codFee).toBe(20);
+      expect(row!.eligibility).toBe('ELIGIBLE');
+    } finally {
+      await cleanupBooking(partialId);
+    }
+  });
+
+  it('G5. CANCELLED / unfulfilled booking with AVAILABLE entitlement is NOT settlement-eligible', async () => {
+    const { bookingSettlementService } = await import('../../financial/application/booking-settlement.service.js');
+    const cancelledId = await insertBooking({ type: 'private_match', method: 'card', bookingStatus: 'cancelled', paymentStatus: 'paid', date: '2026-08-11', hour: 12 });
+    await createAvailableEntitlements(cancelledId, 'card');
+    const pendingId = await insertBooking({ type: 'private_match', method: 'cash', bookingStatus: 'pending', paymentStatus: 'pending', date: '2026-08-11', hour: 13 });
+    await createAvailableEntitlements(pendingId, 'cash');
+    try {
+      const result = await bookingSettlementService.listEligible(orgId, 1, 50);
+      expect(result.data.some((e) => e.bookingId === cancelledId)).toBe(false);
+      expect(result.data.some((e) => e.bookingId === pendingId)).toBe(false);
+      expect(result.preview.eligibleBookings).toBe(0);
+    } finally {
+      await cleanupBooking(cancelledId);
+      await cleanupBooking(pendingId);
+    }
   });
 });

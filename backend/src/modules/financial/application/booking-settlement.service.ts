@@ -146,16 +146,18 @@ class BookingSettlementService {
   /**
    * List eligible (and partially settled) bookings for settlement review.
    *
-   * ENTITLEMENT-DRIVEN: a booking is settlement-eligible when it has AVAILABLE
-   * booking entitlements (ORGANIZATION_EARNING / COURTZON_COMMISSION) that have
-   * not yet been consumed by a settlement. This mirrors the authoritative
-   * unified-settlement model introduced with the financial-entitlements +
-   * unified-settlement engine (commit f003b82 and earlier), NOT the legacy
-   * bookings-table read-through columns:
-   *   - Card/online bookings → ORGANIZATION_EARNING with collector='courtzon':
-   *     CourtZon holds the money and owes the organisation the org net.
-   *   - Cash/COD bookings → COURTZON_COMMISSION with collector='org': the org
-   *     already holds the gross and owes CourtZon the commission.
+   * A booking is settlement-eligible ONLY when BOTH hold:
+   *   1. The booking is FULFILLED: booking_status = 'completed' OR 'checked_in'
+   *      AND payment_status = 'paid' OR 'partially_refunded' (the service
+   *      obligation has been delivered and payment collected). Future /
+   *      unfulfilled bookings are NEVER eligible, even if an entitlement is
+   *      AVAILABLE ahead of the session.
+   *   2. It has AVAILABLE booking entitlements (ORGANIZATION_EARNING /
+   *      COURTZON_COMMISSION) not yet consumed by a settlement.
+   * Card/online bookings → ORGANIZATION_EARNING with collector='courtzon':
+   *   CourtZon holds the money and owes the organisation the org net.
+   * Cash/COD bookings → COURTZON_COMMISSION with collector='org': the org
+   *   already holds the gross and owes CourtZon the commission.
    * Both sides are netted in the returned `preview` via the SAME pure
    * computeSettlementFinancials the unified settlement engine uses.
    *
@@ -169,16 +171,24 @@ class BookingSettlementService {
       `fe.source_type = 'booking'`,
       `fe.status = 'AVAILABLE'`,
       `fe.settlement_id IS NULL`,
+      // Booking fulfilment: the service obligation must have been delivered
+      // (booking completed / checked in) AND payment collected. Future or
+      // unfulfilled bookings are NEVER settlement-eligible, even if an
+      // entitlement is AVAILABLE ahead of the session.
+      `b.booking_status IN ('completed', 'checked_in')`,
+      `b.payment_status IN ('paid', 'partially_refunded')`,
     ];
     const params: any[] = [];
     if (organisationId != null) { conditions.push('fe.organisation_id = ?'); params.push(organisationId); }
     const where = `WHERE ${conditions.join(' AND ')}`;
+    // fe.source_type='booking' ⇒ fe.source_id is a booking id — join the
+    // bookings table so the fulfilment/payment predicates above apply.
+    const from = `FROM financial_entitlements fe JOIN bookings b ON b.id = fe.source_id`;
 
     // Preview over the FULL filtered set (not truncated by pagination), using
     // the SAME pure calc the unified settlement engine uses.
     const [previewRows] = await pool.execute<RowData>(
-      `SELECT fe.entitlement_type, fe.amount, fe.collector, fe.organisation_id
-       FROM financial_entitlements fe ${where}`,
+      `SELECT fe.entitlement_type, fe.amount, fe.collector, fe.organisation_id ${from} ${where}`,
       params,
     );
     const preview = computeSettlementFinancials((previewRows as any[]).map((r) => ({
@@ -208,7 +218,7 @@ class BookingSettlementService {
     };
 
     const [countRows] = await pool.execute<RowData>(
-      `SELECT COUNT(DISTINCT fe.source_id) AS cnt FROM financial_entitlements fe ${where}`,
+      `SELECT COUNT(DISTINCT fe.source_id) AS cnt ${from} ${where}`,
       params,
     );
     const total = Number((countRows[0] as any).cnt || 0);
@@ -218,8 +228,7 @@ class BookingSettlementService {
     const safeLimit = Math.max(1, Math.floor(Number(limit) || 20));
     const safeOffset = Math.max(0, Math.floor(Number(offset) || 0));
     const [idRows] = await pool.execute<RowData>(
-      `SELECT fe.source_id AS bookingId, MAX(fe.created_at) AS created_at
-       FROM financial_entitlements fe ${where}
+      `SELECT fe.source_id AS bookingId, MAX(fe.created_at) AS created_at ${from} ${where}
        GROUP BY fe.source_id
        ORDER BY created_at DESC
        LIMIT ${safeLimit} OFFSET ${safeOffset}`,
