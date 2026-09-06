@@ -85,7 +85,6 @@ export const CreateCoachProfileSchema = z.object({
   hourlyRate: z.number().min(0).optional(),
   currencyCode: z.string().length(3).optional(),
   isAvailable: z.boolean().optional(),
-  sessionDurations: z.array(z.number().int().positive()).optional(),
 });
 
 export const UpsertOrgAgreementSchema = z.object({

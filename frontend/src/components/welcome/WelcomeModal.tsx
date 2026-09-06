@@ -48,7 +48,7 @@ export default function WelcomeModal() {
 
         {isCoach ? (
           <p className="text-sm text-[var(--color-text-muted)] leading-relaxed">
-            Set up your session durations, configure your availability, and manage your club contracts from your Coach Profile.
+            Set your hourly rate, configure your availability, and manage your club contracts from your Coach Profile.
           </p>
         ) : (
           <p className="text-sm text-[var(--color-text-muted)] leading-relaxed">

@@ -13,6 +13,7 @@ import { cancelBookingHandler } from '../../booking/commands/cancel-booking.comm
 import { CancellationReason } from '../../../platform/shared/booking-types.js';
 import type { Command } from '../../../shared/command/command-base.js';
 import type mysql from 'mysql2/promise';
+import { calculateCoachSessionPrice } from './coach-pricing.js';
 
 type RowData = mysql.RowDataPacket[];
 
@@ -52,12 +53,12 @@ export class SchedulingBookingService {
 
     const branchId = court.branch_id;
 
-    // 3. Calculate coach session pricing
+    // 3. Calculate coach session pricing.
+    //    Coach duration ALWAYS equals the court booking duration (same start/end
+    //    window) and the coach is charged its hourly rate prorated by that
+    //    duration via the shared canonical helper.
     const coachHourlyRate = coachProfile.hourly_rate ? Number(coachProfile.hourly_rate) : 0;
-    const [startH, startM] = startTime.split(':').map(Number);
-    const [endH, endM] = endTime.split(':').map(Number);
-    const durationHours = ((endH * 60 + endM) - (startH * 60 + startM)) / 60;
-    const sessionPrice = coachHourlyRate * durationHours;
+    const sessionPrice = calculateCoachSessionPrice(coachHourlyRate, startTime, endTime);
 
     // 4. Calculate platform commission on coach fee
     let coachCommissionPct = 0;

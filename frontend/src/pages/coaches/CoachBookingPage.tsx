@@ -74,11 +74,11 @@ export default function CoachBookingPage() {
     });
   };
 
-  const durationsArr: number[] = Array.isArray(coach?.session_durations)
-    ? coach.session_durations
-    : typeof coach?.session_durations === 'string'
-      ? JSON.parse(coach.session_durations)
-      : [30, 60, 90, 120];
+  // Coach session duration follows the chosen session/court booking duration.
+  // There are no coach-configured duration options anymore — the duration the
+  // player selects below IS the session duration (and equals the court booking
+  // duration when a court is booked alongside).
+  const sessionDurations: number[] = [30, 60, 90, 120];
 
   return (
     <form onSubmit={handleSubmit} className="max-w-lg mx-auto py-8 px-4 space-y-6">
@@ -122,7 +122,7 @@ export default function CoachBookingPage() {
               onChange={(e) => setDuration(Number(e.target.value))}
               className="w-full px-3 py-2 border rounded-[var(--radius-md)] bg-[var(--color-bg)] text-sm"
             >
-              {durationsArr.map((d: number) => (
+              {sessionDurations.map((d: number) => (
                   <option key={d} value={d}>{d < 60 ? `${d} min` : d === 60 ? '1 hour' : `${d / 60} hours`}</option>
                 ))}
               </select>

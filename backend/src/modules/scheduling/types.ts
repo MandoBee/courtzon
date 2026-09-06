@@ -7,7 +7,6 @@ export interface ResourceCapabilities {
   sportIds: number[];
   experienceYears?: number;
   certifications?: string[];
-  sessionDurations?: number[];
   hourlyRate?: number;
   currencyCode?: string;
 }

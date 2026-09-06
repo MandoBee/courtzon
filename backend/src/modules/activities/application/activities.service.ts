@@ -1,8 +1,6 @@
 import { NotFoundError, ConflictError, ForbiddenError, ValidationError } from '../../../shared/errors/app-error.js';
 import { commissionService } from '../../financial/application/commission.service.js';
 import { activitiesRepository as repo } from '../infrastructure/repositories/activities.repository.js';
-import { professionalProfileRepository } from '../../profiles/infrastructure/repositories/professional-profile.repository.js';
-import { professionalServiceRepository } from '../../profiles/infrastructure/repositories/professional-service.repository.js';
 import { pricingEngine } from '../../booking/domain/pricing-engine.js';
 import { TimeEngine } from '../../time/index.js';
 import { generateUUID } from '../../../shared/utils/token.js';
@@ -192,13 +190,7 @@ export const activitiesService = {
     if (!p) return null;
     const agreements = await repo.findOrgAgreements(p.id);
     const sessions = await repo.findCoachSessions({ coachId: p.id, page: 1, limit: 50 });
-    // Session durations live in professional_services (pricing_model='session'),
-    // not on coach_profiles / professional_profiles. Attach them here so the
-    // self-service "My Coach Profile" page can display and persist them; the
-    // legacy read path never returned them.
-    const pp = await professionalProfileRepository.findByUserId(userId);
-    const session_durations = pp ? await professionalServiceRepository.getSessionDurationsByProfile(pp.id) : [];
-    return { ...p, agreements, sessions, session_durations };
+    return { ...p, agreements, sessions };
   },
   async getCoachById(id: number) {
     const p = await repo.findCoachById(id);

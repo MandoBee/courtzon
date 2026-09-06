@@ -483,8 +483,10 @@ export const activitiesRepository = {
       if (val === undefined) continue;
       if (isProfessionalProfileKey(key)) {
         (shared as any)[key] = val;
-      } else if (key === 'hourlyRate' || key === 'currencyCode' || key === 'sessionDurations') {
-        // Pricing fields → professional_services (handled below)
+      } else if (key === 'hourlyRate' || key === 'currencyCode') {
+        // Pricing fields → professional_services (handled below).
+        // sessionDurations is intentionally NOT accepted anymore — coach session
+        // duration is always derived from the court booking duration.
         continue;
       } else {
         const col = key.replace(/([A-Z])/g, '_$1').toLowerCase();
@@ -495,8 +497,8 @@ export const activitiesRepository = {
     if (Object.keys(shared).length) {
       await professionalProfileRepository.upsertByUserId(userId, shared);
     }
-    // Route pricing fields to professional_services
-    if (data.hourlyRate !== undefined || data.currencyCode !== undefined || data.sessionDurations !== undefined) {
+    // Route pricing fields to professional_services (hourly rate + currency only)
+    if (data.hourlyRate !== undefined || data.currencyCode !== undefined) {
       const coach = await this.findCoachByUserId(userId);
       if (coach) {
         const [[ppRow]] = await pool.query<RowData>(
@@ -506,7 +508,6 @@ export const activitiesRepository = {
           await professionalServiceRepository.upsertDefaultCoachService(ppRow.id, {
             price: data.hourlyRate,
             currencyCode: data.currencyCode,
-            sessionDurations: data.sessionDurations,
           });
         }
       }

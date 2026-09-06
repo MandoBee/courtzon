@@ -7,6 +7,7 @@ import { pricingEngine } from '../../booking/domain/pricing-engine.js';
 import { activitiesRepository } from '../../activities/infrastructure/repositories/activities.repository.js';
 import { resourceRepository } from '../../organisations/infrastructure/repositories/resource.repository.js';
 import { schedulingBookingService } from '../application/scheduling-booking.service.js';
+import { calculateCoachSessionPrice } from '../application/coach-pricing.js';
 import { createModuleLogger } from '../../../shared/utils/logger.js';
 import { eventBusV2 } from '../../../shared/event-bus/index.js';
 import { recordAudit } from '../../audit-log/index.js';
@@ -22,13 +23,11 @@ function buildPricingFunction(): PricingFunction {
       return result.totalPrice;
     }
     if (resourceType === 'coach') {
+      // Coach session duration == court booking duration (same window).
+      // Price = hourly rate prorated by the shared canonical helper.
       const profile = await activitiesRepository.findCoachById(resourceId);
       if (!profile?.hourly_rate) return 0;
-      const hourlyRate = Number(profile.hourly_rate);
-      const [startH, startM] = startTime.split(':').map(Number);
-      const [endH, endM] = endTime.split(':').map(Number);
-      const hours = ((endH * 60 + endM) - (startH * 60 + startM)) / 60;
-      return hourlyRate * hours;
+      return calculateCoachSessionPrice(Number(profile.hourly_rate), startTime, endTime);
     }
     return 0;
   };

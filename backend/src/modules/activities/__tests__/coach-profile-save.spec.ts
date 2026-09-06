@@ -2,25 +2,29 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import mysql from 'mysql2/promise';
 
 /**
- * My Coach Profile — self-service save/update (PUT /coaches/profile).
+ * Coach self-service profile save/update (PUT /coaches/profile).
  *
- * Covers the full write + read + HTTP path so the "profile edits are not
- * persisted" report is verified against the current repository:
+ * Business rule (current): a coach configures hourly rate, currency,
+ * availability, bio, experience, sports and certifications. Session duration
+ * is NO LONGER configured by the coach — it is always derived from the court
+ * booking duration at booking time.
+ *
+ * Covers the full write + read + HTTP path:
  *   - all editable fields persist (bio, experience, hourly rate, currency,
- *     availability, durations, sports, certifications)
+ *     availability, sports, certifications)
  *   - is_available persists on professional_profiles (never coach_profiles)
  *   - a coach without a professional_profiles row can save
- *   - getCoachProfile returns session_durations
+ *   - getCoachProfile no longer exposes session_durations
  *   - the actual PUT /coaches/profile HTTP request persists
- *   - clearing durations/sports/certifications to empty is persisted
+ *   - hourly rate / availability keep persisting after the change
  *   - a user without a coach profile returns a proper 404
  */
 describe('Coach self-service profile save/update', () => {
   let pool: mysql.Pool;
 
-  const COACH = 999941; // has professional_profiles
-  const COACH_NO_PP = 999942; // NO professional_profiles row
-  const NON_COACH = 999943; // user with NO coach profile
+  const COACH = 999951; // has professional_profiles
+  const COACH_NO_PP = 999952; // NO professional_profiles row
+  const NON_COACH = 999953; // user with NO coach profile
 
   async function cleanup() {
     await pool.execute(`DELETE FROM professional_services WHERE professional_profile_id IN
@@ -52,9 +56,9 @@ describe('Coach self-service profile save/update', () => {
     createPool({ host: '127.0.0.1', port: 3307, user: 'root', password: 'courtzon2026', database: 'courtzon_v3' });
 
     for (const u of [
-      { id: COACH, phone: '0129999941', email: 'profile-a@test.com', name: 'Profile A' },
-      { id: COACH_NO_PP, phone: '0129999942', email: 'profile-b@test.com', name: 'Profile B' },
-      { id: NON_COACH, phone: '0129999943', email: 'profile-c@test.com', name: 'Profile C' },
+      { id: COACH, phone: '0129999951', email: 'profile-a@test.com', name: 'Profile A' },
+      { id: COACH_NO_PP, phone: '0129999952', email: 'profile-b@test.com', name: 'Profile B' },
+      { id: NON_COACH, phone: '0129999953', email: 'profile-c@test.com', name: 'Profile C' },
     ]) {
       await pool.execute(
         `INSERT INTO users (id, public_id, country_id, phone_number, full_phone, email, password_hash, full_name, gender, account_status)
@@ -76,7 +80,7 @@ describe('Coach self-service profile save/update', () => {
     await pool.end();
   });
 
-  it('1. updates ALL fields and reads them back (bio, experience, rate, currency, availability, durations, sports, certs)', async () => {
+  it('1. updates ALL editable fields and reads them back (bio, experience, rate, currency, availability, sports, certs)', async () => {
     const { activitiesRepository } = await import('../infrastructure/repositories/activities.repository.js');
     const ok = await activitiesRepository.updateCoachProfile(COACH, {
       bio: 'New bio text',
@@ -84,7 +88,6 @@ describe('Coach self-service profile save/update', () => {
       hourlyRate: 150,
       currencyCode: 'EGP',
       isAvailable: false,
-      sessionDurations: [30, 60],
       sports: [1, 2],
       certifications: [{ name: 'Cert One', url: 'https://x/1' }],
     });
@@ -109,7 +112,6 @@ describe('Coach self-service profile save/update', () => {
       hourlyRate: 200,
       currencyCode: 'USD',
       isAvailable: false,
-      sessionDurations: [90],
     });
     expect(ok).toBe(true);
     const p: any = await activitiesRepository.findCoachByUserId(COACH_NO_PP);
@@ -120,12 +122,11 @@ describe('Coach self-service profile save/update', () => {
     expect(p.currency_code).toBe('USD');
   });
 
-  it('3. getCoachProfile returns session_durations so the UI can display saved durations', async () => {
+  it('3. getCoachProfile no longer exposes session_durations (duration is court-derived)', async () => {
     const { activitiesService } = await import('../application/activities.service.js');
     const profile = await activitiesService.getCoachProfile(COACH);
     expect(profile).toBeTruthy();
-    // Saved in test 1 as [30,60] — now exposed to the frontend.
-    expect(profile.session_durations).toEqual([30, 60]);
+    expect(profile.session_durations).toBeUndefined();
   });
 
   it('4. the real PUT /coaches/profile HTTP request persists (route → controller → service → repository → DB)', async () => {
@@ -155,7 +156,6 @@ describe('Coach self-service profile save/update', () => {
         hourlyRate: 175,
         currencyCode: 'SAR',
         isAvailable: true,
-        sessionDurations: [30],
         sports: [3],
         certifications: [{ name: 'HTTP Cert', url: 'https://y/2' }],
       },
@@ -178,26 +178,21 @@ describe('Coach self-service profile save/update', () => {
     }
   });
 
-  it('5. clearing durations/sports/certifications to empty is persisted', async () => {
+  it('5. hourly rate + availability keep persisting after the change (no session durations involved)', async () => {
     const { activitiesRepository } = await import('../infrastructure/repositories/activities.repository.js');
-    // Test 4 left durations=[30], sports=[3], certs=[HTTP Cert]. Clear all.
+    // Test 4 left rate=175, available=true. Change both.
     const ok = await activitiesRepository.updateCoachProfile(COACH, {
       bio: 'HTTP edited bio',
       experienceYears: 9,
-      hourlyRate: 175,
+      hourlyRate: 350,
       currencyCode: 'SAR',
-      isAvailable: true,
-      sessionDurations: [],
-      sports: [],
-      certifications: [],
+      isAvailable: false,
     });
     expect(ok).toBe(true);
     const p: any = await activitiesRepository.findCoachByUserId(COACH);
-    expect(JSON_ARR(p.sports)).toEqual([]);
-    expect(JSON_ARR(p.certifications)).toEqual([]);
-
-    const profile = await (await import('../application/activities.service.js')).activitiesService.getCoachProfile(COACH);
-    expect(profile.session_durations).toEqual([]);
+    expect(Number(p.hourly_rate)).toBe(350);
+    expect(Number(p.is_available)).toBe(0);
+    expect(p.currency_code).toBe('SAR');
   });
 
   it('6. a user WITHOUT a coach profile gets a proper 404 on save', async () => {

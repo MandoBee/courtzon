@@ -73,7 +73,6 @@ function CoachProfileSection({ profile, sportsList, availability, agreements }: 
   const parseJSON = (v: any): any[] => typeof v === 'string' ? JSON.parse(v) : (v || []);
   const sports = parseJSON(profile.sports);
   const certs = parseJSON(profile.certifications);
-  const durations = parseJSON(profile.session_durations);
   const weekly = availability?.weekly || [];
 
   const sportNames = sports
@@ -116,19 +115,6 @@ function CoachProfileSection({ profile, sportsList, availability, agreements }: 
           </p>
         </div>
       </div>
-
-      {durations.length > 0 && (
-        <div className="p-3 rounded-[var(--radius-md)] bg-[var(--color-bg)]">
-          <p className="text-xs text-[var(--color-text-muted)] mb-2">{t('profile.coach.session_durations')}</p>
-          <div className="flex flex-wrap gap-2">
-            {durations.map((d: number) => (
-              <span key={d} className="text-xs px-2.5 py-1 rounded-full bg-[var(--color-primary-bg)] text-[var(--color-primary)]">
-                {d} min
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
 
       {certs.length > 0 && (
         <div className="p-3 rounded-[var(--radius-md)] bg-[var(--color-bg)]">

@@ -1,6 +1,4 @@
 import { activitiesRepository } from '../../activities/infrastructure/repositories/activities.repository.js';
-import { professionalProfileRepository } from '../../profiles/infrastructure/repositories/professional-profile.repository.js';
-import { professionalServiceRepository } from '../../profiles/infrastructure/repositories/professional-service.repository.js';
 import { createModuleLogger } from '../../../shared/utils/logger.js';
 import type { ResourceProvider, TimeSlot, ResourceCapabilities, LocationInfo } from '../types.js';
 
@@ -68,13 +66,6 @@ export class CoachProvider implements ResourceProvider {
       } catch { sportIds = []; }
     }
 
-    let sessionDurations: number[] | undefined;
-    const ppId = await professionalProfileRepository.getProfileIdByCoachProfileId(this.entityId);
-    if (ppId) {
-      const durations = await professionalServiceRepository.getSessionDurationsByProfile(ppId);
-      if (durations.length) sessionDurations = durations;
-    }
-
     let certifications: string[] | undefined;
     if (profile.certifications) {
       try {
@@ -89,7 +80,6 @@ export class CoachProvider implements ResourceProvider {
       sportIds,
       experienceYears: profile.experience_years ?? undefined,
       certifications,
-      sessionDurations,
       hourlyRate: profile.hourly_rate ? Number(profile.hourly_rate) : undefined,
       currencyCode: profile.currency_code ?? undefined,
     };

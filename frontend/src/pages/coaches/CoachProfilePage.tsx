@@ -9,7 +9,6 @@ import api from '../../services/api';
 import { useTranslation } from '../../i18n';
 
 
-const DURATIONS = [30, 60, 90, 120, 150, 180];
 const DAY_LABELS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 export default function CoachProfilePage() {
@@ -145,7 +144,6 @@ function CoachProfileTab({ profile, sportsList, user, queryClient, showToast }: 
   const [currency, setCurrency] = useState(profile.currency_code || user?.defaultCurrency || 'USD');
   const [available, setAvailable] = useState(profile.is_available !== false);
   const parseJSON = (v: any): any[] => typeof v === 'string' ? JSON.parse(v) : (v || []);
-  const [durations, setDurations] = useState<number[]>(parseJSON(profile.session_durations));
   const [sportIds, setSportIds] = useState<number[]>(parseJSON(profile.sports));
   const [certs, setCerts] = useState<{ name: string; url: string }[]>(parseJSON(profile.certifications));
   const [uploading, setUploading] = useState(false);
@@ -184,10 +182,8 @@ function CoachProfileTab({ profile, sportsList, user, queryClient, showToast }: 
       hourlyRate: rate ? Number(rate) : undefined,
       currencyCode: currency,
       isAvailable: available,
-      // Send the real arrays (even empty) so clearing all durations / sports /
-      // certifications is persisted — omitting them (undefined) would make the
-      // backend treat them as "no change" and the old values would survive.
-      sessionDurations: durations,
+      // Coach session duration is always derived from the court booking
+      // duration — no session duration is configured on the profile anymore.
       sports: sportIds,
       certifications: certs,
     });
@@ -228,19 +224,6 @@ function CoachProfileTab({ profile, sportsList, user, queryClient, showToast }: 
             <input type="checkbox" checked={available} onChange={(e) => setAvailable(e.target.checked)} className="w-4 h-4" />
             Available for bookings
           </label>
-        </div>
-      </div>
-
-      <div className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] p-5 space-y-3">
-        <h2 className="font-medium">Session Durations</h2>
-        <p className="text-xs text-[var(--color-text-muted)]">Select the session lengths you offer. These will appear on the booking page.</p>
-        <div className="flex flex-wrap gap-3">
-          {DURATIONS.map((d) => (
-            <label key={d} className="flex items-center gap-2 text-sm cursor-pointer border rounded-[var(--radius-md)] px-3 py-2 hover:border-[var(--color-primary)]">
-              <input type="checkbox" checked={durations.includes(d)} onChange={() => setDurations((prev) => prev.includes(d) ? prev.filter((v) => v !== d) : [...prev, d])} />
-              {d} min
-            </label>
-          ))}
         </div>
       </div>
 
