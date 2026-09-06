@@ -648,6 +648,7 @@ export const translationKeysRegistry: TranslationKeyEntry[] = [
   { key: 'coach.profile.directory', defaultValue: 'Coach Directory', moduleSlug: 'coach', elementType: 'link', elementLabel: 'Coach directory link' },
   { key: 'coach.profile.tab_profile', defaultValue: 'Profile', moduleSlug: 'coach', elementType: 'tab', elementLabel: 'Coach profile tab' },
   { key: 'coach.profile.tab_availability', defaultValue: 'Availability', moduleSlug: 'coach', elementType: 'tab', elementLabel: 'Coach availability tab' },
+  { key: 'coach.profile.tab_locations', defaultValue: 'Service Locations', moduleSlug: 'coach', elementType: 'tab', elementLabel: 'Coach service locations tab' },
 
   // Community
   { key: 'community.event_created', defaultValue: 'Event Created', moduleSlug: 'community', elementType: 'message', elementLabel: 'Community event created' },

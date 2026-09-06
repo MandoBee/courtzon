@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useSearchParams } from 'react-router-dom';
 import api from '../../services/api';
 import { useResourceRoom } from '../../realtime/useResourceRoom';
 
-function ResourceSlots({ resourceId, date }: { resourceId: number; date: string }) {
+function ResourceSlots({ resourceId, date, coachId }: { resourceId: number; date: string; coachId?: string | null }) {
   useResourceRoom(resourceId);
   const { data: slotsData, isLoading } = useQuery({
     queryKey: ['resource-slots', resourceId, date],
@@ -21,12 +21,22 @@ function ResourceSlots({ resourceId, date }: { resourceId: number; date: string 
     return <p className="text-xs text-[var(--color-text-muted)]">No slots available for this date</p>;
   }
 
+  const slotLink = (resourceId: number, date: string, startTime?: string, endTime?: string) => {
+    const params = new URLSearchParams({ date });
+    if (startTime && endTime) {
+      params.set('startTime', startTime);
+      params.set('endTime', endTime);
+    }
+    if (coachId) params.set('coachId', coachId);
+    return `/book/${resourceId}?${params.toString()}`;
+  };
+
   return (
     <div className="flex flex-wrap gap-1.5">
       {available.slice(0, 8).map((slot) => (
         <Link
           key={slot.slot_start}
-          to={`/book/${resourceId}?date=${date}&startTime=${slot.slot_start}&endTime=${slot.slot_end}`}
+          to={slotLink(resourceId, date, slot.slot_start, slot.slot_end)}
           className="px-2.5 py-1 text-xs rounded-[var(--radius-md)] border border-[var(--color-border)] text-[var(--color-text)] hover:border-[var(--color-primary)] hover:bg-[var(--color-primary-bg)] transition-colors"
         >
           {slot.slot_start}
@@ -34,7 +44,7 @@ function ResourceSlots({ resourceId, date }: { resourceId: number; date: string 
       ))}
       {available.length > 8 && (
         <Link
-          to={`/book/${resourceId}?date=${date}`}
+          to={slotLink(resourceId, date)}
           className="px-2.5 py-1 text-xs rounded-[var(--radius-md)] border border-[var(--color-border)] text-[var(--color-text-muted)] hover:border-[var(--color-primary)] transition-colors"
         >
           +{available.length - 8} more
@@ -46,6 +56,8 @@ function ResourceSlots({ resourceId, date }: { resourceId: number; date: string 
 
 export default function ResourceListPage() {
   const { branchId } = useParams();
+  const [searchParams] = useSearchParams();
+  const coachId = searchParams.get('coachId');
   const today = new Date().toISOString().slice(0, 10);
   const [selectedDate, setSelectedDate] = useState(today);
 
@@ -104,7 +116,7 @@ export default function ResourceListPage() {
             {resource.is_active && (
               <div className="mt-auto pt-3 border-t border-[var(--color-border)]">
                 <p className="text-[10px] text-[var(--color-text-muted)] uppercase tracking-wide mb-2">Available Slots</p>
-                <ResourceSlots resourceId={resource.id} date={selectedDate} />
+                <ResourceSlots resourceId={resource.id} date={selectedDate} coachId={coachId} />
               </div>
             )}
           </div>

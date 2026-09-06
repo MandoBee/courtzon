@@ -93,8 +93,6 @@ const PlayerTournamentsPage = lazy(() => import('./pages/player/TournamentsPage'
 const CoachDirectoryPage = lazy(() => import('./pages/coaches/CoachDirectoryPage'));
 const CoachProfilePage = lazy(() => import('./pages/coaches/CoachProfilePage'));
 const CoachDetailPage = lazy(() => import('./pages/coaches/CoachDetailPage'));
-const CoachBookingPage = lazy(() => import('./pages/coaches/CoachBookingPage'));
-const EngineCoachBookingPage = lazy(() => import('./pages/coaches/EngineCoachBookingPage'));
 const CoachSessionsPage = lazy(() => import('./pages/coaches/CoachSessionsPage'));
 const CoachDashboard = lazy(() => import('./pages/coaches/CoachDashboard'));
 const TodaySessions = lazy(() => import('./pages/coaches/TodaySessions'));
@@ -615,8 +613,6 @@ function AppContent() {
           <Route path="/coaches/profile" element={<CoachProfilePage />} />
           <Route path="/coaches/sessions/me" element={<CoachSessionsPage />} />
           <Route path="/coaches/:id" element={<CoachDetailPage />} />
-          <Route path="/coaches/:id/book" element={<CoachBookingPage />} />
-          <Route path="/coaches/book/session" element={<FeatureFlagGuard flag="coaching.engine_booking_enabled"><EngineCoachBookingPage /></FeatureFlagGuard>} />
           <Route path="/profile" element={<ProfilePage />} />
           <Route path="/players" element={<PlayerSearchPage />} />
           <Route path="/players/:id" element={<PlayerPublicProfilePage />} />

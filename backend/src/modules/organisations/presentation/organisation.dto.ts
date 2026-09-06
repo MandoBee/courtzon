@@ -102,6 +102,7 @@ export const CreateBranchSchema = z.object({
   latitude: z.number().optional(),
   longitude: z.number().optional(),
   accessType: z.enum(['open','restricted','invite_only']).optional().default('open'),
+  coachPolicy: z.enum(['contract_required','independent_coaches_allowed']).optional().default('contract_required'),
   currencyId: z.number().int().positive().optional(),
   timezone: z.string().optional(),
   openingTime: z.string().optional(),

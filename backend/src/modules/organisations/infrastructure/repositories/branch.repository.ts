@@ -43,14 +43,14 @@ export class BranchRepository {
     const [result] = await this.pool.execute<mysql.ResultSetHeader & RowData>(
       `INSERT INTO branches (public_id, organisation_id, name, slug, description, email, phone,
         address_line1, address_line2, city, state, country_id, postal_code,
-        latitude, longitude, access_type, currency_id, timezone, opening_time, closing_time, images)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        latitude, longitude, access_type, coach_policy, currency_id, timezone, opening_time, closing_time, images)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [generateUUID(), data.organisationId, data.name, data.slug,
        data.description || null, data.email || null, data.phone || null,
        data.addressLine1 || null, data.addressLine2 || null,
        data.city || null, data.state || null, data.countryId || null,
        data.postalCode || null, data.latitude || null, data.longitude || null,
-       data.accessType || 'open', data.currencyId || null,
+       data.accessType || 'open', data.coachPolicy || 'contract_required', data.currencyId || null,
        data.timezone || null, data.openingTime || null, data.closingTime || null,
        data.images ? JSON.stringify(data.images) : null]
     );
@@ -62,7 +62,7 @@ export class BranchRepository {
     const values: any[] = [];
     const allowed = ['name','slug','description','email','phone','address_line1',
       'address_line2','city','state','country_id','postal_code','latitude',
-      'longitude','access_type','is_active','currency_id','timezone',
+      'longitude','access_type','coach_policy','is_active','currency_id','timezone',
       'opening_time','closing_time'];
     for (const key of allowed) {
       const camelKey = key.replace(/_[a-z]/g, (m) => m[1].toUpperCase());

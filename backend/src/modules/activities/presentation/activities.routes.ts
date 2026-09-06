@@ -78,6 +78,15 @@ export async function activitiesRoutes(app: FastifyInstance, opts: { requireFeat
   app.delete('/coaches/availability/me/blackouts/:id', { preHandler: [requirePermission(['coaches.availability.manage'])] }, ctrl.removeCoachBlackoutHandler);
   app.get('/coaches/:id/availability', ctrl.getCoachAvailabilityHandler);
 
+  // Coach service locations (branches where a coach can provide services)
+  app.get('/coaches/service-locations/me', { preHandler: [requirePermission(['coaches.service_locations.manage'])] }, ctrl.getMyServiceLocationsHandler);
+  app.put('/coaches/service-locations/me', { preHandler: [requirePermission(['coaches.service_locations.manage'])] }, ctrl.setMyServiceLocationsHandler);
+  app.get('/coaches/:id/service-locations', ctrl.getCoachServiceLocationsHandler);
+
+  // Branch coach policy
+  app.get('/branches/:branchId/coach-policy', ctrl.getBranchCoachPolicyHandler);
+  app.get('/coaches/service-locations/me/available-branches', ctrl.listAvailableBranchesHandler);
+
   // Admin coach routes
   app.get('/admin/coaches', { preHandler: [adminGuard] }, ctrl.adminListCoachesHandler);
   app.put('/coaches/:id', { preHandler: [adminGuard] }, ctrl.updateCoachAdminHandler);

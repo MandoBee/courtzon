@@ -5,6 +5,7 @@ export interface TimeSlot {
 
 export interface ResourceCapabilities {
   sportIds: number[];
+  name?: string;
   experienceYears?: number;
   certifications?: string[];
   hourlyRate?: number;

@@ -445,6 +445,12 @@ export function useRealtimeCacheUpdates(): void {
       qc.invalidateQueries({ queryKey: ['admin', 'user'] });
       qc.invalidateQueries({ queryKey: ['my-coach-agreements'] });
       qc.invalidateQueries({ queryKey: ['org-coaches'] });
+      // Per-coach agreement list (CoachDetailPage) and coach detail cache —
+      // these were stale because agreement status changes (accept/reject) only
+      // invalidated `my-coach-agreements`. Invalidate the coach root so both the
+      // per-coach agreements list and the coach detail update live.
+      qc.invalidateQueries({ queryKey: ['coach-agreements'] });
+      qc.invalidateQueries({ queryKey: ['coach'] });
     });
   }
 

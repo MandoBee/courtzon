@@ -4,7 +4,7 @@ import { resourceRepository } from '../../organisations/infrastructure/repositor
 import { activitiesRepository } from '../../activities/infrastructure/repositories/activities.repository.js';
 import { pricingEngine } from '../../booking/domain/pricing-engine.js';
 import { redisLock } from '../../booking/infrastructure/redis/redis-lock.js';
-import { NotFoundError, ConflictError } from '../../../shared/errors/app-error.js';
+import { NotFoundError, ConflictError, ForbiddenError } from '../../../shared/errors/app-error.js';
 import { createModuleLogger } from '../../../shared/utils/logger.js';
 import { getPool } from '../../../database/mysql.js';
 import { eventBusV2 } from '../../../shared/event-bus/event-bus.v2.js';
@@ -13,7 +13,7 @@ import { cancelBookingHandler } from '../../booking/commands/cancel-booking.comm
 import { CancellationReason } from '../../../platform/shared/booking-types.js';
 import type { Command } from '../../../shared/command/command-base.js';
 import type mysql from 'mysql2/promise';
-import { calculateCoachSessionPrice } from './coach-pricing.js';
+import { calculateCoachSessionPrice, calculateCoachEarningsSplit } from './coach-pricing.js';
 
 type RowData = mysql.RowDataPacket[];
 
@@ -53,26 +53,59 @@ export class SchedulingBookingService {
 
     const branchId = court.branch_id;
 
-    // 3. Calculate coach session pricing.
+    // 3. Enforce branch coach policy + service access BEFORE locking/bookings.
+    //    - The coach must have explicit service access to the branch.
+    //    - If the branch policy is 'contract_required', the coach must also have
+    //      an active/accepted organisation agreement.
+    //    - If 'independent_coaches_allowed', no agreement is required (org gets 0%).
+    const branchPolicy = await activitiesRepository.getBranchCoachPolicy(branchId);
+    const eligibility = await activitiesRepository.isCoachEligibleAtBranch(coachId, branchId);
+    if (!eligibility.eligible) {
+      log.warn({ coachId, branchId, policy: branchPolicy, reason: eligibility.reason }, 'Coach not eligible at branch');
+      throw new ForbiddenError(eligibility.reason || 'Coach is not eligible to provide coaching services at this branch.');
+    }
+
+    // 4. Calculate coach session pricing.
     //    Coach duration ALWAYS equals the court booking duration (same start/end
     //    window) and the coach is charged its hourly rate prorated by that
     //    duration via the shared canonical helper.
     const coachHourlyRate = coachProfile.hourly_rate ? Number(coachProfile.hourly_rate) : 0;
     const sessionPrice = calculateCoachSessionPrice(coachHourlyRate, startTime, endTime);
 
-    // 4. Calculate platform commission on coach fee
+    // 5. Calculate platform commission AND org split.
+    //    - Platform commission always applies on the coach fee.
+    //    - For CONTRACTED coaches (contract_required branch + active agreement),
+    //      the organisation receives its agreed share (org_split_pct) of the
+    //      post-commission net. The coach keeps the remainder.
+    //    - For INDEPENDENT coaches, the organisation gets 0% — the coach keeps
+    //      the full post-commission net.
     let coachCommissionPct = 0;
     let coachEarnings = sessionPrice;
     let orgEarnings = 0;
+    let orgSplitPct = 0;
     try {
       const coachComm = await commissionService.calculate(
         court.organisation_id || 0, 'coach_session', sessionPrice,
       );
       coachCommissionPct = coachComm.rate;
-      coachEarnings = coachComm.netAmount;
+      const postCommissionNet = coachComm.netAmount;
+      let agreement: any = null;
+      if (branchPolicy === 'contract_required' && court.organisation_id) {
+        agreement = await activitiesRepository.getAcceptedAgreement(coachId, court.organisation_id);
+      }
+      const split = calculateCoachEarningsSplit({
+        branchPolicy,
+        postCommissionNet,
+        orgSplitPct: agreement ? Number((agreement as any).org_split_pct ?? 0) : 0,
+        coachSplitPct: agreement ? Number((agreement as any).coach_split_pct ?? 100) : 100,
+        hasAgreement: !!agreement,
+      });
+      orgSplitPct = split.orgSplitPct;
+      coachEarnings = split.coachEarnings;
+      orgEarnings = split.orgEarnings;
     } catch { /* non-fatal */ }
 
-    // 5. Acquire distributed Redis lock on the COACH slot to prevent double-booking
+    // 6. Acquire distributed Redis lock on the COACH slot to prevent double-booking
     //    This is separate from the court lock acquired inside bookingService.createBooking()
     const coachLocked = await redisLock.acquireCoach(coachId, date, startTime, lockOwner);
     if (!coachLocked) {
@@ -81,14 +114,14 @@ export class SchedulingBookingService {
     }
 
     try {
-      // 6. Check coach availability (inside the lock — no race window)
+      // 7. Check coach availability (inside the lock — no race window)
       const coachAvailable = await this.checkCoachAvailable(coachId, date, startTime, endTime);
       if (!coachAvailable) {
         log.warn({ coachId, date, startTime, endTime }, 'Coach is no longer available');
         throw new ConflictError('Coach is no longer available at this time');
       }
 
-      // 7. Create court booking via existing BookingService
+      // 8. Create court booking via existing BookingService
       //    This handles: Redis locks on court slots, wallet, pricing, commission, events, reminders
       log.info({ userId, coachId, resourceId, date, startTime, endTime }, 'Creating court booking');
       const bookingResult = await bookingService.createBooking({
@@ -109,7 +142,7 @@ export class SchedulingBookingService {
       const commissionAmount = Number((bookingResult as any).commission_amount);
       log.info({ bookingId, status: bookingStatus }, 'Court booking created');
 
-      // 8. Create coach session record
+      // 9. Create coach session record
       //    If this fails, we MUST compensate by cancelling the booking
       let sessionId: number;
       try {
@@ -139,7 +172,7 @@ export class SchedulingBookingService {
         throw new ConflictError('Booking could not be completed. Please try again. Your payment has been refunded.');
       }
 
-      // 9. Link booking to session
+      // 10. Link booking to session
       try {
         await activitiesRepository.updateSessionBooking(sessionId, bookingId, 'scheduled');
       } catch (linkErr) {
@@ -163,7 +196,10 @@ export class SchedulingBookingService {
         priceBreakdown: {
           courtFee: totalAmount - sessionPrice,
           coachFee: sessionPrice,
-          platformFee: commissionAmount + (sessionPrice - coachEarnings),
+          coachEarnings,
+          orgEarnings,
+          orgSplitPct,
+          platformFee: commissionAmount + (sessionPrice - (coachEarnings + orgEarnings)),
           total: totalAmount,
           currency: coachProfile.currency_code || 'EGP',
         },

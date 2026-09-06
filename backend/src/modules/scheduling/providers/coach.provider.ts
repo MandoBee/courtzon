@@ -78,6 +78,7 @@ export class CoachProvider implements ResourceProvider {
 
     return {
       sportIds,
+      name: profile.full_name || undefined,
       experienceYears: profile.experience_years ?? undefined,
       certifications,
       hourlyRate: profile.hourly_rate ? Number(profile.hourly_rate) : undefined,

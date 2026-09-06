@@ -209,6 +209,48 @@ export const activitiesService = {
     return repo.listOrgAgreements(coachId);
   },
 
+  // ── Coach service locations ──
+  async getMyCoachServiceLocations(userId: number) {
+    const coach = await repo.findCoachByUserId(userId);
+    if (!coach) return [];
+    return repo.getCoachServiceLocations(coach.id);
+  },
+  async listAllBranches() {
+    return repo.listAllBranches();
+  },
+  async getCoachServiceLocations(coachId: number) {
+    return repo.getCoachServiceLocations(coachId);
+  },
+  async setMyCoachServiceLocations(userId: number, branchIds: number[]) {
+    const coach = await repo.findCoachByUserId(userId);
+    if (!coach) throw new NotFoundError('Coach profile');
+    const pool = getPool();
+    const unique = Array.from(new Set(branchIds || []));
+    for (const branchId of unique) {
+      const [[branchRow]] = await pool.execute<RowData>(
+        'SELECT id FROM branches WHERE id = ? AND deleted_at IS NULL', [branchId]
+      ) as any;
+      if (!branchRow) throw new NotFoundError('Branch');
+    }
+    await repo.setCoachServiceLocations(coach.id, unique);
+    return repo.getCoachServiceLocations(coach.id);
+  },
+  async getBranchCoachPolicy(branchId: number) {
+    return repo.getBranchCoachPolicy(branchId);
+  },
+  async setBranchCoachPolicy(branchId: number, policy: 'contract_required' | 'independent_coaches_allowed') {
+    await repo.setBranchCoachPolicy(branchId, policy);
+  },
+  async checkCoachEligibleAtBranch(coachId: number, branchId: number) {
+    return repo.isCoachEligibleAtBranch(coachId, branchId);
+  },
+  async coachHasServiceAccess(coachId: number, branchId: number) {
+    return repo.coachHasServiceAccess(coachId, branchId);
+  },
+  async getAcceptedOrgAgreement(coachId: number, organisationId: number) {
+    return repo.getAcceptedAgreement(coachId, organisationId);
+  },
+
   async createCoachProfile(userId: number, data: any) {
     const existing = await repo.findCoachByUserId(userId);
     const pool = getPool();

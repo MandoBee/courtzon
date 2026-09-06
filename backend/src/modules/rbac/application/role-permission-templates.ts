@@ -241,7 +241,7 @@ const ORG_SHOP_ADMIN_DENY_KEYS = new Set([
 ]);
 
 const COACH_PATTERNS = [
-  /^coaches\.(profile|sessions|availability|invites|book|reviews|view|apply|manage_profile|manage_agreements|create_sessions|complete_session|confirm_session|no_show|respond_request|start_session)/,
+  /^coaches\.(profile|sessions|availability|service_locations|invites|book|reviews|view|apply|manage_profile|manage_agreements|create_sessions|complete_session|confirm_session|no_show|respond_request|start_session)/,
   /^coaches\.book\./,
   /^coaches\.profile\.edit\./,
   /^coach\.revenue\./,
@@ -255,7 +255,7 @@ const COACH_PATTERNS = [
 ];
 
 const INDEPENDENT_COACH_PATTERNS = [
-  /^coaches\.(profile|sessions|availability|invites|book|reviews|view|apply|manage_profile|manage_agreements|create_sessions|complete_session|confirm_session|no_show|respond_request|start_session)/,
+  /^coaches\.(profile|sessions|availability|service_locations|invites|book|reviews|view|apply|manage_profile|manage_agreements|create_sessions|complete_session|confirm_session|no_show|respond_request|start_session)/,
   /^coaches\.book\./,
   /^coaches\.profile\.edit\./,
   /^coach\.revenue\./,
@@ -280,7 +280,7 @@ const INDEPENDENT_COACH_PATTERNS = [
 ];
 
 const RESIDENT_COACH_PATTERNS = [
-  /^coaches\.(profile|sessions|availability|invites|book|reviews|view|apply|manage_profile|manage_agreements|create_sessions|complete_session|confirm_session|no_show|respond_request|start_session)/,
+  /^coaches\.(profile|sessions|availability|service_locations|invites|book|reviews|view|apply|manage_profile|manage_agreements|create_sessions|complete_session|confirm_session|no_show|respond_request|start_session)/,
   /^coaches\.book\./,
   /^coaches\.profile\.edit\./,
   /^coach\.revenue\./,

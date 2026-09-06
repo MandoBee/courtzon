@@ -64,15 +64,19 @@ async function discoverProviders(input: {
       }
     }
   } else if (input.resourceId) {
-    providers.push(new CourtProvider(input.resourceId));
-    const coaches = await activitiesRepository.findCoaches({
-      sportId: input.sportId,
-      isAvailable: true,
-      page: 1,
-      limit: 50,
-    });
-    for (const coach of coaches) {
-      providers.push(new CoachProvider(coach.id));
+    const court = await resourceRepository.findById(input.resourceId);
+    if (court) {
+      providers.push(new CourtProvider(input.resourceId));
+      // Flow B: Only coaches with explicit SERVICE ACCESS to this court's branch
+      // (coach_service_locations) AND satisfying the branch's coach policy may be
+      // returned as candidates. Both are factored in by isCoachEligibleAtBranch.
+      const eligible = await activitiesRepository.listEligibleCoachesAtBranch(
+        court.branch_id,
+        input.sportId,
+      );
+      for (const coach of eligible) {
+        providers.push(new CoachProvider(coach.id));
+      }
     }
   } else {
     const coaches = await activitiesRepository.findCoaches({

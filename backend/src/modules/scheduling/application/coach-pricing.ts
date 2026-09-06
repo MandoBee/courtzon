@@ -30,3 +30,40 @@ export function calculateCoachSessionPrice(
   const priceCents = Math.round((rateCents * minutes) / 60);
   return priceCents / 100;
 }
+
+/**
+ * Compute the coach-vs-organisation earnings split for a coach session, based on
+ * the branch coach policy and (for contract-required branches) the organisation
+ * agreement split percentages.
+ *
+ * Rules (canonical, used by the scheduling booking engine):
+ * - 'independent_coaches_allowed': the organisation keeps 0% — the coach keeps
+ *   the full post-commission net.
+ * - 'contract_required' with an accepted agreement: the organisation receives
+ *   `orgSplitPct`% of the post-commission net, the coach receives the remainder.
+ *
+ * @returns final coach earnings and org earnings (both round to cents).
+ */
+export function calculateCoachEarningsSplit(input: {
+  branchPolicy: 'contract_required' | 'independent_coaches_allowed';
+  postCommissionNet: number;
+  orgSplitPct: number;
+  coachSplitPct: number;
+  hasAgreement: boolean;
+}): { coachEarnings: number; orgEarnings: number; orgSplitPct: number } {
+  const { branchPolicy, postCommissionNet } = input;
+
+  if (branchPolicy !== 'contract_required' || !input.hasAgreement) {
+    return { coachEarnings: postCommissionNet, orgEarnings: 0, orgSplitPct: 0 };
+  }
+
+  const orgSplitPct = Number(input.orgSplitPct ?? 0);
+  const coachSplitPct = Number(input.coachSplitPct ?? 100);
+  if (orgSplitPct <= 0) {
+    return { coachEarnings: postCommissionNet, orgEarnings: 0, orgSplitPct: 0 };
+  }
+
+  const orgEarnings = Math.round(postCommissionNet * orgSplitPct) / 100;
+  const coachEarnings = Math.round(postCommissionNet * coachSplitPct) / 100;
+  return { coachEarnings, orgEarnings, orgSplitPct };
+}

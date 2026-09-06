@@ -1,11 +1,13 @@
 import { useQuery } from '@tanstack/react-query';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../../services/api';
 import { Can } from '../../permissions/Can';
 import BranchAccessControl from '../../components/branches/BranchAccessControl';
 
 export default function BrowseBranchesPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const coachId = searchParams.get('coachId');
   const { data: orgs } = useQuery({
     queryKey: ['organisations'],
     queryFn: () => api.get('/organisations').then((r) => r.data.data),
@@ -34,7 +36,7 @@ export default function BrowseBranchesPage() {
         {branches?.map((branch: any) => (
           <Link
             key={branch.id}
-            to={`/branches/${branch.id}/resources`}
+            to={coachId ? `/branches/${branch.id}/resources?coachId=${coachId}` : `/branches/${branch.id}/resources`}
             className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] p-5 hover:shadow-[var(--shadow-md)] transition-all hover:-translate-y-0.5"
           >
             <div className="flex items-center gap-3 mb-3">

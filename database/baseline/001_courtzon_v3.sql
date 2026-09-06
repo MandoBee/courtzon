@@ -1028,6 +1028,7 @@ CREATE TABLE `branches` (
   `latitude` decimal(10,7) DEFAULT NULL,
   `longitude` decimal(10,7) DEFAULT NULL,
   `access_type` enum('open','restricted','invite_only') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'open',
+  `coach_policy` enum('contract_required','independent_coaches_allowed') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'contract_required' COMMENT 'Branch coach-service policy: contracted vs independent',
   `is_active` tinyint(1) NOT NULL DEFAULT '1',
   `rating_avg` decimal(3,2) NOT NULL DEFAULT '0.00',
   `rating_count` int unsigned NOT NULL DEFAULT '0',
@@ -1449,6 +1450,22 @@ CREATE TABLE `coach_reviews` (
   CONSTRAINT `fk_cr_player` FOREIGN KEY (`player_id`) REFERENCES `users` (`id`) ON DELETE CASCADE,
   CONSTRAINT `fk_cr_session` FOREIGN KEY (`session_id`) REFERENCES `coach_sessions` (`id`) ON DELETE SET NULL,
   CONSTRAINT `coach_reviews_chk_1` CHECK ((`rating` between 1 and 5))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+DROP TABLE IF EXISTS `coach_service_locations`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `coach_service_locations` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `coach_id` int unsigned NOT NULL,
+  `branch_id` int unsigned NOT NULL,
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_coach_branch` (`coach_id`,`branch_id`),
+  KEY `idx_csl_coach` (`coach_id`),
+  KEY `idx_csl_branch` (`branch_id`),
+  CONSTRAINT `fk_csl_coach` FOREIGN KEY (`coach_id`) REFERENCES `coach_profiles` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_csl_branch` FOREIGN KEY (`branch_id`) REFERENCES `branches` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 DROP TABLE IF EXISTS `coach_session_events`;

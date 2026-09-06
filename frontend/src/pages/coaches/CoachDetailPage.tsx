@@ -18,7 +18,6 @@ export default function CoachDetailPage() {
   const { showToast } = useToast();
   const [rating, setRating] = useState(5);
   const [reviewText, setReviewText] = useState('');
-  const engineEnabled = useFeatureFlag('coaching.engine_booking_enabled');
 
   const { data: coach, isLoading } = useQuery({
     queryKey: ['coach', id],
@@ -80,9 +79,10 @@ export default function CoachDetailPage() {
   const certs = Array.isArray(coach.certifications) ? coach.certifications
     : typeof coach.certifications === 'string' ? JSON.parse(coach.certifications) : [];
 
-  const bookLink = engineEnabled
-    ? `/coaches/book/session?coachId=${id}`
-    : `/coaches/${id}/book`;
+  // Unified "Book a Coach" flow (Flow B): the player picks a court and the
+  // booking form offers this coach when it is eligible at the chosen branch and
+  // time. The coach session duration equals the court slot duration.
+  const bookLink = `/browse?coachId=${id}`;
 
   return (
     <div className="max-w-3xl mx-auto">
@@ -136,7 +136,7 @@ export default function CoachDetailPage() {
               to={bookLink}
               className="inline-block px-6 py-2.5 border border-[var(--color-border)] text-[var(--color-text)] rounded-[var(--radius-md)] text-sm font-medium hover:bg-[var(--color-bg)]"
             >
-              Book a Court
+              Book a Coach
             </Link>
             {chatEnabled && coach.user_id && (
               <Can permission="community.chat.view">

@@ -365,6 +365,47 @@ export async function getCoachAvailabilityHandler(request: FastifyRequest, reply
   return reply.send(result);
 }
 
+// ── Coach service locations ──
+export async function getMyServiceLocationsHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = (request as any).userId;
+  const result = await svc.getMyCoachServiceLocations(userId);
+  return reply.send(result || []);
+}
+
+export async function setMyServiceLocationsHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = (request as any).userId;
+  const body = (request.body || {}) as any;
+  const branchIds = Array.isArray(body.branchIds) ? body.branchIds.map((n: any) => Number(n)) : [];
+  const result = await svc.setMyCoachServiceLocations(userId, branchIds);
+  recordAudit({
+    actorId: userId ?? null,
+    action: 'COACH.SERVICE_LOCATIONS_UPDATE',
+    entityType: 'coach',
+    entityId: userId,
+    afterState: { branchCount: result.length, branchIds },
+    ipAddress: request.ip,
+    userAgent: request.headers['user-agent'],
+  });
+  return reply.send(result);
+}
+
+export async function getCoachServiceLocationsHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { id } = request.params as any;
+  const result = await svc.getCoachServiceLocations(Number(id));
+  return reply.send(result || []);
+}
+
+export async function getBranchCoachPolicyHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { branchId } = request.params as any;
+  const policy = await svc.getBranchCoachPolicy(Number(branchId));
+  return reply.send({ branchId: Number(branchId), coachPolicy: policy });
+}
+
+export async function listAvailableBranchesHandler(request: FastifyRequest, reply: FastifyReply) {
+  const branches = await svc.listAllBranches();
+  return reply.send({ data: branches });
+}
+
 export async function updateTournamentHandler(request: FastifyRequest, reply: FastifyReply) {
   const { id } = request.params as any;
   const t = await svc.updateTournament(Number(id), request.body);

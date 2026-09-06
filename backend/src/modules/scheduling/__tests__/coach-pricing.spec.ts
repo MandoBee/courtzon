@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { calculateCoachSessionPrice } from '../application/coach-pricing.js';
+import { calculateCoachSessionPrice, calculateCoachEarningsSplit } from '../application/coach-pricing.js';
 
 /**
  * Coach session pricing — the canonical coach price calculation.
@@ -54,5 +54,78 @@ describe('calculateCoachSessionPrice', () => {
   it('zero / missing hourly rate yields 0', () => {
     expect(calculateCoachSessionPrice(0, '14:00', '15:00')).toBe(0);
     expect(calculateCoachSessionPrice(NaN, '14:00', '15:00')).toBe(0);
+  });
+});
+
+/**
+ * Coach-vs-organisation earnings split — driven by the branch coach policy.
+ *
+ * Business rule:
+ * - independent_coaches_allowed → org keeps 0% (coach keeps full post-commission net).
+ * - contract_required with an accepted agreement → org receives org_split_pct
+ *   of the post-commission net; the coach keeps the remainder.
+ * - contract_required without an agreement → org keeps 0% (should not normally
+ *   reach pricing because eligibility is rejected earlier, but stays safe).
+ */
+describe('calculateCoachEarningsSplit', () => {
+  it('independent branch → org keeps 0%, coach keeps full net', () => {
+    expect(
+      calculateCoachEarningsSplit({
+        branchPolicy: 'independent_coaches_allowed',
+        postCommissionNet: 280,
+        orgSplitPct: 30,
+        coachSplitPct: 70,
+        hasAgreement: false,
+      }),
+    ).toEqual({ coachEarnings: 280, orgEarnings: 0, orgSplitPct: 0 });
+  });
+
+  it('contract-required with agreement → org gets its split, coach gets remainder', () => {
+    // post-commission net = 280; org 30% → 84, coach 70% → 196.
+    expect(
+      calculateCoachEarningsSplit({
+        branchPolicy: 'contract_required',
+        postCommissionNet: 280,
+        orgSplitPct: 30,
+        coachSplitPct: 70,
+        hasAgreement: true,
+      }),
+    ).toEqual({ coachEarnings: 196, orgEarnings: 84, orgSplitPct: 30 });
+  });
+
+  it('contract-required with 50/50 split → both earn 50%', () => {
+    expect(
+      calculateCoachEarningsSplit({
+        branchPolicy: 'contract_required',
+        postCommissionNet: 100,
+        orgSplitPct: 50,
+        coachSplitPct: 50,
+        hasAgreement: true,
+      }),
+    ).toEqual({ coachEarnings: 50, orgEarnings: 50, orgSplitPct: 50 });
+  });
+
+  it('contract-required without an agreement → org keeps 0% (defensive)', () => {
+    expect(
+      calculateCoachEarningsSplit({
+        branchPolicy: 'contract_required',
+        postCommissionNet: 280,
+        orgSplitPct: 30,
+        coachSplitPct: 70,
+        hasAgreement: false,
+      }),
+    ).toEqual({ coachEarnings: 280, orgEarnings: 0, orgSplitPct: 0 });
+  });
+
+  it('contract-required with 0% org split → org keeps 0%', () => {
+    expect(
+      calculateCoachEarningsSplit({
+        branchPolicy: 'contract_required',
+        postCommissionNet: 200,
+        orgSplitPct: 0,
+        coachSplitPct: 100,
+        hasAgreement: true,
+      }),
+    ).toEqual({ coachEarnings: 200, orgEarnings: 0, orgSplitPct: 0 });
   });
 });

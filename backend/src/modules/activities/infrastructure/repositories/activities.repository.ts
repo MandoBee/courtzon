@@ -10,6 +10,7 @@ import {
   professionalServiceRepository,
   PROFESSIONAL_SERVICE_PRICE_SELECT,
 } from '../../../profiles/infrastructure/repositories/professional-service.repository.js';
+import { evaluateCoachEligibility } from '../../domain/coach-eligibility.js';
 
 /** LEFT JOIN fragment that pulls the coach's default hourly service. */
 const COACH_SERVICE_JOIN = `LEFT JOIN professional_services ps ON ps.professional_profile_id = pp.id AND ps.service_key = 'coach_default' AND ps.is_active = 1`;
@@ -537,6 +538,16 @@ export const activitiesRepository = {
     return rows.length > 0;
   },
 
+  async getAcceptedAgreement(coachId: number, organisationId: number) {
+    const pool = getPool();
+    const [rows] = await pool.execute<RowData>(
+      `SELECT coa.*, o.name as organisation_name FROM coach_org_agreements coa JOIN organisations o ON coa.organisation_id = o.id
+       WHERE coa.coach_id = ? AND coa.organisation_id = ? AND coa.status IN ('accepted','active') AND coa.is_active = TRUE LIMIT 1`,
+      [coachId, organisationId]
+    );
+    return rows[0] || null;
+  },
+
   async upsertOrgAgreement(data: { coachId: number; organisationId: number; coachSplitPct: number; orgSplitPct: number; hourlyRate?: number; isActive?: boolean }) {
     // Coach-initiated agreements require org approval — set to pending.
     const pool = getPool();
@@ -713,6 +724,189 @@ export const activitiesRepository = {
        WHERE coach_id = ? AND DATE(start_time) = ? AND status IN ('scheduled', 'in_progress')`,
       [coachId, date]
     );
+    return rows;
+  },
+
+  // ── Coach service locations (which branches a coach can provide services at) ──
+  async getCoachServiceLocations(coachId: number) {
+    const pool = getPool();
+    const [rows] = await pool.execute<RowData>(
+      `SELECT csl.id, csl.branch_id, b.name AS branch_name, b.organisation_id, o.name AS organisation_name, b.coach_policy
+       FROM coach_service_locations csl
+       JOIN branches b ON csl.branch_id = b.id AND b.deleted_at IS NULL
+       LEFT JOIN organisations o ON b.organisation_id = o.id
+       WHERE csl.coach_id = ?
+       ORDER BY b.name`,
+      [coachId]
+    );
+    return rows;
+  },
+
+  async coachHasServiceAccess(coachId: number, branchId: number): Promise<boolean> {
+    const pool = getPool();
+    const [rows] = await pool.execute<RowData>(
+      `SELECT 1 FROM coach_service_locations WHERE coach_id = ? AND branch_id = ? LIMIT 1`,
+      [coachId, branchId]
+    );
+    return rows.length > 0;
+  },
+
+  async setCoachServiceLocations(coachId: number, branchIds: number[]) {
+    const pool = getPool();
+    const conn = await pool.getConnection();
+    try {
+      await conn.beginTransaction();
+      await conn.execute('DELETE FROM coach_service_locations WHERE coach_id = ?', [coachId]);
+      const seen = new Set<number>();
+      for (const branchId of branchIds || []) {
+        if (seen.has(branchId)) continue;
+        seen.add(branchId);
+        await conn.execute(
+          'INSERT INTO coach_service_locations (coach_id, branch_id) VALUES (?, ?) ON DUPLICATE KEY UPDATE branch_id = VALUES(branch_id)',
+          [coachId, branchId]
+        );
+      }
+      await conn.commit();
+    } catch (e) {
+      await conn.rollback();
+      throw e;
+    } finally {
+      conn.release();
+    }
+  },
+
+  // ── Branch coach policy ──
+  async getBranchCoachPolicy(branchId: number): Promise<'contract_required' | 'independent_coaches_allowed'> {
+    const pool = getPool();
+    const [rows] = await pool.execute<RowData>(
+      `SELECT coach_policy FROM branches WHERE id = ?`,
+      [branchId]
+    );
+    if (!rows.length) return 'contract_required';
+    return (rows[0] as any).coach_policy === 'independent_coaches_allowed' ? 'independent_coaches_allowed' : 'contract_required';
+  },
+
+  async listAllBranches() {
+    const pool = getPool();
+    const [rows] = await pool.execute<RowData>(
+      `SELECT b.id, b.name, b.organisation_id, o.name AS organisation_name, b.coach_policy
+       FROM branches b
+       LEFT JOIN organisations o ON b.organisation_id = o.id
+       WHERE b.deleted_at IS NULL
+       ORDER BY o.name, b.name`
+    );
+    return rows;
+  },
+
+  async setBranchCoachPolicy(branchId: number, policy: 'contract_required' | 'independent_coaches_allowed') {
+    const pool = getPool();
+    await pool.execute(
+      `UPDATE branches SET coach_policy = ? WHERE id = ?`,
+      [policy, branchId]
+    );
+  },
+
+  /**
+   * Determine whether a coach may provide coaching services at a given branch,
+   * factoring in BOTH the branch's coach policy and the coach's service
+   * locations. The coach must have explicit service access to the branch
+   * (coach_service_locations). If the branch policy requires a contract, an
+   * active/accepted organisation agreement is ALSO required.
+   */
+  async isCoachEligibleAtBranch(coachId: number, branchId: number): Promise<{
+    eligible: boolean;
+    reason: string | null;
+    policy: 'contract_required' | 'independent_coaches_allowed';
+    hasServiceAccess: boolean;
+    hasAgreement: boolean;
+  }> {
+    const pool = getPool();
+    const [branchRows] = await pool.execute<RowData>(
+      `SELECT coach_policy, organisation_id FROM branches WHERE id = ? AND deleted_at IS NULL`,
+      [branchId]
+    );
+    if (!branchRows.length) return { eligible: false, reason: 'Branch not found', policy: 'contract_required', hasServiceAccess: false, hasAgreement: false };
+
+    const policy = (branchRows[0] as any).coach_policy === 'independent_coaches_allowed' ? 'independent_coaches_allowed' : 'contract_required';
+    const organisationId = (branchRows[0] as any).organisation_id;
+
+    const [cslRows] = await pool.execute<RowData>(
+      `SELECT 1 FROM coach_service_locations WHERE coach_id = ? AND branch_id = ? LIMIT 1`,
+      [coachId, branchId]
+    );
+    const hasServiceAccess = cslRows.length > 0;
+
+    let hasAgreement = false;
+    if (policy === 'contract_required') {
+      const [agreeRows] = await pool.execute<RowData>(
+        `SELECT 1 FROM coach_org_agreements
+         WHERE coach_id = ? AND organisation_id = ? AND status IN ('accepted','active') AND is_active = TRUE LIMIT 1`,
+        [coachId, organisationId]
+      );
+      hasAgreement = agreeRows.length > 0;
+    }
+
+    const decision = evaluateCoachEligibility({
+      hasServiceAccess,
+      branchPolicy: policy,
+      hasAgreement,
+    });
+
+    return {
+      eligible: decision.eligible,
+      reason: decision.reason,
+      policy,
+      hasServiceAccess,
+      hasAgreement: policy === 'contract_required' ? hasAgreement : false,
+    };
+  },
+
+  /**
+   * List coaches eligible to provide services at a given branch.
+   * Eligibility requires:
+   *   1. Approved, non-deleted coach profile (professionally available).
+   *   2. Explicit service access to the branch (coach_service_locations).
+   *   3. If the branch policy is 'contract_required', an active/accepted
+   *      agreement with the branch's organisation.
+   */
+  async listEligibleCoachesAtBranch(branchId: number, sportId?: number) {
+    const pool = getPool();
+    const [branchRows] = await pool.execute<RowData>(
+      `SELECT coach_policy, organisation_id FROM branches WHERE id = ? AND deleted_at IS NULL`,
+      [branchId]
+    );
+    if (!branchRows.length) return [];
+    const policy = (branchRows[0] as any).coach_policy === 'independent_coaches_allowed' ? 'independent_coaches_allowed' : 'contract_required';
+    const organisationId = (branchRows[0] as any).organisation_id;
+
+    let sql = `
+      SELECT cp.id, cp.user_id, cp.is_verified, u.full_name, u.email,
+             ${PROFESSIONAL_PROFILE_SELECT},
+             ${PROFESSIONAL_SERVICE_PRICE_SELECT}
+      FROM coach_service_locations csl
+      JOIN coach_profiles cp ON csl.coach_id = cp.id AND cp.deleted_at IS NULL AND cp.status = 'approved'
+      LEFT JOIN professional_profiles pp ON pp.user_id = cp.user_id
+      ${COACH_SERVICE_JOIN}
+      JOIN users u ON cp.user_id = u.id
+      WHERE csl.branch_id = ? AND pp.is_available = 1`;
+    const params: any[] = [branchId];
+
+    if (policy === 'contract_required' && organisationId) {
+      sql += ` AND EXISTS (
+        SELECT 1 FROM coach_org_agreements coa
+        WHERE coa.coach_id = cp.id AND coa.organisation_id = ?
+          AND coa.status IN ('accepted','active') AND coa.is_active = TRUE
+      )`;
+      params.push(organisationId);
+    }
+
+    if (sportId) {
+      sql += ` AND JSON_CONTAINS(pp.sports, ?)`;
+      params.push(JSON.stringify(sportId));
+    }
+
+    sql += ' ORDER BY pp.rating_avg DESC LIMIT 50';
+    const [rows] = await pool.query<RowData>(sql, params);
     return rows;
   },
 

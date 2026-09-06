@@ -17,7 +17,7 @@ export default function CoachProfilePage() {
   const { showToast } = useToast();
   const { can } = useCan();
   const { t } = useTranslation();
-  const [activeTab, setActiveTab] = useState<'profile' | 'availability' | 'orgs'>('profile');
+  const [activeTab, setActiveTab] = useState<'profile' | 'availability' | 'orgs' | 'locations'>('profile');
 
   const { data: profile, isLoading } = useQuery({
     queryKey: ['my-coach-profile'],
@@ -60,12 +60,17 @@ export default function CoachProfilePage() {
               <button onClick={() => setActiveTab('availability')} className={`px-5 py-2.5 text-sm font-medium -mb-px border-b-2 transition-colors ${activeTab === 'availability' ? 'border-[var(--color-primary)] text-[var(--color-primary)]' : 'border-transparent text-[var(--color-text-muted)] hover:text-[var(--color-text)]'}`}>{t('coach.profile.tab_availability')}</button>
             </Can>
             <button onClick={() => setActiveTab('orgs')} className={`px-5 py-2.5 text-sm font-medium -mb-px border-b-2 transition-colors ${activeTab === 'orgs' ? 'border-[var(--color-primary)] text-[var(--color-primary)]' : 'border-transparent text-[var(--color-text-muted)] hover:text-[var(--color-text)]'}`}>Organizations</button>
+            <Can permission="coaches.service_locations.manage">
+              <button onClick={() => setActiveTab('locations')} className={`px-5 py-2.5 text-sm font-medium -mb-px border-b-2 transition-colors ${activeTab === 'locations' ? 'border-[var(--color-primary)] text-[var(--color-primary)]' : 'border-transparent text-[var(--color-text-muted)] hover:text-[var(--color-text)]'}`}>{t('coach.profile.tab_locations')}</button>
+            </Can>
           </div>
 
           {activeTab === 'profile' ? (
             <CoachProfileTab profile={profile} sportsList={sportsList} user={user} queryClient={queryClient} showToast={showToast} />
           ) : activeTab === 'availability' && can('coaches.availability.manage') ? (
             <CoachAvailabilityTab queryClient={queryClient} showToast={showToast} />
+          ) : activeTab === 'locations' && can('coaches.service_locations.manage') ? (
+            <CoachServiceLocationsTab queryClient={queryClient} showToast={showToast} />
           ) : (
             <CoachOrgsTab orgList={orgList} agreements={agreements} queryClient={queryClient} showToast={showToast} />
           )}
@@ -530,6 +535,100 @@ function CoachOrgsTab({ orgList, agreements, queryClient, showToast }: any) {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function CoachServiceLocationsTab({ queryClient, showToast }: any) {
+  const { t } = useTranslation();
+  const { data: locations, isLoading } = useQuery({
+    queryKey: ['my-coach-service-locations'],
+    queryFn: () => api.get('/coaches/service-locations/me').then((r) => r.data || []),
+  });
+  const { data: branches } = useQuery({
+    queryKey: ['available-branches'],
+    queryFn: () => api.get('/coaches/service-locations/me/available-branches').then((r) => r.data?.data || []),
+    staleTime: 300000,
+  });
+
+  const selected = new Set<number>((locations || []).map((l: any) => l.branch_id));
+
+  const saveMutation = useMutation({
+    mutationFn: (branchIds: number[]) => api.put('/coaches/service-locations/me', { branchIds }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['my-coach-service-locations'] });
+      showToast('Service locations saved!');
+    },
+    onError: (err: any) => showToast(err?.response?.data?.message || 'Failed to save service locations', 'error'),
+  });
+
+  if (isLoading) return <div className="text-center py-12 text-[var(--color-text-muted)]">{t('common.loading')}</div>;
+
+  const grouped = (branches || []).reduce((acc: any, b: any) => {
+    const orgKey = b.organisation_name || 'Other';
+    if (!acc[orgKey]) acc[orgKey] = [];
+    acc[orgKey].push(b);
+    return acc;
+  }, {});
+
+  return (
+    <div className="space-y-6">
+      <div className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] p-5 space-y-4">
+        <div>
+          <h2 className="font-medium">Service Locations</h2>
+          <p className="text-xs text-[var(--color-text-muted)]">Select the branches where you provide coaching services. Players can only book you at branches you select. Branches that require a contract also need an accepted agreement with the branch's organisation.</p>
+        </div>
+        {Object.keys(grouped).length === 0 && (
+          <p className="text-sm text-[var(--color-text-muted)]">No branches available.</p>
+        )}
+        {Object.entries(grouped).map(([orgName, orgBranches]: any) => (
+          <div key={orgName} className="border border-[var(--color-border)] rounded-[var(--radius-md)] p-4 space-y-2">
+            <h3 className="text-sm font-semibold text-[var(--color-text)]">{orgName}</h3>
+            <div className="flex flex-wrap gap-3">
+              {orgBranches.map((b: any) => (
+                <label key={b.id} className="flex items-start gap-2 text-sm cursor-pointer border rounded-[var(--radius-md)] px-3 py-2 hover:border-[var(--color-primary)]">
+                  <input
+                    type="checkbox"
+                    checked={selected.has(b.id)}
+                    onChange={() => {
+                      if (selected.has(b.id)) selected.delete(b.id);
+                      else selected.add(b.id);
+                      saveMutation.mutate(Array.from(selected));
+                    }}
+                    className="w-4 h-4 mt-0.5"
+                  />
+                  <span>
+                    <span className="font-medium block">{b.name}</span>
+                    {b.coach_policy && (
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${b.coach_policy === 'contract_required' ? 'bg-[var(--color-warning-bg,#fef3c7)] text-[var(--color-warning-text,#92400e)]' : 'bg-[var(--color-success-bg)] text-[var(--color-success-text)]'}`}>
+                        {b.coach_policy === 'contract_required' ? 'Contract required' : 'Independent allowed'}
+                      </span>
+                    )}
+                  </span>
+                </label>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+      {locations && locations.length > 0 && (
+        <div className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] p-5">
+          <h2 className="font-medium mb-3">Selected Locations</h2>
+          <div className="space-y-2">
+            {locations.map((l: any) => (
+              <div key={l.id} className="flex items-center justify-between text-sm p-3 border rounded-[var(--radius-md)]">
+                <div>
+                  <span className="font-medium">{l.branch_name}</span>
+                  <span className="text-[var(--color-text-muted)] ml-2">{l.organisation_name}</span>
+                </div>
+                <span className={`text-xs px-2 py-0.5 rounded-full ${l.coach_policy === 'contract_required' ? 'bg-[var(--color-warning-bg,#fef3c7)] text-[var(--color-warning-text,#92400e)]' : 'bg-[var(--color-success-bg)] text-[var(--color-success-text)]'}`}>
+                  {l.coach_policy === 'contract_required' ? 'Contract required' : 'Independent allowed'}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
