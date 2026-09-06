@@ -4,6 +4,7 @@ import { createModuleLogger } from '../../../shared/utils/logger.js';
 import { postAccountingEvent } from './accounting-event.listener.js';
 import { financialEntitlementService } from './financial-entitlement.service.js';
 import { unifiedSettlementService } from '../../settlement/application/unified-settlement.service.js';
+import { computeSettlementFinancials } from '../../settlement/application/unified-settlement-calc.js';
 
 const log = createModuleLogger('booking-settlement');
 type RowData = RowDataPacket[];
@@ -19,6 +20,9 @@ export interface BookingEconomics {
   paymentStatus: string;
   bookingDate: string;
   startTime: string;
+  bookingType: string;
+  paymentMethod: string;
+  orgName: string;
   coachAmount: number;
   orgAmount: number;
   refundedAmount: number;
@@ -32,8 +36,25 @@ export interface BookingEconomics {
   orgSettleable: number;
   coachOutstandingRecovery: number;
   orgOutstandingRecovery: number;
+  // Entitlement-driven Card vs COD split (authoritative settlement model).
+  cardOnlineNet: number; // Σ ORGANIZATION_EARNING collected by CourtZon (owed to org)
+  codFee: number;        // Σ COURTZON_COMMISSION collected by the org (owed to CourtZon)
+  gross: number;         // Σ booking entitlements (org earning + commission)
   eligibility: EligibilityStatus;
   eligibilityReason: string;
+}
+
+export interface BookingSettlementPreview {
+  gross: number;          // Σ booking entitlements (org earnings + commissions)
+  onlineNet: number;      // card/online net held by CourtZon → owed to the org
+  codGross: number;       // cash/COD gross collected by the organisation
+  codFee: number;         // COD commission receivable from the organisation
+  courtzonOwedToOrg: number;
+  orgOwedToCourtZon: number;
+  commission: number;     // Σ CourtZon commission (all collectors)
+  direction: 'COURTZON_TO_ORGANIZATION' | 'ORGANIZATION_TO_COURTZON' | 'ZERO_BALANCE';
+  finalAmount: number;    // |net|
+  eligibleBookings: number;
 }
 
 /**
@@ -57,12 +78,15 @@ class BookingSettlementService {
    */
   async getEconomics(bookingId: number): Promise<BookingEconomics | null> {
     const [rows] = await this.pool.execute<RowData>(
-      `SELECT id, organisation_id, booking_status, payment_status, booking_date, start_time,
-              coach_amount, club_amount, refunded_amount, total_amount, tax_amount,
-              coach_settled_amount, org_settled_amount,
-              coach_recovered_amount, org_recovered_amount,
-              coach_recovery_collected, org_recovery_collected
-       FROM bookings WHERE id = ?`,
+      `SELECT b.id, b.organisation_id, b.booking_status, b.payment_status, b.booking_date, b.start_time,
+              b.booking_type, b.payment_method, b.coach_amount, b.club_amount, b.refunded_amount,
+              b.total_amount, b.tax_amount,
+              b.coach_settled_amount, b.org_settled_amount,
+              b.coach_recovered_amount, b.org_recovered_amount,
+              b.coach_recovery_collected, b.org_recovery_collected,
+              o.name AS org_name
+       FROM bookings b LEFT JOIN organisations o ON o.id = b.organisation_id
+       WHERE b.id = ?`,
       [bookingId],
     );
     if (!rows.length) return null;
@@ -88,6 +112,16 @@ class BookingSettlementService {
     const coachOutstandingRecovery = Math.max(0, Math.round((coachRecovered - coachCollected) * 100) / 100);
     const orgOutstandingRecovery = Math.max(0, Math.round((orgRecovered - orgCollected) * 100) / 100);
 
+    const ents = await financialEntitlementService.getEntitlementsBySource('booking', bookingId);
+    const available = ents.filter((e) => e.status === 'AVAILABLE' && e.settlement_id == null);
+    const cardOnlineNet = round2(available
+      .filter((e) => e.entitlement_type === 'ORGANIZATION_EARNING' && e.collector === 'courtzon')
+      .reduce((s, e) => s + Number(e.amount), 0));
+    const codFee = round2(available
+      .filter((e) => e.entitlement_type === 'COURTZON_COMMISSION' && e.collector === 'org')
+      .reduce((s, e) => s + Number(e.amount), 0));
+    const gross = round2(available.reduce((s, e) => s + Number(e.amount), 0));
+
     const { status, reason } = this.deriveEligibility(b, coachSettleable, orgSettleable);
 
     return {
@@ -97,9 +131,13 @@ class BookingSettlementService {
       paymentStatus: b.payment_status || '',
       bookingDate: String(b.booking_date || ''),
       startTime: String(b.start_time || ''),
+      bookingType: b.booking_type || '',
+      paymentMethod: b.payment_method || '',
+      orgName: b.org_name || '',
       coachAmount, orgAmount, refundedAmount: refunded,
       coachSettled, orgSettled, coachRecovered, orgRecovered, coachCollected, orgCollected,
       coachSettleable, orgSettleable, coachOutstandingRecovery, orgOutstandingRecovery,
+      cardOnlineNet, codFee, gross,
       eligibility: status,
       eligibilityReason: reason,
     };
@@ -107,35 +145,180 @@ class BookingSettlementService {
 
   /**
    * List eligible (and partially settled) bookings for settlement review.
+   *
+   * ENTITLEMENT-DRIVEN: a booking is settlement-eligible when it has AVAILABLE
+   * booking entitlements (ORGANIZATION_EARNING / COURTZON_COMMISSION) that have
+   * not yet been consumed by a settlement. This mirrors the authoritative
+   * unified-settlement model introduced with the financial-entitlements +
+   * unified-settlement engine (commit f003b82 and earlier), NOT the legacy
+   * bookings-table read-through columns:
+   *   - Card/online bookings → ORGANIZATION_EARNING with collector='courtzon':
+   *     CourtZon holds the money and owes the organisation the org net.
+   *   - Cash/COD bookings → COURTZON_COMMISSION with collector='org': the org
+   *     already holds the gross and owes CourtZon the commission.
+   * Both sides are netted in the returned `preview` via the SAME pure
+   * computeSettlementFinancials the unified settlement engine uses.
+   *
+   * A booking drops out of this list automatically once ALL of its booking
+   * entitlements have been consumed (reserved → SETTLED) by a settlement, so a
+   * settled booking can never be settled twice.
    */
-  async listEligible(organisationId: number | null, page: number, limit: number): Promise<{ data: BookingEconomics[]; total: number }> {
-    const where: string[] = [
-      `booking_status IN ('completed', 'checked_in')`,
-      `payment_status IN ('paid', 'partially_refunded')`,
-      `(coach_amount > coach_settled_amount OR club_amount > org_settled_amount)`,
+  async listEligible(organisationId: number | null, page: number, limit: number): Promise<{ data: BookingEconomics[]; total: number; preview: BookingSettlementPreview }> {
+    const pool = getPool();
+    const conditions: string[] = [
+      `fe.source_type = 'booking'`,
+      `fe.status = 'AVAILABLE'`,
+      `fe.settlement_id IS NULL`,
     ];
     const params: any[] = [];
-    if (organisationId != null) { where.push('organisation_id = ?'); params.push(organisationId); }
+    if (organisationId != null) { conditions.push('fe.organisation_id = ?'); params.push(organisationId); }
+    const where = `WHERE ${conditions.join(' AND ')}`;
 
-    const [countRows] = await this.pool.execute<RowData>(
-      `SELECT COUNT(*) AS cnt FROM bookings WHERE ${where.join(' AND ')}`, params,
+    // Preview over the FULL filtered set (not truncated by pagination), using
+    // the SAME pure calc the unified settlement engine uses.
+    const [previewRows] = await pool.execute<RowData>(
+      `SELECT fe.entitlement_type, fe.amount, fe.collector, fe.organisation_id
+       FROM financial_entitlements fe ${where}`,
+      params,
     );
-    const total = Number((countRows as any[])[0].cnt || 0);
+    const preview = computeSettlementFinancials((previewRows as any[]).map((r) => ({
+      id: 0,
+      organisationId: r.organisation_id ?? 0,
+      entitlementType: r.entitlement_type,
+      amount: Number(r.amount),
+      collector: r.collector,
+    })));
+    const codGross = round2((previewRows as any[])
+      .filter((r) => r.collector === 'org')
+      .reduce((s, r) => s + Number(r.amount), 0));
+    const commission = round2((previewRows as any[])
+      .filter((r) => r.entitlement_type === 'COURTZON_COMMISSION')
+      .reduce((s, r) => s + Number(r.amount), 0));
+    const settledPreview: BookingSettlementPreview = {
+      gross: round2(preview.totalOrgEarnings + preview.totalCommission),
+      onlineNet: preview.courtzonOwedToOrg,
+      codGross,
+      codFee: preview.orgOwedToCourtZon,
+      courtzonOwedToOrg: preview.courtzonOwedToOrg,
+      orgOwedToCourtZon: preview.orgOwedToCourtZon,
+      commission,
+      direction: preview.direction,
+      finalAmount: preview.finalAmount,
+      eligibleBookings: 0,
+    };
+
+    const [countRows] = await pool.execute<RowData>(
+      `SELECT COUNT(DISTINCT fe.source_id) AS cnt FROM financial_entitlements fe ${where}`,
+      params,
+    );
+    const total = Number((countRows[0] as any).cnt || 0);
+    settledPreview.eligibleBookings = total;
 
     const offset = (page - 1) * limit;
     const safeLimit = Math.max(1, Math.floor(Number(limit) || 20));
     const safeOffset = Math.max(0, Math.floor(Number(offset) || 0));
-    const [rows] = await this.pool.execute<RowData>(
-      `SELECT id FROM bookings WHERE ${where.join(' AND ')} ORDER BY booking_date DESC, start_time DESC LIMIT ${safeLimit} OFFSET ${safeOffset}`,
+    const [idRows] = await pool.execute<RowData>(
+      `SELECT fe.source_id AS bookingId, MAX(fe.created_at) AS created_at
+       FROM financial_entitlements fe ${where}
+       GROUP BY fe.source_id
+       ORDER BY created_at DESC
+       LIMIT ${safeLimit} OFFSET ${safeOffset}`,
       params,
     );
 
     const data: BookingEconomics[] = [];
-    for (const r of rows as any[]) {
-      const econ = await this.getEconomics(r.id);
+    for (const r of idRows as any[]) {
+      const econ = await this.getBookingEconomics(Number(r.bookingId));
       if (econ) data.push(econ);
     }
-    return { data, total };
+    return { data, total, preview: settledPreview };
+  }
+
+  /**
+   * Entitlement-driven economics for a single booking (Card vs COD split).
+   * Used by the eligible list; the Card/COD amounts come from AVAILABLE
+   * financial entitlements (the authoritative position), coach mechanics stay
+   * on the bookings table (coaches are providers, not organisations).
+   */
+  private async getBookingEconomics(bookingId: number): Promise<BookingEconomics | null> {
+    const [rows] = await this.pool.execute<RowData>(
+      `SELECT b.id, b.organisation_id, b.booking_status, b.payment_status, b.booking_date, b.start_time,
+              b.booking_type, b.payment_method, b.coach_amount, b.club_amount, b.refunded_amount,
+              b.total_amount, b.tax_amount, b.coach_settled_amount, b.org_settled_amount,
+              b.coach_recovered_amount, b.org_recovered_amount,
+              b.coach_recovery_collected, b.org_recovery_collected,
+              o.name AS org_name
+       FROM bookings b LEFT JOIN organisations o ON o.id = b.organisation_id
+       WHERE b.id = ?`,
+      [bookingId],
+    );
+    if (!rows.length) return null;
+    const b = rows[0] as any;
+
+    const coachAmount = Number(b.coach_amount || 0);
+    const orgAmount = Number(b.club_amount || 0);
+    const refunded = Number(b.refunded_amount || 0);
+    const grossPayable = Number(b.total_amount || 0) + Number(b.tax_amount || 0);
+    const coachSettled = Number(b.coach_settled_amount || 0);
+    const orgSettled = Number(b.org_settled_amount || 0);
+    const coachRecovered = Number(b.coach_recovered_amount || 0);
+    const orgRecovered = Number(b.org_recovered_amount || 0);
+    const coachCollected = Number(b.coach_recovery_collected || 0);
+    const orgCollected = Number(b.org_recovery_collected || 0);
+
+    const ratio = grossPayable > 0 ? Math.min(refunded / grossPayable, 1) : 0;
+    const coachRefunded = Math.round(coachAmount * ratio * 100) / 100;
+    const orgRefunded = Math.round(orgAmount * ratio * 100) / 100;
+
+    const coachSettleable = Math.max(0, Math.round((coachAmount - coachSettled - coachRefunded) * 100) / 100);
+    const coachOutstandingRecovery = Math.max(0, Math.round((coachRecovered - coachCollected) * 100) / 100);
+    const orgOutstandingRecovery = Math.max(0, Math.round((orgRecovered - orgCollected) * 100) / 100);
+
+    const ents = await financialEntitlementService.getEntitlementsBySource('booking', bookingId);
+    const available = ents.filter((e) => e.status === 'AVAILABLE' && e.settlement_id == null);
+    const settledCount = ents.filter((e) => e.status === 'SETTLED').length;
+    const cardOnlineNet = round2(available
+      .filter((e) => e.entitlement_type === 'ORGANIZATION_EARNING' && e.collector === 'courtzon')
+      .reduce((s, e) => s + Number(e.amount), 0));
+    const codFee = round2(available
+      .filter((e) => e.entitlement_type === 'COURTZON_COMMISSION' && e.collector === 'org')
+      .reduce((s, e) => s + Number(e.amount), 0));
+    const gross = round2(available.reduce((s, e) => s + Number(e.amount), 0));
+    // The org's CourtZon-payable is exactly the card/online net held by CourtZon.
+    const orgSettleable = round2(Math.max(0, cardOnlineNet - orgSettled));
+
+    const eligibility = this.deriveEntitlementEligibility(available.length, settledCount, ents.length);
+
+    return {
+      bookingId,
+      organisationId: b.organisation_id ?? null,
+      bookingStatus: b.booking_status,
+      paymentStatus: b.payment_status || '',
+      bookingDate: String(b.booking_date || ''),
+      startTime: String(b.start_time || ''),
+      bookingType: b.booking_type || '',
+      paymentMethod: b.payment_method || '',
+      orgName: b.org_name || '',
+      coachAmount, orgAmount, refundedAmount: refunded,
+      coachSettled, orgSettled, coachRecovered, orgRecovered, coachCollected, orgCollected,
+      coachSettleable, orgSettleable, coachOutstandingRecovery, orgOutstandingRecovery,
+      cardOnlineNet, codFee, gross,
+      eligibility: eligibility.status,
+      eligibilityReason: eligibility.reason,
+    };
+  }
+
+  private deriveEntitlementEligibility(availableCount: number, settledCount: number, totalCount: number): { status: EligibilityStatus; reason: string } {
+    if (availableCount === 0 && totalCount > 0 && settledCount > 0) {
+      return { status: 'SETTLED', reason: 'all booking entitlements already settled' };
+    }
+    if (availableCount === 0) {
+      return { status: 'NOT_ELIGIBLE', reason: 'no AVAILABLE booking entitlements' };
+    }
+    if (settledCount > 0) {
+      return { status: 'PARTIALLY_SETTLED', reason: 'partially settled; remaining entitlements available' };
+    }
+    return { status: 'ELIGIBLE', reason: 'AVAILABLE booking entitlements' };
   }
 
   /**
