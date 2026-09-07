@@ -195,17 +195,20 @@ function mapBookingEvent(eventName: string, p: Record<string, any>): MappedSocke
   return {
     type,
     payload: {
+      // PRIVACY: expose only the minimum fields the frontend needs to
+      // invalidate slot/cache state (bookingId, status, resourceId/courtId,
+      // bookingDate). Booking-owner identity (userId), cancellation reason,
+      // organisation/branch ids and session times are intentionally NOT sent to
+      // socket rooms — in particular `resource:<id>`, which any authenticated
+      // viewer of a court may legitimately join (Group 2 authorization). The
+      // destination rooms above are still computed from the SOURCE event, so
+      // routing is unchanged. Server-side accounting/notifications consume the
+      // domain events directly, never this socket payload.
       bookingId: p.bookingId,
-      userId: p.userId,
       status: p.booking_status || p.status,
       resourceId,
       courtId: resourceId,
       bookingDate: p.bookingDate || null,
-      startTime: p.startTime,
-      endTime: p.endTime,
-      organisationId: p.organisationId,
-      branchId: p.branchId,
-      reason: p.reason,
     },
     rooms,
   };

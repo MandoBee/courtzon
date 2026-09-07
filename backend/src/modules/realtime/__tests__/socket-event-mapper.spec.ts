@@ -166,16 +166,54 @@ describe('SocketEventMapper', () => {
     expect(result!.payload.courtId).toBe(7);
   });
 
-  it('maps booking:cancelled with full identity for room resolution', () => {
+  it('maps booking:cancelled with identity only for ROOM resolution (payload is privacy-slim)', () => {
     const result = mapDomainEvent('booking:cancelled', {
       bookingId: 10, userId: 42, organisationId: 5, branchId: 3, resourceId: 7,
       bookingDate: '2026-08-20', startTime: '10:00', endTime: '11:00', reason: 'User request',
     });
     expect(result!.type).toBe('booking.cancelled');
+    // Routing still uses the SOURCE event identity (unchanged).
     expect(result!.rooms).toContain('user:42');
     expect(result!.rooms).toContain('organisation:5');
     expect(result!.rooms).toContain('resource:7');
-    expect(result!.payload.reason).toBe('User request');
+    // The payload no longer carries owner identity / reason / times.
+    expect(result!.payload.reason).toBeUndefined();
+    expect(result!.payload.userId).toBeUndefined();
+  });
+
+  it('booking payload is privacy-slim: no owner identity, reason, org/branch or times', () => {
+    const result = mapDomainEvent('booking:created', {
+      bookingId: 10, userId: 42, resourceId: 7, courtId: 7,
+      bookingDate: '2026-08-20', startTime: '10:00', endTime: '11:00',
+      organisationId: 5, branchId: 3, reason: 'Secret',
+    });
+    expect(result).not.toBeNull();
+    // Allowed fields are present.
+    expect(result!.payload.bookingId).toBe(10);
+    expect(result!.payload.resourceId).toBe(7);
+    expect(result!.payload.courtId).toBe(7);
+    expect(result!.payload.bookingDate).toBe('2026-08-20');
+    // Forbidden fields are absent.
+    expect(result!.payload.userId).toBeUndefined();
+    expect(result!.payload.reason).toBeUndefined();
+    expect(result!.payload.organisationId).toBeUndefined();
+    expect(result!.payload.branchId).toBeUndefined();
+    expect(result!.payload.startTime).toBeUndefined();
+    expect(result!.payload.endTime).toBeUndefined();
+  });
+
+  it('booking privacy-slim payload does not break admin/user/org/resource/finance routing', () => {
+    const result = mapDomainEvent('booking:paid', {
+      bookingId: 10, userId: 42, resourceId: 7, courtId: 7,
+      bookingDate: '2026-08-20', organisationId: 5, branchId: 3,
+    });
+    expect(result).not.toBeNull();
+    expect(result!.rooms).toContain('admin');
+    expect(result!.rooms).toContain('booking:10');
+    expect(result!.rooms).toContain('user:42');
+    expect(result!.rooms).toContain('organisation:5');
+    expect(result!.rooms).toContain('resource:7');
+    expect(result!.rooms).toContain('finance');
   });
 
   it('maps booking:expired/completed without identity to admin + booking rooms but type intact', () => {
