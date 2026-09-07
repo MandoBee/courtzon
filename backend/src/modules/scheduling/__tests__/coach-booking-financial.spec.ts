@@ -109,6 +109,11 @@ describe('Coach Booking Financial Wiring', () => {
         rate: 10, rateType: 'percentage', commissionAmount: (gross * 10) / 100, netAmount: (gross * 90) / 100,
         planName: 'Test Plan', planId: 0,
       } as any));
+
+    // Ensure the canonical accounting listener is active for every test
+    // (idempotent registration) so booking:paid / booking:refunded post GL.
+    const { registerAccountingEventListeners } = await import('../../financial/application/accounting-event.listener.js');
+    registerAccountingEventListeners();
   });
 
   afterAll(async () => {
@@ -795,4 +800,118 @@ describe('Coach Booking Financial Wiring', () => {
       await pool.execute(`DELETE FROM coach_sessions WHERE coach_id = ? AND DATE(start_time) = ?`, [coachProfileId, date]);
     }
   });
+
+  // ── Group 3C-Financial: balanced coach-session refund accounting ──
+  async function waitForLedgerEvent(bookingId: number, eventType: string, timeoutMs = 10000): Promise<void> {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      const [rows] = await pool.execute<RowData>(
+        `SELECT COUNT(*) AS c FROM ledger_entries WHERE source_type='booking' AND source_id=? AND event_type=?`,
+        [bookingId, eventType]);
+      if (Number(rows[0].c) > 0) return;
+      await new Promise((r) => setTimeout(r, 150));
+    }
+    throw new Error(`Ledger event ${eventType} not posted for booking ${bookingId}`);
+  }
+
+  async function assertEveryBookingPostingBalanced(bookingId: number): Promise<string[]> {
+    const [events] = await pool.execute<RowData>(
+      `SELECT DISTINCT event_type FROM ledger_entries WHERE source_type='booking' AND source_id=?`, [bookingId]);
+    const unbalanced: string[] = [];
+    for (const ev of events as any[]) {
+      const [entries] = await pool.execute<RowData>(
+        `SELECT side, amount FROM ledger_entries WHERE source_type='booking' AND source_id=? AND event_type=?`,
+        [bookingId, ev.event_type]);
+      let debit = 0; let credit = 0;
+      for (const e of entries as any[]) {
+        if (e.side === 'debit') debit += Number(e.amount);
+        else if (e.side === 'credit') credit += Number(e.amount);
+      }
+      if (Math.abs(debit - credit) > 0.01) unbalanced.push(`${ev.event_type}: debit=${debit} credit=${credit}`);
+    }
+    return unbalanced;
+  }
+
+  it('31. Saga compensation reversal is balanced (wallet coach booking, session failure)', async () => {
+    const { activitiesRepository } = await import('../../activities/infrastructure/repositories/activities.repository.js');
+    const { SchedulingBookingService } = await import('../application/scheduling-booking.service.js');
+    await insertAgreement({ orgId });
+    const date = '2027-04-07';
+    const sessionSpy = vi.spyOn(activitiesRepository, 'createCoachSession').mockRejectedValueOnce(new Error('session boom'));
+    try {
+      await expect(
+        new SchedulingBookingService().bookSession({ coachId: coachProfileId, resourceId, date, startTime: '09:00', endTime: '10:00', paymentMethod: 'wallet' }, PLAYER_USER),
+      ).rejects.toThrow(/refunded/i);
+      const bookingId = await lastBookingForUserAndDate(date);
+      expect(bookingId).not.toBeNull();
+      // Wait for the canonical refund accounting to attempt the reversal.
+      await waitForLedgerEvent(bookingId!, 'booking_wallet_refund');
+      // Every posting is mathematically balanced (no unbalanced wallet refund).
+      expect(await assertEveryBookingPostingBalanced(bookingId!)).toEqual([]);
+    } finally {
+      sessionSpy.mockRestore();
+      const bid = await lastBookingForUserAndDate(date);
+      if (bid) await cleanupBookingRefs(bid);
+      await pool.execute(`DELETE FROM coach_org_agreements WHERE coach_id = ?`, [coachProfileId]);
+    }
+  }, 30000);
+
+  it('30. refund of a PAID wallet coach booking posts balanced entries + coach reversal (debits == credits)', async () => {
+    // This test needs the wallet booking to be CONFIRMED + booking:paid posted.
+    const { registerBookingPaymentListeners } = await import('../../booking/application/booking-payment.listener.js');
+    registerBookingPaymentListeners();
+    const { SchedulingBookingService } = await import('../application/scheduling-booking.service.js');
+    const { bookingService } = await import('../../booking/application/booking.service.js');
+    await insertAgreement({ orgId });
+    const date = '2027-04-06';
+    const res = await new SchedulingBookingService().bookSession(
+      { coachId: coachProfileId, resourceId, date, startTime: '09:00', endTime: '10:00', paymentMethod: 'wallet' }, PLAYER_USER);
+    const bookingId = Number(res.bookingId);
+    try {
+      // Booking revenue must be posted (wallet confirm + GL) before the refund.
+      await waitForLedgerEvent(bookingId, 'booking_wallet_payment');
+      await waitForLedgerEvent(bookingId, 'booking_coach_payout');
+      expect((await assertEveryBookingPostingBalanced(bookingId))).toEqual([]);
+
+      // Full refund via the canonical cancel path.
+      await bookingService.cancelBooking(bookingId, PLAYER_USER, 'test full refund');
+      await waitForLedgerEvent(bookingId, 'booking_wallet_refund');
+      await waitForLedgerEvent(bookingId, 'booking_coach_reversal');
+
+      const unbalanced = await assertEveryBookingPostingBalanced(bookingId);
+      expect(unbalanced).toEqual([]);
+
+      // Coach reversal reverses the coach payable/expense.
+      const [cr] = await pool.execute<RowData>(
+        `SELECT side, amount FROM ledger_entries WHERE source_type='booking' AND source_id=? AND event_type='booking_coach_reversal'`,
+        [bookingId]);
+      expect(cr.length).toBeGreaterThan(0);
+      const coachAmount = Number(cr[0].amount);
+      expect(coachAmount).toBeGreaterThan(0);
+    } finally {
+      if (bookingId) await cleanupBookingRefs(bookingId);
+      await pool.execute(`DELETE FROM coach_sessions WHERE coach_id = ? AND booking_id = ?`, [coachProfileId, bookingId]);
+      await pool.execute(`DELETE FROM coach_org_agreements WHERE coach_id = ?`, [coachProfileId]);
+    }
+  }, 30000);
+
+  it('32. refund of a court-only wallet booking (no coach) stays balanced (regression)', async () => {
+    const { registerBookingPaymentListeners } = await import('../../booking/application/booking-payment.listener.js');
+    registerBookingPaymentListeners();
+    const { bookingService } = await import('../../booking/application/booking.service.js');
+    const date = '2027-04-08';
+    const res = await bookingService.createBooking({
+      branchId, resourceId, bookingType: 'private_match',
+      bookingDate: date, startTime: '09:00', endTime: '10:00', paymentMethod: 'wallet',
+    } as any, PLAYER_USER);
+    const bookingId = Number(res.id);
+    try {
+      await waitForLedgerEvent(bookingId, 'booking_wallet_payment');
+      await bookingService.cancelBooking(bookingId, PLAYER_USER, 'test court-only refund');
+      await waitForLedgerEvent(bookingId, 'booking_wallet_refund');
+      expect(await assertEveryBookingPostingBalanced(bookingId)).toEqual([]);
+    } finally {
+      if (bookingId) await cleanupBookingRefs(bookingId);
+    }
+  }, 30000);
 });

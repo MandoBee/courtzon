@@ -1001,6 +1001,17 @@ async function postBookingRefundAccountingInner(bookingId: number, refundAmount:
   // Reversing the CourtZon book (debit side) + the organization book — mirrors
   // the marketplace merchant refund (postMarketplaceRefundAccounting / F-2).
   const isWallet = refund.paymentMethod === 'wallet';
+  // The refund returns the FULL payment to the customer (refund.paymentAmount
+  // includes any coach share), but the CourtZon-book reversal must mirror the
+  // original booking:paid structure: the wallet_liability / payment_clearing
+  // leg covers only the NON-COACH economics (gross = org + commission + tax);
+  // the coach share is reversed separately via booking_coach_reversal below.
+  // Crediting the full paymentAmount would leave this event unbalanced for
+  // coach bookings (debit 200 / credit 300). The non-coach gross by
+  // construction equals the debit side (merchant_payable + commission + tax),
+  // so every posting stays mathematically balanced while the combined reversal
+  // (wallet/card refund + coach reversal) returns the full refunded amount.
+  const nonCoachRefund = Math.round((refund.orgAmount + refund.commissionAmount + refund.taxAmount) * 100) / 100;
   const eventType = isWallet ? 'booking_wallet_refund' : 'booking_refund';
   await postAccountingEvent(
     eventType, 'booking', bookingId, null,
@@ -1008,8 +1019,8 @@ async function postBookingRefundAccountingInner(bookingId: number, refundAmount:
       merchant_payable: refund.orgAmount,
       platform_commission: refund.commissionAmount,
       tax_liability: refund.taxAmount,
-      payment_clearing: isWallet ? 0 : refund.paymentAmount,
-      wallet_liability: isWallet ? refund.paymentAmount : 0,
+      payment_clearing: isWallet ? 0 : nonCoachRefund,
+      wallet_liability: isWallet ? nonCoachRefund : 0,
     },
     currency,
     `Booking #${bookingId} refund (CourtZon book)`,
