@@ -252,6 +252,16 @@ export const EVENT_CONCEPTS: Record<string, { debit: string[]; credit: string[] 
     debit: ['org_cash_bank'],
     credit: ['marketplace_receivable'],
   },
+  // Organization-book cash settlement (direction ORG → CourtZon, "OTC"). The
+  // org collected cash at COD and accrued a CourtZon payable (commission). When
+  // the org actually pays CourtZon, clear that payable against its own cash:
+  //   Dr org CourtZon Payable (MKT-CZ-PAY)  = commission actually paid
+  //   Cr org Cash / Bank (ORG-CASH)          = same
+  // Balanced: debit == credit.
+  settlement_org_cash_pay: {
+    debit: ['courtzon_payable'],
+    credit: ['org_cash_bank'],
+  },
   // Historical correction of pre-ec2a5ab settlements. The original payout was
   // posted org-scoped with the WRONG account (Dr 2200 Org Payable / Cr 1120
   // Cash-Bank stamped organisation_id = seller). This event NEUTRALIZES that

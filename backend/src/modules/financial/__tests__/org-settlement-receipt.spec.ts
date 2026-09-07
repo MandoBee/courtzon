@@ -160,17 +160,30 @@ describe('Marketplace / Org Settlement Receipt Accounting', () => {
     expect(await rowsFor(SID_A)).toHaveLength(4);
   });
 
-  it('3. OTC (org_to_courtzon) posts NO org receipt', async () => {
+  it('3. OTC (org_to_courtzon) posts NO org receipt; posts org OTC cash-pay clearing courtzon_payable against ORG-CASH', async () => {
     await emitSettlement(SID_OTC, 100, 'org_to_courtzon', orgA);
     await waitFor(async () => (await countEvent(SID_OTC, 'settlement_paid_otc', null)) === 2, 'OTC CourtZon post');
+    await waitFor(async () => (await countEvent(SID_OTC, 'settlement_org_cash_pay', orgA)) === 2, 'OTC org cash-pay posted');
 
-    // OTC posts CourtZon book (Dr 1120 / Cr 1161 Marketplace Receivable) but
-    // NO org-scoped org receipt.
     const rows = await rowsFor(SID_OTC);
+
+    // CourtZon book: Dr 1120 Cash / Cr 1161 Marketplace Receivable, org NULL.
+    const courtzon = rows.filter((r) => r.eventType === 'settlement_paid_otc');
+    expect(courtzon.length).toBe(2);
+    expect(courtzon.every((r) => r.orgId === null)).toBe(true); // no leak into org book
+    expect(courtzon.find((r) => r.side === 'debit' && r.code === '1120')?.amount).toBe(100);
+    expect(courtzon.find((r) => r.side === 'credit' && r.code === '1161')?.amount).toBe(100);
+
+    // Org book cash-pay (NEW): Dr org MKT-CZ-PAY 100 / Cr org ORG-CASH 100 —
+    // clears the CourtZon payable accrued at COD collection (org-scoped).
+    const cashPay = rows.filter((r) => r.eventType === 'settlement_org_cash_pay');
+    expect(cashPay.length).toBe(2);
+    expect(cashPay.every((r) => r.orgId === orgA)).toBe(true);
+    expect(cashPay.find((r) => r.side === 'debit' && r.code === 'MKT-CZ-PAY')?.amount).toBe(100);
+    expect(cashPay.find((r) => r.side === 'credit' && r.code === 'ORG-CASH')?.amount).toBe(100);
+
+    // Still NO org receipt (the org is paying CourtZon, not the reverse).
     expect(await countEvent(SID_OTC, 'settlement_org_receipt', orgA)).toBe(0);
-    expect(rows.every((r) => r.orgId === null)).toBe(true); // no leak into org book
-    expect(rows.find((r) => r.side === 'debit' && r.code === '1120')?.amount).toBe(100);
-    expect(rows.find((r) => r.side === 'credit' && r.code === '1161')?.amount).toBe(100);
   });
 
   it('4. organisations are isolated — org B does not see org A receipt', async () => {

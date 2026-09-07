@@ -289,6 +289,8 @@ const ORG_ADMIN_EXPLICIT_KEYS = new Set([
   'coaches.assign',
   'settlements.view',
   'settlements.request',
+  'settlements.pay',
+  'settlements.cancel',
   'org.finance.position.view',
   'academies.enroll',
 ]);

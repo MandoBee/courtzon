@@ -1546,6 +1546,25 @@ export function registerAccountingEventListeners(): void {
           `Settlement #${settlementId} organization receipt`,
         );
       }
+
+      // ── ORGANIZATION BOOK OTC cash pay (org-scoped) ──
+      // When the ORG pays CourtZon (direction ORG → CourtZon, e.g. COD
+      // commission collected by the org), clear the org's accrued CourtZon
+      // payable against its own cash/bank:
+      //   Dr org CourtZon Payable  = amount actually paid
+      //   Cr org Cash/Bank          = same
+      // This keeps the org book balanced after COD collection booked
+      // (booking_org_cash_receivable: Dr ORG-CASH / Cr CourtZon Payable).
+      // Idempotent per
+      // (source_type='settlement', source_id, event_type='settlement_org_cash_pay').
+      if (direction === 'org_to_courtzon' && orgId != null) {
+        await postAccountingEvent(
+          'settlement_org_cash_pay', 'settlement', settlementId, orgId,
+          { courtzon_payable: amount, org_cash_bank: amount },
+          currency,
+          `Settlement #${settlementId} organization OTC cash paid to CourtZon`,
+        );
+      }
     } catch (err: any) {
       if (err?.code === 'ER_DUP_ENTRY') { log.info({ err: err.message }, 'Duplicate — skip'); return; }
       log.error({ err }, 'Settlement paid accounting failed');

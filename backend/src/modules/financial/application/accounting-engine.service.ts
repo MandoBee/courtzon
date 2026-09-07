@@ -175,6 +175,9 @@ export const ORG_BOOK_EVENTS: Record<string, string[]> = {
   // Receivable — clears the org's receivable against the cash received from
   // CourtZon on settlement.
   settlement_org_receipt: ['org_cash_bank', 'marketplace_receivable'],
+  // Settlement OTC cash pay (org book, direction ORG → CourtZon): the org
+  // clears its accrued CourtZon payable against its own cash/bank.
+  settlement_org_cash_pay: ['courtzon_payable', 'org_cash_bank'],
 };
 
 export class AccountingEngineService {
