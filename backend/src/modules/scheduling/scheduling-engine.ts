@@ -108,6 +108,17 @@ export class SchedulingEngine {
 
   private locationMatches(a: LocationInfo | null, b: LocationInfo | null): boolean {
     if (!a || !b) return true;
+    // Branch-set based matching (e.g. coach service locations). When either side
+    // declares a branch set, require the other side's pinned branch to be in it.
+    // An explicit empty set (coach has no service locations) never matches a
+    // court that pins a branch.
+    const hasBranchSet = a.branchIds !== undefined || b.branchIds !== undefined;
+    if (hasBranchSet) {
+      const set = a.branchIds !== undefined ? a.branchIds : (b.branchIds || []);
+      const pinnedBranch = a.branchId || b.branchId;
+      if (set.length === 0) return pinnedBranch ? false : true;
+      return pinnedBranch ? set.includes(pinnedBranch) : true;
+    }
     if (a.branchId && b.branchId) return a.branchId === b.branchId;
     if (a.organisationId && b.organisationId) return a.organisationId === b.organisationId;
     return true;

@@ -24,6 +24,7 @@ export interface CreateBookingPayload {
   // Economic snapshot (computed by the caller at booking time, never recalculated).
   commissionAmount?: number;
   clubAmount?: number;
+  coachAmount?: number;
   taxRate?: number;
   taxRateId?: number | null;
   taxAmount?: number;
@@ -77,6 +78,7 @@ export const createBookingHandler: CommandHandler<Command, CreateBookingResult> 
       totalAmount: payload.totalAmount,
       commissionAmount: payload.commissionAmount,
       clubAmount: payload.clubAmount,
+      coachAmount: payload.coachAmount,
       taxRate: payload.taxRate,
       taxRateId: payload.taxRateId,
       taxAmount: payload.taxAmount,

@@ -21,6 +21,22 @@ const log = createModuleLogger('scheduling');
 
 const COACH_LOCK_TTL_MS = 15000;
 
+/**
+ * Parse the coach's stored sport list. `sports` is persisted as a JSON array
+ * string (or an array). Legacy coaches may hold multiple sports; the current
+ * single-sport rule uses the list for eligibility matching.
+ */
+function parseCoachSports(sports: unknown): number[] {
+  if (!sports) return [];
+  try {
+    const raw = typeof sports === 'string' ? JSON.parse(sports) : sports;
+    if (!Array.isArray(raw)) return [];
+    return raw.map((n: any) => Number(n)).filter((n) => Number.isInteger(n) && n > 0);
+  } catch {
+    return [];
+  }
+}
+
 export interface BookSessionRequest {
   coachId: number;
   resourceId: number;
@@ -65,6 +81,28 @@ export class SchedulingBookingService {
       throw new ForbiddenError(eligibility.reason || 'Coach is not eligible to provide coaching services at this branch.');
     }
 
+    // 3b. Sport compatibility — the coach must support the court's sport. The
+    //     search layer applies this too, but the booking endpoint must enforce it
+    //     server-side so a legacy empty-sport coach (or a mismatched pick) can
+    //     never be booked. Empty coach sports are treated as invalid (they have
+    //     not selected a sport) and rejected.
+    const courtSportId = court.sport_id ? Number(court.sport_id) : null;
+    const coachSportIds = parseCoachSports(coachProfile.sports);
+    if (!courtSportId) {
+      throw new ForbiddenError('Court has no sport configured — coach booking unavailable');
+    }
+    if (coachSportIds.length === 0) {
+      throw new ForbiddenError('Coach has not selected a sport — cannot be booked');
+    }
+    if (!coachSportIds.includes(courtSportId)) {
+      throw new ForbiddenError('Coach does not support the sport of the selected court');
+    }
+
+    // 3c. Resolve the branch organisation (resources have no organisation_id;
+    //     the organisation belongs to the branch). Used for the accepted
+    //     agreement lookup and the persisted coach_sessions.organisation_id.
+    const organisationId = await activitiesRepository.getBranchOrganisationId(branchId);
+
     // 4. Calculate coach session pricing.
     //    Coach duration ALWAYS equals the court booking duration (same start/end
     //    window) and the coach is charged its hourly rate prorated by that
@@ -85,13 +123,13 @@ export class SchedulingBookingService {
     let orgSplitPct = 0;
     try {
       const coachComm = await commissionService.calculate(
-        court.organisation_id || 0, 'coach_session', sessionPrice,
+        organisationId || 0, 'coach_session', sessionPrice,
       );
       coachCommissionPct = coachComm.rate;
       const postCommissionNet = coachComm.netAmount;
       let agreement: any = null;
-      if (branchPolicy === 'contract_required' && court.organisation_id) {
-        agreement = await activitiesRepository.getAcceptedAgreement(coachId, court.organisation_id);
+      if (branchPolicy === 'contract_required' && organisationId != null) {
+        agreement = await activitiesRepository.getAcceptedAgreement(coachId, organisationId);
       }
       const split = calculateCoachEarningsSplit({
         branchPolicy,
@@ -131,6 +169,7 @@ export class SchedulingBookingService {
         startTime,
         endTime,
         bookingType: 'coach_session',
+        coachAmount: sessionPrice,
         paymentMethod: (request.paymentMethod || 'wallet') as 'wallet' | 'cash' | 'card' | 'online' | 'cod',
         notes: `Coach session with coach #${coachId}`,
       }, userId);
@@ -148,7 +187,7 @@ export class SchedulingBookingService {
       try {
         sessionId = await activitiesRepository.createCoachSession({
           coachId,
-          organisationId: court.organisation_id || null,
+          organisationId,
           branchId,
           resourceId,
           playerId: userId,

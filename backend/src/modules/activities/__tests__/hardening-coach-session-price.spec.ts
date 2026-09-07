@@ -47,6 +47,7 @@ vi.mock('../../../infrastructure/redis/redis.client.js', () => ({
 const findCoachByUserIdMock = vi.fn();
 const hasAcceptedAgreementMock = vi.fn();
 const findOrgAgreementMock = vi.fn();
+const getAcceptedAgreementMock = vi.fn();
 const createCoachSessionMock = vi.fn();
 const commissionCalculateMock = vi.fn();
 
@@ -55,6 +56,7 @@ vi.mock('../infrastructure/repositories/activities.repository.js', () => ({
     findCoachByUserId: (id: number) => findCoachByUserIdMock(id),
     hasAcceptedAgreement: (coachId: number, orgId: number) => hasAcceptedAgreementMock(coachId, orgId),
     findOrgAgreement: (coachId: number, orgId: number) => findOrgAgreementMock(coachId, orgId),
+    getAcceptedAgreement: (coachId: number, orgId: number) => getAcceptedAgreementMock(coachId, orgId),
     createCoachSession: (data: any) => createCoachSessionMock(data),
   },
 }));
@@ -74,6 +76,7 @@ beforeEach(() => {
   findCoachByUserIdMock.mockResolvedValue(COACH);
   hasAcceptedAgreementMock.mockResolvedValue(true);
   findOrgAgreementMock.mockResolvedValue(null);
+  getAcceptedAgreementMock.mockResolvedValue(null);
   createCoachSessionMock.mockResolvedValue(42);
   commissionCalculateMock.mockResolvedValue({ rate: 10, netAmount: 180, commissionAmount: 20 });
 });
@@ -111,7 +114,7 @@ describe('Exception 1: coach-session price is backend-authoritative', () => {
   });
 
   it('derives price from the org-agreement hourly_rate when an org is selected', async () => {
-    findOrgAgreementMock.mockResolvedValue({ id: 1, hourly_rate: 500 });
+    getAcceptedAgreementMock.mockResolvedValue({ id: 1, hourly_rate: 500 });
     await activitiesService.createCoachSession(1, {
       ...base(),
       organisationId: 3,

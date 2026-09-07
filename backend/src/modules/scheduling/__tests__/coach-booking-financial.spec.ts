@@ -1,0 +1,428 @@
+import { vi, describe, it, expect, beforeAll, afterAll } from 'vitest';
+
+vi.hoisted(() => {
+  process.env.NODE_ENV = 'test'; process.env.DB_HOST = '127.0.0.1'; process.env.DB_PORT = '3307';
+  process.env.DB_USER = 'root'; process.env.DB_PASSWORD = 'courtzon2026'; process.env.DB_NAME = 'courtzon_v3';
+  process.env.REDIS_HOST = '127.0.0.1'; process.env.REDIS_PORT = '6379'; process.env.PORT = '3001';
+});
+
+import mysql from 'mysql2/promise';
+import type { RowDataPacket } from 'mysql2';
+import type { Pool, RowDataPacket as RDP } from 'mysql2/promise';
+type RowData = RowDataPacket[];
+
+/**
+ * Coach-booking financial wiring — integration.
+ *
+ * Verifies the C-1 / C-2 / C-3 / H-1 / H-2 fixes end-to-end against the live
+ * Docker DB:
+ *   - coach fee is included in the booking total + coach_amount + charged amount
+ *   - branch organisation is resolved for the agreement split and persisted on
+ *     coach_sessions.organisation_id
+ *   - contracted orgs receive org_split_pct; independent orgs receive 0%
+ *   - sport mismatch / empty sport / no service access are rejected at booking
+ *   - legacy POST /coaches/sessions (createCoachSession) applies the same split
+ *   - coach payout accounting is generated from the actual coach amount
+ *
+ * commissionService.calculate is stubbed to a deterministic 10% so the split
+ * wiring is isolated (commission resolution is covered by its own tests).
+ */
+const PLAYER_USER = 10006100;
+const COACH_USER = 10006101;
+
+describe('Coach Booking Financial Wiring', () => {
+  let pool: Pool;
+  let orgId: number;
+  let branchId: number;
+  let resourceId: number;
+  let coachProfileId: number;
+  let sportId: number;
+
+  beforeAll(async () => {
+    pool = mysql.createPool({ host: '127.0.0.1', port: 3307, user: 'root', password: 'courtzon2026', database: 'courtzon_v3', connectionLimit: 5, charset: 'utf8mb4' });
+
+    // Cleanup any leftovers from a prior run (org first — it references the player user).
+    await pool.execute(`DELETE FROM coach_service_locations WHERE coach_id IN (SELECT id FROM coach_profiles WHERE user_id = ${COACH_USER})`);
+    await pool.execute(`DELETE FROM coach_org_agreements WHERE coach_id IN (SELECT id FROM coach_profiles WHERE user_id = ${COACH_USER})`);
+    await pool.execute(`DELETE FROM coach_profiles WHERE user_id = ?`, [COACH_USER]);
+    await pool.execute(`DELETE FROM professional_services WHERE professional_profile_id IN (SELECT id FROM professional_profiles WHERE user_id = ?)`, [COACH_USER]);
+    await pool.execute(`DELETE FROM professional_profiles WHERE user_id = ?`, [COACH_USER]);
+    await pool.execute(`DELETE FROM bookings WHERE organisation_id IN (SELECT id FROM organisations WHERE slug='coach-fin-org')`);
+    await pool.execute(`DELETE FROM resources WHERE branch_id IN (SELECT id FROM branches WHERE organisation_id IN (SELECT id FROM organisations WHERE slug='coach-fin-org'))`);
+    await pool.execute(`DELETE FROM branches WHERE organisation_id IN (SELECT id FROM organisations WHERE slug='coach-fin-org')`);
+    await pool.execute(`DELETE FROM organisations WHERE slug = 'coach-fin-org'`);
+    for (const uid of [PLAYER_USER, COACH_USER]) {
+      await pool.execute(`DELETE FROM user_wallets WHERE user_id = ?`, [uid]);
+      await pool.execute(`DELETE FROM coach_sessions WHERE player_id = ?`, [uid]);
+      await pool.execute(`DELETE FROM bookings WHERE user_id = ?`, [uid]);
+      await pool.execute(`DELETE FROM users WHERE id = ?`, [uid]);
+    }
+
+    // Users
+    await pool.execute(
+      `INSERT INTO users (id, public_id, country_id, phone_number, full_phone, email, password_hash, full_name, gender, account_status)
+       VALUES (?, UUID(), 1, '01299990001', '+201299990001', 'coach-fin-player@test.com', '$2b$10$x', 'CoachFin Player', 'male', 'active')`, [PLAYER_USER]);
+    await pool.execute(
+      `INSERT INTO users (id, public_id, country_id, phone_number, full_phone, email, password_hash, full_name, gender, account_status)
+       VALUES (?, UUID(), 1, '01299990002', '+201299990002', 'coach-fin-coach@test.com', '$2b$10$x', 'CoachFin Coach', 'male', 'active')`, [COACH_USER]);
+    await pool.execute(`INSERT INTO user_wallets (user_id, balance, currency_code, version) VALUES (?, 999999, 'EGP', 1)`, [PLAYER_USER]);
+
+    // Org + branch + court
+    const [ot] = await pool.execute<RowData>('SELECT id FROM organisation_types LIMIT 1');
+    const otId = (ot as any[])[0].id;
+    const [orgRes] = await pool.execute<RowData>(
+      `INSERT INTO organisations (public_id, org_type_id, owner_id, name, slug, is_active) VALUES (UUID(), ?, ?, 'Coach Fin Org', 'coach-fin-org', 1)`,
+      [otId, PLAYER_USER],
+    );
+    orgId = (orgRes as any).insertId;
+    const [brRes] = await pool.execute<RowData>(
+      `INSERT INTO branches (public_id, organisation_id, name, slug, timezone, coach_policy, opening_time, closing_time)
+       VALUES (UUID(), ?, 'Coach Fin Branch', 'coach-fin-branch', 'Africa/Cairo', 'contract_required', '08:00', '22:00')`,
+      [orgId],
+    );
+    branchId = (brRes as any).insertId;
+    const [sportRes] = await pool.execute<RowData>('SELECT id FROM sports LIMIT 1');
+    sportId = Number((sportRes as any[])[0].id);
+    const [resRes] = await pool.execute<RowData>(
+      `INSERT INTO resources (public_id, name, resource_type_id, branch_id, sport_id, hourly_price, is_active, opening_time, closing_time, slot_duration)
+       VALUES (UUID(), 'Coach Fin Court', (SELECT id FROM resource_types LIMIT 1), ?, ?, 200, 1, '08:00', '22:00', 60)`,
+      [branchId, sportId],
+    );
+    resourceId = (resRes as any).insertId;
+
+    // Coach profile + professional profile + service
+    const [cpRes] = await pool.execute<RowData>(
+      `INSERT INTO coach_profiles (user_id, status, is_verified) VALUES (?, 'approved', 1)`, [COACH_USER]);
+    coachProfileId = (cpRes as any).insertId;
+    await pool.execute(
+      `INSERT INTO professional_profiles (user_id, sports, is_available) VALUES (?, ?, 1)`, [COACH_USER, JSON.stringify([sportId])]);
+    await pool.execute(
+      `INSERT INTO professional_services (professional_profile_id, service_key, pricing_model, price, currency_code, is_active)
+       VALUES ((SELECT id FROM professional_profiles WHERE user_id = ?), 'coach_default', 'hourly', 100, 'EGP', 1)`, [COACH_USER]);
+
+    // Service location for the branch.
+    await pool.execute(`INSERT INTO coach_service_locations (coach_id, branch_id) VALUES (?, ?)`, [coachProfileId, branchId]);
+
+    // Stub commission to a deterministic 10% for coach_session economics.
+    vi.spyOn((await import('../../financial/application/commission.service.js')).commissionService, 'calculate')
+      .mockImplementation(async (_orgId: any, _entityType: any, gross: number) => ({
+        rate: 10, rateType: 'percentage', commissionAmount: (gross * 10) / 100, netAmount: (gross * 90) / 100,
+        planName: 'Test Plan', planId: 0,
+      } as any));
+  });
+
+  afterAll(async () => {
+    vi.restoreAllMocks();
+    await pool.execute(`DELETE FROM ledger_entries WHERE organisation_id = ?`, [orgId]);
+    await pool.execute(`DELETE FROM general_ledger WHERE organisation_id = ?`, [orgId]);
+    await pool.execute(`DELETE FROM accounting_event_mapping_lines WHERE organisation_id = ?`, [orgId]);
+    await pool.execute(`DELETE FROM chart_of_accounts WHERE organisation_id = ?`, [orgId]);
+    await pool.execute(`DELETE FROM coach_service_locations WHERE coach_id = ?`, [coachProfileId]);
+    await pool.execute(`DELETE FROM coach_org_agreements WHERE coach_id = ?`, [coachProfileId]);
+    await pool.execute(`DELETE FROM coach_profiles WHERE id = ?`, [coachProfileId]);
+    await pool.execute(`DELETE FROM professional_services WHERE professional_profile_id IN (SELECT id FROM professional_profiles WHERE user_id = ?)`, [COACH_USER]);
+    await pool.execute(`DELETE FROM professional_profiles WHERE user_id = ?`, [COACH_USER]);
+    await pool.execute(`DELETE FROM resources WHERE id = ?`, [resourceId]);
+    await pool.execute(`DELETE FROM branches WHERE id = ?`, [branchId]);
+    await pool.execute(`DELETE FROM organisations WHERE id = ?`, [orgId]);
+    for (const uid of [PLAYER_USER, COACH_USER]) {
+      await pool.execute(`DELETE FROM user_wallets WHERE user_id = ?`, [uid]);
+      await pool.execute(`DELETE FROM coach_sessions WHERE player_id = ?`, [uid]);
+      await pool.execute(`DELETE FROM bookings WHERE user_id = ?`, [uid]);
+      await pool.execute(`DELETE FROM users WHERE id = ?`, [uid]);
+    }
+    await pool.end();
+  });
+
+  async function insertAgreement(opts: { orgId: number; status?: string; active?: boolean; coachSplit?: number; orgSplit?: number }) {
+    await pool.execute(
+      `INSERT INTO coach_org_agreements (coach_id, organisation_id, coach_split_pct, org_split_pct, hourly_rate, is_active, status, initiated_by)
+       VALUES (?, ?, ?, ?, 100, ?, ?, 'org')`,
+      [coachProfileId, opts.orgId, opts.coachSplit ?? 70, opts.orgSplit ?? 30,
+       opts.active === false ? 0 : 1, opts.status ?? 'active'],
+    );
+  }
+
+  async function bookingById(id: number): Promise<any> {
+    const [rows] = await pool.execute<RowData>(`SELECT * FROM bookings WHERE id = ?`, [id]);
+    return rows[0] || null;
+  }
+
+  async function sessionByBooking(id: number): Promise<any> {
+    const [rows] = await pool.execute<RowData>(`SELECT * FROM coach_sessions WHERE booking_id = ?`, [id]);
+    return rows[0] || null;
+  }
+
+  const COURT_PRICE = 200;
+  const COACH_HOURLY = 100;
+
+  it('1. court-only booking total = court fee, coach_amount = 0 (regression)', async () => {
+    const { bookingService } = await import('../../booking/application/booking.service.js');
+    const res = await bookingService.createBooking({
+      branchId, resourceId,
+      bookingType: 'private_match',
+      bookingDate: '2027-02-10', startTime: '09:00', endTime: '10:00',
+      paymentMethod: 'cash',
+    } as any, PLAYER_USER);
+
+    const b = await bookingById(res.id);
+    expect(Number(b.total_amount)).toBe(COURT_PRICE);
+    expect(Number(b.coach_amount)).toBe(0);
+  });
+
+  it('2. coach booking total = court fee + coach fee; coach_amount = coach fee', async () => {
+    await insertAgreement({ orgId });
+    try {
+      const { SchedulingBookingService } = await import('../application/scheduling-booking.service.js');
+      const svc = new SchedulingBookingService();
+      const result = await svc.bookSession(
+        { coachId: coachProfileId, resourceId, date: '2027-02-11', startTime: '10:00', endTime: '11:00', paymentMethod: 'cash' },
+        PLAYER_USER,
+      );
+
+      const b = await bookingById(result.bookingId);
+      const expectedCoachFee = (COACH_HOURLY * 60) / 60; // 100
+      expect(Number(b.total_amount)).toBe(COURT_PRICE + expectedCoachFee);
+      expect(Number(b.coach_amount)).toBe(expectedCoachFee);
+      // Price breakdown reflects the amount actually charged.
+      expect(Number(result.priceBreakdown.total)).toBe(Number(b.total_amount));
+      expect(Number(result.priceBreakdown.coachFee)).toBe(expectedCoachFee);
+      expect(Number(result.priceBreakdown.courtFee)).toBe(COURT_PRICE);
+    } finally {
+      await pool.execute(`DELETE FROM coach_org_agreements WHERE coach_id = ?`, [coachProfileId]);
+    }
+  });
+
+  it('3. contracted branch + valid agreement → orgEarnings = org_split_pct of post-commission net; organisation_id = branch org', async () => {
+    await insertAgreement({ orgId, status: 'active', coachSplit: 70, orgSplit: 30 });
+    try {
+      const { SchedulingBookingService } = await import('../application/scheduling-booking.service.js');
+      const svc = new SchedulingBookingService();
+      const result = await svc.bookSession(
+        { coachId: coachProfileId, resourceId, date: '2027-02-12', startTime: '11:00', endTime: '12:00', paymentMethod: 'cash' },
+        PLAYER_USER,
+      );
+      const s = await sessionByBooking(result.bookingId);
+      // session price 100, commission 10% → net 90; org 30% → 27.
+      expect(Number(s.organisation_id)).toBe(orgId);
+      expect(Number(s.org_earnings)).toBe(27);
+      expect(Number(s.coach_earnings)).toBe(63);
+      expect(Number(result.priceBreakdown.orgEarnings)).toBe(27);
+      expect(Number(result.priceBreakdown.orgSplitPct)).toBe(30);
+    } finally {
+      await pool.execute(`DELETE FROM coach_org_agreements WHERE coach_id = ?`, [coachProfileId]);
+    }
+  });
+
+  it('4. agreement belonging to another organisation → not eligible (ForbiddenError)', async () => {
+    const [otherOrg] = await pool.execute<RowData>(
+      `INSERT INTO organisations (public_id, org_type_id, owner_id, name, slug, is_active)
+       VALUES (UUID(), (SELECT id FROM organisation_types LIMIT 1), ?, 'Other Fin Org', 'coach-fin-other', 1)`, [PLAYER_USER]);
+    const otherOrgId = (otherOrg as any).insertId;
+    await insertAgreement({ orgId: otherOrgId, status: 'active' });
+    try {
+      const { SchedulingBookingService } = await import('../application/scheduling-booking.service.js');
+      const svc = new SchedulingBookingService();
+      await expect(
+        svc.bookSession({ coachId: coachProfileId, resourceId, date: '2027-02-13', startTime: '12:00', endTime: '13:00', paymentMethod: 'cash' }, PLAYER_USER),
+      ).rejects.toThrow(/agreement/);
+    } finally {
+      await pool.execute(`DELETE FROM coach_org_agreements WHERE coach_id = ?`, [coachProfileId]);
+      await pool.execute(`DELETE FROM organisations WHERE id = ?`, [otherOrgId]);
+    }
+  });
+
+  it('5. pending agreement → no split and blocked (contract_required)', async () => {
+    await insertAgreement({ orgId, status: 'pending', active: false });
+    try {
+      const { SchedulingBookingService } = await import('../application/scheduling-booking.service.js');
+      const svc = new SchedulingBookingService();
+      await expect(
+        svc.bookSession({ coachId: coachProfileId, resourceId, date: '2027-02-14', startTime: '12:00', endTime: '13:00', paymentMethod: 'cash' }, PLAYER_USER),
+      ).rejects.toThrow();
+    } finally {
+      await pool.execute(`DELETE FROM coach_org_agreements WHERE coach_id = ?`, [coachProfileId]);
+    }
+  });
+
+  it('6. independent branch → orgEarnings = 0 despite an agreement on record', async () => {
+    await pool.execute(`UPDATE branches SET coach_policy = 'independent_coaches_allowed' WHERE id = ?`, [branchId]);
+    await insertAgreement({ orgId, status: 'active', coachSplit: 70, orgSplit: 30 });
+    try {
+      const { SchedulingBookingService } = await import('../application/scheduling-booking.service.js');
+      const svc = new SchedulingBookingService();
+      const result = await svc.bookSession(
+        { coachId: coachProfileId, resourceId, date: '2027-02-15', startTime: '13:00', endTime: '14:00', paymentMethod: 'cash' },
+        PLAYER_USER,
+      );
+      const s = await sessionByBooking(result.bookingId);
+      expect(Number(s.org_earnings)).toBe(0);
+      expect(Number(s.coach_earnings)).toBe(90); // full post-commission net
+      expect(Number(result.priceBreakdown.orgSplitPct)).toBe(0);
+    } finally {
+      await pool.execute(`DELETE FROM coach_org_agreements WHERE coach_id = ?`, [coachProfileId]);
+      await pool.execute(`UPDATE branches SET coach_policy = 'contract_required' WHERE id = ?`, [branchId]);
+    }
+  });
+
+  it('7. coach with no service location → blocked', async () => {
+    await pool.execute(`DELETE FROM coach_service_locations WHERE coach_id = ?`, [coachProfileId]);
+    try {
+      const { SchedulingBookingService } = await import('../application/scheduling-booking.service.js');
+      const svc = new SchedulingBookingService();
+      await expect(
+        svc.bookSession({ coachId: coachProfileId, resourceId, date: '2027-02-16', startTime: '14:00', endTime: '15:00', paymentMethod: 'cash' }, PLAYER_USER),
+      ).rejects.toThrow(/service access|eligible/);
+    } finally {
+      await pool.execute(`INSERT INTO coach_service_locations (coach_id, branch_id) VALUES (?, ?)`, [coachProfileId, branchId]);
+    }
+  });
+
+  it('8. sport mismatch → booking rejected', async () => {
+    const [sportRes2] = await pool.execute<RowData>('SELECT id FROM sports WHERE id <> ? ORDER BY id LIMIT 1', [sportId]);
+    const otherSport = sportRes2.length ? Number((sportRes2 as any[])[0].id) : null;
+    if (!otherSport) return; // only one sport in DB — skip
+    await pool.execute(`UPDATE professional_profiles SET sports = ? WHERE user_id = ?`, [JSON.stringify([otherSport]), COACH_USER]);
+    await insertAgreement({ orgId });
+    try {
+      const { SchedulingBookingService } = await import('../application/scheduling-booking.service.js');
+      const svc = new SchedulingBookingService();
+      await expect(
+        svc.bookSession({ coachId: coachProfileId, resourceId, date: '2027-02-17', startTime: '15:00', endTime: '16:00', paymentMethod: 'cash' }, PLAYER_USER),
+      ).rejects.toThrow(/sport/i);
+    } finally {
+      await pool.execute(`UPDATE professional_profiles SET sports = ? WHERE user_id = ?`, [JSON.stringify([sportId]), COACH_USER]);
+      await pool.execute(`DELETE FROM coach_org_agreements WHERE coach_id = ?`, [coachProfileId]);
+    }
+  });
+
+  it('9. empty coach sport → booking rejected', async () => {
+    await pool.execute(`UPDATE professional_profiles SET sports = NULL WHERE user_id = ?`, [COACH_USER]);
+    await insertAgreement({ orgId });
+    try {
+      const { SchedulingBookingService } = await import('../application/scheduling-booking.service.js');
+      const svc = new SchedulingBookingService();
+      await expect(
+        svc.bookSession({ coachId: coachProfileId, resourceId, date: '2027-02-18', startTime: '16:00', endTime: '17:00', paymentMethod: 'cash' }, PLAYER_USER),
+      ).rejects.toThrow(/sport/i);
+    } finally {
+      await pool.execute(`UPDATE professional_profiles SET sports = ? WHERE user_id = ?`, [JSON.stringify([sportId]), COACH_USER]);
+      await pool.execute(`DELETE FROM coach_org_agreements WHERE coach_id = ?`, [coachProfileId]);
+    }
+  });
+
+  it('10. legacy createCoachSession applies the contracted org split (org resolved from branch)', async () => {
+    await insertAgreement({ orgId, status: 'active', coachSplit: 60, orgSplit: 40 });
+    try {
+      const { activitiesService } = await import('../../activities/application/activities.service.js');
+      await activitiesService.createCoachSession(COACH_USER, {
+        organisationId: orgId,
+        branchId,
+        playerId: PLAYER_USER,
+        startTime: '2027-02-20T10:00:00',
+        endTime: '2027-02-20T11:00:00',
+        currencyCode: 'EGP',
+      });
+      const [rows] = await pool.execute<RowData>(
+        `SELECT * FROM coach_sessions WHERE coach_id = ? AND player_id = ? ORDER BY id DESC LIMIT 1`,
+        [coachProfileId, PLAYER_USER],
+      );
+      const s = rows[0] as any;
+      expect(Number(s.organisation_id)).toBe(orgId);
+      expect(Number(s.price)).toBe(100);
+      expect(Number(s.org_earnings)).toBe(36); // net 90 × 40%
+      expect(Number(s.coach_earnings)).toBe(54);
+    } finally {
+      await pool.execute(`DELETE FROM coach_org_agreements WHERE coach_id = ?`, [coachProfileId]);
+    }
+  });
+
+  it('11. legacy createCoachSession on independent branch → org earnings = 0', async () => {
+    await pool.execute(`UPDATE branches SET coach_policy = 'independent_coaches_allowed' WHERE id = ?`, [branchId]);
+    await insertAgreement({ orgId, status: 'active', coachSplit: 60, orgSplit: 40 });
+    try {
+      const { activitiesService } = await import('../../activities/application/activities.service.js');
+      await activitiesService.createCoachSession(COACH_USER, {
+        organisationId: orgId,
+        branchId,
+        playerId: PLAYER_USER,
+        startTime: '2027-02-21T10:00:00',
+        endTime: '2027-02-21T11:00:00',
+        currencyCode: 'EGP',
+      });
+      const [rows] = await pool.execute<RowData>(
+        `SELECT * FROM coach_sessions WHERE coach_id = ? AND player_id = ? ORDER BY id DESC LIMIT 1`,
+        [coachProfileId, PLAYER_USER],
+      );
+      const s = rows[0] as any;
+      expect(Number(s.org_earnings)).toBe(0);
+      expect(Number(s.coach_earnings)).toBe(90);
+    } finally {
+      await pool.execute(`DELETE FROM coach_org_agreements WHERE coach_id = ?`, [coachProfileId]);
+      await pool.execute(`UPDATE branches SET coach_policy = 'contract_required' WHERE id = ?`, [branchId]);
+    }
+  });
+
+  it('12. BookSessionSchema accepts midnight-crossing and rejects zero-duration', async () => {
+    const { BookSessionSchema } = await import('../presentation/scheduling.dto.js');
+    const validWrap = BookSessionSchema.safeParse({
+      coachId: 1, resourceId: 1, date: '2027-02-20', startTime: '23:00', endTime: '00:30',
+    });
+    expect(validWrap.success).toBe(true);
+    const validSameDay = BookSessionSchema.safeParse({
+      coachId: 1, resourceId: 1, date: '2027-02-20', startTime: '10:00', endTime: '11:00',
+    });
+    expect(validSameDay.success).toBe(true);
+    const zero = BookSessionSchema.safeParse({
+      coachId: 1, resourceId: 1, date: '2027-02-20', startTime: '10:00', endTime: '10:00',
+    });
+    expect(zero.success).toBe(false);
+  });
+
+  it('13. COD coach booking posts booking_coach_payout accounting from the actual coach amount', async () => {
+    const { registerAccountingEventListeners } = await import('../../financial/application/accounting-event.listener.js');
+    registerAccountingEventListeners();
+    await insertAgreement({ orgId });
+    let bookingId = 0;
+    try {
+      const { SchedulingBookingService } = await import('../application/scheduling-booking.service.js');
+      const svc = new SchedulingBookingService();
+      const result = await svc.bookSession(
+        { coachId: coachProfileId, resourceId, date: '2027-02-22', startTime: '17:00', endTime: '18:00', paymentMethod: 'cash' },
+        PLAYER_USER,
+      );
+      bookingId = result.bookingId;
+
+      // Wait for the org cash book + coach payout postings (async fire-and-forget).
+      const deadline = Date.now() + 8000;
+      let payoutCount = 0;
+      let cashBookCount = 0;
+      while (Date.now() < deadline) {
+        const [p] = await pool.execute<RowData>(
+          `SELECT COUNT(*) AS c FROM ledger_entries WHERE source_type='booking' AND source_id=? AND event_type='booking_coach_payout'`,
+          [bookingId]);
+        payoutCount = Number((p as any[])[0].c);
+        const [cb] = await pool.execute<RowData>(
+          `SELECT COUNT(*) AS c FROM ledger_entries WHERE source_type='booking' AND source_id=? AND event_type='booking_org_cash_receivable'`,
+          [bookingId]);
+        cashBookCount = Number((cb as any[])[0].c);
+        if (payoutCount > 0 && cashBookCount > 0) break;
+        await new Promise(r => setTimeout(r, 150));
+      }
+      expect(payoutCount).toBeGreaterThan(0);
+      expect(cashBookCount).toBeGreaterThan(0);
+
+      // Coach payable liability posted for the full coach fee (100).
+      const [rows] = await pool.execute<RowData>(
+        `SELECT le.amount, le.side, a.code
+         FROM ledger_entries le JOIN chart_of_accounts a ON a.id = le.chart_account_id
+         WHERE le.source_type='booking' AND le.source_id=? AND le.event_type='booking_coach_payout'`,
+        [bookingId]);
+      const payables = (rows as any[]).filter(r => r.code === '2201');
+      expect(payables.some(r => r.side === 'credit' && Number(r.amount) === 100)).toBe(true);
+    } finally {
+      await pool.execute(`DELETE FROM coach_org_agreements WHERE coach_id = ?`, [coachProfileId]);
+      if (bookingId) await pool.execute(`DELETE FROM ledger_entries WHERE source_type='booking' AND source_id=?`, [bookingId]);
+    }
+  });
+});

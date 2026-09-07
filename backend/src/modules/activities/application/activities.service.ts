@@ -15,6 +15,7 @@ import { CancellationReason } from '../../../platform/shared/booking-types.js';
 import type { Command } from '../../../shared/command/command-base.js';
 import { toMySqlDateTime } from '../../../shared/utils/mysql-date.js';
 import { bookingRepository } from '../../booking/infrastructure/repositories/booking.repository.js';
+import { calculateCoachEarningsSplit } from '../../scheduling/application/coach-pricing.js';
 
 type RowData = mysql.RowDataPacket[];
 
@@ -200,6 +201,9 @@ export const activitiesService = {
     const agreements = await repo.findOrgAgreements(p.id);
     return { ...p, agreements };
   },
+  async getCoachProfilePublic(id: number) {
+    return repo.findCoachById(id);
+  },
   async getOrgAgreements(userId: number) {
     const p = await repo.findCoachByUserId(userId);
     if (!p) return [];
@@ -237,6 +241,9 @@ export const activitiesService = {
   },
   async getBranchCoachPolicy(branchId: number) {
     return repo.getBranchCoachPolicy(branchId);
+  },
+  async findBranchCoachPolicy(branchId: number) {
+    return repo.findBranchCoachPolicy(branchId);
   },
   async setBranchCoachPolicy(branchId: number, policy: 'contract_required' | 'independent_coaches_allowed') {
     await repo.setBranchCoachPolicy(branchId, policy);
@@ -339,8 +346,27 @@ export const activitiesService = {
     //   the newer /scheduling/book server-priced flow. The client may still
     //   send `price` for API compatibility, but it is never used for earnings,
     //   commission, or persistence.
-    const orgAgreement = data.organisationId
-      ? await repo.findOrgAgreement(coach.id, data.organisationId)
+    const pool = getPool();
+    // Resolve the organisation from the session's branch (the organisation
+    // belongs to the branch, not the resource). When the caller passes an
+    // explicit organisationId, it takes precedence for backward compatibility.
+    let organisationId = data.organisationId ?? null;
+    let branchPolicy: 'contract_required' | 'independent_coaches_allowed' | null = null;
+    if (data.branchId) {
+      const [branchRows] = await pool.execute<RowData>(
+        `SELECT organisation_id, coach_policy FROM branches WHERE id = ?`,
+        [data.branchId],
+      );
+      if (branchRows.length) {
+        const branch = branchRows[0] as any;
+        if (organisationId == null) organisationId = branch.organisation_id ?? null;
+        branchPolicy = branch.coach_policy === 'independent_coaches_allowed'
+          ? 'independent_coaches_allowed'
+          : 'contract_required';
+      }
+    }
+    const orgAgreement = organisationId
+      ? await repo.getAcceptedAgreement(coach.id, organisationId)
       : null;
     const hourlyRate = Number(orgAgreement?.hourly_rate ?? coach.hourly_rate ?? 0);
     const durationHours = Math.max(
@@ -349,18 +375,29 @@ export const activitiesService = {
     );
     const authoritativePrice = Math.round(hourlyRate * durationHours * 100) / 100;
     let platformCommissionPct = 10;
-    if (data.organisationId) {
+    if (organisationId) {
       try {
-        const comm = await commissionService.calculate(data.organisationId, 'coach_session', authoritativePrice);
+        const comm = await commissionService.calculate(organisationId, 'coach_session', authoritativePrice);
         platformCommissionPct = comm.rate;
       } catch { /* use default */ }
     }
-    const remaining = 100 - platformCommissionPct;
-    const coachEarnings = (authoritativePrice * remaining) / 100;
-    const orgEarnings = authoritativePrice - coachEarnings - (authoritativePrice * platformCommissionPct) / 100;
+    // Canonical organisation split — shared with /scheduling/book. The
+    // organisation receives org_split_pct of the post-commission net only when
+    // the branch policy requires a contract AND an accepted/active agreement
+    // exists. Independent branches / missing agreements → org keeps 0%.
+    const split = calculateCoachEarningsSplit({
+      branchPolicy: branchPolicy || 'contract_required',
+      postCommissionNet: (authoritativePrice * (100 - platformCommissionPct)) / 100,
+      orgSplitPct: Number(orgAgreement?.org_split_pct ?? 0),
+      coachSplitPct: Number(orgAgreement?.coach_split_pct ?? 100),
+      hasAgreement: !!orgAgreement,
+    });
+    const coachEarnings = split.coachEarnings;
+    const orgEarnings = split.orgEarnings;
     const id = await repo.createCoachSession({
       ...data,
       coachId: coach.id,
+      organisationId,
       price: authoritativePrice,
       currencyCode: data.currencyCode || coach.currency_code || 'EGP',
       platformCommissionPct,

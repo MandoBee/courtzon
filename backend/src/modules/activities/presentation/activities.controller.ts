@@ -3,13 +3,15 @@ import { activitiesService as svc } from '../application/activities.service.js';
 import { recordAudit } from '../../audit-log/index.js';
 import { coachSessionStateService } from '../../coaches/application/coach-session-state.service.js';
 import { eventBusV2 } from '../../../shared/event-bus/index.js';
+import { NotFoundError, ForbiddenError } from '../../../shared/errors/app-error.js';
+import { isPlatformAdmin } from '../../../shared/middleware/org-access.js';
 import {
   CreateTournamentSchema, MatchScoreSchema,
   CreateAcademySchema, CreateCurriculumSchema, EnrollPlayerSchema,
   CreateAcademySessionSchema, MarkAttendanceSchema, CreateEvaluationSchema,
   CreateCoachProfileSchema, UpsertOrgAgreementSchema, CreateCoachSessionSchema, CreateCoachReviewSchema,
   SetCoachAvailabilitySchema, AddCoachBlackoutSchema, RespondOrgInviteSchema,
-  BookCourtSchema, DeclineSessionSchema,
+  BookCourtSchema, DeclineSessionSchema, UpdateServiceLocationsSchema,
 } from './activities.dto.js';
 
 // ── Tournaments ──
@@ -374,8 +376,8 @@ export async function getMyServiceLocationsHandler(request: FastifyRequest, repl
 
 export async function setMyServiceLocationsHandler(request: FastifyRequest, reply: FastifyReply) {
   const userId = (request as any).userId;
-  const body = (request.body || {}) as any;
-  const branchIds = Array.isArray(body.branchIds) ? body.branchIds.map((n: any) => Number(n)) : [];
+  const body = UpdateServiceLocationsSchema.parse(request.body || {});
+  const branchIds = body.branchIds;
   const result = await svc.setMyCoachServiceLocations(userId, branchIds);
   recordAudit({
     actorId: userId ?? null,
@@ -391,13 +393,21 @@ export async function setMyServiceLocationsHandler(request: FastifyRequest, repl
 
 export async function getCoachServiceLocationsHandler(request: FastifyRequest, reply: FastifyReply) {
   const { id } = request.params as any;
+  const actorId = (request as any).userId;
+  // Scope reads to the coach's own user or platform admins to prevent global
+  // branch/work-location enumeration by any authenticated user.
+  const coach = await svc.getCoachProfilePublic(Number(id));
+  if (coach && Number(coach.user_id) !== Number(actorId) && !(await isPlatformAdmin(actorId))) {
+    throw new ForbiddenError('Access to coach service locations denied');
+  }
   const result = await svc.getCoachServiceLocations(Number(id));
   return reply.send(result || []);
 }
 
 export async function getBranchCoachPolicyHandler(request: FastifyRequest, reply: FastifyReply) {
   const { branchId } = request.params as any;
-  const policy = await svc.getBranchCoachPolicy(Number(branchId));
+  const policy = await svc.findBranchCoachPolicy(Number(branchId));
+  if (!policy) throw new NotFoundError('Branch');
   return reply.send({ branchId: Number(branchId), coachPolicy: policy });
 }
 

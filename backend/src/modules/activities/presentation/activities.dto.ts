@@ -1,5 +1,9 @@
 import { z } from 'zod';
 
+export const UpdateServiceLocationsSchema = z.object({
+  branchIds: z.array(z.number().int().positive()).max(500).optional().default([]),
+});
+
 export const CreateTournamentSchema = z.object({
   organisationId: z.number().int().positive().optional(),
   branchId: z.number().int().positive().optional(),

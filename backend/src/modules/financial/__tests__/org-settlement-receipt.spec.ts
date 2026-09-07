@@ -38,7 +38,9 @@ describe('Marketplace / Org Settlement Receipt Accounting', () => {
   const SID_A = 990201;
   const SID_B = 990203;
   const SID_OTC = 990202;
-  const SIDS = [990201, 990202, 990203, 990204, 990205];
+  const SID_MIXED_OTC = 990206;
+  const SID_REPEAT = 990207;
+  const SIDS = [990201, 990202, 990203, 990204, 990205, 990206, 990207];
 
   beforeAll(async () => {
     pool = mysql.createPool({ host: '127.0.0.1', port: 3307, user: 'root', password: 'courtzon2026', database: 'courtzon_v3', connectionLimit: 5, charset: 'utf8mb4' });
@@ -114,10 +116,10 @@ describe('Marketplace / Org Settlement Receipt Accounting', () => {
     throw new Error(`timeout waiting for: ${label}`);
   }
 
-  async function emitSettlement(sid: number, amount: number, direction: string, orgId: number | null): Promise<void> {
+  async function emitSettlement(sid: number, amount: number, direction: string, orgId: number | null, extra: Record<string, number> = {}): Promise<void> {
     const { eventBusV2 } = await import('../../../shared/event-bus/event-bus.v2.js');
     await eventBusV2.emit('settlement:paid', {
-      settlementId: sid, amount, direction, organisationId: orgId, currency: 'EGP',
+      settlementId: sid, amount, direction, organisationId: orgId, currency: 'EGP', ...extra,
     } as any);
   }
 
@@ -205,5 +207,44 @@ describe('Marketplace / Org Settlement Receipt Accounting', () => {
     expect(aReceipt.some((r) => r.orgId === orgB)).toBe(false);
     // The CourtZon book post for org A is still exactly one posting (2 lines).
     expect(await countEvent(SID_A, 'settlement_paid', null)).toBe(2);
+  });
+
+  it('5. mixed online+COD OTC (org_to_courtzon) posts the offset CourtZon entry AND clears the org payable by the net paid', async () => {
+    // Net amount the org actually pays CourtZon = 30 (COD fee 50 vs online net 20).
+    await emitSettlement(SID_MIXED_OTC, 30, 'org_to_courtzon', orgA, { onlineNet: 20, codFee: 50 });
+    await waitFor(async () => (await countEvent(SID_MIXED_OTC, 'settlement_paid_otc_offset', null)) === 3, 'mixed OTC CourtZon post');
+    await waitFor(async () => (await countEvent(SID_MIXED_OTC, 'settlement_org_cash_pay', orgA)) === 2, 'mixed OTC org cash-pay');
+
+    const rows = await rowsFor(SID_MIXED_OTC);
+
+    // CourtZon book offset: Dr 1120 cash 30 + Dr 2202 merchant payable 20 / Cr 1161 receivable 50.
+    const courtzon = rows.filter((r) => r.eventType === 'settlement_paid_otc_offset');
+    expect(courtzon.length).toBe(3);
+    expect(courtzon.every((r) => r.orgId === null)).toBe(true);
+    expect(courtzon.find((r) => r.side === 'debit' && r.code === '1120')?.amount).toBe(30);
+    expect(courtzon.find((r) => r.side === 'debit' && r.code === '2202')?.amount).toBe(20);
+    expect(courtzon.find((r) => r.side === 'credit' && r.code === '1161')?.amount).toBe(50);
+
+    // Org book: the org pays 30 net → clear exactly that courtzon_payable against ORG-CASH.
+    const cashPay = rows.filter((r) => r.eventType === 'settlement_org_cash_pay');
+    expect(cashPay.length).toBe(2);
+    expect(cashPay.every((r) => r.orgId === orgA)).toBe(true);
+    expect(cashPay.find((r) => r.side === 'debit' && r.code === 'MKT-CZ-PAY')?.amount).toBe(30);
+    expect(cashPay.find((r) => r.side === 'credit' && r.code === 'ORG-CASH')?.amount).toBe(30);
+    // No org receipt for an OTC settlement.
+    expect(await countEvent(SID_MIXED_OTC, 'settlement_org_receipt', orgA)).toBe(0);
+  });
+
+  it('6. repeated settlement:paid event is idempotent — no duplicate postings (pure + mixed)', async () => {
+    // Re-emit the SAME pure-COD OTC settlement twice more.
+    await emitSettlement(SID_OTC, 100, 'org_to_courtzon', orgA);
+    await emitSettlement(SID_OTC, 100, 'org_to_courtzon', orgA);
+    await emitSettlement(SID_MIXED_OTC, 30, 'org_to_courtzon', orgA, { onlineNet: 20, codFee: 50 });
+    await new Promise(r => setTimeout(r, 600));
+
+    expect(await countEvent(SID_OTC, 'settlement_paid_otc', null)).toBe(2);
+    expect(await countEvent(SID_OTC, 'settlement_org_cash_pay', orgA)).toBe(2);
+    expect(await countEvent(SID_MIXED_OTC, 'settlement_paid_otc_offset', null)).toBe(3);
+    expect(await countEvent(SID_MIXED_OTC, 'settlement_org_cash_pay', orgA)).toBe(2);
   });
 });

@@ -18,8 +18,8 @@ export const BookSessionSchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD format'),
   startTime: z.string().regex(/^\d{2}:\d{2}$/, 'Use HH:mm format'),
   endTime: z.string().regex(/^\d{2}:\d{2}$/, 'Use HH:mm format'),
-}).refine((data) => data.startTime < data.endTime, {
-  message: 'Start time must be before end time',
+}).refine((data) => data.startTime !== data.endTime, {
+  message: 'Start time must differ from end time',
   path: ['endTime'],
 });
 

@@ -85,7 +85,7 @@ export async function activitiesRoutes(app: FastifyInstance, opts: { requireFeat
 
   // Branch coach policy
   app.get('/branches/:branchId/coach-policy', ctrl.getBranchCoachPolicyHandler);
-  app.get('/coaches/service-locations/me/available-branches', ctrl.listAvailableBranchesHandler);
+  app.get('/coaches/service-locations/me/available-branches', { preHandler: [requirePermission(['coaches.service_locations.manage'])] }, ctrl.listAvailableBranchesHandler);
 
   // Admin coach routes
   app.get('/admin/coaches', { preHandler: [adminGuard] }, ctrl.adminListCoachesHandler);

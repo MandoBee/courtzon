@@ -404,7 +404,7 @@ export const activitiesRepository = {
          ON DUPLICATE KEY UPDATE
            professional_bio = VALUES(professional_bio), experience_years = VALUES(experience_years),
            certifications = VALUES(certifications), sports = VALUES(sports)`,
-        [userId, data.bio || null, data.experienceYears || null, data.certifications ? JSON.stringify(data.certifications) : null, data.sports ? JSON.stringify(data.sports) : null]
+        [userId, data.bio || null, data.experienceYears || null, data.certifications ? JSON.stringify(data.certifications) : null, Array.isArray(data.sports) ? JSON.stringify(data.sports.slice(0, 1)) : (data.sports ? JSON.stringify(data.sports) : null)]
       );
       const [cpResult] = await conn.execute(
         "INSERT INTO coach_profiles (user_id, status) VALUES (?, 'pending') ON DUPLICATE KEY UPDATE status = 'pending', deleted_at = NULL",
@@ -532,7 +532,7 @@ export const activitiesRepository = {
   async hasAcceptedAgreement(coachId: number, organisationId: number): Promise<boolean> {
     const pool = getPool();
     const [rows] = await pool.execute<RowData>(
-      `SELECT 1 FROM coach_org_agreements WHERE coach_id = ? AND organisation_id = ? AND status = 'accepted' AND is_active = TRUE LIMIT 1`,
+      `SELECT 1 FROM coach_org_agreements WHERE coach_id = ? AND organisation_id = ? AND status IN ('accepted','active') AND is_active = TRUE LIMIT 1`,
       [coachId, organisationId]
     );
     return rows.length > 0;
@@ -751,6 +751,15 @@ export const activitiesRepository = {
     return rows.length > 0;
   },
 
+  async getCoachServiceLocationBranchIds(coachId: number): Promise<number[]> {
+    const pool = getPool();
+    const [rows] = await pool.execute<RowData>(
+      `SELECT branch_id FROM coach_service_locations WHERE coach_id = ?`,
+      [coachId]
+    );
+    return rows.map((r: any) => Number(r.branch_id));
+  },
+
   async setCoachServiceLocations(coachId: number, branchIds: number[]) {
     const pool = getPool();
     const conn = await pool.getConnection();
@@ -784,6 +793,27 @@ export const activitiesRepository = {
     );
     if (!rows.length) return 'contract_required';
     return (rows[0] as any).coach_policy === 'independent_coaches_allowed' ? 'independent_coaches_allowed' : 'contract_required';
+  },
+
+  /** Read coach policy with a strict existence check (deleted branches excluded). */
+  async findBranchCoachPolicy(branchId: number): Promise<'contract_required' | 'independent_coaches_allowed' | null> {
+    const pool = getPool();
+    const [rows] = await pool.execute<RowData>(
+      `SELECT coach_policy FROM branches WHERE id = ? AND deleted_at IS NULL`,
+      [branchId]
+    );
+    if (!rows.length) return null;
+    return (rows[0] as any).coach_policy === 'independent_coaches_allowed' ? 'independent_coaches_allowed' : 'contract_required';
+  },
+
+  async getBranchOrganisationId(branchId: number): Promise<number | null> {
+    const pool = getPool();
+    const [rows] = await pool.execute<RowData>(
+      `SELECT organisation_id FROM branches WHERE id = ? AND deleted_at IS NULL`,
+      [branchId]
+    );
+    if (!rows.length) return null;
+    return (rows[0] as any).organisation_id ?? null;
   },
 
   async listAllBranches() {
@@ -1233,7 +1263,7 @@ export const activitiesRepository = {
     const pool = getPool();
     const [rows] = await pool.execute<RowData>(
       `SELECT * FROM coach_org_agreements
-       WHERE coach_id = ? AND organisation_id = ? AND is_active = TRUE AND status = 'accepted'`,
+       WHERE coach_id = ? AND organisation_id = ? AND is_active = TRUE AND status IN ('accepted','active')`,
       [coachId, organisationId]
     );
     return rows[0] || null;

@@ -146,6 +146,15 @@ export class BookingService {
       input.resourceId, input.startTime, endTime
     );
 
+    // Coach session fee (booking_type='coach_session' only). The coach fee is
+    // added to the court total so the player is charged the combined amount and
+    // the accounting events receive the correct coach economics. Non-coach
+    // bookings keep coachAmount = 0 (unchanged behavior).
+    const coachAmount = input.bookingType === 'coach_session'
+      ? Math.max(0, Math.round((Number(input.coachAmount || 0)) * 100) / 100)
+      : 0;
+    const bookingTotal = Math.round((pricing.totalPrice + coachAmount) * 100) / 100;
+
     let commissionAmount = 0;
     let clubAmount = pricing.totalPrice;
     try {
@@ -207,7 +216,8 @@ export class BookingService {
           userId, branchId: input.branchId, organisationId, resourceId: input.resourceId,
         bookingType: input.bookingType || 'public_match', bookingDate,
         startTime: input.startTime, endTime,
-          totalAmount: pricing.totalPrice, commissionAmount, clubAmount,
+          totalAmount: bookingTotal, commissionAmount, clubAmount,
+          coachAmount,
           taxRate, taxRateId, taxAmount, taxTreatment, priceType: 'net',
           notes: input.notes, paymentMethod,
           bookingStatus: 'pending_payment', paymentStatus: 'pending',
@@ -236,7 +246,7 @@ export class BookingService {
           gwResult = await paymentService.charge(userId, {
             referenceType: 'booking',
             referenceId: bookingId,
-            amount: Math.round((pricing.totalPrice + taxAmount) * 100) / 100,
+            amount: Math.round((bookingTotal + taxAmount) * 100) / 100,
             currency: 'EGP',
             paymentMethod: (paymentMethod === 'online' ? 'card' : paymentMethod as 'wallet' | 'card' | 'bank_transfer'),
             returnUrl: input.returnUrl,
@@ -275,7 +285,7 @@ export class BookingService {
           branchId: input.branchId,
         });
 
-        return { id: bookingId, bookingId, paymentUrl, clientSecret, paymentId };
+        return { id: bookingId, bookingId, paymentUrl, clientSecret, paymentId, total_amount: bookingTotal, coach_amount: coachAmount };
       }
 
       // ── Cash / COD only (wallet and card routes through isGatewayOrWallet above) ──
@@ -292,7 +302,8 @@ export class BookingService {
         userId, branchId: input.branchId, organisationId, resourceId: input.resourceId,
         bookingType: input.bookingType || 'public_match', bookingDate,
         startTime: input.startTime, endTime: input.endTime,
-        totalAmount: pricing.totalPrice, commissionAmount, clubAmount,
+        totalAmount: bookingTotal, commissionAmount, clubAmount,
+        coachAmount,
         taxRate, taxRateId, taxAmount, taxTreatment, priceType: 'net',
         notes: input.notes, bookingStatus, paymentStatus, paymentMethod: 'cash',
         startAtUtc, endAtUtc, businessDate,
@@ -326,14 +337,14 @@ export class BookingService {
         const [txnResult] = await conn.execute<mysql.ResultSetHeader>(
           `INSERT INTO transactions (type, source_type, source_id, currency_id, total_amount, status)
            VALUES ('booking_payment', 'booking', ?, 2, ?, 'completed')`,
-          [bookingId, pricing.totalPrice]
+          [bookingId, bookingTotal]
         );
         await conn.execute(
           `INSERT INTO transaction_entries (transaction_id, side, entity_type, entity_id, amount, currency_id, branch_id, organisation_id, description)
            VALUES (?, 'debit', 'user_wallet', ?, ?, 2, ?, ?, ?),
                    (?, 'credit', 'branch', ?, ?, 2, ?, ?, ?)`,
-          [txnResult.insertId, userId, pricing.totalPrice, input.branchId, organisationId, `COD booking #${bookingId}`,
-           txnResult.insertId, input.branchId, pricing.totalPrice, input.branchId, organisationId, `COD booking #${bookingId}`]
+          [txnResult.insertId, userId, bookingTotal, input.branchId, organisationId, `COD booking #${bookingId}`,
+           txnResult.insertId, input.branchId, bookingTotal, input.branchId, organisationId, `COD booking #${bookingId}`]
         );
         // Canonical accounting trigger for COD — booking economics must reach
         // ledger_entries → general_ledger via booking:paid (see accounting listener).
@@ -341,7 +352,7 @@ export class BookingService {
         codPaidPayload = {
           bookingId, userId,
           organisationId,
-          grossAmount: pricing.totalPrice, taxAmount, coachAmount: 0,
+          grossAmount: bookingTotal, taxAmount, coachAmount,
           organisationAmount: clubAmount, commissionAmount,
           paymentMethod: 'cod', currency: 'EGP',
           sourceId: bookingId,
@@ -1650,6 +1661,12 @@ export class BookingService {
       input.resourceId, input.startTime, endTime,
     );
 
+    // Coach session fee (coach_session bookings only) — combined into the total.
+    const coachAmount = input.bookingType === 'coach_session'
+      ? Math.max(0, Math.round((Number(input.coachAmount || 0)) * 100) / 100)
+      : 0;
+    const bookingTotal = Math.round((pricing.totalPrice + coachAmount) * 100) / 100;
+
     // ── Economic snapshot: commission + org share + tax ──
     // Computed once at booking time from the CURRENT subscription/tax config,
     // then persisted as an immutable snapshot. The accounting engine reads
@@ -1669,7 +1686,8 @@ export class BookingService {
         bookingDate: input.bookingDate,
         startTime: input.startTime,
         endTime: input.endTime,
-        totalAmount: pricing.totalPrice,
+        totalAmount: bookingTotal,
+        coachAmount,
         commissionAmount: economics.commissionAmount,
         clubAmount: economics.clubAmount,
         taxRate: economics.taxRate,
@@ -1705,7 +1723,7 @@ export class BookingService {
     const bookingId = result.status === 'processed' ? result.data?.bookingId : 0;
     log.info({ bookingId }, 'booking.created_v2');
 
-    if (!bookingId) return { bookingId: 0 };
+    if (!bookingId) return { bookingId: 0, total_amount: 0, coach_amount: 0 };
 
     // Persist matchmaking criteria for a public match at creation time (cash
     // path). Previously these were only stored when the owner later called
@@ -1738,9 +1756,9 @@ export class BookingService {
       eventBusV2.emit('booking:paid', {
         bookingId, userId,
         organisationId,
-        grossAmount: pricing.totalPrice,
+        grossAmount: bookingTotal,
         taxAmount: economics.taxAmount,
-        coachAmount: 0,
+        coachAmount,
         organisationAmount: economics.clubAmount,
         commissionAmount: economics.commissionAmount,
         paymentMethod: input.paymentMethod,
@@ -1751,13 +1769,13 @@ export class BookingService {
 
     // ── Process payment for wallet (synchronous) ──
     if (input.paymentMethod === 'wallet') {
-      log.info({ bookingId, userId, amount: pricing.totalPrice }, 'createBookingV2: processing wallet payment');
+      log.info({ bookingId, userId, amount: bookingTotal }, 'createBookingV2: processing wallet payment');
       try {
         const { paymentService } = await import('../../payment/application/payment.service.js');
         await paymentService.charge(userId, {
           referenceType: 'booking',
           referenceId: bookingId,
-          amount: pricing.totalPrice,
+          amount: bookingTotal,
           currency: 'EGP',
           paymentMethod: 'wallet',
         });
@@ -1769,7 +1787,7 @@ export class BookingService {
       }
     }
 
-    return { id: bookingId, bookingId };
+    return { id: bookingId, bookingId, total_amount: bookingTotal, coach_amount: coachAmount };
   }
 
   /**

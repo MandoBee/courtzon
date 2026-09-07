@@ -340,16 +340,23 @@ describe('F-19 — marketplace-manager settlement authority (finance-only payout
     }
   });
 
-  it('org-admin / shop-admin have view+request only (no platform settlement financial actions)', () => {
-    // org-admin: explicit view+request keys.
+  it('org-admin has view+request+pay+cancel (org-scoped workflow); shop-admin request-only (no platform settlement financial actions)', () => {
+    // org-admin: explicit view/request/pay/cancel keys — the org processes its
+    // own settlements (org-scoped authorization) but cannot approve/complete
+    // platform-level settlement actions.
     expect(permissionMatchesTemplate('org-admin', viewKey)).toBe(true);
     expect(permissionMatchesTemplate('org-admin', requestKey)).toBe(true);
+    expect(permissionMatchesTemplate('org-admin', 'settlements.pay')).toBe(true);
+    expect(permissionMatchesTemplate('org-admin', 'settlements.cancel')).toBe(true);
+    expect(mjsMatch('org-admin', 'settlements.pay')).toBe(true);
+    expect(mjsMatch('org-admin', 'settlements.cancel')).toBe(true);
     // shop-admin: request via SHOP_ADMIN_PATTERNS; views via the org-scoped
     // org-portal endpoint (org access), not settlements.view.
     expect(permissionMatchesTemplate('shop-admin', requestKey)).toBe(true);
     expect(permissionMatchesTemplate('shop-admin', viewKey)).toBe(false);
+    // Platform-only actions (approve/complete/reject) stay out of org roles.
     for (const slug of ['org-admin', 'shop-admin']) {
-      for (const key of financeKeys) {
+      for (const key of ['settlements.approve', 'settlements.complete', 'settlements.reject']) {
         expect(permissionMatchesTemplate(slug, key)).toBe(false);
         expect(mjsMatch(slug, key)).toBe(false);
       }

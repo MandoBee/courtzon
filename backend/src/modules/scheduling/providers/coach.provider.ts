@@ -87,16 +87,14 @@ export class CoachProvider implements ResourceProvider {
   }
 
   async getLocation(): Promise<LocationInfo | null> {
-    const agreements = await activitiesRepository.findOrgAgreements(this.entityId);
-    if (agreements.length === 0) return null;
-
-    const first = agreements[0] as any;
-    return {
-      branchId: first.branch_id ?? undefined,
-      branchName: first.branch_name ?? undefined,
-      organisationId: first.organisation_id,
-      organisationName: first.organisation_name ?? undefined,
-    };
+    // Location eligibility is driven by the coach's explicit SERVICE LOCATIONS
+    // (coach_service_locations → branch ids). It is intentionally NOT derived
+    // from coach_org_agreements (which carry no branch and must not be used to
+    // infer where a coach can work). Independent coaches with no agreements are
+    // still location-eligible at their service branches.
+    const branchIds = await activitiesRepository.getCoachServiceLocationBranchIds(this.entityId);
+    if (branchIds.length === 0) return { branchIds: [] };
+    return { branchIds };
   }
 
   async isAvailable(): Promise<boolean> {

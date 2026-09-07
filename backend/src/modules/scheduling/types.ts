@@ -19,6 +19,8 @@ export interface LocationInfo {
   organisationName?: string;
   latitude?: number;
   longitude?: number;
+  /** Set of branch ids the resource can serve (e.g. coach service locations). */
+  branchIds?: number[];
 }
 
 export interface ResourceProvider {

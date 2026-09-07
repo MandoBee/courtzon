@@ -195,6 +195,7 @@ const ORG_ADMIN_EXPLICIT_KEYS = new Set([
   'org.marketplace.manage',
   'org.settings.edit',
   'organisations.edit.branches',
+  'branches.edit.coach-policy',
   'organisations.edit.cancellation',
   'community.chat.view',
   'community.chat.send',
@@ -203,6 +204,8 @@ const ORG_ADMIN_EXPLICIT_KEYS = new Set([
   'coaches.assign',
   'settlements.view',
   'settlements.request',
+  'settlements.pay',
+  'settlements.cancel',
   'academies.enroll',
 ]);
 
