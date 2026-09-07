@@ -424,7 +424,12 @@ function mapCoachEvent(eventName: string, p: Record<string, any>): MappedSocketE
   const rooms: string[] = [];
   const userId = p.userId || p.coachUserId;
   if (userId) rooms.push(`user:${userId}`);
-  if (p.organisationId) rooms.push(`org:${p.organisationId}`);
+  // The canonical organisation room (realtime-rooms.orgRoom → `organisation:<id>`)
+  // is what org staff join on connect. Previously this used `org:<id>`, so
+  // coach agreement/invite/service-location/availability events never reached
+  // org staff and admins. Use the SAME naming convention as every other
+  // organisation-scoped event.
+  if (p.organisationId) rooms.push(`organisation:${p.organisationId}`);
   return {
     type: `coach.${eventName.split(':').slice(1).join('.')}`,
     payload: { ...p, timestamp: Date.now() },

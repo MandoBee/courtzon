@@ -504,12 +504,11 @@ export async function requestCoachSessionHandler(request: FastifyRequest, reply:
   const pool = (await import('../../../database/mysql.js')).getPool();
   const { activitiesRepository } = await import('../../activities/infrastructure/repositories/activities.repository.js');
   const coach = await activitiesRepository.findCoachById(body.coachId);
-  if (!coach || coach.status !== 'approved') {
-    return reply.status(404).send({ error: 'NOT_FOUND', message: 'Coach not found or not approved' });
+  if (!coach) {
+    return reply.status(404).send({ error: 'NOT_FOUND', message: 'Coach not found' });
   }
-  if (Number(coach.is_available ?? 1) !== 1) {
-    return reply.status(403).send({ error: 'FORBIDDEN', message: 'Coach is not currently available for bookings' });
-  }
+  // Approved status + availability + service location + branch policy +
+  // agreement are enforced by the canonical isCoachEligibleAtBranch below.
 
   // Resolve the branch from the AUTHORITATIVE resource (court) record — a
   // client-supplied branch is never trusted, so eligibility cannot be bypassed.

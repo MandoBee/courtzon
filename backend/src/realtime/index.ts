@@ -3,10 +3,11 @@ import type { FastifyInstance } from 'fastify';
 import { createHash } from 'node:crypto';
 import { setOnlineWithReconnect, setOffline } from '../modules/notifications/application/presence.service.js';
 import { registerUserDevice } from '../modules/notifications/application/cross-device-sync.service.js';
-import { userRoom, orgRoom, branchRoom, ADMIN_ROOM, PLAYER_ROOM } from '../modules/realtime/domain/realtime-rooms.js';
+import { userRoom, orgRoom, branchRoom, bookingRoom, matchRoom, conversationRoom, room, ADMIN_ROOM, PLAYER_ROOM } from '../modules/realtime/domain/realtime-rooms.js';
 import { eventBusV2 } from '../shared/event-bus/event-bus.v2.js';
 import { ALLOWED_ORIGINS } from '../app.js';
 import { getPool } from '../database/mysql.js';
+import { canAccessOrganisation, isPlatformAdmin } from '../shared/middleware/org-access.js';
 
 let io: SocketIOServer | null = null;
 
@@ -162,14 +163,22 @@ export function setupRealtime(app: FastifyInstance): SocketIOServer {
       } catch {}
     });
 
-    socket.on('join:booking', (id: number) => { socket.join(`booking:${id}`); });
-    socket.on('leave:booking', (id: number) => { socket.leave(`booking:${id}`); });
-    socket.on('join:match', (id: number) => { socket.join(`match:${id}`); });
-    socket.on('leave:match', (id: number) => { socket.leave(`match:${id}`); });
-    socket.on('join:conversation', (id: number) => { socket.join(`conversation:${id}`); });
-    socket.on('leave:conversation', (id: number) => { socket.leave(`conversation:${id}`); });
-    socket.on('join:resource', (id: number) => { if (id) socket.join(`resource:${id}`); });
-    socket.on('leave:resource', (id: number) => { if (id) socket.leave(`resource:${id}`); });
+    socket.on('join:booking', async (id: number) => {
+      if (id && (await canJoinRoom(socket, 'booking', Number(id)))) socket.join(bookingRoom(Number(id)));
+    });
+    socket.on('leave:booking', (id: number) => { socket.leave(bookingRoom(Number(id))); });
+    socket.on('join:match', async (id: number) => {
+      if (id && (await canJoinRoom(socket, 'match', Number(id)))) socket.join(matchRoom(Number(id)));
+    });
+    socket.on('leave:match', (id: number) => { socket.leave(matchRoom(Number(id))); });
+    socket.on('join:conversation', async (id: number) => {
+      if (id && (await canJoinRoom(socket, 'conversation', Number(id)))) socket.join(conversationRoom(Number(id)));
+    });
+    socket.on('leave:conversation', (id: number) => { socket.leave(conversationRoom(Number(id))); });
+    socket.on('join:resource', async (id: number) => {
+      if (id && (await canJoinRoom(socket, 'resource', Number(id)))) socket.join(room('resource', Number(id)));
+    });
+    socket.on('leave:resource', (id: number) => { if (id) socket.leave(room('resource', Number(id))); });
 
     socket.on('notification:read', async (data) => {
       if (!data?.notificationId) return;
@@ -213,4 +222,71 @@ function parseCookies(cookieHeader: string): Record<string, string> {
     if (key) acc[key.trim()] = val.join('=').trim();
     return acc;
   }, {} as Record<string, string>);
+}
+
+/**
+ * Authorize a client-initiated room join. Fails CLOSED: a numeric id alone
+ * never grants access. Each room's membership is resolved from authoritative
+ * server data (never trusted from the client):
+ *
+ *   booking:      owner, organisation staff (canAccessOrganisation), platform admin
+ *   resource:     any authenticated user may observe a valid resource's realtime
+ *                 booking events — mirrors GET /resources/:id/slots (bookings.view
+ *                 is granted to all authenticated players/staff)
+ *   conversation: a conversation participant, or platform admin
+ *   match:        the match's booking owner, an invited/join-requested user, or
+ *                 platform admin
+ *
+ * Unauthorized joins are silently ignored (no event emitted, no existence
+ * disclosure).
+ */
+export async function canJoinRoom(socket: any, roomKind: 'booking' | 'resource' | 'conversation' | 'match', id: number): Promise<boolean> {
+  const pool = getPool();
+  const userId: number = socket.data.userId;
+  if (!userId || !id) return false;
+
+  if (roomKind === 'booking') {
+    const [rows] = await pool.execute<any[]>(
+      'SELECT user_id, organisation_id FROM bookings WHERE id = ?', [id],
+    );
+    if (!rows.length) return false;
+    const b = rows[0];
+    if (Number(b.user_id) === userId) return true;
+    return canAccessOrganisation(userId, b.organisation_id);
+  }
+
+  if (roomKind === 'resource') {
+    // The resource must exist and be active; the observing user is already
+    // authenticated (the same gate as the public availability API).
+    const [rows] = await pool.execute<any[]>(
+      'SELECT id FROM resources WHERE id = ? AND deleted_at IS NULL', [id],
+    );
+    return rows.length > 0;
+  }
+
+  if (roomKind === 'conversation') {
+    const [rows] = await pool.execute<any[]>(
+      'SELECT 1 FROM conversation_participants WHERE conversation_id = ? AND user_id = ? LIMIT 1', [id, userId],
+    );
+    if (rows.length) return true;
+    return isPlatformAdmin(userId);
+  }
+
+  // match
+  const [matchRows] = await pool.execute<any[]>(
+    `SELECT m.id, b.user_id AS owner_id
+     FROM matches m LEFT JOIN bookings b ON b.id = m.booking_id
+     WHERE m.id = ?`, [id],
+  );
+  if (!matchRows.length) return false;
+  if (Number(matchRows[0].owner_id) === userId) return true;
+  const [inv] = await pool.execute<any[]>(
+    'SELECT 1 FROM invitations WHERE match_id = ? AND user_id = ? LIMIT 1', [id, userId],
+  );
+  if (inv.length) return true;
+  const [jr] = await pool.execute<any[]>(
+    'SELECT 1 FROM join_requests WHERE match_id = ? AND user_id = ? LIMIT 1', [id, userId],
+  );
+  if (jr.length) return true;
+  return isPlatformAdmin(userId);
 }

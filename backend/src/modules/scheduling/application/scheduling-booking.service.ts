@@ -53,10 +53,12 @@ export class SchedulingBookingService {
 
     log.info({ userId, coachId, resourceId, date, startTime, endTime }, 'Booking session requested');
 
-    // 1. Validate coach exists and is approved
+    // 1. Validate coach exists. Approved status + availability + service location +
+    //    branch policy + agreement are enforced by the canonical
+    //    isCoachEligibleAtBranch check below (search and booking agree).
     const coachProfile = await activitiesRepository.findCoachById(coachId);
-    if (!coachProfile || coachProfile.status !== 'approved') {
-      log.warn({ coachId, status: coachProfile?.status }, 'Coach not found or not approved');
+    if (!coachProfile) {
+      log.warn({ coachId }, 'Coach not found or not approved');
       throw new NotFoundError('Coach not found or not approved');
     }
 

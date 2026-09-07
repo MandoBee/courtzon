@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { ORG_LIFECYCLE_INVALIDATIONS, invalidateOrgLifecycle, USER_REGISTRATION_INVALIDATIONS, invalidateUserRegistration, FINANCE_INVALIDATIONS, invalidateFinanceEntries, MARKETPLACE_PRODUCT_INVALIDATIONS, invalidateMarketplaceProducts, ORG_ACCOUNTING_ROOTS, invalidateOrgAccounting } from './useRealtimeCacheUpdates';
+import { ORG_LIFECYCLE_INVALIDATIONS, invalidateOrgLifecycle, USER_REGISTRATION_INVALIDATIONS, invalidateUserRegistration, FINANCE_INVALIDATIONS, invalidateFinanceEntries, MARKETPLACE_PRODUCT_INVALIDATIONS, invalidateMarketplaceProducts, ORG_ACCOUNTING_ROOTS, invalidateOrgAccounting, COACH_LIFECYCLE_INVALIDATIONS } from './useRealtimeCacheUpdates';
 
 function hasPrefix(keys: readonly (readonly string[])[], prefix: string[]): boolean {
   return keys.some((k) => prefix.every((part, i) => k[i] === part));
@@ -194,8 +194,8 @@ it('invalidateMarketplaceProducts runs through the query client without duplicat
     expect(new Set(invalidated.map((k) => k.join(':'))).size).toBe(invalidated.length);
   });
 
-  it('product visibility changes reuse the exact marketplace roots (18) and no unrelated ones (19)', () => {
-    // The visibility socket handler calls invalidateMarketplaceProducts — the
+it('product visibility changes reuse the exact marketplace roots (18) and no unrelated ones (19)', () => {
+    // The visibility socket handler calls invalidateMarketplaceProducts �?" the
     // same roots as status changes. Assert the set is identical and scoped.
     const roots = MARKETPLACE_PRODUCT_INVALIDATIONS.map((k) => k[0]);
     expect(roots).toContain('mp-products');
@@ -207,5 +207,34 @@ it('invalidateMarketplaceProducts runs through the query client without duplicat
     for (const forbidden of ['accounting', 'finance', 'wallet', 'my-bookings', 'admin', 'notifications', 'organisation']) {
       expect(roots).not.toContain(forbidden);
     }
+  });
+
+  describe('COACH_LIFECYCLE_INVALIDATIONS (agreement/availability/status → eligibility)', () => {
+    const flat = COACH_LIFECYCLE_INVALIDATIONS.map((k) => k.join('.'));
+    const roots = COACH_LIFECYCLE_INVALIDATIONS.map((k) => k[0]);
+
+    it('covers admin/org agreement surfaces and per-coach detail', () => {
+      expect(flat).toContain('admin-coaches');
+      expect(flat).toContain('admin.user');
+      expect(flat).toContain('my-coach-agreements');
+      expect(flat).toContain('org-coaches');
+      expect(flat).toContain('coach-agreements');
+      expect(flat).toContain('coach');
+    });
+
+    it('invalidates branch-eligibility surfaces so search/booking never show stale eligibility', () => {
+      // An agreement accept/reject or availability toggle can change eligibility
+      // at a contract-required branch → the coach directory and the booking
+      // candidate lists must refresh (this was the pre-existing gap).
+      expect(flat).toContain('coaches');
+      expect(flat).toContain('scheduling-search');
+      expect(flat).toContain('scheduling-search-resource');
+    });
+
+    it('does not invalidate unrelated surfaces', () => {
+      for (const forbidden of ['accounting', 'finance', 'wallet', 'my-bookings', 'notifications', 'marketplace']) {
+        expect(roots).not.toContain(forbidden);
+      }
+    });
   });
 });

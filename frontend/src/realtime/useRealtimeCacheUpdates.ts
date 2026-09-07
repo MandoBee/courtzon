@@ -148,6 +148,27 @@ export function invalidateMarketplaceProducts(qc: { invalidateQueries: (opts: { 
     qc.invalidateQueries({ queryKey });
   }
 }
+
+/**
+ * Coach lifecycle invalidation keys. These fire on agreement accepted/rejected/
+ * invited/ended, approval/status changes, and availability toggles — all of
+ * which can change a coach's eligibility at a contract-required branch. The
+ * branch-eligibility surfaces (coaches directory + scheduling candidate lists)
+ * are included so search and booking never reflect stale eligibility.
+ */
+export const COACH_LIFECYCLE_INVALIDATIONS = [
+  ['admin-coaches'],
+  ['admin', 'user'],
+  ['my-coach-agreements'],
+  ['org-coaches'],
+  // Per-coach agreement list (CoachDetailPage) + coach detail.
+  ['coach-agreements'],
+  ['coach'],
+  // Branch-eligibility surfaces.
+  ['coaches'],
+  ['scheduling-search'],
+  ['scheduling-search-resource'],
+] as const;
 export function useRealtimeCacheUpdates(): void {
   const qc = useQueryClient();
 
@@ -441,16 +462,9 @@ export function useRealtimeCacheUpdates(): void {
 
   for (const eventName of coachLifecycleEvents) {
     useSocketEvent(eventName, () => {
-      qc.invalidateQueries({ queryKey: ['admin-coaches'] });
-      qc.invalidateQueries({ queryKey: ['admin', 'user'] });
-      qc.invalidateQueries({ queryKey: ['my-coach-agreements'] });
-      qc.invalidateQueries({ queryKey: ['org-coaches'] });
-      // Per-coach agreement list (CoachDetailPage) and coach detail cache —
-      // these were stale because agreement status changes (accept/reject) only
-      // invalidated `my-coach-agreements`. Invalidate the coach root so both the
-      // per-coach agreements list and the coach detail update live.
-      qc.invalidateQueries({ queryKey: ['coach-agreements'] });
-      qc.invalidateQueries({ queryKey: ['coach'] });
+      for (const queryKey of COACH_LIFECYCLE_INVALIDATIONS) {
+        qc.invalidateQueries({ queryKey });
+      }
     });
   }
 

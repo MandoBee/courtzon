@@ -837,11 +837,23 @@ export const activitiesRepository = {
   },
 
   /**
-   * Determine whether a coach may provide coaching services at a given branch,
-   * factoring in BOTH the branch's coach policy and the coach's service
-   * locations. The coach must have explicit service access to the branch
-   * (coach_service_locations). If the branch policy requires a contract, an
-   * active/accepted organisation agreement is ALSO required.
+   * Determine whether a coach may be BOOKED to provide coaching services at a
+   * given branch — the CANONICAL "can be booked right now" decision used by
+   * every booking/session-creation path (unified /scheduling/book, /bookings,
+   * legacy /coaches/sessions, Slice-4 /coach-sessions/request).
+   *
+   * A coach is bookable at branch X ONLY when ALL of the following hold:
+   *   1. The coach profile is approved (status='approved', not deleted).
+   *   2. The coach is currently available (professional_profiles.is_available=1)
+   *      — the same gate coach discovery/search uses.
+   *   3. The coach has an EXPLICIT service-location row (coach_service_locations).
+   *   4. The branch coach policy is satisfied:
+   *      - 'independent_coaches_allowed' → always (given access).
+   *      - 'contract_required' → an accepted/active org agreement is required.
+   *
+   * The pure domain rule (service access + policy + agreement) lives in
+   * `evaluateCoachEligibility`; approval/availability are folded in here so no
+   * caller can drift (search and booking agree).
    */
   async isCoachEligibleAtBranch(coachId: number, branchId: number): Promise<{
     eligible: boolean;
@@ -859,6 +871,26 @@ export const activitiesRepository = {
 
     const policy = (branchRows[0] as any).coach_policy === 'independent_coaches_allowed' ? 'independent_coaches_allowed' : 'contract_required';
     const organisationId = (branchRows[0] as any).organisation_id;
+
+    // Coach profile must be approved AND currently available (same gates used
+    // by coach discovery/search — so booking can never accept what search hides).
+    const [coachRows] = await pool.execute<RowData>(
+      `SELECT cp.status, pp.is_available
+       FROM coach_profiles cp
+       LEFT JOIN professional_profiles pp ON pp.user_id = cp.user_id
+       WHERE cp.id = ? AND cp.deleted_at IS NULL`,
+      [coachId]
+    );
+    const coach = coachRows[0] as any;
+    if (!coach) {
+      return { eligible: false, reason: 'Coach not found', policy, hasServiceAccess: false, hasAgreement: false };
+    }
+    if (coach.status !== 'approved') {
+      return { eligible: false, reason: 'Coach is not approved', policy, hasServiceAccess: false, hasAgreement: false };
+    }
+    if (Number(coach.is_available ?? 1) !== 1) {
+      return { eligible: false, reason: 'Coach is not currently available for bookings', policy, hasServiceAccess: false, hasAgreement: false };
+    }
 
     const [cslRows] = await pool.execute<RowData>(
       `SELECT 1 FROM coach_service_locations WHERE coach_id = ? AND branch_id = ? LIMIT 1`,

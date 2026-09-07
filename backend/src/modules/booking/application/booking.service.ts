@@ -107,13 +107,11 @@ export class BookingService {
       import('../../scheduling/application/coach-pricing.js'),
     ]);
     const coach = await activitiesRepository.findCoachById(input.coachId);
-    if (!coach || coach.status !== 'approved') {
-      throw new NotFoundError('Coach not found or not approved');
+    if (!coach) {
+      throw new NotFoundError('Coach not found');
     }
-    // Availability gate matches coach discovery/search (professional_profiles.is_available).
-    if (Number(coach.is_available ?? 1) !== 1) {
-      throw new ForbiddenError('Coach is not currently available for bookings');
-    }
+    // Approved status + availability + service location + branch policy +
+    // agreement are enforced by the canonical isCoachEligibleAtBranch below.
     const courtSport = courtSportId ? Number(courtSportId) : null;
     if (!courtSport) {
       throw new ForbiddenError('Court has no sport configured — coach booking unavailable');

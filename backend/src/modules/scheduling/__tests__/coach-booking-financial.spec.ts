@@ -596,4 +596,39 @@ describe('Coach Booking Financial Wiring', () => {
       await pool.execute(`DELETE FROM bookings WHERE id = ?`, [bookingId]);
     }
   });
+
+  it('23. unavailable coach: excluded from search AND rejected by booking (search/booking consistency)', async () => {
+    const { activitiesRepository } = await import('../../activities/infrastructure/repositories/activities.repository.js');
+    const { SchedulingBookingService } = await import('../application/scheduling-booking.service.js');
+    await insertAgreement({ orgId });
+    await pool.execute(`UPDATE professional_profiles SET is_available = 0 WHERE user_id = ?`, [COACH_USER]);
+    try {
+      // Search (listEligibleCoachesAtBranch) must NOT surface the coach.
+      const eligible = await activitiesRepository.listEligibleCoachesAtBranch(branchId, sportId);
+      expect(eligible.some((c: any) => Number(c.id) === coachProfileId)).toBe(false);
+      // Booking must reject the unavailable coach (canonical eligibility).
+      const svc = new SchedulingBookingService();
+      await expect(
+        svc.bookSession({ coachId: coachProfileId, resourceId, date: '2027-02-28', startTime: '09:00', endTime: '10:00', paymentMethod: 'cash' }, PLAYER_USER),
+      ).rejects.toThrow(/available/i);
+    } finally {
+      await pool.execute(`UPDATE professional_profiles SET is_available = 1 WHERE user_id = ?`, [COACH_USER]);
+      await pool.execute(`DELETE FROM coach_org_agreements WHERE coach_id = ?`, [coachProfileId]);
+    }
+  });
+
+  it('24. non-approved coach rejected by booking (canonical approval gate)', async () => {
+    const { SchedulingBookingService } = await import('../application/scheduling-booking.service.js');
+    await insertAgreement({ orgId });
+    await pool.execute(`UPDATE coach_profiles SET status = 'pending' WHERE id = ?`, [coachProfileId]);
+    try {
+      const svc = new SchedulingBookingService();
+      await expect(
+        svc.bookSession({ coachId: coachProfileId, resourceId, date: '2027-03-01', startTime: '09:00', endTime: '10:00', paymentMethod: 'cash' }, PLAYER_USER),
+      ).rejects.toThrow(/not approved|eligible/i);
+    } finally {
+      await pool.execute(`UPDATE coach_profiles SET status = 'approved' WHERE id = ?`, [coachProfileId]);
+      await pool.execute(`DELETE FROM coach_org_agreements WHERE coach_id = ?`, [coachProfileId]);
+    }
+  });
 });

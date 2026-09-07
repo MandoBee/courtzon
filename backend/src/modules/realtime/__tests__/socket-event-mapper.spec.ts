@@ -394,4 +394,42 @@ describe('SocketEventMapper', () => {
       expect(result!.rooms).not.toContain('organisation:null');
     });
   });
+
+  describe('organization room naming — canonical `organisation:<id>`', () => {
+    it('coach:agreement-added routes to the canonical organisation room (not org:)', () => {
+      const result = mapDomainEvent('coach:agreement-added', {
+        coachId: 5, organisationId: 12, userId: 5, coachName: 'C', organisationName: 'O',
+      });
+      expect(result).not.toBeNull();
+      expect(result!.rooms).toContain('organisation:12');
+      expect(result!.rooms).not.toContain('org:12');
+      // The coach's own user room still receives it.
+      expect(result!.rooms).toContain('user:5');
+    });
+
+    it('coach:service-locations-changed routes to the canonical organisation room', () => {
+      const result = mapDomainEvent('coach:service-locations-changed', {
+        coachId: 5, userId: 5, organisationId: 12, branchIds: [1, 2],
+      });
+      expect(result!.rooms).toContain('organisation:12');
+      expect(result!.rooms).not.toContain('org:12');
+      expect(result!.type).toBe('coach.service-locations-changed');
+    });
+
+    it('coach:availability-changed routes to the canonical organisation room', () => {
+      const result = mapDomainEvent('coach:availability-changed', {
+        coachId: 5, userId: 5, organisationId: 12, isAvailable: true,
+      });
+      expect(result!.rooms).toContain('organisation:12');
+      expect(result!.rooms).not.toContain('org:12');
+    });
+
+    it('coach:invite-accepted routes to the canonical organisation room', () => {
+      const result = mapDomainEvent('coach:invite-accepted', {
+        coachId: 5, coachUserId: 5, organisationId: 12, organisationName: 'O',
+      });
+      expect(result!.rooms).toContain('organisation:12');
+      expect(result!.rooms).not.toContain('org:12');
+    });
+  });
 });

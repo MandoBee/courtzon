@@ -127,8 +127,9 @@ describe('Slice-4 requestCoachSessionHandler — eligibility enforcement', () =>
     expect(JSON.stringify(msg)).toMatch(/sport/i);
   });
 
-  it('rejects an unavailable coach (is_available = 0)', async () => {
+  it('rejects an unavailable coach (canonical eligibility returns not-available)', async () => {
     findCoachByIdMock.mockResolvedValue({ ...COACH, is_available: 0 });
+    isCoachEligibleAtBranchMock.mockResolvedValue({ eligible: false, reason: 'Coach is not currently available for bookings', policy: 'contract_required', hasServiceAccess: true, hasAgreement: true });
     const { request, reply } = makeCtx(validBody());
     await requestCoachSessionHandler(request, reply);
     expect(reply.status).toHaveBeenCalledWith(403);
@@ -136,11 +137,14 @@ describe('Slice-4 requestCoachSessionHandler — eligibility enforcement', () =>
     expect(JSON.stringify(msg)).toMatch(/not currently available/i);
   });
 
-  it('rejects a non-approved coach', async () => {
+  it('rejects a non-approved coach (canonical eligibility returns not-approved)', async () => {
     findCoachByIdMock.mockResolvedValue({ ...COACH, status: 'pending' });
+    isCoachEligibleAtBranchMock.mockResolvedValue({ eligible: false, reason: 'Coach is not approved', policy: 'contract_required', hasServiceAccess: false, hasAgreement: false });
     const { request, reply } = makeCtx(validBody());
     await requestCoachSessionHandler(request, reply);
-    expect(reply.status).toHaveBeenCalledWith(404);
+    expect(reply.status).toHaveBeenCalledWith(403);
+    const msg = (reply.send as any).mock.calls[0][0];
+    expect(JSON.stringify(msg)).toMatch(/not approved/i);
   });
 
   it('rejects a request without a resourceId (missing branch context)', async () => {

@@ -297,7 +297,20 @@ export const activitiesService = {
     if (!existing) throw new NotFoundError('Coach profile');
     const updated = await repo.updateCoachProfile(userId, data);
     if (!updated) throw new NotFoundError('Coach profile');
-    return repo.findCoachByUserId(userId);
+    const profile = await repo.findCoachByUserId(userId);
+    // Realtime: a self-service availability toggle changes player-facing coach
+    // discovery/eligibility. Emit the SAME canonical coach:availability-changed
+    // event the admin toggle uses so search/booking caches refresh live.
+    if (data.isAvailable !== undefined && profile && Number(profile.is_available) !== Number(existing.is_available)) {
+      try {
+        eventBusV2.emit('coach:availability-changed', {
+          userId,
+          coachId: profile.id,
+          isAvailable: Number(profile.is_available) === 1,
+        } as any);
+      } catch { /* realtime is non-fatal */ }
+    }
+    return profile;
   },
   async upsertOrgAgreement(userId: number, data: any) {
     const coach = await repo.findCoachByUserId(userId);
@@ -346,8 +359,6 @@ export const activitiesService = {
   async createCoachSession(userId: number, data: any) {
     const coach = await repo.findCoachByUserId(userId);
     if (!coach) throw new ForbiddenError('Not a coach');
-    if (coach.status !== 'approved') throw new ForbiddenError('Coach is not approved');
-    if (Number(coach.is_available ?? 1) !== 1) throw new ForbiddenError('Coach is not currently available for bookings');
     if (data.organisationId) {
       const hasAgreement = await repo.hasAcceptedAgreement(coach.id, data.organisationId);
       if (!hasAgreement) {
