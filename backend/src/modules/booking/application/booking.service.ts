@@ -865,6 +865,83 @@ export class BookingService {
   }
 
   /**
+   * System-initiated compensation for a failed coach-booking saga (court booked,
+   * coach-session creation/linking failed). It is the CANONICAL compensation
+   * path used by the scheduling engine:
+   *
+   *   1. Cancels the booking via the canonical CancelBooking command (bypassing
+   *      the user-facing cancellation window — this is a system compensation).
+   *   2. Refunds ONLY if money actually moved. "Money moved" is decided from the
+   *      AUTHORITATIVE persisted state — payment_transactions paid, or a
+   *      wallet_transactions debit — NEVER from a premature booking.payment_status
+   *      read (the wallet charge is synchronous but the confirm can land later).
+   *   3. Uses the canonical wallet/gateway/COD refund paths, which:
+   *        - verify the refund operation result (throw on failure — never a
+   *          false "refunded"),
+   *        - emit `booking:refunded` exactly once via _emitBookingRefunded
+   *          (over-refund guard + refunded_amount increment → idempotent),
+   *        - reverse accounting through the existing listener.
+   *   4. Is idempotent against already-cancelled bookings (returns a no-op).
+   *
+   * Returns the actual outcome so callers never claim a refund that did not
+   * happen. Throws on refund failure (surfaced, never swallowed).
+   */
+  async compensateFailedBooking(bookingId: number, reason: string): Promise<{ cancelled: boolean; refunded: boolean; refundAmount: number }> {
+    const booking = await bookingRepository.findById(bookingId);
+    if (!booking) throw new NotFoundError('Booking');
+    if (['cancelled', 'cancelled_with_fee'].includes(booking.booking_status)) {
+      log.info({ bookingId }, 'compensation: booking already cancelled — no-op');
+      return { cancelled: false, refunded: false, refundAmount: 0 };
+    }
+
+    // 1. Cancel the booking (canonical state transition).
+    await executeBookingCommand(
+      'CancelBooking', cancelBookingHandler,
+      { bookingId, reason: reason || CancellationReason.COMPENSATION, actorId: booking.user_id },
+      String(bookingId),
+    );
+
+    // 2. Refund only if money actually moved.
+    const total = Number(booking.total_amount || 0);
+    const isCOD = booking.payment_method === 'cash' || booking.payment_method === 'cod';
+    if (isCOD) {
+      // COD money is org-collected (never in the wallet); the canonical COD
+      // refund reverses the recognition + operational entries (W1 — no wallet
+      // balance mutation). Idempotent via the refunded_amount cap.
+      await this._refundCODWallet(booking, total);
+      return { cancelled: true, refunded: true, refundAmount: total };
+    }
+
+    const moneyMoved = await this._moneyMovedForBooking(booking);
+    if (!moneyMoved) {
+      log.info({ bookingId }, 'compensation: no money moved — booking cancelled without refund');
+      return { cancelled: true, refunded: false, refundAmount: 0 };
+    }
+
+    // Money moved — canonical wallet/gateway refund + booking:refunded once.
+    await this._processGatewayRefund(booking, total);
+    return { cancelled: true, refunded: true, refundAmount: total };
+  }
+
+  /**
+   * Authoritative "did money actually move for this booking" check. Considers
+   * (a) the amount actually captured in payment_transactions (paid/refunded),
+   * and (b) a wallet_transactions DEBIT row for the booking — the wallet debit
+   * is synchronous while the confirm (payment_status -> paid) can land later,
+   * so booking.payment_status alone is NOT a safe signal for compensation.
+   */
+  private async _moneyMovedForBooking(booking: any): Promise<boolean> {
+    const paid = await this._resolveBookingPaidAmount(booking);
+    if (paid > 0) return true;
+    const [rows] = await getPool().execute<RowData>(
+      `SELECT 1 FROM wallet_transactions
+       WHERE reference_type = 'booking' AND reference_id = ? AND direction = 'debit' LIMIT 1`,
+      [booking.id],
+    );
+    return rows.length > 0;
+  }
+
+  /**
    * Authorize an actor to mutate a booking's status/payment on behalf of the
    * booking's organisation. The organisation is resolved server-side from the
    * booking record (never from client input). Super-admins, the org owner, and

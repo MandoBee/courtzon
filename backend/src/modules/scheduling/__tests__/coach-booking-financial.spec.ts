@@ -137,7 +137,9 @@ describe('Coach Booking Financial Wiring', () => {
   async function insertAgreement(opts: { orgId: number; status?: string; active?: boolean; coachSplit?: number; orgSplit?: number }) {
     await pool.execute(
       `INSERT INTO coach_org_agreements (coach_id, organisation_id, coach_split_pct, org_split_pct, hourly_rate, is_active, status, initiated_by)
-       VALUES (?, ?, ?, ?, 100, ?, ?, 'org')`,
+       VALUES (?, ?, ?, ?, 100, ?, ?, 'org')
+       ON DUPLICATE KEY UPDATE coach_split_pct = VALUES(coach_split_pct), org_split_pct = VALUES(org_split_pct),
+         hourly_rate = VALUES(hourly_rate), is_active = VALUES(is_active), status = VALUES(status)`,
       [coachProfileId, opts.orgId, opts.coachSplit ?? 70, opts.orgSplit ?? 30,
        opts.active === false ? 0 : 1, opts.status ?? 'active'],
     );
@@ -629,6 +631,168 @@ describe('Coach Booking Financial Wiring', () => {
     } finally {
       await pool.execute(`UPDATE coach_profiles SET status = 'approved' WHERE id = ?`, [coachProfileId]);
       await pool.execute(`DELETE FROM coach_org_agreements WHERE coach_id = ?`, [coachProfileId]);
+    }
+  });
+
+  // ── Group 3C: Saga compensation hardening ──
+  async function cleanupBookingRefs(bookingId: number) {
+    await pool.execute(`DELETE FROM wallet_transactions WHERE reference_type = 'booking' AND reference_id = ?`, [bookingId]);
+    await pool.execute(`DELETE FROM payment_transactions WHERE booking_id = ?`, [bookingId]);
+    await pool.execute(`DELETE FROM ledger_entries WHERE source_type = 'booking' AND source_id = ?`, [bookingId]);
+    await pool.execute(`DELETE FROM bookings WHERE id = ?`, [bookingId]);
+  }
+
+  async function lastBookingForUserAndDate(date: string): Promise<number | null> {
+    const [rows] = await pool.execute<RowData>(
+      `SELECT id FROM bookings WHERE user_id = ? AND booking_date = ? ORDER BY id DESC LIMIT 1`, [PLAYER_USER, date]);
+    return rows.length ? Number(rows[0].id) : null;
+  }
+
+  it('25. compensation: coach-session failure after wallet money moved → canonical refund + booking:refunded once + wallet restored', async () => {
+    const { activitiesRepository } = await import('../../activities/infrastructure/repositories/activities.repository.js');
+    const { SchedulingBookingService } = await import('../application/scheduling-booking.service.js');
+    const { eventBusV2 } = await import('../../../shared/event-bus/index.js');
+    await insertAgreement({ orgId });
+    const date = '2027-04-01';
+    const [walletRows] = await pool.execute<RowData>(`SELECT balance FROM user_wallets WHERE user_id = ?`, [PLAYER_USER]);
+    const beforeBalance = Number((walletRows[0] as any).balance);
+
+    const sessionSpy = vi.spyOn(activitiesRepository, 'createCoachSession').mockRejectedValueOnce(new Error('session boom'));
+    const emitSpy = vi.spyOn(eventBusV2, 'emit');
+    try {
+      await expect(
+        new SchedulingBookingService().bookSession({ coachId: coachProfileId, resourceId, date, startTime: '09:00', endTime: '10:00', paymentMethod: 'wallet' }, PLAYER_USER),
+      ).rejects.toThrow(/refunded/i);
+
+      const bookingId = await lastBookingForUserAndDate(date);
+      expect(bookingId).not.toBeNull();
+      const [b] = await pool.execute<RowData>(`SELECT booking_status, refunded_amount, payment_status FROM bookings WHERE id = ?`, [bookingId]);
+      expect(b[0].booking_status).toBe('cancelled');
+      expect(Number(b[0].refunded_amount)).toBeGreaterThan(0);
+
+      // Canonical booking:refunded fired exactly once.
+      const refundedCalls = emitSpy.mock.calls.filter((c: any[]) => c[0] === 'booking:refunded');
+      expect(refundedCalls.length).toBe(1);
+
+      // Wallet balance restored to the pre-booking balance (money moved → refunded).
+      const [after] = await pool.execute<RowData>(`SELECT balance FROM user_wallets WHERE user_id = ?`, [PLAYER_USER]);
+      expect(Number((after[0] as any).balance)).toBe(beforeBalance);
+
+      if (bookingId) await cleanupBookingRefs(bookingId);
+    } finally {
+      sessionSpy.mockRestore();
+      emitSpy.mockRestore();
+      const bid = await lastBookingForUserAndDate(date);
+      if (bid) await cleanupBookingRefs(bid);
+    }
+  });
+
+  it('26. compensation: link failure cancels the orphan coach session (no unintended active session)', async () => {
+    const { activitiesRepository } = await import('../../activities/infrastructure/repositories/activities.repository.js');
+    const { SchedulingBookingService } = await import('../application/scheduling-booking.service.js');
+    await insertAgreement({ orgId });
+    const date = '2027-04-02';
+    const linkSpy = vi.spyOn(activitiesRepository, 'updateSessionBooking').mockRejectedValueOnce(new Error('link boom'));
+    try {
+      await expect(
+        new SchedulingBookingService().bookSession({ coachId: coachProfileId, resourceId, date, startTime: '09:00', endTime: '10:00', paymentMethod: 'wallet' }, PLAYER_USER),
+      ).rejects.toThrow();
+      // The session created during the saga must be cancelled (not left active/orphaned).
+      const [s] = await pool.execute<RowData>(
+        `SELECT status FROM coach_sessions WHERE coach_id = ? AND DATE(start_time) = ? ORDER BY id DESC LIMIT 1`, [coachProfileId, date]);
+      expect(s.length).toBeGreaterThan(0);
+      expect(s[0].status).toBe('cancelled');
+    } finally {
+      linkSpy.mockRestore();
+      const bid = await lastBookingForUserAndDate(date);
+      if (bid) await cleanupBookingRefs(bid);
+      await pool.execute(`DELETE FROM coach_sessions WHERE coach_id = ? AND DATE(start_time) = ?`, [coachProfileId, date]);
+    }
+  });
+
+  it('27. compensation: no money moved → cancelled without a false refund claim', async () => {
+    const { bookingService } = await import('../../booking/application/booking.service.js');
+    const { eventBusV2 } = await import('../../../shared/event-bus/index.js');
+    // Insert a plain booking with NO payment_transactions / wallet_transactions
+    // (nothing was ever charged) and compensate it directly.
+    const [ins] = await pool.execute<RowData>(
+      `INSERT INTO bookings (user_id, organisation_id, branch_id, resource_id, booking_type, booking_date, start_time, end_time,
+        total_amount, commission_amount, club_amount, coach_amount, booking_status, payment_status, payment_method, aggregate_version)
+       VALUES (?, ?, ?, ?, 'coach_session', '2027-04-03', '09:00:00', '10:00:00', 300, 30, 270, 100, 'confirmed', 'pending', 'wallet', 1)`,
+      [PLAYER_USER, orgId, branchId, resourceId]);
+    const bookingId = (ins as any).insertId;
+    const emitSpy = vi.spyOn(eventBusV2, 'emit');
+    try {
+      const result = await bookingService.compensateFailedBooking(bookingId, 'test no money moved');
+      expect(result.cancelled).toBe(true);
+      expect(result.refunded).toBe(false);
+      expect(result.refundAmount).toBe(0);
+      // No refund event for money that never moved.
+      const refundedCalls = emitSpy.mock.calls.filter((c: any[]) => c[0] === 'booking:refunded');
+      expect(refundedCalls.length).toBe(0);
+    } finally {
+      emitSpy.mockRestore();
+      await cleanupBookingRefs(bookingId);
+    }
+  });
+
+  it('28. compensation is idempotent — running twice does not double-refund', async () => {
+    const { activitiesRepository } = await import('../../activities/infrastructure/repositories/activities.repository.js');
+    const { SchedulingBookingService } = await import('../application/scheduling-booking.service.js');
+    const { bookingService } = await import('../../booking/application/booking.service.js');
+    await insertAgreement({ orgId });
+    const date = '2027-04-04';
+    const sessionSpy = vi.spyOn(activitiesRepository, 'createCoachSession').mockRejectedValueOnce(new Error('session boom'));
+    try {
+      // First compensation via the saga.
+      await expect(
+        new SchedulingBookingService().bookSession({ coachId: coachProfileId, resourceId, date, startTime: '09:00', endTime: '10:00', paymentMethod: 'wallet' }, PLAYER_USER),
+      ).rejects.toThrow();
+      const bookingId = await lastBookingForUserAndDate(date);
+      expect(bookingId).not.toBeNull();
+
+      // Second compensation on the already-cancelled booking must be a no-op.
+      const second = await bookingService.compensateFailedBooking(bookingId!, 'repeat');
+      expect(second.cancelled).toBe(false);
+      expect(second.refunded).toBe(false);
+
+      // No duplicate refund record.
+      const [b] = await pool.execute<RowData>(`SELECT refunded_amount FROM bookings WHERE id = ?`, [bookingId]);
+      expect(Number(b[0].refunded_amount)).toBeGreaterThan(0);
+      if (bookingId) await cleanupBookingRefs(bookingId);
+    } finally {
+      sessionSpy.mockRestore();
+      const bid = await lastBookingForUserAndDate(date);
+      if (bid) await cleanupBookingRefs(bid);
+    }
+  });
+
+  it('29. compensation: refund failure is surfaced, never reported as successful', async () => {
+    const { activitiesRepository } = await import('../../activities/infrastructure/repositories/activities.repository.js');
+    const { SchedulingBookingService } = await import('../application/scheduling-booking.service.js');
+    const walletRepo = await import('../../wallet/infrastructure/repositories/wallet.repository.js');
+    await insertAgreement({ orgId });
+    const date = '2027-04-05';
+    const sessionSpy = vi.spyOn(activitiesRepository, 'createCoachSession').mockRejectedValueOnce(new Error('session boom'));
+    // 1st updateBalance = the wallet charge DEBIT (must succeed so the saga
+    // reaches session creation); 2nd = the compensation refund CREDIT (fails).
+    const balanceSpy = vi.spyOn(walletRepo.walletRepository, 'updateBalance')
+      .mockResolvedValueOnce(true as any)
+      .mockResolvedValue(false as any);
+    try {
+      const err = await new SchedulingBookingService().bookSession(
+        { coachId: coachProfileId, resourceId, date, startTime: '09:00', endTime: '10:00', paymentMethod: 'wallet' }, PLAYER_USER,
+      ).catch((e: any) => e);
+      expect(err).toBeTruthy();
+      // Never the misleading "refunded" claim; the compensation failure surfaces.
+      expect(String(err?.message || err)).not.toMatch(/payment has been refunded/i);
+      expect(String(err?.message || err)).toMatch(/wallet|concurrent|refund/i);
+    } finally {
+      sessionSpy.mockRestore();
+      balanceSpy.mockRestore();
+      const bid = await lastBookingForUserAndDate(date);
+      if (bid) await cleanupBookingRefs(bid);
+      await pool.execute(`DELETE FROM coach_sessions WHERE coach_id = ? AND DATE(start_time) = ?`, [coachProfileId, date]);
     }
   });
 });

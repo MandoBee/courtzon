@@ -7,11 +7,6 @@ import { redisLock } from '../../booking/infrastructure/redis/redis-lock.js';
 import { NotFoundError, ConflictError, ForbiddenError } from '../../../shared/errors/app-error.js';
 import { createModuleLogger } from '../../../shared/utils/logger.js';
 import { getPool } from '../../../database/mysql.js';
-import { eventBusV2 } from '../../../shared/event-bus/event-bus.v2.js';
-import { commandPipeline } from '../../../shared/command/command-pipeline.js';
-import { cancelBookingHandler } from '../../booking/commands/cancel-booking.command.js';
-import { CancellationReason } from '../../../platform/shared/booking-types.js';
-import type { Command } from '../../../shared/command/command-base.js';
 import type mysql from 'mysql2/promise';
 import { calculateCoachSessionPrice, calculateCoachEarningsSplit } from './coach-pricing.js';
 
@@ -207,28 +202,42 @@ export class SchedulingBookingService {
         log.info({ sessionId, bookingId, coachId }, 'Coach session created');
       } catch (sessionErr) {
         // COMPENSATION: Coach session creation failed after booking was committed.
-        // We must cancel the booking to avoid financial inconsistency.
         log.error({ err: sessionErr, bookingId, coachId, userId }, 'Coach session creation failed — initiating compensation');
 
-        await this.compensateBooking(bookingId, userId, 'Coach session creation failed');
+        const compensation = await this.compensateBooking(bookingId, userId, 'Coach session creation failed');
 
-        log.warn({ bookingId }, 'Booking compensated (cancelled + refunded) due to coach session failure');
-        throw new ConflictError('Booking could not be completed. Please try again. Your payment has been refunded.');
+        if (compensation.refunded) {
+          log.warn({ bookingId, refundAmount: compensation.refundAmount }, 'Booking cancelled and refunded after coach session failure');
+          throw new ConflictError('Booking could not be completed. Please try again. Your payment has been refunded.');
+        }
+        log.warn({ bookingId }, 'Booking cancelled after coach session failure (no money moved — no refund)');
+        throw new ConflictError('Booking could not be completed. Please try again.');
       }
 
       // 10. Link booking to session
       try {
         await activitiesRepository.updateSessionBooking(sessionId, bookingId, 'scheduled');
       } catch (linkErr) {
-        // Linking failed — coach session exists but is not linked to booking.
-        // This is a non-critical inconsistency: the session exists and the booking exists,
-        // but they're not linked. The session can be found by time/player.
-        // We still compensate to maintain strict consistency.
-        log.error({ err: linkErr, sessionId, bookingId }, 'Session-booking link failed — initiating compensation');
+        // Linking failed — the coach session exists but is not linked to the
+        // booking. Cancel the orphan session so it cannot keep blocking the
+        // coach's slot (checkCoachAvailable excludes only cancelled/no_show/
+        // completed), then compensate the booking canonically.
+        log.error({ err: linkErr, sessionId, bookingId }, 'Session-booking link failed — cancelling orphan session + compensating');
+        try {
+          await activitiesRepository.cancelCoachSession(sessionId);
+          log.warn({ sessionId }, 'Orphan coach session cancelled after link failure');
+        } catch (cancelErr) {
+          log.error({ err: cancelErr, sessionId }, 'Failed to cancel orphan coach session — coach slot may remain blocked; manual review required');
+        }
 
-        await this.compensateBooking(bookingId, userId, 'Session-booking link failed');
+        const compensation = await this.compensateBooking(bookingId, userId, 'Session-booking link failed');
 
-        throw new ConflictError('Booking could not be completed. Please try again. Your payment has been refunded.');
+        if (compensation.refunded) {
+          log.warn({ bookingId, refundAmount: compensation.refundAmount }, 'Booking cancelled and refunded after session-booking link failure');
+          throw new ConflictError('Booking could not be completed. Please try again. Your payment has been refunded.');
+        }
+        log.warn({ bookingId }, 'Booking cancelled after session-booking link failure (no money moved — no refund)');
+        throw new ConflictError('Booking could not be completed. Please try again.');
       }
 
       log.info({ bookingId, sessionId, userId, coachId, total: totalAmount }, 'Booking session completed successfully');
@@ -257,91 +266,30 @@ export class SchedulingBookingService {
   }
 
   /**
-   * Compensate a failed booking: cancel it and refund any payment.
-   * This bypasses the cancellation window check since it's a system-initiated
-   * compensation for a failed coach session creation.
+   * Compensate a failed coach-booking saga. Delegates to the CANONICAL
+   * compensation path (bookingService.compensateFailedBooking), which:
+   *   - cancels the booking via the canonical CancelBooking command,
+   *   - decides whether money actually moved from AUTHORITATIVE persisted state
+   *     (payment_transactions paid, or a wallet_transactions debit) — never a
+   *     premature booking.payment_status,
+   *   - refunds via the canonical wallet/gateway/COD path (booking:refunded
+   *     emitted exactly once, accounting reversed through the existing listener,
+   *     idempotent via the refunded_amount cap),
+   *   - propagates refund failures.
+   * Compensation therefore ORCHESTRATES the canonical path — it does not
+   * duplicate wallet/ledger logic. A failure here is surfaced (never reported
+   * as a successful refund).
    */
-  private async compensateBooking(bookingId: number, userId: number, reason: string): Promise<void> {
-    const pool = getPool();
-
+  private async compensateBooking(bookingId: number, userId: number, reason: string): Promise<{ cancelled: boolean; refunded: boolean; refundAmount: number }> {
     try {
-      const booking = await bookingService.getBooking(bookingId);
-      if (!booking) {
-        log.error({ bookingId }, 'Compensation: booking not found');
-        return;
-      }
-
-      if (booking.booking_status === 'cancelled') {
-        log.info({ bookingId }, 'Compensation: booking already cancelled');
-        return;
-      }
-
-      const isPaid = booking.payment_status === 'paid';
-      const totalAmount = Number(booking.total_amount);
-
-      const conn = await pool.getConnection();
-      try {
-        await conn.beginTransaction();
-        const cancelCommand: Command = {
-          commandId: `CancelBooking-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-          commandType: 'CancelBooking',
-          aggregateType: 'booking',
-          aggregateId: String(bookingId),
-          payload: { bookingId, reason: reason || CancellationReason.COMPENSATION },
-          correlationId: `corr_${Date.now()}`,
-        };
-        const cancelResult = await commandPipeline.execute(cancelCommand, {
-          validate: async () => cancelBookingHandler.validate(cancelCommand),
-          execute: async (cmd, c) => cancelBookingHandler.execute(cmd, c),
-          events: (cmd, res) => cancelBookingHandler.events!(cmd, res),
-        });
-        if (cancelResult.status === 'error') throw new Error(`CancelBooking failed: ${cancelResult.message}`);
-        await conn.commit();
-        log.info({ bookingId, isPaid, totalAmount }, 'Compensation: booking cancelled via saga');
-      } catch (err) {
-        await conn.rollback();
-        throw err;
-      } finally {
-        conn.release();
-      }
-
-      if (isPaid) {
-        try {
-          const wallet = await (await import('../../wallet/infrastructure/repositories/wallet.repository.js')).walletRepository.findByUserId(userId);
-          if (wallet) {
-            const walletState = await (await import('../../wallet/infrastructure/repositories/wallet.repository.js')).walletRepository.lockAndGetBalance(wallet.id);
-            if (walletState) {
-              const newBalance = walletState.balance + totalAmount;
-              await (await import('../../wallet/infrastructure/repositories/wallet.repository.js')).walletRepository.updateBalance(wallet.id, newBalance, walletState.version);
-
-              await (await import('../../financial/application/transaction.service.js')).transactionService.createRefund({
-                userId,
-                walletId: wallet.id,
-                branchId: booking.branch_id,
-                organisationId: booking.organisation_id,
-                amount: totalAmount,
-                sourceId: bookingId,
-                description: `Compensation refund: ${reason}`,
-              });
-
-              eventBusV2.emit('wallet:transaction', {
-                walletId: wallet.id,
-                userId,
-                amount: totalAmount,
-                balance: newBalance,
-                type: 'refund',
-                description: `Compensation refund: ${reason}`,
-              });
-
-              log.info({ bookingId, userId, amount: totalAmount }, 'Compensation: wallet refunded');
-            }
-          }
-        } catch (refundErr) {
-          log.error({ err: refundErr, bookingId, userId }, 'Compensation: wallet refund failed — manual intervention required');
-        }
-      }
+      const result = await bookingService.compensateFailedBooking(bookingId, reason);
+      log.info({ bookingId, ...result, reason }, 'Compensation completed');
+      return result;
     } catch (err) {
-      log.error({ err, bookingId, userId }, 'Compensation workflow failed — manual intervention required');
+      // Never swallow a failed compensation: the booking may be cancelled
+      // without a completed refund, which must be visible to operations/audit.
+      log.error({ err, bookingId, userId, reason }, 'Compensation FAILED — booking may be cancelled without a completed refund; manual review required');
+      throw err;
     }
   }
 
