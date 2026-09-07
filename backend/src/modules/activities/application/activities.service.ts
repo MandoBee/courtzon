@@ -15,7 +15,7 @@ import { CancellationReason } from '../../../platform/shared/booking-types.js';
 import type { Command } from '../../../shared/command/command-base.js';
 import { toMySqlDateTime } from '../../../shared/utils/mysql-date.js';
 import { bookingRepository } from '../../booking/infrastructure/repositories/booking.repository.js';
-import { calculateCoachEarningsSplit } from '../../scheduling/application/coach-pricing.js';
+import { calculateCoachEarningsSplit, calculateCoachSessionPrice } from '../../scheduling/application/coach-pricing.js';
 
 type RowData = mysql.RowDataPacket[];
 
@@ -346,6 +346,8 @@ export const activitiesService = {
   async createCoachSession(userId: number, data: any) {
     const coach = await repo.findCoachByUserId(userId);
     if (!coach) throw new ForbiddenError('Not a coach');
+    if (coach.status !== 'approved') throw new ForbiddenError('Coach is not approved');
+    if (Number(coach.is_available ?? 1) !== 1) throw new ForbiddenError('Coach is not currently available for bookings');
     if (data.organisationId) {
       const hasAgreement = await repo.hasAcceptedAgreement(coach.id, data.organisationId);
       if (!hasAgreement) {
@@ -355,40 +357,85 @@ export const activitiesService = {
     // ── Backend-authoritative pricing (client-supplied `price` is IGNORED) ──
     // The legacy route accepted a client-computed price and derived coach
     // earnings / platform commission from it (D-level client-controlled input).
-    // The authoritative amount is derived from trusted backend data only:
-    //   org-agreement hourly_rate (when an org is selected) else the coach's
-    //   default hourly_rate, multiplied by the requested duration. This mirrors
-    //   the newer /scheduling/book server-priced flow. The client may still
-    //   send `price` for API compatibility, but it is never used for earnings,
-    //   commission, or persistence.
+    // The authoritative amount is derived from trusted backend data only and
+    // priced via the CANONICAL calculateCoachSessionPrice (hourly rate × court
+    // booking duration, integer-cents math — identical to /scheduling/book).
+    // The client may still send `price` for API compatibility, but it is never
+    // used for earnings, commission, or persistence.
     const pool = getPool();
+
+    // ── Authoritative branch context ──
+    // The branch is resolved from the court (resource) server-side when a
+    // resourceId is provided; otherwise a branchId must be supplied. Without a
+    // branch, service-location + branch-policy eligibility cannot be enforced,
+    // so such sessions are rejected (a client cannot bypass eligibility by
+    // omitting the branch).
+    let branchId: number | null = null;
+    let courtSportId: number | null = null;
+    if (data.resourceId) {
+      const [resourceRows] = await pool.execute<RowData>(
+        'SELECT id, branch_id, sport_id FROM resources WHERE id = ?', [data.resourceId],
+      );
+      const resource = resourceRows[0] as any;
+      if (!resource) throw new NotFoundError('Court');
+      branchId = Number(resource.branch_id);
+      courtSportId = resource.sport_id ? Number(resource.sport_id) : null;
+    } else if (data.branchId) {
+      branchId = Number(data.branchId);
+    } else {
+      throw new ValidationError('A court (resourceId) or a branch is required to create a coach session');
+    }
+
+    // ── Canonical coach eligibility: service location + branch policy (+
+    // agreement when contract_required). Same rule as the unified booking flow.
+    const eligibility = await repo.isCoachEligibleAtBranch(coach.id, branchId);
+    if (!eligibility.eligible) {
+      throw new ForbiddenError(eligibility.reason || 'Coach is not eligible to provide coaching services at this branch');
+    }
+
+    // ── Sport compatibility (when a court is identified) ──
+    if (courtSportId) {
+      let coachSports: number[] = [];
+      if (coach.sports) {
+        try {
+          const raw = typeof coach.sports === 'string' ? JSON.parse(coach.sports) : coach.sports;
+          coachSports = Array.isArray(raw) ? raw.map((n: any) => Number(n)).filter((n) => Number.isInteger(n) && n > 0) : [];
+        } catch { coachSports = []; }
+      }
+      if (coachSports.length === 0 || !coachSports.includes(courtSportId)) {
+        throw new ForbiddenError('Coach does not support the sport of the selected court');
+      }
+    }
+
+    // ── Validate the player (session attribution) exists ──
+    if (data.playerId) {
+      const [playerRows] = await pool.execute<RowData>('SELECT id FROM users WHERE id = ?', [data.playerId]);
+      if (!playerRows.length) throw new NotFoundError('Player');
+    }
+
     // Resolve the organisation from the session's branch (the organisation
     // belongs to the branch, not the resource). When the caller passes an
     // explicit organisationId, it takes precedence for backward compatibility.
     let organisationId = data.organisationId ?? null;
     let branchPolicy: 'contract_required' | 'independent_coaches_allowed' | null = null;
-    if (data.branchId) {
-      const [branchRows] = await pool.execute<RowData>(
-        `SELECT organisation_id, coach_policy FROM branches WHERE id = ?`,
-        [data.branchId],
-      );
-      if (branchRows.length) {
-        const branch = branchRows[0] as any;
-        if (organisationId == null) organisationId = branch.organisation_id ?? null;
-        branchPolicy = branch.coach_policy === 'independent_coaches_allowed'
-          ? 'independent_coaches_allowed'
-          : 'contract_required';
-      }
+    const [branchRows] = await pool.execute<RowData>(
+      `SELECT organisation_id, coach_policy FROM branches WHERE id = ?`,
+      [branchId],
+    );
+    if (branchRows.length) {
+      const branch = branchRows[0] as any;
+      if (organisationId == null) organisationId = branch.organisation_id ?? null;
+      branchPolicy = branch.coach_policy === 'independent_coaches_allowed'
+        ? 'independent_coaches_allowed'
+        : 'contract_required';
     }
     const orgAgreement = organisationId
       ? await repo.getAcceptedAgreement(coach.id, organisationId)
       : null;
     const hourlyRate = Number(orgAgreement?.hourly_rate ?? coach.hourly_rate ?? 0);
-    const durationHours = Math.max(
-      0,
-      (Date.parse(data.endTime) - Date.parse(data.startTime)) / 3600000,
-    );
-    const authoritativePrice = Math.round(hourlyRate * durationHours * 100) / 100;
+    // Canonical pricing — duration always equals the court booking duration.
+    const normalizeTime = (t: string) => (/^\d{2}:\d{2}/.test(String(t)) ? String(t).slice(0, 5) : String(t).slice(11, 16));
+    const authoritativePrice = calculateCoachSessionPrice(hourlyRate, normalizeTime(data.startTime), normalizeTime(data.endTime));
     let platformCommissionPct = 10;
     if (organisationId) {
       try {
@@ -412,6 +459,8 @@ export const activitiesService = {
     const id = await repo.createCoachSession({
       ...data,
       coachId: coach.id,
+      branchId,
+      resourceId: data.resourceId ?? null,
       organisationId,
       price: authoritativePrice,
       currencyCode: data.currencyCode || coach.currency_code || 'EGP',

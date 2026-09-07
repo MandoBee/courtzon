@@ -480,4 +480,120 @@ describe('Coach Booking Financial Wiring', () => {
       await pool.execute(`INSERT IGNORE INTO coach_service_locations (coach_id, branch_id) VALUES (?, ?)`, [coachProfileId, branchId]);
     }
   });
+
+  it('17. /bookings coach_session requires a coachId (client can no longer set an amount)', async () => {
+    const { bookingService } = await import('../../booking/application/booking.service.js');
+    await expect(
+      bookingService.createBooking({
+        branchId, resourceId, bookingType: 'coach_session',
+        bookingDate: '2027-02-23', startTime: '09:00', endTime: '10:00', paymentMethod: 'cash',
+      } as any, PLAYER_USER),
+    ).rejects.toThrow(/coachId/i);
+  });
+
+  it('18. server-computed coach fee is used — client cannot influence total/coach_amount', async () => {
+    const { bookingService } = await import('../../booking/application/booking.service.js');
+    await insertAgreement({ orgId });
+    let bookingId = 0;
+    try {
+      const res = await bookingService.createBooking({
+        branchId, resourceId, bookingType: 'coach_session', coachId: coachProfileId,
+        bookingDate: '2027-02-24', startTime: '09:00', endTime: '10:00', paymentMethod: 'cash',
+      } as any, PLAYER_USER);
+      bookingId = Number(res.id);
+      const b = await bookingById(bookingId);
+      // court 200 + coach fee 100 (hourly_rate 100 × 1h) = 300 — computed server-side.
+      expect(Number(b.total_amount)).toBe(300);
+      expect(Number(b.coach_amount)).toBe(100);
+      // Wait for the async COD/coach-payout postings so afterAll cleanup is deterministic.
+      const deadline = Date.now() + 8000;
+      let count = 0;
+      while (Date.now() < deadline) {
+        const [p] = await pool.execute<RowData>(
+          `SELECT COUNT(*) AS c FROM ledger_entries WHERE source_type='booking' AND source_id=?`, [bookingId]);
+        count = Number((p as any[])[0].c);
+        if (count > 0) break;
+        await new Promise((r) => setTimeout(r, 150));
+      }
+      expect(count).toBeGreaterThan(0);
+    } finally {
+      await pool.execute(`DELETE FROM coach_org_agreements WHERE coach_id = ?`, [coachProfileId]);
+      if (bookingId) await pool.execute(`DELETE FROM ledger_entries WHERE source_type='booking' AND source_id=?`, [bookingId]);
+    }
+  });
+
+  it('19. ineligible coach (no service location) cannot be booked via /bookings', async () => {
+    const { bookingService } = await import('../../booking/application/booking.service.js');
+    await pool.execute(`DELETE FROM coach_service_locations WHERE coach_id = ?`, [coachProfileId]);
+    try {
+      await expect(
+        bookingService.createBooking({
+          branchId, resourceId, bookingType: 'coach_session', coachId: coachProfileId,
+          bookingDate: '2027-02-25', startTime: '09:00', endTime: '10:00', paymentMethod: 'cash',
+        } as any, PLAYER_USER),
+      ).rejects.toThrow(/eligible|service access/i);
+    } finally {
+      await pool.execute(`INSERT IGNORE INTO coach_service_locations (coach_id, branch_id) VALUES (?, ?)`, [coachProfileId, branchId]);
+    }
+  });
+
+  it('20. coach sport mismatch via /bookings is rejected', async () => {
+    const { bookingService } = await import('../../booking/application/booking.service.js');
+    const [sportRes2] = await pool.execute<RowData>('SELECT id FROM sports WHERE id <> ? ORDER BY id LIMIT 1', [sportId]);
+    const otherSport = sportRes2.length ? Number((sportRes2 as any[])[0].id) : null;
+    if (!otherSport) return;
+    await insertAgreement({ orgId });
+    await pool.execute(`UPDATE professional_profiles SET sports = ? WHERE user_id = ?`, [JSON.stringify([otherSport]), COACH_USER]);
+    try {
+      await expect(
+        bookingService.createBooking({
+          branchId, resourceId, bookingType: 'coach_session', coachId: coachProfileId,
+          bookingDate: '2027-02-26', startTime: '09:00', endTime: '10:00', paymentMethod: 'cash',
+        } as any, PLAYER_USER),
+      ).rejects.toThrow(/sport/i);
+    } finally {
+      await pool.execute(`UPDATE professional_profiles SET sports = ? WHERE user_id = ?`, [JSON.stringify([sportId]), COACH_USER]);
+      await pool.execute(`DELETE FROM coach_org_agreements WHERE coach_id = ?`, [coachProfileId]);
+    }
+  });
+
+  it('21. CreateBookingSchema strips any client-supplied coachAmount (never reaches the service)', async () => {
+    const { CreateBookingSchema } = await import('../../booking/presentation/booking.dto.js');
+    const parsed = CreateBookingSchema.safeParse({
+      branchId, resourceId, bookingType: 'coach_session',
+      bookingDate: '2027-02-27', startTime: '09:00', endTime: '10:00', paymentMethod: 'cash',
+      coachAmount: 0, // malicious client value — must be stripped
+    });
+    expect(parsed.success).toBe(true);
+    if (parsed.success) expect('coachAmount' in parsed.data).toBe(false);
+  });
+
+  it('22. check-in requires ownership or organisation access (IDOR closed)', async () => {
+    const { bookingService } = await import('../../booking/application/booking.service.js');
+    // Create a court-only booking as the player.
+    const res = await bookingService.createBooking({
+      branchId, resourceId, bookingType: 'private_match',
+      bookingDate: '2027-02-28', startTime: '09:00', endTime: '10:00', paymentMethod: 'cash',
+    } as any, PLAYER_USER);
+    const bookingId = Number(res.id);
+    try {
+      // Owner can check in.
+      await expect(bookingService.checkIn(bookingId, PLAYER_USER)).resolves.toBeTruthy();
+      // A different user (no org access) is denied.
+      await expect(bookingService.checkIn(bookingId, PLAYER_USER + 1)).rejects.toThrow(/not authorized/i);
+    } finally {
+      // Wait for async COD postings so afterAll cleanup is deterministic.
+      const deadline = Date.now() + 8000;
+      let count = 0;
+      while (Date.now() < deadline) {
+        const [p] = await pool.execute<RowData>(
+          `SELECT COUNT(*) AS c FROM ledger_entries WHERE source_type='booking' AND source_id=?`, [bookingId]);
+        count = Number((p as any[])[0].c);
+        if (count > 0) break;
+        await new Promise((r) => setTimeout(r, 150));
+      }
+      await pool.execute(`DELETE FROM ledger_entries WHERE source_type='booking' AND source_id=?`, [bookingId]);
+      await pool.execute(`DELETE FROM bookings WHERE id = ?`, [bookingId]);
+    }
+  });
 });

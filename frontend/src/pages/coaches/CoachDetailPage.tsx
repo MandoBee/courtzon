@@ -29,11 +29,37 @@ export default function CoachDetailPage() {
   const [reqDate, setReqDate] = useState(localTodayString());
   const [reqStart, setReqStart] = useState('10:00');
   const [reqEnd, setReqEnd] = useState('11:00');
+  const [reqBranchId, setReqBranchId] = useState<number | ''>('');
+  const [reqResourceId, setReqResourceId] = useState<number | ''>('');
   const today = localTodayString();
+
+  const { data: reqBranches } = useQuery({
+    queryKey: ['req-branches'],
+    queryFn: async () => {
+      const orgsRes = await api.get('/organisations');
+      const orgs = orgsRes.data?.data || [];
+      if (!orgs.length) return [];
+      const results = await Promise.all(
+        orgs.map((org: any) =>
+          api.get(`/organisations/${org.id}/branches`).then((r) =>
+            (r.data.data as any[]).map((b) => ({ ...b, _org: { id: org.id, name: org.name } }))
+          )
+        )
+      );
+      return results.flat();
+    },
+  });
+
+  const { data: reqResources } = useQuery({
+    queryKey: ['req-resources', reqBranchId],
+    queryFn: () => api.get(`/branches/${reqBranchId}/resources`).then((r) => r.data.data),
+    enabled: !!reqBranchId,
+  });
 
   const requestMutation = useMutation({
     mutationFn: () => api.post('/coach-sessions/request', {
       coachId: Number(id),
+      resourceId: Number(reqResourceId),
       startTime: `${reqDate}T${reqStart}:00`,
       endTime: `${reqDate}T${reqEnd}:00`,
     }),
@@ -166,6 +192,24 @@ export default function CoachDetailPage() {
             <h2 className="text-lg font-bold text-[var(--color-text)] mb-4">Request a Session</h2>
             <div className="space-y-3">
               <div>
+                <label className="block text-sm font-medium text-[var(--color-text)] mb-1">Branch</label>
+                <select value={reqBranchId} onChange={(e) => { setReqBranchId(e.target.value ? Number(e.target.value) : ''); setReqResourceId(''); }} className="w-full px-3 py-2 border rounded-[var(--radius-md)] bg-[var(--color-bg)] text-sm">
+                  <option value="">Select a branch</option>
+                  {(reqBranches || []).map((b: any) => (
+                    <option key={b.id} value={b.id}>{b.name}{b._org?.name ? ` — ${b._org.name}` : ''}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-[var(--color-text)] mb-1">Court</label>
+                <select value={reqResourceId} onChange={(e) => setReqResourceId(e.target.value ? Number(e.target.value) : '')} disabled={!reqBranchId} className="w-full px-3 py-2 border rounded-[var(--radius-md)] bg-[var(--color-bg)] text-sm">
+                  <option value="">Select a court</option>
+                  {(reqResources || []).filter((r: any) => r.is_active).map((r: any) => (
+                    <option key={r.id} value={r.id}>{r.name}{r.sport_name ? ` — ${r.sport_name}` : ''}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
                 <label className="block text-sm font-medium text-[var(--color-text)] mb-1">Date</label>
                 <input type="date" value={reqDate} min={today} onChange={(e) => setReqDate(e.target.value)} className="w-full px-3 py-2 border rounded-[var(--radius-md)] bg-[var(--color-bg)] text-sm" />
               </div>
@@ -184,7 +228,7 @@ export default function CoachDetailPage() {
                 className="w-full"
                 loading={requestMutation.isPending}
                 onClick={() => {
-                  if (!reqDate || !reqStart || !reqEnd) { showToast('Please fill in all fields', 'error'); return; }
+                  if (!reqDate || !reqStart || !reqEnd || !reqBranchId || !reqResourceId) { showToast('Please fill in all fields (branch, court, date and time)', 'error'); return; }
                   requestMutation.mutate();
                 }}
               >

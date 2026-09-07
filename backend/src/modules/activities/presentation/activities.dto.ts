@@ -157,3 +157,18 @@ export const BookCourtSchema = z.object({
 export const DeclineSessionSchema = z.object({
   reason: z.string().max(500).optional(),
 });
+
+/**
+ * Slice-4 "Request a Session" payload. The player must identify the court
+ * (resource) they want; the branch is resolved server-side from the resource so
+ * coach eligibility (service location + branch policy + sport) can be enforced
+ * before any coach_sessions row is created. A client-supplied branch is never
+ * trusted.
+ */
+export const RequestCoachSessionSchema = z.object({
+  coachId: z.number().int().positive(),
+  resourceId: z.number().int().positive(),
+  startTime: z.string().min(1).max(40),
+  endTime: z.string().min(1).max(40),
+  organisationId: z.number().int().positive().optional(),
+});

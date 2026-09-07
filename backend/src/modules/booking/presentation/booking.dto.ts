@@ -21,10 +21,11 @@ export const CreateBookingSchema = z.object({
   startTime: z.string().regex(/^\d{2}:\d{2}$/, 'Use HH:mm format'),
   endTime: z.string().regex(/^\d{2}:\d{2}$/, 'Use HH:mm format'),
   paymentMethod: z.enum(['cash', 'card', 'online', 'wallet', 'cod']).optional().default('wallet'),
-  // Optional coach session fee for booking_type='coach_session'. When set, the
-  // booking total becomes court price + coach fee and coach_amount is persisted.
-  // Only applied for coach_session bookings; court-only bookings ignore it.
-  coachAmount: z.number().min(0).optional(),
+  // Coach session bookings (booking_type='coach_session') must reference a valid
+  // coach. The coach fee is NEVER client-supplied — it is resolved server-side
+  // (canonical pricing) and validated against the canonical coach-eligibility
+  // rules. A client-supplied coachAmount is rejected by the schema.
+  coachId: z.number().int().positive().optional(),
   returnUrl: z.string().optional(),
   notes: z.string().optional(),
   participants: z.array(z.object({

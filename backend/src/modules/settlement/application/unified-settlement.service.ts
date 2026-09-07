@@ -202,7 +202,15 @@ export const unifiedSettlementService = {
       const direction = settlement.settlement_direction
         ? (settlement.settlement_direction === 'courtzon_to_org' ? 'COURTZON_TO_ORGANIZATION' : 'ORGANIZATION_TO_COURTZON')
         : 'ZERO_BALANCE';
-      const paidAmount = direction === 'ZERO_BALANCE' ? 0 : (data.paidAmount != null ? round2(data.paidAmount) : Number(settlement.final_amount));
+      // FINANCIAL INTEGRITY: the accounting amount is ALWAYS the authoritative
+      // server-computed final_amount (0 for ZERO_BALANCE). A client-supplied
+      // paidAmount is informational only — it is never persisted and never used
+      // for the GL posting, so a caller with settlements.pay cannot post a cash
+      // movement that diverges from the entitlement economics.
+      const paidAmount = direction === 'ZERO_BALANCE' ? 0 : round2(Number(settlement.final_amount) || 0);
+      if (data.paidAmount != null && round2(data.paidAmount) !== paidAmount) {
+        log.warn({ settlementId, clientPaidAmount: round2(data.paidAmount), authoritativePaidAmount: paidAmount }, 'Client-supplied settlement paidAmount ignored (informational only)');
+      }
 
       const entitlementIds = await unifiedSettlementRepository.findEntitlementIds(settlementId, conn);
 

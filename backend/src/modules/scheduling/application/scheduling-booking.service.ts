@@ -169,7 +169,10 @@ export class SchedulingBookingService {
         startTime,
         endTime,
         bookingType: 'coach_session',
-        coachAmount: sessionPrice,
+        // The coach is resolved server-side and the fee is computed via the
+        // canonical pricing helper inside createBooking — the client never
+        // supplies a coach amount.
+        coachId,
         paymentMethod: (request.paymentMethod || 'wallet') as 'wallet' | 'cash' | 'card' | 'online' | 'cod',
         notes: `Coach session with coach #${coachId}`,
       }, userId);

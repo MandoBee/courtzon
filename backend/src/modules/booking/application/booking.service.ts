@@ -9,7 +9,7 @@ import { redisLock } from '../infrastructure/redis/redis-lock.js';
 import { getRedisClient } from '../../../infrastructure/redis/redis.client.js';
 import { getPool } from '../../../database/mysql.js';
 import { TimeEngine } from '../../time/index.js';
-import { NotFoundError, ForbiddenError, ConflictError } from '../../../shared/errors/app-error.js';
+import { NotFoundError, ForbiddenError, ConflictError, ValidationError } from '../../../shared/errors/app-error.js';
 import { createModuleLogger } from '../../../shared/utils/logger.js';
 import { generateUUID } from '../../../shared/utils/token.js';
 import type { CreateBookingInput, PrepareBookingInput } from '../presentation/booking.dto.js';
@@ -87,6 +87,56 @@ function splitTimeRange(startTime: string, endTime: string, durationMinutes: num
 }
 
 export class BookingService {
+  /**
+   * Resolve the authoritative coach-session fee for booking_type='coach_session'.
+   *
+   * SECURITY: the client can never supply the coach amount. The coach is
+   * resolved server-side from coachId, validated against the canonical coach
+   * eligibility rules (approved status, availability, explicit service location,
+   * branch coach policy/agreement, sport compatibility) and priced via the
+   * shared canonical calculateCoachSessionPrice (hourly rate × court booking
+   * duration). Non-coach bookings return 0 (court-only behavior unchanged).
+   */
+  private async resolveCoachSessionAmount(input: CreateBookingInput, courtSportId: number | null | undefined, endTime: string): Promise<number> {
+    if (input.bookingType !== 'coach_session') return 0;
+    if (!input.coachId) {
+      throw new ValidationError('coachId is required for coach_session bookings');
+    }
+    const [{ activitiesRepository }, { calculateCoachSessionPrice }] = await Promise.all([
+      import('../../activities/infrastructure/repositories/activities.repository.js'),
+      import('../../scheduling/application/coach-pricing.js'),
+    ]);
+    const coach = await activitiesRepository.findCoachById(input.coachId);
+    if (!coach || coach.status !== 'approved') {
+      throw new NotFoundError('Coach not found or not approved');
+    }
+    // Availability gate matches coach discovery/search (professional_profiles.is_available).
+    if (Number(coach.is_available ?? 1) !== 1) {
+      throw new ForbiddenError('Coach is not currently available for bookings');
+    }
+    const courtSport = courtSportId ? Number(courtSportId) : null;
+    if (!courtSport) {
+      throw new ForbiddenError('Court has no sport configured — coach booking unavailable');
+    }
+    let coachSports: number[] = [];
+    if (coach.sports) {
+      try {
+        const raw = typeof coach.sports === 'string' ? JSON.parse(coach.sports) : coach.sports;
+        coachSports = Array.isArray(raw) ? raw.map((n: any) => Number(n)).filter((n) => Number.isInteger(n) && n > 0) : [];
+      } catch { coachSports = []; }
+    }
+    if (coachSports.length === 0 || !coachSports.includes(courtSport)) {
+      throw new ForbiddenError('Coach does not support the sport of the selected court');
+    }
+    // Canonical service-location + branch policy (+ agreement when contract_required).
+    const eligibility = await activitiesRepository.isCoachEligibleAtBranch(input.coachId, input.branchId);
+    if (!eligibility.eligible) {
+      throw new ForbiddenError(eligibility.reason || 'Coach is not eligible to provide coaching services at this branch');
+    }
+    const hourlyRate = coach.hourly_rate ? Number(coach.hourly_rate) : 0;
+    return calculateCoachSessionPrice(hourlyRate, input.startTime, endTime);
+  }
+
   async createBooking(input: CreateBookingInput, userId: number) {
     if (isFeatureEnabled('BOOKING_V2_CREATE')) {
       return this.createBookingV2(input, userId);
@@ -147,12 +197,11 @@ export class BookingService {
     );
 
     // Coach session fee (booking_type='coach_session' only). The coach fee is
-    // added to the court total so the player is charged the combined amount and
-    // the accounting events receive the correct coach economics. Non-coach
-    // bookings keep coachAmount = 0 (unchanged behavior).
-    const coachAmount = input.bookingType === 'coach_session'
-      ? Math.max(0, Math.round((Number(input.coachAmount || 0)) * 100) / 100)
-      : 0;
+    // ALWAYS computed server-side via the canonical pricing helper — the client
+    // can never influence it. It is added to the court total so the player is
+    // charged the combined amount and the accounting events receive the correct
+    // coach economics. Non-coach bookings keep coachAmount = 0 (unchanged).
+    const coachAmount = await this.resolveCoachSessionAmount(input, resource?.sport_id, endTime);
     const bookingTotal = Math.round((pricing.totalPrice + coachAmount) * 100) / 100;
 
     let commissionAmount = 0;
@@ -1068,13 +1117,25 @@ export class BookingService {
   }
 
   async checkIn(id: number, userId: number) {
+    // Authorization: the booking owner (player) or an authorized organisation
+    // staff member (who has the `bookings.check-in` permission via the route
+    // gate) may check in. Anyone else — including another player — is denied,
+    // closing the previous IDOR where any permission-holder could check in any
+    // booking by id.
+    const booking = await bookingRepository.findById(id);
+    if (!booking) throw new NotFoundError('Booking');
+    const isOwner = Number(booking.user_id) === Number(userId);
+    const isOrgStaff = await bookingRepository.canAccessOrganisation(userId, booking.organisation_id);
+    if (!isOwner && !isOrgStaff) {
+      throw new ForbiddenError('Not authorized to check in this booking');
+    }
+
     await bookingRepository.persistTransition(id, 'checked_in');
 
     // Realtime + notification: the booking's visible state changed. Emit the
     // canonical `booking:check-in` event so the socket publisher routes it to
     // the customer, organisation and resource rooms without a page refresh.
     try {
-      const booking = await bookingRepository.findById(id);
       if (booking) {
         eventBusV2.emit('booking:check-in', {
           bookingId: id,
@@ -1441,7 +1502,9 @@ export class BookingService {
           organisationId: booking.organisation_id,
           grossAmount: Number(booking.total_amount || 0),
           taxAmount: Number(booking.tax_amount || 0),
-          coachAmount: 0,
+          // Use the persisted server-computed coach amount (0 for court-only
+          // bookings) so COD coach_session economics carry the real coach fee.
+          coachAmount: Number(booking.coach_amount || 0),
           organisationAmount: Number(booking.club_amount || 0),
           commissionAmount: Number(booking.commission_amount || 0),
           paymentMethod: 'cod',
@@ -1662,9 +1725,8 @@ export class BookingService {
     );
 
     // Coach session fee (coach_session bookings only) — combined into the total.
-    const coachAmount = input.bookingType === 'coach_session'
-      ? Math.max(0, Math.round((Number(input.coachAmount || 0)) * 100) / 100)
-      : 0;
+    // Server-computed via the canonical pricing helper; never client-supplied.
+    const coachAmount = await this.resolveCoachSessionAmount(input, resource?.sport_id, endTime);
     const bookingTotal = Math.round((pricing.totalPrice + coachAmount) * 100) / 100;
 
     // ── Economic snapshot: commission + org share + tax ──
