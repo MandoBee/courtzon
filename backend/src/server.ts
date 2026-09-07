@@ -8,6 +8,7 @@ import { attachSocketPublisher } from "./modules/realtime/index.js";
 import { notificationEngine } from "./modules/notifications/application/notification-engine.js";
 import { sendEmail } from "./shared/services/mailer.service.js";
 import { handleCancelExpiredBookings } from "./modules/booking/infrastructure/booking-expiry.worker.js";
+import { handleSagaRepair } from "./modules/scheduling/infrastructure/saga-repair.worker.js";
 import { handleCancelAbandonedOrders } from "./modules/marketplace/infrastructure/marketplace-cleanup.worker.js";
 import { handleExpireSubscriptions, handleSendExpirationReminders } from "./modules/organisations/infrastructure/subscription-lifecycle.worker.js";
 import { handleExpireMemberships, handleSendExpiringReminders } from "./modules/membership/infrastructure/membership-expiry.worker.js";
@@ -75,6 +76,7 @@ async function bootstrap() {
   try {
     registerHandler('send_email', sendEmail);
     registerHandler('cancel_expired_bookings', handleCancelExpiredBookings);
+    registerHandler('saga_repair', handleSagaRepair);
     registerHandler('database_backup', runDatabaseBackup);
 
     registerHandler('auto_complete_bookings', handleAutoCompleteBookings);
@@ -230,6 +232,13 @@ async function bootstrap() {
 
     await queueService.add('cancel_expired_bookings', { cutoffMinutes: 5 }, {
       repeat: { every: 120_000 },
+      removeOnComplete: true,
+      removeOnFail: { age: 86400 },
+    });
+
+    // Saga repair (orphaned coach bookings/sessions) — conservative 5-minute cadence.
+    await queueService.add('saga_repair', { graceMinutes: 30 }, {
+      repeat: { every: 300_000 },
       removeOnComplete: true,
       removeOnFail: { age: 86400 },
     });

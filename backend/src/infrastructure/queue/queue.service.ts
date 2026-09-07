@@ -5,6 +5,7 @@ import { createModuleLogger } from '../../shared/utils/logger.js';
 const log = createModuleLogger('queue');
 
 export type JobType = 'send_email' | 'process_settlement' | 'cancel_expired_bookings' | 'database_backup'
+  | 'saga_repair'
   | 'run_settlements' | 'auto_complete_bookings' | 'sync_pending_payments' | 'expire_stale_payments'
   | 'process_notification' | 'send_notification_batch'
   | 'process_notification_digest' | 'send_scheduled_notification' | 'process_dead_letter'
@@ -42,6 +43,11 @@ export interface ProcessSettlementJob {
 
 export interface CancelExpiredBookingsJob {
   cutoffMinutes?: number;
+}
+
+export interface SagaRepairJob {
+  /** Grace window (minutes) before a session-less coach booking is treated as stale. */
+  graceMinutes?: number;
 }
 
 export interface DatabaseBackupJob {
@@ -120,6 +126,7 @@ export type JobPayloadMap = {
   send_email: SendEmailJob;
   process_settlement: ProcessSettlementJob;
   cancel_expired_bookings: CancelExpiredBookingsJob;
+  saga_repair: SagaRepairJob;
   database_backup: DatabaseBackupJob;
   run_settlements: RunSettlementsJob;
   auto_complete_bookings: AutoCompleteBookingsJob;
