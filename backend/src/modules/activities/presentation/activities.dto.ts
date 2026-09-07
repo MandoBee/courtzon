@@ -1,8 +1,13 @@
 import { z } from 'zod';
 
-export const UpdateServiceLocationsSchema = z.object({
-  branchIds: z.array(z.number().int().positive()).max(500).optional().default([]),
-});
+export const UpdateServiceLocationsSchema = z
+  .object({
+    branchIds: z.array(z.number().int().positive()).max(500).optional().default([]),
+  })
+  .refine((data) => data.branchIds.length > 0, {
+    message: 'At least one service location (branch) is required.',
+    path: ['branchIds'],
+  });
 
 export const CreateTournamentSchema = z.object({
   organisationId: z.number().int().positive().optional(),

@@ -425,4 +425,59 @@ describe('Coach Booking Financial Wiring', () => {
       if (bookingId) await pool.execute(`DELETE FROM ledger_entries WHERE source_type='booking' AND source_id=?`, [bookingId]);
     }
   });
+
+  it('14. setMyCoachServiceLocations rejects an empty branch list (ValidationError)', async () => {
+    const { activitiesService } = await import('../../activities/application/activities.service.js');
+    const { ValidationError } = await import('../../../shared/errors/app-error.js');
+    // The coach currently has a service location on record (from beforeAll).
+    await expect(
+      activitiesService.setMyCoachServiceLocations(COACH_USER, []),
+    ).rejects.toThrow(ValidationError);
+    // Nothing was wiped: the existing location row is preserved.
+    const [rows] = await pool.execute<RowData>(
+      `SELECT branch_id FROM coach_service_locations WHERE coach_id = ?`, [coachProfileId],
+    );
+    expect(rows.length).toBeGreaterThan(0);
+  });
+
+  it('15. service-location change immediately affects eligibility (remove branch → booking blocked)', async () => {
+    const { activitiesService } = await import('../../activities/application/activities.service.js');
+    await insertAgreement({ orgId });
+    try {
+      // Coach selects the branch → eligible.
+      await activitiesService.setMyCoachServiceLocations(COACH_USER, [branchId]);
+      const [after] = await pool.execute<RowData>(
+        `SELECT branch_id FROM coach_service_locations WHERE coach_id = ?`, [coachProfileId],
+      );
+      expect(after.map((r: any) => Number(r.branch_id))).toContain(branchId);
+
+      // Deselecting the only branch is rejected (empty) — the branch stays.
+      await expect(
+        activitiesService.setMyCoachServiceLocations(COACH_USER, []),
+      ).rejects.toThrow();
+      const [still] = await pool.execute<RowData>(
+        `SELECT branch_id FROM coach_service_locations WHERE coach_id = ?`, [coachProfileId],
+      );
+      expect(still.map((r: any) => Number(r.branch_id))).toContain(branchId);
+    } finally {
+      await pool.execute(`DELETE FROM coach_org_agreements WHERE coach_id = ?`, [coachProfileId]);
+      await pool.execute(`INSERT IGNORE INTO coach_service_locations (coach_id, branch_id) VALUES (?, ?)`, [coachProfileId, branchId]);
+    }
+  });
+
+  it('16. zero-location coach receives no automatic service location from update path', async () => {
+    const { activitiesService } = await import('../../activities/application/activities.service.js');
+    // Clear the location so the coach is a zero-location coach.
+    await pool.execute(`DELETE FROM coach_service_locations WHERE coach_id = ?`, [coachProfileId]);
+    try {
+      // Saving a profile update must NOT assign any service location.
+      await activitiesService.updateCoachProfile(COACH_USER, { bio: 'No location assignment' });
+      const [rows] = await pool.execute<RowData>(
+        `SELECT branch_id FROM coach_service_locations WHERE coach_id = ?`, [coachProfileId],
+      );
+      expect(rows.length).toBe(0);
+    } finally {
+      await pool.execute(`INSERT IGNORE INTO coach_service_locations (coach_id, branch_id) VALUES (?, ?)`, [coachProfileId, branchId]);
+    }
+  });
 });

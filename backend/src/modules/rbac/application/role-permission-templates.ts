@@ -167,6 +167,9 @@ const PLAYER_DENY_KEYS = new Set([
   'coaches.no_show',
   'coaches.respond_request',
   'coaches.start_session',
+  // Service-location selection is a coach-side decision (explicit branch
+  // opt-in). Players must never hold the manage permission.
+  'coaches.service_locations.manage',
 ]);
 
 const ORG_ADMIN_PATTERNS = [

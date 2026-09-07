@@ -228,8 +228,15 @@ export const activitiesService = {
   async setMyCoachServiceLocations(userId: number, branchIds: number[]) {
     const coach = await repo.findCoachByUserId(userId);
     if (!coach) throw new NotFoundError('Coach profile');
-    const pool = getPool();
     const unique = Array.from(new Set(branchIds || []));
+    // Business rule: a coach must explicitly select at least one branch where
+    // they provide services. An empty selection is rejected server-side so a
+    // zero-location coach can never be silently left non-bookable, and a coach
+    // can never clear their service locations to empty via the API.
+    if (unique.length === 0) {
+      throw new ValidationError('At least one service location (branch) is required.');
+    }
+    const pool = getPool();
     for (const branchId of unique) {
       const [[branchRow]] = await pool.execute<RowData>(
         'SELECT id FROM branches WHERE id = ? AND deleted_at IS NULL', [branchId]
@@ -237,7 +244,15 @@ export const activitiesService = {
       if (!branchRow) throw new NotFoundError('Branch');
     }
     await repo.setCoachServiceLocations(coach.id, unique);
-    return repo.getCoachServiceLocations(coach.id);
+    const saved = await repo.getCoachServiceLocations(coach.id);
+    try {
+      eventBusV2.emit('coach:service-locations-changed', {
+        userId,
+        coachId: coach.id,
+        branchIds: unique,
+      } as any);
+    } catch { /* realtime notification is non-fatal */ }
+    return saved;
   },
   async getBranchCoachPolicy(branchId: number) {
     return repo.getBranchCoachPolicy(branchId);

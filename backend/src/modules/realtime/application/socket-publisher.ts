@@ -64,6 +64,7 @@ export class SocketPublisher {
       'coach:application-submitted', 'coach:application-approved', 'coach:application-rejected',
       'coach:verified', 'coach:platform-activated', 'coach:platform-suspended', 'coach:platform-deactivated',
       'coach:availability-changed',
+      'coach:service-locations-changed',
       'coach:invited', 'coach:agreement-added',
       'coach:org-accepted', 'coach:org-rejected', 'coach:org-suspended', 'coach:org-resumed', 'coach:org-ended',
       'coach:invite-accepted', 'coach:invite-rejected',

@@ -41,12 +41,37 @@ export default function CoachProfilePage() {
     enabled: !!profile,
   });
 
+  const { data: serviceLocations } = useQuery({
+    queryKey: ['my-coach-service-locations'],
+    queryFn: () => api.get('/coaches/service-locations/me').then((r) => r.data || []),
+    enabled: !!profile && can('coaches.service_locations.manage'),
+  });
+
+  const hasServiceLocations = (serviceLocations || []).length > 0;
+
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold text-[var(--color-text)]">{t('coach.profile.title')}</h1>
         <Link to="/coaches" className="px-4 py-2 border rounded-[var(--radius-md)] text-sm">{t('coach.profile.directory')}</Link>
       </div>
+
+      {profile && !hasServiceLocations && (
+        <div className="mb-6 bg-[var(--color-warning-bg,#fef3c7)] border border-[var(--color-warning-text,#92400e)]/40 rounded-[var(--radius-lg)] p-4 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="font-medium text-[var(--color-warning-text,#92400e)]">You are not bookable yet</p>
+            <p className="text-sm text-[var(--color-warning-text,#92400e)]/90">Select at least one branch in Service Locations where you provide coaching services. Players can only book you at branches you explicitly select.</p>
+          </div>
+          {can('coaches.service_locations.manage') && (
+            <button
+              onClick={() => setActiveTab('locations')}
+              className="px-4 py-2 bg-[var(--color-primary)] text-white rounded-[var(--radius-md)] text-sm"
+            >
+              Set Service Locations
+            </button>
+          )}
+        </div>
+      )}
 
       {isLoading ? (
         <div className="text-center py-12 text-[var(--color-text-muted)]">{t('common.loading')}</div>
@@ -552,6 +577,7 @@ function CoachServiceLocationsTab({ queryClient, showToast }: any) {
   });
 
   const selected = new Set<number>((locations || []).map((l: any) => l.branch_id));
+  const hasLocations = (locations || []).length > 0;
 
   const saveMutation = useMutation({
     mutationFn: (branchIds: number[]) => api.put('/coaches/service-locations/me', { branchIds }),
@@ -571,12 +597,37 @@ function CoachServiceLocationsTab({ queryClient, showToast }: any) {
     return acc;
   }, {});
 
+  function toggleBranch(branchId: number) {
+    const next = new Set(selected);
+    if (next.has(branchId)) {
+      // Business rule: a coach must serve at least one branch. Deselecting the
+      // last remaining branch is blocked — an empty selection is never valid.
+      if (next.size === 1) {
+        showToast('At least one branch is required. Coaches must be available at a selected branch to be bookable.', 'warning');
+        return;
+      }
+      next.delete(branchId);
+    } else {
+      next.add(branchId);
+    }
+    saveMutation.mutate(Array.from(next));
+  }
+
   return (
     <div className="space-y-6">
+      {!hasLocations && (
+        <div className="bg-[var(--color-warning-bg,#fef3c7)] border border-[var(--color-warning-text,#92400e)]/40 rounded-[var(--radius-lg)] p-5">
+          <h2 className="font-medium text-[var(--color-warning-text,#92400e)]">No service locations selected yet</h2>
+          <p className="text-sm text-[var(--color-warning-text,#92400e)]/90 mt-1">
+            You haven't selected any service locations. Players can only book you at branches you explicitly select below.
+            Select at least one branch where you provide coaching services.
+          </p>
+        </div>
+      )}
       <div className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] p-5 space-y-4">
         <div>
           <h2 className="font-medium">Service Locations</h2>
-          <p className="text-xs text-[var(--color-text-muted)]">Select the branches where you provide coaching services. Players can only book you at branches you select. Branches that require a contract also need an accepted agreement with the branch's organisation.</p>
+          <p className="text-xs text-[var(--color-text-muted)]">Selecting a branch means you are available to provide coaching services at this branch. It does not create an organisation contract — contracts remain governed by each branch's policy and the agreement system. Players can only book you at branches you select. Branches that require a contract also need an accepted agreement with the branch's organisation.</p>
         </div>
         {Object.keys(grouped).length === 0 && (
           <p className="text-sm text-[var(--color-text-muted)]">No branches available.</p>
@@ -590,11 +641,7 @@ function CoachServiceLocationsTab({ queryClient, showToast }: any) {
                   <input
                     type="checkbox"
                     checked={selected.has(b.id)}
-                    onChange={() => {
-                      if (selected.has(b.id)) selected.delete(b.id);
-                      else selected.add(b.id);
-                      saveMutation.mutate(Array.from(selected));
-                    }}
+                    onChange={() => toggleBranch(b.id)}
                     className="w-4 h-4 mt-0.5"
                   />
                   <span>
@@ -611,9 +658,11 @@ function CoachServiceLocationsTab({ queryClient, showToast }: any) {
           </div>
         ))}
       </div>
-      {locations && locations.length > 0 && (
-        <div className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] p-5">
-          <h2 className="font-medium mb-3">Selected Locations</h2>
+      <div className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] p-5">
+        <h2 className="font-medium mb-3">Selected Locations</h2>
+        {!hasLocations ? (
+          <p className="text-sm text-[var(--color-text-muted)]">No branches selected. You are not bookable until you select at least one branch.</p>
+        ) : (
           <div className="space-y-2">
             {locations.map((l: any) => (
               <div key={l.id} className="flex items-center justify-between text-sm p-3 border rounded-[var(--radius-md)]">
@@ -627,8 +676,8 @@ function CoachServiceLocationsTab({ queryClient, showToast }: any) {
               </div>
             ))}
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }

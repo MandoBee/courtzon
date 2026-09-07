@@ -454,6 +454,21 @@ export function useRealtimeCacheUpdates(): void {
     });
   }
 
+  // Coach service-locations change — emitted after a coach saves their branch
+  // selection. The acting coach's own profile/location queries and every
+  // discovery/candidate surface that depends on branch eligibility must refresh
+  // live so players never see a stale (now-ineligible) coach at a branch.
+  useSocketEvent('coach.service-locations-changed', () => {
+    qc.invalidateQueries({ queryKey: ['my-coach-service-locations'] });
+    qc.invalidateQueries({ queryKey: ['available-branches'] });
+    qc.invalidateQueries({ queryKey: ['coaches'] });
+    qc.invalidateQueries({ queryKey: ['coach'] });
+    qc.invalidateQueries({ queryKey: ['org-coaches'] });
+    qc.invalidateQueries({ queryKey: ['admin-coaches'] });
+    qc.invalidateQueries({ queryKey: ['scheduling-search'] });
+    qc.invalidateQueries({ queryKey: ['scheduling-search-resource'] });
+  });
+
   // ── Settlement events ──────────────────────────────────────────
   const invalidateSettlementViews = () => {
     // Super Admin unified settlement list + preview (same canonical projection).

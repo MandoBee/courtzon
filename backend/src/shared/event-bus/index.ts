@@ -91,6 +91,7 @@ export interface DomainEventMap {
   'coach:platform-suspended': BaseEvent & { userId: number; coachId: number; reason?: string };
   'coach:platform-deactivated': BaseEvent & { userId: number; coachId: number };
   'coach:availability-changed': BaseEvent & { userId: number; coachId: number; isAvailable: boolean };
+  'coach:service-locations-changed': BaseEvent & { userId: number; coachId: number; branchIds: number[] };
   'coach:org-accepted': BaseEvent & { coachId: number; coachUserId: number; organisationId: number; organisationName: string };
   'coach:org-rejected': BaseEvent & { coachId: number; coachUserId: number; organisationId: number; organisationName: string };
   'coach:org-suspended': BaseEvent & { coachId: number; coachUserId: number; organisationId: number; organisationName: string };
