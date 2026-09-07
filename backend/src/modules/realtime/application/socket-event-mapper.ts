@@ -431,8 +431,14 @@ function mapCoachEvent(eventName: string, p: Record<string, any>): MappedSocketE
   // is what org staff join on connect. Previously this used `org:<id>`, so
   // coach agreement/invite/service-location/availability events never reached
   // org staff and admins. Use the SAME naming convention as every other
-  // organisation-scoped event.
-  if (p.organisationId) rooms.push(`organisation:${p.organisationId}`);
+  // organisation-scoped event. Support BOTH a single `organisationId` (legacy
+  // events) and an `organisationIds` array (a coach with several active
+  // agreements must reach every relevant organisation room).
+  const orgIds = p.organisationIds ?? (p.organisationId != null ? [p.organisationId] : []);
+  const orgIdList = Array.isArray(orgIds) ? orgIds : [orgIds];
+  for (const orgId of orgIdList) {
+    if (orgId != null) rooms.push(`organisation:${orgId}`);
+  }
   return {
     type: `coach.${eventName.split(':').slice(1).join('.')}`,
     payload: { ...p, timestamp: Date.now() },

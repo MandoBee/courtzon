@@ -469,5 +469,26 @@ describe('SocketEventMapper', () => {
       expect(result!.rooms).toContain('organisation:12');
       expect(result!.rooms).not.toContain('org:12');
     });
+
+    it('coach:availability-changed with multiple organisationIds routes to EVERY organisation room (never org:)', () => {
+      const result = mapDomainEvent('coach:availability-changed', {
+        coachId: 5, userId: 5, isAvailable: true, organisationIds: [12, 34],
+      });
+      expect(result).not.toBeNull();
+      expect(result!.type).toBe('coach.availability-changed');
+      expect(result!.rooms).toContain('user:5');
+      expect(result!.rooms).toContain('organisation:12');
+      expect(result!.rooms).toContain('organisation:34');
+      expect(result!.rooms).not.toContain('org:12');
+      expect(result!.rooms).not.toContain('org:34');
+    });
+
+    it('coach:availability-changed still supports a single organisationId (legacy payload)', () => {
+      const result = mapDomainEvent('coach:availability-changed', {
+        coachId: 5, userId: 5, isAvailable: true, organisationId: 12,
+      });
+      expect(result!.rooms).toContain('organisation:12');
+      expect(result!.rooms).not.toContain('org:12');
+    });
   });
 });

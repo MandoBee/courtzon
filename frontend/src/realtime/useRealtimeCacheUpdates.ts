@@ -160,6 +160,7 @@ export const COACH_LIFECYCLE_INVALIDATIONS = [
   ['admin-coaches'],
   ['admin', 'user'],
   ['my-coach-agreements'],
+  ['my-coach-availability'],
   ['org-coaches'],
   // Per-coach agreement list (CoachDetailPage) + coach detail.
   ['coach-agreements'],

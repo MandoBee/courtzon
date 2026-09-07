@@ -23,6 +23,30 @@ function todayISO(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+/**
+ * Emit the canonical `coach:availability-changed` realtime event AFTER a coach
+ * availability mutation has persisted (weekly schedule, blackout, is_available
+ * toggle). The relevant organisation ids are resolved from the coach's accepted
+ * + active org agreements (the same canonical source used by agreement/service-
+ * location logic) so the socket mapper can route to every applicable
+ * `organisation:<id>` room. Realtime is non-fatal — never throws into the
+ * request path.
+ */
+async function emitCoachAvailabilityChanged(userId: number, coachId: number, isAvailable: boolean): Promise<void> {
+  try {
+    const agreements = await repo.findOrgAgreements(coachId);
+    const organisationIds = (agreements as any[])
+      .map((a: any) => Number(a.organisation_id))
+      .filter((id: number) => Number.isFinite(id) && id > 0);
+    eventBusV2.emit('coach:availability-changed', {
+      userId,
+      coachId,
+      isAvailable,
+      organisationIds,
+    } as any);
+  } catch { /* realtime is non-fatal */ }
+}
+
 export const activitiesService = {
   // ── Tournaments ──
   async listTournaments(filters: any) { return repo.findTournaments(filters); },
@@ -300,15 +324,10 @@ export const activitiesService = {
     const profile = await repo.findCoachByUserId(userId);
     // Realtime: a self-service availability toggle changes player-facing coach
     // discovery/eligibility. Emit the SAME canonical coach:availability-changed
-    // event the admin toggle uses so search/booking caches refresh live.
+    // event the admin toggle uses so search/booking caches refresh live, and so
+    // every relevant organisation room is notified.
     if (data.isAvailable !== undefined && profile && Number(profile.is_available) !== Number(existing.is_available)) {
-      try {
-        eventBusV2.emit('coach:availability-changed', {
-          userId,
-          coachId: profile.id,
-          isAvailable: Number(profile.is_available) === 1,
-        } as any);
-      } catch { /* realtime is non-fatal */ }
+      await emitCoachAvailabilityChanged(userId, profile.id, Number(profile.is_available) === 1);
     }
     return profile;
   },
@@ -530,6 +549,9 @@ export const activitiesService = {
       }
     }
     await repo.setCoachAvailability(coach.id, slots);
+    // Realtime after persistence: weekly availability changes player-facing
+    // discovery/slots; notify the coach's devices and every relevant org room.
+    await emitCoachAvailabilityChanged(userId, coach.id, Number(coach.is_available ?? 1) === 1);
     return repo.getCoachAvailability(coach.id);
   },
   async addMyCoachBlackout(userId: number, date: string, reason?: string) {
@@ -542,6 +564,9 @@ export const activitiesService = {
       );
     }
     const id = await repo.addCoachBlackout(coach.id, date, reason);
+    // Realtime after persistence: a blackout makes the coach unavailable that
+    // day for discovery/slots; notify the coach's devices and relevant orgs.
+    await emitCoachAvailabilityChanged(userId, coach.id, Number(coach.is_available ?? 1) === 1);
     return { id };
   },
   async removeMyCoachBlackout(userId: number, id: number) {
@@ -549,6 +574,8 @@ export const activitiesService = {
     if (!coach) throw new NotFoundError('Coach profile');
     const ok = await repo.removeCoachBlackout(coach.id, id);
     if (!ok) throw new NotFoundError('Blackout date');
+    // Realtime after deletion: the day becomes available again for discovery/slots.
+    await emitCoachAvailabilityChanged(userId, coach.id, Number(coach.is_available ?? 1) === 1);
   },
   async getCoachAvailabilityPublic(coachId: number) {
     const weekly = await repo.getCoachAvailability(coachId);
@@ -908,7 +935,7 @@ export const activitiesService = {
   async toggleCoachAvailability(id: number) {
     const result = await repo.toggleCoachAvailability(id);
     if (!result) throw new NotFoundError('Coach');
-    try { eventBusV2.emit('coach:availability-changed' as any, { userId: (result as any).user_id, coachId: id, isAvailable: (result as any).is_available }); } catch {}
+    await emitCoachAvailabilityChanged((result as any).user_id, id, (result as any).is_available);
     return result;
   },
 

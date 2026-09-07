@@ -217,6 +217,7 @@ it('product visibility changes reuse the exact marketplace roots (18) and no unr
       expect(flat).toContain('admin-coaches');
       expect(flat).toContain('admin.user');
       expect(flat).toContain('my-coach-agreements');
+      expect(flat).toContain('my-coach-availability');
       expect(flat).toContain('org-coaches');
       expect(flat).toContain('coach-agreements');
       expect(flat).toContain('coach');
