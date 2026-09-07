@@ -914,4 +914,76 @@ describe('Coach Booking Financial Wiring', () => {
       if (bookingId) await cleanupBookingRefs(bookingId);
     }
   }, 30000);
+
+  // ── Group 3D: coach search N+1 elimination ──
+  async function ensureCoachAvailability(date: string): Promise<number> {
+    const dow = new Date(date + 'T00:00:00').getDay() === 0 ? 7 : new Date(date + 'T00:00:00').getDay();
+    await pool.execute(`DELETE FROM coach_availability WHERE coach_id = ?`, [coachProfileId]);
+    await pool.execute(
+      `INSERT INTO coach_availability (coach_id, day_of_week, start_time, end_time) VALUES (?, ?, '09:00', '17:00')`,
+      [coachProfileId, dow]);
+    return dow;
+  }
+
+  it('33. coach search returns the eligible coach with BATCHED access (no per-coach profile/location queries)', async () => {
+    const { activitiesRepository } = await import('../../activities/infrastructure/repositories/activities.repository.js');
+    const { searchCoachHandler } = await import('../presentation/scheduling.controller.js');
+    await insertAgreement({ orgId });
+    const date = '2027-05-09';
+    const dow = await ensureCoachAvailability(date);
+    const findCoachByIdSpy = vi.spyOn(activitiesRepository, 'findCoachById');
+    const singleLocSpy = vi.spyOn(activitiesRepository, 'getCoachServiceLocationBranchIds');
+    const batchedLocSpy = vi.spyOn(activitiesRepository, 'getCoachServiceLocationBranchIdsByCoachIds');
+    const request: any = {
+      body: { date, dayOfWeek: dow, durationMinutes: 60, resourceId, sportId },
+    };
+    const reply: any = { send: vi.fn((x: any) => x) };
+    try {
+      await searchCoachHandler(request, reply);
+
+      // Functional: the eligible coach is returned as a candidate.
+      const sent = reply.send.mock.calls[0]?.[0];
+      const candidates = sent?.data || [];
+      const coachCandidate = (candidates as any[]).some((c: any) =>
+        c.resources?.some((r: any) => r.resourceType === 'coach' && Number(r.resourceId) === coachProfileId));
+      expect(coachCandidate).toBe(true);
+
+      // Performance: NO per-coach profile re-fetch, NO per-coach location query;
+      // the location set is loaded in ONE batched query.
+      expect(findCoachByIdSpy).not.toHaveBeenCalled();
+      expect(singleLocSpy).not.toHaveBeenCalled();
+      expect(batchedLocSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      findCoachByIdSpy.mockRestore();
+      singleLocSpy.mockRestore();
+      batchedLocSpy.mockRestore();
+      await pool.execute(`DELETE FROM coach_availability WHERE coach_id = ?`, [coachProfileId]);
+      await pool.execute(`DELETE FROM coach_org_agreements WHERE coach_id = ?`, [coachProfileId]);
+    }
+  }, 30000);
+
+  it('34. coach search still EXCLUDES a coach without explicit service access (eligibility unchanged)', async () => {
+    const { activitiesRepository } = await import('../../activities/infrastructure/repositories/activities.repository.js');
+    const { searchCoachHandler } = await import('../presentation/scheduling.controller.js');
+    await insertAgreement({ orgId });
+    const date = '2027-05-10';
+    const dow = await ensureCoachAvailability(date);
+    await pool.execute(`DELETE FROM coach_service_locations WHERE coach_id = ?`, [coachProfileId]);
+    const request: any = { body: { date, dayOfWeek: dow, durationMinutes: 60, resourceId, sportId } };
+    const reply: any = { send: vi.fn((x: any) => x) };
+    try {
+      await searchCoachHandler(request, reply);
+      const sent = reply.send.mock.calls[0]?.[0];
+      const candidates = sent?.data || [];
+      const coachCandidate = (candidates as any[]).some((c: any) =>
+        c.resources?.some((r: any) => r.resourceType === 'coach' && Number(r.resourceId) === coachProfileId));
+      // Explicit service access is REQUIRED — the coach must NOT appear even
+      // though the agreement is present.
+      expect(coachCandidate).toBe(false);
+    } finally {
+      await pool.execute(`INSERT IGNORE INTO coach_service_locations (coach_id, branch_id) VALUES (?, ?)`, [coachProfileId, branchId]);
+      await pool.execute(`DELETE FROM coach_availability WHERE coach_id = ?`, [coachProfileId]);
+      await pool.execute(`DELETE FROM coach_org_agreements WHERE coach_id = ?`, [coachProfileId]);
+    }
+  }, 30000);
 });

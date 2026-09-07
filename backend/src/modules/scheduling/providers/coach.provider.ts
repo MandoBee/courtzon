@@ -8,9 +8,20 @@ const TERMINAL_STATUSES = ['completed', 'cancelled', 'no_show'];
 export class CoachProvider implements ResourceProvider {
   readonly resourceType = 'coach';
   readonly entityId: number;
+  private readonly injectedProfile: any | null;
+  private readonly injectedServiceBranchIds: number[] | null;
 
-  constructor(coachId: number) {
+  /**
+   * @param coachId the coach profile id
+   * @param profile optional preloaded coach row (from the candidate-list query)
+   *        so isAvailable/getCapabilities do NOT re-fetch the profile per coach.
+   * @param serviceBranchIds optional preloaded explicit service-location branch
+   *        ids (batched) so getLocation does NOT query per coach.
+   */
+  constructor(coachId: number, profile?: any, serviceBranchIds?: number[]) {
     this.entityId = coachId;
+    this.injectedProfile = profile ?? null;
+    this.injectedServiceBranchIds = serviceBranchIds ?? null;
   }
 
   async getAvailableSlots(date: string, dayOfWeek: number): Promise<TimeSlot[]> {
@@ -54,7 +65,7 @@ export class CoachProvider implements ResourceProvider {
   }
 
   async getCapabilities(): Promise<ResourceCapabilities> {
-    const profile = await activitiesRepository.findCoachById(this.entityId);
+    const profile = this.injectedProfile ?? await activitiesRepository.findCoachById(this.entityId);
     if (!profile) {
       return { sportIds: [] };
     }
@@ -92,13 +103,15 @@ export class CoachProvider implements ResourceProvider {
     // from coach_org_agreements (which carry no branch and must not be used to
     // infer where a coach can work). Independent coaches with no agreements are
     // still location-eligible at their service branches.
-    const branchIds = await activitiesRepository.getCoachServiceLocationBranchIds(this.entityId);
+    const branchIds = this.injectedServiceBranchIds !== null
+      ? this.injectedServiceBranchIds
+      : await activitiesRepository.getCoachServiceLocationBranchIds(this.entityId);
     if (branchIds.length === 0) return { branchIds: [] };
     return { branchIds };
   }
 
   async isAvailable(): Promise<boolean> {
-    const profile = await activitiesRepository.findCoachById(this.entityId);
+    const profile = this.injectedProfile ?? await activitiesRepository.findCoachById(this.entityId);
     if (!profile) return false;
     const available = profile.status === 'approved' && profile.is_available === 1;
     log.debug({ coachId: this.entityId, status: profile.status, isAvailable: profile.is_available, result: available }, 'Coach availability check');

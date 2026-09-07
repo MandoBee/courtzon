@@ -760,6 +760,31 @@ export const activitiesRepository = {
     return rows.map((r: any) => Number(r.branch_id));
   },
 
+  /**
+   * BATCHED service-location lookup for coach search: resolves the branch ids a
+   * set of coaches explicitly serve in ONE query (N+1 elimination) while keeping
+   * the exact same explicit-service-access semantics — never inferred from org
+   * membership/branch ownership.
+   */
+  async getCoachServiceLocationBranchIdsByCoachIds(coachIds: number[]): Promise<Map<number, number[]>> {
+    const pool = getPool();
+    const map = new Map<number, number[]>();
+    if (!coachIds.length) return map;
+    // Explicit placeholders: mysql2 `execute` (prepared) does not expand an array
+    // inside a single `IN (?)` parameter — build the placeholders manually.
+    const placeholders = coachIds.map(() => '?').join(',');
+    const [rows] = await pool.execute<RowData>(
+      `SELECT coach_id, branch_id FROM coach_service_locations WHERE coach_id IN (${placeholders})`,
+      coachIds
+    );
+    for (const r of rows as any[]) {
+      const cid = Number(r.coach_id);
+      if (!map.has(cid)) map.set(cid, []);
+      map.get(cid)!.push(Number(r.branch_id));
+    }
+    return map;
+  },
+
   async setCoachServiceLocations(coachId: number, branchIds: number[]) {
     const pool = getPool();
     const conn = await pool.getConnection();
@@ -942,7 +967,7 @@ export const activitiesRepository = {
     const organisationId = (branchRows[0] as any).organisation_id;
 
     let sql = `
-      SELECT cp.id, cp.user_id, cp.is_verified, u.full_name, u.email,
+      SELECT cp.id, cp.user_id, cp.status, cp.is_verified, u.full_name, u.email,
              ${PROFESSIONAL_PROFILE_SELECT},
              ${PROFESSIONAL_SERVICE_PRICE_SELECT}
       FROM coach_service_locations csl

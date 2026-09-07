@@ -16,7 +16,7 @@ import type { ResourceProvider } from '../types.js';
 const log = createModuleLogger('scheduling');
 const engine = new SchedulingEngine();
 
-function buildPricingFunction(): PricingFunction {
+function buildPricingFunction(coachProfiles: Map<number, any>): PricingFunction {
   return async (resourceType, resourceId, startTime, endTime) => {
     if (resourceType === 'court') {
       const result = await pricingEngine.calculatePrice(resourceId, startTime, endTime);
@@ -24,10 +24,12 @@ function buildPricingFunction(): PricingFunction {
     }
     if (resourceType === 'coach') {
       // Coach session duration == court booking duration (same window).
-      // Price = hourly rate prorated by the shared canonical helper.
-      const profile = await activitiesRepository.findCoachById(resourceId);
-      if (!profile?.hourly_rate) return 0;
-      return calculateCoachSessionPrice(Number(profile.hourly_rate), startTime, endTime);
+      // Price = hourly rate prorated by the shared canonical helper. The rate is
+      // read from the preloaded candidate profile — no per-coach DB query.
+      const profile = coachProfiles.get(resourceId);
+      const hourlyRate = profile ? Number(profile.hourly_rate ?? 0) : 0;
+      if (!hourlyRate) return 0;
+      return calculateCoachSessionPrice(hourlyRate, startTime, endTime);
     }
     return 0;
   };
@@ -50,13 +52,20 @@ async function discoverProviders(input: {
   resourceId?: number;
   sportId?: number;
   branchId?: number;
-}): Promise<ResourceProvider[]> {
+}): Promise<{ providers: ResourceProvider[]; coachProfiles: Map<number, any> }> {
   const providers: ResourceProvider[] = [];
+  const coachProfiles = new Map<number, any>();
 
   if (input.coachId && input.resourceId) {
-    providers.push(new CoachProvider(input.coachId), new CourtProvider(input.resourceId));
+    const profile = await activitiesRepository.findCoachById(input.coachId);
+    if (profile) coachProfiles.set(input.coachId, profile);
+    const loc = (await activitiesRepository.getCoachServiceLocationBranchIdsByCoachIds([input.coachId])).get(input.coachId) ?? [];
+    providers.push(new CoachProvider(input.coachId, profile, loc), new CourtProvider(input.resourceId));
   } else if (input.coachId) {
-    providers.push(new CoachProvider(input.coachId));
+    const profile = await activitiesRepository.findCoachById(input.coachId);
+    if (profile) coachProfiles.set(input.coachId, profile);
+    const loc = (await activitiesRepository.getCoachServiceLocationBranchIdsByCoachIds([input.coachId])).get(input.coachId) ?? [];
+    providers.push(new CoachProvider(input.coachId, profile, loc));
     if (input.branchId) {
       const courts = await resourceRepository.findByBranch(input.branchId);
       for (const court of courts) {
@@ -69,13 +78,20 @@ async function discoverProviders(input: {
       providers.push(new CourtProvider(input.resourceId));
       // Flow B: Only coaches with explicit SERVICE ACCESS to this court's branch
       // (coach_service_locations) AND satisfying the branch's coach policy may be
-      // returned as candidates. Both are factored in by isCoachEligibleAtBranch.
+      // returned as candidates. Both are factored in by listEligibleCoachesAtBranch.
       const eligible = await activitiesRepository.listEligibleCoachesAtBranch(
         court.branch_id,
         input.sportId,
       );
-      for (const coach of eligible) {
-        providers.push(new CoachProvider(coach.id));
+      const coachIds = (eligible as any[]).map((c) => Number(c.id));
+      // Preload every candidate's profile + explicit service locations in 2
+      // queries (instead of ~5 per coach) while keeping identical eligibility.
+      for (const coach of eligible as any[]) coachProfiles.set(Number(coach.id), coach);
+      const locMap = await activitiesRepository.getCoachServiceLocationBranchIdsByCoachIds(coachIds);
+      for (const coach of eligible as any[]) {
+        const cid = Number(coach.id);
+        const loc = locMap.get(cid) ?? [];
+        providers.push(new CoachProvider(cid, coach, loc));
       }
     }
   } else {
@@ -85,12 +101,17 @@ async function discoverProviders(input: {
       page: 1,
       limit: 50,
     });
-    for (const coach of coaches) {
-      providers.push(new CoachProvider(coach.id));
+    const coachIds = (coaches as any[]).map((c) => Number(c.id));
+    for (const coach of coaches as any[]) coachProfiles.set(Number(coach.id), coach);
+    const locMap = await activitiesRepository.getCoachServiceLocationBranchIdsByCoachIds(coachIds);
+    for (const coach of coaches as any[]) {
+      const cid = Number(coach.id);
+      const loc = locMap.get(cid) ?? [];
+      providers.push(new CoachProvider(cid, coach, loc));
     }
   }
 
-  return providers;
+  return { providers, coachProfiles };
 }
 
 export async function searchCoachHandler(request: FastifyRequest, reply: FastifyReply) {
@@ -100,13 +121,13 @@ export async function searchCoachHandler(request: FastifyRequest, reply: Fastify
   log.info({ date: input.date, coachId: input.coachId, resourceId: input.resourceId, duration: input.durationMinutes }, 'Search requested');
 
   const providers = await discoverProviders(input);
-  log.debug({ providerCount: providers.length, types: providers.map(p => p.resourceType) }, 'Providers discovered');
+  log.debug({ providerCount: providers.providers.length, types: providers.providers.map(p => p.resourceType) }, 'Providers discovered');
 
   const candidates = await engine.search(
     input as any,
-    providers,
+    providers.providers,
     COACH_SESSION_CONFIG,
-    buildPricingFunction(),
+    buildPricingFunction(providers.coachProfiles),
   );
 
   const elapsedMs = Date.now() - startMs;
