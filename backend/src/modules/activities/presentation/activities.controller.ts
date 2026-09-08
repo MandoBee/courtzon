@@ -495,6 +495,15 @@ export async function getCoachSessionDetailHandler(request: FastifyRequest, repl
   );
   if (!rows.length) return reply.status(404).send({ error: 'NOT_FOUND', message: 'Session not found' });
 
+  const userId = (request as any).userId;
+  const coach = await svc.findCoachByUserId(userId);
+  const isCoach = coach && Number(coach.id) === Number(rows[0].coach_id);
+  const isPlayer = Number(userId) === Number(rows[0].player_id);
+  const isAdmin = await isPlatformAdmin(userId);
+  if (!isCoach && !isPlayer && !isAdmin) {
+    throw new ForbiddenError('You can only view your own sessions');
+  }
+
   const timeline = await coachSessionStateService.getTimeline(sessionId);
   const allowed = coachSessionStateService.getAllowedTransitions(rows[0].status);
 
