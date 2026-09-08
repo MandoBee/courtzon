@@ -25,8 +25,15 @@ type RowData = RowDataPacket[];
  *     ('coach'/'player'/'admin'), and cancelledBy reflects the real actor
  *   - idempotent re-transitions never duplicate timeline events
  *   - authorization is evaluated BEFORE transition validation; the existing
- *     InvalidTransitionError behavior for canonical states (scheduled/
- *     pending_court) is preserved unchanged
+ *     InvalidTransitionError behavior for unsupported canonical states is
+ *     preserved unchanged
+ *
+ * AUD-003 G2-D Group 1 extends this to the CANONICAL lifecycle:
+ *   - scheduled → in_progress (Start) and scheduled → cancelled (Cancel) are
+ *     now valid for the canonical Unified Flow B sessions
+ *   - in_progress → completed / cancelled remain valid
+ *   - scheduled → confirmed, scheduled → no_show, pending_court → anything
+ *     remain invalid (no new transitions were invented)
  *
  * Uses the shared local Docker MySQL (127.0.0.1:3307 / courtzon_v3) with
  * self-created fixtures + teardown, following the G2-B integration pattern.
@@ -415,32 +422,146 @@ describe('AUD-003 G2-C — coach-session mutation authorization', () => {
     expect(started).toHaveLength(1);
   });
 
-  // ── State machine NOT changed ────────────────────────────────────────────
+  it('I2. repeated start on a canonical scheduled session is idempotent — no duplicate timeline event', async () => {
+    const sessionId = await insertSession('scheduled');
+    const first = await post('start', sessionId, COACH);
+    expect(first.statusCode).toBe(200);
+    const second = await post('start', sessionId, COACH);
+    expect(second.statusCode).toBe(200);
+    expect((await sessionRow(sessionId)).status).toBe('in_progress');
+    const events = (await eventsFor(sessionId)).filter((e) => e.event === 'in_progress');
+    expect(events).toHaveLength(1);
+  });
+
+  // ── G2-D Group 1: CANONICAL scheduled → in_progress (Start) ──────────────
+  it('CS1. owner coach start on scheduled → 200, in_progress, actor recorded as coach', async () => {
+    const sessionId = await insertSession('scheduled');
+    const res = await post('start', sessionId, COACH);
+    expect(res.statusCode).toBe(200);
+    expect((await sessionRow(sessionId)).status).toBe('in_progress');
+    const events = await eventsFor(sessionId);
+    expect(events.at(-1).actor_id).toBe(COACH);
+    expect(events.at(-1).actor_role).toBe('coach');
+  });
+
+  it('CS2. platform admin start on scheduled → 200, actor recorded as admin', async () => {
+    const sessionId = await insertSession('scheduled');
+    const res = await post('start', sessionId, ADMIN);
+    expect(res.statusCode).toBe(200);
+    expect((await sessionRow(sessionId)).status).toBe('in_progress');
+    const events = await eventsFor(sessionId);
+    expect(events.at(-1).actor_id).toBe(ADMIN);
+    expect(events.at(-1).actor_role).toBe('admin');
+  });
+
+  it('CS3. player owner start on scheduled → 403', async () => {
+    const sessionId = await insertSession('scheduled');
+    const res = await post('start', sessionId, PLAYER);
+    expect(res.statusCode).toBe(403);
+    expect(res.json().error).toBe('FORBIDDEN');
+  });
+
+  it('CS4. another player start on scheduled → 403', async () => {
+    const sessionId = await insertSession('scheduled');
+    const res = await post('start', sessionId, OTHER_PLAYER);
+    expect(res.statusCode).toBe(403);
+    expect(res.json().error).toBe('FORBIDDEN');
+  });
+
+  // ── G2-D Group 1: CANONICAL scheduled → cancelled (Cancel) ───────────────
+  it('CS5. owner coach cancel on scheduled → 200, cancelled_by=coach, actor recorded as coach', async () => {
+    const sessionId = await insertSession('scheduled');
+    const res = await post('cancel', sessionId, COACH);
+    expect(res.statusCode).toBe(200);
+    const row = await sessionRow(sessionId);
+    expect(row.status).toBe('cancelled');
+    expect(row.cancelled_by).toBe('coach');
+    const events = await eventsFor(sessionId);
+    expect(events.at(-1).actor_id).toBe(COACH);
+    expect(events.at(-1).actor_role).toBe('coach');
+  });
+
+  it('CS6. owner player cancel on scheduled → 200, cancelled_by=player, actor recorded as player', async () => {
+    const sessionId = await insertSession('scheduled');
+    const res = await post('cancel', sessionId, PLAYER);
+    expect(res.statusCode).toBe(200);
+    const row = await sessionRow(sessionId);
+    expect(row.status).toBe('cancelled');
+    expect(row.cancelled_by).toBe('player');
+    const events = await eventsFor(sessionId);
+    expect(events.at(-1).actor_id).toBe(PLAYER);
+    expect(events.at(-1).actor_role).toBe('player');
+  });
+
+  it('CS7. platform admin cancel on scheduled → 200, cancelled_by=admin, actor recorded as admin', async () => {
+    const sessionId = await insertSession('scheduled');
+    const res = await post('cancel', sessionId, ADMIN);
+    expect(res.statusCode).toBe(200);
+    const row = await sessionRow(sessionId);
+    expect(row.status).toBe('cancelled');
+    expect(row.cancelled_by).toBe('admin');
+    const events = await eventsFor(sessionId);
+    expect(events.at(-1).actor_id).toBe(ADMIN);
+    expect(events.at(-1).actor_role).toBe('admin');
+  });
+
+  it('CS8. another coach cancel on scheduled → 403', async () => {
+    const sessionId = await insertSession('scheduled');
+    const res = await post('cancel', sessionId, OTHER_COACH);
+    expect(res.statusCode).toBe(403);
+    expect(res.json().error).toBe('FORBIDDEN');
+  });
+
+  it('CS9. another player cancel on scheduled → 403', async () => {
+    const sessionId = await insertSession('scheduled');
+    const res = await post('cancel', sessionId, OTHER_PLAYER);
+    expect(res.statusCode).toBe(403);
+    expect(res.json().error).toBe('FORBIDDEN');
+  });
+
+  // ── Preserved existing transitions ───────────────────────────────────────
+  it('CP1. coach owner cancel on in_progress → 200, in_progress → cancelled still valid', async () => {
+    const sessionId = await insertSession('in_progress');
+    const res = await post('cancel', sessionId, COACH);
+    expect(res.statusCode).toBe(200);
+    expect((await sessionRow(sessionId)).status).toBe('cancelled');
+    expect((await sessionRow(sessionId)).cancelled_by).toBe('coach');
+  });
+
+  // ── State machine NOT changed beyond the canonical alignment ─────────────
   it('S1. authorization is evaluated before transition failure (other coach on scheduled → 403, not 500)', async () => {
     const sessionId = await insertSession('scheduled');
     const res = await post('start', sessionId, OTHER_COACH);
     expect(res.statusCode).toBe(403);
   });
 
-  it('S2. authorized coach on scheduled → existing InvalidTransitionError (500), state unchanged', async () => {
-    const sessionId = await insertSession('scheduled');
-    const res = await post('start', sessionId, COACH);
-    expect(res.statusCode).toBe(500);
-    expect(res.json().message).toContain("Cannot transition from 'scheduled'");
-    expect((await sessionRow(sessionId)).status).toBe('scheduled');
-  });
-
-  it('S3. authorized coach on scheduled confirm → existing InvalidTransitionError, no success', async () => {
+  it('S3. authorized coach on scheduled confirm → InvalidTransitionError, no success', async () => {
     const sessionId = await insertSession('scheduled');
     const res = await post('confirm', sessionId, COACH);
     expect(res.statusCode).toBe(500);
-    expect(res.json().message).toContain("Cannot transition from 'scheduled'");
+    expect(res.json().message).toContain("Cannot transition from 'scheduled' to 'confirmed'");
     expect((await sessionRow(sessionId)).status).toBe('scheduled');
   });
 
-  it('S4. authorized coach on pending_court cancel → existing InvalidTransitionError', async () => {
+  it('S5. authorized coach on scheduled no-show → InvalidTransitionError, no success', async () => {
+    const sessionId = await insertSession('scheduled');
+    const res = await post('no-show', sessionId, COACH);
+    expect(res.statusCode).toBe(500);
+    expect(res.json().message).toContain("Cannot transition from 'scheduled' to 'no_show'");
+    expect((await sessionRow(sessionId)).status).toBe('scheduled');
+  });
+
+  it('S4. authorized coach on pending_court cancel → InvalidTransitionError', async () => {
     const sessionId = await insertSession('pending_court');
     const res = await post('cancel', sessionId, COACH);
+    expect(res.statusCode).toBe(500);
+    expect(res.json().message).toContain("Cannot transition from 'pending_court'");
+    expect((await sessionRow(sessionId)).status).toBe('pending_court');
+  });
+
+  it('S6. authorized coach on pending_court start → InvalidTransitionError', async () => {
+    const sessionId = await insertSession('pending_court');
+    const res = await post('start', sessionId, COACH);
     expect(res.statusCode).toBe(500);
     expect(res.json().message).toContain("Cannot transition from 'pending_court'");
     expect((await sessionRow(sessionId)).status).toBe('pending_court');

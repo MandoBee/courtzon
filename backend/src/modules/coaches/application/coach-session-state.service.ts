@@ -5,7 +5,7 @@ type RowData = any[];
 
 const COACH_SESSION_STATUSES = [
   'requested', 'accepted', 'declined', 'counter_proposal',
-  'pending_acceptance', 'confirmed', 'in_progress', 'completed',
+  'pending_acceptance', 'scheduled', 'confirmed', 'in_progress', 'completed',
   'cancelled', 'no_show',
 ] as const;
 
@@ -17,6 +17,7 @@ const TRANSITIONS: Record<CoachSessionStatus, CoachSessionStatus[]> = {
   declined: [],
   counter_proposal: ['pending_acceptance', 'cancelled'],
   pending_acceptance: ['confirmed', 'cancelled'],
+  scheduled: ['in_progress', 'cancelled'],
   confirmed: ['in_progress', 'cancelled'],
   in_progress: ['completed', 'cancelled'],
   completed: [],
