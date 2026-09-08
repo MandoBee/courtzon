@@ -14,6 +14,7 @@ const EVENT_LABELS: Record<string, { icon: string; label: string }> = {
   court_selected: { icon: '🎾', label: 'Court selected' },
   confirmed: { icon: '✔️', label: 'Session confirmed' },
   started: { icon: '▶️', label: 'Session started' },
+  in_progress: { icon: '▶️', label: 'Session started' },
   completed: { icon: '🏁', label: 'Session completed' },
   cancelled: { icon: '🚫', label: 'Session cancelled' },
   no_show: { icon: '👤', label: 'Player did not show' },

@@ -123,10 +123,10 @@ function SessionDetailCard({ session, detailId, setDetailId, sessionMut, detailT
   const isExpanded = detailId === session.id;
 
   const actions: { label: string; action: string; color: string }[] = [];
-  if (session.status === 'confirmed') actions.push({ label: '▶️ Start', action: 'start', color: 'bg-[var(--color-primary)]' });
+  if (['confirmed', 'scheduled'].includes(session.status)) actions.push({ label: '▶️ Start', action: 'start', color: 'bg-[var(--color-primary)]' });
   if (session.status === 'in_progress') actions.push({ label: '🏁 Complete', action: 'complete', color: 'bg-[var(--color-success)]' });
   if (session.status === 'in_progress') actions.push({ label: '👤 No Show', action: 'no-show', color: 'bg-[var(--color-error)]' });
-  if (['requested', 'confirmed', 'in_progress'].includes(session.status)) actions.push({ label: '🚫 Cancel', action: 'cancel', color: 'bg-[var(--color-error)]' });
+  if (['requested', 'confirmed', 'scheduled', 'in_progress'].includes(session.status)) actions.push({ label: '🚫 Cancel', action: 'cancel', color: 'bg-[var(--color-error)]' });
 
   return (
     <div className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] border border-[var(--color-border)] p-4">
