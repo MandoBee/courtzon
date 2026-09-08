@@ -2,6 +2,7 @@ import type { FastifyRequest, FastifyReply } from 'fastify';
 import { activitiesService as svc } from '../application/activities.service.js';
 import { recordAudit } from '../../audit-log/index.js';
 import { coachSessionStateService } from '../../coaches/application/coach-session-state.service.js';
+import { authorizeCoachSessionMutation } from '../../coaches/application/coach-session-access.js';
 import { eventBusV2 } from '../../../shared/event-bus/index.js';
 import { NotFoundError, ForbiddenError } from '../../../shared/errors/app-error.js';
 import { isPlatformAdmin } from '../../../shared/middleware/org-access.js';
@@ -419,7 +420,10 @@ export async function confirmCoachSessionHandler(request: FastifyRequest, reply:
   const userId = (request as any).userId;
   const sessionId = Number((request.params as any).id);
 
-  const { session } = await coachSessionStateService.transition(sessionId, 'confirmed', { id: userId, role: 'player' });
+  // Confirm requires the session's coach or a platform admin.
+  const actor = await authorizeCoachSessionMutation(sessionId, userId, { coach: true, admin: true });
+
+  const { session } = await coachSessionStateService.transition(sessionId, 'confirmed', { id: userId, role: actor.role });
 
   emitSessionEvent('confirmed', session);
 
@@ -431,9 +435,13 @@ export async function confirmCoachSessionHandler(request: FastifyRequest, reply:
 export async function cancelCoachSessionHandler(request: FastifyRequest, reply: FastifyReply) {
   const userId = (request as any).userId;
   const sessionId = Number((request.params as any).id);
-  const { reason } = request.body as any;
+  const { reason } = (request.body as any) ?? {};
 
-  const { session } = await coachSessionStateService.transition(sessionId, 'cancelled', { id: userId, role: 'player' }, { cancelledBy: 'player', reason });
+  // Cancel is actor-scoped ownership: the session's player, the session's
+  // coach, or a platform admin. cancelledBy reflects the REAL actor.
+  const actor = await authorizeCoachSessionMutation(sessionId, userId, { coach: true, player: true, admin: true });
+
+  const { session } = await coachSessionStateService.transition(sessionId, 'cancelled', { id: userId, role: actor.role }, { cancelledBy: actor.role, reason });
 
   emitSessionEvent('cancelled', session, { reason });
 
@@ -446,7 +454,10 @@ export async function startCoachSessionHandler(request: FastifyRequest, reply: F
   const userId = (request as any).userId;
   const sessionId = Number((request.params as any).id);
 
-  const { session } = await coachSessionStateService.transition(sessionId, 'in_progress', { id: userId, role: 'coach' });
+  // Starting a session requires the session's coach or a platform admin.
+  const actor = await authorizeCoachSessionMutation(sessionId, userId, { coach: true, admin: true });
+
+  const { session } = await coachSessionStateService.transition(sessionId, 'in_progress', { id: userId, role: actor.role });
 
   emitSessionEvent('started', session);
 
@@ -459,7 +470,10 @@ export async function completeCoachSessionHandler(request: FastifyRequest, reply
   const userId = (request as any).userId;
   const sessionId = Number((request.params as any).id);
 
-  const { session } = await coachSessionStateService.transition(sessionId, 'completed', { id: userId, role: 'coach' });
+  // Completing a session requires the session's coach or a platform admin.
+  const actor = await authorizeCoachSessionMutation(sessionId, userId, { coach: true, admin: true });
+
+  const { session } = await coachSessionStateService.transition(sessionId, 'completed', { id: userId, role: actor.role });
 
   emitSessionEvent('completed', session);
 
@@ -472,7 +486,10 @@ export async function noShowCoachSessionHandler(request: FastifyRequest, reply: 
   const userId = (request as any).userId;
   const sessionId = Number((request.params as any).id);
 
-  const { session } = await coachSessionStateService.transition(sessionId, 'no_show', { id: userId, role: 'coach' });
+  // Marking a no-show requires the session's coach or a platform admin.
+  const actor = await authorizeCoachSessionMutation(sessionId, userId, { coach: true, admin: true });
+
+  const { session } = await coachSessionStateService.transition(sessionId, 'no_show', { id: userId, role: actor.role });
 
   emitSessionEvent('no_show', session);
 

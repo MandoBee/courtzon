@@ -1,4 +1,5 @@
 import { getPool } from '../../../database/mysql.js';
+import { NotFoundError } from '../../../shared/errors/app-error.js';
 
 type RowData = any[];
 
@@ -62,7 +63,7 @@ export class CoachSessionStateService {
       [sessionId],
     );
     if (!rows.length) {
-      throw new Error('Coach session not found');
+      throw new NotFoundError('Coach session');
     }
     const session = rows[0];
     const from = session.status;
