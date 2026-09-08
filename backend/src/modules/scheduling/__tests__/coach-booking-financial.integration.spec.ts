@@ -21,7 +21,6 @@ type RowData = RowDataPacket[];
  *     coach_sessions.organisation_id
  *   - contracted orgs receive org_split_pct; independent orgs receive 0%
  *   - sport mismatch / empty sport / no service access are rejected at booking
- *   - legacy POST /coaches/sessions (createCoachSession) applies the same split
  *   - coach payout accounting is generated from the actual coach amount
  *
  * commissionService.calculate is stubbed to a deterministic 10% so the split
@@ -315,58 +314,6 @@ describe('Coach Booking Financial Wiring', () => {
     } finally {
       await pool.execute(`UPDATE professional_profiles SET sports = ? WHERE user_id = ?`, [JSON.stringify([sportId]), COACH_USER]);
       await pool.execute(`DELETE FROM coach_org_agreements WHERE coach_id = ?`, [coachProfileId]);
-    }
-  });
-
-  it('10. legacy createCoachSession applies the contracted org split (org resolved from branch)', async () => {
-    await insertAgreement({ orgId, status: 'active', coachSplit: 60, orgSplit: 40 });
-    try {
-      const { activitiesService } = await import('../../activities/application/activities.service.js');
-      await activitiesService.createCoachSession(COACH_USER, {
-        organisationId: orgId,
-        branchId,
-        playerId: PLAYER_USER,
-        startTime: '2027-02-20T10:00:00',
-        endTime: '2027-02-20T11:00:00',
-        currencyCode: 'EGP',
-      });
-      const [rows] = await pool.execute<RowData>(
-        `SELECT * FROM coach_sessions WHERE coach_id = ? AND player_id = ? ORDER BY id DESC LIMIT 1`,
-        [coachProfileId, PLAYER_USER],
-      );
-      const s = rows[0] as any;
-      expect(Number(s.organisation_id)).toBe(orgId);
-      expect(Number(s.price)).toBe(100);
-      expect(Number(s.org_earnings)).toBe(36); // net 90 × 40%
-      expect(Number(s.coach_earnings)).toBe(54);
-    } finally {
-      await pool.execute(`DELETE FROM coach_org_agreements WHERE coach_id = ?`, [coachProfileId]);
-    }
-  });
-
-  it('11. legacy createCoachSession on independent branch → org earnings = 0', async () => {
-    await pool.execute(`UPDATE branches SET coach_policy = 'independent_coaches_allowed' WHERE id = ?`, [branchId]);
-    await insertAgreement({ orgId, status: 'active', coachSplit: 60, orgSplit: 40 });
-    try {
-      const { activitiesService } = await import('../../activities/application/activities.service.js');
-      await activitiesService.createCoachSession(COACH_USER, {
-        organisationId: orgId,
-        branchId,
-        playerId: PLAYER_USER,
-        startTime: '2027-02-21T10:00:00',
-        endTime: '2027-02-21T11:00:00',
-        currencyCode: 'EGP',
-      });
-      const [rows] = await pool.execute<RowData>(
-        `SELECT * FROM coach_sessions WHERE coach_id = ? AND player_id = ? ORDER BY id DESC LIMIT 1`,
-        [coachProfileId, PLAYER_USER],
-      );
-      const s = rows[0] as any;
-      expect(Number(s.org_earnings)).toBe(0);
-      expect(Number(s.coach_earnings)).toBe(90);
-    } finally {
-      await pool.execute(`DELETE FROM coach_org_agreements WHERE coach_id = ?`, [coachProfileId]);
-      await pool.execute(`UPDATE branches SET coach_policy = 'contract_required' WHERE id = ?`, [branchId]);
     }
   });
 

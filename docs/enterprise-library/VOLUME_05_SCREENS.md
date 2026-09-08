@@ -45,7 +45,6 @@
 |-------|-----------|------|---------|
 | `/coach/dashboard` | CoachDashboard | `pages/coaches/CoachDashboard.tsx` | Coach dashboard |
 | `/coach/sessions` | TodaySessions | `pages/coaches/TodaySessions.tsx` | Session list |
-| `/coach/requests` | SessionRequests | `pages/coaches/SessionRequests.tsx` | Pending requests |
 | `/coach/players` | CoachPlayersPage | `pages/coaches/CoachPlayersPage.tsx` | Player roster |
 | `/coach/profile` | CoachProfilePage | `pages/coaches/CoachProfilePage.tsx` | Profile editor |
 | `/coach/revenue` | CoachRevenuePage | `pages/coaches/CoachRevenuePage.tsx` | Revenue history |

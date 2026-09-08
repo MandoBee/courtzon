@@ -41,7 +41,6 @@ export default function CoachDashboard() {
       {stats && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <StatCard icon="📋" label="Today" value={stats.todaySessions} color="var(--color-primary)" />
-          <StatCard icon="📥" label="Requests" value={stats.pendingRequests} color="var(--color-warning)" />
           <StatCard icon="👥" label="Players" value={stats.activePlayers} color="var(--color-info)" />
           <StatCard icon="✅" label="Completed" value={stats.totalSessionsCompleted} color="var(--color-success)" />
         </div>
@@ -49,7 +48,6 @@ export default function CoachDashboard() {
 
       {/* Action Center */}
       <ActionCenter title="Pending" actions={[
-        { label: 'Session Requests', path: '/coach/requests', icon: '📥', count: stats?.pendingRequests },
         { label: 'Today\'s Sessions', path: '/coach/sessions', icon: '📋', count: stats?.todaySessions },
         { label: 'Upcoming', path: '/coach/sessions', icon: '📅', count: upcoming.length },
       ]} />
@@ -58,7 +56,6 @@ export default function CoachDashboard() {
         { label: 'Set Availability', icon: '🕐', path: '/coach/availability' },
         { label: 'My Profile', icon: '👤', path: '/coach/profile' },
         { label: 'Players', icon: '👥', path: '/coach/players' },
-        { label: 'Session Requests', icon: '📥', path: '/coach/requests' },
       ]} />
 
       <section>
@@ -78,7 +75,6 @@ export default function CoachDashboard() {
 
       <QuickActions actions={[
         { label: 'My Sessions', icon: '📋', path: '/coach/sessions' },
-        { label: 'Requests', icon: '📥', path: '/coach/requests' },
         { label: 'Set Availability', icon: '🕐', path: '/coach/availability' },
         { label: 'My Profile', icon: '👤', path: '/coach/profile' },
       ]} />

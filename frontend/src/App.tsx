@@ -96,7 +96,6 @@ const CoachDetailPage = lazy(() => import('./pages/coaches/CoachDetailPage'));
 const CoachSessionsPage = lazy(() => import('./pages/coaches/CoachSessionsPage'));
 const CoachDashboard = lazy(() => import('./pages/coaches/CoachDashboard'));
 const TodaySessions = lazy(() => import('./pages/coaches/TodaySessions'));
-const SessionRequests = lazy(() => import('./pages/coaches/SessionRequests'));
 const CoachPlayersPage = lazy(() => import('./pages/coaches/CoachPlayersPage'));
 const ProfilePage = lazy(() => import('./pages/profile/ProfilePage'));
 const RoleAppearancePage = lazy(() => import('./pages/settings/RoleAppearancePage'));
@@ -638,7 +637,6 @@ function AppContent() {
           <Route index element={<CoachDashboard />} />
           <Route path="dashboard" element={<CoachDashboard />} />
           <Route path="sessions" element={<TodaySessions />} />
-          <Route path="requests" element={<SessionRequests />} />
           <Route path="players" element={<CoachPlayersPage />} />
           <Route path="availability" element={<CoachProfilePage />} />
           <Route path="profile" element={<CoachProfilePage />} />

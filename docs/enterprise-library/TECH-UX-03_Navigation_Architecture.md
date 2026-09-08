@@ -336,20 +336,21 @@ All items filtered by `org.sidebar.*` permission keys. Layout is collapsible (si
 
 **Component:** `frontend/src/components/layout/CoachBottomNav.tsx`
 
-**6 Items (first 4 in bottom bar, all in nav data):**
+**7 Items (CoachBottomNav renders the full nav list):**
 
 | Item | Icon | Path | Permission |
 |------|------|------|-----------|
 | Dashboard | 🏠 | `/coach/dashboard` | — |
 | Sessions | 📋 | `/coach/sessions` | — |
-| Requests | 📥 | `/coach/requests` | — |
 | Players | 👥 | `/coach/players` | — |
 | Availability | ⏰ | `/coach/availability` | — |
+| Revenue | 💰 | `/coach/revenue` | — |
+| Attendance | 📊 | `/coach/attendance` | — |
 | Profile | 👤 | `/coach/profile` | — |
 
-**Source:** `CoachBottomNav.tsx` / `coach-nav.ts:8-15`
+**Source:** `CoachBottomNav.tsx` / `coach-nav.ts`
 
-The main tabs are `COACH_NAV.slice(0, 4)` — Dashboard, Sessions, Requests, Players. The remaining items are accessible through other navigation (not "More" — coach nav is simpler than consumer).
+The legacy player-request and coach-initiated request screens (`/coach/requests`) were removed in AUD-003 G1/G2-A.
 
 ## 5. RefereeLayout
 

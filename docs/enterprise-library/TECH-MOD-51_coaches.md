@@ -43,10 +43,11 @@ requested → pending_court → pending_acceptance → confirmed → completed
 
 | Current State | Valid Transitions | Action |
 |--------------|-------------------|--------|
-| `requested` | `pending_court` | Coach creates session, court not yet booked |
-| `pending_court` | `pending_acceptance`, `cancelled` | Coach books court → moves to acceptance |
-| `pending_acceptance` | `confirmed`, `cancelled` | Player accepts or declines |
-| `confirmed` | `completed`, `cancelled`, `no_show` | Session in progress |
+| `pending_court` | `scheduled`, `cancelled` | Canonical `/scheduling/book` creates the row (default) then links the court booking → `scheduled` |
+| `pending_acceptance` | `confirmed`, `cancelled` | Player confirms or cancels |
+| `scheduled` | `confirmed`, `cancelled` | Player confirms or cancels |
+| `confirmed` | `in_progress`, `completed`, `cancelled`, `no_show` | Session lifecycle |
+| `in_progress` | `completed`, `cancelled` | Session running |
 | `completed` | — | Terminal state |
 | `cancelled` | — | Terminal state |
 | `no_show` | — | Terminal state |
@@ -55,19 +56,16 @@ requested → pending_court → pending_acceptance → confirmed → completed
 
 | # | Method | Path | Guard | Purpose |
 |---|--------|------|-------|---------|
-| 1 | POST | `/coach-sessions/request` | `coaches.book` | Request coach session |
-| 2 | GET | `/coach-sessions/requests` | auth | List coach requests |
-| 3 | GET | `/coach-sessions/:id` | auth | Session detail |
-| 4 | POST | `/coach-sessions/:id/respond` | `coaches.respond_request` | Respond to request |
-| 5 | POST | `/coach-sessions/:id/confirm` | `coaches.confirm_session` | Confirm session |
-| 6 | POST | `/coach-sessions/:id/cancel` | auth | Cancel session |
-| 7 | POST | `/coach-sessions/:id/start` | `coaches.start_session` | Start session |
-| 8 | POST | `/coach-sessions/:id/complete` | `coaches.complete_session` | Complete session |
-| 9 | POST | `/coach-sessions/:id/no-show` | `coaches.no_show` | Mark no-show |
+| 1 | GET | `/coach-sessions/:id` | auth | Session detail |
+| 2 | POST | `/coach-sessions/:id/confirm` | `coaches.confirm_session` | Confirm session |
+| 3 | POST | `/coach-sessions/:id/cancel` | auth | Cancel session |
+| 4 | POST | `/coach-sessions/:id/start` | `coaches.start_session` | Start session |
+| 5 | POST | `/coach-sessions/:id/complete` | `coaches.complete_session` | Complete session |
+| 6 | POST | `/coach-sessions/:id/no-show` | `coaches.no_show` | Mark no-show |
 
 ## 4. Key Concepts
 
-- **Court Booking:** On `pending_court`, coach can book a court via `bookCourtForSession` which creates a booking record and transitions to `pending_acceptance`
+- **Session creation & Court Booking:** Coach sessions are created via Unified Flow B (`/scheduling/book` → `scheduling-booking.service.ts`), which creates the `coach_sessions` row (`scheduled`) and its court booking atomically with canonical eligibility, pricing, and concurrency guards. The legacy coach-initiated flow (`POST /coaches/sessions` + `bookCourtForSession` → `pending_court`/`pending_acceptance`) was removed in AUD-003 G2-A.
 - **Price Breakdown:** Sessions have complex price breakdown: coach fee, court fee, platform fee, org fee, with split percentages from org agreements
 - **Commission:** Platform commission calculated via `commissionService` for both session price and court booking
 - **Availability:** Coach weekly availability slots + blackout dates managed per-coach

@@ -9,9 +9,9 @@ import {
   CreateTournamentSchema, MatchScoreSchema,
   CreateAcademySchema, CreateCurriculumSchema, EnrollPlayerSchema,
   CreateAcademySessionSchema, MarkAttendanceSchema, CreateEvaluationSchema,
-  CreateCoachProfileSchema, UpsertOrgAgreementSchema, CreateCoachSessionSchema, CreateCoachReviewSchema,
+  CreateCoachProfileSchema, UpsertOrgAgreementSchema, CreateCoachReviewSchema,
   SetCoachAvailabilitySchema, AddCoachBlackoutSchema, RespondOrgInviteSchema,
-  BookCourtSchema, DeclineSessionSchema, UpdateServiceLocationsSchema,
+  UpdateServiceLocationsSchema,
 } from './activities.dto.js';
 
 // ── Tournaments ──
@@ -191,13 +191,6 @@ export async function respondOrgInviteHandler(request: FastifyRequest, reply: Fa
   return reply.send(result);
 }
 
-export async function createCoachSessionHandler(request: FastifyRequest, reply: FastifyReply) {
-  const body = CreateCoachSessionSchema.parse(request.body);
-  const userId = (request as any).userId;
-  const id = await svc.createCoachSession(userId, body);
-  return reply.status(201).send({ id });
-}
-
 export async function getMyCoachSessionsHandler(request: FastifyRequest, reply: FastifyReply) {
   const userId = (request as any).userId;
   const { page, limit, role } = request.query as any;
@@ -223,13 +216,6 @@ export async function createCoachReviewHandler(request: FastifyRequest, reply: F
   return reply.status(201).send({ id });
 }
 
-// ── Coach dual-confirmation flow ──
-export async function getPendingCoachSessionsHandler(request: FastifyRequest, reply: FastifyReply) {
-  const userId = (request as any).userId;
-  const sessions = await svc.getPendingCoachSessions(userId);
-  return reply.send({ data: sessions });
-}
-
 export async function getCoachStatsHandler(request: FastifyRequest, reply: FastifyReply) {
   const userId = (request as any).userId;
   const stats = await svc.getCoachStats(userId);
@@ -240,70 +226,6 @@ export async function getCoachPlayersHandler(request: FastifyRequest, reply: Fas
   const userId = (request as any).userId;
   const players = await svc.getCoachPlayers(userId);
   return reply.send({ data: players });
-}
-
-export async function getCoachSessionByIdHandler(request: FastifyRequest, reply: FastifyReply) {
-  const { id } = request.params as any;
-  const userId = (request as any).userId;
-  const session = await svc.getCoachSessionById(Number(id), userId);
-  return reply.send(session);
-}
-
-export async function getSessionAvailableCourtsHandler(request: FastifyRequest, reply: FastifyReply) {
-  const { id } = request.params as any;
-  const userId = (request as any).userId;
-  const courts = await svc.getAvailableCourts(Number(id), userId);
-  return reply.send({ data: courts });
-}
-
-export async function bookCourtForSessionHandler(request: FastifyRequest, reply: FastifyReply) {
-  const { id } = request.params as any;
-  const body = BookCourtSchema.parse(request.body);
-  const userId = (request as any).userId;
-  const result = await svc.bookCourtForSession(userId, Number(id), body);
-  recordAudit({
-    actorId: userId ?? null,
-    action: 'COACH.BOOK_COURT',
-    entityType: 'coach_session',
-    entityId: Number(id),
-    afterState: { bookingId: result.bookingId },
-    ipAddress: request.ip,
-    userAgent: request.headers['user-agent'],
-  });
-  return reply.status(201).send(result);
-}
-
-export async function acceptCoachSessionHandler(request: FastifyRequest, reply: FastifyReply) {
-  const { id } = request.params as any;
-  const userId = (request as any).userId;
-  const result = await svc.acceptCoachSession(userId, Number(id));
-  recordAudit({
-    actorId: userId ?? null,
-    action: 'COACH.SESSION_ACCEPT',
-    entityType: 'coach_session',
-    entityId: Number(id),
-    afterState: { status: 'confirmed' },
-    ipAddress: request.ip,
-    userAgent: request.headers['user-agent'],
-  });
-  return reply.send(result);
-}
-
-export async function declineCoachSessionHandler(request: FastifyRequest, reply: FastifyReply) {
-  const { id } = request.params as any;
-  const body = DeclineSessionSchema.parse(request.body || {});
-  const userId = (request as any).userId;
-  const result = await svc.declineCoachSession(userId, Number(id), body.reason);
-  recordAudit({
-    actorId: userId ?? null,
-    action: 'COACH.SESSION_DECLINE',
-    entityType: 'coach_session',
-    entityId: Number(id),
-    afterState: { status: 'cancelled', reason: body.reason || null },
-    ipAddress: request.ip,
-    userAgent: request.headers['user-agent'],
-  });
-  return reply.send(result);
 }
 
 // ── Coach availability ──
@@ -577,21 +499,4 @@ export async function getCoachSessionDetailHandler(request: FastifyRequest, repl
   const allowed = coachSessionStateService.getAllowedTransitions(rows[0].status);
 
   return reply.send({ session: rows[0], timeline, allowedTransitions: allowed });
-}
-
-export async function listCoachRequestsHandler(request: FastifyRequest, reply: FastifyReply) {
-  const userId = (request as any).userId;
-  const coach = await svc.findCoachByUserId(userId);
-  if (!coach) return reply.status(403).send({ error: 'FORBIDDEN', message: 'Not a coach' });
-
-  const pool = (await import('../../../database/mysql.js')).getPool();
-  const [rows] = await pool.execute<any>(
-    `SELECT cs.*, u.full_name as player_name, u.full_phone as player_phone
-     FROM coach_sessions cs
-     JOIN users u ON u.id = cs.player_id
-     WHERE cs.coach_id = ? AND cs.status IN ('requested', 'pending_acceptance')
-     ORDER BY cs.start_time ASC`,
-    [coach.id],
-  );
-  return reply.send({ data: rows });
 }

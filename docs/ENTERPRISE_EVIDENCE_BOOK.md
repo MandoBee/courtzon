@@ -336,7 +336,7 @@ Seller → Register Product → Approve → Player → Browse → Cart → Check
 |------|-------|-----------|--------|
 | Set availability | `POST /coaches/availability` | `coaches.book` | ✅ VERIFIED |
 | Book session | `POST /scheduling/book` | `authMiddleware` only | ⚠️ NOT VERIFIED (no granular perm) |
-| View sessions | `GET /coaches/sessions` | `authMiddleware` only | ⚠️ NOT VERIFIED (no granular perm) |
+| View sessions | `GET /coaches/sessions/me` | `authMiddleware` only | ⚠️ NOT VERIFIED (no granular perm) |
 | Track revenue | `GET /coaches/revenue` | `authMiddleware` only | ⚠️ NOT VERIFIED (no granular perm) |
 
 **Coach routes (scheduling, sessions, revenue) lack granular permission guards** — they use `authMiddleware` only.

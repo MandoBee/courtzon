@@ -55,7 +55,7 @@ Defined in `activities.routes.ts:6-87`:
 | 15 | PUT | `/academies/:id` | adminGuard | Update academy |
 | 16 | DELETE | `/academies/:id` | adminGuard | Delete academy |
 
-### Coaches (28+)
+### Coaches (13)
 | # | Method | Path | Guard | Purpose |
 |---|--------|------|-------|---------|
 | 17 | GET | `/coaches` | — | List coaches |
@@ -67,48 +67,38 @@ Defined in `activities.routes.ts:6-87`:
 | 23 | GET | `/coaches/agreements` | — | List org agreements |
 | 24 | POST | `/coaches/agreements` | `coaches.manage_agreements` | Upsert org agreement |
 | 25 | POST | `/coaches/agreements/:id/respond` | `coaches.invites.respond` | Respond to org invite |
-| 26 | POST | `/coaches/sessions` | `coaches.create_sessions` | Create coach session |
-| 27 | GET | `/coaches/sessions/me` | — | My coach sessions |
-| 28 | GET | `/coaches/sessions/pending` | — | Pending coach sessions |
-| 29 | GET | `/coaches/stats` | — | Coach stats |
-| 30 | GET | `/coaches/players` | — | Coach players |
-| 31 | GET | `/coaches/sessions/:id` | — | Get coach session |
-| 32 | GET | `/coaches/sessions/:id/available-courts` | — | Available courts for session |
-| 33 | POST | `/coaches/sessions/:id/book-court` | — | Book court for session |
-| 34 | POST | `/coaches/sessions/:id/accept` | — | Accept session |
-| 35 | POST | `/coaches/sessions/:id/decline` | — | Decline session |
-| 36 | POST | `/coaches/:coachId/reviews` | — | Create coach review |
+| 26 | GET | `/coaches/sessions/me` | — | My coach sessions |
+| 27 | GET | `/coaches/stats` | — | Coach stats |
+| 28 | GET | `/coaches/players` | — | Coach players |
+| 29 | POST | `/coaches/:coachId/reviews` | — | Create coach review |
 
-### Coach Collaboration Flow (9)
+### Coach Collaboration Flow (6)
 | # | Method | Path | Guard | Purpose |
 |---|--------|------|-------|---------|
-| 37 | POST | `/coach-sessions/request` | `coaches.book` | Request coach session |
-| 38 | GET | `/coach-sessions/requests` | — | List coach requests |
-| 39 | GET | `/coach-sessions/:id` | — | Get session detail |
-| 40 | POST | `/coach-sessions/:id/respond` | `coaches.respond_request` | Respond to request |
-| 41 | POST | `/coach-sessions/:id/confirm` | `coaches.confirm_session` | Confirm session |
-| 42 | POST | `/coach-sessions/:id/cancel` | — | Cancel session |
-| 43 | POST | `/coach-sessions/:id/start` | `coaches.start_session` | Start session |
-| 44 | POST | `/coach-sessions/:id/complete` | `coaches.complete_session` | Complete session |
-| 45 | POST | `/coach-sessions/:id/no-show` | `coaches.no_show` | Mark no-show |
+| 30 | GET | `/coach-sessions/:id` | — | Get session detail |
+| 31 | POST | `/coach-sessions/:id/confirm` | `coaches.confirm_session` | Confirm session |
+| 32 | POST | `/coach-sessions/:id/cancel` | — | Cancel session |
+| 33 | POST | `/coach-sessions/:id/start` | `coaches.start_session` | Start session |
+| 34 | POST | `/coach-sessions/:id/complete` | `coaches.complete_session` | Complete session |
+| 35 | POST | `/coach-sessions/:id/no-show` | `coaches.no_show` | Mark no-show |
 
-### Coach Availability (6)
+### Coach Availability (5)
 | # | Method | Path | Guard | Purpose |
 |---|--------|------|-------|---------|
-| 46 | GET | `/coaches/availability/me` | `coaches.availability.manage` | My availability |
-| 47 | PUT | `/coaches/availability/me` | `coaches.availability.manage` | Set availability |
-| 48 | POST | `/coaches/availability/me/blackouts` | `coaches.availability.manage` | Add blackout |
-| 49 | DELETE | `/coaches/availability/me/blackouts/:id` | `coaches.availability.manage` | Remove blackout |
-| 50 | GET | `/coaches/:id/availability` | — | Public coach availability |
+| 36 | GET | `/coaches/availability/me` | `coaches.availability.manage` | My availability |
+| 37 | PUT | `/coaches/availability/me` | `coaches.availability.manage` | Set availability |
+| 38 | POST | `/coaches/availability/me/blackouts` | `coaches.availability.manage` | Add blackout |
+| 39 | DELETE | `/coaches/availability/me/blackouts/:id` | `coaches.availability.manage` | Remove blackout |
+| 40 | GET | `/coaches/:id/availability` | — | Public coach availability |
 
 ### Admin Coach (5)
 | # | Method | Path | Guard | Purpose |
 |---|--------|------|-------|---------|
-| 51 | GET | `/admin/coaches` | adminGuard | Admin list coaches |
-| 52 | PUT | `/coaches/:id` | adminGuard | Admin update coach |
-| 53 | DELETE | `/coaches/:id` | adminGuard | Admin delete coach |
-| 54 | PATCH | `/coaches/:id/verify` | adminGuard | Verify coach |
-| 55 | PATCH | `/coaches/:id/toggle` | adminGuard | Toggle coach availability |
+| 41 | GET | `/admin/coaches` | adminGuard | Admin list coaches |
+| 42 | PUT | `/coaches/:id` | adminGuard | Admin update coach |
+| 43 | DELETE | `/coaches/:id` | adminGuard | Admin delete coach |
+| 44 | PATCH | `/coaches/:id/verify` | adminGuard | Verify coach |
+| 45 | PATCH | `/coaches/:id/toggle` | adminGuard | Toggle coach availability |
 
 ## 3. Services
 
@@ -116,9 +106,9 @@ Defined in `activities.routes.ts:6-87`:
 
 - **Tournaments:** `listTournaments`, `getTournament`, `createTournament`, `updateTournament`, `registerPlayer`, `generateBracket`, `enterMatchScore`
 - **Academies:** `listAcademies`, `getAcademy`, `createAcademy`, `createCurriculum`, `enrollPlayer`, `createSession`, `markAttendance`, `createEvaluation`
-- **Coaches:** `listCoaches`, `getCoachProfile`, `getCoachById`, `createCoachProfile`, `updateCoachProfile`, `upsertOrgAgreement`, `respondToOrgInvite`, `createCoachSession`, `createCoachReview`, `getCoachSessions`
+- **Coaches:** `listCoaches`, `getCoachProfile`, `getCoachById`, `createCoachProfile`, `updateCoachProfile`, `upsertOrgAgreement`, `respondToOrgInvite`, `createCoachReview`, `getCoachSessions`
 - **Coach Availability:** `getMyCoachAvailability`, `setMyCoachAvailability`, `addMyCoachBlackout`, `removeMyCoachBlackout`, `getCoachAvailabilityPublic`
-- **Coach Sessions:** Full lifecycle from request through start/complete/no-show; court booking via `pricingEngine` and `commandPipeline`
+- **Coach Sessions:** Slice-4 lifecycle (confirm/cancel/start/complete/no-show) via `coachSessionStateService`; session creation and court booking flow through Unified Flow B (`/scheduling/book` → `scheduling-booking.service.ts`). Legacy coach-initiated flow (POST `/coaches/sessions` + book-court/accept/decline) removed in AUD-003 G2-A.
 - **Admin:** `listTournamentsAdmin`, `deleteTournament`, `listAcademiesAdmin`, `updateAcademy`, `deleteAcademy`, `listCoachesAdmin`, `updateCoachAdmin`, `deleteCoach`, `verifyCoach`, `toggleCoachAvailability`
 
 ## 4. Domain Model
@@ -138,6 +128,6 @@ Events emitted via `eventBusV2`:
 - `tournament:result` — per player on match score entry
 - `academy:enrolled` — on player enrollment
 - `coach:agreement-added` — on org agreement creation
-- `coaching:session-scheduled` — on coach session creation
-- `coaching:session-cancelled` — on session cancellation
+- `coaching:session-scheduled` — on coach session creation (emitted by canonical `/scheduling/book`)
+- `coaching:session-cancelled` — templates/engine retain the mapping, but no active producer since the legacy `declineCoachSession` emit was removed (AUD-003 G2-A)
 - `organisation:approved` / `organisation:rejected` — forwarded from approvals

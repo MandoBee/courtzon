@@ -111,17 +111,6 @@ export const RespondOrgInviteSchema = z.object({
   accept: z.boolean(),
 });
 
-export const CreateCoachSessionSchema = z.object({
-  organisationId: z.number().int().positive().optional(),
-  branchId: z.number().int().positive().optional(),
-  resourceId: z.number().int().positive().optional(),
-  playerId: z.number().int().positive(),
-  startTime: z.string(),
-  endTime: z.string(),
-  price: z.number().min(0),
-  currencyCode: z.string().length(3),
-});
-
 export const CreateCoachReviewSchema = z.object({
   sessionId: z.number().int().positive().optional(),
   rating: z.number().int().min(1).max(5),
@@ -146,14 +135,4 @@ export const SetCoachAvailabilitySchema = z.object({
 export const AddCoachBlackoutSchema = z.object({
   date: z.string().regex(DATE_RE, 'Expected YYYY-MM-DD'),
   reason: z.string().max(255).optional(),
-});
-
-export const BookCourtSchema = z.object({
-  resourceId: z.number().int().positive(),
-  startTime: z.string().optional(),
-  endTime: z.string().optional(),
-});
-
-export const DeclineSessionSchema = z.object({
-  reason: z.string().max(500).optional(),
 });

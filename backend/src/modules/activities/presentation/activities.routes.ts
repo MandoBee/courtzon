@@ -48,20 +48,12 @@ export async function activitiesRoutes(app: FastifyInstance, opts: { requireFeat
   app.get('/coaches/agreements', ctrl.listOrgAgreementsHandler);
   app.post('/coaches/agreements', { preHandler: [requirePermission(['coaches.manage_agreements'])] }, ctrl.upsertOrgAgreementHandler);
   app.post('/coaches/agreements/:id/respond', { preHandler: [requirePermission(['coaches.invites.respond'])] }, ctrl.respondOrgInviteHandler);
-  app.post('/coaches/sessions', { preHandler: [requirePermission(['coaches.create_sessions'])] }, ctrl.createCoachSessionHandler);
   app.get('/coaches/sessions/me', ctrl.getMyCoachSessionsHandler);
-  app.get('/coaches/sessions/pending', ctrl.getPendingCoachSessionsHandler);
   app.get('/coaches/stats', ctrl.getCoachStatsHandler);
   app.get('/coaches/players', ctrl.getCoachPlayersHandler);
-  app.get('/coaches/sessions/:id', ctrl.getCoachSessionByIdHandler);
-  app.get('/coaches/sessions/:id/available-courts', ctrl.getSessionAvailableCourtsHandler);
-  app.post('/coaches/sessions/:id/book-court', ctrl.bookCourtForSessionHandler);
-  app.post('/coaches/sessions/:id/accept', ctrl.acceptCoachSessionHandler);
-  app.post('/coaches/sessions/:id/decline', ctrl.declineCoachSessionHandler);
   app.post('/coaches/:coachId/reviews', ctrl.createCoachReviewHandler);
 
   // ── Coach Collaboration Flow (Slice 4) ────────────────────────────────
-  app.get('/coach-sessions/requests', ctrl.listCoachRequestsHandler);
   app.get('/coach-sessions/:id', ctrl.getCoachSessionDetailHandler);
   app.post('/coach-sessions/:id/confirm', { preHandler: [requirePermission(['coaches.confirm_session'])] }, ctrl.confirmCoachSessionHandler);
   app.post('/coach-sessions/:id/cancel', ctrl.cancelCoachSessionHandler);

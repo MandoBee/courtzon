@@ -8,7 +8,6 @@ export interface CoachNavItem {
 export const COACH_NAV: CoachNavItem[] = [
   { label: 'Dashboard', icon: '🏠', path: '/coach/dashboard' },
   { label: 'Sessions', icon: '📋', path: '/coach/sessions' },
-  { label: 'Requests', icon: '📥', path: '/coach/requests' },
   { label: 'Players', icon: '👥', path: '/coach/players' },
   { label: 'Availability', icon: '⏰', path: '/coach/availability' },
   { label: 'Revenue', icon: '💰', path: '/coach/revenue' },
