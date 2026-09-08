@@ -3,13 +3,11 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useParams, Link } from 'react-router-dom';
 import api from '../../services/api';
 import { formatPrice } from '../../utils/currency';
-import { localTodayString } from '../../utils/formatDate';
 import { useAuthStore } from '../../store/auth.store';
 import { useToast } from '../../components/ui/Toast';
 import { useFeatureFlag } from '../../hooks/useFeatureFlag';
 import { Can } from '../../permissions/Can';
-import { SkeletonRow, Button } from '../../components/ui';
-import { SessionTimeline } from '../../components/workspace';
+import { SkeletonRow } from '../../components/ui';
 
 export default function CoachDetailPage() {
   const { id } = useParams();
@@ -25,63 +23,8 @@ export default function CoachDetailPage() {
     enabled: !!id,
   });
 
-  const [showRequestModal, setShowRequestModal] = useState(false);
-  const [reqDate, setReqDate] = useState(localTodayString());
-  const [reqStart, setReqStart] = useState('10:00');
-  const [reqEnd, setReqEnd] = useState('11:00');
-  const [reqBranchId, setReqBranchId] = useState<number | ''>('');
-  const [reqResourceId, setReqResourceId] = useState<number | ''>('');
-  const today = localTodayString();
-
-  const { data: reqBranches } = useQuery({
-    queryKey: ['req-branches'],
-    queryFn: async () => {
-      const orgsRes = await api.get('/organisations');
-      const orgs = orgsRes.data?.data || [];
-      if (!orgs.length) return [];
-      const results = await Promise.all(
-        orgs.map((org: any) =>
-          api.get(`/organisations/${org.id}/branches`).then((r) =>
-            (r.data.data as any[]).map((b) => ({ ...b, _org: { id: org.id, name: org.name } }))
-          )
-        )
-      );
-      return results.flat();
-    },
-  });
-
-  const { data: reqResources } = useQuery({
-    queryKey: ['req-resources', reqBranchId],
-    queryFn: () => api.get(`/branches/${reqBranchId}/resources`).then((r) => r.data.data),
-    enabled: !!reqBranchId,
-  });
-
-  const requestMutation = useMutation({
-    mutationFn: () => api.post('/coach-sessions/request', {
-      coachId: Number(id),
-      resourceId: Number(reqResourceId),
-      startTime: `${reqDate}T${reqStart}:00`,
-      endTime: `${reqDate}T${reqEnd}:00`,
-    }),
-    onSuccess: () => {
-      setShowRequestModal(false);
-      showToast('Session request sent!');
-      qc.invalidateQueries({ queryKey: ['coach', id] });
-      qc.invalidateQueries({ queryKey: ['my-coach-sessions'] });
-      refetchActiveSession();
-    },
-    onError: (err: any) => showToast(err?.response?.data?.message || 'Request failed', 'error'),
-  });
-
   const isOwn = user?.isCoach && coach?.user_id === user.id;
   const chatEnabled = useFeatureFlag('community.chat_enabled');
-
-  const { data: activeSessionData, refetch: refetchActiveSession } = useQuery({
-    queryKey: ['my-coach-sessions', id],
-    queryFn: () => api.get(`/coach-sessions/${id}`).then((r) => r.data).catch(() => null),
-    enabled: !!id && !isOwn,
-  });
-  const activeSession = activeSessionData?.session;
 
   const reviewMutation = useMutation({
     mutationFn: () => api.post(`/coaches/${id}/reviews`, { rating, reviewText: reviewText.trim() || undefined }),
@@ -151,19 +94,13 @@ export default function CoachDetailPage() {
         {!isOwn && (
           <div className="flex flex-wrap gap-2">
             <Can permission="coaches.book">
-              <button
-                onClick={() => setShowRequestModal(true)}
-                className="inline-block px-6 py-2.5 bg-[var(--color-primary)] text-white rounded-[var(--radius-md)] text-sm font-medium"
+              <Link
+                to={bookLink}
+                className="inline-block px-6 py-2.5 border border-[var(--color-border)] text-[var(--color-text)] rounded-[var(--radius-md)] text-sm font-medium hover:bg-[var(--color-bg)]"
               >
-                Request Session
-              </button>
+                Book a Coach
+              </Link>
             </Can>
-            <Link
-              to={bookLink}
-              className="inline-block px-6 py-2.5 border border-[var(--color-border)] text-[var(--color-text)] rounded-[var(--radius-md)] text-sm font-medium hover:bg-[var(--color-bg)]"
-            >
-              Book a Coach
-            </Link>
             {chatEnabled && coach.user_id && (
               <Can permission="community.chat.view">
                 <Link
@@ -176,68 +113,7 @@ export default function CoachDetailPage() {
             )}
           </div>
         )}
-
-        {/* Session timeline for existing sessions with this coach */}
-        {activeSession && (
-          <div className="mt-4">
-            <SessionTimeline events={activeSession.timeline || []} title="Session Timeline" />
-          </div>
-        )}
       </div>
-
-      {/* Request Session Modal */}
-      {showRequestModal && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/50" onClick={() => setShowRequestModal(false)}>
-          <div className="bg-[var(--color-surface)] rounded-[var(--radius-xl)] p-6 w-full max-w-md" onClick={(e) => e.stopPropagation()}>
-            <h2 className="text-lg font-bold text-[var(--color-text)] mb-4">Request a Session</h2>
-            <div className="space-y-3">
-              <div>
-                <label className="block text-sm font-medium text-[var(--color-text)] mb-1">Branch</label>
-                <select value={reqBranchId} onChange={(e) => { setReqBranchId(e.target.value ? Number(e.target.value) : ''); setReqResourceId(''); }} className="w-full px-3 py-2 border rounded-[var(--radius-md)] bg-[var(--color-bg)] text-sm">
-                  <option value="">Select a branch</option>
-                  {(reqBranches || []).map((b: any) => (
-                    <option key={b.id} value={b.id}>{b.name}{b._org?.name ? ` — ${b._org.name}` : ''}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-[var(--color-text)] mb-1">Court</label>
-                <select value={reqResourceId} onChange={(e) => setReqResourceId(e.target.value ? Number(e.target.value) : '')} disabled={!reqBranchId} className="w-full px-3 py-2 border rounded-[var(--radius-md)] bg-[var(--color-bg)] text-sm">
-                  <option value="">Select a court</option>
-                  {(reqResources || []).filter((r: any) => r.is_active).map((r: any) => (
-                    <option key={r.id} value={r.id}>{r.name}{r.sport_name ? ` — ${r.sport_name}` : ''}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-[var(--color-text)] mb-1">Date</label>
-                <input type="date" value={reqDate} min={today} onChange={(e) => setReqDate(e.target.value)} className="w-full px-3 py-2 border rounded-[var(--radius-md)] bg-[var(--color-bg)] text-sm" />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-sm font-medium text-[var(--color-text)] mb-1">Start Time</label>
-                  <input type="time" value={reqStart} onChange={(e) => setReqStart(e.target.value)} className="w-full px-3 py-2 border rounded-[var(--radius-md)] bg-[var(--color-bg)] text-sm" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-[var(--color-text)] mb-1">End Time</label>
-                  <input type="time" value={reqEnd} onChange={(e) => setReqEnd(e.target.value)} className="w-full px-3 py-2 border rounded-[var(--radius-md)] bg-[var(--color-bg)] text-sm" />
-                </div>
-              </div>
-              <Button
-                variant="primary"
-                className="w-full"
-                loading={requestMutation.isPending}
-                onClick={() => {
-                  if (!reqDate || !reqStart || !reqEnd || !reqBranchId || !reqResourceId) { showToast('Please fill in all fields (branch, court, date and time)', 'error'); return; }
-                  requestMutation.mutate();
-                }}
-              >
-                Send Request
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {certs.length > 0 && (
         <div className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] p-6 mb-6">

@@ -1,14 +1,11 @@
 import { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import api from '../../services/api';
 import { formatISODate } from '../../utils/formatDate';
-import { useToast } from '../../components/ui/Toast';
 import { SkeletonRow } from '../../components/ui';
 import { EmptyStateCard, SessionTimeline } from '../../components/workspace';
 
 export default function SessionRequests() {
-  const qc = useQueryClient();
-  const { showToast } = useToast();
   const [detailId, setDetailId] = useState<number | null>(null);
 
   const { data, isLoading } = useQuery({
@@ -20,13 +17,6 @@ export default function SessionRequests() {
     queryKey: ['coach-session-detail', detailId],
     queryFn: () => api.get(`/coach-sessions/${detailId}`).then((r) => r.data),
     enabled: !!detailId,
-  });
-
-  const respondMut = useMutation({
-    mutationFn: ({ id, action }: { id: number; action: string }) =>
-      api.post(`/coach-sessions/${id}/respond`, { action }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['coach-requests'] }); showToast('Response sent!'); setDetailId(null); },
-    onError: (err: any) => showToast(err?.response?.data?.message || 'Failed', 'error'),
   });
 
   const requests = Array.isArray(data?.data) ? data.data : [];
@@ -63,18 +53,6 @@ export default function SessionRequests() {
             <button onClick={() => setDetailId(r.id)} className="px-3 py-1.5 text-xs font-medium border border-[var(--color-border)] rounded-[var(--radius-md)]">
               📋 Details
             </button>
-            {r.status === 'requested' && (
-              <>
-                <button onClick={() => respondMut.mutate({ id: r.id, action: 'accepted' })}
-                  className="px-3 py-1.5 text-xs font-medium bg-[var(--color-success)] text-white rounded-[var(--radius-md)]">
-                  ✅ Accept
-                </button>
-                <button onClick={() => respondMut.mutate({ id: r.id, action: 'declined' })}
-                  className="px-3 py-1.5 text-xs font-medium bg-[var(--color-error)] text-white rounded-[var(--radius-md)]">
-                  ❌ Decline
-                </button>
-              </>
-            )}
           </div>
 
           {detailId === r.id && detailTimeline && (

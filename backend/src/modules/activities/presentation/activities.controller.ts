@@ -12,7 +12,6 @@ import {
   CreateCoachProfileSchema, UpsertOrgAgreementSchema, CreateCoachSessionSchema, CreateCoachReviewSchema,
   SetCoachAvailabilitySchema, AddCoachBlackoutSchema, RespondOrgInviteSchema,
   BookCourtSchema, DeclineSessionSchema, UpdateServiceLocationsSchema,
-  RequestCoachSessionSchema,
 } from './activities.dto.js';
 
 // ── Tournaments ──
@@ -482,9 +481,6 @@ export async function toggleCoachAvailabilityHandler(request: FastifyRequest, re
 // ── Coach Collaboration Flow (Slice 4) ────────────────────────────────────
 
 const SESSION_EVENTS: Record<string, string> = {
-  accepted: 'CoachSessionAccepted',
-  declined: 'CoachSessionDeclined',
-  counter_proposal: 'CoachSessionCounterProposed',
   confirmed: 'CoachSessionConfirmed',
   started: 'CoachSessionStarted',
   completed: 'CoachSessionCompleted',
@@ -495,94 +491,6 @@ const SESSION_EVENTS: Record<string, string> = {
 function emitSessionEvent(eventName: string, session: any, meta?: any) {
   const domainEvent = SESSION_EVENTS[eventName] || eventName;
   eventBusV2.emit(domainEvent as any, { sessionId: session.id, ...meta, coachId: session.coach_id, playerId: session.player_id });
-}
-
-export async function requestCoachSessionHandler(request: FastifyRequest, reply: FastifyReply) {
-  const userId = (request as any).userId;
-  const body = RequestCoachSessionSchema.parse(request.body);
-
-  const pool = (await import('../../../database/mysql.js')).getPool();
-  const { activitiesRepository } = await import('../../activities/infrastructure/repositories/activities.repository.js');
-  const coach = await activitiesRepository.findCoachById(body.coachId);
-  if (!coach) {
-    return reply.status(404).send({ error: 'NOT_FOUND', message: 'Coach not found' });
-  }
-  // Approved status + availability + service location + branch policy +
-  // agreement are enforced by the canonical isCoachEligibleAtBranch below.
-
-  // Resolve the branch from the AUTHORITATIVE resource (court) record — a
-  // client-supplied branch is never trusted, so eligibility cannot be bypassed.
-  const [resourceRows] = await pool.execute<any>(
-    'SELECT id, branch_id, sport_id FROM resources WHERE id = ?', [body.resourceId],
-  );
-  const resourceRow = resourceRows?.[0];
-  if (!resourceRow) {
-    return reply.status(404).send({ error: 'NOT_FOUND', message: 'Court not found' });
-  }
-  const branchId = Number(resourceRow.branch_id);
-
-  // Sport compatibility (canonical single-sport rule).
-  const courtSportId = resourceRow.sport_id ? Number(resourceRow.sport_id) : null;
-  if (!courtSportId) {
-    return reply.status(403).send({ error: 'FORBIDDEN', message: 'Court has no sport configured — coach session unavailable' });
-  }
-  let coachSports: number[] = [];
-  if (coach.sports) {
-    try {
-      const raw = typeof coach.sports === 'string' ? JSON.parse(coach.sports) : coach.sports;
-      coachSports = Array.isArray(raw) ? raw.map((n: any) => Number(n)).filter((n) => Number.isInteger(n) && n > 0) : [];
-    } catch { coachSports = []; }
-  }
-  if (coachSports.length === 0 || !coachSports.includes(courtSportId)) {
-    return reply.status(403).send({ error: 'FORBIDDEN', message: 'Coach does not support the sport of the selected court' });
-  }
-
-  // Canonical service-location + branch coach policy (+ agreement when the
-  // branch policy is contract_required). This is the SAME eligibility the
-  // unified booking engine enforces — no separate/weaker rule here.
-  const eligibility = await activitiesRepository.isCoachEligibleAtBranch(body.coachId, branchId);
-  if (!eligibility.eligible) {
-    return reply.status(403).send({
-      error: 'FORBIDDEN',
-      message: eligibility.reason || 'Coach is not eligible to provide coaching services at this branch',
-    });
-  }
-
-  const [result] = await pool.execute<any>(
-    `INSERT INTO coach_sessions (coach_id, player_id, organisation_id, branch_id, resource_id, start_time, end_time, status, price, currency_code, requested_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, 'requested', ?, ?, NOW())`,
-    [body.coachId, userId, body.organisationId || null, branchId, body.resourceId, `${body.startTime}`, `${body.endTime}`, coach.hourly_rate || 0, coach.currency_code || 'EGP'],
-  );
-  const sessionId = result.insertId;
-
-  await coachSessionStateService.logEvent(sessionId, 'requested', { id: userId, role: 'player' });
-
-  recordAudit({ actorId: userId, action: 'COACH_SESSION.REQUESTED', entityType: 'coach_session', entityId: sessionId, afterState: { coachId: body.coachId, resourceId: body.resourceId, branchId, startTime: body.startTime, endTime: body.endTime } });
-
-  emitSessionEvent('requested', { id: sessionId, coach_id: body.coachId, player_id: userId });
-
-  return reply.status(201).send({ id: sessionId, status: 'requested' });
-}
-
-export async function respondCoachSessionHandler(request: FastifyRequest, reply: FastifyReply) {
-  const userId = (request as any).userId;
-  const sessionId = Number((request.params as any).id);
-  const { action, proposedStartTime, proposedEndTime } = request.body as any;
-
-  const coach = await svc.findCoachByUserId(userId);
-  if (!coach) return reply.status(403).send({ error: 'FORBIDDEN', message: 'Not a coach' });
-
-  const { session } = await coachSessionStateService.transition(
-    sessionId, action as string,
-    { id: userId, role: 'coach' },
-    { proposedStartTime, proposedEndTime, cancelledBy: 'coach', reason: 'Coach declined' },
-  );
-
-  emitSessionEvent(action, session);
-
-  recordAudit({ actorId: userId, action: `COACH_SESSION.${action.toUpperCase()}`, entityType: 'coach_session', entityId: sessionId, afterState: { action } });
-
-  return reply.send({ session });
 }
 
 export async function confirmCoachSessionHandler(request: FastifyRequest, reply: FastifyReply) {

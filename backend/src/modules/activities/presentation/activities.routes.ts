@@ -61,10 +61,8 @@ export async function activitiesRoutes(app: FastifyInstance, opts: { requireFeat
   app.post('/coaches/:coachId/reviews', ctrl.createCoachReviewHandler);
 
   // ── Coach Collaboration Flow (Slice 4) ────────────────────────────────
-  app.post('/coach-sessions/request', { preHandler: [requirePermission(['coaches.book'])] }, ctrl.requestCoachSessionHandler);
   app.get('/coach-sessions/requests', ctrl.listCoachRequestsHandler);
   app.get('/coach-sessions/:id', ctrl.getCoachSessionDetailHandler);
-  app.post('/coach-sessions/:id/respond', { preHandler: [requirePermission(['coaches.respond_request'])] }, ctrl.respondCoachSessionHandler);
   app.post('/coach-sessions/:id/confirm', { preHandler: [requirePermission(['coaches.confirm_session'])] }, ctrl.confirmCoachSessionHandler);
   app.post('/coach-sessions/:id/cancel', ctrl.cancelCoachSessionHandler);
   app.post('/coach-sessions/:id/start', { preHandler: [requirePermission(['coaches.start_session'])] }, ctrl.startCoachSessionHandler);
