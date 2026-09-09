@@ -26,12 +26,16 @@ describe('Saga repair worker — orphaned coach bookings/sessions', () => {
     // fixtures exist (no undefined binds) and handles leftovers from crashed runs.
     await pool.execute(`DELETE FROM coach_sessions WHERE coach_id IN (SELECT id FROM coach_profiles WHERE user_id = ?) OR player_id = ?`, [COACH_USER, PLAYER_USER]);
     await pool.execute(`DELETE FROM coach_service_locations WHERE coach_id IN (SELECT id FROM coach_profiles WHERE user_id = ?)`, [COACH_USER]);
+    await pool.execute(`DELETE FROM transaction_entries WHERE transaction_id IN (SELECT id FROM transactions WHERE source_type = 'booking' AND source_id IN (SELECT id FROM bookings WHERE user_id = ?))`, [PLAYER_USER]);
+    await pool.execute(`DELETE FROM transactions WHERE source_type = 'booking' AND source_id IN (SELECT id FROM bookings WHERE user_id = ?)`, [PLAYER_USER]);
+    await pool.execute(`DELETE FROM payment_transactions WHERE user_id = ?`, [PLAYER_USER]);
     await pool.execute(`DELETE FROM bookings WHERE user_id = ?`, [PLAYER_USER]);
     await pool.execute(`DELETE FROM resources WHERE branch_id IN (SELECT id FROM branches WHERE organisation_id IN (SELECT id FROM organisations WHERE slug = 'saga-repair-org'))`);
     await pool.execute(`DELETE FROM branches WHERE organisation_id IN (SELECT id FROM organisations WHERE slug = 'saga-repair-org')`);
     await pool.execute(`DELETE FROM coach_profiles WHERE user_id = ?`, [COACH_USER]);
     await pool.execute(`DELETE FROM professional_profiles WHERE user_id = ?`, [COACH_USER]);
     await pool.execute(`DELETE FROM organisations WHERE slug = 'saga-repair-org'`);
+    await pool.execute(`DELETE FROM wallet_transactions WHERE wallet_id IN (SELECT id FROM user_wallets WHERE user_id = ?)`, [PLAYER_USER]);
     await pool.execute(`DELETE FROM user_wallets WHERE user_id = ?`, [PLAYER_USER]);
     await pool.execute(`DELETE FROM users WHERE id IN (?, ?)`, [PLAYER_USER, COACH_USER]);
   }
@@ -109,6 +113,34 @@ describe('Saga repair worker — orphaned coach bookings/sessions', () => {
   async function bookingStatus(id: number): Promise<string | null> {
     const [rows] = await pool.execute<RowData>(`SELECT booking_status FROM bookings WHERE id = ?`, [id]);
     return rows.length ? String(rows[0].booking_status) : null;
+  }
+
+  // --- R3 (reverse booking ↔ coach_session reconciliation) helpers ---
+
+  async function insertCapturedPayment(bookingId: number, amount: number): Promise<void> {
+    await pool.execute<RowData>(
+      `INSERT INTO payment_transactions (user_id, booking_id, reference_type, payment_method, gateway_provider, gateway_reference, amount, payment_status, trace_id)
+       VALUES (?, ?, 'booking', 'wallet', 'wallet_system', ?, ?, 'paid', UUID())`,
+      [PLAYER_USER, bookingId, `saga_r3_pay_${bookingId}_${Date.now()}_${Math.random()}`, amount],
+    );
+  }
+
+  async function refundTxCount(bookingId: number): Promise<number> {
+    const [rows] = await pool.execute<RowData>(
+      `SELECT COUNT(*) AS cnt FROM transactions WHERE source_type = 'booking' AND source_id = ? AND type = 'refund'`,
+      [bookingId],
+    );
+    return Number(rows[0].cnt);
+  }
+
+  async function refundedAmount(bookingId: number): Promise<number> {
+    const [rows] = await pool.execute<RowData>(`SELECT refunded_amount FROM bookings WHERE id = ?`, [bookingId]);
+    return Number(rows[0].refunded_amount);
+  }
+
+  async function walletBalance(): Promise<number> {
+    const [rows] = await pool.execute<RowData>(`SELECT balance FROM user_wallets WHERE user_id = ?`, [PLAYER_USER]);
+    return Number(rows[0].balance);
   }
 
   it('R1: cancels a coach session linked to a TERMINAL booking; leaves valid sessions untouched', async () => {
@@ -246,5 +278,237 @@ describe('Saga repair worker — orphaned coach bookings/sessions', () => {
       compensateSpy.mockRestore();
       await pool.execute(`DELETE FROM bookings WHERE id IN (?, ?)`, [stuck1, stuck2]);
     }
+  });
+
+  describe('R3 — reverse booking ↔ coach_session reconciliation', () => {
+    const R3_REASON = 'Saga repair: linked coach session cancelled';
+
+    async function r3Fixture(status: string): Promise<{ bookingId: number; sessionId: number }> {
+    const bookingId = await insertBooking({ status });
+    const sessionId = await insertSession(bookingId, 'cancelled');
+    return { bookingId, sessionId };
+  }
+
+  async function deleteR3Fixture(sessionId: number, bookingId: number): Promise<void> {
+    await pool.execute(`DELETE FROM coach_sessions WHERE id = ?`, [sessionId]);
+    await pool.execute(`DELETE FROM payment_transactions WHERE booking_id = ?`, [bookingId]);
+    await pool.execute(`DELETE FROM transaction_entries WHERE transaction_id IN (SELECT id FROM transactions WHERE source_id = ?)`, [bookingId]);
+    await pool.execute(`DELETE FROM transactions WHERE source_id = ?`, [bookingId]);
+    await pool.execute(`DELETE FROM bookings WHERE id = ?`, [bookingId]);
+  }
+
+  it('R3: cancels an active coach booking whose linked coach session is cancelled (no money moved → no refund)', async () => {
+    const { handleSagaRepair } = await import('../infrastructure/saga-repair.worker.js');
+    const { bookingId, sessionId } = await r3Fixture('confirmed');
+    const before = await walletBalance();
+    try {
+      await handleSagaRepair({ graceMinutes: 30 });
+      expect(await bookingStatus(bookingId)).toBe('cancelled');
+      expect(await sessionStatus(sessionId)).toBe('cancelled');
+      expect(await refundedAmount(bookingId)).toBe(0);
+      expect(await refundTxCount(bookingId)).toBe(0);
+      expect(await walletBalance()).toBe(before);
+    } finally {
+      await deleteR3Fixture(sessionId, bookingId);
+    }
+  });
+
+  it('R3: refunds through the canonical booking path when the booking already moved money', async () => {
+    const { handleSagaRepair } = await import('../infrastructure/saga-repair.worker.js');
+    const { bookingId, sessionId } = await r3Fixture('confirmed');
+    await insertCapturedPayment(bookingId, 300);
+    const before = await walletBalance();
+    try {
+      await handleSagaRepair({ graceMinutes: 30 });
+      expect(await bookingStatus(bookingId)).toBe('cancelled');
+      expect(await refundedAmount(bookingId)).toBe(300);
+      expect(await refundTxCount(bookingId)).toBe(1);
+      expect(await walletBalance()).toBe(before + 300);
+    } finally {
+      await deleteR3Fixture(sessionId, bookingId);
+    }
+  });
+
+  it('R3: an already-cancelled booking + cancelled session → no duplicate cancellation/refund', async () => {
+    const { handleSagaRepair } = await import('../infrastructure/saga-repair.worker.js');
+    const { bookingService } = await import('../../booking/application/booking.service.js');
+    const bookingId = await insertBooking({ status: 'cancelled' });
+    await pool.execute(`UPDATE bookings SET refunded_amount = 300 WHERE id = ?`, [bookingId]);
+    const sessionId = await insertSession(bookingId, 'cancelled');
+    const compensateSpy = vi.spyOn(bookingService, 'compensateFailedBooking');
+    try {
+      await handleSagaRepair({ graceMinutes: 30 });
+      expect(await bookingStatus(bookingId)).toBe('cancelled');
+      expect(await refundedAmount(bookingId)).toBe(300);
+      expect(compensateSpy).not.toHaveBeenCalledWith(bookingId, expect.anything());
+      expect(await refundTxCount(bookingId)).toBe(0);
+    } finally {
+      compensateSpy.mockRestore();
+      await deleteR3Fixture(sessionId, bookingId);
+    }
+  });
+
+  it('R3: running repair twice produces exactly one financial effect', async () => {
+    const { handleSagaRepair } = await import('../infrastructure/saga-repair.worker.js');
+    const { bookingId, sessionId } = await r3Fixture('confirmed');
+    await insertCapturedPayment(bookingId, 300);
+    const before = await walletBalance();
+    try {
+      await handleSagaRepair({ graceMinutes: 30 });
+      await handleSagaRepair({ graceMinutes: 30 });
+      expect(await bookingStatus(bookingId)).toBe('cancelled');
+      expect(await refundedAmount(bookingId)).toBe(300);
+      expect(await refundTxCount(bookingId)).toBe(1);
+      expect(await walletBalance()).toBe(before + 300);
+    } finally {
+      await deleteR3Fixture(sessionId, bookingId);
+    }
+  });
+
+  it('R3 race: session stops being cancelled between the scan and the action → skipped', async () => {
+    const worker = await import('../infrastructure/saga-repair.worker.js');
+    const { bookingService } = await import('../../booking/application/booking.service.js');
+    const { bookingId, sessionId } = await r3Fixture('confirmed');
+    const compensateSpy = vi.spyOn(bookingService, 'compensateFailedBooking');
+    try {
+      // Injectable guard: the candidate scan already saw the cancelled session,
+      // but state changes in the scan→act window. The re-check sees the updated
+      // state and the worker must skip (no compensation).
+      await worker.runR3Reconciliation(async (sid: number, bid: number) => {
+        await pool.execute(`UPDATE coach_sessions SET status = 'scheduled' WHERE id = ?`, [sid]);
+        return worker.refreshR3Candidate(sid, bid);
+      });
+      expect(compensateSpy).not.toHaveBeenCalled();
+      expect(await bookingStatus(bookingId)).toBe('confirmed');
+      expect(await sessionStatus(sessionId)).toBe('scheduled');
+    } finally {
+      compensateSpy.mockRestore();
+      await deleteR3Fixture(sessionId, bookingId);
+    }
+  });
+
+  it('R3 race: booking becomes terminal between the scan and the action → skipped', async () => {
+    const worker = await import('../infrastructure/saga-repair.worker.js');
+    const { bookingService } = await import('../../booking/application/booking.service.js');
+    const { bookingId, sessionId } = await r3Fixture('confirmed');
+    const compensateSpy = vi.spyOn(bookingService, 'compensateFailedBooking');
+    try {
+      await worker.runR3Reconciliation(async (sid: number, bid: number) => {
+        await pool.execute(`UPDATE bookings SET booking_status = 'completed' WHERE id = ?`, [bid]);
+        return worker.refreshR3Candidate(sid, bid);
+      });
+      expect(compensateSpy).not.toHaveBeenCalled();
+      expect(await bookingStatus(bookingId)).toBe('completed');
+    } finally {
+      compensateSpy.mockRestore();
+      await deleteR3Fixture(sessionId, bookingId);
+    }
+  });
+
+  it('R3: a non-coach booking linked to a cancelled session is ignored', async () => {
+    const { handleSagaRepair } = await import('../infrastructure/saga-repair.worker.js');
+    const { bookingService } = await import('../../booking/application/booking.service.js');
+    const bookingId = await insertBooking({ status: 'confirmed', bookingType: 'academy' });
+    const sessionId = await insertSession(bookingId, 'cancelled');
+    const compensateSpy = vi.spyOn(bookingService, 'compensateFailedBooking');
+    try {
+      await handleSagaRepair({ graceMinutes: 30 });
+      expect(await bookingStatus(bookingId)).toBe('confirmed');
+      expect(await sessionStatus(sessionId)).toBe('cancelled');
+      expect(compensateSpy).not.toHaveBeenCalledWith(bookingId, expect.anything());
+    } finally {
+      compensateSpy.mockRestore();
+      await deleteR3Fixture(sessionId, bookingId);
+    }
+  });
+
+  it('R3: legacy (unlinked) cancelled/active sessions are never treated as reconciliation candidates', async () => {
+    const { handleSagaRepair } = await import('../infrastructure/saga-repair.worker.js');
+    const { bookingService } = await import('../../booking/application/booking.service.js');
+    const legacyCancelled = await insertSession(null, 'cancelled');
+    const legacyActive = await insertSession(null, 'pending_acceptance');
+    const bookingId = await insertBooking({ status: 'confirmed' });
+    const livingSession = await insertSession(bookingId, 'scheduled');
+    const compensateSpy = vi.spyOn(bookingService, 'compensateFailedBooking');
+    try {
+      await handleSagaRepair({ graceMinutes: 30 });
+      expect(await sessionStatus(legacyCancelled)).toBe('cancelled');
+      expect(await sessionStatus(legacyActive)).toBe('pending_acceptance');
+      expect(await sessionStatus(livingSession)).toBe('scheduled');
+      expect(await bookingStatus(bookingId)).toBe('confirmed');
+      expect(compensateSpy).not.toHaveBeenCalled();
+    } finally {
+      compensateSpy.mockRestore();
+      await deleteR3Fixture(livingSession, bookingId);
+      await pool.execute(`DELETE FROM coach_sessions WHERE id IN (?, ?)`, [legacyCancelled, legacyActive]);
+    }
+  });
+
+  it('R3: a failing reconciliation is isolated — remaining candidates are still processed', async () => {
+    const { handleSagaRepair } = await import('../infrastructure/saga-repair.worker.js');
+    const { bookingService } = await import('../../booking/application/booking.service.js');
+    const fail = await r3Fixture('confirmed');
+    const good = await r3Fixture('confirmed');
+    const compensateSpy = vi.spyOn(bookingService, 'compensateFailedBooking')
+      .mockImplementation(async (bid: number) => {
+        if (bid === fail.bookingId) throw new Error('boom');
+        return { cancelled: true, refunded: false, refundAmount: 0 };
+      });
+    try {
+      await handleSagaRepair({ graceMinutes: 30 });
+      const calledIds = compensateSpy.mock.calls.map((c: any[]) => c[0]);
+      expect(calledIds).toContain(fail.bookingId);
+      expect(calledIds).toContain(good.bookingId);
+    } finally {
+      compensateSpy.mockRestore();
+      await deleteR3Fixture(fail.sessionId, fail.bookingId);
+      await deleteR3Fixture(good.sessionId, good.bookingId);
+    }
+  });
+
+  it('R3: batch limit is enforced even when far more candidates exist', async () => {
+    const { handleSagaRepair } = await import('../infrastructure/saga-repair.worker.js');
+    const { bookingService } = await import('../../booking/application/booking.service.js');
+    const fixtures: Array<{ bookingId: number; sessionId: number }> = [];
+    for (let i = 0; i < 105; i += 1) {
+      const bookingId = await insertBooking({ status: 'confirmed' });
+      const sessionId = await insertSession(bookingId, 'cancelled');
+      fixtures.push({ bookingId, sessionId });
+    }
+    const compensateSpy = vi.spyOn(bookingService, 'compensateFailedBooking')
+      .mockResolvedValue({ cancelled: true, refunded: false, refundAmount: 0 });
+    try {
+      await handleSagaRepair({ graceMinutes: 30 });
+      expect(compensateSpy.mock.calls.length).toBe(100);
+    } finally {
+      compensateSpy.mockRestore();
+      for (const f of fixtures) {
+        await pool.execute(`DELETE FROM coach_sessions WHERE id = ?`, [f.sessionId]);
+        await pool.execute(`DELETE FROM bookings WHERE id = ?`, [f.bookingId]);
+      }
+    }
+  });
+
+  it('R3: pending and pending_payment bookings are also valid R3 candidates', async () => {
+    const { handleSagaRepair } = await import('../infrastructure/saga-repair.worker.js');
+    const { bookingService } = await import('../../booking/application/booking.service.js');
+    const pending = await r3Fixture('pending');
+    const pendingPayment = await r3Fixture('pending_payment');
+    const compensationLog: number[] = [];
+    const compensateSpy = vi.spyOn(bookingService, 'compensateFailedBooking')
+      .mockImplementation(async (bid: number) => {
+        compensationLog.push(bid);
+        return { cancelled: true, refunded: false, refundAmount: 0 };
+      });
+    try {
+      await handleSagaRepair({ graceMinutes: 30 });
+      expect(compensationLog).toContain(pending.bookingId);
+      expect(compensationLog).toContain(pendingPayment.bookingId);
+    } finally {
+      compensateSpy.mockRestore();
+      await deleteR3Fixture(pending.sessionId, pending.bookingId);
+      await deleteR3Fixture(pendingPayment.sessionId, pendingPayment.bookingId);
+    }
+  });
   });
 });
