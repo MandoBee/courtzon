@@ -92,7 +92,7 @@ Each business requirement traces through:
 | BR-ID | Business Requirement | Module | API Endpoints | Permissions | Tests | Docs |
 |-------|---------------------|--------|--------------|-------------|-------|------|
 | BR-COACH-001 | Coach must create profile | Activities | POST /coaches/profile | coaches.manage_profile | TC-COACH-001 | TECH-MOD-35, TECH-MOD-51 |
-| BR-COACH-002 | Player must book coach | Activities | POST /coach-sessions/request | coaches.book | TC-COACH-002 | TECH-MOD-51 |
+| BR-COACH-002 | Player must book coach | Activities | POST /scheduling/book | coaches.book | TC-COACH-002 | TECH-MOD-51 |
 | BR-COACH-003 | Coach must manage availability | Activities | PUT /coaches/availability/me | coaches.availability.manage | TC-COACH-003 | TECH-MOD-35 |
 | BR-COACH-004 | Player must review coach | Activities | POST /coaches/:id/reviews | — | TC-COACH-004 | TECH-MOD-35 |
 | BR-COACH-005 | Coach must complete session lifecycle | Activities | Multiple endpoints | coaches.* | TC-COACH-005 | TECH-MOD-51 |

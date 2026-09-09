@@ -29,28 +29,45 @@ The coaches module contains the **session state machine** only. Coach profile CR
 
 ## 2. Session State Machine
 
-Coach sessions progress through the following states:
+### Canonical Lifecycle (Unified Flow B)
+
+`coach_sessions` is created by Unified Flow B (`/scheduling/book` → `scheduling-booking.service.ts`) and left in **`scheduled`** — the canonical post-booking/link state. Unified Flow B has **no coach acceptance or confirmation step**; the booking/payment confirmation is the booking-domain confirmation. The canonical execution lifecycle is:
 
 ```
-requested → pending_court → pending_acceptance → confirmed → completed
-                                                      ↓
-                                                 cancelled ← (any state)
-                                                      ↓
-                                                 no_show
+scheduled → in_progress → completed
+scheduled → cancelled
+in_progress → cancelled
 ```
 
-### State Transitions
+- **Start** is `scheduled → in_progress` (coach starts the session).
+- **Complete** is `in_progress → completed`.
+- **Cancel** is supported from `scheduled` and `in_progress`.
+
+### Retained Legacy DB States
 
 | Current State | Valid Transitions | Action |
 |--------------|-------------------|--------|
-| `pending_court` | `scheduled`, `cancelled` | Canonical `/scheduling/book` creates the row (default) then links the court booking → `scheduled` |
-| `pending_acceptance` | `confirmed`, `cancelled` | Player confirms or cancels |
-| `scheduled` | `confirmed`, `cancelled` | Player confirms or cancels |
-| `confirmed` | `in_progress`, `completed`, `cancelled`, `no_show` | Session lifecycle |
-| `in_progress` | `completed`, `cancelled` | Session running |
-| `completed` | — | Terminal state |
-| `cancelled` | — | Terminal state |
-| `no_show` | — | Terminal state |
+| `pending_acceptance` | `confirmed`, `cancelled` | Legacy dual-confirmation flow |
+| `confirmed` | `in_progress`, `cancelled` | Legacy pre-start state |
+
+**`confirmed` is NOT part of the canonical Unified Flow B lifecycle.** It remains a retained legacy DB state only, reachable via the removed legacy flow's `pending_acceptance` state.
+
+### Transient
+
+- **`pending_court`** — the DB default during session creation, immediately replaced by `scheduled` during the canonical booking flow. No user-facing transition.
+
+### Retained Terminal
+
+- **`no_show`** — retained in the DB ENUM but currently unreachable from the coach-session state machine. The exact source state for a `no_show` transition remains a pending product decision.
+
+### Legacy Code Terminology
+
+The following statuses are legacy terminology used by old code only and are **not present in the current `coach_sessions.status` ENUM**:
+
+- `requested`
+- `accepted`
+- `declined`
+- `counter_proposal`
 
 ## 3. Coach Collaboration Routes (via Activities module)
 

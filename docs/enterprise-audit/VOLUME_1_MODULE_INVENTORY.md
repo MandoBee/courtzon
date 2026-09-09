@@ -94,7 +94,7 @@
 ### 10. coaches — Coach Session State Machine
 - **Files:** 4
 - **Routes:** 0 (state machine only)
-- **Purpose:** Session status transitions (requested → accepted → confirmed → completed)
+- **Purpose:** Canonical lifecycle scheduled → in_progress → completed, with cancellation from scheduled/in_progress
 - **Evidence:** `modules/coaches/application/coach-session-state.service.ts`
 - **Status:** ⚠️ Partial — state machine only, no CRUD routes. Coach CRUD lives in organisations module.
 

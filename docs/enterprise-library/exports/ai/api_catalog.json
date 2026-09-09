@@ -1,6 +1,6 @@
 {
   "metadata": {
-    "generated": "2026-07-28T00:26:58.327Z",
+    "generated": "2026-09-09T00:13:52.974Z",
     "total_apis": 225
   },
   "endpoints": [
@@ -1013,20 +1013,6 @@
       "module": "TECH-MOD-35"
     },
     {
-      "method": "POST",
-      "path": "/coach-sessions/request",
-      "description": "Request coach session",
-      "required_permission": "coaches.book",
-      "module": "TECH-MOD-35"
-    },
-    {
-      "method": "GET",
-      "path": "/coach-sessions/requests",
-      "description": "List coach requests",
-      "required_permission": "—",
-      "module": "TECH-MOD-35"
-    },
-    {
       "method": "GET",
       "path": "/coach-sessions/:id",
       "description": "Get session detail",
@@ -1035,9 +1021,23 @@
     },
     {
       "method": "POST",
-      "path": "/coach-sessions/:id/respond",
-      "description": "Respond to request",
-      "required_permission": "coaches.respond_request",
+      "path": "/coach-sessions/:id/confirm",
+      "description": "Confirm session",
+      "required_permission": "coaches.confirm_session",
+      "module": "TECH-MOD-35"
+    },
+    {
+      "method": "POST",
+      "path": "/coach-sessions/:id/cancel",
+      "description": "Cancel session",
+      "required_permission": "—",
+      "module": "TECH-MOD-35"
+    },
+    {
+      "method": "POST",
+      "path": "/coach-sessions/:id/start",
+      "description": "Start session",
+      "required_permission": "coaches.start_session",
       "module": "TECH-MOD-35"
     },
     {

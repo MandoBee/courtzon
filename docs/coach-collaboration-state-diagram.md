@@ -1,5 +1,14 @@
 # Coach Collaboration — Canonical State Diagram
 
+> ⚠️ **SUPERSEDED — HISTORICAL SLICE-4 DESIGN**
+>
+> This document describes the **legacy Slice-4 coach-collaboration design**. It is **NOT the current production lifecycle** and contains legacy `request`/`respond`/`accept`/`decline` terminology and transitions that no longer exist.
+>
+> The current canonical coach-session lifecycle is documented in:
+> `docs/enterprise-library/TECH-MOD-51_coaches.md`
+>
+> The current booking flow is **Unified Flow B** via `POST /scheduling/book`.
+
 > Source of truth for Slice 4 implementation.
 > All 13 business decisions from the final review are incorporated.
 
