@@ -7,6 +7,10 @@ export type CoachSessionActorRole = 'coach' | 'player' | 'admin';
 export interface CoachSessionActor {
   id: number;
   role: CoachSessionActorRole;
+  /** Linked booking id (from coach_sessions.booking_id), or null when unlinked. */
+  bookingId: number | null;
+  /** Current coach_sessions.status. */
+  status: string;
 }
 
 export interface SessionMutationPolicy {
@@ -63,5 +67,10 @@ export async function authorizeCoachSessionMutation(
     throw new ForbiddenError('You are not authorized to modify this session');
   }
 
-  return { id: userId, role };
+  return {
+    id: userId,
+    role,
+    bookingId: session.booking_id != null ? Number(session.booking_id) : null,
+    status: String(session.status),
+  };
 }

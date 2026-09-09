@@ -438,10 +438,12 @@ export async function cancelCoachSessionHandler(request: FastifyRequest, reply: 
   const { reason } = (request.body as any) ?? {};
 
   // Cancel is actor-scoped ownership: the session's player, the session's
-  // coach, or a platform admin. cancelledBy reflects the REAL actor.
+  // coach, or a platform admin. cancelledBy reflects the REAL actor. Player
+  // cancellation of a session linked to a booking also delegates the booking
+  // cancellation to the canonical booking path (activitiesService.cancelCoachSession).
   const actor = await authorizeCoachSessionMutation(sessionId, userId, { coach: true, player: true, admin: true });
 
-  const { session } = await coachSessionStateService.transition(sessionId, 'cancelled', { id: userId, role: actor.role }, { cancelledBy: actor.role, reason });
+  const { session } = await svc.cancelCoachSession(sessionId, actor, reason);
 
   emitSessionEvent('cancelled', session, { reason });
 

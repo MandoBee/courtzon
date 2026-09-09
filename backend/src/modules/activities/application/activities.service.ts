@@ -5,12 +5,22 @@ import { getPool } from '../../../database/mysql.js';
 import type mysql from 'mysql2/promise';
 import { getPlanNumericLimit } from '../../organisations/application/plan-limits.util.js';
 import { eventBusV2 } from '../../../shared/event-bus/index.js';
+import { bookingService } from '../../booking/application/booking.service.js';
+import { bookingRepository } from '../../booking/infrastructure/repositories/booking.repository.js';
+import { coachSessionStateService } from '../../coaches/application/coach-session-state.service.js';
+import type { CoachSessionActor } from '../../coaches/application/coach-session-access.js';
 
 type RowData = mysql.RowDataPacket[];
 
 function todayISO(): string {
   return new Date().toISOString().slice(0, 10);
 }
+
+// Coach-session states from which a cancellation may be legitimately issued
+// (mirrors the state machine's cancellable sources).
+const CANCELLABLE_SESSION_STATUSES = ['pending_acceptance', 'scheduled', 'confirmed', 'in_progress'];
+// Booking statuses in which a cancellation would be a no-op (already cancelled).
+const ALREADY_CANCELLED_BOOKING_STATUSES = ['cancelled', 'cancelled_with_fee'];
 
 /**
  * Emit the canonical `coach:availability-changed` realtime event AFTER a coach
@@ -374,6 +384,56 @@ export const activitiesService = {
       playerId: role === 'player' ? userId : undefined,
       page, limit,
     });
+  },
+
+  /**
+   * Cancel a coach session (actor already authorized via G2-C object-level
+   * authorization).
+   *
+   * Player-initiated cancellation of a session LINKED to a booking delegates
+   * the booking cancellation to the canonical player path
+   * (`bookingService.cancelBooking`). All ownership, cancellation
+   * policy/window/fee, payment/refund guards, accounting reversal, entitlement
+   * cancellation, and idempotency remain owned by the canonical path — nothing
+   * financial is duplicated here.
+   *
+   * Ordering: the booking is cancelled FIRST. If the booking cancellation
+   * fails (e.g. outside the cancellation window), the error propagates and the
+   * session is NOT falsely presented as cancelled. If the booking succeeds but
+   * the session transition then fails, the state left behind is a cancelled
+   * booking + active session, which the saga-repair worker (R1) reconciles —
+   * never the un-repaired active-booking + cancelled-session state.
+   *
+   * Idempotency:
+   *  - session already cancelled → no booking cancellation is re-triggered
+   *  - session active + booking already cancelled → the session is safely
+   *    cancelled without issuing another refund
+   */
+  async cancelCoachSession(sessionId: number, actor: CoachSessionActor, reason?: string) {
+    if (actor.status === 'cancelled') {
+      return coachSessionStateService.transition(
+        sessionId, 'cancelled',
+        { id: actor.id, role: actor.role },
+        { cancelledBy: actor.role, reason },
+      );
+    }
+
+    if (
+      actor.role === 'player' &&
+      actor.bookingId != null &&
+      CANCELLABLE_SESSION_STATUSES.includes(actor.status)
+    ) {
+      const booking = await bookingRepository.findById(actor.bookingId);
+      if (booking && !ALREADY_CANCELLED_BOOKING_STATUSES.includes(booking.booking_status)) {
+        await bookingService.cancelBooking(actor.bookingId, actor.id, reason || '');
+      }
+    }
+
+    return coachSessionStateService.transition(
+      sessionId, 'cancelled',
+      { id: actor.id, role: actor.role },
+      { cancelledBy: actor.role, reason },
+    );
   },
 
   // ── Coach availability (weekly schedule + blackout dates) ──
