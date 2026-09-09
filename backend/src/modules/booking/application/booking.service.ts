@@ -894,11 +894,55 @@ export class BookingService {
       return { cancelled: false, refunded: false, refundAmount: 0 };
     }
 
+    return this._cancelAndFullRefund(booking, reason || CancellationReason.COMPENSATION, booking.user_id);
+  }
+
+  /**
+   * Authorized service-provider / coach-initiated cancellation of a linked
+   * booking with a FULL refund (AUD-003 G2-E2 Group 2).
+   *
+   * The coach is NOT the booking owner, so the canonical player path
+   * (`cancelBooking`) is inapplicable (it requires the caller to BE the
+   * booking's user and enforces the player cancellation window/fee). This is
+   * the small service-level abstraction for "authorized provider cancels with
+   * a full refund":
+   *
+   *   - bypasses ONLY the player cancellation window/fee restriction;
+   *   - preserves EVERY existing payment/refund/accounting/idempotency guard
+   *     (money-moved check, refunded_amount cap, `_emitBookingRefunded` once,
+   *     no manual accounting entries, no manual wallet writes);
+   *   - is idempotent against already-cancelled bookings (no-op, no refund).
+   *
+   * Callers MUST establish provider authorization first (e.g. the coach is the
+   * session coach via G2-C object-level authorization). It never weakens
+   * booking ownership — the coach is not treated as the booking owner, it only
+   * authorizes the full-refund cancellation of the linked booking.
+   */
+  async cancelBookingByProvider(bookingId: number, actorId: number, reason: string): Promise<{ cancelled: boolean; refunded: boolean; refundAmount: number }> {
+    const booking = await bookingRepository.findById(bookingId);
+    if (!booking) throw new NotFoundError('Booking');
+    if (['cancelled', 'cancelled_with_fee'].includes(booking.booking_status)) {
+      log.info({ bookingId }, 'provider cancel: booking already cancelled — no-op');
+      return { cancelled: false, refunded: false, refundAmount: 0 };
+    }
+
+    return this._cancelAndFullRefund(booking, reason || CancellationReason.PROVIDER_CANCELLED, actorId);
+  }
+
+  /**
+   * Shared core of the full-refund cancellation paths (coach / saga
+   * compensation): cancels the booking via the canonical CancelBooking command,
+   * then refunds ONLY if money actually moved, always through the canonical
+   * wallet/gateway/COD refund machinery (`_processGatewayRefund` /
+   * `_refundCODWallet` → `_emitBookingRefunded` exactly once). Never performs
+   * accounting entries directly.
+   */
+  private async _cancelAndFullRefund(booking: any, reason: string, actorId: number): Promise<{ cancelled: boolean; refunded: boolean; refundAmount: number }> {
     // 1. Cancel the booking (canonical state transition).
     await executeBookingCommand(
       'CancelBooking', cancelBookingHandler,
-      { bookingId, reason: reason || CancellationReason.COMPENSATION, actorId: booking.user_id },
-      String(bookingId),
+      { bookingId: booking.id, reason, actorId },
+      String(booking.id),
     );
 
     // 2. Refund only if money actually moved.
@@ -914,7 +958,7 @@ export class BookingService {
 
     const moneyMoved = await this._moneyMovedForBooking(booking);
     if (!moneyMoved) {
-      log.info({ bookingId }, 'compensation: no money moved — booking cancelled without refund');
+      log.info({ bookingId: booking.id }, 'full refund: no money moved — booking cancelled without refund');
       return { cancelled: true, refunded: false, refundAmount: 0 };
     }
 

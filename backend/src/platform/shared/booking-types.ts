@@ -66,6 +66,7 @@ export const CancellationReason = {
   PARENT_DELETED: 'Auto-cancelled: parent deleted',
   COMPENSATION: 'Compensation: failed coach session',
   SESSION_DECLINED: 'Session declined',
+  PROVIDER_CANCELLED: 'Cancelled by coach/service provider',
 } as const;
 
 export type CancellationReasonValue = (typeof CancellationReason)[keyof typeof CancellationReason];

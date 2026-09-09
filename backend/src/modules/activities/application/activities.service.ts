@@ -386,29 +386,39 @@ export const activitiesService = {
     });
   },
 
-  /**
-   * Cancel a coach session (actor already authorized via G2-C object-level
-   * authorization).
-   *
-   * Player-initiated cancellation of a session LINKED to a booking delegates
-   * the booking cancellation to the canonical player path
-   * (`bookingService.cancelBooking`). All ownership, cancellation
-   * policy/window/fee, payment/refund guards, accounting reversal, entitlement
-   * cancellation, and idempotency remain owned by the canonical path — nothing
-   * financial is duplicated here.
-   *
-   * Ordering: the booking is cancelled FIRST. If the booking cancellation
-   * fails (e.g. outside the cancellation window), the error propagates and the
-   * session is NOT falsely presented as cancelled. If the booking succeeds but
-   * the session transition then fails, the state left behind is a cancelled
-   * booking + active session, which the saga-repair worker (R1) reconciles —
-   * never the un-repaired active-booking + cancelled-session state.
-   *
-   * Idempotency:
-   *  - session already cancelled → no booking cancellation is re-triggered
-   *  - session active + booking already cancelled → the session is safely
-   *    cancelled without issuing another refund
-   */
+   /**
+    * Cancel a coach session (actor already authorized via G2-C object-level
+    * authorization).
+    *
+    * The booking linkage is the financial source of truth (bookings); the
+    * coach session is the operational/reporting projection. Cancellation of a
+    * session LINKED to a booking delegates the booking cancellation to a
+    * CANONICAL booking path — never duplicated here:
+    *
+    *   - PLAYER → `bookingService.cancelBooking` (canonical player path; owns
+    *     ownership, cancellation policy/window/fee, refund guards, accounting
+    *     reversal, idempotency). Group 1 behavior — UNCHANGED.
+    *   - COACH → `bookingService.cancelBookingByProvider` (full refund; NO
+    *     player cancellation window; NO cancellation fee — AUD-003 G2-E2
+    *     Group 2). The coach is authorized via the session's owner relationship
+    *     (coach_profiles.user_id) established by the G2-C object-level guard.
+    *   - ADMIN → `bookingService.updateBookingStatus(id, 'cancelled', actorId)`
+    *     (canonical organization/admin booking-cancellation path; preserves the
+    *     existing admin cancellation policy/fee semantics).
+    *
+    * Ordering: the booking is cancelled FIRST. If the booking cancellation
+    * fails (e.g. outside the player window, refund failure, or un-authorized
+    * admin), the error propagates and the session is NOT falsely presented as
+    * cancelled. If the booking succeeds but the session transition then fails,
+    * the state left behind is a cancelled booking + active session, which the
+    * saga-repair worker (R1) reconciles — never the un-repaired active-booking
+    * + cancelled-session state. No second refund is ever issued in that branch.
+    *
+    * Idempotency:
+    *  - session already cancelled → no booking cancellation is re-triggered
+    *  - session active + booking already cancelled → the session is safely
+    *    cancelled without issuing another refund
+    */
   async cancelCoachSession(sessionId: number, actor: CoachSessionActor, reason?: string) {
     if (actor.status === 'cancelled') {
       return coachSessionStateService.transition(
@@ -418,14 +428,24 @@ export const activitiesService = {
       );
     }
 
-    if (
-      actor.role === 'player' &&
-      actor.bookingId != null &&
-      CANCELLABLE_SESSION_STATUSES.includes(actor.status)
-    ) {
+    if (actor.bookingId != null && CANCELLABLE_SESSION_STATUSES.includes(actor.status)) {
       const booking = await bookingRepository.findById(actor.bookingId);
       if (booking && !ALREADY_CANCELLED_BOOKING_STATUSES.includes(booking.booking_status)) {
-        await bookingService.cancelBooking(actor.bookingId, actor.id, reason || '');
+        if (actor.role === 'coach') {
+          // Authorized service-provider cancellation with FULL refund (no
+          // player window, no cancellation fee). All refund/accounting/payment
+          // guards are owned by the canonical path.
+          await bookingService.cancelBookingByProvider(actor.bookingId, actor.id, reason || '');
+        } else if (actor.role === 'admin') {
+          // Canonical organization/admin booking-cancellation path. Preserves
+          // the existing admin cancellation policy/fee semantics; no duplicate
+          // refund/accounting logic.
+          await bookingService.updateBookingStatus(actor.bookingId, 'cancelled', actor.id);
+        } else {
+          // actor.role === 'player' → canonical player cancellation path
+          // (Group 1, UNCHANGED): owns the player cancellation window/fee.
+          await bookingService.cancelBooking(actor.bookingId, actor.id, reason || '');
+        }
       }
     }
 
