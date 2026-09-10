@@ -34,20 +34,25 @@ beforeEach(() => {
   params.length = 0;
 });
 
-describe('Round 2 Item 1 — setEvidenceActive', () => {
-  it('flips meta.active via UPDATE without deleting the evidence row', async () => {
-    await ratingRepository.setEvidenceActive('match_result', 42, false);
+describe('Round 2/3 Item 1 — setEvidenceActive', () => {
+  it('invalidates via UPDATE with invalidated_at, never deleting the evidence row', async () => {
+    await ratingRepository.setEvidenceActive('match_result', 42, false, '2026-09-10T12:00:00.000Z');
     const sql = executed[0];
     expect(sql.startsWith('UPDATE rating_evidence')).toBe(true);
     expect(sql).toContain('JSON_SET');
+    expect(sql).toContain("'$.active', false");
+    expect(sql).toContain("'$.invalidated_at', ?");
     expect(sql).toContain('WHERE source = ? AND source_ref_id = ?');
     expect(sql).not.toContain('DELETE');
-    expect(params[0]).toEqual([0, 'match_result', 42]);
+    expect(params[0]).toEqual(['2026-09-10T12:00:00.000Z', 'match_result', 42]);
   });
 
-  it('reactivation writes active true', async () => {
-    await ratingRepository.setEvidenceActive('match_result', 42, true);
-    expect(params[0][0]).toBe(1);
+  it('reactivation writes active true with reactivated_at', async () => {
+    await ratingRepository.setEvidenceActive('match_result', 42, true, '2026-09-15T00:00:00.000Z');
+    const sql = executed[0];
+    expect(sql).toContain("'$.active', true");
+    expect(sql).toContain("'$.reactivated_at', ?");
+    expect(params[0]).toEqual(['2026-09-15T00:00:00.000Z', 'match_result', 42]);
   });
 });
 

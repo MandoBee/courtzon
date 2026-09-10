@@ -197,18 +197,28 @@ export class RatingRepository {
   }
 
   /**
-   * Round 2 (Item 1) — mark a source's evidence active/inactive WITHOUT deleting
+   * Round 2/3 — mark a source's evidence active/inactive WITHOUT deleting
    * historical rows. Inactive evidence remains stored but no longer contributes
-   * to Overall Rating.
+   * to current Overall Rating. `asOf` records WHEN the state flipped so
+   * Point-in-Time calculations can evaluate validity as of any timestamp.
    */
-  async setEvidenceActive(source: string, sourceRefId: number, active: boolean): Promise<void> {
+  async setEvidenceActive(source: string, sourceRefId: number, active: boolean, asOf: string): Promise<void> {
     const pool = getPool();
-    await pool.execute(
-      `UPDATE rating_evidence
-       SET meta = JSON_SET(COALESCE(meta, JSON_OBJECT()), '$.active', ?)
-       WHERE source = ? AND source_ref_id = ?`,
-      [active ? 1 : 0, source, sourceRefId],
-    );
+    if (active) {
+      await pool.execute(
+        `UPDATE rating_evidence
+         SET meta = JSON_SET(COALESCE(meta, JSON_OBJECT()), '$.active', true, '$.reactivated_at', ?)
+         WHERE source = ? AND source_ref_id = ?`,
+        [asOf, source, sourceRefId],
+      );
+    } else {
+      await pool.execute(
+        `UPDATE rating_evidence
+         SET meta = JSON_SET(COALESCE(meta, JSON_OBJECT()), '$.active', false, '$.invalidated_at', ?)
+         WHERE source = ? AND source_ref_id = ?`,
+        [asOf, source, sourceRefId],
+      );
+    }
   }
 
   /** Distinct sports where the user currently has Self Declared evidence. */

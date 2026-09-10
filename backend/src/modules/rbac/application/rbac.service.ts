@@ -10,7 +10,10 @@ import { sanitizeUploadUrl } from '../../../shared/utils/upload-url.util.js';
 import { commandPipeline } from '../../../shared/command/command-pipeline.js';
 import { cancelBookingHandler } from '../../booking/commands/cancel-booking.command.js';
 import { CANCELLABLE_BOOKING_STATUSES } from '../../booking/domain/booking-constants.js';
+import { createModuleLogger } from '../../../shared/utils/logger.js';
 import type { Command } from '../../../shared/command/command-base.js';
+
+const log = createModuleLogger('rbac');
 
 type RowData = mysql.RowDataPacket[];
 
@@ -167,11 +170,16 @@ export class RBACService {
     }
     // Round 2 (Item 2) — a self-declared level/sport change must immediately
     // recalculate that player's Overall Rating (idempotent; other sports untouched).
+    // Round 3 — a rating failure is never silently swallowed: it is logged for
+    // observability. This is safe because self-declared evidence is reconciled
+    // from the profile on every rating computation, so the next recalculation
+    // self-heals; the profile update itself is independent and must not be
+    // rolled back by a rating failure.
     if (data.mainLevelId !== undefined || data.mainSportId !== undefined) {
       try {
         await ratingService.recalculateSelfDeclaredForUser(userId);
-      } catch {
-        // rating failure must never break the user update itself
+      } catch (err) {
+        log.error({ err, userId, mainLevelId: data.mainLevelId ?? null, mainSportId: data.mainSportId ?? null }, 'self-declared rating recalculation failed after profile update');
       }
     }
     const updated = await this.getUserById(userId);

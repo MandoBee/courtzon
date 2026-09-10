@@ -483,7 +483,7 @@ export class MatchResultService {
       const row = rows[0];
       if (!row) return;
 
-      await ratingService.setMatchEvidenceActive('match_result', resultId, false);
+      await ratingService.setMatchEvidenceActive('match_result', resultId, false, new Date().toISOString());
 
       const [parts] = await conn.execute(
         'SELECT * FROM match_result_participants WHERE result_id = ?',
@@ -553,9 +553,9 @@ export class MatchResultService {
       ) as any;
 
       if (row.outcome !== 'no_result' && parts.length) {
-        // Round 2 (Item 1) — ensure evidence is active/counting (reactivates a
+        // Round 2/3 (Item 1) — ensure evidence is active/counting (reactivates a
         // previously invalidated No-Result correction without a new row).
-        await ratingService.setMatchEvidenceActive('match_result', row.id, true);
+        await ratingService.setMatchEvidenceActive('match_result', row.id, true, new Date().toISOString());
         for (const p of parts) {
           const evidenceValue = Number(p.match_evidence);
           const valuePercent = Number.isFinite(evidenceValue) ? evidenceValue : 50;

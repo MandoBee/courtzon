@@ -7,7 +7,7 @@ vi.hoisted(() => {
   process.env.REDIS_HOST = '127.0.0.1'; process.env.REDIS_PORT = '6379'; process.env.PORT = '3001';
 });
 
-// ── Mock infra: repository, rating service, audit, event bus, db pool ─────
+// â”€â”€ Mock infra: repository, rating service, audit, event bus, db pool â”€â”€â”€â”€â”€
 const repo = vi.hoisted(() => ({
   resolveMatchId: vi.fn(),
   getMatchContext: vi.fn(),
@@ -148,7 +148,7 @@ beforeEach(() => {
   repo.findById.mockResolvedValue(makeRecord());
 });
 
-describe('C3 — withdrawResult', () => {
+describe('C3 â€” withdrawResult', () => {
   it('submitter can withdraw a pending result within the window', async () => {
     repo.findByMatchId.mockResolvedValue(makeRecord());
     const rec = await matchResultService.withdrawResult(42, 5);
@@ -179,7 +179,7 @@ describe('C3 — withdrawResult', () => {
   });
 });
 
-describe('C3 — submit after withdrawal reuses the row (no second record)', () => {
+describe('C3 â€” submit after withdrawal reuses the row (no second record)', () => {
   it('reuses the withdrawn row via updateResult and persists final_result', async () => {
     repo.findByMatchId.mockResolvedValue(makeRecord({ submissionStatus: 'withdrawn', submittedBy: 5 }));
     repo.findById.mockResolvedValue(makeRecord({ submissionStatus: 'pending_confirmation' }));
@@ -196,7 +196,7 @@ describe('C3 — submit after withdrawal reuses the row (no second record)', () 
   });
 });
 
-describe('C4/C6 — submitMatchResult', () => {
+describe('C4/C6 â€” submitMatchResult', () => {
   it('inserts a result with a persisted final_result', async () => {
     repo.findByMatchId.mockResolvedValue(null);
     repo.insert.mockResolvedValue(99);
@@ -211,7 +211,7 @@ describe('C4/C6 — submitMatchResult', () => {
   });
 });
 
-describe('C8 — autoApproveDueResults race safety', () => {
+describe('C8 â€” autoApproveDueResults race safety', () => {
   it('skips when approvePending affects zero rows (disputed meanwhile)', async () => {
     repo.findAutoApprovable.mockResolvedValue([makeRecord()]);
     repo.approvePending.mockResolvedValue(false);
@@ -234,7 +234,7 @@ describe('C8 — autoApproveDueResults race safety', () => {
   });
 });
 
-describe('C1/C9 — correctResult recalculates rating', () => {
+describe('C1/C9 â€” correctResult recalculates rating', () => {
   it('re-applies evidence idempotently via the same source and records beforeState', async () => {
     repo.findByMatchId.mockResolvedValue(null);
     repo.findActiveRuleSet.mockResolvedValue(FORMAT);
@@ -248,12 +248,12 @@ describe('C1/C9 — correctResult recalculates rating', () => {
 
     await matchResultService.correctResult(1, 999, { outcome: 'completed', score: { sets: [{ home: 0, away: 6 }, { home: 0, away: 6 }] } });
 
-    // C4 — corrected final_result persisted
+    // C4 â€” corrected final_result persisted
     expect(repo.updateResult).toHaveBeenCalledWith(1, expect.objectContaining({ finalResult: expect.any(Object), outcome: 'completed' }));
-    // C1 — evidence re-applied (force path) via the match_result source
+    // C1 â€” evidence re-applied (force path) via the match_result source
     expect(rating.applyEvidence).toHaveBeenCalledWith(expect.objectContaining({ source: 'match_result', sourceRefId: 1, valuePercent: 0 }));
     expect(rating.adjustMatchStat).toHaveBeenCalled();
-    // C9 — audit contains both beforeState and afterState
+    // C9 â€” audit contains both beforeState and afterState
     const auditCall = audit.recordAudit.mock.calls.find((c) => c[0].action === 'match.result.corrected');
     expect(auditCall).toBeDefined();
     expect(auditCall![0].beforeState).toEqual(expect.objectContaining({ raw_result: expect.any(Object), final_result: expect.any(Object), outcome: 'completed' }));
@@ -266,7 +266,7 @@ describe('C1/C9 — correctResult recalculates rating', () => {
     await expect(matchResultService.correctResult(1, 999, VALID_PAYLOAD)).rejects.toThrow(RulesValidationError);
   });
 });
-describe('Round 2 Item 1 � correction to No Result invalidates evidence', () => {
+describe('Round 2 Item 1 — correction to No Result invalidates evidence', () => {
   it('approved Win corrected to Abandoned: evidence deactivated, rating recalculated, no new evidence', async () => {
     repo.findByMatchId.mockResolvedValue(null);
     repo.findActiveRuleSet.mockResolvedValue(FORMAT);
@@ -281,7 +281,7 @@ describe('Round 2 Item 1 � correction to No Result invalidates evidence', () => 
     await matchResultService.correctResult(1, 999, { outcome: 'abandoned' });
 
     expect(repo.updateResult).toHaveBeenCalledWith(1, expect.objectContaining({ outcome: 'no_result', finalResult: expect.any(Object) }));
-    expect(rating.setMatchEvidenceActive).toHaveBeenCalledWith('match_result', 1, false);
+    expect(rating.setMatchEvidenceActive).toHaveBeenCalledWith('match_result', 1, false, expect.any(String));
     expect(rating.recalculate).toHaveBeenCalled();
     expect(rating.applyEvidence).not.toHaveBeenCalled();
     const auditCall = audit.recordAudit.mock.calls.find((c) => c[0].action === 'match.result.corrected');
@@ -303,13 +303,13 @@ describe('Round 2 Item 1 � correction to No Result invalidates evidence', () => 
     await matchResultService.correctResult(1, 999, VALID_PAYLOAD);
 
     expect(repo.updateResult).toHaveBeenCalledWith(1, expect.objectContaining({ outcome: 'completed', finalResult: expect.any(Object) }));
-    expect(rating.setMatchEvidenceActive).toHaveBeenCalledWith('match_result', 1, true);
+    expect(rating.setMatchEvidenceActive).toHaveBeenCalledWith('match_result', 1, true, expect.any(String));
     expect(rating.applyEvidence).toHaveBeenCalledTimes(2);
     expect(rating.applyEvidence).toHaveBeenCalledWith(expect.objectContaining({ source: 'match_result', sourceRefId: 1 }));
   });
 });
 
-describe('LIFECYCLE � Test A normal approval', () => {
+describe('LIFECYCLE — Test A normal approval', () => {
   it('submit ? accept ? approved ? evidence applied once per participant', async () => {
     repo.findByMatchId.mockResolvedValue(makeRecord());
     repo.getMatchContext.mockResolvedValue(CONTEXT);
@@ -327,7 +327,7 @@ describe('LIFECYCLE � Test A normal approval', () => {
   });
 });
 
-describe('LIFECYCLE � Test B dispute then resolve', () => {
+describe('LIFECYCLE — Test B dispute then resolve', () => {
   it('dispute creates no evidence; admin resolve activates it', async () => {
     repo.findByMatchId.mockResolvedValue(makeRecord());
     repo.getMatchContext.mockResolvedValue(CONTEXT);
@@ -345,7 +345,7 @@ describe('LIFECYCLE � Test B dispute then resolve', () => {
   });
 });
 
-describe('LIFECYCLE � Test C auto-approval applies evidence exactly once', () => {
+describe('LIFECYCLE — Test C auto-approval applies evidence exactly once', () => {
   it('one approval per pending record, evidence applied exactly once per participant', async () => {
     repo.findAutoApprovable.mockResolvedValue([makeRecord()]);
     repo.approvePending.mockResolvedValue(true);
@@ -354,11 +354,11 @@ describe('LIFECYCLE � Test C auto-approval applies evidence exactly once', () =>
     const approved = await matchResultService.autoApproveDueResults();
     expect(approved).toBe(1);
     expect(rating.applyEvidence).toHaveBeenCalledTimes(2);
-    expect(rating.setMatchEvidenceActive).toHaveBeenCalledWith('match_result', 1, true);
+    expect(rating.setMatchEvidenceActive).toHaveBeenCalledWith('match_result', 1, true, expect.any(String));
   });
 });
 
-describe('LIFECYCLE � Test D no-result worker', () => {
+describe('LIFECYCLE — Test D no-result worker', () => {
   it('marks expired matches No Result with no rating evidence', async () => {
     repo.findExpiredNoResultMatches.mockResolvedValue([{ matchId: 42, sportId: 22, branchId: null, resourceId: null, playedAt: '2026-08-01 10:00:00', timezone: null, participantUserIds: [5, 6] }]);
     repo.findByMatchId.mockResolvedValue(null);
@@ -372,7 +372,7 @@ describe('LIFECYCLE � Test D no-result worker', () => {
   });
 });
 
-describe('LIFECYCLE � Test E correction win?loss no duplicate evidence', () => {
+describe('LIFECYCLE — Test E correction win?loss no duplicate evidence', () => {
   it('re-applies through the same source_ref without a second row', async () => {
     repo.findByMatchId.mockResolvedValue(null);
     repo.findActiveRuleSet.mockResolvedValue(FORMAT);
@@ -389,7 +389,7 @@ describe('LIFECYCLE � Test E correction win?loss no duplicate evidence', () => {
   });
 });
 
-describe('LIFECYCLE � Test H withdrawal then replacement accepted', () => {
+describe('LIFECYCLE — Test H withdrawal then replacement accepted', () => {
   it('withdraw produces no evidence; re-submit reuses row; accept applies evidence', async () => {
     repo.findByMatchId.mockResolvedValue(makeRecord());
     repo.getMatchContext.mockResolvedValue(CONTEXT);
@@ -412,7 +412,7 @@ describe('LIFECYCLE � Test H withdrawal then replacement accepted', () => {
   });
 });
 
-describe('LIFECYCLE � Test J rating snapshot uses played_at', () => {
+describe('LIFECYCLE — Test J rating snapshot uses played_at', () => {
   it('stored snapshot resolves at match time, not approval time', async () => {
     repo.findByMatchId.mockResolvedValue(makeRecord());
     repo.getMatchContext.mockResolvedValue(CONTEXT);
@@ -426,7 +426,7 @@ describe('LIFECYCLE � Test J rating snapshot uses played_at', () => {
   });
 });
 
-describe('LIFECYCLE � Test N doubles/team members share evidence', () => {
+describe('LIFECYCLE — Test N doubles/team members share evidence', () => {
   it('same-side participants receive the same match evidence value', async () => {
     repo.getMatchContext.mockResolvedValue({ ...CONTEXT, participantUserIds: [5, 6, 7, 8] });
     repo.findByMatchId.mockResolvedValue(null);
@@ -443,7 +443,7 @@ describe('LIFECYCLE � Test N doubles/team members share evidence', () => {
   });
 });
 
-describe('LIFECYCLE � Test O external/off-platform match cannot generate evidence', () => {
+describe('LIFECYCLE — Test O external/off-platform match cannot generate evidence', () => {
   it('unknown match id is rejected before any evidence work', async () => {
     repo.resolveMatchId.mockResolvedValue(0);
     await expect(matchResultService.submitMatchResult(999, 5, VALID_PAYLOAD)).rejects.toThrow(NotFoundError);

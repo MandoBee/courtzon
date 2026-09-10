@@ -118,10 +118,12 @@ export class RatingService {
    * Only evidence that occurred at/before `asOf` is eligible, decayed to `asOf`.
    */
   async resolveOverallPercentAt(userId: number, sportId: number, asOf: Date | string): Promise<number> {
-    const evidence = (await ratingRepository.getEvidence(userId, sportId)).filter((e) => !isInactiveEvidence(e));
+    const evidence = await ratingRepository.getEvidence(userId, sportId);
     const fallback = await ratingRepository.getSelfDeclaredPercent(userId, sportId);
     const asOfDate = asOf instanceof Date ? asOf : new Date(asOf);
-    const ranked = evidence.map((e) => ({
+    const asOfMs = asOfDate.getTime();
+    const valid = evidence.filter((e) => isEvidenceActiveAt(e, asOfMs));
+    const ranked = valid.map((e) => ({
       value: e.valuePercent,
       weight: EVIDENCE_WEIGHTS[(e.evidenceType as RatingEvidenceType) ?? 'match'] * decayFactor(e.occurredAt, asOfDate),
       occurredAt: e.occurredAt,
@@ -130,18 +132,23 @@ export class RatingService {
   }
 
   /**
-   * Round 2 (Item 1) — flip the active/counting state of a source's evidence
+   * Round 2/3 — flip the active/counting state of a source's evidence
    * (e.g. all Match Evidence rows for a result) without deleting history.
+   * `asOf` records when the flip happened for Point-in-Time correctness.
    */
-  async setMatchEvidenceActive(source: string, sourceRefId: number, active: boolean): Promise<void> {
-    await ratingRepository.setEvidenceActive(source, sourceRefId, active);
+  async setMatchEvidenceActive(source: string, sourceRefId: number, active: boolean, asOf?: string): Promise<void> {
+    await ratingRepository.setEvidenceActive(source, sourceRefId, active, asOf ?? new Date().toISOString());
   }
 
   /**
-   * Round 2 (Item 2) — immediate Overall Rating recalculation after a
+   * Round 2 (Item 2) / Round 3 — immediate Overall Rating recalculation after a
    * self-declared level/sport change. Only touches sports where the player has
    * Self Declared evidence or their declared main sport. Idempotent: identical
-   * declarations produce no evidence/history churn.
+   * declarations produce no evidence/history churn. Per-sport failures are logged
+   * (never silently swallowed) and do not block other sports; self-declared
+   * evidence is reconciled from the profile on every rating computation, so a
+   * failed sport self-heals on the next recalculation while the independent
+   * profile update always succeeds.
    */
   async recalculateSelfDeclaredForUser(userId: number): Promise<void> {
     const sportIds = await ratingRepository.getSelfDeclaredSportIds(userId);
@@ -149,8 +156,12 @@ export class RatingService {
     const targets = new Set(sportIds);
     if (mainSport != null) targets.add(mainSport);
     for (const sportId of targets) {
-      await this.syncSelfDeclaredEvidence(userId, sportId);
-      await this.recalculate(userId, sportId, null, 'self-declared level/sport updated');
+      try {
+        await this.syncSelfDeclaredEvidence(userId, sportId);
+        await this.recalculate(userId, sportId, null, 'self-declared level/sport updated');
+      } catch (err) {
+        log.error({ err, userId, sportId }, 'self-declared rating recalculation failed');
+      }
     }
   }
 
@@ -199,9 +210,32 @@ export class RatingService {
 export const ratingService = new RatingService();
 
 /** Round 2 (Item 1) — evidence flagged inactive (meta.active === false) is stored
- *  but never contributes to Overall Rating. */
+ *  but never contributes to current Overall Rating. */
 function isInactiveEvidence(e: { meta?: Record<string, unknown> | null }): boolean {
   return e.meta != null && e.meta.active === false;
+}
+
+/**
+ * Round 3 — evidence validity evaluated AS OF a timestamp. A row invalidated at
+ * T2 (meta.invalidated_at) counts before T2, does not count in [T2, T3), and
+ * counts again from reactivation T3 (meta.reactivated_at). Rows never invalidated
+ * are always active unless explicitly flagged inactive without a timestamp
+ * (legacy conservative default).
+ */
+function isEvidenceActiveAt(e: { meta?: Record<string, unknown> | null }, asOfMs: number): boolean {
+  const meta = e.meta ?? {};
+  const invalidatedAt = meta.invalidated_at;
+  if (invalidatedAt == null) {
+    return meta.active !== false;
+  }
+  const invMs = new Date(String(invalidatedAt)).getTime();
+  if (asOfMs < invMs) return true;
+  const reactivatedAt = meta.reactivated_at;
+  if (reactivatedAt != null) {
+    const reMs = new Date(String(reactivatedAt)).getTime();
+    if (asOfMs >= reMs) return true;
+  }
+  return false;
 }
 
 export function logRatingError(err: unknown, context: string): void {
