@@ -182,6 +182,12 @@ export interface DomainEventMap {
   'entitlement:released': BaseEvent & { entitlementId: number; publicId: string; organisationId: number };
   'entitlement:cancelled': BaseEvent & { entitlementId: number; publicId: string; organisationId: number; sourceType: string; sourceId?: number; amount: number; reason: string };
   'entitlement:settled': BaseEvent & { entitlementId: number; publicId: string; organisationId: number; amount: number; settlementId?: number };
+  'match:result-submitted': BaseEvent & { matchId: number; resultId: number; submittedById: number; opponentUserIds: number[]; allUserIds: number[] };
+  'match:result-approved': BaseEvent & { matchId: number; resultId: number; approvedBy: number; allUserIds: number[] };
+  'match:result-auto-approved': BaseEvent & { matchId: number; resultId: number; allUserIds: number[] };
+  'match:result-disputed': BaseEvent & { matchId: number; resultId: number; disputedBy: number; allUserIds: number[] };
+  'match:result-no-result': BaseEvent & { matchId: number; resultId: number; allUserIds: number[] };
+  'match:result-resolved': BaseEvent & { matchId: number; resultId: number; resolution: string; allUserIds: number[] };
 }
 
 export interface BroadcastPayload {

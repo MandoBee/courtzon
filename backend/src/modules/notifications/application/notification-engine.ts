@@ -737,6 +737,47 @@ const eventGroups: EventGroupConfig[] = [
     },
   },
   {
+    events: ['match:result-submitted'],
+    handler: async (eventName, data, categorySlug) => {
+      for (const userId of data.opponentUserIds ?? []) {
+        await dispatchToUser({
+          userId, eventName, categorySlug, data,
+          relatedEntityType: 'match', relatedEntityId: String(data.matchId),
+          action: a(`/matches/${data.matchId}/result`), digestable: false,
+        });
+      }
+    },
+  },
+  {
+    events: ['match:result-approved', 'match:result-auto-approved', 'match:result-no-result', 'match:result-resolved'],
+    handler: async (eventName, data, categorySlug) => {
+      for (const userId of data.allUserIds ?? []) {
+        await dispatchToUser({
+          userId, eventName, categorySlug, data,
+          relatedEntityType: 'match', relatedEntityId: String(data.matchId),
+          action: a(`/matches/${data.matchId}`), digestable: false,
+        });
+      }
+    },
+  },
+  {
+    events: ['match:result-disputed'],
+    handler: async (eventName, data, categorySlug) => {
+      for (const userId of data.allUserIds ?? []) {
+        await dispatchToUser({
+          userId, eventName, categorySlug, data,
+          relatedEntityType: 'match', relatedEntityId: String(data.matchId),
+          action: a(`/matches/${data.matchId}`), digestable: false,
+        });
+      }
+      await dispatchByPermission('matches.result.manage', {
+        eventName, categorySlug, data,
+        relatedEntityType: 'match', relatedEntityId: String(data.matchId),
+        action: a('/admin/match-results'), digestable: false,
+      });
+    },
+  },
+  {
     events: ['join_request:submitted'],
     handler: async (eventName, data, categorySlug) => {
       eventBusV2.emit('match:pending', { matchId: data.matchId, userId: data.userId, timestamp: new Date().toISOString() }, { aggregateType: 'match', aggregateId: String(0), aggregateVersion: 1 });
@@ -930,6 +971,8 @@ class NotificationEngine {
       'session:started', 'session:completed',
       'coupon:published', 'booking:auto-cancelled', 'booking:application-declined',
       'notification:broadcast',
+      'match:result-submitted', 'match:result-approved', 'match:result-auto-approved',
+      'match:result-disputed', 'match:result-no-result', 'match:result-resolved',
       'subscription:request-submitted', 'subscription:request-approved', 'subscription:request-rejected', 'subscription:request-reopened',
       'setting:updated', 'setting:profile-applied',
     ];

@@ -271,6 +271,9 @@ const AttendancePage = lazy(() => import('./pages/admin/hr/AttendancePage'));
 const PayrollPage = lazy(() => import('./pages/admin/hr/PayrollPage'));
 const MatchListPage = lazy(() => import('./pages/booking/MatchListPage'));
 const MatchLobbyPage = lazy(() => import('./pages/booking/MatchLobbyPage'));
+const MatchResultPage = lazy(() => import('./pages/booking/MatchResultPage'));
+const MatchResultHistoryPage = lazy(() => import('./pages/booking/MatchResultHistoryPage'));
+const AdminMatchResultsPage = lazy(() => import('./pages/admin/match-results/AdminMatchResultsPage'));
 const RefereeDashboardPage = lazy(() => import('./pages/referee/RefereeDashboardPage'));
 const RefereeProfilePage = lazy(() => import('./pages/referee/RefereeProfilePage'));
 const RefereeAvailabilityPage = lazy(() => import('./pages/referee/RefereeAvailabilityPage'));
@@ -591,6 +594,8 @@ function AppContent() {
           <Route path="/bookings/:id" element={<BookingDetailPage />} />
           <Route path="/matches" element={<MatchListPage />} />
           <Route path="/matches/:id" element={<MatchLobbyPage />} />
+          <Route path="/matches/:id/result" element={<MatchResultPage />} />
+          <Route path="/my/match-results" element={<MatchResultHistoryPage />} />
           <Route path="/marketplace" element={<MarketplacePage />} />
           <Route path="/marketplace/products/:id" element={<ProductDetailPage />} />
           <Route path="/marketplace/player-products/:id" element={<PlayerProductDetailPage />} />
@@ -712,6 +717,7 @@ function AppContent() {
             <Route path="tournament/list" element={<TournamentListAdminPage />} />
             <Route path="tournament/list/:id" element={<TournamentDetailAdminPage />} />
             <Route path="tournament/matches" element={<TournamentMatchesAdminPage />} />
+            <Route path="match-results" element={<AdminMatchResultsPage />} />
             <Route path="league/dashboard" element={<LeagueDashboardPage />} />
             <Route path="league/seasons" element={<SeasonListPage />} />
             <Route path="league/list" element={<LeagueListPage />} />

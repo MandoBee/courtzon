@@ -19,7 +19,8 @@ export type JobType = 'send_email' | 'process_settlement' | 'cancel_expired_book
   | 'activate_entitlements'
   | 'complaint_period_activation'
   | 'complaint_receipt_timeout'
-  | 'complaint_collection_escalation';
+  | 'complaint_collection_escalation'
+  | 'match_result_deadlines';
 
 export interface EmailAttachment {
   filename: string;
@@ -150,6 +151,7 @@ export type JobPayloadMap = {
   complaint_period_activation: Record<string, never>;
   complaint_receipt_timeout: Record<string, never>;
   complaint_collection_escalation: Record<string, never>;
+  match_result_deadlines: Record<string, never>;
 };
 
 export const DEFAULT_QUEUE_NAME = 'default';

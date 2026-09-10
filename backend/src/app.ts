@@ -55,6 +55,7 @@ import { appearanceRoutes, designTokenRoutes, publicThemeRoutes } from "./module
 import { appSettingsRoutes } from "./modules/app-settings/presentation/app-settings.routes.js";
 import { geoRoutes } from "./modules/geo/presentation/geo.routes.js";
 import { matchRoutes } from "./modules/match/presentation/match.routes.js";
+import { matchResultRoutes } from "./modules/match-result/index.js";
 import { schedulingRoutes } from "./modules/scheduling/presentation/scheduling.routes.js";
 import { academyRoutes } from "./modules/academy/presentation/academy.routes.js";
 import { leagueRoutes } from "./modules/leagues/presentation/league.routes.js";
@@ -538,6 +539,7 @@ app.register(adminTagRoutes);
   app.register(publicFeatureFlagsRoutes);
   app.register(geoRoutes);
   app.register(matchRoutes);
+  app.register(matchResultRoutes);
   app.register(schedulingRoutes);
   app.register(sidebarLayoutRoutes);
   app.register(notificationRoutes);

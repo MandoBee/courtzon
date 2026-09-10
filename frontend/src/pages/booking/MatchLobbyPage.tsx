@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../services/api';
 import { useToast } from '../../components/ui/Toast';
@@ -8,6 +8,19 @@ import { useTranslation } from '../../i18n';
 import { formatISODate, formatDateTime } from '../../utils/formatDate';
 import { socketService } from '../../services/socket';
 import ManageApplicantsPopup from '../../components/booking/ManageApplicantsPopup';
+import { fetchMatchResult } from '../../services/match-result.api';
+import ResultSummaryView from '../../components/match-result/ResultSummaryView';
+import { Can } from '../../permissions/Can';
+
+function hasUserInParticipants(participantsJson: unknown, userId: number): boolean {
+  if (!participantsJson) return false;
+  const list = Array.isArray(participantsJson)
+    ? participantsJson
+    : typeof participantsJson === 'string'
+      ? (() => { try { return JSON.parse(participantsJson); } catch { return []; } })()
+      : [];
+  return list.some((p: any) => Number(p.userId) === Number(userId));
+}
 
 export default function MatchLobbyPage() {
   const { id } = useParams<{ id: string }>();
@@ -23,6 +36,15 @@ export default function MatchLobbyPage() {
     queryFn: () => api.get(`/matches/${id}`).then((r) => r.data.data),
     enabled: !!id,
   });
+
+  const { data: resultData } = useQuery({
+    queryKey: ['match-result', id],
+    queryFn: () => fetchMatchResult(Number(id)),
+    enabled: !!id,
+  });
+  const resultAvailable = !!resultData?.record;
+  const resultEligible = match?.status === 'in_progress' || match?.status === 'completed' || match?.status === 'full' || match?.status === 'closed';
+  const isParticipant = user?.id != null && match?.participants_json && hasUserInParticipants(match.participants_json, user.id);
 
   useEffect(() => {
     if (!id) return;
@@ -144,6 +166,36 @@ export default function MatchLobbyPage() {
                 </span>
               </div>
             ))}
+          </div>
+        )}
+      </div>
+
+      <div className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] p-4 mb-4">
+        <div className="flex items-center justify-between mb-2">
+          <h2 className="text-sm font-semibold text-[var(--color-text-muted)]">{t('matchResult.title')}</h2>
+          {(resultEligible || resultAvailable) && (
+            <Link to={`/matches/${id}/result`} className="text-sm text-[var(--color-primary)] hover:underline">
+              {resultAvailable ? t('matchResult.view') : t('matchResult.enterResult')}
+            </Link>
+          )}
+        </div>
+        {resultAvailable ? (
+          <ResultSummaryView record={resultData!.record!} participants={resultData!.participants || []} showRating />
+        ) : resultEligible ? (
+          <p className="text-sm text-[var(--color-text-muted)]">{t('matchResult.noResultYet')}</p>
+        ) : (
+          <p className="text-sm text-[var(--color-text-muted)]">{t('matchResult.enterAfterStart')}</p>
+        )}
+        {resultEligible && !resultAvailable && isParticipant && (
+          <div className="mt-3">
+            <Can permission="matches.result.submit">
+              <Link
+                to={`/matches/${id}/result`}
+                className="inline-block px-4 py-2 text-sm font-medium bg-[var(--color-primary)] text-white rounded-[var(--radius-md)] hover:opacity-90"
+              >
+                {t('matchResult.submit')}
+              </Link>
+            </Can>
           </div>
         )}
       </div>

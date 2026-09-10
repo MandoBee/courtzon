@@ -163,6 +163,7 @@ export default defineConfig(({ command }) => ({
       '/user-roles': backend,
       '/users': backend,
       '/my': backend,
+      '/me': backend,
       '/settings': backend,
       '/countries': backend,
       '/provinces': backend,
@@ -207,6 +208,7 @@ export default defineConfig(({ command }) => ({
       '/membership': backend,
       '/metrics': backend,
       '/sports-engine': backend,
+      '/sport-formats': backend,
     },
   },
 }))

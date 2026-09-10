@@ -70,6 +70,8 @@ const ADMIN_ONLY_PREFIXES = [
   'sports-engine.',
   'integration.',
   'mobile.',
+  'matches.result.manage',
+  'matches.result.rules.manage',
 ];
 
 function isAdminOnlyKey(key) {

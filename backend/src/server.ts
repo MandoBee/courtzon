@@ -17,6 +17,7 @@ import { handleAutoCompleteBookings } from "./modules/booking/infrastructure/boo
 import { handleBookingSettlementEligibility } from "./modules/booking/infrastructure/booking-settlement-eligibility.worker.js";
 import { handleActivateEntitlements } from "./modules/financial/infrastructure/financial-entitlement.worker.js";
 import { handleComplaintPeriodActivation } from "./modules/financial/infrastructure/marketplace-complaint-period.worker.js";
+import { processMatchResultDeadlines, scheduleMatchResultDeadlines } from "./modules/match-result/index.js";
 import { handleComplaintReceiptTimeout, handleComplaintCollectionEscalation } from "./modules/marketplace/infrastructure/marketplace-complaint.worker.js";
 import { handleSyncPendingPayments, handleExpireStalePayments } from "./modules/payment/infrastructure/payment-cron.worker.js";
 import { runDatabaseBackup } from "./infrastructure/backup/backup.service.js";
@@ -105,6 +106,7 @@ async function bootstrap() {
     registerHandler('complaint_period_activation', handleComplaintPeriodActivation);
     registerHandler('complaint_receipt_timeout', handleComplaintReceiptTimeout);
     registerHandler('complaint_collection_escalation', handleComplaintCollectionEscalation);
+    registerHandler('match_result_deadlines', processMatchResultDeadlines);
 
     registerCommandHandler('ConfirmBooking', confirmBookingHandler as any);
     registerCommandHandler('CancelBooking', cancelBookingHandler as any);
@@ -363,6 +365,9 @@ async function bootstrap() {
       removeOnComplete: true,
       removeOnFail: { age: 86400 },
     });
+
+    // Match result deadlines (auto-approval + no-result expiry) — hourly
+    await scheduleMatchResultDeadlines();
 
     process.on('SIGTERM', () => shutdown('SIGTERM'));
     process.on('SIGINT', () => shutdown('SIGINT'));
