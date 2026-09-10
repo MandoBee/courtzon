@@ -54,6 +54,17 @@ export async function replaceResultHandler(request: FastifyRequest, reply: Fasti
   }
 }
 
+export async function withdrawResultHandler(request: FastifyRequest, reply: FastifyReply): Promise<void> {
+  try {
+    const userId = (request as any).userId;
+    const { id } = MatchParamsSchema.parse(request.params);
+    const record = await matchResultService.withdrawResult(id, userId, (request as any).ip);
+    reply.send({ data: record });
+  } catch (err) {
+    throw toClientError(err);
+  }
+}
+
 export async function acceptResultHandler(request: FastifyRequest, reply: FastifyReply): Promise<void> {
   try {
     const userId = (request as any).userId;

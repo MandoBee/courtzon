@@ -73,6 +73,8 @@ export async function getMatchHandler(request: FastifyRequest, reply: FastifyRep
             b.booking_date, b.start_time, b.end_time,
             r.name as resource_name, br.name as branch_name, org.name as organisation_name,
             pmd.*, pl.name as target_level_name,
+            (SELECT COALESCE(ms.ended_at, ms.started_at) FROM match_sessions ms
+             WHERE ms.match_id = m.id ORDER BY ms.id DESC LIMIT 1) as played_at,
             (SELECT COUNT(*) FROM match_participants WHERE match_id = m.id) as participant_count,
             (SELECT JSON_ARRAYAGG(JSON_OBJECT('userId', mp.user_id, 'role', mp.role))
              FROM match_participants mp WHERE mp.match_id = m.id) as participants_json

@@ -23,6 +23,11 @@ export async function replaceMatchResult(matchId: number | string, payload: RawM
   return unwrapNestedData(response);
 }
 
+export async function withdrawMatchResult(matchId: number | string): Promise<unknown> {
+  const response = await api.post(`/matches/${matchId}/result/withdraw`);
+  return unwrapNestedData(response);
+}
+
 export async function acceptMatchResult(matchId: number | string): Promise<unknown> {
   const response = await api.post(`/matches/${matchId}/result/accept`);
   return unwrapNestedData(response);

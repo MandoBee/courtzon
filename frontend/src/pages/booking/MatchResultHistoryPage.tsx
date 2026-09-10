@@ -10,6 +10,7 @@ const statusFilterOptions = [
   { value: 'pending_confirmation', labelKey: 'matchResult.statusPending' },
   { value: 'approved', labelKey: 'matchResult.statusApproved' },
   { value: 'disputed', labelKey: 'matchResult.statusDisputed' },
+  { value: 'withdrawn', labelKey: 'matchResult.statusWithdrawn' },
   { value: 'no_result', labelKey: 'matchResult.statusNoResult' },
 ];
 

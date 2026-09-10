@@ -5,6 +5,8 @@ import {
   decayFactor,
   clampRating,
   computeOverallPercent,
+  computeOverallPercentAt,
+  selfDeclaredValueForLevel,
 } from '../application/rating/rating-math.js';
 
 describe('rating weights', () => {
@@ -88,5 +90,37 @@ describe('computeOverallPercent', () => {
 
   it('returns the fallback when all weights are zero', () => {
     expect(computeOverallPercent([{ value: 90, weight: 0, occurredAt: 'x' }], 55)).toBe(55);
+  });
+});
+
+describe('selfDeclaredValueForLevel (C2)', () => {
+  it('maps the five declared levels to 20/40/60/80/100', () => {
+    expect(selfDeclaredValueForLevel(1)).toBe(20);
+    expect(selfDeclaredValueForLevel(2)).toBe(40);
+    expect(selfDeclaredValueForLevel(3)).toBe(60);
+    expect(selfDeclaredValueForLevel(4)).toBe(80);
+    expect(selfDeclaredValueForLevel(5)).toBe(100);
+  });
+
+  it('clamps out-of-range orders to the 20..100 bound', () => {
+    expect(selfDeclaredValueForLevel(0)).toBe(60); // 0 is falsy → default level 3 (mirrors repository IFNULL behavior)
+    expect(selfDeclaredValueForLevel(9)).toBe(100);
+    expect(selfDeclaredValueForLevel(undefined as unknown as number)).toBe(60);
+  });
+});
+
+describe('computeOverallPercentAt (C7)', () => {
+  const asOf = new Date('2026-06-01T00:00:00.000Z');
+
+  it('only counts evidence that occurred at or before asOf', () => {
+    const evidence = [
+      { value: 100, weight: 1, occurredAt: '2026-05-01T00:00:00.000Z' }, // eligible
+      { value: 20, weight: 1, occurredAt: '2026-07-01T00:00:00.000Z' }, // after asOf → excluded
+    ];
+    expect(computeOverallPercentAt(evidence, 60, asOf)).toBe(100);
+  });
+
+  it('falls back when no evidence existed at asOf', () => {
+    expect(computeOverallPercentAt([{ value: 100, weight: 1, occurredAt: '2026-07-01T00:00:00.000Z' }], 60, asOf)).toBe(60);
   });
 });

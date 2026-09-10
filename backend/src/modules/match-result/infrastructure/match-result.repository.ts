@@ -34,8 +34,9 @@ export interface ResultInsert {
   branchId: number | null;
   resourceId: number | null;
   timezone: string | null;
-  participantPayload: ParticipantSlot[];
+participantPayload: ParticipantSlot[];
   rawResult: RawMatchResultPayload;
+  finalResult?: FinalResult | null;
   submissionStatus: MatchResultRecord['submissionStatus'];
   outcome: MatchResultRecord['outcome'];
   submittedBy?: number | null;
@@ -144,12 +145,12 @@ export class MatchResultRepository {
     const [rows] = await pool.execute<RowData>(
       `SELECT m.id AS match_id, m.sport_id, m.status,
               b.branch_id, b.resource_id,
-              COALESCE(ms.ended_at, ms.started_at, b.end_at_utc, b.start_at_utc) AS played_at,
+              (SELECT COALESCE(ms.ended_at, ms.started_at) FROM match_sessions ms
+               WHERE ms.match_id = m.id ORDER BY ms.id DESC LIMIT 1) AS played_at,
               br.timezone
        FROM matches m
        JOIN bookings b ON b.id = m.booking_id
        LEFT JOIN branches br ON br.id = b.branch_id
-       LEFT JOIN match_sessions ms ON ms.match_id = m.id
        WHERE m.id = ?`,
       [matchId],
     );
@@ -221,11 +222,11 @@ export class MatchResultRepository {
     const [res] = await pool.execute(
       `INSERT INTO match_result_records
          (match_id, sport_id, format_id, rule_set_id, rules_snapshot, match_type, played_at,
-          branch_id, resource_id, timezone, participant_payload, raw_result, outcome,
+          branch_id, resource_id, timezone, participant_payload, raw_result, final_result, outcome,
           submission_status, submitted_by, submitted_at, accepted_by, accepted_at, auto_approved,
           disputed_by, disputed_at, dispute_reason, resolved_by, resolved_at, resolution_note,
           submission_deadline_at, auto_approval_deadline_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         input.matchId,
         input.sportId,
@@ -239,6 +240,7 @@ export class MatchResultRepository {
         input.timezone,
         JSON.stringify(input.participantPayload),
         JSON.stringify(input.rawResult),
+        input.finalResult ? JSON.stringify(input.finalResult) : null,
         input.outcome,
         input.submissionStatus,
         input.submittedBy ?? null,
@@ -430,23 +432,25 @@ export class MatchResultRepository {
     return rows.map(ROW_MAPPER);
   }
 
-  /** Worker: eligible matches (status in_progress/completed with participants) that have no result and whose window expired. */
+  /** Worker: eligible matches (status in the eligible set) with no result and whose window expired. */
   async findExpiredNoResultMatches(now: string): Promise<Array<{ matchId: number; sportId: number; branchId: number | null; resourceId: number | null; playedAt: string; timezone: string | null; participantUserIds: number[] }>> {
     const pool = getPool();
     const [rows] = await pool.execute<RowData>(
       `SELECT m.id AS match_id, m.sport_id, b.branch_id, b.resource_id,
-              COALESCE(ms.ended_at, ms.started_at, b.end_at_utc, b.start_at_utc) AS played_at,
+              (SELECT COALESCE(ms.ended_at, ms.started_at) FROM match_sessions ms
+               WHERE ms.match_id = m.id ORDER BY ms.id DESC LIMIT 1) AS played_at,
               br.timezone
        FROM matches m
        JOIN bookings b ON b.id = m.booking_id
        LEFT JOIN branches br ON br.id = b.branch_id
-       LEFT JOIN match_sessions ms ON ms.match_id = m.id
        LEFT JOIN match_result_records r ON r.match_id = m.id
        WHERE r.id IS NULL
-         AND m.status IN ('in_progress', 'completed')
+         AND m.status IN ('full', 'closed', 'in_progress', 'completed')
          AND (SELECT COUNT(*) FROM match_participants mp WHERE mp.match_id = m.id) >= 2
-         AND COALESCE(ms.ended_at, ms.started_at, b.end_at_utc, b.start_at_utc) IS NOT NULL
-         AND COALESCE(ms.ended_at, ms.started_at, b.end_at_utc, b.start_at_utc) <= ?`,
+         AND (SELECT COALESCE(ms.ended_at, ms.started_at) FROM match_sessions ms
+              WHERE ms.match_id = m.id ORDER BY ms.id DESC LIMIT 1) IS NOT NULL
+         AND (SELECT COALESCE(ms.ended_at, ms.started_at) FROM match_sessions ms
+              WHERE ms.match_id = m.id ORDER BY ms.id DESC LIMIT 1) <= ?`,
       [now],
     );
     const result: Array<{ matchId: number; sportId: number; branchId: number | null; resourceId: number | null; playedAt: string; timezone: string | null; participantUserIds: number[] }> = [];
@@ -463,6 +467,29 @@ export class MatchResultRepository {
       });
     }
     return result;
+  }
+
+  /**
+   * Concurrency-safe state transition for pending results (Part C8). The UPDATE
+   * only succeeds while submission_status is still 'pending_confirmation' — if a
+   * dispute landed first, zero rows are affected and the caller must not proceed.
+   */
+  async approvePending(resultId: number, fields: Record<string, unknown>): Promise<boolean> {
+    const pool = getPool();
+    const sets: string[] = [];
+    const params: any[] = [];
+    for (const [key, value] of Object.entries(fields)) {
+      const column = COLUMN_MAP[key] ?? key;
+      sets.push(`\`${column}\` = ?`);
+      params.push(typeof value === 'object' && value !== null ? JSON.stringify(value) : value);
+    }
+    if (!sets.length) return false;
+    params.push(resultId);
+    const [res] = await pool.execute(
+      `UPDATE match_result_records SET ${sets.join(', ')} WHERE id = ? AND submission_status = 'pending_confirmation'`,
+      params,
+    );
+    return Number((res as any).affectedRows) > 0;
   }
 }
 

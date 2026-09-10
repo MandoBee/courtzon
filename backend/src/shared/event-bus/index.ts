@@ -186,6 +186,7 @@ export interface DomainEventMap {
   'match:result-approved': BaseEvent & { matchId: number; resultId: number; approvedBy: number; allUserIds: number[] };
   'match:result-auto-approved': BaseEvent & { matchId: number; resultId: number; allUserIds: number[] };
   'match:result-disputed': BaseEvent & { matchId: number; resultId: number; disputedBy: number; allUserIds: number[] };
+  'match:result-withdrawn': BaseEvent & { matchId: number; resultId: number; submittedById: number; allUserIds: number[] };
   'match:result-no-result': BaseEvent & { matchId: number; resultId: number; allUserIds: number[] };
   'match:result-resolved': BaseEvent & { matchId: number; resultId: number; resolution: string; allUserIds: number[] };
 }

@@ -21,6 +21,15 @@ export function clampRating(value: number): number {
   return Math.max(20, Math.min(100, Math.round(value * 100) / 100));
 }
 
+/**
+ * Part B — Self Declared level mapping (مبتدئ 20 / متوسط 40 / جيد 60 /
+ * جيد جدًا 80 / ممتاز 100). Level order is 1..5.
+ */
+export function selfDeclaredValueForLevel(levelOrder: number): number {
+  const order = Math.max(1, Math.min(5, Math.round(levelOrder || 3)));
+  return clampRating(20 * order);
+}
+
 export interface RankedEvidence {
   value: number;
   weight: number;
@@ -41,4 +50,14 @@ export function computeOverallPercent(evidence: RankedEvidence[], fallback: numb
   }
   if (denominator <= 0) return clampRating(fallback);
   return clampRating(numerator / denominator);
+}
+
+/**
+ * Part C7 — point-in-time rating. Only evidence that occurred at or before
+ * `asOf` is eligible (weights passed in must already be decayed to `asOf`).
+ */
+export function computeOverallPercentAt(evidence: RankedEvidence[], fallback: number, asOf: Date): number {
+  const asOfMs = asOf.getTime();
+  const eligible = evidence.filter((e) => new Date(e.occurredAt).getTime() <= asOfMs);
+  return computeOverallPercent(eligible, fallback);
 }

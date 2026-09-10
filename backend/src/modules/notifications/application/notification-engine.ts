@@ -778,6 +778,18 @@ const eventGroups: EventGroupConfig[] = [
     },
   },
   {
+    events: ['match:result-withdrawn'],
+    handler: async (eventName, data, categorySlug) => {
+      for (const userId of data.allUserIds ?? []) {
+        await dispatchToUser({
+          userId, eventName, categorySlug, data,
+          relatedEntityType: 'match', relatedEntityId: String(data.matchId),
+          action: a(`/matches/${data.matchId}`), digestable: false,
+        });
+      }
+    },
+  },
+  {
     events: ['join_request:submitted'],
     handler: async (eventName, data, categorySlug) => {
       eventBusV2.emit('match:pending', { matchId: data.matchId, userId: data.userId, timestamp: new Date().toISOString() }, { aggregateType: 'match', aggregateId: String(0), aggregateVersion: 1 });
@@ -973,6 +985,7 @@ class NotificationEngine {
       'notification:broadcast',
       'match:result-submitted', 'match:result-approved', 'match:result-auto-approved',
       'match:result-disputed', 'match:result-no-result', 'match:result-resolved',
+      'match:result-withdrawn',
       'subscription:request-submitted', 'subscription:request-approved', 'subscription:request-rejected', 'subscription:request-reopened',
       'setting:updated', 'setting:profile-applied',
     ];

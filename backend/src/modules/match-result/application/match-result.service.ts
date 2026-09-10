@@ -5,7 +5,7 @@ import { createModuleLogger } from '../../../shared/utils/logger.js';
 import { matchResultRepository } from '../infrastructure/match-result.repository.js';
 import { ratingService } from './rating/rating.service.js';
 import { validateAndComputeFinal, RulesValidationError, outcomeCountsForRating } from './rules/rules-engine.js';
-import type { ParticipantSlot, MatchResultRecord, RawMatchResultPayload } from '../domain/match-result.types.js';
+import type { MatchResultParticipant, ParticipantSlot, MatchResultRecord, RawMatchResultPayload } from '../domain/match-result.types.js';
 import { ForbiddenError, NotFoundError } from '../../../shared/errors/app-error.js';
 
 const log = createModuleLogger('match-result');
@@ -38,7 +38,7 @@ export class MatchResultService {
       throw new RulesValidationError(`Results can only be submitted for matches that have started (status: ${context.status})`);
     }
     if (!context.playedAt) {
-      throw new RulesValidationError('This match has no play time recorded yet');
+      throw new RulesValidationError('This match has no recorded play time yet — start the match session before submitting a result');
     }
 
     const now = new Date().toISOString();
@@ -66,42 +66,73 @@ export class MatchResultService {
     }
 
     const existing = await matchResultRepository.findByMatchId(matchIdActual);
-    if (existing) {
+    if (existing && existing.submissionStatus !== 'withdrawn') {
       throw new RulesValidationError(`A result already exists for this match (${existing.submissionStatus})`);
     }
 
     const submissionStatus = 'pending_confirmation';
     const outcome = validated.outcome === 'completed' ? 'completed' : validated.outcome === 'abandoned' ? 'no_result' : validated.outcome;
-
-    const resultId = await matchResultRepository.insert({
-      matchId: matchIdActual,
-      sportId: context.sportId,
-      formatId: format.formatId,
-      ruleSetId: format.ruleSetId,
-      rulesSnapshot: format.rules,
-      matchType: 'public',
-      playedAt: context.playedAt,
-      branchId: context.branchId,
-      resourceId: context.resourceId,
-      timezone: context.timezone,
-      participantPayload: sides,
-      rawResult: payload,
-      outcome,
-      submissionStatus,
-      submittedBy: actorId,
-      submittedAt: now,
-      submissionDeadlineAt: addHours(context.playedAt, SUBMISSION_WINDOW_HOURS),
-      autoApprovalDeadlineAt: addHours(now, AUTO_APPROVAL_WINDOW_HOURS),
-    });
-
-    await matchResultRepository.replaceParticipants(resultId, matchIdActual, sides.map((s) => ({
+    const participantRows = sides.map((s) => ({
       userId: s.userId,
       teamIndex: s.teamIndex,
       side: s.side,
       outcome: validated.finalResult.sideOutcomes[s.side],
       matchEvidence: validated.finalResult.sideEvidence[s.side],
       evidenceCounted: outcomeCountsForRating(validated.outcome),
-    })));
+    }));
+
+    let resultId: number;
+    if (existing) {
+      // Part C3 — a withdrawn result row is reused for a fresh submission while
+      // the submission window remains valid (UNIQUE match_id preserved).
+      await matchResultRepository.updateResult(existing.id, {
+        rulesSnapshot: format.rules as unknown as Record<string, unknown>,
+        rawResult: payload,
+        finalResult: validated.finalResult,
+        outcome,
+        submissionStatus,
+        submittedBy: actorId,
+        submittedAt: now,
+        acceptedBy: null,
+        acceptedAt: null,
+        autoApproved: false,
+        disputedBy: null,
+        disputedAt: null,
+        disputeReason: null,
+        resolvedBy: null,
+        resolvedAt: null,
+        resolutionNote: null,
+        submissionDeadlineAt: addHours(context.playedAt, SUBMISSION_WINDOW_HOURS),
+        autoApprovalDeadlineAt: addHours(now, AUTO_APPROVAL_WINDOW_HOURS),
+        evidenceCounted: false,
+        ratingAppliedAt: null,
+      });
+      resultId = existing.id;
+    } else {
+      resultId = await matchResultRepository.insert({
+        matchId: matchIdActual,
+        sportId: context.sportId,
+        formatId: format.formatId,
+        ruleSetId: format.ruleSetId,
+        rulesSnapshot: format.rules,
+        matchType: 'public',
+        playedAt: context.playedAt,
+        branchId: context.branchId,
+        resourceId: context.resourceId,
+        timezone: context.timezone,
+        participantPayload: sides,
+        rawResult: payload,
+        finalResult: validated.finalResult,
+        outcome,
+        submissionStatus,
+        submittedBy: actorId,
+        submittedAt: now,
+        submissionDeadlineAt: addHours(context.playedAt, SUBMISSION_WINDOW_HOURS),
+        autoApprovalDeadlineAt: addHours(now, AUTO_APPROVAL_WINDOW_HOURS),
+      });
+    }
+
+    await matchResultRepository.replaceParticipants(resultId, matchIdActual, participantRows);
 
     await recordAudit({
       actorId,
@@ -123,6 +154,36 @@ export class MatchResultService {
     const record = await matchResultRepository.findById(resultId);
     if (!record) throw new NotFoundError('result not found after insert');
     return record;
+  }
+
+  /** Part C3 — the submitting player withdraws an unapproved, undisputed result while the window is open. */
+  async withdrawResult(matchId: number, actorId: number, ip?: string): Promise<MatchResultRecord> {
+    const matchIdActual = await matchResultRepository.resolveMatchId(matchId);
+    if (!matchIdActual) throw new NotFoundError('match not found');
+
+    const record = await matchResultRepository.findByMatchId(matchIdActual);
+    if (!record) throw new NotFoundError('no result to withdraw');
+
+    if (record.submittedBy !== actorId) throw new ForbiddenError('Only the submitter can withdraw a result');
+    if (record.submissionStatus !== 'pending_confirmation') {
+      throw new RulesValidationError(`A ${record.submissionStatus} result cannot be withdrawn`);
+    }
+    if (new Date().toISOString() > addHours(record.playedAt, SUBMISSION_WINDOW_HOURS)) {
+      throw new RulesValidationError('The result submission window (3 days after play) has closed');
+    }
+
+    await matchResultRepository.updateResult(record.id, { submission_status: 'withdrawn' });
+
+    await recordAudit({ actorId, action: 'match.result.withdrawn', entityType: 'match_result_records', entityId: record.id, ipAddress: ip });
+
+    await eventBusV2.emit(
+      'match:result-withdrawn',
+      { matchId: matchIdActual, resultId: record.id, submittedById: actorId, allUserIds: record.participantPayload.map((p) => p.userId) },
+      { aggregateType: 'match', aggregateId: String(matchIdActual), aggregateVersion: 1, actorId },
+    );
+    await eventBusV2.emit('match:updated', { matchId: matchIdActual }, { aggregateType: 'match', aggregateId: String(matchIdActual), aggregateVersion: 1 });
+
+    return (await matchResultRepository.findById(record.id))!;
   }
 
   /** Part E.81 — local cell only: unapproved / undisputed results may be replaced while the window is open. */
@@ -163,6 +224,7 @@ export class MatchResultService {
     await matchResultRepository.updateResult(record.id, {
       rulesSnapshot: format.rules as unknown as Record<string, unknown>,
       raw_result: payload,
+      finalResult: validated.finalResult,
       outcome: validated.outcome === 'abandoned' ? 'no_result' : validated.outcome,
       submission_status: 'pending_confirmation',
       submitted_at: now,
@@ -208,12 +270,15 @@ export class MatchResultService {
     if (!context.participantUserIds.includes(actorId)) throw new ForbiddenError('Only match participants can accept a result');
 
     const now = new Date().toISOString();
-    await matchResultRepository.updateResult(record.id, {
+    const accepted = await matchResultRepository.approvePending(record.id, {
       submission_status: 'approved',
       accepted_by: actorId,
       accepted_at: now,
       auto_approved: false,
     });
+    if (!accepted) {
+      throw new RulesValidationError('This result is no longer pending confirmation');
+    }
 
     await recordAudit({ actorId, action: 'match.result.accepted', entityType: 'match_result_records', entityId: record.id, ipAddress: ip });
 
@@ -283,6 +348,7 @@ export class MatchResultService {
       await matchResultRepository.updateResult(record.id, {
         submission_status: 'approved',
         raw_result: resolution.displayResult,
+        finalResult: validated.finalResult,
         outcome: validated.outcome === 'abandoned' ? 'no_result' : validated.outcome,
         accepted_by: actorId,
         accepted_at: now,
@@ -306,6 +372,7 @@ export class MatchResultService {
       await matchResultRepository.updateResult(record.id, {
         submission_status: 'approved',
         outcome: 'no_result',
+        finalResult: null,
         resolved_by: actorId,
         resolved_at: now,
         resolution_note: resolution.note ?? null,
@@ -347,8 +414,18 @@ export class MatchResultService {
       throw new RulesValidationError('Invalid result payload');
     }
 
+    // Part C9 — the audit must preserve the pre-correction state.
+    const beforeState = {
+      raw_result: record.rawResult,
+      final_result: record.finalResult,
+      outcome: record.outcome,
+      submission_status: record.submissionStatus,
+    };
+    const oldParticipants = await matchResultRepository.getParticipants(record.id);
+
     await matchResultRepository.updateResult(record.id, {
       raw_result: payload,
+      finalResult: validated.finalResult,
       outcome: validated.outcome === 'abandoned' ? 'no_result' : validated.outcome,
       resolution_note: 'corrected',
     });
@@ -360,16 +437,37 @@ export class MatchResultService {
       matchEvidence: validated.finalResult.sideEvidence[s.side],
       evidenceCounted: outcomeCountsForRating(validated.outcome),
     })));
-    await this.applyRatingForRecord(record.id, record.matchId);
 
-    await recordAudit({ actorId, action: 'match.result.corrected', entityType: 'match_result_records', entityId: record.id, afterState: validated.finalResult as unknown as Record<string, unknown>, ipAddress: ip });
+    // Part C1 — force re-application: recompute evidence idempotently via the
+    // same source/source_ref mechanism, recalculate ratings immediately.
+    await this.applyRatingForRecord(record.id, record.matchId, { force: true, oldParticipants });
+
+    await recordAudit({
+      actorId,
+      action: 'match.result.corrected',
+      entityType: 'match_result_records',
+      entityId: record.id,
+      beforeState: beforeState as unknown as Record<string, unknown>,
+      afterState: validated.finalResult as unknown as Record<string, unknown>,
+      ipAddress: ip,
+    });
     await eventBusV2.emit('match:updated', { matchId: record.matchId }, { aggregateType: 'match', aggregateId: String(record.matchId), aggregateVersion: 1 });
 
     return (await matchResultRepository.findById(record.id))!;
   }
 
-  /** Part B.60-70 — deterministic, idempotent rating application for an approved result. */
-  async applyRatingForRecord(resultId: number, matchId: number): Promise<void> {
+  /**
+   * Part B.60-70 / C1 — deterministic, idempotent rating application for an
+   * approved result. When `force` is true (correction) the already-applied
+   * guard is bypassed so evidence is re-applied idempotently via the existing
+   * source/source_ref mechanism (no duplicate evidence rows).
+   */
+  async applyRatingForRecord(
+    resultId: number,
+    matchId: number,
+    opts: { force?: boolean; oldParticipants?: MatchResultParticipant[] } = {},
+  ): Promise<void> {
+    const { force = false, oldParticipants = [] } = opts;
     const pool = getPool();
     const conn = await pool.getConnection();
     try {
@@ -381,7 +479,7 @@ export class MatchResultService {
       ) as any;
       const row = rows[0];
       if (!row) return;
-      if (row.evidence_counted && row.rating_applied_at) {
+      if (!force && row.evidence_counted && row.rating_applied_at) {
         await conn.rollback();
         return;
       }
@@ -393,19 +491,26 @@ export class MatchResultService {
 
       if (row.outcome !== 'no_result' && parts.length) {
         for (const p of parts) {
-          const snapshot = await ratingService.resolveOverallPercent(p.user_id, row.sport_id);
+          const evidenceValue = Number(p.match_evidence);
+          const valuePercent = Number.isFinite(evidenceValue) ? evidenceValue : 50;
+          const snapshot = await ratingService.resolveOverallPercentAt(p.user_id, row.sport_id, row.played_at);
           const { before, after } = await ratingService.applyEvidence({
             userId: p.user_id,
             sportId: row.sport_id,
             evidenceType: 'match_evidence',
-            valuePercent: Number(p.match_evidence) ?? 50,
+            valuePercent,
             source: 'match_result',
             sourceRefId: row.id,
             occurredAt: row.played_at,
             changedBy: p.user_id,
             reason: `match result ${row.outcome}`,
           });
-          await ratingService.recordMatchStat(p.user_id, row.sport_id, p.outcome);
+          if (force) {
+            const old = oldParticipants.find((op) => Number(op.userId) === Number(p.user_id));
+            await ratingService.adjustMatchStat(p.user_id, row.sport_id, old?.outcome ?? null, p.outcome);
+          } else {
+            await ratingService.recordMatchStat(p.user_id, row.sport_id, p.outcome);
+          }
           await conn.execute(
             `UPDATE match_result_participants
              SET rating_snapshot_percent = ?, rating_before = ?, rating_after = ?, evidence_counted = 1
@@ -435,14 +540,14 @@ export class MatchResultService {
     let approved = 0;
     for (const record of due) {
       try {
-        const current = await matchResultRepository.findById(record.id);
-        if (!current || current.submissionStatus !== 'pending_confirmation') continue;
-        await matchResultRepository.updateResult(record.id, {
+        // Part C8 — concurrency-safe: only succeeds while still pending.
+        const ok = await matchResultRepository.approvePending(record.id, {
           submission_status: 'approved',
           accepted_by: null,
           accepted_at: now,
           auto_approved: true,
         });
+        if (!ok) continue;
         await recordAudit({ actorId: null, action: 'match.result.auto_approved', entityType: 'match_result_records', entityId: record.id, reason: 'auto-approval deadline reached' });
         await this.applyRatingForRecord(record.id, record.matchId);
         await eventBusV2.emit('match:result-auto-approved', { matchId: record.matchId, resultId: record.id, allUserIds: record.participantPayload.map((p) => p.userId) }, { aggregateType: 'match', aggregateId: String(record.matchId), aggregateVersion: 1 });

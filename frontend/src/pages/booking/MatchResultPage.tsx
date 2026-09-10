@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../services/api';
-import { fetchMatchResult, submitMatchResult, replaceMatchResult, acceptMatchResult, disputeMatchResult, fetchSportFormats } from '../../services/match-result.api';
+import { fetchMatchResult, submitMatchResult, replaceMatchResult, withdrawMatchResult, acceptMatchResult, disputeMatchResult, fetchSportFormats } from '../../services/match-result.api';
 import { useToast } from '../../components/ui/Toast';
 import { useAuthStore } from '../../store/auth.store';
 import { useTranslation } from '../../i18n';
@@ -24,6 +24,15 @@ function hasParticipant(participantsJson: unknown, userId: number): boolean {
       ? (() => { try { return JSON.parse(participantsJson); } catch { return []; } })()
       : [];
   return list.some((p: any) => Number(p.userId) === Number(userId));
+}
+
+const SUBMISSION_WINDOW_MS = 72 * 3600 * 1000;
+
+function windowExpired(playedAt?: string | null): boolean {
+  if (!playedAt) return false;
+  const t = new Date(playedAt).getTime();
+  if (!Number.isFinite(t)) return false;
+  return Date.now() > t + SUBMISSION_WINDOW_MS;
 }
 
 export default function MatchResultPage() {
@@ -91,6 +100,16 @@ export default function MatchResultPage() {
     onError: (err: any) => showToast(err?.response?.data?.message || t('common.error'), 'error'),
   });
 
+  const withdrawMutation = useMutation({
+    mutationFn: () => withdrawMatchResult(Number(id)),
+    onSuccess: () => {
+      showToast(t('matchResult.withdrawnToast'));
+      setEditing(false);
+      invalidate();
+    },
+    onError: (err: any) => showToast(err?.response?.data?.message || t('common.error'), 'error'),
+  });
+
   const acceptMutation = useMutation({
     mutationFn: () => acceptMatchResult(Number(id)),
     onSuccess: () => {
@@ -127,7 +146,7 @@ export default function MatchResultPage() {
       <div className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] p-4 mb-4">
         <div className="grid grid-cols-2 gap-3 text-sm">
           <div><span className="text-[var(--color-text-muted)]">{t('matchResult.sport')}:</span> {match.sport_name}</div>
-          <div><span className="text-[var(--color-text-muted)]">{t('matchResult.playedAt')}:</span> {formatDateTime(match.booking_date)}</div>
+          <div><span className="text-[var(--color-text-muted)]">{t('matchResult.playedAt')}:</span> {formatDateTime(record?.playedAt || match.played_at || match.booking_date)}</div>
         </div>
       </div>
 
@@ -199,6 +218,26 @@ export default function MatchResultPage() {
                 >
                   {editing ? t('common.cancel') : t('matchResult.replace')}
                 </button>
+                <button
+                  onClick={() => withdrawMutation.mutate()}
+                  disabled={withdrawMutation.isPending}
+                  className="px-4 py-2 text-sm font-medium border border-[var(--color-error)] text-[var(--color-error)] rounded-[var(--radius-md)] hover:bg-[var(--color-error)]/10 disabled:opacity-50"
+                >
+                  {t('matchResult.withdraw')}
+                </button>
+              </Can>
+            </div>
+          )}
+
+          {isSubmitter && record.submissionStatus === 'withdrawn' && (
+            <div className="mb-4">
+              <Can permission="matches.result.submit">
+                <button
+                  onClick={() => setEditing((v) => !v)}
+                  className="px-4 py-2 text-sm font-medium bg-[var(--color-primary)] text-white rounded-[var(--radius-md)] hover:opacity-90"
+                >
+                  {editing ? t('common.cancel') : t('matchResult.enterResult')}
+                </button>
               </Can>
             </div>
           )}
@@ -209,6 +248,10 @@ export default function MatchResultPage() {
             <p className="text-sm text-[var(--color-text-muted)]">{t('matchResult.notParticipant')}</p>
           ) : !rules ? (
             <p className="text-sm text-[var(--color-text-muted)]">{t('matchResult.noRules')}</p>
+          ) : !match.played_at ? (
+            <p className="text-sm text-[var(--color-text-muted)]">{t('matchResult.noPlayTime')}</p>
+          ) : windowExpired(match.played_at) ? (
+            <p className="text-sm text-[var(--color-text-muted)]">{t('matchResult.expiredState')}</p>
           ) : (
             <div className={`space-y-4 ${editing ? 'opacity-50 pointer-events-none' : ''}`}>
               <h2 className="text-sm font-semibold text-[var(--color-text-muted)]">{t('matchResult.enterScore')}</h2>
@@ -230,15 +273,34 @@ export default function MatchResultPage() {
 
       {record && isSubmitter && editing && rules && (
         <div className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] p-4 mb-4 space-y-4">
-          <h2 className="text-sm font-semibold text-[var(--color-text-muted)]">{t('matchResult.editScore')}</h2>
-          <DynamicResultForm rules={rules} value={record.rawResult} onChange={setPayload} />
-          <button
-            onClick={() => replaceMutation.mutate()}
-            disabled={replaceMutation.isPending}
-            className="w-full px-4 py-2 text-sm font-medium bg-[var(--color-primary)] text-white rounded-[var(--radius-md)] hover:opacity-90 disabled:opacity-50"
-          >
-            {t('matchResult.saveReplacement')}
-          </button>
+          {record.submissionStatus === 'withdrawn' && (
+            <p className="text-sm text-[var(--color-text-muted)]">{t('matchResult.withdrawnResubmit')}</p>
+          )}
+          <h2 className="text-sm font-semibold text-[var(--color-text-muted)]">
+            {record.submissionStatus === 'withdrawn' ? t('matchResult.enterScore') : t('matchResult.editScore')}
+          </h2>
+          <DynamicResultForm
+            rules={rules}
+            value={record.submissionStatus === 'withdrawn' ? payload : record.rawResult}
+            onChange={setPayload}
+          />
+          {record.submissionStatus === 'withdrawn' ? (
+            <button
+              onClick={() => submitMutation.mutate()}
+              disabled={submitMutation.isPending || !payload.outcome}
+              className="w-full px-4 py-2 text-sm font-medium bg-[var(--color-primary)] text-white rounded-[var(--radius-md)] hover:opacity-90 disabled:opacity-50"
+            >
+              {t('matchResult.submit')}
+            </button>
+          ) : (
+            <button
+              onClick={() => replaceMutation.mutate()}
+              disabled={replaceMutation.isPending}
+              className="w-full px-4 py-2 text-sm font-medium bg-[var(--color-primary)] text-white rounded-[var(--radius-md)] hover:opacity-90 disabled:opacity-50"
+            >
+              {t('matchResult.saveReplacement')}
+            </button>
+          )}
         </div>
       )}
     </div>
