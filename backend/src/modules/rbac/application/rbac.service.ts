@@ -2,6 +2,7 @@ import { getPool } from '../../../database/mysql.js';
 import type mysql from 'mysql2/promise';
 import { rbacRepository } from '../infrastructure/repositories/rbac.repository.js';
 import { permissionMatchesTemplate, TEMPLATE_SLUGS } from './role-permission-templates.js';
+import { ratingService } from '../../match-result/application/rating/rating.service.js';
 import { NotFoundError, ConflictError } from '../../../shared/errors/app-error.js';
 import { eventBus } from '../../../shared/event-bus/index.js';
 import { hashPassword } from '../../../shared/utils/password.js';
@@ -162,6 +163,15 @@ export class RBACService {
         try { eventBus.emit('user:suspended' as any, { userId, reason: 'Admin action' }); } catch {}
       } else if (data.accountStatus === 'active' && prevStatus === 'suspended') {
         try { eventBus.emit('user:activated' as any, { userId }); } catch {}
+      }
+    }
+    // Round 2 (Item 2) — a self-declared level/sport change must immediately
+    // recalculate that player's Overall Rating (idempotent; other sports untouched).
+    if (data.mainLevelId !== undefined || data.mainSportId !== undefined) {
+      try {
+        await ratingService.recalculateSelfDeclaredForUser(userId);
+      } catch {
+        // rating failure must never break the user update itself
       }
     }
     const updated = await this.getUserById(userId);

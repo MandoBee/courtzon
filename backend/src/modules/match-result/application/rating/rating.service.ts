@@ -53,7 +53,7 @@ export class RatingService {
   /** Recompute Overall Rating from all (decayed) evidence; upsert + history. */
   async recalculate(userId: number, sportId: number, changedBy: number | null, reason?: string, sourceRef?: string): Promise<number> {
     await this.syncSelfDeclaredEvidence(userId, sportId);
-    const evidence = await ratingRepository.getEvidence(userId, sportId);
+    const evidence = (await ratingRepository.getEvidence(userId, sportId)).filter((e) => !isInactiveEvidence(e));
     const fallback = await ratingRepository.getSelfDeclaredPercent(userId, sportId);
 
     const ranked = evidence.map((e) => ({
@@ -77,7 +77,7 @@ export class RatingService {
     const existing = await ratingRepository.getRating(userId, sportId);
     if (existing) return existing.overallPercent;
     const fallback = await ratingRepository.getSelfDeclaredPercent(userId, sportId);
-    const evidence = await ratingRepository.getEvidence(userId, sportId);
+    const evidence = (await ratingRepository.getEvidence(userId, sportId)).filter((e) => !isInactiveEvidence(e));
     const ranked = evidence.map((e) => ({
       value: e.valuePercent,
       weight: EVIDENCE_WEIGHTS[(e.evidenceType as RatingEvidenceType) ?? 'match'] * decayFactor(e.occurredAt),
@@ -118,7 +118,7 @@ export class RatingService {
    * Only evidence that occurred at/before `asOf` is eligible, decayed to `asOf`.
    */
   async resolveOverallPercentAt(userId: number, sportId: number, asOf: Date | string): Promise<number> {
-    const evidence = await ratingRepository.getEvidence(userId, sportId);
+    const evidence = (await ratingRepository.getEvidence(userId, sportId)).filter((e) => !isInactiveEvidence(e));
     const fallback = await ratingRepository.getSelfDeclaredPercent(userId, sportId);
     const asOfDate = asOf instanceof Date ? asOf : new Date(asOf);
     const ranked = evidence.map((e) => ({
@@ -127,6 +127,31 @@ export class RatingService {
       occurredAt: e.occurredAt,
     }));
     return computeOverallPercentAt(ranked, fallback, asOfDate);
+  }
+
+  /**
+   * Round 2 (Item 1) — flip the active/counting state of a source's evidence
+   * (e.g. all Match Evidence rows for a result) without deleting history.
+   */
+  async setMatchEvidenceActive(source: string, sourceRefId: number, active: boolean): Promise<void> {
+    await ratingRepository.setEvidenceActive(source, sourceRefId, active);
+  }
+
+  /**
+   * Round 2 (Item 2) — immediate Overall Rating recalculation after a
+   * self-declared level/sport change. Only touches sports where the player has
+   * Self Declared evidence or their declared main sport. Idempotent: identical
+   * declarations produce no evidence/history churn.
+   */
+  async recalculateSelfDeclaredForUser(userId: number): Promise<void> {
+    const sportIds = await ratingRepository.getSelfDeclaredSportIds(userId);
+    const mainSport = await ratingRepository.getMainSportId(userId);
+    const targets = new Set(sportIds);
+    if (mainSport != null) targets.add(mainSport);
+    for (const sportId of targets) {
+      await this.syncSelfDeclaredEvidence(userId, sportId);
+      await this.recalculate(userId, sportId, null, 'self-declared level/sport updated');
+    }
   }
 
   /** Count tracked match stats on the player_ratings row (evidence counts). */
@@ -172,6 +197,12 @@ export class RatingService {
 }
 
 export const ratingService = new RatingService();
+
+/** Round 2 (Item 1) — evidence flagged inactive (meta.active === false) is stored
+ *  but never contributes to Overall Rating. */
+function isInactiveEvidence(e: { meta?: Record<string, unknown> | null }): boolean {
+  return e.meta != null && e.meta.active === false;
+}
 
 export function logRatingError(err: unknown, context: string): void {
   log.error({ err }, `rating.${context} failed`);

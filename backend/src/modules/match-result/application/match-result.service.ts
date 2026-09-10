@@ -438,9 +438,16 @@ export class MatchResultService {
       evidenceCounted: outcomeCountsForRating(validated.outcome),
     })));
 
-    // Part C1 — force re-application: recompute evidence idempotently via the
-    // same source/source_ref mechanism, recalculate ratings immediately.
-    await this.applyRatingForRecord(record.id, record.matchId, { force: true, oldParticipants });
+    // Part C1 — re-apply evidence idempotently and recalculate immediately.
+    const wasCounted = outcomeCountsForRating(record.outcome);
+    const nowCounted = outcomeCountsForRating(validated.outcome);
+    if (nowCounted) {
+      await this.applyRatingForRecord(record.id, record.matchId, { force: true, oldParticipants });
+    } else if (wasCounted) {
+      // Round 2 (Item 1) — counted → no-result: keep historical evidence stored
+      // but mark it inactive so it no longer contributes; recalc each player.
+      await this.invalidateResultEvidence(record.id, record.matchId);
+    }
 
     await recordAudit({
       actorId,
@@ -454,6 +461,62 @@ export class MatchResultService {
     await eventBusV2.emit('match:updated', { matchId: record.matchId }, { aggregateType: 'match', aggregateId: String(record.matchId), aggregateVersion: 1 });
 
     return (await matchResultRepository.findById(record.id))!;
+  }
+
+  /**
+   * Round 2 (Item 1) — an approved result corrected to No Result keeps its
+   * historical Match Evidence rows (never deleted) but marks them inactive so
+   * they stop contributing to Overall Rating. Each participant's rating is
+   * recalculated immediately and their stored rating_after reflects the new
+   * rating.
+   */
+  private async invalidateResultEvidence(resultId: number, matchId: number): Promise<void> {
+    const pool = getPool();
+    const conn = await pool.getConnection();
+    try {
+      await conn.beginTransaction();
+
+      const [rows] = await conn.execute(
+        'SELECT * FROM match_result_records WHERE id = ?',
+        [resultId],
+      ) as any;
+      const row = rows[0];
+      if (!row) return;
+
+      await ratingService.setMatchEvidenceActive('match_result', resultId, false);
+
+      const [parts] = await conn.execute(
+        'SELECT * FROM match_result_participants WHERE result_id = ?',
+        [resultId],
+      ) as any;
+      for (const p of parts) {
+        const before = await ratingService.resolveOverallPercent(p.user_id, row.sport_id);
+        const after = await ratingService.recalculate(
+          p.user_id,
+          row.sport_id,
+          null,
+          'match result corrected to no_result',
+          `match_result:${resultId}`,
+        );
+        await conn.execute(
+          `UPDATE match_result_participants
+           SET rating_before = ?, rating_after = ?, evidence_counted = 0
+           WHERE id = ?`,
+          [before, after, p.id],
+        );
+      }
+
+      await conn.execute(
+        `UPDATE match_result_records SET evidence_counted = 0, rating_applied_at = NULL WHERE id = ?`,
+        [resultId],
+      );
+      await conn.commit();
+    } catch (err) {
+      await conn.rollback();
+      throw err;
+    } finally {
+      conn.release();
+    }
   }
 
   /**
@@ -490,6 +553,9 @@ export class MatchResultService {
       ) as any;
 
       if (row.outcome !== 'no_result' && parts.length) {
+        // Round 2 (Item 1) — ensure evidence is active/counting (reactivates a
+        // previously invalidated No-Result correction without a new row).
+        await ratingService.setMatchEvidenceActive('match_result', row.id, true);
         for (const p of parts) {
           const evidenceValue = Number(p.match_evidence);
           const valuePercent = Number.isFinite(evidenceValue) ? evidenceValue : 50;

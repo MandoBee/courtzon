@@ -195,6 +195,44 @@ export class RatingRepository {
       [delta.matches, delta.wins, delta.draws, delta.losses, userId, sportId],
     );
   }
+
+  /**
+   * Round 2 (Item 1) — mark a source's evidence active/inactive WITHOUT deleting
+   * historical rows. Inactive evidence remains stored but no longer contributes
+   * to Overall Rating.
+   */
+  async setEvidenceActive(source: string, sourceRefId: number, active: boolean): Promise<void> {
+    const pool = getPool();
+    await pool.execute(
+      `UPDATE rating_evidence
+       SET meta = JSON_SET(COALESCE(meta, JSON_OBJECT()), '$.active', ?)
+       WHERE source = ? AND source_ref_id = ?`,
+      [active ? 1 : 0, source, sourceRefId],
+    );
+  }
+
+  /** Distinct sports where the user currently has Self Declared evidence. */
+  async getSelfDeclaredSportIds(userId: number): Promise<number[]> {
+    const pool = getPool();
+    const [rows] = await pool.execute<RowData>(
+      `SELECT DISTINCT sport_id FROM rating_evidence
+       WHERE user_id = ? AND evidence_type = 'self_declared'`,
+      [userId],
+    );
+    return rows.map((r: any) => Number(r.sport_id));
+  }
+
+  /** The player's declared main sport (player_profiles.main_sport_id). */
+  async getMainSportId(userId: number): Promise<number | null> {
+    const pool = getPool();
+    const [rows] = await pool.execute<RowData>(
+      `SELECT main_sport_id FROM player_profiles WHERE user_id = ? LIMIT 1`,
+      [userId],
+    );
+    if (!rows.length) return null;
+    const v = (rows[0] as any).main_sport_id;
+    return v == null ? null : Number(v);
+  }
 }
 
 export const ratingRepository = new RatingRepository();
