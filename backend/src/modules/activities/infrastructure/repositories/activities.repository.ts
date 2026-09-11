@@ -254,33 +254,21 @@ export const activitiesRepository = {
   },
 
   async findEnrollments(academyId: number) {
-    const pool = getPool();
-    const [rows] = await pool.execute<RowData>(
-      `SELECT ae.*, u.full_name as player_name, ac.name as curriculum_name
-       FROM academy_enrollments ae
-       JOIN users u ON ae.player_id = u.id
-       LEFT JOIN academy_curriculums ac ON ae.curriculum_id = ac.id
-       WHERE ae.academy_id = ?`,
-      [academyId]
-    );
-    return rows;
+    // G1 quarantine: the legacy academy enrollment path wrote obsolete
+    // academy_id/curriculum_id columns into the NEW academy_enrollments schema.
+    // Fail explicitly instead of corrupting the new-model table. The new
+    // Academy module (/admin/academy) is authoritative.
+    throw new Error('LEGACY_ACADEMY_ENROLLMENT_DISABLED: use the new Academy module (/admin/academy)');
   },
 
   async enrollPlayer(academyId: number, playerId: number, curriculumId?: number) {
-    const pool = getPool();
-    const [result] = await pool.execute(
-      'INSERT INTO academy_enrollments (academy_id, curriculum_id, player_id) VALUES (?, ?, ?)',
-      [academyId, curriculumId || null, playerId]
-    );
-    return (result as any).insertId;
+    // G1 quarantine: see findEnrollments. The obsolete write is disabled.
+    throw new Error('LEGACY_ACADEMY_ENROLLMENT_DISABLED: use the new Academy module (/admin/academy)');
   },
 
   async updateEnrollmentStatus(academyId: number, playerId: number, status: string) {
-    const pool = getPool();
-    await pool.execute(
-      'UPDATE academy_enrollments SET status = ? WHERE academy_id = ? AND player_id = ?',
-      [status, academyId, playerId]
-    );
+    // G1 quarantine: see findEnrollments. The obsolete write is disabled.
+    throw new Error('LEGACY_ACADEMY_ENROLLMENT_DISABLED: use the new Academy module (/admin/academy)');
   },
 
   async findAcademySessions(academyId: number) {

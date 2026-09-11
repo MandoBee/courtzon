@@ -1,6 +1,28 @@
 import { ConflictError } from '../../../shared/errors/app-error.js';
 import { ErrorCodes } from '../../../shared/errors/error-codes.js';
-import type { AcademyProgramStatus, AcademyEnrollmentStatus } from './academy.types.js';
+import type { AcademyProgramStatus, AcademyEnrollmentStatus, AcademyLifecycleState } from './academy.types.js';
+
+/**
+ * G1 — Academy ownership lifecycle foundation. An Academy starts in `setup`
+ * (coach / compensation / ownership editable) and moves to `confirmed` exactly
+ * once; `confirmed` is terminal for G1 (coach, compensation and ownership
+ * identity become locked).
+ */
+const LIFECYCLE_TRANSITIONS: Record<AcademyLifecycleState, AcademyLifecycleState[]> = {
+  setup: ['confirmed'],
+  confirmed: [],
+};
+
+export function validateLifecycleTransition(from: AcademyLifecycleState, to: AcademyLifecycleState): void {
+  if (from === to) return;
+  const allowed = LIFECYCLE_TRANSITIONS[from];
+  if (!allowed || !allowed.includes(to)) {
+    throw new ConflictError(
+      `Cannot transition Academy lifecycle from '${from}' to '${to}'`,
+      ErrorCodes.ACADEMY_INVALID_TRANSITION,
+    );
+  }
+}
 
 const PROGRAM_TRANSITIONS: Record<AcademyProgramStatus, AcademyProgramStatus[]> = {
   draft: ['published'],

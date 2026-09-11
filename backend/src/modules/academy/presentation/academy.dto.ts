@@ -15,6 +15,10 @@ export const CreateProgramSchema = z.object({
   price_type: z.enum(['FREE', 'FIXED', 'MEMBERS_ONLY']).optional().default('FIXED'),
   status: z.enum(['draft', 'published', 'open', 'full', 'running', 'completed', 'cancelled', 'archived']).optional().default('draft'),
   is_public: z.boolean().optional().default(true),
+  // G1 — ownership
+  organisation_id: z.number().int().positive(),
+  branch_id: z.number().int().positive().optional().nullable(),
+  sport_id: z.number().int().positive().optional().nullable(),
 });
 
 export const UpdateProgramSchema = z.object({
@@ -30,6 +34,9 @@ export const UpdateProgramSchema = z.object({
   price_type: z.enum(['FREE', 'FIXED', 'MEMBERS_ONLY']).optional(),
   status: z.enum(['draft', 'published', 'open', 'full', 'running', 'completed', 'cancelled', 'archived']).optional(),
   is_public: z.boolean().optional(),
+  organisation_id: z.number().int().positive().optional(),
+  branch_id: z.number().int().positive().optional().nullable(),
+  sport_id: z.number().int().positive().optional().nullable(),
 });
 
 export const ListProgramsQuerySchema = z.object({
@@ -65,6 +72,15 @@ export const UpdateGroupSchema = z.object({
 export const AssignCoachSchema = z.object({
   coach_id: z.number().int().positive().nullable(),
 });
+
+/** G1 — coach compensation configuration (institution expense; CourtZon takes no share). */
+export const SetCompensationSchema = z.object({
+  comp_type: z.enum(['fixed_total', 'fixed_per_session', 'percent_gross']),
+  comp_value: z.number().min(0),
+  comp_currency: z.string().length(3).optional().nullable(),
+});
+
+export const ConfirmAcademySchema = z.object({}).optional();
 
 export const ListGroupsQuerySchema = z.object({
   page: z.coerce.number().int().positive().optional().default(1),

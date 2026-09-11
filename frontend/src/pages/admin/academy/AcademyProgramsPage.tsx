@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import api from '../../../services/api';
 import { academyApi } from '../../../services/academy';
 import { Can } from '../../../permissions/Can';
 import { useToast } from '../../../components/ui/Toast';
@@ -19,6 +20,11 @@ const STATUS_BADGES: Record<string, string> = {
   archived: 'bg-gray-100 text-gray-500',
 };
 
+const LIFECYCLE_BADGES: Record<string, string> = {
+  setup: 'bg-amber-100 text-amber-700',
+  confirmed: 'bg-green-100 text-green-700',
+};
+
 const PRICE_TYPES = ['FREE', 'FIXED', 'MEMBERS_ONLY'];
 
 export default function AcademyProgramsPage() {
@@ -33,6 +39,21 @@ export default function AcademyProgramsPage() {
   const [form, setForm] = useState<any>({
     code: '', name: '', description: '', category: '', level: '', season: '',
     capacity: 0, price: 0, currency: 'USD', price_type: 'FIXED', is_public: true,
+    organisation_id: '', branch_id: '', sport_id: '',
+  });
+
+  const { data: orgs } = useQuery({
+    queryKey: ['admin', 'organisations', { limit: 500 }],
+    queryFn: () => api.get('/organisations').then((r) => r.data?.data ?? []),
+  });
+  const { data: branches } = useQuery({
+    queryKey: ['admin', 'branches', form.organisation_id],
+    queryFn: () => api.get(`/organisations/${form.organisation_id}/branches`).then((r) => r.data?.data ?? []),
+    enabled: !!form.organisation_id,
+  });
+  const { data: sports } = useQuery({
+    queryKey: ['admin', 'sports'],
+    queryFn: () => api.get('/sports').then((r) => r.data?.data ?? []),
   });
 
   const queryParams: Record<string, any> = { page, limit: 20 };
@@ -56,6 +77,12 @@ export default function AcademyProgramsPage() {
     onError: (err) => showToast(getErrorMessage(err), 'error'),
   });
 
+  const confirmMutation = useMutation({
+    mutationFn: (id: number) => academyApi.confirmProgram(id),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['admin', 'academy', 'programs'] }); showToast(t('admin.academy.program_confirmed')); },
+    onError: (err) => showToast(getErrorMessage(err), 'error'),
+  });
+
   const publishMutation = useMutation({
     mutationFn: (id: number) => academyApi.publishProgram(id),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['admin', 'academy', 'programs'] }); showToast(t('admin.academy.program_published')); },
@@ -69,18 +96,25 @@ export default function AcademyProgramsPage() {
   });
 
   function resetForm() {
-    setForm({ code: '', name: '', description: '', category: '', level: '', season: '', capacity: 0, price: 0, currency: 'USD', price_type: 'FIXED', is_public: true });
+    setForm({ code: '', name: '', description: '', category: '', level: '', season: '', capacity: 0, price: 0, currency: 'USD', price_type: 'FIXED', is_public: true, organisation_id: '', branch_id: '', sport_id: '' });
   }
 
   function openEdit(p: any) {
     setEditId(p.id);
-    setForm({ code: p.code, name: p.name, description: p.description || '', category: p.category, level: p.level || '', season: p.season || '', capacity: p.capacity, price: p.price, currency: p.currency, price_type: p.price_type, is_public: !!p.is_public });
+    setForm({ code: p.code, name: p.name, description: p.description || '', category: p.category, level: p.level || '', season: p.season || '', capacity: p.capacity, price: p.price, currency: p.currency, price_type: p.price_type, is_public: !!p.is_public, organisation_id: p.organisation_id ?? '', branch_id: p.branch_id ?? '', sport_id: p.sport_id ?? '' });
     setShowForm(true);
   }
 
   function handleSubmit() {
-    if (editId) updateMutation.mutate({ id: editId, ...form });
-    else createMutation.mutate(form);
+    const data = {
+      ...form,
+      organisation_id: form.organisation_id ? Number(form.organisation_id) : undefined,
+      branch_id: form.branch_id ? Number(form.branch_id) : null,
+      sport_id: form.sport_id ? Number(form.sport_id) : null,
+    };
+    if (!data.organisation_id) { showToast(t('admin.academy.organisation_required'), 'error'); return; }
+    if (editId) updateMutation.mutate({ id: editId, ...data });
+    else createMutation.mutate(data);
   }
 
   const programs = data?.data ?? [];
@@ -125,6 +159,31 @@ export default function AcademyProgramsPage() {
               <label className="block text-xs font-medium text-[var(--color-text-muted)] mb-1">{t('admin.academy.season')}</label>
               <input value={form.season} onChange={e => setForm((f: any) => ({ ...f, season: e.target.value }))}
                 className="w-full px-2 py-1.5 rounded-[var(--radius-md)] border text-sm bg-white" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-[var(--color-text-muted)] mb-1">{t('admin.academy.organisation')} *</label>
+              <select value={form.organisation_id} onChange={e => setForm((f: any) => ({ ...f, organisation_id: e.target.value, branch_id: '' }))}
+                className="w-full px-2 py-1.5 rounded-[var(--radius-md)] border text-sm bg-white">
+                <option value="">{t('common.select')}</option>
+                {(orgs || []).map((o: any) => <option key={o.id} value={o.id}>{o.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-[var(--color-text-muted)] mb-1">{t('admin.academy.branch')}</label>
+              <select value={form.branch_id} onChange={e => setForm((f: any) => ({ ...f, branch_id: e.target.value }))}
+                disabled={!form.organisation_id}
+                className="w-full px-2 py-1.5 rounded-[var(--radius-md)] border text-sm bg-white disabled:opacity-50">
+                <option value="">{t('common.select')}</option>
+                {(branches || []).map((b: any) => <option key={b.id} value={b.id}>{b.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-[var(--color-text-muted)] mb-1">{t('admin.academy.sport')}</label>
+              <select value={form.sport_id} onChange={e => setForm((f: any) => ({ ...f, sport_id: e.target.value }))}
+                className="w-full px-2 py-1.5 rounded-[var(--radius-md)] border text-sm bg-white">
+                <option value="">{t('common.select')}</option>
+                {(sports || []).map((s: any) => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
             </div>
             <div>
               <label className="block text-xs font-medium text-[var(--color-text-muted)] mb-1">{t('admin.academy.capacity')}</label>
@@ -189,9 +248,9 @@ export default function AcademyProgramsPage() {
               <tr className="border-b text-xs text-[var(--color-text-muted)]">
                 <th className="text-left px-3 py-2">{t('admin.academy.code')}</th>
                 <th className="text-left px-3 py-2">{t('admin.academy.name')}</th>
-                <th className="text-left px-3 py-2">{t('admin.academy.category')}</th>
+                <th className="text-left px-3 py-2">{t('admin.academy.organisation')}</th>
+                <th className="text-center px-3 py-2">{t('admin.academy.lifecycle')}</th>
                 <th className="text-center px-3 py-2">{t('admin.academy.capacity')}</th>
-                <th className="text-center px-3 py-2">{t('admin.academy.price')}</th>
                 <th className="text-center px-3 py-2">{t('admin.academy.status')}</th>
                 <th className="text-right px-3 py-2">{t('common.actions')}</th>
               </tr>
@@ -201,16 +260,28 @@ export default function AcademyProgramsPage() {
                 <tr key={p.id} className="border-b last:border-0 hover:bg-[var(--color-bg)]">
                   <td className="px-3 py-2 font-mono text-xs">{p.code}</td>
                   <td className="px-3 py-2 font-medium">{p.name}</td>
-                  <td className="px-3 py-2 text-xs">{p.category}</td>
+                  <td className="px-3 py-2 text-xs">
+                    <div>{p.organisation_name || p.organisation_id || '-'}</div>
+                    <div className="text-[10px] text-[var(--color-text-muted)]">
+                      {[p.branch_name, p.sport_name].filter(Boolean).join(' · ') || '-'}
+                    </div>
+                  </td>
+                  <td className="px-3 py-2 text-center">
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${LIFECYCLE_BADGES[p.lifecycle_state || 'setup'] || ''}`}>{t(`admin.academy.lifecycle_${p.lifecycle_state || 'setup'}`)}</span>
+                  </td>
                   <td className="px-3 py-2 text-center">{p.capacity}</td>
-                  <td className="px-3 py-2 text-center">{p.price_type === 'FREE' ? 'FREE' : `${p.currency} ${p.price}`}</td>
                   <td className="px-3 py-2 text-center">
                     <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${STATUS_BADGES[p.status] || ''}`}>{p.status}</span>
                   </td>
                   <td className="px-3 py-2 text-right space-x-1">
                     <Can permission="academy.update">
-                      <button onClick={() => openEdit(p)} className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--color-border)] hover:opacity-80">{t('common.edit')}</button>
+                      <button onClick={() => openEdit(p)} disabled={p.lifecycle_state === 'confirmed'} className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--color-border)] hover:opacity-80 disabled:opacity-40">{t('common.edit')}</button>
                     </Can>
+                    {p.lifecycle_state === 'setup' && (
+                      <Can permission="academy.manage">
+                        <button onClick={() => confirmMutation.mutate(p.id)} disabled={confirmMutation.isPending} className="text-[10px] px-1.5 py-0.5 rounded bg-green-100 text-green-700 hover:opacity-80">{t('admin.academy.confirm')}</button>
+                      </Can>
+                    )}
                     {p.status === 'draft' && (
                       <Can permission="academy.publish">
                         <button onClick={() => publishMutation.mutate(p.id)} className="text-[10px] px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 hover:opacity-80">{t('admin.academy.publish')}</button>

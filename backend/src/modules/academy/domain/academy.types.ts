@@ -1,3 +1,7 @@
+export type CoachCompensationType = 'fixed_total' | 'fixed_per_session' | 'percent_gross';
+
+export type AcademyLifecycleState = 'setup' | 'confirmed';
+
 export interface AcademyProgramAttributes {
   id?: number;
   code: string;
@@ -12,6 +16,13 @@ export interface AcademyProgramAttributes {
   price_type: 'FREE' | 'FIXED' | 'MEMBERS_ONLY';
   status: 'draft' | 'published' | 'open' | 'full' | 'running' | 'completed' | 'cancelled' | 'archived';
   is_public: boolean;
+  // ── G1 ownership + confirmation foundation ──
+  organisation_id?: number | null;
+  branch_id?: number | null;
+  sport_id?: number | null;
+  lifecycle_state?: AcademyLifecycleState;
+  confirmed_at?: string | null;
+  confirmed_by?: number | null;
   archived_at?: string | null;
   created_at?: string;
   updated_at?: string;
@@ -22,8 +33,15 @@ export interface AcademyGroupAttributes {
   program_id: number;
   name: string;
   coach_id?: number | null;
+  // ── G1 coach compensation configuration ──
+  comp_type?: CoachCompensationType | null;
+  comp_value?: number | null;
+  comp_currency?: string | null;
   capacity: number;
   status: 'active' | 'inactive' | 'archived';
+  // ── G1 coach lock metadata ──
+  coach_locked_at?: string | null;
+  coach_locked_by?: number | null;
   created_at?: string;
   updated_at?: string;
 }

@@ -61,6 +61,15 @@ class AttendanceService {
     }
     return { created };
   }
+
+  /** Object-scope helpers (delegated to the repository). */
+  async getSessionGroupId(sessionId: number): Promise<number | null> {
+    return attendanceRepository.getSessionGroupId(sessionId);
+  }
+
+  async getAttendanceSessionId(attendanceId: number): Promise<number | null> {
+    return attendanceRepository.getAttendanceSessionId(attendanceId);
+  }
 }
 
 export const academyAttendanceService = new AttendanceService();

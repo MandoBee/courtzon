@@ -5,7 +5,7 @@ import { academyEnrollmentService } from '../application/enrollment.service.js';
 import { academyAttendanceService } from '../application/attendance.service.js';
 import {
   CreateProgramSchema, UpdateProgramSchema, ListProgramsQuerySchema, TransitionStatusSchema,
-  CreateGroupSchema, UpdateGroupSchema, AssignCoachSchema, ListGroupsQuerySchema,
+  CreateGroupSchema, UpdateGroupSchema, AssignCoachSchema, SetCompensationSchema, ConfirmAcademySchema, ListGroupsQuerySchema,
   CreateEnrollmentSchema, MoveEnrollmentSchema, ListEnrollmentsQuerySchema,
   CreateGroupSessionSchema, UpdateGroupSessionSchema, ListSessionsQuerySchema,
   RecordAttendanceSchema, RecordBulkAttendanceSchema, UpdateAttendanceSchema, ListAttendanceQuerySchema,
@@ -15,6 +15,8 @@ import { buildPagination, paginationClause } from '../../../shared/utils/paginat
 import { recordAudit } from '../../audit-log/index.js';
 import { NotFoundError } from '../../../shared/errors/app-error.js';
 import { ErrorCodes } from '../../../shared/errors/error-codes.js';
+import { findAccessibleOrgIds } from '../../../shared/middleware/org-access.js';
+import { assertCanManageScopeInput } from '../application/academy-scope.js';
 
 function getUserId(request: FastifyRequest): number { return (request as any).userId; }
 function getUserAgent(request: FastifyRequest): string | undefined {
@@ -22,35 +24,65 @@ function getUserAgent(request: FastifyRequest): string | undefined {
   return typeof ua === 'string' ? ua : undefined;
 }
 
-// ── Dashboard ──
+/** Object-level authorization: actor must manage the Academy's organisation+branch. */
+async function assertProgramAccess(actorId: number, programId: number): Promise<void> {
+  await academyProgramService.assertCanManage(actorId, programId);
+}
+
+/** Object-level authorization for a group (resolved to its program). */
+async function assertGroupAccess(actorId: number, groupId: number): Promise<void> {
+  const programId = await academyGroupService.resolveProgramId(groupId);
+  if (!programId) throw new NotFoundError('Academy group', ErrorCodes.ACADEMY_GROUP_NOT_FOUND);
+  await assertProgramAccess(actorId, programId);
+}
+
+// â”€â”€ Dashboard â”€â”€
 
 export async function getDashboardHandler(_request: FastifyRequest, reply: FastifyReply) {
   const dashboard = await academyProgramService.getDashboard();
   return reply.send(dashboard);
 }
 
-// ── Programs ──
+// â”€â”€ Programs â”€â”€
 
 export async function listProgramsHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = getUserId(request);
   const query = ListProgramsQuerySchema.parse(request.query);
-  const result = await academyProgramService.list(query);
+  // Scope list to the caller's authorised organisations (platform admins see all).
+  const accessible = await findAccessibleOrgIds(userId);
+  const filters: any = { ...query };
+  if (accessible.length > 0) filters.organisationIds = accessible;
+  const result = await academyProgramService.list(filters);
   return reply.send(result);
 }
 
 export async function getProgramHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = getUserId(request);
   const { id } = request.params as any;
+  await assertProgramAccess(userId, Number(id));
   const program = await academyProgramService.getById(Number(id));
   if (!program) throw new NotFoundError('Academy program', ErrorCodes.ACADEMY_PROGRAM_NOT_FOUND);
   return reply.send(program);
 }
 
+export async function getProgramDetailHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = getUserId(request);
+  const { id } = request.params as any;
+  await assertProgramAccess(userId, Number(id));
+  const detail = await academyProgramService.getDetail(Number(id));
+  if (!detail) throw new NotFoundError('Academy program', ErrorCodes.ACADEMY_PROGRAM_NOT_FOUND);
+  return reply.send(detail);
+}
+
 export async function createProgramHandler(request: FastifyRequest, reply: FastifyReply) {
   const userId = getUserId(request);
   const body = CreateProgramSchema.parse(request.body);
+  // Creation requires the actor to have organisation/branch access to the chosen scope.
+  await assertCanManageScopeInput(userId, body.organisation_id, body.branch_id ?? null);
   const program = await academyProgramService.create(body);
   recordAudit({
     actorId: userId, action: 'ACADEMY_PROGRAM.CREATE', entityType: 'academy_program',
-    entityId: program.id!, afterState: { code: body.code, name: body.name, category: body.category },
+    entityId: program.id!, afterState: { code: body.code, name: body.name, category: body.category, organisation_id: body.organisation_id, branch_id: body.branch_id ?? null, sport_id: body.sport_id ?? null },
     ipAddress: request.ip, userAgent: getUserAgent(request),
   });
   return reply.status(201).send(program);
@@ -59,13 +91,28 @@ export async function createProgramHandler(request: FastifyRequest, reply: Fasti
 export async function updateProgramHandler(request: FastifyRequest, reply: FastifyReply) {
   const userId = getUserId(request);
   const { id } = request.params as any;
+  await assertProgramAccess(userId, Number(id));
   const body = UpdateProgramSchema.parse(request.body);
   const before = await academyProgramService.getById(Number(id));
   const program = await academyProgramService.update(Number(id), body);
   recordAudit({
     actorId: userId, action: 'ACADEMY_PROGRAM.UPDATE', entityType: 'academy_program',
-    entityId: Number(id), beforeState: before ? { name: before.name } : null,
+    entityId: Number(id), beforeState: before ? { name: before.name, organisation_id: before.organisation_id } : null,
     afterState: { ...body }, ipAddress: request.ip, userAgent: getUserAgent(request),
+  });
+  return reply.send(program);
+}
+
+export async function confirmProgramHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = getUserId(request);
+  const { id } = request.params as any;
+  await assertProgramAccess(userId, Number(id));
+  ConfirmAcademySchema.parse(request.body ?? {});
+  const program = await academyProgramService.confirm(Number(id), userId);
+  recordAudit({
+    actorId: userId, action: 'ACADEMY_PROGRAM.CONFIRM', entityType: 'academy_program',
+    entityId: Number(id), afterState: { lifecycle_state: 'confirmed' },
+    ipAddress: request.ip, userAgent: getUserAgent(request),
   });
   return reply.send(program);
 }
@@ -73,6 +120,7 @@ export async function updateProgramHandler(request: FastifyRequest, reply: Fasti
 export async function publishProgramHandler(request: FastifyRequest, reply: FastifyReply) {
   const userId = getUserId(request);
   const { id } = request.params as any;
+  await assertProgramAccess(userId, Number(id));
   const program = await academyProgramService.publish(Number(id));
   recordAudit({
     actorId: userId, action: 'ACADEMY_PROGRAM.PUBLISH', entityType: 'academy_program',
@@ -85,6 +133,7 @@ export async function publishProgramHandler(request: FastifyRequest, reply: Fast
 export async function archiveProgramHandler(request: FastifyRequest, reply: FastifyReply) {
   const userId = getUserId(request);
   const { id } = request.params as any;
+  await assertProgramAccess(userId, Number(id));
   const program = await academyProgramService.archive(Number(id));
   recordAudit({
     actorId: userId, action: 'ACADEMY_PROGRAM.ARCHIVE', entityType: 'academy_program',
@@ -97,6 +146,7 @@ export async function archiveProgramHandler(request: FastifyRequest, reply: Fast
 export async function transitionProgramStatusHandler(request: FastifyRequest, reply: FastifyReply) {
   const userId = getUserId(request);
   const { id } = request.params as any;
+  await assertProgramAccess(userId, Number(id));
   const body = TransitionStatusSchema.parse(request.body);
   const program = await academyProgramService.transitionStatus(Number(id), body.status);
   recordAudit({
@@ -112,7 +162,7 @@ export async function getProgramCategoriesHandler(_request: FastifyRequest, repl
   return reply.send({ categories });
 }
 
-// ── Groups ──
+// â”€â”€ Groups â”€â”€
 
 export async function listGroupsHandler(request: FastifyRequest, reply: FastifyReply) {
   const query = ListGroupsQuerySchema.parse(request.query);
@@ -126,7 +176,9 @@ export async function listGroupsHandler(request: FastifyRequest, reply: FastifyR
 }
 
 export async function getGroupHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = getUserId(request);
   const { id } = request.params as any;
+  await assertGroupAccess(userId, Number(id));
   const group = await academyGroupService.getById(Number(id));
   return reply.send(group);
 }
@@ -134,10 +186,11 @@ export async function getGroupHandler(request: FastifyRequest, reply: FastifyRep
 export async function createGroupHandler(request: FastifyRequest, reply: FastifyReply) {
   const userId = getUserId(request);
   const body = CreateGroupSchema.parse(request.body);
-  const group = await academyGroupService.create(body);
+  await assertProgramAccess(userId, body.program_id);
+  const group = await academyGroupService.create(body, userId);
   recordAudit({
     actorId: userId, action: 'ACADEMY_GROUP.CREATE', entityType: 'academy_group',
-    entityId: group.id!, afterState: { name: body.name, program_id: body.program_id },
+    entityId: group.id!, afterState: { name: body.name, program_id: body.program_id, coach_id: body.coach_id ?? null },
     ipAddress: request.ip, userAgent: getUserAgent(request),
   });
   return reply.status(201).send(group);
@@ -146,11 +199,14 @@ export async function createGroupHandler(request: FastifyRequest, reply: Fastify
 export async function updateGroupHandler(request: FastifyRequest, reply: FastifyReply) {
   const userId = getUserId(request);
   const { id } = request.params as any;
+  await assertGroupAccess(userId, Number(id));
   const body = UpdateGroupSchema.parse(request.body);
-  const group = await academyGroupService.update(Number(id), body);
+  const before = await academyGroupService.getById(Number(id));
+  const group = await academyGroupService.update(Number(id), body, userId);
   recordAudit({
     actorId: userId, action: 'ACADEMY_GROUP.UPDATE', entityType: 'academy_group',
-    entityId: Number(id), afterState: body, ipAddress: request.ip, userAgent: getUserAgent(request),
+    entityId: Number(id), beforeState: before ? { name: before.name, coach_id: before.coach_id } : null,
+    afterState: body, ipAddress: request.ip, userAgent: getUserAgent(request),
   });
   return reply.send(group);
 }
@@ -158,11 +214,30 @@ export async function updateGroupHandler(request: FastifyRequest, reply: Fastify
 export async function assignCoachHandler(request: FastifyRequest, reply: FastifyReply) {
   const userId = getUserId(request);
   const { id } = request.params as any;
+  await assertGroupAccess(userId, Number(id));
   const body = AssignCoachSchema.parse(request.body);
-  const group = await academyGroupService.assignCoach(Number(id), body.coach_id);
+  const before = await academyGroupService.getById(Number(id));
+  const { group, relation } = await academyGroupService.assignCoach(Number(id), body.coach_id, userId);
   recordAudit({
     actorId: userId, action: 'ACADEMY_GROUP.ASSIGN_COACH', entityType: 'academy_group',
-    entityId: Number(id), afterState: { coach_id: body.coach_id },
+    entityId: Number(id), beforeState: before ? { coach_id: before.coach_id } : null,
+    afterState: { coach_id: body.coach_id, relation: relation ?? null },
+    ipAddress: request.ip, userAgent: getUserAgent(request),
+  });
+  return reply.send({ ...group, coach_relation: relation });
+}
+
+export async function setCompensationHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = getUserId(request);
+  const { id } = request.params as any;
+  await assertGroupAccess(userId, Number(id));
+  const body = SetCompensationSchema.parse(request.body);
+  const before = await academyGroupService.getById(Number(id));
+  const group = await academyGroupService.setCompensation(Number(id), body, userId);
+  recordAudit({
+    actorId: userId, action: 'ACADEMY_GROUP.SET_COMPENSATION', entityType: 'academy_group',
+    entityId: Number(id), beforeState: before ? { comp_type: before.comp_type, comp_value: before.comp_value } : null,
+    afterState: { comp_type: body.comp_type, comp_value: body.comp_value, comp_currency: body.comp_currency ?? null },
     ipAddress: request.ip, userAgent: getUserAgent(request),
   });
   return reply.send(group);
@@ -171,6 +246,7 @@ export async function assignCoachHandler(request: FastifyRequest, reply: Fastify
 export async function archiveGroupHandler(request: FastifyRequest, reply: FastifyReply) {
   const userId = getUserId(request);
   const { id } = request.params as any;
+  await assertGroupAccess(userId, Number(id));
   await academyGroupService.archive(Number(id));
   recordAudit({
     actorId: userId, action: 'ACADEMY_GROUP.ARCHIVE', entityType: 'academy_group',
@@ -179,7 +255,7 @@ export async function archiveGroupHandler(request: FastifyRequest, reply: Fastif
   return reply.status(204).send();
 }
 
-// ── Enrollments ──
+// â”€â”€ Enrollments â”€â”€
 
 export async function listEnrollmentsHandler(request: FastifyRequest, reply: FastifyReply) {
   const query = ListEnrollmentsQuerySchema.parse(request.query);
@@ -190,14 +266,17 @@ export async function listEnrollmentsHandler(request: FastifyRequest, reply: Fas
 }
 
 export async function getEnrollmentHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = getUserId(request);
   const { id } = request.params as any;
   const enrollment = await academyEnrollmentService.getById(Number(id));
+  if (enrollment?.program_id) await assertProgramAccess(userId, Number(enrollment.program_id));
   return reply.send(enrollment);
 }
 
 export async function createEnrollmentHandler(request: FastifyRequest, reply: FastifyReply) {
   const userId = getUserId(request);
   const body = CreateEnrollmentSchema.parse(request.body);
+  await assertProgramAccess(userId, body.program_id);
   const enrollment = await academyEnrollmentService.enroll(body);
   recordAudit({
     actorId: userId, action: 'ACADEMY_ENROLLMENT.CREATE', entityType: 'academy_enrollment',
@@ -211,6 +290,7 @@ export async function cancelEnrollmentHandler(request: FastifyRequest, reply: Fa
   const userId = getUserId(request);
   const { id } = request.params as any;
   const before = await academyEnrollmentService.getById(Number(id));
+  if (before?.program_id) await assertProgramAccess(userId, Number(before.program_id));
   await academyEnrollmentService.cancel(Number(id));
   recordAudit({
     actorId: userId, action: 'ACADEMY_ENROLLMENT.CANCEL', entityType: 'academy_enrollment',
@@ -223,10 +303,13 @@ export async function cancelEnrollmentHandler(request: FastifyRequest, reply: Fa
 export async function completeEnrollmentHandler(request: FastifyRequest, reply: FastifyReply) {
   const userId = getUserId(request);
   const { id } = request.params as any;
+  const before = await academyEnrollmentService.getById(Number(id));
+  if (before?.program_id) await assertProgramAccess(userId, Number(before.program_id));
   await academyEnrollmentService.complete(Number(id));
   recordAudit({
     actorId: userId, action: 'ACADEMY_ENROLLMENT.COMPLETE', entityType: 'academy_enrollment',
-    entityId: Number(id), ipAddress: request.ip, userAgent: getUserAgent(request),
+    entityId: Number(id), beforeState: before ? { status: before.status } : null,
+    ipAddress: request.ip, userAgent: getUserAgent(request),
   });
   return reply.send({ message: 'Enrolment completed' });
 }
@@ -234,10 +317,13 @@ export async function completeEnrollmentHandler(request: FastifyRequest, reply: 
 export async function confirmEnrollmentHandler(request: FastifyRequest, reply: FastifyReply) {
   const userId = getUserId(request);
   const { id } = request.params as any;
+  const before = await academyEnrollmentService.getById(Number(id));
+  if (before?.program_id) await assertProgramAccess(userId, Number(before.program_id));
   await academyEnrollmentService.confirm(Number(id));
   recordAudit({
     actorId: userId, action: 'ACADEMY_ENROLLMENT.CONFIRM', entityType: 'academy_enrollment',
-    entityId: Number(id), ipAddress: request.ip, userAgent: getUserAgent(request),
+    entityId: Number(id), beforeState: before ? { status: before.status } : null,
+    ipAddress: request.ip, userAgent: getUserAgent(request),
   });
   return reply.send({ message: 'Enrolment confirmed' });
 }
@@ -245,11 +331,14 @@ export async function confirmEnrollmentHandler(request: FastifyRequest, reply: F
 export async function moveEnrollmentHandler(request: FastifyRequest, reply: FastifyReply) {
   const userId = getUserId(request);
   const { id } = request.params as any;
+  const before = await academyEnrollmentService.getById(Number(id));
+  if (before?.program_id) await assertProgramAccess(userId, Number(before.program_id));
   const body = MoveEnrollmentSchema.parse(request.body);
   const enrollment = await academyEnrollmentService.moveToGroup(Number(id), body.group_id);
   recordAudit({
     actorId: userId, action: 'ACADEMY_ENROLLMENT.MOVE', entityType: 'academy_enrollment',
-    entityId: Number(id), afterState: { group_id: body.group_id },
+    entityId: Number(id), beforeState: before ? { group_id: before.group_id } : null,
+    afterState: { group_id: body.group_id },
     ipAddress: request.ip, userAgent: getUserAgent(request),
   });
   return reply.send(enrollment);
@@ -261,7 +350,7 @@ export async function getEnrollmentHistoryHandler(request: FastifyRequest, reply
   return reply.send(history);
 }
 
-// ── Group Sessions ──
+// â”€â”€ Group Sessions â”€â”€
 
 export async function listSessionsHandler(request: FastifyRequest, reply: FastifyReply) {
   const query = ListSessionsQuerySchema.parse(request.query);
@@ -291,7 +380,9 @@ export async function listSessionsHandler(request: FastifyRequest, reply: Fastif
 }
 
 export async function createSessionHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = getUserId(request);
   const body = CreateGroupSessionSchema.parse(request.body);
+  await assertGroupAccess(userId, body.group_id);
   const pool = getPool();
   const sql = 'INSERT INTO academy_group_sessions (group_id, session_date, start_time, end_time, court_id, coach_id, status) VALUES (?, ?, ?, ?, ?, ?, ?)';
   const [result] = await pool.execute(sql,
@@ -299,11 +390,20 @@ export async function createSessionHandler(request: FastifyRequest, reply: Fasti
      body.court_id ?? null, body.coach_id ?? null, body.status],
   );
   const id = (result as any).insertId;
+  recordAudit({
+    actorId: userId, action: 'ACADEMY_SESSION.CREATE', entityType: 'academy_group_session',
+    entityId: Number(id), afterState: { group_id: body.group_id, session_date: body.session_date },
+    ipAddress: request.ip, userAgent: getUserAgent(request),
+  });
   return reply.status(201).send({ id });
 }
 
 export async function updateSessionHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = getUserId(request);
   const { id } = request.params as any;
+  const groupId = await academyAttendanceService.getSessionGroupId(Number(id));
+  if (groupId == null) throw new NotFoundError('Academy group session', ErrorCodes.ACADEMY_INVALID_SESSION);
+  await assertGroupAccess(userId, groupId);
   const body = UpdateGroupSessionSchema.parse(request.body);
   const fields: string[] = [];
   const params: any[] = [];
@@ -320,10 +420,14 @@ export async function updateSessionHandler(request: FastifyRequest, reply: Fasti
       `UPDATE academy_group_sessions SET ${fields.join(', ')}, updated_at = NOW() WHERE id = ?`, params,
     );
   }
+  recordAudit({
+    actorId: userId, action: 'ACADEMY_SESSION.UPDATE', entityType: 'academy_group_session',
+    entityId: Number(id), afterState: body, ipAddress: request.ip, userAgent: getUserAgent(request),
+  });
   return reply.send({ message: 'Session updated' });
 }
 
-// ── Attendance ──
+// â”€â”€ Attendance â”€â”€
 
 export async function listAttendanceHandler(request: FastifyRequest, reply: FastifyReply) {
   const query = ListAttendanceQuerySchema.parse(request.query);
@@ -336,6 +440,9 @@ export async function listAttendanceHandler(request: FastifyRequest, reply: Fast
 export async function recordAttendanceHandler(request: FastifyRequest, reply: FastifyReply) {
   const userId = getUserId(request);
   const body = RecordAttendanceSchema.parse(request.body);
+  const groupId = await academyAttendanceService.getSessionGroupId(body.group_session_id);
+  if (groupId == null) throw new NotFoundError('Academy group session', ErrorCodes.ACADEMY_INVALID_SESSION);
+  await assertGroupAccess(userId, groupId);
   const result = await academyAttendanceService.record(body);
   recordAudit({
     actorId: userId, action: 'ACADEMY_ATTENDANCE.RECORD', entityType: 'academy_attendance',
@@ -348,6 +455,9 @@ export async function recordAttendanceHandler(request: FastifyRequest, reply: Fa
 export async function recordBulkAttendanceHandler(request: FastifyRequest, reply: FastifyReply) {
   const userId = getUserId(request);
   const { sessionId } = request.params as any;
+  const groupId = await academyAttendanceService.getSessionGroupId(Number(sessionId));
+  if (groupId == null) throw new NotFoundError('Academy group session', ErrorCodes.ACADEMY_INVALID_SESSION);
+  await assertGroupAccess(userId, groupId);
   const body = RecordBulkAttendanceSchema.parse(request.body);
   const result = await academyAttendanceService.recordBulk(Number(sessionId), body.records);
   recordAudit({
@@ -362,6 +472,11 @@ export async function updateAttendanceHandler(request: FastifyRequest, reply: Fa
   const userId = getUserId(request);
   const { id } = request.params as any;
   const body = UpdateAttendanceSchema.parse(request.body);
+  const sessionId = await academyAttendanceService.getAttendanceSessionId(Number(id));
+  if (sessionId) {
+    const groupId = await academyAttendanceService.getSessionGroupId(sessionId);
+    if (groupId != null) await assertGroupAccess(userId, groupId);
+  }
   await academyAttendanceService.update(Number(id), body);
   recordAudit({
     actorId: userId, action: 'ACADEMY_ATTENDANCE.UPDATE', entityType: 'academy_attendance',
@@ -371,7 +486,10 @@ export async function updateAttendanceHandler(request: FastifyRequest, reply: Fa
 }
 
 export async function getSessionAttendanceHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = getUserId(request);
   const { sessionId } = request.params as any;
+  const groupId = await academyAttendanceService.getSessionGroupId(Number(sessionId));
+  if (groupId != null) await assertGroupAccess(userId, groupId);
   const rows = await academyAttendanceService.getBySession(Number(sessionId));
   const summary = await academyAttendanceService.getSummary(Number(sessionId));
   return reply.send({ data: rows, summary });

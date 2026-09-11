@@ -18,6 +18,7 @@ export default function AcademyGroupsPage() {
   const [editId, setEditId] = useState<number | null>(null);
   const [form, setForm] = useState<any>({ program_id: '', name: '', capacity: 0 });
   const [assignCoachId, setAssignCoachId] = useState<{ id: number; coachId: number | null } | null>(null);
+  const [compEdit, setCompEdit] = useState<{ id: number; comp_type: string; comp_value: string; comp_currency: string } | null>(null);
 
   const queryParams: Record<string, any> = { page, limit: 20 };
   if (programFilter) queryParams.program_id = Number(programFilter);
@@ -47,6 +48,12 @@ export default function AcademyGroupsPage() {
   const assignCoachMutation = useMutation({
     mutationFn: ({ id, coachId }: { id: number; coachId: number | null }) => academyApi.assignCoach(id, coachId),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['admin', 'academy', 'groups'] }); setAssignCoachId(null); showToast(t('admin.academy.coach_assigned')); },
+    onError: (err) => showToast(getErrorMessage(err), 'error'),
+  });
+
+  const compMutation = useMutation({
+    mutationFn: ({ id, ...d }: any) => academyApi.setCompensation(id, d),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['admin', 'academy', 'groups'] }); setCompEdit(null); showToast(t('admin.academy.compensation_saved')); },
     onError: (err) => showToast(getErrorMessage(err), 'error'),
   });
 
@@ -134,6 +141,7 @@ export default function AcademyGroupsPage() {
                 <th className="text-left px-3 py-2">{t('admin.academy.name')}</th>
                 <th className="text-left px-3 py-2">{t('admin.academy.program')}</th>
                 <th className="text-left px-3 py-2">{t('admin.academy.coach')}</th>
+                <th className="text-left px-3 py-2">{t('admin.academy.coach_compensation')}</th>
                 <th className="text-center px-3 py-2">{t('admin.academy.capacity')}</th>
                 <th className="text-center px-3 py-2">{t('admin.academy.status')}</th>
                 <th className="text-right px-3 py-2">{t('common.actions')}</th>
@@ -144,10 +152,13 @@ export default function AcademyGroupsPage() {
                 <tr key={g.id} className="border-b last:border-0 hover:bg-[var(--color-bg)]">
                   <td className="px-3 py-2 font-medium">{g.name}</td>
                   <td className="px-3 py-2 text-xs">{g.program_name || '-'}</td>
-                  <td className="px-3 py-2 text-xs">{g.coach_name || '-'}
+                  <td className="px-3 py-2 text-xs">
+                    {g.coach_name || '-'}{g.coach_relation ? ` (${t(`admin.academy.coach_relation_${g.coach_relation}`)})` : ''}
+                    {g.coach_locked_at && <span className="ml-1 text-[10px] font-medium text-green-700">🔒</span>}
                     <Can permission="academy.manage">
                       <button onClick={() => setAssignCoachId(assignCoachId?.id === g.id ? null : { id: g.id, coachId: g.coach_id })}
-                        className="ml-1 text-[10px] text-blue-600 hover:underline">{t('common.edit')}</button>
+                        disabled={!!g.coach_locked_at}
+                        className="ml-1 text-[10px] text-blue-600 hover:underline disabled:opacity-40">{t('common.edit')}</button>
                     </Can>
                     {assignCoachId?.id === g.id && (
                       <div className="inline-flex ml-1 gap-1">
@@ -159,13 +170,46 @@ export default function AcademyGroupsPage() {
                       </div>
                     )}
                   </td>
+                  <td className="px-3 py-2 text-xs">
+                    {g.comp_type ? (
+                      <span>
+                        {g.comp_type === 'percent_gross' ? `${g.comp_value}%` : `${g.comp_currency || ''} ${g.comp_value}`}
+                        <span className="text-[10px] text-[var(--color-text-muted)] ml-1">({t(`admin.academy.comp_${g.comp_type}`)})</span>
+                      </span>
+                    ) : '-'}
+                    <Can permission="academy.manage">
+                      <button onClick={() => setCompEdit(compEdit?.id === g.id ? null : { id: g.id, comp_type: g.comp_type || 'fixed_total', comp_value: g.comp_value ?? '', comp_currency: g.comp_currency || 'USD' })}
+                        disabled={!!g.coach_locked_at}
+                        className="ml-1 text-[10px] text-blue-600 hover:underline disabled:opacity-40">{t('common.edit')}</button>
+                    </Can>
+                    {compEdit?.id === g.id && (
+                      <div className="mt-1 flex flex-wrap items-center gap-1">
+                        <select value={compEdit!.comp_type} onChange={e => setCompEdit({ ...compEdit!, comp_type: e.target.value })}
+                          className="px-1 py-0.5 text-[10px] border rounded">
+                          <option value="fixed_total">{t('admin.academy.comp_fixed_total')}</option>
+                          <option value="fixed_per_session">{t('admin.academy.comp_fixed_per_session')}</option>
+                          <option value="percent_gross">{t('admin.academy.comp_percent_gross')}</option>
+                        </select>
+                        <input type="number" step="0.01" min="0" value={compEdit!.comp_value} placeholder="Value"
+                          onChange={e => setCompEdit({ ...compEdit!, comp_value: e.target.value })}
+                          className="w-20 px-1 py-0.5 text-[10px] border rounded" />
+                        {compEdit!.comp_type !== 'percent_gross' && (
+                          <input maxLength={3} value={compEdit!.comp_currency} placeholder="USD"
+                            onChange={e => setCompEdit({ ...compEdit!, comp_currency: e.target.value.toUpperCase() })}
+                            className="w-12 px-1 py-0.5 text-[10px] border rounded" />
+                        )}
+                        <button onClick={() => compMutation.mutate({ id: g.id, comp_type: compEdit!.comp_type, comp_value: Number(compEdit!.comp_value) || 0, comp_currency: compEdit!.comp_type === 'percent_gross' ? null : compEdit!.comp_currency || 'USD' })}
+                          className="text-[10px] px-1 py-0.5 bg-green-100 text-green-700 rounded">{t('common.save')}</button>
+                      </div>
+                    )}
+                  </td>
                   <td className="px-3 py-2 text-center">{g.capacity}</td>
                   <td className="px-3 py-2 text-center">
                     <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${g.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>{g.status}</span>
                   </td>
                   <td className="px-3 py-2 text-right space-x-1">
                     <Can permission="academy.update">
-                      <button onClick={() => openEdit(g)} className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--color-border)] hover:opacity-80">{t('common.edit')}</button>
+                      <button onClick={() => openEdit(g)} disabled={!!g.coach_locked_at} className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--color-border)] hover:opacity-80 disabled:opacity-40">{t('common.edit')}</button>
                     </Can>
                     {g.status !== 'archived' && (
                       <Can permission="academy.delete">
@@ -175,7 +219,7 @@ export default function AcademyGroupsPage() {
                   </td>
                 </tr>
               ))}
-              {groups.length === 0 && <tr><td colSpan={6} className="text-center py-8 text-xs text-[var(--color-text-muted)]">{t('admin.academy.no_groups')}</td></tr>}
+              {groups.length === 0 && <tr><td colSpan={7} className="text-center py-8 text-xs text-[var(--color-text-muted)]">{t('admin.academy.no_groups')}</td></tr>}
             </tbody>
           </table>
         )}

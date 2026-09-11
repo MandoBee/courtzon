@@ -70,8 +70,10 @@ class GroupRepository {
 
   async create(data: Partial<AcademyGroupAttributes>): Promise<number> {
     const [result] = await getPool().query<ResultSet>(
-      'INSERT INTO academy_groups (program_id, name, coach_id, capacity, status) VALUES (?, ?, ?, ?, ?)',
-      [data.program_id, data.name, data.coach_id ?? null, data.capacity ?? 0, data.status ?? 'active'],
+      `INSERT INTO academy_groups (program_id, name, coach_id, comp_type, comp_value, comp_currency, capacity, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [data.program_id, data.name, data.coach_id ?? null, data.comp_type ?? null, data.comp_value ?? null,
+       data.comp_currency ?? null, data.capacity ?? 0, data.status ?? 'active'],
     );
     return (result as any).insertId;
   }
@@ -79,7 +81,9 @@ class GroupRepository {
   async update(id: number, data: Partial<AcademyGroupAttributes>): Promise<void> {
     const fields: string[] = [];
     const params: any[] = [];
-    const updatable: (keyof AcademyGroupAttributes)[] = ['name', 'coach_id', 'capacity', 'status'];
+    const updatable: (keyof AcademyGroupAttributes)[] = [
+      'name', 'coach_id', 'capacity', 'status', 'comp_type', 'comp_value', 'comp_currency',
+    ];
     for (const f of updatable) {
       if (data[f] !== undefined) { fields.push(`${f} = ?`); params.push(data[f]); }
     }
@@ -93,6 +97,17 @@ class GroupRepository {
   async updateCoach(id: number, coachId: number | null): Promise<void> {
     await getPool().execute(
       'UPDATE academy_groups SET coach_id = ?, updated_at = NOW() WHERE id = ?', [coachId, id],
+    );
+  }
+
+  /**
+   * G1 — lock coach + compensation after Academy confirmation. Records actor +
+   * timestamp; subsequent coach/compensation mutations are rejected.
+   */
+  async confirmLock(id: number, lockedBy: number): Promise<void> {
+    await getPool().execute(
+      'UPDATE academy_groups SET coach_locked_at = NOW(), coach_locked_by = ?, updated_at = NOW() WHERE id = ?',
+      [lockedBy, id],
     );
   }
 

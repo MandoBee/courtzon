@@ -12,8 +12,10 @@ export async function academyRoutes(app: FastifyInstance): Promise<void> {
   app.get('/admin/academy/programs', { preHandler: [requirePermission(['academy.view'])] }, ctrl.listProgramsHandler);
   app.get('/admin/academy/programs/options', { preHandler: [requirePermission(['academy.view'])] }, ctrl.getProgramCategoriesHandler);
   app.get('/admin/academy/programs/:id', { preHandler: [requirePermission(['academy.view'])] }, ctrl.getProgramHandler);
+  app.get('/admin/academy/programs/:id/detail', { preHandler: [requirePermission(['academy.view'])] }, ctrl.getProgramDetailHandler);
   app.post('/admin/academy/programs', { preHandler: [requirePermission(['academy.create'])] }, ctrl.createProgramHandler);
   app.put('/admin/academy/programs/:id', { preHandler: [requirePermission(['academy.update'])] }, ctrl.updateProgramHandler);
+  app.post('/admin/academy/programs/:id/confirm', { preHandler: [requirePermission(['academy.manage'])] }, ctrl.confirmProgramHandler);
   app.post('/admin/academy/programs/:id/publish', { preHandler: [requirePermission(['academy.publish'])] }, ctrl.publishProgramHandler);
   app.post('/admin/academy/programs/:id/archive', { preHandler: [requirePermission(['academy.delete'])] }, ctrl.archiveProgramHandler);
   app.post('/admin/academy/programs/:id/transition', { preHandler: [requirePermission(['academy.update'])] }, ctrl.transitionProgramStatusHandler);
@@ -25,6 +27,7 @@ export async function academyRoutes(app: FastifyInstance): Promise<void> {
   app.post('/admin/academy/groups', { preHandler: [requirePermission(['academy.create'])] }, ctrl.createGroupHandler);
   app.put('/admin/academy/groups/:id', { preHandler: [requirePermission(['academy.update'])] }, ctrl.updateGroupHandler);
   app.post('/admin/academy/groups/:id/assign-coach', { preHandler: [requirePermission(['academy.manage'])] }, ctrl.assignCoachHandler);
+  app.post('/admin/academy/groups/:id/compensation', { preHandler: [requirePermission(['academy.manage'])] }, ctrl.setCompensationHandler);
   app.post('/admin/academy/groups/:id/archive', { preHandler: [requirePermission(['academy.delete'])] }, ctrl.archiveGroupHandler);
 
   // ── Enrollments ──

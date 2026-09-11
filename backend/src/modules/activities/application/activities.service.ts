@@ -191,7 +191,10 @@ export const activitiesService = {
   async enrollPlayer(academyId: number, playerId: number, curriculumId?: number) {
     const a = await repo.findAcademyById(academyId);
     if (!a) throw new NotFoundError('Academy');
-    const enrollments = await repo.findEnrollments(academyId);
+    // G1 quarantine: the legacy enrollment path is disabled and throws; this
+    // branch exists only to keep the call surface stable until the legacy
+    // module is retired.
+    const enrollments: any[] = (await repo.findEnrollments(academyId)) as any;
     if (enrollments.some((e: any) => e.player_id === playerId)) throw new ConflictError('Already enrolled');
     await repo.enrollPlayer(academyId, playerId, curriculumId);
     eventBusV2.emit('academy:enrolled', { academyId, userId: playerId, studentName: a.name || 'Student' });

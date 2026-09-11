@@ -67,3 +67,29 @@ export async function findAccessibleOrgIds(userId: number): Promise<number[]> {
   );
   return rows.map((r: any) => Number(r.id));
 }
+
+/**
+ * True if the user may operate on the given branch. Platform admins and users
+ * with organisation access to the branch's organisation are allowed for every
+ * branch of that organisation; users holding an active branch role-scope are
+ * allowed for exactly that branch. The branch id must be resolved server-side.
+ */
+export async function canAccessBranch(userId: number, branchId: number): Promise<boolean> {
+  if (!userId || !branchId) return false;
+  const pool = getPool();
+  const [rows] = await pool.execute<RowData>(
+    'SELECT organisation_id FROM branches WHERE id = ? AND is_active = TRUE LIMIT 1',
+    [branchId],
+  );
+  if (!rows.length) return false;
+  const orgId = Number((rows[0] as any).organisation_id);
+  if (await canAccessOrganisation(userId, orgId)) return true;
+  const [scopeRows] = await pool.execute<RowData>(
+    `SELECT 1 FROM user_role_scopes urs
+     JOIN user_roles ur ON ur.id = urs.user_role_id
+     WHERE ur.user_id = ? AND urs.scope_type = 'branch' AND urs.scope_id = ? AND ur.is_active = TRUE
+     LIMIT 1`,
+    [userId, branchId],
+  );
+  return scopeRows.length > 0;
+}

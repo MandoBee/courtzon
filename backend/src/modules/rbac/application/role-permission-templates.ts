@@ -77,6 +77,16 @@ function isAdminOnlyKey(key: string): boolean {
   return ADMIN_ONLY_PREFIXES.some((p) => key === p || key.startsWith(p));
 }
 
+// Academy management is an org-scoped admin capability: org admins manage their
+// org/branch academies; master-admin and academy-manager manage platform
+// academies. These roles may hold academy.* admin keys despite the generic
+// ADMIN_ONLY_PREFIXES deny (players keep only academy.view/enroll/self_enroll).
+const ACADEMY_ADMIN_ROLES = new Set(['org-admin', 'master-admin', 'academy-manager']);
+function canManageAcademy(templateSlug: string, permissionKey: string): boolean {
+  return ACADEMY_ADMIN_ROLES.has(templateSlug)
+    && (permissionKey.startsWith('academy.') || permissionKey.startsWith('sidebar.academy'));
+}
+
 function matchesAny(key: string, patterns: RegExp[]): boolean {
   return patterns.some((re) => re.test(key));
 }
@@ -554,6 +564,7 @@ export function permissionMatchesTemplate(templateSlug: string, permissionKey: s
   }
 
   if (templateSlug === 'org-admin') {
+    if (canManageAcademy(templateSlug, permissionKey)) return true;
     if (isAdminOnlyKey(permissionKey)) return false;
     if (permissionKey.startsWith('marketplace.admin.')) return false;
     if (ORG_SHOP_ADMIN_DENY_KEYS.has(permissionKey)) return false;
@@ -616,6 +627,7 @@ export function permissionMatchesTemplate(templateSlug: string, permissionKey: s
   }
 
   if (templateSlug === 'master-admin') {
+    if (canManageAcademy(templateSlug, permissionKey)) return true;
     if (permissionKey.startsWith('users.')) return false;
     if (permissionKey.startsWith('roles.')) return false;
     if (permissionKey.startsWith('permissions.')) return false;
@@ -673,6 +685,7 @@ export function permissionMatchesTemplate(templateSlug: string, permissionKey: s
   }
 
   if (templateSlug === 'academy-manager') {
+    if (canManageAcademy(templateSlug, permissionKey)) return true;
     if (isAdminOnlyKey(permissionKey)) return false;
     if (matchesAny(permissionKey, ACADEMY_MANAGER_PATTERNS)) return true;
     return false;

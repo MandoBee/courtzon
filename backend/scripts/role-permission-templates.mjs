@@ -1,5 +1,5 @@
 /**
- * Role → permission matching rules for sync-role-permissions.mjs
+ * Role â†’ permission matching rules for sync-role-permissions.mjs
  * Super Admin is handled separately (all permissions).
  *
  * 10 global template roles (no org clones).
@@ -76,6 +76,16 @@ const ADMIN_ONLY_PREFIXES = [
 
 function isAdminOnlyKey(key) {
   return ADMIN_ONLY_PREFIXES.some((p) => key === p || key.startsWith(p));
+}
+
+// Academy management is an org-scoped admin capability: org admins manage their
+// org/branch academies; master-admin and academy-manager manage platform
+// academies. These roles may hold academy.* admin keys despite the generic
+// ADMIN_ONLY_PREFIXES deny (players keep only academy.view/enroll/self_enroll).
+const ACADEMY_ADMIN_ROLES = new Set(['org-admin', 'master-admin', 'academy-manager']);
+function canManageAcademy(templateSlug, permissionKey) {
+  return ACADEMY_ADMIN_ROLES.has(templateSlug)
+    && (permissionKey.startsWith('academy.') || permissionKey.startsWith('sidebar.academy'));
 }
 
 function matchesAny(key, patterns) {
@@ -542,11 +552,11 @@ export function permissionMatchesTemplate(templateSlug, permissionKey) {
   if (templateSlug === 'super_admin') return true;
 
   // P0-1 (upload authorization hardening): server-side file permissions.
-  //   files.upload  → roles that legitimately upload their own content
+  //   files.upload  â†’ roles that legitimately upload their own content
   //                   (players: product images/avatar; coaches: certs; orgs:
   //                   shop/org images; managers: platform content).
-  //   files.view    → file-administration roles (view/uploads listing).
-  //   files.delete  → file-administration roles only (delete arbitrary uploads).
+  //   files.view    â†’ file-administration roles (view/uploads listing).
+  //   files.delete  â†’ file-administration roles only (delete arbitrary uploads).
   if (permissionKey.startsWith('files.')) {
     if (permissionKey === 'files.upload') return FILES_UPLOAD_ROLES.has(templateSlug);
     if (permissionKey === 'files.view') return FILES_VIEW_ROLES.has(templateSlug);
@@ -565,6 +575,7 @@ export function permissionMatchesTemplate(templateSlug, permissionKey) {
   }
 
   if (templateSlug === 'org-admin') {
+    if (canManageAcademy(templateSlug, permissionKey)) return true;
     if (isAdminOnlyKey(permissionKey)) return false;
     if (permissionKey.startsWith('marketplace.admin.')) return false;
     if (ORG_SHOP_ADMIN_DENY_KEYS.has(permissionKey)) return false;
@@ -627,6 +638,7 @@ export function permissionMatchesTemplate(templateSlug, permissionKey) {
   }
 
   if (templateSlug === 'master-admin') {
+    if (canManageAcademy(templateSlug, permissionKey)) return true;
     if (permissionKey.startsWith('users.')) return false;
     if (permissionKey.startsWith('roles.')) return false;
     if (permissionKey.startsWith('permissions.')) return false;
@@ -684,6 +696,7 @@ export function permissionMatchesTemplate(templateSlug, permissionKey) {
   }
 
   if (templateSlug === 'academy-manager') {
+    if (canManageAcademy(templateSlug, permissionKey)) return true;
     if (isAdminOnlyKey(permissionKey)) return false;
     if (matchesAny(permissionKey, ACADEMY_MANAGER_PATTERNS)) return true;
     return false;

@@ -6,6 +6,22 @@ type RowData = import('mysql2').RowDataPacket[];
 type ResultSet = import('mysql2').ResultSetHeader;
 
 class AttendanceRepository {
+  /** Resolve a group session's owning group (used for object-level scope checks). */
+  async getSessionGroupId(sessionId: number): Promise<number | null> {
+    const [rows] = await getPool().query<RowData>(
+      'SELECT group_id FROM academy_group_sessions WHERE id = ? LIMIT 1', [sessionId],
+    );
+    return rows.length ? Number((rows[0] as any).group_id) : null;
+  }
+
+  /** Resolve an attendance record's group session id (used for object-level scope checks). */
+  async getAttendanceSessionId(attendanceId: number): Promise<number | null> {
+    const [rows] = await getPool().query<RowData>(
+      'SELECT group_session_id FROM academy_attendance WHERE id = ? LIMIT 1', [attendanceId],
+    );
+    return rows.length ? Number((rows[0] as any).group_session_id) : null;
+  }
+
   async list(filters: {
     page?: number; limit?: number; groupSessionId?: number; enrollmentId?: number;
   }) {

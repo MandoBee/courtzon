@@ -15,6 +15,16 @@ interface AcademyProgram {
   price_type: 'FREE' | 'FIXED' | 'MEMBERS_ONLY';
   status: string;
   is_public: boolean;
+  // G1 — ownership + confirmation foundation
+  organisation_id: number | null;
+  branch_id: number | null;
+  sport_id: number | null;
+  organisation_name?: string | null;
+  branch_name?: string | null;
+  sport_name?: string | null;
+  lifecycle_state: 'setup' | 'confirmed';
+  confirmed_at: string | null;
+  confirmed_by: number | null;
   archived_at: string | null;
   created_at: string;
   updated_at: string;
@@ -26,6 +36,11 @@ interface AcademyGroup {
   name: string;
   coach_id: number | null;
   coach_name: string | null;
+  coach_relation?: 'contracted' | 'external' | null;
+  comp_type: 'fixed_total' | 'fixed_per_session' | 'percent_gross' | null;
+  comp_value: number | null;
+  comp_currency: string | null;
+  coach_locked_at: string | null;
   capacity: number;
   status: string;
   created_at: string;
@@ -95,10 +110,14 @@ export const academyApi = {
     api.get<PaginatedResult<AcademyProgram>>('/admin/academy/programs', { params }).then(r => r.data),
   getProgram: (id: number) =>
     api.get<AcademyProgram>(`/admin/academy/programs/${id}`).then(r => r.data),
+  getProgramDetail: (id: number) =>
+    api.get<{ program: AcademyProgram; groups: AcademyGroup[] }>(`/admin/academy/programs/${id}/detail`).then(r => r.data),
   createProgram: (data: any) =>
     api.post<AcademyProgram>('/admin/academy/programs', data).then(r => r.data),
   updateProgram: (id: number, data: any) =>
     api.put<AcademyProgram>(`/admin/academy/programs/${id}`, data).then(r => r.data),
+  confirmProgram: (id: number) =>
+    api.post<AcademyProgram>(`/admin/academy/programs/${id}/confirm`, {}).then(r => r.data),
   publishProgram: (id: number) =>
     api.post<AcademyProgram>(`/admin/academy/programs/${id}/publish`).then(r => r.data),
   archiveProgram: (id: number) =>
@@ -121,6 +140,8 @@ export const academyApi = {
     api.put<AcademyGroup>(`/admin/academy/groups/${id}`, data).then(r => r.data),
   assignCoach: (id: number, coachId: number | null) =>
     api.post<AcademyGroup>(`/admin/academy/groups/${id}/assign-coach`, { coach_id: coachId }).then(r => r.data),
+  setCompensation: (id: number, data: { comp_type: string; comp_value: number; comp_currency?: string | null }) =>
+    api.post<AcademyGroup>(`/admin/academy/groups/${id}/compensation`, data).then(r => r.data),
   archiveGroup: (id: number) =>
     api.post(`/admin/academy/groups/${id}/archive`).then(r => r.data),
 
