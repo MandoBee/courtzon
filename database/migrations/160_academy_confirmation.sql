@@ -1,6 +1,11 @@
 -- ============================================================================
 -- COURTZON V3 : ACADEMY G3 — CONFIRMATION LIFECYCLE
 --
+-- COURTZON_MIGRATION_ENV: LOCAL_DOCKER_ONLY
+-- (Machine-readable classification enforced by backend/scripts/migration-guard.sh.
+--  This migration is applied ONLY when COURTZON_MIGRATION_ENV=local. In
+--  production/unknown environments it is skipped and never recorded.)
+--
 -- Additive, backward-compatible, non-destructive.
 -- Introduces:
 --   1. `reservation_status` enum extended with `confirmed` (G3 finalises

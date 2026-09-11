@@ -139,8 +139,19 @@ A fresh or restored environment MUST apply every seed file below, in order. The 
 
 ### Creating a new DB migration
 1. Add the migration SQL file to `database/migrations/`
-2. Update the baseline by running the full chain against a fresh DB and re-exporting
-3. Run `node backend/scripts/migrate.js` to apply pending migrations (or import the new baseline)
+2. **Add the mandatory machine-readable classification marker** near the top of
+   the file — enforced by `backend/scripts/migration-guard.sh` in BOTH the Docker
+   entrypoint and `scripts/migrate.sh` (fail-closed; a comment alone is NOT a
+   guard):
+   - `-- COURTZON_MIGRATION_ENV: PRODUCTION_SAFE` — eligible everywhere.
+   - `-- COURTZON_MIGRATION_ENV: LOCAL_DOCKER_ONLY` — runs ONLY when
+     `COURTZON_MIGRATION_ENV=local`; skipped (and never recorded in
+     `migration_history`) in production or unknown environments.
+   - (no marker) → treated as `PRODUCTION_SAFE` (backward-compatible default).
+   Migration 160 (`160_academy_confirmation.sql`) and 159 are
+   `LOCAL_DOCKER_ONLY`; 157/158 are `PRODUCTION_SAFE`.
+3. Update the baseline by running the full chain against a fresh DB and re-exporting
+4. Run `node backend/scripts/migrate.js` to apply pending migrations (or import the new baseline)
 
 ### Applying baseline + seed
 ```bash

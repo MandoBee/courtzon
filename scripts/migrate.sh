@@ -8,6 +8,18 @@ BASELINE_DIR="$PROJECT_ROOT/database/baseline"
 LOG_FILE="$PROJECT_ROOT/backups/migration.log"
 TRACKING_TABLE="migration_history"
 
+# ── Load the shared migration environment guard ──────────────────────────────
+# Single source of truth for the LOCAL_DOCKER_ONLY vs PRODUCTION_SAFE
+# classification — the same policy the Docker entrypoint enforces. Missing
+# guard = fail-closed (refuse to run migrations without the policy).
+GUARD_FILE="$PROJECT_ROOT/backend/scripts/migration-guard.sh"
+if [ ! -f "$GUARD_FILE" ]; then
+  echo "ERROR: migration guard not found at $GUARD_FILE — refusing to run migrations (fail-closed)" >&2
+  exit 1
+fi
+# shellcheck source=../backend/scripts/migration-guard.sh
+source "$GUARD_FILE"
+
 DB_HOST="${DB_HOST:-localhost}"
 DB_PORT="${DB_PORT:-3306}"
 DB_USER="${DB_USER:-root}"
@@ -98,6 +110,14 @@ apply_migrations() {
       continue
     fi
 
+    # Migration-environment policy guard (fail-closed). A LOCAL_DOCKER_ONLY
+    # migration is skipped — and never recorded in migration_history — outside
+    # an explicit local environment, so it can never reach Hostinger/production.
+    if ! courtzon_migration_should_run "$migration_file"; then
+      log "SKIP $filename (policy: $(courtzon_migration_skip_reason "$migration_file" "$filename"))"
+      continue
+    fi
+
     log "Applying: $filename"
     local start_time
     start_time=$(date +%s%N)
@@ -131,6 +151,12 @@ apply_migrations() {
 show_status() {
   echo "=== Migration Status ==="
   echo "Database: $DB_NAME"
+  echo "Migration environment: $(courtzon_migration_env) (COURTZON_MIGRATION_ENV=${COURTZON_MIGRATION_ENV:-<unset>})"
+  echo ""
+
+  echo "Note: LOCAL_DOCKER_ONLY migrations are reported [PENDING] unless the
+  environment is explicitly 'local' — they are intentionally never applied to
+  production. They stay pending here by design."
   echo ""
 
   local total
@@ -250,6 +276,7 @@ main() {
     apply_baseline
   fi
 
+  log "Migration environment: $(courtzon_migration_env) (COURTZON_MIGRATION_ENV=${COURTZON_MIGRATION_ENV:-<unset>})"
   apply_migrations
 
   log "Migration complete."

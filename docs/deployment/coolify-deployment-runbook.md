@@ -280,6 +280,11 @@ SESSION_SECRET=<YOUR_SESSION_SECRET>
 JWT_SECRET=<YOUR_JWT_SECRET>
 ENABLE_API_DOCS=false
 
+# Migration environment — MUST be explicitly 'production' so LOCAL_DOCKER_ONLY
+# migrations (159, 160) are skipped and never recorded on Hostinger. If unset,
+# the environment is UNKNOWN and the guard fail-closes those migrations anyway.
+COURTZON_MIGRATION_ENV=production
+
 # Storage (S3-compatible)
 STORAGE_PROVIDER=s3
 S3_ENDPOINT=<YOUR_S3_ENDPOINT>

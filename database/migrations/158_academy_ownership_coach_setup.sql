@@ -1,6 +1,10 @@
 -- ============================================================================
 -- COURTZON V3 : ACADEMY G1 — OWNERSHIP + COACH SETUP + CONFIRMATION FOUNDATION
 --
+-- COURTZON_MIGRATION_ENV: PRODUCTION_SAFE
+-- (Machine-readable classification for backend/scripts/migration-guard.sh —
+--  this migration is eligible in every environment.)
+--
 -- Additive, backward-compatible, non-destructive.
 -- Scope columns are nullable so pre-existing academy rows remain valid without
 -- fabricating ownership (ownership is required for NEW academies via the API).

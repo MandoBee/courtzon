@@ -2,6 +2,10 @@
 -- COURTZON V3 : MATCH RESULT SYSTEM
 -- Sport / Format / Rule engine + Match Result records + Rating evidence.
 --
+-- COURTZON_MIGRATION_ENV: PRODUCTION_SAFE
+-- (Machine-readable classification for backend/scripts/migration-guard.sh —
+--  this migration is eligible in every environment.)
+--
 -- Scope: public matches only. Academy compatibility is preserved by keeping
 -- rating evidence generic (source + reference id) and match result records
 -- type-scoped (match_type ENUM future-proofed for tournament/league).

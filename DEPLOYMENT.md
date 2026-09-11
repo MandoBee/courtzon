@@ -65,6 +65,38 @@ docker exec courtzon-backend node scripts/migrate.js --status
 docker exec courtzon-backend node scripts/migrate.js --fresh --seed
 ```
 
+### Migration Environments (fail-closed guard)
+
+Migrations are classified by a **machine-readable header marker** that is
+enforced by `backend/scripts/migration-guard.sh` in BOTH execution paths (the
+Docker entrypoint on every container start, and `scripts/migrate.sh`):
+
+| Marker | Meaning |
+|--------|---------|
+| `-- COURTZON_MIGRATION_ENV: PRODUCTION_SAFE` | Eligible in every environment |
+| `-- COURTZON_MIGRATION_ENV: LOCAL_DOCKER_ONLY` | Runs **only** when `COURTZON_MIGRATION_ENV=local` |
+| (no marker) | Treated as `PRODUCTION_SAFE` (backward-compatible default) |
+| (unrecognized marker value) | `INVALID` → fail-closed, skipped outside explicit local |
+
+Environment detection uses the **explicit** variable `COURTZON_MIGRATION_ENV`:
+
+- `COURTZON_MIGRATION_ENV=local` — local Docker development.
+- `COURTZON_MIGRATION_ENV=production` — Hostinger / production (set in the
+  Coolify UI).
+- **unset or any other value — treated as UNKNOWN and FAIL-CLOSED:**
+  `LOCAL_DOCKER_ONLY` migrations are skipped, never executed, and **never
+  recorded** in `migration_history`. They remain pending until an explicit
+  local environment runs them.
+
+`LOCAL_DOCKER_ONLY` migrations (currently `159_academy_scheduling.sql`,
+`160_academy_confirmation.sql`) are **never applied automatically to
+Hostinger/production** — the guard enforces this, not a comment.
+
+**Operators:** any future production schema migration must be committed
+without the `LOCAL_DOCKER_ONLY` marker (or with `PRODUCTION_SAFE`), then applied
+via `docker exec courtzon-backend node scripts/migrate.js` on the production
+stack with `COURTZON_MIGRATION_ENV=production`.
+
 Migration files:
 - `001_courtzon_v3.sql` — Baseline schema (162 tables)
 - `002_add_financial_unique_constraints.sql` — Gateway reference + wallet transaction UNIQUE

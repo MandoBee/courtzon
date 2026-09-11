@@ -14,6 +14,8 @@ The CourtZon platform runs on Docker Compose locally and via Coolify for product
 
 2. **Migration-first deployment.** Database migrations (additive-only ALTER TABLE operations) are applied before new application code is deployed. This ensures the old application version works with the new schema (backward compatibility). Migration ordering is enforced by sequential prefixes (005, 006, 007, 008).
 
+3. **Environment-guarded migrations (fail-closed).** Every migration carries a machine-readable `-- COURTZON_MIGRATION_ENV:` header marker parsed by the shared guard `backend/scripts/migration-guard.sh`, enforced identically by the Docker entrypoint and `scripts/migrate.sh`. `LOCAL_DOCKER_ONLY` migrations run only when `COURTZON_MIGRATION_ENV=local`; in `production` or an **unknown/unset** environment they are skipped and **never recorded** in `migration_history`. `PRODUCTION_SAFE`/unmarked migrations run in every environment (backward compatible). This guarantees dev-only migrations (e.g. 159, 160) can never be applied automatically to Hostinger.
+
 3. **Build metadata injection.** Docker builds accept `--build-arg GIT_COMMIT=$(git rev-parse HEAD)`. The backend Dockerfile writes `build-time.txt`, `version.txt`, `git-commit.txt`, and `expected-migration.txt` to `/app/`. Health endpoints expose these for CI/CD verification.
 
 4. **Health-based deployment gating.** After deployment, CI/CD must verify: `GET /health/ready` returns 200, `GET /payments/health` returns `migrationSynced: true` and `gatewayConfigured: true`. Deployment is blocked if any check fails.

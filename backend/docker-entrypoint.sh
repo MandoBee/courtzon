@@ -1,6 +1,14 @@
 #!/bin/sh
 set -e
 
+# ── Load the shared migration environment guard ──────────────────────
+# Single source of truth for the LOCAL_DOCKER_ONLY vs PRODUCTION_SAFE
+# classification used by the automatic migration loop below (and by the
+# manual runner scripts/migrate.sh). If the guard is missing the container
+# fails to start — fail-closed: migrations never run without the policy.
+# shellcheck source=./migration-guard.sh
+. /app/scripts/migration-guard.sh
+
 # ── Fix bind-mounted uploads directory permissions ──────────────────
 # Docker creates bind mount source dirs as root:root with mode 0755.
 # The container runs as root during entrypoint, so we fix ownership
@@ -49,6 +57,8 @@ else
 
   echo "Applying pending migrations..."
   if [ -d /app/database/migrations ]; then
+    echo "Migration environment: $(courtzon_migration_env) (COURTZON_MIGRATION_ENV=${COURTZON_MIGRATION_ENV:-<unset>})"
+
     # Ensure migration_history table exists (may be missing on older DBs)
     $_MYSQL "$DB_NAME" -e \
       "CREATE TABLE IF NOT EXISTS migration_history (
@@ -62,6 +72,15 @@ else
     for f in /app/database/migrations/*.sql; do
       if [ -f "$f" ]; then
         fname=$(basename "$f")
+
+        # Migration-environment policy guard (fail-closed). A LOCAL_DOCKER_ONLY
+        # migration is skipped — and never recorded — outside an explicit local
+        # environment, so it can never reach Hostinger/production.
+        if ! courtzon_migration_should_run "$f"; then
+          echo "  SKIP (policy): $fname — $(courtzon_migration_skip_reason "$f" "$fname")"
+          continue
+        fi
+
         applied=$($_MYSQL "$DB_NAME" -N -e \
           "SELECT COUNT(*) FROM migration_history WHERE filename='$fname'" 2>/dev/null || echo "0")
         if [ "$applied" = "0" ]; then

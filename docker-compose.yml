@@ -78,6 +78,13 @@ services:
       # open CORS must be explicitly opted into via the RELAX_RATE_LIMIT env var.
       # Set RELAX_RATE_LIMIT=true only for local Docker development, never in prod.
       RELAX_RATE_LIMIT: ${RELAX_RATE_LIMIT:-false}
+      # Migration environment: this compose file IS the local Docker development
+      # stack, so it explicitly identifies itself as 'local' by default. Hostinger
+      # / production (Coolify) is configured separately with
+      # COURTZON_MIGRATION_ENV=production. The entrypoint treats any other
+      # value (or unset) as unknown and FAIL-CLOSED for LOCAL_DOCKER_ONLY
+      # migrations, so they can never reach production.
+      COURTZON_MIGRATION_ENV: ${COURTZON_MIGRATION_ENV:-local}
     depends_on:
       mysql:
         condition: service_healthy
