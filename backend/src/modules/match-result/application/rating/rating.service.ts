@@ -216,14 +216,31 @@ function isInactiveEvidence(e: { meta?: Record<string, unknown> | null }): boole
 }
 
 /**
- * Round 3 — evidence validity evaluated AS OF a timestamp. A row invalidated at
- * T2 (meta.invalidated_at) counts before T2, does not count in [T2, T3), and
- * counts again from reactivation T3 (meta.reactivated_at). Rows never invalidated
- * are always active unless explicitly flagged inactive without a timestamp
- * (legacy conservative default).
+ * Round 3/4 — evidence validity evaluated AS OF a timestamp.
+ *
+ * Resolution order:
+ *  1. `meta.validity_history` (array of {active, at}) when present — the latest
+ *     transition at or before asOf decides; before the first transition the
+ *     evidence is treated as ACTIVE (evidence is born active).
+ *  2. Round-3 `invalidated_at`/`reactivated_at` semantics for existing rows
+ *     that only carry a single invalidation cycle.
+ *  3. Legacy fallback: a row is active unless explicitly flagged
+ *     `active === false`.
+ *
+ * The CURRENT active state never rewrites historical state.
  */
 function isEvidenceActiveAt(e: { meta?: Record<string, unknown> | null }, asOfMs: number): boolean {
   const meta = e.meta ?? {};
+  const history = Array.isArray(meta.validity_history) ? meta.validity_history : null;
+  if (history && history.length) {
+    let state = true;
+    for (const t of history) {
+      const tMs = new Date(String(t.at)).getTime();
+      if (tMs <= asOfMs) state = Boolean(t.active);
+      else break;
+    }
+    return state;
+  }
   const invalidatedAt = meta.invalidated_at;
   if (invalidatedAt == null) {
     return meta.active !== false;

@@ -197,29 +197,43 @@ export class RatingRepository {
   }
 
   /**
-   * Round 2/3 — mark a source's evidence active/inactive WITHOUT deleting
-   * historical rows. Inactive evidence remains stored but no longer contributes
-   * to current Overall Rating. `asOf` records WHEN the state flipped so
-   * Point-in-Time calculations can evaluate validity as of any timestamp.
-   */
-  async setEvidenceActive(source: string, sourceRefId: number, active: boolean, asOf: string): Promise<void> {
-    const pool = getPool();
-    if (active) {
-      await pool.execute(
-        `UPDATE rating_evidence
-         SET meta = JSON_SET(COALESCE(meta, JSON_OBJECT()), '$.active', true, '$.reactivated_at', ?)
-         WHERE source = ? AND source_ref_id = ?`,
-        [asOf, source, sourceRefId],
-      );
-    } else {
-      await pool.execute(
-        `UPDATE rating_evidence
-         SET meta = JSON_SET(COALESCE(meta, JSON_OBJECT()), '$.active', false, '$.invalidated_at', ?)
-         WHERE source = ? AND source_ref_id = ?`,
-        [asOf, source, sourceRefId],
-      );
+ * Round 2/3/4 — mark a source's evidence active/inactive WITHOUT deleting
+ * historical rows. Each call APPENDS a validity transition to
+ * `meta.validity_history` (e.g. [{active:false, at:...}, {active:true, at:...}])
+ * so Point-in-Time calculations stay correct across MANY corrections of the
+ * same evidence. `meta.active` always reflects the latest/current state.
+ *
+ * Idempotent: a call that does not change state (same active as the last
+ * transition) appends nothing. Round-3 `invalidated_at`/`reactivated_at`
+ * fields are preserved untouched for backward compatibility.
+ */
+async setEvidenceActive(source: string, sourceRefId: number, active: boolean, asOf: string): Promise<void> {
+  const pool = getPool();
+  const [rows] = await pool.execute<RowData>(
+    'SELECT id, meta FROM rating_evidence WHERE source = ? AND source_ref_id = ?',
+    [source, sourceRefId],
+  );
+  for (const r of rows as any[]) {
+    let meta = r.meta ? (typeof r.meta === 'string' ? JSON.parse(r.meta) : r.meta) : {};
+    if (typeof meta !== 'object' || meta === null || Array.isArray(meta)) meta = {};
+    const history: Array<{ active: boolean; at: string }> = Array.isArray(meta.validity_history)
+      ? meta.validity_history
+      : [];
+    const currentState = history.length
+      ? history[history.length - 1].active
+      : (typeof meta.active === 'boolean' ? meta.active : undefined);
+    if (currentState === active) {
+      // No state change — covers idempotent repeats, redundant transitions and
+      // Round-3/legacy rows whose current `active` flag already matches.
+      continue;
     }
+    history.push({ active, at: asOf });
+    await pool.execute(
+      'UPDATE rating_evidence SET meta = ? WHERE id = ?',
+      [JSON.stringify({ ...meta, active, validity_history: history }), r.id],
+    );
   }
+}
 
   /** Distinct sports where the user currently has Self Declared evidence. */
   async getSelfDeclaredSportIds(userId: number): Promise<number[]> {

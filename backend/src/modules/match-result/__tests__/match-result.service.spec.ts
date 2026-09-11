@@ -302,10 +302,53 @@ describe('Round 2 Item 1 — correction to No Result invalidates evidence', () =
 
     await matchResultService.correctResult(1, 999, VALID_PAYLOAD);
 
-    expect(repo.updateResult).toHaveBeenCalledWith(1, expect.objectContaining({ outcome: 'completed', finalResult: expect.any(Object) }));
+expect(repo.updateResult).toHaveBeenCalledWith(1, expect.objectContaining({ outcome: 'completed', finalResult: expect.any(Object) }));
     expect(rating.setMatchEvidenceActive).toHaveBeenCalledWith('match_result', 1, true, expect.any(String));
     expect(rating.applyEvidence).toHaveBeenCalledTimes(2);
     expect(rating.applyEvidence).toHaveBeenCalledWith(expect.objectContaining({ source: 'match_result', sourceRefId: 1 }));
+  });
+});
+
+describe('Round 4 — TEST 3 multiple corrections alternate validity and recalculate', () => {
+  const winRows = [
+    { id: 10, resultId: 1, matchId: 42, userId: 5, teamIndex: 0, side: 'home', outcome: 'win', matchEvidence: 100, evidenceCounted: true, ratingSnapshotPercent: 60, ratingBefore: 60, ratingAfter: 62 },
+    { id: 11, resultId: 1, matchId: 42, userId: 6, teamIndex: 1, side: 'away', outcome: 'loss', matchEvidence: 0, evidenceCounted: true, ratingSnapshotPercent: 60, ratingBefore: 60, ratingAfter: 58 },
+  ];
+  const drawRows = [
+    { id: 10, resultId: 1, matchId: 42, userId: 5, teamIndex: 0, side: 'home', outcome: 'draw', matchEvidence: 50, evidenceCounted: false, ratingSnapshotPercent: 55, ratingBefore: 55, ratingAfter: 55 },
+    { id: 11, resultId: 1, matchId: 42, userId: 6, teamIndex: 1, side: 'away', outcome: 'draw', matchEvidence: 50, evidenceCounted: false, ratingSnapshotPercent: 55, ratingBefore: 55, ratingAfter: 55 },
+  ];
+
+  it('Win -> Abandoned -> Win -> Abandoned -> Win alternates false/true/false/true and recalculates each time', async () => {
+    repo.findByMatchId.mockResolvedValue(null);
+    repo.findActiveRuleSet.mockResolvedValue(FORMAT);
+    rating.resolveOverallPercentAt.mockResolvedValue(60);
+    rating.applyEvidence.mockResolvedValue({ before: 60, after: 62 });
+    rating.resolveOverallPercent.mockResolvedValue(62);
+    rating.recalculate.mockResolvedValue(55);
+
+    // 1) Win -> Abandoned (counted -> no_result) → invalidate
+    repo.findById.mockResolvedValue(makeRecord({ submissionStatus: 'approved', outcome: 'completed' }));
+    repo.getParticipants.mockResolvedValue(winRows);
+    await matchResultService.correctResult(1, 999, { outcome: 'abandoned' });
+
+    // 2) Abandoned -> Win (no_result -> counted) → reactivate
+    repo.findById.mockResolvedValue(makeRecord({ submissionStatus: 'approved', outcome: 'no_result' }));
+    repo.getParticipants.mockResolvedValue(drawRows);
+    await matchResultService.correctResult(1, 999, VALID_PAYLOAD);
+
+    // 3) Win -> Abandoned again → invalidate
+    repo.findById.mockResolvedValue(makeRecord({ submissionStatus: 'approved', outcome: 'completed' }));
+    repo.getParticipants.mockResolvedValue(winRows);
+    await matchResultService.correctResult(1, 999, { outcome: 'abandoned' });
+
+    const flips = rating.setMatchEvidenceActive.mock.calls.map((c) => c[2]);
+    expect(flips).toEqual([false, true, false]);
+    // each invalidation recalculated current ratings
+    expect(rating.recalculate).toHaveBeenCalled();
+    // reactivations re-applied evidence through the same source (no duplicate row)
+    expect(rating.applyEvidence).toHaveBeenCalledTimes(2);
+    expect(rating.applyEvidence.mock.calls.every((c) => c[0].sourceRefId === 1)).toBe(true);
   });
 });
 

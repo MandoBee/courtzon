@@ -203,3 +203,84 @@ describe('Round 3 — self-declared recalculation resilience', () => {
     expect(repo.getRating).toHaveBeenCalled();
   });
 });
+
+describe('Round 4 — multi-interval validity history', () => {
+  const played = '2026-09-01T10:00:00.000Z';
+  // Win → Abandoned → Win → Abandoned → Win
+  const T2 = '2026-09-10T12:00:00.000Z';
+  const T3 = '2026-09-15T00:00:00.000Z';
+  const T4 = '2026-09-20T00:00:00.000Z';
+  const T5 = '2026-09-25T00:00:00.000Z';
+  const historyMeta = {
+    active: true,
+    validity_history: [
+      { active: false, at: T2 },
+      { active: true, at: T3 },
+      { active: false, at: T4 },
+      { active: true, at: T5 },
+    ],
+  };
+
+  it('TEST 1 — current state after Win→Abandoned→Win→Abandoned→Win is active', async () => {
+    repo.getEvidence.mockResolvedValue([ev({ id: 1, valuePercent: 100, occurredAt: played, meta: historyMeta })]);
+    // current rating path uses the current active flag
+    const overall = await ratingService.recalculate(5, 22, null, 'test');
+    expect(overall).toBe(100);
+    // point-in-time at "now" (after T5) is active
+    const atNow = await ratingService.resolveOverallPercentAt(5, 22, new Date('2026-09-30T00:00:00.000Z'));
+    expect(atNow).toBe(100);
+  });
+
+  it('TEST 2 — point-in-time between every transition', async () => {
+    repo.getEvidence.mockResolvedValue([ev({ id: 1, valuePercent: 100, occurredAt: played, meta: historyMeta })]);
+    const expectAt = async (iso: string, expected: number) => {
+      expect(await ratingService.resolveOverallPercentAt(5, 22, new Date(iso))).toBe(expected);
+    };
+    await expectAt('2026-09-05T00:00:00.000Z', 100); // before T2 → active
+    await expectAt('2026-09-12T00:00:00.000Z', 60);  // [T2, T3) → inactive
+    await expectAt('2026-09-17T00:00:00.000Z', 100); // [T3, T4) → active
+    await expectAt('2026-09-22T00:00:00.000Z', 60);  // [T4, T5) → inactive
+    await expectAt('2026-09-28T00:00:00.000Z', 100); // after T5 → active
+  });
+
+  it('TEST 4 — historical rating before every correction stays reproducible', async () => {
+    repo.getEvidence.mockResolvedValue([ev({ id: 1, valuePercent: 100, occurredAt: played, meta: historyMeta })]);
+    // before first invalidation
+    expect(await ratingService.resolveOverallPercentAt(5, 22, new Date('2026-09-01T12:00:00.000Z'))).toBe(100);
+    // immediately before second reactivation (still inactive)
+    expect(await ratingService.resolveOverallPercentAt(5, 22, new Date('2026-09-14T23:59:00.000Z'))).toBe(60);
+    // immediately before second invalidation (still active)
+    expect(await ratingService.resolveOverallPercentAt(5, 22, new Date('2026-09-19T23:59:00.000Z'))).toBe(100);
+  });
+
+  it('TEST 5 — no duplicate evidence row: single record resolves through all states', async () => {
+    repo.getEvidence.mockResolvedValue([ev({ id: 1, valuePercent: 100, occurredAt: played, meta: historyMeta })]);
+    await ratingService.resolveOverallPercentAt(5, 22, new Date('2026-09-05T00:00:00.000Z'));
+    await ratingService.resolveOverallPercentAt(5, 22, new Date('2026-09-12T00:00:00.000Z'));
+    await ratingService.resolveOverallPercentAt(5, 22, new Date('2026-09-30T00:00:00.000Z'));
+    // each query reads the same single evidence row (user+sport), never creating more
+    expect(repo.getEvidence).toHaveBeenCalledTimes(3);
+    for (const call of repo.getEvidence.mock.calls) {
+      expect(call).toEqual([5, 22]);
+    }
+  });
+
+  it('TEST 7 — Round-3 single-cycle evidence stays backward compatible', async () => {
+    repo.getEvidence.mockResolvedValue([
+      ev({ id: 1, valuePercent: 100, occurredAt: played, meta: { active: false, invalidated_at: T2, reactivated_at: T3 } }),
+    ]);
+    expect(await ratingService.resolveOverallPercentAt(5, 22, new Date('2026-09-05T00:00:00.000Z'))).toBe(100); // before T2
+    expect(await ratingService.resolveOverallPercentAt(5, 22, new Date('2026-09-12T00:00:00.000Z'))).toBe(60);  // [T2, T3)
+    expect(await ratingService.resolveOverallPercentAt(5, 22, new Date('2026-09-17T00:00:00.000Z'))).toBe(100); // >= T3
+  });
+
+  it('TEST 8 — legacy evidence without validity history stays backward compatible', async () => {
+    repo.getEvidence.mockResolvedValue([
+      ev({ id: 1, valuePercent: 100, occurredAt: played, meta: null }),
+      ev({ id: 2, valuePercent: 0, occurredAt: played, meta: { active: false } }),
+    ]);
+    const at = await ratingService.resolveOverallPercentAt(5, 22, new Date('2026-09-05T00:00:00.000Z'));
+    // active 100 (meta null → active) + inactive 0 (active:false, no timestamps → inactive) → (100*0.3)/0.3 = 100
+    expect(at).toBe(100);
+  });
+});
