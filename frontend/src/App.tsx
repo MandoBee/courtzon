@@ -146,6 +146,7 @@ const AcademyProgramsPage = lazy(() => import('./pages/admin/academy/AcademyProg
 const AcademyGroupsPage = lazy(() => import('./pages/admin/academy/AcademyGroupsPage'));
 const AcademyEnrollmentsPage = lazy(() => import('./pages/admin/academy/AcademyEnrollmentsPage'));
 const AcademyAttendancePage = lazy(() => import('./pages/admin/academy/AcademyAttendancePage'));
+const AcademySchedulesPage = lazy(() => import('./pages/admin/academy/AcademySchedulesPage'));
 const LeagueDashboardPage = lazy(() => import('./pages/admin/league/LeagueDashboardPage'));
 const SeasonListPage = lazy(() => import('./pages/admin/league/SeasonListPage'));
 const LeagueListPage = lazy(() => import('./pages/admin/league/LeagueListPage'));
@@ -730,6 +731,7 @@ function AppContent() {
             <Route path="academy/groups" element={<AcademyGroupsPage />} />
             <Route path="academy/enrollments" element={<AcademyEnrollmentsPage />} />
             <Route path="academy/attendance" element={<AcademyAttendancePage />} />
+            <Route path="academy/schedules" element={<AcademySchedulesPage />} />
             <Route path="membership/plans" element={<MembershipPlansPage />} />
             <Route path="membership/campaigns" element={<CampaignsPage />} />
             <Route path="membership/rewards" element={<RewardsAdminPage />} />

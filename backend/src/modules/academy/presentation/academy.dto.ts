@@ -167,3 +167,53 @@ export const ListAttendanceQuerySchema = z.object({
   group_session_id: z.coerce.number().int().positive().optional(),
   enrollment_id: z.coerce.number().int().positive().optional(),
 });
+
+// ── G2 — Recurring Schedules ──
+
+const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+export const CreateScheduleSchema = z.object({
+  group_id: z.number().int().positive(),
+  name: z.string().min(1).max(200).optional().nullable(),
+  weekdays: z.array(z.enum(['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'])).min(1),
+  start_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  end_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  local_start_time: z.string().regex(TIME_RE),
+  local_end_time: z.string().regex(TIME_RE),
+  timezone: z.string().optional().nullable(),
+  branch_id: z.number().int().positive(),
+  preferred_court_id: z.number().int().positive().optional().nullable(),
+  pending_priority_minutes: z.number().int().min(30).max(10080).optional().default(1440),
+});
+
+export const UpdateScheduleSchema = CreateScheduleSchema.partial();
+
+export const ListSchedulesQuerySchema = z.object({
+  page: z.coerce.number().int().positive().optional().default(1),
+  limit: z.coerce.number().int().positive().max(100).optional().default(20),
+  status: z.enum(['active', 'paused', 'archived']).optional(),
+  group_id: z.coerce.number().int().positive().optional(),
+});
+
+export const ListScheduleSessionsQuerySchema = z.object({
+  page: z.coerce.number().int().positive().optional().default(1),
+  limit: z.coerce.number().int().positive().max(100).optional().default(20),
+  reservation_status: z.string().optional(),
+});
+
+export const ScheduleStatusSchema = z.object({
+  status: z.enum(['active', 'paused', 'archived']),
+});
+
+export const ResolveSessionSchema = z.object({
+  type: z.enum(['release', 'keep', 'apply_alternative']),
+  alternative: z.object({
+    court_id: z.number().int().positive(),
+    session_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    start_time: z.string().regex(TIME_RE),
+    end_time: z.string().regex(TIME_RE),
+  }).optional(),
+}).refine((v) => v.type !== 'apply_alternative' || (v.alternative !== undefined && v.alternative.court_id > 0), {
+  message: 'alternative is required for apply_alternative',
+  path: ['alternative'],
+});

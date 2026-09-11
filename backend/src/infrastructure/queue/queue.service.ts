@@ -20,7 +20,8 @@ export type JobType = 'send_email' | 'process_settlement' | 'cancel_expired_book
   | 'complaint_period_activation'
   | 'complaint_receipt_timeout'
   | 'complaint_collection_escalation'
-  | 'match_result_deadlines';
+  | 'match_result_deadlines'
+  | 'expire_academy_holds';
 
 export interface EmailAttachment {
   filename: string;
@@ -44,6 +45,10 @@ export interface ProcessSettlementJob {
 
 export interface CancelExpiredBookingsJob {
   cutoffMinutes?: number;
+}
+
+export interface ExpireAcademyHoldsJob {
+  _?: undefined;
 }
 
 export interface SagaRepairJob {
@@ -152,6 +157,7 @@ export type JobPayloadMap = {
   complaint_receipt_timeout: Record<string, never>;
   complaint_collection_escalation: Record<string, never>;
   match_result_deadlines: Record<string, never>;
+  expire_academy_holds: ExpireAcademyHoldsJob;
 };
 
 export const DEFAULT_QUEUE_NAME = 'default';

@@ -47,6 +47,18 @@ export async function academyRoutes(app: FastifyInstance): Promise<void> {
   app.post('/admin/academy/sessions', { preHandler: [requirePermission(['academy.create'])] }, ctrl.createSessionHandler);
   app.put('/admin/academy/sessions/:id', { preHandler: [requirePermission(['academy.update'])] }, ctrl.updateSessionHandler);
 
+  // ── G2 — Recurring Schedules ──
+  app.get('/admin/academy/schedules', { preHandler: [requirePermission(['academy.schedule.view'])] }, ctrl.listSchedulesHandler);
+  app.post('/admin/academy/schedules', { preHandler: [requirePermission(['academy.schedule.manage'])] }, ctrl.createScheduleHandler);
+  app.get('/admin/academy/schedules/:id', { preHandler: [requirePermission(['academy.schedule.view'])] }, ctrl.getScheduleHandler);
+  app.put('/admin/academy/schedules/:id', { preHandler: [requirePermission(['academy.schedule.manage'])] }, ctrl.updateScheduleHandler);
+  app.post('/admin/academy/schedules/:id/preview', { preHandler: [requirePermission(['academy.schedule.manage'])] }, ctrl.previewScheduleChangeHandler);
+  app.post('/admin/academy/schedules/:id/regenerate', { preHandler: [requirePermission(['academy.schedule.manage'])] }, ctrl.regenerateScheduleHandler);
+  app.post('/admin/academy/schedules/:id/resync', { preHandler: [requirePermission(['academy.schedule.manage'])] }, ctrl.resyncScheduleHandler);
+  app.post('/admin/academy/schedules/:id/status', { preHandler: [requirePermission(['academy.schedule.manage'])] }, ctrl.setScheduleStatusHandler);
+  app.get('/admin/academy/schedules/:scheduleId/sessions', { preHandler: [requirePermission(['academy.schedule.view'])] }, ctrl.listScheduleSessionsHandler);
+  app.post('/admin/academy/sessions/:id/resolve', { preHandler: [requirePermission(['academy.schedule.resolve'])] }, ctrl.resolveSessionHandler);
+
   // ── Attendance ──
   app.get('/admin/academy/sessions/:sessionId/attendance', { preHandler: [requirePermission(['attendance.manage'])] }, ctrl.getSessionAttendanceHandler);
   app.get('/admin/academy/attendance', { preHandler: [requirePermission(['attendance.manage'])] }, ctrl.listAttendanceHandler);

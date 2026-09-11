@@ -8,6 +8,7 @@ import { attachSocketPublisher } from "./modules/realtime/index.js";
 import { notificationEngine } from "./modules/notifications/application/notification-engine.js";
 import { sendEmail } from "./shared/services/mailer.service.js";
 import { handleCancelExpiredBookings } from "./modules/booking/infrastructure/booking-expiry.worker.js";
+import { handleExpireAcademyHolds } from "./modules/academy/infrastructure/academy-hold-expiry.worker.js";
 import { handleSagaRepair } from "./modules/scheduling/infrastructure/saga-repair.worker.js";
 import { handleCancelAbandonedOrders } from "./modules/marketplace/infrastructure/marketplace-cleanup.worker.js";
 import { handleExpireSubscriptions, handleSendExpirationReminders } from "./modules/organisations/infrastructure/subscription-lifecycle.worker.js";
@@ -107,6 +108,7 @@ async function bootstrap() {
     registerHandler('complaint_receipt_timeout', handleComplaintReceiptTimeout);
     registerHandler('complaint_collection_escalation', handleComplaintCollectionEscalation);
     registerHandler('match_result_deadlines', processMatchResultDeadlines);
+    registerHandler('expire_academy_holds', handleExpireAcademyHolds);
 
     registerCommandHandler('ConfirmBooking', confirmBookingHandler as any);
     registerCommandHandler('CancelBooking', cancelBookingHandler as any);
@@ -362,6 +364,14 @@ async function bootstrap() {
     // Marketplace complaint collection-deadline escalation — every 15 minutes
     await queueService.add('complaint_collection_escalation', {}, {
       repeat: { every: 900_000 },
+      removeOnComplete: true,
+      removeOnFail: { age: 86400 },
+    });
+
+    // Academy pending-hold expiry — conservative 2-minute cadence (never
+    // auto-cancels/extends; only marks pending_expired for admin decision).
+    await queueService.add('expire_academy_holds', {}, {
+      repeat: { every: 120_000 },
       removeOnComplete: true,
       removeOnFail: { age: 86400 },
     });

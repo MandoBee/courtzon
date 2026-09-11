@@ -202,6 +202,63 @@ export class BookingRepository {
   }
 
   /**
+   * Exclusive lock on the `resources` row — the aggregate serialization point
+   * for booking creation (and Academy pending-hold claims) on that resource.
+   * Concurrent attempts serialize on this single-row lock.
+   */
+  async lockResource(resourceId: number, conn?: mysql.PoolConnection): Promise<void> {
+    const db = this.resolve(conn);
+    if (resourceId) {
+      await db.execute<RowData>(`SELECT id FROM resources WHERE id = ? FOR UPDATE`, [resourceId]);
+    }
+  }
+
+  /**
+   * Academy pending-hold overlap guard (same window semantics as the booking
+   * check). `pending_court`/`resolved` holds that have not expired block the
+   * slot for regular players; Academy self-evaluation excludes `sessionId`.
+   */
+  private async countAcademyHoldOverlaps(
+    resourceId: number,
+    date: string,
+    start: string,
+    end: string,
+    excludeAcademySessionId?: number,
+    conn?: mysql.PoolConnection,
+  ): Promise<number> {
+    const db = this.resolve(conn);
+    const [sh, sm] = start.split(':').map(Number);
+    const [eh, em] = end.split(':').map(Number);
+    const sMin = sh * 60 + sm;
+    const eMin = eh * 60 + em;
+    const excludeClause = excludeAcademySessionId ? ' AND s.id != ?' : '';
+    if (eMin > sMin) {
+      const sql = `SELECT COUNT(*) as cnt FROM academy_group_sessions s
+                   WHERE s.court_id = ? AND s.session_date = ?
+                     AND s.reservation_status IN ('pending_court','resolved')
+                     AND (s.pending_expires_at IS NULL OR s.pending_expires_at > NOW())
+                     AND s.status NOT IN ('cancelled')
+                     AND ((s.start_time < ? AND s.end_time > ?) OR (s.start_time < ? AND s.end_time > ?))${excludeClause}`;
+      const params: any[] = [resourceId, date, end, start, end, start];
+      if (excludeAcademySessionId) params.push(excludeAcademySessionId);
+      const [rows] = await db.execute<RowData>(sql, params);
+      return (rows[0] as any).cnt ?? 0;
+    }
+    const sql = `SELECT COUNT(*) as cnt FROM academy_group_sessions s
+                 WHERE s.court_id = ? AND s.reservation_status IN ('pending_court','resolved')
+                   AND (s.pending_expires_at IS NULL OR s.pending_expires_at > NOW())
+                   AND s.status NOT IN ('cancelled')
+                   AND (
+                     (s.session_date = ? AND (s.end_time > ? OR s.end_time <= s.start_time))
+                     OR (s.session_date = DATE_ADD(?, INTERVAL 1 DAY) AND s.start_time < ? AND s.end_time > '00:00')
+                   )${excludeClause}`;
+    const params: any[] = [resourceId, date, end, date, end];
+    if (excludeAcademySessionId) params.push(excludeAcademySessionId);
+    const [rows] = await db.execute<RowData>(sql, params);
+    return (rows[0] as any).cnt ?? 0;
+  }
+
+  /**
    * Check slot availability. Pass a transaction conn for FOR UPDATE semantics.
    *
    * Authoritative concurrency protection: BEFORE the overlap count, acquire an
@@ -219,7 +276,13 @@ export class BookingRepository {
    *
    * Redis locks are an optimization only — this is the database-level guard.
    */
-  async checkSlotAvailability(resourceId: number, date: string, slots: { start: string; end: string; date?: string }[], conn?: mysql.PoolConnection): Promise<boolean> {
+  async checkSlotAvailability(
+    resourceId: number,
+    date: string,
+    slots: { start: string; end: string; date?: string }[],
+    conn?: mysql.PoolConnection,
+    opts?: { excludeAcademySessionId?: number },
+  ): Promise<boolean> {
     const db = this.resolve(conn);
 
     // Serialize concurrent booking creation on this resource.
@@ -260,6 +323,7 @@ export class BookingRepository {
         const [bRows] = await db.execute<RowData>(overnightSql, [resourceId, slotDate, slot.start, slotDate, slot.end]);
         totalOverlap += (bRows[0] as any).cnt;
       }
+      totalOverlap += await this.countAcademyHoldOverlaps(resourceId, slotDate, slot.start, slot.end, opts?.excludeAcademySessionId, conn);
     }
     return totalOverlap === 0;
   }
@@ -309,14 +373,33 @@ export class BookingRepository {
        AND booking_status NOT IN ('cancelled', 'expired', 'no_show')`,
       [resourceId, businessDate, businessDate, businessDate]
     );
+    // Academy G2 pending priority holds occupy the slot for display/availability
+    // purposes (players see the slots blocked) — same window rule as bookings.
+    const [aRows] = await this.pool.execute<RowData>(
+      `SELECT start_at_utc, end_at_utc, session_date, start_time, end_time FROM academy_group_sessions
+       WHERE court_id = ? AND (session_date = ? OR session_date = DATE_SUB(?, INTERVAL 1 DAY))
+       AND reservation_status IN ('pending_court','resolved')
+       AND (pending_expires_at IS NULL OR pending_expires_at > NOW())
+       AND status NOT IN ('cancelled')
+       AND start_at_utc IS NOT NULL AND end_at_utc IS NOT NULL`,
+      [resourceId, businessDate, businessDate]
+    );
     // Normalize DB snake_case columns to camelCase TimeEngine contract
-    return bRows.map((row: any) => ({
+    const bookings = bRows.map((row: any) => ({
       startAtUtc: row.start_at_utc,
       endAtUtc: row.end_at_utc,
       bookingDate: row.booking_date,
       startTime: row.start_time,
       endTime: row.end_time,
     }));
+    const academyHolds = aRows.map((row: any) => ({
+      startAtUtc: row.start_at_utc,
+      endAtUtc: row.end_at_utc,
+      bookingDate: row.session_date,
+      startTime: row.start_time,
+      endTime: row.end_time,
+    }));
+    return [...bookings, ...academyHolds];
   }
 
   async createMatchmakingRequest(data: {

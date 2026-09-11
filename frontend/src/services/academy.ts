@@ -45,6 +45,8 @@ interface AcademyGroup {
   status: string;
   created_at: string;
   program_name?: string;
+  organisation_id?: number | null;
+  branch_id?: number | null;
 }
 
 interface AcademyEnrollment {
@@ -99,6 +101,92 @@ interface AcademyDashboard {
     excused: number;
     late: number;
   };
+}
+
+// ── G2 — Recurring Schedules ──
+
+export type AcademyScheduleWeekday = 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun';
+
+export interface AcademySchedule {
+  id: number;
+  group_id: number;
+  name: string | null;
+  weekdays: AcademyScheduleWeekday[];
+  start_date: string;
+  end_date: string;
+  local_start_time: string;
+  local_end_time: string;
+  timezone: string;
+  branch_id: number | null;
+  preferred_court_id: number | null;
+  pending_priority_minutes: number;
+  status: 'active' | 'paused' | 'archived';
+  created_by: number | null;
+  updated_by: number | null;
+  created_at: string;
+  updated_at: string;
+  // list joins
+  group_name?: string | null;
+  program_name?: string | null;
+  organisation_id?: number | null;
+  program_branch_id?: number | null;
+  preferred_court_name?: string | null;
+  branch_name?: string | null;
+}
+
+export type AcademySessionHoldStatus = 'pending_court' | 'conflict' | 'pending_expired' | 'deferred' | 'resolved' | null;
+
+export interface AcademyGroupSessionRow {
+  id: number;
+  group_id: number;
+  schedule_id: number | null;
+  source_type: string | null;
+  session_date: string;
+  start_time: string;
+  end_time: string;
+  court_id: number | null;
+  coach_id: number | null;
+  status: string;
+  timezone: string | null;
+  start_at_utc: string | null;
+  end_at_utc: string | null;
+  reservation_status: AcademySessionHoldStatus;
+  priority_seq: number | null;
+  pending_expires_at: string | null;
+  pending_resolved_at: string | null;
+  original_session_date: string | null;
+  original_start_time: string | null;
+  original_end_time: string | null;
+  original_court_id: number | null;
+  conflict_metadata: any | null;
+  group_name?: string | null;
+  court_name?: string | null;
+  coach_name?: string | null;
+  schedule_name?: string | null;
+}
+
+export interface AcademyConflictAlternative {
+  court_id: number;
+  court_name: string;
+  session_date: string;
+  start_time: string;
+  end_time: string;
+  state: string;
+}
+
+export interface AcademyConflictEvaluation {
+  sessionId?: number | null;
+  court_id: number;
+  session_date: string;
+  start_time: string;
+  end_time: string;
+  state: 'AVAILABLE' | 'PENDING_COURT' | 'CONFLICT' | 'DEFERRED' | 'ADMIN_TIME_RESOLUTION_REQUIRED' | 'EXPIRED_PENDING_DECISION';
+  reason: string | null;
+  startAtUtc: string | null;
+  endAtUtc: string | null;
+  prioritySeq: number;
+  conflict: { type: 'booking' | 'academy_session' | null; id: number | null; prioritySeq: number | null; detail?: string | null } | null;
+  alternatives: AcademyConflictAlternative[] | null;
 }
 
 export const academyApi = {
@@ -184,4 +272,26 @@ export const academyApi = {
     api.post(`/admin/academy/sessions/${sessionId}/attendance/bulk`, { records }).then(r => r.data),
   updateAttendance: (id: number, data: any) =>
     api.put(`/admin/academy/attendance/${id}`, data).then(r => r.data),
+
+  // ── G2 — Recurring Schedules ──
+  getSchedules: (params?: Record<string, any>) =>
+    api.get<PaginatedResult<AcademySchedule>>('/admin/academy/schedules', { params }).then(r => r.data),
+  getSchedule: (id: number) =>
+    api.get<AcademySchedule & { sessions: AcademyGroupSessionRow[] }>(`/admin/academy/schedules/${id}`).then(r => r.data),
+  createSchedule: (data: any) =>
+    api.post<AcademySchedule>(`/admin/academy/schedules`, data).then(r => r.data),
+  updateSchedule: (id: number, data: any) =>
+    api.put<{ evaluations: AcademyConflictEvaluation[]; affected: number; schedule: AcademySchedule }>(`/admin/academy/schedules/${id}`, data).then(r => r.data),
+  previewScheduleChange: (id: number, data: any) =>
+    api.post<{ evaluations: AcademyConflictEvaluation[]; affected: number }>(`/admin/academy/schedules/${id}/preview`, data).then(r => r.data),
+  regenerateSchedule: (id: number) =>
+    api.post<{ schedule: AcademySchedule; generated: number; evaluations: AcademyConflictEvaluation[] }>(`/admin/academy/schedules/${id}/regenerate`, {}).then(r => r.data),
+  resyncSchedule: (id: number) =>
+    api.post<{ schedule: AcademySchedule; evaluations: AcademyConflictEvaluation[]; resynced: number }>(`/admin/academy/schedules/${id}/resync`, {}).then(r => r.data),
+  setScheduleStatus: (id: number, status: string) =>
+    api.post<AcademySchedule>(`/admin/academy/schedules/${id}/status`, { status }).then(r => r.data),
+  getScheduleSessions: (scheduleId: number, params?: Record<string, any>) =>
+    api.get<PaginatedResult<AcademyGroupSessionRow>>(`/admin/academy/schedules/${scheduleId}/sessions`, { params }).then(r => r.data),
+  resolveSession: (sessionId: number, decision: { type: 'release' | 'keep' | 'apply_alternative'; alternative?: { court_id: number; session_date: string; start_time: string; end_time: string } }) =>
+    api.post<AcademyGroupSessionRow>(`/admin/academy/sessions/${sessionId}/resolve`, decision).then(r => r.data),
 };

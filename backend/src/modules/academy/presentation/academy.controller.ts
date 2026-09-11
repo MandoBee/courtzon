@@ -3,12 +3,15 @@ import { academyProgramService } from '../application/program.service.js';
 import { academyGroupService } from '../application/group.service.js';
 import { academyEnrollmentService } from '../application/enrollment.service.js';
 import { academyAttendanceService } from '../application/attendance.service.js';
+import { academyScheduleService } from '../application/academy-schedule.service.js';
 import {
   CreateProgramSchema, UpdateProgramSchema, ListProgramsQuerySchema, TransitionStatusSchema,
   CreateGroupSchema, UpdateGroupSchema, AssignCoachSchema, SetCompensationSchema, ConfirmAcademySchema, ListGroupsQuerySchema,
   CreateEnrollmentSchema, MoveEnrollmentSchema, ListEnrollmentsQuerySchema,
   CreateGroupSessionSchema, UpdateGroupSessionSchema, ListSessionsQuerySchema,
   RecordAttendanceSchema, RecordBulkAttendanceSchema, UpdateAttendanceSchema, ListAttendanceQuerySchema,
+  CreateScheduleSchema, UpdateScheduleSchema, ListSchedulesQuerySchema, ListScheduleSessionsQuerySchema,
+  ScheduleStatusSchema, ResolveSessionSchema,
 } from './academy.dto.js';
 import { getPool } from '../../../database/mysql.js';
 import { buildPagination, paginationClause } from '../../../shared/utils/pagination.js';
@@ -454,6 +457,129 @@ export async function updateSessionHandler(request: FastifyRequest, reply: Fasti
     entityId: Number(id), afterState: body, ipAddress: request.ip, userAgent: getUserAgent(request),
   });
   return reply.send({ message: 'Session updated' });
+}
+
+// ── G2 — Recurring Schedules ──
+
+async function assertScheduleAccess(actorId: number, scheduleId: number): Promise<void> {
+  const schedule = await academyScheduleService.getById(scheduleId);
+  const programId = await academyGroupService.resolveProgramId(Number(schedule.group_id));
+  if (!programId) throw new NotFoundError('Academy group', ErrorCodes.ACADEMY_GROUP_NOT_FOUND);
+  await assertProgramAccess(actorId, programId);
+}
+
+export async function listSchedulesHandler(request: FastifyRequest, reply: FastifyReply) {
+  const query = ListSchedulesQuerySchema.parse(request.query);
+  const { where, params } = await resolveListScope(request);
+  const result = await academyScheduleService.list({ ...query, scopeWhere: where || undefined, scopeParams: params.length ? params : undefined });
+  return reply.send(result);
+}
+
+export async function listScheduleSessionsHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = getUserId(request);
+  const { scheduleId } = request.params as any;
+  await assertScheduleAccess(userId, Number(scheduleId));
+  const query = ListScheduleSessionsQuerySchema.parse(request.query);
+  const result = await academyScheduleService.listSessions({ ...query, scheduleId: Number(scheduleId) });
+  return reply.send(result);
+}
+
+export async function getScheduleHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = getUserId(request);
+  const { id } = request.params as any;
+  await assertScheduleAccess(userId, Number(id));
+  const schedule = await academyScheduleService.getById(Number(id));
+  return reply.send(schedule);
+}
+
+export async function createScheduleHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = getUserId(request);
+  const body = CreateScheduleSchema.parse(request.body);
+  const schedule = await academyScheduleService.create(body as any, userId);
+  if (schedule) {
+    recordAudit({
+      actorId: userId, action: 'ACADEMY_SCHEDULE.CREATE', entityType: 'academy_schedule',
+      entityId: Number(schedule.id), afterState: { group_id: body.group_id, weekdays: body.weekdays, start_date: body.start_date, end_date: body.end_date, preferred_court_id: body.preferred_court_id ?? null },
+      ipAddress: request.ip, userAgent: getUserAgent(request),
+    });
+  }
+  return reply.status(201).send(schedule);
+}
+
+export async function previewScheduleChangeHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = getUserId(request);
+  const { id } = request.params as any;
+  await assertScheduleAccess(userId, Number(id));
+  const body = UpdateScheduleSchema.parse(request.body);
+  const preview = await academyScheduleService.previewChange(Number(id), body as any, userId);
+  return reply.send(preview);
+}
+
+export async function updateScheduleHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = getUserId(request);
+  const { id } = request.params as any;
+  await assertScheduleAccess(userId, Number(id));
+  const body = UpdateScheduleSchema.parse(request.body);
+  const before = await academyScheduleService.getById(Number(id));
+  const result = await academyScheduleService.update(Number(id), body as any, userId);
+  recordAudit({
+    actorId: userId, action: 'ACADEMY_SCHEDULE.UPDATE', entityType: 'academy_schedule',
+    entityId: Number(id), beforeState: before ? { start_date: before.start_date, end_date: before.end_date, weekdays: before.weekdays } : null,
+    afterState: { ...body, affected: result.affected },
+    ipAddress: request.ip, userAgent: getUserAgent(request),
+  });
+  return reply.send(result);
+}
+
+export async function regenerateScheduleHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = getUserId(request);
+  const { id } = request.params as any;
+  await assertScheduleAccess(userId, Number(id));
+  const result = await academyScheduleService.regenerate(Number(id), userId);
+  recordAudit({
+    actorId: userId, action: 'ACADEMY_SCHEDULE.REGENERATE', entityType: 'academy_schedule',
+    entityId: Number(id), afterState: { generated: result.generated }, ipAddress: request.ip, userAgent: getUserAgent(request),
+  });
+  return reply.send(result);
+}
+
+export async function resyncScheduleHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = getUserId(request);
+  const { id } = request.params as any;
+  await assertScheduleAccess(userId, Number(id));
+  const result = await academyScheduleService.resync(Number(id), userId);
+  recordAudit({
+    actorId: userId, action: 'ACADEMY_SCHEDULE.RESYNC', entityType: 'academy_schedule',
+    entityId: Number(id), afterState: { resynced: result.resynced }, ipAddress: request.ip, userAgent: getUserAgent(request),
+  });
+  return reply.send(result);
+}
+
+export async function setScheduleStatusHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = getUserId(request);
+  const { id } = request.params as any;
+  await assertScheduleAccess(userId, Number(id));
+  const body = ScheduleStatusSchema.parse(request.body);
+  const schedule = await academyScheduleService.setStatus(Number(id), body.status, userId);
+  recordAudit({
+    actorId: userId, action: `ACADEMY_SCHEDULE.STATUS_${body.status.toUpperCase()}`, entityType: 'academy_schedule',
+    entityId: Number(id), afterState: { status: body.status }, ipAddress: request.ip, userAgent: getUserAgent(request),
+  });
+  return reply.send(schedule);
+}
+
+export async function resolveSessionHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = getUserId(request);
+  const { id } = request.params as any;
+  const body = ResolveSessionSchema.parse(request.body);
+  const session = await academyScheduleService.getSession(Number(id));
+  if (session?.schedule_id) await assertScheduleAccess(userId, Number(session.schedule_id));
+  const resolved = await academyScheduleService.resolveSession(Number(id), body as any, userId);
+  recordAudit({
+    actorId: userId, action: `ACADEMY_SESSION.RESOLVE_${body.type.toUpperCase()}`, entityType: 'academy_group_session',
+    entityId: Number(id), afterState: { type: body.type, alternative: body.alternative ?? null }, ipAddress: request.ip, userAgent: getUserAgent(request),
+  });
+  return reply.send(resolved);
 }
 
 // â”€â”€ Attendance â”€â”€
