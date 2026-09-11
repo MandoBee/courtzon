@@ -108,6 +108,55 @@ export class AcademyScheduleRepository {
     return (rows as any[]).map((r) => this.mapSchedule(r));
   }
 
+  /** G3 — every schedule of a program (any status), grouped by its group. */
+  async listSchedulesByProgram(programId: number, includeArchived = false, conn?: mysql.PoolConnection): Promise<AcademySchedule[]> {
+    const db = this.resolve(conn);
+    const [rows] = await db.query<RowData>(
+      `SELECT sch.* FROM academy_schedules sch
+       JOIN academy_groups g ON g.id = sch.group_id
+       WHERE g.program_id = ?
+       ${includeArchived ? '' : " AND sch.status != 'archived'"}
+       ORDER BY sch.created_at ASC`,
+      [programId],
+    );
+    return (rows as any[]).map((r) => this.mapSchedule(r));
+  }
+
+  /**
+   * G3 — FOR UPDATE lock on the schedule ids of a program (subquery-scoped so
+   * only `academy_schedules` rows are locked, never the joined group rows).
+   */
+  async lockScheduleIdsForProgram(programId: number, conn?: mysql.PoolConnection): Promise<number[]> {
+    const db = this.resolve(conn);
+    const [rows] = await db.query<RowData>(
+      `SELECT sch.id FROM academy_schedules sch
+       WHERE sch.group_id IN (SELECT id FROM academy_groups WHERE program_id = ?)
+         AND sch.status != 'archived'
+       ORDER BY sch.id ASC
+       FOR UPDATE`,
+      [programId],
+    );
+    return (rows as any[]).map((r) => Number(r.id));
+  }
+
+  /**
+   * G3 — FOR UPDATE lock on the future session ids of a program (subquery-
+   * scoped so only `academy_group_sessions` rows are locked).
+   */
+  async lockSessionIdsForProgram(programId: number, conn?: mysql.PoolConnection): Promise<number[]> {
+    const db = this.resolve(conn);
+    const [rows] = await db.query<RowData>(
+      `SELECT s.id FROM academy_group_sessions s
+       WHERE s.group_id IN (SELECT id FROM academy_groups WHERE program_id = ?)
+         AND s.session_date >= CURDATE()
+         AND s.status NOT IN ('completed','cancelled')
+       ORDER BY s.session_date ASC, s.start_time ASC, s.id ASC
+       FOR UPDATE`,
+      [programId],
+    );
+    return (rows as any[]).map((r) => Number(r.id));
+  }
+
   async countActiveSchedulesByGroup(groupId: number, conn?: mysql.PoolConnection): Promise<number> {
     const db = this.resolve(conn);
     const [rows] = await db.query<RowData>(
@@ -168,6 +217,18 @@ export class AcademyScheduleRepository {
     );
   }
 
+  /**
+   * G3 — freeze a recurring schedule after Academy confirmation. Records actor +
+   * timestamp; subsequent schedule mutations are rejected until unlocked.
+   */
+  async lockSchedule(id: number, actorId: number, conn?: mysql.PoolConnection): Promise<void> {
+    const db = this.resolve(conn);
+    await db.execute(
+      'UPDATE academy_schedules SET locked_at = NOW(), locked_by = ?, updated_at = NOW() WHERE id = ?',
+      [actorId, id],
+    );
+  }
+
   private mapSchedule(row: any): AcademySchedule {
     return {
       ...row,
@@ -209,6 +270,25 @@ export class AcademyScheduleRepository {
 
   async listFutureRecurringSessions(scheduleId: number, conn?: mysql.PoolConnection): Promise<AcademyGroupSession[]> {
     return this.listScheduleSessions(scheduleId, true, conn);
+  }
+
+  /** G3 — scheduled (non-cancelled) future sessions of a whole program. */
+  async listFutureSessionsForProgram(programId: number, conn?: mysql.PoolConnection): Promise<AcademyGroupSession[]> {
+    const db = this.resolve(conn);
+    const [rows] = await db.query<RowData>(
+      `SELECT s.*, g.name AS group_name, r.name AS court_name, u.full_name AS coach_name, sch.name AS schedule_name
+       FROM academy_group_sessions s
+       JOIN academy_groups g ON g.id = s.group_id
+       LEFT JOIN resources r ON r.id = s.court_id
+       LEFT JOIN users u ON u.id = s.coach_id
+       LEFT JOIN academy_schedules sch ON sch.id = s.schedule_id
+       WHERE g.program_id = ?
+         AND s.session_date >= CURDATE()
+         AND s.status NOT IN ('completed','cancelled')
+       ORDER BY s.session_date ASC, s.start_time ASC`,
+      [programId],
+    );
+    return (rows as any[]).map((r) => this.mapSession(r));
   }
 
   async getSessionById(id: number, conn?: mysql.PoolConnection): Promise<AcademyGroupSession | null> {
@@ -272,6 +352,11 @@ export class AcademyScheduleRepository {
     original_start_time?: string | null;
     original_end_time?: string | null;
     original_court_id?: number | null;
+    confirmed_at?: string | null;
+    confirmed_by?: number | null;
+    court_price_amount?: number | null;
+    court_price_currency?: string | null;
+    court_price_snapshot_at?: string | null;
   }, conn?: mysql.PoolConnection): Promise<void> {
     const db = this.resolve(conn);
     const setCols: string[] = [];
@@ -295,6 +380,11 @@ export class AcademyScheduleRepository {
     if (patch.original_start_time !== undefined) push('original_start_time', patch.original_start_time);
     if (patch.original_end_time !== undefined) push('original_end_time', patch.original_end_time);
     if (patch.original_court_id !== undefined) push('original_court_id', patch.original_court_id);
+    if (patch.confirmed_at !== undefined) push('confirmed_at', toMySqlDate(patch.confirmed_at));
+    if (patch.confirmed_by !== undefined) push('confirmed_by', patch.confirmed_by);
+    if (patch.court_price_amount !== undefined) push('court_price_amount', patch.court_price_amount);
+    if (patch.court_price_currency !== undefined) push('court_price_currency', patch.court_price_currency);
+    if (patch.court_price_snapshot_at !== undefined) push('court_price_snapshot_at', toMySqlDate(patch.court_price_snapshot_at));
     if (!setCols.length) return;
     params.push(id);
     await db.execute(`UPDATE academy_group_sessions SET ${setCols.join(', ')}, updated_at = NOW() WHERE id = ?`, params);

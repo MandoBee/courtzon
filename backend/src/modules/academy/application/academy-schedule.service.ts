@@ -12,7 +12,7 @@ import { TimeEngine } from '../../time/time-engine.js';
 import { NotFoundError, ConflictError } from '../../../shared/errors/app-error.js';
 import { ErrorCodes } from '../../../shared/errors/error-codes.js';
 import { recordAudit } from '../../audit-log/index.js';
-import type { AcademyScheduleWeekday } from '../domain/academy-schedule.types.js';
+import { toDbReservationStatus, type AcademyScheduleWeekday, type AcademyConflictState } from '../domain/academy-schedule.types.js';
 import type mysql from 'mysql2/promise';
 
 type RowData = mysql.RowDataPacket[];
@@ -97,7 +97,11 @@ async function assertManage(scheduleId: number, actorId: number, conn?: mysql.Po
   if (!schedule) throw new NotFoundError('Academy schedule', ErrorCodes.ACADEMY_INVALID_SCOPE);
   const group = await groupRepository.getById(Number(schedule.group_id));
   if (!group) throw new NotFoundError('Academy group', ErrorCodes.ACADEMY_GROUP_NOT_FOUND);
-  await assertCanManageAcademy(actorId, await resolveProgramScope(Number(group.program_id)));
+  const scope = await resolveProgramScope(Number(group.program_id));
+  await assertCanManageAcademy(actorId, scope);
+  if (scope?.lifecycleState === 'confirmed') {
+    throw new ConflictError('Program is confirmed — schedules are frozen', ErrorCodes.ACADEMY_LIFECYCLE_LOCKED);
+  }
   return schedule;
 }
 
@@ -113,7 +117,8 @@ function applyEvaluationToSession(patch: Record<string, any>, prev: any, ev: { s
     patch.original_end_time = prev.end_time;
     patch.original_court_id = prev.court_id;
   }
-  if (ev.state !== prev.reservation_status) patch.reservation_status = ev.state;
+  const dbState = toDbReservationStatus(ev.state as AcademyConflictState);
+  if (dbState !== prev.reservation_status) patch.reservation_status = dbState;
   patch.start_at_utc = ev.startAtUtc ?? null;
   patch.end_at_utc = ev.endAtUtc ?? null;
   if (needsHold) {
@@ -180,7 +185,11 @@ export class AcademyScheduleService {
   }, actorId: number) {
     const group = await groupRepository.getById(data.group_id);
     if (!group) throw new NotFoundError('Academy group', ErrorCodes.ACADEMY_GROUP_NOT_FOUND);
-    await assertCanManageAcademy(actorId, await resolveProgramScope(Number(group.program_id)));
+    const createScope = await resolveProgramScope(Number(group.program_id));
+    await assertCanManageAcademy(actorId, createScope);
+    if (createScope?.lifecycleState === 'confirmed') {
+      throw new ConflictError('Program is confirmed — schedules are frozen', ErrorCodes.ACADEMY_LIFECYCLE_LOCKED);
+    }
 
     if (!data.weekdays?.length) throw new ConflictError('weekdays is required', ErrorCodes.ACADEMY_INVALID_SCOPE);
     if (!data.branch_id) throw new ConflictError('branch_id is required', ErrorCodes.ACADEMY_INVALID_SCOPE);
@@ -280,7 +289,7 @@ export class AcademyScheduleService {
     const futureSessions = await academyScheduleRepository.listScheduleSessions(scheduleId, true);
     const evaluations: any[] = [];
     for (const session of futureSessions) {
-      if (session.reservation_status === 'resolved' || session.reservation_status === 'pending_expired') continue;
+      if (session.reservation_status === 'resolved' || session.reservation_status === 'pending_expired' || session.reservation_status === 'confirmed') continue;
       if (!session.court_id) continue;
       const ev = await academyConflictService.evaluate(
         session.court_id, session.session_date, session.start_time, session.end_time,
@@ -405,7 +414,7 @@ export class AcademyScheduleService {
         court_id: schedule.preferred_court_id!, coach_id: ctx.groupCoachId,
         status: 'scheduled', timezone: schedule.timezone,
         start_at_utc: ev.startAtUtc ?? null, end_at_utc: ev.endAtUtc ?? null,
-        reservation_status: ev.state, priority_seq: schedule.id,
+        reservation_status: toDbReservationStatus(ev.state), priority_seq: schedule.id,
         pending_expires_at: ev.state === 'PENDING_COURT'
           ? new Date(new Date(now).getTime() + schedule.pending_priority_minutes * 60_000).toISOString()
           : null,
@@ -485,7 +494,7 @@ export class AcademyScheduleService {
           source_type: 'recurring', session_date: date, start_time: newStartT, end_time: newEndT,
           court_id: newCourt!, coach_id: ctx.groupCoachId, status: 'scheduled', timezone: newTz,
           start_at_utc: ev.startAtUtc ?? null, end_at_utc: ev.endAtUtc ?? null,
-          reservation_status: ev.state, priority_seq: Number(existing.id),
+          reservation_status: toDbReservationStatus(ev.state), priority_seq: Number(existing.id),
           pending_expires_at: ev.state === 'PENDING_COURT' ? new Date(new Date(now).getTime() + newPriorityMinutes * 60_000).toISOString() : null,
           original_session_date: date, original_start_time: newStartT, original_end_time: newEndT, original_court_id: newCourt!,
           conflict_metadata: ev.reason ? JSON.stringify({ reason: ev.reason }) : null,

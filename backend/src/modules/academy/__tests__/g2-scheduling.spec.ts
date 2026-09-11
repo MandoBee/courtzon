@@ -169,9 +169,15 @@ describe('G2 TEST 10 — idempotent generation on create', () => {
     for (const r of refs) expect(r).toMatch(/^1:\d{4}-\d{2}-\d{2}:10:00$/);
     // each generated session is a pending priority hold with schedule priority
     for (const i of inserted) {
-      expect(i.reservation_status).toBe('PENDING_COURT');
+      expect(i.reservation_status).toBe('pending_court');
       expect(i.priority_seq).toBe(1);
       expect(i.source_type).toBe('recurring');
+    }
+    // regression: engine states must be persisted as lowercase DB enum values
+    const all = (scheduleRepo.insertSession.mock.calls as any[]).map((c: any[]) => c[0]);
+    for (const i of all) {
+      expect(i.reservation_status).toMatch(/^(pending_court|conflict|pending_expired|deferred|resolved)$/);
+      expect(i.reservation_status).not.toMatch(/[A-Z]/);
     }
   });
 
@@ -318,5 +324,44 @@ describe('G2 TEST 16 — regeneration respects status and horizon', () => {
       expect.arrayContaining([1, 'pending_court']),
       expect.any(Object),
     );
+  });
+});
+
+describe('G2 TEST 17 — reservation_status persistence casing regression', () => {
+  it('persists DST admin-resolution state as lowercase `conflict` (not an uppercase engine label)', async () => {
+    db.branch = { id: 5, timezone: 'America/New_York', opening_time: '00:00', closing_time: '23:59', is_active: 1 };
+    db.resource = { id: 10, name: 'Court A', branch_id: 5, is_active: 1, deleted_at: null, opening_time: '00:00', closing_time: '23:59', sport_id: 21 };
+    scheduleRepo.getScheduleById.mockImplementation(async () => makeSchedule({ timezone: 'America/New_York', weekdays: ['sun'], local_start_time: '02:00', local_end_time: '03:00' }));
+    scheduleRepo.listScheduleSessions.mockResolvedValue([
+      makeSession({ session_date: '2028-03-12', start_time: '02:00', end_time: '03:00', timezone: 'America/New_York' }),
+    ]);
+
+    await academyScheduleService.update(1, { name: 'DST-edited' } as any, 9);
+
+    const patch = scheduleRepo.updateSessionG2.mock.calls[0][1];
+    expect(patch.reservation_status).toBe('conflict');
+    expect(patch.conflict_metadata?.reason).toBe('dst_gap');
+    expect(patch.reservation_status).not.toMatch(/[A-Z]/);
+  });
+
+  it('omits reservation_status from the patch when the DB value is already correct (no always-overwrite)', async () => {
+    scheduleRepo.listScheduleSessions.mockResolvedValue([makeSession()]);
+    await academyScheduleService.resync(1, 9);
+    const patch = scheduleRepo.updateSessionG2.mock.calls[0][1];
+    expect(patch.reservation_status).toBeUndefined();
+  });
+
+  it('downgrades a lower-priority holder to lowercase conflict on resync', async () => {
+    bookingRepo.checkSlotAvailability.mockResolvedValue(true);
+    scheduleRepo.listScheduleSessions.mockResolvedValue([
+      makeSession({ reservation_status: 'conflict' }),
+      makeSession({ id: 102, priority_seq: 1, reservation_status: 'pending_court' }),
+    ]);
+    await academyScheduleService.resync(1, 9);
+    expect(scheduleRepo.updateSessionG2).toHaveBeenCalled();
+    for (const call of scheduleRepo.updateSessionG2.mock.calls) {
+      const p = call[1] as any;
+      if (p.reservation_status !== undefined) expect(p.reservation_status).not.toMatch(/[A-Z]/);
+    }
   });
 });

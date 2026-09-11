@@ -16,6 +16,10 @@ export async function academyRoutes(app: FastifyInstance): Promise<void> {
   app.post('/admin/academy/programs', { preHandler: [requirePermission(['academy.create'])] }, ctrl.createProgramHandler);
   app.put('/admin/academy/programs/:id', { preHandler: [requirePermission(['academy.update'])] }, ctrl.updateProgramHandler);
   app.post('/admin/academy/programs/:id/confirm', { preHandler: [requirePermission(['academy.manage'])] }, ctrl.confirmProgramHandler);
+  // ── G3 — Confirmation lifecycle ──
+  app.get('/admin/academy/programs/:id/confirmation-readiness', { preHandler: [requirePermission(['academy.view'])] }, ctrl.getConfirmationReadinessHandler);
+  app.post('/admin/academy/programs/:id/confirmation', { preHandler: [requirePermission(['academy.manage'])] }, ctrl.confirmProgramG3Handler);
+  app.post('/admin/academy/enrollments/:id/payment', { preHandler: [requirePermission(['academy.enroll'])] }, ctrl.markEnrollmentPaymentHandler);
   app.post('/admin/academy/programs/:id/publish', { preHandler: [requirePermission(['academy.publish'])] }, ctrl.publishProgramHandler);
   app.post('/admin/academy/programs/:id/archive', { preHandler: [requirePermission(['academy.delete'])] }, ctrl.archiveProgramHandler);
   app.post('/admin/academy/programs/:id/transition', { preHandler: [requirePermission(['academy.update'])] }, ctrl.transitionProgramStatusHandler);

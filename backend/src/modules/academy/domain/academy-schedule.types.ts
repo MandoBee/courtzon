@@ -27,9 +27,31 @@ export interface AcademySchedule {
   updated_by: number | null;
   created_at: string;
   updated_at: string;
+  // ── G3 — schedule freeze after confirmation ──
+  locked_at?: string | null;
+  locked_by?: number | null;
 }
 
-export type AcademyReservationStatus = 'pending_court' | 'conflict' | 'pending_expired' | 'deferred' | 'resolved';
+export type AcademyReservationStatus = 'pending_court' | 'conflict' | 'pending_expired' | 'deferred' | 'resolved' | 'confirmed';
+
+/**
+ * Map a conflict-engine state (uppercase) to the DB `reservation_status` enum
+ * (lowercase). The engine emits domain labels; persistence must use the exact
+ * lowercase column enum. `ADMIN_TIME_RESOLUTION_REQUIRED` is not a DB value —
+ * it persists as `conflict` while the DST detail is retained in
+ * `conflict_metadata.reason` (`dst_gap` / `dst_ambiguous`). `AVAILABLE` is
+ * produced only for alternatives and is never persisted as a session state.
+ */
+export function toDbReservationStatus(state: AcademyConflictState): AcademyReservationStatus {
+  switch (state) {
+    case 'PENDING_COURT': return 'pending_court';
+    case 'CONFLICT': return 'conflict';
+    case 'DEFERRED': return 'deferred';
+    case 'ADMIN_TIME_RESOLUTION_REQUIRED': return 'conflict';
+    case 'EXPIRED_PENDING_DECISION': return 'pending_expired';
+    case 'AVAILABLE': return 'resolved';
+  }
+}
 
 export type AcademySessionSourceType = 'manual' | 'recurring';
 
@@ -59,6 +81,12 @@ export interface AcademyGroupSession {
   original_court_id: number | null;
   conflict_metadata: Record<string, any> | null;
   generation_ref: string | null;
+  // ── G3 — finalisation (confirmation lifecycle) ──
+  confirmed_at?: string | null;
+  confirmed_by?: number | null;
+  court_price_amount?: number | null;
+  court_price_currency?: string | null;
+  court_price_snapshot_at?: string | null;
   group_name?: string | null;
   court_name?: string | null;
   coach_name?: string | null;

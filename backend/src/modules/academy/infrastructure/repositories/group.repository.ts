@@ -107,8 +107,9 @@ class GroupRepository {
    * G1 — lock coach + compensation after Academy confirmation. Records actor +
    * timestamp; subsequent coach/compensation mutations are rejected.
    */
-  async confirmLock(id: number, lockedBy: number): Promise<void> {
-    await getPool().execute(
+  async confirmLock(id: number, lockedBy: number, conn?: import('mysql2/promise').PoolConnection): Promise<void> {
+    const db = conn ?? getPool();
+    await db.execute(
       'UPDATE academy_groups SET coach_locked_at = NOW(), coach_locked_by = ?, updated_at = NOW() WHERE id = ?',
       [lockedBy, id],
     );

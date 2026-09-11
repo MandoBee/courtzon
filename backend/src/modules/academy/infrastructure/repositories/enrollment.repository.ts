@@ -108,6 +108,19 @@ class EnrollmentRepository {
     return row.c;
   }
 
+  /**
+   * G3 — manual/offline payment acknowledgment. Records actor + timestamp; does
+   * NOT create any wallet/ledger/settlement transactions (business decision).
+   */
+  async markPaymentConfirmed(id: number, confirmedBy: number, conn?: import('mysql2/promise').PoolConnection): Promise<boolean> {
+    const db = conn ?? getPool();
+    const [result] = await db.execute<ResultSet>(
+      'UPDATE academy_enrollments SET payment_confirmed_at = NOW(), payment_confirmed_by = ?, updated_at = NOW() WHERE id = ?',
+      [confirmedBy, id],
+    );
+    return (result as any).affectedRows > 0;
+  }
+
   async getGroupConfirmedCount(groupId: number): Promise<number> {
     const [[row]] = await getPool().query<RowData>(
       "SELECT COUNT(*) AS c FROM academy_enrollments WHERE group_id = ? AND status = 'confirmed'", [groupId],

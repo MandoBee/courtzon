@@ -61,6 +61,9 @@ interface AcademyEnrollment {
   player_name?: string;
   program_name?: string;
   group_name?: string;
+  // G3 — manual/offline payment acknowledgment
+  payment_confirmed_at: string | null;
+  payment_confirmed_by?: number | null;
 }
 
 interface GroupSession {
@@ -134,7 +137,7 @@ export interface AcademySchedule {
   branch_name?: string | null;
 }
 
-export type AcademySessionHoldStatus = 'pending_court' | 'conflict' | 'pending_expired' | 'deferred' | 'resolved' | null;
+export type AcademySessionHoldStatus = 'pending_court' | 'conflict' | 'pending_expired' | 'deferred' | 'resolved' | 'confirmed' | null;
 
 export interface AcademyGroupSessionRow {
   id: number;
@@ -294,4 +297,76 @@ export const academyApi = {
     api.get<PaginatedResult<AcademyGroupSessionRow>>(`/admin/academy/schedules/${scheduleId}/sessions`, { params }).then(r => r.data),
   resolveSession: (sessionId: number, decision: { type: 'release' | 'keep' | 'apply_alternative'; alternative?: { court_id: number; session_date: string; start_time: string; end_time: string } }) =>
     api.post<AcademyGroupSessionRow>(`/admin/academy/sessions/${sessionId}/resolve`, decision).then(r => r.data),
+};
+
+// ── G3 — Confirmation lifecycle ──
+
+export type AcademyConfirmationBlockerCode =
+  | 'ALREADY_CONFIRMED'
+  | 'MISSING_SCHEDULE'
+  | 'MISSING_COACH'
+  | 'INVALID_COACH'
+  | 'MISSING_COMPENSATION'
+  | 'MISSING_COURT'
+  | 'UNRESOLVED_COURT_CONFLICT'
+  | 'UNRESOLVED_DST'
+  | 'UNRESOLVED_PENDING_HOLD'
+  | 'UNPAID_ENROLLMENT'
+  | 'BELOW_MINIMUM'
+  | 'ABOVE_MAXIMUM'
+  | 'CONCURRENT_MODIFICATION';
+
+export interface AcademyConfirmationBlocker {
+  code: AcademyConfirmationBlockerCode;
+  entity?: string;
+  entityId?: number;
+  entityName?: string | null;
+  detail?: string;
+  overridable?: boolean;
+}
+
+export interface AcademyConfirmationStats {
+  activeGroups: number;
+  schedules: number;
+  futureSessions: number;
+  finalizableSessions: number;
+  confirmedEnrollments: number;
+  unpaidEnrollments: number;
+  capacity: number;
+  minEnrollments: number;
+  price: number;
+  currency: string;
+}
+
+export interface AcademyConfirmationReadiness {
+  programId: number;
+  programName: string;
+  lifecycleState: string;
+  ready: boolean;
+  blockers: AcademyConfirmationBlocker[];
+  snapshotToken: string;
+  stats: AcademyConfirmationStats;
+}
+
+export interface ConfirmAcademyProgramResult {
+  confirmed: boolean;
+  programId: number;
+  lifecycleState: 'confirmed';
+  finalizedSessions: number;
+  lockedSchedules: number;
+  lockedGroups: number;
+}
+
+export const academyConfirmationApi = {
+  getReadiness: (programId: number) =>
+    api.get<AcademyConfirmationReadiness>(`/admin/academy/programs/${programId}/confirmation-readiness`).then(r => r.data),
+  confirm: (programId: number, payload: {
+    expected_snapshot_token?: string | null;
+    override_below_min?: boolean;
+    override_above_max?: boolean;
+    reason?: string | null;
+  }) =>
+    api.post<ConfirmAcademyProgramResult>(`/admin/academy/programs/${programId}/confirmation`, payload).then(r => r.data),
+  markEnrollmentPaid: (enrollmentId: number) =>
+    api.post<{ id: number; payment_confirmed_at: string }>(`/admin/academy/enrollments/${enrollmentId}/payment`, {}).then(r => r.data),
 };

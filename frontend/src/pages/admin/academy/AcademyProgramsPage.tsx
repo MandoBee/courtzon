@@ -8,6 +8,7 @@ import { useTranslation } from '../../../i18n';
 import { getErrorMessage } from '../../../utils/errors';
 import { Pagination } from '../../../components/ui/Pagination';
 import { SkeletonRow } from '../../../components/ui/Skeleton';
+import AcademyConfirmationModal from '../../../components/academy/AcademyConfirmationModal';
 
 const STATUS_BADGES: Record<string, string> = {
   draft: 'bg-gray-100 text-gray-700',
@@ -36,6 +37,7 @@ export default function AcademyProgramsPage() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [showForm, setShowForm] = useState(false);
   const [editId, setEditId] = useState<number | null>(null);
+  const [confirmProgramId, setConfirmProgramId] = useState<number | null>(null);
   const [form, setForm] = useState<any>({
     code: '', name: '', description: '', category: '', level: '', season: '',
     capacity: 0, price: 0, currency: 'USD', price_type: 'FIXED', is_public: true,
@@ -74,12 +76,6 @@ export default function AcademyProgramsPage() {
   const updateMutation = useMutation({
     mutationFn: ({ id, ...d }: any) => academyApi.updateProgram(id, d),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['admin', 'academy', 'programs'] }); setEditId(null); setShowForm(false); resetForm(); showToast(t('admin.academy.program_updated')); },
-    onError: (err) => showToast(getErrorMessage(err), 'error'),
-  });
-
-  const confirmMutation = useMutation({
-    mutationFn: (id: number) => academyApi.confirmProgram(id),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['admin', 'academy', 'programs'] }); showToast(t('admin.academy.program_confirmed')); },
     onError: (err) => showToast(getErrorMessage(err), 'error'),
   });
 
@@ -279,7 +275,7 @@ export default function AcademyProgramsPage() {
                     </Can>
                     {p.lifecycle_state === 'setup' && (
                       <Can permission="academy.manage">
-                        <button onClick={() => confirmMutation.mutate(p.id)} disabled={confirmMutation.isPending} className="text-[10px] px-1.5 py-0.5 rounded bg-green-100 text-green-700 hover:opacity-80">{t('admin.academy.confirm')}</button>
+                        <button onClick={() => setConfirmProgramId(p.id)} className="text-[10px] px-1.5 py-0.5 rounded bg-green-100 text-green-700 hover:opacity-80">{t('admin.academy.confirm')}</button>
                       </Can>
                     )}
                     {p.status === 'draft' && (
@@ -304,6 +300,12 @@ export default function AcademyProgramsPage() {
       {total > 20 && (
         <Pagination total={total} page={page} pageSize={20} onPageChange={setPage} onPageSizeChange={() => {}} />
       )}
+
+      <AcademyConfirmationModal
+        programId={confirmProgramId ?? 0}
+        open={confirmProgramId !== null}
+        onClose={() => setConfirmProgramId(null)}
+      />
     </div>
   );
 }

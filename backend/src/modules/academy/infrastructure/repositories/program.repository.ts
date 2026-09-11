@@ -107,13 +107,29 @@ class ProgramRepository {
    * G1 — foundational confirmation: SETUP → CONFIRMED. Records actor + timestamp.
    * (This is not the later financial/court confirmation workflow.)
    */
-  async confirm(id: number, confirmedBy: number): Promise<void> {
-    await getPool().query<ResultSet>(
+  async confirm(id: number, confirmedBy: number, conn?: import('mysql2/promise').PoolConnection): Promise<void> {
+    const db = conn ?? getPool();
+    await db.query<ResultSet>(
       `UPDATE academy_programs
        SET lifecycle_state = 'confirmed', confirmed_at = NOW(), confirmed_by = ?, updated_at = NOW()
        WHERE id = ?`,
       [confirmedBy, id],
     );
+  }
+
+  /** G3 — program row FOR UPDATE inside the confirmation transaction. */
+  async getByIdForUpdate(id: number, conn: import('mysql2/promise').PoolConnection): Promise<AcademyProgramAttributes | null> {
+    const [rows] = await conn.query<RowData>(
+      `SELECT p.*, o.name AS organisation_name, b.name AS branch_name, s.name AS sport_name
+       FROM academy_programs p
+       LEFT JOIN organisations o ON o.id = p.organisation_id
+       LEFT JOIN branches b ON b.id = p.branch_id
+       LEFT JOIN sports s ON s.id = p.sport_id
+       WHERE p.id = ?
+       LIMIT 1
+       FOR UPDATE`, [id],
+    );
+    return rows.length ? (rows[0] as AcademyProgramAttributes) : null;
   }
 
   async updateStatus(id: number, status: string): Promise<void> {

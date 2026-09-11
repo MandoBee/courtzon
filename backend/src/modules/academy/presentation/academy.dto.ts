@@ -82,6 +82,23 @@ export const SetCompensationSchema = z.object({
 
 export const ConfirmAcademySchema = z.object({}).optional();
 
+/**
+ * G3 — confirmation request. The client returns the readiness `snapshotToken`
+ * unchanged; capacity overrides are allowed only WITH an audit `reason`.
+ */
+export const ConfirmationRequestSchema = z.object({
+  expected_snapshot_token: z.string().min(1).optional().nullable(),
+  override_below_min: z.boolean().optional().default(false),
+  override_above_max: z.boolean().optional().default(false),
+  reason: z.string().min(1).max(500).optional().nullable(),
+}).refine((v) => !(v.override_below_min || v.override_above_max) || (v.reason?.trim()?.length ?? 0) > 0, {
+  message: 'reason is required when overriding capacity blockers',
+  path: ['reason'],
+});
+
+/** G3 — manual / offline payment acknowledgment for a confirmed enrollment. */
+export const MarkEnrollmentPaymentSchema = z.object({}).optional();
+
 export const ListGroupsQuerySchema = z.object({
   page: z.coerce.number().int().positive().optional().default(1),
   limit: z.coerce.number().int().positive().max(100).optional().default(20),

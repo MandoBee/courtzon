@@ -7000,3 +7000,31 @@ ALTER TABLE `academy_group_sessions`
   ADD KEY `idx_academy_session_hold` (`court_id`,`session_date`,`reservation_status`,`pending_expires_at`),
   ADD CONSTRAINT `fk_academy_session_schedule` FOREIGN KEY (`schedule_id`) REFERENCES `academy_schedules` (`id`) ON DELETE SET NULL,
   ADD CONSTRAINT `fk_academy_session_pending_resolved_by` FOREIGN KEY (`pending_resolved_by`) REFERENCES `users` (`id`) ON DELETE SET NULL;
+
+-- ============================================================================
+-- ACADEMY G3 (Migration 160) — confirmation lifecycle
+-- (appended to baseline so fresh databases converge with the migration chain.
+--  LOCAL DOCKER DEVELOPMENT ONLY — never apply to production.)
+-- ============================================================================
+ALTER TABLE `academy_group_sessions`
+  MODIFY COLUMN `reservation_status` enum('pending_court','conflict','pending_expired','deferred','resolved','confirmed') COLLATE utf8mb4_unicode_ci DEFAULT NULL AFTER `status`;
+
+ALTER TABLE `academy_schedules`
+  ADD COLUMN `locked_at` timestamp NULL DEFAULT NULL AFTER `updated_by`,
+  ADD COLUMN `locked_by` int unsigned DEFAULT NULL AFTER `locked_at`,
+  ADD CONSTRAINT `fk_academy_schedule_locked_by` FOREIGN KEY (`locked_by`) REFERENCES `users` (`id`) ON DELETE SET NULL;
+
+ALTER TABLE `academy_group_sessions`
+  ADD COLUMN `confirmed_at` timestamp NULL DEFAULT NULL AFTER `generation_ref`,
+  ADD COLUMN `confirmed_by` int unsigned DEFAULT NULL AFTER `confirmed_at`,
+  ADD COLUMN `court_price_amount` decimal(12,2) DEFAULT NULL AFTER `confirmed_by`,
+  ADD COLUMN `court_price_currency` char(3) COLLATE utf8mb4_unicode_ci DEFAULT NULL AFTER `court_price_amount`,
+  ADD COLUMN `court_price_snapshot_at` timestamp NULL DEFAULT NULL AFTER `court_price_currency`,
+  ADD KEY `idx_academy_session_confirmed` (`reservation_status`,`confirmed_at`),
+  ADD CONSTRAINT `fk_academy_session_confirmed_by` FOREIGN KEY (`confirmed_by`) REFERENCES `users` (`id`) ON DELETE SET NULL;
+
+ALTER TABLE `academy_enrollments`
+  ADD COLUMN `payment_confirmed_at` timestamp NULL DEFAULT NULL AFTER `completed_at`,
+  ADD COLUMN `payment_confirmed_by` int unsigned DEFAULT NULL AFTER `payment_confirmed_at`,
+  ADD KEY `idx_academy_payment_confirmed` (`status`,`payment_confirmed_at`),
+  ADD CONSTRAINT `fk_academy_enrollment_payment_confirmed_by` FOREIGN KEY (`payment_confirmed_by`) REFERENCES `users` (`id`) ON DELETE SET NULL;

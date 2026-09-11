@@ -57,6 +57,9 @@ export interface AcademyEnrollmentAttributes {
   enrolled_at?: string;
   cancelled_at?: string | null;
   completed_at?: string | null;
+  // ── G3 — manual/offline payment acknowledgment (no gateway/ledger postings) ──
+  payment_confirmed_at?: string | null;
+  payment_confirmed_by?: number | null;
   created_at?: string;
   updated_at?: string;
 }

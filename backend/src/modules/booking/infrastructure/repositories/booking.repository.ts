@@ -235,8 +235,8 @@ export class BookingRepository {
     if (eMin > sMin) {
       const sql = `SELECT COUNT(*) as cnt FROM academy_group_sessions s
                    WHERE s.court_id = ? AND s.session_date = ?
-                     AND s.reservation_status IN ('pending_court','resolved')
-                     AND (s.pending_expires_at IS NULL OR s.pending_expires_at > NOW())
+                     AND s.reservation_status IN ('pending_court','resolved','confirmed')
+                     AND (s.reservation_status = 'confirmed' OR s.pending_expires_at IS NULL OR s.pending_expires_at > NOW())
                      AND s.status NOT IN ('cancelled')
                      AND ((s.start_time < ? AND s.end_time > ?) OR (s.start_time < ? AND s.end_time > ?))${excludeClause}`;
       const params: any[] = [resourceId, date, end, start, end, start];
@@ -245,8 +245,8 @@ export class BookingRepository {
       return (rows[0] as any).cnt ?? 0;
     }
     const sql = `SELECT COUNT(*) as cnt FROM academy_group_sessions s
-                 WHERE s.court_id = ? AND s.reservation_status IN ('pending_court','resolved')
-                   AND (s.pending_expires_at IS NULL OR s.pending_expires_at > NOW())
+                 WHERE s.court_id = ? AND s.reservation_status IN ('pending_court','resolved','confirmed')
+                   AND (s.reservation_status = 'confirmed' OR s.pending_expires_at IS NULL OR s.pending_expires_at > NOW())
                    AND s.status NOT IN ('cancelled')
                    AND (
                      (s.session_date = ? AND (s.end_time > ? OR s.end_time <= s.start_time))
@@ -378,8 +378,8 @@ export class BookingRepository {
     const [aRows] = await this.pool.execute<RowData>(
       `SELECT start_at_utc, end_at_utc, session_date, start_time, end_time FROM academy_group_sessions
        WHERE court_id = ? AND (session_date = ? OR session_date = DATE_SUB(?, INTERVAL 1 DAY))
-       AND reservation_status IN ('pending_court','resolved')
-       AND (pending_expires_at IS NULL OR pending_expires_at > NOW())
+       AND reservation_status IN ('pending_court','resolved','confirmed')
+       AND (reservation_status = 'confirmed' OR pending_expires_at IS NULL OR pending_expires_at > NOW())
        AND status NOT IN ('cancelled')
        AND start_at_utc IS NOT NULL AND end_at_utc IS NOT NULL`,
       [resourceId, businessDate, businessDate]

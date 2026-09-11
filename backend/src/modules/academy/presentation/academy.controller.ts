@@ -4,6 +4,7 @@ import { academyGroupService } from '../application/group.service.js';
 import { academyEnrollmentService } from '../application/enrollment.service.js';
 import { academyAttendanceService } from '../application/attendance.service.js';
 import { academyScheduleService } from '../application/academy-schedule.service.js';
+import { academyConfirmationService } from '../application/academy-confirmation.service.js';
 import {
   CreateProgramSchema, UpdateProgramSchema, ListProgramsQuerySchema, TransitionStatusSchema,
   CreateGroupSchema, UpdateGroupSchema, AssignCoachSchema, SetCompensationSchema, ConfirmAcademySchema, ListGroupsQuerySchema,
@@ -11,7 +12,7 @@ import {
   CreateGroupSessionSchema, UpdateGroupSessionSchema, ListSessionsQuerySchema,
   RecordAttendanceSchema, RecordBulkAttendanceSchema, UpdateAttendanceSchema, ListAttendanceQuerySchema,
   CreateScheduleSchema, UpdateScheduleSchema, ListSchedulesQuerySchema, ListScheduleSessionsQuerySchema,
-  ScheduleStatusSchema, ResolveSessionSchema,
+  ScheduleStatusSchema, ResolveSessionSchema, ConfirmationRequestSchema, MarkEnrollmentPaymentSchema,
 } from './academy.dto.js';
 import { getPool } from '../../../database/mysql.js';
 import { buildPagination, paginationClause } from '../../../shared/utils/pagination.js';
@@ -127,6 +128,36 @@ export async function confirmProgramHandler(request: FastifyRequest, reply: Fast
     ipAddress: request.ip, userAgent: getUserAgent(request),
   });
   return reply.send(program);
+}
+
+// ── G3 — Confirmation lifecycle ──
+
+export async function getConfirmationReadinessHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = getUserId(request);
+  const { id } = request.params as any;
+  const readiness = await academyConfirmationService.readiness(Number(id), userId);
+  return reply.send(readiness);
+}
+
+export async function confirmProgramG3Handler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = getUserId(request);
+  const { id } = request.params as any;
+  const body = ConfirmationRequestSchema.parse(request.body ?? {});
+  const result = await academyConfirmationService.confirm(Number(id), userId, {
+    expectedSnapshotToken: body.expected_snapshot_token ?? null,
+    overrideBelowMin: body.override_below_min,
+    overrideAboveMax: body.override_above_max,
+    reason: body.reason ?? null,
+  });
+  return reply.send(result);
+}
+
+export async function markEnrollmentPaymentHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = getUserId(request);
+  const { id } = request.params as any;
+  MarkEnrollmentPaymentSchema.parse(request.body ?? {});
+  const result = await academyConfirmationService.markPaymentConfirmed(Number(id), userId);
+  return reply.send(result);
 }
 
 export async function publishProgramHandler(request: FastifyRequest, reply: FastifyReply) {
