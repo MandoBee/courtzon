@@ -75,11 +75,11 @@ class ProgramRepository {
   }
 
   async create(data: Partial<AcademyProgramAttributes>): Promise<number> {
-    const sql = 'INSERT INTO academy_programs (code, name, description, category, level, season, capacity, price, currency, price_type, status, is_public, organisation_id, branch_id, sport_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)';
+    const sql = 'INSERT INTO academy_programs (code, name, description, category, level, season, capacity, original_capacity, price, currency, price_type, status, is_public, organisation_id, branch_id, sport_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)';
     const [result] = await getPool().query<ResultSet>(sql,
       [data.code, data.name, data.description ?? null, data.category, data.level ?? null, data.season ?? null,
-       data.capacity ?? 0, data.price ?? 0, data.currency ?? 'USD', data.price_type ?? 'FIXED',
-       data.status ?? 'draft', data.is_public ?? true,
+       data.capacity ?? 0, data.original_capacity ?? data.capacity ?? 0, data.price ?? 0, data.currency ?? 'USD',
+       data.price_type ?? 'FIXED', data.status ?? 'draft', data.is_public ?? true,
        data.organisation_id ?? null, data.branch_id ?? null, data.sport_id ?? null],
     );
     return (result as any).insertId;
@@ -90,7 +90,7 @@ class ProgramRepository {
     const params: any[] = [];
     const updatable: (keyof AcademyProgramAttributes)[] = [
       'code', 'name', 'description', 'category', 'level', 'season',
-      'capacity', 'price', 'currency', 'price_type', 'status', 'is_public',
+      'capacity', 'original_capacity', 'price', 'currency', 'price_type', 'status', 'is_public',
       'organisation_id', 'branch_id', 'sport_id',
     ];
     for (const f of updatable) {
@@ -130,6 +130,45 @@ class ProgramRepository {
        FOR UPDATE`, [id],
     );
     return rows.length ? (rows[0] as AcademyProgramAttributes) : null;
+  }
+
+  /**
+   * G4 — program row FOR UPDATE WITHOUT ownership joins. The aggregate
+   * serialization point for enrollment/promotion capacity decisions.
+   */
+  async getCapacityForUpdate(id: number, conn: import('mysql2/promise').PoolConnection): Promise<AcademyProgramAttributes | null> {
+    const [rows] = await conn.query<RowData>(
+      'SELECT * FROM academy_programs WHERE id = ? LIMIT 1 FOR UPDATE',
+      [id],
+    );
+    return rows.length ? (rows[0] as AcademyProgramAttributes) : null;
+  }
+
+  /** G4 — create or extend the temporary capacity override. original_capacity is untouched. */
+  async setCapacityOverride(id: number, data: {
+    amount: number;
+    until: string | null;
+    by: number;
+    reason: string;
+  }, conn?: import('mysql2/promise').PoolConnection): Promise<void> {
+    const db = conn ?? getPool();
+    await db.query(
+      `UPDATE academy_programs
+       SET capacity_override_amount = ?, capacity_override_until = ?, capacity_override_by = ?, capacity_override_reason = ?, updated_at = NOW()
+       WHERE id = ?`,
+      [data.amount, data.until, data.by, data.reason, id],
+    );
+  }
+
+  /** G4 — remove the capacity override (non-retroactive). original_capacity is untouched. */
+  async clearCapacityOverride(id: number, conn?: import('mysql2/promise').PoolConnection): Promise<void> {
+    const db = conn ?? getPool();
+    await db.query(
+      `UPDATE academy_programs
+       SET capacity_override_amount = NULL, capacity_override_until = NULL, capacity_override_by = NULL, capacity_override_reason = NULL, updated_at = NOW()
+       WHERE id = ?`,
+      [id],
+    );
   }
 
   async updateStatus(id: number, status: string): Promise<void> {

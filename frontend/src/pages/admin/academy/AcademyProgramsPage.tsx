@@ -9,6 +9,7 @@ import { getErrorMessage } from '../../../utils/errors';
 import { Pagination } from '../../../components/ui/Pagination';
 import { SkeletonRow } from '../../../components/ui/Skeleton';
 import AcademyConfirmationModal from '../../../components/academy/AcademyConfirmationModal';
+import AcademyCapacityModal from '../../../components/academy/AcademyCapacityModal';
 
 const STATUS_BADGES: Record<string, string> = {
   draft: 'bg-gray-100 text-gray-700',
@@ -38,6 +39,7 @@ export default function AcademyProgramsPage() {
   const [showForm, setShowForm] = useState(false);
   const [editId, setEditId] = useState<number | null>(null);
   const [confirmProgramId, setConfirmProgramId] = useState<number | null>(null);
+  const [capacityProgramId, setCapacityProgramId] = useState<number | null>(null);
   const [form, setForm] = useState<any>({
     code: '', name: '', description: '', category: '', level: '', season: '',
     capacity: 0, price: 0, currency: 'USD', price_type: 'FIXED', is_public: true,
@@ -265,13 +267,21 @@ export default function AcademyProgramsPage() {
                   <td className="px-3 py-2 text-center">
                     <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${LIFECYCLE_BADGES[p.lifecycle_state || 'setup'] || ''}`}>{t(`admin.academy.lifecycle_${p.lifecycle_state || 'setup'}`)}</span>
                   </td>
-                  <td className="px-3 py-2 text-center">{p.capacity}</td>
+                  <td className="px-3 py-2 text-center">
+                    {p.capacity === 0 ? t('admin.academy.capacity_unlimited') : p.capacity}
+                    <Can permission="academy.view">
+                      <button onClick={() => setCapacityProgramId(p.id)} className="ml-1 text-[10px] text-blue-600 hover:underline">{t('admin.academy.capacity_title')}</button>
+                    </Can>
+                  </td>
                   <td className="px-3 py-2 text-center">
                     <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${STATUS_BADGES[p.status] || ''}`}>{p.status}</span>
                   </td>
                   <td className="px-3 py-2 text-right space-x-1">
                     <Can permission="academy.update">
                       <button onClick={() => openEdit(p)} disabled={p.lifecycle_state === 'confirmed'} className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--color-border)] hover:opacity-80 disabled:opacity-40">{t('common.edit')}</button>
+                    </Can>
+                    <Can permission="academy.capacity.override">
+                      <button onClick={() => setCapacityProgramId(p.id)} className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 hover:opacity-80">{t('admin.academy.capacity_override_button')}</button>
                     </Can>
                     {p.lifecycle_state === 'setup' && (
                       <Can permission="academy.manage">
@@ -305,6 +315,11 @@ export default function AcademyProgramsPage() {
         programId={confirmProgramId ?? 0}
         open={confirmProgramId !== null}
         onClose={() => setConfirmProgramId(null)}
+      />
+      <AcademyCapacityModal
+        programId={capacityProgramId ?? 0}
+        open={capacityProgramId !== null}
+        onClose={() => setCapacityProgramId(null)}
       />
     </div>
   );

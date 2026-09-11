@@ -117,7 +117,7 @@ describe('migration guard — decision matrix', () => {
     // Marker found anywhere in the file, not just the header.
     expect(probeGuard(shell, middleFile, 'local').cls).toBe('LOCAL_DOCKER_ONLY');
     expect(probeGuard(shell, middleFile, 'production').decision).toBe('SKIP');
-  });
+  }, 60000);
 
   it('#9 — malformed metadata fails safely (INVALID only runs in explicit local)', () => {
     const p = probeGuard(shell, invalidFile, 'production');

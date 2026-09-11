@@ -24,6 +24,14 @@ export interface AcademyProgramAttributes {
   confirmed_at?: string | null;
   confirmed_by?: number | null;
   archived_at?: string | null;
+  // ── G4 capacity model ──
+  // original_capacity is the immutable baseline. Effective max =
+  // original_capacity + active capacity_override_amount (computed; never stored).
+  original_capacity?: number;
+  capacity_override_amount?: number | null;
+  capacity_override_until?: string | null;
+  capacity_override_by?: number | null;
+  capacity_override_reason?: string | null;
   created_at?: string;
   updated_at?: string;
 }

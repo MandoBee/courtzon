@@ -7028,3 +7028,20 @@ ALTER TABLE `academy_enrollments`
   ADD COLUMN `payment_confirmed_by` int unsigned DEFAULT NULL AFTER `payment_confirmed_at`,
   ADD KEY `idx_academy_payment_confirmed` (`status`,`payment_confirmed_at`),
   ADD CONSTRAINT `fk_academy_enrollment_payment_confirmed_by` FOREIGN KEY (`payment_confirmed_by`) REFERENCES `users` (`id`) ON DELETE SET NULL;
+
+-- ============================================================================
+-- ACADEMY G4 (Migration 161) — capacity + waitlist hardening
+-- (appended to baseline so fresh databases converge with the migration chain.
+--  LOCAL DOCKER DEVELOPMENT ONLY — never apply to production.)
+-- ============================================================================
+ALTER TABLE `academy_programs`
+  ADD COLUMN `original_capacity` int unsigned NOT NULL DEFAULT 0 AFTER `capacity`,
+  ADD COLUMN `capacity_override_amount` int unsigned DEFAULT NULL AFTER `original_capacity`,
+  ADD COLUMN `capacity_override_until` timestamp NULL DEFAULT NULL AFTER `capacity_override_amount`,
+  ADD COLUMN `capacity_override_by` int unsigned DEFAULT NULL AFTER `capacity_override_until`,
+  ADD COLUMN `capacity_override_reason` varchar(500) COLLATE utf8mb4_unicode_ci DEFAULT NULL AFTER `capacity_override_by`,
+  ADD CONSTRAINT `fk_academy_program_override_by` FOREIGN KEY (`capacity_override_by`) REFERENCES `users` (`id`) ON DELETE SET NULL;
+
+UPDATE `academy_programs`
+  SET `original_capacity` = `capacity`
+  WHERE `original_capacity` = 0;

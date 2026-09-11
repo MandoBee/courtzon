@@ -40,22 +40,34 @@ class EnrollmentRepository {
     return { data: rows, total, page: pag.page, limit: pag.limit };
   }
 
-  async getById(id: number): Promise<AcademyEnrollmentAttributes | null> {
-    const [rows] = await getPool().query<RowData>('SELECT * FROM academy_enrollments WHERE id = ?', [id]);
+  async getById(id: number, conn?: import('mysql2/promise').PoolConnection): Promise<AcademyEnrollmentAttributes | null> {
+    const db = conn ?? getPool();
+    const [rows] = await db.query<RowData>('SELECT * FROM academy_enrollments WHERE id = ?', [id]);
     return rows.length ? (rows[0] as AcademyEnrollmentAttributes) : null;
   }
 
-  async getByPlayerAndProgram(playerId: number, programId: number): Promise<AcademyEnrollmentAttributes | null> {
-    const [rows] = await getPool().query<RowData>(
+  /** G4 — enrollment row FOR UPDATE (serialization point for promotion/replacement). */
+  async getByIdForUpdate(id: number, conn: import('mysql2/promise').PoolConnection): Promise<AcademyEnrollmentAttributes | null> {
+    const [rows] = await conn.query<RowData>(
+      'SELECT * FROM academy_enrollments WHERE id = ? LIMIT 1 FOR UPDATE',
+      [id],
+    );
+    return rows.length ? (rows[0] as AcademyEnrollmentAttributes) : null;
+  }
+
+  async getByPlayerAndProgram(playerId: number, programId: number, conn?: import('mysql2/promise').PoolConnection): Promise<AcademyEnrollmentAttributes | null> {
+    const db = conn ?? getPool();
+    const [rows] = await db.query<RowData>(
       "SELECT * FROM academy_enrollments WHERE player_id = ? AND program_id = ? AND status IN ('pending','confirmed','waiting') LIMIT 1",
       [playerId, programId],
     );
     return rows.length ? (rows[0] as AcademyEnrollmentAttributes) : null;
   }
 
-  async create(data: Partial<AcademyEnrollmentAttributes>): Promise<number> {
+  async create(data: Partial<AcademyEnrollmentAttributes>, conn?: import('mysql2/promise').PoolConnection): Promise<number> {
+    const db = conn ?? getPool();
     const sql = 'INSERT INTO academy_enrollments (player_id, program_id, group_id, membership_id, status, waiting_order) VALUES (?, ?, ?, ?, ?, ?)';
-    const [result] = await getPool().query<ResultSet>(sql,
+    const [result] = await db.query<ResultSet>(sql,
       [data.player_id, data.program_id, data.group_id ?? null, data.membership_id ?? null,
        data.status ?? 'pending', data.waiting_order ?? null],
     );
@@ -76,13 +88,15 @@ class EnrollmentRepository {
     );
   }
 
-  async updateStatus(id: number, status: string): Promise<void> {
+  async updateStatus(id: number, status: string, conn?: import('mysql2/promise').PoolConnection): Promise<void> {
+    const db = conn ?? getPool();
     const extras: string[] = ['status = ?'];
     const params: any[] = [status];
     if (status === 'cancelled') { extras.push('cancelled_at = NOW()'); }
     if (status === 'completed') { extras.push('completed_at = NOW()'); }
+    if (status === 'confirmed') { extras.push('waiting_order = NULL'); }
     params.push(id);
-    await getPool().query(
+    await db.query(
       `UPDATE academy_enrollments SET ${extras.join(', ')}, updated_at = NOW() WHERE id = ?`, params,
     );
   }
@@ -93,16 +107,18 @@ class EnrollmentRepository {
     );
   }
 
-  async getNextWaitingOrder(programId: number): Promise<number> {
-    const [[row]] = await getPool().query<RowData>(
+  async getNextWaitingOrder(programId: number, conn?: import('mysql2/promise').PoolConnection): Promise<number> {
+    const db = conn ?? getPool();
+    const [[row]] = await db.query<RowData>(
       'SELECT COALESCE(MAX(waiting_order), 0) + 1 AS next FROM academy_enrollments WHERE program_id = ? AND status = \'waiting\'',
       [programId],
     );
     return row.next;
   }
 
-  async getConfirmedCount(programId: number): Promise<number> {
-    const [[row]] = await getPool().query<RowData>(
+  async getConfirmedCount(programId: number, conn?: import('mysql2/promise').PoolConnection): Promise<number> {
+    const db = conn ?? getPool();
+    const [[row]] = await db.query<RowData>(
       "SELECT COUNT(*) AS c FROM academy_enrollments WHERE program_id = ? AND status = 'confirmed'", [programId],
     );
     return row.c;
@@ -121,11 +137,43 @@ class EnrollmentRepository {
     return (result as any).affectedRows > 0;
   }
 
-  async getGroupConfirmedCount(groupId: number): Promise<number> {
-    const [[row]] = await getPool().query<RowData>(
+  async getGroupConfirmedCount(groupId: number, conn?: import('mysql2/promise').PoolConnection): Promise<number> {
+    const db = conn ?? getPool();
+    const [[row]] = await db.query<RowData>(
       "SELECT COUNT(*) AS c FROM academy_enrollments WHERE group_id = ? AND status = 'confirmed'", [groupId],
     );
     return row.c;
+  }
+
+  /**
+   * G4 — head of the waitlist for FIFO promotion (deterministic order, ties
+   * broken by id). Returns null when there is no eligible waiting enrollment.
+   */
+  async getWaitlistHead(programId: number, conn?: import('mysql2/promise').PoolConnection): Promise<{ id: number; waiting_order: number | null } | null> {
+    const db = conn ?? getPool();
+    const [rows] = await db.query<RowData>(
+      `SELECT id, waiting_order FROM academy_enrollments
+       WHERE program_id = ? AND status = 'waiting' AND waiting_order IS NOT NULL
+       ORDER BY waiting_order ASC, id ASC
+       LIMIT 1`,
+      [programId],
+    );
+    return rows.length ? { id: Number((rows[0] as any).id), waiting_order: (rows[0] as any).waiting_order } : null;
+  }
+
+  /**
+   * G4 — promote a waiting enrollment to confirmed, clearing its waitlist
+   * position. Only affects the target row (no renumbering of remaining rows).
+   */
+  async promoteToConfirmed(id: number, conn?: import('mysql2/promise').PoolConnection): Promise<boolean> {
+    const db = conn ?? getPool();
+    const [result] = await db.query<ResultSet>(
+      `UPDATE academy_enrollments
+       SET status = 'confirmed', waiting_order = NULL, updated_at = NOW()
+       WHERE id = ? AND status = 'waiting'`,
+      [id],
+    );
+    return (result as any).affectedRows > 0;
   }
 
   async getHistory(enrollmentId: number): Promise<any[]> {

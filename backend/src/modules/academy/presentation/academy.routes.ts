@@ -20,6 +20,13 @@ export async function academyRoutes(app: FastifyInstance): Promise<void> {
   app.get('/admin/academy/programs/:id/confirmation-readiness', { preHandler: [requirePermission(['academy.view'])] }, ctrl.getConfirmationReadinessHandler);
   app.post('/admin/academy/programs/:id/confirmation', { preHandler: [requirePermission(['academy.manage'])] }, ctrl.confirmProgramG3Handler);
   app.post('/admin/academy/enrollments/:id/payment', { preHandler: [requirePermission(['academy.enroll'])] }, ctrl.markEnrollmentPaymentHandler);
+
+  // ── G4 — Capacity override + waitlist ──
+  app.get('/admin/academy/programs/:id/capacity', { preHandler: [requirePermission(['academy.view'])] }, ctrl.getCapacityStatusHandler);
+  app.post('/admin/academy/programs/:id/capacity-override', { preHandler: [requirePermission(['academy.capacity.override'])] }, ctrl.setCapacityOverrideHandler);
+  app.delete('/admin/academy/programs/:id/capacity-override', { preHandler: [requirePermission(['academy.capacity.override'])] }, ctrl.removeCapacityOverrideHandler);
+  app.post('/admin/academy/enrollments/:id/promote', { preHandler: [requirePermission(['academy.waitlist.promote'])] }, ctrl.promoteEnrollmentHandler);
+  app.post('/admin/academy/enrollments/:id/replace', { preHandler: [requirePermission(['academy.waitlist.replace'])] }, ctrl.replaceEnrollmentHandler);
   app.post('/admin/academy/programs/:id/publish', { preHandler: [requirePermission(['academy.publish'])] }, ctrl.publishProgramHandler);
   app.post('/admin/academy/programs/:id/archive', { preHandler: [requirePermission(['academy.delete'])] }, ctrl.archiveProgramHandler);
   app.post('/admin/academy/programs/:id/transition', { preHandler: [requirePermission(['academy.update'])] }, ctrl.transitionProgramStatusHandler);

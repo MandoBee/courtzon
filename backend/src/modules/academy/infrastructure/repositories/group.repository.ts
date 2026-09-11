@@ -115,6 +115,15 @@ class GroupRepository {
     );
   }
 
+  /** G4 — group row FOR UPDATE (group-capacity serialization inside the enrollment txn). */
+  async getByIdForCapacity(id: number, conn: import('mysql2/promise').PoolConnection): Promise<any | null> {
+    const [rows] = await conn.query<RowData>(
+      'SELECT id, program_id, capacity, status FROM academy_groups WHERE id = ? LIMIT 1 FOR UPDATE',
+      [id],
+    );
+    return rows.length ? rows[0] : null;
+  }
+
   async getEnrolledCount(groupId: number): Promise<number> {
     const [[row]] = await getPool().query<RowData>(
       "SELECT COUNT(*) AS c FROM academy_enrollments WHERE group_id = ? AND status IN ('confirmed','waiting')", [groupId],

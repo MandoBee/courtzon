@@ -58,6 +58,7 @@ interface AcademyEnrollment {
   status: string;
   waiting_order: number | null;
   enrolled_at: string;
+  created_at?: string;
   player_name?: string;
   program_name?: string;
   group_name?: string;
@@ -369,4 +370,36 @@ export const academyConfirmationApi = {
     api.post<ConfirmAcademyProgramResult>(`/admin/academy/programs/${programId}/confirmation`, payload).then(r => r.data),
   markEnrollmentPaid: (enrollmentId: number) =>
     api.post<{ id: number; payment_confirmed_at: string }>(`/admin/academy/enrollments/${enrollmentId}/payment`, {}).then(r => r.data),
+};
+
+// ── G4 — Capacity override + waitlist ──
+
+export interface AcademyCapacityStatus {
+  programId: number;
+  programName: string;
+  originalCapacity: number;
+  effectiveCapacity: number;
+  confirmedCount: number;
+  /** -1 = unlimited */
+  availableSeats: number;
+  override: {
+    active: boolean;
+    amount: number | null;
+    until: string | null;
+    by: number | null;
+    reason: string | null;
+  };
+}
+
+export const academyCapacityApi = {
+  getStatus: (programId: number) =>
+    api.get<AcademyCapacityStatus>(`/admin/academy/programs/${programId}/capacity`).then(r => r.data),
+  setOverride: (programId: number, payload: { amount: number; until?: string | null; reason: string }) =>
+    api.post<AcademyCapacityStatus>(`/admin/academy/programs/${programId}/capacity-override`, payload).then(r => r.data),
+  removeOverride: (programId: number, reason: string) =>
+    api.delete<AcademyCapacityStatus>(`/admin/academy/programs/${programId}/capacity-override`, { data: { reason } }).then(r => r.data),
+  promote: (enrollmentId: number) =>
+    api.post<AcademyEnrollment>(`/admin/academy/enrollments/${enrollmentId}/promote`, {}).then(r => r.data),
+  replace: (enrollmentId: number, reason: string) =>
+    api.post<AcademyEnrollment>(`/admin/academy/enrollments/${enrollmentId}/replace`, { reason }).then(r => r.data),
 };

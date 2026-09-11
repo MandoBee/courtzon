@@ -30,6 +30,7 @@ import { groupRepository } from '../infrastructure/repositories/group.repository
 import { enrollmentRepository } from '../infrastructure/repositories/enrollment.repository.js';
 import { academyScheduleRepository } from '../infrastructure/repositories/academy-schedule.repository.js';
 import { assertCanManageAcademy, isApprovedCoach, resolveProgramScope } from './academy-scope.js';
+import { effectiveCapacity } from '../domain/capacity.js';
 import type { AcademyProgramAttributes, AcademyEnrollmentAttributes } from '../domain/academy.types.js';
 import type { AcademySchedule, AcademyGroupSession, AcademyReservationStatus } from '../domain/academy-schedule.types.js';
 
@@ -308,7 +309,9 @@ export async function computeBlockers(ctx: BlockersContext): Promise<AcademyConf
   if (confirmedCount < min) {
     blockers.push({ code: 'BELOW_MINIMUM', overridable: true, entity: 'academy_program', entityId: Number(ctx.program.id), detail: `only ${confirmedCount} confirmed enrollment(s) — minimum is ${min}` });
   }
-  const max = Number(ctx.program.capacity ?? 0);
+  // G4: use the EFFECTIVE maximum (original_capacity + active override), not the
+  // stored capacity which is the immutable baseline.
+  const max = effectiveCapacity(ctx.program);
   if (max > 0 && confirmedCount > max) {
     blockers.push({ code: 'ABOVE_MAXIMUM', overridable: true, entity: 'academy_program', entityId: Number(ctx.program.id), detail: `${confirmedCount} confirmed enrollment(s) exceed capacity ${max}` });
   }
@@ -327,7 +330,7 @@ function statsFrom(context: Omit<BlockersContext, 'courtMap'> & { courtMap: Bloc
     finalizableSessions: finalizable,
     confirmedEnrollments: context.enrollments.length,
     unpaidEnrollments: context.enrollments.filter((e) => !e.payment_confirmed_at && Number(context.program.price ?? 0) > 0).length,
-    capacity: Number(context.program.capacity ?? 0),
+    capacity: effectiveCapacity(context.program),
     minEnrollments: 1,
     price: Number(context.program.price ?? 0),
     currency: context.program.currency ?? 'USD',

@@ -5,6 +5,7 @@ import { academyEnrollmentService } from '../application/enrollment.service.js';
 import { academyAttendanceService } from '../application/attendance.service.js';
 import { academyScheduleService } from '../application/academy-schedule.service.js';
 import { academyConfirmationService } from '../application/academy-confirmation.service.js';
+import { academyCapacityOverrideService } from '../application/capacity-override.service.js';
 import {
   CreateProgramSchema, UpdateProgramSchema, ListProgramsQuerySchema, TransitionStatusSchema,
   CreateGroupSchema, UpdateGroupSchema, AssignCoachSchema, SetCompensationSchema, ConfirmAcademySchema, ListGroupsQuerySchema,
@@ -13,6 +14,7 @@ import {
   RecordAttendanceSchema, RecordBulkAttendanceSchema, UpdateAttendanceSchema, ListAttendanceQuerySchema,
   CreateScheduleSchema, UpdateScheduleSchema, ListSchedulesQuerySchema, ListScheduleSessionsQuerySchema,
   ScheduleStatusSchema, ResolveSessionSchema, ConfirmationRequestSchema, MarkEnrollmentPaymentSchema,
+  CapacityOverrideSchema, RemoveCapacityOverrideSchema, PromoteEnrollmentSchema, ReplaceEnrollmentSchema,
 } from './academy.dto.js';
 import { getPool } from '../../../database/mysql.js';
 import { buildPagination, paginationClause } from '../../../shared/utils/pagination.js';
@@ -158,6 +160,55 @@ export async function markEnrollmentPaymentHandler(request: FastifyRequest, repl
   MarkEnrollmentPaymentSchema.parse(request.body ?? {});
   const result = await academyConfirmationService.markPaymentConfirmed(Number(id), userId);
   return reply.send(result);
+}
+
+// ── G4 — Capacity override + waitlist promotion/replacement ──
+
+export async function getCapacityStatusHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = getUserId(request);
+  const { id } = request.params as any;
+  const status = await academyCapacityOverrideService.getStatus(Number(id), userId);
+  return reply.send(status);
+}
+
+export async function setCapacityOverrideHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = getUserId(request);
+  const { id } = request.params as any;
+  const body = CapacityOverrideSchema.parse(request.body);
+  const status = await academyCapacityOverrideService.setOverride(Number(id), userId, {
+    amount: body.amount,
+    until: body.until ?? null,
+    reason: body.reason,
+  });
+  return reply.send(status);
+}
+
+export async function removeCapacityOverrideHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = getUserId(request);
+  const { id } = request.params as any;
+  const body = RemoveCapacityOverrideSchema.parse(request.body);
+  const status = await academyCapacityOverrideService.removeOverride(Number(id), userId, body.reason);
+  return reply.send(status);
+}
+
+export async function promoteEnrollmentHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = getUserId(request);
+  const { id } = request.params as any;
+  const before = await academyEnrollmentService.getById(Number(id));
+  if (before?.program_id) await assertProgramAccess(userId, Number(before.program_id));
+  PromoteEnrollmentSchema.parse(request.body ?? {});
+  const enrollment = await academyEnrollmentService.promote(Number(id), userId, { outOfOrder: false });
+  return reply.send(enrollment);
+}
+
+export async function replaceEnrollmentHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = getUserId(request);
+  const { id } = request.params as any;
+  const before = await academyEnrollmentService.getById(Number(id));
+  if (before?.program_id) await assertProgramAccess(userId, Number(before.program_id));
+  const body = ReplaceEnrollmentSchema.parse(request.body);
+  const enrollment = await academyEnrollmentService.replace(Number(id), userId, body.reason);
+  return reply.send(enrollment);
 }
 
 export async function publishProgramHandler(request: FastifyRequest, reply: FastifyReply) {
@@ -332,7 +383,7 @@ export async function createEnrollmentHandler(request: FastifyRequest, reply: Fa
   const enrollment = await academyEnrollmentService.enroll(body);
   recordAudit({
     actorId: userId, action: 'ACADEMY_ENROLLMENT.CREATE', entityType: 'academy_enrollment',
-    entityId: enrollment.id!, afterState: { player_id: body.player_id, program_id: body.program_id },
+    entityId: enrollment.id!, afterState: { player_id: body.player_id, program_id: body.program_id, status: enrollment.status, waiting_order: enrollment.waiting_order ?? null },
     ipAddress: request.ip, userAgent: getUserAgent(request),
   });
   return reply.status(201).send(enrollment);
@@ -716,7 +767,7 @@ export async function publicEnrollHandler(request: FastifyRequest, reply: Fastif
   const enrollment = await academyEnrollmentService.enroll({ player_id: userId, program_id: Number(id) });
   recordAudit({
     actorId: userId, action: 'ACADEMY_ENROLLMENT.PUBLIC_ENROLL', entityType: 'academy_enrollment',
-    entityId: enrollment.id!, afterState: { player_id: userId, program_id: Number(id) },
+    entityId: enrollment.id!, afterState: { player_id: userId, program_id: Number(id), status: enrollment.status, waiting_order: enrollment.waiting_order ?? null },
     ipAddress: request.ip, userAgent: getUserAgent(request),
   });
   return reply.status(201).send(enrollment);

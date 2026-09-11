@@ -57,6 +57,13 @@ class ProgramService {
       await validateAcademyScopeInput(orgId, branchId, sportId);
     }
 
+    // G4 — an explicit program capacity edit re-baselines original_capacity
+    // (the immutable baseline). Override operations never touch original_capacity;
+    // this is the deliberate "change the program's base capacity" path.
+    if (data.capacity !== undefined) {
+      data.original_capacity = data.capacity;
+    }
+
     await programRepository.update(id, data);
     const program = await programRepository.getById(id);
     if (!program) throw new NotFoundError('Academy program', ErrorCodes.ACADEMY_PROGRAM_NOT_FOUND);

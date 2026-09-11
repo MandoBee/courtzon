@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { academyApi } from '../../../services/academy';
+import { academyApi, academyCapacityApi } from '../../../services/academy';
 import { Can } from '../../../permissions/Can';
 import { useToast } from '../../../components/ui/Toast';
 import { useTranslation } from '../../../i18n';
 import { getErrorMessage } from '../../../utils/errors';
 import { Pagination } from '../../../components/ui/Pagination';
 import { SkeletonRow } from '../../../components/ui/Skeleton';
+import { Modal } from '../../../components/ui/Modal';
 
 const ENROLLMENT_BADGES: Record<string, string> = {
   pending: 'bg-yellow-100 text-yellow-700',
@@ -26,6 +27,8 @@ export default function AcademyEnrollmentsPage() {
   const [showForm, setShowForm] = useState(false);
   const [moveId, setMoveId] = useState<number | null>(null);
   const [form, setForm] = useState<any>({ player_id: '', program_id: '', group_id: '' });
+  const [replaceTarget, setReplaceTarget] = useState<{ id: number; name: string | null } | null>(null);
+  const [replaceReason, setReplaceReason] = useState('');
 
   const queryParams: Record<string, any> = { page, limit: 20 };
   if (statusFilter !== 'all') queryParams.status = statusFilter;
@@ -76,6 +79,29 @@ export default function AcademyEnrollmentsPage() {
     onError: (err) => showToast(getErrorMessage(err), 'error'),
   });
 
+  const promoteMutation = useMutation({
+    mutationFn: (id: number) => academyCapacityApi.promote(id),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['admin', 'academy', 'enrollments'] }); showToast(t('admin.academy.waitlist_promoted')); },
+    onError: (err) => showToast(getErrorMessage(err), 'error'),
+  });
+
+  const replaceMutation = useMutation({
+    mutationFn: ({ id, reason }: { id: number; reason: string }) => academyCapacityApi.replace(id, reason),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['admin', 'academy', 'enrollments'] });
+      setReplaceTarget(null); setReplaceReason('');
+      showToast(t('admin.academy.waitlist_replaced'));
+    },
+    onError: (err) => showToast(getErrorMessage(err), 'error'),
+  });
+
+  const { data: capacityStatus } = useQuery({
+    queryKey: ['admin', 'academy', 'capacity', programFilter],
+    queryFn: () => academyCapacityApi.getStatus(Number(programFilter)),
+    enabled: !!programFilter,
+    retry: false,
+  });
+
   function handleSubmit() {
     createMutation.mutate({
       player_id: Number(form.player_id),
@@ -85,6 +111,15 @@ export default function AcademyEnrollmentsPage() {
   }
 
   const enrollments = data?.data ?? [];
+  // Waitlist rows first, ordered by waiting_order (FIFO); others by recency.
+  const ordered = [...enrollments].sort((a, b) => {
+    const aW = a.status === 'waiting' && a.waiting_order != null;
+    const bW = b.status === 'waiting' && b.waiting_order != null;
+    if (aW && bW) return Number(a.waiting_order) - Number(b.waiting_order);
+    if (aW) return -1;
+    if (bW) return 1;
+    return String(b.created_at || '').localeCompare(String(a.created_at || ''));
+  });
   const total = data?.total ?? 0;
 
   return (
@@ -142,6 +177,12 @@ export default function AcademyEnrollmentsPage() {
           <option value="">{t('admin.academy.all_programs')}</option>
           {programs?.data?.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
         </select>
+        {capacityStatus && (
+          <span className="px-2 py-1 rounded-full text-[10px] font-medium bg-blue-100 text-blue-700">
+            {t('admin.academy.capacity_confirmed')} {capacityStatus.confirmedCount}/{capacityStatus.effectiveCapacity === 0 ? '∞' : capacityStatus.effectiveCapacity}
+            {capacityStatus.override.active && <span className="ml-1">+{capacityStatus.override.amount}</span>}
+          </span>
+        )}
       </div>
 
       <div className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] border overflow-x-auto">
@@ -158,7 +199,7 @@ export default function AcademyEnrollmentsPage() {
               </tr>
             </thead>
             <tbody>
-              {enrollments.map((e: any) => (
+              {ordered.map((e: any) => (
                 <tr key={e.id} className="border-b last:border-0 hover:bg-[var(--color-bg)]">
                   <td className="px-3 py-2">
                     <span className="font-medium">{e.player_name || `#${e.player_id}`}</span>
@@ -194,10 +235,16 @@ export default function AcademyEnrollmentsPage() {
                       </Can>
                     )}
                     {e.status === 'waiting' && (
-                      <Can permission="academy.enroll">
-                        <button onClick={() => confirmMutation.mutate(e.id)}
-                          className="text-[10px] px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 hover:opacity-80">{t('admin.academy.promote')}</button>
-                      </Can>
+                      <>
+                        <Can permission="academy.waitlist.promote">
+                          <button onClick={() => promoteMutation.mutate(e.id)} disabled={promoteMutation.isPending}
+                            className="text-[10px] px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 hover:opacity-80">{t('admin.academy.waitlist_promote')}</button>
+                        </Can>
+                        <Can permission="academy.waitlist.replace">
+                          <button onClick={() => { setReplaceTarget({ id: e.id, name: e.player_name ?? null }); setReplaceReason(''); }}
+                            className="text-[10px] px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 hover:opacity-80">{t('admin.academy.waitlist_replace')}</button>
+                        </Can>
+                      </>
                     )}
                     {(e.status === 'confirmed' || e.status === 'waiting') && (
                       <>
@@ -223,6 +270,35 @@ export default function AcademyEnrollmentsPage() {
       {total > 20 && (
         <Pagination total={total} page={page} pageSize={20} onPageChange={setPage} onPageSizeChange={() => {}} />
       )}
+
+      <Modal
+        open={replaceTarget !== null}
+        onClose={() => { setReplaceTarget(null); setReplaceReason(''); }}
+        title={t('admin.academy.waitlist_replace')}
+        size="sm"
+        footer={
+          <div className="flex items-center gap-2 justify-end">
+            <button onClick={() => { setReplaceTarget(null); setReplaceReason(''); }} className="px-3 py-1.5 border rounded-[var(--radius-md)] text-xs">{t('common.cancel')}</button>
+            <button
+              onClick={() => replaceTarget && replaceMutation.mutate({ id: replaceTarget.id, reason: replaceReason.trim() })}
+              disabled={!replaceReason.trim() || replaceMutation.isPending}
+              className="px-3 py-1.5 bg-purple-600 text-white rounded-[var(--radius-md)] text-xs font-medium disabled:opacity-50">
+              {t('admin.academy.waitlist_replace')}
+            </button>
+          </div>
+        }
+      >
+        {replaceTarget && (
+          <div className="space-y-2">
+            <p className="text-xs text-[var(--color-text-muted)]">
+              {replaceTarget.name ? `${t('admin.academy.player')}: ${replaceTarget.name}` : `#${replaceTarget.id}`}
+            </p>
+            <label className="block text-xs font-medium text-[var(--color-text-muted)] mb-1">{t('admin.academy.waitlist_replace_reason')}</label>
+            <input value={replaceReason} onChange={(e) => setReplaceReason(e.target.value)}
+              className="w-full px-2 py-1.5 rounded-[var(--radius-md)] border text-sm bg-white" />
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }

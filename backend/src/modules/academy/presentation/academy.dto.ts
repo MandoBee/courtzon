@@ -99,6 +99,26 @@ export const ConfirmationRequestSchema = z.object({
 /** G3 — manual / offline payment acknowledgment for a confirmed enrollment. */
 export const MarkEnrollmentPaymentSchema = z.object({}).optional();
 
+// ── G4 — Capacity override + waitlist promotion/replacement ──
+
+export const CapacityOverrideSchema = z.object({
+  amount: z.number().int().positive(),
+  until: z.string().datetime().optional().nullable(),
+  reason: z.string().min(1).max(500),
+});
+
+export const RemoveCapacityOverrideSchema = z.object({
+  reason: z.string().min(1).max(500),
+});
+
+/** Normal FIFO manual promotion (no body required). */
+export const PromoteEnrollmentSchema = z.object({}).optional();
+
+/** Out-of-order waitlist replacement — reason is mandatory. */
+export const ReplaceEnrollmentSchema = z.object({
+  reason: z.string().min(1).max(500),
+});
+
 export const ListGroupsQuerySchema = z.object({
   page: z.coerce.number().int().positive().optional().default(1),
   limit: z.coerce.number().int().positive().max(100).optional().default(20),
