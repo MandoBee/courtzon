@@ -1,7 +1,7 @@
 import { getPool } from '../../../database/mysql.js';
 import { NotFoundError, ForbiddenError, ConflictError } from '../../../shared/errors/app-error.js';
 import { ErrorCodes } from '../../../shared/errors/error-codes.js';
-import { canAccessOrganisation, canAccessBranch } from '../../../shared/middleware/org-access.js';
+import { canAccessOrganisation, canAccessBranch, isPlatformAdmin, findAccessibleOrgIds, findAccessibleBranchIds } from '../../../shared/middleware/org-access.js';
 import type { AcademyLifecycleState } from '../domain/academy.types.js';
 
 type RowData = import('mysql2').RowDataPacket[];
@@ -116,6 +116,48 @@ export async function assertCanManageScopeInput(actorId: number, organisationId:
     const branchOk = await canAccessBranch(actorId, branchId);
     if (!branchOk) throw new NotFoundError('Academy program', ErrorCodes.ACADEMY_PROGRAM_NOT_FOUND);
   }
+}
+
+export interface AcademyReadScope {
+  unrestricted: boolean;
+  orgIds: number[];
+  branchIds: number[];
+}
+
+/**
+ * G1.1 — resolve the set of Academies a user may READ. Platform admins are
+ * unrestricted; otherwise organisation access covers every branch of the
+ * accessible organisations, and explicit branch role-scopes cover individual
+ * branches. Filters are derived server-side — never from the client.
+ */
+export async function resolveAcademyReadScope(userId: number): Promise<AcademyReadScope> {
+  if (!userId) return { unrestricted: false, orgIds: [], branchIds: [] };
+  if (await isPlatformAdmin(userId)) return { unrestricted: true, orgIds: [], branchIds: [] };
+  const orgIds = await findAccessibleOrgIds(userId);
+  const branchIds = await findAccessibleBranchIds(userId);
+  return { unrestricted: false, orgIds, branchIds };
+}
+
+/**
+ * Build a SQL WHERE fragment over the program-ownership alias (`p.`) for an
+ * Academy list query. Platform admins get no restriction; org/branch access is
+ * `(organisation_id IN orgs) OR (branch_id IN branches)`; a user with neither
+ * gets `1 = 0` (sees nothing, non-revealing).
+ */
+export function academyScopeWhere(scope: AcademyReadScope, alias: string): { where: string; params: number[] } {
+  if (scope.unrestricted) return { where: '', params: [] };
+  const conds: string[] = [];
+  const params: number[] = [];
+  if (scope.orgIds.length) {
+    conds.push(`${alias}.organisation_id IN (${scope.orgIds.map(() => '?').join(',')})`);
+    params.push(...scope.orgIds);
+  }
+  if (scope.branchIds.length) {
+    conds.push(`${alias}.branch_id IN (${scope.branchIds.map(() => '?').join(',')})`);
+    params.push(...scope.branchIds);
+  }
+  if (!conds.length) return { where: '1 = 0', params: [] };
+  return { where: `(${conds.join(' OR ')})`, params };
 }
 
 export { NotFoundError, ForbiddenError };

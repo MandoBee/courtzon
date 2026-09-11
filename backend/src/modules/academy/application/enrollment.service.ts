@@ -9,7 +9,7 @@ import type { AcademyEnrollmentAttributes } from '../domain/academy.types.js';
 class EnrollmentService {
   async list(filters: {
     page?: number; limit?: number; programId?: number; groupId?: number;
-    playerId?: number; status?: string;
+    playerId?: number; status?: string; scopeWhere?: string; scopeParams?: number[];
   }) {
     return enrollmentRepository.list(filters);
   }

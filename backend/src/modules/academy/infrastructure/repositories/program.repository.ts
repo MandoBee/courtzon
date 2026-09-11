@@ -9,6 +9,7 @@ class ProgramRepository {
   async list(filters: {
     page?: number; limit?: number; search?: string; category?: string; status?: string; is_public?: boolean;
     organisationId?: number; branchId?: number; organisationIds?: number[];
+    scopeWhere?: string; scopeParams?: number[];
   }) {
     const pool = getPool();
     const where: string[] = [];
@@ -26,6 +27,10 @@ class ProgramRepository {
     if (filters.organisationIds?.length) {
       where.push(`p.organisation_id IN (${filters.organisationIds.map(() => '?').join(',')})`);
       params.push(...filters.organisationIds);
+    }
+    if (filters.scopeWhere) {
+      where.push(filters.scopeWhere);
+      params.push(...(filters.scopeParams ?? []));
     }
     if (where.length === 0) where.push('1 = 1');
 
@@ -121,30 +126,75 @@ class ProgramRepository {
     );
   }
 
-  async getCategories(): Promise<string[]> {
-    const [rows] = await getPool().execute<RowData>(
-      'SELECT DISTINCT category FROM academy_programs WHERE status != \'archived\' ORDER BY category',
-    );
-    return rows.map((r: any) => r.category);
+  async getCategories(scope: { orgIds?: number[]; branchIds?: number[] } = {}): Promise<string[]> {
+  const pool = getPool();
+  const where: string[] = ["p.status != 'archived'"];
+  const params: any[] = [];
+  if (scope.orgIds?.length) { where.push(`p.organisation_id IN (${scope.orgIds.map(() => '?').join(',')})`); params.push(...scope.orgIds); }
+  if (scope.branchIds?.length) { where.push(`p.branch_id IN (${scope.branchIds.map(() => '?').join(',')})`); params.push(...scope.branchIds); }
+  const [rows] = await pool.execute<RowData>(
+    `SELECT DISTINCT p.category FROM academy_programs p WHERE ${where.join(' AND ')} ORDER BY p.category`,
+    params,
+  );
+  return rows.map((r: any) => r.category);
   }
 
-  async getDashboard(): Promise<{
+  async getDashboard(scope: { orgIds?: number[]; branchIds?: number[] } = {}): Promise<{
     total_programs: number; published_programs: number; running_programs: number;
     total_groups: number; total_players: number; waiting_list_count: number;
     capacity_sum: number; enrolled_sum: number;
     attendance_summary: { present: number; absent: number; excused: number; late: number };
   }> {
     const pool = getPool();
-    const [[progCount]] = await pool.execute<RowData>("SELECT COUNT(*) AS c FROM academy_programs WHERE status != 'archived'");
-    const [[pubCount]] = await pool.execute<RowData>("SELECT COUNT(*) AS c FROM academy_programs WHERE status IN ('published','open','running')");
-    const [[runCount]] = await pool.execute<RowData>("SELECT COUNT(*) AS c FROM academy_programs WHERE status = 'running'");
-    const [[grpCount]] = await pool.execute<RowData>("SELECT COUNT(*) AS c FROM academy_groups WHERE status = 'active'");
-    const [[plyrCount]] = await pool.execute<RowData>("SELECT COUNT(DISTINCT player_id) AS c FROM academy_enrollments WHERE status IN ('confirmed','waiting')");
-    const [[waitCount]] = await pool.execute<RowData>("SELECT COUNT(*) AS c FROM academy_enrollments WHERE status = 'waiting'");
-    const [[capSum]] = await pool.execute<RowData>("SELECT COALESCE(SUM(capacity), 0) AS c FROM academy_programs WHERE status IN ('open','full','running')");
-    const [[enrSum]] = await pool.execute<RowData>("SELECT COUNT(*) AS c FROM academy_enrollments WHERE status IN ('confirmed','waiting')");
+    const pScope: string[] = [];
+    const pParams: any[] = [];
+    if (scope.orgIds?.length) { pScope.push(`p.organisation_id IN (${scope.orgIds.map(() => '?').join(',')})`); pParams.push(...scope.orgIds); }
+    if (scope.branchIds?.length) { pScope.push(`p.branch_id IN (${scope.branchIds.map(() => '?').join(',')})`); pParams.push(...scope.branchIds); }
+    const progWhere = pScope.length ? `WHERE ${pScope.join(' AND ')}` : '';
+
+    const [[progCount]] = await pool.execute<RowData>(
+      `SELECT COUNT(*) AS c FROM academy_programs p ${progWhere ? progWhere + ' AND ' : 'WHERE '}p.status != 'archived'`,
+      [...pParams],
+    );
+    const [[pubCount]] = await pool.execute<RowData>(
+      `SELECT COUNT(*) AS c FROM academy_programs p ${progWhere ? 'WHERE ' + pScope.join(' AND ') + ' AND ' : 'WHERE '}p.status IN ('published','open','running')`,
+      [...pParams],
+    );
+    const [[runCount]] = await pool.execute<RowData>(
+      `SELECT COUNT(*) AS c FROM academy_programs p ${progWhere ? 'WHERE ' + pScope.join(' AND ') + ' AND ' : 'WHERE '}p.status = 'running'`,
+      [...pParams],
+    );
+    const [[grpCount]] = await pool.execute<RowData>(
+      `SELECT COUNT(*) AS c FROM academy_groups g JOIN academy_programs p ON p.id = g.program_id ${progWhere ? 'WHERE ' + pScope.join(' AND ') + ' AND ' : 'WHERE '}g.status = 'active'`,
+      [...pParams],
+    );
+    const [[plyrCount]] = await pool.execute<RowData>(
+      `SELECT COUNT(DISTINCT e.player_id) AS c FROM academy_enrollments e JOIN academy_programs p ON p.id = e.program_id ${progWhere ? 'WHERE ' + pScope.join(' AND ') + ' AND ' : 'WHERE '}e.status IN ('confirmed','waiting')`,
+      [...pParams],
+    );
+    const [[waitCount]] = await pool.execute<RowData>(
+      `SELECT COUNT(*) AS c FROM academy_enrollments e JOIN academy_programs p ON p.id = e.program_id ${progWhere ? 'WHERE ' + pScope.join(' AND ') + ' AND ' : 'WHERE '}e.status = 'waiting'`,
+      [...pParams],
+    );
+    const [[capSum]] = await pool.execute<RowData>(
+      `SELECT COALESCE(SUM(p.capacity), 0) AS c FROM academy_programs p ${progWhere ? 'WHERE ' + pScope.join(' AND ') + ' AND ' : 'WHERE '}p.status IN ('open','full','running')`,
+      [...pParams],
+    );
+    const [[enrSum]] = await pool.execute<RowData>(
+      `SELECT COUNT(*) AS c FROM academy_enrollments e JOIN academy_programs p ON p.id = e.program_id ${progWhere ? 'WHERE ' + pScope.join(' AND ') + ' AND ' : 'WHERE '}e.status IN ('confirmed','waiting')`,
+      [...pParams],
+    );
     const [[attSum]] = await pool.execute<RowData>(
-      "SELECT COALESCE(SUM(attendance_status = 'present'), 0) AS present, COALESCE(SUM(attendance_status = 'absent'), 0) AS absent, COALESCE(SUM(attendance_status = 'excused'), 0) AS excused, COALESCE(SUM(attendance_status = 'late'), 0) AS late FROM academy_attendance",
+      `SELECT COALESCE(SUM(a.attendance_status = 'present'), 0) AS present,
+              COALESCE(SUM(a.attendance_status = 'absent'), 0) AS absent,
+              COALESCE(SUM(a.attendance_status = 'excused'), 0) AS excused,
+              COALESCE(SUM(a.attendance_status = 'late'), 0) AS late
+       FROM academy_attendance a
+       JOIN academy_group_sessions gs ON gs.id = a.group_session_id
+       JOIN academy_groups g ON g.id = gs.group_id
+       JOIN academy_programs p ON p.id = g.program_id
+       ${progWhere ? 'WHERE ' + pScope.join(' AND ') : ''}`,
+      [...pParams],
     );
 
     return {

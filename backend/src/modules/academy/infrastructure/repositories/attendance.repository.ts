@@ -24,6 +24,7 @@ class AttendanceRepository {
 
   async list(filters: {
     page?: number; limit?: number; groupSessionId?: number; enrollmentId?: number;
+    scopeWhere?: string; scopeParams?: number[];
   }) {
     const pool = getPool();
     const where: string[] = ['1 = 1'];
@@ -31,11 +32,16 @@ class AttendanceRepository {
 
     if (filters.groupSessionId) { where.push('a.group_session_id = ?'); params.push(filters.groupSessionId); }
     if (filters.enrollmentId) { where.push('a.enrollment_id = ?'); params.push(filters.enrollmentId); }
+    if (filters.scopeWhere) { where.push(filters.scopeWhere); params.push(...(filters.scopeParams ?? [])); }
 
     const pag = buildPagination(filters.page, filters.limit);
 
     const [countRows] = await pool.query<RowData>(
-      `SELECT COUNT(*) AS total FROM academy_attendance a WHERE ${where.join(' AND ')}`, params,
+      `SELECT COUNT(*) AS total FROM academy_attendance a
+       JOIN academy_group_sessions gs ON gs.id = a.group_session_id
+       JOIN academy_groups g ON g.id = gs.group_id
+       JOIN academy_programs p ON p.id = g.program_id
+       WHERE ${where.join(' AND ')}`, params,
     );
     const total = countRows[0]?.total ?? 0;
 
@@ -43,6 +49,8 @@ class AttendanceRepository {
       `SELECT a.*, u.full_name AS player_name, gs.session_date
        FROM academy_attendance a
        JOIN academy_group_sessions gs ON gs.id = a.group_session_id
+       JOIN academy_groups g ON g.id = gs.group_id
+       JOIN academy_programs p ON p.id = g.program_id
        JOIN academy_enrollments e ON e.id = a.enrollment_id
        JOIN users u ON u.id = e.player_id
        WHERE ${where.join(' AND ')}

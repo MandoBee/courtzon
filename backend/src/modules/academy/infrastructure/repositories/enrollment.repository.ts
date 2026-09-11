@@ -8,7 +8,7 @@ type ResultSet = import('mysql2').ResultSetHeader;
 class EnrollmentRepository {
   async list(filters: {
     page?: number; limit?: number; programId?: number; groupId?: number;
-    playerId?: number; status?: string;
+    playerId?: number; status?: string; scopeWhere?: string; scopeParams?: number[];
   }) {
     const pool = getPool();
     const where: string[] = ['1 = 1'];
@@ -18,19 +18,20 @@ class EnrollmentRepository {
     if (filters.groupId) { where.push('e.group_id = ?'); params.push(filters.groupId); }
     if (filters.playerId) { where.push('e.player_id = ?'); params.push(filters.playerId); }
     if (filters.status) { where.push('e.status = ?'); params.push(filters.status); }
+    if (filters.scopeWhere) { where.push(filters.scopeWhere); params.push(...(filters.scopeParams ?? [])); }
 
     const pag = buildPagination(filters.page, filters.limit);
 
     const [countRows] = await pool.query<RowData>(
-      `SELECT COUNT(*) AS total FROM academy_enrollments e WHERE ${where.join(' AND ')}`, params,
+      `SELECT COUNT(*) AS total FROM academy_enrollments e JOIN academy_programs p ON p.id = e.program_id WHERE ${where.join(' AND ')}`, params,
     );
     const total = countRows[0]?.total ?? 0;
 
     const [rows] = await pool.query<RowData>(
       `SELECT e.*, u.full_name AS player_name, p.name AS program_name, g.name AS group_name
        FROM academy_enrollments e
+       JOIN academy_programs p ON p.id = e.program_id
        LEFT JOIN users u ON u.id = e.player_id
-       LEFT JOIN academy_programs p ON p.id = e.program_id
        LEFT JOIN academy_groups g ON g.id = e.group_id
        WHERE ${where.join(' AND ')}
        ORDER BY e.created_at DESC${paginationClause(pag)}`, params,

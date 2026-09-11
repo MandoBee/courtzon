@@ -93,3 +93,20 @@ export async function canAccessBranch(userId: number, branchId: number): Promise
   );
   return scopeRows.length > 0;
 }
+
+/**
+ * IDs of every branch the user holds an explicit branch role-scope for. This
+ * supplements (not replaces) organisation access — an organisation-scoped user
+ * may access all branches of their organisations.
+ */
+export async function findAccessibleBranchIds(userId: number): Promise<number[]> {
+  if (!userId) return [];
+  const pool = getPool();
+  const [rows] = await pool.execute<RowData>(
+    `SELECT DISTINCT urs.scope_id AS id FROM user_role_scopes urs
+     JOIN user_roles ur ON ur.id = urs.user_role_id
+     WHERE ur.user_id = ? AND urs.scope_type = 'branch' AND ur.is_active = TRUE`,
+    [userId],
+  );
+  return rows.map((r: any) => Number(r.id));
+}

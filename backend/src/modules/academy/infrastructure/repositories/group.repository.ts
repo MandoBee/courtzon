@@ -6,23 +6,25 @@ type RowData = import('mysql2').RowDataPacket[];
 type ResultSet = import('mysql2').ResultSetHeader;
 
 class GroupRepository {
-  async listByProgram(programId: number, filters?: { page?: number; limit?: number; status?: string }) {
+  async listByProgram(programId: number, filters?: { page?: number; limit?: number; status?: string; scopeWhere?: string; scopeParams?: number[] }) {
     const pool = getPool();
     const where: string[] = ['g.program_id = ?'];
     const params: any[] = [programId];
 
     if (filters?.status) { where.push('g.status = ?'); params.push(filters.status); }
+    if (filters?.scopeWhere) { where.push(filters.scopeWhere); params.push(...(filters.scopeParams ?? [])); }
 
     const pag = buildPagination(filters?.page, filters?.limit);
 
     const [countRows] = await pool.query<RowData>(
-      `SELECT COUNT(*) AS total FROM academy_groups g WHERE ${where.join(' AND ')}`, params,
+      `SELECT COUNT(*) AS total FROM academy_groups g JOIN academy_programs p ON p.id = g.program_id WHERE ${where.join(' AND ')}`, params,
     );
     const total = countRows[0]?.total ?? 0;
 
     const [rows] = await pool.query<RowData>(
       `SELECT g.*, u.full_name AS coach_name
        FROM academy_groups g
+       JOIN academy_programs p ON p.id = g.program_id
        LEFT JOIN users u ON u.id = g.coach_id
        WHERE ${where.join(' AND ')}
        ORDER BY g.name ASC${paginationClause(pag)}`, params,
@@ -31,26 +33,27 @@ class GroupRepository {
     return { data: rows as (AcademyGroupAttributes & { coach_name?: string })[], total, page: pag.page, limit: pag.limit };
   }
 
-  async listAll(filters?: { page?: number; limit?: number; status?: string; programId?: number }) {
+  async listAll(filters?: { page?: number; limit?: number; status?: string; programId?: number; scopeWhere?: string; scopeParams?: number[] }) {
     const pool = getPool();
     const where: string[] = ['1 = 1'];
     const params: any[] = [];
 
     if (filters?.status) { where.push('g.status = ?'); params.push(filters.status); }
     if (filters?.programId) { where.push('g.program_id = ?'); params.push(filters.programId); }
+    if (filters?.scopeWhere) { where.push(filters.scopeWhere); params.push(...(filters.scopeParams ?? [])); }
 
     const pag = buildPagination(filters?.page, filters?.limit);
 
     const [countRows] = await pool.query<RowData>(
-      `SELECT COUNT(*) AS total FROM academy_groups g WHERE ${where.join(' AND ')}`, params,
+      `SELECT COUNT(*) AS total FROM academy_groups g JOIN academy_programs p ON p.id = g.program_id WHERE ${where.join(' AND ')}`, params,
     );
     const total = countRows[0]?.total ?? 0;
 
     const [rows] = await pool.query<RowData>(
       `SELECT g.*, u.full_name AS coach_name, p.name AS program_name
        FROM academy_groups g
+       JOIN academy_programs p ON p.id = g.program_id
        LEFT JOIN users u ON u.id = g.coach_id
-       LEFT JOIN academy_programs p ON p.id = g.program_id
        WHERE ${where.join(' AND ')}
        ORDER BY g.name ASC${paginationClause(pag)}`, params,
     );

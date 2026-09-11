@@ -6,13 +6,13 @@ import { resolveProgramScope, assertCanManageAcademy, isApprovedCoach, getCoachO
 import type { AcademyGroupAttributes, CoachCompensationType } from '../domain/academy.types.js';
 
 class GroupService {
-  async listByProgram(programId: number, filters?: { page?: number; limit?: number; status?: string }) {
+  async listByProgram(programId: number, filters?: { page?: number; limit?: number; status?: string; scopeWhere?: string; scopeParams?: number[] }) {
     const program = await programRepository.getById(programId);
     if (!program) throw new NotFoundError('Academy program', ErrorCodes.ACADEMY_PROGRAM_NOT_FOUND);
     return groupRepository.listByProgram(programId, filters);
   }
 
-  async listAll(filters?: { page?: number; limit?: number; status?: string; programId?: number }) {
+  async listAll(filters?: { page?: number; limit?: number; status?: string; programId?: number; scopeWhere?: string; scopeParams?: number[] }) {
     return groupRepository.listAll(filters);
   }
 

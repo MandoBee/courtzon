@@ -15,8 +15,7 @@ import { buildPagination, paginationClause } from '../../../shared/utils/paginat
 import { recordAudit } from '../../audit-log/index.js';
 import { NotFoundError } from '../../../shared/errors/app-error.js';
 import { ErrorCodes } from '../../../shared/errors/error-codes.js';
-import { findAccessibleOrgIds } from '../../../shared/middleware/org-access.js';
-import { assertCanManageScopeInput } from '../application/academy-scope.js';
+import { assertCanManageScopeInput, resolveAcademyReadScope, academyScopeWhere } from '../application/academy-scope.js';
 
 function getUserId(request: FastifyRequest): number { return (request as any).userId; }
 function getUserAgent(request: FastifyRequest): string | undefined {
@@ -36,10 +35,20 @@ async function assertGroupAccess(actorId: number, groupId: number): Promise<void
   await assertProgramAccess(actorId, programId);
 }
 
+/**
+ * G1.1 — resolve the user's Academy read scope and build a SQL fragment over the
+ * program-ownership alias (`p.`) for list queries.
+ */
+async function resolveListScope(request: FastifyRequest): Promise<{ where: string; params: number[] }> {
+  const scope = await resolveAcademyReadScope(getUserId(request));
+  return academyScopeWhere(scope, 'p');
+}
+
 // â”€â”€ Dashboard â”€â”€
 
-export async function getDashboardHandler(_request: FastifyRequest, reply: FastifyReply) {
-  const dashboard = await academyProgramService.getDashboard();
+export async function getDashboardHandler(request: FastifyRequest, reply: FastifyReply) {
+  const scope = await resolveAcademyReadScope(getUserId(request));
+  const dashboard = await academyProgramService.getDashboard({ orgIds: scope.orgIds, branchIds: scope.branchIds });
   return reply.send(dashboard);
 }
 
@@ -48,10 +57,10 @@ export async function getDashboardHandler(_request: FastifyRequest, reply: Fasti
 export async function listProgramsHandler(request: FastifyRequest, reply: FastifyReply) {
   const userId = getUserId(request);
   const query = ListProgramsQuerySchema.parse(request.query);
-  // Scope list to the caller's authorised organisations (platform admins see all).
-  const accessible = await findAccessibleOrgIds(userId);
+  const { where, params } = await resolveListScope(request);
   const filters: any = { ...query };
-  if (accessible.length > 0) filters.organisationIds = accessible;
+  if (where) filters.scopeWhere = where;
+  if (params.length) filters.scopeParams = params;
   const result = await academyProgramService.list(filters);
   return reply.send(result);
 }
@@ -157,21 +166,25 @@ export async function transitionProgramStatusHandler(request: FastifyRequest, re
   return reply.send(program);
 }
 
-export async function getProgramCategoriesHandler(_request: FastifyRequest, reply: FastifyReply) {
-  const categories = await academyProgramService.getCategories();
+export async function getProgramCategoriesHandler(request: FastifyRequest, reply: FastifyReply) {
+  const scope = await resolveAcademyReadScope(getUserId(request));
+  const categories = await academyProgramService.getCategories({ orgIds: scope.orgIds, branchIds: scope.branchIds });
   return reply.send({ categories });
 }
 
 // â”€â”€ Groups â”€â”€
 
 export async function listGroupsHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = getUserId(request);
   const query = ListGroupsQuerySchema.parse(request.query);
+  const { where, params } = await resolveListScope(request);
   const { programId } = request.params as any;
   if (programId) {
-    const result = await academyGroupService.listByProgram(Number(programId), query);
+    await assertProgramAccess(userId, Number(programId));
+    const result = await academyGroupService.listByProgram(Number(programId), { ...query, scopeWhere: where || undefined, scopeParams: params.length ? params : undefined });
     return reply.send(result);
   }
-  const result = await academyGroupService.listAll(query);
+  const result = await academyGroupService.listAll({ ...query, scopeWhere: where || undefined, scopeParams: params.length ? params : undefined });
   return reply.send(result);
 }
 
@@ -258,10 +271,15 @@ export async function archiveGroupHandler(request: FastifyRequest, reply: Fastif
 // â”€â”€ Enrollments â”€â”€
 
 export async function listEnrollmentsHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = getUserId(request);
   const query = ListEnrollmentsQuerySchema.parse(request.query);
+  const { where, params } = await resolveListScope(request);
   const { programId } = request.params as any;
-  if (programId) query.program_id = Number(programId);
-  const result = await academyEnrollmentService.list(query);
+  if (programId) {
+    await assertProgramAccess(userId, Number(programId));
+    query.program_id = Number(programId);
+  }
+  const result = await academyEnrollmentService.list({ ...query, scopeWhere: where || undefined, scopeParams: params.length ? params : undefined });
   return reply.send(result);
 }
 
@@ -345,7 +363,10 @@ export async function moveEnrollmentHandler(request: FastifyRequest, reply: Fast
 }
 
 export async function getEnrollmentHistoryHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = getUserId(request);
   const { id } = request.params as any;
+  const enrollment = await academyEnrollmentService.getById(Number(id));
+  if (enrollment?.program_id) await assertProgramAccess(userId, Number(enrollment.program_id));
   const history = await academyEnrollmentService.getHistory(Number(id));
   return reply.send(history);
 }
@@ -353,27 +374,35 @@ export async function getEnrollmentHistoryHandler(request: FastifyRequest, reply
 // â”€â”€ Group Sessions â”€â”€
 
 export async function listSessionsHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = getUserId(request);
   const query = ListSessionsQuerySchema.parse(request.query);
+  const { where, params: scopeParams } = await resolveListScope(request);
   const { groupId } = request.params as any;
-  if (groupId) query.group_id = Number(groupId);
+  if (groupId) await assertGroupAccess(userId, Number(groupId));
+  if (query.group_id) await assertGroupAccess(userId, query.group_id);
   const pool = getPool();
   type RowData = import('mysql2').RowDataPacket[];
-  const where: string[] = ['1 = 1'];
+  const whereSql: string[] = ['1 = 1'];
   const params: any[] = [];
-  if (query.group_id) { where.push('s.group_id = ?'); params.push(query.group_id); }
-  if (query.status) { where.push('s.status = ?'); params.push(query.status); }
+  if (query.group_id) { whereSql.push('s.group_id = ?'); params.push(query.group_id); }
+  if (query.status) { whereSql.push('s.status = ?'); params.push(query.status); }
+  if (where) { whereSql.push(where); params.push(...scopeParams); }
   const pag = buildPagination(query.page, query.limit);
   const clause = paginationClause(pag);
   const [countRows] = await pool.query<RowData>(
-    `SELECT COUNT(*) AS total FROM academy_group_sessions s WHERE ${where.join(' AND ')}`, params,
+    `SELECT COUNT(*) AS total FROM academy_group_sessions s
+     JOIN academy_groups g ON g.id = s.group_id
+     JOIN academy_programs p ON p.id = g.program_id
+     WHERE ${whereSql.join(' AND ')}`, params,
   );
   const [rows] = await pool.query<RowData>(
     `SELECT s.*, g.name AS group_name, r.name AS court_name, u.full_name AS coach_name
      FROM academy_group_sessions s
-     LEFT JOIN academy_groups g ON g.id = s.group_id
+     JOIN academy_groups g ON g.id = s.group_id
+     JOIN academy_programs p ON p.id = g.program_id
      LEFT JOIN resources r ON r.id = s.court_id
      LEFT JOIN users u ON u.id = s.coach_id
-     WHERE ${where.join(' AND ')}
+     WHERE ${whereSql.join(' AND ')}
      ORDER BY s.session_date DESC, s.start_time ASC${clause}`, params,
   );
   return reply.send({ data: rows, total: countRows[0]?.total ?? 0, page: pag.page, limit: pag.limit });
@@ -431,9 +460,10 @@ export async function updateSessionHandler(request: FastifyRequest, reply: Fasti
 
 export async function listAttendanceHandler(request: FastifyRequest, reply: FastifyReply) {
   const query = ListAttendanceQuerySchema.parse(request.query);
+  const { where, params: scopeParams } = await resolveListScope(request);
   const { sessionId } = request.params as any;
   if (sessionId) query.group_session_id = Number(sessionId);
-  const result = await academyAttendanceService.list(query);
+  const result = await academyAttendanceService.list({ ...query, scopeWhere: where || undefined, scopeParams: scopeParams.length ? scopeParams : undefined });
   return reply.send(result);
 }
 

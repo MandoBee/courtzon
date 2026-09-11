@@ -132,12 +132,12 @@ class ProgramService {
     return program;
   }
 
-  async getCategories(): Promise<string[]> {
-    return programRepository.getCategories();
+  async getCategories(scope: { orgIds?: number[]; branchIds?: number[] } = {}): Promise<string[]> {
+    return programRepository.getCategories(scope);
   }
 
-  async getDashboard(): Promise<AcademyDashboard> {
-    const d = await programRepository.getDashboard();
+  async getDashboard(scope: { orgIds?: number[]; branchIds?: number[] } = {}): Promise<AcademyDashboard> {
+    const d = await programRepository.getDashboard(scope);
     const capacityUtilization = d.capacity_sum > 0 ? Math.round((d.enrolled_sum / d.capacity_sum) * 100) : 0;
     return {
       total_programs: d.total_programs,

@@ -6,7 +6,7 @@ import { ErrorCodes } from '../../../shared/errors/error-codes.js';
 import type { AcademyAttendanceAttributes } from '../domain/academy.types.js';
 
 class AttendanceService {
-  async list(filters: { page?: number; limit?: number; groupSessionId?: number; enrollmentId?: number }) {
+  async list(filters: { page?: number; limit?: number; groupSessionId?: number; enrollmentId?: number; scopeWhere?: string; scopeParams?: number[] }) {
     return attendanceRepository.list(filters);
   }
 
