@@ -34,7 +34,7 @@ export interface ResolvedConcept {
  * These have no DB mapping row and require no migration; the accounts already
  * exist globally (no COA/schema/migration change).
  */
-const CONCEPT_ACCOUNT_CODE_DEFAULTS: Record<string, Record<string, string>> = {
+export const CONCEPT_ACCOUNT_CODE_DEFAULTS: Record<string, Record<string, string>> = {
   marketplace_card_payment: { shipping: '2400' },
   marketplace_wallet_payment: { shipping: '2400' },
   marketplace_merchant_refund: { shipping: '2400' },
