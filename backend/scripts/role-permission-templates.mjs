@@ -165,6 +165,8 @@ const PLAYER_EXPLICIT_KEYS = new Set([
   'academy.view',
   'academy.enroll',
   'academy.self_enroll',
+  'academy.payment.view',
+  'academy.payment.charge',
   'tournament.view',
   'tournament.register',
   'league.self_register',

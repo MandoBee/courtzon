@@ -99,6 +99,17 @@ export const ConfirmationRequestSchema = z.object({
 /** G3 — manual / offline payment acknowledgment for a confirmed enrollment. */
 export const MarkEnrollmentPaymentSchema = z.object({}).optional();
 
+/**
+ * G8.4 — player self-service Academy payment.
+ * `.strict()` rejects any unknown field (amount, collector, programId, groupId,
+ * commission, ...) so the client can NEVER influence the authoritative Academy
+ * economics — the backend resolves everything from the immutable snapshot path.
+ */
+export const PlayerAcademyPaymentSchema = z.object({
+  paymentMethod: z.enum(['wallet', 'card']),
+  idempotencyKey: z.string().max(64).optional(),
+}).strict();
+
 // ── G4 — Capacity override + waitlist promotion/replacement ──
 
 export const CapacityOverrideSchema = z.object({

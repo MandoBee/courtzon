@@ -118,6 +118,23 @@ class AcademyPaymentRepository {
     return rows.length > 0;
   }
 
+  /**
+   * G8.4 — true when an in-flight (created/pending/processing) gateway payment
+   * exists for the enrollment. Used to surface the "Payment Processing" state to
+   * the player. Paid/failed/cancelled/expired rows are ignored.
+   */
+  async hasPendingPaymentTransaction(enrollmentId: number): Promise<boolean> {
+    const pool = getPool();
+    const [rows] = await pool.execute<RowData>(
+      `SELECT 1 FROM payment_transactions
+       WHERE reference_type = 'academy' AND reference_id = ?
+         AND payment_status IN ('created', 'pending', 'processing')
+       LIMIT 1`,
+      [enrollmentId],
+    );
+    return rows.length > 0;
+  }
+
   async getSnapshotByEnrollment(enrollmentId: number): Promise<AcademyEnrollmentPaymentAttributes | null> {
     const pool = getPool();
     const [rows] = await pool.query<RowData>(

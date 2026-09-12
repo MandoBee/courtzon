@@ -92,6 +92,10 @@ export async function academyRoutes(app: FastifyInstance): Promise<void> {
   app.get('/my/academy/attendance', { preHandler: [requirePermission(['academy.view'])] }, ctrl.getMyAttendanceHandler);
   app.post('/academy/programs/:id/enroll', { preHandler: [requirePermission(['academy.self_enroll'])] }, ctrl.publicEnrollHandler);
 
+  // ── G8.4 — Player self-service Academy payment (dedicated narrow permissions) ──
+  app.get('/my/academy/enrollments/:id/payment', { preHandler: [requirePermission(['academy.payment.view'])] }, ctrl.getMyEnrollmentPaymentHandler);
+  app.post('/my/academy/enrollments/:id/pay', { preHandler: [requirePermission(['academy.payment.charge'])] }, ctrl.payMyEnrollmentHandler);
+
   // ── G7 — Coach-facing Academy ──
   app.get('/coach/academy/sessions', { preHandler: [requirePermission(['academy.coach.session.view'])] }, coachCtrl.listCoachSessionsHandler);
   app.get('/coach/academy/sessions/:id', { preHandler: [requirePermission(['academy.coach.session.view'])] }, coachCtrl.getCoachSessionHandler);

@@ -506,6 +506,36 @@ export interface PublicAcademyAttendance {
   group_name: string | null;
 }
 
+// ── G8.4 — Player self-service Academy payment ──
+
+export interface AcademyPaymentState {
+  enrollmentId: number;
+  programId: number;
+  programName: string;
+  groupId: number | null;
+  groupName: string | null;
+  enrollmentStatus: string;
+  paymentState: 'free' | 'unpaid' | 'paid' | 'processing' | 'unavailable';
+  amount: number | null;
+  currency: string;
+  paid: boolean;
+  paymentConfirmedAt: string | null;
+  availableMethods: ('wallet' | 'card')[];
+}
+
+export interface AcademyChargeResult {
+  status: 'paid' | 'pending' | 'already_paid' | 'no_payment_required';
+  paymentId?: number;
+  paymentStatus?: string;
+  paymentUrl?: string;
+  clientSecret?: string;
+  intentionId?: string;
+  transactionId?: string;
+  amount?: number;
+  currency?: string;
+  balance?: number;
+}
+
 export const publicAcademyApi = {
   getPrograms: () =>
     api.get<PublicAcademyProgram[]>('/academy/programs').then(r => r.data),
@@ -519,6 +549,10 @@ export const publicAcademyApi = {
     api.get<PublicAcademySession[]>('/my/academy/sessions').then(r => r.data),
   myAttendance: () =>
     api.get<PublicAcademyAttendance[]>('/my/academy/attendance').then(r => r.data),
+  getMyEnrollmentPayment: (enrollmentId: number) =>
+    api.get<AcademyPaymentState>(`/my/academy/enrollments/${enrollmentId}/payment`).then(r => r.data),
+  payMyEnrollment: (enrollmentId: number, body: { paymentMethod: 'wallet' | 'card'; idempotencyKey?: string }) =>
+    api.post<AcademyChargeResult>(`/my/academy/enrollments/${enrollmentId}/pay`, body).then(r => r.data),
 };
 
 // ── G7 — Coach-facing Academy ──

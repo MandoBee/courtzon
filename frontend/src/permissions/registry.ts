@@ -1001,6 +1001,8 @@ export const uiRegistry: UIElement[] = [
   { permissionKey: 'player.rank.history', moduleSlug: 'player', elementType: 'page', elementLabel: 'View Rank History', componentPath: 'pages/player/DashboardPage.tsx' },
   { permissionKey: 'player.tournaments.register', moduleSlug: 'player', elementType: 'action', elementLabel: 'Register in Tournaments', componentPath: 'pages/player/DashboardPage.tsx' },
   { permissionKey: 'academy.self_enroll', moduleSlug: 'academy', elementType: 'action', elementLabel: 'Self-enroll in Academy', componentPath: 'pages/academies/AcademyDetailPage.tsx' },
+  { permissionKey: 'academy.payment.view', moduleSlug: 'academy', elementType: 'page', elementLabel: 'View own Academy payment state', componentPath: 'pages/player/academy/AcademyProgramDetailPage.tsx' },
+  { permissionKey: 'academy.payment.charge', moduleSlug: 'academy', elementType: 'button', elementLabel: 'Pay own Academy enrollment (Pay Now)', componentPath: 'pages/player/academy/AcademyProgramDetailPage.tsx' },
   { permissionKey: 'league.self_register', moduleSlug: 'league', elementType: 'action', elementLabel: 'Self-register in League', componentPath: 'pages/player/DashboardPage.tsx' },
 
   // ==========================================================================

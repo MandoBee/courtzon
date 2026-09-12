@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useParams } from 'react-router-dom';
 import { publicAcademyApi } from '../../../services/academy';
+import AcademyPaymentPanel from '../../../components/academy/AcademyPaymentPanel';
 import { Can } from '../../../permissions/Can';
 import { useToast } from '../../../components/ui/Toast';
 import { useTranslation } from '../../../i18n';
@@ -93,16 +94,24 @@ export default function AcademyProgramDetailPage() {
         </div>
 
         {existing && (
-          <div className="rounded-[var(--radius-md)] border p-3 space-y-1.5">
-            <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${existing.status === 'confirmed' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>
-              {t(`player.academy.status_${existing.status}`)}
-            </span>
-            {existing.status === 'waiting' && existing.waitingOrder != null && (
-              <p className="text-xs font-medium">{t('player.academy.waitlist_position', { n: existing.waitingOrder })}</p>
+          <div className="rounded-[var(--radius-md)] border p-3 space-y-2">
+            <div className="flex items-center gap-2">
+              <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${existing.status === 'confirmed' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>
+                {t(`player.academy.status_${existing.status}`)}
+              </span>
+              {existing.status === 'waiting' && existing.waitingOrder != null && (
+                <p className="text-xs font-medium">{t('player.academy.waitlist_position', { n: existing.waitingOrder })}</p>
+              )}
+            </div>
+
+            {existing.status === 'confirmed' && (
+              <Can permission="academy.payment.view">
+                <AcademyPaymentPanel enrollmentId={existing.id} />
+              </Can>
             )}
-            <p className="text-[11px]">
-              {existing.paymentState === 'confirmed' ? t('player.academy.payment_confirmed') : t('player.academy.payment_pending')}
-            </p>
+            {existing.status === 'confirmed' && existing.paymentState === 'pending' && (
+              <p className="text-[11px] text-[var(--color-text-muted)]">{t('player.academy.payment_pending')}</p>
+            )}
           </div>
         )}
 

@@ -8,6 +8,7 @@ import { academyConfirmationService } from '../application/academy-confirmation.
 import { academyCapacityOverrideService } from '../application/capacity-override.service.js';
 import { academySessionService } from '../application/session.service.js';
 import { publicAcademyService } from '../application/public-academy.service.js';
+import { playerAcademyPaymentService } from '../application/player-academy-payment.service.js';
 import {
   CreateProgramSchema, UpdateProgramSchema, ListProgramsQuerySchema, TransitionStatusSchema,
   CreateGroupSchema, UpdateGroupSchema, AssignCoachSchema, SetCompensationSchema, ConfirmAcademySchema, ListGroupsQuerySchema,
@@ -18,6 +19,7 @@ import {
   ScheduleStatusSchema, ResolveSessionSchema, ConfirmationRequestSchema, MarkEnrollmentPaymentSchema,
   CapacityOverrideSchema, RemoveCapacityOverrideSchema, PromoteEnrollmentSchema, ReplaceEnrollmentSchema,
   StartSessionSchema, CompleteSessionSchema, CancelSessionSchema,
+  PlayerAcademyPaymentSchema,
 } from './academy.dto.js';
 import { getPool } from '../../../database/mysql.js';
 import { buildPagination, paginationClause } from '../../../shared/utils/pagination.js';
@@ -769,4 +771,26 @@ export async function publicEnrollHandler(request: FastifyRequest, reply: Fastif
     ipAddress: request.ip, userAgent: getUserAgent(request),
   });
   return reply.status(201).send(result);
+}
+
+// ── G8.4 — Player self-service Academy payment ──
+
+export async function getMyEnrollmentPaymentHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = getUserId(request);
+  const { id } = request.params as any;
+  const result = await playerAcademyPaymentService.getPaymentState(userId, Number(id));
+  return reply.send(result);
+}
+
+export async function payMyEnrollmentHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = getUserId(request);
+  const { id } = request.params as any;
+  const body = PlayerAcademyPaymentSchema.parse(request.body ?? {});
+  const result = await playerAcademyPaymentService.charge(userId, Number(id), body.paymentMethod, body.idempotencyKey);
+  recordAudit({
+    actorId: userId, action: 'ACADEMY_ENROLLMENT.PLAYER_PAYMENT_INITIATED', entityType: 'academy_enrollment',
+    entityId: Number(id), afterState: { player_id: userId, paymentMethod: body.paymentMethod, status: result.status, paymentId: result.paymentId ?? null },
+    ipAddress: request.ip, userAgent: getUserAgent(request),
+  });
+  return reply.send(result);
 }

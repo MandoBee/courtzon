@@ -1,6 +1,8 @@
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { publicAcademyApi, type PublicAcademyEnrollment } from '../../../services/academy';
+import AcademyPaymentPanel from '../../../components/academy/AcademyPaymentPanel';
+import { Can } from '../../../permissions/Can';
 import { useTranslation } from '../../../i18n';
 import { SkeletonRow } from '../../../components/ui/Skeleton';
 
@@ -63,7 +65,11 @@ export default function MyAcademyPage() {
               )}
 
               <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-[var(--color-text-muted)]">
-                {e.paymentState === 'confirmed' ? (
+                {e.status === 'confirmed' ? (
+                  <Can permission="academy.payment.view">
+                    <AcademyPaymentPanel enrollmentId={e.id} />
+                  </Can>
+                ) : e.paymentState === 'confirmed' ? (
                   <span className="px-2 py-0.5 rounded-full bg-green-50 text-green-700">{t('player.academy.payment_confirmed')}</span>
                 ) : (
                   <span className="px-2 py-0.5 rounded-full bg-amber-50 text-amber-700">{t('player.academy.payment_pending')}</span>
