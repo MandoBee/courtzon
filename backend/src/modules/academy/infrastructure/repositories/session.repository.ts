@@ -172,6 +172,43 @@ class SessionRepository {
     );
     return rows;
   }
+
+  /**
+   * G7 — the authenticated coach's Academy sessions. Scope source of truth:
+   * academy_groups.coach_id = authenticated user id. Never trusts a submitted
+   * coach_id / group_id.
+   */
+  async listForCoach(userId: number): Promise<any[]> {
+    const [rows] = await getPool().query<RowData>(
+      `SELECT s.*, g.name AS group_name, p.name AS program_name, p.code AS program_code,
+              r.name AS court_name
+       FROM academy_group_sessions s
+       JOIN academy_groups g ON g.id = s.group_id
+       JOIN academy_programs p ON p.id = g.program_id
+       LEFT JOIN resources r ON r.id = s.court_id
+       WHERE g.coach_id = ?
+       ORDER BY s.session_date DESC, s.start_time ASC`, [userId],
+    );
+    return rows;
+  }
+
+  /**
+   * G7 — a session resolved ONLY if it belongs to a group assigned to the
+   * authenticated coach. Returns null (non-revealing) otherwise.
+   */
+  async getByIdForCoach(sessionId: number, userId: number): Promise<any | null> {
+    const [rows] = await getPool().query<RowData>(
+      `SELECT s.*, g.name AS group_name, g.program_id, p.name AS program_name, p.code AS program_code,
+              r.name AS court_name
+       FROM academy_group_sessions s
+       JOIN academy_groups g ON g.id = s.group_id
+       JOIN academy_programs p ON p.id = g.program_id
+       LEFT JOIN resources r ON r.id = s.court_id
+       WHERE s.id = ? AND g.coach_id = ?
+       LIMIT 1`, [sessionId, userId],
+    );
+    return rows.length ? rows[0] : null;
+  }
 }
 
 export const sessionRepository = new SessionRepository();

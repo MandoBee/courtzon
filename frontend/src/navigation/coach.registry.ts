@@ -9,6 +9,7 @@ export const COACH_NAV: NavDefinition[] = [
   { id: 'nav.coach.availability', label: LIT('Availability'), icon: '⏰', path: '/coach/availability' },
   { id: 'nav.coach.revenue', label: LIT('Revenue'), icon: '💰', path: '/coach/revenue' },
   { id: 'nav.coach.attendance', label: LIT('Attendance'), icon: '📊', path: '/coach/attendance' },
+  { id: 'nav.coach.academy', label: LIT('Academy'), icon: '🎓', path: '/coach/academy' },
   { id: 'nav.coach.profile', label: LIT('Profile'), icon: '👤', path: '/coach/profile' },
 ];
 

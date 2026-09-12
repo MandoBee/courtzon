@@ -240,6 +240,7 @@ const COACH_PATTERNS = [
   /^coach\.revenue\./,
   /^coach\.attendance\./,
   /^coach\.statistics\./,
+  /^academy\.coach\./,
   /^profile\./,
   /^bookings\.(view|create|cancel)/,
   /^community\.chat\./,
@@ -318,6 +319,7 @@ const INDEPENDENT_COACH_PATTERNS = [
   /^coach\.revenue\./,
   /^coach\.attendance\./,
   /^coach\.statistics\./,
+  /^academy\.coach\./,
   /^profile\./,
   /^bookings\.(view|create|cancel)/,
   /^community\.chat\./,
@@ -343,6 +345,7 @@ const RESIDENT_COACH_PATTERNS = [
   /^coach\.revenue\./,
   /^coach\.attendance\./,
   /^coach\.statistics\./,
+  /^academy\.coach\./,
   /^profile\./,
   /^bookings\.(view|create|cancel)/,
   /^community\.chat\./,
@@ -604,6 +607,7 @@ export function permissionMatchesTemplate(templateSlug, permissionKey) {
   }
 
   if (templateSlug === 'coach') {
+    if (permissionKey.startsWith('academy.coach.')) return true;
     if (isAdminOnlyKey(permissionKey)) return false;
     if (COACH_DENY_KEYS.has(permissionKey)) return false;
     if (matchesAny(permissionKey, COACH_PATTERNS)) return true;
@@ -611,6 +615,7 @@ export function permissionMatchesTemplate(templateSlug, permissionKey) {
   }
 
   if (templateSlug === 'independent_coach') {
+    if (permissionKey.startsWith('academy.coach.')) return true;
     if (isAdminOnlyKey(permissionKey)) return false;
     if (COACH_DENY_KEYS.has(permissionKey)) return false;
     if (matchesAny(permissionKey, INDEPENDENT_COACH_PATTERNS)) return true;
@@ -618,6 +623,7 @@ export function permissionMatchesTemplate(templateSlug, permissionKey) {
   }
 
   if (templateSlug === 'resident_coach') {
+    if (permissionKey.startsWith('academy.coach.')) return true;
     if (isAdminOnlyKey(permissionKey)) return false;
     if (COACH_DENY_KEYS.has(permissionKey)) return false;
     if (matchesAny(permissionKey, RESIDENT_COACH_PATTERNS)) return true;

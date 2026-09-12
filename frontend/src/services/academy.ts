@@ -520,3 +520,40 @@ export const publicAcademyApi = {
   myAttendance: () =>
     api.get<PublicAcademyAttendance[]>('/my/academy/attendance').then(r => r.data),
 };
+
+// ── G7 — Coach-facing Academy ──
+
+export interface CoachAcademySession {
+  id: number;
+  group_id: number;
+  session_date: string;
+  start_time: string | null;
+  end_time: string | null;
+  timezone: string | null;
+  status: string;
+  group_name: string | null;
+  program_name: string | null;
+  program_code: string | null;
+  court_name: string | null;
+}
+
+export const coachAcademyApi = {
+  getSessions: () =>
+    api.get<CoachAcademySession[]>('/coach/academy/sessions').then(r => r.data),
+  getSession: (id: number) =>
+    api.get<CoachAcademySession>(`/coach/academy/sessions/${id}`).then(r => r.data),
+  getRoster: (id: number) =>
+    api.get<{ data: SessionRosterRow[]; summary: SessionAttendanceSummary }>(`/coach/academy/sessions/${id}/roster`).then(r => r.data),
+  startSession: (id: number) =>
+    api.post(`/coach/academy/sessions/${id}/start`, {}).then(r => r.data),
+  completeSession: (id: number) =>
+    api.post(`/coach/academy/sessions/${id}/complete`, {}).then(r => r.data),
+  cancelSession: (id: number, reason?: string | null) =>
+    api.post(`/coach/academy/sessions/${id}/cancel`, { reason: reason ?? null }).then(r => r.data),
+  markAttendance: (data: { group_session_id: number; enrollment_id: number; attendance_status: string; notes?: string }) =>
+    api.post('/coach/academy/attendance', data).then(r => r.data),
+  updateAttendance: (id: number, data: { attendance_status: string; notes?: string }) =>
+    api.put(`/coach/academy/attendance/${id}`, data).then(r => r.data),
+  bulkAttendance: (sessionId: number, records: { enrollment_id: number; attendance_status: string }[]) =>
+    api.post(`/coach/academy/sessions/${sessionId}/attendance/bulk`, { records }).then(r => r.data),
+};

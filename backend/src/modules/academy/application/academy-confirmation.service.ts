@@ -531,6 +531,10 @@ export class AcademyConfirmationService {
         userAgent: undefined,
       });
 
+      // G7 — schedule idempotent session reminders for the finalized confirmed
+      // sessions (covers recurring G2 sessions too, not only manual ones).
+      await scheduleFinalizedSessionReminders(program, finalizable);
+
       return {
         confirmed: true,
         programId,
@@ -592,3 +596,19 @@ export class AcademyConfirmationService {
 }
 
 export const academyConfirmationService = new AcademyConfirmationService();
+
+/** G7 — schedule reminders for finalized confirmed sessions' confirmed rosters (idempotent per session+user via BullMQ jobId). */
+async function scheduleFinalizedSessionReminders(program: any, sessions: any[]): Promise<void> {
+  const { scheduleAcademySessionReminder } = await import('../../notifications/application/scheduler.service.js');
+  const academyName = program.name ?? '';
+  for (const s of sessions) {
+    const startUtc = s.start_at_utc
+      ? new Date(s.start_at_utc)
+      : new Date(`${s.session_date}T${s.start_time}`);
+    if (Number.isNaN(startUtc.getTime())) continue;
+    const userIds = await enrollmentRepository.getConfirmedUserIdsByGroup(Number(s.group_id));
+    for (const userId of userIds) {
+      await scheduleAcademySessionReminder(Number(s.id), userId, startUtc, academyName);
+    }
+  }
+}

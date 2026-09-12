@@ -1424,6 +1424,10 @@ export const translationKeysRegistry: TranslationKeyEntry[] = [
   { key: 'player.academy.enrolled_at', defaultValue: 'Enrolled', moduleSlug: 'player', elementType: 'label', elementLabel: 'Enrolled date label' },
   { key: 'player.academy.view_programs', defaultValue: 'Browse programs', moduleSlug: 'player', elementType: 'button', elementLabel: 'Browse programs button' },
 
+  // ── Academy G7 — Coach-facing ──
+  { key: 'coach.academy.title', defaultValue: 'My Academy Sessions', moduleSlug: 'coach', elementType: 'heading', elementLabel: 'Coach academy sessions title' },
+  { key: 'coach.academy.no_sessions', defaultValue: 'No Academy sessions assigned to you', moduleSlug: 'coach', elementType: 'text', elementLabel: 'Coach academy empty state' },
+
   // ── Tournament (Sprint 7) ──
   { key: 'admin.tournament.dashboard', defaultValue: 'Tournament Dashboard', moduleSlug: 'admin', elementType: 'heading', elementLabel: 'Tournament dashboard title' },
   { key: 'admin.tournament.total_tournaments', defaultValue: 'Total Tournaments', moduleSlug: 'admin', elementType: 'label', elementLabel: 'Total tournaments stat' },

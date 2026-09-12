@@ -600,7 +600,7 @@ describe('Phase 1 parity gate — coach nav (legacy/coach-nav.ts vs Navigation R
 
   it('matches regardless of permission state (coach nav carries no permission keys)', () => {
     const registry = resolveCoachNav(strictT);
-    expect(registry.length).toBe(7);
+    expect(registry.length).toBe(8);
     expect(registry.every((i) => i.permissionKey === undefined)).toBe(true);
   });
 });
@@ -769,7 +769,7 @@ describe('Navigation registry integrity (immutable ids)', () => {
 
     const coachIds = collectIds(COACH_NAV);
     expect(coachIds.every((id) => id.startsWith('nav.coach.'))).toBe(true);
-    expect(coachIds.length).toBe(7);
+    expect(coachIds.length).toBe(8);
     expect(COACH_ID_TO_KEY.size).toBe(0);
     expect(COACH_LEGACY_KEY_TO_ID.size).toBe(0);
 

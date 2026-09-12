@@ -289,6 +289,7 @@ const RefereeMatchHistoryPage = lazy(() => import('./pages/referee/RefereeMatchH
 const RefereeStatisticsPage = lazy(() => import('./pages/referee/RefereeStatisticsPage'));
 const CoachRevenuePage = lazy(() => import('./pages/coaches/CoachRevenuePage'));
 const CoachAttendancePage = lazy(() => import('./pages/coaches/CoachAttendancePage'));
+  const CoachAcademySessionsPage = lazy(() => import('./pages/coaches/CoachAcademySessionsPage'));
 const NotFoundPage = lazy(() => import('./pages/NotFoundPage'));
 
 
@@ -659,6 +660,7 @@ function AppContent() {
           <Route path="profile" element={<CoachProfilePage />} />
           <Route path="revenue" element={<CoachRevenuePage />} />
           <Route path="attendance" element={<CoachAttendancePage />} />
+          <Route path="academy" element={<CoachAcademySessionsPage />} />
         </Route>
         <Route path="/referee" element={<RefereeRoute />}>
           <Route index element={<RefereeDashboardPage />} />

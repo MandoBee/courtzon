@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { authMiddleware, requirePermission } from '../../../shared/middleware/auth.middleware.js';
 import * as ctrl from './academy.controller.js';
+import * as coachCtrl from './coach-academy.controller.js';
 
 export async function academyRoutes(app: FastifyInstance): Promise<void> {
   app.addHook('preHandler', authMiddleware);
@@ -90,4 +91,15 @@ export async function academyRoutes(app: FastifyInstance): Promise<void> {
   app.get('/my/academy/sessions', { preHandler: [requirePermission(['academy.view'])] }, ctrl.getMySessionsHandler);
   app.get('/my/academy/attendance', { preHandler: [requirePermission(['academy.view'])] }, ctrl.getMyAttendanceHandler);
   app.post('/academy/programs/:id/enroll', { preHandler: [requirePermission(['academy.self_enroll'])] }, ctrl.publicEnrollHandler);
+
+  // ── G7 — Coach-facing Academy ──
+  app.get('/coach/academy/sessions', { preHandler: [requirePermission(['academy.coach.session.view'])] }, coachCtrl.listCoachSessionsHandler);
+  app.get('/coach/academy/sessions/:id', { preHandler: [requirePermission(['academy.coach.session.view'])] }, coachCtrl.getCoachSessionHandler);
+  app.get('/coach/academy/sessions/:id/roster', { preHandler: [requirePermission(['academy.coach.session.view'])] }, coachCtrl.getCoachSessionRosterHandler);
+  app.post('/coach/academy/sessions/:id/start', { preHandler: [requirePermission(['academy.coach.session.manage'])] }, coachCtrl.startCoachSessionHandler);
+  app.post('/coach/academy/sessions/:id/complete', { preHandler: [requirePermission(['academy.coach.session.manage'])] }, coachCtrl.completeCoachSessionHandler);
+  app.post('/coach/academy/sessions/:id/cancel', { preHandler: [requirePermission(['academy.coach.session.manage'])] }, coachCtrl.cancelCoachSessionHandler);
+  app.post('/coach/academy/attendance', { preHandler: [requirePermission(['academy.coach.attendance.manage'])] }, coachCtrl.recordCoachAttendanceHandler);
+  app.put('/coach/academy/attendance/:id', { preHandler: [requirePermission(['academy.coach.attendance.manage'])] }, coachCtrl.updateCoachAttendanceHandler);
+  app.post('/coach/academy/sessions/:id/attendance/bulk', { preHandler: [requirePermission(['academy.coach.attendance.manage'])] }, coachCtrl.bulkCoachAttendanceHandler);
 }

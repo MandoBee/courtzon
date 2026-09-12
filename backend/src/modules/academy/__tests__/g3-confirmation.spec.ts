@@ -93,7 +93,7 @@ vi.mock('../infrastructure/repositories/group.repository.js', () => ({ groupRepo
 const programRepo = vi.hoisted(() => ({ getById: vi.fn(), getByIdForUpdate: vi.fn(), confirm: vi.fn() }));
 vi.mock('../infrastructure/repositories/program.repository.js', () => ({ programRepository: programRepo }));
 
-const enrollmentRepo = vi.hoisted(() => ({ getById: vi.fn(), markPaymentConfirmed: vi.fn() }));
+const enrollmentRepo = vi.hoisted(() => ({ getById: vi.fn(), markPaymentConfirmed: vi.fn(), getConfirmedUserIdsByGroup: vi.fn() }));
 vi.mock('../infrastructure/repositories/enrollment.repository.js', () => ({ enrollmentRepository: enrollmentRepo }));
 
 const bookingRepo = vi.hoisted(() => ({ checkSlotAvailability: vi.fn(), lockResource: vi.fn() }));
@@ -104,6 +104,9 @@ vi.mock('../../booking/domain/pricing-engine.js', () => ({ pricingEngine: pricin
 
 const audit = vi.hoisted(() => ({ recordAudit: vi.fn(async () => undefined) }));
 vi.mock('../../audit-log/index.js', () => audit);
+
+const scheduler = vi.hoisted(() => ({ scheduleAcademySessionReminder: vi.fn(async () => undefined) }));
+vi.mock('../../notifications/application/scheduler.service.js', () => scheduler);
 
 import { academyConfirmationService } from '../application/academy-confirmation.service.js';
 import { academyScheduleService } from '../application/academy-schedule.service.js';
@@ -183,6 +186,7 @@ function setState(opts: {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  enrollmentRepo.getConfirmedUserIdsByGroup.mockResolvedValue([]);
   captured.length = 0;
   db.program = {
     id: 1, code: 'AC1', name: 'A1', description: null, category: 'tennis', level: null, season: null,
@@ -461,5 +465,24 @@ describe('G3 post-confirm lock — G2 mutations frozen', () => {
   it('rejects G2 schedule mutations once the program lifecycle is confirmed', async () => {
     scope.resolveProgramScope.mockResolvedValue({ programId: 1, organisationId: 7, branchId: 5, sportId: 21, lifecycleState: 'confirmed' });
     await expect(academyScheduleService.update(1, { name: 'Changed' }, 9)).rejects.toMatchObject({ code: 'ACADEMY_LIFECYCLE_LOCKED' });
+  });
+});
+
+describe('G7 add-on — session reminders scheduled at confirmation', () => {
+  it('schedules idempotent reminders for finalized confirmed sessions and their roster', async () => {
+    enrollmentRepo.getConfirmedUserIdsByGroup.mockResolvedValue([200, 201]);
+    const result = await academyConfirmationService.confirm(1, 9, {});
+    expect(result.confirmed).toBe(true);
+    // One finalized pending session; two roster members -> two reminder schedules.
+    expect(scheduler.scheduleAcademySessionReminder).toHaveBeenCalledTimes(2);
+    const first = scheduler.scheduleAcademySessionReminder.mock.calls[0];
+    expect(first[1]).toBe(200);
+    expect(first[3]).toBe('A1');
+  });
+
+  it('schedules no reminders when the session has no confirmed roster', async () => {
+    enrollmentRepo.getConfirmedUserIdsByGroup.mockResolvedValue([]);
+    await academyConfirmationService.confirm(1, 9, {});
+    expect(scheduler.scheduleAcademySessionReminder).not.toHaveBeenCalled();
   });
 });
