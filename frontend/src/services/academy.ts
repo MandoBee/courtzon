@@ -438,3 +438,85 @@ export const academyCapacityApi = {
   replace: (enrollmentId: number, reason: string) =>
     api.post<AcademyEnrollment>(`/admin/academy/enrollments/${enrollmentId}/replace`, { reason }).then(r => r.data),
 };
+
+// ── G6 — Player-facing Academy self-service ──
+
+export interface PublicAcademyProgram {
+  id: number;
+  code: string;
+  name: string;
+  description: string | null;
+  category: string;
+  level: string | null;
+  season: string | null;
+  price: number;
+  currency: string;
+  price_type: string;
+  status: string;
+  is_public: boolean;
+  capacity: number;
+  confirmedCount: number;
+  /** -1 = unlimited */
+  availableSeats: number;
+  isFull: boolean;
+  isUnlimited: boolean;
+}
+
+export interface PublicAcademyEnrollment {
+  id: number;
+  programId: number;
+  programName: string;
+  programCode: string;
+  groupId: number | null;
+  groupName: string | null;
+  status: string;
+  waitingOrder: number | null;
+  paymentState: 'pending' | 'confirmed';
+  enrolledAt: string;
+}
+
+export interface PublicAcademySession {
+  id: number;
+  group_id: number;
+  session_date: string;
+  start_time: string | null;
+  end_time: string | null;
+  timezone: string | null;
+  session_status: string;
+  start_at_utc: string | null;
+  group_name: string | null;
+  program_name: string | null;
+  program_code: string | null;
+  attendance_id: number | null;
+  attendance_status: string | null;
+  notes: string | null;
+}
+
+export interface PublicAcademyAttendance {
+  attendance_id: number;
+  attendance_status: string;
+  notes: string | null;
+  attended_at: string;
+  session_id: number;
+  session_date: string;
+  start_time: string | null;
+  end_time: string | null;
+  session_status: string;
+  program_name: string | null;
+  group_name: string | null;
+}
+
+export const publicAcademyApi = {
+  getPrograms: () =>
+    api.get<PublicAcademyProgram[]>('/academy/programs').then(r => r.data),
+  getProgram: (id: number) =>
+    api.get<PublicAcademyProgram>(`/academy/programs/${id}`).then(r => r.data),
+  enroll: (id: number) =>
+    api.post<{ status: 'confirmed' | 'waiting'; enrollment: PublicAcademyEnrollment }>(`/academy/programs/${id}/enroll`, {}).then(r => r.data),
+  myEnrollments: () =>
+    api.get<PublicAcademyEnrollment[]>('/my/academy/enrollments').then(r => r.data),
+  mySessions: () =>
+    api.get<PublicAcademySession[]>('/my/academy/sessions').then(r => r.data),
+  myAttendance: () =>
+    api.get<PublicAcademyAttendance[]>('/my/academy/attendance').then(r => r.data),
+};

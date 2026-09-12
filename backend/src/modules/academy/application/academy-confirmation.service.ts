@@ -578,6 +578,15 @@ export class AcademyConfirmationService {
       userAgent: undefined,
     });
 
+    // G6 — payment-acknowledged, fired only after a successful acknowledgment.
+    const { eventBusV2 } = await import('../../../shared/event-bus/event-bus.v2.js');
+    eventBusV2.emit('academy:payment-acknowledged', {
+      programId: Number(enrollment.program_id),
+      userId: Number(enrollment.player_id),
+      enrollmentId,
+      organisationId: undefined,
+    } as any);
+
     return { id: enrollmentId, payment_confirmed_at: now };
   }
 }

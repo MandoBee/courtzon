@@ -124,6 +124,21 @@ class EnrollmentRepository {
     return row.c;
   }
 
+  /** G6 — confirmed counts for many programs at once (public browse availability). */
+  async countConfirmedByPrograms(programIds: number[]): Promise<Map<number, number>> {
+    const map = new Map<number, number>();
+    const ids = programIds.filter((id) => id != null && Number(id) > 0);
+    if (!ids.length) return map;
+    const [rows] = await getPool().query<RowData>(
+      `SELECT program_id, COUNT(*) AS c FROM academy_enrollments
+       WHERE program_id IN (${ids.map(() => '?').join(',')}) AND status = 'confirmed'
+       GROUP BY program_id`,
+      ids,
+    );
+    for (const r of rows as any[]) map.set(Number(r.program_id), Number(r.c));
+    return map;
+  }
+
   /**
    * G3 — manual/offline payment acknowledgment. Records actor + timestamp; does
    * NOT create any wallet/ledger/settlement transactions (business decision).
@@ -173,6 +188,27 @@ class EnrollmentRepository {
       [groupId],
     );
     return (rows as any[]).map((r) => Number(r.player_id));
+  }
+
+  /**
+   * G6 — the authenticated player's own enrollments (identity-bound, never
+   * client-supplied ids). Includes program/group display fields and the
+   * payment acknowledgment state (own data only).
+   */
+  async listForPlayer(playerId: number): Promise<any[]> {
+    const [rows] = await getPool().query<RowData>(
+      `SELECT e.id, e.player_id, e.program_id, e.group_id, e.status, e.waiting_order,
+              e.enrolled_at, e.cancelled_at, e.completed_at, e.created_at,
+              e.payment_confirmed_at, e.payment_confirmed_by,
+              p.name AS program_name, p.code AS program_code, p.price, p.currency,
+              g.name AS group_name
+       FROM academy_enrollments e
+       JOIN academy_programs p ON p.id = e.program_id
+       LEFT JOIN academy_groups g ON g.id = e.group_id
+       WHERE e.player_id = ?
+       ORDER BY e.created_at DESC`, [playerId],
+    );
+    return rows;
   }
 
   /**

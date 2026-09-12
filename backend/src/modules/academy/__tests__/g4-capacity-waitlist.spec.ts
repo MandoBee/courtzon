@@ -50,6 +50,9 @@ vi.mock('../infrastructure/repositories/group.repository.js', () => ({ groupRepo
 const audit = vi.hoisted(() => ({ recordAudit: vi.fn(async () => undefined) }));
 vi.mock('../../audit-log/index.js', () => audit);
 
+const eventBusMock = vi.hoisted(() => ({ emit: vi.fn() }));
+vi.mock('../../../shared/event-bus/event-bus.v2.js', () => ({ eventBusV2: eventBusMock }));
+
 import { academyEnrollmentService } from '../application/enrollment.service.js';
 import { academyCapacityOverrideService } from '../application/capacity-override.service.js';
 import { effectiveCapacity, isCapacityOverrideActive } from '../domain/capacity.js';

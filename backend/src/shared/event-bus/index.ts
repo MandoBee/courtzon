@@ -77,6 +77,10 @@ export interface DomainEventMap {
   'academy:session-reminder': BaseEvent & { sessionId: number; userId: number; startTime: Date; academyName: string };
   'academy:session-started': BaseEvent & { sessionId: number; programId: number; userId: number; startTime: Date; academyName: string };
   'academy:graduated': BaseEvent & { academyId: number; userId: number; studentName: string };
+  'academy:enrollment-accepted': BaseEvent & { programId: number; userId: number; enrollmentId: number; programName: string };
+  'academy:enrollment-waitlisted': BaseEvent & { programId: number; userId: number; enrollmentId: number; programName: string; waitlistPosition: number | null };
+  'academy:promoted': BaseEvent & { programId: number; userId: number; enrollmentId: number; programName: string };
+  'academy:payment-acknowledged': BaseEvent & { programId: number; userId: number; enrollmentId: number };
   'coaching:session-scheduled': BaseEvent & { sessionId: number; coachId: number; userId: number; startTime: Date };
   'coaching:session-cancelled': BaseEvent & { sessionId: number; userId: number; reason?: string };
   'coaching:session-reminder': BaseEvent & { sessionId: number; userId: number; startTime: Date; coachName: string };

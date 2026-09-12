@@ -149,6 +149,29 @@ class SessionRepository {
     );
     return (result as any).affectedRows > 0;
   }
+
+  /**
+   * G6 — the authenticated player's own Academy sessions, derived through
+   * player → own confirmed enrollment → enrollment group → group sessions.
+   * Includes the player's own attendance state for each session. Identity-bound
+   * (never a client-supplied group_id).
+   */
+  async listForPlayer(playerId: number): Promise<any[]> {
+    const [rows] = await getPool().query<RowData>(
+      `SELECT s.id, s.group_id, s.session_date, s.start_time, s.end_time, s.timezone,
+              s.status AS session_status, s.start_at_utc,
+              g.name AS group_name, p.name AS program_name, p.code AS program_code,
+              a.id AS attendance_id, a.attendance_status, a.notes
+       FROM academy_enrollments e
+       JOIN academy_groups g ON g.id = e.group_id
+       JOIN academy_programs p ON p.id = g.program_id
+       JOIN academy_group_sessions s ON s.group_id = g.id
+       LEFT JOIN academy_attendance a ON a.group_session_id = s.id AND a.enrollment_id = e.id
+       WHERE e.player_id = ? AND e.status = 'confirmed' AND s.status != 'cancelled'
+       ORDER BY s.session_date DESC, s.start_time ASC`, [playerId],
+    );
+    return rows;
+  }
 }
 
 export const sessionRepository = new SessionRepository();

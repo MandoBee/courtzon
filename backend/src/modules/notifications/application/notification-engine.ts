@@ -390,6 +390,20 @@ const eventGroups: EventGroupConfig[] = [
     },
   },
   {
+    // G6 — player-facing Academy lifecycle notifications (program-based model).
+    events: ['academy:enrollment-accepted', 'academy:enrollment-waitlisted', 'academy:promoted', 'academy:payment-acknowledged'],
+    handler: async (eventName, data, categorySlug) => {
+      if (data.userId) {
+        await dispatchToUser({
+          userId: data.userId, eventName, categorySlug, data,
+          organisationId: data.organisationId,
+          relatedEntityType: 'enrollment', relatedEntityId: String(data.enrollmentId ?? data.programId),
+          action: a('/my/academy'), digestable: false,
+        });
+      }
+    },
+  },
+  {
     events: ['coaching:session-scheduled', 'coaching:session-reminder', 'coaching:session-cancelled'],
     handler: async (eventName, data, categorySlug) => {
       if (data.userId) {
@@ -971,6 +985,7 @@ class NotificationEngine {
       'organisation:subscription-renewed',
       'club:created', 'club:member-joined', 'club:member-left',
       'academy:enrolled', 'academy:session-reminder', 'academy:session-started', 'academy:graduated',
+      'academy:enrollment-accepted', 'academy:enrollment-waitlisted', 'academy:promoted', 'academy:payment-acknowledged',
       'coaching:session-scheduled', 'coaching:session-reminder', 'coaching:session-cancelled',
       'coach:invited', 'coach:agreement-added',
       'tournament:created', 'tournament:registration-open', 'tournament:registration-closed',

@@ -150,11 +150,11 @@ export default function PlayerDashboardPage() {
       </div>
 
       {/* Active Academy Enrollments */}
-      <Can permission="academies.enroll">
+      <Can permission="academy.view">
         <div>
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-sm font-semibold text-[var(--color-text)]">{t('player.dashboard.active_enrollments')}</h2>
-            <Link to="/academies" className="text-xs text-[var(--color-primary)] hover:underline">{t('common.view_all')}</Link>
+            <Link to="/my/academy" className="text-xs text-[var(--color-primary)] hover:underline">{t('common.view_all')}</Link>
           </div>
           {loadingEnrollments ? <SkeletonRow count={1} /> : (
             <div className="space-y-2">

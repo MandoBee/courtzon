@@ -148,6 +148,11 @@ const AcademyEnrollmentsPage = lazy(() => import('./pages/admin/academy/AcademyE
 const AcademyAttendancePage = lazy(() => import('./pages/admin/academy/AcademyAttendancePage'));
   const AcademySchedulesPage = lazy(() => import('./pages/admin/academy/AcademySchedulesPage'));
   const AcademySessionsPage = lazy(() => import('./pages/admin/academy/AcademySessionsPage'));
+  const AcademyBrowsePage = lazy(() => import('./pages/player/academy/AcademyBrowsePage'));
+  const AcademyProgramDetailPage = lazy(() => import('./pages/player/academy/AcademyProgramDetailPage'));
+  const MyAcademyPage = lazy(() => import('./pages/player/academy/MyAcademyPage'));
+  const MyAcademySessionsPage = lazy(() => import('./pages/player/academy/MyAcademySessionsPage'));
+  const MyAcademyAttendancePage = lazy(() => import('./pages/player/academy/MyAcademyAttendancePage'));
 const LeagueDashboardPage = lazy(() => import('./pages/admin/league/LeagueDashboardPage'));
 const SeasonListPage = lazy(() => import('./pages/admin/league/SeasonListPage'));
 const LeagueListPage = lazy(() => import('./pages/admin/league/LeagueListPage'));
@@ -615,6 +620,11 @@ function AppContent() {
           <Route path="/tournaments/:id" element={<TournamentDetailPage />} />
           <Route path="/academies" element={<AcademyListPage />} />
           <Route path="/academies/:id" element={<AcademyDetailPage />} />
+          <Route path="/academy" element={<AcademyBrowsePage />} />
+          <Route path="/academy/:id" element={<AcademyProgramDetailPage />} />
+          <Route path="/my/academy" element={<MyAcademyPage />} />
+          <Route path="/my/academy/sessions" element={<MyAcademySessionsPage />} />
+          <Route path="/my/academy/attendance" element={<MyAcademyAttendancePage />} />
           <Route path="/coaches" element={<CoachDirectoryPage />} />
           <Route path="/coaches/profile" element={<CoachProfilePage />} />
           <Route path="/coaches/sessions/me" element={<CoachSessionsPage />} />

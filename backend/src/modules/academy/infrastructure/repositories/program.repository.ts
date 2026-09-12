@@ -74,6 +74,37 @@ class ProgramRepository {
     return rows.length ? (rows[0] as AcademyProgramAttributes) : null;
   }
 
+  /**
+   * G6 — player-facing published programs. Only `is_public = 1` AND
+   * `status = 'published'`. Returns ONLY the public-safe columns (no internal
+   * org/branch/sport/lifecycle/override/audit fields).
+   */
+  async listPublic(): Promise<AcademyProgramAttributes[]> {
+    const [rows] = await getPool().query<RowData>(
+      `SELECT id, code, name, description, category, level, season,
+              capacity, original_capacity, capacity_override_amount, capacity_override_until,
+              price, currency, price_type, status, is_public
+       FROM academy_programs
+       WHERE is_public = 1 AND status = 'published'
+       ORDER BY created_at DESC`,
+    );
+    return rows as AcademyProgramAttributes[];
+  }
+
+  /** G6 — single published + public program for the player detail endpoint. */
+  async getPublicById(id: number): Promise<AcademyProgramAttributes | null> {
+    const [rows] = await getPool().query<RowData>(
+      `SELECT id, code, name, description, category, level, season,
+              capacity, original_capacity, capacity_override_amount, capacity_override_until,
+              price, currency, price_type, status, is_public
+       FROM academy_programs
+       WHERE id = ? AND is_public = 1 AND status = 'published'
+       LIMIT 1`,
+      [id],
+    );
+    return rows.length ? (rows[0] as AcademyProgramAttributes) : null;
+  }
+
   async create(data: Partial<AcademyProgramAttributes>): Promise<number> {
     const sql = 'INSERT INTO academy_programs (code, name, description, category, level, season, capacity, original_capacity, price, currency, price_type, status, is_public, organisation_id, branch_id, sport_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)';
     const [result] = await getPool().query<ResultSet>(sql,

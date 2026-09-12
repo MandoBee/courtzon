@@ -31,6 +31,8 @@ export function buildPlayerMoreItems(
     { label: t('nav.coaches'), icon: '🏆', path: '/coaches', perm: 'coaches.view' },
     { label: t('nav.tournaments'), icon: '🥇', path: '/tournaments', perm: 'tournaments.view' },
     { label: t('nav.academies'), icon: '🎓', path: '/academies', perm: 'academies.view' },
+    { label: t('nav.academy'), icon: '🎓', path: '/academy', perm: 'academy.self_enroll' },
+    { label: t('nav.my_academy'), icon: '🎓', path: '/my/academy', perm: 'academy.view' },
     { label: t('nav.messages'), icon: '💬', path: '/messages', perm: 'community.chat.view', flag: chatEnabled },
     { label: t('nav.players'), icon: '👥', path: '/players', perm: 'player.search' },
     { label: t('nav.favorites'), icon: '❤️', path: '/my/favorites', perm: 'player.favorites.manage' },

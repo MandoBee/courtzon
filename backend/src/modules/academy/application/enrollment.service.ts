@@ -90,12 +90,33 @@ class EnrollmentService {
       }, conn);
 
       await conn.commit();
-      return enrollmentRepository.getById(id);
+      const enrollment = await enrollmentRepository.getById(id);
+      await this.notifyEnrollResult(enrollment, program);
+      return enrollment;
     } catch (err) {
       try { await conn.rollback(); } catch { /* already rolled back */ }
       throw err;
     } finally {
       conn.release();
+    }
+  }
+
+  /** G6 — enrollment-accepted / enrollment-waitlisted, fired only after a successful commit. */
+  private async notifyEnrollResult(enrollment: any, program: any): Promise<void> {
+    if (!enrollment || !enrollment.status) return;
+    const { eventBusV2 } = await import('../../../shared/event-bus/event-bus.v2.js');
+    const payload = {
+      programId: Number(enrollment.program_id),
+      userId: Number(enrollment.player_id),
+      enrollmentId: Number(enrollment.id),
+      programName: program?.name ?? '',
+      waitlistPosition: enrollment.waiting_order ?? null,
+      organisationId: program?.organisation_id ?? undefined,
+    } as any;
+    if (enrollment.status === 'confirmed') {
+      eventBusV2.emit('academy:enrollment-accepted', payload);
+    } else if (enrollment.status === 'waiting') {
+      eventBusV2.emit('academy:enrollment-waitlisted', payload);
     }
   }
 
@@ -218,6 +239,16 @@ class EnrollmentService {
         ipAddress: undefined,
         userAgent: undefined,
       });
+
+      // G6 — promoted notification, fired only after a successful transition.
+      const { eventBusV2 } = await import('../../../shared/event-bus/event-bus.v2.js');
+      eventBusV2.emit('academy:promoted', {
+        programId,
+        userId: Number(enrollment.player_id),
+        enrollmentId: id,
+        programName: program.name ?? '',
+        organisationId: program.organisation_id ?? undefined,
+      } as any);
 
       return enrollmentRepository.getById(id);
     } catch (err) {

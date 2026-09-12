@@ -7,6 +7,7 @@ import { academyScheduleService } from '../application/academy-schedule.service.
 import { academyConfirmationService } from '../application/academy-confirmation.service.js';
 import { academyCapacityOverrideService } from '../application/capacity-override.service.js';
 import { academySessionService } from '../application/session.service.js';
+import { publicAcademyService } from '../application/public-academy.service.js';
 import {
   CreateProgramSchema, UpdateProgramSchema, ListProgramsQuerySchema, TransitionStatusSchema,
   CreateGroupSchema, UpdateGroupSchema, AssignCoachSchema, SetCompensationSchema, ConfirmAcademySchema, ListGroupsQuerySchema,
@@ -730,41 +731,42 @@ export async function getSessionAttendanceHandler(request: FastifyRequest, reply
 }
 
 export async function listPublicProgramsHandler(request: FastifyRequest, reply: FastifyReply) {
-  const query = ListProgramsQuerySchema.parse(request.query);
-  const result = await academyProgramService.list({ ...query, is_public: true, status: 'published' });
+  const result = await publicAcademyService.listPublished();
   return reply.send(result);
 }
 
 export async function getPublicProgramHandler(request: FastifyRequest, reply: FastifyReply) {
   const { id } = request.params as any;
-  const program = await academyProgramService.getById(Number(id));
-  if (!program || !program.is_public) throw new NotFoundError('Academy program', ErrorCodes.ACADEMY_PROGRAM_NOT_FOUND);
+  const program = await publicAcademyService.getPublished(Number(id));
   return reply.send(program);
 }
 
 export async function getMyEnrollmentsHandler(request: FastifyRequest, reply: FastifyReply) {
   const userId = getUserId(request);
-  const pool = getPool();
-  type RowData = import('mysql2').RowDataPacket[];
-  const [rows] = await pool.query<RowData>(
-    `SELECT e.*, p.name AS program_name, p.code AS program_code, g.name AS group_name
-     FROM academy_enrollments e
-     LEFT JOIN academy_programs p ON p.id = e.program_id
-     LEFT JOIN academy_groups g ON g.id = e.group_id
-     WHERE e.player_id = ?
-     ORDER BY e.created_at DESC`, [userId],
-  );
-  return reply.send(rows);
+  const result = await publicAcademyService.myEnrollments(userId);
+  return reply.send(result);
+}
+
+export async function getMySessionsHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = getUserId(request);
+  const result = await publicAcademyService.mySessions(userId);
+  return reply.send(result);
+}
+
+export async function getMyAttendanceHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = getUserId(request);
+  const result = await publicAcademyService.myAttendance(userId);
+  return reply.send(result);
 }
 
 export async function publicEnrollHandler(request: FastifyRequest, reply: FastifyReply) {
   const userId = getUserId(request);
   const { id } = request.params as any;
-  const enrollment = await academyEnrollmentService.enroll({ player_id: userId, program_id: Number(id) });
+  const result = await publicAcademyService.enroll(userId, Number(id));
   recordAudit({
     actorId: userId, action: 'ACADEMY_ENROLLMENT.PUBLIC_ENROLL', entityType: 'academy_enrollment',
-    entityId: enrollment.id!, afterState: { player_id: userId, program_id: Number(id), status: enrollment.status, waiting_order: enrollment.waiting_order ?? null },
+    entityId: result.enrollment.id, afterState: { player_id: userId, program_id: result.enrollment.programId, status: result.status, waiting_order: result.enrollment.waitingOrder ?? null },
     ipAddress: request.ip, userAgent: getUserAgent(request),
   });
-  return reply.status(201).send(enrollment);
+  return reply.status(201).send(result);
 }

@@ -44,3 +44,39 @@ export async function isAcademyGroupStarted(groupId: number, conn?: mysql.PoolCo
   }
   return false;
 }
+
+/**
+ * G6 — program-level start gate. A program is considered started when ANY of
+ * its groups has an earliest non-cancelled session that has begun (same
+ * time/session semantics as isAcademyGroupStarted), OR when the program's
+ * explicit lifecycle status is `running`/`completed`. Used to block late
+ * player self-enrollment. A program with no sessions yet is NOT started, so
+ * valid future enrollment is preserved.
+ */
+export async function isAcademyProgramStarted(programId: number, conn?: mysql.PoolConnection): Promise<boolean> {
+  const db: Executor = conn ?? getPool();
+  const [rows] = await db.query<RowData>(
+    `SELECT
+       MAX(gs.status IN ('in_progress','completed')) AS any_started,
+       MIN(gs.start_at_utc) AS earliest_utc,
+       MIN(gs.session_date) AS earliest_date
+     FROM academy_group_sessions gs
+     JOIN academy_groups g ON g.id = gs.group_id
+     WHERE g.program_id = ? AND gs.status != 'cancelled'`,
+    [programId],
+  );
+  const r = (rows[0] as any) || {};
+  if (Number(r.any_started) === 1) return true;
+  if (r.earliest_utc != null) {
+    const t = new Date(r.earliest_utc).getTime();
+    if (!Number.isNaN(t)) return t <= Date.now();
+  }
+  if (r.earliest_date != null) {
+    const today = new Date();
+    const todayStr = `${today.getUTCFullYear()}-${String(today.getUTCMonth() + 1).padStart(2, '0')}-${String(
+      today.getUTCDate(),
+    ).padStart(2, '0')}`;
+    return String(r.earliest_date) < todayStr;
+  }
+  return false;
+}

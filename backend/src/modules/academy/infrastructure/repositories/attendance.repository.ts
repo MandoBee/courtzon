@@ -128,6 +128,26 @@ class AttendanceRepository {
   }
 
   /**
+   * G6 — the authenticated player's own attendance history, identity-bound
+   * through attendance → own enrollment. Never exposes another player's rows.
+   */
+  async listForPlayer(playerId: number): Promise<any[]> {
+    const [rows] = await getPool().query<RowData>(
+      `SELECT a.id AS attendance_id, a.attendance_status, a.notes, a.created_at AS attended_at,
+              s.id AS session_id, s.session_date, s.start_time, s.end_time, s.status AS session_status,
+              p.name AS program_name, g.name AS group_name
+       FROM academy_attendance a
+       JOIN academy_enrollments e ON e.id = a.enrollment_id
+       JOIN academy_group_sessions s ON s.id = a.group_session_id
+       JOIN academy_groups g ON g.id = s.group_id
+       JOIN academy_programs p ON p.id = g.program_id
+       WHERE e.player_id = ?
+       ORDER BY s.session_date DESC, s.start_time ASC`, [playerId],
+    );
+    return rows;
+  }
+
+  /**
    * G5 — per-session roster: confirmed enrollments of the session's group with
    * their attendance state for this session (if marked). Cross-group enrollments
    * are excluded by construction (join on the session's group).
