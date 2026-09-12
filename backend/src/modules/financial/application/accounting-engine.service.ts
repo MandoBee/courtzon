@@ -188,15 +188,19 @@ export const ORG_BOOK_EVENTS: Record<string, string[]> = {
   // OWN Cash/Bank (ORG-CASH) directly rather than a receivable from CourtZon.
   booking_org_cash_receivable: ['org_cash_bank', 'commission_expense', 'court_rental_revenue', 'courtzon_payable'],
   booking_org_cash_receivable_rev: ['court_rental_revenue', 'courtzon_payable', 'org_cash_bank', 'commission_expense'],
-  // ── ACADEMY org book (G8) — mirrors the booking org book with the dedicated
+  // ── ACADEMY org book (G8.3A) — mirrors the booking org book with the dedicated
   // Academy Tuition Revenue leg (ACAD-REV) so academy earnings are never mixed
-  // with marketplace sales or court rental revenue. 1161 / MKT-COMM-EXP /
-  // MKT-CZ-PAY / ORG-CASH are shared with booking/marketplace, so the shared
-  // settlement receipt/OTC flows clear academy entitlements on settlement.
-  academy_org_receivable: ['marketplace_receivable', 'commission_expense', 'academy_revenue'],
-  academy_org_receivable_reversal: ['academy_revenue', 'marketplace_receivable', 'commission_expense'],
-  academy_org_cash_receivable: ['org_cash_bank', 'commission_expense', 'academy_revenue', 'courtzon_payable'],
-  academy_org_cash_receivable_rev: ['academy_revenue', 'courtzon_payable', 'org_cash_bank', 'commission_expense'],
+  // with marketplace sales. The org's Gross Collections are classified between
+  // Academy Tuition Revenue (gross − court rental) and Court Rental Revenue
+  // (MKT-COURT-REN — the SAME account booking uses), so Academy Revenue +
+  // Court Rental Revenue = Gross Collections. 1161 / MKT-COMM-EXP /
+  // MKT-CZ-PAY / ORG-CASH / MKT-COURT-REN are shared with booking/marketplace,
+  // so the shared settlement receipt/OTC flows clear academy entitlements on
+  // settlement.
+  academy_org_receivable: ['marketplace_receivable', 'commission_expense', 'academy_revenue', 'court_rental_revenue'],
+  academy_org_receivable_reversal: ['academy_revenue', 'court_rental_revenue', 'marketplace_receivable', 'commission_expense'],
+  academy_org_cash_receivable: ['org_cash_bank', 'commission_expense', 'academy_revenue', 'court_rental_revenue', 'courtzon_payable'],
+  academy_org_cash_receivable_rev: ['academy_revenue', 'court_rental_revenue', 'courtzon_payable', 'org_cash_bank', 'commission_expense'],
   // Settlement receipt (org book): Dr org Cash/Bank / Cr org 1161 Marketplace
   // Receivable — clears the org's receivable against the cash received from
   // CourtZon on settlement.

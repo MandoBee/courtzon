@@ -16,7 +16,12 @@ vi.hoisted(() => {
 });
 
 import { getEventConcepts, validateCompleteMapping } from '../application/accounting-concepts.js';
-import { CONCEPT_ACCOUNT_CODE_DEFAULTS, accountingEngineService } from '../application/accounting-engine.service.js';
+import {
+  CONCEPT_ACCOUNT_CODE_DEFAULTS,
+  ORG_BOOK_EVENTS,
+  ORG_MARKETPLACE_ACCOUNT_CODES,
+  accountingEngineService,
+} from '../application/accounting-engine.service.js';
 
 function conceptsOf(eventType: string) {
   return getEventConcepts(eventType).map((c) => c.concept).sort();
@@ -109,5 +114,116 @@ describe('G8.3 — academy accounting mapping selection', () => {
     );
     expect(lines.length).toBe(3);
     accountingEngineService.validateBalance(lines);
+  });
+});
+
+describe('G8.3A — Academy organization-book revenue classification', () => {
+  // gross 200, courtRental 60, commission 20 → orgEarning 180,
+  // academyRevenue 140, courtRentalRevenue 60.
+  const MAPPING = {
+    marketplace_receivable: 11,
+    commission_expense: 12,
+    academy_revenue: 13,
+    court_rental_revenue: 14,
+    org_cash_bank: 15,
+    courtzon_payable: 16,
+  };
+
+  it('academy_org_receivable: Dr receivable + comm expense / Cr academy_revenue + court_rental_revenue', () => {
+    const debit = getEventConcepts('academy_org_receivable').filter((c) => c.side === 'debit').map((c) => c.concept).sort();
+    const credit = getEventConcepts('academy_org_receivable').filter((c) => c.side === 'credit').map((c) => c.concept).sort();
+    expect(debit).toEqual(['commission_expense', 'marketplace_receivable']);
+    expect(credit).toEqual(['academy_revenue', 'court_rental_revenue']);
+  });
+
+  it('academy_org_cash_receivable: Dr ORG-CASH + comm expense / Cr academy_revenue + court_rental_revenue + courtzon_payable', () => {
+    const debit = getEventConcepts('academy_org_cash_receivable').filter((c) => c.side === 'debit').map((c) => c.concept).sort();
+    const credit = getEventConcepts('academy_org_cash_receivable').filter((c) => c.side === 'credit').map((c) => c.concept).sort();
+    expect(debit).toEqual(['commission_expense', 'org_cash_bank']);
+    expect(credit).toEqual(['academy_revenue', 'court_rental_revenue', 'courtzon_payable']);
+  });
+
+  it('Academy Revenue + Court Rental Revenue = Gross Collections (card/wallet org book)', () => {
+    const lines = accountingEngineService.buildLedgerLines(
+      'academy_org_receivable',
+      [
+        { concept: 'marketplace_receivable', accountId: MAPPING.marketplace_receivable },
+        { concept: 'commission_expense', accountId: MAPPING.commission_expense },
+        { concept: 'academy_revenue', accountId: MAPPING.academy_revenue },
+        { concept: 'court_rental_revenue', accountId: MAPPING.court_rental_revenue },
+      ],
+      { marketplace_receivable: 180, commission_expense: 20, academy_revenue: 140, court_rental_revenue: 60 },
+    );
+    accountingEngineService.validateBalance(lines);
+    const credit = lines.filter((l) => l.side === 'credit').reduce((s, l) => s + l.amount, 0);
+    const acadRev = lines.find((l) => l.side === 'credit' && l.accountId === MAPPING.academy_revenue)!.amount;
+    const courtRev = lines.find((l) => l.side === 'credit' && l.accountId === MAPPING.court_rental_revenue)!.amount;
+    expect(credit).toBe(200);
+    expect(acadRev).toBe(140);   // gross − court rental
+    expect(courtRev).toBe(60);   // court rental
+  });
+
+  it('Academy Revenue + Court Rental Revenue = Gross Collections (cash org book)', () => {
+    const lines = accountingEngineService.buildLedgerLines(
+      'academy_org_cash_receivable',
+      [
+        { concept: 'org_cash_bank', accountId: MAPPING.org_cash_bank },
+        { concept: 'commission_expense', accountId: MAPPING.commission_expense },
+        { concept: 'academy_revenue', accountId: MAPPING.academy_revenue },
+        { concept: 'court_rental_revenue', accountId: MAPPING.court_rental_revenue },
+        { concept: 'courtzon_payable', accountId: MAPPING.courtzon_payable },
+      ],
+      { org_cash_bank: 200, commission_expense: 20, academy_revenue: 140, court_rental_revenue: 60, courtzon_payable: 20 },
+    );
+    accountingEngineService.validateBalance(lines);
+    const debit = lines.filter((l) => l.side === 'debit').reduce((s, l) => s + l.amount, 0);
+    const credit = lines.filter((l) => l.side === 'credit').reduce((s, l) => s + l.amount, 0);
+    expect(debit).toBe(220);
+    expect(credit).toBe(220);
+    const acadRev = lines.find((l) => l.side === 'credit' && l.accountId === MAPPING.academy_revenue)!.amount;
+    const courtRev = lines.find((l) => l.side === 'credit' && l.accountId === MAPPING.court_rental_revenue)!.amount;
+    expect(acadRev).toBe(140);
+    expect(courtRev).toBe(60);
+  });
+
+  it('zero court rental → single revenue leg (academy_revenue = gross)', () => {
+    const lines = accountingEngineService.buildLedgerLines(
+      'academy_org_receivable',
+      [
+        { concept: 'marketplace_receivable', accountId: MAPPING.marketplace_receivable },
+        { concept: 'commission_expense', accountId: MAPPING.commission_expense },
+        { concept: 'academy_revenue', accountId: MAPPING.academy_revenue },
+        { concept: 'court_rental_revenue', accountId: MAPPING.court_rental_revenue },
+      ],
+      { marketplace_receivable: 180, commission_expense: 20, academy_revenue: 200, court_rental_revenue: 0 },
+    );
+    accountingEngineService.validateBalance(lines);
+    expect(lines.length).toBe(3); // court_rental_revenue (0) skipped
+    const acadRev = lines.find((l) => l.side === 'credit' && l.accountId === MAPPING.academy_revenue)!.amount;
+    expect(acadRev).toBe(200);
+  });
+
+  it('every academy org-book event has an account code for every concept (no new COA needed)', () => {
+    for (const eventType of ['academy_org_receivable', 'academy_org_receivable_reversal', 'academy_org_cash_receivable', 'academy_org_cash_receivable_rev']) {
+      for (const concept of ORG_BOOK_EVENTS[eventType]) {
+        expect(ORG_MARKETPLACE_ACCOUNT_CODES[concept], `${eventType}.${concept}`).toBeDefined();
+      }
+    }
+    // Court Rental Revenue reuses the booking account (MKT-COURT-REN).
+    expect(ORG_MARKETPLACE_ACCOUNT_CODES.court_rental_revenue.code).toBe('MKT-COURT-REN');
+    expect(ORG_MARKETPLACE_ACCOUNT_CODES.academy_revenue.code).toBe('ACAD-REV');
+  });
+
+  it('negative academy_revenue (court rental > gross) is rejected — fail closed, never clamped', () => {
+    expect(() => accountingEngineService.buildLedgerLines(
+      'academy_org_receivable',
+      [
+        { concept: 'marketplace_receivable', accountId: MAPPING.marketplace_receivable },
+        { concept: 'commission_expense', accountId: MAPPING.commission_expense },
+        { concept: 'academy_revenue', accountId: MAPPING.academy_revenue },
+        { concept: 'court_rental_revenue', accountId: MAPPING.court_rental_revenue },
+      ],
+      { marketplace_receivable: 180, commission_expense: 20, academy_revenue: -40, court_rental_revenue: 240 },
+    )).toThrow(/Negative amount/);
   });
 });

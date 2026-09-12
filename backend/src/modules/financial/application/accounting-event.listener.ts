@@ -979,6 +979,25 @@ async function postAcademyPaymentAccountingInner(enrollmentId: number, paymentMe
   const orgId = snapshot.organisation_id ?? null;
   const isCash = paymentMethod === 'cash' || snapshot.payment_method === 'cash';
 
+  // G8.3A — the org's Gross Collections are classified between Academy Tuition
+  // Revenue (gross − court rental) and Court Rental Revenue (court rental),
+  // reusing the booking court-rental concept/account (MKT-COURT-REN). The court
+  // rental is read from the FROZEN snapshot — never from mutable session pricing.
+  const courtRental = Math.round(Number(snapshot.court_rental_amount || 0) * 100) / 100;
+  const academyRevenue = Math.round((gross - courtRental) * 100) / 100;
+
+  // Invariant guard — fail closed and report the exact cause rather than
+  // silently clamping invalid economics (G8.3A Part 8).
+  if (courtRental > gross) {
+    throw new Error(`Academy accounting invariant failed for enrollment ${enrollmentId}: court_rental_amount (${courtRental}) > gross_amount (${gross})`);
+  }
+  if (academyRevenue < 0) {
+    throw new Error(`Academy accounting invariant failed for enrollment ${enrollmentId}: academy_revenue (${academyRevenue}) < 0`);
+  }
+  if (orgEarning < 0) {
+    throw new Error(`Academy accounting invariant failed for enrollment ${enrollmentId}: organization_earning_amount (${orgEarning}) < 0`);
+  }
+
   if (isCash) {
     // CASH/offline — the org collects the tuition directly. CourtZon is owed
     // only its commission (+0% tax) → a receivable (1161) from the org.
@@ -1006,7 +1025,8 @@ async function postAcademyPaymentAccountingInner(enrollmentId: number, paymentMe
         {
           org_cash_bank: cashGross,
           commission_expense: commission,
-          academy_revenue: cashGross,
+          academy_revenue: academyRevenue,
+          court_rental_revenue: courtRental,
           courtzon_payable: commission,
         },
         currency,
@@ -1016,6 +1036,7 @@ async function postAcademyPaymentAccountingInner(enrollmentId: number, paymentMe
           org_cash_bank: orgId,
           commission_expense: orgId,
           academy_revenue: orgId,
+          court_rental_revenue: orgId,
           courtzon_payable: orgId,
         },
       );
@@ -1052,14 +1073,17 @@ async function postAcademyPaymentAccountingInner(enrollmentId: number, paymentMe
   );
 
   // Organization book: the org records a receivable from CourtZon (org 1161)
-  // for its share + commission expense against its Academy Tuition Revenue.
+  // for its share + commission expense, and classifies its Gross Collections
+  // between Academy Tuition Revenue (gross − court rental) and Court Rental
+  // Revenue (court rental).
   if (orgId != null) {
     await postAccountingEvent(
       'academy_org_receivable', 'academy', enrollmentId, orgId,
       {
         marketplace_receivable: orgEarning,
         commission_expense: commission,
-        academy_revenue: gross,
+        academy_revenue: academyRevenue,
+        court_rental_revenue: courtRental,
       },
       currency,
       `Academy enrollment #${enrollmentId} organization book (tuition/commission)`,
@@ -1068,6 +1092,7 @@ async function postAcademyPaymentAccountingInner(enrollmentId: number, paymentMe
         marketplace_receivable: orgId,
         commission_expense: orgId,
         academy_revenue: orgId,
+        court_rental_revenue: orgId,
       },
     );
   }

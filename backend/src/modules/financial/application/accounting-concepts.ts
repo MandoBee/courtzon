@@ -497,27 +497,31 @@ export const EVENT_CONCEPTS: Record<string, { debit: string[]; credit: string[] 
   },
   // ── ACADEMY ORGANIZATION BOOK (org-scoped) ──
   // CARD/WALLET org book: CourtZon holds the funds, so the org books a
-  // receivable from CourtZon (org 1161) + commission expense against its own
-  // Academy Tuition Revenue. Balanced: Dr (orgEarning + commission) =
-  // Cr (gross). The 1161 shares the same code as marketplace so the shared
-  // settlement receipt clears it on settlement.
+  // receivable from CourtZon (org 1161) + commission expense. The org's Gross
+  // Collections are classified between Academy Tuition Revenue (gross − court
+  // rental) and Court Rental Revenue (court rental) — the SAME split booking
+  // uses for its court rental revenue leg, so Academy Revenue + Court Rental
+  // Revenue = Gross Collections. Balanced: Dr (orgEarning + commission) =
+  // Cr (academyRevenue + courtRentalRevenue).
   academy_org_receivable: {
     debit: ['marketplace_receivable', 'commission_expense'],
-    credit: ['academy_revenue'],
+    credit: ['academy_revenue', 'court_rental_revenue'],
   },
   academy_org_receivable_reversal: {
-    debit: ['academy_revenue'],
+    debit: ['academy_revenue', 'court_rental_revenue'],
     credit: ['marketplace_receivable', 'commission_expense'],
   },
   // CASH org book (org collected the tuition immediately) — increases its OWN
   // Cash/Bank (ORG-CASH) directly: Dr org ORG-CASH (gross) + Commission Expense
-  // / Cr org Academy Tuition Revenue (gross) + CourtZon Payable (commission).
+  // / Cr org Academy Tuition Revenue (gross − court rental) + Court Rental
+  // Revenue (court rental) + CourtZon Payable (commission). Academy Revenue +
+  // Court Rental Revenue = Gross Collections.
   academy_org_cash_receivable: {
     debit: ['org_cash_bank', 'commission_expense'],
-    credit: ['academy_revenue', 'courtzon_payable'],
+    credit: ['academy_revenue', 'court_rental_revenue', 'courtzon_payable'],
   },
   academy_org_cash_receivable_rev: {
-    debit: ['academy_revenue', 'courtzon_payable'],
+    debit: ['academy_revenue', 'court_rental_revenue', 'courtzon_payable'],
     credit: ['org_cash_bank', 'commission_expense'],
   },
 };

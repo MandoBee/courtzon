@@ -34,7 +34,7 @@ import type { RowDataPacket } from 'mysql2';
 type RowData = RowDataPacket[];
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-async function waitFor<T>(probe: () => Promise<T | null | undefined>, label: string, timeoutMs = 5000): Promise<T> {
+async function waitFor<T>(probe: () => Promise<T | null | undefined>, label: string, timeoutMs = 10000): Promise<T> {
   const start = Date.now();
   for (;;) {
     const v = await probe();
@@ -250,6 +250,35 @@ describe('G8.3 — Academy payment → entitlement → accounting → settlement
     return (e as any).insertId;
   }
 
+  /** Fresh org-1 programme + group with sessions priced per `sessionPrices`. */
+  async function seedCustomEnrollment(sessionPrices: number[]): Promise<number> {
+    const [pr] = await pool.execute<RowData>(
+      `INSERT INTO academy_programs (code, name, category, price, currency, price_type, status, is_public, organisation_id, branch_id, sport_id, lifecycle_state)
+       VALUES (CONCAT('G8-C-', FLOOR(RAND()*1000000)), 'G8 Custom Tennis', 'tennis', 200.00, 'EGP', 'FIXED', 'open', 1, ?, ?, (SELECT id FROM sports LIMIT 1), 'confirmed')`,
+      [orgId, branchId],
+    );
+    const pid = (pr as any).insertId;
+    const [g] = await pool.execute<RowData>(
+      `INSERT INTO academy_groups (program_id, name, capacity, status, comp_type, comp_value, comp_currency)
+       VALUES (?, 'G8 Custom Group', 10, 'active', 'percent_gross', 5.00, 'EGP')`,
+      [pid],
+    );
+    const gid = (g as any).insertId;
+    for (let i = 0; i < sessionPrices.length; i++) {
+      await pool.execute(
+        `INSERT INTO academy_group_sessions (group_id, session_date, start_time, end_time, status, court_price_amount, court_price_currency)
+         VALUES (?, DATE_ADD('2026-12-01', INTERVAL ? DAY), '10:00:00', '11:00:00', 'scheduled', ?, 'EGP')`,
+        [gid, i, sessionPrices[i]],
+      );
+    }
+    const [e] = await pool.execute<RowData>(
+      `INSERT INTO academy_enrollments (player_id, program_id, group_id, status)
+       VALUES (?, ?, ?, 'confirmed')`,
+      [userId, pid, gid],
+    );
+    return (e as any).insertId;
+  }
+
   function paidEvent(enrollmentId: number, paymentId: number, paymentMethod = 'card') {
     return {
       paymentId,
@@ -302,6 +331,25 @@ describe('G8.3 — Academy payment → entitlement → accounting → settlement
       [enrollmentId, eventType],
     );
     return rows as any[];
+  }
+
+  /** Org-book (org-scoped) ledger rows joined with the chart account code. */
+  async function orgLedgerByCode(enrollmentId: number, eventType: string) {
+    const [rows] = await pool.execute<RowData>(
+      `SELECT l.side, l.amount, c.code, l.organisation_id
+       FROM ledger_entries l
+       JOIN chart_of_accounts c ON c.id = l.chart_account_id
+       WHERE l.source_type = 'academy' AND l.source_id = ? AND l.event_type = ?
+         AND l.organisation_id IS NOT NULL
+       ORDER BY l.id`,
+      [enrollmentId, eventType],
+    );
+    return rows as any[];
+  }
+
+  function creditByCode(rows: any[], code: string): number {
+    const found = rows.find((r) => r.side === 'credit' && r.code === code);
+    return found ? Number(found.amount) : 0;
   }
 
   function sumBySide(rows: any[]) {
@@ -360,6 +408,15 @@ describe('G8.3 — Academy payment → entitlement → accounting → settlement
     expect(ob.debit).toBe(200);
     expect(ob.credit).toBe(200);
     expect(orgRows.every((r) => Number(r.organisation_id) === orgId)).toBe(true);
+
+    // G8.3A classification: Academy Revenue (gross − court rental) + Court
+    // Rental Revenue (court rental) = Gross Collections.
+    const byCode = await waitFor(() => orgLedgerByCode(enrId, 'academy_org_receivable'), 'card org split');
+    expect(creditByCode(byCode, 'ACAD-REV')).toBe(140);
+    expect(creditByCode(byCode, 'MKT-COURT-REN')).toBe(60);
+    // Coach expense + tax are never posted in G8 (snapshot-only coach comp).
+    const coach = byCode.filter((r) => ['5270', '2201'].includes(r.code));
+    expect(coach.length).toBe(0);
   });
 
   it('2. successful wallet → atomic wallet charge + 2100/2202/4191 accounting', async () => {
@@ -402,6 +459,9 @@ describe('G8.3 — Academy payment → entitlement → accounting → settlement
 
     const orgRows = await waitFor(() => ledgerFor(enrId, 'academy_org_receivable'), 'wallet org ledger');
     expect(sumBySide(orgRows).debit).toBe(200);
+    const byCode = await waitFor(() => orgLedgerByCode(enrId, 'academy_org_receivable'), 'wallet org split');
+    expect(creditByCode(byCode, 'ACAD-REV')).toBe(140);
+    expect(creditByCode(byCode, 'MKT-COURT-REN')).toBe(60);
   });
 
   it('3. successful offline cash → real payment record + 1161 receivable + org cash book', async () => {
@@ -438,6 +498,12 @@ describe('G8.3 — Academy payment → entitlement → accounting → settlement
     expect(ob.debit).toBe(220);
     expect(ob.credit).toBe(220);
     expect(orgRows.every((r) => Number(r.organisation_id) === orgId)).toBe(true);
+
+    // G8.3A classification: ACAD-REV 140 + MKT-COURT-REN 60 + MKT-CZ-PAY 20.
+    const byCode = await waitFor(() => orgLedgerByCode(enrId, 'academy_org_cash_receivable'), 'cash org split');
+    expect(creditByCode(byCode, 'ACAD-REV')).toBe(140);
+    expect(creditByCode(byCode, 'MKT-COURT-REN')).toBe(60);
+    expect(creditByCode(byCode, 'MKT-CZ-PAY')).toBe(20);
 
     await handleAcademyEnrollmentPaid({ payload: { enrollmentId: enrId } });
     const ents = await entitlementsFor(enrId);
@@ -638,5 +704,63 @@ describe('G8.3 — Academy payment → entitlement → accounting → settlement
     await eventBusV2.emit('payment:succeeded', paidEvent(cashEnr, r.paymentTransactionId, 'cash'));
     const cashLedger = await waitFor(() => ledgerFor(cashEnr, 'academy_cash_payment'), 'cash');
     expect(sumBySide(cashLedger).debit).toBe(sumBySide(cashLedger).credit);
+  });
+
+  it('16. historical posting is IMMUTABLE — commission rate + court price changes after snapshot do not alter it', async () => {
+    const enrId = await seedEnrollment();
+    await emitPaid(enrId, 9500201);
+    const snap0 = await waitFor(() => snapshotFor(enrId), 'immutable snapshot');
+    await waitFor(() => ledgerFor(enrId, 'academy_card_payment'), 'immutable ledger');
+    const ledger0 = await ledgerFor(enrId, 'academy_card_payment');
+
+    // Mutate the LIVE commission rate and the LIVE court session price.
+    await pool.execute(`UPDATE subscription_plan_rates SET amount = 25.0000 WHERE plan_id = ? AND applicable_entity = 'academy'`, [planId]);
+    await pool.execute(`UPDATE academy_group_sessions SET court_price_amount = 999.00 WHERE group_id = ?`, [groupId]);
+
+    // Re-deliver the same payment (retry / outbox replay) — must be a no-op.
+    await emitPaid(enrId, 9500201);
+    await sleep(500);
+
+    const snap1 = await snapshotFor(enrId);
+    expect(Number(snap1.gross_amount)).toBe(Number(snap0.gross_amount));
+    expect(Number(snap1.commission_amount)).toBe(Number(snap0.commission_amount));
+    expect(Number(snap1.court_rental_amount)).toBe(Number(snap0.court_rental_amount));
+
+    const ledger1 = await ledgerFor(enrId, 'academy_card_payment');
+    expect(new Set(ledger1.map((r) => r.transaction_id)).size).toBe(1); // no duplicate posting
+    const sum0 = sumBySide(ledger0);
+    const sum1 = sumBySide(ledger1);
+    expect(sum1.debit).toBe(sum0.debit);
+    expect(sum1.credit).toBe(sum0.credit);
+
+    // Org-book split unchanged too.
+    const split = await orgLedgerByCode(enrId, 'academy_org_receivable');
+    expect(creditByCode(split, 'ACAD-REV')).toBe(140);
+    expect(creditByCode(split, 'MKT-COURT-REN')).toBe(60);
+  });
+
+  it('17. zero court rental → single revenue leg (ACAD-REV = gross, no MKT-COURT-REN)', async () => {
+    const enrId = await seedCustomEnrollment([0, 0]);
+    await emitPaid(enrId, 9500202);
+    const snap = await waitFor(() => snapshotFor(enrId), 'zero-rental snapshot');
+    expect(Number(snap.court_rental_amount)).toBe(0);
+    await waitFor(() => orgLedgerByCode(enrId, 'academy_org_receivable'), 'zero-rental org ledger');
+    const split = await orgLedgerByCode(enrId, 'academy_org_receivable');
+    expect(creditByCode(split, 'ACAD-REV')).toBe(200);
+    expect(creditByCode(split, 'MKT-COURT-REN')).toBe(0);
+    expect(sumBySide(split).debit).toBe(200);
+    expect(sumBySide(split).credit).toBe(200);
+  });
+
+  it('18. court rental > gross → FAIL CLOSED, no accounting posted', async () => {
+    const enrId = await seedCustomEnrollment([150, 150]); // courtRental 300 > gross 200
+    await emitPaid(enrId, 9500203);
+    const snap = await waitFor(() => snapshotFor(enrId), 'invalid snapshot');
+    expect(Number(snap.court_rental_amount)).toBe(300);
+    await sleep(800); // let the accounting handler run and reject
+
+    // Nothing may be posted — not even the CourtZon book leg.
+    expect((await ledgerFor(enrId, 'academy_card_payment')).length).toBe(0);
+    expect((await orgLedgerByCode(enrId, 'academy_org_receivable')).length).toBe(0);
   });
 });
