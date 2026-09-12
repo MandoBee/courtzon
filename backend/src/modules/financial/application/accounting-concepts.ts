@@ -473,6 +473,53 @@ export const EVENT_CONCEPTS: Record<string, { debit: string[]; credit: string[] 
     debit: ['org_payable'],
     credit: ['cash_bank', 'org_recovery_receivable'],
   },
+  // ── ACADEMY (G8) — economics come from the immutable payment snapshot ──
+  // Academy tuition CARD/WALLET: CourtZon is merchant of record, so the org's
+  // share is a PAYABLE (merchant_payable 2202 — the SAME control the settlement
+  // engine clears), NOT revenue. Only commission is CourtZon revenue (4191).
+  // The organization records its OWN economics via academy_org_receivable.
+  // COURTZON BOOK only (organisation_id = NULL), mirroring booking custody.
+  academy_card_payment: {
+    debit: ['payment_clearing'],
+    credit: ['merchant_payable', 'platform_commission', 'tax_liability'],
+  },
+  academy_wallet_payment: {
+    debit: ['wallet_liability_spend'],
+    credit: ['merchant_payable', 'platform_commission', 'tax_liability'],
+  },
+  // CASH/offline — the org collects the tuition directly. CourtZon is owed only
+  // its commission (+ tax) = a receivable from the org (marketplace_receivable
+  // 1161). COURTZON BOOK (org NULL); the org share is in the org's own book via
+  // academy_org_cash_receivable.
+  academy_cash_payment: {
+    debit: ['marketplace_receivable'],
+    credit: ['platform_commission', 'tax_liability'],
+  },
+  // ── ACADEMY ORGANIZATION BOOK (org-scoped) ──
+  // CARD/WALLET org book: CourtZon holds the funds, so the org books a
+  // receivable from CourtZon (org 1161) + commission expense against its own
+  // Academy Tuition Revenue. Balanced: Dr (orgEarning + commission) =
+  // Cr (gross). The 1161 shares the same code as marketplace so the shared
+  // settlement receipt clears it on settlement.
+  academy_org_receivable: {
+    debit: ['marketplace_receivable', 'commission_expense'],
+    credit: ['academy_revenue'],
+  },
+  academy_org_receivable_reversal: {
+    debit: ['academy_revenue'],
+    credit: ['marketplace_receivable', 'commission_expense'],
+  },
+  // CASH org book (org collected the tuition immediately) — increases its OWN
+  // Cash/Bank (ORG-CASH) directly: Dr org ORG-CASH (gross) + Commission Expense
+  // / Cr org Academy Tuition Revenue (gross) + CourtZon Payable (commission).
+  academy_org_cash_receivable: {
+    debit: ['org_cash_bank', 'commission_expense'],
+    credit: ['academy_revenue', 'courtzon_payable'],
+  },
+  academy_org_cash_receivable_rev: {
+    debit: ['academy_revenue', 'courtzon_payable'],
+    credit: ['org_cash_bank', 'commission_expense'],
+  },
 };
 
 /** Returns the flat list of concepts with their inherent sides for an event_type */

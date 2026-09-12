@@ -81,6 +81,12 @@ export interface DomainEventMap {
   'academy:enrollment-waitlisted': BaseEvent & { programId: number; userId: number; enrollmentId: number; programName: string; waitlistPosition: number | null };
   'academy:promoted': BaseEvent & { programId: number; userId: number; enrollmentId: number; programName: string };
   'academy:payment-acknowledged': BaseEvent & { programId: number; userId: number; enrollmentId: number };
+  'academy:enrollment-paid': BaseEvent & {
+    enrollmentId: number; programId: number; groupId: number | null;
+    playerId: number; organisationId: number | null; branchId: number | null;
+    paymentTransactionId: number | null; amount: number; currency: string;
+    paymentMethod: string; collector: 'courtzon' | 'org';
+  };
   'coaching:session-scheduled': BaseEvent & { sessionId: number; coachId: number; userId: number; startTime: Date };
   'coaching:session-cancelled': BaseEvent & { sessionId: number; userId: number; reason?: string };
   'coaching:session-reminder': BaseEvent & { sessionId: number; userId: number; startTime: Date; coachName: string };

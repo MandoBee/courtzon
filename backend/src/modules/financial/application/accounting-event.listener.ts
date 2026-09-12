@@ -4,6 +4,7 @@ import { ledgerRepository } from '../infrastructure/repositories/ledger.reposito
 import { glProjectionService } from './gl-projection.service.js';
 import { bookingAccounting } from './booking-accounting.service.js';
 import type { RefundEconomics } from './booking-accounting.service.js';
+import { academyPaymentRepository } from '../../academy/infrastructure/repositories/academy-payment.repository.js';
 import { getPool } from '../../../database/mysql.js';
 import type { RowDataPacket } from 'mysql2';
 import type { SourceType, LedgerLineInput, EntrySide, LedgerEntry } from '../domain/ledger-aggregate.js';
@@ -956,6 +957,122 @@ async function postBookingPaymentAccountingInner(bookingId: number, paymentMetho
   }
 }
 
+async function postAcademyPaymentAccounting(enrollmentId: number, paymentMethod: string, currency: string): Promise<void> {
+  // Serialize per organisation for the same reason as booking: the accounting
+  // can be triggered from payment:succeeded AND (for offline cash) the durable
+  // replay — both must not race first-time org provisioning.
+  const snapshot = await academyPaymentRepository.getSnapshotByEnrollment(enrollmentId);
+  const key = snapshot?.organisation_id ? `academy-org:${snapshot.organisation_id}` : `academy:${enrollmentId}`;
+  return runEntityExclusive(key, () => postAcademyPaymentAccountingInner(enrollmentId, paymentMethod, currency));
+}
+
+async function postAcademyPaymentAccountingInner(enrollmentId: number, paymentMethod: string, currency: string): Promise<void> {
+  const snapshot = await academyPaymentRepository.getSnapshotByEnrollment(enrollmentId);
+  if (!snapshot?.id) {
+    log.error({ enrollmentId }, 'Academy snapshot not found — skipping academy accounting');
+    return;
+  }
+
+  const gross = Math.round(Number(snapshot.gross_amount || 0) * 100) / 100;
+  const commission = Math.round(Number(snapshot.commission_amount || 0) * 100) / 100;
+  const orgEarning = Math.round(Number(snapshot.organization_earning_amount || 0) * 100) / 100;
+  const orgId = snapshot.organisation_id ?? null;
+  const isCash = paymentMethod === 'cash' || snapshot.payment_method === 'cash';
+
+  if (isCash) {
+    // CASH/offline — the org collects the tuition directly. CourtZon is owed
+    // only its commission (+0% tax) → a receivable (1161) from the org.
+    await postAccountingEvent(
+      'academy_cash_payment', 'academy', enrollmentId, null,
+      {
+        marketplace_receivable: commission,
+        platform_commission: commission,
+        tax_liability: 0,
+      },
+      currency,
+      `Academy enrollment #${enrollmentId} cash commission receivable`,
+      undefined,
+      {
+        marketplace_receivable: null,
+        platform_commission: null,
+        tax_liability: null,
+      },
+    );
+
+    if (orgId != null) {
+      const cashGross = Math.round((orgEarning + commission) * 100) / 100;
+      await postAccountingEvent(
+        'academy_org_cash_receivable', 'academy', enrollmentId, orgId,
+        {
+          org_cash_bank: cashGross,
+          commission_expense: commission,
+          academy_revenue: cashGross,
+          courtzon_payable: commission,
+        },
+        currency,
+        `Academy enrollment #${enrollmentId} organization book (cash collected)`,
+        undefined,
+        {
+          org_cash_bank: orgId,
+          commission_expense: orgId,
+          academy_revenue: orgId,
+          courtzon_payable: orgId,
+        },
+      );
+    }
+    return;
+  }
+
+  // CARD / WALLET — CourtZon holds the funds (custody). CourtZon book:
+  //   Dr 1100 Payment Clearing / 2100 Wallet Liability Spend = gross
+  //   Cr 2202 Merchant Payable (control)                    = orgEarning
+  //   Cr 4191 Platform Commission                            = commission
+  //   Cr 2300 Tax Liability (0% by design)                  = 0
+  const grossPayable = Math.round((orgEarning + commission) * 100) / 100;
+  const eventType = paymentMethod === 'wallet' ? 'academy_wallet_payment' : 'academy_card_payment';
+  await postAccountingEvent(
+    eventType, 'academy', enrollmentId, null,
+    {
+      merchant_payable: orgEarning,
+      platform_commission: commission,
+      tax_liability: 0,
+      payment_clearing: eventType === 'academy_card_payment' ? grossPayable : 0,
+      wallet_liability_spend: eventType === 'academy_wallet_payment' ? grossPayable : 0,
+    },
+    currency,
+    `Academy enrollment #${enrollmentId} payment (custody: card/wallet)`,
+    undefined,
+    {
+      merchant_payable: null,
+      platform_commission: null,
+      tax_liability: null,
+      payment_clearing: null,
+      wallet_liability_spend: null,
+    },
+  );
+
+  // Organization book: the org records a receivable from CourtZon (org 1161)
+  // for its share + commission expense against its Academy Tuition Revenue.
+  if (orgId != null) {
+    await postAccountingEvent(
+      'academy_org_receivable', 'academy', enrollmentId, orgId,
+      {
+        marketplace_receivable: orgEarning,
+        commission_expense: commission,
+        academy_revenue: gross,
+      },
+      currency,
+      `Academy enrollment #${enrollmentId} organization book (tuition/commission)`,
+      undefined,
+      {
+        marketplace_receivable: orgId,
+        commission_expense: orgId,
+        academy_revenue: orgId,
+      },
+    );
+  }
+}
+
 async function postBookingRefundAccounting(bookingId: number, refundAmount: number, currency: string): Promise<void> {
   const refund = await bookingAccounting.computeRefundEconomics(bookingId, refundAmount);
   const key = refund ? `booking-org:${refund.organisationId ?? 'global'}` : `booking:${bookingId}`;
@@ -1213,6 +1330,16 @@ export function registerAccountingEventListeners(): void {
         return;
       }
 
+      // ── Academy enrollment payment → snapshot-based tuition accounting (G8) ──
+      // Academy economics come EXCLUSIVELY from the immutable
+      // academy_enrollment_payments snapshot (never recomputed). The posting
+      // mirrors booking custody: commission → 4191, org share → merchant
+      // payable (card/wallet) or org book receivable (cash).
+      if (referenceType === 'academy') {
+        await postAcademyPaymentAccounting(referenceId, paymentMethod, currency);
+        return;
+      }
+
       // booking or order payment — distinguish card vs wallet vs cod
       let eventType: string;
       if (paymentMethod === 'wallet') {
@@ -1299,6 +1426,16 @@ export function registerAccountingEventListeners(): void {
           conceptAmounts, currency,
           `Subscription #${referenceId} refund`,
         );
+        return;
+      }
+
+      // ── Academy refund → G8 explicitly out of scope ──
+      // Academy refunds are not yet supported (per the G8 contract). Do NOT
+      // fall through to the generic revenue_contra reversal — it would reverse
+      // rows that were never posted (academy postings use 4191/merchant_payable,
+      // not the generic revenue account).
+      if (referenceType === 'academy') {
+        log.warn({ referenceId, amount }, 'Academy refund not yet supported (G8) — no accounting reversal posted');
         return;
       }
 

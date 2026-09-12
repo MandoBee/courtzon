@@ -87,6 +87,15 @@ const CONCEPT_ACCOUNT_CODE_DEFAULTS: Record<string, Record<string, string>> = {
   //   settlement_paid_correction → Dr 2202 (global) / Cr 1120 (global)
   settlement_paid_reversal: { cash_bank: '1120', org_payable: '2200' },
   settlement_paid_correction: { merchant_payable: '2202', cash_bank: '1120' },
+  // Academy tuition events (G8) — the economics come from the immutable
+  // academy_enrollment_payments snapshot, never recomputed. Commission is 4191
+  // Academy Commission Revenue. The org share is a PAYABLE (2202) while CourtZon
+  // holds the funds (card/wallet custody), and CASH is a receivable (1161) from
+  // the org. Tax is 0% by design (G8 decision); 2300 is still resolved so the
+  // concept set stays complete and validateCompleteMapping passes.
+  academy_card_payment: { payment_clearing: '1100', merchant_payable: '2202', platform_commission: '4191', tax_liability: '2300' },
+  academy_wallet_payment: { wallet_liability_spend: '2100', merchant_payable: '2202', platform_commission: '4191', tax_liability: '2300' },
+  academy_cash_payment: { marketplace_receivable: '1161', platform_commission: '4191', tax_liability: '2300' },
 };
 
 /**
@@ -110,6 +119,14 @@ export const ORG_MARKETPLACE_ACCOUNT_CODES: Record<string, { code: string; name:
     normalSide: 'credit',
     parentCode: 'REVENUE-COURT',
     description: 'Organization court rental revenue collected from bookings',
+  },
+  academy_revenue: {
+    code: 'ACAD-REV',
+    name: 'Academy Tuition Revenue',
+    type: 'revenue',
+    normalSide: 'credit',
+    parentCode: 'REVENUE-COURT',
+    description: 'Organization academy program tuition revenue',
   },
   commission_expense: {
     code: 'MKT-COMM-EXP',
@@ -171,6 +188,15 @@ export const ORG_BOOK_EVENTS: Record<string, string[]> = {
   // OWN Cash/Bank (ORG-CASH) directly rather than a receivable from CourtZon.
   booking_org_cash_receivable: ['org_cash_bank', 'commission_expense', 'court_rental_revenue', 'courtzon_payable'],
   booking_org_cash_receivable_rev: ['court_rental_revenue', 'courtzon_payable', 'org_cash_bank', 'commission_expense'],
+  // ── ACADEMY org book (G8) — mirrors the booking org book with the dedicated
+  // Academy Tuition Revenue leg (ACAD-REV) so academy earnings are never mixed
+  // with marketplace sales or court rental revenue. 1161 / MKT-COMM-EXP /
+  // MKT-CZ-PAY / ORG-CASH are shared with booking/marketplace, so the shared
+  // settlement receipt/OTC flows clear academy entitlements on settlement.
+  academy_org_receivable: ['marketplace_receivable', 'commission_expense', 'academy_revenue'],
+  academy_org_receivable_reversal: ['academy_revenue', 'marketplace_receivable', 'commission_expense'],
+  academy_org_cash_receivable: ['org_cash_bank', 'commission_expense', 'academy_revenue', 'courtzon_payable'],
+  academy_org_cash_receivable_rev: ['academy_revenue', 'courtzon_payable', 'org_cash_bank', 'commission_expense'],
   // Settlement receipt (org book): Dr org Cash/Bank / Cr org 1161 Marketplace
   // Receivable — clears the org's receivable against the cash received from
   // CourtZon on settlement.

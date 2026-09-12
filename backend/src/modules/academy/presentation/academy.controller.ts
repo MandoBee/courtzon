@@ -161,7 +161,7 @@ export async function markEnrollmentPaymentHandler(request: FastifyRequest, repl
   const userId = getUserId(request);
   const { id } = request.params as any;
   MarkEnrollmentPaymentSchema.parse(request.body ?? {});
-  const result = await academyConfirmationService.markPaymentConfirmed(Number(id), userId);
+  const result = await academyConfirmationService.recordOfflinePayment(Number(id), userId);
   return reply.send(result);
 }
 

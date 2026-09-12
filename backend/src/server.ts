@@ -201,6 +201,9 @@ async function bootstrap() {
     const { registerBookingPaymentListeners } = await import('./modules/booking/application/booking-payment.listener.js');
     registerBookingPaymentListeners();
 
+    const { registerAcademyPaymentListeners } = await import('./modules/academy/application/academy-payment.listener.js');
+    registerAcademyPaymentListeners();
+
     const { registerWalletPaymentListeners } = await import('./modules/wallet/application/wallet-payment.listener.js');
     registerWalletPaymentListeners();
 
@@ -218,6 +221,11 @@ async function bootstrap() {
     registerEntitlementBookingSubscribers();
     createEntitlementBookingWorkers();
     app.log.info('Entitlement booking subscribers + workers registered');
+
+    const { registerEntitlementAcademySubscribers, createEntitlementAcademyWorkers } = await import('./modules/financial/application/entitlement-academy.listener.js');
+    registerEntitlementAcademySubscribers();
+    createEntitlementAcademyWorkers();
+    app.log.info('Entitlement academy subscribers + workers registered');
 
     const { registerEntitlementMarketplaceSubscribers, createEntitlementMarketplaceWorkers } = await import('./modules/financial/application/entitlement-marketplace.listener.js');
     registerEntitlementMarketplaceSubscribers();

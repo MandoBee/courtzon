@@ -29,6 +29,8 @@ import { programRepository } from '../infrastructure/repositories/program.reposi
 import { groupRepository } from '../infrastructure/repositories/group.repository.js';
 import { enrollmentRepository } from '../infrastructure/repositories/enrollment.repository.js';
 import { academyScheduleRepository } from '../infrastructure/repositories/academy-schedule.repository.js';
+import { academyPaymentRepository } from '../infrastructure/repositories/academy-payment.repository.js';
+import { academyPaymentService } from './academy-payment.service.js';
 import { assertCanManageAcademy, isApprovedCoach, resolveProgramScope } from './academy-scope.js';
 import { effectiveCapacity } from '../domain/capacity.js';
 import type { AcademyProgramAttributes, AcademyEnrollmentAttributes } from '../domain/academy.types.js';
@@ -590,6 +592,79 @@ export class AcademyConfirmationService {
       enrollmentId,
       organisationId: undefined,
     } as any);
+
+    return { id: enrollmentId, payment_confirmed_at: now };
+  }
+
+  /**
+   * G8 — offline admin acknowledgment for a PAID program. Creates the durable
+   * payment_transactions row + immutable economics snapshot and acknowledges the
+   * enrollment in a single transaction, then pushes the cash payment through the
+   * same `payment:succeeded` pipeline as online payments (so accounting and the
+   * durable entitlement subscriber run identically). FREE programs fall back to
+   * the plain acknowledgment (G8: FREE never pays, no snapshot).
+   */
+  async recordOfflinePayment(enrollmentId: number, actorId: number): Promise<{ id: number; payment_confirmed_at: string }> {
+    const enrollment = await enrollmentRepository.getById(enrollmentId);
+    if (!enrollment) throw new NotFoundError('Academy enrollment', ErrorCodes.ACADEMY_ENROLLMENT_NOT_FOUND);
+    if (enrollment.status !== 'confirmed') {
+      throw new ConflictError('Only confirmed enrollments can be payment-acknowledged', ErrorCodes.ACADEMY_INVALID_TRANSITION);
+    }
+    if (enrollment.payment_confirmed_at) {
+      throw new ConflictError('Enrollment payment is already acknowledged', ErrorCodes.ACADEMY_ENROLLMENT_ALREADY_PAID);
+    }
+    const scope = await resolveProgramScope(Number(enrollment.program_id));
+    await assertCanManageAcademy(actorId, scope);
+
+    const program = await programRepository.getById(Number(enrollment.program_id));
+    const isFree = !program || Number(program.price ?? 0) <= 0 || program.price_type === 'FREE';
+    if (isFree) {
+      return this.markPaymentConfirmed(enrollmentId, actorId);
+    }
+
+    // G8 offline flow — durable single-tx: lock enrollment → create
+    // payment_transactions (paid/cash) + authorized snapshot + mark
+    // payment_confirmed_at (write-once). Idempotent on concurrent retries.
+    const result = await academyPaymentService.recordOfflineCashPayment(enrollmentId, actorId);
+    const paidViaCash = result.created || result.snapshotId != null;
+    const snapshot = await academyPaymentRepository.getSnapshotByEnrollment(enrollmentId);
+    if (!snapshot) {
+      throw new ConflictError('Enrollment payment recorded but snapshot missing', ErrorCodes.ACADEMY_ENROLLMENT_ALREADY_PAID);
+    }
+
+    const now = nowUtcIso();
+    await recordAudit({
+      actorId,
+      action: 'ACADEMY_ENROLLMENT.PAYMENT_CONFIRMED',
+      entityType: 'academy_enrollment',
+      entityId: enrollmentId,
+      beforeState: { payment_confirmed_at: null, status: enrollment.status, payment_confirmed_by: null },
+      afterState: { payment_confirmed_at: now, payment_confirmed_by: actorId, snapshot_id: snapshot.id ?? null, paid_via_cash: paidViaCash },
+      ipAddress: undefined,
+      userAgent: undefined,
+    });
+
+    // G6 — payment-acknowledged, fired only after a successful acknowledgment.
+    const { eventBusV2 } = await import('../../../shared/event-bus/event-bus.v2.js');
+    eventBusV2.emit('academy:payment-acknowledged', {
+      programId: Number(enrollment.program_id),
+      userId: Number(enrollment.player_id),
+      enrollmentId,
+      organisationId: scope?.organisationId ?? undefined,
+    } as any);
+
+    // G8 — for paid programs, push the offline cash payment through the same
+    // payment:succeeded pipeline as online payments so the snapshot listener /
+    // entitlement / accounting chain runs identically for cash collections.
+    if (paidViaCash && snapshot) {
+      eventBusV2.emit('payment:succeeded', {
+        paymentId: snapshot.payment_transaction_id ?? null,
+        referenceType: 'academy',
+        referenceId: enrollmentId,
+        amount: Math.round(Number(snapshot.gross_amount ?? 0) * 100) / 100,
+        metadata: { paymentMethod: 'cash', currency: snapshot.currency ?? 'USD' },
+      } as any);
+    }
 
     return { id: enrollmentId, payment_confirmed_at: now };
   }

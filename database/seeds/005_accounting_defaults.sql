@@ -467,3 +467,47 @@ AND NOT EXISTS (SELECT 1 FROM accounting_event_mapping_lines WHERE event_type = 
 INSERT INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
 SELECT 'complaint_refund', NULL, 'refund_expense', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '5220'
 AND NOT EXISTS (SELECT 1 FROM accounting_event_mapping_lines WHERE event_type = 'complaint_refund' AND organisation_id IS NULL AND concept = 'refund_expense');
+
+-- 28. ACADEMY (G8) — CourtZon-book tuition accounting. The economics come from
+-- the immutable academy_enrollment_payments snapshot (never recomputed). The org
+-- share is a merchant PAYABLE (2202) while CourtZon holds the funds (card/wallet
+-- custody); CASH/offline is a receivable (1161) from the org for the commission
+-- only. Commission is 4191 Academy Commission Revenue; tax is 0% by design (G8)
+-- but 2300 is still mapped so the concept set stays complete. The org's own book
+-- (academy_org_receivable / academy_org_cash_receivable) is provisioned
+-- per-organisation at runtime by provisionOrganisationMarketplaceAccounts.
+INSERT INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
+SELECT 'academy_card_payment', NULL, 'payment_clearing', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '1100'
+AND NOT EXISTS (SELECT 1 FROM accounting_event_mapping_lines WHERE event_type = 'academy_card_payment' AND organisation_id IS NULL AND concept = 'payment_clearing');
+INSERT INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
+SELECT 'academy_card_payment', NULL, 'merchant_payable', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '2202'
+AND NOT EXISTS (SELECT 1 FROM accounting_event_mapping_lines WHERE event_type = 'academy_card_payment' AND organisation_id IS NULL AND concept = 'merchant_payable');
+INSERT INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
+SELECT 'academy_card_payment', NULL, 'platform_commission', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '4191'
+AND NOT EXISTS (SELECT 1 FROM accounting_event_mapping_lines WHERE event_type = 'academy_card_payment' AND organisation_id IS NULL AND concept = 'platform_commission');
+INSERT INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
+SELECT 'academy_card_payment', NULL, 'tax_liability', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '2300'
+AND NOT EXISTS (SELECT 1 FROM accounting_event_mapping_lines WHERE event_type = 'academy_card_payment' AND organisation_id IS NULL AND concept = 'tax_liability');
+
+INSERT INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
+SELECT 'academy_wallet_payment', NULL, 'wallet_liability_spend', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '2100'
+AND NOT EXISTS (SELECT 1 FROM accounting_event_mapping_lines WHERE event_type = 'academy_wallet_payment' AND organisation_id IS NULL AND concept = 'wallet_liability_spend');
+INSERT INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
+SELECT 'academy_wallet_payment', NULL, 'merchant_payable', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '2202'
+AND NOT EXISTS (SELECT 1 FROM accounting_event_mapping_lines WHERE event_type = 'academy_wallet_payment' AND organisation_id IS NULL AND concept = 'merchant_payable');
+INSERT INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
+SELECT 'academy_wallet_payment', NULL, 'platform_commission', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '4191'
+AND NOT EXISTS (SELECT 1 FROM accounting_event_mapping_lines WHERE event_type = 'academy_wallet_payment' AND organisation_id IS NULL AND concept = 'platform_commission');
+INSERT INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
+SELECT 'academy_wallet_payment', NULL, 'tax_liability', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '2300'
+AND NOT EXISTS (SELECT 1 FROM accounting_event_mapping_lines WHERE event_type = 'academy_wallet_payment' AND organisation_id IS NULL AND concept = 'tax_liability');
+
+INSERT INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
+SELECT 'academy_cash_payment', NULL, 'marketplace_receivable', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '1161'
+AND NOT EXISTS (SELECT 1 FROM accounting_event_mapping_lines WHERE event_type = 'academy_cash_payment' AND organisation_id IS NULL AND concept = 'marketplace_receivable');
+INSERT INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
+SELECT 'academy_cash_payment', NULL, 'platform_commission', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '4191'
+AND NOT EXISTS (SELECT 1 FROM accounting_event_mapping_lines WHERE event_type = 'academy_cash_payment' AND organisation_id IS NULL AND concept = 'platform_commission');
+INSERT INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
+SELECT 'academy_cash_payment', NULL, 'tax_liability', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '2300'
+AND NOT EXISTS (SELECT 1 FROM accounting_event_mapping_lines WHERE event_type = 'academy_cash_payment' AND organisation_id IS NULL AND concept = 'tax_liability');
