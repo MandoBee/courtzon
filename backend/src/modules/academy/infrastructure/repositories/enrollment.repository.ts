@@ -162,6 +162,20 @@ class EnrollmentRepository {
   }
 
   /**
+   * G5 — confirmed (accepted) player user-ids of a group. Used for session
+   * roster notifications/reminders. Only `confirmed` enrollment is a roster
+   * member per the Academy lifecycle.
+   */
+  async getConfirmedUserIdsByGroup(groupId: number, conn?: import('mysql2/promise').PoolConnection): Promise<number[]> {
+    const db = conn ?? getPool();
+    const [rows] = await db.query<RowData>(
+      "SELECT player_id FROM academy_enrollments WHERE group_id = ? AND status = 'confirmed'",
+      [groupId],
+    );
+    return (rows as any[]).map((r) => Number(r.player_id));
+  }
+
+  /**
    * G4 — promote a waiting enrollment to confirmed, clearing its waitlist
    * position. Only affects the target row (no renumbering of remaining rows).
    */

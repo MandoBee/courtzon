@@ -1,4 +1,3 @@
-import { getPool } from '../../../database/mysql.js';
 import { attendanceRepository } from '../infrastructure/repositories/attendance.repository.js';
 import { enrollmentRepository } from '../infrastructure/repositories/enrollment.repository.js';
 import { NotFoundError, ConflictError } from '../../../shared/errors/app-error.js';
@@ -18,8 +17,25 @@ class AttendanceService {
     group_session_id: number; enrollment_id: number;
     attendance_status?: string; notes?: string;
   }): Promise<any> {
+    const session = await attendanceRepository.getSession(data.group_session_id);
+    if (!session) throw new NotFoundError('Academy group session', ErrorCodes.ACADEMY_INVALID_SESSION);
+
+    // G5 — attendance window: only in_progress sessions accept attendance.
+    if (session.status !== 'in_progress') {
+      throw new ConflictError('Attendance can only be recorded while the session is in progress', ErrorCodes.ACADEMY_ATTENDANCE_WINDOW);
+    }
+
     const enrollment = await enrollmentRepository.getById(data.enrollment_id);
     if (!enrollment) throw new NotFoundError('Academy enrollment', ErrorCodes.ACADEMY_ENROLLMENT_NOT_FOUND);
+
+    // G5 — integrity: the enrollment MUST belong to the session's group.
+    if (Number(enrollment.group_id) !== Number(session.group_id)) {
+      throw new ConflictError('Enrollment does not belong to this session\'s group', ErrorCodes.ACADEMY_ATTENDANCE_GROUP_MISMATCH);
+    }
+    // Only confirmed (accepted) roster members can be marked.
+    if (enrollment.status !== 'confirmed') {
+      throw new ConflictError('Only confirmed enrollments are on the session roster', ErrorCodes.ACADEMY_ATTENDANCE_NOT_ELIGIBLE);
+    }
 
     const existing = await attendanceRepository.getBySessionAndEnrollment(data.group_session_id, data.enrollment_id);
     if (existing) throw new ConflictError('Attendance already recorded for this session and enrollment', ErrorCodes.ACADEMY_ATTENDANCE_EXISTS);
@@ -35,9 +51,13 @@ class AttendanceService {
   }
 
   async update(id: number, data: { attendance_status?: string; notes?: string }): Promise<void> {
-    const pool = getPool();
-    const [rows] = await pool.execute<import('mysql2').RowDataPacket[]>('SELECT id FROM academy_attendance WHERE id = ?', [id]);
-    if (!rows.length) throw new NotFoundError('Academy attendance', ErrorCodes.ACADEMY_ATTENDANCE_NOT_FOUND);
+    const ctx = await attendanceRepository.getByIdWithSession(id);
+    if (!ctx) throw new NotFoundError('Academy attendance', ErrorCodes.ACADEMY_ATTENDANCE_NOT_FOUND);
+
+    // G5 — attendance window: finalized/not-yet-started sessions reject edits.
+    if (ctx.session.status !== 'in_progress') {
+      throw new ConflictError('Attendance can only be updated while the session is in progress', ErrorCodes.ACADEMY_ATTENDANCE_WINDOW);
+    }
 
     await attendanceRepository.update(id, {
       attendance_status: data.attendance_status as any,
@@ -50,13 +70,23 @@ class AttendanceService {
   }
 
   async recordBulk(sessionId: number, records: { enrollment_id: number; attendance_status?: string; notes?: string }[]): Promise<{ created: number }> {
+    const session = await attendanceRepository.getSession(sessionId);
+    if (!session) throw new NotFoundError('Academy group session', ErrorCodes.ACADEMY_INVALID_SESSION);
+
+    // G5 — bulk obeys the exact same window rule as single attendance (fast-fail).
+    if (session.status !== 'in_progress') {
+      throw new ConflictError('Attendance can only be recorded while the session is in progress', ErrorCodes.ACADEMY_ATTENDANCE_WINDOW);
+    }
+
     let created = 0;
     for (const r of records) {
       try {
         await this.record({ group_session_id: sessionId, ...r });
         created++;
-      } catch {
-        // skip duplicates
+      } catch (err: any) {
+        // Skip genuine duplicates; propagate all other errors (window/group/eligibility).
+        if (err?.code === ErrorCodes.ACADEMY_ATTENDANCE_EXISTS || err?.errorCode === ErrorCodes.ACADEMY_ATTENDANCE_EXISTS) continue;
+        throw err;
       }
     }
     return { created };

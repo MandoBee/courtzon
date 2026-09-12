@@ -58,6 +58,12 @@ export async function academyRoutes(app: FastifyInstance): Promise<void> {
   app.post('/admin/academy/sessions', { preHandler: [requirePermission(['academy.create'])] }, ctrl.createSessionHandler);
   app.put('/admin/academy/sessions/:id', { preHandler: [requirePermission(['academy.update'])] }, ctrl.updateSessionHandler);
 
+  // ── G5 — Session execution ──
+  app.get('/admin/academy/sessions/:id/roster', { preHandler: [requirePermission(['academy.session.view'])] }, ctrl.getSessionRosterHandler);
+  app.post('/admin/academy/sessions/:id/start', { preHandler: [requirePermission(['academy.session.manage'])] }, ctrl.startSessionHandler);
+  app.post('/admin/academy/sessions/:id/complete', { preHandler: [requirePermission(['academy.session.manage'])] }, ctrl.completeSessionHandler);
+  app.post('/admin/academy/sessions/:id/cancel', { preHandler: [requirePermission(['academy.session.manage'])] }, ctrl.cancelSessionHandler);
+
   // ── G2 — Recurring Schedules ──
   app.get('/admin/academy/schedules', { preHandler: [requirePermission(['academy.schedule.view'])] }, ctrl.listSchedulesHandler);
   app.post('/admin/academy/schedules', { preHandler: [requirePermission(['academy.schedule.manage'])] }, ctrl.createScheduleHandler);

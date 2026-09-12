@@ -1,6 +1,6 @@
 import { ConflictError } from '../../../shared/errors/app-error.js';
 import { ErrorCodes } from '../../../shared/errors/error-codes.js';
-import type { AcademyProgramStatus, AcademyEnrollmentStatus, AcademyLifecycleState } from './academy.types.js';
+import type { AcademyProgramStatus, AcademyEnrollmentStatus, AcademyLifecycleState, AcademySessionStatus } from './academy.types.js';
 
 /**
  * G1 — Academy ownership lifecycle foundation. An Academy starts in `setup`
@@ -43,6 +43,19 @@ const ENROLLMENT_TRANSITIONS: Record<AcademyEnrollmentStatus, AcademyEnrollmentS
   completed: [],
 };
 
+// ── G5 — session execution state machine ──
+// scheduled → in_progress (explicit admin start)
+// scheduled → cancelled
+// in_progress → completed
+// in_progress → cancelled
+// completed / cancelled are terminal for G5 lifecycle operations.
+const SESSION_TRANSITIONS: Record<AcademySessionStatus, AcademySessionStatus[]> = {
+  scheduled: ['in_progress', 'cancelled'],
+  in_progress: ['completed', 'cancelled'],
+  completed: [],
+  cancelled: [],
+};
+
 export function validateProgramTransition(from: AcademyProgramStatus, to: AcademyProgramStatus): void {
   if (from === to) return;
   const allowed = PROGRAM_TRANSITIONS[from];
@@ -60,6 +73,18 @@ export function validateEnrollmentTransition(from: AcademyEnrollmentStatus, to: 
   if (!allowed || !allowed.includes(to)) {
     throw new ConflictError(
       `Cannot transition enrollment from '${from}' to '${to}'`,
+      ErrorCodes.ACADEMY_INVALID_TRANSITION,
+    );
+  }
+}
+
+/** G5 — validate a session lifecycle transition (throws ACADEMY_INVALID_TRANSITION). */
+export function validateSessionTransition(from: AcademySessionStatus, to: AcademySessionStatus): void {
+  if (from === to) return;
+  const allowed = SESSION_TRANSITIONS[from];
+  if (!allowed || !allowed.includes(to)) {
+    throw new ConflictError(
+      `Cannot transition session from '${from}' to '${to}'`,
       ErrorCodes.ACADEMY_INVALID_TRANSITION,
     );
   }

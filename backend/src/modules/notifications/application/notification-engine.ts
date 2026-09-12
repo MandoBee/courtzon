@@ -374,6 +374,22 @@ const eventGroups: EventGroupConfig[] = [
     },
   },
   {
+    // G5 — new Academy (program-based) session execution events. Placed AFTER the
+    // legacy academy group so buildEventMap's last-write-wins override routes
+    // `academy:session-reminder` here (the legacy emitter is quarantined).
+    events: ['academy:session-started', 'academy:session-reminder'],
+    handler: async (eventName, data, categorySlug) => {
+      if (data.userId) {
+        await dispatchToUser({
+          userId: data.userId, eventName, categorySlug, data,
+          organisationId: data.organisationId,
+          relatedEntityType: 'session', relatedEntityId: String(data.sessionId),
+          action: a(`/sessions/${data.sessionId}`), digestable: false,
+        });
+      }
+    },
+  },
+  {
     events: ['coaching:session-scheduled', 'coaching:session-reminder', 'coaching:session-cancelled'],
     handler: async (eventName, data, categorySlug) => {
       if (data.userId) {
@@ -954,7 +970,7 @@ class NotificationEngine {
       'organisation:subscription-expiring', 'organisation:subscription-expired',
       'organisation:subscription-renewed',
       'club:created', 'club:member-joined', 'club:member-left',
-      'academy:enrolled', 'academy:session-reminder', 'academy:graduated',
+      'academy:enrolled', 'academy:session-reminder', 'academy:session-started', 'academy:graduated',
       'coaching:session-scheduled', 'coaching:session-reminder', 'coaching:session-cancelled',
       'coach:invited', 'coach:agreement-added',
       'tournament:created', 'tournament:registration-open', 'tournament:registration-closed',

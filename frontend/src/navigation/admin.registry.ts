@@ -137,6 +137,7 @@ export const ADMIN_NAV: NavDefinition[] = [
           { id: 'nav.admin.academy-enrollments', label: T('admin.sidebar.academy_enrollments'), path: '/admin/academy/enrollments', permissionKey: 'sidebar.academy-enrollments' },
           { id: 'nav.admin.academy-attendance', label: T('admin.sidebar.academy_attendance'), path: '/admin/academy/attendance', permissionKey: 'sidebar.academy-attendance' },
           { id: 'nav.admin.academy-schedules', label: T('admin.sidebar.academy_schedules'), path: '/admin/academy/schedules', permissionKey: 'sidebar.academy-schedules' },
+          { id: 'nav.admin.academy-sessions', label: T('admin.sidebar.academy_sessions'), path: '/admin/academy/sessions', permissionKey: 'sidebar.academy-sessions' },
         ],
       },
       { id: 'nav.admin.coaches', label: T('admin.sidebar.coaches'), icon: '👨‍🏫', path: '/admin/coaches', permissionKey: 'sidebar.coaches-admin' },

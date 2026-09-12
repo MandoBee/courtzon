@@ -287,6 +287,15 @@ export async function seedTemplates(): Promise<void> {
     { eventName: 'academy:session-reminder', locale: 'en', categorySlug: 'system', type: 'reminder', priority: 'high',
       titleTemplate: 'Session Reminder', bodyTemplate: 'Your session at {{academyName}} starts at {{startTime}}.',
       actionKey: 'view_session', routePattern: '/sessions/{{sessionId}}' },
+    { eventName: 'academy:session-reminder', locale: 'ar', categorySlug: 'system', type: 'reminder', priority: 'high',
+      titleTemplate: 'تذكير بالجلسة', bodyTemplate: 'جلسة {{academyName}} تبدأ في {{startTime}}.',
+      actionKey: 'view_session', routePattern: '/sessions/{{sessionId}}' },
+    { eventName: 'academy:session-started', locale: 'en', categorySlug: 'system', type: 'info', priority: 'high',
+      titleTemplate: 'Session Started', bodyTemplate: '{{academyName}} — your session has started.',
+      actionKey: 'view_session', routePattern: '/sessions/{{sessionId}}' },
+    { eventName: 'academy:session-started', locale: 'ar', categorySlug: 'system', type: 'info', priority: 'high',
+      titleTemplate: 'بدأت الجلسة', bodyTemplate: '{{academyName}} — بدأت جلستك.',
+      actionKey: 'view_session', routePattern: '/sessions/{{sessionId}}' },
 
     // Coaching
     { eventName: 'coaching:session-scheduled', locale: 'en', categorySlug: 'system', type: 'info', priority: 'normal',

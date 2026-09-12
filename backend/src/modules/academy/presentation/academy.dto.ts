@@ -157,7 +157,6 @@ export const CreateGroupSessionSchema = z.object({
   end_time: z.string().optional(),
   court_id: z.number().int().positive().optional(),
   coach_id: z.number().int().positive().optional(),
-  status: z.enum(['scheduled', 'in_progress', 'completed', 'cancelled']).optional().default('scheduled'),
 });
 
 export const UpdateGroupSessionSchema = z.object({
@@ -166,7 +165,13 @@ export const UpdateGroupSessionSchema = z.object({
   end_time: z.string().optional(),
   court_id: z.number().int().positive().optional(),
   coach_id: z.number().int().positive().optional(),
-  status: z.enum(['scheduled', 'in_progress', 'completed', 'cancelled']).optional(),
+});
+
+// ── G5 — session execution ──
+export const StartSessionSchema = z.object({}).optional();
+export const CompleteSessionSchema = z.object({}).optional();
+export const CancelSessionSchema = z.object({
+  reason: z.string().min(1).max(500).optional().nullable(),
 });
 
 export const ListSessionsQuerySchema = z.object({

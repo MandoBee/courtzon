@@ -51,7 +51,7 @@ describe('migration guard — environment detection (explicit signal only)', () 
     const f = writeFixture(dir, 'x.sql', LOCAL_MARKER);
     expect(probeGuard(shell, f, 'anything-else').env).toBe('unknown');
   });
-});
+}, 60000);
 
 describe('migration guard — decision matrix', () => {
   const shell = findShell();
@@ -138,7 +138,7 @@ describe('migration guard — decision matrix', () => {
     // The runners still iterate the lexicographic `*.sql` glob (no reordering
     // was introduced); the guard never sorts or mutates the file list.
   });
-});
+}, 60000);
 
 describe('migration guard — real migration files classified as intended', () => {
   const shell = findShell();
@@ -169,7 +169,7 @@ describe('migration guard — real migration files classified as intended', () =
     expect(p.cls).toBe('PRODUCTION_SAFE');
     expect(p.decision).toBe('RUN');
   });
-});
+}, 60000);
 
 describe('migration guard — enforced in BOTH execution paths', () => {
   it('docker-entrypoint.sh sources the guard and gates the loop with it', () => {

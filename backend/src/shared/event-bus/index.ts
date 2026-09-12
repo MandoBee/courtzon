@@ -75,6 +75,7 @@ export interface DomainEventMap {
   'club:new-event': BaseEvent & { eventId: number; clubId: number; title: string; date: Date };
   'academy:enrolled': BaseEvent & { academyId: number; userId: number; studentName: string };
   'academy:session-reminder': BaseEvent & { sessionId: number; userId: number; startTime: Date; academyName: string };
+  'academy:session-started': BaseEvent & { sessionId: number; programId: number; userId: number; startTime: Date; academyName: string };
   'academy:graduated': BaseEvent & { academyId: number; userId: number; studentName: string };
   'coaching:session-scheduled': BaseEvent & { sessionId: number; coachId: number; userId: number; startTime: Date };
   'coaching:session-cancelled': BaseEvent & { sessionId: number; userId: number; reason?: string };

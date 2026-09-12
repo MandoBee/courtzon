@@ -14,6 +14,16 @@ class AttendanceRepository {
     return rows.length ? Number((rows[0] as any).group_id) : null;
   }
 
+  /** G5 — session row needed for the attendance window + group-membership checks. */
+  async getSession(sessionId: number): Promise<{ id: number; group_id: number; status: string } | null> {
+    const [rows] = await getPool().query<RowData>(
+      'SELECT id, group_id, status FROM academy_group_sessions WHERE id = ? LIMIT 1', [sessionId],
+    );
+    if (!rows.length) return null;
+    const r = rows[0] as any;
+    return { id: Number(r.id), group_id: Number(r.group_id), status: r.status };
+  }
+
   /** Resolve an attendance record's group session id (used for object-level scope checks). */
   async getAttendanceSessionId(attendanceId: number): Promise<number | null> {
     const [rows] = await getPool().query<RowData>(
@@ -109,7 +119,66 @@ class AttendanceRepository {
         COALESCE(SUM(attendance_status = 'late'), 0) AS late
        FROM academy_attendance WHERE group_session_id = ?`, [groupSessionId],
     );
-    return { present: row.present, absent: row.absent, excused: row.excused, late: row.late };
+    return {
+      present: Number(row.present),
+      absent: Number(row.absent),
+      excused: Number(row.excused),
+      late: Number(row.late),
+    };
+  }
+
+  /**
+   * G5 — per-session roster: confirmed enrollments of the session's group with
+   * their attendance state for this session (if marked). Cross-group enrollments
+   * are excluded by construction (join on the session's group).
+   */
+  async getSessionRoster(sessionId: number): Promise<any[]> {
+    const [rows] = await getPool().query<RowData>(
+      `SELECT
+         e.id AS enrollment_id,
+         e.player_id,
+         e.status AS enrollment_status,
+         e.waiting_order,
+         u.full_name AS player_name,
+         a.id AS attendance_id,
+         a.attendance_status,
+         a.notes,
+         a.created_at AS attendance_at
+       FROM academy_group_sessions gs
+       JOIN academy_enrollments e ON e.group_id = gs.group_id
+       JOIN users u ON u.id = e.player_id
+       LEFT JOIN academy_attendance a ON a.group_session_id = gs.id AND a.enrollment_id = e.id
+       WHERE gs.id = ? AND e.status = 'confirmed'
+       ORDER BY u.full_name ASC`, [sessionId],
+    );
+    return rows;
+  }
+
+  /** G5 — count of confirmed roster members for a session's group (unmarked basis). */
+  async getSessionRosterCount(sessionId: number): Promise<number> {
+    const [[row]] = await getPool().query<RowData>(
+      `SELECT COUNT(*) AS c
+       FROM academy_group_sessions gs
+       JOIN academy_enrollments e ON e.group_id = gs.group_id
+       WHERE gs.id = ? AND e.status = 'confirmed'`, [sessionId],
+    );
+    return Number(row.c);
+  }
+
+  /** G5 — load an attendance record with its owning session (status + group). */
+  async getByIdWithSession(attendanceId: number): Promise<{ attendance: any; session: any } | null> {
+    const [rows] = await getPool().query<RowData>(
+      `SELECT a.*, s.status AS session_status, s.group_id AS session_group_id
+       FROM academy_attendance a
+       JOIN academy_group_sessions s ON s.id = a.group_session_id
+       WHERE a.id = ? LIMIT 1`, [attendanceId],
+    );
+    if (!rows.length) return null;
+    const r = rows[0] as any;
+    return {
+      attendance: r,
+      session: { status: r.session_status, group_id: Number(r.session_group_id) },
+    };
   }
 }
 

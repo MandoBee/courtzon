@@ -6,6 +6,7 @@ import { academyAttendanceService } from '../application/attendance.service.js';
 import { academyScheduleService } from '../application/academy-schedule.service.js';
 import { academyConfirmationService } from '../application/academy-confirmation.service.js';
 import { academyCapacityOverrideService } from '../application/capacity-override.service.js';
+import { academySessionService } from '../application/session.service.js';
 import {
   CreateProgramSchema, UpdateProgramSchema, ListProgramsQuerySchema, TransitionStatusSchema,
   CreateGroupSchema, UpdateGroupSchema, AssignCoachSchema, SetCompensationSchema, ConfirmAcademySchema, ListGroupsQuerySchema,
@@ -15,6 +16,7 @@ import {
   CreateScheduleSchema, UpdateScheduleSchema, ListSchedulesQuerySchema, ListScheduleSessionsQuerySchema,
   ScheduleStatusSchema, ResolveSessionSchema, ConfirmationRequestSchema, MarkEnrollmentPaymentSchema,
   CapacityOverrideSchema, RemoveCapacityOverrideSchema, PromoteEnrollmentSchema, ReplaceEnrollmentSchema,
+  StartSessionSchema, CompleteSessionSchema, CancelSessionSchema,
 } from './academy.dto.js';
 import { getPool } from '../../../database/mysql.js';
 import { buildPagination, paginationClause } from '../../../shared/utils/pagination.js';
@@ -456,7 +458,14 @@ export async function getEnrollmentHistoryHandler(request: FastifyRequest, reply
   return reply.send(history);
 }
 
-// â”€â”€ Group Sessions â”€â”€
+// ── Group Sessions ──
+
+/** G5 — object-level authorization for a session (resolved to its group → program). */
+async function assertSessionAccess(actorId: number, sessionId: number): Promise<void> {
+  const groupId = await academyAttendanceService.getSessionGroupId(sessionId);
+  if (groupId == null) throw new NotFoundError('Academy group session', ErrorCodes.ACADEMY_INVALID_SESSION);
+  await assertGroupAccess(actorId, groupId);
+}
 
 export async function listSessionsHandler(request: FastifyRequest, reply: FastifyReply) {
   const userId = getUserId(request);
@@ -465,80 +474,67 @@ export async function listSessionsHandler(request: FastifyRequest, reply: Fastif
   const { groupId } = request.params as any;
   if (groupId) await assertGroupAccess(userId, Number(groupId));
   if (query.group_id) await assertGroupAccess(userId, query.group_id);
-  const pool = getPool();
-  type RowData = import('mysql2').RowDataPacket[];
-  const whereSql: string[] = ['1 = 1'];
-  const params: any[] = [];
-  if (query.group_id) { whereSql.push('s.group_id = ?'); params.push(query.group_id); }
-  if (query.status) { whereSql.push('s.status = ?'); params.push(query.status); }
-  if (where) { whereSql.push(where); params.push(...scopeParams); }
-  const pag = buildPagination(query.page, query.limit);
-  const clause = paginationClause(pag);
-  const [countRows] = await pool.query<RowData>(
-    `SELECT COUNT(*) AS total FROM academy_group_sessions s
-     JOIN academy_groups g ON g.id = s.group_id
-     JOIN academy_programs p ON p.id = g.program_id
-     WHERE ${whereSql.join(' AND ')}`, params,
-  );
-  const [rows] = await pool.query<RowData>(
-    `SELECT s.*, g.name AS group_name, r.name AS court_name, u.full_name AS coach_name
-     FROM academy_group_sessions s
-     JOIN academy_groups g ON g.id = s.group_id
-     JOIN academy_programs p ON p.id = g.program_id
-     LEFT JOIN resources r ON r.id = s.court_id
-     LEFT JOIN users u ON u.id = s.coach_id
-     WHERE ${whereSql.join(' AND ')}
-     ORDER BY s.session_date DESC, s.start_time ASC${clause}`, params,
-  );
-  return reply.send({ data: rows, total: countRows[0]?.total ?? 0, page: pag.page, limit: pag.limit });
+  const result = await academySessionService.list({
+    ...query,
+    groupId: query.group_id,
+    scopeWhere: where || undefined,
+    scopeParams: scopeParams.length ? scopeParams : undefined,
+  });
+  return reply.send(result);
 }
 
 export async function createSessionHandler(request: FastifyRequest, reply: FastifyReply) {
   const userId = getUserId(request);
   const body = CreateGroupSessionSchema.parse(request.body);
   await assertGroupAccess(userId, body.group_id);
-  const pool = getPool();
-  const sql = 'INSERT INTO academy_group_sessions (group_id, session_date, start_time, end_time, court_id, coach_id, status) VALUES (?, ?, ?, ?, ?, ?, ?)';
-  const [result] = await pool.execute(sql,
-    [body.group_id, body.session_date, body.start_time ?? null, body.end_time ?? null,
-     body.court_id ?? null, body.coach_id ?? null, body.status],
-  );
-  const id = (result as any).insertId;
-  recordAudit({
-    actorId: userId, action: 'ACADEMY_SESSION.CREATE', entityType: 'academy_group_session',
-    entityId: Number(id), afterState: { group_id: body.group_id, session_date: body.session_date },
-    ipAddress: request.ip, userAgent: getUserAgent(request),
-  });
-  return reply.status(201).send({ id });
+  const session = await academySessionService.create(body, userId);
+  return reply.status(201).send(session);
 }
 
 export async function updateSessionHandler(request: FastifyRequest, reply: FastifyReply) {
   const userId = getUserId(request);
   const { id } = request.params as any;
-  const groupId = await academyAttendanceService.getSessionGroupId(Number(id));
-  if (groupId == null) throw new NotFoundError('Academy group session', ErrorCodes.ACADEMY_INVALID_SESSION);
-  await assertGroupAccess(userId, groupId);
+  await assertSessionAccess(userId, Number(id));
   const body = UpdateGroupSessionSchema.parse(request.body);
-  const fields: string[] = [];
-  const params: any[] = [];
-  if (body.session_date !== undefined) { fields.push('session_date = ?'); params.push(body.session_date); }
-  if (body.start_time !== undefined) { fields.push('start_time = ?'); params.push(body.start_time); }
-  if (body.end_time !== undefined) { fields.push('end_time = ?'); params.push(body.end_time); }
-  if (body.court_id !== undefined) { fields.push('court_id = ?'); params.push(body.court_id); }
-  if (body.coach_id !== undefined) { fields.push('coach_id = ?'); params.push(body.coach_id); }
-  if (body.status !== undefined) { fields.push('status = ?'); params.push(body.status); }
-  if (fields.length) {
-    params.push(Number(id));
-    const pool = getPool();
-    await pool.query(
-      `UPDATE academy_group_sessions SET ${fields.join(', ')}, updated_at = NOW() WHERE id = ?`, params,
-    );
-  }
-  recordAudit({
-    actorId: userId, action: 'ACADEMY_SESSION.UPDATE', entityType: 'academy_group_session',
-    entityId: Number(id), afterState: body, ipAddress: request.ip, userAgent: getUserAgent(request),
-  });
-  return reply.send({ message: 'Session updated' });
+  const session = await academySessionService.update(Number(id), body, userId);
+  return reply.send(session);
+}
+
+// ── G5 — Session execution ──
+
+export async function startSessionHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = getUserId(request);
+  const { id } = request.params as any;
+  await assertSessionAccess(userId, Number(id));
+  StartSessionSchema.parse(request.body ?? {});
+  const session = await academySessionService.start(Number(id), userId);
+  return reply.send(session);
+}
+
+export async function completeSessionHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = getUserId(request);
+  const { id } = request.params as any;
+  await assertSessionAccess(userId, Number(id));
+  CompleteSessionSchema.parse(request.body ?? {});
+  const session = await academySessionService.complete(Number(id), userId);
+  return reply.send(session);
+}
+
+export async function cancelSessionHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = getUserId(request);
+  const { id } = request.params as any;
+  await assertSessionAccess(userId, Number(id));
+  const body = CancelSessionSchema.parse(request.body ?? {});
+  const session = await academySessionService.cancel(Number(id), userId, body?.reason ?? null);
+  return reply.send(session);
+}
+
+export async function getSessionRosterHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = getUserId(request);
+  const { id } = request.params as any;
+  await assertSessionAccess(userId, Number(id));
+  const roster = await academySessionService.getRoster(Number(id));
+  return reply.send(roster);
 }
 
 // ── G2 — Recurring Schedules ──

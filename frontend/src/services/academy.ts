@@ -91,6 +91,31 @@ interface AttendanceRecord {
   session_date?: string;
 }
 
+// ── G5 — Session roster + attendance summary ──
+export interface SessionRosterRow {
+  enrollment_id: number;
+  player_id: number;
+  enrollment_status: string;
+  waiting_order: number | null;
+  player_name: string | null;
+  attendance_id: number | null;
+  attendance_status: string | null;
+  notes: string | null;
+  attendance_at: string | null;
+}
+
+export interface SessionAttendanceSummary {
+  total: number;
+  present: number;
+  absent: number;
+  excused: number;
+  late: number;
+  marked: number;
+  unmarked: number;
+  progress: number;
+  status: string;
+}
+
 interface AcademyDashboard {
   total_programs: number;
   published_programs: number;
@@ -264,6 +289,16 @@ export const academyApi = {
     api.post('/admin/academy/sessions', data).then(r => r.data),
   updateSession: (id: number, data: any) =>
     api.put(`/admin/academy/sessions/${id}`, data).then(r => r.data),
+
+  // ── G5 — Session execution ──
+  startSession: (id: number) =>
+    api.post(`/admin/academy/sessions/${id}/start`, {}).then(r => r.data),
+  completeSession: (id: number) =>
+    api.post(`/admin/academy/sessions/${id}/complete`, {}).then(r => r.data),
+  cancelSession: (id: number, reason?: string | null) =>
+    api.post(`/admin/academy/sessions/${id}/cancel`, { reason: reason ?? null }).then(r => r.data),
+  getSessionRoster: (id: number) =>
+    api.get<{ data: SessionRosterRow[]; summary: SessionAttendanceSummary }>(`/admin/academy/sessions/${id}/roster`).then(r => r.data),
 
   // Attendance
   getSessionAttendance: (sessionId: number) =>

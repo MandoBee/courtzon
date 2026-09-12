@@ -104,6 +104,32 @@ export async function scheduleReviewReminder(
   log.info({ bookingId, userId, reminderTime }, 'Review reminder scheduled');
 }
 
+/**
+ * G5 — Academy session reminder (60 minutes before start). Idempotent per
+ * (session, user): a deterministic BullMQ jobId prevents duplicate scheduling.
+ */
+export async function scheduleAcademySessionReminder(
+  sessionId: number,
+  userId: number,
+  startTime: Date,
+  academyName: string,
+): Promise<void> {
+  const reminderTime = new Date(startTime.getTime() - 60 * 60 * 1000);
+  const delay = reminderTime.getTime() - Date.now();
+
+  if (!Number.isFinite(delay) || delay <= 0) return;
+
+  await queueService.add('send_scheduled_notification', {
+    templateId: 0,
+    userId,
+    scheduledAt: reminderTime,
+    payload: { eventName: 'academy:session-reminder', sessionId, startTime: startTime.toISOString(), academyName },
+    locale: 'en',
+  }, { jobId: `academy-reminder-${sessionId}-${userId}`, delay, attempts: 3 });
+
+  log.info({ sessionId, userId, reminderTime }, 'Academy session reminder scheduled');
+}
+
 export async function processScheduledBroadcasts(): Promise<void> {
   const pool = getPool();
   const [rows] = await pool.execute<RowData>(

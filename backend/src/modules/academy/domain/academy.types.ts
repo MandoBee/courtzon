@@ -97,6 +97,7 @@ export interface AcademyAttendanceAttributes {
 export type AcademyProgramStatus = AcademyProgramAttributes['status'];
 export type AcademyEnrollmentStatus = AcademyEnrollmentAttributes['status'];
 export type AcademyAttendanceStatus = AcademyAttendanceAttributes['attendance_status'];
+export type AcademySessionStatus = AcademyGroupSessionAttributes['status'];
 export type PriceType = AcademyProgramAttributes['price_type'];
 
 export interface AcademyDashboard {
