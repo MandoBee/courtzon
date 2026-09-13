@@ -19,24 +19,12 @@ export async function activitiesRoutes(app: FastifyInstance, opts: { requireFeat
     scopedApp.delete('/tournaments/:id', { preHandler: [adminGuard] }, ctrl.deleteTournamentHandler);
   });
 
-  // Academies — gated by app.academies_enabled
-  await app.register(async function academyScope(scopedApp: FastifyInstance) {
-    scopedApp.addHook('preHandler', opts.requireFeatureFlag('app.academies_enabled'));
-
-    scopedApp.get('/academies', ctrl.listAcademiesHandler);
-    scopedApp.get('/academies/:id', ctrl.getAcademyHandler);
-    scopedApp.post('/academies', { preHandler: [requirePermission(['academies.create'])] }, ctrl.createAcademyHandler);
-    scopedApp.post('/academies/:id/curriculums', { preHandler: [requirePermission(['academies.edit'])] }, ctrl.createCurriculumHandler);
-    scopedApp.post('/academies/:id/enroll', ctrl.enrollPlayerHandler);
-    scopedApp.post('/academies/:id/sessions', { preHandler: [requirePermission(['academies.edit'])] }, ctrl.createAcademySessionHandler);
-    scopedApp.post('/sessions/:sessionId/attendance', ctrl.markAttendanceHandler);
-    scopedApp.post('/academies/:id/evaluations', { preHandler: [requirePermission(['academies.evaluate'])] }, ctrl.createEvaluationHandler);
-
-    // Admin academy routes
-    scopedApp.get('/admin/academies', { preHandler: [adminGuard] }, ctrl.adminListAcademiesHandler);
-    scopedApp.put('/academies/:id', { preHandler: [adminGuard] }, ctrl.updateAcademyHandler);
-    scopedApp.delete('/academies/:id', { preHandler: [adminGuard] }, ctrl.deleteAcademyHandler);
-  });
+  // Academies — LEGACY RETIRED (PHASE 0 / GROUP 2).
+  // The authoritative Academy is the new `academy` module (G1–G8). The legacy
+  // `/academies*` routes are REMOVED so users can never enter the broken legacy
+  // Academy workflow; the legacy handlers/repositories remain for reference and
+  // eventual retirement. All active navigation/deep-links point to `/academy*`.
+  // (The legacy feature flag is left untouched — no data change.)
 
   // Coaches — view open to any authenticated user, profile management requires permission
   app.get('/coaches', ctrl.listCoachesHandler);

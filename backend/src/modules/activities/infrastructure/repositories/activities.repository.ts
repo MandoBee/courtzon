@@ -1088,11 +1088,12 @@ export const activitiesRepository = {
     const conn = await pool.getConnection();
     try {
       await conn.beginTransaction();
-      await conn.execute(
-        `UPDATE academy_enrollments SET status = 'dropped'
-         WHERE academy_id = ? AND status IN ('active', 'waitlisted')`,
-        [id],
-      );
+      // LEGACY ACADEMY (PHASE 0 / GROUP 2): the legacy `academies` table has no
+      // live enrollments (enrollment creation is quarantined) and the NEW
+      // `academy_enrollments` table is program-based (player_id/program_id with
+      // the new status enum) — a legacy soft-delete must not UPDATE it (that
+      // query referenced removed columns/statuses and would 500 on any row).
+      // Only the legacy `academies` row is retired.
       await conn.execute(
         `UPDATE academies SET is_active = 0 WHERE id = ?`,
         [id],

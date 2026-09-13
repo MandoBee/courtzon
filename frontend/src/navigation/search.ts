@@ -20,7 +20,7 @@ export const LEGACY_NAV_COMMANDS: NavSearchCommand[] = [
   { id: 'nav-bookings', label: 'My Bookings', icon: '📅', path: '/bookings', group: 'Navigation', type: 'navigation', keywords: ['my bookings', 'bookings', 'nav-bookings', '/bookings', 'navigation'] },
   { id: 'nav-membership', label: 'Membership & Loyalty', icon: '⭐', path: '/membership', group: 'Navigation', type: 'navigation', keywords: ['membership & loyalty', 'membership', 'loyalty', 'nav-membership', '/membership', 'navigation'] },
   { id: 'nav-tournaments', label: 'Tournaments', icon: '🏆', path: '/tournaments', group: 'Navigation', type: 'navigation', keywords: ['tournaments', 'nav-tournaments', '/tournaments', 'navigation'] },
-  { id: 'nav-academies', label: 'Academies', icon: '🎓', path: '/academies', group: 'Navigation', type: 'navigation', keywords: ['academies', 'nav-academies', '/academies', 'navigation'] },
+  { id: 'nav-academy', label: 'Academies', icon: '🎓', path: '/academy', group: 'Navigation', type: 'navigation', keywords: ['academies', 'academy', 'nav-academy', '/academy', 'navigation'] },
   { id: 'nav-coaches', label: 'Coaches', icon: '👨‍🏫', path: '/coaches', group: 'Navigation', type: 'navigation', keywords: ['coaches', 'nav-coaches', '/coaches', 'navigation'] },
   { id: 'nav-notifications', label: 'Notifications', icon: '🔔', path: '/notifications', group: 'Navigation', type: 'navigation', keywords: ['notifications', 'nav-notifications', '/notifications', 'navigation'] },
   { id: 'nav-profile', label: 'Profile', icon: '👤', path: '/profile', group: 'Navigation', type: 'navigation', keywords: ['profile', 'nav-profile', '/profile', 'navigation'] },

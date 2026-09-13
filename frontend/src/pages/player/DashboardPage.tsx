@@ -101,7 +101,7 @@ export default function PlayerDashboardPage() {
           <QuickAction label={t('player.dashboard.book_court')} icon="🎾" to="/bookings?newBooking=true" />
           <QuickAction label={t('player.dashboard.find_matches')} icon="🤝" to="/matches" />
           <Can permission="academies.view">
-            <QuickAction label={t('player.dashboard.browse_academies')} icon="🎓" to="/academies" />
+            <QuickAction label={t('player.dashboard.browse_academies')} icon="🎓" to="/academy" />
           </Can>
           <Can permission="tournaments.view">
             <QuickAction label={t('player.dashboard.browse_tournaments')} icon="🏆" to="/tournaments" />

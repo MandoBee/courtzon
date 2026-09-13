@@ -283,7 +283,7 @@ export async function seedTemplates(): Promise<void> {
     // Academy
     { eventName: 'academy:enrolled', locale: 'en', categorySlug: 'system', type: 'success', priority: 'normal',
       titleTemplate: 'Enrolled in Academy', bodyTemplate: '{{studentName}} has been enrolled successfully.',
-      actionKey: 'view_academy', routePattern: '/academies/{{academyId}}' },
+      actionKey: 'view_academy', routePattern: '/academy/{{academyId}}' },
     { eventName: 'academy:session-reminder', locale: 'en', categorySlug: 'system', type: 'reminder', priority: 'high',
       titleTemplate: 'Session Reminder', bodyTemplate: 'Your session at {{academyName}} starts at {{startTime}}.',
       actionKey: 'view_session', routePattern: '/sessions/{{sessionId}}' },
@@ -824,10 +824,10 @@ export async function seedTemplates(): Promise<void> {
     // ── Academy Missing ──
     { eventName: 'academy:enrolled', locale: 'ar', categorySlug: 'system', type: 'success', priority: 'normal',
       titleTemplate: 'تم التسجيل في الأكاديمية', bodyTemplate: 'تم تسجيل {{studentName}} بنجاح.',
-      actionKey: 'view_academy', routePattern: '/academies/{{academyId}}' },
+      actionKey: 'view_academy', routePattern: '/academy/{{academyId}}' },
     { eventName: 'academy:graduated', locale: 'en', categorySlug: 'system', type: 'success', priority: 'normal',
       titleTemplate: 'Academy Graduation', bodyTemplate: '{{studentName}} has graduated from the academy.',
-      actionKey: 'view_academy', routePattern: '/academies/{{academyId}}' },
+      actionKey: 'view_academy', routePattern: '/academy/{{academyId}}' },
 
     // ── Coaching Missing ──
     { eventName: 'coaching:session-scheduled', locale: 'ar', categorySlug: 'system', type: 'info', priority: 'normal',

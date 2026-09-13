@@ -12,7 +12,6 @@ export const PLAYER_MORE_ITEMS: PlayerMoreItemDef[] = [
   { id: 'nav.player.matches', label: T('nav.matches'), icon: '🎯', path: '/matches' },
   { id: 'nav.player.coaches', label: T('nav.coaches'), icon: '🏆', path: '/coaches', permissionKey: 'coaches.view' },
   { id: 'nav.player.tournaments', label: T('nav.tournaments'), icon: '🥇', path: '/tournaments', permissionKey: 'tournaments.view' },
-  { id: 'nav.player.academies', label: T('nav.academies'), icon: '🎓', path: '/academies', permissionKey: 'academies.view' },
   { id: 'nav.player.academy', label: T('nav.academy'), icon: '🎓', path: '/academy', permissionKey: 'academy.self_enroll' },
   { id: 'nav.player.my_academy', label: T('nav.my_academy'), icon: '🎓', path: '/my/academy', permissionKey: 'academy.view' },
   { id: 'nav.player.messages', label: T('nav.messages'), icon: '💬', path: '/messages', permissionKey: 'community.chat.view', featureFlag: 'community.chat_enabled' },

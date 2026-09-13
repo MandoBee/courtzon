@@ -367,7 +367,7 @@ const eventGroups: EventGroupConfig[] = [
           userId: data.userId, eventName, categorySlug, data,
           organisationId: data.organisationId,
           relatedEntityType: 'academy', relatedEntityId: String(data.academyId),
-          action: a(`/academies/${data.academyId}`),
+          action: a(`/academy/${data.academyId}`),
           digestable: eventName === 'academy:session-reminder' ? false : undefined,
         });
       }

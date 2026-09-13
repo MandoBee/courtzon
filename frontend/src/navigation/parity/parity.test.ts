@@ -483,7 +483,7 @@ describe('Commit 12 — Search finds all modules under new domain paths', () => 
     const ids = LEGACY_NAV_COMMANDS.map((c) => c.id);
     expect(ids).toEqual([
       'nav-book', 'nav-marketplace', 'nav-bookings', 'nav-membership',
-      'nav-tournaments', 'nav-academies', 'nav-coaches', 'nav-notifications', 'nav-profile',
+      'nav-tournaments', 'nav-academy', 'nav-coaches', 'nav-notifications', 'nav-profile',
     ]);
     expect(LEGACY_NAV_COMMANDS.every((c) => c.group === 'Navigation')).toBe(true);
     expect(LEGACY_NAV_COMMANDS.some((c) => c.id.startsWith('nav-admin'))).toBe(false);
@@ -781,8 +781,8 @@ describe('Navigation registry integrity (immutable ids)', () => {
 
     const playerIds = [...PLAYER_CORE_TABS.map((i) => i.id), ...PLAYER_MORE_ITEMS.map((i) => i.id)];
     expect(playerIds.every((id) => id.startsWith('nav.player.'))).toBe(true);
-    expect(playerIds.length).toBe(20);
-    expect(new Set(playerIds).size).toBe(20);
+    expect(playerIds.length).toBe(19);
+    expect(new Set(playerIds).size).toBe(19);
     for (const id of playerIds) {
       const hasPermission = [...PLAYER_MORE_ITEMS].find((i) => i.id === id)?.permissionKey !== undefined;
       if (hasPermission) expect(PLAYER_ID_TO_KEY.has(id)).toBe(true);
@@ -854,8 +854,8 @@ describe('Navigation registry integrity (immutable ids)', () => {
   });
 
   it('maps player legacy permission keys to their nav.player.* nodes', () => {
-    expect(PLAYER_ID_TO_KEY.size).toBe(14);
-    expect(PLAYER_LEGACY_KEY_TO_ID.size).toBe(14);
+    expect(PLAYER_ID_TO_KEY.size).toBe(13);
+    expect(PLAYER_LEGACY_KEY_TO_ID.size).toBe(13);
     expect(PLAYER_LEGACY_KEY_TO_ID.get('coaches.view')).toEqual(['nav.player.coaches']);
     expect(PLAYER_LEGACY_KEY_TO_ID.get('player.wallet.view')).toEqual(['nav.player.wallet']);
     expect(PLAYER_LEGACY_KEY_TO_ID.get('community.chat.view')).toEqual(['nav.player.messages']);

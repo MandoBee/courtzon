@@ -76,8 +76,6 @@ const WishlistPage = lazy(() => import('./pages/marketplace/WishlistPage'));
 const TournamentListPage = lazy(() => import('./pages/tournaments/TournamentListPage'));
 const TournamentDetailPage = lazy(() => import('./pages/tournaments/TournamentDetailPage'));
 const TournamentCreatePage = lazy(() => import('./pages/tournaments/TournamentCreatePage'));
-const AcademyListPage = lazy(() => import('./pages/academies/AcademyListPage'));
-const AcademyDetailPage = lazy(() => import('./pages/academies/AcademyDetailPage'));
 const PlayerDashboardPage = lazy(() => import('./pages/player/DashboardPage'));
 const PlayerSearchPage = lazy(() => import('./pages/players/PlayerSearchPage'));
 const PlayerPublicProfilePage = lazy(() => import('./pages/players/PlayerPublicProfilePage'));
@@ -140,7 +138,6 @@ const TournamentDashboardPage = lazy(() => import('./pages/admin/tournament/Tour
 const TournamentListAdminPage = lazy(() => import('./pages/admin/tournament/TournamentListPage'));
 const TournamentDetailAdminPage = lazy(() => import('./pages/admin/tournament/TournamentDetailPage'));
 const TournamentMatchesAdminPage = lazy(() => import('./pages/admin/tournament/TournamentMatchesPage'));
-const AcademyAdminPage = lazy(() => import('./pages/admin/academies/AcademyAdminPage'));
 const AcademyDashboardPage = lazy(() => import('./pages/admin/academy/AcademyDashboardPage'));
 const AcademyProgramsPage = lazy(() => import('./pages/admin/academy/AcademyProgramsPage'));
 const AcademyGroupsPage = lazy(() => import('./pages/admin/academy/AcademyGroupsPage'));
@@ -165,6 +162,12 @@ const AdsPage = lazy(() => import('./pages/admin/ads/AdsPage'));
 const SidebarLayoutPage = lazy(() => import('./pages/admin/sidebar-layout/SidebarLayoutPage'));
 const UIPermissionsPage = lazy(() => import('./pages/admin/ui-permissions/UIPermissionsPage'));
 const AmenitiesPage = lazy(() => import('./pages/admin/amenities/AmenitiesPage'));
+
+/** PHASE 0 / GROUP 2 — legacy `/academies/:id` → new `/academy/:id` experience. */
+function LegacyAcademyDetailRedirect() {
+  const { id } = useParams();
+  return <Navigate to={`/academy/${id}`} replace />;
+}
 const BanksPage = lazy(() => import('./pages/admin/banks/BanksPage'));
 const BankBranchesPage = lazy(() => import('./pages/admin/banks/BankBranchesPage'));
 const MarketplaceProductsPage = lazy(() => import('./pages/admin/marketplace/ProductsPage'));
@@ -434,7 +437,7 @@ function Navbar() {
                 <Link to="/tournaments" className={navLinkClass('/tournaments')}>{t('nav.tournaments')}</Link>
               </Can>
               <Can permission="academies.view">
-                <Link to="/academies" className={navLinkClass('/academies')}>{t('nav.academies')}</Link>
+                <Link to="/academy" className={navLinkClass('/academy')}>{t('nav.academies')}</Link>
               </Can>
               {chatEnabled && (
                 <Can permission="community.chat.view">
@@ -619,8 +622,9 @@ function AppContent() {
           <Route path="/tournaments" element={<TournamentListPage />} />
           <Route path="/tournaments/new" element={<TournamentCreatePage />} />
           <Route path="/tournaments/:id" element={<TournamentDetailPage />} />
-          <Route path="/academies" element={<AcademyListPage />} />
-          <Route path="/academies/:id" element={<AcademyDetailPage />} />
+          {/* Legacy Academy routes → redirect to the new Academy experience (PHASE 0 / GROUP 2) */}
+          <Route path="/academies" element={<Navigate to="/academy" replace />} />
+          <Route path="/academies/:id" element={<LegacyAcademyDetailRedirect />} />
           <Route path="/academy" element={<AcademyBrowsePage />} />
           <Route path="/academy/:id" element={<AcademyProgramDetailPage />} />
           <Route path="/my/academy" element={<MyAcademyPage />} />
@@ -738,7 +742,7 @@ function AppContent() {
             <Route path="league/list/:id" element={<LeagueDetailPage />} />
             <Route path="league/divisions" element={<DivisionManagePage />} />
             <Route path="league/divisions/:leagueId" element={<DivisionManagePage />} />
-            <Route path="academies" element={<AcademyAdminPage />} />
+            <Route path="academies" element={<Navigate to="academy/dashboard" replace />} />
             <Route path="academy/dashboard" element={<AcademyDashboardPage />} />
             <Route path="academy/programs" element={<AcademyProgramsPage />} />
             <Route path="academy/groups" element={<AcademyGroupsPage />} />

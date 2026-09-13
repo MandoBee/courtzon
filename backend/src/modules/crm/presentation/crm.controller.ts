@@ -32,12 +32,12 @@ export async function listCustomersHandler(request: FastifyRequest, reply: Fasti
     `SELECT u.id, u.first_name, u.last_name, u.email, u.phone, u.is_active, u.created_at,
             (SELECT COUNT(*) FROM bookings b WHERE b.user_id = u.id) AS total_bookings,
             (SELECT COUNT(*) FROM orders o WHERE o.user_id = u.id) AS total_orders,
-            (SELECT COUNT(*) FROM academy_enrollments ae WHERE ae.user_id = u.id) AS total_enrollments,
+            (SELECT COUNT(*) FROM academy_enrollments ae WHERE ae.player_id = u.id) AS total_enrollments,
             (SELECT COUNT(*) FROM tournament_registrations tr WHERE tr.user_id = u.id) AS total_tournaments,
             (SELECT MAX(greatest(
               COALESCE((SELECT MAX(b.created_at) FROM bookings b WHERE b.user_id = u.id), '1970-01-01'),
               COALESCE((SELECT MAX(o.created_at) FROM orders o WHERE o.user_id = u.id), '1970-01-01'),
-              COALESCE((SELECT MAX(ae.created_at) FROM academy_enrollments ae WHERE ae.user_id = u.id), '1970-01-01')
+              COALESCE((SELECT MAX(ae.created_at) FROM academy_enrollments ae WHERE ae.player_id = u.id), '1970-01-01')
             ))) AS last_activity
      FROM users u
      ${where}
@@ -75,7 +75,7 @@ export async function getCustomerHandler(request: FastifyRequest, reply: Fastify
   );
 
   const [enrollments] = await pool.execute<RowData>(
-    `SELECT COUNT(*) AS total FROM academy_enrollments WHERE user_id = ?`, [userId]
+    `SELECT COUNT(*) AS total FROM academy_enrollments WHERE player_id = ?`, [userId]
   );
 
   const [tournaments] = await pool.execute<RowData>(
@@ -90,7 +90,7 @@ export async function getCustomerHandler(request: FastifyRequest, reply: Fastify
     `SELECT MAX(greatest(
       COALESCE((SELECT MAX(created_at) FROM bookings WHERE user_id = ?), '1970-01-01'),
       COALESCE((SELECT MAX(created_at) FROM orders WHERE user_id = ?), '1970-01-01'),
-      COALESCE((SELECT MAX(created_at) FROM academy_enrollments WHERE user_id = ?), '1970-01-01'),
+      COALESCE((SELECT MAX(created_at) FROM academy_enrollments WHERE player_id = ?), '1970-01-01'),
       COALESCE((SELECT MAX(created_at) FROM tournament_registrations WHERE user_id = ?), '1970-01-01')
     )) AS last_activity`, [userId, userId, userId, userId]
   );
@@ -121,7 +121,7 @@ export async function getCustomerTimelineHandler(request: FastifyRequest, reply:
      UNION ALL
      SELECT created_at, 'order', id, status, total_amount FROM orders WHERE user_id = ?
      UNION ALL
-     SELECT created_at, 'enrollment', id, status, NULL FROM academy_enrollments WHERE user_id = ?
+     SELECT created_at, 'enrollment', id, status, NULL FROM academy_enrollments WHERE player_id = ?
      UNION ALL
      SELECT created_at, 'tournament_registration', id, status, NULL FROM tournament_registrations WHERE user_id = ?
      UNION ALL
@@ -220,7 +220,7 @@ export async function refreshSegmentHandler(request: FastifyRequest, reply: Fast
     for (const c of conditions) {
       if (c.field === 'has_booking') { wheres.push('EXISTS (SELECT 1 FROM bookings WHERE user_id = u.id)'); }
       else if (c.field === 'has_order') { wheres.push('EXISTS (SELECT 1 FROM orders WHERE user_id = u.id)'); }
-      else if (c.field === 'has_enrollment') { wheres.push('EXISTS (SELECT 1 FROM academy_enrollments WHERE user_id = u.id)'); }
+      else if (c.field === 'has_enrollment') { wheres.push('EXISTS (SELECT 1 FROM academy_enrollments WHERE player_id = u.id)'); }
       else if (c.field === 'created_after') { wheres.push('u.created_at >= ?'); params.push(c.value); }
       else if (c.field === 'created_before') { wheres.push('u.created_at <= ?'); params.push(c.value); }
       else if (c.field === 'is_active') { wheres.push('u.is_active = ?'); params.push(c.value ? 1 : 0); }

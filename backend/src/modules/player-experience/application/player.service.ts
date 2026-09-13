@@ -12,7 +12,7 @@ class PlayerService {
     const [[notifRow]] = await pool.execute<any[]>('SELECT COUNT(*) AS cnt FROM notifications WHERE user_id = ? AND is_read = 0', [userId]);
     const [[bookingsRow]] = await pool.execute<any[]>("SELECT COUNT(*) AS cnt FROM bookings WHERE user_id = ? AND start_at_utc > NOW() AND booking_status IN ('confirmed','pending')", [userId]);
     const [[matchesRow]] = await pool.execute<any[]>("SELECT COUNT(*) AS cnt FROM tournament_matches WHERE (player1_id = ? OR player2_id = ?) AND start_time > NOW() AND status = 'scheduled'", [userId, userId]);
-    const [[academyRow]] = await pool.execute<any[]>("SELECT COUNT(*) AS cnt FROM academy_enrollments WHERE player_id = ? AND status = 'active'", [userId]);
+    const [[academyRow]] = await pool.execute<any[]>("SELECT COUNT(*) AS cnt FROM academy_enrollments WHERE player_id = ? AND status = 'confirmed'", [userId]);
     const [[tournRow]] = await pool.execute<any[]>("SELECT COUNT(*) AS cnt FROM tournament_registrations WHERE player_id = ? AND status IN ('registered','confirmed')", [userId]);
     const [[leagueRow]] = await pool.execute<any[]>("SELECT COUNT(*) AS cnt FROM league_teams WHERE captain_id = ? AND status = 'confirmed'", [userId]);
 
@@ -57,7 +57,7 @@ class PlayerService {
        FROM tournament_matches tm WHERE (tm.player1_id = ? OR tm.player2_id = ?) AND tm.start_time > NOW() AND tm.status = 'scheduled'
        UNION ALL
        SELECT 'academy', ae.id, ae.enrolled_at, ae.status
-       FROM academy_enrollments ae WHERE ae.player_id = ? AND ae.status = 'active'
+       FROM academy_enrollments ae WHERE ae.player_id = ? AND ae.status = 'confirmed'
        ORDER BY start_time ASC LIMIT 50`,
       [userId, userId, userId, userId],
     );

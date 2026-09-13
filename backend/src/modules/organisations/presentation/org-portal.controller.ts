@@ -1020,11 +1020,10 @@ export async function listOrgAcademiesHandler(request: FastifyRequest, reply: Fa
   const pool = getPool();
   type RowData = import('mysql2').RowDataPacket[];
   const [programs] = await pool.query<RowData>(
-    `SELECT ap.*, ac.name AS category_name,
-       (SELECT COUNT(*) FROM academy_enrollments ae WHERE ae.program_id = ap.id AND ae.status = 'enrolled') AS enrolled_count,
+    `SELECT ap.*, ap.category AS category_name,
+       (SELECT COUNT(*) FROM academy_enrollments ae WHERE ae.program_id = ap.id AND ae.status = 'confirmed') AS enrolled_count,
        (SELECT COUNT(*) FROM academy_enrollments ae WHERE ae.program_id = ap.id AND ae.status = 'waiting') AS waiting_count
      FROM academy_programs ap
-     LEFT JOIN academy_categories ac ON ac.id = ap.category_id
      WHERE ap.organisation_id = ?
      ORDER BY ap.created_at DESC`,
     [Number(orgId)],

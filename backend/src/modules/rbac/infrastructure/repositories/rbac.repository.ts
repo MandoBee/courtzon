@@ -679,13 +679,17 @@ export class RBACRepository {
   }
 
   async getUserAcademyEnrollments(userId: number): Promise<any[]> {
+    // PHASE 0 / GROUP 2 — rewired from the legacy `academies` join (academy_id
+    // no longer exists) to the authoritative NEW Academy model: enrollments are
+    // program-based (academy_enrollments.program_id → academy_programs).
     const [rows] = await this.pool.execute<RowData>(
-      `SELECT ae.*, a.name as academy_name, a.sport_id,
-              s.name as sport_name, org.name as org_name
+      `SELECT ae.*, ap.name as academy_name, ap.code as program_code, ap.sport_id,
+              g.name as group_name, s.name as sport_name, org.name as org_name
        FROM academy_enrollments ae
-       JOIN academies a ON a.id = ae.academy_id
-       LEFT JOIN sports s ON s.id = a.sport_id
-       LEFT JOIN organisations org ON org.id = a.organisation_id
+       JOIN academy_programs ap ON ap.id = ae.program_id
+       LEFT JOIN academy_groups g ON g.id = ae.group_id
+       LEFT JOIN sports s ON s.id = ap.sport_id
+       LEFT JOIN organisations org ON org.id = ap.organisation_id
        WHERE ae.player_id = ?
        ORDER BY ae.enrolled_at DESC LIMIT 100`,
       [userId]
