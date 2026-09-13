@@ -436,7 +436,7 @@ function Navbar() {
               <Can permission="tournaments.view">
                 <Link to="/tournaments" className={navLinkClass('/tournaments')}>{t('nav.tournaments')}</Link>
               </Can>
-              <Can permission="academies.view">
+              <Can permission="academy.self_enroll">
                 <Link to="/academy" className={navLinkClass('/academy')}>{t('nav.academies')}</Link>
               </Can>
               {chatEnabled && (

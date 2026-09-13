@@ -23,10 +23,12 @@ describe('PHASE 0/G2 — Legacy Academy navigation is redirected to the new expe
     expect(app).toContain('<Route path="academies" element={<Navigate to="academy/dashboard" replace />} />');
   });
 
-  it('Navbar academy link points to /academy (not the dead legacy route)', () => {
+  it('Navbar academy link points to /academy and is gated by the NEW academy permission', () => {
     const app = read('../../App.tsx');
     expect(app).toContain('to="/academy"');
     expect(app).not.toContain('to="/academies"');
+    expect(app).not.toContain('permission="academies.view"');
+    expect(app).toContain('<Can permission="academy.self_enroll">');
   });
 
   it('player navigation registry + search point to /academy', () => {
