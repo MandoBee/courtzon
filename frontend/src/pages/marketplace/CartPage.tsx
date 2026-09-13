@@ -197,9 +197,21 @@ export default function CartPage() {
       setOrderId(data.id);
 
       if (paymentMethod === 'card') {
-        if (data.clientSecret) {
-          setPixelClientSecret(data.clientSecret);
+        const secret = data.clientSecret ?? '';
+        // Local mock gateway bypass: a mock clientSecret (mock_csk_...) cannot
+        // be authorized by the real Paymob Pixel iframe, so confirm through the
+        // existing generic payment confirmation flow instead (same convention as
+        // Academy). Real Paymob secrets keep the normal PaymobPixelCard path.
+        // The backend remains authoritative — no frontend "paid" assumption.
+        if (secret && !secret.startsWith('mock')) {
+          setPixelClientSecret(secret);
           setPaymentId(data.paymentId || null);
+        } else if (secret && secret.startsWith('mock')) {
+          if (data.paymentId) {
+            void runMockConfirm(data.paymentId);
+          } else {
+            showToast('Payment gateway did not return a checkout session. Please try again.', 'error');
+          }
         } else if (data.paymentUrl) {
           window.location.href = data.paymentUrl;
         } else {
@@ -215,6 +227,22 @@ export default function CartPage() {
       showToast(err?.response?.data?.message || 'Checkout failed', 'error');
     },
   });
+
+  // PHASE 2 — local mock card completion. Confirms through the authoritative
+  // POST /payments/confirm + status polling (usePaymentConfirm); success is only
+  // shown once the backend confirms. On non-confirmation, falls back to the
+  // existing PaymentStatusPoller on the order.
+  const runMockConfirm = async (pmId: number) => {
+    const result = await confirmPayment(pmId);
+    if (result.confirmed) {
+      queryClient.invalidateQueries({ queryKey: ['mp-orders'] });
+      queryClient.invalidateQueries({ queryKey: ['mp-order'] });
+      showToast('Order placed successfully!', 'success');
+      navigate('/marketplace/orders');
+      return;
+    }
+    setPollingPaid(true);
+  };
 
   if (isLoading) return <div className="text-center py-8">{t('cart.loading')}</div>;
   if (!mergedCart?.items?.length && !pixelClientSecret && !pollingPaid && confirmState === 'idle') return (
