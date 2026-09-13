@@ -319,11 +319,7 @@ export default function OrgFinancePage() {
 
       <div className="bg-[var(--color-bg)] border border-[var(--color-border)] rounded-[var(--radius-md)] p-3 text-xs text-[var(--color-text-muted)] leading-relaxed">
         <p>
-          <strong className="text-[var(--color-text)]">Operational Transactions</strong> shows the organisation's day-to-day activity
-          history (booking payments, marketplace purchases, withdrawals, wallet payments, subscriptions) from the operational ledger.
-          It is <strong className="text-[var(--color-text)]">not</strong> your financial position or balance.
-          Your authoritative earnings, balances, and settlement position are shown on the{' '}
-          <Link to={`/org/${orgId}/finance/position`} className="text-[var(--color-primary)] underline">Financial Position</Link> page.
+          <strong className="text-[var(--color-text)]">Operational Transactions</strong> shows the legacy operational activity view (wallet payments, withdrawals, booking payments, subscriptions). It is <strong className="text-[var(--color-text)]">not</strong> your financial position or balance. <strong className="text-[var(--color-text)]">Marketplace card/cash economics are authoritative in Accounting Records (Journal Entries) and Financial Position</strong> — they are not stored in this legacy operational ledger.
         </p>
       </div>
 

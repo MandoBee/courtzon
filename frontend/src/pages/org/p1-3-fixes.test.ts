@@ -30,10 +30,12 @@ describe('P1-3a: Org Finance Transactions clearly labelled as operational', () =
     expect(s).toContain('not</strong> your financial position or balance');
   });
 
-  it('explains it is day-to-day activity from the operational ledger', () => {
+  it('describes it as a legacy operational activity view, not the authoritative marketplace source', () => {
     const s = src();
-    expect(s).toContain('day-to-day activity');
+    expect(s).toContain('legacy operational activity view');
     expect(s).toContain('operational ledger');
+    // Marketplace card/cash economics are NOT in the legacy operational ledger.
+    expect(s).toContain('Marketplace card/cash economics are authoritative');
   });
 
   it('links to the Financial Position page (authoritative source)', () => {

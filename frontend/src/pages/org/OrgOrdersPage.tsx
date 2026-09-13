@@ -4,6 +4,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import api from '../../services/api';
 import { useToast } from '../../components/ui/Toast';
 import { formatPrice } from '../../utils/currency';
+import { financialStatusLabel } from '../../utils/marketplaceFinancialStatus';
 import { Can } from '../../permissions/Can';
 
 const STATUS_COLORS: Record<string, string> = {
@@ -165,7 +166,7 @@ export default function OrgOrdersPage() {
                       order.financial_status === 'Held' ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400' :
                       order.financial_status === 'Cancelled' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' :
                       'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
-                    }`}>{order.financial_status}</span>
+                    }`}>{financialStatusLabel(order.financial_status)}</span>
                   </div>
                 )}
               </div>

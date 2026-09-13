@@ -8,6 +8,7 @@ import { useToast } from '../../components/ui/Toast';
 import { Can } from '../../permissions/Can';
 import { useCan } from '../../hooks/useCan';
 import { formatPrice } from '../../utils/currency';
+import { financialStatusLabel } from '../../utils/marketplaceFinancialStatus';
 import { useTranslation } from '../../i18n';
 import SellerProductFormModal from '../../components/marketplace/SellerProductFormModal';
 import { BalanceCard, CollectorInfoSection, BUCKET_BORDER_COLORS } from '../org/FinancialPositionPage';
@@ -457,7 +458,7 @@ export default function SellerDashboardPage() {
                           order.financial_status === 'Held' ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400' :
                           order.financial_status === 'Cancelled' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' :
                           'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
-                        }`}>{order.financial_status}</span>
+                        }`}>{financialStatusLabel(order.financial_status)}</span>
                       </div>
                     )}
                   </div>
