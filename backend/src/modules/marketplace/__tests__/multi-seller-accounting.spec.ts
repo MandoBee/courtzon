@@ -1,13 +1,13 @@
-﻿/**
- * Multi-seller marketplace â€” end-to-end business-rule regression suite.
+/**
+ * Multi-seller marketplace — end-to-end business-rule regression suite.
  *
  * Business rules under test (authoritative):
- *  - N sellers in one checkout â†’ exactly N independent seller orders sharing one
+ *  - N sellers in one checkout → exactly N independent seller orders sharing one
  *    checkout_group_id. Each order owns its items, subtotal, shipping, total,
  *    status lifecycle, stock deductions, financials and events.
  *  - An organisation of ANY type can be a Marketplace seller (owner_id based).
- *  - CARD: CourtZon collects buyer money â†’ commission earned, net payable to seller.
- *  - CASH: seller collects buyer money â†’ commission receivable FROM the seller.
+ *  - CARD: CourtZon collects buyer money → commission earned, net payable to seller.
+ *  - CASH: seller collects buyer money → commission receivable FROM the seller.
  *
  * Reference example used throughout:
  *    products = 1000, shipping = 60, commission = 10% of products = 100
@@ -15,14 +15,14 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-// â”€â”€ Hoisted mock references (used inside vi.mock factories) â”€â”€
+// ── Hoisted mock references (used inside vi.mock factories) ──
 const mockGetPool = vi.hoisted(() => vi.fn(() => ({ execute: vi.fn(async () => [[], []]), getConnection: vi.fn() })));
 const mockWithTransaction = vi.hoisted(() => vi.fn(async (fn: any) => fn({})));
 const mockEmit = vi.hoisted(() => vi.fn());
 const repoMock = vi.hoisted(() => ({} as Record<string, any>));
 const mockCommissionCalculate = vi.hoisted(() => vi.fn(async () => ({ rate: 10, rateType: 'percentage', planName: 'Basic' })));
 const mockGetCurrentSubscription = vi.hoisted(() => vi.fn(async () => ({ exists: true, effectiveStatus: 'active' })));
-const mockWalletCharge = vi.hoisted(() => vi.fn(async () => ({ success: true })));
+const mockWalletCharge = vi.hoisted(() => vi.fn(async () => ({ success: true, paymentUrl: 'https://mock/pay', clientSecret: 'mock_csk_test_1', status: 'pending' })));
 const mockCreateTransaction = vi.hoisted(() => vi.fn(async () => 9001));
 const mockCreateEntries = vi.hoisted(() => vi.fn(async () => []));
 
@@ -56,7 +56,7 @@ vi.mock('../../financial/infrastructure/repositories/financial-entitlement.repos
 
 import { marketplaceService } from '../application/marketplace.service.js';
 
-// â”€â”€ helpers â”€â”€
+// ── helpers ──
 let orderCounter = 5000;
 const productMap = new Map<number, any>();
 const createdOrders = new Map<number, any>();
@@ -127,15 +127,15 @@ beforeEach(() => {
   repoMock.restoreCartFromOrder = vi.fn(async () => {});
 });
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-describe('order splitting: N sellers â†’ exactly N independent orders', () => {
-  it('2 sellers â†’ exactly 2 orders sharing one checkout group', async () => {
+// ═══════════════════════════════════════════════════════════════════════════
+describe('order splitting: N sellers → exactly N independent orders', () => {
+  it('2 sellers → exactly 2 orders sharing one checkout group', async () => {
     seedCart([
       cartItem(1, 'Racket A', 500, 2, 10),   // Seller 10: products 1000
       cartItem(2, 'Shoes B', 300, 1, 20),    // Seller 20: products 300
     ]);
 
-    await marketplaceService.checkout(777, { addressId: 1, paymentMethod: 'wallet' });
+    await marketplaceService.checkout(777, { addressId: 1, paymentMethod: 'card' });
 
     expect(repoMock.createOrder).toHaveBeenCalledTimes(2);
     const calls = repoMock.createOrder.mock.calls.map((c: any[]) => c[0]);
@@ -153,21 +153,21 @@ describe('order splitting: N sellers â†’ exactly N independent orders', () 
     expect(calls.every((c: any) => Number(c.shippingCost) === 60)).toBe(true);
   });
 
-  it('3 sellers â†’ exactly 3 orders with independent subtotals/shipping/commission', async () => {
+  it('3 sellers → exactly 3 orders with independent subtotals/shipping/commission', async () => {
     seedCart([
       cartItem(1, 'A', 400, 1, 10),
       cartItem(2, 'B', 300, 1, 20),
       cartItem(3, 'C', 200, 1, 30),
     ]);
 
-    await marketplaceService.checkout(777, { addressId: 1, paymentMethod: 'wallet' });
+    await marketplaceService.checkout(777, { addressId: 1, paymentMethod: 'card' });
 
     expect(repoMock.createOrder).toHaveBeenCalledTimes(3);
     const calls = repoMock.createOrder.mock.calls.map((c: any[]) => c[0]);
     expect(new Set(calls.map((c: any) => c.checkoutGroupId)).size).toBe(1);
-    // Shipping per seller (60 Ã— 3)
+    // Shipping per seller (60 × 3)
     expect(calls.reduce((s: number, c: any) => s + Number(c.shippingCost || 0), 0)).toBe(180);
-    // Commission 10% of products only (900 Ã— 10% = 90)
+    // Commission 10% of products only (900 × 10% = 90)
     expect(calls.reduce((s: number, c: any) => s + Number(c.commission || 0), 0)).toBeCloseTo(90, 2);
 
     // Items never cross orders: each item belongs to a distinct order
@@ -185,7 +185,7 @@ describe('seller identity: organisation of ANY type is a valid seller', () => {
     repoMock.findSellerOrgsForUser.mockResolvedValue([{ id: 6, is_active: 1, owner_id: 68 }]);
 
     await marketplaceService.getSellerOrders(68, { page: 1, limit: 10 });
-    // Repository receives ALL resolved org ids â€” including the non-shop club.
+    // Repository receives ALL resolved org ids — including the non-shop club.
     expect(repoMock.findOrdersBySeller).toHaveBeenCalledWith([6], { page: 1, limit: 10 });
   });
 
@@ -241,7 +241,7 @@ describe('seller identity: organisation of ANY type is a valid seller', () => {
     expect(result._isGrouped).toBe(true);
     expect(result.items).toHaveLength(2); // complete grouped checkout
 
-    // Unrelated user â†’ no rows anywhere â†’ throws
+    // Unrelated user → no rows anywhere → throws
     repoMock.findOrderById.mockReset();
     repoMock.findOrderById.mockImplementation(async () => []);
     repoMock.findSellerOrgsForUser.mockResolvedValue([]);
@@ -249,7 +249,7 @@ describe('seller identity: organisation of ANY type is a valid seller', () => {
   });
 });
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════════════════════════
 describe('stock ledger attribution', () => {
   it('each stock deduction references its OWN seller order + correct org', async () => {
     seedCart([
@@ -257,7 +257,7 @@ describe('stock ledger attribution', () => {
       cartItem(2, 'Shoes B', 300, 1, 20),
     ]);
 
-    await marketplaceService.checkout(777, { addressId: 1, paymentMethod: 'wallet' });
+    await marketplaceService.checkout(777, { addressId: 1, paymentMethod: 'card' });
 
     // Phase 2 Step 5: marketplace_ledger_entries no longer written.
     // Stock deduction is verified by decrementStock calls.
@@ -265,7 +265,7 @@ describe('stock ledger attribution', () => {
   });
 });
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════════════════════════
 describe('accounting: confirm + delivery journals (example: 1000 / 60 / 10%)', () => {
   function seedConfirmedOrder(paymentMethod: 'card' | 'cash') {
     const order = {
@@ -281,18 +281,18 @@ describe('accounting: confirm + delivery journals (example: 1000 / 60 / 10%)', (
     ]));
   }
 
-  it('CARD delivery — legacy path retired: only cash-collection status, NO legacy transaction/entries', async () => {
+  it('CARD delivery � legacy path retired: only cash-collection status, NO legacy transaction/entries', async () => {
     seedConfirmedOrder('card');
     await marketplaceService._recordDeliveryFinancials(6001);
 
-    // The legacy transactions/transaction_entries double-post is retired — the
+    // The legacy transactions/transaction_entries double-post is retired � the
     // canonical Accounting Engine is the single source of truth.
     expect(mockCreateTransaction).not.toHaveBeenCalled();
     expect(mockCreateEntries).not.toHaveBeenCalled();
     expect(repoMock.updateCashCollectionStatus).toHaveBeenCalledWith(6001, 'held_by_courtzon');
   });
 
-  it('CASH delivery — legacy path retired: only cash-collection status, NO legacy transaction/entries', async () => {
+  it('CASH delivery � legacy path retired: only cash-collection status, NO legacy transaction/entries', async () => {
     seedConfirmedOrder('cash');
     await marketplaceService._recordDeliveryFinancials(6001);
 
@@ -314,7 +314,7 @@ describe('accounting: confirm + delivery journals (example: 1000 / 60 / 10%)', (
     }));
   });
 
-  it('multi-seller delivery — legacy path retired: NO legacy transaction/entries, status-only per order', async () => {
+  it('multi-seller delivery � legacy path retired: NO legacy transaction/entries, status-only per order', async () => {
     const mk = (id: number, sellerId: number, subtotal: number, ship: number) => {
       const o: any = {
         id, buyer_id: 777, status: 'delivered', subtotal, shipping_cost: ship,
@@ -331,7 +331,7 @@ describe('accounting: confirm + delivery journals (example: 1000 / 60 / 10%)', (
     repoMock.findOrderById.mockResolvedValueOnce(mk(7002, 20, 300, 30));
     await marketplaceService._recordDeliveryFinancials(7002);
 
-    // Legacy delivery journal removed — canonical engine posts per seller-order.
+    // Legacy delivery journal removed � canonical engine posts per seller-order.
     expect(mockCreateEntries).not.toHaveBeenCalled();
     expect(mockCreateTransaction).not.toHaveBeenCalled();
     expect(repoMock.updateCashCollectionStatus).toHaveBeenCalledTimes(2);
@@ -349,7 +349,7 @@ describe('accounting: confirm + delivery journals (example: 1000 / 60 / 10%)', (
   });
 });
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════════════════════════
 describe('cancellation affects correct sibling orders', () => {
   it('cancelling one order cancels siblings; stock reversals keep per-order ownership', async () => {
     const GROUP = 'grp-cancel';
@@ -371,14 +371,14 @@ describe('cancellation affects correct sibling orders', () => {
     const cancelled = [...new Set(repoMock.updateOrderStatus.mock.calls.filter((c: any[]) => c[1] === 'cancelled').map((c: any[]) => c[0]))];
     expect(cancelled.sort()).toEqual([8001, 8002]);
 
-    // Phase 2 Step 5: reversal ledger entries removed — stock restoration via restoreStock
+    // Phase 2 Step 5: reversal ledger entries removed � stock restoration via restoreStock
     expect(repoMock.restoreStock.mock.calls.length).toBeGreaterThanOrEqual(2);
     const restoredProducts = new Set(repoMock.restoreStock.mock.calls.map((c: any[]) => c[0]));
     expect(restoredProducts).toEqual(new Set([1, 2]));
   });
 });
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════════════════════════
 describe('events reference correct seller + order', () => {
   it('one order-placed event PER SELLER with its own orderId, total, group', async () => {
     seedCart([
@@ -387,7 +387,7 @@ describe('events reference correct seller + order', () => {
       cartItem(3, 'Ball C', 200, 1, 30),
     ]);
 
-    await marketplaceService.checkout(777, { addressId: 1, paymentMethod: 'wallet' });
+    await marketplaceService.checkout(777, { addressId: 1, paymentMethod: 'card' });
 
     const placed = mockEmit.mock.calls.filter((c: any[]) => c[0] === 'marketplace:order-placed').map((c: any[]) => c[1]);
     expect(placed).toHaveLength(3);

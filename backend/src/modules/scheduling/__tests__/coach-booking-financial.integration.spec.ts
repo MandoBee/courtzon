@@ -600,66 +600,34 @@ describe('Coach Booking Financial Wiring', () => {
     return rows.length ? Number(rows[0].id) : null;
   }
 
-  it('25. compensation: coach-session failure after wallet money moved → canonical refund + booking:refunded once + wallet restored', async () => {
-    const { activitiesRepository } = await import('../../activities/infrastructure/repositories/activities.repository.js');
+it('25. PHASE 1 — scheduling/booking wallet payment REJECTED: no booking, no wallet debit, no saga', async () => {
     const { SchedulingBookingService } = await import('../application/scheduling-booking.service.js');
-    const { eventBusV2 } = await import('../../../shared/event-bus/index.js');
     await insertAgreement({ orgId });
     const date = '2027-04-01';
     const [walletRows] = await pool.execute<RowData>(`SELECT balance FROM user_wallets WHERE user_id = ?`, [PLAYER_USER]);
     const beforeBalance = Number((walletRows[0] as any).balance);
 
-    const sessionSpy = vi.spyOn(activitiesRepository, 'createCoachSession').mockRejectedValueOnce(new Error('session boom'));
-    const emitSpy = vi.spyOn(eventBusV2, 'emit');
-    try {
-      await expect(
-        new SchedulingBookingService().bookSession({ coachId: coachProfileId, resourceId, date, startTime: '09:00', endTime: '10:00', paymentMethod: 'wallet' }, PLAYER_USER),
-      ).rejects.toThrow(/refunded/i);
+    await expect(
+      new SchedulingBookingService().bookSession({ coachId: coachProfileId, resourceId, date, startTime: '09:00', endTime: '10:00', paymentMethod: 'wallet' }, PLAYER_USER),
+    ).rejects.toThrow(/Wallet is temporarily unavailable as a payment method/);
 
-      const bookingId = await lastBookingForUserAndDate(date);
-      expect(bookingId).not.toBeNull();
-      const [b] = await pool.execute<RowData>(`SELECT booking_status, refunded_amount, payment_status FROM bookings WHERE id = ?`, [bookingId]);
-      expect(b[0].booking_status).toBe('cancelled');
-      expect(Number(b[0].refunded_amount)).toBeGreaterThan(0);
-
-      // Canonical booking:refunded fired exactly once.
-      const refundedCalls = emitSpy.mock.calls.filter((c: any[]) => c[0] === 'booking:refunded');
-      expect(refundedCalls.length).toBe(1);
-
-      // Wallet balance restored to the pre-booking balance (money moved → refunded).
-      const [after] = await pool.execute<RowData>(`SELECT balance FROM user_wallets WHERE user_id = ?`, [PLAYER_USER]);
-      expect(Number((after[0] as any).balance)).toBe(beforeBalance);
-
-      if (bookingId) await cleanupBookingRefs(bookingId);
-    } finally {
-      sessionSpy.mockRestore();
-      emitSpy.mockRestore();
-      const bid = await lastBookingForUserAndDate(date);
-      if (bid) await cleanupBookingRefs(bid);
-    }
+    // No booking is created and the player wallet is untouched.
+    const bookingId = await lastBookingForUserAndDate(date);
+    expect(bookingId).toBeNull();
+    const [after] = await pool.execute<RowData>(`SELECT balance FROM user_wallets WHERE user_id = ?`, [PLAYER_USER]);
+    expect(Number((after[0] as any).balance)).toBe(beforeBalance);
   });
 
-  it('26. compensation: link failure cancels the orphan coach session (no unintended active session)', async () => {
-    const { activitiesRepository } = await import('../../activities/infrastructure/repositories/activities.repository.js');
+it('26. PHASE 1 — wallet booking rejected: no coach session is created', async () => {
     const { SchedulingBookingService } = await import('../application/scheduling-booking.service.js');
     await insertAgreement({ orgId });
     const date = '2027-04-02';
-    const linkSpy = vi.spyOn(activitiesRepository, 'updateSessionBooking').mockRejectedValueOnce(new Error('link boom'));
-    try {
-      await expect(
-        new SchedulingBookingService().bookSession({ coachId: coachProfileId, resourceId, date, startTime: '09:00', endTime: '10:00', paymentMethod: 'wallet' }, PLAYER_USER),
-      ).rejects.toThrow();
-      // The session created during the saga must be cancelled (not left active/orphaned).
-      const [s] = await pool.execute<RowData>(
-        `SELECT status FROM coach_sessions WHERE coach_id = ? AND DATE(start_time) = ? ORDER BY id DESC LIMIT 1`, [coachProfileId, date]);
-      expect(s.length).toBeGreaterThan(0);
-      expect(s[0].status).toBe('cancelled');
-    } finally {
-      linkSpy.mockRestore();
-      const bid = await lastBookingForUserAndDate(date);
-      if (bid) await cleanupBookingRefs(bid);
-      await pool.execute(`DELETE FROM coach_sessions WHERE coach_id = ? AND DATE(start_time) = ?`, [coachProfileId, date]);
-    }
+    await expect(
+      new SchedulingBookingService().bookSession({ coachId: coachProfileId, resourceId, date, startTime: '09:00', endTime: '10:00', paymentMethod: 'wallet' }, PLAYER_USER),
+    ).rejects.toThrow(/Wallet is temporarily unavailable/);
+    const [s] = await pool.execute<RowData>(
+      `SELECT COUNT(*) AS c FROM coach_sessions WHERE coach_id = ? AND DATE(start_time) = ?`, [coachProfileId, date]);
+expect(Number(s[0].c)).toBe(0);
   });
 
   it('27. compensation: no money moved → cancelled without a false refund claim', async () => {
@@ -688,35 +656,16 @@ describe('Coach Booking Financial Wiring', () => {
     }
   });
 
-  it('28. compensation is idempotent — running twice does not double-refund', async () => {
-    const { activitiesRepository } = await import('../../activities/infrastructure/repositories/activities.repository.js');
+it('28. PHASE 1 — repeated wallet scheduling attempts are rejected idempotently (no booking, no refund)', async () => {
     const { SchedulingBookingService } = await import('../application/scheduling-booking.service.js');
-    const { bookingService } = await import('../../booking/application/booking.service.js');
     await insertAgreement({ orgId });
     const date = '2027-04-04';
-    const sessionSpy = vi.spyOn(activitiesRepository, 'createCoachSession').mockRejectedValueOnce(new Error('session boom'));
-    try {
-      // First compensation via the saga.
+    for (let i = 0; i < 2; i++) {
       await expect(
         new SchedulingBookingService().bookSession({ coachId: coachProfileId, resourceId, date, startTime: '09:00', endTime: '10:00', paymentMethod: 'wallet' }, PLAYER_USER),
-      ).rejects.toThrow();
-      const bookingId = await lastBookingForUserAndDate(date);
-      expect(bookingId).not.toBeNull();
-
-      // Second compensation on the already-cancelled booking must be a no-op.
-      const second = await bookingService.compensateFailedBooking(bookingId!, 'repeat');
-      expect(second.cancelled).toBe(false);
-      expect(second.refunded).toBe(false);
-
-      // No duplicate refund record.
-      const [b] = await pool.execute<RowData>(`SELECT refunded_amount FROM bookings WHERE id = ?`, [bookingId]);
-      expect(Number(b[0].refunded_amount)).toBeGreaterThan(0);
-      if (bookingId) await cleanupBookingRefs(bookingId);
-    } finally {
-      sessionSpy.mockRestore();
-      const bid = await lastBookingForUserAndDate(date);
-      if (bid) await cleanupBookingRefs(bid);
+      ).rejects.toThrow(/Wallet is temporarily unavailable/);
     }
+    expect(await lastBookingForUserAndDate(date)).toBeNull();
   });
 
   it('29. compensation: refund failure is surfaced, never reported as successful', async () => {
@@ -779,87 +728,35 @@ describe('Coach Booking Financial Wiring', () => {
     return unbalanced;
   }
 
-  it('31. Saga compensation reversal is balanced (wallet coach booking, session failure)', async () => {
-    const { activitiesRepository } = await import('../../activities/infrastructure/repositories/activities.repository.js');
+  it('31. PHASE 1 — rejected wallet booking posts NO accounting/ledger events', async () => {
     const { SchedulingBookingService } = await import('../application/scheduling-booking.service.js');
     await insertAgreement({ orgId });
     const date = '2027-04-07';
-    const sessionSpy = vi.spyOn(activitiesRepository, 'createCoachSession').mockRejectedValueOnce(new Error('session boom'));
-    try {
-      await expect(
-        new SchedulingBookingService().bookSession({ coachId: coachProfileId, resourceId, date, startTime: '09:00', endTime: '10:00', paymentMethod: 'wallet' }, PLAYER_USER),
-      ).rejects.toThrow(/refunded/i);
-      const bookingId = await lastBookingForUserAndDate(date);
-      expect(bookingId).not.toBeNull();
-      // Wait for the canonical refund accounting to attempt the reversal.
-      await waitForLedgerEvent(bookingId!, 'booking_wallet_refund');
-      // Every posting is mathematically balanced (no unbalanced wallet refund).
-      expect(await assertEveryBookingPostingBalanced(bookingId!)).toEqual([]);
-    } finally {
-      sessionSpy.mockRestore();
-      const bid = await lastBookingForUserAndDate(date);
-      if (bid) await cleanupBookingRefs(bid);
-      await pool.execute(`DELETE FROM coach_org_agreements WHERE coach_id = ?`, [coachProfileId]);
-    }
+    await expect(
+      new SchedulingBookingService().bookSession({ coachId: coachProfileId, resourceId, date, startTime: '09:00', endTime: '10:00', paymentMethod: 'wallet' }, PLAYER_USER),
+    ).rejects.toThrow(/Wallet is temporarily unavailable/);
+    const bookingId = await lastBookingForUserAndDate(date);
+    expect(bookingId).toBeNull();
+    expect((await assertEveryBookingPostingBalanced(bookingId ?? 0))).toEqual([]);
   }, 30000);
 
-  it('30. refund of a PAID wallet coach booking posts balanced entries + coach reversal (debits == credits)', async () => {
-    // This test needs the wallet booking to be CONFIRMED + booking:paid posted.
-    const { registerBookingPaymentListeners } = await import('../../booking/application/booking-payment.listener.js');
-    registerBookingPaymentListeners();
-    const { SchedulingBookingService } = await import('../application/scheduling-booking.service.js');
+  it('30. PHASE 1 — booking create with wallet is REJECTED (no booking, no accounting)', async () => {
     const { bookingService } = await import('../../booking/application/booking.service.js');
-    await insertAgreement({ orgId });
     const date = '2027-04-06';
-    const res = await new SchedulingBookingService().bookSession(
-      { coachId: coachProfileId, resourceId, date, startTime: '09:00', endTime: '10:00', paymentMethod: 'wallet' }, PLAYER_USER);
-    const bookingId = Number(res.bookingId);
-    try {
-      // Booking revenue must be posted (wallet confirm + GL) before the refund.
-      await waitForLedgerEvent(bookingId, 'booking_wallet_payment');
-      await waitForLedgerEvent(bookingId, 'booking_coach_payout');
-      expect((await assertEveryBookingPostingBalanced(bookingId))).toEqual([]);
-
-      // Full refund via the canonical cancel path.
-      await bookingService.cancelBooking(bookingId, PLAYER_USER, 'test full refund');
-      await waitForLedgerEvent(bookingId, 'booking_wallet_refund');
-      await waitForLedgerEvent(bookingId, 'booking_coach_reversal');
-
-      const unbalanced = await assertEveryBookingPostingBalanced(bookingId);
-      expect(unbalanced).toEqual([]);
-
-      // Coach reversal reverses the coach payable/expense.
-      const [cr] = await pool.execute<RowData>(
-        `SELECT side, amount FROM ledger_entries WHERE source_type='booking' AND source_id=? AND event_type='booking_coach_reversal'`,
-        [bookingId]);
-      expect(cr.length).toBeGreaterThan(0);
-      const coachAmount = Number(cr[0].amount);
-      expect(coachAmount).toBeGreaterThan(0);
-    } finally {
-      if (bookingId) await cleanupBookingRefs(bookingId);
-      await pool.execute(`DELETE FROM coach_sessions WHERE coach_id = ? AND booking_id = ?`, [coachProfileId, bookingId]);
-      await pool.execute(`DELETE FROM coach_org_agreements WHERE coach_id = ?`, [coachProfileId]);
-    }
+    await expect(
+      bookingService.createBooking({ branchId, resourceId, bookingType: 'private_match', bookingDate: date, startTime: '09:00', endTime: '10:00', paymentMethod: 'wallet' } as any, PLAYER_USER),
+    ).rejects.toThrow(/Wallet is temporarily unavailable as a payment method/);
+    const bookingId = await lastBookingForUserAndDate(date);
+    expect(bookingId).toBeNull();
   }, 30000);
 
-  it('32. refund of a court-only wallet booking (no coach) stays balanced (regression)', async () => {
-    const { registerBookingPaymentListeners } = await import('../../booking/application/booking-payment.listener.js');
-    registerBookingPaymentListeners();
+  it('32. PHASE 1 — court-only booking with wallet is REJECTED (no booking created)', async () => {
     const { bookingService } = await import('../../booking/application/booking.service.js');
     const date = '2027-04-08';
-    const res = await bookingService.createBooking({
-      branchId, resourceId, bookingType: 'private_match',
-      bookingDate: date, startTime: '09:00', endTime: '10:00', paymentMethod: 'wallet',
-    } as any, PLAYER_USER);
-    const bookingId = Number(res.id);
-    try {
-      await waitForLedgerEvent(bookingId, 'booking_wallet_payment');
-      await bookingService.cancelBooking(bookingId, PLAYER_USER, 'test court-only refund');
-      await waitForLedgerEvent(bookingId, 'booking_wallet_refund');
-      expect(await assertEveryBookingPostingBalanced(bookingId)).toEqual([]);
-    } finally {
-      if (bookingId) await cleanupBookingRefs(bookingId);
-    }
+    await expect(
+      bookingService.createBooking({ branchId, resourceId, bookingType: 'private_match', bookingDate: date, startTime: '09:00', endTime: '10:00', paymentMethod: 'wallet' } as any, PLAYER_USER),
+    ).rejects.toThrow(/Wallet is temporarily unavailable/);
+    expect(await lastBookingForUserAndDate(date)).toBeNull();
   }, 30000);
 
   // ── Group 3D: coach search N+1 elimination ──

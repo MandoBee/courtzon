@@ -585,7 +585,7 @@ export const marketplaceService = {
         currencyCode,
         shippingAddress: addr || null,
         notes: data.notes || '',
-        paymentMethod: data.paymentMethod || 'wallet',
+        paymentMethod: data.paymentMethod || 'card',
         estimatedDeliveryDate,
         checkoutGroupId,
       });
@@ -694,39 +694,11 @@ export const marketplaceService = {
 
   async _processOrderPayment(userId: number, orderIds: number[], total: number, currency: string, paymentMethod: string, returnUrl?: string, customerData?: { customerEmail?: string; customerPhone?: string; customerName?: string; customerAddress?: Record<string, any> }, checkoutGroupId?: string) {
     const primaryOrderId = orderIds[0];
+    // PHASE 1 (temporary) — wallet is not an active marketplace payment method.
     if (paymentMethod === 'wallet') {
-      try {
-        const result = await paymentService.charge(userId, {
-          referenceType: 'order',
-          referenceId: primaryOrderId,
-          amount: total,
-          currency,
-          paymentMethod: 'wallet',
-        });
-        if (result.success) {
-          for (const oid of orderIds) {
-            await this._fulfillAndConfirmOrder(oid, userId, 'Payment via wallet');
-          }
-          const orderRows = await repo.findOrderById(primaryOrderId);
-          if (orderRows?.length) {
-            const order = this._formatOrder(orderRows);
-            return order;
-          }
-          return this.getOrderForUser(primaryOrderId, userId);
-        }
-        await this._restoreOrdersStock(orderIds, 'Wallet payment returned not successful');
-        for (const oid of orderIds) {
-          await repo.updateOrderStatus(oid, 'cancelled', 'Wallet payment failed');
-        }
-      } catch (err: any) {
-        log.error({ err, orderIds, userId }, 'Wallet payment failed — restoring stock and cancelling orders');
-        await this._restoreOrdersStock(orderIds, 'Wallet payment failed — stock restored');
-        for (const oid of orderIds) {
-          await repo.updateOrderStatus(oid, 'cancelled', `Wallet payment error: ${err?.message || 'Unknown error'}`);
-        }
-        throw new ConflictError(err?.message || 'Wallet payment failed');
-      }
-    } else if (paymentMethod === 'cash') {
+      throw new ConflictError('Wallet is temporarily unavailable as a payment method. Please use Card or Cash.');
+    }
+    if (paymentMethod === 'cash') {
       for (const oid of orderIds) {
         await this._fulfillAndConfirmOrder(oid, userId, 'Payment on delivery (cash)');
       }

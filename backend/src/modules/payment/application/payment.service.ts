@@ -80,8 +80,15 @@ function sanitizeGatewayResponse(raw: unknown): Record<string, any> | null {
 
 export class PaymentService {
   async charge(userId: number, input: ChargeInput) {
-    if (input.paymentMethod === 'wallet') {
-      return this.chargeByWallet(userId, input);
+    // PHASE 1 (temporary) — Wallet is NOT an active payment/collection method
+    // system-wide. New charges must use Card / Cash. The wallet remains fully
+    // active as a VALUE STORE: refunds credit it, deposits fund it, withdrawals
+    // spend it, and historical wallet-payment rows stay readable. chargeByWallet
+    // is kept (dormant) for history / future re-activation.
+    if ((input.paymentMethod as string) === 'wallet') {
+      throw new ConflictError(
+        'Wallet is temporarily unavailable as a payment method. Please use Card or Cash.',
+      );
     }
 
     // Card / online payments need the real gateway to produce a clientSecret
@@ -1417,6 +1424,12 @@ export class PaymentService {
    * for the frontend card widget. Bypasses V2 pipeline routing.
    */
   async createGatewayIntention(userId: number, input: ChargeInput) {
+    // PHASE 1 defense-in-depth — wallet must never reach a gateway intention.
+    if ((input.paymentMethod as string) === 'wallet') {
+      throw new ConflictError(
+        'Wallet is temporarily unavailable as a payment method. Please use Card or Cash.',
+      );
+    }
     const traceId = randomUUID();
     const paymentResult = await paymentGateway.charge({
       amount: input.amount,

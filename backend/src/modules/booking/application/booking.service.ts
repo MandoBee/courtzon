@@ -229,7 +229,11 @@ export class BookingService {
       // Tax lookup is non-fatal; booking proceeds untaxed (zero-rated)
     }
 
-    const paymentMethod = input.paymentMethod || 'wallet';
+    const paymentMethod = input.paymentMethod || 'card';
+    // PHASE 1 (temporary) — wallet is not an active booking payment method.
+    if ((paymentMethod as string) === 'wallet') {
+      throw new ConflictError('Wallet is temporarily unavailable as a payment method. Please use Card or Cash.');
+    }
     const isGatewayOrWallet = paymentMethod !== 'cash' && paymentMethod !== 'cod';
 
     // Acquire distributed Redis locks for ALL slots to prevent concurrent bookings
@@ -295,7 +299,7 @@ export class BookingService {
             referenceId: bookingId,
             amount: Math.round((bookingTotal + taxAmount) * 100) / 100,
             currency: 'EGP',
-            paymentMethod: (paymentMethod === 'online' ? 'card' : paymentMethod as 'wallet' | 'card' | 'bank_transfer'),
+            paymentMethod: (paymentMethod === 'online' ? 'card' : paymentMethod as 'card' | 'bank_transfer'),
             returnUrl: input.returnUrl,
             customerName: user?.full_name,
             customerPhone: user?.full_phone,
@@ -1817,6 +1821,11 @@ export class BookingService {
   private async createBookingV2(input: CreateBookingInput, userId: number) {
     const pool = getPool();
 
+    // PHASE 1 (temporary) — wallet is not an active booking payment method.
+    if ((input.paymentMethod as string) === 'wallet') {
+      throw new ConflictError('Wallet is temporarily unavailable as a payment method. Please use Card or Cash.');
+    }
+
     const [branchRows] = await pool.execute<RowData>(
       'SELECT id, organisation_id, timezone, opening_time, closing_time FROM branches WHERE id = ?', [input.branchId],
     );
@@ -1948,26 +1957,7 @@ export class BookingService {
       } as any);
     }
 
-    // ── Process payment for wallet (synchronous) ──
-    if (input.paymentMethod === 'wallet') {
-      log.info({ bookingId, userId, amount: bookingTotal }, 'createBookingV2: processing wallet payment');
-      try {
-        const { paymentService } = await import('../../payment/application/payment.service.js');
-        await paymentService.charge(userId, {
-          referenceType: 'booking',
-          referenceId: bookingId,
-          amount: bookingTotal,
-          currency: 'EGP',
-          paymentMethod: 'wallet',
-        });
-        log.info({ bookingId }, 'createBookingV2: wallet payment completed — booking will be confirmed by listener');
-      } catch (chargeErr: any) {
-        log.error({ err: chargeErr, bookingId }, 'createBookingV2: wallet payment failed — cancelling booking');
-        await executeBookingCommand('CancelBooking', cancelBookingHandler, { bookingId, reason: CancellationReason.PAYMENT_SESSION_CREATION_FAILED, actorId: 0 }, String(bookingId));
-        throw new ConflictError(chargeErr.message || 'Wallet payment failed');
-      }
-    }
-
+    // PHASE 1 — wallet is rejected earlier; only card/gateway and cash/COD reach here.
     return { id: bookingId, bookingId, total_amount: bookingTotal, coach_amount: coachAmount };
   }
 

@@ -61,7 +61,7 @@ function state(overrides: Record<string, any> = {}) {
   return {
     enrollmentId: 11, programId: 1, programName: 'Tennis Pro', groupId: 2, groupName: 'G8 Group',
     enrollmentStatus: 'confirmed', paymentState: 'unpaid', amount: 200, currency: 'EGP',
-    paid: false, paymentConfirmedAt: null, availableMethods: ['wallet', 'card'], ...overrides,
+    paid: false, paymentConfirmedAt: null, availableMethods: ['card'], ...overrides,
   };
 }
 
@@ -120,15 +120,15 @@ describe('G8.4 — AcademyPaymentPanel', () => {
     expect(screen.getByText('Try Again')).toBeTruthy();
   });
 
-  it('unpaid → amount + Payment Required + Wallet/Card methods + Pay Now', async () => {
+  it('unpaid → amount + Payment Required + Card + Pay Now (wallet not rendered — PHASE 1)', async () => {
     renderPanel();
     await waitFor(() => expect(screen.getByText('Payment Required')).toBeTruthy());
     expect(screen.getByText('Pay Now')).toBeTruthy();
     expect(screen.getByText('Card')).toBeTruthy();
-    expect(screen.getByText('Wallet')).toBeTruthy();
+    expect(screen.queryByText('Wallet')).toBeNull();
   });
 
-  it('wallet Pay Now → POST /pay → refresh shows Payment Confirmed', async () => {
+  it('card Pay Now → POST /pay (card) → refresh shows Payment Confirmed', async () => {
     mockPost.mockImplementation((url: string) => {
       if (url === '/my/academy/enrollments/11/pay') return Promise.resolve({ data: { status: 'paid', paymentId: 5001, paymentStatus: 'paid' } });
       return Promise.resolve({ data: {} });
@@ -144,7 +144,7 @@ describe('G8.4 — AcademyPaymentPanel', () => {
     fireEvent.click(screen.getByText('Pay Now'));
     paid = true;
     await waitFor(() => expect(screen.getByText('Payment Confirmed')).toBeTruthy());
-    expect(mockPost).toHaveBeenCalledWith('/my/academy/enrollments/11/pay', expect.objectContaining({ paymentMethod: 'wallet' }));
+    expect(mockPost).toHaveBeenCalledWith('/my/academy/enrollments/11/pay', expect.objectContaining({ paymentMethod: 'card' }));
   });
 
   it('backend error on pay → toast error (backend remains authoritative)', async () => {

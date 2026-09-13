@@ -419,49 +419,26 @@ describe('G8.3 — Academy payment → entitlement → accounting → settlement
     expect(coach.length).toBe(0);
   });
 
-  it('2. successful wallet → atomic wallet charge + 2100/2202/4191 accounting', async () => {
+  it('2. wallet payment is REJECTED (PHASE 1) — no snapshot, no entitlements, no accounting', async () => {
     const enrId = await seedEnrollment();
     const [balBefore] = await pool.execute<RowData>(`SELECT balance FROM user_wallets WHERE user_id = ?`, [userId]);
     const before = Number((balBefore as any[])[0].balance);
 
-    const res = await paymentService.charge(userId, {
+    await expect(paymentService.charge(userId, {
       referenceType: 'academy', referenceId: enrId, amount: 200, currency: 'EGP', paymentMethod: 'wallet',
-    });
-    expect(res.success).toBe(true);
-    expect(res.status).toBe('paid');
+    })).rejects.toThrow(/Wallet is temporarily unavailable as a payment method/);
 
-    const snap = await waitFor(() => snapshotFor(enrId), 'wallet snapshot');
-    expect(Number(snap.gross_amount)).toBe(200);
-    expect(snap.collector).toBe('courtzon');
-    expect(snap.payment_method).toBe('wallet');
+    // No snapshot / entitlement / accounting is created for the rejected charge.
+    await sleep(300);
+    expect(await snapshotFor(enrId)).toBeNull();
+    expect((await entitlementsFor(enrId)).length).toBe(0);
+    expect((await ledgerFor(enrId, 'academy_wallet_payment')).length).toBe(0);
+    expect((await ledgerFor(enrId, 'academy_org_receivable')).length).toBe(0);
 
+    // Player wallet balance is untouched.
     const [balAfter] = await pool.execute<RowData>(`SELECT balance, reserved_balance FROM user_wallets WHERE user_id = ?`, [userId]);
-    expect(Number((balAfter as any[])[0].balance)).toBe(before - 200);
+    expect(Number((balAfter as any[])[0].balance)).toBe(before);
     expect(Number((balAfter as any[])[0].reserved_balance)).toBe(0);
-
-    const [pt] = await pool.execute<RowData>(
-      `SELECT reference_type, reference_id, payment_status, payment_method FROM payment_transactions WHERE reference_type='academy' AND reference_id=?`,
-      [enrId],
-    );
-    expect((pt as any[]).length).toBeGreaterThanOrEqual(1);
-    expect((pt as any[])[0].reference_type).toBe('academy');
-    expect(Number((pt as any[])[0].reference_id)).toBe(enrId);
-    expect((pt as any[])[0].payment_status).toBe('paid');
-
-    await handleAcademyEnrollmentPaid({ payload: { enrollmentId: enrId } });
-    expect((await entitlementsFor(enrId)).length).toBe(2);
-
-    const rows = await waitFor(() => ledgerFor(enrId, 'academy_wallet_payment'), 'wallet ledger');
-    const { debit, credit } = sumBySide(rows);
-    expect(debit).toBe(200);
-    expect(credit).toBe(200);
-    expect(rows.every((r) => r.organisation_id === null)).toBe(true);
-
-    const orgRows = await waitFor(() => ledgerFor(enrId, 'academy_org_receivable'), 'wallet org ledger');
-    expect(sumBySide(orgRows).debit).toBe(200);
-    const byCode = await waitFor(() => orgLedgerByCode(enrId, 'academy_org_receivable'), 'wallet org split');
-    expect(creditByCode(byCode, 'ACAD-REV')).toBe(140);
-    expect(creditByCode(byCode, 'MKT-COURT-REN')).toBe(60);
   });
 
   it('3. successful offline cash → real payment record + 1161 receivable + org cash book', async () => {
@@ -525,14 +502,14 @@ describe('G8.3 — Academy payment → entitlement → accounting → settlement
     expect((e as any[])[0].payment_confirmed_at).toBeNull();
   });
 
-  it('5. insufficient wallet balance → rejected, no payment success state', async () => {
+  it('5. wallet payment is rejected regardless of amount — no payment success state (PHASE 1)', async () => {
     const enrId = await seedEnrollment();
     const [bal] = await pool.execute<RowData>(`SELECT balance FROM user_wallets WHERE user_id = ?`, [userId]);
     const balance = Number((bal as any[])[0].balance);
 
     await expect(paymentService.charge(userId, {
       referenceType: 'academy', referenceId: enrId, amount: balance + 1000, currency: 'EGP', paymentMethod: 'wallet',
-    })).rejects.toThrow(/Insufficient available wallet balance/);
+    })).rejects.toThrow(/Wallet is temporarily unavailable as a payment method/);
 
     await sleep(300);
     expect(await snapshotFor(enrId)).toBeNull();
@@ -687,16 +664,17 @@ describe('G8.3 — Academy payment → entitlement → accounting → settlement
     for (const [k, c] of keyCount) expect(c, `duplicate line for ${k}`).toBe(1);
   });
 
-  it('15. debit/credit balance across all three methods', async () => {
+  it('15. debit/credit balance across card + cash (wallet is rejected — PHASE 1)', async () => {
     const cardEnr = await seedEnrollment();
     await emitPaid(cardEnr, 9500101);
     const cardLedger = await waitFor(() => ledgerFor(cardEnr, 'academy_card_payment'), 'card');
     expect(sumBySide(cardLedger).debit).toBe(sumBySide(cardLedger).credit);
 
+    // Wallet charge is rejected and must never produce a wallet ledger leg.
     const wEnr = await seedEnrollment();
-    await paymentService.charge(userId, { referenceType: 'academy', referenceId: wEnr, amount: 200, currency: 'EGP', paymentMethod: 'wallet' });
-    const wLedger = await waitFor(() => ledgerFor(wEnr, 'academy_wallet_payment'), 'wallet');
-    expect(sumBySide(wLedger).debit).toBe(sumBySide(wLedger).credit);
+    await expect(paymentService.charge(userId, { referenceType: 'academy', referenceId: wEnr, amount: 200, currency: 'EGP', paymentMethod: 'wallet' }))
+      .rejects.toThrow(/Wallet is temporarily unavailable as a payment method/);
+    expect((await ledgerFor(wEnr, 'academy_wallet_payment')).length).toBe(0);
 
     const { academyPaymentService } = await import('../../academy/application/academy-payment.service.js');
     const cashEnr = await seedEnrollment();

@@ -72,7 +72,7 @@ describe('G8.4 — GET payment state', () => {
     expect(state.paymentState).toBe('unpaid');
     expect(state.amount).toBe(200);
     expect(state.currency).toBe('EGP');
-    expect(state.availableMethods).toEqual(['wallet', 'card']);
+    expect(state.availableMethods).toEqual(['card']);
     expect(state.paid).toBe(false);
   });
 
@@ -142,19 +142,24 @@ describe('G8.4 — GET payment state', () => {
 });
 
 describe('G8.4 — charge (Pay Now)', () => {
-  it('1. player pays own enrollment → wallet charge with authoritative amount', async () => {
+  it('1. player pays own enrollment → card charge with authoritative amount (PHASE 1)', async () => {
     paymentSvc.charge.mockResolvedValue({ success: true, paymentId: 5001, status: 'paid', balance: 300 });
-    const result = await playerAcademyPaymentService.charge(PLAYER, 11, 'wallet');
+    const result = await playerAcademyPaymentService.charge(PLAYER, 11, 'card');
     expect(result.status).toBe('paid');
     expect(result.paymentId).toBe(5001);
     expect(paymentSvc.charge).toHaveBeenCalledWith(PLAYER, expect.objectContaining({
-      referenceType: 'academy', referenceId: 11, amount: 200, currency: 'EGP', paymentMethod: 'wallet',
+      referenceType: 'academy', referenceId: 11, amount: 200, currency: 'EGP', paymentMethod: 'card',
     }));
+  });
+
+  it('0. wallet payment is REJECTED by the Academy service (PHASE 1)', async () => {
+    await expect(playerAcademyPaymentService.charge(PLAYER, 11, 'wallet' as any)).rejects.toThrow(/Wallet is temporarily unavailable/);
+    expect(paymentSvc.charge).not.toHaveBeenCalled();
   });
 
   it('2. player pays another player\'s enrollment → denied', async () => {
     enrollRepo.getById.mockResolvedValue(makeEnrollment({ player_id: OTHER }));
-    await expect(playerAcademyPaymentService.charge(PLAYER, 11, 'wallet')).rejects.toMatchObject({
+    await expect(playerAcademyPaymentService.charge(PLAYER, 11, 'card')).rejects.toMatchObject({
       code: 'ACADEMY_ENROLLMENT_NOT_FOUND',
     });
     expect(paymentSvc.charge).not.toHaveBeenCalled();
@@ -162,30 +167,31 @@ describe('G8.4 — charge (Pay Now)', () => {
 
   it('5. forged enrollment id → denied', async () => {
     enrollRepo.getById.mockResolvedValue(null);
-    await expect(playerAcademyPaymentService.charge(PLAYER, 999, 'wallet')).rejects.toMatchObject({
+    await expect(playerAcademyPaymentService.charge(PLAYER, 999, 'card')).rejects.toMatchObject({
       code: 'ACADEMY_ENROLLMENT_NOT_FOUND',
     });
   });
 
-  it('6/7/8. client-supplied amount/program/collector → rejected by strict schema (never trusted)', () => {
+  it('6/7/8. client-supplied amount/program/collector/wallet → rejected by strict schema (never trusted)', () => {
     for (const bad of [
-      { paymentMethod: 'wallet', amount: 1 },
-      { paymentMethod: 'wallet', programId: 99 },
-      { paymentMethod: 'wallet', groupId: 99 },
-      { paymentMethod: 'wallet', collector: 'org' },
-      { paymentMethod: 'wallet', commission: 0 },
-      { paymentMethod: 'cash' }, // cash/offline is not a player method
+      { paymentMethod: 'wallet' },
+      { paymentMethod: 'card', amount: 1 },
+      { paymentMethod: 'card', programId: 99 },
+      { paymentMethod: 'card', groupId: 99 },
+      { paymentMethod: 'card', collector: 'org' },
+      { paymentMethod: 'card', commission: 0 },
+      { paymentMethod: 'cash' }, // cash/offline is not a player self-service method
       { paymentMethod: 'bank_transfer' },
       { amount: 200 },
     ]) {
       expect(() => PlayerAcademyPaymentSchema.parse(bad), JSON.stringify(bad)).toThrow(z.ZodError);
     }
-    expect(PlayerAcademyPaymentSchema.parse({ paymentMethod: 'wallet' })).toEqual({ paymentMethod: 'wallet' });
+    expect(PlayerAcademyPaymentSchema.parse({ paymentMethod: 'card' })).toEqual({ paymentMethod: 'card' });
   });
 
   it('9. FREE program → charge rejected (no payment required)', async () => {
     progRepo.getById.mockResolvedValue(makeProgram({ price: 0, price_type: 'FREE' }));
-    await expect(playerAcademyPaymentService.charge(PLAYER, 11, 'wallet')).rejects.toMatchObject({
+    await expect(playerAcademyPaymentService.charge(PLAYER, 11, 'card')).rejects.toMatchObject({
       code: 'ACADEMY_PAYMENT_NOT_ELIGIBLE',
     });
     expect(paymentSvc.charge).not.toHaveBeenCalled();
@@ -193,21 +199,21 @@ describe('G8.4 — charge (Pay Now)', () => {
 
   it('10. already-paid → safe idempotent result, no duplicate charge', async () => {
     enrollRepo.getById.mockResolvedValue(makeEnrollment({ payment_confirmed_at: '2026-01-01 10:00:00' }));
-    const result = await playerAcademyPaymentService.charge(PLAYER, 11, 'wallet');
+    const result = await playerAcademyPaymentService.charge(PLAYER, 11, 'card');
     expect(result.status).toBe('already_paid');
     expect(paymentSvc.charge).not.toHaveBeenCalled();
   });
 
   it('10b. snapshot exists → safe idempotent already_paid', async () => {
     payRepo.getSnapshotByEnrollment.mockResolvedValue({ id: 1 });
-    const result = await playerAcademyPaymentService.charge(PLAYER, 11, 'wallet');
+    const result = await playerAcademyPaymentService.charge(PLAYER, 11, 'card');
     expect(result.status).toBe('already_paid');
     expect(paymentSvc.charge).not.toHaveBeenCalled();
   });
 
   it('11. missing Academy commission rate → fail closed, no payment created', async () => {
     paySvc.resolveEconomics.mockRejectedValue(new Error('No commission rate configured'));
-    await expect(playerAcademyPaymentService.charge(PLAYER, 11, 'wallet')).rejects.toMatchObject({
+    await expect(playerAcademyPaymentService.charge(PLAYER, 11, 'card')).rejects.toMatchObject({
       code: 'ACADEMY_PAYMENT_UNAVAILABLE',
     });
     expect(paymentSvc.charge).not.toHaveBeenCalled();
@@ -215,13 +221,13 @@ describe('G8.4 — charge (Pay Now)', () => {
 
   it('12. duplicate request → exactly one payment charge', async () => {
     paymentSvc.charge.mockResolvedValue({ success: true, paymentId: 5001, status: 'paid', balance: 300 });
-    const first = await playerAcademyPaymentService.charge(PLAYER, 11, 'wallet', 'dup-key');
+    const first = await playerAcademyPaymentService.charge(PLAYER, 11, 'card', 'dup-key');
     expect(first.status).toBe('paid');
     expect(paymentSvc.charge).toHaveBeenCalledTimes(1);
 
     // The listener confirms → subsequent attempt is idempotent.
     enrollRepo.getById.mockResolvedValue(makeEnrollment({ payment_confirmed_at: '2026-01-01 10:00:00' }));
-    const second = await playerAcademyPaymentService.charge(PLAYER, 11, 'wallet', 'dup-key');
+    const second = await playerAcademyPaymentService.charge(PLAYER, 11, 'card', 'dup-key');
     expect(second.status).toBe('already_paid');
     expect(paymentSvc.charge).toHaveBeenCalledTimes(1);
   });
@@ -238,14 +244,14 @@ describe('G8.4 — charge (Pay Now)', () => {
     expect(paymentSvc.charge).toHaveBeenCalledWith(PLAYER, expect.objectContaining({ paymentMethod: 'card' }));
   });
 
-  it('insufficient wallet balance → error propagates, no payment success state', async () => {
-    paymentSvc.charge.mockRejectedValue(new Error('Insufficient available wallet balance'));
-    await expect(playerAcademyPaymentService.charge(PLAYER, 11, 'wallet')).rejects.toThrow(/Insufficient/);
+  it('gateway failure → error propagates, no payment success state', async () => {
+    paymentSvc.charge.mockRejectedValue(new Error('Gateway rejected the transaction'));
+    await expect(playerAcademyPaymentService.charge(PLAYER, 11, 'card')).rejects.toThrow(/Gateway rejected/);
   });
 
   it('ineligible (waiting enrollment) → rejected', async () => {
     enrollRepo.getById.mockResolvedValue(makeEnrollment({ status: 'waiting' }));
-    await expect(playerAcademyPaymentService.charge(PLAYER, 11, 'wallet')).rejects.toMatchObject({
+    await expect(playerAcademyPaymentService.charge(PLAYER, 11, 'card')).rejects.toMatchObject({
       code: 'ACADEMY_PAYMENT_NOT_ELIGIBLE',
     });
     expect(paymentSvc.charge).not.toHaveBeenCalled();

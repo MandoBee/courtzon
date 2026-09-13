@@ -79,7 +79,10 @@ export const CreateOrderSchema = z.object({
   addressId: z.number().int().positive().optional(),
   couponCode: z.string().optional(),
   notes: z.string().optional(),
-  paymentMethod: z.enum(['cash', 'card', 'online', 'wallet']).default('wallet'),
+  // PHASE 1 (temporary) — wallet is not an active marketplace payment method.
+  // Active methods: card/online (gateway) + cash (offline). Wallet remains the
+  // refund destination + value store; historical wallet orders stay valid.
+  paymentMethod: z.enum(['cash', 'card', 'online']).default('card'),
   returnUrl: z.string().url().optional(),
 });
 

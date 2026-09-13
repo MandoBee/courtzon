@@ -170,7 +170,8 @@ export class SchedulingBookingService {
         // canonical pricing helper inside createBooking — the client never
         // supplies a coach amount.
         coachId,
-        paymentMethod: (request.paymentMethod || 'wallet') as 'wallet' | 'cash' | 'card' | 'online' | 'cod',
+        // PHASE 1 (temporary) — wallet is not an active payment method.
+        paymentMethod: (request.paymentMethod || 'card') as 'cash' | 'card' | 'online' | 'cod',
         notes: `Coach session with coach #${coachId}`,
       }, userId);
 

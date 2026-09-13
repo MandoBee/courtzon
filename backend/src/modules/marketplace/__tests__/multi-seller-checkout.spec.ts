@@ -16,7 +16,7 @@ const mockEmit = vi.hoisted(() => vi.fn());
 const repoMock = vi.hoisted(() => ({} as Record<string, any>));
 const mockCommissionCalculate = vi.hoisted(() => vi.fn(async () => ({ rate: 10, rateType: 'percentage', planName: 'Basic' })));
 const mockGetCurrentSubscription = vi.hoisted(() => vi.fn(async () => ({ exists: true, effectiveStatus: 'active' })));
-const mockWalletCharge = vi.hoisted(() => vi.fn(async () => ({ success: true })));
+const mockWalletCharge = vi.hoisted(() => vi.fn(async () => ({ success: true, paymentUrl: 'https://mock/pay', clientSecret: 'mock_csk_test_1', status: 'pending' })));
 
 // ── Mock modules ──
 vi.mock('../../../database/mysql.js', () => ({ getPool: mockGetPool }));
@@ -140,7 +140,7 @@ describe('Multi-seller order split', () => {
 
     mockCommissionCalculate.mockResolvedValue({ rate: 10, rateType: 'percentage', planName: 'Basic' });
     mockGetCurrentSubscription.mockResolvedValue({ exists: true, effectiveStatus: 'active' });
-    mockWalletCharge.mockResolvedValue({ success: true });
+    mockWalletCharge.mockResolvedValue({ success: true, paymentUrl: 'https://mock/pay', clientSecret: 'mock_csk_test_1', status: 'pending' });
     mockGetPool.mockReturnValue({ execute: vi.fn(async () => [[], []]) });
 
     repoMock.findCartByUser = vi.fn(async () => []);
@@ -236,7 +236,7 @@ describe('Multi-seller order split', () => {
 
       const result = await marketplaceService.checkout(BUYER, {
         addressId: 1,
-        paymentMethod: 'wallet',
+        paymentMethod: 'card',
       });
 
       expect(repoMock.createOrder).toHaveBeenCalledTimes(2);
@@ -791,7 +791,7 @@ describe('Multi-seller order split', () => {
 
       await marketplaceService.checkout(BUYER, {
         addressId: 1,
-        paymentMethod: 'wallet',
+        paymentMethod: 'card',
       });
 
       // Phase 2 Step 5: marketplace_ledger_entries no longer written.
@@ -834,7 +834,7 @@ describe('Multi-seller order split', () => {
 
       await marketplaceService.checkout(BUYER, {
         addressId: 1,
-        paymentMethod: 'wallet',
+        paymentMethod: 'card',
       });
 
       // Find all order-placed events
@@ -888,7 +888,7 @@ describe('Multi-seller order split', () => {
 
       await marketplaceService.checkout(BUYER, {
         addressId: 1,
-        paymentMethod: 'wallet',
+        paymentMethod: 'card',
       });
 
       expect(repoMock.createOrder).toHaveBeenCalledTimes(1);
@@ -958,7 +958,7 @@ describe('Multi-seller order split', () => {
 
       await marketplaceService.checkout(BUYER, {
         addressId: 1,
-        paymentMethod: 'wallet',
+        paymentMethod: 'card',
       });
 
       const orderArgs = repoMock.createOrder.mock.calls.map((c: any[]) => c[0]);

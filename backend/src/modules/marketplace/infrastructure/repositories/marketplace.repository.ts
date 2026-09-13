@@ -741,7 +741,7 @@ export const marketplaceRepository = {
     const [result] = await pool.execute(
       `INSERT INTO orders (public_id, checkout_group_id, buyer_id, status, subtotal, shipping_cost, estimated_delivery_date, commission_amount, coupon_id, discount_amount, tax_amount, total, currency_code, shipping_address, notes, payment_method)
        VALUES (UUID(), ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [data.checkoutGroupId || null, data.buyerId, data.subtotal, data.shippingCost, data.estimatedDeliveryDate || null, data.commission, data.couponId || null, data.discountAmount || 0, data.taxAmount || 0, data.total, data.currencyCode, data.shippingAddress ? JSON.stringify(data.shippingAddress) : null, data.notes || null, data.paymentMethod || 'wallet']
+      [data.checkoutGroupId || null, data.buyerId, data.subtotal, data.shippingCost, data.estimatedDeliveryDate || null, data.commission, data.couponId || null, data.discountAmount || 0, data.taxAmount || 0, data.total, data.currencyCode, data.shippingAddress ? JSON.stringify(data.shippingAddress) : null, data.notes || null, data.paymentMethod || 'card']
     );
     return (result as any).insertId;
   },

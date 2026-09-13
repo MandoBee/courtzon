@@ -6,7 +6,6 @@ import { useToast } from '../ui/Toast';
 import { useTranslation } from '../../i18n';
 import { getErrorMessage } from '../../utils/errors';
 import { formatPrice } from '../../utils/currency';
-import WalletPaymentOption from '../payment/WalletPaymentOption';
 import { usePaymentConfirm } from '../../hooks/usePaymentConfirm';
 import PaymentStatusPoller from '../payment/PaymentStatusPoller';
 import PaymobPixelCard from '../payment/PaymobPixelCard';
@@ -16,16 +15,15 @@ import { Button } from '../ui/Button';
 /**
  * G8.4 — Player self-service Academy payment panel.
  *
- * Renders the authoritative payment state for the player's own enrollment and
- * the Pay Now flow (wallet / card). The backend is authoritative: amounts and
- * eligibility come ONLY from `/my/academy/enrollments/:id/payment`; the client
- * never sends or calculates financial values.
+ * PHASE 1 (temporary): player self-service payment is CARD ONLY. Wallet is not
+ * an active payment method (backend rejects it); cash/offline remains the admin
+ * acknowledgement flow. The backend is authoritative: amounts and eligibility
+ * come ONLY from `/my/academy/enrollments/:id/payment`.
  */
 export default function AcademyPaymentPanel({ enrollmentId }: { enrollmentId: number }) {
   const { t } = useTranslation();
   const { showToast } = useToast();
   const qc = useQueryClient();
-  const [method, setMethod] = useState<'wallet' | 'card'>('wallet');
   const [pixelSecret, setPixelSecret] = useState<string | null>(null);
   const [polling, setPolling] = useState(false);
   const [paymentId, setPaymentId] = useState<number | null>(null);
@@ -44,9 +42,9 @@ export default function AcademyPaymentPanel({ enrollmentId }: { enrollmentId: nu
   };
 
   const pay = useMutation({
-    mutationFn: (m: 'wallet' | 'card') =>
+    mutationFn: () =>
       publicAcademyApi.payMyEnrollment(enrollmentId, {
-        paymentMethod: m,
+        paymentMethod: 'card',
         idempotencyKey: `academy_pay_${enrollmentId}_${Date.now()}`,
       }),
     onSuccess: (res) => {
@@ -128,7 +126,7 @@ export default function AcademyPaymentPanel({ enrollmentId }: { enrollmentId: nu
     );
   }
 
-  // ── unpaid → Pay Now ──
+  // ── unpaid → Pay Now (card only, PHASE 1) ──
   const amount = state.amount ?? 0;
   return (
     <div className="space-y-3">
@@ -139,31 +137,23 @@ export default function AcademyPaymentPanel({ enrollmentId }: { enrollmentId: nu
 
       <Can permission="academy.payment.charge">
         <div className="space-y-2">
-          <div className="flex gap-2">
-            <WalletPaymentOption amount={amount} selected={method === 'wallet'} onClick={() => setMethod('wallet')} disabled={pay.isPending} />
-            <button
-              type="button"
-              onClick={() => setMethod('card')}
-              disabled={pay.isPending}
-              className={`flex-1 flex flex-col items-center justify-center gap-0.5 p-2 rounded-[var(--radius-md)] border transition-colors ${
-                method === 'card'
-                  ? 'border-[var(--color-primary)] bg-[var(--color-primary)]/10'
-                  : 'border-[var(--color-border)] hover:border-[var(--color-primary)]'
-              }`}
-            >
-              <div className="flex items-center gap-1">
-                <span className="text-sm">💳</span>
-                <span className="text-xs font-medium text-[var(--color-text)]">{t('player.academy.card')}</span>
-              </div>
-              <span className="text-[10px] text-[var(--color-text-muted)]">{t('player.academy.card_note')}</span>
-            </button>
-          </div>
+          <button
+            type="button"
+            disabled={pay.isPending}
+            className="flex-1 flex flex-col items-center justify-center gap-0.5 p-2 rounded-[var(--radius-md)] border border-[var(--color-primary)] bg-[var(--color-primary)]/10 transition-colors"
+          >
+            <div className="flex items-center gap-1">
+              <span className="text-sm">💳</span>
+              <span className="text-xs font-medium text-[var(--color-text)]">{t('player.academy.card')}</span>
+            </div>
+            <span className="text-[10px] text-[var(--color-text-muted)]">{t('player.academy.card_note')}</span>
+          </button>
 
           <Button
             variant="primary"
             loading={pay.isPending}
-            disabled={pay.isPending || (method === 'wallet' && amount <= 0)}
-            onClick={() => pay.mutate(method)}
+            disabled={pay.isPending || amount <= 0}
+            onClick={() => pay.mutate()}
           >
             {t('player.academy.pay_now')}
           </Button>

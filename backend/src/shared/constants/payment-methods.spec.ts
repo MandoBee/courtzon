@@ -29,14 +29,17 @@ describe('organization registration payment methods', () => {
     expect([...allowed].sort()).toEqual(['card', 'cash']);
   });
 
-  it('context filter leaves other contexts unchanged (backward compatible)', () => {
-    // default/signup context still only excludes wallet
-    expect(isPaymentMethodAllowedInContext('e-wallet', '')).toBe(true);
-    expect(isPaymentMethodAllowedInContext('wallet', '')).toBe(false);
-    // booking/marketplace unchanged
-    expect(isPaymentMethodAllowedInContext('wallet', 'booking')).toBe(true);
+  it('context filter: booking/marketplace allow card + cash only (PHASE 1 — wallet not an active payment method)', () => {
+    expect(isPaymentMethodAllowedInContext('card', 'booking')).toBe(true);
+    expect(isPaymentMethodAllowedInContext('cash', 'booking')).toBe(true);
+    expect(isPaymentMethodAllowedInContext('card', 'marketplace')).toBe(true);
+    expect(isPaymentMethodAllowedInContext('cash', 'marketplace')).toBe(true);
+    // wallet is no longer an active payment method in booking/marketplace
+    expect(isPaymentMethodAllowedInContext('wallet', 'booking')).toBe(false);
+    expect(isPaymentMethodAllowedInContext('wallet', 'marketplace')).toBe(false);
+    expect(isPaymentMethodAllowedInContext('wallet', 'checkout')).toBe(false);
     expect(isPaymentMethodAllowedInContext('penalty', 'booking')).toBe(false);
-    // wallet top-up unchanged
+    // wallet top-up unchanged (card funding still allowed; cash still not)
     expect(isPaymentMethodAllowedInContext('card', 'wallet')).toBe(true);
     expect(isPaymentMethodAllowedInContext('cash', 'wallet')).toBe(false);
   });

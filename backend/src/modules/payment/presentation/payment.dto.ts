@@ -5,7 +5,10 @@ export const ChargeSchema = z.object({
   referenceId: z.number().int().positive(),
   amount: z.number().positive(),
   currency: z.string().optional().default('EGP'),
-  paymentMethod: z.enum(['wallet', 'card', 'bank_transfer']).optional().default('wallet'),
+  // PHASE 1 (temporary) — wallet is not an active payment method. Card (+ the
+  // gateway default) is the active online method; wallet_topup (deposit) and
+  // refund flows are separate and remain wallet-capable.
+  paymentMethod: z.enum(['card', 'bank_transfer']).optional().default('card'),
   returnUrl: z.string().optional(),
   customerEmail: z.string().optional(),
   customerPhone: z.string().optional(),

@@ -24,7 +24,8 @@ import { academyPaymentRepository } from '../infrastructure/repositories/academy
 import { academyPaymentService } from './academy-payment.service.js';
 
 export type PlayerAcademyPaymentState = 'free' | 'unpaid' | 'paid' | 'processing' | 'unavailable';
-export type PlayerAcademyPaymentMethod = 'wallet' | 'card';
+/** PHASE 1 (temporary) — player self-service Academy payment is CARD ONLY. */
+export type PlayerAcademyPaymentMethod = 'card';
 
 export interface PlayerAcademyPaymentStateDto {
   enrollmentId: number;
@@ -57,8 +58,8 @@ export interface PlayerAcademyChargeResult {
   balance?: number;
 }
 
-/** Player self-service methods only (wallet + card). Cash/offline is admin-only. */
-const PLAYER_METHODS: PlayerAcademyPaymentMethod[] = ['wallet', 'card'];
+/** Player self-service methods only (card). Cash/offline is admin-only; wallet is not a method. */
+const PLAYER_METHODS: PlayerAcademyPaymentMethod[] = ['card'];
 
 const PENDING_STATUSES = new Set(['created', 'pending', 'processing']);
 
@@ -146,6 +147,11 @@ class PlayerAcademyPaymentService {
     paymentMethod: PlayerAcademyPaymentMethod,
     idempotencyKey?: string,
   ): Promise<PlayerAcademyChargeResult> {
+    // PHASE 1 (temporary) — wallet is not an active Academy payment method.
+    if ((paymentMethod as string) === 'wallet') {
+      throw new ConflictError('Wallet is temporarily unavailable as a payment method. Please use Card or Cash.');
+    }
+
     const enrollment = await enrollmentRepository.getById(enrollmentId);
     if (!enrollment || Number(enrollment.player_id) !== playerId) {
       throw new NotFoundError('Academy enrollment', ErrorCodes.ACADEMY_ENROLLMENT_NOT_FOUND);

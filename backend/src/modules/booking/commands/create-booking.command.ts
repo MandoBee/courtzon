@@ -50,7 +50,11 @@ export const createBookingHandler: CommandHandler<Command, CreateBookingResult> 
   execute: async (command, conn: PoolConnection) => {
     const payload = command.payload as unknown as CreateBookingPayload;
 
-    const paymentMethod = payload.paymentMethod || 'wallet';
+    const paymentMethod = payload.paymentMethod || 'card';
+    // PHASE 1 (temporary) — wallet is not an active booking payment method.
+    if ((paymentMethod as string) === 'wallet') {
+      throw new ConflictError('Wallet is temporarily unavailable as a payment method. Please use Card or Cash.');
+    }
     const bookingStatus = paymentMethod === 'wallet' ? 'pending_payment' : 'pending';
 
     // Authoritative availability + concurrency guard, inside the same

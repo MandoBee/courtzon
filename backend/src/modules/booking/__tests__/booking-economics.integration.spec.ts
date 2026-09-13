@@ -70,7 +70,7 @@ describe('Booking Economics Snapshot (V2)', () => {
         userId: 1, branchId, organisationId: orgId, resourceId,
         bookingDate: '2026-08-15', startTime: '10:00', endTime: '11:00',
         totalAmount: 100, startAtUtc: '2026-08-15T08:00:00Z', endAtUtc: '2026-08-15T09:00:00Z',
-        bookingType: 'private_match', paymentMethod: 'wallet',
+        bookingType: 'private_match', paymentMethod: 'card',
         commissionAmount: 20, clubAmount: 80, taxRate: 10, taxRateId: null, taxAmount: 8, taxTreatment: 'taxable', priceType: 'net',
       },
       correlationId: 'econ-1',

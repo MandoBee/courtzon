@@ -29,8 +29,11 @@ export function isPaymentMethodAllowedForWalletTopup(slug: string): boolean {
 
 /**
  * Whether a payment method is allowed for a given checkout context.
- * Booking and marketplace checkouts allow wallet, card, and cash.
- * Wallet top-up context only allows card.
+ * PHASE 1 (temporary) — wallet is NOT an active payment method anywhere; only
+ * card + cash are offered for booking/marketplace checkouts. Wallet remains a
+ * value store (refunds credit it, deposits fund it, withdrawals spend it) — the
+ * wallet top-up context still allows card funding, and wallet BALANCE ops are
+ * unaffected. Wallet top-up context only allows card.
  * Organization registration only allows the methods with an actual lifecycle (card + cash).
  * Default: signup contexts — exclude wallet.
  */
@@ -38,7 +41,7 @@ export function isPaymentMethodAllowedInContext(slug: string, context: string): 
   const s = slug.trim().toLowerCase();
   if (context === 'wallet') return isPaymentMethodAllowedForWalletTopup(s);
   if (context === 'booking' || context === 'marketplace' || context === 'checkout') {
-    if (s === 'wallet' || s === 'card' || s === 'cash') return true;
+    if (s === 'card' || s === 'cash') return true;
     return false;
   }
   if (context === 'organization-registration') {

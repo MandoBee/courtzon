@@ -520,7 +520,8 @@ export interface AcademyPaymentState {
   currency: string;
   paid: boolean;
   paymentConfirmedAt: string | null;
-  availableMethods: ('wallet' | 'card')[];
+  /** PHASE 1 — player self-service method list is card-only. */
+  availableMethods: ('card')[];
 }
 
 export interface AcademyChargeResult {
@@ -551,7 +552,8 @@ export const publicAcademyApi = {
     api.get<PublicAcademyAttendance[]>('/my/academy/attendance').then(r => r.data),
   getMyEnrollmentPayment: (enrollmentId: number) =>
     api.get<AcademyPaymentState>(`/my/academy/enrollments/${enrollmentId}/payment`).then(r => r.data),
-  payMyEnrollment: (enrollmentId: number, body: { paymentMethod: 'wallet' | 'card'; idempotencyKey?: string }) =>
+  // PHASE 1 (temporary) — player self-service Academy payment is CARD ONLY.
+  payMyEnrollment: (enrollmentId: number, body: { paymentMethod: 'card'; idempotencyKey?: string }) =>
     api.post<AcademyChargeResult>(`/my/academy/enrollments/${enrollmentId}/pay`, body).then(r => r.data),
 };
 

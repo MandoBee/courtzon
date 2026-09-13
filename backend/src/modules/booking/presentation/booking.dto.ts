@@ -20,7 +20,10 @@ export const CreateBookingSchema = z.object({
   bookingDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD format'),
   startTime: z.string().regex(/^\d{2}:\d{2}$/, 'Use HH:mm format'),
   endTime: z.string().regex(/^\d{2}:\d{2}$/, 'Use HH:mm format'),
-  paymentMethod: z.enum(['cash', 'card', 'online', 'wallet', 'cod']).optional().default('wallet'),
+  // PHASE 1 (temporary) — wallet is not an active booking payment method.
+  // Active methods: card/online (gateway) + cash/COD (offline). Wallet remains
+  // the refund destination and value store; historical wallet bookings stay valid.
+  paymentMethod: z.enum(['cash', 'card', 'online', 'cod']).optional().default('card'),
   // Coach session bookings (booking_type='coach_session') must reference a valid
   // coach. The coach fee is NEVER client-supplied — it is resolved server-side
   // (canonical pricing) and validated against the canonical coach-eligibility

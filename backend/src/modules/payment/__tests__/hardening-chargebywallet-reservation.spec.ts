@@ -1,17 +1,13 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 /**
- * W2 — reserved funds are never spendable.
+ * PHASE 1 — wallet is NOT an active payment method system-wide.
  *
- * chargeByWallet previously validated availability against `balance` only, so a
- * wallet could spend funds that were already reserved for an in-flight
- * withdrawal (reserved_balance >= 0). When the withdrawal later debited
- * reserved_balance it could drive balance negative, and a rejection failed to
- * release funds that had been spent — a false available-balance + double-spend.
- *
- * The fix: lockAndGetBalance now also returns reserved_balance and the spend
- * gate is available = balance − reserved_balance (order still debits the full
- * balance, since the reservation stays untouched until the withdrawal settles).
+ * The W2 reserved-balance guard (available = balance − reserved_balance) remains
+ * implemented in chargeByWallet (dormant for future re-activation), but the
+ * central `charge()` dispatcher now rejects wallet before any wallet debit. These
+ * tests prove the rejection is authoritative and that NO wallet balance mutation
+ * or wallet_transactions row is produced for a rejected wallet charge.
  */
 
 const walletRepo = vi.hoisted(() => ({
@@ -60,7 +56,7 @@ const baseInput = {
   currency: 'EGP',
 };
 
-describe('W2 — chargeByWallet respects reserved funds', () => {
+describe('PHASE 1 — wallet payment rejected; no balance mutation', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     paymentRepo.findByIdempotencyKey.mockResolvedValue(null);
@@ -73,35 +69,33 @@ describe('W2 — chargeByWallet respects reserved funds', () => {
     connExecute.mockImplementation(async () => [[{ affectedRows: 1 }], []]);
   });
 
-  it('rejects a charge when available (balance − reserved_balance) < amount', async () => {
-    walletRepo.findByUserId.mockResolvedValue({ id: 11, user_id: 5, balance: 1000, reserved_balance: 950, version: 1 });
-    walletRepo.lockAndGetBalance.mockResolvedValue({ balance: 1000, reserved_balance: 950, version: 1 });
+  it('rejects a wallet charge at the central dispatcher (temporary rule)', async () => {
+    walletRepo.findByUserId.mockResolvedValue({ id: 11, user_id: 5, balance: 1000, reserved_balance: 0, version: 1 });
+    walletRepo.lockAndGetBalance.mockResolvedValue({ balance: 1000, reserved_balance: 0, version: 1 });
 
     const svc = new PaymentService();
-    await expect(svc.charge(5, baseInput as any)).rejects.toThrow(/Insufficient available wallet balance/);
-    expect(walletRepo.updateBalance).not.toHaveBeenCalled();
+    await expect(svc.charge(5, baseInput as any)).rejects.toThrow(/Wallet is temporarily unavailable as a payment method/);
   });
 
-  it('allows a charge when available covers the amount (debits full balance, not available)', async () => {
+  it('no wallet balance debit or wallet_transactions row is produced for a rejected wallet charge', async () => {
     walletRepo.findByUserId.mockResolvedValue({ id: 11, user_id: 5, balance: 1000, reserved_balance: 200, version: 1 });
     walletRepo.lockAndGetBalance.mockResolvedValue({ balance: 1000, reserved_balance: 200, version: 1 });
     walletRepo.updateBalance.mockResolvedValue(true);
 
     const svc = new PaymentService();
-    const res = await svc.charge(5, baseInput as any);
-    expect(res.success).toBe(true);
-    // The spend debits the raw balance (1000 − 100). Reserved funds stay
-    // reserved — they are untouched until the withdrawal settles.
-    expect(walletRepo.updateBalance).toHaveBeenCalledWith(11, 900, 1, expect.anything());
+    await expect(svc.charge(5, baseInput as any)).rejects.toThrow(/Wallet is temporarily unavailable/);
+    expect(walletRepo.updateBalance).not.toHaveBeenCalled();
+    expect(walletRepo.createTransaction).not.toHaveBeenCalled();
+    expect(transactionService.createWalletPayment).not.toHaveBeenCalled();
   });
 
-  it('allows a charge when nothing is reserved (compat with zero/legacy wallets)', async () => {
+  it('rejection also applies when nothing is reserved (zero/legacy wallets)', async () => {
     walletRepo.findByUserId.mockResolvedValue({ id: 11, user_id: 5, balance: 500, reserved_balance: 0, version: 1 });
     walletRepo.lockAndGetBalance.mockResolvedValue({ balance: 500, reserved_balance: 0, version: 1 });
     walletRepo.updateBalance.mockResolvedValue(true);
 
     const svc = new PaymentService();
-    const res = await svc.charge(5, baseInput as any);
-    expect(res.success).toBe(true);
+    await expect(svc.charge(5, baseInput as any)).rejects.toThrow(/Wallet is temporarily unavailable/);
+    expect(walletRepo.updateBalance).not.toHaveBeenCalled();
   });
 });

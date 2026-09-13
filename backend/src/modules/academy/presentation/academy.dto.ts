@@ -106,7 +106,9 @@ export const MarkEnrollmentPaymentSchema = z.object({}).optional();
  * economics — the backend resolves everything from the immutable snapshot path.
  */
 export const PlayerAcademyPaymentSchema = z.object({
-  paymentMethod: z.enum(['wallet', 'card']),
+  // PHASE 1 (temporary) — player self-service Academy payment is CARD ONLY.
+  // Cash/offline remains the admin acknowledgement flow; wallet is not a method.
+  paymentMethod: z.enum(['card']),
   idempotencyKey: z.string().max(64).optional(),
 }).strict();
 
