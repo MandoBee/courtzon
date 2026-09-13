@@ -442,6 +442,15 @@ export const communityRepository = {
     await pool.execute('UPDATE conversations SET updated_at = NOW() WHERE id = ?', [conversationId]);
   },
 
+  async getParticipantUserIds(conversationId: number): Promise<number[]> {
+    const pool = getPool();
+    const [rows] = await pool.execute<RowData>(
+      'SELECT user_id FROM conversation_participants WHERE conversation_id = ?',
+      [conversationId]
+    );
+    return rows.map((r) => Number(r.user_id)).filter((id) => Number.isFinite(id) && id > 0);
+  },
+
   async findMessages(conversationId: number, page: number, limit: number) {
     const pool = getPool();
     const offset = (page - 1) * limit;

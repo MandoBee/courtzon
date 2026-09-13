@@ -491,4 +491,102 @@ describe('SocketEventMapper', () => {
       expect(result!.rooms).not.toContain('org:12');
     });
   });
+
+  // ── Group 4 realtime baseline hardening ──
+  describe('chat:new-message', () => {
+    it('routes to every participant user room + the conversation room', () => {
+      const result = mapDomainEvent('chat:new-message', {
+        conversationId: 3, userId: 7, senderName: 'A', preview: 'hi',
+        participantUserIds: [7, 42, 99],
+      });
+      expect(result).not.toBeNull();
+      expect(result!.type).toBe('chat.new-message');
+      expect(result!.rooms).toContain('user:7');
+      expect(result!.rooms).toContain('user:42');
+      expect(result!.rooms).toContain('user:99');
+      expect(result!.rooms).toContain('conversation:3');
+      expect(result!.payload).toMatchObject({ conversationId: 3, senderName: 'A', preview: 'hi' });
+    });
+
+    it('falls back to conversation room only when no participant list is supplied', () => {
+      const result = mapDomainEvent('chat:new-message', {
+        conversationId: 3, userId: 7, senderName: 'A',
+      });
+      expect(result!.type).toBe('chat.new-message');
+      expect(result!.rooms).toContain('conversation:3');
+      expect(result!.rooms).toContain('user:7');
+    });
+  });
+
+  describe('chat:group-invitation', () => {
+    it('routes to the invitee user room + the conversation room', () => {
+      const result = mapDomainEvent('chat:group-invitation', {
+        conversationId: 3, userId: 42, inviterId: 7, inviterName: 'A', groupName: 'Tennis',
+      });
+      expect(result).not.toBeNull();
+      expect(result!.type).toBe('chat.group-invitation');
+      expect(result!.rooms).toContain('user:42');
+      expect(result!.rooms).toContain('conversation:3');
+      expect(result!.payload.groupName).toBe('Tennis');
+    });
+  });
+
+  describe('match:result-*', () => {
+    it('routes result-submitted to every participant user room + admin room', () => {
+      const result = mapDomainEvent('match:result-submitted', {
+        matchId: 15, resultId: 2, submittedById: 7, allUserIds: [7, 9],
+      });
+      expect(result).not.toBeNull();
+      expect(result!.type).toBe('match.result-submitted');
+      expect(result!.rooms).toContain('user:7');
+      expect(result!.rooms).toContain('user:9');
+      expect(result!.rooms).toContain('admin');
+      expect(result!.payload.matchId).toBe(15);
+    });
+
+    it('routes result-approved with resolution payload', () => {
+      const result = mapDomainEvent('match:result-approved', {
+        matchId: 15, resultId: 2, approvedBy: 9, allUserIds: [7, 9],
+      });
+      expect(result!.type).toBe('match.result-approved');
+      expect(result!.rooms).toContain('user:7');
+      expect(result!.rooms).toContain('admin');
+      expect(result!.payload.approvedBy).toBe(9);
+    });
+
+    it('routes result-disputed / result-resolved to the participant rooms', () => {
+      const disputed = mapDomainEvent('match:result-disputed', {
+        matchId: 15, resultId: 2, disputedBy: 9, allUserIds: [7, 9],
+      });
+      expect(disputed!.type).toBe('match.result-disputed');
+      expect(disputed!.rooms).toContain('user:9');
+
+      const resolved = mapDomainEvent('match:result-resolved', {
+        matchId: 15, resultId: 2, resolution: 'no_result', allUserIds: [7, 9],
+      });
+      expect(resolved!.type).toBe('match.result-resolved');
+      expect(resolved!.payload.resolution).toBe('no_result');
+      expect(resolved!.rooms).toContain('admin');
+    });
+  });
+
+  describe('academy enrollment events', () => {
+    it('routes academy:enrollment-paid via playerId to the player user room', () => {
+      const result = mapDomainEvent('academy:enrollment-paid', {
+        enrollmentId: 5, programId: 1, groupId: 2, playerId: 42, organisationId: 9,
+      });
+      expect(result).not.toBeNull();
+      expect(result!.type).toBe('academy.enrollment-paid');
+      expect(result!.rooms).toContain('user:42');
+      expect(result!.payload.userId).toBe(42);
+    });
+
+    it('routes academy:enrollment-accepted via userId to the player user room', () => {
+      const result = mapDomainEvent('academy:enrollment-accepted', {
+        programId: 1, userId: 42, enrollmentId: 5, programName: 'P',
+      });
+      expect(result!.type).toBe('academy.enrollment-accepted');
+      expect(result!.rooms).toContain('user:42');
+    });
+  });
 });

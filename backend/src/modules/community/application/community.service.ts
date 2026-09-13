@@ -81,6 +81,20 @@ export const communityService = {
       throw new ForbiddenError('Not a participant in this conversation');
     }
     await repo.sendMessage(conversationId, senderId, content);
+    try {
+      const participantUserIds = await repo.getParticipantUserIds(conversationId);
+      const preview = content.length > 120 ? `${content.slice(0, 120)}…` : content;
+      const senderName = await repo.getUserName(senderId);
+      eventBusV2.emit('chat:new-message', {
+        conversationId,
+        userId: senderId,
+        senderName,
+        preview,
+        participantUserIds,
+      });
+    } catch (e) {
+      // Realtime/notification emission is best-effort — don't fail the message send
+    }
   },
   async getMessages(conversationId: number, userId: number, page: number, limit: number) {
     if (!(await repo.isConversationParticipant(conversationId, userId))) {

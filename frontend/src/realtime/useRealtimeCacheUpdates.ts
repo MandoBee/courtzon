@@ -417,6 +417,39 @@ export function useRealtimeCacheUpdates(): void {
     qc.invalidateQueries({ queryKey: ['notifications', 'unread-count'] });
   });
 
+  // Platform broadcasts reach every player room; the recipient's own
+  // notifications list + unread counter must refresh live.
+  useSocketEvent('notification.broadcast', () => {
+    qc.invalidateQueries({ queryKey: ['notifications'] });
+    qc.invalidateQueries({ queryKey: ['notification-unread-count'] });
+    qc.invalidateQueries({ queryKey: ['notifications', 'unread-count'] });
+  });
+
+  // ── Chat events ────────────────────────────────────────────────
+  // A new message bumps the conversations list (last message + unread count)
+  // and refreshes the open thread cache. Prefix invalidation covers every
+  // conversation thread this device currently holds in cache.
+  useSocketEvent('chat.new-message', (p: any) => {
+    qc.invalidateQueries({ queryKey: ['chat-conversations'] });
+    qc.invalidateQueries({ queryKey: ['chat-messages'] });
+    if (p?.conversationId) {
+      qc.invalidateQueries({ queryKey: ['chat-group-info', p.conversationId] });
+    }
+  });
+
+  useSocketEvent('chat.group-invitation', () => {
+    qc.invalidateQueries({ queryKey: ['chat-conversations'] });
+    qc.invalidateQueries({ queryKey: ['chat-invitations'] });
+  });
+
+  useSocketEvent('chat.group-created', () => {
+    qc.invalidateQueries({ queryKey: ['chat-conversations'] });
+  });
+
+  useSocketEvent('chat.group-joined', () => {
+    qc.invalidateQueries({ queryKey: ['chat-conversations'] });
+  });
+
   // ── Match events ───────────────────────────────────────────────
   useSocketEvent('match.available', () => {
     qc.invalidateQueries({ queryKey: ['public-matches'] });
@@ -432,6 +465,28 @@ export function useRealtimeCacheUpdates(): void {
     qc.invalidateQueries({ queryKey: ['home-upcoming-matches'] });
   });
 
+  // Match result lifecycle events (submitted/approved/disputed/resolved/…)
+  // reach the participant user rooms + the admin room. Refresh the match
+  // detail, the result page, the public/home lists and the admin workbench.
+  const matchResultEvents = [
+    'match.result-submitted', 'match.result-approved', 'match.result-auto-approved',
+    'match.result-disputed', 'match.result-resolved', 'match.result-no-result',
+    'match.result-withdrawn',
+  ];
+  for (const eventName of matchResultEvents) {
+    useSocketEvent(eventName, (p: any) => {
+      qc.invalidateQueries({ queryKey: ['public-matches'] });
+      qc.invalidateQueries({ queryKey: ['home-upcoming-matches'] });
+      qc.invalidateQueries({ queryKey: ['matches', 'upcoming'] });
+      qc.invalidateQueries({ queryKey: ['match-result'] });
+      qc.invalidateQueries({ queryKey: ['admin-match-results'] });
+      if (p?.matchId) {
+        qc.invalidateQueries({ queryKey: ['match', p.matchId] });
+        qc.invalidateQueries({ queryKey: ['match-result', p.matchId] });
+      }
+    });
+  }
+
   // ── Academy events ─────────────────────────────────────────────
   useSocketEvent('academy.enrolled', () => {
     qc.invalidateQueries({ queryKey: ['academies'] });
@@ -440,6 +495,25 @@ export function useRealtimeCacheUpdates(): void {
   useSocketEvent('academy.graduated', () => {
     qc.invalidateQueries({ queryKey: ['academies'] });
   });
+
+  // Enrollment lifecycle: admin workbench, the player's own enrollments, the
+  // public program/detail capacity and the admin academy dashboard all refresh.
+  const academyEnrollmentEvents = [
+    'academy.enrollment-accepted', 'academy.enrollment-waitlisted',
+    'academy.promoted', 'academy.payment-acknowledged', 'academy.enrollment-paid',
+  ];
+  for (const eventName of academyEnrollmentEvents) {
+    useSocketEvent(eventName, (p: any) => {
+      qc.invalidateQueries({ queryKey: ['admin', 'academy', 'enrollments'] });
+      qc.invalidateQueries({ queryKey: ['admin', 'academy', 'dashboard'] });
+      qc.invalidateQueries({ queryKey: ['admin', 'academy', 'capacity'] });
+      qc.invalidateQueries({ queryKey: ['my', 'academy', 'enrollments'] });
+      qc.invalidateQueries({ queryKey: ['academy', 'public'] });
+      if (p?.programId) {
+        qc.invalidateQueries({ queryKey: ['academy', 'public', 'program', p.programId] });
+      }
+    });
+  }
 
   // ── Coaching events ────────────────────────────────────────────
   useSocketEvent('coaching.session-scheduled', () => {

@@ -1,5 +1,5 @@
 import { createModuleLogger } from '../../../shared/utils/logger.js';
-import { ADMIN_ROOM } from '../domain/realtime-rooms.js';
+import { ADMIN_ROOM, PLAYER_ROOM } from '../domain/realtime-rooms.js';
 
 const log = createModuleLogger('socket-mapper');
 
@@ -30,6 +30,7 @@ export function mapDomainEvent(eventName: string, payload: Record<string, unknow
       };
     }
     if (eventName.startsWith('booking:')) return mapBookingEvent(eventName, payload);
+    if (eventName.startsWith('chat:')) return mapChatEvent(eventName, payload);
     if (eventName.startsWith('payment:')) return mapPaymentEvent(eventName, payload);
     if (eventName.startsWith('wallet:')) return mapWalletEvent(eventName, payload);
     if (eventName === 'marketplace:product-visibility-changed') {
@@ -112,6 +113,7 @@ export function mapDomainEvent(eventName: string, payload: Record<string, unknow
     if (eventName.startsWith('attendance:')) return mapAttendanceEvent(eventName, payload);
     if (eventName.startsWith('membership:')) return mapMembershipEvent(eventName, payload);
     if (eventName.startsWith('tournament:')) return mapTournamentEvent(eventName, payload);
+    if (eventName.startsWith('match:result-')) return mapMatchResultEvent(eventName, payload);
     if (eventName.startsWith('match:')) return mapMatchEvent(eventName, payload);
     if (eventName === 'system:announcement') {
       return {
@@ -379,11 +381,12 @@ function mapOrganisationEvent(eventName: string, p: Record<string, any>): Mapped
 
 function mapAcademyEvent(eventName: string, p: Record<string, any>): MappedSocketEvent {
   const rooms: string[] = [];
-  if (p.userId) rooms.push(`user:${p.userId}`);
+  const userId = p.userId || p.playerId;
+  if (userId) rooms.push(`user:${userId}`);
   if (p.academyId) rooms.push(`academy:${p.academyId}`);
   if (p.coachId) rooms.push(`coach:${p.coachId}`);
   const prefix = eventName.startsWith('coaching:') ? 'coaching' : 'academy';
-  return { type: `${prefix}.${eventName.split(':')[1] || 'updated'}`, payload: { academyId: p.academyId, userId: p.userId, sessionId: p.sessionId }, rooms };
+  return { type: `${prefix}.${eventName.split(':')[1] || 'updated'}`, payload: { academyId: p.academyId, userId, sessionId: p.sessionId }, rooms };
 }
 
 function mapAttendanceEvent(eventName: string, p: Record<string, any>): MappedSocketEvent {
@@ -414,12 +417,62 @@ function mapTournamentEvent(eventName: string, p: Record<string, any>): MappedSo
   };
 }
 
+function mapChatEvent(eventName: string, p: Record<string, any>): MappedSocketEvent {
+  const sub = eventName.split(':')[1] || 'new-message';
+  const type = `chat.${sub}`;
+  const rooms: string[] = [];
+  const participantUserIds: number[] = Array.isArray(p.participantUserIds) ? p.participantUserIds : [];
+  for (const uid of participantUserIds) {
+    if (uid != null) rooms.push(`user:${uid}`);
+  }
+  if (p.conversationId) rooms.push(`conversation:${p.conversationId}`);
+  if (p.userId) rooms.push(`user:${p.userId}`);
+  return {
+    type,
+    payload: {
+      conversationId: p.conversationId,
+      userId: p.userId,
+      senderName: p.senderName,
+      preview: p.preview,
+      groupId: p.groupId,
+      inviterId: p.inviterId,
+      inviterName: p.inviterName,
+      groupName: p.groupName,
+      callerName: p.callerName,
+      timestamp: Date.now(),
+    },
+    rooms,
+  };
+}
+
+function mapMatchResultEvent(eventName: string, p: Record<string, any>): MappedSocketEvent {
+  const sub = eventName.split(':')[1] || 'updated';
+  const rooms: string[] = [ADMIN_ROOM];
+  const allUserIds: number[] = Array.isArray(p.allUserIds) ? p.allUserIds : [];
+  for (const uid of allUserIds) {
+    if (uid != null) rooms.push(`user:${uid}`);
+  }
+  return {
+    type: `match.${sub}`,
+    payload: {
+      matchId: p.matchId,
+      resultId: p.resultId,
+      submittedById: p.submittedById,
+      approvedBy: p.approvedBy,
+      disputedBy: p.disputedBy,
+      resolution: p.resolution,
+      timestamp: Date.now(),
+    },
+    rooms,
+  };
+}
+
 function mapMatchEvent(eventName: string, p: Record<string, any>): MappedSocketEvent {
   const sub = eventName.split(':')[1] || 'updated';
   return {
     type: `match.${sub}`,
     payload: { matchId: p.matchId, bookingId: p.bookingId, userId: p.userId, timestamp: p.timestamp },
-    rooms: ['player'],
+    rooms: [PLAYER_ROOM],
   };
 }
 

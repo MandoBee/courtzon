@@ -125,7 +125,7 @@ export interface DomainEventMap {
   'friend:request': BaseEvent & { friendId: number; userId: number; fromUserId: number; fromUserName: string };
   'friend:accepted': BaseEvent & { friendId: number; userId: number; byUserId: number };
   'friend:blocked': BaseEvent & { userId: number; blockedUserId: number };
-  'chat:new-message': BaseEvent & { conversationId: number; userId: number; senderName: string; preview: string };
+  'chat:new-message': BaseEvent & { conversationId: number; userId: number; senderName: string; preview: string; participantUserIds: number[] };
   'chat:missed-call': BaseEvent & { conversationId: number; userId: number; callerName: string };
   'chat:group-created': BaseEvent & { groupId: number; userId: number; groupName: string };
   'chat:group-joined': BaseEvent & { groupId: number; userId: number; groupName: string };
