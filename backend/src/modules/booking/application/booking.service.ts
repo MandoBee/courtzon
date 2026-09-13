@@ -8,6 +8,7 @@ import { resourceRepository } from '../../organisations/infrastructure/repositor
 import { redisLock } from '../infrastructure/redis/redis-lock.js';
 import { getRedisClient } from '../../../infrastructure/redis/redis.client.js';
 import { getPool } from '../../../database/mysql.js';
+import { withTransaction } from '../../../database/database.transaction.js';
 import { TimeEngine } from '../../time/index.js';
 import { NotFoundError, ForbiddenError, ConflictError, ValidationError } from '../../../shared/errors/app-error.js';
 import { createModuleLogger } from '../../../shared/utils/logger.js';
@@ -1111,27 +1112,59 @@ export class BookingService {
     return { feeAmount, refundAmount: Math.max(0, refundBase - feeAmount) };
   }
 
-  private async _processRefund(booking: any, refundAmount: number, userId: number): Promise<void> {
+  private async _processRefund(booking: any, refundAmount: number, userId: number, paymentTransactionId: number | null, conn: mysql.PoolConnection): Promise<boolean> {
     // Money movement is the gating step for a refund. Failures are propagated
     // (not swallowed): if the wallet credit cannot be persisted, the caller
     // must NOT advance booking:refunded / refunded_amount — that would be a
     // false refund (R2/W4). Previously the updateBalance result was ignored and
     // every failure was caught, silently posting refund accounting without
     // returning the money.
-    if (refundAmount <= 0) return;
+    if (refundAmount <= 0) return false;
+
+    // Idempotency anchor (same pattern as marketplace order_refund / complaint
+    // refund / PaymentService payment_refund): a successful booking wallet
+    // refund writes a single unique (booking_refund, <payment_transactions.id>)
+    // wallet_transactions row. If it already exists the credit completed on a
+    // previous attempt — skip the re-credit and return `false` so the caller
+    // does NOT advance refunded_amount again (money for this payment has
+    // already moved; the prior operation advanced it atomically).
+    // uq_wallet_txn_ref (reference_type, reference_id) is the DB backstop; the
+    // caller's booking-row FOR UPDATE serializes concurrent refunds.
+    // When no payment_transactions row exists (legacy/edge wallet booking) the
+    // atomic booking-row transaction still prevents double movement via the cap,
+    // so no anchor is required.
+    if (paymentTransactionId != null) {
+      const existingRefunds = await walletRepository.findTransactionsByReference('booking_refund', paymentTransactionId, conn);
+      if (existingRefunds.length > 0) {
+        log.info({ bookingId: booking.id, paymentTransactionId }, 'Booking wallet refund already credited — idempotent skip');
+        return false;
+      }
+    }
 
     const wallet = await walletRepository.findByUserId(userId);
     if (!wallet) {
       throw new Error(`Cannot refund booking #${booking.id}: user ${userId} has no wallet`);
     }
-    const current = await walletRepository.lockAndGetBalance(wallet.id);
+    const current = await walletRepository.lockAndGetBalance(wallet.id, conn);
     if (!current) {
       throw new Error(`Cannot refund booking #${booking.id}: wallet ${wallet.id} is locked or missing`);
     }
     const newBalance = current.balance + refundAmount;
-    const updated = await walletRepository.updateBalance(wallet.id, newBalance, current.version);
+    const updated = await walletRepository.updateBalance(wallet.id, newBalance, current.version, conn);
     if (!updated) {
       throw new Error(`Cannot refund booking #${booking.id}: concurrent wallet update — please retry`);
+    }
+
+    if (paymentTransactionId != null) {
+      await walletRepository.createTransaction({
+        walletId: wallet.id,
+        type: 'refund',
+        amount: refundAmount,
+        direction: 'credit',
+        referenceType: 'booking_refund',
+        referenceId: paymentTransactionId,
+        description: `Booking #${booking.id} cancellation refund`,
+      }, conn);
     }
 
     await transactionService.createRefund({
@@ -1142,7 +1175,7 @@ export class BookingService {
       amount: refundAmount,
       sourceId: booking.id,
       description: `Booking #${booking.id} cancellation refund`,
-    });
+    }, conn);
 
     eventBusV2.emit('wallet:transaction', {
       walletId: wallet.id,
@@ -1151,7 +1184,9 @@ export class BookingService {
       balance: newBalance,
       type: 'refund',
       description: `Booking #${booking.id} cancellation refund`,
-    });
+    }, undefined, conn);
+
+    return true;
   }
 
   async isAcceptedParticipant(bookingId: number, userId: number): Promise<boolean> {
@@ -1473,14 +1508,14 @@ export class BookingService {
     }
   }
 
-  private async _emitBookingRefunded(booking: any, refundAmount: number): Promise<void> {
+  private async _emitBookingRefunded(booking: any, refundAmount: number, conn?: mysql.PoolConnection): Promise<void> {
     if (refundAmount <= 0) return;
-    const pool = getPool();
+    const db = conn ?? getPool();
 
     // Over-refund guard: cumulative refunds must not exceed the original gross payable.
     const grossPayable = Number(booking.total_amount || 0) + Number(booking.tax_amount || 0);
-    const [refundRows] = await pool.execute<RowData>(
-      `SELECT COALESCE(refunded_amount, 0) AS refunded_amount FROM bookings WHERE id = ?`,
+    const [refundRows] = await db.execute<RowData>(
+      `SELECT COALESCE(refunded_amount, 0) AS refunded_amount FROM bookings WHERE id = ?${conn ? ' FOR UPDATE' : ''}`,
       [booking.id],
     );
     const alreadyRefunded = Number((refundRows as any[])[0]?.refunded_amount ?? 0);
@@ -1492,20 +1527,23 @@ export class BookingService {
     if (refundAmount <= 0) return;
 
     // Update cumulative refunded amount (bounds repeated partial refunds).
-    await pool.execute(
+    await db.execute(
       `UPDATE bookings SET refunded_amount = refunded_amount + ? WHERE id = ?`,
       [refundAmount, booking.id],
     );
 
     // Emit canonical booking refund accounting event. The accounting listener
-    // prorates the ORIGINAL snapshot economics (never current rates).
+    // prorates the ORIGINAL snapshot economics (never current rates). When a
+    // conn is supplied (refund runs inside a transaction) the event is emitted
+    // post-commit so a rolled-back refund can never produce a phantom realtime
+    // / accounting signal.
     eventBusV2.emit('booking:refunded', {
       bookingId: booking.id,
       userId: booking.user_id,
       organisationId: booking.organisation_id,
       refundAmount,
       currency: 'EGP',
-    } as any);
+    } as any, undefined, conn);
   }
 
   // Phase 2 Step 7: markBookingSettled removed — duplicate settlement authority.
@@ -1556,47 +1594,83 @@ export class BookingService {
     const requested = Number(refundAmount);
     if (requested <= 0) return;
 
-    // Money never refunded more than the remaining refundable gross, and never
-    // more than the ACTUAL amount captured for the booking (P3-9 ceiling: the
-    // paid amount is the source of truth — V1 charged total+tax, V2 charged
-    // total, so the refund can never exceed what was really collected).
-    const cap = await this._computeRefundCap(booking);
-    const paidAmount = await this._resolveBookingPaidAmount(booking);
-    const ceiling = paidAmount > 0 ? Math.min(cap, paidAmount) : cap;
-    const moveAmount = Math.min(requested, ceiling);
-    if (moveAmount <= 0) {
-      log.warn({ bookingId: booking.id, requested }, 'No remaining refundable amount — skipping refund');
-      return;
-    }
-
-    const { paymentService } = await import('../../payment/application/payment.service.js');
-    const paymentMethod = booking.payment_method;
-    if (paymentMethod === 'wallet') {
-      await this._processRefund(booking, moveAmount, booking.user_id);
-    } else {
-      const [ptRows] = await getPool().execute<RowData>(
-        `SELECT id FROM payment_transactions WHERE booking_id = ? ORDER BY id DESC LIMIT 1`,
-        [booking.id]
+    // PHASE 0 — Booking refund idempotency/concurrency hardening.
+    // The WHOLE refund (cap computation → money movement → refunded_amount
+    // update) runs inside ONE transaction that holds the booking row FOR
+    // UPDATE. Concurrent/duplicate refund requests for the same booking block
+    // on the booking row and re-compute the cap against the UPDATED
+    // refunded_amount after the first commits → money can never move twice and
+    // partial refunds always respect the remaining refundable amount.
+    await withTransaction(async (conn) => {
+      // Re-read the booking under the lock so the cap is authoritative.
+      const [brows] = await conn.execute<RowData>(
+        `SELECT id, refunded_amount, total_amount, tax_amount, payment_method, payment_status, user_id, organisation_id, branch_id
+         FROM bookings WHERE id = ? FOR UPDATE`,
+        [booking.id],
       );
-      if (!ptRows.length) {
-        // No captured money record exists — nothing can be refunded. Do NOT
-        // advance the refund accounting (a GL reversal without money movement
-        // is a false refund). Log as error for manual review.
-        log.error({ bookingId: booking.id, paymentMethod, amount: moveAmount }, 'Cannot refund booking: no payment_transactions record found');
+      if (!brows.length) {
+        log.error({ bookingId: booking.id }, 'Booking not found for refund — skipping');
         return;
       }
-      const result = await (paymentService.refund as any)(
-        (ptRows[0] as any).id,
-        moveAmount,
-        `Booking #${booking.id} cancellation refund`,
-      );
-      if (!result?.success) {
-        throw new Error(`Payment gateway refund failed for booking #${booking.id}: ${(result as any)?.errorMessage || 'unknown error'}`);
-      }
-    }
+      const locked = brows[0] as any;
 
-    // Money moved — now advance the canonical refund accounting.
-    await this._emitBookingRefunded(booking, moveAmount);
+      // Money never refunded more than the remaining refundable gross, and never
+      // more than the ACTUAL amount captured for the booking (P3-9 ceiling: the
+      // paid amount is the source of truth — V1 charged total+tax, V2 charged
+      // total, so the refund can never exceed what was really collected).
+      const grossPayable = Number(locked.total_amount || 0) + Number(locked.tax_amount || 0);
+      const alreadyRefunded = Number(locked.refunded_amount || 0);
+      const cap = Math.max(0, grossPayable - alreadyRefunded);
+      const paidAmount = await this._resolveBookingPaidAmount(booking);
+      const ceiling = paidAmount > 0 ? Math.min(cap, paidAmount) : cap;
+      const moveAmount = Math.min(requested, ceiling);
+      if (moveAmount <= 0) {
+        log.warn({ bookingId: booking.id, requested }, 'No remaining refundable amount — skipping refund');
+        return;
+      }
+
+      const { paymentService } = await import('../../payment/application/payment.service.js');
+      const [ptRows] = await conn.execute<RowData>(
+        `SELECT id FROM payment_transactions WHERE booking_id = ? ORDER BY id DESC LIMIT 1`,
+        [booking.id],
+      );
+      const paymentTransactionId = ptRows.length ? Number((ptRows[0] as any).id) : null;
+      const paymentMethod = locked.payment_method;
+
+      // Money moved?
+      let moneyMoved = true;
+      if (paymentMethod === 'wallet') {
+        // Wallet refunds do NOT require a payment_transactions row (legacy/edge
+        // wallet bookings credit the wallet directly). The anchor is written
+        // only when a payment row exists.
+        moneyMoved = await this._processRefund(booking, moveAmount, Number(locked.user_id), paymentTransactionId, conn);
+      } else {
+        if (paymentTransactionId == null) {
+          // No captured money record exists — nothing can be refunded. Do NOT
+          // advance the refund accounting (a GL reversal without money movement
+          // is a false refund). Log as error for manual review.
+          log.error({ bookingId: booking.id, paymentMethod, amount: moveAmount }, 'Cannot refund booking: no payment_transactions record found');
+          return;
+        }
+        const result = await (paymentService.refund as any)(
+          paymentTransactionId,
+          moveAmount,
+          `Booking #${booking.id} cancellation refund`,
+        );
+        if (!result?.success) {
+          throw new Error(`Payment gateway refund failed for booking #${booking.id}: ${(result as any)?.errorMessage || 'unknown error'}`);
+        }
+      }
+
+      // Idempotent skip: a prior operation already credited the wallet and
+      // advanced refunded_amount atomically — do NOT advance it a second time.
+      if (!moneyMoved) return;
+
+      // Money moved — now advance the canonical refund accounting atomically
+      // with the money movement (same transaction). booking:refunded is emitted
+      // post-commit, so a rolled-back refund can never emit a phantom event.
+      await this._emitBookingRefunded({ ...booking, ...locked }, moveAmount, conn);
+    });
   }
 
   async updatePaymentStatus(id: number, paymentStatus: string, userId?: number) {
