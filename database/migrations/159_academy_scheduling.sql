@@ -1,10 +1,15 @@
 -- ============================================================================
 -- COURTZON V3 : ACADEMY G2 — RECURRING SCHEDULING + PENDING COURT HOLDS
 --
--- COURTZON_MIGRATION_ENV: LOCAL_DOCKER_ONLY
+-- COURTZON_MIGRATION_ENV: PRODUCTION_SAFE
 -- (Machine-readable classification enforced by backend/scripts/migration-guard.sh.
---  This migration is applied ONLY when COURTZON_MIGRATION_ENV=local. In
---  production/unknown environments it is skipped and never recorded.)
+--  Promoted from LOCAL_DOCKER_ONLY → PRODUCTION_SAFE by the Phase 0 / Group 3
+--  baseline-consistency hardening. Direct verification of the live Hostinger
+--  database (2026-09-13) confirmed migrations 159–162 are already applied and
+--  recorded in `migration_history`. The Academy G2–G8 schema is current
+--  production state; keeping it LOCAL_DOCKER_ONLY would make the baseline and
+--  migration history tell different stories. This migration is now eligible in
+--  every environment so a fresh baseline hydration converges everywhere.)
 --
 -- Additive, backward-compatible, non-destructive.
 -- Introduces:
@@ -13,8 +18,8 @@
 --      `pending_court` priority holds; NEVER a paid/final booking and NEVER
 --      linked to accounting/finance rows).
 --
--- LOCAL DOCKER DEVELOPMENT ONLY. Migration 159 MUST NEVER be applied to
--- Hostinger / production (157/158 are legacy dev migrations).
+-- PRODUCTION SAFE (promoted). See baseline `001_courtzon_v3.sql` appended
+-- ACADEMY G2 section for the equivalent fresh-hydration DDL.
 -- ============================================================================
 
 -- ---------------------------------------------------------------------------
@@ -81,5 +86,5 @@ ALTER TABLE `academy_group_sessions`
   ADD CONSTRAINT `fk_academy_session_pending_resolved_by` FOREIGN KEY (`pending_resolved_by`) REFERENCES `users` (`id`) ON DELETE SET NULL;
 
 -- DOWN: intentionally omitted — this migration is a forward-only, additive
--- LOCAL DOCKER DEVELOPMENT migration. The baseline captures the final schema;
--- a fresh environment rebuilds from `database/baseline/001_courtzon_v3.sql`.
+-- migration. The baseline captures the final schema; a fresh environment
+-- rebuilds from `database/baseline/001_courtzon_v3.sql`.

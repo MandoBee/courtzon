@@ -280,9 +280,11 @@ SESSION_SECRET=<YOUR_SESSION_SECRET>
 JWT_SECRET=<YOUR_JWT_SECRET>
 ENABLE_API_DOCS=false
 
-# Migration environment — MUST be explicitly 'production' so LOCAL_DOCKER_ONLY
-# migrations (159, 160) are skipped and never recorded on Hostinger. If unset,
-# the environment is UNKNOWN and the guard fail-closes those migrations anyway.
+# Migration environment — MUST be explicitly 'production' on Hostinger.
+# The full chain 001–162 is now PRODUCTION_SAFE (Phase 0 / Group 3 promoted the
+# Academy G2–G8 migrations after verifying Hostinger at migration 162). Any
+# FUTURE LOCAL_DOCKER_ONLY migration is skipped and never recorded unless
+# COURTZON_MIGRATION_ENV=local; unset is UNKNOWN (fail-closed).
 COURTZON_MIGRATION_ENV=production
 
 # Storage (S3-compatible)

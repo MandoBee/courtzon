@@ -1,10 +1,16 @@
 -- ============================================================================
 -- COURTZON V3 : ACADEMY G8 — ENROLLMENT PAYMENT SNAPSHOT
 --
--- COURTZON_MIGRATION_ENV: LOCAL_DOCKER_ONLY
+-- COURTZON_MIGRATION_ENV: PRODUCTION_SAFE
 -- (Machine-readable classification enforced by backend/scripts/migration-guard.sh.
---  This migration is applied ONLY when COURTZON_MIGRATION_ENV=local. In
---  production/unknown environments it is skipped and never recorded.)
+--  Promoted from LOCAL_DOCKER_ONLY → PRODUCTION_SAFE by the Phase 0 / Group 3
+--  baseline-consistency hardening. Direct verification of the live Hostinger
+--  database (2026-09-13) confirmed migrations 159–162 are already applied and
+--  recorded in `migration_history` (id 174 = this migration, applied
+--  2026-09-12 18:30:19). The Academy G2–G8 schema is current production state;
+--  keeping it LOCAL_DOCKER_ONLY would make the baseline and migration history
+--  tell different stories. This migration is now eligible in every environment
+--  so a fresh baseline hydration converges everywhere.)
 --
 -- Additive, backward-compatible, non-destructive. Introduces the single
 -- immutable `academy_enrollment_payments` snapshot table (G8).
@@ -24,9 +30,8 @@
 --      downstream consumers of the snapshot (payment module + financial
 --      module). This migration is purely the durable storage contract.
 --
--- LOCAL DOCKER DEVELOPMENT ONLY. Migration 162 MUST NEVER be applied to
--- Hostinger / production (157-161 are legacy dev migrations; 162 continues
--- the same chain).
+-- PRODUCTION SAFE (promoted). The equivalent fresh-hydration DDL exists in the
+-- baseline `001_courtzon_v3.sql` appended ACADEMY G8 section.
 -- ============================================================================
 
 CREATE TABLE IF NOT EXISTS `academy_enrollment_payments` (
@@ -69,5 +74,5 @@ CREATE TABLE IF NOT EXISTS `academy_enrollment_payments` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- DOWN: intentionally omitted — this migration is a forward-only, additive
--- LOCAL DOCKER DEVELOPMENT migration. The baseline captures the final schema;
--- a fresh environment rebuilds from `database/baseline/001_courtzon_v3.sql`.
+-- migration. The baseline captures the final schema; a fresh environment
+-- rebuilds from `database/baseline/001_courtzon_v3.sql`.

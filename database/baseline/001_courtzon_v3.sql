@@ -6945,7 +6945,9 @@ ALTER TABLE `academy_groups`
 -- ============================================================================
 -- ACADEMY G2 (Migration 159) — recurring scheduling + pending court holds
 -- (appended to baseline so fresh databases converge with the migration chain.
---  LOCAL DOCKER DEVELOPMENT ONLY — never apply to production.)
+--  PRODUCTION_SAFE — promoted from LOCAL_DOCKER_ONLY by Phase 0 / Group 3.
+--  Live Hostinger DB verified at migration 162 (2026-09-13); production already
+--  runs this schema.)
 -- ============================================================================
 CREATE TABLE `academy_schedules` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,
@@ -7004,7 +7006,9 @@ ALTER TABLE `academy_group_sessions`
 -- ============================================================================
 -- ACADEMY G3 (Migration 160) — confirmation lifecycle
 -- (appended to baseline so fresh databases converge with the migration chain.
---  LOCAL DOCKER DEVELOPMENT ONLY — never apply to production.)
+--  PRODUCTION_SAFE — promoted from LOCAL_DOCKER_ONLY by Phase 0 / Group 3.
+--  Live Hostinger DB verified at migration 162 (2026-09-13); production already
+--  runs this schema.)
 -- ============================================================================
 ALTER TABLE `academy_group_sessions`
   MODIFY COLUMN `reservation_status` enum('pending_court','conflict','pending_expired','deferred','resolved','confirmed') COLLATE utf8mb4_unicode_ci DEFAULT NULL AFTER `status`;
@@ -7032,7 +7036,9 @@ ALTER TABLE `academy_enrollments`
 -- ============================================================================
 -- ACADEMY G4 (Migration 161) — capacity + waitlist hardening
 -- (appended to baseline so fresh databases converge with the migration chain.
---  LOCAL DOCKER DEVELOPMENT ONLY — never apply to production.)
+--  PRODUCTION_SAFE — promoted from LOCAL_DOCKER_ONLY by Phase 0 / Group 3.
+--  Live Hostinger DB verified at migration 162 (2026-09-13); production already
+--  runs this schema.)
 -- ============================================================================
 ALTER TABLE `academy_programs`
   ADD COLUMN `original_capacity` int unsigned NOT NULL DEFAULT 0 AFTER `capacity`,
@@ -7045,3 +7051,49 @@ ALTER TABLE `academy_programs`
 UPDATE `academy_programs`
   SET `original_capacity` = `capacity`
   WHERE `original_capacity` = 0;
+
+-- ============================================================================
+-- ACADEMY G8 (Migration 162) — enrollment payment snapshot
+-- (appended to baseline so fresh databases converge with the migration chain.
+--  PRODUCTION_SAFE — promoted from LOCAL_DOCKER_ONLY by Phase 0 / Group 3.
+--  Live Hostinger DB verified at migration 162 (2026-09-13); production already
+--  runs this schema. Exactly ONE immutable snapshot per enrollment.)
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS `academy_enrollment_payments` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `enrollment_id` int unsigned NOT NULL,
+  `program_id` int unsigned NOT NULL,
+  `group_id` int unsigned DEFAULT NULL,
+  `organisation_id` int unsigned DEFAULT NULL,
+  `branch_id` int unsigned DEFAULT NULL,
+  `player_id` int unsigned NOT NULL,
+  `status` enum('authorized') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'authorized' COMMENT 'Write-once: a snapshot row is immutable and never transitions',
+  `gross_amount` decimal(14,2) NOT NULL,
+  `currency` char(3) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'EGP',
+  `program_price` decimal(14,2) NOT NULL,
+  `price_type` enum('FREE','FIXED','MEMBERS_ONLY') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'FIXED',
+  `session_count` int unsigned NOT NULL DEFAULT '0',
+  `court_rental_amount` decimal(14,2) NOT NULL DEFAULT '0.00',
+  `court_rental_currency` char(3) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `commission_rate` decimal(8,4) NOT NULL DEFAULT '0.0000',
+  `commission_amount` decimal(14,2) NOT NULL DEFAULT '0.00',
+  `organization_earning_amount` decimal(14,2) NOT NULL,
+  `coach_comp_type` enum('fixed_total','fixed_per_session','percent_gross') COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `coach_comp_value` decimal(12,2) DEFAULT NULL,
+  `coach_comp_amount` decimal(14,2) NOT NULL DEFAULT '0.00',
+  `collector` enum('courtzon','org') COLLATE utf8mb4_unicode_ci NOT NULL,
+  `payment_method` enum('wallet','cash','card','bank_transfer','online') COLLATE utf8mb4_unicode_ci NOT NULL,
+  `cancellation_window_minutes` int unsigned DEFAULT NULL,
+  `payment_transaction_id` bigint unsigned DEFAULT NULL,
+  `snapshot_created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_by` int unsigned DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_sep_enrollment` (`enrollment_id`),
+  KEY `idx_sep_program` (`program_id`),
+  KEY `idx_sep_group` (`group_id`),
+  KEY `idx_sep_org` (`organisation_id`),
+  KEY `idx_sep_player` (`player_id`),
+  KEY `idx_sep_status_created` (`status`,`snapshot_created_at`),
+  KEY `idx_sep_payment_txn` (`payment_transaction_id`),
+  CONSTRAINT `fk_sep_payment_txn` FOREIGN KEY (`payment_transaction_id`) REFERENCES `payment_transactions` (`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

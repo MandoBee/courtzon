@@ -10,7 +10,7 @@
 //   malformed marker (INVALID) -> fail-closed outside explicit local
 // ============================================================================
 import { describe, it, expect, beforeAll } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   findShell,
@@ -151,13 +151,36 @@ describe('migration guard — real migration files classified as intended', () =
     }
   });
 
-  it('159 and 160 are LOCAL_DOCKER_ONLY', () => {
-    for (const f of ['159_academy_scheduling.sql', '160_academy_confirmation.sql']) {
+  it('159–162 (Academy G2–G8) are PRODUCTION_SAFE — promoted from LOCAL_DOCKER_ONLY (Phase 0 / Group 3)', () => {
+    // Direct verification of the live Hostinger DB (2026-09-13) confirmed
+    // migrations 159–162 are applied and recorded in production migration_history
+    // (production is at migration 162). The Academy G2–G8 schema is current
+    // production state, so the baseline and migration history must tell the same
+    // story: these migrations run in every environment.
+    for (const f of [
+      '159_academy_scheduling.sql',
+      '160_academy_confirmation.sql',
+      '161_academy_capacity_waitlist.sql',
+      '162_academy_enrollment_payments.sql',
+    ]) {
       const path = join(projectRoot, 'database', 'migrations', f);
-      expect(probeGuard(shell, path, 'production').decision).toBe('SKIP');
-      expect(probeGuard(shell, path, null).decision).toBe('SKIP');
-      expect(probeGuard(shell, path, 'local').decision).toBe('RUN');
+      for (const env of ['production', null, 'local']) {
+        const p = probeGuard(shell, path, env);
+        expect(p.cls).toBe('PRODUCTION_SAFE');
+        expect(p.decision).toBe('RUN');
+      }
     }
+  });
+
+  it('no migration file in database/migrations is currently LOCAL_DOCKER_ONLY (baseline must equal production state)', () => {
+    // Static content check — the guard classifies by marker token in the file
+    // content, so this is equivalent to a per-file guard probe without one bash
+    // spawn per file. Deep guard semantics are exercised on specific files above.
+    const dir = join(projectRoot, 'database', 'migrations');
+    const localOnly = readdirSync(dir)
+      .filter((f) => f.endsWith('.sql'))
+      .filter((f) => /COURTZON_MIGRATION_ENV:\s*LOCAL_DOCKER_ONLY/.test(readFileSync(join(dir, f), 'utf8')));
+    expect(localOnly).toEqual([]);
   });
 
   it('the pre-existing production chain (e.g. 156) remains unmarked → PRODUCTION_SAFE', () => {
@@ -194,6 +217,22 @@ describe('migration guard — enforced in BOTH execution paths', () => {
     const insertIdx = ms.lastIndexOf('INSERT IGNORE INTO $TRACKING_TABLE');
     expect(gateIdx).toBeGreaterThan(-1);
     expect(insertIdx).toBeGreaterThan(gateIdx);
+  });
+
+  it('the fresh-baseline branch stamps migration_history (restart never replays the patch chain)', () => {
+    const ep = readFileSync(join(projectRoot, 'backend', 'docker-entrypoint.sh'), 'utf8');
+    // BOOT 1 (fresh DB) must stamp history for guard-eligible files right after
+    // the baseline/seed import, so BOOT 2 (restart) sees a full history and
+    // never replays the additive 001-162 chain over a baseline-hydrated DB.
+    const stampMarker = 'Stamping migration_history';
+    const stampIdx = ep.indexOf(stampMarker);
+    const seedIdx = ep.indexOf('Importing seed data');
+    const stampSection = ep.slice(stampIdx, stampIdx + 1400);
+    expect(seedIdx).toBeGreaterThan(-1);
+    expect(stampIdx).toBeGreaterThan(seedIdx);
+    expect(stampSection).toContain('INSERT IGNORE INTO migration_history');
+    expect(stampSection).toContain('courtzon_migration_should_run');
+    expect(stampSection).toContain('SHA2');
   });
 
   it('the guard script itself is present and parseable', () => {

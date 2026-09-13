@@ -1,10 +1,15 @@
 -- ============================================================================
 -- COURTZON V3 : ACADEMY G4 — CAPACITY + WAITLIST HARDENING
 --
--- COURTZON_MIGRATION_ENV: LOCAL_DOCKER_ONLY
+-- COURTZON_MIGRATION_ENV: PRODUCTION_SAFE
 -- (Machine-readable classification enforced by backend/scripts/migration-guard.sh.
---  This migration is applied ONLY when COURTZON_MIGRATION_ENV=local. In
---  production/unknown environments it is skipped and never recorded.)
+--  Promoted from LOCAL_DOCKER_ONLY → PRODUCTION_SAFE by the Phase 0 / Group 3
+--  baseline-consistency hardening. Direct verification of the live Hostinger
+--  database (2026-09-13) confirmed migrations 159–162 are already applied and
+--  recorded in `migration_history`. The Academy G2–G8 schema is current
+--  production state; keeping it LOCAL_DOCKER_ONLY would make the baseline and
+--  migration history tell different stories. This migration is now eligible in
+--  every environment so a fresh baseline hydration converges everywhere.)
 --
 -- Additive, backward-compatible, non-destructive.
 -- Introduces the G4 capacity model on academy_programs:
@@ -29,6 +34,9 @@
 -- cannot be broken.
 --
 -- ZERO financial postings: no ledger, settlement, wallet, or payment rows.
+--
+-- PRODUCTION SAFE (promoted). See baseline `001_courtzon_v3.sql` appended
+-- ACADEMY G4 section for the equivalent fresh-hydration DDL.
 -- ============================================================================
 
 -- ---------------------------------------------------------------------------
@@ -51,5 +59,5 @@ UPDATE `academy_programs`
   WHERE `original_capacity` = 0;
 
 -- DOWN: intentionally omitted — this migration is a forward-only, additive
--- LOCAL DOCKER DEVELOPMENT migration. The baseline captures the final schema;
--- a fresh environment rebuilds from `database/baseline/001_courtzon_v3.sql`.
+-- migration. The baseline captures the final schema; a fresh environment
+-- rebuilds from `database/baseline/001_courtzon_v3.sql`.

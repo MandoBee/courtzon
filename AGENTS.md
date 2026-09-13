@@ -148,8 +148,10 @@ A fresh or restored environment MUST apply every seed file below, in order. The 
      `COURTZON_MIGRATION_ENV=local`; skipped (and never recorded in
      `migration_history`) in production or unknown environments.
    - (no marker) → treated as `PRODUCTION_SAFE` (backward-compatible default).
-   Migration 160 (`160_academy_confirmation.sql`) and 159 are
-   `LOCAL_DOCKER_ONLY`; 157/158 are `PRODUCTION_SAFE`.
+   Migration chain 001–162 is fully `PRODUCTION_SAFE` after the Phase 0 / Group 3
+   promotion (159/160/161/162 were `LOCAL_DOCKER_ONLY`; production was verified
+   at migration 162 on 2026-09-13, so the Academy G2–G8 schema is production
+   state and must never be re-classified local-only).
 3. Update the baseline by running the full chain against a fresh DB and re-exporting
 4. Run `node backend/scripts/migrate.js` to apply pending migrations (or import the new baseline)
 

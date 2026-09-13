@@ -52,6 +52,32 @@ if [ -z "$_TABLE_COUNT" ] || [ "$_TABLE_COUNT" = "0" ]; then
   echo "Importing seed data..."
   $_MYSQL "$DB_NAME" < /app/database/seeds/001_baseline.sql
   echo "Seed data imported."
+  # The baseline ALREADY contains the full production-safe schema for every
+  # migration (the single authoritative baseline). Stamp migration_history so a
+  # container RESTART does not re-run the additive 001-162 patch chain over a
+  # baseline-hydrated database (replays are destructive: e.g. 061 renames
+  # academy_enrollments, 138 drops the mislabeled legacy copy). Files whose
+  # marker policy would skip them (LOCAL_DOCKER_ONLY outside local) are NOT
+  # stamped and stay pending, exactly like the migration loop below.
+  echo "Stamping migration_history for the imported baseline..."
+  $_MYSQL "$DB_NAME" -e \
+    "CREATE TABLE IF NOT EXISTS migration_history (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      filename VARCHAR(255) NOT NULL UNIQUE,
+      hash VARCHAR(64) NOT NULL,
+      applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      execution_ms INT DEFAULT 0
+    )" 2>/dev/null || true
+  for f in /app/database/migrations/*.sql; do
+    if [ -f "$f" ]; then
+      fname=$(basename "$f")
+      if courtzon_migration_should_run "$f"; then
+        $_MYSQL "$DB_NAME" -e \
+          "INSERT IGNORE INTO migration_history (filename, hash) VALUES ('$fname', SHA2('$fname', 256))" 2>/dev/null || true
+      fi
+    fi
+  done
+  echo "Baseline schema stamped into migration_history."
 else
   echo "Database has $_TABLE_COUNT tables — skipping baseline re-import."
 
