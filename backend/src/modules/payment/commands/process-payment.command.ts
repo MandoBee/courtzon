@@ -38,7 +38,7 @@ export const processPaymentHandler: CommandHandler<Command, ProcessPaymentResult
 
   execute: async (command, conn: PoolConnection) => {
     const p = command.payload as unknown as ProcessPaymentPayload;
-    const payment = await paymentRepository.findById(p.paymentId);
+    const payment = await paymentRepository.findById(p.paymentId, conn);
     if (!payment) throw new NotFoundError('Payment');
 
     if (isFinal(payment.payment_status as PaymentStatus)) {

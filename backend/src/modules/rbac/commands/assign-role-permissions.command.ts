@@ -27,16 +27,16 @@ export const assignRolePermissionsHandler: CommandHandler<Command, AssignRolePer
     if (!Array.isArray(p.permissionIds)) throw new Error('permissionIds must be an array');
   },
 
-  execute: async (command, _conn: PoolConnection) => {
+  execute: async (command, conn: PoolConnection) => {
     const p = command.payload as unknown as AssignRolePermissionsPayload;
-    const role = await rbacRepository.getRoleById(p.roleId);
+    const role = await rbacRepository.getRoleById(p.roleId, conn);
     if (!role) throw new NotFoundError('Role');
 
     if (!canAssignPermission(role)) {
       throw new Error('Cannot assign permissions to an inactive or deleted role');
     }
 
-    await rbacRepository.setRolePermissions(p.roleId, p.permissionIds);
+    await rbacRepository.setRolePermissions(p.roleId, p.permissionIds, conn);
 
     log.info({ roleId: p.roleId, permissionCount: p.permissionIds.length }, 'rbac.permissions_assigned');
     return { roleId: p.roleId, permissionCount: p.permissionIds.length };

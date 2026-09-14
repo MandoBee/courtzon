@@ -7,7 +7,6 @@ import type { ActivityStatus } from '../domain/activities-aggregate.js';
 
 const log = createModuleLogger('activities');
 
-import { getPool } from '../../../database/mysql.js';
 import type { ResultSetHeader, RowDataPacket } from 'mysql2';
 
 export interface UpdateActivityStatusPayload {
@@ -26,15 +25,14 @@ export const updateActivityStatusHandler: CommandHandler<Command, UpdateActivity
     if (!p.activityId || p.activityId <= 0) throw new Error('activityId is required');
     if (!p.status) throw new Error('status is required');
   },
-  execute: async (command, _conn: PoolConnection) => {
+  execute: async (command, conn: PoolConnection) => {
     const p = command.payload as unknown as UpdateActivityStatusPayload;
-    const pool = getPool();
-    const [rows] = await pool.execute<RowDataPacket[]>('SELECT id, status FROM activities WHERE id = ?', [p.activityId]);
+    const [rows] = await conn.execute<RowDataPacket[]>('SELECT id, status FROM activities WHERE id = ?', [p.activityId]);
     if (!rows.length) throw new NotFoundError('Activity');
 
     assertValidActivityTransition(rows[0].status as ActivityStatus, p.status);
 
-    await pool.execute<ResultSetHeader>('UPDATE activities SET status = ?, updated_at = NOW() WHERE id = ?', [p.status, p.activityId]);
+    await conn.execute<ResultSetHeader>('UPDATE activities SET status = ?, updated_at = NOW() WHERE id = ?', [p.status, p.activityId]);
     log.info({ activityId: p.activityId, status: p.status }, 'activity.status_updated');
     return { activityId: p.activityId, status: p.status };
   },

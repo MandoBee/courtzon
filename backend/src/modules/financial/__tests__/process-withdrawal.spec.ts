@@ -35,12 +35,12 @@ describe('ProcessWithdrawal command', () => {
       .mockResolvedValueOnce([[{ id: 1, status: 'pending' }], []])
       .mockResolvedValueOnce([{ affectedRows: 1 }, []]);
 
-    const result = await processWithdrawalHandler.execute(makeCommand(), {} as any);
+    const result = await processWithdrawalHandler.execute(makeCommand(), { execute: mockExecute } as any);
     expect(result.status).toBe('approved');
   });
 
   it('throws NotFoundError for unknown withdrawal', async () => {
     mockExecute.mockResolvedValueOnce([[], []]);
-    await expect(processWithdrawalHandler.execute(makeCommand(), {} as any)).rejects.toThrow();
+    await expect(processWithdrawalHandler.execute(makeCommand(), { execute: mockExecute } as any)).rejects.toThrow();
   });
 });

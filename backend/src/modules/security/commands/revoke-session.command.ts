@@ -24,9 +24,9 @@ export const revokeSessionHandler: CommandHandler<Command, RevokeSessionResult> 
     if (!p.sessionId || p.sessionId <= 0) throw new Error('sessionId is required and must be positive');
   },
 
-  execute: async (command, _conn: PoolConnection) => {
+  execute: async (command, conn: PoolConnection) => {
     const p = command.payload as unknown as RevokeSessionPayload;
-    const session = await securityRepository.getSessionById(p.sessionId);
+    const session = await securityRepository.getSessionById(p.sessionId, conn);
     if (!session) throw new NotFoundError('Session');
 
     if (!canRevokeSession(session)) {
@@ -34,7 +34,7 @@ export const revokeSessionHandler: CommandHandler<Command, RevokeSessionResult> 
       return { sessionId: p.sessionId, revoked: false };
     }
 
-    await securityRepository.revokeSession(p.sessionId);
+    await securityRepository.revokeSession(p.sessionId, conn);
     log.info({ sessionId: p.sessionId }, 'session.revoked');
     return { sessionId: p.sessionId, revoked: true };
   },

@@ -23,13 +23,13 @@ export interface NotificationTemplate {
 const DEFAULT_LOCALE = 'en';
 const templateCache = new Map<string, NotificationTemplate>();
 
-export async function getTemplate(eventName: string, locale: string = DEFAULT_LOCALE): Promise<NotificationTemplate | null> {
+export async function getTemplate(eventName: string, locale: string = DEFAULT_LOCALE, conn?: mysql.PoolConnection): Promise<NotificationTemplate | null> {
   const cacheKey = `${eventName}:${locale}`;
   const cached = templateCache.get(cacheKey);
   if (cached) return cached;
 
-  const pool = getPool();
-  const [rows] = await pool.execute<RowData>(
+  const db: mysql.Pool | mysql.PoolConnection = conn ?? getPool();
+  const [rows] = await db.execute<RowData>(
     `SELECT * FROM notification_templates
      WHERE event_name = ? AND locale = ? AND is_active = TRUE
      LIMIT 1`,
@@ -43,7 +43,7 @@ export async function getTemplate(eventName: string, locale: string = DEFAULT_LO
   }
 
   if (locale !== DEFAULT_LOCALE) {
-    return getTemplate(eventName, DEFAULT_LOCALE);
+    return getTemplate(eventName, DEFAULT_LOCALE, conn);
   }
 
   return null;

@@ -92,7 +92,7 @@ describe('DispatchNotification command', () => {
     expect(result.userId).toBe(42);
     expect(result.dispatched).toBe(true);
     expect(notificationRepository.create).toHaveBeenCalled();
-    expect(incrementRateLimit).toHaveBeenCalledWith(42, 'bookings', 'booking:confirmed');
+    expect(incrementRateLimit).toHaveBeenCalledWith(42, 'bookings', 'booking:confirmed', expect.anything());
     expect(queueService.add).toHaveBeenCalledWith('process_notification', expect.objectContaining({ notificationId: 99 }), expect.any(Object));
   });
 

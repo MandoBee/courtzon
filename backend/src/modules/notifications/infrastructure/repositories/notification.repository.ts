@@ -39,10 +39,11 @@ export class NotificationRepository {
     renderedTitle?: string;
     renderedBody?: string;
     isPushed?: boolean;
-  }): Promise<number> {
+  }, conn?: mysql.PoolConnection): Promise<number> {
+    const db: mysql.Pool | mysql.PoolConnection = conn ?? this.pool;
     let categoryId: number | null = null;
     if (data.categorySlug) {
-      const [catRows] = await this.pool.execute<RowData>(
+      const [catRows] = await db.execute<RowData>(
         'SELECT id FROM notification_categories WHERE slug = ?', [data.categorySlug]
       );
       categoryId = catRows.length ? (catRows[0] as any).id : null;
@@ -50,20 +51,20 @@ export class NotificationRepository {
 
     let actionId: number | null = null;
     if (data.actionKey) {
-      const [actRows] = await this.pool.execute<RowData>(
+      const [actRows] = await db.execute<RowData>(
         'SELECT id FROM notification_actions WHERE action_key = ?', [data.actionKey]
       );
       if (actRows.length) {
         actionId = (actRows[0] as any).id;
       } else {
-        const [ins] = await this.pool.execute<ResultSetHeader>(
+        const [ins] = await db.execute<ResultSetHeader>(
           'INSERT INTO notification_actions (action_key) VALUES (?)', [data.actionKey]
         );
         actionId = ins.insertId;
       }
     }
 
-    const [result] = await this.pool.execute<ResultSetHeader>(
+    const [result] = await db.execute<ResultSetHeader>(
       `INSERT INTO notifications
        (user_id, category_id, action_id, action_payload, title, body, icon, type, priority,
         organization_id, branch_id, sender_id, related_entity_type, related_entity_id,

@@ -72,9 +72,9 @@ export const paymentRepository = {
     return { id: result.insertId, traceId };
   },
 
-  async findById(id: number) {
-    const pool = getPool();
-    const [rows] = await pool.execute<RowData>(
+  async findById(id: number, conn?: mysql.PoolConnection) {
+    const db = resolvePool(conn);
+    const [rows] = await db.execute<RowData>(
       'SELECT * FROM payment_transactions WHERE id = ?',
       [id]
     );

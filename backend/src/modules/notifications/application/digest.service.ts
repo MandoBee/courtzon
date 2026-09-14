@@ -14,12 +14,13 @@ export async function accumulateDigest(
   userId: number,
   categorySlug: string,
   eventName: string,
+  conn?: mysql.PoolConnection,
 ): Promise<boolean> {
-  const pool = getPool();
+  const db: mysql.Pool | mysql.PoolConnection = conn ?? getPool();
   const now = new Date();
   const windowClosesAt = new Date(now.getTime() + DIGEST_WINDOW_SECONDS * 1000);
 
-  const [existing] = await pool.execute<RowData>(
+  const [existing] = await db.execute<RowData>(
     `SELECT * FROM notification_digest_windows
      WHERE user_id = ? AND category_slug = ? AND event_name = ? AND is_aggregated = 0 AND window_closes_at > NOW()
      LIMIT 1`,
@@ -27,14 +28,14 @@ export async function accumulateDigest(
   );
 
   if (existing.length) {
-    await pool.execute(
+    await db.execute(
       'UPDATE notification_digest_windows SET count = count + 1 WHERE id = ?',
       [existing[0].id],
     );
     return true;
   }
 
-  await pool.execute(
+  await db.execute(
     `INSERT INTO notification_digest_windows
      (user_id, category_slug, event_name, count, window_opens_at, window_closes_at, is_aggregated)
      VALUES (?, ?, ?, 1, NOW(), ?, 0)`,

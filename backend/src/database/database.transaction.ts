@@ -1,7 +1,7 @@
 import { AsyncLocalStorage } from 'async_hooks';
 import { PoolConnection } from 'mysql2/promise';
 
-import { getPool } from './mysql.js';
+import { acquireConnection } from './mysql.js';
 
 const transactionAls = new AsyncLocalStorage<boolean>();
 
@@ -36,8 +36,7 @@ export async function withTransaction<T>(
     connection: PoolConnection,
   ) => Promise<T>,
 ): Promise<T> {
-  const connection =
-    await getPool().getConnection();
+  const connection = await acquireConnection();
 
   const hookCount = afterCommitHooks.length;
 

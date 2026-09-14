@@ -14,11 +14,9 @@ import type { ProcessNotificationJob } from '../../../infrastructure/queue/queue
 const log = createModuleLogger('notification-dispatch');
 const DEFAULT_CHANNELS = ['in_app'];
 
-async function getChannelsForUser(userId: number, categorySlug: string): Promise<string[]> {
+async function getChannelsForUser(userId: number, categorySlug: string, conn: PoolConnection): Promise<string[]> {
   try {
-    const { getPool } = await import('../../../database/mysql.js');
-    const pool = getPool();
-    const [rows] = await pool.execute<any[]>(
+    const [rows] = await conn.execute<any[]>(
       `SELECT channels FROM user_channel_preferences WHERE user_id = ? AND category_slug = ? AND is_active = 1`,
       [userId, categorySlug],
     );
@@ -27,7 +25,9 @@ async function getChannelsForUser(userId: number, categorySlug: string): Promise
       const parsed: string[] = typeof raw === 'string' ? JSON.parse(raw) : raw;
       return parsed.length > 0 ? parsed : DEFAULT_CHANNELS;
     }
-  } catch { /* fall through to defaults */ }
+  } catch {
+    return DEFAULT_CHANNELS;
+  }
   return DEFAULT_CHANNELS;
 }
 
@@ -65,18 +65,18 @@ export const dispatchNotificationHandler: CommandHandler<Command, DispatchNotifi
     if (!p.data) throw new Error('data is required');
   },
 
-  execute: async (command, _conn: PoolConnection) => {
+  execute: async (command, conn: PoolConnection) => {
     const p = command.payload as unknown as DispatchNotificationPayload;
     const categorySlug = p.categorySlug || categorizeEvent(p.eventName);
 
-    const rateCheck = await checkRateLimit(p.userId, categorySlug);
+    const rateCheck = await checkRateLimit(p.userId, categorySlug, conn);
     if (!shouldDispatch(rateCheck)) {
       log.warn({ userId: p.userId, eventName: p.eventName, categorySlug }, 'Rate limited notification');
       return { notificationId: 0, userId: p.userId, dispatched: false };
     }
 
     if (p.digestable === true) {
-      const accumulated = await accumulateDigest(p.userId, categorySlug, p.eventName);
+      const accumulated = await accumulateDigest(p.userId, categorySlug, p.eventName, conn);
       if (accumulated) {
         log.debug({ userId: p.userId, eventName: p.eventName }, 'Notification accumulated in digest');
         return { notificationId: 0, userId: p.userId, dispatched: false };
@@ -84,7 +84,7 @@ export const dispatchNotificationHandler: CommandHandler<Command, DispatchNotifi
     }
 
     const effectiveLocale = p.locale ?? 'en';
-    const template = await getTemplate(p.eventName, effectiveLocale);
+    const template = await getTemplate(p.eventName, effectiveLocale, conn);
     if (!template) {
       log.warn({ eventName: p.eventName, locale: effectiveLocale }, 'No template found for event');
       return { notificationId: 0, userId: p.userId, dispatched: false };
@@ -110,12 +110,12 @@ export const dispatchNotificationHandler: CommandHandler<Command, DispatchNotifi
       actions: (p.actions ?? template.actions) ?? undefined,
       imageUrls: p.imageUrls,
       templateId: template.id,
-    });
+    }, conn);
 
-    await incrementRateLimit(p.userId, categorySlug, p.eventName);
+    await incrementRateLimit(p.userId, categorySlug, p.eventName, conn);
 
     const online = await isOnline(p.userId);
-    const channels = await getChannelsForUser(p.userId, categorySlug);
+    const channels = await getChannelsForUser(p.userId, categorySlug, conn);
 
     for (const channel of channels) {
       const jobData: ProcessNotificationJob = {

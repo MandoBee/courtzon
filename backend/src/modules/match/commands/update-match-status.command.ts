@@ -15,7 +15,6 @@ export interface UpdateMatchStatusResult {
   status: string;
 }
 
-import { getPool } from '../../../database/mysql.js';
 import type { ResultSetHeader, RowDataPacket } from 'mysql2';
 
 export const updateMatchStatusHandler: CommandHandler<Command, UpdateMatchStatusResult> = {
@@ -26,13 +25,12 @@ export const updateMatchStatusHandler: CommandHandler<Command, UpdateMatchStatus
     if (!p.status) throw new Error('status is required');
   },
 
-  execute: async (command, _conn: PoolConnection) => {
+  execute: async (command, conn: PoolConnection) => {
     const p = command.payload as unknown as UpdateMatchStatusPayload;
-    const pool = getPool();
-    const [rows] = await pool.execute<RowDataPacket[]>('SELECT id, status FROM matches WHERE id = ?', [p.matchId]);
+    const [rows] = await conn.execute<RowDataPacket[]>('SELECT id, status FROM matches WHERE id = ?', [p.matchId]);
     if (!rows.length) throw new NotFoundError('Match');
 
-    await pool.execute<ResultSetHeader>('UPDATE matches SET status = ?, updated_at = NOW() WHERE id = ?', [p.status, p.matchId]);
+    await conn.execute<ResultSetHeader>('UPDATE matches SET status = ?, updated_at = NOW() WHERE id = ?', [p.status, p.matchId]);
     log.info({ matchId: p.matchId, status: p.status }, 'match.status_updated');
     return { matchId: p.matchId, status: p.status };
   },

@@ -1,4 +1,5 @@
 import { getPool } from '../../../database/mysql.js';
+import type mysql from 'mysql2/promise';
 import { getRedisClient } from '../../../infrastructure/redis/redis.client.js';
 import { limitClause } from '../../../shared/utils/pagination.js';
 
@@ -42,17 +43,17 @@ export class SecurityRepository {
     return rows as any[];
   }
 
-  async getSessionById(sessionId: number): Promise<any | null> {
-    const pool = getPool();
-    const [rows] = await pool.execute(
+  async getSessionById(sessionId: number, conn?: mysql.PoolConnection): Promise<any | null> {
+    const db: mysql.Pool | mysql.PoolConnection = conn ?? getPool();
+    const [rows] = await db.execute(
       'SELECT * FROM user_sessions WHERE id = ?', [sessionId]
     );
     return (rows as any[])[0] || null;
   }
 
-  async revokeSession(sessionId: number): Promise<void> {
-    const pool = getPool();
-    await pool.execute(`UPDATE user_sessions SET is_revoked = TRUE WHERE id = ?`, [sessionId]);
+  async revokeSession(sessionId: number, conn?: mysql.PoolConnection): Promise<void> {
+    const db: mysql.Pool | mysql.PoolConnection = conn ?? getPool();
+    await db.execute(`UPDATE user_sessions SET is_revoked = TRUE WHERE id = ?`, [sessionId]);
   }
 
   async getFailedLoginStats(days = 7): Promise<any> {

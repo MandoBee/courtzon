@@ -46,7 +46,7 @@ describe('AssignRolePermissions command', () => {
 
     expect(result.roleId).toBe(1);
     expect(result.permissionCount).toBe(3);
-    expect(rbacRepository.setRolePermissions).toHaveBeenCalledWith(1, [1, 2, 3]);
+    expect(rbacRepository.setRolePermissions).toHaveBeenCalledWith(1, [1, 2, 3], expect.anything());
   });
 
   it('throws NotFoundError for unknown role', async () => {

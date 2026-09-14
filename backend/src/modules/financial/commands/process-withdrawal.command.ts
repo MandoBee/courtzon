@@ -19,7 +19,6 @@ export interface ProcessWithdrawalResult {
   status: WithdrawalStatus;
 }
 
-import { getPool } from '../../../database/mysql.js';
 import type { ResultSetHeader, RowDataPacket } from 'mysql2';
 
 export const processWithdrawalHandler: CommandHandler<Command, ProcessWithdrawalResult> = {
@@ -30,10 +29,9 @@ export const processWithdrawalHandler: CommandHandler<Command, ProcessWithdrawal
     if (!p.toStatus) throw new Error('toStatus is required');
   },
 
-  execute: async (command, _conn: PoolConnection) => {
+  execute: async (command, conn: PoolConnection) => {
     const p = command.payload as unknown as ProcessWithdrawalPayload;
-    const pool = getPool();
-    const [rows] = await pool.execute<RowDataPacket[]>(
+    const [rows] = await conn.execute<RowDataPacket[]>(
       'SELECT id, status FROM withdrawal_requests WHERE id = ?',
       [p.withdrawalId],
     );
@@ -46,7 +44,7 @@ export const processWithdrawalHandler: CommandHandler<Command, ProcessWithdrawal
     }
 
     const transition = planWithdrawalTransition(current, p.toStatus, 1);
-    await pool.execute<ResultSetHeader>(
+    await conn.execute<ResultSetHeader>(
       `UPDATE withdrawal_requests SET status = ?, admin_notes = COALESCE(?, admin_notes), reviewed_at = NOW() WHERE id = ? AND status = ?`,
       [p.toStatus, p.notes || null, p.withdrawalId, current],
     );

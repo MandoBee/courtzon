@@ -1,4 +1,5 @@
 import { getPool } from '../../../database/mysql.js';
+import type mysql from 'mysql2/promise';
 import type { RowDataPacket } from 'mysql2';
 
 interface RateLimitConfig {
@@ -20,16 +21,23 @@ function getConfig(categorySlug: string): RateLimitConfig {
   return DEFAULT_CONFIGS[categorySlug] ?? DEFAULT_CONFIGS.default;
 }
 
+type Queryable = mysql.Pool | mysql.PoolConnection;
+
+function resolveDb(conn?: mysql.PoolConnection): Queryable {
+  return conn ?? getPool();
+}
+
 export async function checkRateLimit(
   userId: number,
   categorySlug: string,
+  conn?: mysql.PoolConnection,
 ): Promise<{ allowed: boolean; retryAfter?: number; remaining?: number }> {
   const config = getConfig(categorySlug);
   const now = new Date();
   const windowStart = new Date(now.getTime() - config.windowSeconds * 1000);
 
-  const pool = getPool();
-  const [rows] = await pool.execute<RowDataPacket[]>(
+  const db = resolveDb(conn);
+  const [rows] = await db.execute<RowDataPacket[]>(
     `SELECT COALESCE(SUM(count), 0) as total FROM notification_rate_limits
      WHERE user_id = ? AND category_slug = ?
      AND window_start >= ?`,
@@ -40,7 +48,7 @@ export async function checkRateLimit(
   const remaining = config.maxCount - total;
 
   if (remaining <= 0) {
-    const retryAfter = await getEarliestWindowExpiry(userId, categorySlug, config.windowSeconds);
+    const retryAfter = await getEarliestWindowExpiry(userId, categorySlug, config.windowSeconds, conn);
     return { allowed: false, retryAfter: Math.max(1, retryAfter), remaining: 0 };
   }
 
@@ -51,9 +59,10 @@ async function getEarliestWindowExpiry(
   userId: number,
   categorySlug: string,
   windowSeconds: number,
+  conn?: mysql.PoolConnection,
 ): Promise<number> {
-  const pool = getPool();
-  const [rows] = await pool.execute<RowDataPacket[]>(
+  const db = resolveDb(conn);
+  const [rows] = await db.execute<RowDataPacket[]>(
     `SELECT window_start FROM notification_rate_limits
      WHERE user_id = ? AND category_slug = ?
      ORDER BY window_start ASC LIMIT 1`,
@@ -70,13 +79,14 @@ export async function incrementRateLimit(
   userId: number,
   categorySlug: string,
   eventName: string = 'default',
+  conn?: mysql.PoolConnection,
 ): Promise<void> {
   const config = getConfig(categorySlug);
   const now = new Date();
   const windowStart = new Date(now.getTime() - (now.getTime() % (config.windowSeconds * 1000)));
 
-  const pool = getPool();
-  await pool.execute(
+  const db = resolveDb(conn);
+  await db.execute(
     `INSERT INTO notification_rate_limits
      (user_id, category_slug, event_name, count, window_start)
      VALUES (?, ?, ?, 1, ?)

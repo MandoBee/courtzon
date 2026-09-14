@@ -39,7 +39,7 @@ describe('RevokeSession command', () => {
     const result = await revokeSessionHandler.execute(makeCommand(), {} as any);
     expect(result.sessionId).toBe(1);
     expect(result.revoked).toBe(true);
-    expect(securityRepository.revokeSession).toHaveBeenCalledWith(1);
+    expect(securityRepository.revokeSession).toHaveBeenCalledWith(1, expect.anything());
   });
 
   it('skips if already revoked', async () => {

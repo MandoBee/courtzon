@@ -5,7 +5,6 @@ import type { Command, CommandHandler } from '../../../shared/command/command-ba
 
 const log = createModuleLogger('organisations');
 
-import { getPool } from '../../../database/mysql.js';
 import type { ResultSetHeader, RowDataPacket } from 'mysql2';
 
 export interface UpdateOrgStatusPayload {
@@ -25,13 +24,12 @@ export const updateOrgStatusHandler: CommandHandler<Command, UpdateOrgStatusResu
     if (!p.organisationId || p.organisationId <= 0) throw new Error('organisationId is required');
     if (!p.status) throw new Error('status is required');
   },
-  execute: async (command, _conn: PoolConnection) => {
+  execute: async (command, conn: PoolConnection) => {
     const p = command.payload as unknown as UpdateOrgStatusPayload;
-    const pool = getPool();
-    const [rows] = await pool.execute<RowDataPacket[]>('SELECT id, is_active FROM organisations WHERE id = ?', [p.organisationId]);
+    const [rows] = await conn.execute<RowDataPacket[]>('SELECT id, is_active FROM organisations WHERE id = ?', [p.organisationId]);
     if (!rows.length) throw new NotFoundError('Organisation');
 
-    await pool.execute<ResultSetHeader>('UPDATE organisations SET is_active = ?, updated_at = NOW() WHERE id = ?', [p.status === 'active' ? 1 : 0, p.organisationId]);
+    await conn.execute<ResultSetHeader>('UPDATE organisations SET is_active = ?, updated_at = NOW() WHERE id = ?', [p.status === 'active' ? 1 : 0, p.organisationId]);
     log.info({ organisationId: p.organisationId, status: p.status }, 'org.status_updated');
     return { organisationId: p.organisationId, status: p.status };
   },

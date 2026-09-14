@@ -90,8 +90,9 @@ export class RBACRepository {
     return rows.length ? rows[0] : null;
   }
 
-  async getRoleById(id: number): Promise<any | null> {
-    const [rows] = await this.pool.execute<RowData>(
+  async getRoleById(id: number, conn?: mysql.PoolConnection): Promise<any | null> {
+    const db: mysql.Pool | mysql.PoolConnection = conn ?? this.pool;
+    const [rows] = await db.execute<RowData>(
       `SELECT r.*, o.name as organisation_name FROM roles r
        LEFT JOIN organisations o ON o.id = r.organisation_id
        WHERE r.id = ?`, [id]
@@ -191,11 +192,12 @@ export class RBACRepository {
     return roleId;
   }
 
-  async setRolePermissions(roleId: number, permissionIds: number[]): Promise<void> {
-    await this.pool.execute(`DELETE FROM role_permissions WHERE role_id = ?`, [roleId]);
+  async setRolePermissions(roleId: number, permissionIds: number[], conn?: mysql.PoolConnection): Promise<void> {
+    const db: mysql.Pool | mysql.PoolConnection = conn ?? this.pool;
+    await db.execute(`DELETE FROM role_permissions WHERE role_id = ?`, [roleId]);
     if (permissionIds.length) {
       const values = permissionIds.map(pid => `(${roleId}, ${pid})`).join(',');
-      await this.pool.execute(`INSERT INTO role_permissions (role_id, permission_id) VALUES ${values}`);
+      await db.execute(`INSERT INTO role_permissions (role_id, permission_id) VALUES ${values}`);
     }
   }
 
