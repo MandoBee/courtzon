@@ -34,8 +34,10 @@ export function toCsv(headers: string[], rows: unknown[][], includeBom = true): 
 
 /** Build a stable CSV filename, e.g. settlements_2026-08-26.csv */
 export function csvFilename(prefix: string, date = new Date()): string {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
+  // UTC getters — the pool/container run in UTC, so this is deterministic and
+  // independent of any server-local timezone the process may adopt.
+  const y = date.getUTCFullYear();
+  const m = String(date.getUTCMonth() + 1).padStart(2, '0');
+  const d = String(date.getUTCDate()).padStart(2, '0');
   return `${prefix}_${y}-${m}-${d}.csv`;
 }

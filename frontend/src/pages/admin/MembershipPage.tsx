@@ -6,6 +6,7 @@ import { useToast } from '../../components/ui/Toast';
 import { Modal } from '../../components/ui';
 import { Can } from '../../permissions/Can';
 import { SkeletonRow } from '../../components/ui/Skeleton';
+import { localTodayString } from '../../utils/formatDate';
 
 type Tab = 'plans' | 'assignments';
 
@@ -101,7 +102,7 @@ function AssignmentsPanel() {
         <form onSubmit={e => { e.preventDefault(); const fd = new FormData(e.currentTarget); assignMut.mutate({ user_id: Number(fd.get('user_id')), membership_plan_id: Number(fd.get('membership_plan_id')), start_date: fd.get('start_date'), renewal_type: fd.get('renewal_type') || 'manual' }); }} className="space-y-3">
           <div><label className="text-xs font-medium">User ID</label><input name="user_id" type="number" required className="w-full px-3 py-2 text-sm bg-[var(--color-bg)] border border-[var(--color-border)] rounded-xl" /></div>
           <div><label className="text-xs font-medium">{t('membership.plan')}</label><select name="membership_plan_id" required className="w-full px-3 py-2 text-sm bg-[var(--color-bg)] border border-[var(--color-border)] rounded-xl"><option value="">{t('membership.select_plan')}</option>{(plans || []).map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}</select></div>
-          <div><label className="text-xs font-medium">Start Date</label><input name="start_date" type="date" defaultValue={new Date().toISOString().split('T')[0]} className="w-full px-3 py-2 text-sm bg-[var(--color-bg)] border border-[var(--color-border)] rounded-xl" /></div>
+          <div><label className="text-xs font-medium">Start Date</label><input name="start_date" type="date" defaultValue={localTodayString()} className="w-full px-3 py-2 text-sm bg-[var(--color-bg)] border border-[var(--color-border)] rounded-xl" /></div>
           <div className="flex justify-end gap-2 pt-2 border-t"><button type="button" onClick={() => setAssigning(false)} className="px-4 py-2 text-sm border border-[var(--color-border)] rounded-xl">{t('common.cancel')}</button>
           <button type="submit" className="px-4 py-2 text-sm bg-[var(--color-primary)] text-white rounded-xl">{t('membership.assign')}</button></div>
         </form>

@@ -5,6 +5,7 @@ import api from '../../../services/api';
 import { Button, Modal, Spinner } from '../../../components/ui';
 import { Can } from '../../../permissions/Can';
 import { useToast } from '../../../components/ui/Toast';
+import { formatISODate } from '../../../utils/formatDate';
 
 const LEAVE_STATUS_BADGE: Record<string, string> = {
   draft: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400',
@@ -141,7 +142,7 @@ export default function LeaveManagementPage() {
                         <td className="px-4 py-3 text-[var(--color-text)]">{r.employee_name || r.employee_id}</td>
                         <td className="px-4 py-3 text-[var(--color-text-muted)]">{r.leave_type_name || '—'}</td>
                         <td className="px-4 py-3 text-[var(--color-text-muted)]">
-                          {r.start_date ? new Date(r.start_date).toLocaleDateString('en-GB') : '—'} — {r.end_date ? new Date(r.end_date).toLocaleDateString('en-GB') : '—'}
+                          {r.start_date ? formatISODate(r.start_date) : '—'} — {r.end_date ? formatISODate(r.end_date) : '—'}
                         </td>
                         <td className="px-4 py-3 text-[var(--color-text-muted)]">{r.days || '—'}</td>
                         <td className="px-4 py-3">

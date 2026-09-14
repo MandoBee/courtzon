@@ -6,6 +6,7 @@ import { useToast } from '../../../components/ui/Toast';
 import { Can } from '../../../permissions/Can';
 import { formatPrice } from '../../../utils/currency';
 import { subscriptionStatusLabel } from '../../../utils/subscription-status';
+import { formatISODate } from '../../../utils/formatDate';
 import BillingPeriodToggle from '../../../components/subscription/BillingPeriodToggle';
 import {
   annualSavingsPercent,
@@ -839,8 +840,8 @@ function AssignPlan() {
                         <span>Billing: <strong className="text-[var(--color-text)] capitalize">{currentSub.billingCycle || 'Monthly'}</strong></span>
                         <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-100 text-purple-700" title="This subscription was assigned directly by Super Admin.">MANUAL OVERRIDE</span>
                       </div>
-                      {currentSub.startDate && <p>Started: {new Date(currentSub.startDate).toLocaleDateString('en-GB')}</p>}
-                      {currentSub.endDate && <p>Expires: {new Date(currentSub.endDate).toLocaleDateString('en-GB')}{daysRemaining !== null && !isExpired && <span className="ml-2 text-amber-600">({daysRemaining}d)</span>}</p>}
+                      {currentSub.startDate && <p>Started: {formatISODate(currentSub.startDate)}</p>}
+                      {currentSub.endDate && <p>Expires: {formatISODate(currentSub.endDate)}{daysRemaining !== null && !isExpired && <span className="ml-2 text-amber-600">({daysRemaining}d)</span>}</p>}
                     </div>
                     <button onClick={() => setShowHistory(!showHistory)} className="text-xs text-[var(--color-primary)] hover:underline font-medium">
                       {showHistory ? 'Hide' : 'View'} Subscription History
@@ -848,7 +849,7 @@ function AssignPlan() {
                     {showHistory && (
                       <div className="text-xs text-[var(--color-text-muted)] space-y-1.5 border-t pt-2 mt-2">
                         <p className="font-medium text-[var(--color-text)]">Assignment Timeline</p>
-                        <div className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-[var(--color-success)] shrink-0" /><span>Assigned · {currentSub.startDate ? new Date(currentSub.startDate).toLocaleDateString('en-GB') : '—'} · Super Admin</span></div>
+                        <div className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-[var(--color-success)] shrink-0" /><span>Assigned · {currentSub.startDate ? formatISODate(currentSub.startDate) : '—'} · Super Admin</span></div>
                         <div className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-gray-300 shrink-0" /><span>Source: Manual Assignment (Super Admin)</span></div>
                       </div>
                     )}
@@ -1295,8 +1296,8 @@ export function ViewAssignments() {
               </td>
               <td className="px-4 py-3 text-[var(--color-text-muted)]">{item.billing_cycle || '—'}</td>
               <td className="px-4 py-3 text-[var(--color-text-muted)]">{item.price ? formatPrice(Number(item.price)) : '—'}</td>
-              <td className="px-4 py-3 text-xs text-[var(--color-text-muted)]">{item.start_date ? new Date(item.start_date).toLocaleDateString('en-GB') : '—'}</td>
-              <td className="px-4 py-3 text-xs text-[var(--color-text-muted)]">{item.end_date ? new Date(item.end_date).toLocaleDateString('en-GB') : '—'}</td>
+              <td className="px-4 py-3 text-xs text-[var(--color-text-muted)]">{item.start_date ? formatISODate(item.start_date) : '—'}</td>
+              <td className="px-4 py-3 text-xs text-[var(--color-text-muted)]">{item.end_date ? formatISODate(item.end_date) : '—'}</td>
             </tr>
           ))}
         </tbody>

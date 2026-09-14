@@ -5,6 +5,7 @@ import { Spinner, Pagination } from '../../../components/ui';
 import { Can } from '../../../permissions/Can';
 import { ExportCsvButton } from '../../../components/ui/ExportCsvButton';
 import ShowZeroBalancesToggle from '../../../components/accounting/ShowZeroBalancesToggle';
+import { formatISODate } from '../../../utils/formatDate';
 import {
   TrialBalanceTable,
   IncomeStatementTable,
@@ -194,7 +195,7 @@ export default function GeneralLedgerPage() {
                     <tbody className="divide-y divide-[var(--color-border)]">
                       {entries.map(e => (
                         <tr key={e.id} className="hover:bg-[var(--color-bg)]/30">
-                          <td className="px-4 py-3 text-[var(--color-text)]">{new Date(e.entry_date).toLocaleDateString()}</td>
+                          <td className="px-4 py-3 text-[var(--color-text)]">{formatISODate(e.entry_date)}</td>
                           <td className="px-4 py-3 text-xs font-mono text-[var(--color-text-muted)]">{e.account_code}</td>
                           <td className="px-4 py-3 text-[var(--color-text)]">{e.account_name}</td>
                           <td className="px-4 py-3 text-right font-mono text-[var(--color-text)]">{e.debit ? financialFmt(e.debit) : '-'}</td>

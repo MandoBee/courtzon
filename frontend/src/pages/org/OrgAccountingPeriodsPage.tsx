@@ -6,6 +6,7 @@ import api from '../../services/api';
 import { Button, Modal, Spinner } from '../../components/ui';
 import { Can } from '../../permissions/Can';
 import { useToast } from '../../components/ui/Toast';
+import { formatISODate } from '../../utils/formatDate';
 
 interface Period {
   id: number; fiscal_year: number; period_number: number;
@@ -172,8 +173,8 @@ export default function OrgAccountingPeriodsPage() {
                 <tr key={p.id} className="hover:bg-[var(--color-bg)]/30">
                   <td className="px-4 py-3 text-[var(--color-text)]">{p.fiscal_year}</td>
                   <td className="px-4 py-3 text-center text-[var(--color-text)]">{p.period_number}</td>
-                  <td className="px-4 py-3 text-[var(--color-text)]">{new Date(p.start_date).toLocaleDateString()}</td>
-                  <td className="px-4 py-3 text-[var(--color-text)]">{new Date(p.end_date).toLocaleDateString()}</td>
+                  <td className="px-4 py-3 text-[var(--color-text)]">{formatISODate(p.start_date)}</td>
+                  <td className="px-4 py-3 text-[var(--color-text)]">{formatISODate(p.end_date)}</td>
                   <td className="px-4 py-3 text-center">
                     <span className={`px-2 py-0.5 text-[10px] font-medium rounded-full ${STATUS_BADGE[p.status]}`}>{p.status}</span>
                   </td>

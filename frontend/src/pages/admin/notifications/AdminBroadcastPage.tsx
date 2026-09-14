@@ -4,6 +4,7 @@ import api from '../../../services/api';
 import { Button, Card, Modal, Spinner } from '../../../components/ui';
 import { Can } from '../../../permissions/Can';
 import { useToast } from '../../../components/ui/Toast';
+import { toUtcIsoForApi } from '../../../utils/formatDate';
 
 interface Broadcast {
   id: number;
@@ -248,7 +249,7 @@ export default function AdminBroadcastPage() {
                   type,
                   priority,
                   target: { scope, roleSlug: scope === 'role' ? roleSlug : undefined },
-                  scheduledAt: scheduledAt || undefined,
+                  scheduledAt: scheduledAt ? toUtcIsoForApi(scheduledAt) : undefined,
                 })
               }
             >

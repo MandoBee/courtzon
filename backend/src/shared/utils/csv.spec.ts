@@ -40,8 +40,10 @@ describe('toCsv', () => {
 });
 
 describe('csvFilename', () => {
-  it('produces a dated stable filename', () => {
-    expect(csvFilename('settlements', new Date(2026, 7, 26))).toBe('settlements_2026-08-26.csv');
-    expect(csvFilename('general-ledger', new Date(2026, 0, 5))).toBe('general-ledger_2026-01-05.csv');
+  it('produces a dated stable filename from the UTC calendar date', () => {
+    // UTC getters by design (container/pool run in UTC) — the filename is
+    // deterministic regardless of any server-local timezone.
+    expect(csvFilename('settlements', new Date(Date.UTC(2026, 7, 26)))).toBe('settlements_2026-08-26.csv');
+    expect(csvFilename('general-ledger', new Date(Date.UTC(2026, 0, 5)))).toBe('general-ledger_2026-01-05.csv');
   });
 });

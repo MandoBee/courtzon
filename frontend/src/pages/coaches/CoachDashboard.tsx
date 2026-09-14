@@ -2,7 +2,7 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import api from '../../services/api';
 import { useAuthStore } from '../../store/auth.store';
-import { formatISODate } from '../../utils/formatDate';
+import { formatDateTimeLocal } from '../../utils/formatDate';
 import { SkeletonRow } from '../../components/ui';
 import { WorkspaceHero, StatCard, SectionHeader, EmptyStateCard, SummaryCard } from '../../components/workspace';
 import { ActionCenter, QuickActions } from '../../components/dashboard/ActionCenter';
@@ -107,9 +107,7 @@ function CoachSessionCard({ session }: { session: any }) {
         </span>
       </div>
       <div className="flex items-center gap-2 text-xs text-[var(--color-text-muted)]">
-        <span>{formatISODate(session.start_time)}</span>
-        <span>·</span>
-        <span>{new Date(session.start_time).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}</span>
+        <span>{formatDateTimeLocal(session.start_time)}</span>
         {session.organisation_name && <><span>·</span><span>{session.organisation_name}</span></>}
       </div>
     </button>

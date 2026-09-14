@@ -3,6 +3,7 @@ import { useTranslation } from '../../i18n';
 import api from '../../services/api';
 import { Can } from '../../permissions/Can';
 import { Card } from '../../components/ui';
+import { formatISODate } from '../../utils/formatDate';
 
 export default function RankHistoryPage() {
   const { t } = useTranslation();
@@ -30,7 +31,7 @@ export default function RankHistoryPage() {
                       <div>
                         <p className="text-sm font-medium text-[var(--color-text)]">{s.tournament_name}</p>
                         <p className="text-xs text-[var(--color-text-muted)]">
-                          {s.start_date ? new Date(s.start_date).toLocaleDateString('en-GB') : ''}
+                          {s.start_date ? formatISODate(s.start_date) : ''}
                         </p>
                       </div>
                       <span className="text-sm font-bold text-[var(--color-primary)]">

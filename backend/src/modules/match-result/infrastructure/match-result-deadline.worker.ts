@@ -1,4 +1,5 @@
 import { matchResultService } from '../application/match-result.service.js';
+import { matchService } from '../../match/application/services/match.service.js';
 import { queueService } from '../../../infrastructure/queue/queue.service.js';
 import { createModuleLogger } from '../../../shared/utils/logger.js';
 
@@ -10,13 +11,16 @@ export interface MatchResultDeadlineJob {
 
 /**
  * Part E.60 / Part G.413 — scheduled maintenance:
- * 1. auto-approve pending results past the opponent auto-approval deadline
- * 2. mark matches finished 3+ days ago with no result as 'no_result'
+ * 1. establish the end of matches whose authoritative scheduled end has passed
+ *    (produces real `match_sessions` / `played_at` so result processing works)
+ * 2. auto-approve pending results past the opponent auto-approval deadline
+ * 3. mark matches finished 3+ days ago with no result as 'no_result'
  */
 export async function processMatchResultDeadlines(_data: MatchResultDeadlineJob): Promise<void> {
+  const autoCompleted = await matchService.autoCompleteScheduledMatches();
   const approved = await matchResultService.autoApproveDueResults();
   const marked = await matchResultService.markExpiredNoResult();
-  log.info({ approved, marked }, 'match-result deadline processing complete');
+  log.info({ autoCompleted, approved, marked }, 'match-result deadline processing complete');
 }
 
 export async function scheduleMatchResultDeadlines(): Promise<string[]> {

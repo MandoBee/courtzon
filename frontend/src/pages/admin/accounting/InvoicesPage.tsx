@@ -6,6 +6,7 @@ import { Button, Modal, Spinner, Pagination } from '../../../components/ui';
 import { Can } from '../../../permissions/Can';
 import { useToast } from '../../../components/ui/Toast';
 import { localToday } from '../../../utils/dateRange';
+import { formatISODate } from '../../../utils/formatDate';
 
 interface InvoiceLineItem {
   description: string;
@@ -182,7 +183,7 @@ export default function InvoicesPage() {
 
   const fmt = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-  const fmtDate = (d: string) => d ? new Date(d).toLocaleDateString() : '-';
+  const fmtDate = (d: string) => d ? formatISODate(d) : '-';
 
   return (
     <Can permission="accounting.invoices.view">

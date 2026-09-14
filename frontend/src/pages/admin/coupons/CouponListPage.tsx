@@ -5,6 +5,7 @@ import { Can } from '../../../permissions/Can';
 import { useToast } from '../../../components/ui/Toast';
 import { formatPrice } from '../../../utils/currency';
 import { getErrorMessage } from '../../../utils/errors';
+import { toMySqlUtcForApi, toLocalDateTimeLocal } from '../../../utils/formatDate';
 import type { PaginatedResult } from '../../../types/api';
 
 const emptyForm = {
@@ -107,8 +108,8 @@ export default function CouponListPage() {
     if (form.min_order_amount) payload.min_order_amount = parseFloat(form.min_order_amount);
     if (form.max_uses) payload.max_uses = parseInt(form.max_uses, 10);
     if (form.max_uses_per_user) payload.max_uses_per_user = parseInt(form.max_uses_per_user, 10);
-    if (form.starts_at) payload.starts_at = form.starts_at;
-    if (form.expires_at) payload.expires_at = form.expires_at;
+    if (form.starts_at) payload.starts_at = toMySqlUtcForApi(form.starts_at);
+    if (form.expires_at) payload.expires_at = toMySqlUtcForApi(form.expires_at);
     if (editingId) updateMutation.mutate({ id: editingId, ...payload });
     else createMutation.mutate(payload);
   };
@@ -120,8 +121,8 @@ export default function CouponListPage() {
       activity_type: r.activity_type || '', sport_id: r.sport_id ? String(r.sport_id) : '',
       min_order_amount: r.min_order_amount ? String(r.min_order_amount) : '',
       max_uses: r.max_uses ? String(r.max_uses) : '', max_uses_per_user: String(r.max_uses_per_user ?? 1),
-      starts_at: r.starts_at ? r.starts_at.slice(0, 16) : '',
-      expires_at: r.expires_at ? r.expires_at.slice(0, 16) : '',
+      starts_at: toLocalDateTimeLocal(r.starts_at),
+      expires_at: toLocalDateTimeLocal(r.expires_at),
       is_active: !!r.is_active,
     });
   };

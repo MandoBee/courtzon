@@ -5,6 +5,7 @@ import api from '../../services/api';
 import { Skeleton, SkeletonRow } from '../../components/ui/Skeleton';
 import { useToast } from '../../components/ui/Toast';
 import { Can } from '../../permissions/Can';
+import { formatISODate } from '../../utils/formatDate';
 
 type Tab = 'overview' | 'bracket' | 'standings' | 'players';
 
@@ -76,7 +77,7 @@ export default function TournamentDetailPage() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
           <div><span className="text-[var(--color-text-muted)]">Sport:</span> <span className="font-medium">#{tournament.sport_id}</span></div>
           <div><span className="text-[var(--color-text-muted)]">Players:</span> <span className="font-medium">{tournament.current_participants}/{tournament.max_participants}</span></div>
-          <div><span className="text-[var(--color-text-muted)]">Start:</span> <span className="font-medium">{new Date(tournament.start_date).toLocaleDateString()}</span></div>
+          <div><span className="text-[var(--color-text-muted)]">Start:</span> <span className="font-medium">{formatISODate(tournament.start_date)}</span></div>
           <div><span className="text-[var(--color-text-muted)]">Duration:</span> <span className="font-medium">{tournament.match_duration_minutes}min</span></div>
         </div>
         {tournament.prize_description && <p className="text-sm font-medium text-yellow-600">🏆 {tournament.prize_description}</p>}
@@ -241,7 +242,7 @@ export default function TournamentDetailPage() {
                   <td className="px-4 py-2 text-xs font-bold">#{p.seed}</td>
                   <td className="px-4 py-2 text-xs">{p.team_name || `Player #${p.user_id}`}</td>
                   <td className="px-4 py-2 text-xs capitalize">{p.status}</td>
-                  <td className="px-4 py-2 text-xs text-[var(--color-text-muted)]">{new Date(p.registered_at).toLocaleDateString()}</td>
+                  <td className="px-4 py-2 text-xs text-[var(--color-text-muted)]">{formatISODate(p.registered_at)}</td>
                 </tr>
               ))}</tbody>
             </table>

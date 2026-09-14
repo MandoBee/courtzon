@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import api from '../../services/api';
 import { formatPrice } from '../../utils/currency';
+import { formatISODate } from '../../utils/formatDate';
 import { Button, Card, Badge, Spinner } from '../../components/ui';
 
 const statusVariant: Record<string, 'default' | 'success' | 'warning' | 'danger' | 'info'> = {
@@ -43,7 +44,7 @@ export default function TournamentListPage() {
                   <span>Fee: {formatPrice(Number(t.entry_fee), t.currency_code)}</span>
                 </div>
                 <p className="text-xs text-[var(--color-text-muted)] mt-1">
-                  Start: {new Date(t.start_date).toLocaleDateString('en-GB')}
+                  Start: {formatISODate(t.start_date)}
                 </p>
               </Card>
             </Link>

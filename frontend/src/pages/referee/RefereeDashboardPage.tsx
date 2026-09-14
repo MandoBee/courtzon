@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from '../../i18n';
 import api from '../../services/api';
 import { useAuthStore } from '../../store/auth.store';
-import { formatISODate } from '../../utils/formatDate';
+import { formatDateTimeLocal } from '../../utils/formatDate';
 import { SkeletonRow } from '../../components/ui';
 import { StatCard, SectionHeader, EmptyStateCard, QuickActions } from '../../components/workspace';
 import { Can } from '../../permissions/Can';
@@ -90,9 +90,7 @@ function MatchCard({ match }: { match: any }) {
       <div className="flex items-center gap-2 text-xs text-[var(--color-text-muted)]">
         <span>{match.matchType || match.match_type || '—'}</span>
         <span>·</span>
-        <span>{formatISODate(match.date || match.scheduled_at)}</span>
-        <span>·</span>
-        <span>{new Date(match.date || match.scheduled_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}</span>
+        <span>{formatDateTimeLocal(match.scheduled_at || match.date)}</span>
       </div>
     </button>
   );

@@ -1276,7 +1276,7 @@ export const activitiesRepository = {
     return rows.length ? (rows[0] as any).full_name : null;
   },
 
-  async getCoachStats(coachId: number): Promise<{
+  async getCoachStats(coachId: number, today: string): Promise<{
     todaySessions: number;
     pendingRequests: number;
     activePlayers: number;
@@ -1284,7 +1284,6 @@ export const activitiesRepository = {
     upcomingSessions: number;
   }> {
     const pool = getPool();
-    const today = new Date().toISOString().slice(0, 10);
 
     const [todayRows] = await pool.execute<RowData>(
       `SELECT COUNT(*) as cnt FROM coach_sessions
@@ -1319,6 +1318,26 @@ export const activitiesRepository = {
       totalSessionsCompleted: Number((completedRows[0] as any).cnt),
       upcomingSessions: Number((upcomingRows[0] as any).cnt),
     };
+  },
+
+  /**
+   * Resolve the venue timezone for a coach's service locations (the branches
+   * where the coach provides services). Used to derive the coach's local
+   * business date when comparing against venue-local `coach_sessions.start_time`
+   * and blackout dates. Falls back to null → callers use the platform timezone.
+   */
+  async getCoachVenueTimezone(coachId: number): Promise<string | null> {
+    const pool = getPool();
+    const [rows] = await pool.execute<RowData>(
+      `SELECT b.timezone
+       FROM coach_service_locations csl
+       JOIN branches b ON b.id = csl.branch_id AND b.deleted_at IS NULL
+       WHERE csl.coach_id = ?
+       ORDER BY csl.id ASC
+       LIMIT 1`,
+      [coachId]
+    );
+    return rows.length ? (rows[0] as any).timezone || null : null;
   },
 
   async getCoachPlayers(coachId: number): Promise<any[]> {

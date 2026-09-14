@@ -54,13 +54,17 @@ describe('C4 — final_result persisted on insert', () => {
   });
 });
 
-describe('C6 — authoritative played_at from sessions only', () => {
-  it('getMatchContext does NOT fall back to booking time', async () => {
+describe('C6 — authoritative played_at from sessions OR scheduled end', () => {
+  it('getMatchContext falls back to the authoritative booking end_at_utc once the scheduled end passed', async () => {
     await matchResultRepository.getMatchContext(1);
     const sql = executed[0];
     expect(sql).toContain('FROM match_sessions');
-    expect(sql).not.toContain('b.end_at_utc');
-    expect(sql).not.toContain('b.start_at_utc');
+    // The lifecycle fix: a real match that never recorded a session still gets
+    // a real played_at = bookings.end_at_utc once the scheduled end is reached,
+    // so result processing can proceed. Both sources are preserved.
+    expect(sql).toContain('b.end_at_utc');
+    expect(sql).toContain('UTC_TIMESTAMP()');
+    expect(sql).toContain('COALESCE');
   });
 });
 

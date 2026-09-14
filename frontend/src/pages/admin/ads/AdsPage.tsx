@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../../services/api';
 import { Can } from '../../../permissions/Can';
 import { useToast } from '../../../components/ui/Toast';
+import { formatISODate } from '../../../utils/formatDate';
 
 type Tab = 'campaigns' | 'placements';
 
@@ -235,7 +236,7 @@ function CampaignsManager() {
                   <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${statusColors[c.status] || 'bg-[var(--color-border)]'}`}>{c.status}</span>
                 </td>
                 <td className="px-4 py-3 text-xs text-[var(--color-text-muted)]">
-                  {new Date(c.start_date).toLocaleDateString('en-GB')} — {new Date(c.end_date).toLocaleDateString('en-GB')}
+                  {formatISODate(c.start_date)} — {formatISODate(c.end_date)}
                 </td>
                 <td className="px-4 py-3 text-xs text-[var(--color-text-muted)]">
                   {c.daily_budget && <div>{Number(c.daily_budget).toFixed(0)} EGP/day</div>}

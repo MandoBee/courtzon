@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useParams, Link, useSearchParams } from 'react-router-dom';
 import api from '../../services/api';
 import { useResourceRoom } from '../../realtime/useResourceRoom';
+import { localTodayString } from '../../utils/formatDate';
 
 function ResourceSlots({ resourceId, date, coachId }: { resourceId: number; date: string; coachId?: string | null }) {
   useResourceRoom(resourceId);
@@ -58,7 +59,7 @@ export default function ResourceListPage() {
   const { branchId } = useParams();
   const [searchParams] = useSearchParams();
   const coachId = searchParams.get('coachId');
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localTodayString();
   const [selectedDate, setSelectedDate] = useState(today);
 
   const { data: branch } = useQuery({

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../services/api';
-import { formatISODate } from '../../utils/formatDate';
+import { formatDateTimeLocal } from '../../utils/formatDate';
 import { localToday } from '../../utils/dateRange';
 import { useToast } from '../../components/ui/Toast';
 import { SkeletonRow } from '../../components/ui';
@@ -134,7 +134,7 @@ function SessionDetailCard({ session, detailId, setDetailId, sessionMut, detailT
         <div className="min-w-0 flex-1">
           <p className="font-semibold text-[var(--color-text)] truncate">{session.player_name || 'Player'}</p>
           <p className="text-xs text-[var(--color-text-muted)] mt-0.5">
-            {formatISODate(session.start_time)} · {new Date(session.start_time).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+            {formatDateTimeLocal(session.start_time)}
           </p>
         </div>
         <span className={`shrink-0 px-2 py-0.5 text-[10px] font-semibold rounded-full ${sc}`}>

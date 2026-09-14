@@ -41,6 +41,19 @@ export class MatchResultService {
       throw new RulesValidationError('This match has no recorded play time yet — start the match session before submitting a result');
     }
 
+    // Part G.xxx — results may NEVER be submitted before the authoritative
+    // scheduled match end (bookings.end_at_utc). This is the explicit guard the
+    // frontend lifecycle depends on: the result form is only actionable after
+    // the scheduled end. Uses server time (UTC) against the authoritative UTC
+    // column — never browser/device time. Legacy bookings without end_at_utc
+    // fall through to the existing eligibility rules.
+    if (context.endAtUtc) {
+      const endMs = new Date(context.endAtUtc).getTime();
+      if (Date.now() < endMs) {
+        throw new RulesValidationError('The match has not ended yet — results can only be submitted after the scheduled match end');
+      }
+    }
+
     const now = new Date().toISOString();
     const windowEnd = addHours(context.playedAt, SUBMISSION_WINDOW_HOURS);
     if (now > windowEnd) {

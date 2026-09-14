@@ -1,6 +1,7 @@
 import { useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import api from '../../services/api';
+import { formatISODate } from '../../utils/formatDate';
 
 export default function OrgLeaguesPage() {
   const { orgId } = useParams<{ orgId: string }>();
@@ -42,8 +43,8 @@ export default function OrgLeaguesPage() {
                 }`}>{l.status}</span>
               </div>
               <div className="flex items-center gap-4 mt-2 text-xs text-[var(--color-text-muted)]">
-                {l.season_start && <span>Start: {new Date(l.season_start).toLocaleDateString()}</span>}
-                {l.season_end && <span>End: {new Date(l.season_end).toLocaleDateString()}</span>}
+                {l.season_start && <span>Start: {formatISODate(l.season_start)}</span>}
+                {l.season_end && <span>End: {formatISODate(l.season_end)}</span>}
                 <span>Teams: {l.team_count || 0}</span>
               </div>
             </div>

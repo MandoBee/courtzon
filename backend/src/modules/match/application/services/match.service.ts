@@ -203,6 +203,83 @@ export class MatchService {
       conn.release();
     }
   }
+
+  /**
+   * Start a match — delegates to the existing `sessionService.start`, which
+   * requires the match to be `closed`, creates the `match_sessions` row and
+   * emits the canonical `session:started` event. This is the single lifecycle
+   * entry point exposed to the API layer (no parallel mechanism).
+   */
+  async startMatch(matchId: number): Promise<void> {
+    await sessionService.start(matchId);
+  }
+
+  /**
+   * Complete a match — delegates to the existing `sessionService.complete`,
+   * which requires an in-progress session, records `ended_at` (the source of
+   * `played_at` for result processing) and emits `session:completed`. The
+   * scheduled-end auto path is handled separately by `autoCompleteScheduledMatches`.
+   */
+  async completeMatch(matchId: number): Promise<void> {
+    await sessionService.complete(matchId);
+  }
+
+  /**
+   * Automatic completion of matches whose authoritative scheduled end
+   * (bookings.end_at_utc) has passed. This is the reliable "match has ended"
+   * establishment that makes result processing possible even when nobody
+   * triggers the manual complete action.
+   *
+   * Behaviour:
+   *  - `in_progress` matches get their session ended at `end_at_utc`;
+   *  - `closed` matches that were never started get a completed session whose
+   *    window is the scheduled start→end (played_at = end_at_utc);
+   *  - match status reaches `completed`;
+   *  - the existing `match:status_changed` / `match:completed` events fire via
+   *    the shared EventBus (notification engine re-emits `match:updated`), so
+   *    no new realtime mechanism is introduced.
+   *
+   * Matches with <= 1 participant are intentionally skipped so the existing
+   * `deadlineService.voidEmptyMatches()` can still void them later.
+   */
+  async autoCompleteScheduledMatches(): Promise<number> {
+    const candidates = await matchRepository.findScheduledMatchesPastEnd();
+
+    let completed = 0;
+    for (const row of candidates) {
+      try {
+        const session = await matchRepository.findActiveSessionForMatch(row.id);
+        const startedAt = row.startAtUtc ?? row.endAtUtc;
+        const fromStatus: string = row.status;
+
+        if (session && session.status === 'in_progress') {
+          await matchRepository.completeMatchSessionAtScheduledEnd(row.id, session.id, startedAt, row.endAtUtc);
+        } else if (!session) {
+          await matchRepository.createCompletedSessionForMatch(row.id, startedAt, row.endAtUtc);
+        } else {
+          continue;
+        }
+
+        await matchRepository.markMatchCompleted(row.id);
+
+        matchEventPublisher.publish({
+          type: 'match:status_changed',
+          payload: {
+            matchId: row.id, fromStatus,
+            toStatus: 'completed', timestamp: new Date().toISOString(),
+          },
+        });
+        matchEventPublisher.publish({
+          type: 'match:completed',
+          payload: { matchId: row.id, timestamp: new Date().toISOString() },
+        });
+        completed++;
+      } catch (err) {
+        log.error({ err, matchId: row.id }, 'auto-complete scheduled match failed');
+      }
+    }
+    return completed;
+  }
 }
 
 export const matchService = new MatchService();

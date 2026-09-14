@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { membershipApi } from '../../../services/membership';
 import { useToast } from '../../../components/ui/Toast';
 import { SkeletonRow } from '../../../components/ui/Skeleton';
+import { formatISODate } from '../../../utils/formatDate';
 
 export default function CampaignsPage() {
   const qc = useQueryClient();
@@ -49,8 +50,8 @@ export default function CampaignsPage() {
               <tr key={c.id} className="border-b border-[var(--color-border)] last:border-0">
                 <td className="px-4 py-3 text-[var(--color-text)]">{c.name}</td>
                 <td className="px-4 py-3 font-medium">{c.points_multiplier}x</td>
-                <td className="px-4 py-3 text-[var(--color-text-muted)]">{new Date(c.start_date).toLocaleDateString()}</td>
-                <td className="px-4 py-3 text-[var(--color-text-muted)]">{new Date(c.end_date).toLocaleDateString()}</td>
+                <td className="px-4 py-3 text-[var(--color-text-muted)]">{formatISODate(c.start_date)}</td>
+                <td className="px-4 py-3 text-[var(--color-text-muted)]">{formatISODate(c.end_date)}</td>
                 <td className="px-4 py-3">{c.is_active ? <span className="text-green-600">✓</span> : <span className="text-red-600">✗</span>}</td>
               </tr>
             ))}</tbody>

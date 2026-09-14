@@ -1,6 +1,7 @@
 import { useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import api from '../../services/api';
+import { formatISODate } from '../../utils/formatDate';
 
 export default function OrgTournamentsPage() {
   const { orgId } = useParams<{ orgId: string }>();
@@ -42,8 +43,8 @@ export default function OrgTournamentsPage() {
                 }`}>{t.status}</span>
               </div>
               <div className="flex items-center gap-4 mt-2 text-xs text-[var(--color-text-muted)]">
-                {t.start_date && <span>Start: {new Date(t.start_date).toLocaleDateString()}</span>}
-                {t.end_date && <span>End: {new Date(t.end_date).toLocaleDateString()}</span>}
+                {t.start_date && <span>Start: {formatISODate(t.start_date)}</span>}
+                {t.end_date && <span>End: {formatISODate(t.end_date)}</span>}
                 <span>Registered: {t.registered_count || 0}</span>
                 {t.max_players && <span>Max: {t.max_players}</span>}
               </div>

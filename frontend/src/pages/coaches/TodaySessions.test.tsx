@@ -14,6 +14,7 @@ vi.mock('../../components/ui/Toast', () => ({
 
 vi.mock('../../utils/formatDate', () => ({
   formatISODate: (d: string) => d,
+  formatDateTimeLocal: (d: string) => d,
 }));
 
 vi.mock('../../utils/dateRange', () => ({

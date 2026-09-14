@@ -19,6 +19,7 @@ export interface MatchContext {
   branchId: number | null;
   resourceId: number | null;
   playedAt: string | null;
+  endAtUtc: string | null;
   timezone: string | null;
   participantUserIds: number[];
 }
@@ -144,9 +145,13 @@ export class MatchResultRepository {
     const pool = getPool();
     const [rows] = await pool.execute<RowData>(
       `SELECT m.id AS match_id, m.sport_id, m.status,
-              b.branch_id, b.resource_id,
-              (SELECT COALESCE(ms.ended_at, ms.started_at) FROM match_sessions ms
-               WHERE ms.match_id = m.id ORDER BY ms.id DESC LIMIT 1) AS played_at,
+              b.branch_id, b.resource_id, b.end_at_utc,
+              COALESCE(
+                (SELECT COALESCE(ms.ended_at, ms.started_at) FROM match_sessions ms
+                 WHERE ms.match_id = m.id ORDER BY ms.id DESC LIMIT 1),
+                CASE WHEN b.end_at_utc IS NOT NULL AND b.end_at_utc <= UTC_TIMESTAMP()
+                     THEN b.end_at_utc ELSE NULL END
+              ) AS played_at,
               br.timezone
        FROM matches m
        JOIN bookings b ON b.id = m.booking_id
@@ -167,6 +172,7 @@ export class MatchResultRepository {
       branchId: r.branch_id ?? null,
       resourceId: r.resource_id ?? null,
       playedAt: r.played_at ?? null,
+      endAtUtc: r.end_at_utc ?? null,
       timezone: r.timezone ?? null,
       participantUserIds: parts.map((p: any) => Number(p.user_id)),
     };

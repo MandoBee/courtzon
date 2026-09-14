@@ -5,6 +5,7 @@ import api from '../../services/api';
 import { Can } from '../../permissions/Can';
 import { useToast } from '../../components/ui/Toast';
 import { getErrorMessage } from '../../utils/errors';
+import { formatISODate } from '../../utils/formatDate';
 
 interface EligibleBooking {
   bookingId: number;
@@ -113,7 +114,7 @@ export default function OrgBookingSettlements({ orgId }: { orgId: string }) {
                 {bookings.map((b) => (
                   <tr key={b.bookingId} className="hover:bg-[var(--color-bg)]">
                     <td className="px-4 py-3 text-[var(--color-text)]">#{b.bookingId}</td>
-                    <td className="px-4 py-3 text-[var(--color-text-muted)] whitespace-nowrap">{b.bookingDate ? new Date(b.bookingDate).toLocaleDateString('en-GB') : '—'}</td>
+                    <td className="px-4 py-3 text-[var(--color-text-muted)] whitespace-nowrap">{b.bookingDate ? formatISODate(b.bookingDate) : '—'}</td>
                     <td className="px-4 py-3 text-right font-mono text-[var(--color-text)]">{fmt(b.coachSettleable)}</td>
                     <td className="px-4 py-3 text-right font-mono text-[var(--color-text)]">{fmt(b.orgSettleable)}</td>
                     <td className="px-4 py-3 text-right font-mono text-[var(--color-text-muted)]">{fmt(b.coachOutstandingRecovery)}</td>

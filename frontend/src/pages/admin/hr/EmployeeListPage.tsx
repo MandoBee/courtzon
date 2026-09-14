@@ -6,6 +6,7 @@ import api from '../../../services/api';
 import { Button, Modal, Spinner } from '../../../components/ui';
 import { Can } from '../../../permissions/Can';
 import { useToast } from '../../../components/ui/Toast';
+import { formatISODate } from '../../../utils/formatDate';
 
 const STATUS_BADGE: Record<string, string> = {
   draft: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400',
@@ -240,7 +241,7 @@ export default function EmployeeListPage() {
                   </span>
                 </td>
                 <td className="px-4 py-3 text-[var(--color-text-muted)]">
-                  {emp.hire_date ? new Date(emp.hire_date).toLocaleDateString('en-GB') : '—'}
+                  {emp.hire_date ? formatISODate(emp.hire_date) : '—'}
                 </td>
                 <td className="px-4 py-3 text-right">
                   <Can permission="hr.employees.manage">

@@ -1033,7 +1033,7 @@ export class BookingService {
     const maxWindow = (polRows[0] as any)?.max_window;
     if (!maxWindow) return true;
 
-    const bookingStart = this._parseBookingStartDate(booking);
+    const bookingStart = await this._parseBookingStartDate(booking);
     const now = new Date();
     const minutesUntil = (bookingStart.getTime() - now.getTime()) / (1000 * 60);
 
@@ -1041,22 +1041,52 @@ export class BookingService {
   }
 
   /**
-   * Build the booking's start instant from its local booking_date + start_time.
+   * Build the booking's start instant as a UTC Date.
    *
-   * mysql2 returns DATE columns as JS Date objects (the pool does not set
-   * `dateStrings: true`), so `new Date(\`${booking_date}T${start_time}\`)`
-   * templates the Date's toString() and yields an Invalid Date (NaN). This
-   * normalizes the date part to `YYYY-MM-DD` (UTC) before appending the local
-   * time, preserving the intended local-time parsing semantics. Falls back to
-   * an Invalid Date when the booking has no usable date/time, which callers
-   * treat as "no policy applicable" (their existing conservative behavior).
+   * Precedence:
+   *  1. `start_at_utc` — the authoritative absolute instant written by the
+   *     booking pipeline via `TimeEngine.localToUtc(..., branchTz)` for all V2
+   *     bookings (migrations 024/025). DST-safe by construction.
+   *  2. Legacy rows without `start_at_utc` — the venue-local
+   *     `booking_date + start_time` is converted to UTC in the BRANCH timezone
+   *     via TimeEngine (DST-aware). Previously the date part was normalized to
+   *     UTC while the time part was parsed as server-local (UTC in the
+   *     container), producing a start instant shifted by the branch's offset.
+   *
+   * Falls back to an Invalid Date when the booking has no usable date/time or
+   * the local→UTC conversion fails, which callers treat as "no policy
+   * applicable" (their existing conservative behavior).
    */
-  private _parseBookingStartDate(booking: any): Date {
+  private async _parseBookingStartDate(booking: any): Promise<Date> {
+    const utc = booking?.start_at_utc;
+    if (utc != null) {
+      const d = utc instanceof Date ? utc : new Date(utc);
+      if (!isNaN(d.getTime())) return d;
+    }
+
     const datePart = booking?.booking_date instanceof Date
       ? booking.booking_date.toISOString().slice(0, 10)
       : String(booking?.booking_date || '').slice(0, 10);
-    const timePart = String(booking?.start_time || '00:00:00');
-    return new Date(`${datePart}T${timePart}`);
+    const timePart = String(booking?.start_time || '00:00:00').slice(0, 5);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(datePart) || !/^\d{2}:\d{2}/.test(timePart)) {
+      return new Date(NaN);
+    }
+
+    try {
+      const tz = await this._resolveBookingTimezone(booking?.branch_id);
+      return new Date(TimeEngine.localToUtc(datePart, timePart, tz));
+    } catch {
+      return new Date(NaN);
+    }
+  }
+
+  private async _resolveBookingTimezone(branchId: number | null | undefined): Promise<string> {
+    if (branchId == null) return 'Africa/Cairo';
+    const pool = getPool();
+    const [rows] = await pool.execute<RowData>(
+      'SELECT timezone FROM branches WHERE id = ?', [branchId]
+    );
+    return (rows[0] as any)?.timezone || 'Africa/Cairo';
   }
 
   private async _calculateCancellationFee(booking: any): Promise<{ feeAmount: number; refundAmount: number }> {
@@ -1077,7 +1107,7 @@ export class BookingService {
     const paidAmount = await this._resolveBookingPaidAmount(booking);
     const refundBase = paidAmount > 0 ? paidAmount : Number(booking.total_amount);
 
-    const bookingStart = this._parseBookingStartDate(booking);
+    const bookingStart = await this._parseBookingStartDate(booking);
     const now = new Date();
     const hoursUntilBooking = (bookingStart.getTime() - now.getTime()) / (1000 * 60 * 60);
 

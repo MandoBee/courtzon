@@ -34,7 +34,7 @@ export async function getMatchesHandler(request: FastifyRequest, reply: FastifyR
 
   const [rows] = await pool.execute<RowData>(
     `SELECT m.id, m.type, m.status, m.sport_id, s.name as sport_name,
-            bk.booking_date, bk.start_time, bk.end_time,
+            bk.booking_date, bk.start_time, bk.end_time, bk.start_at_utc,
             r.name as resource_name, br.name as branch_name, org.name as organisation_name,
             br.latitude, br.longitude,
             pmd.visibility, pmd.auto_accept, pmd.max_players,
@@ -56,7 +56,10 @@ export async function getMatchesHandler(request: FastifyRequest, reply: FastifyR
      LEFT JOIN player_levels pl ON pl.id = pmd.target_level_id
       WHERE m.status IN ('open', 'full')
         AND pmd.visibility = 'public'
-        AND CONCAT(bk.booking_date, ' ', bk.start_time) >= NOW()`,
+        AND (
+          (bk.start_at_utc IS NOT NULL AND bk.start_at_utc >= UTC_TIMESTAMP())
+          OR (bk.start_at_utc IS NULL AND CONCAT(bk.booking_date, ' ', bk.start_time) >= NOW())
+        )`,
     [userId, userId, userId]
   );
 
@@ -70,7 +73,7 @@ export async function getMatchHandler(request: FastifyRequest, reply: FastifyRep
 
   const [rows] = await pool.execute<RowData>(
     `SELECT m.*, s.name as sport_name,
-            b.booking_date, b.start_time, b.end_time,
+            b.booking_date, b.start_time, b.end_time, b.end_at_utc,
             r.name as resource_name, br.name as branch_name, org.name as organisation_name,
             pmd.*, pl.name as target_level_name,
             (SELECT COALESCE(ms.ended_at, ms.started_at) FROM match_sessions ms
@@ -189,5 +192,25 @@ export async function cancelMatchHandler(request: FastifyRequest, reply: Fastify
   await verifyCreator(matchId, userId);
 
   await matchService.cancelMatch(matchId, body.reason);
+  reply.send({ success: true });
+}
+
+export async function startMatchHandler(request: FastifyRequest, reply: FastifyReply): Promise<void> {
+  const userId = (request as any).userId;
+  const { id } = MatchParamsSchema.parse(request.params);
+  const matchId = await resolveMatchId(id);
+  await verifyCreator(matchId, userId);
+
+  await matchService.startMatch(matchId);
+  reply.send({ success: true });
+}
+
+export async function completeMatchHandler(request: FastifyRequest, reply: FastifyReply): Promise<void> {
+  const userId = (request as any).userId;
+  const { id } = MatchParamsSchema.parse(request.params);
+  const matchId = await resolveMatchId(id);
+  await verifyCreator(matchId, userId);
+
+  await matchService.completeMatch(matchId);
   reply.send({ success: true });
 }

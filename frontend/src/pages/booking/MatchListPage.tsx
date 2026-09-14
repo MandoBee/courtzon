@@ -51,6 +51,7 @@ interface MatchRow {
   booking_date: string;
   start_time: string;
   end_time: string;
+  start_at_utc?: string | null;
   auto_accept: number;
   max_players: number;
   participant_count: number;
@@ -159,7 +160,12 @@ export default function MatchListPage() {
     if (sortMode === 'nearest') {
       list.sort((a, b) => (a.distance_km ?? 99999) - (b.distance_km ?? 99999));
     } else {
-      list.sort((a, b) => new Date((a.booking_date || '').slice(0, 10) + 'T' + (a.start_time || '00:00')).getTime() - new Date((b.booking_date || '').slice(0, 10) + 'T' + (b.start_time || '00:00')).getTime());
+      list.sort((a, b) => {
+        const toMs = (m: MatchRow) => m.start_at_utc
+          ? new Date(m.start_at_utc).getTime()
+          : new Date(`${(m.booking_date || '').slice(0, 10)}T${(m.start_time || '00:00')}`).getTime();
+        return toMs(a) - toMs(b);
+      });
     }
     return list;
   }, [matchesWithDistance, tab, dismissedIds, sortMode]);

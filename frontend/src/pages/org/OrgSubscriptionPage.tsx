@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import api from '../../services/api';
 import { Can } from '../../permissions/Can';
 import { formatPrice } from '../../utils/currency';
+import { formatISODate } from '../../utils/formatDate';
 import SubscriptionRequestModal from '../../components/subscription/SubscriptionRequestModal';
 
 const billingCycleLabels: Record<string, string> = {
@@ -119,13 +120,13 @@ export default function OrgSubscriptionPage() {
               {/* Expiration */}
               {sub.startDate && (
                 <p className="text-xs text-[var(--color-text-muted)] mt-1">
-                  Started: {new Date(sub.startDate).toLocaleDateString('en-GB')}
+                  Started: {formatISODate(sub.startDate)}
                 </p>
               )}
               {sub.endDate && (
                 <p className={`text-xs mt-0.5 ${new Date(sub.endDate) < new Date() ? 'text-[var(--color-error)] font-medium' : 'text-[var(--color-text-muted)]'}`}>
                   {new Date(sub.endDate) < new Date() ? 'Expired: ' : 'Expires: '}
-                  {new Date(sub.endDate).toLocaleDateString('en-GB')}
+                  {formatISODate(sub.endDate)}
                 </p>
               )}
               {/* Payment method / status (only when the backend provides it) */}
@@ -225,8 +226,8 @@ export default function OrgSubscriptionPage() {
           <h2 className="font-semibold text-[var(--color-text)] mb-1">Renewal Scheduled</h2>
           <p className="text-sm text-[var(--color-text-muted)]">
             Your next period{sub.upcomingRenewal.planName ? <> on <strong className="text-[var(--color-text)]">{sub.upcomingRenewal.planName}</strong></> : ''} starts on{' '}
-            <strong className="text-[var(--color-text)]">{new Date(sub.upcomingRenewal.startDate).toLocaleDateString('en-GB')}</strong>
-            {sub.upcomingRenewal.endDate && <> and runs until {new Date(sub.upcomingRenewal.endDate).toLocaleDateString('en-GB')}</>}.
+            <strong className="text-[var(--color-text)]">{formatISODate(sub.upcomingRenewal.startDate)}</strong>
+            {sub.upcomingRenewal.endDate && <> and runs until {formatISODate(sub.upcomingRenewal.endDate)}</>}.
             No further action is needed.
           </p>
         </div>
@@ -259,8 +260,8 @@ export default function OrgSubscriptionPage() {
                     <td className="py-2 pr-3 text-xs font-medium text-[var(--color-text)]">
                       {Number(p.is_unlimited) === 1 ? 'Free' : (p.price != null ? formatPrice(Number(p.price)) : '—')}
                     </td>
-                    <td className="py-2 pr-3 text-xs text-[var(--color-text-muted)]">{p.start_date ? new Date(p.start_date).toLocaleDateString('en-GB') : '—'}</td>
-                    <td className="py-2 pr-3 text-xs text-[var(--color-text-muted)]">{p.end_date ? new Date(p.end_date).toLocaleDateString('en-GB') : 'No expiry'}</td>
+                    <td className="py-2 pr-3 text-xs text-[var(--color-text-muted)]">{p.start_date ? formatISODate(p.start_date) : '—'}</td>
+                    <td className="py-2 pr-3 text-xs text-[var(--color-text-muted)]">{p.end_date ? formatISODate(p.end_date) : 'No expiry'}</td>
                     <td className="py-2 pr-3">
                       <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${statusColors[p.subscription_status] || ''}`}>{p.subscription_status}</span>
                     </td>

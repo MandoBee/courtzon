@@ -62,7 +62,7 @@ describe('OrgAccountingPeriodsPage — org-scoped accounting periods & year clos
     });
     renderPage();
     await screen.findByRole('heading', { name: 'Accounting Periods' });
-    expect(await screen.findByText('1/1/2026')).toBeTruthy();
+    expect(await screen.findByText('01/01/2026')).toBeTruthy();
     expect(mockGet).toHaveBeenCalledWith('/org/6/accounting/periods');
     expect(mockGet).toHaveBeenCalledWith('/org/6/accounting/year-close/history');
     // Never any admin period endpoint, never another organisation.

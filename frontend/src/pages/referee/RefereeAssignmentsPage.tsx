@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from '../../i18n';
 import api from '../../services/api';
-import { formatISODate } from '../../utils/formatDate';
+import { formatDateTimeLocal } from '../../utils/formatDate';
 import { SkeletonRow } from '../../components/ui';
 import { Can } from '../../permissions/Can';
 import { useToast } from '../../components/ui/Toast';
@@ -80,7 +80,6 @@ export default function RefereeAssignmentsPage() {
                 <th className="text-left p-2 font-medium text-[var(--color-text-muted)]">{t('referee.assignments.type', 'Type')}</th>
                 <th className="text-left p-2 font-medium text-[var(--color-text-muted)]">{t('referee.assignments.competition', 'Competition')}</th>
                 <th className="text-left p-2 font-medium text-[var(--color-text-muted)]">{t('referee.assignments.date', 'Date')}</th>
-                <th className="text-left p-2 font-medium text-[var(--color-text-muted)]">{t('referee.assignments.time', 'Time')}</th>
                 <th className="text-left p-2 font-medium text-[var(--color-text-muted)]">{t('referee.assignments.status', 'Status')}</th>
                 <th className="text-left p-2 font-medium text-[var(--color-text-muted)]">{t('common.actions', 'Actions')}</th>
               </tr>
@@ -90,10 +89,7 @@ export default function RefereeAssignmentsPage() {
                 <tr key={a.id} className="border-b border-[var(--color-border)] hover:bg-[var(--color-bg)]/50">
                   <td className="p-2 text-[var(--color-text)] capitalize">{a.matchType || a.match_type || '—'}</td>
                   <td className="p-2 text-[var(--color-text)]">{a.competitionName || a.competition_name || '—'}</td>
-                  <td className="p-2 text-[var(--color-text)]">{formatISODate(a.date || a.scheduled_at)}</td>
-                  <td className="p-2 text-[var(--color-text-muted)]">
-                    {new Date(a.date || a.scheduled_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
-                  </td>
+                  <td className="p-2 text-[var(--color-text)]">{formatDateTimeLocal(a.scheduled_at || a.date)}</td>
                   <td className="p-2">
                     <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-[var(--color-info)]/15 text-[var(--color-info)] capitalize">
                       {a.status?.replace(/_/g, ' ')}

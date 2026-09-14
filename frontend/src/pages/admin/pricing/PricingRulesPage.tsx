@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { pricingApi } from '../../../services/pricing';
 import { useToast } from '../../../components/ui/Toast';
 import { SkeletonRow } from '../../../components/ui/Skeleton';
+import { formatISODate } from '../../../utils/formatDate';
 
 export default function PricingRulesPage() {
   const qc = useQueryClient();
@@ -124,8 +125,8 @@ export default function PricingRulesPage() {
                   <tr key={s.id} className="border-b border-[var(--color-border)] last:border-0">
                     <td className="px-4 py-3 text-[var(--color-text)]">{s.name}</td>
                     <td className="px-4 py-3 font-medium">{s.multiplier}x</td>
-                    <td className="px-4 py-3 text-[var(--color-text-muted)]">{new Date(s.date_start).toLocaleDateString()}</td>
-                    <td className="px-4 py-3 text-[var(--color-text-muted)]">{new Date(s.date_end).toLocaleDateString()}</td>
+                    <td className="px-4 py-3 text-[var(--color-text-muted)]">{formatISODate(s.date_start)}</td>
+                    <td className="px-4 py-3 text-[var(--color-text-muted)]">{formatISODate(s.date_end)}</td>
                     <td className="px-4 py-3">{s.is_active ? <span className="text-green-600">✓</span> : <span className="text-red-600">✗</span>}</td>
                     <td className="px-4 py-3"><button onClick={() => deleteSeason.mutate(s.id)} className="text-xs text-[var(--color-error)] hover:underline">Delete</button></td>
                   </tr>

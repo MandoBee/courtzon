@@ -5,6 +5,7 @@ import api from '../../../services/api';
 import { Button, Modal, Spinner } from '../../../components/ui';
 import { Can } from '../../../permissions/Can';
 import { useToast } from '../../../components/ui/Toast';
+import { formatISODate } from '../../../utils/formatDate';
 
 const RUN_STATUS_BADGE: Record<string, string> = {
   draft: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400',
@@ -131,7 +132,7 @@ export default function PayrollPage() {
                   {runs.map((r: any) => (
                     <tr key={r.id} className="hover:bg-[var(--color-bg)]/30">
                       <td className="px-4 py-3 text-[var(--color-text)]">
-                        {r.period_start ? new Date(r.period_start).toLocaleDateString('en-GB') : '—'} — {r.period_end ? new Date(r.period_end).toLocaleDateString('en-GB') : '—'}
+                        {r.period_start ? formatISODate(r.period_start) : '—'} — {r.period_end ? formatISODate(r.period_end) : '—'}
                       </td>
                       <td className="px-4 py-3">
                         <span className={`px-2 py-0.5 text-[10px] font-medium rounded-full ${RUN_STATUS_BADGE[r.status] || ''}`}>{r.status}</span>

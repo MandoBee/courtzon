@@ -14,6 +14,16 @@ type Executor = mysql.Pool | mysql.PoolConnection;
 export interface MatchRepository {
   findById(id: number, conn?: mysql.PoolConnection): Promise<Match | null>;
   save(match: Match, conn?: mysql.PoolConnection): Promise<void>;
+  /** Matches whose authoritative scheduled end (bookings.end_at_utc) has passed. */
+  findScheduledMatchesPastEnd(): Promise<Array<{ id: number; status: string; startAtUtc: string | null; endAtUtc: string }>>;
+  /** Latest session row for a match (if any). */
+  findActiveSessionForMatch(matchId: number): Promise<{ id: number; status: string } | null>;
+  /** Complete an in-progress session at the authoritative scheduled end. */
+  completeMatchSessionAtScheduledEnd(matchId: number, sessionId: number, startedAt: string, endedAt: string): Promise<void>;
+  /** Create a completed session spanning the scheduled start→end for a match that was never started. */
+  createCompletedSessionForMatch(matchId: number, startedAt: string, endedAt: string): Promise<void>;
+  /** Advance a match to `completed`. */
+  markMatchCompleted(matchId: number): Promise<void>;
 }
 
 export class MysqlMatchRepository implements MatchRepository {
@@ -133,6 +143,63 @@ export class MysqlMatchRepository implements MatchRepository {
     }
 
     match.incrementVersion();
+  }
+
+  async findScheduledMatchesPastEnd(): Promise<Array<{ id: number; status: string; startAtUtc: string | null; endAtUtc: string }>> {
+    const pool = getPool();
+    const [rows] = await pool.execute<RowData>(
+      `SELECT m.id, m.status, b.start_at_utc, b.end_at_utc
+       FROM matches m
+       JOIN bookings b ON b.id = m.booking_id
+       WHERE m.status IN ('closed', 'in_progress')
+         AND b.end_at_utc IS NOT NULL
+         AND b.end_at_utc <= UTC_TIMESTAMP()
+         AND (SELECT COUNT(*) FROM match_participants WHERE match_id = m.id) >= 2
+       LIMIT 500`
+    );
+    return (rows as any[]).map((r) => ({
+      id: Number(r.id),
+      status: r.status,
+      startAtUtc: r.start_at_utc ?? null,
+      endAtUtc: r.end_at_utc,
+    }));
+  }
+
+  async findActiveSessionForMatch(matchId: number): Promise<{ id: number; status: string } | null> {
+    const pool = getPool();
+    const [rows] = await pool.execute<RowData>(
+      `SELECT id, status FROM match_sessions WHERE match_id = ? ORDER BY id DESC LIMIT 1`,
+      [matchId]
+    );
+    return rows.length ? (rows[0] as any) : null;
+  }
+
+  async completeMatchSessionAtScheduledEnd(matchId: number, sessionId: number, startedAt: string, endedAt: string): Promise<void> {
+    const pool = getPool();
+    await pool.execute(
+      `UPDATE match_sessions
+       SET status = 'completed', ended_at = ?,
+           duration_minutes = TIMESTAMPDIFF(MINUTE, COALESCE(started_at, ?), ?)
+       WHERE id = ?`,
+      [endedAt, startedAt, endedAt, sessionId]
+    );
+  }
+
+  async createCompletedSessionForMatch(matchId: number, startedAt: string, endedAt: string): Promise<void> {
+    const pool = getPool();
+    await pool.execute(
+      `INSERT INTO match_sessions (match_id, status, started_at, ended_at, duration_minutes)
+       VALUES (?, 'completed', ?, ?, TIMESTAMPDIFF(MINUTE, ?, ?))`,
+      [matchId, startedAt, endedAt, startedAt, endedAt]
+    );
+  }
+
+  async markMatchCompleted(matchId: number): Promise<void> {
+    const pool = getPool();
+    await pool.execute(
+      "UPDATE matches SET status = 'completed', updated_at = NOW() WHERE id = ?",
+      [matchId]
+    );
   }
 }
 

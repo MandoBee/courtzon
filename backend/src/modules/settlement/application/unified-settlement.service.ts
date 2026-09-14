@@ -357,9 +357,11 @@ export const unifiedSettlementService = {
 };
 
 function generateBatchCode(date: Date): string {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
+  // UTC getters (container/pool run in UTC) so the batch label is stable and
+  // independent of any server-local timezone.
+  const y = date.getUTCFullYear();
+  const m = String(date.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(date.getUTCDate()).padStart(2, '0');
   const seq = Math.floor(Math.random() * 999) + 1;
   return `SET-${y}-${m}-${day}-${String(seq).padStart(3, '0')}`;
 }

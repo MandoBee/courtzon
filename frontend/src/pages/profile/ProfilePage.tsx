@@ -14,6 +14,7 @@ import { Can } from '../../permissions/Can';
 import { useCan } from '../../hooks/useCan';
 import { Link } from 'react-router-dom';
 import { applyMainSportChange, selectableInterestSports, withMainSportInterest } from '../../utils/player-sports';
+import { formatISODate } from '../../utils/formatDate';
 
 const LEVELS = [
   { id: 1, name: 'Beginner' }, { id: 2, name: 'Intermediate' },
@@ -552,7 +553,7 @@ export default function ProfilePage() {
           </div>
           <div className="p-3 rounded-[var(--radius-md)] bg-[var(--color-bg)]">
             <p className="text-xs text-[var(--color-text-muted)]">{t('org.birth_date')}</p>
-            <p className="text-sm font-medium text-[var(--color-text)]">{user.birthDate ? new Date(user.birthDate).toLocaleDateString('en-GB') : '—'}</p>
+            <p className="text-sm font-medium text-[var(--color-text)]">{user.birthDate ? formatISODate(String(user.birthDate).split('T')[0]) : '—'}</p>
           </div>
           <div className="p-3 rounded-[var(--radius-md)] bg-[var(--color-bg)]">
             <p className="text-xs text-[var(--color-text-muted)]">{t('org.timezone')}</p>

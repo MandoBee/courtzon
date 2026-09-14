@@ -6,6 +6,7 @@ import { Can } from '../../permissions/Can';
 import { SkeletonRow } from '../../components/ui/Skeleton';
 import api from '../../services/api';
 import { localToday } from '../../utils/dateRange';
+import { formatISODate } from '../../utils/formatDate';
 
 function StatCard({ label, value, icon, href }: { label: string; value: string | number | undefined | null; icon: string; href?: string }) {
   const inner = (
@@ -120,7 +121,7 @@ export default function PlayerDashboardPage() {
             {Array.isArray(upcomingBookings) && upcomingBookings.length > 0 ? upcomingBookings.slice(0, 3).map((b: any) => (
               <Link key={b.id} to={`/bookings/${b.id}`} className="block bg-[var(--color-surface)] rounded-[var(--radius-lg)] border border-[var(--color-border)] p-3 hover:border-[var(--color-primary)]/30 transition-colors">
                 <p className="text-sm font-medium text-[var(--color-text)]">{b.resource_name || b.organisation_name}</p>
-                <p className="text-xs text-[var(--color-text-muted)]">{b.booking_date ? new Date(b.booking_date).toLocaleDateString() : ''} {b.start_time?.slice(0, 5)}</p>
+                <p className="text-xs text-[var(--color-text-muted)]">{b.booking_date ? formatISODate(b.booking_date) : ''} {b.start_time?.slice(0, 5)}</p>
               </Link>
             )) : (
               <p className="text-sm text-[var(--color-text-muted)] py-4 text-center">{t('player.dashboard.no_upcoming_bookings')}</p>
@@ -140,7 +141,7 @@ export default function PlayerDashboardPage() {
             {Array.isArray(matches) && matches.length > 0 ? matches.slice(0, 3).map((m: any) => (
               <Link key={m.id} to={`/matches/${m.id}`} className="block bg-[var(--color-surface)] rounded-[var(--radius-lg)] border border-[var(--color-border)] p-3 hover:border-[var(--color-primary)]/30 transition-colors">
                 <p className="text-sm font-medium text-[var(--color-text)]">{m.title || m.name || `${t('player.dashboard.match')} #${m.id}`}</p>
-                <p className="text-xs text-[var(--color-text-muted)]">{m.scheduled_date ? new Date(m.scheduled_date).toLocaleDateString() : ''}</p>
+                <p className="text-xs text-[var(--color-text-muted)]">{m.scheduled_date ? formatISODate(m.scheduled_date) : ''}</p>
               </Link>
             )) : (
               <p className="text-sm text-[var(--color-text-muted)] py-4 text-center">{t('player.dashboard.no_upcoming_matches')}</p>

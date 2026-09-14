@@ -205,9 +205,43 @@ describe('C4/C6 â€” submitMatchResult', () => {
     expect(repo.insert).toHaveBeenCalledWith(expect.objectContaining({ finalResult: expect.any(Object), outcome: 'completed' }));
   });
 
-  it('rejects submission when the match has no authoritative played_at (no session)', async () => {
+it('rejects submission when the match has no authoritative played_at (no session)', async () => {
     repo.getMatchContext.mockResolvedValue({ ...CONTEXT, playedAt: null });
     await expect(matchResultService.submitMatchResult(42, 5, VALID_PAYLOAD)).rejects.toThrow(RulesValidationError);
+  });
+
+  it('rejects submission BEFORE the authoritative scheduled match end (end_at_utc in the future)', async () => {
+    repo.getMatchContext.mockResolvedValue({
+      ...CONTEXT,
+      playedAt: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+      endAtUtc: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
+    });
+    await expect(matchResultService.submitMatchResult(42, 5, VALID_PAYLOAD)).rejects.toThrow(
+      /has not ended yet/i,
+    );
+  });
+
+  it('allows submission AFTER the scheduled end when otherwise eligible', async () => {
+    repo.findByMatchId.mockResolvedValue(null);
+    repo.insert.mockResolvedValue(99);
+    repo.findById.mockResolvedValue(makeRecord({ id: 99 }));
+    repo.getMatchContext.mockResolvedValue({
+      ...CONTEXT,
+      status: 'closed',
+      playedAt: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+      endAtUtc: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
+    });
+    await expect(matchResultService.submitMatchResult(42, 5, VALID_PAYLOAD)).resolves.toBeDefined();
+    expect(repo.insert).toHaveBeenCalled();
+  });
+
+  it('skips the scheduled-end guard when end_at_utc is absent (legacy booking)', async () => {
+    repo.findByMatchId.mockResolvedValue(null);
+    repo.insert.mockResolvedValue(99);
+    repo.findById.mockResolvedValue(makeRecord({ id: 99 }));
+    repo.getMatchContext.mockResolvedValue({ ...CONTEXT, endAtUtc: null });
+    await expect(matchResultService.submitMatchResult(42, 5, VALID_PAYLOAD)).resolves.toBeDefined();
+    expect(repo.insert).toHaveBeenCalled();
   });
 });
 

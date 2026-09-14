@@ -4,6 +4,7 @@ import { Button } from '../../../components/ui';
 import { Can } from '../../../permissions/Can';
 import { useToast } from '../../../components/ui/Toast';
 import { formatPrice } from '../../../utils/currency';
+import { formatDateTimeLocal } from '../../../utils/formatDate';
 import { getErrorMessage } from '../../../utils/errors';
 
 interface CoachTabProps {
@@ -353,7 +354,7 @@ export default function CoachTab({ userId, coachData, sports, isCoach }: CoachTa
               <div key={s.id} className="flex items-center justify-between bg-[var(--color-bg)] px-3 py-2 rounded-[var(--radius-md)]">
                 <div>
                   <div className="text-sm font-medium text-[var(--color-text)]">
-                    {new Date(s.start_time).toLocaleDateString('en-GB')} · {new Date(s.start_time).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
+                    {formatDateTimeLocal(s.start_time)}
                   </div>
                   <div className="text-xs text-[var(--color-text-muted)]">
                     {s.player_name || '—'}{s.organisation_name ? ` · ${s.organisation_name}` : ''}
@@ -378,7 +379,7 @@ export default function CoachTab({ userId, coachData, sports, isCoach }: CoachTa
               <div key={s.id} className="flex items-center justify-between bg-[var(--color-bg)] px-3 py-2 rounded-[var(--radius-md)]">
                 <div>
                   <div className="text-sm font-medium text-[var(--color-text)]">
-                    {new Date(s.start_time).toLocaleDateString('en-GB')} · {new Date(s.start_time).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
+                    {formatDateTimeLocal(s.start_time)}
                   </div>
                   <div className="text-xs text-[var(--color-text-muted)]">
                     {s.player_name || '—'}{s.organisation_name ? ` · ${s.organisation_name}` : ''}

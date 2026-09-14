@@ -4,6 +4,7 @@ import { membershipApi } from '../../services/membership';
 import { Skeleton, SkeletonRow } from '../../components/ui/Skeleton';
 import { useToast } from '../../components/ui/Toast';
 import { useNavigate } from 'react-router-dom';
+import { formatISODate } from '../../utils/formatDate';
 
 type Tab = 'overview' | 'history' | 'loyalty';
 
@@ -63,8 +64,8 @@ export default function MembershipDashboard() {
               </div>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div><p className="text-xs text-[var(--color-text-muted)]">Plan</p><p className="font-medium">{active.plan_name || `Plan #${active.plan_id}`}</p></div>
-                <div><p className="text-xs text-[var(--color-text-muted)]">Start</p><p className="font-medium">{new Date(active.start_date).toLocaleDateString()}</p></div>
-                <div><p className="text-xs text-[var(--color-text-muted)]">Expires</p><p className="font-medium">{new Date(active.end_date).toLocaleDateString()}</p></div>
+                <div><p className="text-xs text-[var(--color-text-muted)]">Start</p><p className="font-medium">{formatISODate(active.start_date)}</p></div>
+                <div><p className="text-xs text-[var(--color-text-muted)]">Expires</p><p className="font-medium">{formatISODate(active.end_date)}</p></div>
                 <div><p className="text-xs text-[var(--color-text-muted)]">Status</p><p className="font-medium capitalize">{active.status}</p></div>
               </div>
               <div className="flex gap-2">
@@ -109,7 +110,7 @@ export default function MembershipDashboard() {
               <div key={m.id} className="flex items-center justify-between px-4 py-3 border-b border-[var(--color-border)] last:border-0">
                 <div>
                   <p className="text-sm font-medium text-[var(--color-text)]">Plan #{m.plan_id}</p>
-                  <p className="text-xs text-[var(--color-text-muted)]">{new Date(m.start_date).toLocaleDateString()} – {new Date(m.end_date).toLocaleDateString()}</p>
+                  <p className="text-xs text-[var(--color-text-muted)]">{formatISODate(m.start_date)} – {formatISODate(m.end_date)}</p>
                 </div>
                 <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${
                   m.status === 'active' ? 'bg-green-100 text-green-700' :

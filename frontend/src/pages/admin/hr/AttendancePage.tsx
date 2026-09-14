@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../../services/api';
 import { Button, Modal, Spinner } from '../../../components/ui';
 import { useToast } from '../../../components/ui/Toast';
+import { formatISODate } from '../../../utils/formatDate';
 
 const ATTENDANCE_BADGE: Record<string, string> = {
   present: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
@@ -112,7 +113,7 @@ export default function AttendancePage() {
               {records.map((r: any) => (
                 <tr key={r.id} className="hover:bg-[var(--color-bg)]/30">
                   <td className="px-4 py-3 text-[var(--color-text)]">{r.employee_name || r.employee_id}</td>
-                  <td className="px-4 py-3 text-[var(--color-text-muted)]">{r.date ? new Date(r.date).toLocaleDateString('en-GB') : '—'}</td>
+                  <td className="px-4 py-3 text-[var(--color-text-muted)]">{r.date ? formatISODate(r.date) : '—'}</td>
                   <td className="px-4 py-3 text-[var(--color-text-muted)]">{r.clock_in || '—'}</td>
                   <td className="px-4 py-3 text-[var(--color-text-muted)]">{r.clock_out || '—'}</td>
                   <td className="px-4 py-3">

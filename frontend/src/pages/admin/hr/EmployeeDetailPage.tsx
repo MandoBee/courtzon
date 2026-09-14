@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import api from '../../../services/api';
 import { Can } from '../../../permissions/Can';
 import { Skeleton } from '../../../components/ui/Skeleton';
+import { formatISODate } from '../../../utils/formatDate';
 
 const EMPLOYMENT_STATUS_BADGE: Record<string, string> = {
   draft: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400',
@@ -105,7 +106,7 @@ export default function EmployeeDetailPage() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4 text-sm">
             {employee.email && <div><span className="text-[var(--color-text-muted)]">Email:</span> {employee.email}</div>}
             {employee.phone && <div><span className="text-[var(--color-text-muted)]">Phone:</span> {employee.phone}</div>}
-            {employee.hire_date && <div><span className="text-[var(--color-text-muted)]">Hire Date:</span> {new Date(employee.hire_date).toLocaleDateString('en-GB')}</div>}
+            {employee.hire_date && <div><span className="text-[var(--color-text-muted)]">Hire Date:</span> {formatISODate(employee.hire_date)}</div>}
           </div>
         </div>
 
@@ -126,7 +127,7 @@ export default function EmployeeDetailPage() {
           <div className="p-4">
             {activeTab === 'overview' && (
               <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
-                <div><span className="text-[var(--color-text-muted)]">Date of Birth:</span> {employee.date_of_birth ? new Date(employee.date_of_birth).toLocaleDateString('en-GB') : '—'}</div>
+                <div><span className="text-[var(--color-text-muted)]">Date of Birth:</span> {employee.date_of_birth ? formatISODate(employee.date_of_birth) : '—'}</div>
                 <div><span className="text-[var(--color-text-muted)]">Gender:</span> {employee.gender || '—'}</div>
                 <div><span className="text-[var(--color-text-muted)]">Address:</span> {employee.address || '—'}</div>
                 <div><span className="text-[var(--color-text-muted)]">Nationality:</span> {employee.nationality || '—'}</div>
@@ -149,7 +150,7 @@ export default function EmployeeDetailPage() {
                       <div>
                         <p className="font-medium text-[var(--color-text)]">{c.contract_type || 'Contract'}</p>
                         <p className="text-xs text-[var(--color-text-muted)]">
-                          {c.start_date ? new Date(c.start_date).toLocaleDateString('en-GB') : '—'} — {c.end_date ? new Date(c.end_date).toLocaleDateString('en-GB') : 'Open'}
+                          {c.start_date ? formatISODate(c.start_date) : '—'} — {c.end_date ? formatISODate(c.end_date) : 'Open'}
                         </p>
                         {c.salary && <p className="text-xs text-[var(--color-text-muted)]">{Number(c.salary).toLocaleString('en-GB')} {c.currency || ''}</p>}
                       </div>
@@ -173,7 +174,7 @@ export default function EmployeeDetailPage() {
                         <span className={`px-2 py-0.5 text-[10px] font-medium rounded-full ${LEAVE_STATUS_BADGE[l.status] || ''}`}>{l.status}</span>
                       </div>
                       <p className="text-xs text-[var(--color-text-muted)]">
-                        {l.start_date ? new Date(l.start_date).toLocaleDateString('en-GB') : '—'} — {l.end_date ? new Date(l.end_date).toLocaleDateString('en-GB') : '—'}
+                        {l.start_date ? formatISODate(l.start_date) : '—'} — {l.end_date ? formatISODate(l.end_date) : '—'}
                         {l.days && <> &middot; {l.days} day(s)</>}
                       </p>
                       {l.reason && <p className="text-xs text-[var(--color-text-muted)] mt-1">{l.reason}</p>}
@@ -201,7 +202,7 @@ export default function EmployeeDetailPage() {
                       <tbody className="divide-y divide-[var(--color-border)]">
                         {attendance.map((a: any) => (
                           <tr key={a.id} className="hover:bg-[var(--color-bg)]/30">
-                            <td className="px-3 py-2 text-[var(--color-text)]">{a.date ? new Date(a.date).toLocaleDateString('en-GB') : '—'}</td>
+                            <td className="px-3 py-2 text-[var(--color-text)]">{a.date ? formatISODate(a.date) : '—'}</td>
                             <td className="px-3 py-2 text-[var(--color-text-muted)]">{a.clock_in || '—'}</td>
                             <td className="px-3 py-2 text-[var(--color-text-muted)]">{a.clock_out || '—'}</td>
                             <td className="px-3 py-2">

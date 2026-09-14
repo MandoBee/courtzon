@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import api from '../../services/api';
 import { formatPrice } from '../../utils/currency';
+import { formatISODate } from '../../utils/formatDate';
 import { useTranslation } from '../../i18n';
 
 const ORDER_STATUSES = ['', 'pending', 'confirmed', 'processing', 'shipped', 'delivered', 'cancelled'] as const;
@@ -122,7 +123,7 @@ export default function OrderListPage() {
         <div className="space-y-3">
           {orders.data.map((order: any) => {
             const items = order.items || [];
-            const expectedDate = order.estimated_delivery_date ? new Date(order.estimated_delivery_date).toLocaleDateString('en-GB') : 'N/A';
+            const expectedDate = order.estimated_delivery_date ? formatISODate(order.estimated_delivery_date) : 'N/A';
             const isGrouped = order._isGrouped && order._sellerOrders?.length > 1;
             const currencyCode = order.currency_code;
             return (

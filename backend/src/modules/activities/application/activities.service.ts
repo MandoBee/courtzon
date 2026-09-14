@@ -9,11 +9,23 @@ import { bookingService } from '../../booking/application/booking.service.js';
 import { bookingRepository } from '../../booking/infrastructure/repositories/booking.repository.js';
 import { coachSessionStateService } from '../../coaches/application/coach-session-state.service.js';
 import type { CoachSessionActor } from '../../coaches/application/coach-session-access.js';
+import { getLocalToday } from '../../../shared/utils/business-date.js';
 
 type RowData = mysql.RowDataPacket[];
 
-function todayISO(): string {
-  return new Date().toISOString().slice(0, 10);
+/**
+ * Resolve the coach's venue-local business date (YYYY-MM-DD) for "today".
+ *
+ * coach_sessions.start_time and coach_availability_blackouts.blackout_date are
+ * stored as venue-local wall-clock values. A UTC-derived `today` (e.g.
+ * `new Date().toISOString().slice(0,10)`) drifts by the venue offset and is
+ * off-by-one around the UTC-midnight boundary. This derives the date in the
+ * coach's service-location branch timezone (fallback: platform timezone) via
+ * TimeEngine — DST-safe, never a fixed offset.
+ */
+async function resolveCoachLocalToday(coachId: number): Promise<string> {
+  const tz = await repo.getCoachVenueTimezone(coachId);
+  return getLocalToday(tz || undefined);
 }
 
 // Coach-session states from which a cancellation may be legitimately issued
@@ -464,7 +476,7 @@ export const activitiesService = {
     const coach = await repo.findCoachByUserId(userId);
     if (!coach) throw new NotFoundError('Coach profile');
     const weekly = await repo.getCoachAvailability(coach.id);
-    const blackouts = await repo.getCoachBlackouts(coach.id, todayISO());
+    const blackouts = await repo.getCoachBlackouts(coach.id, await resolveCoachLocalToday(coach.id));
     return { weekly, blackouts };
   },
   async setMyCoachAvailability(userId: number, slots: { dayOfWeek: number; startTime: string; endTime: string }[]) {
@@ -520,14 +532,14 @@ export const activitiesService = {
   },
   async getCoachAvailabilityPublic(coachId: number) {
     const weekly = await repo.getCoachAvailability(coachId);
-    const blackouts = await repo.getCoachBlackouts(coachId, todayISO());
+    const blackouts = await repo.getCoachBlackouts(coachId, await resolveCoachLocalToday(coachId));
     return { weekly, blackouts };
   },
 
   async getCoachStats(userId: number) {
     const coach = await repo.findCoachByUserId(userId);
     if (!coach) throw new ForbiddenError('Not a coach');
-    return repo.getCoachStats(coach.id);
+    return repo.getCoachStats(coach.id, await resolveCoachLocalToday(coach.id));
   },
 
   async getCoachPlayers(userId: number) {

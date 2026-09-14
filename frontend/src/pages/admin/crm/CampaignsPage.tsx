@@ -5,6 +5,7 @@ import { useToast } from '../../../components/ui/Toast';
 import { Can } from '../../../permissions/Can';
 import { getErrorMessage } from '../../../utils/errors';
 import { SkeletonRow } from '../../../components/ui/Skeleton';
+import { toMySqlUtcForApi, toLocalDateTimeLocal } from '../../../utils/formatDate';
 
 interface Campaign {
   id: number;
@@ -85,13 +86,13 @@ export default function CampaignsPage() {
 
   const openEdit = (c: Campaign) => {
     setEditing(c); setName(c.name); setDescription(c.description || ''); setType(c.type);
-    setSegmentId(c.segment_id); setScheduledAt(c.scheduled_at || ''); setShowModal(true);
+    setSegmentId(c.segment_id); setScheduledAt(toLocalDateTimeLocal(c.scheduled_at)); setShowModal(true);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name) return;
-    const payload: any = { name, description, type, segment_id: segmentId || null, scheduled_at: scheduledAt || null };
+    const payload: any = { name, description, type, segment_id: segmentId || null, scheduled_at: scheduledAt ? toMySqlUtcForApi(scheduledAt) : null };
     if (editing) updateMutation.mutate({ id: editing.id, payload });
     else createMutation.mutate(payload);
   };

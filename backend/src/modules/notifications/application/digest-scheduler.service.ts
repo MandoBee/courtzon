@@ -15,9 +15,12 @@ export async function processDigest(frequency: DigestFrequency): Promise<void> {
   const pool = getPool();
   const since = new Date();
 
-  if (frequency === 'hourly') since.setHours(since.getHours() - 1);
-  else if (frequency === 'daily') since.setDate(since.getDate() - 1);
-  else if (frequency === 'weekly') since.setDate(since.getDate() - 7);
+  // Pure millisecond arithmetic — never mutate local date/hour components
+  // before formatting UTC. (Local getters resolve to UTC inside the container,
+  // but relying on that coupling silently corrupts the window if the container
+  // ever runs with a non-UTC TZ.)
+  const lookbackMs = frequency === 'hourly' ? 3_600_000 : frequency === 'daily' ? 24 * 3_600_000 : 7 * 24 * 3_600_000;
+  since.setTime(since.getTime() - lookbackMs);
 
   const [rows] = await pool.execute<any[]>(
     `SELECT n.user_id,

@@ -14,4 +14,6 @@ export async function matchRoutes(app: FastifyInstance): Promise<void> {
   app.post('/matches/:id/applicants/:requestId/reject', { preHandler: [requirePermission(['matches.manage'])] }, ctrl.rejectApplicantHandler);
   app.post('/matches/:id/close', { preHandler: [requirePermission(['matches.manage'])] }, ctrl.closeMatchHandler);
   app.post('/matches/:id/cancel', { preHandler: [requirePermission(['matches.manage'])] }, ctrl.cancelMatchHandler);
+  app.post('/matches/:id/start', { preHandler: [requirePermission(['matches.manage'])] }, ctrl.startMatchHandler);
+  app.post('/matches/:id/complete', { preHandler: [requirePermission(['matches.manage'])] }, ctrl.completeMatchHandler);
 }

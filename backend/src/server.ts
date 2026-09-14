@@ -289,6 +289,15 @@ async function bootstrap() {
     });
 
     // Subscription expiry — daily at 00:15 UTC
+    // NOTE (BE-6): all cron patterns below are explicitly UTC by design. The
+    // platform business timezone (Africa/Cairo) differs by +2/+3h (DST), so a
+    // "start-of-Cairo-day" intent would need DST-aware cron (unsupported by
+    // BullMQ fixed patterns) AND would break repeatable-job identity in Redis
+    // (pattern changes accumulate duplicate repeatable jobs). These jobs sweep
+    // by comparing stored UTC timestamps, so a fixed UTC firing time is correct
+    // regardless of DST — only the delivery/sweep hour shifts. Do not convert
+    // them to business-local without adding DST-aware scheduling + repeat-key
+    // migration.
     await queueService.add('expire_subscriptions', {}, {
       repeat: { pattern: '15 0 * * *' },
       removeOnComplete: true,
