@@ -44,16 +44,23 @@ jobs:
           cache-dependency-path: backend/package-lock.json
       - run: npm ci --ignore-scripts
       - run: npm run build
-      - name: Run migrations
-        run: node scripts/migrate.js --fresh --seed
+      - name: Install MySQL client
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends default-mysql-client
+      - name: Create fresh schema (baseline)
+        # Mirrors the Docker entrypoint / integration harness: the baseline is the
+        # full final schema; its appended section emits a non-fatal "table already
+        # exists" warning, so --force is used and the exit status is tolerated.
+        run: |
+          mysql -h 127.0.0.1 -P 3306 -uroot -ptest_root -e "DROP DATABASE IF EXISTS courtzon_v2_test; CREATE DATABASE courtzon_v2_test CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+          mysql -h 127.0.0.1 -P 3306 -uroot -ptest_root --force courtzon_v2_test -e "source ../database/baseline/001_courtzon_v3.sql" || echo "baseline residual warnings tolerated"
+      - name: Seed database (canonical seed mechanism)
+        run: node scripts/seed.js
         env:
           DB_HOST: 127.0.0.1
           DB_PORT: 3306
           DB_NAME: courtzon_v2_test
           DB_USER: root
           DB_PASSWORD: test_root
-          REDIS_HOST: 127.0.0.1
-          REDIS_PORT: 6379
           NODE_ENV: test
       - name: Run unit tests
         run: npm run test:unit

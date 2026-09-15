@@ -9,8 +9,27 @@ import type {
   SportFormat,
   SportRuleSet,
 } from '../domain/match-result.types.js';
+import { toMySqlDateTime } from '../../../shared/utils/mysql-date.js';
 
 type RowData = mysql.RowDataPacket[];
+
+/**
+ * Normalize a timestamp value to a MySQL DATETIME/TIMESTAMP literal before
+ * binding. The match-result service produces ISO-8601 strings
+ * (`new Date().toISOString()` → `2026-09-15T00:27:54.952Z`) which MySQL strict
+ * mode rejects for DATETIME/TIMESTAMP columns. This converts them to the same
+ * UTC instant in `YYYY-MM-DD HH:mm:ss` form (the app-wide convention — see
+ * `shared/utils/mysql-date.ts`). Dates and already-valid literals pass through.
+ */
+function toMySqlTs(v: unknown): any {
+  if (v == null) return null; // undefined → SQL NULL (mysql2 rejects undefined bindings)
+  if (v instanceof Date) return toMySqlDateTime(v);
+  const s = String(v);
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(s)) {
+    return `${s.slice(0, 10)} ${s.slice(11, 19)}`;
+  }
+  return s;
+}
 
 export interface MatchContext {
   matchId: number;
@@ -114,6 +133,12 @@ const COLUMN_MAP: Record<string, string> = {
   evidenceCounted: 'evidence_counted',
   ratingAppliedAt: 'rating_applied_at',
 };
+
+/** match_result_records columns that store UTC instants (normalized to MySQL literals on write). */
+const DATETIME_COLUMNS = new Set([
+  'played_at', 'submitted_at', 'accepted_at', 'disputed_at', 'resolved_at',
+  'submission_deadline_at', 'auto_approval_deadline_at', 'rating_applied_at',
+]);
 
 const PARTICIPANT_MAPPER = (r: any): MatchResultParticipant => ({
   id: r.id,
@@ -240,7 +265,7 @@ export class MatchResultRepository {
         input.ruleSetId,
         JSON.stringify(input.rulesSnapshot),
         input.matchType,
-        input.playedAt,
+        toMySqlTs(input.playedAt),
         input.branchId,
         input.resourceId,
         input.timezone,
@@ -250,18 +275,18 @@ export class MatchResultRepository {
         input.outcome,
         input.submissionStatus,
         input.submittedBy ?? null,
-        input.submittedAt ?? null,
+        toMySqlTs(input.submittedAt),
         input.acceptedBy ?? null,
-        input.acceptedAt ?? null,
+        toMySqlTs(input.acceptedAt),
         input.autoApproved ? 1 : 0,
         input.disputedBy ?? null,
-        input.disputedAt ?? null,
+        toMySqlTs(input.disputedAt),
         input.disputeReason ?? null,
         input.resolvedBy ?? null,
-        input.resolvedAt ?? null,
+        toMySqlTs(input.resolvedAt),
         input.resolutionNote ?? null,
-        input.submissionDeadlineAt,
-        input.autoApprovalDeadlineAt,
+        toMySqlTs(input.submissionDeadlineAt),
+        toMySqlTs(input.autoApprovalDeadlineAt),
       ],
     );
     return Number((res as any).insertId);
@@ -274,7 +299,7 @@ export class MatchResultRepository {
     for (const [key, value] of Object.entries(fields)) {
       const column = COLUMN_MAP[key] ?? key;
       sets.push(`\`${column}\` = ?`);
-      params.push(typeof value === 'object' && value !== null ? JSON.stringify(value) : value);
+      params.push(DATETIME_COLUMNS.has(column) ? toMySqlTs(value) : (typeof value === 'object' && value !== null ? JSON.stringify(value) : value));
     }
     if (!sets.length) return;
     params.push(resultId);
@@ -487,7 +512,7 @@ export class MatchResultRepository {
     for (const [key, value] of Object.entries(fields)) {
       const column = COLUMN_MAP[key] ?? key;
       sets.push(`\`${column}\` = ?`);
-      params.push(typeof value === 'object' && value !== null ? JSON.stringify(value) : value);
+      params.push(DATETIME_COLUMNS.has(column) ? toMySqlTs(value) : (typeof value === 'object' && value !== null ? JSON.stringify(value) : value));
     }
     if (!sets.length) return false;
     params.push(resultId);
