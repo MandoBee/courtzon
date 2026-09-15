@@ -86,7 +86,10 @@ export default function MatchListPage() {
   }, []);
 
   useEffect(() => {
-    const invalidate = () => queryClient.invalidateQueries({ queryKey: ['public-matches'] });
+    const invalidate = () => {
+      queryClient.invalidateQueries({ queryKey: ['public-matches'] });
+      queryClient.invalidateQueries({ queryKey: ['my-matches'] });
+    };
     socketService.on('match.available', invalidate);
     socketService.on('match.updated', invalidate);
     socketService.on('match.removed', invalidate);
@@ -99,6 +102,7 @@ export default function MatchListPage() {
 
   useEffect(() => {
     queryClient.invalidateQueries({ queryKey: ['public-matches'] });
+    queryClient.invalidateQueries({ queryKey: ['my-matches'] });
   }, [tab, queryClient]);
 
   const queryParams: Record<string, string> = {};
@@ -113,6 +117,11 @@ export default function MatchListPage() {
     queryFn: () => api.get('/matches', { params: queryParams }).then((r) => r.data.data),
   });
 
+  const { data: myMatchesData } = useQuery({
+    queryKey: ['my-matches'],
+    queryFn: () => api.get('/matches/my').then((r) => r.data.data),
+  });
+
   const joinMutation = useMutation({
     mutationFn: (matchId: number) => api.post(`/matches/${matchId}/join`),
     onSuccess: () => { showToast('Joined! Awaiting approval.'); queryClient.invalidateQueries({ queryKey: ['public-matches'] }); },
@@ -125,7 +134,14 @@ export default function MatchListPage() {
     onError: (err: any) => showToast(err?.response?.data?.message || 'Failed to withdraw', 'error'),
   });
 
-  const rawMatches: MatchRow[] = data || [];
+  const rawMatches: MatchRow[] = useMemo(() => {
+    const discover = data || [];
+    const mine = myMatchesData || [];
+    const byId = new Map<number, MatchRow>();
+    for (const m of mine) byId.set(m.id, m);
+    for (const m of discover) if (!byId.has(m.id)) byId.set(m.id, m);
+    return Array.from(byId.values());
+  }, [data, myMatchesData]);
 
   const matchesWithDistance = useMemo(() =>
     rawMatches.map((m) => ({

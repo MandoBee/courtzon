@@ -62,4 +62,27 @@ describe('PlayerService.getNavSummary', () => {
     const args = (pool.execute as any).mock.calls.find((c: any[]) => String(c[0]).includes('FROM invitations'))[1];
     expect(args).toContain(42);
   });
+
+  it('counts only actionable invitations (open/full matches, not a participant)', async () => {
+    responses.matches = 2;
+    await service.getNavSummary(42);
+
+    // The match badge must be derived from the LIVE match state — stale
+    // invitations to started/ended/cancelled matches must not inflate the badge.
+    const invitationsSql = (pool.execute as any).mock.calls
+      .map((c: any[]) => String(c[0]))
+      .find((s: string) => s.includes('FROM invitations'));
+
+    expect(invitationsSql).toContain('JOIN matches');
+    expect(invitationsSql).toContain("m.status IN ('open', 'full')");
+    expect(invitationsSql).toContain('NOT EXISTS');
+    expect(invitationsSql).toContain('match_participants');
+
+    // An already-joined player must never see the badge count that invitation.
+    // The participant exclian is correlated (mp.user_id = i.user_id), so only
+    // the acting user id is bound.
+    const args = (pool.execute as any).mock.calls
+      .find((c: any[]) => String(c[0]).includes('FROM invitations'))[1];
+    expect(args).toEqual([42]);
+  });
 });

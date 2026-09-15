@@ -8,12 +8,12 @@ export interface NotificationItem {
   icon: string | null;
   type: string | null;
   priority: string | null;
-  categorySlug: string | null;
-  actionKey: string | null;
-  actionPayload: Record<string, unknown> | null;
-  isRead: boolean;
-  createdAt: string;
-  readAt: string | null;
+  category_slug: string | null;
+  action_key: string | null;
+  action_payload: Record<string, unknown> | null;
+  is_read: boolean;
+  created_at: string;
+  read_at: string | null;
 }
 
 export interface NotificationPreferences {

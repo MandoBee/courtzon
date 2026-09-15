@@ -21,6 +21,7 @@ export type JobType = 'send_email' | 'process_settlement' | 'cancel_expired_book
   | 'complaint_receipt_timeout'
   | 'complaint_collection_escalation'
   | 'match_result_deadlines'
+  | 'match_lifecycle'
   | 'expire_academy_holds';
 
 export interface EmailAttachment {
@@ -157,6 +158,7 @@ export type JobPayloadMap = {
   complaint_receipt_timeout: Record<string, never>;
   complaint_collection_escalation: Record<string, never>;
   match_result_deadlines: Record<string, never>;
+  match_lifecycle: Record<string, never>;
   expire_academy_holds: ExpireAcademyHoldsJob;
 };
 

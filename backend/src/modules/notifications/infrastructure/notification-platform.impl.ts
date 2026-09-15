@@ -16,12 +16,12 @@ function toNotificationItem(row: any): NotificationItem {
     icon: row.icon ?? null,
     type: row.type ?? null,
     priority: row.priority ?? null,
-    categorySlug: row.category_slug ?? null,
-    actionKey: row.action_key ?? null,
-    actionPayload: row.action_payload ?? null,
-    isRead: !!(row.is_read ?? row.isRead),
-    createdAt: row.created_at ?? row.createdAt,
-    readAt: row.read_at ?? row.readAt ?? null,
+    category_slug: row.category_slug ?? null,
+    action_key: row.action_key ?? null,
+    action_payload: row.action_payload ?? null,
+    is_read: !!(row.is_read ?? row.isRead),
+    created_at: row.created_at ?? row.createdAt,
+    read_at: row.read_at ?? row.readAt ?? null,
   };
 }
 

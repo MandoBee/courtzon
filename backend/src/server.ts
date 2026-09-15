@@ -19,6 +19,7 @@ import { handleBookingSettlementEligibility } from "./modules/booking/infrastruc
 import { handleActivateEntitlements } from "./modules/financial/infrastructure/financial-entitlement.worker.js";
 import { handleComplaintPeriodActivation } from "./modules/financial/infrastructure/marketplace-complaint-period.worker.js";
 import { processMatchResultDeadlines, scheduleMatchResultDeadlines } from "./modules/match-result/index.js";
+import { processMatchLifecycle, scheduleMatchLifecycle } from "./modules/match/infrastructure/match-lifecycle.worker.js";
 import { handleComplaintReceiptTimeout, handleComplaintCollectionEscalation } from "./modules/marketplace/infrastructure/marketplace-complaint.worker.js";
 import { handleSyncPendingPayments, handleExpireStalePayments } from "./modules/payment/infrastructure/payment-cron.worker.js";
 import { runDatabaseBackup } from "./infrastructure/backup/backup.service.js";
@@ -108,6 +109,7 @@ async function bootstrap() {
     registerHandler('complaint_receipt_timeout', handleComplaintReceiptTimeout);
     registerHandler('complaint_collection_escalation', handleComplaintCollectionEscalation);
     registerHandler('match_result_deadlines', processMatchResultDeadlines);
+    registerHandler('match_lifecycle', processMatchLifecycle);
     registerHandler('expire_academy_holds', handleExpireAcademyHolds);
 
     registerCommandHandler('ConfirmBooking', confirmBookingHandler as any);
@@ -393,8 +395,11 @@ async function bootstrap() {
       removeOnFail: { age: 86400 },
     });
 
-    // Match result deadlines (auto-approval + no-result expiry) — hourly
+// Match result deadlines (auto-approval + no-result expiry) — hourly
     await scheduleMatchResultDeadlines();
+
+    // Match lifecycle (deadline close + auto-start) — every 5 minutes
+    await scheduleMatchLifecycle();
 
     process.on('SIGTERM', () => shutdown('SIGTERM'));
     process.on('SIGINT', () => shutdown('SIGINT'));

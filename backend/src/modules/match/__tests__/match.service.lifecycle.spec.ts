@@ -12,6 +12,7 @@ const publisher = vi.hoisted(() => ({ publish: vi.fn() }));
 const repo = vi.hoisted(() => ({
   findById: vi.fn(),
   findScheduledMatchesPastEnd: vi.fn(),
+  findClosedMatchesPastStart: vi.fn(),
   findActiveSessionForMatch: vi.fn(),
   completeMatchSessionAtScheduledEnd: vi.fn(),
   createCompletedSessionForMatch: vi.fn(),
@@ -90,6 +91,35 @@ describe('MatchService lifecycle', () => {
       expect(completed).toBe(1);
       expect(repo.createCompletedSessionForMatch).toHaveBeenCalledWith(2, expect.any(String), expect.any(String));
       expect(repo.createCompletedSessionForMatch).not.toHaveBeenCalledWith(1, expect.anything(), expect.anything());
+    });
+  });
+
+  describe('autoStartScheduledMatches', () => {
+    it('starts every closed match past its scheduled start and emits match:updated', async () => {
+      repo.findClosedMatchesPastStart.mockResolvedValue([candidateRow, { ...candidateRow, id: 43 }]);
+      session.start.mockResolvedValue({ id: 1 });
+
+      const started = await matchService.autoStartScheduledMatches();
+      expect(started).toBe(2);
+      expect(session.start).toHaveBeenCalledWith(42);
+      expect(session.start).toHaveBeenCalledWith(43);
+      // frontend refreshes lists live via the subscribed match.updated event
+      expect(publisher.publish).toHaveBeenCalledWith(expect.objectContaining({ type: 'match:updated', payload: expect.objectContaining({ matchId: 42 }) }));
+      expect(publisher.publish).toHaveBeenCalledWith(expect.objectContaining({ type: 'match:updated', payload: expect.objectContaining({ matchId: 43 }) }));
+    });
+
+    it('swallows SESSION_EXISTS / MATCH_NOT_CLOSED races and still starts the others', async () => {
+      repo.findClosedMatchesPastStart.mockResolvedValue([{ ...candidateRow, id: 1 }, { ...candidateRow, id: 2 }]);
+      session.start
+        .mockRejectedValueOnce({ errorCode: 'MATCH_NOT_CLOSED' })
+        .mockResolvedValueOnce({ id: 9 });
+
+      const started = await matchService.autoStartScheduledMatches();
+      expect(started).toBe(1);
+      expect(session.start).toHaveBeenCalledWith(1);
+      expect(session.start).toHaveBeenCalledWith(2);
+      expect(publisher.publish).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'match:updated', payload: expect.objectContaining({ matchId: 1 }) }));
+      expect(publisher.publish).toHaveBeenCalledWith(expect.objectContaining({ type: 'match:updated', payload: expect.objectContaining({ matchId: 2 }) }));
     });
   });
 });

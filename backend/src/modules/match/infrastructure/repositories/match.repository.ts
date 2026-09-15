@@ -16,6 +16,8 @@ export interface MatchRepository {
   save(match: Match, conn?: mysql.PoolConnection): Promise<void>;
   /** Matches whose authoritative scheduled end (bookings.end_at_utc) has passed. */
   findScheduledMatchesPastEnd(): Promise<Array<{ id: number; status: string; startAtUtc: string | null; endAtUtc: string }>>;
+  /** Closed matches whose scheduled start (bookings.start_at_utc) has arrived but have no session — candidates for auto-start. */
+  findClosedMatchesPastStart(): Promise<Array<{ id: number; startAtUtc: string }>>;
   /** Latest session row for a match (if any). */
   findActiveSessionForMatch(matchId: number): Promise<{ id: number; status: string } | null>;
   /** Complete an in-progress session at the authoritative scheduled end. */
@@ -162,6 +164,25 @@ export class MysqlMatchRepository implements MatchRepository {
       status: r.status,
       startAtUtc: r.start_at_utc ?? null,
       endAtUtc: r.end_at_utc,
+    }));
+  }
+
+  async findClosedMatchesPastStart(): Promise<Array<{ id: number; startAtUtc: string }>> {
+    const pool = getPool();
+    const [rows] = await pool.execute<RowData>(
+      `SELECT m.id, b.start_at_utc
+       FROM matches m
+       JOIN bookings b ON b.id = m.booking_id
+       WHERE m.status = 'closed'
+         AND b.start_at_utc IS NOT NULL
+         AND b.start_at_utc <= UTC_TIMESTAMP()
+         AND (SELECT COUNT(*) FROM match_participants WHERE match_id = m.id) >= 2
+         AND NOT EXISTS (SELECT 1 FROM match_sessions WHERE match_id = m.id)
+       LIMIT 500`
+    );
+    return (rows as any[]).map((r) => ({
+      id: Number(r.id),
+      startAtUtc: r.start_at_utc,
     }));
   }
 

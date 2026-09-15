@@ -20,11 +20,21 @@ class PlayerService {
       [userId],
     );
 
-    // matches: invitations awaiting an action (sent + not yet expired)
+    // matches: invitations awaiting an action. Only count invitations for
+    // matches that are still joinable (open/full) and where the user is not
+    // already on the roster — a started/ended match or an already-resolved
+    // (joined) invitation must not keep the badge visible.
     const [[matchesRow]] = await pool.execute<any[]>(
-      `SELECT COUNT(*) AS cnt FROM invitations
-       WHERE user_id = ? AND status = 'sent'
-         AND (expires_at IS NULL OR expires_at > NOW())`,
+      `SELECT COUNT(*) AS cnt
+       FROM invitations i
+       JOIN matches m ON m.id = i.match_id
+       WHERE i.user_id = ? AND i.status = 'sent'
+         AND (i.expires_at IS NULL OR i.expires_at > NOW())
+         AND m.status IN ('open', 'full')
+         AND NOT EXISTS (
+           SELECT 1 FROM match_participants mp
+           WHERE mp.match_id = i.match_id AND mp.user_id = i.user_id
+         )`,
       [userId],
     );
 

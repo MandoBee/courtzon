@@ -2,6 +2,7 @@ import { getPool } from '../../../../database/mysql.js';
 import { matchRepository } from '../../infrastructure/repositories/match.repository.js';
 import { invitationService } from './invitation.service.js';
 import { joinRequestService } from './join-request.service.js';
+import { matchEventPublisher } from '../events/match-event-publisher.js';
 import { createModuleLogger } from '../../../../shared/utils/logger.js';
 import type mysql from 'mysql2/promise';
 
@@ -51,6 +52,13 @@ export class DeadlineService {
       await joinRequestService.autoRejectPendingByMatchId(matchId, conn);
 
       await conn.commit();
+
+      // Notify the frontend (SocketPublisher listens on match:updated) so a
+      // match closed at its deadline disappears from the discover list live.
+      matchEventPublisher.publish({
+        type: 'match:updated',
+        payload: { matchId, timestamp: new Date().toISOString() },
+      });
     } catch (err) {
       await conn.rollback();
       throw err;

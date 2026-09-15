@@ -5,6 +5,7 @@ import { matchEventPublisher } from '../events/match-event-publisher.js';
 import { JoinRequest } from '../../domain/join-request.entity.js';
 import { Participant } from '../../domain/participant.entity.js';
 import { eligibilityService } from './eligibility.service.js';
+import { invitationService } from './invitation.service.js';
 import { AppError } from '../../../../shared/errors/app-error.js';
 import type { MatchCriteria } from '../../domain/match-criteria.vo.js';
 
@@ -128,6 +129,11 @@ export class JoinRequestService {
       [req.match_id, req.user_id]
     );
 
+    // The player is now a participant — any standing match invitation is no
+    // longer actionable. Resolve it atomically (same executor) so the K1 badge
+    // never counts an invitation the player already acted on by joining.
+    await invitationService.expireByMatch(req.match_id, req.user_id, pool);
+
     if (detail) {
       const [countRows] = await pool.execute<RowData>(
         'SELECT COUNT(*) as cnt FROM match_participants WHERE match_id = ?', [req.match_id]
@@ -149,6 +155,14 @@ export class JoinRequestService {
     matchEventPublisher.publish({
       type: 'participant:added',
       payload: { matchId: req.match_id, userId: req.user_id, role: 'joiner', timestamp: new Date().toISOString() },
+    });
+
+    // Realtime: broadcast match:updated (subscribed by SocketPublisher) so the
+    // approved player's Applied→Joined tab, the match detail and nav badge all
+    // refresh without a manual reload.
+    matchEventPublisher.publish({
+      type: 'match:updated',
+      payload: { matchId: req.match_id, timestamp: new Date().toISOString() },
     });
   }
 

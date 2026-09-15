@@ -53,6 +53,7 @@ describe('JoinRequestService capacity guard', () => {
       () => [{ cnt: 1 }],
       () => [],
       () => [],
+      () => [],
       () => [{ cnt: 2 }],
       () => [],
     ];
@@ -62,7 +63,8 @@ describe('JoinRequestService capacity guard', () => {
     const sql = (pool.execute as any).mock.calls.map((c: any[]) => String(c[0]));
     expect(sql.some((s: string) => s.includes('INSERT INTO match_participants'))).toBe(true);
     expect(sql.some((s: string) => s.includes("status = 'full'"))).toBe(true);
-    expect(publisher.publish).toHaveBeenCalledTimes(2);
+    // join_request:approved + participant:added + match:updated (realtime refresh)
+    expect(publisher.publish).toHaveBeenCalledTimes(3);
   });
 
   it('keeps the roster below max when a spot frees up (open stays open)', async () => {
@@ -72,6 +74,7 @@ describe('JoinRequestService capacity guard', () => {
       () => [{ cnt: 2 }],
       () => [],
       () => [],
+      () => [],
       () => [{ cnt: 2 }],
     ];
 
@@ -79,7 +82,37 @@ describe('JoinRequestService capacity guard', () => {
 
     const sql = (pool.execute as any).mock.calls.map((c: any[]) => String(c[0]));
     expect(sql.some((s: string) => s.includes("status = 'full'"))).toBe(false);
-    expect(publisher.publish).toHaveBeenCalledTimes(2);
+    // join_request:approved + participant:added + match:updated (realtime refresh)
+    expect(publisher.publish).toHaveBeenCalledTimes(3);
+  });
+
+  it('resolves the approved player\'s invitation atomically on admission', async () => {
+    respondQueue = [
+      () => [{ match_id: 1, user_id: 100, status: 'submitted' }],
+      () => [{ max_players: 4 }],
+      () => [{ cnt: 1 }],
+      () => [],
+      () => [],
+      // UPDATE invitations below reports one affected row -> invitation:expired fires
+      () => ({ affectedRows: 1 }),
+      () => [{ cnt: 2 }],
+    ];
+
+    await joinRequestService.approve(7, 55);
+
+    const sql = (pool.execute as any).mock.calls.map((c: any[]) => String(c[0]));
+    const updateInvitations = sql.find((s: string) => String(s).includes('UPDATE invitations'));
+    expect(updateInvitations).toBeTruthy();
+    expect(String(updateInvitations)).toContain("status = 'expired'");
+    expect(String(updateInvitations)).toContain('match_id = ? AND user_id = ?');
+
+    // approve() publishes join_request:approved + participant:added +
+    // match:updated (realtime refresh); the invitation resolution additionally
+    // emits invitation:expired.
+    expect(publisher.publish).toHaveBeenCalledTimes(4);
+    const published = (publisher.publish as any).mock.calls.map((c: any[]) => c[0].type);
+    expect(published).toContain('invitation:expired');
+    expect(published).toContain('participant:added');
   });
 
   it('propagates a programmer error as-is (no swallow)', async () => {

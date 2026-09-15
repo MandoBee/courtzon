@@ -225,6 +225,45 @@ export class MatchService {
   }
 
   /**
+   * Automatic start of matches whose scheduled start (bookings.start_at_utc)
+   * has arrived and whose deadline was already closed (status = 'closed'). The
+   * match must have ≥ 2 participants and no existing session to be eligible.
+   *
+   * This is the auto-start complement of `autoCompleteScheduledMatches`:
+   * closed → in_progress → (auto-complete later) → completed. Emitting
+   * `match:updated` alongside `session:started` keeps the frontend cache
+   * invalidated via the SocketPublisher's existing `match.updated` listener.
+   */
+  async autoStartScheduledMatches(): Promise<number> {
+    const candidates = await matchRepository.findClosedMatchesPastStart();
+
+    let started = 0;
+    for (const row of candidates) {
+      try {
+        await sessionService.start(row.id);
+        // sessionService.start emits session:started, but the frontend
+        // invalidate map listens on match.updated — emit both so the
+        // MatchListPage + nav counts refresh live.
+        matchEventPublisher.publish({
+          type: 'match:updated',
+          payload: {
+            matchId: row.id,
+            timestamp: new Date().toISOString(),
+          },
+        });
+        started++;
+      } catch (err: any) {
+        // SESSION_EXISTS / MATCH_NOT_CLOSED are expected when concurrent
+        // workers or manual starts race; only log unexpected errors.
+        if (!err?.errorCode?.includes('SESSION_EXISTS') && !err?.errorCode?.includes('MATCH_NOT_CLOSED')) {
+          log.error({ err, matchId: row.id }, 'auto-start scheduled match failed');
+        }
+      }
+    }
+    return started;
+  }
+
+  /**
    * Automatic completion of matches whose authoritative scheduled end
    * (bookings.end_at_utc) has passed. This is the reliable "match has ended"
    * establishment that makes result processing possible even when nobody
@@ -262,6 +301,17 @@ export class MatchService {
 
         await matchRepository.markMatchCompleted(row.id);
 
+        // Emit match:updated alongside the domain events so the SocketPublisher
+        // (subscribed to match:updated) tells the frontend to refresh lists —
+        // auto-complete runs headless in a worker, players must still see the
+        // match move to History/result-entry without a manual refresh.
+        matchEventPublisher.publish({
+          type: 'match:updated',
+          payload: {
+            matchId: row.id,
+            timestamp: new Date().toISOString(),
+          },
+        });
         matchEventPublisher.publish({
           type: 'match:status_changed',
           payload: {

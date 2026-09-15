@@ -6,6 +6,7 @@ export async function matchRoutes(app: FastifyInstance): Promise<void> {
   app.addHook('preHandler', authMiddleware);
 
   app.get('/matches', { preHandler: [requirePermission(['matches.view'])] }, ctrl.getMatchesHandler);
+  app.get('/matches/my', { preHandler: [requirePermission(['matches.view'])] }, ctrl.getMyMatchesHandler);
   app.get('/matches/:id', { preHandler: [requirePermission(['matches.view'])] }, ctrl.getMatchHandler);
   app.post('/matches/:id/join', { preHandler: [requirePermission(['matches.apply'])] }, ctrl.joinMatchHandler);
   app.post('/matches/:id/withdraw', { preHandler: [requirePermission(['matches.cancel'])] }, ctrl.withdrawJoinHandler);

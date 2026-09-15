@@ -88,6 +88,28 @@ export class InvitationService {
       }
     }
   }
+
+  /**
+   * Resolve a single player's outstanding invitation for a match. Used when the
+   * player becomes a participant through a different path (e.g. a join request
+   * is approved) — the invitation is no longer actionable, so it is moved to the
+   * terminal `expired` state. This runs inside the approving transaction and is
+   * idempotent: only `sent`/`read` rows are touched, so double-approve cannot
+   * double-expire.
+   */
+  async expireByMatch(matchId: number, userId: number, executor?: Executor): Promise<void> {
+    const db = executor ?? getPool();
+    const [result] = await db.execute<mysql.ResultSetHeader>(
+      "UPDATE invitations SET status = 'expired', responded_at = NOW() WHERE match_id = ? AND user_id = ? AND status IN ('sent', 'read')",
+      [matchId, userId]
+    );
+    if (result.affectedRows > 0) {
+      matchEventPublisher.publish({
+        type: 'invitation:expired',
+        payload: { matchId, userId, timestamp: new Date().toISOString() },
+      });
+    }
+  }
 }
 
 export const invitationService = new InvitationService();

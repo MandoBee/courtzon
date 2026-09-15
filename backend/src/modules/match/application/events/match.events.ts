@@ -29,6 +29,13 @@ export interface MatchCompletedPayload extends MatchEventPayload {
   timestamp: string;
 }
 
+export interface MatchUpdatedPayload extends MatchEventPayload {
+  matchId: number;
+  bookingId?: number;
+  status?: string;
+  timestamp: string;
+}
+
 export interface InvitationSentPayload extends MatchEventPayload {
   matchId: number;
   userId: number;
@@ -127,6 +134,7 @@ export interface SessionCompletedPayload extends MatchEventPayload {
 
 export type MatchDomainEvent =
   | { type: 'match:created'; payload: MatchCreatedPayload }
+  | { type: 'match:updated'; payload: MatchUpdatedPayload }
   | { type: 'match:status_changed'; payload: MatchStatusChangedPayload }
   | { type: 'match:cancelled'; payload: MatchCancelledPayload }
   | { type: 'match:completed'; payload: MatchCompletedPayload }

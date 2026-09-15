@@ -453,15 +453,18 @@ export function useRealtimeCacheUpdates(): void {
   // ── Match events ───────────────────────────────────────────────
   useSocketEvent('match.available', () => {
     qc.invalidateQueries({ queryKey: ['public-matches'] });
+    qc.invalidateQueries({ queryKey: ['my-matches'] });
     qc.invalidateQueries({ queryKey: ['home-upcoming-matches'] });
   });
 
   useSocketEvent('match.removed', () => {
     qc.invalidateQueries({ queryKey: ['public-matches'] });
+    qc.invalidateQueries({ queryKey: ['my-matches'] });
   });
 
   useSocketEvent('match.updated', () => {
     qc.invalidateQueries({ queryKey: ['public-matches'] });
+    qc.invalidateQueries({ queryKey: ['my-matches'] });
     qc.invalidateQueries({ queryKey: ['home-upcoming-matches'] });
   });
 
@@ -476,6 +479,7 @@ export function useRealtimeCacheUpdates(): void {
   for (const eventName of matchResultEvents) {
     useSocketEvent(eventName, (p: any) => {
       qc.invalidateQueries({ queryKey: ['public-matches'] });
+      qc.invalidateQueries({ queryKey: ['my-matches'] });
       qc.invalidateQueries({ queryKey: ['home-upcoming-matches'] });
       qc.invalidateQueries({ queryKey: ['matches', 'upcoming'] });
       qc.invalidateQueries({ queryKey: ['match-result'] });
