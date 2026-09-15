@@ -181,12 +181,13 @@ describe('Phase 1 parity gate — admin sidebar (buildNavItems vs Navigation Reg
     ]);
   });
 
-  it('Competitions domain contains exactly 2 modules: League → Tournament', () => {
+  it('Competitions domain contains 3 modules: League → Tournament → Match Results', () => {
     const nav = resolveAdminNav(enT, allCan, allFlags);
     const comp = nav.find((d) => d.label === 'Competitions');
     expect(comp?.children?.map((c) => c.id)).toEqual([
       'nav.admin.league',
       'nav.admin.tournament',
+      'nav.admin.match-results',
     ]);
   });
 
@@ -756,8 +757,8 @@ describe('Navigation registry integrity (immutable ids)', () => {
   it('namespaces ids per shell (nav.admin.*, nav.org.*) and keeps them stable per node', () => {
     const adminIds = collectIds(ADMIN_NAV);
     expect(adminIds.every((id) => id.startsWith('nav.admin.'))).toBe(true);
-    expect(adminIds.length).toBe(142);
-    expect(ADMIN_ID_TO_KEY.size).toBe(134);
+    expect(adminIds.length).toBe(143);
+    expect(ADMIN_ID_TO_KEY.size).toBe(135);
 
     const orgIds = collectIds(ORG_NAV);
     expect(orgIds.every((id) => id.startsWith('nav.org.'))).toBe(true);
@@ -781,8 +782,8 @@ describe('Navigation registry integrity (immutable ids)', () => {
 
     const playerIds = [...PLAYER_CORE_TABS.map((i) => i.id), ...PLAYER_MORE_ITEMS.map((i) => i.id)];
     expect(playerIds.every((id) => id.startsWith('nav.player.'))).toBe(true);
-    expect(playerIds.length).toBe(19);
-    expect(new Set(playerIds).size).toBe(19);
+    expect(playerIds.length).toBe(20);
+    expect(new Set(playerIds).size).toBe(20);
     for (const id of playerIds) {
       const hasPermission = [...PLAYER_MORE_ITEMS].find((i) => i.id === id)?.permissionKey !== undefined;
       if (hasPermission) expect(PLAYER_ID_TO_KEY.has(id)).toBe(true);
@@ -827,7 +828,7 @@ describe('Navigation registry integrity (immutable ids)', () => {
     const adminTop = resolveAdminNav(enT, allCan, allFlags);
     const walk = (items: ResolvedNavItem[]): number =>
       items.reduce((n, it) => n + (it.id ? 1 : 0) + (it.children ? walk(it.children) : 0), 0);
-    expect(walk(adminTop)).toBe(142);
+    expect(walk(adminTop)).toBe(143);
     const orgTop = resolveOrgNav(allCan, '7', enT);
     expect(orgTop.every((it) => it.id !== undefined)).toBe(true);
     expect(orgTop[0].id).toBe('nav.org.dashboard');
@@ -854,8 +855,8 @@ describe('Navigation registry integrity (immutable ids)', () => {
   });
 
   it('maps player legacy permission keys to their nav.player.* nodes', () => {
-    expect(PLAYER_ID_TO_KEY.size).toBe(13);
-    expect(PLAYER_LEGACY_KEY_TO_ID.size).toBe(13);
+    expect(PLAYER_ID_TO_KEY.size).toBe(14);
+    expect(PLAYER_LEGACY_KEY_TO_ID.size).toBe(14);
     expect(PLAYER_LEGACY_KEY_TO_ID.get('coaches.view')).toEqual(['nav.player.coaches']);
     expect(PLAYER_LEGACY_KEY_TO_ID.get('player.wallet.view')).toEqual(['nav.player.wallet']);
     expect(PLAYER_LEGACY_KEY_TO_ID.get('community.chat.view')).toEqual(['nav.player.messages']);
@@ -1089,9 +1090,9 @@ describe('Consumer 6 — Workspace Registry integration (drift resolved)', () =>
 
   it('every workspace node carries a nav.admin.* immutable id', () => {
     const allIds = collectAllIds(registryWorkspace);
-    expect(allIds.length).toBe(142);
+    expect(allIds.length).toBe(143);
     expect(allIds.every((id) => id.startsWith('nav.admin.'))).toBe(true);
-    expect(new Set(allIds).size).toBe(142);
+    expect(new Set(allIds).size).toBe(143);
   });
 
   it('workspace resolver is deterministic', () => {
@@ -1104,11 +1105,11 @@ describe('Consumer 6 — Workspace Registry integration (drift resolved)', () =>
     const wsAllIds = collectAllIds(registryWorkspace);
     const registryAllIds = collectIds(ADMIN_NAV);
     expect(wsAllIds).toEqual(registryAllIds);
-    expect(wsAllIds.length).toBe(142);
+    expect(wsAllIds.length).toBe(143);
   });
 
   it('workspace root count matches ADMIN_NAV root', () => {
-    expect(countNodes(registryWorkspace)).toBe(142);
+    expect(countNodes(registryWorkspace)).toBe(143);
     expect(registryWorkspace.length).toBe(ADMIN_NAV.length);
   });
 });

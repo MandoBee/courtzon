@@ -36,6 +36,7 @@ export function buildPlayerMoreItems(
     { label: t('nav.players'), icon: '👥', path: '/players', perm: 'player.search' },
     { label: t('nav.favorites'), icon: '❤️', path: '/my/favorites', perm: 'player.favorites.manage' },
     { label: t('nav.statistics'), icon: '📊', path: '/my/statistics', perm: 'player.statistics.view' },
+    { label: 'Match Results', icon: '🏁', path: '/my/match-results', perm: 'matches.view' },
     { label: t('nav.achievements'), icon: '🏅', path: '/my/achievements', perm: 'player.achievements.view' },
     { label: t('nav.wallet'), icon: '👛', path: '/my/wallet', perm: 'player.wallet.view' },
     { label: t('nav.payments'), icon: '💳', path: '/my/payments', perm: 'player.payments.view' },

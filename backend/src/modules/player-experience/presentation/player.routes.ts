@@ -6,6 +6,7 @@ export async function playerRoutes(app: FastifyInstance): Promise<void> {
   app.addHook('preHandler', authMiddleware);
 
   app.get('/players/my/dashboard', { preHandler: [requirePermission(['player.dashboard.view'])] }, ctrl.getDashboardHandler);
+  app.get('/players/my/nav-summary', { preHandler: [requirePermission(['player.dashboard.view'])] }, ctrl.getNavSummaryHandler);
   app.get('/players/my/upcoming', { preHandler: [requirePermission(['player.dashboard.view'])] }, ctrl.getUpcomingHandler);
   app.get('/players/my/statistics', { preHandler: [requirePermission(['player.statistics.view'])] }, ctrl.getStatisticsHandler);
   app.get('/players/my/qr-profile', { preHandler: [requirePermission(['player.qr.view'])] }, ctrl.getQRProfileHandler);

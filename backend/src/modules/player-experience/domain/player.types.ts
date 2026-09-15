@@ -1,3 +1,12 @@
+export interface PlayerNavSummary {
+  bookings: number;
+  matches: number;
+  tournaments: number;
+  academies: number;
+  chat: number;
+  marketplace: number;
+}
+
 export interface PlayerDashboardData {
   wallet_balance: number;
   unread_notifications: number;

@@ -40,7 +40,7 @@ export async function getMatchesHandler(request: FastifyRequest, reply: FastifyR
             pmd.visibility, pmd.auto_accept, pmd.max_players,
             pmd.min_age, pmd.max_age, pmd.target_gender,
             pl.name as target_level_name, pmd.deadline,
-            (SELECT COUNT(*) FROM match_participants WHERE match_id = m.id AND role != 'host') as participant_count,
+            (SELECT COUNT(*) FROM match_participants WHERE match_id = m.id) as participant_count,
             bi.id as invitation_id, bi.status as invitation_status,
             jr.id as join_request_id, jr.status as join_request_status,
             (SELECT COUNT(*) FROM match_participants WHERE match_id = m.id AND user_id = ?) > 0 as is_participant
@@ -67,20 +67,38 @@ export async function getMatchesHandler(request: FastifyRequest, reply: FastifyR
 }
 
 export async function getMatchHandler(request: FastifyRequest, reply: FastifyReply): Promise<void> {
+  const userId = (request as any).userId;
   const { id } = MatchParamsSchema.parse(request.params);
   const matchId = await resolveMatchId(id);
   const pool = getPool();
 
   const [rows] = await pool.execute<RowData>(
-    `SELECT m.*, s.name as sport_name,
+    `SELECT m.*, m.status as match_status, s.name as sport_name,
             b.booking_date, b.start_time, b.end_time, b.end_at_utc,
             r.name as resource_name, br.name as branch_name, org.name as organisation_name,
             pmd.*, pl.name as target_level_name,
             (SELECT COALESCE(ms.ended_at, ms.started_at) FROM match_sessions ms
              WHERE ms.match_id = m.id ORDER BY ms.id DESC LIMIT 1) as played_at,
             (SELECT COUNT(*) FROM match_participants WHERE match_id = m.id) as participant_count,
-            (SELECT JSON_ARRAYAGG(JSON_OBJECT('userId', mp.user_id, 'role', mp.role))
-             FROM match_participants mp WHERE mp.match_id = m.id) as participants_json
+            (SELECT COUNT(*) FROM match_participants WHERE match_id = m.id AND user_id = ?) > 0 as is_participant,
+            (SELECT status FROM join_requests WHERE match_id = m.id AND user_id = ? ORDER BY id DESC LIMIT 1) as join_request_status,
+            (SELECT status FROM invitations WHERE match_id = m.id AND user_id = ? ORDER BY id DESC LIMIT 1) as invitation_status,
+            (SELECT JSON_ARRAYAGG(JSON_OBJECT(
+               'userId', mp.user_id,
+               'role', mp.role,
+               'fullName', u.full_name,
+               'avatarUrl', u.avatar_url,
+               'phone', CASE
+                 WHEN ? IN (SELECT user_id FROM match_participants WHERE match_id = m.id) OR pmd.creator_id = ?
+                 THEN u.phone ELSE NULL END
+             ))
+             FROM match_participants mp
+             JOIN users u ON u.id = mp.user_id
+             WHERE mp.match_id = m.id) as participants_json,
+            (CASE
+              WHEN b.end_at_utc IS NOT NULL THEN b.end_at_utc <= UTC_TIMESTAMP()
+              ELSE TIMESTAMP(CONCAT(b.booking_date, ' ', b.end_time)) <= NOW()
+            END) as result_entry_open
      FROM matches m
      JOIN bookings b ON b.id = m.booking_id
      JOIN resources r ON r.id = b.resource_id
@@ -90,7 +108,7 @@ export async function getMatchHandler(request: FastifyRequest, reply: FastifyRep
      LEFT JOIN public_match_details pmd ON pmd.match_id = m.id
      LEFT JOIN player_levels pl ON pl.id = pmd.target_level_id
      WHERE m.id = ?`,
-    [matchId]
+    [userId, userId, userId, userId, userId, matchId]
   );
 
   if (!rows.length) {

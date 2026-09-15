@@ -943,7 +943,7 @@ export const translationKeysRegistry: TranslationKeyEntry[] = [
   { key: 'matchResult.view', defaultValue: 'View', moduleSlug: 'match', elementType: 'button', elementLabel: 'View match result' },
   { key: 'matchResult.enterResult', defaultValue: 'Enter result', moduleSlug: 'match', elementType: 'link', elementLabel: 'Enter match result link' },
   { key: 'matchResult.noResultYet', defaultValue: 'No result submitted yet.', moduleSlug: 'match', elementType: 'text', elementLabel: 'No result submitted notice' },
-  { key: 'matchResult.enterAfterStart', defaultValue: 'Results can be entered once the match starts.', moduleSlug: 'match', elementType: 'text', elementLabel: 'Results enter after start notice' },
+  { key: 'matchResult.enterAfterStart', defaultValue: 'Results can be entered once the match has ended.', moduleSlug: 'match', elementType: 'text', elementLabel: 'Results enter after start notice' },
   { key: 'matchResult.current', defaultValue: 'Current result', moduleSlug: 'match', elementType: 'label', elementLabel: 'Current result section' },
   { key: 'matchResult.enterScore', defaultValue: 'Enter the score', moduleSlug: 'match', elementType: 'heading', elementLabel: 'Enter score heading' },
   { key: 'matchResult.editScore', defaultValue: 'Edit score', moduleSlug: 'match', elementType: 'heading', elementLabel: 'Edit score heading' },

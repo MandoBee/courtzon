@@ -44,7 +44,11 @@ export default function MatchLobbyPage() {
   });
   const resultAvailable = !!resultData?.record;
   const resultEligible = match?.status === 'in_progress' || match?.status === 'completed' || match?.status === 'full' || match?.status === 'closed';
-  const isParticipant = user?.id != null && match?.participants_json && hasUserInParticipants(match.participants_json, user.id);
+  const resultEntryOpen = !!match?.result_entry_open;
+  const isParticipant = match?.is_participant === true
+    || (user?.id != null && match?.participants_json && hasUserInParticipants(match.participants_json, user.id));
+  const isFull = Number(match?.participant_count ?? 0) >= Number(match?.max_players ?? 0);
+  const joinRequestPending = match?.join_request_status === 'submitted';
 
   useEffect(() => {
     if (!id) return;
@@ -157,12 +161,35 @@ export default function MatchLobbyPage() {
         {participants.length === 0 ? (
           <p className="text-sm text-[var(--color-text-muted)]">No participants yet. Be the first to join!</p>
         ) : (
-          <div className="space-y-2">
+          <div className="space-y-1">
             {participants.map((p: any, i: number) => (
-              <div key={i} className="flex items-center gap-2 text-sm">
-                <span className="w-2 h-2 rounded-full bg-[var(--color-primary)]"></span>
-                <span className="text-[var(--color-text)]">
-                  {p.role === 'host' ? 'Host' : 'Player'} (ID: {p.userId})
+              <div key={i} className="flex items-center gap-2.5 text-sm py-1.5 px-2 rounded-[var(--radius-md)]">
+                {p.avatarUrl ? (
+                  <img
+                    src={p.avatarUrl}
+                    alt={p.fullName || 'Player'}
+                    className="w-8 h-8 rounded-full object-cover bg-[var(--color-surface-muted)]"
+                    referrerPolicy="no-referrer"
+                  />
+                ) : (
+                  <span className="w-8 h-8 rounded-full bg-[var(--color-primary)]/15 text-[var(--color-primary)] flex items-center justify-center text-xs font-semibold uppercase">
+                    {(p.fullName || 'P').charAt(0)}
+                  </span>
+                )}
+                <span className="flex-1 min-w-0">
+                  <span className="flex items-center gap-1.5">
+                    <span className="font-medium text-[var(--color-text)] truncate">{p.fullName || `Player ${p.userId}`}</span>
+                    {p.role === 'host' && (
+                      <span className="px-1.5 py-0.5 text-[10px] font-semibold rounded-full bg-[var(--color-primary)]/15 text-[var(--color-primary)]">
+                        Host
+                      </span>
+                    )}
+                  </span>
+                  {p.phone && (
+                    <a href={`tel:${p.phone}`} className="text-xs text-[var(--color-primary)] hover:underline">
+                      {p.phone}
+                    </a>
+                  )}
                 </span>
               </div>
             ))}
@@ -173,20 +200,24 @@ export default function MatchLobbyPage() {
       <div className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] p-4 mb-4">
         <div className="flex items-center justify-between mb-2">
           <h2 className="text-sm font-semibold text-[var(--color-text-muted)]">{t('matchResult.title')}</h2>
-          {(resultEligible || resultAvailable) && (
+          {(resultEligible && resultEntryOpen) || resultAvailable ? (
             <Link to={`/matches/${id}/result`} className="text-sm text-[var(--color-primary)] hover:underline">
               {resultAvailable ? t('matchResult.view') : t('matchResult.enterResult')}
             </Link>
-          )}
+          ) : null}
         </div>
         {resultAvailable ? (
           <ResultSummaryView record={resultData!.record!} participants={resultData!.participants || []} showRating />
         ) : resultEligible ? (
-          <p className="text-sm text-[var(--color-text-muted)]">{t('matchResult.noResultYet')}</p>
+          resultEntryOpen ? (
+            <p className="text-sm text-[var(--color-text-muted)]">{t('matchResult.noResultYet')}</p>
+          ) : (
+            <p className="text-sm text-[var(--color-text-muted)]">{t('matchResult.enterAfterStart')}</p>
+          )
         ) : (
           <p className="text-sm text-[var(--color-text-muted)]">{t('matchResult.enterAfterStart')}</p>
         )}
-        {resultEligible && !resultAvailable && isParticipant && (
+        {resultEligible && resultEntryOpen && !resultAvailable && isParticipant && (
           <div className="mt-3">
             <Can permission="matches.result.submit">
               <Link
@@ -200,17 +231,17 @@ export default function MatchLobbyPage() {
         )}
       </div>
 
-      <div className="flex gap-2">
-        {match.status === 'open' && !isCreator && (
+      <div className="flex flex-wrap gap-2">
+        {['open', 'full'].includes(match.status) && !isCreator && !isParticipant && !joinRequestPending && (
           <button
             onClick={() => joinMutation.mutate()}
             disabled={joinMutation.isPending}
             className="px-4 py-2 text-sm font-medium bg-[var(--color-primary)] text-white rounded-[var(--radius-md)] hover:opacity-90 disabled:opacity-50"
           >
-            Join Match
+            {isFull ? 'Join Waiting List' : 'Join Match'}
           </button>
         )}
-        {match.status === 'open' && (
+        {joinRequestPending && !isParticipant && (
           <button
             onClick={() => withdrawMutation.mutate()}
             disabled={withdrawMutation.isPending}

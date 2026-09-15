@@ -100,6 +100,23 @@ export class JoinRequestService {
     const req = rows[0] as any;
     if (req.status !== 'submitted') throw new AppError('Request is not pending', 400, 'REQUEST_NOT_PENDING');
 
+    // Capacity guard: never let a participant exceed the match's total capacity.
+    // public_match_details.max_players is the TOTAL including the host, so the
+    // existing participant count (host + joiners) must stay strictly below it.
+    const [detailRows] = await pool.execute<RowData>(
+      'SELECT max_players FROM public_match_details WHERE match_id = ?', [req.match_id]
+    );
+    const detail = (detailRows as any[])[0];
+    if (detail) {
+      const [countRows] = await pool.execute<RowData>(
+        'SELECT COUNT(*) as cnt FROM match_participants WHERE match_id = ?', [req.match_id]
+      );
+      const count = Number((countRows[0] as any).cnt);
+      if (count >= Number(detail.max_players)) {
+        throw new AppError('This match has reached its player capacity', 409, 'MATCH_FULL');
+      }
+    }
+
     await pool.execute(
       "UPDATE join_requests SET status = 'approved', responded_at = NOW(), responder_id = ? WHERE id = ?",
       [responderId, requestId]
@@ -111,10 +128,6 @@ export class JoinRequestService {
       [req.match_id, req.user_id]
     );
 
-    const [detailRows] = await pool.execute<RowData>(
-      'SELECT max_players FROM public_match_details WHERE match_id = ?', [req.match_id]
-    );
-    const detail = (detailRows as any[])[0];
     if (detail) {
       const [countRows] = await pool.execute<RowData>(
         'SELECT COUNT(*) as cnt FROM match_participants WHERE match_id = ?', [req.match_id]

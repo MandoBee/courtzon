@@ -88,6 +88,7 @@ export const ADMIN_ROUTE_PERMISSIONS: Record<string, string> = {
   'sports-engine': 'sidebar.sports-engine',
   'mobile/dashboard': 'mobile.dashboard.view',
   'bookings': 'admin.bookings.view',
+  'match-results': 'matches.result.manage',
 };
 
 /** Explicit deny-list for restricted staff roles (e.g. accountant). */

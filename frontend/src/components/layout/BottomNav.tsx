@@ -1,14 +1,26 @@
 import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
 import { useAuthStore } from '../../store/auth.store';
 import { useTranslation } from '../../i18n';
 import { useCan } from '../../hooks/useCan';
 import { useFeatureFlag } from '../../hooks/useFeatureFlag';
 import { useHaptics } from '../../hooks/useHaptics';
-import api from '../../services/api';
+import { usePlayerNavCounts, type PlayerNavCounts } from '../../hooks/usePlayerNavCounts';
 import { Modal } from '../ui/Modal';
+import CountBadge from '../ui/CountBadge';
 import { resolvePlayerCoreTabs, resolvePlayerMoreItems } from '../../navigation';
+
+const CORE_BADGE_BY_ID: Partial<Record<string, keyof PlayerNavCounts>> = {
+  'nav.player.bookings': 'bookings',
+  'nav.player.marketplace': 'marketplace',
+};
+
+const MORE_BADGE_BY_ID: Partial<Record<string, keyof PlayerNavCounts>> = {
+  'nav.player.matches': 'matches',
+  'nav.player.tournaments': 'tournaments',
+  'nav.player.academy': 'academies',
+  'nav.player.messages': 'chat',
+};
 
 export default function BottomNav() {
   const location = useLocation();
@@ -17,24 +29,22 @@ export default function BottomNav() {
   const chatEnabled = useFeatureFlag('community.chat_enabled');
   const { tap } = useHaptics();
   const { t } = useTranslation();
+  const { data: counts } = usePlayerNavCounts();
   const [moreOpen, setMoreOpen] = useState(false);
 
   const isSeller = !!(user && user.isSeller);
 
-  const { data: cart } = useQuery({
-    queryKey: ['mp-cart'],
-    queryFn: () => api.get('/marketplace/cart').then((r) => r.data),
-    staleTime: 30000,
-  });
-
-  const cartCount = cart?.items?.length || 0;
-
   const isPath = (p: string) => (p === '/app' ? location.pathname === '/app' || location.pathname === '/' : location.pathname === p);
 
-  const coreTabs = resolvePlayerCoreTabs(t).map((tab) => (tab.path === '/marketplace' ? { ...tab, badgeCount: cartCount } : tab));
-  const visibleMore = resolvePlayerMoreItems(t, { isSeller, chatEnabled, can });
+  const coreTabs = resolvePlayerCoreTabs(t).map((tab) =>
+    CORE_BADGE_BY_ID[tab.id] ? { ...tab, badgeCount: counts?.[CORE_BADGE_BY_ID[tab.id]!] ?? 0 } : tab,
+  );
+  const visibleMore = resolvePlayerMoreItems(t, { isSeller, chatEnabled, can }).map((item) =>
+    MORE_BADGE_BY_ID[item.id] ? { ...item, badgeCount: counts?.[MORE_BADGE_BY_ID[item.id]!] ?? 0 } : item,
+  );
   const morePaths = visibleMore.map((i) => i.path);
   const moreActive = morePaths.some((p) => location.pathname === p);
+  const visibleMoreUnread = visibleMore.reduce((acc, i) => acc + (i.badgeCount ?? 0), 0);
 
   return (
     <>
@@ -50,13 +60,9 @@ export default function BottomNav() {
               }`}
             >
               <span className="text-xl leading-none relative">
-              {tab.icon}
-              {'badgeCount' in tab && tab.badgeCount > 0 && (
-                <span className="absolute -top-1.5 -right-2 bg-[var(--color-error)] text-white text-[9px] font-bold rounded-full min-w-[15px] h-[15px] flex items-center justify-center px-0.5">
-                  {tab.badgeCount > 99 ? '99+' : tab.badgeCount}
-                </span>
-              )}
-            </span>
+                {tab.icon}
+                {'badgeCount' in tab && <CountBadge count={tab.badgeCount ?? 0} />}
+              </span>
               <span className="text-[10px] font-medium leading-tight">{tab.label}</span>
             </Link>
           ))}
@@ -68,7 +74,10 @@ export default function BottomNav() {
               moreActive ? 'text-[var(--color-primary)]' : 'text-[var(--color-text-muted)]'
             }`}
           >
-            <span className="text-xl leading-none">⋯</span>
+            <span className="text-xl leading-none relative">
+              ⋯
+              {visibleMoreUnread > 0 && <CountBadge count={visibleMoreUnread} />}
+            </span>
             <span className="text-[10px] font-medium leading-tight">{t('nav.more')}</span>
           </button>
           <Link
@@ -97,7 +106,10 @@ export default function BottomNav() {
                   : 'border-[var(--color-border)] text-[var(--color-text)] hover:bg-[var(--color-bg)]'
               }`}
             >
-              <span className="text-2xl leading-none">{item.icon}</span>
+              <span className="text-2xl leading-none relative">
+                {item.icon}
+                {'badgeCount' in item && <CountBadge count={item.badgeCount ?? 0} />}
+              </span>
               <span className="text-[11px] font-medium text-center leading-tight">{item.label}</span>
             </Link>
           ))}

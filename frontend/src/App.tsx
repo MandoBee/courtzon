@@ -23,6 +23,8 @@ import { useCan } from './hooks/useCan';
 import { FeatureFlagGuard } from './components/FeatureFlagGuard';
 import { useFeatureFlag } from './hooks/useFeatureFlag';
 import NotificationBell from './components/notifications/NotificationBell';
+import CountBadge from './components/ui/CountBadge';
+import { usePlayerNavCounts } from './hooks/usePlayerNavCounts';
 import OfflineBanner from './components/pwa/OfflineBanner';
 import PWAUpdatePrompt from './components/pwa/PWAUpdatePrompt';
 import { PENDING_RELOAD_KEY } from './constants/pwa-reload';
@@ -420,6 +422,16 @@ function Navbar() {
       isActive(path) ? 'text-[var(--color-primary)] font-medium' : 'text-[var(--color-text-muted)] hover:text-[var(--color-primary)]'
     }`;
 
+  const navLabel = (label: string, count: number) => (
+    <span className="relative inline-block">
+      {label}
+      {count > 0 && <CountBadge count={count} />}
+    </span>
+  );
+
+  const { data: navCounts } = usePlayerNavCounts();
+  const counts = navCounts ?? { bookings: 0, matches: 0, tournaments: 0, academies: 0, chat: 0, marketplace: 0 };
+
   return (
     <nav className="bg-[var(--color-surface)] border-b border-[var(--color-border)] sticky top-0 z-50 cz-pt-safe cz-px-safe">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -428,24 +440,24 @@ function Navbar() {
             <SiteLogo to="/app" size="xl" variant="primary" className="mr-1 shrink-0" />
             <div className="hidden md:flex items-center gap-4">
               <Link to="/app" className={navLinkClass('/app')}>{t('nav.home')}</Link>
-              <Link to="/bookings" className={navLinkClass('/bookings')}>{t('nav.bookings')}</Link>
-              <Link to="/matches" className={navLinkClass('/matches')}>{t('nav.matches')}</Link>
+              <Link to="/bookings" className={navLinkClass('/bookings')}>{navLabel(t('nav.bookings'), counts.bookings)}</Link>
+              <Link to="/matches" className={navLinkClass('/matches')}>{navLabel(t('nav.matches'), counts.matches)}</Link>
               <Can permission="coaches.view">
                 <Link to="/coaches" className={navLinkClass('/coaches')}>{t('nav.coaches')}</Link>
               </Can>
               <Can permission="tournaments.view">
-                <Link to="/tournaments" className={navLinkClass('/tournaments')}>{t('nav.tournaments')}</Link>
+                <Link to="/tournaments" className={navLinkClass('/tournaments')}>{navLabel(t('nav.tournaments'), counts.tournaments)}</Link>
               </Can>
               <Can permission="academy.self_enroll">
-                <Link to="/academy" className={navLinkClass('/academy')}>{t('nav.academies')}</Link>
+                <Link to="/academy" className={navLinkClass('/academy')}>{navLabel(t('nav.academies'), counts.academies)}</Link>
               </Can>
               {chatEnabled && (
                 <Can permission="community.chat.view">
-                  <Link to="/messages" className={navLinkClass('/messages')}>{t('nav.messages')}</Link>
+                  <Link to="/messages" className={navLinkClass('/messages')}>{navLabel(t('nav.messages'), counts.chat)}</Link>
                 </Can>
               )}
               <Can permission="marketplace.view">
-                <Link to="/marketplace" className={navLinkClass('/marketplace')}>{t('nav.marketplace')}</Link>
+                <Link to="/marketplace" className={navLinkClass('/marketplace')}>{navLabel(t('nav.marketplace'), counts.marketplace)}</Link>
               </Can>
             </div>
           </div>

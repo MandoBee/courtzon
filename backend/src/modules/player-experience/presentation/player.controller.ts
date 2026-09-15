@@ -15,6 +15,12 @@ export async function getDashboardHandler(request: FastifyRequest, reply: Fastif
   return reply.send(data);
 }
 
+export async function getNavSummaryHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = getUserId(request);
+  const data = await playerService.getNavSummary(userId);
+  return reply.send({ data });
+}
+
 export async function getUpcomingHandler(request: FastifyRequest, reply: FastifyReply) {
   const userId = getUserId(request);
   const data = await playerService.getUpcoming(userId);

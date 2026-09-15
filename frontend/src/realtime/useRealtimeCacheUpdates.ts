@@ -739,6 +739,48 @@ export function useRealtimeCacheUpdates(): void {
     qc.setQueryData(['user-presence', p.userId], () => false);
   });
 
+  // ── Player navigation counters (['player-nav-counts']) ──────────
+  // Any event that can change one of the six nav badges (bookings, match
+  // invitations, tournaments, academies, chat, marketplace orders) triggers a
+  // refetch of the authoritative nav-summary endpoint. A periodic refetch in
+  // the hook is the safety net; these invalidations keep the badges live.
+  const invalidateNavCounts = () => qc.invalidateQueries({ queryKey: ['player-nav-counts'] });
+
+  const navCountBookingEvents = [
+    'booking.created', 'booking.confirmed', 'booking.rejected', 'booking.updated',
+    'booking.rescheduled', 'booking.cancelled', 'booking.expired', 'booking.completed',
+    'booking.no_show', 'booking.checked_in', 'booking.fully-booked',
+    'booking.application-declined', 'booking.paid', 'booking.refunded',
+  ];
+  for (const ev of navCountBookingEvents) useSocketEvent(ev, invalidateNavCounts);
+
+  for (const ev of ['payment.completed', 'payment.failed', 'payment.cancelled', 'payment.refunded', 'payment.succeeded']) {
+    useSocketEvent(ev, invalidateNavCounts);
+  }
+
+  const navCountMarketplaceEvents = [
+    'marketplace.order-placed', 'marketplace.order-confirmed', 'marketplace.order-shipped',
+    'marketplace.order-delivered', 'marketplace.order-cancelled', 'marketplace.order-status-changed',
+    'marketplace.order-refunded', 'marketplace.product-status-changed',
+  ];
+  for (const ev of navCountMarketplaceEvents) useSocketEvent(ev, invalidateNavCounts);
+
+  for (const ev of ['chat.new-message', 'chat.group-invitation', 'chat.group-created', 'chat.group-joined']) {
+    useSocketEvent(ev, invalidateNavCounts);
+  }
+
+  for (const ev of ['match.available', 'match.removed', 'match.updated', 'match.pending', ...matchResultEvents]) {
+    useSocketEvent(ev, invalidateNavCounts);
+  }
+
+  for (const ev of ['academy.enrolled', 'academy.graduated', ...academyEnrollmentEvents]) {
+    useSocketEvent(ev, invalidateNavCounts);
+  }
+
+  for (const ev of ['tournament.created', 'tournament.match-scheduled', 'tournament.result']) {
+    useSocketEvent(ev, invalidateNavCounts);
+  }
+
   // ── Security / access events (centralized force logout) ────────
   const forceLogout = useAuthStore((s) => s.forceLogout);
 

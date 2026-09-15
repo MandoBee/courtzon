@@ -174,6 +174,7 @@ export const ADMIN_NAV: NavDefinition[] = [
           { id: 'nav.admin.tournament-matches', label: T('admin.sidebar.tournament_matches'), path: '/admin/tournament/matches', permissionKey: 'sidebar.tournament-matches' },
         ],
       },
+      { id: 'nav.admin.match-results', label: LIT('Match Results'), icon: '✅', path: '/admin/match-results', permissionKey: 'matches.result.manage' },
     ],
   },
   {

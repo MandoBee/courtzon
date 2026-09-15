@@ -23,6 +23,7 @@ export interface ResolvedNavItem {
   permissionKey?: string;
   requiredFlag?: string;
   featureFlag?: string;
+  badgeCount?: number;
   children?: ResolvedNavItem[];
 }
 
@@ -31,6 +32,8 @@ export interface PlayerCoreTabDef {
   label: NavLabel;
   icon: string;
   path: string;
+  /** Red notification badge (count derived from the authoritative nav-summary endpoint). */
+  badgeCount?: number;
 }
 
 export interface PlayerMoreItemDef {
@@ -41,6 +44,8 @@ export interface PlayerMoreItemDef {
   permissionKey?: string;
   featureFlag?: string;
   sellerOnly?: boolean;
+  /** Red notification badge (count derived from the authoritative nav-summary endpoint). */
+  badgeCount?: number;
 }
 
 export type ShellKey = 'admin' | 'org' | 'coach' | 'referee' | 'player' | 'workspace';

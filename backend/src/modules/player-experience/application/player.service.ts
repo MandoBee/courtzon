@@ -1,11 +1,83 @@
 import { getPool } from '../../../database/mysql.js';
 import { recordAudit } from '../../audit-log/index.js';
 import type {
-  PlayerDashboardData, PlayerActivityItem, PlayerStatisticsSummary,
+  PlayerDashboardData, PlayerActivityItem, PlayerStatisticsSummary, PlayerNavSummary,
   PlayerSearchResult, QRProfileData, PlayerFavorite, PlayerDevice, PlayerAchievement,
 } from '../domain/player.types.js';
 
 class PlayerService {
+  /**
+   * Authoritative navigation counters for the player shell. ONE endpoint feeds
+   * every badge so all surfaces show the same numbers. Scoped to the
+   * authenticated user only — no client-supplied ids are ever trusted.
+   */
+  async getNavSummary(userId: number): Promise<PlayerNavSummary> {
+    const pool = getPool();
+
+    // bookings: upcoming, active bookings only (excludes past/cancelled/expired)
+    const [[bookingsRow]] = await pool.execute<any[]>(
+      "SELECT COUNT(*) AS cnt FROM bookings WHERE user_id = ? AND start_at_utc > NOW() AND booking_status IN ('confirmed','pending')",
+      [userId],
+    );
+
+    // matches: invitations awaiting an action (sent + not yet expired)
+    const [[matchesRow]] = await pool.execute<any[]>(
+      `SELECT COUNT(*) AS cnt FROM invitations
+       WHERE user_id = ? AND status = 'sent'
+         AND (expires_at IS NULL OR expires_at > NOW())`,
+      [userId],
+    );
+
+    // tournaments: public, active/ongoing, not yet ended
+    const [[tournamentsRow]] = await pool.execute<any[]>(
+      `SELECT COUNT(*) AS cnt FROM tournaments
+       WHERE is_public = 1 AND deleted_at IS NULL AND archived_at IS NULL
+         AND status IN ('open','in_progress','published','registration_open','registration_closed','running')
+         AND (end_date IS NULL OR end_date >= CURDATE())`,
+      [userId],
+    );
+
+    // academies: joinable (published/open) programs the user has not enrolled in
+    const [[academiesRow]] = await pool.execute<any[]>(
+      `SELECT COUNT(*) AS cnt FROM academy_programs
+       WHERE is_public = 1 AND status IN ('published','open')
+         AND id NOT IN (
+           SELECT program_id FROM academy_enrollments
+           WHERE player_id = ? AND status IN ('pending','confirmed','waiting')
+         )`,
+      [userId],
+    );
+
+    // chat: messages never read (after last_read_at, excluding own messages)
+    const [[chatRow]] = await pool.execute<any[]>(
+      `SELECT COUNT(*) AS cnt
+       FROM messages m
+       JOIN conversation_participants cp
+         ON cp.conversation_id = m.conversation_id AND cp.user_id = ?
+       WHERE m.sender_id <> ? AND m.deleted_at IS NULL
+         AND (cp.last_read_at IS NULL OR m.created_at > cp.last_read_at)`,
+      [userId, userId],
+    );
+
+    // marketplace: active order lifecycle only (delivered/cancelled resolve the
+    // badge; pending/confirmed/processing/shipped need attention)
+    const [[ordersRow]] = await pool.execute<any[]>(
+      `SELECT COUNT(*) AS cnt FROM orders
+       WHERE buyer_id = ? AND deleted_at IS NULL
+         AND status IN ('pending','confirmed','processing','shipped')`,
+      [userId],
+    );
+
+    return {
+      bookings: Number(bookingsRow?.cnt ?? 0),
+      matches: Number(matchesRow?.cnt ?? 0),
+      tournaments: Number(tournamentsRow?.cnt ?? 0),
+      academies: Number(academiesRow?.cnt ?? 0),
+      chat: Number(chatRow?.cnt ?? 0),
+      marketplace: Number(ordersRow?.cnt ?? 0),
+    };
+  }
+
   async getDashboard(userId: number): Promise<PlayerDashboardData> {
     const pool = getPool();
     const [[walletRow]] = await pool.execute<any[]>('SELECT COALESCE(balance, 0) AS balance FROM user_wallets WHERE user_id = ?', [userId]);

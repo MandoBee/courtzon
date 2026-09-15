@@ -25,6 +25,8 @@ function toResolved(
   if (item.permissionKey !== undefined) resolved.permissionKey = item.permissionKey;
   if (item.requiredFlag !== undefined) resolved.requiredFlag = item.requiredFlag;
   if (item.featureFlag !== undefined) resolved.featureFlag = item.featureFlag;
+  const badge = (item as unknown as { badgeCount?: number }).badgeCount;
+  if (badge !== undefined) resolved.badgeCount = badge;
   if (opts.includeChildren && item.children) resolved.children = item.children.map((c) => toResolved(c, t, { includeChildren: true }));
   return resolved;
 }

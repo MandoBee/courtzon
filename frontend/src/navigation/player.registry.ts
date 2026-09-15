@@ -1,5 +1,5 @@
 import type { PlayerCoreTabDef, PlayerMoreItemDef } from './types';
-import { T } from './labels';
+import { T, LIT } from './labels';
 import { buildNavIdKeyMaps } from './id-key';
 
 export const PLAYER_CORE_TABS: PlayerCoreTabDef[] = [
@@ -18,6 +18,7 @@ export const PLAYER_MORE_ITEMS: PlayerMoreItemDef[] = [
   { id: 'nav.player.players', label: T('nav.players'), icon: '👥', path: '/players', permissionKey: 'player.search' },
   { id: 'nav.player.favorites', label: T('nav.favorites'), icon: '❤️', path: '/my/favorites', permissionKey: 'player.favorites.manage' },
   { id: 'nav.player.statistics', label: T('nav.statistics'), icon: '📊', path: '/my/statistics', permissionKey: 'player.statistics.view' },
+  { id: 'nav.player.match_results', label: LIT('Match Results'), icon: '🏁', path: '/my/match-results', permissionKey: 'matches.view' },
   { id: 'nav.player.achievements', label: T('nav.achievements'), icon: '🏅', path: '/my/achievements', permissionKey: 'player.achievements.view' },
   { id: 'nav.player.wallet', label: T('nav.wallet'), icon: '👛', path: '/my/wallet', permissionKey: 'player.wallet.view' },
   { id: 'nav.player.payments', label: T('nav.payments'), icon: '💳', path: '/my/payments', permissionKey: 'player.payments.view' },
