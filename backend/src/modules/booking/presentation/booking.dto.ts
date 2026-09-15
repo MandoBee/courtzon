@@ -34,15 +34,15 @@ export const CreateBookingSchema = z.object({
   participants: z.array(z.object({
     phone: z.string().optional(),
   })).optional(),
+  // NOTE: the "deadline must be before booking start" cross-field rule is NOT
+  // enforced here. Reconstructing the booking start with
+  // `new Date(\`${bookingDate}T${startTime}\`)` parses in the server/container
+  // timezone, which is wrong for non-UTC branches (e.g. Africa/Cairo). The
+  // authoritative check runs in the service layer against the branch-timezone
+  // `start_at_utc` computed by TimeEngine.localToUtc(). This schema validates
+  // shape/type only.
   matchmaking: MatchmakingSchema,
-}).refine((data) => {
-  if (data.matchmaking?.deadline) {
-    const bookingStart = new Date(`${data.bookingDate}T${data.startTime}`);
-    const deadline = new Date(data.matchmaking.deadline);
-    return deadline < bookingStart;
-  }
-  return true;
-}, { message: 'Deadline must be before the booking start time', path: ['matchmaking.deadline'] });
+});
 
 export const StartMatchmakingSchema = z.object({
   minAge: z.number().int().positive().optional(),

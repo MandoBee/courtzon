@@ -155,6 +155,48 @@ describe('TimeEngine — UTCConverter — Dubai (no DST)', () => {
   });
 });
 
+describe('TimeEngine — BusinessDayResolver — Overnight session 13:00→01:00 (production branch config)', () => {
+  // Production branches ETAPA/MASPIRO run 13:00 → 01:00 (overnight). After
+  // midnight but before 01:00 local, instants belong to the PREVIOUS business
+  // day. This is the protected Business-Day contract — it MUST NOT change.
+  const opening = '13:00';
+  const closing = '01:00';
+  const tz = 'Africa/Cairo';
+  const BD = '2026-09-15';
+
+  it('BD: 16/09 00:00 belongs to Business Day 15/09', () => {
+    const instant = TimeEngine.localToUtc('2026-09-16', '00:00', tz);
+    expect(TimeEngine.getBusinessDate(instant, opening, closing, tz)).toBe(BD);
+  });
+
+  it('BD: 16/09 00:01 belongs to Business Day 15/09', () => {
+    const instant = TimeEngine.localToUtc('2026-09-16', '00:01', tz);
+    expect(TimeEngine.getBusinessDate(instant, opening, closing, tz)).toBe(BD);
+  });
+
+  it('BD: 16/09 00:30 belongs to Business Day 15/09', () => {
+    const instant = TimeEngine.localToUtc('2026-09-16', '00:30', tz);
+    expect(TimeEngine.getBusinessDate(instant, opening, closing, tz)).toBe(BD);
+  });
+
+  it('BD: 16/09 01:00 is the exclusive closing boundary → Business Day 16/09', () => {
+    // The resolver treats the closing time as exclusive: localTime < closesAt
+    // is false at exactly 01:00, so the instant is NOT in the previous session.
+    const instant = TimeEngine.localToUtc('2026-09-16', '01:00', tz);
+    expect(TimeEngine.getBusinessDate(instant, opening, closing, tz)).toBe('2026-09-16');
+  });
+
+  it('BD: 16/09 02:00 (outside window) → Business Day 16/09', () => {
+    const instant = TimeEngine.localToUtc('2026-09-16', '02:00', tz);
+    expect(TimeEngine.getBusinessDate(instant, opening, closing, tz)).toBe('2026-09-16');
+  });
+
+  it('BD: 15/09 23:59 belongs to Business Day 15/09 (still >= 13:00 opening)', () => {
+    const instant = TimeEngine.localToUtc('2026-09-15', '23:59', tz);
+    expect(TimeEngine.getBusinessDate(instant, opening, closing, tz)).toBe('2026-09-15');
+  });
+});
+
 describe('TimeEngine — BusinessDayResolver — Overnight session', () => {
   const opening = '13:00';
   const closing = '02:00';

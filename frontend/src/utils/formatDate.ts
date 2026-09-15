@@ -147,3 +147,30 @@ export function toLocalDateTimeLocal(iso: string | null | undefined): string {
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
+
+/**
+ * Convert a UTC ISO instant into a `datetime-local` string
+ * ("YYYY-MM-DDTHH:mm") in a GIVEN IANA timezone. This is the branch-timezone
+ * counterpart of `toLocalDateTimeLocal` (which uses the browser timezone).
+ *
+ * Used to pre-fill / bound the matchmaking-deadline input from the slot's
+ * authoritative `startAtUtc` when the branch timezone differs from the device.
+ * DST-safe via Intl — never a fixed offset.
+ */
+export function toDateTimeLocalInTimezone(iso: string | null | undefined, timeZone: string): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(d);
+  const get = (t: string) => Number(parts.find((p) => p.type === t)?.value);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${get('year')}-${pad(get('month'))}-${pad(get('day'))}T${pad(get('hour'))}:${pad(get('minute'))}`;
+}

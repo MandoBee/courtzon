@@ -8,6 +8,7 @@ import {
   toUtcIsoForApi,
   toMySqlUtcForApi,
   toLocalDateTimeLocal,
+  toDateTimeLocalInTimezone,
 } from './formatDate';
 
 describe('formatISODate (date-only)', () => {
@@ -69,6 +70,43 @@ describe('toUtcIsoForApi (datetime-local → UTC)', () => {
 describe('toMySqlUtcForApi', () => {
   it('formats a UTC instant as a MySQL DATETIME literal', () => {
     expect(toMySqlUtcForApi('2026-07-10T13:00', 'Africa/Cairo')).toBe('2026-07-10 10:00:00');
+  });
+});
+
+describe('toDateTimeLocalInTimezone (UTC instant → datetime-local in a given IANA timezone)', () => {
+  it('converts a UTC instant to branch-local datetime-local (Africa/Cairo summer +3)', () => {
+    // 2026-09-14T17:00:00Z === 2026-09-14 20:00 Africa/Cairo (UTC+3 in Sep).
+    expect(toDateTimeLocalInTimezone('2026-09-14T17:00:00.000Z', 'Africa/Cairo')).toBe('2026-09-14T20:00');
+  });
+
+  it('keeps the after-midnight slot on the correct branch-local calendar day', () => {
+    // A slot whose actual instant is 2026-09-15T21:00:00Z (== 16/09 00:00 Cairo)
+    // must be represented as 16/09 00:00 in the branch timezone — NOT the
+    // Business-Day display date. This is what bounds the deadline input.
+    expect(toDateTimeLocalInTimezone('2026-09-15T21:00:00.000Z', 'Africa/Cairo')).toBe('2026-09-16T00:00');
+  });
+
+  it('handles winter offset (Africa/Cairo UTC+2)', () => {
+    // 2026-01-10T10:00:00Z === 12:00 Africa/Cairo in January (UTC+2).
+    expect(toDateTimeLocalInTimezone('2026-01-10T10:00:00.000Z', 'Africa/Cairo')).toBe('2026-01-10T12:00');
+  });
+
+  it('returns "" for empty input', () => {
+    expect(toDateTimeLocalInTimezone('', 'Africa/Cairo')).toBe('');
+    expect(toDateTimeLocalInTimezone(null, 'Africa/Cairo')).toBe('');
+  });
+});
+
+describe('Matchmaking deadline serialization regression (14/09 20:00 Cairo → 17:00Z)', () => {
+  it('serializes a Cairo wall-clock deadline to its true UTC instant — NOT :00Z', () => {
+    // The audit bug: `${deadline}:00Z` sent 14/09 20:00Z (== 23:00 Cairo).
+    // The correct UTC instant for 14/09 20:00 Africa/Cairo is 14/09 17:00Z.
+    expect(toUtcIsoForApi('2026-09-14T20:00', 'Africa/Cairo')).toBe('2026-09-14T17:00:00.000Z');
+  });
+
+  it('a deadline equal to the booking start in Cairo serializes to the same UTC instant', () => {
+    // 16/09 00:00 Cairo === 15/09 21:00Z.
+    expect(toUtcIsoForApi('2026-09-16T00:00', 'Africa/Cairo')).toBe('2026-09-15T21:00:00.000Z');
   });
 });
 

@@ -89,6 +89,34 @@ function splitTimeRange(startTime: string, endTime: string, durationMinutes: num
 
 export class BookingService {
   /**
+   * Authoritative matchmaking-deadline guard.
+   *
+   * The deadline must be strictly before the ACTUAL booking start instant
+   * (`start_at_utc`, computed by TimeEngine.localToUtc() with the branch
+   * timezone). We never reconstruct the start from
+   * `new Date(bookingDate + 'T' + startTime)` — that parses in the
+   * server/container timezone and is wrong for non-UTC branches (the whole
+   * point of the Business-Day fix). Both operands here are true instants, so
+   * the comparison is timezone-independent.
+   */
+  private assertMatchmakingDeadlineBeforeStart(deadline: string | undefined, startAtUtc: string | undefined | null): void {
+    if (!deadline || !startAtUtc) return;
+    // startAtUtc may be an ISO string ("2026-09-14T21:00:00.000Z") or a MySQL
+    // DATETIME literal ("2026-09-14 21:00:00") — the pool stores UTC (timezone
+    // '+00:00'), so a space-separated literal must be interpreted as UTC, not
+    // the server/host local timezone.
+    const normalizedStart = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(startAtUtc)
+      ? `${startAtUtc.replace(' ', 'T')}Z`
+      : startAtUtc;
+    const dl = new Date(deadline).getTime();
+    const st = new Date(normalizedStart).getTime();
+    if (Number.isNaN(dl) || Number.isNaN(st)) return;
+    if (dl >= st) {
+      throw new ConflictError('Deadline must be before the booking start time');
+    }
+  }
+
+  /**
    * Resolve the authoritative coach-session fee for booking_type='coach_session'.
    *
    * SECURITY: the client can never supply the coach amount. The coach is
@@ -167,6 +195,9 @@ export class BookingService {
     const openingTime = resource?.opening_time || '08:00';
     const closingTime = resource?.closing_time || '22:00';
     const businessDate = TimeEngine.getBusinessDate(startAtUtc, openingTime, closingTime, branchTz);
+
+    // Authoritative deadline guard against the branch-timezone start instant.
+    this.assertMatchmakingDeadlineBeforeStart(input.matchmaking?.deadline, startAtUtc);
 
     // Keep existing bump logic for backward compatibility (booking_date, booking_slots)
     let bookingDate = input.bookingDate;
@@ -505,6 +536,9 @@ export class BookingService {
     const openingTime = resource?.opening_time || '08:00';
     const closingTime = resource?.closing_time || '22:00';
     const businessDate = TimeEngine.getBusinessDate(startAtUtc, openingTime, closingTime, branchTz);
+
+    // Authoritative deadline guard against the branch-timezone start instant.
+    this.assertMatchmakingDeadlineBeforeStart(input.matchmaking?.deadline, startAtUtc);
 
     let bookingDate = input.bookingDate;
     if (closingTime < openingTime && input.startTime < openingTime) {
@@ -1760,11 +1794,9 @@ export class BookingService {
     }
 
     if (criteria.deadline) {
-      const bookingStart = new Date(`${String(booking.booking_date).split('T')[0]}T${booking.start_time}`);
-      const deadline = new Date(criteria.deadline);
-      if (deadline >= bookingStart) {
-        throw new ConflictError('Deadline must be before the booking start time');
-      }
+      // Authoritative: compare against the persisted branch-timezone start
+      // instant (start_at_utc) — never reconstruct with server-local parsing.
+      this.assertMatchmakingDeadlineBeforeStart(criteria.deadline, booking.start_at_utc);
     }
 
     const requestData = {
@@ -1951,6 +1983,14 @@ export class BookingService {
     const resource = await resourceRepository.findById(input.resourceId);
     const openingTime = resource?.opening_time || '08:00';
     const closingTime = resource?.closing_time || '22:00';
+    // Business Day parity with the V1/prepare paths: derive the authoritative
+    // operating day from the actual start instant + resource hours + branch tz,
+    // NOT by copying booking_date (which is the user-facing calendar date and
+    // can differ for overnight after-midnight slots).
+    const businessDate = TimeEngine.getBusinessDate(startAtUtc, openingTime, closingTime, branchTz);
+
+    // Authoritative deadline guard against the branch-timezone start instant.
+    this.assertMatchmakingDeadlineBeforeStart(input.matchmaking?.deadline, startAtUtc);
 
     const pricing = await pricingEngine.calculatePrice(
       input.resourceId, input.startTime, endTime,
@@ -1978,6 +2018,7 @@ export class BookingService {
         organisationId,
         resourceId: input.resourceId,
         bookingDate: input.bookingDate,
+        businessDate,
         startTime: input.startTime,
         endTime: input.endTime,
         totalAmount: bookingTotal,

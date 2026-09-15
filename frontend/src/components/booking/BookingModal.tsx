@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../../store/auth.store';
@@ -6,6 +6,7 @@ import { Modal, Button, EntityImage } from '../ui';
 import api from '../../services/api';
 import { useToast } from '../ui/Toast';
 import { formatPrice, formatPricePerHour } from '../../utils/currency';
+import { toUtcIsoForApi, toDateTimeLocalInTimezone } from '../../utils/formatDate';
 import { useTranslation } from '../../i18n';
 import PaymobPixelCard from '../payment/PaymobPixelCard';
 import PaymentStatusPoller from '../payment/PaymentStatusPoller';
@@ -279,6 +280,60 @@ export default function BookingModal({ open, onClose }: BookingModalProps) {
 
   const selectedResource = branchResources.find((r: any) => r.id === selectedResourceId);
 
+  // Branch timezone is the AUTHORITATIVE reference for deadlines/slots. The
+  // browser timezone must never be used as the branch timezone.
+  const branchTz = selectedBranch?.timezone || 'Africa/Cairo';
+
+  // Preserve the selected slot's canonical metadata so we can distinguish the
+  // displayed Business Day from the actual local/UTC instant of the booking
+  // start (critical for after-midnight overnight slots, where
+  // `businessDate !== apiDate` and the grid `startAtUtc` lands on the next
+  // calendar day). The deadline reference below is deliberately derived the
+  // SAME way the backend derives the persisted `start_at_utc`
+  // (TimeEngine.localToUtc(bookingDate, startTime, branchTz)) so the
+  // client-side guard and the authoritative backend guard always agree.
+  const selectedSlotMeta = useMemo(() => {
+    if (!selectedSlots.length) return null;
+    const s = slots.find((x) => x.slot_start === selectedSlots[0]);
+    if (!s) return null;
+    return {
+      slotStart: s.slot_start,
+      startAtUtc: s.startAtUtc || null,
+      businessDate: s.businessDate || null,
+      dayOffset: s.dayOffset ?? 0,
+      utcOffsetMinutes: s.utcOffsetMinutes ?? null,
+    };
+  }, [slots, selectedSlots]);
+
+  // The authoritative booking start instant — the exact instant the backend
+  // will persist as `start_at_utc` (branch timezone → UTC). We mirror the
+  // backend's TimeEngine.localToUtc(bookingDate, startTime, branchTz) via the
+  // shared `toUtcIsoForApi`, so the deadline comparison is identical on both
+  // sides. We deliberately do NOT use the grid slot's `startAtUtc` as the
+  // deadline reference: for after-midnight overnight slots that grid value is
+  // the slot's wall-clock on the NEXT calendar day, whereas the booking is
+  // created for the user-selected Business Day and the backend persists that
+  // instant.
+  const bookingStartUtc = selectedSlots.length && apiDate
+    ? toUtcIsoForApi(`${apiDate}T${selectedSlots[0]}`, branchTz)
+    : '';
+
+  // datetime-local bound derived from the ACTUAL start instant (not the
+  // Business-Day display date). `max` is inclusive in HTML, so the strict
+  // `deadline < start` rule is still enforced by client + backend validation.
+  const deadlineMaxLocal = bookingStartUtc ? toDateTimeLocalInTimezone(bookingStartUtc, branchTz) : undefined;
+  const deadlineMinLocal = toDateTimeLocalInTimezone(new Date().toISOString(), branchTz);
+
+  // UTC instant the current deadline input value represents ('' when invalid).
+  const deadlineUtc = matchmakingDeadline ? toUtcIsoForApi(matchmakingDeadline, branchTz) : '';
+  const deadlineIsInvalid = !!bookingStartUtc && !!deadlineUtc
+    ? new Date(deadlineUtc).getTime() >= new Date(bookingStartUtc).getTime()
+    : false;
+
+  // Dynamic capacity helper: input = ADDITIONAL players excluding host.
+  const maxPlayersNum = matchmakingMaxPlayers === '' ? 2 : Number(matchmakingMaxPlayers) || 2;
+  const totalPlayers = maxPlayersNum + 1;
+
   const prepareMutation = useMutation({
     mutationFn: (data: any) => {
       console.log('[Confirm&Pay] prepareMutation.mutationFn → POST /bookings/prepare', data);
@@ -359,18 +414,23 @@ export default function BookingModal({ open, onClose }: BookingModalProps) {
     onClose();
   };
 
+  // Auto-generate the default matchmaking deadline = 4h before the ACTUAL
+  // booking start instant (startAtUtc, branch-timezone → UTC). This replaces
+  // the old `new Date(apiDate).setHours(...)` which mixed UTC date-only parsing
+  // with local setHours and was wrong for after-midnight overnight slots.
+  // Only auto-fill when the selected slot changes (or the deadline is empty) so
+  // a manual edit is never silently overwritten on re-render.
+  const deadlineAutoGenKey = selectedSlotMeta
+    ? `${selectedSlotMeta.slotStart}|${selectedSlotMeta.startAtUtc}`
+    : '';
+  const lastAutoGenKey = useRef<string>('');
   useEffect(() => {
-    if (selectedSlots.length > 0 && apiDate) {
-      const [h, m] = selectedSlots[0].split(':').map(Number);
-      const start = new Date(apiDate);
-      start.setHours(h, m, 0, 0);
-      const deadline = new Date(start.getTime() - 4 * 60 * 60 * 1000);
-      const pad = (n: number) => String(n).padStart(2, '0');
-      setMatchmakingDeadline(
-        `${deadline.getFullYear()}-${pad(deadline.getMonth() + 1)}-${pad(deadline.getDate())}T${pad(deadline.getHours())}:${pad(deadline.getMinutes())}`
-      );
-    }
-  }, [selectedSlots, apiDate]);
+    if (!bookingStartUtc) return;
+    if (matchmakingDeadline && lastAutoGenKey.current === deadlineAutoGenKey) return;
+    const deadline = new Date(new Date(bookingStartUtc).getTime() - 4 * 60 * 60 * 1000).toISOString();
+    setMatchmakingDeadline(toDateTimeLocalInTimezone(deadline, branchTz));
+    lastAutoGenKey.current = deadlineAutoGenKey;
+  }, [bookingStartUtc, deadlineAutoGenKey, matchmakingDeadline, branchTz]);
 
   const handleSportSelect = (id: number) => {
     setSelectedSportId(id);
@@ -461,9 +521,11 @@ export default function BookingModal({ open, onClose }: BookingModalProps) {
     }
 
     if (bookingType === 'public_match' && matchmakingDeadline) {
-      const bookingStart = new Date(`${apiDate}T${selectedSlots[0]}`);
-      const deadline = new Date(matchmakingDeadline);
-      if (deadline >= bookingStart) {
+      // Compare actual UTC instants (branch-timezone deadline vs startAtUtc) —
+      // never browser-local or Business-Day display strings.
+      const deadlineUtcMs = deadlineUtc ? new Date(deadlineUtc).getTime() : NaN;
+      const startUtcMs = bookingStartUtc ? new Date(bookingStartUtc).getTime() : NaN;
+      if (!Number.isNaN(deadlineUtcMs) && !Number.isNaN(startUtcMs) && deadlineUtcMs >= startUtcMs) {
         showToast('Matchmaking deadline must be before the booking start time', 'error');
         return;
       }
@@ -498,7 +560,7 @@ export default function BookingModal({ open, onClose }: BookingModalProps) {
         targetGender: matchmakingGender,
         targetLevelId: matchmakingLevelId || undefined,
         maxPlayers: matchmakingMaxPlayers === '' ? 2 : Number(matchmakingMaxPlayers),
-        deadline: matchmakingDeadline ? `${matchmakingDeadline}:00Z` : undefined,
+        deadline: matchmakingDeadline ? toUtcIsoForApi(matchmakingDeadline, branchTz) : undefined,
         autoApply: matchmakingAutoApply,
       };
     }
@@ -909,13 +971,13 @@ export default function BookingModal({ open, onClose }: BookingModalProps) {
               </div>
 
               <div className="mb-3">
-                <label className="block text-xs text-[var(--color-text-muted)] mb-1">Number of Players</label>
+                <label className="block text-xs text-[var(--color-text-muted)] mb-1">Additional Players</label>
                 <input type="number" value={matchmakingMaxPlayers}
                   onChange={(e) => setMatchmakingMaxPlayers(e.target.value)}
                   className="w-full max-w-[12rem] px-2 py-1.5 text-sm rounded-[var(--radius-md)] border border-[var(--color-border)] text-[var(--color-text)]"
                   min="1" max="49" placeholder="2" />
                 <p className="text-[10px] text-[var(--color-text-muted)] mt-0.5">
-                  Additional players to accept (excluding you). Value 3 = 4 players total.
+                  Additional players to accept (excluding you). Total players: {totalPlayers}
                 </p>
               </div>
 
@@ -924,12 +986,23 @@ export default function BookingModal({ open, onClose }: BookingModalProps) {
                 <input
                   type="datetime-local"
                   value={matchmakingDeadline}
+                  min={deadlineMinLocal}
+                  max={deadlineMaxLocal}
                   onChange={(e) => setMatchmakingDeadline(e.target.value)}
-                  className="w-full px-2 py-1.5 text-sm rounded-[var(--radius-md)] border border-[var(--color-border)] text-[var(--color-text)]"
+                  className={`w-full px-2 py-1.5 text-sm rounded-[var(--radius-md)] border text-[var(--color-text)] ${
+                    deadlineIsInvalid
+                      ? 'border-[var(--color-error)] bg-[var(--color-error-bg)]/30'
+                      : 'border-[var(--color-border)]'
+                  }`}
                 />
-                {selectedSlots.length > 0 && (
+                {deadlineIsInvalid && (
+                  <p className="text-[10px] text-[var(--color-error)] mt-0.5">
+                    Deadline must be before the booking start time
+                  </p>
+                )}
+                {bookingStartUtc && !deadlineIsInvalid && (
                   <p className="text-[10px] text-[var(--color-text-muted)] mt-0.5">
-                    Must be before {selectedDate} {selectedSlots[0]}
+                    Must be before {toDateTimeLocalInTimezone(bookingStartUtc, branchTz)}
                   </p>
                 )}
               </div>
@@ -1040,6 +1113,7 @@ export default function BookingModal({ open, onClose }: BookingModalProps) {
               <Button
                 type="button"
                 loading={prepareMutation.isPending || bookingMutation.isPending}
+                disabled={bookingType === 'public_match' && deadlineIsInvalid}
                 onClick={handleSubmit}
               >
                 {paymentMethod === 'cash' ? t('common.confirm') : t('booking.confirm_pay')}

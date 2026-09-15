@@ -13,6 +13,7 @@ export interface CreateBookingPayload {
   organisationId: number;
   resourceId: number;
   bookingDate: string;
+  businessDate?: string;
   startTime: string;
   endTime: string;
   totalAmount: number;
@@ -77,6 +78,7 @@ export const createBookingHandler: CommandHandler<Command, CreateBookingResult> 
       resourceId: payload.resourceId,
       bookingType: payload.bookingType || 'standard',
       bookingDate: payload.bookingDate,
+      businessDate: payload.businessDate,
       startTime: payload.startTime,
       endTime: payload.endTime,
       totalAmount: payload.totalAmount,
