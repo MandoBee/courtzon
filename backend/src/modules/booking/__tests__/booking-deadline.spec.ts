@@ -99,4 +99,21 @@ describe('Matchmaking deadline validation — authoritative start_at_utc', () =>
       deadline: '2026-09-15T09:00:00.000Z', maxPlayers: 2, targetGender: 'any',
     })).rejects.toBeInstanceOf(ConflictError);
   });
+
+  it('accepts an absent/null deadline (optional field) without generating one', async () => {
+    repo.findById.mockResolvedValue({
+      id: 14, user_id: 42, booking_status: 'confirmed',
+      booking_date: '2026-09-15', start_time: '00:00',
+      start_at_utc: '2026-09-14 21:00:00',
+      resource_id: 7, booking_type: 'public_match',
+    });
+    repo.findMatchingPlayers.mockResolvedValue([]);
+
+    await expect(bookingService.startMatchmaking(14, 42, {
+      maxPlayers: 2, targetGender: 'any',
+    })).resolves.not.toThrow();
+    expect(repo.createMatchmakingRequest).toHaveBeenCalledWith(expect.objectContaining({
+      deadline: undefined,
+    }));
+  });
 });

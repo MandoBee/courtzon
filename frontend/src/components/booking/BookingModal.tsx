@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../../store/auth.store';
@@ -284,45 +284,23 @@ export default function BookingModal({ open, onClose }: BookingModalProps) {
   // browser timezone must never be used as the branch timezone.
   const branchTz = selectedBranch?.timezone || 'Africa/Cairo';
 
-  // Preserve the selected slot's canonical metadata so we can distinguish the
-  // displayed Business Day from the actual local/UTC instant of the booking
-  // start (critical for after-midnight overnight slots, where
-  // `businessDate !== apiDate` and the grid `startAtUtc` lands on the next
-  // calendar day). The deadline reference below is deliberately derived the
-  // SAME way the backend derives the persisted `start_at_utc`
-  // (TimeEngine.localToUtc(bookingDate, startTime, branchTz)) so the
-  // client-side guard and the authoritative backend guard always agree.
-  const selectedSlotMeta = useMemo(() => {
-    if (!selectedSlots.length) return null;
-    const s = slots.find((x) => x.slot_start === selectedSlots[0]);
-    if (!s) return null;
-    return {
-      slotStart: s.slot_start,
-      startAtUtc: s.startAtUtc || null,
-      businessDate: s.businessDate || null,
-      dayOffset: s.dayOffset ?? 0,
-      utcOffsetMinutes: s.utcOffsetMinutes ?? null,
-    };
-  }, [slots, selectedSlots]);
-
   // The authoritative booking start instant — the exact instant the backend
   // will persist as `start_at_utc` (branch timezone → UTC). We mirror the
   // backend's TimeEngine.localToUtc(bookingDate, startTime, branchTz) via the
   // shared `toUtcIsoForApi`, so the deadline comparison is identical on both
-  // sides. We deliberately do NOT use the grid slot's `startAtUtc` as the
-  // deadline reference: for after-midnight overnight slots that grid value is
-  // the slot's wall-clock on the NEXT calendar day, whereas the booking is
-  // created for the user-selected Business Day and the backend persists that
-  // instant.
+  // sides.
   const bookingStartUtc = selectedSlots.length && apiDate
     ? toUtcIsoForApi(`${apiDate}T${selectedSlots[0]}`, branchTz)
     : '';
 
-  // datetime-local bound derived from the ACTUAL start instant (not the
+  // datetime-local `max` bound derived from the ACTUAL start instant (not the
   // Business-Day display date). `max` is inclusive in HTML, so the strict
-  // `deadline < start` rule is still enforced by client + backend validation.
+  // `deadline < start` rule is enforced by client validation below AND the
+  // authoritative backend guard. There is deliberately NO auto-generated
+  // default and NO lower bound: the deadline is optional, starts EMPTY, and the
+  // user must pick it explicitly. A `min` bound derived from the current time
+  // would move on every render and fight the controlled datetime-local input.
   const deadlineMaxLocal = bookingStartUtc ? toDateTimeLocalInTimezone(bookingStartUtc, branchTz) : undefined;
-  const deadlineMinLocal = toDateTimeLocalInTimezone(new Date().toISOString(), branchTz);
 
   // UTC instant the current deadline input value represents ('' when invalid).
   const deadlineUtc = matchmakingDeadline ? toUtcIsoForApi(matchmakingDeadline, branchTz) : '';
@@ -413,24 +391,6 @@ export default function BookingModal({ open, onClose }: BookingModalProps) {
     reset();
     onClose();
   };
-
-  // Auto-generate the default matchmaking deadline = 4h before the ACTUAL
-  // booking start instant (startAtUtc, branch-timezone → UTC). This replaces
-  // the old `new Date(apiDate).setHours(...)` which mixed UTC date-only parsing
-  // with local setHours and was wrong for after-midnight overnight slots.
-  // Only auto-fill when the selected slot changes (or the deadline is empty) so
-  // a manual edit is never silently overwritten on re-render.
-  const deadlineAutoGenKey = selectedSlotMeta
-    ? `${selectedSlotMeta.slotStart}|${selectedSlotMeta.startAtUtc}`
-    : '';
-  const lastAutoGenKey = useRef<string>('');
-  useEffect(() => {
-    if (!bookingStartUtc) return;
-    if (matchmakingDeadline && lastAutoGenKey.current === deadlineAutoGenKey) return;
-    const deadline = new Date(new Date(bookingStartUtc).getTime() - 4 * 60 * 60 * 1000).toISOString();
-    setMatchmakingDeadline(toDateTimeLocalInTimezone(deadline, branchTz));
-    lastAutoGenKey.current = deadlineAutoGenKey;
-  }, [bookingStartUtc, deadlineAutoGenKey, matchmakingDeadline, branchTz]);
 
   const handleSportSelect = (id: number) => {
     setSelectedSportId(id);
@@ -526,7 +486,7 @@ export default function BookingModal({ open, onClose }: BookingModalProps) {
       const deadlineUtcMs = deadlineUtc ? new Date(deadlineUtc).getTime() : NaN;
       const startUtcMs = bookingStartUtc ? new Date(bookingStartUtc).getTime() : NaN;
       if (!Number.isNaN(deadlineUtcMs) && !Number.isNaN(startUtcMs) && deadlineUtcMs >= startUtcMs) {
-        showToast('Matchmaking deadline must be before the booking start time', 'error');
+        showToast(t('booking.deadline_invalid'), 'error');
         return;
       }
     }
@@ -982,11 +942,10 @@ export default function BookingModal({ open, onClose }: BookingModalProps) {
               </div>
 
               <div className="mb-3">
-                <label className="block text-xs text-[var(--color-text-muted)] mb-1">Application deadline</label>
+                <label className="block text-xs text-[var(--color-text-muted)] mb-1">{t('booking.deadline_label')}</label>
                 <input
                   type="datetime-local"
                   value={matchmakingDeadline}
-                  min={deadlineMinLocal}
                   max={deadlineMaxLocal}
                   onChange={(e) => setMatchmakingDeadline(e.target.value)}
                   className={`w-full px-2 py-1.5 text-sm rounded-[var(--radius-md)] border text-[var(--color-text)] ${
@@ -997,12 +956,12 @@ export default function BookingModal({ open, onClose }: BookingModalProps) {
                 />
                 {deadlineIsInvalid && (
                   <p className="text-[10px] text-[var(--color-error)] mt-0.5">
-                    Deadline must be before the booking start time
+                    {t('booking.deadline_invalid')}
                   </p>
                 )}
                 {bookingStartUtc && !deadlineIsInvalid && (
                   <p className="text-[10px] text-[var(--color-text-muted)] mt-0.5">
-                    Must be before {toDateTimeLocalInTimezone(bookingStartUtc, branchTz)}
+                    {t('booking.deadline_hint', { time: toDateTimeLocalInTimezone(bookingStartUtc, branchTz) })}
                   </p>
                 )}
               </div>

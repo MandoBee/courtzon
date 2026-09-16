@@ -335,6 +335,9 @@ export const translationKeysRegistry: TranslationKeyEntry[] = [
   { key: 'booking.special_requests', defaultValue: 'Any special requests...', moduleSlug: 'booking', elementType: 'placeholder', elementLabel: 'Booking special requests placeholder' },
   { key: 'booking.confirm_pay', defaultValue: 'Confirm & Pay', moduleSlug: 'booking', elementType: 'button', elementLabel: 'Booking confirm and pay' },
   { key: 'booking.loading_slots', defaultValue: 'Loading slots...', moduleSlug: 'booking', elementType: 'text', elementLabel: 'Booking loading slots' },
+  { key: 'booking.deadline_label', defaultValue: 'Application Deadline', moduleSlug: 'booking', elementType: 'label', elementLabel: 'Matchmaking application deadline label' },
+  { key: 'booking.deadline_hint', defaultValue: 'Must be before {time}', moduleSlug: 'booking', elementType: 'text', elementLabel: 'Matchmaking deadline before-start hint' },
+  { key: 'booking.deadline_invalid', defaultValue: 'Deadline must be before the booking start time', moduleSlug: 'booking', elementType: 'text', elementLabel: 'Matchmaking deadline invalid message' },
 
   // Booking table columns
   { key: 'booking.table.org', defaultValue: 'Org', moduleSlug: 'booking', elementType: 'label', elementLabel: 'Booking table org column' },
