@@ -69,14 +69,19 @@ describe('C6 — authoritative played_at from sessions OR scheduled end', () => 
 });
 
 describe('C5 — no-result worker covers every eligible status', () => {
-  it('matches all four eligible statuses and uses session time only', async () => {
+  it('matches all four eligible statuses and applies the booking-end fallback', async () => {
     await matchResultRepository.findExpiredNoResultMatches('2026-09-10 00:00:00');
     const sql = executed[0];
     for (const status of ['full', 'closed', 'in_progress', 'completed']) {
       expect(sql).toContain(`'${status}'`);
     }
     expect(sql).toContain('FROM match_sessions');
-    expect(sql).not.toContain('b.end_at_utc');
+    // The T1 race fix: the worker must use the SAME authoritative played_at as
+    // getMatchContext — a no-session match cannot otherwise ever be marked
+    // No Result. Assert the fallback is present (not that it is absent).
+    expect(sql).toContain('b.end_at_utc');
+    expect(sql).toContain('UTC_TIMESTAMP()');
+    expect(sql).toContain('COALESCE');
   });
 });
 

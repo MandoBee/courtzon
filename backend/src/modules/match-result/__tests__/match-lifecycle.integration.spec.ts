@@ -225,4 +225,34 @@ describe('Match lifecycle → result eligibility journey', () => {
     // the shared pool is closed in afterAll — avoids a teardown "Pool is closed".
     await new Promise((r) => setTimeout(r, 150));
   });
+
+  it('NO session row → booking-end fallback still yields played_at and submit succeeds', async () => {
+    const endAtUtc = new Date(Date.now() - 60 * 60 * 1000).toISOString().replace('T', ' ').slice(0, 19);
+    const { matchId, playerA } = await insertBookingAndMatch({ status: 'completed', endAtUtc });
+
+    const { matchResultRepository } = await import('../infrastructure/match-result.repository.js');
+    const context = await matchResultRepository.getMatchContext(matchId);
+    expect(context?.playedAt).toBeTruthy();
+    expect(fmtTs(context.playedAt)).toBe(endAtUtc);
+
+    // Submission succeeds within the 72h window even when the session row is
+    // missing/late — the boundary no longer leaves the player stuck.
+    const { matchResultService } = await import('../application/match-result.service.js');
+    const record = await matchResultService.submitMatchResult(matchId, playerA, VALID_PAYLOAD);
+    expect(record.submissionStatus).toBe('pending_confirmation');
+
+    await new Promise((r) => setTimeout(r, 150));
+  });
+
+  it('findExpiredNoResultMatches detects a no-session match via the booking-end fallback', async () => {
+    const longAgo = new Date(Date.now() - 100 * 3600 * 1000).toISOString().replace('T', ' ').slice(0, 19);
+    const { matchId } = await insertBookingAndMatch({ status: 'completed', endAtUtc: longAgo });
+
+    const { matchResultRepository } = await import('../infrastructure/match-result.repository.js');
+    const nowTs = new Date().toISOString().replace('T', ' ').slice(0, 19);
+    const candidates = await matchResultRepository.findExpiredNoResultMatches(nowTs);
+    const found = candidates.find((c) => c.matchId === matchId);
+    expect(found).toBeTruthy();
+    expect(found?.participantUserIds).toHaveLength(2);
+  });
 });

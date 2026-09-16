@@ -11,6 +11,7 @@ import ManageApplicantsPopup from '../../components/booking/ManageApplicantsPopu
 import { fetchMatchResult } from '../../services/match-result.api';
 import ResultSummaryView from '../../components/match-result/ResultSummaryView';
 import { Can } from '../../permissions/Can';
+import MatchErrorState from '../../components/booking/MatchErrorState';
 
 function hasUserInParticipants(participantsJson: unknown, userId: number): boolean {
   if (!participantsJson) return false;
@@ -31,7 +32,7 @@ export default function MatchLobbyPage() {
   const [showApplicants, setShowApplicants] = useState(false);
   const user = useAuthStore((s) => s.user);
 
-  const { data: match, isLoading } = useQuery({
+  const { data: match, isLoading, isError: isMatchError, error: matchError, refetch: refetchMatch } = useQuery({
     queryKey: ['match', id],
     queryFn: () => api.get(`/matches/${id}`).then((r) => r.data.data),
     enabled: !!id,
@@ -43,8 +44,9 @@ export default function MatchLobbyPage() {
     enabled: !!id,
   });
   const resultAvailable = !!resultData?.record;
-  const resultEligible = match?.status === 'in_progress' || match?.status === 'completed' || match?.status === 'full' || match?.status === 'closed';
-  const resultEntryOpen = !!match?.result_entry_open;
+  const rs = match?.result_state as 'approved' | 'disputed' | 'pending' | 'no_result' | 'enter' | 'expired' | 'none' | undefined;
+  const resultEntryEligible = rs === 'enter';
+  const windowClosed = rs === 'expired';
   const isParticipant = match?.is_participant === true
     || (user?.id != null && match?.participants_json && hasUserInParticipants(match.participants_json, user.id));
   const isFull = Number(match?.participant_count ?? 0) >= Number(match?.max_players ?? 0);
@@ -111,6 +113,7 @@ export default function MatchLobbyPage() {
   });
 
   if (isLoading) return <p className="text-[var(--color-text-muted)]">Loading...</p>;
+  if (isMatchError) return <MatchErrorState error={matchError} onRetry={() => refetchMatch()} />;
   if (!match) return <p className="text-[var(--color-text-muted)]">Match not found</p>;
 
   const participants = (() => {
@@ -200,24 +203,22 @@ export default function MatchLobbyPage() {
       <div className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] p-4 mb-4">
         <div className="flex items-center justify-between mb-2">
           <h2 className="text-sm font-semibold text-[var(--color-text-muted)]">{t('matchResult.title')}</h2>
-          {(resultEligible && resultEntryOpen) || resultAvailable ? (
+          {(resultAvailable || (resultEntryEligible && isParticipant)) && (
             <Link to={`/matches/${id}/result`} className="text-sm text-[var(--color-primary)] hover:underline">
               {resultAvailable ? t('matchResult.view') : t('matchResult.enterResult')}
             </Link>
-          ) : null}
+          )}
         </div>
         {resultAvailable ? (
           <ResultSummaryView record={resultData!.record!} participants={resultData!.participants || []} showRating />
-        ) : resultEligible ? (
-          resultEntryOpen ? (
-            <p className="text-sm text-[var(--color-text-muted)]">{t('matchResult.noResultYet')}</p>
-          ) : (
-            <p className="text-sm text-[var(--color-text-muted)]">{t('matchResult.enterAfterStart')}</p>
-          )
+        ) : resultEntryEligible ? (
+          <p className="text-sm text-[var(--color-text-muted)]">{t('matchResult.noResultYet')}</p>
+        ) : windowClosed ? (
+          <p className="text-sm text-[var(--color-text-muted)]">{t('matchResult.expiredState')}</p>
         ) : (
           <p className="text-sm text-[var(--color-text-muted)]">{t('matchResult.enterAfterStart')}</p>
         )}
-        {resultEligible && resultEntryOpen && !resultAvailable && isParticipant && (
+        {resultEntryEligible && !resultAvailable && isParticipant && (
           <div className="mt-3">
             <Can permission="matches.result.submit">
               <Link

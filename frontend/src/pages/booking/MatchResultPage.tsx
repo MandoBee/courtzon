@@ -10,6 +10,7 @@ import { formatDateTime } from '../../utils/formatDate';
 import { Can } from '../../permissions/Can';
 import DynamicResultForm from '../../components/match-result/DynamicResultForm';
 import ResultSummaryView from '../../components/match-result/ResultSummaryView';
+import MatchErrorState from '../../components/booking/MatchErrorState';
 import type { RawMatchResultPayload } from '../../types/match-result';
 
 function fetchMatchResultMeta(id: number) {
@@ -26,14 +27,7 @@ function hasParticipant(participantsJson: unknown, userId: number): boolean {
   return list.some((p: any) => Number(p.userId) === Number(userId));
 }
 
-const SUBMISSION_WINDOW_MS = 72 * 3600 * 1000;
-
-function windowExpired(playedAt?: string | null): boolean {
-  if (!playedAt) return false;
-  const t = new Date(playedAt).getTime();
-  if (!Number.isFinite(t)) return false;
-  return Date.now() > t + SUBMISSION_WINDOW_MS;
-}
+type ResultState = 'approved' | 'disputed' | 'pending' | 'no_result' | 'enter' | 'expired' | 'none';
 
 export default function MatchResultPage() {
   const { id } = useParams<{ id: string }>();
@@ -46,7 +40,7 @@ export default function MatchResultPage() {
   const [disputeReason, setDisputeReason] = useState('');
   const [payload, setPayload] = useState<RawMatchResultPayload>({ outcome: 'completed' });
 
-  const { data: match, isLoading: matchLoading } = useQuery({
+  const { data: match, isLoading: matchLoading, isError: isMatchError, error: matchError, refetch: refetchMatch } = useQuery({
     queryKey: ['match', id],
     queryFn: () => fetchMatchResultMeta(Number(id)),
     enabled: !!id,
@@ -130,9 +124,12 @@ export default function MatchResultPage() {
   });
 
   if (matchLoading || resultLoading) return <p className="text-[var(--color-text-muted)]">{t('common.loading')}</p>;
+  if (isMatchError) return <MatchErrorState error={matchError} onRetry={() => refetchMatch()} />;
   if (!match) return <p className="text-[var(--color-text-muted)]">{t('matchResult.notFound')}</p>;
 
   const editableOutcome = payload.outcome;
+  const rs = match.result_state as ResultState | undefined;
+  const entryOpen = rs === 'enter';
 
   return (
     <div className="max-w-2xl mx-auto pb-24 md:pb-6">
@@ -156,6 +153,12 @@ export default function MatchResultPage() {
             <h2 className="text-sm font-semibold text-[var(--color-text-muted)] mb-3">{t('matchResult.current')}</h2>
             <ResultSummaryView record={record} participants={participants} showRating />
           </div>
+
+          {record.submissionStatus === 'disputed' && (
+            <div className="bg-[var(--color-warning-bg)] border border-[var(--color-warning)] text-[var(--color-warning-text)] rounded-[var(--radius-lg)] p-4 mb-4">
+              <p className="text-sm">{t('matchResult.disputedNotice')}</p>
+            </div>
+          )}
 
           {canReview && (
             <div className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] p-4 mb-4 space-y-3">
@@ -248,10 +251,10 @@ export default function MatchResultPage() {
             <p className="text-sm text-[var(--color-text-muted)]">{t('matchResult.notParticipant')}</p>
           ) : !rules ? (
             <p className="text-sm text-[var(--color-text-muted)]">{t('matchResult.noRules')}</p>
-          ) : !match.played_at ? (
-            <p className="text-sm text-[var(--color-text-muted)]">{t('matchResult.noPlayTime')}</p>
-          ) : windowExpired(match.played_at) ? (
-            <p className="text-sm text-[var(--color-text-muted)]">{t('matchResult.expiredState')}</p>
+          ) : !entryOpen ? (
+            <p className="text-sm text-[var(--color-text-muted)]">
+              {rs === 'expired' ? t('matchResult.expiredState') : t('matchResult.enterAfterStart')}
+            </p>
           ) : (
             <div className={`space-y-4 ${editing ? 'opacity-50 pointer-events-none' : ''}`}>
               <h2 className="text-sm font-semibold text-[var(--color-text-muted)]">{t('matchResult.enterScore')}</h2>

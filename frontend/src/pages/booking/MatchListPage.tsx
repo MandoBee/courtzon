@@ -5,6 +5,7 @@ import api from '../../services/api';
 import { useToast } from '../../components/ui/Toast';
 import { formatISODate, formatDateTime } from '../../utils/formatDate';
 import { socketService } from '../../services/socket';
+import { useTranslation } from '../../i18n';
 
 type Tab = 'discover' | 'applied' | 'joined' | 'dismissed' | 'history';
 type SortMode = 'date' | 'nearest';
@@ -65,6 +66,34 @@ interface MatchRow {
   join_request_id: number | null;
   join_request_status: string | null;
   is_participant: number;
+  result_state?: 'approved' | 'disputed' | 'pending' | 'no_result' | 'enter' | 'expired' | 'none';
+  result_entry_open?: number;
+  played_at?: string | null;
+}
+
+function ResultAction({ match }: { match: MatchRow }) {
+  const { t } = useTranslation();
+  const rs = match.result_state;
+  if (!rs || rs === 'none') return null;
+  if (rs === 'enter') {
+    return (
+      <Link to={`/matches/${match.id}/result`}
+        className="px-3 py-1.5 text-xs font-medium bg-[var(--color-primary)]/15 text-[var(--color-primary)] rounded-[var(--radius-md)] hover:bg-[var(--color-primary)]/25 whitespace-nowrap">
+        {t('matchResult.enterResult')}
+      </Link>
+    );
+  }
+  if (rs === 'expired') {
+    return (
+      <span className="text-xs text-[var(--color-text-muted)] whitespace-nowrap">{t('matchResult.expiredState')}</span>
+    );
+  }
+  return (
+    <Link to={`/matches/${match.id}/result`}
+      className="px-3 py-1.5 text-xs font-medium border border-[var(--color-primary)] text-[var(--color-primary)] rounded-[var(--radius-md)] hover:bg-[var(--color-primary)]/10 whitespace-nowrap">
+      {t('matchResult.view')}
+    </Link>
+  );
 }
 
 export default function MatchListPage() {
@@ -276,15 +305,21 @@ export default function MatchListPage() {
                   </>
                 )}
                 {tab === 'joined' && (
-                  <Link to={`/matches/${match.id}`}
-                    className="px-3 py-1.5 text-xs font-medium bg-[var(--color-primary)] text-white rounded-[var(--radius-md)] hover:opacity-90">View</Link>
+                  <>
+                    <Link to={`/matches/${match.id}`}
+                      className="px-3 py-1.5 text-xs font-medium bg-[var(--color-primary)] text-white rounded-[var(--radius-md)] hover:opacity-90">View</Link>
+                    <ResultAction match={match} />
+                  </>
                 )}
                 {tab === 'dismissed' && (
                   <button onClick={() => toggleDismiss(match.id, true)}
                     className="px-3 py-1.5 text-xs font-medium border border-[var(--color-primary)] text-[var(--color-primary)] rounded-[var(--radius-md)] hover:bg-[var(--color-primary)]/10">Undo</button>
                 )}
                 {tab === 'history' && (
-                  <span className="text-xs text-[var(--color-text-muted)]">{match.status}</span>
+                  <>
+                    <span className="text-xs text-[var(--color-text-muted)]">{match.status}</span>
+                    <ResultAction match={match} />
+                  </>
                 )}
               </div>
             </div>

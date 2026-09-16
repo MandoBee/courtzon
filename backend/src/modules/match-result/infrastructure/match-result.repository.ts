@@ -466,10 +466,19 @@ export class MatchResultRepository {
   /** Worker: eligible matches (status in the eligible set) with no result and whose window expired. */
   async findExpiredNoResultMatches(now: string): Promise<Array<{ matchId: number; sportId: number; branchId: number | null; resourceId: number | null; playedAt: string; timezone: string | null; participantUserIds: number[] }>> {
     const pool = getPool();
+    // Same authoritative played_at computation as getMatchContext: the session
+    // row wins when present, otherwise the scheduled booking end (end_at_utc)
+    // is used once it has passed. Without the booking fallback, a match whose
+    // session row is missing/late could never be marked No Result.
+    const playedAtExpr = `COALESCE(
+      (SELECT COALESCE(ms.ended_at, ms.started_at) FROM match_sessions ms
+       WHERE ms.match_id = m.id ORDER BY ms.id DESC LIMIT 1),
+      CASE WHEN b.end_at_utc IS NOT NULL AND b.end_at_utc <= UTC_TIMESTAMP()
+           THEN b.end_at_utc ELSE NULL END
+    )`;
     const [rows] = await pool.execute<RowData>(
       `SELECT m.id AS match_id, m.sport_id, b.branch_id, b.resource_id,
-              (SELECT COALESCE(ms.ended_at, ms.started_at) FROM match_sessions ms
-               WHERE ms.match_id = m.id ORDER BY ms.id DESC LIMIT 1) AS played_at,
+              ${playedAtExpr} AS played_at,
               br.timezone
        FROM matches m
        JOIN bookings b ON b.id = m.booking_id
@@ -478,10 +487,8 @@ export class MatchResultRepository {
        WHERE r.id IS NULL
          AND m.status IN ('full', 'closed', 'in_progress', 'completed')
          AND (SELECT COUNT(*) FROM match_participants mp WHERE mp.match_id = m.id) >= 2
-         AND (SELECT COALESCE(ms.ended_at, ms.started_at) FROM match_sessions ms
-              WHERE ms.match_id = m.id ORDER BY ms.id DESC LIMIT 1) IS NOT NULL
-         AND (SELECT COALESCE(ms.ended_at, ms.started_at) FROM match_sessions ms
-              WHERE ms.match_id = m.id ORDER BY ms.id DESC LIMIT 1) <= ?`,
+         AND ${playedAtExpr} IS NOT NULL
+         AND ${playedAtExpr} <= ?`,
       [now],
     );
     const result: Array<{ matchId: number; sportId: number; branchId: number | null; resourceId: number | null; playedAt: string; timezone: string | null; participantUserIds: number[] }> = [];

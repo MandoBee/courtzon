@@ -71,6 +71,8 @@ const ADMIN_ONLY_PREFIXES = [
   'sports-engine.',
   'integration.',
   'mobile.',
+  'matches.result.manage',
+  'matches.result.rules.manage',
 ];
 
 function isAdminOnlyKey(key: string): boolean {
@@ -634,6 +636,10 @@ export function permissionMatchesTemplate(templateSlug: string, permissionKey: s
 
   if (templateSlug === 'master-admin') {
     if (canManageAcademy(templateSlug, permissionKey)) return true;
+    // Explicitly granted platform capabilities hidden behind ADMIN_ONLY_PREFIXES.
+    // Match-Result admin lets master-admin resolve disputes / mark no-result /
+    // correct results. Players/org roles never receive these (ADMIN_ONLY block).
+    if (permissionKey === 'matches.result.manage' || permissionKey === 'matches.result.rules.manage') return true;
     if (permissionKey.startsWith('users.')) return false;
     if (permissionKey.startsWith('roles.')) return false;
     if (permissionKey.startsWith('permissions.')) return false;

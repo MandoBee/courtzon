@@ -7,15 +7,11 @@ import { ratingService } from './rating/rating.service.js';
 import { validateAndComputeFinal, RulesValidationError, outcomeCountsForRating } from './rules/rules-engine.js';
 import type { MatchResultParticipant, ParticipantSlot, MatchResultRecord, RawMatchResultPayload } from '../domain/match-result.types.js';
 import { ForbiddenError, NotFoundError } from '../../../shared/errors/app-error.js';
+import { SUBMISSION_WINDOW_HOURS, AUTO_APPROVAL_WINDOW_HOURS, ELIGIBLE_MATCH_STATUSES } from './result-window.js';
+
+export { SUBMISSION_WINDOW_HOURS, AUTO_APPROVAL_WINDOW_HOURS, ELIGIBLE_MATCH_STATUSES };
 
 const log = createModuleLogger('match-result');
-
-/** Part E.127 — 3-day window to submit a result after play. */
-export const SUBMISSION_WINDOW_HOURS = 72;
-/** Part E.60 — if the opponent does not respond within 3 days the result is auto-approved. */
-export const AUTO_APPROVAL_WINDOW_HOURS = 72;
-
-export const ELIGIBLE_MATCH_STATUSES = ['full', 'closed', 'in_progress', 'completed'];
 
 export function addHours(iso: string, hours: number): string {
   return new Date(new Date(iso).getTime() + hours * 3_600_000).toISOString();

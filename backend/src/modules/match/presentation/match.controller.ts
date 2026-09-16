@@ -5,8 +5,43 @@ import { matchService } from '../application/services/match.service.js';
 import { joinRequestService } from '../application/services/join-request.service.js';
 import { getPool } from '../../../database/mysql.js';
 import { ForbiddenError, NotFoundError } from '../../../shared/errors/app-error.js';
+import { computeResultState } from '../../match-result/application/result-window.js';
 
 type RowData = mysql.RowDataPacket[];
+
+/**
+ * Same authoritative played_at computation as match-result.getMatchContext:
+ * the session row wins when present, otherwise the scheduled booking end
+ * (end_at_utc) is used once it has passed. Keeps the exposed played_at /
+ * result_state consistent with the backend submission rules so the UI can
+ * never show a stale "Enter Result" state for a match that already ended.
+ */
+function playedAtExpr(bookingAlias: string): string {
+  return `COALESCE(
+    (SELECT COALESCE(ms.ended_at, ms.started_at) FROM match_sessions ms
+     WHERE ms.match_id = m.id ORDER BY ms.id DESC LIMIT 1),
+    CASE WHEN ${bookingAlias}.end_at_utc IS NOT NULL AND ${bookingAlias}.end_at_utc <= UTC_TIMESTAMP()
+         THEN ${bookingAlias}.end_at_utc ELSE NULL END
+  )`;
+}
+
+/** Scheduled end passed — the earliest a result may be entered. */
+function resultEntryOpenExpr(bookingAlias: string): string {
+  return `(CASE
+    WHEN ${bookingAlias}.end_at_utc IS NOT NULL THEN ${bookingAlias}.end_at_utc <= UTC_TIMESTAMP()
+    ELSE TIMESTAMP(CONCAT(${bookingAlias}.booking_date, ' ', ${bookingAlias}.end_time)) <= NOW()
+  END)`;
+}
+
+/** Latest result-record status for a match ('' when none — nothing terminal yet). */
+const RESULT_STATUS_EXPR = `(SELECT r.submission_status FROM match_result_records r
+   WHERE r.match_id = m.id ORDER BY r.id DESC LIMIT 1)`;
+
+/** Attach the server-computed result_state and drop the internal status column. */
+function decorateResultState(row: any): void {
+  row.result_state = computeResultState(row);
+  delete row.result_status;
+}
 
 async function resolveMatchId(id: number): Promise<number> {
   const pool = getPool();
@@ -40,6 +75,9 @@ export async function getMatchesHandler(request: FastifyRequest, reply: FastifyR
             pmd.visibility, pmd.auto_accept, pmd.max_players,
             pmd.min_age, pmd.max_age, pmd.target_gender,
             pl.name as target_level_name, pmd.deadline,
+            ${playedAtExpr('bk')} as played_at,
+            ${resultEntryOpenExpr('bk')} as result_entry_open,
+            ${RESULT_STATUS_EXPR} as result_status,
             (SELECT COUNT(*) FROM match_participants WHERE match_id = m.id) as participant_count,
             bi.id as invitation_id, bi.status as invitation_status,
             jr.id as join_request_id, jr.status as join_request_status,
@@ -62,6 +100,8 @@ export async function getMatchesHandler(request: FastifyRequest, reply: FastifyR
         )`,
     [userId, userId, userId]
   );
+
+  for (const row of rows as any[]) decorateResultState(row);
 
   reply.send({ data: rows });
 }
@@ -86,6 +126,9 @@ export async function getMyMatchesHandler(request: FastifyRequest, reply: Fastif
             pmd.visibility, pmd.auto_accept, pmd.max_players,
             pmd.min_age, pmd.max_age, pmd.target_gender,
             pl.name as target_level_name, pmd.deadline,
+            ${playedAtExpr('bk')} as played_at,
+            ${resultEntryOpenExpr('bk')} as result_entry_open,
+            ${RESULT_STATUS_EXPR} as result_status,
             (SELECT COUNT(*) FROM match_participants WHERE match_id = m.id) as participant_count,
             bi.id as invitation_id, bi.status as invitation_status,
             jr.id as join_request_id, jr.status as join_request_status,
@@ -109,6 +152,8 @@ export async function getMyMatchesHandler(request: FastifyRequest, reply: Fastif
     [userId, userId, userId, userId, userId, userId]
   );
 
+  for (const row of rows as any[]) decorateResultState(row);
+
   reply.send({ data: rows });
 }
 
@@ -123,8 +168,8 @@ export async function getMatchHandler(request: FastifyRequest, reply: FastifyRep
             b.booking_date, b.start_time, b.end_time, b.end_at_utc,
             r.name as resource_name, br.name as branch_name, org.name as organisation_name,
             pmd.*, pl.name as target_level_name,
-            (SELECT COALESCE(ms.ended_at, ms.started_at) FROM match_sessions ms
-             WHERE ms.match_id = m.id ORDER BY ms.id DESC LIMIT 1) as played_at,
+            ${playedAtExpr('b')} as played_at,
+            ${RESULT_STATUS_EXPR} as result_status,
             (SELECT COUNT(*) FROM match_participants WHERE match_id = m.id) as participant_count,
             (SELECT COUNT(*) FROM match_participants WHERE match_id = m.id AND user_id = ?) > 0 as is_participant,
             (SELECT status FROM join_requests WHERE match_id = m.id AND user_id = ? ORDER BY id DESC LIMIT 1) as join_request_status,
@@ -141,10 +186,7 @@ export async function getMatchHandler(request: FastifyRequest, reply: FastifyRep
              FROM match_participants mp
              JOIN users u ON u.id = mp.user_id
              WHERE mp.match_id = m.id) as participants_json,
-            (CASE
-              WHEN b.end_at_utc IS NOT NULL THEN b.end_at_utc <= UTC_TIMESTAMP()
-              ELSE TIMESTAMP(CONCAT(b.booking_date, ' ', b.end_time)) <= NOW()
-            END) as result_entry_open
+            ${resultEntryOpenExpr('b')} as result_entry_open
      FROM matches m
      JOIN bookings b ON b.id = m.booking_id
      JOIN resources r ON r.id = b.resource_id
@@ -162,7 +204,9 @@ export async function getMatchHandler(request: FastifyRequest, reply: FastifyRep
     return;
   }
 
-  reply.send({ data: rows[0] });
+  const row = rows[0] as any;
+  decorateResultState(row);
+  reply.send({ data: row });
 }
 
 export async function joinMatchHandler(request: FastifyRequest, reply: FastifyReply): Promise<void> {
