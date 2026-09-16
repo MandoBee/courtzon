@@ -10,6 +10,7 @@ import type {
   SportRuleSet,
 } from '../domain/match-result.types.js';
 import { toMySqlDateTime } from '../../../shared/utils/mysql-date.js';
+import { SUBMISSION_WINDOW_HOURS } from '../application/result-window.js';
 
 type RowData = mysql.RowDataPacket[];
 
@@ -488,8 +489,9 @@ export class MatchResultRepository {
          AND m.status IN ('full', 'closed', 'in_progress', 'completed')
          AND (SELECT COUNT(*) FROM match_participants mp WHERE mp.match_id = m.id) >= 2
          AND ${playedAtExpr} IS NOT NULL
-         AND ${playedAtExpr} <= ?`,
-      [now],
+         AND ${playedAtExpr} <= ?
+         AND ${playedAtExpr} < DATE_SUB(?, INTERVAL ${SUBMISSION_WINDOW_HOURS} HOUR)`,
+      [now, now],
     );
     const result: Array<{ matchId: number; sportId: number; branchId: number | null; resourceId: number | null; playedAt: string; timezone: string | null; participantUserIds: number[] }> = [];
     for (const r of rows as any[]) {

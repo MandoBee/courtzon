@@ -83,6 +83,16 @@ describe('C5 — no-result worker covers every eligible status', () => {
     expect(sql).toContain('UTC_TIMESTAMP()');
     expect(sql).toContain('COALESCE');
   });
+
+  it('respects the 3-day submission window: does not mark a recently played match No Result', async () => {
+    // Regression: findExpiredNoResultMatches must NOT pick up a match whose
+    // played_at is within the 72h submission window — otherwise the hourly
+    // worker pre-populates `no_result` and blocks manual result entry.
+    await matchResultRepository.findExpiredNoResultMatches('2026-09-17 12:00:00');
+    const sql = executed[0];
+    expect(sql).toContain('DATE_SUB(');
+    expect(sql).toContain('INTERVAL 72 HOUR');
+  });
 });
 
 describe('C8 — concurrency-safe approval UPDATE', () => {
