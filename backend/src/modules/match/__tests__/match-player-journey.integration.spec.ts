@@ -208,4 +208,51 @@ describe('Match player journey (K1/K2/K4): invitation → join → start → res
     // Let fire-and-forget EventBus emits flush before teardown.
     await new Promise((r) => setTimeout(r, 200));
   });
+
+  it('detail /matches/:id succeeds on the real schema and exposes phone only to participants/creators (schema-drift guard)', async () => {
+    const { getPool } = await import('../../../database/mysql.js');
+    const pool = getPool();
+    const [host, participant, outsider] = await ensureUsers(pool, 3);
+
+    const { matchId } = await createOpenMatch(pool, host);
+    await pool.execute(
+      'INSERT INTO match_participants (match_id, user_id, role) VALUES (?, ?, ?)',
+      [matchId, participant, 'joiner'],
+    );
+
+    const { getMatchHandler } = await import('../../match/presentation/match.controller.js');
+    async function callDetail(actingUserId: number) {
+      let sent: any;
+      const reply = { send: (b: any) => { sent = b; }, status: () => reply } as any;
+      await getMatchHandler({ userId: actingUserId, query: {}, params: { id: String(matchId) } } as any, reply);
+      return sent;
+    }
+
+    // participant: roster renders with phone numbers (query must not raise ER_BAD_FIELD_ERROR)
+    const asParticipant = await callDetail(participant);
+    expect(asParticipant.data.id).toBe(matchId);
+    const rosterForParticipant = JSON.parse(asParticipant.data.participants_json);
+    expect(rosterForParticipant.length).toBe(2);
+    for (const member of rosterForParticipant) {
+      expect(typeof member.phone).toBe('string');
+      expect((member.phone as string).length).toBeGreaterThan(0);
+    }
+
+    // outsider (no relationship to the match): same roster, phone redacted
+    const asOutsider = await callDetail(outsider);
+    expect(asOutsider.data.id).toBe(matchId);
+    const rosterForOutsider = JSON.parse(asOutsider.data.participants_json);
+    expect(rosterForOutsider.length).toBe(2);
+    for (const member of rosterForOutsider) {
+      expect(member.phone).toBeNull();
+    }
+
+    // creator: full visibility via the pmd.creator_id branch
+    const [hostPhoneRows] = await pool.execute<any[]>(
+      'SELECT phone_number FROM users WHERE id = ?', [host],
+    );
+    const asHost = await callDetail(host);
+    const rosterForHost = JSON.parse(asHost.data.participants_json);
+    expect(rosterForHost.some((m: any) => Number(m.userId) === host && m.phone === hostPhoneRows[0].phone_number)).toBe(true);
+  });
 });

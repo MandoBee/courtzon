@@ -181,7 +181,7 @@ export async function getMatchHandler(request: FastifyRequest, reply: FastifyRep
                'avatarUrl', u.avatar_url,
                'phone', CASE
                  WHEN ? IN (SELECT user_id FROM match_participants WHERE match_id = m.id) OR pmd.creator_id = ?
-                 THEN u.phone ELSE NULL END
+                 THEN u.phone_number ELSE NULL END
              ))
              FROM match_participants mp
              JOIN users u ON u.id = mp.user_id

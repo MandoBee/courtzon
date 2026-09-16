@@ -157,6 +157,14 @@ describe('match list controllers', () => {
       expect(sql).toContain('as played_at,');
     });
 
+    it('uses the canonical users phone column in the participants payload (schema-drift guard)', async () => {
+      mockRows([{ id: 99 }], []);
+      await getMatchHandler(makeRequest(9, {}, { id: '999' }), replyUnused());
+      const detail = executedSql.find((s) => s.includes('FROM matches m'))!;
+      expect(detail).toContain('u.phone_number');
+      expect(detail).not.toMatch(/u\.phone(?!_)/);
+    });
+
     it('decorates the detail row with a computed result_state', async () => {
       const row = { id: 99, status: 'completed', result_entry_open: 1, result_status: 'pending_confirmation', played_at: '2026-01-02 10:00:00' };
       mockRows([{ id: 99 }], [row]);
