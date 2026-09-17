@@ -6,6 +6,50 @@ export interface SideAssignment {
   teamIndex: number;
 }
 
+export type SideOccupancy = { side: ParticipantSide; userId: number };
+
+export interface SideValidationResult {
+  ok: boolean;
+  reason?: 'side_full' | 'match_not_editable' | 'invalid_format';
+}
+
+/**
+ * Authoritative occupancy check (Group 3): can a participant occupy `side`
+ * given the Match's frozen format snapshot and the current side occupancy?
+ *
+ * This is the SINGLE backend authority — the controller, join-request service
+ * and frontend all funnel through the same format semantics. Never trusts
+ * client-supplied capacity/format; always derives from `format_snapshot`.
+ *
+ * Rules (from configuration, never hardcoded sport names):
+ *  - A format with a configured `players_per_side` limits each side to that
+ *    many participants.
+ *  - A format-less Match (legacy) has no authoritative capacity — the caller
+ *    decides how to assign (legacy fallback).
+ *  - A `players_per_side` of NULL (team size unconfigured) imposes no per-side
+ *    cap.
+ */
+export function canOccupySide(
+  format: MatchFormatSnapshot | null,
+  occupancy: SideOccupancy[],
+  side: ParticipantSide,
+): SideValidationResult {
+  if (!format) return { ok: true };
+  const capacity = format.playersPerSide;
+  if (capacity == null || capacity <= 0) return { ok: true };
+  const count = occupancy.filter((o) => o.side === side).length;
+  if (count >= capacity) return { ok: false, reason: 'side_full' };
+  return { ok: true };
+}
+
+/** Current per-side occupancy counts (helper for UI/API exposure). */
+export function sideOccupancyCounts(occupancy: SideOccupancy[]): { home: number; away: number } {
+  return {
+    home: occupancy.filter((o) => o.side === 'home').length,
+    away: occupancy.filter((o) => o.side === 'away').length,
+  };
+}
+
 /**
  * Format-driven authoritative side assignment (Group 2).
  *

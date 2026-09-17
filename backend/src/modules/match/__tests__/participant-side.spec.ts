@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { assignNextParticipantSide } from '../domain/participant-side.js';
+import { assignNextParticipantSide, canOccupySide, sideOccupancyCounts } from '../domain/participant-side.js';
 import type { MatchFormatSnapshot } from '../domain/match.types.js';
 
 const singles: MatchFormatSnapshot = { formatId: 2, formatType: 'singles', playersPerSide: 1, name: 'Tennis Standard' };
@@ -56,5 +56,42 @@ describe('Group 2 — assignNextParticipantSide (authoritative assignment)', () 
   it('never fabricates a side when the format is unknown', () => {
     const result = assignNextParticipantSide(null, []);
     expect(result).toBeNull();
+  });
+});
+
+describe('Group 3 — canOccupySide (authoritative occupancy validation)', () => {
+  const occ = (arr: Array<['home' | 'away', number]>) => arr.map(([side, userId]) => ({ side, userId }));
+
+  it('singles allows exactly one participant per side', () => {
+    const full = occ([['home', 1], ['away', 2]]);
+    expect(canOccupySide(singles, full, 'home').ok).toBe(false);
+    expect(canOccupySide(singles, full, 'away').ok).toBe(false);
+    expect(canOccupySide(singles, occ([['home', 1]]), 'away').ok).toBe(true);
+  });
+
+  it('doubles respects players_per_side = 2', () => {
+    const home2 = occ([['home', 1], ['home', 2]]);
+    expect(canOccupySide(doubles, home2, 'home')).toEqual({ ok: false, reason: 'side_full' });
+    expect(canOccupySide(doubles, home2, 'away').ok).toBe(true);
+  });
+
+  it('team respects configured players_per_side dynamically', () => {
+    const home10 = occ(Array.from({ length: 10 }, (_, i) => ['home', 100 + i] as const));
+    expect(canOccupySide(team11, home10, 'home').ok).toBe(true);
+    const home11 = occ(Array.from({ length: 11 }, (_, i) => ['home', 100 + i] as const));
+    expect(canOccupySide(team11, home11, 'home')).toEqual({ ok: false, reason: 'side_full' });
+  });
+
+  it('unconfigured team format imposes no per-side cap (no invented size)', () => {
+    const many = occ(Array.from({ length: 25 }, (_, i) => ['home', 100 + i] as const));
+    expect(canOccupySide(teamUnconfigured, many, 'home').ok).toBe(true);
+  });
+
+  it('format-less legacy match has no authoritative capacity', () => {
+    expect(canOccupySide(null, occ([['home', 1], ['home', 2], ['home', 3]]), 'home').ok).toBe(true);
+  });
+
+  it('exposes per-side occupancy counts', () => {
+    expect(sideOccupancyCounts(occ([['home', 1], ['away', 2], ['away', 3]]))).toEqual({ home: 1, away: 2 });
   });
 });

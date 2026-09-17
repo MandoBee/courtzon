@@ -12,6 +12,7 @@ import { fetchMatchResult } from '../../services/match-result.api';
 import ResultSummaryView from '../../components/match-result/ResultSummaryView';
 import { Can } from '../../permissions/Can';
 import MatchErrorState from '../../components/booking/MatchErrorState';
+import SideSelection, { type SideOption, type SideSlot } from '../../components/booking/SideSelection';
 
 function hasUserInParticipants(participantsJson: unknown, userId: number): boolean {
   if (!participantsJson) return false;
@@ -30,6 +31,9 @@ export default function MatchLobbyPage() {
   const { showToast } = useToast();
   const { t } = useTranslation();
   const [showApplicants, setShowApplicants] = useState(false);
+  const [selectedSide, setSelectedSide] = useState<SideOption | null>(null);
+  const [showSidePicker, setShowSidePicker] = useState(false);
+  const [changeSideFor, setChangeSideFor] = useState<SideOption | null>(null);
   const user = useAuthStore((s) => s.user);
 
   const { data: match, isLoading, isError: isMatchError, error: matchError, refetch: refetchMatch } = useQuery({
@@ -69,13 +73,27 @@ export default function MatchLobbyPage() {
   }, [id, queryClient]);
 
   const joinMutation = useMutation({
-    mutationFn: () => api.post(`/matches/${id}/join`),
+    mutationFn: (side?: SideOption) =>
+      api.post(`/matches/${id}/join`, side ? { requestedSide: side } : undefined),
     onSuccess: () => {
       showToast(t('match.joined_awaiting_approval'));
+      setShowSidePicker(false);
       queryClient.invalidateQueries({ queryKey: ['match', id] });
     },
     onError: (err: any) => {
       showToast(err?.response?.data?.message || t('match.failed_to_join'), 'error');
+    },
+  });
+
+  const changeSideMutation = useMutation({
+    mutationFn: (side: SideOption) => api.put(`/matches/${id}/me/side`, { side }),
+    onSuccess: () => {
+      showToast(t('match.side_moved'), 'success');
+      setChangeSideFor(null);
+      queryClient.invalidateQueries({ queryKey: ['match', id] });
+    },
+    onError: (err: any) => {
+      showToast(err?.response?.data?.message || t('match.side_not_available'), 'error');
     },
   });
 
@@ -126,6 +144,21 @@ export default function MatchLobbyPage() {
   })();
   const isCreator = user?.id && match.creator_id && Number(user.id) === Number(match.creator_id);
 
+  // Group 3 — format-driven side slots from the authoritative format snapshot.
+  const formatSnapshot = match.format_snapshot as { formatId?: number; formatType?: string; playersPerSide?: number | null; name?: string } | null;
+  const sideSlots: SideSlot[] = participants
+    .filter((p: any) => p.side === 'home' || p.side === 'away')
+    .map((p: any) => ({
+      side: p.side as SideOption,
+      userId: Number(p.userId),
+      fullName: p.fullName,
+      avatarUrl: p.avatarUrl,
+      role: p.role,
+    }));
+  const hasAuthoritativeSides = formatSnapshot?.playersPerSide != null && sideSlots.length >= 0;
+  const mySlot = participants.find((p: any) => user?.id != null && Number(p.userId) === Number(user.id));
+  const matchEditable = ['open', 'full'].includes(match.status);
+
   const TERMINAL_MATCH_STATUSES = ['completed', 'cancelled', 'void'] as const;
   const isTerminal = TERMINAL_MATCH_STATUSES.some((s) => s === match.status);
 
@@ -167,6 +200,19 @@ export default function MatchLobbyPage() {
         <h2 className="text-sm font-semibold text-[var(--color-text-muted)] mb-2">Participants ({participants.length})</h2>
         {participants.length === 0 ? (
           <p className="text-sm text-[var(--color-text-muted)]">No participants yet. Be the first to join!</p>
+        ) : hasAuthoritativeSides && sideSlots.length > 0 ? (
+          <div className="mb-3">
+            <SideSelection
+              formatName={formatSnapshot?.name ?? null}
+              formatType={formatSnapshot?.formatType ?? null}
+              playersPerSide={formatSnapshot?.playersPerSide ?? null}
+              slots={sideSlots}
+              currentUserId={user?.id != null ? Number(user.id) : null}
+              selected={mySlot?.side ?? null}
+              onSelect={() => {}}
+              editable={false}
+            />
+          </div>
         ) : (
           <div className="space-y-1">
             {participants.map((p: any, i: number) => (
@@ -239,13 +285,23 @@ export default function MatchLobbyPage() {
       {!isTerminal && (
         <div className="flex flex-wrap gap-2">
           {['open', 'full'].includes(match.status) && !isCreator && !isParticipant && !joinRequestPending && (
-            <button
-              onClick={() => joinMutation.mutate()}
-              disabled={joinMutation.isPending}
-              className="px-4 py-2 text-sm font-medium bg-[var(--color-primary)] text-white rounded-[var(--radius-md)] hover:opacity-90 disabled:opacity-50"
-            >
-              {isFull ? 'Join Waiting List' : 'Join Match'}
-            </button>
+            <>
+              {formatSnapshot?.playersPerSide != null && (
+                <button
+                  onClick={() => setShowSidePicker((v) => !v)}
+                  className="px-4 py-2 text-sm font-medium bg-[var(--color-primary)] text-white rounded-[var(--radius-md)] hover:opacity-90"
+                >
+                  {t('match.side_select')}
+                </button>
+              )}
+              <button
+                onClick={() => joinMutation.mutate(undefined)}
+                disabled={joinMutation.isPending}
+                className="px-4 py-2 text-sm font-medium border border-[var(--color-primary)] text-[var(--color-primary)] rounded-[var(--radius-md)] hover:bg-[var(--color-primary)]/10 disabled:opacity-50"
+              >
+                {isFull ? 'Join Waiting List' : t('match.side_join_default')}
+              </button>
+            </>
           )}
           {joinRequestPending && !isParticipant && (
             <button
@@ -254,6 +310,14 @@ export default function MatchLobbyPage() {
               className="px-4 py-2 text-sm font-medium border border-[var(--color-border)] text-[var(--color-text)] rounded-[var(--radius-md)] hover:bg-[var(--color-surface-muted)]"
             >
               Withdraw
+            </button>
+          )}
+          {isParticipant && matchEditable && formatSnapshot?.playersPerSide != null && (
+            <button
+              onClick={() => setChangeSideFor(mySlot?.side ?? null)}
+              className="px-4 py-2 text-sm font-medium border border-[var(--color-primary)] text-[var(--color-primary)] rounded-[var(--radius-md)] hover:bg-[var(--color-primary)]/10"
+            >
+              {t('match.side_change')}
             </button>
           )}
           {isCreator && (
@@ -280,6 +344,64 @@ export default function MatchLobbyPage() {
               </button>
             </>
           )}
+        </div>
+      )}
+
+      {showSidePicker && formatSnapshot?.playersPerSide != null && !isParticipant && (
+        <div className="mt-4">
+          <SideSelection
+            formatName={formatSnapshot.name ?? null}
+            formatType={formatSnapshot.formatType ?? null}
+            playersPerSide={formatSnapshot.playersPerSide ?? null}
+            slots={sideSlots}
+            selected={selectedSide}
+            onSelect={setSelectedSide}
+            editable
+          />
+          <div className="flex gap-2 mt-3">
+            <button
+              onClick={() => joinMutation.mutate(selectedSide ?? undefined)}
+              disabled={joinMutation.isPending}
+              className="px-4 py-2 text-sm font-medium bg-[var(--color-primary)] text-white rounded-[var(--radius-md)] hover:opacity-90 disabled:opacity-50"
+            >
+              {t('match.side_join_default')}
+            </button>
+            <button
+              onClick={() => setShowSidePicker(false)}
+              className="px-4 py-2 text-sm font-medium border border-[var(--color-border)] text-[var(--color-text)] rounded-[var(--radius-md)]"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {changeSideFor !== null && formatSnapshot?.playersPerSide != null && (
+        <div className="mt-4">
+          <SideSelection
+            formatName={formatSnapshot.name ?? null}
+            formatType={formatSnapshot.formatType ?? null}
+            playersPerSide={formatSnapshot.playersPerSide ?? null}
+            slots={sideSlots}
+            selected={changeSideFor}
+            onSelect={setChangeSideFor}
+            editable
+          />
+          <div className="flex gap-2 mt-3">
+            <button
+              onClick={() => changeSideMutation.mutate(changeSideFor)}
+              disabled={changeSideMutation.isPending}
+              className="px-4 py-2 text-sm font-medium bg-[var(--color-primary)] text-white rounded-[var(--radius-md)] hover:opacity-90 disabled:opacity-50"
+            >
+              {t('match.side_change')}
+            </button>
+            <button
+              onClick={() => setChangeSideFor(null)}
+              className="px-4 py-2 text-sm font-medium border border-[var(--color-border)] text-[var(--color-text)] rounded-[var(--radius-md)]"
+            >
+              Cancel
+            </button>
+          </div>
         </div>
       )}
 

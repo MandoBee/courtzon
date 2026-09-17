@@ -1,6 +1,6 @@
 import type { FastifyRequest, FastifyReply } from 'fastify';
 import type mysql from 'mysql2/promise';
-import { MatchesQuerySchema, MatchParamsSchema, ApplicantParamsSchema, ApproveRejectBodySchema, CancelBodySchema, MonitorMatchesQuerySchema, OrgMatchesParamsSchema, OrgMatchParamsSchema } from './match.dto.js';
+import { MatchesQuerySchema, MatchParamsSchema, ApplicantParamsSchema, ApproveRejectBodySchema, CancelBodySchema, MonitorMatchesQuerySchema, OrgMatchesParamsSchema, OrgMatchParamsSchema, JoinBodySchema, ChangeSideBodySchema } from './match.dto.js';
 import { matchService } from '../application/services/match.service.js';
 import { joinRequestService } from '../application/services/join-request.service.js';
 import { getPool } from '../../../database/mysql.js';
@@ -325,6 +325,8 @@ export async function getMatchHandler(request: FastifyRequest, reply: FastifyRep
             (SELECT JSON_ARRAYAGG(JSON_OBJECT(
                'userId', mp.user_id,
                'role', mp.role,
+               'side', mp.side,
+               'teamIndex', mp.team_index,
                'fullName', u.full_name,
                'avatarUrl', u.avatar_url,
                'phone', CASE
@@ -353,6 +355,9 @@ export async function getMatchHandler(request: FastifyRequest, reply: FastifyRep
   }
 
   const row = rows[0] as any;
+  if (row.format_snapshot && typeof row.format_snapshot === 'string') {
+    try { row.format_snapshot = JSON.parse(row.format_snapshot); } catch { row.format_snapshot = null; }
+  }
   decorateResultState(row);
   reply.send({ data: row });
 }
@@ -360,9 +365,24 @@ export async function getMatchHandler(request: FastifyRequest, reply: FastifyRep
 export async function joinMatchHandler(request: FastifyRequest, reply: FastifyReply): Promise<void> {
   const userId = (request as any).userId;
   const { id } = MatchParamsSchema.parse(request.params);
+  const body = JoinBodySchema.parse(request.body ?? {});
   const matchId = await resolveMatchId(id);
-  const result = await joinRequestService.submit(matchId, userId);
+  const result = await joinRequestService.submit(matchId, userId, body?.requestedSide);
   reply.status(201).send({ data: result });
+}
+
+/**
+ * Group 3 — a participant changes their OWN side while the Match is still
+ * editable (open/full). The server validates capacity + format + lifecycle
+ * authoritatively; the frontend never bypasses the backend.
+ */
+export async function changeMySideHandler(request: FastifyRequest, reply: FastifyReply): Promise<void> {
+  const userId = (request as any).userId;
+  const { id } = MatchParamsSchema.parse(request.params);
+  const { side } = ChangeSideBodySchema.parse(request.body);
+  const matchId = await resolveMatchId(id);
+  await joinRequestService.changeSide(matchId, userId, side);
+  reply.send({ data: { success: true, side } });
 }
 
 export async function withdrawJoinHandler(request: FastifyRequest, reply: FastifyReply): Promise<void> {

@@ -34,6 +34,7 @@ export interface MatchUpdatedPayload extends MatchEventPayload {
   matchId: number;
   bookingId?: number;
   status?: string;
+  userId?: number;
   timestamp: string;
 }
 
@@ -59,6 +60,7 @@ export interface JoinRequestSubmittedPayload extends MatchEventPayload {
   matchId: number;
   userId: number;
   creatorId?: number;
+  requestedSide?: 'home' | 'away' | null;
   timestamp: string;
 }
 

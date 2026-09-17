@@ -35,6 +35,20 @@ export const ApplicantParamsSchema = z.object({
   requestId: z.string().transform(Number),
 });
 
+/**
+ * Group 3 — a joining player may optionally request a preferred side. The
+ * server revalidates it at approval time against the Match's frozen format
+ * snapshot and current capacity; the frontend is never trusted.
+ */
+export const JoinBodySchema = z.object({
+  requestedSide: z.enum(['home', 'away']).optional(),
+}).strict().optional();
+
+/** Group 3 — a participant may change their own side while the Match is editable. */
+export const ChangeSideBodySchema = z.object({
+  side: z.enum(['home', 'away']),
+}).strict();
+
 export const ApproveRejectBodySchema = z.object({
   reason: z.string().max(500).optional(),
 });

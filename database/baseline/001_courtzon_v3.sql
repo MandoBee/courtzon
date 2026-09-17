@@ -2231,6 +2231,7 @@ CREATE TABLE `join_requests` (
   `match_id` bigint unsigned NOT NULL,
   `user_id` int unsigned NOT NULL,
   `status` enum('submitted','withdrawn','approved','rejected','auto_rejected') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'submitted',
+  `requested_side` enum('home','away') COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `submitted_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `responded_at` timestamp NULL DEFAULT NULL,
   `responder_id` int unsigned DEFAULT NULL COMMENT 'User who approved/rejected (NULL = system)',
