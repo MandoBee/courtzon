@@ -37,6 +37,8 @@ export function buildLegacyOrgNavItems(can: (perm: string) => boolean, orgId: st
       label: 'Sports & Programs', icon: '🏆', path: p('bookings'),
       children: [
         { label: 'Bookings', icon: '📅', path: p('bookings'), permissionKey: 'org.sidebar.bookings' },
+        { label: 'Matches', icon: '🎯', path: p('matches'), permissionKey: 'org.sidebar.matches' },
+        { label: 'Match Results', icon: '✅', path: p('match-results'), permissionKey: 'org.sidebar.match-results' },
         { label: t('org.sidebar.academies'), icon: '🎓', path: p('academies'), permissionKey: 'org.sidebar.academies' },
         { label: t('org.sidebar.leagues'), icon: '🏅', path: p('leagues'), permissionKey: 'org.sidebar.leagues' },
         { label: t('org.sidebar.tournaments'), icon: '🏆', path: p('tournaments'), permissionKey: 'org.sidebar.tournaments' },

@@ -286,6 +286,9 @@ const MatchLobbyPage = lazy(() => import('./pages/booking/MatchLobbyPage'));
 const MatchResultPage = lazy(() => import('./pages/booking/MatchResultPage'));
 const MatchResultHistoryPage = lazy(() => import('./pages/booking/MatchResultHistoryPage'));
 const AdminMatchResultsPage = lazy(() => import('./pages/admin/match-results/AdminMatchResultsPage'));
+const AdminMatchesPage = lazy(() => import('./pages/admin/Matches/AdminMatchesPage'));
+const OrgMatchesPage = lazy(() => import('./pages/org/Matches/OrgMatchesPage'));
+const OrgMatchResultsPage = lazy(() => import('./pages/org/Matches/OrgMatchResultsPage'));
 const RefereeDashboardPage = lazy(() => import('./pages/referee/RefereeDashboardPage'));
 const RefereeProfilePage = lazy(() => import('./pages/referee/RefereeProfilePage'));
 const RefereeAvailabilityPage = lazy(() => import('./pages/referee/RefereeAvailabilityPage'));
@@ -756,6 +759,7 @@ function AppContent() {
             <Route path="tournament/list/:id" element={<TournamentDetailAdminPage />} />
             <Route path="tournament/matches" element={<TournamentMatchesAdminPage />} />
             <Route path="match-results" element={<AdminMatchResultsPage />} />
+            <Route path="matches" element={<AdminMatchesPage />} />
             <Route path="league/dashboard" element={<LeagueDashboardPage />} />
             <Route path="league/seasons" element={<SeasonListPage />} />
             <Route path="league/list" element={<LeagueListPage />} />
@@ -847,6 +851,8 @@ function AppContent() {
           <Route element={<OrgLayout />}>
             <Route path="dashboard" element={<OrgDashboardPage />} />
             <Route path="bookings" element={<OrgBookingsPage />} />
+            <Route path="matches" element={<OrgMatchesPage />} />
+            <Route path="match-results" element={<OrgMatchResultsPage />} />
             <Route path="marketplace" element={<OrgMarketplacePage />} />
             <Route path="orders" element={<OrgOrdersPage />} />
             <Route path="orders/:id" element={<OrgOrderDetailPage />} />

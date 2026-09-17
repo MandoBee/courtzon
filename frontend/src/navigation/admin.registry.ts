@@ -175,6 +175,7 @@ export const ADMIN_NAV: NavDefinition[] = [
         ],
       },
       { id: 'nav.admin.match-results', label: LIT('Match Results'), icon: '✅', path: '/admin/match-results', permissionKey: 'matches.result.manage' },
+      { id: 'nav.admin.matches', label: LIT('Matches Monitoring'), icon: '🎯', path: '/admin/matches', permissionKey: 'matches.admin.view' },
     ],
   },
   {

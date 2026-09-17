@@ -8,13 +8,14 @@ import {
   DisputeBodySchema,
   MatchFormatParamsSchema,
   MatchParamsSchema,
+  OrgResultParamsSchema,
   RawMatchResultBodySchema,
   RequestSportParamsSchema,
   ResolveDisputeBodySchema,
   ResultListQuerySchema,
   ResultParamsSchema,
 } from './match-result.dto.js';
-import { AppError } from '../../../shared/errors/app-error.js';
+import { AppError, NotFoundError } from '../../../shared/errors/app-error.js';
 
 function toClientError(err: unknown): AppError {
   if (err instanceof AppError) return err;
@@ -127,6 +128,61 @@ export async function listAdminResultsHandler(request: FastifyRequest, reply: Fa
   const query = ResultListQuerySchema.parse(request.query);
   const data = await matchResultService.listForAdmin({ status: query.status, limit: query.limit, offset: query.offset });
   reply.send({ data });
+}
+
+export async function listOrgResultsHandler(request: FastifyRequest, reply: FastifyReply): Promise<void> {
+  const orgId = Number((request.params as any).orgId);
+  const query = ResultListQuerySchema.parse(request.query);
+  const data = await matchResultService.listForOrg(orgId, { status: query.status, limit: query.limit, offset: query.offset });
+  reply.send({ data });
+}
+
+/**
+ * Org-scoped dispute resolution. The route guard already verified the actor's
+ * org role-scope + `matches.result.manage`; this handler further verifies the
+ * result record actually belongs to the organisation before delegating to the
+ * SAME authoritative service used by the admin workbench (no parallel engine).
+ */
+export async function orgResolveDisputeHandler(request: FastifyRequest, reply: FastifyReply): Promise<void> {
+  try {
+    const userId = (request as any).userId;
+    const { orgId, resultId } = OrgResultParamsSchema.parse(request.params);
+    const body = ResolveDisputeBodySchema.parse(request.body);
+
+    const resultOrgId = await matchResultService.getResultOrgId(resultId);
+    if (resultOrgId == null) throw new NotFoundError('result not found');
+    if (resultOrgId !== Number(orgId)) throw new AppError('Result does not belong to this organisation', 404, 'RESULT_NOT_FOUND', {});
+
+    const record = await matchResultService.resolveDispute(resultId, userId, {
+      approve: body.approve,
+      displayResult: body.displayResult ?? undefined,
+      note: body.note,
+    }, (request as any).ip);
+    reply.send({ data: record });
+  } catch (err) {
+    throw toClientError(err);
+  }
+}
+
+/**
+ * Org-scoped result correction — same authoritative `correctResult` service
+ * used by the admin workbench, guarded by tenant ownership.
+ */
+export async function orgCorrectResultHandler(request: FastifyRequest, reply: FastifyReply): Promise<void> {
+  try {
+    const userId = (request as any).userId;
+    const { orgId, resultId } = OrgResultParamsSchema.parse(request.params);
+    const body = RawMatchResultBodySchema.parse(request.body);
+
+    const resultOrgId = await matchResultService.getResultOrgId(resultId);
+    if (resultOrgId == null) throw new NotFoundError('result not found');
+    if (resultOrgId !== Number(orgId)) throw new AppError('Result does not belong to this organisation', 404, 'RESULT_NOT_FOUND', {});
+
+    const record = await matchResultService.correctResult(resultId, userId, body, (request as any).ip);
+    reply.send({ data: record });
+  } catch (err) {
+    throw toClientError(err);
+  }
 }
 
 export async function listSportRulesHandler(request: FastifyRequest, reply: FastifyReply): Promise<void> {

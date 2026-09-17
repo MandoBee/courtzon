@@ -72,6 +72,7 @@ const ADMIN_ONLY_PREFIXES = [
   'mobile.',
   'matches.result.manage',
   'matches.result.rules.manage',
+  'matches.admin.view',
 ];
 
 function isAdminOnlyKey(key) {
@@ -281,7 +282,7 @@ const ACCOUNTANT_PATTERNS = [
 const BRANCH_MGR_PATTERNS = [
   /^branches\./,
   /^resources\./,
-  /^org\.(sidebar\.(branches|resources)|branches\.manage|resources\.manage)/,
+  /^org\.(sidebar\.(branches|resources|matches|match-results)|branches\.manage|resources\.manage|matches\.view|matches\.results\.view)/,
   /^bookings\./,
   /^profile\./,
   /^organisations\.storefront\./,
@@ -291,7 +292,7 @@ const BRANCH_MGR_PATTERNS = [
 
 const RESOURCE_MGR_PATTERNS = [
   /^resources\./,
-  /^org\.(sidebar\.resources|resources\.manage)/,
+  /^org\.(sidebar\.(resources|matches|match-results)|resources\.manage|matches\.view|matches\.results\.view)/,
   /^bookings\./,
   /^profile\./,
   /^organisations\.storefront\./,
@@ -390,6 +391,7 @@ const MASTER_ADMIN_PATTERNS = [
   /^membership\./,
   /^support\./,
   /^notifications\.view/,
+  /^matches\./,
 ];
 
 const COURT_MANAGER_PATTERNS = [
@@ -664,6 +666,9 @@ if (templateSlug === 'master-admin') {
     // Match-Result admin lets master-admin resolve disputes / mark no-result /
     // correct results. Players/org roles never receive these (ADMIN_ONLY block).
     if (permissionKey === 'matches.result.manage' || permissionKey === 'matches.result.rules.manage') return true;
+    // Platform-wide match monitoring (list all matches) — granted only to
+    // platform admins; blocked for player/org roles via ADMIN_ONLY_PREFIXES.
+    if (permissionKey === 'matches.admin.view') return true;
     if (permissionKey.startsWith('users.')) return false;
     if (permissionKey.startsWith('roles.')) return false;
     if (permissionKey.startsWith('permissions.')) return false;

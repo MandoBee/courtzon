@@ -41,6 +41,8 @@ export const ORG_NAV: NavDefinition[] = [
     path: '/org/{orgId}/bookings',
     children: [
       { id: 'nav.org.bookings', label: LIT('Bookings'), icon: '📅', path: '/org/{orgId}/bookings', permissionKey: 'org.sidebar.bookings' },
+      { id: 'nav.org.matches', label: LIT('Matches'), icon: '🎯', path: '/org/{orgId}/matches', permissionKey: 'org.sidebar.matches' },
+      { id: 'nav.org.match-results', label: LIT('Match Results'), icon: '✅', path: '/org/{orgId}/match-results', permissionKey: 'org.sidebar.match-results' },
       { id: 'nav.org.academies', label: T('org.sidebar.academies'), icon: '🎓', path: '/org/{orgId}/academies', permissionKey: 'org.sidebar.academies' },
       { id: 'nav.org.leagues', label: T('org.sidebar.leagues'), icon: '🏅', path: '/org/{orgId}/leagues', permissionKey: 'org.sidebar.leagues' },
       { id: 'nav.org.tournaments', label: T('org.sidebar.tournaments'), icon: '🏆', path: '/org/{orgId}/tournaments', permissionKey: 'org.sidebar.tournaments' },

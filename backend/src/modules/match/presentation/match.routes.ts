@@ -8,6 +8,8 @@ export async function matchRoutes(app: FastifyInstance): Promise<void> {
   app.get('/matches', { preHandler: [requirePermission(['matches.view'])] }, ctrl.getMatchesHandler);
   app.get('/matches/my', { preHandler: [requirePermission(['matches.view'])] }, ctrl.getMyMatchesHandler);
   app.get('/matches/:id', { preHandler: [requirePermission(['matches.view'])] }, ctrl.getMatchHandler);
+  // Platform-wide monitoring workbench (all statuses) — Admin screens only.
+  app.get('/admin/matches', { preHandler: [requirePermission(['matches.admin.view'])] }, ctrl.getAdminMatchesHandler);
   app.post('/matches/:id/join', { preHandler: [requirePermission(['matches.apply'])] }, ctrl.joinMatchHandler);
   app.post('/matches/:id/withdraw', { preHandler: [requirePermission(['matches.cancel'])] }, ctrl.withdrawJoinHandler);
   app.get('/matches/:id/applicants', { preHandler: [requirePermission(['matches.view'])] }, ctrl.getApplicantsHandler);

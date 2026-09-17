@@ -24,6 +24,11 @@ vi.mock('../../../database/mysql.js', () => ({
       if (sql.includes('SELECT id FROM match_participants')) return [[results.rows], []];
       return [results.rows, []];
     },
+    query: async (sql: string, params: any[] = []) => {
+      executed.push(sql);
+      if (sql.includes('SELECT COUNT')) return [[{ c: results.rows.length }], []];
+      return [results.rows, []];
+    },
     getConnection: async () => ({
       beginTransaction: vi.fn(),
       commit: vi.fn(),
@@ -106,5 +111,33 @@ describe('C8 — concurrency-safe approval UPDATE', () => {
     results.affectedRows = 0;
     const ok = await matchResultRepository.approvePending(1, { submission_status: 'approved' });
     expect(ok).toBe(false);
+  });
+});
+
+describe('Org portal result moderation — tenant isolation', () => {
+  it('listForOrg always scopes a result to bookings.organisation_id', async () => {
+    await matchResultRepository.listForOrg(28, { status: 'disputed', limit: 20, offset: 0 });
+    // executed[0] = COUNT, executed[1] = data SELECT — both share the JOIN.
+    const sql = executed[1];
+    expect(sql).toContain('JOIN bookings b ON b.id = m.booking_id');
+    expect(sql).toContain('b.organisation_id = ?');
+    expect(sql).toContain("r.submission_status = ?");
+    expect(sql).toContain('ORDER BY r.updated_at DESC');
+  });
+
+  it('listForOrg without a status filter only pins the org', async () => {
+    await matchResultRepository.listForOrg(28, {});
+    const sql = executed[0];
+    expect(sql).toContain('b.organisation_id = ?');
+    expect(sql).not.toContain('submission_status');
+  });
+
+  it('getResultOrgId resolves the tenant id of a result record', async () => {
+    results.rows = [{ organisation_id: 28 }];
+    const orgId = await matchResultRepository.getResultOrgId(99);
+    expect(orgId).toBe(28);
+    const sql = executed[0];
+    expect(sql).toContain('JOIN bookings b ON b.id = m.booking_id');
+    expect(sql).toContain('WHERE r.id = ?');
   });
 });

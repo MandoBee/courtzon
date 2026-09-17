@@ -89,6 +89,7 @@ export const ADMIN_ROUTE_PERMISSIONS: Record<string, string> = {
   'mobile/dashboard': 'mobile.dashboard.view',
   'bookings': 'admin.bookings.view',
   'match-results': 'matches.result.manage',
+  'matches': 'matches.admin.view',
 };
 
 /** Explicit deny-list for restricted staff roles (e.g. accountant). */

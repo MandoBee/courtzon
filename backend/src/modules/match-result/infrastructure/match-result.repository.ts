@@ -348,7 +348,7 @@ export class MatchResultRepository {
           OR (r.match_id IN (SELECT id FROM matches m JOIN match_participants mp ON mp.match_id = m.id WHERE mp.user_id = ?))`,
       [userId, userId],
     );
-    const [rows] = await pool.execute<RowData>(
+    const [rows] = await pool.query<RowData>(
       `SELECT r.* FROM match_result_records r
        WHERE r.match_id IN (SELECT match_id FROM match_result_participants WHERE user_id = ?)
           OR (r.match_id IN (SELECT id FROM matches m JOIN match_participants mp ON mp.match_id = m.id WHERE mp.user_id = ?))
@@ -373,11 +373,60 @@ export class MatchResultRepository {
     }
     const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
     const [count] = await pool.execute<RowData>(`SELECT COUNT(*) AS c FROM match_result_records r ${whereSql}`, params);
-    const [rows] = await pool.execute<RowData>(
+    const [rows] = await pool.query<RowData>(
       `SELECT r.* FROM match_result_records r ${whereSql} ORDER BY r.updated_at DESC LIMIT ? OFFSET ?`,
       [...params, filters.limit ?? 20, filters.offset ?? 0],
     );
     return { records: rows.map(ROW_MAPPER), total: Number((count[0] as any).c) };
+  }
+
+  /**
+   * Organisation-scoped result moderation — only results whose match's booking
+   * belongs to the organisation. Used by the org portal Match Results screen.
+   * Tenant isolation: the caller is already org-approved by the route guard and
+   * this filter narrows every row to bookings.organisation_id = :orgId.
+   */
+  async listForOrg(orgId: number, filters: { status?: string; limit?: number; offset?: number }): Promise<{ records: MatchResultRecord[]; total: number }> {
+    const pool = getPool();
+    const where: string[] = ['b.organisation_id = ?'];
+    const params: any[] = [orgId];
+    if (filters.status) {
+      where.push('r.submission_status = ?');
+      params.push(filters.status);
+    }
+    const [count] = await pool.execute<RowData>(
+      `SELECT COUNT(*) AS c
+       FROM match_result_records r
+       JOIN matches m ON m.id = r.match_id
+       JOIN bookings b ON b.id = m.booking_id
+       WHERE ${where.join(' AND ')}`,
+      params,
+    );
+    const [rows] = await pool.query<RowData>(
+      `SELECT r.*
+       FROM match_result_records r
+       JOIN matches m ON m.id = r.match_id
+       JOIN bookings b ON b.id = m.booking_id
+       WHERE ${where.join(' AND ')}
+       ORDER BY r.updated_at DESC LIMIT ? OFFSET ?`,
+      [...params, filters.limit ?? 50, filters.offset ?? 0],
+    );
+    return { records: rows.map(ROW_MAPPER), total: Number((count[0] as any).c) };
+  }
+
+  /** Resolve the owning organisation of a result record (null when it has no booking link). */
+  async getResultOrgId(resultId: number): Promise<number | null> {
+    const pool = getPool();
+    const [rows] = await pool.execute<RowData>(
+      `SELECT b.organisation_id
+       FROM match_result_records r
+       JOIN matches m ON m.id = r.match_id
+       JOIN bookings b ON b.id = m.booking_id
+       WHERE r.id = ?`,
+      [resultId],
+    );
+    if (!rows.length) return null;
+    return Number((rows[0] as any).organisation_id);
   }
 
   async listFormats(sportId?: number): Promise<SportFormat[]> {

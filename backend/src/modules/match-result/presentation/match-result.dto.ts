@@ -61,6 +61,12 @@ export const ResultListQuerySchema = z.object({
   offset: z.coerce.number().int().min(0).default(0),
 });
 
+/** Org portal score moderation: orgId in the path scopes every row to the tenant. */
+export const OrgResultParamsSchema = z.object({
+  orgId: z.coerce.number().int().positive(),
+  resultId: z.coerce.number().int().positive(),
+});
+
 /** Admin: create a new versioned rule set against an existing sport format. */
 export const CreateRuleSetBodySchema = z.object({
   name: z.string().max(120).optional().nullable(),

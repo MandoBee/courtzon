@@ -7,6 +7,25 @@ export const MatchesQuerySchema = z.object({
   sportId: z.string().transform(Number).optional(),
 });
 
+/**
+ * Monitoring lists (admin workbench + org portal) — every match status is
+ * included by default; the caller may narrow by a single status.
+ */
+export const MonitorMatchesQuerySchema = z.object({
+  status: z.enum(['open', 'full', 'closed', 'in_progress', 'completed', 'cancelled', 'void']).optional(),
+  limit: z.string().transform((v) => Math.max(1, Math.min(100, Number(v) || 50))).optional(),
+  offset: z.string().transform((v) => Math.max(0, Number(v) || 0)).optional(),
+});
+
+export const OrgMatchesParamsSchema = z.object({
+  orgId: z.string().transform(Number),
+});
+
+export const OrgMatchParamsSchema = z.object({
+  orgId: z.string().transform(Number),
+  matchId: z.string().transform(Number),
+});
+
 export const MatchParamsSchema = z.object({
   id: z.string().transform(Number),
 });

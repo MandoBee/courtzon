@@ -126,6 +126,9 @@ export default function MatchLobbyPage() {
   })();
   const isCreator = user?.id && match.creator_id && Number(user.id) === Number(match.creator_id);
 
+  const TERMINAL_MATCH_STATUSES = ['completed', 'cancelled', 'void'] as const;
+  const isTerminal = TERMINAL_MATCH_STATUSES.some((s) => s === match.status);
+
   const getStatusBadge = (status: string) => {
     const colors: Record<string, string> = {
       open: 'bg-[var(--color-success-bg)] text-[var(--color-success-text)]',
@@ -134,6 +137,7 @@ export default function MatchLobbyPage() {
       in_progress: 'bg-[var(--color-primary-bg)] text-[var(--color-primary-text)]',
       completed: 'bg-[var(--color-surface-muted)] text-[var(--color-text-muted)]',
       cancelled: 'bg-[var(--color-error-bg)] text-[var(--color-error-text)]',
+      void: 'bg-[var(--color-error-bg)] text-[var(--color-error-text)]',
     };
     return `px-2 py-0.5 text-xs rounded-full ${colors[status] || ''}`;
   };
@@ -232,50 +236,52 @@ export default function MatchLobbyPage() {
         )}
       </div>
 
-      <div className="flex flex-wrap gap-2">
-        {['open', 'full'].includes(match.status) && !isCreator && !isParticipant && !joinRequestPending && (
-          <button
-            onClick={() => joinMutation.mutate()}
-            disabled={joinMutation.isPending}
-            className="px-4 py-2 text-sm font-medium bg-[var(--color-primary)] text-white rounded-[var(--radius-md)] hover:opacity-90 disabled:opacity-50"
-          >
-            {isFull ? 'Join Waiting List' : 'Join Match'}
-          </button>
-        )}
-        {joinRequestPending && !isParticipant && (
-          <button
-            onClick={() => withdrawMutation.mutate()}
-            disabled={withdrawMutation.isPending}
-            className="px-4 py-2 text-sm font-medium border border-[var(--color-border)] text-[var(--color-text)] rounded-[var(--radius-md)] hover:bg-[var(--color-surface-muted)]"
-          >
-            Withdraw
-          </button>
-        )}
-        {isCreator && (
-          <>
+      {!isTerminal && (
+        <div className="flex flex-wrap gap-2">
+          {['open', 'full'].includes(match.status) && !isCreator && !isParticipant && !joinRequestPending && (
             <button
-              onClick={() => setShowApplicants(true)}
-              className="px-4 py-2 text-sm font-medium bg-[var(--color-primary)] text-white rounded-[var(--radius-md)] hover:opacity-90"
+              onClick={() => joinMutation.mutate()}
+              disabled={joinMutation.isPending}
+              className="px-4 py-2 text-sm font-medium bg-[var(--color-primary)] text-white rounded-[var(--radius-md)] hover:opacity-90 disabled:opacity-50"
             >
-              Manage Applicants
+              {isFull ? 'Join Waiting List' : 'Join Match'}
             </button>
-            {match.status === 'open' && (
+          )}
+          {joinRequestPending && !isParticipant && (
+            <button
+              onClick={() => withdrawMutation.mutate()}
+              disabled={withdrawMutation.isPending}
+              className="px-4 py-2 text-sm font-medium border border-[var(--color-border)] text-[var(--color-text)] rounded-[var(--radius-md)] hover:bg-[var(--color-surface-muted)]"
+            >
+              Withdraw
+            </button>
+          )}
+          {isCreator && (
+            <>
               <button
-                onClick={() => closeMutation.mutate()}
-                className="px-4 py-2 text-sm font-medium border border-[var(--color-warning)] text-[var(--color-warning)] rounded-[var(--radius-md)] hover:bg-[var(--color-warning)]/10"
+                onClick={() => setShowApplicants(true)}
+                className="px-4 py-2 text-sm font-medium bg-[var(--color-primary)] text-white rounded-[var(--radius-md)] hover:opacity-90"
               >
-                Close Applications
+                Manage Applicants
               </button>
-            )}
-            <button
-              onClick={() => { if (confirm('Cancel this match?')) cancelMutation.mutate(); }}
-              className="px-4 py-2 text-sm font-medium bg-[var(--color-error)] text-white rounded-[var(--radius-md)] hover:opacity-90"
-            >
-              Cancel Match
-            </button>
-          </>
-        )}
-      </div>
+              {match.status === 'open' && (
+                <button
+                  onClick={() => closeMutation.mutate()}
+                  className="px-4 py-2 text-sm font-medium border border-[var(--color-warning)] text-[var(--color-warning)] rounded-[var(--radius-md)] hover:bg-[var(--color-warning)]/10"
+                >
+                  Close Applications
+                </button>
+              )}
+              <button
+                onClick={() => { if (confirm('Cancel this match?')) cancelMutation.mutate(); }}
+                className="px-4 py-2 text-sm font-medium bg-[var(--color-error)] text-white rounded-[var(--radius-md)] hover:opacity-90"
+              >
+                Cancel Match
+              </button>
+            </>
+          )}
+        </div>
+      )}
 
       <ManageApplicantsPopup
         open={showApplicants}

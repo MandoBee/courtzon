@@ -1,6 +1,6 @@
 import type { FastifyRequest, FastifyReply } from 'fastify';
 import type mysql from 'mysql2/promise';
-import { MatchesQuerySchema, MatchParamsSchema, ApplicantParamsSchema, ApproveRejectBodySchema, CancelBodySchema } from './match.dto.js';
+import { MatchesQuerySchema, MatchParamsSchema, ApplicantParamsSchema, ApproveRejectBodySchema, CancelBodySchema, MonitorMatchesQuerySchema, OrgMatchesParamsSchema, OrgMatchParamsSchema } from './match.dto.js';
 import { matchService } from '../application/services/match.service.js';
 import { joinRequestService } from '../application/services/join-request.service.js';
 import { getPool } from '../../../database/mysql.js';
@@ -157,6 +157,151 @@ export async function getMyMatchesHandler(request: FastifyRequest, reply: Fastif
   for (const row of rows as any[]) decorateResultState(row);
 
   reply.send({ data: rows });
+}
+
+/**
+ * Platform-wide match monitoring — every status, joined to org/branch/resource.
+ * Guards on the platform `matches.admin.view` permission; used by the Admin workbench.
+ */
+export async function getAdminMatchesHandler(request: FastifyRequest, reply: FastifyReply): Promise<void> {
+  const query = MonitorMatchesQuerySchema.parse(request.query);
+  const pool = getPool();
+
+  const where = ['1=1'];
+  const params: any[] = [];
+  if (query.status) {
+    where.push('m.status = ?');
+    params.push(query.status);
+  }
+  const whereSql = where.join(' AND ');
+
+  const [rows] = await pool.query<RowData>(
+    `SELECT m.id, m.type, m.status, m.sport_id, s.name as sport_name,
+            bk.id as booking_id, bk.public_id, bk.booking_status as booking_status,
+            bk.booking_date, bk.start_time, bk.end_time, bk.start_at_utc, bk.end_at_utc,
+            bk.organisation_id,
+            r.name as resource_name, br.name as branch_name, org.name as organisation_name,
+            pmd.creator_id, cu.full_name as creator_name,
+            ${playedAtExpr('bk')} as played_at,
+            ${resultEntryOpenExpr('bk')} as result_entry_open,
+            ${RESULT_STATUS_EXPR} as result_status,
+            (SELECT COUNT(*) FROM match_participants WHERE match_id = m.id) as participant_count,
+            (SELECT COUNT(*) FROM join_requests WHERE match_id = m.id AND status = 'submitted') as pending_requests
+     FROM matches m
+     JOIN bookings bk ON bk.id = m.booking_id
+     JOIN resources r ON r.id = bk.resource_id
+     JOIN branches br ON br.id = r.branch_id
+     JOIN organisations org ON org.id = br.organisation_id
+     JOIN sports s ON s.id = m.sport_id
+     LEFT JOIN public_match_details pmd ON pmd.match_id = m.id
+     LEFT JOIN users cu ON cu.id = pmd.creator_id
+     WHERE ${whereSql}
+     ORDER BY COALESCE(bk.start_at_utc, TIMESTAMP(CONCAT(bk.booking_date, ' ', bk.start_time))) DESC
+     LIMIT ? OFFSET ?`,
+    [...params, query.limit ?? 50, query.offset ?? 0]
+  );
+
+  for (const row of rows as any[]) decorateResultState(row);
+
+  reply.send({ data: rows });
+}
+
+/**
+ * Organisation-scoped match monitoring — every match linked to a booking of the
+ * given organisation, regardless of status. Tenant isolation is enforced twice:
+ * the `requireOrgScopedPermission('org.matches.view')` route guard approves the
+ * actor for the org, and this SQL filters on bookings.organisation_id so data can
+ * never leak across tenants.
+ */
+export async function getOrgMatchesHandler(request: FastifyRequest, reply: FastifyReply): Promise<void> {
+  const { orgId } = OrgMatchesParamsSchema.parse(request.params);
+  const query = MonitorMatchesQuerySchema.parse(request.query);
+  const pool = getPool();
+
+  const where = ['bk.organisation_id = ?'];
+  const params: any[] = [orgId];
+  if (query.status) {
+    where.push('m.status = ?');
+    params.push(query.status);
+  }
+  const whereSql = where.join(' AND ');
+
+  const [rows] = await pool.query<RowData>(
+    `SELECT m.id, m.type, m.status, m.sport_id, s.name as sport_name,
+            bk.id as booking_id, bk.public_id, bk.booking_status as booking_status,
+            bk.booking_date, bk.start_time, bk.end_time, bk.start_at_utc, bk.end_at_utc,
+            bk.organisation_id, bk.branch_id,
+            r.name as resource_name, br.name as branch_name, org.name as organisation_name,
+            pmd.creator_id, cu.full_name as creator_name,
+            ${playedAtExpr('bk')} as played_at,
+            ${resultEntryOpenExpr('bk')} as result_entry_open,
+            ${RESULT_STATUS_EXPR} as result_status,
+            (SELECT COUNT(*) FROM match_participants WHERE match_id = m.id) as participant_count,
+            (SELECT COUNT(*) FROM join_requests WHERE match_id = m.id AND status = 'submitted') as pending_requests
+     FROM matches m
+     JOIN bookings bk ON bk.id = m.booking_id
+     JOIN resources r ON r.id = bk.resource_id
+     JOIN branches br ON br.id = r.branch_id
+     JOIN organisations org ON org.id = br.organisation_id
+     JOIN sports s ON s.id = m.sport_id
+     LEFT JOIN public_match_details pmd ON pmd.match_id = m.id
+     LEFT JOIN users cu ON cu.id = pmd.creator_id
+     WHERE ${whereSql}
+     ORDER BY COALESCE(bk.start_at_utc, TIMESTAMP(CONCAT(bk.booking_date, ' ', bk.start_time))) DESC
+     LIMIT ? OFFSET ?`,
+    [...params, query.limit ?? 50, query.offset ?? 0]
+  );
+
+  for (const row of rows as any[]) decorateResultState(row);
+
+  reply.send({ data: rows });
+}
+
+/** Single org-scoped match — resolves the match id then verifies tenant ownership. */
+export async function getOrgMatchHandler(request: FastifyRequest, reply: FastifyReply): Promise<void> {
+  const { orgId, matchId } = OrgMatchParamsSchema.parse(request.params);
+  const pool = getPool();
+
+  const [rows] = await pool.execute<RowData>(
+    `SELECT m.*, m.status as match_status, s.name as sport_name,
+            b.id as booking_id, b.public_id, b.booking_status as booking_status,
+            b.booking_date, b.start_time, b.end_time, b.end_at_utc,
+            b.organisation_id, b.branch_id,
+            r.name as resource_name, br.name as branch_name, org.name as organisation_name,
+            pmd.*, pl.name as target_level_name,
+            ${playedAtExpr('b')} as played_at,
+            ${RESULT_STATUS_EXPR} as result_status,
+            (SELECT COUNT(*) FROM match_participants WHERE match_id = m.id) as participant_count,
+            (SELECT JSON_ARRAYAGG(JSON_OBJECT(
+               'userId', mp.user_id,
+               'role', mp.role,
+               'fullName', u.full_name,
+               'avatarUrl', u.avatar_url
+             ))
+             FROM match_participants mp
+             JOIN users u ON u.id = mp.user_id
+             WHERE mp.match_id = m.id) as participants_json,
+            ${resultEntryOpenExpr('b')} as result_entry_open
+     FROM matches m
+     JOIN bookings b ON b.id = m.booking_id
+     JOIN resources r ON r.id = b.resource_id
+     JOIN branches br ON br.id = r.branch_id
+     JOIN organisations org ON org.id = br.organisation_id
+     JOIN sports s ON s.id = m.sport_id
+     LEFT JOIN public_match_details pmd ON pmd.match_id = m.id
+     LEFT JOIN player_levels pl ON pl.id = pmd.target_level_id
+     WHERE m.id = ? AND b.organisation_id = ?`,
+    [matchId, orgId]
+  );
+
+  if (!rows.length) {
+    reply.status(404).send({ error: 'MATCH_NOT_FOUND', message: 'Match not found in this organisation' });
+    return;
+  }
+
+  const row = rows[0] as any;
+  decorateResultState(row);
+  reply.send({ data: row });
 }
 
 export async function getMatchHandler(request: FastifyRequest, reply: FastifyReply): Promise<void> {

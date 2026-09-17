@@ -460,12 +460,16 @@ export function useRealtimeCacheUpdates(): void {
   useSocketEvent('match.removed', () => {
     qc.invalidateQueries({ queryKey: ['public-matches'] });
     qc.invalidateQueries({ queryKey: ['my-matches'] });
+    qc.invalidateQueries({ queryKey: ['admin-matches'] });
+    qc.invalidateQueries({ queryKey: ['org-matches'] });
   });
 
   useSocketEvent('match.updated', () => {
     qc.invalidateQueries({ queryKey: ['public-matches'] });
     qc.invalidateQueries({ queryKey: ['my-matches'] });
     qc.invalidateQueries({ queryKey: ['home-upcoming-matches'] });
+    qc.invalidateQueries({ queryKey: ['admin-matches'] });
+    qc.invalidateQueries({ queryKey: ['org-matches'] });
   });
 
   // Match result lifecycle events (submitted/approved/disputed/resolved/…)
@@ -484,6 +488,9 @@ export function useRealtimeCacheUpdates(): void {
       qc.invalidateQueries({ queryKey: ['matches', 'upcoming'] });
       qc.invalidateQueries({ queryKey: ['match-result'] });
       qc.invalidateQueries({ queryKey: ['admin-match-results'] });
+      qc.invalidateQueries({ queryKey: ['admin-matches'] });
+      qc.invalidateQueries({ queryKey: ['org-matches'] });
+      qc.invalidateQueries({ queryKey: ['org-match-results'] });
       if (p?.matchId) {
         qc.invalidateQueries({ queryKey: ['match', p.matchId] });
         qc.invalidateQueries({ queryKey: ['match-result', p.matchId] });

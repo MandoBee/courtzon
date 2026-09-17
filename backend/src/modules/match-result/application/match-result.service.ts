@@ -709,6 +709,14 @@ export class MatchResultService {
     return matchResultRepository.listForAdmin(filters);
   }
 
+  async listForOrg(orgId: number, filters: { status?: string; limit?: number; offset?: number }) {
+    return matchResultRepository.listForOrg(orgId, filters);
+  }
+
+  async getResultOrgId(resultId: number): Promise<number | null> {
+    return matchResultRepository.getResultOrgId(resultId);
+  }
+
   /** Split participants into home/away sides with one member per side fallback. */
   private buildParticipantSlots(userIds: number[], _preferFirst: number): ParticipantSlot[] {
     const unique = Array.from(new Set(userIds.filter((u) => u != null)));
