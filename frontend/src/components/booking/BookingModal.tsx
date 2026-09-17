@@ -347,7 +347,7 @@ export default function BookingModal({ open, onClose }: BookingModalProps) {
       } else if (d.id) {
         onClose();
         showToast('Booking confirmed!');
-        navigate(`/bookings/${d.id}/confirmation`, { state: { qrToken: d.qrToken } });
+        navigate(`/bookings/${d.id}/confirmation`, { replace: true, state: { qrToken: d.qrToken } });
       }
     },
     onError: (err: any) => {
@@ -1106,7 +1106,7 @@ export default function BookingModal({ open, onClose }: BookingModalProps) {
             setPollingPaid(false);
             onClose();
             showToast('Booking confirmed!');
-            navigate(`/bookings/${data.bookingId}/confirmation`, { state: { qrToken: '' } });
+            navigate(`/bookings/${data.bookingId}/confirmation`, { replace: true, state: { qrToken: '' } });
           }}
           onTimeout={() => {
             setPollingPaid(false);
@@ -1161,7 +1161,7 @@ export default function BookingModal({ open, onClose }: BookingModalProps) {
                   queryClient.invalidateQueries({ queryKey: ['my-bookings'] });
                   const finalBookingId = result.data?.bookingId || bkId;
                   if (finalBookingId) {
-                    navigate(`/bookings/${finalBookingId}/confirmation`, { state: { qrToken: '' } });
+                    navigate(`/bookings/${finalBookingId}/confirmation`, { replace: true, state: { qrToken: '' } });
                   }
                   return;
                 }
@@ -1173,7 +1173,7 @@ export default function BookingModal({ open, onClose }: BookingModalProps) {
                 onClose();
                 showToast('Payment submitted — waiting for confirmation', 'info');
                 queryClient.invalidateQueries({ queryKey: ['my-bookings'] });
-                navigate(`/bookings/${bkId}/confirmation`, { state: { qrToken: '' } });
+                navigate(`/bookings/${bkId}/confirmation`, { replace: true, state: { qrToken: '' } });
                 return;
               }
 

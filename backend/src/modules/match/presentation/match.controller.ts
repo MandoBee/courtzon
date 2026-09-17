@@ -69,6 +69,7 @@ export async function getMatchesHandler(request: FastifyRequest, reply: FastifyR
 
   const [rows] = await pool.execute<RowData>(
     `SELECT m.id, m.type, m.status, m.sport_id, s.name as sport_name,
+            bk.id as booking_id, bk.public_id, bk.booking_status as booking_status,
             bk.booking_date, bk.start_time, bk.end_time, bk.start_at_utc,
             r.name as resource_name, br.name as branch_name, org.name as organisation_name,
             br.latitude, br.longitude,
@@ -120,6 +121,7 @@ export async function getMyMatchesHandler(request: FastifyRequest, reply: Fastif
 
   const [rows] = await pool.execute<RowData>(
     `SELECT m.id, m.type, m.status, m.sport_id, s.name as sport_name,
+            bk.id as booking_id, bk.public_id, bk.booking_status as booking_status,
             bk.booking_date, bk.start_time, bk.end_time, bk.start_at_utc,
             r.name as resource_name, br.name as branch_name, org.name as organisation_name,
             br.latitude, br.longitude,
@@ -165,6 +167,7 @@ export async function getMatchHandler(request: FastifyRequest, reply: FastifyRep
 
   const [rows] = await pool.execute<RowData>(
     `SELECT m.*, m.status as match_status, s.name as sport_name,
+            b.id as booking_id, b.public_id, b.booking_status as booking_status,
             b.booking_date, b.start_time, b.end_time, b.end_at_utc,
             r.name as resource_name, br.name as branch_name, org.name as organisation_name,
             pmd.*, pl.name as target_level_name,

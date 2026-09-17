@@ -44,6 +44,9 @@ interface MatchRow {
   type: string;
   status: string;
   sport_name: string;
+  booking_id?: number | null;
+  public_id?: string | null;
+  booking_status?: string | null;
   resource_name: string;
   branch_name: string;
   organisation_name: string;
@@ -79,7 +82,7 @@ function ResultAction({ match }: { match: MatchRow }) {
     return (
       <Link to={`/matches/${match.id}/result`}
         className="px-3 py-1.5 text-xs font-medium bg-[var(--color-primary)]/15 text-[var(--color-primary)] rounded-[var(--radius-md)] hover:bg-[var(--color-primary)]/25 whitespace-nowrap">
-        {t('matchResult.enterResult')}
+        {t('matchResult.enterScore')}
       </Link>
     );
   }
@@ -96,9 +99,29 @@ function ResultAction({ match }: { match: MatchRow }) {
   );
 }
 
+/** Part 1 — expose the SAME booking QR capability on match cards. The QR
+ *  payload is the underlying booking's public_id (reused source of truth); the
+ *  venue check-in flow is unchanged (POST /bookings/:id/check-in). */
+function MatchQrAction({ match }: { match: MatchRow }) {
+  const { t } = useTranslation();
+  const bookingReady = !!match.booking_id && !!match.public_id
+    && (match.booking_status === 'confirmed' || match.booking_status === 'checked_in');
+  if (!bookingReady) return null;
+  return (
+    <Link
+      to={`/bookings/${match.booking_id}/confirmation`}
+      state={{ qrToken: match.public_id }}
+      className="px-3 py-1.5 text-xs font-medium border border-[var(--color-info)] text-[var(--color-info)] rounded-[var(--radius-md)] hover:bg-[var(--color-info)]/10 whitespace-nowrap"
+    >
+      {t('booking.qr_action')}
+    </Link>
+  );
+}
+
 export default function MatchListPage() {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
+  const { t } = useTranslation();
   const [tab, setTab] = useState<Tab>('discover');
   const [filterDate, setFilterDate] = useState('');
   const [sortMode, setSortMode] = useState<SortMode>('date');
@@ -196,7 +219,10 @@ export default function MatchListPage() {
       switch (tab) {
         case 'discover': return !m.join_request_status && !m.is_participant && m.status === 'open' && !isExpired(m) && !dismissed.includes(m.id);
         case 'applied': return m.join_request_status === 'submitted' && !isExpired(m);
-        case 'joined': return !!m.is_participant;
+        // Part 3 — Joined contains only ACTIVE matches. Ended matches (completed
+        // / cancelled / void / deadline passed) move to History so the player
+        // never sees finished matches under the active "Joined" tab.
+        case 'joined': return !!m.is_participant && !isExpired(m);
         case 'dismissed': return dismissed.includes(m.id) && m.status === 'open' && !isExpired(m) && !m.join_request_status && !m.is_participant;
         case 'history': return isExpired(m) || m.join_request_status === 'rejected' || m.join_request_status === 'withdrawn' || m.join_request_status === 'auto_rejected';
         default: return false;
@@ -218,7 +244,7 @@ export default function MatchListPage() {
   const counts = useMemo(() => ({
     discover: matchesWithDistance.filter((m) => !m.join_request_status && !m.is_participant && m.status === 'open' && !isExpired(m) && !dismissedIds.includes(m.id)).length,
     applied: matchesWithDistance.filter((m) => m.join_request_status === 'submitted' && !isExpired(m)).length,
-    joined: matchesWithDistance.filter((m) => !!m.is_participant).length,
+    joined: matchesWithDistance.filter((m) => !!m.is_participant && !isExpired(m)).length,
     dismissed: matchesWithDistance.filter((m) => dismissedIds.includes(m.id) && m.status === 'open' && !isExpired(m)).length,
     history: matchesWithDistance.filter((m) => isExpired(m) || m.join_request_status === 'rejected' || m.join_request_status === 'withdrawn' || m.join_request_status === 'auto_rejected').length,
   }), [matchesWithDistance, dismissedIds]);
@@ -308,6 +334,7 @@ export default function MatchListPage() {
                   <>
                     <Link to={`/matches/${match.id}`}
                       className="px-3 py-1.5 text-xs font-medium bg-[var(--color-primary)] text-white rounded-[var(--radius-md)] hover:opacity-90">View</Link>
+                    <MatchQrAction match={match} />
                     <ResultAction match={match} />
                   </>
                 )}
@@ -317,6 +344,9 @@ export default function MatchListPage() {
                 )}
                 {tab === 'history' && (
                   <>
+                    <Link to={`/matches/${match.id}`}
+                      className="px-3 py-1.5 text-xs font-medium border border-[var(--color-border)] text-[var(--color-text)] rounded-[var(--radius-md)] hover:bg-[var(--color-surface-muted)]">{t('common.view')}</Link>
+                    <MatchQrAction match={match} />
                     <span className="text-xs text-[var(--color-text-muted)]">{match.status}</span>
                     <ResultAction match={match} />
                   </>

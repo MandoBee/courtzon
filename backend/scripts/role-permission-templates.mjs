@@ -128,6 +128,16 @@ const FILES_DELETE_ROLES = new Set([
   'content-manager',
 ]);
 
+// Part 6/7 — org staff (org admin / branch manager / resource manager) may edit,
+// replace and finalise saved match scores for matches in their org. Without this,
+// the ADMIN_ONLY_PREFIXES block (matches.result.manage) would leave org roles
+// unable to review/correct disputed or incorrect scores.
+const ORG_RESULT_MANAGE_ROLES = new Set(['org-admin', 'branch-mgr', 'resource-mgr']);
+function canManageMatchResults(templateSlug, permissionKey) {
+  return ORG_RESULT_MANAGE_ROLES.has(templateSlug)
+    && (permissionKey === 'matches.result.manage' || permissionKey === 'matches.result.rules.manage');
+}
+
 const PLAYER_PATTERNS = [
   /^home\./,
   /^profile\./,
@@ -581,6 +591,7 @@ export function permissionMatchesTemplate(templateSlug, permissionKey) {
 
   if (templateSlug === 'org-admin') {
     if (canManageAcademy(templateSlug, permissionKey)) return true;
+    if (canManageMatchResults(templateSlug, permissionKey)) return true;
     if (isAdminOnlyKey(permissionKey)) return false;
     if (permissionKey.startsWith('marketplace.admin.')) return false;
     if (ORG_SHOP_ADMIN_DENY_KEYS.has(permissionKey)) return false;
@@ -589,12 +600,14 @@ export function permissionMatchesTemplate(templateSlug, permissionKey) {
   }
 
   if (templateSlug === 'branch-mgr') {
+    if (canManageMatchResults(templateSlug, permissionKey)) return true;
     if (isAdminOnlyKey(permissionKey)) return false;
     if (matchesAny(permissionKey, BRANCH_MGR_PATTERNS)) return true;
     return false;
   }
 
   if (templateSlug === 'resource-mgr') {
+    if (canManageMatchResults(templateSlug, permissionKey)) return true;
     if (isAdminOnlyKey(permissionKey)) return false;
     if (matchesAny(permissionKey, RESOURCE_MGR_PATTERNS)) return true;
     return false;

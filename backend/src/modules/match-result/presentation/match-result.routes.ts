@@ -7,7 +7,10 @@ export async function matchResultRoutes(app: FastifyInstance): Promise<void> {
 
   app.get('/matches/:id/result', { preHandler: [requirePermission(['matches.view'])] }, ctrl.getResultForMatchHandler);
   app.post('/matches/:id/result', { preHandler: [requirePermission(['matches.result.submit'])] }, ctrl.submitResultHandler);
-  app.put('/matches/:id/result', { preHandler: [requirePermission(['matches.result.submit'])] }, ctrl.replaceResultHandler);
+  // Part 6/7 — editing/replacing a saved score is an admin/organisation action.
+  // The submitting player cannot edit through the normal player UI; only
+  // `matches.result.manage` holders (admin / org staff) may replace a saved score.
+  app.put('/matches/:id/result', { preHandler: [requirePermission(['matches.result.manage'])] }, ctrl.replaceResultHandler);
   app.post('/matches/:id/result/withdraw', { preHandler: [requirePermission(['matches.result.submit'])] }, ctrl.withdrawResultHandler);
   app.post('/matches/:id/result/accept', { preHandler: [requirePermission(['matches.result.accept'])] }, ctrl.acceptResultHandler);
   app.post('/matches/:id/result/dispute', { preHandler: [requirePermission(['matches.result.dispute'])] }, ctrl.disputeResultHandler);

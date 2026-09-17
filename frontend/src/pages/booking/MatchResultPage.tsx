@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../services/api';
-import { fetchMatchResult, submitMatchResult, replaceMatchResult, withdrawMatchResult, acceptMatchResult, disputeMatchResult, fetchSportFormats } from '../../services/match-result.api';
+import { fetchMatchResult, submitMatchResult, replaceMatchResult, withdrawMatchResult, acceptMatchResult, disputeMatchResult, correctResult, fetchSportFormats } from '../../services/match-result.api';
 import { useToast } from '../../components/ui/Toast';
 import { useAuthStore } from '../../store/auth.store';
 import { useTranslation } from '../../i18n';
@@ -68,6 +68,11 @@ export default function MatchResultPage() {
   const isParticipant = user?.id != null && hasParticipant(match?.participants_json, user.id);
   const isSubmitter = record != null && user?.id != null && Number(record.submittedBy) === Number(user.id);
   const canReview = record?.submissionStatus === 'pending_confirmation' && isParticipant && !isSubmitter;
+  // Part 6/7 — only admin/organisation staff (matches.result.manage) may edit a
+  // saved score. Ordinary players never get an Edit capability after submission.
+  const canManageScore = !!user?.permissions && (
+    user.permissions.includes('*') || user.permissions.includes('matches.result.manage')
+  );
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ['match-result', id] });
@@ -78,16 +83,6 @@ export default function MatchResultPage() {
     mutationFn: () => submitMatchResult(Number(id), payload),
     onSuccess: () => {
       showToast(t('matchResult.submitted'));
-      setEditing(false);
-      invalidate();
-    },
-    onError: (err: any) => showToast(err?.response?.data?.message || t('common.error'), 'error'),
-  });
-
-  const replaceMutation = useMutation({
-    mutationFn: () => replaceMatchResult(Number(id), payload),
-    onSuccess: () => {
-      showToast(t('matchResult.replaced'));
       setEditing(false);
       invalidate();
     },
@@ -118,6 +113,24 @@ export default function MatchResultPage() {
     onSuccess: () => {
       showToast(t('matchResult.disputed'));
       setDisputeOpen(false);
+      invalidate();
+    },
+    onError: (err: any) => showToast(err?.response?.data?.message || t('common.error'), 'error'),
+  });
+
+  // Part 6/7 — admin/organisation edit. Pending scores are replaced via the
+  // (now manage-gated) PUT /matches/:id/result; approved scores are corrected
+  // via the admin endpoint. The submitting player never reaches this path.
+  const adminEditMutation = useMutation({
+    mutationFn: async () => {
+      if (record?.submissionStatus === 'approved') {
+        return correctResult(record.id, payload);
+      }
+      return replaceMatchResult(Number(id), payload);
+    },
+    onSuccess: () => {
+      showToast(t('matchResult.replaced'));
+      setEditing(false);
       invalidate();
     },
     onError: (err: any) => showToast(err?.response?.data?.message || t('common.error'), 'error'),
@@ -213,22 +226,27 @@ export default function MatchResultPage() {
           )}
 
           {isSubmitter && record.submissionStatus === 'pending_confirmation' && (
-            <div className="flex gap-2 mb-4">
-              <Can permission="matches.result.submit">
-                <button
-                  onClick={() => setEditing((v) => !v)}
-                  className="px-4 py-2 text-sm font-medium bg-[var(--color-primary)] text-white rounded-[var(--radius-md)] hover:opacity-90"
-                >
-                  {editing ? t('common.cancel') : t('matchResult.replace')}
-                </button>
-                <button
-                  onClick={() => withdrawMutation.mutate()}
-                  disabled={withdrawMutation.isPending}
-                  className="px-4 py-2 text-sm font-medium border border-[var(--color-error)] text-[var(--color-error)] rounded-[var(--radius-md)] hover:bg-[var(--color-error)]/10 disabled:opacity-50"
-                >
-                  {t('matchResult.withdraw')}
-                </button>
-              </Can>
+            <div className="flex flex-wrap gap-2 mb-4">
+              <span className="text-sm text-[var(--color-text-muted)] self-center">{t('matchResult.awaitingConfirmation')}</span>
+              <button
+                onClick={() => withdrawMutation.mutate()}
+                disabled={withdrawMutation.isPending}
+                className="px-4 py-2 text-sm font-medium border border-[var(--color-error)] text-[var(--color-error)] rounded-[var(--radius-md)] hover:bg-[var(--color-error)]/10 disabled:opacity-50"
+              >
+                {t('matchResult.withdraw')}
+              </button>
+            </div>
+          )}
+
+          {/* Part 6/7 — admin/organisation edit of a saved score */}
+          {canManageScore && record && (
+            <div className="mb-4">
+              <button
+                onClick={() => setEditing((v) => !v)}
+                className="px-4 py-2 text-sm font-medium bg-[var(--color-primary)] text-white rounded-[var(--radius-md)] hover:opacity-90"
+              >
+                {editing ? t('common.cancel') : t('matchResult.replace')}
+              </button>
             </div>
           )}
 
@@ -274,7 +292,7 @@ export default function MatchResultPage() {
         </div>
       )}
 
-      {record && isSubmitter && editing && rules && (
+      {record && editing && rules && (
         <div className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] p-4 mb-4 space-y-4">
           {record.submissionStatus === 'withdrawn' && (
             <p className="text-sm text-[var(--color-text-muted)]">{t('matchResult.withdrawnResubmit')}</p>
@@ -296,9 +314,11 @@ export default function MatchResultPage() {
               {t('matchResult.submit')}
             </button>
           ) : (
+            // Part 6/7 — this editing path is reached only by admin/organisation
+            // staff (matches.result.manage). The submitting player cannot edit.
             <button
-              onClick={() => replaceMutation.mutate()}
-              disabled={replaceMutation.isPending}
+              onClick={() => adminEditMutation.mutate()}
+              disabled={adminEditMutation.isPending}
               className="w-full px-4 py-2 text-sm font-medium bg-[var(--color-primary)] text-white rounded-[var(--radius-md)] hover:opacity-90 disabled:opacity-50"
             >
               {t('matchResult.saveReplacement')}

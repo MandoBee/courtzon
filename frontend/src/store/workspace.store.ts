@@ -39,6 +39,8 @@ const roleWorkspaceMap: Record<string, Workspace[]> = {
   super_admin: ['platform'],
   'super-admin': ['platform'],
   admin: ['platform'],
+  'master-admin': ['platform'],
+  'master_admin': ['platform'],
 };
 
 function deriveWorkspaces(roles: string[]): Workspace[] {

@@ -404,6 +404,37 @@ describe('LIFECYCLE — Test A normal approval', () => {
   });
 });
 
+describe('RATING SAFETY (Part 8) — only a FINAL/CONFIRMED score may touch ratings', () => {
+  it('a freshly SAVED (pending_confirmation) score creates NO rating evidence', async () => {
+    repo.resolveMatchId.mockResolvedValue(42);
+    repo.getMatchContext.mockResolvedValue(CONTEXT);
+    repo.findActiveRuleSet.mockResolvedValue(FORMAT);
+    repo.findByMatchId.mockResolvedValue(null);
+    repo.insert.mockResolvedValue(99);
+    repo.replaceParticipants.mockResolvedValue(undefined);
+    repo.findById.mockResolvedValue(makeRecord({ id: 99, submissionStatus: 'pending_confirmation' }));
+
+    const record = await matchResultService.submitMatchResult(42, 5, VALID_PAYLOAD);
+
+    expect(record.submissionStatus).toBe('pending_confirmation');
+    expect(rating.applyEvidence).not.toHaveBeenCalled();
+    expect(rating.recordMatchStat).not.toHaveBeenCalled();
+    expect(rating.recalculate).not.toHaveBeenCalled();
+  });
+
+  it('a REJECTED (disputed) score creates NO rating evidence', async () => {
+    repo.findByMatchId.mockResolvedValue(makeRecord());
+    repo.getMatchContext.mockResolvedValue(CONTEXT);
+    rating.applyEvidence.mockClear();
+
+    await matchResultService.disputeResult(42, 6, 'the score is not correct');
+
+    expect(repo.updateResult).toHaveBeenCalledWith(1, expect.objectContaining({ submission_status: 'disputed' }));
+    expect(rating.applyEvidence).not.toHaveBeenCalled();
+    expect(rating.recordMatchStat).not.toHaveBeenCalled();
+  });
+});
+
 describe('LIFECYCLE — Test B dispute then resolve', () => {
   it('dispute creates no evidence; admin resolve activates it', async () => {
     repo.findByMatchId.mockResolvedValue(makeRecord());

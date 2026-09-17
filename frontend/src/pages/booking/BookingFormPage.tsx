@@ -85,7 +85,7 @@ export default function BookingFormPage() {
     mutationFn: (data: any) => api.post('/scheduling/book', data),
     onSuccess: (res) => {
       showToast('Court booked with coach session!');
-      navigate(`/bookings/${res.data.bookingId}/confirmation`);
+      navigate(`/bookings/${res.data.bookingId}/confirmation`, { replace: true });
     },
     onError: (err) => {
       showToast((err as any)?.response?.data?.message || 'Booking failed', 'error');
@@ -125,7 +125,7 @@ export default function BookingFormPage() {
     mutationFn: (data: any) => api.post('/bookings', data),
     onSuccess: (res) => {
       showToast(t('booking.success.created'));
-      navigate(`/bookings/${res.data.id}/confirmation`, { state: { qrToken: res.data.qrToken } });
+      navigate(`/bookings/${res.data.id}/confirmation`, { replace: true, state: { qrToken: res.data.qrToken } });
     },
     onError: (err) => {
       showToast(t('booking.error.creation_failed') + ': ' + ((err as any)?.response?.data?.message || (err as any).message), 'error');
