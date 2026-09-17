@@ -577,6 +577,58 @@ describe('LIFECYCLE — Test O external/off-platform match cannot generate evide
   });
 });
 
+describe('Group 4 — historical rule-set resolution', () => {
+  it('submission uses the Match frozen rule snapshot when present (not current rules)', async () => {
+    const frozenRules = { score_structure: 'sets', best_of: 3, sets_to_win: 2, first_to: 6, margin: 2, draw_allowed: false, terminations: ['retired', 'walkover', 'forfeit', 'abandoned'] };
+    repo.getMatchContext.mockResolvedValue({
+      ...CONTEXT,
+      formatId: 1,
+      formatSnapshot: { formatId: 1, formatType: 'doubles', playersPerSide: 2, name: 'Padel Standard' },
+      ruleSetId: 7,
+      ruleSnapshot: frozenRules,
+      participantSlots: [
+        { userId: 5, side: 'home', teamIndex: 0 },
+        { userId: 6, side: 'away', teamIndex: 1 },
+      ],
+    });
+    repo.findByMatchId.mockResolvedValue(null);
+    repo.insert.mockResolvedValue(99);
+    repo.findById.mockResolvedValue(makeRecord({ id: 99 }));
+
+    await matchResultService.submitMatchResult(42, 5, VALID_PAYLOAD);
+
+    // The frozen rules (margin 2) are used — NOT the current default FORMAT rules (margin 1).
+    const insert = repo.insert.mock.calls[0][0];
+    expect(insert.rulesSnapshot).toEqual(frozenRules);
+    expect(repo.findActiveRuleSet).not.toHaveBeenCalled();
+  });
+
+  it('correction validates against the record frozen rulesSnapshot (not current rules)', async () => {
+    const frozenRules = { score_structure: 'sets', best_of: 3, sets_to_win: 2, first_to: 6, margin: 2, draw_allowed: false, terminations: ['retired', 'walkover', 'forfeit', 'abandoned'] };
+    const rec = makeRecord({ submissionStatus: 'approved', outcome: 'completed' });
+    rec.rulesSnapshot = frozenRules;
+    repo.findById.mockResolvedValue(rec);
+    repo.getParticipants.mockResolvedValue([]);
+    rating.resolveOverallPercentAt.mockResolvedValue(60);
+    rating.applyEvidence.mockResolvedValue({ before: 60, after: 62 });
+
+    await matchResultService.correctResult(1, 999, { outcome: 'completed', score: { sets: [{ home: 6, away: 4 }, { home: 6, away: 3 }] } });
+
+    expect(repo.findActiveRuleSet).not.toHaveBeenCalled();
+  });
+
+  it('legacy record without a frozen snapshot falls back to current rules', async () => {
+    repo.getMatchContext.mockResolvedValue({ ...CONTEXT, ruleSnapshot: null });
+    repo.findByMatchId.mockResolvedValue(null);
+    repo.insert.mockResolvedValue(99);
+    repo.findById.mockResolvedValue(makeRecord({ id: 99 }));
+    repo.findActiveRuleSet.mockResolvedValue(FORMAT);
+
+    await matchResultService.submitMatchResult(42, 5, VALID_PAYLOAD);
+    expect(repo.findActiveRuleSet).toHaveBeenCalled();
+  });
+});
+
 describe('Group 2 — authoritative participant sides drive result grouping', () => {
   it('uses authoritative Match side assignments verbatim (insertion order is irrelevant)', async () => {
     // Participants arrive in a scrambled order; authoritative sides must win.

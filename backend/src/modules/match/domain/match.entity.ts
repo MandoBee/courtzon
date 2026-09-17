@@ -25,6 +25,8 @@ export interface MatchData {
   sportId: number;
   formatId?: number | null;
   formatSnapshot?: MatchFormatSnapshot | null;
+  ruleSetId?: number | null;
+  ruleSnapshot?: Record<string, unknown> | null;
   version: number;
   createdAt: Date;
   updatedAt: Date;
@@ -38,6 +40,8 @@ export class Match {
   public readonly sportId: number;
   private readonly _formatId: number | null;
   private readonly _formatSnapshot: MatchFormatSnapshot | null;
+  private readonly _ruleSetId: number | null;
+  private readonly _ruleSnapshot: Record<string, unknown> | null;
   private _version: number;
   public readonly createdAt: Date;
   public updatedAt: Date;
@@ -56,6 +60,8 @@ export class Match {
     this.sportId = data.sportId;
     this._formatId = data.formatId ?? null;
     this._formatSnapshot = data.formatSnapshot ?? null;
+    this._ruleSetId = data.ruleSetId ?? null;
+    this._ruleSnapshot = data.ruleSnapshot ?? null;
     this._version = data.version;
     this.createdAt = data.createdAt;
     this.updatedAt = data.updatedAt;
@@ -65,6 +71,8 @@ export class Match {
   get version(): number { return this._version; }
   get formatId(): number | null { return this._formatId; }
   get formatSnapshot(): MatchFormatSnapshot | null { return this._formatSnapshot; }
+  get ruleSetId(): number | null { return this._ruleSetId; }
+  get ruleSnapshot(): Record<string, unknown> | null { return this._ruleSnapshot; }
   get invitations(): ReadonlyArray<Invitation> { return this._invitations; }
   get joinRequests(): ReadonlyArray<JoinRequest> { return this._joinRequests; }
   get participants(): ReadonlyArray<Participant> { return this._participants; }

@@ -358,6 +358,9 @@ export async function getMatchHandler(request: FastifyRequest, reply: FastifyRep
   if (row.format_snapshot && typeof row.format_snapshot === 'string') {
     try { row.format_snapshot = JSON.parse(row.format_snapshot); } catch { row.format_snapshot = null; }
   }
+  if (row.rule_snapshot && typeof row.rule_snapshot === 'string') {
+    try { row.rule_snapshot = JSON.parse(row.rule_snapshot); } catch { row.rule_snapshot = null; }
+  }
   decorateResultState(row);
   reply.send({ data: row });
 }

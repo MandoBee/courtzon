@@ -40,6 +40,8 @@ export interface MatchContext {
   status: string;
   formatId: number | null;
   formatSnapshot: MatchFormatSnapshot | null;
+  ruleSetId: number | null;
+  ruleSnapshot: Record<string, unknown> | null;
   branchId: number | null;
   resourceId: number | null;
   playedAt: string | null;
@@ -176,7 +178,7 @@ export class MatchResultRepository {
   async getMatchContext(matchId: number): Promise<MatchContext | null> {
     const pool = getPool();
     const [rows] = await pool.execute<RowData>(
-      `SELECT m.id AS match_id, m.sport_id, m.status, m.format_id, m.format_snapshot,
+      `SELECT m.id AS match_id, m.sport_id, m.status, m.format_id, m.format_snapshot, m.rule_set_id, m.rule_snapshot,
               b.branch_id, b.resource_id, b.end_at_utc,
               COALESCE(
                 (SELECT COALESCE(ms.ended_at, ms.started_at) FROM match_sessions ms
@@ -208,6 +210,8 @@ export class MatchResultRepository {
       status: r.status,
       formatId: r.format_id != null ? Number(r.format_id) : null,
       formatSnapshot: r.format_snapshot ? (typeof r.format_snapshot === 'string' ? JSON.parse(r.format_snapshot) : r.format_snapshot) : null,
+      ruleSetId: r.rule_set_id != null ? Number(r.rule_set_id) : null,
+      ruleSnapshot: r.rule_snapshot ? (typeof r.rule_snapshot === 'string' ? JSON.parse(r.rule_snapshot) : r.rule_snapshot) : null,
       branchId: r.branch_id ?? null,
       resourceId: r.resource_id ?? null,
       playedAt: r.played_at ?? null,
@@ -603,7 +607,7 @@ export class MatchResultRepository {
   }
 
   /** Worker: eligible matches (status in the eligible set) with no result and whose window expired. */
-  async findExpiredNoResultMatches(now: string): Promise<Array<{ matchId: number; sportId: number; branchId: number | null; resourceId: number | null; playedAt: string; timezone: string | null; participantUserIds: number[]; participantSlots: MatchParticipantSlot[] }>> {
+  async findExpiredNoResultMatches(now: string): Promise<Array<{ matchId: number; sportId: number; branchId: number | null; resourceId: number | null; playedAt: string; timezone: string | null; participantUserIds: number[]; participantSlots: MatchParticipantSlot[]; formatId: number | null; ruleSetId: number | null; ruleSnapshot: Record<string, unknown> | null }>> {
     const pool = getPool();
     // Same authoritative played_at computation as getMatchContext: the session
     // row wins when present, otherwise the scheduled booking end (end_at_utc)
@@ -616,7 +620,7 @@ export class MatchResultRepository {
            THEN b.end_at_utc ELSE NULL END
     )`;
     const [rows] = await pool.execute<RowData>(
-      `SELECT m.id AS match_id, m.sport_id, b.branch_id, b.resource_id,
+      `SELECT m.id AS match_id, m.sport_id, m.format_id, m.rule_set_id, m.rule_snapshot, b.branch_id, b.resource_id,
               ${playedAtExpr} AS played_at,
               br.timezone
        FROM matches m
@@ -631,7 +635,7 @@ export class MatchResultRepository {
          AND ${playedAtExpr} < DATE_SUB(?, INTERVAL ${SUBMISSION_WINDOW_HOURS} HOUR)`,
       [now, now],
     );
-    const result: Array<{ matchId: number; sportId: number; branchId: number | null; resourceId: number | null; playedAt: string; timezone: string | null; participantUserIds: number[]; participantSlots: MatchParticipantSlot[] }> = [];
+    const result: Array<{ matchId: number; sportId: number; branchId: number | null; resourceId: number | null; playedAt: string; timezone: string | null; participantUserIds: number[]; participantSlots: MatchParticipantSlot[]; formatId: number | null; ruleSetId: number | null; ruleSnapshot: Record<string, unknown> | null }> = [];
     for (const r of rows as any[]) {
       const [parts] = await pool.execute<RowData>('SELECT user_id, side, team_index FROM match_participants WHERE match_id = ?', [r.match_id]);
       const slots = (parts as any[]).map((p: any) => ({
@@ -648,6 +652,9 @@ export class MatchResultRepository {
         timezone: r.timezone ?? null,
         participantUserIds: slots.map((s) => s.userId),
         participantSlots: slots,
+        formatId: r.format_id != null ? Number(r.format_id) : null,
+        ruleSetId: r.rule_set_id != null ? Number(r.rule_set_id) : null,
+        ruleSnapshot: r.rule_snapshot ? (typeof r.rule_snapshot === 'string' ? JSON.parse(r.rule_snapshot) : r.rule_snapshot) : null,
       });
     }
     return result;

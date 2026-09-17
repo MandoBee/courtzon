@@ -10,6 +10,7 @@ import { formatDateTime } from '../../utils/formatDate';
 import { Can } from '../../permissions/Can';
 import DynamicResultForm from '../../components/match-result/DynamicResultForm';
 import ResultSummaryView from '../../components/match-result/ResultSummaryView';
+import SideSelection, { type SideSlot } from '../../components/booking/SideSelection';
 import MatchErrorState from '../../components/booking/MatchErrorState';
 import type { RawMatchResultPayload } from '../../types/match-result';
 
@@ -59,9 +60,12 @@ export default function MatchResultPage() {
   });
 
   const rules = useMemo(() => {
+    // Group 4 — prefer the Match's FROZEN rule snapshot (historical context).
+    // Fall back to the current sport-format rules only for legacy matches.
+    if (match?.rule_snapshot) return match.rule_snapshot as any;
     const group = formatsData?.find((g) => g.ruleSets.length > 0);
     return group?.ruleSets[0]?.rules ?? null;
-  }, [formatsData]);
+  }, [formatsData, match?.rule_snapshot]);
 
   const record = resultData?.record ?? null;
   const participants = resultData?.participants ?? [];
@@ -144,6 +148,26 @@ export default function MatchResultPage() {
   const rs = match.result_state as ResultState | undefined;
   const entryOpen = rs === 'enter';
 
+  // Group 4 — format + authoritative side-grouped participants display.
+  const formatSnapshot = match.format_snapshot as { formatId?: number; formatType?: string; playersPerSide?: number | null; name?: string } | null;
+  const sideSlots: SideSlot[] = (() => {
+    const list = Array.isArray(match.participants_json)
+      ? match.participants_json
+      : typeof match.participants_json === 'string'
+        ? (() => { try { return JSON.parse(match.participants_json); } catch { return []; } })()
+        : [];
+    return list
+      .filter((p: any) => p.side === 'home' || p.side === 'away')
+      .map((p: any) => ({
+        side: p.side as 'home' | 'away',
+        userId: Number(p.userId),
+        fullName: p.fullName,
+        avatarUrl: p.avatarUrl,
+        role: p.role,
+      }));
+  })();
+  const hasSides = formatSnapshot?.playersPerSide != null && sideSlots.length > 0;
+
   return (
     <div className="max-w-2xl mx-auto pb-24 md:pb-6">
       <div className="flex items-center justify-between mb-4">
@@ -157,7 +181,26 @@ export default function MatchResultPage() {
         <div className="grid grid-cols-2 gap-3 text-sm">
           <div><span className="text-[var(--color-text-muted)]">{t('matchResult.sport')}:</span> {match.sport_name}</div>
           <div><span className="text-[var(--color-text-muted)]">{t('matchResult.playedAt')}:</span> {formatDateTime(record?.playedAt || match.played_at || match.booking_date)}</div>
+          {formatSnapshot?.name && (
+            <div className="col-span-2">
+              <span className="text-[var(--color-text-muted)]">{t('matchResult.format', { format: formatSnapshot.name })}</span>
+            </div>
+          )}
         </div>
+        {hasSides && (
+          <div className="mt-3">
+            <SideSelection
+              formatName={formatSnapshot?.name ?? null}
+              formatType={formatSnapshot?.formatType ?? null}
+              playersPerSide={formatSnapshot?.playersPerSide ?? null}
+              slots={sideSlots}
+              currentUserId={user?.id != null ? Number(user.id) : null}
+              selected={null}
+              onSelect={() => {}}
+              editable={false}
+            />
+          </div>
+        )}
       </div>
 
       {record ? (

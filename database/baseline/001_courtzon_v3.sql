@@ -2780,6 +2780,8 @@ CREATE TABLE `matches` (
   `sport_id` int unsigned NOT NULL,
   `format_id` bigint unsigned DEFAULT NULL,
   `format_snapshot` json DEFAULT NULL COMMENT 'Historical match format snapshot (format_type, players_per_side, name) frozen at creation',
+  `rule_set_id` bigint unsigned DEFAULT NULL,
+  `rule_snapshot` json DEFAULT NULL COMMENT 'Historical rule-set snapshot frozen at match creation',
   `version` int NOT NULL DEFAULT '1',
   `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -2788,9 +2790,11 @@ CREATE TABLE `matches` (
   KEY `idx_type_status` (`type`,`status`),
   KEY `idx_sport_date` (`sport_id`,`status`,`created_at`),
   KEY `idx_match_format` (`format_id`),
+  KEY `idx_match_rule_set` (`rule_set_id`),
   CONSTRAINT `fk_match_booking` FOREIGN KEY (`booking_id`) REFERENCES `bookings` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_match_sport` FOREIGN KEY (`sport_id`) REFERENCES `sports` (`id`),
-  CONSTRAINT `fk_match_format` FOREIGN KEY (`format_id`) REFERENCES `sport_formats` (`id`) ON DELETE RESTRICT
+  CONSTRAINT `fk_match_format` FOREIGN KEY (`format_id`) REFERENCES `sport_formats` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_match_rule_set` FOREIGN KEY (`rule_set_id`) REFERENCES `sport_rule_sets` (`id`) ON DELETE RESTRICT
 ) ENGINE=InnoDB AUTO_INCREMENT=128 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 DROP TABLE IF EXISTS `membership_benefits`;

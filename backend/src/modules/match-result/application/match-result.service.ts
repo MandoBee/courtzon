@@ -57,9 +57,17 @@ export class MatchResultService {
       throw new RulesValidationError('The result submission window (3 days after play) has closed');
     }
 
-    const format = context.formatId
-      ? await matchResultRepository.findActiveRuleSetForFormat(context.formatId)
-      : await matchResultRepository.findActiveRuleSet(context.sportId);
+    // Group 4 — use the Match's frozen rule snapshot when present (historical
+    // correctness). Fall back to resolving the active rule set only for legacy
+    // matches created before rule freezing existed.
+    let format;
+    if (context.ruleSnapshot) {
+      format = { formatId: context.formatId ?? 0, ruleSetId: context.ruleSetId ?? 0, version: 0, rules: context.ruleSnapshot, standingsRules: null };
+    } else {
+      format = context.formatId
+        ? await matchResultRepository.findActiveRuleSetForFormat(context.formatId)
+        : await matchResultRepository.findActiveRuleSet(context.sportId);
+    }
     if (!format) {
       throw new RulesValidationError(`No active sport format is configured for sport ${context.sportId}`);
     }
@@ -222,9 +230,11 @@ export class MatchResultService {
       throw new RulesValidationError('The result submission window (3 days after play) has closed');
     }
 
-    const format = context.formatId
-      ? await matchResultRepository.findActiveRuleSetForFormat(context.formatId)
-      : await matchResultRepository.findActiveRuleSet(context.sportId);
+    const format = context.ruleSnapshot
+      ? { formatId: context.formatId ?? 0, ruleSetId: context.ruleSetId ?? 0, version: 0, rules: context.ruleSnapshot, standingsRules: null }
+      : context.formatId
+        ? await matchResultRepository.findActiveRuleSetForFormat(context.formatId)
+        : await matchResultRepository.findActiveRuleSet(context.sportId);
     if (!format) throw new RulesValidationError('No active sport format is configured');
 
     let validated;
@@ -352,11 +362,15 @@ export class MatchResultService {
     const beforeState = { submission_status: record.submissionStatus, raw_result: record.rawResult };
 
     if (resolution.approve && resolution.displayResult && record.outcome !== 'no_result') {
-      const format = await matchResultRepository.findActiveRuleSet(record.sportId);
-      if (!format) throw new RulesValidationError('No active sport format is configured');
+      // Group 4 — validate against the record's FROZEN rules snapshot, never
+      // the current active rule set (a rule-version change must not reinterpret
+      // an existing result). Fall back to current resolution only for legacy
+      // records created before snapshots existed.
+      const rules = record.rulesSnapshot ?? (await matchResultRepository.findActiveRuleSet(record.sportId))?.rules;
+      if (!rules) throw new RulesValidationError('No sport format rules are configured');
       let validated;
       try {
-        validated = validateAndComputeFinal(resolution.displayResult, format.rules);
+        validated = validateAndComputeFinal(resolution.displayResult, rules);
       } catch (err) {
         if (err instanceof RulesValidationError) throw err;
         throw new RulesValidationError('Invalid display result');
@@ -424,11 +438,14 @@ export class MatchResultService {
       throw new RulesValidationError('Only approved results can be corrected');
     }
 
-    const format = await matchResultRepository.findActiveRuleSet(record.sportId);
-    if (!format) throw new RulesValidationError('No active sport format is configured');
+    // Group 4 — validate against the record's FROZEN rules snapshot, never the
+    // current active rule set (a correction must keep the original scoring
+    // rules, not today's configuration). Fall back only for legacy records.
+    const rules = record.rulesSnapshot ?? (await matchResultRepository.findActiveRuleSet(record.sportId))?.rules;
+    if (!rules) throw new RulesValidationError('No sport format rules are configured');
     let validated;
     try {
-      validated = validateAndComputeFinal(payload, format.rules);
+      validated = validateAndComputeFinal(payload, rules);
     } catch (err) {
       if (err instanceof RulesValidationError) throw err;
       throw new RulesValidationError('Invalid result payload');
@@ -655,7 +672,12 @@ export class MatchResultService {
       try {
         const existing = await matchResultRepository.findByMatchId(m.matchId);
         if (existing) continue;
-        const format = await matchResultRepository.findActiveRuleSet(m.sportId);
+        let format;
+        if (m.ruleSnapshot) {
+          format = { formatId: m.formatId ?? 0, ruleSetId: m.ruleSetId ?? 0, version: 0, rules: m.ruleSnapshot, standingsRules: null };
+        } else {
+          format = await matchResultRepository.findActiveRuleSet(m.sportId);
+        }
         if (!format) continue;
         const sides = this.buildParticipantSlots(m.participantSlots, m.participantSlots[0]?.userId ?? 0);
 

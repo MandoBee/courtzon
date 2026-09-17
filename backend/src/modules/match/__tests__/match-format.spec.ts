@@ -23,6 +23,7 @@ const joinRequests = vi.hoisted(() => ({ autoRejectPendingByMatchId: vi.fn() }))
 const formatRepo = vi.hoisted(() => ({
   resolveDefaultFormatForSport: vi.fn(),
   findFormatById: vi.fn(),
+  findActiveRuleSetForFormat: vi.fn(),
 }));
 
 const poolExecute = vi.hoisted(() => vi.fn());
@@ -73,6 +74,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   matchmaking.sendInvitations.mockResolvedValue(undefined);
   poolGetConnection.mockReturnValue(Promise.resolve(fakeConn()));
+  formatRepo.findActiveRuleSetForFormat.mockResolvedValue({ formatId: 1, ruleSetId: 1, version: 1, rules: { score_structure: 'sets', best_of: 3, sets_to_win: 2, first_to: 6, margin: 1, draw_allowed: false, terminations: [] }, standingsRules: null });
   repo.findById.mockResolvedValue(new Match({
     id: 1, type: 'public', status: 'open', bookingId: 500, sportId: 22,
     formatId: 1, formatSnapshot: { formatId: 1, formatType: 'doubles', playersPerSide: 2, name: 'Padel Standard' },
@@ -197,5 +199,53 @@ describe('Group 1 — Match Format Foundation', () => {
     expect(m.formatId).toBe(2);
     expect(m.formatSnapshot?.formatType).toBe('singles');
     expect(m.formatSnapshot?.playersPerSide).toBe(1);
+  });
+});
+
+describe('Group 4 — historical rule-set freeze at match creation', () => {
+  it('freezes rule_set_id + rule_snapshot from the format at creation', async () => {
+    poolExecute.mockImplementation(async (sql: string) => {
+      if (sql.includes('SELECT id FROM matches WHERE booking_id')) return [[]];
+      if (sql.includes('FROM bookings b')) return [bookingRows];
+      if (sql.includes('INSERT INTO matches')) return [{ insertId: 1 }, []];
+      if (sql.includes('INSERT INTO public_match_details')) return [{ insertId: 1 }, []];
+      if (sql.includes('INSERT INTO match_participants')) return [{ insertId: 1 }, []];
+      if (sql.includes('FROM booking_matchmaking_requests')) return [[]];
+      return [[], []];
+    });
+    formatRepo.resolveDefaultFormatForSport.mockResolvedValue({ formatId: 1, formatType: 'doubles', playersPerSide: 2, name: 'Padel Standard' });
+    formatRepo.findActiveRuleSetForFormat.mockResolvedValue({
+      formatId: 1, ruleSetId: 7, version: 2,
+      rules: { score_structure: 'sets', best_of: 3, sets_to_win: 2, first_to: 6, margin: 1, draw_allowed: false, terminations: [] },
+      standingsRules: null,
+    });
+
+    await matchService.createFromBooking(500, 'public_match');
+
+    const conn = await createdConn();
+    const insertParams = conn.execute.mock.calls.find((c: any[]) => c[0].includes('INSERT INTO matches'))[1];
+    // params: [bookingId, sportId, formatId, formatSnapshot, ruleSetId, ruleSnapshot]
+    expect(insertParams[4]).toBe(7); // rule_set_id frozen
+    expect(JSON.parse(insertParams[5]).best_of).toBe(3); // rule_snapshot frozen
+  });
+
+  it('leaves rule set NULL when no format is configured (legacy preserved)', async () => {
+    poolExecute.mockImplementation(async (sql: string) => {
+      if (sql.includes('SELECT id FROM matches WHERE booking_id')) return [[]];
+      if (sql.includes('FROM bookings b')) return [bookingRows];
+      if (sql.includes('INSERT INTO matches')) return [{ insertId: 1 }, []];
+      if (sql.includes('INSERT INTO public_match_details')) return [{ insertId: 1 }, []];
+      if (sql.includes('INSERT INTO match_participants')) return [{ insertId: 1 }, []];
+      if (sql.includes('FROM booking_matchmaking_requests')) return [[]];
+      return [[], []];
+    });
+    formatRepo.resolveDefaultFormatForSport.mockResolvedValue(null);
+
+    await matchService.createFromBooking(500, 'public_match');
+
+    const conn = await createdConn();
+    const insertParams = conn.execute.mock.calls.find((c: any[]) => c[0].includes('INSERT INTO matches'))[1];
+    expect(insertParams[4]).toBeNull();
+    expect(insertParams[5]).toBeNull();
   });
 });

@@ -66,15 +66,28 @@ export class MatchService {
       const formatId = resolvedFormat?.formatId ?? null;
       const formatSnapshot = resolvedFormat ? this.buildFormatSnapshot(resolvedFormat) : null;
 
+      // Group 4 — freeze the authoritative rule set at Match creation so a
+      // later rule-version change never reinterprets this Match's scoring.
+      // Falls back to null (legacy) when no format/rule set is configured.
+      let ruleSetId: number | null = null;
+      let ruleSnapshot: Record<string, unknown> | null = null;
+      if (formatId != null) {
+        const ruleSet = await matchResultRepository.findActiveRuleSetForFormat(formatId);
+        if (ruleSet) {
+          ruleSetId = ruleSet.ruleSetId;
+          ruleSnapshot = (typeof ruleSet.rules === 'string' ? JSON.parse(ruleSet.rules) : ruleSet.rules) as Record<string, unknown>;
+        }
+      }
+
       // Authoritative host side assignment (Group 2): the creator/host always
       // opens on 'home' (teamIndex 0) when the Match has a format. Format-less
       // matches keep a NULL side (legacy fallback preserved).
       const hostSide = assignNextParticipantSide(formatSnapshot, []);
 
       const [matchResult] = await conn.execute<mysql.ResultSetHeader>(
-        `INSERT INTO matches (type, status, booking_id, sport_id, format_id, format_snapshot)
-         VALUES ('public', 'open', ?, ?, ?, ?)`,
-        [bookingId, bk.sport_id, formatId, formatSnapshot ? JSON.stringify(formatSnapshot) : null]
+        `INSERT INTO matches (type, status, booking_id, sport_id, format_id, format_snapshot, rule_set_id, rule_snapshot)
+         VALUES ('public', 'open', ?, ?, ?, ?, ?, ?)`,
+        [bookingId, bk.sport_id, formatId, formatSnapshot ? JSON.stringify(formatSnapshot) : null, ruleSetId, ruleSnapshot ? JSON.stringify(ruleSnapshot) : null]
       );
       const matchId = matchResult.insertId;
 

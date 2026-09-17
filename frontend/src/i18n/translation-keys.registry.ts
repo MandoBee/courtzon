@@ -1041,6 +1041,8 @@ export const translationKeysRegistry: TranslationKeyEntry[] = [
   { key: 'matchResult.selectSide', defaultValue: 'Select side…', moduleSlug: 'match', elementType: 'placeholder', elementLabel: 'Retired side select placeholder' },
   { key: 'matchResult.retiredHome', defaultValue: 'Home retired', moduleSlug: 'match', elementType: 'label', elementLabel: 'Home retired option' },
   { key: 'matchResult.retiredAway', defaultValue: 'Away retired', moduleSlug: 'match', elementType: 'label', elementLabel: 'Away retired option' },
+  { key: 'matchResult.format', defaultValue: 'Format: {format}', moduleSlug: 'match', elementType: 'label', elementLabel: 'Match format on score page' },
+  { key: 'matchResult.participantsBySide', defaultValue: 'Participants by side', moduleSlug: 'match', elementType: 'heading', elementLabel: 'Participants by side heading' },
   { key: 'matchResult.reasonOptional', defaultValue: 'Reason (optional)', moduleSlug: 'match', elementType: 'label', elementLabel: 'Termination reason optional label' },
   { key: 'matchResult.abandonedNote', defaultValue: 'No result recorded — the match was abandoned.', moduleSlug: 'match', elementType: 'text', elementLabel: 'Abandoned empty-state text' },
   { key: 'matchResult.setScores', defaultValue: 'Set scores', moduleSlug: 'match', elementType: 'heading', elementLabel: 'Set scores section heading' },
