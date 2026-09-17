@@ -2774,6 +2774,8 @@ CREATE TABLE `matches` (
   `status` enum('open','full','closed','in_progress','completed','cancelled','void') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'open',
   `booking_id` bigint unsigned DEFAULT NULL,
   `sport_id` int unsigned NOT NULL,
+  `format_id` bigint unsigned DEFAULT NULL,
+  `format_snapshot` json DEFAULT NULL COMMENT 'Historical match format snapshot (format_type, players_per_side, name) frozen at creation',
   `version` int NOT NULL DEFAULT '1',
   `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -2781,8 +2783,10 @@ CREATE TABLE `matches` (
   UNIQUE KEY `uk_booking` (`booking_id`),
   KEY `idx_type_status` (`type`,`status`),
   KEY `idx_sport_date` (`sport_id`,`status`,`created_at`),
+  KEY `idx_match_format` (`format_id`),
   CONSTRAINT `fk_match_booking` FOREIGN KEY (`booking_id`) REFERENCES `bookings` (`id`) ON DELETE RESTRICT,
-  CONSTRAINT `fk_match_sport` FOREIGN KEY (`sport_id`) REFERENCES `sports` (`id`)
+  CONSTRAINT `fk_match_sport` FOREIGN KEY (`sport_id`) REFERENCES `sports` (`id`),
+  CONSTRAINT `fk_match_format` FOREIGN KEY (`format_id`) REFERENCES `sport_formats` (`id`) ON DELETE RESTRICT
 ) ENGINE=InnoDB AUTO_INCREMENT=128 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 DROP TABLE IF EXISTS `membership_benefits`;
@@ -6656,6 +6660,7 @@ CREATE TABLE `sport_formats` (
   `slug` varchar(80) COLLATE utf8mb4_unicode_ci NOT NULL,
   `name` varchar(120) COLLATE utf8mb4_unicode_ci NOT NULL,
   `format_type` enum('singles','doubles','team') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'singles',
+  `players_per_side` int unsigned DEFAULT NULL,
   `description` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `is_default` tinyint(1) NOT NULL DEFAULT '0',
   `is_active` tinyint(1) NOT NULL DEFAULT '1',

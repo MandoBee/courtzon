@@ -56,7 +56,9 @@ export class MatchResultService {
       throw new RulesValidationError('The result submission window (3 days after play) has closed');
     }
 
-    const format = await matchResultRepository.findActiveRuleSet(context.sportId);
+    const format = context.formatId
+      ? await matchResultRepository.findActiveRuleSetForFormat(context.formatId)
+      : await matchResultRepository.findActiveRuleSet(context.sportId);
     if (!format) {
       throw new RulesValidationError(`No active sport format is configured for sport ${context.sportId}`);
     }
@@ -218,7 +220,9 @@ export class MatchResultService {
       throw new RulesValidationError('The result submission window (3 days after play) has closed');
     }
 
-    const format = await matchResultRepository.findActiveRuleSet(context.sportId);
+    const format = context.formatId
+      ? await matchResultRepository.findActiveRuleSetForFormat(context.formatId)
+      : await matchResultRepository.findActiveRuleSet(context.sportId);
     if (!format) throw new RulesValidationError('No active sport format is configured');
 
     let validated;

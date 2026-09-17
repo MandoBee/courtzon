@@ -52,6 +52,7 @@ export interface SportFormat {
   slug: string;
   name: string;
   formatType: 'singles' | 'doubles' | 'team';
+  playersPerSide: number | null;
   description: string | null;
   isDefault: boolean;
   isActive: boolean;

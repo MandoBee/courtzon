@@ -36,6 +36,7 @@ export interface MatchContext {
   matchId: number;
   sportId: number;
   status: string;
+  formatId: number | null;
   branchId: number | null;
   resourceId: number | null;
   playedAt: string | null;
@@ -170,7 +171,7 @@ export class MatchResultRepository {
   async getMatchContext(matchId: number): Promise<MatchContext | null> {
     const pool = getPool();
     const [rows] = await pool.execute<RowData>(
-      `SELECT m.id AS match_id, m.sport_id, m.status,
+      `SELECT m.id AS match_id, m.sport_id, m.status, m.format_id,
               b.branch_id, b.resource_id, b.end_at_utc,
               COALESCE(
                 (SELECT COALESCE(ms.ended_at, ms.started_at) FROM match_sessions ms
@@ -195,6 +196,7 @@ export class MatchResultRepository {
       matchId: r.match_id,
       sportId: r.sport_id,
       status: r.status,
+      formatId: r.format_id != null ? Number(r.format_id) : null,
       branchId: r.branch_id ?? null,
       resourceId: r.resource_id ?? null,
       playedAt: r.played_at ?? null,
@@ -214,6 +216,33 @@ export class MatchResultRepository {
        ORDER BY sf.is_default DESC, srs.version DESC
        LIMIT 1`,
       [sportId],
+    );
+    if (!rows.length) return null;
+    const r = rows[0] as any;
+    return {
+      formatId: Number(r.format_id),
+      ruleSetId: Number(r.rule_set_id),
+      version: r.version,
+      rules: typeof r.rules === 'string' ? JSON.parse(r.rules) : r.rules,
+      standingsRules: r.standings_rules ? (typeof r.standings_rules === 'string' ? JSON.parse(r.standings_rules) : r.standings_rules) : null,
+    };
+  }
+
+  /**
+   * Active rule set for a SPECIFIC format (authoritative Match format). Used by
+   * result submission when the Match already knows its format — so the scoring
+   * rules follow the Match's historical format, not the current sport default.
+   */
+  async findActiveRuleSetForFormat(formatId: number): Promise<{ formatId: number; ruleSetId: number; version: number; rules: any; standingsRules: any } | null> {
+    const pool = getPool();
+    const [rows] = await pool.execute<RowData>(
+      `SELECT sf.id AS format_id, srs.id AS rule_set_id, srs.version, srs.rules, srs.standings_rules
+       FROM sport_formats sf
+       JOIN sport_rule_sets srs ON srs.format_id = sf.id AND srs.is_active = 1
+       WHERE sf.id = ? AND sf.is_active = 1
+       ORDER BY srs.version DESC
+       LIMIT 1`,
+      [formatId],
     );
     if (!rows.length) return null;
     const r = rows[0] as any;
@@ -447,10 +476,58 @@ export class MatchResultRepository {
       slug: r.slug,
       name: r.name,
       formatType: r.format_type,
+      playersPerSide: r.players_per_side != null ? Number(r.players_per_side) : null,
       description: r.description,
       isDefault: Boolean(r.is_default),
       isActive: Boolean(r.is_active),
     }));
+  }
+
+  /**
+   * Resolve the authoritative Sport Format for a sport at Match creation time.
+   * Prefers the single default/active format (existing resolution semantics:
+   * `is_default` first, then id for determinism). Returns null when the sport
+   * has no active format — the caller decides whether to fail or leave the
+   * Match format-less (legacy behavior preserved).
+   */
+  async resolveDefaultFormatForSport(sportId: number): Promise<{ formatId: number; formatType: 'singles' | 'doubles' | 'team'; playersPerSide: number | null; name: string } | null> {
+    const pool = getPool();
+    const [rows] = await pool.execute<RowData>(
+      `SELECT id, format_type, players_per_side, name
+       FROM sport_formats
+       WHERE sport_id = ? AND is_active = 1
+       ORDER BY is_default DESC, id ASC
+       LIMIT 1`,
+      [sportId],
+    );
+    if (!rows.length) return null;
+    const r = rows[0] as any;
+    return {
+      formatId: Number(r.id),
+      formatType: r.format_type,
+      playersPerSide: r.players_per_side != null ? Number(r.players_per_side) : null,
+      name: r.name,
+    };
+  }
+
+  /** Resolve a single Sport Format by id (for explicit format_id validation). */
+  async findFormatById(formatId: number): Promise<{ formatId: number; sportId: number; formatType: 'singles' | 'doubles' | 'team'; playersPerSide: number | null; name: string; isActive: boolean } | null> {
+    const pool = getPool();
+    const [rows] = await pool.execute<RowData>(
+      `SELECT id, sport_id, format_type, players_per_side, name, is_active
+       FROM sport_formats WHERE id = ?`,
+      [formatId],
+    );
+    if (!rows.length) return null;
+    const r = rows[0] as any;
+    return {
+      formatId: Number(r.id),
+      sportId: Number(r.sport_id),
+      formatType: r.format_type,
+      playersPerSide: r.players_per_side != null ? Number(r.players_per_side) : null,
+      name: r.name,
+      isActive: Boolean(r.is_active),
+    };
   }
 
   async listRuleSets(formatId: number, activeOnly = false): Promise<SportRuleSet[]> {

@@ -10,6 +10,8 @@ import { waitingListService } from './waiting-list.service.js';
 import { sessionService } from './session.service.js';
 import { Match } from '../../domain/match.entity.js';
 import { Participant } from '../../domain/participant.entity.js';
+import type { MatchFormatSnapshot, MatchFormatType } from '../../domain/match.types.js';
+import { matchResultRepository } from '../../../match-result/infrastructure/match-result.repository.js';
 import { AppError } from '../../../../shared/errors/app-error.js';
 import { createModuleLogger } from '../../../../shared/utils/logger.js';
 
@@ -20,7 +22,8 @@ const log = createModuleLogger('match');
 export class MatchService {
   async createFromBooking(
     bookingId: number,
-    bookingType: string
+    bookingType: string,
+    explicitFormatId?: number
   ): Promise<Match | null> {
     log.info({ bookingId, bookingType }, 'createFromBooking called');
 
@@ -58,10 +61,14 @@ export class MatchService {
     try {
       await conn.beginTransaction();
 
+      const resolvedFormat = await this.resolveMatchFormat(bk.sport_id, explicitFormatId);
+      const formatId = resolvedFormat?.formatId ?? null;
+      const formatSnapshot = resolvedFormat ? this.buildFormatSnapshot(resolvedFormat) : null;
+
       const [matchResult] = await conn.execute<mysql.ResultSetHeader>(
-        `INSERT INTO matches (type, status, booking_id, sport_id)
-         VALUES ('public', 'open', ?, ?)`,
-        [bookingId, bk.sport_id]
+        `INSERT INTO matches (type, status, booking_id, sport_id, format_id, format_snapshot)
+         VALUES ('public', 'open', ?, ?, ?, ?)`,
+        [bookingId, bk.sport_id, formatId, formatSnapshot ? JSON.stringify(formatSnapshot) : null]
       );
       const matchId = matchResult.insertId;
 
@@ -108,6 +115,7 @@ export class MatchService {
         payload: {
           matchId, type: 'public', sportId: bk.sport_id,
           creatorId: bk.user_id, timestamp: new Date().toISOString(),
+          formatId: formatId ?? null,
         },
       });
 
@@ -127,6 +135,52 @@ export class MatchService {
     } finally {
       conn.release();
     }
+  }
+
+  /**
+   * Resolve the authoritative Sport Format for a Match (Group 1).
+   *
+   * - No explicit format → the sport's single default/active format
+   *   (`sport_formats` is the source of truth; no sport-name hardcoding).
+   * - Explicit format_id (future Match-creation flow) → validated: exists,
+   *   active, belongs to the Match sport, format_type valid.
+   *
+   * Falls back to `null` when the sport has no active format, preserving the
+   * legacy format-less Match behaviour (never silently guesses).
+   */
+  private async resolveMatchFormat(sportId: number, explicitFormatId?: number): Promise<{
+    formatId: number; formatType: MatchFormatType; playersPerSide: number | null; name: string;
+  } | null> {
+    if (explicitFormatId != null) {
+      const fmt = await matchResultRepository.findFormatById(explicitFormatId);
+      if (!fmt) {
+        throw new AppError('Match format not found', 404, 'MATCH_FORMAT_NOT_FOUND');
+      }
+      if (!fmt.isActive) {
+        throw new AppError('Match format is not active', 400, 'MATCH_FORMAT_INACTIVE');
+      }
+      if (fmt.sportId !== sportId) {
+        throw new AppError('Match format does not belong to the Match sport', 400, 'MATCH_FORMAT_SPORT_MISMATCH');
+      }
+      return { formatId: fmt.formatId, formatType: fmt.formatType, playersPerSide: fmt.playersPerSide, name: fmt.name };
+    }
+    const def = await matchResultRepository.resolveDefaultFormatForSport(sportId);
+    if (!def) {
+      log.warn({ sportId }, 'No active sport format configured for sport — Match created without a format');
+      return null;
+    }
+    return def;
+  }
+
+  private buildFormatSnapshot(fmt: {
+    formatId: number; formatType: MatchFormatType; playersPerSide: number | null; name: string;
+  }): MatchFormatSnapshot {
+    return {
+      formatId: fmt.formatId,
+      formatType: fmt.formatType,
+      playersPerSide: fmt.playersPerSide,
+      name: fmt.name,
+    };
   }
 
   async cancelMatch(matchId: number, reason?: string): Promise<void> {

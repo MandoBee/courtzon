@@ -43,7 +43,7 @@ export class MysqlMatchRepository implements MatchRepository {
     const db = this.resolve(conn);
 
     const [matchRows] = await db.execute<RowData>(
-      `SELECT id, type, status, booking_id, sport_id, version, created_at, updated_at
+      `SELECT id, type, status, booking_id, sport_id, format_id, format_snapshot, version, created_at, updated_at
        FROM matches WHERE id = ?`, [id]
     );
     if (!matchRows.length) return null;
@@ -55,6 +55,8 @@ export class MysqlMatchRepository implements MatchRepository {
       status: row.status,
       bookingId: row.booking_id,
       sportId: row.sport_id,
+      formatId: row.format_id != null ? Number(row.format_id) : null,
+      formatSnapshot: row.format_snapshot ? (typeof row.format_snapshot === 'string' ? JSON.parse(row.format_snapshot) : row.format_snapshot) : null,
       version: row.version,
       createdAt: new Date(row.created_at),
       updatedAt: new Date(row.updated_at),

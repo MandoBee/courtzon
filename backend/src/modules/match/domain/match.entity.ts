@@ -1,4 +1,4 @@
-import type { MatchType, MatchStatus, Visibility } from './match.types.js';
+import type { MatchType, MatchStatus, Visibility, MatchFormatSnapshot } from './match.types.js';
 import type { MatchCriteria } from './match-criteria.vo.js';
 import type { MatchSession } from './match-session.vo.js';
 import { Invitation } from './invitation.entity.js';
@@ -23,6 +23,8 @@ export interface MatchData {
   status: MatchStatus;
   bookingId: number | null;
   sportId: number;
+  formatId?: number | null;
+  formatSnapshot?: MatchFormatSnapshot | null;
   version: number;
   createdAt: Date;
   updatedAt: Date;
@@ -34,6 +36,8 @@ export class Match {
   private _status: MatchStatus;
   public readonly bookingId: number | null;
   public readonly sportId: number;
+  private readonly _formatId: number | null;
+  private readonly _formatSnapshot: MatchFormatSnapshot | null;
   private _version: number;
   public readonly createdAt: Date;
   public updatedAt: Date;
@@ -50,6 +54,8 @@ export class Match {
     this._status = data.status;
     this.bookingId = data.bookingId;
     this.sportId = data.sportId;
+    this._formatId = data.formatId ?? null;
+    this._formatSnapshot = data.formatSnapshot ?? null;
     this._version = data.version;
     this.createdAt = data.createdAt;
     this.updatedAt = data.updatedAt;
@@ -57,6 +63,8 @@ export class Match {
 
   get status(): MatchStatus { return this._status; }
   get version(): number { return this._version; }
+  get formatId(): number | null { return this._formatId; }
+  get formatSnapshot(): MatchFormatSnapshot | null { return this._formatSnapshot; }
   get invitations(): ReadonlyArray<Invitation> { return this._invitations; }
   get joinRequests(): ReadonlyArray<JoinRequest> { return this._joinRequests; }
   get participants(): ReadonlyArray<Participant> { return this._participants; }

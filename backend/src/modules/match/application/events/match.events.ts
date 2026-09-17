@@ -8,6 +8,7 @@ export interface MatchCreatedPayload extends MatchEventPayload {
   type: string;
   sportId: number;
   creatorId: number;
+  formatId?: number | null;
   timestamp: string;
 }
 
