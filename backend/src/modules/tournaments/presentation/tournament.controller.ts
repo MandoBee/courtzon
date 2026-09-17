@@ -4,7 +4,7 @@ import { tournamentRepository } from '../infrastructure/repositories/tournament.
 import {
   CreateTournamentSchema, UpdateTournamentSchema, ListTournamentsQuerySchema,
   RegisterSchema, GenerateGroupsSchema, RecordResultSchema,
-  AssignCourtSchema, AssignRefereeSchema,
+  AssignCourtSchema, AssignRefereeSchema, CreateStageSchema,
 } from './tournament.dto.js';
 import { recordAudit } from '../../audit-log/index.js';
 import { NotFoundError } from '../../../shared/errors/app-error.js';
@@ -263,6 +263,27 @@ export async function getStandingsHandler(request: FastifyRequest, reply: Fastif
 export async function getParticipantsHandler(request: FastifyRequest, reply: FastifyReply) {
   const { id } = request.params as any;
   const data = await tournamentService.getRegistrations(Number(id));
+  return reply.send({ data });
+}
+
+// ── Stages (Group 5A — MIXED tournaments) ──
+
+export async function createStageHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = getUserId(request);
+  const { id } = request.params as any;
+  const body = CreateStageSchema.parse(request.body);
+  const stage = await tournamentService.createStage(Number(id), body);
+  recordAudit({
+    actorId: userId, action: 'TOURNAMENT.CREATE_STAGE', entityType: 'tournament_stage',
+    entityId: stage.id!, afterState: { ...body },
+    ipAddress: request.ip, userAgent: getUserAgent(request),
+  });
+  return reply.status(201).send(stage);
+}
+
+export async function getStagesHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { id } = request.params as any;
+  const data = await tournamentService.getStages(Number(id));
   return reply.send({ data });
 }
 

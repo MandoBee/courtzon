@@ -14,11 +14,10 @@ const TOURNAMENT_TRANSITIONS: Record<TournamentStatus, TournamentStatus[]> = {
 };
 
 const REGISTRATION_TRANSITIONS: Record<RegistrationStatus, RegistrationStatus[]> = {
-  pending: ['confirmed', 'waiting', 'cancelled'],
-  waiting: ['confirmed', 'cancelled'],
-  confirmed: ['cancelled', 'completed'],
-  cancelled: [],
-  completed: [],
+  registered: ['confirmed', 'withdrawn', 'disqualified'],
+  confirmed: ['withdrawn', 'disqualified'],
+  withdrawn: [],
+  disqualified: [],
 };
 
 export function validateTournamentTransition(from: TournamentStatus, to: TournamentStatus): void {

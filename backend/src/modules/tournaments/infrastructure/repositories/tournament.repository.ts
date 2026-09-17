@@ -1,6 +1,6 @@
 import { getPool } from '../../../../database/mysql.js';
 import { buildPagination, paginationClause } from '../../../../shared/utils/pagination.js';
-import type { Tournament, TournamentRegistration, TournamentMatch, TournamentMatchResult, TournamentGroup, TournamentGroupMember, TournamentStandingRow } from '../../domain/tournament-aggregate.js';
+import type { Tournament, TournamentRegistration, TournamentMatch, TournamentMatchResult, TournamentGroup, TournamentGroupMember, TournamentStandingRow, TournamentStage } from '../../domain/tournament-aggregate.js';
 
 type RowData = import('mysql2').RowDataPacket[];
 type ResultSet = import('mysql2').ResultSetHeader;
@@ -128,13 +128,28 @@ export class TournamentRepository {
   }
 
   async createRegistration(data: Partial<TournamentRegistration>): Promise<number> {
-    const sql = `INSERT INTO tournament_registrations (tournament_id, user_id, team_id, team_name, seed, status, waiting_order, registered_at)
+    const sql = `INSERT INTO tournament_registrations (tournament_id, player_id, team_id, seed_rank, status, payment_status, waiting_order, registered_at)
                  VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`;
     const [result] = await getPool().query<ResultSet>(sql, [
-      data.tournament_id, data.user_id ?? null, data.team_id ?? null, data.team_name ?? null,
-      data.seed ?? 0, data.status ?? 'pending', data.waiting_order ?? null,
+      data.tournament_id, data.user_id ?? null, data.team_id ?? null,
+      data.seed ?? null, data.status ?? 'pending', data.payment_status ?? 'unpaid',
+      data.waiting_order ?? null,
     ]);
     return (result as any).insertId;
+  }
+
+  async updateRegistrationPaymentStatus(id: number, paymentStatus: string): Promise<void> {
+    await getPool().query(
+      'UPDATE tournament_registrations SET payment_status = ? WHERE id = ?', [paymentStatus, id],
+    );
+  }
+
+  async findRegistrationsByPlayerUserId(userId: number): Promise<TournamentRegistration[]> {
+    const [rows] = await getPool().query<RowData>(
+      'SELECT * FROM tournament_registrations WHERE player_id = ? ORDER BY registered_at DESC',
+      [userId],
+    );
+    return rows as TournamentRegistration[];
   }
 
   async updateRegistrationStatus(id: number, status: string, waitingOrder?: number): Promise<void> {
@@ -177,11 +192,11 @@ export class TournamentRepository {
       'SELECT COALESCE(MAX(match_number), 0) + 1 AS next_num FROM tournament_matches WHERE tournament_id = ?',
       [data.tournament_id],
     );
-    const matchNumber = existing[0]?.next_num ?? 1;
-    const sql = `INSERT INTO tournament_matches (tournament_id, round, match_number, round_name, group_id, bracket_position, player1_id, player2_id, winner_id, status, resource_id, referee_id, start_time, score_summary)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+    const matchNumber = data.match_number ?? existing[0]?.next_num ?? 1;
+    const sql = `INSERT INTO tournament_matches (tournament_id, match_id, round, match_number, round_name, group_id, bracket_position, player1_id, player2_id, winner_id, status, resource_id, referee_id, start_time, score_summary)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
     const [result] = await pool.query<ResultSet>(sql, [
-      data.tournament_id, data.round, matchNumber, data.round_name ?? null,
+      data.tournament_id, data.match_id ?? null, data.round, matchNumber, data.round_name ?? null,
       data.group_id ?? null, data.bracket_position ?? 0,
       data.player1_id ?? null, data.player2_id ?? null, data.winner_id ?? null,
       data.status ?? 'scheduled', data.resource_id ?? null, data.referee_id ?? null,
@@ -316,6 +331,27 @@ export class TournamentRepository {
       [tournamentId],
     );
     return rows;
+  }
+
+  // ── Stages (Group 5A — MIXED tournaments) ──
+
+  async createStage(data: Partial<TournamentStage>): Promise<number> {
+    const sql = `INSERT INTO tournament_stages (tournament_id, stage_order, name, progression_format, match_format_id, rule_set_id, advance_count, status)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`;
+    const [result] = await getPool().query<ResultSet>(sql, [
+      data.tournament_id, data.stage_order ?? 1, data.name ?? null,
+      data.progression_format ?? 'round_robin', data.match_format_id ?? null,
+      data.rule_set_id ?? null, data.advance_count ?? 1, data.status ?? 'pending',
+    ]);
+    return (result as any).insertId;
+  }
+
+  async findStages(tournamentId: number): Promise<TournamentStage[]> {
+    const [rows] = await getPool().query<RowData>(
+      'SELECT * FROM tournament_stages WHERE tournament_id = ? ORDER BY stage_order',
+      [tournamentId],
+    );
+    return rows as TournamentStage[];
   }
 
   // ── Standings ──

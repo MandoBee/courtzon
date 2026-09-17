@@ -2778,6 +2778,7 @@ CREATE TABLE `matches` (
   `status` enum('open','full','closed','in_progress','completed','cancelled','void') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'open',
   `booking_id` bigint unsigned DEFAULT NULL,
   `sport_id` int unsigned NOT NULL,
+  `tournament_id` int unsigned DEFAULT NULL,
   `format_id` bigint unsigned DEFAULT NULL,
   `format_snapshot` json DEFAULT NULL COMMENT 'Historical match format snapshot (format_type, players_per_side, name) frozen at creation',
   `rule_set_id` bigint unsigned DEFAULT NULL,
@@ -2791,10 +2792,12 @@ CREATE TABLE `matches` (
   KEY `idx_sport_date` (`sport_id`,`status`,`created_at`),
   KEY `idx_match_format` (`format_id`),
   KEY `idx_match_rule_set` (`rule_set_id`),
+  KEY `idx_match_tournament` (`tournament_id`),
   CONSTRAINT `fk_match_booking` FOREIGN KEY (`booking_id`) REFERENCES `bookings` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_match_sport` FOREIGN KEY (`sport_id`) REFERENCES `sports` (`id`),
   CONSTRAINT `fk_match_format` FOREIGN KEY (`format_id`) REFERENCES `sport_formats` (`id`) ON DELETE RESTRICT,
-  CONSTRAINT `fk_match_rule_set` FOREIGN KEY (`rule_set_id`) REFERENCES `sport_rule_sets` (`id`) ON DELETE RESTRICT
+  CONSTRAINT `fk_match_rule_set` FOREIGN KEY (`rule_set_id`) REFERENCES `sport_rule_sets` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_match_tournament` FOREIGN KEY (`tournament_id`) REFERENCES `tournaments` (`id`) ON DELETE RESTRICT
 ) ENGINE=InnoDB AUTO_INCREMENT=128 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 DROP TABLE IF EXISTS `membership_benefits`;
@@ -5621,12 +5624,37 @@ CREATE TABLE `tournament_match_scores` (
   CONSTRAINT `fk_score_match` FOREIGN KEY (`match_id`) REFERENCES `tournament_matches` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
+DROP TABLE IF EXISTS `tournament_stages`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `tournament_stages` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `tournament_id` int unsigned NOT NULL,
+  `stage_order` int unsigned NOT NULL DEFAULT '1',
+  `name` varchar(120) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `progression_format` varchar(50) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'round_robin',
+  `match_format_id` bigint unsigned DEFAULT NULL,
+  `rule_set_id` bigint unsigned DEFAULT NULL,
+  `advance_count` int unsigned NOT NULL DEFAULT '1',
+  `status` varchar(30) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'pending',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_stage_tournament` (`tournament_id`),
+  KEY `idx_stage_match_format` (`match_format_id`),
+  KEY `idx_stage_rule_set` (`rule_set_id`),
+  CONSTRAINT `fk_stage_tournament` FOREIGN KEY (`tournament_id`) REFERENCES `tournaments` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_stage_match_format` FOREIGN KEY (`match_format_id`) REFERENCES `sport_formats` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_stage_rule_set` FOREIGN KEY (`rule_set_id`) REFERENCES `sport_rule_sets` (`id`) ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
 DROP TABLE IF EXISTS `tournament_matches`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8 */;
 CREATE TABLE `tournament_matches` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,
   `tournament_id` int unsigned NOT NULL,
+  `match_id` bigint unsigned DEFAULT NULL,
   `group_id` int unsigned DEFAULT NULL,
   `round` int unsigned NOT NULL,
   `round_name` varchar(100) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
@@ -5652,10 +5680,12 @@ CREATE TABLE `tournament_matches` (
   KEY `idx_group` (`group_id`),
   KEY `idx_referee` (`referee_id`),
   KEY `idx_bracket` (`bracket_position`),
+  KEY `idx_tm_match` (`match_id`),
   CONSTRAINT `fk_match_player1` FOREIGN KEY (`player1_id`) REFERENCES `users` (`id`) ON DELETE SET NULL,
   CONSTRAINT `fk_match_player2` FOREIGN KEY (`player2_id`) REFERENCES `users` (`id`) ON DELETE SET NULL,
   CONSTRAINT `fk_match_resource` FOREIGN KEY (`resource_id`) REFERENCES `resources` (`id`) ON DELETE SET NULL,
-  CONSTRAINT `fk_match_tourn` FOREIGN KEY (`tournament_id`) REFERENCES `tournaments` (`id`) ON DELETE CASCADE
+  CONSTRAINT `fk_match_tourn` FOREIGN KEY (`tournament_id`) REFERENCES `tournaments` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_tm_match` FOREIGN KEY (`match_id`) REFERENCES `matches` (`id`) ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 DROP TABLE IF EXISTS `tournament_registrations`;
@@ -5722,6 +5752,9 @@ CREATE TABLE `tournaments` (
   `branch_id` int unsigned DEFAULT NULL,
   `bracket_type_id` int unsigned NOT NULL,
   `format` varchar(50) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `match_format_id` bigint unsigned DEFAULT NULL,
+  `rule_set_id` bigint unsigned DEFAULT NULL,
+  `draw_seed` bigint unsigned DEFAULT NULL,
   `category` varchar(100) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `season` varchar(100) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `sport_id` int unsigned DEFAULT NULL,
@@ -5766,10 +5799,14 @@ CREATE TABLE `tournaments` (
   KEY `idx_format` (`format`),
   KEY `idx_category` (`category`),
   KEY `idx_is_public` (`is_public`),
+  KEY `idx_tourn_match_format` (`match_format_id`),
+  KEY `idx_tourn_rule_set` (`rule_set_id`),
   CONSTRAINT `fk_tourn_bracket` FOREIGN KEY (`bracket_type_id`) REFERENCES `tournament_bracket_types` (`id`),
   CONSTRAINT `fk_tourn_branch` FOREIGN KEY (`branch_id`) REFERENCES `branches` (`id`) ON DELETE SET NULL,
   CONSTRAINT `fk_tourn_creator` FOREIGN KEY (`creator_id`) REFERENCES `users` (`id`),
   CONSTRAINT `fk_tourn_org` FOREIGN KEY (`organisation_id`) REFERENCES `organisations` (`id`) ON DELETE SET NULL,
+  CONSTRAINT `fk_tourn_match_format` FOREIGN KEY (`match_format_id`) REFERENCES `sport_formats` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_tourn_rule_set` FOREIGN KEY (`rule_set_id`) REFERENCES `sport_rule_sets` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_tourn_sport` FOREIGN KEY (`sport_id`) REFERENCES `sports` (`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;

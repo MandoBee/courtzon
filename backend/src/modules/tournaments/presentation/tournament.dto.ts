@@ -97,6 +97,15 @@ export const AssignRefereeSchema = z.object({
   referee_id: z.number().int().positive(),
 });
 
+export const CreateStageSchema = z.object({
+  stage_order: z.number().int().min(1).optional().default(1),
+  name: z.string().min(1).max(120).optional(),
+  progression_format: z.enum(['knockout', 'double_elimination', 'round_robin', 'swiss', 'group_stage_knockout', 'league', 'custom', 'mixed']).default('round_robin'),
+  match_format_id: z.number().int().positive().optional(),
+  rule_set_id: z.number().int().positive().optional(),
+  advance_count: z.number().int().min(1).optional().default(1),
+});
+
 export const DashboardQuerySchema = z.object({});
 
 export type CreateTournamentInput = z.infer<typeof CreateTournamentSchema>;

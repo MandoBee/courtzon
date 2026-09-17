@@ -157,6 +157,74 @@ export class MatchService {
   }
 
   /**
+   * Group 5A — create a Match for a tournament (the Tournament engine is an
+   * ORCHESTRATOR of the shared Match domain). This is the SAME Match entity,
+   * format/rule freezing and participant-side assignment used everywhere else —
+   * no parallel match system.
+   *
+   * The provided participants MUST already carry authoritative side/team
+   * assignments (home/away) computed by the tournament draw. Format + rule set
+   * snapshots are resolved from the tournament's configured Match Format /
+   * Rule Set and frozen on the Match.
+   */
+  async createForTournament(input: {
+    tournamentId: number;
+    sportId: number;
+    formatId: number;
+    ruleSetId: number;
+    formatSnapshot: MatchFormatSnapshot;
+    ruleSnapshot: Record<string, unknown>;
+    participants: Array<{ userId: number; side: 'home' | 'away'; teamIndex: number; role?: 'host' | 'joiner' }>;
+  }): Promise<Match> {
+    const pool = getPool();
+    const conn = await pool.getConnection();
+    try {
+      await conn.beginTransaction();
+
+      const [matchResult] = await conn.execute<mysql.ResultSetHeader>(
+        `INSERT INTO matches (type, status, booking_id, sport_id, tournament_id, format_id, format_snapshot, rule_set_id, rule_snapshot)
+         VALUES ('public', 'closed', NULL, ?, ?, ?, ?, ?, ?)`,
+        [input.sportId, input.tournamentId, input.formatId,
+         JSON.stringify(input.formatSnapshot), input.ruleSetId, JSON.stringify(input.ruleSnapshot)],
+      );
+      const matchId = matchResult.insertId;
+
+      for (const p of input.participants) {
+        await conn.execute(
+          `INSERT INTO match_participants (match_id, user_id, role, side, team_index, joined_at)
+           VALUES (?, ?, ?, ?, ?, NOW())`,
+          [matchId, p.userId, p.role ?? 'joiner', p.side, p.teamIndex],
+        );
+      }
+
+      await conn.commit();
+
+      const match = await matchRepository.findById(matchId);
+      if (!match) {
+        log.error({ matchId }, 'Failed to load tournament match');
+        throw new AppError('Match not found', 404, 'MATCH_NOT_FOUND');
+      }
+
+      matchEventPublisher.publish({
+        type: 'match:created',
+        payload: {
+          matchId, type: 'public', sportId: input.sportId,
+          creatorId: input.participants[0]?.userId ?? 0,
+          formatId: input.formatId,
+          timestamp: new Date().toISOString(),
+        },
+      });
+
+      return match;
+    } catch (err) {
+      await conn.rollback();
+      throw err;
+    } finally {
+      conn.release();
+    }
+  }
+
+  /**
    * Resolve the authoritative Sport Format for a Match (Group 1).
    *
    * - No explicit format → the sport's single default/active format

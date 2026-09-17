@@ -546,6 +546,25 @@ export class MatchResultRepository {
     };
   }
 
+  /** Resolve a single Rule Set by id (Group 5A — tournament Match Rule Set freeze). */
+  async findRuleSetById(ruleSetId: number): Promise<{ formatId: number; ruleSetId: number; version: number; rules: any; standingsRules: any } | null> {
+    const pool = getPool();
+    const [rows] = await pool.execute<RowData>(
+      `SELECT id AS rule_set_id, format_id, version, rules, standings_rules
+       FROM sport_rule_sets WHERE id = ?`,
+      [ruleSetId],
+    );
+    if (!rows.length) return null;
+    const r = rows[0] as any;
+    return {
+      formatId: Number(r.format_id),
+      ruleSetId: Number(r.rule_set_id),
+      version: r.version,
+      rules: typeof r.rules === 'string' ? JSON.parse(r.rules) : r.rules,
+      standingsRules: r.standings_rules ? (typeof r.standings_rules === 'string' ? JSON.parse(r.standings_rules) : r.standings_rules) : null,
+    };
+  }
+
   async listRuleSets(formatId: number, activeOnly = false): Promise<SportRuleSet[]> {
     const pool = getPool();
     let where = 'WHERE srs.format_id = ?';
