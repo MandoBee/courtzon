@@ -2731,10 +2731,13 @@ CREATE TABLE `match_participants` (
   `match_id` bigint unsigned NOT NULL,
   `user_id` int unsigned NOT NULL,
   `role` enum('host','joiner') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'joiner',
+  `side` enum('home','away') COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `team_index` int DEFAULT NULL,
   `joined_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_participant` (`match_id`,`user_id`),
   KEY `idx_user` (`user_id`),
+  KEY `idx_side` (`match_id`,`side`),
   CONSTRAINT `fk_part_match` FOREIGN KEY (`match_id`) REFERENCES `matches` (`id`) ON DELETE CASCADE,
   CONSTRAINT `fk_part_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

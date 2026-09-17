@@ -23,4 +23,6 @@ export type JoinRequestStatus = 'submitted' | 'withdrawn' | 'approved' | 'reject
 
 export type ParticipantRole = 'host' | 'joiner';
 
+export type ParticipantSide = 'home' | 'away';
+
 export type SessionStatus = 'in_progress' | 'completed' | 'voided';

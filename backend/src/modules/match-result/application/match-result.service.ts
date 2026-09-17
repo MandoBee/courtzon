@@ -5,7 +5,8 @@ import { createModuleLogger } from '../../../shared/utils/logger.js';
 import { matchResultRepository } from '../infrastructure/match-result.repository.js';
 import { ratingService } from './rating/rating.service.js';
 import { validateAndComputeFinal, RulesValidationError, outcomeCountsForRating } from './rules/rules-engine.js';
-import type { MatchResultParticipant, ParticipantSlot, MatchResultRecord, RawMatchResultPayload } from '../domain/match-result.types.js';
+import type { MatchResultParticipant, MatchParticipantSlot, ParticipantSlot, MatchResultRecord, RawMatchResultPayload } from '../domain/match-result.types.js';
+import type { MatchFormatSnapshot } from '../../match/domain/match.types.js';
 import { ForbiddenError, NotFoundError } from '../../../shared/errors/app-error.js';
 import { SUBMISSION_WINDOW_HOURS, AUTO_APPROVAL_WINDOW_HOURS, ELIGIBLE_MATCH_STATUSES } from './result-window.js';
 
@@ -71,10 +72,11 @@ export class MatchResultService {
       throw new RulesValidationError('Invalid result payload');
     }
 
-    const sides = this.buildParticipantSlots(context.participantUserIds, actorId);
+    const sides = this.buildParticipantSlots(context.participantSlots, actorId);
     if (sides.length < 2) {
       throw new RulesValidationError('Not enough participants to record a result');
     }
+    this.validateSideCardinality(sides, context.formatSnapshot);
 
     const existing = await matchResultRepository.findByMatchId(matchIdActual);
     if (existing && existing.submissionStatus !== 'withdrawn') {
@@ -244,7 +246,8 @@ export class MatchResultService {
       auto_approval_deadline_at: addHours(now, AUTO_APPROVAL_WINDOW_HOURS),
     });
 
-    const sides = this.buildParticipantSlots(context.participantUserIds, actorId);
+    const sides = this.buildParticipantSlots(context.participantSlots, actorId);
+    this.validateSideCardinality(sides, context.formatSnapshot);
     await matchResultRepository.replaceParticipants(record.id, matchIdActual, sides.map((s) => ({
       userId: s.userId,
       teamIndex: s.teamIndex,
@@ -371,7 +374,11 @@ export class MatchResultService {
         evidence_counted: false,
       });
       const context = await matchResultRepository.getMatchContext(record.matchId);
-      const sides = this.buildParticipantSlots(context?.participantUserIds ?? record.participantPayload.map((p) => p.userId), actorId);
+      const sides = this.buildParticipantSlots(
+        context?.participantSlots && context.participantSlots.length ? context.participantSlots : record.participantPayload,
+        actorId,
+      );
+      this.validateSideCardinality(sides, context?.formatSnapshot ?? null);
       await matchResultRepository.replaceParticipants(record.id, record.matchId, sides.map((s) => ({
         userId: s.userId,
         teamIndex: s.teamIndex,
@@ -650,7 +657,7 @@ export class MatchResultService {
         if (existing) continue;
         const format = await matchResultRepository.findActiveRuleSet(m.sportId);
         if (!format) continue;
-        const sides = this.buildParticipantSlots(m.participantUserIds, m.participantUserIds[0]);
+        const sides = this.buildParticipantSlots(m.participantSlots, m.participantSlots[0]?.userId ?? 0);
 
         const resultId = await matchResultRepository.insert({
           matchId: m.matchId,
@@ -721,8 +728,32 @@ export class MatchResultService {
     return matchResultRepository.getResultOrgId(resultId);
   }
 
-  /** Split participants into home/away sides with one member per side fallback. */
-  private buildParticipantSlots(userIds: number[], _preferFirst: number): ParticipantSlot[] {
+  /**
+   * Build result participant slots from the Match's authoritative side/team
+   * assignments (Group 2). When every participant carries an authoritative
+   * `side`, those assignments are used verbatim and validated against the
+   * Match's frozen format (players_per_side cardinality). Legacy matches
+   * without authoritative sides fall back to the historical insertion-order
+   * split — isolated and never presented as authoritative.
+   */
+  private buildParticipantSlots(
+    slots: MatchParticipantSlot[],
+    _preferFirst: number,
+  ): ParticipantSlot[] {
+    const authoritative = slots.filter((s) => s.side !== null);
+    const complete = authoritative.length > 0 && authoritative.length === slots.length;
+    if (!complete) {
+      return this.legacyBuildParticipantSlots(slots.map((s) => s.userId));
+    }
+    return slots.map((s) => ({
+      userId: s.userId,
+      side: s.side as 'home' | 'away',
+      teamIndex: s.teamIndex ?? (s.side === 'away' ? 1 : 0),
+    }));
+  }
+
+  /** LEGACY fallback ONLY — insertion-order half-split for matches created before authoritative sides existed. */
+  private legacyBuildParticipantSlots(userIds: number[]): ParticipantSlot[] {
     const unique = Array.from(new Set(userIds.filter((u) => u != null)));
     const half = Math.ceil(unique.length / 2);
     return unique.map((userId, idx) => ({
@@ -730,6 +761,21 @@ export class MatchResultService {
       side: idx < half ? 'home' : 'away',
       teamIndex: idx < half ? 0 : 1,
     }));
+  }
+
+  /** Validate side cardinality against the Match's frozen format snapshot. */
+  private validateSideCardinality(slots: ParticipantSlot[], formatSnapshot: MatchFormatSnapshot | null): void {
+    if (!formatSnapshot) return;
+    const capacity = formatSnapshot.playersPerSide;
+    if (capacity == null || capacity <= 0) return;
+    const homeCount = slots.filter((s) => s.side === 'home').length;
+    const awayCount = slots.filter((s) => s.side === 'away').length;
+    if (homeCount > capacity) {
+      throw new RulesValidationError(`Home side has ${homeCount} participants, exceeding the ${formatSnapshot.formatType} format capacity of ${capacity}`);
+    }
+    if (awayCount > capacity) {
+      throw new RulesValidationError(`Away side has ${awayCount} participants, exceeding the ${formatSnapshot.formatType} format capacity of ${capacity}`);
+    }
   }
 }
 

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { AppError } from '../../../shared/errors/app-error.js';
+import { Match } from '../domain/match.entity.js';
 
 const publisher = vi.hoisted(() => ({ publish: vi.fn() }));
 const repo = vi.hoisted(() => ({ findById: vi.fn() }));
@@ -22,10 +23,19 @@ vi.mock('../application/services/eligibility.service.js', () => ({ eligibilitySe
 
 import { joinRequestService } from '../application/services/join-request.service.js';
 
+function legacyMatch(id: number): Match {
+  return new Match({
+    id, type: 'public', status: 'open', bookingId: 1, sportId: 22,
+    formatId: null, formatSnapshot: null,
+    version: 1, createdAt: new Date(), updatedAt: new Date(),
+  });
+}
+
 describe('JoinRequestService capacity guard', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     respondQueue = [];
+    repo.findById.mockResolvedValue(legacyMatch(1));
   });
 
   it('throws MATCH_FULL when the roster is already at capacity (host-inclusive count)', async () => {
@@ -120,5 +130,31 @@ describe('JoinRequestService capacity guard', () => {
     // Empty join_requests rowset after the guard's first query would be a data
     // fault; ensure we still throw REQUEST_NOT_FOUND cleanly for unknown rows.
     await expect(joinRequestService.approve(999, 55)).rejects.toBeInstanceOf(AppError);
+  });
+
+  it('assigns an authoritative side for a joiner when the Match has a format', async () => {
+    repo.findById.mockResolvedValue(new Match({
+      id: 1, type: 'public', status: 'open', bookingId: 1, sportId: 22,
+      formatId: 1, formatSnapshot: { formatId: 1, formatType: 'doubles', playersPerSide: 2, name: 'Padel Standard' },
+      version: 1, createdAt: new Date(), updatedAt: new Date(),
+    }));
+    respondQueue = [
+      () => [{ match_id: 1, user_id: 100, status: 'submitted' }],
+      () => [{ max_players: 4 }],
+      () => [{ cnt: 1 }], // host only
+      () => [],
+      () => [],
+      () => [],
+      () => [{ cnt: 2 }],
+    ];
+
+    await joinRequestService.approve(7, 55);
+
+    const calls = (pool.execute as any).mock.calls.map((c: any[]) => ({ sql: String(c[0]), params: c[1] }));
+    const insert = calls.find((c: any) => c.sql.includes('INSERT INTO match_participants'));
+    expect(insert).toBeTruthy();
+    // host is on home, so the first joiner is placed on home as the 2nd doubles player
+    expect(insert.params[2]).toBe('home');
+    expect(insert.params[3]).toBe(0);
   });
 });

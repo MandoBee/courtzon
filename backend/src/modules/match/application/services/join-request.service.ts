@@ -4,6 +4,7 @@ import { matchRepository } from '../../infrastructure/repositories/match.reposit
 import { matchEventPublisher } from '../events/match-event-publisher.js';
 import { JoinRequest } from '../../domain/join-request.entity.js';
 import { Participant } from '../../domain/participant.entity.js';
+import { assignNextParticipantSide } from '../../domain/participant-side.js';
 import { eligibilityService } from './eligibility.service.js';
 import { invitationService } from './invitation.service.js';
 import { AppError } from '../../../../shared/errors/app-error.js';
@@ -101,6 +102,16 @@ export class JoinRequestService {
     const req = rows[0] as any;
     if (req.status !== 'submitted') throw new AppError('Request is not pending', 400, 'REQUEST_NOT_PENDING');
 
+    // Authoritative side assignment (Group 2): load the Match (with its frozen
+    // format snapshot + participants) so the joiner is placed on the correct
+    // side per the Match's own format — never by insertion order.
+    const match = await matchRepository.findById(req.match_id);
+    if (!match) throw new AppError('Match not found', 404, 'MATCH_NOT_FOUND');
+    const joinerSide = assignNextParticipantSide(
+      match.formatSnapshot,
+      match.participants.map((p) => ({ side: p.side })),
+    );
+
     // Capacity guard: never let a participant exceed the match's total capacity.
     // public_match_details.max_players is the TOTAL including the host, so the
     // existing participant count (host + joiners) must stay strictly below it.
@@ -124,9 +135,9 @@ export class JoinRequestService {
     );
 
     await pool.execute(
-      `INSERT INTO match_participants (match_id, user_id, role, joined_at)
-       VALUES (?, ?, 'joiner', NOW())`,
-      [req.match_id, req.user_id]
+      `INSERT INTO match_participants (match_id, user_id, role, side, team_index, joined_at)
+       VALUES (?, ?, 'joiner', ?, ?, NOW())`,
+      [req.match_id, req.user_id, joinerSide?.side ?? null, joinerSide?.teamIndex ?? null]
     );
 
     // The player is now a participant — any standing match invitation is no

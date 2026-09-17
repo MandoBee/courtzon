@@ -89,11 +89,16 @@ const CONTEXT = {
   sportId: 22,
   status: 'in_progress',
   formatId: null,
+  formatSnapshot: null,
   branchId: null,
   resourceId: null,
   playedAt: new Date(Date.now() - 60 * 60 * 1000).toISOString().slice(0, 19).replace('T', ' '),
   timezone: null,
   participantUserIds: [5, 6],
+  participantSlots: [
+    { userId: 5, side: null, teamIndex: null },
+    { userId: 6, side: null, teamIndex: null },
+  ],
 };
 
 const VALID_PAYLOAD = {
@@ -470,7 +475,7 @@ describe('LIFECYCLE — Test C auto-approval applies evidence exactly once', () 
 
 describe('LIFECYCLE — Test D no-result worker', () => {
   it('marks expired matches No Result with no rating evidence', async () => {
-    repo.findExpiredNoResultMatches.mockResolvedValue([{ matchId: 42, sportId: 22, branchId: null, resourceId: null, playedAt: '2026-08-01 10:00:00', timezone: null, participantUserIds: [5, 6] }]);
+    repo.findExpiredNoResultMatches.mockResolvedValue([{ matchId: 42, sportId: 22, branchId: null, resourceId: null, playedAt: '2026-08-01 10:00:00', timezone: null, participantUserIds: [5, 6], participantSlots: [{ userId: 5, side: null, teamIndex: null }, { userId: 6, side: null, teamIndex: null }] }]);
     repo.findByMatchId.mockResolvedValue(null);
     repo.findActiveRuleSet.mockResolvedValue(FORMAT);
     repo.insert.mockResolvedValue(55);
@@ -538,7 +543,17 @@ describe('LIFECYCLE — Test J rating snapshot uses played_at', () => {
 
 describe('LIFECYCLE — Test N doubles/team members share evidence', () => {
   it('same-side participants receive the same match evidence value', async () => {
-    repo.getMatchContext.mockResolvedValue({ ...CONTEXT, participantUserIds: [5, 6, 7, 8] });
+    repo.getMatchContext.mockResolvedValue({
+      ...CONTEXT,
+      participantUserIds: [5, 6, 7, 8],
+      participantSlots: [
+        { userId: 5, side: 'home', teamIndex: 0 },
+        { userId: 6, side: 'home', teamIndex: 0 },
+        { userId: 7, side: 'away', teamIndex: 1 },
+        { userId: 8, side: 'away', teamIndex: 1 },
+      ],
+      formatSnapshot: { formatId: 1, formatType: 'doubles', playersPerSide: 2, name: 'Padel Standard' },
+    });
     repo.findByMatchId.mockResolvedValue(null);
     repo.insert.mockResolvedValue(99);
     repo.findById.mockResolvedValue(makeRecord({ id: 99 }));
@@ -559,5 +574,77 @@ describe('LIFECYCLE — Test O external/off-platform match cannot generate evide
     await expect(matchResultService.submitMatchResult(999, 5, VALID_PAYLOAD)).rejects.toThrow(NotFoundError);
     expect(repo.insert).not.toHaveBeenCalled();
     expect(rating.applyEvidence).not.toHaveBeenCalled();
+  });
+});
+
+describe('Group 2 — authoritative participant sides drive result grouping', () => {
+  it('uses authoritative Match side assignments verbatim (insertion order is irrelevant)', async () => {
+    // Participants arrive in a scrambled order; authoritative sides must win.
+    repo.getMatchContext.mockResolvedValue({
+      ...CONTEXT,
+      participantUserIds: [8, 5, 7, 6],
+      participantSlots: [
+        { userId: 8, side: 'home', teamIndex: 0 },
+        { userId: 5, side: 'home', teamIndex: 0 },
+        { userId: 7, side: 'away', teamIndex: 1 },
+        { userId: 6, side: 'away', teamIndex: 1 },
+      ],
+      formatSnapshot: { formatId: 1, formatType: 'doubles', playersPerSide: 2, name: 'Padel Standard' },
+    });
+    repo.findByMatchId.mockResolvedValue(null);
+    repo.insert.mockResolvedValue(99);
+    repo.findById.mockResolvedValue(makeRecord({ id: 99 }));
+    await matchResultService.submitMatchResult(42, 5, VALID_PAYLOAD);
+
+    const parts = repo.replaceParticipants.mock.calls[0][2];
+    const home = parts.filter((p: any) => p.side === 'home').map((p: any) => p.userId).sort();
+    const away = parts.filter((p: any) => p.side === 'away').map((p: any) => p.userId).sort();
+    expect(home).toEqual([5, 8]);
+    expect(away).toEqual([6, 7]);
+    expect(repo.insert).toHaveBeenCalledWith(expect.objectContaining({
+      participantPayload: expect.arrayContaining([
+        { userId: 8, side: 'home', teamIndex: 0 },
+        { userId: 7, side: 'away', teamIndex: 1 },
+      ]),
+    }));
+  });
+
+  it('rejects an over-capacity side for a doubles match', async () => {
+    repo.getMatchContext.mockResolvedValue({
+      ...CONTEXT,
+      participantUserIds: [5, 6, 7, 8, 9],
+      participantSlots: [
+        { userId: 5, side: 'home', teamIndex: 0 },
+        { userId: 6, side: 'home', teamIndex: 0 },
+        { userId: 7, side: 'home', teamIndex: 0 }, // 3rd home → over doubles capacity (2)
+        { userId: 8, side: 'away', teamIndex: 1 },
+        { userId: 9, side: 'away', teamIndex: 1 },
+      ],
+      formatSnapshot: { formatId: 1, formatType: 'doubles', playersPerSide: 2, name: 'Padel Standard' },
+    });
+    repo.findByMatchId.mockResolvedValue(null);
+    await expect(matchResultService.submitMatchResult(42, 5, VALID_PAYLOAD)).rejects.toThrow(RulesValidationError);
+  });
+
+  it('legacy match without authoritative sides falls back to insertion-order split', async () => {
+    repo.getMatchContext.mockResolvedValue({
+      ...CONTEXT,
+      participantUserIds: [9, 8],
+      participantSlots: [
+        { userId: 9, side: null, teamIndex: null },
+        { userId: 8, side: null, teamIndex: null },
+      ],
+      formatSnapshot: null,
+    });
+    repo.findByMatchId.mockResolvedValue(null);
+    repo.insert.mockResolvedValue(99);
+    repo.findById.mockResolvedValue(makeRecord({ id: 99 }));
+    await matchResultService.submitMatchResult(42, 9, VALID_PAYLOAD);
+
+    const parts = repo.replaceParticipants.mock.calls[0][2];
+    const home = parts.filter((p: any) => p.side === 'home').map((p: any) => p.userId);
+    const away = parts.filter((p: any) => p.side === 'away').map((p: any) => p.userId);
+    expect(home).toEqual([9]);
+    expect(away).toEqual([8]);
   });
 });

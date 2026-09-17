@@ -75,6 +75,18 @@ export interface ParticipantSlot {
   teamIndex: number;
 }
 
+/**
+ * Authoritative side/team assignment read from `match_participants` (Group 2).
+ * `side`/`teamIndex` are nullable because legacy matches predate authoritative
+ * assignment — the result engine treats nulls as the legacy fallback, never as
+ * authoritative truth.
+ */
+export interface MatchParticipantSlot {
+  userId: number;
+  side: ParticipantSide | null;
+  teamIndex: number | null;
+}
+
 export interface SetsScore {
   sets: Array<{ home: number; away: number }>;
 }

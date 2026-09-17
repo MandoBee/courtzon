@@ -2,6 +2,7 @@ import { getPool } from '../../../database/mysql.js';
 import type mysql from 'mysql2/promise';
 import type {
   FinalResult,
+  MatchParticipantSlot,
   MatchResultParticipant,
   MatchResultRecord,
   ParticipantSlot,
@@ -9,6 +10,7 @@ import type {
   SportFormat,
   SportRuleSet,
 } from '../domain/match-result.types.js';
+import type { MatchFormatSnapshot } from '../../match/domain/match.types.js';
 import { toMySqlDateTime } from '../../../shared/utils/mysql-date.js';
 import { SUBMISSION_WINDOW_HOURS } from '../application/result-window.js';
 
@@ -37,12 +39,15 @@ export interface MatchContext {
   sportId: number;
   status: string;
   formatId: number | null;
+  formatSnapshot: MatchFormatSnapshot | null;
   branchId: number | null;
   resourceId: number | null;
   playedAt: string | null;
   endAtUtc: string | null;
   timezone: string | null;
   participantUserIds: number[];
+  /** Authoritative side/team assignments from match_participants (side may be null on legacy matches). */
+  participantSlots: MatchParticipantSlot[];
 }
 
 export interface ResultInsert {
@@ -171,7 +176,7 @@ export class MatchResultRepository {
   async getMatchContext(matchId: number): Promise<MatchContext | null> {
     const pool = getPool();
     const [rows] = await pool.execute<RowData>(
-      `SELECT m.id AS match_id, m.sport_id, m.status, m.format_id,
+      `SELECT m.id AS match_id, m.sport_id, m.status, m.format_id, m.format_snapshot,
               b.branch_id, b.resource_id, b.end_at_utc,
               COALESCE(
                 (SELECT COALESCE(ms.ended_at, ms.started_at) FROM match_sessions ms
@@ -189,20 +194,27 @@ export class MatchResultRepository {
     if (!rows.length) return null;
     const r = rows[0] as any;
     const [parts] = await pool.execute<RowData>(
-      'SELECT user_id FROM match_participants WHERE match_id = ?',
+      'SELECT user_id, side, team_index FROM match_participants WHERE match_id = ?',
       [matchId],
     );
+    const slots = (parts as any[]).map((p: any) => ({
+      userId: Number(p.user_id),
+      side: p.side ?? null,
+      teamIndex: p.team_index != null ? Number(p.team_index) : null,
+    }));
     return {
       matchId: r.match_id,
       sportId: r.sport_id,
       status: r.status,
       formatId: r.format_id != null ? Number(r.format_id) : null,
+      formatSnapshot: r.format_snapshot ? (typeof r.format_snapshot === 'string' ? JSON.parse(r.format_snapshot) : r.format_snapshot) : null,
       branchId: r.branch_id ?? null,
       resourceId: r.resource_id ?? null,
       playedAt: r.played_at ?? null,
       endAtUtc: r.end_at_utc ?? null,
       timezone: r.timezone ?? null,
-      participantUserIds: parts.map((p: any) => Number(p.user_id)),
+      participantUserIds: slots.map((s) => s.userId),
+      participantSlots: slots,
     };
   }
 
@@ -591,7 +603,7 @@ export class MatchResultRepository {
   }
 
   /** Worker: eligible matches (status in the eligible set) with no result and whose window expired. */
-  async findExpiredNoResultMatches(now: string): Promise<Array<{ matchId: number; sportId: number; branchId: number | null; resourceId: number | null; playedAt: string; timezone: string | null; participantUserIds: number[] }>> {
+  async findExpiredNoResultMatches(now: string): Promise<Array<{ matchId: number; sportId: number; branchId: number | null; resourceId: number | null; playedAt: string; timezone: string | null; participantUserIds: number[]; participantSlots: MatchParticipantSlot[] }>> {
     const pool = getPool();
     // Same authoritative played_at computation as getMatchContext: the session
     // row wins when present, otherwise the scheduled booking end (end_at_utc)
@@ -619,9 +631,14 @@ export class MatchResultRepository {
          AND ${playedAtExpr} < DATE_SUB(?, INTERVAL ${SUBMISSION_WINDOW_HOURS} HOUR)`,
       [now, now],
     );
-    const result: Array<{ matchId: number; sportId: number; branchId: number | null; resourceId: number | null; playedAt: string; timezone: string | null; participantUserIds: number[] }> = [];
+    const result: Array<{ matchId: number; sportId: number; branchId: number | null; resourceId: number | null; playedAt: string; timezone: string | null; participantUserIds: number[]; participantSlots: MatchParticipantSlot[] }> = [];
     for (const r of rows as any[]) {
-      const [parts] = await pool.execute<RowData>('SELECT user_id FROM match_participants WHERE match_id = ?', [r.match_id]);
+      const [parts] = await pool.execute<RowData>('SELECT user_id, side, team_index FROM match_participants WHERE match_id = ?', [r.match_id]);
+      const slots = (parts as any[]).map((p: any) => ({
+        userId: Number(p.user_id),
+        side: p.side ?? null,
+        teamIndex: p.team_index != null ? Number(p.team_index) : null,
+      }));
       result.push({
         matchId: Number(r.match_id),
         sportId: r.sport_id,
@@ -629,7 +646,8 @@ export class MatchResultRepository {
         resourceId: r.resource_id ?? null,
         playedAt: r.played_at,
         timezone: r.timezone ?? null,
-        participantUserIds: parts.map((p: any) => Number(p.user_id)),
+        participantUserIds: slots.map((s) => s.userId),
+        participantSlots: slots,
       });
     }
     return result;

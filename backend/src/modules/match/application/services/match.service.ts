@@ -10,6 +10,7 @@ import { waitingListService } from './waiting-list.service.js';
 import { sessionService } from './session.service.js';
 import { Match } from '../../domain/match.entity.js';
 import { Participant } from '../../domain/participant.entity.js';
+import { assignNextParticipantSide } from '../../domain/participant-side.js';
 import type { MatchFormatSnapshot, MatchFormatType } from '../../domain/match.types.js';
 import { matchResultRepository } from '../../../match-result/infrastructure/match-result.repository.js';
 import { AppError } from '../../../../shared/errors/app-error.js';
@@ -65,6 +66,11 @@ export class MatchService {
       const formatId = resolvedFormat?.formatId ?? null;
       const formatSnapshot = resolvedFormat ? this.buildFormatSnapshot(resolvedFormat) : null;
 
+      // Authoritative host side assignment (Group 2): the creator/host always
+      // opens on 'home' (teamIndex 0) when the Match has a format. Format-less
+      // matches keep a NULL side (legacy fallback preserved).
+      const hostSide = assignNextParticipantSide(formatSnapshot, []);
+
       const [matchResult] = await conn.execute<mysql.ResultSetHeader>(
         `INSERT INTO matches (type, status, booking_id, sport_id, format_id, format_snapshot)
          VALUES ('public', 'open', ?, ?, ?, ?)`,
@@ -97,9 +103,9 @@ export class MatchService {
       );
 
       await conn.execute(
-        `INSERT INTO match_participants (match_id, user_id, role, joined_at)
-         VALUES (?, ?, 'host', NOW())`,
-        [matchId, bk.user_id]
+        `INSERT INTO match_participants (match_id, user_id, role, side, team_index, joined_at)
+         VALUES (?, ?, 'host', ?, ?, NOW())`,
+        [matchId, bk.user_id, hostSide?.side ?? null, hostSide?.teamIndex ?? null]
       );
 
       await conn.commit();
