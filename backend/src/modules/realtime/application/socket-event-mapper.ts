@@ -412,7 +412,17 @@ function mapTournamentEvent(eventName: string, p: Record<string, any>): MappedSo
   if (p.organisationId) rooms.push(`organisation:${p.organisationId}`);
   return {
     type: `tournament.${sub}`,
-    payload: { tournamentId: p.tournamentId, matchId: p.matchId, userId: p.userId, name: p.name, result: p.result },
+    payload: {
+      tournamentId: p.tournamentId,
+      matchId: p.matchId,
+      userId: p.userId,
+      name: p.name,
+      result: p.result,
+      winnerId: p.winnerId,
+      stageId: p.stageId,
+      stageCompleted: p.stageCompleted,
+      tournamentCompleted: p.tournamentCompleted,
+    },
     rooms,
   };
 }

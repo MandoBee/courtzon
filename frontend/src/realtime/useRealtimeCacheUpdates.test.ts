@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { ORG_LIFECYCLE_INVALIDATIONS, invalidateOrgLifecycle, USER_REGISTRATION_INVALIDATIONS, invalidateUserRegistration, FINANCE_INVALIDATIONS, invalidateFinanceEntries, MARKETPLACE_PRODUCT_INVALIDATIONS, invalidateMarketplaceProducts, ORG_ACCOUNTING_ROOTS, invalidateOrgAccounting, COACH_LIFECYCLE_INVALIDATIONS } from './useRealtimeCacheUpdates';
+import { ORG_LIFECYCLE_INVALIDATIONS, invalidateOrgLifecycle, USER_REGISTRATION_INVALIDATIONS, invalidateUserRegistration, FINANCE_INVALIDATIONS, invalidateFinanceEntries, MARKETPLACE_PRODUCT_INVALIDATIONS, invalidateMarketplaceProducts, ORG_ACCOUNTING_ROOTS, invalidateOrgAccounting, COACH_LIFECYCLE_INVALIDATIONS, TOURNAMENT_REALTIME_EVENTS, invalidateTournament } from './useRealtimeCacheUpdates';
 
 function hasPrefix(keys: readonly (readonly string[])[], prefix: string[]): boolean {
   return keys.some((k) => prefix.every((part, i) => k[i] === part));
@@ -237,5 +237,36 @@ it('product visibility changes reuse the exact marketplace roots (18) and no unr
         expect(roots).not.toContain(forbidden);
       }
     });
+  });
+});
+
+describe('TOURNAMENT_REALTIME_EVENTS (Group 5B draw/progression realtime strategy)', () => {
+  it('covers the five tournament signals that mutate bracket/standings', () => {
+    expect(TOURNAMENT_REALTIME_EVENTS).toContain('tournament.bracket-generated');
+    expect(TOURNAMENT_REALTIME_EVENTS).toContain('tournament.match-created');
+    expect(TOURNAMENT_REALTIME_EVENTS).toContain('tournament.match-progressed');
+    expect(TOURNAMENT_REALTIME_EVENTS).toContain('tournament.stage-completed');
+    expect(TOURNAMENT_REALTIME_EVENTS).toContain('tournament.completed');
+  });
+
+  it('invalidateTournament targets only tournament roots and uses string ids', () => {
+    const invalidated: string[][] = [];
+    const fakeQc = {
+      invalidateQueries: ({ queryKey }: { queryKey: readonly string[] }) => {
+        invalidated.push([...queryKey]);
+      },
+    };
+    invalidateTournament(fakeQc as any, 7);
+    expect(invalidated).toContainEqual(['tournament', '7']);
+    expect(invalidated).toContainEqual(['tournaments']);
+    expect(invalidated.every((k) => k[0] === 'tournament' || k[0] === 'tournaments')).toBe(true);
+  });
+
+  it('does nothing for a null/undefined tournament id', () => {
+    let called = 0;
+    const fakeQc = { invalidateQueries: () => { called += 1; } };
+    invalidateTournament(fakeQc as any, null);
+    invalidateTournament(fakeQc as any, undefined);
+    expect(called).toBe(0);
   });
 });

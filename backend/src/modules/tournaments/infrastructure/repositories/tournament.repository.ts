@@ -1,6 +1,7 @@
 import { getPool } from '../../../../database/mysql.js';
 import { buildPagination, paginationClause } from '../../../../shared/utils/pagination.js';
 import type { Tournament, TournamentRegistration, TournamentMatch, TournamentMatchResult, TournamentGroup, TournamentGroupMember, TournamentStandingRow, TournamentStage } from '../../domain/tournament-aggregate.js';
+import type { PoolConnection } from 'mysql2/promise';
 
 type RowData = import('mysql2').RowDataPacket[];
 type ResultSet = import('mysql2').ResultSetHeader;
@@ -87,12 +88,13 @@ export class TournamentRepository {
     );
   }
 
-  async updateStatus(id: number, status: string): Promise<void> {
+  async updateStatus(id: number, status: string, conn?: PoolConnection): Promise<void> {
+    const db = conn ?? getPool();
     const extras: string[] = ['status = ?'];
     const params: any[] = [status];
     if (status === 'archived') { extras.push('archived_at = NOW()'); }
     params.push(id);
-    await getPool().query(
+    await db.query(
       `UPDATE tournaments SET ${extras.join(', ')}, updated_at = NOW() WHERE id = ?`, params,
     );
   }
@@ -193,13 +195,15 @@ export class TournamentRepository {
       [data.tournament_id],
     );
     const matchNumber = data.match_number ?? existing[0]?.next_num ?? 1;
-    const sql = `INSERT INTO tournament_matches (tournament_id, match_id, round, match_number, round_name, group_id, bracket_position, player1_id, player2_id, winner_id, status, resource_id, referee_id, start_time, score_summary)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+    const sql = `INSERT INTO tournament_matches (tournament_id, match_id, round, match_number, round_name, group_id, stage_id, bracket_position, player1_id, player2_id, winner_id, status, progression_state, progression_meta, resource_id, referee_id, start_time, score_summary)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
     const [result] = await pool.query<ResultSet>(sql, [
       data.tournament_id, data.match_id ?? null, data.round, matchNumber, data.round_name ?? null,
-      data.group_id ?? null, data.bracket_position ?? 0,
+      data.group_id ?? null, data.stage_id ?? null, data.bracket_position ?? 0,
       data.player1_id ?? null, data.player2_id ?? null, data.winner_id ?? null,
-      data.status ?? 'scheduled', data.resource_id ?? null, data.referee_id ?? null,
+      data.status ?? 'scheduled', data.progression_state ?? 'pending',
+      data.progression_meta ? (typeof data.progression_meta === 'object' ? JSON.stringify(data.progression_meta) : data.progression_meta) : null,
+      data.resource_id ?? null, data.referee_id ?? null,
       data.start_time ?? null, data.score_summary ?? null,
     ]);
     return (result as any).insertId;
@@ -226,31 +230,89 @@ export class TournamentRepository {
     return rows.length ? (rows[0] as TournamentMatch) : null;
   }
 
-  async updateMatch(id: number, data: Partial<TournamentMatch>): Promise<void> {
+  async updateMatch(id: number, data: Partial<TournamentMatch>, conn?: PoolConnection): Promise<void> {
+    const db = conn ?? getPool();
     const fields: string[] = [];
     const params: any[] = [];
     const updatable: (keyof TournamentMatch)[] = [
       'round', 'match_number', 'round_name', 'group_id', 'bracket_position',
       'player1_id', 'player2_id', 'winner_id', 'status', 'resource_id',
       'referee_id', 'start_time', 'end_time', 'score_summary',
+      'match_id', 'stage_id', 'progression_state',
     ];
     for (const f of updatable) {
       if (data[f] !== undefined) { fields.push(`${f} = ?`); params.push(data[f]); }
     }
+    if (data.progression_meta !== undefined) {
+      fields.push('progression_meta = ?');
+      params.push(typeof data.progression_meta === 'object' ? JSON.stringify(data.progression_meta) : data.progression_meta);
+    }
     if (!fields.length) return;
     fields.push('updated_at = NOW()');
     params.push(id);
-    await getPool().query(
+    await db.query(
       `UPDATE tournament_matches SET ${fields.join(', ')} WHERE id = ?`, params,
     );
   }
 
-  async updateMatchStatus(id: number, status: string, winnerId?: number): Promise<void> {
-    await getPool().query(
+  async updateMatchStatus(id: number, status: string, winnerId?: number, conn?: PoolConnection): Promise<void> {
+    const db = conn ?? getPool();
+    await db.query(
       `UPDATE tournament_matches SET status = ?, winner_id = COALESCE(?, winner_id),
        end_time = IF(? IN ('completed','walkover','forfeit'), NOW(), end_time)
        WHERE id = ?`,
       [status, winnerId ?? null, status, id],
+    );
+  }
+
+  /** Group 5B — the tournament_matches slot linked to a shared `matches` row. */
+  async findMatchBySharedMatchId(matchId: number): Promise<TournamentMatch | null> {
+    const [rows] = await getPool().query<RowData>(
+      'SELECT * FROM tournament_matches WHERE match_id = ? ORDER BY id ASC LIMIT 1',
+      [matchId],
+    );
+    return rows.length ? (rows[0] as TournamentMatch) : null;
+  }
+
+  /** Group 5B — a specific bracket slot for a round + position. */
+  async findBracketSlot(tournamentId: number, round: number, bracketPosition: number): Promise<TournamentMatch | null> {
+    const [rows] = await getPool().query<RowData>(
+      'SELECT * FROM tournament_matches WHERE tournament_id = ? AND round = ? AND bracket_position = ? ORDER BY id ASC LIMIT 1',
+      [tournamentId, round, bracketPosition],
+    );
+    return rows.length ? (rows[0] as TournamentMatch) : null;
+  }
+
+  /** Group 5B — match rows sharing a (round, bracket_position) (round-robin discriminator). */
+  async countMatchesAtPosition(tournamentId: number, round: number, bracketPosition: number): Promise<number> {
+    const [rows] = await getPool().query<RowData>(
+      'SELECT COUNT(*) AS c FROM tournament_matches WHERE tournament_id = ? AND round = ? AND bracket_position = ?',
+      [tournamentId, round, bracketPosition],
+    );
+    return rows[0]?.c ?? 0;
+  }
+
+  /**
+   * Group 5B — how many bracket slots of a stage are not yet resolved. A stage
+   * is complete when every slot is `completed` (or `bye`). Nullable group_id
+   * rows (round-robin) are tallied per stage too.
+   */
+  async countIncompleteStageMatches(stageId: number, conn?: PoolConnection): Promise<number> {
+    const db = conn ?? getPool();
+    const [rows] = await db.query<RowData>(
+      `SELECT COUNT(*) AS c FROM tournament_matches
+       WHERE stage_id = ? AND progression_state NOT IN ('completed', 'bye')`,
+      [stageId],
+    );
+    return rows[0]?.c ?? 0;
+  }
+
+  /** Group 5B — stage lifecycle transition (uses the caller's connection when inside a transaction). */
+  async updateStageStatus(stageId: number, status: string, conn?: PoolConnection): Promise<void> {
+    const db = conn ?? getPool();
+    await db.query(
+      'UPDATE tournament_stages SET status = ?, updated_at = NOW() WHERE id = ?',
+      [status, stageId],
     );
   }
 
@@ -382,8 +444,8 @@ export class TournamentRepository {
     );
   }
 
-  async recalculateStandings(tournamentId: number, groupId?: number): Promise<void> {
-    const pool = getPool();
+  async recalculateStandings(tournamentId: number, groupId?: number, conn?: PoolConnection): Promise<void> {
+    const pool = conn ?? getPool();
     await pool.query('DELETE FROM tournament_standings WHERE tournament_id = ? AND (group_id = ? OR (? IS NULL AND group_id IS NULL))',
       [tournamentId, groupId ?? null, groupId ?? null]);
 

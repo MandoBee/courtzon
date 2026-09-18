@@ -15,7 +15,6 @@ export default function TournamentDetailPage() {
   const qc = useQueryClient();
   const { showToast } = useToast();
   const [tab, setTab] = useState<Tab>('overview');
-  const [scoreForm, setScoreForm] = useState<{ matchId: number; winnerId: number; score: string } | null>(null);
 
   const { data: tournament, isLoading } = useQuery({
     queryKey: ['tournament', id],
@@ -39,13 +38,12 @@ export default function TournamentDetailPage() {
 
   const generateBracket = useMutation({
     mutationFn: () => api.post(`/admin/tournaments/${id}/generate-bracket`),
-    onSuccess: () => { showToast('Bracket generated!', 'success'); qc.invalidateQueries({ queryKey: ['tournament', id] }); },
-    onError: (e: any) => showToast(e?.response?.data?.message || 'Failed', 'error'),
-  });
-
-  const submitScore = useMutation({
-    mutationFn: (data: { matchId: number; winnerId: number; score: string }) => api.post('/admin/tournaments/score', data),
-    onSuccess: () => { showToast('Score updated!', 'success'); qc.invalidateQueries({ queryKey: ['tournament', id] }); setScoreForm(null); },
+    onSuccess: () => {
+      showToast('Bracket generated!', 'success');
+      qc.invalidateQueries({ queryKey: ['tournament', id] });
+      qc.invalidateQueries({ queryKey: ['tournament', id, 'bracket'] });
+      qc.invalidateQueries({ queryKey: ['tournament', id, 'standings'] });
+    },
     onError: (e: any) => showToast(e?.response?.data?.message || 'Failed', 'error'),
   });
 
@@ -168,8 +166,8 @@ export default function TournamentDetailPage() {
                         <div className="flex justify-between items-center mt-1">
                           <span className={`text-[10px] px-1 py-0.5 rounded ${m.status === 'completed' ? 'bg-green-100 text-green-700' : m.status === 'in_progress' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'}`}>{m.status}</span>
                           <Can permission="tournaments.enter_scores">
-                            {m.status !== 'completed' && (
-                              <button onClick={() => setScoreForm({ matchId: m.id, winnerId: 0, score: '' })}
+                            {m.status !== 'completed' && m.match_id != null && (
+                              <button onClick={() => navigate(`/matches/${m.match_id}/result`)}
                                 className="text-[10px] text-[var(--color-primary)] hover:underline">Enter Score</button>
                             )}
                           </Can>
@@ -181,21 +179,6 @@ export default function TournamentDetailPage() {
               ))}
             </div>
           )}
-        </div>
-      )}
-
-      {/* Score Entry Modal */}
-      {scoreForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setScoreForm(null)}>
-          <div className="bg-[var(--color-surface)] rounded-xl p-6 w-full max-w-sm space-y-4" onClick={e => e.stopPropagation()}>
-            <h3 className="text-sm font-semibold">Enter Score — Match #{scoreForm.matchId}</h3>
-            <div><label className="text-xs text-[var(--color-text-muted)]">Winner ID</label><input type="number" value={scoreForm.winnerId} onChange={e => setScoreForm({...scoreForm, winnerId: Number(e.target.value)})} className="w-full mt-1 px-3 py-2 text-sm bg-[var(--color-bg)] border border-[var(--color-border)] rounded-lg" /></div>
-            <div><label className="text-xs text-[var(--color-text-muted)]">Score (e.g. 6-4)</label><input value={scoreForm.score} onChange={e => setScoreForm({...scoreForm, score: e.target.value})} className="w-full mt-1 px-3 py-2 text-sm bg-[var(--color-bg)] border border-[var(--color-border)] rounded-lg" /></div>
-            <div className="flex gap-2">
-              <button onClick={() => setScoreForm(null)} className="flex-1 py-2 text-sm border border-[var(--color-border)] rounded-lg">Cancel</button>
-              <button onClick={() => submitScore.mutate(scoreForm)} disabled={!scoreForm.winnerId || !scoreForm.score} className="flex-1 py-2 text-sm text-white bg-[var(--color-primary)] rounded-lg disabled:opacity-50">Submit</button>
-            </div>
-          </div>
         </div>
       )}
 

@@ -107,6 +107,10 @@ export interface TournamentMatch {
   player2_id?: number | null;
   winner_id?: number | null;
   status: MatchStatus;
+  /** Group 5B — progression lifecycle: pending | ready | bye | completed | cancelled. */
+  progression_state?: string;
+  /** Group 5B — draw-time JSON provenance (is_bracket/target wiring). */
+  progression_meta?: Record<string, unknown> | string | null;
   resource_id?: number | null;
   referee_id?: number | null;
   start_time?: string | null;
@@ -123,6 +127,8 @@ export interface BracketSlot {
   player2Id?: number;
   /** Set when a round-1 slot has a bye (no real opponent). */
   bye?: boolean;
+  /** Group 5A — the tournament stage this slot belongs to (MIXED tournaments). */
+  stageId?: number;
   /** Progression metadata: which earlier Match result feeds this slot. */
   sourceMatchId?: number;
   sourceRound?: number;

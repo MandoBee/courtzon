@@ -116,6 +116,11 @@ export interface DomainEventMap {
   'tournament:registration-closed': BaseEvent & { tournamentId: number; name: string };
   'tournament:match-scheduled': BaseEvent & { matchId: number; userId: number; opponent: string; date: Date };
   'tournament:result': BaseEvent & { matchId: number; userId: number; result: string; ranking?: number };
+  'tournament:bracket-generated': BaseEvent & { tournamentId: number; userId?: number; name: string; staged: boolean };
+  'tournament:match-created': BaseEvent & { tournamentId: number; stageId?: number | null; matchId: number; round: number; bracketPosition: number; bracketSide?: string | null; player1Id?: number | null; player2Id?: number | null };
+  'tournament:match-progressed': BaseEvent & { tournamentId: number; matchId: number; opponentMatchId: number; winnerId?: number | null; round: number; bracketPosition: number; advancedTo?: string | null; result?: Record<string, unknown> };
+  'tournament:stage-completed': BaseEvent & { tournamentId: number; stageId: number; round: number };
+  'tournament:completed': BaseEvent & { tournamentId: number; name: string; winnerId?: number | null; winnerName?: string | null };
   'match:invitation': BaseEvent & { bookingId: number; userId: number; senderId: number; startTime?: Date; actions?: any[] };
   'community:new-post': BaseEvent & { postId: number; userId: number; communityName: string };
   'community:new-comment': BaseEvent & { commentId: number; postId: number; userId: number; authorName: string };

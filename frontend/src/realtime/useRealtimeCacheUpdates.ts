@@ -150,6 +150,31 @@ export function invalidateMarketplaceProducts(qc: { invalidateQueries: (opts: { 
 }
 
 /**
+ * Tournament draw/progression invalidations (Group 5B). Any of these signals
+ * mutates the bracket, the tournament header and/or the standings — so the
+ * detail page (query keys `['tournament', <id>]`, `['tournament', <id>,
+ * 'bracket']`, `['tournament', <id>', 'standings']`) refreshes live. Page ids
+ * are route strings, so the numeric backend id is converted with String().
+ */
+export const TOURNAMENT_REALTIME_EVENTS = [
+  'tournament.bracket-generated',
+  'tournament.match-created',
+  'tournament.match-progressed',
+  'tournament.stage-completed',
+  'tournament.completed',
+] as const;
+
+export function invalidateTournament(
+  qc: { invalidateQueries: (opts: { queryKey: readonly string[] }) => void },
+  tournamentId: number | null | undefined,
+): void {
+  if (tournamentId == null) return;
+  const id = String(tournamentId);
+  qc.invalidateQueries({ queryKey: ['tournament', id] });
+  qc.invalidateQueries({ queryKey: ['tournaments'] });
+}
+
+/**
  * Coach lifecycle invalidation keys. These fire on agreement accepted/rejected/
  * invited/ended, approval/status changes, and availability toggles — all of
  * which can change a coach's eligibility at a contract-required branch. The
@@ -728,18 +753,34 @@ export function useRealtimeCacheUpdates(): void {
   });
 
   useSocketEvent('tournament.match-scheduled', (p: any) => {
-    if (p?.tournamentId) {
-      qc.invalidateQueries({ queryKey: ['tournament', p.tournamentId] });
-      qc.invalidateQueries({ queryKey: ['tournament', p.tournamentId, 'bracket'] });
-    }
+    invalidateTournament(qc, p?.tournamentId);
   });
 
   useSocketEvent('tournament.result', (p: any) => {
-    if (p?.tournamentId) {
-      qc.invalidateQueries({ queryKey: ['tournament', p.tournamentId] });
-      qc.invalidateQueries({ queryKey: ['tournament', p.tournamentId, 'standings'] });
-    }
+    invalidateTournament(qc, p?.tournamentId);
+    qc.invalidateQueries({ queryKey: ['tournament', String(p?.tournamentId), 'standings'] });
   });
+
+  // Group 5B draw + progression signals. A bracket generation, a seeded
+  // placeholder becoming a real shareable Match, a slot winner advancing,
+  // a stage finishing and the whole tournament completing ALL mutate the
+  // bracket/standings/tournament caches — the TournamentDetailPage must
+  // refresh live, with no manual reload.
+  const tournamentRealtimeEvents = [
+    'tournament.bracket-generated',
+    'tournament.match-created',
+    'tournament.match-progressed',
+    'tournament.stage-completed',
+    'tournament.completed',
+  ];
+  for (const eventName of tournamentRealtimeEvents) {
+    useSocketEvent(eventName, (p: any) => {
+      invalidateTournament(qc, p?.tournamentId);
+      const key = eventName === 'tournament.match-progressed' || eventName === 'tournament.completed' ? 'standings' : 'bracket';
+      if (key === 'standings') qc.invalidateQueries({ queryKey: ['tournament', String(p?.tournamentId), 'standings'] });
+      else qc.invalidateQueries({ queryKey: ['tournament', String(p?.tournamentId), 'bracket'] });
+    });
+  }
 
   // ── Presence events ────────────────────────────────────────────
   useSocketEvent('presence.online', (p: any) => {
@@ -788,7 +829,7 @@ export function useRealtimeCacheUpdates(): void {
     useSocketEvent(ev, invalidateNavCounts);
   }
 
-  for (const ev of ['tournament.created', 'tournament.match-scheduled', 'tournament.result']) {
+  for (const ev of ['tournament.created', 'tournament.match-scheduled', 'tournament.result', 'tournament.bracket-generated', 'tournament.match-created', 'tournament.match-progressed', 'tournament.completed']) {
     useSocketEvent(ev, invalidateNavCounts);
   }
 

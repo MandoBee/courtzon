@@ -583,8 +583,18 @@ const eventGroups: EventGroupConfig[] = [
     },
   },
   {
-    events: ['tournament:created', 'tournament:registration-open', 'tournament:registration-closed', 'tournament:starting-soon', 'tournament:match-scheduled', 'tournament:result'],
+    events: ['tournament:created', 'tournament:registration-open', 'tournament:registration-closed', 'tournament:starting-soon', 'tournament:match-scheduled', 'tournament:result', 'tournament:bracket-generated', 'tournament:completed'],
     handler: async (eventName, data, categorySlug) => {
+      if (eventName === 'tournament:completed') {
+        if (data.userId) {
+          await dispatchToUser({
+            userId: data.userId, eventName, categorySlug, data,
+            relatedEntityType: 'tournament', relatedEntityId: String(data.tournamentId),
+            action: a(`/tournaments/${data.tournamentId}`),
+          });
+        }
+        return;
+      }
       if (data.userId) {
         await dispatchToUser({
           userId: data.userId, eventName, categorySlug, data,
@@ -989,7 +999,8 @@ class NotificationEngine {
       'coaching:session-scheduled', 'coaching:session-reminder', 'coaching:session-cancelled',
       'coach:invited', 'coach:agreement-added',
       'tournament:created', 'tournament:registration-open', 'tournament:registration-closed',
-      'tournament:starting-soon', 'tournament:match-scheduled', 'tournament:result',
+'tournament:starting-soon', 'tournament:match-scheduled', 'tournament:result',
+      'tournament:bracket-generated', 'tournament:stage-completed', 'tournament:match-created', 'tournament:match-progressed', 'tournament:completed',
       'community:mention', 'community:reply', 'community:like',
       'friend:request', 'friend:accepted', 'friend:blocked',
       'chat:new-message', 'chat:group-created', 'chat:group-joined', 'chat:group-invitation',

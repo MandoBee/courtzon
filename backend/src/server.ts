@@ -234,6 +234,11 @@ async function bootstrap() {
     createEntitlementMarketplaceWorkers();
     app.log.info('Entitlement marketplace subscribers + workers registered');
 
+    const { registerTournamentProgressionSubscribers, createTournamentProgressionWorkers } = await import('./modules/tournaments/application/tournament-progression.listener.js');
+    registerTournamentProgressionSubscribers();
+    createTournamentProgressionWorkers();
+    app.log.info('Tournament progression subscribers + worker registered');
+
     const outboxPoller = new OutboxPoller(
       () => eventBusV2.getAllSubscriberIds(),
       (subscriberId, eventName) => {

@@ -5656,6 +5656,7 @@ CREATE TABLE `tournament_matches` (
   `tournament_id` int unsigned NOT NULL,
   `match_id` bigint unsigned DEFAULT NULL,
   `group_id` int unsigned DEFAULT NULL,
+  `stage_id` int unsigned DEFAULT NULL,
   `round` int unsigned NOT NULL,
   `round_name` varchar(100) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `match_number` int unsigned NOT NULL,
@@ -5667,6 +5668,8 @@ CREATE TABLE `tournament_matches` (
   `start_time` datetime DEFAULT NULL,
   `end_time` datetime DEFAULT NULL,
   `status` enum('scheduled','in_progress','completed','walkover','cancelled') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'scheduled',
+  `progression_state` varchar(30) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'pending',
+  `progression_meta` json DEFAULT NULL,
   `winner_id` int unsigned DEFAULT NULL,
   `score_summary` varchar(500) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -5681,10 +5684,13 @@ CREATE TABLE `tournament_matches` (
   KEY `idx_referee` (`referee_id`),
   KEY `idx_bracket` (`bracket_position`),
   KEY `idx_tm_match` (`match_id`),
+  KEY `idx_tm_stage` (`stage_id`),
+  KEY `idx_tm_progression` (`tournament_id`, `round`, `bracket_position`),
   CONSTRAINT `fk_match_player1` FOREIGN KEY (`player1_id`) REFERENCES `users` (`id`) ON DELETE SET NULL,
   CONSTRAINT `fk_match_player2` FOREIGN KEY (`player2_id`) REFERENCES `users` (`id`) ON DELETE SET NULL,
   CONSTRAINT `fk_match_resource` FOREIGN KEY (`resource_id`) REFERENCES `resources` (`id`) ON DELETE SET NULL,
   CONSTRAINT `fk_match_tourn` FOREIGN KEY (`tournament_id`) REFERENCES `tournaments` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_tm_stage` FOREIGN KEY (`stage_id`) REFERENCES `tournament_stages` (`id`) ON DELETE SET NULL,
   CONSTRAINT `fk_tm_match` FOREIGN KEY (`match_id`) REFERENCES `matches` (`id`) ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;

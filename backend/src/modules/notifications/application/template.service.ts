@@ -470,6 +470,9 @@ export async function seedTemplates(): Promise<void> {
     { eventName: 'tournament:result', locale: 'en', categorySlug: 'system', type: 'info', priority: 'normal',
       titleTemplate: 'Match Result', bodyTemplate: 'Match result: {{result}}{{#if ranking}}. Ranking: #{{ranking}}{{/if}}.',
       actionKey: 'view_match', routePattern: '/matches/{{matchId}}' },
+    { eventName: 'tournament:completed', locale: 'en', categorySlug: 'system', type: 'success', priority: 'high',
+      titleTemplate: 'Tournament Completed', bodyTemplate: 'The {{name}} tournament has finished.{{#if winnerName}} Winner: {{winnerName}}.{{/if}}',
+      actionKey: 'view_tournament', routePattern: '/tournaments/{{tournamentId}}' },
 
     // Support
     { eventName: 'support:ticket-opened', locale: 'en', categorySlug: 'system', type: 'info', priority: 'normal',
@@ -853,6 +856,9 @@ export async function seedTemplates(): Promise<void> {
     { eventName: 'tournament:result', locale: 'ar', categorySlug: 'system', type: 'info', priority: 'normal',
       titleTemplate: 'نتيجة المباراة', bodyTemplate: 'نتيجة المباراة: {{result}}{{#if ranking}}. الترتيب: #{{ranking}}{{/if}}.',
       actionKey: 'view_match', routePattern: '/matches/{{matchId}}' },
+    { eventName: 'tournament:completed', locale: 'ar', categorySlug: 'system', type: 'success', priority: 'high',
+      titleTemplate: 'اكتملت البطولة', bodyTemplate: 'انتهت بطولة {{name}}.{{#if winnerName}} الفائز: {{winnerName}}.{{/if}}',
+      actionKey: 'view_tournament', routePattern: '/tournaments/{{tournamentId}}' },
 
     // ── Wallet ──
     { eventName: 'wallet:deposit', locale: 'en', categorySlug: 'payments', type: 'success', priority: 'normal',

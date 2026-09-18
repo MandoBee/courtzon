@@ -76,6 +76,8 @@ export class SocketPublisher {
       'membership:expiring', 'membership:expired', 'membership:renewed', 'membership:created',
       'system:announcement',
       'tournament:created', 'tournament:match-scheduled', 'tournament:result',
+      'tournament:bracket-generated', 'tournament:match-created', 'tournament:match-progressed',
+      'tournament:stage-completed', 'tournament:completed',
       'setting:updated', 'setting:profile-applied',
       'accounting:entry-recorded',
       'user:suspended', 'user:activated', 'user:deleted', 'user.role.changed',
