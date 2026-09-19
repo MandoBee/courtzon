@@ -116,6 +116,13 @@ export class TournamentService {
     return t;
   }
 
+  /** Management detail — the shared Admin/Org display shape (sport_name, organisation_name, max_players, type, …). */
+  async getByIdDetailed(id: number) {
+    const t = await tournamentRepository.findByIdDetailed(id);
+    if (!t) throw new NotFoundError('Tournament', ErrorCodes.ACADEMY_PROGRAM_NOT_FOUND);
+    return t;
+  }
+
   async getByCode(code: string): Promise<Tournament | null> {
     return tournamentRepository.findByCode(code);
   }

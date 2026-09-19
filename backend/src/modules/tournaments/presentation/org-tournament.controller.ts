@@ -65,7 +65,8 @@ export async function getOrgTournamentHandler(request: FastifyRequest, reply: Fa
   const orgId = getOrgId(request);
   const { id } = request.params as any;
   await assertOrgOwnsTournament(orgId, Number(id));
-  const tournament = await tournamentService.getById(Number(id));
+  // Same enriched management detail shape the Super Admin workbench uses.
+  const tournament = await tournamentService.getByIdDetailed(Number(id));
   return reply.send(tournament);
 }
 

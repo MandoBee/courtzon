@@ -10,6 +10,7 @@ const repo = vi.hoisted(() => ({
 
 const service = vi.hoisted(() => ({
   getById: vi.fn(),
+  getByIdDetailed: vi.fn(),
   create: vi.fn(),
   update: vi.fn(),
   publish: vi.fn(),
@@ -85,12 +86,12 @@ describe('org-tournament.controller (tenant isolation)', () => {
     expect(reply.sent).toEqual({ data: [], total: 0 });
   });
 
-  it('get: allows a tournament owned by the scoped org', async () => {
+  it('get: allows a tournament owned by the scoped org (enriched detail shape)', async () => {
     repo.getOrganisationId.mockResolvedValue(ORG_A);
-    service.getById.mockResolvedValue({ id: 7, organisation_id: ORG_A, name: 'T' });
+    service.getByIdDetailed.mockResolvedValue({ id: 7, organisation_id: ORG_A, name: 'T', sport_name: 'Padel', max_players: 16 });
     const reply = res();
     await ctrl.getOrgTournamentHandler(req({ params: { orgId: String(ORG_A), id: '7' } }), reply);
-    expect(service.getById).toHaveBeenCalledWith(7);
+    expect(service.getByIdDetailed).toHaveBeenCalledWith(7);
     expect(reply.sent.name).toBe('T');
   });
 
@@ -101,7 +102,7 @@ describe('org-tournament.controller (tenant isolation)', () => {
       .rejects.toThrow(AppError);
     await expect(ctrl.getOrgTournamentHandler(req({ params: { orgId: String(ORG_A), id: '7' } }), reply))
       .rejects.toMatchObject({ statusCode: 404, errorCode: 'TOURNAMENT_NOT_FOUND' });
-    expect(service.getById).not.toHaveBeenCalled();
+    expect(service.getByIdDetailed).not.toHaveBeenCalled();
   });
 
   it('create: forces organisation_id to the URL org and never trusts the client body', async () => {

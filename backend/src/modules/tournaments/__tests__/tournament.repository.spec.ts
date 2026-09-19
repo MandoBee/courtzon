@@ -71,3 +71,30 @@ describe('TournamentRepository.create — NOT NULL contract (UAT blocker regress
     expect(params[27]).toBe('2026-10-01'); // 0-based index of start_date
   });
 });
+
+describe('TournamentRepository.findByIdDetailed — management detail shape', () => {
+  it('returns the raw row enriched with sport_name / organisation_name / max_players / type', async () => {
+    pool.query.mockResolvedValue([[{
+      id: 1, name: 'Padel Test Tournament', sport_id: 22, max_participants: 16,
+      tournament_type: 'platform', sport_name: 'Padel', organisation_name: null,
+      max_players: 16, type: 'platform', registration_deadline: null,
+    }]]);
+
+    const row = await repo.findByIdDetailed(1);
+    expect(row.sport_name).toBe('Padel');
+    expect(row.max_players).toBe(16);
+    expect(row.type).toBe('platform');
+    expect(row.max_participants).toBe(16);
+  });
+
+  it('resolves organisation_name for org-owned tournaments', async () => {
+    pool.query.mockResolvedValue([[{
+      id: 2, name: 'Org Cup', organisation_id: 1001, sport_id: null,
+      tournament_type: 'platform', sport_name: null, organisation_name: 'Padel Edge',
+      max_players: 16, type: 'platform', registration_deadline: null,
+    }]]);
+
+    const row = await repo.findByIdDetailed(2);
+    expect(row.organisation_name).toBe('Padel Edge');
+  });
+});

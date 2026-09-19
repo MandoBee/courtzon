@@ -35,8 +35,9 @@ export async function tournamentRoutes(app: FastifyInstance): Promise<void> {
   app.get('/admin/tournaments/:id/stages', { preHandler: [requirePermission(['tournament.view'])] }, ctrl.getStagesHandler);
 
   app.get('/admin/tournaments/:id/groups', { preHandler: [requirePermission(['tournament.view'])] }, ctrl.getGroupsHandler);
-  app.get('/admin/tournaments/:id/matches', { preHandler: [requirePermission(['tournament.view'])] }, ctrl.getMatchesHandler);
-  app.get('/admin/tournaments/:id/standings', { preHandler: [requirePermission(['tournament.view'])] }, ctrl.getStandingsHandler);
+  app.get('/admin/tournaments/:id/matches', { preHandler: [requirePermission(['tournament.view'])] }, ctrl.getAdminMatchesHandler);
+  app.get('/admin/tournaments/:id/standings', { preHandler: [requirePermission(['tournament.view'])] }, ctrl.getAdminStandingsHandler);
+  app.get('/admin/tournaments/:id/registrations', { preHandler: [requirePermission(['tournament.view'])] }, ctrl.getRegistrationsHandler);
 
   app.put('/admin/tournaments/matches/:matchId/court', { preHandler: [requirePermission(['tournament.manage'])] }, ctrl.assignCourtHandler);
   app.put('/admin/tournaments/matches/:matchId/referee', { preHandler: [requirePermission(['tournament.manage'])] }, ctrl.assignRefereeHandler);

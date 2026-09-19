@@ -133,4 +133,19 @@ describe('Tournament create — registration_fee NOT NULL contract (UAT blocker)
     const [rows] = await pool.query<any[]>('SELECT registration_fee FROM tournaments WHERE id = ?', [t.id]);
     expect(rows[0].registration_fee).toBe('25.00');
   });
+
+  it('D. detail endpoint shape: enriched management detail (sport_name/max_players/type) on the real schema', async () => {
+    const { tournamentService } = await import('../application/tournament.service.js');
+
+    const t = await tournamentService.create(basePayload(), creatorId);
+    createdTournamentIds.push(t.id!);
+
+    const detail = await tournamentService.getByIdDetailed(t.id!);
+    expect(detail.id).toBe(t.id);
+    expect(detail.sport_name).toBe('Padel');
+    expect(detail.max_players).toBe(16);
+    expect(detail.max_participants).toBe(16);
+    expect(detail.type).toBe('platform');
+    expect(detail.organisation_name).toBeNull();
+  });
 });

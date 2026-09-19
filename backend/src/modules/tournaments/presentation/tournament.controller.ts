@@ -34,7 +34,8 @@ export async function listTournamentsHandler(request: FastifyRequest, reply: Fas
 
 export async function getTournamentHandler(request: FastifyRequest, reply: FastifyReply) {
   const { id } = request.params as any;
-  const tournament = await tournamentService.getById(Number(id));
+  // Shared Admin/Org management detail shape (raw row + sport_name/organisation_name/max_players/type).
+  const tournament = await tournamentService.getByIdDetailed(Number(id));
   return reply.send(tournament);
 }
 
@@ -216,8 +217,9 @@ export async function generateGroupsHandler(request: FastifyRequest, reply: Fast
 
 export async function getGroupsHandler(request: FastifyRequest, reply: FastifyReply) {
   const { id } = request.params as any;
+  // Admin management contract: RAW array (matches the org + shared detail page).
   const data = await tournamentService.getGroups(Number(id));
-  return reply.send({ data });
+  return reply.send(data);
 }
 
 export async function generateFixturesHandler(request: FastifyRequest, reply: FastifyReply) {
@@ -259,6 +261,36 @@ export async function getStandingsHandler(request: FastifyRequest, reply: Fastif
   const { group_id } = request.query as any;
   const data = await tournamentService.getStandings(Number(id), group_id ? Number(group_id) : undefined);
   return reply.send({ data });
+}
+
+/**
+ * Admin management matches — RAW array (matches the org + shared detail page
+ * contract). The public/player `/tournaments/:id/matches` keeps the `{ data }`
+ * envelope via getMatchesHandler.
+ */
+export async function getAdminMatchesHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { id } = request.params as any;
+  const data = await tournamentService.getMatchesDetailed(Number(id));
+  return reply.send(data);
+}
+
+/**
+ * Admin management standings — RAW array (matches the org + shared detail page
+ * contract). The public/player `/tournaments/:id/standings` keeps the
+ * `{ data }` envelope via getStandingsHandler.
+ */
+export async function getAdminStandingsHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { id } = request.params as any;
+  const { group_id } = request.query as any;
+  const data = await tournamentService.getStandings(Number(id), group_id ? Number(group_id) : undefined);
+  return reply.send(data);
+}
+
+/** Admin management registrations — RAW array (mirrors the org registrations contract). */
+export async function getRegistrationsHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { id } = request.params as any;
+  const data = await tournamentService.getRegistrations(Number(id));
+  return reply.send(data);
 }
 
 export async function getParticipantsHandler(request: FastifyRequest, reply: FastifyReply) {

@@ -142,6 +142,30 @@ export class TournamentRepository {
     return rows.length ? (rows[0] as Tournament) : null;
   }
 
+  /**
+   * Authoritative tournament detail — the raw row PLUS the display aliases the
+   * management detail screens (Super Admin + Org) render (sport_name,
+   * organisation_name, max_players, type, registration_deadline). This is the
+   * SINGLE shared shape for the admin and org detail endpoints; the raw
+   * `findById` remains the internal logic view.
+   */
+  async findByIdDetailed(id: number): Promise<any | null> {
+    const [rows] = await getPool().query<RowData>(
+      `SELECT t.*,
+              s.name AS sport_name,
+              o.name AS organisation_name,
+              t.max_participants AS max_players,
+              t.tournament_type AS type,
+              t.registration_closes AS registration_deadline
+       FROM tournaments t
+       LEFT JOIN sports s ON s.id = t.sport_id
+       LEFT JOIN organisations o ON o.id = t.organisation_id
+       WHERE t.id = ?`,
+      [id],
+    );
+    return rows.length ? rows[0] : null;
+  }
+
   async findByCode(code: string): Promise<Tournament | null> {
     const [rows] = await getPool().query<RowData>('SELECT * FROM tournaments WHERE code = ? LIMIT 1', [code]);
     return rows.length ? (rows[0] as Tournament) : null;
