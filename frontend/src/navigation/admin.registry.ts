@@ -172,6 +172,7 @@ export const ADMIN_NAV: NavDefinition[] = [
           { id: 'nav.admin.tournament-dashboard', label: T('admin.sidebar.tournament_dashboard'), path: '/admin/tournament/dashboard', permissionKey: 'sidebar.tournament-dashboard' },
           { id: 'nav.admin.tournament-list', label: T('admin.sidebar.tournament_list'), path: '/admin/tournament/list', permissionKey: 'sidebar.tournament-list' },
           { id: 'nav.admin.tournament-matches', label: T('admin.sidebar.tournament_matches'), path: '/admin/tournament/matches', permissionKey: 'sidebar.tournament-matches' },
+          { id: 'nav.admin.tournament-bracket-types', label: T('admin.sidebar.tournament_bracket_types'), path: '/admin/tournament/bracket-types', permissionKey: 'tournament.bracket-types.view' },
         ],
       },
       { id: 'nav.admin.match-results', label: LIT('Match Results'), icon: '✅', path: '/admin/match-results', permissionKey: 'matches.result.manage' },

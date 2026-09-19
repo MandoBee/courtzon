@@ -140,6 +140,7 @@ const TournamentDashboardPage = lazy(() => import('./pages/admin/tournament/Tour
 const TournamentListAdminPage = lazy(() => import('./pages/admin/tournament/TournamentListPage'));
 const TournamentDetailAdminPage = lazy(() => import('./pages/admin/tournament/TournamentDetailPage'));
 const TournamentMatchesAdminPage = lazy(() => import('./pages/admin/tournament/TournamentMatchesPage'));
+const TournamentBracketTypesPage = lazy(() => import('./pages/admin/tournament/TournamentBracketTypesPage'));
 const AcademyDashboardPage = lazy(() => import('./pages/admin/academy/AcademyDashboardPage'));
 const AcademyProgramsPage = lazy(() => import('./pages/admin/academy/AcademyProgramsPage'));
 const AcademyGroupsPage = lazy(() => import('./pages/admin/academy/AcademyGroupsPage'));
@@ -760,6 +761,7 @@ function AppContent() {
             <Route path="tournament/list/new" element={<TournamentCreatePage mode="admin" />} />
             <Route path="tournament/list/:id" element={<TournamentDetailAdminPage mode="admin" />} />
             <Route path="tournament/matches" element={<TournamentMatchesAdminPage />} />
+            <Route path="tournament/bracket-types" element={<TournamentBracketTypesPage />} />
             <Route path="match-results" element={<AdminMatchResultsPage />} />
             <Route path="matches" element={<AdminMatchesPage />} />
             <Route path="league/dashboard" element={<LeagueDashboardPage />} />

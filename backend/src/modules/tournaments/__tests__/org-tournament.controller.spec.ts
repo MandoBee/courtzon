@@ -35,6 +35,9 @@ const service = vi.hoisted(() => ({
   assignCourt: vi.fn(),
   assignReferee: vi.fn(),
   recordMatchResult: vi.fn(),
+  listBracketTypes: vi.fn(),
+  getOrgCommissionConfig: vi.fn(),
+  listSportFormatsCascade: vi.fn(),
 }));
 
 const audit = vi.hoisted(() => ({ recordAudit: vi.fn() }));
@@ -198,5 +201,25 @@ describe('org-tournament.controller (tenant isolation)', () => {
     repo.getOrganisationId.mockResolvedValue(ORG_B);
     await expect(ctrl.generateOrgGroupsHandler(req({ params: { orgId: String(ORG_A), id: '7' }, body: { group_size: 4, advance_count: 2 } }), res()))
       .rejects.toMatchObject({ statusCode: 404 });
+  });
+
+  it('Group 5B-SR: org commission config is resolved against the scoped org (tenant-isolated)', async () => {
+    service.getOrgCommissionConfig.mockResolvedValue({ commissionRate: 10, planName: 'Standard Club' });
+    const reply = res();
+    await ctrl.getOrgCommissionConfigHandler(req({ params: { orgId: String(ORG_A) } }), reply);
+    expect(service.getOrgCommissionConfig).toHaveBeenCalledWith(ORG_A);
+    expect(reply.sent).toEqual({ commissionRate: 10, planName: 'Standard Club' });
+  });
+
+  it('Group 5B-SR: bracket types + sport formats cascade are tenant-scoped org reads', async () => {
+    service.listBracketTypes.mockResolvedValue([{ id: 1, name: 'Single Elimination', slug: 'single-elimination', is_active: 1, config_schema: null }]);
+    const btReply = res();
+    await ctrl.listActiveBracketTypesHandler(req({ params: { orgId: String(ORG_A) } }), btReply);
+    expect(btReply.sent.data).toHaveLength(1);
+
+    service.listSportFormatsCascade.mockResolvedValue([]);
+    const fmtReply = res();
+    await ctrl.listSportFormatsCascadeHandler(req({ params: { orgId: String(ORG_A), sportId: '22' } }), fmtReply);
+    expect(service.listSportFormatsCascade).toHaveBeenCalledWith(22);
   });
 });

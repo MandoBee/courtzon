@@ -42,6 +42,10 @@ const repo = vi.hoisted(() => ({
   getDashboard: vi.fn(),
   createStage: vi.fn(),
   findStages: vi.fn(),
+  listBracketTypes: vi.fn(),
+  findBracketTypeById: vi.fn(),
+  setBracketTypeActive: vi.fn(),
+  countBracketTypeReferences: vi.fn(),
 }));
 
 const mrRepo = vi.hoisted(() => ({
@@ -49,17 +53,23 @@ const mrRepo = vi.hoisted(() => ({
   findRuleSetById: vi.fn(),
   resolveDefaultFormatForSport: vi.fn(),
   findActiveRuleSetForFormat: vi.fn(),
+  listRuleSetsBySport: vi.fn(),
 }));
 
 const audit = vi.hoisted(() => ({ recordAudit: vi.fn() }));
 const bus = vi.hoisted(() => ({ emit: vi.fn() }));
 const pool = vi.hoisted(() => ({ execute: vi.fn(async () => [[]]), query: vi.fn(async () => [[]]) }));
+const commission = vi.hoisted(() => ({ getCommissionRate: vi.fn() }));
 
 vi.mock('../infrastructure/repositories/tournament.repository.js', () => ({ tournamentRepository: repo }));
 vi.mock('../../../database/mysql.js', () => ({ getPool: () => pool }));
 vi.mock('../../audit-log/index.js', () => ({ recordAudit: audit.recordAudit }));
 vi.mock('../../../shared/event-bus/event-bus.v2.js', () => ({ eventBusV2: bus }));
 vi.mock('../../match-result/infrastructure/match-result.repository.js', () => ({ matchResultRepository: mrRepo }));
+vi.mock('../../organisations/application/current-subscription.service.js', () => ({
+  getCommissionRate: commission.getCommissionRate,
+  getCurrentSubscription: vi.fn(async () => ({ exists: false, planName: null })),
+}));
 const matchServiceMock = vi.hoisted(() => ({ createForTournament: vi.fn() }));
 vi.mock('../../match/application/services/match.service.js', () => ({ matchService: matchServiceMock }));
 
@@ -82,7 +92,11 @@ function makeReg(overrides: Partial<TournamentRegistration> = {}): TournamentReg
 }
 
 describe('TournamentService (Group 5A)', () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    repo.findBracketTypeById.mockResolvedValue({ id: 1, name: 'Single Elimination', slug: 'single-elimination', is_active: 1, config_schema: '{"rounds":"auto","seeding":true}' });
+    commission.getCommissionRate.mockResolvedValue(null);
+  });
   const svc = new TournamentService();
 
   it('rejects a tournament with a Match Format but no Rule Set', async () => {

@@ -1,4 +1,4 @@
-import { tournamentRepository } from '../infrastructure/repositories/tournament.repository.js';
+import { tournamentRepository, type BracketTypeRow } from '../infrastructure/repositories/tournament.repository.js';
 import { generateKnockoutBracket, generateRoundRobinMatches, generateStageMatches, seededShuffle, type BracketSlot } from '../domain/tournament-aggregate.js';
 import type { Tournament, TournamentRegistration, TournamentMatch, TournamentStage } from '../domain/tournament-aggregate.js';
 import { validateTournamentTransition, validateRegistrationTransition } from '../domain/lifecycle.js';
@@ -9,6 +9,7 @@ import { getPool } from '../../../database/mysql.js';
 import { recordAudit } from '../../audit-log/index.js';
 import { matchResultRepository } from '../../match-result/infrastructure/match-result.repository.js';
 import type { MatchFormatSnapshot } from '../../match/domain/match.types.js';
+import { getCommissionRate } from '../../organisations/application/current-subscription.service.js';
 
 /** Group 5B — draw-time provenance persisted in `tournament_matches.progression_meta`. */
 export interface BracketProgressionMeta {
@@ -26,6 +27,14 @@ export interface BracketProgressionMeta {
 /** Group 5B — tournament lifecycle steps a deterministic draw walks forward to 'running'. */
 const DRAW_LIFECYCLE_ORDER = ['draft', 'published', 'registration_open', 'registration_closed', 'running'];
 
+/**
+ * Group 5B-SR — engine-capable bracket types. The Group 5B progression engine
+ * fully supports Single Elimination (knockout) and Round Robin; Double
+ * Elimination and Swiss System are configuration-visible but DEFERRED (their
+ * config_schema is preserved, but the engine cannot safely generate them yet).
+ */
+export const ENGINE_SUPPORTED_BRACKET_SLUGS = ['single-elimination', 'round-robin'] as const;
+
 export class TournamentService {
   async create(data: Partial<Tournament>, creatorId: number): Promise<Tournament> {
     if (data.code) {
@@ -39,15 +48,59 @@ export class TournamentService {
     }
     if (data.match_format_id != null && data.rule_set_id != null) {
       await this.assertMatchFormatRuleSetPair(data.match_format_id, data.rule_set_id);
+      await this.assertFormatBelongsToSport(data.sport_id, data.match_format_id);
     }
+    // Group 5B-SR — the selected bracket type must exist, be active, and be
+    // actually supported by the current engine. Deferred types (double
+    // elimination, swiss) are config-visible but unavailable for creation.
+    await this.assertBracketTypeAvailable(data.bracket_type_id);
+    // Group 5B-SR — commission is derived from the organisation's authoritative
+    // active subscription/plan. The client can never supply it.
+    const commissionRate = await this.resolveCommissionRate(data.organisation_id, data.entry_fee);
     // Deterministic draw seed: default to creation timestamp (stable, not random).
     const drawSeed = data.draw_seed ?? Date.now();
-    const id = await tournamentRepository.create({ ...data, creator_id: creatorId, draw_seed: drawSeed });
+    const id = await tournamentRepository.create({
+      ...data, creator_id: creatorId, draw_seed: drawSeed, commission_rate: commissionRate,
+    });
     const tournament = await tournamentRepository.findById(id);
     eventBusV2.emit('tournament.created', { tournamentId: id, name: data.name, format: data.format } as Record<string, unknown>, {
       aggregateType: 'tournament', aggregateId: String(id), aggregateVersion: 1,
     });
     return tournament!;
+  }
+
+  /**
+   * Group 5B-SR — the selected bracket type must exist, be active, and be
+   * engine-supported. Prevents a config-visible-but-deferred type from
+   * generating an invalid tournament.
+   */
+  private async assertBracketTypeAvailable(bracketTypeId: number | undefined): Promise<void> {
+    if (bracketTypeId == null) {
+      throw new ConflictError('A bracket type is required', ErrorCodes.TOURNAMENT_INVALID_FORMAT);
+    }
+    const bt = await tournamentRepository.findBracketTypeById(bracketTypeId);
+    if (!bt) throw new ConflictError('Bracket type not found', ErrorCodes.TOURNAMENT_INVALID_FORMAT);
+    if (!Number(bt.is_active)) {
+      throw new ConflictError(`Bracket type "${bt.name}" is inactive and cannot be used for new tournaments`, ErrorCodes.TOURNAMENT_INVALID_FORMAT);
+    }
+    if (!(ENGINE_SUPPORTED_BRACKET_SLUGS as readonly string[]).includes(bt.slug)) {
+      throw new ConflictError(
+        `Bracket type "${bt.name}" is configuration-visible but its engine is not yet supported (deferred capability)`,
+        ErrorCodes.TOURNAMENT_INVALID_FORMAT,
+      );
+    }
+  }
+
+  /**
+   * Group 5B-SR — resolve the tournament commission rate from the
+   * organisation's active subscription/plan. Platform tournaments (no org) get
+   * 0. When no subscription rate is configured the tournament is created with
+   * 0 (historical snapshot stays 0).
+   */
+  private async resolveCommissionRate(organisationId: number | undefined, entryFee?: number): Promise<number> {
+    if (organisationId == null) return 0;
+    const rate = await getCommissionRate(organisationId, 'tournament');
+    return rate?.rate ?? 0;
   }
 
   async list(filters: {
@@ -64,6 +117,81 @@ export class TournamentService {
 
   async getByCode(code: string): Promise<Tournament | null> {
     return tournamentRepository.findByCode(code);
+  }
+
+  // ── Group 5B-SR — Bracket type configuration ──
+
+  /** All bracket types (management view) or only active ones (create form). */
+  async listBracketTypes(includeInactive = false): Promise<BracketTypeRow[]> {
+    return tournamentRepository.listBracketTypes(!includeInactive);
+  }
+
+  /**
+   * Group 5B-SR — toggle a bracket type active/inactive. Deactivation is the
+   * preferred lifecycle: referenced types are never destructively deleted.
+   */
+  async updateBracketTypeActive(id: number, isActive: boolean, actorId: number): Promise<BracketTypeRow> {
+    const bt = await tournamentRepository.findBracketTypeById(id);
+    if (!bt) throw new NotFoundError('Bracket type', ErrorCodes.TOURNAMENT_NOT_FOUND);
+    await tournamentRepository.setBracketTypeActive(id, isActive);
+    recordAudit({
+      actorId, action: 'TOURNAMENT.BRACKET_TYPE_UPDATE', entityType: 'tournament_bracket_type', entityId: id,
+      beforeState: { is_active: bt.is_active }, afterState: { is_active: isActive, slug: bt.slug },
+    });
+    const updated = await tournamentRepository.findBracketTypeById(id);
+    return updated!;
+  }
+
+  /**
+   * Group 5B-SR — guarded destructive delete. Never exposed via routes: bracket
+   * types referenced by historical tournaments cannot be deleted (deactivation
+   * is preferred). Provided as a defensive guard for future use + tests.
+   */
+  async deleteBracketType(id: number, actorId: number): Promise<void> {
+    const bt = await tournamentRepository.findBracketTypeById(id);
+    if (!bt) throw new NotFoundError('Bracket type', ErrorCodes.TOURNAMENT_NOT_FOUND);
+    const refs = await tournamentRepository.countBracketTypeReferences(id);
+    if (refs > 0) {
+      throw new ConflictError(
+        `Bracket type "${bt.name}" is referenced by ${refs} tournament(s) and cannot be deleted — deactivate it instead`,
+        ErrorCodes.TOURNAMENT_INVALID_FORMAT,
+      );
+    }
+    await tournamentRepository.setBracketTypeActive(id, false);
+    recordAudit({
+      actorId, action: 'TOURNAMENT.BRACKET_TYPE_DELETE', entityType: 'tournament_bracket_type', entityId: id,
+      afterState: { slug: bt.slug, is_active: false },
+    });
+  }
+
+  /**
+   * Group 5B-SR — the organisation's authoritative tournament commission
+   * configuration, derived from its active subscription/plan. Used by the
+   * create screen to display the locked read-only rate.
+   */
+  async getOrgCommissionConfig(orgId: number): Promise<{ commissionRate: number; planName: string | null }> {
+    const { getCurrentSubscription } = await import('../../organisations/application/current-subscription.service.js');
+    const sub = await getCurrentSubscription(orgId);
+    const rate = sub.exists ? await getCommissionRate(orgId, 'tournament') : null;
+    return { commissionRate: rate?.rate ?? 0, planName: sub.exists ? sub.planName : null };
+  }
+
+  /**
+   * Group 5B-SR — sport → match format → rule set cascade for the create form.
+   * Reuses the authoritative match-result resolution so the UI never invents
+   * arbitrary formats/rule sets.
+   */
+  async listSportFormatsCascade(sportId: number) {
+    return matchResultRepository.listRuleSetsBySport(sportId, true);
+  }
+
+  async assertFormatBelongsToSport(sportId: number | undefined, formatId: number): Promise<void> {
+    if (sportId == null) return;
+    const fmt = await matchResultRepository.findFormatById(formatId);
+    if (!fmt) throw new ConflictError('Match Format not found', ErrorCodes.TOURNAMENT_INVALID_FORMAT);
+    if (fmt.sportId !== sportId) {
+      throw new ConflictError('Match Format does not belong to the selected Sport', ErrorCodes.TOURNAMENT_INVALID_FORMAT);
+    }
   }
 
   async update(id: number, data: Partial<Tournament>): Promise<Tournament> {
@@ -396,13 +524,13 @@ export class TournamentService {
     };
   }
 
-/** Group 5A — validate that a configured Match Format belongs to the same sport as its Rule Set. */
+/** Group 5A — validate that the Rule Set belongs to the selected Match Format. */
   private async assertMatchFormatRuleSetPair(matchFormatId: number, ruleSetId: number): Promise<void> {
     const fmt = await matchResultRepository.findFormatById(matchFormatId);
     if (!fmt) throw new ConflictError('Match Format not found', ErrorCodes.TOURNAMENT_INVALID_FORMAT);
     const ruleSet = await matchResultRepository.findRuleSetById(ruleSetId);
     if (!ruleSet) throw new ConflictError('Rule Set not found', ErrorCodes.TOURNAMENT_INVALID_FORMAT);
-    if (fmt.sportId !== ruleSet.formatId && ruleSet.formatId !== fmt.formatId) {
+    if (ruleSet.formatId !== fmt.formatId) {
       throw new ConflictError('Match Format and Rule Set must belong to the same sport configuration', ErrorCodes.TOURNAMENT_INVALID_FORMAT);
     }
   }

@@ -209,6 +209,7 @@ export default defineConfig(({ command }) => ({
       '/metrics': backend,
       '/sports-engine': backend,
       '/sport-formats': backend,
+      '/bracket-types': backend,
     },
   },
 }))

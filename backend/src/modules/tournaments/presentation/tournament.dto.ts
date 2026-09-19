@@ -6,6 +6,10 @@ export const CreateTournamentSchema = z.object({
   category: z.string().optional(),
   season: z.string().optional(),
   sport_id: z.number().int().positive().optional(),
+  /** Group 5B-SR — the authoritative Match Format the generated Matches must use (FK sport_formats). */
+  match_format_id: z.number().int().positive().optional(),
+  /** Group 5B-SR — the authoritative Match Rule Set the generated Matches must freeze (FK sport_rule_sets). */
+  rule_set_id: z.number().int().positive().optional(),
   name: z.string().min(1).max(200),
   code: z.string().min(1).max(50).optional(),
   description: z.string().optional(),
@@ -17,7 +21,10 @@ export const CreateTournamentSchema = z.object({
   registration_fee: z.number().min(0).optional(),
   currency_code: z.string().length(3).default('USD'),
   price_type: z.enum(['FREE', 'FIXED', 'MEMBERS_ONLY']).optional().default('FIXED'),
-  commission_rate: z.number().min(0).max(100).optional().default(0),
+  // Commission is ALWAYS derived server-side from the organisation's active
+  // subscription/plan (Group 5B-SR). The field is intentionally NOT part of the
+  // schema — zod strips any client-supplied commission_rate so it can never
+  // override the authoritative subscription-derived value.
   prize_description: z.string().optional(),
   is_public: z.boolean().optional().default(true),
   registration_opens: z.string().optional(),
@@ -37,6 +44,8 @@ export const UpdateTournamentSchema = z.object({
   category: z.string().optional(),
   season: z.string().optional(),
   sport_id: z.number().int().positive().optional(),
+  match_format_id: z.number().int().positive().optional(),
+  rule_set_id: z.number().int().positive().optional(),
   name: z.string().min(1).max(200).optional(),
   code: z.string().min(1).max(50).optional(),
   description: z.string().optional(),
@@ -48,7 +57,9 @@ export const UpdateTournamentSchema = z.object({
   registration_fee: z.number().min(0).optional(),
   currency_code: z.string().length(3).optional(),
   price_type: z.enum(['FREE', 'FIXED', 'MEMBERS_ONLY']).optional(),
-  commission_rate: z.number().min(0).max(100).optional(),
+  // commission_rate is immutable once a tournament is created — it is the
+  // historical economic snapshot of the rate in force at creation (Group 5B-SR).
+  // Not part of the schema: updates can never change it.
   prize_description: z.string().optional(),
   is_public: z.boolean().optional(),
   registration_opens: z.string().optional(),
@@ -60,6 +71,10 @@ export const UpdateTournamentSchema = z.object({
   image_url: z.string().optional(),
   organisation_id: z.number().int().positive().optional(),
   branch_id: z.number().int().positive().optional(),
+});
+
+export const BracketTypeUpdateSchema = z.object({
+  is_active: z.boolean(),
 });
 
 export const ListTournamentsQuerySchema = z.object({

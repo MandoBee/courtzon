@@ -17,6 +17,22 @@ import * as ctrl from './org-tournament.controller.js';
 export async function orgTournamentRoutes(app: FastifyInstance): Promise<void> {
   app.addHook('preHandler', authMiddleware);
 
+  app.get(
+    '/org/:orgId/tournaments/bracket-types',
+    { preHandler: [requireOrgScopedPermission('org.tournaments.view')] },
+    ctrl.listActiveBracketTypesHandler,
+  );
+  app.get(
+    '/org/:orgId/tournaments/commission-config',
+    { preHandler: [requireOrgScopedPermission('org.tournaments.view')] },
+    ctrl.getOrgCommissionConfigHandler,
+  );
+  app.get(
+    '/org/:orgId/tournaments/sports/:sportId/formats',
+    { preHandler: [requireOrgScopedPermission('org.tournaments.view')] },
+    ctrl.listSportFormatsCascadeHandler,
+  );
+
   // ── List / create (tenant-scoped) ──
   app.get(
     '/org/:orgId/tournaments',

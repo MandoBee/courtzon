@@ -4,7 +4,7 @@ import { tournamentRepository } from '../infrastructure/repositories/tournament.
 import {
   CreateTournamentSchema, UpdateTournamentSchema, ListTournamentsQuerySchema,
   RegisterSchema, GenerateGroupsSchema, RecordResultSchema,
-  AssignCourtSchema, AssignRefereeSchema, CreateStageSchema,
+  AssignCourtSchema, AssignRefereeSchema, CreateStageSchema, BracketTypeUpdateSchema,
 } from './tournament.dto.js';
 import { recordAudit } from '../../audit-log/index.js';
 import { NotFoundError } from '../../../shared/errors/app-error.js';
@@ -326,4 +326,52 @@ export async function assignRefereeHandler(request: FastifyRequest, reply: Fasti
     ipAddress: request.ip, userAgent: getUserAgent(request),
   });
   return reply.send({ message: 'Referee assigned' });
+}
+
+// ── Group 5B-SR — Bracket type configuration ──
+
+/** Active bracket types (create form) — platform config reference data. */
+export async function listActiveBracketTypesHandler(_request: FastifyRequest, reply: FastifyReply) {
+  const types = await tournamentService.listBracketTypes(false);
+  return reply.send({ data: types });
+}
+
+/** All bracket types (Super Admin management) with reference counts + engine support. */
+export async function listBracketTypesHandler(_request: FastifyRequest, reply: FastifyReply) {
+  const types = await tournamentService.listBracketTypes(true);
+  const enriched = await Promise.all(
+    types.map(async (bt) => ({
+      ...bt,
+      is_active: Boolean(Number(bt.is_active)),
+      referenced_count: await tournamentRepository.countBracketTypeReferences(bt.id),
+    })),
+  );
+  return reply.send({ data: enriched });
+}
+
+export async function updateBracketTypeHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = getUserId(request);
+  const { id } = request.params as any;
+  const body = BracketTypeUpdateSchema.parse(request.body);
+  const updated = await tournamentService.updateBracketTypeActive(Number(id), body.is_active, userId);
+  recordAudit({
+    actorId: userId, action: 'TOURNAMENT.BRACKET_TYPE_UPDATE', entityType: 'tournament_bracket_type',
+    entityId: Number(id), afterState: { is_active: body.is_active },
+    ipAddress: request.ip, userAgent: getUserAgent(request),
+  });
+  return reply.send(updated);
+}
+
+/** Organisation's authoritative tournament commission config (read-only, subscription-derived). */
+export async function getOrgCommissionConfigHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { orgId } = request.params as any;
+  const config = await tournamentService.getOrgCommissionConfig(Number(orgId));
+  return reply.send(config);
+}
+
+/** Sport → Match Format → Rule Set cascade (create form). */
+export async function listSportFormatsCascadeHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { sportId } = request.params as any;
+  const cascade = await tournamentService.listSportFormatsCascade(Number(sportId));
+  return reply.send({ data: cascade });
 }

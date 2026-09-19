@@ -42,7 +42,18 @@ export async function tournamentRoutes(app: FastifyInstance): Promise<void> {
   app.put('/admin/tournaments/matches/:matchId/referee', { preHandler: [requirePermission(['tournament.manage'])] }, ctrl.assignRefereeHandler);
   app.post('/admin/tournaments/matches/:matchId/result', { preHandler: [requirePermission(['tournament.result.manage'])] }, ctrl.recordMatchResultHandler);
 
+  // ── Group 5B-SR — Bracket type configuration (Super Admin) ──
+
+  app.get('/admin/bracket-types', { preHandler: [requirePermission(['tournament.bracket-types.view'])] }, ctrl.listBracketTypesHandler);
+  app.put('/admin/bracket-types/:id', { preHandler: [requirePermission(['tournament.bracket-types.manage'])] }, ctrl.updateBracketTypeHandler);
+
   // ── Public / Player-facing routes ──
+
+  // Active bracket types for the create form (reference config, authenticated).
+  app.get('/bracket-types', { preHandler: [authMiddleware] }, ctrl.listActiveBracketTypesHandler);
+
+  // Sport → Match Format → Rule Set cascade for the create form.
+  app.get('/tournaments/sports/:sportId/formats', { preHandler: [requirePermission(['tournament.view'])] }, ctrl.listSportFormatsCascadeHandler);
 
   app.get('/tournaments', { preHandler: [requirePermission(['tournament.view'])] }, ctrl.listTournamentsHandler);
   app.get('/tournaments/:id', { preHandler: [requirePermission(['tournament.view'])] }, ctrl.getTournamentHandler);

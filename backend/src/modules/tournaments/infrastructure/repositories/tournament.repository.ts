@@ -6,7 +6,48 @@ import type { PoolConnection } from 'mysql2/promise';
 type RowData = import('mysql2').RowDataPacket[];
 type ResultSet = import('mysql2').ResultSetHeader;
 
+export interface BracketTypeRow {
+  id: number;
+  name: string;
+  slug: string;
+  is_active: boolean | number;
+  config_schema: string | null;
+  created_at?: string;
+}
+
 export class TournamentRepository {
+  async listBracketTypes(activeOnly = false): Promise<BracketTypeRow[]> {
+    const pool = getPool();
+    const where = activeOnly ? 'WHERE bt.is_active = 1' : '';
+    const [rows] = await pool.query<RowData>(
+      `SELECT bt.id, bt.name, bt.slug, bt.is_active, bt.config_schema, bt.created_at
+       FROM tournament_bracket_types bt ${where}
+       ORDER BY bt.id ASC`,
+    );
+    return rows as BracketTypeRow[];
+  }
+
+  async findBracketTypeById(id: number): Promise<BracketTypeRow | null> {
+    const [rows] = await getPool().query<RowData>(
+      `SELECT bt.id, bt.name, bt.slug, bt.is_active, bt.config_schema, bt.created_at
+       FROM tournament_bracket_types bt WHERE bt.id = ? LIMIT 1`,
+      [id],
+    );
+    return rows.length ? (rows[0] as BracketTypeRow) : null;
+  }
+
+  async setBracketTypeActive(id: number, isActive: boolean): Promise<void> {
+    await getPool().query('UPDATE tournament_bracket_types SET is_active = ? WHERE id = ?', [isActive ? 1 : 0, id]);
+  }
+
+  /** Count tournaments referencing a bracket type (guard against destructive deletion). */
+  async countBracketTypeReferences(bracketTypeId: number): Promise<number> {
+    const [rows] = await getPool().query<RowData>(
+      'SELECT COUNT(*) AS total FROM tournaments WHERE bracket_type_id = ?', [bracketTypeId],
+    );
+    return Number(rows[0]?.total ?? 0);
+  }
+
   async list(filters: {
     page?: number; limit?: number; search?: string; status?: string; format?: string; category?: string; sport_id?: number;
   }): Promise<{ data: Tournament[]; total: number; page: number; limit: number }> {
@@ -107,12 +148,13 @@ export class TournamentRepository {
   }
 
   async create(data: Partial<Tournament>): Promise<number> {
-    const sql = `INSERT INTO tournaments (public_id, creator_id, organisation_id, branch_id, bracket_type_id, format, category, season, sport_id, name, code, description, tournament_type, max_participants, max_teams, min_participants, entry_fee, registration_fee, currency_code, price_type, commission_rate, prize_description, status, is_public, registration_opens, registration_closes, start_date, end_date, rules, is_featured, image_url)
-                 VALUES (UUID(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+    const sql = `INSERT INTO tournaments (public_id, creator_id, organisation_id, branch_id, bracket_type_id, format, category, season, sport_id, match_format_id, rule_set_id, name, code, description, tournament_type, max_participants, max_teams, min_participants, entry_fee, registration_fee, currency_code, price_type, commission_rate, prize_description, status, is_public, registration_opens, registration_closes, start_date, end_date, rules, is_featured, image_url)
+                 VALUES (UUID(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
     const [result] = await getPool().query<ResultSet>(sql, [
       data.creator_id, data.organisation_id ?? null, data.branch_id ?? null,
       data.bracket_type_id, data.format ?? null, data.category ?? null, data.season ?? null,
-      data.sport_id ?? null, data.name, data.code ?? null, data.description ?? null,
+      data.sport_id ?? null, data.match_format_id ?? null, data.rule_set_id ?? null,
+      data.name, data.code ?? null, data.description ?? null,
       data.tournament_type ?? 'platform',
       data.max_participants, data.max_teams ?? null, data.min_participants ?? 2,
       data.entry_fee ?? 0, data.registration_fee ?? null,
@@ -130,9 +172,9 @@ export class TournamentRepository {
     const params: any[] = [];
     const updatable: (keyof Tournament)[] = [
       'organisation_id', 'branch_id', 'bracket_type_id', 'format', 'category', 'season',
-      'sport_id', 'name', 'code', 'description', 'tournament_type',
+      'sport_id', 'match_format_id', 'rule_set_id', 'name', 'code', 'description', 'tournament_type',
       'max_participants', 'max_teams', 'min_participants', 'entry_fee', 'registration_fee',
-      'currency_code', 'price_type', 'commission_rate', 'prize_description',
+      'currency_code', 'price_type', 'prize_description',
       'status', 'is_public', 'registration_opens', 'registration_closes',
       'start_date', 'end_date', 'rules', 'is_featured', 'image_url',
     ];

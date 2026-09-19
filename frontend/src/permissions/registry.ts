@@ -458,6 +458,15 @@ export const uiRegistry: UIElement[] = [
   { permissionKey: 'tournaments.create.prize', moduleSlug: 'tournaments', elementType: 'field', elementLabel: 'Tournament Prize Field', componentPath: 'pages/tournaments/TournamentCreatePage.tsx' },
   { permissionKey: 'tournaments.create.location', moduleSlug: 'tournaments', elementType: 'field', elementLabel: 'Tournament Location Field', componentPath: 'pages/tournaments/TournamentCreatePage.tsx' },
   { permissionKey: 'tournaments.create.banner', moduleSlug: 'tournaments', elementType: 'field', elementLabel: 'Tournament Banner Field', componentPath: 'pages/tournaments/TournamentCreatePage.tsx' },
+  // Group 5B-SR — create form configuration fields
+  { permissionKey: 'tournaments.create.match-format', moduleSlug: 'tournaments', elementType: 'field', elementLabel: 'Match Format Field', componentPath: 'pages/tournaments/TournamentCreatePage.tsx' },
+  { permissionKey: 'tournaments.create.rule-set', moduleSlug: 'tournaments', elementType: 'field', elementLabel: 'Match Rule Set Field', componentPath: 'pages/tournaments/TournamentCreatePage.tsx' },
+  { permissionKey: 'tournaments.create.min-participants', moduleSlug: 'tournaments', elementType: 'field', elementLabel: 'Min Participants Field', componentPath: 'pages/tournaments/TournamentCreatePage.tsx' },
+  { permissionKey: 'tournaments.create.registration-dates', moduleSlug: 'tournaments', elementType: 'field', elementLabel: 'Registration Dates Field', componentPath: 'pages/tournaments/TournamentCreatePage.tsx' },
+
+  // Group 5B-SR — Super Admin Bracket Type management
+  { permissionKey: 'tournament.bracket-types.view', moduleSlug: 'tournaments', elementType: 'page', elementLabel: 'Bracket Types Management Page', componentPath: 'pages/admin/tournament/TournamentBracketTypesPage.tsx' },
+  { permissionKey: 'tournament.bracket-types.manage', moduleSlug: 'tournaments', elementType: 'button', elementLabel: 'Manage Bracket Types', componentPath: 'pages/admin/tournament/TournamentBracketTypesPage.tsx' },
 
   // ==========================================================================
   // ACADEMIES MODULE

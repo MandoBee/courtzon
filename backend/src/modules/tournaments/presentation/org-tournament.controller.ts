@@ -17,6 +17,25 @@ import { AppError } from '../../../shared/errors/app-error.js';
 function getUserId(request: FastifyRequest): number { return (request as any).userId; }
 function getOrgId(request: FastifyRequest): number { return Number((request.params as any).orgId); }
 
+// ── Group 5B-SR — org-scoped configuration reads (delegate to the SAME shared service) ──
+
+export async function listActiveBracketTypesHandler(_request: FastifyRequest, reply: FastifyReply) {
+  const types = await tournamentService.listBracketTypes(false);
+  return reply.send({ data: types });
+}
+
+export async function getOrgCommissionConfigHandler(request: FastifyRequest, reply: FastifyReply) {
+  const orgId = getOrgId(request);
+  const config = await tournamentService.getOrgCommissionConfig(orgId);
+  return reply.send(config);
+}
+
+export async function listSportFormatsCascadeHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { sportId } = request.params as any;
+  const cascade = await tournamentService.listSportFormatsCascade(Number(sportId));
+  return reply.send({ data: cascade });
+}
+
 /**
  * Organisation-scoped tournament API. Tenant isolation is enforced twice:
  * the `requireOrgScopedPermission` guard checks the actor's organisation

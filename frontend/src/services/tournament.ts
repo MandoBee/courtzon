@@ -88,4 +88,17 @@ export const orgTournamentApi = {
     api.post(`/org/${orgId}/tournaments/${tournamentId}/register`, { team_id: teamId }).then(r => r.data),
   cancelRegistration: (orgId: number | string, regId: number) => api.post(`/org/${orgId}/tournaments/registrations/${regId}/cancel`).then(r => r.data),
   confirmRegistration: (orgId: number | string, regId: number) => api.post(`/org/${orgId}/tournaments/registrations/${regId}/confirm`).then(r => r.data),
+  // Group 5B-SR — org-scoped configuration reads (create form)
+  getBracketTypes: (orgId: number | string) => api.get(`/org/${orgId}/tournaments/bracket-types`).then(r => r.data),
+  getCommissionConfig: (orgId: number | string) => api.get(`/org/${orgId}/tournaments/commission-config`).then(r => r.data),
+  getSportFormats: (orgId: number | string, sportId: number | string) =>
+    api.get(`/org/${orgId}/tournaments/sports/${sportId}/formats`).then(r => r.data),
+};
+
+// Group 5B-SR — bracket type configuration (Super Admin management + shared create form)
+export const bracketTypeApi = {
+  listActive: () => api.get('/bracket-types').then(r => r.data),
+  listAll: () => api.get('/admin/bracket-types').then(r => r.data),
+  setActive: (id: number, isActive: boolean) => api.put(`/admin/bracket-types/${id}`, { is_active: isActive }).then(r => r.data),
+  getSportFormats: (sportId: number | string) => api.get(`/tournaments/sports/${sportId}/formats`).then(r => r.data),
 };
