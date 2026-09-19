@@ -376,4 +376,43 @@ describe('F-19 — marketplace-manager settlement authority (finance-only payout
         .toBe(mjsMatch('marketplace-manager', key));
     }
   });
+
+  // ── Tournament org-scoped permissions (UAT RBAC blocker) ──────────────────
+  // Sports-club Organisation Admins must be able to create/manage tournaments
+  // of their OWN organisation. The org-admin role template (^org\.) grants the
+  // canonical org.tournaments.* keys; non-admin org roles and players must NOT
+  // receive them (no indiscriminate grant).
+  const orgTournamentKeys = [
+    'org.sidebar.tournaments',
+    'org.tournaments.view',
+    'org.tournaments.create',
+    'org.tournaments.update',
+    'org.tournaments.publish',
+    'org.tournaments.delete',
+    'org.tournaments.manage',
+    'org.tournaments.register',
+    'org.tournaments.result.manage',
+  ];
+
+  it('org-admin template grants every org.tournaments.* key (sidebar + create/manage)', () => {
+    for (const key of orgTournamentKeys) {
+      expect(permissionMatchesTemplate('org-admin', key)).toBe(true);
+      expect(mjsMatch('org-admin', key)).toBe(true);
+    }
+  });
+
+  it('non-admin org roles and players are NOT granted org.tournaments.* (no indiscriminate grant)', () => {
+    for (const slug of ['shop-admin', 'branch-mgr', 'resource-mgr', 'player', 'coach', 'referee', 'accountant']) {
+      for (const key of orgTournamentKeys) {
+        expect(permissionMatchesTemplate(slug, key)).toBe(false);
+        expect(mjsMatch(slug, key)).toBe(false);
+      }
+    }
+  });
+
+  it('super_admin retains full tournament access (platform behaviour unchanged)', () => {
+    for (const key of orgTournamentKeys) {
+      expect(permissionMatchesTemplate('super_admin', key)).toBe(true);
+    }
+  });
 });

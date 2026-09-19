@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import TournamentListPage from '../TournamentListPage';
 
 const __state = vi.hoisted(() => ({
+  userPermissions: ['*'] as string[],
   adminApi: {
     getTournaments: vi.fn(),
     updateTournament: vi.fn(),
@@ -58,7 +59,11 @@ vi.mock('../../../../i18n', () => ({
 }));
 
 vi.mock('../../../../permissions/Can', () => ({
-  Can: ({ children }: any) => <>{children}</>,
+  Can: ({ permission, children }: any) => {
+    const perms = __state.userPermissions;
+    if (perms.includes('*') || perms.includes(permission)) return <>{children}</>;
+    return null;
+  },
 }));
 
 vi.mock('../../../../components/ui/Toast', () => ({
@@ -80,6 +85,7 @@ function renderPage(initialPath: string, routePath: string, element: React.React
 
 beforeEach(() => {
   vi.clearAllMocks();
+  __state.userPermissions = ['*'];
   __state.adminApi.getTournaments.mockResolvedValue(__state.listPayload);
   __state.orgApi.getTournaments.mockResolvedValue(__state.listPayload);
 });
@@ -102,5 +108,21 @@ describe('TournamentListPage — populated list contract (UAT "e is not a functi
 
     expect(await screen.findByText('Padel Test Tournament')).toBeTruthy();
     expect(screen.getAllByText('tournaments.status.draft').length).toBeGreaterThan(0);
+  });
+
+  it('org mode shows the New Tournament button ONLY when org.tournaments.create is granted', async () => {
+    // Sports-club Org Admin WITH the create permission (post-sync state).
+    __state.userPermissions = ['org.tournaments.view', 'org.tournaments.create'];
+    const { unmount } = renderPage('/org/6/tournaments', '/org/:orgId/tournaments', <TournamentListPage mode="org" orgId="6" />);
+    expect(await screen.findByText('Padel Test Tournament')).toBeTruthy();
+    expect(screen.getAllByText('tournaments.new').length).toBeGreaterThan(0);
+    unmount();
+
+    // Same Org Admin WITHOUT org.tournaments.create (pre-sync live-DB state) —
+    // the button must be hidden, exactly what the UAT observed.
+    __state.userPermissions = ['org.tournaments.view'];
+    renderPage('/org/6/tournaments', '/org/:orgId/tournaments', <TournamentListPage mode="org" orgId="6" />);
+    expect(await screen.findByText('Padel Test Tournament')).toBeTruthy();
+    expect(screen.queryAllByText('tournaments.new')).toHaveLength(0);
   });
 });
