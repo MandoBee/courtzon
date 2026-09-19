@@ -9,6 +9,7 @@ import { getPool } from '../../../database/mysql.js';
 import { recordAudit } from '../../audit-log/index.js';
 import { matchResultRepository } from '../../match-result/infrastructure/match-result.repository.js';
 import type { MatchFormatSnapshot } from '../../match/domain/match.types.js';
+import type { RawMatchResultPayload } from '../../match-result/domain/match-result.types.js';
 import { getCommissionRate } from '../../organisations/application/current-subscription.service.js';
 
 /** Group 5B — draw-time provenance persisted in `tournament_matches.progression_meta`. */
@@ -868,6 +869,7 @@ export class TournamentService {
         sharedMatchId = attached;
         eventBusV2.emit('tournament:match-created', {
           tournamentId: t.id, matchId: sharedMatchId, tournamentMatchId: target.id, winnerId,
+          organisationId: t.organisation_id ?? null,
         } as Record<string, unknown>, {
           aggregateType: 'tournament', aggregateId: String(t.id), aggregateVersion: 1,
         });
@@ -875,18 +877,19 @@ export class TournamentService {
     }
 
     if (stageCompleted) {
-      eventBusV2.emit('tournament:stage-completed', { tournamentId: t.id, stageId: source.stage_id, winnerId } as Record<string, unknown>, {
+      eventBusV2.emit('tournament:stage-completed', { tournamentId: t.id, stageId: source.stage_id, winnerId, organisationId: t.organisation_id ?? null } as Record<string, unknown>, {
         aggregateType: 'tournament', aggregateId: String(t.id), aggregateVersion: 1,
       });
     }
     if (tournamentCompleted) {
-      eventBusV2.emit('tournament:completed', { tournamentId: t.id, winnerId, userId: winnerId, name: t.name } as Record<string, unknown>, {
+      eventBusV2.emit('tournament:completed', { tournamentId: t.id, winnerId, userId: winnerId, name: t.name, organisationId: t.organisation_id ?? null } as Record<string, unknown>, {
         aggregateType: 'tournament', aggregateId: String(t.id), aggregateVersion: 1,
       });
     }
     eventBusV2.emit('tournament:match-progressed', {
       tournamentId: t.id, matchId: input.matchId, resultId: input.resultId, winnerId,
       fromSlotId: source.id, toSlotId: target?.id ?? null, stageId: source.stage_id ?? null,
+      organisationId: t.organisation_id ?? null,
     } as Record<string, unknown>, {
       aggregateType: 'tournament', aggregateId: String(t.id), aggregateVersion: 1,
     });
@@ -917,6 +920,13 @@ export class TournamentService {
     return shared.id;
   }
 
+  /**
+   * @deprecated T-B — legacy cosmetic result path. Writes to
+   * `tournament_match_results` and emits the dead `match.result.recorded`
+   * event; it does NOT drive bracket progression. Retained ONLY for historical
+   * audit compatibility — new results MUST use `recordSharedResult` (the
+   * authoritative shared Match Result lifecycle).
+   */
   async recordMatchResult(matchId: number, winnerId: number, homeScore?: string, awayScore?: string, scoreDetails?: string, enteredBy?: number): Promise<void> {
     const match = await tournamentRepository.findMatchById(matchId);
     if (!match) throw new NotFoundError('Match', ErrorCodes.MATCH_NOT_FOUND);
@@ -952,6 +962,93 @@ export class TournamentService {
     if (!match) throw new NotFoundError('Match', ErrorCodes.MATCH_NOT_FOUND);
     await tournamentRepository.assignReferee(matchId, refereeId);
     await this.emitRefereeAssigned(match, refereeId, 'tournament');
+  }
+
+  // ── T-B: shared playable Match lifecycle bridge ────────────────────────────
+  //
+  // Tournament matches are ORCHESTRATED through the EXISTING shared Match /
+  // Match Session / Match Result lifecycle. No tournament-specific session,
+  // booking, court or result engine exists. A "start" only means "this match
+  // is now being played" — it never invents a court reservation or schedule.
+
+  /**
+   * T-B — start a Tournament Match through the shared Match Session lifecycle.
+   * `sessionService.start` requires the shared Match to be `closed` (tournament
+   * matches are created `closed`), creates the `match_sessions` row (idempotent
+   * — a second call throws SESSION_EXISTS), sets the shared Match to
+   * `in_progress` and emits the canonical `session:started` event. The match
+   * status is mirrored onto the bracket slot for display.
+   */
+  async startTournamentMatch(matchId: number, actorId: number): Promise<TournamentMatch> {
+    const match = await tournamentRepository.findMatchById(matchId);
+    if (!match) throw new NotFoundError('Tournament match', ErrorCodes.TOURNAMENT_NOT_FOUND);
+    if (match.match_id == null) {
+      throw new ConflictError('This tournament match has no shared Match — cannot start it', ErrorCodes.TOURNAMENT_INVALID_FORMAT);
+    }
+    const { matchService } = await import('../../match/application/services/match.service.js');
+    await matchService.startMatch(match.match_id);
+    await tournamentRepository.updateMatch(match.id!, { status: 'in_progress' });
+    await recordAudit({ actorId, action: 'tournament.match.started', entityType: 'tournament_match', entityId: match.id, afterState: { shared_match_id: match.match_id } });
+    // session:started is not socket-bridged; match:updated is. Emit both so the
+    // admin/org match lists refresh live without a manual reload.
+    eventBusV2.emit('match:updated', { matchId: match.match_id } as Record<string, unknown>, {
+      aggregateType: 'match', aggregateId: String(match.match_id), aggregateVersion: 1,
+    });
+    return (await tournamentRepository.findMatchById(matchId))!;
+  }
+
+  /**
+   * T-B — complete the shared Match Session of a Tournament Match. Delegates to
+   * `sessionService.complete` (requires an in-progress session; records
+   * `ended_at`, the source of `played_at`, and emits `session:completed`).
+   */
+  async completeTournamentMatch(matchId: number, actorId: number): Promise<TournamentMatch> {
+    const match = await tournamentRepository.findMatchById(matchId);
+    if (!match) throw new NotFoundError('Tournament match', ErrorCodes.TOURNAMENT_NOT_FOUND);
+    if (match.match_id == null) {
+      throw new ConflictError('This tournament match has no shared Match — cannot complete it', ErrorCodes.TOURNAMENT_INVALID_FORMAT);
+    }
+    const { matchService } = await import('../../match/application/services/match.service.js');
+    await matchService.completeMatch(match.match_id);
+    await tournamentRepository.updateMatch(match.id!, { status: 'completed' });
+    await recordAudit({ actorId, action: 'tournament.match.completed', entityType: 'tournament_match', entityId: match.id, afterState: { shared_match_id: match.match_id } });
+    eventBusV2.emit('match:updated', { matchId: match.match_id } as Record<string, unknown>, {
+      aggregateType: 'match', aggregateId: String(match.match_id), aggregateVersion: 1,
+    });
+    return (await tournamentRepository.findMatchById(matchId))!;
+  }
+
+  /**
+   * T-B — record a Tournament Match result through the AUTHORITATIVE shared
+   * Match Result lifecycle. The operator (admin/org staff) submits on behalf of
+   * the match via the manage-guarded `actorIsOperator` option; the shared
+   * rules engine validates against the FROZEN format/rule snapshots, the shared
+   * state machine (pending_confirmation → accepted/disputed/auto-approved)
+   * drives approval, and the existing progression listener consumes the
+   * `match:result-approved` event to propagate the winner.
+   *
+   * The legacy `recordMatchResult` path is NOT used for new results.
+   */
+  async recordSharedResult(
+    matchId: number,
+    actorId: number,
+    payload: RawMatchResultPayload,
+    ip?: string,
+  ): Promise<{ sharedMatchId: number; resultId: number }> {
+    const match = await tournamentRepository.findMatchById(matchId);
+    if (!match) throw new NotFoundError('Tournament match', ErrorCodes.TOURNAMENT_NOT_FOUND);
+    if (match.match_id == null) {
+      throw new ConflictError('This tournament match has no shared Match — record the result on the shared Match instead', ErrorCodes.TOURNAMENT_INVALID_FORMAT);
+    }
+    const { matchResultService } = await import('../../match-result/application/match-result.service.js');
+    const record = await matchResultService.submitMatchResult(match.match_id, actorId, payload, ip, { actorIsOperator: true });
+    await tournamentRepository.updateMatch(match.id!, { score_summary: record.finalResult?.scoreSummary ?? null });
+    return { sharedMatchId: match.match_id, resultId: record.id };
+  }
+
+  /** T-B — bracket slots joined to their shared Match context (admin/org result screen). */
+  async getMatchesDetailed(tournamentId: number) {
+    return tournamentRepository.findMatchesDetailed(tournamentId);
   }
 
   /** Emit referee:assigned with the referee's user_id (non-fatal). */
@@ -992,7 +1089,7 @@ export class TournamentService {
   }
 
   async getMatches(tournamentId: number) {
-    return tournamentRepository.findMatches(tournamentId);
+    return tournamentRepository.findMatchesDetailed(tournamentId);
   }
 
   async getGroups(tournamentId: number) {

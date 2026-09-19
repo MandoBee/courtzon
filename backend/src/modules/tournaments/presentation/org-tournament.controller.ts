@@ -4,9 +4,10 @@ import { tournamentRepository } from '../infrastructure/repositories/tournament.
 import { z } from 'zod';
 import {
   CreateTournamentSchema, UpdateTournamentSchema, ListTournamentsQuerySchema,
-  GenerateGroupsSchema, RecordResultSchema,
+  GenerateGroupsSchema,
   AssignCourtSchema, AssignRefereeSchema, CreateStageSchema,
 } from './tournament.dto.js';
+import { RawMatchResultBodySchema } from '../../match-result/presentation/match-result.dto.js';
 
 const OrgRegisterSchema = z.object({
   team_id: z.coerce.number().int().positive().optional(),
@@ -201,7 +202,7 @@ export async function getOrgMatchesHandler(request: FastifyRequest, reply: Fasti
   const orgId = getOrgId(request);
   const { id } = request.params as any;
   await assertOrgOwnsTournament(orgId, Number(id));
-  return reply.send(await tournamentService.getMatches(Number(id)));
+  return reply.send(await tournamentService.getMatchesDetailed(Number(id)));
 }
 
 export async function getOrgStandingsHandler(request: FastifyRequest, reply: FastifyReply) {
@@ -268,10 +269,36 @@ export async function recordOrgMatchResultHandler(request: FastifyRequest, reply
   const orgId = getOrgId(request);
   const userId = getUserId(request);
   const { matchId } = request.params as any;
-  const body = RecordResultSchema.parse(request.body);
+  // T-B — the org portal records results through the SAME authoritative shared
+  // Match Result lifecycle as the admin workbench (no parallel engine).
+  const body = RawMatchResultBodySchema.parse(request.body);
   const ownerOrgId = await tournamentRepository.getMatchOrganisationId(Number(matchId));
   if (ownerOrgId == null || ownerOrgId !== orgId) throw new AppError('Match does not belong to this organisation', 404, 'MATCH_NOT_FOUND', {});
-  await tournamentService.recordMatchResult(Number(matchId), body.winner_id, body.home_score, body.away_score, body.score_details, userId);
-  recordAudit({ actorId: userId, action: 'TOURNAMENT.RECORD_RESULT', entityType: 'tournament_match', entityId: Number(matchId), afterState: { orgId } });
-  return reply.send({ ok: true });
+  const out = await tournamentService.recordSharedResult(Number(matchId), userId, body, (request as any).ip);
+  recordAudit({ actorId: userId, action: 'TOURNAMENT.RECORD_RESULT', entityType: 'match_result_records', entityId: out.resultId, afterState: { orgId } });
+  return reply.status(201).send({ ok: true, resultId: out.resultId });
+}
+
+/** T-B — org-scoped start of a Tournament Match's shared Match Session. */
+export async function startOrgTournamentMatchHandler(request: FastifyRequest, reply: FastifyReply) {
+  const orgId = getOrgId(request);
+  const userId = getUserId(request);
+  const { matchId } = request.params as any;
+  const ownerOrgId = await tournamentRepository.getMatchOrganisationId(Number(matchId));
+  if (ownerOrgId == null || ownerOrgId !== orgId) throw new AppError('Match does not belong to this organisation', 404, 'MATCH_NOT_FOUND', {});
+  const updated = await tournamentService.startTournamentMatch(Number(matchId), userId);
+  recordAudit({ actorId: userId, action: 'TOURNAMENT.START_MATCH', entityType: 'tournament_match', entityId: Number(matchId), afterState: { orgId, status: updated.status } });
+  return reply.send({ ok: true, status: updated.status });
+}
+
+/** T-B — org-scoped completion of a Tournament Match's shared Match Session. */
+export async function completeOrgTournamentMatchHandler(request: FastifyRequest, reply: FastifyReply) {
+  const orgId = getOrgId(request);
+  const userId = getUserId(request);
+  const { matchId } = request.params as any;
+  const ownerOrgId = await tournamentRepository.getMatchOrganisationId(Number(matchId));
+  if (ownerOrgId == null || ownerOrgId !== orgId) throw new AppError('Match does not belong to this organisation', 404, 'MATCH_NOT_FOUND', {});
+  const updated = await tournamentService.completeTournamentMatch(Number(matchId), userId);
+  recordAudit({ actorId: userId, action: 'TOURNAMENT.COMPLETE_MATCH', entityType: 'tournament_match', entityId: Number(matchId), afterState: { orgId, status: updated.status } });
+  return reply.send({ ok: true, status: updated.status });
 }

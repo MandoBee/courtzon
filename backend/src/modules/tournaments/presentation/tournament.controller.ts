@@ -3,9 +3,10 @@ import { tournamentService } from '../application/tournament.service.js';
 import { tournamentRepository } from '../infrastructure/repositories/tournament.repository.js';
 import {
   CreateTournamentSchema, UpdateTournamentSchema, ListTournamentsQuerySchema,
-  RegisterSchema, GenerateGroupsSchema, RecordResultSchema,
+  RegisterSchema, GenerateGroupsSchema,
   AssignCourtSchema, AssignRefereeSchema, CreateStageSchema, BracketTypeUpdateSchema,
 } from './tournament.dto.js';
+import { RawMatchResultBodySchema } from '../../match-result/presentation/match-result.dto.js';
 import { recordAudit } from '../../audit-log/index.js';
 import { NotFoundError } from '../../../shared/errors/app-error.js';
 import { ErrorCodes } from '../../../shared/errors/error-codes.js';
@@ -249,7 +250,7 @@ export async function getBracketHandler(request: FastifyRequest, reply: FastifyR
 
 export async function getMatchesHandler(request: FastifyRequest, reply: FastifyReply) {
   const { id } = request.params as any;
-  const data = await tournamentService.getMatches(Number(id));
+  const data = await tournamentService.getMatchesDetailed(Number(id));
   return reply.send({ data });
 }
 
@@ -292,14 +293,43 @@ export async function getStagesHandler(request: FastifyRequest, reply: FastifyRe
 export async function recordMatchResultHandler(request: FastifyRequest, reply: FastifyReply) {
   const userId = getUserId(request);
   const { matchId } = request.params as any;
-  const body = RecordResultSchema.parse(request.body);
-  await tournamentService.recordMatchResult(Number(matchId), body.winner_id, body.home_score, body.away_score, body.score_details, userId);
+  // T-B — tournament results go through the AUTHORITATIVE shared Match Result
+  // lifecycle (operator submission). The legacy tournament_match_results path
+  // is retained for history only.
+  const body = RawMatchResultBodySchema.parse(request.body);
+  const out = await tournamentService.recordSharedResult(Number(matchId), userId, body, (request as any).ip);
   recordAudit({
-    actorId: userId, action: 'TOURNAMENT.RECORD_RESULT', entityType: 'tournament_match',
-    entityId: Number(matchId), afterState: { winner_id: body.winner_id },
+    actorId: userId, action: 'TOURNAMENT.RECORD_RESULT', entityType: 'match_result_records',
+    entityId: out.resultId, afterState: { sharedMatchId: out.sharedMatchId },
     ipAddress: request.ip, userAgent: getUserAgent(request),
   });
-  return reply.send({ success: true });
+  return reply.status(201).send({ success: true, resultId: out.resultId, sharedMatchId: out.sharedMatchId });
+}
+
+/** T-B — start the shared Match Session of a Tournament Match. */
+export async function startTournamentMatchHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = getUserId(request);
+  const { matchId } = request.params as any;
+  const updated = await tournamentService.startTournamentMatch(Number(matchId), userId);
+  recordAudit({
+    actorId: userId, action: 'TOURNAMENT.START_MATCH', entityType: 'tournament_match',
+    entityId: Number(matchId), afterState: { status: updated.status },
+    ipAddress: request.ip, userAgent: getUserAgent(request),
+  });
+  return reply.send({ success: true, status: updated.status });
+}
+
+/** T-B — complete the shared Match Session of a Tournament Match. */
+export async function completeTournamentMatchHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = getUserId(request);
+  const { matchId } = request.params as any;
+  const updated = await tournamentService.completeTournamentMatch(Number(matchId), userId);
+  recordAudit({
+    actorId: userId, action: 'TOURNAMENT.COMPLETE_MATCH', entityType: 'tournament_match',
+    entityId: Number(matchId), afterState: { status: updated.status },
+    ipAddress: request.ip, userAgent: getUserAgent(request),
+  });
+  return reply.send({ success: true, status: updated.status });
 }
 
 export async function assignCourtHandler(request: FastifyRequest, reply: FastifyReply) {

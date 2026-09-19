@@ -317,6 +317,29 @@ export class TournamentRepository {
     return rows as TournamentMatch[];
   }
 
+  /**
+   * Group 5B / T-B — tournament bracket slots joined to their shared Match so the
+   * admin/org result screen can render the authoritative shared lifecycle state
+   * (shared_status, frozen format/rule snapshots) and drive start/result actions.
+   * The shared Match remains the single source of truth; `tournament_matches` is
+   * only the bracket slot pointer.
+   */
+  async findMatchesDetailed(tournamentId: number): Promise<Array<TournamentMatch & {
+    shared_status?: string | null;
+    format_snapshot?: unknown;
+    rule_snapshot?: unknown;
+  }>> {
+    const [rows] = await getPool().query<RowData>(
+      `SELECT tm.*, m.status AS shared_status, m.format_snapshot, m.rule_snapshot
+       FROM tournament_matches tm
+       LEFT JOIN matches m ON m.id = tm.match_id
+       WHERE tm.tournament_id = ?
+       ORDER BY tm.round, tm.bracket_position`,
+      [tournamentId],
+    );
+    return rows as Array<TournamentMatch & { shared_status?: string | null; format_snapshot?: unknown; rule_snapshot?: unknown }>;
+  }
+
   async findMatchesByGroup(groupId: number): Promise<TournamentMatch[]> {
     const [rows] = await getPool().query<RowData>(
       'SELECT * FROM tournament_matches WHERE group_id = ? ORDER BY round, bracket_position',

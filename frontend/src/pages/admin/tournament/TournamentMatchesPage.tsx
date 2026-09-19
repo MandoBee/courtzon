@@ -17,6 +17,44 @@ const MATCH_STATUS_COLORS: Record<string, string> = {
   walkover: 'bg-purple-100 text-purple-700',
 };
 
+const SHARED_STATUS_COLORS: Record<string, string> = {
+  closed: 'bg-slate-100 text-slate-600',
+  in_progress: 'bg-amber-100 text-amber-700',
+  completed: 'bg-green-100 text-green-700',
+};
+
+interface ResultForm {
+  outcome: string;
+  winnerSide: string;
+  sets: { home: string; away: string }[];
+  homeGoals: string;
+  awayGoals: string;
+}
+
+function emptyResultForm(): ResultForm {
+  return { outcome: 'completed', winnerSide: '', sets: [{ home: '', away: '' }], homeGoals: '', awayGoals: '' };
+}
+
+/** Build the shared RawMatchResultPayload ({outcome, winner, score, termination}). */
+function buildResultPayload(form: ResultForm, scoreStructure: string | undefined): any {
+  const winner = form.winnerSide || null;
+  if (form.outcome === 'abandoned') return { outcome: 'abandoned', winner: null };
+  if (form.outcome === 'completed') {
+    if (scoreStructure === 'goals') {
+      return { outcome: 'completed', winner: null, score: { homeGoals: Number(form.homeGoals || 0), awayGoals: Number(form.awayGoals || 0) } };
+    }
+    const sets = form.sets
+      .map((s) => ({ home: Number(s.home), away: Number(s.away) }))
+      .filter((s) => Number.isInteger(s.home) && Number.isInteger(s.away) && s.home >= 0 && s.away >= 0);
+    if (sets.length === 0) return { outcome: 'completed', winner: null, score: { sets: [{ home: 0, away: 0 }] } };
+    return { outcome: 'completed', winner: null, score: { sets } };
+  }
+  if (form.outcome === 'retired') {
+    return { outcome: 'retired', winner: null, termination: { retired_side: winner } };
+  }
+  return { outcome: form.outcome, winner };
+}
+
 export default function TournamentMatchesPage() {
   const { t } = useTranslation();
   const { showToast } = useToast();
@@ -26,7 +64,7 @@ export default function TournamentMatchesPage() {
   const [page, setPage] = useState(1);
   const limit = 20;
   const [resultModal, setResultModal] = useState<{ matchId: number; open: boolean }>({ matchId: 0, open: false });
-  const [resultData, setResultData] = useState({ score: '', winner_id: '', status: 'completed' });
+  const [resultData, setResultData] = useState<ResultForm>(emptyResultForm());
   const [courtAssign, setCourtAssign] = useState<{ matchId: number; resourceId: string }>({ matchId: 0, resourceId: '' });
   const [refereeAssign, setRefereeAssign] = useState<{ matchId: number; refereeId: string }>({ matchId: 0, refereeId: '' });
 
@@ -50,12 +88,20 @@ export default function TournamentMatchesPage() {
   });
 
   const recordResultMutation = useMutation({
-    mutationFn: () => tournamentApi.recordResult(resultModal.matchId, {
-      score: resultData.score,
-      winner_id: resultData.winner_id ? Number(resultData.winner_id) : undefined,
-      status: resultData.status,
-    }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['tournament-admin-matches'] }); setResultModal({ matchId: 0, open: false }); setResultData({ score: '', winner_id: '', status: 'completed' }); showToast(t('tournaments.result_recorded')); },
+    mutationFn: (payload: any) => tournamentApi.recordResult(resultModal.matchId, payload),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['tournament-admin-matches'] }); qc.invalidateQueries({ queryKey: ['tournaments'] }); setResultModal({ matchId: 0, open: false }); setResultData(emptyResultForm()); showToast(t('tournaments.result_recorded')); },
+    onError: (err) => showToast(getErrorMessage(err), 'error'),
+  });
+
+  const startMatchMutation = useMutation({
+    mutationFn: (matchId: number) => tournamentApi.startMatch(matchId),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['tournament-admin-matches'] }); qc.invalidateQueries({ queryKey: ['tournaments'] }); showToast(t('tournaments.match_started', 'Match started')); },
+    onError: (err) => showToast(getErrorMessage(err), 'error'),
+  });
+
+  const completeMatchMutation = useMutation({
+    mutationFn: (matchId: number) => tournamentApi.completeMatch(matchId),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['tournament-admin-matches'] }); qc.invalidateQueries({ queryKey: ['tournaments'] }); showToast(t('tournaments.match_completed', 'Match completed')); },
     onError: (err) => showToast(getErrorMessage(err), 'error'),
   });
 
@@ -72,6 +118,13 @@ export default function TournamentMatchesPage() {
   });
 
   const matches = Array.isArray(matchesData) ? matchesData : matchesData?.data ?? [];
+  const selectedMatch = matches.find((m: any) => m.id === resultModal.matchId) as any;
+
+  const saveResult = () => {
+    const ruleSnap = selectedMatch?.rule_snapshot ? (typeof selectedMatch.rule_snapshot === 'string' ? JSON.parse(selectedMatch.rule_snapshot) : selectedMatch.rule_snapshot) : null;
+    const scoreStructure = ruleSnap?.score_structure;
+    recordResultMutation.mutate(buildResultPayload(resultData, scoreStructure));
+  };
 
   return (
     <Can permission="admin-tournaments.view">
@@ -114,66 +167,90 @@ export default function TournamentMatchesPage() {
                     {matches.length === 0 && (
                       <tr><td colSpan={9} className="text-center py-8 text-sm text-[var(--color-text-muted)]">{t('common.no_results')}</td></tr>
                     )}
-                    {matches.map((m: any) => (
-                      <tr key={m.id} className="border-b last:border-0 hover:bg-[var(--color-bg)]/30">
-                        <td className="px-4 py-3 text-xs">{m.round ?? '-'}</td>
-                        <td className="px-4 py-3 font-mono text-xs">{m.match_number ?? m.match_no ?? '-'}</td>
-                        <td className="px-4 py-3">{m.player1_name || m.player1?.name || '-'}</td>
-                        <td className="px-4 py-3">{m.player2_name || m.player2?.name || '-'}</td>
-                        <td className="px-4 py-3 text-xs">
-                          {courtAssign.matchId === m.id ? (
-                            <div className="flex gap-1">
-                              <input type="number" value={courtAssign.resourceId} onChange={(e) => setCourtAssign((prev) => ({ ...prev, resourceId: e.target.value }))}
-                                className="w-16 px-1 py-0.5 border rounded text-[10px]" placeholder="ID" />
-                              <button onClick={() => assignCourtMutation.mutate()}
-                                className="text-[10px] px-1 py-0.5 bg-[var(--color-primary)] text-white rounded">OK</button>
-                              <button onClick={() => setCourtAssign({ matchId: 0, resourceId: '' })}
-                                className="text-[10px] px-1 py-0.5 border rounded">X</button>
+                    {matches.map((m: any) => {
+                      const sharedStatus = m.shared_status ?? null;
+                      const canStart = sharedStatus === 'closed';
+                      const canPlay = sharedStatus === 'in_progress' || sharedStatus === 'completed';
+                      return (
+                        <tr key={m.id} className="border-b last:border-0 hover:bg-[var(--color-bg)]/30">
+                          <td className="px-4 py-3 text-xs">{m.round ?? '-'}</td>
+                          <td className="px-4 py-3 font-mono text-xs">{m.match_number ?? m.match_no ?? '-'}</td>
+                          <td className="px-4 py-3">{m.player1_name || m.player1?.name || (m.player1_id ? `Player #${m.player1_id}` : '-')}</td>
+                          <td className="px-4 py-3">{m.player2_name || m.player2?.name || (m.player2_id ? `Player #${m.player2_id}` : '-')}</td>
+                          <td className="px-4 py-3 text-xs">
+                            {courtAssign.matchId === m.id ? (
+                              <div className="flex gap-1">
+                                <input type="number" value={courtAssign.resourceId} onChange={(e) => setCourtAssign((prev) => ({ ...prev, resourceId: e.target.value }))}
+                                  className="w-16 px-1 py-0.5 border rounded text-[10px]" placeholder="ID" />
+                                <button onClick={() => assignCourtMutation.mutate()}
+                                  className="text-[10px] px-1 py-0.5 bg-[var(--color-primary)] text-white rounded">OK</button>
+                                <button onClick={() => setCourtAssign({ matchId: 0, resourceId: '' })}
+                                  className="text-[10px] px-1 py-0.5 border rounded">X</button>
+                              </div>
+                            ) : (
+                              <span>{m.court_name || m.resource_name || '-'}</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-xs">
+                            {refereeAssign.matchId === m.id ? (
+                              <div className="flex gap-1">
+                                <input type="number" value={refereeAssign.refereeId} onChange={(e) => setRefereeAssign((prev) => ({ ...prev, refereeId: e.target.value }))}
+                                  className="w-16 px-1 py-0.5 border rounded text-[10px]" placeholder="ID" />
+                                <button onClick={() => assignRefereeMutation.mutate()}
+                                  className="text-[10px] px-1 py-0.5 bg-[var(--color-primary)] text-white rounded">OK</button>
+                                <button onClick={() => setRefereeAssign({ matchId: 0, refereeId: '' })}
+                                  className="text-[10px] px-1 py-0.5 border rounded">X</button>
+                              </div>
+                            ) : (
+                              <span>{m.referee_name || '-'}</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-xs">
+                            <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-medium ${MATCH_STATUS_COLORS[m.status] || ''}`}>
+                              {t(`tournaments.match_status.${m.status}`)}
+                            </span>
+                            {sharedStatus && (
+                              <span className={`inline-block ml-1 px-2 py-0.5 rounded text-[10px] font-medium ${SHARED_STATUS_COLORS[sharedStatus] || ''}`}>
+                                {sharedStatus}
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-xs font-mono">{m.score_summary || '-'}</td>
+                          <td className="px-4 py-3 text-right">
+                            <div className="flex items-center justify-end gap-1 flex-wrap">
+                              <Can permission="tournament.manage">
+                                <button onClick={() => setCourtAssign({ matchId: m.id, resourceId: '' })}
+                                  className="text-[10px] px-2 py-1 rounded border border-[var(--color-border)] hover:bg-[var(--color-bg)]">
+                                  {t('tournaments.assign_court')}
+                                </button>
+                                <button onClick={() => setRefereeAssign({ matchId: m.id, refereeId: '' })}
+                                  className="text-[10px] px-2 py-1 rounded border border-[var(--color-border)] hover:bg-[var(--color-bg)]">
+                                  {t('tournaments.assign_referee')}
+                                </button>
+                                {canStart && (
+                                  <button onClick={() => startMatchMutation.mutate(m.id)}
+                                    className="text-[10px] px-2 py-1 rounded border border-blue-200 text-blue-600 hover:bg-blue-50">
+                                    {t('tournaments.start_match', 'Start Match')}
+                                  </button>
+                                )}
+                                {canPlay && (
+                                  <button onClick={() => completeMatchMutation.mutate(m.id)}
+                                    className="text-[10px] px-2 py-1 rounded border border-[var(--color-border)] hover:bg-[var(--color-bg)]">
+                                    {t('tournaments.complete_match', 'Complete')}
+                                  </button>
+                                )}
+                              </Can>
+                              <Can permission="tournament.result.manage">
+                                <button onClick={() => { setResultModal({ matchId: m.id, open: true }); setResultData(emptyResultForm()); }}
+                                  className="text-[10px] px-2 py-1 rounded border border-green-200 text-green-600 hover:bg-green-50">
+                                  {t('tournaments.record_result')}
+                                </button>
+                              </Can>
                             </div>
-                          ) : (
-                            <span>{m.court_name || m.resource_name || '-'}</span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3 text-xs">
-                          {refereeAssign.matchId === m.id ? (
-                            <div className="flex gap-1">
-                              <input type="number" value={refereeAssign.refereeId} onChange={(e) => setRefereeAssign((prev) => ({ ...prev, refereeId: e.target.value }))}
-                                className="w-16 px-1 py-0.5 border rounded text-[10px]" placeholder="ID" />
-                              <button onClick={() => assignRefereeMutation.mutate()}
-                                className="text-[10px] px-1 py-0.5 bg-[var(--color-primary)] text-white rounded">OK</button>
-                              <button onClick={() => setRefereeAssign({ matchId: 0, refereeId: '' })}
-                                className="text-[10px] px-1 py-0.5 border rounded">X</button>
-                            </div>
-                          ) : (
-                            <span>{m.referee_name || '-'}</span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3">
-                          <span className={`px-2 py-0.5 rounded text-[10px] font-medium ${MATCH_STATUS_COLORS[m.status] || ''}`}>
-                            {t(`tournaments.match_status.${m.status}`)}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-xs font-mono">{m.score || '-'}</td>
-                        <td className="px-4 py-3 text-right">
-                          <div className="flex items-center justify-end gap-1">
-                            <Can permission="tournaments.edit">
-                              <button onClick={() => setCourtAssign({ matchId: m.id, resourceId: '' })}
-                                className="text-[10px] px-2 py-1 rounded border border-[var(--color-border)] hover:bg-[var(--color-bg)]">
-                                {t('tournaments.assign_court')}
-                              </button>
-                              <button onClick={() => setRefereeAssign({ matchId: m.id, refereeId: '' })}
-                                className="text-[10px] px-2 py-1 rounded border border-[var(--color-border)] hover:bg-[var(--color-bg)]">
-                                {t('tournaments.assign_referee')}
-                              </button>
-                              <button onClick={() => { setResultModal({ matchId: m.id, open: true }); setResultData({ score: m.score || '', winner_id: '', status: 'completed' }); }}
-                                className="text-[10px] px-2 py-1 rounded border border-green-200 text-green-600 hover:bg-green-50">
-                                {t('tournaments.record_result')}
-                              </button>
-                            </Can>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -185,25 +262,70 @@ export default function TournamentMatchesPage() {
           title={t('tournaments.record_result')} size="sm">
           <div className="space-y-3">
             <div>
-              <label className="block text-xs font-medium text-[var(--color-text-muted)] mb-1">{t('tournaments.match.score')}</label>
-              <input value={resultData.score} onChange={(e) => setResultData((p) => ({ ...p, score: e.target.value }))}
-                className="w-full px-3 py-2 border rounded-[var(--radius-md)] text-sm" placeholder="e.g. 6-4, 6-3" />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-[var(--color-text-muted)] mb-1">{t('tournaments.match.winner_id')}</label>
-              <input type="number" value={resultData.winner_id} onChange={(e) => setResultData((p) => ({ ...p, winner_id: e.target.value }))}
-                className="w-full px-3 py-2 border rounded-[var(--radius-md)] text-sm" />
-            </div>
-            <div>
               <label className="block text-xs font-medium text-[var(--color-text-muted)] mb-1">{t('tournaments.match.status')}</label>
-              <select value={resultData.status} onChange={(e) => setResultData((p) => ({ ...p, status: e.target.value }))}
+              <select value={resultData.outcome} onChange={(e) => setResultData((p) => ({ ...p, outcome: e.target.value }))}
                 className="w-full px-3 py-2 border rounded-[var(--radius-md)] text-sm">
                 <option value="completed">{t('tournaments.match_status.completed')}</option>
                 <option value="walkover">{t('tournaments.match_status.walkover')}</option>
-                <option value="cancelled">{t('tournaments.match_status.cancelled')}</option>
+                <option value="forfeit">Forfeit</option>
+                <option value="retired">Retired</option>
+                <option value="abandoned">Abandoned</option>
               </select>
             </div>
-            <button onClick={() => recordResultMutation.mutate()}
+
+            {(resultData.outcome !== 'completed' && resultData.outcome !== 'abandoned') && (
+              <div>
+                <label className="block text-xs font-medium text-[var(--color-text-muted)] mb-1">Winner</label>
+                <select value={resultData.winnerSide} onChange={(e) => setResultData((p) => ({ ...p, winnerSide: e.target.value }))}
+                  className="w-full px-3 py-2 border rounded-[var(--radius-md)] text-sm">
+                  <option value="">Select winner</option>
+                  <option value="home">{selectedMatch?.player1_name || `Player #${selectedMatch?.player1_id}`} (Home)</option>
+                  <option value="away">{selectedMatch?.player2_name || `Player #${selectedMatch?.player2_id}`} (Away)</option>
+                </select>
+              </div>
+            )}
+
+            {resultData.outcome === 'completed' && selectedMatch?.rule_snapshot && (() => {
+              const ruleSnap = typeof selectedMatch.rule_snapshot === 'string' ? JSON.parse(selectedMatch.rule_snapshot) : selectedMatch.rule_snapshot;
+              if (ruleSnap?.score_structure === 'goals') {
+                return (
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-xs font-medium text-[var(--color-text-muted)] mb-1">Home Goals</label>
+                      <input type="number" min={0} value={resultData.homeGoals} onChange={(e) => setResultData((p) => ({ ...p, homeGoals: e.target.value }))}
+                        className="w-full px-3 py-2 border rounded-[var(--radius-md)] text-sm" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-[var(--color-text-muted)] mb-1">Away Goals</label>
+                      <input type="number" min={0} value={resultData.awayGoals} onChange={(e) => setResultData((p) => ({ ...p, awayGoals: e.target.value }))}
+                        className="w-full px-3 py-2 border rounded-[var(--radius-md)] text-sm" />
+                    </div>
+                  </div>
+                );
+              }
+              return (
+                <div className="space-y-1">
+                  <label className="block text-xs font-medium text-[var(--color-text-muted)] mb-1">Sets</label>
+                  {resultData.sets.map((s, idx) => (
+                    <div key={idx} className="flex items-center gap-2">
+                      <input type="number" min={0} value={s.home} placeholder="Home"
+                        onChange={(e) => setResultData((p) => ({ ...p, sets: p.sets.map((x, i) => (i === idx ? { ...x, home: e.target.value } : x)) }))}
+                        className="flex-1 px-2 py-1 border rounded text-sm" />
+                      <span>-</span>
+                      <input type="number" min={0} value={s.away} placeholder="Away"
+                        onChange={(e) => setResultData((p) => ({ ...p, sets: p.sets.map((x, i) => (i === idx ? { ...x, away: e.target.value } : x)) }))}
+                        className="flex-1 px-2 py-1 border rounded text-sm" />
+                      <button type="button" onClick={() => setResultData((p) => ({ ...p, sets: p.sets.filter((_, i) => i !== idx) }))}
+                        className="text-xs text-red-500 px-1">X</button>
+                    </div>
+                  ))}
+                  <button type="button" onClick={() => setResultData((p) => ({ ...p, sets: [...p.sets, { home: '', away: '' }] }))}
+                    className="text-xs text-[var(--color-primary)]">+ Add set</button>
+                </div>
+              );
+            })()}
+
+            <button onClick={saveResult}
               className="w-full px-4 py-2 bg-[var(--color-primary)] text-white rounded-[var(--radius-md)] text-sm font-medium">
               {t('tournaments.save_result')}
             </button>

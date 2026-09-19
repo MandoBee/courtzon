@@ -30,6 +30,10 @@ export const tournamentApi = {
     api.put(`/admin/tournaments/matches/${matchId}/court`, { resource_id: resourceId }).then(r => r.data),
   assignReferee: (matchId: number, refereeId: number) =>
     api.put(`/admin/tournaments/matches/${matchId}/referee`, { referee_id: refereeId }).then(r => r.data),
+  startMatch: (matchId: number) => api.post(`/admin/tournaments/matches/${matchId}/start`).then(r => r.data),
+  completeMatch: (matchId: number) => api.post(`/admin/tournaments/matches/${matchId}/complete`).then(r => r.data),
+  // T-B — tournament results are recorded through the AUTHORITATIVE shared Match
+  // Result lifecycle (outcome + winner side + structured score, NOT winner_id).
   recordResult: (matchId: number, data: any) =>
     api.post(`/admin/tournaments/matches/${matchId}/result`, data).then(r => r.data),
 
@@ -80,6 +84,10 @@ export const orgTournamentApi = {
     api.put(`/org/${orgId}/tournaments/matches/${matchId}/court`, { resource_id: resourceId }).then(r => r.data),
   assignReferee: (orgId: number | string, matchId: number, refereeId: number) =>
     api.put(`/org/${orgId}/tournaments/matches/${matchId}/referee`, { referee_id: refereeId }).then(r => r.data),
+  startMatch: (orgId: number | string, matchId: number) =>
+    api.post(`/org/${orgId}/tournaments/matches/${matchId}/start`).then(r => r.data),
+  completeMatch: (orgId: number | string, matchId: number) =>
+    api.post(`/org/${orgId}/tournaments/matches/${matchId}/complete`).then(r => r.data),
   recordResult: (orgId: number | string, matchId: number, data: any) =>
     api.post(`/org/${orgId}/tournaments/matches/${matchId}/result`, data).then(r => r.data),
   getStandings: (orgId: number | string, tournamentId: number) => api.get(`/org/${orgId}/tournaments/${tournamentId}/standings`).then(r => r.data),

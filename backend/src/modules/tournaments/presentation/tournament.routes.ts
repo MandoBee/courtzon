@@ -40,6 +40,9 @@ export async function tournamentRoutes(app: FastifyInstance): Promise<void> {
 
   app.put('/admin/tournaments/matches/:matchId/court', { preHandler: [requirePermission(['tournament.manage'])] }, ctrl.assignCourtHandler);
   app.put('/admin/tournaments/matches/:matchId/referee', { preHandler: [requirePermission(['tournament.manage'])] }, ctrl.assignRefereeHandler);
+  // T-B — tournament matches are played through the SHARED Match Session lifecycle.
+  app.post('/admin/tournaments/matches/:matchId/start', { preHandler: [requirePermission(['tournament.manage'])] }, ctrl.startTournamentMatchHandler);
+  app.post('/admin/tournaments/matches/:matchId/complete', { preHandler: [requirePermission(['tournament.manage'])] }, ctrl.completeTournamentMatchHandler);
   app.post('/admin/tournaments/matches/:matchId/result', { preHandler: [requirePermission(['tournament.result.manage'])] }, ctrl.recordMatchResultHandler);
 
   // ── Group 5B-SR — Bracket type configuration (Super Admin) ──

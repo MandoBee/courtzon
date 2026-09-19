@@ -165,13 +165,22 @@ export const TOURNAMENT_REALTIME_EVENTS = [
 ] as const;
 
 export function invalidateTournament(
-  qc: { invalidateQueries: (opts: { queryKey: readonly string[] }) => void },
+  qc: { invalidateQueries: (opts: { queryKey: readonly (string | number)[] }) => void },
   tournamentId: number | null | undefined,
 ): void {
   if (tournamentId == null) return;
   const id = String(tournamentId);
+  // React Query treats numbers and strings as distinct key elements, so both the
+  // string (realtime) and numeric (screen) forms are invalidated.
   qc.invalidateQueries({ queryKey: ['tournament', id] });
+  qc.invalidateQueries({ queryKey: ['tournament', tournamentId] });
   qc.invalidateQueries({ queryKey: ['tournaments'] });
+  // Admin/org tournament workbench surfaces (T-B): the matches screen and the
+  // admin tournament roots must refresh after draw/progression/result. Org
+  // detail roots are org-scoped (orgId unknown here) and are handled by the
+  // org portal's own listeners when the org UI lands (T-C).
+  qc.invalidateQueries({ queryKey: ['tournament-admin-matches'] });
+  qc.invalidateQueries({ queryKey: ['admin-tournaments'] });
 }
 
 /**

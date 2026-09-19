@@ -28,6 +28,7 @@ const service = vi.hoisted(() => ({
   generateBracket: vi.fn(),
   getGroups: vi.fn(),
   getMatches: vi.fn(),
+  getMatchesDetailed: vi.fn(),
   getStandings: vi.fn(),
   getBracket: vi.fn(),
   createStage: vi.fn(),
@@ -35,6 +36,9 @@ const service = vi.hoisted(() => ({
   assignCourt: vi.fn(),
   assignReferee: vi.fn(),
   recordMatchResult: vi.fn(),
+  recordSharedResult: vi.fn(),
+  startTournamentMatch: vi.fn(),
+  completeTournamentMatch: vi.fn(),
   listBracketTypes: vi.fn(),
   getOrgCommissionConfig: vi.fn(),
   listSportFormatsCascade: vi.fn(),
@@ -144,20 +148,36 @@ describe('org-tournament.controller (tenant isolation)', () => {
     expect(service.confirmRegistration).not.toHaveBeenCalled();
   });
 
-  it('match result: only org-owned matches accept a recorded result', async () => {
+  it('match result: only org-owned matches accept a result through the shared lifecycle', async () => {
     repo.getMatchOrganisationId.mockResolvedValue(ORG_A);
-    service.recordMatchResult.mockResolvedValue({});
+    service.recordSharedResult.mockResolvedValue({ resultId: 3, sharedMatchId: 900 });
+    const payload = { outcome: 'completed', score: { sets: [{ home: 6, away: 4 }] } };
     const reply = res();
     await ctrl.recordOrgMatchResultHandler(
-      req({ params: { orgId: String(ORG_A), matchId: '77' }, body: { winner_id: 1, home_score: '2', away_score: '1', score_details: '6-1' } }),
+      req({ params: { orgId: String(ORG_A), matchId: '77' }, body: payload }),
       reply,
     );
-    expect(service.recordMatchResult).toHaveBeenCalledWith(77, 1, '2', '1', '6-1', 42);
+    expect(service.recordSharedResult).toHaveBeenCalledWith(77, 42, payload, undefined);
+    expect(reply.statusCode).toBe(201);
 
     repo.getMatchOrganisationId.mockResolvedValue(ORG_B);
-    await expect(ctrl.recordOrgMatchResultHandler(req({ params: { orgId: String(ORG_A), matchId: '77' }, body: { winner_id: 1 } }), res()))
+    await expect(ctrl.recordOrgMatchResultHandler(req({ params: { orgId: String(ORG_A), matchId: '77' }, body: payload }), res()))
       .rejects.toMatchObject({ statusCode: 404, errorCode: 'MATCH_NOT_FOUND' });
-    expect(service.recordMatchResult).toHaveBeenCalledTimes(1);
+    expect(service.recordSharedResult).toHaveBeenCalledTimes(1);
+  });
+
+  it('start/complete match: org-tenanted via the match row (T-B shared session bridge)', async () => {
+    repo.getMatchOrganisationId.mockResolvedValue(ORG_A);
+    service.startTournamentMatch.mockResolvedValue({ status: 'in_progress' });
+    service.completeTournamentMatch.mockResolvedValue({ status: 'completed' });
+    await ctrl.startOrgTournamentMatchHandler(req({ params: { orgId: String(ORG_A), matchId: '77' } }), res());
+    expect(service.startTournamentMatch).toHaveBeenCalledWith(77, 42);
+    await ctrl.completeOrgTournamentMatchHandler(req({ params: { orgId: String(ORG_A), matchId: '77' } }), res());
+    expect(service.completeTournamentMatch).toHaveBeenCalledWith(77, 42);
+
+    repo.getMatchOrganisationId.mockResolvedValue(ORG_B);
+    await expect(ctrl.startOrgTournamentMatchHandler(req({ params: { orgId: String(ORG_A), matchId: '77' } }), res()))
+      .rejects.toMatchObject({ statusCode: 404, errorCode: 'MATCH_NOT_FOUND' });
   });
 
   it('court/referee assignment: org-tenanted via the match row', async () => {

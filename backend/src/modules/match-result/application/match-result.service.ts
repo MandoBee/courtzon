@@ -18,9 +18,21 @@ export function addHours(iso: string, hours: number): string {
   return new Date(new Date(iso).getTime() + hours * 3_600_000).toISOString();
 }
 
+export interface SubmitResultOptions {
+  /**
+   * Operator submission (T-B). Authorised admins/org staff record a result on
+   * behalf of the match without being a participant. The ROUTE guard enforces
+   * `matches.result.manage` / `tournament.result.manage` /
+   * `org.tournaments.result.manage` BEFORE the service is called — this flag
+   * only relaxes the participant identity check; every other validation (rules
+   * engine, frozen snapshots, window, state machine) is unchanged.
+   */
+  actorIsOperator?: boolean;
+}
+
 export class MatchResultService {
   /** Part G.411 — server always derives the winner from the score using the rules engine. */
-  async submitMatchResult(matchId: number, actorId: number, payload: RawMatchResultPayload, ip?: string): Promise<MatchResultRecord> {
+  async submitMatchResult(matchId: number, actorId: number, payload: RawMatchResultPayload, ip?: string, opts?: SubmitResultOptions): Promise<MatchResultRecord> {
     const matchIdResolved = await matchResultRepository.resolveMatchId(matchId);
     if (!matchIdResolved) throw new NotFoundError('match not found');
     const matchIdActual = matchIdResolved;
@@ -29,7 +41,7 @@ export class MatchResultService {
     if (!context) throw new NotFoundError('match context not found');
 
     const isParticipant = context.participantUserIds.includes(actorId);
-    if (!isParticipant) throw new ForbiddenError('Only match participants can submit a result');
+    if (!isParticipant && !opts?.actorIsOperator) throw new ForbiddenError('Only match participants can submit a result');
 
     if (!ELIGIBLE_MATCH_STATUSES.includes(context.status)) {
       throw new RulesValidationError(`Results can only be submitted for matches that have started (status: ${context.status})`);

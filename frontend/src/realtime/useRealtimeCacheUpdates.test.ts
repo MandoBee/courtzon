@@ -249,7 +249,7 @@ describe('TOURNAMENT_REALTIME_EVENTS (Group 5B draw/progression realtime strateg
     expect(TOURNAMENT_REALTIME_EVENTS).toContain('tournament.completed');
   });
 
-  it('invalidateTournament targets only tournament roots and uses string ids', () => {
+  it('invalidateTournament targets tournament + admin/org workbench roots', () => {
     const invalidated: string[][] = [];
     const fakeQc = {
       invalidateQueries: ({ queryKey }: { queryKey: readonly string[] }) => {
@@ -258,8 +258,10 @@ describe('TOURNAMENT_REALTIME_EVENTS (Group 5B draw/progression realtime strateg
     };
     invalidateTournament(fakeQc as any, 7);
     expect(invalidated).toContainEqual(['tournament', '7']);
+    expect(invalidated).toContainEqual(['tournament', 7]);
     expect(invalidated).toContainEqual(['tournaments']);
-    expect(invalidated.every((k) => k[0] === 'tournament' || k[0] === 'tournaments')).toBe(true);
+    expect(invalidated).toContainEqual(['tournament-admin-matches']);
+    expect(invalidated).toContainEqual(['admin-tournaments']);
   });
 
   it('does nothing for a null/undefined tournament id', () => {

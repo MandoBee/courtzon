@@ -172,6 +172,17 @@ export async function orgTournamentRoutes(app: FastifyInstance): Promise<void> {
     { preHandler: [requireOrgScopedPermission('org.tournaments.manage')] },
     ctrl.assignOrgRefereeHandler,
   );
+  // T-B — org matches are played through the SHARED Match Session lifecycle.
+  app.post(
+    '/org/:orgId/tournaments/matches/:matchId/start',
+    { preHandler: [requireOrgScopedPermission('org.tournaments.manage')] },
+    ctrl.startOrgTournamentMatchHandler,
+  );
+  app.post(
+    '/org/:orgId/tournaments/matches/:matchId/complete',
+    { preHandler: [requireOrgScopedPermission('org.tournaments.manage')] },
+    ctrl.completeOrgTournamentMatchHandler,
+  );
   app.post(
     '/org/:orgId/tournaments/matches/:matchId/result',
     { preHandler: [requireOrgScopedPermission('org.tournaments.result.manage')] },

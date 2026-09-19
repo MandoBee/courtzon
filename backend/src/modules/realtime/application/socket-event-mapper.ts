@@ -407,7 +407,11 @@ function mapMembershipEvent(eventName: string, p: Record<string, any>): MappedSo
 
 function mapTournamentEvent(eventName: string, p: Record<string, any>): MappedSocketEvent {
   const sub = eventName.split(':')[1] || 'updated';
-  const rooms: string[] = [];
+  // The Super Admin tournament workbench (dashboard/list/detail/matches) lives
+  // in the admin room — every tournament lifecycle signal must refresh it live.
+  // Org staff receive the same signal via their organisation room (the
+  // progression events now carry `organisationId`).
+  const rooms: string[] = [ADMIN_ROOM];
   if (p.userId) rooms.push(`user:${p.userId}`);
   if (p.organisationId) rooms.push(`organisation:${p.organisationId}`);
   return {
@@ -422,6 +426,7 @@ function mapTournamentEvent(eventName: string, p: Record<string, any>): MappedSo
       stageId: p.stageId,
       stageCompleted: p.stageCompleted,
       tournamentCompleted: p.tournamentCompleted,
+      organisationId: p.organisationId,
     },
     rooms,
   };
