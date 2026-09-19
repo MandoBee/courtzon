@@ -157,7 +157,7 @@ export class TournamentRepository {
       data.name, data.code ?? null, data.description ?? null,
       data.tournament_type ?? 'platform',
       data.max_participants, data.max_teams ?? null, data.min_participants ?? 2,
-      data.entry_fee ?? 0, data.registration_fee ?? null,
+      data.entry_fee ?? 0, data.registration_fee ?? 0,
       data.currency_code, data.price_type ?? null, data.commission_rate ?? 0,
       data.prize_description ?? null, data.status ?? 'draft',
       data.is_public ?? true, data.registration_opens ?? null, data.registration_closes ?? null,

@@ -108,7 +108,7 @@ describe('org-tournament.controller (tenant isolation)', () => {
     service.create.mockResolvedValue({ id: 9, organisation_id: ORG_A });
     const reply = res();
     await ctrl.createOrgTournamentHandler(
-      req({ params: { orgId: String(ORG_A) }, body: { name: 'X', organisation_id: ORG_B, max_participants: 8, bracket_type_id: 1 } }),
+      req({ params: { orgId: String(ORG_A) }, body: { name: 'X', organisation_id: ORG_B, max_participants: 8, bracket_type_id: 1, start_date: '2026-10-01' } }),
       reply,
     );
     expect(service.create).toHaveBeenCalledWith(expect.objectContaining({ organisation_id: ORG_A }), 42);

@@ -29,7 +29,10 @@ export const CreateTournamentSchema = z.object({
   is_public: z.boolean().optional().default(true),
   registration_opens: z.string().optional(),
   registration_closes: z.string().optional(),
-  start_date: z.string().optional(),
+  // start_date is NOT NULL in the DB and the create form always requires it.
+  // The invariant: create cannot reach repository.create() without a valid
+  // start_date (UpdateTournamentSchema keeps it optional for partial edits).
+  start_date: z.string().min(1),
   end_date: z.string().optional(),
   rules: z.string().optional(),
   is_featured: z.boolean().optional().default(false),

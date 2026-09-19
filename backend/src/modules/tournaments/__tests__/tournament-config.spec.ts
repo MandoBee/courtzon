@@ -133,7 +133,7 @@ describe('Group 5B-SR — Bracket type configuration', () => {
     commission.getCommissionRate.mockResolvedValue({ rate: 10, rateType: 'percentage' });
     // DTO strips commission_rate; the service derives from the subscription.
     const parsed = await import('../presentation/tournament.dto.js');
-    const body = parsed.CreateTournamentSchema.parse({ ...makeTournament({ commission_rate: 0, organisation_id: 1001 }), name: 'X' });
+    const body = parsed.CreateTournamentSchema.parse({ ...makeTournament({ commission_rate: 0, organisation_id: 1001 }), name: 'X', start_date: '2026-10-01' });
     expect(body).not.toHaveProperty('commission_rate');
     await svc.create(makeTournament({ organisation_id: 1001, commission_rate: 0 }), 1);
     expect(repo.create).toHaveBeenCalledWith(expect.objectContaining({ commission_rate: 10 }));
