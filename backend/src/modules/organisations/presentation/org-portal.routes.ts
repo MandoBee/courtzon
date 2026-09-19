@@ -127,9 +127,6 @@ export async function registerOrgPortalRoutes(app: FastifyInstance): Promise<voi
   // ── Leagues ──
   app.get('/org/:orgId/leagues', { preHandler: [orgAccessGuard] }, ctrl.listOrgLeaguesHandler);
 
-  // ── Tournaments ──
-  app.get('/org/:orgId/tournaments', { preHandler: [orgAccessGuard] }, ctrl.listOrgTournamentsHandler);
-
   // ── Club Verification ──
   app.get('/org/:orgId/verification', { preHandler: [orgAccessGuard] }, ctrl.getOrgVerificationHandler);
 }

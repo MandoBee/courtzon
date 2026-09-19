@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import api from '../../services/api';
 import { formatPrice } from '../../utils/currency';
 import { formatISODate } from '../../utils/formatDate';
-import { Button, Card, Badge, Spinner } from '../../components/ui';
+import { Card, Badge, Spinner } from '../../components/ui';
 
 const statusVariant: Record<string, 'default' | 'success' | 'warning' | 'danger' | 'info'> = {
   draft: 'default', open: 'success', in_progress: 'info', completed: 'warning', cancelled: 'danger',
@@ -21,7 +21,6 @@ export default function TournamentListPage() {
     <div>
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold text-[var(--color-text)]">Tournaments</h1>
-        <Link to="/tournaments/new"><Button>+ Create Tournament</Button></Link>
       </div>
       {isLoading ? (
         <Spinner />

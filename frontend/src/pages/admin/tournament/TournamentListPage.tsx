@@ -7,7 +7,7 @@ import { Can } from '../../../permissions/Can';
 import { getErrorMessage } from '../../../utils/errors';
 import { SkeletonRow } from '../../../components/ui/Skeleton';
 import { Pagination } from '../../../components/ui/Pagination';
-import { tournamentApi } from '../../../services/tournament';
+import { tournamentApi, orgTournamentApi } from '../../../services/tournament';
 
 const STATUS_COLORS: Record<string, string> = {
   draft: 'bg-gray-100 text-gray-700',
@@ -20,33 +20,62 @@ const STATUS_COLORS: Record<string, string> = {
   archived: 'bg-gray-100 text-gray-500',
 };
 
-const STATUS_ACTIONS: Record<string, { permission: string; labelKey: string; action: string }[]> = {
-  draft: [{ permission: 'tournaments.edit', labelKey: 'tournaments.action.publish', action: 'publish' }],
+const STATUS_ACTIONS: Record<string, { permission: 'edit' | 'delete'; labelKey: string; action: string }[]> = {
+  draft: [{ permission: 'edit', labelKey: 'tournaments.action.publish', action: 'publish' }],
   published: [
-    { permission: 'tournaments.edit', labelKey: 'tournaments.action.open_reg', action: 'openRegistration' },
-    { permission: 'tournaments.edit', labelKey: 'tournaments.action.cancel', action: 'cancel' },
+    { permission: 'edit', labelKey: 'tournaments.action.open_reg', action: 'openRegistration' },
+    { permission: 'edit', labelKey: 'tournaments.action.cancel', action: 'cancel' },
   ],
   registration_open: [
-    { permission: 'tournaments.edit', labelKey: 'tournaments.action.close_reg', action: 'closeRegistration' },
-    { permission: 'tournaments.edit', labelKey: 'tournaments.action.cancel', action: 'cancel' },
+    { permission: 'edit', labelKey: 'tournaments.action.close_reg', action: 'closeRegistration' },
+    { permission: 'edit', labelKey: 'tournaments.action.cancel', action: 'cancel' },
   ],
   registration_closed: [
-    { permission: 'tournaments.edit', labelKey: 'tournaments.action.start', action: 'start' },
-    { permission: 'tournaments.edit', labelKey: 'tournaments.action.cancel', action: 'cancel' },
+    { permission: 'edit', labelKey: 'tournaments.action.start', action: 'start' },
+    { permission: 'edit', labelKey: 'tournaments.action.cancel', action: 'cancel' },
   ],
   running: [
-    { permission: 'tournaments.edit', labelKey: 'tournaments.action.complete', action: 'complete' },
-    { permission: 'tournaments.edit', labelKey: 'tournaments.action.cancel', action: 'cancel' },
+    { permission: 'edit', labelKey: 'tournaments.action.complete', action: 'complete' },
+    { permission: 'edit', labelKey: 'tournaments.action.cancel', action: 'cancel' },
   ],
-  completed: [{ permission: 'tournaments.edit', labelKey: 'tournaments.action.archive', action: 'archive' }],
-  cancelled: [{ permission: 'tournaments.edit', labelKey: 'tournaments.action.archive', action: 'archive' }],
+  completed: [{ permission: 'edit', labelKey: 'tournaments.action.archive', action: 'archive' }],
+  cancelled: [{ permission: 'edit', labelKey: 'tournaments.action.archive', action: 'archive' }],
 };
 
-export default function TournamentListPage() {
+export type TournamentListContextMode = 'admin' | 'org';
+
+interface Props {
+  mode?: TournamentListContextMode;
+  orgId?: string;
+}
+
+/**
+ * ONE SHARED tournament list screen. The same component renders in the Super
+ * Admin workbench (`mode="admin"`, platform-wide endpoint) and the Org Admin
+ * portal (`mode="org"` + `orgId`, tenant-scoped endpoint). Only the API,
+ * permissions and navigation change; the business logic stays single-source.
+ */
+export default function TournamentListPage({ mode = 'admin', orgId }: Props) {
   const { t } = useTranslation();
   const { showToast } = useToast();
   const navigate = useNavigate();
   const qc = useQueryClient();
+
+  const isOrg = mode === 'org';
+  const basePath = isOrg ? `/org/${orgId}/tournaments` : '/admin/tournament/list';
+  const queryKeyRoot = isOrg ? `org-${orgId}-tournaments` : 'admin-tournaments';
+
+  const perms = isOrg
+    ? { page: 'org.tournaments.view' as string, create: 'org.tournaments.create' as string, edit: 'org.tournaments.update' as string, delete: 'org.tournaments.delete' as string }
+    : { page: 'admin-tournaments.view' as string, create: 'tournaments.create' as string, edit: 'tournaments.edit' as string, delete: 'tournaments.delete' as string };
+
+  const api = (isOrg && orgId ? orgTournamentApi : tournamentApi) as any;
+  const listTournaments = (p: Record<string, any>) =>
+    isOrg && orgId ? api.getTournaments(orgId, p) : api.getTournaments(p);
+  const updateTournament = (id: number, d: Record<string, any>) =>
+    isOrg && orgId ? api.updateTournament(orgId, id, d) : api.updateTournament(id, d);
+  const runAction = (action: string, id: number) =>
+    isOrg && orgId ? api[action](orgId, id) : api[action](id);
 
   const [page, setPage] = useState(1);
   const [limit] = useState(20);
@@ -60,28 +89,25 @@ export default function TournamentListPage() {
   if (statusFilter) params.status = statusFilter;
 
   const { data, isLoading } = useQuery({
-    queryKey: ['admin-tournaments', params],
-    queryFn: () => tournamentApi.getTournaments(params),
+    queryKey: [queryKeyRoot, params],
+    queryFn: () => listTournaments(params),
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, ...d }: { id: number; name?: string; status?: string }) => tournamentApi.updateTournament(id, d),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['admin-tournaments'] }); setEditId(null); showToast(t('tournaments.updated')); },
+    mutationFn: ({ id, ...d }: { id: number; name?: string; status?: string }) => updateTournament(id, d),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: [queryKeyRoot] }); setEditId(null); showToast(t('tournaments.updated')); },
     onError: (err) => showToast(getErrorMessage(err), 'error'),
   });
 
   const archiveMutation = useMutation({
-    mutationFn: (id: number) => tournamentApi.archive(id),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['admin-tournaments'] }); showToast(t('tournaments.archived')); },
+    mutationFn: (id: number) => runAction('archive', id),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: [queryKeyRoot] }); showToast(t('tournaments.archived')); },
     onError: (err) => showToast(getErrorMessage(err), 'error'),
   });
 
   const statusMutation = useMutation({
-    mutationFn: ({ id, action }: { id: number; action: string }) => {
-      const fn = (tournamentApi as any)[action];
-      return fn(id);
-    },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['admin-tournaments'] }); showToast(t('tournaments.status_updated')); },
+    mutationFn: ({ id, action }: { id: number; action: string }) => runAction(action, id),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: [queryKeyRoot] }); showToast(t('tournaments.status_updated')); },
     onError: (err) => showToast(getErrorMessage(err), 'error'),
   });
 
@@ -89,12 +115,12 @@ export default function TournamentListPage() {
   const total = data?.total ?? 0;
 
   return (
-    <Can permission="admin-tournaments.view">
+    <Can permission={perms.page}>
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-bold text-[var(--color-text)]">{t('tournaments.list.title')}</h1>
-          <Can permission="tournaments.create">
-            <button onClick={() => navigate('/admin/tournaments/new')}
+          <Can permission={perms.create}>
+            <button onClick={() => navigate(`${basePath}/new`)}
               className="px-4 py-2 bg-[var(--color-primary)] text-white rounded-[var(--radius-md)] text-sm font-medium">
               {t('tournaments.new')}
             </button>
@@ -143,7 +169,7 @@ export default function TournamentListPage() {
                       <input value={editForm.name ?? t.name} onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))}
                         className="w-full px-2 py-1 border rounded text-sm" />
                     ) : (
-                      <button onClick={() => navigate(`/admin/tournaments/${t.id}`)} className="font-medium text-[var(--color-primary)] hover:underline">
+                      <button onClick={() => navigate(`${basePath}/${t.id}`)} className="font-medium text-[var(--color-primary)] hover:underline">
                         {t.name}
                       </button>
                     )}
@@ -169,20 +195,20 @@ export default function TournamentListPage() {
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center justify-end gap-1 flex-wrap">
                       {(STATUS_ACTIONS[t.status] || []).map((a) => (
-                        <Can key={a.action} permission={a.permission}>
+                        <Can key={a.action} permission={a.permission === 'edit' ? perms.edit : perms.delete}>
                           <button onClick={() => statusMutation.mutate({ id: t.id, action: a.action })}
                             className="text-[10px] px-2 py-1 rounded border border-[var(--color-border)] hover:bg-[var(--color-bg)]">
                             {t(a.labelKey)}
                           </button>
                         </Can>
                       ))}
-                      <Can permission="tournaments.edit">
+                      <Can permission={perms.edit}>
                         <button onClick={() => { setEditId(t.id); setEditForm({ name: t.name, status: t.status }); }}
                           className="text-[10px] px-2 py-1 rounded border border-[var(--color-border)] hover:bg-[var(--color-bg)]">
                           {t('common.edit')}
                         </button>
                       </Can>
-                      <Can permission="tournaments.delete">
+                      <Can permission={perms.delete}>
                         <button onClick={() => { if (window.confirm(t('tournaments.confirm_archive'))) archiveMutation.mutate(t.id); }}
                           className="text-[10px] px-2 py-1 rounded border border-red-200 text-red-600 hover:bg-red-50">
                           {t('common.archive')}

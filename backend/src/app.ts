@@ -26,6 +26,7 @@ import { pricingRoutes } from "./modules/pricing/presentation/pricing.routes.js"
 import { ledgerRoutes } from "./modules/financial/presentation/ledger.routes.js";
 import { membershipRoutes } from "./modules/membership/presentation/membership.routes.js";
 import { tournamentRoutes } from "./modules/tournaments/presentation/tournament.routes.js";
+import { orgTournamentRoutes } from "./modules/tournaments/presentation/org-tournament.routes.js";
 import { cmsRoutes } from "./modules/cms/presentation/cms.routes.js";
 import { translationsRoutes } from "./modules/translations/presentation/translations.routes.js";
 import { countriesRoutes } from "./modules/countries/presentation/countries.routes.js";
@@ -531,6 +532,7 @@ app.register(pricingRoutes);
 app.register(ledgerRoutes);
 app.register(membershipRoutes);
 app.register(tournamentRoutes);
+app.register(orgTournamentRoutes);
 app.register(auditLogRoutes);
 app.register(amenitiesRoutes);
   app.register(adminBrandRoutes);

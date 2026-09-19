@@ -233,6 +233,8 @@ const OrgRefereesPage = lazy(() => import('./pages/org/OrgRefereesPage'));
 const OrgAcademiesPage = lazy(() => import('./pages/org/OrgAcademiesPage'));
 const OrgLeaguesPage = lazy(() => import('./pages/org/OrgLeaguesPage'));
 const OrgTournamentsPage = lazy(() => import('./pages/org/OrgTournamentsPage'));
+const OrgTournamentCreatePage = lazy(() => import('./pages/org/OrgTournamentCreatePage'));
+const OrgTournamentDetailPage = lazy(() => import('./pages/org/OrgTournamentDetailPage'));
 const OrgVerificationPage = lazy(() => import('./pages/org/OrgVerificationPage'));
 const NotificationsPage = lazy(() => import('./pages/notifications/NotificationsPage'));
 const MembershipDashboard = lazy(() => import('./pages/membership/MembershipDashboard'));
@@ -643,7 +645,6 @@ function AppContent() {
           <Route path="/marketplace/player/products" element={<PlayerProductsPage />} />
           <Route path="/marketplace/wishlist" element={<WishlistPage />} />
           <Route path="/tournaments" element={<TournamentListPage />} />
-          <Route path="/tournaments/new" element={<TournamentCreatePage />} />
           <Route path="/tournaments/:id" element={<TournamentDetailPage />} />
           {/* Legacy Academy routes → redirect to the new Academy experience (PHASE 0 / GROUP 2) */}
           <Route path="/academies" element={<Navigate to="/academy" replace />} />
@@ -755,8 +756,9 @@ function AppContent() {
             <Route path="design-tokens" element={<DesignTokensPage />} />
             <Route path="tournaments" element={<TournamentAdminPage />} />
             <Route path="tournament/dashboard" element={<TournamentDashboardPage />} />
-            <Route path="tournament/list" element={<TournamentListAdminPage />} />
-            <Route path="tournament/list/:id" element={<TournamentDetailAdminPage />} />
+            <Route path="tournament/list" element={<TournamentListAdminPage mode="admin" />} />
+            <Route path="tournament/list/new" element={<TournamentCreatePage mode="admin" />} />
+            <Route path="tournament/list/:id" element={<TournamentDetailAdminPage mode="admin" />} />
             <Route path="tournament/matches" element={<TournamentMatchesAdminPage />} />
             <Route path="match-results" element={<AdminMatchResultsPage />} />
             <Route path="matches" element={<AdminMatchesPage />} />
@@ -885,6 +887,8 @@ function AppContent() {
             <Route path="academies" element={<OrgAcademiesPage />} />
             <Route path="leagues" element={<OrgLeaguesPage />} />
             <Route path="tournaments" element={<OrgTournamentsPage />} />
+            <Route path="tournaments/new" element={<OrgTournamentCreatePage />} />
+            <Route path="tournaments/:id" element={<OrgTournamentDetailPage />} />
             <Route path="verification" element={<OrgVerificationPage />} />
             <Route path="shipping-rates" element={<OrgSettingsPage />} />
             <Route path="settings" element={<Navigate to="shipping-rates" replace />} />

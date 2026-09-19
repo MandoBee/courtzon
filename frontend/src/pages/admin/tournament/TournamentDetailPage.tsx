@@ -7,7 +7,7 @@ import { Can } from '../../../permissions/Can';
 import { getErrorMessage } from '../../../utils/errors';
 import { SkeletonRow } from '../../../components/ui/Skeleton';
 import { Modal } from '../../../components/ui/Modal';
-import { tournamentApi } from '../../../services/tournament';
+import { tournamentApi, orgTournamentApi } from '../../../services/tournament';
 
 const STATUS_COLORS: Record<string, string> = {
   draft: 'bg-gray-100 text-gray-700',
@@ -38,12 +38,32 @@ const MATCH_STATUS_COLORS: Record<string, string> = {
 
 type TabId = 'overview' | 'groups' | 'matches' | 'standings';
 
-export default function TournamentDetailPage() {
+export type TournamentDetailContextMode = 'admin' | 'org';
+
+interface Props {
+  mode?: TournamentDetailContextMode;
+  orgId?: string;
+}
+
+/**
+ * ONE SHARED tournament detail screen (overview / groups / matches / standings
+ * tabs + registration management). Renders identically in the Super Admin
+ * workbench and the Org Admin portal; only the API, permissions and query keys
+ * are tenant/context aware.
+ */
+export default function TournamentDetailPage({ mode = 'admin', orgId }: Props) {
   const { id } = useParams<{ id: string }>();
   const tournamentId = Number(id);
   const { t } = useTranslation();
   const { showToast } = useToast();
   const qc = useQueryClient();
+
+  const isOrg = mode === 'org';
+  const api = isOrg && orgId ? orgTournamentApi : tournamentApi;
+  const keyRoot = isOrg ? `org-${orgId}-tournament` : 'tournament';
+  const perms = isOrg
+    ? { page: 'org.tournaments.view' as string, edit: 'org.tournaments.update' as string, register: 'org.tournaments.register' as string }
+    : { page: 'admin-tournaments.view' as string, edit: 'tournaments.edit' as string, register: 'tournaments.edit' as string };
 
   const [activeTab, setActiveTab] = useState<TabId>('overview');
   const [showRegisterModal, setShowRegisterModal] = useState(false);
@@ -52,61 +72,64 @@ export default function TournamentDetailPage() {
   const [groupSize, setGroupSize] = useState(4);
   const [advanceCount, setAdvanceCount] = useState(2);
 
+  const getT = (fn: (...args: any[]) => any, ...a: any[]) =>
+    isOrg && orgId ? fn(orgId, ...a) : fn(...a);
+
   const { data: tournament, isLoading: loadingT } = useQuery({
-    queryKey: ['tournament', tournamentId],
-    queryFn: () => tournamentApi.getTournament(tournamentId),
+    queryKey: [keyRoot, tournamentId],
+    queryFn: () => getT(api.getTournament, tournamentId),
   });
 
   const { data: groups, isLoading: loadingG } = useQuery({
-    queryKey: ['tournament-groups', tournamentId],
-    queryFn: () => tournamentApi.getGroups(tournamentId),
+    queryKey: [`${keyRoot}-groups`, tournamentId],
+    queryFn: () => getT(api.getGroups, tournamentId),
     enabled: activeTab === 'groups',
   });
 
   const { data: matches, isLoading: loadingM } = useQuery({
-    queryKey: ['tournament-matches', tournamentId],
-    queryFn: () => tournamentApi.getMatches(tournamentId),
+    queryKey: [`${keyRoot}-matches`, tournamentId],
+    queryFn: () => getT(api.getMatches, tournamentId),
     enabled: activeTab === 'matches',
   });
 
   const { data: standings, isLoading: loadingS } = useQuery({
-    queryKey: ['tournament-standings', tournamentId],
-    queryFn: () => tournamentApi.getStandings(tournamentId),
+    queryKey: [`${keyRoot}-standings`, tournamentId],
+    queryFn: () => getT(api.getStandings, tournamentId),
     enabled: activeTab === 'standings',
   });
 
   const { data: registrations, isLoading: loadingR } = useQuery({
-    queryKey: ['tournament-registrations', tournamentId],
-    queryFn: () => tournamentApi.getRegistrations(tournamentId),
+    queryKey: [`${keyRoot}-registrations`, tournamentId],
+    queryFn: () => getT(api.getRegistrations, tournamentId),
   });
 
   const statusMutation = useMutation({
-    mutationFn: ({ action }: { action: string }) => (tournamentApi as any)[action](tournamentId),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['tournament', tournamentId] }); showToast(t('tournaments.status_updated')); },
+    mutationFn: ({ action }: { action: string }) => getT((api as any)[action], tournamentId),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: [keyRoot, tournamentId] }); showToast(t('tournaments.status_updated')); },
     onError: (err) => showToast(getErrorMessage(err), 'error'),
   });
 
   const registerMutation = useMutation({
-    mutationFn: () => tournamentApi.register(tournamentId, Number(registerPlayerId), registerTeamId ? Number(registerTeamId) : undefined),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['tournament-registrations', tournamentId] }); setShowRegisterModal(false); setRegisterPlayerId(''); setRegisterTeamId(''); showToast(t('tournaments.player_registered')); },
+    mutationFn: () => getT(api.register, tournamentId, registerTeamId ? Number(registerTeamId) : undefined),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: [`${keyRoot}-registrations`, tournamentId] }); setShowRegisterModal(false); setRegisterPlayerId(''); setRegisterTeamId(''); showToast(t('tournaments.player_registered')); },
     onError: (err) => showToast(getErrorMessage(err), 'error'),
   });
 
   const cancelRegMutation = useMutation({
-    mutationFn: (regId: number) => tournamentApi.cancelRegistration(regId),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['tournament-registrations', tournamentId] }); showToast(t('tournaments.registration_cancelled')); },
+    mutationFn: (regId: number) => getT(api.cancelRegistration, regId),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: [`${keyRoot}-registrations`, tournamentId] }); showToast(t('tournaments.registration_cancelled')); },
     onError: (err) => showToast(getErrorMessage(err), 'error'),
   });
 
   const confirmRegMutation = useMutation({
-    mutationFn: (regId: number) => tournamentApi.confirmRegistration(regId),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['tournament-registrations', tournamentId] }); showToast(t('tournaments.registration_confirmed')); },
+    mutationFn: (regId: number) => getT(api.confirmRegistration, regId),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: [`${keyRoot}-registrations`, tournamentId] }); showToast(t('tournaments.registration_confirmed')); },
     onError: (err) => showToast(getErrorMessage(err), 'error'),
   });
 
   const generateGroupsMutation = useMutation({
-    mutationFn: () => tournamentApi.generateGroups(tournamentId, groupSize, advanceCount),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['tournament-groups', tournamentId] }); showToast(t('tournaments.groups_generated')); },
+    mutationFn: () => getT(api.generateGroups, tournamentId, groupSize, advanceCount),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: [`${keyRoot}-groups`, tournamentId] }); showToast(t('tournaments.groups_generated')); },
     onError: (err) => showToast(getErrorMessage(err), 'error'),
   });
 
@@ -120,7 +143,7 @@ export default function TournamentDetailPage() {
   ];
 
   return (
-    <Can permission="admin-tournaments.view">
+    <Can permission={perms.page}>
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div>
@@ -131,15 +154,15 @@ export default function TournamentDetailPage() {
           </div>
           <div className="flex gap-2">
             {[
-              { key: 'publish', from: ['draft'], permission: 'tournaments.edit' },
-              { key: 'openRegistration', from: ['published'], label: 'open_reg', permission: 'tournaments.edit' },
-              { key: 'closeRegistration', from: ['registration_open'], label: 'close_reg', permission: 'tournaments.edit' },
-              { key: 'start', from: ['registration_closed'], permission: 'tournaments.edit' },
-              { key: 'complete', from: ['running'], permission: 'tournaments.edit' },
-              { key: 'cancel', from: ['published', 'registration_open', 'registration_closed', 'running'], permission: 'tournaments.edit' },
-              { key: 'archive', from: ['completed', 'cancelled'], permission: 'tournaments.edit' },
+              { key: 'publish', from: ['draft'] },
+              { key: 'openRegistration', from: ['published'], label: 'open_reg' },
+              { key: 'closeRegistration', from: ['registration_open'], label: 'close_reg' },
+              { key: 'start', from: ['registration_closed'] },
+              { key: 'complete', from: ['running'] },
+              { key: 'cancel', from: ['published', 'registration_open', 'registration_closed', 'running'] },
+              { key: 'archive', from: ['completed', 'cancelled'] },
             ].filter((a) => a.from.includes(tournament?.status)).map((a) => (
-              <Can key={a.key} permission={a.permission}>
+              <Can key={a.key} permission={perms.edit}>
                 <button onClick={() => statusMutation.mutate({ action: a.key })}
                   className="px-3 py-1.5 text-xs font-medium rounded-[var(--radius-md)] bg-[var(--color-primary)] text-white">
                   {t(`tournaments.action.${a.label || a.key}`)}
@@ -191,7 +214,7 @@ export default function TournamentDetailPage() {
 
         {activeTab === 'groups' && (
           <div className="space-y-4">
-            <Can permission="tournaments.edit">
+            <Can permission={perms.edit}>
               <div className="flex items-center gap-3 bg-[var(--color-surface)] rounded-[var(--radius-lg)] border border-[var(--color-border)] p-4">
                 <div>
                   <label className="text-xs text-[var(--color-text-muted)]">{t('tournaments.group_size')}</label>
@@ -305,7 +328,7 @@ export default function TournamentDetailPage() {
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-semibold text-[var(--color-text)]">{t('tournaments.registrations')}</h2>
-            <Can permission="tournaments.edit">
+            <Can permission={perms.register}>
               <button onClick={() => setShowRegisterModal(true)}
                 className="px-3 py-1.5 bg-[var(--color-primary)] text-white rounded-[var(--radius-md)] text-xs font-medium">
                 {t('tournaments.register_player')}
@@ -335,7 +358,7 @@ export default function TournamentDetailPage() {
                       </td>
                       <td className="px-4 py-3 text-right">
                         {r.status === 'pending' && (
-                          <Can permission="tournaments.edit">
+                          <Can permission={perms.register}>
                             <button onClick={() => confirmRegMutation.mutate(r.id)}
                               className="text-[10px] px-2 py-1 rounded border border-green-200 text-green-600 hover:bg-green-50 mr-1">
                               {t('tournaments.confirm')}
@@ -343,7 +366,7 @@ export default function TournamentDetailPage() {
                           </Can>
                         )}
                         {r.status !== 'cancelled' && (
-                          <Can permission="tournaments.edit">
+                          <Can permission={perms.register}>
                             <button onClick={() => { if (window.confirm(t('tournaments.confirm_cancel_reg'))) cancelRegMutation.mutate(r.id); }}
                               className="text-[10px] px-2 py-1 rounded border border-red-200 text-red-600 hover:bg-red-50">
                               {t('tournaments.cancel')}

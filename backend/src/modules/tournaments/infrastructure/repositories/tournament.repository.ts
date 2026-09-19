@@ -38,6 +38,64 @@ export class TournamentRepository {
     return { data: rows as Tournament[], total, page: pag.page, limit: pag.limit };
   }
 
+  /** Organisation-scoped list — tenant isolation is enforced in SQL, never in JS. */
+  async listForOrg(orgId: number, filters: {
+    page?: number; limit?: number; search?: string; status?: string; format?: string; category?: string; sport_id?: number;
+  }): Promise<{ data: Tournament[]; total: number; page: number; limit: number }> {
+    const pool = getPool();
+    const where: string[] = ['t.organisation_id = ?'];
+    const params: any[] = [orgId];
+
+    if (filters.search) {
+      where.push('(t.name LIKE ? OR t.code LIKE ?)');
+      params.push(`%${filters.search}%`, `%${filters.search}%`);
+    }
+    if (filters.status) { where.push('t.status = ?'); params.push(filters.status); }
+    if (filters.format) { where.push('t.format = ?'); params.push(filters.format); }
+    if (filters.category) { where.push('t.category = ?'); params.push(filters.category); }
+    if (filters.sport_id) { where.push('t.sport_id = ?'); params.push(filters.sport_id); }
+
+    const pag = buildPagination(filters.page, filters.limit);
+
+    const [countRows] = await pool.query<RowData>(
+      `SELECT COUNT(*) AS total FROM tournaments t WHERE ${where.join(' AND ')}`, params,
+    );
+    const total = countRows[0]?.total ?? 0;
+
+    const [rows] = await pool.query<RowData>(
+      `SELECT t.* FROM tournaments t WHERE ${where.join(' AND ')} ORDER BY t.created_at DESC${paginationClause(pag)}`,
+      params,
+    );
+
+    return { data: rows as Tournament[], total, page: pag.page, limit: pag.limit };
+  }
+
+  /** Tenant owner of a tournament (null when platform-owned). */
+  async getOrganisationId(tournamentId: number): Promise<number | null> {
+    const [rows] = await getPool().query<RowData>(
+      'SELECT organisation_id FROM tournaments WHERE id = ?', [tournamentId],
+    );
+    return rows.length ? Number(rows[0].organisation_id) ?? null : null;
+  }
+
+  /** Tenant owner of a tournament registration (null when platform-owned). */
+  async getRegistrationOrganisationId(regId: number): Promise<number | null> {
+    const [rows] = await getPool().query<RowData>(
+      `SELECT t.organisation_id FROM tournament_registrations r
+       JOIN tournaments t ON t.id = r.tournament_id WHERE r.id = ?`, [regId],
+    );
+    return rows.length ? Number(rows[0].organisation_id) ?? null : null;
+  }
+
+  /** Tenant owner of a tournament match. */
+  async getMatchOrganisationId(matchId: number): Promise<number | null> {
+    const [rows] = await getPool().query<RowData>(
+      `SELECT t.organisation_id FROM tournament_matches m
+       JOIN tournaments t ON t.id = m.tournament_id WHERE m.id = ?`, [matchId],
+    );
+    return rows.length ? Number(rows[0].organisation_id) ?? null : null;
+  }
+
   async findById(id: number): Promise<Tournament | null> {
     const [rows] = await getPool().query<RowData>('SELECT * FROM tournaments WHERE id = ?', [id]);
     return rows.length ? (rows[0] as Tournament) : null;

@@ -1049,23 +1049,6 @@ export async function listOrgLeaguesHandler(request: FastifyRequest, reply: Fast
   return reply.send(leagues);
 }
 
-// ── Tournaments ──
-
-export async function listOrgTournamentsHandler(request: FastifyRequest, reply: FastifyReply) {
-  const { orgId } = request.params as any;
-  const pool = getPool();
-  type RowData = import('mysql2').RowDataPacket[];
-  const [tournaments] = await pool.query<RowData>(
-    `SELECT t.*,
-       (SELECT COUNT(*) FROM tournament_registrations tr WHERE tr.tournament_id = t.id AND tr.status = 'confirmed') AS registered_count
-     FROM tournaments t
-     WHERE t.organisation_id = ?
-     ORDER BY t.start_date DESC, t.name`,
-    [Number(orgId)],
-  );
-  return reply.send(tournaments);
-}
-
 // ── Financial Position ──
 
 export async function getOrgPositionHandler(request: FastifyRequest, reply: FastifyReply) {
