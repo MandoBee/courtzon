@@ -103,26 +103,26 @@ export default function TournamentAdminPage() {
               {tournaments.length === 0 && (
                 <tr><td colSpan={6} className="text-center py-4 text-xs text-[var(--color-text-muted)]">{t('common.no_results')}</td></tr>
               )}
-              {tournaments.map((t: any) => (
-                <tr key={t.id} className="border-b last:border-0 hover:bg-[var(--color-bg)]/30 text-[var(--color-text)]">
-                  <td className="px-3 py-2 font-medium">{t.name}</td>
-                  <td className="px-3 py-2 text-xs">{t.organisation_name || '-'}</td>
-                  <td className="px-3 py-2 text-xs">{t.sport_name || '-'}</td>
+              {tournaments.map((tourn: any) => (
+                <tr key={tourn.id} className="border-b last:border-0 hover:bg-[var(--color-bg)]/30 text-[var(--color-text)]">
+                  <td className="px-3 py-2 font-medium">{tourn.name}</td>
+                  <td className="px-3 py-2 text-xs">{tourn.organisation_name || '-'}</td>
+                  <td className="px-3 py-2 text-xs">{tourn.sport_name || '-'}</td>
                   <td className="px-3 py-2">
-                    <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${STATUS_COLORS[t.status] || ''}`}>
-                      {t(`tournaments.status.${t.status}`)}
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${STATUS_COLORS[tourn.status] || ''}`}>
+                      {t(`tournaments.status.${tourn.status}`)}
                     </span>
                   </td>
-                  <td className="px-3 py-2 text-xs">{t.start_date?.slice(0, 10) || '-'}</td>
+                  <td className="px-3 py-2 text-xs">{tourn.start_date?.slice(0, 10) || '-'}</td>
                   <td className="px-3 py-2 text-right">
                     <Can permission="tournaments.edit">
-                      <button onClick={() => { setEditId(t.id); setForm({ name: t.name, status: t.status }); }}
+                      <button onClick={() => { setEditId(tourn.id); setForm({ name: tourn.name, status: tourn.status }); }}
                         className="text-[10px] px-1.5 py-0.5 rounded border border-[var(--color-border)] hover:bg-[var(--color-bg)] mr-1">
                         {t('common.edit')}
                       </button>
                     </Can>
                     <Can permission="tournaments.delete">
-                      <button onClick={() => { if (window.confirm(t('tournaments.confirm_archive'))) archiveMutation.mutate(t.id); }}
+                      <button onClick={() => { if (window.confirm(t('tournaments.confirm_archive'))) archiveMutation.mutate(tourn.id); }}
                         className="text-[10px] px-1.5 py-0.5 rounded border border-red-200 text-red-600 hover:bg-red-50">
                         {t('common.archive')}
                       </button>

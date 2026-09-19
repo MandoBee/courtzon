@@ -161,62 +161,62 @@ export default function TournamentListPage({ mode = 'admin', orgId }: Props) {
               {!isLoading && tournaments.length === 0 && (
                 <tr><td colSpan={8} className="text-center py-8 text-sm text-[var(--color-text-muted)]">{t('common.no_results')}</td></tr>
               )}
-              {tournaments.map((t: any) => (
-                <tr key={t.id} className="border-b border-[var(--color-border)] last:border-0 hover:bg-[var(--color-bg)]/30">
-                  <td className="px-4 py-3 font-mono text-xs">{t.code || '-'}</td>
+              {tournaments.map((tourn: any) => (
+                <tr key={tourn.id} className="border-b border-[var(--color-border)] last:border-0 hover:bg-[var(--color-bg)]/30">
+                  <td className="px-4 py-3 font-mono text-xs">{tourn.code || '-'}</td>
                   <td className="px-4 py-3">
-                    {editId === t.id ? (
-                      <input value={editForm.name ?? t.name} onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))}
+                    {editId === tourn.id ? (
+                      <input value={editForm.name ?? tourn.name} onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))}
                         className="w-full px-2 py-1 border rounded text-sm" />
                     ) : (
-                      <button onClick={() => navigate(`${basePath}/${t.id}`)} className="font-medium text-[var(--color-primary)] hover:underline">
-                        {t.name}
+                      <button onClick={() => navigate(`${basePath}/${tourn.id}`)} className="font-medium text-[var(--color-primary)] hover:underline">
+                        {tourn.name}
                       </button>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-xs">{t.format || '-'}</td>
-                  <td className="px-4 py-3 text-xs">{t.category || '-'}</td>
+                  <td className="px-4 py-3 text-xs">{tourn.format || '-'}</td>
+                  <td className="px-4 py-3 text-xs">{tourn.category || '-'}</td>
                   <td className="px-4 py-3">
-                    {editId === t.id ? (
-                      <select value={editForm.status ?? t.status} onChange={(e) => setEditForm((f) => ({ ...f, status: e.target.value }))}
+                    {editId === tourn.id ? (
+                      <select value={editForm.status ?? tourn.status} onChange={(e) => setEditForm((f) => ({ ...f, status: e.target.value }))}
                         className="px-2 py-1 border rounded text-xs">
                         {Object.keys(STATUS_COLORS).map((s) => (
                           <option key={s} value={s}>{t(`tournaments.status.${s}`)}</option>
                         ))}
                       </select>
                     ) : (
-                      <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-medium ${STATUS_COLORS[t.status] || ''}`}>
-                        {t(`tournaments.status.${t.status}`)}
+                      <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-medium ${STATUS_COLORS[tourn.status] || ''}`}>
+                        {t(`tournaments.status.${tourn.status}`)}
                       </span>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-xs">{t.max_players ?? '-'}</td>
-                  <td className="px-4 py-3 text-xs">{t.start_date ? t.start_date.slice(0, 10) : '-'}</td>
+                  <td className="px-4 py-3 text-xs">{tourn.max_players ?? '-'}</td>
+                  <td className="px-4 py-3 text-xs">{tourn.start_date ? tourn.start_date.slice(0, 10) : '-'}</td>
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center justify-end gap-1 flex-wrap">
-                      {(STATUS_ACTIONS[t.status] || []).map((a) => (
+                      {(STATUS_ACTIONS[tourn.status] || []).map((a) => (
                         <Can key={a.action} permission={a.permission === 'edit' ? perms.edit : perms.delete}>
-                          <button onClick={() => statusMutation.mutate({ id: t.id, action: a.action })}
+                          <button onClick={() => statusMutation.mutate({ id: tourn.id, action: a.action })}
                             className="text-[10px] px-2 py-1 rounded border border-[var(--color-border)] hover:bg-[var(--color-bg)]">
                             {t(a.labelKey)}
                           </button>
                         </Can>
                       ))}
                       <Can permission={perms.edit}>
-                        <button onClick={() => { setEditId(t.id); setEditForm({ name: t.name, status: t.status }); }}
+                        <button onClick={() => { setEditId(tourn.id); setEditForm({ name: tourn.name, status: tourn.status }); }}
                           className="text-[10px] px-2 py-1 rounded border border-[var(--color-border)] hover:bg-[var(--color-bg)]">
                           {t('common.edit')}
                         </button>
                       </Can>
                       <Can permission={perms.delete}>
-                        <button onClick={() => { if (window.confirm(t('tournaments.confirm_archive'))) archiveMutation.mutate(t.id); }}
+                        <button onClick={() => { if (window.confirm(t('tournaments.confirm_archive'))) archiveMutation.mutate(tourn.id); }}
                           className="text-[10px] px-2 py-1 rounded border border-red-200 text-red-600 hover:bg-red-50">
                           {t('common.archive')}
                         </button>
                       </Can>
-                      {editId === t.id && (
+                      {editId === tourn.id && (
                         <>
-                          <button onClick={() => updateMutation.mutate({ id: t.id, ...editForm })}
+                          <button onClick={() => updateMutation.mutate({ id: tourn.id, ...editForm })}
                             className="text-[10px] px-2 py-1 rounded bg-[var(--color-primary)] text-white">
                             {t('common.save')}
                           </button>
