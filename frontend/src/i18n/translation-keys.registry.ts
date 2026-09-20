@@ -1931,6 +1931,7 @@ export const translationKeysRegistry: TranslationKeyEntry[] = [
   { key: 'tournaments.create.max_players', defaultValue: 'Max Players', moduleSlug: 'tournaments', elementType: 'label', elementLabel: 'Create max players label' },
   { key: 'tournaments.create.entry_fee', defaultValue: 'Entry Fee', moduleSlug: 'tournaments', elementType: 'label', elementLabel: 'Create entry fee label' },
   { key: 'tournaments.create.commission_rate', defaultValue: 'Commission %', moduleSlug: 'tournaments', elementType: 'label', elementLabel: 'Create commission rate label' },
+  { key: 'tournaments.create.currency', defaultValue: 'Currency', moduleSlug: 'tournaments', elementType: 'label', elementLabel: 'Create currency label' },
   { key: 'tournaments.create.start_date', defaultValue: 'Start Date', moduleSlug: 'tournaments', elementType: 'label', elementLabel: 'Create start date label' },
   { key: 'tournaments.create.end_date', defaultValue: 'End Date', moduleSlug: 'tournaments', elementType: 'label', elementLabel: 'Create end date label' },
   { key: 'tournaments.create.rules', defaultValue: 'Rules', moduleSlug: 'tournaments', elementType: 'label', elementLabel: 'Create rules label' },

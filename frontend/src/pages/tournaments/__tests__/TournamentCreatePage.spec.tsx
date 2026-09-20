@@ -25,13 +25,13 @@ const __state = vi.hoisted(() => ({
       { id: 3, name: 'Round Robin', slug: 'round-robin', is_active: 1, config_schema: null },
     ],
   },
-  commissionPayload: { commissionRate: 0, planName: 'Standard Club' },
+  commissionPayload: { commissionRate: 0, planName: 'Standard Club', currencyCode: 'EGP' },
   formatsPayload: {
     data: [
       {
         format: { id: 1, name: 'Padel Standard', formatType: 'doubles', description: 'Best of 3 sets, tiebreak at 6-6.' },
         ruleSets: [
-          { id: 1, name: 'Padel Standard v1', version: 1, humanReadable: 'Padel Standard — Doubles. Best of 3 sets. First to 6 games by a 1-game margin. Tiebreak at 6-6, first to 7 by 2. Golden point at deuce.' },
+          { id: 1, name: 'Padel Standard v1', version: 1, humanReadable: 'Single Elimination — Padel Standard — Doubles. Best of 3 sets. First to 6 games by a 1-game margin. Tiebreak at 6-6, first to 7 by 2. Golden point at deuce.' },
         ],
       },
     ],
@@ -179,7 +179,7 @@ describe('TournamentCreatePage — generated Rules preview (Group 1)', () => {
     );
     expect(sportSelect).toBeTruthy();
     fireEvent.change(sportSelect!, { target: { value: '22' } });
-    await waitFor(() => expect(__state.orgApi.getSportFormats).toHaveBeenCalledWith('6', '22'));
+    await waitFor(() => expect(__state.orgApi.getSportFormats).toHaveBeenCalledWith('6', '22', undefined));
     // Select the Padel Standard format so the rule-set select becomes enabled
     // with options from the cascade.
     await screen.findByText('Padel Standard');
@@ -197,5 +197,47 @@ describe('TournamentCreatePage — generated Rules preview (Group 1)', () => {
     expect(await screen.findByText(/Best of 3 sets/)).toBeTruthy();
     expect(screen.getByText(/Golden point at deuce/)).toBeTruthy();
     expect(screen.queryByText('tournaments.create.generated_rules_empty')).toBeNull();
+  });
+});
+
+describe('TournamentCreatePage — Group 1A foundation corrections', () => {
+  it('the org create screen displays the server-resolved currency (EGP), not a hardcoded value', async () => {
+    renderPage(['tournaments.create.sport', 'tournaments.create.type', 'tournaments.create.rules']);
+    // currencyCode comes from the org commission-config read (single source).
+    expect(await screen.findByText(/tournaments\.create\.currency/)).toBeTruthy();
+    expect(screen.getByText('EGP')).toBeTruthy();
+  });
+
+  it('no organisation-flow hardcoded AED remains in the create screen', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { resolve, dirname } = await import('node:path');
+    const { fileURLToPath } = await import('node:url');
+    const root = resolve(dirname(fileURLToPath(import.meta.url)), '../TournamentCreatePage.tsx');
+    const src = readFileSync(root, 'utf8');
+    // The org path must not hardcode AED. Only the platform (admin) path may
+    // still send an explicit currency, guarded by isOrg.
+    expect(src).not.toMatch(/currency_code:\s*'AED'/);
+    expect(src).toMatch(/currency_code: isOrg \? undefined : 'AED'/);
+  });
+
+  it('the selected bracket type is passed to the format cascade so preview matches the snapshot', async () => {
+    const { fireEvent } = await import('@testing-library/react');
+    const view = renderPage(['tournaments.create.type', 'tournaments.create.sport', 'tournaments.create.match-format', 'tournaments.create.rule-set', 'tournaments.create.rules']);
+
+    await screen.findByText('Single Elimination');
+    // Select the Single Elimination bracket (first select).
+    const bracketSelect = Array.from(view.container.querySelectorAll('select')).find(
+      (s) => Array.from(s.querySelectorAll('option')).some((o) => o.textContent === 'Single Elimination'),
+    );
+    expect(bracketSelect).toBeTruthy();
+    fireEvent.change(bracketSelect!, { target: { value: '1' } });
+
+    await screen.findByText('Padel');
+    const sportSelect = Array.from(view.container.querySelectorAll('select')).find(
+      (s) => Array.from(s.querySelectorAll('option')).some((o) => o.textContent === 'Padel'),
+    );
+    fireEvent.change(sportSelect!, { target: { value: '22' } });
+    // The cascade must be requested with the selected bracket_type_id.
+    await waitFor(() => expect(__state.orgApi.getSportFormats).toHaveBeenCalledWith('6', '22', '1'));
   });
 });

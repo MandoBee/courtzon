@@ -241,6 +241,10 @@ describe('org-tournament.controller (tenant isolation)', () => {
     service.listSportFormatsCascade.mockResolvedValue([]);
     const fmtReply = res();
     await ctrl.listSportFormatsCascadeHandler(req({ params: { orgId: String(ORG_A), sportId: '22' } }), fmtReply);
-    expect(service.listSportFormatsCascade).toHaveBeenCalledWith(22);
+    expect(service.listSportFormatsCascade).toHaveBeenCalledWith(22, undefined);
+
+    // Group 1A — the create-form cascade may carry a selected bracket type.
+    await ctrl.listSportFormatsCascadeHandler(req({ params: { orgId: String(ORG_A), sportId: '22' }, query: { bracket_type_id: '1' } }), res());
+    expect(service.listSportFormatsCascade).toHaveBeenCalledWith(22, 1);
   });
 });

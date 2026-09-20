@@ -12,6 +12,7 @@ import { formatSportRules } from '../../match-result/application/rules/format-ru
 import type { MatchFormatSnapshot } from '../../match/domain/match.types.js';
 import type { RawMatchResultPayload } from '../../match-result/domain/match-result.types.js';
 import { getCommissionRate } from '../../organisations/application/current-subscription.service.js';
+import { resolveOrganisationCurrency } from '../../organisations/application/organisation-currency.service.js';
 
 /** Group 5B — draw-time provenance persisted in `tournament_matches.progression_meta`. */
 export interface BracketProgressionMeta {
@@ -59,16 +60,31 @@ export class TournamentService {
     // Group 5B-SR — commission is derived from the organisation's authoritative
     // active subscription/plan. The client can never supply it.
     const commissionRate = await this.resolveCommissionRate(data.organisation_id, data.entry_fee);
+    // Group 1A — an organisation-owned tournament must NEVER be stored as
+    // `platform`. The client can never turn an org tournament into a platform
+    // tournament: when organisation_id is present we derive the correct
+    // non-platform type (`community`) unless the caller explicitly supplied it.
+    const effectiveType = this.deriveOrgTournamentType(data.organisation_id, data.tournament_type);
+    // Group 1A — authoritative currency is resolved server-side for
+    // organisation tournaments (branch currency → organisation country
+    // default). A client-supplied currency_code is never trusted as
+    // authoritative for an org-owned tournament.
+    const effectiveData = { ...data };
+    if (data.organisation_id != null) {
+      const resolvedCurrency = await resolveOrganisationCurrency(data.organisation_id, data.branch_id);
+      if (resolvedCurrency) effectiveData.currency_code = resolvedCurrency;
+    }
     // Deterministic draw seed: default to creation timestamp (stable, not random).
     const drawSeed = data.draw_seed ?? Date.now();
     // Group 1 — the human-readable Tournament Rules snapshot is ALWAYS derived
-    // server-side from the authoritative Match Format + Rule Set (explicit, or
-    // the sport's default resolution). A client-supplied `rules` string is never
-    // trusted as authoritative. When no valid format/rule-set can be resolved,
-    // the rules stay empty rather than inventing a value.
-    const rulesSnapshot = await this.resolveRulesSnapshot(data.sport_id, data.match_format_id, data.rule_set_id);
+    // server-side from the authoritative Bracket Type + Match Format + Rule Set
+    // (explicit, or the sport's default resolution). A client-supplied `rules`
+    // string is never trusted as authoritative. When no valid format/rule-set
+    // can be resolved, the rules stay empty rather than inventing a value.
+    const rulesSnapshot = await this.resolveRulesSnapshot(effectiveData.sport_id, effectiveData.match_format_id, effectiveData.rule_set_id, effectiveData.bracket_type_id);
     const id = await tournamentRepository.create({
-      ...data, creator_id: creatorId, draw_seed: drawSeed, commission_rate: commissionRate,
+      ...effectiveData, creator_id: creatorId, draw_seed: drawSeed, commission_rate: commissionRate,
+      tournament_type: effectiveType,
       rules: rulesSnapshot ?? undefined,
     });
     const tournament = await tournamentRepository.findById(id);
@@ -76,6 +92,18 @@ export class TournamentService {
       aggregateType: 'tournament', aggregateId: String(id), aggregateVersion: 1,
     });
     return tournament!;
+  }
+
+  /**
+   * Group 1A — derive the correct tournament_type for an organisation-owned
+   * tournament. `platform` is reserved for platform-owned tournaments
+   * (organisation_id NULL). An org-owned tournament is stored as `community`
+   * (the existing non-platform enum value) — the client can never turn an org
+   * tournament into a `platform` tournament.
+   */
+  private deriveOrgTournamentType(organisationId: number | undefined, suppliedType: string | undefined): string {
+    if (organisationId == null) return suppliedType ?? 'platform';
+    return 'community';
   }
 
   /**
@@ -184,12 +212,16 @@ export class TournamentService {
    * Group 5B-SR — the organisation's authoritative tournament commission
    * configuration, derived from its active subscription/plan. Used by the
    * create screen to display the locked read-only rate.
+   *
+   * Group 1A — also exposes the organisation's authoritative currency so the
+   * create screen can display it (single server-side source of truth).
    */
-  async getOrgCommissionConfig(orgId: number): Promise<{ commissionRate: number; planName: string | null }> {
+  async getOrgCommissionConfig(orgId: number): Promise<{ commissionRate: number; planName: string | null; currencyCode: string | null }> {
     const { getCurrentSubscription } = await import('../../organisations/application/current-subscription.service.js');
     const sub = await getCurrentSubscription(orgId);
     const rate = sub.exists ? await getCommissionRate(orgId, 'tournament') : null;
-    return { commissionRate: rate?.rate ?? 0, planName: sub.exists ? sub.planName : null };
+    const currencyCode = await resolveOrganisationCurrency(orgId, undefined);
+    return { commissionRate: rate?.rate ?? 0, planName: sub.exists ? sub.planName : null, currencyCode };
   }
 
   /**
@@ -201,14 +233,20 @@ export class TournamentService {
    * field derived server-side from the SAME shared formatter that produces the
    * Tournament Rules snapshot. The frontend renders this value; it never
    * interprets the rules JSON itself (single source of truth).
+   *
+   * Group 1A — when a bracket type is supplied, the humanReadable also
+   * includes the bracket so the create-screen preview matches the persisted
+   * snapshot ("Single Elimination — Padel Standard — Doubles.").
    */
-  async listSportFormatsCascade(sportId: number) {
+  async listSportFormatsCascade(sportId: number, bracketTypeId?: number) {
+    const bracket = await this.resolveBracketContext(bracketTypeId);
     const cascade = await matchResultRepository.listRuleSetsBySport(sportId, true);
     return cascade.map(({ format, ruleSets }) => ({
       format,
       ruleSets: ruleSets.map((rs) => ({
         ...rs,
         humanReadable: formatSportRules(rs.rules as any, {
+          bracket,
           format: { name: format.name, formatType: format.formatType, playersPerSide: format.playersPerSide, description: format.description ?? null },
           ruleSet: { name: rs.name, version: rs.version },
         }),
@@ -218,18 +256,21 @@ export class TournamentService {
 
   /**
    * Group 1 — resolve the authoritative human-readable Tournament Rules from
-   * the selected Match Format + Rule Set. Explicit format/rule-set wins; when
-   * absent, falls back to the sport's authoritative default (is_default)
-   * resolution. Returns `null` when no valid format/rule-set can be resolved
-   * — the caller never invents a fallback string.
+   * the selected Bracket Type + Match Format + Rule Set. Explicit
+   * format/rule-set wins; when absent, falls back to the sport's authoritative
+   * default (is_default) resolution. Returns `null` when no valid
+   * format/rule-set can be resolved — the caller never invents a fallback
+   * string.
    */
-  private async resolveRulesSnapshot(sportId: number | undefined, matchFormatId: number | undefined, ruleSetId: number | undefined): Promise<string | null> {
+  private async resolveRulesSnapshot(sportId: number | undefined, matchFormatId: number | undefined, ruleSetId: number | undefined, bracketTypeId: number | undefined): Promise<string | null> {
+    const bracket = await this.resolveBracketContext(bracketTypeId);
     if (matchFormatId != null && ruleSetId != null) {
       const fmt = await matchResultRepository.findFormatById(matchFormatId);
       if (!fmt) throw new ConflictError('Configured Match Format not found', ErrorCodes.TOURNAMENT_INVALID_FORMAT);
       const ruleSet = await matchResultRepository.findRuleSetById(ruleSetId);
       if (!ruleSet) throw new ConflictError('Configured Rule Set not found', ErrorCodes.TOURNAMENT_INVALID_FORMAT);
       return formatSportRules(ruleSet.rules as any, {
+        bracket,
         format: { name: fmt.name, formatType: fmt.formatType, playersPerSide: fmt.playersPerSide, description: null },
         ruleSet: { name: null, version: ruleSet.version },
       });
@@ -242,9 +283,18 @@ export class TournamentService {
     const ruleSet = await matchResultRepository.findActiveRuleSetForFormat(def.formatId);
     if (!ruleSet) return null;
     return formatSportRules(ruleSet.rules as any, {
+      bracket,
       format: { name: def.name, formatType: def.formatType, playersPerSide: def.playersPerSide, description: null },
       ruleSet: { name: null, version: ruleSet.version },
     });
+  }
+
+  /** Group 1A — resolve the bracket context from the authoritative bracket type. */
+  private async resolveBracketContext(bracketTypeId: number | undefined): Promise<{ name: string | null; slug: string | null } | null> {
+    if (bracketTypeId == null) return null;
+    const bt = await tournamentRepository.findBracketTypeById(bracketTypeId);
+    if (!bt) return null;
+    return { name: bt.name, slug: bt.slug };
   }
 
   async assertFormatBelongsToSport(sportId: number | undefined, formatId: number): Promise<void> {
@@ -262,12 +312,28 @@ export class TournamentService {
       const existing = await tournamentRepository.findByCode(data.code);
       if (existing && existing.id !== id) throw new ConflictError('Tournament code already exists', ErrorCodes.ACADEMY_PROGRAM_CODE_EXISTS);
     }
+    // Group 1A — an organisation-owned tournament must never be stored as
+    // `platform`. Apply the same derivation on update so a client cannot turn
+    // an org tournament into a platform tournament after creation.
+    const effectiveOrgId = data.organisation_id ?? current.organisation_id;
+    if (data.tournament_type !== undefined) {
+      data = { ...data, tournament_type: this.deriveOrgTournamentType(effectiveOrgId, data.tournament_type) };
+    }
+    // Group 1A — authoritative currency for organisation tournaments. When the
+    // organisation or branch changes (or a client supplies a currency), re-resolve
+    // server-side from the effective org/branch. A client-supplied currency_code
+    // is never trusted as authoritative for an org-owned tournament.
+    if (effectiveOrgId != null && (data.organisation_id !== undefined || data.branch_id !== undefined || data.currency_code !== undefined)) {
+      const effectiveBranchId = data.branch_id ?? current.branch_id;
+      const resolvedCurrency = await resolveOrganisationCurrency(effectiveOrgId, effectiveBranchId);
+      if (resolvedCurrency) data = { ...data, currency_code: resolvedCurrency };
+    }
     // Group 1 — whenever the rules-affecting configuration changes (sport_id,
-    // match_format_id, rule_set_id), regenerate the human-readable Rules
-    // snapshot server-side. A client-supplied `rules` string is never trusted
-    // as authoritative when a valid format/rule-set exists; the server-derived
-    // value wins.
-    const configChanged = data.sport_id !== undefined || data.match_format_id !== undefined || data.rule_set_id !== undefined;
+    // match_format_id, rule_set_id, bracket_type_id), regenerate the
+    // human-readable Rules snapshot server-side. A client-supplied `rules`
+    // string is never trusted as authoritative when a valid format/rule-set
+    // exists; the server-derived value wins.
+    const configChanged = data.sport_id !== undefined || data.match_format_id !== undefined || data.rule_set_id !== undefined || data.bracket_type_id !== undefined;
     if (configChanged) {
       // Merge the update into the current row so regeneration reflects the
       // effective (resulting) configuration, not just the delta.
@@ -275,6 +341,7 @@ export class TournamentService {
         sport_id: data.sport_id ?? current.sport_id,
         match_format_id: data.match_format_id ?? current.match_format_id,
         rule_set_id: data.rule_set_id ?? current.rule_set_id,
+        bracket_type_id: data.bracket_type_id ?? current.bracket_type_id,
       };
       if ((effective.match_format_id == null) !== (effective.rule_set_id == null)) {
         throw new ConflictError('Tournament must configure both a Match Format and a Rule Set, or neither', ErrorCodes.TOURNAMENT_INVALID_FORMAT);
@@ -283,12 +350,12 @@ export class TournamentService {
         await this.assertMatchFormatRuleSetPair(effective.match_format_id, effective.rule_set_id);
         await this.assertFormatBelongsToSport(effective.sport_id, effective.match_format_id);
       }
-      const rulesSnapshot = await this.resolveRulesSnapshot(effective.sport_id, effective.match_format_id, effective.rule_set_id);
+      const rulesSnapshot = await this.resolveRulesSnapshot(effective.sport_id, effective.match_format_id, effective.rule_set_id, effective.bracket_type_id);
       data = { ...data, rules: rulesSnapshot ?? undefined };
     } else if (data.rules !== undefined) {
       // Client attempted to supply free-text rules without changing the
       // config — server-derived value wins; never accept raw client text.
-      const rulesSnapshot = await this.resolveRulesSnapshot(current.sport_id, current.match_format_id, current.rule_set_id);
+      const rulesSnapshot = await this.resolveRulesSnapshot(current.sport_id, current.match_format_id, current.rule_set_id, current.bracket_type_id);
       if (rulesSnapshot != null) {
         data = { ...data, rules: rulesSnapshot };
       } else {

@@ -14,6 +14,13 @@ import type { SportScoringRules } from '../../domain/match-result.types.js';
  */
 
 export interface SportRulesFormatContext {
+  /** Optional Tournament Bracket Type (single-elimination, round-robin, …) —
+   *  rendered first so the full Tournament structure reads e.g.
+   *  "Single Elimination — Padel Standard — Doubles." */
+  bracket?: {
+    name?: string | null;
+    slug?: string | null;
+  } | null;
   /** Sport Format display identity (name, format type, players per side). */
   format?: {
     name?: string | null;
@@ -55,9 +62,11 @@ export function formatSportRules(
   const formatName = ctx.format?.name?.trim();
   const formatType = ctx.format?.formatType;
   const playersPerSide = ctx.format?.playersPerSide ?? null;
+  const bracketName = ctx.bracket?.name?.trim();
 
-  // Header — deterministic identity, e.g. "Padel Standard — Doubles."
+  // Header — deterministic identity, e.g. "Single Elimination — Padel Standard — Doubles."
   const identity: string[] = [];
+  if (bracketName) identity.push(bracketName);
   if (formatName) identity.push(formatName);
   if (formatType) {
     identity.push(formatType === 'team' ? teamLabel(playersPerSide) : FORMAT_TYPE_LABEL[formatType] ?? formatType);

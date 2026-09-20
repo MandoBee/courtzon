@@ -33,7 +33,8 @@ export async function getOrgCommissionConfigHandler(request: FastifyRequest, rep
 
 export async function listSportFormatsCascadeHandler(request: FastifyRequest, reply: FastifyReply) {
   const { sportId } = request.params as any;
-  const cascade = await tournamentService.listSportFormatsCascade(Number(sportId));
+  const { bracket_type_id } = request.query as any;
+  const cascade = await tournamentService.listSportFormatsCascade(Number(sportId), bracket_type_id ? Number(bracket_type_id) : undefined);
   return reply.send({ data: cascade });
 }
 

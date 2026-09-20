@@ -111,4 +111,35 @@ describe('formatSportRules — Group 1 shared human-readable formatter', () => {
     const out = formatSportRules({ score_structure: 'goals', match_duration_minutes: 90 }, { format: FOOTBALL_FORMAT });
     expect(out).toContain('11v11');
   });
+
+  it('Group 1A: bracket type is prepended dynamically from context (Single Elimination)', () => {
+    const out = formatSportRules(
+      {
+        score_structure: 'sets',
+        best_of: 3,
+        sets_to_win: 2,
+        first_to: 6,
+        margin: 1,
+        tiebreak_at: 6,
+        tiebreak_first_to: 7,
+        tiebreak_win_by: 2,
+        deuce_rule: 'golden_point',
+        draw_allowed: false,
+      },
+      {
+        bracket: { name: 'Single Elimination', slug: 'single-elimination' },
+        format: PADEL_FORMAT,
+      },
+    );
+    expect(out).toMatch(/^Single Elimination — Padel Standard — Doubles\./);
+  });
+
+  it('Group 1A: bracket is NOT hardcoded — round-robin resolves to its own name', () => {
+    const out = formatSportRules(
+      { score_structure: 'sets', best_of: 3, first_to: 6, margin: 1 },
+      { bracket: { name: 'Round Robin', slug: 'round-robin' }, format: PADEL_FORMAT },
+    );
+    expect(out).toMatch(/^Round Robin — Padel Standard — Doubles\./);
+    expect(out).not.toContain('Single Elimination');
+  });
 });

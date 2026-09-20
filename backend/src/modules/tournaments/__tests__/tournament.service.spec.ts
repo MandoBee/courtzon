@@ -284,4 +284,137 @@ describe('TournamentService (Group 5A)', () => {
     expect(mrRepo.findFormatById).not.toHaveBeenCalled();
     expect(mrRepo.findRuleSetById).not.toHaveBeenCalled();
   });
+
+  // ── Group 1A — organisation tournament type ──
+
+  it('G1A-type-1. org-owned tournament is stored as community, never platform', async () => {
+    repo.findByCode.mockResolvedValue(null);
+    repo.create.mockResolvedValue(10);
+    repo.findById.mockResolvedValue(makeTournament({ id: 10 }));
+    mrRepo.findFormatById.mockResolvedValue({ formatId: 1, sportId: 22, formatType: 'doubles', playersPerSide: 2, name: 'Padel', isActive: true });
+    mrRepo.findRuleSetById.mockResolvedValue({ formatId: 1, ruleSetId: 1, version: 1, rules: { score_structure: 'sets', best_of: 3 }, standingsRules: null });
+    // Client attempts to supply tournament_type 'platform' for an org-owned tournament.
+    await svc.create(makeTournament({ organisation_id: 1001, tournament_type: 'platform' }), 1);
+    expect(repo.create).toHaveBeenCalledWith(expect.objectContaining({ organisation_id: 1001, tournament_type: 'community' }));
+  });
+
+  it('G1A-type-2. org create without explicit type still derives community', async () => {
+    repo.findByCode.mockResolvedValue(null);
+    repo.create.mockResolvedValue(10);
+    repo.findById.mockResolvedValue(makeTournament({ id: 10 }));
+    mrRepo.findFormatById.mockResolvedValue({ formatId: 1, sportId: 22, formatType: 'doubles', playersPerSide: 2, name: 'Padel', isActive: true });
+    mrRepo.findRuleSetById.mockResolvedValue({ formatId: 1, ruleSetId: 1, version: 1, rules: { score_structure: 'sets', best_of: 3 }, standingsRules: null });
+    await svc.create(makeTournament({ organisation_id: 1001, tournament_type: undefined }), 1);
+    expect(repo.create).toHaveBeenCalledWith(expect.objectContaining({ organisation_id: 1001, tournament_type: 'community' }));
+  });
+
+  it('G1A-type-3. platform create (no org) remains platform', async () => {
+    repo.findByCode.mockResolvedValue(null);
+    repo.create.mockResolvedValue(10);
+    repo.findById.mockResolvedValue(makeTournament({ id: 10, organisation_id: undefined, tournament_type: 'platform' }));
+    mrRepo.findFormatById.mockResolvedValue({ formatId: 1, sportId: 22, formatType: 'doubles', playersPerSide: 2, name: 'Padel', isActive: true });
+    mrRepo.findRuleSetById.mockResolvedValue({ formatId: 1, ruleSetId: 1, version: 1, rules: { score_structure: 'sets', best_of: 3 }, standingsRules: null });
+    await svc.create(makeTournament({ organisation_id: undefined, tournament_type: 'platform' }), 1);
+    expect(repo.create).toHaveBeenCalledWith(expect.objectContaining({ organisation_id: undefined, tournament_type: 'platform' }));
+  });
+
+  it('G1A-type-4. update cannot turn an org-owned tournament into platform', async () => {
+    const current = makeTournament({ id: 1, organisation_id: 1001, tournament_type: 'community' });
+    repo.findById.mockResolvedValue(current);
+    mrRepo.findFormatById.mockResolvedValue({ formatId: 1, sportId: 22, formatType: 'doubles', playersPerSide: 2, name: 'Padel', isActive: true });
+    mrRepo.findRuleSetById.mockResolvedValue({ formatId: 1, ruleSetId: 1, version: 1, rules: { score_structure: 'sets', best_of: 3 }, standingsRules: null });
+    await svc.update(1, { tournament_type: 'platform' } as any);
+    expect(repo.update).toHaveBeenCalledWith(1, expect.objectContaining({ tournament_type: 'community' }));
+  });
+
+  // ── Group 1A — authoritative currency ──
+
+  it('G1A-curr-1. org tournament currency is resolved server-side (org country default), client value overridden', async () => {
+    repo.findByCode.mockResolvedValue(null);
+    repo.create.mockResolvedValue(10);
+    repo.findById.mockResolvedValue(makeTournament({ id: 10 }));
+    mrRepo.findFormatById.mockResolvedValue({ formatId: 1, sportId: 22, formatType: 'doubles', playersPerSide: 2, name: 'Padel', isActive: true });
+    mrRepo.findRuleSetById.mockResolvedValue({ formatId: 1, ruleSetId: 1, version: 1, rules: { score_structure: 'sets', best_of: 3 }, standingsRules: null });
+    // The currency resolver executes SQL via the mocked pool. Return an EGP
+    // org-country default for the org, and nothing for branch override.
+    pool.execute.mockImplementation(async (sql: string) => {
+      if (sql.includes('FROM branches b')) return [[]];
+      if (sql.includes('FROM organisations o')) return [[{ code: 'EGP' }]];
+      return [[]];
+    });
+    await svc.create(makeTournament({ organisation_id: 1001, currency_code: 'AED' }), 1);
+    expect(repo.create).toHaveBeenCalledWith(expect.objectContaining({ currency_code: 'EGP' }));
+  });
+
+  it('G1A-curr-2. branch currency override wins over organisation country default', async () => {
+    repo.findByCode.mockResolvedValue(null);
+    repo.create.mockResolvedValue(10);
+    repo.findById.mockResolvedValue(makeTournament({ id: 10 }));
+    mrRepo.findFormatById.mockResolvedValue({ formatId: 1, sportId: 22, formatType: 'doubles', playersPerSide: 2, name: 'Padel', isActive: true });
+    mrRepo.findRuleSetById.mockResolvedValue({ formatId: 1, ruleSetId: 1, version: 1, rules: { score_structure: 'sets', best_of: 3 }, standingsRules: null });
+    pool.execute.mockImplementation(async (sql: string) => {
+      if (sql.includes('FROM branches b')) return [[{ code: 'AED' }]];
+      if (sql.includes('FROM organisations o')) return [[{ code: 'EGP' }]];
+      return [[]];
+    });
+    await svc.create(makeTournament({ organisation_id: 1001, branch_id: 7, currency_code: 'USD' }), 1);
+    expect(repo.create).toHaveBeenCalledWith(expect.objectContaining({ currency_code: 'AED' }));
+  });
+
+  it('G1A-curr-3. platform tournament (no org) keeps client-supplied currency', async () => {
+    repo.findByCode.mockResolvedValue(null);
+    repo.create.mockResolvedValue(10);
+    repo.findById.mockResolvedValue(makeTournament({ id: 10, organisation_id: undefined }));
+    mrRepo.findFormatById.mockResolvedValue({ formatId: 1, sportId: 22, formatType: 'doubles', playersPerSide: 2, name: 'Padel', isActive: true });
+    mrRepo.findRuleSetById.mockResolvedValue({ formatId: 1, ruleSetId: 1, version: 1, rules: { score_structure: 'sets', best_of: 3 }, standingsRules: null });
+    pool.execute.mockImplementation(async () => [[]]);
+    await svc.create(makeTournament({ organisation_id: undefined, currency_code: 'AED' }), 1);
+    expect(repo.create).toHaveBeenCalledWith(expect.objectContaining({ currency_code: 'AED' }));
+  });
+
+  it('G1A-curr-4. getOrgCommissionConfig exposes the resolved org currency', async () => {
+    const { getCurrentSubscription } = await import('../../organisations/application/current-subscription.service.js');
+    (getCurrentSubscription as any).mockResolvedValue({ exists: false, planName: null });
+    pool.execute.mockImplementation(async (sql: string) => {
+      if (sql.includes('FROM branches b')) return [[]];
+      if (sql.includes('FROM organisations o')) return [[{ code: 'EGP' }]];
+      return [[]];
+    });
+    const cfg = await svc.getOrgCommissionConfig(1001);
+    expect(cfg.currencyCode).toBe('EGP');
+  });
+
+  // ── Group 1A — bracket in generated rules + historical snapshot ──
+
+  it('G1A-bracket-1. generated rules include the selected bracket type', async () => {
+    repo.findByCode.mockResolvedValue(null);
+    repo.create.mockResolvedValue(10);
+    repo.findById.mockResolvedValue(makeTournament({ id: 10 }));
+    repo.findBracketTypeById.mockResolvedValue({ id: 1, name: 'Single Elimination', slug: 'single-elimination', is_active: 1, config_schema: null });
+    mrRepo.findFormatById.mockResolvedValue({ formatId: 1, sportId: 22, formatType: 'doubles', playersPerSide: 2, name: 'Padel', isActive: true });
+    mrRepo.findRuleSetById.mockResolvedValue({ formatId: 1, ruleSetId: 1, version: 1, rules: { score_structure: 'sets', best_of: 3, first_to: 6, margin: 1 }, standingsRules: null });
+    await svc.create(makeTournament({ bracket_type_id: 1 }), 1);
+    const rulesArg = (repo.create.mock.calls[0][0] as any).rules;
+    expect(rulesArg).toMatch(/^Single Elimination — Padel — Doubles\./);
+  });
+
+  it('G1A-bracket-2. update regenerates rules when bracket type changes', async () => {
+    const current = makeTournament({ id: 1, sport_id: 22, match_format_id: 1, rule_set_id: 1, bracket_type_id: 1, rules: 'Old with Single Elimination' });
+    repo.findById.mockResolvedValue(current);
+    repo.findBracketTypeById.mockResolvedValue({ id: 3, name: 'Round Robin', slug: 'round-robin', is_active: 1, config_schema: null });
+    mrRepo.findFormatById.mockResolvedValue({ formatId: 1, sportId: 22, formatType: 'doubles', playersPerSide: 2, name: 'Padel', isActive: true });
+    mrRepo.findRuleSetById.mockResolvedValue({ formatId: 1, ruleSetId: 1, version: 1, rules: { score_structure: 'sets', best_of: 3, first_to: 6, margin: 1 }, standingsRules: null });
+    await svc.update(1, { bracket_type_id: 3 });
+    const updateCall = repo.update.mock.calls[0][1] as any;
+    expect(updateCall.rules).toMatch(/^Round Robin — Padel — Doubles\./);
+    expect(updateCall.rules).not.toContain('Single Elimination');
+  });
+
+  it('G1A-bracket-3. unrelated update preserves the stored rules snapshot', async () => {
+    const current = makeTournament({ id: 1, sport_id: 22, match_format_id: 1, rule_set_id: 1, bracket_type_id: 1, rules: 'Existing snapshot' });
+    repo.findById.mockResolvedValue(current);
+    await svc.update(1, { name: 'Renamed' } as any);
+    expect(repo.update).toHaveBeenCalledWith(1, expect.objectContaining({ name: 'Renamed' }));
+    expect((repo.update.mock.calls[0][1] as any).rules).toBeUndefined();
+  });
 });

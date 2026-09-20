@@ -104,6 +104,7 @@ export default function TournamentCreatePage({ mode = 'admin', orgId }: Props) {
 
   const selectedSport = watch('sportId');
   const selectedFormat = watch('matchFormatId');
+  const selectedBracket = watch('bracketTypeId');
 
   // ── Group 5B-SR — bracket types from the authoritative DB table ──
   const { data: bracketTypes } = useQuery({
@@ -113,12 +114,15 @@ export default function TournamentCreatePage({ mode = 'admin', orgId }: Props) {
   });
 
   // ── Commission is locked + subscription-derived (read-only display) ──
+  // Group 1A — the same org config read exposes the authoritative currency so
+  // the screen can display it (single server-side source of truth).
   const { data: commissionConfig } = useQuery({
     queryKey: ['org-commission', orgId],
     queryFn: () => orgTournamentApi.getCommissionConfig(orgId!),
     enabled: isOrg && !!orgId,
   });
   const commissionRate = commissionConfig?.commissionRate ?? 0;
+  const orgCurrency = isOrg ? commissionConfig?.currencyCode : undefined;
 
   const { data: sports } = useQuery({
     queryKey: ['sports'],
@@ -126,12 +130,14 @@ export default function TournamentCreatePage({ mode = 'admin', orgId }: Props) {
   });
 
   // ── Sport → Match Format → Rule Set cascade ──
+  // Group 1A — the selected bracket is passed so the server-derived
+  // humanReadable includes it (the preview matches the persisted snapshot).
   const { data: formatCascade } = useQuery({
-    queryKey: ['sport-formats-cascade', selectedSport],
+    queryKey: ['sport-formats-cascade', selectedSport, selectedBracket],
     queryFn: () =>
       isOrg && orgId
-        ? orgTournamentApi.getSportFormats(orgId, selectedSport!)
-        : bracketTypeApi.getSportFormats(selectedSport!),
+        ? orgTournamentApi.getSportFormats(orgId, selectedSport!, selectedBracket || undefined)
+        : bracketTypeApi.getSportFormats(selectedSport!, selectedBracket || undefined),
     enabled: !!selectedSport,
   });
   const formatGroups: SportFormatGroup[] = formatCascade?.data ?? [];
@@ -175,7 +181,11 @@ export default function TournamentCreatePage({ mode = 'admin', orgId }: Props) {
       max_participants: Number(data.maxParticipants),
       min_participants: data.minParticipants ? Number(data.minParticipants) : 2,
       entry_fee: data.entryFee ? Number(data.entryFee) : 0,
-      currency_code: 'AED',
+      // Group 1A — currency is NEVER hardcoded and NEVER client-authoritative
+      // for organisation tournaments: the backend resolves it server-side
+      // (branch → organisation country default) and overrides. Only the
+      // platform (admin) path still sends an explicit currency.
+      currency_code: isOrg ? undefined : 'AED',
       price_type: data.entryFee && Number(data.entryFee) > 0 ? 'FIXED' : 'FREE',
       start_date: data.startDate,
       end_date: data.endDate || undefined,
@@ -184,10 +194,10 @@ export default function TournamentCreatePage({ mode = 'admin', orgId }: Props) {
       prize_description: data.prizeDescription || undefined,
       organisation_id: isOrg && orgId ? Number(orgId) : undefined,
       // NOTE: `rules` is intentionally NOT sent — the backend derives the
-      // Tournament Rules snapshot server-side from the selected Match Format +
-      // Rule Set (Group 1). Client-supplied rules are never authoritative.
-      // commission_rate is intentionally NOT sent — the backend derives it
-      // from the organisation's active subscription (Group 5B-SR).
+      // Tournament Rules snapshot server-side from the selected Bracket Type +
+      // Match Format + Rule Set (Group 1/1A). Client-supplied rules are never
+      // authoritative. commission_rate is intentionally NOT sent — the backend
+      // derives it from the organisation's active subscription (Group 5B-SR).
     });
   };
 
@@ -290,6 +300,11 @@ export default function TournamentCreatePage({ mode = 'admin', orgId }: Props) {
             <p className="text-xs text-[var(--color-text-muted)] mt-1">
               {isOrg ? t('tournaments.create.commission_locked') : t('tournaments.create.commission_platform')}
             </p>
+            {isOrg && orgCurrency && (
+              <p className="text-xs text-[var(--color-text-muted)] mt-1">
+                {t('tournaments.create.currency')}: <span className="font-medium text-[var(--color-text)]">{orgCurrency}</span>
+              </p>
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-4">

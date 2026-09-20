@@ -283,4 +283,33 @@ describe('Group 5B-SR — Bracket type configuration', () => {
     expect(rs.humanReadable).toContain('Padel Standard — Doubles.');
     expect(rs.humanReadable).toMatch(/Best of 3 sets/);
   });
+
+  it('21. cascade humanReadable includes the selected bracket type when supplied (Group 1A)', async () => {
+    mrRepo.listRuleSetsBySport.mockResolvedValue([
+      {
+        format: { id: 1, sportId: 22, slug: 'standard', name: 'Padel Standard', formatType: 'doubles', playersPerSide: 2, description: 'Best of 3 sets.', isDefault: true, isActive: true },
+        ruleSets: [
+          { id: 1, formatId: 1, version: 1, name: 'Padel Standard v1', rules: { score_structure: 'sets', best_of: 3, first_to: 6, margin: 1 }, standingsRules: null, isActive: true, isDefault: true },
+        ],
+      },
+    ]);
+    repo.findBracketTypeById.mockResolvedValue({ id: 1, name: 'Single Elimination', slug: 'single-elimination', is_active: 1, config_schema: null });
+
+    const cascade = await svc.listSportFormatsCascade(22, 1);
+    const rs = cascade[0].ruleSets[0];
+    expect(rs.humanReadable).toMatch(/^Single Elimination — Padel Standard — Doubles\./);
+  });
+
+  it('22. commission config exposes the organisation currency (Group 1A)', async () => {
+    commission.getCurrentSubscription.mockResolvedValue({ exists: true, planName: 'Standard Club' });
+    commission.getCommissionRate.mockResolvedValue({ rate: 10, rateType: 'percentage' });
+    pool.execute.mockImplementation(async (sql: string) => {
+      if (sql.includes('FROM branches b')) return [[]];
+      if (sql.includes('FROM organisations o')) return [[{ code: 'EGP' }]];
+      return [[]];
+    });
+    const cfg = await svc.getOrgCommissionConfig(1001);
+    expect(cfg.commissionRate).toBe(10);
+    expect(cfg.currencyCode).toBe('EGP');
+  });
 });
