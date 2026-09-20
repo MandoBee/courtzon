@@ -415,4 +415,80 @@ describe('F-19 — marketplace-manager settlement authority (finance-only payout
       expect(permissionMatchesTemplate('super_admin', key)).toBe(true);
     }
   });
+
+  // ── Group 5B UAT — tournament CREATE field permissions for org admins ─────
+  // The shared create screen (TournamentCreatePage) gates EVERY field behind a
+  // `tournaments.create.*` key. Org-administrator roles must receive them so
+  // the form renders; sellers and operational roles must NOT (no indiscriminate
+  // `tournaments.*` grant).
+  const tournamentCreateFieldKeys = [
+    'tournaments.create',
+    'tournaments.create.name',
+    'tournaments.create.sport',
+    'tournaments.create.type',
+    'tournaments.create.format',
+    'tournaments.create.start-date',
+    'tournaments.create.end-date',
+    'tournaments.create.registration-deadline',
+    'tournaments.create.max-participants',
+    'tournaments.create.description',
+    'tournaments.create.rules',
+    'tournaments.create.prize',
+    'tournaments.create.location',
+    'tournaments.create.banner',
+    'tournaments.create.match-format',
+    'tournaments.create.rule-set',
+    'tournaments.create.min-participants',
+    'tournaments.create.registration-dates',
+  ];
+
+  it('org-admin receives EVERY tournaments.create.* field key (render gate for the shared form)', () => {
+    for (const key of tournamentCreateFieldKeys) {
+      expect(permissionMatchesTemplate('org-admin', key)).toBe(true);
+      expect(mjsMatch('org-admin', key)).toBe(true);
+    }
+  });
+
+  it('master-admin (genuine ADMIN role) receives EVERY tournaments.create.* field key', () => {
+    for (const key of tournamentCreateFieldKeys) {
+      expect(permissionMatchesTemplate('master-admin', key)).toBe(true);
+      expect(mjsMatch('master-admin', key)).toBe(true);
+    }
+  });
+
+  it('shop-admin / seller receives NONE of the tournaments.create.* field keys (explicit deny)', () => {
+    for (const key of tournamentCreateFieldKeys) {
+      expect(permissionMatchesTemplate('shop-admin', key)).toBe(false);
+      expect(mjsMatch('shop-admin', key)).toBe(false);
+    }
+    // Seller deny is explicit — even org-scoped tournament keys stay out.
+    for (const key of orgTournamentKeys) {
+      expect(permissionMatchesTemplate('shop-admin', key)).toBe(false);
+      expect(mjsMatch('shop-admin', key)).toBe(false);
+    }
+  });
+
+  it('non-admin org roles and players receive NONE of the tournaments.create.* field keys', () => {
+    for (const slug of ['player', 'coach', 'independent_coach', 'resident_coach', 'referee', 'accountant', 'receptionist', 'branch-mgr', 'resource-mgr', 'court-manager', 'marketplace-manager', 'operations-manager', 'academy-manager', 'event-manager', 'marketing-manager', 'content-manager', 'support-agent', 'customer-service', 'finance-manager', 'auditor', 'read-only-admin']) {
+      for (const key of tournamentCreateFieldKeys) {
+        expect(permissionMatchesTemplate(slug, key)).toBe(false);
+        expect(mjsMatch(slug, key)).toBe(false);
+      }
+    }
+  });
+
+  it('tournament-manager keeps ALL tournaments.create.* field keys (dedicated tournament role)', () => {
+    for (const key of tournamentCreateFieldKeys) {
+      expect(permissionMatchesTemplate('tournament-manager', key)).toBe(true);
+      expect(mjsMatch('tournament-manager', key)).toBe(true);
+    }
+  });
+
+  it('.mjs and .ts agree on tournaments.create.* for ALL 26 templates', () => {
+    for (const slug of TEMPLATE_SLUGS) {
+      for (const key of tournamentCreateFieldKeys) {
+        expect(permissionMatchesTemplate(slug, key)).toBe(mjsMatch(slug, key));
+      }
+    }
+  });
 });

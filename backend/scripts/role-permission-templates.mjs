@@ -139,6 +139,39 @@ function canManageMatchResults(templateSlug, permissionKey) {
     && (permissionKey === 'matches.result.manage' || permissionKey === 'matches.result.rules.manage');
 }
 
+// ── Tournament management is an organisation-ADMIN capability (Group 5B UAT) ──
+// Genuine organisation-administrator roles (org-admin; master-admin platform
+// equivalent) receive the SHARED create-screen field permissions
+// (tournaments.create.*) in addition to the org-scoped org.tournaments.* keys
+// (already granted via /^org\./). Sellers and operational roles are explicitly
+// excluded — the grant is admin-template-scoped, never an indiscriminate
+// `tournaments.*` grant to every role.
+const TOURNAMENT_ADMIN_ROLES = new Set(['org-admin', 'master-admin']);
+function canManageTournaments(templateSlug, permissionKey) {
+  return TOURNAMENT_ADMIN_ROLES.has(templateSlug)
+    && (permissionKey === 'tournaments.create' || permissionKey.startsWith('tournaments.create.'));
+}
+
+// Seller/shop-admin roles must NEVER receive tournament administration — the
+// tournament capability is organisation-ADMIN only. Explicit deny (defense in
+// depth): even if SHOP_ADMIN_PATTERNS were later broadened, sellers stay out.
+const SHOP_ADMIN_DENY_TOURNAMENT_KEYS = new Set([
+  'org.sidebar.tournaments',
+  'org.tournaments.view',
+  'org.tournaments.create',
+  'org.tournaments.update',
+  'org.tournaments.publish',
+  'org.tournaments.delete',
+  'org.tournaments.manage',
+  'org.tournaments.register',
+  'org.tournaments.result.manage',
+]);
+function isSellerDeniedTournamentKey(permissionKey) {
+  return permissionKey === 'tournaments.create'
+    || permissionKey.startsWith('tournaments.create.')
+    || SHOP_ADMIN_DENY_TOURNAMENT_KEYS.has(permissionKey);
+}
+
 const PLAYER_PATTERNS = [
   /^home\./,
   /^profile\./,
@@ -594,6 +627,7 @@ export function permissionMatchesTemplate(templateSlug, permissionKey) {
   if (templateSlug === 'org-admin') {
     if (canManageAcademy(templateSlug, permissionKey)) return true;
     if (canManageMatchResults(templateSlug, permissionKey)) return true;
+    if (canManageTournaments(templateSlug, permissionKey)) return true;
     if (isAdminOnlyKey(permissionKey)) return false;
     if (permissionKey.startsWith('marketplace.admin.')) return false;
     if (ORG_SHOP_ADMIN_DENY_KEYS.has(permissionKey)) return false;
@@ -616,6 +650,9 @@ export function permissionMatchesTemplate(templateSlug, permissionKey) {
   }
 
   if (templateSlug === 'shop-admin') {
+    // Seller/shop-admin roles must NEVER receive tournament administration —
+    // explicit deny (org-ADMIN-only capability; defense-in-depth).
+    if (isSellerDeniedTournamentKey(permissionKey)) return false;
     if (isAdminOnlyKey(permissionKey)) return false;
     if (permissionKey.startsWith('marketplace.admin.')) return false;
     if (ORG_SHOP_ADMIN_DENY_KEYS.has(permissionKey)) return false;
@@ -669,6 +706,9 @@ if (templateSlug === 'master-admin') {
     // Platform-wide match monitoring (list all matches) — granted only to
     // platform admins; blocked for player/org roles via ADMIN_ONLY_PREFIXES.
     if (permissionKey === 'matches.admin.view') return true;
+    // Group 5B UAT — master-admin is a genuine ADMIN role that manages org
+    // tournaments; it receives the shared create-screen field permissions.
+    if (canManageTournaments(templateSlug, permissionKey)) return true;
     if (permissionKey.startsWith('users.')) return false;
     if (permissionKey.startsWith('roles.')) return false;
     if (permissionKey.startsWith('permissions.')) return false;
