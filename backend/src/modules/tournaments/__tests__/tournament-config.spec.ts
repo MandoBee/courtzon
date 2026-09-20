@@ -219,12 +219,22 @@ describe('Group 5B-SR — Bracket type configuration', () => {
     expect(rs.rules.best_of).toBe(3);
   });
 
-  it('16. tournament rules text remains separate from the match rule set', async () => {
+  it('16. generated Tournament Rules snapshot wins over client-supplied free text (Group 1)', async () => {
     repo.findBracketTypeById.mockResolvedValue(RR);
+    // A client attempts to inject free-text rules — the server must derive the
+    // authoritative human-readable rules from the selected Match Format + Rule
+    // Set and ignore the client string.
     const t = makeTournament({ rules: 'No outside coaching. Best of 3.' });
     await svc.create(t, 1);
-    // rules (free-text) and rule_set_id (authoritative scoring config) are distinct fields.
-    expect(repo.create).toHaveBeenCalledWith(expect.objectContaining({ rules: 'No outside coaching. Best of 3.', rule_set_id: 1 }));
+    expect(repo.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        rule_set_id: 1,
+        rules: expect.stringContaining('Padel'),
+      }),
+    );
+    const rulesArg = (repo.create.mock.calls[0][0] as any).rules;
+    expect(rulesArg).not.toContain('No outside coaching');
+    expect(rulesArg).toMatch(/Best of 3 sets/);
   });
 
   it('17. organisation tournament creation remains tenant-scoped', async () => {
@@ -248,5 +258,29 @@ describe('Group 5B-SR — Bracket type configuration', () => {
     await svc.updateBracketTypeActive(3, false, 1);
     expect(repo.setBracketTypeActive).toHaveBeenCalledWith(3, false);
     expect(audit.recordAudit).toHaveBeenCalledWith(expect.objectContaining({ action: 'TOURNAMENT.BRACKET_TYPE_UPDATE' }));
+  });
+
+  it('20. cascade response adds humanReadable per rule set WITHOUT dropping existing fields (Group 1)', async () => {
+    mrRepo.listRuleSetsBySport.mockResolvedValue([
+      {
+        format: { id: 1, sportId: 22, slug: 'standard', name: 'Padel Standard', formatType: 'doubles', playersPerSide: 2, description: 'Best of 3 sets.', isDefault: true, isActive: true },
+        ruleSets: [
+          { id: 1, formatId: 1, version: 1, name: 'Padel Standard v1', rules: { score_structure: 'sets', best_of: 3, first_to: 6, margin: 1 }, standingsRules: null, isActive: true, isDefault: true },
+        ],
+      },
+    ]);
+
+    const cascade = await svc.listSportFormatsCascade(22);
+    expect(cascade).toHaveLength(1);
+    const rs = cascade[0].ruleSets[0];
+    // Existing fields preserved (backward compatibility).
+    expect(rs.id).toBe(1);
+    expect(rs.version).toBe(1);
+    expect(rs.name).toBe('Padel Standard v1');
+    expect(rs.rules).toEqual(expect.objectContaining({ best_of: 3 }));
+    // New humanReadable derived from the shared formatter.
+    expect(typeof rs.humanReadable).toBe('string');
+    expect(rs.humanReadable).toContain('Padel Standard — Doubles.');
+    expect(rs.humanReadable).toMatch(/Best of 3 sets/);
   });
 });

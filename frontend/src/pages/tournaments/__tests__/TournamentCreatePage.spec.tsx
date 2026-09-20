@@ -26,6 +26,16 @@ const __state = vi.hoisted(() => ({
     ],
   },
   commissionPayload: { commissionRate: 0, planName: 'Standard Club' },
+  formatsPayload: {
+    data: [
+      {
+        format: { id: 1, name: 'Padel Standard', formatType: 'doubles', description: 'Best of 3 sets, tiebreak at 6-6.' },
+        ruleSets: [
+          { id: 1, name: 'Padel Standard v1', version: 1, humanReadable: 'Padel Standard — Doubles. Best of 3 sets. First to 6 games by a 1-game margin. Tiebreak at 6-6, first to 7 by 2. Golden point at deuce.' },
+        ],
+      },
+    ],
+  },
 }));
 
 vi.mock('../../../services/tournament', () => ({
@@ -81,7 +91,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   __state.orgApi.getBracketTypes.mockResolvedValue(__state.bracketTypesPayload);
   __state.orgApi.getCommissionConfig.mockResolvedValue(__state.commissionPayload);
-  __state.orgApi.getSportFormats.mockResolvedValue({ data: [] });
+  __state.orgApi.getSportFormats.mockResolvedValue(__state.formatsPayload);
 });
 
 describe('TournamentCreatePage — field-level permission gates (Group 5B UAT regression)', () => {
@@ -112,6 +122,8 @@ describe('TournamentCreatePage — field-level permission gates (Group 5B UAT re
     expect(screen.getByText('tournaments.create.end_date')).toBeTruthy();
     expect(screen.getByText('tournaments.create.registration_opens')).toBeTruthy();
     expect(screen.getByText('tournaments.create.submit')).toBeTruthy();
+    // Rules are a read-only generated preview (no editable textarea).
+    expect(screen.getByText('tournaments.create.generated_rules')).toBeTruthy();
   });
 
   it('hides ALL configuration fields when the org-admin has NO tournaments.create.* key (only commission + submit render)', async () => {
@@ -129,6 +141,7 @@ describe('TournamentCreatePage — field-level permission gates (Group 5B UAT re
     expect(screen.queryByText('tournaments.create.max_players')).toBeNull();
     expect(screen.queryByText('tournaments.create.start_date')).toBeNull();
     expect(screen.queryByText('tournaments.create.registration_opens')).toBeNull();
+    expect(screen.queryByText('tournaments.create.generated_rules')).toBeNull();
   });
 
   it('the create form is submitted to the org-scoped endpoint only', async () => {
@@ -136,5 +149,53 @@ describe('TournamentCreatePage — field-level permission gates (Group 5B UAT re
     renderPage(['tournaments.create.name', 'tournaments.create.type', 'tournaments.create.sport']);
     await waitFor(() => expect(orgApi.getBracketTypes).toHaveBeenCalledWith('6'));
     await waitFor(() => expect(orgApi.getCommissionConfig).toHaveBeenCalledWith('6'));
+  });
+});
+
+describe('TournamentCreatePage — generated Rules preview (Group 1)', () => {
+  it('shows an empty state before any sport/format/rule-set is selected (no fake rules)', async () => {
+    renderPage(['tournaments.create.sport', 'tournaments.create.match-format', 'tournaments.create.rule-set', 'tournaments.create.rules']);
+    // No format/rule set selected → the preview shows the empty-state text only.
+    expect(await screen.findByText('tournaments.create.generated_rules_empty')).toBeTruthy();
+    expect(screen.queryByText(/Best of 3 sets/)).toBeNull();
+  });
+
+  it('the Rules section is read-only — no editable textarea is rendered', async () => {
+    renderPage(['tournaments.create.rules']);
+    expect(await screen.findByText('tournaments.create.generated_rules')).toBeTruthy();
+    // The old editable textarea must not exist.
+    expect(screen.queryByRole('textbox')).toBeNull();
+  });
+
+  it('the preview updates from the selected rule-set humanReadable value', async () => {
+    const { fireEvent } = await import('@testing-library/react');
+    const view = renderPage(['tournaments.create.sport', 'tournaments.create.match-format', 'tournaments.create.rule-set', 'tournaments.create.rules']);
+
+    // Locate the Sport select by its contained option text (raw <select>,
+    // gated by tournaments.create.sport).
+    await screen.findByText('Padel');
+    const sportSelect = Array.from(view.container.querySelectorAll('select')).find(
+      (s) => Array.from(s.querySelectorAll('option')).some((o) => o.textContent === 'Padel'),
+    );
+    expect(sportSelect).toBeTruthy();
+    fireEvent.change(sportSelect!, { target: { value: '22' } });
+    await waitFor(() => expect(__state.orgApi.getSportFormats).toHaveBeenCalledWith('6', '22'));
+    // Select the Padel Standard format so the rule-set select becomes enabled
+    // with options from the cascade.
+    await screen.findByText('Padel Standard');
+    const formatSelect = Array.from(view.container.querySelectorAll('select')).find(
+      (s) => Array.from(s.querySelectorAll('option')).some((o) => o.textContent === 'Padel Standard'),
+    );
+    fireEvent.change(formatSelect!, { target: { value: '1' } });
+    // Select the rule set and assert the preview renders the server-derived
+    // humanReadable (never a client-computed interpretation).
+    const ruleSetSelect = Array.from(view.container.querySelectorAll('select')).find(
+      (s) => Array.from(s.querySelectorAll('option')).some((o) => o.textContent === 'Padel Standard v1'),
+    );
+    expect(ruleSetSelect).toBeTruthy();
+    fireEvent.change(ruleSetSelect!, { target: { value: '1' } });
+    expect(await screen.findByText(/Best of 3 sets/)).toBeTruthy();
+    expect(screen.getByText(/Golden point at deuce/)).toBeTruthy();
+    expect(screen.queryByText('tournaments.create.generated_rules_empty')).toBeNull();
   });
 });

@@ -7,6 +7,7 @@ import { Can } from '../../../permissions/Can';
 import { getErrorMessage } from '../../../utils/errors';
 import { SkeletonRow } from '../../../components/ui/Skeleton';
 import { Modal } from '../../../components/ui/Modal';
+import { GeneratedRules } from '../../../components/tournaments/GeneratedRules';
 import { tournamentApi, orgTournamentApi } from '../../../services/tournament';
 
 const STATUS_COLORS: Record<string, string> = {
@@ -208,6 +209,13 @@ export default function TournamentDetailPage({ mode = 'admin', orgId }: Props) {
             <div className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] border border-[var(--color-border)] p-5 space-y-3">
               <h3 className="font-semibold text-[var(--color-text)]">{t('tournaments.details.description')}</h3>
               <p className="text-sm text-[var(--color-text)] whitespace-pre-wrap">{tournament?.description || '-'}</p>
+            </div>
+            <div className="md:col-span-2">
+              <GeneratedRules
+                rules={tournament?.rules}
+                title={t('tournaments.details.rules')}
+                empty={<p className="text-sm text-[var(--color-text-muted)]">{t('tournaments.details.rules_empty')}</p>}
+              />
             </div>
           </div>
         )}

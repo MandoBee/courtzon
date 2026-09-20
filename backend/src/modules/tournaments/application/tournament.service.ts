@@ -8,6 +8,7 @@ import { eventBusV2 } from '../../../shared/event-bus/event-bus.v2.js';
 import { getPool } from '../../../database/mysql.js';
 import { recordAudit } from '../../audit-log/index.js';
 import { matchResultRepository } from '../../match-result/infrastructure/match-result.repository.js';
+import { formatSportRules } from '../../match-result/application/rules/format-rules.js';
 import type { MatchFormatSnapshot } from '../../match/domain/match.types.js';
 import type { RawMatchResultPayload } from '../../match-result/domain/match-result.types.js';
 import { getCommissionRate } from '../../organisations/application/current-subscription.service.js';
@@ -60,8 +61,15 @@ export class TournamentService {
     const commissionRate = await this.resolveCommissionRate(data.organisation_id, data.entry_fee);
     // Deterministic draw seed: default to creation timestamp (stable, not random).
     const drawSeed = data.draw_seed ?? Date.now();
+    // Group 1 — the human-readable Tournament Rules snapshot is ALWAYS derived
+    // server-side from the authoritative Match Format + Rule Set (explicit, or
+    // the sport's default resolution). A client-supplied `rules` string is never
+    // trusted as authoritative. When no valid format/rule-set can be resolved,
+    // the rules stay empty rather than inventing a value.
+    const rulesSnapshot = await this.resolveRulesSnapshot(data.sport_id, data.match_format_id, data.rule_set_id);
     const id = await tournamentRepository.create({
       ...data, creator_id: creatorId, draw_seed: drawSeed, commission_rate: commissionRate,
+      rules: rulesSnapshot ?? undefined,
     });
     const tournament = await tournamentRepository.findById(id);
     eventBusV2.emit('tournament.created', { tournamentId: id, name: data.name, format: data.format } as Record<string, unknown>, {
@@ -188,9 +196,55 @@ export class TournamentService {
    * Group 5B-SR — sport → match format → rule set cascade for the create form.
    * Reuses the authoritative match-result resolution so the UI never invents
    * arbitrary formats/rule sets.
+   *
+   * Group 1 — each rule-set option additionally exposes a `humanReadable`
+   * field derived server-side from the SAME shared formatter that produces the
+   * Tournament Rules snapshot. The frontend renders this value; it never
+   * interprets the rules JSON itself (single source of truth).
    */
   async listSportFormatsCascade(sportId: number) {
-    return matchResultRepository.listRuleSetsBySport(sportId, true);
+    const cascade = await matchResultRepository.listRuleSetsBySport(sportId, true);
+    return cascade.map(({ format, ruleSets }) => ({
+      format,
+      ruleSets: ruleSets.map((rs) => ({
+        ...rs,
+        humanReadable: formatSportRules(rs.rules as any, {
+          format: { name: format.name, formatType: format.formatType, playersPerSide: format.playersPerSide, description: format.description ?? null },
+          ruleSet: { name: rs.name, version: rs.version },
+        }),
+      })),
+    }));
+  }
+
+  /**
+   * Group 1 — resolve the authoritative human-readable Tournament Rules from
+   * the selected Match Format + Rule Set. Explicit format/rule-set wins; when
+   * absent, falls back to the sport's authoritative default (is_default)
+   * resolution. Returns `null` when no valid format/rule-set can be resolved
+   * — the caller never invents a fallback string.
+   */
+  private async resolveRulesSnapshot(sportId: number | undefined, matchFormatId: number | undefined, ruleSetId: number | undefined): Promise<string | null> {
+    if (matchFormatId != null && ruleSetId != null) {
+      const fmt = await matchResultRepository.findFormatById(matchFormatId);
+      if (!fmt) throw new ConflictError('Configured Match Format not found', ErrorCodes.TOURNAMENT_INVALID_FORMAT);
+      const ruleSet = await matchResultRepository.findRuleSetById(ruleSetId);
+      if (!ruleSet) throw new ConflictError('Configured Rule Set not found', ErrorCodes.TOURNAMENT_INVALID_FORMAT);
+      return formatSportRules(ruleSet.rules as any, {
+        format: { name: fmt.name, formatType: fmt.formatType, playersPerSide: fmt.playersPerSide, description: null },
+        ruleSet: { name: null, version: ruleSet.version },
+      });
+    }
+    // Sport default resolution — authoritative is_default mechanism, never
+    // arbitrary rows (formats[0] / ruleSets[0]).
+    if (sportId == null) return null;
+    const def = await matchResultRepository.resolveDefaultFormatForSport(sportId);
+    if (!def) return null;
+    const ruleSet = await matchResultRepository.findActiveRuleSetForFormat(def.formatId);
+    if (!ruleSet) return null;
+    return formatSportRules(ruleSet.rules as any, {
+      format: { name: def.name, formatType: def.formatType, playersPerSide: def.playersPerSide, description: null },
+      ruleSet: { name: null, version: ruleSet.version },
+    });
   }
 
   async assertFormatBelongsToSport(sportId: number | undefined, formatId: number): Promise<void> {
@@ -203,10 +257,43 @@ export class TournamentService {
   }
 
   async update(id: number, data: Partial<Tournament>): Promise<Tournament> {
-    await this.getById(id);
+    const current = await this.getById(id);
     if (data.code) {
       const existing = await tournamentRepository.findByCode(data.code);
       if (existing && existing.id !== id) throw new ConflictError('Tournament code already exists', ErrorCodes.ACADEMY_PROGRAM_CODE_EXISTS);
+    }
+    // Group 1 — whenever the rules-affecting configuration changes (sport_id,
+    // match_format_id, rule_set_id), regenerate the human-readable Rules
+    // snapshot server-side. A client-supplied `rules` string is never trusted
+    // as authoritative when a valid format/rule-set exists; the server-derived
+    // value wins.
+    const configChanged = data.sport_id !== undefined || data.match_format_id !== undefined || data.rule_set_id !== undefined;
+    if (configChanged) {
+      // Merge the update into the current row so regeneration reflects the
+      // effective (resulting) configuration, not just the delta.
+      const effective = {
+        sport_id: data.sport_id ?? current.sport_id,
+        match_format_id: data.match_format_id ?? current.match_format_id,
+        rule_set_id: data.rule_set_id ?? current.rule_set_id,
+      };
+      if ((effective.match_format_id == null) !== (effective.rule_set_id == null)) {
+        throw new ConflictError('Tournament must configure both a Match Format and a Rule Set, or neither', ErrorCodes.TOURNAMENT_INVALID_FORMAT);
+      }
+      if (effective.match_format_id != null && effective.rule_set_id != null) {
+        await this.assertMatchFormatRuleSetPair(effective.match_format_id, effective.rule_set_id);
+        await this.assertFormatBelongsToSport(effective.sport_id, effective.match_format_id);
+      }
+      const rulesSnapshot = await this.resolveRulesSnapshot(effective.sport_id, effective.match_format_id, effective.rule_set_id);
+      data = { ...data, rules: rulesSnapshot ?? undefined };
+    } else if (data.rules !== undefined) {
+      // Client attempted to supply free-text rules without changing the
+      // config — server-derived value wins; never accept raw client text.
+      const rulesSnapshot = await this.resolveRulesSnapshot(current.sport_id, current.match_format_id, current.rule_set_id);
+      if (rulesSnapshot != null) {
+        data = { ...data, rules: rulesSnapshot };
+      } else {
+        delete (data as any).rules;
+      }
     }
     await tournamentRepository.update(id, data);
     return this.getById(id);

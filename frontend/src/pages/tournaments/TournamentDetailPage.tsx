@@ -5,6 +5,7 @@ import api from '../../services/api';
 import { Skeleton, SkeletonRow } from '../../components/ui/Skeleton';
 import { useToast } from '../../components/ui/Toast';
 import { Can } from '../../permissions/Can';
+import { GeneratedRules } from '../../components/tournaments/GeneratedRules';
 import { formatISODate } from '../../utils/formatDate';
 
 type Tab = 'overview' | 'bracket' | 'standings' | 'players';
@@ -79,6 +80,9 @@ export default function TournamentDetailPage() {
           <div><span className="text-[var(--color-text-muted)]">Duration:</span> <span className="font-medium">{tournament.match_duration_minutes}min</span></div>
         </div>
         {tournament.prize_description && <p className="text-sm font-medium text-yellow-600">🏆 {tournament.prize_description}</p>}
+        {tournament.rules && (
+          <GeneratedRules rules={tournament.rules} title="Tournament Rules" />
+        )}
         {tournament.status === 'open' && !matchList.length && (
           <Can permission="tournaments.manage_brackets">
             <button onClick={() => generateBracket.mutate()} disabled={generateBracket.isPending} className="btn-primary text-sm">

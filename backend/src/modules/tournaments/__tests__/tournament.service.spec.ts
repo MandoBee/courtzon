@@ -192,4 +192,96 @@ describe('TournamentService (Group 5A)', () => {
     const byeCall = createCalls.find((c: any[]) => c[0].player1_id != null && c[0].player2_id == null && c[0].match_id == null);
     expect(byeCall).toBeTruthy();
   });
+
+  // ── Group 1 — auto-generated Tournament Rules from Match Format + Rule Set ──
+
+  it('G1a. explicit match_format_id + rule_set_id generate a human-readable rules snapshot', async () => {
+    repo.findByCode.mockResolvedValue(null);
+    repo.create.mockResolvedValue(10);
+    repo.findById.mockResolvedValue(makeTournament({ id: 10 }));
+    mrRepo.findFormatById.mockResolvedValue({ formatId: 1, sportId: 22, formatType: 'doubles', playersPerSide: 2, name: 'Padel', isActive: true });
+    mrRepo.findRuleSetById.mockResolvedValue({
+      formatId: 1, ruleSetId: 1, version: 1,
+      rules: { score_structure: 'sets', best_of: 3, first_to: 6, margin: 1, tiebreak_at: 6, tiebreak_first_to: 7, tiebreak_win_by: 2, deuce_rule: 'golden_point', draw_allowed: false },
+      standingsRules: null,
+    });
+
+    await svc.create(makeTournament(), 1);
+    const rulesArg = (repo.create.mock.calls[0][0] as any).rules;
+    expect(rulesArg).toContain('Padel');
+    expect(rulesArg).toContain('Doubles');
+    expect(rulesArg).toMatch(/Best of 3 sets/);
+    expect(rulesArg).toMatch(/First to 6 games by a 1-game margin/);
+    expect(rulesArg).toMatch(/Tiebreak at 6-6, first to 7 by 2/);
+    expect(rulesArg).toMatch(/Golden point at deuce/);
+  });
+
+  it('G1b. sport default (is_default) resolution generates rules when no explicit format/rule-set', async () => {
+    repo.findByCode.mockResolvedValue(null);
+    repo.create.mockResolvedValue(10);
+    repo.findById.mockResolvedValue(makeTournament({ id: 10, match_format_id: undefined, rule_set_id: undefined }));
+    mrRepo.resolveDefaultFormatForSport.mockResolvedValue({ formatId: 1, formatType: 'doubles', playersPerSide: 2, name: 'Padel Standard' });
+    mrRepo.findActiveRuleSetForFormat.mockResolvedValue({
+      formatId: 1, ruleSetId: 1, version: 1,
+      rules: { score_structure: 'sets', best_of: 3, sets_to_win: 2, first_to: 6, margin: 1, tiebreak_at: 6, tiebreak_first_to: 7, tiebreak_win_by: 2, deuce_rule: 'golden_point', draw_allowed: false },
+      standingsRules: null,
+    });
+
+    await svc.create(makeTournament({ match_format_id: undefined, rule_set_id: undefined }), 1);
+    const rulesArg = (repo.create.mock.calls[0][0] as any).rules;
+    expect(rulesArg).toContain('Padel Standard');
+    expect(rulesArg).toMatch(/Best of 3 sets/);
+  });
+
+  it('G1c. a client-supplied free-text rules string cannot override the generated rules', async () => {
+    repo.findByCode.mockResolvedValue(null);
+    repo.create.mockResolvedValue(10);
+    repo.findById.mockResolvedValue(makeTournament({ id: 10 }));
+    mrRepo.findFormatById.mockResolvedValue({ formatId: 1, sportId: 22, formatType: 'doubles', playersPerSide: 2, name: 'Padel', isActive: true });
+    mrRepo.findRuleSetById.mockResolvedValue({
+      formatId: 1, ruleSetId: 1, version: 1,
+      rules: { score_structure: 'sets', best_of: 3 },
+      standingsRules: null,
+    });
+
+    await svc.create(makeTournament({ rules: 'Client invented text' }), 1);
+    const rulesArg = (repo.create.mock.calls[0][0] as any).rules;
+    expect(rulesArg).not.toContain('Client invented text');
+    expect(rulesArg).toMatch(/Best of 3 sets/);
+  });
+
+  it('G1d. update regenerates rules when sport/format/rule-set change', async () => {
+    const current = makeTournament({ id: 1, sport_id: 22, match_format_id: 1, rule_set_id: 1, rules: 'Old generated snapshot' });
+    repo.findById.mockResolvedValue(current);
+    mrRepo.findFormatById.mockResolvedValue({ formatId: 1, sportId: 22, formatType: 'doubles', playersPerSide: 2, name: 'Padel', isActive: true });
+    mrRepo.findRuleSetById.mockResolvedValue({
+      formatId: 1, ruleSetId: 1, version: 2,
+      rules: { score_structure: 'sets', best_of: 3, first_to: 6, margin: 2 },
+      standingsRules: null,
+    });
+
+    await svc.update(1, { rule_set_id: 1 });
+    // The server must regenerate rules from the effective config, never reuse client text.
+    const updateCall = repo.update.mock.calls[0][1] as any;
+    expect(updateCall.rules).toMatch(/Best of 3 sets/);
+    expect(updateCall.rules).not.toContain('Old generated snapshot');
+  });
+
+  it('G1e. update drops client free-text rules when no config change and no valid format/rule-set', async () => {
+    const current = makeTournament({ id: 1, sport_id: undefined, match_format_id: undefined, rule_set_id: undefined, rules: 'Existing legacy text' });
+    repo.findById.mockResolvedValue(current);
+
+    await svc.update(1, { rules: 'Client attempted override' } as any);
+    const updateCall = repo.update.mock.calls[0][1] as any;
+    expect(updateCall).not.toHaveProperty('rules');
+  });
+
+  it('G1f. stored rules are NOT regenerated on reads (persisted snapshot is authoritative)', async () => {
+    const stored = makeTournament({ id: 1, rules: 'Persisted v1 snapshot' });
+    repo.findById.mockResolvedValue(stored);
+    const t = await svc.getById(1);
+    expect(t.rules).toBe('Persisted v1 snapshot');
+    expect(mrRepo.findFormatById).not.toHaveBeenCalled();
+    expect(mrRepo.findRuleSetById).not.toHaveBeenCalled();
+  });
 });

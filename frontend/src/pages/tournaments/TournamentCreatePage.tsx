@@ -26,7 +26,6 @@ type TournamentForm = {
   registrationOpens?: string;
   registrationCloses?: string;
   prizeDescription?: string;
-  rules?: string;
 };
 
 export type TournamentCreateContextMode = 'admin' | 'org';
@@ -45,8 +44,8 @@ interface BracketTypeOption {
 }
 
 interface SportFormatGroup {
-  format: { id: number; name: string; formatType: string };
-  ruleSets: { id: number; name: string | null; version: number }[];
+  format: { id: number; name: string; formatType: string; description?: string | null };
+  ruleSets: { id: number; name: string | null; version: number; humanReadable?: string | null }[];
 }
 
 /**
@@ -88,7 +87,6 @@ export default function TournamentCreatePage({ mode = 'admin', orgId }: Props) {
         registrationOpens: z.string().optional(),
         registrationCloses: z.string().optional(),
         prizeDescription: z.string().optional(),
-        rules: z.string().optional(),
       }),
     [t],
   );
@@ -138,6 +136,13 @@ export default function TournamentCreatePage({ mode = 'admin', orgId }: Props) {
   });
   const formatGroups: SportFormatGroup[] = formatCascade?.data ?? [];
 
+  // Group 1 — read-only Tournament Rules preview. The server-derived
+  // `humanReadable` value from the selected Rule Set is displayed; the UI never
+  // re-interprets the rules JSON (single source of truth on the backend).
+  const selectedFormatGroup = formatGroups.find((g) => String(g.format.id) === selectedFormat);
+  const selectedRuleSet = selectedFormatGroup?.ruleSets.find((rs) => String(rs.id) === watch('ruleSetId'));
+  const generatedRulesPreview = selectedRuleSet?.humanReadable || selectedFormatGroup?.format.description || '';
+
   // Reset dependent selections when sport/format changes
   useEffect(() => {
     setValue('matchFormatId', '');
@@ -177,10 +182,12 @@ export default function TournamentCreatePage({ mode = 'admin', orgId }: Props) {
       registration_opens: data.registrationOpens || undefined,
       registration_closes: data.registrationCloses || undefined,
       prize_description: data.prizeDescription || undefined,
-      rules: data.rules || undefined,
       organisation_id: isOrg && orgId ? Number(orgId) : undefined,
-      // NOTE: commission_rate is intentionally NOT sent — the backend derives
-      // it from the organisation's active subscription (Group 5B-SR).
+      // NOTE: `rules` is intentionally NOT sent — the backend derives the
+      // Tournament Rules snapshot server-side from the selected Match Format +
+      // Rule Set (Group 1). Client-supplied rules are never authoritative.
+      // commission_rate is intentionally NOT sent — the backend derives it
+      // from the organisation's active subscription (Group 5B-SR).
     });
   };
 
@@ -308,7 +315,16 @@ export default function TournamentCreatePage({ mode = 'admin', orgId }: Props) {
           </Can>
 
           <Can permission="tournaments.create.rules">
-            <Input label={t('tournaments.create.rules')} tag="textarea" rows={3} {...register('rules')} />
+            <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] p-4 bg-[var(--color-bg)]/30">
+              <label className="block text-sm font-medium text-[var(--color-text)] mb-2">
+                {t('tournaments.create.generated_rules')}
+              </label>
+              {generatedRulesPreview ? (
+                <p className="text-sm text-[var(--color-text)] whitespace-pre-wrap">{generatedRulesPreview}</p>
+              ) : (
+                <p className="text-xs text-[var(--color-text-muted)]">{t('tournaments.create.generated_rules_empty')}</p>
+              )}
+            </div>
           </Can>
 
           <Button type="submit" loading={createMutation.isPending} className="w-full">
