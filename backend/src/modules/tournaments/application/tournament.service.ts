@@ -1,6 +1,6 @@
 import { tournamentRepository, type BracketTypeRow } from '../infrastructure/repositories/tournament.repository.js';
 import { generateKnockoutBracket, generateRoundRobinMatches, generateStageMatches, seededShuffle, type BracketSlot } from '../domain/tournament-aggregate.js';
-import type { Tournament, TournamentRegistration, TournamentMatch, TournamentStage } from '../domain/tournament-aggregate.js';
+import type { Tournament, TournamentRegistration, TournamentMatch, TournamentStage, TournamentPrizeInput, TournamentPrizeType } from '../domain/tournament-aggregate.js';
 import { validateTournamentTransition, validateRegistrationTransition } from '../domain/lifecycle.js';
 import { NotFoundError, ConflictError, ForbiddenError } from '../../../shared/errors/app-error.js';
 import { ErrorCodes } from '../../../shared/errors/error-codes.js';
@@ -74,6 +74,9 @@ export class TournamentService {
       const resolvedCurrency = await resolveOrganisationCurrency(data.organisation_id, data.branch_id);
       if (resolvedCurrency) effectiveData.currency_code = resolvedCurrency;
     }
+    // Group 2 — validate + normalise structured prizes against the authoritative
+    // tournament currency BEFORE persisting anything.
+    const prizes = data.prizes ? this.normalisePrizes(data.prizes, effectiveData.currency_code) : [];
     // Deterministic draw seed: default to creation timestamp (stable, not random).
     const drawSeed = data.draw_seed ?? Date.now();
     // Group 1 — the human-readable Tournament Rules snapshot is ALWAYS derived
@@ -87,11 +90,60 @@ export class TournamentService {
       tournament_type: effectiveType,
       rules: rulesSnapshot ?? undefined,
     });
+    if (prizes.length > 0) {
+      await tournamentRepository.replacePrizes(id, prizes);
+    }
     const tournament = await tournamentRepository.findById(id);
     eventBusV2.emit('tournament.created', { tournamentId: id, name: data.name, format: data.format } as Record<string, unknown>, {
       aggregateType: 'tournament', aggregateId: String(id), aggregateVersion: 1,
     });
     return tournament!;
+  }
+
+  /**
+   * Group 2 — validate + normalise a structured prize list against the
+   * authoritative tournament currency. Rules:
+   *  * prize_type must be a supported type (DTO already enforces the enum).
+   *  * cash prizes REQUIRE an amount (> 0) and MUST use the authoritative
+   *    tournament currency — a mismatched currency is rejected, and an omitted
+   *    currency is filled with the authoritative one. Never hardcoded.
+   *  * non-cash prizes must NOT carry amount or currency (both are normalised
+   *    to null) — no accidental monetary/currency contamination.
+   *  * placement: nullable positive int (NULL = special/non-ranked prize).
+   *  * display_order is deterministic (array index) unless explicitly supplied.
+   */
+  private normalisePrizes(prizes: TournamentPrizeInput[], authoritativeCurrency?: string): TournamentPrizeInput[] {
+    return prizes.map((p, i) => {
+      const prizeType = p.prize_type as TournamentPrizeType;
+      if (prizeType === 'cash') {
+        const amount = p.amount;
+        if (amount == null || amount <= 0) {
+          throw new ConflictError('Cash prize requires a positive amount', ErrorCodes.TOURNAMENT_INVALID_PRIZE);
+        }
+        if (p.currency_code != null && authoritativeCurrency != null && p.currency_code !== authoritativeCurrency) {
+          throw new ConflictError(
+            `Cash prize currency ${p.currency_code} does not match the tournament currency ${authoritativeCurrency}`,
+            ErrorCodes.TOURNAMENT_INVALID_PRIZE,
+          );
+        }
+        return {
+          placement: p.placement ?? null,
+          prize_type: prizeType,
+          description: p.description ?? null,
+          amount,
+          currency_code: authoritativeCurrency ?? p.currency_code ?? null,
+          display_order: p.display_order ?? i,
+        };
+      }
+      return {
+        placement: p.placement ?? null,
+        prize_type: prizeType,
+        description: p.description ?? null,
+        amount: null,
+        currency_code: null,
+        display_order: p.display_order ?? i,
+      };
+    });
   }
 
   /**
@@ -156,6 +208,9 @@ export class TournamentService {
   async getByIdDetailed(id: number) {
     const t = await tournamentRepository.findByIdDetailed(id);
     if (!t) throw new NotFoundError('Tournament', ErrorCodes.ACADEMY_PROGRAM_NOT_FOUND);
+    // Group 2 — attach structured prizes (authoritative when present; the
+    // frontend falls back to legacy prize_description when the array is empty).
+    t.prizes = await tournamentRepository.findPrizesByTournament(id);
     return t;
   }
 
@@ -327,6 +382,17 @@ export class TournamentService {
       const effectiveBranchId = data.branch_id ?? current.branch_id;
       const resolvedCurrency = await resolveOrganisationCurrency(effectiveOrgId, effectiveBranchId);
       if (resolvedCurrency) data = { ...data, currency_code: resolvedCurrency };
+    }
+    // Group 2 — structured prizes: when supplied, validate + normalise against
+    // the authoritative tournament currency and replace the whole set.
+    if (data.prizes !== undefined) {
+      const effectiveCurrency = data.currency_code ?? current.currency_code;
+      const prizes = this.normalisePrizes(data.prizes, effectiveCurrency);
+      await tournamentRepository.replacePrizes(id, prizes);
+      eventBusV2.emit('tournament:prizes-updated', { tournamentId: id, prizeCount: prizes.length } as Record<string, unknown>, {
+        aggregateType: 'tournament', aggregateId: String(id), aggregateVersion: 1,
+      });
+      delete (data as any).prizes;
     }
     // Group 1 — whenever the rules-affecting configuration changes (sport_id,
     // match_format_id, rule_set_id, bracket_type_id), regenerate the

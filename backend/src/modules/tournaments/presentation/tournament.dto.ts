@@ -1,5 +1,20 @@
 import { z } from 'zod';
 
+/**
+ * Group 2 — structured Tournament prize input. Multiple prizes per placement are
+ * allowed; `placement` is nullable (NULL = special/non-ranked prize).
+ * Cash prizes carry `amount` + the Tournament's authoritative `currency_code`;
+ * non-cash prizes leave both unset (validated server-side).
+ */
+export const TournamentPrizeSchema = z.object({
+  placement: z.number().int().positive().nullable().optional(),
+  prize_type: z.enum(['cash', 'gold', 'silver', 'bronze', 'trophy', 'gift', 'other']),
+  description: z.string().max(255).optional(),
+  amount: z.number().min(0).optional(),
+  currency_code: z.string().length(3).optional(),
+  display_order: z.number().int().min(0).optional(),
+});
+
 export const CreateTournamentSchema = z.object({
   bracket_type_id: z.number().int().positive(),
   format: z.enum(['knockout', 'double_elimination', 'round_robin', 'swiss', 'group_stage_knockout', 'league', 'custom']).default('knockout'),
@@ -26,6 +41,7 @@ export const CreateTournamentSchema = z.object({
   // schema — zod strips any client-supplied commission_rate so it can never
   // override the authoritative subscription-derived value.
   prize_description: z.string().optional(),
+  prizes: z.array(TournamentPrizeSchema).optional(),
   is_public: z.boolean().optional().default(true),
   registration_opens: z.string().optional(),
   registration_closes: z.string().optional(),
@@ -64,6 +80,7 @@ export const UpdateTournamentSchema = z.object({
   // historical economic snapshot of the rate in force at creation (Group 5B-SR).
   // Not part of the schema: updates can never change it.
   prize_description: z.string().optional(),
+  prizes: z.array(TournamentPrizeSchema).optional(),
   is_public: z.boolean().optional(),
   registration_opens: z.string().optional(),
   registration_closes: z.string().optional(),

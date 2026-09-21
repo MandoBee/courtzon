@@ -10,6 +10,49 @@ export type RegistrationStatus = 'registered' | 'confirmed' | 'withdrawn' | 'dis
 
 export type MatchStatus = 'scheduled' | 'in_progress' | 'completed' | 'walkover' | 'forfeit' | 'no_show';
 
+/**
+ * Group 2 — structured Tournament prize type. Stable machine-readable
+ * discriminator (never arbitrary free-text).
+ */
+export type TournamentPrizeType =
+  | 'cash'
+  | 'gold'
+  | 'silver'
+  | 'bronze'
+  | 'trophy'
+  | 'gift'
+  | 'other';
+
+/**
+ * Group 2 — a structured Tournament prize row. A Tournament can hold MANY rows
+ * (multiple prizes per placement). `placement` is nullable: NULL = special /
+ * non-ranked prize; 1 = 1st, 2 = 2nd, ... N = arbitrary ranked placement.
+ * Cash prizes carry `amount` + the Tournament's authoritative `currency_code`;
+ * non-cash prizes leave both NULL.
+ */
+export interface TournamentPrize {
+  id?: number;
+  tournament_id: number;
+  placement?: number | null;
+  prize_type: TournamentPrizeType;
+  description?: string | null;
+  amount?: number | null;
+  currency_code?: string | null;
+  display_order: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
+/** Group 2 — client/API prize input (no internal id/timestamps). */
+export interface TournamentPrizeInput {
+  placement?: number | null;
+  prize_type: TournamentPrizeType;
+  description?: string | null;
+  amount?: number | null;
+  currency_code?: string | null;
+  display_order?: number;
+}
+
 export interface Tournament {
   id?: number;
   public_id?: string;
@@ -40,6 +83,9 @@ export interface Tournament {
   price_type?: string;
   commission_rate?: number;
   prize_description?: string;
+  /** Group 2 — structured prizes: incoming payload (no tournament_id) and, on the
+   * authoritative detail shape, resolved `TournamentPrize[]` rows. */
+  prizes?: TournamentPrize[] | TournamentPrizeInput[];
   status: TournamentStatus;
   is_public?: boolean;
   registration_opens?: string;

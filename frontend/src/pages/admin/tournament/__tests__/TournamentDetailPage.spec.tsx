@@ -190,4 +190,35 @@ describe('TournamentDetailPage — management detail contract (UAT crash regress
     expect(await screen.findByText('Ali')).toBeTruthy();
     expect(screen.getByText('3')).toBeTruthy(); // points
   });
+
+  it('overview renders structured prizes (Group 2)', async () => {
+    __state.adminApi.getTournament.mockResolvedValue({
+      ...__state.enrichedTournament,
+      prize_description: 'Legacy trophy text',
+      prizes: [
+        { id: 1, placement: 1, prize_type: 'cash', amount: 10000, currency_code: 'EGP', display_order: 0 },
+        { id: 2, placement: 2, prize_type: 'silver', description: 'Silver medal', display_order: 1 },
+      ],
+    });
+    renderPage('/admin/tournament/list/1', '/admin/tournament/list/:id', <TournamentDetailPage mode="admin" />);
+
+    await screen.findByText('Padel Test Tournament');
+    expect(screen.getAllByText(/1st Place/).length).toBeGreaterThan(0);
+    expect(screen.getByText('Cash')).toBeTruthy();
+    expect(screen.getByText(/2nd Place/)).toBeTruthy();
+    expect(screen.getByText('Silver medal')).toBeTruthy();
+    expect(screen.queryByText('Legacy trophy text')).toBeNull(); // structured wins
+  });
+
+  it('overview falls back to legacy prize_description when no structured prizes (Group 2)', async () => {
+    __state.adminApi.getTournament.mockResolvedValue({
+      ...__state.enrichedTournament,
+      prize_description: 'Legacy trophy text',
+      prizes: [],
+    });
+    renderPage('/admin/tournament/list/1', '/admin/tournament/list/:id', <TournamentDetailPage mode="admin" />);
+
+    await screen.findByText('Padel Test Tournament');
+    expect(screen.getByText(/Legacy trophy text/)).toBeTruthy();
+  });
 });

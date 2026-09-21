@@ -88,11 +88,35 @@ describe('org-tournament.controller (tenant isolation)', () => {
 
   it('get: allows a tournament owned by the scoped org (enriched detail shape)', async () => {
     repo.getOrganisationId.mockResolvedValue(ORG_A);
-    service.getByIdDetailed.mockResolvedValue({ id: 7, organisation_id: ORG_A, name: 'T', sport_name: 'Padel', max_players: 16 });
+    service.getByIdDetailed.mockResolvedValue({ id: 7, organisation_id: ORG_A, name: 'T', sport_name: 'Padel', max_players: 16, prizes: [{ id: 1, placement: 1, prize_type: 'cash', amount: 100, currency_code: 'USD', display_order: 0 }] });
     const reply = res();
     await ctrl.getOrgTournamentHandler(req({ params: { orgId: String(ORG_A), id: '7' } }), reply);
     expect(service.getByIdDetailed).toHaveBeenCalledWith(7);
     expect(reply.sent.name).toBe('T');
+    // Group 2 — org detail carries structured prizes.
+    expect(reply.sent.prizes).toHaveLength(1);
+    expect(reply.sent.prizes[0].prize_type).toBe('cash');
+  });
+
+  it('create: passes structured prizes through with the org-forced body (tenant-scoped)', async () => {
+    service.create.mockResolvedValue({ id: 9, organisation_id: ORG_A });
+    const reply = res();
+    await ctrl.createOrgTournamentHandler(
+      req({ params: { orgId: String(ORG_A) }, body: { name: 'X', organisation_id: ORG_B, max_participants: 8, bracket_type_id: 1, start_date: '2026-10-01', prizes: [{ placement: 1, prize_type: 'cash', amount: 100, currency_code: 'EGP' }] } }),
+      reply,
+    );
+    expect(service.create).toHaveBeenCalledWith(expect.objectContaining({ organisation_id: ORG_A, prizes: [{ placement: 1, prize_type: 'cash', amount: 100, currency_code: 'EGP' }] }), 42);
+    expect(reply.statusCode).toBe(201);
+  });
+
+  it('update: rejects cross-tenant prize modification before delegating', async () => {
+    repo.getOrganisationId.mockResolvedValue(ORG_B);
+    const reply = res();
+    await expect(ctrl.updateOrgTournamentHandler(
+      req({ params: { orgId: String(ORG_A), id: '7' }, body: { prizes: [{ placement: 1, prize_type: 'trophy' }] } }),
+      reply,
+    )).rejects.toMatchObject({ statusCode: 404, errorCode: 'TOURNAMENT_NOT_FOUND' });
+    expect(service.update).not.toHaveBeenCalled();
   });
 
   it('get: rejects a tournament owned by a DIFFERENT org (cross-tenant leak blocked)', async () => {

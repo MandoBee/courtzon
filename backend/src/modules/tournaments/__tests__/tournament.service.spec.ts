@@ -8,6 +8,7 @@ const repo = vi.hoisted(() => ({
   findByCode: vi.fn(),
   create: vi.fn(),
   findById: vi.fn(),
+  findByIdDetailed: vi.fn(),
   update: vi.fn(),
   updateStatus: vi.fn(),
   findOpen: vi.fn(),
@@ -46,6 +47,8 @@ const repo = vi.hoisted(() => ({
   findBracketTypeById: vi.fn(),
   setBracketTypeActive: vi.fn(),
   countBracketTypeReferences: vi.fn(),
+  findPrizesByTournament: vi.fn(),
+  replacePrizes: vi.fn(),
 }));
 
 const mrRepo = vi.hoisted(() => ({
@@ -416,5 +419,171 @@ describe('TournamentService (Group 5A)', () => {
     await svc.update(1, { name: 'Renamed' } as any);
     expect(repo.update).toHaveBeenCalledWith(1, expect.objectContaining({ name: 'Renamed' }));
     expect((repo.update.mock.calls[0][1] as any).rules).toBeUndefined();
+  });
+});
+
+describe('TournamentService — structured prizes (Group 2)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    repo.findBracketTypeById.mockResolvedValue({ id: 1, name: 'Single Elimination', slug: 'single-elimination', is_active: 1, config_schema: null });
+    commission.getCommissionRate.mockResolvedValue(null);
+    mrRepo.findFormatById.mockResolvedValue({ formatId: 1, sportId: 22, formatType: 'doubles', playersPerSide: 2, name: 'Padel', isActive: true });
+    mrRepo.findRuleSetById.mockResolvedValue({ formatId: 1, ruleSetId: 1, version: 1, rules: { score_structure: 'sets' }, standingsRules: null });
+    repo.findByIdDetailed.mockResolvedValue({ id: 1, name: 'Prize Cup', sport_name: 'Padel', max_players: 8, prize_description: 'Legacy prize text' });
+    repo.findPrizesByTournament.mockResolvedValue([]);
+  });
+  const svc = new TournamentService();
+
+  function prizesPayload(overrides: Record<string, unknown> = {}) {
+    return {
+      bracket_type_id: 1,
+      format: 'knockout',
+      sport_id: 22,
+      name: 'Prize Cup',
+      max_participants: 8,
+      currency_code: 'USD',
+      start_date: '2026-11-01',
+      ...overrides,
+    };
+  }
+
+  it('1. create Tournament with NO prizes does not call replacePrizes', async () => {
+    repo.findByCode.mockResolvedValue(null);
+    repo.create.mockResolvedValue(10);
+    repo.findById.mockResolvedValue(makeTournament({ id: 10 }));
+    await svc.create(prizesPayload() as any, 1);
+    expect(repo.replacePrizes).not.toHaveBeenCalled();
+  });
+
+  it('2. create Tournament with multiple prizes persists them', async () => {
+    repo.findByCode.mockResolvedValue(null);
+    repo.create.mockResolvedValue(10);
+    repo.findById.mockResolvedValue(makeTournament({ id: 10 }));
+    await svc.create(prizesPayload({
+      prizes: [
+        { placement: 1, prize_type: 'cash', amount: 10000, currency_code: 'USD', description: 'Winner' },
+        { placement: 1, prize_type: 'gold', description: 'Gold medal' },
+        { placement: 1, prize_type: 'trophy', description: 'Trophy' },
+        { placement: 2, prize_type: 'cash', amount: 5000, currency_code: 'USD' },
+        { placement: 2, prize_type: 'silver', description: 'Silver medal' },
+        { placement: null, prize_type: 'gift', description: 'Padel racket' },
+      ],
+    }) as any, 1);
+    expect(repo.replacePrizes).toHaveBeenCalledTimes(1);
+    const [, prizes] = repo.replacePrizes.mock.calls[0];
+    expect(prizes).toHaveLength(6);
+    expect(prizes.filter((p: any) => p.placement === 1)).toHaveLength(3); // multiple prizes per placement
+    expect(prizes.filter((p: any) => p.prize_type === 'cash')).toHaveLength(2);
+  });
+
+  it('3. cash prize validation — rejects a cash prize without an amount', async () => {
+    await expect(svc.create(prizesPayload({
+      prizes: [{ placement: 1, prize_type: 'cash', currency_code: 'USD' }],
+    }) as any, 1)).rejects.toMatchObject({ code: ErrorCodes.TOURNAMENT_INVALID_PRIZE });
+  });
+
+  it('3b. cash prize validation — rejects a zero/negative amount', async () => {
+    await expect(svc.create(prizesPayload({
+      prizes: [{ placement: 1, prize_type: 'cash', amount: 0, currency_code: 'USD' }],
+    }) as any, 1)).rejects.toMatchObject({ code: ErrorCodes.TOURNAMENT_INVALID_PRIZE });
+  });
+
+  it('4. non-cash prize validation — amount + currency are normalised to null', async () => {
+    repo.findByCode.mockResolvedValue(null);
+    repo.create.mockResolvedValue(10);
+    repo.findById.mockResolvedValue(makeTournament({ id: 10 }));
+    await svc.create(prizesPayload({
+      prizes: [{ placement: 1, prize_type: 'gold', amount: 999, currency_code: 'EUR', description: 'Gold' }],
+    }) as any, 1);
+    const [, prizes] = repo.replacePrizes.mock.calls[0];
+    expect(prizes[0].amount).toBeNull();
+    expect(prizes[0].currency_code).toBeNull();
+    expect(prizes[0].description).toBe('Gold');
+  });
+
+  it('5. multiple prizes for same placement are preserved (ordering deterministic)', async () => {
+    repo.findByCode.mockResolvedValue(null);
+    repo.create.mockResolvedValue(10);
+    repo.findById.mockResolvedValue(makeTournament({ id: 10 }));
+    await svc.create(prizesPayload({
+      prizes: [
+        { placement: 1, prize_type: 'cash', amount: 100, currency_code: 'USD' },
+        { placement: 1, prize_type: 'trophy', description: 'Trophy' },
+      ],
+    }) as any, 1);
+    const [, prizes] = repo.replacePrizes.mock.calls[0];
+    expect(prizes[0].display_order).toBe(0);
+    expect(prizes[1].display_order).toBe(1);
+    expect(prizes.map((p: any) => p.prize_type)).toEqual(['cash', 'trophy']);
+  });
+
+  it('6. multiple placements supported (1st/2nd/3rd + special)', async () => {
+    repo.findByCode.mockResolvedValue(null);
+    repo.create.mockResolvedValue(10);
+    repo.findById.mockResolvedValue(makeTournament({ id: 10 }));
+    await svc.create(prizesPayload({
+      prizes: [
+        { placement: 1, prize_type: 'cash', amount: 100, currency_code: 'USD' },
+        { placement: 2, prize_type: 'cash', amount: 50, currency_code: 'USD' },
+        { placement: 3, prize_type: 'cash', amount: 25, currency_code: 'USD' },
+        { placement: null, prize_type: 'gift', description: 'Special' },
+      ],
+    }) as any, 1);
+    const [, prizes] = repo.replacePrizes.mock.calls[0];
+    expect(prizes.map((p: any) => p.placement)).toEqual([1, 2, 3, null]);
+  });
+
+  it('7. authoritative currency — cash prize with no currency gets the tournament currency', async () => {
+    repo.findByCode.mockResolvedValue(null);
+    repo.create.mockResolvedValue(10);
+    repo.findById.mockResolvedValue(makeTournament({ id: 10 }));
+    await svc.create(prizesPayload({
+      currency_code: 'EGP',
+      prizes: [{ placement: 1, prize_type: 'cash', amount: 10000 }],
+    }) as any, 1);
+    const [, prizes] = repo.replacePrizes.mock.calls[0];
+    expect(prizes[0].currency_code).toBe('EGP');
+  });
+
+  it('8. invalid currency rejection — cash prize currency must match tournament currency', async () => {
+    await expect(svc.create(prizesPayload({
+      currency_code: 'EGP',
+      prizes: [{ placement: 1, prize_type: 'cash', amount: 10000, currency_code: 'AED' }],
+    }) as any, 1)).rejects.toMatchObject({ code: ErrorCodes.TOURNAMENT_INVALID_PRIZE });
+  });
+
+  it('11. update prizes replaces the whole set', async () => {
+    const current = makeTournament({ id: 1, currency_code: 'USD' });
+    repo.findById.mockResolvedValue(current);
+    await svc.update(1, {
+      prizes: [
+        { placement: 1, prize_type: 'cash', amount: 1000, currency_code: 'USD' },
+        { placement: 2, prize_type: 'bronze', description: 'Bronze medal' },
+      ],
+    } as any);
+    expect(repo.replacePrizes).toHaveBeenCalledTimes(1);
+    const [, prizes] = repo.replacePrizes.mock.calls[0];
+    expect(prizes).toHaveLength(2);
+  });
+
+  it('12. update prizes — removing all prizes passes an empty array (delete-all)', async () => {
+    const current = makeTournament({ id: 1, currency_code: 'USD' });
+    repo.findById.mockResolvedValue(current);
+    await svc.update(1, { prizes: [] } as any);
+    expect(repo.replacePrizes).toHaveBeenCalledWith(1, []);
+  });
+
+  it('9. legacy prize_description fallback — detail returns prizes array + legacy text', async () => {
+    repo.findPrizesByTournament.mockResolvedValue([{ id: 1, tournament_id: 1, placement: 1, prize_type: 'cash', amount: 100, currency_code: 'USD', display_order: 0 }]);
+    const detail = await svc.getByIdDetailed(1);
+    // findByIdDetailed must have been resolved; prizes attached.
+    expect(detail.prizes).toBeDefined();
+    expect(detail.prizes).toHaveLength(1);
+  });
+
+  it('10. structured prizes take precedence — detail carries the structured array', async () => {
+    repo.findPrizesByTournament.mockResolvedValue([{ id: 1, tournament_id: 1, placement: 1, prize_type: 'trophy', description: 'Cup', display_order: 0 }]);
+    const detail = await svc.getByIdDetailed(1);
+    expect(detail.prizes[0].prize_type).toBe('trophy');
   });
 });

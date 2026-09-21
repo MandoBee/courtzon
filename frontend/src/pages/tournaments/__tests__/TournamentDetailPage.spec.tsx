@@ -25,6 +25,7 @@ const __state = vi.hoisted(() => ({
     end_date: '2026-10-05T00:00:00.000Z',
     rules: 'Single Elimination. Best of 3 sets.',
     prize_description: 'Trophy + 5000 EGP',
+    prizes: [] as any[],
   },
   matches: [
     {
@@ -180,5 +181,37 @@ describe('TournamentDetailPage — player detail authoritative contract (Group 1
 
     await screen.findByText('Padel Open');
     expect(screen.getByText('Single Elimination. Best of 3 sets.')).toBeTruthy();
+  });
+
+  it('legacy prize_description fallback — rendered when no structured prizes exist', async () => {
+    __state.tournament = { ...__state.tournament, prizes: [] };
+    mockDetailApi();
+
+    renderPage();
+    await screen.findByText('Padel Open');
+    expect(screen.getAllByText(/Trophy \+ 5000 EGP/).length).toBeGreaterThan(0);
+  });
+
+  it('structured prizes take precedence over legacy prize_description', async () => {
+    __state.tournament = {
+      ...__state.tournament,
+      prize_description: 'Trophy + 5000 EGP',
+      prizes: [
+        { id: 1, placement: 1, prize_type: 'cash', amount: 10000, currency_code: 'EGP', display_order: 0 },
+        { id: 2, placement: 1, prize_type: 'gold', description: 'Gold medal', display_order: 1 },
+        { id: 3, placement: null, prize_type: 'gift', description: 'Padel racket', display_order: 2 },
+      ],
+    };
+    mockDetailApi();
+
+    renderPage();
+    await screen.findByText('Padel Open');
+    // Structured display is primary.
+    expect(screen.getAllByText(/1st Place/).length).toBeGreaterThan(0);
+    expect(screen.getByText('Cash')).toBeTruthy();
+    expect(screen.getByText('Gold Medal')).toBeTruthy();
+    expect(screen.getByText('Gift')).toBeTruthy();
+    // The legacy free-text is NOT shown as a duplicate when structured prizes exist.
+    expect(screen.queryByText(/Trophy \+ 5000 EGP/)).toBeNull();
   });
 });

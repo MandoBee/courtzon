@@ -8,6 +8,7 @@ import { getErrorMessage } from '../../../utils/errors';
 import { SkeletonRow } from '../../../components/ui/Skeleton';
 import { Modal } from '../../../components/ui/Modal';
 import { GeneratedRules } from '../../../components/tournaments/GeneratedRules';
+import { PrizeList } from '../../../components/tournaments/PrizeList';
 import { tournamentApi, orgTournamentApi } from '../../../services/tournament';
 
 const STATUS_COLORS: Record<string, string> = {
@@ -215,6 +216,9 @@ export default function TournamentDetailPage({ mode = 'admin', orgId }: Props) {
                 title={t('tournaments.details.rules')}
                 empty={<p className="text-sm text-[var(--color-text-muted)]">{t('tournaments.details.rules_empty')}</p>}
               />
+            </div>
+            <div className="md:col-span-2">
+              <PrizeList prizes={tournament?.prizes} legacyDescription={tournament?.prize_description} />
             </div>
           </div>
         )}

@@ -1,6 +1,6 @@
 import { getPool } from '../../../../database/mysql.js';
 import { buildPagination, paginationClause } from '../../../../shared/utils/pagination.js';
-import type { Tournament, TournamentRegistration, TournamentMatch, TournamentMatchResult, TournamentGroup, TournamentGroupMember, TournamentStandingRow, TournamentStage } from '../../domain/tournament-aggregate.js';
+import type { Tournament, TournamentRegistration, TournamentMatch, TournamentMatchResult, TournamentGroup, TournamentGroupMember, TournamentStandingRow, TournamentStage, TournamentPrize, TournamentPrizeInput } from '../../domain/tournament-aggregate.js';
 import type { PoolConnection } from 'mysql2/promise';
 
 type RowData = import('mysql2').RowDataPacket[];
@@ -338,6 +338,42 @@ export class TournamentRepository {
   async getRegistrationById(id: number): Promise<TournamentRegistration | null> {
     const [rows] = await getPool().query<RowData>('SELECT * FROM tournament_registrations WHERE id = ?', [id]);
     return rows.length ? (rows[0] as TournamentRegistration) : null;
+  }
+
+  // ── Prizes (tournament_prizes — Group 2) ──
+
+  async findPrizesByTournament(tournamentId: number): Promise<TournamentPrize[]> {
+    const [rows] = await getPool().query<RowData>(
+      'SELECT * FROM tournament_prizes WHERE tournament_id = ? ORDER BY display_order ASC, id ASC',
+      [tournamentId],
+    );
+    return rows as TournamentPrize[];
+  }
+
+  /**
+   * Replace the full prize set of a Tournament in one transaction. This is the
+   * authoritative write path for structured prizes (delete-all + insert), so the
+   * stored set always matches the submitted order exactly.
+   */
+  async replacePrizes(tournamentId: number, prizes: TournamentPrizeInput[], conn?: PoolConnection): Promise<void> {
+    const db = conn ?? getPool();
+    await db.query('DELETE FROM tournament_prizes WHERE tournament_id = ?', [tournamentId]);
+    for (let i = 0; i < prizes.length; i++) {
+      const p = prizes[i];
+      await db.query(
+        `INSERT INTO tournament_prizes (tournament_id, placement, prize_type, description, amount, currency_code, display_order)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [
+          tournamentId,
+          p.placement ?? null,
+          p.prize_type,
+          p.description ?? null,
+          p.amount ?? null,
+          p.currency_code ?? null,
+          p.display_order ?? i,
+        ],
+      );
+    }
   }
 
   // ── Matches ──

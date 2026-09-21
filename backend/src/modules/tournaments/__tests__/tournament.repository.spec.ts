@@ -190,3 +190,43 @@ describe('TournamentRepository.getStandings — player name enrichment', () => {
     expect(sql).toContain('ORDER BY s.rank_position ASC');
   });
 });
+
+describe('TournamentRepository — structured prizes (Group 2)', () => {
+  it('findPrizesByTournament orders by display_order then id', async () => {
+    pool.query.mockResolvedValue([[{ id: 1, tournament_id: 4, placement: 1, prize_type: 'cash', amount: 100, currency_code: 'USD', display_order: 0 }]]);
+    const rows = await repo.findPrizesByTournament(4);
+    const sql = pool.query.mock.calls[0][0] as string;
+    expect(sql).toContain('FROM tournament_prizes');
+    expect(sql).toContain('WHERE tournament_id = ?');
+    expect(sql).toContain('ORDER BY display_order ASC, id ASC');
+    expect(rows).toHaveLength(1);
+  });
+
+  it('replacePrizes deletes then inserts every prize in order', async () => {
+    pool.query.mockResolvedValue([{ affectedRows: 0 }]);
+    await repo.replacePrizes(4, [
+      { placement: 1, prize_type: 'cash', amount: 1000, currency_code: 'USD', display_order: 0 },
+      { placement: 2, prize_type: 'silver', description: 'Silver', display_order: 1 },
+    ]);
+    expect(pool.query.mock.calls[0][0]).toContain('DELETE FROM tournament_prizes WHERE tournament_id = ?');
+    expect(pool.query).toHaveBeenCalledTimes(3); // 1 delete + 2 inserts
+    const insertSql = pool.query.mock.calls[1][0] as string;
+    expect(insertSql).toContain('INSERT INTO tournament_prizes');
+    const insertParams = pool.query.mock.calls[1][1] as any[];
+    expect(insertParams[0]).toBe(4);
+    expect(insertParams[2]).toBe('cash');
+    expect(insertParams[4]).toBe(1000);
+    expect(insertParams[5]).toBe('USD');
+  });
+
+  it('replacePrizes defaults display_order to array index when omitted', async () => {
+    pool.query.mockResolvedValue([{ affectedRows: 0 }]);
+    await repo.replacePrizes(4, [
+      { placement: 1, prize_type: 'trophy' },
+      { placement: null, prize_type: 'gift', description: 'Special' },
+    ]);
+    expect(pool.query).toHaveBeenCalledTimes(3);
+    expect((pool.query.mock.calls[1][1] as any[])[6]).toBe(0);
+    expect((pool.query.mock.calls[2][1] as any[])[6]).toBe(1);
+  });
+});

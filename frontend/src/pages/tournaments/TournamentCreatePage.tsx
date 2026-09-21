@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { z } from 'zod';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -10,6 +10,7 @@ import { orgTournamentApi, bracketTypeApi } from '../../services/tournament';
 import { Button, Input, Card } from '../../components/ui';
 import { Can } from '../../permissions/Can';
 import { useToast } from '../../components/ui/Toast';
+import { PrizeEditor, type PrizeEditorRow } from '../../components/tournaments/PrizeEditor';
 
 type TournamentForm = {
   name: string;
@@ -170,7 +171,21 @@ export default function TournamentCreatePage({ mode = 'admin', orgId }: Props) {
     },
   });
 
+  // Group 2 — structured prizes (multi-row editor).
+  const [prizes, setPrizes] = useState<PrizeEditorRow[]>([]);
+
   const onSubmit = (data: TournamentForm) => {
+    // Group 2 — only send prizes that are meaningfully configured (skip rows
+    // with no type/description/amount). The backend re-validates everything.
+    const structuredPrizes = prizes
+      .filter((p) => p.prize_type && (p.description?.trim() || (p.prize_type === 'cash' && p.amount != null)))
+      .map((p) => ({
+        placement: p.placement ?? null,
+        prize_type: p.prize_type,
+        description: p.description?.trim() || undefined,
+        amount: p.prize_type === 'cash' ? p.amount ?? undefined : undefined,
+        currency_code: p.prize_type === 'cash' ? undefined : undefined,
+      }));
     createMutation.mutate({
       name: data.name,
       description: data.description || undefined,
@@ -192,6 +207,7 @@ export default function TournamentCreatePage({ mode = 'admin', orgId }: Props) {
       registration_opens: data.registrationOpens || undefined,
       registration_closes: data.registrationCloses || undefined,
       prize_description: data.prizeDescription || undefined,
+      prizes: structuredPrizes.length ? structuredPrizes : undefined,
       organisation_id: isOrg && orgId ? Number(orgId) : undefined,
       // NOTE: `rules` is intentionally NOT sent — the backend derives the
       // Tournament Rules snapshot server-side from the selected Bracket Type +
@@ -327,6 +343,16 @@ export default function TournamentCreatePage({ mode = 'admin', orgId }: Props) {
 
           <Can permission="tournaments.create.prize">
             <Input label={t('tournaments.create.prize')} {...register('prizeDescription')} />
+          </Can>
+
+          <Can permission="tournaments.create.prize">
+            <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] p-4 bg-[var(--color-bg)]/30">
+              <PrizeEditor
+                currencyCode={isOrg ? orgCurrency : 'AED'}
+                value={prizes}
+                onChange={setPrizes}
+              />
+            </div>
           </Can>
 
           <Can permission="tournaments.create.rules">

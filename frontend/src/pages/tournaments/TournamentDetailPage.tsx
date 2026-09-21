@@ -6,6 +6,7 @@ import { Skeleton, SkeletonRow } from '../../components/ui/Skeleton';
 import { useToast } from '../../components/ui/Toast';
 import { Can } from '../../permissions/Can';
 import { GeneratedRules } from '../../components/tournaments/GeneratedRules';
+import { PrizeList } from '../../components/tournaments/PrizeList';
 import { formatISODate } from '../../utils/formatDate';
 import { formatPrice } from '../../utils/currency';
 import { useAuthStore } from '../../store/auth.store';
@@ -93,7 +94,7 @@ export default function TournamentDetailPage() {
           <div><span className="text-[var(--color-text-muted)]">Fee:</span> <span className="font-medium">{formatPrice(Number(tournament.entry_fee ?? 0), tournament.currency_code)}</span></div>
           <div><span className="text-[var(--color-text-muted)]">Registration deadline:</span> <span className="font-medium">{tournament.registration_deadline ? formatISODate(tournament.registration_deadline) : '—'}</span></div>
         </div>
-        {tournament.prize_description && <p className="text-sm font-medium text-yellow-600">🏆 {tournament.prize_description}</p>}
+        <PrizeList prizes={tournament.prizes} legacyDescription={tournament.prize_description} />
         {tournament.rules && (
           <GeneratedRules rules={tournament.rules} title="Tournament Rules" />
         )}
@@ -127,7 +128,7 @@ export default function TournamentDetailPage() {
         <h2 className="text-sm font-semibold text-[var(--color-text)] mb-3">ELO Ranking & Awards</h2>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
           <div><p className="text-xs text-[var(--color-text-muted)]">Top ELO</p><p className="text-lg font-bold text-[var(--color-text)]">—</p><p className="text-[10px] text-[var(--color-text-muted)]">After tournament</p></div>
-          <div><p className="text-xs text-[var(--color-text-muted)]">Prize Pool</p><p className="text-lg font-bold text-yellow-600">{tournament.prize_description || '—'}</p></div>
+          <div><p className="text-xs text-[var(--color-text-muted)]">Prize Pool</p><p className="text-lg font-bold text-yellow-600">{(Array.isArray(tournament.prizes) && tournament.prizes.length ? `${tournament.prizes.length} prize${tournament.prizes.length > 1 ? 's' : ''}` : tournament.prize_description) || '—'}</p></div>
           <div><p className="text-xs text-[var(--color-text-muted)]">Matches Played</p><p className="text-lg font-bold">{matchList.filter((m: any) => m.status === 'completed').length}</p></div>
           <div><p className="text-xs text-[var(--color-text-muted)]">Registered Players</p><p className="text-lg font-bold">{participantList.length}</p></div>
         </div>
