@@ -492,3 +492,58 @@ describe('F-19 — marketplace-manager settlement authority (finance-only payout
     }
   });
 });
+
+describe('Group 1B — Tournament navigation key invariants (.ts/.mjs parity)', () => {
+  const adminWorkbenchKeys = [
+    'sidebar.tournament',
+    'sidebar.tournament-dashboard',
+    'sidebar.tournament-list',
+    'sidebar.tournament-matches',
+    'tournament.bracket-types.view',
+  ];
+  const orgPortalKeys = ['org.sidebar.tournaments', 'org.tournaments.view'];
+
+  it('super_admin receives every admin tournament workbench + org portal key', () => {
+    for (const key of [...adminWorkbenchKeys, ...orgPortalKeys]) {
+      expect(permissionMatchesTemplate('super_admin', key)).toBe(true);
+      expect(mjsMatch('super_admin', key)).toBe(true);
+    }
+  });
+
+  it('org-admin manages tournaments through the ORG PORTAL (org.sidebar.tournaments) and stays OUT of the platform admin workbench', () => {
+    for (const key of orgPortalKeys) {
+      expect(permissionMatchesTemplate('org-admin', key)).toBe(true);
+      expect(mjsMatch('org-admin', key)).toBe(true);
+    }
+    for (const key of adminWorkbenchKeys) {
+      expect(permissionMatchesTemplate('org-admin', key)).toBe(false);
+      expect(mjsMatch('org-admin', key)).toBe(false);
+    }
+  });
+
+  it('shop-admin receives NO tournament navigation or portal key (explicit seller deny)', () => {
+    for (const key of [...adminWorkbenchKeys, ...orgPortalKeys]) {
+      expect(permissionMatchesTemplate('shop-admin', key)).toBe(false);
+      expect(mjsMatch('shop-admin', key)).toBe(false);
+    }
+  });
+
+  it('.mjs and .ts agree on every tournament navigation key for ALL 26 templates', () => {
+    for (const slug of TEMPLATE_SLUGS) {
+      for (const key of [...adminWorkbenchKeys, ...orgPortalKeys]) {
+        expect(permissionMatchesTemplate(slug, key)).toBe(mjsMatch(slug, key));
+      }
+    }
+  });
+
+  it('master-admin reaches tournament management via the org portal (org-scoped), not the super-admin workbench', () => {
+    for (const key of orgPortalKeys) {
+      expect(permissionMatchesTemplate('master-admin', key)).toBe(true);
+      expect(mjsMatch('master-admin', key)).toBe(true);
+    }
+    for (const key of adminWorkbenchKeys) {
+      expect(permissionMatchesTemplate('master-admin', key)).toBe(false);
+      expect(mjsMatch('master-admin', key)).toBe(false);
+    }
+  });
+});

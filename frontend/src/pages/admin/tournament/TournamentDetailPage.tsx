@@ -22,11 +22,10 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 const REG_STATUS_COLORS: Record<string, string> = {
-  pending: 'bg-yellow-100 text-yellow-700',
+  registered: 'bg-yellow-100 text-yellow-700',
   confirmed: 'bg-green-100 text-green-700',
-  waiting: 'bg-blue-100 text-blue-700',
-  cancelled: 'bg-red-100 text-red-700',
-  completed: 'bg-teal-100 text-teal-700',
+  withdrawn: 'bg-red-100 text-red-700',
+  disqualified: 'bg-gray-100 text-gray-700',
 };
 
 const MATCH_STATUS_COLORS: Record<string, string> = {
@@ -281,8 +280,8 @@ export default function TournamentDetailPage({ mode = 'admin', orgId }: Props) {
                       <tr key={m.id} className="border-b last:border-0 hover:bg-[var(--color-bg)]/30">
                         <td className="px-4 py-3 text-xs">{m.round ?? '-'}</td>
                         <td className="px-4 py-3 font-mono text-xs">{m.match_number ?? m.match_no ?? '-'}</td>
-                        <td className="px-4 py-3">{m.player1_name || m.player1?.name || '-'}</td>
-                        <td className="px-4 py-3">{m.player2_name || m.player2?.name || '-'}</td>
+                        <td className="px-4 py-3">{m.player1_name || m.player1?.name || (m.player1_id ? `Player #${m.player1_id}` : '-')}</td>
+                        <td className="px-4 py-3">{m.player2_name || m.player2?.name || (m.player2_id ? `Player #${m.player2_id}` : '-')}</td>
                         <td className="px-4 py-3 text-xs">{m.court_name || m.resource_name || '-'}</td>
                         <td className="px-4 py-3 text-xs">{m.referee_name || '-'}</td>
                         <td className="px-4 py-3">
@@ -290,7 +289,7 @@ export default function TournamentDetailPage({ mode = 'admin', orgId }: Props) {
                             {t(`tournaments.match_status.${m.status}`)}
                           </span>
                         </td>
-                        <td className="px-4 py-3 text-xs font-mono">{m.score || '-'}</td>
+                        <td className="px-4 py-3 text-xs font-mono">{m.score_summary || m.score || '-'}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -318,11 +317,11 @@ export default function TournamentDetailPage({ mode = 'admin', orgId }: Props) {
                   <tbody>
                     {(standings ?? []).map((s: any, i: number) => (
                       <tr key={s.id || i} className="border-b last:border-0 hover:bg-[var(--color-bg)]/30">
-                        <td className="px-4 py-3 text-xs">{i + 1}</td>
-                        <td className="px-4 py-3 font-medium">{s.player_name || s.name}</td>
-                        <td className="px-4 py-3 text-center text-xs">{s.played ?? s.p ?? '-'}</td>
-                        <td className="px-4 py-3 text-center text-xs">{s.won ?? s.w ?? '-'}</td>
-                        <td className="px-4 py-3 text-center text-xs">{s.lost ?? s.l ?? '-'}</td>
+                        <td className="px-4 py-3 text-xs">{s.rank_position ?? i + 1}</td>
+                        <td className="px-4 py-3 font-medium">{s.player_name || s.name || (s.registration_id ? `Player #${s.registration_id}` : '-')}</td>
+                        <td className="px-4 py-3 text-center text-xs">{s.played ?? (Number(s.wins ?? 0) + Number(s.losses ?? 0) + Number(s.draws ?? 0))}</td>
+                        <td className="px-4 py-3 text-center text-xs">{s.won ?? s.wins ?? '-'}</td>
+                        <td className="px-4 py-3 text-center text-xs">{s.lost ?? s.losses ?? '-'}</td>
                         <td className="px-4 py-3 text-center text-xs font-bold">{s.points ?? s.pts ?? '-'}</td>
                       </tr>
                     ))}
@@ -365,7 +364,7 @@ export default function TournamentDetailPage({ mode = 'admin', orgId }: Props) {
                         </span>
                       </td>
                       <td className="px-4 py-3 text-right">
-                        {r.status === 'pending' && (
+                        {r.status === 'registered' && (
                           <Can permission={perms.register}>
                             <button onClick={() => confirmRegMutation.mutate(r.id)}
                               className="text-[10px] px-2 py-1 rounded border border-green-200 text-green-600 hover:bg-green-50 mr-1">
@@ -373,7 +372,7 @@ export default function TournamentDetailPage({ mode = 'admin', orgId }: Props) {
                             </button>
                           </Can>
                         )}
-                        {r.status !== 'cancelled' && (
+                        {['registered', 'confirmed'].includes(r.status) && (
                           <Can permission={perms.register}>
                             <button onClick={() => { if (window.confirm(t('tournaments.confirm_cancel_reg'))) cancelRegMutation.mutate(r.id); }}
                               className="text-[10px] px-2 py-1 rounded border border-red-200 text-red-600 hover:bg-red-50">

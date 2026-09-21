@@ -137,4 +137,57 @@ describe('TournamentDetailPage — management detail contract (UAT crash regress
     fireEvent.click(screen.getByText('tournaments.tab.groups'));
     expect(await screen.findByText('Group B')).toBeTruthy();
   });
+
+  it('registration table uses the authoritative status enum (registered/confirmed/withdrawn/disqualified)', async () => {
+    __state.adminApi.getRegistrations.mockResolvedValue([
+      { id: 1, player_id: 10, player_name: 'Ali', status: 'registered' },
+      { id: 2, player_id: 11, player_name: 'Sara', status: 'confirmed' },
+      { id: 3, player_id: 12, player_name: 'Omar', status: 'withdrawn' },
+      { id: 4, player_id: 13, player_name: 'Lina', status: 'disqualified' },
+    ]);
+    renderPage('/admin/tournament/list/1', '/admin/tournament/list/:id', <TournamentDetailPage mode="admin" />);
+
+    expect(await screen.findByText('Ali')).toBeTruthy();
+    expect(screen.getByText('tournaments.reg_status.registered')).toBeTruthy();
+    expect(screen.getByText('tournaments.reg_status.confirmed')).toBeTruthy();
+    expect(screen.getByText('tournaments.reg_status.withdrawn')).toBeTruthy();
+    expect(screen.getByText('tournaments.reg_status.disqualified')).toBeTruthy();
+
+    // Confirm button only on 'registered'; cancel only on registered/confirmed.
+    const confirmButtons = screen.getAllByText('tournaments.confirm');
+    expect(confirmButtons).toHaveLength(1);
+    const cancelButtons = screen.getAllByText('tournaments.cancel');
+    expect(cancelButtons).toHaveLength(2);
+  });
+
+  it('matches table renders player1_name / resource_name / referee_name / score_summary', async () => {
+    __state.adminApi.getMatches.mockResolvedValue([
+      {
+        id: 1, round: 1, match_number: 1, status: 'completed',
+        player1_name: 'Ali', player2_name: 'Sara', resource_name: 'Court 1', referee_name: 'Ref A',
+        score_summary: '6-4 6-3',
+      },
+    ]);
+    renderPage('/admin/tournament/list/1', '/admin/tournament/list/:id', <TournamentDetailPage mode="admin" />);
+
+    await screen.findByText('Padel Test Tournament');
+    fireEvent.click(screen.getByText('tournaments.tab.matches'));
+    expect(await screen.findByText('Ali')).toBeTruthy();
+    expect(screen.getByText('Sara')).toBeTruthy();
+    expect(screen.getByText('Court 1')).toBeTruthy();
+    expect(screen.getByText('Ref A')).toBeTruthy();
+    expect(screen.getByText('6-4 6-3')).toBeTruthy();
+  });
+
+  it('standings table renders player_name / wins / losses / points', async () => {
+    __state.adminApi.getStandings.mockResolvedValue([
+      { id: 1, rank_position: 1, registration_id: 10, player_name: 'Ali', wins: 1, losses: 0, draws: 0, points: 3 },
+    ]);
+    renderPage('/admin/tournament/list/1', '/admin/tournament/list/:id', <TournamentDetailPage mode="admin" />);
+
+    await screen.findByText('Padel Test Tournament');
+    fireEvent.click(screen.getByText('tournaments.tab.standings'));
+    expect(await screen.findByText('Ali')).toBeTruthy();
+    expect(screen.getByText('3')).toBeTruthy(); // points
+  });
 });

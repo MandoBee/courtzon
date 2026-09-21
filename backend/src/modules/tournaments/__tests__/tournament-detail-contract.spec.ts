@@ -3,6 +3,7 @@ import * as ctrl from '../presentation/tournament.controller.js';
 
 const service = vi.hoisted(() => ({
   getByIdDetailed: vi.fn(),
+  list: vi.fn(),
   getGroups: vi.fn(),
   getMatchesDetailed: vi.fn(),
   getStandings: vi.fn(),
@@ -40,6 +41,19 @@ describe('Tournament admin detail contract (UAT crash regression)', () => {
     expect(reply.sent.max_players).toBe(16);
   });
 
+  it('listTournamentsHandler returns the { data, total, page, limit } envelope', async () => {
+    service.list.mockResolvedValue({
+      data: [{ id: 1, name: 'Cup', sport_name: 'Padel', bracket_type_name: 'Single Elimination' }],
+      total: 1, page: 1, limit: 20,
+    });
+    const reply = res();
+    await ctrl.listTournamentsHandler(req({ query: { page: 1, limit: 20 } }), reply);
+    expect(reply.sent.data).toHaveLength(1);
+    expect(reply.sent.data[0].sport_name).toBe('Padel');
+    expect(reply.sent.data[0].bracket_type_name).toBe('Single Elimination');
+    expect(reply.sent.total).toBe(1);
+  });
+
   it('getGroupsHandler returns a RAW array (not { data })', async () => {
     service.getGroups.mockResolvedValue([{ id: 1, name: 'A' }]);
     const reply = res();
@@ -49,11 +63,14 @@ describe('Tournament admin detail contract (UAT crash regression)', () => {
   });
 
   it('getAdminMatchesHandler returns a RAW array (not { data })', async () => {
-    service.getMatchesDetailed.mockResolvedValue([{ id: 1, round: 1 }]);
+    service.getMatchesDetailed.mockResolvedValue([{ id: 1, round: 1, player1_name: 'Ali', resource_name: 'Court 1', referee_name: 'Ref' }]);
     const reply = res();
     await ctrl.getAdminMatchesHandler(req({ params: { id: '1' } }), reply);
     expect(Array.isArray(reply.sent)).toBe(true);
     expect(reply.sent).toHaveLength(1);
+    expect(reply.sent[0].player1_name).toBe('Ali');
+    expect(reply.sent[0].resource_name).toBe('Court 1');
+    expect(reply.sent[0].referee_name).toBe('Ref');
   });
 
   it('getAdminStandingsHandler returns a RAW array (not { data })', async () => {

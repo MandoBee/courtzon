@@ -946,7 +946,7 @@ export async function getOrgPaymentSettingsHandler(request: FastifyRequest, repl
     [Number(orgId)],
   );
   const [paymentMethods] = await pool.query<RowData>(
-    `SELECT pm.* FROM payment_methods pm WHERE pm.status = 'active' ORDER BY pm.sort_order`,
+    `SELECT pm.* FROM payment_methods pm WHERE pm.is_active = 1 ORDER BY pm.sort_order`,
   );
   return reply.send({ branches, paymentMethods });
 }

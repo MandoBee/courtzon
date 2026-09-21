@@ -6,7 +6,14 @@ import { formatISODate } from '../../utils/formatDate';
 import { Card, Badge, Spinner } from '../../components/ui';
 
 const statusVariant: Record<string, 'default' | 'success' | 'warning' | 'danger' | 'info'> = {
-  draft: 'default', open: 'success', in_progress: 'info', completed: 'warning', cancelled: 'danger',
+  draft: 'default',
+  published: 'info',
+  registration_open: 'success',
+  registration_closed: 'warning',
+  running: 'info',
+  completed: 'warning',
+  cancelled: 'danger',
+  archived: 'default',
 };
 
 export default function TournamentListPage() {

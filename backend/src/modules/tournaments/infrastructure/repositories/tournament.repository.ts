@@ -72,7 +72,18 @@ export class TournamentRepository {
     const total = countRows[0]?.total ?? 0;
 
     const [rows] = await pool.query<RowData>(
-      `SELECT t.* FROM tournaments t WHERE ${where.join(' AND ')} ORDER BY t.created_at DESC${paginationClause(pag)}`,
+      `SELECT t.*,
+              s.name AS sport_name,
+              bt.name AS bracket_type_name,
+              o.name AS organisation_name,
+              t.max_participants AS max_players,
+              t.tournament_type AS type,
+              t.registration_closes AS registration_deadline
+       FROM tournaments t
+       LEFT JOIN sports s ON s.id = t.sport_id
+       LEFT JOIN tournament_bracket_types bt ON bt.id = t.bracket_type_id
+       LEFT JOIN organisations o ON o.id = t.organisation_id
+       WHERE ${where.join(' AND ')} ORDER BY t.created_at DESC${paginationClause(pag)}`,
       params,
     );
 
@@ -104,7 +115,18 @@ export class TournamentRepository {
     const total = countRows[0]?.total ?? 0;
 
     const [rows] = await pool.query<RowData>(
-      `SELECT t.* FROM tournaments t WHERE ${where.join(' AND ')} ORDER BY t.created_at DESC${paginationClause(pag)}`,
+      `SELECT t.*,
+              s.name AS sport_name,
+              bt.name AS bracket_type_name,
+              o.name AS organisation_name,
+              t.max_participants AS max_players,
+              t.tournament_type AS type,
+              t.registration_closes AS registration_deadline
+       FROM tournaments t
+       LEFT JOIN sports s ON s.id = t.sport_id
+       LEFT JOIN tournament_bracket_types bt ON bt.id = t.bracket_type_id
+       LEFT JOIN organisations o ON o.id = t.organisation_id
+       WHERE ${where.join(' AND ')} ORDER BY t.created_at DESC${paginationClause(pag)}`,
       params,
     );
 
@@ -153,12 +175,14 @@ export class TournamentRepository {
     const [rows] = await getPool().query<RowData>(
       `SELECT t.*,
               s.name AS sport_name,
+              bt.name AS bracket_type_name,
               o.name AS organisation_name,
               t.max_participants AS max_players,
               t.tournament_type AS type,
               t.registration_closes AS registration_deadline
        FROM tournaments t
        LEFT JOIN sports s ON s.id = t.sport_id
+       LEFT JOIN tournament_bracket_types bt ON bt.id = t.bracket_type_id
        LEFT JOIN organisations o ON o.id = t.organisation_id
        WHERE t.id = ?`,
       [id],
@@ -239,7 +263,10 @@ export class TournamentRepository {
 
   async findRegistrationsByTournament(tournamentId: number): Promise<TournamentRegistration[]> {
     const [rows] = await getPool().query<RowData>(
-      'SELECT * FROM tournament_registrations WHERE tournament_id = ? ORDER BY seed',
+      `SELECT r.*, u.full_name AS player_name
+       FROM tournament_registrations r
+       LEFT JOIN users u ON u.id = r.player_id
+       WHERE r.tournament_id = ? ORDER BY r.seed_rank`,
       [tournamentId],
     );
     return rows as TournamentRegistration[];
@@ -247,7 +274,10 @@ export class TournamentRepository {
 
   async findRegistrationsByPlayer(userId: number): Promise<TournamentRegistration[]> {
     const [rows] = await getPool().query<RowData>(
-      'SELECT * FROM tournament_registrations WHERE user_id = ? ORDER BY registered_at DESC',
+      `SELECT r.*, u.full_name AS player_name
+       FROM tournament_registrations r
+       LEFT JOIN users u ON u.id = r.player_id
+       WHERE r.player_id = ? ORDER BY r.registered_at DESC`,
       [userId],
     );
     return rows as TournamentRegistration[];
@@ -257,8 +287,8 @@ export class TournamentRepository {
     const sql = `INSERT INTO tournament_registrations (tournament_id, player_id, team_id, seed_rank, status, payment_status, waiting_order, registered_at)
                  VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`;
     const [result] = await getPool().query<ResultSet>(sql, [
-      data.tournament_id, data.user_id ?? null, data.team_id ?? null,
-      data.seed ?? null, data.status ?? 'pending', data.payment_status ?? 'unpaid',
+      data.tournament_id, data.player_id ?? data.user_id ?? null, data.team_id ?? null,
+      data.seed ?? null, data.status ?? 'registered', data.payment_status ?? 'unpaid',
       data.waiting_order ?? null,
     ]);
     return (result as any).insertId;
@@ -281,7 +311,7 @@ export class TournamentRepository {
   async updateRegistrationStatus(id: number, status: string, waitingOrder?: number): Promise<void> {
     const extras: string[] = ['status = ?'];
     const params: any[] = [status];
-    if (status === 'confirmed') { extras.push('confirmed_at = NOW()'); }
+    if (status === 'withdrawn' || status === 'disqualified') { extras.push('cancelled_at = NOW()'); }
     if (waitingOrder !== undefined) { extras.push('waiting_order = ?'); params.push(waitingOrder); }
     params.push(id);
     await getPool().query(
@@ -352,16 +382,29 @@ export class TournamentRepository {
     shared_status?: string | null;
     format_snapshot?: unknown;
     rule_snapshot?: unknown;
+    player1_name?: string | null;
+    player2_name?: string | null;
+    resource_name?: string | null;
+    referee_name?: string | null;
   }>> {
     const [rows] = await getPool().query<RowData>(
-      `SELECT tm.*, m.status AS shared_status, m.format_snapshot, m.rule_snapshot
+      `SELECT tm.*, m.status AS shared_status, m.format_snapshot, m.rule_snapshot,
+              p1.full_name AS player1_name,
+              p2.full_name AS player2_name,
+              r.name AS resource_name,
+              refu.full_name AS referee_name
        FROM tournament_matches tm
        LEFT JOIN matches m ON m.id = tm.match_id
+       LEFT JOIN users p1 ON p1.id = tm.player1_id
+       LEFT JOIN users p2 ON p2.id = tm.player2_id
+       LEFT JOIN resources r ON r.id = tm.resource_id
+       LEFT JOIN referees ref ON ref.id = tm.referee_id
+       LEFT JOIN users refu ON refu.id = ref.user_id
        WHERE tm.tournament_id = ?
        ORDER BY tm.round, tm.bracket_position`,
       [tournamentId],
     );
-    return rows as Array<TournamentMatch & { shared_status?: string | null; format_snapshot?: unknown; rule_snapshot?: unknown }>;
+    return rows as Array<TournamentMatch & { shared_status?: string | null; format_snapshot?: unknown; rule_snapshot?: unknown; player1_name?: string | null; player2_name?: string | null; resource_name?: string | null; referee_name?: string | null }>;
   }
 
   async findMatchesByGroup(groupId: number): Promise<TournamentMatch[]> {
@@ -570,7 +613,11 @@ export class TournamentRepository {
     const params: any[] = [tournamentId];
     if (groupId !== undefined) { where.push('s.group_id = ?'); params.push(groupId); }
     const [rows] = await getPool().query<RowData>(
-      `SELECT s.* FROM tournament_standings s WHERE ${where.join(' AND ')} ORDER BY s.rank_position ASC`,
+      `SELECT s.*, u.full_name AS player_name
+       FROM tournament_standings s
+       LEFT JOIN tournament_registrations r ON r.id = s.registration_id
+       LEFT JOIN users u ON u.id = r.player_id
+       WHERE ${where.join(' AND ')} ORDER BY s.rank_position ASC`,
       params,
     );
     return rows as TournamentStandingRow[];

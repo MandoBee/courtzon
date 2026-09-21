@@ -97,4 +97,96 @@ describe('TournamentRepository.findByIdDetailed — management detail shape', ()
     const row = await repo.findByIdDetailed(2);
     expect(row.organisation_name).toBe('Padel Edge');
   });
+
+  it('returns bracket_type_name from the authoritative bracket type relationship', async () => {
+    pool.query.mockResolvedValue([[{
+      id: 3, name: 'Single Elim Cup', bracket_type_id: 2, max_participants: 8,
+      tournament_type: 'community', sport_name: null, organisation_name: null,
+      bracket_type_name: 'Single Elimination', max_players: 8, type: 'community',
+      registration_deadline: null,
+    }]]);
+
+    const row = await repo.findByIdDetailed(3);
+    expect(row.bracket_type_name).toBe('Single Elimination');
+  });
+});
+
+describe('TournamentRepository.list — player list contract (sport_name + bracket_type_name)', () => {
+  it('SELECT includes sport_name and bracket_type_name via LEFT JOINs', async () => {
+    pool.query.mockResolvedValue([[], [{ total: 0 }]]);
+    await repo.list({ page: 1, limit: 10 });
+    const sql = pool.query.mock.calls[1][0] as string;
+    expect(sql).toContain('s.name AS sport_name');
+    expect(sql).toContain('bt.name AS bracket_type_name');
+    expect(sql).toContain('LEFT JOIN sports s ON s.id = t.sport_id');
+    expect(sql).toContain('LEFT JOIN tournament_bracket_types bt ON bt.id = t.bracket_type_id');
+    expect(sql).toContain('o.name AS organisation_name');
+    expect(sql).toContain('t.max_participants AS max_players');
+  });
+
+  it('listForOrg includes the same display aliases with tenant isolation preserved', async () => {
+    pool.query.mockResolvedValue([[], [{ total: 0 }]]);
+    await repo.listForOrg(1001, { page: 1, limit: 10 });
+    const countSql = pool.query.mock.calls[0][0] as string;
+    const listSql = pool.query.mock.calls[1][0] as string;
+    expect(countSql).toContain('t.organisation_id = ?');
+    expect(listSql).toContain('s.name AS sport_name');
+    expect(listSql).toContain('bt.name AS bracket_type_name');
+    expect(listSql).toContain('t.organisation_id = ?');
+  });
+});
+
+describe('TournamentRepository registrations — authoritative column usage', () => {
+  it('findRegistrationsByTournament orders by seed_rank (not the non-existent seed column)', async () => {
+    pool.query.mockResolvedValue([[{ id: 1, player_id: 5, seed_rank: 2 }]]);
+    await repo.findRegistrationsByTournament(7);
+    const sql = pool.query.mock.calls[0][0] as string;
+    expect(sql).toContain('ORDER BY r.seed_rank');
+    expect(sql).not.toContain('ORDER BY seed');
+    expect(sql).toContain('u.full_name AS player_name');
+  });
+
+  it('findRegistrationsByPlayer filters on player_id (not the non-existent user_id)', async () => {
+    pool.query.mockResolvedValue([[{ id: 1, player_id: 5 }]]);
+    await repo.findRegistrationsByPlayer(5);
+    const sql = pool.query.mock.calls[0][0] as string;
+    expect(sql).toContain('WHERE r.player_id = ?');
+    expect(sql).not.toContain('user_id');
+  });
+
+  it('updateRegistrationStatus never writes to a non-existent confirmed_at column', async () => {
+    pool.query.mockResolvedValue([{ affectedRows: 1 }]);
+    await repo.updateRegistrationStatus(1, 'confirmed');
+    const sql = pool.query.mock.calls[0][0] as string;
+    expect(sql).not.toContain('confirmed_at');
+    expect(sql).toContain('status = ?');
+
+    pool.query.mockClear();
+    await repo.updateRegistrationStatus(1, 'withdrawn');
+    const withdrawSql = pool.query.mock.calls[0][0] as string;
+    expect(withdrawSql).toContain('cancelled_at = NOW()');
+  });
+});
+
+describe('TournamentRepository.findMatchesDetailed — admin/org match table contract', () => {
+  it('joins player/resource/referee names for display', async () => {
+    pool.query.mockResolvedValue([[]]);
+    await repo.findMatchesDetailed(9);
+    const sql = pool.query.mock.calls[0][0] as string;
+    expect(sql).toContain('p1.full_name AS player1_name');
+    expect(sql).toContain('p2.full_name AS player2_name');
+    expect(sql).toContain('r.name AS resource_name');
+    expect(sql).toContain('refu.full_name AS referee_name');
+    expect(sql).toContain('m.status AS shared_status');
+  });
+});
+
+describe('TournamentRepository.getStandings — player name enrichment', () => {
+  it('joins user full_name as player_name', async () => {
+    pool.query.mockResolvedValue([[]]);
+    await repo.getStandings(4);
+    const sql = pool.query.mock.calls[0][0] as string;
+    expect(sql).toContain('u.full_name AS player_name');
+    expect(sql).toContain('ORDER BY s.rank_position ASC');
+  });
 });
