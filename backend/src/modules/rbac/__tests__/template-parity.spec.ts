@@ -536,14 +536,128 @@ describe('Group 1B — Tournament navigation key invariants (.ts/.mjs parity)', 
     }
   });
 
-  it('master-admin reaches tournament management via the org portal (org-scoped), not the super-admin workbench', () => {
+  it('master-admin retains org-portal tournament management (org-scoped)', () => {
+    // Group 1B → 1C: master-admin keeps its org-scoped tournament access.
     for (const key of orgPortalKeys) {
       expect(permissionMatchesTemplate('master-admin', key)).toBe(true);
       expect(mjsMatch('master-admin', key)).toBe(true);
     }
-    for (const key of adminWorkbenchKeys) {
-      expect(permissionMatchesTemplate('master-admin', key)).toBe(false);
-      expect(mjsMatch('master-admin', key)).toBe(false);
+  });
+});
+
+describe('Group 1C — master-admin Tournament Admin Workbench reachability (.ts/.mjs parity)', () => {
+  const workbenchNavKeys = [
+    'sidebar.tournament',
+    'sidebar.tournament-dashboard',
+    'sidebar.tournament-list',
+    'sidebar.tournament-matches',
+  ];
+  const workbenchRouteKeys = [
+    'admin-tournaments.view',
+    'tournament.view',
+    'tournament.dashboard.view',
+    'tournament.create',
+    'tournament.update',
+    'tournament.publish',
+    'tournament.delete',
+    'tournament.register',
+    'tournament.manage',
+    'tournament.result.manage',
+    'tournament.bracket-types.view',
+    'tournament.bracket-types.manage',
+  ];
+  const workbenchActionKeys = ['tournaments.edit', 'tournaments.delete'];
+  const allWorkbenchKeys = [...workbenchNavKeys, ...workbenchRouteKeys, ...workbenchActionKeys];
+
+  it('master-admin receives EVERY existing Tournament Admin Workbench navigation key', () => {
+    for (const key of workbenchNavKeys) {
+      expect(permissionMatchesTemplate('master-admin', key)).toBe(true);
+      expect(mjsMatch('master-admin', key)).toBe(true);
+    }
+  });
+
+  it('master-admin receives the backend route-guard keys each Workbench screen requires', () => {
+    for (const key of workbenchRouteKeys) {
+      expect(permissionMatchesTemplate('master-admin', key)).toBe(true);
+      expect(mjsMatch('master-admin', key)).toBe(true);
+    }
+  });
+
+  it('master-admin receives the Workbench list/detail action-button keys (edit/delete)', () => {
+    for (const key of workbenchActionKeys) {
+      expect(permissionMatchesTemplate('master-admin', key)).toBe(true);
+      expect(mjsMatch('master-admin', key)).toBe(true);
+    }
+  });
+
+  it('super_admin remains unchanged (all Workbench keys granted)', () => {
+    for (const key of allWorkbenchKeys) {
+      expect(permissionMatchesTemplate('super_admin', key)).toBe(true);
+    }
+  });
+
+  it('org-admin is NOT granted any platform Tournament Admin Workbench key', () => {
+    for (const key of allWorkbenchKeys) {
+      expect(permissionMatchesTemplate('org-admin', key)).toBe(false);
+      expect(mjsMatch('org-admin', key)).toBe(false);
+    }
+  });
+
+  it('org-admin retains organisation-scoped Tournament navigation', () => {
+    for (const key of ['org.sidebar.tournaments', 'org.tournaments.view', 'org.tournaments.create', 'org.tournaments.manage']) {
+      expect(permissionMatchesTemplate('org-admin', key)).toBe(true);
+      expect(mjsMatch('org-admin', key)).toBe(true);
+    }
+  });
+
+  it('shop-admin receives NONE of the platform Tournament Workbench keys (defense-in-depth)', () => {
+    for (const key of allWorkbenchKeys) {
+      expect(permissionMatchesTemplate('shop-admin', key)).toBe(false);
+      expect(mjsMatch('shop-admin', key)).toBe(false);
+    }
+  });
+
+  it('shop-admin receives NONE of the org Tournament permissions', () => {
+    for (const key of ['org.sidebar.tournaments', 'org.tournaments.view', 'org.tournaments.create', 'org.tournaments.manage', 'org.tournaments.register', 'org.tournaments.result.manage']) {
+      expect(permissionMatchesTemplate('shop-admin', key)).toBe(false);
+      expect(mjsMatch('shop-admin', key)).toBe(false);
+    }
+  });
+
+  it('shop-admin receives NONE of the Tournament creation permissions', () => {
+    for (const key of ['tournaments.create', 'tournaments.create.name', 'tournaments.create.sport']) {
+      expect(permissionMatchesTemplate('shop-admin', key)).toBe(false);
+      expect(mjsMatch('shop-admin', key)).toBe(false);
+    }
+  });
+
+  it('tournament-manager behavior is UNCHANGED (no NEW Workbench keys, legacy keys preserved)', () => {
+    // New Workbench navigation + backend route-guard keys must NOT reach tournament-manager.
+    for (const key of [...workbenchNavKeys, ...workbenchRouteKeys]) {
+      expect(permissionMatchesTemplate('tournament-manager', key)).toBe(false);
+      expect(mjsMatch('tournament-manager', key)).toBe(false);
+    }
+    // Legacy plural navigation/action keys the role already held are preserved.
+    expect(permissionMatchesTemplate('tournament-manager', 'sidebar.tournaments-admin')).toBe(true);
+    expect(permissionMatchesTemplate('tournament-manager', 'tournaments.view')).toBe(true);
+    expect(permissionMatchesTemplate('tournament-manager', 'tournaments.edit')).toBe(true);
+    expect(permissionMatchesTemplate('tournament-manager', 'tournaments.delete')).toBe(true);
+  });
+
+  it('no UNRELATED role receives the new Workbench navigation keys', () => {
+    const unrelated = ['player', 'coach', 'independent_coach', 'resident_coach', 'referee', 'accountant', 'receptionist', 'court-manager', 'marketplace-manager', 'operations-manager', 'academy-manager', 'event-manager', 'marketing-manager', 'content-manager', 'support-agent', 'customer-service', 'finance-manager', 'branch-mgr', 'resource-mgr'];
+    for (const slug of unrelated) {
+      for (const key of workbenchNavKeys) {
+        expect(permissionMatchesTemplate(slug, key)).toBe(false);
+      }
+    }
+  });
+
+  it('.mjs and .ts agree on every Workbench key for ALL 26 templates', () => {
+    for (const slug of TEMPLATE_SLUGS) {
+      for (const key of allWorkbenchKeys) {
+        expect(permissionMatchesTemplate(slug, key)).toBe(mjsMatch(slug, key));
+      }
     }
   });
 });

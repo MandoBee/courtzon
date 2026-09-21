@@ -1224,3 +1224,80 @@ describe('Workspace: frozen fixture preserved for audit', () => {
     expect(sections[0].label).toBe('Dashboard');
   });
 });
+
+describe('Group 1C — master-admin Tournament Admin Workbench reachability (frontend nav)', () => {
+  const masterAdminWorkbenchKeys = new Set([
+    'sidebar.tournament',
+    'sidebar.tournament-dashboard',
+    'sidebar.tournament-list',
+    'sidebar.tournament-matches',
+    'admin-tournaments.view',
+    'tournament.view',
+    'tournament.dashboard.view',
+    'tournament.create',
+    'tournament.update',
+    'tournament.publish',
+    'tournament.delete',
+    'tournament.register',
+    'tournament.manage',
+    'tournament.result.manage',
+    'tournament.bracket-types.view',
+    'tournament.bracket-types.manage',
+    'tournaments.edit',
+    'tournaments.delete',
+    'org.sidebar.tournaments',
+    'org.tournaments.view',
+    'org.tournaments.create',
+    'org.tournaments.manage',
+  ]);
+
+  const orgPortalOnlyKeys = new Set(['org.sidebar.tournaments', 'org.tournaments.view', 'org.tournaments.create', 'org.tournaments.manage', 'tournaments.create', 'tournaments.create.name']);
+
+  function findTournamentSection(nav: ResolvedNavItem[]) {
+    const competitions = nav.find((d) => d.label === 'Competitions');
+    return competitions?.children?.find((c) => c.id === 'nav.admin.tournament');
+  }
+
+  it('master-admin workbench keys reveal the Tournament section + all 4 screens', () => {
+    const nav = resolveAdminNav(enT, (p) => masterAdminWorkbenchKeys.has(p), allFlags);
+    const section = findTournamentSection(nav);
+    expect(section).toBeDefined();
+    const ids = section?.children?.map((c) => c.id);
+    expect(ids).toEqual([
+      'nav.admin.tournament-dashboard',
+      'nav.admin.tournament-list',
+      'nav.admin.tournament-matches',
+      'nav.admin.tournament-bracket-types',
+    ]);
+  });
+
+  it('granting NO tournament keys renders NO Tournament section (empty admin nav)', () => {
+    const nav = resolveAdminNav(enT, () => false, allFlags);
+    expect(findTournamentSection(nav)).toBeUndefined();
+  });
+
+  it('org-portal-only keys do NOT reveal the platform Tournament Workbench section', () => {
+    const nav = resolveAdminNav(enT, (p) => orgPortalOnlyKeys.has(p), allFlags);
+    expect(findTournamentSection(nav)).toBeUndefined();
+  });
+
+  it('shop-admin key set (empty of tournament keys) reveals NO Tournament section', () => {
+    const nav = resolveAdminNav(enT, (p) => ['marketplace.view', 'profile.edit'].includes(p), allFlags);
+    expect(findTournamentSection(nav)).toBeUndefined();
+  });
+
+  it('every admin route reachable from the Workbench section is guarded by a master-admin-owned key', () => {
+    const nav = resolveAdminNav(enT, (p) => masterAdminWorkbenchKeys.has(p), allFlags);
+    const section = findTournamentSection(nav);
+    const walk = (items: ResolvedNavItem[]): string[] =>
+      items.flatMap((i) => [
+        ...(i.permissionKey ? [i.permissionKey] : []),
+        ...(i.children ? walk(i.children) : []),
+      ]);
+    const keys = walk(section?.children ?? []);
+    expect(keys.length).toBeGreaterThan(0);
+    for (const k of keys) {
+      expect(masterAdminWorkbenchKeys.has(k)).toBe(true);
+    }
+  });
+});

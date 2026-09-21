@@ -153,6 +153,39 @@ function canManageTournaments(templateSlug: string, permissionKey: string): bool
     && (permissionKey === 'tournaments.create' || permissionKey.startsWith('tournaments.create.'));
 }
 
+// ── Group 1C — platform Tournament Admin Workbench (master-admin navigation) ──
+// master-admin is a genuine platform ADMIN; it must be able to REACH the existing
+// Tournament Admin Workbench screens (dashboard / list / matches / bracket-types)
+// through the normal sidebar navigation AND pass the existing route guards.
+// Only EXISTING Workbench keys are granted — no new keys, no role taxonomy change.
+// The singular `tournament.*` family IS the Workbench backend authorization; the
+// `sidebar.tournament*` family is the sidebar nav; `admin-tournaments.view` is the
+// page-level gate used by every Workbench screen; `tournaments.edit/delete` are the
+// list/detail action buttons on those same screens.
+const TOURNAMENT_WORKBENCH_KEYS = new Set([
+  'sidebar.tournament',
+  'sidebar.tournament-dashboard',
+  'sidebar.tournament-list',
+  'sidebar.tournament-matches',
+  'admin-tournaments.view',
+  'tournament.bracket-types.view',
+  'tournament.bracket-types.manage',
+  'tournament.view',
+  'tournament.dashboard.view',
+  'tournament.create',
+  'tournament.update',
+  'tournament.publish',
+  'tournament.delete',
+  'tournament.register',
+  'tournament.manage',
+  'tournament.result.manage',
+  'tournaments.edit',
+  'tournaments.delete',
+]);
+function canAccessTournamentWorkbench(templateSlug: string, permissionKey: string): boolean {
+  return templateSlug === 'master-admin' && TOURNAMENT_WORKBENCH_KEYS.has(permissionKey);
+}
+
 // Seller/shop-admin roles must NEVER receive tournament administration — the
 // tournament capability is organisation-ADMIN only. Explicit deny (defense in
 // depth): even if SHOP_ADMIN_PATTERNS were later broadened, sellers stay out.
@@ -698,6 +731,11 @@ export function permissionMatchesTemplate(templateSlug: string, permissionKey: s
     // Group 5B UAT — master-admin is a genuine ADMIN role that manages org
     // tournaments; it receives the shared create-screen field permissions.
     if (canManageTournaments(templateSlug, permissionKey)) return true;
+    // Group 1C — master-admin reaches the existing Tournament Admin Workbench
+    // through normal navigation (sidebar keys) and passes its route guards
+    // (tournament.* + admin-tournaments.view). Explicit grant BEFORE the
+    // admin-only block, mirroring matches.result.manage / canManageTournaments.
+    if (canAccessTournamentWorkbench(templateSlug, permissionKey)) return true;
     if (permissionKey.startsWith('users.')) return false;
     if (permissionKey.startsWith('roles.')) return false;
     if (permissionKey.startsWith('permissions.')) return false;
