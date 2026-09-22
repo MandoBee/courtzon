@@ -584,7 +584,9 @@ const eventGroups: EventGroupConfig[] = [
     },
   },
   {
-    events: ['tournament:created', 'tournament:registration-open', 'tournament:registration-closed', 'tournament:starting-soon', 'tournament:match-scheduled', 'tournament:result', 'tournament:bracket-generated', 'tournament:completed'],
+    events: ['tournament:created', 'tournament:registration-open', 'tournament:registration-closed',
+      'tournament:starting-soon', 'tournament:match-scheduled', 'tournament:result',
+      'tournament:bracket-generated', 'tournament:completed', 'tournament:waitlist-promoted', 'tournament:waitlist-promoted'],
     handler: async (eventName, data, categorySlug) => {
       if (eventName === 'tournament:completed') {
         if (data.userId) {

@@ -6,6 +6,13 @@ import * as pdCtrl from './participant-draw.controller.js';
 export async function tournamentRoutes(app: FastifyInstance): Promise<void> {
   app.addHook('preHandler', authMiddleware);
 
+  // ── Group 6 — Participant lifecycle (admin) ──
+
+  app.get('/admin/tournaments/:id/waitlist', { preHandler: [requirePermission(['tournament.view'])] }, pdCtrl.listWaitlistHandler);
+  app.post('/admin/tournaments/:id/participants/:participantId/withdraw', { preHandler: [requirePermission(['tournament.manage'])] }, pdCtrl.withdrawParticipantHandler);
+  app.post('/admin/tournaments/:id/waitlist/promote', { preHandler: [requirePermission(['tournament.manage'])] }, pdCtrl.promoteNextWaitlistedHandler);
+  app.post('/admin/tournaments/:id/participants/:participantId/replace', { preHandler: [requirePermission(['tournament.manage'])] }, pdCtrl.replaceParticipantHandler);
+
   // ── Group 5 — Participants / Seeding / Draw foundation (admin) ──
 
   app.get('/admin/tournaments/:id/participants', { preHandler: [requirePermission(['tournament.view'])] }, pdCtrl.listParticipantsHandler);

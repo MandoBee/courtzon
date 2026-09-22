@@ -73,9 +73,44 @@ tournament_draw_entries).
   workflow, pair/team member management, player-replacement workflow, court
   reservation (needs the match schedule), match progression, accounting.
 
-### G6 — Participant Lifecycle 🔜 NOT STARTED
-- withdrawal before start; waitlist (real `waiting` status + FIFO promotion);
-  replacement; post-start withdrawal rules (walkover/forfeit per sport config).
+### G6 — Participant Lifecycle (granular) ✅ FOUNDATION DONE
+Real participant lifecycle on the G5 participant model (never the user-id-only
+model). Migration: `173_tournament_lifecycle_waitlist.sql` (participant status
++ `withdrawn_after_start`, participant `waiting_order`, registration status
++ `waiting`, `tournaments.waitlist_enabled` default 0 = existing capacity error).
+
+- **G6A Withdrawal Before Start** ✅ — active → `withdrawn`; registration →
+  `withdrawn` (history preserved); seed/draw history preserved; draw entry
+  removed (draft) or flagged (approved/locked never silently mutated).
+- **G6B Post-Start Withdrawal Foundation** ✅ — active → `withdrawn_after_start`
+  (DISTINCT state; normal waitlist replacement BLOCKED); match/result
+  consequences deferred to rule-driven groups.
+- **G6C Waitlist Model** ✅ — real `waiting` state on registration + participant;
+  `waiting_order` (monotonic, unique, stable, never renumbered); `register()`
+  waitlists when full + `waitlist_enabled`, else existing capacity error.
+- **G6D FIFO Promotion** ✅ — earliest waiting participant (MIN waiting_order);
+  atomic (tournament row locked FOR UPDATE — no double promotion); skip on
+  ineligible; waiting_order of others never renumbered.
+- **G6E Waitlist Payment Flow** ✅ — WAITING = no entitlement; promotion follows
+  Group 3 (cash → paid offline row; card → shared PaymentService); wallet
+  unavailable; promotion may leave pending/unpaid.
+- **G6F Pre-Start Replacement** ✅ — withdrawn participant replaced by a
+  waitlisted participant; NEW participant identity (A's ID never reused); A's
+  registration/seed/draw history preserved; eligibility + duplicate checks.
+- **G6G Draw Impact Validation** ✅ — structured `{ drawAffected, drawId, status,
+  requiresRedraw, seedAffected }`; locked draw never silently mutated.
+- **G6H Lifecycle Audit** ✅ — `recordAudit` for PARTICIPANT_WITHDRAWN /
+  WITHDRAWN_AFTER_START / WAITLIST_JOINED / WAITLIST_PROMOTED /
+  PARTICIPANT_REPLACED.
+- **G6I Lifecycle Realtime** ✅ — `tournament:participant-updated`,
+  `tournament:waitlist-updated`, `tournament:participant-replaced` via
+  EventBusV2 → SocketPublisher → Socket.IO → frontend invalidation.
+- **G6J Lifecycle Notifications** ✅ — `tournament:waitlist-promoted` template +
+  engine registration; shared Notifications capability, no duplicate dispatcher.
+- **DEFERRED (not this group)**: walkover/forfeit post-start consequences,
+  replacement-request workflow UI, pair/team member replacement (G7).
+
+### G7 — Doubles / Team Management 🔜 NOT STARTED
 
 ### G7 — Doubles / Team Management 🔜 NOT STARTED
 - pair/team participant model + members; player replacement request; eligibility;

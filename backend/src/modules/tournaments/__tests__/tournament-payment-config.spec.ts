@@ -36,8 +36,14 @@ const bus = vi.hoisted(() => ({ emit: vi.fn() }));
 const pool = vi.hoisted(() => ({ execute: vi.fn(async () => [[]]), query: vi.fn(async () => [[]]) }));
 const commission = vi.hoisted(() => ({ getCommissionRate: vi.fn(), getCurrentSubscription: vi.fn() }));
 const paymentService = vi.hoisted(() => ({ charge: vi.fn() }));
+const pdRepo = vi.hoisted(() => ({
+  getNextWaitingOrderByTournament: vi.fn(),
+  createParticipant: vi.fn(),
+  findParticipantByRegistration: vi.fn(),
+}));
 
 vi.mock('../infrastructure/repositories/tournament.repository.js', () => ({ tournamentRepository: repo }));
+vi.mock('../infrastructure/repositories/participant-draw.repository.js', () => ({ participantDrawRepository: pdRepo }));
 vi.mock('../../../database/mysql.js', () => ({ getPool: () => pool }));
 vi.mock('../../audit-log/index.js', () => ({ recordAudit: audit.recordAudit }));
 vi.mock('../../../shared/event-bus/event-bus.v2.js', () => ({ eventBusV2: bus }));
@@ -91,6 +97,9 @@ beforeEach(() => {
   commission.getCommissionRate.mockResolvedValue(null);
   commission.getCurrentSubscription.mockResolvedValue({ exists: false, planName: null });
   paymentService.charge.mockResolvedValue({ success: true, paymentId: 9001, status: 'pending', paymentUrl: 'https://pay', clientSecret: 'csk', intentionId: 'int' });
+  pdRepo.getNextWaitingOrderByTournament.mockResolvedValue(1);
+  pdRepo.createParticipant.mockResolvedValue(1);
+  pdRepo.findParticipantByRegistration.mockResolvedValue(null);
 });
 
 describe('Group 3 — Tournament registration payment-method configuration', () => {

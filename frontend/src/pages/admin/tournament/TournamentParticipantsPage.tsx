@@ -50,8 +50,35 @@ export default function TournamentParticipantsPage({ mode = 'admin', orgId: orgI
 
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ['tournament-participants', tournamentId] });
+    qc.invalidateQueries({ queryKey: ['tournament-waitlist', tournamentId] });
     qc.invalidateQueries({ queryKey: ['tournament-draw', tournamentId] });
   };
+
+  const { data: waitlistData } = useQuery({
+    queryKey: ['tournament-waitlist', tournamentId],
+    queryFn: () => wrap(api.getWaitlist, tournamentId),
+  });
+  const waitlist = Array.isArray(waitlistData) ? waitlistData : [];
+
+  const [replaceTarget, setReplaceTarget] = useState<{ withdrawnId: number; replacementId: number } | null>(null);
+
+  const withdraw = useMutation({
+    mutationFn: (participantId: number) => wrap(api.withdrawParticipant, tournamentId, participantId),
+    onSuccess: () => { showToast(t('tournaments.participant_withdrawn', 'Participant withdrawn'), 'success'); invalidate(); },
+    onError: (err) => showToast(getErrorMessage(err), 'error'),
+  });
+
+  const promote = useMutation({
+    mutationFn: () => wrap(api.promoteNextWaitlisted, tournamentId),
+    onSuccess: () => { showToast(t('tournaments.waitlist_promoted', 'Waitlisted participant promoted'), 'success'); invalidate(); },
+    onError: (err) => showToast(getErrorMessage(err), 'error'),
+  });
+
+  const replace = useMutation({
+    mutationFn: () => wrap(api.replaceParticipant, tournamentId, replaceTarget!.withdrawnId, replaceTarget!.replacementId),
+    onSuccess: () => { showToast(t('tournaments.participant_replaced', 'Participant replaced'), 'success'); setReplaceTarget(null); invalidate(); },
+    onError: (err) => showToast(getErrorMessage(err), 'error'),
+  });
 
   const assignSeed = useMutation({
     mutationFn: () =>
@@ -120,6 +147,7 @@ export default function TournamentParticipantsPage({ mode = 'admin', orgId: orgI
           <thead>
             <tr className="border-b text-xs text-[var(--color-text-muted)]">
               <th className="text-left px-4 py-3">Player</th>
+              <th className="text-left px-4 py-3">Status</th>
               <th className="text-left px-4 py-3">Global Rating</th>
               <th className="text-left px-4 py-3">Tournament Seed</th>
               <th className="text-left px-4 py-3">Source</th>
@@ -130,21 +158,66 @@ export default function TournamentParticipantsPage({ mode = 'admin', orgId: orgI
             {participants.map((p: any) => (
               <tr key={p.id} className="border-b last:border-0">
                 <td className="px-4 py-2 font-medium">{p.display_name || `Player #${p.player_id}`}</td>
+                <td className="px-4 py-2 capitalize">{p.status || 'active'}</td>
                 <td className="px-4 py-2">{p.global_rating != null ? `${p.global_rating}%` : '—'}</td>
                 <td className="px-4 py-2 font-semibold">{p.seed ? `#${p.seed.seed_number}` : '—'}</td>
                 <td className="px-4 py-2 capitalize">{p.seed ? p.seed.source : '—'}</td>
-                <td className="px-4 py-2 text-right">
+                <td className="px-4 py-2 text-right space-x-2">
                   <Can permission={isOrg && orgId ? 'org.tournaments.manage' : 'tournaments.manage'}>
                     <button onClick={() => setSeedTarget({ participantId: p.id, seedNumber: p.seed?.seed_number ?? '', source: p.seed?.source ?? 'manual', reason: '' })}
                       className="text-xs text-[var(--color-primary)] hover:underline">
                       {p.seed ? 'Change Seed' : 'Assign Seed'}
                     </button>
+                    {p.status === 'active' && (
+                      <button onClick={() => { if (window.confirm('Withdraw this participant before the tournament start?')) withdraw.mutate(p.id); }}
+                        className="text-xs text-[var(--color-error)] hover:underline">
+                        Withdraw
+                      </button>
+                    )}
+                    {p.status === 'withdrawn' && waitlist.length > 0 && (
+                      <button onClick={() => setReplaceTarget({ withdrawnId: p.id, replacementId: waitlist[0].id })}
+                        className="text-xs text-[var(--color-primary)] hover:underline">
+                        Replace
+                      </button>
+                    )}
                   </Can>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
+      </div>
+
+      {/* Group 6 — FIFO waitlist */}
+      <div className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] border border-[var(--color-border)] overflow-hidden">
+        <div className="flex items-center justify-between p-4">
+          <h2 className="text-sm font-semibold">{t('tournaments.waitlist', 'Waitlist')} ({waitlist.length})</h2>
+          <Can permission={isOrg && orgId ? 'org.tournaments.manage' : 'tournaments.manage'}>
+            <button onClick={() => promote.mutate()} disabled={promote.isPending || waitlist.length === 0}
+              className="px-3 py-1.5 text-xs font-medium rounded-[var(--radius-md)] bg-[var(--color-primary)] text-white disabled:opacity-50">
+              {t('tournaments.promote_next', 'Promote Next')}
+            </button>
+          </Can>
+        </div>
+        {waitlist.length === 0 ? (
+          <p className="px-4 pb-4 text-xs text-[var(--color-text-muted)]">{t('tournaments.waitlist_empty', 'The waitlist is empty.')}</p>
+        ) : (
+          <table className="w-full text-sm">
+            <thead><tr className="border-b text-xs text-[var(--color-text-muted)]">
+              <th className="text-left px-4 py-3">Order</th><th className="text-left px-4 py-3">Participant</th><th className="text-left px-4 py-3">Status</th><th className="text-left px-4 py-3">Payment</th>
+            </tr></thead>
+            <tbody>
+              {waitlist.map((w: any) => (
+                <tr key={w.id} className="border-b last:border-0">
+                  <td className="px-4 py-2 font-bold">#{w.waiting_order ?? w.id}</td>
+                  <td className="px-4 py-2">{w.display_name || `Player #${w.player_id}`}</td>
+                  <td className="px-4 py-2 capitalize">{w.status}</td>
+                  <td className="px-4 py-2">unpaid</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </div>
 
       {drawEntries.length > 0 && (
@@ -165,6 +238,26 @@ export default function TournamentParticipantsPage({ mode = 'admin', orgId: orgI
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {replaceTarget && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4" onClick={() => setReplaceTarget(null)}>
+          <div className="w-full max-w-sm bg-[var(--color-surface)] rounded-[var(--radius-lg)] border border-[var(--color-border)] p-5 space-y-3" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-sm font-semibold">{t('tournaments.replace_participant', 'Replace Participant')}</h3>
+            <p className="text-xs text-[var(--color-text-muted)]">{t('tournaments.replace_hint', 'The withdrawn participant\'s seed is preserved; the replacement receives a new participant identity and no seed is transferred automatically.')}</p>
+            <label className="block text-xs font-medium text-[var(--color-text-muted)]">Replacement (waitlist)</label>
+            <select value={replaceTarget.replacementId} onChange={(e) => setReplaceTarget({ ...replaceTarget, replacementId: Number(e.target.value) })}
+              className="w-full px-3 py-2 border rounded-[var(--radius-md)] text-sm">
+              {waitlist.map((w: any) => (
+                <option key={w.id} value={w.id}>#{w.waiting_order ?? w.id} — {w.display_name || `Player #${w.player_id}`}</option>
+              ))}
+            </select>
+            <button onClick={() => replace.mutate()} disabled={replace.isPending}
+              className="w-full px-4 py-2 bg-[var(--color-primary)] text-white rounded-[var(--radius-md)] text-sm font-medium">
+              {replace.isPending ? 'Replacing...' : 'Replace Participant'}
+            </button>
+          </div>
         </div>
       )}
 

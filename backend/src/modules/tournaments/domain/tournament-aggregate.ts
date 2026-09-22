@@ -6,7 +6,7 @@ export type TournamentStatus =
   | 'draft' | 'published' | 'registration_open' | 'registration_closed'
   | 'running' | 'completed' | 'cancelled' | 'archived';
 
-export type RegistrationStatus = 'registered' | 'confirmed' | 'withdrawn' | 'disqualified';
+export type RegistrationStatus = 'registered' | 'confirmed' | 'withdrawn' | 'disqualified' | 'waiting';
 
 /**
  * Group 5 — authoritative Tournament Participant abstraction. The participant is
@@ -16,7 +16,7 @@ export type RegistrationStatus = 'registered' | 'confirmed' | 'withdrawn' | 'dis
  * individual registrations map 1:1 to participants without rewriting history.
  */
 export type TournamentParticipantType = 'individual' | 'pair' | 'team';
-export type TournamentParticipantStatus = 'active' | 'withdrawn' | 'waiting';
+export type TournamentParticipantStatus = 'active' | 'withdrawn' | 'waiting' | 'withdrawn_after_start';
 
 export interface TournamentParticipant {
   id?: number;
@@ -27,6 +27,8 @@ export interface TournamentParticipant {
   status: TournamentParticipantStatus;
   /** Member roster (individual = [user_id]); future pairs/teams hold multiple. */
   member_user_ids?: number[] | null;
+  /** FIFO waitlist position (unique per tournament, monotonic, stable); NULL when not waiting. */
+  waiting_order?: number | null;
   /** Convenience: primary member user id (individual). */
   player_id?: number | null;
   /** Joined display name (primary member). */
@@ -96,6 +98,21 @@ export interface TournamentDrawEntry {
   moved_at?: string;
   created_at?: string;
   participant?: TournamentParticipant | null;
+}
+
+/**
+ * Group 6 — structured impact of a participant lifecycle change on the draw.
+ * Returned to the caller so the UI can warn before re-draw; a locked draw is
+ * never silently mutated.
+ */
+export interface DrawImpact {
+  drawAffected: boolean;
+  drawId: number | null;
+  status: TournamentDrawStatus | null;
+  /** The current draw must be regenerated/revalidated after this change. */
+  requiresRedraw: boolean;
+  /** The participant held an authoritative seed (historical seed is preserved). */
+  seedAffected: boolean;
 }
 
 export type MatchStatus = 'scheduled' | 'in_progress' | 'completed' | 'walkover' | 'forfeit' | 'no_show';
@@ -179,7 +196,9 @@ export interface Tournament {
    * ['cash','card'] (both). Wallet is never a valid value — CourtZon's global
    * payment policy has Wallet disabled as a payment method (refund only).
    */
-  registration_payment_methods?: string[];
+registration_payment_methods?: string[];
+  /** Group 6 — when full and enabled, new registrations enter a FIFO waitlist. */
+  waitlist_enabled?: boolean | number;
   /** Group 3 — response-only: the effective methods after intersecting the
    * configured allowlist with the global payment policy and (when the
    * tournament is org-owned) the organisation's active payment_gateway_config. */

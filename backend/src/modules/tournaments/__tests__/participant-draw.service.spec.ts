@@ -39,6 +39,21 @@ const audit = vi.hoisted(() => ({ recordAudit: vi.fn() }));
 
 vi.mock('../infrastructure/repositories/participant-draw.repository.js', () => ({ participantDrawRepository: repo }));
 vi.mock('../infrastructure/repositories/tournament.repository.js', () => ({ tournamentRepository: tRepo }));
+vi.mock('../application/tournament.service.js', () => ({ tournamentService: { resolveEffectiveRegistrationPaymentMethods: vi.fn(async () => ['cash', 'card']) } }));
+vi.mock('../../../database/mysql.js', () => ({
+  getPool: () => ({
+    query: vi.fn(async () => [[]]),
+    execute: vi.fn(async () => [[]]),
+    getConnection: vi.fn(async () => ({
+      beginTransaction: vi.fn(async () => undefined),
+      commit: vi.fn(async () => undefined),
+      rollback: vi.fn(async () => undefined),
+      release: vi.fn(),
+      query: vi.fn(async () => [[]]),
+      execute: vi.fn(async () => [[]]),
+    })),
+  }),
+}));
 vi.mock('../../../shared/event-bus/event-bus.v2.js', () => ({ eventBusV2: bus }));
 vi.mock('../../audit-log/index.js', () => ({ recordAudit: audit.recordAudit }));
 vi.mock('../../match-result/infrastructure/rating.repository.js', () => ({ ratingRepository: ratingRepo }));

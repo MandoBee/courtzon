@@ -81,6 +81,8 @@ export class SocketPublisher {
       'tournament:registration-paid', 'tournament:registration-payment-methods-updated',
       'tournament:schedule-updated',
       'tournament:seed-updated', 'tournament:draw-generated', 'tournament:draw-updated',
+      'tournament:participant-updated', 'tournament:waitlist-updated', 'tournament:participant-replaced',
+      'tournament:waitlist-promoted',
       'setting:updated', 'setting:profile-applied',
       'accounting:entry-recorded',
       'user:suspended', 'user:activated', 'user:deleted', 'user.role.changed',

@@ -232,8 +232,8 @@ export class TournamentRepository {
   }
 
   async create(data: Partial<Tournament>): Promise<number> {
-    const sql = `INSERT INTO tournaments (public_id, creator_id, organisation_id, branch_id, bracket_type_id, format, category, season, sport_id, match_format_id, rule_set_id, draw_seed, name, code, description, tournament_type, max_participants, max_teams, min_participants, entry_fee, registration_fee, currency_code, price_type, registration_payment_methods, commission_rate, prize_description, status, is_public, registration_opens, registration_closes, start_date, end_date, daily_start_time, daily_end_time, rules, is_featured, image_url)
-                 VALUES (UUID(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+    const sql = `INSERT INTO tournaments (public_id, creator_id, organisation_id, branch_id, bracket_type_id, format, category, season, sport_id, match_format_id, rule_set_id, draw_seed, name, code, description, tournament_type, max_participants, max_teams, min_participants, entry_fee, registration_fee, currency_code, price_type, registration_payment_methods, waitlist_enabled, commission_rate, prize_description, status, is_public, registration_opens, registration_closes, start_date, end_date, daily_start_time, daily_end_time, rules, is_featured, image_url)
+                 VALUES (UUID(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
     const [result] = await getPool().query<ResultSet>(sql, [
       data.creator_id, data.organisation_id ?? null, data.branch_id ?? null,
       data.bracket_type_id, data.format ?? null, data.category ?? null, data.season ?? null,
@@ -245,6 +245,7 @@ export class TournamentRepository {
       data.entry_fee ?? 0, data.registration_fee ?? 0,
       data.currency_code, data.price_type ?? null,
       this.stringifyPaymentMethods(data.registration_payment_methods),
+      data.waitlist_enabled ? 1 : 0,
       data.commission_rate ?? 0,
       data.prize_description ?? null, data.status ?? 'draft',
       data.is_public ?? true, data.registration_opens ?? null, data.registration_closes ?? null,
@@ -263,7 +264,7 @@ export class TournamentRepository {
       'organisation_id', 'branch_id', 'bracket_type_id', 'format', 'category', 'season',
       'sport_id', 'match_format_id', 'rule_set_id', 'name', 'code', 'description', 'tournament_type',
       'max_participants', 'max_teams', 'min_participants', 'entry_fee', 'registration_fee',
-      'currency_code', 'price_type', 'registration_payment_methods', 'prize_description',
+      'currency_code', 'price_type', 'registration_payment_methods', 'waitlist_enabled', 'prize_description',
       'status', 'is_public', 'registration_opens', 'registration_closes',
       'start_date', 'end_date', 'daily_start_time', 'daily_end_time',
       'rules', 'is_featured', 'image_url',
@@ -395,8 +396,9 @@ export class TournamentRepository {
     return (result as any).insertId;
   }
 
-  async updateRegistrationPaymentStatus(id: number, paymentStatus: string): Promise<void> {
-    await getPool().query(
+  async updateRegistrationPaymentStatus(id: number, paymentStatus: string, conn?: PoolConnection): Promise<void> {
+    const db = conn ?? getPool();
+    await db.query(
       'UPDATE tournament_registrations SET payment_status = ? WHERE id = ?', [paymentStatus, id],
     );
   }
@@ -409,15 +411,33 @@ export class TournamentRepository {
     return (rows as Record<string, unknown>[]).map((r) => this.mapRegistrationRow(r));
   }
 
-  async updateRegistrationStatus(id: number, status: string, waitingOrder?: number): Promise<void> {
+  async updateRegistrationStatus(id: number, status: string, waitingOrder?: number, conn?: PoolConnection): Promise<void> {
+    const db = conn ?? getPool();
     const extras: string[] = ['status = ?'];
     const params: any[] = [status];
     if (status === 'withdrawn' || status === 'disqualified') { extras.push('cancelled_at = NOW()'); }
     if (waitingOrder !== undefined) { extras.push('waiting_order = ?'); params.push(waitingOrder); }
     params.push(id);
-    await getPool().query(
+    await db.query(
       `UPDATE tournament_registrations SET ${extras.join(', ')} WHERE id = ?`, params,
     );
+  }
+
+  /** Group 6 — set/clear the FIFO waiting_order on a registration (mirror of the participant). */
+  async updateRegistrationWaitingOrder(id: number, waitingOrder: number | null, conn?: PoolConnection): Promise<void> {
+    const db = conn ?? getPool();
+    await db.query('UPDATE tournament_registrations SET waiting_order = ? WHERE id = ?', [waitingOrder, id]);
+  }
+
+  /** Group 6 — authoritative "has the tournament started" signal: any bracket/round match actually in progress or resolved. */
+  async hasAnyStartedMatch(tournamentId: number): Promise<boolean> {
+    const [rows] = await getPool().query<RowData>(
+      `SELECT 1 FROM tournament_matches
+       WHERE tournament_id = ? AND status IN ('in_progress','completed','walkover')
+       LIMIT 1`,
+      [tournamentId],
+    );
+    return rows.length > 0;
   }
 
   async getNextWaitingOrder(tournamentId: number): Promise<number> {

@@ -1,11 +1,13 @@
 import { participantDrawRepository } from '../infrastructure/repositories/participant-draw.repository.js';
 import { tournamentRepository } from '../infrastructure/repositories/tournament.repository.js';
+import { tournamentService } from './tournament.service.js';
 import type {
   Tournament,
   TournamentParticipant,
   TournamentSeed,
   TournamentDraw,
   TournamentDrawEntry,
+  DrawImpact,
 } from '../domain/tournament-aggregate.js';
 import { seededShuffle } from '../domain/tournament-aggregate.js';
 import { ConflictError, NotFoundError } from '../../../shared/errors/app-error.js';
@@ -14,6 +16,7 @@ import { eventBusV2 } from '../../../shared/event-bus/event-bus.v2.js';
 import { recordAudit } from '../../audit-log/index.js';
 import { ratingRepository } from '../../match-result/infrastructure/rating.repository.js';
 import { ratingService } from '../../match-result/application/rating/rating.service.js';
+import { getPool } from '../../../database/mysql.js';
 
 /**
  * Group 5 — Participant, Seeding & Draw foundation (approved continuation).
@@ -493,6 +496,350 @@ export class ParticipantDrawService {
       }
     }
     return { valid: true };
+  }
+
+  // ── Group 6 — Participant lifecycle: withdrawal / waitlist / promotion / replacement ──
+
+  /** List the FIFO waitlist (earliest first). */
+  async listWaitingParticipants(tournamentId: number): Promise<Array<TournamentParticipant & { display_name?: string | null }>> {
+    await this.syncParticipants(tournamentId);
+    return participantDrawRepository.listWaitingParticipants(tournamentId);
+  }
+
+  /**
+   * Withdraw an ACTIVE participant. Pre-start → 'withdrawn' (waitlist replacement
+   * allowed); post-start → 'withdrawn_after_start' (DISTINCT lifecycle state —
+   * normal waitlist replacement is blocked). Registration + seed + draw history
+   * are preserved; the active draw population is updated and the draw flagged.
+   */
+  async withdrawParticipant(
+    tournamentId: number,
+    participantId: number,
+    actorId: number,
+    reason?: string,
+  ): Promise<{ status: string; drawImpact: DrawImpact }> {
+    const participant = await this.assertParticipantBelongsToTournament(tournamentId, participantId);
+    if (participant.status !== 'active') {
+      throw new ConflictError('Only an active participant can withdraw', ErrorCodes.TOURNAMENT_INVALID_TRANSITION);
+    }
+    const started = await this.hasTournamentStarted(tournamentId);
+
+    if (started) {
+      await participantDrawRepository.updateParticipantStatus(participantId, 'withdrawn_after_start');
+      await recordAudit({
+        actorId,
+        action: 'TOURNAMENT.PARTICIPANT_WITHDRAWN_AFTER_START',
+        entityType: 'tournament_participant',
+        entityId: participantId,
+        beforeState: { status: 'active' },
+        afterState: { status: 'withdrawn_after_start', reason: reason ?? null },
+      });
+      await this.emitLifecycle('tournament:participant-updated', { tournamentId, participantId, status: 'withdrawn_after_start' });
+      return { status: 'withdrawn_after_start', drawImpact: await this.getDrawImpact(tournamentId, participantId) };
+    }
+
+    // Pre-start withdrawal.
+    await participantDrawRepository.updateParticipantStatus(participantId, 'withdrawn');
+    if (participant.registration_id != null) {
+      await tournamentRepository.updateRegistrationStatus(participant.registration_id, 'withdrawn');
+    }
+    const impact = await this.getDrawImpact(tournamentId, participantId);
+    if (impact.drawAffected && impact.drawId != null) {
+      const draw = await participantDrawRepository.findDrawById(impact.drawId);
+      if (draw?.status === 'draft') {
+        // Draft draw — the participant leaves the active draw population.
+        await participantDrawRepository.deleteDrawEntryByParticipant(impact.drawId, participantId);
+        await participantDrawRepository.updateDraw(impact.drawId, { validation_status: 'manually_modified' });
+      } else {
+        // Approved / locked draw — never silently mutate entries; flag re-draw.
+        await participantDrawRepository.markDrawRequiresRedraw(impact.drawId);
+      }
+    }
+    await recordAudit({
+      actorId,
+      action: 'TOURNAMENT.PARTICIPANT_WITHDRAWN',
+      entityType: 'tournament_participant',
+      entityId: participantId,
+      beforeState: { status: 'active' },
+      afterState: { status: 'withdrawn', reason: reason ?? null, registration_id: participant.registration_id ?? null },
+    });
+    await this.emitLifecycle('tournament:participant-updated', { tournamentId, participantId, status: 'withdrawn' });
+    return { status: 'withdrawn', drawImpact: impact };
+  }
+
+  /**
+   * Promote the earliest eligible waitlisted participant (FIFO). ATOMIC: the
+   * tournament row is locked FOR UPDATE so two administrators can never promote
+   * the same slot. Promotion produces an ACTIVE participant with a pending
+   * (unpaid) registration; payment follows the existing Group 3 policy when a
+   * payment method is supplied.
+   */
+  async promoteNextWaitlisted(
+    tournamentId: number,
+    actorId: number,
+    paymentMethod?: string,
+  ): Promise<(TournamentParticipant & { payment?: Record<string, unknown> | null }) | null> {
+    const t = await this.getTournament(tournamentId);
+    if (await this.hasTournamentStarted(tournamentId)) {
+      throw new ConflictError('Tournament has started — waitlist promotion is not allowed', ErrorCodes.TOURNAMENT_INVALID_TRANSITION);
+    }
+    if (paymentMethod) {
+      const effective = await tournamentService.resolveEffectiveRegistrationPaymentMethods(t);
+      if (!effective.includes(paymentMethod)) {
+        throw new ConflictError(`Payment method "${paymentMethod}" is not accepted`, ErrorCodes.TOURNAMENT_INVALID_PAYMENT_METHOD);
+      }
+    }
+
+    const conn = await getPool().getConnection();
+    let headId: number | null = null;
+    let registrationId: number | null = null;
+    let priorOrder: number | null = null;
+    try {
+      await conn.beginTransaction();
+      await conn.query('SELECT id FROM tournaments WHERE id = ? FOR UPDATE', [tournamentId]);
+      const head = await participantDrawRepository.findWaitlistHead(tournamentId, conn);
+      if (!head) {
+        await conn.rollback();
+        return null;
+      }
+      if (head.status !== 'waiting') {
+        await conn.rollback();
+        return null;
+      }
+      await participantDrawRepository.updateParticipantStatus(head.id!, 'active', conn);
+      await participantDrawRepository.updateParticipantWaitingOrder(head.id!, null, conn);
+      if (head.registration_id != null) {
+        await tournamentRepository.updateRegistrationStatus(head.registration_id, 'registered', undefined, conn);
+        await tournamentRepository.updateRegistrationWaitingOrder(head.registration_id, null, conn);
+      }
+      headId = head.id ?? null;
+      registrationId = head.registration_id ?? null;
+      priorOrder = head.waiting_order ?? null;
+      await conn.commit();
+    } catch (err) {
+      await conn.rollback();
+      throw err;
+    } finally {
+      conn.release();
+    }
+
+    if (headId == null) return null;
+    const paymentRequired = Number(t.entry_fee ?? 0) > 0;
+    const payment = paymentRequired && paymentMethod && registrationId != null
+      ? await this.settleRegistrationPayment(registrationId, headId, t, paymentMethod)
+      : null;
+
+    await recordAudit({
+      actorId,
+      action: 'TOURNAMENT.WAITLIST_PROMOTED',
+      entityType: 'tournament_participant',
+      entityId: headId,
+      beforeState: { status: 'waiting', waiting_order: priorOrder },
+      afterState: { status: 'active', registration_id: registrationId },
+    });
+    await this.emitLifecycle('tournament:waitlist-updated', { tournamentId });
+    await this.emitLifecycle('tournament:participant-updated', { tournamentId, participantId: headId, status: 'active' });
+    await this.emitLifecycle('tournament:waitlist-promoted', { tournamentId, userId: (await this.participantUserId(headId)), participantId: headId, name: t.name });
+    const promoted = await participantDrawRepository.findParticipantById(headId);
+    return { ...promoted!, payment };
+  }
+
+  /**
+   * Pre-start replacement: a withdrawn participant A is replaced by a waitlisted
+   * participant B. B keeps its OWN participant identity (A's ID is never reused);
+   * A's registration/seed/draw history is preserved; A's seed is NOT transferred.
+   * Atomic promotion of B + draw impact reported.
+   */
+  async replaceParticipant(
+    tournamentId: number,
+    withdrawnParticipantId: number,
+    replacementParticipantId: number,
+    actorId: number,
+    paymentMethod?: string,
+  ): Promise<{ replacement: TournamentParticipant; payment?: Record<string, unknown> | null; drawImpact: DrawImpact }> {
+    const t = await this.getTournament(tournamentId);
+    if (await this.hasTournamentStarted(tournamentId)) {
+      throw new ConflictError('Tournament has started — pre-start replacement is not allowed', ErrorCodes.TOURNAMENT_INVALID_TRANSITION);
+    }
+    const withdrawn = await this.assertParticipantBelongsToTournament(tournamentId, withdrawnParticipantId);
+    if (withdrawn.status !== 'withdrawn') {
+      throw new ConflictError('Only a pre-start withdrawn participant can be replaced', ErrorCodes.TOURNAMENT_INVALID_TRANSITION);
+    }
+    const replacement = await this.assertParticipantBelongsToTournament(tournamentId, replacementParticipantId);
+    if (replacement.status !== 'waiting') {
+      throw new ConflictError('The replacement participant must be on the waitlist', ErrorCodes.TOURNAMENT_INVALID_TRANSITION);
+    }
+    const userId = this.primaryUserId(replacement);
+    if (userId != null) {
+      const dup = await participantDrawRepository.findActiveParticipantByPlayer(tournamentId, userId);
+      if (dup && Number(dup.id) !== Number(replacement.id)) {
+        throw new ConflictError('The replacement participant is already active in this tournament', ErrorCodes.TOURNAMENT_REGISTRATION_EXISTS);
+      }
+    }
+    if (paymentMethod) {
+      const effective = await tournamentService.resolveEffectiveRegistrationPaymentMethods(t);
+      if (!effective.includes(paymentMethod)) {
+        throw new ConflictError(`Payment method "${paymentMethod}" is not accepted`, ErrorCodes.TOURNAMENT_INVALID_PAYMENT_METHOD);
+      }
+    }
+
+    // Atomic promotion of B (new active participant identity is B's own row).
+    const conn = await getPool().getConnection();
+    let registrationId: number | null = null;
+    try {
+      await conn.beginTransaction();
+      await conn.query('SELECT id FROM tournaments WHERE id = ? FOR UPDATE', [tournamentId]);
+      await participantDrawRepository.updateParticipantStatus(replacement.id!, 'active', conn);
+      await participantDrawRepository.updateParticipantWaitingOrder(replacement.id!, null, conn);
+      if (replacement.registration_id != null) {
+        await tournamentRepository.updateRegistrationStatus(replacement.registration_id, 'registered', undefined, conn);
+        await tournamentRepository.updateRegistrationWaitingOrder(replacement.registration_id, null, conn);
+        registrationId = replacement.registration_id;
+      }
+      await conn.commit();
+    } catch (err) {
+      await conn.rollback();
+      throw err;
+    } finally {
+      conn.release();
+    }
+
+    // A's seed is preserved (never transferred). Draw impact on A's removal.
+    const impact = await this.getDrawImpact(tournamentId, withdrawnParticipantId);
+    if (impact.drawAffected && impact.drawId != null) {
+      const draw = await participantDrawRepository.findDrawById(impact.drawId);
+      if (draw?.status === 'draft') {
+        await participantDrawRepository.deleteDrawEntryByParticipant(impact.drawId, withdrawnParticipantId);
+        await participantDrawRepository.updateDraw(impact.drawId, { validation_status: 'manually_modified' });
+      } else {
+        await participantDrawRepository.markDrawRequiresRedraw(impact.drawId);
+      }
+    }
+
+    const paymentRequired = Number(t.entry_fee ?? 0) > 0;
+    const payment = paymentRequired && paymentMethod && registrationId != null
+      ? await this.settleRegistrationPayment(registrationId, replacement.id!, t, paymentMethod)
+      : null;
+
+    await recordAudit({
+      actorId,
+      action: 'TOURNAMENT.PARTICIPANT_REPLACED',
+      entityType: 'tournament_participant',
+      entityId: replacement.id,
+      beforeState: { withdrawn_participant_id: withdrawnParticipantId, status: 'waiting' },
+      afterState: { replacement_participant_id: replacement.id, status: 'active', registration_id: registrationId },
+    });
+    await this.emitLifecycle('tournament:participant-replaced', { tournamentId, withdrawnParticipantId, replacementParticipantId: replacement.id });
+    await this.emitLifecycle('tournament:waitlist-updated', { tournamentId });
+    await this.emitLifecycle('tournament:participant-updated', { tournamentId, participantId: replacement.id, status: 'active' });
+    const promoted = (await participantDrawRepository.findParticipantById(replacement.id!))!;
+    return { replacement: promoted, payment, drawImpact: impact };
+  }
+
+  /** Structured draw-impact report for a participant lifecycle change. */
+  async getDrawImpact(tournamentId: number, participantId: number): Promise<DrawImpact> {
+    const seed = await participantDrawRepository.findSeedByParticipant(participantId);
+    const seedAffected = seed != null;
+    const draw = await participantDrawRepository.findCurrentDraw(tournamentId);
+    if (!draw) {
+      return { drawAffected: false, drawId: null, status: null, requiresRedraw: false, seedAffected };
+    }
+    const entry = await participantDrawRepository.findEntryByParticipant(draw.id!, participantId);
+    return {
+      drawAffected: true,
+      drawId: draw.id ?? null,
+      status: draw.status ?? null,
+      requiresRedraw: entry != null || seedAffected,
+      seedAffected,
+    };
+  }
+
+  /**
+   * Authoritative "has the tournament started": the tournament lifecycle
+   * (running/completed/cancelled/archived) OR any bracket/round match actually
+   * in progress or resolved — never the calendar start_date alone.
+   */
+  private async hasTournamentStarted(tournamentId: number): Promise<boolean> {
+    const t = await this.getTournament(tournamentId);
+    if (t.status && ['running', 'completed', 'cancelled', 'archived'].includes(t.status)) return true;
+    try {
+      return await tournamentRepository.hasAnyStartedMatch(tournamentId);
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Group 6 — settle a registration's entry fee through the EXISTING Group 3
+   * shared-Payment policy (cash → paid offline row; card → shared
+   * PaymentService.charge). Wallet remains unavailable. NOT a new payment flow.
+   */
+  private async settleRegistrationPayment(
+    registrationId: number,
+    participantId: number,
+    t: Tournament,
+    paymentMethod: string,
+  ): Promise<Record<string, unknown> | null> {
+    const memberUserIds = (await this.participantUserId(participantId));
+    const userId = memberUserIds ?? 0;
+    const amount = Math.round(Number(t.entry_fee ?? 0) * 100) / 100;
+    if (paymentMethod === 'cash') {
+      const paymentId = await tournamentRepository.createCashPaymentTransaction({ userId, registrationId, amount, currency: t.currency_code });
+      await tournamentRepository.updateRegistrationPaymentStatus(registrationId, 'paid');
+      eventBusV2.emit('payment:succeeded', {
+        paymentId,
+        referenceType: 'tournament',
+        referenceId: registrationId,
+        amount,
+        metadata: { paymentMethod: 'cash', currency: t.currency_code, userId },
+      } as Record<string, unknown>);
+      return { method: 'cash', status: 'paid', paymentId };
+    }
+    if (paymentMethod === 'card') {
+      const { paymentService } = await import('../../payment/application/payment.service.js');
+      const gwResult: any = await paymentService.charge(userId, {
+        referenceType: 'tournament' as any,
+        referenceId: registrationId,
+        amount,
+        currency: t.currency_code,
+        paymentMethod: 'card',
+      });
+      if (!gwResult?.success) {
+        throw new ConflictError(
+          (gwResult?.errorMessage as string) || 'Payment gateway rejected the transaction',
+          ErrorCodes.TOURNAMENT_INVALID_PAYMENT_METHOD,
+        );
+      }
+      return {
+        method: 'card',
+        status: gwResult.status ?? 'pending',
+        paymentId: gwResult.paymentId ?? null,
+        paymentUrl: gwResult.paymentUrl ?? null,
+        clientSecret: gwResult.clientSecret ?? null,
+        intentionId: gwResult.intentionId ?? null,
+      };
+    }
+    return null;
+  }
+
+  private async participantUserId(participantId: number): Promise<number | null> {
+    const p = await participantDrawRepository.findParticipantById(participantId);
+    if (!p) return null;
+    const memberUserIds = Array.isArray(p.member_user_ids) ? p.member_user_ids : [];
+    return memberUserIds[0] ?? (p as any).player_id ?? null;
+  }
+
+  private primaryUserId(participant: TournamentParticipant): number | null {
+    const memberUserIds = Array.isArray(participant.member_user_ids) ? participant.member_user_ids : [];
+    return memberUserIds[0] ?? (participant as any).player_id ?? null;
+  }
+
+  private async emitLifecycle(eventName: string, payload: Record<string, unknown>): Promise<void> {
+    eventBusV2.emit(eventName, payload as Record<string, unknown>, {
+      aggregateType: 'tournament',
+      aggregateId: String(payload.tournamentId),
+      aggregateVersion: 1,
+    });
   }
 
   private async getTournament(tournamentId: number): Promise<Tournament> {

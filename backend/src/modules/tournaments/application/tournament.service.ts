@@ -1,4 +1,5 @@
 import { tournamentRepository, type BracketTypeRow } from '../infrastructure/repositories/tournament.repository.js';
+import { participantDrawRepository } from '../infrastructure/repositories/participant-draw.repository.js';
 import { generateKnockoutBracket, generateRoundRobinMatches, generateStageMatches, seededShuffle, type BracketSlot } from '../domain/tournament-aggregate.js';
 import type { Tournament, TournamentRegistration, TournamentMatch, TournamentStage, TournamentPrizeInput, TournamentPrizeType, TournamentVenue } from '../domain/tournament-aggregate.js';
 import { validateTournamentTransition, validateRegistrationTransition } from '../domain/lifecycle.js';
@@ -839,8 +840,39 @@ export class TournamentService {
     const cap = t.max_participants || 0;
     const confirmedCount = existing.filter((r) => r.status === 'confirmed').length;
     const isFull = cap > 0 && confirmedCount >= cap;
+    const waitlistEnabled = Boolean(Number((t as any).waitlist_enabled ?? 0));
     if (isFull) {
-      throw new ConflictError('Tournament is at full capacity', ErrorCodes.TOURNAMENT_CAPACITY_FULL);
+      // Group 6 — real FIFO waitlist: when enabled, the registration enters the
+      // waiting state (NO payment, NO entitlement) instead of erroring.
+      if (!waitlistEnabled) {
+        throw new ConflictError('Tournament is at full capacity', ErrorCodes.TOURNAMENT_CAPACITY_FULL);
+      }
+      const waitingOrder = await participantDrawRepository.getNextWaitingOrderByTournament(tournamentId);
+      const id = await tournamentRepository.createRegistration({
+        tournament_id: tournamentId,
+        user_id: userId,
+        player_id: userId,
+        team_id: teamId,
+        status: 'waiting',
+        payment_status: 'unpaid',
+        waiting_order: waitingOrder,
+      });
+      await participantDrawRepository.createParticipant({
+        tournament_id: tournamentId,
+        registration_id: id,
+        participant_type: 'individual',
+        status: 'waiting',
+        member_user_ids: [userId],
+        waiting_order: waitingOrder,
+      });
+      eventBusV2.emit('registration.received', { tournamentId, userId, registrationId: id, status: 'waiting', paymentRequired: false } as Record<string, unknown>, {
+        aggregateType: 'tournament', aggregateId: String(tournamentId), aggregateVersion: 1,
+      });
+      eventBusV2.emit('tournament:waitlist-updated', { tournamentId } as Record<string, unknown>, {
+        aggregateType: 'tournament', aggregateId: String(tournamentId), aggregateVersion: 1,
+      });
+      const waiting = await tournamentRepository.getRegistrationById(id);
+      return { ...waiting!, payment: null };
     }
 
     // Group 3 — when the player declares a payment method it MUST be one of the
@@ -870,6 +902,19 @@ export class TournamentService {
       status,
       payment_status: 'unpaid',
     });
+
+    // Group 5/6 — the authoritative participant is materialized immediately for
+    // the active registration (the G5 participant model is the primary model).
+    const existingParticipant = await participantDrawRepository.findParticipantByRegistration(tournamentId, id);
+    if (!existingParticipant) {
+      await participantDrawRepository.createParticipant({
+        tournament_id: tournamentId,
+        registration_id: id,
+        participant_type: 'individual',
+        status: 'active',
+        member_user_ids: [userId],
+      });
+    }
 
     // ── Group 3 — registration-payment routing through the SHARED Payment
     // capability (payment_transactions + PaymentService.charge). No

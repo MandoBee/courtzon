@@ -127,6 +127,10 @@ export interface DomainEventMap {
   'tournament:seed-updated': BaseEvent & { tournamentId: number; participantId: number; seedNumber: number; source: string };
   'tournament:draw-generated': BaseEvent & { tournamentId: number; attemptNumber: number; drawSeed: number; status: string };
   'tournament:draw-updated': BaseEvent & { tournamentId: number; drawId: number; status?: string; validationStatus?: string };
+  'tournament:participant-updated': BaseEvent & { tournamentId: number; participantId: number; status: string };
+  'tournament:waitlist-updated': BaseEvent & { tournamentId: number };
+  'tournament:participant-replaced': BaseEvent & { tournamentId: number; withdrawnParticipantId: number; replacementParticipantId: number };
+  'tournament:waitlist-promoted': BaseEvent & { tournamentId: number; participantId: number; userId?: number; name?: string };
   'match:invitation': BaseEvent & { bookingId: number; userId: number; senderId: number; startTime?: Date; actions?: any[] };
   'community:new-post': BaseEvent & { postId: number; userId: number; communityName: string };
   'community:new-comment': BaseEvent & { commentId: number; postId: number; userId: number; authorName: string };

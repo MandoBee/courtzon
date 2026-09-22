@@ -129,6 +129,14 @@ export const tournamentParticipantApi = {
     api.post(`/admin/tournaments/${tournamentId}/draw/move`, { participant_id: participantId, position, override }).then(r => r.data),
   approveDraw: (tournamentId: number) => api.post(`/admin/tournaments/${tournamentId}/draw/approve`).then(r => r.data),
   lockDraw: (tournamentId: number) => api.post(`/admin/tournaments/${tournamentId}/draw/lock`).then(r => r.data),
+  // Group 6 — participant lifecycle
+  getWaitlist: (tournamentId: number) => api.get(`/admin/tournaments/${tournamentId}/waitlist`).then(r => r.data),
+  withdrawParticipant: (tournamentId: number, participantId: number, reason?: string) =>
+    api.post(`/admin/tournaments/${tournamentId}/participants/${participantId}/withdraw`, { reason }).then(r => r.data),
+  promoteNextWaitlisted: (tournamentId: number, paymentMethod?: 'cash' | 'card') =>
+    api.post(`/admin/tournaments/${tournamentId}/waitlist/promote`, paymentMethod ? { payment_method: paymentMethod } : {}).then(r => r.data),
+  replaceParticipant: (tournamentId: number, withdrawnParticipantId: number, replacementParticipantId: number, paymentMethod?: 'cash' | 'card') =>
+    api.post(`/admin/tournaments/${tournamentId}/participants/${withdrawnParticipantId}/replace`, { replacement_participant_id: replacementParticipantId, payment_method: paymentMethod }).then(r => r.data),
 };
 
 export const orgTournamentParticipantApi = {
@@ -143,4 +151,12 @@ export const orgTournamentParticipantApi = {
     api.post(`/org/${orgId}/tournaments/${tournamentId}/draw/move`, { participant_id: participantId, position, override }).then(r => r.data),
   approveDraw: (orgId: number | string, tournamentId: number) => api.post(`/org/${orgId}/tournaments/${tournamentId}/draw/approve`).then(r => r.data),
   lockDraw: (orgId: number | string, tournamentId: number) => api.post(`/org/${orgId}/tournaments/${tournamentId}/draw/lock`).then(r => r.data),
+  // Group 6 — participant lifecycle (org)
+  getWaitlist: (orgId: number | string, tournamentId: number) => api.get(`/org/${orgId}/tournaments/${tournamentId}/waitlist`).then(r => r.data),
+  withdrawParticipant: (orgId: number | string, tournamentId: number, participantId: number, reason?: string) =>
+    api.post(`/org/${orgId}/tournaments/${tournamentId}/participants/${participantId}/withdraw`, { reason }).then(r => r.data),
+  promoteNextWaitlisted: (orgId: number | string, tournamentId: number, paymentMethod?: 'cash' | 'card') =>
+    api.post(`/org/${orgId}/tournaments/${tournamentId}/waitlist/promote`, paymentMethod ? { payment_method: paymentMethod } : {}).then(r => r.data),
+  replaceParticipant: (orgId: number | string, tournamentId: number, withdrawnParticipantId: number, replacementParticipantId: number, paymentMethod?: 'cash' | 'card') =>
+    api.post(`/org/${orgId}/tournaments/${tournamentId}/participants/${withdrawnParticipantId}/replace`, { replacement_participant_id: replacementParticipantId, payment_method: paymentMethod }).then(r => r.data),
 };

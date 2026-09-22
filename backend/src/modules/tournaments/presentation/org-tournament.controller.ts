@@ -390,3 +390,46 @@ export async function lockOrgDrawHandler(request: FastifyRequest, reply: Fastify
   const { participantDrawService } = await import('../application/participant-draw.service.js');
   return reply.send(await participantDrawService.lockDraw(Number(id), userId));
 }
+
+// ── Group 6 — org-scoped participant lifecycle (withdrawal / waitlist / replacement) ──
+
+export async function listOrgWaitlistHandler(request: FastifyRequest, reply: FastifyReply) {
+  const orgId = getOrgId(request);
+  const { id } = request.params as any;
+  await assertOrgOwnsTournament(orgId, Number(id));
+  const { participantDrawService } = await import('../application/participant-draw.service.js');
+  return reply.send({ data: await participantDrawService.listWaitingParticipants(Number(id)) });
+}
+
+export async function withdrawOrgParticipantHandler(request: FastifyRequest, reply: FastifyReply) {
+  const orgId = getOrgId(request);
+  const userId = getUserId(request);
+  const { id, participantId } = request.params as any;
+  await assertOrgOwnsTournament(orgId, Number(id));
+  const { WithdrawParticipantSchema } = await import('./tournament.dto.js');
+  const body = WithdrawParticipantSchema.parse(request.body);
+  const { participantDrawService } = await import('../application/participant-draw.service.js');
+  return reply.send(await participantDrawService.withdrawParticipant(Number(id), Number(participantId), userId, body.reason));
+}
+
+export async function promoteOrgWaitlistHandler(request: FastifyRequest, reply: FastifyReply) {
+  const orgId = getOrgId(request);
+  const userId = getUserId(request);
+  const { id } = request.params as any;
+  await assertOrgOwnsTournament(orgId, Number(id));
+  const { PromoteWaitlistSchema } = await import('./tournament.dto.js');
+  const body = PromoteWaitlistSchema.parse(request.body);
+  const { participantDrawService } = await import('../application/participant-draw.service.js');
+  return reply.send(await participantDrawService.promoteNextWaitlisted(Number(id), userId, body.payment_method));
+}
+
+export async function replaceOrgParticipantHandler(request: FastifyRequest, reply: FastifyReply) {
+  const orgId = getOrgId(request);
+  const userId = getUserId(request);
+  const { id, participantId } = request.params as any;
+  await assertOrgOwnsTournament(orgId, Number(id));
+  const { ReplaceParticipantSchema } = await import('./tournament.dto.js');
+  const body = ReplaceParticipantSchema.parse(request.body);
+  const { participantDrawService } = await import('../application/participant-draw.service.js');
+  return reply.send(await participantDrawService.replaceParticipant(Number(id), Number(participantId), body.replacement_participant_id, userId, body.payment_method));
+}

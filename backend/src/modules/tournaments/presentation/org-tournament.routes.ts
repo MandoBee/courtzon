@@ -203,6 +203,28 @@ export async function orgTournamentRoutes(app: FastifyInstance): Promise<void> {
     ctrl.lockOrgDrawHandler,
   );
 
+  // ── Group 6 — org-scoped participant lifecycle ──
+  app.get(
+    '/org/:orgId/tournaments/:id/waitlist',
+    { preHandler: [requireOrgScopedPermission('org.tournaments.view')] },
+    ctrl.listOrgWaitlistHandler,
+  );
+  app.post(
+    '/org/:orgId/tournaments/:id/participants/:participantId/withdraw',
+    { preHandler: [requireOrgScopedPermission('org.tournaments.manage')] },
+    ctrl.withdrawOrgParticipantHandler,
+  );
+  app.post(
+    '/org/:orgId/tournaments/:id/waitlist/promote',
+    { preHandler: [requireOrgScopedPermission('org.tournaments.manage')] },
+    ctrl.promoteOrgWaitlistHandler,
+  );
+  app.post(
+    '/org/:orgId/tournaments/:id/participants/:participantId/replace',
+    { preHandler: [requireOrgScopedPermission('org.tournaments.manage')] },
+    ctrl.replaceOrgParticipantHandler,
+  );
+
   // ── Match operations ──
   app.put(
     '/org/:orgId/tournaments/matches/:matchId/court',

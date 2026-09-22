@@ -47,6 +47,8 @@ export const CreateTournamentSchema = z.object({
   currency_code: z.string().length(3).default('USD'),
   price_type: z.enum(['FREE', 'FIXED', 'MEMBERS_ONLY']).optional().default('FIXED'),
   registration_payment_methods: RegistrationPaymentMethodsSchema.optional(),
+  /** Group 6 — when full and enabled, new registrations enter a FIFO waitlist. */
+  waitlist_enabled: z.boolean().optional().default(false),
   // Commission is ALWAYS derived server-side from the organisation's active
   // subscription/plan (Group 5B-SR). The field is intentionally NOT part of the
   // schema — zod strips any client-supplied commission_rate so it can never
@@ -92,6 +94,7 @@ export const UpdateTournamentSchema = z.object({
   currency_code: z.string().length(3).optional(),
   price_type: z.enum(['FREE', 'FIXED', 'MEMBERS_ONLY']).optional(),
   registration_payment_methods: RegistrationPaymentMethodsSchema.optional(),
+  waitlist_enabled: z.boolean().optional(),
   // commission_rate is immutable once a tournament is created — it is the
   // historical economic snapshot of the rate in force at creation (Group 5B-SR).
   // Not part of the schema: updates can never change it.
@@ -195,6 +198,22 @@ export const MoveParticipantSchema = z.object({
   participant_id: z.number().int().positive(),
   position: z.number().int().min(0),
   override: z.boolean().optional().default(false),
+});
+
+/** Group 6 — pre-start withdrawal (reason optional, audit-only). */
+export const WithdrawParticipantSchema = z.object({
+  reason: z.string().max(255).optional(),
+});
+
+/** Group 6 — promote the next waitlisted participant (payment follows Group 3). */
+export const PromoteWaitlistSchema = z.object({
+  payment_method: z.enum(['cash', 'card']).optional(),
+});
+
+/** Group 6 — pre-start replacement of a withdrawn participant by a waitlisted one. */
+export const ReplaceParticipantSchema = z.object({
+  replacement_participant_id: z.number().int().positive(),
+  payment_method: z.enum(['cash', 'card']).optional(),
 });
 
 export type CreateTournamentInput = z.infer<typeof CreateTournamentSchema>;

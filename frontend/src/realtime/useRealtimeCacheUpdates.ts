@@ -830,6 +830,19 @@ export function useRealtimeCacheUpdates(): void {
     });
   }
 
+  // Group 6 — participant lifecycle (withdrawal / waitlist / replacement) state
+  // changes refresh the participants + waitlist caches live.
+  for (const ev of ['tournament.participant-updated', 'tournament.waitlist-updated', 'tournament.participant-replaced']) {
+    useSocketEvent(ev, (p: any) => {
+      invalidateTournament(qc, p?.tournamentId);
+      if (p?.tournamentId) {
+        qc.invalidateQueries({ queryKey: ['tournament-participants', p.tournamentId] });
+        qc.invalidateQueries({ queryKey: ['tournament-waitlist', p.tournamentId] });
+        qc.invalidateQueries({ queryKey: ['tournament', String(p.tournamentId), 'participants'] });
+      }
+    });
+  }
+
   // ── Presence events ────────────────────────────────────────────
   useSocketEvent('presence.online', (p: any) => {
     qc.setQueryData(['user-presence', p.userId], () => true);

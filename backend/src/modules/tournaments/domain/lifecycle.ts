@@ -16,6 +16,9 @@ const TOURNAMENT_TRANSITIONS: Record<TournamentStatus, TournamentStatus[]> = {
 const REGISTRATION_TRANSITIONS: Record<RegistrationStatus, RegistrationStatus[]> = {
   registered: ['confirmed', 'withdrawn', 'disqualified'],
   confirmed: ['withdrawn', 'disqualified'],
+  // Group 6 — a waiting registration is promoted to active (registered) or may
+  // be withdrawn/disqualified directly from the waitlist.
+  waiting: ['registered', 'confirmed', 'withdrawn', 'disqualified'],
   withdrawn: [],
   disqualified: [],
 };

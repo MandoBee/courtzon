@@ -1,6 +1,6 @@
 import type { FastifyRequest, FastifyReply } from 'fastify';
 import { participantDrawService } from '../application/participant-draw.service.js';
-import { AssignSeedSchema, GenerateDrawSchema, MoveParticipantSchema } from './tournament.dto.js';
+import { AssignSeedSchema, GenerateDrawSchema, MoveParticipantSchema, WithdrawParticipantSchema, PromoteWaitlistSchema, ReplaceParticipantSchema } from './tournament.dto.js';
 
 function getUserId(request: FastifyRequest): number { return (request as any).userId; }
 
@@ -10,6 +10,38 @@ export async function listParticipantsHandler(request: FastifyRequest, reply: Fa
   const { id } = request.params as any;
   const data = await participantDrawService.listParticipants(Number(id));
   return reply.send({ data });
+}
+
+// ── Group 6 — Participant lifecycle (admin) ──
+
+export async function listWaitlistHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { id } = request.params as any;
+  const data = await participantDrawService.listWaitingParticipants(Number(id));
+  return reply.send({ data });
+}
+
+export async function withdrawParticipantHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = getUserId(request);
+  const { id, participantId } = request.params as any;
+  const body = WithdrawParticipantSchema.parse(request.body);
+  const result = await participantDrawService.withdrawParticipant(Number(id), Number(participantId), userId, body.reason);
+  return reply.send(result);
+}
+
+export async function promoteNextWaitlistedHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = getUserId(request);
+  const { id } = request.params as any;
+  const body = PromoteWaitlistSchema.parse(request.body);
+  const result = await participantDrawService.promoteNextWaitlisted(Number(id), userId, body.payment_method);
+  return reply.send(result);
+}
+
+export async function replaceParticipantHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = getUserId(request);
+  const { id, participantId } = request.params as any;
+  const body = ReplaceParticipantSchema.parse(request.body);
+  const result = await participantDrawService.replaceParticipant(Number(id), Number(participantId), body.replacement_participant_id, userId, body.payment_method);
+  return reply.send(result);
 }
 
 export async function assignSeedHandler(request: FastifyRequest, reply: FastifyReply) {

@@ -63,8 +63,14 @@ const audit = vi.hoisted(() => ({ recordAudit: vi.fn() }));
 const bus = vi.hoisted(() => ({ emit: vi.fn() }));
 const pool = vi.hoisted(() => ({ execute: vi.fn(async () => [[]]), query: vi.fn(async () => [[]]) }));
 const commission = vi.hoisted(() => ({ getCommissionRate: vi.fn() }));
+const pdRepo = vi.hoisted(() => ({
+  getNextWaitingOrderByTournament: vi.fn(),
+  createParticipant: vi.fn(),
+  findParticipantByRegistration: vi.fn(),
+}));
 
 vi.mock('../infrastructure/repositories/tournament.repository.js', () => ({ tournamentRepository: repo }));
+vi.mock('../infrastructure/repositories/participant-draw.repository.js', () => ({ participantDrawRepository: pdRepo }));
 vi.mock('../../../database/mysql.js', () => ({ getPool: () => pool }));
 vi.mock('../../audit-log/index.js', () => ({ recordAudit: audit.recordAudit }));
 vi.mock('../../../shared/event-bus/event-bus.v2.js', () => ({ eventBusV2: bus }));
@@ -99,6 +105,9 @@ describe('TournamentService (Group 5A)', () => {
     vi.clearAllMocks();
     repo.findBracketTypeById.mockResolvedValue({ id: 1, name: 'Single Elimination', slug: 'single-elimination', is_active: 1, config_schema: '{"rounds":"auto","seeding":true}' });
     commission.getCommissionRate.mockResolvedValue(null);
+    pdRepo.getNextWaitingOrderByTournament.mockResolvedValue(1);
+    pdRepo.createParticipant.mockResolvedValue(1);
+    pdRepo.findParticipantByRegistration.mockResolvedValue(null);
   });
   const svc = new TournamentService();
 

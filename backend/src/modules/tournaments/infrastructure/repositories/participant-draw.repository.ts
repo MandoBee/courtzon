@@ -29,16 +29,18 @@ export class ParticipantDrawRepository {
     participant_type?: string;
     status?: string;
     member_user_ids?: number[] | null;
+    waiting_order?: number | null;
   }): Promise<number> {
     const [result] = await getPool().query<ResultSet>(
-      `INSERT INTO tournament_participants (tournament_id, registration_id, participant_type, status, member_user_ids)
-       VALUES (?, ?, ?, ?, ?)`,
+      `INSERT INTO tournament_participants (tournament_id, registration_id, participant_type, status, member_user_ids, waiting_order)
+       VALUES (?, ?, ?, ?, ?, ?)`,
       [
         data.tournament_id,
         data.registration_id ?? null,
         data.participant_type ?? 'individual',
         data.status ?? 'active',
         data.member_user_ids ? JSON.stringify(data.member_user_ids) : null,
+        data.waiting_order ?? null,
       ],
     );
     return (result as any).insertId;
@@ -102,6 +104,71 @@ export class ParticipantDrawRepository {
       [tournamentId],
     );
     return Number(rows[0]?.c ?? 0);
+  }
+
+  // ── Group 6 — Participant lifecycle / waitlist ──
+
+  /** Next FIFO waiting order (monotonic, unique per tournament, never renumbered). */
+  async getNextWaitingOrderByTournament(tournamentId: number, conn?: import('mysql2/promise').PoolConnection): Promise<number> {
+    const db: import('mysql2/promise').Pool | import('mysql2/promise').PoolConnection = conn ?? getPool();
+    const [rows] = await db.query<RowData>(
+      "SELECT COALESCE(MAX(waiting_order), 0) + 1 AS next_order FROM tournament_participants WHERE tournament_id = ? AND status = 'waiting'",
+      [tournamentId],
+    );
+    return Number(rows[0]?.next_order ?? 1);
+  }
+
+  /** Earliest eligible waiting participant (FIFO head). */
+  async findWaitlistHead(tournamentId: number, conn?: import('mysql2/promise').PoolConnection): Promise<TournamentParticipant | null> {
+    const db: import('mysql2/promise').Pool | import('mysql2/promise').PoolConnection = conn ?? getPool();
+    const [rows] = await db.query<RowData>(
+      "SELECT * FROM tournament_participants WHERE tournament_id = ? AND status = 'waiting' ORDER BY waiting_order ASC, id ASC LIMIT 1",
+      [tournamentId],
+    );
+    return rows.length ? (rows[0] as TournamentParticipant) : null;
+  }
+
+  async listWaitingParticipants(tournamentId: number): Promise<Array<TournamentParticipant & { display_name?: string | null }>> {
+    const [rows] = await getPool().query<RowData>(
+      `SELECT p.*,
+              (SELECT u.full_name FROM users u
+                WHERE u.id = CAST(JSON_UNQUOTE(JSON_EXTRACT(p.member_user_ids, '$[0]')) AS UNSIGNED)) AS display_name
+       FROM tournament_participants p
+       WHERE p.tournament_id = ? AND p.status = 'waiting'
+       ORDER BY p.waiting_order ASC, p.id ASC`,
+      [tournamentId],
+    );
+    return rows as Array<TournamentParticipant & { display_name?: string | null }>;
+  }
+
+  async countWaitingParticipants(tournamentId: number): Promise<number> {
+    const [rows] = await getPool().query<RowData>(
+      "SELECT COUNT(*) AS c FROM tournament_participants WHERE tournament_id = ? AND status = 'waiting'",
+      [tournamentId],
+    );
+    return Number(rows[0]?.c ?? 0);
+  }
+
+  async updateParticipantStatus(id: number, status: string, conn?: import('mysql2/promise').PoolConnection): Promise<void> {
+    const db: import('mysql2/promise').Pool | import('mysql2/promise').PoolConnection = conn ?? getPool();
+    await db.query('UPDATE tournament_participants SET status = ? WHERE id = ?', [status, id]);
+  }
+
+  async updateParticipantWaitingOrder(id: number, waitingOrder: number | null, conn?: import('mysql2/promise').PoolConnection): Promise<void> {
+    const db: import('mysql2/promise').Pool | import('mysql2/promise').PoolConnection = conn ?? getPool();
+    await db.query('UPDATE tournament_participants SET waiting_order = ? WHERE id = ?', [waitingOrder, id]);
+  }
+
+  /** Is a user already represented by an ACTIVE (non-withdrawn, non-waiting) participant in this tournament? */
+  async findActiveParticipantByPlayer(tournamentId: number, userId: number): Promise<TournamentParticipant | null> {
+    const [rows] = await getPool().query<RowData>(
+      `SELECT * FROM tournament_participants
+       WHERE tournament_id = ? AND status = 'active'
+         AND JSON_CONTAINS(member_user_ids, CAST(? AS JSON)) = 1
+       LIMIT 1`,
+      [tournamentId, userId],
+    );
+    return rows.length ? (rows[0] as TournamentParticipant) : null;
   }
 
   // ── Seeds ──
@@ -309,6 +376,22 @@ export class ParticipantDrawRepository {
     if (!fields.length) return;
     params.push(id);
     await getPool().query(`UPDATE tournament_draw_entries SET ${fields.join(', ')} WHERE id = ?`, params);
+  }
+
+  /** Group 6 — remove a participant's placement from a DRAFT draw (withdrawal leaves the active draw population). */
+  async deleteDrawEntryByParticipant(drawId: number, participantId: number, conn?: import('mysql2/promise').PoolConnection): Promise<boolean> {
+    const db: import('mysql2/promise').Pool | import('mysql2/promise').PoolConnection = conn ?? getPool();
+    const [result] = await db.query<ResultSet>(
+      'DELETE FROM tournament_draw_entries WHERE draw_id = ? AND participant_id = ?',
+      [drawId, participantId],
+    );
+    return (result as any).affectedRows > 0;
+  }
+
+  /** Group 6 — flag the current draw as requiring re-validation/re-generation. */
+  async markDrawRequiresRedraw(drawId: number, conn?: import('mysql2/promise').PoolConnection): Promise<void> {
+    const db: import('mysql2/promise').Pool | import('mysql2/promise').PoolConnection = conn ?? getPool();
+    await db.query("UPDATE tournament_draws SET validation_status = 'seeding_violation' WHERE id = ?", [drawId]);
   }
 }
 

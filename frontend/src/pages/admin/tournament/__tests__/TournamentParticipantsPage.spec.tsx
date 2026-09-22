@@ -7,9 +7,9 @@ import TournamentParticipantsPage from '../TournamentParticipantsPage';
 const __state = vi.hoisted(() => ({
   userPermissions: ['*'] as string[],
   participants: [
-    { id: 1, player_id: 10, display_name: 'Player A', global_rating: null, seed: null, draw_position: 0 },
-    { id: 2, player_id: 20, display_name: 'Player B', global_rating: 1650, seed: { seed_number: 2, source: 'manual' }, draw_position: 1 },
-    { id: 3, player_id: 30, display_name: 'Player C', global_rating: 1800, seed: { seed_number: 3, source: 'rating', rating_snapshot: 1800 }, draw_position: 2 },
+    { id: 1, player_id: 10, display_name: 'Player A', status: 'active', global_rating: null, seed: null, draw_position: 0 },
+    { id: 2, player_id: 20, display_name: 'Player B', status: 'active', global_rating: 1650, seed: { seed_number: 2, source: 'manual' }, draw_position: 1 },
+    { id: 3, player_id: 30, display_name: 'Player C', status: 'active', global_rating: 1800, seed: { seed_number: 3, source: 'rating', rating_snapshot: 1800 }, draw_position: 2 },
   ],
   currentDraw: {
     id: 10, tournament_id: 1, attempt_number: 1, status: 'draft',
@@ -19,6 +19,10 @@ const __state = vi.hoisted(() => ({
       { id: 3, participant_id: 3, position: 2, display_name: 'Player C', seed_number: 3, placement_source: 'auto', overridden: 0 },
     ],
   },
+  waitlist: [
+    { id: 20, tournament_id: 1, registration_id: 20, status: 'waiting', waiting_order: 1, member_user_ids: [200], player_id: 200, display_name: 'Player W1' },
+    { id: 21, tournament_id: 1, registration_id: 21, status: 'waiting', waiting_order: 2, member_user_ids: [201], player_id: 201, display_name: 'Player W2' },
+  ],
 }));
 
 vi.mock('../../../../services/api', () => ({
@@ -58,6 +62,7 @@ function renderPage() {
 function mockApi() {
   (api.get as any).mockImplementation((url: string) => {
     if (url.includes('/participants')) return Promise.resolve({ data: __state.participants });
+    if (url.includes('/waitlist')) return Promise.resolve({ data: __state.waitlist });
     if (url.includes('/draw')) return Promise.resolve({ data: __state.currentDraw });
     return Promise.resolve({ data: {} });
   });
@@ -118,5 +123,47 @@ describe('TournamentParticipantsPage — Group 5 foundation', () => {
     await screen.findAllByText('Player A');
     expect(screen.queryByText('Generate Draw')).toBeNull();
     expect(screen.queryByText('Assign Seed')).toBeNull();
+  });
+});
+
+describe('TournamentParticipantsPage — participant lifecycle (Group 6)', () => {
+  it('renders the FIFO waitlist with positions and a Promote action', async () => {
+    renderPage();
+    expect((await screen.findAllByText(/Waitlist/)).length).toBeGreaterThan(0);
+    expect(screen.getByText('Player W1')).toBeTruthy();
+    expect(screen.getByText('Player W2')).toBeTruthy();
+    expect(screen.getAllByText('#1').length).toBeGreaterThan(0);
+    expect(screen.getByText('Promote Next')).toBeTruthy();
+  });
+
+  it('withdraw action calls the withdraw lifecycle endpoint', async () => {
+    renderPage();
+    await screen.findAllByText('Player A');
+    const withdrawBtns = screen.getAllByText('Withdraw');
+    expect(withdrawBtns.length).toBeGreaterThan(0);
+    (globalThis as any).confirm = () => true;
+    fireEvent.click(withdrawBtns[0]);
+    await waitFor(() => expect((api.post as any).mock.calls.length).toBeGreaterThan(0));
+    const [url] = (api.post as any).mock.calls[0];
+    expect(url).toContain('/participants/1/withdraw');
+  });
+
+  it('promote next calls the waitlist promote endpoint', async () => {
+    renderPage();
+    await screen.findAllByText('Player A');
+    fireEvent.click(screen.getByText('Promote Next'));
+    await waitFor(() => expect((api.post as any).mock.calls.length).toBeGreaterThan(0));
+    const [url] = (api.post as any).mock.calls[0];
+    expect(url).toContain('/waitlist/promote');
+  });
+
+  it('lifecycle actions are RBAC-gated', async () => {
+    __state.userPermissions = ['tournament.view'];
+    renderPage();
+    await screen.findAllByText('Player A');
+    expect(screen.queryByText('Withdraw')).toBeNull();
+    expect(screen.queryByText('Promote Next')).toBeNull();
+    // Read-only surfaces still render.
+    expect(screen.getByText('Player W1')).toBeTruthy();
   });
 });

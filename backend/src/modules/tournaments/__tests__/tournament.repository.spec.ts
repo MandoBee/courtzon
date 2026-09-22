@@ -68,7 +68,7 @@ describe('TournamentRepository.create — NOT NULL contract (UAT blocker regress
     await repo.create(minimalData() as any);
 
     const params = pool.query.mock.calls[0][1] as any[];
-    expect(params[29]).toBe('2026-10-01'); // 0-based index of start_date (after draw_seed + Group 3 registration_payment_methods)
+    expect(params[30]).toBe('2026-10-01'); // 0-based index of start_date (after draw_seed + Group 3 payment methods + waitlist_enabled)
   });
 
   it('persists the draw_seed at creation (Group 5 — deterministic, auditable draws)', async () => {
