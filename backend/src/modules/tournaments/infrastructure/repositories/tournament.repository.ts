@@ -232,12 +232,13 @@ export class TournamentRepository {
   }
 
   async create(data: Partial<Tournament>): Promise<number> {
-    const sql = `INSERT INTO tournaments (public_id, creator_id, organisation_id, branch_id, bracket_type_id, format, category, season, sport_id, match_format_id, rule_set_id, name, code, description, tournament_type, max_participants, max_teams, min_participants, entry_fee, registration_fee, currency_code, price_type, registration_payment_methods, commission_rate, prize_description, status, is_public, registration_opens, registration_closes, start_date, end_date, daily_start_time, daily_end_time, rules, is_featured, image_url)
-                 VALUES (UUID(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+    const sql = `INSERT INTO tournaments (public_id, creator_id, organisation_id, branch_id, bracket_type_id, format, category, season, sport_id, match_format_id, rule_set_id, draw_seed, name, code, description, tournament_type, max_participants, max_teams, min_participants, entry_fee, registration_fee, currency_code, price_type, registration_payment_methods, commission_rate, prize_description, status, is_public, registration_opens, registration_closes, start_date, end_date, daily_start_time, daily_end_time, rules, is_featured, image_url)
+                 VALUES (UUID(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
     const [result] = await getPool().query<ResultSet>(sql, [
       data.creator_id, data.organisation_id ?? null, data.branch_id ?? null,
       data.bracket_type_id, data.format ?? null, data.category ?? null, data.season ?? null,
       data.sport_id ?? null, data.match_format_id ?? null, data.rule_set_id ?? null,
+      data.draw_seed ?? null,
       data.name, data.code ?? null, data.description ?? null,
       data.tournament_type ?? 'platform',
       data.max_participants, data.max_teams ?? null, data.min_participants ?? 2,
@@ -285,6 +286,18 @@ export class TournamentRepository {
     if (methods == null) return null;
     if (typeof methods === 'string') return methods;
     return JSON.stringify(methods);
+  }
+
+  /**
+   * Group 5 — normalize a raw `tournament_registrations` row into the domain
+   * shape: the authoritative seed is stored in the `seed_rank` column, and the
+   * domain reads it as `seed`. This mapping makes seeding work end-to-end (the
+   * draw consumes `reg.seed`). The participant seed is read-only from the draw
+   * path — it is never recomputed or overwritten by a draw/re-draw operation.
+   */
+  private mapRegistrationRow<T extends Record<string, unknown>>(row: T): TournamentRegistration & T {
+    const seed = row.seed_rank != null ? Number(row.seed_rank) : undefined;
+    return { ...(row as unknown as TournamentRegistration), seed } as TournamentRegistration & T;
   }
 
   /**
@@ -357,7 +370,7 @@ export class TournamentRepository {
        WHERE r.tournament_id = ? ORDER BY r.seed_rank`,
       [tournamentId],
     );
-    return rows as TournamentRegistration[];
+    return (rows as Record<string, unknown>[]).map((r) => this.mapRegistrationRow(r));
   }
 
   async findRegistrationsByPlayer(userId: number): Promise<TournamentRegistration[]> {
@@ -368,7 +381,7 @@ export class TournamentRepository {
        WHERE r.player_id = ? ORDER BY r.registered_at DESC`,
       [userId],
     );
-    return rows as TournamentRegistration[];
+    return (rows as Record<string, unknown>[]).map((r) => this.mapRegistrationRow(r));
   }
 
   async createRegistration(data: Partial<TournamentRegistration>): Promise<number> {
@@ -393,7 +406,7 @@ export class TournamentRepository {
       'SELECT * FROM tournament_registrations WHERE player_id = ? ORDER BY registered_at DESC',
       [userId],
     );
-    return rows as TournamentRegistration[];
+    return (rows as Record<string, unknown>[]).map((r) => this.mapRegistrationRow(r));
   }
 
   async updateRegistrationStatus(id: number, status: string, waitingOrder?: number): Promise<void> {
@@ -425,7 +438,7 @@ export class TournamentRepository {
 
   async getRegistrationById(id: number): Promise<TournamentRegistration | null> {
     const [rows] = await getPool().query<RowData>('SELECT * FROM tournament_registrations WHERE id = ?', [id]);
-    return rows.length ? (rows[0] as TournamentRegistration) : null;
+    return rows.length ? this.mapRegistrationRow(rows[0] as Record<string, unknown>) : null;
   }
 
   // ── Prizes (tournament_prizes — Group 2) ──

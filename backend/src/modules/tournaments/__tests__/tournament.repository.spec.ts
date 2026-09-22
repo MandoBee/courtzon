@@ -54,28 +54,36 @@ describe('TournamentRepository.create — NOT NULL contract (UAT blocker regress
     await repo.create(minimalData() as any);
 
     const params = pool.query.mock.calls[0][1] as any[];
-    expect(params[18]).toBe(0); // 0-based index of registration_fee in the INSERT
+    expect(params[19]).toBe(0); // 0-based index of registration_fee in the INSERT (after draw_seed)
   });
 
   it('passes a supplied registration_fee through unchanged', async () => {
     await repo.create(minimalData({ registration_fee: 25 }) as any);
 
     const params = pool.query.mock.calls[0][1] as any[];
-    expect(params[18]).toBe(25);
+    expect(params[19]).toBe(25);
   });
 
   it('binds a valid start_date (NOT NULL) and never NULL for it', async () => {
     await repo.create(minimalData() as any);
 
     const params = pool.query.mock.calls[0][1] as any[];
-    expect(params[28]).toBe('2026-10-01'); // 0-based index of start_date (after the Group 3 registration_payment_methods column)
+    expect(params[29]).toBe('2026-10-01'); // 0-based index of start_date (after draw_seed + Group 3 registration_payment_methods)
+  });
+
+  it('persists the draw_seed at creation (Group 5 — deterministic, auditable draws)', async () => {
+    await repo.create(minimalData({ draw_seed: 123456 }) as any);
+
+    const params = pool.query.mock.calls[0][1] as any[];
+    expect(params[10]).toBe(123456); // 0-based index of draw_seed (after rule_set_id)
+    expect(pool.query.mock.calls[0][0] as string).toContain('draw_seed');
   });
 
   it('serialises the Group 3 registration_payment_methods allowlist into the JSON column', async () => {
     await repo.create(minimalData({ registration_payment_methods: ['cash', 'card'] }) as any);
 
     const params = pool.query.mock.calls[0][1] as any[];
-    expect(params[21]).toBe('["cash","card"]'); // 0-based index of registration_payment_methods (after price_type)
+    expect(params[22]).toBe('["cash","card"]'); // 0-based index of registration_payment_methods (after price_type)
     expect(pool.query.mock.calls[0][0] as string).toContain('registration_payment_methods');
   });
 
@@ -83,7 +91,7 @@ describe('TournamentRepository.create — NOT NULL contract (UAT blocker regress
     await repo.create(minimalData() as any);
 
     const params = pool.query.mock.calls[0][1] as any[];
-    expect(params[21]).toBeNull();
+    expect(params[22]).toBeNull();
   });
 });
 
@@ -152,6 +160,13 @@ describe('TournamentRepository.list — player list contract (sport_name + brack
 });
 
 describe('TournamentRepository registrations — authoritative column usage', () => {
+  it('findRegistrationsByTournament maps seed_rank to the domain seed (Group 5 seed consumption)', async () => {
+    pool.query.mockResolvedValue([[{ id: 1, tournament_id: 4, player_id: 42, seed_rank: 3, status: 'confirmed' }]]);
+    const rows = await repo.findRegistrationsByTournament(4);
+    expect(rows[0].seed).toBe(3);       // domain reads `seed` (consumed by the draw)
+    expect(rows[0].seed_rank).toBe(3);  // stored column preserved
+  });
+
   it('findRegistrationsByTournament orders by seed_rank (not the non-existent seed column)', async () => {
     pool.query.mockResolvedValue([[{ id: 1, player_id: 5, seed_rank: 2 }]]);
     await repo.findRegistrationsByTournament(7);
