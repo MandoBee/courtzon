@@ -5806,6 +5806,8 @@ CREATE TABLE `tournaments` (
   `registration_closes` timestamp NULL DEFAULT NULL,
   `start_date` date NOT NULL,
   `end_date` date DEFAULT NULL,
+  `daily_start_time` time DEFAULT NULL COMMENT 'Daily playing window start (venue-local time); NULL = not configured',
+  `daily_end_time` time DEFAULT NULL COMMENT 'Daily playing window end (venue-local time); NULL = not configured',
   `rules` text COLLATE utf8mb4_unicode_ci,
   `is_featured` tinyint(1) NOT NULL DEFAULT '0',
   `image_url` varchar(500) COLLATE utf8mb4_unicode_ci DEFAULT NULL,

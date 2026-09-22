@@ -284,3 +284,54 @@ describe('TournamentDetailPage — registration payment methods (Group 3)', () =
     expect(payload.payment_method).toBe('card');
   });
 });
+
+describe('TournamentDetailPage — venue, map + daily playing window (Group 4)', () => {
+  it('displays the venue name, address, map action and daily playing time', async () => {
+    __state.tournament = {
+      ...__state.tournament,
+      daily_start_time: '09:00:00',
+      daily_end_time: '21:00:00',
+      sport_icon: '/icons/padel.png',
+      venue: {
+        branchId: 5, name: 'Padel Edge City', addressLine1: '12 Corniche', city: 'Dubai',
+        latitude: 25.2048, longitude: 55.2708, mapsUrl: 'https://www.google.com/maps/search/?api=1&query=25.2048,55.2708',
+      },
+    };
+    mockDetailApi();
+    renderPage();
+    await screen.findByText('Padel Open');
+    expect(screen.getAllByText('Padel Edge City').length).toBeGreaterThan(0);
+    expect(screen.getByText(/12 Corniche/)).toBeTruthy();
+    expect(screen.getByText(/09:00 – 21:00/)).toBeTruthy();
+    const mapLink = document.querySelector('a[href*="google.com/maps"]') as HTMLAnchorElement;
+    expect(mapLink).toBeTruthy();
+    expect(mapLink.textContent).toContain('View on Map');
+    const sportIcon = document.querySelector('img[alt="Padel"]') as HTMLImageElement;
+    expect(sportIcon).toBeTruthy();
+    expect(sportIcon.src).toContain('padel.png');
+  });
+
+  it('shows no map action when the venue has no address/coordinates (never invented)', async () => {
+    __state.tournament = {
+      ...__state.tournament,
+      daily_start_time: undefined,
+      daily_end_time: undefined,
+      venue: { branchId: 5, name: 'Anon Branch', addressLine1: null, city: null, latitude: null, longitude: null, mapsUrl: null },
+    };
+    mockDetailApi();
+    renderPage();
+    await screen.findByText('Padel Open');
+    expect(screen.getByText('Anon Branch')).toBeTruthy();
+    expect(document.querySelector('a[href*="google.com/maps"]')).toBeNull();
+    // daily playing time placeholder ('—' appears for the unconfigured window)
+    expect(screen.getAllByText('—').length).toBeGreaterThan(0);
+  });
+
+  it('renders the responsive header grid (mobile-first layout contract)', async () => {
+    mockDetailApi();
+    renderPage();
+    await screen.findByText('Padel Open');
+    const grid = Array.from(document.querySelectorAll('div')).find((d) => d.className.includes('grid-cols-2') && d.className.includes('md:grid-cols-4'));
+    expect(grid).toBeTruthy();
+  });
+});

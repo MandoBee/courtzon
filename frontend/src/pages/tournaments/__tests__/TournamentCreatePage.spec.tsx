@@ -36,6 +36,10 @@ const __state = vi.hoisted(() => ({
       },
     ],
   },
+  branchesPayload: { data: [
+    { id: 5, name: 'Padel Edge City', address_line1: '12 Corniche', city: 'Dubai' },
+    { id: 6, name: 'Padel Edge Marina', address_line1: 'Marina Walk', city: 'Dubai' },
+  ] },
 }));
 
 vi.mock('../../../services/tournament', () => ({
@@ -94,6 +98,10 @@ beforeEach(() => {
   __state.orgApi.getBracketTypes.mockResolvedValue(__state.bracketTypesPayload);
   __state.orgApi.getCommissionConfig.mockResolvedValue(__state.commissionPayload);
   __state.orgApi.getSportFormats.mockResolvedValue(__state.formatsPayload);
+  (api.get as any).mockImplementation((url: string) => {
+    if (url.includes('/org/6/branches')) return Promise.resolve({ data: __state.branchesPayload });
+    return Promise.resolve({ data: __state.sportsPayload });
+  });
 });
 
 describe('TournamentCreatePage — field-level permission gates (Group 5B UAT regression)', () => {
@@ -302,5 +310,67 @@ describe('TournamentCreatePage — registration payment methods (Group 3)', () =
     });
     const payload = (api.post as any).mock.calls[0][1] as any;
     expect(payload.registration_payment_methods).toEqual(['card']);
+  });
+});
+
+describe('TournamentCreatePage — venue + daily playing window (Group 4)', () => {
+  it('renders the venue (branch) selector + daily start/end time fields', async () => {
+    const view = renderPage(['tournaments.create.prize']);
+    expect(await screen.findByText('tournaments.create.venue')).toBeTruthy();
+    expect(screen.getByText('tournaments.create.daily_start')).toBeTruthy();
+    expect(screen.getByText('tournaments.create.daily_end')).toBeTruthy();
+    const timeInputs = Array.from(view.container.querySelectorAll('input[type="time"]'));
+    expect(timeInputs.length).toBe(2);
+  });
+
+  it('loads the organisation branches into the venue selector (reuses org/branch model)', async () => {
+    const view = renderPage(['tournaments.create.prize']);
+    await waitFor(() => expect(api.get).toHaveBeenCalledWith('/org/6/branches'));
+    await screen.findByText('tournaments.create.venue');
+    const venueSelect = Array.from(view.container.querySelectorAll('select')).find(
+      (s) => Array.from(s.querySelectorAll('option')).some((o) => o.textContent?.includes('Padel Edge City')),
+    );
+    expect(venueSelect).toBeTruthy();
+  });
+
+  it('hides the venue/daily section when the prize permission is absent (RBAC visibility)', async () => {
+    renderPage(['org.tournaments.create']);
+    await screen.findByText('tournaments.create.commission_rate');
+    expect(screen.queryByText('tournaments.create.venue')).toBeNull();
+    expect(screen.queryByText('tournaments.create.daily_start')).toBeNull();
+  });
+
+  it('submits branch_id + daily_start_time + daily_end_time with the create payload', async () => {
+    const { fireEvent } = await import('@testing-library/react');
+    const view = renderPage([
+      'tournaments.create.name', 'tournaments.create.type', 'tournaments.create.prize',
+      'tournaments.create.max-participants', 'tournaments.create.start-date',
+    ]);
+
+    await screen.findByText('tournaments.create.name');
+    fireEvent.change(screen.getByText('tournaments.create.name').nextElementSibling as HTMLInputElement, { target: { value: 'UAT Cup' } });
+    await screen.findByText('Single Elimination');
+    const bracketSelect = Array.from(view.container.querySelectorAll('select')).find(
+      (s) => Array.from(s.querySelectorAll('option')).some((o) => o.textContent === 'Single Elimination'),
+    );
+    fireEvent.change(bracketSelect!, { target: { value: '1' } });
+    fireEvent.change(screen.getByText('tournaments.create.max_players').nextElementSibling as HTMLInputElement, { target: { value: '8' } });
+    fireEvent.change(screen.getByText('tournaments.create.start_date').nextElementSibling as HTMLInputElement, { target: { value: '2026-10-01' } });
+
+    // Select venue branch + set daily window
+    const venueSelect = Array.from(view.container.querySelectorAll('select')).find(
+      (s) => Array.from(s.querySelectorAll('option')).some((o) => o.textContent?.includes('Padel Edge City')),
+    );
+    fireEvent.change(venueSelect!, { target: { value: '5' } });
+    const timeInputs = Array.from(view.container.querySelectorAll('input[type="time"]')) as HTMLInputElement[];
+    fireEvent.change(timeInputs[0], { target: { value: '09:00' } });
+    fireEvent.change(timeInputs[1], { target: { value: '21:00' } });
+
+    fireEvent.click(screen.getByText('tournaments.create.submit'));
+    await waitFor(() => expect((api.post as any).mock.calls.length).toBeGreaterThan(0));
+    const payload = (api.post as any).mock.calls[0][1] as any;
+    expect(payload.branch_id).toBe(5);
+    expect(payload.daily_start_time).toBe('09:00:00');
+    expect(payload.daily_end_time).toBe('21:00:00');
   });
 });

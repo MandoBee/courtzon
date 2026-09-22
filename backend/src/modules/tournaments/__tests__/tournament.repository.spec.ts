@@ -206,6 +206,19 @@ describe('TournamentRepository.getStandings — player name enrichment', () => {
   });
 });
 
+describe('TournamentRepository.findPlayerIdsForSport — Group 4 sport-targeted audience', () => {
+  it('queries ONLY the tournament sport (primary sport OR interest) — dynamic, never hardcoded', async () => {
+    pool.query.mockResolvedValue([[{ user_id: 42 }, { user_id: 43 }]]);
+    const ids = await repo.findPlayerIdsForSport(22);
+    const sql = pool.query.mock.calls[0][0] as string;
+    expect(sql).toContain('player_sport_interests WHERE sport_id = ?');
+    expect(sql).toContain('player_profiles WHERE main_sport_id = ?');
+    // Unrelated sports are excluded by the sport-scoped WHERE (never a global fan-out).
+    expect(sql).not.toMatch(/WHERE 1=1|WHERE user_id IS NOT NULL/);
+    expect(ids).toEqual([42, 43]);
+  });
+});
+
 describe('TournamentRepository — structured prizes (Group 2)', () => {
   it('findPrizesByTournament orders by display_order then id', async () => {
     pool.query.mockResolvedValue([[{ id: 1, tournament_id: 4, placement: 1, prize_type: 'cash', amount: 100, currency_code: 'USD', display_order: 0 }]]);

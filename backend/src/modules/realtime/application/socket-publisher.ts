@@ -79,6 +79,7 @@ export class SocketPublisher {
       'tournament:bracket-generated', 'tournament:match-created', 'tournament:match-progressed',
       'tournament:stage-completed', 'tournament:completed',
       'tournament:registration-paid', 'tournament:registration-payment-methods-updated',
+      'tournament:schedule-updated',
       'setting:updated', 'setting:profile-applied',
       'accounting:entry-recorded',
       'user:suspended', 'user:activated', 'user:deleted', 'user.role.changed',

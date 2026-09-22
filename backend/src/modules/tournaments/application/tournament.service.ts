@@ -1,6 +1,6 @@
 import { tournamentRepository, type BracketTypeRow } from '../infrastructure/repositories/tournament.repository.js';
 import { generateKnockoutBracket, generateRoundRobinMatches, generateStageMatches, seededShuffle, type BracketSlot } from '../domain/tournament-aggregate.js';
-import type { Tournament, TournamentRegistration, TournamentMatch, TournamentStage, TournamentPrizeInput, TournamentPrizeType } from '../domain/tournament-aggregate.js';
+import type { Tournament, TournamentRegistration, TournamentMatch, TournamentStage, TournamentPrizeInput, TournamentPrizeType, TournamentVenue } from '../domain/tournament-aggregate.js';
 import { validateTournamentTransition, validateRegistrationTransition } from '../domain/lifecycle.js';
 import { NotFoundError, ConflictError, ForbiddenError } from '../../../shared/errors/app-error.js';
 import { ErrorCodes } from '../../../shared/errors/error-codes.js';
@@ -13,6 +13,7 @@ import type { MatchFormatSnapshot } from '../../match/domain/match.types.js';
 import type { RawMatchResultPayload } from '../../match-result/domain/match-result.types.js';
 import { getCommissionRate } from '../../organisations/application/current-subscription.service.js';
 import { resolveOrganisationCurrency } from '../../organisations/application/organisation-currency.service.js';
+import { branchRepository } from '../../organisations/infrastructure/repositories/branch.repository.js';
 import { isPaymentMethodAllowedInContext } from '../../../shared/constants/payment-methods.js';
 
 /**
@@ -95,6 +96,10 @@ export class TournamentService {
     // falls back to both methods (backward-compatible default) — an existing
     // flow must never become unpayable.
     effectiveData.registration_payment_methods = this.normaliseRegistrationPaymentMethods(data.registration_payment_methods);
+    // Group 4 — validate + normalise the schedule configuration (registration
+    // deadline before start date, daily playing window + branch operating
+    // hours) BEFORE persisting anything.
+    await this.normaliseSchedule(effectiveData);
     // Deterministic draw seed: default to creation timestamp (stable, not random).
     const drawSeed = data.draw_seed ?? Date.now();
     // Group 1 — the human-readable Tournament Rules snapshot is ALWAYS derived
@@ -266,6 +271,174 @@ export class TournamentService {
   }
 
   /**
+   * Group 4 — validate + normalise the Tournament schedule configuration.
+   * Rules (server-side, the ONLY source of truth — frontend validation alone is
+   * insufficient):
+   *   * registration_deadline (`registration_closes`) must be BEFORE the
+   *     tournament start date (a deadline on/after the start is rejected).
+   *   * the daily playing window is either fully configured or absent (both or
+   *     neither); when configured, start < end.
+   *   * when the Tournament has a venue branch, the daily window must fall
+   *     INSIDE the branch's operating hours (opening_time .. closing_time) —
+   *     reusing the existing branch schedule model, never a second mechanism.
+   * Uses the effective (merged) configuration so partial updates validate
+   * against the resulting row, not just the delta.
+   */
+  private async normaliseSchedule(data: Partial<Tournament>, current?: Tournament): Promise<Partial<Tournament>> {
+    const effective = {
+      start_date: data.start_date ?? current?.start_date,
+      registration_closes: data.registration_closes ?? current?.registration_closes,
+      branch_id: data.branch_id ?? current?.branch_id,
+      daily_start_time: data.daily_start_time ?? current?.daily_start_time,
+      daily_end_time: data.daily_end_time ?? current?.daily_end_time,
+    };
+
+    // ── Registration deadline must precede the tournament start date ──
+    if (effective.registration_closes != null && effective.start_date != null) {
+      const closes = new Date(String(effective.registration_closes));
+      const start = new Date(`${String(effective.start_date).slice(0, 10)}T00:00:00`);
+      if (Number.isNaN(closes.getTime()) || Number.isNaN(start.getTime())) {
+        throw new ConflictError('Invalid registration deadline or start date', ErrorCodes.TOURNAMENT_INVALID_SCHEDULE);
+      }
+      if (closes.getTime() >= start.getTime()) {
+        throw new ConflictError(
+          'Registration deadline must be before the tournament start date',
+          ErrorCodes.TOURNAMENT_INVALID_SCHEDULE,
+        );
+      }
+    }
+
+    // ── Daily playing window: both or neither, start < end ──
+    const start = effective.daily_start_time ?? null;
+    const end = effective.daily_end_time ?? null;
+    if ((start == null) !== (end == null)) {
+      throw new ConflictError(
+        'Daily playing window must configure both a start time and an end time',
+        ErrorCodes.TOURNAMENT_INVALID_SCHEDULE,
+      );
+    }
+    if (start != null && end != null) {
+      if (start >= end) {
+        throw new ConflictError(
+          'Daily playing window start time must be before the end time',
+          ErrorCodes.TOURNAMENT_INVALID_SCHEDULE,
+        );
+      }
+      // ── Window must fit inside the branch operating hours when a venue exists ──
+      if (effective.branch_id != null) {
+        await this.assertDailyWindowWithinBranchHours(effective.branch_id, start, end);
+      }
+    }
+
+    return data;
+  }
+
+  /** Group 4 — validate the daily window against the venue branch's operating hours. */
+  private async assertDailyWindowWithinBranchHours(branchId: number, start: string, end: string): Promise<void> {
+    let branch: { opening_time?: string | null; closing_time?: string | null } | null = null;
+    try {
+      branch = await branchRepository.findById(branchId);
+    } catch {
+      branch = null;
+    }
+    if (!branch) return; // branch gone/missing → no schedule to validate against
+    const open = branch.opening_time ?? null;
+    const close = branch.closing_time ?? null;
+    if (open == null || close == null) return; // no operating hours configured
+    // Minute-of-day comparison; a window/close at 00:00 is the NEXT day's end.
+    const toMin = (t: string): number => {
+      const [h, m] = t.split(':').map(Number);
+      return (h ?? 0) * 60 + (m ?? 0);
+    };
+    const startMin = toMin(start);
+    const endMin = toMin(end) === 0 ? 1440 : toMin(end);
+    const openMin = toMin(open);
+    const closeMin = toMin(close) === 0 ? 1440 : toMin(close);
+    let within: boolean;
+    if (openMin < closeMin) {
+      // Normal hours (e.g. 08:00–22:00): window must sit inside.
+      within = startMin >= openMin && endMin <= closeMin;
+    } else {
+      // Overnight hours (e.g. 13:00–01:00): open..24:00 OR 00:00..close.
+      within = startMin >= openMin || endMin <= closeMin;
+    }
+    if (!within) {
+      throw new ConflictError(
+        `Daily playing window ${start}–${end} is outside the venue operating hours ${open}–${close}`,
+        ErrorCodes.TOURNAMENT_INVALID_SCHEDULE,
+      );
+    }
+  }
+
+  /**
+   * Group 4 — build the venue object for the authoritative detail shape from
+   * the branch columns resolved by `findByIdDetailed`. `mapsUrl` is built ONLY
+   * from real branch data (lat/lng preferred, else the text address) and is
+   * null when neither exists — coordinates/addresses are never invented.
+   */
+  private buildVenue(row: any): TournamentVenue | null {
+    const branchId = Number(row?.branch_id);
+    if (!branchId || row?.branch_name == null) return null;
+    const lat = row.branch_latitude != null ? Number(row.branch_latitude) : null;
+    const lng = row.branch_longitude != null ? Number(row.branch_longitude) : null;
+    const addressLine1 = row.branch_address_line1 ?? null;
+    const city = row.branch_city ?? null;
+    let mapsUrl: string | null = null;
+    if (lat != null && lng != null && !Number.isNaN(lat) && !Number.isNaN(lng)) {
+      mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${lat},${lng}`)}`;
+    } else {
+      const query = [addressLine1, city].filter(Boolean).join(', ').trim();
+      if (query) mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
+    }
+    return {
+      branchId,
+      name: row.branch_name,
+      addressLine1,
+      addressLine2: row.branch_address_line2 ?? null,
+      city,
+      state: row.branch_state ?? null,
+      postalCode: row.branch_postal_code ?? null,
+      countryId: row.branch_country_id != null ? Number(row.branch_country_id) : null,
+      latitude: lat,
+      longitude: lng,
+      timezone: row.branch_timezone ?? null,
+      openingTime: row.branch_opening_time ?? null,
+      closingTime: row.branch_closing_time ?? null,
+      mapsUrl,
+    };
+  }
+
+  /**
+   * Group 4 — notify players whose PRIMARY sport equals the tournament sport OR
+   * who listed that sport in their interests. Reuses the SHARED Notifications
+   * capability by emitting the `tournament:registration-open` domain event per
+   * audience member (the notification engine maps it to the template + dispatch
+   * + channel preferences). Deduplication is enforced by the notification
+   * engine (per user/event/entity) so repeated publish/update events never
+   * produce duplicate notifications. Sport-dynamic — never hardcoded.
+   */
+  private async emitRegistrationOpenNotifications(t: Tournament): Promise<void> {
+    if (t.sport_id == null || t.id == null) return;
+    let userIds: number[] = [];
+    try {
+      userIds = await tournamentRepository.findPlayerIdsForSport(t.sport_id);
+    } catch (err) {
+      // Notification emission is non-fatal; tournament lifecycle already persisted.
+      console.error('emitRegistrationOpenNotifications audience resolution failed', err);
+      return;
+    }
+    for (const userId of userIds) {
+      eventBusV2.emit('tournament:registration-open', {
+        tournamentId: t.id,
+        userId,
+        name: t.name,
+      } as Record<string, unknown>, {
+        aggregateType: 'tournament', aggregateId: String(t.id), aggregateVersion: 1,
+      });
+    }
+  }
+
+  /**
    * Group 5B-SR — the selected bracket type must exist, be active, and be
    * engine-supported. Prevents a config-visible-but-deferred type from
    * generating an invalid tournament.
@@ -330,6 +503,10 @@ export class TournamentService {
       ...t,
       registration_payment_methods: configured,
     });
+    // Group 4 — attach the resolved venue (branch) + sport icon so the player
+    // surface can render venue name/address/map and the sport icon.
+    t.venue = this.buildVenue(t);
+    t.sport_icon = t.sport_icon ?? null;
     return t;
   }
 
@@ -533,6 +710,34 @@ export class TournamentService {
         aggregateType: 'tournament', aggregateId: String(id), aggregateVersion: 1,
       });
     }
+    // Group 4 — mutable schedule configuration (registration deadline, venue
+    // branch, daily playing window, tournament dates) is validated against the
+    // resulting row and, when it actually changes, announced through the
+    // authoritative realtime channel (EventBusV2 → SocketPublisher).
+    const scheduleTouched =
+      data.registration_closes !== undefined || data.registration_opens !== undefined
+      || data.branch_id !== undefined || data.daily_start_time !== undefined
+      || data.daily_end_time !== undefined || data.start_date !== undefined
+      || data.end_date !== undefined;
+    if (scheduleTouched) {
+      await this.normaliseSchedule(data, current);
+      const before = `${current.start_date ?? ''}|${current.registration_closes ?? ''}|${current.branch_id ?? ''}|${current.daily_start_time ?? ''}|${current.daily_end_time ?? ''}`;
+      const after = `${data.start_date ?? current.start_date ?? ''}|${data.registration_closes ?? current.registration_closes ?? ''}|${data.branch_id ?? current.branch_id ?? ''}|${data.daily_start_time ?? current.daily_start_time ?? ''}|${data.daily_end_time ?? current.daily_end_time ?? ''}`;
+      if (before !== after) {
+        eventBusV2.emit('tournament:schedule-updated', {
+          tournamentId: id,
+          organisationId: current.organisation_id ?? null,
+          startDate: data.start_date ?? current.start_date ?? null,
+          endDate: data.end_date ?? current.end_date ?? null,
+          registrationCloses: data.registration_closes ?? current.registration_closes ?? null,
+          branchId: data.branch_id ?? current.branch_id ?? null,
+          dailyStartTime: data.daily_start_time ?? current.daily_start_time ?? null,
+          dailyEndTime: data.daily_end_time ?? current.daily_end_time ?? null,
+        } as Record<string, unknown>, {
+          aggregateType: 'tournament', aggregateId: String(id), aggregateVersion: 1,
+        });
+      }
+    }
     // Group 1 — whenever the rules-affecting configuration changes (sport_id,
     // match_format_id, rule_set_id, bracket_type_id), regenerate the
     // human-readable Rules snapshot server-side. A client-supplied `rules`
@@ -578,8 +783,20 @@ export class TournamentService {
     return this.getById(id);
   }
 
-  async publish(id: number) { return this.updateStatus(id, 'published'); }
-  async openRegistration(id: number) { return this.updateStatus(id, 'registration_open'); }
+  async publish(id: number) {
+    const t = await this.updateStatus(id, 'published');
+    // Group 4 — notify players whose primary sport / interests match the
+    // tournament sport (idempotent via the notification engine dedup).
+    await this.emitRegistrationOpenNotifications(t);
+    return t;
+  }
+  async openRegistration(id: number) {
+    const t = await this.updateStatus(id, 'registration_open');
+    // Group 4 — same audience as publish; repeated events are deduped by the
+    // notification engine so players never receive duplicates.
+    await this.emitRegistrationOpenNotifications(t);
+    return t;
+  }
   async closeRegistration(id: number) { return this.updateStatus(id, 'registration_closed'); }
   async startTournament(id: number) { return this.updateStatus(id, 'running'); }
   async complete(id: number) { return this.updateStatus(id, 'completed'); }
@@ -599,6 +816,19 @@ export class TournamentService {
     const t = await this.getById(tournamentId);
     if (t.status !== 'registration_open' && t.status !== 'published') {
       throw new ConflictError('Registration is not open for this tournament', ErrorCodes.TOURNAMENT_REGISTRATION_CLOSED);
+    }
+
+    // Group 4 — server-side registration deadline enforcement. The deadline is
+    // `registration_closes` (timestamp); players must not register after it.
+    // Frontend validation alone is insufficient — this is authoritative.
+    if (t.registration_closes) {
+      const deadline = new Date(t.registration_closes);
+      if (!Number.isNaN(deadline.getTime()) && Date.now() >= deadline.getTime()) {
+        throw new ConflictError(
+          'Registration has closed for this tournament',
+          ErrorCodes.TOURNAMENT_REGISTRATION_CLOSED,
+        );
+      }
     }
 
     const existing = await tournamentRepository.findRegistrationsByTournament(tournamentId);

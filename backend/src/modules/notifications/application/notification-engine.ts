@@ -1,5 +1,6 @@
 import { eventBusV2 } from '../../../shared/event-bus/index.js';
 import { dispatchToUser, dispatchByRole, dispatchByOrg, dispatchByPermission } from './dispatcher.service.js';
+import { notificationRepository } from '../infrastructure/repositories/notification.repository.js';
 import { createModuleLogger } from '../../../shared/utils/logger.js';
 import type { NotificationAction } from '@courtzon/shared';
 
@@ -596,9 +597,17 @@ const eventGroups: EventGroupConfig[] = [
         return;
       }
       if (data.userId) {
+        const relatedEntityId = String(data.tournamentId || data.matchId);
+        // Group 4 — idempotent delivery: a player is notified ONCE per
+        // tournament+event (publish and open-registration both emit this
+        // event; the second delivery is a no-op). No duplicate notifications.
+        if (eventName === 'tournament:registration-open') {
+          const existing = await notificationRepository.hasExisting(data.userId, eventName, 'tournament', relatedEntityId);
+          if (existing) return;
+        }
         await dispatchToUser({
           userId: data.userId, eventName, categorySlug, data,
-          relatedEntityType: 'tournament', relatedEntityId: String(data.tournamentId || data.matchId),
+          relatedEntityType: 'tournament', relatedEntityId,
           action: a(`/tournaments/${data.tournamentId || data.matchId}`),
         });
       }

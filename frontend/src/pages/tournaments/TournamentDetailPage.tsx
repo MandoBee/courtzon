@@ -110,6 +110,11 @@ export default function TournamentDetailPage() {
   const registerPaymentMethods = Array.isArray(tournament?.effective_registration_payment_methods)
     ? (tournament.effective_registration_payment_methods as string[])
     : [];
+  const venue = tournament?.venue || null;
+  const venueAddress = [venue?.addressLine1, venue?.addressLine2, venue?.city].filter(Boolean).join(', ');
+  const dailyWindow = tournament?.daily_start_time && tournament?.daily_end_time
+    ? `${String(tournament.daily_start_time).slice(0, 5)} – ${String(tournament.daily_end_time).slice(0, 5)}`
+    : null;
 
   return (
     <div className="space-y-6">
@@ -118,23 +123,39 @@ export default function TournamentDetailPage() {
       {/* Header */}
       <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-6 space-y-4">
         <div className="flex items-start justify-between">
-          <div>
-            <h1 className="text-xl font-bold text-[var(--color-text)]">{tournament.name}</h1>
-            <p className="text-sm text-[var(--color-text-muted)] capitalize">
-              {tournament.bracket_type_name || '—'}{tournament.sport_name ? ` • ${tournament.sport_name}` : ''}
-              {tournament.format ? ` • ${tournament.format}` : ''}
-            </p>
+          <div className="flex items-start gap-3">
+            {tournament.sport_icon && (
+              <img src={tournament.sport_icon} alt={tournament.sport_name || 'sport'} className="w-10 h-10 rounded-lg object-cover bg-[var(--color-bg)]" />
+            )}
+            <div>
+              <h1 className="text-xl font-bold text-[var(--color-text)]">{tournament.name}</h1>
+              <p className="text-sm text-[var(--color-text-muted)] capitalize">
+                {tournament.sport_name || '—'}{tournament.bracket_type_name ? ` • ${tournament.bracket_type_name}` : ''}
+                {tournament.format ? ` • ${tournament.format}` : ''}
+              </p>
+            </div>
           </div>
           <span className={`px-3 py-1 text-xs font-medium rounded-full capitalize ${STATUS_BADGE[tournament.status] || 'bg-yellow-100 text-yellow-700'}`}>{tournament.status}</span>
         </div>
         {tournament.description && <p className="text-sm text-[var(--color-text-muted)]">{tournament.description}</p>}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
           <div><span className="text-[var(--color-text-muted)]">Organisation:</span> <span className="font-medium">{tournament.organisation_name || 'Platform'}</span></div>
+          <div><span className="text-[var(--color-text-muted)]">Venue:</span> <span className="font-medium">{venue ? venue.name : '—'}</span></div>
           <div><span className="text-[var(--color-text-muted)]">Players:</span> <span className="font-medium">{participantList.length}/{tournament.max_participants}</span></div>
           <div><span className="text-[var(--color-text-muted)]">Fee:</span> <span className="font-medium">{formatPrice(Number(tournament.entry_fee ?? 0), tournament.currency_code)}</span></div>
           <div><span className="text-[var(--color-text-muted)]">Payment:</span> <span className="font-medium">{paymentMethodsLabel(registerPaymentMethods, Number(tournament.entry_fee ?? 0))}</span></div>
           <div><span className="text-[var(--color-text-muted)]">Registration deadline:</span> <span className="font-medium">{tournament.registration_deadline ? formatISODate(tournament.registration_deadline) : '—'}</span></div>
+          <div><span className="text-[var(--color-text-muted)]">Dates:</span> <span className="font-medium">{tournament.start_date ? formatISODate(tournament.start_date) : '—'}{tournament.end_date ? ` – ${formatISODate(tournament.end_date)}` : ''}</span></div>
+          <div><span className="text-[var(--color-text-muted)]">Playing Time:</span> <span className="font-medium">{dailyWindow || '—'}</span></div>
         </div>
+        {venueAddress && (
+          <p className="text-xs text-[var(--color-text-muted)]">{venueAddress}</p>
+        )}
+        {venue?.mapsUrl && (
+          <a href={venue.mapsUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs text-[var(--color-primary)] hover:underline">
+            View on Map ↗
+          </a>
+        )}
         <PrizeList prizes={tournament.prizes} legacyDescription={tournament.prize_description} />
         {tournament.rules && (
           <GeneratedRules rules={tournament.rules} title="Tournament Rules" />

@@ -105,6 +105,16 @@ export interface Tournament {
   registration_closes?: string;
   start_date?: string;
   end_date?: string;
+  /**
+   * Group 4 — daily playing window (venue-local time, e.g. '09:00:00').
+   * This is the match playing window, NOT the registration deadline. Values
+   * are interpreted in the venue branch's timezone (`branches.timezone`) when a
+   * branch is set. NULL = not configured (no window restriction).
+   */
+  daily_start_time?: string;
+  daily_end_time?: string;
+  /** Group 4 — response-only: resolved venue from the organisation branch. */
+  venue?: TournamentVenue | null;
   rules?: string;
   is_featured?: boolean;
   image_url?: string;
@@ -112,6 +122,32 @@ export interface Tournament {
   archived_at?: string;
   created_at?: string;
   updated_at?: string;
+}
+
+/**
+ * Group 4 — a Tournament venue, resolved from the existing organisation branch
+ * (`tournaments.branch_id` → `branches`). All fields are derived from the
+ * branch row; nothing is invented. `mapsUrl` is built ONLY from real branch
+ * address / lat-lng data and is null when no reliable destination exists.
+ */
+export interface TournamentVenue {
+  branchId: number;
+  name: string;
+  addressLine1?: string | null;
+  addressLine2?: string | null;
+  city?: string | null;
+  state?: string | null;
+  postalCode?: string | null;
+  countryId?: number | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  /** Branch timezone — authoritative for the daily playing window. */
+  timezone?: string | null;
+  /** Branch operating hours (used to validate the daily playing window). */
+  openingTime?: string | null;
+  closingTime?: string | null;
+  /** Google Maps destination, built from real address/lat-lng; null if unavailable. */
+  mapsUrl?: string | null;
 }
 
 /**

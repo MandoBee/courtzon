@@ -61,6 +61,10 @@ export const CreateTournamentSchema = z.object({
   // start_date (UpdateTournamentSchema keeps it optional for partial edits).
   start_date: z.string().min(1),
   end_date: z.string().optional(),
+  /** Group 4 — daily playing window start (venue-local time, HH:MM(:SS)). */
+  daily_start_time: z.string().regex(/^\d{2}:\d{2}(:\d{2})?$/, 'Use HH:MM time format').optional(),
+  /** Group 4 — daily playing window end (venue-local time, HH:MM(:SS)). */
+  daily_end_time: z.string().regex(/^\d{2}:\d{2}(:\d{2})?$/, 'Use HH:MM time format').optional(),
   rules: z.string().optional(),
   is_featured: z.boolean().optional().default(false),
   image_url: z.string().optional(),
@@ -98,6 +102,8 @@ export const UpdateTournamentSchema = z.object({
   registration_closes: z.string().optional(),
   start_date: z.string().optional(),
   end_date: z.string().optional(),
+  daily_start_time: z.string().regex(/^\d{2}:\d{2}(:\d{2})?$/, 'Use HH:MM time format').optional(),
+  daily_end_time: z.string().regex(/^\d{2}:\d{2}(:\d{2})?$/, 'Use HH:MM time format').optional(),
   rules: z.string().optional(),
   is_featured: z.boolean().optional(),
   image_url: z.string().optional(),

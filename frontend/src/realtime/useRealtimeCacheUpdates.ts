@@ -804,6 +804,12 @@ export function useRealtimeCacheUpdates(): void {
     invalidateTournament(qc, p?.tournamentId);
   });
 
+  // Group 4 — mutable schedule configuration (deadline, venue branch, daily
+  // playing window, dates) refreshed live without a manual reload.
+  useSocketEvent('tournament.schedule-updated', (p: any) => {
+    invalidateTournament(qc, p?.tournamentId);
+  });
+
   // ── Presence events ────────────────────────────────────────────
   useSocketEvent('presence.online', (p: any) => {
     qc.setQueryData(['user-presence', p.userId], () => true);

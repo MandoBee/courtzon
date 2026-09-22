@@ -26,6 +26,11 @@ type TournamentForm = {
   endDate?: string;
   registrationOpens?: string;
   registrationCloses?: string;
+  /** Group 4 — venue branch (organisation branch). */
+  branchId?: string;
+  /** Group 4 — daily playing window (venue-local time). */
+  dailyStartTime?: string;
+  dailyEndTime?: string;
   prizeDescription?: string;
 };
 
@@ -73,22 +78,32 @@ export default function TournamentCreatePage({ mode = 'admin', orgId }: Props) {
 
   const TournamentSchema = useMemo(
     () =>
-      z.object({
-        name: z.string().min(2, t('tournaments.create.validation.name')),
-        description: z.string().optional(),
-        bracketTypeId: z.string().min(1, t('tournaments.create.validation.bracket_type')),
-        sportId: z.string().optional(),
-        matchFormatId: z.string().optional(),
-        ruleSetId: z.string().optional(),
-        maxParticipants: z.string().min(1, t('tournaments.create.validation.max_players')),
-        minParticipants: z.string().optional(),
-        entryFee: z.string().optional(),
-        startDate: z.string().min(1, t('tournaments.create.validation.start_date')),
-        endDate: z.string().optional(),
-        registrationOpens: z.string().optional(),
-        registrationCloses: z.string().optional(),
-        prizeDescription: z.string().optional(),
-      }),
+      z
+        .object({
+          name: z.string().min(2, t('tournaments.create.validation.name')),
+          description: z.string().optional(),
+          bracketTypeId: z.string().min(1, t('tournaments.create.validation.bracket_type')),
+          sportId: z.string().optional(),
+          matchFormatId: z.string().optional(),
+          ruleSetId: z.string().optional(),
+          maxParticipants: z.string().min(1, t('tournaments.create.validation.max_players')),
+          minParticipants: z.string().optional(),
+          entryFee: z.string().optional(),
+          startDate: z.string().min(1, t('tournaments.create.validation.start_date')),
+          endDate: z.string().optional(),
+          registrationOpens: z.string().optional(),
+          registrationCloses: z.string().optional(),
+          // Group 4 — venue + daily playing window (server re-validates; the
+          // form enforces the obvious start < end locally).
+          branchId: z.string().optional(),
+          dailyStartTime: z.string().optional(),
+          dailyEndTime: z.string().optional(),
+          prizeDescription: z.string().optional(),
+        })
+        .refine(
+          (v) => !v.dailyStartTime || !v.dailyEndTime || v.dailyStartTime < v.dailyEndTime,
+          { message: t('tournaments.create.validation.daily_window'), path: ['dailyEndTime'] },
+        ),
     [t],
   );
 
@@ -124,6 +139,15 @@ export default function TournamentCreatePage({ mode = 'admin', orgId }: Props) {
   });
   const commissionRate = commissionConfig?.commissionRate ?? 0;
   const orgCurrency = isOrg ? commissionConfig?.currencyCode : undefined;
+
+  // ── Group 4 — venue: the organisation's branches (reuses the existing
+  // org/branch architecture; no free-text location system). ──
+  const { data: orgBranches } = useQuery({
+    queryKey: ['org-branches', orgId],
+    queryFn: () => api.get(`/org/${orgId}/branches`).then((r) => r.data),
+    enabled: isOrg && !!orgId,
+  });
+  const branchOptions: { id: number; name: string; address_line1?: string | null; city?: string | null }[] = orgBranches?.data ?? orgBranches ?? [];
 
   const { data: sports } = useQuery({
     queryKey: ['sports'],
@@ -218,6 +242,12 @@ export default function TournamentCreatePage({ mode = 'admin', orgId }: Props) {
       end_date: data.endDate || undefined,
       registration_opens: data.registrationOpens || undefined,
       registration_closes: data.registrationCloses || undefined,
+      // Group 4 — venue branch + daily playing window. The backend validates
+      // deadline-before-start, daily window start < end, and branch operating
+      // hours server-side (the authoritative source of truth).
+      branch_id: data.branchId ? Number(data.branchId) : undefined,
+      daily_start_time: data.dailyStartTime ? `${data.dailyStartTime}:00` : undefined,
+      daily_end_time: data.dailyEndTime ? `${data.dailyEndTime}:00` : undefined,
       prize_description: data.prizeDescription || undefined,
       prizes: structuredPrizes.length ? structuredPrizes : undefined,
       organisation_id: isOrg && orgId ? Number(orgId) : undefined,
@@ -385,6 +415,39 @@ export default function TournamentCreatePage({ mode = 'admin', orgId }: Props) {
               <Input label={t('tournaments.create.registration_closes')} type="datetime-local" {...register('registrationCloses')} />
             </Can>
           </div>
+
+          {/* Group 4 — venue (organisation branch) + daily playing window. */}
+          <Can permission="tournaments.create.prize">
+            <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] p-4 bg-[var(--color-bg)]/30 space-y-3">
+              <div>
+                <label className="block text-sm font-medium text-[var(--color-text)] mb-2">{t('tournaments.create.venue')}</label>
+                {isOrg ? (
+                  <select {...register('branchId')} className="w-full px-4 py-2.5 rounded-[var(--radius-md)] border border-[var(--color-border)] text-[var(--color-text)]">
+                    <option value="">{t('tournaments.create.venue_none')}</option>
+                    {branchOptions.map((b) => (
+                      <option key={b.id} value={b.id}>{b.name}{b.city ? ` — ${b.city}` : ''}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <p className="text-xs text-[var(--color-text-muted)]">{t('tournaments.create.venue_platform')}</p>
+                )}
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-[var(--color-text)] mb-2">{t('tournaments.create.daily_start')}</label>
+                  <input type="time" {...register('dailyStartTime')} className="w-full px-4 py-2.5 rounded-[var(--radius-md)] border border-[var(--color-border)] text-[var(--color-text)]" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-[var(--color-text)] mb-2">{t('tournaments.create.daily_end')}</label>
+                  <input type="time" {...register('dailyEndTime')} className="w-full px-4 py-2.5 rounded-[var(--radius-md)] border border-[var(--color-border)] text-[var(--color-text)]" />
+                </div>
+              </div>
+              {errors.dailyEndTime?.message && (
+                <p className="text-xs text-[var(--color-error)]">{errors.dailyEndTime.message}</p>
+              )}
+              <p className="text-xs text-[var(--color-text-muted)]">{t('tournaments.create.daily_hint')}</p>
+            </div>
+          </Can>
 
           <Can permission="tournaments.create.prize">
             <Input label={t('tournaments.create.prize')} {...register('prizeDescription')} />

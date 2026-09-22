@@ -170,13 +170,30 @@ export class TournamentRepository {
    * organisation_name, max_players, type, registration_deadline). This is the
    * SINGLE shared shape for the admin and org detail endpoints; the raw
    * `findById` remains the internal logic view.
+   *
+   * Group 4 — also resolves the venue from the organisation branch (branches
+   * table) and the sport icon, so player-facing details can expose venue
+   * name/address/map without a second location system.
    */
   async findByIdDetailed(id: number): Promise<any | null> {
     const [rows] = await getPool().query<RowData>(
       `SELECT t.*,
               s.name AS sport_name,
+              s.icon AS sport_icon,
               bt.name AS bracket_type_name,
               o.name AS organisation_name,
+              b.name AS branch_name,
+              b.address_line1 AS branch_address_line1,
+              b.address_line2 AS branch_address_line2,
+              b.city AS branch_city,
+              b.state AS branch_state,
+              b.postal_code AS branch_postal_code,
+              b.country_id AS branch_country_id,
+              b.latitude AS branch_latitude,
+              b.longitude AS branch_longitude,
+              b.timezone AS branch_timezone,
+              b.opening_time AS branch_opening_time,
+              b.closing_time AS branch_closing_time,
               t.max_participants AS max_players,
               t.tournament_type AS type,
               t.registration_closes AS registration_deadline
@@ -184,10 +201,29 @@ export class TournamentRepository {
        LEFT JOIN sports s ON s.id = t.sport_id
        LEFT JOIN tournament_bracket_types bt ON bt.id = t.bracket_type_id
        LEFT JOIN organisations o ON o.id = t.organisation_id
+       LEFT JOIN branches b ON b.id = t.branch_id
        WHERE t.id = ?`,
       [id],
     );
     return rows.length ? rows[0] : null;
+  }
+
+  /**
+   * Group 4 — the player audience for a Tournament's sport: users whose PRIMARY
+   * sport (`player_profiles.main_sport_id`) equals the tournament sport OR who
+   * listed the sport in their interests (`player_sport_interests`). Dynamic by
+   * sport — never hardcoded to any one sport.
+   */
+  async findPlayerIdsForSport(sportId: number): Promise<number[]> {
+    const [rows] = await getPool().query<RowData>(
+      `SELECT DISTINCT user_id FROM (
+         SELECT user_id FROM player_sport_interests WHERE sport_id = ?
+         UNION
+         SELECT user_id FROM player_profiles WHERE main_sport_id = ?
+       ) AS audience`,
+      [sportId, sportId],
+    );
+    return rows.map((r) => Number(r.user_id));
   }
 
   async findByCode(code: string): Promise<Tournament | null> {
@@ -196,8 +232,8 @@ export class TournamentRepository {
   }
 
   async create(data: Partial<Tournament>): Promise<number> {
-    const sql = `INSERT INTO tournaments (public_id, creator_id, organisation_id, branch_id, bracket_type_id, format, category, season, sport_id, match_format_id, rule_set_id, name, code, description, tournament_type, max_participants, max_teams, min_participants, entry_fee, registration_fee, currency_code, price_type, registration_payment_methods, commission_rate, prize_description, status, is_public, registration_opens, registration_closes, start_date, end_date, rules, is_featured, image_url)
-                 VALUES (UUID(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+    const sql = `INSERT INTO tournaments (public_id, creator_id, organisation_id, branch_id, bracket_type_id, format, category, season, sport_id, match_format_id, rule_set_id, name, code, description, tournament_type, max_participants, max_teams, min_participants, entry_fee, registration_fee, currency_code, price_type, registration_payment_methods, commission_rate, prize_description, status, is_public, registration_opens, registration_closes, start_date, end_date, daily_start_time, daily_end_time, rules, is_featured, image_url)
+                 VALUES (UUID(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
     const [result] = await getPool().query<ResultSet>(sql, [
       data.creator_id, data.organisation_id ?? null, data.branch_id ?? null,
       data.bracket_type_id, data.format ?? null, data.category ?? null, data.season ?? null,
@@ -211,7 +247,9 @@ export class TournamentRepository {
       data.commission_rate ?? 0,
       data.prize_description ?? null, data.status ?? 'draft',
       data.is_public ?? true, data.registration_opens ?? null, data.registration_closes ?? null,
-      data.start_date ?? null, data.end_date ?? null, data.rules ?? null,
+      data.start_date ?? null, data.end_date ?? null,
+      data.daily_start_time ?? null, data.daily_end_time ?? null,
+      data.rules ?? null,
       data.is_featured ?? false, data.image_url ?? null,
     ]);
     return (result as any).insertId;
@@ -226,7 +264,8 @@ export class TournamentRepository {
       'max_participants', 'max_teams', 'min_participants', 'entry_fee', 'registration_fee',
       'currency_code', 'price_type', 'registration_payment_methods', 'prize_description',
       'status', 'is_public', 'registration_opens', 'registration_closes',
-      'start_date', 'end_date', 'rules', 'is_featured', 'image_url',
+      'start_date', 'end_date', 'daily_start_time', 'daily_end_time',
+      'rules', 'is_featured', 'image_url',
     ];
     for (const f of updatable) {
       if (data[f] !== undefined) {

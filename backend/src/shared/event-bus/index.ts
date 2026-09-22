@@ -123,6 +123,7 @@ export interface DomainEventMap {
   'tournament:completed': BaseEvent & { tournamentId: number; name: string; winnerId?: number | null; winnerName?: string | null };
   'tournament:registration-paid': BaseEvent & { tournamentId: number; registrationId: number; userId?: number; organisationId?: number | null; paymentId?: number | null };
   'tournament:registration-payment-methods-updated': BaseEvent & { tournamentId: number; organisationId?: number | null; methods: string[] };
+  'tournament:schedule-updated': BaseEvent & { tournamentId: number; organisationId?: number | null; startDate?: string | null; endDate?: string | null; registrationCloses?: string | null; branchId?: number | null; dailyStartTime?: string | null; dailyEndTime?: string | null };
   'match:invitation': BaseEvent & { bookingId: number; userId: number; senderId: number; startTime?: Date; actions?: any[] };
   'community:new-post': BaseEvent & { postId: number; userId: number; communityName: string };
   'community:new-comment': BaseEvent & { commentId: number; postId: number; userId: number; authorName: string };

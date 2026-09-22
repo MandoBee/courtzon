@@ -195,8 +195,10 @@ export default function TournamentDetailPage({ mode = 'admin', orgId }: Props) {
                   { label: t('tournaments.organisation'), value: tournament?.organisation_name },
                   { label: t('tournaments.max_players'), value: tournament?.max_players },
                   { label: t('tournaments.type'), value: tournament?.type },
+                  { label: t('tournaments.venue'), value: tournament?.venue?.name || '-' },
                   { label: t('tournaments.start_date'), value: tournament?.start_date?.slice(0, 10) },
                   { label: t('tournaments.end_date'), value: tournament?.end_date?.slice(0, 10) },
+                  { label: t('tournaments.daily_playing'), value: (tournament?.daily_start_time && tournament?.daily_end_time) ? `${String(tournament.daily_start_time).slice(0, 5)} – ${String(tournament.daily_end_time).slice(0, 5)}` : '-' },
                   { label: t('tournaments.registration_deadline'), value: tournament?.registration_deadline?.slice(0, 10) },
                   { label: t('tournaments.payment_methods'), value: (Array.isArray(tournament?.effective_registration_payment_methods) ? tournament.effective_registration_payment_methods : []).join(' + ') || '-' },
                 ].map((f) => (

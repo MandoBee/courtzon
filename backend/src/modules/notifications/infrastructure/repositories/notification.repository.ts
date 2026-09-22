@@ -90,6 +90,29 @@ export class NotificationRepository {
     return result.insertId;
   }
 
+  /**
+   * Group 4 — true when a notification for (user, event, related entity) already
+   * exists. Used for idempotent delivery of business notifications (e.g.
+   * `tournament:registration-open`) so repeated domain events never produce
+   * duplicate notifications for the same user + entity.
+   */
+  async hasExisting(
+    userId: number,
+    eventName: string,
+    relatedEntityType?: string,
+    relatedEntityId?: string,
+  ): Promise<boolean> {
+    const [rows] = await this.pool.execute<RowData>(
+      `SELECT id FROM notifications
+       WHERE user_id = ? AND event_name = ?
+         AND (related_entity_type = ? OR (? IS NULL AND related_entity_type IS NULL))
+         AND (related_entity_id = ? OR (? IS NULL AND related_entity_id IS NULL))
+       LIMIT 1`,
+      [userId, eventName, relatedEntityType ?? null, relatedEntityType ?? null, relatedEntityId ?? null, relatedEntityId ?? null],
+    );
+    return rows.length > 0;
+  }
+
   async findByUser(
     userId: number,
     page = 1,
