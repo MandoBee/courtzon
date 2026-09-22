@@ -11,6 +11,11 @@ import { RawMatchResultBodySchema } from '../../match-result/presentation/match-
 
 const OrgRegisterSchema = z.object({
   team_id: z.coerce.number().int().positive().optional(),
+  /**
+   * Group 3 — payment method for the entry fee (cash|card). Validated against
+   * the tournament's effective allowed methods server-side; wallet never valid.
+   */
+  payment_method: z.enum(['cash', 'card']).optional(),
 });
 import { recordAudit } from '../../audit-log/index.js';
 import { AppError } from '../../../shared/errors/app-error.js';
@@ -133,8 +138,10 @@ export async function registerOrgPlayerHandler(request: FastifyRequest, reply: F
   const { id } = request.params as any;
   const body = OrgRegisterSchema.parse(request.body);
   await assertOrgOwnsTournament(orgId, Number(id));
-  const registration = await tournamentService.register(Number(id), userId, body.team_id);
-  recordAudit({ actorId: userId, action: 'TOURNAMENT.REGISTER', entityType: 'tournament_registration', entityId: Number(id), afterState: { orgId } });
+  const registration = body.payment_method
+    ? await tournamentService.register(Number(id), userId, body.team_id, body.payment_method)
+    : await tournamentService.register(Number(id), userId, body.team_id);
+  recordAudit({ actorId: userId, action: 'TOURNAMENT.REGISTER', entityType: 'tournament_registration', entityId: Number(id), afterState: { orgId, payment_method: body.payment_method ?? null } });
   return reply.status(201).send(registration);
 }
 

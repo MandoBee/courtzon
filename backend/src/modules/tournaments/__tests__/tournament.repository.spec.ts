@@ -68,7 +68,22 @@ describe('TournamentRepository.create — NOT NULL contract (UAT blocker regress
     await repo.create(minimalData() as any);
 
     const params = pool.query.mock.calls[0][1] as any[];
-    expect(params[27]).toBe('2026-10-01'); // 0-based index of start_date
+    expect(params[28]).toBe('2026-10-01'); // 0-based index of start_date (after the Group 3 registration_payment_methods column)
+  });
+
+  it('serialises the Group 3 registration_payment_methods allowlist into the JSON column', async () => {
+    await repo.create(minimalData({ registration_payment_methods: ['cash', 'card'] }) as any);
+
+    const params = pool.query.mock.calls[0][1] as any[];
+    expect(params[21]).toBe('["cash","card"]'); // 0-based index of registration_payment_methods (after price_type)
+    expect(pool.query.mock.calls[0][0] as string).toContain('registration_payment_methods');
+  });
+
+  it('writes NULL registration_payment_methods when the allowlist is absent (backward compatible)', async () => {
+    await repo.create(minimalData() as any);
+
+    const params = pool.query.mock.calls[0][1] as any[];
+    expect(params[21]).toBeNull();
   });
 });
 

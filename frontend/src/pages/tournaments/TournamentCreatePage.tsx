@@ -174,6 +174,14 @@ export default function TournamentCreatePage({ mode = 'admin', orgId }: Props) {
   // Group 2 — structured prizes (multi-row editor).
   const [prizes, setPrizes] = useState<PrizeEditorRow[]>([]);
 
+  // Group 3 — allowed registration payment methods (Cash / Card / Both). The
+  // backend re-validates; the UI never offers Wallet (globally disabled as a
+  // payment method).
+  const [paymentMethods, setPaymentMethods] = useState<('cash' | 'card')[]>(['cash', 'card']);
+  const togglePaymentMethod = (m: 'cash' | 'card') => {
+    setPaymentMethods((prev) => (prev.includes(m) ? prev.filter((x) => x !== m) : [...prev, m]));
+  };
+
   const onSubmit = (data: TournamentForm) => {
     // Group 2 — only send prizes that are meaningfully configured (skip rows
     // with no type/description/amount). The backend re-validates everything.
@@ -196,6 +204,10 @@ export default function TournamentCreatePage({ mode = 'admin', orgId }: Props) {
       max_participants: Number(data.maxParticipants),
       min_participants: data.minParticipants ? Number(data.minParticipants) : 2,
       entry_fee: data.entryFee ? Number(data.entryFee) : 0,
+      // Group 3 — the allowed registration payment methods. Normalised
+      // server-side (dedupe + deterministic order); empty selection is rejected
+      // by the backend (a Tournament can never be unpayable). Wallet never sent.
+      registration_payment_methods: paymentMethods.length ? paymentMethods : ['cash', 'card'],
       // Group 1A — currency is NEVER hardcoded and NEVER client-authoritative
       // for organisation tournaments: the backend resolves it server-side
       // (branch → organisation country default) and overrides. Only the
@@ -322,6 +334,39 @@ export default function TournamentCreatePage({ mode = 'admin', orgId }: Props) {
               </p>
             )}
           </div>
+
+          {/* Group 3 — allowed registration payment methods (Cash / Card / Both). */}
+          <Can permission="tournaments.create.prize">
+            <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] p-4 bg-[var(--color-bg)]/30">
+              <label className="block text-sm font-medium text-[var(--color-text)] mb-2">
+                {t('tournaments.create.payment_methods')}
+              </label>
+              <div className="flex flex-wrap gap-4">
+                <label className="flex items-center gap-2 text-sm text-[var(--color-text)]">
+                  <input
+                    type="checkbox"
+                    checked={paymentMethods.includes('cash')}
+                    onChange={() => togglePaymentMethod('cash')}
+                    className="rounded border-[var(--color-border)] text-[var(--color-primary)] focus:ring-[var(--color-primary)]"
+                  />
+                  {t('tournaments.create.payment_cash')}
+                </label>
+                <label className="flex items-center gap-2 text-sm text-[var(--color-text)]">
+                  <input
+                    type="checkbox"
+                    checked={paymentMethods.includes('card')}
+                    onChange={() => togglePaymentMethod('card')}
+                    className="rounded border-[var(--color-border)] text-[var(--color-primary)] focus:ring-[var(--color-primary)]"
+                  />
+                  {t('tournaments.create.payment_card')}
+                </label>
+              </div>
+              {paymentMethods.length === 0 && (
+                <p className="text-xs text-[var(--color-error)] mt-1">{t('tournaments.create.payment_methods_required')}</p>
+              )}
+              <p className="text-xs text-[var(--color-text-muted)] mt-1">{t('tournaments.create.payment_methods_hint')}</p>
+            </div>
+          </Can>
 
           <div className="grid grid-cols-2 gap-4">
             <Can permission="tournaments.create.start-date">

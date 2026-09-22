@@ -47,6 +47,8 @@ vi.mock('../../../services/api', () => ({
   default: { get: vi.fn().mockResolvedValue({ data: __state.sportsPayload }), post: vi.fn() },
 }));
 
+import api from '../../../services/api';
+
 vi.mock('../../../i18n', () => ({
   useTranslation: () => ({ t: (k: string) => k }),
 }));
@@ -239,5 +241,66 @@ describe('TournamentCreatePage — Group 1A foundation corrections', () => {
     fireEvent.change(sportSelect!, { target: { value: '22' } });
     // The cascade must be requested with the selected bracket_type_id.
     await waitFor(() => expect(__state.orgApi.getSportFormats).toHaveBeenCalledWith('6', '22', '1'));
+  });
+});
+
+describe('TournamentCreatePage — registration payment methods (Group 3)', () => {
+  it('renders Cash + Card checkboxes (both checked by default) when the prize permission is granted', async () => {
+    const view = renderPage(['tournaments.create.prize']);
+    expect(await screen.findByText('tournaments.create.payment_methods')).toBeTruthy();
+    const checkboxes = Array.from(view.container.querySelectorAll('input[type="checkbox"]')) as HTMLInputElement[];
+    expect(checkboxes.length).toBe(2);
+    expect(checkboxes.every((c) => c.checked)).toBe(true);
+  });
+
+  it('Wallet is never rendered as a payment method option', async () => {
+    const view = renderPage(['tournaments.create.prize']);
+    await screen.findByText('tournaments.create.payment_methods');
+    const labels = Array.from(view.container.querySelectorAll('label')).map((l) => l.textContent || '');
+    expect(labels.some((t) => /wallet/i.test(t))).toBe(false);
+  });
+
+  it('hides the payment-method section when the create-prize permission is absent', async () => {
+    renderPage(['org.tournaments.create']);
+    await screen.findByText('tournaments.create.commission_rate');
+    expect(screen.queryByText('tournaments.create.payment_methods')).toBeNull();
+  });
+
+  it('submits the selected registration payment methods with the create payload', async () => {
+    const { fireEvent } = await import('@testing-library/react');
+    const view = renderPage([
+      'tournaments.create.name', 'tournaments.create.type', 'tournaments.create.prize',
+      'tournaments.create.max-participants', 'tournaments.create.start-date',
+    ]);
+
+    await screen.findByText('tournaments.create.name');
+    // Name
+    const nameInput = screen.getByText('tournaments.create.name').nextElementSibling as HTMLInputElement;
+    fireEvent.change(nameInput, { target: { value: 'UAT Cup' } });
+    // Bracket type
+    await screen.findByText('Single Elimination');
+    const bracketSelect = Array.from(view.container.querySelectorAll('select')).find(
+      (s) => Array.from(s.querySelectorAll('option')).some((o) => o.textContent === 'Single Elimination'),
+    );
+    fireEvent.change(bracketSelect!, { target: { value: '1' } });
+    // Max players
+    const maxInput = screen.getByText('tournaments.create.max_players').nextElementSibling as HTMLInputElement;
+    fireEvent.change(maxInput, { target: { value: '8' } });
+    // Start date
+    const startInput = screen.getByText('tournaments.create.start_date').nextElementSibling as HTMLInputElement;
+    fireEvent.change(startInput, { target: { value: '2026-10-01' } });
+    // Uncheck Cash → card-only
+    const checkboxes = Array.from(view.container.querySelectorAll('input[type="checkbox"]')) as HTMLInputElement[];
+    fireEvent.click(checkboxes.find((c) => c.checked)!);
+    // Submit
+    fireEvent.click(screen.getByText('tournaments.create.submit'));
+
+    await waitFor(() => expect(__state.orgApi.getBracketTypes).toHaveBeenCalled());
+    await waitFor(() => {
+      const postCalls = (api.post as any).mock.calls;
+      expect(postCalls.length).toBeGreaterThan(0);
+    });
+    const payload = (api.post as any).mock.calls[0][1] as any;
+    expect(payload.registration_payment_methods).toEqual(['card']);
   });
 });

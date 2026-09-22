@@ -26,7 +26,8 @@ const __state = vi.hoisted(() => ({
     rules: 'Single Elimination. Best of 3 sets.',
     prize_description: 'Trophy + 5000 EGP',
     prizes: [] as any[],
-  },
+    effective_registration_payment_methods: ['cash', 'card'] as string[],
+  } as any,
   matches: [
     {
       id: 11, round: 1, match_number: 1, bracket_position: 0,
@@ -213,5 +214,73 @@ describe('TournamentDetailPage — player detail authoritative contract (Group 1
     expect(screen.getByText('Gift')).toBeTruthy();
     // The legacy free-text is NOT shown as a duplicate when structured prizes exist.
     expect(screen.queryByText(/Trophy \+ 5000 EGP/)).toBeNull();
+  });
+});
+
+describe('TournamentDetailPage — registration payment methods (Group 3)', () => {
+  it('displays "Cash or Card / Online" when both methods are effective', async () => {
+    __state.tournament = { ...__state.tournament, entry_fee: 800, effective_registration_payment_methods: ['cash', 'card'] };
+    mockDetailApi();
+    renderPage();
+    await screen.findByText('Padel Open');
+    expect(screen.getAllByText(/Cash or Card \/ Online/).length).toBeGreaterThan(0);
+  });
+
+  it('displays "Cash" for a cash-only tournament and NEVER shows Wallet', async () => {
+    __state.tournament = { ...__state.tournament, entry_fee: 800, effective_registration_payment_methods: ['cash'] };
+    mockDetailApi();
+    renderPage();
+    await screen.findByText('Padel Open');
+    expect(screen.getAllByText('Cash').length).toBeGreaterThan(0);
+    expect(screen.queryByText(/Wallet/i)).toBeNull();
+  });
+
+  it('displays "Card / Online" for a card-only tournament', async () => {
+    __state.tournament = { ...__state.tournament, entry_fee: 800, effective_registration_payment_methods: ['card'] };
+    mockDetailApi();
+    renderPage();
+    await screen.findByText('Padel Open');
+    expect(screen.getAllByText(/Card \/ Online/).length).toBeGreaterThan(0);
+  });
+
+  it('displays "Free" and offers no payment method for a free tournament', async () => {
+    __state.tournament = { ...__state.tournament, entry_fee: 0, effective_registration_payment_methods: [] };
+    mockDetailApi();
+    renderPage();
+    await screen.findByText('Padel Open');
+    expect(screen.getAllByText('Free').length).toBeGreaterThan(0);
+  });
+
+  it('register modal shows ONLY the effective allowed methods (cash-only — no card, no wallet)', async () => {
+    __state.user = { id: 99 }; // not a participant → the Register action is offered
+    __state.tournament = { ...__state.tournament, status: 'registration_open', entry_fee: 800, effective_registration_payment_methods: ['cash'] };
+    mockDetailApi();
+    renderPage();
+    await screen.findByText('Padel Open');
+    fireEvent.click(screen.getByText('Register & Pay'));
+    expect(await screen.findByText('Payment Method')).toBeTruthy();
+    const radios = document.querySelectorAll('input[type="radio"]');
+    expect(radios.length).toBe(1);
+    expect(screen.queryByText('Card / Online')).toBeNull();
+    expect(screen.queryByText(/Wallet/i)).toBeNull();
+  });
+
+  it('register modal offers BOTH methods when both are effective, and submits the chosen method', async () => {
+    __state.user = { id: 99 };
+    __state.tournament = { ...__state.tournament, status: 'registration_open', entry_fee: 800, effective_registration_payment_methods: ['cash', 'card'] };
+    mockDetailApi();
+    renderPage();
+    await screen.findByText('Padel Open');
+    fireEvent.click(screen.getByText('Register & Pay'));
+    await screen.findByText('Payment Method');
+    expect(document.querySelectorAll('input[type="radio"]').length).toBe(2);
+    const cardRadio = Array.from(document.querySelectorAll('input[type="radio"]')).find((r) => (r as HTMLInputElement).value === 'card') as HTMLInputElement;
+    fireEvent.click(cardRadio);
+    // The modal submit button is the LAST "Register & Pay" element (the header one stays mounted).
+    const submitButtons = screen.getAllByText('Register & Pay');
+    fireEvent.click(submitButtons[submitButtons.length - 1]);
+    await waitFor(() => expect((api.post as any).mock.calls.length).toBeGreaterThan(0));
+    const payload = (api.post as any).mock.calls[0][1] as any;
+    expect(payload.payment_method).toBe('card');
   });
 });

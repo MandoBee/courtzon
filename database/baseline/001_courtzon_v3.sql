@@ -5795,6 +5795,7 @@ CREATE TABLE `tournaments` (
   `registration_fee` decimal(12,2) NOT NULL DEFAULT '0.00',
   `currency_code` char(3) COLLATE utf8mb4_unicode_ci NOT NULL,
   `price_type` enum('FREE','FIXED','MEMBERS_ONLY') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'FIXED',
+  `registration_payment_methods` json DEFAULT NULL COMMENT 'Allowed registration payment methods (JSON array of cash|card); NULL = both (backward-compatible default)',
   `commission_rate` decimal(5,2) NOT NULL DEFAULT '0.00' COMMENT 'Platform commission % on entry fees',
   `prize_description` text COLLATE utf8mb4_unicode_ci,
   `status` enum('draft','open','in_progress','published','registration_open','registration_closed','running','completed','cancelled','archived') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'draft',

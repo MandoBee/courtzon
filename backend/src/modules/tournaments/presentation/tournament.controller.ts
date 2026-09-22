@@ -156,10 +156,13 @@ export async function archiveTournamentHandler(request: FastifyRequest, reply: F
 export async function registerHandler(request: FastifyRequest, reply: FastifyReply) {
   const userId = getUserId(request);
   const body = RegisterSchema.parse(request.body);
-  const registration = await tournamentService.register(body.tournament_id, userId, body.team_id);
+  const tournamentId = body.tournament_id ?? Number((request.params as any).id);
+  const registration = body.payment_method
+    ? await tournamentService.register(tournamentId, userId, body.team_id, body.payment_method)
+    : await tournamentService.register(tournamentId, userId, body.team_id);
   recordAudit({
     actorId: userId, action: 'TOURNAMENT.REGISTER', entityType: 'tournament_registration',
-    entityId: registration.id!, afterState: { tournament_id: body.tournament_id, team_id: body.team_id },
+    entityId: registration.id!, afterState: { tournament_id: tournamentId, team_id: body.team_id, payment_method: body.payment_method ?? null },
     ipAddress: request.ip, userAgent: getUserAgent(request),
   });
   return reply.status(201).send(registration);
@@ -169,10 +172,12 @@ export async function registerPlayerHandler(request: FastifyRequest, reply: Fast
   const userId = getUserId(request);
   const { id } = request.params as any;
   const body = RegisterSchema.parse(request.body);
-  const registration = await tournamentService.register(Number(id), userId, body.team_id);
+  const registration = body.payment_method
+    ? await tournamentService.register(Number(id), userId, body.team_id, body.payment_method)
+    : await tournamentService.register(Number(id), userId, body.team_id);
   recordAudit({
     actorId: userId, action: 'TOURNAMENT.REGISTER', entityType: 'tournament_registration',
-    entityId: registration.id!, afterState: { tournament_id: id, team_id: body.team_id },
+    entityId: registration.id!, afterState: { tournament_id: id, team_id: body.team_id, payment_method: body.payment_method ?? null },
     ipAddress: request.ip, userAgent: getUserAgent(request),
   });
   return reply.status(201).send(registration);

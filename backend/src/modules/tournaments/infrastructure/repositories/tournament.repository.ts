@@ -196,8 +196,8 @@ export class TournamentRepository {
   }
 
   async create(data: Partial<Tournament>): Promise<number> {
-    const sql = `INSERT INTO tournaments (public_id, creator_id, organisation_id, branch_id, bracket_type_id, format, category, season, sport_id, match_format_id, rule_set_id, name, code, description, tournament_type, max_participants, max_teams, min_participants, entry_fee, registration_fee, currency_code, price_type, commission_rate, prize_description, status, is_public, registration_opens, registration_closes, start_date, end_date, rules, is_featured, image_url)
-                 VALUES (UUID(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+    const sql = `INSERT INTO tournaments (public_id, creator_id, organisation_id, branch_id, bracket_type_id, format, category, season, sport_id, match_format_id, rule_set_id, name, code, description, tournament_type, max_participants, max_teams, min_participants, entry_fee, registration_fee, currency_code, price_type, registration_payment_methods, commission_rate, prize_description, status, is_public, registration_opens, registration_closes, start_date, end_date, rules, is_featured, image_url)
+                 VALUES (UUID(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
     const [result] = await getPool().query<ResultSet>(sql, [
       data.creator_id, data.organisation_id ?? null, data.branch_id ?? null,
       data.bracket_type_id, data.format ?? null, data.category ?? null, data.season ?? null,
@@ -206,7 +206,9 @@ export class TournamentRepository {
       data.tournament_type ?? 'platform',
       data.max_participants, data.max_teams ?? null, data.min_participants ?? 2,
       data.entry_fee ?? 0, data.registration_fee ?? 0,
-      data.currency_code, data.price_type ?? null, data.commission_rate ?? 0,
+      data.currency_code, data.price_type ?? null,
+      this.stringifyPaymentMethods(data.registration_payment_methods),
+      data.commission_rate ?? 0,
       data.prize_description ?? null, data.status ?? 'draft',
       data.is_public ?? true, data.registration_opens ?? null, data.registration_closes ?? null,
       data.start_date ?? null, data.end_date ?? null, data.rules ?? null,
@@ -222,18 +224,65 @@ export class TournamentRepository {
       'organisation_id', 'branch_id', 'bracket_type_id', 'format', 'category', 'season',
       'sport_id', 'match_format_id', 'rule_set_id', 'name', 'code', 'description', 'tournament_type',
       'max_participants', 'max_teams', 'min_participants', 'entry_fee', 'registration_fee',
-      'currency_code', 'price_type', 'prize_description',
+      'currency_code', 'price_type', 'registration_payment_methods', 'prize_description',
       'status', 'is_public', 'registration_opens', 'registration_closes',
       'start_date', 'end_date', 'rules', 'is_featured', 'image_url',
     ];
     for (const f of updatable) {
-      if (data[f] !== undefined) { fields.push(`${f} = ?`); params.push(data[f]); }
+      if (data[f] !== undefined) {
+        fields.push(`${f} = ?`);
+        params.push(f === 'registration_payment_methods' ? this.stringifyPaymentMethods(data[f]) : data[f]);
+      }
     }
     if (!fields.length) return;
     params.push(id);
     await getPool().query(
       `UPDATE tournaments SET ${fields.join(', ')}, updated_at = NOW() WHERE id = ?`, params,
     );
+  }
+
+  /** Group 3 — the JSON allowlist is always persisted as a JSON string (or NULL). */
+  private stringifyPaymentMethods(methods: string[] | string | undefined | null): string | null {
+    if (methods == null) return null;
+    if (typeof methods === 'string') return methods;
+    return JSON.stringify(methods);
+  }
+
+  /**
+   * Group 3 — the organisation's ACTIVE payment methods from its own payment
+   * configuration (`payment_gateway_config`, the existing org × payment-method
+   * × gateway-provider allowlist). Empty when the org has no explicit rows
+   * (no org-level restriction — the global policy applies).
+   */
+  async getOrgActivePaymentMethodSlugs(orgId: number): Promise<string[]> {
+    const [rows] = await getPool().query<RowData>(
+      `SELECT pm.slug
+       FROM payment_gateway_config pgc
+       JOIN payment_methods pm ON pm.id = pgc.payment_method_id
+       WHERE pgc.organisation_id = ? AND pgc.is_active = 1`,
+      [orgId],
+    );
+    return rows.map((r) => r.slug);
+  }
+
+  /**
+   * Group 3 — record an offline (Cash) registration payment as a PAID row in
+   * the SHARED `payment_transactions` table (reference_type='tournament').
+   * Mirrors the academy offline-cash pattern; `uk_idempotency_key` makes
+   * concurrent duplicate acks safe. No gateway fields are written.
+   */
+  async createCashPaymentTransaction(
+    params: { userId: number; registrationId: number; amount: number; currency: string },
+  ): Promise<number> {
+    const idempotencyKey = `tournament_cash_payment_${params.registrationId}`;
+    const [result] = await getPool().execute<ResultSet>(
+      `INSERT INTO payment_transactions
+        (user_id, reference_id, idempotency_key, reference_type, payment_method,
+         amount, currency, payment_status, paid_at, trace_id, aggregate_version)
+       VALUES (?, ?, ?, 'tournament', 'cash', ?, ?, 'paid', NOW(), UUID(), 1)`,
+      [params.userId, params.registrationId, idempotencyKey, params.amount, params.currency],
+    );
+    return Number(result.insertId);
   }
 
   async updateStatus(id: number, status: string, conn?: PoolConnection): Promise<void> {

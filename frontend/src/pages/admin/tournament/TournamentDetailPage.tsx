@@ -198,6 +198,7 @@ export default function TournamentDetailPage({ mode = 'admin', orgId }: Props) {
                   { label: t('tournaments.start_date'), value: tournament?.start_date?.slice(0, 10) },
                   { label: t('tournaments.end_date'), value: tournament?.end_date?.slice(0, 10) },
                   { label: t('tournaments.registration_deadline'), value: tournament?.registration_deadline?.slice(0, 10) },
+                  { label: t('tournaments.payment_methods'), value: (Array.isArray(tournament?.effective_registration_payment_methods) ? tournament.effective_registration_payment_methods : []).join(' + ') || '-' },
                 ].map((f) => (
                   <div key={f.label}>
                     <p className="text-xs text-[var(--color-text-muted)]">{f.label}</p>

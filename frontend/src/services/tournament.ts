@@ -53,7 +53,10 @@ export const tournamentApi = {
   getPublicStandings: (id: number) => api.get(`/tournaments/${id}/standings`).then(r => r.data),
   getPublicMatches: (id: number) => api.get(`/tournaments/${id}/matches`).then(r => r.data),
   getPublicParticipants: (id: number) => api.get(`/tournaments/${id}/participants`).then(r => r.data),
-  publicRegister: (tournamentId: number) => api.post(`/tournaments/${tournamentId}/register`).then(r => r.data),
+  // Group 3 — the player declares the entry-fee payment method (cash|card). The
+  // backend validates it against the tournament's effective allowed methods.
+  publicRegister: (tournamentId: number, paymentMethod?: 'cash' | 'card') =>
+    api.post(`/tournaments/${tournamentId}/register`, { payment_method: paymentMethod }).then(r => r.data),
 };
 
 // Organisation-scoped tournament API — mirrors the admin workbench methods but
@@ -92,8 +95,8 @@ export const orgTournamentApi = {
     api.post(`/org/${orgId}/tournaments/matches/${matchId}/result`, data).then(r => r.data),
   getStandings: (orgId: number | string, tournamentId: number) => api.get(`/org/${orgId}/tournaments/${tournamentId}/standings`).then(r => r.data),
   getRegistrations: (orgId: number | string, tournamentId: number) => api.get(`/org/${orgId}/tournaments/${tournamentId}/registrations`).then(r => r.data),
-  register: (orgId: number | string, tournamentId: number, teamId?: number) =>
-    api.post(`/org/${orgId}/tournaments/${tournamentId}/register`, { team_id: teamId }).then(r => r.data),
+  register: (orgId: number | string, tournamentId: number, teamId?: number, paymentMethod?: 'cash' | 'card') =>
+    api.post(`/org/${orgId}/tournaments/${tournamentId}/register`, { team_id: teamId, payment_method: paymentMethod }).then(r => r.data),
   cancelRegistration: (orgId: number | string, regId: number) => api.post(`/org/${orgId}/tournaments/registrations/${regId}/cancel`).then(r => r.data),
   confirmRegistration: (orgId: number | string, regId: number) => api.post(`/org/${orgId}/tournaments/registrations/${regId}/confirm`).then(r => r.data),
   // Group 5B-SR — org-scoped configuration reads (create form)

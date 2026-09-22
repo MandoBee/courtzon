@@ -2,7 +2,7 @@ export interface PaymentRequest {
   amount: number;
   currency: string;
   referenceId: number;
-  referenceType: 'booking' | 'order' | 'subscription' | 'wallet_topup' | 'academy';
+  referenceType: 'booking' | 'order' | 'subscription' | 'wallet_topup' | 'academy' | 'tournament';
   customerEmail?: string;
   customerPhone?: string;
   customerName?: string;

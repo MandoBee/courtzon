@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../../services/api';
 import { Skeleton, SkeletonRow } from '../../components/ui/Skeleton';
+import { Modal } from '../../components/ui/Modal';
 import { useToast } from '../../components/ui/Toast';
 import { Can } from '../../permissions/Can';
 import { GeneratedRules } from '../../components/tournaments/GeneratedRules';
@@ -24,6 +25,24 @@ const STATUS_BADGE: Record<string, string> = {
   archived: 'bg-gray-100 text-gray-500',
 };
 
+/**
+ * Group 3 — human-readable payment label from the backend's EFFECTIVE allowed
+ * registration payment methods. Never exposes internal details and never shows
+ * Wallet (the backend can never return it). When the tournament is free the
+ * fee cell shows "Free".
+ */
+export function paymentMethodsLabel(
+  methods: string[] | undefined | null,
+  entryFee: number | undefined | null,
+): string | null {
+  const fee = Number(entryFee ?? 0);
+  if (fee <= 0) return 'Free';
+  const set = Array.isArray(methods) ? methods.filter((m) => m === 'cash' || m === 'card') : [];
+  if (set.length === 0) return '—';
+  if (set.length === 1) return set[0] === 'cash' ? 'Cash' : 'Card / Online';
+  return 'Cash or Card / Online';
+}
+
 export default function TournamentDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -31,6 +50,8 @@ export default function TournamentDetailPage() {
   const { showToast } = useToast();
   const user = useAuthStore((s) => s.user);
   const [tab, setTab] = useState<Tab>('overview');
+  const [showRegisterModal, setShowRegisterModal] = useState(false);
+  const [registerMethod, setRegisterMethod] = useState<'cash' | 'card' | ''>('');
 
   const { data: tournament, isLoading } = useQuery({
     queryKey: ['tournament', id],
@@ -63,6 +84,22 @@ export default function TournamentDetailPage() {
     onError: (e: any) => showToast(e?.response?.data?.message || 'Failed', 'error'),
   });
 
+  // Group 3 — player registration with the tournament's effective allowed
+  // payment methods (Cash / Card). Free tournaments register without a method.
+  const registerMutation = useMutation({
+    mutationFn: (method: 'cash' | 'card' | '') =>
+      api.post(`/tournaments/${id}/register`, { payment_method: method || undefined }).then(r => r.data),
+    onSuccess: () => {
+      showToast('Registered successfully!', 'success');
+      setShowRegisterModal(false);
+      setRegisterMethod('');
+      qc.invalidateQueries({ queryKey: ['tournament', id] });
+      qc.invalidateQueries({ queryKey: ['tournament', id, 'participants'] });
+      qc.invalidateQueries({ queryKey: ['my-tournaments'] });
+    },
+    onError: (e: any) => showToast(e?.response?.data?.message || 'Registration failed', 'error'),
+  });
+
   if (isLoading) return <div className="space-y-4"><Skeleton width={300} height={28} /><SkeletonRow count={6} /></div>;
   if (!tournament) return <p className="text-[var(--color-text-muted)] text-center py-8">Tournament not found.</p>;
 
@@ -70,6 +107,9 @@ export default function TournamentDetailPage() {
   const standingList = Array.isArray(standings) ? standings : [];
   const participantList = Array.isArray(participants) ? participants : [];
   const myRegistration = participantList.find((p: any) => Number(p.player_id) === Number(user?.id));
+  const registerPaymentMethods = Array.isArray(tournament?.effective_registration_payment_methods)
+    ? (tournament.effective_registration_payment_methods as string[])
+    : [];
 
   return (
     <div className="space-y-6">
@@ -92,6 +132,7 @@ export default function TournamentDetailPage() {
           <div><span className="text-[var(--color-text-muted)]">Organisation:</span> <span className="font-medium">{tournament.organisation_name || 'Platform'}</span></div>
           <div><span className="text-[var(--color-text-muted)]">Players:</span> <span className="font-medium">{participantList.length}/{tournament.max_participants}</span></div>
           <div><span className="text-[var(--color-text-muted)]">Fee:</span> <span className="font-medium">{formatPrice(Number(tournament.entry_fee ?? 0), tournament.currency_code)}</span></div>
+          <div><span className="text-[var(--color-text-muted)]">Payment:</span> <span className="font-medium">{paymentMethodsLabel(registerPaymentMethods, Number(tournament.entry_fee ?? 0))}</span></div>
           <div><span className="text-[var(--color-text-muted)]">Registration deadline:</span> <span className="font-medium">{tournament.registration_deadline ? formatISODate(tournament.registration_deadline) : '—'}</span></div>
         </div>
         <PrizeList prizes={tournament.prizes} legacyDescription={tournament.prize_description} />
@@ -103,6 +144,13 @@ export default function TournamentDetailPage() {
             Your registration: <span className="capitalize">{myRegistration.status}</span>
             {myRegistration.seed_rank != null ? ` • Seed ${myRegistration.seed_rank}` : ''}
           </p>
+        )}
+        {!myRegistration && ['published', 'registration_open'].includes(tournament.status) && (
+          <Can permission="player.tournaments.register">
+            <button onClick={() => setShowRegisterModal(true)} className="btn-primary text-sm">
+              {registerPaymentMethods.length === 0 ? 'Register' : 'Register & Pay'}
+            </button>
+          </Can>
         )}
         {['published', 'registration_open', 'registration_closed'].includes(tournament.status) && !matchList.length && (
           <Can permission="tournaments.manage_brackets">
@@ -257,6 +305,56 @@ export default function TournamentDetailPage() {
           )}
         </div>
       )}
+
+      {/* Group 3 — player registration with the effective allowed payment methods */}
+      <Modal open={showRegisterModal} onClose={() => setShowRegisterModal(false)}
+        title="Register for Tournament" size="sm">
+        <div className="space-y-4">
+          <div className="text-sm text-[var(--color-text-muted)]">
+            Entry fee: <span className="font-semibold text-[var(--color-text)]">{formatPrice(Number(tournament.entry_fee ?? 0), tournament.currency_code)}</span>
+          </div>
+          {Number(tournament.entry_fee ?? 0) > 0 ? (
+            <>
+              <div>
+                <label className="block text-xs font-medium text-[var(--color-text-muted)] mb-1.5">Payment Method</label>
+                <div className="space-y-2">
+                  {registerPaymentMethods.includes('cash') && (
+                    <label className="flex items-center gap-2 text-sm text-[var(--color-text)]">
+                      <input type="radio" name="regMethod" value="cash"
+                        checked={registerMethod === 'cash'} onChange={() => setRegisterMethod('cash')} />
+                      Cash
+                    </label>
+                  )}
+                  {registerPaymentMethods.includes('card') && (
+                    <label className="flex items-center gap-2 text-sm text-[var(--color-text)]">
+                      <input type="radio" name="regMethod" value="card"
+                        checked={registerMethod === 'card'} onChange={() => setRegisterMethod('card')} />
+                      Card / Online
+                    </label>
+                  )}
+                </div>
+                {registerPaymentMethods.length === 0 && (
+                  <p className="text-xs text-[var(--color-error)] mt-1">No payment method is available for this tournament.</p>
+                )}
+              </div>
+              <button onClick={() => registerMutation.mutate(registerMethod)}
+                disabled={!registerMethod || registerMutation.isPending}
+                className="w-full px-4 py-2 bg-[var(--color-primary)] text-white rounded-[var(--radius-md)] text-sm font-medium disabled:opacity-50">
+                {registerMutation.isPending ? 'Registering...' : 'Register & Pay'}
+              </button>
+            </>
+          ) : (
+            <button onClick={() => registerMutation.mutate('')}
+              disabled={registerMutation.isPending}
+              className="w-full px-4 py-2 bg-[var(--color-primary)] text-white rounded-[var(--radius-md)] text-sm font-medium disabled:opacity-50">
+              {registerMutation.isPending ? 'Registering...' : 'Register'}
+            </button>
+          )}
+          {registerMutation.isError && (
+            <p className="text-xs text-[var(--color-error)]">Registration failed. Please try again.</p>
+          )}
+        </div>
+      </Modal>
     </div>
   );
 }

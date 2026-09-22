@@ -13,6 +13,19 @@ import type { MatchFormatSnapshot } from '../../match/domain/match.types.js';
 import type { RawMatchResultPayload } from '../../match-result/domain/match-result.types.js';
 import { getCommissionRate } from '../../organisations/application/current-subscription.service.js';
 import { resolveOrganisationCurrency } from '../../organisations/application/organisation-currency.service.js';
+import { isPaymentMethodAllowedInContext } from '../../../shared/constants/payment-methods.js';
+
+/**
+ * Group 3 — canonical, deterministic order for the Tournament registration
+ * payment-method allowlist. Valid configurations are ['cash'], ['card'],
+ * ['cash','card'] (cash before card). Wallet is NEVER valid — CourtZon's
+ * global payment policy has Wallet disabled as a payment method (refund-only).
+ */
+export const REGISTRATION_PAYMENT_METHODS_ORDER = ['cash', 'card'] as const;
+export type RegistrationPaymentMethod = (typeof REGISTRATION_PAYMENT_METHODS_ORDER)[number];
+
+/** Group 3 — the backward-compatible default when no per-tournament config exists. */
+export const DEFAULT_REGISTRATION_PAYMENT_METHODS: string[] = ['cash', 'card'];
 
 /** Group 5B — draw-time provenance persisted in `tournament_matches.progression_meta`. */
 export interface BracketProgressionMeta {
@@ -77,6 +90,11 @@ export class TournamentService {
     // Group 2 — validate + normalise structured prizes against the authoritative
     // tournament currency BEFORE persisting anything.
     const prizes = data.prizes ? this.normalisePrizes(data.prizes, effectiveData.currency_code) : [];
+    // Group 3 — the allowed registration payment methods are normalised
+    // (validated + deduped + deterministic order) server-side. Missing config
+    // falls back to both methods (backward-compatible default) — an existing
+    // flow must never become unpayable.
+    effectiveData.registration_payment_methods = this.normaliseRegistrationPaymentMethods(data.registration_payment_methods);
     // Deterministic draw seed: default to creation timestamp (stable, not random).
     const drawSeed = data.draw_seed ?? Date.now();
     // Group 1 — the human-readable Tournament Rules snapshot is ALWAYS derived
@@ -159,6 +177,95 @@ export class TournamentService {
   }
 
   /**
+   * Group 3 — validate + normalise the Tournament registration payment-method
+   * allowlist. Rules:
+   *   * each method must be one of {cash, card} — anything else (wallet,
+   *     bank_transfer, e-wallet, unknown strings) is rejected server-side.
+   *   * the list must not be empty (a Tournament cannot be unpayable).
+   *   * duplicates are collapsed and order is normalised deterministically
+   *     (cash before card), regardless of the storage format.
+   *   * undefined/null → backward-compatible default ['cash','card'].
+   */
+  private normaliseRegistrationPaymentMethods(methods?: string[] | string | null): string[] {
+    if (methods == null) return [...DEFAULT_REGISTRATION_PAYMENT_METHODS];
+    let arr: unknown[] = Array.isArray(methods) ? methods : [];
+    if (typeof methods === 'string' && methods.trim()) {
+      try {
+        const parsed = JSON.parse(methods);
+        if (Array.isArray(parsed)) arr = parsed;
+      } catch {
+        arr = [methods.trim()];
+      }
+    }
+    if (!Array.isArray(arr) || arr.length === 0) {
+      throw new ConflictError(
+        'At least one registration payment method is required (cash and/or card)',
+        ErrorCodes.TOURNAMENT_INVALID_PAYMENT_METHOD,
+      );
+    }
+    const selected = new Set<string>();
+    for (const m of arr) {
+      const s = String(m).trim().toLowerCase();
+      if (s !== 'cash' && s !== 'card') {
+        throw new ConflictError(
+          `Unsupported registration payment method "${m}" — only cash and card are accepted`,
+          ErrorCodes.TOURNAMENT_INVALID_PAYMENT_METHOD,
+        );
+      }
+      selected.add(s);
+    }
+    return REGISTRATION_PAYMENT_METHODS_ORDER.filter((m) => selected.has(m));
+  }
+
+  /**
+   * Group 3 — read the persisted allowlist (JSON string, array or legacy NULL)
+   * into a normalised array. Invalid persisted payloads fail safe to the
+   * backward-compatible default rather than making the Tournament unpayable.
+   */
+  private readRegistrationPaymentMethods(raw?: string | string[] | null): string[] {
+    if (Array.isArray(raw)) return this.normaliseRegistrationPaymentMethods(raw);
+    if (typeof raw === 'string' && raw.trim()) {
+      try {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) return this.normaliseRegistrationPaymentMethods(parsed);
+      } catch {
+        // fall through to default
+      }
+    }
+    return [...DEFAULT_REGISTRATION_PAYMENT_METHODS];
+  }
+
+  /**
+   * Group 3 — the EFFECTIVE registration payment methods a player may use:
+   *
+   *   configured allowlist
+   *     ∩ global/system-supported methods (isPaymentMethodAllowedInContext —
+   *       the shared CourtZon payment policy; card+cash active, wallet banned)
+   *     ∩ organisation-supported methods (the org's active
+   *       payment_gateway_config rows) when the Tournament is org-owned
+   *
+   * A Tournament configuration can NEVER activate a method the global policy
+   * (or the org) does not support. Empty org config = no org-level restriction.
+   */
+  async resolveEffectiveRegistrationPaymentMethods(tournament: Pick<Tournament, 'organisation_id' | 'registration_payment_methods'>): Promise<string[]> {
+    const configured = this.readRegistrationPaymentMethods(tournament.registration_payment_methods);
+    // Global policy — the shared single source of truth for active methods.
+    const globallyAllowed = configured.filter((m) => isPaymentMethodAllowedInContext(m, 'checkout'));
+    if (globallyAllowed.length === 0) return [];
+    if (tournament.organisation_id == null) return globallyAllowed;
+    // Org policy — reuse the organisation's OWN payment configuration (the
+    // existing payment_gateway_config allowlist). Defensive: a lookup failure
+    // (or a test double without the method) falls back to the global policy.
+    try {
+      const orgSlugs = await tournamentRepository.getOrgActivePaymentMethodSlugs(tournament.organisation_id);
+      if (orgSlugs.length === 0) return globallyAllowed;
+      return globallyAllowed.filter((m) => orgSlugs.includes(m));
+    } catch {
+      return globallyAllowed;
+    }
+  }
+
+  /**
    * Group 5B-SR — the selected bracket type must exist, be active, and be
    * engine-supported. Prevents a config-visible-but-deferred type from
    * generating an invalid tournament.
@@ -201,6 +308,9 @@ export class TournamentService {
   async getById(id: number): Promise<Tournament> {
     const t = await tournamentRepository.findById(id);
     if (!t) throw new NotFoundError('Tournament', ErrorCodes.ACADEMY_PROGRAM_NOT_FOUND);
+    // Group 3 — the persisted JSON allowlist is exposed as a normalised array
+    // (legacy NULL rows → backward-compatible default both methods).
+    (t as any).registration_payment_methods = this.readRegistrationPaymentMethods((t as any).registration_payment_methods);
     return t;
   }
 
@@ -211,6 +321,15 @@ export class TournamentService {
     // Group 2 — attach structured prizes (authoritative when present; the
     // frontend falls back to legacy prize_description when the array is empty).
     t.prizes = await tournamentRepository.findPrizesByTournament(id);
+    // Group 3 — expose the normalised configured allowlist AND the effective
+    // methods (config ∩ global policy ∩ org policy) to the player/management
+    // surfaces. Wallet can never appear (global policy excludes it).
+    const configured = this.readRegistrationPaymentMethods((t as any).registration_payment_methods);
+    t.registration_payment_methods = configured;
+    t.effective_registration_payment_methods = await this.resolveEffectiveRegistrationPaymentMethods({
+      ...t,
+      registration_payment_methods: configured,
+    });
     return t;
   }
 
@@ -394,6 +513,26 @@ export class TournamentService {
       });
       delete (data as any).prizes;
     }
+    // Group 3 — registration payment-method configuration is mutable
+    // Tournament state. When supplied, normalise (validate + dedupe + order)
+    // and persist; a change emits the authoritative realtime event so the
+    // admin/org workbenches refresh without a manual reload.
+    let paymentMethodsChanged = false;
+    if (data.registration_payment_methods !== undefined) {
+      const before = this.readRegistrationPaymentMethods((current as any).registration_payment_methods);
+      const after = this.normaliseRegistrationPaymentMethods(data.registration_payment_methods);
+      data = { ...data, registration_payment_methods: after };
+      paymentMethodsChanged = before.join(',') !== after.join(',');
+    }
+    if (paymentMethodsChanged) {
+      eventBusV2.emit('tournament:registration-payment-methods-updated', {
+        tournamentId: id,
+        organisationId: current.organisation_id ?? null,
+        methods: this.normaliseRegistrationPaymentMethods(data.registration_payment_methods),
+      } as Record<string, unknown>, {
+        aggregateType: 'tournament', aggregateId: String(id), aggregateVersion: 1,
+      });
+    }
     // Group 1 — whenever the rules-affecting configuration changes (sport_id,
     // match_format_id, rule_set_id, bracket_type_id), regenerate the
     // human-readable Rules snapshot server-side. A client-supplied `rules`
@@ -451,7 +590,12 @@ export class TournamentService {
     return tournamentRepository.findOpen();
   }
 
-  async register(tournamentId: number, userId: number, teamId?: number): Promise<TournamentRegistration> {
+  async register(
+    tournamentId: number,
+    userId: number,
+    teamId?: number,
+    paymentMethod?: string,
+  ): Promise<TournamentRegistration & { payment?: Record<string, unknown> | null }> {
     const t = await this.getById(tournamentId);
     if (t.status !== 'registration_open' && t.status !== 'published') {
       throw new ConflictError('Registration is not open for this tournament', ErrorCodes.TOURNAMENT_REGISTRATION_CLOSED);
@@ -469,12 +613,22 @@ export class TournamentService {
       throw new ConflictError('Tournament is at full capacity', ErrorCodes.TOURNAMENT_CAPACITY_FULL);
     }
 
-    // Group 5A — entry-fee integration uses the SHARED payment capability.
-    // Registration is created 'registered'/'unpaid'; the payment reference is
-    // recorded via the shared payment flow and this service exposes
-    // markRegistrationPaid (below). A paid entry-fee tournament requires the
-    // player to settle before confirmation (see confirmRegistration).
+    // Group 3 — when the player declares a payment method it MUST be one of the
+    // EFFECTIVE allowed methods (config ∩ global policy ∩ org policy). Wallet
+    // can never be offered or accepted. When no method is supplied (legacy
+    // callers) the registration is created 'registered'/'unpaid' exactly as
+    // before — backward compatible.
     const paymentRequired = Number(t.entry_fee ?? 0) > 0;
+    if (paymentMethod) {
+      const effective = await this.resolveEffectiveRegistrationPaymentMethods(t);
+      if (!effective.includes(paymentMethod)) {
+        throw new ConflictError(
+          `Payment method "${paymentMethod}" is not accepted for this tournament`,
+          ErrorCodes.TOURNAMENT_INVALID_PAYMENT_METHOD,
+        );
+      }
+    }
+
     const status = paymentRequired ? 'registered' : 'registered';
     const seed = existing.length + 1;
     const id = await tournamentRepository.createRegistration({
@@ -487,12 +641,69 @@ export class TournamentService {
       payment_status: 'unpaid',
     });
 
+    // ── Group 3 — registration-payment routing through the SHARED Payment
+    // capability (payment_transactions + PaymentService.charge). No
+    // tournament-specific transaction system exists: the shared service owns
+    // the gateway abstraction, idempotency and lifecycle.
+    let payment: Record<string, unknown> | null = null;
+    if (paymentRequired && paymentMethod === 'cash') {
+      // Cash/Offline — reuse the existing offline-cash record path (a PAID
+      // payment_transactions row, reference_type='tournament', deterministic
+      // idempotency key) and mark the registration paid durably. The
+      // payment:succeeded event runs the shared pipeline (listener re-marks
+      // idempotently; tournament accounting is intentionally not posted yet).
+      const amount = Math.round(Number(t.entry_fee) * 100) / 100;
+      const paymentId = await tournamentRepository.createCashPaymentTransaction({
+        userId,
+        registrationId: id,
+        amount,
+        currency: t.currency_code,
+      });
+      await tournamentRepository.updateRegistrationPaymentStatus(id, 'paid');
+      eventBusV2.emit('payment:succeeded', {
+        paymentId,
+        referenceType: 'tournament',
+        referenceId: id,
+        amount,
+        metadata: { paymentMethod: 'cash', currency: t.currency_code, userId },
+      } as Record<string, unknown>);
+      payment = { method: 'cash', status: 'paid', paymentId };
+    } else if (paymentRequired && paymentMethod === 'card') {
+      // Card/Gateway — the Tournament domain provides the reference, amount and
+      // authoritative currency; the SHARED PaymentService owns the gateway
+      // intention + pending payment_transactions row. Confirmation flows
+      // through the existing webhook/confirm → payment:succeeded → the
+      // tournament payment listener marks the registration paid.
+      const { paymentService } = await import('../../payment/application/payment.service.js');
+      const gwResult: any = await paymentService.charge(userId, {
+        referenceType: 'tournament' as any,
+        referenceId: id,
+        amount: Math.round(Number(t.entry_fee) * 100) / 100,
+        currency: t.currency_code,
+        paymentMethod: 'card',
+      });
+      if (!gwResult?.success) {
+        throw new ConflictError(
+          (gwResult?.errorMessage as string) || 'Payment gateway rejected the transaction',
+          ErrorCodes.TOURNAMENT_INVALID_PAYMENT_METHOD,
+        );
+      }
+      payment = {
+        method: 'card',
+        status: gwResult.status ?? 'pending',
+        paymentId: gwResult.paymentId ?? null,
+        paymentUrl: gwResult.paymentUrl ?? null,
+        clientSecret: gwResult.clientSecret ?? null,
+        intentionId: gwResult.intentionId ?? null,
+      };
+    }
+
     eventBusV2.emit('registration.received', { tournamentId, userId, registrationId: id, status, paymentRequired } as Record<string, unknown>, {
       aggregateType: 'tournament', aggregateId: String(tournamentId), aggregateVersion: 1,
     });
 
     const created = await tournamentRepository.getRegistrationById(id);
-    return created!;
+    return { ...created!, payment };
   }
 
   /** Group 5A — record that an entry fee was settled via the shared Payment capability. */

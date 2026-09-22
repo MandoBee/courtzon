@@ -81,6 +81,19 @@ export interface Tournament {
   registration_fee?: number;
   currency_code: string;
   price_type?: string;
+  /**
+   * Group 3 — allowed registration payment methods (ALLOWLIST, not a payment
+   * implementation). Valid values: ['cash'], ['card'], ['cash','card'].
+   * Canonical order is deterministic: cash before card. NULL (legacy rows) is
+   * interpreted by the application as the backward-compatible default
+   * ['cash','card'] (both). Wallet is never a valid value — CourtZon's global
+   * payment policy has Wallet disabled as a payment method (refund only).
+   */
+  registration_payment_methods?: string[];
+  /** Group 3 — response-only: the effective methods after intersecting the
+   * configured allowlist with the global payment policy and (when the
+   * tournament is org-owned) the organisation's active payment_gateway_config. */
+  effective_registration_payment_methods?: string[];
   commission_rate?: number;
   prize_description?: string;
   /** Group 2 — structured prizes: incoming payload (no tournament_id) and, on the

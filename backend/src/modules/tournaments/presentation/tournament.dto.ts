@@ -1,6 +1,16 @@
 import { z } from 'zod';
 
 /**
+ * Group 3 — allowed registration payment methods. Valid configurations are
+ * ['cash'], ['card'] or ['cash','card']. Wallet / any other value is rejected
+ * by the enum (the global payment policy has Wallet disabled as a payment
+ * method). Order is normalised server-side (cash before card); duplicates are
+ * collapsed. An empty array is rejected (`.min(1)`) — a Tournament can never
+ * be unpayable.
+ */
+export const RegistrationPaymentMethodsSchema = z.array(z.enum(['cash', 'card'])).min(1);
+
+/**
  * Group 2 — structured Tournament prize input. Multiple prizes per placement are
  * allowed; `placement` is nullable (NULL = special/non-ranked prize).
  * Cash prizes carry `amount` + the Tournament's authoritative `currency_code`;
@@ -36,6 +46,7 @@ export const CreateTournamentSchema = z.object({
   registration_fee: z.number().min(0).optional(),
   currency_code: z.string().length(3).default('USD'),
   price_type: z.enum(['FREE', 'FIXED', 'MEMBERS_ONLY']).optional().default('FIXED'),
+  registration_payment_methods: RegistrationPaymentMethodsSchema.optional(),
   // Commission is ALWAYS derived server-side from the organisation's active
   // subscription/plan (Group 5B-SR). The field is intentionally NOT part of the
   // schema — zod strips any client-supplied commission_rate so it can never
@@ -76,6 +87,7 @@ export const UpdateTournamentSchema = z.object({
   registration_fee: z.number().min(0).optional(),
   currency_code: z.string().length(3).optional(),
   price_type: z.enum(['FREE', 'FIXED', 'MEMBERS_ONLY']).optional(),
+  registration_payment_methods: RegistrationPaymentMethodsSchema.optional(),
   // commission_rate is immutable once a tournament is created — it is the
   // historical economic snapshot of the rate in force at creation (Group 5B-SR).
   // Not part of the schema: updates can never change it.
@@ -108,8 +120,21 @@ export const ListTournamentsQuerySchema = z.object({
 });
 
 export const RegisterSchema = z.object({
-  tournament_id: z.number().int().positive(),
+  /**
+   * Optional — the tournament id is authoritative in the route (`:id`). Retained
+   * as an optional field for backward compatibility with legacy callers that
+   * included it in the body.
+   */
+  tournament_id: z.number().int().positive().optional(),
   team_id: z.number().int().positive().optional(),
+  /**
+   * Group 3 — the payment method the player will use for the entry fee. Must
+   * be one of the tournament's EFFECTIVE allowed methods (config ∩ global
+   * policy ∩ org policy). `cash` → offline paid on registration; `card` →
+   * the shared Payment capability creates a gateway charge (pending). Wallet
+   * is never valid.
+   */
+  payment_method: z.enum(['cash', 'card']).optional(),
 });
 
 export const GenerateGroupsSchema = z.object({

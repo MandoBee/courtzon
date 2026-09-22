@@ -121,6 +121,8 @@ export interface DomainEventMap {
   'tournament:match-progressed': BaseEvent & { tournamentId: number; matchId: number; opponentMatchId: number; winnerId?: number | null; round: number; bracketPosition: number; advancedTo?: string | null; result?: Record<string, unknown> };
   'tournament:stage-completed': BaseEvent & { tournamentId: number; stageId: number; round: number };
   'tournament:completed': BaseEvent & { tournamentId: number; name: string; winnerId?: number | null; winnerName?: string | null };
+  'tournament:registration-paid': BaseEvent & { tournamentId: number; registrationId: number; userId?: number; organisationId?: number | null; paymentId?: number | null };
+  'tournament:registration-payment-methods-updated': BaseEvent & { tournamentId: number; organisationId?: number | null; methods: string[] };
   'match:invitation': BaseEvent & { bookingId: number; userId: number; senderId: number; startTime?: Date; actions?: any[] };
   'community:new-post': BaseEvent & { postId: number; userId: number; communityName: string };
   'community:new-comment': BaseEvent & { commentId: number; postId: number; userId: number; authorName: string };

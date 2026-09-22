@@ -1308,6 +1308,14 @@ export function registerAccountingEventListeners(): void {
       const currency: string = data.metadata?.currency || 'EGP';
       if (!referenceType || !referenceId || !amount) return;
 
+      // Group 3 — Tournament registration payments are routed through the SHARED
+      // Payment capability, but Tournament accounting/settlement is explicitly
+      // NOT implemented yet (a later tournament group defines the custody model
+      // and posting rules). Prevent the generic fallthrough below from posting
+      // a full-gross card_payment entry as CourtZon revenue — tournament fees
+      // belong to the organising entity under a model a later group defines.
+      if (referenceType === 'tournament') return;
+
       if (referenceType === 'wallet_topup') {
         const orgId = null; // platform event
         await postAccountingEvent(

@@ -791,6 +791,19 @@ export function useRealtimeCacheUpdates(): void {
     });
   }
 
+  // Group 3 — a registration payment was settled (cash offline or card via the
+  // shared Payment capability) → the participant list + tournament caches
+  // refresh live. Payment-method configuration changes refresh the tournament
+  // detail so the player/admin surfaces never show stale methods.
+  useSocketEvent('tournament.registration-paid', (p: any) => {
+    invalidateTournament(qc, p?.tournamentId);
+    if (p?.tournamentId) qc.invalidateQueries({ queryKey: ['tournament', String(p.tournamentId), 'participants'] });
+  });
+
+  useSocketEvent('tournament.registration-payment-methods-updated', (p: any) => {
+    invalidateTournament(qc, p?.tournamentId);
+  });
+
   // ── Presence events ────────────────────────────────────────────
   useSocketEvent('presence.online', (p: any) => {
     qc.setQueryData(['user-presence', p.userId], () => true);
