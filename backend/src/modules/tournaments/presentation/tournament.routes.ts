@@ -1,9 +1,22 @@
 import type { FastifyInstance } from 'fastify';
 import { authMiddleware, requirePermission } from '../../../shared/middleware/auth.middleware.js';
 import * as ctrl from './tournament.controller.js';
+import * as pdCtrl from './participant-draw.controller.js';
 
 export async function tournamentRoutes(app: FastifyInstance): Promise<void> {
   app.addHook('preHandler', authMiddleware);
+
+  // ── Group 5 — Participants / Seeding / Draw foundation (admin) ──
+
+  app.get('/admin/tournaments/:id/participants', { preHandler: [requirePermission(['tournament.view'])] }, pdCtrl.listParticipantsHandler);
+  app.post('/admin/tournaments/:id/participants/:participantId/seed', { preHandler: [requirePermission(['tournament.manage'])] }, pdCtrl.assignSeedHandler);
+  app.post('/admin/tournaments/:id/draw', { preHandler: [requirePermission(['tournament.manage'])] }, pdCtrl.generateDrawHandler);
+  app.get('/admin/tournaments/:id/draw', { preHandler: [requirePermission(['tournament.view'])] }, pdCtrl.getCurrentDrawHandler);
+  app.get('/admin/tournaments/:id/draws', { preHandler: [requirePermission(['tournament.view'])] }, pdCtrl.listDrawsHandler);
+  app.get('/admin/tournaments/:id/draw/validate', { preHandler: [requirePermission(['tournament.view'])] }, pdCtrl.validateDrawHandler);
+  app.post('/admin/tournaments/:id/draw/move', { preHandler: [requirePermission(['tournament.manage'])] }, pdCtrl.moveParticipantHandler);
+  app.post('/admin/tournaments/:id/draw/approve', { preHandler: [requirePermission(['tournament.manage'])] }, pdCtrl.approveDrawHandler);
+  app.post('/admin/tournaments/:id/draw/lock', { preHandler: [requirePermission(['tournament.manage'])] }, pdCtrl.lockDrawHandler);
 
   // ── Admin routes ──
 

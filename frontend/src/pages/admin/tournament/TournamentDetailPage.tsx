@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from '../../../i18n';
 import { useToast } from '../../../components/ui/Toast';
@@ -55,6 +55,7 @@ interface Props {
 export default function TournamentDetailPage({ mode = 'admin', orgId }: Props) {
   const { id } = useParams<{ id: string }>();
   const tournamentId = Number(id);
+  const navigate = useNavigate();
   const { t } = useTranslation();
   const { showToast } = useToast();
   const qc = useQueryClient();
@@ -170,6 +171,12 @@ export default function TournamentDetailPage({ mode = 'admin', orgId }: Props) {
                 </button>
               </Can>
             ))}
+            <Can permission={perms.edit}>
+              <button onClick={() => navigate(isOrg ? `/org/${orgId}/tournaments/${tournamentId}/participants` : `/admin/tournament/list/${tournamentId}/participants`)}
+                className="px-3 py-1.5 text-xs font-medium rounded-[var(--radius-md)] border border-[var(--color-border)] text-[var(--color-text)]">
+                {t('tournaments.participants', 'Participants & Seeding')}
+              </button>
+            </Can>
           </div>
         </div>
 

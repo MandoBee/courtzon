@@ -161,6 +161,48 @@ export async function orgTournamentRoutes(app: FastifyInstance): Promise<void> {
     ctrl.getOrgStagesHandler,
   );
 
+  // ── Group 5 — org-scoped Participants / Seeding / Draw foundation ──
+  app.get(
+    '/org/:orgId/tournaments/:id/participants',
+    { preHandler: [requireOrgScopedPermission('org.tournaments.view')] },
+    ctrl.listOrgParticipantsHandler,
+  );
+  app.post(
+    '/org/:orgId/tournaments/:id/participants/:participantId/seed',
+    { preHandler: [requireOrgScopedPermission('org.tournaments.manage')] },
+    ctrl.assignOrgSeedHandler,
+  );
+  app.post(
+    '/org/:orgId/tournaments/:id/draw',
+    { preHandler: [requireOrgScopedPermission('org.tournaments.manage')] },
+    ctrl.generateOrgDrawHandler,
+  );
+  app.get(
+    '/org/:orgId/tournaments/:id/draw',
+    { preHandler: [requireOrgScopedPermission('org.tournaments.view')] },
+    ctrl.getOrgCurrentDrawHandler,
+  );
+  app.get(
+    '/org/:orgId/tournaments/:id/draw/validate',
+    { preHandler: [requireOrgScopedPermission('org.tournaments.view')] },
+    ctrl.validateOrgDrawHandler,
+  );
+  app.post(
+    '/org/:orgId/tournaments/:id/draw/move',
+    { preHandler: [requireOrgScopedPermission('org.tournaments.manage')] },
+    ctrl.moveOrgParticipantHandler,
+  );
+  app.post(
+    '/org/:orgId/tournaments/:id/draw/approve',
+    { preHandler: [requireOrgScopedPermission('org.tournaments.manage')] },
+    ctrl.approveOrgDrawHandler,
+  );
+  app.post(
+    '/org/:orgId/tournaments/:id/draw/lock',
+    { preHandler: [requireOrgScopedPermission('org.tournaments.manage')] },
+    ctrl.lockOrgDrawHandler,
+  );
+
   // ── Match operations ──
   app.put(
     '/org/:orgId/tournaments/matches/:matchId/court',

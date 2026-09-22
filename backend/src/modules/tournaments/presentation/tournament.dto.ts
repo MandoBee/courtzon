@@ -174,6 +174,29 @@ export const CreateStageSchema = z.object({
 
 export const DashboardQuerySchema = z.object({});
 
+/**
+ * Group 5 — assign / change a participant's authoritative tournament seed.
+ * `source=rating` freezes a rating snapshot; `source=manual` requires NO rating
+ * and is tournament-scoped (never touches the player's global rating).
+ */
+export const AssignSeedSchema = z.object({
+  seed_number: z.number().int().positive(),
+  source: z.enum(['rating', 'manual']),
+  reason: z.string().max(255).optional(),
+});
+
+/** Group 5 — generate / re-generate the draw (placement only; seeds preserved). */
+export const GenerateDrawSchema = z.object({
+  draw_seed: z.number().int().positive().optional(),
+});
+
+/** Group 5 — manual placement (swap). `override` confirms a seeding-rule violation explicitly. */
+export const MoveParticipantSchema = z.object({
+  participant_id: z.number().int().positive(),
+  position: z.number().int().min(0),
+  override: z.boolean().optional().default(false),
+});
+
 export type CreateTournamentInput = z.infer<typeof CreateTournamentSchema>;
 export type UpdateTournamentInput = z.infer<typeof UpdateTournamentSchema>;
 export type ListTournamentsQuery = z.infer<typeof ListTournamentsQuerySchema>;

@@ -80,6 +80,7 @@ export class SocketPublisher {
       'tournament:stage-completed', 'tournament:completed',
       'tournament:registration-paid', 'tournament:registration-payment-methods-updated',
       'tournament:schedule-updated',
+      'tournament:seed-updated', 'tournament:draw-generated', 'tournament:draw-updated',
       'setting:updated', 'setting:profile-applied',
       'accounting:entry-recorded',
       'user:suspended', 'user:activated', 'user:deleted', 'user.role.changed',

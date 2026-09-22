@@ -114,3 +114,33 @@ export const bracketTypeApi = {
   getSportFormats: (sportId: number | string, bracketTypeId?: number | string) =>
     api.get(`/tournaments/sports/${sportId}/formats`, { params: bracketTypeId ? { bracket_type_id: bracketTypeId } : undefined }).then(r => r.data),
 };
+
+// ── Group 5 — Participant / Seeding / Draw foundation ──
+export const tournamentParticipantApi = {
+  getParticipants: (tournamentId: number) => api.get(`/admin/tournaments/${tournamentId}/participants`).then(r => r.data),
+  assignSeed: (tournamentId: number, participantId: number, body: { seed_number: number; source: 'rating' | 'manual'; reason?: string }) =>
+    api.post(`/admin/tournaments/${tournamentId}/participants/${participantId}/seed`, body).then(r => r.data),
+  generateDraw: (tournamentId: number, drawSeed?: number) =>
+    api.post(`/admin/tournaments/${tournamentId}/draw`, drawSeed ? { draw_seed: drawSeed } : {}).then(r => r.data),
+  getCurrentDraw: (tournamentId: number) => api.get(`/admin/tournaments/${tournamentId}/draw`).then(r => r.data),
+  listDraws: (tournamentId: number) => api.get(`/admin/tournaments/${tournamentId}/draws`).then(r => r.data),
+  validateDraw: (tournamentId: number) => api.get(`/admin/tournaments/${tournamentId}/draw/validate`).then(r => r.data),
+  moveParticipant: (tournamentId: number, participantId: number, position: number, override = false) =>
+    api.post(`/admin/tournaments/${tournamentId}/draw/move`, { participant_id: participantId, position, override }).then(r => r.data),
+  approveDraw: (tournamentId: number) => api.post(`/admin/tournaments/${tournamentId}/draw/approve`).then(r => r.data),
+  lockDraw: (tournamentId: number) => api.post(`/admin/tournaments/${tournamentId}/draw/lock`).then(r => r.data),
+};
+
+export const orgTournamentParticipantApi = {
+  getParticipants: (orgId: number | string, tournamentId: number) => api.get(`/org/${orgId}/tournaments/${tournamentId}/participants`).then(r => r.data),
+  assignSeed: (orgId: number | string, tournamentId: number, participantId: number, body: { seed_number: number; source: 'rating' | 'manual'; reason?: string }) =>
+    api.post(`/org/${orgId}/tournaments/${tournamentId}/participants/${participantId}/seed`, body).then(r => r.data),
+  generateDraw: (orgId: number | string, tournamentId: number, drawSeed?: number) =>
+    api.post(`/org/${orgId}/tournaments/${tournamentId}/draw`, drawSeed ? { draw_seed: drawSeed } : {}).then(r => r.data),
+  getCurrentDraw: (orgId: number | string, tournamentId: number) => api.get(`/org/${orgId}/tournaments/${tournamentId}/draw`).then(r => r.data),
+  validateDraw: (orgId: number | string, tournamentId: number) => api.get(`/org/${orgId}/tournaments/${tournamentId}/draw/validate`).then(r => r.data),
+  moveParticipant: (orgId: number | string, tournamentId: number, participantId: number, position: number, override = false) =>
+    api.post(`/org/${orgId}/tournaments/${tournamentId}/draw/move`, { participant_id: participantId, position, override }).then(r => r.data),
+  approveDraw: (orgId: number | string, tournamentId: number) => api.post(`/org/${orgId}/tournaments/${tournamentId}/draw/approve`).then(r => r.data),
+  lockDraw: (orgId: number | string, tournamentId: number) => api.post(`/org/${orgId}/tournaments/${tournamentId}/draw/lock`).then(r => r.data),
+};

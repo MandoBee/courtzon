@@ -311,3 +311,82 @@ export async function completeOrgTournamentMatchHandler(request: FastifyRequest,
   recordAudit({ actorId: userId, action: 'TOURNAMENT.COMPLETE_MATCH', entityType: 'tournament_match', entityId: Number(matchId), afterState: { orgId, status: updated.status } });
   return reply.send({ ok: true, status: updated.status });
 }
+
+// ── Group 5 — org-scoped Participants / Seeding / Draw foundation ──
+// Same authoritative participantDrawService the admin workbench uses; every
+// handler asserts the tournament belongs to :orgId first (tenant isolation).
+
+export async function listOrgParticipantsHandler(request: FastifyRequest, reply: FastifyReply) {
+  const orgId = getOrgId(request);
+  const { id } = request.params as any;
+  await assertOrgOwnsTournament(orgId, Number(id));
+  const { participantDrawService } = await import('../application/participant-draw.service.js');
+  return reply.send({ data: await participantDrawService.listParticipants(Number(id)) });
+}
+
+export async function assignOrgSeedHandler(request: FastifyRequest, reply: FastifyReply) {
+  const orgId = getOrgId(request);
+  const userId = getUserId(request);
+  const { id, participantId } = request.params as any;
+  await assertOrgOwnsTournament(orgId, Number(id));
+  const { AssignSeedSchema } = await import('./tournament.dto.js');
+  const body = AssignSeedSchema.parse(request.body);
+  const { participantDrawService } = await import('../application/participant-draw.service.js');
+  return reply.send(await participantDrawService.assignSeed(Number(id), Number(participantId), { seedNumber: body.seed_number, source: body.source, reason: body.reason }, userId));
+}
+
+export async function generateOrgDrawHandler(request: FastifyRequest, reply: FastifyReply) {
+  const orgId = getOrgId(request);
+  const userId = getUserId(request);
+  const { id } = request.params as any;
+  await assertOrgOwnsTournament(orgId, Number(id));
+  const { GenerateDrawSchema } = await import('./tournament.dto.js');
+  const body = GenerateDrawSchema.parse(request.body);
+  const { participantDrawService } = await import('../application/participant-draw.service.js');
+  return reply.send(await participantDrawService.generateDraw(Number(id), userId, body.draw_seed));
+}
+
+export async function getOrgCurrentDrawHandler(request: FastifyRequest, reply: FastifyReply) {
+  const orgId = getOrgId(request);
+  const { id } = request.params as any;
+  await assertOrgOwnsTournament(orgId, Number(id));
+  const { participantDrawService } = await import('../application/participant-draw.service.js');
+  return reply.send(await participantDrawService.getCurrentDraw(Number(id)));
+}
+
+export async function validateOrgDrawHandler(request: FastifyRequest, reply: FastifyReply) {
+  const orgId = getOrgId(request);
+  const { id } = request.params as any;
+  await assertOrgOwnsTournament(orgId, Number(id));
+  const { participantDrawService } = await import('../application/participant-draw.service.js');
+  return reply.send(await participantDrawService.validateDraw(Number(id)));
+}
+
+export async function moveOrgParticipantHandler(request: FastifyRequest, reply: FastifyReply) {
+  const orgId = getOrgId(request);
+  const userId = getUserId(request);
+  const { id } = request.params as any;
+  await assertOrgOwnsTournament(orgId, Number(id));
+  const { MoveParticipantSchema } = await import('./tournament.dto.js');
+  const body = MoveParticipantSchema.parse(request.body);
+  const { participantDrawService } = await import('../application/participant-draw.service.js');
+  return reply.send(await participantDrawService.moveParticipant(Number(id), body.participant_id, body.position, userId, { override: body.override }));
+}
+
+export async function approveOrgDrawHandler(request: FastifyRequest, reply: FastifyReply) {
+  const orgId = getOrgId(request);
+  const userId = getUserId(request);
+  const { id } = request.params as any;
+  await assertOrgOwnsTournament(orgId, Number(id));
+  const { participantDrawService } = await import('../application/participant-draw.service.js');
+  return reply.send(await participantDrawService.approveDraw(Number(id), userId));
+}
+
+export async function lockOrgDrawHandler(request: FastifyRequest, reply: FastifyReply) {
+  const orgId = getOrgId(request);
+  const userId = getUserId(request);
+  const { id } = request.params as any;
+  await assertOrgOwnsTournament(orgId, Number(id));
+  const { participantDrawService } = await import('../application/participant-draw.service.js');
+  return reply.send(await participantDrawService.lockDraw(Number(id), userId));
+}

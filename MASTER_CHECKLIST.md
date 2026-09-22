@@ -35,23 +35,43 @@
   `tournament:registration-open` notifications; `tournament:schedule-updated`
   realtime. Migration: `171_tournament_schedule_config.sql`.
 
-### G5 — Draw & Seeding Foundation 🔶 AUDIT COMPLETE — ARCHITECTURE REVIEW PENDING
-- **Audit outcome**: participant identity is user-id-only (`tournament_matches.player1_id/2`
-  FK → `users`); no pair/team participant entity; seed stored (`seed_rank`) but was
-  NOT consumed by the draw (dead) — now fixed; `draw_seed` was dropped by
-  `create()` — now persisted; no draw-attempt history; no manual placement; no
-  waitlist (`waiting` status missing); no seed-violation model. Commit `d80dcfdb`.
-- ✅ Fixed (minimal, backward-compatible, no schema change):
-  - participant model — seed mapping (`seed_rank → seed`) so the draw honours seeds;
-  - seed model — `draw_seed` persisted at create (deterministic draws);
-  - auto re-draw — **NOT implemented** (draw is idempotent-guarded; re-draw is part
-    of the pending architecture review);
-  - seed preservation — seeds are read-only from the draw path (regression-tested);
-  - manual drag/drop — **NOT implemented** (domain not ready);
-  - seed violation warning — **NOT implemented** (no seeding-rules model);
-  - draw approval/lock — **NOT implemented**.
-- **REVIEW REQUIRED (OUTCOME B)**: participant identity / team-pair structure /
-  draw-representation decision before building the draw UI.
+### G5 — Draw & Seeding Foundation (granular) ✅ CORE FOUNDATION DONE — UI deferred
+Architecture decision (from the G5 audit, approved): separate the three concepts
+that must never be conflated — GLOBAL RATING (rating module, never mutated from
+seeding), TOURNAMENT SEED (tournament-scoped, source rating|manual, authoritative,
+preserved across re-draws), DRAW POSITION (placement per draw attempt; may change
+without touching the seed). Participant identity is a first-class entity; the draw
+is NOT built on user IDs. Migration: `172_tournament_participant_seed_draw.sql`
+(4 new tables: tournament_participants, tournament_seeds, tournament_draws,
+tournament_draw_entries).
+
+- **G5A Participant Identity Foundation** ✅ — `tournament_participants`
+  (type individual|pair|team, status, member_user_ids roster, registration link).
+  Existing individual registrations map 1:1 (compatibility, historical data intact).
+- **G5B Tournament Seed Foundation** ✅ — `tournament_seeds` with
+  UNIQUE(tournament_id, seed_number) + UNIQUE(participant_id); one authoritative
+  seed per participant; seed survives Auto Re-Draw; never recalculated by a draw.
+- **G5C Manual Seed / Rating Snapshot** ✅ — `source enum('rating','manual')`;
+  manual needs NO rating (assigned_by required); rating seeds freeze
+  `rating_snapshot`/`rating_matches_played` (never live); manual seed never
+  touches the global rating.
+- **G5D Draw Generation State** ✅ — `tournament_draws` (attempt_number,
+  draw_seed, status draft|approved|locked, validation_status, is_current) +
+  `tournament_draw_entries` (position, placement_source auto|manual, overridden).
+- **G5E Re-Draw / Seed Preservation** ✅ — generateDraw appends attempts
+  (placement only); seeds preserved; deterministic per (participants, seeds,
+  draw_seed); unseeded reshuffle on re-draw; seeded participants hold protected
+  top positions.
+- **G5F Manual Placement Foundation** ✅ — moveParticipant (swap) with
+  `placement_source='manual'`; structured validation result for the future UI.
+- **G5G Seed Violation Validation** ✅ — `evaluateSeedingRule` returns
+  `{ valid, reason:'SEEDING_RULE_VIOLATION', seed, message }`; explicit
+  `override` commits the move, keeps the seed, marks overridden + audit.
+- **G5H Draw Approval / Lock Foundation** ✅ — approveDraw (requires valid) +
+  lockDraw (requires approved); audit + realtime events.
+- **DEFERRED (not this group)**: full Drag & Drop draw UI, waitlist, withdrawal
+  workflow, pair/team member management, player-replacement workflow, court
+  reservation (needs the match schedule), match progression, accounting.
 
 ### G6 — Participant Lifecycle 🔜 NOT STARTED
 - withdrawal before start; waitlist (real `waiting` status + FIFO promotion);

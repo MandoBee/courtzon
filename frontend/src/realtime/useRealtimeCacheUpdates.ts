@@ -810,6 +810,26 @@ export function useRealtimeCacheUpdates(): void {
     invalidateTournament(qc, p?.tournamentId);
   });
 
+  // Group 5 — participant/seeding/draw foundation state changes refresh the
+  // tournament + participants caches live.
+  useSocketEvent('tournament.seed-updated', (p: any) => {
+    invalidateTournament(qc, p?.tournamentId);
+    if (p?.tournamentId) {
+      qc.invalidateQueries({ queryKey: ['tournament', String(p.tournamentId), 'participants'] });
+      qc.invalidateQueries({ queryKey: ['tournament-participants', p.tournamentId] });
+    }
+  });
+
+  for (const ev of ['tournament.draw-generated', 'tournament.draw-updated']) {
+    useSocketEvent(ev, (p: any) => {
+      invalidateTournament(qc, p?.tournamentId);
+      if (p?.tournamentId) {
+        qc.invalidateQueries({ queryKey: ['tournament', String(p.tournamentId), 'bracket'] });
+        qc.invalidateQueries({ queryKey: ['tournament-draw', p.tournamentId] });
+      }
+    });
+  }
+
   // ── Presence events ────────────────────────────────────────────
   useSocketEvent('presence.online', (p: any) => {
     qc.setQueryData(['user-presence', p.userId], () => true);

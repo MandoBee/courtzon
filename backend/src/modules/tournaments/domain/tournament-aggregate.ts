@@ -8,6 +8,96 @@ export type TournamentStatus =
 
 export type RegistrationStatus = 'registered' | 'confirmed' | 'withdrawn' | 'disqualified';
 
+/**
+ * Group 5 — authoritative Tournament Participant abstraction. The participant is
+ * the entity placed into the draw (individual today; pair/team allowed by
+ * `participant_type` + the `member_user_ids` roster). It is NOT a user: a
+ * future pair/team has one participant with multiple members. Existing
+ * individual registrations map 1:1 to participants without rewriting history.
+ */
+export type TournamentParticipantType = 'individual' | 'pair' | 'team';
+export type TournamentParticipantStatus = 'active' | 'withdrawn' | 'waiting';
+
+export interface TournamentParticipant {
+  id?: number;
+  tournament_id: number;
+  /** Individual participants map 1:1 to a registration; NULL for future pair/team. */
+  registration_id?: number | null;
+  participant_type: TournamentParticipantType;
+  status: TournamentParticipantStatus;
+  /** Member roster (individual = [user_id]); future pairs/teams hold multiple. */
+  member_user_ids?: number[] | null;
+  /** Convenience: primary member user id (individual). */
+  player_id?: number | null;
+  /** Joined display name (primary member). */
+  display_name?: string | null;
+  created_at?: string;
+  updated_at?: string;
+  /** Joined: the participant's authoritative tournament seed (if any). */
+  seed?: TournamentSeed | null;
+  /** Joined: current draw position (from the current draw attempt). */
+  draw_position?: number | null;
+  draw_placement_source?: 'auto' | 'manual' | null;
+}
+
+/**
+ * Group 5 — authoritative Tournament Seed. Exists only inside a tournament,
+ * separate from GLOBAL RATING (never mutated) and DRAW POSITION (may change).
+ * source: rating (snapshot frozen for history) | manual (assigned_by required).
+ */
+export type TournamentSeedSource = 'rating' | 'manual';
+
+export interface TournamentSeed {
+  id?: number;
+  tournament_id: number;
+  participant_id: number;
+  seed_number: number;
+  source: TournamentSeedSource;
+  assigned_by?: number | null;
+  assigned_at?: string;
+  /** Frozen overall percent when source=rating; NULL for manual. */
+  rating_snapshot?: number | null;
+  rating_matches_played?: number | null;
+  reason?: string | null;
+  updated_at?: string;
+}
+
+/**
+ * Group 5 — Draw generation state. One row per attempt (auditable history).
+ * Multiple Auto Re-Draws append attempts; seeds are never rewritten.
+ */
+export type TournamentDrawStatus = 'draft' | 'approved' | 'locked';
+export type TournamentDrawValidationStatus = 'valid' | 'seeding_violation' | 'manually_modified';
+
+export interface TournamentDraw {
+  id?: number;
+  tournament_id: number;
+  attempt_number: number;
+  draw_seed: number;
+  generated_by?: number | null;
+  generated_at?: string;
+  status: TournamentDrawStatus;
+  validation_status: TournamentDrawValidationStatus;
+  is_current: boolean | number;
+  created_at?: string;
+  entries?: TournamentDrawEntry[];
+}
+
+export interface TournamentDrawEntry {
+  id?: number;
+  draw_id: number;
+  participant_id: number;
+  /** 0-based draw position within this attempt. */
+  position: number;
+  placement_source: 'auto' | 'manual';
+  /** Explicit admin override of a seeding-rule violation (seed unchanged). */
+  overridden: boolean | number;
+  moved_by?: number | null;
+  moved_at?: string;
+  created_at?: string;
+  participant?: TournamentParticipant | null;
+}
+
 export type MatchStatus = 'scheduled' | 'in_progress' | 'completed' | 'walkover' | 'forfeit' | 'no_show';
 
 /**
