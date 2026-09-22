@@ -524,10 +524,10 @@ export class MatchResultRepository {
    * has no active format — the caller decides whether to fail or leave the
    * Match format-less (legacy behavior preserved).
    */
-  async resolveDefaultFormatForSport(sportId: number): Promise<{ formatId: number; formatType: 'singles' | 'doubles' | 'team'; playersPerSide: number | null; name: string } | null> {
+  async resolveDefaultFormatForSport(sportId: number): Promise<{ formatId: number; formatType: 'singles' | 'doubles' | 'team'; playersPerSide: number | null; rosterSize: number | null; name: string } | null> {
     const pool = getPool();
     const [rows] = await pool.execute<RowData>(
-      `SELECT id, format_type, players_per_side, name
+      `SELECT id, format_type, players_per_side, roster_size, name
        FROM sport_formats
        WHERE sport_id = ? AND is_active = 1
        ORDER BY is_default DESC, id ASC
@@ -540,15 +540,16 @@ export class MatchResultRepository {
       formatId: Number(r.id),
       formatType: r.format_type,
       playersPerSide: r.players_per_side != null ? Number(r.players_per_side) : null,
+      rosterSize: r.roster_size != null ? Number(r.roster_size) : null,
       name: r.name,
     };
   }
 
   /** Resolve a single Sport Format by id (for explicit format_id validation). */
-  async findFormatById(formatId: number): Promise<{ formatId: number; sportId: number; formatType: 'singles' | 'doubles' | 'team'; playersPerSide: number | null; name: string; isActive: boolean } | null> {
+  async findFormatById(formatId: number): Promise<{ formatId: number; sportId: number; formatType: 'singles' | 'doubles' | 'team'; playersPerSide: number | null; rosterSize: number | null; name: string; isActive: boolean } | null> {
     const pool = getPool();
     const [rows] = await pool.execute<RowData>(
-      `SELECT id, sport_id, format_type, players_per_side, name, is_active
+      `SELECT id, sport_id, format_type, players_per_side, roster_size, name, is_active
        FROM sport_formats WHERE id = ?`,
       [formatId],
     );
@@ -559,6 +560,7 @@ export class MatchResultRepository {
       sportId: Number(r.sport_id),
       formatType: r.format_type,
       playersPerSide: r.players_per_side != null ? Number(r.players_per_side) : null,
+      rosterSize: r.roster_size != null ? Number(r.roster_size) : null,
       name: r.name,
       isActive: Boolean(r.is_active),
     };

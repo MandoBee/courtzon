@@ -23,6 +23,14 @@ const __state = vi.hoisted(() => ({
     { id: 20, tournament_id: 1, registration_id: 20, status: 'waiting', waiting_order: 1, member_user_ids: [200], player_id: 200, display_name: 'Player W1' },
     { id: 21, tournament_id: 1, registration_id: 21, status: 'waiting', waiting_order: 2, member_user_ids: [201], player_id: 201, display_name: 'Player W2' },
   ],
+  // Group 7 — a pair participant with normalized members + a replacement request
+  pair: { id: 4, player_id: 40, display_name: 'Pair Alpha', name: 'Pair Alpha', participant_type: 'pair', status: 'active', global_rating: null, seed: { seed_number: 4, source: 'manual' }, members: [
+    { id: 1, user_id: 40, full_name: 'Player P1', status: 'active', member_order: 0 },
+    { id: 2, user_id: 41, full_name: 'Player P2', status: 'active', member_order: 1 },
+  ] },
+  replacementRequests: [
+    { id: 900, tournament_id: 1, participant_id: 4, outgoing_member_user_id: 40, replacement_user_id: 50, requested_by: 1, requested_at: '2026-09-01T00:00:00.000Z', status: 'pending', participant_name: 'Pair Alpha', outgoing_member_name: 'Player P1', replacement_user_name: 'Player P5', requested_by_name: 'Admin' },
+  ],
 }));
 
 vi.mock('../../../../services/api', () => ({
@@ -61,7 +69,8 @@ function renderPage() {
 
 function mockApi() {
   (api.get as any).mockImplementation((url: string) => {
-    if (url.includes('/participants')) return Promise.resolve({ data: __state.participants });
+    if (url.includes('/replacement-requests')) return Promise.resolve({ data: __state.replacementRequests });
+    if (url.includes('/participants')) return Promise.resolve({ data: [...__state.participants, __state.pair] });
     if (url.includes('/waitlist')) return Promise.resolve({ data: __state.waitlist });
     if (url.includes('/draw')) return Promise.resolve({ data: __state.currentDraw });
     return Promise.resolve({ data: {} });
@@ -165,5 +174,73 @@ describe('TournamentParticipantsPage — participant lifecycle (Group 6)', () =>
     expect(screen.queryByText('Promote Next')).toBeNull();
     // Read-only surfaces still render.
     expect(screen.getByText('Player W1')).toBeTruthy();
+  });
+});
+
+describe('TournamentParticipantsPage — pair/team management (Group 7)', () => {
+  it('renders a pair participant with its authoritative members and seed', async () => {
+    renderPage();
+    expect((await screen.findAllByText('Pair Alpha')).length).toBeGreaterThan(0);
+    // 'Player P1' appears in the pair's member list AND the replacement request row.
+    expect(screen.getAllByText('Player P1').length).toBeGreaterThan(0);
+    expect(screen.getByText('Player P2')).toBeTruthy();
+    expect(screen.getAllByText('#4').length).toBeGreaterThan(0);
+  });
+
+  it('opens the Add Team modal and submits to /participants/teams', async () => {
+    renderPage();
+    await screen.findAllByText('Player A');
+    fireEvent.click(screen.getByText('Add Team'));
+    expect(await screen.findByText(/Enter the player user IDs/)).toBeTruthy();
+    const numberInputs = document.querySelectorAll('input[type="number"]');
+    fireEvent.change(numberInputs[0], { target: { value: '10' } });
+    fireEvent.change(numberInputs[1], { target: { value: '20' } });
+    fireEvent.click(screen.getByText('Create Participant'));
+    await waitFor(() => expect((api.post as any).mock.calls.length).toBeGreaterThan(0));
+    const [url, body] = (api.post as any).mock.calls.find((c: any[]) => c[0].includes('/teams'));
+    expect(url).toContain('/participants/teams');
+    expect(body.member_user_ids).toEqual([10, 20]);
+  });
+
+  it('opens the replacement modal and submits a durable replacement request', async () => {
+    renderPage();
+    await screen.findAllByText('Player A');
+    const reqBtn = screen.getAllByText('Request Replacement')[0];
+    expect(reqBtn).toBeTruthy();
+    fireEvent.click(reqBtn);
+    expect(await screen.findByText('Request Player Replacement')).toBeTruthy();
+    expect(screen.getAllByText(/does not change the team's\/pair's Tournament Seed/).length).toBeGreaterThan(0);
+    // Select the current player and enter the replacement user ID so submit enables.
+    fireEvent.change(document.querySelector('select') as HTMLSelectElement, { target: { value: '40' } });
+    const numberInputs = document.querySelectorAll('input[type="number"]');
+    fireEvent.change(numberInputs[numberInputs.length - 1], { target: { value: '50' } });
+    fireEvent.click(screen.getByText('Submit Request'));
+    await waitFor(() => expect((api.post as any).mock.calls.some((c: any[]) => c[0].includes('/replacement-requests'))).toBe(true));
+    const [url, body] = (api.post as any).mock.calls.find((c: any[]) => c[0].includes('/replacement-requests'));
+    expect(url).toContain('/participants/4/replacement-requests');
+    expect(body.outgoing_user_id).toBe(40);
+    expect(body.replacement_user_id).toBe(50);
+  });
+
+  it('renders pending replacement requests with approve/reject/cancel actions', async () => {
+    renderPage();
+    expect((await screen.findAllByText(/Replacement Requests/)).length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Player P1').length).toBeGreaterThan(0);
+    expect(screen.getByText('Player P5')).toBeTruthy();
+    // The header "Approve" (draw) and the row "Approve" (replacement) both exist.
+    expect(screen.getAllByText('Approve').length).toBeGreaterThan(1);
+    expect(screen.getAllByText('Reject').length).toBeGreaterThan(0);
+    fireEvent.click(screen.getAllByText('Approve')[screen.getAllByText('Approve').length - 1]);
+    await waitFor(() => expect((api.post as any).mock.calls.some((c: any[]) => c[0].includes('/approve'))).toBe(true));
+  });
+
+  it('approve/reject/cancel replacement actions are RBAC-gated (view-only)', async () => {
+    __state.userPermissions = ['tournament.view'];
+    renderPage();
+    await screen.findAllByText('Player A');
+    expect(screen.queryByText('Approve')).toBeNull();
+    expect(screen.queryByText('Add Pair')).toBeNull();
+    // Read-only surfaces still render.
+    expect(screen.getByText('Player P5')).toBeTruthy();
   });
 });

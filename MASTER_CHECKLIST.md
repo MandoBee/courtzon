@@ -110,11 +110,69 @@ model). Migration: `173_tournament_lifecycle_waitlist.sql` (participant status
 - **DEFERRED (not this group)**: walkover/forfeit post-start consequences,
   replacement-request workflow UI, pair/team member replacement (G7).
 
-### G7 — Doubles / Team Management 🔜 NOT STARTED
+### G7 — Doubles / Team Management ✅ DONE (granular)
+Real Doubles/Team participant management on the G5 participant model (the Draw
+operates on the PARTICIPANT — never per-user). Migration:
+`174_tournament_pair_team_members.sql` (PRODUCTION_SAFE) + baseline: normalized
+`tournament_participant_members`, durable `tournament_replacement_requests`,
+`tournament_participants.name`, `sport_formats.roster_size`.
 
-### G7 — Doubles / Team Management 🔜 NOT STARTED
-- pair/team participant model + members; player replacement request; eligibility;
-  approval/rejection; draw impact.
+- **G7A Pair Participant Foundation** ✅ — createPairParticipant; format is
+  authoritative (doubles → pair, exactly the configured players_per_side, never
+  a hardcoded 2 when the sport config differs); one registration (the entry) +
+  one participant + N members; payment follows Group 3 (single entry fee, never
+  per member); transactional (tournament row locked FOR UPDATE — a partial team
+  can never appear active).
+- **G7B Team Participant Foundation** ✅ — createTeamParticipant; roster size =
+  `sport_formats.roster_size ?? players_per_side` (no invented fixed sizes);
+  active side size vs roster size distinguished.
+- **G7C Participant Members** ✅ — `tournament_participant_members` normalized
+  relation (FK participant CASCADE, FK user RESTRICT, member_order,
+  active|left|replaced, joined/left, replaced_by); `member_user_ids` JSON kept
+  ONLY as a compatible cache for existing G5 SQL; list/add/remove member.
+- **G7D Member Eligibility** ✅ — active user + player profile exists +
+  not already active in another participant of the SAME tournament (single
+  source of truth; no duplicate eligibility engine).
+- **G7E Member Uniqueness** ✅ — enforced in-domain AND in-schema
+  (UNIQUE(user_id, active_tournament_id) — a player can never be an active
+  member of two participants in one tournament at the DB level).
+- **G7F Replacement Request Model** ✅ — durable
+  `tournament_replacement_requests` (tournament, participant, outgoing member,
+  proposed player, requested_by/at, reviewed_by/at, status, reason, rejection
+  reason, draw_impact snapshot); one open request per participant (DB unique);
+  the outgoing member row is NEVER silently mutated.
+- **G7G Replacement Approval/Rejection** ✅ — approve/reject/cancel lifecycle;
+  ATOMIC (request row locked FOR UPDATE — a request can never be approved
+  twice); eligibility re-validated at approval time; member becomes 'replaced'.
+- **G7H Seed Preservation** ✅ — the pair/team holds ONE participant seed;
+  replacing a member NEVER changes the participant's Tournament Seed.
+- **G7I Draw Impact** ✅ — structured `{ participantId, drawAffected,
+  requiresValidation, requiresRedraw:false, seedPreserved:true }`; a locked draw
+  is never silently mutated; no silent regeneration.
+- **G7J Audit** ✅ — recordAudit for PARTICIPANT_CREATED_{PAIR,TEAM},
+  MEMBER_ADDED, MEMBER_REMOVED, REPLACEMENT_REQUESTED, REPLACEMENT_APPROVED,
+  REPLACEMENT_REJECTED, REPLACEMENT_CANCELLED (before/after reconstructable).
+- **G7K Realtime** ✅ — `tournament:participant-created`,
+  `tournament:participant-members-updated`, `tournament:replacement-request-updated`
+  via EventBusV2 → SocketPublisher → Socket.IO → frontend invalidation
+  (admin + organisation rooms); no direct socket.emit.
+- **G7L Admin/Org UI** ✅ — Participants page: participant cards with type +
+  members + seed, Add Pair/Team, Add/Remove Member, Request Replacement modal,
+  Pending Replacement Requests table (approve/reject/cancel) with the explicit
+  "Replacing a member does not change the team's/pair's Tournament Seed" notice.
+  All actions RBAC-gated by tournament.manage / org.tournaments.manage.
+- **Post-start policy** ✅ — pre-start replacement allowed only while the
+  tournament rules permit it; post-start replacement is BLOCKED
+  (TOURNAMENT_REPLACEMENT_POST_START_BLOCKED) unless a future rule config
+  explicitly allows it. Sport-specific post-start substitution/forfeit belongs
+  to the later competition lifecycle groups.
+- **RATING** ✅ — no invented team rating; member global ratings stay
+  individual; participant seed is participant-level; replacement/manual seed
+  never mutate global rating. Documented future work if a sport requires it.
+- **DEFERRED (not this group)**: full Draw UI, drag & drop, auto re-draw,
+  match generation, court reservation, match progression, winner advancement,
+  post-start walkover/forfeit engine, tournament accounting/settlement/payout,
+  academy/marketplace, manual UAT.
 
 ### G8 — Match Generation + Court Reservation 🔜 NOT STARTED
 - consume the shared booking/slot reservation source of truth once the match
@@ -174,8 +232,8 @@ model). Migration: `173_tournament_lifecycle_waitlist.sql` (participant status
   standings ingestion exists; full qualification policy is not finalized.
 - **Mixed-stage qualification policy** — mixed-stage generation exists; the
   complete qualification policy across stages is not finalized.
-- **Team/Pair abstraction** — participants are currently individual users;
-  team/pair abstractions are not implemented (G7).
+- **Team/Pair abstraction** — implemented (G7): pair/team participants with
+  normalized members + player replacement requests on the G5 participant model.
 
 ### NOT STARTED (explicitly out of scope)
 - Tournament Payment / Entitlement / Accounting — not started (G11).

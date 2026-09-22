@@ -17,6 +17,68 @@ export type RegistrationStatus = 'registered' | 'confirmed' | 'withdrawn' | 'dis
  */
 export type TournamentParticipantType = 'individual' | 'pair' | 'team';
 export type TournamentParticipantStatus = 'active' | 'withdrawn' | 'waiting' | 'withdrawn_after_start';
+export type TournamentMemberStatus = 'active' | 'left' | 'replaced';
+export type TournamentReplacementStatus = 'pending' | 'approved' | 'rejected' | 'cancelled';
+
+/**
+ * Group 7 — an authoritative member of a Tournament Participant. The Draw
+ * operates on the PARTICIPANT (never the user); a pair/team holds MANY member
+ * rows. `active_tournament_id` is a DB generated column so a player can never
+ * be an ACTIVE member of two participants in the SAME tournament.
+ */
+export interface TournamentParticipantMember {
+  id?: number;
+  tournament_id: number;
+  participant_id: number;
+  user_id: number;
+  member_order: number;
+  status: TournamentMemberStatus;
+  joined_at?: string;
+  left_at?: string | null;
+  replaced_by_member_id?: number | null;
+  /** Joined: user display name for the UI. */
+  full_name?: string | null;
+}
+
+/**
+ * Group 7 — durable player-replacement request. The member row is NEVER
+ * silently updated; the request records the full before/after history.
+ */
+export interface TournamentReplacementRequest {
+  id?: number;
+  tournament_id: number;
+  participant_id: number;
+  outgoing_member_user_id: number;
+  replacement_user_id: number;
+  requested_by?: number | null;
+  requested_at?: string;
+  reviewed_by?: number | null;
+  reviewed_at?: string | null;
+  status: TournamentReplacementStatus;
+  reason?: string | null;
+  rejection_reason?: string | null;
+  draw_impact?: Record<string, unknown> | string | null;
+  created_at?: string;
+  updated_at?: string;
+  /** Joined: participant display + member names for the UI. */
+  participant_name?: string | null;
+  outgoing_member_name?: string | null;
+  replacement_user_name?: string | null;
+  requested_by_name?: string | null;
+}
+
+/**
+ * Group 7 — structured impact of a member replacement on the Draw. The
+ * Participant identity, its Tournament Seed and its Draw position are all
+ * preserved; the draw only needs re-VALIDATION (never silent regeneration).
+ */
+export interface ReplacementDrawImpact {
+  participantId: number;
+  drawAffected: boolean;
+  requiresValidation: boolean;
+  requiresRedraw: boolean;
+  seedPreserved: boolean;
+}
 
 export interface TournamentParticipant {
   id?: number;
@@ -25,14 +87,19 @@ export interface TournamentParticipant {
   registration_id?: number | null;
   participant_type: TournamentParticipantType;
   status: TournamentParticipantStatus;
-  /** Member roster (individual = [user_id]); future pairs/teams hold multiple. */
+  /** Member roster cache (individual = [user_id]); the authoritative relation is
+   * tournament_participant_members. Kept in sync for SQL/draw compatibility. */
   member_user_ids?: number[] | null;
   /** FIFO waitlist position (unique per tournament, monotonic, stable); NULL when not waiting. */
   waiting_order?: number | null;
+  /** Pair/team display name; NULL for individuals (derived from the member). */
+  name?: string | null;
   /** Convenience: primary member user id (individual). */
   player_id?: number | null;
   /** Joined display name (primary member). */
   display_name?: string | null;
+  /** Joined: authoritative normalized members (Group 7). */
+  members?: TournamentParticipantMember[];
   created_at?: string;
   updated_at?: string;
   /** Joined: the participant's authoritative tournament seed (if any). */

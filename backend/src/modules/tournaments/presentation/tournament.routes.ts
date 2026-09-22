@@ -25,6 +25,19 @@ export async function tournamentRoutes(app: FastifyInstance): Promise<void> {
   app.post('/admin/tournaments/:id/draw/approve', { preHandler: [requirePermission(['tournament.manage'])] }, pdCtrl.approveDrawHandler);
   app.post('/admin/tournaments/:id/draw/lock', { preHandler: [requirePermission(['tournament.manage'])] }, pdCtrl.lockDrawHandler);
 
+  // ── Group 7 — pair/team participants, members & player replacement requests (admin) ──
+
+  app.post('/admin/tournaments/:id/participants/pairs', { preHandler: [requirePermission(['tournament.manage'])] }, pdCtrl.createPairParticipantHandler);
+  app.post('/admin/tournaments/:id/participants/teams', { preHandler: [requirePermission(['tournament.manage'])] }, pdCtrl.createTeamParticipantHandler);
+  app.get('/admin/tournaments/:id/participants/:participantId/members', { preHandler: [requirePermission(['tournament.view'])] }, pdCtrl.listParticipantMembersHandler);
+  app.post('/admin/tournaments/:id/participants/:participantId/members', { preHandler: [requirePermission(['tournament.manage'])] }, pdCtrl.addParticipantMemberHandler);
+  app.delete('/admin/tournaments/:id/participants/:participantId/members', { preHandler: [requirePermission(['tournament.manage'])] }, pdCtrl.removeParticipantMemberHandler);
+  app.get('/admin/tournaments/:id/replacement-requests', { preHandler: [requirePermission(['tournament.view'])] }, pdCtrl.listReplacementRequestsHandler);
+  app.post('/admin/tournaments/:id/participants/:participantId/replacement-requests', { preHandler: [requirePermission(['tournament.manage'])] }, pdCtrl.createReplacementRequestHandler);
+  app.post('/admin/tournaments/:id/replacement-requests/:requestId/approve', { preHandler: [requirePermission(['tournament.manage'])] }, pdCtrl.approveReplacementRequestHandler);
+  app.post('/admin/tournaments/:id/replacement-requests/:requestId/reject', { preHandler: [requirePermission(['tournament.manage'])] }, pdCtrl.rejectReplacementRequestHandler);
+  app.post('/admin/tournaments/:id/replacement-requests/:requestId/cancel', { preHandler: [requirePermission(['tournament.manage'])] }, pdCtrl.cancelReplacementRequestHandler);
+
   // ── Admin routes ──
 
   app.get('/admin/tournaments/dashboard', { preHandler: [requirePermission(['tournament.dashboard.view'])] }, ctrl.getDashboardHandler);

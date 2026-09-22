@@ -1,6 +1,13 @@
 import type { FastifyRequest, FastifyReply } from 'fastify';
 import { participantDrawService } from '../application/participant-draw.service.js';
-import { AssignSeedSchema, GenerateDrawSchema, MoveParticipantSchema, WithdrawParticipantSchema, PromoteWaitlistSchema, ReplaceParticipantSchema } from './tournament.dto.js';
+import { participantMemberService } from '../application/participant-member.service.js';
+import {
+  AssignSeedSchema, GenerateDrawSchema, MoveParticipantSchema, WithdrawParticipantSchema,
+  PromoteWaitlistSchema, ReplaceParticipantSchema,
+  CreatePairParticipantSchema, CreateTeamParticipantSchema,
+  AddParticipantMemberSchema, RemoveParticipantMemberSchema,
+  CreateReplacementRequestSchema, ReviewReplacementSchema,
+} from './tournament.dto.js';
 
 function getUserId(request: FastifyRequest): number { return (request as any).userId; }
 
@@ -98,4 +105,81 @@ export async function lockDrawHandler(request: FastifyRequest, reply: FastifyRep
   const { id } = request.params as any;
   const draw = await participantDrawService.lockDraw(Number(id), userId);
   return reply.send(draw);
+}
+
+// ── Group 7 — pair/team participants, members & player replacement requests (admin) ──
+
+export async function createPairParticipantHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = getUserId(request);
+  const { id } = request.params as any;
+  const body = CreatePairParticipantSchema.parse(request.body);
+  const result = await participantMemberService.createPairParticipant(Number(id), { name: body.name, memberUserIds: body.member_user_ids, paymentMethod: body.payment_method }, userId);
+  return reply.status(201).send(result);
+}
+
+export async function createTeamParticipantHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = getUserId(request);
+  const { id } = request.params as any;
+  const body = CreateTeamParticipantSchema.parse(request.body);
+  const result = await participantMemberService.createTeamParticipant(Number(id), { name: body.name, memberUserIds: body.member_user_ids, paymentMethod: body.payment_method }, userId);
+  return reply.status(201).send(result);
+}
+
+export async function listParticipantMembersHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { id, participantId } = request.params as any;
+  const data = await participantMemberService.listParticipantMembers(Number(id), Number(participantId));
+  return reply.send({ data });
+}
+
+export async function addParticipantMemberHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = getUserId(request);
+  const { id, participantId } = request.params as any;
+  const body = AddParticipantMemberSchema.parse(request.body);
+  const data = await participantMemberService.addParticipantMember(Number(id), Number(participantId), body.user_id, userId);
+  return reply.send({ data });
+}
+
+export async function removeParticipantMemberHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = getUserId(request);
+  const { id, participantId } = request.params as any;
+  const body = RemoveParticipantMemberSchema.parse(request.body);
+  const data = await participantMemberService.removeParticipantMember(Number(id), Number(participantId), body.user_id, userId);
+  return reply.send({ data });
+}
+
+export async function listReplacementRequestsHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { id } = request.params as any;
+  const { status } = request.query as any;
+  const data = await participantMemberService.listReplacementRequests(Number(id), status ? String(status) : undefined);
+  return reply.send({ data });
+}
+
+export async function createReplacementRequestHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = getUserId(request);
+  const { id, participantId } = request.params as any;
+  const body = CreateReplacementRequestSchema.parse(request.body);
+  const result = await participantMemberService.createReplacementRequest(Number(id), Number(participantId), { outgoingUserId: body.outgoing_user_id, replacementUserId: body.replacement_user_id, reason: body.reason }, userId);
+  return reply.status(201).send(result);
+}
+
+export async function approveReplacementRequestHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = getUserId(request);
+  const { id, requestId } = request.params as any;
+  const result = await participantMemberService.approveReplacementRequest(Number(id), Number(requestId), userId);
+  return reply.send(result);
+}
+
+export async function rejectReplacementRequestHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = getUserId(request);
+  const { id, requestId } = request.params as any;
+  const body = ReviewReplacementSchema.parse(request.body ?? {});
+  const result = await participantMemberService.rejectReplacementRequest(Number(id), Number(requestId), userId, body.reason);
+  return reply.send(result);
+}
+
+export async function cancelReplacementRequestHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = getUserId(request);
+  const { id, requestId } = request.params as any;
+  const result = await participantMemberService.cancelReplacementRequest(Number(id), Number(requestId), userId);
+  return reply.send(result);
 }

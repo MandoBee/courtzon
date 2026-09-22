@@ -137,6 +137,27 @@ export const tournamentParticipantApi = {
     api.post(`/admin/tournaments/${tournamentId}/waitlist/promote`, paymentMethod ? { payment_method: paymentMethod } : {}).then(r => r.data),
   replaceParticipant: (tournamentId: number, withdrawnParticipantId: number, replacementParticipantId: number, paymentMethod?: 'cash' | 'card') =>
     api.post(`/admin/tournaments/${tournamentId}/participants/${withdrawnParticipantId}/replace`, { replacement_participant_id: replacementParticipantId, payment_method: paymentMethod }).then(r => r.data),
+  // Group 7 — pair/team participants, members & player replacement requests
+  createPairParticipant: (tournamentId: number, data: { name?: string; member_user_ids: number[]; payment_method?: 'cash' | 'card' }) =>
+    api.post(`/admin/tournaments/${tournamentId}/participants/pairs`, data).then(r => r.data),
+  createTeamParticipant: (tournamentId: number, data: { name?: string; member_user_ids: number[]; payment_method?: 'cash' | 'card' }) =>
+    api.post(`/admin/tournaments/${tournamentId}/participants/teams`, data).then(r => r.data),
+  getParticipantMembers: (tournamentId: number, participantId: number) =>
+    api.get(`/admin/tournaments/${tournamentId}/participants/${participantId}/members`).then(r => r.data),
+  addParticipantMember: (tournamentId: number, participantId: number, userId: number) =>
+    api.post(`/admin/tournaments/${tournamentId}/participants/${participantId}/members`, { user_id: userId }).then(r => r.data),
+  removeParticipantMember: (tournamentId: number, participantId: number, userId: number) =>
+    api.delete(`/admin/tournaments/${tournamentId}/participants/${participantId}/members`, { data: { user_id: userId } }).then(r => r.data),
+  listReplacementRequests: (tournamentId: number, status?: string) =>
+    api.get(`/admin/tournaments/${tournamentId}/replacement-requests`, { params: status ? { status } : undefined }).then(r => r.data),
+  createReplacementRequest: (tournamentId: number, participantId: number, data: { outgoing_user_id: number; replacement_user_id: number; reason?: string }) =>
+    api.post(`/admin/tournaments/${tournamentId}/participants/${participantId}/replacement-requests`, data).then(r => r.data),
+  approveReplacementRequest: (tournamentId: number, requestId: number) =>
+    api.post(`/admin/tournaments/${tournamentId}/replacement-requests/${requestId}/approve`).then(r => r.data),
+  rejectReplacementRequest: (tournamentId: number, requestId: number, reason?: string) =>
+    api.post(`/admin/tournaments/${tournamentId}/replacement-requests/${requestId}/reject`, { reason }).then(r => r.data),
+  cancelReplacementRequest: (tournamentId: number, requestId: number) =>
+    api.post(`/admin/tournaments/${tournamentId}/replacement-requests/${requestId}/cancel`).then(r => r.data),
 };
 
 export const orgTournamentParticipantApi = {
@@ -159,4 +180,25 @@ export const orgTournamentParticipantApi = {
     api.post(`/org/${orgId}/tournaments/${tournamentId}/waitlist/promote`, paymentMethod ? { payment_method: paymentMethod } : {}).then(r => r.data),
   replaceParticipant: (orgId: number | string, tournamentId: number, withdrawnParticipantId: number, replacementParticipantId: number, paymentMethod?: 'cash' | 'card') =>
     api.post(`/org/${orgId}/tournaments/${tournamentId}/participants/${withdrawnParticipantId}/replace`, { replacement_participant_id: replacementParticipantId, payment_method: paymentMethod }).then(r => r.data),
+  // Group 7 — pair/team participants, members & player replacement requests (org)
+  createPairParticipant: (orgId: number | string, tournamentId: number, data: { name?: string; member_user_ids: number[]; payment_method?: 'cash' | 'card' }) =>
+    api.post(`/org/${orgId}/tournaments/${tournamentId}/participants/pairs`, data).then(r => r.data),
+  createTeamParticipant: (orgId: number | string, tournamentId: number, data: { name?: string; member_user_ids: number[]; payment_method?: 'cash' | 'card' }) =>
+    api.post(`/org/${orgId}/tournaments/${tournamentId}/participants/teams`, data).then(r => r.data),
+  getParticipantMembers: (orgId: number | string, tournamentId: number, participantId: number) =>
+    api.get(`/org/${orgId}/tournaments/${tournamentId}/participants/${participantId}/members`).then(r => r.data),
+  addParticipantMember: (orgId: number | string, tournamentId: number, participantId: number, userId: number) =>
+    api.post(`/org/${orgId}/tournaments/${tournamentId}/participants/${participantId}/members`, { user_id: userId }).then(r => r.data),
+  removeParticipantMember: (orgId: number | string, tournamentId: number, participantId: number, userId: number) =>
+    api.delete(`/org/${orgId}/tournaments/${tournamentId}/participants/${participantId}/members`, { data: { user_id: userId } }).then(r => r.data),
+  listReplacementRequests: (orgId: number | string, tournamentId: number, status?: string) =>
+    api.get(`/org/${orgId}/tournaments/${tournamentId}/replacement-requests`, { params: status ? { status } : undefined }).then(r => r.data),
+  createReplacementRequest: (orgId: number | string, tournamentId: number, participantId: number, data: { outgoing_user_id: number; replacement_user_id: number; reason?: string }) =>
+    api.post(`/org/${orgId}/tournaments/${tournamentId}/participants/${participantId}/replacement-requests`, data).then(r => r.data),
+  approveReplacementRequest: (orgId: number | string, tournamentId: number, requestId: number) =>
+    api.post(`/org/${orgId}/tournaments/${tournamentId}/replacement-requests/${requestId}/approve`).then(r => r.data),
+  rejectReplacementRequest: (orgId: number | string, tournamentId: number, requestId: number, reason?: string) =>
+    api.post(`/org/${orgId}/tournaments/${tournamentId}/replacement-requests/${requestId}/reject`, { reason }).then(r => r.data),
+  cancelReplacementRequest: (orgId: number | string, tournamentId: number, requestId: number) =>
+    api.post(`/org/${orgId}/tournaments/${tournamentId}/replacement-requests/${requestId}/cancel`).then(r => r.data),
 };

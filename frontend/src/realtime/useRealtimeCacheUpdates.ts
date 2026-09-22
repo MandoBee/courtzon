@@ -843,6 +843,22 @@ export function useRealtimeCacheUpdates(): void {
     });
   }
 
+  // Group 7 — pair/team member + replacement-request state changes refresh the
+  // participants + replacement-request caches live (all authorized Admin/Org).
+  for (const ev of ['tournament.participant-created', 'tournament.participant-members-updated', 'tournament.replacement-request-updated']) {
+    useSocketEvent(ev, (p: any) => {
+      invalidateTournament(qc, p?.tournamentId);
+      if (p?.tournamentId) {
+        qc.invalidateQueries({ queryKey: ['tournament-participants', p.tournamentId] });
+        qc.invalidateQueries({ queryKey: ['tournament', String(p.tournamentId), 'participants'] });
+        qc.invalidateQueries({ queryKey: ['tournament-replacement-requests', p.tournamentId] });
+        if (p?.participantId != null) {
+          qc.invalidateQueries({ queryKey: ['tournament-participant-members', p.tournamentId, p.participantId] });
+        }
+      }
+    });
+  }
+
   // ── Presence events ────────────────────────────────────────────
   useSocketEvent('presence.online', (p: any) => {
     qc.setQueryData(['user-presence', p.userId], () => true);

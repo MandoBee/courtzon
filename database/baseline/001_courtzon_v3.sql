@@ -5778,15 +5778,75 @@ CREATE TABLE `tournament_participants` (
   `status` enum('active','withdrawn','waiting','withdrawn_after_start') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'active',
   `member_user_ids` json DEFAULT NULL COMMENT 'Member roster (individual = [user_id]); future pairs/teams hold multiple',
   `waiting_order` int unsigned DEFAULT NULL COMMENT 'FIFO waitlist position (unique per tournament, monotonic, stable); NULL when not waiting',
+  `name` varchar(200) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT 'Participant display name (pair/team); individuals keep the derived user name',
   `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_participant_registration` (`tournament_id`,`registration_id`),
   KEY `idx_participant_tournament` (`tournament_id`),
   KEY `idx_participant_waiting` (`tournament_id`,`status`,`waiting_order`),
+  KEY `idx_participant_type` (`participant_type`),
   CONSTRAINT `fk_part_tournament` FOREIGN KEY (`tournament_id`) REFERENCES `tournaments` (`id`) ON DELETE CASCADE,
   CONSTRAINT `fk_part_registration` FOREIGN KEY (`registration_id`) REFERENCES `tournament_registrations` (`id`) ON DELETE SET NULL,
   CONSTRAINT `tournament_participants_chk_1` CHECK (json_valid(`member_user_ids`))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+DROP TABLE IF EXISTS `tournament_participant_members`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `tournament_participant_members` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `tournament_id` int unsigned NOT NULL COMMENT 'Denormalized tournament scope (enables the active-user-per-tournament uniqueness below)',
+  `participant_id` int unsigned NOT NULL,
+  `user_id` int unsigned NOT NULL,
+  `member_order` int unsigned NOT NULL DEFAULT '0' COMMENT 'Role/order within the participant (0 = primary/first member)',
+  `status` enum('active','left','replaced') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'active',
+  `joined_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `left_at` timestamp NULL DEFAULT NULL COMMENT 'Set when the member leaves or is replaced',
+  `replaced_by_member_id` int unsigned DEFAULT NULL COMMENT 'Member row that replaced this one (replacement history)',
+  `active_tournament_id` int unsigned DEFAULT NULL COMMENT 'App-managed tournament scope while status=active (NULL for historical rows); UNIQUE(user_id, active_tournament_id) enforces one active participant per user per tournament',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_member_participant_user` (`participant_id`,`user_id`),
+  UNIQUE KEY `uk_active_user_tournament` (`user_id`,`active_tournament_id`),
+  KEY `idx_member_tournament` (`tournament_id`,`status`),
+  KEY `idx_member_participant` (`participant_id`),
+  CONSTRAINT `fk_member_tournament` FOREIGN KEY (`tournament_id`) REFERENCES `tournaments` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_member_participant` FOREIGN KEY (`participant_id`) REFERENCES `tournament_participants` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_member_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_member_replaced` FOREIGN KEY (`replaced_by_member_id`) REFERENCES `tournament_participant_members` (`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+DROP TABLE IF EXISTS `tournament_replacement_requests`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `tournament_replacement_requests` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `tournament_id` int unsigned NOT NULL,
+  `participant_id` int unsigned NOT NULL,
+  `outgoing_member_user_id` int unsigned NOT NULL,
+  `replacement_user_id` int unsigned NOT NULL,
+  `requested_by` int unsigned DEFAULT NULL,
+  `requested_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `reviewed_by` int unsigned DEFAULT NULL,
+  `reviewed_at` timestamp NULL DEFAULT NULL,
+  `status` enum('pending','approved','rejected','cancelled') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'pending',
+  `reason` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `rejection_reason` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `draw_impact` json DEFAULT NULL COMMENT 'Draw/seed impact snapshot computed at request time',
+  `open_flag` char(1) COLLATE utf8mb4_unicode_ci GENERATED ALWAYS AS (IF(`status` = 'pending', 'P', NULL)) STORED COMMENT 'Non-NULL while pending -> one open request per participant',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_open_request_participant` (`participant_id`,`open_flag`),
+  KEY `idx_rr_tournament_status` (`tournament_id`,`status`),
+  CONSTRAINT `fk_rr_tournament` FOREIGN KEY (`tournament_id`) REFERENCES `tournaments` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_rr_participant` FOREIGN KEY (`participant_id`) REFERENCES `tournament_participants` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_rr_outgoing` FOREIGN KEY (`outgoing_member_user_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_rr_replacement` FOREIGN KEY (`replacement_user_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_rr_requested_by` FOREIGN KEY (`requested_by`) REFERENCES `users` (`id`) ON DELETE SET NULL,
+  CONSTRAINT `fk_rr_reviewed_by` FOREIGN KEY (`reviewed_by`) REFERENCES `users` (`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 DROP TABLE IF EXISTS `tournament_seeds`;
@@ -6825,6 +6885,7 @@ CREATE TABLE `sport_formats` (
   `name` varchar(120) COLLATE utf8mb4_unicode_ci NOT NULL,
   `format_type` enum('singles','doubles','team') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'singles',
   `players_per_side` int unsigned DEFAULT NULL,
+  `roster_size` int unsigned DEFAULT NULL COMMENT 'Max roster members for a TEAM participant; NULL = players_per_side',
   `description` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `is_default` tinyint(1) NOT NULL DEFAULT '0',
   `is_active` tinyint(1) NOT NULL DEFAULT '1',

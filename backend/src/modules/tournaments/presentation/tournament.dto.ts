@@ -216,6 +216,43 @@ export const ReplaceParticipantSchema = z.object({
   payment_method: z.enum(['cash', 'card']).optional(),
 });
 
+// ── Group 7 — pair/team participants, members & player replacement requests ──
+
+/** Create a PAIR participant (exactly the sport/format pair size). */
+export const CreatePairParticipantSchema = z.object({
+  name: z.string().min(1).max(200).optional(),
+  member_user_ids: z.array(z.number().int().positive()).min(2).max(20),
+  /** Group 3 — single entry-fee payment method (cash|card); one per participant entry. */
+  payment_method: z.enum(['cash', 'card']).optional(),
+});
+
+/** Create a TEAM participant (roster size comes from the sport/format config). */
+export const CreateTeamParticipantSchema = z.object({
+  name: z.string().min(1).max(200).optional(),
+  member_user_ids: z.array(z.number().int().positive()).min(2).max(50),
+  payment_method: z.enum(['cash', 'card']).optional(),
+});
+
+/** Add / remove a member of an existing pair/team participant. */
+export const AddParticipantMemberSchema = z.object({
+  user_id: z.number().int().positive(),
+});
+export const RemoveParticipantMemberSchema = z.object({
+  user_id: z.number().int().positive(),
+});
+
+/** Create a durable player-replacement request (admin/org). */
+export const CreateReplacementRequestSchema = z.object({
+  outgoing_user_id: z.number().int().positive(),
+  replacement_user_id: z.number().int().positive(),
+  reason: z.string().max(255).optional(),
+});
+
+/** Review a replacement request (approve / reject / cancel). */
+export const ReviewReplacementSchema = z.object({
+  reason: z.string().max(255).optional(),
+});
+
 export type CreateTournamentInput = z.infer<typeof CreateTournamentSchema>;
 export type UpdateTournamentInput = z.infer<typeof UpdateTournamentSchema>;
 export type ListTournamentsQuery = z.infer<typeof ListTournamentsQuerySchema>;

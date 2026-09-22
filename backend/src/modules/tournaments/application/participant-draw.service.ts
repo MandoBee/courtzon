@@ -4,6 +4,7 @@ import { tournamentService } from './tournament.service.js';
 import type {
   Tournament,
   TournamentParticipant,
+  TournamentParticipantMember,
   TournamentSeed,
   TournamentDraw,
   TournamentDrawEntry,
@@ -56,6 +57,14 @@ export class ParticipantDrawService {
         member_user_ids: [playerId],
       });
       created += 1;
+      // Group 7 — the authoritative normalized member row (individual = 1 member).
+      const { participantMemberRepository } = await import('../infrastructure/repositories/participant-member.repository.js');
+      await participantMemberRepository.addMember({
+        tournament_id: tournamentId,
+        participant_id: participantId,
+        user_id: playerId,
+        member_order: 0,
+      });
       // Legacy compatibility: the registration seed (seed_rank) becomes an
       // authoritative manual seed — never recalculated by a draw.
       if (reg.seed != null && !(await participantDrawRepository.findSeedByParticipant(participantId))) {
@@ -77,6 +86,15 @@ export class ParticipantDrawService {
     await this.syncParticipants(tournamentId);
     const t = await this.getTournament(tournamentId);
     const rows = await participantDrawRepository.listParticipantsByTournament(tournamentId);
+    const { participantMemberRepository } = await import('../infrastructure/repositories/participant-member.repository.js');
+    const members = await participantMemberRepository.listMembersByTournament(tournamentId);
+    const membersByParticipant = new Map<number, Array<TournamentParticipantMember & { full_name?: string | null }>>();
+    for (const m of members) {
+      const pid = Number(m.participant_id);
+      const arr = membersByParticipant.get(pid) ?? [];
+      arr.push(m);
+      membersByParticipant.set(pid, arr);
+    }
     const out: Array<TournamentParticipant & { global_rating?: number | null; global_rating_matches?: number | null }> = [];
     for (const r of rows) {
       const seed = r.seed_number != null
@@ -94,6 +112,9 @@ export class ParticipantDrawService {
         : null;
       const memberUserIds = Array.isArray(r.member_user_ids) ? r.member_user_ids : [];
       const playerId = memberUserIds[0] ?? r.player_id ?? null;
+      const participantMembers = membersByParticipant.get(Number(r.id)) ?? [];
+      const participantType = r.participant_type ?? 'individual';
+      const displayName = r.name ?? r.display_name ?? (participantType === 'individual' ? (participantMembers[0]?.full_name ?? `Player #${playerId}`) : `Participant #${r.id}`);
       let globalRating: number | null = null;
       let globalMatches: number | null = null;
       if (playerId != null && t.sport_id != null) {
@@ -109,11 +130,13 @@ export class ParticipantDrawService {
         id: r.id,
         tournament_id: r.tournament_id,
         registration_id: r.registration_id,
-        participant_type: r.participant_type,
+        participant_type: participantType,
         status: r.status,
         member_user_ids: memberUserIds,
+        name: r.name ?? null,
         player_id: playerId,
-        display_name: r.display_name ?? null,
+        display_name: displayName,
+        members: participantMembers,
         seed,
         draw_position: r.draw_position != null ? Number(r.draw_position) : null,
         draw_placement_source: (r.draw_placement_source as 'auto' | 'manual' | null) ?? null,
@@ -773,8 +796,10 @@ export class ParticipantDrawService {
    * Group 6 — settle a registration's entry fee through the EXISTING Group 3
    * shared-Payment policy (cash → paid offline row; card → shared
    * PaymentService.charge). Wallet remains unavailable. NOT a new payment flow.
+   * Public so the Group 7 pair/team service reuses the SAME payment semantics
+   * (one authoritative payment path — never two).
    */
-  private async settleRegistrationPayment(
+  async settleRegistrationPayment(
     registrationId: number,
     participantId: number,
     t: Tournament,

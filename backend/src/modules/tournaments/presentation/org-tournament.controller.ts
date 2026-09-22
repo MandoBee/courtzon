@@ -433,3 +433,108 @@ export async function replaceOrgParticipantHandler(request: FastifyRequest, repl
   const { participantDrawService } = await import('../application/participant-draw.service.js');
   return reply.send(await participantDrawService.replaceParticipant(Number(id), Number(participantId), body.replacement_participant_id, userId, body.payment_method));
 }
+
+// ── Group 7 — org-scoped pair/team participants, members & replacement requests ──
+// Same authoritative participantMemberService as the admin workbench; every
+// handler asserts the tournament belongs to :orgId first (tenant isolation).
+
+export async function createOrgPairParticipantHandler(request: FastifyRequest, reply: FastifyReply) {
+  const orgId = getOrgId(request);
+  const userId = getUserId(request);
+  const { id } = request.params as any;
+  await assertOrgOwnsTournament(orgId, Number(id));
+  const { CreatePairParticipantSchema } = await import('./tournament.dto.js');
+  const body = CreatePairParticipantSchema.parse(request.body);
+  const { participantMemberService } = await import('../application/participant-member.service.js');
+  return reply.status(201).send(await participantMemberService.createPairParticipant(Number(id), { name: body.name, memberUserIds: body.member_user_ids, paymentMethod: body.payment_method }, userId));
+}
+
+export async function createOrgTeamParticipantHandler(request: FastifyRequest, reply: FastifyReply) {
+  const orgId = getOrgId(request);
+  const userId = getUserId(request);
+  const { id } = request.params as any;
+  await assertOrgOwnsTournament(orgId, Number(id));
+  const { CreateTeamParticipantSchema } = await import('./tournament.dto.js');
+  const body = CreateTeamParticipantSchema.parse(request.body);
+  const { participantMemberService } = await import('../application/participant-member.service.js');
+  return reply.status(201).send(await participantMemberService.createTeamParticipant(Number(id), { name: body.name, memberUserIds: body.member_user_ids, paymentMethod: body.payment_method }, userId));
+}
+
+export async function listOrgParticipantMembersHandler(request: FastifyRequest, reply: FastifyReply) {
+  const orgId = getOrgId(request);
+  const { id, participantId } = request.params as any;
+  await assertOrgOwnsTournament(orgId, Number(id));
+  const { participantMemberService } = await import('../application/participant-member.service.js');
+  return reply.send({ data: await participantMemberService.listParticipantMembers(Number(id), Number(participantId)) });
+}
+
+export async function addOrgParticipantMemberHandler(request: FastifyRequest, reply: FastifyReply) {
+  const orgId = getOrgId(request);
+  const userId = getUserId(request);
+  const { id, participantId } = request.params as any;
+  await assertOrgOwnsTournament(orgId, Number(id));
+  const { AddParticipantMemberSchema } = await import('./tournament.dto.js');
+  const body = AddParticipantMemberSchema.parse(request.body);
+  const { participantMemberService } = await import('../application/participant-member.service.js');
+  return reply.send({ data: await participantMemberService.addParticipantMember(Number(id), Number(participantId), body.user_id, userId) });
+}
+
+export async function removeOrgParticipantMemberHandler(request: FastifyRequest, reply: FastifyReply) {
+  const orgId = getOrgId(request);
+  const userId = getUserId(request);
+  const { id, participantId } = request.params as any;
+  await assertOrgOwnsTournament(orgId, Number(id));
+  const { RemoveParticipantMemberSchema } = await import('./tournament.dto.js');
+  const body = RemoveParticipantMemberSchema.parse(request.body);
+  const { participantMemberService } = await import('../application/participant-member.service.js');
+  return reply.send({ data: await participantMemberService.removeParticipantMember(Number(id), Number(participantId), body.user_id, userId) });
+}
+
+export async function listOrgReplacementRequestsHandler(request: FastifyRequest, reply: FastifyReply) {
+  const orgId = getOrgId(request);
+  const { id } = request.params as any;
+  const { status } = request.query as any;
+  await assertOrgOwnsTournament(orgId, Number(id));
+  const { participantMemberService } = await import('../application/participant-member.service.js');
+  return reply.send({ data: await participantMemberService.listReplacementRequests(Number(id), status ? String(status) : undefined) });
+}
+
+export async function createOrgReplacementRequestHandler(request: FastifyRequest, reply: FastifyReply) {
+  const orgId = getOrgId(request);
+  const userId = getUserId(request);
+  const { id, participantId } = request.params as any;
+  await assertOrgOwnsTournament(orgId, Number(id));
+  const { CreateReplacementRequestSchema } = await import('./tournament.dto.js');
+  const body = CreateReplacementRequestSchema.parse(request.body);
+  const { participantMemberService } = await import('../application/participant-member.service.js');
+  return reply.status(201).send(await participantMemberService.createReplacementRequest(Number(id), Number(participantId), { outgoingUserId: body.outgoing_user_id, replacementUserId: body.replacement_user_id, reason: body.reason }, userId));
+}
+
+export async function approveOrgReplacementRequestHandler(request: FastifyRequest, reply: FastifyReply) {
+  const orgId = getOrgId(request);
+  const userId = getUserId(request);
+  const { id, requestId } = request.params as any;
+  await assertOrgOwnsTournament(orgId, Number(id));
+  const { participantMemberService } = await import('../application/participant-member.service.js');
+  return reply.send(await participantMemberService.approveReplacementRequest(Number(id), Number(requestId), userId));
+}
+
+export async function rejectOrgReplacementRequestHandler(request: FastifyRequest, reply: FastifyReply) {
+  const orgId = getOrgId(request);
+  const userId = getUserId(request);
+  const { id, requestId } = request.params as any;
+  await assertOrgOwnsTournament(orgId, Number(id));
+  const { ReviewReplacementSchema } = await import('./tournament.dto.js');
+  const body = ReviewReplacementSchema.parse(request.body ?? {});
+  const { participantMemberService } = await import('../application/participant-member.service.js');
+  return reply.send(await participantMemberService.rejectReplacementRequest(Number(id), Number(requestId), userId, body.reason));
+}
+
+export async function cancelOrgReplacementRequestHandler(request: FastifyRequest, reply: FastifyReply) {
+  const orgId = getOrgId(request);
+  const userId = getUserId(request);
+  const { id, requestId } = request.params as any;
+  await assertOrgOwnsTournament(orgId, Number(id));
+  const { participantMemberService } = await import('../application/participant-member.service.js');
+  return reply.send(await participantMemberService.cancelReplacementRequest(Number(id), Number(requestId), userId));
+}

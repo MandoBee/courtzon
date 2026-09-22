@@ -131,6 +131,9 @@ export interface DomainEventMap {
   'tournament:waitlist-updated': BaseEvent & { tournamentId: number };
   'tournament:participant-replaced': BaseEvent & { tournamentId: number; withdrawnParticipantId: number; replacementParticipantId: number };
   'tournament:waitlist-promoted': BaseEvent & { tournamentId: number; participantId: number; userId?: number; name?: string };
+  'tournament:participant-created': BaseEvent & { tournamentId: number; participantId: number; participantType: string; memberUserIds?: number[]; organisationId?: number | null };
+  'tournament:participant-members-updated': BaseEvent & { tournamentId: number; participantId: number; memberUserIds?: number[]; addedUserId?: number; removedUserId?: number; organisationId?: number | null };
+  'tournament:replacement-request-updated': BaseEvent & { tournamentId: number; participantId: number; requestId: number; status: string; organisationId?: number | null };
   'match:invitation': BaseEvent & { bookingId: number; userId: number; senderId: number; startTime?: Date; actions?: any[] };
   'community:new-post': BaseEvent & { postId: number; userId: number; communityName: string };
   'community:new-comment': BaseEvent & { commentId: number; postId: number; userId: number; authorName: string };

@@ -225,6 +225,58 @@ export async function orgTournamentRoutes(app: FastifyInstance): Promise<void> {
     ctrl.replaceOrgParticipantHandler,
   );
 
+  // ── Group 7 — org-scoped pair/team participants, members & replacement requests ──
+  app.post(
+    '/org/:orgId/tournaments/:id/participants/pairs',
+    { preHandler: [requireOrgScopedPermission('org.tournaments.manage')] },
+    ctrl.createOrgPairParticipantHandler,
+  );
+  app.post(
+    '/org/:orgId/tournaments/:id/participants/teams',
+    { preHandler: [requireOrgScopedPermission('org.tournaments.manage')] },
+    ctrl.createOrgTeamParticipantHandler,
+  );
+  app.get(
+    '/org/:orgId/tournaments/:id/participants/:participantId/members',
+    { preHandler: [requireOrgScopedPermission('org.tournaments.view')] },
+    ctrl.listOrgParticipantMembersHandler,
+  );
+  app.post(
+    '/org/:orgId/tournaments/:id/participants/:participantId/members',
+    { preHandler: [requireOrgScopedPermission('org.tournaments.manage')] },
+    ctrl.addOrgParticipantMemberHandler,
+  );
+  app.delete(
+    '/org/:orgId/tournaments/:id/participants/:participantId/members',
+    { preHandler: [requireOrgScopedPermission('org.tournaments.manage')] },
+    ctrl.removeOrgParticipantMemberHandler,
+  );
+  app.get(
+    '/org/:orgId/tournaments/:id/replacement-requests',
+    { preHandler: [requireOrgScopedPermission('org.tournaments.view')] },
+    ctrl.listOrgReplacementRequestsHandler,
+  );
+  app.post(
+    '/org/:orgId/tournaments/:id/participants/:participantId/replacement-requests',
+    { preHandler: [requireOrgScopedPermission('org.tournaments.manage')] },
+    ctrl.createOrgReplacementRequestHandler,
+  );
+  app.post(
+    '/org/:orgId/tournaments/:id/replacement-requests/:requestId/approve',
+    { preHandler: [requireOrgScopedPermission('org.tournaments.manage')] },
+    ctrl.approveOrgReplacementRequestHandler,
+  );
+  app.post(
+    '/org/:orgId/tournaments/:id/replacement-requests/:requestId/reject',
+    { preHandler: [requireOrgScopedPermission('org.tournaments.manage')] },
+    ctrl.rejectOrgReplacementRequestHandler,
+  );
+  app.post(
+    '/org/:orgId/tournaments/:id/replacement-requests/:requestId/cancel',
+    { preHandler: [requireOrgScopedPermission('org.tournaments.manage')] },
+    ctrl.cancelOrgReplacementRequestHandler,
+  );
+
   // ── Match operations ──
   app.put(
     '/org/:orgId/tournaments/matches/:matchId/court',

@@ -98,8 +98,9 @@ export class ParticipantDrawRepository {
     }>;
   }
 
-  async countParticipantsByTournament(tournamentId: number): Promise<number> {
-    const [rows] = await getPool().query<RowData>(
+  async countParticipantsByTournament(tournamentId: number, conn?: import('mysql2/promise').PoolConnection): Promise<number> {
+    const db: import('mysql2/promise').Pool | import('mysql2/promise').PoolConnection = conn ?? getPool();
+    const [rows] = await db.query<RowData>(
       "SELECT COUNT(*) AS c FROM tournament_participants WHERE tournament_id = ? AND status = 'active'",
       [tournamentId],
     );

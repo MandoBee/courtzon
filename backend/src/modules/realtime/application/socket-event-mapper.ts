@@ -427,6 +427,14 @@ function mapTournamentEvent(eventName: string, p: Record<string, any>): MappedSo
       stageCompleted: p.stageCompleted,
       tournamentCompleted: p.tournamentCompleted,
       organisationId: p.organisationId,
+      // Group 7 — participant/member/replacement state changes.
+      participantId: p.participantId,
+      participantType: p.participantType,
+      memberUserIds: p.memberUserIds,
+      addedUserId: p.addedUserId,
+      removedUserId: p.removedUserId,
+      requestId: p.requestId,
+      status: p.status,
     },
     rooms,
   };
