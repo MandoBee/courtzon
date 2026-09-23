@@ -540,8 +540,16 @@ export class ParticipantDrawService {
     participantId: number,
     actorId: number,
     reason?: string,
-  ): Promise<{ status: string; drawImpact: DrawImpact }> {
+  ): Promise<{ status: string; drawImpact: DrawImpact; resolution?: { resolvedSlots: number; cancelledMatches: number; releasedCourts: number } }> {
     const participant = await this.assertParticipantBelongsToTournament(tournamentId, participantId);
+
+    // G9-D2 — idempotent re-withdraw: a participant already in the post-start
+    // state re-runs the resolution (it skips already-resolved slots), so a
+    // retried request never produces duplicate progression/match/reservation effects.
+    if (participant.status === 'withdrawn_after_start') {
+      const resolution = await tournamentService.resolveWithdrawnSlots(tournamentId, participantId);
+      return { status: 'withdrawn_after_start', drawImpact: await this.getDrawImpact(tournamentId, participantId), resolution };
+    }
     if (participant.status !== 'active') {
       throw new ConflictError('Only an active participant can withdraw', ErrorCodes.TOURNAMENT_INVALID_TRANSITION);
     }
@@ -558,7 +566,10 @@ export class ParticipantDrawService {
         afterState: { status: 'withdrawn_after_start', reason: reason ?? null },
       });
       await this.emitLifecycle('tournament:participant-updated', { tournamentId, participantId, status: 'withdrawn_after_start' });
-      return { status: 'withdrawn_after_start', drawImpact: await this.getDrawImpact(tournamentId, participantId) };
+      // G9-D2 — resolve affected future/unstarted bracket slots using the existing
+      // lone-slot / bye progression semantics (M1). Never creates a Walkover (M2).
+      const resolution = await tournamentService.resolveWithdrawnSlots(tournamentId, participantId);
+      return { status: 'withdrawn_after_start', drawImpact: await this.getDrawImpact(tournamentId, participantId), resolution };
     }
 
     // Pre-start withdrawal.

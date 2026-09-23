@@ -316,6 +316,54 @@ export class MatchService {
     }
   }
 
+  /**
+   * G9-D2 — NON-DESTRUCTIVE cancellation of a tournament match whose shared Match
+   * has NOT started (post-start withdrawal). Unlike `cancelMatch`, the
+   * `match_participants` roster is PRESERVED for audit/history (per the project
+   * immutable-history policy: cancelling a match must not destroy its participant
+   * linkage). The tournament bracket slot keeps its own participant references.
+   *
+   * Safety:
+   *   * in_progress / completed matches are NEVER cancelled (M5);
+   *   * an already-cancelled match is a no-op (idempotent);
+   *   * the Match entity transition guard enforces the status machine;
+   *   * emits the authoritative `match:cancelled` domain event after commit.
+   */
+  async cancelTournamentMatch(matchId: number, reason?: string): Promise<void> {
+    const pool = getPool();
+    const conn = await pool.getConnection();
+    try {
+      await conn.beginTransaction();
+      const match = await matchRepository.findById(matchId, conn);
+      if (!match) throw new AppError('Match not found', 404, 'MATCH_NOT_FOUND');
+      if (match.status === 'cancelled') {
+        await conn.commit();
+        return;
+      }
+      if (match.status === 'in_progress' || match.status === 'completed') {
+        // M5 — never cancel a live or finished match because of a withdrawal.
+        await conn.commit();
+        return;
+      }
+      match.transition('cancelled');
+      await conn.execute(
+        "UPDATE matches SET status = 'cancelled', updated_at = NOW() WHERE id = ?",
+        [matchId],
+      );
+      // NON-DESTRUCTIVE — match_participants are preserved (roster/history).
+      await conn.commit();
+      matchEventPublisher.publish({
+        type: 'match:cancelled',
+        payload: { matchId, reason, timestamp: new Date().toISOString() },
+      });
+    } catch (err) {
+      await conn.rollback();
+      throw err;
+    } finally {
+      conn.release();
+    }
+  }
+
   async closeMatch(matchId: number): Promise<void> {
     const pool = getPool();
     const conn = await pool.getConnection();

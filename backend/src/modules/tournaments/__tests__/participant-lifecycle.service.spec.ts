@@ -30,7 +30,10 @@ const tRepo = vi.hoisted(() => ({
   createCashPaymentTransaction: vi.fn(),
 }));
 
-const tournamentServiceMock = vi.hoisted(() => ({ resolveEffectiveRegistrationPaymentMethods: vi.fn() }));
+const tournamentServiceMock = vi.hoisted(() => ({
+  resolveEffectiveRegistrationPaymentMethods: vi.fn(),
+  resolveWithdrawnSlots: vi.fn(),
+}));
 const bus = vi.hoisted(() => ({ emit: vi.fn() }));
 const audit = vi.hoisted(() => ({ recordAudit: vi.fn() }));
 const ratingRepo = vi.hoisted(() => ({ getRating: vi.fn() }));
@@ -76,6 +79,7 @@ beforeEach(() => {
   tRepo.updateRegistrationPaymentStatus.mockResolvedValue(undefined);
   tRepo.createCashPaymentTransaction.mockResolvedValue(5001);
   tournamentServiceMock.resolveEffectiveRegistrationPaymentMethods.mockResolvedValue(['cash', 'card']);
+  tournamentServiceMock.resolveWithdrawnSlots.mockResolvedValue({ resolvedSlots: 0, cancelledMatches: 0, releasedCourts: 0 });
   repo.findParticipantById.mockImplementation(async (id: number) => ({ id, tournament_id: 1, registration_id: id, participant_type: 'individual', status: 'active', member_user_ids: [id * 10] }));
   repo.findSeedByParticipant.mockResolvedValue(null);
   repo.findCurrentDraw.mockResolvedValue(null);
@@ -140,6 +144,31 @@ describe('Group 6 — WITHDRAWAL', () => {
     expect(repo.deleteDrawEntryByParticipant).not.toHaveBeenCalled();
     expect(repo.markDrawRequiresRedraw).toHaveBeenCalledWith(10);
   });
+
+  it('12b. post-start withdrawal resolves affected bracket slots (G9-D2 orchestration)', async () => {
+    tRepo.hasAnyStartedMatch.mockResolvedValue(true);
+    repo.findParticipantById.mockResolvedValue(participant(5));
+    tournamentServiceMock.resolveWithdrawnSlots.mockResolvedValue({ resolvedSlots: 2, cancelledMatches: 1, releasedCourts: 1 });
+    const r = await svc.withdrawParticipant(1, 5, 42);
+    expect(r.status).toBe('withdrawn_after_start');
+    expect(tournamentServiceMock.resolveWithdrawnSlots).toHaveBeenCalledWith(1, 5);
+    expect(r.resolution).toEqual({ resolvedSlots: 2, cancelledMatches: 1, releasedCourts: 1 });
+    expect(bus.emit).toHaveBeenCalledWith('tournament:participant-updated', expect.objectContaining({ tournamentId: 1, participantId: 5, status: 'withdrawn_after_start' }), expect.anything());
+  });
+
+  it('12c. re-withdrawing an already-withdrawn_after_start participant is idempotent (no duplicate effects)', async () => {
+    tRepo.hasAnyStartedMatch.mockResolvedValue(true);
+    repo.findParticipantById.mockResolvedValue(participant(5, { status: 'withdrawn_after_start' }));
+    const r = await svc.withdrawParticipant(1, 5, 42);
+    expect(r.status).toBe('withdrawn_after_start');
+    // The terminal post-start state is NOT re-written; no duplicate status event.
+    expect(repo.updateParticipantStatus).not.toHaveBeenCalled();
+    // The resolution is re-run and skips already-resolved slots.
+    expect(tournamentServiceMock.resolveWithdrawnSlots).toHaveBeenCalledWith(1, 5);
+    expect(r.resolution).toEqual({ resolvedSlots: 0, cancelledMatches: 0, releasedCourts: 0 });
+    const participantUpdated = bus.emit.mock.calls.filter((c: any[]) => c[0] === 'tournament:participant-updated');
+    expect(participantUpdated).toHaveLength(0);
+  });
 });
 
 describe('Group 6 — WAITLIST PROMOTION (FIFO)', () => {
@@ -182,7 +211,8 @@ describe('Group 6 — WAITLIST PROMOTION (FIFO)', () => {
   });
 
   it('9. wallet remains unavailable (promotion rejects a wallet payment method)', async () => {
-    tournamentServiceMock.resolveEffectiveRegistrationPaymentMethods.mockResolvedValue(['cash', 'card']);
+tournamentServiceMock.resolveEffectiveRegistrationPaymentMethods.mockResolvedValue(['cash', 'card']);
+  tournamentServiceMock.resolveWithdrawnSlots.mockResolvedValue({ resolvedSlots: 0, cancelledMatches: 0, releasedCourts: 0 });
     await expect(svc.promoteNextWaitlisted(1, 42, 'wallet')).rejects.toThrow();
   });
 

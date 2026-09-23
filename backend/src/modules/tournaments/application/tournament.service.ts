@@ -1434,9 +1434,13 @@ export class TournamentService {
    * ids via tournament_participant_members). The target slot receives BOTH the
    * authoritative participant id (participant1_id/participant2_id) and the
    * legacy primary-member user id (player1_id/player2_id).
+   *
+   * G9-D2 — delegates to seatParticipantWinner with the explicitly resolved
+   * participant, so a caller that already knows the winner (e.g. the eligibility-
+   * aware post-start withdrawal resolver) never has the winner re-resolved from
+   * an ambiguous slot.
    */
   private async seatBracketWinner(slot: TournamentMatch, winnerUserId: number): Promise<TournamentMatch | null> {
-    const meta = this.parseProgressionMeta(slot);
     const slotParticipantId = slot.participant1_id != null
       ? Number(slot.participant1_id)
       : slot.participant2_id != null ? Number(slot.participant2_id) : null;
@@ -1448,9 +1452,17 @@ export class TournamentService {
       console.error('seatBracketWinner: bye winner participant unresolved', { slotId: slot.id, tournamentId: slot.tournament_id, winnerUserId });
       return null;
     }
-    const winnerParticipant = resolved.participant;
-    const primaryUserId = resolved.primaryUserId;
+    return this.seatParticipantWinner(slot, resolved.participant.id!, resolved.primaryUserId);
+  }
 
+  /**
+   * G9-D2 — finalise a resolved slot and seat an EXPLICIT winning participant in
+   * the target slot. The participant id is authoritative (never guessed from the
+   * slot's sides); the caller is responsible for eligibility. Used by the
+   * post-start withdrawal lone-slot resolution and the M5×M10 winner handling.
+   */
+  private async seatParticipantWinner(slot: TournamentMatch, winnerParticipantId: number, primaryUserId: number): Promise<TournamentMatch | null> {
+    const meta = this.parseProgressionMeta(slot);
     await tournamentRepository.updateMatch(slot.id!, { winner_id: primaryUserId, status: 'completed', progression_state: 'completed' });
     if (!meta || meta.target_round == null || meta.target_bracket_position == null) {
       return null;
@@ -1462,12 +1474,12 @@ export class TournamentService {
     const userField = slotSide === 'player1' ? 'player1_id' : 'player2_id';
     if ((target as any)[participantField] != null) return target;
     await tournamentRepository.updateMatch(target.id!, ({
-      [participantField]: winnerParticipant.id,
+      [participantField]: winnerParticipantId,
       [userField]: primaryUserId,
     }) as Partial<TournamentMatch>);
     eventBusV2.emit('tournament:match-progressed', {
       tournamentId: slot.tournament_id, matchId: null, fromSlotId: slot.id, toSlotId: target.id,
-      winnerId: primaryUserId, participantWinnerId: winnerParticipant.id, stageId: target.stage_id ?? null,
+      winnerId: primaryUserId, participantWinnerId: winnerParticipantId, stageId: target.stage_id ?? null,
     } as Record<string, unknown>, {
       aggregateType: 'tournament', aggregateId: String(slot.tournament_id), aggregateVersion: 1,
     });
@@ -1549,6 +1561,10 @@ export class TournamentService {
     const winnerParticipant = winnerResolved.participant;
     const winnerParticipantId = winnerParticipant.id!;
     winnerId = winnerResolved.primaryUserId;
+    // G9-D2 (M5×M10) — a participant who withdrew AFTER START and then wins an
+    // in-progress Match keeps an authoritative Result but is NOT eligible for any
+    // future bracket progression. Never seat them as the future winner.
+    const winnerWithdrawn = winnerParticipant.status === 'withdrawn_after_start';
 
     const t = await this.getById(source.tournament_id);
     const conn = await getPool().getConnection();
@@ -1563,7 +1579,15 @@ export class TournamentService {
         progression_state: 'completed',
       }, conn);
 
-      if (meta.target_round == null || meta.target_bracket_position == null) {
+      if (winnerWithdrawn) {
+        // The Result is authoritative (source completes with the winner recorded)
+        // but the withdrawn winner must NOT be seated. Locate the target so a
+        // post-commit lone-slot resolution can advance an already-present ACTIVE
+        // participant; never complete the tournament through a withdrawn winner.
+        if (meta.target_round != null && meta.target_bracket_position != null) {
+          target = await tournamentRepository.findBracketSlot(source.tournament_id, meta.target_round, meta.target_bracket_position);
+        }
+      } else if (meta.target_round == null || meta.target_bracket_position == null) {
         // Final round — the tournament is complete.
         await tournamentRepository.updateStatus(source.tournament_id, 'completed', conn);
         tournamentCompleted = true;
@@ -1593,13 +1617,15 @@ export class TournamentService {
         if (remaining === 0) {
           await tournamentRepository.updateStageStatus(source.stage_id, 'completed', conn);
           stageCompleted = true;
-          const stages = await tournamentRepository.findStages(source.tournament_id);
-          if (stages.length > 0) {
-            const maxOrder = Math.max(...stages.map((s) => s.stage_order));
-            const stage = stages.find((s) => s.id === source.stage_id);
-            if (stage && stage.stage_order === maxOrder) {
-              await tournamentRepository.updateStatus(source.tournament_id, 'completed', conn);
-              tournamentCompleted = true;
+          if (!winnerWithdrawn) {
+            const stages = await tournamentRepository.findStages(source.tournament_id);
+            if (stages.length > 0) {
+              const maxOrder = Math.max(...stages.map((s) => s.stage_order));
+              const stage = stages.find((s) => s.id === source.stage_id);
+              if (stage && stage.stage_order === maxOrder) {
+                await tournamentRepository.updateStatus(source.tournament_id, 'completed', conn);
+                tournamentCompleted = true;
+              }
             }
           }
         }
@@ -1615,20 +1641,30 @@ export class TournamentService {
 
     let sharedMatchId: number | null = null;
     if (target) {
-      const attached = await this.attachSharedMatchToTarget(target, t);
-      if (attached) {
-        sharedMatchId = attached.matchId;
-        // G9-C — the authoritative creation event fires ONLY for the caller that
-        // actually materialised the shared Match. A concurrent duplicate delivery
-        // that merely re-reads an existing match_id must not emit it.
-        if (attached.created) {
-          eventBusV2.emit('tournament:match-created', {
-            tournamentId: t.id, matchId: sharedMatchId, tournamentMatchId: target.id, winnerId,
-            participantWinnerId: winnerParticipantId,
-            organisationId: t.organisation_id ?? null,
-          } as Record<string, unknown>, {
-            aggregateType: 'tournament', aggregateId: String(t.id), aggregateVersion: 1,
-          });
+      if (winnerWithdrawn) {
+        // M5×M10 — resolve the target as a lone slot toward the ACTIVE participant
+        // already seated on the other side (never the withdrawn winner). No shared
+        // Match is materialised between the withdrawn participant and an opponent.
+        const lone = await this.resolveActiveLoneParticipant(target);
+        if (lone) {
+          await this.seatBracketWinner(target, lone.primaryUserId);
+        }
+      } else {
+        const attached = await this.attachSharedMatchToTarget(target, t);
+        if (attached) {
+          sharedMatchId = attached.matchId;
+          // G9-C — the authoritative creation event fires ONLY for the caller that
+          // actually materialised the shared Match. A concurrent duplicate delivery
+          // that merely re-reads an existing match_id must not emit it.
+          if (attached.created) {
+            eventBusV2.emit('tournament:match-created', {
+              tournamentId: t.id, matchId: sharedMatchId, tournamentMatchId: target.id, winnerId,
+              participantWinnerId: winnerParticipantId,
+              organisationId: t.organisation_id ?? null,
+            } as Record<string, unknown>, {
+              aggregateType: 'tournament', aggregateId: String(t.id), aggregateVersion: 1,
+            });
+          }
         }
       }
     }
@@ -1796,6 +1832,115 @@ export class TournamentService {
       .filter((m) => m.status === 'active')
       .sort((a, b) => Number(a.member_order) - Number(b.member_order) || Number(a.id ?? 0) - Number(b.id ?? 0));
     return { memberUserIds: active.map((m) => Number(m.user_id)) };
+  }
+
+  // ── G9-D2: post-start withdrawal → lone-slot resolution ───────────────────
+
+  /**
+   * G9-D2 — resolve every future/unstarted tournament bracket slot occupied by a
+   * participant that has just withdrawn AFTER the tournament started.
+   *
+   * Locked contract (M1/M2/M3/M4/M5/M9/M10):
+   *   * A withdrawn participant is NEVER eligible — only an ACTIVE participant
+   *     may be selected as the advancing side.
+   *   * A slot with an ACTIVE opponent is resolved via the existing lone-slot /
+   *     bye progression semantics (no Walkover Result, no second topology).
+   *   * If a shared Match exists and has NOT started, it is cancelled with a
+   *     NON-DESTRUCTIVE cancellation (match_participants preserved) and its
+   *     tournament court reservation is released (idempotent, tournament-only).
+   *   * In-progress / completed matches are never mutated by withdrawal.
+   *   * A slot with no ACTIVE opponent is left unresolved (never advances the
+   *     withdrawn participant).
+   *
+   * Idempotent: terminal slots are skipped, court release is a no-op when no
+   * reservation exists, and a repeated call produces no duplicate effects.
+   */
+  async resolveWithdrawnSlots(tournamentId: number, withdrawnParticipantId: number): Promise<{ resolvedSlots: number; cancelledMatches: number; releasedCourts: number }> {
+    const t = await this.getById(tournamentId);
+    const matches = await tournamentRepository.findMatchesDetailed(tournamentId);
+    let resolvedSlots = 0;
+    let cancelledMatches = 0;
+    let releasedCourts = 0;
+
+    for (const slot of matches) {
+      const slotId = Number(slot.participant1_id);
+      const slotId2 = Number(slot.participant2_id);
+      if (slotId !== withdrawnParticipantId && slotId2 !== withdrawnParticipantId) continue;
+
+      // Terminal / already-resolved — never mutated.
+      if (slot.progression_state === 'completed' || slot.progression_state === 'bye' || slot.progression_state === 'cancelled') continue;
+      if (slot.status === 'completed' || (slot.status as string) === 'cancelled') continue;
+      const sharedStatus = slot.shared_status ?? null;
+      // M5 — an in-progress or completed shared Match is never touched by withdrawal.
+      if (sharedStatus === 'in_progress' || sharedStatus === 'completed') continue;
+
+      const opponentId = slotId === withdrawnParticipantId ? slotId2 : slotId;
+      const isOpponentSide1 = slotId !== withdrawnParticipantId;
+
+      // Opponent eligibility — M10: ACTIVE ONLY. Never null/non-null guessing.
+      let opponent: { participant: TournamentParticipant; primaryUserId: number } | null = null;
+      if (opponentId != null && opponentId !== withdrawnParticipantId && opponentId !== 0) {
+        const candidate = await participantDrawRepository.findParticipantById(opponentId);
+        if (candidate && candidate.status === 'active') {
+          const roster = await this.loadParticipantRoster(opponentId);
+          if (roster.memberUserIds.length > 0) {
+            opponent = { participant: candidate, primaryUserId: roster.memberUserIds[0] };
+          }
+        }
+      }
+
+      // M3/M4 — an unstarted shared Match is cancelled (non-destructive) and its
+      // tournament court reservation released (idempotent, tournament-only).
+      if (slot.match_id != null && sharedStatus === 'closed') {
+        const { matchService } = await import('../../match/application/services/match.service.js');
+        await matchService.cancelTournamentMatch(Number(slot.match_id), `participant ${withdrawnParticipantId} withdrew after start`);
+        cancelledMatches += 1;
+        const { courtReservationService } = await import('../../booking/application/court-reservation.service.js');
+        const release = await courtReservationService.releaseCourt(Number(slot.match_id));
+        if (release.released) releasedCourts += 1;
+      }
+
+      // M1 — resolve the slot toward the ACTIVE opponent via lone-slot semantics.
+      if (opponent != null) {
+        await this.seatParticipantWinner(slot, opponent.participant.id!, opponent.primaryUserId);
+        resolvedSlots += 1;
+      }
+    }
+
+    await recordAudit({
+      actorId: null,
+      action: 'TOURNAMENT.WITHDRAWAL_RESOLVED',
+      entityType: 'tournament_participant',
+      entityId: withdrawnParticipantId,
+      afterState: { tournament_id: tournamentId, resolvedSlots, cancelledMatches, releasedCourts },
+    });
+    if (resolvedSlots > 0 || cancelledMatches > 0) {
+      eventBusV2.emit('tournament:withdrawal-resolved', {
+        tournamentId,
+        withdrawnParticipantId,
+        resolvedSlots,
+        cancelledMatches,
+        releasedCourts,
+        organisationId: t.organisation_id ?? null,
+      } as Record<string, unknown>, {
+        aggregateType: 'tournament', aggregateId: String(tournamentId), aggregateVersion: 1,
+      });
+    }
+    return { resolvedSlots, cancelledMatches, releasedCourts };
+  }
+
+  /**
+   * G9-D2 (M5×M10) — the sole ACTIVE participant present on a target slot, used
+   * to advance a lone slot after a withdrawn winner is barred from progressing.
+   */
+  private async resolveActiveLoneParticipant(slot: TournamentMatch): Promise<{ primaryUserId: number } | null> {
+    const sideId = slot.participant1_id != null ? Number(slot.participant1_id) : slot.participant2_id != null ? Number(slot.participant2_id) : null;
+    if (sideId == null) return null;
+    const participant = await participantDrawRepository.findParticipantById(sideId);
+    if (!participant || participant.status !== 'active') return null;
+    const roster = await this.loadParticipantRoster(sideId);
+    if (roster.memberUserIds.length === 0) return null;
+    return { primaryUserId: roster.memberUserIds[0] };
   }
 
   /**

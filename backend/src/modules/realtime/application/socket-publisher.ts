@@ -83,6 +83,7 @@ export class SocketPublisher {
       'tournament:seed-updated', 'tournament:draw-generated', 'tournament:draw-updated',
       'tournament:participant-updated', 'tournament:waitlist-updated', 'tournament:participant-replaced',
       'tournament:waitlist-promoted',
+      'tournament:withdrawal-resolved',
       'tournament:participant-created', 'tournament:participant-members-updated',
       'tournament:replacement-request-updated',
       'tournament:matches-generated', 'tournament:schedule-updated',
