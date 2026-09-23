@@ -60,6 +60,24 @@ export class ParticipantMemberRepository {
     return rows.length ? (rows[0] as TournamentParticipantMember) : null;
   }
 
+  /**
+   * G9-B — the ACTIVE member rows for a set of users within a tournament.
+   * Used to resolve the winning TOURNAMENT PARTICIPANT (never a single user)
+   * from the approved result's winning-side users. Ambiguity (users mapped to
+   * different participants) is detected by the caller via distinct participant ids.
+   */
+  async findActiveMembersByUserIds(tournamentId: number, userIds: number[], conn?: import('mysql2/promise').PoolConnection): Promise<Array<{ participant_id: number; user_id: number }>> {
+    if (userIds.length === 0) return [];
+    const db: import('mysql2/promise').Pool | import('mysql2/promise').PoolConnection = conn ?? getPool();
+    const placeholders = userIds.map(() => '?').join(', ');
+    const [rows] = await db.query<RowData>(
+      `SELECT participant_id, user_id FROM tournament_participant_members
+       WHERE tournament_id = ? AND user_id IN (${placeholders}) AND status = 'active'`,
+      [tournamentId, ...userIds],
+    );
+    return rows.map((r) => ({ participant_id: Number(r.participant_id), user_id: Number(r.user_id) }));
+  }
+
   async countActiveMembers(participantId: number, conn?: import('mysql2/promise').PoolConnection): Promise<number> {
     const db: import('mysql2/promise').Pool | import('mysql2/promise').PoolConnection = conn ?? getPool();
     const [rows] = await db.query<RowData>(

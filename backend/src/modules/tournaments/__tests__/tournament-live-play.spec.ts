@@ -60,6 +60,12 @@ const mrRepo = vi.hoisted(() => ({
 const audit = vi.hoisted(() => ({ recordAudit: vi.fn() }));
 const bus = vi.hoisted(() => ({ emit: vi.fn() }));
 
+const pdr = vi.hoisted(() => ({ findParticipantById: vi.fn() }));
+const pmr = vi.hoisted(() => ({
+  findActiveMembersByUserIds: vi.fn(),
+  listMembersByParticipant: vi.fn(),
+}));
+
 const fakeConn = vi.hoisted(() => ({
   beginTransaction: vi.fn(async () => undefined),
   commit: vi.fn(async () => undefined),
@@ -82,12 +88,30 @@ const matchServiceMock = vi.hoisted(() => ({
 const matchResultServiceMock = vi.hoisted(() => ({ submitMatchResult: vi.fn() }));
 
 vi.mock('../infrastructure/repositories/tournament.repository.js', () => ({ tournamentRepository: repo }));
+vi.mock('../infrastructure/repositories/participant-draw.repository.js', () => ({ participantDrawRepository: pdr }));
+vi.mock('../infrastructure/repositories/participant-member.repository.js', () => ({ participantMemberRepository: pmr }));
 vi.mock('../../../database/mysql.js', () => ({ getPool: () => pool }));
 vi.mock('../../audit-log/index.js', () => ({ recordAudit: audit.recordAudit }));
 vi.mock('../../../shared/event-bus/event-bus.v2.js', () => ({ eventBusV2: bus }));
 vi.mock('../../match-result/infrastructure/match-result.repository.js', () => ({ matchResultRepository: mrRepo }));
 vi.mock('../../match/application/services/match.service.js', () => ({ matchService: matchServiceMock }));
 vi.mock('../../match-result/application/match-result.service.js', () => ({ matchResultService: matchResultServiceMock }));
+
+/** G9-B — participant fixtures: individuals 100→[10], 200→[20]. */
+function installParticipantMocks() {
+  const membersByPid: Record<number, any[]> = {
+    100: [{ user_id: 10, status: 'active', member_order: 0 }],
+    200: [{ user_id: 20, status: 'active', member_order: 0 }],
+  };
+  pdr.findParticipantById.mockImplementation(async (id: number) =>
+    id === 100 ? { id: 100, tournament_id: 1, participant_type: 'individual', status: 'active', member_user_ids: [10] }
+      : id === 200 ? { id: 200, tournament_id: 1, participant_type: 'individual', status: 'active', member_user_ids: [20] } : null,
+  );
+  pmr.listMembersByParticipant.mockImplementation(async (id: number) => membersByPid[Number(id)] ?? []);
+  pmr.findActiveMembersByUserIds.mockImplementation(async (_tid: number, userIds: number[]) =>
+    userIds.map((u) => ({ participant_id: u === 10 ? 100 : 200, user_id: Number(u) })),
+  );
+}
 
 function makeTournament(overrides: Partial<Tournament> = {}): Tournament {
   return {
@@ -183,12 +207,14 @@ describe('TournamentService live-play bridge (T-B)', () => {
   });
 
   it('includes organisationId in the authoritative progression events', async () => {
+    installParticipantMocks();
     repo.findMatchBySharedMatchId.mockResolvedValue(makeSlot({
       id: 61, round: 4, bracket_position: 0, match_id: 930,
+      participant1_id: 100, participant2_id: 200,
       status: 'in_progress',
       progression_meta: { is_bracket: true, target_round: null, target_bracket_position: null },
     }));
-    mrRepo.getParticipants.mockResolvedValue([{ userId: 10, outcome: 'win' }]);
+    mrRepo.getParticipants.mockResolvedValue([{ userId: 10, outcome: 'win', side: 'home' }, { userId: 20, outcome: 'loss', side: 'away' }]);
     repo.findStages.mockResolvedValue([]);
 
     await svc.progressFromApprovedResult({ matchId: 930, resultId: 4 });

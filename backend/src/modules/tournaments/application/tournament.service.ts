@@ -1,7 +1,8 @@
 import { tournamentRepository, type BracketTypeRow } from '../infrastructure/repositories/tournament.repository.js';
 import { participantDrawRepository } from '../infrastructure/repositories/participant-draw.repository.js';
+import { participantMemberRepository } from '../infrastructure/repositories/participant-member.repository.js';
 import { generateKnockoutBracket, generateRoundRobinMatches, generateStageMatches, normaliseBracketTargets, seededShuffle, type BracketSlot } from '../domain/tournament-aggregate.js';
-import type { Tournament, TournamentRegistration, TournamentMatch, TournamentStage, TournamentPrizeInput, TournamentPrizeType, TournamentVenue } from '../domain/tournament-aggregate.js';
+import type { Tournament, TournamentRegistration, TournamentMatch, TournamentStage, TournamentPrizeInput, TournamentPrizeType, TournamentVenue, TournamentParticipant, TournamentParticipantMember } from '../domain/tournament-aggregate.js';
 import { validateTournamentTransition, validateRegistrationTransition } from '../domain/lifecycle.js';
 import { NotFoundError, ConflictError, ForbiddenError } from '../../../shared/errors/app-error.js';
 import { ErrorCodes } from '../../../shared/errors/error-codes.js';
@@ -1426,21 +1427,46 @@ export class TournamentService {
   /**
    * Group 5B — finalise a resolved slot and seat its winner in the target slot.
    * Shared helper for draw-time byes and live progression.
+   *
+   * G9-B — the winner is the winning TOURNAMENT PARTICIPANT (resolved from the
+   * slot's authoritative participant identity, or from the winning member user
+   * ids via tournament_participant_members). The target slot receives BOTH the
+   * authoritative participant id (participant1_id/participant2_id) and the
+   * legacy primary-member user id (player1_id/player2_id).
    */
-  private async seatBracketWinner(slot: TournamentMatch, winnerId: number): Promise<TournamentMatch | null> {
+  private async seatBracketWinner(slot: TournamentMatch, winnerUserId: number): Promise<TournamentMatch | null> {
     const meta = this.parseProgressionMeta(slot);
-    await tournamentRepository.updateMatch(slot.id!, { winner_id: winnerId, status: 'completed', progression_state: 'completed' });
+    const slotParticipantId = slot.participant1_id != null
+      ? Number(slot.participant1_id)
+      : slot.participant2_id != null ? Number(slot.participant2_id) : null;
+    const resolved = await this.resolveParticipantEntity(slot.tournament_id, slotParticipantId, [winnerUserId]);
+    if (!resolved) {
+      // A bye winner is always the slot's own participant; an unresolved state is
+      // data corruption — never seat an arbitrary user. Leave the slot pending so
+      // the operator can inspect (draw-time byes must never break generation).
+      console.error('seatBracketWinner: bye winner participant unresolved', { slotId: slot.id, tournamentId: slot.tournament_id, winnerUserId });
+      return null;
+    }
+    const winnerParticipant = resolved.participant;
+    const primaryUserId = resolved.primaryUserId;
+
+    await tournamentRepository.updateMatch(slot.id!, { winner_id: primaryUserId, status: 'completed', progression_state: 'completed' });
     if (!meta || meta.target_round == null || meta.target_bracket_position == null) {
       return null;
     }
     const target = await tournamentRepository.findBracketSlot(slot.tournament_id, meta.target_round, meta.target_bracket_position);
     if (!target) return null;
-    const side = meta.target_side === 'player2' ? 'player2_id' : 'player1_id';
-    if ((target as any)[side] != null) return target;
-    await tournamentRepository.updateMatch(target.id!, ({ [side]: winnerId }) as Partial<TournamentMatch>);
+    const slotSide = meta.target_side === 'player2' ? 'player2' : 'player1';
+    const participantField = slotSide === 'player1' ? 'participant1_id' : 'participant2_id';
+    const userField = slotSide === 'player1' ? 'player1_id' : 'player2_id';
+    if ((target as any)[participantField] != null) return target;
+    await tournamentRepository.updateMatch(target.id!, ({
+      [participantField]: winnerParticipant.id,
+      [userField]: primaryUserId,
+    }) as Partial<TournamentMatch>);
     eventBusV2.emit('tournament:match-progressed', {
       tournamentId: slot.tournament_id, matchId: null, fromSlotId: slot.id, toSlotId: target.id,
-      winnerId, stageId: target.stage_id ?? null,
+      winnerId: primaryUserId, participantWinnerId: winnerParticipant.id, stageId: target.stage_id ?? null,
     } as Record<string, unknown>, {
       aggregateType: 'tournament', aggregateId: String(slot.tournament_id), aggregateVersion: 1,
     });
@@ -1466,7 +1492,7 @@ export class TournamentService {
     }
 
     const participants = await matchResultRepository.getParticipants(input.resultId);
-    const winnerId = participants.find((p) => p.outcome === 'win')?.userId ?? null;
+    let winnerId = participants.find((p) => p.outcome === 'win')?.userId ?? null;
 
     const meta = this.parseProgressionMeta(source);
     if (meta == null || meta.is_bracket !== true) {
@@ -1507,6 +1533,22 @@ export class TournamentService {
       return { source, advancedTo: null };
     }
 
+    // G9-B — resolve the winning TOURNAMENT PARTICIPANT (never a single user).
+    // The result is side-based; the winning side maps to the slot's authoritative
+    // participant identity (participant1_id = home, participant2_id = away). If the
+    // winner cannot be mapped to exactly one participant of this tournament, fail
+    // safely (never seat an arbitrary member, never complete the tournament).
+    const winnerResolved = await this.resolveWinningParticipantForResult(source, participants);
+    if (!winnerResolved) {
+      throw new ConflictError(
+        'The approved result winner cannot be resolved to a single tournament participant',
+        ErrorCodes.TOURNAMENT_PROGRESSION_AMBIGUOUS_WINNER,
+      );
+    }
+    const winnerParticipant = winnerResolved.participant;
+    const winnerParticipantId = winnerParticipant.id!;
+    winnerId = winnerResolved.primaryUserId;
+
     const t = await this.getById(source.tournament_id);
     const conn = await getPool().getConnection();
     let target: TournamentMatch | null = null;
@@ -1527,12 +1569,20 @@ export class TournamentService {
       } else {
         target = await tournamentRepository.findBracketSlot(source.tournament_id, meta.target_round, meta.target_bracket_position);
         if (target) {
-          const side = meta.target_side === 'player2' ? 'player2_id' : 'player1_id';
-          if ((target as any)[side] == null) {
-            await tournamentRepository.updateMatch(target.id!, ({ [side]: winnerId }) as Partial<TournamentMatch>, conn);
+          const slotSide = meta.target_side === 'player2' ? 'player2' : 'player1';
+          const participantField = slotSide === 'player1' ? 'participant1_id' : 'participant2_id';
+          const userField = slotSide === 'player1' ? 'player1_id' : 'player2_id';
+          if ((target as any)[participantField] == null) {
+            // G9-B — seat the winning PARTICIPANT (authoritative identity) plus the
+            // legacy primary-member user id (backward-compatible display).
+            await tournamentRepository.updateMatch(target.id!, ({
+              [participantField]: winnerParticipantId,
+              [userField]: winnerId,
+            }) as Partial<TournamentMatch>, conn);
             // Keep the in-memory slot authoritative so attachSharedMatchToTarget
             // (which runs after commit) sees both participants without a re-read.
-            (target as any)[side] = winnerId;
+            (target as any)[participantField] = winnerParticipantId;
+            (target as any)[userField] = winnerId;
           }
         }
       }
@@ -1569,6 +1619,7 @@ export class TournamentService {
         sharedMatchId = attached;
         eventBusV2.emit('tournament:match-created', {
           tournamentId: t.id, matchId: sharedMatchId, tournamentMatchId: target.id, winnerId,
+          participantWinnerId: winnerParticipantId,
           organisationId: t.organisation_id ?? null,
         } as Record<string, unknown>, {
           aggregateType: 'tournament', aggregateId: String(t.id), aggregateVersion: 1,
@@ -1588,6 +1639,7 @@ export class TournamentService {
     }
     eventBusV2.emit('tournament:match-progressed', {
       tournamentId: t.id, matchId: input.matchId, resultId: input.resultId, winnerId,
+      participantWinnerId: winnerParticipantId,
       fromSlotId: source.id, toSlotId: target?.id ?? null, stageId: source.stage_id ?? null,
       organisationId: t.organisation_id ?? null,
     } as Record<string, unknown>, {
@@ -1599,10 +1651,17 @@ export class TournamentService {
   /**
    * Group 5B — once a target slot has BOTH participants and no shared Match yet,
    * create the shared Match (with the stage/tournament frozen format) and link it.
+   *
+   * G9-B — the shared Match is built from the COMPLETE tournament participant
+   * rosters (tournament_participant_members), never from a single member. The
+   * side/team_index convention matches the G8 generation path: every member of
+   * participant 1 → side 'home' / team_index 0, every member of participant 2 →
+   * side 'away' / team_index 1. A pair/team therefore advances with its full
+   * roster intact.
    */
   private async attachSharedMatchToTarget(target: TournamentMatch, t: Tournament): Promise<number | null> {
     if (target.match_id != null) return target.match_id;
-    if (target.player1_id == null || target.player2_id == null) return null;
+    if (target.participant1_id == null || target.participant2_id == null) return null;
     let formatCtx = await this.resolveMatchFormatContext(t);
     if (target.stage_id != null) {
       const stages = await tournamentRepository.findStages(t.id!);
@@ -1611,13 +1670,105 @@ export class TournamentService {
         formatCtx = await this.resolveMatchFormatContext({ ...t, match_format_id: stage.match_format_id, rule_set_id: stage.rule_set_id });
       }
     }
-    const shared = await this.createTournamentMatchFromSlot(t, formatCtx, {
-      round: target.round,
-      player1Id: target.player1_id,
-      player2Id: target.player2_id,
+    const roster1 = await this.loadParticipantRoster(Number(target.participant1_id));
+    const roster2 = await this.loadParticipantRoster(Number(target.participant2_id));
+    if (roster1.memberUserIds.length === 0 || roster2.memberUserIds.length === 0) return null;
+    const participants = [
+      ...roster1.memberUserIds.map((userId) => ({ userId, side: 'home' as const, teamIndex: 0, role: 'host' as const })),
+      ...roster2.memberUserIds.map((userId) => ({ userId, side: 'away' as const, teamIndex: 1, role: 'joiner' as const })),
+    ];
+    const { matchService } = await import('../../match/application/services/match.service.js');
+    const shared = await matchService.createForTournament({
+      tournamentId: t.id!,
+      sportId: t.sport_id!,
+      formatId: formatCtx.formatId,
+      ruleSetId: formatCtx.ruleSetId,
+      formatSnapshot: formatCtx.formatSnapshot,
+      ruleSnapshot: formatCtx.ruleSnapshot,
+      participants,
     });
     await tournamentRepository.updateMatch(target.id!, { match_id: shared.id, progression_state: 'ready' });
     return shared.id;
+  }
+
+  // ── G9-B: participant-aware winner resolution ─────────────────────────────
+
+  /**
+   * Resolve the winning TOURNAMENT PARTICIPANT of an approved bracket result.
+   *
+   * The shared Match Result is side-based: the winning SIDE (home/away) maps to
+   * the slot's authoritative participant identity (participant1_id = home,
+   * participant2_id = away). When the slot does not carry participant ids
+   * (legacy generateBracket rows), the winner is resolved from the winning-side
+   * user ids via tournament_participant_members (must map to EXACTLY ONE
+   * participant of this tournament).
+   *
+   * Defensive validation (fails safely, never falls back to an arbitrary user):
+   *   * every winning-side user must belong to the resolved participant
+   *   * the participant must belong to the same tournament
+   *   * the participant must be progression-eligible (active / withdrawn-after-start)
+   *   * the participant must have a non-empty ACTIVE roster
+   */
+  private async resolveWinningParticipantForResult(
+    source: TournamentMatch,
+    resultParticipants: Array<{ userId: number; side?: 'home' | 'away' | null; outcome: string }>,
+  ): Promise<{ participant: TournamentParticipant; roster: Array<TournamentParticipantMember & { full_name?: string | null }>; primaryUserId: number } | null> {
+    const winningSide = resultParticipants.find((p) => p.outcome === 'win')?.side ?? null;
+    if (winningSide == null) return null;
+    const winningUserIds = resultParticipants
+      .filter((p) => p.side === winningSide && p.outcome === 'win')
+      .map((p) => Number(p.userId));
+    const slotParticipantId = winningSide === 'home' ? source.participant1_id : source.participant2_id;
+    const resolved = await this.resolveParticipantEntity(source.tournament_id, slotParticipantId, winningUserIds);
+    if (!resolved) return null;
+    // Every winning-side user MUST be an active member of the resolved participant —
+    // never silently drop a member or advance a user from another participant.
+    const rosterIds = new Set(resolved.roster.map((m) => Number(m.user_id)));
+    const allOwned = winningUserIds.every((u) => rosterIds.has(u));
+    if (!allOwned) return null;
+    return resolved;
+  }
+
+  /**
+   * Resolve a tournament participant entity + its full ACTIVE roster.
+   *
+   * `preferredParticipantId` is the authoritative slot identity when present
+   * (G8 path); otherwise the participant is resolved from `fallbackUserIds`
+   * (must map to exactly one participant within the tournament). Returns null
+   * when the participant is missing, belongs to another tournament, is not
+   * progression-eligible, has no active roster, or is ambiguous.
+   */
+  private async resolveParticipantEntity(
+    tournamentId: number,
+    preferredParticipantId: number | null | undefined,
+    fallbackUserIds: number[],
+  ): Promise<{ participant: TournamentParticipant; roster: Array<TournamentParticipantMember & { full_name?: string | null }>; primaryUserId: number } | null> {
+    let participant: TournamentParticipant | null = null;
+    if (preferredParticipantId != null) {
+      participant = await participantDrawRepository.findParticipantById(Number(preferredParticipantId));
+    } else if (fallbackUserIds.length > 0) {
+      const memberRows = await participantMemberRepository.findActiveMembersByUserIds(tournamentId, fallbackUserIds);
+      const participantIds = Array.from(new Set(memberRows.map((r) => r.participant_id)));
+      if (participantIds.length !== 1) return null;
+      participant = await participantDrawRepository.findParticipantById(participantIds[0]);
+    }
+    if (!participant || Number(participant.tournament_id) !== tournamentId) return null;
+    if (participant.status !== 'active' && participant.status !== 'withdrawn_after_start') return null;
+    const members = await participantMemberRepository.listMembersByParticipant(participant.id!);
+    const roster = members
+      .filter((m) => m.status === 'active')
+      .sort((a, b) => Number(a.member_order) - Number(b.member_order) || Number(a.id ?? 0) - Number(b.id ?? 0));
+    if (roster.length === 0) return null;
+    return { participant, roster, primaryUserId: Number(roster[0].user_id) };
+  }
+
+  /** G9-B — the full ACTIVE member roster of a participant (authoritative table), ordered by member_order. */
+  private async loadParticipantRoster(participantId: number): Promise<{ memberUserIds: number[] }> {
+    const members = await participantMemberRepository.listMembersByParticipant(participantId);
+    const active = members
+      .filter((m) => m.status === 'active')
+      .sort((a, b) => Number(a.member_order) - Number(b.member_order) || Number(a.id ?? 0) - Number(b.id ?? 0));
+    return { memberUserIds: active.map((m) => Number(m.user_id)) };
   }
 
   /**
