@@ -6,11 +6,13 @@ import { useTranslation } from '../../../i18n';
 import { useToast } from '../../../components/ui/Toast';
 import { Can } from '../../../permissions/Can';
 import { SkeletonRow } from '../../../components/ui/Skeleton';
-import { tournamentParticipantApi, orgTournamentParticipantApi } from '../../../services/tournament';
+import { tournamentApi, orgTournamentApi, tournamentParticipantApi, orgTournamentParticipantApi } from '../../../services/tournament';
 import { getErrorMessage } from '../../../utils/errors';
 
 export type TournamentDrawContextMode = 'admin' | 'org';
 interface Props { mode?: TournamentDrawContextMode; orgId?: string }
+
+const SUPPORTED = ['knockout', 'round_robin'];
 
 /**
  * G8 — Tournament Draw screen (drag & drop). The LOCKED draw is the single
@@ -19,6 +21,13 @@ interface Props { mode?: TournamentDrawContextMode; orgId?: string }
  * lock. Seeds/participant identity/rating snapshots are NEVER silently changed
  * — moveParticipant only changes DRAW POSITION (a seeding-rule violation is
  * surfaced as an explicit warning, never silently fixed).
+ *
+ * The board is derived from AUTHORITATIVE draw data + the engine's deterministic
+ * bracket topology (next power of two, consecutive round-1 pairing, later rounds
+ * from winners). It distinguishes: ACTUAL filled slot, BYE (single participant),
+ * FUTURE slot awaiting a winner (structural placeholder — NOT a fake match), and
+ * EMPTY padding. Round-robin renders the actual round-by-round pairings (circle
+ * method, same as the engine). Unsupported formats show an explicit state.
  */
 export default function TournamentDrawPage({ mode = 'admin', orgId: orgIdProp }: Props) {
   const params = useParams<{ id: string; orgId?: string }>();
@@ -31,10 +40,17 @@ export default function TournamentDrawPage({ mode = 'admin', orgId: orgIdProp }:
 
   const isOrg = mode === 'org';
   const api = isOrg && orgId ? orgTournamentParticipantApi : tournamentParticipantApi;
+  const detailApi = isOrg && orgId ? orgTournamentApi : tournamentApi;
   const wrap = (fn: (...a: any[]) => any, ...a: any[]) => (isOrg && orgId ? fn(orgId, ...a) : fn(...a));
   const managePerm = isOrg && orgId ? 'org.tournaments.manage' : 'tournaments.manage';
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
+
+  const { data: tournament } = useQuery({
+    queryKey: ['tournament', tournamentId],
+    queryFn: () => wrap(detailApi.getTournament, tournamentId),
+  });
+  const format = tournament?.format ?? null;
 
   const { data: participantsData, isLoading } = useQuery({
     queryKey: ['tournament-participants', tournamentId],
@@ -121,23 +137,65 @@ export default function TournamentDrawPage({ mode = 'admin', orgId: orgIdProp }:
 
   if (isLoading) return <div className="p-6"><SkeletonRow count={4} /></div>;
 
-  // Group positions into round-1 matches for knockout brackets (draw positions are authoritative).
   const positionCount = Math.max(drawEntries.length, participants.length, 2);
-  const matches: Array<{ matchIndex: number; slots: Array<{ position: number; entry: any }> }> = [];
-  for (let i = 0; i < positionCount; i += 2) {
-    matches.push({
-      matchIndex: i / 2,
-      slots: [
-        { position: i, entry: drawEntries.find((e: any) => Number(e.position) === i) ?? null },
-        { position: i + 1, entry: drawEntries.find((e: any) => Number(e.position) === i + 1) ?? null },
-      ],
-    });
+  const entryByPosition = (pos: number) => drawEntries.find((e: any) => Number(e.position) === pos) ?? null;
+
+  // ── Authoritative bracket topology (mirrors the engine, never fabricates data) ──
+  const nextPowerOf2 = Math.pow(2, Math.ceil(Math.log2(Math.max(positionCount, 2))));
+  const totalRounds = Math.max(1, Math.round(Math.log2(nextPowerOf2)));
+  const roundLabel = (round: number): string => {
+    const fromEnd = totalRounds - round;
+    if (fromEnd === 0) return 'Final';
+    if (fromEnd === 1) return 'Semi-final';
+    if (fromEnd === 2) return 'Quarter-final';
+    return `Round ${round}`;
+  };
+  // Knockout rounds: round 1 pairs consecutive draw positions; later rounds are
+  // structural slots awaiting a winner (NOT fake matches).
+  const knockoutRounds: Array<{ round: number; label: string; matches: Array<{ position: number; index: number }> }> = [];
+  if (format === 'knockout') {
+    for (let r = 1; r <= totalRounds; r++) {
+      const matchCount = nextPowerOf2 / Math.pow(2, r);
+      const matches: Array<{ position: number; index: number }> = [];
+      for (let i = 0; i < matchCount; i++) {
+        // Round-1 matches map to draw positions [2i, 2i+1]; later rounds are placeholders.
+        const position = r === 1 ? i * 2 : -1;
+        matches.push({ position, index: i });
+      }
+      knockoutRounds.push({ round: r, label: roundLabel(r), matches });
+    }
   }
+  // Round-robin pairings via the circle method (same as the engine). Plain
+  // computation (not a hook) — it runs after the early `isLoading` return.
+  const roundRobinRounds = (() => {
+    if (format !== 'round_robin') return [];
+    const ids = Array.from({ length: positionCount }, (_, i) => i);
+    const n = ids.length;
+    if (n < 2) return [];
+    const arr = n % 2 === 1 ? [...ids, -1] : [...ids];
+    const m = arr.length;
+    const rounds: Array<{ round: number; pairings: Array<{ a: number | null; b: number | null }> }> = [];
+    for (let r = 0; r < m - 1; r++) {
+      const pairings: Array<{ a: number | null; b: number | null }> = [];
+      for (let i = 0; i < m / 2; i++) {
+        const a = arr[i];
+        const b = arr[m - 1 - i];
+        if (a === -1 || b === -1) { pairings.push({ a: a === -1 ? null : a, b: b === -1 ? null : b }); continue; }
+        pairings.push({ a, b });
+      }
+      rounds.push({ round: r + 1, pairings });
+      const last = arr[m - 1];
+      for (let i = m - 1; i > 1; i--) arr[i] = arr[i - 1];
+      arr[1] = last;
+    }
+    return rounds;
+  })();
 
   const drawWarnings: string[] = [];
   if (draw && draw.entries && draw.entries.length < 2) drawWarnings.push(t('tournaments.warn_missing_participants', 'Not enough participants for a draw.'));
   if (validation && validation.valid === false) drawWarnings.push(validation.message || t('tournaments.warn_seed_violation', 'A seeding-rule violation was detected.'));
   if (drawStatus === 'approved' || drawStatus === 'locked') drawWarnings.push(t('tournaments.warn_draw_finalized', 'The draw is finalized — match generation will use this locked order.'));
+  if (format != null && !SUPPORTED.includes(format)) drawWarnings.push(t('tournaments.warn_unsupported_format', 'This bracket type is not yet supported for the draw board.'));
 
   return (
     <div className="space-y-6">
@@ -147,6 +205,7 @@ export default function TournamentDrawPage({ mode = 'admin', orgId: orgIdProp }:
           <div className="flex items-center gap-2 mt-1 text-xs text-[var(--color-text-muted)]">
             <span className="font-semibold capitalize">{drawStatus ?? '—'}</span>
             {draw?.attempt_number ? <span>• attempt #{draw.attempt_number}</span> : null}
+            {format ? <span>• {format}</span> : null}
           </div>
         </div>
         <div className="flex gap-2 flex-wrap">
@@ -197,25 +256,73 @@ export default function TournamentDrawPage({ mode = 'admin', orgId: orgIdProp }:
           </div>
 
           {/* Draw board */}
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <h2 className="text-sm font-semibold">{t('tournaments.draw_positions', 'Draw Positions')}</h2>
+          <div className="space-y-4 min-w-0">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <h2 className="text-sm font-semibold">{t('tournaments.draw_positions', 'Draw Board')}</h2>
               <p className="text-[11px] text-[var(--color-text-muted)]">{t('tournaments.draw_seed_hint', 'Drag a participant onto a position. Seeds and participant identity are never changed.')}</p>
             </div>
-            {matches.length === 0 ? (
+
+            {format == null && (
               <p className="text-xs text-[var(--color-text-muted)]">{t('tournaments.draw_empty', 'Generate a draw to start placing participants.')}</p>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-                {matches.map((m) => (
-                  <div key={m.matchIndex} className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] border border-[var(--color-border)] p-3">
-                    <p className="text-[11px] font-semibold text-[var(--color-text-muted)] uppercase mb-2">{t('tournaments.match', 'Match')} {m.matchIndex + 1}</p>
-                    <div className="space-y-2">
-                      {m.slots.map((s) => (
-                        <DrawSlot key={s.position} position={s.position} entry={s.entry} disabled={locked} />
-                      ))}
+            )}
+
+            {format != null && !SUPPORTED.includes(format) && (
+              <div className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] border border-[var(--color-border)] p-5">
+                <p className="text-sm font-semibold text-[var(--color-text)]">{t('tournaments.unsupported_format', 'Unsupported bracket type')}</p>
+                <p className="text-xs text-[var(--color-text-muted)] mt-1">{t('tournaments.unsupported_format_hint', 'The "{{format}}" bracket is not yet implemented. No bracket is fabricated.', { format })}</p>
+              </div>
+            )}
+
+            {format === 'knockout' && (
+              <div className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] border border-[var(--color-border)] p-4 overflow-x-auto">
+                <div className="flex gap-6 min-w-[720px]">
+                  {knockoutRounds.map((r) => (
+                    <div key={r.round} className="flex-1 min-w-[200px]">
+                      <p className="text-[11px] font-semibold text-[var(--color-text-muted)] uppercase mb-3">{r.label}</p>
+                      <div className="space-y-8">
+                        {r.matches.map((m) => (
+                          <div key={m.index} className="space-y-2">
+                            {r.round === 1 ? (
+                              <>
+                                <KnockoutSlot position={m.position} entry={entryByPosition(m.position)} kind="filled" disabled={locked} />
+                                <KnockoutSlot position={m.position + 1} entry={entryByPosition(m.position + 1)} kind="filled" disabled={locked} />
+                              </>
+                            ) : (
+                              <div className="min-h-[54px] rounded-[var(--radius-md)] border border-dashed border-[var(--color-border)] p-2 flex items-center justify-center">
+                                <span className="text-[10px] text-[var(--color-text-muted)]">{t('tournaments.awaiting_winner', 'awaiting winner')}</span>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {format === 'round_robin' && (
+              <div className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] border border-[var(--color-border)] p-4 overflow-x-auto">
+                <div className="flex gap-6 min-w-[640px]">
+                  {roundRobinRounds.map((r) => (
+                    <div key={r.round} className="flex-1 min-w-[180px]">
+                      <p className="text-[11px] font-semibold text-[var(--color-text-muted)] uppercase mb-3">{t('tournaments.match_round', 'Round')} {r.round}</p>
+                      <div className="space-y-2">
+                        {r.pairings.map((p, i) => (
+                          <div key={i} className="rounded-[var(--radius-md)] border border-dashed border-[var(--color-border)] p-2 text-xs">
+                            {p.a === null || p.b === null
+                              ? <span className="text-[var(--color-text-muted)]">bye</span>
+                              : <span className="flex justify-between gap-2">
+                                  <span>{entryByPosition(p.a)?.display_name || `#${p.a}`}</span>
+                                  <span className="text-[var(--color-text-muted)]">vs</span>
+                                  <span>{entryByPosition(p.b)?.display_name || `#${p.b}`}</span>
+                                </span>}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
 
@@ -257,11 +364,14 @@ function DraggableParticipant({ participant, placed, disabled }: { participant: 
   );
 }
 
-function DrawSlot({ position, entry, disabled }: { position: number; entry: any; disabled: boolean }) {
+/** A round-1 draw slot. `kind` distinguishes filled / bye / empty from authoritative data. */
+function KnockoutSlot({ position, entry, kind, disabled }: { position: number; entry: any; kind: 'filled' | 'bye' | 'empty'; disabled: boolean }) {
   const { setNodeRef, isOver } = useDroppable({ id: `pos-${position}`, disabled });
+  const hasParticipant = entry != null;
+  const slotKind = hasParticipant ? 'filled' : kind;
   return (
     <div ref={setNodeRef}
-      className={`min-h-[54px] rounded-[var(--radius-md)] border p-2 transition-colors ${isOver ? 'border-[var(--color-primary)] bg-[var(--color-primary)]/10' : 'border-dashed border-[var(--color-border)]'}`}>
+      className={`min-h-[54px] rounded-[var(--radius-md)] border p-2 transition-colors ${isOver ? 'border-[var(--color-primary)] bg-[var(--color-primary)]/10' : slotKind === 'filled' ? 'border-[var(--color-border)] bg-[var(--color-bg)]' : 'border-dashed border-[var(--color-border)]'}`}>
       <div className="flex items-center justify-between gap-2">
         <span className="text-[10px] text-[var(--color-text-muted)] font-mono">#{position}</span>
         {entry?.overridden ? <span className="text-[9px] text-amber-600 font-medium">overridden</span> : null}
@@ -272,7 +382,7 @@ function DrawSlot({ position, entry, disabled }: { position: number; entry: any;
           {entry.seed_number != null ? <span className="px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 text-[10px] font-bold">#{entry.seed_number}</span> : null}
         </div>
       ) : (
-        <p className="text-[10px] text-[var(--color-text-muted)]">{disabled ? '—' : 'drop here'}</p>
+        <p className="text-[10px] text-[var(--color-text-muted)]">{slotKind === 'bye' ? 'bye' : (disabled ? '—' : 'drop here')}</p>
       )}
     </div>
   );

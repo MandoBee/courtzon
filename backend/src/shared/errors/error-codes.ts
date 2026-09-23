@@ -172,6 +172,9 @@ export const ErrorCodes = {
   TOURNAMENT_RESERVATION_NOT_FOUND: 'TOURNAMENT_RESERVATION_NOT_FOUND',
   TOURNAMENT_BYE_MATCH: 'TOURNAMENT_BYE_MATCH',
 
+  // ── Shared — court slot availability (used by the booking reservation capability) ──
+  COURT_SLOT_UNAVAILABLE: 'COURT_SLOT_UNAVAILABLE',
+
   // ── League / Season ──
   SEASON_NOT_FOUND: 'SEASON_NOT_FOUND',
   SEASON_INVALID_TRANSITION: 'SEASON_INVALID_TRANSITION',

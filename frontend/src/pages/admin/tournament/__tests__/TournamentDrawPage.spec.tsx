@@ -6,6 +6,7 @@ import TournamentDrawPage from '../TournamentDrawPage';
 
 const __state = vi.hoisted(() => ({
   userPermissions: ['*'] as string[],
+  format: 'knockout' as string,
   participants: [
     { id: 1, participant_type: 'individual', name: null, display_name: 'Player A', status: 'active', seed: { seed_number: 1, source: 'manual' } },
     { id: 2, participant_type: 'individual', name: null, display_name: 'Player B', status: 'active', seed: null },
@@ -61,6 +62,7 @@ function mockApi() {
     if (url.includes('/draw/validate')) return Promise.resolve({ data: __state.validation });
     if (url.includes('/draw')) return Promise.resolve({ data: __state.currentDraw });
     if (url.includes('/participants')) return Promise.resolve({ data: __state.participants });
+    if (url.includes('/admin/tournaments/1') || url.includes(`/org/1/tournaments/1`)) return Promise.resolve({ data: { id: 1, format: __state.format } });
     return Promise.resolve({ data: {} });
   });
 }
@@ -68,11 +70,14 @@ function mockApi() {
 beforeEach(() => {
   vi.clearAllMocks();
   __state.userPermissions = ['*'];
+  __state.format = 'knockout';
   __state.currentDraw = {
     id: 10, tournament_id: 1, attempt_number: 1, status: 'draft',
     entries: [
       { id: 1, participant_id: 1, position: 0, display_name: 'Player A', seed_number: 1, placement_source: 'auto', overridden: 0 },
       { id: 2, participant_id: 2, position: 1, display_name: 'Player B', seed_number: null, placement_source: 'auto', overridden: 0 },
+      { id: 3, participant_id: 3, position: 2, display_name: 'Player C', seed_number: null, placement_source: 'auto', overridden: 0 },
+      { id: 4, participant_id: 4, position: 3, display_name: 'Player D', seed_number: null, placement_source: 'auto', overridden: 0 },
     ],
   };
   __state.validation = { valid: true };
@@ -121,5 +126,32 @@ describe('TournamentDrawPage — G8', () => {
     expect(btn.disabled).toBe(false);
     fireEvent.click(btn);
     await waitFor(() => expect((api.post as any).mock.calls.some((c: any[]) => c[0].includes('/draw'))).toBe(true), { timeout: 3000 });
+  });
+});
+
+describe('TournamentDrawPage — bracket rendering contract (Part 4)', () => {
+  it('knockout: renders ROUND 1 (actual filled slots), Semi-final and Final as awaiting-winner structure', async () => {
+    renderPage();
+    // Round-1 actual participants
+    expect((await screen.findAllByText('Player A')).length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Player B').length).toBeGreaterThan(0);
+    // Structural later rounds: 4 participants → Semi-final + Final columns (awaiting winner)
+    expect(screen.getByText('Semi-final')).toBeTruthy();
+    expect(screen.getByText('Final')).toBeTruthy();
+    expect(screen.getAllByText(/awaiting winner/).length).toBeGreaterThan(0);
+  });
+
+  it('round_robin: shows round-by-round pairings (NOT a knockout bracket)', async () => {
+    __state.format = 'round_robin';
+    renderPage();
+    expect(await screen.findAllByText('Round 1')).toBeTruthy();
+    expect(screen.getAllByText(/Round \d/).length).toBeGreaterThanOrEqual(3); // 4 participants → 3 rounds
+  });
+
+  it('unsupported format: shows an explicit unsupported state (no fabricated bracket)', async () => {
+    __state.format = 'double_elimination';
+    renderPage();
+    expect(await screen.findByText('Unsupported bracket type')).toBeTruthy();
+    expect(screen.queryByText('Semi-final')).toBeNull();
   });
 });

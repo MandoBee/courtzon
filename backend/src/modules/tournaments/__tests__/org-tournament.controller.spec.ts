@@ -271,4 +271,10 @@ describe('org-tournament.controller (tenant isolation)', () => {
     await ctrl.listSportFormatsCascadeHandler(req({ params: { orgId: String(ORG_A), sportId: '22' }, query: { bracket_type_id: '1' } }), res());
     expect(service.listSportFormatsCascade).toHaveBeenCalledWith(22, 1);
   });
+
+  it('G8: eligible-courts listing is tenant-isolated (cross-org blocked before any service call)', async () => {
+    repo.getOrganisationId.mockResolvedValue(ORG_B);
+    await expect(ctrl.listOrgEligibleCourtsHandler(req({ params: { orgId: String(ORG_A), id: '7' } }), res()))
+      .rejects.toMatchObject({ statusCode: 404, errorCode: 'TOURNAMENT_NOT_FOUND' });
+  });
 });

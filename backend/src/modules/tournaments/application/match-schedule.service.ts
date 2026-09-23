@@ -4,6 +4,8 @@ import { tournamentRepository } from '../infrastructure/repositories/tournament.
 import { tournamentService } from './tournament.service.js';
 import { matchService } from '../../match/application/services/match.service.js';
 import { courtReservationService } from '../../booking/application/court-reservation.service.js';
+import { courtReservationRepository } from '../../booking/infrastructure/repositories/court-reservation.repository.js';
+import { getPool } from '../../../database/mysql.js';
 import { eventBusV2 } from '../../../shared/event-bus/event-bus.v2.js';
 import { recordAudit } from '../../audit-log/index.js';
 import { ConflictError, NotFoundError } from '../../../shared/errors/app-error.js';
@@ -19,6 +21,7 @@ import type { MatchFormatSnapshot } from '../../match/domain/match.types.js';
 import { generateKnockoutBracket, generateRoundRobinMatches } from '../domain/tournament-aggregate.js';
 
 type RowData = import('mysql2').RowDataPacket[];
+type PoolConnection = import('mysql2/promise').PoolConnection;
 
 /**
  * Group 8 — Match Generation + Scheduling + Shared Court Reservation.
@@ -43,10 +46,15 @@ export class MatchScheduleService {
 
   /**
    * Generate the authoritative tournament matches from the LOCKED draw.
-   * Idempotent-guard: throws if matches already exist (matches are authoritative
-   * once generated). Byes create bracket-slot rows WITHOUT a shared Match and
-   * WITHOUT a court. Doubles/teams: every member becomes a match_participant
-   * with the participant's side/team_index.
+   * ATOMIC + RACE-SAFE: the whole generation runs in ONE transaction with the
+   * tournament row locked FOR UPDATE and an in-lock re-count, so two concurrent
+   * requests against the same locked draw can never both pass the existence
+   * check — exactly ONE authoritative match set is produced. All inserts
+   * (shared matches via createForTournament + bracket slots) share the same
+   * connection, so a partial failure rolls back everything (no half-generated
+   * bracket). Byes create bracket-slot rows WITHOUT a shared Match and WITHOUT
+   * a court. Doubles/teams: every member becomes a match_participant with the
+   * participant's side/team_index.
    */
   async generateMatchesFromLockedDraw(tournamentId: number, actorId: number): Promise<{ generated: number; byes: number }> {
     const t = await tournamentService.getByIdDetailed(tournamentId);
@@ -54,10 +62,6 @@ export class MatchScheduleService {
     if (!draw) throw new ConflictError('No draw has been generated', ErrorCodes.TOURNAMENT_DRAW_NOT_FOUND);
     if (draw.status !== 'locked') {
       throw new ConflictError('The draw must be LOCKED before tournament matches can be generated', ErrorCodes.TOURNAMENT_DRAW_NOT_LOCKED);
-    }
-    const existing = await tournamentRepository.countMatches(tournamentId);
-    if (existing > 0) {
-      throw new ConflictError('Tournament matches are already generated', ErrorCodes.TOURNAMENT_MATCHES_ALREADY_GENERATED);
     }
 
     const entries = await participantDrawRepository.findDrawEntries(draw.id!);
@@ -74,54 +78,74 @@ export class MatchScheduleService {
 
     let generated = 0;
     let byes = 0;
-    for (const slot of slots) {
-      const p1Id = slot.player1Id != null ? Number(slot.player1Id) : null;
-      const p2Id = slot.player2Id != null ? Number(slot.player2Id) : null;
-      if (p1Id == null && p2Id == null) continue; // pure padding slot — no row
-
-      const meta = this.buildSlotMeta(slot, isKnockout);
-      if (p1Id != null && p2Id != null) {
-        const sharedMatch = await this.createParticipantMatch(t, formatCtx, p1Id, p2Id);
-        const p1 = await this.loadParticipant(p1Id);
-        const p2 = await this.loadParticipant(p2Id);
-        await tournamentRepository.createMatch({
-          tournament_id: tournamentId,
-          match_id: sharedMatch.id,
-          round: slot.round,
-          round_name: this.roundLabel(t, slot.round, isKnockout, ordered.length),
-          bracket_position: slot.bracketPosition ?? 0,
-          stage_id: slot.stageId ?? null,
-          participant1_id: p1Id,
-          participant2_id: p2Id,
-          player1_id: this.primaryMember(p1),
-          player2_id: this.primaryMember(p2),
-          status: 'scheduled',
-          progression_state: 'pending',
-          progression_meta: meta as unknown as Record<string, unknown>,
-        });
-        generated += 1;
-      } else {
-        // BYE — explicit bracket metadata, NO fake participant, NO shared Match, NO court.
-        const presentId = p1Id ?? p2Id!;
-        const present = await this.loadParticipant(presentId);
-        await tournamentRepository.createMatch({
-          tournament_id: tournamentId,
-          round: slot.round,
-          round_name: this.roundLabel(t, slot.round, isKnockout, ordered.length),
-          bracket_position: slot.bracketPosition ?? 0,
-          stage_id: slot.stageId ?? null,
-          match_number: 0,
-          participant1_id: presentId,
-          player1_id: this.primaryMember(present),
-          status: 'scheduled',
-          progression_state: 'pending',
-          progression_meta: { ...meta, bye: true } as unknown as Record<string, unknown>,
-        });
-        byes += 1;
+    const conn = await getPool().getConnection();
+    try {
+      await conn.beginTransaction();
+      // Serialize generation for this tournament; the existence re-check MUST
+      // run inside the locked transaction (race guard).
+      await conn.query('SELECT id FROM tournaments WHERE id = ? FOR UPDATE', [tournamentId]);
+      const existing = await tournamentRepository.countMatches(tournamentId, conn);
+      if (existing > 0) {
+        await conn.rollback();
+        throw new ConflictError('Tournament matches are already generated', ErrorCodes.TOURNAMENT_MATCHES_ALREADY_GENERATED);
       }
+
+      for (const slot of slots) {
+        const p1Id = slot.player1Id != null ? Number(slot.player1Id) : null;
+        const p2Id = slot.player2Id != null ? Number(slot.player2Id) : null;
+        if (p1Id == null && p2Id == null) continue; // pure padding slot — no row
+
+        const meta = this.buildSlotMeta(slot, isKnockout);
+        if (p1Id != null && p2Id != null) {
+          const sharedMatch = await this.createParticipantMatch(t, formatCtx, p1Id, p2Id, conn);
+          const p1 = await this.loadParticipant(p1Id);
+          const p2 = await this.loadParticipant(p2Id);
+          await tournamentRepository.createMatch({
+            tournament_id: tournamentId,
+            match_id: sharedMatch.id,
+            round: slot.round,
+            round_name: this.roundLabel(t, slot.round, isKnockout, ordered.length),
+            bracket_position: slot.bracketPosition ?? 0,
+            stage_id: slot.stageId ?? null,
+            participant1_id: p1Id,
+            participant2_id: p2Id,
+            player1_id: this.primaryMember(p1),
+            player2_id: this.primaryMember(p2),
+            status: 'scheduled',
+            progression_state: 'pending',
+            progression_meta: meta as unknown as Record<string, unknown>,
+          }, conn);
+          generated += 1;
+        } else {
+          // BYE — explicit bracket metadata, NO fake participant, NO shared Match, NO court.
+          const presentId = p1Id ?? p2Id!;
+          const present = await this.loadParticipant(presentId);
+          await tournamentRepository.createMatch({
+            tournament_id: tournamentId,
+            round: slot.round,
+            round_name: this.roundLabel(t, slot.round, isKnockout, ordered.length),
+            bracket_position: slot.bracketPosition ?? 0,
+            stage_id: slot.stageId ?? null,
+            match_number: 0,
+            participant1_id: presentId,
+            player1_id: this.primaryMember(present),
+            status: 'scheduled',
+            progression_state: 'pending',
+            progression_meta: { ...meta, bye: true } as unknown as Record<string, unknown>,
+          }, conn);
+          byes += 1;
+        }
+      }
+      await conn.commit();
+    } catch (err) {
+      await conn.rollback();
+      throw err;
+    } finally {
+      conn.release();
     }
 
     // Group 5B — propagate draw-time byes (existing engine semantics, not invented).
+    // Runs AFTER commit (idempotent bye propagation; not part of the race guard).
     await tournamentService.advanceByes(tournamentId);
 
     await recordAudit({
@@ -187,13 +211,15 @@ export class MatchScheduleService {
    * Create the shared Match for a participant vs participant slot. Every member
    * of each side participant is written into match_participants with the
    * authoritative side + team_index — doubles/team sides are NEVER guessed from
-   * insertion order.
+   * insertion order. When a `conn` is passed, the shared match participates in
+   * the caller's transaction (atomic generation).
    */
   private async createParticipantMatch(
     t: Tournament,
     formatCtx: { formatId: number; ruleSetId: number; formatSnapshot: MatchFormatSnapshot; ruleSnapshot: Record<string, unknown> },
     participant1Id: number,
     participant2Id: number,
+    conn?: PoolConnection,
   ) {
     const p1 = await this.loadParticipant(participant1Id);
     const p2 = await this.loadParticipant(participant2Id);
@@ -212,6 +238,7 @@ export class MatchScheduleService {
       formatSnapshot: formatCtx.formatSnapshot,
       ruleSnapshot: formatCtx.ruleSnapshot,
       participants,
+      conn,
     });
   }
 
@@ -223,7 +250,7 @@ export class MatchScheduleService {
   }
 
   /** Eligible courts for the tournament (active resources of its branch + sport). */
-  async listEligibleCourts(tournamentId: number): Promise<Array<{ id: number; name: string; branch_id: number; sport_id: number | null; opening_time: string | null; closing_time: string | null }>> {
+  async listEligibleCourts(tournamentId: number): Promise<Array<{ id: number; name: string; branch_id: number; sport_id: number | null; opening_time: string | null; closing_time: string | null; slot_duration: number | null }>> {
     await tournamentService.getByIdDetailed(tournamentId);
     return tournamentRepository.findEligibleCourts(tournamentId);
   }
@@ -277,8 +304,11 @@ export class MatchScheduleService {
     const endAtUtc = TimeEngine.localToUtc(endDate, endTime, timezone);
     const businessDate = TimeEngine.getBusinessDate(startAtUtc, court.opening_time ?? '00:00', court.closing_time ?? '23:59', timezone);
 
-    // Shared non-financial court reservation (idempotent + concurrency-safe).
-    const reservation = await courtReservationService.reserveCourt({
+    // Shared non-financial court reservation. RESCHEDULE SAFETY: a match has
+    // EXACTLY ONE authoritative reservation. Identical slot → idempotent;
+    // different slot → atomic swap (old released + new created in one transaction);
+    // no reservation → fresh reserveCourt.
+    const reservationInput = {
       userId: Number(t.creator_id),
       organisationId: Number(t.organisation_id ?? (t as any).organisation_id),
       branchId: Number((t as any).branch_id),
@@ -290,7 +320,33 @@ export class MatchScheduleService {
       endAtUtc,
       businessDate,
       matchId: Number(match.match_id),
-    });
+    };
+    const existing = await courtReservationRepository.findTournamentBooking(Number(match.match_id));
+    let reservation: { bookingId: number; alreadyReserved?: boolean; released?: boolean };
+    if (!existing) {
+      reservation = await courtReservationService.reserveCourt(reservationInput);
+    } else {
+      const sameSlot =
+        Number(existing.resource_id) === Number(input.resource_id) &&
+        String(existing.booking_date) === date &&
+        String(existing.start_time).slice(0, 5) === String(input.start_time).slice(0, 5) &&
+        String(existing.end_time).slice(0, 5) === String(input.end_time).slice(0, 5);
+      if (sameSlot) {
+        // Idempotent: identical reservation — no duplicate booking, keep it.
+        reservation = { bookingId: Number(existing.id), alreadyReserved: true };
+      } else {
+        // Atomic swap: release the OLD reservation + create the NEW one in one
+        // transaction (old slot freed, new slot blocked, never two actives).
+        try {
+          reservation = await courtReservationService.rescheduleCourt(reservationInput, Number(existing.id));
+        } catch (err: any) {
+          if (err?.code === ErrorCodes.COURT_SLOT_UNAVAILABLE) {
+            throw new ConflictError('One or more court slots are no longer available — the existing reservation was left intact', ErrorCodes.TOURNAMENT_COURT_UNAVAILABLE);
+          }
+          throw err;
+        }
+      }
+    }
 
     // Persist the schedule on the bracket slot (branch-local datetime).
     const localStart = `${date} ${input.start_time}`;
@@ -304,7 +360,7 @@ export class MatchScheduleService {
 
     await recordAudit({
       actorId,
-      action: 'TOURNAMENT.MATCH_SCHEDULED',
+      action: existing ? 'TOURNAMENT.MATCH_RESCHEDULED' : 'TOURNAMENT.MATCH_SCHEDULED',
       entityType: 'tournament_match',
       entityId: matchId,
       afterState: {
@@ -313,7 +369,8 @@ export class MatchScheduleService {
         start_time: input.start_time,
         end_time: input.end_time,
         booking_id: reservation.bookingId,
-        already_reserved: reservation.alreadyReserved,
+        released_old_booking: reservation.released ?? false,
+        already_reserved: reservation.alreadyReserved ?? false,
       },
     });
     await this.emit('tournament:schedule-updated', {
@@ -326,13 +383,15 @@ export class MatchScheduleService {
       bookingId: reservation.bookingId,
       organisationId: t.organisation_id ?? null,
     });
-    await this.emit('tournament:court-reserved', {
-      tournamentId,
-      matchId,
-      resourceId: Number(input.resource_id),
-      bookingId: reservation.bookingId,
-      organisationId: t.organisation_id ?? null,
-    });
+    if (!existing || !reservation.alreadyReserved) {
+      await this.emit('tournament:court-reserved', {
+        tournamentId,
+        matchId,
+        resourceId: Number(input.resource_id),
+        bookingId: reservation.bookingId,
+        organisationId: t.organisation_id ?? null,
+      });
+    }
 
     const updated = (await tournamentRepository.findMatchById(matchId))!;
     return { ...updated, bookingId: reservation.bookingId };
@@ -374,12 +433,23 @@ export class MatchScheduleService {
 
   /**
    * Auto-schedule all unscheduled generated matches onto eligible courts within
-   * the tournament window (greedy first-available). Reserves atomically per
-   * match; a court/slot conflict on one match does not roll back the others —
-   * each match is an independent reservation (validated individually).
+   * the tournament window (greedy first-available).
+   *
+   * SEMANTICS (documented decision — RESUMABLE PARTIAL, explicit + recoverable):
+   *   * each match is an INDEPENDENT reservation (validated + reserved atomically);
+   *   * successful reservations remain AUTHORITATIVE (a retry skips already
+   *     scheduled matches and reserveCourt is idempotent → never double-booked);
+   *   * a failed match stays in its clear unscheduled state (resource_id NULL);
+   *   * OCCUPIED (slot unavailable) is counted as `conflicts`;
+   *   * VALIDATION (court/time/window/bye) is counted as `skipped`;
+   *   * a SYSTEM error (DB/Redis/locking failure) ABORTS the run (throws) — it is
+   *     NEVER interpreted as AVAILABLE, and further matches are not scheduled on
+   *     unverifiable availability.
    */
-  async autoSchedule(tournamentId: number, actorId: number): Promise<{ scheduled: number; skipped: number }> {
+  async autoSchedule(tournamentId: number, actorId: number): Promise<{ scheduled: number; conflicts: number; skipped: number }> {
     const t = await tournamentService.getByIdDetailed(tournamentId);
+    const formatCtx = await tournamentService.resolveMatchFormatContext(t);
+    const ruleDuration = Number(formatCtx.ruleSnapshot?.match_duration_minutes) || null;
     const matches = await tournamentRepository.findMatches(tournamentId);
     const courts = await tournamentRepository.findEligibleCourts(tournamentId);
     if (courts.length === 0) {
@@ -387,40 +457,57 @@ export class MatchScheduleService {
     }
     const real = matches.filter((m) => m.match_id != null && m.resource_id == null && m.status === 'scheduled');
     let scheduled = 0;
+    let conflicts = 0;
     let skipped = 0;
     for (const m of real) {
-      const found = await this.findFirstAvailableSlot(t, courts, m);
+      const found = await this.findFirstAvailableSlot(t, courts, m, ruleDuration);
       if (!found) {
-        skipped += 1;
+        conflicts += 1; // all candidate slots are occupied / exhausted
         continue;
       }
       try {
         await this.scheduleMatch(tournamentId, m.id!, found, actorId);
         scheduled += 1;
-      } catch {
-        skipped += 1;
+      } catch (err: any) {
+        const code = err?.code ?? err?.errorCode;
+        if (code === ErrorCodes.TOURNAMENT_COURT_UNAVAILABLE || code === ErrorCodes.COURT_SLOT_UNAVAILABLE) {
+          conflicts += 1;
+        } else if (code === ErrorCodes.TOURNAMENT_COURT_NOT_ELIGIBLE || code === ErrorCodes.TOURNAMENT_SCHEDULE_INVALID || code === ErrorCodes.TOURNAMENT_BYE_MATCH) {
+          skipped += 1;
+        } else {
+          // SYSTEM_ERROR (DB/Redis/locking) — fail safely, never treat as available.
+          throw err;
+        }
       }
     }
     await this.emit('tournament:schedule-updated', {
       tournamentId,
       scheduled,
+      conflicts,
       skipped,
       organisationId: t.organisation_id ?? null,
     });
-    return { scheduled, skipped };
+    return { scheduled, conflicts, skipped };
   }
 
-  /** Greedy: earliest eligible slot (date asc, start asc) across eligible courts. */
+  /**
+   * Greedy: earliest eligible slot (date asc, start asc) across eligible courts.
+   * Duration is derived from AUTHORITATIVE existing sources (no invented value):
+   *   1. sport/rule-set `match_duration_minutes` (e.g. football 90) when present;
+   *   2. the court's `slot_duration` (shared booking slot interval);
+   *   3. the shared booking default of 60 minutes.
+   * Availability infrastructure errors PROPAGATE (never interpreted as available).
+   */
   private async findFirstAvailableSlot(
     t: any,
-    courts: Array<{ id: number; name: string; opening_time: string | null; closing_time: string | null }>,
+    courts: Array<{ id: number; name: string; opening_time: string | null; closing_time: string | null; slot_duration: number | null }>,
     match: TournamentMatch,
+    ruleDuration: number | null,
   ): Promise<TournamentMatchScheduleInput | null> {
     const startDate = new Date(t.start_date ?? new Date().toISOString().slice(0, 10));
     const endDate = t.end_date ? new Date(t.end_date) : startDate;
     const dailyStart = String(t.daily_start_time ?? '08:00').slice(0, 5);
     const dailyEnd = String(t.daily_end_time ?? '22:00').slice(0, 5);
-    const slotMinutes = 60;
 
     const cursor = new Date(startDate);
     const last = new Date(endDate);
@@ -429,12 +516,14 @@ export class MatchScheduleService {
       for (const court of courts) {
         const opening = court.opening_time ? String(court.opening_time).slice(0, 5) : dailyStart;
         const closing = court.closing_time ? String(court.closing_time).slice(0, 5) : dailyEnd;
+        const slotMinutes = ruleDuration ?? (court.slot_duration != null ? Number(court.slot_duration) : null) ?? 60;
         let s = opening;
         while (s < closing) {
           const candidate = { date, start_time: s, end_time: this.addMinutes(s, slotMinutes), resource_id: court.id };
           if (candidate.end_time > closing) break;
           if (this.withinWindow(date, candidate.start_time, candidate.end_time, dailyStart, dailyEnd)) {
-            // Reuse the shared availability check without committing (best-effort).
+            // Shared availability check (best-effort placement hint). An
+            // infrastructure failure PROPAGATES — it is never 'available'.
             if (await this.slotAvailable(court.id, date, candidate.start_time, candidate.end_time)) {
               return candidate;
             }
@@ -446,13 +535,15 @@ export class MatchScheduleService {
     return null;
   }
 
+  /**
+   * Shared availability probe for auto-scheduling. Returns true ONLY when the
+   * authoritative check reports AVAILABLE. An OCCUPIED slot returns false. A
+   * database/Redis/locking failure is PROPAGATED (thrown) — it is NEVER
+   * interpreted as AVAILABLE (fail-safe).
+   */
   private async slotAvailable(resourceId: number, date: string, start: string, end: string): Promise<boolean> {
     const { bookingRepository } = await import('../../booking/infrastructure/repositories/booking.repository.js');
-    try {
-      return await bookingRepository.checkSlotAvailability(resourceId, date, [{ start, end, date }]);
-    } catch {
-      return true; // availability check is best-effort for auto-scheduling
-    }
+    return bookingRepository.checkSlotAvailability(resourceId, date, [{ start, end, date }]);
   }
 
   private withinWindow(date: string, start: string, end: string, dailyStart: string, dailyEnd: string): boolean {

@@ -499,16 +499,16 @@ export class TournamentRepository {
 
   // ── Matches ──
 
-  async createMatch(data: Partial<TournamentMatch>): Promise<number> {
-    const pool = getPool();
-    const [existing] = await pool.query<RowData>(
+  async createMatch(data: Partial<TournamentMatch>, conn?: PoolConnection): Promise<number> {
+    const db = conn ?? getPool();
+    const [existing] = await db.query<RowData>(
       'SELECT COALESCE(MAX(match_number), 0) + 1 AS next_num FROM tournament_matches WHERE tournament_id = ?',
       [data.tournament_id],
     );
     const matchNumber = data.match_number ?? existing[0]?.next_num ?? 1;
     const sql = `INSERT INTO tournament_matches (tournament_id, match_id, round, match_number, round_name, group_id, stage_id, bracket_position, player1_id, player2_id, participant1_id, participant2_id, winner_id, status, progression_state, progression_meta, resource_id, referee_id, start_time, score_summary)
                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
-    const [result] = await pool.query<ResultSet>(sql, [
+    const [result] = await db.query<ResultSet>(sql, [
       data.tournament_id, data.match_id ?? null, data.round, matchNumber, data.round_name ?? null,
       data.group_id ?? null, data.stage_id ?? null, data.bracket_position ?? 0,
       data.player1_id ?? null, data.player2_id ?? null, data.participant1_id ?? null, data.participant2_id ?? null,
@@ -570,8 +570,9 @@ export class TournamentRepository {
   }
 
   /** G8 — how many bracket slots (matches) already exist for the tournament. */
-  async countMatches(tournamentId: number): Promise<number> {
-    const [rows] = await getPool().query<RowData>(
+  async countMatches(tournamentId: number, conn?: PoolConnection): Promise<number> {
+    const db = conn ?? getPool();
+    const [rows] = await db.query<RowData>(
       'SELECT COUNT(*) AS c FROM tournament_matches WHERE tournament_id = ?',
       [tournamentId],
     );
@@ -579,9 +580,9 @@ export class TournamentRepository {
   }
 
   /** G8 — eligible courts: active resources of the tournament branch + sport. */
-  async findEligibleCourts(tournamentId: number): Promise<Array<{ id: number; name: string; branch_id: number; sport_id: number | null; opening_time: string | null; closing_time: string | null }>> {
+  async findEligibleCourts(tournamentId: number): Promise<Array<{ id: number; name: string; branch_id: number; sport_id: number | null; opening_time: string | null; closing_time: string | null; slot_duration: number | null }>> {
     const [rows] = await getPool().query<RowData>(
-      `SELECT r.id, r.name, r.branch_id, r.sport_id, r.opening_time, r.closing_time
+      `SELECT r.id, r.name, r.branch_id, r.sport_id, r.opening_time, r.closing_time, r.slot_duration
        FROM resources r
        JOIN tournaments t ON t.branch_id = r.branch_id
        WHERE t.id = ? AND r.is_active = 1 AND r.deleted_at IS NULL
@@ -589,7 +590,7 @@ export class TournamentRepository {
        ORDER BY r.name`,
       [tournamentId],
     );
-    return rows as Array<{ id: number; name: string; branch_id: number; sport_id: number | null; opening_time: string | null; closing_time: string | null }>;
+    return rows as Array<{ id: number; name: string; branch_id: number; sport_id: number | null; opening_time: string | null; closing_time: string | null; slot_duration: number | null }>;
   }
 
   async findMatchesByGroup(groupId: number): Promise<TournamentMatch[]> {

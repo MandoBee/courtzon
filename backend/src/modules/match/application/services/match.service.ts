@@ -175,11 +175,14 @@ export class MatchService {
     formatSnapshot: MatchFormatSnapshot;
     ruleSnapshot: Record<string, unknown>;
     participants: Array<{ userId: number; side: 'home' | 'away'; teamIndex: number; role?: 'host' | 'joiner' }>;
+    /** G8 — when provided, the caller owns the transaction (atomic generation); otherwise this method opens its own. */
+    conn?: mysql.PoolConnection;
   }): Promise<Match> {
     const pool = getPool();
-    const conn = await pool.getConnection();
+    const external = input.conn;
+    const conn = external ?? await pool.getConnection();
     try {
-      await conn.beginTransaction();
+      if (!external) await conn.beginTransaction();
 
       const [matchResult] = await conn.execute<mysql.ResultSetHeader>(
         `INSERT INTO matches (type, status, booking_id, sport_id, tournament_id, format_id, format_snapshot, rule_set_id, rule_snapshot)
@@ -197,7 +200,7 @@ export class MatchService {
         );
       }
 
-      await conn.commit();
+      if (!external) await conn.commit();
 
       const match = await matchRepository.findById(matchId);
       if (!match) {
@@ -217,10 +220,10 @@ export class MatchService {
 
       return match;
     } catch (err) {
-      await conn.rollback();
+      if (!external) await conn.rollback();
       throw err;
     } finally {
-      conn.release();
+      if (!external) conn.release();
     }
   }
 
