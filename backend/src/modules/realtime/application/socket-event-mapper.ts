@@ -435,6 +435,16 @@ function mapTournamentEvent(eventName: string, p: Record<string, any>): MappedSo
       removedUserId: p.removedUserId,
       requestId: p.requestId,
       status: p.status,
+      // Group 8 — match generation / scheduling / court reservation state.
+      generated: p.generated,
+      byes: p.byes,
+      resourceId: p.resourceId,
+      date: p.date,
+      startTime: p.startTime,
+      endTime: p.endTime,
+      bookingId: p.bookingId,
+      scheduled: p.scheduled,
+      skipped: p.skipped,
     },
     rooms,
   };

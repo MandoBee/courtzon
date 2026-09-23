@@ -158,6 +158,17 @@ export const tournamentParticipantApi = {
     api.post(`/admin/tournaments/${tournamentId}/replacement-requests/${requestId}/reject`, { reason }).then(r => r.data),
   cancelReplacementRequest: (tournamentId: number, requestId: number) =>
     api.post(`/admin/tournaments/${tournamentId}/replacement-requests/${requestId}/cancel`).then(r => r.data),
+  // Group 8 — match generation, scheduling & court reservation
+  generateMatches: (tournamentId: number) =>
+    api.post(`/admin/tournaments/${tournamentId}/matches/generate`).then(r => r.data),
+  getEligibleCourts: (tournamentId: number) =>
+    api.get(`/admin/tournaments/${tournamentId}/matches/eligible-courts`).then(r => r.data),
+  scheduleMatch: (tournamentId: number, matchId: number, data: { date: string; start_time: string; end_time: string; resource_id: number }) =>
+    api.post(`/admin/tournaments/${tournamentId}/matches/${matchId}/schedule`, data).then(r => r.data),
+  autoSchedule: (tournamentId: number) =>
+    api.post(`/admin/tournaments/${tournamentId}/matches/auto-schedule`).then(r => r.data),
+  releaseMatchCourt: (tournamentId: number, matchId: number) =>
+    api.post(`/admin/tournaments/${tournamentId}/matches/${matchId}/release-court`).then(r => r.data),
 };
 
 export const orgTournamentParticipantApi = {
@@ -201,4 +212,15 @@ export const orgTournamentParticipantApi = {
     api.post(`/org/${orgId}/tournaments/${tournamentId}/replacement-requests/${requestId}/reject`, { reason }).then(r => r.data),
   cancelReplacementRequest: (orgId: number | string, tournamentId: number, requestId: number) =>
     api.post(`/org/${orgId}/tournaments/${tournamentId}/replacement-requests/${requestId}/cancel`).then(r => r.data),
+  // Group 8 — match generation, scheduling & court reservation (org)
+  generateMatches: (orgId: number | string, tournamentId: number) =>
+    api.post(`/org/${orgId}/tournaments/${tournamentId}/matches/generate`).then(r => r.data),
+  getEligibleCourts: (orgId: number | string, tournamentId: number) =>
+    api.get(`/org/${orgId}/tournaments/${tournamentId}/matches/eligible-courts`).then(r => r.data),
+  scheduleMatch: (orgId: number | string, tournamentId: number, matchId: number, data: { date: string; start_time: string; end_time: string; resource_id: number }) =>
+    api.post(`/org/${orgId}/tournaments/${tournamentId}/matches/${matchId}/schedule`, data).then(r => r.data),
+  autoSchedule: (orgId: number | string, tournamentId: number) =>
+    api.post(`/org/${orgId}/tournaments/${tournamentId}/matches/auto-schedule`).then(r => r.data),
+  releaseMatchCourt: (orgId: number | string, tournamentId: number, matchId: number) =>
+    api.post(`/org/${orgId}/tournaments/${tournamentId}/matches/${matchId}/release-court`).then(r => r.data),
 };

@@ -38,6 +38,13 @@ export async function tournamentRoutes(app: FastifyInstance): Promise<void> {
   app.post('/admin/tournaments/:id/replacement-requests/:requestId/reject', { preHandler: [requirePermission(['tournament.manage'])] }, pdCtrl.rejectReplacementRequestHandler);
   app.post('/admin/tournaments/:id/replacement-requests/:requestId/cancel', { preHandler: [requirePermission(['tournament.manage'])] }, pdCtrl.cancelReplacementRequestHandler);
 
+  // ── Group 8 — match generation, scheduling & court reservation (admin) ──
+  app.post('/admin/tournaments/:id/matches/generate', { preHandler: [requirePermission(['tournament.manage'])] }, pdCtrl.generateMatchesHandler);
+  app.get('/admin/tournaments/:id/matches/eligible-courts', { preHandler: [requirePermission(['tournament.view'])] }, pdCtrl.listEligibleCourtsHandler);
+  app.post('/admin/tournaments/:id/matches/:matchId/schedule', { preHandler: [requirePermission(['tournament.manage'])] }, pdCtrl.scheduleMatchHandler);
+  app.post('/admin/tournaments/:id/matches/auto-schedule', { preHandler: [requirePermission(['tournament.manage'])] }, pdCtrl.autoScheduleHandler);
+  app.post('/admin/tournaments/:id/matches/:matchId/release-court', { preHandler: [requirePermission(['tournament.manage'])] }, pdCtrl.releaseMatchCourtHandler);
+
   // ── Admin routes ──
 
   app.get('/admin/tournaments/dashboard', { preHandler: [requirePermission(['tournament.dashboard.view'])] }, ctrl.getDashboardHandler);

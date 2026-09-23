@@ -376,6 +376,9 @@ export interface TournamentMatch {
   bracket_position?: number | null;
   player1_id?: number | null;
   player2_id?: number | null;
+  /** Group 8 — authoritative competitive-unit references (tournament_participants). */
+  participant1_id?: number | null;
+  participant2_id?: number | null;
   winner_id?: number | null;
   status: MatchStatus;
   /** Group 5B — progression lifecycle: pending | ready | bye | completed | cancelled. */
@@ -387,6 +390,24 @@ export interface TournamentMatch {
   start_time?: string | null;
   end_time?: string | null;
   score_summary?: string | null;
+  /** Joined (G8) — court reservation state via the shared Match → booking. */
+  booking_id?: number | null;
+  participant1_name?: string | null;
+  participant2_name?: string | null;
+  resource_name?: string | null;
+  booking_status?: string | null;
+}
+
+/** Group 8 — court/venue schedule candidate for a tournament match. */
+export interface TournamentMatchScheduleInput {
+  /** Branch-local booking date (YYYY-MM-DD). */
+  date: string;
+  /** Branch-local start time (HH:MM). */
+  start_time: string;
+  /** Branch-local end time (HH:MM). */
+  end_time: string;
+  /** Court/resource id (must belong to the tournament branch + sport). */
+  resource_id: number;
 }
 
 /** Group 5A — a bye is explicit bracket metadata, never a fake participant. */

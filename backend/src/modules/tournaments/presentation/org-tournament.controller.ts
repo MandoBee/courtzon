@@ -538,3 +538,53 @@ export async function cancelOrgReplacementRequestHandler(request: FastifyRequest
   const { participantMemberService } = await import('../application/participant-member.service.js');
   return reply.send(await participantMemberService.cancelReplacementRequest(Number(id), Number(requestId), userId));
 }
+
+// ── Group 8 — org-scoped match generation, scheduling & court reservation ──
+// Same authoritative matchScheduleService as the admin workbench; every handler
+// asserts the tournament belongs to :orgId first (tenant isolation).
+
+export async function generateOrgMatchesHandler(request: FastifyRequest, reply: FastifyReply) {
+  const orgId = getOrgId(request);
+  const userId = getUserId(request);
+  const { id } = request.params as any;
+  await assertOrgOwnsTournament(orgId, Number(id));
+  const { matchScheduleService } = await import('../application/match-schedule.service.js');
+  return reply.status(201).send(await matchScheduleService.generateMatchesFromLockedDraw(Number(id), userId));
+}
+
+export async function listOrgEligibleCourtsHandler(request: FastifyRequest, reply: FastifyReply) {
+  const orgId = getOrgId(request);
+  const { id } = request.params as any;
+  await assertOrgOwnsTournament(orgId, Number(id));
+  const { matchScheduleService } = await import('../application/match-schedule.service.js');
+  return reply.send({ data: await matchScheduleService.listEligibleCourts(Number(id)) });
+}
+
+export async function scheduleOrgMatchHandler(request: FastifyRequest, reply: FastifyReply) {
+  const orgId = getOrgId(request);
+  const userId = getUserId(request);
+  const { id, matchId } = request.params as any;
+  await assertOrgOwnsTournament(orgId, Number(id));
+  const { ScheduleMatchSchema } = await import('./tournament.dto.js');
+  const body = ScheduleMatchSchema.parse(request.body);
+  const { matchScheduleService } = await import('../application/match-schedule.service.js');
+  return reply.send(await matchScheduleService.scheduleMatch(Number(id), Number(matchId), { date: body.date, start_time: body.start_time, end_time: body.end_time, resource_id: body.resource_id }, userId));
+}
+
+export async function autoScheduleOrgHandler(request: FastifyRequest, reply: FastifyReply) {
+  const orgId = getOrgId(request);
+  const userId = getUserId(request);
+  const { id } = request.params as any;
+  await assertOrgOwnsTournament(orgId, Number(id));
+  const { matchScheduleService } = await import('../application/match-schedule.service.js');
+  return reply.send(await matchScheduleService.autoSchedule(Number(id), userId));
+}
+
+export async function releaseOrgMatchCourtHandler(request: FastifyRequest, reply: FastifyReply) {
+  const orgId = getOrgId(request);
+  const userId = getUserId(request);
+  const { id, matchId } = request.params as any;
+  await assertOrgOwnsTournament(orgId, Number(id));
+  const { matchScheduleService } = await import('../application/match-schedule.service.js');
+  return reply.send(await matchScheduleService.releaseMatchCourt(Number(id), Number(matchId), userId));
+}

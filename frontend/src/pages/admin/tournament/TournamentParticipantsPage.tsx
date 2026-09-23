@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from '../../../i18n';
 import { useToast } from '../../../components/ui/Toast';
@@ -37,6 +37,7 @@ export default function TournamentParticipantsPage({ mode = 'admin', orgId: orgI
   const params = useParams<{ id: string; orgId?: string }>();
   const tournamentId = Number(params.id);
   const orgId = orgIdProp ?? params.orgId;
+  const navigate = useNavigate();
   const { t } = useTranslation();
   const { showToast } = useToast();
   const qc = useQueryClient();
@@ -207,6 +208,14 @@ export default function TournamentParticipantsPage({ mode = 'admin', orgId: orgI
         <h1 className="text-xl font-bold text-[var(--color-text)]">{t('tournaments.participants', 'Participants & Seeding')}</h1>
         <div className="flex gap-2">
           <Can permission={managePerm}>
+            <button onClick={() => navigate(isOrg ? `/org/${orgId}/tournaments/${tournamentId}/draw` : `/admin/tournament/list/${tournamentId}/draw`)}
+              className="px-3 py-1.5 text-xs font-medium rounded-[var(--radius-md)] border border-[var(--color-border)] text-[var(--color-text)]">
+              {t('tournaments.draw', 'Draw')}
+            </button>
+            <button onClick={() => navigate(isOrg ? `/org/${orgId}/tournaments/${tournamentId}/schedule` : `/admin/tournament/list/${tournamentId}/schedule`)}
+              className="px-3 py-1.5 text-xs font-medium rounded-[var(--radius-md)] border border-[var(--color-border)] text-[var(--color-text)]">
+              {t('tournaments.matches_schedule', 'Matches & Schedule')}
+            </button>
             <button onClick={() => setCreateTarget({ type: 'pair' })}
               className="px-3 py-1.5 text-xs font-medium rounded-[var(--radius-md)] bg-[var(--color-primary)] text-white">
               {t('tournaments.create_pair', 'Add Pair')}

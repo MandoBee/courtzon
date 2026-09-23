@@ -253,6 +253,23 @@ export const ReviewReplacementSchema = z.object({
   reason: z.string().max(255).optional(),
 });
 
+// ── Group 8 — match generation, scheduling & court reservation ──
+
+/** Schedule a generated tournament match on a court within the tournament window. */
+export const ScheduleMatchSchema = z.object({
+  /** Branch-local booking date (YYYY-MM-DD). */
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD date format'),
+  /** Branch-local start time (HH:MM). */
+  start_time: z.string().regex(/^\d{2}:\d{2}(:\d{2})?$/, 'Use HH:MM time format'),
+  /** Branch-local end time (HH:MM; may cross midnight). */
+  end_time: z.string().regex(/^\d{2}:\d{2}(:\d{2})?$/, 'Use HH:MM time format'),
+  /** Court/resource id (must belong to the tournament branch + sport). */
+  resource_id: z.number().int().positive(),
+});
+
+/** Generate tournament matches from the locked draw (empty body). */
+export const GenerateMatchesSchema = z.object({}).optional();
+
 export type CreateTournamentInput = z.infer<typeof CreateTournamentSchema>;
 export type UpdateTournamentInput = z.infer<typeof UpdateTournamentSchema>;
 export type ListTournamentsQuery = z.infer<typeof ListTournamentsQuerySchema>;

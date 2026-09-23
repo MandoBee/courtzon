@@ -506,12 +506,13 @@ export class TournamentRepository {
       [data.tournament_id],
     );
     const matchNumber = data.match_number ?? existing[0]?.next_num ?? 1;
-    const sql = `INSERT INTO tournament_matches (tournament_id, match_id, round, match_number, round_name, group_id, stage_id, bracket_position, player1_id, player2_id, winner_id, status, progression_state, progression_meta, resource_id, referee_id, start_time, score_summary)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+    const sql = `INSERT INTO tournament_matches (tournament_id, match_id, round, match_number, round_name, group_id, stage_id, bracket_position, player1_id, player2_id, participant1_id, participant2_id, winner_id, status, progression_state, progression_meta, resource_id, referee_id, start_time, score_summary)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
     const [result] = await pool.query<ResultSet>(sql, [
       data.tournament_id, data.match_id ?? null, data.round, matchNumber, data.round_name ?? null,
       data.group_id ?? null, data.stage_id ?? null, data.bracket_position ?? 0,
-      data.player1_id ?? null, data.player2_id ?? null, data.winner_id ?? null,
+      data.player1_id ?? null, data.player2_id ?? null, data.participant1_id ?? null, data.participant2_id ?? null,
+      data.winner_id ?? null,
       data.status ?? 'scheduled', data.progression_state ?? 'pending',
       data.progression_meta ? (typeof data.progression_meta === 'object' ? JSON.stringify(data.progression_meta) : data.progression_meta) : null,
       data.resource_id ?? null, data.referee_id ?? null,
@@ -545,15 +546,19 @@ export class TournamentRepository {
     referee_name?: string | null;
   }>> {
     const [rows] = await getPool().query<RowData>(
-      `SELECT tm.*, m.status AS shared_status, m.format_snapshot, m.rule_snapshot,
+      `SELECT tm.*, m.status AS shared_status, m.format_snapshot, m.rule_snapshot, m.booking_id,
               p1.full_name AS player1_name,
               p2.full_name AS player2_name,
+              tp1.name AS participant1_name,
+              tp2.name AS participant2_name,
               r.name AS resource_name,
               refu.full_name AS referee_name
        FROM tournament_matches tm
        LEFT JOIN matches m ON m.id = tm.match_id
        LEFT JOIN users p1 ON p1.id = tm.player1_id
        LEFT JOIN users p2 ON p2.id = tm.player2_id
+       LEFT JOIN tournament_participants tp1 ON tp1.id = tm.participant1_id
+       LEFT JOIN tournament_participants tp2 ON tp2.id = tm.participant2_id
        LEFT JOIN resources r ON r.id = tm.resource_id
        LEFT JOIN referees ref ON ref.id = tm.referee_id
        LEFT JOIN users refu ON refu.id = ref.user_id
@@ -562,6 +567,29 @@ export class TournamentRepository {
       [tournamentId],
     );
     return rows as Array<TournamentMatch & { shared_status?: string | null; format_snapshot?: unknown; rule_snapshot?: unknown; player1_name?: string | null; player2_name?: string | null; resource_name?: string | null; referee_name?: string | null }>;
+  }
+
+  /** G8 — how many bracket slots (matches) already exist for the tournament. */
+  async countMatches(tournamentId: number): Promise<number> {
+    const [rows] = await getPool().query<RowData>(
+      'SELECT COUNT(*) AS c FROM tournament_matches WHERE tournament_id = ?',
+      [tournamentId],
+    );
+    return Number(rows[0]?.c ?? 0);
+  }
+
+  /** G8 — eligible courts: active resources of the tournament branch + sport. */
+  async findEligibleCourts(tournamentId: number): Promise<Array<{ id: number; name: string; branch_id: number; sport_id: number | null; opening_time: string | null; closing_time: string | null }>> {
+    const [rows] = await getPool().query<RowData>(
+      `SELECT r.id, r.name, r.branch_id, r.sport_id, r.opening_time, r.closing_time
+       FROM resources r
+       JOIN tournaments t ON t.branch_id = r.branch_id
+       WHERE t.id = ? AND r.is_active = 1 AND r.deleted_at IS NULL
+         AND (r.sport_id IS NULL OR r.sport_id = t.sport_id)
+       ORDER BY r.name`,
+      [tournamentId],
+    );
+    return rows as Array<{ id: number; name: string; branch_id: number; sport_id: number | null; opening_time: string | null; closing_time: string | null }>;
   }
 
   async findMatchesByGroup(groupId: number): Promise<TournamentMatch[]> {
@@ -583,7 +611,7 @@ export class TournamentRepository {
     const params: any[] = [];
     const updatable: (keyof TournamentMatch)[] = [
       'round', 'match_number', 'round_name', 'group_id', 'bracket_position',
-      'player1_id', 'player2_id', 'winner_id', 'status', 'resource_id',
+      'player1_id', 'player2_id', 'participant1_id', 'participant2_id', 'winner_id', 'status', 'resource_id',
       'referee_id', 'start_time', 'end_time', 'score_summary',
       'match_id', 'stage_id', 'progression_state',
     ];

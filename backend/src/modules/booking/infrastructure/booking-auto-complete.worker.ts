@@ -25,9 +25,14 @@ async function completeBooking(bookingId: number): Promise<void> {
 export async function handleAutoCompleteBookings(): Promise<void> {
   const pool = getPool();
 
+  // booking_type='tournament' rows are G8 NON-FINANCIAL court reservations —
+  // they must never be auto-completed into the financial booking lifecycle
+  // (which would emit booking:completed / notifications). Match progress is
+  // owned by the tournament engine.
   const [completed] = await pool.execute<any[]>(
     `SELECT id, user_id, organisation_id FROM bookings
      WHERE booking_status = 'confirmed'
+       AND booking_type != 'tournament'
        AND CONCAT(booking_date, ' ', start_time) < NOW()`
   );
 

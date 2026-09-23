@@ -277,6 +277,33 @@ export async function orgTournamentRoutes(app: FastifyInstance): Promise<void> {
     ctrl.cancelOrgReplacementRequestHandler,
   );
 
+  // ── Group 8 — org-scoped match generation, scheduling & court reservation ──
+  app.post(
+    '/org/:orgId/tournaments/:id/matches/generate',
+    { preHandler: [requireOrgScopedPermission('org.tournaments.manage')] },
+    ctrl.generateOrgMatchesHandler,
+  );
+  app.get(
+    '/org/:orgId/tournaments/:id/matches/eligible-courts',
+    { preHandler: [requireOrgScopedPermission('org.tournaments.view')] },
+    ctrl.listOrgEligibleCourtsHandler,
+  );
+  app.post(
+    '/org/:orgId/tournaments/:id/matches/:matchId/schedule',
+    { preHandler: [requireOrgScopedPermission('org.tournaments.manage')] },
+    ctrl.scheduleOrgMatchHandler,
+  );
+  app.post(
+    '/org/:orgId/tournaments/:id/matches/auto-schedule',
+    { preHandler: [requireOrgScopedPermission('org.tournaments.manage')] },
+    ctrl.autoScheduleOrgHandler,
+  );
+  app.post(
+    '/org/:orgId/tournaments/:id/matches/:matchId/release-court',
+    { preHandler: [requireOrgScopedPermission('org.tournaments.manage')] },
+    ctrl.releaseOrgMatchCourtHandler,
+  );
+
   // ── Match operations ──
   app.put(
     '/org/:orgId/tournaments/matches/:matchId/court',

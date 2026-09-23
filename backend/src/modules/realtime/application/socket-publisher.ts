@@ -85,6 +85,8 @@ export class SocketPublisher {
       'tournament:waitlist-promoted',
       'tournament:participant-created', 'tournament:participant-members-updated',
       'tournament:replacement-request-updated',
+      'tournament:matches-generated', 'tournament:schedule-updated',
+      'tournament:court-reserved', 'tournament:court-released',
       'setting:updated', 'setting:profile-applied',
       'accounting:entry-recorded',
       'user:suspended', 'user:activated', 'user:deleted', 'user.role.changed',

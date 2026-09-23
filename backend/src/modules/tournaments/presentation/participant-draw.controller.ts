@@ -7,7 +7,9 @@ import {
   CreatePairParticipantSchema, CreateTeamParticipantSchema,
   AddParticipantMemberSchema, RemoveParticipantMemberSchema,
   CreateReplacementRequestSchema, ReviewReplacementSchema,
+  ScheduleMatchSchema, GenerateMatchesSchema,
 } from './tournament.dto.js';
+import { matchScheduleService } from '../application/match-schedule.service.js';
 
 function getUserId(request: FastifyRequest): number { return (request as any).userId; }
 
@@ -181,5 +183,43 @@ export async function cancelReplacementRequestHandler(request: FastifyRequest, r
   const userId = getUserId(request);
   const { id, requestId } = request.params as any;
   const result = await participantMemberService.cancelReplacementRequest(Number(id), Number(requestId), userId);
+  return reply.send(result);
+}
+
+// ── Group 8 — match generation, scheduling & court reservation (admin) ──
+
+export async function generateMatchesHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = getUserId(request);
+  const { id } = request.params as any;
+  GenerateMatchesSchema?.parse(request.body ?? {});
+  const result = await matchScheduleService.generateMatchesFromLockedDraw(Number(id), userId);
+  return reply.status(201).send(result);
+}
+
+export async function listEligibleCourtsHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { id } = request.params as any;
+  const data = await matchScheduleService.listEligibleCourts(Number(id));
+  return reply.send({ data });
+}
+
+export async function scheduleMatchHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = getUserId(request);
+  const { id, matchId } = request.params as any;
+  const body = ScheduleMatchSchema.parse(request.body);
+  const result = await matchScheduleService.scheduleMatch(Number(id), Number(matchId), { date: body.date, start_time: body.start_time, end_time: body.end_time, resource_id: body.resource_id }, userId);
+  return reply.send(result);
+}
+
+export async function autoScheduleHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = getUserId(request);
+  const { id } = request.params as any;
+  const result = await matchScheduleService.autoSchedule(Number(id), userId);
+  return reply.send(result);
+}
+
+export async function releaseMatchCourtHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = getUserId(request);
+  const { id, matchId } = request.params as any;
+  const result = await matchScheduleService.releaseMatchCourt(Number(id), Number(matchId), userId);
   return reply.send(result);
 }

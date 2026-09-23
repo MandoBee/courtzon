@@ -849,7 +849,7 @@ CREATE TABLE `bookings` (
   `organisation_id` bigint unsigned NOT NULL,
   `resource_id` bigint unsigned NOT NULL,
   `branch_id` int unsigned DEFAULT NULL COMMENT 'Denormalized from resource for branch-level accounting',
-  `booking_type` enum('public_match','private_match','academy','clinic','coach_session') COLLATE utf8mb4_unicode_ci NOT NULL,
+  `booking_type` enum('public_match','private_match','academy','clinic','coach_session','tournament') COLLATE utf8mb4_unicode_ci NOT NULL COMMENT 'tournament = non-financial court reservation for a tournament match',
   `visibility` enum('public','private') COLLATE utf8mb4_unicode_ci DEFAULT 'public',
   `start_at_utc` timestamp NULL DEFAULT NULL COMMENT 'Absolute start time in UTC. Source of truth for all time operations.',
   `end_at_utc` timestamp NULL DEFAULT NULL COMMENT 'Absolute end time in UTC. Source of truth for all time operations.',
@@ -5663,6 +5663,8 @@ CREATE TABLE `tournament_matches` (
   `bracket_position` int unsigned DEFAULT NULL,
   `player1_id` int unsigned DEFAULT NULL,
   `player2_id` int unsigned DEFAULT NULL,
+  `participant1_id` int unsigned DEFAULT NULL COMMENT 'Authoritative participant (tournament_participants) on side 1 of the bracket slot',
+  `participant2_id` int unsigned DEFAULT NULL COMMENT 'Authoritative participant (tournament_participants) on side 2 of the bracket slot',
   `resource_id` int unsigned DEFAULT NULL COMMENT 'Linked resource allocation',
   `referee_id` int unsigned DEFAULT NULL,
   `start_time` datetime DEFAULT NULL,
@@ -5686,12 +5688,16 @@ CREATE TABLE `tournament_matches` (
   KEY `idx_tm_match` (`match_id`),
   KEY `idx_tm_stage` (`stage_id`),
   KEY `idx_tm_progression` (`tournament_id`, `round`, `bracket_position`),
+  KEY `idx_tm_participant1` (`participant1_id`),
+  KEY `idx_tm_participant2` (`participant2_id`),
   CONSTRAINT `fk_match_player1` FOREIGN KEY (`player1_id`) REFERENCES `users` (`id`) ON DELETE SET NULL,
   CONSTRAINT `fk_match_player2` FOREIGN KEY (`player2_id`) REFERENCES `users` (`id`) ON DELETE SET NULL,
   CONSTRAINT `fk_match_resource` FOREIGN KEY (`resource_id`) REFERENCES `resources` (`id`) ON DELETE SET NULL,
   CONSTRAINT `fk_match_tourn` FOREIGN KEY (`tournament_id`) REFERENCES `tournaments` (`id`) ON DELETE CASCADE,
   CONSTRAINT `fk_tm_stage` FOREIGN KEY (`stage_id`) REFERENCES `tournament_stages` (`id`) ON DELETE SET NULL,
-  CONSTRAINT `fk_tm_match` FOREIGN KEY (`match_id`) REFERENCES `matches` (`id`) ON DELETE RESTRICT
+  CONSTRAINT `fk_tm_match` FOREIGN KEY (`match_id`) REFERENCES `matches` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_tm_participant1` FOREIGN KEY (`participant1_id`) REFERENCES `tournament_participants` (`id`) ON DELETE SET NULL,
+  CONSTRAINT `fk_tm_participant2` FOREIGN KEY (`participant2_id`) REFERENCES `tournament_participants` (`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 DROP TABLE IF EXISTS `tournament_prizes`;

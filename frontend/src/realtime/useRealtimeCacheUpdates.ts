@@ -859,6 +859,20 @@ export function useRealtimeCacheUpdates(): void {
     });
   }
 
+  // Group 8 — match generation + schedule + court reservation state changes
+  // refresh the tournament matches + schedule + courts caches live.
+  for (const ev of ['tournament.matches-generated', 'tournament.schedule-updated', 'tournament.court-reserved', 'tournament.court-released']) {
+    useSocketEvent(ev, (p: any) => {
+      invalidateTournament(qc, p?.tournamentId);
+      if (p?.tournamentId) {
+        qc.invalidateQueries({ queryKey: ['tournament-matches', p.tournamentId] });
+        qc.invalidateQueries({ queryKey: ['tournament', String(p.tournamentId), 'matches'] });
+        qc.invalidateQueries({ queryKey: ['tournament-courts', p.tournamentId] });
+        qc.invalidateQueries({ queryKey: ['tournament-schedule', p.tournamentId] });
+      }
+    });
+  }
+
   // ── Presence events ────────────────────────────────────────────
   useSocketEvent('presence.online', (p: any) => {
     qc.setQueryData(['user-presence', p.userId], () => true);

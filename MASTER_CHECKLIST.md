@@ -174,9 +174,68 @@ operates on the PARTICIPANT — never per-user). Migration:
   post-start walkover/forfeit engine, tournament accounting/settlement/payout,
   academy/marketplace, manual UAT.
 
-### G8 — Match Generation + Court Reservation 🔜 NOT STARTED
-- consume the shared booking/slot reservation source of truth once the match
-  schedule exists; no Tournament-specific reservation mechanism.
+### G8 — Match Generation + Court Reservation ✅ DONE (granular)
+Participant-based match generation from a LOCKED draw + scheduling + SHARED
+court reservation. Migration: `175_tournament_match_generation_schedule.sql`
+(PRODUCTION_SAFE) + baseline: `tournament_matches.participant1_id/participant2_id`
+(authoritative competitive-unit refs), `bookings.booking_type += 'tournament'`.
+The actual reservation lives in the SHARED `bookings`/`booking_slots` tables
+(one source of truth) — there is NO tournament_court_reservations table.
+
+- **G8A Draw UI** ✅ — new TournamentDrawPage (admin + org) with drag & drop
+  (@dnd-kit), participant sidebar (seeds, rating snapshot, pair/team members),
+  droppable draw positions grouped into matches, explicit warnings (seed
+  violation, missing participants, finalized draw), mobile-friendly. Seeds and
+  participant identity are NEVER changed by a move.
+- **G8B Draw validation/finalization** ✅ — the LOCKED draw is the ONLY source
+  of truth for match generation (draft/approved rejected); seeds immutable;
+  moveParticipant surfaces seeding-rule violations explicitly (never silently
+  fixed); approve → lock lifecycle preserved.
+- **G8C Match generation** ✅ — generateMatchesFromLockedDraw: participant-based
+  slots (knockout/round-robin via existing generators); each real match gets a
+  shared `matches` row (createForTournament) with frozen format + rule
+  snapshots and ALL members written to match_participants with explicit
+  side/team_index (doubles/team never guessed from insertion order);
+  historical player1_id/player2_id kept (primary member) for backward
+  compatibility; byes = bracket metadata (match_number 0, NO shared match, NO
+  court); unsupported brackets return a structured error (never wrong matches).
+- **G8D Match scheduling** ✅ — scheduleMatch validates the tournament window
+  (start/end dates, daily playing window, court hours, branch timezone via
+  TimeEngine) then persists resource_id/start_time/end_time on the bracket slot.
+- **G8E Court selection/assignment** ✅ — listEligibleCourts = active resources
+  of the tournament branch + sport (smallest correct config, no new table);
+  schedule/auto-schedule across them; existing assignCourt preserved.
+- **G8F Shared court reservation** ✅ — courtReservationService (booking module):
+  reuses `bookings` + `booking_slots` + `bookingRepository.checkSlotAvailability`
+  (normal + academy overlap) + `redisLock` + `resources` FOR UPDATE. NON-FINANCIAL
+  (total 0, confirmed, no payment/accounting/wallet). Linked via the existing
+  UNIQUE `matches.booking_id`. The booking auto-complete worker skips
+  booking_type='tournament'.
+- **G8G Conflict/rollback/idempotency** ✅ — every reservation is transactional
+  (rollback on any failure); idempotent (matches.booking_id → no double book);
+  conflicts with normal/academy bookings surfaced as unavailable; release path
+  frees booking_slots + clears the match link. Verified at the DB level (a
+  tournament booking is detected by the shared overlap query).
+- **G8H Realtime** ✅ — tournament:matches-generated / schedule-updated /
+  court-reserved / court-released via EventBusV2 → SocketPublisher → Socket.IO
+  (admin + org rooms) + frontend cache invalidation; no direct socket.emit.
+- **G8I RBAC** ✅ — reuses tournament.manage / org.tournaments.manage (view:
+  tournament.view); tenant isolation via assertOrgOwnsTournament; shop-admin
+  excluded.
+- **G8J Regression tests** ✅ — match-schedule.service.spec (17): locked-draw
+  gate, already-generated guard, participant-based slots, doubles/team member
+  sides, bye handling, unsupported bracket, schedule window/time/court
+  validation, availability conflict, idempotency, release, tenant isolation,
+  realtime; DrawPage frontend spec (5). Full backend 2202 passed (5
+  pre-existing date); full frontend 675 passed (1 pre-existing date).
+- **G8K Docker/GitHub** ✅ — images rebuilt, containers healthy, migration
+  applied + recorded locally, committed + pushed to origin/master.
+- **NOT in G8**: accounting, prize payout, settlement, player withdrawals,
+  rating changes, new payment gateway logic, wallet, post-start
+  walkover/forfeit engine, full result/rating redesign — later groups.
+  Double-elimination / swiss / mixed / league brackets remain NOT implemented
+  for match generation (structured error), consistent with the deferred
+  bracket engine work.
 
 ### G9 — Match Progression 🔜 NOT STARTED
 ### G10 — Tournament Realtime 🔜 NOT STARTED

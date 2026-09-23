@@ -123,7 +123,7 @@ export interface DomainEventMap {
   'tournament:completed': BaseEvent & { tournamentId: number; name: string; winnerId?: number | null; winnerName?: string | null };
   'tournament:registration-paid': BaseEvent & { tournamentId: number; registrationId: number; userId?: number; organisationId?: number | null; paymentId?: number | null };
   'tournament:registration-payment-methods-updated': BaseEvent & { tournamentId: number; organisationId?: number | null; methods: string[] };
-  'tournament:schedule-updated': BaseEvent & { tournamentId: number; organisationId?: number | null; startDate?: string | null; endDate?: string | null; registrationCloses?: string | null; branchId?: number | null; dailyStartTime?: string | null; dailyEndTime?: string | null };
+  'tournament:schedule-updated': BaseEvent & { tournamentId: number; organisationId?: number | null; startDate?: string | null; endDate?: string | null; registrationCloses?: string | null; branchId?: number | null; dailyStartTime?: string | null; dailyEndTime?: string | null; matchId?: number; resourceId?: number; date?: string; startTime?: string; endTime?: string; bookingId?: number; scheduled?: number; skipped?: number };
   'tournament:seed-updated': BaseEvent & { tournamentId: number; participantId: number; seedNumber: number; source: string };
   'tournament:draw-generated': BaseEvent & { tournamentId: number; attemptNumber: number; drawSeed: number; status: string };
   'tournament:draw-updated': BaseEvent & { tournamentId: number; drawId: number; status?: string; validationStatus?: string };
@@ -134,6 +134,9 @@ export interface DomainEventMap {
   'tournament:participant-created': BaseEvent & { tournamentId: number; participantId: number; participantType: string; memberUserIds?: number[]; organisationId?: number | null };
   'tournament:participant-members-updated': BaseEvent & { tournamentId: number; participantId: number; memberUserIds?: number[]; addedUserId?: number; removedUserId?: number; organisationId?: number | null };
   'tournament:replacement-request-updated': BaseEvent & { tournamentId: number; participantId: number; requestId: number; status: string; organisationId?: number | null };
+  'tournament:matches-generated': BaseEvent & { tournamentId: number; generated: number; byes: number; organisationId?: number | null };
+  'tournament:court-reserved': BaseEvent & { tournamentId: number; matchId: number; resourceId: number; bookingId: number; organisationId?: number | null };
+  'tournament:court-released': BaseEvent & { tournamentId: number; matchId: number; bookingId?: number | null; organisationId?: number | null };
   'match:invitation': BaseEvent & { bookingId: number; userId: number; senderId: number; startTime?: Date; actions?: any[] };
   'community:new-post': BaseEvent & { postId: number; userId: number; communityName: string };
   'community:new-comment': BaseEvent & { commentId: number; postId: number; userId: number; authorName: string };

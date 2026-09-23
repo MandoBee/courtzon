@@ -1208,9 +1208,10 @@ export class TournamentService {
   /**
    * Group 5A — resolve the frozen Match Format + Rule Set context a tournament
    * generated Match must use. Falls back to the sport's active default when the
-   * tournament did not explicitly configure a Match Format/Rule Set.
+   * tournament did not explicitly configure a Match Format/Rule Set. Public so
+   * the G8 match-generation/schedule service reuses the SAME frozen context.
    */
-  private async resolveMatchFormatContext(t: Tournament): Promise<{ formatId: number; ruleSetId: number; formatSnapshot: MatchFormatSnapshot; ruleSnapshot: Record<string, unknown> }> {
+  async resolveMatchFormatContext(t: Tournament): Promise<{ formatId: number; ruleSetId: number; formatSnapshot: MatchFormatSnapshot; ruleSnapshot: Record<string, unknown> }> {
     if (t.match_format_id != null && t.rule_set_id != null) {
       const fmt = await matchResultRepository.findFormatById(t.match_format_id);
       if (!fmt) throw new ConflictError('Configured Match Format not found', ErrorCodes.TOURNAMENT_INVALID_FORMAT);
