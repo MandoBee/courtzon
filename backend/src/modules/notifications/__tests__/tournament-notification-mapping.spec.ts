@@ -214,6 +214,18 @@ describe('G9-D5-A — lifecycle events are no longer no-ops', () => {
     expect(__state.dispatched).toHaveLength(1);
     expect(__state.dispatched[0]).toEqual({ userId: 42, eventName: 'tournament:waitlist-promoted' });
   });
+
+  it('G9-D5-E — waitlist-promoted replay is deduped (one notification)', async () => {
+    const promotedHandler = handlers['tournament:waitlist-promoted'];
+    expect(promotedHandler).toBeDefined();
+
+    __state.hasExisting.mockResolvedValueOnce(false).mockResolvedValue(true);
+    await promotedHandler({ tournamentId: 1, userId: 42, participantId: 7, name: 'Cup' });
+    await promotedHandler({ tournamentId: 1, userId: 42, participantId: 7, name: 'Cup' });
+
+    expect(__state.hasExisting).toHaveBeenCalledWith(42, 'tournament:waitlist-promoted', 'tournament', '1');
+    expect(__state.dispatched).toHaveLength(1);
+  });
 });
 
 describe('G9-D5-A — template contract', () => {

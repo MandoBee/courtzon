@@ -162,11 +162,17 @@ class TournamentNotificationService {
 
   private async handleWithdrawalResolved(ctx: HandleContext): Promise<void> {
     const { tournamentId, withdrawnParticipantId, organisationId } = ctx.data;
+    // G9-D5-E — semantic key is the WITHDRAWN PARTICIPANT (not the tournament).
+    // Two distinct withdrawals in the same tournament are separate semantic
+    // events: org staff / admins / an advancing opponent must not collapse two
+    // withdrawals into one notification. Within a single withdrawal, every
+    // recipient pass shares this key so a user reached through multiple paths
+    // (participant + org staff + admin) still receives exactly one notification.
     const base: RecipientDispatchContext = {
       ...ctx,
       organisationId: organisationId ?? null,
-      relatedEntityType: 'tournament',
-      relatedEntityId: String(tournamentId),
+      relatedEntityType: 'tournament_participant',
+      relatedEntityId: String(withdrawnParticipantId),
       route: `/tournaments/${tournamentId}`,
     };
 

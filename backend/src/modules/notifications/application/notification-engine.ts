@@ -618,7 +618,9 @@ const eventGroups: EventGroupConfig[] = [
         // Group 4 — idempotent delivery: a player is notified ONCE per
         // tournament+event (publish and open-registration both emit this
         // event; the second delivery is a no-op). No duplicate notifications.
-        if (eventName === 'tournament:registration-open') {
+        // G9-D5-E — waitlist-promoted joins the same semantic dedup so a replay
+        // of a promotion event cannot create a duplicate notification.
+        if (eventName === 'tournament:registration-open' || eventName === 'tournament:waitlist-promoted') {
           const existing = await notificationRepository.hasExisting(data.userId, eventName, 'tournament', relatedEntityId);
           if (existing) return;
         }

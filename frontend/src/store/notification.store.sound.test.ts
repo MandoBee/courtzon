@@ -73,6 +73,18 @@ describe('G9-D5-D — sound on notification arrival', () => {
     __handlers['notification.new'](newNotification(5));
     __handlers['notification.new'](newNotification(5));
     expect(soundMock.maybePlayNotificationSound).toHaveBeenCalledTimes(1);
+    expect(useNotificationStore.getState().items.filter((n) => n.id === 5)).toHaveLength(1);
+  });
+
+  it('W. polling (unread-count refresh) never adds items or replays sound', async () => {
+    const { notificationsApi } = await import('../services/notifications');
+    vi.mocked(notificationsApi.getUnreadCount).mockResolvedValue({ count: 3 } as any);
+
+    await useNotificationStore.getState().refreshUnreadCount();
+
+    expect(useNotificationStore.getState().items).toHaveLength(0);
+    expect(useNotificationStore.getState().unreadCount).toBe(3);
+    expect(soundMock.maybePlayNotificationSound).not.toHaveBeenCalled();
   });
 
   it('J. store-level manual prepend / addNotification never plays sound', () => {
