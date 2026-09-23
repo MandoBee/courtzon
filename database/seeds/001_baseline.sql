@@ -240,7 +240,7 @@ UNLOCK TABLES;
 
 LOCK TABLES `notification_categories` WRITE;
 /*!40000 ALTER TABLE `notification_categories` DISABLE KEYS */;
-INSERT IGNORE INTO `notification_categories` (`id`, `slug`, `is_active`, `sort_order`, `created_at`) VALUES (1,'booking',1,1,'2026-05-19 19:07:55'),(2,'payment',1,2,'2026-05-19 19:07:55'),(3,'promotion',1,3,'2026-05-19 19:07:55'),(4,'system',1,4,'2026-05-19 19:07:55'),(5,'community',1,5,'2026-05-19 19:07:55'),(6,'marketplace',1,6,'2026-05-19 19:07:55'),(7,'coaching',1,7,'2026-05-19 19:07:55'),(8,'academy',1,8,'2026-05-19 19:07:55');
+INSERT IGNORE INTO `notification_categories` (`id`, `slug`, `is_active`, `sort_order`, `created_at`) VALUES (1,'booking',1,1,'2026-05-19 19:07:55'),(2,'payment',1,2,'2026-05-19 19:07:55'),(3,'promotion',1,3,'2026-05-19 19:07:55'),(4,'system',1,4,'2026-05-19 19:07:55'),(5,'community',1,5,'2026-05-19 19:07:55'),(6,'marketplace',1,6,'2026-05-19 19:07:55'),(7,'coaching',1,7,'2026-05-19 19:07:55'),(8,'academy',1,8,'2026-05-19 19:07:55'),(9,'tournament',1,9,'2026-08-06 00:00:00');
 /*!40000 ALTER TABLE `notification_categories` ENABLE KEYS */;
 UNLOCK TABLES;
 

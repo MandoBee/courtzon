@@ -4,7 +4,7 @@ import type { Command } from '../../../shared/command/command-base.js';
 
 vi.mock('../infrastructure/repositories/notification.repository.js', () => ({
   NotificationRepository: vi.fn(),
-  notificationRepository: { create: vi.fn() },
+  notificationRepository: { create: vi.fn(), isCategoryAllowed: vi.fn(async () => true) },
 }));
 
 vi.mock('../application/template.service.js', () => ({

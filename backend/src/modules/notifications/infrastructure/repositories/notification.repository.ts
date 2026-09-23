@@ -113,6 +113,44 @@ export class NotificationRepository {
     return rows.length > 0;
   }
 
+  /**
+   * G9-D5-C — authoritative category-permission check (`user_notification_preferences`).
+   *
+   * Semantics: a user is ALLOWED when there is no explicit preference row for the
+   * category (default ON) or the row has `is_allowed = 1`. ONLY an explicit
+   * `is_allowed = 0` suppresses delivery. This is the single shared preference
+   * gate used by both dispatcher paths.
+   */
+  async isCategoryAllowed(userId: number, categorySlug: string, conn?: mysql.PoolConnection): Promise<boolean> {
+    const db = conn ?? this.pool;
+    const [rows] = await db.execute<RowData>(
+      `SELECT un.id FROM user_notification_preferences un
+       JOIN notification_categories nc ON nc.id = un.category_id
+       WHERE un.user_id = ? AND nc.slug = ? AND un.is_allowed = 0
+       LIMIT 1`,
+      [userId, categorySlug],
+    );
+    return !(Array.isArray(rows) && rows.length > 0);
+  }
+
+  /**
+   * G9-D5-C — filter a recipient set to the users NOT explicitly opted out of a
+   * category (bulk dispatch). Users without an explicit row are kept (default ON).
+   */
+  async filterAllowedUserIds(userIds: number[], categorySlug: string, conn?: mysql.PoolConnection): Promise<number[]> {
+    if (!userIds.length) return [];
+    const db = conn ?? this.pool;
+    const placeholders = userIds.map(() => '?').join(', ');
+    const [rows] = await db.execute<RowData>(
+      `SELECT un.user_id FROM user_notification_preferences un
+       JOIN notification_categories nc ON nc.id = un.category_id
+       WHERE nc.slug = ? AND un.is_allowed = 0 AND un.user_id IN (${placeholders})`,
+      [categorySlug, ...userIds],
+    );
+    const optedOut = new Set((Array.isArray(rows) ? rows : []).map((r) => Number((r as any).user_id)));
+    return userIds.filter((id) => !optedOut.has(id));
+  }
+
   async findByUser(
     userId: number,
     page = 1,

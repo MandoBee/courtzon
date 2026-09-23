@@ -251,6 +251,12 @@ export default function ProfilePage() {
     },
   });
 
+  // G9-D5-C — localized labels for notification categories (falls back to the
+  // category slug for categories without a dedicated label).
+  const notificationCategoryLabels: Record<string, string> = {
+    tournament: t('settings.notifications.tournament'),
+  };
+
   const { data: sportsList } = useQuery({
     queryKey: ['sports'],
     queryFn: () => api.get('/sports').then(r => r.data || []),
@@ -997,7 +1003,7 @@ export default function ProfilePage() {
                         className="flex items-center justify-between py-2.5 px-3 rounded-[var(--radius-md)] hover:bg-[var(--color-surface)] transition-colors cursor-pointer"
                       >
                         <span className="text-sm text-[var(--color-text)] capitalize">
-                          {pref.slug.replace(/_/g, ' ')}
+                          {notificationCategoryLabels[pref.slug] ?? pref.slug.replace(/_/g, ' ')}
                         </span>
                         <div className="flex items-center gap-3">
                           <label className="relative inline-flex items-center cursor-pointer">

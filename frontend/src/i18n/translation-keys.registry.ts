@@ -312,6 +312,7 @@ export const translationKeysRegistry: TranslationKeyEntry[] = [
   { key: 'settings.dark', defaultValue: 'Dark', moduleSlug: 'settings', elementType: 'label', elementLabel: 'Settings dark mode' },
   { key: 'settings.system', defaultValue: 'System', moduleSlug: 'settings', elementType: 'label', elementLabel: 'Settings system theme' },
   { key: 'settings.notifications', defaultValue: 'Notifications', moduleSlug: 'settings', elementType: 'label', elementLabel: 'Settings notifications' },
+  { key: 'settings.notifications.tournament', defaultValue: 'Tournament Notifications', moduleSlug: 'settings', elementType: 'label', elementLabel: 'Tournament notifications toggle' },
 
   // Booking
   { key: 'booking.title', defaultValue: 'Book a Resource', moduleSlug: 'booking', elementType: 'heading', elementLabel: 'Booking title' },

@@ -93,6 +93,17 @@ export const dispatchNotificationHandler: CommandHandler<Command, DispatchNotifi
       return { notificationId: 0, userId: p.userId, dispatched: false };
     }
 
+    // G9-D5-C — shared category-permission gate (same semantics as dispatcher v1).
+    // Explicit `is_allowed = 0` suppresses; no row = ON; critical bypasses.
+    const effectivePriority = p.priority ?? template.priority ?? 'normal';
+    if (effectivePriority !== 'critical') {
+      const allowed = await notificationRepository.isCategoryAllowed(p.userId, categorySlug, conn);
+      if (!allowed) {
+        log.debug({ userId: p.userId, eventName: p.eventName, categorySlug }, 'Notification suppressed by category preference');
+        return { notificationId: 0, userId: p.userId, dispatched: false };
+      }
+    }
+
     const resolved = p.renderedTitle != null
       ? { title: p.renderedTitle, body: p.renderedBody ?? null }
       : resolveTemplate(template, p.data as Record<string, any>);
@@ -105,7 +116,7 @@ export const dispatchNotificationHandler: CommandHandler<Command, DispatchNotifi
       actionKey: p.actionPayload ? undefined : template.actionKey ?? undefined,
       actionPayload: p.actionPayload,
       type: p.type ?? template.type ?? 'info',
-      priority: p.priority ?? template.priority ?? 'normal',
+      priority: effectivePriority,
       organisationId: p.organisationId,
       branchId: p.branchId,
       senderId: p.senderId,
@@ -138,7 +149,7 @@ export const dispatchNotificationHandler: CommandHandler<Command, DispatchNotifi
         actionPayload: p.actionPayload,
         actions: (p.actions ?? template.actions) ?? undefined,
         imageUrls: p.imageUrls,
-        priority: p.priority ?? template.priority,
+        priority: effectivePriority,
         organisationId: p.organisationId,
         branchId: p.branchId,
         relatedEntityType: p.relatedEntityType,

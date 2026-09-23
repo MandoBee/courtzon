@@ -89,6 +89,19 @@ export async function dispatchToUser(options: DispatchOptions): Promise<void> {
     return;
   }
 
+  const effectivePriority = options.priority ?? template.priority ?? 'normal';
+  // G9-D5-C — shared category-permission gate. Explicit `is_allowed = 0` on
+  // `user_notification_preferences` suppresses delivery (default = ON). Critical
+  // priority bypasses the preference (security/system integrity). Tournament-
+  // specific services never check this themselves — it lives in the shared layer.
+  if (effectivePriority !== 'critical') {
+    const allowed = await notificationRepository.isCategoryAllowed(userId, categorySlug);
+    if (!allowed) {
+      log.debug({ userId, eventName, categorySlug }, 'Notification suppressed by category preference');
+      return;
+    }
+  }
+
   const resolved = options.renderedTitle != null
     ? { title: options.renderedTitle, body: options.renderedBody ?? null }
     : resolveTemplate(template, data);
@@ -101,7 +114,7 @@ export async function dispatchToUser(options: DispatchOptions): Promise<void> {
     actionKey: options.action?.route ? undefined : template.actionKey ?? undefined,
     actionPayload: options.action ?? undefined,
     type: options.type ?? template.type ?? 'info',
-    priority: options.priority ?? template.priority ?? 'normal',
+    priority: effectivePriority,
     organisationId: options.organisationId,
     branchId: options.branchId,
     senderId: options.senderId,
@@ -134,7 +147,7 @@ export async function dispatchToUser(options: DispatchOptions): Promise<void> {
       actionPayload: options.action ?? undefined,
       actions: (options.actions ?? template.actions) ?? undefined,
       imageUrls: options.imageUrls,
-      priority: options.priority ?? template.priority,
+      priority: effectivePriority,
       organisationId: options.organisationId,
       branchId: options.branchId,
       relatedEntityType: options.relatedEntityType,
@@ -180,7 +193,14 @@ async function dispatchBulkChunk(
   const resolved = resolveTemplate(template, options.data);
   const userIdsToQueue: number[] = [];
 
-  for (const userId of userIds) {
+  // G9-D5-C — shared category-permission gate for bulk recipients. Only users
+  // with an explicit `is_allowed = 0` for the category are dropped (default ON).
+  const effectivePriority = options.priority ?? template.priority ?? 'normal';
+  const targetUserIds = effectivePriority === 'critical'
+    ? userIds
+    : await notificationRepository.filterAllowedUserIds(userIds, options.categorySlug);
+
+  for (const userId of targetUserIds) {
     await notificationRepository.create({
       userId,
       title: resolved.title,
@@ -189,7 +209,7 @@ async function dispatchBulkChunk(
       actionKey: options.action?.route ? undefined : template.actionKey ?? undefined,
       actionPayload: options.action ?? undefined,
       type: options.type ?? template.type ?? 'info',
-      priority: options.priority ?? template.priority ?? 'normal',
+      priority: effectivePriority,
       organisationId: options.organisationId,
       branchId: options.branchId,
       senderId: options.senderId,
