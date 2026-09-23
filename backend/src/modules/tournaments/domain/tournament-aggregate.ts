@@ -427,6 +427,8 @@ export interface BracketSlot {
   sourceBracketPosition?: number;
   targetRound?: number;
   targetBracketPosition?: number;
+  /** Which participant this slot's winner fills on the target slot. */
+  targetSide?: 'player1' | 'player2';
 }
 
 export interface TournamentMatchResult {
@@ -574,6 +576,36 @@ export function generateKnockoutBracket(
   }
 
   return slots;
+}
+
+/**
+ * Normalise a generated knockout bracket — fill the target wiring (round,
+ * position and side) every slot needs so the progression engine can seat a
+ * winner. `generateKnockoutBracket` only declares `targetRound` /
+ * `targetBracketPosition` for rounds ≥ 2; Round-1 slots must be told where
+ * their winner goes. The target side is the parity of the slot's bracket
+ * position (upper feed → player1, lower feed → player2).
+ *
+ * This is the SINGLE source of truth for bracket target topology — shared by
+ * the legacy `generateBracket` path and the G8 locked-draw generation path.
+ * Never maintain a second implementation of this calculation.
+ */
+export function normaliseBracketTargets(slots: BracketSlot[], participantCount: number): BracketSlot[] {
+  const totalRounds = Math.max(1, Math.ceil(Math.log2(Math.max(participantCount, 2))));
+  return slots.map((s) => {
+    const targetSide: 'player1' | 'player2' = ((s.bracketPosition ?? 0) % 2 === 0) ? 'player1' : 'player2';
+    if (s.sourceRound != null) {
+      // Rounds ≥ 2 already declare their round/position target — add the side.
+      return { ...s, targetSide };
+    }
+    const singleRound = totalRounds === 1;
+    return {
+      ...s,
+      targetRound: singleRound ? undefined : 2,
+      targetBracketPosition: singleRound ? undefined : Math.floor((s.bracketPosition ?? 0) / 2),
+      targetSide,
+    };
+  });
 }
 
 /**

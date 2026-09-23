@@ -1,6 +1,6 @@
 import { tournamentRepository, type BracketTypeRow } from '../infrastructure/repositories/tournament.repository.js';
 import { participantDrawRepository } from '../infrastructure/repositories/participant-draw.repository.js';
-import { generateKnockoutBracket, generateRoundRobinMatches, generateStageMatches, seededShuffle, type BracketSlot } from '../domain/tournament-aggregate.js';
+import { generateKnockoutBracket, generateRoundRobinMatches, generateStageMatches, normaliseBracketTargets, seededShuffle, type BracketSlot } from '../domain/tournament-aggregate.js';
 import type { Tournament, TournamentRegistration, TournamentMatch, TournamentStage, TournamentPrizeInput, TournamentPrizeType, TournamentVenue } from '../domain/tournament-aggregate.js';
 import { validateTournamentTransition, validateRegistrationTransition } from '../domain/lifecycle.js';
 import { NotFoundError, ConflictError, ForbiddenError } from '../../../shared/errors/app-error.js';
@@ -1109,7 +1109,7 @@ export class TournamentService {
     let slots: BracketSlot[] = [];
     let isKnockout = false;
     if (t.format === 'knockout') {
-      slots = this.normaliseBracketTargets(generateKnockoutBracket(userIds, { seed, seededBy }), userIds.length);
+      slots = normaliseBracketTargets(generateKnockoutBracket(userIds, { seed, seededBy }), userIds.length);
       isKnockout = true;
     } else if (t.format === 'round_robin') {
       slots = generateRoundRobinMatches(userIds).map((m) => ({ round: m.round, bracketPosition: 0, player1Id: m.player1Id, player2Id: m.player2Id }));
@@ -1145,7 +1145,7 @@ export class TournamentService {
         await this.autoStartAfterDraw(t);
         return;
       }
-      slots = this.normaliseBracketTargets(generateKnockoutBracket(userIds, { seed, seededBy }), userIds.length);
+      slots = normaliseBracketTargets(generateKnockoutBracket(userIds, { seed, seededBy }), userIds.length);
       isKnockout = true;
     } else if (t.format === 'mixed') {
       slots = await this.generateMixedStages(t, formatCtx, userIds, seed, seededBy);
@@ -1153,7 +1153,7 @@ export class TournamentService {
     } else {
       slots = generateStageMatches(t.format ?? 'round_robin', userIds, { seed, seededBy });
       isKnockout = t.format === 'double_elimination' || t.format === 'swiss';
-      if (isKnockout) slots = this.normaliseBracketTargets(slots, userIds.length);
+      if (isKnockout) slots = normaliseBracketTargets(slots, userIds.length);
     }
 
     for (const slot of slots) {
@@ -1332,20 +1332,6 @@ export class TournamentService {
     }
   }
 
-  /** Normalise a generated knockout bracket — fill round-1 target wiring. */
-  private normaliseBracketTargets(slots: BracketSlot[], participantCount: number): BracketSlot[] {
-    const totalRounds = Math.max(1, Math.ceil(Math.log2(Math.max(participantCount, 2))));
-    return slots.map((s) => {
-      if (s.sourceRound != null) return s;
-      const singleRound = totalRounds === 1;
-      return {
-        ...s,
-        targetRound: singleRound ? undefined : 2,
-        targetBracketPosition: singleRound ? undefined : Math.floor((s.bracketPosition ?? 0) / 2),
-      };
-    });
-  }
-
   /** Build the persisted progression_meta for one draw slot. */
   private buildDrawMeta(slot: BracketSlot, isKnockout: boolean): BracketProgressionMeta {
     if (!isKnockout) return { is_bracket: false };
@@ -1354,7 +1340,7 @@ export class TournamentService {
       bye: slot.bye === true ? true : undefined,
       target_round: slot.targetRound != null ? slot.targetRound : null,
       target_bracket_position: slot.targetBracketPosition != null ? slot.targetBracketPosition : null,
-      target_side: ((slot.bracketPosition ?? 0) % 2 === 0) ? 'player1' : 'player2',
+      target_side: slot.targetSide ?? (((slot.bracketPosition ?? 0) % 2 === 0) ? 'player1' : 'player2'),
     };
   }
 

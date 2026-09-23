@@ -18,7 +18,7 @@ import type {
   BracketSlot,
 } from '../domain/tournament-aggregate.js';
 import type { MatchFormatSnapshot } from '../../match/domain/match.types.js';
-import { generateKnockoutBracket, generateRoundRobinMatches } from '../domain/tournament-aggregate.js';
+import { generateKnockoutBracket, generateRoundRobinMatches, normaliseBracketTargets } from '../domain/tournament-aggregate.js';
 
 type RowData = import('mysql2').RowDataPacket[];
 type PoolConnection = import('mysql2/promise').PoolConnection;
@@ -93,8 +93,6 @@ export class MatchScheduleService {
       for (const slot of slots) {
         const p1Id = slot.player1Id != null ? Number(slot.player1Id) : null;
         const p2Id = slot.player2Id != null ? Number(slot.player2Id) : null;
-        if (p1Id == null && p2Id == null) continue; // pure padding slot — no row
-
         const meta = this.buildSlotMeta(slot, isKnockout);
         if (p1Id != null && p2Id != null) {
           const sharedMatch = await this.createParticipantMatch(t, formatCtx, p1Id, p2Id, conn);
@@ -117,23 +115,32 @@ export class MatchScheduleService {
           }, conn);
           generated += 1;
         } else {
-          // BYE — explicit bracket metadata, NO fake participant, NO shared Match, NO court.
-          const presentId = p1Id ?? p2Id!;
-          const present = await this.loadParticipant(presentId);
+          // NO shared Match, NO court. Three cases (knockout only — round-robin
+          // slots always carry both participants):
+          //  * round-1 lone BYE (one participant) — the participant advances once
+          //    advanceByes consumes the (now-correct) target wiring;
+          //  * round-1 empty padding BYE (no participant) — finalised in place so
+          //    the virtual-bye cascade can recognise it;
+          //  * later-round PLACEHOLDER (no participant) — the progression engine's
+          //    target slot, created up front so a Round-1 winner can be seated.
+          const presentId = p1Id ?? p2Id ?? null;
+          const present = presentId != null ? await this.loadParticipant(presentId) : null;
           await tournamentRepository.createMatch({
             tournament_id: tournamentId,
             round: slot.round,
             round_name: this.roundLabel(t, slot.round, isKnockout, ordered.length),
             bracket_position: slot.bracketPosition ?? 0,
             stage_id: slot.stageId ?? null,
-            match_number: 0,
+            match_number: slot.bye === true ? 0 : undefined,
             participant1_id: presentId,
-            player1_id: this.primaryMember(present),
+            participant2_id: null,
+            player1_id: presentId != null ? this.primaryMember(present!) : null,
+            player2_id: null,
             status: 'scheduled',
             progression_state: 'pending',
-            progression_meta: { ...meta, bye: true } as unknown as Record<string, unknown>,
+            progression_meta: slot.bye === true ? { ...meta, bye: true } as unknown as Record<string, unknown> : meta as unknown as Record<string, unknown>,
           }, conn);
-          byes += 1;
+          if (presentId != null) byes += 1;
         }
       }
       await conn.commit();
@@ -170,7 +177,11 @@ export class MatchScheduleService {
     if (format === 'knockout') {
       // Draw order is already the final seeded placement — generateKnockoutBracket
       // without a seed preserves the order and pairs consecutive positions.
-      return { slots: generateKnockoutBracket(participantIds), isKnockout: true };
+      // G9-A — normalise the target wiring (single bracket-topology source of
+      // truth shared with the legacy generateBracket path) so Round-1 slots carry
+      // correct target_round / target_bracket_position / target_side for the
+      // progression engine.
+      return { slots: normaliseBracketTargets(generateKnockoutBracket(participantIds), participantIds.length), isKnockout: true };
     }
     if (format === 'round_robin') {
       const rr = generateRoundRobinMatches(participantIds);
@@ -203,7 +214,7 @@ export class MatchScheduleService {
       bye: slot.bye === true ? true : undefined,
       target_round: slot.targetRound != null ? slot.targetRound : null,
       target_bracket_position: slot.targetBracketPosition != null ? slot.targetBracketPosition : null,
-      target_side: ((slot.bracketPosition ?? 0) % 2 === 0) ? 'player1' : 'player2',
+      target_side: slot.targetSide ?? (((slot.bracketPosition ?? 0) % 2 === 0) ? 'player1' : 'player2'),
     };
   }
 

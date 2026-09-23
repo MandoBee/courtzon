@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ErrorCodes } from '../../../shared/errors/error-codes.js';
 import { TournamentService } from '../application/tournament.service.js';
+import { generateKnockoutBracket, normaliseBracketTargets } from '../domain/tournament-aggregate.js';
 import type { Tournament, TournamentMatch, TournamentRegistration } from '../domain/tournament-aggregate.js';
 
 const repo = vi.hoisted(() => ({
@@ -332,5 +333,99 @@ describe('TournamentService.generateBracket idempotency (Group 5B)', () => {
     expect(statusCalls).toContain('registration_open');
     expect(statusCalls).toContain('registration_closed');
     expect(statusCalls).toContain('running');
+  });
+});
+
+describe('G9-A — progression consumes the corrected G8 Round-1 target wiring', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    repo.findById.mockResolvedValue(makeTournament());
+    repo.findStages.mockResolvedValue([]);
+    pool.getConnection.mockResolvedValue(fakeConn);
+  });
+
+  const svc = new TournamentService();
+
+  function slotMeta(s: { targetRound?: number; targetBracketPosition?: number; targetSide?: 'player1' | 'player2' }) {
+    return {
+      is_bracket: true,
+      target_round: s.targetRound ?? null,
+      target_bracket_position: s.targetBracketPosition ?? null,
+      target_side: s.targetSide ?? 'player1',
+    };
+  }
+
+  it('C1. a Round-1 result on a corrected 8-participant G8 bracket does NOT complete the tournament and seats the winner', async () => {
+    // Reconstruct the EXACT bracket the G8 locked-draw path now persists
+    // (single topology source: generateKnockoutBracket + normaliseBracketTargets).
+    const ids = [10, 20, 30, 40, 50, 60, 70, 80];
+    const slots = normaliseBracketTargets(generateKnockoutBracket(ids), ids.length);
+    const r1 = slots.filter((s) => s.round === 1).sort((a, b) => (a.bracketPosition ?? 0) - (b.bracketPosition ?? 0));
+    const r2 = slots.filter((s) => s.round === 2).sort((a, b) => (a.bracketPosition ?? 0) - (b.bracketPosition ?? 0));
+
+    // M1 = 10 vs 20, target Round-2 position 0, side player1.
+    repo.findMatchBySharedMatchId.mockResolvedValue(makeSlot({
+      id: 11, round: 1, bracket_position: r1[0].bracketPosition,
+      player1_id: r1[0].player1Id, player2_id: r1[0].player2Id, match_id: 900,
+      progression_meta: slotMeta(r1[0]),
+    }));
+    mrRepo.getParticipants.mockResolvedValue([{ userId: 10, outcome: 'win' }]);
+    repo.findBracketSlot.mockResolvedValue(makeSlot({
+      id: 31, round: 2, bracket_position: r2[0].bracketPosition,
+      player1_id: null, player2_id: null, match_id: null,
+      progression_meta: slotMeta(r2[0]),
+    }));
+    mrRepo.findFormatById.mockResolvedValue({ formatId: 1, sportId: 22, formatType: 'singles', playersPerSide: 1, name: 'Tennis', isActive: true });
+    mrRepo.findRuleSetById.mockResolvedValue({ formatId: 1, ruleSetId: 1, version: 1, rules: { score_structure: 'sets' }, standingsRules: null });
+    matchServiceMock.createForTournament.mockResolvedValue({ id: 950, tournamentId: 1 });
+
+    const out = await svc.progressFromApprovedResult({ matchId: 900, resultId: 3 });
+
+    // A Round-1 result must NEVER complete the tournament.
+    expect(repo.updateStatus).not.toHaveBeenCalledWith(1, 'completed');
+    expect(out.tournamentCompleted).toBe(false);
+    // The winner is seated into the correct Round-2 target slot (player1 of R2 pos0).
+    const seated = repo.updateMatch.mock.calls.find((c) => c[0] === 31 && c[1]?.player1_id === 10);
+    expect(seated).toBeTruthy();
+    expect(out.advancedTo).toBe(31);
+  });
+
+  it('D1. a Round-1 bye with corrected G8 wiring advances through consecutive byes to the Final (advanceByes)', async () => {
+    // 5-participant bracket, positions 2 (lone bye, p50) + 3 (empty padding).
+    const slots: any[] = [
+      { id: 1, tournament_id: 1, round: 1, bracket_position: 2, player1_id: 50, player2_id: null, match_id: null, status: 'scheduled', progression_state: 'pending', winner_id: null, stage_id: null, group_id: null,
+        progression_meta: { is_bracket: true, bye: true, target_round: 2, target_bracket_position: 1, target_side: 'player1' } },
+      { id: 3, tournament_id: 1, round: 1, bracket_position: 3, player1_id: null, player2_id: null, match_id: null, status: 'scheduled', progression_state: 'pending', winner_id: null, stage_id: null, group_id: null,
+        progression_meta: { is_bracket: true, bye: true, target_round: 2, target_bracket_position: 1, target_side: 'player2' } },
+      { id: 31, tournament_id: 1, round: 2, bracket_position: 1, player1_id: null, player2_id: null, match_id: null, status: 'scheduled', progression_state: 'pending', winner_id: null, stage_id: null, group_id: null,
+        progression_meta: { is_bracket: true, target_round: 3, target_bracket_position: 0, target_side: 'player2' } },
+      { id: 61, tournament_id: 1, round: 3, bracket_position: 0, player1_id: null, player2_id: null, match_id: null, status: 'scheduled', progression_state: 'pending', winner_id: null, stage_id: null, group_id: null,
+        progression_meta: { is_bracket: true, target_round: null, target_bracket_position: null, target_side: 'player1' } },
+    ];
+    repo.findMatches.mockImplementation(async () => slots.map((s) => ({ ...s })));
+    repo.findBracketSlot.mockImplementation(async (_tid: number, round: number, pos: number) => {
+      const s = slots.find((x) => x.round === round && x.bracket_position === pos);
+      return s ? { ...s } : null;
+    });
+    repo.updateMatch.mockImplementation(async (id: number, data: Partial<TournamentMatch>) => {
+      const s = slots.find((x) => x.id === id);
+      if (s) Object.assign(s, data);
+    });
+
+    const out = await svc.advanceByes(1);
+
+    // Lone Round-1 bye resolved and advanced (winner 50).
+    expect(slots.find((s) => s.id === 1).progression_state).toBe('completed');
+    expect(slots.find((s) => s.id === 1).winner_id).toBe(50);
+    // Empty padding bye finalised in place (recognised by the virtual-bye cascade).
+    expect(slots.find((s) => s.id === 3).progression_state).toBe('bye');
+    // Winner seated into the Round-2 target (player1 of R2 pos1).
+    expect(slots.find((s) => s.id === 31).player1_id).toBe(50);
+    // The lone Round-2 slot cascades into the Final (player2 of the Final).
+    expect(slots.find((s) => s.id === 31).progression_state).toBe('completed');
+    expect(slots.find((s) => s.id === 61).player2_id).toBe(50);
+    // Bye propagation never completes the tournament by itself.
+    expect(repo.updateStatus).not.toHaveBeenCalledWith(1, 'completed');
+    expect(out.advanced).toBe(3);
   });
 });

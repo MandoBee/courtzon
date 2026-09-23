@@ -490,3 +490,89 @@ describe('G8 VERIFY — PART 6: court eligibility', () => {
     expect(courts.every((c) => c.sport_id === 22 || c.sport_id === null)).toBe(true);
   });
 });
+
+describe('G9-A — ROUND-1 PROGRESSION TARGET WIRING (G8 locked-draw path)', () => {
+  function entries(n: number) {
+    return Array.from({ length: n }, (_, i) => ({ id: i + 1, draw_id: 10, participant_id: i + 1, position: i }));
+  }
+
+  it('T1. 8 participants — Round-1 slots persist exact targets; Round-2/Final placeholders exist for progression', async () => {
+    pdRepo.findCurrentDraw.mockResolvedValue(draw(10, 'locked'));
+    pdRepo.findDrawEntries.mockResolvedValue(entries(8));
+    pdRepo.findParticipantById.mockImplementation(async (id: number) => participant(id));
+
+    const r = await svc.generateMatchesFromLockedDraw(1, 1);
+    expect(r.generated).toBe(4);
+    expect(r.byes).toBe(0);
+
+    const created = tRepo.createMatch.mock.calls.map((c: any[]) => c[0]);
+    // 4 Round-1 real matches + 2 Round-2 placeholders + 1 Final placeholder = 7 slots.
+    expect(created).toHaveLength(7);
+
+    const r1 = created.filter((c: any) => c.round === 1 && c.match_id != null);
+    expect(r1).toHaveLength(4);
+    expect(r1.map((c: any) => c.progression_meta.target_round)).toEqual([2, 2, 2, 2]);
+    expect(r1.map((c: any) => c.progression_meta.target_bracket_position)).toEqual([0, 0, 1, 1]);
+    expect(r1.map((c: any) => c.progression_meta.target_side)).toEqual(['player1', 'player2', 'player1', 'player2']);
+    // Round-1 real matches keep their shared Match + participants.
+    expect(r1.every((c: any) => c.match_id != null && c.participant1_id != null && c.participant2_id != null)).toBe(true);
+
+    const r2 = created.filter((c: any) => c.round === 2);
+    expect(r2).toHaveLength(2);
+    expect(r2.map((c: any) => c.progression_meta.target_round)).toEqual([3, 3]);
+    expect(r2.map((c: any) => c.progression_meta.target_bracket_position)).toEqual([0, 0]);
+
+    const fin = created.filter((c: any) => c.round === 3);
+    expect(fin).toHaveLength(1);
+    expect(fin[0].progression_meta.target_round).toBeNull();
+    expect(fin[0].progression_meta.target_bracket_position).toBeNull();
+
+    // Placeholders carry no shared Match; only real Round-1 matches create one.
+    expect([...r2, ...fin].every((c: any) => c.match_id == null)).toBe(true);
+    expect(matchSvc.createForTournament).toHaveBeenCalledTimes(4);
+  });
+
+  it('T2. 5 participants — lone bye + empty padding are wired; no shared Match for a bye', async () => {
+    pdRepo.findCurrentDraw.mockResolvedValue(draw(10, 'locked'));
+    pdRepo.findDrawEntries.mockResolvedValue(entries(5));
+    pdRepo.findParticipantById.mockImplementation(async (id: number) => participant(id));
+
+    const r = await svc.generateMatchesFromLockedDraw(1, 1);
+    expect(r.generated).toBe(2);
+    expect(r.byes).toBe(1);
+
+    const created = tRepo.createMatch.mock.calls.map((c: any[]) => c[0]);
+    const r1 = created.filter((c: any) => c.round === 1);
+    expect(r1).toHaveLength(4);
+    const r1Bye = r1.filter((c: any) => c.progression_meta.bye === true);
+    expect(r1Bye).toHaveLength(2); // lone bye (p5) + empty padding
+
+    // The lone bye (present participant) is wired to Round-2 position 1, side player1.
+    const loneBye = r1Bye.find((c: any) => c.player1_id != null);
+    expect(loneBye.progression_meta.target_round).toBe(2);
+    expect(loneBye.progression_meta.target_bracket_position).toBe(1);
+    expect(loneBye.progression_meta.target_side).toBe('player1');
+    // No shared Match for any bye — never playable.
+    expect(r1Bye.every((c: any) => c.match_id == null)).toBe(true);
+
+    // Round-2 + Final placeholders exist so the bye can advance to the Final.
+    expect(created.filter((c: any) => c.round === 2)).toHaveLength(2);
+    expect(created.filter((c: any) => c.round === 3)).toHaveLength(1);
+    expect(matchSvc.createForTournament).toHaveBeenCalledTimes(2);
+  });
+
+  it('T3. Round Robin — NO progression target metadata is introduced (regression)', async () => {
+    tSvc.getByIdDetailed.mockResolvedValue({ ...TOUR, format: 'round_robin' });
+    pdRepo.findCurrentDraw.mockResolvedValue(draw(10, 'locked'));
+    pdRepo.findDrawEntries.mockResolvedValue(entries(4));
+    pdRepo.findParticipantById.mockImplementation(async (id: number) => participant(id));
+
+    const r = await svc.generateMatchesFromLockedDraw(1, 1);
+    const created = tRepo.createMatch.mock.calls.map((c: any[]) => c[0]);
+    expect(created.length).toBeGreaterThan(0);
+    expect(created.every((c: any) => c.progression_meta.is_bracket === false)).toBe(true);
+    expect(created.every((c: any) => c.progression_meta.target_round == null)).toBe(true);
+    expect(r.generated).toBe(6); // 4 players → 6 pairings
+    expect(r.byes).toBe(0);
+  });
+});
