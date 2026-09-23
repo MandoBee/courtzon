@@ -41,6 +41,7 @@ export function categorizeEvent(eventName: string): string {
   if (eventName.startsWith('booking')) return 'bookings';
   if (eventName.startsWith('payment') || eventName.startsWith('wallet')) return 'payments';
   if (eventName.startsWith('marketplace')) return 'marketplace';
+  if (eventName.startsWith('tournament')) return 'tournament';
   return 'system';
 }
 

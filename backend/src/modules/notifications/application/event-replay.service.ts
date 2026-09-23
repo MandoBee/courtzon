@@ -82,5 +82,6 @@ function getCategorySlug(event: string): string {
   if (event.startsWith('booking')) return 'bookings';
   if (event.startsWith('payment') || event.startsWith('wallet')) return 'payments';
   if (event.startsWith('marketplace')) return 'marketplace';
+  if (event.startsWith('tournament')) return 'tournament';
   return 'system';
 }

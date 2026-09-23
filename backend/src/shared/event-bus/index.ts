@@ -117,10 +117,10 @@ export interface DomainEventMap {
   'tournament:match-scheduled': BaseEvent & { matchId: number; userId: number; opponent: string; date: Date };
   'tournament:result': BaseEvent & { matchId: number; userId: number; result: string; ranking?: number };
   'tournament:bracket-generated': BaseEvent & { tournamentId: number; userId?: number; name: string; staged: boolean };
-  'tournament:match-created': BaseEvent & { tournamentId: number; stageId?: number | null; matchId: number; round: number; bracketPosition: number; bracketSide?: string | null; player1Id?: number | null; player2Id?: number | null };
-  'tournament:match-progressed': BaseEvent & { tournamentId: number; matchId: number; opponentMatchId: number; winnerId?: number | null; round: number; bracketPosition: number; advancedTo?: string | null; result?: Record<string, unknown> };
-  'tournament:stage-completed': BaseEvent & { tournamentId: number; stageId: number; round: number };
-  'tournament:completed': BaseEvent & { tournamentId: number; name: string; winnerId?: number | null; winnerName?: string | null };
+  'tournament:match-created': BaseEvent & { tournamentId: number; matchId: number; tournamentMatchId?: number | null; winnerId?: number | null; participantWinnerId?: number | null; organisationId?: number | null; stageId?: number | null; round?: number; bracketPosition?: number; bracketSide?: string | null; player1Id?: number | null; player2Id?: number | null };
+  'tournament:match-progressed': BaseEvent & { tournamentId: number; matchId: number | null; resultId?: number | null; winnerId?: number | null; participantWinnerId?: number | null; opponentMatchId?: number | null; fromSlotId?: number | null; toSlotId?: number | null; advancedTo?: string | null; stageId?: number | null; organisationId?: number | null; round?: number; bracketPosition?: number; result?: Record<string, unknown> };
+  'tournament:stage-completed': BaseEvent & { tournamentId: number; stageId: number; winnerId?: number | null; organisationId?: number | null; round?: number };
+  'tournament:completed': BaseEvent & { tournamentId: number; name: string; winnerId?: number | null; winnerName?: string | null; userId?: number | null; organisationId?: number | null };
   'tournament:registration-paid': BaseEvent & { tournamentId: number; registrationId: number; userId?: number; organisationId?: number | null; paymentId?: number | null };
   'tournament:registration-payment-methods-updated': BaseEvent & { tournamentId: number; organisationId?: number | null; methods: string[] };
   'tournament:schedule-updated': BaseEvent & { tournamentId: number; organisationId?: number | null; startDate?: string | null; endDate?: string | null; registrationCloses?: string | null; branchId?: number | null; dailyStartTime?: string | null; dailyEndTime?: string | null; matchId?: number; resourceId?: number; date?: string; startTime?: string; endTime?: string; bookingId?: number; scheduled?: number; skipped?: number };
@@ -131,6 +131,7 @@ export interface DomainEventMap {
   'tournament:waitlist-updated': BaseEvent & { tournamentId: number };
   'tournament:participant-replaced': BaseEvent & { tournamentId: number; withdrawnParticipantId: number; replacementParticipantId: number };
   'tournament:waitlist-promoted': BaseEvent & { tournamentId: number; participantId: number; userId?: number; name?: string };
+  'tournament:withdrawal-resolved': BaseEvent & { tournamentId: number; withdrawnParticipantId: number; resolvedSlots: number; cancelledMatches: number; releasedCourts: number; organisationId?: number | null };
   'tournament:participant-created': BaseEvent & { tournamentId: number; participantId: number; participantType: string; memberUserIds?: number[]; organisationId?: number | null };
   'tournament:participant-members-updated': BaseEvent & { tournamentId: number; participantId: number; memberUserIds?: number[]; addedUserId?: number; removedUserId?: number; organisationId?: number | null };
   'tournament:replacement-request-updated': BaseEvent & { tournamentId: number; participantId: number; requestId: number; status: string; organisationId?: number | null };

@@ -584,9 +584,17 @@ const eventGroups: EventGroupConfig[] = [
     },
   },
   {
-    events: ['tournament:created', 'tournament:registration-open', 'tournament:registration-closed',
+    events: [
+      'tournament:created', 'tournament:registration-open', 'tournament:registration-closed',
       'tournament:starting-soon', 'tournament:match-scheduled', 'tournament:result',
-      'tournament:bracket-generated', 'tournament:completed', 'tournament:waitlist-promoted', 'tournament:waitlist-promoted'],
+      'tournament:bracket-generated', 'tournament:completed', 'tournament:waitlist-promoted',
+      // G9-D5-A — lifecycle/progression events are now notification-capable at the
+      // mapping/template level (registered here so they are no longer subscribed
+      // no-ops). Their payloads carry no `userId`, so the generic dispatch below
+      // intentionally stays inert until D5-B implements recipient resolution.
+      'tournament:stage-completed', 'tournament:match-created', 'tournament:match-progressed',
+      'tournament:participant-replaced', 'tournament:withdrawal-resolved',
+    ],
     handler: async (eventName, data, categorySlug) => {
       if (eventName === 'tournament:completed') {
         if (data.userId) {
@@ -971,6 +979,7 @@ function getCategorySlug(event: string): string {
   if (event.startsWith('booking')) return 'bookings';
   if (event.startsWith('payment') || event.startsWith('wallet')) return 'payments';
   if (event.startsWith('marketplace')) return 'marketplace';
+  if (event.startsWith('tournament')) return 'tournament';
   return 'system';
 }
 
@@ -1010,8 +1019,10 @@ class NotificationEngine {
       'coaching:session-scheduled', 'coaching:session-reminder', 'coaching:session-cancelled',
       'coach:invited', 'coach:agreement-added',
       'tournament:created', 'tournament:registration-open', 'tournament:registration-closed',
-'tournament:starting-soon', 'tournament:match-scheduled', 'tournament:result',
-      'tournament:bracket-generated', 'tournament:stage-completed', 'tournament:match-created', 'tournament:match-progressed', 'tournament:completed',
+      'tournament:starting-soon', 'tournament:match-scheduled', 'tournament:result',
+      'tournament:bracket-generated', 'tournament:stage-completed', 'tournament:match-created',
+      'tournament:match-progressed', 'tournament:completed', 'tournament:waitlist-promoted',
+      'tournament:participant-replaced', 'tournament:withdrawal-resolved',
       'community:mention', 'community:reply', 'community:like',
       'friend:request', 'friend:accepted', 'friend:blocked',
       'chat:new-message', 'chat:group-created', 'chat:group-joined', 'chat:group-invitation',
