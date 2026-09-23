@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { socketService } from '../services/socket';
 import { notificationsApi } from '../services/notifications';
+import { maybePlayNotificationSound, initNotificationSound } from '../services/notificationSound';
 import type { AppNotification } from '../components/notifications/NotificationDetailModal';
 
 interface NotificationState {
@@ -32,12 +33,19 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
     if (get().initialized) return;
     set({ initialized: true });
 
+    // G9-D5-D — unlock audio after the user's first interaction (autoplay policy).
+    initNotificationSound();
+
     socketService.on('notification.new', (notification: AppNotification) => {
       const state = get();
       const exists = state.items.some((n) => n.id === notification.id);
       if (!exists) {
         const enriched = enrichNotification(notification);
         set({ items: [enriched, ...state.items], unreadCount: state.unreadCount + 1 });
+        // G9-D5-D — sound fires ONLY on a genuinely new socket-delivered
+        // notification (deduped by id). Reconnect/hydration/polling/rerender
+        // never trigger sound.
+        maybePlayNotificationSound();
       }
     });
 

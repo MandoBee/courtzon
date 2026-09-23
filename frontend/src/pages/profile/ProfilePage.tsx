@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../../store/auth.store';
+import { useNotificationSoundStore } from '../../store/notification-sound.store';
 import { syncUserThemePreference } from '../../store/theme.store';
 import { setLocale, useTranslation } from '../../i18n';
 import { useToast } from '../../components/ui/Toast';
@@ -256,6 +257,10 @@ export default function ProfilePage() {
   const notificationCategoryLabels: Record<string, string> = {
     tournament: t('settings.notifications.tournament'),
   };
+
+  // G9-D5-D — global notification sound preference (client-side, survives reload).
+  const notificationSoundEnabled = useNotificationSoundStore((s) => s.enabled);
+  const setNotificationSoundEnabled = useNotificationSoundStore((s) => s.setEnabled);
 
   const { data: sportsList } = useQuery({
     queryKey: ['sports'],
@@ -989,6 +994,23 @@ export default function ProfilePage() {
               <div className="p-4 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-bg)]">
                 <h3 className="text-sm font-medium text-[var(--color-text)] mb-1">{t('settings.notifications')}</h3>
                 <p className="text-xs text-[var(--color-text-muted)] mb-4">{t('profile.notifications_desc')}</p>
+                {/* G9-D5-D — global notification sound toggle (client-side). */}
+                <label className="flex items-center justify-between py-2.5 px-3 rounded-[var(--radius-md)] hover:bg-[var(--color-surface)] transition-colors cursor-pointer">
+                  <span>
+                    <span className="block text-sm text-[var(--color-text)]">{t('settings.notifications.sound')}</span>
+                    <span className="block text-xs text-[var(--color-text-muted)]">{t('settings.notifications.sound_desc')}</span>
+                  </span>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      className="sr-only peer"
+                      checked={notificationSoundEnabled}
+                      onChange={() => setNotificationSoundEnabled(!notificationSoundEnabled)}
+                      aria-label={t('settings.notifications.sound')}
+                    />
+                    <div className="w-9 h-5 bg-[var(--color-border)] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-[var(--color-border)] after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[var(--color-primary)]" />
+                  </label>
+                </label>
                 {!notifPrefs ? (
                   <div className="space-y-3">
                     {[1, 2, 3].map((i) => (

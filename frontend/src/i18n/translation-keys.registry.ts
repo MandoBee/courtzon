@@ -313,6 +313,8 @@ export const translationKeysRegistry: TranslationKeyEntry[] = [
   { key: 'settings.system', defaultValue: 'System', moduleSlug: 'settings', elementType: 'label', elementLabel: 'Settings system theme' },
   { key: 'settings.notifications', defaultValue: 'Notifications', moduleSlug: 'settings', elementType: 'label', elementLabel: 'Settings notifications' },
   { key: 'settings.notifications.tournament', defaultValue: 'Tournament Notifications', moduleSlug: 'settings', elementType: 'label', elementLabel: 'Tournament notifications toggle' },
+  { key: 'settings.notifications.sound', defaultValue: 'Notification Sound', moduleSlug: 'settings', elementType: 'label', elementLabel: 'Notification sound toggle' },
+  { key: 'settings.notifications.sound_desc', defaultValue: 'Play a sound when a notification is received.', moduleSlug: 'settings', elementType: 'text', elementLabel: 'Notification sound description' },
 
   // Booking
   { key: 'booking.title', defaultValue: 'Book a Resource', moduleSlug: 'booking', elementType: 'heading', elementLabel: 'Booking title' },
