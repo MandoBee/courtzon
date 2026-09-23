@@ -1512,3 +1512,289 @@ describe('G9-D3 — ACTIVE-only progression/result eligibility (M10)', () => {
     expect(bus.emit).not.toHaveBeenCalled();
   });
 });
+
+describe('G9-D4 — progression recovery for a stalled target (match_id NULL)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    repo.findById.mockResolvedValue(makeTournament());
+    repo.findStages.mockResolvedValue([]);
+    pool.getConnection.mockResolvedValue(fakeConn);
+    acquireConn.fn = async () => fakeConn;
+    installDefaultParticipants();
+    lockedTarget.row = null;
+    repo.lockMatchById.mockImplementation(async () => lockedTarget.row);
+    repo.findMatchesDetailed.mockResolvedValue([]);
+    matchServiceMock.cancelTournamentMatch.mockResolvedValue(undefined);
+    courtReservationMock.releaseCourt.mockResolvedValue({ released: false, bookingId: null });
+    mrRepo.getParticipants.mockResolvedValue([{ userId: 10, outcome: 'win', side: 'home' }, { userId: 20, outcome: 'loss', side: 'away' }]);
+  });
+
+  const svc = new TournamentService();
+
+  function completedSource(overrides: Record<string, unknown> = {}): TournamentMatch {
+    return makeSlot({
+      id: 11, round: 1, bracket_position: 0, match_id: 900,
+      status: 'completed', progression_state: 'completed',
+      participant1_id: 100, participant2_id: 200, player1_id: 10, player2_id: 20,
+      progression_meta: { is_bracket: true, target_round: 2, target_bracket_position: 0, target_side: 'player1' },
+      ...overrides,
+    });
+  }
+
+  function formatMocks() {
+    mrRepo.findFormatById.mockResolvedValue({ formatId: 1, sportId: 22, formatType: 'singles', playersPerSide: 1, name: 'Tennis', isActive: true });
+    mrRepo.findRuleSetById.mockResolvedValue({ formatId: 1, ruleSetId: 1, version: 1, rules: { score_structure: 'sets' }, standingsRules: null });
+  }
+
+  /** A target that is populated but whose shared Match was never attached (match_id NULL). */
+  function installStalledTarget(overrides: Record<string, unknown> = {}): any {
+    const targetRow: any = {
+      id: 31, tournament_id: 1, round: 2, bracket_position: 0, match_id: null,
+      participant1_id: 100, participant2_id: 200, player1_id: 10, player2_id: 20,
+      status: 'scheduled', progression_state: 'pending', stage_id: null, winner_id: null,
+      ...overrides,
+    };
+    lockedTarget.row = targetRow;
+    repo.lockMatchById.mockImplementation(async () => ({ ...targetRow }));
+    repo.findBracketSlot.mockImplementation(async () => ({ ...targetRow }));
+    repo.updateMatch.mockImplementation(async (_id: number, data: any) => {
+      if (data?.match_id != null) targetRow.match_id = data.match_id;
+    });
+    return targetRow;
+  }
+
+  function makeLockGate() {
+    let holder: string | null = null;
+    const waiters: Array<{ tag: string; resolve: () => void }> = [];
+    return {
+      async acquire(tag: string): Promise<void> {
+        if (holder == null) { holder = tag; return; }
+        await new Promise<void>((resolve) => waiters.push({ tag, resolve }));
+        holder = tag;
+      },
+      release(tag: string): void {
+        if (holder === tag) {
+          const next = waiters.shift();
+          if (next) next.resolve();
+          else holder = null;
+        }
+      },
+    };
+  }
+
+  function makeLockConn(tag: string, gate: ReturnType<typeof makeLockGate>): any {
+    return {
+      __tag: tag,
+      beginTransaction: async () => undefined,
+      query: async () => [[]],
+      execute: async () => [{}],
+      commit: async () => gate.release(tag),
+      rollback: async () => gate.release(tag),
+      release: () => undefined,
+    };
+  }
+
+  it('1. repairs a stalled target — source completed + target populated + match_id NULL → shared Match materialised', async () => {
+    repo.findMatchBySharedMatchId.mockResolvedValue(completedSource());
+    installStalledTarget();
+    formatMocks();
+    matchServiceMock.createForTournament.mockResolvedValue({ id: 950, tournamentId: 1 });
+
+    const out = await svc.progressFromApprovedResult({ matchId: 900, resultId: 3 });
+
+    expect(matchServiceMock.createForTournament).toHaveBeenCalledTimes(1);
+    expect(repo.updateMatch).toHaveBeenCalledWith(31, expect.objectContaining({ match_id: 950, progression_state: 'ready' }), expect.anything());
+    expect(out).toMatchObject({ advancedTo: null });
+  });
+
+  it('2. exactly ONE shared Match exists after recovery (no duplicate), target linked once', async () => {
+    repo.findMatchBySharedMatchId.mockResolvedValue(completedSource());
+    installStalledTarget();
+    formatMocks();
+    matchServiceMock.createForTournament.mockResolvedValue({ id: 950, tournamentId: 1 });
+
+    await svc.progressFromApprovedResult({ matchId: 900, resultId: 3 });
+
+    expect(matchServiceMock.createForTournament).toHaveBeenCalledTimes(1);
+    const linked = repo.updateMatch.mock.calls.filter((c: any[]) => c[0] === 31 && c[1]?.match_id === 950);
+    expect(linked).toHaveLength(1);
+  });
+
+  it('3. idempotent retry — the second recovery run creates nothing', async () => {
+    repo.findMatchBySharedMatchId.mockResolvedValue(completedSource());
+    installStalledTarget();
+    formatMocks();
+    matchServiceMock.createForTournament.mockResolvedValue({ id: 950, tournamentId: 1 });
+
+    await svc.progressFromApprovedResult({ matchId: 900, resultId: 3 });
+    await svc.progressFromApprovedResult({ matchId: 900, resultId: 3 });
+
+    expect(matchServiceMock.createForTournament).toHaveBeenCalledTimes(1);
+    expect(repo.updateMatch.mock.calls.filter((c: any[]) => c[0] === 31 && c[1]?.match_id === 950)).toHaveLength(1);
+  });
+
+  it('4. concurrent recovery attempts — exactly one shared Match, both converge', async () => {
+    const targetRow = installStalledTarget();
+    formatMocks();
+    matchServiceMock.createForTournament.mockResolvedValue({ id: 950, tournamentId: 1 });
+    const gate = makeLockGate();
+    let connCall = 0;
+    acquireConn.fn = async () => (connCall++ === 0 ? makeLockConn('A', gate) : makeLockConn('B', gate));
+    // The pre-attach check is a fast path; the authoritative existence check is the
+    // FOR UPDATE lock (lockMatchById) — both callers pass the fast path and the lock
+    // serialises, so the loser re-reads the already-created Match.
+    repo.findBracketSlot.mockImplementation(async () => ({ ...targetRow, match_id: null }));
+    repo.lockMatchById.mockImplementation(async (_id: number, conn: any) => {
+      await gate.acquire(conn.__tag);
+      return { ...targetRow };
+    });
+
+    await Promise.all([
+      svc.progressFromApprovedResult({ matchId: 900, resultId: 3 }),
+      svc.progressFromApprovedResult({ matchId: 900, resultId: 3 }),
+    ]);
+
+    expect(matchServiceMock.createForTournament).toHaveBeenCalledTimes(1);
+    expect(targetRow.match_id).toBe(950);
+    expect(repo.updateMatch.mock.calls.filter((c: any[]) => c[0] === 31 && c[1]?.match_id === 950)).toHaveLength(1);
+  });
+
+  it('5. already-repaired target — no new Match, no duplicate event', async () => {
+    repo.findMatchBySharedMatchId.mockResolvedValue(completedSource());
+    installStalledTarget({ match_id: 950 });
+    formatMocks();
+    matchServiceMock.createForTournament.mockResolvedValue({ id: 950, tournamentId: 1 });
+
+    await svc.progressFromApprovedResult({ matchId: 900, resultId: 3 });
+
+    expect(matchServiceMock.createForTournament).not.toHaveBeenCalled();
+    expect(bus.emit.mock.calls.filter((c: any[]) => c[0] === 'tournament:match-created')).toHaveLength(0);
+  });
+
+  it('6. legitimate bye / terminal target — never materialised', async () => {
+    repo.findMatchBySharedMatchId.mockResolvedValue(completedSource());
+    installStalledTarget({ progression_state: 'bye' });
+    formatMocks();
+
+    await svc.progressFromApprovedResult({ matchId: 900, resultId: 3 });
+
+    expect(matchServiceMock.createForTournament).not.toHaveBeenCalled();
+    expect(repo.updateMatch).not.toHaveBeenCalledWith(31, expect.objectContaining({ match_id: expect.anything() }));
+  });
+
+  it('7. incomplete target (missing participants) — no Match manufactured, deterministic outcome', async () => {
+    repo.findMatchBySharedMatchId.mockResolvedValue(completedSource());
+    installStalledTarget({ participant2_id: null, player2_id: null });
+    formatMocks();
+
+    await svc.progressFromApprovedResult({ matchId: 900, resultId: 3 });
+
+    expect(matchServiceMock.createForTournament).not.toHaveBeenCalled();
+    expect(repo.updateMatch).not.toHaveBeenCalledWith(31, expect.objectContaining({ match_id: expect.anything() }));
+  });
+
+  it('8. withdrawn_after_start participant in the target — G9-D3 gate prevents repair', async () => {
+    installParticipantMocks([
+      { id: 100, users: [10], status: 'withdrawn_after_start' },
+      { id: 200, users: [20] },
+    ]);
+    repo.findMatchBySharedMatchId.mockResolvedValue(completedSource());
+    installStalledTarget({ participant1_id: 100 });
+    formatMocks();
+    matchServiceMock.createForTournament.mockResolvedValue({ id: 950, tournamentId: 1 });
+
+    await svc.progressFromApprovedResult({ matchId: 900, resultId: 3 });
+
+    expect(matchServiceMock.createForTournament).not.toHaveBeenCalled();
+    expect(repo.updateMatch).not.toHaveBeenCalledWith(31, expect.objectContaining({ match_id: expect.anything() }));
+  });
+
+  it('9. PAIR/TEAM — recovery materialises with the full active roster', async () => {
+    installDefaultParticipants();
+    repo.findMatchBySharedMatchId.mockResolvedValue(completedSource({ participant1_id: 101, participant2_id: 201, player1_id: 10, player2_id: 20 }));
+    installStalledTarget({ participant1_id: 101, participant2_id: 201, player1_id: 10, player2_id: 20 });
+    formatMocks();
+    matchServiceMock.createForTournament.mockResolvedValue({ id: 950, tournamentId: 1 });
+
+    await svc.progressFromApprovedResult({ matchId: 900, resultId: 3 });
+
+    expect(matchServiceMock.createForTournament).toHaveBeenCalledTimes(1);
+    expect(matchServiceMock.createForTournament.mock.calls[0][0].participants).toEqual([
+      { userId: 10, side: 'home', teamIndex: 0, role: 'host' },
+      { userId: 11, side: 'home', teamIndex: 0, role: 'host' },
+      { userId: 20, side: 'away', teamIndex: 1, role: 'joiner' },
+      { userId: 21, side: 'away', teamIndex: 1, role: 'joiner' },
+    ]);
+  });
+
+  it('10. transient attach failure — error propagates (no false success), a later retry repairs', async () => {
+    repo.findMatchBySharedMatchId.mockResolvedValue(completedSource());
+    installStalledTarget();
+    formatMocks();
+    matchServiceMock.createForTournament.mockRejectedValue(new Error('db connection lost'));
+
+    await expect(svc.progressFromApprovedResult({ matchId: 900, resultId: 3 })).rejects.toThrow('db connection lost');
+
+    // After the transient failure clears, the retry is a genuine repair.
+    matchServiceMock.createForTournament.mockResolvedValue({ id: 950, tournamentId: 1 });
+    const out = await svc.progressFromApprovedResult({ matchId: 900, resultId: 3 });
+    expect(out.advancedTo).toBeNull();
+    expect(matchServiceMock.createForTournament).toHaveBeenCalledTimes(2);
+    expect(repo.updateMatch).toHaveBeenCalledWith(31, expect.objectContaining({ match_id: 950, progression_state: 'ready' }), expect.anything());
+  });
+
+  it('11. match-created is emitted exactly once on actual creation, never on an already-repaired target', async () => {
+    repo.findMatchBySharedMatchId.mockResolvedValue(completedSource());
+    installStalledTarget();
+    formatMocks();
+    matchServiceMock.createForTournament.mockResolvedValue({ id: 950, tournamentId: 1 });
+
+    await svc.progressFromApprovedResult({ matchId: 900, resultId: 3 });
+    expect(bus.emit.mock.calls.filter((c: any[]) => c[0] === 'tournament:match-created')).toHaveLength(1);
+
+    await svc.progressFromApprovedResult({ matchId: 900, resultId: 3 });
+    expect(bus.emit.mock.calls.filter((c: any[]) => c[0] === 'tournament:match-created')).toHaveLength(1);
+  });
+
+  it('12. G9-D2 regression — post-start withdrawal resolution still advances the ACTIVE opponent', async () => {
+    installParticipantMocks([
+      { id: 100, users: [10], status: 'withdrawn_after_start' },
+      { id: 200, users: [20] },
+    ]);
+    repo.findMatchesDetailed.mockResolvedValue([{
+      id: 21, tournament_id: 1, round: 1, bracket_position: 0, match_id: null,
+      participant1_id: 100, participant2_id: 200, player1_id: 10, player2_id: 20,
+      status: 'scheduled', progression_state: 'pending', stage_id: null, winner_id: null, shared_status: null,
+      progression_meta: { is_bracket: true, target_round: 2, target_bracket_position: 0, target_side: 'player1' },
+    }]);
+    repo.findBracketSlot.mockResolvedValue(makeSlot({
+      id: 31, round: 2, bracket_position: 0, match_id: null,
+      participant1_id: null, participant2_id: null, player1_id: null, player2_id: null,
+      progression_meta: { is_bracket: true, target_round: null, target_bracket_position: null },
+    }));
+
+    const out = await svc.resolveWithdrawnSlots(1, 100);
+
+    expect(out.resolvedSlots).toBe(1);
+    expect(repo.updateMatch.mock.calls.some((c: any[]) => c[0] === 31 && c[1]?.participant1_id === 200)).toBe(true);
+  });
+
+  it('13. M5×M10 regression — no recovery-created future Match for a withdrawn winner (lone target never repaired)', async () => {
+    installParticipantMocks([
+      { id: 100, users: [10], status: 'withdrawn_after_start' },
+      { id: 200, users: [20] },
+      { id: 300, users: [30] },
+    ]);
+    repo.findMatchBySharedMatchId.mockResolvedValue(completedSource());
+    // The withdrawn winner was never seated; the target holds only the eligible
+    // opponent (300) — an incomplete lone target, never a repair candidate.
+    installStalledTarget({ participant2_id: 300, player2_id: 30, participant1_id: null, player1_id: null });
+    formatMocks();
+    matchServiceMock.createForTournament.mockResolvedValue({ id: 950, tournamentId: 1 });
+
+    await svc.progressFromApprovedResult({ matchId: 900, resultId: 3 });
+
+    expect(matchServiceMock.createForTournament).not.toHaveBeenCalled();
+    expect(repo.updateMatch).not.toHaveBeenCalledWith(31, expect.objectContaining({ match_id: expect.anything() }));
+  });
+});

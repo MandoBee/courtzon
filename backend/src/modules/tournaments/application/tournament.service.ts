@@ -1547,7 +1547,14 @@ export class TournamentService {
 
     // Bracket slot.
     if (source.progression_state === 'completed' || source.progression_state === 'bye' || source.progression_state === 'cancelled') {
-      // Duplicate delivery — already resolved.
+      // G9-D4 — recovery, not a silent no-op: a source that completed but whose
+      // progression target is populated with match_id NULL means attach failed
+      // AFTER the source committed. Re-run the existing idempotent, lock-safe,
+      // G9-D3-gated attachSharedMatchToTarget to repair the stall.
+      if (source.progression_state === 'completed') {
+        await this.repairMissingTargetSharedMatch(source);
+      }
+      // bye / cancelled remain legitimate terminal states — never materialised.
       return { source, advancedTo: null };
     }
     if (winnerId == null) {
@@ -1771,6 +1778,68 @@ export class TournamentService {
       await tournamentRepository.updateMatch(locked.id!, { match_id: shared.id, progression_state: 'ready' }, conn);
       return { matchId: shared.id, created: true };
     });
+  }
+
+  /**
+   * G9-D4 — repair the G9-C recovery gap. When a source slot's progression
+   * committed ('completed') but `attachSharedMatchToTarget` failed AFTER the
+   * commit, a retry previously hit the completed-state guard and returned a
+   * no-op — the target stayed populated with match_id NULL and the bracket
+   * stalled silently.
+   *
+   * This recovery detects the narrow incomplete state and re-runs the EXISTING
+   * idempotent, lock-safe, transaction-aware, participant-aware,
+   * G9-D3-ACTIVE-gated `attachSharedMatchToTarget` — never a second
+   * materialisation implementation, never a manual insert.
+   *
+   * Repair condition (all must hold):
+   *   * source progression completed;
+   *   * a valid progression target exists (from progression_meta);
+   *   * target is not terminal/bye/cancelled;
+   *   * target.match_id IS NULL;
+   *   * target has BOTH participants (an M5×M10 lone target is never a repair).
+   * G9-D3 eligibility is enforced inside attach (never bypassed).
+   *
+   * Outcomes:
+   *   repaired         — a shared Match was actually created (match-created emitted once, post-commit);
+   *   already_repaired — target already has its shared Match;
+   *   legitimate_terminal — bye/cancelled target (no Match by design);
+   *   no_repair        — deterministic business state (incomplete target / G9-D3
+   *                      rejection / final round). Settles without an endless retry.
+   * Transient/system failures PROPAGATE (attach throws) so BullMQ retries.
+   */
+  private async repairMissingTargetSharedMatch(source: TournamentMatch): Promise<{ outcome: 'repaired' | 'already_repaired' | 'legitimate_terminal' | 'no_repair' }> {
+    const meta = this.parseProgressionMeta(source);
+    if (meta == null || meta.is_bracket !== true) return { outcome: 'no_repair' };
+    if (meta.target_round == null || meta.target_bracket_position == null) return { outcome: 'no_repair' }; // final round — no target to repair
+    const target = await tournamentRepository.findBracketSlot(source.tournament_id, meta.target_round, meta.target_bracket_position);
+    if (!target) return { outcome: 'no_repair' };
+    if (target.match_id != null) return { outcome: 'already_repaired' };
+    if (target.progression_state === 'bye' || target.progression_state === 'cancelled' || target.progression_state === 'completed') return { outcome: 'legitimate_terminal' };
+    if ((target.status as string) === 'cancelled') return { outcome: 'legitimate_terminal' };
+    if (target.participant1_id == null || target.participant2_id == null) return { outcome: 'no_repair' };
+
+    const t = await this.getById(source.tournament_id);
+    const attached = await this.attachSharedMatchToTarget(target, t);
+    if (attached) {
+      if (attached.created) {
+        // Only the caller that actually materialised the Match emits the event,
+        // and only after the transaction committed (inside attach).
+        const slotSide = meta.target_side === 'player2' ? 'player2' : 'player1';
+        eventBusV2.emit('tournament:match-created', {
+          tournamentId: t.id, matchId: attached.matchId, tournamentMatchId: target.id,
+          winnerId: slotSide === 'player1' ? target.player1_id : target.player2_id,
+          participantWinnerId: slotSide === 'player1' ? target.participant1_id : target.participant2_id,
+          organisationId: t.organisation_id ?? null,
+        } as Record<string, unknown>, {
+          aggregateType: 'tournament', aggregateId: String(t.id), aggregateVersion: 1,
+        });
+      }
+      return { outcome: 'repaired' };
+    }
+    // attach returned null: G9-D3 eligibility rejection or materialisation not
+    // applicable — a deterministic business state, never an endless retry loop.
+    return { outcome: 'no_repair' };
   }
 
   // ── G9-B: participant-aware winner resolution ─────────────────────────────
