@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ErrorCodes } from '../../../shared/errors/error-codes.js';
 import { TournamentService } from '../application/tournament.service.js';
-import { generateKnockoutBracket, normaliseBracketTargets } from '../domain/tournament-aggregate.js';
+import { generateKnockoutBracket, normaliseBracketTargets, isTournamentParticipantProgressionEligible } from '../domain/tournament-aggregate.js';
 import type { Tournament, TournamentMatch, TournamentRegistration } from '../domain/tournament-aggregate.js';
 
 const repo = vi.hoisted(() => ({
@@ -1288,5 +1288,227 @@ describe('G9-D2 — post-start withdrawal lone-slot resolution', () => {
     // No payment / accounting / wallet events are ever emitted by the resolver.
     const financialEvents = bus.emit.mock.calls.filter((c: any[]) => /^(payment:|accounting:|wallet:)/.test(c[0]));
     expect(financialEvents).toHaveLength(0);
+  });
+});
+
+describe('G9-D3 — ACTIVE-only progression/result eligibility (M10)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    repo.findById.mockResolvedValue(makeTournament());
+    repo.findStages.mockResolvedValue([]);
+    pool.getConnection.mockResolvedValue(fakeConn);
+    acquireConn.fn = async () => fakeConn;
+    installDefaultParticipants();
+    lockedTarget.row = null;
+    repo.lockMatchById.mockImplementation(async () => lockedTarget.row);
+    repo.findMatchesDetailed.mockResolvedValue([]);
+    matchServiceMock.cancelTournamentMatch.mockResolvedValue(undefined);
+    courtReservationMock.releaseCourt.mockResolvedValue({ released: false, bookingId: null });
+  });
+
+  const svc = new TournamentService();
+
+  it('0. eligibility predicate is ACTIVE-only (single authoritative rule)', () => {
+    expect(isTournamentParticipantProgressionEligible('active')).toBe(true);
+    expect(isTournamentParticipantProgressionEligible('waiting')).toBe(false);
+    expect(isTournamentParticipantProgressionEligible('withdrawn')).toBe(false);
+    expect(isTournamentParticipantProgressionEligible('withdrawn_after_start')).toBe(false);
+  });
+
+  it('1+9. withdrawn_after_start winner keeps an authoritative Result but cannot progress (no advance when target empty)', async () => {
+    installParticipantMocks([
+      { id: 100, users: [10], status: 'withdrawn_after_start' },
+      { id: 200, users: [20] },
+    ]);
+    repo.findMatchBySharedMatchId.mockResolvedValue(makeSlot({
+      id: 11, round: 1, bracket_position: 0, match_id: 900,
+      participant1_id: 100, participant2_id: 200,
+      progression_meta: { is_bracket: true, target_round: 2, target_bracket_position: 0, target_side: 'player1' },
+    }));
+    mrRepo.getParticipants.mockResolvedValue([{ userId: 10, outcome: 'win', side: 'home' }, { userId: 20, outcome: 'loss', side: 'away' }]);
+    // Target slot exists but has NO participant yet.
+    repo.findBracketSlot.mockResolvedValue(makeSlot({
+      id: 31, round: 2, bracket_position: 0, match_id: null,
+      participant1_id: null, participant2_id: null, player1_id: null, player2_id: null,
+      progression_meta: { is_bracket: true, target_round: null, target_bracket_position: null },
+    }));
+
+    const out = await svc.progressFromApprovedResult({ matchId: 900, resultId: 3 });
+
+    // Historical approved Result remains authoritative (source completes with the winner).
+    expect(repo.updateMatch).toHaveBeenCalledWith(11, expect.objectContaining({ winner_id: 10, status: 'completed', progression_state: 'completed' }), fakeConn);
+    // The withdrawn participant is NEVER seated into the future target.
+    expect(repo.updateMatch.mock.calls.some((c: any[]) => c[0] === 31 && (c[1]?.participant1_id === 100 || c[1]?.participant2_id === 100))).toBe(false);
+    // No future shared Match is materialised for the withdrawn participant.
+    expect(matchServiceMock.createForTournament).not.toHaveBeenCalled();
+    // The tournament is not completed through an ineligible winner.
+    expect(repo.updateStatus).not.toHaveBeenCalledWith(1, 'completed');
+    expect(out.tournamentCompleted).toBe(false);
+  });
+
+  it('2. seatParticipantWinner refuses a withdrawn participant (persistence-boundary gate)', async () => {
+    installParticipantMocks([
+      { id: 100, users: [10], status: 'withdrawn_after_start' },
+      { id: 200, users: [20] },
+    ]);
+    const slot = makeSlot({ id: 21, round: 1, bracket_position: 0, participant1_id: 100, participant2_id: 200, progression_meta: { is_bracket: true, target_round: 2, target_bracket_position: 0, target_side: 'player1' } });
+
+    const result = await (svc as any).seatParticipantWinner(slot, 100, 10);
+
+    expect(result).toBeNull();
+    expect(repo.updateMatch).not.toHaveBeenCalledWith(21, expect.objectContaining({ winner_id: expect.anything() }));
+  });
+
+  it('3. waiting participant cannot progress (seat + materialise gates)', async () => {
+    installParticipantMocks([
+      { id: 100, users: [10], status: 'waiting' },
+      { id: 200, users: [20] },
+    ]);
+    const slot = makeSlot({ id: 21, round: 1, bracket_position: 0, participant1_id: 100, participant2_id: 200, progression_meta: { is_bracket: true, target_round: 2, target_bracket_position: 0, target_side: 'player1' } });
+    // Seat gate rejects.
+    expect(await (svc as any).seatParticipantWinner(slot, 100, 10)).toBeNull();
+    // Materialise gate rejects.
+    setLockedTarget({ id: 31, participant1_id: 100, participant2_id: 200, player1_id: 10, player2_id: 20 });
+    expect(await (svc as any).attachSharedMatchToTarget(makeSlot({ id: 31, match_id: null }), makeTournament())).toBeNull();
+    expect(matchServiceMock.createForTournament).not.toHaveBeenCalled();
+  });
+
+  it('4. active participant still progresses normally (seat gate passes)', async () => {
+    installDefaultParticipants();
+    repo.findBracketSlot.mockResolvedValue(makeSlot({
+      id: 31, round: 2, bracket_position: 0, match_id: null,
+      participant1_id: null, participant2_id: null, player1_id: null, player2_id: null,
+      progression_meta: { is_bracket: true, target_round: null, target_bracket_position: null },
+    }));
+    const slot = makeSlot({ id: 21, round: 1, bracket_position: 0, participant1_id: 200, participant2_id: 100, progression_meta: { is_bracket: true, target_round: 2, target_bracket_position: 0, target_side: 'player1' } });
+
+    const target = await (svc as any).seatParticipantWinner(slot, 200, 20);
+
+    expect(target).not.toBeNull();
+    expect(repo.updateMatch).toHaveBeenCalledWith(21, expect.objectContaining({ winner_id: 20, status: 'completed', progression_state: 'completed' }));
+    expect(repo.updateMatch.mock.calls.some((c: any[]) => c[0] === 31 && c[1]?.participant1_id === 200 && c[1]?.player1_id === 20)).toBe(true);
+  });
+
+  it('5. PAIR with withdrawn_after_start status cannot progress (no future shared Match)', async () => {
+    installParticipantMocks([
+      { id: 101, type: 'pair', users: [10, 11], status: 'withdrawn_after_start' },
+      { id: 201, type: 'pair', users: [20, 21] },
+    ]);
+    setLockedTarget({ id: 31, participant1_id: 101, participant2_id: 201, player1_id: 10, player2_id: 20 });
+
+    const out = await (svc as any).attachSharedMatchToTarget(makeSlot({ id: 31, match_id: null }), makeTournament());
+
+    expect(out).toBeNull();
+    expect(matchServiceMock.createForTournament).not.toHaveBeenCalled();
+  });
+
+  it('6. TEAM with withdrawn_after_start status cannot progress (no future shared Match)', async () => {
+    installParticipantMocks([
+      { id: 102, type: 'team', users: [10, 11, 12], status: 'withdrawn_after_start' },
+      { id: 202, type: 'team', users: [20, 21, 22] },
+    ]);
+    setLockedTarget({ id: 31, participant1_id: 102, participant2_id: 202, player1_id: 10, player2_id: 20 });
+
+    const out = await (svc as any).attachSharedMatchToTarget(makeSlot({ id: 31, match_id: null }), makeTournament());
+
+    expect(out).toBeNull();
+    expect(matchServiceMock.createForTournament).not.toHaveBeenCalled();
+  });
+
+  it('7. withdrawn participant cannot materialise as a future shared Match (either side)', async () => {
+    installParticipantMocks([
+      { id: 100, users: [10], status: 'withdrawn_after_start' },
+      { id: 200, users: [20] },
+    ]);
+    setLockedTarget({ id: 31, participant1_id: 100, participant2_id: 200, player1_id: 10, player2_id: 20 });
+
+    const out = await (svc as any).attachSharedMatchToTarget(makeSlot({ id: 31, match_id: null }), makeTournament());
+
+    expect(out).toBeNull();
+    expect(matchServiceMock.createForTournament).not.toHaveBeenCalled();
+  });
+
+  it('8. ACTIVE pair/team materialises normally with the full roster', async () => {
+    installDefaultParticipants();
+    setLockedTarget({ id: 31, participant1_id: 101, participant2_id: 201, player1_id: 10, player2_id: 20 });
+    mrRepo.findFormatById.mockResolvedValue({ formatId: 1, sportId: 22, formatType: 'doubles', playersPerSide: 2, name: 'Padel Standard', isActive: true });
+    mrRepo.findRuleSetById.mockResolvedValue({ formatId: 1, ruleSetId: 1, version: 1, rules: { score_structure: 'sets' }, standingsRules: null });
+    matchServiceMock.createForTournament.mockResolvedValue({ id: 950, tournamentId: 1 });
+
+    const out = await (svc as any).attachSharedMatchToTarget(makeSlot({ id: 31, match_id: null }), makeTournament());
+
+    expect(out).toEqual({ matchId: 950, created: true });
+    expect(matchServiceMock.createForTournament.mock.calls[0][0].participants).toEqual([
+      { userId: 10, side: 'home', teamIndex: 0, role: 'host' },
+      { userId: 11, side: 'home', teamIndex: 0, role: 'host' },
+      { userId: 20, side: 'away', teamIndex: 1, role: 'joiner' },
+      { userId: 21, side: 'away', teamIndex: 1, role: 'joiner' },
+    ]);
+  });
+
+  it('10. M5×M10 regression — withdrawn winner of an in-progress Match does not advance', async () => {
+    installParticipantMocks([
+      { id: 100, users: [10], status: 'withdrawn_after_start' },
+      { id: 200, users: [20] },
+      { id: 300, users: [30] },
+    ]);
+    repo.findMatchBySharedMatchId.mockResolvedValue(makeSlot({
+      id: 11, round: 1, bracket_position: 0, match_id: 900,
+      participant1_id: 100, participant2_id: 200,
+      progression_meta: { is_bracket: true, target_round: 2, target_bracket_position: 0, target_side: 'player1' },
+    }));
+    mrRepo.getParticipants.mockResolvedValue([{ userId: 10, outcome: 'win', side: 'home' }, { userId: 20, outcome: 'loss', side: 'away' }]);
+    const slot31 = makeSlot({
+      id: 31, round: 2, bracket_position: 0, match_id: null,
+      participant1_id: null, participant2_id: 300, player1_id: null, player2_id: 30,
+      progression_meta: { is_bracket: true, target_round: 3, target_bracket_position: 0, target_side: 'player2' },
+    });
+    const slot61 = makeSlot({
+      id: 61, round: 3, bracket_position: 0, match_id: null,
+      participant1_id: null, participant2_id: null, player1_id: null, player2_id: null,
+      progression_meta: { is_bracket: true, target_round: null, target_bracket_position: null },
+    });
+    repo.findBracketSlot.mockImplementation(async (_tid: number, round: number, pos: number) => {
+      if (round === 2 && pos === 0) return slot31;
+      if (round === 3 && pos === 0) return slot61;
+      return null;
+    });
+
+    const out = await svc.progressFromApprovedResult({ matchId: 900, resultId: 3 });
+
+    expect(repo.updateMatch).toHaveBeenCalledWith(11, expect.objectContaining({ winner_id: 10, status: 'completed', progression_state: 'completed' }), fakeConn);
+    expect(repo.updateMatch.mock.calls.some((c: any[]) => c[0] === 31 && c[1]?.participant1_id === 100)).toBe(false);
+    expect(repo.updateMatch.mock.calls.some((c: any[]) => c[0] === 61 && c[1]?.participant2_id === 300)).toBe(true);
+    expect(matchServiceMock.createForTournament).not.toHaveBeenCalled();
+    expect(out.tournamentCompleted).toBe(false);
+  });
+
+  it('11. concurrency boundary — a status flipped to withdrawn before materialisation is refused (race regression)', async () => {
+    installDefaultParticipants();
+    // The target's participant was ACTIVE when seated, but withdraws before the
+    // shared Match materialises — the attach eligibility check re-reads the
+    // authoritative status and refuses.
+    pdr.findParticipantById.mockImplementation(async (id: number) =>
+      id === 100 ? { id: 100, tournament_id: 1, participant_type: 'individual', status: 'withdrawn_after_start', member_user_ids: [10] }
+        : { id: 200, tournament_id: 1, participant_type: 'individual', status: 'active', member_user_ids: [20] },
+    );
+    setLockedTarget({ id: 31, participant1_id: 100, participant2_id: 200, player1_id: 10, player2_id: 20 });
+
+    const out = await (svc as any).attachSharedMatchToTarget(makeSlot({ id: 31, match_id: null }), makeTournament());
+
+    expect(out).toBeNull();
+    expect(matchServiceMock.createForTournament).not.toHaveBeenCalled();
+  });
+
+  it('12. non-tournament shared result is unaffected — tournament eligibility is not global', async () => {
+    // A shared Match that is NOT a tournament bracket slot → no tournament progression,
+    // no eligibility interaction, nothing changes.
+    repo.findMatchBySharedMatchId.mockResolvedValue(null);
+
+    const out = await svc.progressFromApprovedResult({ matchId: 999, resultId: 1 });
+
+    expect(out).toEqual({ advancedTo: null });
+    expect(repo.updateMatch).not.toHaveBeenCalled();
+    expect(bus.emit).not.toHaveBeenCalled();
   });
 });

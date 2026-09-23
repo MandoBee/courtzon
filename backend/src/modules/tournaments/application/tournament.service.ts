@@ -1,7 +1,7 @@
 import { tournamentRepository, type BracketTypeRow } from '../infrastructure/repositories/tournament.repository.js';
 import { participantDrawRepository } from '../infrastructure/repositories/participant-draw.repository.js';
 import { participantMemberRepository } from '../infrastructure/repositories/participant-member.repository.js';
-import { generateKnockoutBracket, generateRoundRobinMatches, generateStageMatches, normaliseBracketTargets, seededShuffle, type BracketSlot } from '../domain/tournament-aggregate.js';
+import { generateKnockoutBracket, generateRoundRobinMatches, generateStageMatches, normaliseBracketTargets, isTournamentParticipantProgressionEligible, seededShuffle, type BracketSlot } from '../domain/tournament-aggregate.js';
 import type { Tournament, TournamentRegistration, TournamentMatch, TournamentStage, TournamentPrizeInput, TournamentPrizeType, TournamentVenue, TournamentParticipant, TournamentParticipantMember } from '../domain/tournament-aggregate.js';
 import { validateTournamentTransition, validateRegistrationTransition } from '../domain/lifecycle.js';
 import { NotFoundError, ConflictError, ForbiddenError } from '../../../shared/errors/app-error.js';
@@ -1460,8 +1460,18 @@ export class TournamentService {
    * the target slot. The participant id is authoritative (never guessed from the
    * slot's sides); the caller is responsible for eligibility. Used by the
    * post-start withdrawal lone-slot resolution and the M5×M10 winner handling.
+   *
+   * M10 (G9-D3) — the authoritative ACTIVE-only gate: a participant whose status
+   * is NOT 'active' is never advanced as the future progressing participant. This
+   * is a defensive check at the persistence boundary (races are re-checked here,
+   * close to the write).
    */
   private async seatParticipantWinner(slot: TournamentMatch, winnerParticipantId: number, primaryUserId: number): Promise<TournamentMatch | null> {
+    const winner = await participantDrawRepository.findParticipantById(winnerParticipantId);
+    if (!winner || !isTournamentParticipantProgressionEligible(winner.status)) {
+      console.error('seatParticipantWinner: ineligible participant not advanced', { slotId: slot.id, tournamentId: slot.tournament_id, winnerParticipantId, status: winner?.status ?? null });
+      return null;
+    }
     const meta = this.parseProgressionMeta(slot);
     await tournamentRepository.updateMatch(slot.id!, { winner_id: primaryUserId, status: 'completed', progression_state: 'completed' });
     if (!meta || meta.target_round == null || meta.target_bracket_position == null) {
@@ -1561,10 +1571,11 @@ export class TournamentService {
     const winnerParticipant = winnerResolved.participant;
     const winnerParticipantId = winnerParticipant.id!;
     winnerId = winnerResolved.primaryUserId;
-    // G9-D2 (M5×M10) — a participant who withdrew AFTER START and then wins an
-    // in-progress Match keeps an authoritative Result but is NOT eligible for any
-    // future bracket progression. Never seat them as the future winner.
-    const winnerWithdrawn = winnerParticipant.status === 'withdrawn_after_start';
+    // M10 (G9-D3) — a participant that is NOT 'active' (e.g. withdrawn_after_start)
+    // is ineligible for any future bracket progression. An in-progress Match still
+    // produces an authoritative Result, but the winner is never seated as the
+    // future progressing participant.
+    const winnerIneligible = !isTournamentParticipantProgressionEligible(winnerParticipant.status);
 
     const t = await this.getById(source.tournament_id);
     const conn = await getPool().getConnection();
@@ -1579,11 +1590,11 @@ export class TournamentService {
         progression_state: 'completed',
       }, conn);
 
-      if (winnerWithdrawn) {
+      if (winnerIneligible) {
         // The Result is authoritative (source completes with the winner recorded)
-        // but the withdrawn winner must NOT be seated. Locate the target so a
+        // but an ineligible winner must NOT be seated. Locate the target so a
         // post-commit lone-slot resolution can advance an already-present ACTIVE
-        // participant; never complete the tournament through a withdrawn winner.
+        // participant; never complete the tournament through an ineligible winner.
         if (meta.target_round != null && meta.target_bracket_position != null) {
           target = await tournamentRepository.findBracketSlot(source.tournament_id, meta.target_round, meta.target_bracket_position);
         }
@@ -1617,7 +1628,7 @@ export class TournamentService {
         if (remaining === 0) {
           await tournamentRepository.updateStageStatus(source.stage_id, 'completed', conn);
           stageCompleted = true;
-          if (!winnerWithdrawn) {
+          if (!winnerIneligible) {
             const stages = await tournamentRepository.findStages(source.tournament_id);
             if (stages.length > 0) {
               const maxOrder = Math.max(...stages.map((s) => s.stage_order));
@@ -1641,8 +1652,8 @@ export class TournamentService {
 
     let sharedMatchId: number | null = null;
     if (target) {
-      if (winnerWithdrawn) {
-        // M5×M10 — resolve the target as a lone slot toward the ACTIVE participant
+      if (winnerIneligible) {
+        // M10 / M5×M10 — resolve the target as a lone slot toward the ACTIVE participant
         // already seated on the other side (never the withdrawn winner). No shared
         // Match is materialised between the withdrawn participant and an opponent.
         const lone = await this.resolveActiveLoneParticipant(target);
@@ -1721,6 +1732,14 @@ export class TournamentService {
       if (!locked) return null;
       if (locked.match_id != null) return { matchId: Number(locked.match_id), created: false };
       if (locked.participant1_id == null || locked.participant2_id == null) return null;
+      // M10 (G9-D3) — never materialise a future shared Match containing a
+      // participant that is not ACTIVE (e.g. withdrawn_after_start). The check runs
+      // inside the same transaction that creates the Match, close to the write.
+      const p1 = await participantDrawRepository.findParticipantById(Number(locked.participant1_id));
+      const p2 = await participantDrawRepository.findParticipantById(Number(locked.participant2_id));
+      if (!p1 || !p2 || !isTournamentParticipantProgressionEligible(p1.status) || !isTournamentParticipantProgressionEligible(p2.status)) {
+        return null;
+      }
       let formatCtx = await this.resolveMatchFormatContext(t);
       if (locked.stage_id != null) {
         const stages = await tournamentRepository.findStages(t.id!);
@@ -1769,7 +1788,10 @@ export class TournamentService {
    * Defensive validation (fails safely, never falls back to an arbitrary user):
    *   * every winning-side user must belong to the resolved participant
    *   * the participant must belong to the same tournament
-   *   * the participant must be progression-eligible (active / withdrawn-after-start)
+   *   * the participant must be IDENTIFIABLE (active or withdrawn-after-start) so an
+   *     in-progress/withdrawn winner can still be recorded authoritatively and then
+   *     gated by the ACTIVE-only eligibility predicate at the seating/materialisation
+   *     boundary (M10, G9-D3)
    *   * the participant must have a non-empty ACTIVE roster
    */
   private async resolveWinningParticipantForResult(

@@ -21,6 +21,25 @@ export type TournamentMemberStatus = 'active' | 'left' | 'replaced';
 export type TournamentReplacementStatus = 'pending' | 'approved' | 'rejected' | 'cancelled';
 
 /**
+ * M10 (G9-D3) — the SINGLE authoritative predicate for whether a tournament
+ * participant may be a FUTURE progressing participant or have a future shared
+ * Match materialised for its progression.
+ *
+ * Rule: ACTIVE ONLY. `waiting`, `withdrawn` and `withdrawn_after_start` are all
+ * ineligible for future tournament progression / result participation.
+ *
+ * This predicate is strictly tournament-scoped. It is NEVER applied to:
+ *   * historical approved Results (a result approved before withdrawal stays
+ *     authoritative),
+ *   * completed Matches / already-completed progression (never rolled back),
+ *   * audit history or participant membership history.
+ * Do not create other eligibility helpers that can drift from this one.
+ */
+export function isTournamentParticipantProgressionEligible(status: TournamentParticipantStatus): boolean {
+  return status === 'active';
+}
+
+/**
  * Group 7 — an authoritative member of a Tournament Participant. The Draw
  * operates on the PARTICIPANT (never the user); a pair/team holds MANY member
  * rows. `active_tournament_id` is a DB generated column so a player can never
