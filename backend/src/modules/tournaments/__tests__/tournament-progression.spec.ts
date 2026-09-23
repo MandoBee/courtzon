@@ -25,6 +25,7 @@ const repo = vi.hoisted(() => ({
   findMatchesByGroup: vi.fn(),
   findMatchById: vi.fn(),
   findMatchBySharedMatchId: vi.fn(),
+  lockMatchById: vi.fn(),
   findBracketSlot: vi.fn(),
   countMatchesAtPosition: vi.fn(),
   countIncompleteStageMatches: vi.fn(),
@@ -71,7 +72,18 @@ const fakeConn = vi.hoisted(() => ({
   commit: vi.fn(async () => undefined),
   rollback: vi.fn(async () => undefined),
   release: vi.fn(() => undefined),
+  // G9-C — the real lockMatchById reads the locked target row through conn.query.
+  query: vi.fn(async (sql: any) => {
+    if (typeof sql === 'string' && sql.includes('FOR UPDATE')) {
+      return lockedTarget.row ? [[lockedTarget.row]] : [[]];
+    }
+    return [[]];
+  }),
+  execute: vi.fn(async () => [[]]),
 }));
+
+/** G9-C — the row returned by a `SELECT ... FOR UPDATE` on a tournament match slot. */
+const lockedTarget = vi.hoisted(() => ({ row: null as any }));
 
 const pool = vi.hoisted(() => ({
   execute: vi.fn(async () => [[]]),
@@ -79,10 +91,16 @@ const pool = vi.hoisted(() => ({
   getConnection: vi.fn(async () => fakeConn),
 }));
 
+/** G9-C — configurable connection provider for withTransaction() (acquireConnection). */
+const acquireConn = vi.hoisted(() => ({ fn: async () => fakeConn as any }));
+
 vi.mock('../infrastructure/repositories/tournament.repository.js', () => ({ tournamentRepository: repo }));
 vi.mock('../infrastructure/repositories/participant-draw.repository.js', () => ({ participantDrawRepository: pdr }));
 vi.mock('../infrastructure/repositories/participant-member.repository.js', () => ({ participantMemberRepository: pmr }));
-vi.mock('../../../database/mysql.js', () => ({ getPool: () => pool }));
+vi.mock('../../../database/mysql.js', () => ({
+  getPool: () => pool,
+  acquireConnection: (...args: any[]) => acquireConn.fn(...args),
+}));
 vi.mock('../../audit-log/index.js', () => ({ recordAudit: audit.recordAudit }));
 vi.mock('../../../shared/event-bus/event-bus.v2.js', () => ({ eventBusV2: bus }));
 vi.mock('../../match-result/infrastructure/match-result.repository.js', () => ({ matchResultRepository: mrRepo }));
@@ -132,6 +150,19 @@ function installDefaultParticipants() {
   ]);
 }
 
+/**
+ * G9-C — configure the row that `lockMatchById` (`SELECT ... FOR UPDATE`) returns,
+ * i.e. the target slot state AFTER the winner has been seated.
+ */
+function setLockedTarget(overrides: Partial<TournamentMatch> = {}): void {
+  lockedTarget.row = {
+    id: 31, tournament_id: 1, round: 2, bracket_position: 0, match_id: null,
+    participant1_id: null, participant2_id: null, player1_id: null, player2_id: null,
+    stage_id: null, group_id: null, progression_state: 'pending', status: 'scheduled', winner_id: null,
+    ...overrides,
+  };
+}
+
 function makeTournament(overrides: Partial<Tournament> = {}): Tournament {
   return {
     id: 1, creator_id: 1, bracket_type_id: 1, format: 'knockout',
@@ -169,6 +200,8 @@ describe('TournamentService.progressFromApprovedResult (Group 5B)', () => {
     repo.findStages.mockResolvedValue([]);
     pool.getConnection.mockResolvedValue(fakeConn);
     installDefaultParticipants();
+    lockedTarget.row = null;
+    repo.lockMatchById.mockImplementation(async () => lockedTarget.row);
   });
 
   const svc = new TournamentService();
@@ -227,6 +260,8 @@ describe('TournamentService.progressFromApprovedResult (Group 5B)', () => {
     mrRepo.findFormatById.mockResolvedValue({ formatId: 1, sportId: 22, formatType: 'singles', playersPerSide: 1, name: 'Tennis', isActive: true });
     mrRepo.findRuleSetById.mockResolvedValue({ formatId: 1, ruleSetId: 1, version: 1, rules: { score_structure: 'sets' }, standingsRules: null });
     matchServiceMock.createForTournament.mockResolvedValue({ id: 950, tournamentId: 1 });
+    // G9-C — the FOR UPDATE read returns the target after the winner was seated.
+    setLockedTarget({ id: 31, round: 2, bracket_position: 1, participant1_id: 100, participant2_id: 200, player1_id: 10, player2_id: 20 });
 
     const out = await svc.progressFromApprovedResult({ matchId: 900, resultId: 3 });
 
@@ -405,6 +440,8 @@ describe('G9-A — progression consumes the corrected G8 Round-1 target wiring',
     repo.findStages.mockResolvedValue([]);
     pool.getConnection.mockResolvedValue(fakeConn);
     installDefaultParticipants();
+    lockedTarget.row = null;
+    repo.lockMatchById.mockImplementation(async () => lockedTarget.row);
   });
 
   const svc = new TournamentService();
@@ -504,6 +541,8 @@ describe('G9-B — participant-aware tournament progression', () => {
     repo.findStages.mockResolvedValue([]);
     pool.getConnection.mockResolvedValue(fakeConn);
     installDefaultParticipants();
+    lockedTarget.row = null;
+    repo.lockMatchById.mockImplementation(async () => lockedTarget.row);
   });
 
   const svc = new TournamentService();
@@ -533,6 +572,7 @@ describe('G9-B — participant-aware tournament progression', () => {
     }));
     formatMocks();
     matchServiceMock.createForTournament.mockResolvedValue({ id: 950, tournamentId: 1 });
+    setLockedTarget({ participant1_id: 100, participant2_id: 200, player1_id: 10, player2_id: 20 });
 
     const out = await svc.progressFromApprovedResult({ matchId: 900, resultId: 3 });
 
@@ -563,6 +603,7 @@ describe('G9-B — participant-aware tournament progression', () => {
     }));
     formatMocks();
     matchServiceMock.createForTournament.mockResolvedValue({ id: 950, tournamentId: 1 });
+    setLockedTarget({ participant1_id: 101, participant2_id: 201, player1_id: 10, player2_id: 20 });
 
     const out = await svc.progressFromApprovedResult({ matchId: 900, resultId: 3 });
 
@@ -598,6 +639,7 @@ describe('G9-B — participant-aware tournament progression', () => {
     }));
     formatMocks();
     matchServiceMock.createForTournament.mockResolvedValue({ id: 950, tournamentId: 1 });
+    setLockedTarget({ participant1_id: 102, participant2_id: 202, player1_id: 10, player2_id: 20 });
 
     const out = await svc.progressFromApprovedResult({ matchId: 900, resultId: 3 });
 
@@ -637,6 +679,7 @@ describe('G9-B — participant-aware tournament progression', () => {
     }));
     formatMocks();
     matchServiceMock.createForTournament.mockResolvedValue({ id: 951, tournamentId: 1 });
+    setLockedTarget({ id: 31, round: 2, bracket_position: 1, participant1_id: 100, participant2_id: 201, player1_id: 10, player2_id: 20 });
 
     const out = await svc.progressFromApprovedResult({ matchId: 900, resultId: 3 });
 
@@ -718,5 +761,257 @@ describe('G9-B — participant-aware tournament progression', () => {
     expect(slots.every((s) => s.match_id == null)).toBe(true);
     expect(repo.updateStatus).not.toHaveBeenCalledWith(1, 'completed');
     expect(out.advanced).toBe(1);
+  });
+});
+
+describe('G9-C — idempotent & race-safe shared Match materialisation', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    repo.findById.mockResolvedValue(makeTournament());
+    repo.findStages.mockResolvedValue([]);
+    pool.getConnection.mockResolvedValue(fakeConn);
+    acquireConn.fn = async () => fakeConn;
+    installDefaultParticipants();
+    lockedTarget.row = null;
+    repo.lockMatchById.mockImplementation(async () => lockedTarget.row);
+  });
+
+  const svc = new TournamentService();
+
+  function targetFixture(overrides: Record<string, unknown> = {}): any {
+    return {
+      id: 31, tournament_id: 1, round: 2, bracket_position: 0, match_id: null,
+      participant1_id: 101, participant2_id: 201, player1_id: 10, player2_id: 20,
+      stage_id: null, group_id: null, progression_state: 'pending', status: 'scheduled', winner_id: null,
+      ...overrides,
+    };
+  }
+
+  /** Wire the materialisation mocks against a mutable `row` (the DB row state). */
+  function wireMaterialisation({ row, failCreate = false, failLink = false }: { row: any; failCreate?: boolean; failLink?: boolean }): void {
+    let nextId = 950;
+    repo.lockMatchById.mockImplementation(async () => ({ ...row }));
+    repo.updateMatch.mockImplementation(async (_id: number, data: any) => {
+      if (failLink && data?.match_id != null) throw new Error('link update failed');
+      if (data?.match_id != null) row.match_id = data.match_id;
+    });
+    matchServiceMock.createForTournament.mockImplementation(async () => {
+      if (failCreate) throw new Error('match creation failed');
+      return { id: nextId++, tournamentId: 1 };
+    });
+    mrRepo.findFormatById.mockResolvedValue({ formatId: 1, sportId: 22, formatType: 'doubles', playersPerSide: 2, name: 'Padel Standard', isActive: true });
+    mrRepo.findRuleSetById.mockResolvedValue({ formatId: 1, ruleSetId: 1, version: 1, rules: { score_structure: 'sets' }, standingsRules: null });
+  }
+
+  /** Shared row-lock gate — the second `FOR UPDATE` blocks until the first commits. */
+  function makeLockGate() {
+    let holder: string | null = null;
+    const waiters: Array<{ tag: string; resolve: () => void }> = [];
+    return {
+      async acquire(tag: string): Promise<void> {
+        if (holder == null) { holder = tag; return; }
+        await new Promise<void>((resolve) => waiters.push({ tag, resolve }));
+        holder = tag;
+      },
+      release(tag: string): void {
+        if (holder === tag) {
+          const next = waiters.shift();
+          if (next) next.resolve();
+          else holder = null;
+        }
+      },
+    };
+  }
+
+  function makeLockConn(tag: string, gate: ReturnType<typeof makeLockGate>): any {
+    return {
+      __tag: tag,
+      beginTransaction: async () => undefined,
+      query: async () => [[]],
+      execute: async () => [{}],
+      commit: async () => gate.release(tag),
+      rollback: async () => gate.release(tag),
+      release: () => undefined,
+    };
+  }
+
+  it('C1. sequential calls — first materialises, second re-reads the SAME match_id (exactly one Match)', async () => {
+    const row = targetFixture();
+    wireMaterialisation({ row });
+
+    const first = await (svc as any).attachSharedMatchToTarget(targetFixture(), makeTournament());
+    const second = await (svc as any).attachSharedMatchToTarget(targetFixture(), makeTournament());
+
+    expect(first).toEqual({ matchId: 950, created: true });
+    expect(second).toEqual({ matchId: 950, created: false });
+    expect(matchServiceMock.createForTournament).toHaveBeenCalledTimes(1);
+    expect(row.match_id).toBe(950);
+  });
+
+  it('C2. concurrent same-target calls — exactly one Match, both callers converge on the same id', async () => {
+    const row = targetFixture();
+    wireMaterialisation({ row });
+    const gate = makeLockGate();
+    const connA = makeLockConn('A', gate);
+    const connB = makeLockConn('B', gate);
+    let connCall = 0;
+    acquireConn.fn = async () => (connCall++ === 0 ? connA : connB);
+    repo.lockMatchById.mockImplementation(async (_id: number, conn: any) => {
+      await gate.acquire(conn.__tag);
+      return { ...row };
+    });
+
+    const [a, b] = await Promise.all([
+      (svc as any).attachSharedMatchToTarget(targetFixture(), makeTournament()),
+      (svc as any).attachSharedMatchToTarget(targetFixture(), makeTournament()),
+    ]);
+
+    // Exactly ONE shared Match was created; the loser blocked on the row lock and
+    // re-read the already-linked match_id.
+    expect(matchServiceMock.createForTournament).toHaveBeenCalledTimes(1);
+    expect(a).toEqual({ matchId: 950, created: true });
+    expect(b).toEqual({ matchId: 950, created: false });
+    expect(row.match_id).toBe(950);
+  });
+
+  it('C3. already-materialised target — returns the existing match_id, no INSERT, no duplicate', async () => {
+    const row = targetFixture({ match_id: 900 });
+    wireMaterialisation({ row });
+
+    const out = await (svc as any).attachSharedMatchToTarget(targetFixture({ match_id: 900 }), makeTournament());
+
+    expect(out).toEqual({ matchId: 900, created: false });
+    expect(matchServiceMock.createForTournament).not.toHaveBeenCalled();
+    expect(repo.updateMatch).not.toHaveBeenCalledWith(31, expect.objectContaining({ match_id: expect.anything() }));
+    expect(row.match_id).toBe(900);
+  });
+
+  it('C4. Match creation failure — transaction rolls back, target untouched, no orphan Match', async () => {
+    const row = targetFixture();
+    wireMaterialisation({ row, failCreate: true });
+
+    await expect((svc as any).attachSharedMatchToTarget(targetFixture(), makeTournament()))
+      .rejects.toThrow('match creation failed');
+
+    expect(row.match_id).toBeNull();
+    expect(fakeConn.rollback).toHaveBeenCalled();
+    expect(matchServiceMock.createForTournament).toHaveBeenCalledTimes(1);
+  });
+
+  it('C5. target link update failure — transaction rolls back, no orphan Match, match_id unchanged', async () => {
+    const row = targetFixture();
+    wireMaterialisation({ row, failLink: true });
+
+    await expect((svc as any).attachSharedMatchToTarget(targetFixture(), makeTournament()))
+      .rejects.toThrow('link update failed');
+
+    expect(row.match_id).toBeNull();
+    expect(fakeConn.rollback).toHaveBeenCalled();
+  });
+
+  it('C6. PAIR concurrency — full pair roster preserved, exactly one shared Match', async () => {
+    const row = targetFixture(); // participants 101 / 201 (pairs)
+    wireMaterialisation({ row });
+    const gate = makeLockGate();
+    let connCall = 0;
+    acquireConn.fn = async () => (connCall++ === 0 ? makeLockConn('A', gate) : makeLockConn('B', gate));
+    repo.lockMatchById.mockImplementation(async (_id: number, conn: any) => {
+      await gate.acquire(conn.__tag);
+      return { ...row };
+    });
+
+    const [a, b] = await Promise.all([
+      (svc as any).attachSharedMatchToTarget(targetFixture(), makeTournament()),
+      (svc as any).attachSharedMatchToTarget(targetFixture(), makeTournament()),
+    ]);
+
+    expect(matchServiceMock.createForTournament).toHaveBeenCalledTimes(1);
+    expect(a).toEqual({ matchId: 950, created: true });
+    expect(b).toEqual({ matchId: 950, created: false });
+    expect(matchServiceMock.createForTournament.mock.calls[0][0].participants).toEqual([
+      { userId: 10, side: 'home', teamIndex: 0, role: 'host' },
+      { userId: 11, side: 'home', teamIndex: 0, role: 'host' },
+      { userId: 20, side: 'away', teamIndex: 1, role: 'joiner' },
+      { userId: 21, side: 'away', teamIndex: 1, role: 'joiner' },
+    ]);
+  });
+
+  it('C7. TEAM concurrency — full team roster preserved, exactly one shared Match', async () => {
+    const row = targetFixture({ participant1_id: 102, participant2_id: 202, player1_id: 10, player2_id: 20 });
+    wireMaterialisation({ row });
+    const gate = makeLockGate();
+    let connCall = 0;
+    acquireConn.fn = async () => (connCall++ === 0 ? makeLockConn('A', gate) : makeLockConn('B', gate));
+    repo.lockMatchById.mockImplementation(async (_id: number, conn: any) => {
+      await gate.acquire(conn.__tag);
+      return { ...row };
+    });
+
+    const [a, b] = await Promise.all([
+      (svc as any).attachSharedMatchToTarget(targetFixture({ participant1_id: 102, participant2_id: 202, player1_id: 10, player2_id: 20 }), makeTournament()),
+      (svc as any).attachSharedMatchToTarget(targetFixture({ participant1_id: 102, participant2_id: 202, player1_id: 10, player2_id: 20 }), makeTournament()),
+    ]);
+
+    expect(matchServiceMock.createForTournament).toHaveBeenCalledTimes(1);
+    expect(a).toEqual({ matchId: 950, created: true });
+    expect(b).toEqual({ matchId: 950, created: false });
+    expect(matchServiceMock.createForTournament.mock.calls[0][0].participants).toEqual([
+      { userId: 10, side: 'home', teamIndex: 0, role: 'host' },
+      { userId: 11, side: 'home', teamIndex: 0, role: 'host' },
+      { userId: 12, side: 'home', teamIndex: 0, role: 'host' },
+      { userId: 20, side: 'away', teamIndex: 1, role: 'joiner' },
+      { userId: 21, side: 'away', teamIndex: 1, role: 'joiner' },
+      { userId: 22, side: 'away', teamIndex: 1, role: 'joiner' },
+    ]);
+  });
+
+  it('C8. event behaviour — exactly one match-created event on creation, none on re-read, none on rollback', async () => {
+    // (a) actual creation through the full flow → exactly one tournament:match-created.
+    repo.findMatchBySharedMatchId.mockResolvedValue(makeSlot({
+      id: 11, round: 1, bracket_position: 0, match_id: 900,
+      participant1_id: 100, participant2_id: 200,
+      progression_meta: { is_bracket: true, target_round: 2, target_bracket_position: 0, target_side: 'player1' },
+    }));
+    mrRepo.getParticipants.mockResolvedValue([{ userId: 10, outcome: 'win', side: 'home' }, { userId: 20, outcome: 'loss', side: 'away' }]);
+    repo.findBracketSlot.mockResolvedValue(makeSlot({
+      id: 31, round: 2, bracket_position: 0, match_id: null,
+      participant1_id: null, participant2_id: 200, player1_id: null, player2_id: 20,
+      progression_meta: { is_bracket: true, target_round: null, target_bracket_position: null },
+    }));
+    mrRepo.findFormatById.mockResolvedValue({ formatId: 1, sportId: 22, formatType: 'singles', playersPerSide: 1, name: 'Tennis', isActive: true });
+    mrRepo.findRuleSetById.mockResolvedValue({ formatId: 1, ruleSetId: 1, version: 1, rules: { score_structure: 'sets' }, standingsRules: null });
+    matchServiceMock.createForTournament.mockResolvedValue({ id: 950, tournamentId: 1 });
+    setLockedTarget({ participant1_id: 100, participant2_id: 200, player1_id: 10, player2_id: 20 });
+
+    await svc.progressFromApprovedResult({ matchId: 900, resultId: 3 });
+
+    const createdEvents = bus.emit.mock.calls.filter((c: any[]) => c[0] === 'tournament:match-created');
+    expect(createdEvents).toHaveLength(1);
+    expect(createdEvents[0][1]).toMatchObject({ matchId: 950, tournamentMatchId: 31 });
+
+    // (b) a second delivery that only re-reads an existing target emits NO event.
+    bus.emit.mockClear();
+    repo.findMatchBySharedMatchId.mockResolvedValue(makeSlot({
+      id: 11, round: 1, bracket_position: 0, match_id: 900,
+      participant1_id: 100, participant2_id: 200,
+      progression_meta: { is_bracket: true, target_round: 2, target_bracket_position: 0, target_side: 'player1' },
+    }));
+    // Simulate the pre-materialised target (created by caller (a)).
+    setLockedTarget({ participant1_id: 100, participant2_id: 200, player1_id: 10, player2_id: 20, match_id: 950 });
+    await svc.progressFromApprovedResult({ matchId: 900, resultId: 4 });
+    expect(bus.emit.mock.calls.filter((c: any[]) => c[0] === 'tournament:match-created')).toHaveLength(0);
+    expect(matchServiceMock.createForTournament).toHaveBeenCalledTimes(1); // only caller (a) created
+
+    // (c) rollback (creation failure) → no match-created event.
+    bus.emit.mockClear();
+    repo.findMatchBySharedMatchId.mockResolvedValue(makeSlot({
+      id: 11, round: 1, bracket_position: 0, match_id: 900,
+      participant1_id: 100, participant2_id: 200,
+      progression_meta: { is_bracket: true, target_round: 2, target_bracket_position: 0, target_side: 'player1' },
+    }));
+    setLockedTarget({ participant1_id: 100, participant2_id: 200, player1_id: 10, player2_id: 20 });
+    matchServiceMock.createForTournament.mockRejectedValue(new Error('match creation failed'));
+    await expect(svc.progressFromApprovedResult({ matchId: 900, resultId: 5 })).rejects.toThrow('match creation failed');
+    expect(bus.emit.mock.calls.filter((c: any[]) => c[0] === 'tournament:match-created')).toHaveLength(0);
   });
 });

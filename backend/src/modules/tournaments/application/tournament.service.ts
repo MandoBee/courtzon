@@ -8,6 +8,7 @@ import { NotFoundError, ConflictError, ForbiddenError } from '../../../shared/er
 import { ErrorCodes } from '../../../shared/errors/error-codes.js';
 import { eventBusV2 } from '../../../shared/event-bus/event-bus.v2.js';
 import { getPool } from '../../../database/mysql.js';
+import { withTransaction } from '../../../database/database.transaction.js';
 import { recordAudit } from '../../audit-log/index.js';
 import { matchResultRepository } from '../../match-result/infrastructure/match-result.repository.js';
 import { formatSportRules } from '../../match-result/application/rules/format-rules.js';
@@ -1616,14 +1617,19 @@ export class TournamentService {
     if (target) {
       const attached = await this.attachSharedMatchToTarget(target, t);
       if (attached) {
-        sharedMatchId = attached;
-        eventBusV2.emit('tournament:match-created', {
-          tournamentId: t.id, matchId: sharedMatchId, tournamentMatchId: target.id, winnerId,
-          participantWinnerId: winnerParticipantId,
-          organisationId: t.organisation_id ?? null,
-        } as Record<string, unknown>, {
-          aggregateType: 'tournament', aggregateId: String(t.id), aggregateVersion: 1,
-        });
+        sharedMatchId = attached.matchId;
+        // G9-C — the authoritative creation event fires ONLY for the caller that
+        // actually materialised the shared Match. A concurrent duplicate delivery
+        // that merely re-reads an existing match_id must not emit it.
+        if (attached.created) {
+          eventBusV2.emit('tournament:match-created', {
+            tournamentId: t.id, matchId: sharedMatchId, tournamentMatchId: target.id, winnerId,
+            participantWinnerId: winnerParticipantId,
+            organisationId: t.organisation_id ?? null,
+          } as Record<string, unknown>, {
+            aggregateType: 'tournament', aggregateId: String(t.id), aggregateVersion: 1,
+          });
+        }
       }
     }
 
@@ -1658,37 +1664,58 @@ export class TournamentService {
    * participant 1 → side 'home' / team_index 0, every member of participant 2 →
    * side 'away' / team_index 1. A pair/team therefore advances with its full
    * roster intact.
+   *
+   * G9-C — idempotent + race-safe materialisation. The target slot row is locked
+   * FOR UPDATE inside the SAME transaction as the shared-Match INSERT and the
+   * target link UPDATE. Two concurrent deliveries of the same approved result
+   * block on the row lock; the loser re-reads an already-linked match_id and
+   * returns it without creating anything. Exactly ONE shared Match can ever be
+   * attached to ONE target slot, and a rolled-back transaction leaves no orphan
+   * Match (the INSERT and the link are atomic).
+   *
+   * Returns `{ matchId, created }` so the caller can emit the authoritative
+   * `tournament:match-created` event only for the caller that actually created it.
    */
-  private async attachSharedMatchToTarget(target: TournamentMatch, t: Tournament): Promise<number | null> {
-    if (target.match_id != null) return target.match_id;
-    if (target.participant1_id == null || target.participant2_id == null) return null;
-    let formatCtx = await this.resolveMatchFormatContext(t);
-    if (target.stage_id != null) {
-      const stages = await tournamentRepository.findStages(t.id!);
-      const stage = stages.find((s) => s.id === target.stage_id);
-      if (stage && stage.match_format_id != null && stage.rule_set_id != null) {
-        formatCtx = await this.resolveMatchFormatContext({ ...t, match_format_id: stage.match_format_id, rule_set_id: stage.rule_set_id });
+  private async attachSharedMatchToTarget(target: TournamentMatch, t: Tournament): Promise<{ matchId: number; created: boolean } | null> {
+    if (target.match_id != null) return { matchId: Number(target.match_id), created: false };
+    return withTransaction(async (conn) => {
+      // Authoritative serialisation point — the target row is locked before any
+      // existence decision is made.
+      const locked = await tournamentRepository.lockMatchById(target.id!, conn);
+      if (!locked) return null;
+      if (locked.match_id != null) return { matchId: Number(locked.match_id), created: false };
+      if (locked.participant1_id == null || locked.participant2_id == null) return null;
+      let formatCtx = await this.resolveMatchFormatContext(t);
+      if (locked.stage_id != null) {
+        const stages = await tournamentRepository.findStages(t.id!);
+        const stage = stages.find((s) => s.id === locked.stage_id);
+        if (stage && stage.match_format_id != null && stage.rule_set_id != null) {
+          formatCtx = await this.resolveMatchFormatContext({ ...t, match_format_id: stage.match_format_id, rule_set_id: stage.rule_set_id });
+        }
       }
-    }
-    const roster1 = await this.loadParticipantRoster(Number(target.participant1_id));
-    const roster2 = await this.loadParticipantRoster(Number(target.participant2_id));
-    if (roster1.memberUserIds.length === 0 || roster2.memberUserIds.length === 0) return null;
-    const participants = [
-      ...roster1.memberUserIds.map((userId) => ({ userId, side: 'home' as const, teamIndex: 0, role: 'host' as const })),
-      ...roster2.memberUserIds.map((userId) => ({ userId, side: 'away' as const, teamIndex: 1, role: 'joiner' as const })),
-    ];
-    const { matchService } = await import('../../match/application/services/match.service.js');
-    const shared = await matchService.createForTournament({
-      tournamentId: t.id!,
-      sportId: t.sport_id!,
-      formatId: formatCtx.formatId,
-      ruleSetId: formatCtx.ruleSetId,
-      formatSnapshot: formatCtx.formatSnapshot,
-      ruleSnapshot: formatCtx.ruleSnapshot,
-      participants,
+      const roster1 = await this.loadParticipantRoster(Number(locked.participant1_id));
+      const roster2 = await this.loadParticipantRoster(Number(locked.participant2_id));
+      if (roster1.memberUserIds.length === 0 || roster2.memberUserIds.length === 0) return null;
+      const participants = [
+        ...roster1.memberUserIds.map((userId) => ({ userId, side: 'home' as const, teamIndex: 0, role: 'host' as const })),
+        ...roster2.memberUserIds.map((userId) => ({ userId, side: 'away' as const, teamIndex: 1, role: 'joiner' as const })),
+      ];
+      const { matchService } = await import('../../match/application/services/match.service.js');
+      // The shared Match participates in THIS transaction (same connection): the
+      // INSERT is not committed independently and rolls back with the target link.
+      const shared = await matchService.createForTournament({
+        tournamentId: t.id!,
+        sportId: t.sport_id!,
+        formatId: formatCtx.formatId,
+        ruleSetId: formatCtx.ruleSetId,
+        formatSnapshot: formatCtx.formatSnapshot,
+        ruleSnapshot: formatCtx.ruleSnapshot,
+        participants,
+        conn,
+      });
+      await tournamentRepository.updateMatch(locked.id!, { match_id: shared.id, progression_state: 'ready' }, conn);
+      return { matchId: shared.id, created: true };
     });
-    await tournamentRepository.updateMatch(target.id!, { match_id: shared.id, progression_state: 'ready' });
-    return shared.id;
   }
 
   // ── G9-B: participant-aware winner resolution ─────────────────────────────

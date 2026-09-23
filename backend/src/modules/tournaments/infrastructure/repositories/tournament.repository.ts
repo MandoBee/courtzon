@@ -650,6 +650,18 @@ export class TournamentRepository {
     return rows.length ? (rows[0] as TournamentMatch) : null;
   }
 
+  /**
+   * G9-C — lock a tournament match slot row FOR UPDATE within the caller's
+   * transaction. This is the authoritative serialisation point for shared-Match
+   * materialisation: two concurrent progression deliveries against the same
+   * target block on this lock, and exactly one proceeds to create the shared
+   * Match (the loser re-reads an already-linked match_id).
+   */
+  async lockMatchById(id: number, conn: PoolConnection): Promise<TournamentMatch | null> {
+    const [rows] = await conn.query<RowData>('SELECT * FROM tournament_matches WHERE id = ? FOR UPDATE', [id]);
+    return rows.length ? (rows[0] as TournamentMatch) : null;
+  }
+
   /** Group 5B — a specific bracket slot for a round + position. */
   async findBracketSlot(tournamentId: number, round: number, bracketPosition: number): Promise<TournamentMatch | null> {
     const [rows] = await getPool().query<RowData>(

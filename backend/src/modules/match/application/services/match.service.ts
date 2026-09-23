@@ -202,7 +202,10 @@ export class MatchService {
 
       if (!external) await conn.commit();
 
-      const match = await matchRepository.findById(matchId);
+      // G9-C — read back through the SAME connection when the caller owns the
+      // transaction: an uncommitted row is invisible to a separate pool
+      // connection, so a cross-connection read would wrongly report "not found".
+      const match = await matchRepository.findById(matchId, external);
       if (!match) {
         log.error({ matchId }, 'Failed to load tournament match');
         throw new AppError('Match not found', 404, 'MATCH_NOT_FOUND');
