@@ -68,6 +68,148 @@ function resolveNested(obj: any, path: string): any {
   return path.split('.').reduce((acc, part) => acc?.[part], obj);
 }
 
+/**
+ * G9-D5-B — recipient-specific tournament notification content.
+ *
+ * Tournament lifecycle events (withdrawal, match creation/progression, stage
+ * completion, participant replacement) serve DIFFERENT audiences from one
+ * event. The `notification_templates` table stores exactly one template per
+ * (event_name, locale), so the audience-specific wording lives here — in the
+ * template service (the single source of truth for notification text) — and is
+ * delivered through the dispatch override fields (renderedTitle/renderedBody).
+ *
+ * Placeholders are limited to actual event payload / lookup data.
+ */
+export interface RecipientNotice {
+  title: string;
+  body: string;
+}
+
+const RECIPIENT_NOTICE_TITLES: Record<string, { en: string; ar: string }> = {
+  'tournament:withdrawal-resolved': { en: 'Tournament Withdrawal', ar: 'انسحاب البطولة' },
+  'tournament:match-created': { en: 'Tournament Match', ar: 'مباراة البطولة' },
+  'tournament:match-progressed': { en: 'Tournament Match Update', ar: 'تحديث مباراة البطولة' },
+  'tournament:stage-completed': { en: 'Tournament Stage', ar: 'مرحلة البطولة' },
+  'tournament:participant-replaced': { en: 'Tournament Participant Update', ar: 'تحديث مشترك البطولة' },
+};
+
+const RECIPIENT_NOTICE_BODIES: Record<string, { en: string; ar: string }> = {
+  'tournament:withdrawal-resolved:withdrawn': {
+    en: 'Your withdrawal from tournament #{{tournamentId}} was processed.',
+    ar: 'تمت معالجة انسحابك من البطولة #{{tournamentId}}.',
+  },
+  'tournament:withdrawal-resolved:advancing': {
+    en: 'Your opponent withdrew and you advance in tournament #{{tournamentId}}.',
+    ar: 'انسحب خصمك وتأهلت في البطولة #{{tournamentId}}.',
+  },
+  'tournament:withdrawal-resolved:orgStaff': {
+    en: 'A participant withdrew from tournament #{{tournamentId}} and the affected slots were resolved.',
+    ar: 'انسحب مشترك من البطولة #{{tournamentId}} وتمت معالجة المواقع المتأثرة.',
+  },
+  'tournament:withdrawal-resolved:admin': {
+    en: 'Withdrawal resolved in tournament #{{tournamentId}} ({{resolvedSlots}} slot(s), {{cancelledMatches}} match(es) cancelled).',
+    ar: 'تمت معالجة انسحاب في البطولة #{{tournamentId}} ({{resolvedSlots}} موقعاً، {{cancelledMatches}} مباراة ملغاة).',
+  },
+  'tournament:withdrawal-resolved:default': {
+    en: 'A withdrawal was processed in tournament #{{tournamentId}}.',
+    ar: 'تمت معالجة انسحاب في البطولة #{{tournamentId}}.',
+  },
+
+  'tournament:match-created:participant': {
+    en: 'Your next tournament match has been created.',
+    ar: 'تم إنشاء مباراتك التالية في البطولة.',
+  },
+  'tournament:match-created:referee': {
+    en: 'A tournament match you referee has been created.',
+    ar: 'تم إنشاء مباراة بطولة تقوم بتحكيمها.',
+  },
+  'tournament:match-created:orgStaff': {
+    en: 'A new match was created in tournament #{{tournamentId}}.',
+    ar: 'تم إنشاء مباراة جديدة في البطولة #{{tournamentId}}.',
+  },
+  'tournament:match-created:default': {
+    en: 'A new match was created in tournament #{{tournamentId}}.',
+    ar: 'تم إنشاء مباراة جديدة في البطولة #{{tournamentId}}.',
+  },
+
+  'tournament:match-progressed:participant': {
+    en: 'Your tournament match has been resolved.',
+    ar: 'تم حسم مباراتك في البطولة.',
+  },
+  'tournament:match-progressed:referee': {
+    en: 'A tournament match you referee has been resolved.',
+    ar: 'تم حسم مباراة بطولة تقوم بتحكيمها.',
+  },
+  'tournament:match-progressed:default': {
+    en: 'A match in tournament #{{tournamentId}} has been resolved.',
+    ar: 'تم حسم مباراة في البطولة #{{tournamentId}}.',
+  },
+
+  'tournament:stage-completed:participant': {
+    en: 'Stage {{stageId}} of tournament #{{tournamentId}} has been completed.',
+    ar: 'اكتملت المرحلة {{stageId}} من البطولة #{{tournamentId}}.',
+  },
+  'tournament:stage-completed:orgStaff': {
+    en: 'Stage {{stageId}} of tournament #{{tournamentId}} has been completed.',
+    ar: 'اكتملت المرحلة {{stageId}} من البطولة #{{tournamentId}}.',
+  },
+  'tournament:stage-completed:admin': {
+    en: 'Stage {{stageId}} of tournament #{{tournamentId}} has been completed.',
+    ar: 'اكتملت المرحلة {{stageId}} من البطولة #{{tournamentId}}.',
+  },
+  'tournament:stage-completed:default': {
+    en: 'Stage {{stageId}} of tournament #{{tournamentId}} has been completed.',
+    ar: 'اكتملت المرحلة {{stageId}} من البطولة #{{tournamentId}}.',
+  },
+
+  'tournament:participant-replaced:outgoing': {
+    en: 'Your participant in tournament #{{tournamentId}} has been replaced.',
+    ar: 'تم استبدال مشتركك في البطولة #{{tournamentId}}.',
+  },
+  'tournament:participant-replaced:replacement': {
+    en: 'You have been added to tournament #{{tournamentId}} as a replacement participant.',
+    ar: 'تمت إضافتك إلى البطولة #{{tournamentId}} كمشترك بديل.',
+  },
+  'tournament:participant-replaced:orgStaff': {
+    en: 'A participant was replaced in tournament #{{tournamentId}}.',
+    ar: 'تم استبدال مشترك في البطولة #{{tournamentId}}.',
+  },
+  'tournament:participant-replaced:admin': {
+    en: 'A participant was replaced in tournament #{{tournamentId}}.',
+    ar: 'تم استبدال مشترك في البطولة #{{tournamentId}}.',
+  },
+  'tournament:participant-replaced:default': {
+    en: 'A participant was replaced in tournament #{{tournamentId}}.',
+    ar: 'تم استبدال مشترك في البطولة #{{tournamentId}}.',
+  },
+};
+
+/**
+ * Resolve the recipient-specific tournament notice for an (event, role, locale).
+ * Falls back to the `default` role of the event, then to English. Returns null
+ * only when the event has no recipient content at all.
+ */
+export function renderRecipientNotice(
+  eventName: string,
+  role: string,
+  locale: string = 'en',
+  data: Record<string, any> = {},
+): RecipientNotice | null {
+  const normLocale = locale === 'ar' ? 'ar' : 'en';
+  const body =
+    RECIPIENT_NOTICE_BODIES[`${eventName}:${role}`]?.[normLocale]
+    ?? RECIPIENT_NOTICE_BODIES[`${eventName}:${role}`]?.en
+    ?? RECIPIENT_NOTICE_BODIES[`${eventName}:default`]?.[normLocale]
+    ?? RECIPIENT_NOTICE_BODIES[`${eventName}:default`]?.en
+    ?? null;
+  if (body == null) return null;
+  const title = RECIPIENT_NOTICE_TITLES[eventName]?.[normLocale] ?? RECIPIENT_NOTICE_TITLES[eventName]?.en ?? eventName;
+  return {
+    title: replacePlaceholders(title, data),
+    body: replacePlaceholders(body, data),
+  };
+}
+
 function mapRow(row: any): NotificationTemplate {
   return {
     id: row.id,

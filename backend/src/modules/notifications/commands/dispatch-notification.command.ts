@@ -48,6 +48,9 @@ export interface DispatchNotificationPayload {
   priority?: string;
   type?: string;
   locale?: string;
+  /** G9-D5-B — recipient-specific rendered content override (optional). */
+  renderedTitle?: string;
+  renderedBody?: string;
 }
 
 export interface DispatchNotificationResult {
@@ -90,7 +93,9 @@ export const dispatchNotificationHandler: CommandHandler<Command, DispatchNotifi
       return { notificationId: 0, userId: p.userId, dispatched: false };
     }
 
-    const resolved = resolveTemplate(template, p.data as Record<string, any>);
+    const resolved = p.renderedTitle != null
+      ? { title: p.renderedTitle, body: p.renderedBody ?? null }
+      : resolveTemplate(template, p.data as Record<string, any>);
 
     const notificationId = await notificationRepository.create({
       userId: p.userId,

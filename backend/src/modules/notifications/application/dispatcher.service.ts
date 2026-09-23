@@ -55,6 +55,14 @@ export interface DispatchOptions {
   actions?: any[];
   action?: NotificationAction;
   digestable?: boolean;
+  /**
+   * G9-D5-B — recipient-specific rendered content override. When provided, the
+   * resolved title/body are used verbatim instead of being re-substituted from
+   * the event template. The template is still required (category/channel/type
+   * resolution). Additive: absent for all existing callers.
+   */
+  renderedTitle?: string;
+  renderedBody?: string;
 }
 
 export async function dispatchToUser(options: DispatchOptions): Promise<void> {
@@ -81,7 +89,9 @@ export async function dispatchToUser(options: DispatchOptions): Promise<void> {
     return;
   }
 
-  const resolved = resolveTemplate(template, data);
+  const resolved = options.renderedTitle != null
+    ? { title: options.renderedTitle, body: options.renderedBody ?? null }
+    : resolveTemplate(template, data);
 
   const notificationId = await notificationRepository.create({
     userId,
@@ -344,6 +354,8 @@ async function dispatchToUserV2(options: DispatchOptions): Promise<void> {
       priority: options.priority,
       type: options.type,
       locale: options.locale,
+      renderedTitle: options.renderedTitle,
+      renderedBody: options.renderedBody,
     } satisfies DispatchNotificationPayload,
     correlationId: `ntf_${Date.now()}`,
   };

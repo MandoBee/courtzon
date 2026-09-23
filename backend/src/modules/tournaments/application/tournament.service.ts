@@ -2005,18 +2005,20 @@ export class TournamentService {
       entityId: withdrawnParticipantId,
       afterState: { tournament_id: tournamentId, resolvedSlots, cancelledMatches, releasedCourts },
     });
-    if (resolvedSlots > 0 || cancelledMatches > 0) {
-      eventBusV2.emit('tournament:withdrawal-resolved', {
-        tournamentId,
-        withdrawnParticipantId,
-        resolvedSlots,
-        cancelledMatches,
-        releasedCourts,
-        organisationId: t.organisation_id ?? null,
-      } as Record<string, unknown>, {
-        aggregateType: 'tournament', aggregateId: String(tournamentId), aggregateVersion: 1,
-      });
-    }
+    // G9-D5-B — ALWAYS emit (payload unchanged). The withdrawn participant must
+    // receive a processing confirmation even when nothing was resolved
+    // (resolvedSlots === 0 && cancelledMatches === 0). Counts are carried as-is;
+    // the notification engine dedups re-emissions per (user, event, tournament).
+    eventBusV2.emit('tournament:withdrawal-resolved', {
+      tournamentId,
+      withdrawnParticipantId,
+      resolvedSlots,
+      cancelledMatches,
+      releasedCourts,
+      organisationId: t.organisation_id ?? null,
+    } as Record<string, unknown>, {
+      aggregateType: 'tournament', aggregateId: String(tournamentId), aggregateVersion: 1,
+    });
     return { resolvedSlots, cancelledMatches, releasedCourts };
   }
 

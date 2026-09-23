@@ -33,6 +33,10 @@ vi.mock('../infrastructure/repositories/notification.repository.js', () => ({
   notificationRepository: { hasExisting: __state.hasExisting },
 }));
 
+vi.mock('../application/tournament-notification.service.js', () => ({
+  tournamentNotificationService: { handle: vi.fn(async () => undefined) },
+}));
+
 import { eventBusV2 } from '../../../shared/event-bus/index.js';
 import { notificationEngine } from '../application/notification-engine.js';
 

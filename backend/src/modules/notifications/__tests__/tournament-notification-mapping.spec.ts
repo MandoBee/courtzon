@@ -34,8 +34,13 @@ vi.mock('../infrastructure/repositories/notification.repository.js', () => ({
   notificationRepository: { hasExisting: __state.hasExisting },
 }));
 
+vi.mock('../application/tournament-notification.service.js', () => ({
+  tournamentNotificationService: { handle: vi.fn(async () => undefined) },
+}));
+
 import { eventBusV2 } from '../../../shared/event-bus/index.js';
 import { notificationEngine } from '../application/notification-engine.js';
+import { tournamentNotificationService } from '../application/tournament-notification.service.js';
 import { categorizeEvent } from '../domain/notification-aggregate.js';
 
 const ENGINE_SOURCE = fs.readFileSync(
@@ -173,7 +178,8 @@ describe('G9-D5-A — lifecycle events are no longer no-ops', () => {
     }
   });
 
-  it('lifecycle handlers stay inert until D5-B recipient resolution (no premature dispatch)', async () => {
+  it('G9-D5-B — lifecycle handlers delegate recipient resolution to the tournament notification service (no raw dispatch here)', async () => {
+    (tournamentNotificationService.handle as any).mockClear();
     const withdrawalHandler = handlers['tournament:withdrawal-resolved'];
     const progressedHandler = handlers['tournament:match-progressed'];
 
@@ -184,7 +190,19 @@ describe('G9-D5-A — lifecycle events are no longer no-ops', () => {
       tournamentId: 1, matchId: 10, resultId: 4, winnerId: 42, participantWinnerId: 7, stageId: 3, organisationId: 6,
     });
 
+    // Recipient resolution is performed by the dedicated service — the engine
+    // handler itself performs no raw dispatch for lifecycle events.
     expect(__state.dispatched).toHaveLength(0);
+    expect(tournamentNotificationService.handle).toHaveBeenCalledWith({
+      eventName: 'tournament:withdrawal-resolved',
+      categorySlug: 'tournament',
+      data: expect.objectContaining({ tournamentId: 1, withdrawnParticipantId: 5 }),
+    });
+    expect(tournamentNotificationService.handle).toHaveBeenCalledWith({
+      eventName: 'tournament:match-progressed',
+      categorySlug: 'tournament',
+      data: expect.objectContaining({ tournamentId: 1, resultId: 4 }),
+    });
   });
 
   it('waitlist-promoted dispatches to the promoted user once (active handler, one delivery)', async () => {

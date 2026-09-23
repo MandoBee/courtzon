@@ -598,6 +598,18 @@ export class ParticipantDrawService {
       afterState: { status: 'withdrawn', reason: reason ?? null, registration_id: participant.registration_id ?? null },
     });
     await this.emitLifecycle('tournament:participant-updated', { tournamentId, participantId, status: 'withdrawn' });
+    // G9-D5-B — the withdrawn participant receives a processing confirmation for
+    // EVERY withdrawal. A pre-start withdrawal resolves no future slots, so the
+    // withdrawal-resolved event is emitted with zero counts (same payload shape
+    // as the post-start resolution path). The notification engine dedups.
+    await this.emitLifecycle('tournament:withdrawal-resolved', {
+      tournamentId,
+      withdrawnParticipantId: participantId,
+      resolvedSlots: 0,
+      cancelledMatches: 0,
+      releasedCourts: 0,
+      organisationId: (await this.getTournament(tournamentId)).organisation_id ?? null,
+    });
     return { status: 'withdrawn', drawImpact: impact };
   }
 

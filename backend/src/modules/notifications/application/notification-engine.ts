@@ -1,6 +1,7 @@
 import { eventBusV2 } from '../../../shared/event-bus/index.js';
 import { dispatchToUser, dispatchByRole, dispatchByOrg, dispatchByPermission } from './dispatcher.service.js';
 import { notificationRepository } from '../infrastructure/repositories/notification.repository.js';
+import { tournamentNotificationService } from './tournament-notification.service.js';
 import { createModuleLogger } from '../../../shared/utils/logger.js';
 import type { NotificationAction } from '@courtzon/shared';
 
@@ -588,10 +589,7 @@ const eventGroups: EventGroupConfig[] = [
       'tournament:created', 'tournament:registration-open', 'tournament:registration-closed',
       'tournament:starting-soon', 'tournament:match-scheduled', 'tournament:result',
       'tournament:bracket-generated', 'tournament:completed', 'tournament:waitlist-promoted',
-      // G9-D5-A — lifecycle/progression events are now notification-capable at the
-      // mapping/template level (registered here so they are no longer subscribed
-      // no-ops). Their payloads carry no `userId`, so the generic dispatch below
-      // intentionally stays inert until D5-B implements recipient resolution.
+      // G9-D5-B — recipient resolution for lifecycle/progression events.
       'tournament:stage-completed', 'tournament:match-created', 'tournament:match-progressed',
       'tournament:participant-replaced', 'tournament:withdrawal-resolved',
     ],
@@ -604,6 +602,15 @@ const eventGroups: EventGroupConfig[] = [
             action: a(`/tournaments/${data.tournamentId}`),
           });
         }
+        return;
+      }
+      if (eventName === 'tournament:withdrawal-resolved' || eventName === 'tournament:participant-replaced'
+          || eventName === 'tournament:stage-completed' || eventName === 'tournament:match-created'
+          || eventName === 'tournament:match-progressed') {
+        // G9-D5-B — recipient resolution performed by the tournament notification
+        // service (participants/rosters, referee, org staff, admins) with
+        // notification-level idempotency. Realtime delivery is untouched.
+        await tournamentNotificationService.handle({ eventName, categorySlug, data });
         return;
       }
       if (data.userId) {
