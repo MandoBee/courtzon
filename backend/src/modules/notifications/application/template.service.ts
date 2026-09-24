@@ -56,12 +56,19 @@ export function resolveTemplate(tpl: NotificationTemplate, data: Record<string, 
 }
 
 function replacePlaceholders(template: string, data: Record<string, any>): string {
-  return template.replace(/\{\{(\w+)\}\}/g, (_, key) => {
+  // Resolve {{#if key}}...{{/if}} conditional blocks first — the inner content
+  // may itself contain {{placeholders}}. A falsy/missing key removes the block;
+  // a truthy key keeps the inner text (placeholder substitution happens next).
+  let out = template.replace(/\{\{#if (\w+)\}\}([\s\S]*?)\{\{\/if\}\}/g, (_m, key, inner) => {
+    return resolveNested(data, key) ? inner : '';
+  });
+  out = out.replace(/\{\{(\w+)\}\}/g, (_, key) => {
     const val = resolveNested(data, key);
     if (val === null || val === undefined) return `{{${key}}}`;
     if (typeof val === 'object') return JSON.stringify(val);
     return String(val);
   });
+  return out;
 }
 
 function resolveNested(obj: any, path: string): any {
@@ -86,11 +93,36 @@ export interface RecipientNotice {
 }
 
 const RECIPIENT_NOTICE_TITLES: Record<string, { en: string; ar: string }> = {
-  'tournament:withdrawal-resolved': { en: 'Tournament Withdrawal', ar: 'انسحاب البطولة' },
-  'tournament:match-created': { en: 'Tournament Match', ar: 'مباراة البطولة' },
-  'tournament:match-progressed': { en: 'Tournament Match Update', ar: 'تحديث مباراة البطولة' },
-  'tournament:stage-completed': { en: 'Tournament Stage', ar: 'مرحلة البطولة' },
-  'tournament:participant-replaced': { en: 'Tournament Participant Update', ar: 'تحديث مشترك البطولة' },
+  // withdrawal-resolved — role-aware titles (the old single title read like the
+  // technical event name and confused the "you advance" audience).
+  'tournament:withdrawal-resolved:withdrawn': { en: 'Withdrawal Confirmed', ar: 'تم تأكيد الانسحاب' },
+  'tournament:withdrawal-resolved:advancing': { en: 'You Advance!', ar: 'تأهلت!' },
+  'tournament:withdrawal-resolved:orgStaff': { en: 'Withdrawal Processed', ar: 'تمت معالجة انسحاب' },
+  'tournament:withdrawal-resolved:admin': { en: 'Withdrawal Processed', ar: 'تمت معالجة انسحاب' },
+  'tournament:withdrawal-resolved:default': { en: 'Tournament Update', ar: 'تحديث البطولة' },
+  // match-created
+  'tournament:match-created:participant': { en: 'Your Match Is Ready', ar: 'مباراتك جاهزة' },
+  'tournament:match-created:referee': { en: 'Match to Referee', ar: 'مباراة للتحكيم' },
+  'tournament:match-created:orgStaff': { en: 'Match Added', ar: 'تمت إضافة مباراة' },
+  'tournament:match-created:admin': { en: 'Match Added', ar: 'تمت إضافة مباراة' },
+  'tournament:match-created:default': { en: 'Match Added', ar: 'تمت إضافة مباراة' },
+  // match-progressed
+  'tournament:match-progressed:participant': { en: 'Match Result In', ar: 'نتيجة المباراة' },
+  'tournament:match-progressed:referee': { en: 'Match Resolved', ar: 'تم حسم المباراة' },
+  'tournament:match-progressed:orgStaff': { en: 'Match Update', ar: 'تحديث المباراة' },
+  'tournament:match-progressed:admin': { en: 'Match Update', ar: 'تحديث المباراة' },
+  'tournament:match-progressed:default': { en: 'Match Update', ar: 'تحديث المباراة' },
+  // stage-completed
+  'tournament:stage-completed:participant': { en: 'Stage Complete', ar: 'اكتملت المرحلة' },
+  'tournament:stage-completed:orgStaff': { en: 'Stage Complete', ar: 'اكتملت المرحلة' },
+  'tournament:stage-completed:admin': { en: 'Stage Complete', ar: 'اكتملت المرحلة' },
+  'tournament:stage-completed:default': { en: 'Stage Complete', ar: 'اكتملت المرحلة' },
+  // participant-replaced
+  'tournament:participant-replaced:outgoing': { en: 'Participant Updated', ar: 'تم تحديث مشترك' },
+  'tournament:participant-replaced:replacement': { en: "You're In!", ar: 'تمت إضافتك!' },
+  'tournament:participant-replaced:orgStaff': { en: 'Participant Updated', ar: 'تم تحديث مشترك' },
+  'tournament:participant-replaced:admin': { en: 'Participant Updated', ar: 'تم تحديث مشترك' },
+  'tournament:participant-replaced:default': { en: 'Participant Updated', ar: 'تم تحديث مشترك' },
 };
 
 const RECIPIENT_NOTICE_BODIES: Record<string, { en: string; ar: string }> = {
@@ -203,7 +235,12 @@ export function renderRecipientNotice(
     ?? RECIPIENT_NOTICE_BODIES[`${eventName}:default`]?.en
     ?? null;
   if (body == null) return null;
-  const title = RECIPIENT_NOTICE_TITLES[eventName]?.[normLocale] ?? RECIPIENT_NOTICE_TITLES[eventName]?.en ?? eventName;
+  const title =
+    RECIPIENT_NOTICE_TITLES[`${eventName}:${role}`]?.[normLocale]
+    ?? RECIPIENT_NOTICE_TITLES[`${eventName}:${role}`]?.en
+    ?? RECIPIENT_NOTICE_TITLES[eventName]?.[normLocale]
+    ?? RECIPIENT_NOTICE_TITLES[eventName]?.en
+    ?? eventName;
   return {
     title: replacePlaceholders(title, data),
     body: replacePlaceholders(body, data),
@@ -601,52 +638,59 @@ export async function seedTemplates(): Promise<void> {
 
     // Tournaments
     { eventName: 'tournament:created', locale: 'en', categorySlug: 'tournament', type: 'info', priority: 'normal',
-      titleTemplate: 'New Tournament', bodyTemplate: '{{name}} tournament has been created.',
+      titleTemplate: 'New Tournament', bodyTemplate: '{{name}} is now open for registration. Sign up today!',
       actionKey: 'view_tournament', routePattern: '/tournaments/{{tournamentId}}' },
     { eventName: 'tournament:created', locale: 'ar', categorySlug: 'tournament', type: 'info', priority: 'normal',
-      titleTemplate: 'بطولة جديدة', bodyTemplate: 'تم إنشاء بطولة {{name}}.',
+      titleTemplate: 'بطولة جديدة', bodyTemplate: '{{name}} مفتوحة الآن للتسجيل. سجّل اليوم!',
       actionKey: 'view_tournament', routePattern: '/tournaments/{{tournamentId}}' },
     { eventName: 'tournament:starting-soon', locale: 'en', categorySlug: 'tournament', type: 'reminder', priority: 'high',
       titleTemplate: 'Tournament Starting Soon', bodyTemplate: '{{name}} starts on {{startDate}}. Get ready!',
       actionKey: 'view_tournament', routePattern: '/tournaments/{{tournamentId}}' },
     { eventName: 'tournament:match-scheduled', locale: 'en', categorySlug: 'tournament', type: 'info', priority: 'normal',
-      titleTemplate: 'Match Scheduled', bodyTemplate: 'Your match against {{opponent}} is scheduled for {{date}}.',
+      titleTemplate: 'Your Match Is Scheduled', bodyTemplate: 'Your match against {{opponent}} is scheduled for {{date}}.',
       actionKey: 'view_match', routePattern: '/matches/{{matchId}}' },
     { eventName: 'tournament:result', locale: 'en', categorySlug: 'tournament', type: 'info', priority: 'normal',
-      titleTemplate: 'Match Result', bodyTemplate: 'Match result: {{result}}{{#if ranking}}. Ranking: #{{ranking}}{{/if}}.',
+      titleTemplate: 'Match Result', bodyTemplate: 'Your match result: {{result}}.',
       actionKey: 'view_match', routePattern: '/matches/{{matchId}}' },
     { eventName: 'tournament:completed', locale: 'en', categorySlug: 'tournament', type: 'success', priority: 'high',
-      titleTemplate: 'Tournament Completed', bodyTemplate: 'The {{name}} tournament has finished.{{#if winnerName}} Winner: {{winnerName}}.{{/if}}',
+      titleTemplate: 'Tournament Completed', bodyTemplate: '{{name}} has finished.{{#if winnerName}} Winner: {{winnerName}}.{{/if}}',
       actionKey: 'view_tournament', routePattern: '/tournaments/{{tournamentId}}' },
     { eventName: 'tournament:withdrawal-resolved', locale: 'en', categorySlug: 'tournament', type: 'info', priority: 'normal',
-      titleTemplate: 'Tournament Withdrawal Resolved', bodyTemplate: 'A withdrawal has been resolved in tournament #{{tournamentId}}: {{resolvedSlots}} slot(s) advanced, {{cancelledMatches}} match(es) cancelled.',
+      titleTemplate: 'Tournament Update', bodyTemplate: 'A tournament update was processed for tournament #{{tournamentId}}.',
       actionKey: 'view_tournament', routePattern: '/tournaments/{{tournamentId}}' },
     { eventName: 'tournament:withdrawal-resolved', locale: 'ar', categorySlug: 'tournament', type: 'info', priority: 'normal',
-      titleTemplate: 'تمت معالجة انسحاب البطولة', bodyTemplate: 'تمت معالجة انسحاب في البطولة #{{tournamentId}}: تقدم {{resolvedSlots}} مركزًا، وأُلغيت {{cancelledMatches}} مباراة.',
+      titleTemplate: 'تحديث البطولة', bodyTemplate: 'تمت معالجة تحديث في البطولة #{{tournamentId}}.',
       actionKey: 'view_tournament', routePattern: '/tournaments/{{tournamentId}}' },
     { eventName: 'tournament:match-created', locale: 'en', categorySlug: 'tournament', type: 'info', priority: 'normal',
-      titleTemplate: 'Tournament Match Created', bodyTemplate: 'A new match has been created in tournament #{{tournamentId}}.',
+      titleTemplate: 'Match Added', bodyTemplate: 'A new match was added to tournament #{{tournamentId}}.',
       actionKey: 'view_tournament', routePattern: '/tournaments/{{tournamentId}}' },
     { eventName: 'tournament:match-created', locale: 'ar', categorySlug: 'tournament', type: 'info', priority: 'normal',
-      titleTemplate: 'تم إنشاء مباراة في البطولة', bodyTemplate: 'تم إنشاء مباراة جديدة في البطولة #{{tournamentId}}.',
+      titleTemplate: 'تمت إضافة مباراة', bodyTemplate: 'تمت إضافة مباراة جديدة إلى البطولة #{{tournamentId}}.',
       actionKey: 'view_tournament', routePattern: '/tournaments/{{tournamentId}}' },
     { eventName: 'tournament:match-progressed', locale: 'en', categorySlug: 'tournament', type: 'info', priority: 'normal',
-      titleTemplate: 'Tournament Match Progressed', bodyTemplate: 'A match in tournament #{{tournamentId}} has been resolved and the winner advanced.',
+      titleTemplate: 'Match Update', bodyTemplate: 'A match in tournament #{{tournamentId}} has been updated.',
       actionKey: 'view_tournament', routePattern: '/tournaments/{{tournamentId}}' },
     { eventName: 'tournament:match-progressed', locale: 'ar', categorySlug: 'tournament', type: 'info', priority: 'normal',
-      titleTemplate: 'تقدمت مباراة في البطولة', bodyTemplate: 'تم حسم مباراة في البطولة #{{tournamentId}} وتأهل الفائز.',
+      titleTemplate: 'تحديث المباراة', bodyTemplate: 'تم تحديث مباراة في البطولة #{{tournamentId}}.',
       actionKey: 'view_tournament', routePattern: '/tournaments/{{tournamentId}}' },
     { eventName: 'tournament:stage-completed', locale: 'en', categorySlug: 'tournament', type: 'info', priority: 'normal',
-      titleTemplate: 'Tournament Stage Completed', bodyTemplate: 'Stage {{stageId}} of tournament #{{tournamentId}} has been completed.',
+      titleTemplate: 'Stage Complete', bodyTemplate: 'A stage of tournament #{{tournamentId}} has been completed.',
       actionKey: 'view_tournament', routePattern: '/tournaments/{{tournamentId}}' },
     { eventName: 'tournament:stage-completed', locale: 'ar', categorySlug: 'tournament', type: 'info', priority: 'normal',
-      titleTemplate: 'اكتملت مرحلة في البطولة', bodyTemplate: 'اكتملت المرحلة {{stageId}} من البطولة #{{tournamentId}}.',
+      titleTemplate: 'اكتملت مرحلة', bodyTemplate: 'اكتملت مرحلة في البطولة #{{tournamentId}}.',
       actionKey: 'view_tournament', routePattern: '/tournaments/{{tournamentId}}' },
     { eventName: 'tournament:participant-replaced', locale: 'en', categorySlug: 'tournament', type: 'info', priority: 'normal',
-      titleTemplate: 'Tournament Participant Replaced', bodyTemplate: 'A participant in tournament #{{tournamentId}} has been replaced.',
+      titleTemplate: 'Participant Updated', bodyTemplate: 'A participant in tournament #{{tournamentId}} has been updated.',
       actionKey: 'view_tournament', routePattern: '/tournaments/{{tournamentId}}' },
     { eventName: 'tournament:participant-replaced', locale: 'ar', categorySlug: 'tournament', type: 'info', priority: 'normal',
-      titleTemplate: 'تم استبدال مشترك في البطولة', bodyTemplate: 'تم استبدال مشترك في البطولة #{{tournamentId}}.',
+      titleTemplate: 'تم تحديث مشترك', bodyTemplate: 'تم تحديث مشترك في البطولة #{{tournamentId}}.',
+      actionKey: 'view_tournament', routePattern: '/tournaments/{{tournamentId}}' },
+    // Bracket generated — public/player-facing (payload has no tournament name).
+    { eventName: 'tournament:bracket-generated', locale: 'en', categorySlug: 'tournament', type: 'info', priority: 'normal',
+      titleTemplate: 'Bracket Ready', bodyTemplate: 'The tournament bracket is ready. See who you are facing!',
+      actionKey: 'view_tournament', routePattern: '/tournaments/{{tournamentId}}' },
+    { eventName: 'tournament:bracket-generated', locale: 'ar', categorySlug: 'tournament', type: 'info', priority: 'normal',
+      titleTemplate: 'قرعة البطولة جاهزة', bodyTemplate: 'قرعة البطولة جاهزة. تعرّف على منافسيك!',
       actionKey: 'view_tournament', routePattern: '/tournaments/{{tournamentId}}' },
 
     // Support
@@ -1017,31 +1061,31 @@ export async function seedTemplates(): Promise<void> {
 
     // ── Tournament Missing ──
     { eventName: 'tournament:registration-open', locale: 'en', categorySlug: 'tournament', type: 'info', priority: 'normal',
-      titleTemplate: 'Tournament Registration Open', bodyTemplate: 'Registration for {{name}} is now open!',
+      titleTemplate: 'Registration Open', bodyTemplate: 'Registration for {{name}} is now open. Grab your spot!',
       actionKey: 'view_tournament', routePattern: '/tournaments/{{tournamentId}}' },
     { eventName: 'tournament:registration-open', locale: 'ar', categorySlug: 'tournament', type: 'info', priority: 'normal',
-      titleTemplate: 'فتح التسجيل في البطولة', bodyTemplate: 'التسجيل في {{name}} مفتوح الآن!',
+      titleTemplate: 'التسجيل مفتوح', bodyTemplate: 'التسجيل في {{name}} مفتوح الآن. احجز مكانك!',
       actionKey: 'view_tournament', routePattern: '/tournaments/{{tournamentId}}' },
     { eventName: 'tournament:waitlist-promoted', locale: 'en', categorySlug: 'tournament', type: 'info', priority: 'normal',
-      titleTemplate: 'You are promoted!', bodyTemplate: 'A spot opened up in {{name}} — you are now registered.',
+      titleTemplate: "You're In!", bodyTemplate: 'A spot opened up in {{name}} — you are now registered.',
       actionKey: 'view_tournament', routePattern: '/tournaments/{{tournamentId}}' },
     { eventName: 'tournament:waitlist-promoted', locale: 'ar', categorySlug: 'tournament', type: 'info', priority: 'normal',
-      titleTemplate: 'تم ترقيتك!', bodyTemplate: 'ظهر مكان متاح في {{name}} — أنت مسجل الآن.',
+      titleTemplate: 'تم تأكيد مشاركتك!', bodyTemplate: 'ظهر مكان في {{name}} — تم تسجيلك الآن.',
       actionKey: 'view_tournament', routePattern: '/tournaments/{{tournamentId}}' },
     { eventName: 'tournament:registration-closed', locale: 'en', categorySlug: 'tournament', type: 'info', priority: 'normal',
-      titleTemplate: 'Registration Closed', bodyTemplate: 'Registration for {{name}} is now closed.',
+      titleTemplate: 'Registration Closed', bodyTemplate: 'Registration for {{name}} has closed.',
       actionKey: 'view_tournament', routePattern: '/tournaments/{{tournamentId}}' },
     { eventName: 'tournament:registration-closed', locale: 'ar', categorySlug: 'tournament', type: 'info', priority: 'normal',
-      titleTemplate: 'أُغلق التسجيل', bodyTemplate: 'أُغلق التسجيل في {{name}} الآن.',
+      titleTemplate: 'أُغلق التسجيل', bodyTemplate: 'أُغلق التسجيل في {{name}}.',
       actionKey: 'view_tournament', routePattern: '/tournaments/{{tournamentId}}' },
     { eventName: 'tournament:starting-soon', locale: 'ar', categorySlug: 'tournament', type: 'reminder', priority: 'high',
       titleTemplate: 'البطولة على وشك البدء', bodyTemplate: 'ستبدأ {{name}} في {{startDate}}. استعد!',
       actionKey: 'view_tournament', routePattern: '/tournaments/{{tournamentId}}' },
     { eventName: 'tournament:match-scheduled', locale: 'ar', categorySlug: 'tournament', type: 'info', priority: 'normal',
-      titleTemplate: 'تم جدولة المباراة', bodyTemplate: 'مباراتك ضد {{opponent}} مجدولة في {{date}}.',
+      titleTemplate: 'تم جدولة مباراتك', bodyTemplate: 'مباراتك ضد {{opponent}} مجدولة في {{date}}.',
       actionKey: 'view_match', routePattern: '/matches/{{matchId}}' },
     { eventName: 'tournament:result', locale: 'ar', categorySlug: 'tournament', type: 'info', priority: 'normal',
-      titleTemplate: 'نتيجة المباراة', bodyTemplate: 'نتيجة المباراة: {{result}}{{#if ranking}}. الترتيب: #{{ranking}}{{/if}}.',
+      titleTemplate: 'نتيجة المباراة', bodyTemplate: 'نتيجة مباراتك: {{result}}.',
       actionKey: 'view_match', routePattern: '/matches/{{matchId}}' },
     { eventName: 'tournament:completed', locale: 'ar', categorySlug: 'tournament', type: 'success', priority: 'high',
       titleTemplate: 'اكتملت البطولة', bodyTemplate: 'انتهت بطولة {{name}}.{{#if winnerName}} الفائز: {{winnerName}}.{{/if}}',
@@ -1152,5 +1196,20 @@ export async function seedTemplates(): Promise<void> {
         [tpl.eventName, tpl.locale, tpl.categorySlug, tpl.type, tpl.priority, tpl.titleTemplate, tpl.bodyTemplate, tpl.actionKey, tpl.routePattern],
       );
     }
+  }
+
+  // G9-D5 — refresh TOURNAMENT template copy on startup. Tournament templates
+  // are system-managed (the UAT content fix), so they are kept in sync with the
+  // code-defined copy above. Every other template stays admin-editable and is
+  // never overwritten by seeding.
+  for (const tpl of templates) {
+    if (!tpl.eventName.startsWith('tournament:')) continue;
+    await pool.execute(
+      `UPDATE notification_templates
+       SET title_template = ?, body_template = ?, category_slug = ?, type = ?, priority = ?,
+           action_key = ?, route_pattern = ?, is_active = TRUE, updated_at = NOW()
+       WHERE event_name = ? AND locale = ?`,
+      [tpl.titleTemplate, tpl.bodyTemplate, tpl.categorySlug, tpl.type, tpl.priority, tpl.actionKey, tpl.routePattern, tpl.eventName, tpl.locale],
+    );
   }
 }

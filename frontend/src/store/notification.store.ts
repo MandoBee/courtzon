@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { socketService } from '../services/socket';
 import { notificationsApi } from '../services/notifications';
 import { maybePlayNotificationSound, initNotificationSound } from '../services/notificationSound';
+import { updateAppBadge } from '../services/appBadge';
 import type { AppNotification } from '../components/notifications/NotificationDetailModal';
 
 interface NotificationState {
@@ -22,6 +23,19 @@ interface NotificationState {
   handleAction: (notificationId: number, actionKey: string, actionPayload?: any) => void;
 }
 
+/**
+ * G9-D5 — keep the app-icon badge in sync with the single (server-authoritative)
+ * unread counter. Subscribing once covers every mutation path (arrival, read,
+ * mark-all-read, reconnect, poll, clear, destroy) without scattering calls.
+ */
+function bindBadgeSync() {
+  useNotificationStore.subscribe((state, prev) => {
+    if (state.unreadCount !== prev.unreadCount) {
+      updateAppBadge(state.unreadCount);
+    }
+  });
+}
+
 export const useNotificationStore = create<NotificationState>((set, get) => ({
   items: [],
   unreadCount: 0,
@@ -38,9 +52,12 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
 
     socketService.on('notification.new', (notification: AppNotification) => {
       const state = get();
-      const exists = state.items.some((n) => n.id === notification.id);
+      // The socket payload may arrive with `notificationId` (backend mapper)
+      // instead of `id` — normalize so dedup/sound/count stay correct.
+      const id = notification.id ?? (notification as any).notificationId;
+      const exists = id != null && state.items.some((n) => n.id === id);
       if (!exists) {
-        const enriched = enrichNotification(notification);
+        const enriched = { ...enrichNotification(notification), ...(id != null ? { id } : {}) };
         set({ items: [enriched, ...state.items], unreadCount: state.unreadCount + 1 });
         // G9-D5-D — sound fires ONLY on a genuinely new socket-delivered
         // notification (deduped by id). Reconnect/hydration/polling/rerender
@@ -86,9 +103,10 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
 
   addNotification: (n: AppNotification) => {
     const state = get();
-    const exists = state.items.some((item) => item.id === n.id);
+    const id = n.id ?? (n as any).notificationId;
+    const exists = id != null && state.items.some((item) => item.id === id);
     if (!exists) {
-      set({ items: [enrichNotification(n), ...state.items] });
+      set({ items: [enrichNotification({ ...n, ...(id != null ? { id } : {}) }), ...state.items] });
     }
   },
 
@@ -103,9 +121,10 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
 
   prependNotification: (n: AppNotification) => {
     const state = get();
-    const exists = state.items.some((item) => item.id === n.id);
+    const id = n.id ?? (n as any).notificationId;
+    const exists = id != null && state.items.some((item) => item.id === id);
     if (!exists) {
-      set({ items: [enrichNotification(n), ...state.items], unreadCount: state.unreadCount + 1 });
+      set({ items: [enrichNotification({ ...n, ...(id != null ? { id } : {}) }), ...state.items], unreadCount: state.unreadCount + 1 });
     }
   },
 
@@ -132,10 +151,15 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
   markAsRead: async (id: number) => {
     try {
       await notificationsApi.markAsRead(id);
-      set((state) => ({
-        items: state.items.map((n) => (n.id === id ? { ...n, is_read: true } : n)),
-        unreadCount: Math.max(0, state.unreadCount - 1),
-      }));
+      set((state) => {
+        const target = state.items.find((n) => n.id === id);
+        const wasUnread = target ? !target.is_read : state.unreadCount > 0;
+        return {
+          items: state.items.map((n) => (n.id === id ? { ...n, is_read: true } : n)),
+          // Never double-decrement when a stale list item is clicked twice.
+          unreadCount: wasUnread ? Math.max(0, state.unreadCount - 1) : state.unreadCount,
+        };
+      });
       notificationsApi.trackEvent('read', { notificationId: id });
     } catch { }
   },
@@ -145,6 +169,8 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
     get().markAsRead(notificationId);
   },
 }));
+
+bindBadgeSync();
 
 function enrichNotification(n: any): AppNotification {
   return {

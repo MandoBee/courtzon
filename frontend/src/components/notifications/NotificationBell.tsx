@@ -5,7 +5,7 @@ import { notificationsApi } from '../../services/notifications';
 import { useAuthStore } from '../../store/auth.store';
 import { useNotificationStore } from '../../store/notification.store';
 import { useTranslation } from '../../i18n';
-import { getNotificationRoute } from '../../utils/notificationRoutes';
+import { useNotificationInteraction } from '../../hooks/useNotificationInteraction';
 import type { AppNotification } from '../../components/notifications/NotificationDetailModal';
 
 export default function NotificationBell() {
@@ -14,9 +14,9 @@ export default function NotificationBell() {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const unreadCount = useNotificationStore((s) => s.unreadCount);
   const refreshUnreadCount = useNotificationStore((s) => s.refreshUnreadCount);
-  const markAsRead = useNotificationStore((s) => s.markAsRead);
   const initStore = useNotificationStore((s) => s.init);
   const destroyStore = useNotificationStore((s) => s.destroy);
+  const { handleNotificationClick } = useNotificationInteraction();
   const { t } = useTranslation();
 
   const [open, setOpen] = useState(false);
@@ -57,9 +57,7 @@ export default function NotificationBell() {
 
   const openNotification = (n: AppNotification) => {
     setOpen(false);
-    if (!n.is_read) markAsRead(n.id);
-    const route = getNotificationRoute(n.action);
-    if (route) navigate(route, { replace: n.action?.replace ?? false, state: { tab: n.action?.tab, params: n.action?.params } });
+    handleNotificationClick(n);
   };
 
   return (

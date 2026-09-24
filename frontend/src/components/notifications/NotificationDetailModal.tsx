@@ -6,7 +6,8 @@ import { useToast } from '../ui/Toast';
 import { notificationsApi } from '../../services/notifications';
 import api from '../../services/api';
 import { formatDateTime } from '../../utils/formatDate';
-import { getNotificationRoute } from '../../utils/notificationRoutes';
+import { resolveNotificationTarget } from '../../utils/notificationRoutes';
+import { useNotificationInteraction } from '../../hooks/useNotificationInteraction';
 import type { NotificationAction } from '@courtzon/shared';
 
 export interface AppNotification {
@@ -40,6 +41,7 @@ export default function NotificationDetailModal({
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { showToast } = useToast();
+  const { handleNotificationClick } = useNotificationInteraction();
   const [applied, setApplied] = useState(false);
 
   const markReadRef = useRef<number | null>(null);
@@ -81,7 +83,7 @@ export default function NotificationDetailModal({
   const categoryLabel = notification.category_slug
     ? notification.category_slug.replace(/_/g, ' ')
     : null;
-  const route = getNotificationRoute(notification.action);
+  const route = resolveNotificationTarget(notification)?.route ?? null;
 
   return (
     <Modal open={open} onClose={onClose} title={notification.title} size="md">
@@ -113,7 +115,7 @@ export default function NotificationDetailModal({
               type="button"
               onClick={() => {
                 onClose();
-                navigate(route);
+                handleNotificationClick(notification);
               }}
               className="px-4 py-2 text-sm font-medium rounded-[var(--radius-md)] bg-[var(--color-primary)] text-white hover:opacity-90"
             >

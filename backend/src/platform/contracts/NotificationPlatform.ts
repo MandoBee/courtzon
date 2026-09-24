@@ -1,5 +1,6 @@
 import type { PlatformContract } from './base/PlatformContract.js';
 import type { PaginatedResult, PaginationInput } from '../shared/types.js';
+import type { NotificationAction } from '@courtzon/shared';
 
 export interface NotificationItem {
   id: number;
@@ -11,6 +12,7 @@ export interface NotificationItem {
   category_slug: string | null;
   action_key: string | null;
   action_payload: Record<string, unknown> | null;
+  action: NotificationAction | null;
   is_read: boolean;
   created_at: string;
   read_at: string | null;

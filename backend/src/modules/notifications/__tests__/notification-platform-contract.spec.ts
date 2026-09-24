@@ -62,4 +62,48 @@ describe('NotificationPlatform REST contract (K3)', () => {
     expect(item).not.toHaveProperty('isRead');
     expect(item).not.toHaveProperty('createdAt');
   });
+
+  it('G9-D5 — exposes `action` (deep link) when action_payload has a route', async () => {
+    svc.getUserNotifications.mockResolvedValue({
+      data: [{
+        id: 11,
+        title: 'Your match is scheduled',
+        body: 'body',
+        type: 'info',
+        priority: 'normal',
+        category_slug: 'tournament',
+        action_key: 'view_tournament',
+        action_payload: { route: '/tournaments/123', tab: 'bracket' },
+        is_read: 0,
+        created_at: '2026-09-15 08:00:00',
+        read_at: null,
+      }],
+      total: 1,
+    });
+
+    const item = (await notificationPlatform.list(42, { page: 1, limit: 20 })).data[0];
+    expect(item.action).toEqual({ route: '/tournaments/123', tab: 'bracket' });
+  });
+
+  it('G9-D5 — `action` is null when action_payload has no route', async () => {
+    svc.getUserNotifications.mockResolvedValue({
+      data: [{
+        id: 12,
+        title: 'Generic',
+        body: null,
+        type: 'info',
+        priority: 'normal',
+        category_slug: 'system',
+        action_key: null,
+        action_payload: { bookingId: 5 },
+        is_read: 1,
+        created_at: '2026-09-15 08:00:00',
+        read_at: null,
+      }],
+      total: 1,
+    });
+
+    const item = (await notificationPlatform.list(42, { page: 1, limit: 20 })).data[0];
+    expect(item.action).toBeNull();
+  });
 });

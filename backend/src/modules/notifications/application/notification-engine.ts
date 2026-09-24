@@ -613,6 +613,18 @@ const eventGroups: EventGroupConfig[] = [
         await tournamentNotificationService.handle({ eventName, categorySlug, data });
         return;
       }
+      if (eventName === 'tournament:match-scheduled' || eventName === 'tournament:result') {
+        // Legacy per-player match events (activities module) carry only matchId.
+        // Deep link to the match screen, not the tournament page.
+        if (data.userId) {
+          await dispatchToUser({
+            userId: data.userId, eventName, categorySlug, data,
+            relatedEntityType: 'tournament', relatedEntityId: String(data.matchId || data.tournamentId),
+            action: a(`/matches/${data.matchId}`),
+          });
+        }
+        return;
+      }
       if (data.userId) {
         const relatedEntityId = String(data.tournamentId || data.matchId);
         // Group 4 — idempotent delivery: a player is notified ONCE per

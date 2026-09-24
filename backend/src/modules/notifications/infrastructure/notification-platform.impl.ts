@@ -9,6 +9,9 @@ import type {
 import { notificationService } from '../application/notification.service.js';
 
 function toNotificationItem(row: any): NotificationItem {
+  const actionPayload = row.action_payload ?? null;
+  const hasRoute =
+    actionPayload && typeof actionPayload === 'object' && typeof actionPayload.route === 'string';
   return {
     id: row.id,
     title: row.title,
@@ -18,7 +21,11 @@ function toNotificationItem(row: any): NotificationItem {
     priority: row.priority ?? null,
     category_slug: row.category_slug ?? null,
     action_key: row.action_key ?? null,
-    action_payload: row.action_payload ?? null,
+    action_payload: actionPayload,
+    // The frontend resolves deep links from `action` (the repository already
+    // derives it from action_payload.route). Exposing it here is what makes
+    // NotificationBell / NotificationsPage navigation work.
+    action: row.action ?? (hasRoute ? actionPayload : null),
     is_read: !!(row.is_read ?? row.isRead),
     created_at: row.created_at ?? row.createdAt,
     read_at: row.read_at ?? row.readAt ?? null,

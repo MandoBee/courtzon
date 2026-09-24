@@ -27,6 +27,7 @@ import CountBadge from './components/ui/CountBadge';
 import { usePlayerNavCounts } from './hooks/usePlayerNavCounts';
 import OfflineBanner from './components/pwa/OfflineBanner';
 import PWAUpdatePrompt from './components/pwa/PWAUpdatePrompt';
+import PushSubscriptionManager from './components/pwa/PushSubscriptionManager';
 import { PENDING_RELOAD_KEY } from './constants/pwa-reload';
 import { SocketProvider } from './realtime/SocketContext';
 import { RealtimeCacheUpdater } from './realtime/RealtimeCacheUpdater';
@@ -925,6 +926,7 @@ export default function App() {
                 <ErrorBoundary>
                   <AppContent />
                   <RealtimeCacheUpdater />
+                  <PushSubscriptionManager />
                   <ConnectionStatus />
                   <CommandPalette />
                 </ErrorBoundary>
