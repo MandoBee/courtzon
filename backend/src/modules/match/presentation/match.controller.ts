@@ -425,7 +425,8 @@ export async function getApplicantsHandler(request: FastifyRequest, reply: Fasti
     `SELECT mp.user_id, u.full_name, u.avatar_url, mp.role
      FROM match_participants mp
      JOIN users u ON u.id = mp.user_id
-     WHERE mp.match_id = ?`,
+     WHERE mp.match_id = ?
+     ORDER BY mp.joined_at, mp.id`,
     [matchId]
   );
 

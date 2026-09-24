@@ -92,7 +92,8 @@ export class MysqlMatchRepository implements MatchRepository {
 
     const [partRows] = await db.execute<RowData>(
       `SELECT id, match_id, user_id, role, side, team_index, joined_at
-       FROM match_participants WHERE match_id = ?`, [id]
+       FROM match_participants WHERE match_id = ?
+       ORDER BY joined_at, id`, [id]
     );
     match.setParticipants(
       (partRows as any[]).map((r: any) => new Participant({

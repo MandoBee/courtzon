@@ -141,3 +141,26 @@ describe('Org portal result moderation — tenant isolation', () => {
     expect(sql).toContain('WHERE r.id = ?');
   });
 });
+
+describe('Group 3 — deterministic participant ordering feeds the legacy side fallback', () => {
+  it('getMatchContext orders match_participants by joined_at, id', async () => {
+    results.rows = [{
+      match_id: 1, sport_id: 22, status: 'closed', format_id: null, format_snapshot: null,
+      rule_set_id: null, rule_snapshot: null, branch_id: null, resource_id: null,
+      end_at_utc: null, timezone: null, tournament_id: null, stage_id: null,
+    }];
+    await matchResultRepository.getMatchContext(1);
+    const partSql = executed.find((s) => s.includes('FROM match_participants') && s.includes('WHERE match_id'));
+    expect(partSql).toMatch(/ORDER BY\s+joined_at,\s*id/);
+  });
+
+  it('findExpiredNoResultMatches orders match_participants by joined_at, id', async () => {
+    results.rows = [{
+      match_id: 1, sport_id: 22, format_id: null, rule_set_id: null, rule_snapshot: null,
+      branch_id: null, resource_id: null, timezone: null,
+    }];
+    await matchResultRepository.findExpiredNoResultMatches('2026-09-10 00:00:00');
+    const partSql = executed.find((s) => s.includes('FROM match_participants') && s.includes('WHERE match_id'));
+    expect(partSql).toMatch(/ORDER BY\s+joined_at,\s*id/);
+  });
+});

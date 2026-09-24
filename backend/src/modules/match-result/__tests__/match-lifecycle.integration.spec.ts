@@ -278,4 +278,37 @@ describe('Match lifecycle → result eligibility journey', () => {
     expect(found).toBeTruthy();
     expect(found?.participantUserIds).toHaveLength(2);
   });
+
+  it('getMatchContext returns legacy participants in deterministic joined_at, id order', async () => {
+    // Group 3 — the legacy side fallback (legacyBuildParticipantSlots) splits
+    // side-NULL participants by input order. That input must be deterministic
+    // (joined_at, id), NOT DB insertion order, or home/away could flip between
+    // requests for the same legacy match.
+    const past = new Date(Date.now() - 60 * 60 * 1000).toISOString().replace('T', ' ').slice(0, 19);
+    const { matchId } = await insertBookingAndMatch({ status: 'completed', endAtUtc: past });
+
+    const { getPool } = await import('../../../database/mysql.js');
+    const pool = getPool();
+    // Remove the two default participants and re-insert with joined_at values
+    // deliberately out of insertion order (earlier join inserted later).
+    await pool.execute('DELETE FROM match_participants WHERE match_id = ?', [matchId]);
+    const [uRows] = await pool.execute<any[]>('SELECT id FROM users ORDER BY id LIMIT 2');
+    const [lateId, earlyId] = [uRows[0].id, uRows[1].id];
+    await pool.execute(
+      `INSERT INTO match_participants (match_id, user_id, role, joined_at) VALUES (?, ?, 'host', ?)`,
+      [matchId, lateId, '2026-01-03 08:00:00'],
+    );
+    await pool.execute(
+      `INSERT INTO match_participants (match_id, user_id, role, joined_at) VALUES (?, ?, 'joiner', ?)`,
+      [matchId, earlyId, '2026-01-01 08:00:00'],
+    );
+
+    const { matchResultRepository } = await import('../infrastructure/match-result.repository.js');
+    const ctx = await matchResultRepository.getMatchContext(matchId);
+    // Deterministic order: the earlier joined_at participant MUST come first,
+    // regardless of the later insertion/id.
+    expect(ctx?.participantSlots.map((s) => s.userId)).toEqual([earlyId, lateId]);
+
+    await new Promise((r) => setTimeout(r, 150));
+  });
 });

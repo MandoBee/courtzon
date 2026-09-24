@@ -207,7 +207,7 @@ export class MatchResultRepository {
     if (!rows.length) return null;
     const r = rows[0] as any;
     const [parts] = await pool.execute<RowData>(
-      'SELECT user_id, side, team_index FROM match_participants WHERE match_id = ?',
+      'SELECT user_id, side, team_index FROM match_participants WHERE match_id = ? ORDER BY joined_at, id',
       [matchId],
     );
     const slots = (parts as any[]).map((p: any) => ({
@@ -673,7 +673,7 @@ export class MatchResultRepository {
     );
     const result: Array<{ matchId: number; sportId: number; branchId: number | null; resourceId: number | null; playedAt: string; timezone: string | null; participantUserIds: number[]; participantSlots: MatchParticipantSlot[]; formatId: number | null; ruleSetId: number | null; ruleSnapshot: Record<string, unknown> | null }> = [];
     for (const r of rows as any[]) {
-      const [parts] = await pool.execute<RowData>('SELECT user_id, side, team_index FROM match_participants WHERE match_id = ?', [r.match_id]);
+      const [parts] = await pool.execute<RowData>('SELECT user_id, side, team_index FROM match_participants WHERE match_id = ? ORDER BY joined_at, id', [r.match_id]);
       const slots = (parts as any[]).map((p: any) => ({
         userId: Number(p.user_id),
         side: p.side ?? null,

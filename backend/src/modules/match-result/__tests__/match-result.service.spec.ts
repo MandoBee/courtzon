@@ -700,3 +700,55 @@ describe('Group 2 — authoritative participant sides drive result grouping', ()
     expect(away).toEqual([8]);
   });
 });
+
+describe('Group 3 — deterministic legacy side fallback (side-NULL participants)', () => {
+  const legacyContext = (userIds: number[]) => ({
+    ...CONTEXT,
+    participantUserIds: userIds,
+    participantSlots: userIds.map((u) => ({ userId: u, side: null, teamIndex: null })),
+    formatSnapshot: null,
+  });
+
+  const submitLegacy = async (userIds: number[]) => {
+    repo.getMatchContext.mockResolvedValue(legacyContext(userIds));
+    repo.findByMatchId.mockResolvedValue(null);
+    repo.insert.mockResolvedValue(99);
+    repo.findById.mockResolvedValue(makeRecord({ id: 99 }));
+    await matchResultService.submitMatchResult(42, userIds[0], VALID_PAYLOAD);
+    const parts = repo.replaceParticipants.mock.calls[0][2];
+    return {
+      home: parts.filter((p: any) => p.side === 'home').map((p: any) => p.userId),
+      away: parts.filter((p: any) => p.side === 'away').map((p: any) => p.userId),
+    };
+  };
+
+  it('A. 2 legacy participants → home 1 / away 1', async () => {
+    const { home, away } = await submitLegacy([10, 20]);
+    expect(home).toEqual([10]);
+    expect(away).toEqual([20]);
+  });
+
+  it('B. 3 legacy participants (odd) → home 2 / away 1 (ceil half)', async () => {
+    const { home, away } = await submitLegacy([10, 20, 30]);
+    expect(home).toEqual([10, 20]);
+    expect(away).toEqual([30]);
+  });
+
+  it('C. 4 legacy participants → home 2 / away 2', async () => {
+    const { home, away } = await submitLegacy([10, 20, 30, 40]);
+    expect(home).toEqual([10, 20]);
+    expect(away).toEqual([30, 40]);
+  });
+
+  it('D. odd participant count (5) → home 3 / away 2', async () => {
+    const { home, away } = await submitLegacy([10, 20, 30, 40, 50]);
+    expect(home).toEqual([10, 20, 30]);
+    expect(away).toEqual([40, 50]);
+  });
+
+  it('E. repeated execution over the same deterministic input produces identical sides', async () => {
+    const first = await submitLegacy([10, 20, 30, 40]);
+    const second = await submitLegacy([10, 20, 30, 40]);
+    expect(second).toEqual(first);
+  });
+});
