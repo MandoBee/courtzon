@@ -33,12 +33,6 @@ export const RegisterTournamentSchema = z.object({
   playerId: z.number().int().positive(),
 });
 
-export const MatchScoreSchema = z.object({
-  winnerId: z.number().int().positive(),
-  scoreSummary: z.string().optional(),
-  sets: z.array(z.object({ setNumber: z.number().int().positive(), player1Score: z.string(), player2Score: z.string() })).optional(),
-});
-
 export const CreateAcademySchema = z.object({
   organisationId: z.number().int().positive(),
   branchId: z.number().int().positive().optional(),

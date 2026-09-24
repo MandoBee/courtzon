@@ -118,20 +118,6 @@ export const activitiesRepository = {
     );
   },
 
-  async findMatchById(matchId: number) {
-    const pool = getPool();
-    const [rows] = await pool.execute<RowData>(
-      `SELECT tm.*, p1.full_name as player1_name, p2.full_name as player2_name, r.name as resource_name
-       FROM tournament_matches tm
-       LEFT JOIN users p1 ON tm.player1_id = p1.id
-       LEFT JOIN users p2 ON tm.player2_id = p2.id
-       LEFT JOIN resources r ON tm.resource_id = r.id
-       WHERE tm.id = ?`,
-      [matchId]
-    );
-    return rows.length ? rows[0] : null;
-  },
-
   async findMatches(tournamentId: number) {
     const pool = getPool();
     const [rows] = await pool.execute<RowData>(
@@ -145,56 +131,6 @@ export const activitiesRepository = {
       [tournamentId]
     );
     return rows;
-  },
-
-  async generateMatches(tournamentId: number, bracketTypeId: number, playerIds: number[]) {
-    const pool = getPool();
-    const shuffled: (number | null)[] = [...playerIds].sort(() => Math.random() - 0.5);
-    const matches: { round: number; matchNumber: number; player1Id: number | null; player2Id: number | null }[] = [];
-
-    if (bracketTypeId === 1) {
-      let round = 1; let remaining = shuffled;
-      if (remaining.length % 2 !== 0) { remaining.push(null); }
-      while (remaining.length > 1) {
-        const nextRound: (number | null)[] = [];
-        for (let i = 0; i < remaining.length; i += 2) {
-          const mn = matches.filter(m => m.round === round).length + 1;
-          matches.push({ round, matchNumber: mn, player1Id: remaining[i], player2Id: remaining[i + 1] || null });
-          nextRound.push(null);
-        }
-        remaining = nextRound;
-        round++;
-      }
-    } else {
-      for (let i = 0; i < shuffled.length; i += 2) {
-        if (i + 1 < shuffled.length) {
-          matches.push({ round: 1, matchNumber: matches.length + 1, player1Id: shuffled[i], player2Id: shuffled[i + 1] });
-        }
-      }
-    }
-
-    for (const m of matches) {
-      await pool.execute(
-        'INSERT INTO tournament_matches (tournament_id, round, match_number, player1_id, player2_id) VALUES (?, ?, ?, ?, ?)',
-        [tournamentId, m.round, m.matchNumber, m.player1Id, m.player2Id]
-      );
-    }
-  },
-
-  async updateMatchScore(matchId: number, winnerId: number | null, scoreSummary: string | null, status: string) {
-    const pool = getPool();
-    await pool.execute(
-      'UPDATE tournament_matches SET winner_id = ?, score_summary = ?, status = ? WHERE id = ?',
-      [winnerId, scoreSummary, status, matchId]
-    );
-  },
-
-  async insertSetScore(matchId: number, setNumber: number, player1Score: string, player2Score: string, enteredBy: number) {
-    const pool = getPool();
-    await pool.execute(
-      'INSERT INTO tournament_match_scores (match_id, set_number, player1_score, player2_score, entered_by) VALUES (?, ?, ?, ?, ?)',
-      [matchId, setNumber, player1Score, player2Score, enteredBy]
-    );
   },
 
   // ── Academy ──

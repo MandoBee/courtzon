@@ -189,7 +189,7 @@ describe('Group 5B-SR — Bracket type configuration', () => {
       .rejects.toMatchObject({ code: ErrorCodes.TOURNAMENT_INVALID_FORMAT });
   });
 
-  it('13. tournament-generated matches preserve selected format/rule configuration', async () => {
+  it('13. tournament-generated matches preserve selected format/rule configuration (singles)', async () => {
     // resolveMatchFormatContext uses t.match_format_id + t.rule_set_id when present.
     repo.findById.mockResolvedValue(makeTournament({ id: 10, format: 'knockout', status: 'registration_closed' }));
     repo.findRegistrationsByTournament.mockResolvedValue([
@@ -198,6 +198,10 @@ describe('Group 5B-SR — Bracket type configuration', () => {
     ]);
     repo.findMatches.mockResolvedValue([]);
     repo.updateStatus.mockResolvedValue(undefined);
+    // Group 2 — the legacy registration-based generator is singles-only, so the
+    // fixture format is singles here.
+    mrRepo.findFormatById.mockResolvedValue({ formatId: 1, sportId: 21, formatType: 'singles', playersPerSide: 1, name: 'Tennis', isActive: true });
+    mrRepo.findRuleSetById.mockResolvedValue({ formatId: 1, ruleSetId: 1, version: 1, rules: { score_structure: 'sets' }, standingsRules: null });
     matchServiceMock.createForTournament.mockImplementation(async (input: any) => ({ id: input.participants[0].userId }));
     repo.createMatch.mockResolvedValue(1);
     await svc.generateBracket(10);

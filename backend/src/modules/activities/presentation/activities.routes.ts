@@ -11,8 +11,15 @@ export async function activitiesRoutes(app: FastifyInstance, opts: { requireFeat
     scopedApp.addHook('preHandler', opts.requireFeatureFlag('app.tournaments_enabled'));
 
     scopedApp.post('/tournaments', { preHandler: [requirePermission(['tournaments.create'])] }, ctrl.createTournamentHandler);
-    scopedApp.post('/tournaments/:id/generate-bracket', { preHandler: [requirePermission(['tournaments.manage_brackets'])] }, ctrl.generateBracketHandler);
-    scopedApp.post('/matches/:matchId/score', { preHandler: [requirePermission(['tournaments.enter_scores'])] }, ctrl.enterMatchScoreHandler);
+
+    // Group 2 — the legacy activities tournament bracket/score routes are REMOVED.
+    //   * POST /tournaments/:id/generate-bracket wrote `tournament_matches` rows
+    //     directly (exactly 2 users, no shared Match) — a duplicate generator.
+    //   * POST /matches/:matchId/score wrote `tournament_match_scores` + mutated
+    //     `tournament_matches.winner_id/score_summary/status` — a duplicate result
+    //     store that bypassed the authoritative shared Match Result lifecycle.
+    // Tournament matches/results are generated/recorded exclusively through the
+    // tournaments module (G8 locked-draw generation) + `match_result_records`.
 
     // Admin tournament routes
     scopedApp.put('/tournaments/:id', { preHandler: [adminGuard] }, ctrl.updateTournamentHandler);

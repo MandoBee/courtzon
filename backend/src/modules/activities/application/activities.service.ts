@@ -116,57 +116,6 @@ export const activitiesService = {
     if (regs.some((r: any) => r.player_id === playerId)) throw new ConflictError('Already registered');
     await repo.registerPlayer(tournamentId, playerId);
   },
-  async generateBracket(tournamentId: number) {
-    const t = await repo.findTournamentById(tournamentId);
-    if (!t) throw new NotFoundError('Tournament');
-    const regs = await repo.findRegistrations(tournamentId);
-    const confirmed = regs.filter((r: any) => r.status === 'confirmed' || r.status === 'registered');
-    if (confirmed.length < 2) throw new ConflictError('Need at least 2 confirmed players');
-    await repo.generateMatches(tournamentId, t.bracket_type_id, confirmed.map((r: any) => r.player_id));
-    await repo.updateTournament(tournamentId, { status: 'in_progress' });
-    const matches = await repo.findMatches(tournamentId);
-    for (const match of matches as any[]) {
-      eventBusV2.emit('tournament:match-scheduled', {
-        matchId: match.id,
-        userId: match.player1_id,
-        opponent: match.player2_name || 'TBD',
-        date: match.scheduled_date || new Date(),
-      });
-      if (match.player2_id) {
-        eventBusV2.emit('tournament:match-scheduled', {
-          matchId: match.id,
-          userId: match.player2_id,
-          opponent: match.player1_name || 'TBD',
-          date: match.scheduled_date || new Date(),
-        });
-      }
-    }
-    return matches;
-  },
-  async enterMatchScore(matchId: number, data: any, userId: number) {
-    const match = await repo.findMatchById(matchId);
-    await repo.updateMatchScore(matchId, data.winnerId, data.scoreSummary || null, 'completed');
-    if (data.sets) {
-      for (const set of data.sets) {
-        await repo.insertSetScore(matchId, set.setNumber, set.player1Score, set.player2Score, userId);
-      }
-    }
-    if (match) {
-      const result = data.winnerId === match.player1_id ? 'Win' : 'Loss';
-      eventBusV2.emit('tournament:result', {
-        matchId,
-        userId: match.player1_id,
-        result: data.winnerId === match.player1_id ? 'win' : 'loss',
-      });
-      if (match.player2_id) {
-        eventBusV2.emit('tournament:result', {
-          matchId,
-          userId: match.player2_id,
-          result: data.winnerId === match.player2_id ? 'win' : 'loss',
-        });
-      }
-    }
-  },
 
   // ── Academies ──
   async listAcademies(orgId?: number, branchId?: number) { return repo.findAcademies(orgId, branchId); },

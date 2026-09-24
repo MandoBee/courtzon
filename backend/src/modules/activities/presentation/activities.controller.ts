@@ -7,7 +7,7 @@ import { eventBusV2 } from '../../../shared/event-bus/index.js';
 import { NotFoundError, ForbiddenError } from '../../../shared/errors/app-error.js';
 import { isPlatformAdmin } from '../../../shared/middleware/org-access.js';
 import {
-  CreateTournamentSchema, MatchScoreSchema,
+  CreateTournamentSchema,
   CreateAcademySchema, CreateCurriculumSchema, EnrollPlayerSchema,
   CreateAcademySessionSchema, MarkAttendanceSchema, CreateEvaluationSchema,
   CreateCoachProfileSchema, UpsertOrgAgreementSchema, CreateCoachReviewSchema,
@@ -36,20 +36,6 @@ export async function createTournamentHandler(request: FastifyRequest, reply: Fa
   const userId = (request as any).userId;
   const t = await svc.createTournament(userId, body);
   return reply.status(201).send(t);
-}
-
-export async function generateBracketHandler(request: FastifyRequest, reply: FastifyReply) {
-  const { id } = request.params as any;
-  const matches = await svc.generateBracket(Number(id));
-  return reply.send({ data: matches });
-}
-
-export async function enterMatchScoreHandler(request: FastifyRequest, reply: FastifyReply) {
-  const { matchId } = request.params as any;
-  const body = MatchScoreSchema.parse(request.body);
-  const userId = (request as any).userId;
-  await svc.enterMatchScore(Number(matchId), body, userId);
-  return reply.send({ message: 'Score saved' });
 }
 
 // ── Academies ──

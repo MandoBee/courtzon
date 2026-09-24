@@ -1254,6 +1254,21 @@ export class TournamentService {
 
   /** Group 5A — create the shared Match for a bracket slot and return it. */
   private async createTournamentMatchFromSlot(t: Tournament, formatCtx: { formatId: number; ruleSetId: number; formatSnapshot: MatchFormatSnapshot; ruleSnapshot: Record<string, unknown> }, slot: BracketSlot): Promise<any> {
+    // Group 2 — the legacy registration-based bracket generator (generateBracket/
+    // generateFixtures/generateMixedStages) builds EXACTLY ONE user per side from
+    // confirmed registrations. That is only correct for singles. For doubles/team
+    // formats (players_per_side > 1) it would silently produce a malformed shared
+    // Match with a single player per side — never allowed. The authoritative G8
+    // locked-draw generator (MatchScheduleService.generateMatchesFromLockedDraw)
+    // is roster-aware and remains the ONLY supported path for doubles/team
+    // tournament matches.
+    const playersPerSide = formatCtx.formatSnapshot.playersPerSide;
+    if (playersPerSide != null && playersPerSide > 1) {
+      throw new ConflictError(
+        'The legacy bracket generator supports singles only (one player per side). Use the Draw → Generate Matches flow for doubles/team tournament matches.',
+        ErrorCodes.TOURNAMENT_INVALID_FORMAT,
+      );
+    }
     const { matchService } = await import('../../match/application/services/match.service.js');
     const participants = [
       { userId: slot.player1Id!, side: 'home' as const, teamIndex: 0, role: 'host' as const },

@@ -183,14 +183,17 @@ describe('TournamentService (Group 5A)', () => {
     expect(repo.updateRegistrationStatus).toHaveBeenCalledWith(1, 'withdrawn');
   });
 
-  it('generates a deterministic bracket with byes for a knockout', async () => {
+  it('generates a deterministic bracket with byes for a knockout (singles)', async () => {
     repo.findById.mockResolvedValue(makeTournament({ format: 'knockout', draw_seed: 42 }));
     repo.findRegistrationsByTournament.mockResolvedValue([
       makeReg({ id: 1, player_id: 10, seed: 1, status: 'confirmed' }),
       makeReg({ id: 2, player_id: 20, seed: 2, status: 'confirmed' }),
       makeReg({ id: 3, player_id: 30, seed: 3, status: 'confirmed' }),
     ]);
-    mrRepo.findFormatById.mockResolvedValue({ formatId: 1, sportId: 22, formatType: 'doubles', playersPerSide: 2, name: 'Padel', isActive: true });
+    // Group 2 — the legacy registration-based bracket generator is singles-only
+    // (one player per side). A doubles/team format must be rejected (see the
+    // TOURNAMENT_INVALID_FORMAT guard), so fixtures here are singles.
+    mrRepo.findFormatById.mockResolvedValue({ formatId: 1, sportId: 21, formatType: 'singles', playersPerSide: 1, name: 'Tennis', isActive: true });
     mrRepo.findRuleSetById.mockResolvedValue({ formatId: 1, ruleSetId: 1, version: 1, rules: { score_structure: 'sets' }, standingsRules: null });
 
     // Simulate shared match creation via the mocked matchService.
@@ -203,6 +206,27 @@ describe('TournamentService (Group 5A)', () => {
     const createCalls = repo.createMatch.mock.calls;
     const byeCall = createCalls.find((c: any[]) => c[0].player1_id != null && c[0].player2_id == null && c[0].match_id == null);
     expect(byeCall).toBeTruthy();
+  });
+
+  // ── Group 2 — the legacy bracket generator rejects doubles/team formats ──
+
+  it('rejects a doubles/team format in the legacy bracket generator (exactly-2-user guard)', async () => {
+    repo.findById.mockResolvedValue(makeTournament({ format: 'knockout', draw_seed: 42 }));
+    repo.findRegistrationsByTournament.mockResolvedValue([
+      makeReg({ id: 1, player_id: 10, seed: 1, status: 'confirmed' }),
+      makeReg({ id: 2, player_id: 20, seed: 2, status: 'confirmed' }),
+      makeReg({ id: 3, player_id: 30, seed: 3, status: 'confirmed' }),
+      makeReg({ id: 4, player_id: 40, seed: 4, status: 'confirmed' }),
+    ]);
+    mrRepo.findFormatById.mockResolvedValue({ formatId: 1, sportId: 22, formatType: 'doubles', playersPerSide: 2, name: 'Padel', isActive: true });
+    mrRepo.findRuleSetById.mockResolvedValue({ formatId: 1, ruleSetId: 1, version: 1, rules: { score_structure: 'sets' }, standingsRules: null });
+    repo.findMatches.mockResolvedValue([]);
+    repo.createMatch.mockResolvedValue(1);
+
+    await expect(svc.generateBracket(1)).rejects.toMatchObject({ code: ErrorCodes.TOURNAMENT_INVALID_FORMAT });
+    // No malformed shared Match may be created for a doubles tournament.
+    expect(matchServiceMock.createForTournament).not.toHaveBeenCalled();
+    expect(repo.createMatch).not.toHaveBeenCalled();
   });
 
   // ── Group 1 — auto-generated Tournament Rules from Match Format + Rule Set ──
