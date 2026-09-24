@@ -64,7 +64,6 @@ export interface ResultInsert {
   rulesSnapshot: unknown;
   matchType: MatchResultRecord['matchType'];
   tournamentId?: number | null;
-  stageId?: number | null;
   playedAt: string;
   branchId: number | null;
   resourceId: number | null;
@@ -133,7 +132,6 @@ const COLUMN_MAP: Record<string, string> = {
   rawResult: 'raw_result',
   finalResult: 'final_result',
   tournamentId: 'tournament_id',
-  stageId: 'stage_id',
   submissionStatus: 'submission_status',
   submittedAt: 'submitted_at',
   acceptedBy: 'accepted_by',
@@ -314,12 +312,12 @@ export class MatchResultRepository {
     const [res] = await pool.execute(
 `INSERT INTO match_result_records
          (match_id, sport_id, format_id, rule_set_id, rules_snapshot, match_type, tournament_id,
-          stage_id, played_at,
+          played_at,
           branch_id, resource_id, timezone, participant_payload, raw_result, final_result, outcome,
           submission_status, submitted_by, submitted_at, accepted_by, accepted_at, auto_approved,
           disputed_by, disputed_at, dispute_reason, resolved_by, resolved_at, resolution_note,
           submission_deadline_at, auto_approval_deadline_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         input.matchId,
         input.sportId,
@@ -328,7 +326,6 @@ export class MatchResultRepository {
         JSON.stringify(input.rulesSnapshot),
         input.matchType,
         input.tournamentId ?? null,
-        input.stageId ?? null,
         toMySqlTs(input.playedAt),
         input.branchId,
         input.resourceId,

@@ -217,9 +217,32 @@ describe('Match lifecycle → result eligibility journey', () => {
     expect(record.submissionStatus).toBe('pending_confirmation');
     expect(record.playedAt).toBeTruthy();
 
+    // 3b. Regression: the result row persists against the LIVE schema. The
+    // INSERT previously referenced a non-existent `match_result_records.stage_id`
+    // column and failed with ER_BAD_FIELD_ERROR; all authoritative snapshots
+    // must be stored (rules_snapshot, participant_payload, raw_result,
+    // final_result) and the approval lifecycle preserved.
+    const [recRows] = await pool.execute<any[]>(
+      `SELECT rules_snapshot, participant_payload, raw_result, final_result, submission_status
+       FROM match_result_records WHERE match_id = ?`,
+      [matchId],
+    );
+    expect(recRows.length).toBe(1);
+    expect(recRows[0].rules_snapshot).toBeTruthy();
+    expect(recRows[0].participant_payload).toBeTruthy();
+    expect(recRows[0].raw_result).toBeTruthy();
+    expect(recRows[0].final_result).toBeTruthy();
+    expect(recRows[0].submission_status).toBe('pending_confirmation');
+
     // 4. Opponent can accept and the 72h window constants are preserved.
     const accepted = await matchResultService.acceptResult(matchId, playerB);
     expect(accepted.submissionStatus).toBe('approved');
+
+    const [accRows] = await pool.execute<any[]>(
+      'SELECT submission_status FROM match_result_records WHERE match_id = ?',
+      [matchId],
+    );
+    expect(accRows[0].submission_status).toBe('approved');
 
     // Let fire-and-forget EventBus emits (published_events inserts) flush before
     // the shared pool is closed in afterAll — avoids a teardown "Pool is closed".
