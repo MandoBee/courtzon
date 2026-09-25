@@ -174,11 +174,13 @@ export async function registerPlayerHandler(request: FastifyRequest, reply: Fast
   const userId = getUserId(request);
   const { id } = request.params as any;
   const body = RegisterSchema.parse(request.body);
-  // Group 7-B — gated by `tournament.register`: privileged operator path keeps
-  // bypass ability; self-service eligibility is enforced server-side.
+  // G7-B.1 — THIS is the PLAYER SELF-REGISTRATION route. It always enforces
+  // eligibility (age/gender/level): operatorBypass is hard-coded FALSE here and
+  // can NEVER be influenced by the client. Only the permission-gated admin/org
+  // operator routes may bypass.
   const registration = body.payment_method
-    ? await tournamentService.register(Number(id), userId, body.team_id, body.payment_method, { operatorBypass: true })
-    : await tournamentService.register(Number(id), userId, body.team_id, undefined, { operatorBypass: true });
+    ? await tournamentService.register(Number(id), userId, body.team_id, body.payment_method, { operatorBypass: false })
+    : await tournamentService.register(Number(id), userId, body.team_id, undefined, { operatorBypass: false });
   recordAudit({
     actorId: userId, action: 'TOURNAMENT.REGISTER', entityType: 'tournament_registration',
     entityId: registration.id!, afterState: { tournament_id: id, team_id: body.team_id, payment_method: body.payment_method ?? null },
