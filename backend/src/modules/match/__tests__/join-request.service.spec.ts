@@ -257,7 +257,7 @@ describe('Group 3 — changeSide (self side-change)', () => {
       expect.stringContaining('UPDATE match_participants SET side ='),
       ['home', 0, 1, 3],
     );
-    expect(publisher.publish).toHaveBeenCalledWith(expect.objectContaining({ type: 'match:updated' }));
+    expect(publisher.publish).toHaveBeenCalledWith(expect.objectContaining({ type: 'match:updated' }), expect.anything());
   });
 
   it('rejects a change to a full side', async () => {

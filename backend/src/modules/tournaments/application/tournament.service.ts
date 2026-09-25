@@ -120,7 +120,7 @@ export class TournamentService {
       await tournamentRepository.replacePrizes(id, prizes);
     }
     const tournament = await tournamentRepository.findById(id);
-    eventBusV2.emit('tournament.created', { tournamentId: id, name: data.name, format: data.format } as Record<string, unknown>, {
+    eventBusV2.emit('tournament:created', { tournamentId: id, name: data.name, format: data.format, ...this.tournamentRealtimeScope(tournament!) } as Record<string, unknown>, {
       aggregateType: 'tournament', aggregateId: String(id), aggregateVersion: 1,
     });
     return tournament!;
@@ -439,6 +439,17 @@ export class TournamentService {
         aggregateType: 'tournament', aggregateId: String(t.id), aggregateVersion: 1,
       });
     }
+  }
+
+  private tournamentRealtimeScope(t: Tournament, participantIds: ReadonlyArray<number | null | undefined> = []): Record<string, unknown> {
+    return {
+      organisationId: t.organisation_id ?? null,
+      branchId: t.branch_id ?? null,
+      creatorId: t.creator_id,
+      participantUserIds: participantIds
+        .filter((id): id is number => id != null)
+        .filter((id, index, all) => all.indexOf(id) === index),
+    };
   }
 
   /**
@@ -1202,7 +1213,7 @@ export class TournamentService {
     // Group 5B — a deterministic draw starts the tournament lifecycle.
     await this.autoStartAfterDraw(t);
 
-    eventBusV2.emit('tournament:bracket-generated', { tournamentId, matchCount: slots.length } as Record<string, unknown>, {
+    eventBusV2.emit('tournament:bracket-generated', { tournamentId, matchCount: slots.length, ...this.tournamentRealtimeScope(t) } as Record<string, unknown>, {
       aggregateType: 'tournament', aggregateId: String(tournamentId), aggregateVersion: 1,
     });
   }
@@ -1693,7 +1704,7 @@ export class TournamentService {
             eventBusV2.emit('tournament:match-created', {
               tournamentId: t.id, matchId: sharedMatchId, tournamentMatchId: target.id, winnerId,
               participantWinnerId: winnerParticipantId,
-              organisationId: t.organisation_id ?? null,
+              ...this.tournamentRealtimeScope(t, [winnerId, target.player1_id, target.player2_id]),
             } as Record<string, unknown>, {
               aggregateType: 'tournament', aggregateId: String(t.id), aggregateVersion: 1,
             });
@@ -1703,12 +1714,12 @@ export class TournamentService {
     }
 
     if (stageCompleted) {
-      eventBusV2.emit('tournament:stage-completed', { tournamentId: t.id, stageId: source.stage_id, winnerId, organisationId: t.organisation_id ?? null } as Record<string, unknown>, {
+      eventBusV2.emit('tournament:stage-completed', { tournamentId: t.id, stageId: source.stage_id, winnerId, ...this.tournamentRealtimeScope(t, [winnerId]) } as Record<string, unknown>, {
         aggregateType: 'tournament', aggregateId: String(t.id), aggregateVersion: 1,
       });
     }
     if (tournamentCompleted) {
-      eventBusV2.emit('tournament:completed', { tournamentId: t.id, winnerId, userId: winnerId, name: t.name, organisationId: t.organisation_id ?? null } as Record<string, unknown>, {
+      eventBusV2.emit('tournament:completed', { tournamentId: t.id, winnerId, userId: winnerId, name: t.name, ...this.tournamentRealtimeScope(t, [winnerId]) } as Record<string, unknown>, {
         aggregateType: 'tournament', aggregateId: String(t.id), aggregateVersion: 1,
       });
     }
@@ -1716,7 +1727,7 @@ export class TournamentService {
       tournamentId: t.id, matchId: input.matchId, resultId: input.resultId, winnerId,
       participantWinnerId: winnerParticipantId,
       fromSlotId: source.id, toSlotId: target?.id ?? null, stageId: source.stage_id ?? null,
-      organisationId: t.organisation_id ?? null,
+      ...this.tournamentRealtimeScope(t, [winnerId, source.player1_id, source.player2_id, target?.player1_id, target?.player2_id]),
     } as Record<string, unknown>, {
       aggregateType: 'tournament', aggregateId: String(t.id), aggregateVersion: 1,
     });
@@ -1845,7 +1856,7 @@ export class TournamentService {
           tournamentId: t.id, matchId: attached.matchId, tournamentMatchId: target.id,
           winnerId: slotSide === 'player1' ? target.player1_id : target.player2_id,
           participantWinnerId: slotSide === 'player1' ? target.participant1_id : target.participant2_id,
-          organisationId: t.organisation_id ?? null,
+          ...this.tournamentRealtimeScope(t, [target.player1_id, target.player2_id]),
         } as Record<string, unknown>, {
           aggregateType: 'tournament', aggregateId: String(t.id), aggregateVersion: 1,
         });
@@ -2030,7 +2041,7 @@ export class TournamentService {
       resolvedSlots,
       cancelledMatches,
       releasedCourts,
-      organisationId: t.organisation_id ?? null,
+      ...this.tournamentRealtimeScope(t, [withdrawnParticipantId]),
     } as Record<string, unknown>, {
       aggregateType: 'tournament', aggregateId: String(tournamentId), aggregateVersion: 1,
     });

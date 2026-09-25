@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { ORG_LIFECYCLE_INVALIDATIONS, invalidateOrgLifecycle, USER_REGISTRATION_INVALIDATIONS, invalidateUserRegistration, FINANCE_INVALIDATIONS, invalidateFinanceEntries, MARKETPLACE_PRODUCT_INVALIDATIONS, invalidateMarketplaceProducts, ORG_ACCOUNTING_ROOTS, invalidateOrgAccounting, COACH_LIFECYCLE_INVALIDATIONS, TOURNAMENT_REALTIME_EVENTS, invalidateTournament } from './useRealtimeCacheUpdates';
+import { ORG_LIFECYCLE_INVALIDATIONS, invalidateOrgLifecycle, USER_REGISTRATION_INVALIDATIONS, invalidateUserRegistration, FINANCE_INVALIDATIONS, invalidateFinanceEntries, MARKETPLACE_PRODUCT_INVALIDATIONS, invalidateMarketplaceProducts, ORG_ACCOUNTING_ROOTS, invalidateOrgAccounting, COACH_LIFECYCLE_INVALIDATIONS, TOURNAMENT_REALTIME_EVENTS, invalidateTournament, MATCH_LIFECYCLE_SOCKET_EVENTS, MATCH_RESULT_SOCKET_EVENTS, invalidateMatchKeys, invalidateRealtimeReconcile } from './useRealtimeCacheUpdates';
 
 function hasPrefix(keys: readonly (readonly string[])[], prefix: string[]): boolean {
   return keys.some((k) => prefix.every((part, i) => k[i] === part));
@@ -270,5 +270,68 @@ describe('TOURNAMENT_REALTIME_EVENTS (Group 5B draw/progression realtime strateg
     invalidateTournament(fakeQc as any, null);
     invalidateTournament(fakeQc as any, undefined);
     expect(called).toBe(0);
+  });
+
+  describe('Group 5 match/result realtime invalidation', () => {
+    it('covers every modern backend lifecycle event name', () => {
+      for (const eventName of [
+        'match.created',
+        'match.status_changed',
+        'match.cancelled',
+        'match.completed',
+        'participant.added',
+        'participant.removed',
+        'session.started',
+        'session.completed',
+        'invitation.sent',
+        'join_request.submitted',
+      ]) {
+        expect(MATCH_LIFECYCLE_SOCKET_EVENTS).toContain(eventName);
+      }
+      for (const eventName of ['match.result-submitted', 'match.result-approved', 'match.result-corrected', 'match.result-rejected']) {
+        expect(MATCH_RESULT_SOCKET_EVENTS).toContain(eventName);
+      }
+    });
+
+    it('refreshes the match detail/result caches in both numeric and string key forms', () => {
+      const invalidated: string[][] = [];
+      const fakeQc = {
+        invalidateQueries: ({ queryKey }: { queryKey: readonly (string | number)[] }) => {
+          invalidated.push(queryKey.map(String));
+        },
+      };
+      invalidateMatchKeys(fakeQc as any, { matchId: 15 });
+      expect(invalidated).toContainEqual(['match', '15']);
+      expect(invalidated).toContainEqual(['match-result', '15']);
+      expect(invalidated).toContainEqual(['matches', 'upcoming']);
+      expect(invalidated).toContainEqual(['my-matches']);
+    });
+
+    it('refreshes the applicant roster for a booking-derived payload and stays scoped to its tenant', () => {
+      const invalidated: string[][] = [];
+      const fakeQc = {
+        invalidateQueries: ({ queryKey }: { queryKey: readonly (string | number)[] }) => {
+          invalidated.push(queryKey.map(String));
+        },
+      };
+      invalidateMatchKeys(fakeQc as any, { matchId: 15, bookingId: 22, tournamentId: 8 });
+      expect(invalidated).toContainEqual(['match-applicants', '22']);
+      expect(invalidated).toContainEqual(['tournament', '8']);
+    });
+
+    it('reconciles all match/result/tournament roots after a reconnect', () => {
+      const invalidated: string[][] = [];
+      const fakeQc = {
+        invalidateQueries: ({ queryKey }: { queryKey: readonly (string | number)[] }) => {
+          invalidated.push(queryKey.map(String));
+        },
+      };
+      invalidateRealtimeReconcile(fakeQc as any);
+      expect(invalidated).toContainEqual(['public-matches']);
+      expect(invalidated).toContainEqual(['match-result']);
+      expect(invalidated).toContainEqual(['tournaments']);
+      expect(invalidated).toContainEqual(['admin-tournaments']);
+      expect(invalidated).toContainEqual(['player-nav-counts']);
+    });
   });
 });

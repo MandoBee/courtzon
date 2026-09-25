@@ -66,10 +66,10 @@ export class JoinRequestService {
       );
       const requestId = result.insertId;
 
-      matchEventPublisher.publish({
+      await matchEventPublisher.publish({
         type: 'join_request:submitted',
         payload: { matchId, userId, creatorId: detail.creator_id, requestedSide: requestedSide ?? null, timestamp: new Date().toISOString() },
-      });
+      }, { executor: conn });
 
       if (autoAccept && capacityOk) {
         await this.approve(requestId, userId, conn);
@@ -85,10 +85,10 @@ export class JoinRequestService {
         );
         await conn.commit();
 
-        matchEventPublisher.publish({
+        await matchEventPublisher.publish({
           type: 'waiting_list:entry_added',
           payload: { matchId, userId, position: 0, timestamp: new Date().toISOString() },
-        });
+        }, { executor: conn });
 
         return { status: 'waitlisted' };
       }
@@ -186,23 +186,23 @@ export class JoinRequestService {
       }
     }
 
-    matchEventPublisher.publish({
+    await matchEventPublisher.publish({
       type: 'join_request:approved',
       payload: { matchId: req.match_id, userId: req.user_id, timestamp: new Date().toISOString() },
-    });
+    }, { executor: pool });
 
-    matchEventPublisher.publish({
+    await matchEventPublisher.publish({
       type: 'participant:added',
       payload: { matchId: req.match_id, userId: req.user_id, role: 'joiner', timestamp: new Date().toISOString() },
-    });
+    }, { executor: pool });
 
     // Realtime: broadcast match:updated (subscribed by SocketPublisher) so the
     // approved player's Applied→Joined tab, the match detail and nav badge all
     // refresh without a manual reload.
-    matchEventPublisher.publish({
+    await matchEventPublisher.publish({
       type: 'match:updated',
       payload: { matchId: req.match_id, timestamp: new Date().toISOString() },
-    });
+    }, { executor: pool });
   }
 
   /**
@@ -244,10 +244,10 @@ export class JoinRequestService {
 
       await conn.commit();
 
-      matchEventPublisher.publish({
+      await matchEventPublisher.publish({
         type: 'match:updated',
         payload: { matchId, userId, timestamp: new Date().toISOString() },
-      });
+        }, { executor: conn });
     } catch (err) {
       await conn.rollback();
       throw err;
@@ -271,7 +271,7 @@ export class JoinRequestService {
       [responderId, reason || null, requestId]
     );
 
-    matchEventPublisher.publish({
+    await matchEventPublisher.publish({
       type: 'join_request:rejected',
       payload: { matchId: req.match_id, userId: req.user_id, reason, timestamp: new Date().toISOString() },
     });
@@ -293,7 +293,7 @@ export class JoinRequestService {
       [requestId]
     );
 
-    matchEventPublisher.publish({
+    await matchEventPublisher.publish({
       type: 'join_request:withdrawn',
       payload: { matchId: req.match_id, userId, timestamp: new Date().toISOString() },
     });
@@ -310,7 +310,7 @@ export class JoinRequestService {
         "UPDATE join_requests SET status = 'auto_rejected', responded_at = NOW() WHERE id = ?",
         [req.id]
       );
-      matchEventPublisher.publish({
+      await matchEventPublisher.publish({
         type: 'join_request:auto_rejected',
         payload: { matchId, userId: req.user_id, timestamp: new Date().toISOString() },
       });

@@ -55,10 +55,18 @@ const eventGroups: EventGroupConfig[] = [
         });
       }
       if (eventName === 'booking:created' && data.bookingType === 'public_match') {
-        eventBusV2.emit('match:available', { bookingId: data.bookingId, timestamp: new Date().toISOString() }, { aggregateType: 'match', aggregateId: String(0), aggregateVersion: 1 });
+        eventBusV2.emit('match:available', {
+          bookingId: data.bookingId, userId: data.userId,
+          organisationId: data.organisationId, branchId: data.branchId,
+          visibility: data.visibility ?? 'public',
+          timestamp: new Date().toISOString(),
+        }, { aggregateType: 'match', aggregateId: String(0), aggregateVersion: 1 });
       }
       if (eventName === 'booking:cancelled' || eventName === 'booking:auto-cancelled') {
-        eventBusV2.emit('match:removed', { bookingId: data.bookingId }, { aggregateType: 'match', aggregateId: String(0), aggregateVersion: 1 });
+        eventBusV2.emit('match:removed', {
+          bookingId: data.bookingId, userId: data.userId,
+          organisationId: data.organisationId, branchId: data.branchId,
+        }, { aggregateType: 'match', aggregateId: String(0), aggregateVersion: 1 });
       }
     },
   },
@@ -74,7 +82,12 @@ const eventGroups: EventGroupConfig[] = [
         });
       }
       if (data.bookingType === 'public_match') {
-        eventBusV2.emit('match:available', { bookingId: data.bookingId, timestamp: new Date().toISOString() }, { aggregateType: 'match', aggregateId: String(0), aggregateVersion: 1 });
+        eventBusV2.emit('match:available', {
+          bookingId: data.bookingId, userId: data.userId,
+          organisationId: data.organisationId, branchId: data.branchId,
+          visibility: data.visibility ?? 'public',
+          timestamp: new Date().toISOString(),
+        }, { aggregateType: 'match', aggregateId: String(0), aggregateVersion: 1 });
       }
       const { scheduleBookingReminder } = await import('./scheduler.service.js');
       const { getPool } = await import('../../../database/mysql.js');
@@ -799,21 +812,33 @@ const eventGroups: EventGroupConfig[] = [
           action: a(`/matches/${data.matchId}`), digestable: false,
         });
       }
-      eventBusV2.emit('match:available', { matchId: data.matchId, timestamp: new Date().toISOString() }, { aggregateType: 'match', aggregateId: String(0), aggregateVersion: 1 });
+      // Invite-only matches are NOT broadcast to the player discovery room.
+      if (data.visibility !== 'invite_only') {
+        eventBusV2.emit('match:available', {
+          matchId: data.matchId,
+          userId: data.creatorId,
+          creatorId: data.creatorId,
+          organisationId: data.organisationId,
+          branchId: data.branchId,
+          participantUserIds: data.participantUserIds,
+          visibility: data.visibility ?? 'public',
+          timestamp: new Date().toISOString(),
+        }, { aggregateType: 'match', aggregateId: String(0), aggregateVersion: 1 });
+      }
     },
   },
   {
     events: ['match:cancelled', 'match:status_changed'],
     handler: async (eventName, data, categorySlug) => {
       eventBusV2.emit(eventName === 'match:cancelled' ? 'match:removed' : 'match:updated', {
-        matchId: data.matchId, timestamp: new Date().toISOString(),
+        ...data, matchId: data.matchId, timestamp: new Date().toISOString(),
       });
     },
   },
   {
     events: ['match:completed'],
     handler: async (eventName, data, categorySlug) => {
-      eventBusV2.emit('match:updated', { matchId: data.matchId, timestamp: new Date().toISOString() }, { aggregateType: 'match', aggregateId: String(0), aggregateVersion: 1 });
+      eventBusV2.emit('match:updated', { ...data, matchId: data.matchId, timestamp: new Date().toISOString() }, { aggregateType: 'match', aggregateId: String(0), aggregateVersion: 1 });
     },
   },
   {
@@ -872,7 +897,7 @@ const eventGroups: EventGroupConfig[] = [
   {
     events: ['join_request:submitted'],
     handler: async (eventName, data, categorySlug) => {
-      eventBusV2.emit('match:pending', { matchId: data.matchId, userId: data.userId, timestamp: new Date().toISOString() }, { aggregateType: 'match', aggregateId: String(0), aggregateVersion: 1 });
+      eventBusV2.emit('match:pending', { ...data, matchId: data.matchId, userId: data.userId, timestamp: new Date().toISOString() }, { aggregateType: 'match', aggregateId: String(0), aggregateVersion: 1 });
       if (data.creatorId) {
         await dispatchToUser({
           userId: data.creatorId, eventName, categorySlug, data,
@@ -892,7 +917,7 @@ const eventGroups: EventGroupConfig[] = [
           action: a(`/matches/${data.matchId}`), digestable: false,
         });
       }
-      eventBusV2.emit('match:updated', { matchId: data.matchId, timestamp: new Date().toISOString() }, { aggregateType: 'match', aggregateId: String(0), aggregateVersion: 1 });
+      eventBusV2.emit('match:updated', { ...data, matchId: data.matchId, timestamp: new Date().toISOString() }, { aggregateType: 'match', aggregateId: String(0), aggregateVersion: 1 });
     },
   },
   {
@@ -910,13 +935,13 @@ const eventGroups: EventGroupConfig[] = [
   {
     events: ['join_request:withdrawn'],
     handler: async (eventName, data, categorySlug) => {
-      eventBusV2.emit('match:updated', { matchId: data.matchId, timestamp: new Date().toISOString() }, { aggregateType: 'match', aggregateId: String(0), aggregateVersion: 1 });
+      eventBusV2.emit('match:updated', { ...data, matchId: data.matchId, timestamp: new Date().toISOString() }, { aggregateType: 'match', aggregateId: String(0), aggregateVersion: 1 });
     },
   },
   {
     events: ['participant:added', 'participant:removed'],
     handler: async (eventName, data, categorySlug) => {
-      eventBusV2.emit('match:updated', { matchId: data.matchId, timestamp: new Date().toISOString() }, { aggregateType: 'match', aggregateId: String(0), aggregateVersion: 1 });
+      eventBusV2.emit('match:updated', { ...data, matchId: data.matchId, timestamp: new Date().toISOString() }, { aggregateType: 'match', aggregateId: String(0), aggregateVersion: 1 });
     },
   },
   {
@@ -934,7 +959,7 @@ const eventGroups: EventGroupConfig[] = [
   {
     events: ['session:started', 'session:completed'],
     handler: async (eventName, data, categorySlug) => {
-      eventBusV2.emit('match:updated', { matchId: data.matchId, timestamp: new Date().toISOString() }, { aggregateType: 'match', aggregateId: String(0), aggregateVersion: 1 });
+      eventBusV2.emit('match:updated', { ...data, matchId: data.matchId, timestamp: new Date().toISOString() }, { aggregateType: 'match', aggregateId: String(0), aggregateVersion: 1 });
     },
   },
   {

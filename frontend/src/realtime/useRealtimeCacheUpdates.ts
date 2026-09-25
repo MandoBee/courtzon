@@ -1,7 +1,8 @@
 import { useQueryClient, type QueryClient } from '@tanstack/react-query';
+import { useEffect, useRef } from 'react';
 import { useSocketEvent } from './useSocket';
 import { useAuthStore } from '../store/auth.store';
-import { disconnectSocket, createSocket } from './socket-client';
+import { disconnectSocket, createSocket, getSocketState, onSocketStateChange } from './socket-client';
 
 /**
  * Centralized realtime cache update handler.
@@ -204,8 +205,132 @@ export const COACH_LIFECYCLE_INVALIDATIONS = [
   ['scheduling-search'],
   ['scheduling-search-resource'],
 ] as const;
+
+/**
+ * Group 5 — canonical socket event names for the Match / Result surface. Kept
+ * here so the cache hook and its tests share ONE source of truth with the
+ * backend subscription list.
+ */
+export const MATCH_LIFECYCLE_SOCKET_EVENTS = [
+  'match.created',
+  'match.status_changed',
+  'match.cancelled',
+  'match.completed',
+  'match.updated',
+  'match.available',
+  'match.removed',
+  'match.pending',
+  'participant.added',
+  'participant.removed',
+  'session.started',
+  'session.completed',
+  'invitation.sent',
+  'invitation.declined',
+  'invitation.expired',
+  'join_request.submitted',
+  'join_request.approved',
+  'join_request.rejected',
+  'join_request.withdrawn',
+  'join_request.auto_rejected',
+  'waiting_list.entry_added',
+  'waiting_list.entry_removed',
+  'waiting_list.promoted',
+] as const;
+
+export const MATCH_RESULT_SOCKET_EVENTS = [
+  'match.result-submitted',
+  'match.result-approved',
+  'match.result-auto-approved',
+  'match.result-disputed',
+  'match.result-resolved',
+  'match.result-rejected',
+  'match.result-corrected',
+  'match.result-no-result',
+  'match.result-withdrawn',
+] as const;
+
+export function invalidateMatchKeys(qc: QueryClient, p: Record<string, any> | undefined): void {
+  for (const queryKey of [
+    ['public-matches'],
+    ['my-matches'],
+    ['home-upcoming-matches'],
+    ['matches', 'upcoming'],
+    ['match-result'],
+    ['admin-matches'],
+    ['org-matches'],
+    ['admin-match-results'],
+    ['org-match-results'],
+  ]) {
+    qc.invalidateQueries({ queryKey });
+  }
+
+  if (p?.matchId != null) {
+    const matchId = Number(p.matchId);
+    for (const key of [
+      ['match', matchId],
+      ['match', String(matchId)],
+      ['match-result', matchId],
+      ['match-result', String(matchId)],
+    ]) {
+      qc.invalidateQueries({ queryKey: key });
+    }
+  }
+
+  if (p?.bookingId != null) {
+    const bookingId = Number(p.bookingId);
+    qc.invalidateQueries({ queryKey: ['match-applicants', bookingId] });
+    qc.invalidateQueries({ queryKey: ['match-applicants', String(bookingId)] });
+  }
+
+  if (p?.tournamentId != null) {
+    invalidateTournament(qc, Number(p.tournamentId));
+  }
+}
+
+/**
+ * Refresh every Match/Result/Tournament cache the current device could be
+ * holding after a socket reconnect, so stale in-memory data cannot survive a
+ * dropped connection (minimal, cache-centred reconciliation; no replay).
+ */
+export function invalidateRealtimeReconcile(qc: { invalidateQueries: (opts: { queryKey: readonly (string | number)[] }) => void }): void {
+  for (const queryKey of [
+    ['public-matches'],
+    ['my-matches'],
+    ['home-upcoming-matches'],
+    ['matches', 'upcoming'],
+    ['match-result'],
+    ['admin-matches'],
+    ['org-matches'],
+    ['admin-match-results'],
+    ['org-match-results'],
+    ['match-applicants'],
+    ['tournaments'],
+    ['tournament-admin-matches'],
+    ['admin-tournaments'],
+    ['player-nav-counts'],
+  ]) {
+    qc.invalidateQueries({ queryKey });
+  }
+}
+
 export function useRealtimeCacheUpdates(): void {
   const qc = useQueryClient();
+
+  // Group 5 — reconnect reconciliation. When the socket drops and reconnects,
+  // events emitted while disconnected are NOT replayed (deferred durability
+  // architecture). The minimal, cache-centred safety net is to refetch the
+  // match/result/tournament surfaces so no stale in-memory state survives.
+  const previousSocketStateRef = useRef(getSocketState());
+  useEffect(() => {
+    const unsub = onSocketStateChange((next) => {
+      const previous = previousSocketStateRef.current;
+      previousSocketStateRef.current = next;
+      if (next === 'connected' && (previous === 'disconnected' || previous === 'reconnecting')) {
+        invalidateRealtimeReconcile(qc);
+      }
+    });
+    return unsub;
+  }, [qc]);
 
   // ── Booking events ─────────────────────────────────────────────
   const invalidateSlots = (p: any) => {
@@ -485,46 +610,57 @@ export function useRealtimeCacheUpdates(): void {
   });
 
   // ── Match events ───────────────────────────────────────────────
-  useSocketEvent('match.available', () => {
-    qc.invalidateQueries({ queryKey: ['public-matches'] });
-    qc.invalidateQueries({ queryKey: ['my-matches'] });
-    qc.invalidateQueries({ queryKey: ['home-upcoming-matches'] });
+  // Every lifecycle signal invalidates the match detail, result page, applicant
+  // roster and the public/home/admin/org lists. Tenant scoping happens on the
+  // server; here we simply refresh whatever the event reaches.
+  useSocketEvent('match.available', (p: any) => {
+    invalidateMatchKeys(qc, p);
   });
 
-  useSocketEvent('match.removed', () => {
-    qc.invalidateQueries({ queryKey: ['public-matches'] });
-    qc.invalidateQueries({ queryKey: ['my-matches'] });
-    qc.invalidateQueries({ queryKey: ['admin-matches'] });
-    qc.invalidateQueries({ queryKey: ['org-matches'] });
+  useSocketEvent('match.removed', (p: any) => {
+    invalidateMatchKeys(qc, p);
   });
 
-  useSocketEvent('match.updated', () => {
-    qc.invalidateQueries({ queryKey: ['public-matches'] });
-    qc.invalidateQueries({ queryKey: ['my-matches'] });
-    qc.invalidateQueries({ queryKey: ['home-upcoming-matches'] });
-    qc.invalidateQueries({ queryKey: ['admin-matches'] });
-    qc.invalidateQueries({ queryKey: ['org-matches'] });
+  useSocketEvent('match.updated', (p: any) => {
+    invalidateMatchKeys(qc, p);
   });
+
+  for (const eventName of ['match.created', 'match.status_changed', 'match.cancelled', 'match.completed', 'match.pending'] as const) {
+    useSocketEvent(eventName, (p: any) => {
+      invalidateMatchKeys(qc, p);
+    });
+  }
+
+  // Participant/session lifecycle: the roster depth of a match changed.
+  for (const eventName of ['participant.added', 'participant.removed', 'session.started', 'session.completed'] as const) {
+    useSocketEvent(eventName, (p: any) => {
+      invalidateMatchKeys(qc, p);
+      qc.invalidateQueries({ queryKey: ['match-applicants'] });
+    });
+  }
+
+  // Invitation lifecycle: the recipient's badge + the applicant roster refresh.
+  for (const eventName of ['invitation.sent', 'invitation.declined', 'invitation.expired'] as const) {
+    useSocketEvent(eventName, (p: any) => {
+      invalidateMatchKeys(qc, p);
+      qc.invalidateQueries({ queryKey: ['match-applicants'] });
+    });
+  }
+
+  // Join-request / waiting-list changes mutate the applicant roster live.
+  for (const eventName of ['join_request.submitted', 'join_request.approved', 'join_request.rejected', 'join_request.withdrawn', 'join_request.auto_rejected', 'waiting_list.entry_added', 'waiting_list.entry_removed', 'waiting_list.promoted'] as const) {
+    useSocketEvent(eventName, (p: any) => {
+      invalidateMatchKeys(qc, p);
+      qc.invalidateQueries({ queryKey: ['match-applicants'] });
+    });
+  }
 
   // Match result lifecycle events (submitted/approved/disputed/resolved/…)
   // reach the participant user rooms + the admin room. Refresh the match
   // detail, the result page, the public/home lists and the admin workbench.
-  const matchResultEvents = [
-    'match.result-submitted', 'match.result-approved', 'match.result-auto-approved',
-    'match.result-disputed', 'match.result-resolved', 'match.result-no-result',
-    'match.result-withdrawn',
-  ];
-  for (const eventName of matchResultEvents) {
+  for (const eventName of MATCH_RESULT_SOCKET_EVENTS) {
     useSocketEvent(eventName, (p: any) => {
-      qc.invalidateQueries({ queryKey: ['public-matches'] });
-      qc.invalidateQueries({ queryKey: ['my-matches'] });
-      qc.invalidateQueries({ queryKey: ['home-upcoming-matches'] });
-      qc.invalidateQueries({ queryKey: ['matches', 'upcoming'] });
-      qc.invalidateQueries({ queryKey: ['match-result'] });
-      qc.invalidateQueries({ queryKey: ['admin-match-results'] });
-      qc.invalidateQueries({ queryKey: ['admin-matches'] });
-      qc.invalidateQueries({ queryKey: ['org-matches'] });
-      qc.invalidateQueries({ queryKey: ['org-match-results'] });
+      invalidateMatchKeys(qc, p);
       if (p?.matchId) {
         qc.invalidateQueries({ queryKey: ['match', p.matchId] });
         qc.invalidateQueries({ queryKey: ['match-result', p.matchId] });
@@ -775,13 +911,7 @@ export function useRealtimeCacheUpdates(): void {
   // a stage finishing and the whole tournament completing ALL mutate the
   // bracket/standings/tournament caches — the TournamentDetailPage must
   // refresh live, with no manual reload.
-  const tournamentRealtimeEvents = [
-    'tournament.bracket-generated',
-    'tournament.match-created',
-    'tournament.match-progressed',
-    'tournament.stage-completed',
-    'tournament.completed',
-  ];
+  const tournamentRealtimeEvents = TOURNAMENT_REALTIME_EVENTS;
   for (const eventName of tournamentRealtimeEvents) {
     useSocketEvent(eventName, (p: any) => {
       invalidateTournament(qc, p?.tournamentId);
@@ -912,7 +1042,7 @@ export function useRealtimeCacheUpdates(): void {
     useSocketEvent(ev, invalidateNavCounts);
   }
 
-  for (const ev of ['match.available', 'match.removed', 'match.updated', 'match.pending', ...matchResultEvents]) {
+  for (const ev of ['match.available', 'match.removed', 'match.updated', 'match.pending', 'match.created', 'match.status_changed', 'match.cancelled', 'match.completed', ...MATCH_RESULT_SOCKET_EVENTS]) {
     useSocketEvent(ev, invalidateNavCounts);
   }
 

@@ -3,6 +3,7 @@ import { recordAudit } from '../../audit-log/index.js';
 import { eventBusV2 } from '../../../shared/event-bus/index.js';
 import { createModuleLogger } from '../../../shared/utils/logger.js';
 import { matchResultRepository } from '../infrastructure/match-result.repository.js';
+import type { MatchContext } from '../infrastructure/match-result.repository.js';
 import { ratingService } from './rating/rating.service.js';
 import { validateAndComputeFinal, RulesValidationError, outcomeCountsForRating } from './rules/rules-engine.js';
 import type { MatchResultParticipant, MatchParticipantSlot, ParticipantSlot, MatchResultRecord, RawMatchResultPayload } from '../domain/match-result.types.js';
@@ -16,6 +17,25 @@ const log = createModuleLogger('match-result');
 
 export function addHours(iso: string, hours: number): string {
   return new Date(new Date(iso).getTime() + hours * 3_600_000).toISOString();
+}
+
+/**
+ * Tenancy fields are read OUTSIDE the socket layer (source-side, Group 5) so
+ * SocketPublisher can route result events to the owning org/branch rooms
+ * without exposing participant lists or doing database work at publication time.
+ */
+function scopeResultPayload(
+  base: Record<string, unknown>,
+  context: Pick<MatchContext, 'organisationId' | 'branchId' | 'creatorId' | 'visibility'> | null | undefined,
+): Record<string, unknown> {
+  if (!context) return base;
+  return {
+    ...base,
+    organisationId: context.organisationId,
+    branchId: context.branchId,
+    creatorId: context.creatorId,
+    visibility: context.visibility,
+  };
 }
 
 export interface SubmitResultOptions {
@@ -284,7 +304,7 @@ export class MatchResultService {
 
     await recordAudit({ actorId, action: 'match.result.replaced', entityType: 'match_result_records', entityId: record.id, ipAddress: ip });
 
-    await eventBusV2.emit('match:result-submitted', { matchId: matchIdActual, resultId: record.id, submittedById: actorId, opponentUserIds: context.participantUserIds.filter((u) => u !== actorId), allUserIds: context.participantUserIds }, { aggregateType: 'match', aggregateId: String(matchIdActual), aggregateVersion: 1, actorId });
+    await eventBusV2.emit('match:result-submitted', scopeResultPayload({ matchId: matchIdActual, resultId: record.id, submittedById: actorId, opponentUserIds: context.participantUserIds.filter((u) => u !== actorId), allUserIds: context.participantUserIds }, context), { aggregateType: 'match', aggregateId: String(matchIdActual), aggregateVersion: 1, actorId });
     await eventBusV2.emit('match:updated', { matchId: matchIdActual }, { aggregateType: 'match', aggregateId: String(matchIdActual), aggregateVersion: 1 });
 
     return (await matchResultRepository.findById(record.id))!;
@@ -325,7 +345,7 @@ export class MatchResultService {
 
     await this.applyRatingForRecord(record.id, matchIdActual);
 
-    await eventBusV2.emit('match:result-approved', { matchId: matchIdActual, resultId: record.id, approvedBy: actorId, allUserIds: context.participantUserIds }, { aggregateType: 'match', aggregateId: String(matchIdActual), aggregateVersion: 1, actorId });
+    await eventBusV2.emit('match:result-approved', scopeResultPayload({ matchId: matchIdActual, resultId: record.id, approvedBy: actorId, allUserIds: context.participantUserIds }, context), { aggregateType: 'match', aggregateId: String(matchIdActual), aggregateVersion: 1, actorId });
     await eventBusV2.emit('match:updated', { matchId: matchIdActual }, { aggregateType: 'match', aggregateId: String(matchIdActual), aggregateVersion: 1 });
 
     return (await matchResultRepository.findById(record.id))!;
@@ -359,7 +379,7 @@ export class MatchResultService {
 
     await recordAudit({ actorId, action: 'match.result.disputed', entityType: 'match_result_records', entityId: record.id, afterState: { disputeReason: cleanReason }, ipAddress: ip });
 
-    await eventBusV2.emit('match:result-disputed', { matchId: matchIdActual, resultId: record.id, disputedBy: actorId, allUserIds: context.participantUserIds }, { aggregateType: 'match', aggregateId: String(matchIdActual), aggregateVersion: 1, actorId });
+    await eventBusV2.emit('match:result-disputed', scopeResultPayload({ matchId: matchIdActual, resultId: record.id, disputedBy: actorId, allUserIds: context.participantUserIds }, context), { aggregateType: 'match', aggregateId: String(matchIdActual), aggregateVersion: 1, actorId });
     await eventBusV2.emit('match:updated', { matchId: matchIdActual }, { aggregateType: 'match', aggregateId: String(matchIdActual), aggregateVersion: 1 });
 
     return (await matchResultRepository.findById(record.id))!;
@@ -439,7 +459,9 @@ export class MatchResultService {
 
     await recordAudit({ actorId, action: 'match.result.resolved', entityType: 'match_result_records', entityId: record.id, beforeState: beforeState as unknown as Record<string, unknown>, afterState: { resolution: resolution.approve ? 'approved' : 'no_result', note: resolution.note ?? null }, ipAddress: ip });
 
-    await eventBusV2.emit('match:result-resolved', { matchId: record.matchId, resultId: record.id, resolution: resolution.approve ? 'approved' : 'no_result', allUserIds: record.participantPayload.map((p) => p.userId) }, { aggregateType: 'match', aggregateId: String(record.matchId), aggregateVersion: 1, actorId });
+    const resolutionScope = await matchResultRepository.getMatchContext(record.matchId);
+
+    await eventBusV2.emit('match:result-resolved', scopeResultPayload({ matchId: record.matchId, resultId: record.id, resolution: resolution.approve ? 'approved' : 'no_result', allUserIds: record.participantPayload.map((p) => p.userId) }, resolutionScope), { aggregateType: 'match', aggregateId: String(record.matchId), aggregateVersion: 1, actorId });
     await eventBusV2.emit('match:updated', { matchId: record.matchId }, { aggregateType: 'match', aggregateId: String(record.matchId), aggregateVersion: 1 });
 
     return (await matchResultRepository.findById(record.id))!;
@@ -510,7 +532,12 @@ export class MatchResultService {
       afterState: validated.finalResult as unknown as Record<string, unknown>,
       ipAddress: ip,
     });
-    await eventBusV2.emit('match:updated', { matchId: record.matchId }, { aggregateType: 'match', aggregateId: String(record.matchId), aggregateVersion: 1 });
+    const correctionScope = await matchResultRepository.getMatchContext(record.matchId);
+    await eventBusV2.emit('match:result-corrected', scopeResultPayload({
+      matchId: record.matchId, resultId: record.id, approvedBy: actorId,
+      allUserIds: record.participantPayload.map((p) => p.userId),
+    }, correctionScope), { aggregateType: 'match', aggregateId: String(record.matchId), aggregateVersion: 1, actorId });
+    await eventBusV2.emit('match:updated', scopeResultPayload({ matchId: record.matchId }, correctionScope), { aggregateType: 'match', aggregateId: String(record.matchId), aggregateVersion: 1 });
 
     return (await matchResultRepository.findById(record.id))!;
   }
@@ -668,8 +695,9 @@ export class MatchResultService {
         if (!ok) continue;
         await recordAudit({ actorId: null, action: 'match.result.auto_approved', entityType: 'match_result_records', entityId: record.id, reason: 'auto-approval deadline reached' });
         await this.applyRatingForRecord(record.id, record.matchId);
-        await eventBusV2.emit('match:result-auto-approved', { matchId: record.matchId, resultId: record.id, allUserIds: record.participantPayload.map((p) => p.userId) }, { aggregateType: 'match', aggregateId: String(record.matchId), aggregateVersion: 1 });
-        await eventBusV2.emit('match:updated', { matchId: record.matchId }, { aggregateType: 'match', aggregateId: String(record.matchId), aggregateVersion: 1 });
+        const autoApproveScope = await matchResultRepository.getMatchContext(record.matchId);
+        await eventBusV2.emit('match:result-auto-approved', scopeResultPayload({ matchId: record.matchId, resultId: record.id, allUserIds: record.participantPayload.map((p) => p.userId) }, autoApproveScope), { aggregateType: 'match', aggregateId: String(record.matchId), aggregateVersion: 1 });
+        await eventBusV2.emit('match:updated', scopeResultPayload({ matchId: record.matchId }, autoApproveScope), { aggregateType: 'match', aggregateId: String(record.matchId), aggregateVersion: 1 });
         approved += 1;
       } catch (err) {
         log.error({ err, resultId: record.id }, 'auto-approve failed');
@@ -725,7 +753,8 @@ export class MatchResultService {
           evidenceCounted: false,
         })));
         await recordAudit({ actorId: null, action: 'match.result.no_result_marked', entityType: 'match_result_records', entityId: resultId, reason: 'submission window expired' });
-        await eventBusV2.emit('match:result-no-result', { matchId: m.matchId, resultId, allUserIds: m.participantUserIds }, { aggregateType: 'match', aggregateId: String(m.matchId), aggregateVersion: 1 });
+        const noResultScope = await matchResultRepository.getMatchContext(m.matchId);
+        await eventBusV2.emit('match:result-no-result', scopeResultPayload({ matchId: m.matchId, resultId, allUserIds: m.participantUserIds }, noResultScope), { aggregateType: 'match', aggregateId: String(m.matchId), aggregateVersion: 1 });
         marked += 1;
       } catch (err) {
         log.error({ err, matchId: m.matchId }, 'no-result marking failed');

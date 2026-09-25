@@ -32,10 +32,10 @@ export class InvitationService {
       expiresAt,
     });
 
-    matchEventPublisher.publish({
+    await matchEventPublisher.publish({
       type: 'invitation:sent',
       payload: { matchId, userId, timestamp: new Date().toISOString() },
-    });
+      }, { executor: db });
 
     return invitation;
   }
@@ -63,7 +63,7 @@ export class InvitationService {
       [invitationId]
     );
 
-    matchEventPublisher.publish({
+    await matchEventPublisher.publish({
       type: 'invitation:declined',
       payload: { matchId: inv.match_id, userId: inv.user_id, timestamp: new Date().toISOString() },
     });
@@ -81,10 +81,10 @@ export class InvitationService {
         [matchId]
       );
       for (const row of rows as any[]) {
-        matchEventPublisher.publish({
+        await matchEventPublisher.publish({
           type: 'invitation:expired',
           payload: { matchId, userId: row.user_id, timestamp: new Date().toISOString() },
-        });
+          }, { executor: db });
       }
     }
   }
@@ -104,10 +104,10 @@ export class InvitationService {
       [matchId, userId]
     );
     if (result.affectedRows > 0) {
-      matchEventPublisher.publish({
+      await matchEventPublisher.publish({
         type: 'invitation:expired',
         payload: { matchId, userId, timestamp: new Date().toISOString() },
-      });
+        }, { executor: db });
     }
   }
 }

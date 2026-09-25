@@ -21,6 +21,21 @@ const eventsDroppedTotal = new client.Counter({
   registers: [registry],
 });
 
+/** Match/Result events routed through the single centralized SocketPublisher. */
+export const MATCH_AND_RESULT_SOCKET_EVENTS = [
+  'match:available', 'match:created', 'match:updated', 'match:status_changed',
+  'match:cancelled', 'match:completed', 'match:removed', 'match:pending',
+  'invitation:sent', 'invitation:declined', 'invitation:expired',
+  'join_request:submitted', 'join_request:approved', 'join_request:rejected',
+  'join_request:withdrawn', 'join_request:auto_rejected',
+  'participant:added', 'participant:removed',
+  'waiting_list:promoted', 'waiting_list:entry_added', 'waiting_list:entry_removed',
+  'session:started', 'session:completed',
+  'match:result-submitted', 'match:result-approved', 'match:result-auto-approved',
+  'match:result-disputed', 'match:result-rejected', 'match:result-resolved',
+  'match:result-corrected', 'match:result-no-result', 'match:result-withdrawn',
+] as const;
+
 export class SocketPublisher {
   private io: SocketIOServer | null = null;
 
@@ -49,9 +64,7 @@ export class SocketPublisher {
       'notification:broadcast',
       'notification:delivered', 'notification:unread-count',
       'notification:sync-read', 'notification:sync-deleted',
-      'match:available', 'match:removed', 'match:updated', 'match:pending',
-      'match:result-submitted', 'match:result-approved', 'match:result-auto-approved',
-      'match:result-disputed', 'match:result-resolved', 'match:result-no-result', 'match:result-withdrawn',
+      ...MATCH_AND_RESULT_SOCKET_EVENTS,
       'chat:new-message', 'chat:group-invitation',
       'entitlement:activated',
       'settlement:created', 'settlement:completed', 'settlement:failed', 'settlement:paid',
@@ -114,10 +127,15 @@ export class SocketPublisher {
       eventsDroppedTotal.inc({ event_name: eventName });
       return;
     }
-
-    for (const room of mapped.rooms) {
-      this.io.to(room).emit(mapped.type, mapped.payload);
+    if (mapped.rooms.length === 0) {
+      eventsDroppedTotal.inc({ event_name: eventName });
+      return;
     }
+
+    // Emit once to the union of rooms. Looping over rooms would deliver the
+    // same event more than once whenever a user belongs to both a personal
+    // room and an organisation/branch room.
+    this.io.to(mapped.rooms).emit(mapped.type, mapped.payload);
 
     eventsPublishedTotal.inc({ event_type: mapped.type });
     log.debug({ type: mapped.type, rooms: mapped.rooms }, 'socket.published');

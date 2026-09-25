@@ -55,10 +55,10 @@ export class DeadlineService {
 
       // Notify the frontend (SocketPublisher listens on match:updated) so a
       // match closed at its deadline disappears from the discover list live.
-      matchEventPublisher.publish({
+      await matchEventPublisher.publish({
         type: 'match:updated',
         payload: { matchId, timestamp: new Date().toISOString() },
-      });
+      }, { executor: conn });
     } catch (err) {
       await conn.rollback();
       throw err;

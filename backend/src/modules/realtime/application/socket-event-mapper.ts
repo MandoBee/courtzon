@@ -1,5 +1,13 @@
 import { createModuleLogger } from '../../../shared/utils/logger.js';
-import { ADMIN_ROOM, PLAYER_ROOM } from '../domain/realtime-rooms.js';
+import {
+  ADMIN_ROOM,
+  PLAYER_ROOM,
+  bookingRoom,
+  branchRoom,
+  matchRoom,
+  orgRoom,
+  userRoom,
+} from '../domain/realtime-rooms.js';
 
 const log = createModuleLogger('socket-mapper');
 
@@ -113,8 +121,8 @@ export function mapDomainEvent(eventName: string, payload: Record<string, unknow
     if (eventName.startsWith('attendance:')) return mapAttendanceEvent(eventName, payload);
     if (eventName.startsWith('membership:')) return mapMembershipEvent(eventName, payload);
     if (eventName.startsWith('tournament:')) return mapTournamentEvent(eventName, payload);
-    if (eventName.startsWith('match:result-')) return mapMatchResultEvent(eventName, payload);
-    if (eventName.startsWith('match:')) return mapMatchEvent(eventName, payload);
+    if (MATCH_RESULT_EVENT_NAMES.has(eventName)) return mapMatchResultEvent(eventName, payload);
+    if (MATCH_DOMAIN_EVENT_NAMES.has(eventName)) return mapMatchEvent(eventName, payload);
     if (eventName === 'system:announcement') {
       return {
         type: 'system.announcement',
@@ -405,21 +413,128 @@ function mapMembershipEvent(eventName: string, p: Record<string, any>): MappedSo
   };
 }
 
+const MATCH_RESULT_EVENT_NAMES = new Set([
+  'match:result-submitted',
+  'match:result-approved',
+  'match:result-auto-approved',
+  'match:result-disputed',
+  'match:result-rejected',
+  'match:result-resolved',
+  'match:result-corrected',
+  'match:result-no-result',
+  'match:result-withdrawn',
+]);
+
+const MATCH_DOMAIN_EVENT_NAMES = new Set([
+  // Match lifecycle and compatibility events derived by the notification engine.
+  'match:available',
+  'match:created',
+  'match:updated',
+  'match:status_changed',
+  'match:cancelled',
+  'match:completed',
+  'match:removed',
+  'match:pending',
+  // Participant/session lifecycle events.
+  'invitation:sent',
+  'invitation:declined',
+  'invitation:expired',
+  'join_request:submitted',
+  'join_request:approved',
+  'join_request:rejected',
+  'join_request:withdrawn',
+  'join_request:auto_rejected',
+  'participant:added',
+  'participant:removed',
+  'waiting_list:promoted',
+  'waiting_list:entry_added',
+  'waiting_list:entry_removed',
+  'session:started',
+  'session:completed',
+]);
+
+function numericId(value: unknown): number | null {
+  if (value == null || value === '') return null;
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+function addRoom(rooms: Set<string>, value: string): void {
+  rooms.add(value);
+}
+
+function addIdRoom(rooms: Set<string>, prefix: 'booking' | 'branch' | 'match' | 'organisation' | 'user', value: unknown): void {
+  const id = numericId(value);
+  if (id == null) return;
+  if (prefix === 'booking') addRoom(rooms, bookingRoom(id));
+  else if (prefix === 'branch') addRoom(rooms, branchRoom(id));
+  else if (prefix === 'match') addRoom(rooms, matchRoom(id));
+  else if (prefix === 'organisation') addRoom(rooms, orgRoom(id));
+  else addRoom(rooms, userRoom(id));
+}
+
+function addUserRooms(rooms: Set<string>, value: unknown): void {
+  const values = Array.isArray(value) ? value : [value];
+  for (const userId of values) addIdRoom(rooms, 'user', userId);
+}
+
+/**
+ * Build the authenticated, tenant-scoped audience for match-derived events.
+ * Payload arrays are used only for room selection and are never echoed back to
+ * clients. A player room is reserved for explicitly public discovery events;
+ * private lifecycle data must never fall back to a global fan-out room.
+ */
+function roomsForScopedAudience(
+  p: Record<string, any>,
+  options: { includeBookingRoom?: boolean; publicDiscovery?: boolean } = {},
+): string[] {
+  const rooms = new Set<string>([ADMIN_ROOM]);
+
+  addIdRoom(rooms, 'match', p.matchId);
+  if (options.includeBookingRoom) addIdRoom(rooms, 'booking', p.bookingId);
+
+  for (const field of [
+    'userId',
+    'creatorId',
+    'submittedById',
+    'approvedBy',
+    'disputedBy',
+    'winnerId',
+    'addedUserId',
+    'removedUserId',
+    'recipientUserId',
+  ]) {
+    addUserRooms(rooms, p[field]);
+  }
+  for (const field of ['allUserIds', 'opponentUserIds', 'participantUserIds', 'memberUserIds']) {
+    addUserRooms(rooms, p[field]);
+  }
+
+  for (const organisationId of Array.isArray(p.organisationIds)
+    ? p.organisationIds
+    : [p.organisationId]) {
+    addIdRoom(rooms, 'organisation', organisationId);
+  }
+  for (const branchId of Array.isArray(p.branchIds) ? p.branchIds : [p.branchId]) {
+    addIdRoom(rooms, 'branch', branchId);
+  }
+
+  if (options.publicDiscovery && p.visibility === 'public') {
+    addRoom(rooms, PLAYER_ROOM);
+  }
+
+  return [...rooms];
+}
+
 function mapTournamentEvent(eventName: string, p: Record<string, any>): MappedSocketEvent {
   const sub = eventName.split(':')[1] || 'updated';
-  // The Super Admin tournament workbench (dashboard/list/detail/matches) lives
-  // in the admin room — every tournament lifecycle signal must refresh it live.
-  // Org staff receive the same signal via their organisation room (the
-  // progression events now carry `organisationId`).
-  const rooms: string[] = [ADMIN_ROOM];
-  if (p.userId) rooms.push(`user:${p.userId}`);
-  if (p.organisationId) rooms.push(`organisation:${p.organisationId}`);
   return {
     type: `tournament.${sub}`,
     payload: {
       tournamentId: p.tournamentId,
       matchId: p.matchId,
       userId: p.userId,
+      creatorId: p.creatorId,
       name: p.name,
       result: p.result,
       winnerId: p.winnerId,
@@ -427,6 +542,7 @@ function mapTournamentEvent(eventName: string, p: Record<string, any>): MappedSo
       stageCompleted: p.stageCompleted,
       tournamentCompleted: p.tournamentCompleted,
       organisationId: p.organisationId,
+      branchId: p.branchId,
       // Group 7 — participant/member/replacement state changes.
       participantId: p.participantId,
       participantType: p.participantType,
@@ -446,7 +562,7 @@ function mapTournamentEvent(eventName: string, p: Record<string, any>): MappedSo
       scheduled: p.scheduled,
       skipped: p.skipped,
     },
-    rooms,
+    rooms: roomsForScopedAudience(p, { includeBookingRoom: true }),
   };
 }
 
@@ -480,11 +596,6 @@ function mapChatEvent(eventName: string, p: Record<string, any>): MappedSocketEv
 
 function mapMatchResultEvent(eventName: string, p: Record<string, any>): MappedSocketEvent {
   const sub = eventName.split(':')[1] || 'updated';
-  const rooms: string[] = [ADMIN_ROOM];
-  const allUserIds: number[] = Array.isArray(p.allUserIds) ? p.allUserIds : [];
-  for (const uid of allUserIds) {
-    if (uid != null) rooms.push(`user:${uid}`);
-  }
   return {
     type: `match.${sub}`,
     payload: {
@@ -493,19 +604,41 @@ function mapMatchResultEvent(eventName: string, p: Record<string, any>): MappedS
       submittedById: p.submittedById,
       approvedBy: p.approvedBy,
       disputedBy: p.disputedBy,
+      status: p.status,
+      outcome: p.outcome,
       resolution: p.resolution,
-      timestamp: Date.now(),
+      timestamp: p.timestamp ?? Date.now(),
     },
-    rooms,
+    rooms: roomsForScopedAudience(p),
   };
 }
 
 function mapMatchEvent(eventName: string, p: Record<string, any>): MappedSocketEvent {
-  const sub = eventName.split(':')[1] || 'updated';
+  const [namespace, sub] = eventName.split(':');
+  const type = `${namespace}.${sub || 'updated'}`;
   return {
-    type: `match.${sub}`,
-    payload: { matchId: p.matchId, bookingId: p.bookingId, userId: p.userId, timestamp: p.timestamp },
-    rooms: [PLAYER_ROOM],
+    type,
+    payload: {
+      matchId: p.matchId,
+      bookingId: p.bookingId,
+      tournamentId: p.tournamentId,
+      userId: p.userId,
+      creatorId: p.creatorId,
+      fromStatus: p.fromStatus,
+      toStatus: p.toStatus,
+      status: p.status,
+      reason: p.reason,
+      role: p.role,
+      position: p.position,
+      startedAt: p.startedAt,
+      durationMinutes: p.durationMinutes,
+      winnerId: p.winnerId,
+      timestamp: p.timestamp ?? Date.now(),
+    },
+    rooms: roomsForScopedAudience(p, {
+      includeBookingRoom: true,
+      publicDiscovery: eventName === 'match:available',
+    }),
   };
 }
 

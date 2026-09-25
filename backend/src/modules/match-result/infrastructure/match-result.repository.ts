@@ -54,6 +54,11 @@ export interface MatchContext {
   tournamentId: number | null;
   /** Bracket slot stage association (MIXED tournament progression stage). */
   stageId: number | null;
+  /** Owning organisation for tenant-scoped realtime routing (NULL = community). */
+  organisationId: number | null;
+  /** Creator of the match (public host, tournament creator, or booking owner). */
+  creatorId: number | null;
+  visibility: 'public' | 'invite_only' | null;
   participantUserIds: number[];
   /** Authoritative side/team assignments from match_participants (side may be null on legacy matches). */
   participantSlots: MatchParticipantSlot[];
@@ -261,7 +266,9 @@ export class MatchResultRepository {
     const pool = getPool();
     const [rows] = await pool.execute<RowData>(
       `SELECT m.id AS match_id, m.sport_id, m.status, m.format_id, m.format_snapshot, m.rule_set_id, m.rule_snapshot,
-              b.branch_id, b.resource_id, b.end_at_utc,
+              b.branch_id, b.resource_id, b.end_at_utc, b.organisation_id,
+              pmd.creator_id AS public_creator_id, pmd.visibility,
+              tt.organisation_id AS tournament_organisation_id, tt.creator_id AS tournament_creator_id,
               COALESCE(
                 (SELECT COALESCE(ms.ended_at, ms.started_at) FROM match_sessions ms
                  WHERE ms.match_id = m.id ORDER BY ms.id DESC LIMIT 1),
@@ -275,6 +282,7 @@ export class MatchResultRepository {
        FROM matches m
        LEFT JOIN bookings b ON b.id = m.booking_id
        LEFT JOIN branches br ON br.id = b.branch_id
+       LEFT JOIN public_match_details pmd ON pmd.match_id = m.id
        LEFT JOIN tournament_matches tm ON tm.match_id = m.id
        LEFT JOIN tournaments tt ON tt.id = COALESCE(m.tournament_id, tm.tournament_id)
        WHERE m.id = ?`,
@@ -306,6 +314,9 @@ export class MatchResultRepository {
       timezone: r.timezone ?? null,
       tournamentId: r.tournament_id != null ? Number(r.tournament_id) : null,
       stageId: r.stage_id != null ? Number(r.stage_id) : null,
+      organisationId: r.tournament_organisation_id != null ? Number(r.tournament_organisation_id) : (r.organisation_id != null ? Number(r.organisation_id) : null),
+      creatorId: r.public_creator_id != null ? Number(r.public_creator_id) : (r.tournament_creator_id != null ? Number(r.tournament_creator_id) : null),
+      visibility: r.visibility ?? null,
       participantUserIds: slots.map((s) => s.userId),
       participantSlots: slots,
     };

@@ -129,7 +129,7 @@ export class MatchService {
         return null;
       }
 
-      matchEventPublisher.publish({
+      await matchEventPublisher.publish({
         type: 'match:created',
         payload: {
           matchId, type: 'public', sportId: bk.sport_id,
@@ -211,7 +211,7 @@ export class MatchService {
         throw new AppError('Match not found', 404, 'MATCH_NOT_FOUND');
       }
 
-      matchEventPublisher.publish({
+      await matchEventPublisher.publish({
         type: 'match:created',
         payload: {
           matchId, type: 'public', sportId: input.sportId,
@@ -219,7 +219,9 @@ export class MatchService {
           formatId: input.formatId,
           timestamp: new Date().toISOString(),
         },
-      });
+        // The caller may own the transaction: read the audience through the SAME
+        // connection so the freshly created match + participants are visible.
+      }, { executor: external ?? conn });
 
       return match;
     } catch (err) {
@@ -295,6 +297,13 @@ export class MatchService {
       await invitationService.expireByMatchId(matchId, conn);
       await joinRequestService.autoRejectPendingByMatchId(matchId, conn);
 
+      // Capture the roster BEFORE clearing it so the cancelled event can still
+      // reach every affected player (audit/history preserves the fact the match
+      // existed, but the realtime payload needs the in-memory audience).
+      const cancelledParticipantUserIds = [...new Set(
+        match.participants.map((p) => p.userId).filter((id): id is number => id != null),
+      )];
+
       await conn.execute(
         'DELETE FROM match_participants WHERE match_id = ?', [matchId]
       );
@@ -304,10 +313,10 @@ export class MatchService {
 
       await conn.commit();
 
-      matchEventPublisher.publish({
+      await matchEventPublisher.publish({
         type: 'match:cancelled',
         payload: { matchId, reason, timestamp: new Date().toISOString() },
-      });
+      }, { executor: conn, audience: { participantUserIds: cancelledParticipantUserIds } });
     } catch (err) {
       await conn.rollback();
       throw err;
@@ -352,10 +361,10 @@ export class MatchService {
       );
       // NON-DESTRUCTIVE — match_participants are preserved (roster/history).
       await conn.commit();
-      matchEventPublisher.publish({
+      await matchEventPublisher.publish({
         type: 'match:cancelled',
         payload: { matchId, reason, timestamp: new Date().toISOString() },
-      });
+      }, { executor: conn });
     } catch (err) {
       await conn.rollback();
       throw err;
@@ -384,13 +393,13 @@ export class MatchService {
 
       await conn.commit();
 
-      matchEventPublisher.publish({
+      await matchEventPublisher.publish({
         type: 'match:status_changed',
         payload: {
           matchId, fromStatus: match.status,
           toStatus: 'closed', timestamp: new Date().toISOString(),
         },
-      });
+      }, { executor: conn });
     } catch (err) {
       await conn.rollback();
       throw err;
@@ -439,7 +448,7 @@ export class MatchService {
         // sessionService.start emits session:started, but the frontend
         // invalidate map listens on match.updated — emit both so the
         // MatchListPage + nav counts refresh live.
-        matchEventPublisher.publish({
+        await matchEventPublisher.publish({
           type: 'match:updated',
           payload: {
             matchId: row.id,
@@ -500,21 +509,21 @@ export class MatchService {
         // (subscribed to match:updated) tells the frontend to refresh lists —
         // auto-complete runs headless in a worker, players must still see the
         // match move to History/result-entry without a manual refresh.
-        matchEventPublisher.publish({
+        await matchEventPublisher.publish({
           type: 'match:updated',
           payload: {
             matchId: row.id,
             timestamp: new Date().toISOString(),
           },
         });
-        matchEventPublisher.publish({
+        await matchEventPublisher.publish({
           type: 'match:status_changed',
           payload: {
             matchId: row.id, fromStatus,
             toStatus: 'completed', timestamp: new Date().toISOString(),
           },
         });
-        matchEventPublisher.publish({
+        await matchEventPublisher.publish({
           type: 'match:completed',
           payload: { matchId: row.id, timestamp: new Date().toISOString() },
         });

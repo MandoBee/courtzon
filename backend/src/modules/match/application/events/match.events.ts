@@ -1,4 +1,15 @@
-export interface MatchEventPayload {
+export interface MatchRealtimeAudience {
+  /** Owning organisation for tenant-scoped socket routing (NULL = community). */
+  organisationId?: number | null;
+  branchId?: number | null;
+  bookingId?: number | null;
+  tournamentId?: number | null;
+  visibility?: 'public' | 'invite_only' | null;
+  participantUserIds?: number[];
+  creatorId?: number | null;
+}
+
+export interface MatchEventPayload extends MatchRealtimeAudience {
   matchId: number;
   timestamp: string;
 }

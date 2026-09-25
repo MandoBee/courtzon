@@ -570,6 +570,107 @@ describe('SocketEventMapper', () => {
     });
   });
 
+  describe('Group 5 match/tournament tenant isolation', () => {
+    it('routes lifecycle events only to participants, owning org/branch staff, and admin', () => {
+      const result = mapDomainEvent('match:status_changed', {
+        matchId: 15,
+        fromStatus: 'closed',
+        toStatus: 'in_progress',
+        creatorId: 7,
+        participantUserIds: [7, 9],
+        organisationId: 3,
+        branchId: 5,
+      });
+
+      expect(result).not.toBeNull();
+      expect(result!.type).toBe('match.status_changed');
+      expect(result!.rooms).toEqual(expect.arrayContaining([
+        'admin', 'match:15', 'user:7', 'user:9', 'organisation:3', 'branch:5',
+      ]));
+      expect(result!.rooms).not.toContain('player');
+      expect(result!.rooms).not.toContain('organisation:99');
+      expect(result!.rooms).not.toContain('branch:99');
+    });
+
+    it('keeps invite-only match events out of the global player room', () => {
+      const result = mapDomainEvent('match:available', {
+        matchId: 15,
+        userId: 7,
+        visibility: 'invite_only',
+        organisationId: 3,
+      });
+
+      expect(result!.rooms).toContain('user:7');
+      expect(result!.rooms).toContain('organisation:3');
+      expect(result!.rooms).not.toContain('player');
+    });
+
+    it('allows only explicitly public match discovery to use the player room', () => {
+      const result = mapDomainEvent('match:available', {
+        matchId: 15,
+        bookingId: 22,
+        visibility: 'public',
+        organisationId: 3,
+      });
+
+      expect(result!.rooms).toContain('player');
+      expect(result!.rooms).toContain('booking:22');
+      expect(result!.rooms).toContain('organisation:3');
+    });
+
+    it('routes invitations to the recipient plus the current match audience', () => {
+      const result = mapDomainEvent('invitation:sent', {
+        matchId: 15,
+        userId: 42,
+        creatorId: 7,
+        participantUserIds: [7],
+        organisationId: 3,
+        branchId: 5,
+      });
+
+      expect(result!.type).toBe('invitation.sent');
+      expect(result!.rooms).toContain('user:42');
+      expect(result!.rooms).toContain('user:7');
+      expect(result!.rooms).toContain('organisation:3');
+      expect(result!.rooms).not.toContain('player');
+    });
+
+    it('routes result events to organization/branch scope without a global player fallback', () => {
+      const result = mapDomainEvent('match:result-corrected', {
+        matchId: 15,
+        resultId: 2,
+        allUserIds: [7, 9],
+        organisationId: 3,
+        branchId: 5,
+      });
+
+      expect(result!.type).toBe('match.result-corrected');
+      expect(result!.rooms).toEqual(expect.arrayContaining([
+        'admin', 'match:15', 'user:7', 'user:9', 'organisation:3', 'branch:5',
+      ]));
+      expect(result!.rooms).not.toContain('player');
+    });
+
+    it('routes community tournament changes to its affected users without inventing tenant scope', () => {
+      const result = mapDomainEvent('tournament:match-progressed', {
+        tournamentId: 8,
+        matchId: 15,
+        creatorId: 7,
+        participantUserIds: [7, 9],
+        winnerId: 9,
+      });
+
+      expect(result!.type).toBe('tournament.match-progressed');
+      expect(result!.rooms).toEqual(expect.arrayContaining(['admin', 'user:7', 'user:9', 'match:15']));
+      expect(result!.rooms.some((roomName) => roomName.startsWith('organisation:'))).toBe(false);
+      expect(result!.rooms).not.toContain('player');
+    });
+
+    it('drops unknown match-prefixed events instead of emitting a generic match.updated', () => {
+      expect(mapDomainEvent('match:unmapped-future-event', { matchId: 15 })).toBeNull();
+    });
+  });
+
   describe('academy enrollment events', () => {
     it('routes academy:enrollment-paid via playerId to the player user room', () => {
       const result = mapDomainEvent('academy:enrollment-paid', {

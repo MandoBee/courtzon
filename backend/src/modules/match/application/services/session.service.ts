@@ -33,7 +33,7 @@ export class SessionService {
       [matchId]
     );
 
-    matchEventPublisher.publish({
+    await matchEventPublisher.publish({
       type: 'session:started',
       payload: { matchId, startedAt: new Date().toISOString(), timestamp: new Date().toISOString() },
     });
@@ -61,7 +61,7 @@ export class SessionService {
       [matchId]
     );
 
-    matchEventPublisher.publish({
+    await matchEventPublisher.publish({
       type: 'session:completed',
       payload: {
         matchId,

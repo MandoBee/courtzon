@@ -81,7 +81,7 @@ describe('MatchService terminal-state guard (UAT: completed match must not expos
         expect.stringContaining('cancelled'),
         [78],
       );
-      expect(publisher.publish).toHaveBeenCalledWith(expect.objectContaining({ type: 'match:cancelled' }));
+      expect(publisher.publish).toHaveBeenCalledWith(expect.objectContaining({ type: 'match:cancelled' }), expect.anything());
     });
   });
 
@@ -110,7 +110,7 @@ describe('MatchService terminal-state guard (UAT: completed match must not expos
         expect.stringContaining('closed'),
         [80],
       );
-      expect(publisher.publish).toHaveBeenCalledWith(expect.objectContaining({ type: 'match:status_changed' }));
+      expect(publisher.publish).toHaveBeenCalledWith(expect.objectContaining({ type: 'match:status_changed' }), expect.anything());
     });
   });
 });

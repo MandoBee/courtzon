@@ -49,7 +49,7 @@ describe('cancelTournamentMatch (G9-D2 — non-destructive cancellation)', () =>
     expect(publisher.publish).toHaveBeenCalledWith(expect.objectContaining({
       type: 'match:cancelled',
       payload: expect.objectContaining({ matchId: 900, reason: 'participant withdrew after start' }),
-    }));
+    }), expect.anything());
   });
 
   it('never cancels an in_progress match (M5 — withdrawal must not stop a live match)', async () => {

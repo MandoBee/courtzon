@@ -27,7 +27,7 @@ export class ParticipantService {
       [matchId]
     );
 
-    matchEventPublisher.publish({
+    await matchEventPublisher.publish({
       type: 'participant:removed',
       payload: { matchId, userId, timestamp: new Date().toISOString() },
     });

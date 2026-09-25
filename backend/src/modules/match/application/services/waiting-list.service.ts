@@ -21,7 +21,7 @@ export class WaitingListService {
       [matchId, userId, matchId]
     );
 
-    matchEventPublisher.publish({
+    await matchEventPublisher.publish({
       type: 'waiting_list:entry_added',
       payload: { matchId, userId, position: 0, timestamp: new Date().toISOString() },
     });
@@ -35,7 +35,7 @@ export class WaitingListService {
     );
     await this.reindex(matchId, pool);
 
-    matchEventPublisher.publish({
+    await matchEventPublisher.publish({
       type: 'waiting_list:entry_removed',
       payload: { matchId, userId, timestamp: new Date().toISOString() },
     });
@@ -60,7 +60,7 @@ export class WaitingListService {
 
     await joinRequestService.submit(matchId, entry.user_id);
 
-    matchEventPublisher.publish({
+    await matchEventPublisher.publish({
       type: 'waiting_list:promoted',
       payload: { matchId, userId: entry.user_id, position: 0, timestamp: new Date().toISOString() },
     });
