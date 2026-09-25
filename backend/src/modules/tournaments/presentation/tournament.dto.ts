@@ -11,6 +11,26 @@ import { z } from 'zod';
 export const RegistrationPaymentMethodsSchema = z.array(z.enum(['cash', 'card'])).min(1);
 
 /**
+ * Group 7-A — Tournament Eligibility input contract (AGE / GENDER / LEVEL).
+ *
+ * - age_mode: 'open' (no filtering) | 'categories'. Absent = legacy open.
+ * - age_category_ids: positive references to `tournament_age_categories`
+ *   (single family youth XOR masters — enforced at the service/domain level).
+ * - gender_categories: multi-select ⊆ {male, female, mixed}; 'mixed' is a
+ *   tournament category, NOT a user gender (users.gender stays male|female).
+ * - level_ids: positive references to `player_levels` (empty = Open level;
+ *   level NEVER applies to notification targeting).
+ */
+export const AgeModeSchema = z.enum(['open', 'categories']);
+export const GenderCategoriesSchema = z.array(z.enum(['male', 'female', 'mixed']));
+export const TournamentEligibilityInputSchema = z.object({
+  age_mode: AgeModeSchema.optional(),
+  age_category_ids: z.array(z.number().int().positive()).optional(),
+  gender_categories: GenderCategoriesSchema.optional(),
+  level_ids: z.array(z.number().int().positive()).optional(),
+});
+
+/**
  * Group 2 — structured Tournament prize input. Multiple prizes per placement are
  * allowed; `placement` is nullable (NULL = special/non-ranked prize).
  * Cash prizes carry `amount` + the Tournament's authoritative `currency_code`;
@@ -70,6 +90,7 @@ export const CreateTournamentSchema = z.object({
   rules: z.string().optional(),
   is_featured: z.boolean().optional().default(false),
   image_url: z.string().optional(),
+  ...TournamentEligibilityInputSchema.shape,
   organisation_id: z.number().int().positive().optional(),
   branch_id: z.number().int().positive().optional(),
 });
@@ -110,6 +131,7 @@ export const UpdateTournamentSchema = z.object({
   rules: z.string().optional(),
   is_featured: z.boolean().optional(),
   image_url: z.string().optional(),
+  ...TournamentEligibilityInputSchema.shape,
   organisation_id: z.number().int().positive().optional(),
   branch_id: z.number().int().positive().optional(),
 });

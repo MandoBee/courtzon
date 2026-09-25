@@ -187,6 +187,52 @@ export interface TournamentDrawEntry {
 }
 
 /**
+ * Group 7-A — Tournament Eligibility (AGE / GENDER / LEVEL).
+ *
+ * AUTHORITATIVE AGE RULE (protected business rule):
+ *   Tournament Age = YEAR(tournaments.start_date) − YEAR(users.birth_date)
+ * YEAR only — never month/day, never "as of today", never as-of-deadline.
+ *
+ * The reference category defines the age band (min_age/max_age in tournament
+ * years); a player is eligible when Tournament Age is within [min_age, max_age]
+ * with NULL meaning unbounded on that side (youth: max_age=14/16/18, unbounded
+ * below; masters: min_age=40/45/50/55, unbounded above).
+ */
+export type TournamentAgeMode = 'open' | 'categories';
+
+export type TournamentAgeCategoryType = 'youth' | 'masters';
+
+export interface TournamentAgeCategory {
+  id: number;
+  slug: string;
+  type: TournamentAgeCategoryType;
+  min_age: number | null;
+  max_age: number | null;
+  label_en: string;
+  label_ar: string;
+  is_active: boolean | number;
+}
+
+export const TOURNAMENT_GENDER_CATEGORIES = ['male', 'female', 'mixed'] as const;
+export type TournamentGenderCategory = (typeof TOURNAMENT_GENDER_CATEGORIES)[number];
+
+/**
+ * Structured tournament eligibility configuration.
+ *
+ * - ageMode 'open' ⇒ no age filtering; 'categories' ⇒ multi-select reference
+ *   categories within ONE family (youth XOR masters — never both).
+ * - genderCategories ⊆ {male, female, mixed} (empty = open).
+ * - levelIds ⊆ player_levels.id (empty = open). Level is registration-only —
+ *   it NEVER applies to notification targeting.
+ */
+export interface TournamentEligibility {
+  ageMode: TournamentAgeMode | null;
+  ageCategoryIds: number[];
+  genderCategories: TournamentGenderCategory[];
+  levelIds: number[];
+}
+
+/**
  * Group 6 — structured impact of a participant lifecycle change on the draw.
  * Returned to the caller so the UI can warn before re-draw; a locked draw is
  * never silently mutated.
@@ -262,6 +308,16 @@ export interface Tournament {
   draw_seed?: number;
   category?: string;
   season?: string;
+  /**
+   * Group 7-A — structured eligibility. NULL (legacy rows) resolves at runtime
+   * to Open Age / No gender restriction / Open level. When either array is
+   * absent the field is interpreted as open; `age_mode='categories'` requires
+   * `age_category_ids` within ONE family (youth XOR masters).
+   */
+  age_mode?: TournamentAgeMode | null;
+  age_category_ids?: number[] | null;
+  gender_categories?: TournamentGenderCategory[] | null;
+  level_ids?: number[] | null;
   sport_id?: number;
   name: string;
   code?: string;
@@ -380,6 +436,8 @@ export interface TournamentRegistration {
   registered_at: string;
   confirmed_at?: string;
   checked_in_at?: string;
+  /** Group 7-A — frozen eligibility context captured at registration (NULL = legacy/pre-G7 registration). */
+  eligibility_snapshot?: Record<string, unknown> | null;
 }
 
 export interface TournamentMatch {

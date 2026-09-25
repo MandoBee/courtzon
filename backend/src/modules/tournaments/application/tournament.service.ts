@@ -2,6 +2,7 @@ import { tournamentRepository, type BracketTypeRow } from '../infrastructure/rep
 import { participantDrawRepository } from '../infrastructure/repositories/participant-draw.repository.js';
 import { participantMemberRepository } from '../infrastructure/repositories/participant-member.repository.js';
 import { generateKnockoutBracket, generateRoundRobinMatches, generateStageMatches, normaliseBracketTargets, isTournamentParticipantProgressionEligible, seededShuffle, type BracketSlot } from '../domain/tournament-aggregate.js';
+import { normalizeEligibility } from '../domain/tournament-eligibility.js';
 import type { Tournament, TournamentRegistration, TournamentMatch, TournamentStage, TournamentPrizeInput, TournamentPrizeType, TournamentVenue, TournamentParticipant, TournamentParticipantMember } from '../domain/tournament-aggregate.js';
 import { validateTournamentTransition, validateRegistrationTransition } from '../domain/lifecycle.js';
 import { NotFoundError, ConflictError, ForbiddenError } from '../../../shared/errors/app-error.js';
@@ -499,6 +500,9 @@ export class TournamentService {
     // Group 3 — the persisted JSON allowlist is exposed as a normalised array
     // (legacy NULL rows → backward-compatible default both methods).
     (t as any).registration_payment_methods = this.readRegistrationPaymentMethods((t as any).registration_payment_methods);
+    // Group 7-A — structured eligibility always exposed as normalized domain
+    // arrays; legacy rows resolve to Open Age / No restriction / Open level.
+    this.attachEligibility(t as any);
     return t;
   }
 
@@ -514,6 +518,8 @@ export class TournamentService {
     // surfaces. Wallet can never appear (global policy excludes it).
     const configured = this.readRegistrationPaymentMethods((t as any).registration_payment_methods);
     t.registration_payment_methods = configured;
+    // Group 7-A — structured eligibility on the management/player shape.
+    this.attachEligibility(t as any);
     t.effective_registration_payment_methods = await this.resolveEffectiveRegistrationPaymentMethods({
       ...t,
       registration_payment_methods: configured,
@@ -527,6 +533,23 @@ export class TournamentService {
 
   async getByCode(code: string): Promise<Tournament | null> {
     return tournamentRepository.findByCode(code);
+  }
+
+  /**
+   * Group 7-A — expose stored eligibility as canonical domain arrays. Legacy
+   * rows (all NULL) resolve to Open Age / No gender restriction / Open level.
+   */
+  private attachEligibility(t: {
+    age_mode?: unknown;
+    age_category_ids?: unknown;
+    gender_categories?: unknown;
+    level_ids?: unknown;
+  }): void {
+    const eligibility = normalizeEligibility(t);
+    (t as any).age_mode = eligibility.ageMode;
+    (t as any).age_category_ids = eligibility.ageCategoryIds;
+    (t as any).gender_categories = eligibility.genderCategories;
+    (t as any).level_ids = eligibility.levelIds;
   }
 
   // ── Group 5B-SR — Bracket type configuration ──

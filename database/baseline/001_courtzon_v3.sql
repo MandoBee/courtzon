@@ -5734,6 +5734,7 @@ CREATE TABLE `tournament_registrations` (
   `status` enum('registered','confirmed','withdrawn','disqualified','waiting') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'registered',
   `registered_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `cancelled_at` timestamp NULL DEFAULT NULL,
+  `eligibility_snapshot` json DEFAULT NULL COMMENT 'Frozen eligibility context captured at registration time (NULL = legacy/pre-G7 registration)',
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_player_tourn` (`tournament_id`,`player_id`),
   KEY `idx_tournament` (`tournament_id`),
@@ -5938,6 +5939,10 @@ CREATE TABLE `tournaments` (
   `draw_seed` bigint unsigned DEFAULT NULL,
   `category` varchar(100) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `season` varchar(100) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `age_mode` enum('open','categories') COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT 'NULL = legacy row => Open Age',
+  `age_category_ids` json DEFAULT NULL COMMENT 'Reference ids of tournament_age_categories (one family only, deterministically ordered)',
+  `gender_categories` json DEFAULT NULL COMMENT 'Multi-select eligibility categories [male, female, mixed]; empty/NULL = open',
+  `level_ids` json DEFAULT NULL COMMENT 'Reference ids of player_levels; empty/NULL = Open level',
   `sport_id` int unsigned DEFAULT NULL,
   `name` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
   `code` varchar(50) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
@@ -5993,6 +5998,20 @@ CREATE TABLE `tournaments` (
   CONSTRAINT `fk_tourn_match_format` FOREIGN KEY (`match_format_id`) REFERENCES `sport_formats` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_tourn_rule_set` FOREIGN KEY (`rule_set_id`) REFERENCES `sport_rule_sets` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_tourn_sport` FOREIGN KEY (`sport_id`) REFERENCES `sports` (`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+CREATE TABLE `tournament_age_categories` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `slug` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+  `type` enum('youth','masters') CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+  `min_age` int unsigned DEFAULT NULL COMMENT 'Minimum Tournament Age (masters); NULL = unbounded below (youth)',
+  `max_age` int unsigned DEFAULT NULL COMMENT 'Maximum Tournament Age (youth); NULL = unbounded above (masters)',
+  `label_en` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+  `label_ar` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+  `is_active` tinyint(1) NOT NULL DEFAULT '1',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_age_cat_slug` (`slug`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 DROP TABLE IF EXISTS `transaction_entries`;

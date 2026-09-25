@@ -344,6 +344,23 @@ INSERT IGNORE INTO `player_levels` (`id`, `name`, `level_order`, `is_active`, `c
 UNLOCK TABLES;
 
 --
+-- Dumping data for table `tournament_age_categories`
+--
+
+LOCK TABLES `tournament_age_categories` WRITE;
+/*!40000 ALTER TABLE `tournament_age_categories` DISABLE KEYS */;
+INSERT IGNORE INTO `tournament_age_categories` (`id`, `slug`, `type`, `min_age`, `max_age`, `label_en`, `label_ar`, `is_active`) VALUES
+(1,'u14','youth',NULL,14,'U14','تحت 14',1),
+(2,'u16','youth',NULL,16,'U16','تحت 16',1),
+(3,'u18','youth',NULL,18,'U18','تحت 18',1),
+(4,'40_plus','masters',40,NULL,'40+','40+',1),
+(5,'45_plus','masters',45,NULL,'45+','45+',1),
+(6,'50_plus','masters',50,NULL,'50+','50+',1),
+(7,'55_plus','masters',55,NULL,'55+','55+',1);
+/*!40000 ALTER TABLE `tournament_age_categories` ENABLE KEYS */;
+UNLOCK TABLES;
+
+--
 -- Dumping data for table `player_profiles`
 --
 

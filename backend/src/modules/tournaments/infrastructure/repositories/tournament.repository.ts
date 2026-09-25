@@ -232,8 +232,8 @@ export class TournamentRepository {
   }
 
   async create(data: Partial<Tournament>): Promise<number> {
-    const sql = `INSERT INTO tournaments (public_id, creator_id, organisation_id, branch_id, bracket_type_id, format, category, season, sport_id, match_format_id, rule_set_id, draw_seed, name, code, description, tournament_type, max_participants, max_teams, min_participants, entry_fee, registration_fee, currency_code, price_type, registration_payment_methods, waitlist_enabled, commission_rate, prize_description, status, is_public, registration_opens, registration_closes, start_date, end_date, daily_start_time, daily_end_time, rules, is_featured, image_url)
-                 VALUES (UUID(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+    const sql = `INSERT INTO tournaments (public_id, creator_id, organisation_id, branch_id, bracket_type_id, format, category, season, sport_id, match_format_id, rule_set_id, draw_seed, name, code, description, tournament_type, max_participants, max_teams, min_participants, entry_fee, registration_fee, currency_code, price_type, registration_payment_methods, waitlist_enabled, commission_rate, prize_description, status, is_public, registration_opens, registration_closes, start_date, end_date, daily_start_time, daily_end_time, rules, is_featured, image_url, age_mode, age_category_ids, gender_categories, level_ids)
+                 VALUES (UUID(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
     const [result] = await getPool().query<ResultSet>(sql, [
       data.creator_id, data.organisation_id ?? null, data.branch_id ?? null,
       data.bracket_type_id, data.format ?? null, data.category ?? null, data.season ?? null,
@@ -253,6 +253,10 @@ export class TournamentRepository {
       data.daily_start_time ?? null, data.daily_end_time ?? null,
       data.rules ?? null,
       data.is_featured ?? false, data.image_url ?? null,
+      data.age_mode ?? null,
+      this.stringifyEligibilityArray(data.age_category_ids),
+      this.stringifyEligibilityArray(data.gender_categories as unknown as string[]),
+      this.stringifyEligibilityArray(data.level_ids),
     ]);
     return (result as any).insertId;
   }
@@ -268,11 +272,12 @@ export class TournamentRepository {
       'status', 'is_public', 'registration_opens', 'registration_closes',
       'start_date', 'end_date', 'daily_start_time', 'daily_end_time',
       'rules', 'is_featured', 'image_url',
+      'age_mode', 'age_category_ids', 'gender_categories', 'level_ids',
     ];
     for (const f of updatable) {
       if (data[f] !== undefined) {
         fields.push(`${f} = ?`);
-        params.push(f === 'registration_payment_methods' ? this.stringifyPaymentMethods(data[f]) : data[f]);
+        params.push(f === 'registration_payment_methods' ? this.stringifyPaymentMethods(data[f]) : f === 'age_category_ids' || f === 'gender_categories' || f === 'level_ids' ? this.stringifyEligibilityArray(data[f] as unknown as string[]) : data[f]);
       }
     }
     if (!fields.length) return;
@@ -287,6 +292,13 @@ export class TournamentRepository {
     if (methods == null) return null;
     if (typeof methods === 'string') return methods;
     return JSON.stringify(methods);
+  }
+
+  /** Group 7-A — eligibility JSON columns are always persisted as a canonical JSON string (or NULL). */
+  private stringifyEligibilityArray(values: string[] | number[] | string | undefined | null): string | null {
+    if (values == null) return null;
+    if (typeof values === 'string') return values;
+    return JSON.stringify(values);
   }
 
   /**
