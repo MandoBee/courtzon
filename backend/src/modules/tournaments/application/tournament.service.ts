@@ -1,9 +1,9 @@
 import { tournamentRepository, type BracketTypeRow } from '../infrastructure/repositories/tournament.repository.js';
 import { participantDrawRepository } from '../infrastructure/repositories/participant-draw.repository.js';
 import { participantMemberRepository } from '../infrastructure/repositories/participant-member.repository.js';
-import { isTournamentParticipantProgressionEligible, seededShuffle } from '../domain/tournament-aggregate.js';
+import { isTournamentParticipantProgressionEligible, seededShuffle, ENGINE_EXECUTABLE_FORMATS } from '../domain/tournament-aggregate.js';
 import { normalizeEligibility } from '../domain/tournament-eligibility.js';
-import type { Tournament, TournamentRegistration, TournamentMatch, TournamentStage, TournamentPrizeInput, TournamentPrizeType, TournamentVenue, TournamentParticipant, TournamentParticipantMember } from '../domain/tournament-aggregate.js';
+import type { Tournament, TournamentFormat, TournamentRegistration, TournamentMatch, TournamentStage, TournamentPrizeInput, TournamentPrizeType, TournamentVenue, TournamentParticipant, TournamentParticipantMember } from '../domain/tournament-aggregate.js';
 import { validateTournamentTransition, validateRegistrationTransition } from '../domain/lifecycle.js';
 import { AppError, NotFoundError, ConflictError, ForbiddenError } from '../../../shared/errors/app-error.js';
 import { ErrorCodes } from '../../../shared/errors/error-codes.js';
@@ -73,6 +73,25 @@ export class TournamentService {
     // actually supported by the current engine. Deferred types (double
     // elimination, swiss) are config-visible but unavailable for creation.
     await this.assertBracketTypeAvailable(data.bracket_type_id);
+    // G8-C — the authoritative competition format is DERIVED from the bracket
+    // type (single-elimination → knockout, round-robin → round_robin) so the
+    // stored `format` always matches what the draw/match engine can execute.
+    // A client-supplied format is never trusted: it is validated for engine
+    // capability, then the bracket-derived value wins (single source of truth).
+    if (data.format != null && !(ENGINE_EXECUTABLE_FORMATS as readonly string[]).includes(data.format)) {
+      throw new AppError(
+        `Tournament format "${data.format}" is not supported by the current engine — supported: ${ENGINE_EXECUTABLE_FORMATS.join(', ')}`,
+        422,
+        ErrorCodes.TOURNAMENT_FORMAT_NOT_SUPPORTED,
+        { details: { received: data.format, supported: [...ENGINE_EXECUTABLE_FORMATS] } },
+      );
+    }
+    const bracketCtx = await this.resolveBracketContext(data.bracket_type_id);
+    if (bracketCtx?.slug != null && (ENGINE_EXECUTABLE_FORMATS as readonly string[]).includes(this.engineFormatForBracketSlug(bracketCtx.slug))) {
+      // Overwrite with the authoritative derived format (the engine branches on
+      // `t.format`; the bracket type is the product's selectable driver).
+      data = { ...data, format: this.engineFormatForBracketSlug(bracketCtx.slug) as TournamentFormat };
+    }
     // Group 5B-SR — commission is derived from the organisation's authoritative
     // active subscription/plan. The client can never supply it.
     const commissionRate = await this.resolveCommissionRate(data.organisation_id, data.entry_fee);
@@ -468,6 +487,18 @@ export class TournamentService {
   }
 
   /**
+   * G8-C — deterministic bracket-type slug → competition format mapping.
+   * THIS is the product contract the engine can execute. Never invent any other
+   * mapping: unsupported bracket types are rejected earlier by
+   * `assertBracketTypeAvailable`, so only single-elimination / round-robin reach
+   * this point.
+   */
+  private engineFormatForBracketSlug(slug: string): TournamentFormat {
+    if (slug === 'round-robin') return 'round_robin';
+    return 'knockout'; // single-elimination (and any other ENGINE-supported slug)
+  }
+
+  /**
    * Group 5B-SR — the selected bracket type must exist, be active, and be
    * engine-supported. Prevents a config-visible-but-deferred type from
    * generating an invalid tournament.
@@ -838,6 +869,34 @@ export class TournamentService {
     // human-readable Rules snapshot server-side. A client-supplied `rules`
     // string is never trusted as authoritative when a valid format/rule-set
     // exists; the server-derived value wins.
+    // G8-C — a bracket change re-validates engine support AND re-derives the
+    // authoritative `format` from the bracket type (a client can never store an
+    // engine-unsupported format through an update).
+    if (data.bracket_type_id !== undefined) {
+      await this.assertBracketTypeAvailable(data.bracket_type_id);
+      if (data.format != null && !(ENGINE_EXECUTABLE_FORMATS as readonly string[]).includes(data.format)) {
+        throw new AppError(
+          `Tournament format "${data.format}" is not supported by the current engine — supported: ${ENGINE_EXECUTABLE_FORMATS.join(', ')}`,
+          422,
+          ErrorCodes.TOURNAMENT_FORMAT_NOT_SUPPORTED,
+          { details: { received: data.format, supported: [...ENGINE_EXECUTABLE_FORMATS] } },
+        );
+      }
+      const bracketCtx = await this.resolveBracketContext(data.bracket_type_id);
+      if (bracketCtx?.slug != null) {
+        data = { ...data, format: this.engineFormatForBracketSlug(bracketCtx.slug) as TournamentFormat };
+      }
+    } else if (data.format != null) {
+      // Format passed WITHOUT a bracket change — still gate engine capability.
+      if (!(ENGINE_EXECUTABLE_FORMATS as readonly string[]).includes(data.format)) {
+        throw new AppError(
+          `Tournament format "${data.format}" is not supported by the current engine — supported: ${ENGINE_EXECUTABLE_FORMATS.join(', ')}`,
+          422,
+          ErrorCodes.TOURNAMENT_FORMAT_NOT_SUPPORTED,
+          { details: { received: data.format, supported: [...ENGINE_EXECUTABLE_FORMATS] } },
+        );
+      }
+    }
     const configChanged = data.sport_id !== undefined || data.match_format_id !== undefined || data.rule_set_id !== undefined || data.bracket_type_id !== undefined;
     if (configChanged) {
       // Merge the update into the current row so regeneration reflects the

@@ -47,7 +47,13 @@ export const TournamentPrizeSchema = z.object({
 
 export const CreateTournamentSchema = z.object({
   bracket_type_id: z.number().int().positive(),
-  format: z.enum(['knockout', 'double_elimination', 'round_robin', 'swiss', 'group_stage_knockout', 'league', 'custom']).default('knockout'),
+  // G8-C — the ONLY competition formats the draw/match engine can execute are
+  // knockout and round_robin. All other `TournamentFormat` strings
+  // (double_elimination, swiss, group_stage_knockout, league, custom, mixed) are
+  // reserved for future engines and are intentionally NOT part of the create
+  // API contract. The authoritative value is derived server-side from the
+  // bracket type; a client-supplied format is validated for engine capability.
+  format: z.enum(['knockout', 'round_robin']).default('knockout'),
   category: z.string().optional(),
   season: z.string().optional(),
   sport_id: z.number().int().positive().optional(),
@@ -97,7 +103,9 @@ export const CreateTournamentSchema = z.object({
 
 export const UpdateTournamentSchema = z.object({
   bracket_type_id: z.number().int().positive().optional(),
-  format: z.enum(['knockout', 'double_elimination', 'round_robin', 'swiss', 'group_stage_knockout', 'league', 'custom']).optional(),
+  // G8-C — same engine-executable contract as create. Unsupported competition
+  // formats are rejected at the application boundary (TOURNAMENT_FORMAT_NOT_SUPPORTED).
+  format: z.enum(['knockout', 'round_robin']).optional(),
   category: z.string().optional(),
   season: z.string().optional(),
   sport_id: z.number().int().positive().optional(),

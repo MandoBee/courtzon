@@ -20,7 +20,7 @@ import type {
   BracketSlot,
 } from '../domain/tournament-aggregate.js';
 import type { MatchFormatSnapshot } from '../../match/domain/match.types.js';
-import { generateKnockoutBracket, generateRoundRobinMatches, normaliseBracketTargets } from '../domain/tournament-aggregate.js';
+import { generateKnockoutBracket, generateRoundRobinMatches, normaliseBracketTargets, ENGINE_EXECUTABLE_FORMATS } from '../domain/tournament-aggregate.js';
 
 type RowData = import('mysql2').RowDataPacket[];
 type PoolConnection = import('mysql2/promise').PoolConnection;
@@ -192,9 +192,9 @@ export class MatchScheduleService {
       };
     }
     throw new ConflictError(
-      `Bracket type "${format}" is not implemented for match generation — only knockout and round_robin are supported`,
+      `Bracket type "${format}" is not implemented for match generation — only ${ENGINE_EXECUTABLE_FORMATS.join(' and ')} are supported`,
       ErrorCodes.TOURNAMENT_INVALID_FORMAT,
-      { unsupported: format, supported: ['knockout', 'round_robin'] },
+      { unsupported: format, supported: [...ENGINE_EXECUTABLE_FORMATS] },
     );
   }
 

@@ -2,6 +2,17 @@ export type TournamentFormat =
   | 'knockout' | 'double_elimination' | 'round_robin'
   | 'swiss' | 'group_stage_knockout' | 'league' | 'custom' | 'mixed';
 
+/**
+ * G8-C — authoritative tournament COMPETITION formats the current draw/match
+ * engine can ACTUALLY execute. This is the single source of truth for what the
+ * product may advertise. The engine (`MatchScheduleService.generateMatchesFromLockedDraw`
+ * → buildSlots) supports exactly these; every other `TournamentFormat` string is
+ * a reserved/configurable value the engine cannot execute yet (double elimination,
+ * swiss, group stage knockout, league, custom, mixed are FUTURE, never advertised
+ * as selectable).
+ */
+export const ENGINE_EXECUTABLE_FORMATS = ['knockout', 'round_robin'] as const;
+
 export type TournamentStatus =
   | 'draft' | 'published' | 'registration_open' | 'registration_closed'
   | 'running' | 'completed' | 'cancelled' | 'archived';
