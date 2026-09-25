@@ -14,6 +14,7 @@ import { seededShuffle } from '../domain/tournament-aggregate.js';
 import { ConflictError, NotFoundError } from '../../../shared/errors/app-error.js';
 import { ErrorCodes } from '../../../shared/errors/error-codes.js';
 import { eventBusV2 } from '../../../shared/event-bus/event-bus.v2.js';
+import { emitTournamentScoped } from './tournament-realtime-scope.js';
 import { recordAudit } from '../../audit-log/index.js';
 import { ratingRepository } from '../../match-result/infrastructure/rating.repository.js';
 import { ratingService } from '../../match-result/application/rating/rating.service.js';
@@ -243,14 +244,16 @@ export class ParticipantDrawService {
       });
     }
 
-    eventBusV2.emit('tournament:seed-updated', {
+    const seedScopeUserIds = [
+        ...(Array.isArray(participant.member_user_ids) ? participant.member_user_ids : []),
+        (participant as any).player_id ?? null,
+      ];
+    await emitTournamentScoped('tournament:seed-updated', {
       tournamentId,
       participantId,
       seedNumber,
       source: input.source,
-    } as Record<string, unknown>, {
-      aggregateType: 'tournament', aggregateId: String(tournamentId), aggregateVersion: 1,
-    });
+    } as Record<string, unknown>, t, seedScopeUserIds);
     return seed;
   }
 
@@ -309,14 +312,17 @@ export class ParticipantDrawService {
     });
 
     const draw = await this.getDrawWithEntries(drawId);
-    eventBusV2.emit('tournament:draw-generated', {
+    const t = await this.getTournament(tournamentId);
+    const drawScopeUserIds = order.flatMap((p) => [
+      ...(Array.isArray((p as any).member_user_ids) ? (p as any).member_user_ids : []),
+      (p as any).player_id ?? null,
+    ]);
+    await emitTournamentScoped('tournament:draw-generated', {
       tournamentId,
       attemptNumber: attempt,
       drawSeed: seed,
       status: 'draft',
-    } as Record<string, unknown>, {
-      aggregateType: 'tournament', aggregateId: String(tournamentId), aggregateVersion: 1,
-    });
+    } as Record<string, unknown>, t, drawScopeUserIds);
     return draw;
   }
 
@@ -423,9 +429,12 @@ export class ParticipantDrawService {
       afterState: { participant_id: participantId, position: target, override: opts.override === true && !violation.valid },
     });
 
-    eventBusV2.emit('tournament:draw-updated', { tournamentId, drawId: draw.id } as Record<string, unknown>, {
-      aggregateType: 'tournament', aggregateId: String(tournamentId), aggregateVersion: 1,
-    });
+    const t = await this.getTournament(tournamentId);
+    const moverRow = participants.find((p) => Number(p.id) === participantId);
+    await emitTournamentScoped('tournament:draw-updated', { tournamentId, drawId: draw.id } as Record<string, unknown>, t, [
+      ...(Array.isArray((moverRow as any)?.member_user_ids) ? (moverRow as any).member_user_ids : []),
+      (moverRow as any)?.player_id ?? null,
+    ]);
     return { valid: true, draw: await this.getDrawWithEntries(draw.id!) };
   }
 
@@ -442,9 +451,8 @@ export class ParticipantDrawService {
     }
     await participantDrawRepository.updateDraw(draw.id!, { status: 'approved' });
     await recordAudit({ actorId, action: 'TOURNAMENT.DRAW_APPROVED', entityType: 'tournament_draw', entityId: draw.id });
-    eventBusV2.emit('tournament:draw-updated', { tournamentId, drawId: draw.id, status: 'approved' } as Record<string, unknown>, {
-      aggregateType: 'tournament', aggregateId: String(tournamentId), aggregateVersion: 1,
-    });
+    const tApproved = await this.getTournament(tournamentId);
+    await emitTournamentScoped('tournament:draw-updated', { tournamentId, drawId: draw.id, status: 'approved' } as Record<string, unknown>, tApproved);
     return this.getDrawWithEntries(draw.id!);
   }
 
@@ -454,9 +462,8 @@ export class ParticipantDrawService {
     if (draw.status !== 'approved') throw new ConflictError('The draw must be approved before it can be locked', ErrorCodes.TOURNAMENT_DRAW_INVALID);
     await participantDrawRepository.updateDraw(draw.id!, { status: 'locked' });
     await recordAudit({ actorId, action: 'TOURNAMENT.DRAW_LOCKED', entityType: 'tournament_draw', entityId: draw.id });
-    eventBusV2.emit('tournament:draw-updated', { tournamentId, drawId: draw.id, status: 'locked' } as Record<string, unknown>, {
-      aggregateType: 'tournament', aggregateId: String(tournamentId), aggregateVersion: 1,
-    });
+    const tLocked = await this.getTournament(tournamentId);
+    await emitTournamentScoped('tournament:draw-updated', { tournamentId, drawId: draw.id, status: 'locked' } as Record<string, unknown>, tLocked);
     return this.getDrawWithEntries(draw.id!);
   }
 

@@ -4,6 +4,7 @@ const repo = vi.hoisted(() => ({
   getRegistrationById: vi.fn(),
   updateRegistrationPaymentStatus: vi.fn(),
   getOrganisationId: vi.fn(),
+  findById: vi.fn(),
 }));
 const audit = vi.hoisted(() => ({ recordAudit: vi.fn() }));
 const bus = vi.hoisted(() => ({ on: vi.fn(), emit: vi.fn() }));
@@ -31,6 +32,7 @@ beforeEach(() => {
   repo.getRegistrationById.mockResolvedValue({ id: 7, tournament_id: 1, player_id: 42, user_id: 42, payment_status: 'unpaid' });
   repo.updateRegistrationPaymentStatus.mockResolvedValue(undefined);
   repo.getOrganisationId.mockResolvedValue(6);
+  repo.findById.mockResolvedValue({ id: 1, branch_id: 5, creator_id: 2 });
 });
 
 describe('Group 3 — tournament payment listener (shared Payment consumption)', () => {

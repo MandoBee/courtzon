@@ -8,7 +8,7 @@ import { resourceRepository } from '../../organisations/infrastructure/repositor
 import { redisLock } from '../infrastructure/redis/redis-lock.js';
 import { getRedisClient } from '../../../infrastructure/redis/redis.client.js';
 import { getPool } from '../../../database/mysql.js';
-import { withTransaction } from '../../../database/database.transaction.js';
+import { withTransaction, runProvidedTransaction } from '../../../database/database.transaction.js';
 import { TimeEngine } from '../../time/index.js';
 import { NotFoundError, ForbiddenError, ConflictError, ValidationError } from '../../../shared/errors/app-error.js';
 import { createModuleLogger } from '../../../shared/utils/logger.js';
@@ -339,12 +339,12 @@ export class BookingService {
           });
         } catch (chargeErr: any) {
           log.error({ err: chargeErr, bookingId, userId, paymentMethod }, 'Payment charge threw exception — cancelling booking');
-          await executeBookingCommand('CancelBooking', cancelBookingHandler, { bookingId, reason: CancellationReason.PAYMENT_SESSION_CREATION_FAILED, actorId: 0 }, String(bookingId));
+          await executeBookingCommand('CancelBooking', cancelBookingHandler, { bookingId, reason: CancellationReason.PAYMENT_SESSION_CREATION_FAILED, actorId: 0 }, String(bookingId!));
           throw new ConflictError(chargeErr.message || 'Payment failed — booking rolled back');
         }
 
         if (!gwResult.success) {
-          await executeBookingCommand('CancelBooking', cancelBookingHandler, { bookingId, reason: CancellationReason.PAYMENT_SESSION_CREATION_FAILED, actorId: 0 }, String(bookingId));
+          await executeBookingCommand('CancelBooking', cancelBookingHandler, { bookingId, reason: CancellationReason.PAYMENT_SESSION_CREATION_FAILED, actorId: 0 }, String(bookingId!));
           throw new ConflictError((gwResult as any).errorMessage || 'Payment gateway rejected the transaction');
         }
 
@@ -450,7 +450,7 @@ export class BookingService {
         eventBusV2.emit('booking:paid', codPaidPayload as any);
       }
 
-      const booking = await bookingRepository.findById(bookingId);
+      const booking = await bookingRepository.findById(bookingId!);
 
       if (booking) {
         const bookingType = input.bookingType || 'private_match';
@@ -691,9 +691,13 @@ export class BookingService {
     if (data.userId !== userId) throw new ForbiddenError('Not your preparation');
 
     const pool = getPool();
+    let bookingId: number | undefined;
     const conn = await pool.getConnection();
     try {
-      await conn.beginTransaction();
+      // Group 6 — manual connection transactions run inside the ALS transaction
+      // context: `booking:created` and its derived `match:available` realtime
+      // event are delivered ONLY after commit (never on rollback).
+      await runProvidedTransaction(conn, async () => {
 
       // Final availability check within transaction
       const available = await bookingRepository.checkSlotAvailability(
@@ -709,7 +713,7 @@ export class BookingService {
 
       // Create booking as pending_payment
       const expiresAt = toMySqlDateTime(new Date(Date.now() + 10 * 60 * 1000));
-      const bookingId = await bookingRepository.create({
+      bookingId = await bookingRepository.create({
         userId, branchId: data.branchId, organisationId: data.organisationId, resourceId: data.resourceId,
         bookingType: data.bookingType, bookingDate: data.bookingDate,
         startTime: data.startTime, endTime: data.endTime,
@@ -762,11 +766,7 @@ export class BookingService {
         branchId: data.branchId,
       }, undefined, conn);
 
-      await conn.commit();
-
-      // Fire any after-commit hooks registered by eventBusV2.emit (manual commit path)
-      const { flushAfterCommitHooks } = await import('../../../database/database.transaction.js');
-      await flushAfterCommitHooks();
+      });
 
       // Link the payment transaction to this booking
       // createGatewayIntention stores with referenceType='booking_prepare' and booking_id=NULL
@@ -777,7 +777,7 @@ export class BookingService {
         const [linkResult] = await pool.execute<RowData>(
           `UPDATE payment_transactions SET booking_id = ?, reference_type = 'booking'
            WHERE id = ? AND reference_type = 'booking_prepare' AND booking_id IS NULL`,
-          [bookingId, cachedPaymentId],
+          [bookingId!, cachedPaymentId],
         );
         if ((linkResult as any).affectedRows > 0) {
           const [payRows] = await pool.execute<RowData>(
@@ -794,13 +794,13 @@ export class BookingService {
           `UPDATE payment_transactions SET booking_id = ?, reference_type = 'booking'
            WHERE user_id = ? AND reference_type = 'booking_prepare' AND booking_id IS NULL
            ORDER BY id DESC LIMIT 1`,
-          [bookingId, userId],
+          [bookingId!, userId],
         );
         if ((linkResult as any).affectedRows > 0) {
           // Check status of the row we just linked
           const [payRows] = await pool.execute<RowData>(
             `SELECT id, payment_status FROM payment_transactions WHERE booking_id = ? AND reference_type = 'booking' LIMIT 1`,
-            [bookingId],
+            [bookingId!],
           );
           if (payRows.length && (payRows[0] as any).payment_status === 'paid') {
             paymentAlreadyPaid = true;
@@ -815,7 +815,7 @@ export class BookingService {
           await executeBookingCommand('ConfirmBooking', confirmBookingHandler, {
             bookingId,
             actorId: userId,
-          }, String(bookingId));
+          }, String(bookingId!));
         } catch (confirmErr) {
           const { createModuleLogger } = await import('../../../shared/utils/logger.js');
           const log = createModuleLogger('BookingService');
@@ -823,7 +823,7 @@ export class BookingService {
         }
       }
 
-      const booking = await bookingRepository.findById(bookingId);
+      const booking = await bookingRepository.findById(bookingId!);
       return { ...booking, timezone: data.timezone || 'Africa/Cairo' };
     } catch (err) {
       try { await conn.rollback(); } catch {}
@@ -926,7 +926,7 @@ export class BookingService {
    * happen. Throws on refund failure (surfaced, never swallowed).
    */
   async compensateFailedBooking(bookingId: number, reason: string): Promise<{ cancelled: boolean; refunded: boolean; refundAmount: number }> {
-    const booking = await bookingRepository.findById(bookingId);
+    const booking = await bookingRepository.findById(bookingId!);
     if (!booking) throw new NotFoundError('Booking');
     if (['cancelled', 'cancelled_with_fee'].includes(booking.booking_status)) {
       log.info({ bookingId }, 'compensation: booking already cancelled — no-op');
@@ -958,7 +958,7 @@ export class BookingService {
    * authorizes the full-refund cancellation of the linked booking.
    */
   async cancelBookingByProvider(bookingId: number, actorId: number, reason: string): Promise<{ cancelled: boolean; refunded: boolean; refundAmount: number }> {
-    const booking = await bookingRepository.findById(bookingId);
+    const booking = await bookingRepository.findById(bookingId!);
     if (!booking) throw new NotFoundError('Booking');
     if (['cancelled', 'cancelled_with_fee'].includes(booking.booking_status)) {
       log.info({ bookingId }, 'provider cancel: booking already cancelled — no-op');
@@ -1786,7 +1786,7 @@ export class BookingService {
     minAge?: number; maxAge?: number; targetGender?: string;
     targetLevelId?: number; maxPlayers?: number; deadline?: string; autoApply?: boolean;
   }) {
-    const booking = await bookingRepository.findById(bookingId);
+    const booking = await bookingRepository.findById(bookingId!);
     if (!booking) throw new NotFoundError('Booking');
     if (booking.user_id !== userId) throw new ForbiddenError('Only the booking owner can start matchmaking');
     if (booking.booking_status !== 'confirmed' && booking.booking_status !== 'pending') {
@@ -1842,7 +1842,7 @@ export class BookingService {
   }
 
   async getMatchmakingCandidates(bookingId: number, userId: number) {
-    const booking = await bookingRepository.findById(bookingId);
+    const booking = await bookingRepository.findById(bookingId!);
     if (!booking) throw new NotFoundError('Booking');
     if (booking.user_id !== userId) throw new ForbiddenError('Only the booking owner can view candidates');
 
@@ -1862,7 +1862,7 @@ export class BookingService {
   }
 
   async applyToBooking(bookingId: number, userId: number) {
-    const booking = await bookingRepository.findById(bookingId);
+    const booking = await bookingRepository.findById(bookingId!);
     if (!booking) throw new NotFoundError('Booking');
     if (booking.user_id === userId) throw new ForbiddenError('You cannot apply to your own booking');
 
@@ -1905,7 +1905,7 @@ export class BookingService {
   }
 
   async getBookingApplicants(bookingId: number, userId: number) {
-    const booking = await bookingRepository.findById(bookingId);
+    const booking = await bookingRepository.findById(bookingId!);
     if (!booking) throw new NotFoundError('Booking');
     if (booking.user_id !== userId) throw new ForbiddenError('Only the booking owner can view applicants');
 

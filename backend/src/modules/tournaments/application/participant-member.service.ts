@@ -4,6 +4,7 @@ import { tournamentRepository } from '../infrastructure/repositories/tournament.
 import { matchResultRepository } from '../../match-result/infrastructure/match-result.repository.js';
 import { getPool } from '../../../database/mysql.js';
 import { eventBusV2 } from '../../../shared/event-bus/event-bus.v2.js';
+import { tournamentRealtimeScope } from './tournament-realtime-scope.js';
 import { recordAudit } from '../../audit-log/index.js';
 import { ConflictError, NotFoundError, ValidationError } from '../../../shared/errors/app-error.js';
 import { ErrorCodes } from '../../../shared/errors/error-codes.js';
@@ -297,13 +298,13 @@ export class ParticipantMemberService {
       participantType: input.participantType,
       memberUserIds: members,
       organisationId: t.organisation_id ?? null,
-    });
+    }, t, members);
     await this.emit('tournament:participant-members-updated', {
       tournamentId,
       participantId,
       memberUserIds: members,
       organisationId: t.organisation_id ?? null,
-    });
+    }, t, members);
 
     const participant = (await participantDrawRepository.findParticipantById(participantId))!;
     const memberRows = await participantMemberRepository.listMembersByParticipant(participantId);
@@ -379,7 +380,10 @@ export class ParticipantMemberService {
       participantId,
       addedUserId: userId,
       organisationId: t.organisation_id ?? null,
-    });
+    }, t, [
+      userId,
+      ...(Array.isArray(participant.member_user_ids) ? participant.member_user_ids : []),
+    ]);
     return participantMemberRepository.listMembersByParticipant(participantId);
   }
 
@@ -438,7 +442,10 @@ export class ParticipantMemberService {
       participantId,
       removedUserId: userId,
       organisationId: t.organisation_id ?? null,
-    });
+    }, t, [
+      userId,
+      ...(Array.isArray(participant.member_user_ids) ? participant.member_user_ids : []),
+    ]);
     return participantMemberRepository.listMembersByParticipant(participantId);
   }
 
@@ -531,7 +538,11 @@ export class ParticipantMemberService {
       requestId,
       status: 'pending',
       organisationId: t.organisation_id ?? null,
-    });
+    }, t, [
+      input.outgoingUserId,
+      input.replacementUserId,
+      ...(Array.isArray(participant.member_user_ids) ? participant.member_user_ids : []),
+    ]);
     return { ...request, drawImpact: impact };
   }
 
@@ -614,13 +625,13 @@ export class ParticipantMemberService {
         requestId,
         status: 'approved',
         organisationId: t.organisation_id ?? null,
-      });
+      }, t, activeUserIds);
       await this.emit('tournament:participant-members-updated', {
         tournamentId,
         participantId,
         memberUserIds: activeUserIds,
         organisationId: t.organisation_id ?? null,
-      });
+      }, t, activeUserIds);
       const updated = (await participantMemberRepository.findReplacementRequest(requestId))!;
       return { request: updated, drawImpact: impact };
     } catch (err) {
@@ -667,7 +678,7 @@ export class ParticipantMemberService {
         requestId,
         status: 'rejected',
         organisationId: t.organisation_id ?? null,
-      });
+      }, t, [request.outgoing_member_user_id, request.replacement_user_id]);
       return (await participantMemberRepository.findReplacementRequest(requestId))!;
     } catch (err) {
       await conn.rollback();
@@ -712,7 +723,7 @@ export class ParticipantMemberService {
         requestId,
         status: 'cancelled',
         organisationId: t.organisation_id ?? null,
-      });
+      }, t, [request.outgoing_member_user_id, request.replacement_user_id]);
       return (await participantMemberRepository.findReplacementRequest(requestId))!;
     } catch (err) {
       await conn.rollback();
@@ -777,8 +788,14 @@ export class ParticipantMemberService {
     return participantDrawService.settleRegistrationPayment(registrationId, participantId, t, paymentMethod);
   }
 
-  private async emit(eventName: string, payload: Record<string, unknown>): Promise<void> {
-    eventBusV2.emit(eventName, payload as Record<string, unknown>, {
+  private async emit(
+    eventName: string,
+    payload: Record<string, unknown>,
+    t?: Tournament,
+    participantUserIds: ReadonlyArray<number | null | undefined> = [],
+  ): Promise<void> {
+    const scope = t ? tournamentRealtimeScope(t, participantUserIds) : {};
+    void eventBusV2.emit(eventName, { ...payload, ...scope } as Record<string, unknown>, {
       aggregateType: 'tournament',
       aggregateId: String(payload.tournamentId),
       aggregateVersion: 1,

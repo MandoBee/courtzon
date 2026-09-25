@@ -435,6 +435,7 @@ export class TournamentService {
         tournamentId: t.id,
         userId,
         name: t.name,
+        ...this.tournamentRealtimeScope(t),
       } as Record<string, unknown>, {
         aggregateType: 'tournament', aggregateId: String(t.id), aggregateVersion: 1,
       });
@@ -699,7 +700,7 @@ export class TournamentService {
       const effectiveCurrency = data.currency_code ?? current.currency_code;
       const prizes = this.normalisePrizes(data.prizes, effectiveCurrency);
       await tournamentRepository.replacePrizes(id, prizes);
-      eventBusV2.emit('tournament:prizes-updated', { tournamentId: id, prizeCount: prizes.length } as Record<string, unknown>, {
+      eventBusV2.emit('tournament:prizes-updated', { tournamentId: id, prizeCount: prizes.length, ...this.tournamentRealtimeScope(current) } as Record<string, unknown>, {
         aggregateType: 'tournament', aggregateId: String(id), aggregateVersion: 1,
       });
       delete (data as any).prizes;
@@ -720,6 +721,7 @@ export class TournamentService {
         tournamentId: id,
         organisationId: current.organisation_id ?? null,
         methods: this.normaliseRegistrationPaymentMethods(data.registration_payment_methods),
+        ...this.tournamentRealtimeScope(current),
       } as Record<string, unknown>, {
         aggregateType: 'tournament', aggregateId: String(id), aggregateVersion: 1,
       });
@@ -747,6 +749,7 @@ export class TournamentService {
           branchId: data.branch_id ?? current.branch_id ?? null,
           dailyStartTime: data.daily_start_time ?? current.daily_start_time ?? null,
           dailyEndTime: data.daily_end_time ?? current.daily_end_time ?? null,
+          ...this.tournamentRealtimeScope(current),
         } as Record<string, unknown>, {
           aggregateType: 'tournament', aggregateId: String(id), aggregateVersion: 1,
         });
@@ -881,7 +884,7 @@ export class TournamentService {
       eventBusV2.emit('registration.received', { tournamentId, userId, registrationId: id, status: 'waiting', paymentRequired: false } as Record<string, unknown>, {
         aggregateType: 'tournament', aggregateId: String(tournamentId), aggregateVersion: 1,
       });
-      eventBusV2.emit('tournament:waitlist-updated', { tournamentId } as Record<string, unknown>, {
+      eventBusV2.emit('tournament:waitlist-updated', { tournamentId, ...this.tournamentRealtimeScope(t, [userId]) } as Record<string, unknown>, {
         aggregateType: 'tournament', aggregateId: String(tournamentId), aggregateVersion: 1,
       });
       const waiting = await tournamentRepository.getRegistrationById(id);

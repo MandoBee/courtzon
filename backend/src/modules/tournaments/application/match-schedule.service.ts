@@ -6,7 +6,9 @@ import { matchService } from '../../match/application/services/match.service.js'
 import { courtReservationService } from '../../booking/application/court-reservation.service.js';
 import { courtReservationRepository } from '../../booking/infrastructure/repositories/court-reservation.repository.js';
 import { getPool } from '../../../database/mysql.js';
+import { runProvidedTransaction } from '../../../database/database.transaction.js';
 import { eventBusV2 } from '../../../shared/event-bus/event-bus.v2.js';
+import { tournamentRealtimeScope } from './tournament-realtime-scope.js';
 import { recordAudit } from '../../audit-log/index.js';
 import { ConflictError, NotFoundError } from '../../../shared/errors/app-error.js';
 import { ErrorCodes } from '../../../shared/errors/error-codes.js';
@@ -80,73 +82,72 @@ export class MatchScheduleService {
     let byes = 0;
     const conn = await getPool().getConnection();
     try {
-      await conn.beginTransaction();
-      // Serialize generation for this tournament; the existence re-check MUST
-      // run inside the locked transaction (race guard).
-      await conn.query('SELECT id FROM tournaments WHERE id = ? FOR UPDATE', [tournamentId]);
-      const existing = await tournamentRepository.countMatches(tournamentId, conn);
-      if (existing > 0) {
-        await conn.rollback();
-        throw new ConflictError('Tournament matches are already generated', ErrorCodes.TOURNAMENT_MATCHES_ALREADY_GENERATED);
-      }
-
-      for (const slot of slots) {
-        const p1Id = slot.player1Id != null ? Number(slot.player1Id) : null;
-        const p2Id = slot.player2Id != null ? Number(slot.player2Id) : null;
-        const meta = this.buildSlotMeta(slot, isKnockout);
-        if (p1Id != null && p2Id != null) {
-          const sharedMatch = await this.createParticipantMatch(t, formatCtx, p1Id, p2Id, conn);
-          const p1 = await this.loadParticipant(p1Id);
-          const p2 = await this.loadParticipant(p2Id);
-          await tournamentRepository.createMatch({
-            tournament_id: tournamentId,
-            match_id: sharedMatch.id,
-            round: slot.round,
-            round_name: this.roundLabel(t, slot.round, isKnockout, ordered.length),
-            bracket_position: slot.bracketPosition ?? 0,
-            stage_id: slot.stageId ?? null,
-            participant1_id: p1Id,
-            participant2_id: p2Id,
-            player1_id: this.primaryMember(p1),
-            player2_id: this.primaryMember(p2),
-            status: 'scheduled',
-            progression_state: 'pending',
-            progression_meta: meta as unknown as Record<string, unknown>,
-          }, conn);
-          generated += 1;
-        } else {
-          // NO shared Match, NO court. Three cases (knockout only — round-robin
-          // slots always carry both participants):
-          //  * round-1 lone BYE (one participant) — the participant advances once
-          //    advanceByes consumes the (now-correct) target wiring;
-          //  * round-1 empty padding BYE (no participant) — finalised in place so
-          //    the virtual-bye cascade can recognise it;
-          //  * later-round PLACEHOLDER (no participant) — the progression engine's
-          //    target slot, created up front so a Round-1 winner can be seated.
-          const presentId = p1Id ?? p2Id ?? null;
-          const present = presentId != null ? await this.loadParticipant(presentId) : null;
-          await tournamentRepository.createMatch({
-            tournament_id: tournamentId,
-            round: slot.round,
-            round_name: this.roundLabel(t, slot.round, isKnockout, ordered.length),
-            bracket_position: slot.bracketPosition ?? 0,
-            stage_id: slot.stageId ?? null,
-            match_number: slot.bye === true ? 0 : undefined,
-            participant1_id: presentId,
-            participant2_id: null,
-            player1_id: presentId != null ? this.primaryMember(present!) : null,
-            player2_id: null,
-            status: 'scheduled',
-            progression_state: 'pending',
-            progression_meta: slot.bye === true ? { ...meta, bye: true } as unknown as Record<string, unknown> : meta as unknown as Record<string, unknown>,
-          }, conn);
-          if (presentId != null) byes += 1;
+      // Group 6 — ALS transaction context: match:created events emitted by
+      // createForTournament inside this manual transaction are flushed only
+      // after the shared commit; a rollback never delivers a phantom Match.
+      await runProvidedTransaction(conn, async () => {
+        // Serialize generation for this tournament; the existence re-check MUST
+        // run inside the locked transaction (race guard).
+        await conn.query('SELECT id FROM tournaments WHERE id = ? FOR UPDATE', [tournamentId]);
+        const existing = await tournamentRepository.countMatches(tournamentId, conn);
+        if (existing > 0) {
+          throw new ConflictError('Tournament matches are already generated', ErrorCodes.TOURNAMENT_MATCHES_ALREADY_GENERATED);
         }
-      }
-      await conn.commit();
-    } catch (err) {
-      await conn.rollback();
-      throw err;
+
+        for (const slot of slots) {
+          const p1Id = slot.player1Id != null ? Number(slot.player1Id) : null;
+          const p2Id = slot.player2Id != null ? Number(slot.player2Id) : null;
+          const meta = this.buildSlotMeta(slot, isKnockout);
+          if (p1Id != null && p2Id != null) {
+            const sharedMatch = await this.createParticipantMatch(t, formatCtx, p1Id, p2Id, conn);
+            const p1 = await this.loadParticipant(p1Id);
+            const p2 = await this.loadParticipant(p2Id);
+            await tournamentRepository.createMatch({
+              tournament_id: tournamentId,
+              match_id: sharedMatch.id,
+              round: slot.round,
+              round_name: this.roundLabel(t, slot.round, isKnockout, ordered.length),
+              bracket_position: slot.bracketPosition ?? 0,
+              stage_id: slot.stageId ?? null,
+              participant1_id: p1Id,
+              participant2_id: p2Id,
+              player1_id: this.primaryMember(p1),
+              player2_id: this.primaryMember(p2),
+              status: 'scheduled',
+              progression_state: 'pending',
+              progression_meta: meta as unknown as Record<string, unknown>,
+            }, conn);
+            generated += 1;
+          } else {
+            // NO shared Match, NO court. Three cases (knockout only — round-robin
+            // slots always carry both participants):
+            //  * round-1 lone BYE (one participant) — the participant advances once
+            //    advanceByes consumes the (now-correct) target wiring;
+            //  * round-1 empty padding BYE (no participant) — finalised in place so
+            //    the virtual-bye cascade can recognise it;
+            //  * later-round PLACEHOLDER (no participant) — the progression engine's
+            //    target slot, created up front so a Round-1 winner can be seated.
+            const presentId = p1Id ?? p2Id ?? null;
+            const present = presentId != null ? await this.loadParticipant(presentId) : null;
+            await tournamentRepository.createMatch({
+              tournament_id: tournamentId,
+              round: slot.round,
+              round_name: this.roundLabel(t, slot.round, isKnockout, ordered.length),
+              bracket_position: slot.bracketPosition ?? 0,
+              stage_id: slot.stageId ?? null,
+              match_number: slot.bye === true ? 0 : undefined,
+              participant1_id: presentId,
+              participant2_id: null,
+              player1_id: presentId != null ? this.primaryMember(present!) : null,
+              player2_id: null,
+              status: 'scheduled',
+              progression_state: 'pending',
+              progression_meta: slot.bye === true ? { ...meta, bye: true } as unknown as Record<string, unknown> : meta as unknown as Record<string, unknown>,
+            }, conn);
+            if (presentId != null) byes += 1;
+          }
+        }
+      });
     } finally {
       conn.release();
     }
@@ -167,7 +168,7 @@ export class MatchScheduleService {
       generated,
       byes,
       organisationId: t.organisation_id ?? null,
-    });
+    }, t);
     return { generated, byes };
   }
 
@@ -393,7 +394,7 @@ export class MatchScheduleService {
       endTime: input.end_time,
       bookingId: reservation.bookingId,
       organisationId: t.organisation_id ?? null,
-    });
+    }, t, [match.player1_id, match.player2_id]);
     if (!existing || !reservation.alreadyReserved) {
       await this.emit('tournament:court-reserved', {
         tournamentId,
@@ -401,7 +402,7 @@ export class MatchScheduleService {
         resourceId: Number(input.resource_id),
         bookingId: reservation.bookingId,
         organisationId: t.organisation_id ?? null,
-      });
+      }, t, [match.player1_id, match.player2_id]);
     }
 
     const updated = (await tournamentRepository.findMatchById(matchId))!;
@@ -437,7 +438,7 @@ export class MatchScheduleService {
         matchId,
         bookingId: result.bookingId,
         organisationId: t.organisation_id ?? null,
-      });
+      }, t, [match.player1_id, match.player2_id]);
     }
     return result;
   }
@@ -497,7 +498,7 @@ export class MatchScheduleService {
       conflicts,
       skipped,
       organisationId: t.organisation_id ?? null,
-    });
+    }, t);
     return { scheduled, conflicts, skipped };
   }
 
@@ -626,8 +627,14 @@ export class MatchScheduleService {
     return p.memberUserIds[0] ?? null;
   }
 
-  private async emit(eventName: string, payload: Record<string, unknown>): Promise<void> {
-    eventBusV2.emit(eventName, payload as Record<string, unknown>, {
+  private async emit(
+    eventName: string,
+    payload: Record<string, unknown>,
+    t?: Tournament,
+    participantUserIds: ReadonlyArray<number | null | undefined> = [],
+  ): Promise<void> {
+    const scope = t ? tournamentRealtimeScope(t, participantUserIds) : {};
+    void eventBusV2.emit(eventName, { ...payload, ...scope } as Record<string, unknown>, {
       aggregateType: 'tournament',
       aggregateId: String(payload.tournamentId),
       aggregateVersion: 1,

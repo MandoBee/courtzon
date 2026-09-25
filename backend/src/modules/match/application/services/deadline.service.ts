@@ -1,4 +1,5 @@
 import { getPool } from '../../../../database/mysql.js';
+import { runProvidedTransaction } from '../../../../database/database.transaction.js';
 import { matchRepository } from '../../infrastructure/repositories/match.repository.js';
 import { invitationService } from './invitation.service.js';
 import { joinRequestService } from './join-request.service.js';
@@ -41,27 +42,22 @@ export class DeadlineService {
     const pool = getPool();
     const conn = await pool.getConnection();
     try {
-      await conn.beginTransaction();
+      // Group 6 — ALS transaction context: invitation/join-request events emitted
+      // inside this manual transaction are delivered only after commit.
+      await runProvidedTransaction(conn, async () => {
+        await conn.execute(
+          "UPDATE matches SET status = 'closed', updated_at = NOW() WHERE id = ?",
+          [matchId]
+        );
 
-      await conn.execute(
-        "UPDATE matches SET status = 'closed', updated_at = NOW() WHERE id = ?",
-        [matchId]
-      );
+        await invitationService.expireByMatchId(matchId, conn);
+        await joinRequestService.autoRejectPendingByMatchId(matchId, conn);
 
-      await invitationService.expireByMatchId(matchId, conn);
-      await joinRequestService.autoRejectPendingByMatchId(matchId, conn);
-
-      await conn.commit();
-
-      // Notify the frontend (SocketPublisher listens on match:updated) so a
-      // match closed at its deadline disappears from the discover list live.
-      await matchEventPublisher.publish({
-        type: 'match:updated',
-        payload: { matchId, timestamp: new Date().toISOString() },
-      }, { executor: conn });
-    } catch (err) {
-      await conn.rollback();
-      throw err;
+        await matchEventPublisher.publish({
+          type: 'match:updated',
+          payload: { matchId, timestamp: new Date().toISOString() },
+        }, { executor: conn });
+      });
     } finally {
       conn.release();
     }

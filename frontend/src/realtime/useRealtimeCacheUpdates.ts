@@ -897,6 +897,18 @@ export function useRealtimeCacheUpdates(): void {
     qc.invalidateQueries({ queryKey: ['tournaments'] });
   });
 
+  // Registration opening is a public-discovery broadcast to interested players:
+  // the tournament list refreshes so newly open tournaments appear live.
+  useSocketEvent('tournament.registration-open', (p: any) => {
+    invalidateTournament(qc, p?.tournamentId);
+    qc.invalidateQueries({ queryKey: ['tournaments'] });
+  });
+
+  // Prize or payment-method configuration changes refresh the tournament detail.
+  useSocketEvent('tournament.prizes-updated', (p: any) => {
+    invalidateTournament(qc, p?.tournamentId);
+  });
+
   useSocketEvent('tournament.match-scheduled', (p: any) => {
     invalidateTournament(qc, p?.tournamentId);
   });
@@ -920,6 +932,20 @@ export function useRealtimeCacheUpdates(): void {
       else qc.invalidateQueries({ queryKey: ['tournament', String(p?.tournamentId), 'bracket'] });
     });
   }
+
+  // Group 6 — withdrawal resolution mutates the bracket, participants, waitlist
+  // and schedule surfaces; the resolved participant is targeted via its room.
+  useSocketEvent('tournament.withdrawal-resolved', (p: any) => {
+    invalidateTournament(qc, p?.tournamentId);
+    if (p?.tournamentId) {
+      qc.invalidateQueries({ queryKey: ['tournament-participants', p.tournamentId] });
+      qc.invalidateQueries({ queryKey: ['tournament', String(p.tournamentId), 'participants'] });
+      qc.invalidateQueries({ queryKey: ['tournament-waitlist', p.tournamentId] });
+      qc.invalidateQueries({ queryKey: ['tournament-matches', p.tournamentId] });
+      qc.invalidateQueries({ queryKey: ['tournament', String(p.tournamentId), 'matches'] });
+      qc.invalidateQueries({ queryKey: ['tournament-schedule', p.tournamentId] });
+    }
+  });
 
   // Group 3 — a registration payment was settled (cash offline or card via the
   // shared Payment capability) → the participant list + tournament caches

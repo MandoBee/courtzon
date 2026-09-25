@@ -68,3 +68,49 @@ export async function withTransaction<T>(
     connection.release();
   }
 }
+
+/**
+ * Group 6 — transaction-safe publishing for MANUALLY acquired connections.
+ *
+ * Controllers/services that manage their own `PoolConnection` (instead of
+ * `withTransaction`) previously escaped the AsyncLocalStorage transaction
+ * context, so `EventBusV2` delivered in-memory handlers (SocketPublisher +
+ * Notification Engine) BEFORE `conn.commit()`. If the transaction later rolled
+ * back, clients received a phantom realtime event.
+ *
+ * This wrapper runs the callback inside the transaction context, commits the
+ * provided connection, then flushes ONLY the after-commit hooks registered by
+ * this transaction. On rollback the hooks are discarded, so nothing is ever
+ * delivered for a failed transaction. Connection lifecycle (acquire/release)
+ * remains the caller's responsibility.
+ */
+export async function runProvidedTransaction<T>(
+  connection: PoolConnection,
+  callback: () => Promise<T>,
+): Promise<T> {
+  await connection.beginTransaction();
+  const hookCount = afterCommitHooks.length;
+
+  try {
+    const result = await transactionAls.run(true, () =>
+      callback(),
+    );
+
+    await connection.commit();
+
+    const hooks = afterCommitHooks.splice(hookCount);
+    for (const hook of hooks) {
+      await hook().catch((err) => {
+        console.error('after-commit hook failed (runProvidedTransaction)', err);
+      });
+    }
+
+    return result;
+  } catch (error) {
+    // A failed transaction must NEVER publish its buffered domain events.
+    afterCommitHooks.splice(hookCount);
+    await connection.rollback();
+
+    throw error;
+  }
+}

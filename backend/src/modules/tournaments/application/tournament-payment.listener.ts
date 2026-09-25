@@ -67,11 +67,14 @@ export function registerTournamentPaymentListeners(): void {
       });
 
       const orgId = await tournamentRepository.getOrganisationId(reg.tournament_id);
+      const t = await tournamentRepository.findById(reg.tournament_id);
       eventBusV2.emit('tournament:registration-paid', {
         tournamentId: reg.tournament_id,
         registrationId,
         userId: reg.player_id ?? reg.user_id,
         organisationId: orgId,
+        branchId: t?.branch_id ?? null,
+        creatorId: t?.creator_id ?? null,
         paymentId: data.paymentId,
       } as any);
 

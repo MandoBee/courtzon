@@ -1,4 +1,5 @@
 import { getPool } from '../../../../database/mysql.js';
+import { runProvidedTransaction } from '../../../../database/database.transaction.js';
 import type mysql from 'mysql2/promise';
 import { matchRepository } from '../../infrastructure/repositories/match.repository.js';
 import { matchEventPublisher } from '../events/match-event-publisher.js';
@@ -282,44 +283,42 @@ export class MatchService {
     const pool = getPool();
     const conn = await pool.getConnection();
     try {
-      await conn.beginTransaction();
+      // Group 6 — manual connection transactions are run inside the ALS
+      // transaction context so EventBusV2 (socket + notifications + outbox) is
+      // deferred and flushed ONLY after a successful commit / never on rollback.
+      await runProvidedTransaction(conn, async () => {
+        const match = await matchRepository.findById(matchId, conn);
+        if (!match) throw new AppError('Match not found', 404, 'MATCH_NOT_FOUND');
 
-      const match = await matchRepository.findById(matchId, conn);
-      if (!match) throw new AppError('Match not found', 404, 'MATCH_NOT_FOUND');
+        match.transition('cancelled');
 
-      match.transition('cancelled');
+        await conn.execute(
+          "UPDATE matches SET status = 'cancelled', updated_at = NOW() WHERE id = ?",
+          [matchId]
+        );
 
-      await conn.execute(
-        "UPDATE matches SET status = 'cancelled', updated_at = NOW() WHERE id = ?",
-        [matchId]
-      );
+        await invitationService.expireByMatchId(matchId, conn);
+        await joinRequestService.autoRejectPendingByMatchId(matchId, conn);
 
-      await invitationService.expireByMatchId(matchId, conn);
-      await joinRequestService.autoRejectPendingByMatchId(matchId, conn);
+        // Capture the roster BEFORE clearing it so the cancelled event can still
+        // reach every affected player (audit/history preserves the fact the match
+        // existed, but the realtime payload needs the in-memory audience).
+        const cancelledParticipantUserIds = [...new Set(
+          match.participants.map((p) => p.userId).filter((id): id is number => id != null),
+        )];
 
-      // Capture the roster BEFORE clearing it so the cancelled event can still
-      // reach every affected player (audit/history preserves the fact the match
-      // existed, but the realtime payload needs the in-memory audience).
-      const cancelledParticipantUserIds = [...new Set(
-        match.participants.map((p) => p.userId).filter((id): id is number => id != null),
-      )];
+        await conn.execute(
+          'DELETE FROM match_participants WHERE match_id = ?', [matchId]
+        );
+        await conn.execute(
+          'DELETE FROM waiting_list WHERE match_id = ?', [matchId]
+        );
 
-      await conn.execute(
-        'DELETE FROM match_participants WHERE match_id = ?', [matchId]
-      );
-      await conn.execute(
-        'DELETE FROM waiting_list WHERE match_id = ?', [matchId]
-      );
-
-      await conn.commit();
-
-      await matchEventPublisher.publish({
-        type: 'match:cancelled',
-        payload: { matchId, reason, timestamp: new Date().toISOString() },
-      }, { executor: conn, audience: { participantUserIds: cancelledParticipantUserIds } });
-    } catch (err) {
-      await conn.rollback();
-      throw err;
+        await matchEventPublisher.publish({
+          type: 'match:cancelled',
+          payload: { matchId, reason, timestamp: new Date().toISOString() },
+        }, { executor: conn, audience: { participantUserIds: cancelledParticipantUserIds } });
+      });
     } finally {
       conn.release();
     }
@@ -342,32 +341,28 @@ export class MatchService {
     const pool = getPool();
     const conn = await pool.getConnection();
     try {
-      await conn.beginTransaction();
-      const match = await matchRepository.findById(matchId, conn);
-      if (!match) throw new AppError('Match not found', 404, 'MATCH_NOT_FOUND');
-      if (match.status === 'cancelled') {
-        await conn.commit();
-        return;
-      }
-      if (match.status === 'in_progress' || match.status === 'completed') {
-        // M5 — never cancel a live or finished match because of a withdrawal.
-        await conn.commit();
-        return;
-      }
-      match.transition('cancelled');
-      await conn.execute(
-        "UPDATE matches SET status = 'cancelled', updated_at = NOW() WHERE id = ?",
-        [matchId],
-      );
-      // NON-DESTRUCTIVE — match_participants are preserved (roster/history).
-      await conn.commit();
-      await matchEventPublisher.publish({
-        type: 'match:cancelled',
-        payload: { matchId, reason, timestamp: new Date().toISOString() },
-      }, { executor: conn });
-    } catch (err) {
-      await conn.rollback();
-      throw err;
+      // Group 6 — ALS transaction context: realtime delivery only after commit.
+      await runProvidedTransaction(conn, async () => {
+        const match = await matchRepository.findById(matchId, conn);
+        if (!match) throw new AppError('Match not found', 404, 'MATCH_NOT_FOUND');
+        if (match.status === 'cancelled') {
+          return;
+        }
+        if (match.status === 'in_progress' || match.status === 'completed') {
+          // M5 — never cancel a live or finished match because of a withdrawal.
+          return;
+        }
+        match.transition('cancelled');
+        await conn.execute(
+          "UPDATE matches SET status = 'cancelled', updated_at = NOW() WHERE id = ?",
+          [matchId],
+        );
+        // NON-DESTRUCTIVE — match_participants are preserved (roster/history).
+        await matchEventPublisher.publish({
+          type: 'match:cancelled',
+          payload: { matchId, reason, timestamp: new Date().toISOString() },
+        }, { executor: conn });
+      });
     } finally {
       conn.release();
     }
@@ -377,32 +372,28 @@ export class MatchService {
     const pool = getPool();
     const conn = await pool.getConnection();
     try {
-      await conn.beginTransaction();
+      // Group 6 — ALS transaction context: realtime delivery only after commit.
+      await runProvidedTransaction(conn, async () => {
+        const match = await matchRepository.findById(matchId, conn);
+        if (!match) throw new AppError('Match not found', 404, 'MATCH_NOT_FOUND');
 
-      const match = await matchRepository.findById(matchId, conn);
-      if (!match) throw new AppError('Match not found', 404, 'MATCH_NOT_FOUND');
+        match.transition('closed');
 
-      match.transition('closed');
+        await conn.execute(
+          "UPDATE matches SET status = 'closed', updated_at = NOW() WHERE id = ?",
+          [matchId]
+        );
 
-      await conn.execute(
-        "UPDATE matches SET status = 'closed', updated_at = NOW() WHERE id = ?",
-        [matchId]
-      );
+        await invitationService.expireByMatchId(matchId, conn);
 
-      await invitationService.expireByMatchId(matchId, conn);
-
-      await conn.commit();
-
-      await matchEventPublisher.publish({
-        type: 'match:status_changed',
-        payload: {
-          matchId, fromStatus: match.status,
-          toStatus: 'closed', timestamp: new Date().toISOString(),
-        },
-      }, { executor: conn });
-    } catch (err) {
-      await conn.rollback();
-      throw err;
+        await matchEventPublisher.publish({
+          type: 'match:status_changed',
+          payload: {
+            matchId, fromStatus: match.status,
+            toStatus: 'closed', timestamp: new Date().toISOString(),
+          },
+        }, { executor: conn });
+      });
     } finally {
       conn.release();
     }

@@ -28,7 +28,15 @@ export class MatchEventPublisher {
       log.error({ err, type: event.type, matchId: event.payload.matchId }, 'match.audience_resolve_failed');
     }
 
-    eventBusV2.emit(event.type as never, payload as never);
+    // When the domain event is created inside a transaction, the outbox row and
+    // the socket/notification delivery MUST be transaction-bound: the outbox
+    // insert goes through the SAME connection (atomic with the business write)
+    // and the in-memory handlers fire only after commit via the ALS transaction
+    // context established by withTransaction / runProvidedTransaction.
+    const executor = options.executor ?? null;
+    const isConnection = executor != null && typeof (executor as mysql.PoolConnection).beginTransaction === 'function';
+    const transactionConnection = isConnection ? (executor as mysql.PoolConnection) : undefined;
+    eventBusV2.emit(event.type as never, payload as never, undefined, transactionConnection);
   }
 
   private async resolveAudience(matchId: number, options: MatchPublishOptions): Promise<MatchRealtimeAudience> {

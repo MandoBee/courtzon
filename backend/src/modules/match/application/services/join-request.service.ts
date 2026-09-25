@@ -1,4 +1,5 @@
 import { getPool } from '../../../../database/mysql.js';
+import { runProvidedTransaction } from '../../../../database/database.transaction.js';
 import type mysql from 'mysql2/promise';
 import { matchRepository } from '../../infrastructure/repositories/match.repository.js';
 import { matchEventPublisher } from '../events/match-event-publisher.js';
@@ -50,54 +51,53 @@ export class JoinRequestService {
     const pool = getPool();
     const conn = await pool.getConnection();
     try {
-      const [details] = await conn.execute<RowData>(
-        'SELECT auto_accept, max_players, creator_id FROM public_match_details WHERE match_id = ?', [matchId]
-      );
-      const detail = (details as any[])[0];
-      if (!detail) throw new AppError('Match details not found', 404, 'MATCH_DETAILS_NOT_FOUND');
-
-      const autoAccept = detail.auto_accept === 1;
-      const capacityOk = match.participantCount < detail.max_players;
-
-      const [result] = await conn.execute<mysql.ResultSetHeader>(
-        `INSERT INTO join_requests (match_id, user_id, status, requested_side, submitted_at)
-         VALUES (?, ?, 'submitted', ?, NOW())`,
-        [matchId, userId, requestedSide ?? null]
-      );
-      const requestId = result.insertId;
-
-      await matchEventPublisher.publish({
-        type: 'join_request:submitted',
-        payload: { matchId, userId, creatorId: detail.creator_id, requestedSide: requestedSide ?? null, timestamp: new Date().toISOString() },
-      }, { executor: conn });
-
-      if (autoAccept && capacityOk) {
-        await this.approve(requestId, userId, conn);
-        await conn.commit();
-        return { status: 'approved', requestId };
-      }
-
-      if (!capacityOk) {
-        await conn.execute(
-          `INSERT IGNORE INTO waiting_list (match_id, user_id, position)
-           VALUES (?, ?, (SELECT COALESCE(MAX(position), 0) + 1 FROM waiting_list w2 WHERE w2.match_id = ?))`,
-          [matchId, userId, matchId]
+      // Group 6 — ALS transaction context: join-request/participant events are
+      // emitted (and flushed) only after the transaction commits — never before,
+      // so a rollback can never deliver a phantom applicant/participant event.
+      return await runProvidedTransaction(conn, async () => {
+        const [details] = await conn.execute<RowData>(
+          'SELECT auto_accept, max_players, creator_id FROM public_match_details WHERE match_id = ?', [matchId]
         );
-        await conn.commit();
+        const detail = (details as any[])[0];
+        if (!detail) throw new AppError('Match details not found', 404, 'MATCH_DETAILS_NOT_FOUND');
+
+        const autoAccept = detail.auto_accept === 1;
+        const capacityOk = match.participantCount < detail.max_players;
+
+        const [result] = await conn.execute<mysql.ResultSetHeader>(
+          `INSERT INTO join_requests (match_id, user_id, status, requested_side, submitted_at)
+           VALUES (?, ?, 'submitted', ?, NOW())`,
+          [matchId, userId, requestedSide ?? null]
+        );
+        const requestId = result.insertId;
 
         await matchEventPublisher.publish({
-          type: 'waiting_list:entry_added',
-          payload: { matchId, userId, position: 0, timestamp: new Date().toISOString() },
+          type: 'join_request:submitted',
+          payload: { matchId, userId, creatorId: detail.creator_id, requestedSide: requestedSide ?? null, timestamp: new Date().toISOString() },
         }, { executor: conn });
 
-        return { status: 'waitlisted' };
-      }
+        if (autoAccept && capacityOk) {
+          await this.approve(requestId, userId, conn);
+          return { status: 'approved', requestId };
+        }
 
-      await conn.commit();
-      return { status: 'submitted', requestId };
-    } catch (err) {
-      await conn.rollback();
-      throw err;
+        if (!capacityOk) {
+          await conn.execute(
+            `INSERT IGNORE INTO waiting_list (match_id, user_id, position)
+             VALUES (?, ?, (SELECT COALESCE(MAX(position), 0) + 1 FROM waiting_list w2 WHERE w2.match_id = ?))`,
+            [matchId, userId, matchId]
+          );
+
+          await matchEventPublisher.publish({
+            type: 'waiting_list:entry_added',
+            payload: { matchId, userId, position: 0, timestamp: new Date().toISOString() },
+          }, { executor: conn });
+
+          return { status: 'waitlisted' };
+        }
+
+        return { status: 'submitted', requestId };
+      });
     } finally {
       conn.release();
     }
@@ -216,41 +216,37 @@ export class JoinRequestService {
     const pool = getPool();
     const conn = await pool.getConnection();
     try {
-      await conn.beginTransaction();
+      // Group 6 — ALS transaction context: match:updated only after commit.
+      await runProvidedTransaction(conn, async () => {
+        const match = await matchRepository.findById(matchId, conn);
+        if (!match) throw new AppError('Match not found', 404, 'MATCH_NOT_FOUND');
 
-      const match = await matchRepository.findById(matchId, conn);
-      if (!match) throw new AppError('Match not found', 404, 'MATCH_NOT_FOUND');
+        if (match.status !== 'open' && match.status !== 'full') {
+          throw new AppError('This match is no longer accepting participant changes', 400, 'MATCH_NOT_EDITABLE');
+        }
 
-      if (match.status !== 'open' && match.status !== 'full') {
-        throw new AppError('This match is no longer accepting participant changes', 400, 'MATCH_NOT_EDITABLE');
-      }
+        const mine = match.participants.find((p) => p.userId === userId);
+        if (!mine) throw new AppError('You are not a participant of this match', 403, 'NOT_PARTICIPANT');
 
-      const mine = match.participants.find((p) => p.userId === userId);
-      if (!mine) throw new AppError('You are not a participant of this match', 403, 'NOT_PARTICIPANT');
+        // Occupancy EXCLUDES the actor (they are moving, not adding).
+        const occupancy = match.participants
+          .filter((p) => p.userId !== userId && p.side !== null)
+          .map((p) => ({ side: p.side as ParticipantSide, userId: p.userId }));
+        const check = canOccupySide(match.formatSnapshot, occupancy, side);
+        if (!check.ok) {
+          throw new AppError('This side is already full', 409, 'SIDE_FULL');
+        }
 
-      // Occupancy EXCLUDES the actor (they are moving, not adding).
-      const occupancy = match.participants
-        .filter((p) => p.userId !== userId && p.side !== null)
-        .map((p) => ({ side: p.side as ParticipantSide, userId: p.userId }));
-      const check = canOccupySide(match.formatSnapshot, occupancy, side);
-      if (!check.ok) {
-        throw new AppError('This side is already full', 409, 'SIDE_FULL');
-      }
+        await conn.execute(
+          'UPDATE match_participants SET side = ?, team_index = ?, joined_at = joined_at WHERE match_id = ? AND user_id = ?',
+          [side, side === 'away' ? 1 : 0, matchId, userId]
+        );
 
-      await conn.execute(
-        'UPDATE match_participants SET side = ?, team_index = ?, joined_at = joined_at WHERE match_id = ? AND user_id = ?',
-        [side, side === 'away' ? 1 : 0, matchId, userId]
-      );
-
-      await conn.commit();
-
-      await matchEventPublisher.publish({
-        type: 'match:updated',
-        payload: { matchId, userId, timestamp: new Date().toISOString() },
+        await matchEventPublisher.publish({
+          type: 'match:updated',
+          payload: { matchId, userId, timestamp: new Date().toISOString() },
         }, { executor: conn });
-    } catch (err) {
-      await conn.rollback();
-      throw err;
+      });
     } finally {
       conn.release();
     }
