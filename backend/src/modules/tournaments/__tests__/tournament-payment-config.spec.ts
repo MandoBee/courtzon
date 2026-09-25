@@ -33,7 +33,15 @@ const mrRepo = vi.hoisted(() => ({
 
 const audit = vi.hoisted(() => ({ recordAudit: vi.fn() }));
 const bus = vi.hoisted(() => ({ emit: vi.fn() }));
-const pool = vi.hoisted(() => ({ execute: vi.fn(async () => [[]]), query: vi.fn(async () => [[]]) }));
+const pool = vi.hoisted(() => ({
+  execute: vi.fn(async () => [[]]),
+  query: vi.fn(async () => [[]]),
+  beginTransaction: vi.fn(async () => undefined),
+  commit: vi.fn(async () => undefined),
+  rollback: vi.fn(async () => undefined),
+  release: vi.fn(),
+}));
+pool.getConnection = vi.fn(async () => pool);
 const commission = vi.hoisted(() => ({ getCommissionRate: vi.fn(), getCurrentSubscription: vi.fn() }));
 const paymentService = vi.hoisted(() => ({ charge: vi.fn() }));
 const pdRepo = vi.hoisted(() => ({
@@ -213,7 +221,7 @@ describe('Group 3 — Tournament registration payment-method configuration', () 
   it('15. existing registration flow remains backward compatible (no payment method → unpaid)', async () => {
     repo.findById.mockResolvedValue(makeTournament({ id: 1, entry_fee: 100, registration_payment_methods: ['cash', 'card'] }));
     const reg = await svc.register(1, 5);
-    expect(repo.createRegistration).toHaveBeenCalledWith(expect.objectContaining({ payment_status: 'unpaid', status: 'registered' }));
+    expect(repo.createRegistration).toHaveBeenCalledWith(expect.objectContaining({ payment_status: 'unpaid', status: 'registered' }), expect.anything());
     expect(paymentService.charge).not.toHaveBeenCalled();
     expect(reg.payment_status).toBe('unpaid');
   });

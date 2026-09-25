@@ -397,13 +397,15 @@ export class TournamentRepository {
     return (rows as Record<string, unknown>[]).map((r) => this.mapRegistrationRow(r));
   }
 
-  async createRegistration(data: Partial<TournamentRegistration>): Promise<number> {
-    const sql = `INSERT INTO tournament_registrations (tournament_id, player_id, team_id, seed_rank, status, payment_status, waiting_order, registered_at)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`;
-    const [result] = await getPool().query<ResultSet>(sql, [
+  async createRegistration(data: Partial<TournamentRegistration>, conn?: PoolConnection): Promise<number> {
+    const db = conn ?? getPool();
+    const sql = `INSERT INTO tournament_registrations (tournament_id, player_id, team_id, seed_rank, status, payment_status, waiting_order, eligibility_snapshot, registered_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())`;
+    const [result] = await db.query<ResultSet>(sql, [
       data.tournament_id, data.player_id ?? data.user_id ?? null, data.team_id ?? null,
       data.seed ?? null, data.status ?? 'registered', data.payment_status ?? 'unpaid',
       data.waiting_order ?? null,
+      data.eligibility_snapshot ? JSON.stringify(data.eligibility_snapshot) : null,
     ]);
     return (result as any).insertId;
   }

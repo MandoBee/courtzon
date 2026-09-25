@@ -5,8 +5,9 @@ import { matchResultRepository } from '../../match-result/infrastructure/match-r
 import { getPool } from '../../../database/mysql.js';
 import { eventBusV2 } from '../../../shared/event-bus/event-bus.v2.js';
 import { tournamentRealtimeScope } from './tournament-realtime-scope.js';
+import { tournamentEligibilityService } from './tournament-eligibility.service.js';
 import { recordAudit } from '../../audit-log/index.js';
-import { ConflictError, NotFoundError, ValidationError } from '../../../shared/errors/app-error.js';
+import { AppError, ConflictError, NotFoundError, ValidationError } from '../../../shared/errors/app-error.js';
 import { ErrorCodes } from '../../../shared/errors/error-codes.js';
 import type {
   Tournament,
@@ -111,6 +112,7 @@ export class ParticipantMemberService {
 
   /** One source of truth for member eligibility (minimum for this group). */
   private async assertMemberEligible(
+    t: Tournament,
     tournamentId: number,
     userId: number,
     opts: { excludeParticipantId?: number; conn?: import('mysql2/promise').PoolConnection } = {},
@@ -127,6 +129,18 @@ export class ParticipantMemberService {
       throw new ConflictError(
         `Player #${userId} is already an active member of another participant in this tournament`,
         ErrorCodes.TOURNAMENT_PARTICIPANT_MEMBER_ACTIVE_DUPLICATE,
+      );
+    }
+    // Group 7-B — server-authoritative AGE/GENDER/LEVEL eligibility through the
+    // central TournamentEligibilityService (no bypass on the participant path).
+    const evaluation = await tournamentEligibilityService.evaluatePlayers(t, [userId], { conn: opts.conn });
+    const member = evaluation.members[0];
+    if (member && member.reasons.length > 0) {
+      throw new AppError(
+        'Player is not eligible for this tournament',
+        422,
+        member.reasons[0].code,
+        { details: { userId, reasons: member.reasons } },
       );
     }
     return player;
@@ -212,6 +226,25 @@ export class ParticipantMemberService {
 
     const displayName = input.name?.trim() || (input.participantType === 'pair' ? 'Unnamed Pair' : 'Unnamed Team');
 
+    // Group 7-B — batch eligibility for EVERY member BEFORE any write. A single
+    // ineligible member rejects the whole pair/team (combined structured error).
+    const eligibilityEvaluation = await tournamentEligibilityService.evaluatePlayers(t, members, {});
+    if (!eligibilityEvaluation.eligible) {
+      const failing = eligibilityEvaluation.members.filter((m) => !m.eligible);
+      const first = failing[0]?.reasons[0]?.code ?? 'LEVEL_NOT_ELIGIBLE';
+      throw new AppError(
+        'One or more members are not eligible for this tournament',
+        422,
+        first,
+        { details: { members: failing.map((m) => ({ userId: m.userId, reasons: m.reasons })) } },
+      );
+    }
+    const eligibilitySnapshot = {
+      eligible: true,
+      bypassed: false,
+      members: eligibilityEvaluation.members.map((m) => m.snapshot),
+    };
+
     const conn = await getPool().getConnection();
     let participantId: number;
     let registrationId: number | null = null;
@@ -228,7 +261,7 @@ export class ParticipantMemberService {
 
       // Eligibility + uniqueness for EVERY member (single source of truth).
       for (const userId of members) {
-        await this.assertMemberEligible(tournamentId, userId, { conn });
+        await this.assertMemberEligible(t, tournamentId, userId, { conn });
       }
 
       // One authoritative registration (the participant entry). Payment stays
@@ -241,7 +274,8 @@ export class ParticipantMemberService {
         seed: activeCount + 1,
         status: 'registered',
         payment_status: 'unpaid',
-      });
+        eligibility_snapshot: eligibilitySnapshot,
+      }, conn);
 
       participantId = await participantDrawRepository.createParticipant({
         tournament_id: tournamentId,
@@ -339,7 +373,7 @@ export class ParticipantMemberService {
     try {
       await conn.beginTransaction();
       await conn.query('SELECT id FROM tournaments WHERE id = ? FOR UPDATE', [tournamentId]);
-      await this.assertMemberEligible(tournamentId, userId, { excludeParticipantId: participantId, conn });
+      await this.assertMemberEligible(t, tournamentId, userId, { excludeParticipantId: participantId, conn });
       const existing = await participantMemberRepository.findMember(participantId, userId, conn);
       if (existing) {
         throw new ConflictError('Player is already a member of this participant', ErrorCodes.TOURNAMENT_PARTICIPANT_MEMBER_DUPLICATE);
@@ -499,7 +533,7 @@ export class ParticipantMemberService {
       if (!member || member.status !== 'active') {
         throw new NotFoundError('Outgoing member', ErrorCodes.TOURNAMENT_PARTICIPANT_MEMBER_NOT_FOUND);
       }
-      await this.assertMemberEligible(tournamentId, input.replacementUserId, { excludeParticipantId: participantId, conn });
+      await this.assertMemberEligible(t, tournamentId, input.replacementUserId, { excludeParticipantId: participantId, conn });
       requestId = await participantMemberRepository.createReplacementRequest({
         tournament_id: tournamentId,
         participant_id: participantId,
@@ -577,7 +611,7 @@ export class ParticipantMemberService {
         );
       }
       // Replacement eligibility re-validated AT APPROVAL TIME (never assumed).
-      await this.assertMemberEligible(tournamentId, Number(request.replacement_user_id), { excludeParticipantId: Number(request.participant_id), conn });
+      await this.assertMemberEligible(t, tournamentId, Number(request.replacement_user_id), { excludeParticipantId: Number(request.participant_id), conn });
 
       const participantId = Number(request.participant_id);
       const participant = await participantDrawRepository.findParticipantById(participantId);

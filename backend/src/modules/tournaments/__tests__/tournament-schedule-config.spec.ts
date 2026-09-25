@@ -32,7 +32,15 @@ const mrRepo = vi.hoisted(() => ({
 const branchRepo = vi.hoisted(() => ({ findById: vi.fn() }));
 const audit = vi.hoisted(() => ({ recordAudit: vi.fn() }));
 const bus = vi.hoisted(() => ({ emit: vi.fn() }));
-const pool = vi.hoisted(() => ({ execute: vi.fn(async () => [[]]), query: vi.fn(async () => [[]]) }));
+const pool = vi.hoisted(() => ({
+  execute: vi.fn(async () => [[]]),
+  query: vi.fn(async () => [[]]),
+  beginTransaction: vi.fn(async () => undefined),
+  commit: vi.fn(async () => undefined),
+  rollback: vi.fn(async () => undefined),
+  release: vi.fn(),
+}));
+pool.getConnection = vi.fn(async () => pool);
 const commission = vi.hoisted(() => ({ getCommissionRate: vi.fn(), getCurrentSubscription: vi.fn() }));
 const paymentService = vi.hoisted(() => ({ charge: vi.fn() }));
 const pdRepo = vi.hoisted(() => ({

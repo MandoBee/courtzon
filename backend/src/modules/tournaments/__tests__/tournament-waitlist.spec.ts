@@ -24,7 +24,15 @@ const pdRepo = vi.hoisted(() => ({
 const mrRepo = vi.hoisted(() => ({ findFormatById: vi.fn(), findRuleSetById: vi.fn(), resolveDefaultFormatForSport: vi.fn(), findActiveRuleSetForFormat: vi.fn(), listRuleSetsBySport: vi.fn() }));
 const audit = vi.hoisted(() => ({ recordAudit: vi.fn() }));
 const bus = vi.hoisted(() => ({ emit: vi.fn() }));
-const pool = vi.hoisted(() => ({ execute: vi.fn(async () => [[]]), query: vi.fn(async () => [[]]) }));
+const pool = vi.hoisted(() => ({
+  execute: vi.fn(async () => [[]]),
+  query: vi.fn(async () => [[]]),
+  beginTransaction: vi.fn(async () => undefined),
+  commit: vi.fn(async () => undefined),
+  rollback: vi.fn(async () => undefined),
+  release: vi.fn(),
+}));
+pool.getConnection = vi.fn(async () => pool);
 const commission = vi.hoisted(() => ({ getCommissionRate: vi.fn(), getCurrentSubscription: vi.fn() }));
 const branchRepo = vi.hoisted(() => ({ findById: vi.fn() }));
 const paymentService = vi.hoisted(() => ({ charge: vi.fn() }));
@@ -82,8 +90,8 @@ describe('Group 6 — register() waitlist behavior', () => {
   it('1. capacity full + waitlist enabled → registration enters WAITING (no payment, no entitlement)', async () => {
     repo.findById.mockResolvedValue(makeTournament({ id: 1, waitlist_enabled: 1 }));
     const r = await svc.register(1, 5);
-    expect(repo.createRegistration).toHaveBeenCalledWith(expect.objectContaining({ status: 'waiting', payment_status: 'unpaid', waiting_order: 1 }));
-    expect(pdRepo.createParticipant).toHaveBeenCalledWith(expect.objectContaining({ status: 'waiting', waiting_order: 1, member_user_ids: [5] }));
+    expect(repo.createRegistration).toHaveBeenCalledWith(expect.objectContaining({ status: 'waiting', payment_status: 'unpaid', waiting_order: 1 }), expect.anything());
+    expect(pdRepo.createParticipant).toHaveBeenCalledWith(expect.objectContaining({ status: 'waiting', waiting_order: 1, member_user_ids: [5] }), expect.anything());
     expect(r.status).toBe('waiting');
     expect(r.payment).toBeNull();
     // No payment flow runs for a waiting participant.
@@ -108,7 +116,7 @@ describe('Group 6 — register() waitlist behavior', () => {
     pdRepo.getNextWaitingOrderByTournament.mockResolvedValue(7);
     await svc.register(1, 5);
     expect(pdRepo.getNextWaitingOrderByTournament).toHaveBeenCalledWith(1);
-    expect(repo.createRegistration).toHaveBeenCalledWith(expect.objectContaining({ waiting_order: 7 }));
+    expect(repo.createRegistration).toHaveBeenCalledWith(expect.objectContaining({ waiting_order: 7 }), expect.anything());
   });
 
   it('5. waiting order is stable — an existing waiting participant is never renumbered by a new registration', async () => {
@@ -116,7 +124,7 @@ describe('Group 6 — register() waitlist behavior', () => {
     repo.findById.mockResolvedValue(makeTournament({ id: 1, waitlist_enabled: 1 }));
     pdRepo.getNextWaitingOrderByTournament.mockResolvedValue(3); // existing waiters 1,2
     await svc.register(1, 5);
-    expect(pdRepo.createParticipant).toHaveBeenCalledWith(expect.objectContaining({ waiting_order: 3 }));
+    expect(pdRepo.createParticipant).toHaveBeenCalledWith(expect.objectContaining({ waiting_order: 3 }), expect.anything());
   });
 
   it('9. wallet remains unavailable for waitlist promotion', async () => {

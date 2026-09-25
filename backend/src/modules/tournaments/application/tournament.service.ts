@@ -5,11 +5,12 @@ import { generateKnockoutBracket, generateRoundRobinMatches, generateStageMatche
 import { normalizeEligibility } from '../domain/tournament-eligibility.js';
 import type { Tournament, TournamentRegistration, TournamentMatch, TournamentStage, TournamentPrizeInput, TournamentPrizeType, TournamentVenue, TournamentParticipant, TournamentParticipantMember } from '../domain/tournament-aggregate.js';
 import { validateTournamentTransition, validateRegistrationTransition } from '../domain/lifecycle.js';
-import { NotFoundError, ConflictError, ForbiddenError } from '../../../shared/errors/app-error.js';
+import { AppError, NotFoundError, ConflictError, ForbiddenError } from '../../../shared/errors/app-error.js';
 import { ErrorCodes } from '../../../shared/errors/error-codes.js';
 import { eventBusV2 } from '../../../shared/event-bus/event-bus.v2.js';
 import { getPool } from '../../../database/mysql.js';
-import { withTransaction } from '../../../database/database.transaction.js';
+import { withTransaction, runProvidedTransaction } from '../../../database/database.transaction.js';
+import { tournamentEligibilityService } from './tournament-eligibility.service.js';
 import { recordAudit } from '../../audit-log/index.js';
 import { matchResultRepository } from '../../match-result/infrastructure/match-result.repository.js';
 import { formatSportRules } from '../../match-result/application/rules/format-rules.js';
@@ -552,6 +553,43 @@ export class TournamentService {
     (t as any).level_ids = eligibility.levelIds;
   }
 
+  /** Group 7-B — eligibility lock: immutable once the first registration exists. */
+  private async assertEligibilityChangeAllowed(id: number, current: Tournament, data: Partial<Tournament>): Promise<void> {
+    const touched =
+      data.age_mode !== undefined || data.age_category_ids !== undefined
+      || data.gender_categories !== undefined || data.level_ids !== undefined;
+    if (!touched) return;
+
+    const registrations = await tournamentRepository.findRegistrationsByTournament(id);
+    if (registrations.length === 0) return;
+
+    const before = normalizeEligibility(current);
+    const after = normalizeEligibility({
+      age_mode: data.age_mode ?? current.age_mode,
+      age_category_ids: data.age_category_ids ?? current.age_category_ids,
+      gender_categories: data.gender_categories ?? current.gender_categories,
+      level_ids: data.level_ids ?? current.level_ids,
+    });
+    const same =
+      before.ageMode === after.ageMode
+      && this.sameIds(before.ageCategoryIds, after.ageCategoryIds)
+      && before.genderCategories.length === after.genderCategories.length
+      && before.genderCategories.every((g) => after.genderCategories.includes(g))
+      && this.sameIds(before.levelIds, after.levelIds);
+
+    if (!same) {
+      throw new AppError(
+        'Tournament eligibility is locked once the first registration exists',
+        409,
+        ErrorCodes.TOURNAMENT_ELIGIBILITY_LOCKED,
+      );
+    }
+  }
+
+  private sameIds(a: number[], b: number[]): boolean {
+    return a.length === b.length && a.every((id) => b.includes(id));
+  }
+
   // ── Group 5B-SR — Bracket type configuration ──
 
   /** All bracket types (management view) or only active ones (create form). */
@@ -697,6 +735,11 @@ export class TournamentService {
 
   async update(id: number, data: Partial<Tournament>): Promise<Tournament> {
     const current = await this.getById(id);
+    // Group 7-B — eligibility LOCK: once the first registration exists the
+    // eligibility settings (age mode/categories, gender categories, level ids)
+    // are immutable. A no-op (same canonical values) update is allowed; a real
+    // eligibility change after registrations is rejected.
+    await this.assertEligibilityChangeAllowed(id, current, data);
     if (data.code) {
       const existing = await tournamentRepository.findByCode(data.code);
       if (existing && existing.id !== id) throw new ConflictError('Tournament code already exists', ErrorCodes.ACADEMY_PROGRAM_CODE_EXISTS);
@@ -852,6 +895,7 @@ export class TournamentService {
     userId: number,
     teamId?: number,
     paymentMethod?: string,
+    options?: { operatorBypass?: boolean },
   ): Promise<TournamentRegistration & { payment?: Record<string, unknown> | null }> {
     const t = await this.getById(tournamentId);
     if (t.status !== 'registration_open' && t.status !== 'published') {
@@ -876,41 +920,62 @@ export class TournamentService {
       throw new ConflictError('Already registered in this tournament', ErrorCodes.TOURNAMENT_REGISTRATION_EXISTS);
     }
 
+    // Group 7-B — server-authoritative eligibility BEFORE capacity/waitlist/
+    // payment/participant materialisation. An ineligible registration never
+    // consumes a slot, never enters the waitlist and never starts a payment.
+    // Operator/admin bypass is ONLY possible when the caller holds the
+    // privileged registration permission (resolved by the controller).
+    const bypass = options?.operatorBypass === true;
+    const eligibility = await tournamentEligibilityService.assertCanRegister(t, [userId], {
+      allowBypass: bypass,
+      ...(bypass ? { bypassReason: 'operator registration' } : {}),
+    });
+
     const cap = t.max_participants || 0;
     const confirmedCount = existing.filter((r) => r.status === 'confirmed').length;
     const isFull = cap > 0 && confirmedCount >= cap;
     const waitlistEnabled = Boolean(Number((t as any).waitlist_enabled ?? 0));
     if (isFull) {
       // Group 6 — real FIFO waitlist: when enabled, the registration enters the
-      // waiting state (NO payment, NO entitlement) instead of erroring.
+      // waiting state (NO payment, NO entitlement) instead of erroring. Only
+      // ELIGIBLE registrations may enter the waitlist (checked above).
       if (!waitlistEnabled) {
         throw new ConflictError('Tournament is at full capacity', ErrorCodes.TOURNAMENT_CAPACITY_FULL);
       }
       const waitingOrder = await participantDrawRepository.getNextWaitingOrderByTournament(tournamentId);
-      const id = await tournamentRepository.createRegistration({
-        tournament_id: tournamentId,
-        user_id: userId,
-        player_id: userId,
-        team_id: teamId,
-        status: 'waiting',
-        payment_status: 'unpaid',
-        waiting_order: waitingOrder,
-      });
-      await participantDrawRepository.createParticipant({
-        tournament_id: tournamentId,
-        registration_id: id,
-        participant_type: 'individual',
-        status: 'waiting',
-        member_user_ids: [userId],
-        waiting_order: waitingOrder,
-      });
+      const conn = await getPool().getConnection();
+      let id: number = 0;
+      try {
+        await runProvidedTransaction(conn, async () => {
+          id = await tournamentRepository.createRegistration({
+            tournament_id: tournamentId,
+            user_id: userId,
+            player_id: userId,
+            team_id: teamId,
+            status: 'waiting',
+            payment_status: 'unpaid',
+            waiting_order: waitingOrder,
+            eligibility_snapshot: eligibility.snapshot as unknown as Record<string, unknown>,
+          }, conn);
+          await participantDrawRepository.createParticipant({
+            tournament_id: tournamentId,
+            registration_id: id,
+            participant_type: 'individual',
+            status: 'waiting',
+            member_user_ids: [userId],
+            waiting_order: waitingOrder,
+          }, conn);
+        });
+      } finally {
+        conn.release();
+      }
       eventBusV2.emit('registration.received', { tournamentId, userId, registrationId: id, status: 'waiting', paymentRequired: false } as Record<string, unknown>, {
         aggregateType: 'tournament', aggregateId: String(tournamentId), aggregateVersion: 1,
       });
       eventBusV2.emit('tournament:waitlist-updated', { tournamentId, ...this.tournamentRealtimeScope(t, [userId]) } as Record<string, unknown>, {
         aggregateType: 'tournament', aggregateId: String(tournamentId), aggregateVersion: 1,
       });
-      const waiting = await tournamentRepository.getRegistrationById(id);
+      const waiting = await tournamentRepository.getRegistrationById(id!);
       return { ...waiting!, payment: null };
     }
 
@@ -932,27 +997,33 @@ export class TournamentService {
 
     const status = paymentRequired ? 'registered' : 'registered';
     const seed = existing.length + 1;
-    const id = await tournamentRepository.createRegistration({
-      tournament_id: tournamentId,
-      user_id: userId,
-      player_id: userId,
-      team_id: teamId,
-      seed,
-      status,
-      payment_status: 'unpaid',
-    });
-
-    // Group 5/6 — the authoritative participant is materialized immediately for
-    // the active registration (the G5 participant model is the primary model).
-    const existingParticipant = await participantDrawRepository.findParticipantByRegistration(tournamentId, id);
-    if (!existingParticipant) {
-      await participantDrawRepository.createParticipant({
-        tournament_id: tournamentId,
-        registration_id: id,
-        participant_type: 'individual',
-        status: 'active',
-        member_user_ids: [userId],
+    const conn = await getPool().getConnection();
+    let id: number = 0;
+    try {
+      // Group 6/7-B — registration + participant + eligibility snapshot are
+      // atomic in ONE transaction: rollback leaves no registration, no
+      // participant and no snapshot. Payments run AFTER the commit below.
+      await runProvidedTransaction(conn, async () => {
+        id = await tournamentRepository.createRegistration({
+          tournament_id: tournamentId,
+          user_id: userId,
+          player_id: userId,
+          team_id: teamId,
+          seed,
+          status,
+          payment_status: 'unpaid',
+          eligibility_snapshot: eligibility.snapshot as unknown as Record<string, unknown>,
+        }, conn);
+        await participantDrawRepository.createParticipant({
+          tournament_id: tournamentId,
+          registration_id: id,
+          participant_type: 'individual',
+          status: 'active',
+          member_user_ids: [userId],
+        }, conn);
       });
+    } finally {
+      conn.release();
     }
 
     // ── Group 3 — registration-payment routing through the SHARED Payment

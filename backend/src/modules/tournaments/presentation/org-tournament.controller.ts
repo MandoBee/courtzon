@@ -139,8 +139,8 @@ export async function registerOrgPlayerHandler(request: FastifyRequest, reply: F
   const body = OrgRegisterSchema.parse(request.body);
   await assertOrgOwnsTournament(orgId, Number(id));
   const registration = body.payment_method
-    ? await tournamentService.register(Number(id), userId, body.team_id, body.payment_method)
-    : await tournamentService.register(Number(id), userId, body.team_id);
+    ? await tournamentService.register(Number(id), userId, body.team_id, body.payment_method, { operatorBypass: true })
+    : await tournamentService.register(Number(id), userId, body.team_id, undefined, { operatorBypass: true });
   recordAudit({ actorId: userId, action: 'TOURNAMENT.REGISTER', entityType: 'tournament_registration', entityId: Number(id), afterState: { orgId, payment_method: body.payment_method ?? null } });
   return reply.status(201).send(registration);
 }

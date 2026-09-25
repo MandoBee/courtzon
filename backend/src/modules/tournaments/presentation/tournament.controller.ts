@@ -157,9 +157,11 @@ export async function registerHandler(request: FastifyRequest, reply: FastifyRep
   const userId = getUserId(request);
   const body = RegisterSchema.parse(request.body);
   const tournamentId = body.tournament_id ?? Number((request.params as any).id);
+  // Group 7-B — this route is gated by `tournament.register` (privileged
+  // registration): the operator MAY bypass eligibility, recorded in the snapshot.
   const registration = body.payment_method
-    ? await tournamentService.register(tournamentId, userId, body.team_id, body.payment_method)
-    : await tournamentService.register(tournamentId, userId, body.team_id);
+    ? await tournamentService.register(tournamentId, userId, body.team_id, body.payment_method, { operatorBypass: true })
+    : await tournamentService.register(tournamentId, userId, body.team_id, undefined, { operatorBypass: true });
   recordAudit({
     actorId: userId, action: 'TOURNAMENT.REGISTER', entityType: 'tournament_registration',
     entityId: registration.id!, afterState: { tournament_id: tournamentId, team_id: body.team_id, payment_method: body.payment_method ?? null },
@@ -172,9 +174,11 @@ export async function registerPlayerHandler(request: FastifyRequest, reply: Fast
   const userId = getUserId(request);
   const { id } = request.params as any;
   const body = RegisterSchema.parse(request.body);
+  // Group 7-B — gated by `tournament.register`: privileged operator path keeps
+  // bypass ability; self-service eligibility is enforced server-side.
   const registration = body.payment_method
-    ? await tournamentService.register(Number(id), userId, body.team_id, body.payment_method)
-    : await tournamentService.register(Number(id), userId, body.team_id);
+    ? await tournamentService.register(Number(id), userId, body.team_id, body.payment_method, { operatorBypass: true })
+    : await tournamentService.register(Number(id), userId, body.team_id, undefined, { operatorBypass: true });
   recordAudit({
     actorId: userId, action: 'TOURNAMENT.REGISTER', entityType: 'tournament_registration',
     entityId: registration.id!, afterState: { tournament_id: id, team_id: body.team_id, payment_method: body.payment_method ?? null },

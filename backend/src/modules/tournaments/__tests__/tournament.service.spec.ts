@@ -61,7 +61,15 @@ const mrRepo = vi.hoisted(() => ({
 
 const audit = vi.hoisted(() => ({ recordAudit: vi.fn() }));
 const bus = vi.hoisted(() => ({ emit: vi.fn() }));
-const pool = vi.hoisted(() => ({ execute: vi.fn(async () => [[]]), query: vi.fn(async () => [[]]) }));
+const pool = vi.hoisted(() => ({
+  execute: vi.fn(async () => [[]]),
+  query: vi.fn(async () => [[]]),
+  beginTransaction: vi.fn(async () => undefined),
+  commit: vi.fn(async () => undefined),
+  rollback: vi.fn(async () => undefined),
+  release: vi.fn(),
+}));
+pool.getConnection = vi.fn(async () => pool);
 const commission = vi.hoisted(() => ({ getCommissionRate: vi.fn() }));
 const pdRepo = vi.hoisted(() => ({
   getNextWaitingOrderByTournament: vi.fn(),
@@ -158,7 +166,7 @@ describe('TournamentService (Group 5A)', () => {
     repo.createRegistration.mockResolvedValue(2);
     repo.getRegistrationById.mockResolvedValue(makeReg({ id: 2, payment_status: 'unpaid' }));
     const reg = await svc.register(1, 5);
-    expect(repo.createRegistration).toHaveBeenCalledWith(expect.objectContaining({ payment_status: 'unpaid', status: 'registered' }));
+    expect(repo.createRegistration).toHaveBeenCalledWith(expect.objectContaining({ payment_status: 'unpaid', status: 'registered' }), expect.anything());
     expect(reg.payment_status).toBe('unpaid');
   });
 

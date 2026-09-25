@@ -149,7 +149,7 @@ describe('org-tournament.controller (tenant isolation)', () => {
       req({ params: { orgId: String(ORG_A), id: '7' }, body: { team_id: '3' } }),
       reply,
     );
-    expect(service.register).toHaveBeenCalledWith(7, 42, 3);
+    expect(service.register).toHaveBeenCalledWith(7, 42, 3, undefined, { operatorBypass: true });
     expect(reply.statusCode).toBe(201);
   });
 

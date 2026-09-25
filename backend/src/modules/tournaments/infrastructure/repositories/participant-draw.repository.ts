@@ -30,8 +30,9 @@ export class ParticipantDrawRepository {
     status?: string;
     member_user_ids?: number[] | null;
     waiting_order?: number | null;
-  }): Promise<number> {
-    const [result] = await getPool().query<ResultSet>(
+  }, conn?: import('mysql2/promise').PoolConnection): Promise<number> {
+    const db = conn ?? getPool();
+    const [result] = await db.query<ResultSet>(
       `INSERT INTO tournament_participants (tournament_id, registration_id, participant_type, status, member_user_ids, waiting_order)
        VALUES (?, ?, ?, ?, ?, ?)`,
       [

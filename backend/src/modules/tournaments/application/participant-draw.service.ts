@@ -11,10 +11,11 @@ import type {
   DrawImpact,
 } from '../domain/tournament-aggregate.js';
 import { seededShuffle } from '../domain/tournament-aggregate.js';
-import { ConflictError, NotFoundError } from '../../../shared/errors/app-error.js';
+import { AppError, ConflictError, NotFoundError } from '../../../shared/errors/app-error.js';
 import { ErrorCodes } from '../../../shared/errors/error-codes.js';
 import { eventBusV2 } from '../../../shared/event-bus/event-bus.v2.js';
 import { emitTournamentScoped } from './tournament-realtime-scope.js';
+import { tournamentEligibilityService } from './tournament-eligibility.service.js';
 import { recordAudit } from '../../audit-log/index.js';
 import { ratingRepository } from '../../match-result/infrastructure/rating.repository.js';
 import { ratingService } from '../../match-result/application/rating/rating.service.js';
@@ -658,6 +659,24 @@ export class ParticipantDrawService {
       if (head.status !== 'waiting') {
         await conn.rollback();
         return null;
+      }
+      // Group 7-B — promotion REVALIDATES eligibility. An ineligible head stays
+      // in 'waiting' (existing state machine — no new state invented); the
+      // transaction rolls back and the caller receives a structured error.
+      const headMembers = Array.isArray(head.member_user_ids)
+        ? (head.member_user_ids as unknown[]).map((id) => Number(id))
+        : [];
+      if (headMembers.length > 0) {
+        const headEvaluation = await tournamentEligibilityService.evaluatePlayers(t, headMembers, { conn });
+        const failing = headEvaluation.members.find((m) => !m.eligible);
+        if (failing) {
+          throw new AppError(
+            'Waitlist head is no longer eligible for this tournament',
+            422,
+            failing.reasons[0]?.code ?? 'LEVEL_NOT_ELIGIBLE',
+            { details: { userId: failing.userId, reasons: failing.reasons } },
+          );
+        }
       }
       await participantDrawRepository.updateParticipantStatus(head.id!, 'active', conn);
       await participantDrawRepository.updateParticipantWaitingOrder(head.id!, null, conn);
