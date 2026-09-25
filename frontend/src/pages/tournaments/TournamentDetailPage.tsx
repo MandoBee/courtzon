@@ -8,6 +8,9 @@ import { useToast } from '../../components/ui/Toast';
 import { Can } from '../../permissions/Can';
 import { GeneratedRules } from '../../components/tournaments/GeneratedRules';
 import { PrizeList } from '../../components/tournaments/PrizeList';
+import EligibilitySummary from '../../components/tournaments/EligibilitySummary';
+import { useTranslation } from '../../i18n';
+import { translateEligibilityError } from '../../lib/tournamentEligibility';
 import { formatISODate } from '../../utils/formatDate';
 import { formatPrice } from '../../utils/currency';
 import { useAuthStore } from '../../store/auth.store';
@@ -48,6 +51,7 @@ export default function TournamentDetailPage() {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const { showToast } = useToast();
+  const { t } = useTranslation();
   const user = useAuthStore((s) => s.user);
   const [tab, setTab] = useState<Tab>('overview');
   const [showRegisterModal, setShowRegisterModal] = useState(false);
@@ -97,7 +101,7 @@ export default function TournamentDetailPage() {
       qc.invalidateQueries({ queryKey: ['tournament', id, 'participants'] });
       qc.invalidateQueries({ queryKey: ['my-tournaments'] });
     },
-    onError: (e: any) => showToast(e?.response?.data?.message || 'Registration failed', 'error'),
+    onError: (e: any) => showToast(translateEligibilityError(t, e, e?.response?.data?.message || 'Registration failed'), 'error'),
   });
 
   if (isLoading) return <div className="space-y-4"><Skeleton width={300} height={28} /><SkeletonRow count={6} /></div>;
@@ -157,6 +161,7 @@ export default function TournamentDetailPage() {
           </a>
         )}
         <PrizeList prizes={tournament.prizes} legacyDescription={tournament.prize_description} />
+        <EligibilitySummary tournament={tournament} />
         {tournament.rules && (
           <GeneratedRules rules={tournament.rules} title="Tournament Rules" />
         )}

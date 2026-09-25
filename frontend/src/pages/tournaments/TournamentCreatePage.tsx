@@ -11,6 +11,7 @@ import { Button, Input, Card } from '../../components/ui';
 import { Can } from '../../permissions/Can';
 import { useToast } from '../../components/ui/Toast';
 import { PrizeEditor, type PrizeEditorRow } from '../../components/tournaments/PrizeEditor';
+import EligibilityFormSection, { EMPTY_ELIGIBILITY, type TournamentEligibilityFormValue } from '../../components/tournaments/EligibilityFormSection';
 
 type TournamentForm = {
   name: string;
@@ -206,7 +207,15 @@ export default function TournamentCreatePage({ mode = 'admin', orgId }: Props) {
     setPaymentMethods((prev) => (prev.includes(m) ? prev.filter((x) => x !== m) : [...prev, m]));
   };
 
+  // G7-D — Tournament Eligibility (presentation only; backend is authoritative).
+  const [eligibility, setEligibility] = useState<TournamentEligibilityFormValue>(EMPTY_ELIGIBILITY);
+
   const onSubmit = (data: TournamentForm) => {
+    // G7-D — the backend rejects category-mode with no selected category.
+    if (eligibility.ageMode === 'categories' && eligibility.ageCategoryIds.length === 0) {
+      showToast(t('tournaments.eligibility.age.validation'), 'error');
+      return;
+    }
     // Group 2 — only send prizes that are meaningfully configured (skip rows
     // with no type/description/amount). The backend re-validates everything.
     const structuredPrizes = prizes
@@ -248,6 +257,12 @@ export default function TournamentCreatePage({ mode = 'admin', orgId }: Props) {
       branch_id: data.branchId ? Number(data.branchId) : undefined,
       daily_start_time: data.dailyStartTime ? `${data.dailyStartTime}:00` : undefined,
       daily_end_time: data.dailyEndTime ? `${data.dailyEndTime}:00` : undefined,
+      // G7-D — structured eligibility (age mode/categories, gender, level). The
+      // backend re-validates every value; open selections are sent as open.
+      age_mode: eligibility.ageMode,
+      age_category_ids: eligibility.ageMode === 'categories' && eligibility.ageCategoryIds.length ? eligibility.ageCategoryIds : undefined,
+      gender_categories: eligibility.genderCategories.length ? eligibility.genderCategories : undefined,
+      level_ids: eligibility.levelIds.length ? eligibility.levelIds : undefined,
       prize_description: data.prizeDescription || undefined,
       prizes: structuredPrizes.length ? structuredPrizes : undefined,
       organisation_id: isOrg && orgId ? Number(orgId) : undefined,
@@ -462,6 +477,8 @@ export default function TournamentCreatePage({ mode = 'admin', orgId }: Props) {
               />
             </div>
           </Can>
+
+          <EligibilityFormSection value={eligibility} onChange={setEligibility} />
 
           <Can permission="tournaments.create.rules">
             <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] p-4 bg-[var(--color-bg)]/30">

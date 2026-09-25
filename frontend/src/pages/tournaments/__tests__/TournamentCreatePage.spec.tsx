@@ -100,6 +100,7 @@ beforeEach(() => {
   __state.orgApi.getSportFormats.mockResolvedValue(__state.formatsPayload);
   (api.get as any).mockImplementation((url: string) => {
     if (url.includes('/org/6/branches')) return Promise.resolve({ data: __state.branchesPayload });
+    if (url.includes('/player-levels')) return Promise.resolve({ data: { data: [] } });
     return Promise.resolve({ data: __state.sportsPayload });
   });
 });
@@ -254,11 +255,14 @@ describe('TournamentCreatePage — Group 1A foundation corrections', () => {
 
 describe('TournamentCreatePage — registration payment methods (Group 3)', () => {
   it('renders Cash + Card checkboxes (both checked by default) when the prize permission is granted', async () => {
-    const view = renderPage(['tournaments.create.prize']);
+    renderPage(['tournaments.create.prize']);
     expect(await screen.findByText('tournaments.create.payment_methods')).toBeTruthy();
-    const checkboxes = Array.from(view.container.querySelectorAll('input[type="checkbox"]')) as HTMLInputElement[];
-    expect(checkboxes.length).toBe(2);
-    expect(checkboxes.every((c) => c.checked)).toBe(true);
+    const cash = screen.getByRole('checkbox', { name: 'tournaments.create.payment_cash' }) as HTMLInputElement;
+    const card = screen.getByRole('checkbox', { name: 'tournaments.create.payment_card' }) as HTMLInputElement;
+    expect(cash.checked).toBe(true);
+    expect(card.checked).toBe(true);
+    // G7-D eligibility is present but separate from payment-method checkboxes.
+    expect(screen.getByRole('checkbox', { name: 'tournaments.eligibility.level.open' })).toBeDefined();
   });
 
   it('Wallet is never rendered as a payment method option', async () => {
@@ -298,8 +302,7 @@ describe('TournamentCreatePage — registration payment methods (Group 3)', () =
     const startInput = screen.getByText('tournaments.create.start_date').nextElementSibling as HTMLInputElement;
     fireEvent.change(startInput, { target: { value: '2026-10-01' } });
     // Uncheck Cash → card-only
-    const checkboxes = Array.from(view.container.querySelectorAll('input[type="checkbox"]')) as HTMLInputElement[];
-    fireEvent.click(checkboxes.find((c) => c.checked)!);
+    fireEvent.click(screen.getByRole('checkbox', { name: 'tournaments.create.payment_cash' }));
     // Submit
     fireEvent.click(screen.getByText('tournaments.create.submit'));
 
