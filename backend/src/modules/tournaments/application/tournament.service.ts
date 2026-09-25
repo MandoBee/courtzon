@@ -2121,11 +2121,17 @@ export class TournamentService {
    */
   async syncSharedResultMirror(resultId: number): Promise<{ tournamentId: number | null; updated: boolean }> {
     const record = await matchResultRepository.findById(resultId);
-    if (!record?.finalResult) return { tournamentId: null, updated: false };
+    if (!record) return { tournamentId: null, updated: false };
     const match = await tournamentRepository.findMatchBySharedMatchId(record.matchId);
     if (!match) return { tournamentId: null, updated: false };
 
-    const winner = record.finalResult.winner;
+    // G8-D-MINIMAL — a no-result expiry record carries `finalResult == null`
+    // (markExpiredNoResult inserts without a final_result). It still resolves
+    // the tournament match projection to completed with NO winner, exactly like
+    // a draw is mirrored today (winner_id = null, no standings points, never a
+    // progression side effect). The standings query already filters
+    // `winner_id IS NOT NULL`, so this recompute is idempotent and point-neutral.
+    const winner = record.finalResult?.winner;
     const winnerId = winner === 'home' ? match.player1_id : winner === 'away' ? match.player2_id : null;
 
     await tournamentRepository.updateMatch(match.id!, {

@@ -185,6 +185,25 @@ export function invalidateTournament(
 }
 
 /**
+ * G8-D-MINIMAL — targeted invalidation of the authoritative tournament
+ * standings query key. Result correction (and automatic no-result expiry
+ * reconciliation) re-emits `tournament.updated` with `standings: true`; that
+ * payload must refresh the standings screen, scoped to the exact tournament,
+ * without invalidating unrelated tournament queries.
+ */
+export function invalidateTournamentStandings(
+  qc: { invalidateQueries: (opts: { queryKey: readonly (string | number)[] }) => void },
+  tournamentId: number | null | undefined,
+): void {
+  if (tournamentId == null) return;
+  const id = String(tournamentId);
+  // Both numeric (screen) and string (realtime) key forms — mirrors
+  // invalidateTournament's dual-form convention.
+  qc.invalidateQueries({ queryKey: ['tournament', id, 'standings'] });
+  qc.invalidateQueries({ queryKey: ['tournament', tournamentId, 'standings'] });
+}
+
+/**
  * Coach lifecycle invalidation keys. These fire on agreement accepted/rejected/
  * invited/ended, approval/status changes, and availability toggles — all of
  * which can change a coach's eligibility at a contract-required branch. The
@@ -976,11 +995,21 @@ export function useRealtimeCacheUpdates(): void {
 
   // G7-E — registration lifecycle (created/withdrawn/confirmed), eligibility
   // config updates and waitlist promotion reconcile the affected sessions live.
-  for (const eventName of ['registration.received', 'tournament.updated', 'tournament.waitlist-promoted']) {
+  for (const eventName of ['registration.received', 'tournament.waitlist-promoted']) {
     useSocketEvent(eventName, (p: any) => {
       invalidateRegistrationLifecycle(qc, p);
     });
   }
+  // G8-D-MINIMAL — `tournament.updated` is reused by result correction and
+  // automatic no-result expiry reconciliation with `standings: true`. Besides
+  // the lifecycle refresh, that payload must also invalidate the authoritative
+  // standings query so connected users never see stale RR standings.
+  useSocketEvent('tournament.updated', (p: any) => {
+    invalidateRegistrationLifecycle(qc, p);
+    if (p?.standings === true) {
+      invalidateTournamentStandings(qc, p?.tournamentId);
+    }
+  });
 
   // Group 3 — a registration payment was settled (cash offline or card via the
   // shared Payment capability) → the participant list + tournament caches

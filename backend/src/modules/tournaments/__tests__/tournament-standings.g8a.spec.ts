@@ -19,6 +19,7 @@ const tournamentRepo = vi.hoisted(() => ({
   findMatchBySharedMatchId: vi.fn(),
   updateMatch: vi.fn(),
   recalculateStandings: vi.fn(),
+  updateStatus: vi.fn(),
 }));
 const matchResultRepo = vi.hoisted(() => ({ findById: vi.fn() }));
 const pool = vi.hoisted(() => ({
@@ -121,13 +122,25 @@ describe('G8-A shared-result projection mirror', () => {
     expect(tournamentRepo.updateMatch).toHaveBeenCalledWith(5, expect.objectContaining({ winner_id: null, status: 'completed' }));
   });
 
-  it('is a no-op when the result has no final outcome or the match is not a tournament match', async () => {
+  it('is a no-op when the result has no final outcome OR the match is not a tournament match', async () => {
+    // Case 1 — a no-result record whose tournament match cannot be resolved:
+    // still a no-op (the no-result projection is only reconciled when the shared
+    // match is present — G8-D-MINIMAL).
     matchResultRepo.findById.mockResolvedValue({ matchId: 101, finalResult: null });
+    tournamentRepo.findMatchBySharedMatchId.mockResolvedValue(null);
     await expect(tournamentService.syncSharedResultMirror(3)).resolves.toEqual({ tournamentId: null, updated: false });
 
+    // Case 2 — an approved result whose shared match is not a tournament match.
     matchResultRepo.findById.mockResolvedValue({ matchId: 102, finalResult: { winner: 'home', scoreSummary: 'x' } });
     tournamentRepo.findMatchBySharedMatchId.mockResolvedValue(null);
     await expect(tournamentService.syncSharedResultMirror(4)).resolves.toEqual({ tournamentId: null, updated: false });
+  });
+
+  it('G8-D-MINIMAL — a no-result record WITH a tournament match reconciles to completed/no winner', async () => {
+    matchResultRepo.findById.mockResolvedValue({ matchId: 103, finalResult: null });
+    tournamentRepo.findMatchBySharedMatchId.mockResolvedValue({ id: 6, player1_id: 10, player2_id: 20, tournament_id: 1 });
+    await expect(tournamentService.syncSharedResultMirror(5)).resolves.toEqual({ tournamentId: 1, updated: true });
+    expect(tournamentRepo.updateMatch).toHaveBeenCalledWith(6, { status: 'completed', score_summary: null, winner_id: null });
   });
 });
 
@@ -151,5 +164,47 @@ describe('G8-A correction reconciliation', () => {
 
     expect(tournamentRepo.recalculateStandings).not.toHaveBeenCalled();
     expect(busEmit).not.toHaveBeenCalled();
+  });
+});
+
+describe('G8-D-MINIMAL — no-result reconciliation via the existing correction path', () => {
+  it('recalculateStandingsForResult on a no-result mirrors, recomputes standings, emits tournament.updated, never completes', async () => {
+    matchResultRepo.findById.mockResolvedValue({ matchId: 100, finalResult: null });
+    tournamentRepo.findMatchBySharedMatchId.mockResolvedValue({ id: 5, player1_id: 10, player2_id: 20, tournament_id: 1 });
+    tournamentRepo.updateStatus.mockResolvedValue(undefined);
+
+    await tournamentService.recalculateStandingsForResult(3);
+
+    expect(tournamentRepo.updateMatch).toHaveBeenCalledWith(5, expect.objectContaining({ winner_id: null, status: 'completed' }));
+    expect(tournamentRepo.recalculateStandings).toHaveBeenCalledWith(1);
+    expect(busEmit).toHaveBeenCalledWith('tournament:updated', expect.objectContaining({ tournamentId: 1, standings: true }), expect.anything());
+    expect(tournamentRepo.updateStatus).not.toHaveBeenCalled();
+  });
+
+  it('duplicate/retried no-result reconciliations stay idempotent (same mirror write, same recompute)', async () => {
+    matchResultRepo.findById.mockResolvedValue({ matchId: 100, finalResult: null });
+    tournamentRepo.findMatchBySharedMatchId.mockResolvedValue({ id: 5, player1_id: 10, player2_id: 20, tournament_id: 1 });
+
+    await tournamentService.recalculateStandingsForResult(3);
+    await tournamentService.recalculateStandingsForResult(3);
+
+    expect(tournamentRepo.updateMatch).toHaveBeenCalledTimes(2);
+    expect(tournamentRepo.updateMatch.mock.calls[0][1]).toEqual(tournamentRepo.updateMatch.mock.calls[1][1]);
+    expect(tournamentRepo.recalculateStandings).toHaveBeenCalledTimes(2);
+    expect(tournamentRepo.recalculateStandings).toHaveBeenNthCalledWith(1, 1);
+    expect(tournamentRepo.recalculateStandings).toHaveBeenNthCalledWith(2, 1);
+    expect(tournamentRepo.updateStatus).not.toHaveBeenCalled();
+  });
+
+  it('computeStandings awards NO points for a completed match without a winner', () => {
+    const standings = computeStandings([
+      { player1_id: 1, player2_id: 2, status: 'completed', winner_id: null, round: 1 } as any,
+      { player1_id: 1, player2_id: 3, status: 'completed', winner_id: 1, round: 2 } as any,
+    ], [1, 2, 3]);
+
+    const byReg = new Map(standings.map((s) => [s.registration_id, s]));
+    expect(byReg.get(1)?.points).toBe(3); // only the real win
+    expect(byReg.get(2)?.points).toBe(0);
+    expect(byReg.get(1)?.wins).toBe(1);
   });
 });

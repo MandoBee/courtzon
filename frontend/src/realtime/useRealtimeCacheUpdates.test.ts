@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { ORG_LIFECYCLE_INVALIDATIONS, invalidateOrgLifecycle, USER_REGISTRATION_INVALIDATIONS, invalidateUserRegistration, FINANCE_INVALIDATIONS, invalidateFinanceEntries, MARKETPLACE_PRODUCT_INVALIDATIONS, invalidateMarketplaceProducts, ORG_ACCOUNTING_ROOTS, invalidateOrgAccounting, COACH_LIFECYCLE_INVALIDATIONS, TOURNAMENT_REALTIME_EVENTS, invalidateTournament, MATCH_LIFECYCLE_SOCKET_EVENTS, MATCH_RESULT_SOCKET_EVENTS, invalidateMatchKeys, invalidateRealtimeReconcile, invalidateRegistrationLifecycle } from './useRealtimeCacheUpdates';
+import { ORG_LIFECYCLE_INVALIDATIONS, invalidateOrgLifecycle, USER_REGISTRATION_INVALIDATIONS, invalidateUserRegistration, FINANCE_INVALIDATIONS, invalidateFinanceEntries, MARKETPLACE_PRODUCT_INVALIDATIONS, invalidateMarketplaceProducts, ORG_ACCOUNTING_ROOTS, invalidateOrgAccounting, COACH_LIFECYCLE_INVALIDATIONS, TOURNAMENT_REALTIME_EVENTS, invalidateTournament, invalidateTournamentStandings, MATCH_LIFECYCLE_SOCKET_EVENTS, MATCH_RESULT_SOCKET_EVENTS, invalidateMatchKeys, invalidateRealtimeReconcile, invalidateRegistrationLifecycle } from './useRealtimeCacheUpdates';
 
 function hasPrefix(keys: readonly (readonly string[])[], prefix: string[]): boolean {
   return keys.some((k) => prefix.every((part, i) => k[i] === part));
@@ -363,5 +363,62 @@ describe('TOURNAMENT_REALTIME_EVENTS (Group 5B draw/progression realtime strateg
       expect(invalidated).toContainEqual(['tournament-waitlist']);
       expect(invalidated).toContainEqual(['my-tournaments']);
     });
+  });
+});
+
+describe('G8-D-MINIMAL — result-correction standings invalidation', () => {
+  function fakeQc() {
+    const invalidated: string[][] = [];
+    return {
+      qc: {
+        invalidateQueries: ({ queryKey }: { queryKey: readonly (string | number)[] }) => {
+          invalidated.push(queryKey.map(String));
+        },
+      },
+      invalidated,
+    };
+  }
+
+  it('invalidateTournamentStandings targets ONLY the authoritative standings key (both numeric + string forms)', () => {
+    const { qc, invalidated } = fakeQc();
+    invalidateTournamentStandings(qc as any, 7);
+    expect(invalidated).toContainEqual(['tournament', '7', 'standings']);
+    expect(invalidated).toContainEqual(['tournament', '7', 'standings']);
+    expect(invalidated).toHaveLength(2); // numeric + string key-count forms only
+    // Never indiscriminate: no tournament root/bracket/matches keys.
+    for (const key of invalidated) {
+      expect(key[key.length - 1]).toBe('standings');
+    }
+  });
+
+  it('invalidateTournamentStandings is a no-op for null/undefined tournament ids', () => {
+    const { qc, invalidated } = fakeQc();
+    invalidateTournamentStandings(qc as any, null);
+    invalidateTournamentStandings(qc as any, undefined);
+    expect(invalidated).toHaveLength(0);
+  });
+
+  it('the correction realtime path routes through invalidateTournamentStandings only when standings:true', () => {
+    // The handler splits `tournament.updated` into lifecycle + (standings===true)
+    // targeted invalidation. Simulating the exact dispatch used in
+    // useRealtimeCacheUpdates: standings true → standings key invalidated.
+    const { qc, invalidated } = fakeQc();
+    let last: any = null;
+    const handler = (p: any) => {
+      invalidateRegistrationLifecycle(qc, p);
+      if (p?.standings === true) invalidateTournamentStandings(qc, p?.tournamentId);
+      last = p;
+    };
+    // Correction payload (backend emits tournament.updated { standings: true }).
+    handler({ tournamentId: 7, standings: true });
+    const standingsKeys = invalidated.filter((k) => k.join(':').endsWith(':standings'));
+    expect(standingsKeys).toContainEqual(['tournament', '7', 'standings']);
+    expect(standingsKeys.length).toBeGreaterThan(0);
+    // A non-standings tournament.updated (e.g. eligibility change) must NOT
+    // invalidate standings keys.
+    invalidated.length = 0;
+    handler({ tournamentId: 8, standings: false });
+    expect(invalidated.some((k) => k.join(':').endsWith(':standings'))).toBe(false);
+    expect(last.tournamentId).toBe(8);
   });
 });

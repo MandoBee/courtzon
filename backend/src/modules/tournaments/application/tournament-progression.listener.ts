@@ -29,7 +29,7 @@ const QUEUE_NAME = SUBSCRIBER_ID;
  */
 export function registerTournamentProgressionSubscribers(): void {
   for (const eventName of [
-    'match:result-approved', 'match:result-auto-approved', 'match:result-resolved', 'match:result-corrected',
+    'match:result-approved', 'match:result-auto-approved', 'match:result-resolved', 'match:result-corrected', 'match:result-no-result',
   ]) {
     eventBusV2.subscribe({
       subscriberId: SUBSCRIBER_ID,
@@ -72,9 +72,13 @@ async function handleProgressionEvent(envelope: EventEnvelope): Promise<void> {
 
   // G8-A — corrections reconcile the projection + standings (no progression
   // re-run; bracket reversal after irreversible progression is a G8-D decision).
-  if (envelope.eventName === 'match:result-corrected') {
+  // G8-D-MINIMAL — an automatic no-result expiry (match-result-deadline.worker →
+  // markExpiredNoResult) carries NO winner and is reconciliation-only: mirror the
+  // projection + recompute standings, never progressing, never assigning a winner,
+  // never completing the tournament. It reuses the exact correction path.
+  if (envelope.eventName === 'match:result-corrected' || envelope.eventName === 'match:result-no-result') {
     await tournamentService.recalculateStandingsForResult(Number(data.resultId));
-    log.info({ eventId: envelope.eventId, resultId: data.resultId }, 'progression.event.correction_reconciled');
+    log.info({ eventId: envelope.eventId, resultId: data.resultId, eventName: envelope.eventName }, 'progression.event.result_reconciled');
     return;
   }
 
