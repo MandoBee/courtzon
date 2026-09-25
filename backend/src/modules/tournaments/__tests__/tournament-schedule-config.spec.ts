@@ -17,6 +17,7 @@ const repo = vi.hoisted(() => ({
   updateRegistrationPaymentStatus: vi.fn(),
   getOrgActivePaymentMethodSlugs: vi.fn(),
   findPlayerIdsForSport: vi.fn(),
+  findEligibleDiscoveryAudience: vi.fn(),
   update: vi.fn(),
   updateStatus: vi.fn(),
 }));
@@ -97,6 +98,7 @@ beforeEach(() => {
   repo.updateRegistrationPaymentStatus.mockResolvedValue(undefined);
   repo.getOrgActivePaymentMethodSlugs.mockResolvedValue([]);
   repo.findPlayerIdsForSport.mockResolvedValue([]);
+  repo.findEligibleDiscoveryAudience.mockResolvedValue([]);
   repo.update.mockResolvedValue(undefined);
   repo.updateStatus.mockResolvedValue(undefined);
   branchRepo.findById.mockResolvedValue({ id: 5, opening_time: '08:00:00', closing_time: '22:00:00' });
@@ -237,9 +239,9 @@ describe('Group 4 — venue resolution + detail response', () => {
 describe('Group 4 — publication notification targeting', () => {
   it('13. publish() emits tournament:registration-open ONLY for players matching the tournament sport', async () => {
     repo.findById.mockResolvedValue(makeTournament({ id: 1, sport_id: 22, status: 'draft' }));
-    repo.findPlayerIdsForSport.mockResolvedValue([42, 43]);
+    repo.findEligibleDiscoveryAudience.mockResolvedValue([42, 43]);
     await svc.publish(1);
-    expect(repo.findPlayerIdsForSport).toHaveBeenCalledWith(22);
+    expect(repo.findEligibleDiscoveryAudience).toHaveBeenCalledWith(expect.objectContaining({ sport_id: 22 }));
     expect(bus.emit).toHaveBeenCalledWith('tournament:registration-open', expect.objectContaining({ tournamentId: 1, userId: 42 }), expect.anything());
     expect(bus.emit).toHaveBeenCalledWith('tournament:registration-open', expect.objectContaining({ tournamentId: 1, userId: 43 }), expect.anything());
     // An unrelated sport's audience is excluded by the sport-scoped query — no
@@ -252,16 +254,16 @@ describe('Group 4 — publication notification targeting', () => {
 
   it('openRegistration() notifies the same sport audience', async () => {
     repo.findById.mockResolvedValue(makeTournament({ id: 1, sport_id: 22, status: 'published' }));
-    repo.findPlayerIdsForSport.mockResolvedValue([42]);
+    repo.findEligibleDiscoveryAudience.mockResolvedValue([42]);
     await svc.openRegistration(1);
-    expect(repo.findPlayerIdsForSport).toHaveBeenCalledWith(22);
+    expect(repo.findEligibleDiscoveryAudience).toHaveBeenCalledWith(expect.objectContaining({ sport_id: 22 }));
     expect(bus.emit).toHaveBeenCalledWith('tournament:registration-open', expect.objectContaining({ userId: 42 }), expect.anything());
   });
 
   it('publish() does NOT notify when the tournament has no sport (no fabricated audience)', async () => {
     repo.findById.mockResolvedValue(makeTournament({ id: 1, sport_id: undefined, status: 'draft' }));
     await svc.publish(1);
-    expect(repo.findPlayerIdsForSport).not.toHaveBeenCalled();
+    expect(repo.findEligibleDiscoveryAudience).not.toHaveBeenCalled();
     expect(bus.emit.mock.calls.some((c) => c[0] === 'tournament:registration-open')).toBe(false);
   });
 });

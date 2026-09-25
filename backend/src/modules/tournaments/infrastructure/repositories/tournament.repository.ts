@@ -1,5 +1,6 @@
 import { getPool } from '../../../../database/mysql.js';
 import { buildPagination, paginationClause } from '../../../../shared/utils/pagination.js';
+import { normalizeEligibility, buildDiscoveryAudienceSql, resolveDiscoveryAgeFilter, resolveDiscoveryGenderFilter } from '../../domain/tournament-eligibility.js';
 import type { Tournament, TournamentRegistration, TournamentMatch, TournamentMatchResult, TournamentGroup, TournamentGroupMember, TournamentStandingRow, TournamentStage, TournamentPrize, TournamentPrizeInput } from '../../domain/tournament-aggregate.js';
 import type { PoolConnection } from 'mysql2/promise';
 
@@ -224,6 +225,40 @@ export class TournamentRepository {
       [sportId, sportId],
     );
     return rows.map((r) => Number(r.user_id));
+  }
+
+  /**
+   * Group 7-C — Tournament discovery audience.
+   *
+   * Sport (interests ∪ main sport) THEN age (YEAR-only) THEN gender THEN branch
+   * (only when the tournament has an authoritative branch). LEVEL is NEVER an
+   * exclusion predicate. Set-based, deduplicated — no per-user queries.
+   */
+  async findEligibleDiscoveryAudience(t: Tournament): Promise<number[]> {
+    const eligibility = normalizeEligibility(t);
+    const tournamentYear = Number(String(t.start_date ?? '').slice(0, 4));
+
+    let categories: Array<{ type: 'youth' | 'masters'; min_age: number | null; max_age: number | null }> = [];
+    if (eligibility.ageMode === 'categories' && eligibility.ageCategoryIds.length > 0) {
+      const [catRows] = await getPool().query<RowData>(
+        'SELECT type, min_age, max_age FROM tournament_age_categories WHERE id IN (?) AND is_active = 1',
+        [eligibility.ageCategoryIds],
+      );
+      categories = (catRows as Record<string, unknown>[]).map((c) => ({
+        type: c.type as 'youth' | 'masters',
+        min_age: c.min_age != null ? Number(c.min_age) : null,
+        max_age: c.max_age != null ? Number(c.max_age) : null,
+      }));
+    }
+
+    const { sql, params } = buildDiscoveryAudienceSql({
+      sportId: t.sport_id as number,
+      age: resolveDiscoveryAgeFilter(categories, tournamentYear),
+      gender: resolveDiscoveryGenderFilter(eligibility.genderCategories),
+      branchId: t.branch_id ?? null,
+    });
+    const [rows] = await getPool().query<RowData>(sql, params);
+    return Array.from(new Set(rows.map((r) => Number((r as Record<string, unknown>).id))));
   }
 
   async findByCode(code: string): Promise<Tournament | null> {

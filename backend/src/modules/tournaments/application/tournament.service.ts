@@ -424,20 +424,35 @@ export class TournamentService {
    */
   private async emitRegistrationOpenNotifications(t: Tournament): Promise<void> {
     if (t.sport_id == null || t.id == null) return;
+    // Group 7-C — visibility: private/unlisted tournaments never emit discovery
+    // notifications (tenant/public isolation preserved).
+    if (Number(t.is_public ?? 1) !== 1) return;
     let userIds: number[] = [];
     try {
-      userIds = await tournamentRepository.findPlayerIdsForSport(t.sport_id);
+      // Sport → age (YEAR-only) → gender → branch (when set). LEVEL excluded.
+      userIds = await tournamentRepository.findEligibleDiscoveryAudience(t);
     } catch (err) {
       // Notification emission is non-fatal; tournament lifecycle already persisted.
       console.error('emitRegistrationOpenNotifications audience resolution failed', err);
       return;
     }
+    // Additive eligibility context for traceability (never sensitive player data).
+    const eligibilityContext = (() => {
+      const eligibility = normalizeEligibility(t);
+      return {
+        ageMode: eligibility.ageMode,
+        ageCategoryIds: eligibility.ageCategoryIds,
+        genderCategories: eligibility.genderCategories,
+        branchId: t.branch_id ?? null,
+      };
+    })();
     for (const userId of userIds) {
       eventBusV2.emit('tournament:registration-open', {
         tournamentId: t.id,
         userId,
         name: t.name,
         ...this.tournamentRealtimeScope(t),
+        ...eligibilityContext,
       } as Record<string, unknown>, {
         aggregateType: 'tournament', aggregateId: String(t.id), aggregateVersion: 1,
       });

@@ -144,3 +144,90 @@ export const TOURNAMENT_AGE_CATEGORY_SEED_DEFINITIONS: ReadonlyArray<{
 
 export const YOUTH_AGE_CATEGORY_IDS = TOURNAMENT_AGE_CATEGORY_SEED_DEFINITIONS.filter((c) => c.type === 'youth').map((c) => c.id);
 export const MASTERS_AGE_CATEGORY_IDS = TOURNAMENT_AGE_CATEGORY_SEED_DEFINITIONS.filter((c) => c.type === 'masters').map((c) => c.id);
+
+/* ──────────────────────────────────────────────────────────────────────────
+ * Group 7-C — Discovery Notification targeting.
+ *
+ * The discovery audience is SPORT (interests ∪ main_sport) THEN age (YEAR-only)
+ * THEN gender THEN branch (when a branch is set). LEVEL is NEVER a predicate.
+ * Filters are resolved to parameterized, set-based SQL conditions (no N+1,
+ * no loading users into Node).
+ * ────────────────────────────────────────────────────────────────────────── */
+
+export type DiscoveryAgeFilter = { active: false } | { active: true; relation: 'ge' | 'le'; value: number };
+
+/**
+ * Collapse the selected age categories into ONE birth-year predicate.
+ * Youth: eligible when age ≤ max_age ⇒ birth_year ≥ tournamentYear − max(max_age).
+ * Masters: eligible when age ≥ min_age ⇒ birth_year ≤ tournamentYear − min(min_age).
+ * Single-family is guaranteed by G7-B; a corrupt mixed config logs+skips (never
+ * silently narrows the audience).
+ */
+export function resolveDiscoveryAgeFilter(
+  categories: ReadonlyArray<{ type: 'youth' | 'masters'; min_age: number | null; max_age: number | null }>,
+  tournamentYear: number,
+): DiscoveryAgeFilter {
+  if (!categories || categories.length === 0) return { active: false };
+  const families = new Set(categories.map((c) => c.type));
+  if (families.size > 1) return { active: false };
+
+  if (families.has('youth')) {
+    const maxMax = Math.max(...categories.map((c) => c.max_age ?? 0));
+    return { active: true, relation: 'ge', value: tournamentYear - maxMax };
+  }
+  const minMin = Math.min(...categories.map((c) => c.min_age ?? 0));
+  return { active: true, relation: 'le', value: tournamentYear - minMin };
+}
+
+export type DiscoveryGenderFilter = { active: false } | { active: true; value: 'male' | 'female' };
+
+/**
+ * Gender discovery filter: a single explicit gender restricts; otherwise
+ * (male+female, mixed, empty) the individual gender is irrelevant for discovery.
+ */
+export function resolveDiscoveryGenderFilter(categories: ReadonlyArray<TournamentGenderCategory>): DiscoveryGenderFilter {
+  const set = new Set(categories ?? []);
+  if (!set.size || set.has('mixed') || (set.has('male') && set.has('female'))) return { active: false };
+  return { active: true, value: set.has('male') ? 'male' : 'female' };
+}
+
+export interface DiscoveryAudienceFilters {
+  sportId: number;
+  age: DiscoveryAgeFilter;
+  gender: DiscoveryGenderFilter;
+  branchId: number | null;
+}
+
+/**
+ * Set-based audience SQL: sport base (interests ∪ main_sport, DISTINCT), then
+ * age/gender/branch predicates. NO player_levels predicate ever.
+ */
+export function buildDiscoveryAudienceSql(f: DiscoveryAudienceFilters): { sql: string; params: Array<number | string> } {
+  const base = `SELECT DISTINCT u.id
+    FROM (
+      SELECT user_id FROM player_sport_interests WHERE sport_id = ?
+      UNION
+      SELECT user_id FROM player_profiles WHERE main_sport_id = ?
+    ) a
+    JOIN users u ON u.id = a.user_id AND u.account_status = 'active' AND u.deleted_at IS NULL`;
+
+  const where: string[] = [];
+  const params: Array<number | string> = [f.sportId, f.sportId];
+
+  if (f.age.active) {
+    where.push('u.birth_date IS NOT NULL');
+    where.push(f.age.relation === 'ge' ? 'YEAR(u.birth_date) >= ?' : 'YEAR(u.birth_date) <= ?');
+    params.push(f.age.value);
+  }
+  if (f.gender.active) {
+    where.push('u.gender = ?');
+    params.push(f.gender.value);
+  }
+  if (f.branchId != null) {
+    where.push('EXISTS (SELECT 1 FROM user_branches ub2 WHERE ub2.user_id = u.id AND ub2.branch_id = ?)');
+    params.push(f.branchId);
+  }
+
+  const sql = where.length ? `${base} WHERE ${where.join(' AND ')}` : base;
+  return { sql, params };
+}
