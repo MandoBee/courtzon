@@ -1,51 +1,99 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { TournamentService } from '../application/tournament.service.js';
+import { ErrorCodes } from '../../../shared/errors/error-codes.js';
+import { ParticipantDrawService } from '../application/participant-draw.service.js';
+import { MatchScheduleService } from '../application/match-schedule.service.js';
 import type { Tournament } from '../domain/tournament-aggregate.js';
 
 /**
- * Group 5 — seed consumption + preservation regression.
+ * G8-B — seed consumption + preservation regression through the MODERN
+ * locked-draw flow (the legacy TournamentService.generateBracket path was
+ * removed — see tournament-legacy-routes-removed.spec.ts).
  *
- * The authoritative participant seed is stored in
- * `tournament_registrations.seed_rank` and exposed to the domain as `seed`
- * (repository mapping). This spec proves the draw:
- *   1. CONSUMES the persisted seed (seed #1 / #2 / #3 / #4 are honoured — the
- *      bracket is ordered by seed, never by registration/user-id order).
- *   2. NEVER overwrites a seed (a draw/re-draw is placement-only; the seed
- *      numbers stay untouched and the draw only reads them).
- *   3. Is deterministic for the same participants + seeds.
+ * The authoritative participant seed is stored in `tournament_registrations.seed`
+ * and mapped onto `tournament_participants` by syncParticipants. This spec proves
+ * the modern flow (generateDraw → approve → lock → generateMatchesFromLockedDraw):
+ *   1. CONSUMES the persisted seed — draw placement honours seed order.
+ *   2. NEVER overwrites a seed — a draw writes placements only.
+ *   3. Generates matches only from a LOCKED draw (lifecycle gate preserved).
+ *   4. Doubles/team locked-draw generation is untouched (roster-aware shared matches).
  */
 
-const repo = vi.hoisted(() => ({
+const pdRepo = vi.hoisted(() => ({
+  findParticipantByRegistration: vi.fn(),
+  findParticipantById: vi.fn(),
+  createParticipant: vi.fn(),
+  listParticipantsByTournament: vi.fn(),
+  countParticipantsByTournament: vi.fn(),
+  createSeed: vi.fn(),
+  findSeedByParticipant: vi.fn(),
+  findSeedByNumber: vi.fn(),
+  updateSeed: vi.fn(),
+  clearCurrentDraws: vi.fn(),
+  createDraw: vi.fn(),
+  getNextDrawAttempt: vi.fn(),
+  findCurrentDraw: vi.fn(),
+  findDrawById: vi.fn(),
+  updateDraw: vi.fn(),
+  createDrawEntry: vi.fn(),
+  findDrawEntries: vi.fn(),
+}));
+
+const pmRepo = vi.hoisted(() => ({
+  addMember: vi.fn(),
+  listMembersByTournament: vi.fn(),
+  listMembersByParticipant: vi.fn(),
+}));
+
+const tRepo = vi.hoisted(() => ({
   findById: vi.fn(),
   findRegistrationsByTournament: vi.fn(),
-  findMatches: vi.fn(),
-  updateStatus: vi.fn(),
+  countMatches: vi.fn(),
   createMatch: vi.fn(),
-  findBracketSlot: vi.fn(),
-  updateMatch: vi.fn(),
-  findGroups: vi.fn(),
-  findGroupMembers: vi.fn(),
 }));
 
-const mrRepo = vi.hoisted(() => ({
-  findFormatById: vi.fn(),
-  findRuleSetById: vi.fn(),
-  resolveDefaultFormatForSport: vi.fn(),
-  findActiveRuleSetForFormat: vi.fn(),
-  listRuleSetsBySport: vi.fn(),
+const tSvc = vi.hoisted(() => ({
+  getByIdDetailed: vi.fn(),
+  resolveMatchFormatContext: vi.fn(),
+  advanceByes: vi.fn(),
+  resolveEffectiveRegistrationPaymentMethods: vi.fn(async () => ['cash', 'card']),
 }));
 
-const matchServiceMock = vi.hoisted(() => ({ createForTournament: vi.fn() }));
-const audit = vi.hoisted(() => ({ recordAudit: vi.fn() }));
+const matchSvc = vi.hoisted(() => ({ createForTournament: vi.fn() }));
+const reservationSvc = vi.hoisted(() => ({ reserveCourt: vi.fn(), rescheduleCourt: vi.fn(), releaseCourt: vi.fn() }));
+const crRepo = vi.hoisted(() => ({ findTournamentBooking: vi.fn() }));
+const bookingRepo = vi.hoisted(() => ({ checkSlotAvailability: vi.fn(async () => true) }));
 const bus = vi.hoisted(() => ({ emit: vi.fn() }));
-const pool = vi.hoisted(() => ({ execute: vi.fn(async () => [[]]), query: vi.fn(async () => [[]]) }));
+const audit = vi.hoisted(() => ({ recordAudit: vi.fn() }));
+const ratingRepo = vi.hoisted(() => ({ getRating: vi.fn() }));
+const ratingSvc = vi.hoisted(() => ({ resolveOverallPercent: vi.fn() }));
 
-vi.mock('../infrastructure/repositories/tournament.repository.js', () => ({ tournamentRepository: repo }));
-vi.mock('../../../database/mysql.js', () => ({ getPool: () => pool }));
-vi.mock('../../audit-log/index.js', () => ({ recordAudit: audit.recordAudit }));
+const poolConn = vi.hoisted(() => ({
+  beginTransaction: vi.fn(async () => undefined),
+  commit: vi.fn(async () => undefined),
+  rollback: vi.fn(async () => undefined),
+  release: vi.fn(),
+  query: vi.fn(async () => [[]]),
+  execute: vi.fn(async () => [[]]),
+}));
+const poolMock = vi.hoisted(() => ({
+  getConnection: vi.fn(async () => poolConn),
+  query: vi.fn(async () => [[]]),
+  execute: vi.fn(async () => [[]]),
+}));
+
+vi.mock('../infrastructure/repositories/participant-draw.repository.js', () => ({ participantDrawRepository: pdRepo }));
+vi.mock('../infrastructure/repositories/participant-member.repository.js', () => ({ participantMemberRepository: pmRepo }));
+vi.mock('../infrastructure/repositories/tournament.repository.js', () => ({ tournamentRepository: tRepo }));
+vi.mock('../application/tournament.service.js', () => ({ tournamentService: tSvc }));
+vi.mock('../../match/application/services/match.service.js', () => ({ matchService: matchSvc }));
+vi.mock('../../booking/application/court-reservation.service.js', () => ({ courtReservationService: reservationSvc }));
+vi.mock('../../booking/infrastructure/repositories/court-reservation.repository.js', () => ({ courtReservationRepository: crRepo }));
+vi.mock('../../booking/infrastructure/repositories/booking.repository.js', () => ({ bookingRepository: bookingRepo }));
+vi.mock('../../../database/mysql.js', () => ({ getPool: () => poolMock }));
 vi.mock('../../../shared/event-bus/event-bus.v2.js', () => ({ eventBusV2: bus }));
-vi.mock('../../match-result/infrastructure/match-result.repository.js', () => ({ matchResultRepository: mrRepo }));
-vi.mock('../../match/application/services/match.service.js', () => ({ matchService: matchServiceMock }));
+vi.mock('../../audit-log/index.js', () => ({ recordAudit: audit.recordAudit }));
+vi.mock('../../match-result/infrastructure/rating.repository.js', () => ({ ratingRepository: ratingRepo }));
+vi.mock('../../match-result/application/rating/rating.service.js', () => ({ ratingService: ratingSvc }));
 
 function makeTournament(overrides: Partial<Tournament> = {}): Tournament {
   return {
@@ -58,83 +106,145 @@ function makeTournament(overrides: Partial<Tournament> = {}): Tournament {
   };
 }
 
-function seededReg(id: number, playerId: number, seed: number) {
-  return { id, tournament_id: 1, player_id: playerId, seed, seed_rank: seed, status: 'confirmed', payment_status: 'paid' };
+function seededParticipant(id: number, playerId: number, seed: number | null) {
+  return {
+    id, tournament_id: 1, registration_id: id, participant_type: 'individual', status: 'active',
+    member_user_ids: [playerId], player_id: playerId,
+    seed_number: seed, seed_source: seed != null ? 'manual' : null,
+  };
 }
 
-const svc = new TournamentService();
+const pd = new ParticipantDrawService();
+const ms = new MatchScheduleService();
+
+const FORMAT_CTX = {
+  formatId: 1, ruleSetId: 1,
+  formatSnapshot: { formatId: 1, formatType: 'singles', playersPerSide: 1, name: 'Tennis Standard' },
+  ruleSnapshot: { score_structure: 'sets' },
+};
+
+function baseline(matchServiceReturn = { id: 900 }) {
+  tRepo.findById.mockResolvedValue(makeTournament({ id: 1 }));
+  tRepo.findRegistrationsByTournament.mockResolvedValue([
+    { id: 4, tournament_id: 1, player_id: 40, seed: 4, seed_rank: 4, status: 'confirmed' },
+    { id: 2, tournament_id: 1, player_id: 20, seed: 2, seed_rank: 2, status: 'confirmed' },
+    { id: 1, tournament_id: 1, player_id: 10, seed: 1, seed_rank: 1, status: 'confirmed' },
+    { id: 3, tournament_id: 1, player_id: 30, seed: 3, seed_rank: 3, status: 'confirmed' },
+  ]);
+  tRepo.countMatches.mockResolvedValue(0);
+  tRepo.createMatch.mockResolvedValue(100);
+  tSvc.getByIdDetailed.mockResolvedValue(makeTournament({ id: 1 }));
+  tSvc.resolveMatchFormatContext.mockResolvedValue(FORMAT_CTX);
+  tSvc.advanceByes.mockResolvedValue({ advanced: 0 });
+  pdRepo.findParticipantByRegistration.mockImplementation(async (tid: number, regId: number) => ({ id: regId, tournament_id: tid, registration_id: regId, participant_type: 'individual', status: 'active', member_user_ids: [regId * 10] }));
+  pdRepo.createParticipant.mockResolvedValue(1);
+  pdRepo.findSeedByParticipant.mockResolvedValue(null);
+  pdRepo.createSeed.mockResolvedValue(1);
+  pdRepo.findSeedByNumber.mockResolvedValue(null);
+  pdRepo.countParticipantsByTournament.mockResolvedValue(4);
+  pdRepo.findCurrentDraw.mockResolvedValue(null);
+  pdRepo.getNextDrawAttempt.mockResolvedValue(1);
+  pdRepo.clearCurrentDraws.mockResolvedValue(undefined);
+  pdRepo.createDraw.mockResolvedValue(10);
+  pdRepo.createDrawEntry.mockResolvedValue(1);
+  pdRepo.findDrawById.mockResolvedValue({ id: 10, tournament_id: 1, attempt_number: 1, draw_seed: 42, status: 'draft', validation_status: 'valid', is_current: 1 });
+  pdRepo.findParticipantById.mockImplementation(async (id: number) => seededParticipant(id, id * 10, id));
+  matchSvc.createForTournament.mockResolvedValue(matchServiceReturn);
+  poolConn.beginTransaction.mockImplementation(async () => undefined);
+  poolConn.commit.mockImplementation(async () => undefined);
+  poolConn.rollback.mockImplementation(async () => undefined);
+  poolConn.release.mockImplementation(() => undefined);
+  poolConn.query.mockImplementation(async () => [[]]);
+}
 
 beforeEach(() => {
   vi.clearAllMocks();
-  repo.findById.mockResolvedValue(makeTournament({ id: 1 }));
-  repo.findRegistrationsByTournament.mockResolvedValue([
-    seededReg(4, 40, 4),
-    seededReg(2, 20, 2),
-    seededReg(1, 10, 1),
-    seededReg(3, 30, 3),
-  ]);
-  repo.findMatches.mockResolvedValue([]);
-  repo.updateStatus.mockResolvedValue(undefined);
-  repo.createMatch.mockResolvedValue(1);
-  repo.findGroups.mockResolvedValue([]);
-  repo.findGroupMembers.mockResolvedValue([]);
-  mrRepo.findFormatById.mockResolvedValue({ formatId: 1, sportId: 21, formatType: 'singles', playersPerSide: 1, name: 'Tennis', isActive: true });
-  mrRepo.findRuleSetById.mockResolvedValue({ formatId: 1, ruleSetId: 1, version: 1, rules: { best_of: 3 }, standingsRules: null });
-  matchServiceMock.createForTournament.mockImplementation(async (input: any) => ({ id: input.participants[0].userId }));
+  baseline();
 });
 
-describe('Group 5 — the draw consumes and preserves the authoritative seed', () => {
-  it('generates a seed-ordered knockout bracket (seed #1/#2 meet, #3/#4 meet) regardless of registration order', async () => {
-    await svc.generateBracket(1);
+describe('G8-B — the modern locked-draw flow consumes and preserves the authoritative seed', () => {
+  it('seed-ordered placement: generateDraw positions seeds 1..4 ascending', async () => {
+    pdRepo.listParticipantsByTournament.mockResolvedValue([
+      seededParticipant(4, 40, 4),
+      seededParticipant(2, 20, 2),
+      seededParticipant(1, 10, 1),
+      seededParticipant(3, 30, 3),
+    ]);
+    await pd.generateDraw(1, 42, 123);
 
-    // Round-1 slot 0 pairs the top two seeds; slot 1 pairs seeds 3 & 4.
-    // The mock registration list is deliberately unordered [4,2,1,3].
-    const round1Matches = repo.createMatch.mock.calls
-      .map((c: any[]) => c[0])
-      .filter((m: any) => m.round === 1 && m.player1_id != null && m.player2_id != null);
-    expect(round1Matches).toHaveLength(2);
-    const slot0 = round1Matches[0];
-    const slot1 = round1Matches[1];
-    expect([slot0.player1_id, slot0.player2_id].sort((a, b) => a - b)).toEqual([10, 20]); // seeds 1 & 2
-    expect([slot1.player1_id, slot1.player2_id].sort((a, b) => a - b)).toEqual([30, 40]); // seeds 3 & 4
+    const entries = pdRepo.createDrawEntry.mock.calls.map((c: any[]) => c[0]);
+    const byParticipant = (pid: number) => entries.find((e: any) => e.participant_id === pid);
+    // Seed #1 → position 0, seed #2 → 1, seed #3 → 2, seed #4 → 3 (regardless of input order).
+    expect(byParticipant(1).position).toBe(0);
+    expect(byParticipant(2).position).toBe(1);
+    expect(byParticipant(3).position).toBe(2);
+    expect(byParticipant(4).position).toBe(3);
   });
 
-  it('seed placement is deterministic — a different draw_seed keeps the SAME seed-ordered bracket', async () => {
-    repo.findById.mockResolvedValue(makeTournament({ id: 1, draw_seed: 999 }));
-    await svc.generateBracket(1);
-    const r1a = repo.createMatch.mock.calls.map((c: any[]) => c[0]).filter((m: any) => m.round === 1 && m.player1_id && m.player2_id);
-    expect(r1a).toHaveLength(2);
+  it('deterministic: a different draw_seed keeps the SAME seed-ordered placement', async () => {
+    pdRepo.listParticipantsByTournament.mockResolvedValue([
+      seededParticipant(4, 40, 4),
+      seededParticipant(2, 20, 2),
+      seededParticipant(1, 10, 1),
+      seededParticipant(3, 30, 3),
+    ]);
+    await pd.generateDraw(1, 42, 999);
+    const posA = pdRepo.createDrawEntry.mock.calls.map((c: any[]) => c[0]).map((e: any) => e.position);
 
     vi.clearAllMocks();
-    repo.findById.mockResolvedValue(makeTournament({ id: 1, draw_seed: 12345 }));
-    repo.findRegistrationsByTournament.mockResolvedValue([
-      seededReg(4, 40, 4), seededReg(2, 20, 2), seededReg(1, 10, 1), seededReg(3, 30, 3),
+    baseline();
+    pdRepo.listParticipantsByTournament.mockResolvedValue([
+      seededParticipant(4, 40, 4),
+      seededParticipant(2, 20, 2),
+      seededParticipant(1, 10, 1),
+      seededParticipant(3, 30, 3),
     ]);
-    repo.findMatches.mockResolvedValue([]);
-    repo.updateStatus.mockResolvedValue(undefined);
-    repo.createMatch.mockResolvedValue(1);
-    matchServiceMock.createForTournament.mockImplementation(async (input: any) => ({ id: input.participants[0].userId }));
-    await svc.generateBracket(1);
-    const r1b = repo.createMatch.mock.calls.map((c: any[]) => c[0]).filter((m: any) => m.round === 1 && m.player1_id && m.player2_id);
+    pdRepo.findDrawById.mockResolvedValue({ id: 10, tournament_id: 1, attempt_number: 1, draw_seed: 1000000, status: 'draft', validation_status: 'valid', is_current: 1 });
+    await pd.generateDraw(1, 42, 1000000);
+    const posB = pdRepo.createDrawEntry.mock.calls.map((c: any[]) => c[0]).map((e: any) => e.position);
 
-    const key = (m: any) => [m.player1_id, m.player2_id].sort((a, b) => a - b).join(',');
-    expect(key(r1b[0])).toBe(key(r1a[0]));
-    expect(key(r1b[1])).toBe(key(r1a[1]));
+    expect(posB).toEqual(posA);
   });
 
-  it('the draw NEVER rewrites a participant seed — it only reads it', async () => {
-    await svc.generateBracket(1);
-    // The draw path only reads registrations and writes match slots. There is
-    // no registration-seed update call at all (seed numbers are preserved).
-    const written = Object.keys(repo.createMatch.mock.calls.map((c: any[]) => c[0])[0] ?? {});
-    expect(written.some((k) => k === 'seed_rank' || k === 'seed')).toBe(false);
-    // The mock repository exposes NO registration-status/seed mutation, and the
-    // draw path never invokes one.
-    expect(Object.keys(repo).some((k) => k.startsWith('updateRegistration'))).toBe(false);
+  it('a draw NEVER rewrites a seed — placement only', async () => {
+    pdRepo.listParticipantsByTournament.mockResolvedValue([
+      seededParticipant(4, 40, 4),
+      seededParticipant(2, 20, 2),
+      seededParticipant(1, 10, 1),
+      seededParticipant(3, 30, 3),
+    ]);
+    await pd.generateDraw(1, 42, 123);
+    expect(pdRepo.createSeed).not.toHaveBeenCalled();
+    expect(pdRepo.updateSeed).not.toHaveBeenCalled();
+    expect(pdRepo.createDrawEntry).toHaveBeenCalledTimes(4);
   });
 
-  it('emits the authoritative tournament:bracket-generated realtime event', async () => {
-    await svc.generateBracket(1);
-    expect(bus.emit).toHaveBeenCalledWith('tournament:bracket-generated', expect.objectContaining({ tournamentId: 1 }), expect.anything());
+  it('generation requires the draw to be LOCKED (lifecycle gate preserved)', async () => {
+    pdRepo.findCurrentDraw.mockResolvedValue({ id: 10, tournament_id: 1, attempt_number: 1, draw_seed: 42, status: 'draft', validation_status: 'valid', is_current: 1 });
+    await expect(ms.generateMatchesFromLockedDraw(1, 1))
+      .rejects.toMatchObject({ code: ErrorCodes.TOURNAMENT_DRAW_NOT_LOCKED });
+    expect(matchSvc.createForTournament).not.toHaveBeenCalled();
+  });
+
+  it('locked-draw generation is roster-aware for doubles/team participants', async () => {
+    pdRepo.findCurrentDraw.mockResolvedValue({ id: 10, tournament_id: 1, attempt_number: 1, draw_seed: 42, status: 'locked', validation_status: 'valid', is_current: 1 });
+    pdRepo.findDrawEntries.mockResolvedValue([
+      { id: 1, draw_id: 10, participant_id: 1, position: 0 },
+      { id: 2, draw_id: 10, participant_id: 2, position: 1 },
+    ]);
+    pdRepo.findParticipantById.mockImplementation(async (id: number) =>
+      id === 1 ? { id: 1, tournament_id: 1, registration_id: 1, participant_type: 'pair', status: 'active', member_user_ids: [11, 12] }
+        : { id: 2, tournament_id: 1, registration_id: 2, participant_type: 'pair', status: 'active', member_user_ids: [21, 22] },
+    );
+
+    await ms.generateMatchesFromLockedDraw(1, 1);
+
+    const call = matchSvc.createForTournament.mock.calls[0][0];
+    expect(call.participants).toEqual([
+      { userId: 11, side: 'home', teamIndex: 0, role: 'host' },
+      { userId: 12, side: 'home', teamIndex: 0, role: 'host' },
+      { userId: 21, side: 'away', teamIndex: 1, role: 'joiner' },
+      { userId: 22, side: 'away', teamIndex: 1, role: 'joiner' },
+    ]);
   });
 });

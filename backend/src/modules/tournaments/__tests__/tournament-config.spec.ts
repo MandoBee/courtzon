@@ -189,25 +189,16 @@ describe('Group 5B-SR — Bracket type configuration', () => {
       .rejects.toMatchObject({ code: ErrorCodes.TOURNAMENT_INVALID_FORMAT });
   });
 
-  it('13. tournament-generated matches preserve selected format/rule configuration (singles)', async () => {
-    // resolveMatchFormatContext uses t.match_format_id + t.rule_set_id when present.
-    repo.findById.mockResolvedValue(makeTournament({ id: 10, format: 'knockout', status: 'registration_closed' }));
-    repo.findRegistrationsByTournament.mockResolvedValue([
-      { id: 1, tournament_id: 10, user_id: 10, player_id: 10, seed: 1, status: 'confirmed' },
-      { id: 2, tournament_id: 10, user_id: 20, player_id: 20, seed: 2, status: 'confirmed' },
-    ]);
-    repo.findMatches.mockResolvedValue([]);
-    repo.updateStatus.mockResolvedValue(undefined);
-    // Group 2 — the legacy registration-based generator is singles-only, so the
-    // fixture format is singles here.
+  it('13. tournament-generated matches preserve selected format/rule configuration (modern locked-draw generator)', async () => {
+    // Modern G8 flow: MatchScheduleService.generateMatchesFromLockedDraw consumes
+    // `resolveMatchFormatContext` (the SAME frozen context the legacy generator
+    // used). Assert the context resolver still returns the configured format + rule.
     mrRepo.findFormatById.mockResolvedValue({ formatId: 1, sportId: 21, formatType: 'singles', playersPerSide: 1, name: 'Tennis', isActive: true });
     mrRepo.findRuleSetById.mockResolvedValue({ formatId: 1, ruleSetId: 1, version: 1, rules: { score_structure: 'sets' }, standingsRules: null });
-    matchServiceMock.createForTournament.mockImplementation(async (input: any) => ({ id: input.participants[0].userId }));
-    repo.createMatch.mockResolvedValue(1);
-    await svc.generateBracket(10);
-    expect(matchServiceMock.createForTournament).toHaveBeenCalledWith(
-      expect.objectContaining({ formatId: 1, ruleSetId: 1, formatSnapshot: expect.objectContaining({ formatId: 1 }) }),
-    );
+    const ctx = await svc.resolveMatchFormatContext(makeTournament({ id: 10, format: 'knockout', status: 'registration_closed' }));
+    expect(ctx).toMatchObject({ formatId: 1, ruleSetId: 1 });
+    expect(ctx.formatSnapshot).toMatchObject({ formatId: 1, formatType: 'singles', name: 'Tennis' });
+    expect(ctx.ruleSnapshot).toMatchObject({ score_structure: 'sets' });
   });
 
   it('14. group 1 historical format snapshot remains valid', async () => {

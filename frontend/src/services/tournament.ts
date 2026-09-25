@@ -20,10 +20,6 @@ export const tournamentApi = {
   getGroups: (tournamentId: number) => api.get(`/admin/tournaments/${tournamentId}/groups`).then(r => r.data),
   generateGroups: (tournamentId: number, groupSize: number, advanceCount: number) =>
     api.post(`/admin/tournaments/${tournamentId}/generate-groups`, { group_size: groupSize, advance_count: advanceCount }).then(r => r.data),
-  generateFixtures: (tournamentId: number) =>
-    api.post(`/admin/tournaments/${tournamentId}/generate-fixtures`).then(r => r.data),
-  generateBracket: (tournamentId: number) =>
-    api.post(`/admin/tournaments/${tournamentId}/generate-bracket`).then(r => r.data),
 
   getMatches: (tournamentId: number) => api.get(`/admin/tournaments/${tournamentId}/matches`).then(r => r.data),
   assignCourt: (matchId: number, resourceId: number) =>
@@ -78,10 +74,6 @@ export const orgTournamentApi = {
   getGroups: (orgId: number | string, tournamentId: number) => api.get(`/org/${orgId}/tournaments/${tournamentId}/groups`).then(r => r.data),
   generateGroups: (orgId: number | string, tournamentId: number, groupSize: number, advanceCount: number) =>
     api.post(`/org/${orgId}/tournaments/${tournamentId}/generate-groups`, { group_size: groupSize, advance_count: advanceCount }).then(r => r.data),
-  generateFixtures: (orgId: number | string, tournamentId: number) =>
-    api.post(`/org/${orgId}/tournaments/${tournamentId}/generate-fixtures`).then(r => r.data),
-  generateBracket: (orgId: number | string, tournamentId: number) =>
-    api.post(`/org/${orgId}/tournaments/${tournamentId}/generate-bracket`).then(r => r.data),
   getMatches: (orgId: number | string, tournamentId: number) => api.get(`/org/${orgId}/tournaments/${tournamentId}/matches`).then(r => r.data),
   assignCourt: (orgId: number | string, matchId: number, resourceId: number) =>
     api.put(`/org/${orgId}/tournaments/matches/${matchId}/court`, { resource_id: resourceId }).then(r => r.data),

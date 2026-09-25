@@ -1,7 +1,7 @@
 import { tournamentRepository, type BracketTypeRow } from '../infrastructure/repositories/tournament.repository.js';
 import { participantDrawRepository } from '../infrastructure/repositories/participant-draw.repository.js';
 import { participantMemberRepository } from '../infrastructure/repositories/participant-member.repository.js';
-import { generateKnockoutBracket, generateRoundRobinMatches, generateStageMatches, normaliseBracketTargets, isTournamentParticipantProgressionEligible, seededShuffle, type BracketSlot } from '../domain/tournament-aggregate.js';
+import { isTournamentParticipantProgressionEligible, seededShuffle } from '../domain/tournament-aggregate.js';
 import { normalizeEligibility } from '../domain/tournament-eligibility.js';
 import type { Tournament, TournamentRegistration, TournamentMatch, TournamentStage, TournamentPrizeInput, TournamentPrizeType, TournamentVenue, TournamentParticipant, TournamentParticipantMember } from '../domain/tournament-aggregate.js';
 import { validateTournamentTransition, validateRegistrationTransition } from '../domain/lifecycle.js';
@@ -45,9 +45,6 @@ export interface BracketProgressionMeta {
   /** Which participant this slot's winner fills on the target slot. */
   target_side?: 'player1' | 'player2';
 }
-
-/** Group 5B — tournament lifecycle steps a deterministic draw walks forward to 'running'. */
-const DRAW_LIFECYCLE_ORDER = ['draft', 'published', 'registration_open', 'registration_closed', 'running'];
 
 /**
  * Group 5B-SR — engine-capable bracket types. The Group 5B progression engine
@@ -1199,180 +1196,6 @@ export class TournamentService {
     }
   }
 
-  async generateFixtures(tournamentId: number): Promise<void> {
-    const groups = await tournamentRepository.findGroups(tournamentId);
-    if (groups.length === 0) throw new ConflictError('No groups exist. Generate groups first.', ErrorCodes.TOURNAMENT_GROUP_NOT_FOUND);
-
-    const t = await this.getById(tournamentId);
-    const formatCtx = await this.resolveMatchFormatContext(t);
-
-    for (const group of groups) {
-      const members = await tournamentRepository.findGroupMembers(group.id!);
-      const regIds = members.map((m) => m.registration_id);
-      const regs = await tournamentRepository.findRegistrationsByTournament(tournamentId);
-      const idToPlayer = new Map<number, number>();
-      for (const reg of regs) { if (reg.id != null && reg.player_id != null) idToPlayer.set(reg.id, reg.player_id); }
-
-      const matches = generateRoundRobinMatches(regIds);
-      for (const m of matches) {
-        const p1 = idToPlayer.get(m.player1Id);
-        const p2 = idToPlayer.get(m.player2Id);
-        if (p1 == null || p2 == null) continue;
-        const sharedMatch = await this.createTournamentMatchFromSlot(t, formatCtx, {
-          round: m.round,
-          player1Id: p1,
-          player2Id: p2,
-        });
-        await tournamentRepository.createMatch({
-          tournament_id: tournamentId,
-          group_id: group.id,
-          round: m.round,
-          match_id: sharedMatch.id,
-          player1_id: p1,
-          player2_id: p2,
-          status: 'scheduled',
-          progression_state: 'pending',
-          progression_meta: { is_bracket: false },
-        });
-      }
-    }
-  }
-
-  async generateBracket(tournamentId: number): Promise<void> {
-    const t = await this.getById(tournamentId);
-
-    // Group 5B — idempotent draw: an existing bracket is never regenerated
-    // (results may already be flowing through progression). Defensive against
-    // repository stubs in unit tests where findMatches may be unresolved.
-    let existingMatches: TournamentMatch[] | undefined;
-    try {
-      existingMatches = await tournamentRepository.findMatches(tournamentId);
-    } catch {
-      existingMatches = undefined;
-    }
-    if (existingMatches && existingMatches.length > 0) {
-      throw new ConflictError('Bracket already generated for this tournament', ErrorCodes.TOURNAMENT_BRACKET_EXISTS);
-    }
-
-    const registrations = await tournamentRepository.findRegistrationsByTournament(tournamentId);
-    const confirmed = registrations.filter((r) => r.status === 'confirmed');
-    const userIds = confirmed.map((r) => r.player_id!).filter(Boolean);
-    if (userIds.length < 2) throw new ConflictError('Need at least 2 participants', ErrorCodes.TOURNAMENT_CAPACITY_EXCEEDED);
-
-    // Deterministic draw from the persisted seed (reproducible + auditable).
-    const seed = t.draw_seed ?? Date.now();
-    const seededBy = new Map<number, number>();
-    for (const reg of confirmed) {
-      if (reg.player_id != null && reg.seed != null) seededBy.set(reg.player_id, reg.seed);
-    }
-
-    const formatCtx = await this.resolveMatchFormatContext(t);
-
-    let slots: BracketSlot[] = [];
-    let isKnockout = false;
-    if (t.format === 'knockout') {
-      slots = normaliseBracketTargets(generateKnockoutBracket(userIds, { seed, seededBy }), userIds.length);
-      isKnockout = true;
-    } else if (t.format === 'round_robin') {
-      slots = generateRoundRobinMatches(userIds).map((m) => ({ round: m.round, bracketPosition: 0, player1Id: m.player1Id, player2Id: m.player2Id }));
-    } else if (t.format === 'group_stage_knockout') {
-      const groups = await tournamentRepository.findGroups(tournamentId);
-      if (groups.length > 0) {
-        for (const group of groups) {
-          const members = await tournamentRepository.findGroupMembers(group.id!);
-          const regIds = members.map((m) => m.registration_id);
-          const regs = await tournamentRepository.findRegistrationsByTournament(tournamentId);
-          const idToPlayer = new Map<number, number>();
-          for (const reg of regs) { if (reg.id != null && reg.player_id != null) idToPlayer.set(reg.id, reg.player_id); }
-          const rr = generateRoundRobinMatches(regIds);
-          for (const m of rr) {
-            const p1 = idToPlayer.get(m.player1Id);
-            const p2 = idToPlayer.get(m.player2Id);
-            if (p1 == null || p2 == null) continue;
-            const sharedMatch = await this.createTournamentMatchFromSlot(t, formatCtx, { round: m.round, player1Id: p1, player2Id: p2 });
-            await tournamentRepository.createMatch({
-              tournament_id: tournamentId,
-              group_id: group.id,
-              round: m.round,
-              match_id: sharedMatch.id,
-              player1_id: p1,
-              player2_id: p2,
-              status: 'scheduled',
-              progression_state: 'pending',
-              progression_meta: { is_bracket: false },
-            });
-          }
-        }
-        // Group stage fixtures are round-robin — nothing to auto-advance.
-        await this.autoStartAfterDraw(t);
-        return;
-      }
-      slots = normaliseBracketTargets(generateKnockoutBracket(userIds, { seed, seededBy }), userIds.length);
-      isKnockout = true;
-    } else if (t.format === 'mixed') {
-      slots = await this.generateMixedStages(t, formatCtx, userIds, seed, seededBy);
-      isKnockout = true;
-    } else {
-      slots = generateStageMatches(t.format ?? 'round_robin', userIds, { seed, seededBy });
-      isKnockout = t.format === 'double_elimination' || t.format === 'swiss';
-      if (isKnockout) slots = normaliseBracketTargets(slots, userIds.length);
-    }
-
-    for (const slot of slots) {
-      const meta = this.buildDrawMeta(slot, isKnockout);
-      const hasBoth = slot.player1Id != null && slot.player2Id != null;
-      if (hasBoth) {
-        // Round-1 (or direct-draw) real match — participants are known now, so a
-        // shared Match is created and linked immediately.
-        const sharedMatch = await this.createTournamentMatchFromSlot(t, formatCtx, slot);
-        await tournamentRepository.createMatch({
-          tournament_id: tournamentId,
-          round: slot.round,
-          bracket_position: slot.bracketPosition,
-          stage_id: slot.stageId ?? null,
-          match_id: sharedMatch.id,
-          player1_id: slot.player1Id ?? null,
-          player2_id: slot.player2Id ?? null,
-          status: 'scheduled',
-          progression_state: 'pending',
-          progression_meta: meta as unknown as Record<string, unknown>,
-        });
-      } else {
-        // A round-1 BYE (explicit metadata — no fake participant, no Match) or a
-        // later-round placeholder whose participants come from progression.
-        await tournamentRepository.createMatch({
-          tournament_id: tournamentId,
-          round: slot.round,
-          bracket_position: slot.bracketPosition,
-          stage_id: slot.stageId ?? null,
-          match_number: slot.bye === true ? 0 : undefined,
-          player1_id: slot.player1Id ?? null,
-          player2_id: slot.player2Id ?? null,
-          status: 'scheduled',
-          progression_state: 'pending',
-          progression_meta: meta as unknown as Record<string, unknown>,
-        });
-      }
-    }
-
-    // Group 5B — propagate explicit byes and padding slots through the bracket
-    // (fixpoint; runs once at draw time, never during live play).
-    await this.advanceByes(tournamentId);
-
-    // Group 5B — a deterministic draw starts the tournament lifecycle.
-    await this.autoStartAfterDraw(t);
-
-    eventBusV2.emit('tournament:bracket-generated', { tournamentId, matchCount: slots.length, ...this.tournamentRealtimeScope(t) } as Record<string, unknown>, {
-      aggregateType: 'tournament', aggregateId: String(tournamentId), aggregateVersion: 1,
-    });
-  }
-
-  /**
-   * Group 5A — resolve the frozen Match Format + Rule Set context a tournament
-   * generated Match must use. Falls back to the sport's active default when the
-   * tournament did not explicitly configure a Match Format/Rule Set. Public so
-   * the G8 match-generation/schedule service reuses the SAME frozen context.
-   */
   async resolveMatchFormatContext(t: Tournament): Promise<{ formatId: number; ruleSetId: number; formatSnapshot: MatchFormatSnapshot; ruleSnapshot: Record<string, unknown> }> {
     if (t.match_format_id != null && t.rule_set_id != null) {
       const fmt = await matchResultRepository.findFormatById(t.match_format_id);
@@ -1412,87 +1235,6 @@ export class TournamentService {
     }
   }
 
-  /** Group 5A — create the shared Match for a bracket slot and return it. */
-  private async createTournamentMatchFromSlot(t: Tournament, formatCtx: { formatId: number; ruleSetId: number; formatSnapshot: MatchFormatSnapshot; ruleSnapshot: Record<string, unknown> }, slot: BracketSlot): Promise<any> {
-    // Group 2 — the legacy registration-based bracket generator (generateBracket/
-    // generateFixtures/generateMixedStages) builds EXACTLY ONE user per side from
-    // confirmed registrations. That is only correct for singles. For doubles/team
-    // formats (players_per_side > 1) it would silently produce a malformed shared
-    // Match with a single player per side — never allowed. The authoritative G8
-    // locked-draw generator (MatchScheduleService.generateMatchesFromLockedDraw)
-    // is roster-aware and remains the ONLY supported path for doubles/team
-    // tournament matches.
-    const playersPerSide = formatCtx.formatSnapshot.playersPerSide;
-    if (playersPerSide != null && playersPerSide > 1) {
-      throw new ConflictError(
-        'The legacy bracket generator supports singles only (one player per side). Use the Draw → Generate Matches flow for doubles/team tournament matches.',
-        ErrorCodes.TOURNAMENT_INVALID_FORMAT,
-      );
-    }
-    const { matchService } = await import('../../match/application/services/match.service.js');
-    const participants = [
-      { userId: slot.player1Id!, side: 'home' as const, teamIndex: 0, role: 'host' as const },
-      { userId: slot.player2Id!, side: 'away' as const, teamIndex: 1, role: 'joiner' as const },
-    ].filter((p) => p.userId != null);
-    if (participants.length < 2) throw new ConflictError('A tournament match requires two participants', ErrorCodes.TOURNAMENT_INVALID_FORMAT);
-    return matchService.createForTournament({
-      tournamentId: t.id!,
-      sportId: t.sport_id!,
-      formatId: formatCtx.formatId,
-      ruleSetId: formatCtx.ruleSetId,
-      formatSnapshot: formatCtx.formatSnapshot,
-      ruleSnapshot: formatCtx.ruleSnapshot,
-      participants,
-    });
-  }
-
-  /** Group 5A — MIXED tournaments: per-stage progression (round-robin -> knockout). */
-  private async generateMixedStages(t: Tournament, formatCtx: { formatId: number; ruleSetId: number; formatSnapshot: MatchFormatSnapshot; ruleSnapshot: Record<string, unknown> }, userIds: number[], seed: number, seededBy: Map<number, number>): Promise<BracketSlot[]> {
-    const stages = await tournamentRepository.findStages(t.id!);
-    if (stages.length === 0) {
-      // No explicit stages — default to a single round-robin stage.
-      return generateRoundRobinMatches(userIds).map((m) => ({ round: m.round, bracketPosition: 0, player1Id: m.player1Id, player2Id: m.player2Id }));
-    }
-    const slots: BracketSlot[] = [];
-    let offset = 0;
-    for (const stage of stages) {
-      const stageFormat = stage.progression_format as Tournament['format'];
-      const stageCtx = stage.match_format_id != null && stage.rule_set_id != null
-        ? await this.resolveMatchFormatContext({ ...t, match_format_id: stage.match_format_id, rule_set_id: stage.rule_set_id })
-        : formatCtx;
-      if (stageFormat === 'knockout') {
-        const knock = generateKnockoutBracket(userIds, { seed: seed + offset, seededBy });
-        const stageRounds = Math.max(1, Math.ceil(Math.log2(Math.max(userIds.length, 2))));
-        slots.push(...knock.map((s) => {
-          const isFirstRound = s.sourceRound == null;
-          return {
-            ...s,
-            stageId: stage.id,
-            round: s.round + offset,
-            // Absolute-round target wiring so buildDrawMeta does not need to know the stage offset.
-            targetRound: s.targetRound != null
-              ? s.targetRound + offset
-              : (isFirstRound && stageRounds > 1 ? offset + 2 : undefined),
-            targetBracketPosition: s.targetBracketPosition != null
-              ? s.targetBracketPosition
-              : (isFirstRound ? Math.floor((s.bracketPosition ?? 0) / 2) : undefined),
-          };
-        }));
-      } else {
-        const rr = generateRoundRobinMatches(userIds).map((m) => ({
-          round: m.round + offset,
-          bracketPosition: 0,
-          stageId: stage.id,
-          player1Id: m.player1Id,
-          player2Id: m.player2Id,
-        }));
-        slots.push(...rr);
-      }
-      offset += 100;
-    }
-    return slots;
-  }
-
   // ── Group 5B: Progression engine ──────────────────────────────────────────
 
   /** Parse the draw-time progression provenance of a bracket slot. */
@@ -1506,33 +1248,6 @@ export class TournamentService {
       return obj as BracketProgressionMeta;
     } catch {
       return null;
-    }
-  }
-
-  /** Build the persisted progression_meta for one draw slot. */
-  private buildDrawMeta(slot: BracketSlot, isKnockout: boolean): BracketProgressionMeta {
-    if (!isKnockout) return { is_bracket: false };
-    return {
-      is_bracket: true,
-      bye: slot.bye === true ? true : undefined,
-      target_round: slot.targetRound != null ? slot.targetRound : null,
-      target_bracket_position: slot.targetBracketPosition != null ? slot.targetBracketPosition : null,
-      target_side: slot.targetSide ?? (((slot.bracketPosition ?? 0) % 2 === 0) ? 'player1' : 'player2'),
-    };
-  }
-
-  /** Group 5B — walk the tournament lifecycle forward to 'running' after a draw. */
-  private async autoStartAfterDraw(t: Tournament): Promise<void> {
-    if (!DRAW_LIFECYCLE_ORDER.includes(t.status)) return;
-    let cur: string = t.status;
-    for (const next of DRAW_LIFECYCLE_ORDER.slice(DRAW_LIFECYCLE_ORDER.indexOf(cur) + 1)) {
-      try {
-        validateTournamentTransition(cur as any, next as any);
-      } catch {
-        return; // a chain link is not permitted — stop, never force a transition
-      }
-      await tournamentRepository.updateStatus(t.id!, next);
-      cur = next;
     }
   }
 

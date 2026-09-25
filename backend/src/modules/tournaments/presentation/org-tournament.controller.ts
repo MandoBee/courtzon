@@ -180,26 +180,6 @@ export async function generateOrgGroupsHandler(request: FastifyRequest, reply: F
   return reply.send({ ok: true });
 }
 
-export async function generateOrgFixturesHandler(request: FastifyRequest, reply: FastifyReply) {
-  const orgId = getOrgId(request);
-  const userId = getUserId(request);
-  const { id } = request.params as any;
-  await assertOrgOwnsTournament(orgId, Number(id));
-  await tournamentService.generateFixtures(Number(id));
-  recordAudit({ actorId: userId, action: 'TOURNAMENT.GENERATE_FIXTURES', entityType: 'tournament', entityId: Number(id), afterState: { orgId } });
-  return reply.send({ ok: true });
-}
-
-export async function generateOrgBracketHandler(request: FastifyRequest, reply: FastifyReply) {
-  const orgId = getOrgId(request);
-  const userId = getUserId(request);
-  const { id } = request.params as any;
-  await assertOrgOwnsTournament(orgId, Number(id));
-  await tournamentService.generateBracket(Number(id));
-  recordAudit({ actorId: userId, action: 'TOURNAMENT.GENERATE_BRACKET', entityType: 'tournament', entityId: Number(id), afterState: { orgId } });
-  return reply.send({ ok: true });
-}
-
 export async function getOrgGroupsHandler(request: FastifyRequest, reply: FastifyReply) {
   const orgId = getOrgId(request);
   const { id } = request.params as any;

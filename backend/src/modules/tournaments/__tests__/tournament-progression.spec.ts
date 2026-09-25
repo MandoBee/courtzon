@@ -388,51 +388,21 @@ describe('TournamentService.progressFromApprovedResult (Group 5B)', () => {
   });
 });
 
-describe('TournamentService.generateBracket idempotency (Group 5B)', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    repo.findById.mockResolvedValue(makeTournament());
-    repo.findRegistrationsByTournament.mockResolvedValue([
-      makeReg({ id: 1, player_id: 10, seed: 1 }),
-      makeReg({ id: 2, player_id: 20, seed: 2 }),
-      makeReg({ id: 3, player_id: 30, seed: 3 }),
-    ]);
-    mrRepo.findFormatById.mockResolvedValue({ formatId: 1, sportId: 22, formatType: 'singles', playersPerSide: 1, name: 'Tennis', isActive: true });
-    mrRepo.findRuleSetById.mockResolvedValue({ formatId: 1, ruleSetId: 1, version: 1, rules: { score_structure: 'sets' }, standingsRules: null });
-    matchServiceMock.createForTournament.mockResolvedValue({ id: 701 });
-    projectRepoDefaultsForBracket();
-  });
-
-  function projectRepoDefaultsForBracket() {
-    repo.findMatches.mockResolvedValue([]);
-    repo.findStages.mockResolvedValue([]);
-    repo.findBracketSlot.mockResolvedValue(null);
-    repo.countIncompleteStageMatches.mockResolvedValue(0);
-    repo.createMatch.mockResolvedValue(1);
-    repo.updateMatch.mockResolvedValue(undefined);
-  }
-
+describe('G8-B — legacy TournamentService.generateBracket removed (modern locked-draw only)', () => {
   const svc = new TournamentService();
 
-  it('throws a ConflictError when the bracket already exists', async () => {
-    repo.findMatches.mockResolvedValue([makeSlot({ id: 9 })]);
-
-    await expect(svc.generateBracket(1)).rejects.toMatchObject({ code: ErrorCodes.TOURNAMENT_BRACKET_EXISTS });
-    expect(repo.createMatch).not.toHaveBeenCalled();
+  it('the legacy registration-driven bracket generator no longer exists', () => {
+    expect((svc as any).generateBracket).toBeUndefined();
+    expect((svc as any).generateFixtures).toBeUndefined();
+    expect((svc as any).createTournamentMatchFromSlot).toBeUndefined();
   });
 
-  it('auto-starts a tournament that has not reached running yet', async () => {
-    repo.findById.mockResolvedValue(makeTournament({ status: 'draft' }));
-    repo.updateStatus.mockResolvedValue(undefined);
-
-    await svc.generateBracket(1);
-
-    // draft → published → registration_open → registration_closed → running
-    const statusCalls = repo.updateStatus.mock.calls.map((c) => c[1]);
-    expect(statusCalls).toContain('published');
-    expect(statusCalls).toContain('registration_open');
-    expect(statusCalls).toContain('registration_closed');
-    expect(statusCalls).toContain('running');
+  it('generation is now exclusively the LOCKED-DRAW path (MatchScheduleService)', () => {
+    // Modern idempotency / lifecycle gating is covered by match-schedule.service.spec
+    // (A1/A2 locked-draw gate, A3 matches-already-generated, T1-T3 wiring). The
+    // service must not accidentally resurrect a registration-driven generator.
+    expect((svc as any).generateBracket).toBeUndefined();
+    expect((svc as any).generateMatches).toBeUndefined();
   });
 });
 

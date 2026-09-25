@@ -25,8 +25,6 @@ const service = vi.hoisted(() => ({
   cancelRegistration: vi.fn(),
   confirmRegistration: vi.fn(),
   generateGroups: vi.fn(),
-  generateFixtures: vi.fn(),
-  generateBracket: vi.fn(),
   getGroups: vi.fn(),
   getMatches: vi.fn(),
   getMatchesDetailed: vi.fn(),
@@ -232,10 +230,6 @@ describe('org-tournament.controller (tenant isolation)', () => {
     service.generateGroups.mockResolvedValue({});
     await ctrl.generateOrgGroupsHandler(req({ params: { orgId: String(ORG_A), id: '7' }, body: { group_size: 4, advance_count: 2 } }), res());
     expect(service.generateGroups).toHaveBeenCalledWith(7, 4, 2);
-
-    service.generateFixtures.mockResolvedValue({});
-    await ctrl.generateOrgFixturesHandler(req({ params: { orgId: String(ORG_A), id: '7' } }), res());
-    expect(service.generateFixtures).toHaveBeenCalledWith(7);
 
     service.createStage.mockResolvedValue({ id: 2 });
     const reply = res();

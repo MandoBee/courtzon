@@ -233,28 +233,6 @@ export async function getGroupsHandler(request: FastifyRequest, reply: FastifyRe
   return reply.send(data);
 }
 
-export async function generateFixturesHandler(request: FastifyRequest, reply: FastifyReply) {
-  const userId = getUserId(request);
-  const { id } = request.params as any;
-  await tournamentService.generateFixtures(Number(id));
-  recordAudit({
-    actorId: userId, action: 'TOURNAMENT.GENERATE_FIXTURES', entityType: 'tournament',
-    entityId: Number(id), ipAddress: request.ip, userAgent: getUserAgent(request),
-  });
-  return reply.send({ message: 'Fixtures generated' });
-}
-
-export async function generateBracketHandler(request: FastifyRequest, reply: FastifyReply) {
-  const userId = getUserId(request);
-  const { id } = request.params as any;
-  await tournamentService.generateBracket(Number(id));
-  recordAudit({
-    actorId: userId, action: 'TOURNAMENT.GENERATE_BRACKET', entityType: 'tournament',
-    entityId: Number(id), ipAddress: request.ip, userAgent: getUserAgent(request),
-  });
-  return reply.send({ success: true });
-}
-
 export async function getBracketHandler(request: FastifyRequest, reply: FastifyReply) {
   const { id } = request.params as any;
   const data = await tournamentService.getBracket(Number(id));

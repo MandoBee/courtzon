@@ -77,17 +77,6 @@ export default function TournamentDetailPage() {
     queryFn: () => api.get(`/tournaments/${id}/participants`).then(r => r.data.data),
   });
 
-  const generateBracket = useMutation({
-    mutationFn: () => api.post(`/admin/tournaments/${id}/generate-bracket`),
-    onSuccess: () => {
-      showToast('Bracket generated!', 'success');
-      qc.invalidateQueries({ queryKey: ['tournament', id] });
-      qc.invalidateQueries({ queryKey: ['tournament', id, 'bracket'] });
-      qc.invalidateQueries({ queryKey: ['tournament', id, 'standings'] });
-    },
-    onError: (e: any) => showToast(e?.response?.data?.message || 'Failed', 'error'),
-  });
-
   // Group 3 — player registration with the tournament's effective allowed
   // payment methods (Cash / Card). Free tournaments register without a method.
   const registerMutation = useMutation({
@@ -175,13 +164,6 @@ export default function TournamentDetailPage() {
           <Can permission="player.tournaments.register">
             <button onClick={() => setShowRegisterModal(true)} className="btn-primary text-sm">
               {registerPaymentMethods.length === 0 ? 'Register' : 'Register & Pay'}
-            </button>
-          </Can>
-        )}
-        {['published', 'registration_open', 'registration_closed'].includes(tournament.status) && !matchList.length && (
-          <Can permission="tournaments.manage_brackets">
-            <button onClick={() => generateBracket.mutate()} disabled={generateBracket.isPending} className="btn-primary text-sm">
-              {generateBracket.isPending ? 'Generating...' : 'Generate Bracket & Start'}
             </button>
           </Can>
         )}

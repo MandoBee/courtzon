@@ -120,16 +120,6 @@ export async function orgTournamentRoutes(app: FastifyInstance): Promise<void> {
     { preHandler: [requireOrgScopedPermission('org.tournaments.manage')] },
     ctrl.generateOrgGroupsHandler,
   );
-  app.post(
-    '/org/:orgId/tournaments/:id/generate-fixtures',
-    { preHandler: [requireOrgScopedPermission('org.tournaments.manage')] },
-    ctrl.generateOrgFixturesHandler,
-  );
-  app.post(
-    '/org/:orgId/tournaments/:id/generate-bracket',
-    { preHandler: [requireOrgScopedPermission('org.tournaments.manage')] },
-    ctrl.generateOrgBracketHandler,
-  );
   app.get(
     '/org/:orgId/tournaments/:id/groups',
     { preHandler: [requireOrgScopedPermission('org.tournaments.view')] },

@@ -67,8 +67,6 @@ export async function tournamentRoutes(app: FastifyInstance): Promise<void> {
   app.post('/admin/tournaments/registrations/:regId/confirm', { preHandler: [requirePermission(['tournament.register'])] }, ctrl.confirmRegistrationHandler);
 
   app.post('/admin/tournaments/:id/generate-groups', { preHandler: [requirePermission(['tournament.manage'])] }, ctrl.generateGroupsHandler);
-  app.post('/admin/tournaments/:id/generate-fixtures', { preHandler: [requirePermission(['tournament.manage'])] }, ctrl.generateFixturesHandler);
-  app.post('/admin/tournaments/:id/generate-bracket', { preHandler: [requirePermission(['tournament.manage'])] }, ctrl.generateBracketHandler);
 
   // Group 5A — MIXED tournament stages
   app.post('/admin/tournaments/:id/stages', { preHandler: [requirePermission(['tournament.manage'])] }, ctrl.createStageHandler);
