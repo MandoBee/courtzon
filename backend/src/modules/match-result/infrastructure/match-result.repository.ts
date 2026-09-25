@@ -3,10 +3,13 @@ import type mysql from 'mysql2/promise';
 import type {
   FinalResult,
   MatchParticipantSlot,
+  MatchResultDetailView,
+  MatchResultListItem,
   MatchResultParticipant,
   MatchResultRecord,
   ParticipantSlot,
   RawMatchResultPayload,
+  ResultParticipantView,
   SportFormat,
   SportRuleSet,
 } from '../domain/match-result.types.js';
@@ -170,6 +173,79 @@ const PARTICIPANT_MAPPER = (r: any): MatchResultParticipant => ({
   ratingAfter: r.rating_after != null ? Number(r.rating_after) : null,
 });
 
+/** Group 4 — read-model participant with real display identity from `users`. */
+const PARTICIPANT_VIEW_MAPPER = (r: any): ResultParticipantView => ({
+  ...PARTICIPANT_MAPPER(r),
+  displayName: r.full_name ?? null,
+  avatarUrl: r.avatar_url ?? null,
+});
+
+/**
+ * Group 4 — authoritative read-model joins for the result list/detail views.
+ * All display data is assembled from existing tables (`sports`, `sport_formats`,
+ * `branches`, `organisations`, `resources`, `tournaments`, `tournament_matches`,
+ * `tournament_stages`) — no new columns, no stored duplicates. Venue uses the
+ * result record's own `branch_id`/`resource_id` snapshots so history is
+ * preserved exactly as recorded; the booking chain is only added where tenant
+ * isolation requires it (listForOrg).
+ */
+const RESULT_DISPLAY_JOINS = `
+   LEFT JOIN sports s ON s.id = r.sport_id
+   LEFT JOIN sport_formats sf ON sf.id = r.format_id
+   LEFT JOIN branches br ON br.id = r.branch_id
+   LEFT JOIN organisations org ON org.id = br.organisation_id
+   LEFT JOIN resources res ON res.id = r.resource_id
+   LEFT JOIN tournament_matches tm ON tm.match_id = r.match_id
+   LEFT JOIN tournaments t ON t.id = COALESCE(r.tournament_id, tm.tournament_id)
+   LEFT JOIN tournament_stages ts ON ts.id = tm.stage_id`;
+
+const RESULT_DISPLAY_COLUMNS = `
+            s.name AS sport_name, s.icon AS sport_icon,
+            sf.name AS format_name, sf.format_type, sf.players_per_side,
+            br.name AS branch_name, org.id AS organisation_id, org.name AS organisation_name,
+            res.name AS resource_name,
+            COALESCE(r.tournament_id, tm.tournament_id) AS tournament_id_display,
+            t.name AS tournament_name,
+            tm.round, tm.round_name, tm.stage_id, ts.name AS stage_name`;
+
+/** Group 4 — map a joined result row to the enriched read model (without participants). */
+const RESULT_VIEW_MAPPER = (r: any): Omit<MatchResultListItem, 'participants'> => {
+  const record = ROW_MAPPER(r);
+  const tournamentId = r.tournament_id_display != null ? Number(r.tournament_id_display) : record.tournamentId;
+  return {
+    ...record,
+    sport: {
+      sportId: record.sportId,
+      sportName: r.sport_name ?? null,
+      sportIcon: r.sport_icon ?? null,
+    },
+    format: {
+      formatId: record.formatId,
+      formatName: r.format_name ?? null,
+      formatType: r.format_type ?? null,
+      playersPerSide: r.players_per_side != null ? Number(r.players_per_side) : null,
+    },
+    venue: {
+      organisationId: r.organisation_id != null ? Number(r.organisation_id) : null,
+      organisationName: r.organisation_name ?? null,
+      branchId: record.branchId,
+      branchName: r.branch_name ?? null,
+      resourceId: record.resourceId,
+      resourceName: r.resource_name ?? null,
+    },
+    tournament: tournamentId != null
+      ? {
+          tournamentId,
+          tournamentName: r.tournament_name ?? null,
+          round: r.round != null ? Number(r.round) : null,
+          roundName: r.round_name ?? null,
+          stageId: r.stage_id != null ? Number(r.stage_id) : null,
+          stageName: r.stage_name ?? null,
+        }
+      : null,
+  };
+};
+
 export class MatchResultRepository {
   async resolveMatchId(id: number): Promise<number> {
     const pool = getPool();
@@ -307,6 +383,76 @@ export class MatchResultRepository {
     return rows.map(PARTICIPANT_MAPPER);
   }
 
+  /**
+   * Group 4 — batch participant read model. Fetches ALL result participants in
+   * ONE query (joined to the authoritative `users` table for display identity)
+   * and groups them by result_id — avoids the N+1 that per-result participant
+   * queries would introduce on list endpoints.
+   */
+  async loadParticipantsView(resultIds: number[]): Promise<Map<number, ResultParticipantView[]>> {
+    const map = new Map<number, ResultParticipantView[]>();
+    if (!resultIds.length) return map;
+    const pool = getPool();
+    const placeholders = resultIds.map(() => '?').join(',');
+    const [rows] = await pool.query<RowData>(
+      `SELECT p.*, u.full_name, u.avatar_url
+       FROM match_result_participants p
+       LEFT JOIN users u ON u.id = p.user_id
+       WHERE p.result_id IN (${placeholders})
+       ORDER BY p.id ASC`,
+      resultIds,
+    );
+    for (const r of rows as any[]) {
+      const item = PARTICIPANT_VIEW_MAPPER(r);
+      const list = map.get(item.resultId) ?? [];
+      list.push(item);
+      map.set(item.resultId, list);
+    }
+    return map;
+  }
+
+  /**
+   * Group 4 — shared read composition for result list/detail views. Runs ONE
+   * authoritative display query (record + sport/format/venue/tournament joins)
+   * then ONE batched participant query. Every list endpoint delegates here so
+   * the data assembly is never duplicated three times.
+   */
+  async queryResultViews(
+    fromSql: string,
+    whereSql: string,
+    params: unknown[],
+    orderSql: string,
+  ): Promise<MatchResultListItem[]> {
+    const pool = getPool();
+    const [rows] = await pool.query<RowData>(
+      `SELECT r.*, ${RESULT_DISPLAY_COLUMNS}
+       ${fromSql}
+       ${whereSql}
+       ${orderSql}`,
+      params,
+    );
+    const items = (rows as any[]).map(RESULT_VIEW_MAPPER);
+    const parts = await this.loadParticipantsView(items.map((i) => i.id));
+    return items.map((item) => ({ ...item, participants: parts.get(item.id) ?? [] }));
+  }
+
+  /**
+   * Group 4 — single result detail view (record + display context + grouped
+   * participants) via the SAME shared read composition used by list endpoints.
+   */
+  async getResultDetailView(resultId: number): Promise<MatchResultDetailView | null> {
+    const items = await this.queryResultViews(
+      'FROM match_result_records r' + RESULT_DISPLAY_JOINS,
+      'WHERE r.id = ?',
+      [resultId],
+      'LIMIT 1',
+    );
+    const item = items[0];
+    if (!item) return null;
+    const { participants, sport, format, venue, tournament, ...record } = item;
+    return { record, sport, format, venue, tournament, participants };
+  }
+
   async insert(input: ResultInsert): Promise<number> {
     const pool = getPool();
     const [res] = await pool.execute(
@@ -400,26 +546,24 @@ export class MatchResultRepository {
     );
   }
 
-  async listForUser(userId: number, limit: number, offset: number): Promise<{ records: MatchResultRecord[]; total: number }> {
+  async listForUser(userId: number, limit: number, offset: number): Promise<{ records: MatchResultListItem[]; total: number }> {
     const pool = getPool();
+    const scope = `(r.match_id IN (SELECT match_id FROM match_result_participants WHERE user_id = ?)
+          OR (r.match_id IN (SELECT id FROM matches m JOIN match_participants mp ON mp.match_id = m.id WHERE mp.user_id = ?)))`;
     const [count] = await pool.execute<RowData>(
-      `SELECT COUNT(*) AS c FROM match_result_records r
-       WHERE r.match_id IN (SELECT match_id FROM match_result_participants WHERE user_id = ?)
-          OR (r.match_id IN (SELECT id FROM matches m JOIN match_participants mp ON mp.match_id = m.id WHERE mp.user_id = ?))`,
+      `SELECT COUNT(*) AS c FROM match_result_records r WHERE ${scope}`,
       [userId, userId],
     );
-    const [rows] = await pool.query<RowData>(
-      `SELECT r.* FROM match_result_records r
-       WHERE r.match_id IN (SELECT match_id FROM match_result_participants WHERE user_id = ?)
-          OR (r.match_id IN (SELECT id FROM matches m JOIN match_participants mp ON mp.match_id = m.id WHERE mp.user_id = ?))
-       ORDER BY r.played_at DESC
-       LIMIT ? OFFSET ?`,
+    const records = await this.queryResultViews(
+      'FROM match_result_records r' + RESULT_DISPLAY_JOINS,
+      `WHERE ${scope}`,
       [userId, userId, limit, offset],
+      'ORDER BY r.played_at DESC LIMIT ? OFFSET ?',
     );
-    return { records: rows.map(ROW_MAPPER), total: Number((count[0] as any).c) };
+    return { records, total: Number((count[0] as any).c) };
   }
 
-  async listForAdmin(filters: { status?: string; disputedOnly?: boolean; limit?: number; offset?: number }): Promise<{ records: MatchResultRecord[]; total: number }> {
+  async listForAdmin(filters: { status?: string; disputedOnly?: boolean; limit?: number; offset?: number }): Promise<{ records: MatchResultListItem[]; total: number }> {
     const pool = getPool();
     const where: string[] = [];
     const params: any[] = [];
@@ -433,11 +577,13 @@ export class MatchResultRepository {
     }
     const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
     const [count] = await pool.execute<RowData>(`SELECT COUNT(*) AS c FROM match_result_records r ${whereSql}`, params);
-    const [rows] = await pool.query<RowData>(
-      `SELECT r.* FROM match_result_records r ${whereSql} ORDER BY r.updated_at DESC LIMIT ? OFFSET ?`,
+    const records = await this.queryResultViews(
+      'FROM match_result_records r' + RESULT_DISPLAY_JOINS,
+      whereSql,
       [...params, filters.limit ?? 20, filters.offset ?? 0],
+      'ORDER BY r.updated_at DESC LIMIT ? OFFSET ?',
     );
-    return { records: rows.map(ROW_MAPPER), total: Number((count[0] as any).c) };
+    return { records, total: Number((count[0] as any).c) };
   }
 
   /**
@@ -446,7 +592,7 @@ export class MatchResultRepository {
    * Tenant isolation: the caller is already org-approved by the route guard and
    * this filter narrows every row to bookings.organisation_id = :orgId.
    */
-  async listForOrg(orgId: number, filters: { status?: string; limit?: number; offset?: number }): Promise<{ records: MatchResultRecord[]; total: number }> {
+  async listForOrg(orgId: number, filters: { status?: string; limit?: number; offset?: number }): Promise<{ records: MatchResultListItem[]; total: number }> {
     const pool = getPool();
     const where: string[] = ['b.organisation_id = ?'];
     const params: any[] = [orgId];
@@ -462,16 +608,15 @@ export class MatchResultRepository {
        WHERE ${where.join(' AND ')}`,
       params,
     );
-    const [rows] = await pool.query<RowData>(
-      `SELECT r.*
-       FROM match_result_records r
+    const records = await this.queryResultViews(
+      `FROM match_result_records r
        JOIN matches m ON m.id = r.match_id
-       JOIN bookings b ON b.id = m.booking_id
-       WHERE ${where.join(' AND ')}
-       ORDER BY r.updated_at DESC LIMIT ? OFFSET ?`,
+       JOIN bookings b ON b.id = m.booking_id` + RESULT_DISPLAY_JOINS,
+      `WHERE ${where.join(' AND ')}`,
       [...params, filters.limit ?? 50, filters.offset ?? 0],
+      'ORDER BY r.updated_at DESC LIMIT ? OFFSET ?',
     );
-    return { records: rows.map(ROW_MAPPER), total: Number((count[0] as any).c) };
+    return { records, total: Number((count[0] as any).c) };
   }
 
   /** Resolve the owning organisation of a result record (null when it has no booking link). */

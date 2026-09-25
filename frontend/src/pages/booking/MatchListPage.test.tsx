@@ -125,3 +125,30 @@ describe('MatchListPage — active vs History classification (Part 3)', () => {
     });
   });
 });
+
+describe('MatchListPage — sport display (Group 4)', () => {
+  it('renders sport_name and sport_icon on the match card', async () => {
+    const withIcon = { ...FUTURE_MATCH, sport_icon: '/uploads/sport/icon/padel.webp' };
+    vi.mocked(api.get).mockImplementation((url: string) => {
+      if (url === '/matches') return Promise.resolve({ data: { data: [withIcon] } });
+      if (url === '/matches/my') return Promise.resolve({ data: { data: [withIcon] } });
+      return Promise.resolve({ data: { data: [] } });
+    });
+    renderPage();
+    await screen.findByText(/Joined/);
+    fireEvent.click(screen.getByText(/Joined/));
+    await screen.findByText('Padel');
+    const img = document.querySelector('img[alt="Padel"]') as HTMLImageElement;
+    expect(img).toBeTruthy();
+    expect(img.src).toContain('padel.webp');
+  });
+
+  it('renders sport_name without an icon when icon data is absent', async () => {
+    renderPage();
+    await screen.findByText(/Joined/);
+    fireEvent.click(screen.getByText(/Joined/));
+    await screen.findByText('Padel');
+    const img = document.querySelector('img[alt="Padel"]');
+    expect(img).toBeNull();
+  });
+});

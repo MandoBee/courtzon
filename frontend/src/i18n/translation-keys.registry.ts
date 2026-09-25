@@ -1076,6 +1076,10 @@ export const translationKeysRegistry: TranslationKeyEntry[] = [
   { key: 'matchResult.statusDisputed', defaultValue: 'Disputed', moduleSlug: 'match', elementType: 'label', elementLabel: 'Disputed status' },
   { key: 'matchResult.statusNoResult', defaultValue: 'No result', moduleSlug: 'match', elementType: 'label', elementLabel: 'No result status' },
   { key: 'matchResult.statusWithdrawn', defaultValue: 'Withdrawn', moduleSlug: 'match', elementType: 'label', elementLabel: 'Withdrawn status' },
+  { key: 'matchResult.venue', defaultValue: 'Venue', moduleSlug: 'match', elementType: 'label', elementLabel: 'Venue label' },
+  { key: 'matchResult.tournament', defaultValue: 'Tournament', moduleSlug: 'match', elementType: 'label', elementLabel: 'Tournament label' },
+  { key: 'matchResult.round', defaultValue: 'Round', moduleSlug: 'match', elementType: 'label', elementLabel: 'Tournament round label' },
+  { key: 'matchResult.team', defaultValue: 'Team {n}', moduleSlug: 'match', elementType: 'label', elementLabel: 'Team number label' },
 
   // ── Booking ──
   { key: 'booking.error.creation_failed', defaultValue: 'Booking failed', moduleSlug: 'booking', elementType: 'message', elementLabel: 'Booking creation failed toast' },

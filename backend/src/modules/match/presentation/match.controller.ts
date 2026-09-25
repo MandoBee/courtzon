@@ -68,7 +68,7 @@ export async function getMatchesHandler(request: FastifyRequest, reply: FastifyR
   const pool = getPool();
 
   const [rows] = await pool.execute<RowData>(
-    `SELECT m.id, m.type, m.status, m.sport_id, s.name as sport_name,
+    `SELECT m.id, m.type, m.status, m.sport_id, s.name as sport_name, s.icon as sport_icon,
             bk.id as booking_id, bk.public_id, bk.booking_status as booking_status,
             bk.booking_date, bk.start_time, bk.end_time, bk.start_at_utc,
             r.name as resource_name, br.name as branch_name, org.name as organisation_name,
@@ -120,7 +120,7 @@ export async function getMyMatchesHandler(request: FastifyRequest, reply: Fastif
   const pool = getPool();
 
   const [rows] = await pool.execute<RowData>(
-    `SELECT m.id, m.type, m.status, m.sport_id, s.name as sport_name,
+    `SELECT m.id, m.type, m.status, m.sport_id, s.name as sport_name, s.icon as sport_icon,
             bk.id as booking_id, bk.public_id, bk.booking_status as booking_status,
             bk.booking_date, bk.start_time, bk.end_time, bk.start_at_utc,
             r.name as resource_name, br.name as branch_name, org.name as organisation_name,

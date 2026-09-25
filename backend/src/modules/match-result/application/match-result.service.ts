@@ -740,13 +740,12 @@ export class MatchResultService {
     return matchResultRepository.findByMatchId(matchIdActual);
   }
 
-  async getResultForMatchWithParticipants(matchId: number) {
+  async getResultForMatchWithParticipants(matchId: number): Promise<import('../domain/match-result.types.js').MatchResultDetailView | null> {
     const matchIdActual = await matchResultRepository.resolveMatchId(matchId);
     if (!matchIdActual) return null;
     const record = await matchResultRepository.findByMatchId(matchIdActual);
     if (!record) return null;
-    const participants = await matchResultRepository.getParticipants(record.id);
-    return { record, participants };
+    return matchResultRepository.getResultDetailView(record.id);
   }
 
   async listForUser(userId: number, limit = 20, offset = 0) {

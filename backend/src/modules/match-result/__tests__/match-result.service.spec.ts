@@ -15,6 +15,7 @@ const repo = vi.hoisted(() => ({
   findActiveRuleSetForFormat: vi.fn(),
   findByMatchId: vi.fn(),
   findById: vi.fn(),
+  getResultDetailView: vi.fn(),
   insert: vi.fn(),
   replaceParticipants: vi.fn(),
   updateResult: vi.fn(),
@@ -698,6 +699,39 @@ describe('Group 2 — authoritative participant sides drive result grouping', ()
     const away = parts.filter((p: any) => p.side === 'away').map((p: any) => p.userId);
     expect(home).toEqual([9]);
     expect(away).toEqual([8]);
+  });
+});
+
+describe('Group 4 — result read model via service', () => {
+  it('getResultForMatchWithParticipants returns the enriched detail view', async () => {
+    const detailView = {
+      record: makeRecord(),
+      sport: { sportId: 22, sportName: 'Padel', sportIcon: '/uploads/sport/icon/padel.webp' },
+      format: { formatId: 1, formatName: 'Padel Standard', formatType: 'doubles', playersPerSide: 2 },
+      venue: { organisationId: 7, organisationName: 'Org One', branchId: 3, branchName: 'MASPIRO', resourceId: 9, resourceName: 'Court 1' },
+      tournament: null,
+      participants: [
+        { id: 10, resultId: 1, matchId: 42, userId: 5, teamIndex: 0, side: 'home', outcome: 'win', matchEvidence: 100, evidenceCounted: true, ratingSnapshotPercent: 60, ratingBefore: 60, ratingAfter: 62, displayName: 'Ahmed Ali', avatarUrl: '/a.png' },
+        { id: 11, resultId: 1, matchId: 42, userId: 6, teamIndex: 1, side: 'away', outcome: 'loss', matchEvidence: 0, evidenceCounted: true, ratingSnapshotPercent: 60, ratingBefore: 60, ratingAfter: 58, displayName: 'Sara', avatarUrl: null },
+      ],
+    };
+    repo.findByMatchId.mockResolvedValue(makeRecord());
+    repo.getResultDetailView.mockResolvedValue(detailView);
+    const view = await matchResultService.getResultForMatchWithParticipants(42);
+    expect(repo.getResultDetailView).toHaveBeenCalledWith(1);
+    expect(view?.participants[0].displayName).toBe('Ahmed Ali');
+    expect(view?.participants[1].avatarUrl).toBeNull();
+    expect(view?.sport.sportName).toBe('Padel');
+    expect(view?.format.formatType).toBe('doubles');
+    expect(view?.tournament).toBeNull();
+    expect(view?.record.matchId).toBe(42);
+  });
+
+  it('returns null when no result exists for the match', async () => {
+    repo.findByMatchId.mockResolvedValue(null);
+    const view = await matchResultService.getResultForMatchWithParticipants(42);
+    expect(view).toBeNull();
+    expect(repo.getResultDetailView).not.toHaveBeenCalled();
   });
 });
 

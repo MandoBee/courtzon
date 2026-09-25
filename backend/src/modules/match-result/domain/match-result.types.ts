@@ -130,6 +130,74 @@ export interface MatchResultParticipant {
   ratingAfter: number | null;
 }
 
+/**
+ * Group 4 — read-model participant. Extends the persisted result participant
+ * with real display identity resolved from the authoritative `users` table
+ * (full_name / avatar_url). Never stored; assembled on read only.
+ */
+export interface ResultParticipantView extends MatchResultParticipant {
+  displayName: string | null;
+  avatarUrl: string | null;
+}
+
+/** Group 4 — read-model sport identity (authoritative `sports` row). */
+export interface ResultSportView {
+  sportId: number;
+  sportName: string | null;
+  sportIcon: string | null;
+}
+
+/** Group 4 — read-model sport format identity (authoritative `sport_formats` row). */
+export interface ResultFormatView {
+  formatId: number | null;
+  formatName: string | null;
+  formatType: SportFormat['formatType'] | null;
+  playersPerSide: number | null;
+}
+
+/** Group 4 — read-model venue identity (record snapshots → authoritative rows). */
+export interface ResultVenueView {
+  organisationId: number | null;
+  organisationName: string | null;
+  branchId: number | null;
+  branchName: string | null;
+  resourceId: number | null;
+  resourceName: string | null;
+}
+
+/** Group 4 — read-model tournament context (only when the result is tournament-linked). */
+export interface ResultTournamentView {
+  tournamentId: number | null;
+  tournamentName: string | null;
+  round: number | null;
+  roundName: string | null;
+  stageId: number | null;
+  stageName: string | null;
+}
+
+/**
+ * Group 4 — enriched list item. Keeps the FULL MatchResultRecord shape so the
+ * existing wire contract is backward compatible, and adds the read-only
+ * display context (sport/format/venue/tournament) + grouped participants.
+ */
+export interface MatchResultListItem extends MatchResultRecord {
+  sport: ResultSportView;
+  format: ResultFormatView;
+  venue: ResultVenueView;
+  tournament: ResultTournamentView | null;
+  participants: ResultParticipantView[];
+}
+
+/** Group 4 — detail response for GET /matches/:id/result. */
+export interface MatchResultDetailView {
+  record: MatchResultRecord;
+  sport: ResultSportView;
+  format: ResultFormatView;
+  venue: ResultVenueView;
+  tournament: ResultTournamentView | null;
+  participants: ResultParticipantView[];
+}
+
 export interface MatchResultRecord {
   id: number;
   matchId: number;

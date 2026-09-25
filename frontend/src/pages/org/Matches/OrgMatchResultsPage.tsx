@@ -114,7 +114,7 @@ export default function OrgMatchResultsPage() {
                 </span>
                 <span className="text-xs text-[var(--color-text-muted)]">{formatDateTime(r.updatedAt)}</span>
               </div>
-              <ResultSummaryView record={r} participants={[]} />
+              <ResultSummaryView record={r} participants={r.participants ?? []} />
               <div className="mt-3 flex flex-wrap gap-2">
                 <Can permission="matches.result.manage">
                   {r.submissionStatus === 'disputed' && (

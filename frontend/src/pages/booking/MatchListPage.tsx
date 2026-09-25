@@ -44,6 +44,7 @@ interface MatchRow {
   type: string;
   status: string;
   sport_name: string;
+  sport_icon?: string | null;
   booking_id?: number | null;
   public_id?: string | null;
   booking_status?: string | null;
@@ -287,6 +288,19 @@ export default function MatchListPage() {
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-1 flex-wrap">
                   <h3 className="font-medium text-[var(--color-text)] truncate">{match.resource_name}</h3>
+                  {match.sport_name && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full bg-[var(--color-primary)]/10 text-[var(--color-primary)] shrink-0">
+                      {match.sport_icon && (
+                        <img
+                          src={match.sport_icon}
+                          alt={match.sport_name}
+                          className="w-3.5 h-3.5 rounded object-cover bg-[var(--color-surface-muted)]"
+                          referrerPolicy="no-referrer"
+                        />
+                      )}
+                      {match.sport_name}
+                    </span>
+                  )}
                   <span className="px-2 py-0.5 text-xs rounded-full bg-[var(--color-info-bg)] text-[var(--color-info-text)] shrink-0">Public</span>
                   {match.auto_accept === 1 && (
                     <span className="px-2 py-0.5 text-xs rounded-full bg-[var(--color-success-bg)] text-[var(--color-success-text)] shrink-0">Auto-accept</span>

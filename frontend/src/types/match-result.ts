@@ -101,6 +101,50 @@ export interface MatchResultParticipant {
   ratingSnapshotPercent: number | null;
   ratingBefore: number | null;
   ratingAfter: number | null;
+  /** Group 4 — display identity resolved from the authoritative users table. */
+  displayName?: string | null;
+  avatarUrl?: string | null;
+}
+
+/** Group 4 — read-model display context returned by the result APIs. */
+export interface MatchResultSport {
+  sportId: number;
+  sportName: string | null;
+  sportIcon: string | null;
+}
+
+export interface MatchResultFormat {
+  formatId: number | null;
+  formatName: string | null;
+  formatType: 'singles' | 'doubles' | 'team' | null;
+  playersPerSide: number | null;
+}
+
+export interface MatchResultVenue {
+  organisationId: number | null;
+  organisationName: string | null;
+  branchId: number | null;
+  branchName: string | null;
+  resourceId: number | null;
+  resourceName: string | null;
+}
+
+export interface MatchResultTournament {
+  tournamentId: number | null;
+  tournamentName: string | null;
+  round: number | null;
+  roundName: string | null;
+  stageId: number | null;
+  stageName: string | null;
+}
+
+/** Group 4 — enriched list item: full record + read-only display context. */
+export interface MatchResultListItem extends MatchResultRecord {
+  sport: MatchResultSport;
+  format: MatchResultFormat;
+  venue: MatchResultVenue;
+  tournament: MatchResultTournament | null;
+  participants: MatchResultParticipant[];
 }
 
 export interface MatchResultRecord {
@@ -144,9 +188,13 @@ export interface MatchResultRecord {
 export interface MatchResultWithParticipants {
   record: MatchResultRecord | null;
   participants: MatchResultParticipant[];
+  sport?: MatchResultSport;
+  format?: MatchResultFormat;
+  venue?: MatchResultVenue;
+  tournament?: MatchResultTournament | null;
 }
 
 export interface ResultListResult {
-  records: MatchResultRecord[];
+  records: MatchResultListItem[];
   total: number;
 }

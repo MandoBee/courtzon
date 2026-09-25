@@ -311,4 +311,66 @@ describe('Match lifecycle → result eligibility journey', () => {
 
     await new Promise((r) => setTimeout(r, 150));
   });
+
+  it('Group 4 — result read model exposes display identity + context against the live schema', async () => {
+    const endAtUtc = new Date(Date.now() - 60 * 60 * 1000).toISOString().replace('T', ' ').slice(0, 19);
+    const { matchId, playerA } = await insertBookingAndMatch({ status: 'completed', endAtUtc });
+
+    const { matchResultService } = await import('../application/match-result.service.js');
+    const record = await matchResultService.submitMatchResult(matchId, playerA, VALID_PAYLOAD);
+    expect(record.submissionStatus).toBe('pending_confirmation');
+
+    // Detail view — record + sport/format/venue + participants with identity.
+    const detail = await matchResultService.getResultForMatchWithParticipants(matchId);
+    expect(detail).toBeTruthy();
+    expect(detail!.sport.sportName).toBe('Padel');
+    expect(detail!.sport.sportId).toBe(22);
+    expect(detail!.format.formatName).toBe('Padel Standard');
+    expect(detail!.format.formatType).toBe('doubles');
+    expect(detail!.format.playersPerSide).toBe(2);
+    expect(detail!.venue.organisationName).toBeTruthy();
+    expect(detail!.venue.branchName).toBeTruthy();
+    expect(detail!.venue.resourceName).toBeTruthy();
+    expect(detail!.tournament).toBeNull();
+    expect(detail!.participants).toHaveLength(2);
+    for (const p of detail!.participants) {
+      expect(p.displayName).toBeTruthy();
+      // avatar is optional — must be null when absent, never undefined/omitted.
+      expect(p.avatarUrl === null || typeof p.avatarUrl === 'string').toBe(true);
+    }
+
+    // Admin list — every record carries the enriched read model + participants.
+    const { matchResultRepository } = await import('../infrastructure/match-result.repository.js');
+    const adminList = await matchResultRepository.listForAdmin({ limit: 50, offset: 0 });
+    const adminItem = adminList.records.find((r) => r.id === record.id);
+    expect(adminItem).toBeTruthy();
+    expect(adminItem!.sport.sportName).toBe('Padel');
+    expect(adminItem!.participants).toHaveLength(2);
+    expect(adminItem!.participants[0].displayName).toBeTruthy();
+
+    // Tenant isolation — the owning org sees the result; a different org does not.
+    const { orgId } = await ensureMatchFixtures(await getPool());
+    const orgList = await matchResultRepository.listForOrg(orgId, { limit: 50, offset: 0 });
+    const orgItem = orgList.records.find((r) => r.id === record.id);
+    expect(orgItem).toBeTruthy();
+    expect(orgItem!.participants).toHaveLength(2);
+    expect(orgItem!.sport.sportName).toBe('Padel');
+
+    const otherOrg = await (async () => {
+      const { randomUUID } = await import('node:crypto');
+      const { getPool } = await import('../../../database/mysql.js');
+      const p = getPool();
+      const [types] = await p.execute<any[]>('SELECT id FROM org_types ORDER BY id LIMIT 1');
+      const [res] = await p.execute<any[]>(
+        `INSERT INTO organisations (public_id, org_type_id, owner_id, name, slug)
+         VALUES (?, ?, ?, 'Isolated Org', 'isolated-org')`,
+        [randomUUID(), types[0].id, playerA],
+      );
+      return res.insertId;
+    })();
+    const otherList = await matchResultRepository.listForOrg(otherOrg, { limit: 50, offset: 0 });
+    expect(otherList.records.find((r) => r.id === record.id)).toBeUndefined();
+
+    await new Promise((r) => setTimeout(r, 150));
+  });
 });
