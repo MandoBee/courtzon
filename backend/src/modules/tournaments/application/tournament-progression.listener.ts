@@ -28,7 +28,9 @@ const QUEUE_NAME = SUBSCRIBER_ID;
  * durable domain listener.
  */
 export function registerTournamentProgressionSubscribers(): void {
-  for (const eventName of ['match:result-approved', 'match:result-auto-approved', 'match:result-resolved']) {
+  for (const eventName of [
+    'match:result-approved', 'match:result-auto-approved', 'match:result-resolved', 'match:result-corrected',
+  ]) {
     eventBusV2.subscribe({
       subscriberId: SUBSCRIBER_ID,
       eventName,
@@ -66,6 +68,24 @@ async function handleProgressionEvent(envelope: EventEnvelope): Promise<void> {
     log.info({ eventId: envelope.eventId, resultId: data.resultId, resolution: data.resolution },
       'progression.event.skipped_non_approved_resolution');
     return;
+  }
+
+  // G8-A — corrections reconcile the projection + standings (no progression
+  // re-run; bracket reversal after irreversible progression is a G8-D decision).
+  if (envelope.eventName === 'match:result-corrected') {
+    await tournamentService.recalculateStandingsForResult(Number(data.resultId));
+    log.info({ eventId: envelope.eventId, resultId: data.resultId }, 'progression.event.correction_reconciled');
+    return;
+  }
+
+  // G8-A — mirror the authoritative approved result onto tournament_matches
+  // (winner_id projection + score_summary) so standings reads are correct for
+  // Round-Robin AND knockout slots. Idempotent; failure must not block
+  // progression (the match-result record remains the authority).
+  try {
+    await tournamentService.syncSharedResultMirror(Number(data.resultId));
+  } catch (err) {
+    log.error({ err, eventId: envelope.eventId, resultId: data.resultId }, 'progression.event.mirror_failed');
   }
 
   const outcome = await tournamentService.progressFromApprovedResult({

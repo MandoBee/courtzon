@@ -2337,6 +2337,52 @@ export class TournamentService {
     return { sharedMatchId: match.match_id, resultId: record.id };
   }
 
+  /**
+   * G8-A — mirror an approved shared result onto the bracket-slot projection.
+   * `winner_id` is a PROJECTION of the authoritative match_result_records state
+   * (never written by controllers and never an independent authority). It is
+   * what recalculateStandings consumes, so Round-Robin standings stay correct.
+   * Draw/abandoned results clear the winner projection (draws are not scored by
+   * the current product rules).
+   */
+  async syncSharedResultMirror(resultId: number): Promise<{ tournamentId: number | null; updated: boolean }> {
+    const record = await matchResultRepository.findById(resultId);
+    if (!record?.finalResult) return { tournamentId: null, updated: false };
+    const match = await tournamentRepository.findMatchBySharedMatchId(record.matchId);
+    if (!match) return { tournamentId: null, updated: false };
+
+    const winner = record.finalResult.winner;
+    const winnerId = winner === 'home' ? match.player1_id : winner === 'away' ? match.player2_id : null;
+
+    await tournamentRepository.updateMatch(match.id!, {
+      status: 'completed',
+      score_summary: record.finalResult?.scoreSummary ?? null,
+      winner_id: winnerId,
+    });
+
+    return { tournamentId: match.tournament_id, updated: true };
+  }
+
+  /**
+   * G8-A — result correction reconciliation: refresh the projection and
+   * recompute standings (idempotent). Bracket progression is intentionally NOT
+   * re-run here (would risk duplicate next-match materialisation); correction
+   * after irreversible progression is a G8-D business decision.
+   */
+  async recalculateStandingsForResult(resultId: number): Promise<void> {
+    const { tournamentId, updated } = await this.syncSharedResultMirror(resultId);
+    if (!tournamentId || !updated) return;
+    await this.recalculateStandings(tournamentId);
+    const t = await this.getById(tournamentId);
+    eventBusV2.emit('tournament:updated', {
+      tournamentId,
+      standings: true,
+      ...this.tournamentRealtimeScope(t),
+    } as Record<string, unknown>, {
+      aggregateType: 'tournament', aggregateId: String(tournamentId), aggregateVersion: 1,
+    });
+  }
+
   /** T-B — bracket slots joined to their shared Match context (admin/org result screen). */
   async getMatchesDetailed(tournamentId: number) {
     return tournamentRepository.findMatchesDetailed(tournamentId);

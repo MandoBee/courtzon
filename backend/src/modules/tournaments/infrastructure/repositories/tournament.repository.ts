@@ -1,6 +1,8 @@
 import { getPool } from '../../../../database/mysql.js';
+import { withTransaction } from '../../../../database/database.transaction.js';
 import { buildPagination, paginationClause } from '../../../../shared/utils/pagination.js';
 import { normalizeEligibility, buildDiscoveryAudienceSql, resolveDiscoveryAgeFilter, resolveDiscoveryGenderFilter } from '../../domain/tournament-eligibility.js';
+import { computeStandings } from '../../domain/tournament-aggregate.js';
 import type { Tournament, TournamentRegistration, TournamentMatch, TournamentMatchResult, TournamentGroup, TournamentGroupMember, TournamentStandingRow, TournamentStage, TournamentPrize, TournamentPrizeInput } from '../../domain/tournament-aggregate.js';
 import type { PoolConnection } from 'mysql2/promise';
 
@@ -885,48 +887,54 @@ export class TournamentRepository {
     );
   }
 
+  /**
+   * Group 8-A — standings recalculation (ONE authoritative implementation).
+   *
+   * The approved shared-result projection (`tournament_matches.winner_id`) is
+   * ALWAYS mirrored by the result listener, so completing Round-Robin AND
+   * knockout matches land here the same way. Calculation itself delegates to the
+   * domain `computeStandings` (points 3/0; deterministic tie-break by points
+   * then game difference) — the repository never implements a second ranking.
+   * The delete+reinsert is atomic (transactional) so partial failures cannot
+   * leave a half-written table.
+   */
   async recalculateStandings(tournamentId: number, groupId?: number, conn?: PoolConnection): Promise<void> {
-    const pool = conn ?? getPool();
-    await pool.query('DELETE FROM tournament_standings WHERE tournament_id = ? AND (group_id = ? OR (? IS NULL AND group_id IS NULL))',
-      [tournamentId, groupId ?? null, groupId ?? null]);
+    const db = conn ?? getPool();
 
     const matchWhere: string[] = ['m.tournament_id = ?', "m.status = 'completed'", 'm.winner_id IS NOT NULL'];
     const matchParams: any[] = [tournamentId];
     if (groupId !== undefined) { matchWhere.push('(m.group_id = ? OR m.player1_id IN (SELECT registration_id FROM tournament_group_members WHERE group_id = ?))'); matchParams.push(groupId, groupId); }
 
-    const [rows] = await pool.query<RowData>(
+    const [rows] = await db.query<RowData>(
       `SELECT m.player1_id, m.player2_id, m.winner_id FROM tournament_matches m WHERE ${matchWhere.join(' AND ')}`,
       matchParams,
     );
 
-    const stats = new Map<number, { points: number; wins: number; losses: number; draws: number; games_won: number; games_lost: number }>();
+    const matches = (rows as unknown[]).map((r) => r as TournamentMatch);
+    const participantIds = [...new Set(
+      matches.flatMap((m) => [Number(m.player1_id), Number(m.player2_id)]).filter((id) => Number.isSafeInteger(id) && id > 0),
+    )];
+    const standings = computeStandings(matches, participantIds);
 
-    for (const m of rows) {
-      const p1 = m.player1_id;
-      const p2 = m.player2_id;
-      if (!p1 || !p2) continue;
-      if (!stats.has(p1)) stats.set(p1, { points: 0, wins: 0, losses: 0, draws: 0, games_won: 0, games_lost: 0 });
-      if (!stats.has(p2)) stats.set(p2, { points: 0, wins: 0, losses: 0, draws: 0, games_won: 0, games_lost: 0 });
-
-      const winner = stats.get(m.winner_id)!;
-      const loser = stats.get(m.winner_id === p1 ? p2 : p1)!;
-      winner.wins++;
-      winner.games_won++;
-      winner.points += 3;
-      loser.losses++;
-      loser.games_lost++;
-    }
-
-    let rank = 1;
-    const sorted = [...stats.entries()].sort((a, b) => b[1].points - a[1].points);
-    for (const [registrationId, s] of sorted) {
-      await pool.query(
-        `INSERT INTO tournament_standings (tournament_id, group_id, registration_id, points, wins, losses, draws, games_won, games_lost, sets_won, sets_lost, rank_position)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [tournamentId, groupId ?? null, registrationId, s.points, s.wins, s.losses, s.draws, s.games_won, s.games_lost, 0, 0, rank],
+    const persist = async (executor: typeof db, gid: number | null) => {
+      await executor.query(
+        'DELETE FROM tournament_standings WHERE tournament_id = ? AND (group_id = ? OR (? IS NULL AND group_id IS NULL))',
+        [tournamentId, gid, gid],
       );
-      rank++;
+      for (const s of standings) {
+        await executor.query(
+          `INSERT INTO tournament_standings (tournament_id, group_id, registration_id, points, wins, losses, draws, games_won, games_lost, sets_won, sets_lost, rank_position)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [tournamentId, gid, s.registration_id, s.points, s.wins, s.losses, s.draws, s.games_won, s.games_lost, s.sets_won, s.sets_lost, s.rank_position],
+        );
+      }
+    };
+
+    if (conn) {
+      await persist(conn, groupId ?? null);
+      return;
     }
+    await withTransaction(async (c) => persist(c, groupId ?? null));
   }
 
   // ── Dashboard ──
