@@ -871,6 +871,28 @@ export class TournamentService {
       }
     }
     await tournamentRepository.update(id, data);
+    // G7-E — eligibility-only edits have no other lifecycle event, so a generic
+    // tournament.updated is emitted (scoped to tenants/operators) so connected
+    // detail screens reconcile instead of showing stale eligibility.
+    const eligibilityTouched = (['age_mode', 'age_category_ids', 'gender_categories', 'level_ids'] as const).some((k) => data[k as keyof Tournament] !== undefined);
+    if (eligibilityTouched) {
+      const merged = normalizeEligibility({
+        age_mode: data.age_mode ?? current.age_mode,
+        age_category_ids: data.age_category_ids ?? current.age_category_ids,
+        gender_categories: data.gender_categories ?? current.gender_categories,
+        level_ids: data.level_ids ?? current.level_ids,
+      });
+      eventBusV2.emit('tournament:updated', {
+        tournamentId: id,
+        ...this.tournamentRealtimeScope(current),
+        ageMode: merged.ageMode,
+        ageCategoryIds: merged.ageCategoryIds,
+        genderCategories: merged.genderCategories,
+        levelIds: merged.levelIds,
+      } as Record<string, unknown>, {
+        aggregateType: 'tournament', aggregateId: String(id), aggregateVersion: 1,
+      });
+    }
     return this.getById(id);
   }
 
@@ -1119,6 +1141,7 @@ export class TournamentService {
     if (!reg) throw new NotFoundError('Registration', ErrorCodes.TOURNAMENT_REGISTRATION_NOT_FOUND);
     validateRegistrationTransition(reg.status, 'withdrawn');
     await tournamentRepository.updateRegistrationStatus(regId, 'withdrawn');
+    this.emitRegistrationStateChanged(reg, 'withdrawn');
   }
 
   async confirmRegistration(regId: number): Promise<void> {
@@ -1131,6 +1154,20 @@ export class TournamentService {
       throw new ConflictError('Entry fee must be paid before confirmation', ErrorCodes.TOURNAMENT_REGISTRATION_CLOSED);
     }
     await tournamentRepository.updateRegistrationStatus(regId, 'confirmed');
+    this.emitRegistrationStateChanged(reg, 'confirmed');
+  }
+
+  /** G7-E — registration lifecycle changes reuse the existing `registration.received` realtime event. */
+  private emitRegistrationStateChanged(reg: TournamentRegistration, status: TournamentRegistration['status']): void {
+    eventBusV2.emit('registration.received', {
+      tournamentId: reg.tournament_id,
+      registrationId: reg.id,
+      userId: reg.player_id ?? reg.user_id,
+      status,
+      paymentRequired: false,
+    } as Record<string, unknown>, {
+      aggregateType: 'tournament', aggregateId: String(reg.tournament_id), aggregateVersion: 1,
+    });
   }
 
   async generateGroups(tournamentId: number, groupSize: number, advanceCount: number): Promise<void> {

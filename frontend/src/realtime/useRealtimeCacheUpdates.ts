@@ -307,9 +307,36 @@ export function invalidateRealtimeReconcile(qc: { invalidateQueries: (opts: { qu
     ['tournaments'],
     ['tournament-admin-matches'],
     ['admin-tournaments'],
+    ['my-tournaments'],
+    ['tournament-participants'],
+    ['tournament-waitlist'],
+    ['tournament-matches'],
+    ['tournament-schedule'],
     ['player-nav-counts'],
   ]) {
     qc.invalidateQueries({ queryKey });
+  }
+}
+
+/**
+ * G7-E — Tournament registration/lifecycle realtime reconciliation (targeted).
+ * A registration/waitlist/promotion/cancellation touches the tournament's
+ * detail, participants, waitlist, my-tournaments and admin/org lists.
+ */
+export function invalidateRegistrationLifecycle(
+  qc: { invalidateQueries: (opts: { queryKey: readonly (string | number)[] }) => void },
+  p: Record<string, any> | undefined,
+): void {
+  invalidateTournament(qc, p?.tournamentId);
+  qc.invalidateQueries({ queryKey: ['my-tournaments'] });
+  if (p?.tournamentId != null) {
+    const id = String(p.tournamentId);
+    qc.invalidateQueries({ queryKey: ['tournament', id, 'participants'] });
+    qc.invalidateQueries({ queryKey: ['tournament', id, 'waitlist'] });
+    qc.invalidateQueries({ queryKey: ['tournament-participants', p.tournamentId] });
+    qc.invalidateQueries({ queryKey: ['tournament-participants', id] });
+    qc.invalidateQueries({ queryKey: ['tournament-waitlist', p.tournamentId] });
+    qc.invalidateQueries({ queryKey: ['tournament-waitlist', id] });
   }
 }
 
@@ -947,6 +974,14 @@ export function useRealtimeCacheUpdates(): void {
     }
   });
 
+  // G7-E — registration lifecycle (created/withdrawn/confirmed), eligibility
+  // config updates and waitlist promotion reconcile the affected sessions live.
+  for (const eventName of ['registration.received', 'tournament.updated', 'tournament.waitlist-promoted']) {
+    useSocketEvent(eventName, (p: any) => {
+      invalidateRegistrationLifecycle(qc, p);
+    });
+  }
+
   // Group 3 — a registration payment was settled (cash offline or card via the
   // shared Payment capability) → the participant list + tournament caches
   // refresh live. Payment-method configuration changes refresh the tournament
@@ -1076,7 +1111,7 @@ export function useRealtimeCacheUpdates(): void {
     useSocketEvent(ev, invalidateNavCounts);
   }
 
-  for (const ev of ['tournament.created', 'tournament.match-scheduled', 'tournament.result', 'tournament.bracket-generated', 'tournament.match-created', 'tournament.match-progressed', 'tournament.completed']) {
+  for (const ev of ['tournament.created', 'tournament.match-scheduled', 'tournament.result', 'tournament.bracket-generated', 'tournament.match-created', 'tournament.match-progressed', 'tournament.completed', 'tournament.updated', 'tournament.waitlist-promoted', 'registration.received']) {
     useSocketEvent(ev, invalidateNavCounts);
   }
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { ORG_LIFECYCLE_INVALIDATIONS, invalidateOrgLifecycle, USER_REGISTRATION_INVALIDATIONS, invalidateUserRegistration, FINANCE_INVALIDATIONS, invalidateFinanceEntries, MARKETPLACE_PRODUCT_INVALIDATIONS, invalidateMarketplaceProducts, ORG_ACCOUNTING_ROOTS, invalidateOrgAccounting, COACH_LIFECYCLE_INVALIDATIONS, TOURNAMENT_REALTIME_EVENTS, invalidateTournament, MATCH_LIFECYCLE_SOCKET_EVENTS, MATCH_RESULT_SOCKET_EVENTS, invalidateMatchKeys, invalidateRealtimeReconcile } from './useRealtimeCacheUpdates';
+import { ORG_LIFECYCLE_INVALIDATIONS, invalidateOrgLifecycle, USER_REGISTRATION_INVALIDATIONS, invalidateUserRegistration, FINANCE_INVALIDATIONS, invalidateFinanceEntries, MARKETPLACE_PRODUCT_INVALIDATIONS, invalidateMarketplaceProducts, ORG_ACCOUNTING_ROOTS, invalidateOrgAccounting, COACH_LIFECYCLE_INVALIDATIONS, TOURNAMENT_REALTIME_EVENTS, invalidateTournament, MATCH_LIFECYCLE_SOCKET_EVENTS, MATCH_RESULT_SOCKET_EVENTS, invalidateMatchKeys, invalidateRealtimeReconcile, invalidateRegistrationLifecycle } from './useRealtimeCacheUpdates';
 
 function hasPrefix(keys: readonly (readonly string[])[], prefix: string[]): boolean {
   return keys.some((k) => prefix.every((part, i) => k[i] === part));
@@ -332,6 +332,36 @@ describe('TOURNAMENT_REALTIME_EVENTS (Group 5B draw/progression realtime strateg
       expect(invalidated).toContainEqual(['tournaments']);
       expect(invalidated).toContainEqual(['admin-tournaments']);
       expect(invalidated).toContainEqual(['player-nav-counts']);
+    });
+  });
+
+  describe('G7-E registration/tournament lifecycle invalidation', () => {
+    it('refreshes detail, participants, waitlist and my-tournaments on registration events', () => {
+      const invalidated: string[][] = [];
+      const fakeQc = {
+        invalidateQueries: ({ queryKey }: { queryKey: readonly (string | number)[] }) => {
+          invalidated.push(queryKey.map(String));
+        },
+      };
+      invalidateRegistrationLifecycle(fakeQc as any, { tournamentId: 7 });
+      expect(invalidated).toContainEqual(['tournament', '7']);
+      expect(invalidated).toContainEqual(['tournament', '7', 'participants']);
+      expect(invalidated).toContainEqual(['tournament-participants', '7']);
+      expect(invalidated).toContainEqual(['tournament-waitlist', '7']);
+      expect(invalidated).toContainEqual(['my-tournaments']);
+    });
+
+    it('reconnect reconciliation now covers tournament participant/waitlist roots', () => {
+      const invalidated: string[][] = [];
+      const fakeQc = {
+        invalidateQueries: ({ queryKey }: { queryKey: readonly (string | number)[] }) => {
+          invalidated.push(queryKey.map(String));
+        },
+      };
+      invalidateRealtimeReconcile(fakeQc as any);
+      expect(invalidated).toContainEqual(['tournament-participants']);
+      expect(invalidated).toContainEqual(['tournament-waitlist']);
+      expect(invalidated).toContainEqual(['my-tournaments']);
     });
   });
 });

@@ -733,6 +733,45 @@ describe('SocketEventMapper', () => {
     });
   });
 
+  describe('G7-E registration + tournament.update realtime routing', () => {
+    it('routes registration.received to the player, tenants, branch and admin — never the global player room', () => {
+      const result = mapDomainEvent('registration.received', {
+        tournamentId: 7,
+        registrationId: 99,
+        userId: 42,
+        organisationId: 3,
+        branchId: 5,
+        status: 'registered',
+      });
+      expect(result).not.toBeNull();
+      expect(result!.type).toBe('registration.received');
+      expect(result!.payload).toMatchObject({ tournamentId: 7, registrationId: 99, userId: 42, status: 'registered' });
+      expect(result!.rooms).toEqual(expect.arrayContaining([
+        'admin', 'user:42', 'organisation:3', 'branch:5',
+      ]));
+      expect(result!.rooms).not.toContain('player');
+      expect(result!.rooms).not.toContain('organisation:99');
+    });
+
+    it('drops unknown registration.* events instead of a generic fallback', () => {
+      expect(mapDomainEvent('registration.unknown', { tournamentId: 7 })).toBeNull();
+    });
+
+    it('routes tournament.updated (eligibility config change) to the scoped tenants/admins', () => {
+      const result = mapDomainEvent('tournament:updated', {
+        tournamentId: 7,
+        organisationId: 3,
+        branchId: 5,
+        creatorId: 2,
+        ageMode: 'categories',
+        ageCategoryIds: [1],
+      });
+      expect(result!.type).toBe('tournament.updated');
+      expect(result!.rooms).toEqual(expect.arrayContaining(['admin', 'user:2', 'organisation:3', 'branch:5']));
+      expect(result!.rooms).not.toContain('player');
+    });
+  });
+
   describe('academy enrollment events', () => {
     it('routes academy:enrollment-paid via playerId to the player user room', () => {
       const result = mapDomainEvent('academy:enrollment-paid', {

@@ -120,6 +120,10 @@ export function mapDomainEvent(eventName: string, payload: Record<string, unknow
     if (eventName.startsWith('coach:')) return mapCoachEvent(eventName, payload);
     if (eventName.startsWith('attendance:')) return mapAttendanceEvent(eventName, payload);
     if (eventName.startsWith('membership:')) return mapMembershipEvent(eventName, payload);
+    if (eventName.startsWith('registration.')) {
+      if (REGISTRATION_EVENT_NAMES.has(eventName)) return mapRegistrationEvent(eventName, payload);
+      return null;
+    }
     if (eventName.startsWith('tournament:')) return mapTournamentEvent(eventName, payload);
     if (MATCH_RESULT_EVENT_NAMES.has(eventName)) return mapMatchResultEvent(eventName, payload);
     if (MATCH_DOMAIN_EVENT_NAMES.has(eventName)) return mapMatchEvent(eventName, payload);
@@ -563,6 +567,16 @@ function mapTournamentEvent(eventName: string, p: Record<string, any>): MappedSo
       skipped: p.skipped,
     },
     rooms: roomsForScopedAudience(p, { includeBookingRoom: true }),
+  };
+}
+
+const REGISTRATION_EVENT_NAMES = new Set(['registration.received']);
+
+function mapRegistrationEvent(eventName: string, p: Record<string, any>): MappedSocketEvent {
+  return {
+    type: eventName,
+    payload: { tournamentId: p.tournamentId, registrationId: p.registrationId, userId: p.userId, status: p.status, paymentRequired: p.paymentRequired },
+    rooms: roomsForScopedAudience(p),
   };
 }
 
