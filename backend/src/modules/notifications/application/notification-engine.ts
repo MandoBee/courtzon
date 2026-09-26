@@ -414,6 +414,23 @@ const eventGroups: EventGroupConfig[] = [
     },
   },
   {
+    // G4-B3 — player attendance notification (single canonical event
+    // `academy:attendance-updated`). The producer gates emission on an ACTUAL
+    // status change, so no notification-level dedup is used here — a legitimate
+    // multi-state lifecycle (present → absent → present) must notify each time.
+    events: ['academy:attendance-updated'],
+    handler: async (eventName, data, categorySlug) => {
+      if (data.playerId != null) {
+        await dispatchToUser({
+          userId: Number(data.playerId), eventName, categorySlug, data,
+          organisationId: data.organisationId,
+          relatedEntityType: 'attendance', relatedEntityId: String(data.attendanceId),
+          action: a(`/sessions/${data.sessionId}`), digestable: false,
+        });
+      }
+    },
+  },
+  {
     // G6 — player-facing Academy lifecycle notifications (program-based model).
     // G4-B1 — `academy:enrollment-paid` is the canonical player payment
     // confirmation (card AND cash both converge on it). `payment-acknowledged`
@@ -1090,6 +1107,7 @@ class NotificationEngine {
       'academy:enrolled', 'academy:session-reminder', 'academy:session-started', 'academy:session-cancelled', 'academy:graduated',
       'academy:enrollment-accepted', 'academy:enrollment-waitlisted', 'academy:promoted', 'academy:enrollment-paid',
       'academy:enrollment-cancelled', 'academy:enrollment-completed',
+      'academy:attendance-updated',
       'coaching:session-scheduled', 'coaching:session-reminder', 'coaching:session-cancelled',
       'coach:invited', 'coach:agreement-added',
       'tournament:created', 'tournament:registration-open', 'tournament:registration-closed',

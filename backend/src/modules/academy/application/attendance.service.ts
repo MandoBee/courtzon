@@ -15,6 +15,7 @@ import type { AcademyAttendanceAttributes } from '../domain/academy.types.js';
 async function emitAttendanceUpdated(payload: {
   attendanceId: number; sessionId: number; groupId: number; enrollmentId: number;
   playerId: number; organisationId: number | null; branchId: number | null; coachId: number | null;
+  attendance_status: string;
 }): Promise<void> {
   const { eventBusV2 } = await import('../../../shared/event-bus/event-bus.v2.js');
   eventBusV2.emit('academy:attendance-updated', payload as any);
@@ -87,12 +88,15 @@ class AttendanceService {
     }
 
     const scope = await resolveAttendanceScope(Number(session.group_id));
+    // G4-B3 — a NEW attendance row is always a genuine state; carry the exact
+    // authoritative status written to the database.
     await emitAttendanceUpdated({
       attendanceId: id,
       sessionId: Number(session.id),
       groupId: Number(session.group_id),
       enrollmentId: Number(enrollment.id),
       playerId: Number(enrollment.player_id),
+      attendance_status: (data.attendance_status as any) ?? 'present',
       ...scope,
     });
 
@@ -113,17 +117,25 @@ class AttendanceService {
       notes: data.notes,
     });
 
-    // G4-A — administrative realtime workbench refresh after a committed update.
-    const enrollment = await enrollmentRepository.getById(Number(ctx.attendance.enrollment_id));
-    const scope = await resolveAttendanceScope(Number(ctx.session.group_id));
-    await emitAttendanceUpdated({
-      attendanceId: id,
-      sessionId: Number(ctx.attendance.group_session_id),
-      groupId: Number(ctx.session.group_id),
-      enrollmentId: Number(ctx.attendance.enrollment_id),
-      playerId: enrollment ? Number(enrollment.player_id) : 0,
-      ...scope,
-    });
+    // G4-B3 — the player notification fires ONLY on an ACTUAL status change.
+    // Notes-only writes (`attendance_status` undefined) and identical-status
+    // writes are persisted but silent. The database write happened above, so a
+    // failed write can never produce an event.
+    const oldStatus = ctx.attendance.attendance_status;
+    const newStatus = data.attendance_status;
+    if (newStatus != null && newStatus !== oldStatus) {
+      const enrollment = await enrollmentRepository.getById(Number(ctx.attendance.enrollment_id));
+      const scope = await resolveAttendanceScope(Number(ctx.session.group_id));
+      await emitAttendanceUpdated({
+        attendanceId: id,
+        sessionId: Number(ctx.attendance.group_session_id),
+        groupId: Number(ctx.session.group_id),
+        enrollmentId: Number(ctx.attendance.enrollment_id),
+        playerId: enrollment ? Number(enrollment.player_id) : 0,
+        attendance_status: newStatus,
+        ...scope,
+      });
+    }
   }
 
   async getSummary(groupSessionId: number) {

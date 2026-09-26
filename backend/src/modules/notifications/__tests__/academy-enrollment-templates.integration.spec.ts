@@ -128,3 +128,32 @@ describe('G4-B2 — academy:session-cancelled template (session deep-link route)
     expect(resolvedAr.body).toContain('المطر');
   });
 });
+
+describe('G4-B3 — academy:attendance-updated template (session route, raw status)', () => {
+  it('seeds idempotently and resolves EN + AR with /sessions/:id navigation', async () => {
+    await seedTemplates();
+    for (const locale of ['en', 'ar']) {
+      const [rows] = await pool.execute(
+        'SELECT COUNT(*) AS c FROM notification_templates WHERE event_name = ? AND locale = ?',
+        ['academy:attendance-updated', locale],
+      );
+      expect(Number(rows[0].c)).toBe(1);
+      const tpl = await getTemplate('academy:attendance-updated', locale);
+      expect(tpl).not.toBeNull();
+      expect(tpl!.categorySlug).toBe('system');
+      expect(tpl!.type).toBe('info');
+      expect(tpl!.actionKey).toBe('view_session');
+      expect(tpl!.routePattern).toBe('/sessions/{{sessionId}}');
+      if (locale === 'ar') expect(tpl!.locale).toBe('ar');
+    }
+  });
+
+  it('interpolates the raw attendance_status token in both languages', async () => {
+    for (const [locale, token] of [['en', 'absent'], ['ar', 'present']] as const) {
+      const tpl = await getTemplate('academy:attendance-updated', locale);
+      const resolved = resolveTemplate(tpl!, { attendance_status: token, sessionId: 10 });
+      expect(resolved.body).toContain(token);
+      expect(resolved.title.length).toBeGreaterThan(0);
+    }
+  });
+});

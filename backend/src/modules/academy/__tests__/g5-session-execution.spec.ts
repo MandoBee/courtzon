@@ -82,7 +82,7 @@ beforeEach(() => {
   sessionRepo.createManual.mockResolvedValue(55);
   attendanceRepo.getSession.mockResolvedValue({ id: 10, group_id: 2, status: 'in_progress' });
   attendanceRepo.getBySessionAndEnrollment.mockResolvedValue(null);
-  attendanceRepo.getByIdWithSession.mockResolvedValue({ attendance: { id: 1, group_session_id: 10, enrollment_id: 100 }, session: { status: 'in_progress', group_id: 2 } });
+  attendanceRepo.getByIdWithSession.mockResolvedValue({ attendance: { id: 1, group_session_id: 10, enrollment_id: 100, attendance_status: 'present' }, session: { status: 'in_progress', group_id: 2 } });
   attendanceRepo.create.mockResolvedValue(7);
   attendanceRepo.update.mockResolvedValue(undefined);
   groupRepo.getById.mockResolvedValue({ id: 2, program_id: 1, coach_id: 201 });
@@ -302,6 +302,93 @@ describe('G5 attendance window + integrity', () => {
   it('attendance update in_progress works', async () => {
     await academyAttendanceService.update(1, { attendance_status: 'absent' });
     expect(attendanceRepo.update).toHaveBeenCalledWith(1, { attendance_status: 'absent', notes: undefined });
+  });
+});
+
+// ── G4-B3 — attendance status-change notification gate ──
+describe('G4-B3 — attendance-updated producer payload + status-change gate', () => {
+  function attendanceEvents(): any[] {
+    return eventBus.emit.mock.calls.filter((c: any) => c[0] === 'academy:attendance-updated').map((c: any) => c[1]);
+  }
+
+  it('record emits exactly one event carrying the authoritative attendance_status', async () => {
+    const r = await academyAttendanceService.record({ group_session_id: 10, enrollment_id: 100, attendance_status: 'late' });
+    const events = attendanceEvents();
+    expect(events.length).toBe(1);
+    expect(events[0]).toMatchObject({
+      attendanceId: r.id, sessionId: 10, groupId: 2, enrollmentId: 100,
+      playerId: 200, attendance_status: 'late',
+    });
+  });
+
+  it('record defaults the status to present when omitted', async () => {
+    const r = await academyAttendanceService.record({ group_session_id: 10, enrollment_id: 100 });
+    const events = attendanceEvents();
+    expect(events.length).toBe(1);
+    expect(events[0].attendance_status).toBe('present');
+    expect(events[0].attendanceId).toBe(r.id);
+  });
+
+  it('duplicate record produces no event', async () => {
+    attendanceRepo.getBySessionAndEnrollment.mockResolvedValue(makeEnrollment({ id: 100 }));
+    await expect(academyAttendanceService.record({ group_session_id: 10, enrollment_id: 100 })).rejects.toMatchObject({ code: 'ACADEMY_ATTENDANCE_EXISTS' });
+    expect(attendanceEvents().length).toBe(0);
+  });
+
+  it('failed insert produces no event', async () => {
+    attendanceRepo.getBySessionAndEnrollment.mockResolvedValue(null);
+    attendanceRepo.create.mockRejectedValueOnce(new Error('db boom'));
+    await expect(academyAttendanceService.record({ group_session_id: 10, enrollment_id: 100 })).rejects.toThrow('db boom');
+    expect(attendanceEvents().length).toBe(0);
+  });
+
+  it('recordBulk emits one event per successfully-created row and none for duplicates', async () => {
+    attendanceRepo.getBySessionAndEnrollment
+      .mockResolvedValueOnce(null)        // row A created
+      .mockResolvedValueOnce(makeEnrollment({ id: 101 })); // row B duplicate
+    attendanceRepo.create.mockResolvedValue(1);
+    const r = await academyAttendanceService.recordBulk(10, [{ enrollment_id: 100 }, { enrollment_id: 101 }]);
+    expect(r.created).toBe(1);
+    expect(attendanceEvents().length).toBe(1);
+  });
+
+  it('update from present to a DIFFERENT status emits once with the new status', async () => {
+    attendanceRepo.getByIdWithSession.mockResolvedValue({ attendance: { id: 1, group_session_id: 10, enrollment_id: 100, attendance_status: 'excused' }, session: { status: 'in_progress', group_id: 2 } });
+    await academyAttendanceService.update(1, { attendance_status: 'late' });
+    const events = attendanceEvents();
+    expect(events.length).toBe(1);
+    expect(events[0]).toMatchObject({ attendanceId: 1, sessionId: 10, groupId: 2, enrollmentId: 100, playerId: 200, attendance_status: 'late' });
+  });
+
+  it('update with the SAME status emits nothing', async () => {
+    attendanceRepo.getByIdWithSession.mockResolvedValue({ attendance: { id: 1, group_session_id: 10, enrollment_id: 100, attendance_status: 'present' }, session: { status: 'in_progress', group_id: 2 } });
+    await academyAttendanceService.update(1, { attendance_status: 'present' });
+    expect(attendanceRepo.update).toHaveBeenCalled(); // persisted
+    expect(attendanceEvents().length).toBe(0);
+  });
+
+  it('notes-only update (no attendance_status) emits nothing', async () => {
+    attendanceRepo.getByIdWithSession.mockResolvedValue({ attendance: { id: 1, group_session_id: 10, enrollment_id: 100, attendance_status: 'present' }, session: { status: 'in_progress', group_id: 2 } });
+    await academyAttendanceService.update(1, { notes: 'arrived late' });
+    expect(attendanceRepo.update).toHaveBeenCalledWith(1, { attendance_status: undefined, notes: 'arrived late' });
+    expect(attendanceEvents().length).toBe(0);
+  });
+
+  it('a sequence present -> absent -> present emits for each real change', async () => {
+    attendanceRepo.getByIdWithSession
+      .mockResolvedValueOnce({ attendance: { id: 1, group_session_id: 10, enrollment_id: 100, attendance_status: 'present' }, session: { status: 'in_progress', group_id: 2 } })
+      .mockResolvedValueOnce({ attendance: { id: 1, group_session_id: 10, enrollment_id: 100, attendance_status: 'absent' }, session: { status: 'in_progress', group_id: 2 } });
+    await academyAttendanceService.update(1, { attendance_status: 'absent' });
+    await academyAttendanceService.update(1, { attendance_status: 'present' });
+    const events = attendanceEvents();
+    expect(events.map((e) => e.attendance_status)).toEqual(['absent', 'present']);
+  });
+
+  it('no event before a failed update write', async () => {
+    attendanceRepo.getByIdWithSession.mockResolvedValue({ attendance: { id: 1, group_session_id: 10, enrollment_id: 100, attendance_status: 'present' }, session: { status: 'in_progress', group_id: 2 } });
+    attendanceRepo.update.mockRejectedValueOnce(new Error('db boom'));
+    await expect(academyAttendanceService.update(1, { attendance_status: 'absent' })).rejects.toThrow('db boom');
+    expect(attendanceEvents().length).toBe(0);
   });
 });
 
