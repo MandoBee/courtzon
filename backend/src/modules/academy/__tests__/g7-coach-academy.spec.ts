@@ -46,7 +46,8 @@ vi.mock('../infrastructure/repositories/attendance.repository.js', () => ({ atte
 const enrollmentRepo = vi.hoisted(() => ({
   getById: vi.fn(), getByPlayerAndProgram: vi.fn(), getConfirmedCount: vi.fn(), getGroupConfirmedCount: vi.fn(),
   getNextWaitingOrder: vi.fn(), create: vi.fn(), getByIdForUpdate: vi.fn(), getWaitlistHead: vi.fn(),
-  promoteToConfirmed: vi.fn(), updateStatus: vi.fn(), moveToGroup: vi.fn(), getHistory: vi.fn(),
+  promoteToConfirmed: vi.fn(), updateStatus: vi.fn(), updateStatusConditional: vi.fn(),
+  moveToGroup: vi.fn(), getHistory: vi.fn(),
   markPaymentConfirmed: vi.fn(), getConfirmedUserIdsByGroup: vi.fn(), countConfirmedByPrograms: vi.fn(), listForPlayer: vi.fn(),
 }));
 vi.mock('../infrastructure/repositories/enrollment.repository.js', () => ({ enrollmentRepository: enrollmentRepo }));

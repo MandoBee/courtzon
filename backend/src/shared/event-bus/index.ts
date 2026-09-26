@@ -80,6 +80,8 @@ export interface DomainEventMap {
   'academy:enrollment-accepted': BaseEvent & { programId: number; userId: number; enrollmentId: number; programName: string };
   'academy:enrollment-waitlisted': BaseEvent & { programId: number; userId: number; enrollmentId: number; programName: string; waitlistPosition: number | null };
   'academy:promoted': BaseEvent & { programId: number; userId: number; enrollmentId: number; programName: string };
+  'academy:enrollment-cancelled': BaseEvent & { programId: number; userId: number; enrollmentId: number; programName: string };
+  'academy:enrollment-completed': BaseEvent & { programId: number; userId: number; enrollmentId: number; programName: string };
   'academy:payment-acknowledged': BaseEvent & { programId: number; userId: number; enrollmentId: number };
   'academy:enrollment-paid': BaseEvent & {
     enrollmentId: number; programId: number; groupId: number | null;

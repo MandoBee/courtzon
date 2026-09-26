@@ -5,6 +5,19 @@ import type { AcademyEnrollmentAttributes } from '../../domain/academy.types.js'
 type RowData = import('mysql2').RowDataPacket[];
 type ResultSet = import('mysql2').ResultSetHeader;
 
+/**
+ * SET-clause side effects that MUST accompany a status write. Shared by the
+ * unconditional and the conditional update so `cancelled_at` / `completed_at` /
+ * `waiting_order` can never diverge between the two paths.
+ */
+function statusSideEffects(status: string): string[] {
+  const extras: string[] = [];
+  if (status === 'cancelled') { extras.push('cancelled_at = NOW()'); }
+  if (status === 'completed') { extras.push('completed_at = NOW()'); }
+  if (status === 'confirmed') { extras.push('waiting_order = NULL'); }
+  return extras;
+}
+
 class EnrollmentRepository {
   async list(filters: {
     page?: number; limit?: number; programId?: number; groupId?: number;
@@ -90,19 +103,47 @@ class EnrollmentRepository {
 
   async updateStatus(id: number, status: string, conn?: import('mysql2/promise').PoolConnection): Promise<void> {
     const db = conn ?? getPool();
-    const extras: string[] = ['status = ?'];
+    const extras: string[] = ['status = ?', ...statusSideEffects(status)];
     const params: any[] = [status];
-    if (status === 'cancelled') { extras.push('cancelled_at = NOW()'); }
-    if (status === 'completed') { extras.push('completed_at = NOW()'); }
-    if (status === 'confirmed') { extras.push('waiting_order = NULL'); }
     params.push(id);
     await db.query(
       `UPDATE academy_enrollments SET ${extras.join(', ')}, updated_at = NOW() WHERE id = ?`, params,
     );
   }
 
-  async moveToGroup(id: number, groupId: number): Promise<void> {
-    await getPool().execute(
+  /**
+   * Conditional status transition. Only succeeds when the row is currently in
+   * one of `fromStates`, so two concurrent lifecycle calls (e.g. cancel vs
+   * promote) yield exactly one winner instead of a last-writer-wins overwrite.
+   * Carries the identical `cancelled_at` / `completed_at` / `waiting_order`
+   * side effects of the unconditional `updateStatus`. Returns true on success.
+   */
+  async updateStatusConditional(
+    id: number,
+    fromStates: string[],
+    to: string,
+    conn?: import('mysql2/promise').PoolConnection,
+  ): Promise<boolean> {
+    const db = conn ?? getPool();
+    const extras: string[] = ['status = ?', ...statusSideEffects(to)];
+    const placeholders = fromStates.map(() => '?').join(',');
+    const [result] = await db.execute<ResultSet>(
+      `UPDATE academy_enrollments SET ${extras.join(', ')}, updated_at = NOW()
+       WHERE id = ? AND status IN (${placeholders})`,
+      [to, id, ...fromStates],
+    );
+    return (result as any).affectedRows > 0;
+  }
+
+  /**
+   * Reassign an enrollment to another group. MUST be called with the caller's
+   * transaction connection when the enrollment row is already locked with
+   * `getByIdForUpdate` — a second pooled connection would deadlock on the
+   * uncommitted row lock (ER_LOCK_WAIT_TIMEOUT) and break the transfer.
+   */
+  async moveToGroup(id: number, groupId: number, conn?: import('mysql2/promise').PoolConnection): Promise<void> {
+    const db = conn ?? getPool();
+    await db.execute(
       'UPDATE academy_enrollments SET group_id = ?, updated_at = NOW() WHERE id = ?', [groupId, id],
     );
   }

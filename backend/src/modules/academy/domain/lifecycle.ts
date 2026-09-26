@@ -97,3 +97,14 @@ export function getAllowedProgramTransitions(status: AcademyProgramStatus): Acad
 export function getAllowedEnrollmentTransitions(status: AcademyEnrollmentStatus): AcademyEnrollmentStatus[] {
   return ENROLLMENT_TRANSITIONS[status] || [];
 }
+
+/**
+ * The states a target state may legally be reached FROM, derived from the SAME
+ * `ENROLLMENT_TRANSITIONS` table the validator uses. Building the conditional
+ * `WHERE status IN (...)` guard from this keeps the database guard and
+ * `validateEnrollmentTransition` from ever drifting apart.
+ */
+export function getEnrollmentSourceStates(to: AcademyEnrollmentStatus): AcademyEnrollmentStatus[] {
+  return (Object.keys(ENROLLMENT_TRANSITIONS) as AcademyEnrollmentStatus[])
+    .filter((from) => ENROLLMENT_TRANSITIONS[from].includes(to));
+}

@@ -16,7 +16,7 @@ import { ErrorCodes } from '../../../shared/errors/error-codes.js';
 import { recordAudit } from '../../audit-log/index.js';
 import { effectiveCapacity } from '../domain/capacity.js';
 import { isAcademyGroupStarted } from './academy-start.js';
-import { validateEnrollmentTransition } from '../domain/lifecycle.js';
+import { validateEnrollmentTransition, getEnrollmentSourceStates } from '../domain/lifecycle.js';
 import type { AcademyEnrollmentAttributes } from '../domain/academy.types.js';
 
 export interface PromoteOptions {
@@ -120,18 +120,91 @@ class EnrollmentService {
     }
   }
 
+  /**
+   * G1 — cancel: pending|confirmed|waiting → cancelled.
+   *
+   * Serializes on the enrollment row (`FOR UPDATE`) and applies a CONDITIONAL
+   * status write, so a concurrent `promote` (waiting → confirmed) can never
+   * silently overwrite — each success reflects a transition that was valid at
+   * its own serialization point. The loser (if its transition became invalid)
+   * receives a deterministic ACADEMY_INVALID_TRANSITION / WAITLIST conflict.
+   * Emits the cancellation event only after a successful commit.
+   */
   async cancel(id: number): Promise<void> {
-    const enrollment = await enrollmentRepository.getById(id);
-    if (!enrollment) throw new NotFoundError('Academy enrollment', ErrorCodes.ACADEMY_ENROLLMENT_NOT_FOUND);
-    validateEnrollmentTransition(enrollment.status, 'cancelled');
-    await enrollmentRepository.updateStatus(id, 'cancelled');
+    const conn = await getPool().getConnection();
+    try {
+      await conn.beginTransaction();
+      const enrollment = await enrollmentRepository.getByIdForUpdate(id, conn);
+      if (!enrollment) throw new NotFoundError('Academy enrollment', ErrorCodes.ACADEMY_ENROLLMENT_NOT_FOUND);
+      validateEnrollmentTransition(enrollment.status, 'cancelled');
+
+      const ok = await enrollmentRepository.updateStatusConditional(
+        id, getEnrollmentSourceStates('cancelled'), 'cancelled', conn,
+      );
+      if (!ok) {
+        throw new ConflictError('Enrollment can no longer be cancelled', ErrorCodes.ACADEMY_INVALID_TRANSITION);
+      }
+
+      await conn.commit();
+      await this.notifyLifecycle(enrollment, 'academy:enrollment-cancelled');
+    } catch (err) {
+      try { await conn.rollback(); } catch { /* already rolled back */ }
+      throw err;
+    } finally {
+      conn.release();
+    }
   }
 
+  /**
+   * G1 — complete: confirmed → completed. Same lock + conditional-write
+   * contract as `cancel`. Because `completed` and `cancelled` are both terminal
+   * and mutually exclusive, a concurrent complete/cancel yields exactly one
+   * winner and a deterministic conflict for the loser. Emits the completion
+   * event only after a successful commit.
+   */
   async complete(id: number): Promise<void> {
-    const enrollment = await enrollmentRepository.getById(id);
-    if (!enrollment) throw new NotFoundError('Academy enrollment', ErrorCodes.ACADEMY_ENROLLMENT_NOT_FOUND);
-    validateEnrollmentTransition(enrollment.status, 'completed');
-    await enrollmentRepository.updateStatus(id, 'completed');
+    const conn = await getPool().getConnection();
+    try {
+      await conn.beginTransaction();
+      const enrollment = await enrollmentRepository.getByIdForUpdate(id, conn);
+      if (!enrollment) throw new NotFoundError('Academy enrollment', ErrorCodes.ACADEMY_ENROLLMENT_NOT_FOUND);
+      validateEnrollmentTransition(enrollment.status, 'completed');
+
+      const ok = await enrollmentRepository.updateStatusConditional(
+        id, getEnrollmentSourceStates('completed'), 'completed', conn,
+      );
+      if (!ok) {
+        throw new ConflictError('Enrollment can no longer be completed', ErrorCodes.ACADEMY_INVALID_TRANSITION);
+      }
+
+      await conn.commit();
+      await this.notifyLifecycle(enrollment, 'academy:enrollment-completed');
+    } catch (err) {
+      try { await conn.rollback(); } catch { /* already rolled back */ }
+      throw err;
+    } finally {
+      conn.release();
+    }
+  }
+
+  /**
+   * G1 — enrollment cancellation / completion notification, fired only after a
+   * successful commit. No notification template is registered for these events
+   * yet (deferred); the domain event alone is the Group 1 deliverable.
+   */
+  private async notifyLifecycle(
+    enrollment: any,
+    event: 'academy:enrollment-cancelled' | 'academy:enrollment-completed',
+  ): Promise<void> {
+    const program = await programRepository.getById(Number(enrollment.program_id));
+    const { eventBusV2 } = await import('../../../shared/event-bus/event-bus.v2.js');
+    eventBusV2.emit(event, {
+      programId: Number(enrollment.program_id),
+      userId: Number(enrollment.player_id),
+      enrollmentId: Number(enrollment.id),
+      programName: program?.name ?? '',
+      organisationId: program?.organisation_id ?? undefined,
+    } as any);
   }
 
   /**
@@ -279,7 +352,7 @@ class EnrollmentService {
         throw new ConflictError('Group is full', ErrorCodes.ACADEMY_GROUP_FULL);
       }
 
-      await enrollmentRepository.moveToGroup(id, groupId);
+      await enrollmentRepository.moveToGroup(id, groupId, conn);
       await conn.commit();
       return enrollmentRepository.getById(id);
     } catch (err) {

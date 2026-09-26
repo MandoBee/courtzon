@@ -38,7 +38,8 @@ vi.mock('../infrastructure/repositories/program.repository.js', () => ({ program
 const enrollmentRepo = vi.hoisted(() => ({
   list: vi.fn(), getById: vi.fn(), getByIdForUpdate: vi.fn(), getByPlayerAndProgram: vi.fn(),
   getConfirmedCount: vi.fn(), getGroupConfirmedCount: vi.fn(), getNextWaitingOrder: vi.fn(),
-  getWaitlistHead: vi.fn(), create: vi.fn(), updateStatus: vi.fn(), promoteToConfirmed: vi.fn(),
+  getWaitlistHead: vi.fn(), create: vi.fn(), updateStatus: vi.fn(), updateStatusConditional: vi.fn(),
+  promoteToConfirmed: vi.fn(),
   moveToGroup: vi.fn(), getHistory: vi.fn(), markPaymentConfirmed: vi.fn(), getConfirmedUserIdsByGroup: vi.fn(),
   countConfirmedByPrograms: vi.fn(), listForPlayer: vi.fn(),
 }));
