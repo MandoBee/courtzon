@@ -234,6 +234,22 @@ class AcademyPaymentRepository {
     return maxWindow != null ? Number(maxWindow) : null;
   }
 
+  /**
+   * G5-A — conditional `paid → refunded` transition for an Academy CASH/offline
+   * refund (no gateway). Returns true only when a paid row was actually
+   * transitioned — the idempotency guard against double refunds.
+   */
+  async markRefundedIfPaid(paymentId: number, conn?: mysql.PoolConnection): Promise<boolean> {
+    const db = conn ?? getPool();
+    const [result] = await db.execute<ResultSet>(
+      `UPDATE payment_transactions
+       SET payment_status = 'refunded', updated_at = NOW()
+       WHERE id = ? AND payment_status = 'paid'`,
+      [paymentId],
+    );
+    return (result as any).affectedRows > 0;
+  }
+
   /** Idempotent enrollment acknowledgment — first acknowledgment wins attribution. */
   async markEnrollmentPaymentConfirmed(
     enrollmentId: number,

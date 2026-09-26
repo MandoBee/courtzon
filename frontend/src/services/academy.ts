@@ -279,6 +279,8 @@ export const academyApi = {
     api.post(`/admin/academy/enrollments/${id}/confirm`).then(r => r.data),
   moveEnrollment: (id: number, groupId: number) =>
     api.post<AcademyEnrollment>(`/admin/academy/enrollments/${id}/move`, { group_id: groupId }).then(r => r.data),
+  refundEnrollment: (id: number, reason?: string) =>
+    api.post(`/admin/academy/enrollments/${id}/refund`, { reason }).then(r => r.data),
   getEnrollmentHistory: (id: number) =>
     api.get(`/admin/academy/enrollments/${id}/history`).then(r => r.data),
 

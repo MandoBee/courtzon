@@ -1098,6 +1098,90 @@ async function postAcademyPaymentAccountingInner(enrollmentId: number, paymentMe
   }
 }
 
+/**
+ * G5-A — Academy refund accounting reversal. Mirrors `postAcademyPaymentAccounting`
+ * in reverse, reading economics from the immutable snapshot only. Serializes per
+ * organisation (refund event + durable replay must not race first-time org
+ * provisioning). Idempotent per (sourceType, sourceId, eventType) via
+ * `postAccountingEvent`'s hasPosting guard.
+ */
+async function postAcademyRefundAccounting(enrollmentId: number, paymentMethod: string, currency: string): Promise<void> {
+  const snapshot = await academyPaymentRepository.getSnapshotByEnrollment(enrollmentId);
+  const key = snapshot?.organisation_id ? `academy-refund-org:${snapshot.organisation_id}` : `academy-refund:${enrollmentId}`;
+  return runEntityExclusive(key, () => postAcademyRefundAccountingInner(enrollmentId, paymentMethod, currency));
+}
+
+async function postAcademyRefundAccountingInner(enrollmentId: number, paymentMethod: string, currency: string): Promise<void> {
+  const snapshot = await academyPaymentRepository.getSnapshotByEnrollment(enrollmentId);
+  if (!snapshot?.id) {
+    log.error({ enrollmentId }, 'Academy snapshot not found — skipping academy refund accounting');
+    return;
+  }
+
+  const r2 = (v: any) => Math.round(Number(v || 0) * 100) / 100;
+  const gross = r2(snapshot.gross_amount);
+  const commission = r2(snapshot.commission_amount);
+  const orgEarning = r2(snapshot.organization_earning_amount);
+  const orgId = snapshot.organisation_id ?? null;
+  const isCash = paymentMethod === 'cash' || snapshot.payment_method === 'cash';
+  const courtRental = r2(snapshot.court_rental_amount);
+  const academyRevenue = r2(gross - courtRental);
+  const grossPayable = r2(orgEarning + commission);
+
+  // CourtZon book reversal (org NULL) — reverse the original custody/cash legs.
+  if (isCash) {
+    await postAccountingEvent(
+      'academy_cash_refund', 'academy', enrollmentId, null,
+      { platform_commission: commission, tax_liability: 0, marketplace_receivable: commission },
+      currency,
+      `Academy enrollment #${enrollmentId} cash refund`,
+      undefined,
+      { platform_commission: null, tax_liability: null, marketplace_receivable: null },
+    );
+  } else if (paymentMethod === 'wallet') {
+    await postAccountingEvent(
+      'academy_wallet_refund', 'academy', enrollmentId, null,
+      { merchant_payable: orgEarning, platform_commission: commission, tax_liability: 0, wallet_liability_spend: grossPayable },
+      currency,
+      `Academy enrollment #${enrollmentId} wallet refund`,
+      undefined,
+      { merchant_payable: null, platform_commission: null, tax_liability: null, wallet_liability_spend: null },
+    );
+  } else {
+    await postAccountingEvent(
+      'academy_card_refund', 'academy', enrollmentId, null,
+      { merchant_payable: orgEarning, platform_commission: commission, tax_liability: 0, payment_clearing: grossPayable },
+      currency,
+      `Academy enrollment #${enrollmentId} card refund`,
+      undefined,
+      { merchant_payable: null, platform_commission: null, tax_liability: null, payment_clearing: null },
+    );
+  }
+
+  // Organization book reversal — reuse the existing symmetric reversal events.
+  if (orgId != null) {
+    if (isCash) {
+      await postAccountingEvent(
+        'academy_org_cash_receivable_rev', 'academy', enrollmentId, orgId,
+        { academy_revenue: academyRevenue, court_rental_revenue: courtRental, courtzon_payable: commission, org_cash_bank: grossPayable, commission_expense: commission },
+        currency,
+        `Academy enrollment #${enrollmentId} org book cash refund`,
+        undefined,
+        { academy_revenue: orgId, court_rental_revenue: orgId, courtzon_payable: orgId, org_cash_bank: orgId, commission_expense: orgId },
+      );
+    } else {
+      await postAccountingEvent(
+        'academy_org_receivable_reversal', 'academy', enrollmentId, orgId,
+        { academy_revenue: academyRevenue, court_rental_revenue: courtRental, marketplace_receivable: orgEarning, commission_expense: commission },
+        currency,
+        `Academy enrollment #${enrollmentId} org book refund`,
+        undefined,
+        { academy_revenue: orgId, court_rental_revenue: orgId, marketplace_receivable: orgId, commission_expense: orgId },
+      );
+    }
+  }
+}
+
 async function postBookingRefundAccounting(bookingId: number, refundAmount: number, currency: string): Promise<void> {
   const refund = await bookingAccounting.computeRefundEconomics(bookingId, refundAmount);
   const key = refund ? `booking-org:${refund.organisationId ?? 'global'}` : `booking:${bookingId}`;
@@ -1462,13 +1546,13 @@ export function registerAccountingEventListeners(): void {
         return;
       }
 
-      // ── Academy refund → G8 explicitly out of scope ──
-      // Academy refunds are not yet supported (per the G8 contract). Do NOT
-      // fall through to the generic revenue_contra reversal — it would reverse
-      // rows that were never posted (academy postings use 4191/merchant_payable,
-      // not the generic revenue account).
+      // ── Academy refund → symmetric reversal of the original academy legs ──
+      // Economics come from the immutable academy_enrollment_payments snapshot
+      // (never recalculated). The org book reuses the existing academy reversal
+      // events; the CourtZon book uses the new academy_*_refund events built on
+      // the SAME accounts as the original postings.
       if (referenceType === 'academy') {
-        log.warn({ referenceId, amount }, 'Academy refund not yet supported (G8) — no accounting reversal posted');
+        await postAcademyRefundAccounting(Number(referenceId), paymentMethod, currency);
         return;
       }
 

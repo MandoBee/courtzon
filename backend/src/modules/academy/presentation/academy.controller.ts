@@ -9,6 +9,7 @@ import { academyCapacityOverrideService } from '../application/capacity-override
 import { academySessionService } from '../application/session.service.js';
 import { publicAcademyService } from '../application/public-academy.service.js';
 import { playerAcademyPaymentService } from '../application/player-academy-payment.service.js';
+import { academyRefundService } from '../application/academy-refund.service.js';
 import {
   CreateProgramSchema, UpdateProgramSchema, ListProgramsQuerySchema, TransitionStatusSchema,
   CreateGroupSchema, UpdateGroupSchema, AssignCoachSchema, SetCompensationSchema, ConfirmAcademySchema, ListGroupsQuerySchema,
@@ -18,7 +19,7 @@ import {
   CreateScheduleSchema, UpdateScheduleSchema, ListSchedulesQuerySchema, ListScheduleSessionsQuerySchema,
   ScheduleStatusSchema, ResolveSessionSchema, ConfirmationRequestSchema, MarkEnrollmentPaymentSchema,
   CapacityOverrideSchema, RemoveCapacityOverrideSchema, PromoteEnrollmentSchema, ReplaceEnrollmentSchema,
-  StartSessionSchema, CompleteSessionSchema, CancelSessionSchema,
+  StartSessionSchema, CompleteSessionSchema, CancelSessionSchema, RefundEnrollmentSchema,
   PlayerAcademyPaymentSchema,
 } from './academy.dto.js';
 import { getPool } from '../../../database/mysql.js';
@@ -450,6 +451,25 @@ export async function moveEnrollmentHandler(request: FastifyRequest, reply: Fast
     ipAddress: request.ip, userAgent: getUserAgent(request),
   });
   return reply.send(enrollment);
+}
+
+/** G5-A — full Academy enrollment refund (eligibility + tenancy in the service). */
+export async function refundEnrollmentHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = getUserId(request);
+  const { id } = request.params as any;
+  const before = await academyEnrollmentService.getById(Number(id));
+  if (!before) throw new NotFoundError('Academy enrollment', ErrorCodes.ACADEMY_ENROLLMENT_NOT_FOUND);
+  if (before.program_id) await assertProgramAccess(userId, Number(before.program_id));
+  const body = RefundEnrollmentSchema.parse(request.body ?? {});
+  const result = await academyRefundService.refund(Number(id), userId, body?.reason ?? null);
+  recordAudit({
+    actorId: userId, action: 'ACADEMY_ENROLLMENT.REFUND', entityType: 'academy_enrollment',
+    entityId: Number(id),
+    beforeState: { status: before.status, payment_confirmed_at: before.payment_confirmed_at ?? null },
+    afterState: { payment_refunded: true, payment_id: result.paymentId, amount: result.amount, currency: result.currency, method: result.method, reason: result.reason ?? null },
+    ipAddress: request.ip, userAgent: getUserAgent(request),
+  });
+  return reply.send(result);
 }
 
 export async function getEnrollmentHistoryHandler(request: FastifyRequest, reply: FastifyReply) {

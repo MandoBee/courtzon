@@ -51,6 +51,7 @@ export async function academyRoutes(app: FastifyInstance): Promise<void> {
   app.post('/admin/academy/enrollments/:id/complete', { preHandler: [requirePermission(['academy.enroll'])] }, ctrl.completeEnrollmentHandler);
   app.post('/admin/academy/enrollments/:id/confirm', { preHandler: [requirePermission(['academy.enroll'])] }, ctrl.confirmEnrollmentHandler);
   app.post('/admin/academy/enrollments/:id/move', { preHandler: [requirePermission(['academy.manage'])] }, ctrl.moveEnrollmentHandler);
+  app.post('/admin/academy/enrollments/:id/refund', { preHandler: [requirePermission(['academy.refund'])] }, ctrl.refundEnrollmentHandler);
   app.get('/admin/academy/enrollments/:id/history', { preHandler: [requirePermission(['academy.view'])] }, ctrl.getEnrollmentHistoryHandler);
 
   // ── Group Sessions ──

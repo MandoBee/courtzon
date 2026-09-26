@@ -99,6 +99,11 @@ export const ConfirmationRequestSchema = z.object({
 /** G3 — manual / offline payment acknowledgment for a confirmed enrollment. */
 export const MarkEnrollmentPaymentSchema = z.object({}).optional();
 
+/** G5-A — Academy enrollment refund (FULL refund only; reason is optional metadata). */
+export const RefundEnrollmentSchema = z.object({
+  reason: z.string().max(500).optional(),
+});
+
 /**
  * G8.4 — player self-service Academy payment.
  * `.strict()` rejects any unknown field (amount, collector, programId, groupId,

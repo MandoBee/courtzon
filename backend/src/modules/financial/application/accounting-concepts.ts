@@ -495,6 +495,27 @@ export const EVENT_CONCEPTS: Record<string, { debit: string[]; credit: string[] 
     debit: ['marketplace_receivable'],
     credit: ['platform_commission', 'tax_liability'],
   },
+  // ── ACADEMY REFUNDS (G5-A) — symmetric reversals of the academy payment legs.
+  // CourtZon-book reversals reuse the EXACT account concepts of their original
+  // postings (no new accounts):
+  //   card   → Dr merchant_payable + platform_commission + tax_liability
+  //            / Cr payment_clearing                     (money returned to gateway)
+  //   wallet → Dr merchant_payable + platform_commission + tax_liability
+  //            / Cr wallet_liability_spend               (credit to customer wallet)
+  //   cash   → Dr platform_commission + tax_liability
+  //            / Cr marketplace_receivable               (commission receivable released)
+  academy_card_refund: {
+    debit: ['merchant_payable', 'platform_commission', 'tax_liability'],
+    credit: ['payment_clearing'],
+  },
+  academy_wallet_refund: {
+    debit: ['merchant_payable', 'platform_commission', 'tax_liability'],
+    credit: ['wallet_liability_spend'],
+  },
+  academy_cash_refund: {
+    debit: ['platform_commission', 'tax_liability'],
+    credit: ['marketplace_receivable'],
+  },
   // ── ACADEMY ORGANIZATION BOOK (org-scoped) ──
   // CARD/WALLET org book: CourtZon holds the funds, so the org books a
   // receivable from CourtZon (org 1161) + commission expense. The org's Gross

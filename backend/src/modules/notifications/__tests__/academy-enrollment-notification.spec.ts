@@ -82,6 +82,8 @@ for (const event of NEW_EVENTS) {
 // G4-B1 — canonical player payment confirmation event.
 handlers['academy:enrollment-paid'] = handlerFor('academy:enrollment-paid');
 subscriptions['academy:enrollment-paid'] = subscriptionCount('academy:enrollment-paid');
+// G5-A — player-facing refund notification (shared payment:refunded group).
+handlers['payment:refunded'] = handlerFor('payment:refunded');
 const PAYMENT_ACK_SUBSCRIPTIONS = subscriptionCount('academy:payment-acknowledged');
 
 beforeEach(() => {
@@ -249,5 +251,18 @@ describe('G4-B1 — unified player payment confirmation (academy:enrollment-paid
       );
       expect(seg).toContain("actionKey: 'view_my_academy', routePattern: '/my/academy'");
     }
+  });
+
+  it('G5-A — payment:refunded for academy routes the player to /my/academy (booking route unchanged)', async () => {
+    expect(handlers['payment:refunded']).toBeDefined();
+    // Academy refund → /my/academy
+    await handlers['payment:refunded']({ userId: 200, paymentId: 5001, bookingId: null, referenceType: 'academy', amount: 200 });
+    expect(__state.dispatched).toHaveLength(1);
+    expect(__state.dispatched[0]).toMatchObject({ userId: 200, eventName: 'payment:refunded', action: { route: '/my/academy' } });
+    // Booking refund → unchanged booking route
+    __state.dispatched.length = 0;
+    await handlers['payment:refunded']({ userId: 200, paymentId: 5002, bookingId: 77, amount: 100 });
+    expect(__state.dispatched).toHaveLength(1);
+    expect(__state.dispatched[0].action).toEqual({ route: '/bookings/77' });
   });
 });

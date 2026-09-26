@@ -29,6 +29,7 @@ export default function AcademyEnrollmentsPage() {
   const [form, setForm] = useState<any>({ player_id: '', program_id: '', group_id: '' });
   const [replaceTarget, setReplaceTarget] = useState<{ id: number; name: string | null } | null>(null);
   const [replaceReason, setReplaceReason] = useState('');
+  const [refundTarget, setRefundTarget] = useState<{ id: number; name: string | null } | null>(null);
 
   const queryParams: Record<string, any> = { page, limit: 20 };
   if (statusFilter !== 'all') queryParams.status = statusFilter;
@@ -91,6 +92,18 @@ export default function AcademyEnrollmentsPage() {
       qc.invalidateQueries({ queryKey: ['admin', 'academy', 'enrollments'] });
       setReplaceTarget(null); setReplaceReason('');
       showToast(t('admin.academy.waitlist_replaced'));
+    },
+    onError: (err) => showToast(getErrorMessage(err), 'error'),
+  });
+
+  // G5-A — full Academy enrollment refund (permission-gated; backend validates eligibility).
+  const refundMutation = useMutation({
+    mutationFn: (id: number) => academyApi.refundEnrollment(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['admin', 'academy', 'enrollments'] });
+      qc.invalidateQueries({ queryKey: ['admin', 'academy', 'dashboard'] });
+      setRefundTarget(null);
+      showToast(t('admin.academy.enrollment_refunded'));
     },
     onError: (err) => showToast(getErrorMessage(err), 'error'),
   });
@@ -256,6 +269,12 @@ export default function AcademyEnrollmentsPage() {
                           <button onClick={() => cancelMutation.mutate(e.id)}
                             className="text-[10px] px-1.5 py-0.5 rounded bg-red-100 text-red-700 hover:opacity-80">{t('admin.academy.cancel')}</button>
                         </Can>
+                        {e.payment_confirmed_at && (
+                          <Can permission="academy.refund">
+                            <button onClick={() => setRefundTarget({ id: e.id, name: e.player_name ?? null })}
+                              className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 hover:opacity-80">{t('admin.academy.refund')}</button>
+                          </Can>
+                        )}
                       </>
                     )}
                   </td>
@@ -297,6 +316,32 @@ export default function AcademyEnrollmentsPage() {
             <input value={replaceReason} onChange={(e) => setReplaceReason(e.target.value)}
               className="w-full px-2 py-1.5 rounded-[var(--radius-md)] border text-sm bg-white" />
           </div>
+        )}
+      </Modal>
+
+      {/* G5-A — full-refund confirmation (no partial amount input). */}
+      <Modal
+        open={refundTarget !== null}
+        onClose={() => setRefundTarget(null)}
+        title={t('admin.academy.refund')}
+        size="sm"
+        footer={
+          <div className="flex items-center gap-2 justify-end">
+            <button onClick={() => setRefundTarget(null)} className="px-3 py-1.5 border rounded-[var(--radius-md)] text-xs">{t('common.cancel')}</button>
+            <button
+              onClick={() => refundTarget && refundMutation.mutate(refundTarget.id)}
+              disabled={refundMutation.isPending}
+              className="px-3 py-1.5 bg-amber-600 text-white rounded-[var(--radius-md)] text-xs font-medium disabled:opacity-50">
+              {t('admin.academy.refund')}
+            </button>
+          </div>
+        }
+      >
+        {refundTarget && (
+          <p className="text-xs text-[var(--color-text-muted)]">
+            {refundTarget.name ? `${t('admin.academy.player')}: ${refundTarget.name}` : `#${refundTarget.id}`}
+            {' — '}{t('admin.academy.refund_confirm')}
+          </p>
         )}
       </Modal>
     </div>

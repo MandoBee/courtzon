@@ -749,6 +749,7 @@ export const uiRegistry: UIElement[] = [
   { permissionKey: 'academy.delete', moduleSlug: 'academy', elementType: 'button', elementLabel: 'Archive/Delete Program', componentPath: 'pages/admin/academy/AcademyProgramsPage.tsx' },
   { permissionKey: 'academy.publish', moduleSlug: 'academy', elementType: 'button', elementLabel: 'Publish Academy Program', componentPath: 'pages/admin/academy/AcademyProgramsPage.tsx' },
   { permissionKey: 'academy.enroll', moduleSlug: 'academy', elementType: 'button', elementLabel: 'Enroll Player in Program', componentPath: 'pages/admin/academy/AcademyEnrollmentsPage.tsx' },
+  { permissionKey: 'academy.refund', moduleSlug: 'academy', elementType: 'action', elementLabel: 'Refund Academy Enrollment Payment (full only)', componentPath: 'pages/admin/academy/AcademyEnrollmentsPage.tsx' },
   { permissionKey: 'academy.manage', moduleSlug: 'academy', elementType: 'action', elementLabel: 'Manage Groups / Coach Assignment', componentPath: 'pages/admin/academy/AcademyGroupsPage.tsx' },
   { permissionKey: 'academy.capacity.override', moduleSlug: 'academy', elementType: 'action', elementLabel: 'Create/Reduce/Remove Academy Capacity Override', componentPath: 'pages/admin/academy/AcademyProgramsPage.tsx' },
   { permissionKey: 'academy.waitlist.promote', moduleSlug: 'academy', elementType: 'action', elementLabel: 'Promote Waitlisted Player (FIFO)', componentPath: 'pages/admin/academy/AcademyEnrollmentsPage.tsx' },

@@ -96,6 +96,10 @@ export const CONCEPT_ACCOUNT_CODE_DEFAULTS: Record<string, Record<string, string
   academy_card_payment: { payment_clearing: '1100', merchant_payable: '2202', platform_commission: '4191', tax_liability: '2300' },
   academy_wallet_payment: { wallet_liability_spend: '2100', merchant_payable: '2202', platform_commission: '4191', tax_liability: '2300' },
   academy_cash_payment: { marketplace_receivable: '1161', platform_commission: '4191', tax_liability: '2300' },
+  // Academy refund reversals (G5-A) — same accounts as the original postings.
+  academy_card_refund: { merchant_payable: '2202', platform_commission: '4191', tax_liability: '2300', payment_clearing: '1100' },
+  academy_wallet_refund: { merchant_payable: '2202', platform_commission: '4191', tax_liability: '2300', wallet_liability_spend: '2100' },
+  academy_cash_refund: { platform_commission: '4191', tax_liability: '2300', marketplace_receivable: '1161' },
 };
 
 /**

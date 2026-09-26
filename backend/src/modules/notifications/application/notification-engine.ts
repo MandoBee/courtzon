@@ -144,11 +144,14 @@ const eventGroups: EventGroupConfig[] = [
     events: ['payment:completed', 'payment:failed', 'payment:refunded'],
     handler: async (eventName, data, categorySlug) => {
       if (data.userId) {
+        // G5-A — Academy refunds navigate to the player's Academy page; all other
+        // payment events keep the existing booking-centric route unchanged.
+        const route = data.referenceType === 'academy' ? '/my/academy' : `/bookings/${data.bookingId || data.paymentId}`;
         await dispatchToUser({
           userId: data.userId, eventName, categorySlug, data,
           organisationId: data.organisationId,
           relatedEntityType: 'payment', relatedEntityId: String(data.paymentId),
-          action: a(`/bookings/${data.bookingId || data.paymentId}`), digestable: false,
+          action: a(route), digestable: false,
         });
       }
     },
