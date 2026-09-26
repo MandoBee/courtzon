@@ -26,4 +26,14 @@ export async function bookingRoutes(app: FastifyInstance): Promise<void> {
   app.post('/booking-invitations/:invitationId/respond', { preHandler: [requirePermission(['bookings.matchmaking'])] }, ctrl.respondToApplicantHandler);
 
   app.get('/bookings/:id/applicants', { preHandler: [requirePermission(['bookings.view'])] }, ctrl.getBookingApplicantsHandler);
+
+  // ── R2 — Canonical recurring booking core ─────────────────────────────
+  // Creation restricted to the existing responsible-user authorities
+  // (super_admin OR admin.bookings.update-status OR org.bookings.manage).
+  // Preview is side-effect free. No new permission is introduced.
+  const recurringGuard = requirePermission(['admin.bookings.update-status', 'org.bookings.manage']);
+  app.post('/admin/recurring/preview', { preHandler: [recurringGuard] }, ctrl.previewRecurringSeriesHandler);
+  app.post('/admin/recurring', { preHandler: [recurringGuard] }, ctrl.createRecurringSeriesHandler);
+  app.get('/admin/recurring', { preHandler: [recurringGuard] }, ctrl.listRecurringSeriesHandler);
+  app.get('/admin/recurring/:id', { preHandler: [recurringGuard] }, ctrl.getRecurringSeriesHandler);
 }

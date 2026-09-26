@@ -7352,3 +7352,40 @@ CREATE TABLE IF NOT EXISTS `academy_enrollment_payments` (
   KEY `idx_sep_payment_txn` (`payment_transaction_id`),
   CONSTRAINT `fk_sep_payment_txn` FOREIGN KEY (`payment_transaction_id`) REFERENCES `payment_transactions` (`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+
+-- ============================================================================
+-- R2 (migration 177) — Canonical recurring booking core
+-- booking_series + bookings.series_id (see database/migrations/177_recurring_booking_series.sql)
+-- ============================================================================
+CREATE TABLE `booking_series` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `public_id` char(36) NOT NULL,
+  `organisation_id` bigint unsigned NOT NULL,
+  `branch_id` int unsigned NOT NULL,
+  `resource_id` bigint unsigned NOT NULL,
+  `created_by` bigint unsigned NOT NULL,
+  `recurrence_type` enum('weekly') NOT NULL DEFAULT 'weekly',
+  `weekdays` set('mon','tue','wed','thu','fri','sat','sun') NOT NULL,
+  `start_date` date NOT NULL,
+  `end_date` date NOT NULL,
+  `start_time` time NOT NULL,
+  `end_time` time NOT NULL,
+  `timezone` varchar(64) NOT NULL,
+  `status` enum('active','paused','completed','cancelled') NOT NULL DEFAULT 'active',
+  `idempotency_key` varchar(64) DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_booking_series_public_id` (`public_id`),
+  UNIQUE KEY `uk_booking_series_idempotency` (`idempotency_key`),
+  KEY `idx_bs_org` (`organisation_id`),
+  KEY `idx_bs_branch` (`branch_id`),
+  KEY `idx_bs_resource` (`resource_id`),
+  KEY `idx_bs_creator` (`created_by`),
+  KEY `idx_bs_status_org` (`status`,`organisation_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+ALTER TABLE `bookings`
+  ADD COLUMN `series_id` bigint unsigned DEFAULT NULL AFTER `aggregate_version`,
+  ADD UNIQUE KEY `uk_booking_series_occurrence` (`series_id`,`booking_date`,`start_time`);

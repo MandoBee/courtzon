@@ -10,6 +10,7 @@ import type {
   DSTTransition, OperatingSession, TimeSlot, AvailableSlot,
   RecurrenceRule, BookingInstance, ScheduledReminder, ReminderConfig,
   AmbiguousPair, UtcRange, BookingConflict,
+  WeeklyRecurrenceRule, WeeklyRecurrenceOccurrence,
 } from './types.js'
 import type { Clock } from './clock.js'
 import { SystemClock } from './clock.js'
@@ -185,7 +186,52 @@ export class TimeEngine {
     return AvailService.isSlotAvailable(startAtUtc, endAtUtc, existingBookings)
   }
 
-  // ── RecurringEngine — Phase 2 stub ──
+  // ── RecurringTimeLayer — R2 weekly occurrence generator (canonical core) ──
+  //
+  // Deterministic, calendar-date based, branch-timezone aware, DST-safe.
+  // PURE: no DB access, no booking writes, no payment calls.
+
+  static generateWeeklyOccurrences(rule: WeeklyRecurrenceRule): WeeklyRecurrenceOccurrence[] {
+    const weekdays = [...new Set(rule.weekdays.map(n => Number(n)))]
+      .filter(n => Number.isInteger(n) && n >= 1 && n <= 7)
+      .sort((a, b) => a - b)
+    if (weekdays.length === 0) {
+      throw new Error('At least one weekday (1=Mon..7=Sun) is required')
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(rule.startDate) || !/^\d{4}-\d{2}-\d{2}$/.test(rule.endDate)) {
+      throw new Error('startDate/endDate must use YYYY-MM-DD')
+    }
+    if (!/^\d{2}:\d{2}$/.test(rule.startTime) || !/^\d{2}:\d{2}$/.test(rule.endTime)) {
+      throw new Error('startTime/endTime must use HH:mm')
+    }
+    if (rule.endDate < rule.startDate) {
+      throw new Error('endDate must be on or after startDate')
+    }
+    if (rule.startTime === rule.endTime) {
+      throw new Error('startTime and endTime must differ')
+    }
+
+    TimeEngine.validateTimezone(rule.timezone)
+
+    const occurrences: WeeklyRecurrenceOccurrence[] = []
+    const seen = new Set<string>()
+    let cursor = rule.startDate
+    while (cursor <= rule.endDate) {
+      const weekday = localDayOfWeek(cursor)
+      if (weekdays.includes(weekday)) {
+        const descriptor = buildOccurrence(rule, cursor, weekday)
+        if (seen.has(descriptor.occurrenceKey)) {
+          throw new Error(`Duplicate occurrence generated for ${descriptor.occurrenceKey}`)
+        }
+        seen.add(descriptor.occurrenceKey)
+        occurrences.push(descriptor)
+      }
+      cursor = addCalendarDays(cursor, 1)
+    }
+    return occurrences
+  }
+
+  // ── RecurringEngine — Phase 2 stub (single-weekday legacy shape, unused) ──
 
   static generateOccurrences(_rule: RecurrenceRule): BookingInstance[] {
     throw new Error('RecurringEngine not yet implemented (Phase 2)')
@@ -232,5 +278,59 @@ export class TimeEngine {
     const from = BDResolver.getBusinessDayRange(fromDate, openingHours, closingHours, timezone)
     const to = BDResolver.getBusinessDayRange(toDate, openingHours, closingHours, timezone)
     return { fromUtc: from.fromUtc, toUtc: to.toUtc }
+  }
+}
+
+// ── Weekly recurrence helpers (used ONLY by TimeEngine.generateWeeklyOccurrences) ──
+// Calendar-date arithmetic is performed with Date.UTC accessors only, so it is
+// immune to the server/host local timezone and to DST offsets.
+
+/** 1=Mon .. 7=Sun for a branch-local calendar date (YYYY-MM-DD). */
+function localDayOfWeek(date: string): number {
+  const [y, m, d] = date.split('-').map(Number)
+  const utcDay = new Date(Date.UTC(y, m - 1, d)).getUTCDay() // 0=Sun .. 6=Sat
+  return utcDay === 0 ? 7 : utcDay
+}
+
+/** YYYY-MM-DD exactly `days` calendar days after the input date. */
+function addCalendarDays(date: string, days: number): string {
+  const [y, m, d] = date.split('-').map(Number)
+  const target = new Date(Date.UTC(y, m - 1, d + days))
+  return [
+    String(target.getUTCFullYear()).padStart(4, '0'),
+    String(target.getUTCMonth() + 1).padStart(2, '0'),
+    String(target.getUTCDate()).padStart(2, '0'),
+  ].join('-')
+}
+
+/**
+ * Build one occurrence descriptor for `date`. Handles overnight (end <= start)
+ * and the "24:00" sentinel by moving the end time to the NEXT calendar day.
+ * UTC instants come from TimeEngine.localToUtc (DST-gap/overlap aware), which
+ * preserves the intended LOCAL time across DST transitions.
+ */
+function buildOccurrence(
+  rule: WeeklyRecurrenceRule,
+  date: string,
+  weekday: number,
+): WeeklyRecurrenceOccurrence {
+  let effectiveEndTime = rule.endTime
+  let endDate = date
+  if (rule.endTime === '24:00') {
+    effectiveEndTime = '00:00'
+    endDate = addCalendarDays(date, 1)
+  } else if (rule.endTime <= rule.startTime) {
+    // Overnight slot: end time falls on the following calendar day.
+    endDate = addCalendarDays(date, 1)
+  }
+  return {
+    date,
+    weekday,
+    startTime: rule.startTime,
+    endTime: effectiveEndTime,
+    endDate,
+    startAtUtc: TimeEngine.localToUtc(date, rule.startTime, rule.timezone),
+    endAtUtc: TimeEngine.localToUtc(endDate, effectiveEndTime, rule.timezone),
+    occurrenceKey: date,
   }
 }

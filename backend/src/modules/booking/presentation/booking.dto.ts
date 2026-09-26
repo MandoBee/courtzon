@@ -105,3 +105,34 @@ export const MatchesQuerySchema = z.object({
 export type CreateBookingInput = z.infer<typeof CreateBookingSchema>;
 export type PrepareBookingInput = z.infer<typeof PrepareBookingSchema>;
 export type ConfirmBookingInput = z.infer<typeof ConfirmBookingSchema>;
+
+// ── R2 — Canonical recurring booking core ────────────────────────────────
+// Weekly recurrence: one or more weekdays (1=Mon .. 7=Sun), a branch-local
+// date range (inclusive), and branch-local start/end times. The branch timezone
+// is resolved server-side from branches.timezone — never client-supplied.
+
+export const RecurringSeriesSchema = z.object({
+  branchId: z.number().int().positive(),
+  resourceId: z.number().int().positive(),
+  weekdays: z.array(z.number().int().min(1).max(7)).min(1).max(7),
+  startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD format'),
+  endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD format'),
+  startTime: z.string().regex(/^\d{2}:\d{2}$/, 'Use HH:mm format'),
+  endTime: z.string().regex(/^\d{2}:\d{2}$/, 'Use HH:mm format'),
+  idempotencyKey: z.string().min(8).max(64).optional(),
+}).refine((d) => d.endDate >= d.startDate, {
+  message: 'endDate must be on or after startDate',
+  path: ['endDate'],
+}).refine((d) => d.endTime !== d.startTime, {
+  message: 'startTime and endTime must differ',
+  path: ['endTime'],
+});
+
+export type RecurringSeriesInput = z.infer<typeof RecurringSeriesSchema>;
+
+export const RecurringSeriesQuerySchema = z.object({
+  organisationId: z.string().transform(Number).optional(),
+  branchId: z.string().transform(Number).optional(),
+});
+
+export type RecurringSeriesQueryInput = z.infer<typeof RecurringSeriesQuerySchema>;

@@ -1,6 +1,6 @@
 import type { FastifyRequest, FastifyReply } from 'fastify';
 import { bookingService } from '../application/booking.service.js';
-import { CreateBookingSchema, ConfirmBookingSchema, PrepareBookingSchema, CancelBookingSchema, BookingsQuerySchema, StartMatchmakingSchema } from './booking.dto.js';
+import { CreateBookingSchema, ConfirmBookingSchema, PrepareBookingSchema, CancelBookingSchema, BookingsQuerySchema, StartMatchmakingSchema, RecurringSeriesSchema, RecurringSeriesQuerySchema } from './booking.dto.js';
 import { ForbiddenError } from '../../../shared/errors/app-error.js';
 import { recordAudit } from '../../audit-log/index.js';
 
@@ -137,6 +137,52 @@ export async function getResourceSlotsHandler(request: FastifyRequest, reply: Fa
   // authoritative player window ({ timezone, minDate, maxDate|null }) so the
   // frontend can cap the date picker using the branch timezone, not the browser.
   return reply.send({ data: slots, bookingWindow });
+}
+
+export async function previewRecurringSeriesHandler(request: FastifyRequest, reply: FastifyReply) {
+  const body = RecurringSeriesSchema.parse(request.body);
+  const preview = await bookingService.previewRecurringSeries(body);
+  return reply.send(preview);
+}
+
+export async function createRecurringSeriesHandler(request: FastifyRequest, reply: FastifyReply) {
+  const body = RecurringSeriesSchema.parse(request.body);
+  const userId = (request as any).userId;
+  const result = await bookingService.createRecurringSeries(body, userId);
+
+  recordAudit({
+    actorId: userId ?? null,
+    action: 'BOOKING.CREATE',
+    entityType: 'booking_series',
+    entityId: result.seriesId,
+    afterState: {
+      weekdays: body.weekdays,
+      startDate: body.startDate,
+      endDate: body.endDate,
+      startTime: body.startTime,
+      endTime: body.endTime,
+      branchId: body.branchId,
+      resourceId: body.resourceId,
+      occurrenceCount: result.occurrenceCount,
+    },
+    ipAddress: request.ip,
+    userAgent: request.headers['user-agent'],
+  });
+
+  return reply.status(201).send(result);
+}
+
+export async function listRecurringSeriesHandler(request: FastifyRequest, reply: FastifyReply) {
+  const query = RecurringSeriesQuerySchema.parse(request.query || {});
+  const userId = (request as any).userId;
+  const result = await bookingService.listRecurringSeries(query, userId);
+  return reply.send(result);
+}
+
+export async function getRecurringSeriesHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { id } = request.params as any;
+  const result = await bookingService.describeRecurringSeries(Number(id));
+  return reply.send(result);
 }
 
 export async function checkInHandler(request: FastifyRequest, reply: FastifyReply) {

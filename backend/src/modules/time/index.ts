@@ -15,6 +15,7 @@ export type {
   DSTTransition, DSTTransitionType, DSTResolution, DSTHandling, AmbiguousPair,
   OperatingSession,
   RecurrenceRule, BookingInstance,
+  WeeklyRecurrenceRule, WeeklyRecurrenceOccurrence,
   ScheduledReminder, ReminderConfig,
   UtcRange,
 } from './types.js'

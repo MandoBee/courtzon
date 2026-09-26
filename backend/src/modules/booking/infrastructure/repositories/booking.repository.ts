@@ -39,6 +39,8 @@ export class BookingRepository {
     notes?: string; bookingStatus?: string; paymentStatus?: string;
     paymentMethod?: string; startAtUtc?: string; endAtUtc?: string;
     businessDate?: string; expiresAt?: string;
+    /** R2 — recurring series reference (null for normal bookings). */
+    seriesId?: number;
   }, conn?: mysql.PoolConnection): Promise<number> {
     const db = this.resolve(conn);
     try {
@@ -47,8 +49,9 @@ export class BookingRepository {
           booking_date, business_date, start_time, end_time, start_at_utc, end_at_utc,
           total_amount, tax_rate, tax_rate_id, tax_amount, tax_treatment, price_type,
           commission_amount, club_amount, coach_amount,
-          booking_status, payment_status, payment_method, notes, expires_at, aggregate_version)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
+          booking_status, payment_status, payment_method, notes, expires_at, aggregate_version,
+          series_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`,
          [generateUUID(), data.userId, data.organisationId, data.branchId, data.resourceId, data.bookingType,
           data.bookingDate, data.businessDate || data.bookingDate, data.startTime, data.endTime,
           data.startAtUtc ? toMySqlDateTime(new Date(data.startAtUtc)) : null,
@@ -57,19 +60,35 @@ export class BookingRepository {
          data.taxTreatment || 'taxable', data.priceType || 'net',
          data.commissionAmount || 0, data.clubAmount || 0, data.coachAmount || 0,
          data.bookingStatus || 'pending', data.paymentStatus || 'pending', data.paymentMethod || null, data.notes || null,
-         data.expiresAt || null]
+         data.expiresAt || null, data.seriesId || null]
       );
       return result.insertId;
     } catch (err: any) {
       // A duplicate on uq_booking_slot (resource_id, booking_date, start_time)
-      // means this exact slot was already taken by a concurrent/earlier booking.
-      // Surface it as the application's standard booking conflict (HTTP 409)
-      // rather than leaking a raw database duplicate-entry error (HTTP 500).
+      // or on the R2 occurrence key uk_booking_series_occurrence
+      // (series_id, booking_date, start_time) means this exact slot was already
+      // taken by a concurrent/earlier booking. Surface it as the application's
+      // standard booking conflict (HTTP 409) rather than leaking a raw database
+      // duplicate-entry error (HTTP 500).
       if (err?.code === 'ER_DUP_ENTRY' || err?.errno === 1062) {
         throw new ConflictError('This time slot has already been booked. Please choose another time.');
       }
       throw err;
     }
+  }
+
+  /** R2 — all occurrence bookings belonging to a recurring series. */
+  async findBySeries(seriesId: number): Promise<any[]> {
+    const [rows] = await this.pool.execute<RowData>(
+      `SELECT b.*, r.name as resource_name, br.name as branch_name
+       FROM bookings b
+       JOIN resources r ON r.id = b.resource_id
+       JOIN branches br ON br.id = b.branch_id
+       WHERE b.series_id = ?
+       ORDER BY b.booking_date, b.start_time`,
+      [seriesId]
+    );
+    return rows;
   }
 
   async persistTransition(

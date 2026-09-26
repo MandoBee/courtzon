@@ -14,9 +14,10 @@ import { NotFoundError, ForbiddenError, ConflictError, ValidationError } from '.
 import { ErrorCodes } from '../../../shared/errors/error-codes.js';
 import { BookingWindowPolicy } from '../domain/booking-window.policy.js';
 import { rbacRepository } from '../../rbac/infrastructure/repositories/rbac.repository.js';
+import { bookingSeriesRepository, weekdayNumbersToSet, weekdaySetToNumbers } from '../infrastructure/repositories/booking-series.repository.js';
 import { createModuleLogger } from '../../../shared/utils/logger.js';
 import { generateUUID } from '../../../shared/utils/token.js';
-import type { CreateBookingInput, PrepareBookingInput } from '../presentation/booking.dto.js';
+import type { CreateBookingInput, PrepareBookingInput, RecurringSeriesInput } from '../presentation/booking.dto.js';
 import type mysql from 'mysql2/promise';
 import { eventBusV2 } from '../../../shared/event-bus/event-bus.v2.js';
 import { commandPipeline } from '../../../shared/command/command-pipeline.js';
@@ -63,6 +64,13 @@ async function executeBookingCommand(commandType: string, handler: any, payload:
 }
 
 const log = createModuleLogger('booking');
+
+/** R2 — Human-readable occurrence date for conflict messages (DD Mon YYYY). */
+function occurrenceLabel(date: string): string {
+  const [y, m, d] = date.split('-').map(Number);
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  return `${d} ${months[m - 1] || m} ${y}`;
+}
 
 // ── Split a time range into individual slots of the given duration ──
 // Used for booking_slots population and Redis locking.
@@ -1448,6 +1456,353 @@ export class BookingService {
       timezone: tz,
       minDate: window.minDate,
       maxDate: bypassed ? null : window.maxDate,
+    };
+  }
+
+  /**
+   * R2 — Canonical recurring booking core.
+   *
+   * DESIGN NOTE (revisited against the R2 stop-conditions):
+   * R2 cannot reuse `bookingService.createBooking()` per occurrence because the
+   * canonical service ALWAYS engages financial behavior (card → gateway charge,
+   * cash → booking_payment transaction + `booking:paid` → accounting entries),
+   * which R2 must not create. Calling it repeatedly would therefore violate the
+   * "no payment/accounting rows" rule, and adding a payment-less mode to the
+   * closed R1 createBooking signature would modify closed behavior.
+   *
+   * Instead each occurrence is created through the SAME canonical primitives the
+   * project already uses for non-financial canonical bookings (the sanctioned
+   * courtReservationService pattern): bookingRepository.checkSlotAvailability
+   * (resources FOR UPDATE serialization + bookings/academy-hold overlap count),
+   * bookingRepository.create() (the canonical bookings table), booking_slots
+   * footprint rows, pricingEngine.calculatePrice() + computeBookingEconomics()
+   * (same snapshot logic as createBookingV2), and the canonical `booking:created`
+   * event. This is NOT a second booking/occupancy engine — every occurrence is
+   * a normal `bookings` row that fully participates in the existing occupancy,
+   * cancellation, settlement and query machinery.
+   *
+   * The whole series is created in ONE transaction (all-or-nothing): if any
+   * occurrence conflicts with an existing individual booking, the entire series
+   * rolls back and no partial series is left behind. No skip/override/force/
+   * alternative policy is invented — that is R3 territory.
+   */
+  static readonly MAX_SERIES_OCCURRENCES = 366;
+
+  private static fmtDate(v: any): string {
+    if (!v) return '';
+    if (v instanceof Date) {
+      const d = v;
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    }
+    return String(v).slice(0, 10);
+  }
+
+  private static fmtTime(v: any): string {
+    if (!v) return '';
+    if (v instanceof Date) {
+      return v.toISOString().slice(11, 16);
+    }
+    return String(v).slice(0, 5);
+  }
+
+  /**
+   * R2 — Side-effect-free preview: generated deterministic occurrence list for
+   * a weekly recurrence definition. No bookings, no reservations, no locks,
+   * no payment calls. The branch IANA timezone is resolved read-only.
+   */
+  async previewRecurringSeries(input: RecurringSeriesInput) {
+    const pool = getPool();
+    const [branchRows] = await pool.execute<RowData>(
+      'SELECT timezone FROM branches WHERE id = ?', [input.branchId],
+    );
+    if (branchRows.length === 0) throw new NotFoundError('Branch');
+    const branchTz = (branchRows[0] as any).timezone || 'Africa/Cairo';
+
+    const resource = await resourceRepository.findById(input.resourceId);
+    if (!resource) throw new NotFoundError('Resource');
+
+    const occurrences = TimeEngine.generateWeeklyOccurrences({
+      startDate: input.startDate,
+      endDate: input.endDate,
+      weekdays: input.weekdays,
+      startTime: input.startTime,
+      endTime: input.endTime,
+      timezone: branchTz,
+    });
+
+    if (occurrences.length > BookingService.MAX_SERIES_OCCURRENCES) {
+      throw new ConflictError(`Recurring series exceeds the maximum of ${BookingService.MAX_SERIES_OCCURRENCES} occurrences`);
+    }
+
+    return {
+      timezone: branchTz,
+      count: occurrences.length,
+      occurrences: occurrences.map((o) => ({
+        date: o.date,
+        weekday: o.weekday,
+        startTime: o.startTime,
+        endTime: o.endTime,
+        startAtUtc: o.startAtUtc,
+        endAtUtc: o.endAtUtc,
+        occurrenceKey: o.occurrenceKey,
+      })),
+      first: occurrences[0] ? { date: occurrences[0].date, startTime: occurrences[0].startTime, endTime: occurrences[0].endTime } : null,
+      last: occurrences[occurrences.length - 1] ? { date: occurrences[occurrences.length - 1].date, startTime: occurrences[occurrences.length - 1].startTime, endTime: occurrences[occurrences.length - 1].endTime } : null,
+    };
+  }
+
+  /**
+   * R2 — Create a recurring series and its canonical occurrence bookings in ONE
+   * transaction.
+   *
+   * Authorization (server-side only): the caller must already hold the player
+   * booking-window bypass authority (super_admin/super-admin role OR
+   * admin.bookings.update-status OR org.bookings.manage). Players cannot create
+   * recurring reservations. No new permission is introduced.
+   *
+   * Idempotency: an optional client `idempotencyKey` makes a full retry return
+   * the already-created series; the DB unique key uk_booking_series_occurrence
+   * (series_id, booking_date, start_time) plus an in-loop pre-check guarantee a
+   * retry can never insert a duplicate occurrence booking.
+   */
+  async createRecurringSeries(input: RecurringSeriesInput & { idempotencyKey?: string }, userId: number) {
+    // 1. Authorization — existing R1 bypass authorities define the "responsible
+    //    user" set. Never trust the request body/frontend role.
+    if (!(await this.canBypassPlayerBookingWindow(userId))) {
+      throw new ForbiddenError('Only authorised responsible users can create recurring reservations');
+    }
+
+    // 2. Branch → organisation + timezone (identical resolution to createBooking).
+    const pool = getPool();
+    const [branchRows] = await pool.execute<RowData>(
+      'SELECT id, organisation_id, timezone FROM branches WHERE id = ?', [input.branchId],
+    );
+    if (branchRows.length === 0) throw new NotFoundError('Branch');
+    const organisationId = Number((branchRows[0] as any).organisation_id);
+    const branchTz = (branchRows[0] as any).timezone || 'Africa/Cairo';
+
+    // 3. Tenant/branch isolation — the resource must actually belong to the branch.
+    const resource = await resourceRepository.findById(input.resourceId);
+    if (!resource) throw new NotFoundError('Resource');
+    if (Number(resource.branch_id) !== Number(input.branchId)) {
+      throw new ForbiddenError('Resource does not belong to the selected branch');
+    }
+
+    // 4. Validate recurrence definition + generate deterministic occurrences (pure).
+    const occurrences = TimeEngine.generateWeeklyOccurrences({
+      startDate: input.startDate,
+      endDate: input.endDate,
+      weekdays: input.weekdays,
+      startTime: input.startTime,
+      endTime: input.endTime,
+      timezone: branchTz,
+    });
+    if (occurrences.length === 0) {
+      throw new ConflictError('The recurrence definition produces no occurrences');
+    }
+    if (occurrences.length > BookingService.MAX_SERIES_OCCURRENCES) {
+      throw new ConflictError(`Recurring series exceeds the maximum of ${BookingService.MAX_SERIES_OCCURRENCES} occurrences`);
+    }
+
+    // 5. Canonical pricing + economic snapshot (same inputs as createBookingV2).
+    const pricing = await pricingEngine.calculatePrice(input.resourceId, input.startTime, input.endTime);
+    const economics = await this.computeBookingEconomics(organisationId, input.branchId, pricing.totalPrice);
+    const bookingTotal = Math.round(pricing.totalPrice * 100) / 100;
+
+    // 6. Whole-series idempotency: a retry with the same key returns the
+    //    existing series without touching the database again.
+    if (input.idempotencyKey) {
+      const existing = await bookingSeriesRepository.findByIdempotencyKey(input.idempotencyKey);
+      if (existing) {
+        return this.describeRecurringSeries(existing.id);
+      }
+    }
+
+    // 7. Transactional creation — one commit for the series + ALL occurrences.
+    const publicId = generateUUID();
+    const conn = await pool.getConnection();
+    const slotDuration = (resource as any)?.slot_duration || (resource as any)?.default_slot_duration || 60;
+    try {
+      const seriesId = await runProvidedTransaction(conn, async () => {
+        const newSeriesId = await bookingSeriesRepository.create({
+          publicId,
+          organisationId,
+          branchId: input.branchId,
+          resourceId: input.resourceId,
+          createdBy: userId,
+          weekdays: weekdayNumbersToSet(input.weekdays),
+          startDate: input.startDate,
+          endDate: input.endDate,
+          startTime: input.startTime,
+          endTime: input.endTime,
+          timezone: branchTz,
+          status: 'active',
+          idempotencyKey: input.idempotencyKey || null,
+        }, conn);
+
+        for (const occ of occurrences) {
+          // Occurrence-level idempotency pre-check (hard guarantee: the unique
+          // key uk_booking_series_occurrence below).
+          const [dupRows] = await conn.execute<RowData>(
+            'SELECT id FROM bookings WHERE series_id = ? AND booking_date = ? LIMIT 1',
+            [newSeriesId, occ.date],
+          );
+          if (dupRows.length) continue;
+
+          // Canonical occupancy check — existing individual bookings are never
+          // overwritten; an overlap rolls back the WHOLE series atomically.
+          const available = await bookingRepository.checkSlotAvailability(
+            input.resourceId, occ.date,
+            [{ start: occ.startTime, end: occ.endTime, date: occ.date }],
+            conn,
+          );
+          if (!available) {
+            throw new ConflictError(`Occurrence on ${occurrenceLabel(occ.date)} conflicts with an existing booking on this court`);
+          }
+
+          const openingTime = resource?.opening_time || '08:00';
+          const closingTime = resource?.closing_time || '22:00';
+          const businessDate = TimeEngine.getBusinessDate(occ.startAtUtc, openingTime, closingTime, branchTz);
+          const bookingId = await bookingRepository.create({
+            userId,
+            branchId: input.branchId,
+            organisationId,
+            resourceId: input.resourceId,
+            bookingType: 'private_match',
+            bookingDate: occ.date,
+            startTime: occ.startTime,
+            endTime: occ.endTime,
+            totalAmount: bookingTotal,
+            commissionAmount: economics.commissionAmount,
+            clubAmount: economics.clubAmount,
+            coachAmount: 0,
+            taxRate: economics.taxRate,
+            taxRateId: economics.taxRateId,
+            taxAmount: economics.taxAmount,
+            taxTreatment: economics.taxTreatment,
+            priceType: 'net',
+            notes: JSON.stringify({ referenceType: 'booking_series', seriesId: newSeriesId }),
+            bookingStatus: 'pending',
+            paymentStatus: 'pending',
+            startAtUtc: occ.startAtUtc,
+            endAtUtc: occ.endAtUtc,
+            businessDate,
+            seriesId: newSeriesId,
+          }, conn);
+
+          // Canonical booking_slots footprint (is_available FALSE).
+          const segs = splitTimeRange(occ.startTime, occ.endTime, slotDuration);
+          for (const seg of segs) {
+            await conn.execute(
+              `INSERT INTO booking_slots (booking_id, resource_id, booking_date, slot_start, slot_end, is_available)
+               VALUES (?, ?, ?, ?, ?, FALSE)`,
+              [bookingId, input.resourceId, occ.date, seg.start, seg.end],
+            );
+          }
+
+          // Canonical event — delivered only AFTER commit (Group 6 ALS txn
+          // context provided by runProvidedTransaction).
+          await eventBusV2.emit('booking:created', {
+            bookingId,
+            userId,
+            courtId: input.resourceId || 0,
+            resourceId: input.resourceId || 0,
+            bookingDate: occ.date,
+            startTime: new Date(occ.startAtUtc),
+            endTime: new Date(occ.endAtUtc),
+            startAtUtc: occ.startAtUtc,
+            endAtUtc: occ.endAtUtc,
+            bookingType: 'private_match',
+            organisationId,
+            branchId: input.branchId,
+          }, undefined, conn);
+        }
+
+        return newSeriesId;
+      });
+
+      log.info({ seriesId, occurrences: occurrences.length, userId }, 'recurring.series_created');
+      return this.describeRecurringSeries(seriesId);
+    } finally {
+      conn.release();
+    }
+  }
+
+  /** R2 — Read a series + every generated occurrence booking. */
+  async describeRecurringSeries(seriesId: number) {
+    const series = await bookingSeriesRepository.findById(seriesId);
+    if (!series) throw new NotFoundError('Recurring series');
+    const bookings = await bookingRepository.findBySeries(series.id);
+    return {
+      seriesId: series.id,
+      publicId: series.publicId,
+      organisationId: series.organisationId,
+      branchId: series.branchId,
+      resourceId: series.resourceId,
+      createdBy: series.createdBy,
+      recurrenceType: series.recurrenceType,
+      weekdays: weekdaySetToNumbers(series.weekdays),
+      startDate: BookingService.fmtDate(series.startDate),
+      endDate: BookingService.fmtDate(series.endDate),
+      startTime: series.startTime,
+      endTime: series.endTime,
+      timezone: series.timezone,
+      status: series.status,
+      occurrenceCount: bookings.length,
+      occurrences: bookings.map((b: any) => ({
+        bookingId: Number(b.id),
+        date: BookingService.fmtDate(b.booking_date),
+        startTime: BookingService.fmtTime(b.start_time),
+        endTime: BookingService.fmtTime(b.end_time),
+        status: b.booking_status,
+      })),
+    };
+  }
+
+  /**
+   * R2 — List series. Callers must be platform admins or hold access to the
+   * organisation (resolved from branch/org). Tenant isolation enforced.
+   */
+  async listRecurringSeries(input: { organisationId?: number; branchId?: number }, userId: number) {
+    const [{ isPlatformAdmin }, { canAccessOrganisation }] = await Promise.all([
+      import('../../../shared/middleware/org-access.js'),
+      import('../../../shared/middleware/org-access.js'),
+    ]);
+    // Resolve the org when only a branch is provided.
+    let orgId = input.organisationId;
+    if (!orgId && input.branchId) {
+      const pool = getPool();
+      const [bRows] = await pool.execute<RowData>(
+        'SELECT organisation_id FROM branches WHERE id = ?', [input.branchId],
+      );
+      if (bRows.length) orgId = Number((bRows[0] as any).organisation_id);
+    }
+    if (orgId) {
+      if (!(await isPlatformAdmin(userId)) && !(await canAccessOrganisation(userId, orgId))) {
+        throw new ForbiddenError('Not authorized to view these recurring reservations');
+      }
+    } else if (!(await isPlatformAdmin(userId))) {
+      // No organisation filter: only platform admins may list globally.
+      throw new ForbiddenError('An organisation filter is required');
+    }
+    const rows = await bookingSeriesRepository.listByOrg(orgId ?? null, input.branchId);
+    return {
+      data: rows.map((s) => ({
+        seriesId: s.id,
+        publicId: s.publicId,
+        organisationId: s.organisationId,
+        branchId: s.branchId,
+        resourceId: s.resourceId,
+        createdBy: s.createdBy,
+        recurrenceType: s.recurrenceType,
+        weekdays: weekdaySetToNumbers(s.weekdays),
+        startDate: BookingService.fmtDate(s.startDate),
+        endDate: BookingService.fmtDate(s.endDate),
+        startTime: s.startTime,
+        endTime: s.endTime,
+        timezone: s.timezone,
+        status: s.status,
+      })),
     };
   }
 
