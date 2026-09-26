@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { ORG_LIFECYCLE_INVALIDATIONS, invalidateOrgLifecycle, USER_REGISTRATION_INVALIDATIONS, invalidateUserRegistration, FINANCE_INVALIDATIONS, invalidateFinanceEntries, MARKETPLACE_PRODUCT_INVALIDATIONS, invalidateMarketplaceProducts, ORG_ACCOUNTING_ROOTS, invalidateOrgAccounting, COACH_LIFECYCLE_INVALIDATIONS, TOURNAMENT_REALTIME_EVENTS, invalidateTournament, invalidateTournamentStandings, MATCH_LIFECYCLE_SOCKET_EVENTS, MATCH_RESULT_SOCKET_EVENTS, invalidateMatchKeys, invalidateRealtimeReconcile, invalidateRegistrationLifecycle, academyEnrollmentEvents, invalidateAcademySessionStarted, invalidateAcademyHoldExpiry, invalidateAcademyGroupUpdated, invalidateAcademyScheduleUpdated, invalidateAcademyAttendance, invalidateAcademyAdminEnrollment } from './useRealtimeCacheUpdates';
+import { ORG_LIFECYCLE_INVALIDATIONS, invalidateOrgLifecycle, USER_REGISTRATION_INVALIDATIONS, invalidateUserRegistration, FINANCE_INVALIDATIONS, invalidateFinanceEntries, MARKETPLACE_PRODUCT_INVALIDATIONS, invalidateMarketplaceProducts, ORG_ACCOUNTING_ROOTS, invalidateOrgAccounting, COACH_LIFECYCLE_INVALIDATIONS, TOURNAMENT_REALTIME_EVENTS, invalidateTournament, invalidateTournamentStandings, MATCH_LIFECYCLE_SOCKET_EVENTS, MATCH_RESULT_SOCKET_EVENTS, invalidateMatchKeys, invalidateRealtimeReconcile, invalidateRegistrationLifecycle, academyEnrollmentEvents, invalidateAcademySessionStarted, invalidateAcademyHoldExpiry, invalidateAcademyGroupUpdated, invalidateAcademyScheduleUpdated, invalidateAcademyAttendance, invalidateAcademyAdminEnrollment, invalidateAcademySessionCancelled } from './useRealtimeCacheUpdates';
 
 function hasPrefix(keys: readonly (readonly string[])[], prefix: string[]): boolean {
   return keys.some((k) => prefix.every((part, i) => k[i] === part));
@@ -475,6 +475,16 @@ describe('G4-A — academy administrative realtime invalidation helpers', () => 
     const { qc, invalidated } = fakeQc();
     invalidateAcademyAdminEnrollment(qc as any);
     expect(invalidated).toContainEqual(['admin', 'academy', 'session-roster']);
+  });
+
+  it('G4-B2 session-cancelled refreshes admin sessions/roster + coach sessions, never player roots', () => {
+    const { qc, invalidated } = fakeQc();
+    invalidateAcademySessionCancelled(qc as any);
+    expect(invalidated).toContainEqual(['admin', 'academy', 'sessions']);
+    expect(invalidated).toContainEqual(['admin', 'academy', 'session-roster']);
+    expect(invalidated).toContainEqual(['coach', 'academy', 'sessions']);
+    // The player is served by the notification center — no player socket invalidation.
+    expect(invalidated.some((k) => k[0] === 'my')).toBe(false);
   });
 
   it('reconnect reconciliation now includes the Academy workbench roots', () => {

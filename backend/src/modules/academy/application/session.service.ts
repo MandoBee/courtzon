@@ -15,6 +15,7 @@ import { recordAudit } from '../../audit-log/index.js';
 import { sessionRepository, type SessionCreateInput, type SessionUpdateInput, type SessionListFilters } from '../infrastructure/repositories/session.repository.js';
 import { enrollmentRepository } from '../infrastructure/repositories/enrollment.repository.js';
 import { attendanceRepository } from '../infrastructure/repositories/attendance.repository.js';
+import { groupRepository } from '../infrastructure/repositories/group.repository.js';
 import { programRepository } from '../infrastructure/repositories/program.repository.js';
 import { validateSessionTransition } from '../domain/lifecycle.js';
 import type { AcademySessionStatus } from '../domain/academy.types.js';
@@ -189,12 +190,50 @@ class AcademySessionService {
         userAgent: undefined,
       });
 
+      // G4-B2 — confirmed-roster player notification, emitted ONLY after commit
+      // (rollback → no event). One event per confirmed player, mirroring the
+      // session-started per-member pattern.
+      await this.notifySessionCancelled(session, reason);
+
       return sessionRepository.getById(id);
     } catch (err) {
       try { await conn.rollback(); } catch { /* already rolled back */ }
       throw err;
     } finally {
       conn.release();
+    }
+  }
+
+  /**
+   * G4-B2 — session-cancelled notification for confirmed roster members.
+   * Runs strictly after the cancellation transaction commits. The sender-side
+   * audience (org/branch/coach) is resolved server-side from group + program;
+   * recipients come ONLY from the authoritative confirmed-enrollment query.
+   */
+  async notifySessionCancelled(session: any, reason?: string | null): Promise<void> {
+    const sessionId = Number(session.id);
+    const groupId = Number(session.group_id);
+    const programId = Number(session.program_id);
+    const userIds = await enrollmentRepository.getConfirmedUserIdsByGroup(groupId);
+    if (!userIds.length) return;
+
+    const group = await groupRepository.getById(groupId);
+    const program = await programRepository.getById(programId);
+    const { eventBusV2 } = await import('../../../shared/event-bus/event-bus.v2.js');
+    for (const userId of userIds) {
+      eventBusV2.emit('academy:session-cancelled', {
+        userId,
+        sessionId,
+        groupId,
+        programId,
+        organisationId: program?.organisation_id ?? null,
+        branchId: program?.branch_id ?? null,
+        coachId: group?.coach_id ? Number(group.coach_id) : null,
+        sessionDate: session.session_date,
+        startTime: session.start_time,
+        endTime: session.end_time,
+        reason: reason ?? null,
+      } as any);
     }
   }
 

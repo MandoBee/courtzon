@@ -93,3 +93,38 @@ describe('G3-A — academy cancelled/completed templates seeded + resolvable', (
     expect(resolvedAr.body).toContain('200');
   });
 });
+
+describe('G4-B2 — academy:session-cancelled template (session deep-link route)', () => {
+  it('seedTemplates() is idempotent and resolves EN + AR with /sessions/:id navigation', async () => {
+    await seedTemplates(); // ensure present (idempotent)
+    for (const locale of ['en', 'ar']) {
+      const [rows] = await pool.execute(
+        'SELECT COUNT(*) AS c FROM notification_templates WHERE event_name = ? AND locale = ?',
+        ['academy:session-cancelled', locale],
+      );
+      expect(Number(rows[0].c)).toBe(1);
+      const tpl = await getTemplate('academy:session-cancelled', locale);
+      expect(tpl).not.toBeNull();
+      expect(tpl!.categorySlug).toBe('system');
+      expect(tpl!.type).toBe('warning');
+      expect(tpl!.actionKey).toBe('view_session');
+      expect(tpl!.routePattern).toBe('/sessions/{{sessionId}}');
+      if (locale === 'ar') expect(tpl!.locale).toBe('ar');
+    }
+  });
+
+  it('interpolates the cancellation message and the optional reason', async () => {
+    const en = await getTemplate('academy:session-cancelled', 'en');
+    const withoutReason = resolveTemplate(en!, {});
+    expect(withoutReason.title).toContain('Cancelled');
+    expect(withoutReason.body).toContain('cancelled');
+    expect(withoutReason.body).not.toContain('Reason');
+
+    const withReason = resolveTemplate(en!, { reason: 'weather' });
+    expect(withReason.body).toContain('weather');
+
+    const ar = await getTemplate('academy:session-cancelled', 'ar');
+    const resolvedAr = resolveTemplate(ar!, { reason: 'المطر' });
+    expect(resolvedAr.body).toContain('المطر');
+  });
+});

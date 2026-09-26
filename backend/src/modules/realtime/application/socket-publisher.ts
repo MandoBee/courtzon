@@ -74,7 +74,7 @@ export class SocketPublisher {
       'organisation:status-changed', 'organisation:subscription-status-changed',
       'organisation:created', 'organisation:approved', 'organisation:rejected',
       'subscription:request-submitted', 'subscription:request-approved', 'subscription:request-rejected', 'subscription:request-reopened',
-      'academy:enrolled', 'academy:session-reminder', 'academy:session-started', 'academy:graduated',
+      'academy:enrolled', 'academy:session-reminder', 'academy:session-started', 'academy:session-cancelled', 'academy:graduated',
       'academy:enrollment-accepted', 'academy:enrollment-waitlisted', 'academy:promoted', 'academy:payment-acknowledged', 'academy:enrollment-paid',
       'academy:enrollment-cancelled', 'academy:enrollment-completed',
       'academy:session:hold-expired', 'academy:group-updated', 'academy:schedule-updated', 'academy:attendance-updated',

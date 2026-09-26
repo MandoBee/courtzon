@@ -398,6 +398,7 @@ function mapOrganisationEvent(eventName: string, p: Record<string, any>): Mapped
  */
 const ACADEMY_ADMIN_EVENTS = new Set([
   'academy:session:hold-expired',
+  'academy:session-cancelled',
   'academy:group-updated',
   'academy:schedule-updated',
   'academy:attendance-updated',
@@ -434,8 +435,8 @@ function mapAcademyEvent(eventName: string, p: Record<string, any>): MappedSocke
   // Coach delivery uses the coach's AUTHORITATIVE user room — every socket
   // joins `user:{id}`; the legacy `coach:{id}` room is never joined server-side.
   // Coach audience is contract-limited to events about their own sessions/work:
-  // only attendance-updated carries an authoritative group-coach today.
-  if (eventName === 'academy:attendance-updated' && p.coachId) rooms.push(`user:${p.coachId}`);
+  // attendance-updated and session-cancelled carry the authoritative group coach.
+  if ((eventName === 'academy:attendance-updated' || eventName === 'academy:session-cancelled') && p.coachId) rooms.push(`user:${p.coachId}`);
 
   if (isAdminEvent) {
     // Administrative audience — server-derived IDs only.

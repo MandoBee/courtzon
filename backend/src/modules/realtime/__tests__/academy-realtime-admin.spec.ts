@@ -106,6 +106,42 @@ describe('G4-A — group / schedule / attendance admin routing', () => {
   });
 });
 
+describe('G4-B2 — session cancellation realtime audience', () => {
+  it('maps academy:session-cancelled to org/branch/admin rooms + the group coach user room', () => {
+    const mapped = mapDomainEvent('academy:session-cancelled', {
+      userId: 200, sessionId: 10, groupId: 2, programId: 1,
+      organisationId: 9, branchId: 5, coachId: 88,
+      sessionDate: '2026-10-04', startTime: '10:00', endTime: '11:00', reason: 'weather',
+    } as any);
+    expect(mapped!.type).toBe('academy.session-cancelled');
+    expect(mapped!.rooms).toContain('organisation:9');
+    expect(mapped!.rooms).toContain('branch:5');
+    expect(mapped!.rooms).toContain('admin');
+    expect(mapped!.rooms).toContain('user:88'); // coach (their own group session)
+  });
+
+  it('NEVER delivers session cancellation to the player user room', () => {
+    const mapped = mapDomainEvent('academy:session-cancelled', {
+      userId: 200, sessionId: 10, groupId: 2, programId: 1, organisationId: 9, coachId: 88,
+    } as any);
+    expect(mapped!.rooms.some((r) => r === 'user:200')).toBe(false);
+  });
+
+  it('cross-tenant: a session in org A never reaches org B / branch B', () => {
+    const mapped = mapDomainEvent('academy:session-cancelled', {
+      userId: 200, sessionId: 10, groupId: 2, programId: 1, organisationId: 9, branchId: 5, coachId: 88,
+    } as any);
+    expect(mapped!.rooms).toContain('organisation:9');
+    expect(mapped!.rooms).not.toContain('organisation:99');
+    expect(mapped!.rooms).toContain('branch:5');
+    expect(mapped!.rooms).not.toContain('branch:6');
+  });
+
+  it('allowlists academy:session-cancelled on SocketPublisher', () => {
+    expect(SOCKET_PUBLISHER_SOURCE).toContain("'academy:session-cancelled'");
+  });
+});
+
 describe('G4-A — enrollment lifecycle keeps player + admin rooms; session-started stays player-only', () => {
   it('enrollment-accepted → player room + org room + admin room', () => {
     const mapped = mapDomainEvent('academy:enrollment-accepted', {

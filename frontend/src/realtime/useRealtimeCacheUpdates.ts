@@ -424,6 +424,17 @@ export function invalidateAcademyAttendance(qc: { invalidateQueries: (opts: { qu
   qc.invalidateQueries({ queryKey: ['coach', 'academy', 'sessions'] });
 }
 
+/**
+ * G4-B2 — session cancellation → admin sessions/roster + coach sessions.
+ * The player is deliberately NOT invalidated here: the player receives the
+ * cancellation through the notification center, not socket realtime.
+ */
+export function invalidateAcademySessionCancelled(qc: { invalidateQueries: (opts: { queryKey: readonly (string | number)[] }) => void }): void {
+  qc.invalidateQueries({ queryKey: ['admin', 'academy', 'sessions'] });
+  qc.invalidateQueries({ queryKey: ['admin', 'academy', 'session-roster'] });
+  qc.invalidateQueries({ queryKey: ['coach', 'academy', 'sessions'] });
+}
+
 export function invalidateAcademyAdminEnrollment(qc: { invalidateQueries: (opts: { queryKey: readonly (string | number)[] }) => void }): void {
   qc.invalidateQueries({ queryKey: ['admin', 'academy', 'session-roster'] });
 }
@@ -815,6 +826,9 @@ export function useRealtimeCacheUpdates(): void {
   // session-started stays player-scoped: complete the player session-list
   // invalidation so a started session appears immediately.
   useSocketEvent('academy.session-started', () => invalidateAcademySessionStarted(qc));
+
+  // G4-B2 — session cancellation: admin/coach realtime (player via notification center).
+  useSocketEvent('academy.session-cancelled', () => invalidateAcademySessionCancelled(qc));
 
   // Hold expiry → admin session/schedule surfaces (never a player room).
   useSocketEvent('academy.session.hold-expired', () => invalidateAcademyHoldExpiry(qc));

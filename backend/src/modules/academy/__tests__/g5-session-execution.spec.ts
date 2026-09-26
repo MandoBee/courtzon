@@ -107,6 +107,44 @@ describe('G5 session state machine', () => {
     expect(audit.recordAudit).toHaveBeenCalledWith(expect.objectContaining({ action: 'ACADEMY_SESSION.CANCEL', afterState: expect.objectContaining({ status: 'cancelled', reason: 'weather' }) }));
   });
 
+  it('#G4-B2 cancel emits academy:session-cancelled once per confirmed roster player after commit', async () => {
+    programRepo.getById.mockResolvedValue({ id: 1, organisation_id: 7, branch_id: 5, name: 'Tennis Academy' });
+    enrollmentRepo.getConfirmedUserIdsByGroup.mockResolvedValue([200, 203]);
+    await academySessionService.cancel(10, 9, 'weather');
+
+    const cancelled = eventBus.emit.mock.calls.filter((c: any) => c[0] === 'academy:session-cancelled');
+    expect(cancelled.length).toBe(2);
+
+    const userIds = cancelled.map((c: any) => c[1].userId);
+    expect(userIds).toEqual([200, 203]);
+    for (const c of cancelled) {
+      expect(c[1]).toMatchObject({
+        sessionId: 10, groupId: 2, programId: 1,
+        organisationId: 7, branchId: 5, coachId: 201,
+        sessionDate: '2028-06-01', startTime: '10:00', endTime: '11:00',
+        reason: 'weather',
+      });
+    }
+  });
+
+  it('#G4-B2 rollback (conditional update fails) emits no cancellation event', async () => {
+    sessionRepo.updateStatusConditional.mockResolvedValue(false);
+    await expect(academySessionService.cancel(10, 9, 'weather')).rejects.toMatchObject({ code: 'ACADEMY_SESSION_ALREADY_TRANSITIONED' });
+    expect(eventBus.emit.mock.calls.filter((c: any) => c[0] === 'academy:session-cancelled').length).toBe(0);
+  });
+
+  it('#G4-B2 duplicate/concurrent cancellation does not produce a second successful transition -> no second event', async () => {
+    // First cancel succeeds.
+    await academySessionService.cancel(10, 9);
+    const first = eventBus.emit.mock.calls.filter((c: any) => c[0] === 'academy:session-cancelled').length;
+    expect(first).toBe(2);
+    // Second cancel is rejected by the conditional update (already cancelled).
+    eventBus.emit.mockClear();
+    sessionRepo.updateStatusConditional.mockResolvedValue(false);
+    await expect(academySessionService.cancel(10, 9)).rejects.toMatchObject({ code: 'ACADEMY_SESSION_ALREADY_TRANSITIONED' });
+    expect(eventBus.emit.mock.calls.filter((c: any) => c[0] === 'academy:session-cancelled').length).toBe(0);
+  });
+
   it('#3 in_progress -> completed (complete)', async () => {
     sessionRepo.getByIdForUpdate.mockResolvedValue(makeSession({ status: 'in_progress' }));
     await academySessionService.complete(10, 9);

@@ -93,6 +93,12 @@ export interface DomainEventMap {
     sessionId: number; groupId: number; scheduleId: number | null;
     date: string; organisationId: number | null; branchId: number | null;
   };
+  'academy:session-cancelled': BaseEvent & {
+    userId: number; sessionId: number; groupId: number; programId: number;
+    organisationId: number | null; branchId: number | null; coachId: number | null;
+    sessionDate: string; startTime: string | null; endTime: string | null;
+    reason: string | null;
+  };
   'academy:group-updated': BaseEvent & {
     groupId: number; programId: number; organisationId: number | null;
     branchId: number | null; coachId: number | null;

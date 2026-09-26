@@ -392,9 +392,18 @@ const eventGroups: EventGroupConfig[] = [
     // G5 — new Academy (program-based) session execution events. Placed AFTER the
     // legacy academy group so buildEventMap's last-write-wins override routes
     // `academy:session-reminder` here (the legacy emitter is quarantined).
-    events: ['academy:session-started', 'academy:session-reminder'],
+    events: ['academy:session-started', 'academy:session-reminder', 'academy:session-cancelled'],
     handler: async (eventName, data, categorySlug) => {
       if (data.userId) {
+        // G4-B2 — the conditional status update guarantees exactly one successful
+        // cancellation transition, but EventBusV2 is at-least-once. Suppress a
+        // replayed session-cancelled for the same (user, session) pair.
+        if (eventName === 'academy:session-cancelled' && data.sessionId != null) {
+          if (await notificationRepository.hasExisting(data.userId, eventName, 'session', String(data.sessionId))) {
+            log.debug({ userId: data.userId, eventName, sessionId: data.sessionId }, 'Duplicate academy session-cancelled notification suppressed');
+            return;
+          }
+        }
         await dispatchToUser({
           userId: data.userId, eventName, categorySlug, data,
           organisationId: data.organisationId,
@@ -1078,7 +1087,7 @@ class NotificationEngine {
       'organisation:subscription-expiring', 'organisation:subscription-expired',
       'organisation:subscription-renewed',
       'club:created', 'club:member-joined', 'club:member-left',
-      'academy:enrolled', 'academy:session-reminder', 'academy:session-started', 'academy:graduated',
+      'academy:enrolled', 'academy:session-reminder', 'academy:session-started', 'academy:session-cancelled', 'academy:graduated',
       'academy:enrollment-accepted', 'academy:enrollment-waitlisted', 'academy:promoted', 'academy:enrollment-paid',
       'academy:enrollment-cancelled', 'academy:enrollment-completed',
       'coaching:session-scheduled', 'coaching:session-reminder', 'coaching:session-cancelled',
